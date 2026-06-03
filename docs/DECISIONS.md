@@ -171,6 +171,42 @@ without derailing the build (SPEC lock rule; FUTURE_IDEAS preamble). (Project-se
 **Tradeoff:** Genuinely good ideas wait for a batched v1.1 rather than landing immediately.
 **Revisit if:** The vertical slice has run a real BrewBoat weekend and a batch is ready to fold in.
 
+## DEC-MSG-1: Channel is SMS-primary
+**Decision:** **SMS is the primary, required channel** for the crew ask. Push, email, and RCS are
+supplements, not the spine. The M4 crew loop (ask → accept) is built on SMS send + inbound reply —
+**no app install required to participate**, which is why the slice's crew side doesn't block on
+native builds. Push is an accelerant for crew already in-app (DEC-MSG-2); email is the magic-link
+login fallback + receipts (DEC-010 / SPEC §3.2). Concretizes SPEC §3.1 "push/SMS" → "SMS-primary".
+**Why:** SMS is the only channel that reaches a casual captain with no install, no permission
+prompt, no gatekeeper — ~98% read, replies in minutes, "reply Y to claim," ~2–3¢ per round trip. It
+is the backstop in every scenario. (Channel research, 2026-06-03; resolves the build-plan M4 channel
+question.)
+**Tradeoff:** Per-message cost and a 10DLC registration dependency with real lead time (see the ops
+checklist below); plain-text, strictly transactional asks to keep the TCPA posture.
+**Revisit if:** Volume or cost/latency shifts the math enough to lean harder on push (Phase: M4).
+
+## DEC-MSG-2: App form factor — native iOS + Android (Capacitor), de-prioritized
+**Decision:** The eventual app form factor is **native on both platforms via a Capacitor wrap**, but
+it is a **post-slice fast-follow**, not an M4 blocker. M4 ships the **SMS loop**; the native wrap +
+push is a separate, later unit of work triggered when push reliability actually matters (crew
+habitually in-app, or SMS cost/latency becomes a real constraint).
+**Why:** iOS PWA web push is too flaky for a seconds-matter ask; reliable in-app push on iPhone
+needs native APNs → Capacitor. But push is an **accelerant**, not the participation path — SMS
+(DEC-MSG-1) is the backstop, so nothing about crew *answering* depends on the native app existing.
+Resolves the build-plan §7 native-vs-PWA question. (Channel research, 2026-06-03.)
+**Tradeoff:** Reliable in-app push waits until after the slice proves out.
+**Scope guardrail (enforce):** "Two native apps" must **not** inflate M4 into shipping/maintaining
+two app-store builds. Until the trigger fires, SMS carries it.
+**Revisit if:** Push reliability becomes load-bearing (Phase: post-slice fast-follow). **Rejected:**
+RCS — verified RCS Business Messaging sender vetting (weeks–months, real fees) and *still* needs an
+SMS fallback; all overhead, no payoff for one operator. Revisit in 12–18 months only if volume
+changes the math.
+
+> **Ops checklist (start before M4 — registration has lead time):** 10DLC brand + campaign
+> registered and approved before any send · long code provisioned · inbound webhook wired with the
+> REQ-CLAIM-1 race-safe claim logic (SPEC §3.1) · asks kept plain-text and strictly
+> non-promotional (TCPA) · email path available for magic-link fallback + receipts (SPEC §3.2).
+
 ---
 
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)
@@ -179,8 +215,9 @@ These are deferred by design. Each names an owner and a trigger. **Consult @arch
 human owner) before building past the trigger.**
 
 - **Stack / framework / DB / host @ M4** — the DEC-013 decision itself. *Trigger: task 1.5a.*
-- **SMS + push provider, and native vs PWA** — the real question is *does the ask actually arrive*
-  (channel reliability), not app-feel. *Owner: infra stage (M4). SPEC §3.1, §4.*
+- ~~**SMS + push provider, and native vs PWA**~~ — **RESOLVED** by DEC-MSG-1 (SMS-primary) +
+  DEC-MSG-2 (native Capacitor, de-prioritized). Remaining sub-detail: confirm the SMS provider
+  (Twilio is the working assumption per the 10DLC ops checklist) at M4.
 - **Deposit-vs-full payment & refund-schedule numbers** — *Owner: Drew. Recommendation: full upfront
   for v1. SPEC §4. (Payments are out of the 2026 build entirely — build plan §6.)*
 - **Credit-vs-cash default ordering** in the cancel flow — lean credit-first, cash always available.

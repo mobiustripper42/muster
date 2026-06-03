@@ -877,7 +877,8 @@ integration internals are parked (§4) — they are Drew's decisions and build-p
 The system mediates every interaction, so notifications are the nervous system — and the thing that
 keeps info from going stale across channels.
 
-- **The ask** → to crew, via **push / SMS**, answerable without opening the app (§2.6.1).
+- **The ask** → to crew, via **SMS (primary) / push (supplement)**, answerable without opening the
+  app (§2.6.1). Channel resolved post-lock: **SMS-primary** — see DEC-MSG-1.
 - **Live card updates** → to assigned crew, when a shift's details change (§2.6, principle 1).
 - **Credential nudges** → to crew, before expiry (§2.6, principle 3 / §2.1).
 - **At-Risk ping** → to Spink, **push not pull**: a shift reaching the board summons him; he does not
@@ -888,7 +889,19 @@ keeps info from going stale across channels.
   card within ~24h of call time) over an explicit tap; explicit one-tap "still good" is the fallback.
 
 The deeper reason this matters: notification-channel **reliability** is the real question behind
-native-vs-PWA (parked, §4) — "does the ask actually arrive" outranks "does it feel like an app."
+native-vs-PWA — "does the ask actually arrive" outranks "does it feel like an app." **Resolved
+post-lock:** SMS is the required spine that guarantees arrival (DEC-MSG-1); native (Capacitor, both
+platforms) is a de-prioritized fast-follow whose only job is reliable push, never the participation
+path (DEC-MSG-2).
+
+> **REQ-CLAIM-1 — atomic first-come claim on the SMS path.** *(Code clarification of existing
+> behavior, recorded under the lock rule — not new design scope; no version bump.)* First-acceptable-
+> yes-wins (§1.2, §2.4) becomes a **concurrency** problem on SMS: when two crew reply "Y" to the same
+> offered seat in the same window, inbound webhooks fire in parallel. The accept path must resolve
+> **atomically** — confirm **exactly one** person, and cleanly tell the other "seat already filled"
+> (the §2.6 contested-yes state). Enforce at the data layer: a conditional/transactional update that
+> succeeds only while the seat is `Open`, a row lock, or a unique constraint on seat assignment.
+> Webhook handlers must never read-then-write without the atomic guard. *(Phase: M4.)*
 
 ## 3.2 Authentication
 

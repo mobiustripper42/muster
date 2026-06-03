@@ -31,8 +31,8 @@ without choosing a web stack (DEC-013). No user-facing value yet.
 |---|------|--------|-------|
 | 0.1 | Scaffold seeds template into muster (agents, skills, reference docs, CLAUDE.md, `.claude/` config) | 3 | Done 2026-06-03. `ui-reviewer` omitted (webapp-only). |
 | 0.2 | Translate locked spec → `docs/SPEC.md`; author `docs/DECISIONS.md` (DEC-001–014) + `docs/FUTURE_IDEAS.md` | 5 | Done 2026-06-03. SPEC placed as-is (it *is* the contract). |
-| 0.3 | Minimal TS/Node runtime + test harness (`package.json`, tsconfig, test runner) — no web framework, no hosted DB | 2 | Picks the test runner. SQLite/in-memory persistence behind the port. |
-| 0.4 | Domain skeleton — SPEC §2 entity types + **repository port** + **reliability-event log** + reserved `Held`/`Ask.type`/`Ask.decisionBy` fields | 5 | Stack-agnostic. The spine M0–M5 fatten. Reliability events logged day one (DEC-008). |
+| 0.3 | Minimal TS/Node runtime + test harness (`package.json`, tsconfig, test runner) — no web framework, no hosted DB | 2 | Picks the test runner. SQLite/in-memory persistence behind the port. [#1](https://github.com/mobiustripper42/muster/issues/1) |
+| 0.4 | Domain skeleton — SPEC §2 entity types + **repository port** + **reliability-event log** + reserved `Held`/`Ask.type`/`Ask.decisionBy` fields | 5 | Stack-agnostic. The spine M0–M5 fatten. Reliability events logged day one (DEC-008). [#2](https://github.com/mobiustripper42/muster/issues/2) |
 
 **Phase 0 total: 15 pts**
 

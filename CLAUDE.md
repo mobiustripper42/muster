@@ -46,6 +46,8 @@ forces it. Until then:
 | `docs/AGENTS.md` | Agent and skill specs (canonical) |
 | `docs/USER_STORIES.md` | What each role does |
 | `docs/BRAND.md` | Voice, visual direction, philosophy |
+| `docs/design/DESIGN-REFERENCE.md` | How to consume the UI mockups: spec wins on *what*, mockups inform *how*; **read JSX, never import**. Read before building any surface (M4). |
+| `docs/design/mockups/` | Claude Design export (HTML + JSX) per surface §2.1–2.6.3. **Visual-direction reference, not spec** — staged for M4 UI build. |
 | `docs/VELOCITY_AND_POKER_GUIDE.md` | Estimation methodology |
 | `docs/CHEATSHEET.md` | One-page printable skill reference |
 | `sessions/*.md` (orphan `sessions` branch via `.sessions-worktree/`) | Per-session files — `YYYY-MM-DD-HHMM-<dev>-<slug>.md` |

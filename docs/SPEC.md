@@ -877,8 +877,9 @@ integration internals are parked (§4) — they are Drew's decisions and build-p
 The system mediates every interaction, so notifications are the nervous system — and the thing that
 keeps info from going stale across channels.
 
-- **The ask** → to crew, via **SMS (primary) / push (supplement)**, answerable without opening the
-  app (§2.6.1). Channel resolved post-lock: **SMS-primary** — see DEC-MSG-1.
+- **The ask** → to crew, **port-mediated**, answerable without opening the app (§2.6.1). Transport is
+  a swappable adapter (DEC-MSG-3): fake + pilot (web-link or Telegram) at M4, **SMS the eventual
+  production adapter** — see DEC-MSG-1.
 - **Live card updates** → to assigned crew, when a shift's details change (§2.6, principle 1).
 - **Credential nudges** → to crew, before expiry (§2.6, principle 3 / §2.1).
 - **At-Risk ping** → to Spink, **push not pull**: a shift reaching the board summons him; he does not
@@ -890,18 +891,22 @@ keeps info from going stale across channels.
 
 The deeper reason this matters: notification-channel **reliability** is the real question behind
 native-vs-PWA — "does the ask actually arrive" outranks "does it feel like an app." **Resolved
-post-lock:** SMS is the required spine that guarantees arrival (DEC-MSG-1); native (Capacitor, both
-platforms) is a de-prioritized fast-follow whose only job is reliable push, never the participation
-path (DEC-MSG-2).
+post-lock:** the **channel port** is the spine — one `sendAsk`/`recordReply` the ask logic depends
+on, with the transport injected as an adapter (DEC-MSG-3); SMS is the eventual production adapter
+that guarantees arrival (DEC-MSG-1), not the slice. Native (Capacitor, both platforms) is a
+de-prioritized fast-follow whose only job is reliable push, never the participation path (DEC-MSG-2).
 
-> **REQ-CLAIM-1 — atomic first-come claim on the SMS path.** *(Code clarification of existing
-> behavior, recorded under the lock rule — not new design scope; no version bump.)* First-acceptable-
-> yes-wins (§1.2, §2.4) becomes a **concurrency** problem on SMS: when two crew reply "Y" to the same
-> offered seat in the same window, inbound webhooks fire in parallel. The accept path must resolve
-> **atomically** — confirm **exactly one** person, and cleanly tell the other "seat already filled"
-> (the §2.6 contested-yes state). Enforce at the data layer: a conditional/transactional update that
-> succeeds only while the seat is `Open`, a row lock, or a unique constraint on seat assignment.
-> Webhook handlers must never read-then-write without the atomic guard. *(Phase: M4.)*
+> **REQ-CLAIM-1 — atomic first-come claim in the domain, behind the port.** *(Code clarification of
+> existing behavior, recorded under the lock rule — not new design scope; no version bump.)*
+> First-acceptable-yes-wins (§1.2, §2.4) is a **concurrency** problem: when two crew accept the same
+> offered seat in the same window, replies arrive in parallel. Every adapter funnels into the one
+> inbound `recordReply` (DEC-MSG-3), so the claim is enforced **once, in the domain** — never inside a
+> transport adapter. It must resolve **atomically**: confirm **exactly one** person, cleanly tell the
+> other "seat already filled" (the §2.6 contested-yes state). Enforce at the data layer — a
+> conditional/transactional update that succeeds only while the seat is `Open`, a row lock, or a
+> unique constraint on seat assignment; never read-then-write without the atomic guard. Identical
+> across fake, web-link, Telegram, and Twilio adapters — and provable with the fake adapter alone
+> (call `recordReply` twice in parallel, assert a single occupant). *(Phase: M4.)*
 
 ## 3.2 Authentication
 

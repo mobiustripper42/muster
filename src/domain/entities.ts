@@ -173,8 +173,8 @@ export interface Ask {
   sentAt: string;
   respondedAt?: string;
   response?: AskResponse;
-  /** ⏳ Pass D (DEC-004). Defaults to "confirm" in v1. */
-  type: AskType;
+  /** ⏳ Pass D (DEC-004). Omitted in v1; absence reads as "confirm". */
+  type?: AskType;
   /** ⏳ Pass D (DEC-004): the horizon by which a hold must harden. Inert in v1. */
   decisionBy?: string;
 }

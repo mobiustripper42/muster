@@ -372,6 +372,11 @@ DEC-017); or the first end-to-end tap shows the three-stage staging is heavier t
 (collapse stages — durable target, not dogma).
 **Phase:** M1 (task 1.2) onward; the thin-path permits the first tap ahead of full staging. (Verified
 handoff, 2026-06-04.)
+**Reader format (clarifies DEC-011):** Xola only exports **xlsx**, so the disposable reader parses the
+xlsx directly (the `Reservations` sheet) rather than forcing a manual xlsx→CSV step — DEC-011's "CSV
+export" was format-shorthand for "the disposable bridge." The slice reader shells out to the system
+`unzip` + a light XML scan (no npm dependency in this dep-minimal phase, DEC-013); it gets a real
+xlsx library when the stack lands (M4). (Operator-chosen, 2026-06-04.)
 
 ## DEC-016: BrewBoat worked example corrected — real fleet; scope ≠ current holdings; test data invented
 **Decision:** Corrects the SPEC v1.0 worked example (a DEC-014-permitted *correction*, not new scope).

@@ -85,11 +85,11 @@ The import path is disposable plumbing; everything it feeds is permanent.
 
 | Term | Definition |
 |---|---|
-| **Event** | A scheduled trip occurrence: BrewBoat · Sat · 3pm · capacity 6. Exists whether or not anyone booked it. |
+| **Event** | A scheduled trip occurrence: BrewBoat · Sat · 3pm · capacity 6. Exists whether or not anyone booked it. *(Correction, DEC-016: "capacity 6" is illustrative — real boats are COI 12–16; capacity is per-vessel data.)* |
 | **Reservation** | A customer buying seats *on* an event: "Smith, party of 4, on the 3pm." |
 | **Shift** | One boat + one day, batching that boat's events (1/3/5pm) into a single **crewing unit**. The atom Muster crews. |
 | **Seat** | One role slot inside a shift (a captain seat, a mate seat). What crew get assigned to. |
-| **Required seat** | Working crew the shift legally/operationally needs (BrewBoat = 1 captain + 1 mate, derived from COI). **Gates** the shift. |
+| **Required seat** | Working crew the shift legally/operationally needs (BrewBoat = 1 captain + 1 mate, derived from COI). **Gates** the shift. *(Correction, DEC-016: illustrative only — the real BrewBoat fleet is 4 inspected boats, COI 12–16, 2 crew each; manning is per-vessel data the deriver loops, not this fixed pair.)* |
 | **Supernumerary seat** | Optional, non-gating seat (trainee). Carries a pairing rule and **consumes a passenger slot** against COI max-pax — not free capacity. |
 | **Crew** | A person who can fill seats — captain and/or mate, by rating. |
 | **Eligible pool** | The people legally fillable for a given open seat (credentials valid on the trip date, correct rating, not double-booked, not on PTO), ranked by reliability. |
@@ -549,6 +549,8 @@ judgment override.
 One boat, one day; the trips inside it batched; **required seats derived from COI** (BrewBoat =
 1 captain + 1 mate — computed, not hand-entered). *(Correction, DEC-ROLE-1: vessel manning is a
 `{roleTypeId, count}` **list** the seat builder iterates — N lines, not a captain/mate pair.)*
+*(Correction, DEC-016: the "1 captain + 1 mate" figure is illustrative — the real fleet is 4 boats
+needing 2 crew each, and zero-crew rentals are in scope; the count is per-vessel data, 0/1/2/N.)*
 Per-shift overrides: add a **required** working
 hand (big-pax day — gates `Crewed`); add a **supernumerary/trainee** seat (non-gating, pairing
 rule, **consumes a passenger slot** vs COI max-pax). Derived default is the COI minimum.

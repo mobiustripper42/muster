@@ -29,7 +29,10 @@ export async function formShifts(repo: Repository): Promise<FormResult> {
     (e) => e.status === "scheduled",
   );
 
-  // Group by vessel + day.
+  // Group by vessel + day. NOTE: this is form-and-update only — it groups
+  // `scheduled` events but never revisits a shift whose events all cancelled
+  // (the group simply disappears), so shift→Cancelled reconciliation (SPEC §5)
+  // has no owner yet. Natural home is here at re-import; deferred past M2.
   const groups = new Map<string, Event[]>();
   for (const e of events) {
     const key = `${e.vesselId}|${e.date}`;
@@ -54,6 +57,12 @@ export async function formShifts(repo: Repository): Promise<FormResult> {
     // Reconcile seats: add any missing required seat (by deterministic id),
     // preserve existing seats and their states. (Vessel manning seeded by
     // seedFleet — DEC-018; a missing vessel yields no derivable seats.)
+    //
+    // ⚠️ KNOWN GAP (revisit when DEC-016 operator manning-validation lands):
+    // this is **add-only**. If manning *shrinks* (a guessed 2-crew row corrected
+    // to captain-only), the orphaned Open seat is not pruned and keeps the shift
+    // out of Crewed. Prune-when-still-Open (leave Confirmed/Claimed for a human)
+    // is the likely fix; decide before manning gets corrected.
     const current = await repo.listSeatsForShift(shiftId);
     const currentById = new Map(current.map((s) => [s.id, s]));
     const seats: Seat[] = [...current];

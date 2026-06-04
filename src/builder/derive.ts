@@ -41,6 +41,13 @@ export function deriveSeats(vessel: Vessel, shiftId: ShiftId): Seat[] {
  * Precedence: a bailed required seat means the shift needs attention (`AtRisk`)
  * even if others are confirmed. `Completed`/`Cancelled` are lifecycle states set
  * elsewhere, not derived from seats.
+ *
+ * ⚠️ KNOWN GAP (revisit at 1.4b/M3): `AtRisk`-from-`Bailed` is **horizon-blind**.
+ * SPEC §1.1 distinguishes an *early* bail (time to refill → back to `Filling`)
+ * from a *late* bail (no time/pool → `AtRisk`); a clockless deriver can't tell
+ * them apart, so every bail reads as a crisis here. The bail/horizon split (and
+ * whether `Bailed` is a transient flag the ask loop clears) lands with the ask
+ * loop + staffing horizon — worth an @architect pass before then.
  */
 export function deriveShiftState(seats: Seat[]): ShiftState {
   const required = seats.filter((s) => s.kind === "required");

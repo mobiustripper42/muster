@@ -22,12 +22,22 @@ import type { CredentialType } from "../domain/entities.js";
 import type { CrewMemberId, RoleTypeId } from "../domain/ids.js";
 
 /**
- * Credential types that HARD-gate the eligible pool in v1. MMC only — it is the
- * universal captain-gating credential (§1.3 "captain MMC valid on date").
+ * Credential types that HARD-gate the eligible pool in v1. MMC only.
+ *
+ * This applies to **every** crewing role, not just captains — and that is
+ * deliberate, not a captain-only rule misapplied. SPEC §2.1: "**MMC is
+ * universal**" — every mariner holds one (the seed gives all crew an MMC), so a
+ * lapsed MMC drops anyone from any pool. The acceptance criterion is itself
+ * role-agnostic: "a crew member with an MMC expiring before a trip date does not
+ * appear in that trip's eligible pool." A role→required-credential *mapping*
+ * (which would let a tenant say "mates need X") is DEC-ROLE-1 tenant data and a
+ * later concern; hardcoding `role === "captain"` here would reintroduce the very
+ * enum DEC-ROLE-1 forbids.
+ *
  * medical / TWIC / drug-consortium are tenant-configurable **soft / "M"** rules
- * shipped warn-only or omitted for BrewBoat v1 (§1.3); they are not eligibility
- * gates here. Named + overridable so a tenant can promote one later without a
- * code change (DEC-001).
+ * shipped warn-only or omitted for BrewBoat v1 (§1.3) — not eligibility gates.
+ * Named + overridable so a tenant can promote one later without a code change
+ * (DEC-001).
  */
 export const HARD_CREDENTIAL_TYPES: readonly CredentialType[] = ["MMC"];
 
@@ -90,10 +100,13 @@ export function hasRating(crew: CrewMember, role: RoleTypeId): RuleResult {
 /**
  * Candidate holds a hard-gating credential valid on the trip date (§1.3).
  *
- * The date boundary MUST match `credential-health.ts` so the roster flag and the
- * oracle never disagree (that file's own comment requires it): expiry is a
- * date-only ISO string parsed at 00:00Z, and a credential is expired once the
- * trip date is strictly past it. Equivalently: valid iff `tripDate <= expiry`.
+ * Same date-comparison semantics as `credential-health.ts` when both are
+ * evaluated at day-start (that file's own comment asks the oracle to align):
+ * expiry is a date-only ISO string parsed at 00:00Z, and a credential is expired
+ * once the trip date is strictly past it. Equivalently: valid iff
+ * `tripDate <= expiry`. (Note `healthOf` is fed a real clock instant `now`, this
+ * a date-only midnight; they can differ by up to a day at the exact boundary —
+ * the oracle is internally self-consistent, which is what matters for the pool.)
  */
 export function mmcValidOnDate(
   credentials: Credential[],

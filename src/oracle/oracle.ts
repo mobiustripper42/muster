@@ -166,8 +166,10 @@ export async function solveShift(
   for (const pool of pools) {
     const pick = pool.eligible.find((id) => !used.has(id));
     if (pick === undefined) {
+      // First starved seat dooms the shift; stop rather than leave a half-built
+      // `used`/`assignment` a later reader could mistake for a partial result.
       satisfiable = false;
-      continue;
+      break;
     }
     used.add(pick);
     assignment.set(pool.seatId, pick);

@@ -88,7 +88,9 @@ export async function addCredential(
 export async function updateCredential(
   repo: Repository,
   id: CredentialId,
-  patch: Patch<Credential>,
+  // A credential can't be re-pointed to another crew member by patch — that
+  // would orphan it (invisible to listCredentialsForCrew). Move = remove + add.
+  patch: Partial<Omit<Credential, "id" | "crewMemberId">>,
 ): Promise<Credential> {
   const current = await repo.getCredential(id);
   if (!current) throw new Error(`No credential ${id}`);

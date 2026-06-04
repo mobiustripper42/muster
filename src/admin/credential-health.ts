@@ -32,6 +32,10 @@ export function healthOf(
   now: Date,
   windowDays: number = EXPIRING_SOON_DAYS,
 ): CredentialHealth {
+  // Expiry is a date-only ISO string → parsed at 00:00Z. A credential expiring
+  // "today" thus reads expired once `now` passes midnight UTC — deliberately
+  // conservative for a renew-before-you-drop flag. The oracle's date-valid gate
+  // (§1.3) must adopt the same boundary so the two never disagree.
   const expiry = new Date(credential.expiry).getTime();
   const daysLeft = (expiry - now.getTime()) / MS_PER_DAY;
   if (daysLeft < 0) return "expired";

@@ -13,6 +13,7 @@ import type {
   Credential,
   CrewMember,
   Event,
+  PtoWindow,
   Reservation,
   RoleType,
   Seat,
@@ -24,6 +25,7 @@ import type {
   CredentialId,
   CrewMemberId,
   EventId,
+  PtoWindowId,
   ReservationId,
   RoleTypeId,
   SeatId,
@@ -41,6 +43,7 @@ export class InMemoryRepository implements Repository {
   readonly #vessels = new Map<VesselId, Vessel>();
   readonly #crew = new Map<CrewMemberId, CrewMember>();
   readonly #credentials = new Map<CredentialId, Credential>();
+  readonly #ptoWindows = new Map<PtoWindowId, PtoWindow>();
   readonly #events = new Map<EventId, Event>();
   readonly #reservations = new Map<ReservationId, Reservation>();
   readonly #shifts = new Map<ShiftId, Shift>();
@@ -103,6 +106,18 @@ export class InMemoryRepository implements Repository {
   }
   async removeCredential(id: CredentialId): Promise<void> {
     this.#credentials.delete(id);
+  }
+
+  // ── PTO windows (suppression-only — DEC-009) ───────────────────────────────
+  async savePtoWindow(window: PtoWindow): Promise<void> {
+    this.#ptoWindows.set(window.id, clone(window));
+  }
+  async listPtoWindowsForCrew(
+    crewMemberId: CrewMemberId,
+  ): Promise<PtoWindow[]> {
+    return [...this.#ptoWindows.values()]
+      .filter((w) => w.crewMemberId === crewMemberId)
+      .map(clone);
   }
 
   // ── Events ─────────────────────────────────────────────────────────────────

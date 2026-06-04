@@ -1,0 +1,12 @@
+{
+  // Emit profile: compile only shippable source under src/ into dist/.
+  // Excludes test files so they never land in the build output. Typechecking
+  // (incl. *.config.ts and *.test.ts) is the base tsconfig.json's job.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "noEmit": false
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts"]
+}

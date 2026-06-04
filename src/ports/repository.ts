@@ -12,6 +12,7 @@
 
 import type {
   Ask,
+  Credential,
   CrewMember,
   Event,
   Reservation,
@@ -22,6 +23,7 @@ import type {
 } from "../domain/entities.js";
 import type {
   AskId,
+  CredentialId,
   CrewMemberId,
   EventId,
   ReservationId,
@@ -49,6 +51,14 @@ export interface Repository {
   saveCrewMember(crew: CrewMember): Promise<void>;
   getCrewMember(id: CrewMemberId): Promise<CrewMember | null>;
   listCrewMembers(): Promise<CrewMember[]>;
+
+  // ── Credentials (1:n per crew member — SPEC §2.1) ──────────────────────────
+  saveCredential(credential: Credential): Promise<void>;
+  getCredential(id: CredentialId): Promise<Credential | null>;
+  /** All credential rows for one crew member — the set the oracle date-checks. */
+  listCredentialsForCrew(crewMemberId: CrewMemberId): Promise<Credential[]>;
+  /** Remove a credential row (SPEC §2.1 action). */
+  removeCredential(id: CredentialId): Promise<void>;
 
   // ── Events ─────────────────────────────────────────────────────────────────
   saveEvent(event: Event): Promise<void>;

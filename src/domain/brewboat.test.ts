@@ -10,44 +10,88 @@ import { asId } from "./ids.js";
 import type {
   CrewMemberId,
   ReliabilityEventId,
+  RoleTypeId,
+  TenantId,
   VesselId,
 } from "./ids.js";
-import type { CrewMember, Vessel } from "./entities.js";
+import type { CrewMember, RoleType, Vessel } from "./entities.js";
 import type { ReliabilityEvent } from "./reliability.js";
+
+// BrewBoat's tenant + its two seeded role rows (DEC-ROLE-1): captain/mate are
+// DATA, not an enum. A later tenant adds more rows; nothing here assumes two.
+const BREWBOAT = asId<"TenantId">("tenant-brewboat");
+const CAPTAIN = asId<"RoleTypeId">("role-captain");
+const MATE = asId<"RoleTypeId">("role-mate");
+
+const roleType = (id: RoleTypeId, name: string): RoleType => ({
+  id,
+  tenantId: BREWBOAT,
+  name,
+});
 
 const brewBoat = (): Vessel => ({
   id: asId<"VesselId">("vessel-brewboat"),
   name: "BrewBoat",
   coiMaxPax: 6,
-  manning: { captain: 1, mate: 1 },
+  manning: [
+    { roleTypeId: CAPTAIN, count: 1 },
+    { roleTypeId: MATE, count: 1 },
+  ],
 });
 
 const aCaptain = (): CrewMember => ({
   id: asId<"CrewMemberId">("crew-spink"),
   name: "Spink",
   phone: "+15035550100",
-  ratings: ["captain"],
+  ratings: [CAPTAIN],
   status: "active",
   reliabilityScore: null, // cold start — no history yet, not a misleading low
 });
 
 describe("BrewBoat spine (Phase 0 demo gate)", () => {
-  it("persists the BrewBoat vessel with COI max-pax 6 and 1+1 manning", async () => {
+  it("seeds two role types as tenant data, not an enum (DEC-ROLE-1)", async () => {
+    const repo = new InMemoryRepository();
+    await repo.saveRoleType(roleType(CAPTAIN, "captain"));
+    await repo.saveRoleType(roleType(MATE, "mate"));
+
+    const roles = await repo.listRoleTypes(BREWBOAT);
+    expect(roles).toHaveLength(2);
+    expect(roles.map((r) => r.name).sort()).toEqual(["captain", "mate"]);
+  });
+
+  it("persists the BrewBoat vessel with COI max-pax 6 and manning as a list", async () => {
     const repo = new InMemoryRepository();
     await repo.saveVessel(brewBoat());
 
     const loaded = await repo.getVessel(asId<"VesselId">("vessel-brewboat"));
     expect(loaded).not.toBeNull();
     expect(loaded?.coiMaxPax).toBe(6);
-    expect(loaded?.manning).toEqual({ captain: 1, mate: 1 });
+    // Manning is a list seat derivation iterates (DEC-ROLE-1) — not a {captain,mate} pair.
+    expect(loaded?.manning).toEqual([
+      { roleTypeId: CAPTAIN, count: 1 },
+      { roleTypeId: MATE, count: 1 },
+    ]);
   });
 
-  it("persists a crew member at cold-start standing", async () => {
+  it("derives required seats by iterating the manning list (works for N roles)", async () => {
+    const repo = new InMemoryRepository();
+    await repo.saveVessel(brewBoat());
+    const vessel = await repo.getVessel(asId<"VesselId">("vessel-brewboat"));
+
+    // The shape the seat builder will consume: one required seat per manning unit,
+    // role carried as a RoleTypeId. No "create a captain seat and a mate seat" branch.
+    const requiredSeatRoles = (vessel?.manning ?? []).flatMap((m) =>
+      Array.from({ length: m.count }, () => m.roleTypeId),
+    );
+    expect(requiredSeatRoles).toEqual([CAPTAIN, MATE]);
+  });
+
+  it("persists a crew member rated by RoleTypeId at cold-start standing", async () => {
     const repo = new InMemoryRepository();
     await repo.saveCrewMember(aCaptain());
 
     const loaded = await repo.getCrewMember(asId<"CrewMemberId">("crew-spink"));
-    expect(loaded?.ratings).toContain("captain");
+    expect(loaded?.ratings).toContain(CAPTAIN);
     expect(loaded?.reliabilityScore).toBeNull();
   });
 

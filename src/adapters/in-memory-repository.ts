@@ -13,6 +13,7 @@ import type {
   CrewMember,
   Event,
   Reservation,
+  RoleType,
   Seat,
   Shift,
   Vessel,
@@ -22,8 +23,10 @@ import type {
   CrewMemberId,
   EventId,
   ReservationId,
+  RoleTypeId,
   SeatId,
   ShiftId,
+  TenantId,
   VesselId,
 } from "../domain/ids.js";
 import type { ReliabilityEvent } from "../domain/reliability.js";
@@ -32,6 +35,7 @@ import type { Repository } from "../ports/repository.js";
 const clone = <T>(value: T): T => structuredClone(value);
 
 export class InMemoryRepository implements Repository {
+  readonly #roleTypes = new Map<RoleTypeId, RoleType>();
   readonly #vessels = new Map<VesselId, Vessel>();
   readonly #crew = new Map<CrewMemberId, CrewMember>();
   readonly #events = new Map<EventId, Event>();
@@ -40,6 +44,20 @@ export class InMemoryRepository implements Repository {
   readonly #seats = new Map<SeatId, Seat>();
   readonly #asks = new Map<AskId, Ask>();
   readonly #reliability: ReliabilityEvent[] = [];
+
+  // ── Role types (tenant config — DEC-ROLE-1) ───────────────────────────────
+  async saveRoleType(roleType: RoleType): Promise<void> {
+    this.#roleTypes.set(roleType.id, clone(roleType));
+  }
+  async getRoleType(id: RoleTypeId): Promise<RoleType | null> {
+    const r = this.#roleTypes.get(id);
+    return r ? clone(r) : null;
+  }
+  async listRoleTypes(tenantId: TenantId): Promise<RoleType[]> {
+    return [...this.#roleTypes.values()]
+      .filter((r) => r.tenantId === tenantId)
+      .map(clone);
+  }
 
   // ── Vessels ──────────────────────────────────────────────────────────────
   async saveVessel(vessel: Vessel): Promise<void> {

@@ -15,6 +15,7 @@ import type {
   CrewMember,
   Event,
   Reservation,
+  RoleType,
   Seat,
   Shift,
   Vessel,
@@ -24,13 +25,21 @@ import type {
   CrewMemberId,
   EventId,
   ReservationId,
+  RoleTypeId,
   SeatId,
   ShiftId,
+  TenantId,
   VesselId,
 } from "../domain/ids.js";
 import type { ReliabilityEvent } from "../domain/reliability.js";
 
 export interface Repository {
+  // ── Role types (tenant config — DEC-ROLE-1) ───────────────────────────────
+  saveRoleType(roleType: RoleType): Promise<void>;
+  getRoleType(id: RoleTypeId): Promise<RoleType | null>;
+  /** All role types a tenant has defined — the set seat derivation resolves against. */
+  listRoleTypes(tenantId: TenantId): Promise<RoleType[]>;
+
   // ── Vessels ──────────────────────────────────────────────────────────────
   saveVessel(vessel: Vessel): Promise<void>;
   getVessel(id: VesselId): Promise<Vessel | null>;

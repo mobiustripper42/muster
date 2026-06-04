@@ -45,7 +45,6 @@ export type SeatState = (typeof SEAT_STATES)[number];
 export const SEAT_KINDS = ["required", "supernumerary"] as const;
 export type SeatKind = (typeof SEAT_KINDS)[number];
 
-// ── Crew-facing role a seat demands ─────────────────────────────────────────
-
-export const CREW_ROLES = ["captain", "mate"] as const;
-export type CrewRole = (typeof CREW_ROLES)[number];
+// Crew roles are NOT a fixed enum (DEC-ROLE-1). A seat demands a `RoleTypeId`
+// referencing a tenant-defined `RoleType` row (see entities.ts) — never a
+// `"captain" | "mate"` literal. "captain"/"mate" exist only as seeded data.

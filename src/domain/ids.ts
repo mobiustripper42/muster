@@ -9,6 +9,8 @@
 declare const __brand: unique symbol;
 type Brand<T, B extends string> = T & { readonly [__brand]: B };
 
+export type TenantId = Brand<string, "TenantId">;
+export type RoleTypeId = Brand<string, "RoleTypeId">;
 export type VesselId = Brand<string, "VesselId">;
 export type CrewMemberId = Brand<string, "CrewMemberId">;
 export type CredentialId = Brand<string, "CredentialId">;

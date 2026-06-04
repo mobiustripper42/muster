@@ -8,7 +8,8 @@
  *
  *   Reservation → Event (n:1) → Shift (n:1, by vessel+day) → Seat (1:n)
  *   CrewMember → Credential / PtoWindow / ReliabilityEvent (1:n)
- *   Vessel → Event / Shift
+ *   Vessel → Event / Shift; Vessel.manning & Seat.role & CrewMember.ratings → RoleType
+ *   Tenant → RoleType (1:n)   (roles are tenant data, not an enum — DEC-ROLE-1)
  */
 
 import type {
@@ -18,18 +19,40 @@ import type {
   EventId,
   PtoWindowId,
   ReservationId,
+  RoleTypeId,
   SeatId,
   ShiftId,
+  TenantId,
   VesselId,
 } from "./ids.js";
-import type { CrewRole, SeatKind, SeatState, ShiftState } from "./states.js";
+import type { SeatKind, SeatState, ShiftState } from "./states.js";
+
+// ── RoleType (tenant configuration — DEC-ROLE-1) ────────────────────────────
+
+/**
+ * A crew role/rating type, defined PER TENANT as data — never a language enum
+ * (DEC-ROLE-1). BrewBoat seeds two rows ("captain", "mate"); a later tenant adds
+ * deckhand / engineer / naturalist by adding rows, no code change. The slice
+ * seeds these via fixture; a role-admin UI is a multi-tenant-era concern.
+ */
+export interface RoleType {
+  id: RoleTypeId;
+  /** The owning tenant. Single-tenant in the slice; broader scoping deferred. */
+  tenantId: TenantId;
+  /** Human label, e.g. "captain", "mate". Display only — never branched on. */
+  name: string;
+}
 
 // ── Vessel ──────────────────────────────────────────────────────────────────
 
-/** Per-role headcount the COI/manning requires. BrewBoat = {captain:1, mate:1}. */
-export interface Manning {
-  captain: number;
-  mate: number;
+/**
+ * One line of a vessel's manning rule: how many of a given role the COI requires.
+ * Seat derivation iterates this list (DEC-ROLE-1) — it must work for N lines, not
+ * assume two. BrewBoat = [{captain,1}, {mate,1}].
+ */
+export interface ManningRequirement {
+  roleTypeId: RoleTypeId;
+  count: number;
 }
 
 export interface Vessel {
@@ -37,7 +60,8 @@ export interface Vessel {
   name: string;
   /** Certificate-of-Inspection max passengers. BrewBoat = 6. */
   coiMaxPax: number;
-  manning: Manning;
+  /** The manning rule as a list; the seat builder loops it (DEC-ROLE-1). */
+  manning: ManningRequirement[];
 }
 
 // ── CrewMember + sub-records ────────────────────────────────────────────────
@@ -83,8 +107,11 @@ export interface CrewMember {
   /** SMS/push target and magic-link destination. */
   phone: string;
   email?: string;
-  /** Which seats this person can fill. Trainee = unrated, rides a supernumerary seat. */
-  ratings: CrewRole[];
+  /**
+   * Which roles this person can fill — a set of `RoleTypeId` (DEC-ROLE-1), not
+   * an enum. Trainee = unrated, rides a supernumerary seat to build hours.
+   */
+  ratings: RoleTypeId[];
   status: CrewStatus;
   /** Spink's manual thumb (§1.4): boost or floor. The score itself is not hand-edited. */
   manualBoost?: number;
@@ -141,7 +168,8 @@ export interface Shift {
 export interface Seat {
   id: SeatId;
   shiftId: ShiftId;
-  role: CrewRole;
+  /** The role this seat demands — a `RoleTypeId` reference (DEC-ROLE-1), not an enum. */
+  role: RoleTypeId;
   kind: SeatKind;
   state: SeatState;
   assignedCrewMemberId?: CrewMemberId;

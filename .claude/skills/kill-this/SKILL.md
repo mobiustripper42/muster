@@ -64,8 +64,6 @@ BASE=main
 ```
 `main` is the active trunk in every project. A `production` branch, if the project has one, is a downstream deploy pointer advanced by `/promote-production` — it is **never** a PR base. (If a project's default branch isn't `main`, set `BASE` to that; the steady state is `main`.)
 
-**Merge-order check:** `git diff --name-only $BASE..HEAD` for changed files. `gh pr list --state open --base "$BASE" --json number,title,headRefName`. For each other open PR's branch, run `gh pr diff <N> --name-only` and warn on any file overlap. Advisory; don't block.
-
 ### Step 4.0 — Resolve existing PR state for this branch
 
 Set `EXISTING_PR_STATE` to one of `OPEN`, `MERGED`, `CLOSED`, `NONE`. Method 1 = `gh pr view "$BRANCH" --json url,state 2>/dev/null`. Method 2 = `mcp__github__list_pull_requests` (head: `<owner>:$BRANCH`, state: all). Method 3 = STOP and ask the user.

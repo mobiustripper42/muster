@@ -10,6 +10,7 @@
 
 import type {
   Ask,
+  Credential,
   CrewMember,
   Event,
   Reservation,
@@ -20,6 +21,7 @@ import type {
 } from "../domain/entities.js";
 import type {
   AskId,
+  CredentialId,
   CrewMemberId,
   EventId,
   ReservationId,
@@ -38,6 +40,7 @@ export class InMemoryRepository implements Repository {
   readonly #roleTypes = new Map<RoleTypeId, RoleType>();
   readonly #vessels = new Map<VesselId, Vessel>();
   readonly #crew = new Map<CrewMemberId, CrewMember>();
+  readonly #credentials = new Map<CredentialId, Credential>();
   readonly #events = new Map<EventId, Event>();
   readonly #reservations = new Map<ReservationId, Reservation>();
   readonly #shifts = new Map<ShiftId, Shift>();
@@ -81,6 +84,25 @@ export class InMemoryRepository implements Repository {
   }
   async listCrewMembers(): Promise<CrewMember[]> {
     return [...this.#crew.values()].map(clone);
+  }
+
+  // ── Credentials (1:n per crew member — SPEC §2.1) ──────────────────────────
+  async saveCredential(credential: Credential): Promise<void> {
+    this.#credentials.set(credential.id, clone(credential));
+  }
+  async getCredential(id: CredentialId): Promise<Credential | null> {
+    const c = this.#credentials.get(id);
+    return c ? clone(c) : null;
+  }
+  async listCredentialsForCrew(
+    crewMemberId: CrewMemberId,
+  ): Promise<Credential[]> {
+    return [...this.#credentials.values()]
+      .filter((c) => c.crewMemberId === crewMemberId)
+      .map(clone);
+  }
+  async removeCredential(id: CredentialId): Promise<void> {
+    this.#credentials.delete(id);
   }
 
   // ── Events ─────────────────────────────────────────────────────────────────

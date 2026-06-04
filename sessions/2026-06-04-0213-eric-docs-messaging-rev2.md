@@ -19,3 +19,5 @@ transcript: /c/Users/eric/.claude/projects/C--Users-eric-OneDrive-Documents-GitH
 
 **Context:**
 - `/its-alive` run mid-session (user forgot to open with it); `started:` stamped at ritual time, so it trails the real session start. Transcript JSONL holds the true first-message time for /retro math.
+- **`main` now exists and is the GitHub default branch** (created at 643a415, the old `claude/...` trunk tip). Supersedes Session 1's "trunk is `claude/muster-project-setup-yU2AD`, not main" note — that workaround is gone. PR base + orphan-scan base = `main` going forward, matching DEC-022.
+- Redundant remote branches still around: `claude/muster-project-setup-yU2AD` and merged `task/0.3-ts-test-harness` — safe to delete when convenient.

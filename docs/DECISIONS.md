@@ -135,6 +135,9 @@ without coupling to a doomed API (SPEC §0.3, §3.5, build plan §5).
 **Tradeoff:** Manual write-back costs ~10 min/week at BrewBoat volume until the manifest moves onto
 the card (DEC-012).
 **Revisit if:** Never revive the API. CSV retires in 2027 when Muster takes bookings directly.
+**M1 verification (DEC-015):** the real per-reservation export *does* carry guest detail, so the
+manual write-back sheet is **not** needed to populate the manifest. Its §3.5 lifecycle (retire when
+the card is live to crew) is unchanged.
 
 ## DEC-012: Manifest is grouped per event on the shift card; no waivers for crew
 **Decision:** The guest manifest is grouped **by event** on the shift card (a Saturday shift shows
@@ -144,6 +147,9 @@ Pull this onto the card **early** — it is the **hinge** that ends the Xola dep
 authoritative, crew stop needing Xola and the 2026 write-back sheet retires (SPEC §0.4, §2.6.3).
 **Tradeoff:** Requires the CSV export to carry guest name+phone per reservation (verify at M1).
 **Revisit if:** Export lacks guest detail → fall back to the write-back sheet (DEC-011) as a stopgap.
+**M1 verification (DEC-015 / DEC-017):** guest name + party are inline and phone joins via the
+customers export → the manifest is fed from the import; the "export lacks detail" fallback did **not**
+fire. Manifest contact fields are name + party + (nullable) phone.
 
 ## DEC-013: Stack & infrastructure deferred to ~M4
 **Decision:** The web framework, database, host, auth provider, and SMS/push provider are **not
@@ -311,6 +317,150 @@ the opposite of Muster. Re-check against this bar if tempted; expect Muster to k
 PostgREST-direct + logic-in-RLS posture — it scatters an engine's logic across policies/triggers/procs.
 **Revisit if:** never for the boundary; the datastore *identity* is the M4 decision (DEC-013 / DEC-TBD).
 **Phase:** standing boundary; binds whenever a datastore is chosen (M4). (Handoff, 2026-06-04.)
+
+---
+
+## DEC-015: Xola import — verified source, grain, identity keys, and quarantined Land→Map→Reconcile architecture
+**Source:** verified against two real Xola exports (`purchaseItems`, `customers`), 2026-06-04.
+**Supersedes** an earlier informal DEC-015 sketch that assumed only an aggregated revenue report with
+no guest detail — that was the wrong export.
+
+**Decision:**
+- Import source = the `purchaseItems` export's **`Reservations` sheet** — **per-reservation grain**
+  (~99 live rows), not the aggregated revenue report. Inline: customer **Name**, **Email**, party
+  size (**Total Demographics**), **Product**, **Arrival Date/Time**, **Status**, and stable Xola IDs.
+- **Identity keys (no fragile composite needed):** `Reservation ID` (primary, ~99/99 filled) and
+  `Confirmation Code` (~99/99); `Purchase ID` groups multiple reservations in one purchase. These are
+  the reconcile keys for insert/update/cancel and for protecting manual entries.
+- The `Events` sheet is **event-grained** with a guide-assignment matrix (one column per guide) — a
+  cross-check / the guide picture, **not** the reservation source.
+- **Architecture — quarantine the mess behind an adapter; Land → Map → Reconcile:**
+  - *Land:* ingest raw rows into staging (tagged source-file + import-batch), untouched.
+  - *Map:* normalize raw → candidate Events/Reservations against an explicit field mapping; the
+    multi-file join (DEC-017) and the Product map (DEC-018) run here; bad rows quarantine with a reason.
+  - *Reconcile:* merge candidates into Event Admin by identity key — insert/update/cancel, protect
+    manual entries. The domain only ever sees clean Reconcile output; never a CSV or a column.
+  - The reader/adapter is the only throwaway piece (coexistence §2); everything it feeds is permanent.
+
+**Thin-path first (the end-to-end steer):** the first end-to-end shift (form → ask → crew tap) may be
+driven by the *minimum* importer — a single-file, single-product, no-reconcile happy-path read, or a
+seeded fixture (DEC-016 blesses invented fixtures) — **before** Land/Map/Reconcile is fully built. The
+three-stage architecture is the durable target, **not a gate on the first tap.** The riskiest unknown
+is whether the whole loop works end to end, not whether the parser is perfect.
+
+**Resolves the DEC-011/012 M1 verification — but only the *data-availability* half.** The export
+carries name + party inline and phone is reachable via DEC-017, so the §2.6.3 manifest **data** can be
+populated **from the import** — no manual write-back is needed to *populate the manifest.* The **§3.5
+write-back sheet's retirement is a separate, later event** that still waits on the **card's manifest
+being live and authoritative to crew** (the §0.4/§2.6.3 hinge, M4+); until the card is authoritative,
+crew still see their guests via Xola. DEC-015 does **not** kill the locked-§3.5 sheet at M1.
+
+**Reconciliation policy stays open.** Reconcile's "protect manual entries" is the *mechanism*; the
+*policy* (manual-wins vs reconcile-on-conflict) remains the operator-owned open question (DEC-TBD /
+SPEC §2.2), defaulting to "manual wins, flag conflicts."
+
+**Why:** real exports verified the grain and keys the build had been guessing at; the per-reservation
+source exists and is authoritative. It is also genuinely messy (multi-row header — real field names
+sit in a sub-header row under parent headers; ~70 columns, most of them per-add-on insurance/tip junk)
+— exactly why the mess is quarantined in Land/Map and the parser selects the ~10 columns that matter
+and skips the sub-header row.
+**Tradeoff:** a staged adapter is more than a one-shot script. Accepted — it is the only throwaway
+piece and it keeps the domain clean. **Rejected:** parsing CSV columns directly in the domain (recouples
+the engine to Xola's schema — the exact thing the adapter exists to prevent).
+**Revisit if:** Xola changes its export schema; a per-reservation export adds phone inline (simplifies
+DEC-017); or the first end-to-end tap shows the three-stage staging is heavier than the loop needs
+(collapse stages — durable target, not dogma).
+**Phase:** M1 (task 1.2) onward; the thin-path permits the first tap ahead of full staging. (Verified
+handoff, 2026-06-04.)
+
+## DEC-016: BrewBoat worked example corrected — real fleet; scope ≠ current holdings; test data invented
+**Decision:** Corrects the SPEC v1.0 worked example (a DEC-014-permitted *correction*, not new scope).
+Real BrewBoat = **4 inspected party boats** (two 12-pax, one 14-pax, one 16-pax), **each needing 2
+crew** (role composition is COI **data** — not assumed here). The single-boat / COI-6 / 1-captain-1-mate
+example is retired as the canonical picture; it survives only as an illustration, flagged inline.
+**Non-inspected rentals** (former Duffy: 12-pax **self-captained = zero crew**, plus a captained
+variant) are **IN scope** — replacements are being bought, and zero/varied-crew vessels are required
+test cases *regardless of ownership*. **Scope is never limited to the current fleet.** Manning counts
+(0/1/2/N) are **data the seat-deriver iterates** (reaffirms DEC-ROLE-1) — never a design input or a
+branch.
+**Test/fixture data:** inventing test data is encouraged for coverage — deliberate crew-count variety
+(a 0-crew rental, a 1-captain boat, a 2-crew party boat) to *prove* the deriver is generic, not a
+snapshot of today's fleet. **Any example/seed harness must be flagged to the operator for validation**
+before it is trusted as real. (The Task-1.1 BrewBoat seed — invented names + COI-6/1+1 manning — is
+exactly such invented-and-now-stale data, flagged for the operator.)
+**Owed SPEC correction (lands with this DEC):** the locked SPEC §1 glossary ("Required seat",
+"Event") and §2.3 (builder restatement) carry "1 captain + 1 mate / capacity 6" — corrected inline
+(same form as the existing DEC-ROLE-1 notes), plus the stale lines in CLAUDE.md.
+**Why:** real Xola data contradicts the placeholder; left uncorrected, the placeholder risks
+re-seeding the exact hardcode DEC-ROLE-1 forbids.
+**Tradeoff:** corrects a LOCKED doc — permitted only because DEC-014 allows corrections (not new
+scope). **Revisit if:** never for "scope ≠ holdings"; fleet specifics update as boats come and go.
+**Phase:** applies from M0 (data model + fixtures) onward — no new milestone. (2026-06-04.)
+
+## DEC-017: Manifest contact — email is the spine, phone via email-join, phone nullable
+**Decision:**
+- Manifest fields (operator-confirmed): **name + party size + phone.**
+- **Phone is not in the reservation row.** **Email is inline on 100% of reservations** and is the join
+  key; **phone lives only in the `customers` export.** The importer ingests **both reports and joins
+  `Reservations` → `Customers` on email** (lowercased/trimmed), **in-pipeline (Map stage)** — never a
+  hand spreadsheet merge.
+- **Phone is modeled nullable.** A missing phone → a "no number on file" manifest state that degrades
+  one card; it never fails the import.
+
+**Thin-path first:** phone-nullable already means the loop never blocks on phone, and the **email-join
+is not required for the first crew tap** — a fixture phone or single-report import suffices to reach
+the first tap. The two-report join is the durable manifest path, not a gate on the loop.
+
+**Why (the data, verified 2026-06-04):** all-time phone fill is sparse (97/497 customers) — but that
+497 is years of dead history. Of the **99 forward-looking reservations (May–Sep 2026)** — the bookings
+actually crewed — **99/99 join by email to a customer record with a real phone.** So "phone required"
+is achievable on the data that matters, via the join; the sparse remainder is customers who will never
+sail again.
+**Tradeoff:** a two-report import + email-join is more pipeline than one file, and phone coverage
+depends on customers keeping phone on file. Accepted — the join is ~1:1 on live data and the nullable
+model absorbs any gap. **Rejected:** a hand spreadsheet merge of the two reports — it rebuilds the
+manual rot Xola is being left to escape.
+**Revisit if:** the 2027 portal collects phone at booking (pushes coverage to 100% and makes the
+customers-join legacy-import-only); or the customers export is routinely unavailable at import time
+(reconsider whether phone-required holds, or phone stays best-effort).
+**Phase:** M1 (slice-aware — the join is durable, not required for the first tap). (Verified handoff,
+2026-06-04.)
+
+## DEC-018: Product string → vessel + manning map — auto-suggest, operator confirms
+**Decision:**
+- Xola encodes the vessel **and** crew model as a **free-text `Product` string**, not a clean vessel
+  ID. Observed: `Brew Boat Party Boats with Captain`, `Duffy Boat Rental | Self Captained` (0 crew),
+  `Captained Duffy Boat | With Captain`, `BrewBoat Non Cycle | Private 12 Passenger | With Captain`,
+  `JAEGER TRIAL Copy of …` (a test listing).
+- The importer maintains a **`Product → { vessel, manning }` lookup.** For any **unseen** Product it
+  **auto-suggests** a mapping (hints: "Self Captained" → 0 crew; "With Captain" → a captain row; pax
+  range parsed from the name) — and the **operator confirms** before it is trusted. **Unconfirmed
+  products quarantine their reservations** (never silently guess a boat/crew). Test/copy listings (e.g.
+  `JAEGER TRIAL`) are mapped to **ignore/exclude** by the operator.
+- **The no-hardcode line (DEC-ROLE-1).** The heuristic maps a parsed string-hint to a manning row
+  `{ roleTypeId, count }` where `roleTypeId` is **looked up by name from the tenant's `RoleType`
+  table** — a **data → data** mapping the operator confirms. A role name like "captain" lives only in
+  the *Xola string being parsed* and in *seed data*, **never** as a hardcoded role constant, enum,
+  union, or `if (role === 'captain')` branch in the seat-deriver. The deriver loops the confirmed
+  `{roleTypeId, count}` list, blind to which roles exist.
+
+**Thin-path first:** during the first end-to-end slice, an unconfirmed product may map to a **single
+seeded vessel/manning** rather than quarantining — so the loop is never blocked on the confirm UI. The
+quarantine-until-confirmed gate is the durable behavior, enforced once multiple products are live.
+
+**Why:** the Product string is the only place vessel + crew model lives in the export, and it is
+free-text that drifts (copies, trials, renames). Auto-suggest saves typing; operator-confirm prevents
+a bad guess from seeding wrong manning. The observed spread (0-crew self-captained, captain-only,
+2-crew party boat) **reaffirms DEC-ROLE-1** and **reinforces DEC-016**: manning is data the deriver
+loops; the Product map merely supplies the per-vessel counts.
+**Tradeoff:** the operator must confirm new products before their reservations import (a gate, not
+automatic) — softened to a single-seeded-vessel default during the first slice. Accepted: a few clicks
+per new product vs. silently mis-crewing a boat. **Rejected:** auto-trusting a parsed product string (a
+rename or typo silently seeds wrong manning).
+**Revisit if:** Xola ever exposes a stable vessel/product ID (key the map off the ID instead of the
+free-text name).
+**Phase:** M1 onward; the thin-path default permits the first tap ahead of the confirm gate. (Verified
+handoff, 2026-06-04.)
 
 ---
 

@@ -7,8 +7,10 @@ into discrete **shifts** (one boat, one day), works out who is legally allowed t
 (USCG manning, credentials, turnaround), asks them in **reliability order**, and surfaces only the
 shifts the automation could not close. It is the half of an eventual Xola replacement that Xola has
 no concept of: Xola knows a booking is paid; Muster knows whether anyone will be standing on the
-dock to run it. First tenant / worked example: **BrewBoat** (one boat, COI max-pax 6, manning
-1 captain + 1 mate).
+dock to run it. First tenant / worked example: **BrewBoat** — a real fleet of **4 inspected party
+boats** (two 12-pax, one 14, one 16), **each manned by 2 crew**; zero-crew rentals are also in scope
+(DEC-016). Manning is per-vessel data the deriver loops (0/1/2/N), never a fixed pair. *(The old
+"one boat, COI 6, 1 captain + 1 mate" example was a placeholder — corrected per DEC-016.)*
 
 The spine is a **policy/mechanism split** (DEC-001): the rules are tenant-owned data; the engine
 that runs them is generic.
@@ -64,7 +66,7 @@ Reservation → Event (n:1) → Shift (n:1, by vessel+day) → Seat (1:n) → Cr
 CrewMember → Credential / PtoWindow / ReliabilityEvent (1:n)
 Vessel → Event / Shift
 
-Vessel            coiMaxPax, manning {captain, mate}        (BrewBoat = {6,1,1})
+Vessel            coiMaxPax, manning [{roleTypeId,count}]   (per-vessel data, N lines — DEC-016/ROLE-1)
 CrewMember        name, phone, ratings[captain|mate], status, manualBoost?, manualFloor?,
                   protocolOverride?, reliabilityScore (MVP-thin: null/flat)
 Credential        type (MMC universal; medical/TWIC/drug-consortium tenant-config), expiry

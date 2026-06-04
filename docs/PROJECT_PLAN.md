@@ -14,7 +14,13 @@ Fibonacci scale (2, 3, 5, 8, 13). See `VELOCITY_AND_POKER_GUIDE.md` for definiti
 All estimates from planning poker between Eric and Claude. Tests are baked into every task estimate
 — no separate testing tasks. Disagreements logged at the bottom.
 
-**Velocity baseline:** Not yet established. Will update after the first 5 sessions.
+**Velocity baseline:** Establishing — Phase 0 below. Dev/pt is the headline forecast number, but
+P0's is a method artifact (see retro): S1's active dev time was largely misclassified as idle by the
+break heuristic. Forecast against `wall − breaks` until a clean phase lands.
+
+| Phase | Sessions | Points | Wall (h) | Dev (h) | Review (h) | hrs/pt (dev) |
+|-------|----------|--------|----------|---------|------------|--------------|
+| 0     | 3        | 9      | 6.29     | 0.80    | 0.75       | 0.09 ⚠       |
 
 **Build strategy — vertical, not horizontal** (build plan §1): build a thin sliver through every
 layer so one real thing works end-to-end, then fatten it. The spine doesn't change as it thickens;
@@ -31,10 +37,12 @@ without choosing a web stack (DEC-013). No user-facing value yet.
 |---|------|--------|-------|
 | 0.1 | Scaffold seeds template into muster (agents, skills, reference docs, CLAUDE.md, `.claude/` config) | 3 | Done 2026-06-03. `ui-reviewer` omitted (webapp-only). |
 | 0.2 | Translate locked spec → `docs/SPEC.md`; author `docs/DECISIONS.md` (DEC-001–014) + `docs/FUTURE_IDEAS.md` | 5 | Done 2026-06-03. SPEC placed as-is (it *is* the contract). |
-| 0.3 | Minimal TS/Node runtime + test harness (`package.json`, tsconfig, test runner) — no web framework, no hosted DB | 2 | Picks the test runner. SQLite/in-memory persistence behind the port. [#1](https://github.com/mobiustripper42/muster/issues/1) |
-| 0.4 | Domain skeleton — SPEC §2 entity types + **repository port** + **reliability-event log** + reserved `Held`/`Ask.type`/`Ask.decisionBy` fields | 5 | Stack-agnostic. The spine M0–M5 fatten. Reliability events logged day one (DEC-008). [#2](https://github.com/mobiustripper42/muster/issues/2) |
+| 0.3 | Minimal TS/Node runtime + test harness (`package.json`, tsconfig, test runner) — no web framework, no hosted DB | 2 | **[x]** Vitest picked; SQLite/in-memory behind the port. [#1](https://github.com/mobiustripper42/muster/issues/1) · PR #3 |
+| 0.4 | Domain skeleton — SPEC §2 entity types + **repository port** + **reliability-event log** + reserved `Held`/`Ask.type`/`Ask.decisionBy` fields | 5 | **[x]** Stack-agnostic spine, 11 tests. Reliability events logged day one (DEC-008). DEC-ROLE-1 (roles-as-config) folded into the same PR. [#2](https://github.com/mobiustripper42/muster/issues/2) · PR #5 |
+| — | Messaging REV 2 (channel port, DEC-MSG-1/2/3) + stage UI design reference | 2 | **[x]** `Added during P0 retro` — mid-phase docs work, no issue. PR #4 |
 
-**Phase 0 total: 15 pts**
+**Phase 0 total: 15 pts planned** (0.1 + 0.2 = 8 pts completed as pre-ritual setup, untracked by
+issue/PR/session). **Tracked & shipped: 9 pts across PRs #3/#4/#5.**
 
 **Ejection point:** the data model + repository port + reliability-event log exist and are tested,
 with no web framework or DB chosen. Every later milestone fattens this spine.

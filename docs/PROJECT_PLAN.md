@@ -58,14 +58,14 @@ The spine end-to-end. Each task = one build-plan milestone with its own acceptan
 
 | # | Task | Effort | Notes |
 |---|------|--------|-------|
-| 1.1 | **M0** Foundation — Vessel + CrewMember (+MMC credential) thin admin; seed 4–6 real crew | 5 | SPEC §2.1 |
-| 1.2 | **M1** Import a weekend — Xola CSV → Events + Reservations; browse | 5 | SPEC §2.2. **At desk: does the export carry guest name+phone per reservation?** Drives 1.6 + write-back sheet (DEC-011/012). |
-| 1.3 | **M2** Auto-form + lock — same-boat-same-day grouping, derive seats from COI, state machine births, lock | 8 | SPEC §2.3, §1.1, DEC-005 |
-| 1.4a | **M3** Oracle eligible-pool + reliability-event logging | 5 | SPEC §1.3 (composite satisfiability — DEC-003), §1.4 logging. Ranking can be arbitrary here. |
-| 1.4b | **M3** Tier-1 ask/confirm loop + assignment view (thin) | 5 | SPEC §2.4, §1.2 (Tier 1). Seat Open→Asked→Claimed→Confirmed; manual override. |
-| 1.5a | **M4** Infrastructure / stack standup — pick + wire framework, DB, host, auth (magic-link), SMS+push | 5 | **The DEC-013 decision.** Consult @architect. Flip `project-type` → `webapp`; `/pull-seeds` the webapp tooling. |
-| 1.5b | **M4** Crew tap-in — the ask (push/SMS, two buttons, no login), my-shifts list, magic-link landing | 5 | SPEC §2.6.1–2.6.2, §3.1–3.2 |
-| 1.6 | **M5** Manifest on the card (the hinge) — call vs departure time, dock pin, per-event manifest | 5 | SPEC §2.6.3, DEC-012 |
+| 1.1 | **M0** Foundation — Vessel + CrewMember (+MMC credential) thin admin; seed 4–6 real crew | 5 | SPEC §2.1. [#6](https://github.com/mobiustripper42/muster/issues/6) |
+| 1.2 | **M1** Import a weekend — Xola CSV → Events + Reservations; browse | 5 | SPEC §2.2. **At desk: does the export carry guest name+phone per reservation?** Drives 1.6 + write-back sheet (DEC-011/012). [#7](https://github.com/mobiustripper42/muster/issues/7) |
+| 1.3 | **M2** Auto-form + lock — same-boat-same-day grouping, derive seats from COI, state machine births, lock | 8 | SPEC §2.3, §1.1, DEC-005. [#8](https://github.com/mobiustripper42/muster/issues/8) |
+| 1.4a | **M3** Oracle eligible-pool + reliability-event logging | 5 | SPEC §1.3 (composite satisfiability — DEC-003), §1.4 logging. Ranking can be arbitrary here. [#9](https://github.com/mobiustripper42/muster/issues/9) |
+| 1.4b | **M3** Tier-1 ask/confirm loop + assignment view (thin) | 5 | SPEC §2.4, §1.2 (Tier 1). Seat Open→Asked→Claimed→Confirmed; manual override. [#10](https://github.com/mobiustripper42/muster/issues/10) |
+| 1.5a | **M4** Infrastructure / stack standup — pick + wire framework, DB, host, auth (magic-link), SMS+push | 5 | **The DEC-013 decision.** Consult @architect. Flip `project-type` → `webapp`; `/pull-seeds` the webapp tooling. [#11](https://github.com/mobiustripper42/muster/issues/11) |
+| 1.5b | **M4** Crew tap-in — the ask (push/SMS, two buttons, no login), my-shifts list, magic-link landing | 5 | SPEC §2.6.1–2.6.2, §3.1–3.2. [#12](https://github.com/mobiustripper42/muster/issues/12) |
+| 1.6 | **M5** Manifest on the card (the hinge) — call vs departure time, dock pin, per-event manifest | 5 | SPEC §2.6.3, DEC-012. [#13](https://github.com/mobiustripper42/muster/issues/13) |
 
 **Phase 1 total: 43 pts**
 

@@ -1,0 +1,210 @@
+/**
+ * SPEC §2 entity types — the stack-agnostic data model (DEC-013).
+ *
+ * Pure types: no behavior, no persistence, no framework. Fields marked
+ * "(log day one)" must be real from the first commit even if nothing reads them
+ * yet (DEC-008). Fields marked ⏳ are reserved for Pass D (DEC-004/005) — present
+ * but inert in v1.
+ *
+ *   Reservation → Event (n:1) → Shift (n:1, by vessel+day) → Seat (1:n)
+ *   CrewMember → Credential / PtoWindow / ReliabilityEvent (1:n)
+ *   Vessel → Event / Shift; Vessel.manning & Seat.role & CrewMember.ratings → RoleType
+ *   Tenant → RoleType (1:n)   (roles are tenant data, not an enum — DEC-ROLE-1)
+ */
+
+import type {
+  AskId,
+  CredentialId,
+  CrewMemberId,
+  EventId,
+  PtoWindowId,
+  ReservationId,
+  RoleTypeId,
+  SeatId,
+  ShiftId,
+  TenantId,
+  VesselId,
+} from "./ids.js";
+import type { SeatKind, SeatState, ShiftState } from "./states.js";
+
+// ── RoleType (tenant configuration — DEC-ROLE-1) ────────────────────────────
+
+/**
+ * A crew role/rating type, defined PER TENANT as data — never a language enum
+ * (DEC-ROLE-1). BrewBoat seeds two rows ("captain", "mate"); a later tenant adds
+ * deckhand / engineer / naturalist by adding rows, no code change. The slice
+ * seeds these via fixture; a role-admin UI is a multi-tenant-era concern.
+ */
+export interface RoleType {
+  id: RoleTypeId;
+  /** The owning tenant. Single-tenant in the slice; broader scoping deferred. */
+  tenantId: TenantId;
+  /** Human label, e.g. "captain", "mate". Display only — never branched on. */
+  name: string;
+}
+
+// ── Vessel ──────────────────────────────────────────────────────────────────
+
+/**
+ * One line of a vessel's manning rule: how many of a given role the COI requires.
+ * Seat derivation iterates this list (DEC-ROLE-1) — it must work for N lines, not
+ * assume two. BrewBoat = [{captain,1}, {mate,1}].
+ */
+export interface ManningRequirement {
+  roleTypeId: RoleTypeId;
+  count: number;
+}
+
+export interface Vessel {
+  id: VesselId;
+  name: string;
+  /** Certificate-of-Inspection max passengers. BrewBoat = 6. */
+  coiMaxPax: number;
+  /** The manning rule as a list; the seat builder loops it (DEC-ROLE-1). */
+  manning: ManningRequirement[];
+}
+
+// ── CrewMember + sub-records ────────────────────────────────────────────────
+
+export type CrewStatus = "active" | "inactive";
+
+/**
+ * MMC is universal (captain gating, 5-yr renewal). medical / TWIC /
+ * drug-consortium are tenant-configurable (oracle's "M" rules, §1.3). Kept open
+ * as a string so a tenant can turn on a type without a code change.
+ */
+export type CredentialType =
+  | "MMC"
+  | "medical"
+  | "TWIC"
+  | "drug_consortium"
+  | (string & {});
+
+export interface Credential {
+  id: CredentialId;
+  crewMemberId: CrewMemberId;
+  type: CredentialType;
+  identifier?: string;
+  /** ISO-8601 date. "Ages out" = expires, not retires. */
+  expiry: string;
+}
+
+/** Suppression-only by design (DEC-009): absence of a window means available. */
+export interface PtoWindow {
+  id: PtoWindowId;
+  crewMemberId: CrewMemberId;
+  /** ISO-8601. Inclusive blackout span. */
+  start: string;
+  end: string;
+}
+
+/** Per-person override of the per-role ask protocol default (§1.2). */
+export type ProtocolOverride = "ask_then_assign" | "assign_then_confirm";
+
+export interface CrewMember {
+  id: CrewMemberId;
+  name: string;
+  /** SMS/push target and magic-link destination. */
+  phone: string;
+  email?: string;
+  /**
+   * Which roles this person can fill — a set of `RoleTypeId` (DEC-ROLE-1), not
+   * an enum. Trainee = unrated, rides a supernumerary seat to build hours.
+   */
+  ratings: RoleTypeId[];
+  status: CrewStatus;
+  /** Spink's manual thumb (§1.4): boost or floor. The score itself is not hand-edited. */
+  manualBoost?: number;
+  manualFloor?: number;
+  protocolOverride?: ProtocolOverride;
+  /**
+   * Computed standing (§1.4). MVP-thin: null until a scorer exists.
+   * Cold-start crew read neutral/mid-pool, NOT a misleading low — represented
+   * here as `null` ("no history yet"), distinct from a real low number.
+   */
+  reliabilityScore: number | null;
+}
+
+// ── Event + Reservation ─────────────────────────────────────────────────────
+
+export type EventStatus = "scheduled" | "cancelled";
+
+export interface Event {
+  id: EventId;
+  vesselId: VesselId;
+  /** ISO-8601 date (vessel-local day). */
+  date: string;
+  /** Departure clock time, e.g. "14:00". */
+  time: string;
+  capacity: number;
+  status: EventStatus;
+}
+
+export type ReservationStatus = "booked" | "cancelled";
+
+export interface Reservation {
+  id: ReservationId;
+  eventId: EventId;
+  customerName: string;
+  partySize: number;
+  phone: string;
+  status: ReservationStatus;
+  // No waiver field — DEC-012.
+}
+
+// ── Shift + Seat ────────────────────────────────────────────────────────────
+
+export interface Shift {
+  id: ShiftId;
+  vesselId: VesselId;
+  /** ISO-8601 date. Shifts group events by vessel + day. */
+  date: string;
+  /** Derived from seats (DEC-005); stored for query convenience. */
+  state: ShiftState;
+  lockedAt?: string;
+  eventIds: EventId[];
+}
+
+export interface Seat {
+  id: SeatId;
+  shiftId: ShiftId;
+  /** The role this seat demands — a `RoleTypeId` reference (DEC-ROLE-1), not an enum. */
+  role: RoleTypeId;
+  kind: SeatKind;
+  state: SeatState;
+  assignedCrewMemberId?: CrewMemberId;
+}
+
+// ── Ask ─────────────────────────────────────────────────────────────────────
+
+/** Delivery channel (DEC-MSG): one channel port, many adapters. */
+export type AskChannel = "push" | "sms";
+
+export type AskResponse = "accepted" | "declined";
+
+/**
+ * ⏳ confirm vs hold: `hold` is RESERVED for Pass D progressive commitment
+ * (DEC-004). v1 only ever issues `confirm`.
+ */
+export type AskType = "confirm" | "hold";
+
+/**
+ * An ask doubles as a reliability event (it spawns `ask_sent`, then
+ * `ask_accepted`/`ask_declined`/`ask_ignored`).
+ */
+export interface Ask {
+  id: AskId;
+  seatId: SeatId;
+  crewMemberId: CrewMemberId;
+  channel: AskChannel;
+  /** ISO-8601 UTC. */
+  sentAt: string;
+  respondedAt?: string;
+  response?: AskResponse;
+  /** ⏳ Pass D (DEC-004). Omitted in v1; absence reads as "confirm". */
+  type?: AskType;
+  /** ⏳ Pass D (DEC-004): the horizon by which a hold must harden. Inert in v1. */
+  decisionBy?: string;
+}
+
+export type { ReliabilityEvent } from "./reliability.js";

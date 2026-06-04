@@ -378,6 +378,9 @@ view of their standing and credential nudges lives in the crew app, §2.6, readi
 - **Ratings:** which seats this person can fill — **captain**, **mate**, or both. The eligible-pool
   filter reads this per seat. (Supernumerary/trainee is a *seat* property, not a rating — a trainee
   is simply someone not yet rated, riding a supernumerary seat to build hours.)
+  *(Correction, DEC-ROLE-1: roles are tenant **data**, not a fixed enum — `RoleType` is a per-tenant
+  table `{id, tenantId, name}`; `ratings` is a set of `roleTypeId`; `Seat.role` references a
+  `roleTypeId`. "Captain"/"mate" are BrewBoat's two seeded rows, not a hardcoded pair.)*
 - **Credentials:** a set of `{ type, identifier?, expiry }` rows. **MMC is universal** (captain
   gating, 5-yr renewal — "ages out" = expires, not retires). Other credential types
   (**TWIC, medical cert, drug-testing consortium**) are **tenant-configurable**, matching the
@@ -544,7 +547,9 @@ judgment override.
 
 ### What a shift carries (restated for rendering)
 One boat, one day; the trips inside it batched; **required seats derived from COI** (BrewBoat =
-1 captain + 1 mate — computed, not hand-entered). Per-shift overrides: add a **required** working
+1 captain + 1 mate — computed, not hand-entered). *(Correction, DEC-ROLE-1: vessel manning is a
+`{roleTypeId, count}` **list** the seat builder iterates — N lines, not a captain/mate pair.)*
+Per-shift overrides: add a **required** working
 hand (big-pax day — gates `Crewed`); add a **supernumerary/trainee** seat (non-gating, pairing
 rule, **consumes a passenger slot** vs COI max-pax). Derived default is the COI minimum.
 

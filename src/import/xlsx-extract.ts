@@ -82,7 +82,9 @@ function parseSheet(xml: string, shared: string[]): string[][] {
  */
 export function readXlsxSheet(filePath: string, sheetName: string): string[][] {
   const workbook = unzipEntry(filePath, "xl/workbook.xml");
-  const sheetTag = [...workbook.matchAll(/<sheet [^>]*\/>/g)]
+  // Match both <sheet .../> and <sheet ...></sheet> (writer-style independent);
+  // \b keeps it from matching the <sheets> container.
+  const sheetTag = [...workbook.matchAll(/<sheet\b[^>]*>/g)]
     .map((m) => m[0])
     .find((tag) => tag.includes(`name="${sheetName}"`));
   if (!sheetTag) {

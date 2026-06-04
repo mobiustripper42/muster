@@ -59,11 +59,12 @@ describe("importReservations", () => {
     const result = await importReservations(repo, sampleRows());
 
     // 3 events: brew 05-16 15:30 (A+B), brew 05-17 13:30 (C), duffy 06-27 18:30 (D)
-    expect(result.eventsUpserted).toBe(3);
+    expect(result.eventsCreated).toBe(3);
     expect((await repo.listEvents()).length).toBe(3);
-    expect(result.reservationsAdded).toBe(3); // A, B, D
-    expect(result.reservationsCancelled).toBe(1); // C
+    // added/updated partition all 4 imported rows (A,B,C,D); C is also new-cancelled.
+    expect(result.reservationsAdded).toBe(4);
     expect(result.reservationsUpdated).toBe(0);
+    expect(result.reservationsNewlyCancelled).toBe(1); // C
   });
 
   it("resolves columns by header name despite drifting add-on columns", async () => {
@@ -95,16 +96,29 @@ describe("importReservations", () => {
     const second = await importReservations(repo, sampleRows());
 
     expect((await repo.listEvents()).length).toBe(3); // no duplicate events
-    expect(second.eventsUpserted).toBe(0); // all already present
-    expect(second.reservationsUpdated).toBe(3); // A, B, D re-seen as updates
+    expect(second.eventsCreated).toBe(0); // all already present
+    expect(second.reservationsUpdated).toBe(4); // A, B, C, D re-seen as updates
     expect(second.reservationsAdded).toBe(0);
-    expect(second.reservationsCancelled).toBe(1); // C still cancelled
+    expect(second.reservationsNewlyCancelled).toBe(0); // C was already cancelled
   });
 
   it("returns an empty result for a header-only sheet", async () => {
     const repo = new InMemoryRepository();
     const result = await importReservations(repo, [HEADER_PARENT, HEADER_SUB]);
     expect(result.reservationsAdded).toBe(0);
-    expect(result.eventsUpserted).toBe(0);
+    expect(result.eventsCreated).toBe(0);
+  });
+
+  it("warns (does not silently mis-bind) when a target header is ambiguous", async () => {
+    const repo = new InMemoryRepository();
+    // A drifted add-on column reintroduces a colliding "Status" header.
+    const parent = [...HEADER_PARENT];
+    parent[11] = "Status";
+    const result = await importReservations(repo, [
+      parent,
+      HEADER_SUB,
+      ["resvA", "pA", BREW, "16-May-2026", "03:30 PM", "Ada", "a@x.com", "2", "2", "Confirmed", "", "Confirmed"],
+    ]);
+    expect(result.warnings.some((w) => /ambiguous header "Status"/.test(w))).toBe(true);
   });
 });

@@ -28,10 +28,19 @@ export interface SkippedRow {
 }
 
 export interface ImportResult {
+  /** New reservation ids this run. `added + updated` partitions all imported rows. */
   reservationsAdded: number;
+  /** Re-seen reservation ids (existed before this run). */
   reservationsUpdated: number;
-  reservationsCancelled: number;
-  eventsUpserted: number;
+  /**
+   * Rows that became cancelled *this run* (new-and-cancelled, or booked→cancelled)
+   * — the actionable signal for the 11pm call, distinct from still-cancelled.
+   */
+  reservationsNewlyCancelled: number;
+  /** Distinct events not previously present (created, not merely re-saved). */
+  eventsCreated: number;
+  /** Non-fatal issues surfaced rather than swallowed (DEC-015), e.g. header ambiguity. */
+  warnings: string[];
   skipped: SkippedRow[];
 }
 
@@ -58,13 +67,29 @@ export function parseXolaTime(raw: string): string | null {
   return `${String(hour).padStart(2, "0")}:${m[2] ?? "00"}`;
 }
 
-/** First column index whose header (sub-row preferred, then parent) matches. */
-function findColumn(headerRows: string[][], name: string): number {
+/**
+ * Resolve a target column by header name (sub-row preferred, then parent — the
+ * caller passes header rows in that order). If the name matches more than one
+ * column (a drifted export reintroducing a colliding add-on header), warn rather
+ * than bind the wrong column silently (DEC-015). Returns the first match, or -1.
+ */
+function resolveColumn(
+  headerRows: string[][],
+  name: string,
+  warnings: string[],
+): number {
+  const matches: number[] = [];
   for (const row of headerRows) {
-    const i = row.findIndex((cell) => cell.trim() === name);
-    if (i !== -1) return i;
+    row.forEach((cell, i) => {
+      if (cell.trim() === name && !matches.includes(i)) matches.push(i);
+    });
   }
-  return -1;
+  if (matches.length > 1) {
+    warnings.push(
+      `ambiguous header "${name}" matched ${matches.length} columns — using the first`,
+    );
+  }
+  return matches.length ? matches[0]! : -1;
 }
 
 /**
@@ -78,14 +103,15 @@ export async function importReservations(
   const result: ImportResult = {
     reservationsAdded: 0,
     reservationsUpdated: 0,
-    reservationsCancelled: 0,
-    eventsUpserted: 0,
+    reservationsNewlyCancelled: 0,
+    eventsCreated: 0,
+    warnings: [],
     skipped: [],
   };
   if (rows.length < 3) return result; // two header rows + at least one data row
 
   const headers = [rows[1] ?? [], rows[0] ?? []]; // sub-row first (DEC-015)
-  const col = (name: string) => findColumn(headers, name);
+  const col = (name: string) => resolveColumn(headers, name, result.warnings);
   const cReservationId = col("Reservation ID");
   const cProduct = col("Product");
   const cDate = col("Arrival Date");
@@ -131,6 +157,9 @@ export async function importReservations(
 
     if (!seenEvents.has(eventId)) {
       const existing = await repo.getEvent(eventId);
+      // Import is authoritative-for-now: this overwrites the event each run,
+      // including capacity. Once operator capacity-validation lands (DEC-016),
+      // guard this so a re-import doesn't stomp a corrected COI.
       const event: Event = {
         id: eventId,
         vesselId,
@@ -141,7 +170,7 @@ export async function importReservations(
       };
       await repo.saveEvent(event);
       seenEvents.add(eventId);
-      if (!existing) result.eventsUpserted++;
+      if (!existing) result.eventsCreated++;
     }
 
     const cancelled = /cancel/i.test((row[cStatus] ?? "").trim());
@@ -161,9 +190,13 @@ export async function importReservations(
     };
     await repo.saveReservation(reservation);
 
-    if (cancelled) result.reservationsCancelled++;
-    else if (existingReservation) result.reservationsUpdated++;
+    // added/updated partition every imported row by prior existence …
+    if (existingReservation) result.reservationsUpdated++;
     else result.reservationsAdded++;
+    // … newlyCancelled is the orthogonal "changed to cancelled this run" signal.
+    if (cancelled && existingReservation?.status !== "cancelled") {
+      result.reservationsNewlyCancelled++;
+    }
   }
 
   return result;

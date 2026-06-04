@@ -9,7 +9,7 @@ it tells you exactly how much authority the JSX carries and how to consume it sa
 
 ## Authority order (the one rule)
 
-> **The locked spec (`muster-spec.md`) is behavioral truth. The mockups are visual-direction
+> **The locked spec (`docs/SPEC.md`) is behavioral truth. The mockups are visual-direction
 > reference. Where they disagree, the spec wins on *what*; the mockup informs *how*.**
 
 - Spec = *what must be true* (which facts appear, what states exist, what the sort order is, what

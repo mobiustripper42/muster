@@ -147,7 +147,18 @@ export interface Reservation {
   eventId: EventId;
   customerName: string;
   partySize: number;
-  phone: string;
+  /**
+   * Email is the manifest spine and the customers-export join key (DEC-017) —
+   * inline on every Xola reservation. Optional because manual/legacy entries may
+   * lack it.
+   */
+  email?: string;
+  /**
+   * Phone is **nullable** (DEC-017): it's not on the reservation row — it's
+   * joined in from the customers export. A missing phone degrades one manifest
+   * card; it never fails the import.
+   */
+  phone?: string;
   status: ReservationStatus;
   // No waiver field — DEC-012.
 }

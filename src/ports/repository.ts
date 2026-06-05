@@ -15,6 +15,7 @@ import type {
   Credential,
   CrewMember,
   Event,
+  PtoWindow,
   Reservation,
   RoleType,
   Seat,
@@ -26,6 +27,7 @@ import type {
   CredentialId,
   CrewMemberId,
   EventId,
+  PtoWindowId,
   ReservationId,
   RoleTypeId,
   SeatId,
@@ -59,6 +61,13 @@ export interface Repository {
   listCredentialsForCrew(crewMemberId: CrewMemberId): Promise<Credential[]>;
   /** Remove a credential row (SPEC §2.1 action). */
   removeCredential(id: CredentialId): Promise<void>;
+
+  // ── PTO windows (1:n per crew member — SPEC §2.1, DEC-009) ─────────────────
+  // Suppression-only by design (DEC-009): a window means "unavailable"; absence
+  // means available. The oracle's "not on PTO" crew rule (§1.3) reads these.
+  savePtoWindow(window: PtoWindow): Promise<void>;
+  /** All PTO windows for one crew member — the set the oracle date-checks. */
+  listPtoWindowsForCrew(crewMemberId: CrewMemberId): Promise<PtoWindow[]>;
 
   // ── Events ─────────────────────────────────────────────────────────────────
   saveEvent(event: Event): Promise<void>;

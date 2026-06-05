@@ -42,12 +42,14 @@ export function deriveSeats(vessel: Vessel, shiftId: ShiftId): Seat[] {
  * even if others are confirmed. `Completed`/`Cancelled` are lifecycle states set
  * elsewhere, not derived from seats.
  *
- * ⚠️ KNOWN GAP (revisit at 1.4b/M3): `AtRisk`-from-`Bailed` is **horizon-blind**.
- * SPEC §1.1 distinguishes an *early* bail (time to refill → back to `Filling`)
- * from a *late* bail (no time/pool → `AtRisk`); a clockless deriver can't tell
- * them apart, so every bail reads as a crisis here. The bail/horizon split (and
- * whether `Bailed` is a transient flag the ask loop clears) lands with the ask
- * loop + staffing horizon — worth an @architect pass before then.
+ * ⚠️ KNOWN GAP (revisit at the staffing-horizon task): `AtRisk`-from-`Bailed` is
+ * **horizon-blind**. SPEC §1.1 distinguishes an *early* bail (time to refill →
+ * back to `Filling`) from a *late* bail (no time/pool → `AtRisk`); a clockless
+ * deriver can't tell them apart. Per DEC-019, the 1.4b ask loop makes `Bailed`
+ * **transient** — `bail()` reopens the seat to `Open` and re-asks atomically — so
+ * this branch only fires when re-ask hits an **exhausted pool**, which IS the
+ * legitimate At-Risk condition. The residual early-vs-late refinement needs the
+ * staffing-horizon clock and is left to that task (@architect pass, 2026-06-05).
  */
 export function deriveShiftState(seats: Seat[]): ShiftState {
   const required = seats.filter((s) => s.kind === "required");

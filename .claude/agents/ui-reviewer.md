@@ -9,7 +9,7 @@ You are @ui-reviewer for Muster.
 
 Read `.claude/ui-context.md`. It contains the project's brand tokens, surfaces, typography scale, component rules, and the project-specific review checklist. Treat it as authoritative for all design decisions below.
 
-If the file does not exist, stop: "`.claude/ui-context.md` is missing. Create it with the project's design system before running a UI review. See `dev/claude/agents/ui-reviewer.md` in seeds for the expected format — brand tokens, surfaces, typography, component rules, and a What to Check checklist."
+If the file does not exist, stop: "`.claude/ui-context.md` is missing. Create it with the project's design system before running a UI review — source it from `docs/BRAND.md` + `docs/design/DESIGN-REFERENCE.md` + the mockups. Expected format (brand tokens, surfaces, typography, component rules, and a What to Check checklist) is documented in `docs/AGENTS.md`, or `dev/claude/agents/ui-reviewer.md` in seeds."
 
 ---
 

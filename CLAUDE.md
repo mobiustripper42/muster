@@ -25,17 +25,41 @@ Roles:
 
 ## Stack
 
-**Deferred to ~M4 — see DEC-013.** M0–M3 are a **stack-agnostic domain core** (entities, state
-machine, oracle, reliability-event log) behind a repository port, with throwaway-thin local
-persistence (in-memory / SQLite) and rendering. The durable web framework, database, host, auth
-(magic-link), and SMS+push provider are chosen at **M4 (task 1.5a)** — the first point the crew app
-forces it. Until then:
+**Chosen at M4 — see DEC-020.** M0–M3 are a **stack-agnostic domain core** (entities, state machine,
+oracle, reliability-event log) behind a **`Repository` port**; that core under `src/` stays
+**framework-free** and is never moved. The M4 stack wraps it:
 
-- **Language/runtime:** Node + TypeScript (strict). Test runner picked at task 0.3.
-- **Persistence:** behind a repository port (DEC-013) — swap the adapter at M4, not the core.
-- **`.claude/project-type`** is `tool` for now; flips to `webapp` at M4 (re-enables `@ui-reviewer`).
-- Webapp-only seeds tooling (VersionTag, safe-supabase, production branch, Vercel) stays dormant
-  until M4.
+- **Language/runtime:** Node + TypeScript (strict). Vitest (task 0.3).
+- **Web framework / host:** **Next.js (App Router) on Vercel** — one app, route groups
+  `app/(admin)` / `app/(crew)` / `app/api`. Next imports the core via the `@core/*` alias.
+- **Build:** `npm run build` = `next build --webpack`. **Webpack, not Turbopack** — the core's
+  NodeNext `.js` import specifiers need `extensionAlias` (`.js`→`.ts`), which Turbopack lacks
+  (DEC-020). Two TS profiles: `tsconfig.core.json` (strict NodeNext, the core — `npm run typecheck`)
+  and root `tsconfig.json` (Next/bundler, the app — `next build` / `typecheck:app`).
+- **Persistence:** **Postgres behind the port**, **local Postgres in dev**; schema is plain Postgres
+  DDL (DEC-DATA-1). **Hosted provider deferred to deploy, vendor-agnostic — Supabase is a candidate
+  host, not adopted.** In-memory adapter stays as the test substrate.
+- **Auth:** **self-rolled magic-link in the service layer** (no auth platform) — same for admin + crew.
+- **Channel (crew ask):** one port (DEC-MSG-3) — **fake/log adapter** (permanent test infra) +
+  **pilot seam** (web-link or Telegram, operator picks later). **Twilio/SMS** = later swap
+  (DEC-MSG-1); **native/Capacitor** = post-slice fast-follow (DEC-MSG-2).
+- **`.claude/project-type`** is `webapp` (flipped at M4); `@ui-reviewer` re-enabled via `/pull-seeds`.
+
+## Commands
+
+The per-task gate (run by `/kill-this`, `/pause-this`) is **`npm run verify`** — it chains the full
+check so a core-only regression can't ship behind a green app build:
+
+| Command | Covers |
+|---------|--------|
+| `npm run verify` | **the gate** — `typecheck` + `typecheck:app` + `test` + `build`, in order |
+| `npm run typecheck` | domain core only (`tsconfig.core.json`, strict NodeNext) |
+| `npm run typecheck:app` | Next app only (`tsconfig.json`, bundler) |
+| `npm run test` | Vitest (domain core) |
+| `npm run build` | `next build --webpack` (app; **webpack required** — DEC-020) |
+| `npm run dev` | `next dev --webpack` |
+
+`build` alone is **not** the gate — it validates the app, not the core. Use `verify`.
 
 ## Key Docs
 | File | Purpose |
@@ -54,7 +78,7 @@ forces it. Until then:
 | `docs/CHEATSHEET.md` | One-page printable skill reference |
 | `sessions/*.md` (orphan `sessions` branch via `.sessions-worktree/`) | Per-session files — `YYYY-MM-DD-HHMM-<dev>-<slug>.md` |
 | `.claude/seeds-version` | Schema version this project was installed at (`4`). Gates `/pull-seeds`. |
-| `.claude/project-type` | `tool` (→ `webapp` at M4). Gates template files via `@sync-config` (DEC-011). |
+| `.claude/project-type` | `webapp` (flipped from `tool` at M4 — DEC-020). Gates template files via `@sync-config` (DEC-011). |
 
 ## Core Data Model
 

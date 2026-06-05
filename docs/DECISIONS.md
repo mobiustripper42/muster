@@ -494,6 +494,22 @@ staffing-horizon task."
 the machine.
 **Phase:** M3 (task 1.4b). @architect pass, 2026-06-05.
 
+## DEC-020: M4 stack — Next.js (App Router) / Vercel; persistence is Postgres-behind-the-port with the hosted provider deferred; magic-link is self-rolled. No platform adopted.
+**Decision:** Resolves the DEC-013 / DEC-TBD stack question at task 1.5a.
+- **Web framework = Next.js (App Router)**, a single app with route groups `app/(admin)` / `app/(crew)` / `app/api`. **Host = Vercel.** Both confirmed by the owner.
+- **The stack-agnostic `src/` domain core (M0–M3) is untouched** and stays framework-free: its own strict NodeNext + `verbatimModuleSyntax` profile in `tsconfig.core.json`; Next consumes it via the `@core/*` alias and bundles it directly (webpack `extensionAlias` maps the core's `.js` specifiers → `.ts` sources — Turbopack lacks this, so build/dev run `--webpack`; revisit when Turbopack supports extension aliasing).
+- **Datastore = Postgres behind the `Repository` port**, run against **local Postgres in dev** (PR 2). Schema is **plain Postgres DDL** (DEC-DATA-1). The **hosted Postgres provider is deferred to deploy time and kept vendor-agnostic** — Supabase is **demoted from "the stack" to one candidate host**, *not adopted now*. The in-memory adapter stays as the test substrate.
+- **Auth = self-rolled magic-link in the service layer** (tokens + signed link + verify route, dev-stub email delivery — PR 3). Vendor-neutral, unit-testable. **Same mechanism for admin (Spink) and crew** (DEC-010 left the admin mechanism a build-phase detail). No third-party auth platform.
+- **Channel port** (DEC-MSG-3) gets its **fake/log adapter** (required, permanent test infra) + a **pilot-adapter seam** that accepts web-link *or* Telegram without a hardcode (PR 3). Twilio is the later swap (DEC-MSG-1); native/Capacitor a post-slice fast-follow (DEC-MSG-2).
+- `.claude/project-type` flips **tool→webapp** here; `@ui-reviewer` re-enabled; webapp seeds tooling pulled via `/pull-seeds` (**review-required, additive — must not clobber the hand-written domain-core docs**).
+**REQ-CLAIM-1:** the atomic first-come claim stays a **service-layer transactional conditional update** (DEC-DATA-1). The thin `Repository` port gains a **state-guarded write** (a compare-and-swap, e.g. `saveSeatIfState`, or a transaction) so the Postgres adapter closes the read-then-write race in `recordResponse` (ask-loop.ts) deterministically — **never an RLS policy or trigger**. Built in PR 2 when the claim path goes live.
+**Why the owner steered off Supabase-as-platform:** magic-link (self-rolled in an afternoon) is too thin a reason to adopt a platform, and jumping in-memory→hosted-platform is premature. DEC-DATA-1 already designed the DB as a swappable adapter and the schema as portable Postgres DDL — so "local Postgres now, pick a host at deploy" honors that boundary harder and avoids vendor lock + a premature platform.
+**Scope (1.5a, IN):** PR1 framework + topology + project-type flip + `/pull-seeds`; PR2 Postgres adapter + DDL + state-guarded write; PR3 self-rolled magic-link + channel fake/pilot adapters. **(OUT):** admin/crew surfaces (1.5b/#12, 1.6/#13), RLS policy suite, Twilio/10DLC, Capacitor/push/app-store builds, real hosted provisioning, real transactional email (dev stub only).
+**Owner-deferred (money / lead-time):** hosted Postgres provider + Vercel/Supabase provisioning (deferred to first task needing a real URL); pilot adapter web-link vs Telegram (DEC-MSG-3 keeps deferrable — M4 builds the seam, not the pick); custom domain; transactional-email provider.
+**Tradeoff:** a SQL adapter + self-rolled auth is modestly more code than a platform handing them over — accepted for vendor-neutrality + testability + no premature platform (DEC-DATA-1). Build runs webpack, not Turbopack, until Turbopack resolves NodeNext `.js` cores.
+**Revisit if:** the pilot outgrows single-app/single-region, the hosted-provider choice is forced, or Turbopack gains `.js`→`.ts` extension aliasing.
+**Phase:** M4 / task 1.5a. (@architect pass + owner decisions, 2026-06-05.)
+
 ---
 
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)
@@ -501,7 +517,7 @@ the machine.
 These are deferred by design. Each names an owner and a trigger. **Consult @architect (and the named
 human owner) before building past the trigger.**
 
-- **Stack / framework / DB / host @ M4** — the DEC-013 decision itself. *Trigger: task 1.5a.*
+- ~~**Stack / framework / DB / host @ M4** — the DEC-013 decision itself. *Trigger: task 1.5a.*~~ — **RESOLVED by DEC-020** (Next.js/Vercel; Postgres-behind-the-port, host deferred; self-rolled magic-link; no platform adopted).
 - ~~**SMS + push provider, and native vs PWA**~~ — **RESOLVED** by DEC-MSG-1 (SMS = eventual
   production adapter, not in the slice) + DEC-MSG-2 (native Capacitor, de-prioritized) + DEC-MSG-3
   (one port; fake + pilot adapters at M4). Remaining: operator picks the pilot adapter (web-link or

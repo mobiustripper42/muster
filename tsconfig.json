@@ -1,25 +1,51 @@
 {
+  // Next.js app profile (DEC-020, M4). Covers app/ (the route groups) and the
+  // service layer; bundler resolution + JSX. The framework-FREE domain core under
+  // src/ keeps its own strict NodeNext profile in tsconfig.core.json — Next
+  // imports the core via the @core/* path alias and bundles it directly, but the
+  // core never inherits these (jsx/bundler) settings. `npm run typecheck` checks
+  // the core; `next build` type-checks the app.
   "compilerOptions": {
     "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "lib": ["ES2022"],
-    "outDir": "dist",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "ES2022"
+    ],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
     "noEmit": true,
-
+    "allowJs": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "incremental": true,
     "strict": true,
     "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true,
-    "noFallthroughCasesInSwitch": true,
-    "exactOptionalPropertyTypes": true,
-
-    "declaration": true,
-    "sourceMap": true,
-    "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
-    "verbatimModuleSyntax": true
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@core/*": [
+        "./src/*"
+      ]
+    }
   },
-  "include": ["src", "*.config.ts"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "next-env.d.ts",
+    "app",
+    "next.config.ts",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src"
+  ]
 }

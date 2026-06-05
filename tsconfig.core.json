@@ -25,6 +25,9 @@
     "skipLibCheck": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["src", "*.config.ts"],
+  // Core only — src/. Framework-coupled root config (next.config.ts) is checked
+  // under the app profile (root tsconfig.json), not here; this profile is the
+  // portable, framework-free core's validator and must stay that way.
+  "include": ["src"],
   "exclude": ["node_modules", "dist", "app", ".next"]
 }

@@ -45,6 +45,22 @@ oracle, reliability-event log) behind a **`Repository` port**; that core under `
   (DEC-MSG-1); **native/Capacitor** = post-slice fast-follow (DEC-MSG-2).
 - **`.claude/project-type`** is `webapp` (flipped at M4); `@ui-reviewer` re-enabled via `/pull-seeds`.
 
+## Commands
+
+The per-task gate (run by `/kill-this`, `/pause-this`) is **`npm run verify`** — it chains the full
+check so a core-only regression can't ship behind a green app build:
+
+| Command | Covers |
+|---------|--------|
+| `npm run verify` | **the gate** — `typecheck` + `typecheck:app` + `test` + `build`, in order |
+| `npm run typecheck` | domain core only (`tsconfig.core.json`, strict NodeNext) |
+| `npm run typecheck:app` | Next app only (`tsconfig.json`, bundler) |
+| `npm run test` | Vitest (domain core) |
+| `npm run build` | `next build --webpack` (app; **webpack required** — DEC-020) |
+| `npm run dev` | `next dev --webpack` |
+
+`build` alone is **not** the gate — it validates the app, not the core. Use `verify`.
+
 ## Key Docs
 | File | Purpose |
 |------|-------|

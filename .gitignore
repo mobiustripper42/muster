@@ -1,12 +1,17 @@
 # Sessions worktree (orphan `sessions` branch is checked out here — DEC-014)
 .sessions-worktree/
 
-# Node / TS (stack lands at M4 — DEC-013; these are harmless before then)
+# Node / TS
 node_modules/
 dist/
 build/
 *.tsbuildinfo
 coverage/
+
+# Next.js (M4 — DEC-020)
+.next/
+next-env.d.ts
+.vercel
 
 # Env / secrets
 .env

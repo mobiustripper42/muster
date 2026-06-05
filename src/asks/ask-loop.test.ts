@@ -152,6 +152,33 @@ describe("contested seat — first-acceptable-yes-wins (DEC-007)", () => {
   });
 });
 
+describe("intra-shift shared pool (DEC-003) — can't crew two seats on one boat", () => {
+  it("a dual-rated person already on seat 1 is excluded from seat 2's asks", async () => {
+    const both = await addCrew("crew-both", { ratings: [CAPTAIN] });
+    await addCrew("crew-b");
+    const [s1, s2] = await addShift(2);
+    // Claim seat 1 for the dual-rated crew.
+    const a1 = await assignPerson(repo, s1!, both, T0);
+    await recordResponse(repo, a1!.id, "accepted", later(1000));
+    // Broadcasting seat 2 must NOT ask the person already holding seat 1.
+    const a2 = await broadcastAsk(repo, s2!, later(2000));
+    expect(a2.map((x) => x.crewMemberId)).not.toContain(both);
+    expect(a2.map((x) => x.crewMemberId)).toContain(asId<"CrewMemberId">("crew-b"));
+  });
+
+  it("rejects a claim that would double-book within the shift", async () => {
+    const both = await addCrew("crew-both");
+    const [s1, s2] = await addShift(2);
+    // Fire asks to both seats BEFORE either is claimed (so the guard, not the
+    // ask-time exclusion, is what catches it).
+    const a1 = await assignPerson(repo, s1!, both, T0);
+    const a2 = await assignPerson(repo, s2!, both, T0);
+    await recordResponse(repo, a1!.id, "accepted", later(1000)); // claims s1
+    const out = await recordResponse(repo, a2!.id, "accepted", later(2000));
+    expect(out).toMatchObject({ claimed: false, reason: "double_booked" });
+  });
+});
+
 describe("all-declined reopens the seat", () => {
   it("after every candidate declines, seat returns to Open", async () => {
     const a = await addCrew("crew-a");

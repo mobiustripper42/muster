@@ -103,20 +103,17 @@ export async function buildAssignmentView(
         await Promise.all(eligibleIds.map((id) => repo.getCrewMember(id)))
       ).filter((c): c is NonNullable<typeof c> => c !== null);
       const ranked = rankPool(crew);
-      card.pool = await Promise.all(
-        ranked.map(async (c) => {
-          const asks = (await repo.listAsksForSeat(seat.id)).filter(
-            (a) => a.crewMemberId === c.id,
-          );
-          const { status, replyMs } = statusFromAsks(asks);
-          return {
-            crewMemberId: c.id,
-            name: c.name,
-            status,
-            ...(replyMs !== undefined ? { replyMs } : {}),
-          };
-        }),
-      );
+      const seatAsks = await repo.listAsksForSeat(seat.id); // once, not per candidate
+      card.pool = ranked.map((c) => {
+        const asks = seatAsks.filter((a) => a.crewMemberId === c.id);
+        const { status, replyMs } = statusFromAsks(asks);
+        return {
+          crewMemberId: c.id,
+          name: c.name,
+          status,
+          ...(replyMs !== undefined ? { replyMs } : {}),
+        };
+      });
     }
     seats.push(card);
   }

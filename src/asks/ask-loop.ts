@@ -72,6 +72,10 @@ async function fireAsk(
   now: Date,
 ): Promise<Ask> {
   const sentAt = now.toISOString();
+  // Deterministic id (codebase convention). Uniqueness assumes one ask per
+  // seat+crew+instant; a same-millisecond re-ask would collide and overwrite. The
+  // assignment view's "most recent ask wins" relies on re-asks being distinct
+  // rows — add a re-ask disambiguator when the durable store lands at M4.
   const ask: Ask = {
     id: asId<"AskId">(`ask-${seat.id}-${crewMemberId}-${sentAt}`),
     seatId: seat.id,
@@ -84,6 +88,32 @@ async function fireAsk(
   return ask;
 }
 
+/**
+ * Crew already committed (Claimed/Confirmed) to *another* seat on the same shift.
+ * `eligiblePool` excludes the current shift from its cross-shift double-booking
+ * check (oracle.ts), so it cannot see intra-shift contention — one person can't
+ * be both captain and mate on the same boat the same day (DEC-003's shared-pool
+ * invariant). The loop enforces it here: exclude these crew from a seat's asks
+ * and reject a claim that would double-book within the shift. BrewBoat's vessels
+ * are all 2-crew, so this is the common shape, not an edge.
+ */
+async function committedOnShift(
+  repo: Repository,
+  shiftId: Seat["shiftId"],
+  excludeSeatId: SeatId,
+): Promise<Set<CrewMemberId>> {
+  const seats = await repo.listSeatsForShift(shiftId);
+  const held = new Set<CrewMemberId>();
+  for (const s of seats) {
+    if (s.id === excludeSeatId) continue;
+    if (!s.assignedCrewMemberId) continue;
+    if (s.state === "Claimed" || s.state === "Confirmed") {
+      held.add(s.assignedCrewMemberId);
+    }
+  }
+  return held;
+}
+
 /** The eligible crew for a seat, ranked, optionally excluding ids (e.g. a bailer). */
 async function rankedEligible(
   repo: Repository,
@@ -93,10 +123,12 @@ async function rankedEligible(
   const pools = await eligiblePool(repo, seat.shiftId);
   const pool = pools.find((p) => p.seatId === seat.id);
   if (!pool) return [];
+  // Also exclude anyone already holding another seat on this same shift.
+  const onShift = await committedOnShift(repo, seat.shiftId, seat.id);
   const crew = (
     await Promise.all(
       pool.eligible
-        .filter((id) => !exclude.has(id))
+        .filter((id) => !exclude.has(id) && !onShift.has(id))
         .map((id) => repo.getCrewMember(id)),
     )
   ).filter((c): c is CrewMember => c !== null);
@@ -154,8 +186,13 @@ export async function assignPerson(
 export interface ResponseOutcome {
   /** True iff this accept claimed the seat (first-acceptable-yes-wins, DEC-007). */
   claimed: boolean;
-  /** Set when an accept lost a contested seat: "already_filled". */
-  reason?: "already_filled";
+  /**
+   * Why an accept did not claim:
+   *  - `already_filled` — another candidate won this seat first (contested).
+   *  - `double_booked` — the accepter already holds another seat on this shift
+   *    (DEC-003 shared-pool: can't be two crew on one boat the same day).
+   */
+  reason?: "already_filled" | "double_booked";
   /** The seat's state after the response. */
   seatState: Seat["state"];
 }
@@ -196,6 +233,11 @@ export async function recordResponse(
       latencyMs,
     );
     if (seat.state === "Asked") {
+      // Shared-pool guard (DEC-003): can't claim if already on another seat here.
+      const onShift = await committedOnShift(repo, seat.shiftId, seat.id);
+      if (onShift.has(ask.crewMemberId)) {
+        return { claimed: false, reason: "double_booked", seatState: seat.state };
+      }
       await repo.saveSeat({
         ...seat,
         state: "Claimed",
@@ -349,7 +391,10 @@ export async function bail(
  * Manual override (SPEC §2.4): Spink drops any person directly into a seat,
  * regardless of pool, rank, or current state — the authority backstop. Goes
  * straight to `Confirmed`. Logs no reliability event (an override is not the
- * person's responsiveness).
+ * person's responsiveness). If the seat already had a different occupant, this
+ * silently displaces them with no `shift_bailed` trace — intentional: an override
+ * is Spink's hammer, not a bail by the displaced person. (A "notify the displaced
+ * crew" concern, if it ever matters, is a UI/notification job, not domain state.)
  */
 export async function manualOverride(
   repo: Repository,

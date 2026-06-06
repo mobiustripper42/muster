@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens (DEC-021). Values harvested from the Claude Design mockups
+ * (docs/design/mockups/*.html) per DESIGN-REFERENCE.md — read the CSS values,
+ * re-express as Tailwind theme tokens, do NOT import the mockups. Tailwind v4
+ * exposes each as a utility (e.g. --color-accent → bg-accent / text-accent).
+ *
+ * The font CSS variables (--font-sans/--font-mono) are bound to the IBM Plex
+ * faces loaded via next/font in app/layout.tsx.
+ */
+@theme {
+  --font-sans: var(--font-plex-sans), system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), monospace;
+
+  /* Surfaces + ink */
+  --color-bg: #eef2f6;
+  --color-card: #ffffff;
+  --color-ink: #101826;
+  --color-muted: #5b6675;
+  --color-faint: #93a0b0;
+  --color-line: #e7ebf1;
+
+  /* Brand + roles */
+  --color-accent: #2f5d86;
+  --color-captain: #2f5d86;
+  --color-mate: #2f7d70;
+
+  /* Status: ok / warn / bad, each with a soft bg + line (badges, banners) */
+  --color-ok: #15803d;
+  --color-ok-bg: #e7f4ec;
+  --color-ok-line: #cbe6d5;
+  --color-warn: #b45309;
+  --color-warn-bg: #fbf0db;
+  --color-warn-line: #f0ddb4;
+  --color-bad: #be2f2a;
+  --color-bad-bg: #fbe6e4;
+  --color-bad-line: #f2cdc9;
+
+  /* Card radius scale */
+  --radius-card: 14px;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}

@@ -12,6 +12,7 @@
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
     "db:migrate": "tsx db/migrate.ts",
+    "db:seed:crew": "tsx db/seed-crewapp-dev.ts",
     "test": "vitest run",
     "test:pg": "vitest run src/adapters/postgres-repository.test.ts",
     "test:watch": "vitest",
@@ -20,10 +21,12 @@
     "verify": "npm run typecheck && npm run typecheck:app && npm run test && npm run build"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.0",
     "@types/node": "^22.0.0",
     "@types/pg": "^8.20.0",
     "@types/react": "^19.2.16",
     "@types/react-dom": "^19.2.3",
+    "tailwindcss": "^4.3.0",
     "tsx": "^4.22.4",
     "typescript": "^5.6.0",
     "vitest": "^4.0.0"

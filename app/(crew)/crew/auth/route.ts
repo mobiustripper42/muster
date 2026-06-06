@@ -9,12 +9,22 @@ import { getRepo } from "../../../lib/repo";
  * success mint the session cookie and drop them on /crew. No password, no form —
  * the tap IS the login. The cookie is set on the redirect response directly (not
  * via next/headers) so it survives the redirect.
+ *
+ * Redirects use a RELATIVE `Location` (`/crew`) rather than an absolute URL built
+ * from `req.nextUrl.origin` — in Next's dev server that origin is the bind
+ * address (localhost), not the Host the client actually used (e.g. a Tailscale
+ * host), which would bounce the user to the wrong origin. A relative Location is
+ * resolved by the browser against the host it's on, so it's correct everywhere.
  */
+function redirectTo(path: string, cookie?: ReturnType<typeof buildSessionCookie>) {
+  const res = new NextResponse(null, { status: 307, headers: { Location: path } });
+  if (cookie) res.cookies.set(cookie.name, cookie.value, cookie.options);
+  return res;
+}
+
 export async function GET(req: NextRequest) {
-  const base = req.nextUrl.origin;
   const secret = req.nextUrl.searchParams.get("t");
-  const fail = (reason: string) =>
-    NextResponse.redirect(new URL(`/crew?auth=${reason}`, base));
+  const fail = (reason: string) => redirectTo(`/crew?auth=${reason}`);
 
   if (!secret) return fail("missing");
 
@@ -26,8 +36,5 @@ export async function GET(req: NextRequest) {
   }
   if (!result.ok) return fail(result.reason);
 
-  const res = NextResponse.redirect(new URL("/crew", base));
-  const { name, value, options } = buildSessionCookie(result.subject);
-  res.cookies.set(name, value, options);
-  return res;
+  return redirectTo("/crew", buildSessionCookie(result.subject));
 }

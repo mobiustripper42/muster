@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { issueMagicLink, randomSecret } from "@core/auth/magic-link.js";
+import { baseUrl } from "../../../lib/base-url";
 import { getRepo } from "../../../lib/repo";
 
 /**
@@ -21,6 +22,6 @@ export async function GET(req: NextRequest) {
     { subjectKind: "crew", subjectId: crew, ttlMs: 15 * 60_000 },
     { now: new Date(), mintSecret: randomSecret },
   );
-  const link = new URL(`/crew/auth?t=${secret}`, req.nextUrl.origin).toString();
+  const link = `${baseUrl(req)}/crew/auth?t=${secret}`;
   return NextResponse.json({ link });
 }

@@ -28,7 +28,59 @@ don't re-log them:
 
 | Date | Idea | Why tempting | The catch | Verdict |
 |---|---|---|---|---|
-| | | | | |
+| 2026-06-04 | **Booking modification (party-size change → possible vessel reassignment)** — full writeup below | Found live in real Xola data; the engine already half-answers it (oracle re-query) | Touches reservations + reassignment + customer comms; self-serve version is portal-era | parked — build post-slice |
+
+---
+
+## Writeup — Booking modification: party-size change with possible vessel reassignment
+
+**Provenance:** surfaced while reviewing the real Xola export — a party-size change that pushes a
+booking past a vessel's COI max is a live, real case, not a hypothetical.
+
+**Why it's not net-new architecture:** a party-size change is a **re-query of the oracle against a
+modified hypothetical world** (oracle §7, generalized from "if this booking existed" to "if this
+booking changed"). The pax rule re-runs; it may fail the current vessel's COI max; that may force a
+**vessel reassignment**; reassignment re-derives required seats; the **horizon** (§1.3) then says
+whether the new arrangement is crewable in time. Every organ already exists. What's missing is the
+*surface* that drives the re-query and the *decision* it produces (update / decline) — plus, for the
+self-serve tier, customer comms.
+
+### Tier 1 — scheduler-mediated (the honest first build)
+A new operator user story:
+1. Customer calls the scheduler to request a change (more/fewer passengers).
+2. Scheduler opens the **event / trip dashboard** (Event Admin §2.2, or a modify view on it) and
+   enters the proposed new party size.
+3. System **re-queries the oracle** for the modified booking:
+   - pax still within current vessel COI max → simple update.
+   - pax exceeds it → oracle proposes **vessel reassignment** (which vessel can take it), and the
+     **horizon** determines whether the reassigned vessel can be **crewed in time** (re-derived seats
+     vs. staffing horizon).
+4. Verdict surfaces as **Update or Decline** — scheduler acts:
+   - **Update:** booking moves (possibly to a new vessel → possibly a new/changed shift → crew
+     re-evaluation via the existing seat machine).
+   - **Decline:** not possible (no vessel / can't crew in the window) — scheduler tells the customer.
+
+### Tier 2 — customer self-serve (portal-era)
+The same flow, customer-initiated online: customer requests the change → oracle evaluates → system
+responds **update or decline** without a human in the loop (auto-approve when trivially crewable,
+route to scheduler when it forces reassignment near the horizon). This is the **self-reschedule /
+modify** item already in the customer-portal sketch (Tier 3 there) — explicitly portal-dependent.
+
+### What it reuses vs. what's new
+- **Reuses:** the oracle (re-query, collect-all mode for the diagnosis), the pax/COI rule, vessel
+  reassignment logic, seat re-derivation, the horizon, the shift state machine (a reassignment is a
+  shift change → crew re-evaluation, same edges as a late booking joining/leaving).
+- **New:** a *modify* surface on the trip/event dashboard; the update-or-decline decision UI; for
+  Tier 2, customer-facing comms + the auto-vs-route policy.
+- **Watch:** a reassignment that drops/moves a booking has the **same cascade shape** as a cancel
+  (it can strand the old shift's crewing or change pax on two shifts at once) — reuse the
+  reconciliation/nudge logic, don't reinvent it.
+
+### Trigger / when to build
+Post-slice. Tier 1 becomes worth building once shifts form and crew from real bookings and the
+operator is fielding real change requests (it's a scheduler-efficiency feature, not slice spine).
+Tier 2 waits on the customer portal (Tier 4 / 2027). Promote to a SPEC v1.1 modify-flow section only
+when Tier 1 is actually next on the build, not before.
 
 ---
 

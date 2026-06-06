@@ -36,6 +36,7 @@ import type {
   VesselId,
 } from "../domain/ids.js";
 import type { ReliabilityEvent } from "../domain/reliability.js";
+import type { SeatState } from "../domain/states.js";
 
 export interface Repository {
   // ── Role types (tenant config — DEC-ROLE-1) ───────────────────────────────
@@ -88,6 +89,16 @@ export interface Repository {
   saveSeat(seat: Seat): Promise<void>;
   getSeat(id: SeatId): Promise<Seat | null>;
   listSeatsForShift(shiftId: ShiftId): Promise<Seat[]>;
+  /**
+   * Compare-and-swap write — the atomic first-come claim (REQ-CLAIM-1, DEC-020 /
+   * DEC-DATA-1). Persists `seat` **only if** the stored row is still in
+   * `expectedState`; returns `true` if it applied, `false` if the state had
+   * already moved (lost the race). The seat must already exist. The guarantee
+   * lives here in the port — identical across adapters, never an RLS policy or
+   * trigger — so the ask loop's read-then-write claim becomes a single atomic step
+   * against real Postgres.
+   */
+  saveSeatIfState(seat: Seat, expectedState: SeatState): Promise<boolean>;
 
   // ── Asks ───────────────────────────────────────────────────────────────────
   saveAsk(ask: Ask): Promise<void>;

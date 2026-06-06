@@ -202,10 +202,13 @@ export interface ResponseOutcome {
  * (their responsiveness counts even on a contested loss); mutates the seat only
  * on a winning accept.
  *
- * **Accept** → `logAskAccepted` (+latency). Confirm-iff-open guard (the
- * REQ-CLAIM-1 kernel, made atomic at M4): if the seat is still `Asked`, it
- * becomes `Claimed` and is pinned to this person. If someone already claimed it,
- * this is a contested yes — logged, but `claimed:false, reason:"already_filled"`.
+ * **Accept** → `logAskAccepted` (+latency). Confirm-iff-open guard, made atomic
+ * via the port's `saveSeatIfState` compare-and-swap (REQ-CLAIM-1, DEC-020): the
+ * `Asked → Claimed` write applies only if the seat is *still* `Asked`, so of two
+ * simultaneous accepts only one wins the seat — the loser is a contested yes
+ * (logged, `claimed:false, reason:"already_filled"`). The `seat.state==="Asked"`
+ * pre-check just skips the work + double-book lookup for an already-settled seat;
+ * the CAS is the actual race guard.
  * **Decline** → `logAskDeclined` (+latency, neutral). If that was the last open
  * ask and nobody claimed, the seat reopens to `Open` (all-declined edge).
  */
@@ -238,13 +241,22 @@ export async function recordResponse(
       if (onShift.has(ask.crewMemberId)) {
         return { claimed: false, reason: "double_booked", seatState: seat.state };
       }
-      await repo.saveSeat({
-        ...seat,
-        state: "Claimed",
-        assignedCrewMemberId: ask.crewMemberId,
-      });
-      await refreshShiftState(repo, seat.shiftId);
-      return { claimed: true, seatState: "Claimed" };
+      // Atomic compare-and-swap (REQ-CLAIM-1): claim only if STILL Asked.
+      const won = await repo.saveSeatIfState(
+        { ...seat, state: "Claimed", assignedCrewMemberId: ask.crewMemberId },
+        "Asked",
+      );
+      if (won) {
+        await refreshShiftState(repo, seat.shiftId);
+        return { claimed: true, seatState: "Claimed" };
+      }
+      // Lost the race between the read and the write — someone claimed first.
+      const fresh = await repo.getSeat(seat.id);
+      return {
+        claimed: false,
+        reason: "already_filled",
+        seatState: fresh?.state ?? seat.state,
+      };
     }
     // Contested: someone already claimed/confirmed this seat.
     return { claimed: false, reason: "already_filled", seatState: seat.state };

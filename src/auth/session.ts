@@ -80,7 +80,10 @@ export function verifySession(
   ) {
     return { ok: false, reason: "malformed" };
   }
-  if (now.getTime() >= Date.parse(session.expiresAt)) {
+  const exp = Date.parse(session.expiresAt);
+  // A non-parseable expiry can't be trusted to be in the future — treat a NaN as
+  // dead (defense-in-depth; a tampered payload already fails the HMAC above).
+  if (Number.isNaN(exp) || now.getTime() >= exp) {
     return { ok: false, reason: "expired" };
   }
 

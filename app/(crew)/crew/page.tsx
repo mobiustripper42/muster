@@ -100,7 +100,7 @@ function CrewApp({ view }: { view: CrewAppView }) {
       )}
 
       <section className="flex flex-col gap-2">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-faint">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">
           My shifts
         </h2>
         {view.shifts.length === 0 ? (
@@ -137,31 +137,28 @@ function AskCard({ ask }: { ask: CrewAppView["asks"][number] }) {
           <b>In or out?</b>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-px bg-line">
-        <form action={respondToAsk}>
-          <input type="hidden" name="askId" value={ask.askId} />
-          <button
-            type="submit"
-            name="response"
-            value="declined"
-            className="w-full bg-card py-3 font-semibold text-bad"
-          >
-            Out
-          </button>
-        </form>
-        <form action={respondToAsk}>
-          <input type="hidden" name="askId" value={ask.askId} />
-          <button
-            type="submit"
-            name="response"
-            value="accepted"
-            className="w-full bg-accent py-3 font-semibold text-white"
-          >
-            In
-          </button>
-        </form>
-      </div>
-      <div className="px-4 py-2 text-xs text-faint">
+      {/* One form, two submit buttons — only the tapped button's response posts.
+          No client JS; green In / red Out is the scannable polarity (mockup). */}
+      <form action={respondToAsk} className="grid grid-cols-2 gap-px bg-line">
+        <input type="hidden" name="askId" value={ask.askId} />
+        <button
+          type="submit"
+          name="response"
+          value="declined"
+          className="min-h-[52px] w-full bg-card font-semibold text-bad"
+        >
+          Out
+        </button>
+        <button
+          type="submit"
+          name="response"
+          value="accepted"
+          className="min-h-[52px] w-full bg-ok font-semibold text-white"
+        >
+          In
+        </button>
+      </form>
+      <div className="px-4 py-2 text-xs text-muted">
         Answer right here — no login, no hunting.
       </div>
     </div>

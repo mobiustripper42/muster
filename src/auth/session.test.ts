@@ -52,6 +52,11 @@ describe("signSession / verifySession", () => {
     expect(verifySession(token, SECRET, NOW)).toEqual({ ok: false, reason: "expired" });
   });
 
+  it("treats a non-parseable expiry as dead (NaN guard)", () => {
+    const token = signSession(session({ expiresAt: "not-a-date" }), SECRET);
+    expect(verifySession(token, SECRET, NOW)).toEqual({ ok: false, reason: "expired" });
+  });
+
   it("rejects malformed tokens", () => {
     expect(verifySession("not-a-token", SECRET, NOW)).toEqual({
       ok: false,

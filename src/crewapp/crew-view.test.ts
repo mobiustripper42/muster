@@ -79,7 +79,7 @@ describe("buildCrewAppView", () => {
 
   it("standing reads neutral with no history (null score)", async () => {
     const view = await buildCrewAppView(await seed({ score: null }), ME, NOW);
-    expect(view!.standing).toEqual({ hasHistory: false, line: "No history yet — you read neutral." });
+    expect(view!.standing).toEqual({ hasHistory: false, line: "New — no track record yet" });
   });
 
   it("standing reads in-good-standing once a score exists", async () => {

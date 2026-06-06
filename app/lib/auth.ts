@@ -18,8 +18,20 @@ const COOKIE = "muster_session";
 const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
 const RENEW_WITHIN_MS = 3 * 24 * 60 * 60 * 1000; // re-issue inside the last 3 days
 
-// Dev default is obvious-and-insecure on purpose; prod MUST set SESSION_SECRET.
-const SECRET = process.env.SESSION_SECRET ?? "dev-insecure-session-secret";
+// Prod MUST set SESSION_SECRET — an unset secret in production would degrade to a
+// repo-public signing key, letting anyone forge a session for any subject. Fail
+// fast there (mirrors the dev-link route's prod hard-stop). Dev uses an obvious
+// insecure default for zero-config local work. Resolved LAZILY (per request, not
+// at module load) so `next build` — which evaluates modules in production mode
+// without the env set — doesn't trip the guard.
+function secret(): string {
+  const s = process.env.SESSION_SECRET;
+  if (s) return s;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("SESSION_SECRET must be set in production");
+  }
+  return "dev-insecure-session-secret";
+}
 
 function makeSession(subject: AuthSubject, now: Date): Session {
   return {
@@ -46,7 +58,7 @@ export function buildSessionCookie(subject: AuthSubject, now = new Date()) {
   const session = makeSession(subject, now);
   return {
     name: COOKIE,
-    value: signSession(session, SECRET),
+    value: signSession(session, secret()),
     options: cookieOptions(session.expiresAt),
   };
 }
@@ -69,13 +81,13 @@ export async function readSubject(): Promise<AuthSubject | null> {
   if (!token) return null;
 
   const now = new Date();
-  const result = verifySession(token, SECRET, now);
+  const result = verifySession(token, secret(), now);
   if (!result.ok) return null;
 
   if (shouldRenew(result.session, now, RENEW_WITHIN_MS)) {
     const renewed = makeSession(result.subject, now);
     try {
-      jar.set(COOKIE, signSession(renewed, SECRET), cookieOptions(renewed.expiresAt));
+      jar.set(COOKIE, signSession(renewed, secret()), cookieOptions(renewed.expiresAt));
     } catch {
       // Read-only context (e.g. a Server Component render) — renew next write.
     }

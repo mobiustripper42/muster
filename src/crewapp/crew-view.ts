@@ -122,8 +122,8 @@ export async function buildCrewAppView(
   // Standing: MVP-thin. null score = no history → neutral, stated plainly.
   const standing: CrewStandingView =
     me.reliabilityScore === null
-      ? { hasHistory: false, line: "No history yet — you read neutral." }
-      : { hasHistory: true, line: "In good standing." };
+      ? { hasHistory: false, line: "New — no track record yet" }
+      : { hasHistory: true, line: "In good standing" };
 
   return { me: { id: me.id, name: me.name }, asks, shifts, standing };
 }

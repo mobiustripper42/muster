@@ -1,0 +1,57 @@
+# CI — runs the same per-task gate (`npm run verify`) that `/kill-this` runs
+# locally, but with a real Postgres reachable so the adapter-equivalence contract
+# actually executes on every PR.
+#
+# Why the Postgres service matters: src/adapters/postgres-repository.test.ts
+# SKIPS CLEAN when no DB is reachable (so local `verify` stays Docker-free). That
+# means the in-memory↔Postgres contract — the thing that proves "test on
+# in-memory, run on Postgres" is honest — only runs when someone remembers to
+# `docker compose up`. Standing up postgres:17 here (matching docker-compose.yml)
+# makes that contract a required, automatic check, closing the one gap the local
+# gate can't self-enforce.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    services:
+      # The job won't start its steps until this passes the health check, so a
+      # Postgres that fails to come up fails the build — it never silently lets
+      # the pg contract skip to a false green.
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: muster
+          POSTGRES_PASSWORD: muster
+          POSTGRES_DB: muster_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U muster -d muster_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22 # matches local dev
+          cache: npm
+
+      - run: npm ci
+
+      # The whole gate: core typecheck + app typecheck + tests + webpack build.
+      # With the service above reachable, `test` runs the Postgres contract suite
+      # (not the skip path) — proving both adapters equivalent on real Postgres.
+      - run: npm run verify
+        env:
+          TEST_DATABASE_URL: postgres://muster:muster@localhost:5432/muster_test

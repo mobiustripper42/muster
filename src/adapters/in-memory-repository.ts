@@ -34,6 +34,7 @@ import type {
   VesselId,
 } from "../domain/ids.js";
 import type { ReliabilityEvent } from "../domain/reliability.js";
+import type { SeatState } from "../domain/states.js";
 import type { Repository } from "../ports/repository.js";
 
 const clone = <T>(value: T): T => structuredClone(value);
@@ -165,6 +166,15 @@ export class InMemoryRepository implements Repository {
   async getSeat(id: SeatId): Promise<Seat | null> {
     const s = this.#seats.get(id);
     return s ? clone(s) : null;
+  }
+  async saveSeatIfState(seat: Seat, expectedState: SeatState): Promise<boolean> {
+    // Single-threaded JS makes this trivially atomic here; the contract it
+    // upholds is what matters — the Postgres adapter enforces the same CAS under
+    // real concurrency (REQ-CLAIM-1, DEC-020).
+    const current = this.#seats.get(seat.id);
+    if (!current || current.state !== expectedState) return false;
+    this.#seats.set(seat.id, clone(seat));
+    return true;
   }
   async listSeatsForShift(shiftId: ShiftId): Promise<Seat[]> {
     return [...this.#seats.values()]

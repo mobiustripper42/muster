@@ -18,6 +18,7 @@
 import type { Event, Reservation } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import type { EventId } from "../domain/ids.js";
+import { isClockTime, isIsoDate } from "../domain/iso-date.js";
 import type { Repository } from "../ports/repository.js";
 import { resolveProduct } from "./product-map.js";
 
@@ -143,7 +144,10 @@ export async function importReservations(
 
     const date = parseXolaDate(row[cDate] ?? "");
     const time = parseXolaTime(row[cTime] ?? "");
-    if (!date || !time) {
+    // The door (DEC-DATA-1): the parsers shape the strings, but only the shared
+    // validator rejects impossible calendar dates (e.g. a malformed Feb 30) that
+    // would otherwise persist as text rot. Batch-safe — skip the row, don't abort.
+    if (!date || !time || !isIsoDate(date) || !isClockTime(time)) {
       result.skipped.push({
         reservationId,
         product,

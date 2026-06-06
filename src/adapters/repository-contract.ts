@@ -9,12 +9,14 @@
  * describe/it blocks; each adapter's test file calls it with a fresh-repo factory.
  */
 import { beforeEach, describe, expect, it } from "vitest";
+import { checkIntegrity } from "../admin/integrity.js";
 import { asId } from "../domain/ids.js";
 import type {
   Ask,
   Credential,
   CrewMember,
   Event,
+  MagicToken,
   PtoWindow,
   Reservation,
   RoleType,
@@ -99,6 +101,15 @@ const ask = (over: Partial<Ask> = {}): Ask => ({
   crewMemberId: CREW,
   channel: "push",
   sentAt: "2026-07-01T12:00:00.000Z",
+  ...over,
+});
+const magicToken = (over: Partial<MagicToken> = {}): MagicToken => ({
+  id: asId<"MagicTokenId">("mtk-1"),
+  tokenHash: "hash-1",
+  subjectKind: "crew",
+  subjectId: CREW,
+  createdAt: "2026-07-01T12:00:00.000Z",
+  expiresAt: "2026-07-01T12:15:00.000Z",
   ...over,
 });
 const relEvent = (id: string, type: ReliabilityEvent["type"]): ReliabilityEvent => ({
@@ -271,6 +282,78 @@ export function runRepositoryContract(
       const mine = await repo.reliabilityEventsFor(CREW);
       expect(mine.map((e) => e.type)).toEqual(["ask_sent", "ask_accepted"]); // order preserved, crew-b excluded
       expect(mine[0]!.metadata).toEqual({ seatId: SEAT, shiftId: SHIFT });
+    });
+
+    it("magic tokens: round-trip incl. consumedAt optional; lookup by hash", async () => {
+      await repo.saveMagicToken(magicToken()); // not yet consumed
+      const got = await repo.getMagicTokenByHash("hash-1");
+      expect(got).toEqual(magicToken());
+      expect("consumedAt" in got!).toBe(false); // omitted, not undefined
+      expect(await repo.getMagicTokenByHash("no-such-hash")).toBeNull();
+    });
+
+    it("consumeMagicTokenIfUnused: consumes once, no-op when already spent", async () => {
+      await repo.saveMagicToken(magicToken());
+      const first = await repo.consumeMagicTokenIfUnused("hash-1", "2026-07-01T12:05:00.000Z");
+      expect(first).toBe(true);
+      expect((await repo.getMagicTokenByHash("hash-1"))!.consumedAt).toBe(
+        "2026-07-01T12:05:00.000Z",
+      );
+      // Already consumed → the guard fails and the stamp is untouched.
+      const second = await repo.consumeMagicTokenIfUnused("hash-1", "2026-07-01T12:09:00.000Z");
+      expect(second).toBe(false);
+      expect((await repo.getMagicTokenByHash("hash-1"))!.consumedAt).toBe(
+        "2026-07-01T12:05:00.000Z",
+      );
+    });
+
+    it("consumeMagicTokenIfUnused: false for an absent token", async () => {
+      expect(
+        await repo.consumeMagicTokenIfUnused("ghost", "2026-07-01T12:05:00.000Z"),
+      ).toBe(false);
+    });
+
+    it("consumeMagicTokenIfUnused: exactly one of two concurrent taps wins", async () => {
+      await repo.saveMagicToken(magicToken());
+      const [a, b] = await Promise.all([
+        repo.consumeMagicTokenIfUnused("hash-1", "2026-07-01T12:05:00.000Z"),
+        repo.consumeMagicTokenIfUnused("hash-1", "2026-07-01T12:05:00.000Z"),
+      ]);
+      expect([a, b].filter(Boolean)).toHaveLength(1);
+    });
+
+    it("listAll enumerators feed the integrity diagnostic identically", async () => {
+      // A small connected spine — both adapters must enumerate it the same way,
+      // so checkIntegrity (which leans on every listAll*) returns the same verdict.
+      await repo.saveRoleType(roleType());
+      await repo.saveVessel(vessel());
+      await repo.saveCrewMember(crew());
+      await repo.saveCredential(credential());
+      await repo.savePtoWindow(pto());
+      await repo.saveEvent(event());
+      await repo.saveReservation(reservation());
+      await repo.saveShift(shift());
+      await repo.saveSeat(seat({ state: "Confirmed", assignedCrewMemberId: CREW }));
+      await repo.saveAsk(ask());
+      await repo.saveMagicToken(magicToken());
+
+      const clean = await checkIntegrity(repo);
+      expect(clean.ok).toBe(true);
+      expect(clean.scanned.seats).toBe(1);
+      expect(clean.scanned.magicTokens).toBe(1);
+
+      // Now break a reference the DB's missing FK would never have caught.
+      await repo.saveSeat(
+        seat({ id: asId<"SeatId">("seat-x"), shiftId: asId<"ShiftId">("ghost") }),
+      );
+      const broken = await checkIntegrity(repo);
+      expect(broken.ok).toBe(false);
+      expect(broken.violations).toContainEqual({
+        entity: "seat",
+        id: "seat-x",
+        ref: "shiftId",
+        missingId: "ghost",
+      });
     });
 
     it("reliability metadata: an absent optional stays absent across adapters", async () => {

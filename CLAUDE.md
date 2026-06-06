@@ -165,9 +165,12 @@ Issues. A phase ends when its issues close.
 | @sync-config | Sonnet | `/push-seeds`, `/pull-seeds` | Classify template-vs-project diffs |
 | @tape-reader | Sonnet | `/read-the-tape` | Audit session JSONL for anti-patterns |
 | @doc-consistency | Sonnet | `/doc-consistency-check` | Cross-reference doc claims. Report-only |
+| @ui-reviewer | Sonnet | After UI work, phase boundaries | Design-quality review (webapp) |
 
-> `@ui-reviewer` (webapp-only) is intentionally **not installed** yet — no web UI until M4. It comes
-> in with the stack (flip `.claude/project-type` to `webapp`, then `/pull-seeds`).
+> `@ui-reviewer` is **installed** (M4, `/pull-seeds`) but **inert until `.claude/ui-context.md`
+> exists** — it hard-stops without it. That context file (brand tokens, surfaces, viewports, the
+> review checklist) is authored with the first crew/admin surface (1.5b/#12); the reviewer earns its
+> keep once there's UI to review.
 
 ## Model Selection
 - Main session: Sonnet by default; switch to Opus when stuck or doing architecture (the oracle).
@@ -181,13 +184,23 @@ Issues. A phase ends when its issues close.
 - Stacking PRs is preferred when tasks depend on each other — branch the next task off the previous
   task branch.
 - **Never rebase a task branch that already has commits on origin** — use GitHub's "Update branch".
-- `production` branch + `/promote-production` are **M4+** (deferred with the stack, DEC-013/DEC-022).
+- `production` branch + `/promote-production` are **M4+** (DEC-013/DEC-022). **Adopt** when the first
+  hosted deploy lands: branch `production` off `main` at the release commit, push, then
+  `/promote-production` ff-merges `main`→`production` per release. **Remove** (delete the branch) if
+  the deploy model changes — `main` is always the active trunk (DEC-022); `production` is only a
+  downstream deploy pointer, never a PR base.
 
 ## Versioning
 SemVer in `package.json` (created at task 0.3), mirrored to a git tag (`vX.Y.Z`) on `main`. `/retro`
 is the sole place bumps happen: patch per merged PR + minor at phase close; `/bump-major` is manual.
-The `<VersionTag />` component is deferred to M4 (needs the web stack). Skills no-op silently until
-`package.json` exists.
+
+**CHANGELOG.md** — `/retro` and `/bump-major` append entries (Keep-a-Changelog style: Added /
+Changed / Fixed under each version). The human-readable companion to the git tags.
+
+The `<VersionTag />` component (Next/Vercel build-stamp) is **available but not yet wired** — pull
+`templates/VersionTag.tsx` from seeds and add it to a layout when a deployed build needs the stamp.
+Until then the tag lives only in `package.json` + git. Skills no-op silently until `package.json`
+exists.
 
 ## Scope Discipline
 Check `docs/SPEC.md` §4 *Parked* + the 2027 line before adding anything — that's the "Not V1"

@@ -15,6 +15,11 @@ import { SEAT_STATES, SHIFT_STATES } from "@core/domain/states.js";
  *
  * Dev-without-Docker returns `degraded` (db unreachable) rather than failing —
  * the app itself is up. A prod deploy can map `degraded` → 503 at the edge.
+ *
+ * This endpoint is unauthenticated, so it returns only a verdict + a violation
+ * COUNT — never the violations themselves, which carry crew ids and internal
+ * topology. The full report is logged server-side for ops; an authenticated
+ * admin diagnostic surface (1.5b) can expose the detail.
  */
 const DATABASE_URL =
   process.env.DATABASE_URL ?? "postgres://muster:muster@localhost:5432/muster_dev";
@@ -29,11 +34,15 @@ export async function GET() {
   });
   try {
     const report = await checkIntegrity(new PostgresRepository(pool));
+    if (!report.ok) {
+      // Detail (crew ids, dangling refs) goes to the server log, not the wire.
+      console.warn("[health] integrity violations", report.violations);
+    }
     return NextResponse.json({
       status: report.ok ? "ok" : "degraded",
       core,
       db: { reachable: true },
-      integrity: report,
+      integrity: { ok: report.ok, violationCount: report.violations.length },
     });
   } catch {
     return NextResponse.json({

@@ -13,6 +13,7 @@ import type {
   Credential,
   CrewMember,
   Event,
+  MagicToken,
   PtoWindow,
   Reservation,
   RoleType,
@@ -25,6 +26,7 @@ import type {
   CredentialId,
   CrewMemberId,
   EventId,
+  MagicTokenId,
   PtoWindowId,
   ReservationId,
   RoleTypeId,
@@ -50,6 +52,7 @@ export class InMemoryRepository implements Repository {
   readonly #shifts = new Map<ShiftId, Shift>();
   readonly #seats = new Map<SeatId, Seat>();
   readonly #asks = new Map<AskId, Ask>();
+  readonly #magicTokens = new Map<MagicTokenId, MagicToken>();
   readonly #reliability: ReliabilityEvent[] = [];
 
   // ── Role types (tenant config — DEC-ROLE-1) ───────────────────────────────
@@ -64,6 +67,9 @@ export class InMemoryRepository implements Repository {
     return [...this.#roleTypes.values()]
       .filter((r) => r.tenantId === tenantId)
       .map(clone);
+  }
+  async listAllRoleTypes(): Promise<RoleType[]> {
+    return [...this.#roleTypes.values()].map(clone);
   }
 
   // ── Vessels ──────────────────────────────────────────────────────────────
@@ -105,6 +111,9 @@ export class InMemoryRepository implements Repository {
       .filter((c) => c.crewMemberId === crewMemberId)
       .map(clone);
   }
+  async listAllCredentials(): Promise<Credential[]> {
+    return [...this.#credentials.values()].map(clone);
+  }
   async removeCredential(id: CredentialId): Promise<void> {
     this.#credentials.delete(id);
   }
@@ -119,6 +128,9 @@ export class InMemoryRepository implements Repository {
     return [...this.#ptoWindows.values()]
       .filter((w) => w.crewMemberId === crewMemberId)
       .map(clone);
+  }
+  async listAllPtoWindows(): Promise<PtoWindow[]> {
+    return [...this.#ptoWindows.values()].map(clone);
   }
 
   // ── Events ─────────────────────────────────────────────────────────────────
@@ -145,6 +157,9 @@ export class InMemoryRepository implements Repository {
     return [...this.#reservations.values()]
       .filter((r) => r.eventId === eventId)
       .map(clone);
+  }
+  async listAllReservations(): Promise<Reservation[]> {
+    return [...this.#reservations.values()].map(clone);
   }
 
   // ── Shifts ─────────────────────────────────────────────────────────────────
@@ -181,6 +196,9 @@ export class InMemoryRepository implements Repository {
       .filter((s) => s.shiftId === shiftId)
       .map(clone);
   }
+  async listAllSeats(): Promise<Seat[]> {
+    return [...this.#seats.values()].map(clone);
+  }
 
   // ── Asks ───────────────────────────────────────────────────────────────────
   async saveAsk(ask: Ask): Promise<void> {
@@ -194,6 +212,36 @@ export class InMemoryRepository implements Repository {
     return [...this.#asks.values()]
       .filter((a) => a.seatId === seatId)
       .map(clone);
+  }
+  async listAllAsks(): Promise<Ask[]> {
+    return [...this.#asks.values()].map(clone);
+  }
+
+  // ── Magic-link tokens (self-rolled auth — DEC-010, DEC-020) ────────────────
+  async saveMagicToken(token: MagicToken): Promise<void> {
+    this.#magicTokens.set(token.id, clone(token));
+  }
+  async getMagicTokenByHash(tokenHash: string): Promise<MagicToken | null> {
+    const t = [...this.#magicTokens.values()].find(
+      (x) => x.tokenHash === tokenHash,
+    );
+    return t ? clone(t) : null;
+  }
+  async consumeMagicTokenIfUnused(
+    tokenHash: string,
+    consumedAt: string,
+  ): Promise<boolean> {
+    // Single-threaded JS makes this atomic here; the contract it upholds is what
+    // matters — Postgres enforces the same single-use CAS under real concurrency.
+    const current = [...this.#magicTokens.values()].find(
+      (x) => x.tokenHash === tokenHash,
+    );
+    if (!current || current.consumedAt !== undefined) return false;
+    this.#magicTokens.set(current.id, clone({ ...current, consumedAt }));
+    return true;
+  }
+  async listAllMagicTokens(): Promise<MagicToken[]> {
+    return [...this.#magicTokens.values()].map(clone);
   }
 
   // ── Reliability log (append-only — DEC-008) ───────────────────────────────

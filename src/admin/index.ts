@@ -2,5 +2,6 @@
 
 export * from "./crew-admin.js";
 export * from "./credential-health.js";
+export * from "./integrity.js";
 export * from "./roster.js";
 export * from "./seed-brewboat.js";

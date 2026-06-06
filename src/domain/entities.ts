@@ -17,6 +17,7 @@ import type {
   CredentialId,
   CrewMemberId,
   EventId,
+  MagicTokenId,
   PtoWindowId,
   ReservationId,
   RoleTypeId,
@@ -216,6 +217,40 @@ export interface Ask {
   type?: AskType;
   /** ⏳ Pass D (DEC-004): the horizon by which a hold must harden. Inert in v1. */
   decisionBy?: string;
+}
+
+// ── MagicToken (self-rolled magic-link auth — DEC-010, DEC-020) ──────────────
+
+/**
+ * Who a magic link authenticates. Crew links carry a `CrewMemberId`; the admin
+ * (Spink) link carries an operator identifier (email/handle) — there is no admin
+ * entity yet, so `subjectId` is a plain string the surface layer interprets per
+ * `kind`. Same mechanism for both (DEC-020).
+ */
+export type AuthSubjectKind = "admin" | "crew";
+
+/**
+ * A single-use, short-lived magic-link credential. Only the **hash** of the link
+ * secret is ever stored (`tokenHash`) — a DB leak yields no usable links. Verify
+ * re-hashes the presented secret, finds this row, and consumes it via a port CAS
+ * (`consumeMagicTokenIfUnused`) so a replayed link can't be redeemed twice.
+ *
+ * This is the link, not the session. A successful verify lets the surface layer
+ * (1.5b) mint a longer-lived, renewable session; that session + its storage on
+ * the PWA/native client is out of scope here. `issue`→`verify` is the seam.
+ */
+export interface MagicToken {
+  id: MagicTokenId;
+  /** sha256 of the raw link secret (hex). The secret itself is never stored. */
+  tokenHash: string;
+  subjectKind: AuthSubjectKind;
+  subjectId: string;
+  /** ISO-8601 UTC. */
+  createdAt: string;
+  /** ISO-8601 UTC. Past this instant the link is dead even if unconsumed. */
+  expiresAt: string;
+  /** ISO-8601 UTC; absent until redeemed. Single-use: set once, by the CAS. */
+  consumedAt?: string;
 }
 
 export type { ReliabilityEvent } from "./reliability.js";

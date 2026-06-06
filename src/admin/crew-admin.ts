@@ -18,6 +18,7 @@ import type {
   CrewMemberId,
   VesselId,
 } from "../domain/ids.js";
+import { assertIsoDate } from "../domain/iso-date.js";
 import type { Repository } from "../ports/repository.js";
 
 /** A patch never rewrites the identity of a record. */
@@ -81,6 +82,9 @@ export async function addCredential(
 ): Promise<Credential> {
   const crew = await repo.getCrewMember(credential.crewMemberId);
   if (!crew) throw new Error(`No crew member ${credential.crewMemberId}`);
+  // The door (DEC-DATA-1): expiry is operator-entered text the oracle date-checks
+  // — a malformed "2026-13-99" must be rejected here, not silently persisted.
+  assertIsoDate(credential.expiry, "credential.expiry");
   await repo.saveCredential(credential);
   return credential;
 }
@@ -95,6 +99,7 @@ export async function updateCredential(
   const current = await repo.getCredential(id);
   if (!current) throw new Error(`No credential ${id}`);
   const next: Credential = { ...current, ...patch, id };
+  assertIsoDate(next.expiry, "credential.expiry");
   await repo.saveCredential(next);
   return next;
 }

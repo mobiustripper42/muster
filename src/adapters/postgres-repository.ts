@@ -19,6 +19,7 @@ import type {
   Credential,
   CrewMember,
   Event,
+  MagicToken,
   PtoWindow,
   Reservation,
   RoleType,
@@ -150,6 +151,16 @@ const toAsk = (r: any): Ask => ({
   ...opt("decisionBy", r.decision_by),
 });
 
+const toMagicToken = (r: any): MagicToken => ({
+  id: asId<"MagicTokenId">(r.id),
+  tokenHash: r.token_hash,
+  subjectKind: r.subject_kind,
+  subjectId: r.subject_id,
+  createdAt: r.created_at,
+  expiresAt: r.expires_at,
+  ...opt("consumedAt", r.consumed_at),
+});
+
 const toReliability = (r: any): ReliabilityEvent => ({
   id: asId<"ReliabilityEventId">(r.id),
   crewMemberId: asId<"CrewMemberId">(r.crew_member_id),
@@ -196,6 +207,10 @@ export class PostgresRepository implements Repository {
       "select * from role_types where tenant_id=$1",
       [tenantId],
     );
+    return rows.map(toRoleType);
+  }
+  async listAllRoleTypes(): Promise<RoleType[]> {
+    const { rows } = await this.#pool.query("select * from role_types");
     return rows.map(toRoleType);
   }
 
@@ -280,6 +295,10 @@ export class PostgresRepository implements Repository {
     );
     return rows.map(toCredential);
   }
+  async listAllCredentials(): Promise<Credential[]> {
+    const { rows } = await this.#pool.query("select * from credentials");
+    return rows.map(toCredential);
+  }
   async removeCredential(id: CredentialId): Promise<void> {
     await this.#pool.query("delete from credentials where id=$1", [id]);
   }
@@ -298,6 +317,10 @@ export class PostgresRepository implements Repository {
       "select * from pto_windows where crew_member_id=$1",
       [crewMemberId],
     );
+    return rows.map(toPto);
+  }
+  async listAllPtoWindows(): Promise<PtoWindow[]> {
+    const { rows } = await this.#pool.query("select * from pto_windows");
     return rows.map(toPto);
   }
 
@@ -353,6 +376,10 @@ export class PostgresRepository implements Repository {
     );
     return rows.map(toReservation);
   }
+  async listAllReservations(): Promise<Reservation[]> {
+    const { rows } = await this.#pool.query("select * from reservations");
+    return rows.map(toReservation);
+  }
 
   // ── Shifts ─────────────────────────────────────────────────────────────────
   async saveShift(s: Shift): Promise<void> {
@@ -394,6 +421,10 @@ export class PostgresRepository implements Repository {
       "select * from seats where shift_id=$1",
       [shiftId],
     );
+    return rows.map(toSeat);
+  }
+  async listAllSeats(): Promise<Seat[]> {
+    const { rows } = await this.#pool.query("select * from seats");
     return rows.map(toSeat);
   }
   async saveSeatIfState(seat: Seat, expectedState: SeatState): Promise<boolean> {
@@ -449,6 +480,54 @@ export class PostgresRepository implements Repository {
       [seatId],
     );
     return rows.map(toAsk);
+  }
+  async listAllAsks(): Promise<Ask[]> {
+    const { rows } = await this.#pool.query("select * from asks");
+    return rows.map(toAsk);
+  }
+
+  // ── Magic-link tokens (self-rolled auth — DEC-010, DEC-020) ────────────────
+  async saveMagicToken(t: MagicToken): Promise<void> {
+    await this.#pool.query(
+      `insert into magic_tokens(id, token_hash, subject_kind, subject_id, created_at, expires_at, consumed_at)
+       values ($1,$2,$3,$4,$5,$6,$7)
+       on conflict (id) do update set token_hash=excluded.token_hash, subject_kind=excluded.subject_kind,
+         subject_id=excluded.subject_id, created_at=excluded.created_at, expires_at=excluded.expires_at,
+         consumed_at=excluded.consumed_at`,
+      [
+        t.id,
+        t.tokenHash,
+        t.subjectKind,
+        t.subjectId,
+        t.createdAt,
+        t.expiresAt,
+        t.consumedAt ?? null,
+      ],
+    );
+  }
+  async getMagicTokenByHash(tokenHash: string): Promise<MagicToken | null> {
+    const { rows } = await this.#pool.query(
+      "select * from magic_tokens where token_hash=$1",
+      [tokenHash],
+    );
+    return rows[0] ? toMagicToken(rows[0]) : null;
+  }
+  async consumeMagicTokenIfUnused(
+    tokenHash: string,
+    consumedAt: string,
+  ): Promise<boolean> {
+    // Single-use CAS: the `and consumed_at is null` predicate runs under the row
+    // lock the UPDATE takes, so of two concurrent taps only the first commits a
+    // non-zero update — the second sees a consumed row and updates nothing.
+    const { rowCount } = await this.#pool.query(
+      `update magic_tokens set consumed_at=$2 where token_hash=$1 and consumed_at is null`,
+      [tokenHash, consumedAt],
+    );
+    return rowCount === 1;
+  }
+  async listAllMagicTokens(): Promise<MagicToken[]> {
+    const { rows } = await this.#pool.query("select * from magic_tokens");
+    return rows.map(toMagicToken);
   }
 
   // ── Reliability log (append-only — DEC-008) ───────────────────────────────

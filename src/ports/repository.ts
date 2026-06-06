@@ -15,6 +15,7 @@ import type {
   Credential,
   CrewMember,
   Event,
+  MagicToken,
   PtoWindow,
   Reservation,
   RoleType,
@@ -44,6 +45,8 @@ export interface Repository {
   getRoleType(id: RoleTypeId): Promise<RoleType | null>;
   /** All role types a tenant has defined — the set seat derivation resolves against. */
   listRoleTypes(tenantId: TenantId): Promise<RoleType[]>;
+  /** Every role type, all tenants — the integrity diagnostic's parent set. */
+  listAllRoleTypes(): Promise<RoleType[]>;
 
   // ── Vessels ──────────────────────────────────────────────────────────────
   saveVessel(vessel: Vessel): Promise<void>;
@@ -60,6 +63,8 @@ export interface Repository {
   getCredential(id: CredentialId): Promise<Credential | null>;
   /** All credential rows for one crew member — the set the oracle date-checks. */
   listCredentialsForCrew(crewMemberId: CrewMemberId): Promise<Credential[]>;
+  /** Every credential row — the integrity diagnostic's orphan scan. */
+  listAllCredentials(): Promise<Credential[]>;
   /** Remove a credential row (SPEC §2.1 action). */
   removeCredential(id: CredentialId): Promise<void>;
 
@@ -69,6 +74,8 @@ export interface Repository {
   savePtoWindow(window: PtoWindow): Promise<void>;
   /** All PTO windows for one crew member — the set the oracle date-checks. */
   listPtoWindowsForCrew(crewMemberId: CrewMemberId): Promise<PtoWindow[]>;
+  /** Every PTO window — the integrity diagnostic's orphan scan. */
+  listAllPtoWindows(): Promise<PtoWindow[]>;
 
   // ── Events ─────────────────────────────────────────────────────────────────
   saveEvent(event: Event): Promise<void>;
@@ -79,6 +86,8 @@ export interface Repository {
   saveReservation(reservation: Reservation): Promise<void>;
   getReservation(id: ReservationId): Promise<Reservation | null>;
   listReservationsForEvent(eventId: EventId): Promise<Reservation[]>;
+  /** Every reservation — the integrity diagnostic's orphan scan. */
+  listAllReservations(): Promise<Reservation[]>;
 
   // ── Shifts ─────────────────────────────────────────────────────────────────
   saveShift(shift: Shift): Promise<void>;
@@ -89,6 +98,8 @@ export interface Repository {
   saveSeat(seat: Seat): Promise<void>;
   getSeat(id: SeatId): Promise<Seat | null>;
   listSeatsForShift(shiftId: ShiftId): Promise<Seat[]>;
+  /** Every seat — the integrity diagnostic's orphan scan. */
+  listAllSeats(): Promise<Seat[]>;
   /**
    * Compare-and-swap write — the atomic first-come claim (REQ-CLAIM-1, DEC-020 /
    * DEC-DATA-1). Persists `seat` **only if** the stored row is still in
@@ -104,6 +115,26 @@ export interface Repository {
   saveAsk(ask: Ask): Promise<void>;
   getAsk(id: AskId): Promise<Ask | null>;
   listAsksForSeat(seatId: SeatId): Promise<Ask[]>;
+  /** Every ask — the integrity diagnostic's orphan scan. */
+  listAllAsks(): Promise<Ask[]>;
+
+  // ── Magic-link tokens (self-rolled auth — DEC-010, DEC-020) ────────────────
+  /** Persist a token (upsert by id). Only the secret's hash is stored. */
+  saveMagicToken(token: MagicToken): Promise<void>;
+  /** Look one up by `hashSecret(secret)` — verify's first read. */
+  getMagicTokenByHash(tokenHash: string): Promise<MagicToken | null>;
+  /**
+   * Single-use consume as a compare-and-swap (REQ-CLAIM-1 sibling): set
+   * `consumedAt` **only if** still unconsumed; returns `true` if this call
+   * consumed it, `false` if it was already spent (or absent). Two concurrent
+   * link taps → exactly one `true`. Never a trigger; the guarantee lives here.
+   */
+  consumeMagicTokenIfUnused(
+    tokenHash: string,
+    consumedAt: string,
+  ): Promise<boolean>;
+  /** Every token — the integrity diagnostic's orphan scan (crew subjects). */
+  listAllMagicTokens(): Promise<MagicToken[]>;
 
   // ── Reliability log (append-only — DEC-008) ───────────────────────────────
   /** Append a reliability event. The log is never mutated, only grown. */

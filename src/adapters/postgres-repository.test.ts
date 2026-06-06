@@ -26,6 +26,7 @@ const TABLES = [
   "shifts",
   "seats",
   "asks",
+  "magic_tokens",
   "reliability_events",
 ];
 

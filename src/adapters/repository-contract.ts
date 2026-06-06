@@ -232,6 +232,13 @@ export function runRepositoryContract(
       expect((await repo.getSeat(SEAT))!.assignedCrewMemberId).toBe(CREW);
     });
 
+    it("saveSeatIfState: returns false for a seat that doesn't exist", async () => {
+      // Both adapters agree: a CAS on an absent row applies nothing → false.
+      const ok = await repo.saveSeatIfState(seat({ state: "Claimed" }), "Open");
+      expect(ok).toBe(false);
+      expect(await repo.getSeat(SEAT)).toBeNull();
+    });
+
     it("saveSeatIfState: exactly one of two concurrent claims wins (REQ-CLAIM-1)", async () => {
       await repo.saveShift(shift());
       await repo.saveSeat(seat()); // Open
@@ -264,6 +271,21 @@ export function runRepositoryContract(
       const mine = await repo.reliabilityEventsFor(CREW);
       expect(mine.map((e) => e.type)).toEqual(["ask_sent", "ask_accepted"]); // order preserved, crew-b excluded
       expect(mine[0]!.metadata).toEqual({ seatId: SEAT, shiftId: SHIFT });
+    });
+
+    it("reliability metadata: an absent optional stays absent across adapters", async () => {
+      // structuredClone (in-memory) vs JSON round-trip (Postgres) must agree that
+      // a key never set is never present on read — the parity the contract exists
+      // to prove. (exactOptionalPropertyTypes makes an explicit `undefined` value
+      // a type error, so absence is the only divergence worth guarding.)
+      await repo.logReliabilityEvent({
+        ...relEvent("rel-sparse", "ask_ignored"),
+        metadata: { shiftId: SHIFT }, // no seatId, no latencyMs
+      });
+      const [got] = await repo.reliabilityEventsFor(CREW);
+      expect(got!.metadata).toEqual({ shiftId: SHIFT });
+      expect("seatId" in got!.metadata).toBe(false);
+      expect("latencyMs" in got!.metadata).toBe(false);
     });
   });
 }

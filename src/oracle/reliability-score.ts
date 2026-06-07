@@ -3,12 +3,14 @@
  *
  * Turns a crew member's append-only `ReliabilityEvent` log into one blended
  * number — a *ranking signal*, not a gate or a grade. The score only ever
- * orders the eligible pool (`rankPool`, 1.4b); it never decides eligibility.
+ * orders the eligible pool (`rankByReliability`, §2.4); it never decides
+ * eligibility. The score is derived live from the log, NOT read from the
+ * `CrewMember.reliabilityScore` field (that field is display-only — DEC-008).
  *
  * The shape v1 commits to (deliberately dumb — DEC-008 'flat v1'):
  *  - **Neutral baseline 0.** A crew member with no history scores 0 = mid-pool,
- *    never a misleading low. (`rankPool` already reads `reliabilityScore ?? 0`,
- *    so a cold-start `null` and a netted-to-zero log sort together at neutral.)
+ *    never a misleading low — so a cold-start crew and a netted-to-zero log sort
+ *    together at neutral, never below a real low.
  *  - **Additive.** Each in-window event contributes a flat weight; the score is
  *    the sum. No normalization, no curve — that's the Pass-A tuning payoff and
  *    it waits on weeks of real logged data we don't have yet. (Sum means a long
@@ -200,4 +202,21 @@ export async function rankByReliability(
     return a.crew.id < b.crew.id ? -1 : a.crew.id > b.crew.id ? 1 : 0;
   });
   return keyed.map((k) => k.crew);
+}
+
+/**
+ * Convenience for the common consumer shape: hydrate crew ids through the port
+ * (dropping any that vanished) and rank them. The one place the fetch-and-rank
+ * fan-out lives, so all callers share it. Each crew member's log is read once.
+ */
+export async function rankEligibleIds(
+  repo: Repository,
+  ids: readonly CrewMemberId[],
+  now: Date,
+  opts: ScoreOptions = {},
+): Promise<CrewMember[]> {
+  const crew = (
+    await Promise.all(ids.map((id) => repo.getCrewMember(id)))
+  ).filter((c): c is CrewMember => c !== null);
+  return rankByReliability(repo, crew, now, opts);
 }

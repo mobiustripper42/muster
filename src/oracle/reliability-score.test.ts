@@ -284,6 +284,11 @@ describe("effectiveRankScore — Spink's manual thumb (§2.4)", () => {
     expect(effectiveRankScore(8, thumb({ manualFloor: 0 }))).toBe(8);
   });
 
+  it("a negative floor is a floor, not a clamp (no-op above it)", () => {
+    expect(effectiveRankScore(5, thumb({ manualFloor: -5 }))).toBe(5);
+    expect(effectiveRankScore(-9, thumb({ manualFloor: -5 }))).toBe(-5);
+  });
+
   it("floor then boost: a vouched-for cold-start beats an unknown", () => {
     // Spink floors a known-good new hire to neutral and bumps them.
     const vouchedNewHire = effectiveRankScore(0, thumb({ manualFloor: 0, manualBoost: 3 }));

@@ -198,7 +198,7 @@ describe("solveShift — the composite shared-pool rule (DEC-003)", () => {
   });
 
   it("the greedy walk is reliability-ordered: the more reliable wins the seat", async () => {
-    const a = await addCrew("crew-a");
+    await addCrew("crew-a");
     const b = await addCrew("crew-b");
     // b has a proven record, a has none → b should take the single seat.
     await logShiftCompleted(repo, b, asId<"ShiftId">("past"), NOW);
@@ -206,6 +206,5 @@ describe("solveShift — the composite shared-pool rule (DEC-003)", () => {
     const sol = await solveShift(repo, shiftId, NOW);
     expect(sol.satisfiable).toBe(true);
     expect(sol.assignment!.get(seatIds[0]!)).toBe(b);
-    void a;
   });
 });

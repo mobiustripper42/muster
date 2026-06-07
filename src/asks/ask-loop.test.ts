@@ -8,6 +8,7 @@ import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import { asId } from "../domain/ids.js";
 import type { CrewMemberId, SeatId, ShiftId } from "../domain/ids.js";
 import type { Credential, CrewMember, Seat, Shift } from "../domain/entities.js";
+import { logShiftCompleted } from "../oracle/reliability-log.js";
 import {
   assignPerson,
   bail,
@@ -136,6 +137,26 @@ describe("contested seat — first-acceptable-yes-wins (DEC-007)", () => {
     expect((await repo.getSeat(seatId!))!.assignedCrewMemberId).toBe(a);
     // The loser's positive responsiveness still counts.
     expect(await types(b)).toContain("ask_accepted");
+  });
+
+  it("ranking sets ask ORDER, not outcome: a lower-ranked first-yes still wins", async () => {
+    const a = await addCrew("crew-a");
+    const b = await addCrew("crew-b");
+    // b is the more reliable → broadcast asks b first. But a answers yes first.
+    await logShiftCompleted(repo, b, SHIFT, T0);
+    const [seatId] = await addShift(1);
+    const asks = await broadcastAsk(repo, seatId!, T0);
+    expect(asks[0]!.crewMemberId).toBe(b); // ranked first…
+
+    const aAsk = asks.find((x) => x.crewMemberId === a)!;
+    const bAsk = asks.find((x) => x.crewMemberId === b)!;
+    const w = await recordResponse(repo, aAsk.id, "accepted", later(1000));
+    const l = await recordResponse(repo, bAsk.id, "accepted", later(2000));
+
+    expect(w.claimed).toBe(true);
+    expect(l).toMatchObject({ claimed: false, reason: "already_filled" });
+    // …but a got the seat — first acceptable yes wins regardless of rank (DEC-007).
+    expect((await repo.getSeat(seatId!))!.assignedCrewMemberId).toBe(a);
   });
 });
 

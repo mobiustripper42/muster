@@ -29,7 +29,7 @@ import type {
 import type { Repository } from "../ports/repository.js";
 import type { CandidateVerdict } from "./eligibility.js";
 import { evaluateCandidate } from "./eligibility.js";
-import { rankByReliability } from "./reliability-score.js";
+import { rankEligibleIds } from "./reliability-score.js";
 
 /** Seat states that mean a person is already committed for double-booking (§1.3).
  * `Asked` is excluded — an outstanding ask isn't a commitment (they may decline);
@@ -150,12 +150,14 @@ export interface ShiftSolution {
  * any required seat is left with no unused eligible candidate, the shift is
  * unsatisfiable and `assignment` is null (the per-seat pools still explain why).
  *
- * The walk is **reliability-ordered** (§1.4, §2.4): each seat's eligible set is
- * ranked best-first (score + Spink's manual thumb) so the greedy pick is the most
+ * The walk is **reliability-ordered** (§1.4, §2.4): the shared pool is ranked
+ * best-first (score + Spink's manual thumb) once, then each seat greedily takes
+ * the first still-unused candidate eligible for it — so the pick is the most
  * reliable available person, not an arbitrary one. `now` is the scoring instant.
- * Greedy can still miss an assignment a full matching would find (the classic
- * bipartite-matching gap); acceptable while the pool is tiny — the ask loop is
- * where assignment actually goes live.
+ * Ranking the union once (not per seat) keeps each crew member's log read a
+ * single time per solve. Greedy can still miss an assignment a full matching
+ * would find (the classic bipartite-matching gap); acceptable while the pool is
+ * tiny — the ask loop is where assignment actually goes live.
  */
 export async function solveShift(
   repo: Repository,
@@ -167,14 +169,15 @@ export async function solveShift(
   const used = new Set<CrewMemberId>();
   let satisfiable = true;
 
+  // Rank the union of everyone eligible for any seat, once, into a global order.
+  const unionIds = [...new Set(pools.flatMap((p) => p.eligible))];
+  const order = (await rankEligibleIds(repo, unionIds, now)).map((c) => c.id);
+
   for (const pool of pools) {
-    // Rank this seat's eligible set best-first, then greedily take the first
-    // still-unused candidate (skips anyone claimed by an earlier seat).
-    const eligibleCrew = (
-      await Promise.all(pool.eligible.map((id) => repo.getCrewMember(id)))
-    ).filter((c): c is CrewMember => c !== null);
-    const ranked = await rankByReliability(repo, eligibleCrew, now);
-    const pick = ranked.find((c) => !used.has(c.id))?.id;
+    // Greedy: first globally-ranked candidate eligible for THIS seat and unused
+    // (skips anyone claimed by an earlier seat).
+    const eligible = new Set(pool.eligible);
+    const pick = order.find((id) => eligible.has(id) && !used.has(id));
     if (pick === undefined) {
       // First starved seat dooms the shift; stop rather than leave a half-built
       // `used`/`assignment` a later reader could mistake for a partial result.

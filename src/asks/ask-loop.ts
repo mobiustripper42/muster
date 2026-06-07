@@ -24,7 +24,7 @@ import type { AskId, CrewMemberId, SeatId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 import { deriveShiftState } from "../builder/derive.js";
 import { eligiblePool } from "../oracle/oracle.js";
-import { rankByReliability } from "../oracle/reliability-score.js";
+import { rankEligibleIds } from "../oracle/reliability-score.js";
 import {
   logAskAccepted,
   logAskDeclined,
@@ -114,14 +114,8 @@ async function rankedEligible(
   if (!pool) return [];
   // Also exclude anyone already holding another seat on this same shift.
   const onShift = await committedOnShift(repo, seat.shiftId, seat.id);
-  const crew = (
-    await Promise.all(
-      pool.eligible
-        .filter((id) => !exclude.has(id) && !onShift.has(id))
-        .map((id) => repo.getCrewMember(id)),
-    )
-  ).filter((c): c is CrewMember => c !== null);
-  return rankByReliability(repo, crew, now);
+  const ids = pool.eligible.filter((id) => !exclude.has(id) && !onShift.has(id));
+  return rankEligibleIds(repo, ids, now);
 }
 
 // ── Entry: the two protocols ────────────────────────────────────────────────

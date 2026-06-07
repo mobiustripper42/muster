@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.14] - 2026-06-07
+- PR #28: Phase 1.5b / M4 (#12) — crew tap-in: the ask, my-shifts, magic-link landing + Tailwind foundation
+
 ## [0.2.13] - 2026-06-06
 - PR #27: ci: GitHub Actions verify gate with a real Postgres
 

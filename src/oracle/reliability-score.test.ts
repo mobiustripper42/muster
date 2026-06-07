@@ -15,7 +15,7 @@ import type {
 } from "../domain/reliability.js";
 import {
   DEFAULT_WEIGHTS,
-  WINDOW_DAYS,
+  WINDOW_EVENTS,
   computeReliabilityScore,
   scoreCrewMember,
 } from "./reliability-score.js";
@@ -49,17 +49,14 @@ describe("computeReliabilityScore — baselines", () => {
     const r = computeReliabilityScore([], NOW);
     expect(r.score).toBe(0);
     expect(r.eventCount).toBe(0);
-    expect(r.windowDays).toBe(WINDOW_DAYS);
+    expect(r.windowEvents).toBe(WINDOW_EVENTS);
   });
 
   it("a log that nets to zero sorts at neutral, same as cold start", () => {
     // +5 completed and -5 flat bail cancel: a real history (eventCount 2) that
     // nonetheless sits at the cold-start neutral 0 — the docstring invariant.
     const r = computeReliabilityScore(
-      [
-        evt("shift_completed", daysAgo(1)),
-        evt("shift_bailed", daysAgo(2)),
-      ],
+      [evt("shift_completed", daysAgo(1)), evt("shift_bailed", daysAgo(2))],
       NOW,
     );
     expect(r.score).toBe(0);
@@ -128,20 +125,55 @@ describe("computeReliabilityScore — bail lateness is the signal", () => {
   });
 });
 
-describe("computeReliabilityScore — rolling window", () => {
-  it("events older than the window do not count", () => {
-    const stale = scoreOf([evt("shift_completed", daysAgo(WINDOW_DAYS + 10))]);
-    expect(stale).toBe(0);
+describe("computeReliabilityScore — count-based rolling window", () => {
+  it("only the most recent WINDOW_EVENTS events count", () => {
+    // WINDOW_EVENTS good shifts (recent) + one ancient bad event that should
+    // be pushed out of the window by the newer ones.
+    const recent = Array.from({ length: WINDOW_EVENTS }, (_, i) =>
+      evt("shift_completed", daysAgo(i + 1)),
+    );
+    const ancientNoShow = evt("no_show", daysAgo(400));
+    const r = computeReliabilityScore([ancientNoShow, ...recent], NOW);
+    expect(r.eventCount).toBe(WINDOW_EVENTS);
+    // The ancient no_show fell out of the window — score is all positives.
+    expect(r.score).toBe(WINDOW_EVENTS * DEFAULT_WEIGHTS.perEvent.shift_completed);
   });
 
-  it("events inside the window do count", () => {
-    const fresh = scoreOf([evt("shift_completed", daysAgo(WINDOW_DAYS - 1))]);
-    expect(fresh).toBeGreaterThan(0);
+  it("SEASONAL: a months-long off-season gap does NOT drop history", () => {
+    // The whole reason for a count window. Last season ended ~8 months ago; the
+    // new season is a few days old. A calendar window would have wiped the
+    // veteran's record — a count window carries it across the winter.
+    const lastSeason = Array.from({ length: 10 }, (_, i) =>
+      evt("shift_completed", daysAgo(240 + i)),
+    );
+    const thisSeason = [evt("ask_accepted", daysAgo(2))];
+    const r = computeReliabilityScore([...lastSeason, ...thisSeason], NOW);
+    expect(r.eventCount).toBe(11);
+    expect(r.score).toBeGreaterThan(0); // veteran still ranks above a rookie
   });
 
-  it("future-dated events are ignored defensively", () => {
+  it("a smaller window keeps only the newest events", () => {
+    const events = [
+      evt("shift_completed", daysAgo(1)), // newest, kept at window 1
+      evt("no_show", daysAgo(2)), // older, excluded at window 1
+    ];
+    expect(
+      computeReliabilityScore(events, NOW, { windowEvents: 1 }).score,
+    ).toBe(DEFAULT_WEIGHTS.perEvent.shift_completed);
+    expect(
+      computeReliabilityScore(events, NOW, { windowEvents: 1 }).eventCount,
+    ).toBe(1);
+  });
+
+  it("future-dated events are ignored defensively (don't consume a slot)", () => {
     const future = new Date(NOW.getTime() + hours(1)).toISOString();
-    expect(scoreOf([evt("shift_completed", future)])).toBe(0);
+    const r = computeReliabilityScore(
+      [evt("shift_completed", future), evt("ask_accepted", daysAgo(1))],
+      NOW,
+      { windowEvents: 1 },
+    );
+    expect(r.eventCount).toBe(1);
+    expect(r.score).toBe(DEFAULT_WEIGHTS.perEvent.ask_accepted);
   });
 
   it("malformed timestamps are dropped, not counted", () => {
@@ -153,31 +185,19 @@ describe("computeReliabilityScore — rolling window", () => {
     expect(r.eventCount).toBe(0);
   });
 
-  it("the inclusive edges count: exactly now and exactly the cutoff", () => {
-    const atNow = scoreOf([evt("shift_completed", NOW.toISOString())]);
-    const atCutoff = scoreOf([evt("shift_completed", daysAgo(WINDOW_DAYS))]);
-    expect(atNow).toBeGreaterThan(0);
-    expect(atCutoff).toBeGreaterThan(0);
-  });
-
-  it("a custom window narrows what counts", () => {
-    const events = [evt("shift_completed", daysAgo(30))];
-    expect(computeReliabilityScore(events, NOW, { windowDays: 7 }).score).toBe(0);
-    expect(
-      computeReliabilityScore(events, NOW, { windowDays: 60 }).score,
-    ).toBeGreaterThan(0);
-  });
-
-  it("eventCount reflects only in-window events", () => {
-    const r = computeReliabilityScore(
-      [
-        evt("shift_completed", daysAgo(1)),
-        evt("ask_accepted", daysAgo(2)),
-        evt("shift_completed", daysAgo(WINDOW_DAYS + 5)), // stale
-      ],
-      NOW,
+  it("an event timestamped exactly now still counts", () => {
+    expect(scoreOf([evt("shift_completed", NOW.toISOString())])).toBeGreaterThan(
+      0,
     );
-    expect(r.eventCount).toBe(2);
+  });
+
+  it("eventCount reflects only the scored (in-window) events", () => {
+    const r = computeReliabilityScore(
+      [evt("shift_completed", daysAgo(1)), evt("ask_accepted", daysAgo(2))],
+      NOW,
+      { windowEvents: 1 },
+    );
+    expect(r.eventCount).toBe(1);
   });
 });
 
@@ -194,9 +214,7 @@ describe("computeReliabilityScore — tunable weights", () => {
   });
 
   it("the bail-lateness multiplier is tunable independently", () => {
-    const events = [
-      evt("shift_bailed", daysAgo(1), { latenessMs: hours(10) }),
-    ];
+    const events = [evt("shift_bailed", daysAgo(1), { latenessMs: hours(10) })];
     const gentle = computeReliabilityScore(events, NOW, {
       weights: { ...DEFAULT_WEIGHTS, bailLatenessPerHour: 0 },
     }).score;

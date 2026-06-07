@@ -6,23 +6,29 @@
  * orders the eligible pool (`rankPool`, 1.4b); it never decides eligibility.
  *
  * The shape v1 commits to (deliberately dumb — DEC-008 'flat v1'):
- *  - **Neutral baseline 0.** A crew member with no in-window history scores 0 =
- *    mid-pool, never a misleading low. (`rankPool` already reads
- *    `reliabilityScore ?? 0`, so a cold-start `null` and a netted-to-zero log
- *    sort together at neutral.)
+ *  - **Neutral baseline 0.** A crew member with no history scores 0 = mid-pool,
+ *    never a misleading low. (`rankPool` already reads `reliabilityScore ?? 0`,
+ *    so a cold-start `null` and a netted-to-zero log sort together at neutral.)
  *  - **Additive.** Each in-window event contributes a flat weight; the score is
  *    the sum. No normalization, no curve — that's the Pass-A tuning payoff and
- *    it waits on weeks of real logged data we don't have yet.
- *  - **Rolling window.** Only events within `WINDOW_DAYS` of `now` count. A hard
- *    cutoff, not exponential decay — the "flat" reading of "rolling window".
+ *    it waits on weeks of real logged data we don't have yet. (Sum means a long
+ *    good history outscores a short one; a volume-neutral / weighted variant so
+ *    rookies aren't dumped to the bottom is parked in FUTURE_IDEAS.)
+ *  - **Count-based rolling window (NOT calendar).** Only the most recent
+ *    `WINDOW_EVENTS` events count. This is the seasonal-fleet fix: a calendar
+ *    window would drop an entire off-season of history, so every returning
+ *    veteran would reset to neutral each spring — flat ranking exactly when
+ *    you're rebuilding the crew. A count window carries history across the gap
+ *    (the off-season simply has no events to consume the count).
  *  - **Decline-neutral.** `ask_declined` weighs 0. Saying "no" is information,
- *    not a sin. The only ask-level penalty is `ask_ignored` (timed out, never
- *    answered).
+ *    not a sin. The only ask-level penalty is `ask_ignored` (never answered).
  *  - **Bail lateness is the signal.** `shift_bailed` carries a fixed penalty
  *    plus a lateness-scaled penalty from `metadata.latenessMs`, so a late bail
- *    weighs more than an early one. `no_show` is the worst case, flat.
+ *    weighs more than an early one. `no_show` is the worst case, flat. (Lateness
+ *    scales linearly in v1; a steeper near-call ramp — inverse-exponential — is
+ *    parked in FUTURE_IDEAS.)
  *
- * All weights are tunable constants (`DEFAULT_WEIGHTS`) overridable per call —
+ * All weights and the window size are tunable constants overridable per call —
  * the tuning lever for when real data arrives. The function is pure and
  * framework-free; `now` is injected like everywhere else in the core.
  */
@@ -46,10 +52,14 @@ export interface ReliabilityWeights {
   readonly bailLatenessPerHour: number;
 }
 
-/** Rolling-window length in days. Events older than this don't count. */
-export const WINDOW_DAYS = 90;
+/**
+ * Rolling-window size in **events** (not days). The score reads only the most
+ * recent this-many events. Count-based so a seasonal off-season gap can't wipe
+ * a returning crew member's history. Placeholder magnitude — roughly a season's
+ * worth — until real per-crew event volumes are known; tune in Pass A.
+ */
+export const WINDOW_EVENTS = 40;
 
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const MS_PER_HOUR = 60 * 60 * 1000;
 
 /**
@@ -82,7 +92,8 @@ export const DEFAULT_WEIGHTS: ReliabilityWeights = {
 
 export interface ScoreOptions {
   readonly weights?: ReliabilityWeights;
-  readonly windowDays?: number;
+  /** Override the count-based window (most recent N events). */
+  readonly windowEvents?: number;
 }
 
 export interface ReliabilityScore {
@@ -90,8 +101,8 @@ export interface ReliabilityScore {
   readonly score: number;
   /** Events that fell inside the window and were scored. 0 ⇒ cold start. */
   readonly eventCount: number;
-  /** Window actually used (days) — echoed so callers can explain the score. */
-  readonly windowDays: number;
+  /** Window cap actually applied (events) — echoed so callers can explain it. */
+  readonly windowEvents: number;
 }
 
 /** Contribution of one in-window event under the given weights. */
@@ -109,8 +120,8 @@ function contributionOf(
 
 /**
  * Blended reliability score from a crew member's event log. Pure: same events +
- * same `now` ⇒ same number. Events outside the rolling window are ignored; an
- * empty (or all-stale) log scores a neutral 0 — never a misleading low.
+ * same `now` ⇒ same number. Scores the most recent `windowEvents` well-formed,
+ * non-future events; an empty log scores a neutral 0 — never a misleading low.
  */
 export function computeReliabilityScore(
   events: readonly ReliabilityEvent[],
@@ -118,20 +129,21 @@ export function computeReliabilityScore(
   opts: ScoreOptions = {},
 ): ReliabilityScore {
   const weights = opts.weights ?? DEFAULT_WEIGHTS;
-  const windowDays = opts.windowDays ?? WINDOW_DAYS;
-  const cutoffMs = now.getTime() - windowDays * MS_PER_DAY;
+  const windowEvents = Math.max(0, opts.windowEvents ?? WINDOW_EVENTS);
+  const nowMs = now.getTime();
+
+  // Keep only well-formed, non-future events, newest first, then take the most
+  // recent `windowEvents`. Count-based (not calendar) so an off-season gap can't
+  // silently drop a returning crew member's whole history.
+  const inWindow = events
+    .map((event) => ({ event, t: new Date(event.timestamp).getTime() }))
+    .filter(({ t }) => !Number.isNaN(t) && t <= nowMs)
+    .sort((a, b) => b.t - a.t)
+    .slice(0, windowEvents);
 
   let score = 0;
-  let eventCount = 0;
-  for (const event of events) {
-    const t = new Date(event.timestamp).getTime();
-    // Inside the window: [now - windowDays, now]. Drop stale and (defensively)
-    // future-dated events.
-    if (Number.isNaN(t) || t < cutoffMs || t > now.getTime()) continue;
-    score += contributionOf(event, weights);
-    eventCount += 1;
-  }
-  return { score, eventCount, windowDays };
+  for (const { event } of inWindow) score += contributionOf(event, weights);
+  return { score, eventCount: inWindow.length, windowEvents };
 }
 
 /**

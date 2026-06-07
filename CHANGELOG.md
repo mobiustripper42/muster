@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.8] - 2026-06-05
+- PR #22: Phase 1.5a / M4 (PR 1/3) — Next.js framework + topology standup
+
 ## [0.2.7] - 2026-06-05
 - PR #21: Phase 1.4b / M3 — Tier-1 ask/confirm loop + thin assignment view
 

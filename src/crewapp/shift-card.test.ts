@@ -87,6 +87,15 @@ describe("buildShiftCard", () => {
     expect("phone" in three.guests[1]!).toBe(false); // Vaughn has no phone
     expect("dock" in card.events[1]!).toBe(false); // 5pm event has no dock
     expect(card.paxTotal).toBe(12); // 10 + 2
+    expect(card.sharedDock).toBeUndefined(); // docks differ (one absent) → per-event
+  });
+
+  it("sharedDock is set only when every event departs the same place", async () => {
+    const repo = await seed();
+    // give the 5pm event the same dock as the 3pm → now they share
+    await repo.saveEvent({ id: E5, vesselId: VESSEL, date: "2026-07-04", time: "17:00", capacity: 12, status: "scheduled", dock: "Pier 9, Lake Union" });
+    const card = (await buildShiftCard(repo, SHIFT, ME, NOW))!;
+    expect(card.sharedDock).toBe("Pier 9, Lake Union");
   });
 
   it("co-crew lists the other confirmed crew with contact, excludes the viewer", async () => {

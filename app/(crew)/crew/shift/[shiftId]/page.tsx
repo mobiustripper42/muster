@@ -92,6 +92,23 @@ function BackLink() {
   );
 }
 
+/** Standalone dock pin (the shared-dock case) — prominent, above the manifest. */
+function DockPin({ dock }: { dock: string }) {
+  return (
+    <a
+      href={mapHref(dock)}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex min-h-[44px] items-center justify-between rounded-card border border-line bg-card px-4 py-3 text-sm"
+    >
+      <span className="text-ink">
+        <span aria-hidden>📍</span> {dock}
+      </span>
+      <span className="font-semibold text-accent">Map ›</span>
+    </a>
+  );
+}
+
 function Card({ card }: { card: ShiftCardView }) {
   const firstDeparture = card.events[0]?.departureTime;
   return (
@@ -126,6 +143,9 @@ function Card({ card }: { card: ShiftCardView }) {
         </div>
       </div>
 
+      {card.events.length === 0 && <Notice>No departures scheduled yet.</Notice>}
+      {card.sharedDock && <DockPin dock={card.sharedDock} />}
+
       {card.coCrew.length > 0 && (
         <section className="flex flex-col gap-2">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">
@@ -140,14 +160,14 @@ function Card({ card }: { card: ShiftCardView }) {
               <span className="flex gap-2">
                 <a
                   href={tel(c.phone)}
-                  className="rounded-lg bg-bg px-3 py-2 text-accent"
+                  className="inline-flex min-h-[44px] items-center rounded-lg border border-line bg-bg px-4 font-semibold text-accent"
                   aria-label={`Call ${c.name}`}
                 >
                   Call
                 </a>
                 <a
                   href={sms(c.phone)}
-                  className="rounded-lg bg-bg px-3 py-2 text-accent"
+                  className="inline-flex min-h-[44px] items-center rounded-lg border border-line bg-bg px-4 font-semibold text-accent"
                   aria-label={`Text ${c.name}`}
                 >
                   Text
@@ -168,21 +188,28 @@ function Card({ card }: { card: ShiftCardView }) {
         {card.events.map((ev) => (
           <details
             key={ev.eventId}
-            className="overflow-hidden rounded-card border border-line bg-card"
+            className="group overflow-hidden rounded-card border border-line bg-card"
             open={card.events.length === 1}
           >
-            <summary className="flex cursor-pointer items-center justify-between px-4 py-3 font-semibold text-ink">
+            <summary className="flex min-h-[44px] cursor-pointer items-center justify-between px-4 py-3 font-semibold text-ink [&::-webkit-details-marker]:hidden">
               <span className="font-mono">{ev.departureTime}</span>
-              <span className="text-sm font-normal text-muted">{ev.pax} guests</span>
+              <span className="flex items-center gap-2 text-sm font-normal text-muted">
+                {ev.pax} guests
+                <span className="text-faint transition-transform group-open:rotate-90" aria-hidden>
+                  ›
+                </span>
+              </span>
             </summary>
-            {ev.dock && (
+            {!card.sharedDock && ev.dock && (
               <a
                 href={mapHref(ev.dock)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center justify-between border-t border-line px-4 py-3 text-sm"
+                className="flex min-h-[44px] items-center justify-between border-t border-line px-4 py-3 text-sm"
               >
-                <span className="text-ink">📍 {ev.dock}</span>
+                <span className="text-ink">
+                  <span aria-hidden>📍</span> {ev.dock}
+                </span>
                 <span className="font-semibold text-accent">Map ›</span>
               </a>
             )}
@@ -195,7 +222,7 @@ function Card({ card }: { card: ShiftCardView }) {
                     <a
                       key={i}
                       href={tel(g.phone)}
-                      className="flex items-center justify-between px-4 py-2 text-sm"
+                      className="flex min-h-[44px] items-center justify-between px-4 py-3 text-sm"
                     >
                       <span className="text-ink">
                         {g.name} <span className="text-muted">×{g.party}</span>
@@ -205,7 +232,7 @@ function Card({ card }: { card: ShiftCardView }) {
                   ) : (
                     <div
                       key={i}
-                      className="flex items-center justify-between px-4 py-2 text-sm"
+                      className="flex min-h-[44px] items-center justify-between px-4 py-3 text-sm"
                     >
                       <span className="text-ink">
                         {g.name} <span className="text-muted">×{g.party}</span>

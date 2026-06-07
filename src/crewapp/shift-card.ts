@@ -55,6 +55,13 @@ export interface ShiftCardView {
   callTime?: string;
   /** Total booked pax across all the shift's events. */
   paxTotal: number;
+  /**
+   * The one dock, when every event departs from the same place — so the surface
+   * can show a single prominent pin (the common case) instead of burying it in
+   * each event's manifest. Absent when events differ or any lacks a dock; then
+   * the per-event docks on `events[]` carry it.
+   */
+  sharedDock?: string;
   /** Per-event manifests, soonest departure first. */
   events: EventManifestView[];
   /** Other crew on this shift (excludes the viewer). */
@@ -124,6 +131,13 @@ export async function buildShiftCard(
   const callTime =
     events.length > 0 ? minusMinutes(events[0]!.departureTime, CALL_LEAD_MINUTES) : undefined;
 
+  // One pin when every event shares a dock; otherwise the per-event docks stand.
+  const docks = events.map((e) => e.dock);
+  const sharedDock =
+    events.length > 0 && docks.every((d) => d !== undefined && d === docks[0])
+      ? docks[0]
+      : undefined;
+
   // Co-crew: other confirmed, assigned seats on this shift, with contact.
   const coCrew: CoCrewView[] = [];
   for (const seat of seats) {
@@ -139,6 +153,7 @@ export async function buildShiftCard(
     date: shift.date,
     ...(callTime !== undefined ? { callTime } : {}),
     paxTotal: events.reduce((sum, e) => sum + e.pax, 0),
+    ...(sharedDock !== undefined ? { sharedDock } : {}),
     events,
     coCrew,
     viewerRole: await roleName(repo, mySeat.role),

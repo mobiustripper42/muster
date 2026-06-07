@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.1] - 2026-06-04
+- PR #14: Phase 1.1 / M0 — Vessel + CrewMember + MMC credential admin, roster, BrewBoat seed
+
 ## [0.2.0] - 2026-06-04 — Phase 0
 - 9 pts shipped across 3 sessions (active dev ~1.54h; dev/pt is a method artifact — see retro)
 - See `docs/RETROSPECTIVES.md` for the full retro

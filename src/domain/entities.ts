@@ -119,9 +119,14 @@ export interface CrewMember {
   manualFloor?: number;
   protocolOverride?: ProtocolOverride;
   /**
-   * Computed standing (§1.4). MVP-thin: null until a scorer exists.
-   * Cold-start crew read neutral/mid-pool, NOT a misleading low — represented
-   * here as `null` ("no history yet"), distinct from a real low number.
+   * Computed standing (§1.4). MVP-thin: null until populated. Cold-start crew
+   * read neutral/mid-pool, NOT a misleading low — `null` ("no history yet"),
+   * distinct from a real low number.
+   *
+   * DISPLAY-ONLY. Ask-order ranking is derived live from the reliability log
+   * (`rankByReliability`), not from this field. Reconciling the display read
+   * (crew-view/roster) to the same log-derived score is #32 — until then this
+   * stays null/flat (DEC-008) and the two don't diverge in practice.
    */
   reliabilityScore: number | null;
 }

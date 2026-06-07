@@ -83,7 +83,7 @@ describe("buildAssignmentView", () => {
     await addCrew("crew-a");
     await addCrew("crew-b");
     const seatId = await addSeat();
-    const view = (await buildAssignmentView(repo, SHIFT))!;
+    const view = (await buildAssignmentView(repo, SHIFT, T0))!;
     expect(view.vesselName).toBe("Hops");
     expect(view.badge).toBe("Pending");
     expect(view.seats).toHaveLength(1);
@@ -107,7 +107,7 @@ describe("buildAssignmentView", () => {
     // b never answers; sweep past the timeout.
     await expireAsks(repo, seatId, later(10 * 60_000), 5 * 60_000);
     // Seat reopened (all asks closed) → pool shows both statuses.
-    const view = (await buildAssignmentView(repo, SHIFT))!;
+    const view = (await buildAssignmentView(repo, SHIFT, T0))!;
     const pool = view.seats[0]!.pool!;
     const byId = Object.fromEntries(pool.map((p) => [p.crewMemberId, p.status]));
     expect(byId[a]).toBe("declined");
@@ -123,7 +123,7 @@ describe("buildAssignmentView", () => {
     const ask = await assignPerson(repo, seatId, a, T0);
     await recordResponse(repo, ask!.id, "accepted", later(1000));
     await confirmSeat(repo, seatId, later(2000));
-    const view = (await buildAssignmentView(repo, SHIFT))!;
+    const view = (await buildAssignmentView(repo, SHIFT, T0))!;
     const card = view.seats[0]!;
     expect(card.state).toBe("Confirmed");
     expect(card.occupant).toBe("crew-a");
@@ -136,7 +136,7 @@ describe("buildAssignmentView", () => {
     const seatId = await addSeat();
     const asks = await broadcastAsk(repo, seatId, T0);
     await recordResponse(repo, asks[0]!.id, "accepted", later(7000));
-    const view = (await buildAssignmentView(repo, SHIFT))!;
+    const view = (await buildAssignmentView(repo, SHIFT, T0))!;
     expect(view.seats[0]!.state).toBe("Claimed");
     expect(view.seats[0]!.occupant).toBe("crew-a");
     expect(view.seats[0]!.pool).toBeUndefined();
@@ -148,7 +148,7 @@ describe("renderAssignmentView", () => {
   it("produces a readable card list with header badge", async () => {
     await addCrew("crew-a");
     await addSeat();
-    const view = (await buildAssignmentView(repo, SHIFT))!;
+    const view = (await buildAssignmentView(repo, SHIFT, T0))!;
     const text = renderAssignmentView(view);
     expect(text).toContain("Hops — 2026-07-01  [Pending]");
     expect(text).toContain("Open");

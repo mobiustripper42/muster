@@ -12,10 +12,11 @@
  * yes. So `solveShift` solves over a **shared** pool: a person assigned to one
  * required seat is removed before the next seat is considered.
  *
- * Out of scope for 1.4a (homed at 1.4b/M3): reliability-ORDERED ranking (the pool
- * comes back in arbitrary repo order here — §1.4 ordering is the next task) and
- * the two-horizon `deferred` machinery (§1.3). This computes the in-horizon pool
- * when asked.
+ * `eligiblePool` returns each seat's eligible set in arbitrary repo order — it
+ * answers *who* may crew, not in what order to ask. Reliability ORDERING (§1.4,
+ * §2.4) is applied by consumers: `solveShift` ranks before its greedy pick, and
+ * the ask loop ranks before broadcasting. Still out of scope: the two-horizon
+ * `deferred` machinery (§1.3). This computes the in-horizon pool when asked.
  */
 
 import type { CrewMember } from "../domain/entities.js";
@@ -28,6 +29,7 @@ import type {
 import type { Repository } from "../ports/repository.js";
 import type { CandidateVerdict } from "./eligibility.js";
 import { evaluateCandidate } from "./eligibility.js";
+import { rankEligibleIds } from "./reliability-score.js";
 
 /** Seat states that mean a person is already committed for double-booking (§1.3).
  * `Asked` is excluded — an outstanding ask isn't a commitment (they may decline);
@@ -148,23 +150,34 @@ export interface ShiftSolution {
  * any required seat is left with no unused eligible candidate, the shift is
  * unsatisfiable and `assignment` is null (the per-seat pools still explain why).
  *
- * Greedy-by-arbitrary-order is deliberate at 1.4a: with reliability scores flat/
- * null there is no ranking yet (§1.4). 1.4b makes the walk reliability-ordered.
- * Greedy can miss an assignment a full matching would find (the classic
- * bipartite-matching gap); acceptable while the pool is tiny and ranking is the
- * next task — noted for the 1.4b ask loop, which is where assignment goes live.
+ * The walk is **reliability-ordered** (§1.4, §2.4): the shared pool is ranked
+ * best-first (score + Spink's manual thumb) once, then each seat greedily takes
+ * the first still-unused candidate eligible for it — so the pick is the most
+ * reliable available person, not an arbitrary one. `now` is the scoring instant.
+ * Ranking the union once (not per seat) keeps each crew member's log read a
+ * single time per solve. Greedy can still miss an assignment a full matching
+ * would find (the classic bipartite-matching gap); acceptable while the pool is
+ * tiny — the ask loop is where assignment actually goes live.
  */
 export async function solveShift(
   repo: Repository,
   shiftId: ShiftId,
+  now: Date,
 ): Promise<ShiftSolution> {
   const pools = await eligiblePool(repo, shiftId);
   const assignment = new Map<SeatId, CrewMemberId>();
   const used = new Set<CrewMemberId>();
   let satisfiable = true;
 
+  // Rank the union of everyone eligible for any seat, once, into a global order.
+  const unionIds = [...new Set(pools.flatMap((p) => p.eligible))];
+  const order = (await rankEligibleIds(repo, unionIds, now)).map((c) => c.id);
+
   for (const pool of pools) {
-    const pick = pool.eligible.find((id) => !used.has(id));
+    // Greedy: first globally-ranked candidate eligible for THIS seat and unused
+    // (skips anyone claimed by an earlier seat).
+    const eligible = new Set(pool.eligible);
+    const pick = order.find((id) => eligible.has(id) && !used.has(id));
     if (pick === undefined) {
       // First starved seat dooms the shift; stop rather than leave a half-built
       // `used`/`assignment` a later reader could mistake for a partial result.

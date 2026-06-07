@@ -24,6 +24,7 @@ import type { AskId, CrewMemberId, SeatId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 import { deriveShiftState } from "../builder/derive.js";
 import { eligiblePool } from "../oracle/oracle.js";
+import { rankEligibleIds } from "../oracle/reliability-score.js";
 import {
   logAskAccepted,
   logAskDeclined,
@@ -34,22 +35,6 @@ import {
 
 /** Default channel for a domain-core ask; the real adapter sets this at M4. */
 const DEFAULT_CHANNEL = "push" as const;
-
-/**
- * Neutral, stable pool ranking — the single Phase-2 insertion point for real
- * reliability ordering (§1.4). Today the score is null/flat (DEC-008), so this
- * orders by score-if-present (desc) and tie-breaks by id (asc) so the loop and
- * its tests are deterministic. Replace the comparator here when the scorer lands;
- * nothing else in the loop knows about ranking.
- */
-export function rankPool(crew: CrewMember[]): CrewMember[] {
-  return [...crew].sort((a, b) => {
-    const sa = a.reliabilityScore ?? 0;
-    const sb = b.reliabilityScore ?? 0;
-    if (sa !== sb) return sb - sa;
-    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-  });
-}
 
 // ── Internal helpers ────────────────────────────────────────────────────────
 
@@ -114,10 +99,14 @@ async function committedOnShift(
   return held;
 }
 
-/** The eligible crew for a seat, ranked, optionally excluding ids (e.g. a bailer). */
+/**
+ * The eligible crew for a seat, ranked by reliability (§2.4), optionally
+ * excluding ids (e.g. a bailer). `now` is the scoring instant for the ranker.
+ */
 async function rankedEligible(
   repo: Repository,
   seat: Seat,
+  now: Date,
   exclude: ReadonlySet<CrewMemberId> = new Set(),
 ): Promise<CrewMember[]> {
   const pools = await eligiblePool(repo, seat.shiftId);
@@ -125,14 +114,8 @@ async function rankedEligible(
   if (!pool) return [];
   // Also exclude anyone already holding another seat on this same shift.
   const onShift = await committedOnShift(repo, seat.shiftId, seat.id);
-  const crew = (
-    await Promise.all(
-      pool.eligible
-        .filter((id) => !exclude.has(id) && !onShift.has(id))
-        .map((id) => repo.getCrewMember(id)),
-    )
-  ).filter((c): c is CrewMember => c !== null);
-  return rankPool(crew);
+  const ids = pool.eligible.filter((id) => !exclude.has(id) && !onShift.has(id));
+  return rankEligibleIds(repo, ids, now);
 }
 
 // ── Entry: the two protocols ────────────────────────────────────────────────
@@ -150,7 +133,7 @@ export async function broadcastAsk(
 ): Promise<Ask[]> {
   const seat = await repo.getSeat(seatId);
   if (!seat || seat.state !== "Open") return [];
-  const pool = await rankedEligible(repo, seat);
+  const pool = await rankedEligible(repo, seat, now);
   if (pool.length === 0) return [];
   await repo.saveSeat({ ...seat, state: "Asked" });
   const asks = await Promise.all(
@@ -377,7 +360,7 @@ export async function bail(
   // Whether the seat lands at Asked or rests at Bailed depends on the re-ask
   // below — the bailer is excluded from it either way. (rankedEligible reads only
   // the seat's shift + id; its current state/occupant don't affect the pool.)
-  const pool = await rankedEligible(repo, seat, new Set([bailer]));
+  const pool = await rankedEligible(repo, seat, now, new Set([bailer]));
 
   if (pool.length === 0) {
     // Exhausted: rest at Bailed (occupant cleared) → shift derives AtRisk.

@@ -13,10 +13,13 @@ import type {
   ReliabilityEventMetadata,
   ReliabilityEventType,
 } from "../domain/reliability.js";
+import type { CrewMember } from "../domain/entities.js";
 import {
   DEFAULT_WEIGHTS,
   WINDOW_EVENTS,
   computeReliabilityScore,
+  effectiveRankScore,
+  rankByReliability,
   scoreCrewMember,
 } from "./reliability-score.js";
 
@@ -261,5 +264,103 @@ describe("scoreCrewMember — reads the log through the port", () => {
     const scored = await scoreCrewMember(repo, CREW, NOW);
     expect(scored.score).toBeGreaterThan(0);
     expect(scored.eventCount).toBe(2);
+  });
+});
+
+describe("effectiveRankScore — Spink's manual thumb (§2.4)", () => {
+  const thumb = (over: Partial<CrewMember>) => over as CrewMember;
+
+  it("is the raw score when no boost/floor is set", () => {
+    expect(effectiveRankScore(7, thumb({}))).toBe(7);
+  });
+
+  it("boost adds on top of the score", () => {
+    expect(effectiveRankScore(7, thumb({ manualBoost: 5 }))).toBe(12);
+    expect(effectiveRankScore(-3, thumb({ manualBoost: 5 }))).toBe(2);
+  });
+
+  it("floor raises a low score but never lowers a high one", () => {
+    expect(effectiveRankScore(-10, thumb({ manualFloor: 0 }))).toBe(0);
+    expect(effectiveRankScore(8, thumb({ manualFloor: 0 }))).toBe(8);
+  });
+
+  it("a negative floor is a floor, not a clamp (no-op above it)", () => {
+    expect(effectiveRankScore(5, thumb({ manualFloor: -5 }))).toBe(5);
+    expect(effectiveRankScore(-9, thumb({ manualFloor: -5 }))).toBe(-5);
+  });
+
+  it("floor then boost: a vouched-for cold-start beats an unknown", () => {
+    // Spink floors a known-good new hire to neutral and bumps them.
+    const vouchedNewHire = effectiveRankScore(0, thumb({ manualFloor: 0, manualBoost: 3 }));
+    const unknown = effectiveRankScore(0, thumb({}));
+    expect(vouchedNewHire).toBeGreaterThan(unknown);
+  });
+});
+
+describe("rankByReliability — the ask-order authority", () => {
+  let repo: InMemoryRepository;
+  beforeEach(() => {
+    repo = new InMemoryRepository();
+  });
+
+  const crew = (id: string, over: Partial<CrewMember> = {}): CrewMember => ({
+    id: asId<"CrewMemberId">(id),
+    name: id,
+    phone: "555",
+    ratings: [],
+    status: "active",
+    reliabilityScore: null,
+    ...over,
+  });
+
+  async function log(id: string, ...events: ReliabilityEvent[]) {
+    for (const e of events) {
+      await repo.logReliabilityEvent({ ...e, crewMemberId: asId<"CrewMemberId">(id) });
+    }
+  }
+
+  it("orders by real logged reliability, best first", async () => {
+    await log("dependable", evt("shift_completed", daysAgo(1)), evt("shift_completed", daysAgo(3)));
+    await log("flaky", evt("no_show", daysAgo(2)));
+    // "fresh" has no events → cold-start neutral 0, between the two.
+    const ranked = await rankByReliability(
+      repo,
+      [crew("flaky"), crew("fresh"), crew("dependable")],
+      NOW,
+    );
+    expect(ranked.map((c) => c.id)).toEqual(["dependable", "fresh", "flaky"]);
+  });
+
+  it("cold-start crew tie-break is deterministic by id", async () => {
+    const ranked = await rankByReliability(
+      repo,
+      [crew("zeb"), crew("amy"), crew("mol")],
+      NOW,
+    );
+    expect(ranked.map((c) => c.id)).toEqual(["amy", "mol", "zeb"]);
+  });
+
+  it("manualFloor lifts a flaky veteran back into contention", async () => {
+    await log("flaky", evt("no_show", daysAgo(1)));
+    const withoutFloor = await rankByReliability(repo, [crew("flaky"), crew("fresh")], NOW);
+    expect(withoutFloor.map((c) => c.id)).toEqual(["fresh", "flaky"]);
+
+    const withFloor = await rankByReliability(
+      repo,
+      [crew("flaky", { manualFloor: 0 }), crew("fresh")],
+      NOW,
+    );
+    // Floor raises flaky to neutral 0; id tie-break ("flaky" < "fresh") then wins.
+    expect(withFloor.map((c) => c.id)).toEqual(["flaky", "fresh"]);
+  });
+
+  it("manualBoost can push a known-good crew member to the top", async () => {
+    await log("star", evt("shift_completed", daysAgo(1)));
+    const ranked = await rankByReliability(
+      repo,
+      [crew("star"), crew("boosted", { manualBoost: 100 })],
+      NOW,
+    );
+    expect(ranked[0]!.id).toBe("boosted");
   });
 });

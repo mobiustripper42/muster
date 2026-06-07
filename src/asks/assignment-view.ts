@@ -18,7 +18,7 @@ import type { Seat } from "../domain/entities.js";
 import type { CrewMemberId, SeatId, ShiftId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 import { eligiblePool } from "../oracle/oracle.js";
-import { rankPool } from "./ask-loop.js";
+import { rankEligibleIds } from "../oracle/reliability-score.js";
 
 /** A candidate's ask status for one seat (§2.4 "ask status" vocabulary). */
 export type CandidateAskStatus =
@@ -81,6 +81,7 @@ function statusFromAsks(
 export async function buildAssignmentView(
   repo: Repository,
   shiftId: ShiftId,
+  now: Date,
 ): Promise<AssignmentView | null> {
   const shift = await repo.getShift(shiftId);
   if (!shift) return null;
@@ -99,10 +100,7 @@ export async function buildAssignmentView(
     }
     if (seat.state === "Open") {
       const eligibleIds = pools.find((p) => p.seatId === seat.id)?.eligible ?? [];
-      const crew = (
-        await Promise.all(eligibleIds.map((id) => repo.getCrewMember(id)))
-      ).filter((c): c is NonNullable<typeof c> => c !== null);
-      const ranked = rankPool(crew);
+      const ranked = await rankEligibleIds(repo, eligibleIds, now);
       const seatAsks = await repo.listAsksForSeat(seat.id); // once, not per candidate
       card.pool = ranked.map((c) => {
         const asks = seatAsks.filter((a) => a.crewMemberId === c.id);

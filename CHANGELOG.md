@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.5] - 2026-06-04
+- PR #18: Phase 1.3 / M2 — auto-form shifts, derive seats, state machine + lock
+
 ## [0.2.4] - 2026-06-04
 - PR #17: Phase 1.2 / M1 — Xola xlsx import → Events + Reservations + browse
 

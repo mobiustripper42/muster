@@ -127,12 +127,17 @@ function contributionOf(
  * crew member's whole history. The single window definition — both the score and
  * the crew-facing standing read the same set, so they never disagree.
  */
+/** The window cap actually applied, clamped non-negative. One definition. */
+export function resolveWindowCap(opts: ScoreOptions = {}): number {
+  return Math.max(0, opts.windowEvents ?? WINDOW_EVENTS);
+}
+
 export function windowedEvents(
   events: readonly ReliabilityEvent[],
   now: Date,
   opts: ScoreOptions = {},
 ): ReliabilityEvent[] {
-  const windowEvents = Math.max(0, opts.windowEvents ?? WINDOW_EVENTS);
+  const windowEvents = resolveWindowCap(opts);
   const nowMs = now.getTime();
   return events
     .map((event) => ({ event, t: new Date(event.timestamp).getTime() }))
@@ -156,11 +161,7 @@ export function computeReliabilityScore(
   const inWindow = windowedEvents(events, now, opts);
   let score = 0;
   for (const event of inWindow) score += contributionOf(event, weights);
-  return {
-    score,
-    eventCount: inWindow.length,
-    windowEvents: Math.max(0, opts.windowEvents ?? WINDOW_EVENTS),
-  };
+  return { score, eventCount: inWindow.length, windowEvents: resolveWindowCap(opts) };
 }
 
 /**

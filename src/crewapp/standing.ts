@@ -66,6 +66,7 @@ export function summarizeStanding(
   let completed = 0;
   let bailed = 0;
   let lateBails = 0;
+  let earlyBails = 0;
   let noShows = 0;
   let steppedUp = 0;
   let ignored = 0;
@@ -78,7 +79,12 @@ export function summarizeStanding(
         break;
       case "shift_bailed":
         bailed++;
-        if ((e.metadata.latenessMs ?? 0) >= LATE_BAIL_MS) lateBails++;
+        // Only qualify late/early when lateness was actually recorded — an
+        // unrecorded bail stays a plain "bail", not an asserted "early bail".
+        if (e.metadata.latenessMs !== undefined) {
+          if (e.metadata.latenessMs >= LATE_BAIL_MS) lateBails++;
+          else earlyBails++;
+        }
         break;
       case "no_show":
         noShows++;
@@ -100,7 +106,7 @@ export function summarizeStanding(
   }
 
   const commitments = completed + bailed + noShows;
-  const earlyBails = bailed - lateBails;
+  const plainBails = bailed - lateBails - earlyBails; // lateness not recorded
   const reasons: string[] = [];
 
   // Positives first.
@@ -115,6 +121,7 @@ export function summarizeStanding(
   // Then the plain facts — factual, not a scolding.
   if (lateBails > 0) reasons.push(tally(lateBails, "late bail"));
   if (earlyBails > 0) reasons.push(tally(earlyBails, "early bail"));
+  if (plainBails > 0) reasons.push(tally(plainBails, "bail"));
   if (noShows > 0) reasons.push(tally(noShows, "no-show"));
   if (ignored > 0) reasons.push(`missed ${tally(ignored, "ask")}`);
 

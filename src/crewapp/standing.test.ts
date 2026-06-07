@@ -94,9 +94,23 @@ describe("summarizeStanding — the reasons", () => {
     expect(r.reasons).toContain("one early bail");
   });
 
+  it("a bail with no recorded lateness stays a plain 'bail', not 'early'", () => {
+    const r = summarizeStanding([evt("shift_bailed")], NOW);
+    expect(r.reasons).toContain("one bail");
+    expect(r.reasons).not.toContain("one early bail");
+    expect(r.reasons).not.toContain("one late bail");
+  });
+
   it("pluralizes plainly", () => {
     const r = summarizeStanding([evt("no_show"), evt("no_show")], NOW);
     expect(r.reasons).toContain("two no-shows");
+  });
+
+  it("falls back to digits past five", () => {
+    const sixShows = Array.from({ length: 6 }, () => evt("shift_completed"));
+    expect(summarizeStanding(sixShows, NOW).reasons).toContain("showed 6/6");
+    const sixNoShows = Array.from({ length: 6 }, () => evt("no_show"));
+    expect(summarizeStanding(sixNoShows, NOW).reasons).toContain("6 no-shows");
   });
 
   it("missed asks are stated as a neutral fact", () => {
@@ -167,5 +181,14 @@ describe("summarizeStanding — same window as the score", () => {
     const r = summarizeStanding([ancientNoShow, ...fresh], NOW);
     // The ancient no_show is pushed out → commitments are all completions.
     expect(r.reasons).toContain(`showed ${WINDOW_EVENTS}/${WINDOW_EVENTS}`);
+  });
+
+  it("future-dated events are dropped from the reasons", () => {
+    const future = new Date(NOW.getTime() + 60 * 60 * 1000).toISOString();
+    const r = summarizeStanding(
+      [evt("no_show", {}, future), evt("shift_completed", {}, daysAgo(1))],
+      NOW,
+    );
+    expect(r.reasons).toContain("showed 1/1"); // the future no_show didn't count
   });
 });

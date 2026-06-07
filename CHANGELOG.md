@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.4] - 2026-06-04
+- PR #17: Phase 1.2 / M1 — Xola xlsx import → Events + Reservations + browse
+
 ## [0.2.3] - 2026-06-04
 - PR #16: DEC-015/016/017/018 — Xola import decisions + DEC-016 spec corrections
 

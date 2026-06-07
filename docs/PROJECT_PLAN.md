@@ -82,7 +82,20 @@ scary assumption is de-risked.
 
 Turn the logged events into a score; order the eligible pool by it; add the manual boost/floor
 effect and crew-facing own-standing. *Trigger: a few weeks of real logged events to tune against.*
-(SPEC §1.4, §2.4 ranking, §2.6.2.) Tasks filled by `/start-phase` at the boundary.
+(SPEC §1.4, §2.4 ranking, §2.6.2.) **Trigger caveat:** the scorer ships with default/flat weights now
+(DEC-008 "flat v1"); *tuning* waits on weeks of real logged events.
+
+| # | Task | Effort | Notes |
+|---|------|--------|-------|
+| 2.1 | **Reliability scorer** — blended per-crew score from logged events (rolling window; decline-neutral, only `ask_ignored` penalized, bail-lateness-weighted — DEC-008); default weights, cold-start neutral | 5 | SPEC §1.4. Insertion point waiting: `rankPool`. [#30](https://github.com/mobiustripper42/muster/issues/30) |
+| 2.2 | **Rank the eligible pool** by score + manual boost/floor — wire `rankPool` + `solveShift` ordering; `manualBoost`/`manualFloor` resolve cold-start | 3 | SPEC §2.4, DEC-007/008. First-yes-wins stays; best-by-score is the knob. Depends on 2.1. [#31](https://github.com/mobiustripper42/muster/issues/31) |
+| 2.3 | **Crew own-standing** — real score + reasons in `buildCrewAppView`, individual/non-comparative, no leaderboard | 3 | SPEC §2.6.2, BRAND. Depends on 2.1. [#32](https://github.com/mobiustripper42/muster/issues/32) |
+| 2.4 | **Builder reconciliation** — manning-shrink seat prune + all-cancelled→Cancelled | 3 | Carried from P1 (filed mid-phase). all-cancelled→Cancelled half likely wants the horizon clock. [#20](https://github.com/mobiustripper42/muster/issues/20) |
+
+> **Not in Phase 2 (flagged at the boundary):** the **staffing-horizon clock** (Pending→Filling birth,
+> Filling-vs-AtRisk split, "fills by" countdown, magic-token reaper) is a foundational, data-independent
+> unblocker the At-Risk board (P3), Tier 2, and #20's all-cancelled half all depend on. Not a named
+> phase yet — slot it deliberately when P3 forces it, or pull it forward.
 
 ## Phase 3: Pass B — Tier 2 + At-Risk board
 

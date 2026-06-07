@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.3] - 2026-06-04
+- PR #16: DEC-015/016/017/018 — Xola import decisions + DEC-016 spec corrections
+
 ## [0.2.2] - 2026-06-04
 - PR #15: Add DEC-DATA-1 — service layer stays; Supabase is managed Postgres, RLS authz-only
 

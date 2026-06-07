@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.2] - 2026-06-04
+- PR #15: Add DEC-DATA-1 — service layer stays; Supabase is managed Postgres, RLS authz-only
+
 ## [0.2.1] - 2026-06-04
 - PR #14: Phase 1.1 / M0 — Vessel + CrewMember + MMC credential admin, roster, BrewBoat seed
 

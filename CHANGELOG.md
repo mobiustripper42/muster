@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.3.0] - 2026-06-07 — Phase 1
+- 55 pts shipped across 3 sessions (0.145 h/pt active)
+- Vertical slice M0–M5 complete; see `docs/RETROSPECTIVES.md`
+
 ## [0.2.15] - 2026-06-07
 - PR #29: Phase 1.6 / M5 (#13) — shift card: call vs departure, dock pin, per-event manifest
 

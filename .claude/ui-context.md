@@ -50,7 +50,8 @@ Harvested from the mockups per DESIGN-REFERENCE — read values, re-express as t
 - **Crew App — the ask** (`app/(crew)/crew/page.tsx`, §2.6.1): push-style card, inline **In/Out**, no
   login beyond the session. Answerable without opening anything else.
 - **Crew App — my shifts** (same page, §2.6.2): confirmed-upcoming only, soonest-first; own standing
-  chip (non-comparative). Tapping a shift will open the card (#13, not built).
+  as a plain muted subline under the name (non-comparative — real reasons like "answered fast · showed
+  8/8 · one late bail", #32). Tapping a shift opens the card (#13).
 - **Magic-link landing** (`app/(crew)/crew/auth`): the tap IS the login; sets the session cookie.
 
 ## Priority

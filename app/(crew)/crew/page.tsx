@@ -85,11 +85,17 @@ function SignedOut({ reason }: { reason?: string }) {
 function CrewApp({ view }: { view: CrewAppView }) {
   return (
     <Shell>
-      <header className="flex items-baseline justify-between">
+      <header className="flex flex-col gap-1">
         <h1 className="text-lg font-semibold text-ink">{view.me.name}</h1>
-        <span className="rounded-full border border-line bg-card px-3 py-1 text-xs font-semibold text-muted">
+        {/* Own standing (§2.6.2): individual, plain, never comparative. Stays
+            visually quiet — do NOT color the negative facts; that would turn a
+            neutral fact into the anxiety dashboard BRAND forbids. */}
+        <p
+          className="text-xs leading-snug text-muted"
+          aria-label={`Your standing: ${view.standing.line}`}
+        >
           {view.standing.line}
-        </span>
+        </p>
       </header>
 
       {view.asks.length > 0 && (

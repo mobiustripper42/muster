@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.15] - 2026-06-07
+- PR #29: Phase 1.6 / M5 (#13) — shift card: call vs departure, dock pin, per-event manifest
+
 ## [0.2.14] - 2026-06-07
 - PR #28: Phase 1.5b / M4 (#12) — crew tap-in: the ask, my-shifts, magic-link landing + Tailwind foundation
 

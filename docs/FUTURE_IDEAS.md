@@ -29,6 +29,7 @@ don't re-log them:
 | Date | Idea | Why tempting | The catch | Verdict |
 |---|---|---|---|---|
 | 2026-06-04 | **Booking modification (party-size change → possible vessel reassignment)** — full writeup below | Found live in real Xola data; the engine already half-answers it (oracle re-query) | Touches reservations + reassignment + customer comms; self-serve version is portal-era | parked — build post-slice |
+| 2026-06-07 | **Richer call-time model** — per-vessel prep + additive per-event positioning/transit, ultimately *computed* from a storage-location → pickup-dock distance | Real nuance: a bigger boat takes longer to ready (per-vessel); a boat staged from storage to a different pickup dock needs extra lead (per-event/route) | Needs a locations/routes model + travel-time lookups; the slice ships a flat fleet-wide 45-min lead instead (#13). Operator-set `transitMinutes` is the cheap interim before auto-compute | parked — slice uses a flat lead |
 
 ---
 

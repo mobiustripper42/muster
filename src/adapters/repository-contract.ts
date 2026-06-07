@@ -63,13 +63,14 @@ const pto = (): PtoWindow => ({
   start: "2026-07-01",
   end: "2026-07-05",
 });
-const event = (): Event => ({
+const event = (over: Partial<Event> = {}): Event => ({
   id: EVENT,
   vesselId: VESSEL,
   date: "2026-07-01",
   time: "14:00",
   capacity: 12,
   status: "scheduled",
+  ...over,
 });
 const reservation = (over: Partial<Reservation> = {}): Reservation => ({
   id: asId<"ReservationId">("resv-1"),
@@ -184,10 +185,14 @@ export function runRepositoryContract(
       expect(await repo.listPtoWindowsForCrew(CREW)).toEqual([pto()]);
     });
 
-    it("events: round-trip + list", async () => {
-      await repo.saveEvent(event());
-      expect(await repo.getEvent(EVENT)).toEqual(event());
+    it("events: round-trip + list; dock optional present and absent", async () => {
+      await repo.saveEvent(event()); // no dock
+      const got = await repo.getEvent(EVENT);
+      expect(got).toEqual(event());
+      expect("dock" in got!).toBe(false); // omitted, not undefined
       expect(await repo.listEvents()).toEqual([event()]);
+      await repo.saveEvent(event({ dock: "Pier 9, Lake Union" }));
+      expect(await repo.getEvent(EVENT)).toEqual(event({ dock: "Pier 9, Lake Union" }));
     });
 
     it("reservations: nullable phone present and absent; listForEvent", async () => {

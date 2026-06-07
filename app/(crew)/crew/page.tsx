@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { buildCrewAppView, type CrewAppView } from "@core/crewapp/crew-view.js";
 import { asId } from "@core/domain/ids.js";
 import { readSubject } from "../../lib/auth";
@@ -107,8 +108,9 @@ function CrewApp({ view }: { view: CrewAppView }) {
           <Notice>No upcoming shifts.</Notice>
         ) : (
           view.shifts.map((s) => (
-            <div
+            <Link
               key={s.seatId}
+              href={`/crew/shift/${s.shiftId}`}
               className="flex items-center justify-between rounded-card border border-line bg-card px-4 py-3 shadow-sm"
             >
               <div className="flex flex-col">
@@ -117,7 +119,10 @@ function CrewApp({ view }: { view: CrewAppView }) {
                   {s.vesselName} · {s.roleName}
                 </span>
               </div>
-            </div>
+              <span className="text-faint" aria-hidden>
+                ›
+              </span>
+            </Link>
           ))
         )}
       </section>

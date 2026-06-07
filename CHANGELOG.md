@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.12] - 2026-06-06
+- PR #26: docs: park booking-modification idea in FUTURE_IDEAS
+
 ## [0.2.11] - 2026-06-06
 - PR #25: Phase 1.5a / M4 (PR 3/3) — self-rolled magic-link + channel port + no-FK integrity discipline
 

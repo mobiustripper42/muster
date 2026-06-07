@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.9] - 2026-06-06
+- PR #23: Pull seeds (v4): @ui-reviewer agent + DEC-020-coherent CLAUDE.md additions
+
 ## [0.2.8] - 2026-06-05
 - PR #22: Phase 1.5a / M4 (PR 1/3) — Next.js framework + topology standup
 

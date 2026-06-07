@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.6] - 2026-06-05
+- PR #19: Phase 1.4a / M3 — oracle eligible-pool (composite satisfiability) + reliability logging
+
 ## [0.2.5] - 2026-06-04
 - PR #18: Phase 1.3 / M2 — auto-form shifts, derive seats, state machine + lock
 

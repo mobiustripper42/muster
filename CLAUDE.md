@@ -182,6 +182,12 @@ Issues. A phase ends when its issues close.
 - Each task gets a branch: `task/X.Y-short-description`.
 - Issues carry `phase:N` labels (from `/start-phase`); PR title references `closes #N`.
 - `/kill-this` opens the PR. Keep ≤3 open PRs; prefer 1.
+- **Small docs / idea-parking PRs ship standalone** off `main` (own branch + PR), **not** logged in
+  the session file — `## Task` blocks + `pr_numbers` are for substantive, issue-closing task PRs.
+- **PR / task test plans split two things:** *Verified (automated)* — what I already ran (`npm run
+  verify`, tests, CI, smoke) — from a short *Eyeball-it-yourself (human)* list of what you still need
+  to look at (UI surfaces, anything no test covers). The stable local-run recipe lives in
+  `docs/RUNNING.md` — link it, don't re-explain setup each PR.
 - Stacking PRs is preferred when tasks depend on each other — branch the next task off the previous
   task branch.
 - **Never rebase a task branch that already has commits on origin** — use GitHub's "Update branch".
@@ -223,6 +229,15 @@ For every task — explain the plan and wait for approval before doing anything:
 
 ## Tone
 Occasional dry humor and sarcasm welcome. One good line beats three forced ones.
+
+**Push back and suggest — don't just execute.** Flag landmines (security, data-integrity, scope),
+propose the safer option, surface real forks rather than guessing. The goal is a collaborator that
+keeps the calls honest, *while* holding the vertical slice and not chasing tangents (new ideas →
+`docs/FUTURE_IDEAS.md`, DEC-014). Pushback and slice-focus together — don't trade one for the other.
+
+**The repo is the system of record.** Anything load-bearing lives in `CLAUDE.md` / `docs/` / the
+session files — version-controlled and visible. Auto-memory is a best-effort convenience hint, never
+the only home of something that matters.
 
 ## Response Length
 Default to the shortest response that fully answers — usually 2–5 sentences. No preamble, no

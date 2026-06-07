@@ -14,13 +14,16 @@ Fibonacci scale (2, 3, 5, 8, 13). See `VELOCITY_AND_POKER_GUIDE.md` for definiti
 All estimates from planning poker between Eric and Claude. Tests are baked into every task estimate
 — no separate testing tasks. Disagreements logged at the bottom.
 
-**Velocity baseline:** Establishing — Phase 0 below. Dev/pt is the headline forecast number, but
-P0's is a method artifact (see retro): S1's active dev time was largely misclassified as idle by the
-break heuristic. Forecast against `wall − breaks` until a clean phase lands.
+**Velocity baseline:** Phase 1 is the first clean read — **0.145 h/pt active** (active = wall −
+inferred breaks) across 55 pts / 3 sessions. That's the forecast number. Phase 0 (0.176 ⚠) carries
+an S1 break-heuristic artifact + an unreadable S2 transcript — don't lean on it. **Wall-clock h/pt is
+not a velocity** (it's inflated by overnight gaps); forecast on active. The low active-per-point is
+the AI-assisted signature — human keyboard time is small relative to output.
 
-| Phase | Sessions | Points | Wall (h) | Dev (h) | Review (h) | hrs/pt (dev) |
-|-------|----------|--------|----------|---------|------------|--------------|
-| 0     | 3        | 9      | 6.29     | 0.80    | 0.75       | 0.09 ⚠       |
+| Phase | Sessions | Points | Wall (h) | Breaks (h) | Active (h) | h/pt (active) |
+|-------|----------|--------|----------|------------|------------|---------------|
+| 0     | 3        | 9      | 6.33     | 4.75       | 1.58       | 0.176 ⚠       |
+| 1     | 3        | 55     | 60.31    | 52.31      | 8.00       | 0.145         |
 
 **Build strategy — vertical, not horizontal** (build plan §1): build a thin sliver through every
 layer so one real thing works end-to-end, then fatten it. The spine doesn't change as it thickens;
@@ -58,14 +61,14 @@ The spine end-to-end. Each task = one build-plan milestone with its own acceptan
 
 | # | Task | Effort | Notes |
 |---|------|--------|-------|
-| 1.1 | **M0** Foundation — Vessel + CrewMember (+MMC credential) thin admin; seed 4–6 real crew | 5 | SPEC §2.1. [#6](https://github.com/mobiustripper42/muster/issues/6) |
-| 1.2 | **M1** Import a weekend — Xola CSV → Events + Reservations; browse | 5 | SPEC §2.2. **At desk: does the export carry guest name+phone per reservation?** Drives 1.6 + write-back sheet (DEC-011/012). [#7](https://github.com/mobiustripper42/muster/issues/7) |
-| 1.3 | **M2** Auto-form + lock — same-boat-same-day grouping, derive seats from COI, state machine births, lock | 8 | SPEC §2.3, §1.1, DEC-005. [#8](https://github.com/mobiustripper42/muster/issues/8) |
-| 1.4a | **M3** Oracle eligible-pool + reliability-event logging | 5 | SPEC §1.3 (composite satisfiability — DEC-003), §1.4 logging. Ranking can be arbitrary here. [#9](https://github.com/mobiustripper42/muster/issues/9) |
-| 1.4b | **M3** Tier-1 ask/confirm loop + assignment view (thin) | 5 | SPEC §2.4, §1.2 (Tier 1). Seat Open→Asked→Claimed→Confirmed; manual override. [#10](https://github.com/mobiustripper42/muster/issues/10) |
-| 1.5a | **M4** Infrastructure / stack standup — pick + wire framework, DB, host, auth (magic-link), SMS+push | 5 | **The DEC-013 decision.** Consult @architect. Flip `project-type` → `webapp`; `/pull-seeds` the webapp tooling. [#11](https://github.com/mobiustripper42/muster/issues/11) |
-| 1.5b | **M4** Crew tap-in — the ask (push/SMS, two buttons, no login), my-shifts list, magic-link landing | 5 | SPEC §2.6.1–2.6.2, §3.1–3.2. [#12](https://github.com/mobiustripper42/muster/issues/12) |
-| 1.6 | **M5** Manifest on the card (the hinge) — call vs departure time, dock pin, per-event manifest | 5 | SPEC §2.6.3, DEC-012. [#13](https://github.com/mobiustripper42/muster/issues/13) |
+| 1.1 | **M0** Foundation — Vessel + CrewMember (+MMC credential) thin admin; seed 4–6 real crew | 5 | **[x]** SPEC §2.1. [#6](https://github.com/mobiustripper42/muster/issues/6) · PR #14 |
+| 1.2 | **M1** Import a weekend — Xola CSV → Events + Reservations; browse | 5 | **[x]** SPEC §2.2. **Verified: export carries guest name+phone (DEC-015/017)** → fed 1.6 manifest; write-back sheet not needed. [#7](https://github.com/mobiustripper42/muster/issues/7) · PR #17 |
+| 1.3 | **M2** Auto-form + lock — same-boat-same-day grouping, derive seats from COI, state machine births, lock | 8 | **[x]** SPEC §2.3, §1.1, DEC-005. [#8](https://github.com/mobiustripper42/muster/issues/8) · PR #18 |
+| 1.4a | **M3** Oracle eligible-pool + reliability-event logging | 5 | **[x]** SPEC §1.3 (composite satisfiability — DEC-003), §1.4 logging. [#9](https://github.com/mobiustripper42/muster/issues/9) · PR #19 |
+| 1.4b | **M3** Tier-1 ask/confirm loop + assignment view (thin) | 5 | **[x]** SPEC §2.4, §1.2 (Tier 1). Seat Open→Asked→Claimed→Confirmed; DEC-019 bail. [#10](https://github.com/mobiustripper42/muster/issues/10) · PR #21 |
+| 1.5a | **M4** Infrastructure / stack standup — pick + wire framework, DB, host, auth (magic-link), SMS+push | 5→13 | **[x]** **DEC-020** (Next.js/Vercel, Postgres-behind-port, self-rolled magic-link). Re-est 5→13, split 3 PRs. [#11](https://github.com/mobiustripper42/muster/issues/11) · PRs #22, #24, #25 |
+| 1.5b | **M4** Crew tap-in — the ask (push/SMS, two buttons, no login), my-shifts list, magic-link landing | 5 (~8 actual) | **[x]** SPEC §2.6.1–2.6.2, §3.1–3.2. Tailwind+session layer pushed it past 5 (DEC-021). [#12](https://github.com/mobiustripper42/muster/issues/12) · PR #28 |
+| 1.6 | **M5** Manifest on the card (the hinge) — call vs departure time, dock pin, per-event manifest | 5 | **[x]** SPEC §2.6.3, DEC-012. `Event.dock`; flat 45-min call lead (DEC-021 / FUTURE_IDEAS). [#13](https://github.com/mobiustripper42/muster/issues/13) · PR #29 |
 
 **Phase 1 total: 43 pts**
 

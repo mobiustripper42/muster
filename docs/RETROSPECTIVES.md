@@ -3,6 +3,52 @@
 Phase-end retrospectives. Written by `/retro` at each phase boundary — velocity, scope changes,
 process notes, forecast update. One entry per phase, newest at the top.
 
+## Phase 1 — 2026-06-07 — Vertical slice (M0–M5)
+
+**Sessions:** 3 (S4, S5, S6)
+**Points:** 55 delivered / 43 planned (128%) — overage = #11 re-estimated 5→13 (split 3 PRs) + unplanned CI gate, a `/pull-seeds`, DEC docs
+**Wall clock:** 60.31h  (raw elapsed — includes two overnights + idle)
+**Breaks:** 52.31h
+**Active time (wall − breaks):** 8.00h ← honest headline
+**Velocity:** 0.145 h/pt active  ← the only forecast number (~8.7 min/pt; the AI-assisted signature — human keyboard time is small relative to output)
+**Issues:** 8 closed (#6–13), 1 moved to Phase 2 (#20 builder reconciliation)
+
+### Per-session breakdown
+| Session | Date | Wall | Breaks | Active | Points | PRs |
+|---------|------|------|--------|--------|--------|-----|
+| S4 | 2026-06-04 | 5.66 | 3.00 | 2.67 | 18 | 14, 15, 16, 17, 18 |
+| S5 | 2026-06-04→06 | 30.90 | 28.49 | 2.42 | 21 | 19, 21, 22, 23, 24 |
+| S6 | 2026-06-06→07 | 23.74 | 20.82 | 2.92 | 16 | 25, 27, 28, 29 |
+
+### What worked
+- "it feels like a real dev team with suggestion and push back. always moving forward with the slice, not getting distracted" (verbatim)
+
+### What didn't
+- No specific friction flagged by the user. Observed: **#12 ran ~8 vs the est. 5** — the first UI surface dragged the whole Tailwind + session-layer foundation in with it (a one-time stack tax; #13 then landed clean at ~5). The **`nextUrl.origin`→localhost** bug behind Tailscale needed the user's catch (CI/tests were green). **Orphaned dev-server processes** accumulated on port 3000 across smoke tests.
+- **Auto-memory isn't trustworthy** — the user surfaced this directly: memory files live outside the repo (invisible, unversioned) and recall is best-effort. Real change, not a complaint (see below).
+
+### Changes for next phase
+- "the repo is the record and i'm going to try to keep the momentum going and just keep knocking out tasks" (verbatim)
+- Acted on immediately: durable conventions moved into `CLAUDE.md` (standalone docs-PR rule, automated-vs-human test plans, pushback+slice-focus, "repo is the system of record"); `docs/RUNNING.md` already carries the local-run recipe + Tailscale access. Auto-memory demoted to a convenience hint.
+
+### Scope changes
+- **#11** re-estimated 5→13 up front, split into 3 PRs (#22/#24/#25) — the "if it's a 13, break it down" rule firing as written.
+- **#12** delivered ~8 vs 5 (Tailwind v4 + session-layer foundation — one-time, DEC-021).
+- **#20** (manning-shrink prune + all-cancelled→Cancelled) moved to Phase 2 — wants the staffing-horizon clock.
+- Unplanned but shipped: CI gate (#27), `/pull-seeds` v4 (#23), DEC docs. New ideas parked in `FUTURE_IDEAS` (booking-modification, richer call-time model, post-shift card state) — not absorbed.
+- New DECs this phase: **DEC-019** (bail is a transition), **DEC-020** (M4 stack), **DEC-021** (Tailwind v4, component library deferred); plus DEC-DATA-1 bound at M4.
+
+### PM read
+Three sessions, eight active hours, and the entire spine now runs live: a Xola export goes in one end and a crew member standing on a dock with the right manifest and a 45-minute call time comes out the other. That's the whole "scary assumption" from the plan — autonomous grouping-and-asking against real bookings — exercised rather than described. 0.145 h/pt active is the first honest velocity this project owns; Phase 0's 0.176 was a break-heuristic ghost and everyone knew it. So the number to carry forward is this one, and it held remarkably steady across all three sessions (2.67 / 2.42 / 2.92h) — not a fluke phase, a pace.
+
+On scope: 55 delivered against 43 planned is a 28% overage, and almost none of it is drift. #11 was re-estimated 5→13 *up front* and split into three clean PRs — that's the workflow's "if it's now a 13, break it down" rule firing exactly as written, not a miss. The genuine miss is #12, which came in ~8 against an estimated 5 because the first UI surface dragged the entire Tailwind v4 foundation, the session layer, and a dev seed in with it. That's a one-time stack tax — the foundation is poured now, and #13 confirmed it by landing the shift card at a clean ~5 with no new stack work. The rest of the overage (CI, the /pull-seeds, DEC docs) is real work that wasn't on a label, but unlike Phase 0's mostly-docs PRs, this was infrastructure that closed actual gaps. New ideas — booking-modification, the richer per-vessel/per-event call-time model, post-shift card state — went to FUTURE_IDEAS, not into the slice. The scope discipline you flagged as a Phase 0 goal held.
+
+The pattern worth naming is that the no-FK / dates-as-text bet got *paid down* this phase instead of deferred into a someday-debt. You took that bet against your own FK instinct on the condition of "excellent discipline at the service layer," and PR #25 made the discipline executable: ISO validators at every write boundary, a `checkIntegrity` orphan diagnostic running over both adapters and wired into the healthcheck, and a CI gate that stands up real Postgres so the in-memory↔Postgres equivalence is a required check rather than a hand-run hope. That's the FK's loud failure relocated to your schedule, which is the only version of that bet that doesn't rot. The other recurring theme: review caught real bugs that the build was perfectly happy with — cross-seat double-booking on a 2-crew shift, the `SESSION_SECRET` prod fail-fast, the host-header injection, the `/api/health` route quietly serializing crew ids to anyone who asked. Green builds shipped genuine security holes; the review layer is the thing that's earning its keep.
+
+On "it feels like a real dev team with suggestion and pushback, always moving forward with the slice, not getting distracted" — the record backs the second clause harder than you might give it credit for. Three sessions, eight tasks, every one closing an issue or splitting one deliberately, and the parking lot did its job. The "real dev team" feeling is doing some load-bearing work, though: the pushback that mattered most — Supabase demoted from platform to candidate host, the persistence two-substrate call, the no-FK debt being named as a hard PR-3 deliverable instead of a nice-to-have — those were *your* decisions taken at the architecture seam, with the agents arguing the tradeoffs. That's not a team moving forward on autopilot; that's a sole operator making every load-bearing call and an apparatus keeping the calls honest. Worth being clear-eyed about which is which, because Phase 2 leans on your judgment, not the apparatus's.
+
+Forward note: Phase 2 introduces the clock, and the clock is where this slice's cleanest simplification comes due. The ask loop is deliberately horizon-agnostic — `bail()` rests at `Bailed`, double-booking is day-grained, the assignment view omits the "fills by" countdown — and the staffing-horizon task (Pending→Filling birth, the early-vs-late-bail Filling-vs-AtRisk split, the magic-token reaper that's been waiting for a scheduler) all unblock the moment time exists. The reliability scorer has exactly one insertion point waiting for it (`rankPool`), which is the tidiest possible handoff. The one thing I'd watch: #12's deferred N+1 in `buildCrewAppView` is fine at four boats and will not stay fine, and Phase 2's reads are about to get heavier. Re-estimate #11 as the 13-split it became and #12 as ~8, fold #20 in where the horizon clock lands, and the plan stays honest.
+
 ## Phase 0 — 2026-06-04
 
 **Sessions:** 3

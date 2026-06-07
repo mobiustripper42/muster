@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.13] - 2026-06-06
+- PR #27: ci: GitHub Actions verify gate with a real Postgres
+
 ## [0.2.12] - 2026-06-06
 - PR #26: docs: park booking-modification idea in FUTURE_IDEAS
 

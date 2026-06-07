@@ -76,6 +76,7 @@ check so a core-only regression can't ship behind a green app build:
 | `docs/design/mockups/` | Claude Design export (HTML + JSX) per surface §2.1–2.6.3. **Visual-direction reference, not spec** — staged for M4 UI build. |
 | `docs/VELOCITY_AND_POKER_GUIDE.md` | Estimation methodology |
 | `docs/CHEATSHEET.md` | One-page printable skill reference |
+| `docs/RUNNING.md` | How to run the app locally, see the UI (Tailscale host, magic-link dev flow), and check a change. PRs link here for setup. |
 | `sessions/*.md` (orphan `sessions` branch via `.sessions-worktree/`) | Per-session files — `YYYY-MM-DD-HHMM-<dev>-<slug>.md` |
 | `.claude/seeds-version` | Schema version this project was installed at (`4`). Gates `/pull-seeds`. |
 | `.claude/project-type` | `webapp` (flipped from `tool` at M4 — DEC-020). Gates template files via `@sync-config` (DEC-011). |

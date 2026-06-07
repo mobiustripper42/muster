@@ -13,3 +13,5 @@ export type {
   VerifyFailure,
   VerifyResult,
 } from "./magic-link.js";
+export { signSession, verifySession, shouldRenew } from "./session.js";
+export type { Session, SessionResult, SessionFailure } from "./session.js";

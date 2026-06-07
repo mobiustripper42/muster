@@ -52,11 +52,18 @@ describe("computeReliabilityScore — baselines", () => {
     expect(r.windowDays).toBe(WINDOW_DAYS);
   });
 
-  it("a log that nets to zero is indistinguishable from cold start (both neutral)", () => {
-    // +1 ask_accepted, then a -? ... use an ack (+1) and an ignored (-3) plus
-    // a completed (+5) tuned to net zero is fiddly; assert sign-relative instead.
-    const completed = scoreOf([evt("shift_completed", daysAgo(1))]);
-    expect(completed).toBeGreaterThan(0);
+  it("a log that nets to zero sorts at neutral, same as cold start", () => {
+    // +5 completed and -5 flat bail cancel: a real history (eventCount 2) that
+    // nonetheless sits at the cold-start neutral 0 — the docstring invariant.
+    const r = computeReliabilityScore(
+      [
+        evt("shift_completed", daysAgo(1)),
+        evt("shift_bailed", daysAgo(2)),
+      ],
+      NOW,
+    );
+    expect(r.score).toBe(0);
+    expect(r.eventCount).toBe(2);
   });
 });
 
@@ -137,6 +144,22 @@ describe("computeReliabilityScore — rolling window", () => {
     expect(scoreOf([evt("shift_completed", future)])).toBe(0);
   });
 
+  it("malformed timestamps are dropped, not counted", () => {
+    const r = computeReliabilityScore(
+      [evt("shift_completed", "not-a-date")],
+      NOW,
+    );
+    expect(r.score).toBe(0);
+    expect(r.eventCount).toBe(0);
+  });
+
+  it("the inclusive edges count: exactly now and exactly the cutoff", () => {
+    const atNow = scoreOf([evt("shift_completed", NOW.toISOString())]);
+    const atCutoff = scoreOf([evt("shift_completed", daysAgo(WINDOW_DAYS))]);
+    expect(atNow).toBeGreaterThan(0);
+    expect(atCutoff).toBeGreaterThan(0);
+  });
+
   it("a custom window narrows what counts", () => {
     const events = [evt("shift_completed", daysAgo(30))];
     expect(computeReliabilityScore(events, NOW, { windowDays: 7 }).score).toBe(0);
@@ -168,6 +191,21 @@ describe("computeReliabilityScore — tunable weights", () => {
       },
     });
     expect(harsh.score).toBe(100);
+  });
+
+  it("the bail-lateness multiplier is tunable independently", () => {
+    const events = [
+      evt("shift_bailed", daysAgo(1), { latenessMs: hours(10) }),
+    ];
+    const gentle = computeReliabilityScore(events, NOW, {
+      weights: { ...DEFAULT_WEIGHTS, bailLatenessPerHour: 0 },
+    }).score;
+    const harsh = computeReliabilityScore(events, NOW, {
+      weights: { ...DEFAULT_WEIGHTS, bailLatenessPerHour: -2 },
+    }).score;
+    // With the multiplier off, only the flat bail penalty remains.
+    expect(gentle).toBe(DEFAULT_WEIGHTS.perEvent.shift_bailed);
+    expect(harsh).toBeLessThan(gentle);
   });
 });
 

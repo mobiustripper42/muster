@@ -139,6 +139,13 @@ export interface Event {
   time: string;
   capacity: number;
   status: EventStatus;
+  /**
+   * Where this event departs from — a place name/address the shift card turns
+   * into a tappable map pin (SPEC §2.6.3). Per-EVENT, not per-vessel: the same
+   * boat can leave different docks on different events. Optional (imported events
+   * may not carry it yet → no pin).
+   */
+  dock?: string;
 }
 
 export type ReservationStatus = "booked" | "cancelled";

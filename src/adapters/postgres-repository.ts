@@ -109,6 +109,7 @@ const toEvent = (r: any): Event => ({
   time: r.time,
   capacity: r.capacity,
   status: r.status,
+  ...opt("dock", r.dock),
 });
 
 const toReservation = (r: any): Reservation => ({
@@ -327,10 +328,10 @@ export class PostgresRepository implements Repository {
   // ── Events ─────────────────────────────────────────────────────────────────
   async saveEvent(e: Event): Promise<void> {
     await this.#pool.query(
-      `insert into events(id, vessel_id, date, time, capacity, status) values ($1,$2,$3,$4,$5,$6)
+      `insert into events(id, vessel_id, date, time, capacity, status, dock) values ($1,$2,$3,$4,$5,$6,$7)
        on conflict (id) do update set vessel_id=excluded.vessel_id, date=excluded.date,
-         time=excluded.time, capacity=excluded.capacity, status=excluded.status`,
-      [e.id, e.vesselId, e.date, e.time, e.capacity, e.status],
+         time=excluded.time, capacity=excluded.capacity, status=excluded.status, dock=excluded.dock`,
+      [e.id, e.vesselId, e.date, e.time, e.capacity, e.status, e.dock ?? null],
     );
   }
   async getEvent(id: EventId): Promise<Event | null> {

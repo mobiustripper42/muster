@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.7] - 2026-06-05
+- PR #21: Phase 1.4b / M3 — Tier-1 ask/confirm loop + thin assignment view
+
 ## [0.2.6] - 2026-06-05
 - PR #19: Phase 1.4a / M3 — oracle eligible-pool (composite satisfiability) + reliability logging
 

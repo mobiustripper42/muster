@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.11] - 2026-06-06
+- PR #25: Phase 1.5a / M4 (PR 3/3) — self-rolled magic-link + channel port + no-FK integrity discipline
+
 ## [0.2.10] - 2026-06-06
 - PR #24: Phase 1.5a / M4 (PR 2/3) — Postgres adapter + DDL + REQ-CLAIM-1 state-guarded write
 

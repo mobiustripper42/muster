@@ -51,7 +51,11 @@ export type ReliabilityEventType = (typeof RELIABILITY_EVENT_TYPES)[number];
 export interface ReliabilityEventMetadata {
   /** ms between ask_sent and response — for ask_accepted / ask_declined. */
   latencyMs?: number;
-  /** how late a bail landed, ms before call time — drives the bail penalty. */
+  /**
+   * How late a bail landed, in ms — measured from the bail toward call time, so
+   * a *higher* value means a *later* bail. Drives the bail penalty: the scorer
+   * (`reliability-score.ts`) weighs a late bail more than an early one.
+   */
   latenessMs?: number;
   seatId?: SeatId;
   shiftId?: ShiftId;

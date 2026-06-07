@@ -15,7 +15,6 @@ import {
   confirmSeat,
   expireAsks,
   manualOverride,
-  rankPool,
   recordResponse,
   resolveProtocol,
 } from "./ask-loop.js";
@@ -83,20 +82,8 @@ const shiftState = (id: ShiftId) => repo.getShift(id).then((s) => s!.state);
 const types = (crewId: CrewMemberId) =>
   repo.reliabilityEventsFor(crewId).then((es) => es.map((e) => e.type));
 
-describe("rankPool", () => {
-  it("orders by score desc, ties broken by id (deterministic)", () => {
-    const c = (id: string, score: number | null): CrewMember => ({
-      id: asId<"CrewMemberId">(id),
-      name: id,
-      phone: "5",
-      ratings: [CAPTAIN],
-      status: "active",
-      reliabilityScore: score,
-    });
-    const ranked = rankPool([c("z", null), c("a", null), c("m", 10)]);
-    expect(ranked.map((x) => x.id)).toEqual(["m", "a", "z"]); // m by score, then id
-  });
-});
+// Pool ranking lives in oracle/reliability-score.ts now (rankByReliability +
+// effectiveRankScore), tested there. The loop just consumes the ranked order.
 
 describe("happy path — broadcast → accept → confirm", () => {
   it("walks Open→Asked→Claimed→Confirmed and the badge to Crewed", async () => {

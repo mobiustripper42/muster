@@ -37,6 +37,7 @@ import type {
   ReliabilityEvent,
   ReliabilityEventType,
 } from "../domain/reliability.js";
+import type { CrewMember } from "../domain/entities.js";
 import type { CrewMemberId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 
@@ -148,7 +149,7 @@ export function computeReliabilityScore(
 
 /**
  * Read one crew member's log through the port and score it. The thin bridge
- * between the append-only log and `rankPool` — `now` injected, no clock read.
+ * between the append-only log and the ranker — `now` injected, no clock read.
  */
 export async function scoreCrewMember(
   repo: Repository,
@@ -158,4 +159,45 @@ export async function scoreCrewMember(
 ): Promise<ReliabilityScore> {
   const events = await repo.reliabilityEventsFor(crewMemberId);
   return computeReliabilityScore(events, now, opts);
+}
+
+/**
+ * The effective ranking key: the computed reliability score with Spink's manual
+ * thumb applied (§2.4). `manualFloor` raises a person to at least that value
+ * (his "I vouch for this one" — lifts a known-good new hire above unknowns who
+ * read a cold-start neutral 0); `manualBoost` adds on top. Pure.
+ */
+export function effectiveRankScore(
+  score: number,
+  crew: Pick<CrewMember, "manualBoost" | "manualFloor">,
+): number {
+  const floored =
+    crew.manualFloor !== undefined ? Math.max(score, crew.manualFloor) : score;
+  return floored + (crew.manualBoost ?? 0);
+}
+
+/**
+ * Rank a set of eligible crew by reliability — the single ordering authority for
+ * the ask sequence (§1.4, §2.4). Scores each member from their log, applies the
+ * manual thumb (`effectiveRankScore`), and sorts best-first with a deterministic
+ * id tie-break so the loop and its tests are stable. Ordering only — eligibility
+ * is decided upstream by the oracle; this never gates anyone.
+ */
+export async function rankByReliability(
+  repo: Repository,
+  crew: readonly CrewMember[],
+  now: Date,
+  opts: ScoreOptions = {},
+): Promise<CrewMember[]> {
+  const keyed = await Promise.all(
+    crew.map(async (c) => {
+      const { score } = await scoreCrewMember(repo, c.id, now, opts);
+      return { crew: c, key: effectiveRankScore(score, c) };
+    }),
+  );
+  keyed.sort((a, b) => {
+    if (a.key !== b.key) return b.key - a.key;
+    return a.crew.id < b.crew.id ? -1 : a.crew.id > b.crew.id ? 1 : 0;
+  });
+  return keyed.map((k) => k.crew);
 }

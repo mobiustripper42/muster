@@ -22,10 +22,12 @@ import type {
 } from "../domain/entities.js";
 import type { SeatState } from "../domain/states.js";
 import { eligiblePool, solveShift } from "./oracle.js";
+import { logShiftCompleted } from "./reliability-log.js";
 
 const CAPTAIN = asId<"RoleTypeId">("role-captain");
 const VESSEL = asId<"VesselId">("vessel-x");
 const DATE = "2026-07-01";
+const NOW = new Date("2026-06-15T12:00:00.000Z");
 
 let repo: InMemoryRepository;
 beforeEach(() => {
@@ -143,7 +145,7 @@ describe("solveShift — the composite shared-pool rule (DEC-003)", () => {
     await assign(other.seatIds[0]!, a);
 
     const { shiftId } = await addShift("shift-1", 1);
-    const sol = await solveShift(repo, shiftId);
+    const sol = await solveShift(repo, shiftId, NOW);
 
     expect(sol.satisfiable).toBe(false);
     expect(sol.assignment).toBeNull();
@@ -158,7 +160,7 @@ describe("solveShift — the composite shared-pool rule (DEC-003)", () => {
   it("shares the pool: one eligible captain can't fill two captain seats", async () => {
     await addCrew("crew-a");
     const { shiftId, seatIds } = await addShift("shift-1", 2);
-    const sol = await solveShift(repo, shiftId);
+    const sol = await solveShift(repo, shiftId, NOW);
     expect(sol.satisfiable).toBe(false); // second seat starved
     // First seat still got the assignment in the (failed) walk's record.
     expect(sol.pools).toHaveLength(2);
@@ -171,7 +173,7 @@ describe("solveShift — the composite shared-pool rule (DEC-003)", () => {
     const a = await addCrew("crew-a");
     const b = await addCrew("crew-b");
     const { shiftId, seatIds } = await addShift("shift-1", 2);
-    const sol = await solveShift(repo, shiftId);
+    const sol = await solveShift(repo, shiftId, NOW);
     expect(sol.satisfiable).toBe(true);
     expect(sol.assignment).not.toBeNull();
     const assigned = [...sol.assignment!.values()].sort();
@@ -184,14 +186,26 @@ describe("solveShift — the composite shared-pool rule (DEC-003)", () => {
     const other = await addShift("shift-other", 1);
     await assign(other.seatIds[0]!, a, "Asked"); // tentative, may decline
     const { shiftId } = await addShift("shift-1", 1);
-    const sol = await solveShift(repo, shiftId);
+    const sol = await solveShift(repo, shiftId, NOW);
     expect(sol.satisfiable).toBe(true);
   });
 
   it("is vacuously satisfiable for a zero-required-seat shift", async () => {
     const { shiftId } = await addShift("shift-1", 0);
-    const sol = await solveShift(repo, shiftId);
+    const sol = await solveShift(repo, shiftId, NOW);
     expect(sol.satisfiable).toBe(true);
     expect(sol.assignment!.size).toBe(0);
+  });
+
+  it("the greedy walk is reliability-ordered: the more reliable wins the seat", async () => {
+    const a = await addCrew("crew-a");
+    const b = await addCrew("crew-b");
+    // b has a proven record, a has none → b should take the single seat.
+    await logShiftCompleted(repo, b, asId<"ShiftId">("past"), NOW);
+    const { shiftId, seatIds } = await addShift("shift-1", 1);
+    const sol = await solveShift(repo, shiftId, NOW);
+    expect(sol.satisfiable).toBe(true);
+    expect(sol.assignment!.get(seatIds[0]!)).toBe(b);
+    void a;
   });
 });

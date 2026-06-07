@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.2.10] - 2026-06-06
+- PR #24: Phase 1.5a / M4 (PR 2/3) — Postgres adapter + DDL + REQ-CLAIM-1 state-guarded write
+
 ## [0.2.9] - 2026-06-06
 - PR #23: Pull seeds (v4): @ui-reviewer agent + DEC-020-coherent CLAUDE.md additions
 

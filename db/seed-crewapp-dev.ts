@@ -11,6 +11,15 @@
  */
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
 import { asId } from "../src/domain/ids.js";
+import {
+  logAskAccepted,
+  logAskIgnored,
+  logAtRiskRescue,
+  logEscalationAccepted,
+  logNoShow,
+  logShiftBailed,
+  logShiftCompleted,
+} from "../src/oracle/reliability-log.js";
 import { DEFAULT_DATABASE_URL } from "./migrate.js";
 
 const url = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
@@ -60,7 +69,33 @@ try {
   await repo.saveSeat({ id: asId<"SeatId">("seat-ask"), shiftId: asId<"ShiftId">("shift-ask"), role: CAPTAIN, kind: "required", state: "Asked" });
   await repo.saveAsk({ id: asId<"AskId">("ask-quint-1"), seatId: asId<"SeatId">("seat-ask"), crewMemberId: QUINT, channel: "push", sentAt: "2026-07-01T09:00:00.000Z" });
 
+  // crew-dooley: a busy reliability history, so /crew shows the worst-case
+  // standing line (every reason kind at once — #32). No shifts/asks of his own;
+  // this seed is purely to eyeball the standing subline wrapping + neutral tone.
+  const DOOLEY = asId<"CrewMemberId">("crew-dooley");
+  await repo.saveCrewMember({ id: DOOLEY, name: "Dooley", phone: "+15555550103", ratings: [CAPTAIN], status: "active", reliabilityScore: null });
+
+  // The reliability log is append-only (no upsert), so only seed it once — re-runs
+  // would otherwise duplicate. Past timestamps (all before any plausible `now`) so
+  // nothing is dropped by the future-event guard.
+  if ((await repo.reliabilityEventsFor(DOOLEY)).length === 0) {
+    const S = (n: string) => asId<"ShiftId">(`dooley-${n}`);
+    const SEAT = (n: string) => asId<"SeatId">(`dooley-seat-${n}`);
+    const day = (d: number) => new Date(`2026-05-${String(d).padStart(2, "0")}T12:00:00.000Z`);
+    const HOURS = 60 * 60 * 1000;
+    for (let i = 1; i <= 6; i++) await logShiftCompleted(repo, DOOLEY, S(`done-${i}`), day(i)); // showed 6/9
+    await logAskAccepted(repo, DOOLEY, SEAT("ask1"), S("ask1"), day(7), 5 * 60 * 1000); // answered fast
+    await logEscalationAccepted(repo, DOOLEY, SEAT("esc"), S("esc"), day(8)); // stepped up…
+    await logAtRiskRescue(repo, DOOLEY, SEAT("rescue"), S("rescue"), day(9)); // …two times
+    await logShiftBailed(repo, DOOLEY, S("latebail"), day(10), 30 * HOURS); // one late bail (>= 24h)
+    await logShiftBailed(repo, DOOLEY, S("earlybail"), day(11), 1 * HOURS); // one early bail (< 24h)
+    await logNoShow(repo, DOOLEY, S("noshow"), day(12)); // one no-show
+    await logAskIgnored(repo, DOOLEY, SEAT("ig1"), S("ig1"), day(13)); // missed two asks
+    await logAskIgnored(repo, DOOLEY, SEAT("ig2"), S("ig2"), day(14));
+  }
+
   console.log("Seeded crew-quint: 1 confirmed shift (2 events, manifest, co-crew Hooper), 1 open ask.");
+  console.log("Seeded crew-dooley: full reliability log → worst-case standing line. View: /crew/dev-link?crew=crew-dooley");
 } finally {
   await repo.close();
 }

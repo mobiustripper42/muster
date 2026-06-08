@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.3.2] - 2026-06-08
+- PR #34: Phase 2.2 — rank eligible pool by reliability + manual boost/floor (closes #31)
+
 ## [0.3.1] - 2026-06-08
 - PR #33: Phase 2.1 — reliability scorer: blended score from logged events (closes #30)
 

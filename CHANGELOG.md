@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.3.3] - 2026-06-08
+- PR #35: Phase 2.3 — crew own-standing: real score + plain reasons (closes #32)
+
 ## [0.3.2] - 2026-06-08
 - PR #34: Phase 2.2 — rank eligible pool by reliability + manual boost/floor (closes #31)
 

@@ -148,6 +148,17 @@ describe("formShifts — reconciliation (#20)", () => {
     expect((await repo.getShift(day1))?.state).toBe("Cancelled");
   });
 
+  it("never forms a shift from cancelled-only events (no prior shift)", async () => {
+    const repo = new InMemoryRepository();
+    await seedEvents(repo);
+    // Cancel 05-17's lone event before it was ever formed.
+    await cancelEvent(repo, "e3");
+    const r = await formShifts(repo);
+
+    expect(r.shiftsCancelled).toBe(0);
+    expect(await repo.getShift(asId(`shift-${PARTY}-2026-05-17`))).toBeNull();
+  });
+
   it("never re-cancels a Completed shift (the trip ran)", async () => {
     const repo = new InMemoryRepository();
     await seedEvents(repo);

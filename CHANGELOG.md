@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.4.0] - 2026-06-08 — Phase 2
+- 16 pts shipped across 2 sessions (0.130 h/pt active)
+- See `docs/RETROSPECTIVES.md` for the full retro
+
 ## [0.3.5] - 2026-06-08
 - PR #38: Phase 2.4 — builder reconciliation: manning-shrink seat prune + all-cancelled→Cancelled (closes #20)
 

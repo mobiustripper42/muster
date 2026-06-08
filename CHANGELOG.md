@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.3.4] - 2026-06-08
+- PR #36: DEC-S namespace sweep — apply DEC-S025
+
 ## [0.3.3] - 2026-06-08
 - PR #35: Phase 2.3 — crew own-standing: real score + plain reasons (closes #32)
 

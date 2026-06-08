@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.3.1] - 2026-06-08
+- PR #33: Phase 2.1 — reliability scorer: blended score from logged events (closes #30)
+
 ## [0.3.0] - 2026-06-07 — Phase 1
 - 55 pts shipped across 3 sessions (0.145 h/pt active)
 - Vertical slice M0–M5 complete; see `docs/RETROSPECTIVES.md`

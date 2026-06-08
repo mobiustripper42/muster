@@ -191,6 +191,9 @@ export class InMemoryRepository implements Repository {
     this.#seats.set(seat.id, clone(seat));
     return true;
   }
+  async removeSeat(id: SeatId): Promise<void> {
+    this.#seats.delete(id);
+  }
   async listSeatsForShift(shiftId: ShiftId): Promise<Seat[]> {
     return [...this.#seats.values()]
       .filter((s) => s.shiftId === shiftId)

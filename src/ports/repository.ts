@@ -110,6 +110,15 @@ export interface Repository {
    * against real Postgres.
    */
   saveSeatIfState(seat: Seat, expectedState: SeatState): Promise<boolean>;
+  /**
+   * Remove a seat row. Used by the builder to prune a surplus **required** seat
+   * when a vessel's manning shrinks (SPEC §2.3 reconciliation) — only ever an
+   * `Open` orphan; an occupied surplus seat is surfaced for a human, never
+   * silently deleted. The caller owns referential cleanup: the schema is no-FK
+   * (DEC-DATA-1), so removing a seat that asks/reliability events reference would
+   * orphan them — the prune path removes only `Open` seats, which have no asks.
+   */
+  removeSeat(id: SeatId): Promise<void>;
 
   // ── Asks ───────────────────────────────────────────────────────────────────
   saveAsk(ask: Ask): Promise<void>;

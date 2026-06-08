@@ -77,6 +77,118 @@ describe("formShifts", () => {
   });
 });
 
+const CAPTAIN = asId<"RoleTypeId">("role-captain");
+const MATE = asId<"RoleTypeId">("role-mate");
+
+/** Re-seed the party vessel with captain-only manning (a manning shrink). */
+async function shrinkPartyToCaptainOnly(repo: InMemoryRepository): Promise<void> {
+  const v = await repo.getVessel(PARTY);
+  await repo.saveVessel({ ...v!, manning: [{ roleTypeId: CAPTAIN, count: 1 }] });
+}
+
+async function cancelEvent(repo: InMemoryRepository, id: string): Promise<void> {
+  const e = await repo.getEvent(asId<"EventId">(id));
+  await repo.saveEvent({ ...e!, status: "cancelled" });
+}
+
+describe("formShifts — reconciliation (#20)", () => {
+  const day1 = asId<"ShiftId">(`shift-${PARTY}-2026-05-16`);
+
+  it("prunes a surplus Open seat when manning shrinks", async () => {
+    const repo = new InMemoryRepository();
+    await seedEvents(repo);
+    await formShifts(repo);
+
+    await shrinkPartyToCaptainOnly(repo);
+    const r = await formShifts(repo);
+
+    // Both party-day shifts (05-16, 05-17) lose their now-surplus mate seat.
+    expect(r.seatsPruned).toBe(2);
+    expect(r.seatsStranded).toBe(0);
+    const seats = await repo.listSeatsForShift(day1);
+    expect(seats).toHaveLength(1);
+    expect(seats[0]!.role).toBe(CAPTAIN);
+    expect((await repo.getShift(day1))?.state).toBe("Pending"); // lone Open seat
+  });
+
+  it("does not strand an occupied surplus seat — surfaces it instead", async () => {
+    const repo = new InMemoryRepository();
+    await seedEvents(repo);
+    await formShifts(repo);
+
+    // Confirm the mate on 05-16; leave 05-17's mate Open.
+    const mate = (await repo.listSeatsForShift(day1)).find((s) => s.role === MATE)!;
+    await repo.saveSeat({
+      ...mate,
+      state: "Confirmed",
+      assignedCrewMemberId: asId<"CrewMemberId">("crew-1"),
+    });
+
+    await shrinkPartyToCaptainOnly(repo);
+    const r = await formShifts(repo);
+
+    // 05-16 mate is Confirmed → stranded (kept); 05-17 mate is Open → pruned.
+    expect(r.seatsStranded).toBe(1);
+    expect(r.seatsPruned).toBe(1);
+    const after = await repo.listSeatsForShift(day1);
+    expect(after.map((s) => s.role).sort()).toEqual([CAPTAIN, MATE]);
+    expect(after.find((s) => s.role === MATE)?.state).toBe("Confirmed");
+  });
+
+  it("cancels a shift whose every event has been cancelled", async () => {
+    const repo = new InMemoryRepository();
+    await seedEvents(repo);
+    await formShifts(repo);
+
+    await cancelEvent(repo, "e1");
+    await cancelEvent(repo, "e2"); // both 05-16 events gone
+    const r = await formShifts(repo);
+
+    expect(r.shiftsCancelled).toBe(1);
+    expect((await repo.getShift(day1))?.state).toBe("Cancelled");
+  });
+
+  it("never forms a shift from cancelled-only events (no prior shift)", async () => {
+    const repo = new InMemoryRepository();
+    await seedEvents(repo);
+    // Cancel 05-17's lone event before it was ever formed.
+    await cancelEvent(repo, "e3");
+    const r = await formShifts(repo);
+
+    expect(r.shiftsCancelled).toBe(0);
+    expect(await repo.getShift(asId(`shift-${PARTY}-2026-05-17`))).toBeNull();
+  });
+
+  it("never re-cancels a Completed shift (the trip ran)", async () => {
+    const repo = new InMemoryRepository();
+    await seedEvents(repo);
+    await formShifts(repo);
+    const shift = await repo.getShift(day1);
+    await repo.saveShift({ ...shift!, state: "Completed" });
+
+    await cancelEvent(repo, "e1");
+    await cancelEvent(repo, "e2");
+    const r = await formShifts(repo);
+
+    expect(r.shiftsCancelled).toBe(0);
+    expect((await repo.getShift(day1))?.state).toBe("Completed");
+  });
+
+  it("keeps a partially-cancelled shift live, dropping only the cancelled event", async () => {
+    const repo = new InMemoryRepository();
+    await seedEvents(repo);
+    await formShifts(repo);
+
+    await cancelEvent(repo, "e1"); // e2 still scheduled
+    const r = await formShifts(repo);
+
+    expect(r.shiftsCancelled).toBe(0);
+    const shift = await repo.getShift(day1);
+    expect(shift?.state).not.toBe("Cancelled");
+    expect(shift?.eventIds).toEqual([asId("e2")]);
+  });
+});
+
 describe("lockShift", () => {
   it("stamps lockedAt and survives a re-form", async () => {
     const repo = new InMemoryRepository();

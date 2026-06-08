@@ -266,6 +266,15 @@ export function runRepositoryContract(
       expect((await repo.getSeat(SEAT))!.state).toBe("Claimed");
     });
 
+    it("removeSeat: deletes the row; absent-id is a no-op", async () => {
+      await repo.saveShift(shift());
+      await repo.saveSeat(seat());
+      await repo.removeSeat(SEAT);
+      expect(await repo.getSeat(SEAT)).toBeNull();
+      expect(await repo.listSeatsForShift(SHIFT)).toHaveLength(0);
+      await repo.removeSeat(SEAT); // idempotent — already gone
+    });
+
     it("asks: optional response fields present and absent; listForSeat", async () => {
       await repo.saveAsk(ask());
       const got = await repo.getAsk(asId<"AskId">("ask-1"));

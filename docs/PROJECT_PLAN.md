@@ -24,6 +24,7 @@ the AI-assisted signature — human keyboard time is small relative to output.
 |-------|----------|--------|----------|------------|------------|---------------|
 | 0     | 3        | 9      | 6.33     | 4.75       | 1.58       | 0.176 ⚠       |
 | 1     | 3        | 55     | 60.31    | 52.31      | 8.00       | 0.145         |
+| 2     | 2        | 16     | 31.59    | 29.52      | 2.08       | 0.130         |
 
 **Build strategy — vertical, not horizontal** (build plan §1): build a thin sliver through every
 layer so one real thing works end-to-end, then fatten it. The spine doesn't change as it thickens;
@@ -87,10 +88,10 @@ effect and crew-facing own-standing. *Trigger: a few weeks of real logged events
 
 | # | Task | Effort | Notes |
 |---|------|--------|-------|
-| 2.1 | **Reliability scorer** — blended per-crew score from logged events (rolling window; decline-neutral, only `ask_ignored` penalized, bail-lateness-weighted — DEC-008); default weights, cold-start neutral | 5 | SPEC §1.4. Insertion point waiting: `rankPool`. [#30](https://github.com/mobiustripper42/muster/issues/30) |
-| 2.2 | **Rank the eligible pool** by score + manual boost/floor — wire `rankPool` + `solveShift` ordering; `manualBoost`/`manualFloor` resolve cold-start | 3 | SPEC §2.4, DEC-007/008. First-yes-wins stays; best-by-score is the knob. Depends on 2.1. [#31](https://github.com/mobiustripper42/muster/issues/31) |
-| 2.3 | **Crew own-standing** — real score + reasons in `buildCrewAppView`, individual/non-comparative, no leaderboard | 3 | SPEC §2.6.2, BRAND. Depends on 2.1. [#32](https://github.com/mobiustripper42/muster/issues/32) |
-| 2.4 | **Builder reconciliation** — manning-shrink seat prune + all-cancelled→Cancelled | 3 | Carried from P1 (filed mid-phase). all-cancelled→Cancelled half likely wants the horizon clock. [#20](https://github.com/mobiustripper42/muster/issues/20) |
+| 2.1 | **Reliability scorer** — blended per-crew score from logged events (rolling window; decline-neutral, only `ask_ignored` penalized, bail-lateness-weighted — DEC-008); default weights, cold-start neutral | 5 | **[x]** SPEC §1.4. Count-based window (seasonal — not calendar). [#30](https://github.com/mobiustripper42/muster/issues/30) · PR #33 |
+| 2.2 | **Rank the eligible pool** by score + manual boost/floor — wire `rankPool` + `solveShift` ordering; `manualBoost`/`manualFloor` resolve cold-start | 3 | **[x]** SPEC §2.4, DEC-007/008. First-yes-wins stays; ranked union scored once (no per-seat N+1). [#31](https://github.com/mobiustripper42/muster/issues/31) · PR #34 |
+| 2.3 | **Crew own-standing** — real score + reasons in `buildCrewAppView`, individual/non-comparative, no leaderboard | 3 | **[x]** SPEC §2.6.2, BRAND. Quiet subline; closes #31 display-vs-ranking divergence. [#32](https://github.com/mobiustripper42/muster/issues/32) · PR #35 |
+| 2.4 | **Builder reconciliation** — manning-shrink seat prune + all-cancelled→Cancelled | 3→5 | **[x]** SPEC §2.3. Re-est 3→5 (new `removeSeat` port + 2 adapters). all-cancelled handled at `formShifts` (lifecycle), no horizon clock needed; surface-don't-strand. [#20](https://github.com/mobiustripper42/muster/issues/20) · PR #38 |
 
 > **Not in Phase 2 (flagged at the boundary):** the **staffing-horizon clock** (Pending→Filling birth,
 > Filling-vs-AtRisk split, "fills by" countdown, magic-token reaper) is a foundational, data-independent

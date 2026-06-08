@@ -3,6 +3,40 @@
 Phase-end retrospectives. Written by `/retro` at each phase boundary — velocity, scope changes,
 process notes, forecast update. One entry per phase, newest at the top.
 
+## Phase 2 — 2026-06-08 — Pass A: Reliability ranking
+
+**Sessions:** 2 (S7, S8)
+**Points:** 16 delivered / 14 planned (114%) — overage = 2.4 (#20) re-estimated 3→5 (new `removeSeat` port + 2 adapters)
+**Wall clock:** 31.59h  (raw elapsed — includes overnight + idle)
+**Breaks:** 29.52h
+**Active time (wall - breaks):** 2.08h ← honest headline
+**Velocity:** 0.130 h/pt active  ← the only forecast number (vs Phase 1's 0.145)
+**Issues:** 4 closed (#20, #30, #31, #32), 0 moved
+
+### Per-session breakdown
+| Session | Date | Wall | Breaks | Active | Points | PRs |
+|---------|------|------|--------|--------|--------|-----|
+| S7 | 2026-06-07→08 | 15.12 | 13.22 | 1.92 | 11 | 33, 34, 35 |
+| S8 | 2026-06-08 | 16.47 | 16.30 | 0.17 | 5 | 38 |
+
+> **S8 active is genuinely tiny, not a measurement error.** The #20 build shipped in two tight bursts
+> (16:22–16:26 plan, 17:43–17:48 build+PR+review) with the rest of the 16.5h wall being away-from-desk
+> idle — session opened 03:34Z, real work started 16:22Z. Break inference (>15min gaps) correctly
+> excludes it. Phase velocity is dominated by S7's sustained 1.92h.
+
+### What worked
+- Not captured (retro notes skipped).
+
+### What didn't
+- Not captured (retro notes skipped).
+
+### Changes for next phase
+- Not captured (retro notes skipped).
+
+### Scope changes
+- 2.4 (#20, builder reconciliation) re-estimated 3→5 at session start — the `removeSeat` port method across two adapters + contract test pushed it past the carried-over 3. Shipped at ~5.
+- Phase 2 closed Pass A complete: scorer (#30), pool ranking + boost/floor (#31), crew own-standing (#32), builder reconciliation (#20). The staffing-horizon clock remains explicitly out (flagged at the boundary, Phase 3+).
+
 ## Phase 1 — 2026-06-07 — Vertical slice (M0–M5)
 
 **Sessions:** 3 (S4, S5, S6)

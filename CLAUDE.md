@@ -79,7 +79,7 @@ check so a core-only regression can't ship behind a green app build:
 | `docs/RUNNING.md` | How to run the app locally, see the UI (Tailscale host, magic-link dev flow), and check a change. PRs link here for setup. |
 | `sessions/*.md` (orphan `sessions` branch via `.sessions-worktree/`) | Per-session files — `YYYY-MM-DD-HHMM-<dev>-<slug>.md` |
 | `.claude/seeds-version` | Schema version this project was installed at (`4`). Gates `/pull-seeds`. |
-| `.claude/project-type` | `webapp` (flipped from `tool` at M4 — DEC-020). Gates template files via `@sync-config` (DEC-011). |
+| `.claude/project-type` | `webapp` (flipped from `tool` at M4 — DEC-020). Gates template files via `@sync-config` (DEC-S011). |
 
 ## Core Data Model
 
@@ -191,10 +191,10 @@ Issues. A phase ends when its issues close.
 - Stacking PRs is preferred when tasks depend on each other — branch the next task off the previous
   task branch.
 - **Never rebase a task branch that already has commits on origin** — use GitHub's "Update branch".
-- `production` branch + `/promote-production` are **M4+** (DEC-013/DEC-022). **Adopt** when the first
+- `production` branch + `/promote-production` are **M4+** (DEC-013/DEC-S022). **Adopt** when the first
   hosted deploy lands: branch `production` off `main` at the release commit, push, then
   `/promote-production` ff-merges `main`→`production` per release. **Remove** (delete the branch) if
-  the deploy model changes — `main` is always the active trunk (DEC-022); `production` is only a
+  the deploy model changes — `main` is always the active trunk (DEC-S022); `production` is only a
   downstream deploy pointer, never a PR base.
 
 ## Versioning

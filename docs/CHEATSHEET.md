@@ -23,7 +23,7 @@ PHASE
 SEMVER  ( dev projects only — needs package.json )
   /bump-major      breaking change. manual. tag on main.
   /promote-production main->prod ff-merge + push.
-                   ( needs origin/production — DEC-022 )
+                   ( needs origin/production — DEC-S022 )
   patch bumps      automatic in /its-dead on PR merge.
 
 REFLECT / SYNC

@@ -12,7 +12,7 @@ Keep the seeds templates and active projects in sync. You run in one of two dire
 - **PUSH (upstream, project → seeds):** invoked by `/push-seeds`. Classify project-side changes; backport structural improvements into seeds templates; leave project-specific tweaks alone.
 - **PULL (downstream, seeds → project):** invoked by `/pull-seeds`. Classify template-side changes since the project's last sync; apply structural improvements into the project's live files; leave the project's own customizations alone.
 
-Same classifier, two directions (DEC-003). The hard part — deciding "structural improvement" vs "project-specific substitution" — is direction-symmetric.
+Same classifier, two directions (DEC-S003). The hard part — deciding "structural improvement" vs "project-specific substitution" — is direction-symmetric.
 
 ## Direction parameter
 
@@ -23,7 +23,7 @@ The invoking skill passes `direction: push` or `direction: pull` in your prompt.
 The invoking caller passes `mode: interactive` (default) or `mode: auto`.
 
 - **`mode: interactive`** — the original behavior. Step 3 presents a table and asks "Apply? (y/n)" per backport hunk and "Keep watching, or act now?" per pattern flag. Used by `/push-seeds`, `/pull-seeds`, and any direct human invocation.
-- **`mode: auto`** — non-interactive automation. Used by the nightly sync Routine (DEC-010). Behavior changes:
+- **`mode: auto`** — non-interactive automation. Used by the nightly sync Routine (DEC-S010). Behavior changes:
   - Skip Step 3 prompts entirely. Make your own judgment calls.
   - Apply every hunk classified as **backport** / **forward-port**. Skip every **skip** hunk silently.
   - Pattern **flag** entries are recorded in the Step 6 report only — never applied, never extracted.
@@ -41,8 +41,8 @@ If `mode` is missing, default to `interactive`. If `mode: auto` is requested but
 - `<seeds>/dev/` — template for dev projects (Next.js + Supabase shape)
 - `<seeds>/domain/` — template for non-dev domains (bread, tomatoes, ops, etc.)
 - `<seeds>/seeds-version` — the latest published schema version (the calling skill should have already gated on compatibility before invoking you, but verify)
-- `<seeds>/.claude/type-manifest.yaml` — project-type gating manifest (DEC-011). Lists the small set of `dev/claude/` files that only apply to certain project types (e.g. `agents/ui-reviewer.md` only applies to `webapp`-type projects)
-- `<seeds>/.claude/routine-config.yaml` — file-class registry (DEC-018) under the `file-classes:` key. Maps seeds-side glob patterns to one of `logic` / `context` / `hybrid`. Read at Step 1.4 to fork classification behavior per file.
+- `<seeds>/.claude/type-manifest.yaml` — project-type gating manifest (DEC-S011). Lists the small set of `dev/claude/` files that only apply to certain project types (e.g. `agents/ui-reviewer.md` only applies to `webapp`-type projects)
+- `<seeds>/.claude/routine-config.yaml` — file-class registry (DEC-S018) under the `file-classes:` key. Maps seeds-side glob patterns to one of `logic` / `context` / `hybrid`. Read at Step 1.4 to fork classification behavior per file.
 - The active project's `.claude/project-type` — single-line file naming the project's type (`webapp` or `tool`). Optional; if absent, no type-gating is applied
 - The active project's `.claude/agents/`, `.claude/skills/`, `CLAUDE.md`, and `docs/` — the live versions
 - `<seeds>/dev/claude/skills/push-seeds/SKILL.md` and `<seeds>/dev/claude/skills/pull-seeds/SKILL.md` — the invocation wrappers that call you
@@ -58,7 +58,7 @@ If `mode` is missing, default to `interactive`. If `mode: auto` is requested but
 
 ### Step 1 — Diff
 
-**Project-type gating (DEC-011).** Before scoping the diff, read `<project>/.claude/project-type` (single-line file: `webapp`, `tool`, or other supported tokens). Then read `<seeds>/.claude/type-manifest.yaml` for the gating rules. For every file pair below, check whether the template-side path appears in the manifest. If it does and the project's type is not in the manifest's allowed list for that path, **drop the pair from the diff scope** and record one entry for the Step 6 report:
+**Project-type gating (DEC-S011).** Before scoping the diff, read `<project>/.claude/project-type` (single-line file: `webapp`, `tool`, or other supported tokens). Then read `<seeds>/.claude/type-manifest.yaml` for the gating rules. For every file pair below, check whether the template-side path appears in the manifest. If it does and the project's type is not in the manifest's allowed list for that path, **drop the pair from the diff scope** and record one entry for the Step 6 report:
 
 > `<file>` skipped — project type `<type>`, file applies to `[<allowed types>]` (manifest-gated)
 
@@ -78,13 +78,13 @@ For each pair that survived the gate, diff project-live against seeds-template:
 
 The diff itself is direction-symmetric — same hunks, same classification rubric. Direction only matters at apply time (Step 4).
 
-**Ignore formatting-only differences (DEC-022 — anti-churn).** A hunk whose only delta is whitespace or non-semantic formatting is **not drift** and must be dropped from the diff scope before classification. This includes: tabs vs spaces, trailing whitespace, indentation width, blank-line count, line-wrapping, and markdown-table separator padding (`|---|` vs `|------|`). Concretely, treat a hunk as formatting-only if it disappears under `git diff --ignore-all-space --ignore-blank-lines` (or the equivalent normalized comparison). Never "forward-port" or "backport" a formatting-only hunk, and never overwrite a file solely to reformat it. The 2026-06-01 sailbook loop (PR #75) was exactly this: the apply step regenerated files with cosmetic drift (tabs, literal `\n`, indent, table padding), which the next run re-detected as "drift" and re-proposed — a self-perpetuating noise generator. Real semantic changes (added/removed/reordered *content*, not whitespace) classify normally.
+**Ignore formatting-only differences (DEC-S022 — anti-churn).** A hunk whose only delta is whitespace or non-semantic formatting is **not drift** and must be dropped from the diff scope before classification. This includes: tabs vs spaces, trailing whitespace, indentation width, blank-line count, line-wrapping, and markdown-table separator padding (`|---|` vs `|------|`). Concretely, treat a hunk as formatting-only if it disappears under `git diff --ignore-all-space --ignore-blank-lines` (or the equivalent normalized comparison). Never "forward-port" or "backport" a formatting-only hunk, and never overwrite a file solely to reformat it. The 2026-06-01 sailbook loop (PR #75) was exactly this: the apply step regenerated files with cosmetic drift (tabs, literal `\n`, indent, table padding), which the next run re-detected as "drift" and re-proposed — a self-perpetuating noise generator. Real semantic changes (added/removed/reordered *content*, not whitespace) classify normally.
 
-**Apply deterministically; never paraphrase (DEC-022).** When a hunk IS a real change to apply, transcribe the source side **verbatim** — copy the bytes, don't regenerate prose from memory. For a full-file/"logic-drift" overwrite, write the source file's exact content (then re-apply the project's preserved substitutions per Step 4). Regenerating text is what introduced the cosmetic drift that fed the loop.
+**Apply deterministically; never paraphrase (DEC-S022).** When a hunk IS a real change to apply, transcribe the source side **verbatim** — copy the bytes, don't regenerate prose from memory. For a full-file/"logic-drift" overwrite, write the source file's exact content (then re-apply the project's preserved substitutions per Step 4). Regenerating text is what introduced the cosmetic drift that fed the loop.
 
 **Never blanket-skip a file** that has a corresponding template, even if the project's copy is heavily customized. Hunk-classify the diff. Files like `docs/BRAND.md`, `docs/PROJECT_PLAN.md`, `docs/RETROSPECTIVES.md`, and `CLAUDE.md` carry both project substitutions AND structural template content; treating them as 100%-project-specific blanks out the structural channel and was the failure mode of the 2026-05-08 first run. The only gates that drop a whole file from scope are the project-type manifest above, the file-class `context` lookup in Step 1.4 below, and the duplicate-PR check in Step 1.5 — all three explicit.
 
-### Step 1.4 — File-class lookup (DEC-018)
+### Step 1.4 — File-class lookup (DEC-S018)
 
 After Step 1's type-gate and before Step 1.5's duplicate-PR check, read `<seeds>/.claude/routine-config.yaml` and parse the `file-classes:` block. This is an ordered list of single-key maps from glob pattern to class name (one of `logic` / `context` / `hybrid`). First match wins — earlier entries take precedence over later ones.
 
@@ -92,10 +92,10 @@ For each file pair that survived Step 1, look up its seeds-side path against the
 
 - **`logic`** — file is byte-identical-by-design across projects. Skip hunk classification entirely. Step 2 hash-compares; if hashes diverge, emit a single Step 3 row (see Step 2 + Step 3 below). If hashes match, emit nothing.
 - **`context`** — file is project-specific. Drop the pair from diff scope entirely. Record in Step 6 aggregated summary (see Step 6 below). **Do not emit a Step 3 table row.**
-- **`hybrid`** — file is a generic shell paired with a project-side `.claude/<basename>-context.{md,json}` context file (DEC-019). Only the shell participates in classification. The project-side context file is implicitly context-class and not in scope. Proceed to Step 2 hunk classification on the shell file as today.
+- **`hybrid`** — file is a generic shell paired with a project-side `.claude/<basename>-context.{md,json}` context file (DEC-S019). Only the shell participates in classification. The project-side context file is implicitly context-class and not in scope. Proceed to Step 2 hunk classification on the shell file as today.
 - **Unmatched** — no glob in the registry matches the file's seeds-side path. Default to `hybrid` behavior with the seeds file as the de facto shell. Legacy behavior is preserved for any file not yet listed in the registry; the noise reduction kicks in only as files get registered.
 
-If `<seeds>/.claude/routine-config.yaml` is missing or unreadable, or the `file-classes:` block is absent, log one line in Step 6 (`File-class lookup skipped — routine-config.yaml or file-classes block unavailable.`) and treat all pairs as unmatched. Same fallback discipline as DEC-011's type-gating: never fail-closed, always fall through to legacy behavior with a visible note.
+If `<seeds>/.claude/routine-config.yaml` is missing or unreadable, or the `file-classes:` block is absent, log one line in Step 6 (`File-class lookup skipped — routine-config.yaml or file-classes block unavailable.`) and treat all pairs as unmatched. Same fallback discipline as DEC-S011's type-gating: never fail-closed, always fall through to legacy behavior with a visible note.
 
 This step is a **scoping + behavior-fork** step, not a hunk-level one. It either drops the pair from scope (`context`) or changes how Step 2 classifies it (`logic` → hash-only, `hybrid`/unmatched → hunk classification). The fork happens once per file pair.
 
@@ -256,7 +256,7 @@ If a logic file picks up project-specific content over time, the right fix is to
 
 The classifier is symmetric; the substitution-preservation logic flips. In push, you generify; in pull, you respect existing concretions. Logic-drift bypasses both — it's a wholesale sync (or, in PUSH+auto, no sync at all).
 
-**Post-apply no-op guard (DEC-022 — anti-churn).** After writing all approved changes, re-diff the target against its pre-apply state with whitespace ignored (`git diff --ignore-all-space --ignore-blank-lines`). If nothing remains, **revert the writes and stage no commit** — the "changes" were formatting-only and must not open a PR. Never stage an empty or whitespace-only commit. This is the backstop that breaks the sailbook-style nightly loop even if a formatting-only hunk slips past the Step 1 filter.
+**Post-apply no-op guard (DEC-S022 — anti-churn).** After writing all approved changes, re-diff the target against its pre-apply state with whitespace ignored (`git diff --ignore-all-space --ignore-blank-lines`). If nothing remains, **revert the writes and stage no commit** — the "changes" were formatting-only and must not open a PR. Never stage an empty or whitespace-only commit. This is the backstop that breaks the sailbook-style nightly loop even if a formatting-only hunk slips past the Step 1 filter.
 
 ### Step 5 — Bug check
 
@@ -271,7 +271,7 @@ Apply if approved.
 
 Output the following sections in order. Sections with no entries are omitted entirely — do not emit empty section headers.
 
-**Derive this report from the actual staged diff, not from intentions (DEC-022 — anti-churn).** The "Files updated" list and any action/classification table MUST be generated from what was really written and staged (`git diff --staged --name-only` / `--stat`), never from the set of changes you *planned* to make. The sailbook PR #75 body advertised 15 full-file overwrites and 4 new files while the staged diff touched 5 files with cosmetic changes only — because the table was written from intent. A file that produced no staged change (e.g. dropped by the no-op guard, or whose only delta was formatting) must NOT appear as an applied row. Report what happened, byte-for-byte.
+**Derive this report from the actual staged diff, not from intentions (DEC-S022 — anti-churn).** The "Files updated" list and any action/classification table MUST be generated from what was really written and staged (`git diff --staged --name-only` / `--stat`), never from the set of changes you *planned* to make. The sailbook PR #75 body advertised 15 full-file overwrites and 4 new files while the staged diff touched 5 files with cosmetic changes only — because the table was written from intent. A file that produced no staged change (e.g. dropped by the no-op guard, or whose only delta was formatting) must NOT appear as an applied row. Report what happened, byte-for-byte.
 
 **Files updated.** List with one line per file noting hunks touched (PUSH: seeds-side; PULL: project-side). For logic-drift, write `<file> — full-file overwrite from <source-side>`.
 

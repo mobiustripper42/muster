@@ -1,10 +1,10 @@
 ---
 name: promote-production
-description: Promote the active trunk (`main`) to the `production` deploy branch via fast-forward merge, then push. The release was already version-bumped and tagged on `main` by `/retro` or `/bump-major`, so promotion is deploy-only — it advances `production` to the tagged commit. Use when work on `main` is ready to ship. Requires `origin/production` to exist (DEC-022).
+description: Promote the active trunk (`main`) to the `production` deploy branch via fast-forward merge, then push. The release was already version-bumped and tagged on `main` by `/retro` or `/bump-major`, so promotion is deploy-only — it advances `production` to the tagged commit. Use when work on `main` is ready to ship. Requires `origin/production` to exist (DEC-S022).
 tools: Read, Edit, Write, Bash, Grep
 ---
 
-You are promoting `main` → `production`. Under DEC-022, `main` is the always-active trunk and `production` is a downstream deploy pointer that Vercel (or whatever host) watches. Version bumps and tags already happened on `main` at `/retro` / `/bump-major`; this skill does **not** tag — it ff-merges the trunk into `production` and pushes, which is the deploy moment.
+You are promoting `main` → `production`. Under DEC-S022, `main` is the always-active trunk and `production` is a downstream deploy pointer that Vercel (or whatever host) watches. Version bumps and tags already happened on `main` at `/retro` / `/bump-major`; this skill does **not** tag — it ff-merges the trunk into `production` and pushes, which is the deploy moment.
 
 ## Step 0 — Sanity gates
 
@@ -12,7 +12,7 @@ You are promoting `main` → `production`. Under DEC-022, `main` is the always-a
 ```
 git show-ref --verify --quiet refs/remotes/origin/production || echo "missing"
 ```
-If `origin/production` doesn't exist (locally cached), STOP. Tell the user: "/promote-production requires an `origin/production` branch (DEC-022). This repo deploys straight off `main` — there's nothing to promote. To adopt a production branch: `git checkout -b production main && git push -u origin production`, then point the host's production branch at it." Do not proceed. Step 1 refreshes the cache from the remote regardless, so a stale local view that misses a freshly-created `production` is recovered after the user re-runs.
+If `origin/production` doesn't exist (locally cached), STOP. Tell the user: "/promote-production requires an `origin/production` branch (DEC-S022). This repo deploys straight off `main` — there's nothing to promote. To adopt a production branch: `git checkout -b production main && git push -u origin production`, then point the host's production branch at it." Do not proceed. Step 1 refreshes the cache from the remote regardless, so a stale local view that misses a freshly-created `production` is recovered after the user re-runs.
 
 **Clean working tree:**
 ```
@@ -48,7 +48,7 @@ git fetch --tags
 SHIP_SHA=$(git rev-parse origin/main)
 SHIP_TAG=$(git tag --points-at "$SHIP_SHA" | grep '^v' | sort -V | tail -1)
 ```
-`SHIP_TAG` is the version tag already on the trunk HEAD (created by `/retro` or `/bump-major`). If `SHIP_TAG` is empty, surface a warning — promotion still works, but the promoted commit carries no version tag: **"⚠ No `v*` tag on `main` HEAD. Promote anyway (deploys an untagged commit), or bump first via `/retro` / `/bump-major`? (promote/abort)"** Wait. Do **not** invent or apply a tag here — tagging is the trunk skills' job (DEC-022).
+`SHIP_TAG` is the version tag already on the trunk HEAD (created by `/retro` or `/bump-major`). If `SHIP_TAG` is empty, surface a warning — promotion still works, but the promoted commit carries no version tag: **"⚠ No `v*` tag on `main` HEAD. Promote anyway (deploys an untagged commit), or bump first via `/retro` / `/bump-major`? (promote/abort)"** Wait. Do **not** invent or apply a tag here — tagging is the trunk skills' job (DEC-S022).
 
 ## Step 4 — ff-merge production → main HEAD
 

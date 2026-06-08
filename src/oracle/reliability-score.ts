@@ -122,6 +122,32 @@ function contributionOf(
 }
 
 /**
+ * The most recent `windowEvents` well-formed, non-future events, newest first.
+ * Count-based (not calendar) so an off-season gap can't silently drop a returning
+ * crew member's whole history. The single window definition — both the score and
+ * the crew-facing standing read the same set, so they never disagree.
+ */
+/** The window cap actually applied, clamped non-negative. One definition. */
+export function resolveWindowCap(opts: ScoreOptions = {}): number {
+  return Math.max(0, opts.windowEvents ?? WINDOW_EVENTS);
+}
+
+export function windowedEvents(
+  events: readonly ReliabilityEvent[],
+  now: Date,
+  opts: ScoreOptions = {},
+): ReliabilityEvent[] {
+  const windowEvents = resolveWindowCap(opts);
+  const nowMs = now.getTime();
+  return events
+    .map((event) => ({ event, t: new Date(event.timestamp).getTime() }))
+    .filter(({ t }) => !Number.isNaN(t) && t <= nowMs)
+    .sort((a, b) => b.t - a.t)
+    .slice(0, windowEvents)
+    .map((x) => x.event);
+}
+
+/**
  * Blended reliability score from a crew member's event log. Pure: same events +
  * same `now` ⇒ same number. Scores the most recent `windowEvents` well-formed,
  * non-future events; an empty log scores a neutral 0 — never a misleading low.
@@ -132,21 +158,10 @@ export function computeReliabilityScore(
   opts: ScoreOptions = {},
 ): ReliabilityScore {
   const weights = opts.weights ?? DEFAULT_WEIGHTS;
-  const windowEvents = Math.max(0, opts.windowEvents ?? WINDOW_EVENTS);
-  const nowMs = now.getTime();
-
-  // Keep only well-formed, non-future events, newest first, then take the most
-  // recent `windowEvents`. Count-based (not calendar) so an off-season gap can't
-  // silently drop a returning crew member's whole history.
-  const inWindow = events
-    .map((event) => ({ event, t: new Date(event.timestamp).getTime() }))
-    .filter(({ t }) => !Number.isNaN(t) && t <= nowMs)
-    .sort((a, b) => b.t - a.t)
-    .slice(0, windowEvents);
-
+  const inWindow = windowedEvents(events, now, opts);
   let score = 0;
-  for (const { event } of inWindow) score += contributionOf(event, weights);
-  return { score, eventCount: inWindow.length, windowEvents };
+  for (const event of inWindow) score += contributionOf(event, weights);
+  return { score, eventCount: inWindow.length, windowEvents: resolveWindowCap(opts) };
 }
 
 /**

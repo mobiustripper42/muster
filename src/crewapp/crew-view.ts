@@ -13,6 +13,10 @@
 
 import type { CrewMemberId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
+import { summarizeStanding } from "./standing.js";
+import type { CrewStandingView } from "./standing.js";
+
+export type { CrewStandingView } from "./standing.js";
 
 /** One open ask awaiting this crew member's In/Out. */
 export interface OpenAskView {
@@ -35,17 +39,6 @@ export interface MyShiftView {
   roleName: string;
   /** ISO-8601 date (vessel-local day). */
   date: string;
-}
-
-/**
- * The crew member's own reliability standing — individual, never comparative
- * (BRAND, DEC-008). MVP-thin: the score is null/flat, so this reads neutral and
- * says so plainly rather than inventing a grade.
- */
-export interface CrewStandingView {
-  hasHistory: boolean;
-  /** Plain, neutral one-liner — "No history yet" or a neutral summary. */
-  line: string;
 }
 
 export interface CrewAppView {
@@ -119,11 +112,12 @@ export async function buildCrewAppView(
   }
   shifts.sort((a, b) => a.date.localeCompare(b.date));
 
-  // Standing: MVP-thin. null score = no history → neutral, stated plainly.
-  const standing: CrewStandingView =
-    me.reliabilityScore === null
-      ? { hasHistory: false, line: "New — no track record yet" }
-      : { hasHistory: true, line: "In good standing" };
+  // Standing: real, derived live from the reliability log (NOT the stored
+  // reliabilityScore field — DEC-008/§1.4). Individual + non-comparative.
+  const standing: CrewStandingView = summarizeStanding(
+    await repo.reliabilityEventsFor(crewMemberId),
+    now,
+  );
 
   return { me: { id: me.id, name: me.name }, asks, shifts, standing };
 }

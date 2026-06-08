@@ -10,6 +10,7 @@ import type {
   Vessel,
 } from "../domain/entities.js";
 import { buildCrewAppView } from "./crew-view.js";
+import { logShiftBailed, logShiftCompleted } from "../oracle/reliability-log.js";
 
 const NOW = new Date("2026-07-01T12:00:00.000Z");
 const TENANT = asId<"TenantId">("t");
@@ -77,13 +78,25 @@ describe("buildCrewAppView", () => {
     expect(view!.shifts[0]).toMatchObject({ vesselName: "Hops", roleName: "captain", date: "2026-07-04" });
   });
 
-  it("standing reads neutral with no history (null score)", async () => {
-    const view = await buildCrewAppView(await seed({ score: null }), ME, NOW);
-    expect(view!.standing).toEqual({ hasHistory: false, line: "New — no track record yet" });
+  it("standing reads neutral with no logged history", async () => {
+    const view = await buildCrewAppView(await seed(), ME, NOW);
+    expect(view!.standing).toEqual({
+      hasHistory: false,
+      line: "New — no track record yet",
+      reasons: [],
+    });
   });
 
-  it("standing reads in-good-standing once a score exists", async () => {
-    const view = await buildCrewAppView(await seed({ score: 7 }), ME, NOW);
+  it("standing is derived live from the reliability log, not a stored field", async () => {
+    const repo = await seed({ score: 7 }); // stored field is ignored now
+    const shiftId = asId<"ShiftId">("shift-past");
+    await logShiftCompleted(repo, ME, shiftId, NOW);
+    await logShiftCompleted(repo, ME, shiftId, NOW);
+    await logShiftBailed(repo, ME, shiftId, NOW, 0); // early bail
+
+    const view = await buildCrewAppView(repo, ME, NOW);
     expect(view!.standing.hasHistory).toBe(true);
+    expect(view!.standing.reasons).toContain("showed 2/3");
+    expect(view!.standing.line).toContain("showed 2/3");
   });
 });

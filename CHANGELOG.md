@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.3.5] - 2026-06-08
+- PR #38: Phase 2.4 — builder reconciliation: manning-shrink seat prune + all-cancelled→Cancelled (closes #20)
+
 ## [0.3.4] - 2026-06-08
 - PR #36: DEC-S namespace sweep — apply DEC-S025
 

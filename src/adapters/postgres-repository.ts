@@ -447,6 +447,9 @@ export class PostgresRepository implements Repository {
     );
     return rowCount === 1;
   }
+  async removeSeat(id: SeatId): Promise<void> {
+    await this.#pool.query("delete from seats where id=$1", [id]);
+  }
 
   // ── Asks ───────────────────────────────────────────────────────────────────
   async saveAsk(a: Ask): Promise<void> {

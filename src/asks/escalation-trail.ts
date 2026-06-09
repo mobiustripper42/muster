@@ -47,7 +47,11 @@ export interface EscalationTrail {
   pending: number;
   /** Tier-2 re-confirmed full-pool exhaustion at least once (the v1 stub). */
   poolWidened: boolean;
-  /** Crew directly nudged on this shift, in log order. */
+  /**
+   * Crew directly nudged on this shift, earliest-nudge first. A **distinct-crew
+   * set** (not a per-event count): a re-nudge of the same person appears once, so
+   * `nudged.length` is people nudged, not nudge actions.
+   */
   nudged: CrewMemberId[];
   /** The oracle cannot crew every required seat from the pool as of `now`. */
   exhausted: boolean;
@@ -99,14 +103,20 @@ export async function escalationTrailFor(
   );
 
   // ── nudged — crew-keyed, so scan the roster's logs for this shift ───────────
+  // Sort by the (earliest) nudge timestamp so the order is the trail's log order,
+  // deterministic across adapters — not the unspecified `listCrewMembers` order.
+  const nudges: { id: CrewMemberId; at: string }[] = [];
   for (const crew of await repo.listCrewMembers()) {
     const events = await repo.reliabilityEventsFor(crew.id);
-    if (
-      events.some((e) => e.type === "nudged" && e.metadata.shiftId === shiftId)
-    ) {
-      trail.nudged.push(crew.id);
-    }
+    const first = events
+      .filter((e) => e.type === "nudged" && e.metadata.shiftId === shiftId)
+      .reduce<string | undefined>(
+        (min, e) => (min === undefined || e.timestamp < min ? e.timestamp : min),
+        undefined,
+      );
+    if (first !== undefined) nudges.push({ id: crew.id, at: first });
   }
+  trail.nudged = nudges.sort((a, b) => a.at.localeCompare(b.at)).map((n) => n.id);
 
   // ── exhausted — the oracle's distinct-pool verdict (DEC-003) ────────────────
   const solution = await solveShift(repo, shiftId, now);

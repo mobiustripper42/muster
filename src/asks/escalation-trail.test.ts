@@ -168,6 +168,29 @@ describe("escalationTrailFor — Tier-2 actions", () => {
     expect(trail.nudged).toEqual([bob]);
   });
 
+  it("orders nudged by nudge timestamp (log order), not crew-iteration order", async () => {
+    // Add crew so that iteration order ≠ nudge order: nudge 'crew-z' before
+    // 'crew-a'. A crew-iteration scan would return [a, z]; log order is [z, a].
+    const a = await addCrew("crew-a");
+    const z = await addCrew("crew-z");
+    const seat = (await addShift(1))[0]!;
+    await logNudged(repo, z, seat, SHIFT, later(1000));
+    await logNudged(repo, a, seat, SHIFT, later(2000));
+
+    const trail = await escalationTrailFor(repo, SHIFT, later(3000));
+    expect(trail.nudged).toEqual([z, a]);
+  });
+
+  it("dedupes a re-nudged person to a distinct-crew set", async () => {
+    const bob = await addCrew("crew-bob");
+    const seat = (await addShift(1))[0]!;
+    await logNudged(repo, bob, seat, SHIFT, later(1000));
+    await logNudged(repo, bob, seat, SHIFT, later(2000)); // re-nudge same person
+
+    const trail = await escalationTrailFor(repo, SHIFT, later(3000));
+    expect(trail.nudged).toEqual([bob]); // once, not twice
+  });
+
   it("scopes widened/nudged to the shift — another shift's events don't bleed in", async () => {
     const bob = await addCrew("crew-bob");
     await addShift(1);

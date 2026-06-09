@@ -5,9 +5,15 @@
 
 import { describe, expect, it } from "vitest";
 import { asId } from "../domain/ids.js";
-import type { RoleTypeId, ShiftId } from "../domain/ids.js";
-import type { Seat, Vessel } from "../domain/entities.js";
-import { deriveSeats, deriveShiftState } from "./derive.js";
+import type { EventId, RoleTypeId, ShiftId } from "../domain/ids.js";
+import type { Event, Seat, Shift, Vessel } from "../domain/entities.js";
+import {
+  deriveSeats,
+  deriveShiftState,
+  resolveShiftState,
+  staffingHorizonFor,
+  staffingHorizonFromEvents,
+} from "./derive.js";
 
 const CAPTAIN = asId<"RoleTypeId">("role-captain");
 const MATE = asId<"RoleTypeId">("role-mate");
@@ -73,5 +79,99 @@ describe("deriveShiftState", () => {
 
   it("is AtRisk when any required seat bailed (even if others confirmed)", () => {
     expect(deriveShiftState([seat(CAPTAIN, "Confirmed"), seat(MATE, "Bailed")])).toBe("AtRisk");
+  });
+});
+
+// ── Staffing-horizon clock (DEC-022) ─────────────────────────────────────────
+
+const ev = (id: string, date: string, time: string, status: Event["status"] = "scheduled"): Event => ({
+  id: asId<"EventId">(id),
+  vesselId: asId<"VesselId">("vessel-x"),
+  date,
+  time,
+  capacity: 16,
+  status,
+});
+
+const shiftWith = (eventIds: string[]): Shift => ({
+  id: SHIFT,
+  vesselId: asId<"VesselId">("vessel-x"),
+  date: "2026-05-16",
+  state: "Pending",
+  eventIds: eventIds.map((i) => asId<"EventId">(i)),
+});
+
+describe("staffingHorizonFromEvents", () => {
+  it("is the earliest scheduled event minus leadDays (default 7d)", () => {
+    const h = staffingHorizonFromEvents([
+      ev("e1", "2026-05-16", "19:30"),
+      ev("e2", "2026-05-16", "15:30"), // earliest of the day
+    ]);
+    // 2026-05-16T15:30Z − 7d = 2026-05-09T15:30Z
+    expect(h?.toISOString()).toBe("2026-05-09T15:30:00.000Z");
+  });
+
+  it("honors a custom leadDays", () => {
+    const h = staffingHorizonFromEvents([ev("e1", "2026-05-16", "15:30")], 3);
+    expect(h?.toISOString()).toBe("2026-05-13T15:30:00.000Z");
+  });
+
+  it("ignores cancelled events when anchoring", () => {
+    const h = staffingHorizonFromEvents([
+      ev("e1", "2026-05-10", "08:00", "cancelled"), // earlier but cancelled — skipped
+      ev("e2", "2026-05-16", "15:30"),
+    ]);
+    expect(h?.toISOString()).toBe("2026-05-09T15:30:00.000Z");
+  });
+
+  it("is null with no scheduled event to anchor to", () => {
+    expect(staffingHorizonFromEvents([])).toBeNull();
+    expect(staffingHorizonFromEvents([ev("e1", "2026-05-16", "15:30", "cancelled")])).toBeNull();
+  });
+});
+
+describe("staffingHorizonFor", () => {
+  it("resolves a shift's eventIds against the full event list", () => {
+    const all = [ev("e1", "2026-05-16", "15:30"), ev("e9", "2026-05-01", "09:00")];
+    const h = staffingHorizonFor(shiftWith(["e1"]), all); // e9 not in this shift
+    expect(h?.toISOString()).toBe("2026-05-09T15:30:00.000Z");
+  });
+});
+
+describe("resolveShiftState (horizon overlay, DEC-022)", () => {
+  const horizon = new Date("2026-05-09T15:30:00.000Z");
+  const before = new Date("2026-05-01T00:00:00.000Z");
+  const after = new Date("2026-05-10T00:00:00.000Z");
+  const open = [seat(CAPTAIN, "Open"), seat(MATE, "Open")];
+
+  it("returns a Crewed shift as-is regardless of time", () => {
+    const crewed = [seat(CAPTAIN, "Confirmed"), seat(MATE, "Confirmed")];
+    expect(resolveShiftState(crewed, { now: before, horizon, poolExhausted: false })).toBe("Crewed");
+  });
+
+  it("falls back to the seat-fold when there is no horizon anchor", () => {
+    expect(resolveShiftState(open, { now: after, horizon: null, poolExhausted: false })).toBe("Pending");
+  });
+
+  it("is Pending before the horizon (crew rules abstain)", () => {
+    expect(resolveShiftState(open, { now: before, horizon, poolExhausted: false })).toBe("Pending");
+  });
+
+  it("is born into Filling once the horizon is crossed", () => {
+    expect(resolveShiftState(open, { now: after, horizon, poolExhausted: false })).toBe("Filling");
+  });
+
+  it("is AtRisk past the horizon when the pool is exhausted", () => {
+    expect(resolveShiftState(open, { now: after, horizon, poolExhausted: true })).toBe("AtRisk");
+  });
+
+  it("keeps a bail-driven AtRisk (seat-fold) past the horizon", () => {
+    const bailed = [seat(CAPTAIN, "Confirmed"), seat(MATE, "Bailed")];
+    expect(resolveShiftState(bailed, { now: after, horizon, poolExhausted: false })).toBe("AtRisk");
+  });
+
+  it("lets the seat-fold's own Filling stand past the horizon", () => {
+    const working = [seat(CAPTAIN, "Asked"), seat(MATE, "Open")];
+    expect(resolveShiftState(working, { now: after, horizon, poolExhausted: false })).toBe("Filling");
   });
 });

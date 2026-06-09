@@ -224,3 +224,55 @@ export function logShiftAcknowledged(
     ...(seatId ? { seatId } : {}),
   });
 }
+
+// ── Tier-2 escalation actions (DEC-024) ─────────────────────────────────────
+//
+// Engine moves, not crew behavior — the scorer ignores them. They exist so the
+// At-Risk board can reconstruct the escalation trail (§2.5) from the one
+// append-only log (DEC-008), without a second aggregate. `escalationTrailFor`
+// (asks/escalation-trail.ts) reads them back, filtered by `metadata.shiftId`.
+
+/**
+ * The non-crew actor for shift-level escalation events. `pool_widened` is an
+ * engine action with no person attached, so it keys here instead of to a
+ * CrewMember; this id never appears in `listCrewMembers`. The one keying wart of
+ * the derived-trail choice (DEC-024) — accepted over standing up a new aggregate.
+ */
+export const SYSTEM_ACTOR_ID: CrewMemberId = asId<"CrewMemberId">("system");
+
+/**
+ * Tier-2 widened the pool for a shift (DEC-024). A **logged stub** in v1: every
+ * eligibility rule is hard and the Tier-1 broadcast already reached the whole
+ * pool, so there is nothing to relax — this records that the engine re-confirmed
+ * full-pool exhaustion (the "I checked everyone, twice" rung of the trail), not
+ * that anyone new became eligible. Keyed to the system actor; the shift is in
+ * `metadata.shiftId`.
+ */
+export function logPoolWidened(
+  repo: Repository,
+  shiftId: ShiftId,
+  now: Date,
+): Promise<ReliabilityEvent> {
+  return recordReliabilityEvent(repo, SYSTEM_ACTOR_ID, "pool_widened", now, {
+    shiftId,
+  });
+}
+
+/**
+ * Tier-2 direct-nudged a high-reliability person (DEC-024) — the live lever of
+ * Tier 2: an assign-then-confirm to a not-yet-asked top-ranked crew. Keyed to the
+ * nudged person (it's part of their escalation history; `escalation_accepted` is
+ * the bonus when they take it), with the seat + shift in metadata.
+ */
+export function logNudged(
+  repo: Repository,
+  crewMemberId: CrewMemberId,
+  seatId: SeatId,
+  shiftId: ShiftId,
+  now: Date,
+): Promise<ReliabilityEvent> {
+  return recordReliabilityEvent(repo, crewMemberId, "nudged", now, {
+    seatId,
+    shiftId,
+  });
+}

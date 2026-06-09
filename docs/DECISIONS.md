@@ -535,6 +535,61 @@ the first heavy admin surface is next on the build — layered on top of Tailwin
 
 ---
 
+## DEC-022: Staffing horizon is *derived* config, not a stored field; shift time-state is a composition layer over seat-derivation
+**Decision:** The staffing horizon is **computed, never stored**: `staffingHorizonFor(shift, events,
+leadDays) = (earliest scheduled event date+time) − leadDays`, where `leadDays` is a single
+tenant/engine **config constant** (a *days* value — distinct from the same-day 45-min manifest call
+lead, DEC-021/FUTURE_IDEAS; two different leads, two different purposes). It is **not** a new entity
+field — no `Shift.horizonAt` column, no DDL change, no Repository-port change, no adapter change.
+Modeled as a list-of-one per DEC-004 so Pass D's staged horizons slot in without a signature change.
+The pure seat-fold **`deriveShiftState(seats)` stays untouched and seat-only** (DEC-005); a new
+**`resolveShiftState(shift, seats, {now, leadDays, poolExhausted})`** composition layer sits *beside*
+it and owns the four time-sensitive edges — `Pending`→`Filling` (horizon crossed), `Crewed`→`Filling`
+(early bail, time to refill), `Filling`/`Crewed`→`AtRisk` (late bail or exhausted pool, no time),
+deferring to the seat-fold when time isn't the deciding factor.
+**Why:** A stored horizon goes stale exactly when events are rescheduled (the #20 reconciliation
+case) — you'd hand-maintain a cache of a subtraction. Deriving it keeps the deliberately-thin port
+frozen and the core framework-free. Keeping `deriveShiftState` pure preserves DEC-005 ("state is
+derived") and its ~12 seat-only tests; the composed result is *still* a pure function of (seats, time,
+pool), just in a clearly-named second function — the same lifecycle-set-elsewhere pattern #20 used for
+`Cancelled`. This closes the `derive.ts` ⚠️ horizon-blind KNOWN GAP and lands the early-vs-late bail
+split DEC-019 explicitly deferred to this task.
+**Tradeoff:** Two derivation functions instead of one, and the horizon is recomputed on each read
+rather than cached — accepted; the inputs are already in hand and the subtraction is cheap. The
+`poolExhausted` signal must be supplied by the caller (from the oracle's eligible pool), which couples
+`resolveShiftState`'s callers to the oracle — acceptable, that's where the pool lives.
+**Revisit / trigger:** If a stored horizon is ever forced (e.g. a query needs to sort thousands of
+shifts by deadline at the DB), revisit — but that's an At-Risk-board-scale concern, not v1. The
+concrete `leadDays` **value** stays the existing DEC-TBD open question ("ship a dumb default, tune");
+this DEC fixes only *where the number lives*.
+**Phase:** Phase 3 / task 3.1a (#39). (@architect pass, 2026-06-09.)
+
+---
+
+## DEC-023: The engine advances via an explicit `tick(repo, now)` operation; no scheduler in v1
+**Decision:** Horizon advances run through an explicit **`tick(repo, now)`** sweep in the core (pure
+over injected `now`, never reads a clock — mirrors `scoreCrewMember`/`lock`). `tick` walks shifts,
+advances any that crossed their horizon via `resolveShiftState`, persists the change, and **eagerly
+fires Tier-1 asks** for newly-`Filling` shifts by reusing `solveShift`/`broadcastAsk` (not a rebuild).
+**Who calls `tick` on a timer is deferred to deploy** — a Vercel cron route is one line of config when
+there's a deployed app, and there isn't yet (DEC-020 parked hosting). For now its callers are tests
+and, optionally, a dev/admin "run the engine" trigger — exactly how `formShifts` already lives (a real
+core operation with no production scheduler behind it).
+**Why:** The advance **must be eager, not lazy-on-read**: `Pending`→`Filling` *kicks off Tier-1 asks*
+(SPEC §1.1, DEC-006), and you cannot lazily "send the ask" only when someone happens to load a page.
+A lazy derivation can compute a *display* state but can't drive the ask loop. So the state change that
+has side effects has to be an explicit operation. Building the scheduler now would be infra the stack
+doesn't have — premature.
+**Tradeoff:** Until a scheduler exists, horizons only advance when something calls `tick` (tests, a
+manual trigger) — accepted; there's no deployed app to run a cron against yet, and the calling seam is
+one config line when there is.
+**Revisit / trigger:** Wire the cron caller at first hosted deploy (alongside DEC-020's deferred host
+pick). If lazy *display*-state is ever needed before then, `resolveShiftState` already gives it for
+free on read — `tick` remains the only thing that fires asks.
+**Phase:** Phase 3 / task 3.1a (#39). (@architect pass, 2026-06-09.)
+
+---
+
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)
 
 These are deferred by design. Each names an owner and a trigger. **Consult @architect (and the named
@@ -552,7 +607,8 @@ human owner) before building past the trigger.**
 - **Which "M" (soft) rules ship** for BrewBoat v1 (TWIC, medical, drug consortium, duty-hour,
   weather/tide) — *Owner: Spink/Drew against real operations. SPEC §1.3.*
 - **Concrete horizon values** — how many days is the staffing horizon? *Ship a dumb default, tune.
-  SPEC §4.*
+  SPEC §4.* **(Where the value lives is now fixed by DEC-022 — a single `leadDays` config constant;
+  only the number remains tune-later. Default ships at 7d in task 3.1a.)*
 - **Reliability weights** — bail-lateness curve, ack weight, decay. *Flat v1; tune in Pass A. SPEC §1.4.*
 - **Event-Admin merge rule** — manual entries vs CSV re-import reconciliation. *Default "manual wins,
   flag conflicts"; refine against a real export. SPEC §2.2.*

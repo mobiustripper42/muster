@@ -174,6 +174,21 @@ describe("formShifts — reconciliation (#20)", () => {
     expect((await repo.getShift(day1))?.state).toBe("Completed");
   });
 
+  it("births a past-horizon shift into Filling when a clock is supplied (DEC-022)", async () => {
+    const repo = new InMemoryRepository();
+    await seedEvents(repo);
+    // 05-16 events; horizon = earliest (15:30) − 7d = 2026-05-09T15:30Z.
+    const past = new Date("2026-05-10T00:00:00.000Z");
+    await formShifts(repo, { now: past });
+    expect((await repo.getShift(day1))?.state).toBe("Filling"); // born working
+
+    // Without a clock, birth stays Pending (backward-compatible).
+    const repo2 = new InMemoryRepository();
+    await seedEvents(repo2);
+    await formShifts(repo2);
+    expect((await repo2.getShift(day1))?.state).toBe("Pending");
+  });
+
   it("keeps a partially-cancelled shift live, dropping only the cancelled event", async () => {
     const repo = new InMemoryRepository();
     await seedEvents(repo);

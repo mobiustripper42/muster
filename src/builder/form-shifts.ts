@@ -24,7 +24,13 @@
 import type { Event, Seat, Shift } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
-import { deriveSeats, deriveShiftState } from "./derive.js";
+import {
+  deriveSeats,
+  deriveShiftState,
+  resolveShiftState,
+  staffingHorizonFromEvents,
+  STAFFING_HORIZON_LEAD_DAYS,
+} from "./derive.js";
 
 export interface FormResult {
   shiftsCreated: number;
@@ -41,7 +47,16 @@ export interface FormResult {
   shiftsCancelled: number;
 }
 
-export async function formShifts(repo: Repository): Promise<FormResult> {
+/**
+ * Form/reconcile shifts. Pass `opts.now` to make birth **horizon-aware** (DEC-022):
+ * a shift whose staffing horizon is already past is born straight into `Filling`
+ * rather than `Pending`. Omit it (the default) and birth uses the pure seat-fold —
+ * backward-compatible with callers that don't carry a clock.
+ */
+export async function formShifts(
+  repo: Repository,
+  opts?: { now?: Date; leadDays?: number },
+): Promise<FormResult> {
   // Group by vessel + day across ALL events (not just `scheduled`): a group whose
   // events have all cancelled must still be revisited so its shift can derive to
   // `Cancelled` (SPEC §5 reconciliation). The scheduled/cancelled split happens
@@ -125,11 +140,25 @@ export async function formShifts(repo: Repository): Promise<FormResult> {
       }
     }
 
+    // Birth/refresh state: horizon-aware when a clock is supplied (DEC-022), else
+    // the pure seat-fold. A freshly-formed shift isn't pool-exhausted yet, so the
+    // overlay here only decides Pending-vs-Filling by the horizon.
+    const state = opts?.now
+      ? resolveShiftState(seats, {
+          now: opts.now,
+          horizon: staffingHorizonFromEvents(
+            scheduled,
+            opts.leadDays ?? STAFFING_HORIZON_LEAD_DAYS,
+          ),
+          poolExhausted: false,
+        })
+      : deriveShiftState(seats);
+
     const shift: Shift = {
       id: shiftId,
       vesselId,
       date,
-      state: deriveShiftState(seats),
+      state,
       eventIds: scheduled.map((e) => e.id).sort(),
       ...(existing?.lockedAt ? { lockedAt: existing.lockedAt } : {}),
     };

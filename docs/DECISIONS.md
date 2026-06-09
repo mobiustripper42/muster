@@ -543,10 +543,16 @@ lead, DEC-021/FUTURE_IDEAS; two different leads, two different purposes). It is 
 field — no `Shift.horizonAt` column, no DDL change, no Repository-port change, no adapter change.
 Modeled as a list-of-one per DEC-004 so Pass D's staged horizons slot in without a signature change.
 The pure seat-fold **`deriveShiftState(seats)` stays untouched and seat-only** (DEC-005); a new
-**`resolveShiftState(shift, seats, {now, leadDays, poolExhausted})`** composition layer sits *beside*
-it and owns the four time-sensitive edges — `Pending`→`Filling` (horizon crossed), `Crewed`→`Filling`
-(early bail, time to refill), `Filling`/`Crewed`→`AtRisk` (late bail or exhausted pool, no time),
-deferring to the seat-fold when time isn't the deciding factor.
+**`resolveShiftState(seats, {now, horizon, poolExhausted})`** composition layer sits *beside* it and
+overlays the time dimension on the seat verdict. *(As shipped, the horizon is **precomputed** and
+injected rather than passed as `shift`+`leadDays` — the pure fold takes no `shift` and reads no event
+list. `staffingHorizonFor(shift, events, leadDays)` does the resolution upstream.)* The edges it owns:
+`Pending`→`Filling` (horizon crossed), `Filling`/`Crewed`-fold→`AtRisk` (exhausted pool past horizon),
+and "before the horizon → `Pending`", deferring to the seat-fold otherwise. **There is no explicit
+`Crewed`→`Filling` early-bail edge** — DEC-019 makes `Bailed` transient, so the seat-fold never yields
+`Crewed` with an open required seat; the early-bail case is already handled at the seat level before
+this layer sees it. A `Crewed`/`Cancelled` fold result is returned as-is (a crewed trip doesn't
+un-crew because a clock ticked).
 **Why:** A stored horizon goes stale exactly when events are rescheduled (the #20 reconciliation
 case) — you'd hand-maintain a cache of a subtraction. Deriving it keeps the deliberately-thin port
 frozen and the core framework-free. Keeping `deriveShiftState` pure preserves DEC-005 ("state is
@@ -582,7 +588,13 @@ has side effects has to be an explicit operation. Building the scheduler now wou
 doesn't have — premature.
 **Tradeoff:** Until a scheduler exists, horizons only advance when something calls `tick` (tests, a
 manual trigger) — accepted; there's no deployed app to run a cron against yet, and the calling seam is
-one config line when there is.
+one config line when there is. **Corollary — the persisted shift badge can lag the true horizon state
+between ticks.** The ask loop's `refreshShiftState` persists the *pure* seat-fold (it has no `now`), so
+a seat-driven write between ticks can transiently drop the time-overlay (e.g. a late `yes` flips an
+`AtRisk` shift back to `Filling`). `tick` is the **sole reconciler** and re-asserts on its next sweep.
+Treat the persisted state as eventually-consistent, not authoritative-the-instant-you-read-it; display
+surfaces should resolve on read (via `resolveShiftState`) or tolerate the staleness. No asks
+double-fire from this — `broadcastAsk` only fires on the `Pending`→`Filling` birth inside `tick`.
 **Revisit / trigger:** Wire the cron caller at first hosted deploy (alongside DEC-020's deferred host
 pick). If lazy *display*-state is ever needed before then, `resolveShiftState` already gives it for
 free on read — `tick` remains the only thing that fires asks.

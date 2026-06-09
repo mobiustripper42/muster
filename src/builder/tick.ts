@@ -18,7 +18,7 @@
 import type { Seat, Shift } from "../domain/entities.js";
 import type { Repository } from "../ports/repository.js";
 import { broadcastAsk } from "../asks/ask-loop.js";
-import { eligiblePool } from "../oracle/oracle.js";
+import { solveShift } from "../oracle/oracle.js";
 import {
   resolveShiftState,
   staffingHorizonFor,
@@ -32,27 +32,34 @@ export interface TickResult {
   bornFilling: number;
   /** Shifts that resolved to `AtRisk` (past horizon, exhausted/no time). */
   toAtRisk: number;
-  /** Tier-1 asks fired for newly-`Filling` shifts' open required seats. */
+  /**
+   * Total Tier-1 asks fired for newly-`Filling` shifts — one per eligible crew
+   * per broadcast seat (a 5-deep pool on one seat counts 5), not seats kicked.
+   */
   asksFired: number;
 }
 
 /**
- * Does an unfilled required seat have an empty eligible pool? The "no one left to
- * ask" half of the At-Risk condition (the other half is time vs horizon). A shift
- * with every required seat `Confirmed` is never exhausted.
+ * Can this shift's remaining seats NOT be crewed from the pool? The "no one left
+ * to ask" half of the At-Risk condition (the other half is time vs horizon). Uses
+ * `solveShift`'s **distinct-assignment** composite (DEC-003), not per-seat pools:
+ * a person already needed by one seat can't also rescue another. (A bare per-seat
+ * pool would call a shift fillable when its last candidate is already committed to
+ * a sibling seat — the common case on BrewBoat's 2-crew vessels.) A shift with
+ * every required seat `Confirmed` is never exhausted (short-circuit, no solve).
  */
 async function poolExhaustedFor(
   repo: Repository,
   shift: Shift,
   seats: Seat[],
+  now: Date,
 ): Promise<boolean> {
   const unfilled = seats.filter(
     (s) => s.kind === "required" && s.state !== "Confirmed",
   );
   if (unfilled.length === 0) return false;
-  const pools = await eligiblePool(repo, shift.id);
-  const eligibleBySeat = new Map(pools.map((p) => [p.seatId, p.eligible.length]));
-  return unfilled.some((s) => (eligibleBySeat.get(s.id) ?? 0) === 0);
+  const solution = await solveShift(repo, shift.id, now);
+  return !solution.satisfiable;
 }
 
 export async function tick(
@@ -76,7 +83,7 @@ export async function tick(
 
     const seats = await repo.listSeatsForShift(shift.id);
     const horizon = staffingHorizonFor(shift, allEvents, leadDays);
-    const poolExhausted = await poolExhaustedFor(repo, shift, seats);
+    const poolExhausted = await poolExhaustedFor(repo, shift, seats, now);
     const next = resolveShiftState(seats, { now, horizon, poolExhausted });
     if (next === shift.state) continue;
 
@@ -92,7 +99,7 @@ export async function tick(
       for (const seat of seats) {
         if (seat.kind === "required" && seat.state === "Open") {
           const asks = await broadcastAsk(repo, seat.id, now);
-          if (asks.length > 0) result.asksFired += asks.length;
+          result.asksFired += asks.length;
         }
       }
     }

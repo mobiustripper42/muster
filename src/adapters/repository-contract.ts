@@ -336,6 +336,18 @@ export function runRepositoryContract(
       expect([a, b].filter(Boolean)).toHaveLength(1);
     });
 
+    it("removeMagicToken: deletes the row; absent id is a no-op (the reaper's remove)", async () => {
+      await repo.saveMagicToken(magicToken());
+      await repo.saveMagicToken(magicToken({ id: asId<"MagicTokenId">("mtk-2"), tokenHash: "hash-2" }));
+      await repo.removeMagicToken(asId<"MagicTokenId">("mtk-1"));
+      expect(await repo.getMagicTokenByHash("hash-1")).toBeNull();
+      expect((await repo.listAllMagicTokens()).map((t) => t.id)).toEqual([
+        asId<"MagicTokenId">("mtk-2"),
+      ]);
+      // Removing something already gone must not throw.
+      await expect(repo.removeMagicToken(asId<"MagicTokenId">("ghost"))).resolves.toBeUndefined();
+    });
+
     it("listAll enumerators feed the integrity diagnostic identically", async () => {
       // A small connected spine — both adapters must enumerate it the same way,
       // so checkIntegrity (which leans on every listAll*) returns the same verdict.

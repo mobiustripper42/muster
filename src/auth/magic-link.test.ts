@@ -4,6 +4,7 @@ import {
   hashSecret,
   issueMagicLink,
   randomSecret,
+  reapExpiredMagicLinks,
   verifyMagicLink,
 } from "./magic-link.js";
 
@@ -103,6 +104,58 @@ describe("verifyMagicLink", () => {
       verifyMagicLink(repo, secret, { now: T0 }),
     ]);
     expect([a.ok, b.ok].filter(Boolean)).toHaveLength(1);
+  });
+});
+
+describe("reapExpiredMagicLinks", () => {
+  /** Issue a link expiring `ttlMs` after T0 and return its stored token id. */
+  async function issueAt(repo: InMemoryRepository, subjectId: string, ttlMs: number) {
+    const { token } = await issueMagicLink(
+      repo,
+      { subjectKind: "crew", subjectId, ttlMs },
+      { now: T0, mintSecret: () => `secret-${subjectId}` },
+    );
+    return token.id;
+  }
+
+  it("deletes an expired token and leaves a live one", async () => {
+    const repo = new InMemoryRepository();
+    const dead = await issueAt(repo, "dead", TTL); // expires T0+15m
+    const live = await issueAt(repo, "live", 2 * TTL); // expires T0+30m
+
+    const at20m = new Date(T0.getTime() + 20 * 60_000);
+    expect(await reapExpiredMagicLinks(repo, at20m)).toEqual({ reaped: 1 });
+
+    const remaining = await repo.listAllMagicTokens();
+    expect(remaining.map((t) => t.id)).toEqual([live]);
+    void dead;
+  });
+
+  it("reaps at the expiry boundary (now === expiresAt), matching verify", async () => {
+    const repo = new InMemoryRepository();
+    await issueAt(repo, "edge", TTL);
+    const atExpiry = new Date(T0.getTime() + TTL); // the instant the link goes dead
+    expect(await reapExpiredMagicLinks(repo, atExpiry)).toEqual({ reaped: 1 });
+    expect(await repo.listAllMagicTokens()).toHaveLength(0);
+  });
+
+  it("is a no-op on an empty store", async () => {
+    const repo = new InMemoryRepository();
+    expect(await reapExpiredMagicLinks(repo, T0)).toEqual({ reaped: 0 });
+  });
+
+  it("counts a mixed batch and leaves every still-live token", async () => {
+    const repo = new InMemoryRepository();
+    await issueAt(repo, "a", TTL); // dead by T0+20m
+    await issueAt(repo, "b", TTL); // dead by T0+20m
+    const liveC = await issueAt(repo, "c", 3 * TTL); // alive until T0+45m
+    const liveD = await issueAt(repo, "d", 3 * TTL);
+
+    const at20m = new Date(T0.getTime() + 20 * 60_000);
+    expect(await reapExpiredMagicLinks(repo, at20m)).toEqual({ reaped: 2 });
+
+    const ids = (await repo.listAllMagicTokens()).map((t) => t.id).sort();
+    expect(ids).toEqual([liveC, liveD].sort());
   });
 });
 

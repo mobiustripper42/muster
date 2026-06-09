@@ -135,3 +135,39 @@ export async function verifyMagicLink(
     subject: { kind: token.subjectKind, id: token.subjectId },
   };
 }
+
+export interface ReapResult {
+  /** How many expired tokens this sweep deleted. */
+  reaped: number;
+}
+
+/**
+ * The magic-token reaper (#44/3.1b) — sweep dead links out of storage.
+ *
+ * A token is dead once `now` reaches its `expiresAt`: that's the exact instant
+ * `verifyMagicLink` already refuses it as `expired` (`now >= expiresAt`), so the
+ * reaper and verify agree on the boundary — a link is never reaped while it's
+ * still redeemable, and never redeemable once it's reapable. We delete strictly
+ * by expiry; a consumed-but-unexpired token is left for a later sweep (it dies on
+ * its own clock soon enough, and reaping it early is out of #44's scope).
+ *
+ * A **separate aggregate** from the shift state machine — it rode along on the
+ * word "expiry" in #39 and was split out. Like `tick` and `formShifts`, `now` is
+ * injected (no clock read) and there's no scheduler in v1 (DEC-023): callers are
+ * tests/manual until a hosted cron exists.
+ */
+export async function reapExpiredMagicLinks(
+  repo: Repository,
+  now: Date,
+): Promise<ReapResult> {
+  const cutoff = now.getTime();
+  const tokens = await repo.listAllMagicTokens();
+  let reaped = 0;
+  for (const token of tokens) {
+    if (cutoff >= Date.parse(token.expiresAt)) {
+      await repo.removeMagicToken(token.id);
+      reaped++;
+    }
+  }
+  return { reaped };
+}

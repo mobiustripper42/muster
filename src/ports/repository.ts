@@ -28,6 +28,7 @@ import type {
   CredentialId,
   CrewMemberId,
   EventId,
+  MagicTokenId,
   PtoWindowId,
   ReservationId,
   RoleTypeId,
@@ -144,6 +145,12 @@ export interface Repository {
   ): Promise<boolean>;
   /** Every token — the integrity diagnostic's orphan scan (crew subjects). */
   listAllMagicTokens(): Promise<MagicToken[]>;
+  /**
+   * Delete one token by id — the reaper's remove (#44/3.1b). A single-use,
+   * short-lived link past `expiresAt` is dead weight with no children, so it's a
+   * hard delete, not a soft mark. No-op if the id is already gone.
+   */
+  removeMagicToken(id: MagicTokenId): Promise<void>;
 
   // ── Reliability log (append-only — DEC-008) ───────────────────────────────
   /** Append a reliability event. The log is never mutated, only grown. */

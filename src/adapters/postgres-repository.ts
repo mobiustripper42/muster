@@ -33,6 +33,7 @@ import type {
   CredentialId,
   CrewMemberId,
   EventId,
+  MagicTokenId,
   PtoWindowId,
   ReservationId,
   RoleTypeId,
@@ -532,6 +533,9 @@ export class PostgresRepository implements Repository {
   async listAllMagicTokens(): Promise<MagicToken[]> {
     const { rows } = await this.#pool.query("select * from magic_tokens");
     return rows.map(toMagicToken);
+  }
+  async removeMagicToken(id: MagicTokenId): Promise<void> {
+    await this.#pool.query("delete from magic_tokens where id=$1", [id]);
   }
 
   // ── Reliability log (append-only — DEC-008) ───────────────────────────────

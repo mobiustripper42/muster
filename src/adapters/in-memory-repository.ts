@@ -246,6 +246,9 @@ export class InMemoryRepository implements Repository {
   async listAllMagicTokens(): Promise<MagicToken[]> {
     return [...this.#magicTokens.values()].map(clone);
   }
+  async removeMagicToken(id: MagicTokenId): Promise<void> {
+    this.#magicTokens.delete(id);
+  }
 
   // ── Reliability log (append-only — DEC-008) ───────────────────────────────
   async logReliabilityEvent(event: ReliabilityEvent): Promise<void> {

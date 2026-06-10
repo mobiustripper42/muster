@@ -39,6 +39,7 @@
   "include": [
     "next-env.d.ts",
     "app",
+    "components",
     "next.config.ts",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"

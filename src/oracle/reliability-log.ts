@@ -28,21 +28,26 @@ import type {
 import type { Repository } from "../ports/repository.js";
 
 /**
- * Deterministic event id from its natural key (crew · type · timestamp · seat).
- * Unique per logical event for the ask lifecycle; a durable DB swaps in a
- * surrogate key later. The append-only log never overwrites, so a same-key
+ * Deterministic event id from its natural key (crew · type · timestamp · seat
+ * · reason). Unique per logical event for the ask lifecycle; a durable DB swaps
+ * in a surrogate key later. The append-only log never overwrites, so a same-key
  * collision would duplicate rather than clobber — the components above make that
- * vanishingly unlikely in practice.
+ * vanishingly unlikely in practice. The `reason` component is load-bearing for
+ * `board_landed` (DEC-026): one shift can land for TWO reasons in the SAME tick
+ * (core + regression share `now`, and there's no seat), which collided on the
+ * Postgres pkey before reason joined the key.
  */
 function mintId(
   crewMemberId: CrewMemberId,
   type: ReliabilityEventType,
   timestamp: string,
   seatId?: SeatId,
+  reason?: string,
 ): ReliabilityEvent["id"] {
   const seatPart = seatId ? `-${seatId}` : "";
+  const reasonPart = reason ? `-${reason}` : "";
   return asId<"ReliabilityEventId">(
-    `rel-${crewMemberId}-${type}-${timestamp}${seatPart}`,
+    `rel-${crewMemberId}-${type}-${timestamp}${seatPart}${reasonPart}`,
   );
 }
 
@@ -60,7 +65,7 @@ export async function recordReliabilityEvent(
 ): Promise<ReliabilityEvent> {
   const timestamp = now.toISOString();
   const event: ReliabilityEvent = {
-    id: mintId(crewMemberId, type, timestamp, metadata.seatId),
+    id: mintId(crewMemberId, type, timestamp, metadata.seatId, metadata.reason),
     crewMemberId,
     type,
     timestamp,
@@ -270,9 +275,34 @@ export function logNudged(
   seatId: SeatId,
   shiftId: ShiftId,
   now: Date,
+  opts?: { manual?: boolean },
 ): Promise<ReliabilityEvent> {
   return recordReliabilityEvent(repo, crewMemberId, "nudged", now, {
     seatId,
     shiftId,
+    // A board *lean* (DEC-026) is Spink's move, not the engine's — flagged so
+    // "how often did the human step in" stays derivable from the one log.
+    ...(opts?.manual ? { manual: true } : {}),
+  });
+}
+
+/**
+ * A shift landed on the At-Risk board for a reason it hadn't landed for before
+ * (DEC-026). Shift-level like `pool_widened`, so system-actor-keyed; one event
+ * per (shift, reason) is the ping-dedup memory — `tick` checks for it before
+ * recording, so a rescued shift that later REGRESSES re-pings (new reason) while
+ * a same-reason re-landing stays quiet (accepted v1 wrinkle). Delivery is the
+ * deferred DEC-MSG-3 half: when a real channel adapter lands, the send hangs off
+ * this exact spot.
+ */
+export function logBoardLanded(
+  repo: Repository,
+  shiftId: ShiftId,
+  reason: string,
+  now: Date,
+): Promise<ReliabilityEvent> {
+  return recordReliabilityEvent(repo, SYSTEM_ACTOR_ID, "board_landed", now, {
+    shiftId,
+    reason,
   });
 }

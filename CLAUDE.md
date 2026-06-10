@@ -74,6 +74,11 @@ check so a core-only regression can't ship behind a green app build:
 - Button actions: return `{ error: string | null }`.
 - Never `throw` in server actions — return errors for inline feedback.
 - Forward guidance for *new* actions — `app/(crew)/crew/actions.ts` predates it; retrofit when touched.
+- **No-client-JS surfaces** (admin board pattern, DEC-026): an action may return `void` and surface
+  feedback via redirect search params — params carry **codes/ids only, never prose** (the page maps
+  them to copy), so a crafted URL can't inject text into a trusted surface. Wrap the domain call in
+  try/catch (a repo outage → a mapped notice, not a 500); `redirect()` throws by design, keep it
+  outside the try.
 
 ### Naming
 - Files: `kebab-case.tsx`
@@ -230,6 +235,13 @@ Three tiers. Default low; escalate by **task length and complexity** — Fable 5
   verify`, tests, CI, smoke) — from a short *Eyeball-it-yourself (human)* list of what you still need
   to look at (UI surfaces, anything no test covers). The stable local-run recipe lives in
   `docs/RUNNING.md` — link it, don't re-explain setup each PR.
+- **Eyeball steps must be executable and observable.** Each step is a copy-pasteable command that
+  exists in the repo **today** (a step that needs missing tooling → build the tooling in the same PR
+  or cut the step) or a tap on what a prior step produced, ending with the literal expected sight
+  ("green success card", not "verify it works"). Numbered, one line each — between terse and
+  verbose, never a wall. Claude verifies what it can before the PR (runs the seeds/scripts, traces
+  the render path); it cannot curl the dev server — what's visually unverified is labeled, not
+  dressed as a step.
 - Stacking PRs is preferred when tasks depend on each other — branch the next task off the previous
   task branch.
 - **Never rebase a task branch that already has commits on origin** — use GitHub's "Update branch".

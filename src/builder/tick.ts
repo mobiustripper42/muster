@@ -17,9 +17,14 @@
 
 import type { Seat, Shift } from "../domain/entities.js";
 import type { Repository } from "../ports/repository.js";
+import { deriveAtRiskBoard } from "../admin/at-risk-board.js";
 import { broadcastAsk } from "../asks/ask-loop.js";
 import { escalate } from "../asks/escalate.js";
 import { solveShift } from "../oracle/oracle.js";
+import {
+  logBoardLanded,
+  SYSTEM_ACTOR_ID,
+} from "../oracle/reliability-log.js";
 import {
   resolveShiftState,
   staffingHorizonFor,
@@ -42,6 +47,12 @@ export interface TickResult {
   shiftsEscalated: number;
   /** Total Tier-2 direct-nudges fired across escalated shifts. */
   nudgesFired: number;
+  /**
+   * New (shift, reason) board landings recorded this tick (DEC-026) — the
+   * detection half of "landing on the board pings Spink"; delivery rides the
+   * DEC-MSG-3 pilot adapter later.
+   */
+  boardLanded: number;
 }
 
 /**
@@ -98,6 +109,31 @@ async function poolExhaustedFor(
   return !solution.satisfiable;
 }
 
+/**
+ * Resolve ONE shift's state on read (the DEC-023 corollary) — for display
+ * surfaces that must not trust the persisted, eventually-consistent badge
+ * (e.g. the assignment page a board row links to). Single-shift, repo-backed
+ * composition of the same pieces tick's batch loop and the board's trail-reuse
+ * inline for their own structural reasons. `null` when the shift is unknown.
+ */
+export async function resolveShiftStateOnRead(
+  repo: Repository,
+  shiftId: Shift["id"],
+  now: Date,
+  opts?: { leadDays?: number },
+): Promise<Shift["state"] | null> {
+  const shift = await repo.getShift(shiftId);
+  if (!shift) return null;
+  const seats = await repo.listSeatsForShift(shiftId);
+  const horizon = staffingHorizonFor(
+    shift,
+    await repo.listEvents(),
+    opts?.leadDays ?? STAFFING_HORIZON_LEAD_DAYS,
+  );
+  const poolExhausted = await poolExhaustedFor(repo, shift, seats, now);
+  return resolveShiftState(seats, { now, horizon, poolExhausted });
+}
+
 export async function tick(
   repo: Repository,
   now: Date,
@@ -112,6 +148,7 @@ export async function tick(
     asksFired: 0,
     shiftsEscalated: 0,
     nudgesFired: 0,
+    boardLanded: 0,
   };
 
   for (const shift of await repo.listShifts()) {
@@ -159,6 +196,28 @@ export async function tick(
           result.shiftsEscalated++;
           result.nudgesFired += out.nudged.length;
         }
+      }
+    }
+  }
+
+  // ── Board-landing detection (DEC-026) ───────────────────────────────────────
+  // Membership stays single-sourced: tick asks the SAME deriver the board page
+  // renders, never a hand-rolled "did it land" check. Derived AFTER the
+  // advance/escalate sweep above — load-bearing order: a fresh Tier-2 nudge is a
+  // live ask, which keeps the shift off the board this tick (the nudge gets its
+  // chance before Spink is summoned). Dedup memory is one `board_landed` event
+  // per (shift, reason) on the system actor's log, so a rescued shift that later
+  // REGRESSES re-pings while a same-reason re-landing stays quiet.
+  const seenLandings = new Set(
+    (await repo.reliabilityEventsFor(SYSTEM_ACTOR_ID))
+      .filter((e) => e.type === "board_landed")
+      .map((e) => `${e.metadata.shiftId}:${e.metadata.reason}`),
+  );
+  for (const row of await deriveAtRiskBoard(repo, now, { leadDays })) {
+    for (const reason of row.reasons) {
+      if (!seenLandings.has(`${row.shiftId}:${reason}`)) {
+        await logBoardLanded(repo, row.shiftId, reason, now);
+        result.boardLanded++;
       }
     }
   }

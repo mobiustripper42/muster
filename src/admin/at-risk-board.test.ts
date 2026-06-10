@@ -253,6 +253,7 @@ describe("membership — regression and credential-lapse", () => {
     expect(rows[0]!.reasons).toEqual(["credential_lapse"]);
     expect(rows[0]!.resolvedState).toBe("Crewed");
     expect(rows[0]!.gaps).toEqual([]); // nothing to fill — the body is the problem
+    expect(rows[0]!.credentialLapsed).toEqual([lapsing]); // the row names who
   });
 
   it("does NOT board a healthy fully-Crewed shift", async () => {
@@ -350,6 +351,20 @@ describe("the available list (the lean's targets)", () => {
     expect(available).toHaveLength(2);
     expect(available).not.toContain(held);
     expect(rows[0]!.gaps).toEqual([{ role: CAPTAIN, missing: 1 }]);
+  });
+
+  it("excludes a live-ask holder — they're already deciding, lean would refuse", async () => {
+    await addCrew("midflight");
+    const { shiftId, seatIds } = await addShift("a3", hoursAfterT0(24), [
+      { state: "Bailed" }, // the row's reason (regression)
+      {}, // a second open seat the broadcast goes out on
+    ]);
+    await broadcastAsk(repo, seatIds[1]!, T0); // midflight now has a live ask
+    const late = await addCrew("late-joiner"); // eligible, never asked
+
+    const rows = await deriveAtRiskBoard(repo, T0);
+    expect(rows.map((r) => r.shiftId)).toEqual([shiftId]);
+    expect(rows[0]!.available).toEqual([late]);
   });
 
   it("excludes whoever bailed on this shift — matching the re-ask's own exclusion", async () => {

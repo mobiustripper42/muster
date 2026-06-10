@@ -9,12 +9,13 @@ import { asId } from "../domain/ids.js";
 import type { CrewMemberId } from "../domain/ids.js";
 import type { CrewMember, Event, Shift, Vessel } from "../domain/entities.js";
 import { formShifts } from "./form-shifts.js";
-import { tick } from "./tick.js";
+import { resolveShiftStateOnRead, tick } from "./tick.js";
 import {
   confirmSeat,
   expireAsks,
   recordResponse,
 } from "../asks/ask-loop.js";
+import { SYSTEM_ACTOR_ID } from "../oracle/reliability-log.js";
 
 const CAPTAIN = asId<"RoleTypeId">("role-captain");
 const MATE = asId<"RoleTypeId">("role-mate");
@@ -264,5 +265,96 @@ describe("tick — Tier-2 stall escalation (DEC-024)", () => {
     // cap-1 is still eligible. Willingness-exhaustion ("everyone passed") is the
     // At-Risk board's call (#41, 3.3), read off this escalation trail — not tick's.
     expect(await shiftState()).toBe("Filling");
+  });
+});
+
+describe("tick — board-landing detection (DEC-026)", () => {
+  it("records one board_landed per (shift, reason); a re-tick stays quiet", async () => {
+    await seedVesselEvent();
+    await formShifts(repo); // no crew at all → exhausted → resolved AtRisk
+
+    const r1 = await tick(repo, AFTER);
+    expect(r1.boardLanded).toBe(1);
+
+    const r2 = await tick(repo, AFTER);
+    expect(r2.boardLanded).toBe(0);
+
+    const landings = (await repo.reliabilityEventsFor(SYSTEM_ACTOR_ID)).filter(
+      (e) => e.type === "board_landed",
+    );
+    expect(landings).toHaveLength(1);
+    expect(landings[0]!.metadata.shiftId).toBe(SHIFT);
+    expect(landings[0]!.metadata.reason).toBe("core");
+  });
+
+  it("two reasons landing in ONE tick mint two distinct events (pg pkey regression)", async () => {
+    // A Bailed seat past horizon lands core + regression in the same tick: both
+    // events share crew (system), type, and timestamp — only `reason` separates
+    // their ids. Without reason in the mint this was a Postgres pkey collision
+    // the in-memory adapter silently swallowed.
+    await seedVesselEvent();
+    await formShifts(repo);
+    const seats = await repo.listSeatsForShift(SHIFT);
+    await repo.saveSeat({ ...seats[0]!, state: "Bailed" });
+
+    const r = await tick(repo, AFTER);
+
+    expect(r.boardLanded).toBe(2);
+    const landings = (await repo.reliabilityEventsFor(SYSTEM_ACTOR_ID)).filter(
+      (e) => e.type === "board_landed",
+    );
+    expect(landings).toHaveLength(2);
+    expect(new Set(landings.map((e) => e.id)).size).toBe(2); // distinct ids
+    expect(landings.map((e) => e.metadata.reason).sort()).toEqual([
+      "core",
+      "regression",
+    ]);
+  });
+
+  it("re-pings when a NEW reason appears (landed core, later regresses)", async () => {
+    await seedVesselEvent();
+    await formShifts(repo);
+    await tick(repo, AFTER); // lands: core
+
+    // The shift later regresses — a required seat rests Bailed.
+    const seats = await repo.listSeatsForShift(SHIFT);
+    await repo.saveSeat({ ...seats[0]!, state: "Bailed" });
+
+    const r = await tick(repo, AFTER);
+    expect(r.boardLanded).toBe(1); // regression is new; core already recorded
+  });
+
+  it("a worked or crewed shift never lands", async () => {
+    await seedVesselEvent();
+    await addCaptain("cap-1");
+    await formShifts(repo);
+
+    const r1 = await tick(repo, AFTER); // born Filling, live ask out
+    expect(r1.boardLanded).toBe(0);
+
+    const asks = await repo.listAsksForSeat(
+      (await repo.listSeatsForShift(SHIFT))[0]!.id,
+    );
+    await recordResponse(repo, asks[0]!.id, "accepted", AFTER);
+    await confirmSeat(repo, (await repo.listSeatsForShift(SHIFT))[0]!.id, AFTER);
+
+    const r2 = await tick(repo, AFTER); // Crewed and healthy
+    expect(r2.boardLanded).toBe(0);
+  });
+});
+
+describe("resolveShiftStateOnRead (DEC-023 corollary)", () => {
+  it("resolves past-horizon exhaustion to AtRisk even when the badge is stale", async () => {
+    await seedVesselEvent();
+    await formShifts(repo); // persisted: Pending; no crew, past horizon
+
+    expect(await resolveShiftStateOnRead(repo, SHIFT, AFTER)).toBe("AtRisk");
+    expect((await repo.getShift(SHIFT))!.state).toBe("Pending"); // untouched
+  });
+
+  it("returns null for an unknown shift", async () => {
+    expect(
+      await resolveShiftStateOnRead(repo, asId<"ShiftId">("nope"), AFTER),
+    ).toBeNull();
   });
 });

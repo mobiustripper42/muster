@@ -75,9 +75,10 @@ const MS_PER_HOUR = 60 * 60 * 1000;
  *  - `ask_ignored` is the lone ask penalty; `shift_bailed` and `no_show` are the
  *    commitment penalties, with `no_show` the floor (confirmed, then vanished).
  *  - `escalation_accepted` / `at_risk_rescue` reward stepping up when it counts.
- *  - `nudged` / `pool_widened` are 0 — engine *actions*, not crew behavior (being
- *    nudged isn't something you did); they feed the At-Risk trail, not the score
- *    (DEC-024). The reward for *taking* a nudge is `escalation_accepted`.
+ *  - `nudged` / `pool_widened` / `board_landed` are 0 — engine *actions*, not
+ *    crew behavior (being nudged isn't something you did); they feed the At-Risk
+ *    trail and the board's ping memory, not the score (DEC-024/026). The reward
+ *    for *taking* a nudge is `escalation_accepted`.
  *  - `hold_released` is Pass D — never emitted in v1, weighted 0.
  */
 export const DEFAULT_WEIGHTS: ReliabilityWeights = {
@@ -94,6 +95,7 @@ export const DEFAULT_WEIGHTS: ReliabilityWeights = {
     shift_acknowledged: 1,
     nudged: 0,
     pool_widened: 0,
+    board_landed: 0,
   },
   bailLatenessPerHour: -0.5,
 };

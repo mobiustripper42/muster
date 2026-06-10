@@ -4,3 +4,4 @@ export * from "./ask-loop.js";
 export * from "./assignment-view.js";
 export * from "./escalate.js";
 export * from "./escalation-trail.js";
+export * from "./lean.js";

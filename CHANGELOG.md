@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.4.6] - 2026-06-10
+- PR #51: Phase 3.3 — At-Risk derivation: board membership + urgency sort
+
 ## [0.4.5] - 2026-06-10
 - PR #50: Pull seeds v4 templates — Fable 5 model guidance, task-splitting, narration, conventions
 

@@ -677,6 +677,44 @@ not a hardcode. Accepted: no such case exists in the spec.
 
 ---
 
+## DEC-026: Board ping = detection-now / delivery-later; lean = a manual nudge in the one log; reschedule/cancel render disabled
+
+**Decision:** Three calls for the board surface + decision surface (#42/#43):
+
+1. **"Landing on the board pings Spink" (§2.5) splits into detection + record + delivery.**
+   Detection lives in `tick` (DEC-023's one clock op) and asks **the same `deriveAtRiskBoard` the
+   page renders** — membership stays single-sourced, never a second hand-rolled check. The record is
+   a `board_landed` reliability event, SYSTEM_ACTOR_ID-keyed per DEC-024's accepted wart, **deduped
+   per (shift, reason)** so a rescued shift that later *regresses* re-pings while a same-reason
+   re-landing stays quiet (accepted v1 wrinkle). Weighted 0 in the scorer. The derive runs AFTER the
+   advance/escalate sweep — load-bearing order: a fresh Tier-2 nudge is a live ask, which keeps the
+   shift off the board this tick. **Delivery is deferred to the DEC-MSG-3 pilot adapter** — the
+   admin ping ships the same moment crew-ask delivery does (one line at the send site); it would be
+   incoherent for the ping to get real delivery before the core ask. §2.5's "louder channel for
+   regressions" stays open at the adapter.
+
+2. **Lean (§2.5/#43) = `assignPerson` + `nudged{manual: true}`** against the board's `available`
+   semantics (rankedEligible minus bailers minus live-ask holders; decliners stay leanable — that's
+   Spink's call). No new event type — the `manual` metadata flag keeps "the human had to step in"
+   distinguishable in the one log (DEC-008). A resting-`Bailed` seat is reopened on the way in (its
+   empty-pool precondition no longer holds if a lean target exists). No bonus on the eventual yes —
+   `escalation_accepted`/`at_risk_rescue` stay reserved (DEC-024 amendment); the lean-accept is the
+   named future `at_risk_rescue` hook, derivable retroactively from the flagged log.
+
+3. **Reschedule/cancel render disabled** with honest copy. The three-action set is binding
+   (DESIGN-REFERENCE), but the cancel-cascade AC (§2.5) is explicitly deferred to the payments phase
+   (P3 scoping, Drew) — a *live* cancel without its cascade would violate "cancel is never delete"
+   far worse than a disabled button. The board's click-through lands on a **thin read-only §2.4
+   render** whose badge is **resolved on read** (DEC-023 corollary — a page reached from a row that
+   says At-Risk must not contradict it); the full cockpit is a later task.
+
+**Tradeoffs:** same-reason re-landings don't re-ping (v1); `tick` gains a board derive per sweep
+(BrewBoat-cheap; same revisit trigger as DEC-022/024).
+
+**Phase:** Phase 3 / tasks 3.4+3.5 (#42/#43). (@architect pass, 2026-06-10.)
+
+---
+
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)
 
 These are deferred by design. Each names an owner and a trigger. **Consult @architect (and the named

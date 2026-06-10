@@ -53,6 +53,14 @@ Harvested from the mockups per DESIGN-REFERENCE — read values, re-express as t
   as a plain muted subline under the name (non-comparative — real reasons like "answered fast · showed
   8/8 · one late bail", #32). Tapping a shift opens the card (#13).
 - **Magic-link landing** (`app/(crew)/crew/auth`): the tap IS the login; sets the session cookie.
+  Admin links land on the board; crew links on /crew.
+- **At-Risk Board** (`app/(admin)/admin/at-risk/page.tsx`, §2.5, #42/#43): triage rows most-urgent
+  first — flag (regression distinct + bad-toned), what's-missing chips, mono time-to-trip
+  (red inside 36h), SYSTEM-TRIED trail (silent ≠ declined), per-person **Lean** buttons, disabled
+  reschedule/cancel (parked with payments, DEC-026), **empty state = success card**. Admin-gated.
+- **Assignment view, thin** (`app/(admin)/admin/shift/[shiftId]/page.tsx`, §2.4): read-only seat
+  cards + ranked pool with ask status (**silent ≠ declined** binding constraint); badge resolved on
+  read (DEC-023). The cockpit actions are a later task.
 
 ## Priority
 Function over form; polish is post-slice (BRAND). The slice's job is to run a real weekend, not to

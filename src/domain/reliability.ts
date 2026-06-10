@@ -44,6 +44,11 @@ export const RELIABILITY_EVENT_TYPES = [
   // shift-level stub keyed to the system actor (v1 has no soft rule to relax).
   "nudged",
   "pool_widened",
+  // Board landing (DEC-026) — shift-level, system-actor-keyed like pool_widened.
+  // The detection half of "landing on the board pings Spink" (§2.5): one event
+  // per (shift, reason) is the dedup memory; delivery rides the DEC-MSG-3
+  // pilot adapter later.
+  "board_landed",
   /* ⏳ "hold_released"  ← Pass D (DEC-008) — do not emit in v1 */
 ] as const;
 
@@ -65,6 +70,14 @@ export interface ReliabilityEventMetadata {
   latenessMs?: number;
   seatId?: SeatId;
   shiftId?: ShiftId;
+  /**
+   * True when a human (Spink) drove the action, not the engine — a board *lean*
+   * logs `nudged` with `manual: true` (DEC-026), so "how often did the human
+   * have to step in" stays derivable from the one log.
+   */
+  manual?: boolean;
+  /** Which board membership reason a `board_landed` event records (DEC-026). */
+  reason?: string;
 }
 
 export interface ReliabilityEvent {

@@ -253,6 +253,7 @@ describe("membership — regression and credential-lapse", () => {
     expect(rows[0]!.reasons).toEqual(["credential_lapse"]);
     expect(rows[0]!.resolvedState).toBe("Crewed");
     expect(rows[0]!.gaps).toEqual([]); // nothing to fill — the body is the problem
+    expect(rows[0]!.credentialLapsed).toEqual([lapsing]); // the row names who
   });
 
   it("does NOT board a healthy fully-Crewed shift", async () => {

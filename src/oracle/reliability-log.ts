@@ -270,9 +270,34 @@ export function logNudged(
   seatId: SeatId,
   shiftId: ShiftId,
   now: Date,
+  opts?: { manual?: boolean },
 ): Promise<ReliabilityEvent> {
   return recordReliabilityEvent(repo, crewMemberId, "nudged", now, {
     seatId,
     shiftId,
+    // A board *lean* (DEC-026) is Spink's move, not the engine's — flagged so
+    // "how often did the human step in" stays derivable from the one log.
+    ...(opts?.manual ? { manual: true } : {}),
+  });
+}
+
+/**
+ * A shift landed on the At-Risk board for a reason it hadn't landed for before
+ * (DEC-026). Shift-level like `pool_widened`, so system-actor-keyed; one event
+ * per (shift, reason) is the ping-dedup memory — `tick` checks for it before
+ * recording, so a rescued shift that later REGRESSES re-pings (new reason) while
+ * a same-reason re-landing stays quiet (accepted v1 wrinkle). Delivery is the
+ * deferred DEC-MSG-3 half: when a real channel adapter lands, the send hangs off
+ * this exact spot.
+ */
+export function logBoardLanded(
+  repo: Repository,
+  shiftId: ShiftId,
+  reason: string,
+  now: Date,
+): Promise<ReliabilityEvent> {
+  return recordReliabilityEvent(repo, SYSTEM_ACTOR_ID, "board_landed", now, {
+    shiftId,
+    reason,
   });
 }

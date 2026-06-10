@@ -30,7 +30,7 @@
   --color-ok: #15803d;
   --color-ok-bg: #e7f4ec;
   --color-ok-line: #cbe6d5;
-  --color-warn: #b45309;
+  --color-warn: #92400e; /* ≥4.5:1 on --color-warn-bg — pills render at 10px */
   --color-warn-bg: #fbf0db;
   --color-warn-line: #f0ddb4;
   --color-bad: #be2f2a;

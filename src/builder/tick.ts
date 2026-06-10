@@ -17,9 +17,14 @@
 
 import type { Seat, Shift } from "../domain/entities.js";
 import type { Repository } from "../ports/repository.js";
+import { deriveAtRiskBoard } from "../admin/at-risk-board.js";
 import { broadcastAsk } from "../asks/ask-loop.js";
 import { escalate } from "../asks/escalate.js";
 import { solveShift } from "../oracle/oracle.js";
+import {
+  logBoardLanded,
+  SYSTEM_ACTOR_ID,
+} from "../oracle/reliability-log.js";
 import {
   resolveShiftState,
   staffingHorizonFor,
@@ -42,6 +47,12 @@ export interface TickResult {
   shiftsEscalated: number;
   /** Total Tier-2 direct-nudges fired across escalated shifts. */
   nudgesFired: number;
+  /**
+   * New (shift, reason) board landings recorded this tick (DEC-026) — the
+   * detection half of "landing on the board pings Spink"; delivery rides the
+   * DEC-MSG-3 pilot adapter later.
+   */
+  boardLanded: number;
 }
 
 /**
@@ -112,6 +123,7 @@ export async function tick(
     asksFired: 0,
     shiftsEscalated: 0,
     nudgesFired: 0,
+    boardLanded: 0,
   };
 
   for (const shift of await repo.listShifts()) {
@@ -159,6 +171,28 @@ export async function tick(
           result.shiftsEscalated++;
           result.nudgesFired += out.nudged.length;
         }
+      }
+    }
+  }
+
+  // ── Board-landing detection (DEC-026) ───────────────────────────────────────
+  // Membership stays single-sourced: tick asks the SAME deriver the board page
+  // renders, never a hand-rolled "did it land" check. Derived AFTER the
+  // advance/escalate sweep above — load-bearing order: a fresh Tier-2 nudge is a
+  // live ask, which keeps the shift off the board this tick (the nudge gets its
+  // chance before Spink is summoned). Dedup memory is one `board_landed` event
+  // per (shift, reason) on the system actor's log, so a rescued shift that later
+  // REGRESSES re-pings while a same-reason re-landing stays quiet.
+  const seenLandings = new Set(
+    (await repo.reliabilityEventsFor(SYSTEM_ACTOR_ID))
+      .filter((e) => e.type === "board_landed")
+      .map((e) => `${e.metadata.shiftId}:${e.metadata.reason}`),
+  );
+  for (const row of await deriveAtRiskBoard(repo, now, { leadDays })) {
+    for (const reason of row.reasons) {
+      if (!seenLandings.has(`${row.shiftId}:${reason}`)) {
+        await logBoardLanded(repo, row.shiftId, reason, now);
+        result.boardLanded++;
       }
     }
   }

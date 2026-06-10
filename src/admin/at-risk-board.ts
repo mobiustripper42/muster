@@ -131,6 +131,12 @@ export interface AtRiskRow {
   /** The transparency trail (DEC-024) — proof the automation tried. */
   trail: EscalationTrail;
   /**
+   * Committed bodies (Claimed/Confirmed) whose hard-gating credential lapses
+   * before the trip — the *who* behind a `credential_lapse` reason, so the row
+   * can name the problem ("Gus's MMC expires before the trip"). Empty otherwise.
+   */
+  credentialLapsed: CrewMemberId[];
+  /**
    * Who's still theoretically available for a manual lean (§2.5): the union of
    * the gap seats' eligible pools, per-seat reliability order, deduped.
    * Decliners stay in — leaning on a "no" is Spink's call, and the trail shows
@@ -220,15 +226,16 @@ export async function deriveAtRiskBoard(
     // Credential-lapse on committed bodies — every shift, Crewed included.
     // Same boundary as the oracle's gate (mmcValidOnDate at date-only 00:00Z).
     const tripDate = new Date(shift.date);
+    const credentialLapsed: CrewMemberId[] = [];
     for (const seat of required) {
       if (!seat.assignedCrewMemberId) continue;
       if (seat.state !== "Claimed" && seat.state !== "Confirmed") continue;
       const creds = await repo.listCredentialsForCrew(seat.assignedCrewMemberId);
       if (!mmcValidOnDate(creds, tripDate).passed) {
-        reasons.push("credential_lapse");
-        break;
+        credentialLapsed.push(seat.assignedCrewMemberId);
       }
     }
+    if (credentialLapsed.length > 0) reasons.push("credential_lapse");
 
     if (reasons.length === 0) continue;
 
@@ -285,6 +292,7 @@ export async function deriveAtRiskBoard(
       horizon,
       hoursToTrip,
       trail,
+      credentialLapsed,
       available,
       urgencyScore,
     });

@@ -36,5 +36,8 @@ export async function GET(req: NextRequest) {
   }
   if (!result.ok) return fail(result.reason);
 
-  return redirectTo("/crew", buildSessionCookie(result.subject));
+  // Land each subject on their world: crew → the crew app, the operator → the
+  // At-Risk board (the admin surface that summons them, SPEC §2.5).
+  const home = result.subject.kind === "admin" ? "/admin/at-risk" : "/crew";
+  return redirectTo(home, buildSessionCookie(result.subject));
 }

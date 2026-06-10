@@ -114,12 +114,13 @@ build, Drew); they wait for the payments phase rather than ship as half-built no
 |---|------|--------|-------|
 | 3.1a | **Staffing-horizon clock** — horizon-based shift birth (Pending→Filling), Filling-vs-AtRisk split driven by time + pool, "fills by" countdown/deadline | 5 | SPEC §1.1. Foundational, built first. **DEC-022** (derived, not stored; `resolveShiftState` layer) + **DEC-023** (explicit `tick`, no scheduler v1). Unblocks 3.2/3.3/3.4 + #20's all-cancelled refinement. Injected `now`. [#39](https://github.com/mobiustripper42/muster/issues/39) |
 | 3.1b | **Magic-token reaper** — sweep expired `MagicToken` rows | 2 | Split from 3.1 per @architect (different aggregate, not the shift machine). `listAllMagicTokens` already on the port. [#44](https://github.com/mobiustripper42/muster/issues/44) |
-| 3.2 | **Tier 2 escalation** — widen the eligible pool + direct-nudge high-reliability crew + escalation logging (asked / declined / silent / widened / nudged) | 5 | SPEC §1.2 Tier 2. Still `Filling`, still no Spink. Builds on the ask loop + 3.1. Depends on 3.1. [#40](https://github.com/mobiustripper42/muster/issues/40) |
+| 3.2a | **Escalation substrate + trail** — `nudged`/`pool_widened` events + `escalationTrailFor` projection (the derived read-model 3.3 reads) | 3 | SPEC §1.2/§2.5. Pure, additive; no new aggregate/port/DDL. **DEC-024.** Unblocks 3.3. [#40](https://github.com/mobiustripper42/muster/issues/40) |
+| 3.2b | **Tier 2 escalation mechanism** — stall detection in `tick` + `escalate()` (widen-stub + direct-nudge); still `Filling`, no Spink | 5 | SPEC §1.2 Tier 2. Builds on the ask loop + 3.1a + 3.2a. **DEC-024.** [#47](https://github.com/mobiustripper42/muster/issues/47) |
 | 3.3 | **At-Risk derivation** — which shifts land on the board (At-Risk core, late-bail **regression** rocket-to-top, **credential-lapse** on assigned crew before trip) + urgency sort (time-to-trip · gap-severity · fillability) | 5 | SPEC §2.5 states/urgency. Pure deriver over shifts + escalation log + credentials. Depends on 3.1. [#41](https://github.com/mobiustripper42/muster/issues/41) |
 | 3.4 | **At-Risk board surface** — admin triage worklist: what's-missing, deadline, escalation-transparency string, who's-still-available; empty-as-success; push ping | 5 | SPEC §2.5. Reads 3.3. Keep the bar to land high (no anxiety dashboard). Depends on 3.3. [#42](https://github.com/mobiustripper42/muster/issues/42) |
 | 3.5 | **Decision surface: lean** — first-class "lean" (manual Tier-2 direct nudge) from a board row | 3 | SPEC §2.5. Lean = an ask, no payment fallout. Reschedule/cancel deferred to the payments phase. Depends on 3.4. [#43](https://github.com/mobiustripper42/muster/issues/43) |
 
-**Phase 3 total: 25 pts planned** (3.1 split 8 → 3.1a 5 + 3.1b 2 at @architect pass, 2026-06-09)
+**Phase 3 total: 28 pts planned** (3.1 split 8 → 3.1a 5 + 3.1b 2; 3.2 split 8 → 3.2a 3 + 3.2b 5 — both @architect passes, 2026-06-09)
 
 ## Phase 4: Pass C — Fast-follows
 

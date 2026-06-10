@@ -38,6 +38,12 @@ export const RELIABILITY_EVENT_TYPES = [
   "at_risk_rescue",
   // Acknowledgment — small positive only, no penalty arm
   "shift_acknowledged",
+  // Tier-2 escalation actions (DEC-024) — engine moves, not crew behavior. The
+  // scorer ignores them; they exist to feed the At-Risk board's transparency
+  // trail (§2.5). `nudged` keys to the nudged crew; `pool_widened` is a
+  // shift-level stub keyed to the system actor (v1 has no soft rule to relax).
+  "nudged",
+  "pool_widened",
   /* ⏳ "hold_released"  ← Pass D (DEC-008) — do not emit in v1 */
 ] as const;
 

@@ -65,7 +65,7 @@ check so a core-only regression can't ship behind a green app build:
 
 ### Components
 - Server Components by default. Add `'use client'` only when needed.
-- shadcn/ui components in `components/ui/` — don't edit directly.
+- No component library yet (DEC-021) — components are hand-built from Tailwind v4 utilities.
 - Feature components in `components/[feature]/`.
 - Keep components under 200 lines. Split if larger.
 
@@ -73,6 +73,7 @@ check so a core-only regression can't ship behind a green app build:
 - Form actions: return `string | null`. `null` = success, string = error message.
 - Button actions: return `{ error: string | null }`.
 - Never `throw` in server actions — return errors for inline feedback.
+- Forward guidance for *new* actions — `app/(crew)/crew/actions.ts` predates it; retrofit when touched.
 
 ### Naming
 - Files: `kebab-case.tsx`
@@ -81,12 +82,13 @@ check so a core-only regression can't ship behind a green app build:
 - DB columns: `snake_case`
 
 ### UI / Brand
-- Colors: white/black base, semantic tokens from shadcn. No color for color's sake.
-- Font: Geist Sans (or project font)
-- shadcn/ui defaults. Override only when necessary.
-- One border radius: `rounded-lg`
+- Tokens are harvested from the mockups into `@theme` in `app/globals.css` (DEC-021) — colors,
+  radius scale (`--radius-card: 14px`). No color for color's sake. Binding constraints live in
+  `.claude/ui-context.md`.
+- Font: IBM Plex Sans/Mono, loaded via next/font in `app/layout.tsx`.
 - Layout padding in layout.tsx only
-- Every page works at 375px (Playwright screenshot confirms)
+- Every page works at 375px — eyeball at `mill-dev:3000` per `docs/RUNNING.md` (Playwright
+  screenshots when that tooling lands)
 
 ## Key Docs
 | File | Purpose |
@@ -241,10 +243,10 @@ Three tiers. Default low; escalate by **task length and complexity** — Fable 5
 
 Doing PR reviews from your phone is tolerable if you structure for it:
 - **GitHub mobile app, not web.** The native app's diff + approve + merge flow is usable. The mobile web is not.
-- **Tap the preview URL first.** Vercel posts it as a comment. 60 seconds of clicking the actual feature catches more than reading the diff would.
+- **Tap the preview URL first.** Vercel posts it as a comment (once the hosted deploy lands — today the eyeball path is `mill-dev:3000` per `docs/RUNNING.md`). 60 seconds of clicking the actual feature catches more than reading the diff would.
 - **Enable auto-merge.** Repo Settings → enable auto-merge, then "Enable auto-merge" on each PR. Checks pass → it merges itself. One less thing to remember to do.
-- **Branch protection:** require CI green (Vercel build + Playwright). Skip reviewer count requirements for solo dev — they add friction with no benefit.
-- **Checklist PR descriptions.** `/kill-this` should populate: does this PR have a migration? RLS change? UI change at 375px? A checkbox list is fast to scan on a small screen.
+- **Branch protection:** require CI green once CI exists (build + tests). Skip reviewer count requirements for solo dev — they add friction with no benefit.
+- **Checklist PR descriptions.** `/kill-this` should populate: does this PR have a migration? Schema/DDL change? UI change at 375px? A checkbox list is fast to scan on a small screen.
 - **`gh` CLI on your dev server** is faster than any UI when you're at a keyboard: `gh pr list`, `gh pr view 42 --web`, `gh pr merge 42 --auto`.
 
 ## Versioning
@@ -274,9 +276,9 @@ boundary (or via Issue mid-phase). If it's now a 13, break it down.
 
 ## Workflow Notes
 - **Diagnostic commands** (build, lint, type check, test): run directly — see errors, fix them, don't bother the user.
-- **Environment-changing commands** (npm install, migrations, git push, deploys): output these for the user to run.
+- **Environment-changing commands** (npm install, migrations, deploys): output these for the user to run. Exception: `git push` inside the approved `/kill-this` flow — that ritual owns commit + push + PR.
 - **JSON parsing in Bash:** Prefer `gh ... --jq '...'` (built-in jq via `gh`) or `jq` over `python3 -c "import json,sys; ..."` one-liners. The python invocations trigger per-pattern permission prompts (each unique argument list is a new allowlist entry), while `gh --jq` runs under the existing `Bash(gh ...)` allowance. For non-`gh` JSON, install/use `jq` directly. Reserve python for cases where the data shape genuinely needs control flow.
-- **Bug reports:** create a GitHub issue, label `bug`, add to current or next phase.
+- **Bug reports:** after the cause-and-fix approval (§ Bug Reports & Questions), file a GitHub issue labeled `bug`, add to current or next phase.
 
 ## Approval Before Action (all tasks)
 For every task — explain the plan and wait for approval before doing anything:

@@ -6,9 +6,10 @@
  * similar time-to-trip; thinner pool beats deeper), never exact scores — so
  * tuning the urgency weights later doesn't shatter the suite.
  *
- * Some scenarios seed seat states directly (e.g. a resting `Bailed` seat)
- * rather than driving the full ask loop — this suite tests the pure read-model
- * over states, not loop reachability (escalate/bail have their own suites).
+ * Some scenarios seed seat states directly (e.g. a resting `Bailed` seat —
+ * occupant cleared, matching what `bail()` actually leaves behind) rather than
+ * driving the full ask loop — this suite tests the pure read-model over
+ * states, not loop reachability (escalate/bail have their own suites).
  */
 
 import { describe, expect, it, beforeEach } from "vitest";
@@ -24,6 +25,7 @@ import type {
 } from "../domain/entities.js";
 import type { SeatState, ShiftState } from "../domain/states.js";
 import { broadcastAsk, expireAsks, recordResponse } from "../asks/ask-loop.js";
+import { logShiftBailed } from "../oracle/reliability-log.js";
 import { deriveAtRiskBoard, EXHAUSTED_THRESHOLD_HOURS } from "./at-risk-board.js";
 
 const CAPTAIN = asId<"RoleTypeId">("role-captain");
@@ -166,6 +168,16 @@ describe("membership — core (willingness-exhaustion)", () => {
     expect(await deriveAtRiskBoard(repo, T0)).toEqual([]);
   });
 
+  it("boards at exactly the threshold — the deadline bound is inclusive", async () => {
+    await addCrew("ann");
+    const atBound = hoursAfterT0(EXHAUSTED_THRESHOLD_HOURS);
+    const { shiftId, seatIds } = await addShift("w6", atBound, [{}]);
+    await broadcastAllDecline(seatIds[0]!);
+
+    const rows = await deriveAtRiskBoard(repo, T0);
+    expect(rows.map((r) => r.shiftId)).toEqual([shiftId]);
+  });
+
   it("does NOT board a never-asked shift inside the threshold (Tier-1's job, not Spink's)", async () => {
     await addCrew("ann");
     await addShift("w5", hoursAfterT0(24), [{}]);
@@ -208,15 +220,26 @@ describe("membership — core (eligibility-exhaustion, no threshold)", () => {
 
 describe("membership — regression and credential-lapse", () => {
   it("flags a rested-Bailed seat as regression (and core, via resolved AtRisk)", async () => {
-    const ghost = await addCrew("ghost");
+    await addCrew("ghost");
     const { shiftId } = await addShift("r1", hoursAfterT0(24), [
-      { state: "Bailed", assigned: ghost },
+      { state: "Bailed" },
     ]);
 
     const rows = await deriveAtRiskBoard(repo, T0);
     expect(rows.map((r) => r.shiftId)).toEqual([shiftId]);
     expect(rows[0]!.reasons).toContain("regression");
     expect(rows[0]!.resolvedState).toBe("AtRisk");
+  });
+
+  it("flags a credential lapse on a Claimed (yes, unconfirmed) occupant too", async () => {
+    const lapsing = await addCrew("lapsing2", {}, "2026-07-02"); // trip is 07-04
+    const { shiftId } = await addShift("c3", hoursAfterT0(3 * 24), [
+      { state: "Claimed", assigned: lapsing },
+    ]);
+
+    const rows = await deriveAtRiskBoard(repo, T0);
+    expect(rows.map((r) => r.shiftId)).toEqual([shiftId]);
+    expect(rows[0]!.reasons).toContain("credential_lapse");
   });
 
   it("flags a fully-Crewed shift whose confirmed captain's MMC lapses before the trip", async () => {
@@ -242,9 +265,9 @@ describe("membership — regression and credential-lapse", () => {
   });
 
   it("ignores Cancelled and Completed shifts entirely", async () => {
-    const ghost = await addCrew("ghost2");
-    await addShift("x1", hoursAfterT0(24), [{ state: "Bailed", assigned: ghost }], "Cancelled");
-    await addShift("x2", hoursAfterT0(24), [{ state: "Bailed", assigned: ghost }], "Completed");
+    await addCrew("ghost2");
+    await addShift("x1", hoursAfterT0(24), [{ state: "Bailed" }], "Cancelled");
+    await addShift("x2", hoursAfterT0(24), [{ state: "Bailed" }], "Completed");
 
     expect(await deriveAtRiskBoard(repo, T0)).toEqual([]);
   });
@@ -260,9 +283,9 @@ describe("urgency ordering (ordinal — SPEC §2.5 acceptance criteria)", () => 
   });
 
   it("regression beats a never-filled shift at similar time-to-trip", async () => {
-    const ghost = await addCrew("ghost3");
+    await addCrew("ghost3");
     const bailed = await addShift("bailed", hoursAfterT0(28), [
-      { state: "Bailed", assigned: ghost },
+      { state: "Bailed" },
     ]);
     // Never-filled core row slightly SOONER — regression must still outrank.
     await addCrew("ann");
@@ -274,9 +297,9 @@ describe("urgency ordering (ordinal — SPEC §2.5 acceptance criteria)", () => 
   });
 
   it("a regression days out does NOT bury a trip leaving in hours", async () => {
-    const ghost = await addCrew("ghost4");
+    await addCrew("ghost4");
     const bailedFar = await addShift("bailedfar", hoursAfterT0(6 * 24), [
-      { state: "Bailed", assigned: ghost },
+      { state: "Bailed" },
     ]);
     await addCrew("ann2");
     const leavingNow = await addShift("leavingnow", hoursAfterT0(3), [{}]);
@@ -327,5 +350,18 @@ describe("the available list (the lean's targets)", () => {
     expect(available).toHaveLength(2);
     expect(available).not.toContain(held);
     expect(rows[0]!.gaps).toEqual([{ role: CAPTAIN, missing: 1 }]);
+  });
+
+  it("excludes whoever bailed on this shift — matching the re-ask's own exclusion", async () => {
+    const bailer = await addCrew("bailer");
+    const sub = await addCrew("sub");
+    const { shiftId, seatIds } = await addShift("a2", hoursAfterT0(24), [
+      { state: "Bailed" },
+    ]);
+    await logShiftBailed(repo, bailer, shiftId, T0, 1000, seatIds[0]!);
+
+    const rows = await deriveAtRiskBoard(repo, T0);
+    expect(rows.map((r) => r.shiftId)).toEqual([shiftId]);
+    expect(rows[0]!.available).toEqual([sub]);
   });
 });

@@ -24,8 +24,11 @@
  *        urgent close to the dock.
  *  - **regression** — a required seat is `Bailed` (DEC-019 makes resting-Bailed
  *    reachable only when the re-ask found an exhausted pool, so "can't
- *    auto-refill" is true by construction). Flagged independently so the UI can
- *    pin it; it also rides the resolved-`AtRisk` route above.
+ *    auto-refill" is true by construction). Flagged independently of the
+ *    resolved state — usually it also rides the resolved-`AtRisk` route, but a
+ *    pre-horizon bail (an event date pushed later after a confirm-then-bail)
+ *    boards too: a rested bail IS pool-exhaustion, and exhaustion summons
+ *    immediately per the asymmetry above.
  *  - **credential_lapse** — a committed body (`Claimed`/`Confirmed`) whose
  *    hard-gating credential lapses before the trip date (`mmcValidOnDate`, the
  *    one boundary shared with the oracle). Checked on EVERY non-lifecycle
@@ -33,7 +36,11 @@
  *    looks fine.
  *
  * A shift still actively worked — a live ask in flight, or willingness-
- * exhausted but the trip far off — does NOT appear.
+ * exhausted but the trip far off — does NOT appear. An event-less shift (every
+ * event cancelled) has no horizon and no trip start: it can't board via core
+ * (the resolve falls back to the seat-fold and the threshold has nothing to
+ * count down to) and its time term is neutral — the cancel flow, not this
+ * board, is what mops those up.
  *
  * Urgency is a flat additive blend (tune-later weights, DEC-025): time-to-trip
  * + pool-thinness + a regression constant. "Captain > mate" is expressed ONLY
@@ -127,7 +134,9 @@ export interface AtRiskRow {
    * Who's still theoretically available for a manual lean (§2.5): the union of
    * the gap seats' eligible pools, per-seat reliability order, deduped.
    * Decliners stay in — leaning on a "no" is Spink's call, and the trail shows
-   * the declines.
+   * the declines. **Bailers are out** — the engine's own re-ask already
+   * excludes them (DEC-019), and offering the person who just walked, unmarked,
+   * is a trap, not an option.
    */
   available: CrewMemberId[];
   /** The additive urgency blend — sort key, most-urgent first. */
@@ -223,12 +232,28 @@ export async function deriveAtRiskBoard(
 
     if (reasons.length === 0) continue;
 
+    // Who bailed on THIS shift — excluded from `available` to match the
+    // re-ask's own exclusion (DEC-019). Crew-keyed log, so scan the roster
+    // filtering on `metadata.shiftId` (same pattern + same M4-index revisit as
+    // escalate's already-nudged scan).
+    const bailers = new Set<CrewMemberId>();
+    for (const crew of await repo.listCrewMembers()) {
+      const events = await repo.reliabilityEventsFor(crew.id);
+      if (
+        events.some(
+          (e) => e.type === "shift_bailed" && e.metadata.shiftId === shift.id,
+        )
+      ) {
+        bailers.add(crew.id);
+      }
+    }
+
     // Per-gap-seat eligible pools: feed both `available` and the thinness term.
     const available: CrewMemberId[] = [];
     const seen = new Set<CrewMemberId>();
     let minPool: number | null = null;
     for (const seat of gapSeats) {
-      const pool = await rankedEligible(repo, seat, now);
+      const pool = await rankedEligible(repo, seat, now, bailers);
       minPool = minPool === null ? pool.length : Math.min(minPool, pool.length);
       for (const c of pool) {
         if (!seen.has(c.id)) {

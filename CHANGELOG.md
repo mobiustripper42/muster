@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.4.3] - 2026-06-10
+- PR #48: DEC-024 + Phase 3.2a — escalation substrate + trail projection
+
 ## [0.4.2] - 2026-06-09
 - PR #46: Phase 3.1b — magic-token reaper: reapExpiredMagicLinks + removeMagicToken port
 

@@ -610,8 +610,13 @@ high-reliability crew, log the trail — all within `Filling`, no Spink. Two for
 
 **Decision:** Tier-2 escalation is two real mechanisms and one honest stub.
 1. **The nudge is the live lever.** A direct assign-then-confirm (`assignPerson`) to the top-ranked
-   not-yet-asked crew, logging a new `nudged` reliability event and — on accept — the day-one-reserved
-   `escalation_accepted` bonus (DEC-008; #40 is its first caller).
+   eligible crew who ghosted the Tier-1 broadcast (went silent), logging a new `nudged` reliability
+   event. **No `escalation_accepted` bonus is awarded in v1** (amended at the 3.2b build, 2026-06-10):
+   every target `escalate` can reach is, by construction, already on the Tier-1 list — and rewarding
+   someone for finally answering a *direct poke* after ignoring the broadcast is backwards. The
+   `escalation_accepted` event stays reserved/unused (DEC-008) until `escalate` can reach a body *off*
+   the Tier-1 list (a genuinely fresh person stepping into a shift others passed on). A nudged person
+   who accepts gets only the ordinary `ask_accepted` — normal machinery, not an escalation reward.
 2. **"Widen the pool" is a logged-intent stub.** Every eligibility rule is hard (MMC/rating are legal
    gates, PTO is suppression-only per DEC-009, double-booking is physical), and `broadcastAsk` already
    fans out to the *whole* ranked pool — so there is nothing to relax and no one new to reach. A new

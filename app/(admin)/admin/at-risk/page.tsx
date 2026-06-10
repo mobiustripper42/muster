@@ -84,7 +84,7 @@ export default async function AtRiskBoard({
             </span>
             {regressions > 0 && (
               <span className="rounded-full border border-bad-line bg-bad-bg px-2 py-0.5 text-xs font-semibold text-bad">
-                {regressions} regression{regressions === 1 ? "" : "s"}
+                {regressions} late bail{regressions === 1 ? "" : "s"}
               </span>
             )}
           </div>
@@ -127,12 +127,18 @@ async function buildVMs(rows: AtRiskRow[]): Promise<RiskRowVM[]> {
   const nameOf = (id: CrewMemberId) => crewName.get(id) ?? String(id);
 
   return rows.map((r) => {
+    // Operator words, not dev words ("regression" stays internal vocabulary):
+    // "Lacking crew" is the family headline; the tail carries the distinction
+    // the spec makes binding — a late bail (was crewed, broke) reads differently
+    // from a never-filled shift.
     const flag = r.reasons.includes("regression")
-      ? { label: "Regression · late bail", tone: "bad" as const }
+      ? { label: "Lacking crew · late bail", tone: "bad" as const }
       : r.reasons.includes("credential_lapse") && !r.reasons.includes("core")
         ? { label: "Credential lapse", tone: "warn" as const }
         : {
-            label: r.trail.exhausted ? "At-Risk · pool exhausted" : "At-Risk · all asks dry",
+            label: r.trail.exhausted
+              ? "Lacking crew · none eligible"
+              : "Lacking crew · all asks dry",
             tone: "warn" as const,
           };
     return {

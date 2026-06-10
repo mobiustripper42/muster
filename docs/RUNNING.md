@@ -56,11 +56,12 @@ npm run db:seed:atrisk   # 4 board scenarios, trips anchored to NOW (re-run anyt
 ```
 
 1. Open **http://mill-dev:3000/crew/dev-link?admin=spink** → tap the returned link → you land
-   signed-in on **`/admin/at-risk`** with "4 shifts need a call · 1 regression".
-2. The four rows, top to bottom: **Firkin** (red *Regression · late bail* pill — always pinned
+   signed-in on **`/admin/at-risk`** with "4 shifts need a call · 1 late bail".
+2. The four rows, top to bottom: **Firkin** (red *Lacking crew · late bail* pill — always pinned
    first), **Tidewater** (trail: *asked 2 · 1 declined · 1 silent*, silent in red), **Growler**
-   (*⊘ Gus's credential lapses before the trip*), **Mash Tun** (*not yet worked — flagged by the
-   oracle* + the "nobody left in the eligible pool" line, no Lean buttons).
+   (*⊘ Gus's credential lapses before the trip*), **Mash Tun** (*Lacking crew · none eligible*,
+   "not yet worked — flagged by the oracle" + the "nobody left in the eligible pool" line, no Lean
+   buttons).
 3. Tap **↗ Lean on Marisol** (Firkin row) → green *"Last action: leaned on Marisol — asked, not yet
    filled"* and the Firkin row is **gone** — its ask is now in flight, which is the engine working,
    not a bug. (`/crew/dev-link?crew=crew-ar-sub` shows Marisol's In/Out card if you want the loop.)

@@ -3,6 +3,56 @@
 Phase-end retrospectives. Written by `/retro` at each phase boundary — velocity, scope changes,
 process notes, forecast update. One entry per phase, newest at the top.
 
+## Phase 3 — 2026-06-10 — Pass B: Tier 2 + At-Risk board
+
+**Sessions:** 3 (S9, S10, S11)
+**Points:** 28 delivered / 28 planned (100%) — first exactly-on-plan phase; the 25→28 re-total was the up-front 3.2 split (8 hiding in a 5), not creep
+**Wall clock:** 37.84h  (raw elapsed — includes overnights + idle)
+**Breaks:** 34.33h
+**Active time (wall − breaks):** 3.42h ← honest headline
+**Velocity:** 0.122 h/pt active  ← the only forecast number (third straight improvement: 0.145 → 0.130 → 0.122)
+**Issues:** 7 created, 7 closed (#39, #40, #41, #42, #43, #44, #47), 0 moved
+
+### Per-session breakdown
+| Session | Date | Wall | Breaks | Active | Points | PRs |
+|---------|------|------|--------|--------|--------|-----|
+| S9 | 2026-06-08→09 | 14.17 | 13.75 | 0.42 | 5 | 45 |
+| S10 | 2026-06-09→10 | 10.00 | 9.08 | 0.92 | 10 | 46, 48, 49 |
+| S11 | 2026-06-10 | 13.67 | 11.50 | 2.08 | 13 | 51, 52 |
+
+> **Inference notes.** S10's recorded transcript had no parseable events; its breaks were inferred by
+> merging all project transcripts inside the session window (639 events) — slightly more inference
+> than usual in this phase's headline. S9's tiny active is genuine (the cross-transcript check found
+> the same 243 events): the 3.1a build shipped in short bursts inside a long mostly-idle window, the
+> established pattern since Phase 2's S8.
+
+### What worked
+- Not captured (retro notes skipped).
+
+### What didn't
+- Not captured (retro notes skipped).
+
+### Changes for next phase
+- Not captured (retro notes skipped).
+
+### Scope changes
+- 3.1 split 8 → 3.1a (5) + 3.1b (2) and 3.2 split 8 → 3.2a (3) + 3.2b (5), both via @architect passes at session start — phase re-totaled 25→28.
+- 3.4+3.5 (#42/#43) deliberately shipped as **one 8-pt PR** under the new task-splitting guidance ("don't split a coherent 8") — first use of the rule; @architect pre-pass + @ui-reviewer + @code-review all ran, three seam findings fixed in-PR.
+- Decision surface scoped to **lean only** at phase start (reschedule/cancel cascade parked with payments — Drew's domain); they render disabled per DEC-026.
+- Five DECs recorded (022–026), all decision-before-code via @architect.
+- Mid-phase process change from user feedback: the eyeball-instructions standard (executable-today steps, literal expected sights) + `db:seed:atrisk` / `db:tick` dev tooling — whose dry run against real Postgres caught a shipped `board_landed` pkey collision the in-memory adapter had swallowed.
+
+### PM read
+0.122 h/pt active, third straight improvement (0.145 → 0.130 → 0.122), and the first phase in this project's history to land exactly on plan: 28/28, zero moved, zero drift. The 25→28 re-total isn't scope creep — it's the 3.2 split being honest about an 8 hiding inside a 5, decided up front with @architect, same move as #11 in Phase 1. The phase also ran under two calendar days wall-to-wall, which means the velocity number is now stable across three very different phase shapes (a 3-session slice, a 2-session ranking pass, a 2-day sprint). One asterisk for the record: S10's transcript was empty and its breaks were inferred from sibling transcripts, so this phase's headline carries slightly more inference than the last two. The trend is real; treat the third decimal place with suspicion.
+
+The pattern this phase pays for itself is **decision-before-code**: five DECs (022–026) all written from @architect passes *before* the implementing PR, and every one of them changed the build — derived-not-stored horizon, the escalation log as a projection instead of a new aggregate, the recomputed-on-read asymmetry between "no one may" and "no one wants to," pool-thinness instead of a role-name check. The other recurring theme is now a confirmed two-time offender: **the in-memory adapter swallows what Postgres enforces.** Phase 1 it was equivalence gaps the CI pg gate closed; this phase the `board_landed` pkey collision shipped green through 300+ tests and only surfaced when someone dry-ran the seed against real Postgres. The pg contract suite catches what it's pointed at; the lesson is that any new table-shaped write wants a real-pg dry-run before the PR closes, not after.
+
+On the first "don't split a coherent 8" run: the rule worked, and it's worth being precise about *why*. #42+#43 as one PR didn't just save a review round-trip — the three findings (board/lean accept-set divergence, the contrast failures, the pkey collision) were all *seam* bugs between the surface and its action, exactly the seams a two-PR split would have hidden until integration. The compensating controls the CLAUDE.md rule demands (full spec up front, @architect pre-pass, the review stack) were all present, so this is a clean data point, not a license. The "your eyeball instructions pretty much usually suck" exchange is the better story, though: the correct response to bad verification prose turned out to be *building the missing tooling* (`db:seed:atrisk`, `db:tick`) rather than writing better paragraphs — and that tooling immediately caught the shipped bug. Executable instructions found what descriptive ones never would have. That standard is now in CLAUDE.md; hold it.
+
+Two phases running of skipped what-worked/what-didn't. I'll note that the Phase 0 and 1 verbatims were load-bearing — "not enough discipline" and "repo is the record" both turned into real process changes — and the session files only capture what Claude saw, not what annoyed you. The one piece of user signal this phase *did* produce (the eyeball-instructions complaint) became a CLAUDE.md standard and two npm scripts within the hour, which rather proves the point about what the skipped questions are worth.
+
+Forward: Phase 4 (Pass C) has **no task table** — that's the actual blocker, and decomposition should happen at `/start-phase` with the review follow-ups as first-class candidates, not a someday list: the fills-by deadline on `AtRiskRow` (the domain has no fill-deadline concept; the mockup assumes one), Shell/Notice extraction (third copy-paste), the Bailed-seat pool gap on the click-through (the regression detail page currently shows *less* than the board row), and the **DEC-MSG-3 pilot adapter pick** — which is now the delivery seam for two consumers (crew asks *and* the admin board ping), so it stops being deferrable the moment Pass C touches anything outbound. At 0.122 h/pt, a Phase-4 plan in the 25–30 point range is roughly 3–4 active hours; the estimate risk isn't velocity, it's that Pass C is the first phase where the unbuilt thing is a *product decision* (delivery channel) rather than an engine mechanism.
+
 ## Phase 2 — 2026-06-08 — Pass A: Reliability ranking
 
 **Sessions:** 2 (S7, S8)

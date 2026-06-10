@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.4.4] - 2026-06-10
+- PR #49: Phase 3.2b — Tier-2 escalation mechanism: stall detection + escalate()
+
 ## [0.4.3] - 2026-06-10
 - PR #48: DEC-024 + Phase 3.2a — escalation substrate + trail projection
 

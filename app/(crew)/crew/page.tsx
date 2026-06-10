@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { buildCrewAppView, type CrewAppView } from "@core/crewapp/crew-view.js";
 import { asId } from "@core/domain/ids.js";
+import { Notice } from "../../../components/ui/notice";
+import { Shell } from "../../../components/ui/shell";
 import { readSubject } from "../../lib/auth";
 import { getRepo } from "../../lib/repo";
 import { respondToAsk } from "./actions";
@@ -51,22 +53,6 @@ function fmtDate(iso: string): string {
     month: "short",
     day: "numeric",
   });
-}
-
-function Shell({ children }: { children: React.ReactNode }) {
-  return (
-    <main className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-4 px-4 py-6">
-      {children}
-    </main>
-  );
-}
-
-function Notice({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="rounded-card border border-line bg-card px-4 py-3 text-sm text-muted">
-      {children}
-    </div>
-  );
 }
 
 function SignedOut({ reason }: { reason?: string }) {

@@ -2,6 +2,8 @@ import { deriveAtRiskBoard, type AtRiskRow } from "@core/admin/at-risk-board.js"
 import { asId } from "@core/domain/ids.js";
 import type { CrewMemberId } from "@core/domain/ids.js";
 import { RiskRow, type RiskRowVM } from "../../../../components/at-risk/risk-row";
+import { Notice } from "../../../../components/ui/notice";
+import { Shell } from "../../../../components/ui/shell";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
 
@@ -51,7 +53,7 @@ export default async function AtRiskBoard({
     vms = await buildVMs(rows);
   } catch {
     return (
-      <Shell>
+      <Shell width="3xl">
         <Notice>Can’t reach the schedule right now. Try again in a moment.</Notice>
       </Shell>
     );
@@ -67,7 +69,7 @@ export default async function AtRiskBoard({
   const leanError = sp.lean_error ? LEAN_ERROR_COPY[sp.lean_error] ?? null : null;
 
   return (
-    <Shell>
+    <Shell width="3xl">
       <header className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h1 className="text-xl font-semibold text-ink">Needs you</h1>
@@ -197,32 +199,6 @@ function ttLabel(h: number): string {
   return `${Math.floor(whole / 24)}d ${whole % 24}h to trip`;
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
-  return (
-    <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-4 px-4 py-6">
-      {children}
-    </main>
-  );
-}
-
-function Notice({
-  children,
-  tone,
-}: {
-  children: React.ReactNode;
-  tone?: "ok" | "bad";
-}) {
-  const cls =
-    tone === "ok"
-      ? "border-ok-line bg-ok-bg text-ok"
-      : tone === "bad"
-        ? "border-bad-line bg-bad-bg text-bad"
-        : "border-line bg-card text-muted";
-  return (
-    <div className={`rounded-card border px-4 py-3 text-sm ${cls}`}>{children}</div>
-  );
-}
-
 function EmptySuccess() {
   return (
     <div className="flex flex-col items-center gap-2 rounded-card border border-ok-line bg-ok-bg px-6 py-10 text-center">
@@ -247,7 +223,7 @@ function EmptySuccess() {
 
 function SignedOut() {
   return (
-    <Shell>
+    <Shell width="3xl">
       <h1 className="text-lg font-semibold text-ink">Muster · At-Risk Board</h1>
       <Notice>
         You’re signed out. Tap an operator magic link to get in — this surface is

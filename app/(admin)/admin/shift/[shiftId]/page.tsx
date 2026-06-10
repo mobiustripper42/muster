@@ -5,6 +5,8 @@ import {
 } from "@core/asks/assignment-view.js";
 import { asId } from "@core/domain/ids.js";
 import { resolveShiftStateOnRead } from "@core/builder/tick.js";
+import { Notice } from "../../../../../components/ui/notice";
+import { Shell } from "../../../../../components/ui/shell";
 import { readSubject } from "../../../../lib/auth";
 import { getRepo } from "../../../../lib/repo";
 
@@ -32,7 +34,7 @@ export default async function ShiftAssignment({
   const subject = await readSubject();
   if (!subject || subject.kind !== "admin") {
     return (
-      <Shell>
+      <Shell width="2xl">
         <Notice>You’re signed out. Tap an operator magic link to get in.</Notice>
       </Shell>
     );
@@ -46,7 +48,7 @@ export default async function ShiftAssignment({
   const view = await buildAssignmentView(repo, shiftId, now);
   if (!view) {
     return (
-      <Shell>
+      <Shell width="2xl">
         <Notice>No such shift. It may have been removed.</Notice>
       </Shell>
     );
@@ -65,7 +67,7 @@ export default async function ShiftAssignment({
   );
 
   return (
-    <Shell>
+    <Shell width="2xl">
       <Link href="/admin/at-risk" className="text-xs font-semibold text-accent">
         ← At-Risk board
       </Link>
@@ -165,20 +167,4 @@ function PoolStatus({ status }: { status: CandidateAskStatus }) {
   };
   const s = map[status];
   return <span className={`text-xs ${s.cls}`}>{s.label}</span>;
-}
-
-function Shell({ children }: { children: React.ReactNode }) {
-  return (
-    <main className="mx-auto flex min-h-screen w-full max-w-2xl flex-col gap-4 px-4 py-6">
-      {children}
-    </main>
-  );
-}
-
-function Notice({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="rounded-card border border-line bg-card px-4 py-3 text-sm text-muted">
-      {children}
-    </div>
-  );
 }

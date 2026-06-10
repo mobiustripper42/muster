@@ -84,6 +84,21 @@ function eventStart(e: Event): Date {
 }
 
 /**
+ * The earliest scheduled departure among `events` — the instant the horizon
+ * anchors to, and the "trip start" the At-Risk board counts down to (#41).
+ * `null` when there's no scheduled event (a cancelled-out or empty group).
+ */
+export function earliestScheduledStart(events: Event[]): Date | null {
+  const scheduled = events.filter((e) => e.status === "scheduled");
+  if (scheduled.length === 0) return null;
+  const earliest = scheduled.reduce(
+    (min, e) => Math.min(min, eventStart(e).getTime()),
+    Infinity,
+  );
+  return new Date(earliest);
+}
+
+/**
  * Staffing-horizon instant for a set of events — the earliest scheduled event
  * minus `leadDays`. Pure; derived, never stored (DEC-022). `null` when there's
  * no scheduled event to anchor to (a cancelled-out or empty group).
@@ -92,13 +107,9 @@ export function staffingHorizonFromEvents(
   events: Event[],
   leadDays: number = STAFFING_HORIZON_LEAD_DAYS,
 ): Date | null {
-  const scheduled = events.filter((e) => e.status === "scheduled");
-  if (scheduled.length === 0) return null;
-  const earliest = scheduled.reduce(
-    (min, e) => Math.min(min, eventStart(e).getTime()),
-    Infinity,
-  );
-  return new Date(earliest - leadDays * DAY_MS);
+  const start = earliestScheduledStart(events);
+  if (start === null) return null;
+  return new Date(start.getTime() - leadDays * DAY_MS);
 }
 
 /** Staffing horizon for a shift, resolving its `eventIds` against `allEvents`. */

@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.4.1] - 2026-06-09
+- PR #45: Phase 3.1a — staffing-horizon clock: resolveShiftState overlay + tick(repo,now)
+
 ## [0.4.0] - 2026-06-08 — Phase 2
 - 16 pts shipped across 2 sessions (0.130 h/pt active)
 - See `docs/RETROSPECTIVES.md` for the full retro

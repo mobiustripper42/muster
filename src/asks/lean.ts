@@ -34,9 +34,20 @@ import type { Repository } from "../ports/repository.js";
 import { logNudged } from "../oracle/reliability-log.js";
 import { assignPerson, rankedEligible } from "./ask-loop.js";
 
+/** Machine-readable failure reasons — the UI maps these to its own copy. */
+export type LeanErrorCode =
+  | "shift_gone"
+  | "no_gap"
+  | "already_asked"
+  | "bailed"
+  | "ineligible"
+  | "raced";
+
 export interface LeanResult {
   /** null = the nudge went out; otherwise the operator-facing reason it didn't. */
   error: string | null;
+  /** Machine twin of `error` — stable across copy edits (DEC-026 feedback). */
+  code?: LeanErrorCode;
   /** The seat the person was leaned onto, on success. */
   seatId?: SeatId;
 }
@@ -50,7 +61,7 @@ export async function lean(
 ): Promise<LeanResult> {
   const shift = await repo.getShift(shiftId);
   if (!shift || shift.state === "Cancelled" || shift.state === "Completed") {
-    return { error: "This shift is no longer live." };
+    return { error: "This shift is no longer live.", code: "shift_gone" };
   }
 
   const required = (await repo.listSeatsForShift(shiftId)).filter(
@@ -61,7 +72,10 @@ export async function lean(
     (s) => s.state === "Open" || s.state === "Bailed",
   );
   if (gapSeats.length === 0) {
-    return { error: "No open seat to fill — nothing to lean for." };
+    return {
+      error: "No open seat to fill — nothing to lean for.",
+      code: "no_gap",
+    };
   }
 
   // Double-ask guard: a live (unanswered) ask anywhere on this shift means
@@ -69,7 +83,10 @@ export async function lean(
   for (const seat of required) {
     for (const ask of await repo.listAsksForSeat(seat.id)) {
       if (ask.crewMemberId === crewMemberId && ask.respondedAt === undefined) {
-        return { error: "Already asked on this shift — awaiting their reply." };
+        return {
+          error: "Already asked on this shift — awaiting their reply.",
+          code: "already_asked",
+        };
       }
     }
   }
@@ -82,7 +99,10 @@ export async function lean(
       (e) => e.type === "shift_bailed" && e.metadata.shiftId === shiftId,
     )
   ) {
-    return { error: "They bailed on this shift — pick someone else." };
+    return {
+      error: "They bailed on this shift — pick someone else.",
+      code: "bailed",
+    };
   }
 
   // First gap seat (seat order) whose eligible pool includes them.
@@ -96,7 +116,7 @@ export async function lean(
     }
   }
   if (!target) {
-    return { error: "Not eligible for this shift's open seats." };
+    return { error: "Not eligible for this shift's open seats.", code: "ineligible" };
   }
 
   if (target.state === "Bailed") {
@@ -106,7 +126,10 @@ export async function lean(
 
   const ask = await assignPerson(repo, target.id, crewMemberId, now);
   if (!ask) {
-    return { error: "That seat just changed under you — reload the board." };
+    return {
+      error: "That seat just changed under you — reload the board.",
+      code: "raced",
+    };
   }
   await logNudged(repo, crewMemberId, target.id, shiftId, now, { manual: true });
   return { error: null, seatId: target.id };

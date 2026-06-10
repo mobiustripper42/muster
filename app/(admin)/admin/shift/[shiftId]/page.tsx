@@ -4,11 +4,7 @@ import {
   type CandidateAskStatus,
 } from "@core/asks/assignment-view.js";
 import { asId } from "@core/domain/ids.js";
-import {
-  resolveShiftState,
-  staffingHorizonFor,
-} from "@core/builder/derive.js";
-import { solveShift } from "@core/oracle/oracle.js";
+import { resolveShiftStateOnRead } from "@core/builder/tick.js";
 import { readSubject } from "../../../../lib/auth";
 import { getRepo } from "../../../../lib/repo";
 
@@ -56,28 +52,17 @@ export default async function ShiftAssignment({
     );
   }
 
-  // Badge resolved on read, mirroring the board's own resolve (DEC-023).
-  const [shift, seats, allEvents, solution, roleTypes] = await Promise.all([
-    repo.getShift(shiftId),
+  // Badge resolved on read (DEC-023 corollary) — same resolve the board uses.
+  const [resolved, seats, roleTypes] = await Promise.all([
+    resolveShiftStateOnRead(repo, shiftId, now),
     repo.listSeatsForShift(shiftId),
-    repo.listEvents(),
-    solveShift(repo, shiftId, now),
     repo.listAllRoleTypes(),
   ]);
+  const badge = resolved ?? view.badge;
   const roleNames = new Map(roleTypes.map((r) => [r.id, r.name]));
   const roleOfSeat = new Map(
     seats.map((s) => [String(s.id), roleNames.get(s.role) ?? String(s.role)]),
   );
-  const unconfirmed = seats.filter(
-    (s) => s.kind === "required" && s.state !== "Confirmed",
-  );
-  const badge = shift
-    ? resolveShiftState(seats, {
-        now,
-        horizon: staffingHorizonFor(shift, allEvents),
-        poolExhausted: unconfirmed.length > 0 && !solution.satisfiable,
-      })
-    : view.badge;
 
   return (
     <Shell>

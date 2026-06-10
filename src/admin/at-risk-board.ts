@@ -137,12 +137,13 @@ export interface AtRiskRow {
    */
   credentialLapsed: CrewMemberId[];
   /**
-   * Who's still theoretically available for a manual lean (§2.5): the union of
-   * the gap seats' eligible pools, per-seat reliability order, deduped.
-   * Decliners stay in — leaning on a "no" is Spink's call, and the trail shows
-   * the declines. **Bailers are out** — the engine's own re-ask already
-   * excludes them (DEC-019), and offering the person who just walked, unmarked,
-   * is a trap, not an option.
+   * Who's still actually LEAN-able (§2.5, #43): the union of the lean-able
+   * seats' (Open/Bailed — not Asked, which has an ask in flight) eligible
+   * pools, per-seat reliability order, deduped. Decliners stay in — leaning on
+   * a "no" is Spink's call, and the trail shows the declines. **Bailers and
+   * live-ask holders are out** — the re-ask already excludes bailers (DEC-019)
+   * and a mid-flight person is already deciding; `lean()` enforces the same
+   * set, so the board never offers a name the action would refuse.
    */
   available: CrewMemberId[];
   /** The additive urgency blend — sort key, most-urgent first. */
@@ -239,11 +240,13 @@ export async function deriveAtRiskBoard(
 
     if (reasons.length === 0) continue;
 
-    // Who bailed on THIS shift — excluded from `available` to match the
-    // re-ask's own exclusion (DEC-019). Crew-keyed log, so scan the roster
-    // filtering on `metadata.shiftId` (same pattern + same M4-index revisit as
-    // escalate's already-nudged scan).
-    const bailers = new Set<CrewMemberId>();
+    // The lean-exclusion set, mirrored exactly by `lean()` — one definition of
+    // "leanable" so the board never renders a button the action rejects:
+    //  - bailed on THIS shift (matches the re-ask's own exclusion, DEC-019);
+    //  - holding a live (unanswered) ask on this shift — already deciding.
+    // The bailer scan walks the crew-keyed log (same pattern + same M4-index
+    // revisit as escalate's already-nudged scan).
+    const excluded = new Set<CrewMemberId>();
     for (const crew of await repo.listCrewMembers()) {
       const events = await repo.reliabilityEventsFor(crew.id);
       if (
@@ -251,16 +254,26 @@ export async function deriveAtRiskBoard(
           (e) => e.type === "shift_bailed" && e.metadata.shiftId === shift.id,
         )
       ) {
-        bailers.add(crew.id);
+        excluded.add(crew.id);
+      }
+    }
+    for (const seat of required) {
+      for (const ask of await repo.listAsksForSeat(seat.id)) {
+        if (ask.respondedAt === undefined) excluded.add(ask.crewMemberId);
       }
     }
 
-    // Per-gap-seat eligible pools: feed both `available` and the thinness term.
+    // Per-seat eligible pools over the LEAN-able seats only (Open/Bailed — an
+    // Asked seat has an ask in flight and takes no lean): feed both
+    // `available` and the thinness term.
+    const leanSeats = required.filter(
+      (s) => s.state === "Open" || s.state === "Bailed",
+    );
     const available: CrewMemberId[] = [];
     const seen = new Set<CrewMemberId>();
     let minPool: number | null = null;
-    for (const seat of gapSeats) {
-      const pool = await rankedEligible(repo, seat, now, bailers);
+    for (const seat of leanSeats) {
+      const pool = await rankedEligible(repo, seat, now, excluded);
       minPool = minPool === null ? pool.length : Math.min(minPool, pool.length);
       for (const c of pool) {
         if (!seen.has(c.id)) {

@@ -9,7 +9,7 @@ import { asId } from "../domain/ids.js";
 import type { CrewMemberId } from "../domain/ids.js";
 import type { CrewMember, Event, Shift, Vessel } from "../domain/entities.js";
 import { formShifts } from "./form-shifts.js";
-import { tick } from "./tick.js";
+import { resolveShiftStateOnRead, tick } from "./tick.js";
 import {
   confirmSeat,
   expireAsks,
@@ -316,5 +316,21 @@ describe("tick — board-landing detection (DEC-026)", () => {
 
     const r2 = await tick(repo, AFTER); // Crewed and healthy
     expect(r2.boardLanded).toBe(0);
+  });
+});
+
+describe("resolveShiftStateOnRead (DEC-023 corollary)", () => {
+  it("resolves past-horizon exhaustion to AtRisk even when the badge is stale", async () => {
+    await seedVesselEvent();
+    await formShifts(repo); // persisted: Pending; no crew, past horizon
+
+    expect(await resolveShiftStateOnRead(repo, SHIFT, AFTER)).toBe("AtRisk");
+    expect((await repo.getShift(SHIFT))!.state).toBe("Pending"); // untouched
+  });
+
+  it("returns null for an unknown shift", async () => {
+    expect(
+      await resolveShiftStateOnRead(repo, asId<"ShiftId">("nope"), AFTER),
+    ).toBeNull();
   });
 });

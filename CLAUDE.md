@@ -74,6 +74,11 @@ check so a core-only regression can't ship behind a green app build:
 - Button actions: return `{ error: string | null }`.
 - Never `throw` in server actions — return errors for inline feedback.
 - Forward guidance for *new* actions — `app/(crew)/crew/actions.ts` predates it; retrofit when touched.
+- **No-client-JS surfaces** (admin board pattern, DEC-026): an action may return `void` and surface
+  feedback via redirect search params — params carry **codes/ids only, never prose** (the page maps
+  them to copy), so a crafted URL can't inject text into a trusted surface. Wrap the domain call in
+  try/catch (a repo outage → a mapped notice, not a 500); `redirect()` throws by design, keep it
+  outside the try.
 
 ### Naming
 - Files: `kebab-case.tsx`

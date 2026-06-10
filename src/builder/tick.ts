@@ -109,6 +109,31 @@ async function poolExhaustedFor(
   return !solution.satisfiable;
 }
 
+/**
+ * Resolve ONE shift's state on read (the DEC-023 corollary) — for display
+ * surfaces that must not trust the persisted, eventually-consistent badge
+ * (e.g. the assignment page a board row links to). Single-shift, repo-backed
+ * composition of the same pieces tick's batch loop and the board's trail-reuse
+ * inline for their own structural reasons. `null` when the shift is unknown.
+ */
+export async function resolveShiftStateOnRead(
+  repo: Repository,
+  shiftId: Shift["id"],
+  now: Date,
+  opts?: { leadDays?: number },
+): Promise<Shift["state"] | null> {
+  const shift = await repo.getShift(shiftId);
+  if (!shift) return null;
+  const seats = await repo.listSeatsForShift(shiftId);
+  const horizon = staffingHorizonFor(
+    shift,
+    await repo.listEvents(),
+    opts?.leadDays ?? STAFFING_HORIZON_LEAD_DAYS,
+  );
+  const poolExhausted = await poolExhaustedFor(repo, shift, seats, now);
+  return resolveShiftState(seats, { now, horizon, poolExhausted });
+}
+
 export async function tick(
   repo: Repository,
   now: Date,

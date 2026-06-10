@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.4.5] - 2026-06-10
+- PR #50: Pull seeds v4 templates — Fable 5 model guidance, task-splitting, narration, conventions
+
 ## [0.4.4] - 2026-06-10
 - PR #49: Phase 3.2b — Tier-2 escalation mechanism: stall detection + escalate()
 

@@ -18,6 +18,7 @@
 import type { Seat, Shift } from "../domain/entities.js";
 import type { Repository } from "../ports/repository.js";
 import { broadcastAsk } from "../asks/ask-loop.js";
+import { escalate } from "../asks/escalate.js";
 import { solveShift } from "../oracle/oracle.js";
 import {
   resolveShiftState,
@@ -37,6 +38,41 @@ export interface TickResult {
    * per broadcast seat (a 5-deep pool on one seat counts 5), not seats kicked.
    */
   asksFired: number;
+  /** `Filling` shifts that hit the Tier-2 stall path this tick (DEC-024). */
+  shiftsEscalated: number;
+  /** Total Tier-2 direct-nudges fired across escalated shifts. */
+  nudgesFired: number;
+}
+
+/**
+ * Has Tier-1 stalled on this `Filling` shift? True when a required seat is `Open`
+ * (the broadcast came back declined/silent and the seat reopened) and **nothing**
+ * is mid-flight — no required seat is `Asked` (a live ask) or `Claimed` (an
+ * accepted, unconfirmed yes). A live ask means Tier-1 is still working; only the
+ * dead-quiet shift is Tier-2's job (DEC-024). `Bailed` seats are the Tier-3 path
+ * (DEC-019) and don't gate this.
+ */
+function isStalled(seats: Seat[]): boolean {
+  const required = seats.filter((s) => s.kind === "required");
+  const hasOpen = required.some((s) => s.state === "Open");
+  const inFlight = required.some(
+    (s) => s.state === "Asked" || s.state === "Claimed",
+  );
+  return hasOpen && !inFlight;
+}
+
+/**
+ * Has Tier-1 ever fired on this shift? True once any required seat carries an ask
+ * (sent, answered, or timed out). The signal that separates a genuine birth
+ * (broadcast Tier-1) from a stalled re-engagement (escalate Tier-2) — see the call
+ * site for why the Pending→Filling transition can't tell them apart.
+ */
+async function shiftEverAsked(repo: Repository, seats: Seat[]): Promise<boolean> {
+  for (const seat of seats) {
+    if (seat.kind !== "required") continue;
+    if ((await repo.listAsksForSeat(seat.id)).length > 0) return true;
+  }
+  return false;
 }
 
 /**
@@ -74,6 +110,8 @@ export async function tick(
     bornFilling: 0,
     toAtRisk: 0,
     asksFired: 0,
+    shiftsEscalated: 0,
+    nudgesFired: 0,
   };
 
   for (const shift of await repo.listShifts()) {
@@ -85,21 +123,41 @@ export async function tick(
     const horizon = staffingHorizonFor(shift, allEvents, leadDays);
     const poolExhausted = await poolExhaustedFor(repo, shift, seats, now);
     const next = resolveShiftState(seats, { now, horizon, poolExhausted });
-    if (next === shift.state) continue;
 
     const bornFilling = next === "Filling" && shift.state === "Pending";
-    await repo.saveShift({ ...shift, state: next });
-    result.shiftsAdvanced++;
-    if (next === "AtRisk") result.toAtRisk++;
-    if (bornFilling) {
-      result.bornFilling++;
-      // Eagerly kick Tier-1: broadcast each open required seat. broadcastAsk
-      // moves the seat Open→Asked and refreshes the shift state from seats
-      // (still `Filling`), so the persisted state stays consistent.
-      for (const seat of seats) {
-        if (seat.kind === "required" && seat.state === "Open") {
-          const asks = await broadcastAsk(repo, seat.id, now);
-          result.asksFired += asks.length;
+    if (next !== shift.state) {
+      await repo.saveShift({ ...shift, state: next });
+      result.shiftsAdvanced++;
+      if (next === "AtRisk") result.toAtRisk++;
+    }
+
+    if (next === "Filling") {
+      // Tier-1 vs Tier-2 turns on whether the shift was *ever asked*, not on the
+      // Pending→Filling transition: a stalled shift whose seats reopened reads as
+      // `Pending` again (the seat-fold can't tell "never asked" from "all
+      // declined/timed-out"), so the transition alone would re-broadcast Tier-1
+      // forever and never escalate. Prior asks ⇒ Tier-1 already ran ⇒ Tier-2.
+      const everAsked = await shiftEverAsked(repo, seats);
+      if (!everAsked) {
+        if (bornFilling) result.bornFilling++;
+        // Eagerly kick Tier-1: broadcast each open required seat. broadcastAsk
+        // moves the seat Open→Asked and refreshes the shift state from seats
+        // (still `Filling`), so the persisted state stays consistent.
+        for (const seat of seats) {
+          if (seat.kind === "required" && seat.state === "Open") {
+            const asks = await broadcastAsk(repo, seat.id, now);
+            result.asksFired += asks.length;
+          }
+        }
+      } else if (isStalled(seats)) {
+        // Tier-1 ran dry on an already-worked shift (the gap a born-once
+        // broadcast leaves) → Tier-2 (DEC-024). `escalate` self-limits, so a
+        // shift with nothing left to nudge just re-logs the widen-stub and rides
+        // its horizon to At-Risk on a later tick.
+        const out = await escalate(repo, shift.id, now);
+        if (out.widened) {
+          result.shiftsEscalated++;
+          result.nudgesFired += out.nudged.length;
         }
       }
     }

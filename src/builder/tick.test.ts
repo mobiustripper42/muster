@@ -10,6 +10,11 @@ import type { CrewMemberId } from "../domain/ids.js";
 import type { CrewMember, Event, Shift, Vessel } from "../domain/entities.js";
 import { formShifts } from "./form-shifts.js";
 import { tick } from "./tick.js";
+import {
+  confirmSeat,
+  expireAsks,
+  recordResponse,
+} from "../asks/ask-loop.js";
 
 const CAPTAIN = asId<"RoleTypeId">("role-captain");
 const MATE = asId<"RoleTypeId">("role-mate");
@@ -192,5 +197,72 @@ describe("tick — horizon advance", () => {
 
     expect(r.shiftsAdvanced).toBe(0);
     expect(await shiftState()).toBe("Cancelled");
+  });
+});
+
+describe("tick — Tier-2 stall escalation (DEC-024)", () => {
+  const T1 = new Date(AFTER.getTime() + 2 * 60 * 60_000); // +2h
+  const T2 = new Date(AFTER.getTime() + 4 * 60 * 60_000); // +4h
+  const T3 = new Date(AFTER.getTime() + 6 * 60 * 60_000); // +6h
+  const HOUR = 60 * 60_000;
+
+  const seatId = () => repo.listSeatsForShift(SHIFT).then((s) => s[0]!.id);
+  /** The seat's one live (unanswered) ask — the nudge after escalate. */
+  const liveAsk = async () =>
+    (await repo.listAsksForSeat(await seatId())).find(
+      (a) => a.respondedAt === undefined,
+    )!;
+
+  /** Birth Filling + Tier-1, then time the broadcast out → stalled, seat Open. */
+  async function bornThenSilent() {
+    await seedVesselEvent();
+    await addCaptain("cap-1");
+    await formShifts(repo);
+    await tick(repo, AFTER); // born Filling, cap-1 asked
+    await expireAsks(repo, await seatId(), T1, HOUR); // cap-1 ghosts → seat Open
+  }
+
+  it("escalates a stalled Filling shift and nudges the silent captain", async () => {
+    await bornThenSilent();
+    expect(await seatState()).toBe("Open");
+
+    const r = await tick(repo, T2);
+
+    expect(r.shiftsEscalated).toBe(1);
+    expect(r.nudgesFired).toBe(1);
+    expect(await seatState()).toBe("Asked"); // direct-nudged
+    expect(await shiftState()).toBe("Filling"); // still autonomous, no Spink
+    const events = await repo.reliabilityEventsFor(asId<"CrewMemberId">("cap-1"));
+    expect(events.some((e) => e.type === "nudged")).toBe(true);
+  });
+
+  it("a nudge accepted rescues the shift to Crewed", async () => {
+    await bornThenSilent();
+    await tick(repo, T2); // nudges cap-1
+    const nudge = await liveAsk();
+
+    await recordResponse(repo, nudge.id, "accepted", T3); // Asked → Claimed
+    await confirmSeat(repo, await seatId(), T3); // Claimed → Confirmed → Crewed
+
+    expect(await seatState()).toBe("Confirmed");
+    expect(await shiftState()).toBe("Crewed");
+  });
+
+  it("a nudge declined exhausts Tier-2 — escalate goes dry, shift stays Filling", async () => {
+    await bornThenSilent();
+    await tick(repo, T2); // nudges cap-1
+    const nudge = await liveAsk();
+    await recordResponse(repo, nudge.id, "declined", T3); // → seat reopens Open
+    expect(await seatState()).toBe("Open");
+
+    // Next tick: cap-1 is now both declined and already-nudged → no candidate.
+    const r = await tick(repo, T3);
+
+    expect(r.shiftsEscalated).toBe(1); // widen-stub still fires
+    expect(r.nudgesFired).toBe(0); // nobody left to nudge
+    // Stays Filling, NOT AtRisk: the oracle's exhaustion is eligibility-based and
+    // cap-1 is still eligible. Willingness-exhaustion ("everyone passed") is the
+    // At-Risk board's call (#41, 3.3), read off this escalation trail — not tick's.
+    expect(await shiftState()).toBe("Filling");
   });
 });

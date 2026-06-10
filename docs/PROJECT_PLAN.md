@@ -14,17 +14,18 @@ Fibonacci scale (2, 3, 5, 8, 13). See `VELOCITY_AND_POKER_GUIDE.md` for definiti
 All estimates from planning poker between Eric and Claude. Tests are baked into every task estimate
 — no separate testing tasks. Disagreements logged at the bottom.
 
-**Velocity baseline:** Phase 1 is the first clean read — **0.145 h/pt active** (active = wall −
-inferred breaks) across 55 pts / 3 sessions. That's the forecast number. Phase 0 (0.176 ⚠) carries
-an S1 break-heuristic artifact + an unreadable S2 transcript — don't lean on it. **Wall-clock h/pt is
-not a velocity** (it's inflated by overnight gaps); forecast on active. The low active-per-point is
-the AI-assisted signature — human keyboard time is small relative to output.
+**Velocity baseline:** three clean reads and a steady trend — **0.145 → 0.130 → 0.122 h/pt active**
+(active = wall − inferred breaks); lifetime (P1–P3) **0.136 h/pt** is the forecast number. Phase 0
+(0.176 ⚠) carries an S1 break-heuristic artifact + an unreadable S2 transcript — don't lean on it.
+**Wall-clock h/pt is not a velocity** (it's inflated by overnight gaps); forecast on active. The low
+active-per-point is the AI-assisted signature — human keyboard time is small relative to output.
 
 | Phase | Sessions | Points | Wall (h) | Breaks (h) | Active (h) | h/pt (active) |
 |-------|----------|--------|----------|------------|------------|---------------|
 | 0     | 3        | 9      | 6.33     | 4.75       | 1.58       | 0.176 ⚠       |
 | 1     | 3        | 55     | 60.31    | 52.31      | 8.00       | 0.145         |
 | 2     | 2        | 16     | 31.59    | 29.52      | 2.08       | 0.130         |
+| 3     | 3        | 28     | 37.84    | 34.33      | 3.42       | 0.122         |
 
 **Build strategy — vertical, not horizontal** (build plan §1): build a thin sliver through every
 layer so one real thing works end-to-end, then fatten it. The spine doesn't change as it thickens;
@@ -128,6 +129,28 @@ Bail flow, credential nudges, live-card pings, "changed since reviewed" nudge, s
 weekend-lock, the warming view. *Trigger: friction shows up in real use.* (SPEC §2.3–2.6 deferred
 bits.)
 
+Decomposed 2026-06-10 (P3 retro + start-phase). **Ordering logic:** the path to "run a real
+weekend" runs through the pilot channel (4.1) and the cockpit (4.2), not builder conveniences —
+**split/merge (5), bulk weekend-lock (2), live-card pings (2) deliberately deferred** until real
+use demands them. The **hosted deploy** stays out; it pairs with 4.1 (the "go live" moment) and
+gets pulled in when the channel is picked. **4.1 floats** — ask Eric at each session start whether
+he's ready (web-link vs Telegram decided at 4.1 start); everything else proceeds without it.
+**PR grouping** (issues = tracking grain, PRs = coherence grain): A=4.8 alone first · B=4.2+4.3
+one run · C=4.4+4.5 one run · D=4.7 alone (decision-bearing) · E=4.6 alone.
+
+| # | Task | Effort | Notes |
+|---|------|--------|-------|
+| 4.1 | **Pilot channel adapter (DEC-MSG-3)** — wire one real adapter (web-link or Telegram) for crew asks + the admin board ping (DEC-026 delivery half) | 5 | **Blocked on operator pick** — ask each session start. Needs Eric in the loop (medium choice; bot/phone testing). [#53](https://github.com/mobiustripper42/muster/issues/53) |
+| 4.2 | **Assignment cockpit (§2.4)** — upgrade the thin click-through: seat-card actions (assign from ranked pool, nudge, manual override, confirm), fills-by countdown, calm monitor posture; fixes the P3 Bailed-seat-pool gap | 8 | One PR with 4.3 (Unit B). @architect pre-pass on the action set. [#54](https://github.com/mobiustripper42/muster/issues/54) |
+| 4.3 | **Warming view (§2.4)** — trending-toward-risk inside the cockpit, opened deliberately; never on the board | 3 | Rides Unit B. [#55](https://github.com/mobiustripper42/muster/issues/55) |
+| 4.4 | **Crew bail flow (§2.6)** — "can't make it" from the shift card → existing `bail()` rails (DEC-019), admin fallout visible | 3 | One PR with 4.5 (Unit C). [#56](https://github.com/mobiustripper42/muster/issues/56) |
+| 4.5 | **Crew credential nudge (§2.6)** — expiring-credential line in the crew app (reads credential-health) | 2 | Rides Unit C. [#57](https://github.com/mobiustripper42/muster/issues/57) |
+| 4.6 | **Builder: changed-since-reviewed nudge (§2.3)** — late booking on a locked shift raises it | 3 | Scope caution: no builder UI exists — domain derivation + minimal render on an existing surface. [#58](https://github.com/mobiustripper42/muster/issues/58) |
+| 4.7 | **Board polish: "fills by" deadline** — real fill-deadline concept on `AtRiskRow` + multi-trip times (P3 review follow-up) | 3 | Decision-bearing (@architect → likely DEC-027); solo PR. [#59](https://github.com/mobiustripper42/muster/issues/59) |
+| 4.8 | **UI chassis** — extract shared `components/ui` Shell/Notice (toned variant as superset) | 1 | **Built first** — or 4.2 mints a fourth copy. [#60](https://github.com/mobiustripper42/muster/issues/60) |
+
+**Phase 4 total: 28 pts planned** (split/merge, bulk lock, live-card pings + hosted deploy deferred — see above)
+
 ## Phase 5: Pass D — Progressive commitment (soft-hold + staged horizons)
 
 The anxiety-reducer: bank crew willingness weeks out via a `Held` seat tier and earlier *soft*
@@ -147,12 +170,13 @@ Updated at end of each phase. Used by @pm to project remaining time.
 
 | Phase | Sessions | Points | Wall (h) | Breaks (h) | Active (h) | h/pt (active) |
 |-------|----------|--------|----------|------------|------------|---------------|
-| 0 | 3 | 9 | 6.29 | — | — | — (predates active tracking) |
+| 0 | 3 | 9 | 6.33 | 4.75 | 1.58 | 0.176 ⚠ (S1 heuristic artifact — don't forecast on it) |
 | 1 | 3 | 55 | 60.31 | 52.31 | 8.00 | 0.145 |
 | 2 | 2 | 16 | 31.59 | 29.52 | 2.08 | 0.130 |
 | 3 | 3 | 28 | 37.84 | 34.33 | 3.42 | 0.122 |
 
 **Lifetime velocity (active, Phases 1–3):** 13.50h / 99 pts = **0.136 h/pt**
+*(Same table as §Estimation Method above — keep both in sync at retro.)*
 
 ---
 

@@ -47,10 +47,37 @@ In dev there's a link issuer:
 > mid-2026; if the machine clock is ever past them, My shifts goes empty (the ask still shows). Re-run
 > `npm run db:seed:crew` to reset state.
 
+## Seeing the At-Risk board (admin)
+Admin needs **no seed** — there's no admin entity (DEC-020): the session subject is a free-form
+handle, so any `?admin=<handle>` works in dev.
+
+```bash
+npm run db:seed:atrisk   # 4 board scenarios, trips anchored to NOW (re-run anytime to re-anchor)
+```
+
+1. Open **http://mill-dev:3000/crew/dev-link?admin=spink** → tap the returned link → you land
+   signed-in on **`/admin/at-risk`** with "4 shifts need a call · 1 regression".
+2. The four rows, top to bottom: **Firkin** (red *Regression · late bail* pill — always pinned
+   first), **Tidewater** (trail: *asked 2 · 1 declined · 1 silent*, silent in red), **Growler**
+   (*⊘ Gus's credential lapses before the trip*), **Mash Tun** (*not yet worked — flagged by the
+   oracle* + the "nobody left in the eligible pool" line, no Lean buttons).
+3. Tap **↗ Lean on Marisol** (Firkin row) → green *"Last action: leaned on Marisol — asked, not yet
+   filled"* and the Firkin row is **gone** — its ask is now in flight, which is the engine working,
+   not a bug. (`/crew/dev-link?crew=crew-ar-sub` shows Marisol's In/Out card if you want the loop.)
+4. Tap **Open in Assignment ↗** (Tidewater row) → read-only seat view, badge **Filling**; in the
+   pool, Lance reads *declined* (muted) and Gardner *silent* (red) — visibly different.
+
+```bash
+npm run db:tick          # run one engine tick by hand (DEC-023 — no scheduler in v1)
+```
+Prints the tick counters (asks fired, escalations, board landings). After a tick, refresh the
+board: **Tidewater disappears too** — Tier-2 sent a direct nudge, so an ask is in flight again.
+Re-running `db:seed:atrisk` resets all four scenarios (it closes any in-flight engine asks).
+
 ## Other endpoints
 - `GET /api/health` → `{ status, db.reachable, integrity: { ok, violationCount } }` (runs the no-FK
   integrity diagnostic; `degraded` if the DB is down or a dangling ref exists).
-- `/admin` → stub (admin surfaces are later phases).
+- `/admin` → links to the At-Risk board (roster/builder surfaces are later phases).
 
 ## Checking a change
 - **The gate:** `npm run verify` → core typecheck + app typecheck + tests + webpack build. Docker-free

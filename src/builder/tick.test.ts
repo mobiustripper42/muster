@@ -287,6 +287,30 @@ describe("tick — board-landing detection (DEC-026)", () => {
     expect(landings[0]!.metadata.reason).toBe("core");
   });
 
+  it("two reasons landing in ONE tick mint two distinct events (pg pkey regression)", async () => {
+    // A Bailed seat past horizon lands core + regression in the same tick: both
+    // events share crew (system), type, and timestamp — only `reason` separates
+    // their ids. Without reason in the mint this was a Postgres pkey collision
+    // the in-memory adapter silently swallowed.
+    await seedVesselEvent();
+    await formShifts(repo);
+    const seats = await repo.listSeatsForShift(SHIFT);
+    await repo.saveSeat({ ...seats[0]!, state: "Bailed" });
+
+    const r = await tick(repo, AFTER);
+
+    expect(r.boardLanded).toBe(2);
+    const landings = (await repo.reliabilityEventsFor(SYSTEM_ACTOR_ID)).filter(
+      (e) => e.type === "board_landed",
+    );
+    expect(landings).toHaveLength(2);
+    expect(new Set(landings.map((e) => e.id)).size).toBe(2); // distinct ids
+    expect(landings.map((e) => e.metadata.reason).sort()).toEqual([
+      "core",
+      "regression",
+    ]);
+  });
+
   it("re-pings when a NEW reason appears (landed core, later regresses)", async () => {
     await seedVesselEvent();
     await formShifts(repo);

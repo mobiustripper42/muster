@@ -127,6 +127,10 @@ export function RiskRow({ row }: { row: RiskRowVM }) {
 
         <TrailLine trail={row.trail} />
 
+        {/* Hidden entirely on a no-gap row (credential lapse on a crewed boat):
+            the problem there is the credential, not headcount — "nobody left in
+            the pool" would be the wrong honesty. */}
+        {(row.available.length > 0 || row.missing.length > 0) && (
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <span className="text-[10px] font-bold uppercase tracking-wider text-muted">
             Still available
@@ -152,6 +156,7 @@ export function RiskRow({ row }: { row: RiskRowVM }) {
             ))
           )}
         </div>
+        )}
 
         <div className="flex flex-col gap-1 border-t border-line pt-2">
           <div className="flex flex-wrap items-center justify-between gap-2">

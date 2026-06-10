@@ -28,21 +28,26 @@ import type {
 import type { Repository } from "../ports/repository.js";
 
 /**
- * Deterministic event id from its natural key (crew · type · timestamp · seat).
- * Unique per logical event for the ask lifecycle; a durable DB swaps in a
- * surrogate key later. The append-only log never overwrites, so a same-key
+ * Deterministic event id from its natural key (crew · type · timestamp · seat
+ * · reason). Unique per logical event for the ask lifecycle; a durable DB swaps
+ * in a surrogate key later. The append-only log never overwrites, so a same-key
  * collision would duplicate rather than clobber — the components above make that
- * vanishingly unlikely in practice.
+ * vanishingly unlikely in practice. The `reason` component is load-bearing for
+ * `board_landed` (DEC-026): one shift can land for TWO reasons in the SAME tick
+ * (core + regression share `now`, and there's no seat), which collided on the
+ * Postgres pkey before reason joined the key.
  */
 function mintId(
   crewMemberId: CrewMemberId,
   type: ReliabilityEventType,
   timestamp: string,
   seatId?: SeatId,
+  reason?: string,
 ): ReliabilityEvent["id"] {
   const seatPart = seatId ? `-${seatId}` : "";
+  const reasonPart = reason ? `-${reason}` : "";
   return asId<"ReliabilityEventId">(
-    `rel-${crewMemberId}-${type}-${timestamp}${seatPart}`,
+    `rel-${crewMemberId}-${type}-${timestamp}${seatPart}${reasonPart}`,
   );
 }
 
@@ -60,7 +65,7 @@ export async function recordReliabilityEvent(
 ): Promise<ReliabilityEvent> {
   const timestamp = now.toISOString();
   const event: ReliabilityEvent = {
-    id: mintId(crewMemberId, type, timestamp, metadata.seatId),
+    id: mintId(crewMemberId, type, timestamp, metadata.seatId, metadata.reason),
     crewMemberId,
     type,
     timestamp,

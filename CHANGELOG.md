@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.4.2] - 2026-06-09
+- PR #46: Phase 3.1b — magic-token reaper: reapExpiredMagicLinks + removeMagicToken port
+
 ## [0.4.1] - 2026-06-09
 - PR #45: Phase 3.1a — staffing-horizon clock: resolveShiftState overlay + tick(repo,now)
 

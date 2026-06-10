@@ -27,10 +27,8 @@
 
 import type { CrewMemberId, ShiftId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
-import { eligiblePool } from "../oracle/oracle.js";
-import { rankEligibleIds } from "../oracle/reliability-score.js";
 import { logNudged, logPoolWidened } from "../oracle/reliability-log.js";
-import { assignPerson } from "./ask-loop.js";
+import { assignPerson, rankedEligible } from "./ask-loop.js";
 
 export interface EscalateResult {
   /** Whether the widen-stub fired (false only if the shift wasn't escalable). */
@@ -63,16 +61,9 @@ export async function escalate(
   await logPoolWidened(repo, shiftId, now);
 
   // ── Build the no-nudge set ──────────────────────────────────────────────────
+  // Committed-on-shift (the distinct-pool rule, DEC-003) is handled inside
+  // `rankedEligible`, so this set holds only the escalate-specific exclusions.
   const excluded = new Set<CrewMemberId>();
-  // Committed on this shift (Claimed/Confirmed) — can't double-book (DEC-003).
-  for (const s of required) {
-    if (
-      (s.state === "Claimed" || s.state === "Confirmed") &&
-      s.assignedCrewMemberId
-    ) {
-      excluded.add(s.assignedCrewMemberId);
-    }
-  }
   // Declined (said no) or mid-flight (live, unanswered ask) — leave them be.
   // Silent (timed out: respondedAt set, no response) are NOT excluded — they're
   // the ghosters this whole mechanism exists to poke.
@@ -83,7 +74,11 @@ export async function escalate(
       }
     }
   }
-  // Already nudged for this shift (prior ticks) — at most one nudge per person.
+  // Already nudged for this shift (prior ticks) — at most one nudge per person,
+  // which is what makes escalation terminate. The reliability log is crew-keyed,
+  // so this scans the roster filtering on `metadata.shiftId`; fine at BrewBoat
+  // scale, wants a shift-indexed query when the durable log lands at M4 (same
+  // revisit as `committedDatesByCrew` / `escalationTrailFor`).
   for (const c of await repo.listCrewMembers()) {
     const events = await repo.reliabilityEventsFor(c.id);
     if (events.some((e) => e.type === "nudged" && e.metadata.shiftId === shiftId)) {
@@ -92,14 +87,9 @@ export async function escalate(
   }
 
   // ── Nudge the top-ranked survivor per open seat ─────────────────────────────
-  const pools = await eligiblePool(repo, shiftId);
   const nudged: CrewMemberId[] = [];
   for (const seat of openSeats) {
-    const pool = pools.find((p) => p.seatId === seat.id);
-    if (!pool) continue;
-    const candidates = pool.eligible.filter((id) => !excluded.has(id));
-    if (candidates.length === 0) continue;
-    const [pick] = await rankEligibleIds(repo, candidates, now);
+    const [pick] = await rankedEligible(repo, seat, now, excluded);
     if (!pick) continue;
     const ask = await assignPerson(repo, seat.id, pick.id, now);
     if (!ask) continue; // seat wasn't Open after all — skip defensively

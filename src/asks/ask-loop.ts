@@ -101,9 +101,12 @@ async function committedOnShift(
 
 /**
  * The eligible crew for a seat, ranked by reliability (§2.4), optionally
- * excluding ids (e.g. a bailer). `now` is the scoring instant for the ranker.
+ * excluding ids (e.g. a bailer). Already-committed-on-shift crew are dropped
+ * internally (distinct-pool, DEC-003) — callers pass only their *extra*
+ * exclusions. `now` is the scoring instant for the ranker. Exported so Tier-2
+ * (`escalate`) shares one copy of the intra-shift distinct-pool rule.
  */
-async function rankedEligible(
+export async function rankedEligible(
   repo: Repository,
   seat: Seat,
   now: Date,

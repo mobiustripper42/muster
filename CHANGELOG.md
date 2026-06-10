@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.4.7] - 2026-06-10
+- PR #52: Phase 3.4+3.5 — At-Risk board surface + lean
+
 ## [0.4.6] - 2026-06-10
 - PR #51: Phase 3.3 — At-Risk derivation: board membership + urgency sort
 

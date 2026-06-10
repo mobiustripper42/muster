@@ -61,6 +61,33 @@ check so a core-only regression can't ship behind a green app build:
 
 `build` alone is **not** the gate — it validates the app, not the core. Use `verify`.
 
+## Conventions
+
+### Components
+- Server Components by default. Add `'use client'` only when needed.
+- shadcn/ui components in `components/ui/` — don't edit directly.
+- Feature components in `components/[feature]/`.
+- Keep components under 200 lines. Split if larger.
+
+### Error Handling
+- Form actions: return `string | null`. `null` = success, string = error message.
+- Button actions: return `{ error: string | null }`.
+- Never `throw` in server actions — return errors for inline feedback.
+
+### Naming
+- Files: `kebab-case.tsx`
+- Components: `PascalCase`
+- Server Actions: `camelCase` in `actions/` files
+- DB columns: `snake_case`
+
+### UI / Brand
+- Colors: white/black base, semantic tokens from shadcn. No color for color's sake.
+- Font: Geist Sans (or project font)
+- shadcn/ui defaults. Override only when necessary.
+- One border radius: `rounded-lg`
+- Layout padding in layout.tsx only
+- Every page works at 375px (Playwright screenshot confirms)
+
 ## Key Docs
 | File | Purpose |
 |------|-------|
@@ -160,7 +187,7 @@ Issues. A phase ends when its issues close.
 
 | Agent | Model | When | Purpose |
 |-------|-------|------|-------|
-| @architect | Opus | Before design decisions, new deps, scope creep, **any DEC-TBD** | Coherence vs SPEC + DECISIONS |
+| @architect | Fable 5 | Before design decisions, new deps, scope creep, **any DEC-TBD** | Coherence vs SPEC + DECISIONS |
 | @code-review | Sonnet | After every commit (wired into `/kill-this`) | Catch issues early |
 | @pm | Sonnet | Start/end of sessions | Track progress, flag risks |
 | @sync-config | Sonnet | `/push-seeds`, `/pull-seeds` | Classify template-vs-project diffs |
@@ -174,9 +201,22 @@ Issues. A phase ends when its issues close.
 > keep once there's UI to review.
 
 ## Model Selection
-- Main session: Sonnet by default; switch to Opus when stuck or doing architecture (the oracle).
-- Agents: model per frontmatter. New agents default to Sonnet; `model: opus` only for
-  architecture-level agents.
+
+Three tiers. Default low; escalate by **task length and complexity** — Fable 5's lead over Sonnet/Opus is smallest on short scoped tasks and widens the longer and more complex the work (migrations, schema design, cross-cutting refactors, long autonomous runs).
+
+| Tier | Model | Use for |
+|------|-------|---------|
+| Workhorse | `claude-sonnet-4-6` | Default main session and most agents. Single-file edits, scoped tasks, reviews. |
+| Hard | `claude-opus-4-8` | The "stuck" escalation; schema work; anything where being wrong is expensive but the task is bounded. |
+| Frontier | `claude-fable-5` | Long-horizon, multi-file, high-autonomy work where holding coherence across the whole change is the bottleneck — and architecture decisions (the oracle — see `@architect`). $10/$50 per MTok, 2× Opus both directions; reserve accordingly. |
+
+- **Reach for `effort` before reaching for a tier.** `effort` (`low`/`medium`/`high`/`xhigh`/`max`, set via `output_config`) buys quality more cheaply than a model jump on a task the current model can already do. `xhigh` is the floor for coding/agentic work, `high` for intelligence-sensitive work, `max` only when correctness must beat cost. Fable 5 reaches production-quality code at *medium* effort and is more token-efficient than prior models — frontier quality does **not** require max effort.
+- **Spec up front, then let it run.** Front-load the full task spec in one turn and let the model work long at high effort rather than over-decomposing a coherent task into tiny issues — Fable holds coherence across millions of tokens, and chopping the task throws that away. The Micro Workflow's *Spec it / Plan it* steps and the `docs/design/` mockups **are** the spec; point the model at them.
+- **File memory is a force multiplier — ~3× more effective on Fable than Opus 4.8.** Session files, `docs/design/`, `docs/DECISIONS.md`, and acceptance criteria are exactly the persistent notes Fable exploits to improve its own output. Keep them current; reference them explicitly in the task.
+- **Vision is a first-class input.** Fable 5 is state-of-the-art at vision and rebuilds UI from screenshots with minimal scaffolding — lean on `docs/design/mockups/*.jsx` and screenshot-vs-build diffs (see `@ui-reviewer`).
+- **Silent fallback caveat.** Fable routes <5% of sessions (cyber / bio-chem / distillation classifiers, conservatively tuned) to Opus 4.8 automatically and tells you when it does. Defensive auth work won't trip it in normal use — but if a session unexpectedly feels a tier weaker, check for a fallback notice before chasing a phantom regression.
+- **Agents:** model in agent frontmatter. `@architect` pins `claude-fable-5` — architecture decisions are where being wrong compounds, so they get the frontier tier. Reviewers (`@code-review`, `@pm`, `@doc-consistency`, `@tape-reader`) stay Sonnet. `@ui-reviewer` stays Sonnet but is worth bumping to Opus 4.8 / Fable for vision-heavy mockup-vs-build review.
+- **New agents:** default to Sonnet. Add a `model:` line only when the agent's job is architecture- or vision-level reasoning.
 
 ## PR Workflow
 - Each task gets a branch: `task/X.Y-short-description`.
@@ -197,6 +237,16 @@ Issues. A phase ends when its issues close.
   the deploy model changes — `main` is always the active trunk (DEC-S022); `production` is only a
   downstream deploy pointer, never a PR base.
 
+### PR Review on Mobile (developer notes)
+
+Doing PR reviews from your phone is tolerable if you structure for it:
+- **GitHub mobile app, not web.** The native app's diff + approve + merge flow is usable. The mobile web is not.
+- **Tap the preview URL first.** Vercel posts it as a comment. 60 seconds of clicking the actual feature catches more than reading the diff would.
+- **Enable auto-merge.** Repo Settings → enable auto-merge, then "Enable auto-merge" on each PR. Checks pass → it merges itself. One less thing to remember to do.
+- **Branch protection:** require CI green (Vercel build + Playwright). Skip reviewer count requirements for solo dev — they add friction with no benefit.
+- **Checklist PR descriptions.** `/kill-this` should populate: does this PR have a migration? RLS change? UI change at 375px? A checkbox list is fast to scan on a small screen.
+- **`gh` CLI on your dev server** is faster than any UI when you're at a keyboard: `gh pr list`, `gh pr view 42 --web`, `gh pr merge 42 --auto`.
+
 ## Versioning
 SemVer in `package.json` (created at task 0.3), mirrored to a git tag (`vX.Y.Z`) on `main`. `/retro`
 is the sole place bumps happen: patch per merged PR + minor at phase close; `/bump-major` is manual.
@@ -215,6 +265,18 @@ guardrail. New ideas go to `docs/FUTURE_IDEAS.md`, **not** the locked spec (DEC-
 
 If a task feels bigger than its estimate: stop, re-estimate, update PROJECT_PLAN at the next phase
 boundary (or via Issue mid-phase). If it's now a 13, break it down.
+
+**Splitting is a reviewability call, not a model-capability one.** Points size *estimation*; they don't cap how much gets built in one run. Fable holds coherence across far more than an 8, and splitting a *coherent* task fragments context — two stitched-together 5s can land worse than one well-specified 8. So:
+- **Don't split a coherent 8** (one feature, one migration, one subsystem) just to honor a ceiling — run it as one unit with the full spec up front.
+- **Do split** when the diff is too large to review well, the blast radius or reversibility worries you, there's a migration conflict (see PR Workflow), or an "8" is secretly two unrelated things.
+- **Still break genuine 13s** — for review and risk, and because a 13 usually means the task isn't understood well enough yet. Not because the model can't hold it.
+- Larger units lean harder on a complete spec + crisp ACs and the `@architect` gate. Raise the ceiling only with those in place.
+
+## Workflow Notes
+- **Diagnostic commands** (build, lint, type check, test): run directly — see errors, fix them, don't bother the user.
+- **Environment-changing commands** (npm install, migrations, git push, deploys): output these for the user to run.
+- **JSON parsing in Bash:** Prefer `gh ... --jq '...'` (built-in jq via `gh`) or `jq` over `python3 -c "import json,sys; ..."` one-liners. The python invocations trigger per-pattern permission prompts (each unique argument list is a new allowlist entry), while `gh --jq` runs under the existing `Bash(gh ...)` allowance. For non-`gh` JSON, install/use `jq` directly. Reserve python for cases where the data shape genuinely needs control flow.
+- **Bug reports:** create a GitHub issue, label `bug`, add to current or next phase.
 
 ## Approval Before Action (all tasks)
 For every task — explain the plan and wait for approval before doing anything:
@@ -255,6 +317,20 @@ If a turn ends with a tidy bullet list followed by three paragraphs of prose, th
 Mid-session updates: one sentence per state change. "Found X." "Switching to Y." "Build green." Not a paragraph.
 
 This rule applies double at session end. The session-summary block is the first thing I read next session — make it dense, not voluminous. Five bullets of work and a wall of text means I cannot actually use the summary. Cut the wall.
+
+## Narration
+
+`Response Length` and `Verbosity` above are the standing baseline. This is the switchable knob on top of them — Opus 4.8 / Fable narrate more by default, so name the level and I'll hold it for the session.
+
+- **Terse** (default): Silence between tool calls. One sentence only when I find something, change direction, or hit a blocker. No "Now I'll…", "Let me check…", "Looking at…", no recapping what you just watched. Close with one or two sentences on the outcome.
+- **Normal**: Brief progress notes at meaningful steps — not every action.
+- **Narrate**: Explain reasoning as I go. For teaching, debugging, or watching a tricky change land.
+
+Switch any time: `narration: terse|normal|narrate`.
+
+Two mechanics move narration the same direction, independent of level:
+- **Keep adaptive thinking on.** With thinking disabled, 4.8 / Fable spill reasoning into the visible answer — which reads as *more* narrative. Adaptive keeps reasoning in thinking blocks and the response clean.
+- **Lower `effort`** (`low` / `medium`) trims preamble and confirmations — a coarser lever than the levels above.
 
 ## Cost and Waste
 

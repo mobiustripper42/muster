@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.5.0] - 2026-06-10 — Phase 3
+- 28 pts shipped across 3 sessions (0.122 h/pt active)
+- See `docs/RETROSPECTIVES.md` for the full retro
+
 ## [0.4.7] - 2026-06-10
 - PR #52: Phase 3.4+3.5 — At-Risk board surface + lean
 

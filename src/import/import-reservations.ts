@@ -18,7 +18,11 @@
 import type { Event, Reservation } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import type { EventId } from "../domain/ids.js";
-import { isClockTime, isIsoDate } from "../domain/iso-date.js";
+import {
+  assertOptionalIsoDateTime,
+  isClockTime,
+  isIsoDate,
+} from "../domain/iso-date.js";
 import type { Repository } from "../ports/repository.js";
 import { resolveProduct } from "./product-map.js";
 
@@ -94,12 +98,34 @@ function resolveColumn(
 }
 
 /**
+ * Whether a re-imported reservation differs from the stored one in any field the
+ * operator would want flagged (DEC-029). Drives the `updatedAt` stamp: equal →
+ * preserve the old timestamp so a blind re-import doesn't make every locked shift
+ * cry wolf. `phone` is excluded — it's joined later from the customers export
+ * (DEC-017), not authored here, so it isn't an import-side change.
+ */
+function reservationMateriallyChanged(
+  prev: Reservation,
+  next: Reservation,
+): boolean {
+  return (
+    prev.eventId !== next.eventId ||
+    prev.customerName !== next.customerName ||
+    prev.partySize !== next.partySize ||
+    prev.status !== next.status ||
+    (prev.email ?? "") !== (next.email ?? "")
+  );
+}
+
+/**
  * Import the Reservations rows into the repository. `rows` is the full sheet
- * (both header rows + data). Idempotent on Xola `Reservation ID`.
+ * (both header rows + data). Idempotent on Xola `Reservation ID`. `now` is
+ * injected (the import stamps `updatedAt`; the core never reads the clock).
  */
 export async function importReservations(
   repo: Repository,
   rows: string[][],
+  now: Date = new Date(),
 ): Promise<ImportResult> {
   const result: ImportResult = {
     reservationsAdded: 0,
@@ -183,7 +209,7 @@ export async function importReservations(
 
     const internalId = asId<"ReservationId">(`resv-${reservationId}`);
     const existingReservation = await repo.getReservation(internalId);
-    const reservation: Reservation = {
+    const core: Reservation = {
       id: internalId,
       eventId,
       customerName: (row[cName] ?? "").trim(),
@@ -192,6 +218,16 @@ export async function importReservations(
       ...(email ? { email } : {}),
       // phone left undefined — joined from the customers export later (DEC-017).
     };
+    // Stamp updatedAt on create + material change only (DEC-029); otherwise
+    // preserve the stored timestamp so re-imports don't bump unchanged rows.
+    const stampChanged =
+      !existingReservation ||
+      reservationMateriallyChanged(existingReservation, core);
+    const updatedAt = stampChanged
+      ? now.toISOString()
+      : existingReservation.updatedAt;
+    assertOptionalIsoDateTime(updatedAt, "reservation.updatedAt");
+    const reservation: Reservation = updatedAt ? { ...core, updatedAt } : core;
     await repo.saveReservation(reservation);
 
     // added/updated partition every imported row by prior existence …

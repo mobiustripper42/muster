@@ -7,6 +7,7 @@ import {
 import { deriveWarming } from "@core/admin/warming.js";
 import { asId } from "@core/domain/ids.js";
 import { resolveShiftStateOnRead } from "@core/builder/tick.js";
+import { changedSinceReviewed } from "@core/builder/lock.js";
 import {
   SeatCard,
   type CandidateVM,
@@ -91,6 +92,7 @@ export default async function ShiftCockpit({
   let crew: Map<string, { name: string; phone: string | null }>;
   let seatOccupant: Map<string, string>;
   let warmingRows: WarmingRowVM[] = [];
+  let changedSinceLock = false;
   const warmingOpen = sp.warming === "1";
   try {
     view = await buildAssignmentView(repo, shiftId, now);
@@ -102,6 +104,17 @@ export default async function ShiftCockpit({
       );
     }
     resolved = await resolveShiftStateOnRead(repo, shiftId, now);
+    // "Changed since you reviewed it" (§2.3, DEC-029) — a booking landed/changed
+    // after this shift was locked. Derived, never a stored flag; relock clears.
+    const shift = await repo.getShift(shiftId);
+    if (shift?.lockedAt) {
+      const reservations = (
+        await Promise.all(
+          shift.eventIds.map((id) => repo.listReservationsForEvent(id)),
+        )
+      ).flat();
+      changedSinceLock = changedSinceReviewed(shift, reservations);
+    }
     crew = new Map(
       (await repo.listCrewMembers()).map((c) => [
         String(c.id),
@@ -213,6 +226,14 @@ export default async function ShiftCockpit({
           )}
         </div>
       </header>
+
+      {changedSinceLock && (
+        <Notice tone="warn">
+          Changed since you reviewed it — a booking landed or changed after you
+          locked this shift. Nothing was altered silently; re-lock once you’ve
+          had a look.
+        </Notice>
+      )}
 
       <p className="text-xs text-muted">
         The automation works this shift on its own — step in below when you

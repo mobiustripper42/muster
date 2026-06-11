@@ -792,6 +792,41 @@ DEC-019 left open; the *weight* per hour stays the DEC-TBD tune-later knob.)
 
 ---
 
+## DEC-029: "Changed since you reviewed it" is a pure derivation — `max(reservation.updatedAt) > shift.lockedAt`
+
+**Decision:** The SPEC §2.3 builder nudge ("a locked shift that absorbed a new/changed booking shows
+this; it is never silently altered") is **derived, never a stored/dismissable flag** (DEC-005 house
+style). A shift shows the nudge iff it is locked AND any reservation on its events has an `updatedAt`
+strictly after `lockedAt`. Helper `changedSinceReviewed(shift, reservations)` lives in
+`src/builder/lock.ts` beside `isLocked`/`lockShift`. **Re-lock advances `lockedAt` → clears** (the
+honest "I've re-reviewed it"). Unlocked shifts never nudge — they absorb quietly (§2.3).
+
+**The comparand:** a new `Reservation.updatedAt` (ISO-8601 UTC, optional; `updated_at` nullable text
+— migration 0004). Stamped by the import (`importReservations`, the only writer; `now` injected — the
+core never reads the clock) on **create + material change only**, guarded by a field-equality check
+(`reservationMateriallyChanged`: eventId/customerName/partySize/status/email — phone excluded, it's
+joined later per DEC-017). The guard is load-bearing: without it a blind re-import bumps every row and
+every locked shift cries wolf, so the operator learns to ignore the nudge. Absent `updatedAt` =
+predates tracking → older than any lock → never nudges (no backfill).
+
+**Why `updatedAt`, not `createdAt`:** `createdAt` catches only *new* bookings; SPEC says "new **or
+changed**," and the import flips `booked→cancelled` and absorbs party-size edits in place — the
+cancellation is the whole "don't blindside Spink at the dock" case. Same column count, honest instead
+of half-honest.
+
+**Knowingly excluded in v1:** **capacity-only event edits** (the import overwrites event capacity
+silently — already flagged in-code as authoritative-for-now; revisit with DEC-016 capacity
+validation). Event **time/date** edits ARE caught for free — event identity is
+`evt-${vesselId}-${date}-${time}`, so a time/date change re-keys the event, rewriting each
+reservation's `eventId` as a material change. Render is one read-only `Notice tone="warn"` line on
+the assignment cockpit header (DEC-026 on-pattern; no new builder surface — the issue's hard scope
+caution, since no builder UI exists yet).
+
+**Phase:** Phase 4 / Unit E (#58, task 4.6). (@architect pass — Fable — 2026-06-11. Amended the
+original `createdAt` proposal to `updatedAt` + the materiality guard.)
+
+---
+
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)
 
 These are deferred by design. Each names an owner and a trigger. **Consult @architect (and the named

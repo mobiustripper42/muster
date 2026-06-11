@@ -212,9 +212,9 @@ export default async function ShiftCockpit({
       </header>
 
       <p className="text-xs text-muted">
-        The automation works this shift on its own — acting below is you taking
-        the wheel for a seat. It won’t fight you: a seat with your ask in flight
-        takes no engine moves.
+        The automation works this shift on its own — step in below when you
+        want to drive. It won’t fight you: once you ask someone, the system
+        waits for their answer instead of sending its own asks for that seat.
       </p>
 
       {assigned && <Notice tone="ok">Asked {assigned} into the seat — awaiting their reply.</Notice>}

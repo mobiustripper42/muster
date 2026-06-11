@@ -37,18 +37,29 @@ In dev there's a link issuer:
 2. Open **that link** → it verifies + consumes the token, sets the `muster_session` cookie, and
    redirects to **`/crew`**.
 3. You should see Quint's **ask** (In/Out), **My shifts**, the standing chip, and the amber
-   **credential line** (#57): "Your MMC expires &lt;~30d out&gt; — renew before it gates you out of pools."
+   **credential line** (#57): "Your MMC expires &lt;~30d out&gt; — renew it to keep getting asked for shifts."
 
 `/crew/dev-link` is **dev-only** (404 in production). What to try:
 - Tap **In** / **Out** on the ask → it resolves (In claims the seat → moves to My shifts; Out reopens).
 - **Bail (#56):** open the My-shifts row → at the card's bottom, expand **"I can’t make it…"** →
-  tap **Give up this seat** → you land back on `/crew` with the calm "You’re off the … shift"
+  tap **Drop this seat** → you land back on `/crew` with the calm "You’re off the … shift"
   notice and the shift is gone from My shifts. The fallout depends on who else is seeded
-  (DEC-019, both honest): with **only this seed** loaded, no other valid captain exists → the seat
-  rests **Bailed** and the Hops shift shows on **/admin/at-risk** as a red **Lacking crew · late
-  bail** regression; with the at-risk seed also loaded, the system instead **re-asks its captains**
-  — open the Hops cockpit and watch the pool read *awaiting reply*. Re-run `npm run db:seed:crew`
-  to undo.
+  (DEC-019, both honest):
+  - **Crew seed only** → no other valid captain exists → the seat rests **Bailed** and the Hops
+    shift shows on **/admin/at-risk** as a red **Lacking crew · late bail** regression.
+    ⚠️ "Crew seed only" means a DB that has *never* run `db:seed:atrisk` — its captains persist
+    (upserts never delete; `db:migrate` is forward-only and won't drop them), so a plain re-run of
+    `db:seed:crew` on a contaminated DB **won't** get you here. Wipe the volume first:
+    `docker compose down -v && npm run db:up && npm run db:migrate && npm run db:seed:crew`,
+    *then* bail.
+  - **At-risk seed also loaded** → that seed adds eligible captains, so the bail **re-asks** instead
+    → seat goes `Asked`, shift `Filling`. A live ask far from the trip is suppressed from the board
+    by design — open the Hops cockpit (`/admin/shift/shift-soon`) and watch the pool read
+    *awaiting reply*. (Quick check of which path you're on: if `/admin/at-risk` shows
+    `vessel-ar-*` rows, the at-risk seed is loaded — you're on this branch.)
+
+  Re-running `npm run db:seed:crew` resets Quint's seat to Confirmed (undoes the bail), but does
+  **not** remove at-risk shifts — only `docker compose down -v` (drop the volume) does.
 - Open `/crew` with no cookie (private window) → the signed-out state.
 - Mangle the `?t=` value → the expired/used-link copy.
 

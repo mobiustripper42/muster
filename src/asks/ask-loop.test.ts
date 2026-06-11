@@ -12,6 +12,7 @@ import { logShiftCompleted } from "../oracle/reliability-log.js";
 import {
   assignPerson,
   bail,
+  bailWithDerivedLateness,
   broadcastAsk,
   confirmSeat,
   expireAsks,
@@ -264,6 +265,68 @@ describe("bail (DEC-019)", () => {
     )!;
     expect(bailed.metadata.latenessMs).toBe(90 * 60_000);
     expect(bailed.metadata.noticeMs).toBe(noticeMs);
+  });
+
+  it("refuses to bail a different occupant than the caller pinned", async () => {
+    const a = await addCrew("crew-a");
+    const b = await addCrew("crew-b");
+    const [seatId] = await addShift(1);
+    await confirmFirst(seatId!, a); // a holds the seat; caller validated b
+
+    await expect(bail(repo, seatId!, later(3000), 0, undefined, b)).rejects.toThrow();
+    expect((await repo.getSeat(seatId!))!.state).toBe("Confirmed"); // untouched
+    expect(await types(a)).not.toContain("shift_bailed"); // nobody penalized
+  });
+});
+
+describe("bailWithDerivedLateness (DEC-028 glue — the one home of it)", () => {
+  it("derives lateness + notice from the shift's events and logs both", async () => {
+    const a = await addCrew("crew-a");
+    const [seatId] = await addShift(1);
+    // Anchor a trip 36h after T0 (the suite's addShift makes no events).
+    const tripAt = later(36 * 3600_000);
+    await repo.saveEvent({
+      id: asId<"EventId">("evt-bail"),
+      vesselId: VESSEL,
+      date: tripAt.toISOString().slice(0, 10),
+      time: tripAt.toISOString().slice(11, 16),
+      capacity: 6,
+      status: "scheduled",
+    });
+    const shift = (await repo.getShift(SHIFT))!;
+    await repo.saveShift({ ...shift, eventIds: [asId<"EventId">("evt-bail")] });
+    const ask = await assignPerson(repo, seatId!, a, T0);
+    await recordResponse(repo, ask!.id, "accepted", later(1000));
+    await confirmSeat(repo, seatId!, later(2000));
+
+    const out = await bailWithDerivedLateness(repo, seatId!, T0, a);
+    expect(out.code).toBeNull();
+    const event = (await repo.reliabilityEventsFor(a)).find(
+      (e) => e.type === "shift_bailed",
+    )!;
+    expect(event.metadata.latenessMs).toBe((7 * 24 - 36) * 3600_000);
+    expect(event.metadata.noticeMs).toBe(36 * 3600_000);
+  });
+
+  it("returns raced (no log, no seat change) when the occupant differs", async () => {
+    const a = await addCrew("crew-a");
+    const b = await addCrew("crew-b");
+    const [seatId] = await addShift(1);
+    const ask = await assignPerson(repo, seatId!, a, T0);
+    await recordResponse(repo, ask!.id, "accepted", later(1000));
+    await confirmSeat(repo, seatId!, later(2000));
+
+    const out = await bailWithDerivedLateness(repo, seatId!, later(3000), b);
+    expect(out.code).toBe("raced");
+    expect((await repo.getSeat(seatId!))!.state).toBe("Confirmed");
+    expect(await types(a)).not.toContain("shift_bailed");
+  });
+
+  it("returns raced on a seat that isn't Confirmed", async () => {
+    await addCrew("crew-a");
+    const [seatId] = await addShift(1); // Open
+    const out = await bailWithDerivedLateness(repo, seatId!, T0);
+    expect(out.code).toBe("raced");
   });
 });
 

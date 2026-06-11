@@ -91,7 +91,8 @@ function OccupantZone({ vm }: { vm: SeatCardVM }) {
           </summary>
           <p className="py-1 text-xs text-muted">
             Logs that {vm.occupant.name} backed out: clears the seat and
-            re-asks the next candidates immediately. Lateness counts from now.
+            re-asks the next candidates — or the seat rests open if nobody’s
+            left. Lateness counts from now.
           </p>
           <form action={reportBail} className="py-1">
             <HiddenIds vm={vm} />

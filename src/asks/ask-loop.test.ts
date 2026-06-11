@@ -251,6 +251,20 @@ describe("bail (DEC-019)", () => {
     expect(out).toMatchObject({ seatState: "Bailed", reAsks: [] });
     expect(await shiftState(SHIFT)).toBe("AtRisk");
   });
+
+  it("logs the raw notice alongside the derived lateness (DEC-028)", async () => {
+    const a = await addCrew("crew-a");
+    const [seatId] = await addShift(1);
+    await confirmFirst(seatId!, a);
+
+    const noticeMs = 36 * 3600_000; // 36h before the trip
+    await bail(repo, seatId!, later(3000), 90 * 60_000, noticeMs);
+    const bailed = (await repo.reliabilityEventsFor(a)).find(
+      (e) => e.type === "shift_bailed",
+    )!;
+    expect(bailed.metadata.latenessMs).toBe(90 * 60_000);
+    expect(bailed.metadata.noticeMs).toBe(noticeMs);
+  });
 });
 
 describe("manualOverride — the authority backstop (§2.4)", () => {

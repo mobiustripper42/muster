@@ -63,11 +63,19 @@ export interface ReliabilityEventMetadata {
   /** ms between ask_sent and response — for ask_accepted / ask_declined. */
   latencyMs?: number;
   /**
-   * How late a bail landed, in ms — measured from the bail toward call time, so
-   * a *higher* value means a *later* bail. Drives the bail penalty: the scorer
-   * (`reliability-score.ts`) weighs a late bail more than an early one.
+   * How late a bail landed, in ms — the notice shortfall vs the staffing
+   * horizon, clamped to it (DEC-028: `bailLatenessMs`). Higher = later bail.
+   * Drives the bail penalty: the scorer (`reliability-score.ts`) weighs a late
+   * bail more than an early one.
    */
   latenessMs?: number;
+  /**
+   * Raw signed notice at bail time: `tripStart − now` in ms (negative =
+   * reported after departure). Logged alongside `latenessMs` because the
+   * derived value bakes in today's horizon lead and a shift's events can be
+   * rescheduled later — history must stay re-derivable (DEC-008/DEC-028).
+   */
+  noticeMs?: number;
   seatId?: SeatId;
   shiftId?: ShiftId;
   /**

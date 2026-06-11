@@ -758,6 +758,38 @@ definition across view, board, lean, and assign (the DEC-026 lesson).
 
 **Phase:** Phase 4 / Unit B (#54/#55). (@architect pre-pass, 2026-06-11.)
 
+**Amendment (Unit C, #56):** the cockpit's action inventory is **five** — "Reports a bail…" on a
+Confirmed seat joins assign/nudge/confirm/override. Same `bail()` rail as the crew's own "can't
+make it" (DEC-028); it is also the recovery path for a mis-tapped override (the v1 answer to the
+@ui-reviewer's no-undo finding).
+
+---
+
+## DEC-028: Bail `latenessMs` is the notice shortfall vs the staffing horizon, clamped to it
+
+**Decision:** `latenessMs = clamp(leadMs − (tripStart − now), 0, leadMs)` where
+`leadMs = STAFFING_HORIZON_LEAD_DAYS` (DEC-022's one constant). Helper `bailLatenessMs` lives
+beside the horizon functions in `src/builder/derive.ts`. Null trip start → 0 (no anchor, flat
+penalty only). The raw signed **`noticeMs`** (`tripStart − now` at bail time) is logged alongside
+in the event metadata — the derived value bakes in today's `leadDays`, and DEC-008 forbids
+un-recomputable history (a shift's events can be rescheduled after the fact, so notice is not
+re-derivable from `shiftId` later).
+
+**Why this shape:** SPEC §1.4's signal is "how far in advance" — a week-out cancel is cheap (flat
+`shift_bailed` weight only), the 11pm bail is near-max. Anchoring to the staffing-horizon lead
+makes "late" mean *inside the window the system needs to refill* — one knob, already DEC-022's.
+**Clamped past departure** because a post-departure report is `no_show` territory (a separate
+event with its own weight, no caller yet), and an admin-lagged report must not penalize by report
+latency.
+
+**Computed server-side at bail time** from the shift's `earliestScheduledStart` — never
+client-supplied (a crafted request must not shrink its own penalty). Accepted v1 caveat: an
+admin-reported bail stamps lateness at *report* time, not when the crew member actually called;
+the clamp bounds the damage.
+
+**Phase:** Phase 4 / Unit C (#56/#57). (@architect pass, 2026-06-11. Closes the definition gap
+DEC-019 left open; the *weight* per hour stays the DEC-TBD tune-later knob.)
+
 ---
 
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)

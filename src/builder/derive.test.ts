@@ -8,6 +8,7 @@ import { asId } from "../domain/ids.js";
 import type { EventId, RoleTypeId, ShiftId } from "../domain/ids.js";
 import type { Event, Seat, Shift, Vessel } from "../domain/entities.js";
 import {
+  bailLatenessMs,
   deriveSeats,
   deriveShiftState,
   resolveShiftState,
@@ -173,5 +174,36 @@ describe("resolveShiftState (horizon overlay, DEC-022)", () => {
   it("lets the seat-fold's own Filling stand past the horizon", () => {
     const working = [seat(CAPTAIN, "Asked"), seat(MATE, "Open")];
     expect(resolveShiftState(working, { now: after, horizon, poolExhausted: false })).toBe("Filling");
+  });
+});
+
+describe("bailLatenessMs (DEC-028)", () => {
+  const DAY = 24 * 3600_000;
+  const trip = new Date("2026-07-10T15:00:00.000Z");
+  const before = (days: number) => new Date(trip.getTime() - days * DAY);
+
+  it("full notice (≥ lead) → 0: a cancel a week out is cheap", () => {
+    expect(bailLatenessMs(trip, before(7))).toBe(0);
+    expect(bailLatenessMs(trip, before(30))).toBe(0);
+  });
+
+  it("scales inside the window: 2d notice on a 7d lead → 5d of lateness", () => {
+    expect(bailLatenessMs(trip, before(2))).toBe(5 * DAY);
+  });
+
+  it("at departure → the full lead (the 11pm bail ceiling)", () => {
+    expect(bailLatenessMs(trip, trip)).toBe(7 * DAY);
+  });
+
+  it("clamps past departure — no_show territory is a separate event", () => {
+    expect(bailLatenessMs(trip, new Date(trip.getTime() + 2 * DAY))).toBe(7 * DAY);
+  });
+
+  it("no trip anchor → 0 (nothing to be late against)", () => {
+    expect(bailLatenessMs(null, before(1))).toBe(0);
+  });
+
+  it("honors a custom leadDays", () => {
+    expect(bailLatenessMs(trip, before(1), 3)).toBe(2 * DAY);
   });
 });

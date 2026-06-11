@@ -86,8 +86,8 @@ function CredentialLine({ nudge }: { nudge: NonNullable<CrewAppView["credentialN
   const date = fmtDate(nudge.expiry);
   const copy =
     nudge.health === "expired"
-      ? `Your ${nudge.type} expired ${date} — it’s holding you out of shift pools until it’s renewed.`
-      : `Your ${nudge.type} expires ${date} — renew before it gates you out of pools.`;
+      ? `Your ${nudge.type} expired ${date} — you won’t be asked for shifts until you renew it.`
+      : `Your ${nudge.type} expires ${date} — renew it to keep getting asked for shifts.`;
   return (
     <p className="rounded-card border border-warn-line bg-warn-bg px-4 py-3 text-sm text-warn">
       {copy}

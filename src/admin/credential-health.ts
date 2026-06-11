@@ -76,8 +76,8 @@ export interface CredentialConcern {
 
 /**
  * The worst non-valid credential — the *which/when* behind the band, for the
- * crew app's nudge line (SPEC §2.6, #57: "MMC expires Aug 12 — renew before it
- * gates you out of pools"). Null when everything is valid (no nudge). Worst
+ * crew app's nudge line (SPEC §2.6, #57: "MMC expires Aug 12 — renew it to keep
+ * getting asked for shifts"). Null when everything is valid (no nudge). Worst
  * health wins; within a band the soonest expiry (the most urgent renewal).
  */
 export function worstCredential(

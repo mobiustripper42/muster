@@ -191,9 +191,6 @@ function AskCard({ ask }: { ask: CrewAppView["asks"][number] }) {
           In
         </button>
       </form>
-      <div className="px-4 py-2 text-xs text-muted">
-        Answer right here — no login, no hunting.
-      </div>
     </div>
   );
 }

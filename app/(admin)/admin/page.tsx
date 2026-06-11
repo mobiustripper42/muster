@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Shell } from "../../../components/ui/shell";
 
 /**
  * Admin surface group (Spink) — route-group skeleton (DEC-020). The roster,
@@ -8,7 +9,7 @@ import Link from "next/link";
  */
 export default function AdminHome() {
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-4 px-4 py-6">
+    <Shell width="3xl">
       <h1 className="text-xl font-semibold text-ink">Admin</h1>
       <Link
         href="/admin/at-risk"
@@ -19,6 +20,6 @@ export default function AdminHome() {
       <p className="text-sm text-muted">
         Roster, event admin, and shift builder land here in later tasks.
       </p>
-    </main>
+    </Shell>
   );
 }

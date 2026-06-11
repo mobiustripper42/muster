@@ -88,5 +88,24 @@ when Tier 1 is actually next on the build, not before.
 
 ---
 
+## Explicit "pause automation" toggle on the cockpit (parked 2026-06-11, DEC-027 §2)
+
+SPEC §2.4 asked whether the cockpit needs a per-shift "pause automation, I've got this" toggle or
+whether any manual action implicitly pauses the bots. The build confirmed the implicit answer is
+**emergent**: `escalate` only fires on a stalled shift with no live asks, every manual assign/nudge
+creates a live ask, and Tier-1 broadcast fires only at the `Pending→Filling` birth — the autonomous
+tier cannot fight a manual placement today. So v1 ships no pause flag, no resume button.
+
+### What it would be
+A persisted per-shift `automationPaused` flag + `tick`/`escalate` honoring it + an explicit resume
+action (the mockup's posture bar: "You're driving / Resume automation").
+
+### Trigger / when to build
+The moment the automation gains a lever that can act on a seat carrying a live manual ask —
+e.g. auto-expiry + auto-re-broadcast inside `tick`, or any future move that supersedes a pending
+ask. At that point implicit-pause stops being emergent and needs the flag.
+
+---
+
 *Rule of thumb before promoting anything here into a spec v1.1: has the single-horizon vertical
 slice run a real BrewBoat weekend yet? If no, the answer is "still parked."*

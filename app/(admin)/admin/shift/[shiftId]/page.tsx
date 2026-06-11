@@ -1,35 +1,72 @@
 import Link from "next/link";
 import {
   buildAssignmentView,
-  type CandidateAskStatus,
+  type AssignmentView,
+  type SeatCardView,
 } from "@core/asks/assignment-view.js";
+import { deriveWarming } from "@core/admin/warming.js";
 import { asId } from "@core/domain/ids.js";
 import { resolveShiftStateOnRead } from "@core/builder/tick.js";
+import {
+  SeatCard,
+  type CandidateVM,
+  type SeatCardVM,
+} from "../../../../../components/assignment/seat-card";
+import {
+  WarmingPanel,
+  type WarmingRowVM,
+} from "../../../../../components/assignment/warming-panel";
 import { Notice } from "../../../../../components/ui/notice";
 import { Shell } from "../../../../../components/ui/shell";
 import { readSubject } from "../../../../lib/auth";
 import { getRepo } from "../../../../lib/repo";
 
 /**
- * Thin, read-only assignment view (SPEC §2.4) — the At-Risk board row's
- * click-through (#42). Renders the existing `buildAssignmentView` read-model:
- * seat cards with occupant/state, and for an Open seat the ranked eligible pool
- * with per-candidate ask status — **silent is first-class and distinct from
- * declined** (the binding §2.4 constraint). The full cockpit (seat actions,
- * monitor posture, countdowns) is a later task; this page deliberately does
- * nothing but show.
+ * The assignment cockpit (SPEC §2.4, #54/#55, DEC-027) — monitor by default,
+ * controls on demand: header facts + countdown, one card per required seat with the
+ * ranked pool (silent ≠ declined), the four manual actions, and the
+ * deliberately-opened warming view. The state badge is resolved ON READ
+ * (DEC-023 corollary); board membership is never re-derived here — the cockpit
+ * acts on seats.
  *
- * The state badge is resolved ON READ (DEC-023 corollary): a page reached from
- * a board row that says "At-Risk" must never contradict it with the stale
- * persisted badge.
+ * Honest header (DEC-027 §4): the countdown is "departs in" (trip start) and
+ * the staffing horizon renders as a dated fact — the named "fills by" deadline
+ * is NOT faked; it lands with #59.
  */
 
 export const dynamic = "force-dynamic";
 
-export default async function ShiftAssignment({
+/** Inside this many hours of departure the countdown turns red (UI-only). */
+const TIGHT_HOURS = 36;
+
+/** Feedback params carry codes/ids only, never prose (DEC-026) — map here. */
+const ACT_ERROR_COPY: Record<string, string> = {
+  shift_gone: "That shift or seat is no longer live.",
+  no_gap: "That seat isn’t open to assign into.",
+  already_asked: "Already asked on this shift — awaiting their reply.",
+  bailed: "They bailed on this shift — pick someone else.",
+  ineligible: "Not eligible for this seat.",
+  raced: "That seat just changed — here’s the fresh state.",
+  not_claimed: "Nothing is awaiting confirm on that seat.",
+  seat_gone: "That seat is gone — here’s the fresh state.",
+  unavailable: "Couldn’t reach the schedule — nothing was changed. Try again.",
+};
+
+type Search = {
+  warming?: string;
+  assigned?: string;
+  nudged?: string;
+  confirmed?: string;
+  overrode?: string;
+  act_error?: string;
+};
+
+export default async function ShiftCockpit({
   params,
+  searchParams,
 }: {
   params: Promise<{ shiftId: string }>;
+  searchParams: Promise<Search>;
 }) {
   const subject = await readSubject();
   if (!subject || subject.kind !== "admin") {
@@ -41,84 +78,212 @@ export default async function ShiftAssignment({
   }
 
   const { shiftId: raw } = await params;
+  const sp = await searchParams;
   const shiftId = asId<"ShiftId">(decodeURIComponent(raw));
+  const basePath = `/admin/shift/${encodeURIComponent(String(shiftId))}`;
   const repo = getRepo();
   const now = new Date();
 
-  const view = await buildAssignmentView(repo, shiftId, now);
-  if (!view) {
+  let view: AssignmentView | null;
+  let resolved: string | null;
+  let crew: Map<string, { name: string; phone: string | null }>;
+  let seatOccupant: Map<string, string>;
+  let warmingRows: WarmingRowVM[] = [];
+  const warmingOpen = sp.warming === "1";
+  try {
+    view = await buildAssignmentView(repo, shiftId, now);
+    if (!view) {
+      return (
+        <Shell width="2xl">
+          <Notice>No such shift. It may have been removed.</Notice>
+        </Shell>
+      );
+    }
+    resolved = await resolveShiftStateOnRead(repo, shiftId, now);
+    crew = new Map(
+      (await repo.listCrewMembers()).map((c) => [
+        String(c.id),
+        { name: c.name, phone: c.phone ?? null },
+      ]),
+    );
+    seatOccupant = new Map(
+      (await repo.listSeatsForShift(shiftId))
+        .filter((s) => s.assignedCrewMemberId)
+        .map((s) => [String(s.id), String(s.assignedCrewMemberId)]),
+    );
+    if (warmingOpen) {
+      const vessels = new Map(
+        (await repo.listVessels()).map((v) => [v.id, v.name]),
+      );
+      warmingRows = (await deriveWarming(repo, now)).map((r) => ({
+        shiftId: String(r.shiftId),
+        vesselName: vessels.get(r.vesselId) ?? String(r.vesselId),
+        dateLabel: fmtDate(r.date),
+        toTrip: `departs in ${ttLabel(r.hoursToTrip)}`,
+        unfilledSeats: r.unfilledSeats,
+        responseLabel:
+          r.responseRate === null
+            ? null
+            : `${Math.round(r.responseRate * 100)}% answered`,
+        silent: r.trail.silent,
+        isCurrent: String(r.shiftId) === String(shiftId),
+      }));
+    }
+  } catch {
     return (
       <Shell width="2xl">
-        <Notice>No such shift. It may have been removed.</Notice>
+        <Notice>Can’t reach the schedule right now. Try again in a moment.</Notice>
       </Shell>
     );
   }
 
-  // Badge resolved on read (DEC-023 corollary) — same resolve the board uses.
-  const [resolved, seats, roleTypes] = await Promise.all([
-    resolveShiftStateOnRead(repo, shiftId, now),
-    repo.listSeatsForShift(shiftId),
-    repo.listAllRoleTypes(),
-  ]);
   const badge = resolved ?? view.badge;
-  const roleNames = new Map(roleTypes.map((r) => [r.id, r.name]));
-  const roleOfSeat = new Map(
-    seats.map((s) => [String(s.id), roleNames.get(s.role) ?? String(s.role)]),
+  const roster = [...crew.entries()].map(([id, c]) => ({ id, name: c.name }));
+  const seatVMs = view.seats.map((s) =>
+    toSeatVM(s, String(shiftId), seatOccupant, crew),
   );
+
+  // Success params carry ids; resolve to names we know — a crafted URL with an
+  // unknown id renders nothing. Errors map through ACT_ERROR_COPY only.
+  const nameOf = (id?: string) => (id ? crew.get(id)?.name ?? null : null);
+  const assigned = nameOf(sp.assigned);
+  const nudged = nameOf(sp.nudged);
+  const confirmed = nameOf(sp.confirmed);
+  const overrode = nameOf(sp.overrode);
+  const actError = sp.act_error ? ACT_ERROR_COPY[sp.act_error] ?? null : null;
+
+  const hoursToTrip =
+    view.tripStart === null
+      ? null
+      : (view.tripStart.getTime() - now.getTime()) / 3_600_000;
 
   return (
     <Shell width="2xl">
       <Link href="/admin/at-risk" className="text-xs font-semibold text-accent">
         ← At-Risk board
       </Link>
-      <header className="flex flex-wrap items-center gap-2">
-        <h1 className="text-xl font-semibold text-ink">
-          {view.vesselName} · {fmtDate(view.date)}
-        </h1>
-        <Badge state={badge} />
+
+      <header className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+        <div className="flex flex-col gap-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-xl font-semibold text-ink">
+              {view.vesselName} · {fmtDate(view.date)}
+            </h1>
+            <Badge state={badge} />
+          </div>
+          {view.trips.length === 0 ? (
+            <p className="text-sm text-muted">No scheduled trips.</p>
+          ) : (
+            <p className="flex flex-wrap gap-x-3 text-sm text-muted">
+              {view.trips.map((t) => (
+                <span key={t.departureTime} className="whitespace-nowrap">
+                  <span className="font-mono">{t.departureTime}</span> · {t.pax} pax
+                </span>
+              ))}
+              <span>— {view.paxTotal} aboard total</span>
+            </p>
+          )}
+        </div>
+        <div className="flex flex-col items-start sm:items-end">
+          <span
+            className={`font-mono text-lg font-semibold ${
+              hoursToTrip !== null && hoursToTrip < TIGHT_HOURS
+                ? "text-bad"
+                : "text-ink"
+            }`}
+          >
+            {hoursToTrip === null
+              ? "no scheduled trip"
+              : hoursToTrip < 0
+                ? "departed"
+                : `departs in ${ttLabel(hoursToTrip)}`}
+          </span>
+          {view.horizon && (
+            <span className="text-xs text-muted">
+              staffing horizon: asks {now >= view.horizon ? "started" : "start"}{" "}
+              {view.horizon.toLocaleDateString("en-US", {
+                weekday: "short",
+                month: "short",
+                day: "numeric",
+              })}
+            </span>
+          )}
+        </div>
       </header>
 
+      <p className="text-xs text-muted">
+        The automation works this shift on its own — acting below is you taking
+        the wheel for a seat. It won’t fight you: a seat with your ask in flight
+        takes no engine moves.
+      </p>
+
+      {assigned && <Notice tone="ok">Asked {assigned} into the seat — awaiting their reply.</Notice>}
+      {nudged && <Notice tone="ok">↗ Leaned on {nudged} — asked, not yet filled.</Notice>}
+      {confirmed && <Notice tone="ok">{confirmed} confirmed into the seat.</Notice>}
+      {overrode && <Notice tone="ok">{overrode} placed by override — confirmed.</Notice>}
+      {actError && <Notice tone="bad">{actError}</Notice>}
+
       <div className="flex flex-col gap-3">
-        {view.seats.map((seat) => (
-          <article
-            key={seat.seatId}
-            className="rounded-card border border-line bg-card p-4 shadow-sm"
-          >
-            <div className="text-[10px] font-bold uppercase tracking-wider text-muted">
-              {roleOfSeat.get(String(seat.seatId)) ?? "crew"}
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="font-semibold text-ink">
-                {seat.occupant ?? "Unfilled"}
-              </span>
-              <SeatBadge state={seat.state} />
-            </div>
-            {seat.pool && (
-              <ul className="mt-3 flex flex-col gap-1 border-t border-line pt-2">
-                {seat.pool.length === 0 && (
-                  <li className="text-sm text-muted">
-                    Nobody eligible for this seat right now.
-                  </li>
-                )}
-                {seat.pool.map((c) => (
-                  <li
-                    key={c.crewMemberId}
-                    className="flex items-baseline justify-between text-sm"
-                  >
-                    <span className="text-ink">{c.name}</span>
-                    <PoolStatus status={c.status} />
-                  </li>
-                ))}
-              </ul>
-            )}
-          </article>
+        {seatVMs.map((vm) => (
+          <SeatCard key={vm.seatId} vm={vm} roster={roster} />
         ))}
       </div>
-      <p className="text-xs text-muted">
-        Read-only for now — act from the board (lean) or the crew’s own ask.
-      </p>
+
+      <WarmingPanel rows={warmingRows} open={warmingOpen} basePath={basePath} />
     </Shell>
   );
+}
+
+/** Map a core seat card to the component VM — actions only where the domain accepts. */
+function toSeatVM(
+  s: SeatCardView,
+  shiftId: string,
+  seatOccupant: Map<string, string>,
+  crew: Map<string, { name: string; phone: string | null }>,
+): SeatCardVM {
+  const canAct = s.state === "Open" || s.state === "Bailed";
+  const occupantId = seatOccupant.get(String(s.seatId));
+  const occ = occupantId ? crew.get(occupantId) : undefined;
+  return {
+    seatId: String(s.seatId),
+    shiftId,
+    roleName: s.roleName,
+    state: s.state,
+    occupant: occ ? { name: occ.name, phone: occ.phone } : null,
+    pool:
+      s.pool?.map((c): CandidateVM => {
+        const action = !canAct
+          ? null
+          : c.status === "available"
+            ? "assign"
+            : c.status === "declined" || c.status === "silent"
+              ? "nudge"
+              : null;
+        return {
+          id: String(c.crewMemberId),
+          name: c.name,
+          status: c.status,
+          replyLabel:
+            c.replyMs === undefined ? null : `replied in ${replyLabel(c.replyMs)}`,
+          action,
+        };
+      }) ?? null,
+  };
+}
+
+function replyLabel(ms: number): string {
+  const m = Math.round(ms / 60_000);
+  return m < 1 ? "under a minute" : `${m}m`;
+}
+
+function ttLabel(h: number): string {
+  // Floor the minor unit — Math.round would mint "23h 60m" / "1d 24h".
+  if (h < 24) {
+    const whole = Math.floor(h);
+    const m = Math.floor((h - whole) * 60);
+    return `${whole}h ${String(m).padStart(2, "0")}m`;
+  }
+  return `${Math.floor(h / 24)}d ${Math.floor(h % 24)}h`;
 }
 
 function fmtDate(iso: string): string {
@@ -144,27 +309,4 @@ function Badge({ state }: { state: string }) {
       {state === "AtRisk" ? "At-Risk" : state}
     </span>
   );
-}
-
-function SeatBadge({ state }: { state: string }) {
-  const tone =
-    state === "Confirmed"
-      ? "text-ok"
-      : state === "Bailed"
-        ? "text-bad"
-        : "text-muted";
-  return <span className={`text-xs font-semibold ${tone}`}>{state}</span>;
-}
-
-/** Silent ≠ declined (§2.4): the ghost gets the loud treatment. */
-function PoolStatus({ status }: { status: CandidateAskStatus }) {
-  const map: Record<CandidateAskStatus, { label: string; cls: string }> = {
-    available: { label: "not yet asked", cls: "text-muted" },
-    asked: { label: "asked — awaiting reply", cls: "text-accent" },
-    in: { label: "in", cls: "font-semibold text-ok" },
-    declined: { label: "declined", cls: "text-muted" },
-    silent: { label: "silent", cls: "font-semibold text-bad" },
-  };
-  const s = map[status];
-  return <span className={`text-xs ${s.cls}`}>{s.label}</span>;
 }

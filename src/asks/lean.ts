@@ -43,6 +43,37 @@ export type LeanErrorCode =
   | "ineligible"
   | "raced";
 
+// ── Shared guards (one definition — lean and assignFromPool accept the same
+// people, so the cockpit never renders an Assign the action refuses) ──────────
+
+/** A live (unanswered) ask anywhere on the shift — they're already deciding. */
+async function holdsLiveAskOnShift(
+  repo: Repository,
+  requiredSeats: Seat[],
+  crewMemberId: CrewMemberId,
+): Promise<boolean> {
+  for (const seat of requiredSeats) {
+    for (const ask of await repo.listAsksForSeat(seat.id)) {
+      if (ask.crewMemberId === crewMemberId && ask.respondedAt === undefined) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/** They walked off this shift — the re-ask excludes them (DEC-019), so do we. */
+async function bailedOnShift(
+  repo: Repository,
+  crewMemberId: CrewMemberId,
+  shiftId: ShiftId,
+): Promise<boolean> {
+  const events = await repo.reliabilityEventsFor(crewMemberId);
+  return events.some(
+    (e) => e.type === "shift_bailed" && e.metadata.shiftId === shiftId,
+  );
+}
+
 export interface LeanResult {
   /** null = the nudge went out; otherwise the operator-facing reason it didn't. */
   error: string | null;
@@ -80,25 +111,16 @@ export async function lean(
 
   // Double-ask guard: a live (unanswered) ask anywhere on this shift means
   // they're already deciding — one pending ask per person per shift.
-  for (const seat of required) {
-    for (const ask of await repo.listAsksForSeat(seat.id)) {
-      if (ask.crewMemberId === crewMemberId && ask.respondedAt === undefined) {
-        return {
-          error: "Already asked on this shift — awaiting their reply.",
-          code: "already_asked",
-        };
-      }
-    }
+  if (await holdsLiveAskOnShift(repo, required, crewMemberId)) {
+    return {
+      error: "Already asked on this shift — awaiting their reply.",
+      code: "already_asked",
+    };
   }
 
   // Bailer guard: they walked off this shift; the board doesn't offer them and
   // neither does the action.
-  const events = await repo.reliabilityEventsFor(crewMemberId);
-  if (
-    events.some(
-      (e) => e.type === "shift_bailed" && e.metadata.shiftId === shiftId,
-    )
-  ) {
+  if (await bailedOnShift(repo, crewMemberId, shiftId)) {
     return {
       error: "They bailed on this shift — pick someone else.",
       code: "bailed",
@@ -133,4 +155,74 @@ export async function lean(
   }
   await logNudged(repo, crewMemberId, target.id, shiftId, now, { manual: true });
   return { error: null, seatId: target.id };
+}
+
+/**
+ * Assign-from-pool (SPEC §2.4, #54): Spink names one person into one **specific**
+ * seat from the cockpit. Same accept set as `lean()` — the shared guards above
+ * plus per-seat eligibility — but **no nudge log**: a plain assign is the
+ * captain-flow entry (DEC-007), not an escalation. The server action calls this
+ * instead of raw `assignPerson` (which deliberately checks nothing) so a crafted
+ * form post can't get unlabeled override semantics — `manualOverride` stays the
+ * only unguarded path, and its label is the authority trail (DEC-027 §1).
+ *
+ * `no_gap` here means *this seat* isn't assignable (not Open/Bailed); a Bailed
+ * seat is reopened on the way in, exactly as `lean()` does.
+ */
+export async function assignFromPool(
+  repo: Repository,
+  seatId: SeatId,
+  crewMemberId: CrewMemberId,
+  now: Date,
+): Promise<LeanResult> {
+  const seat = await repo.getSeat(seatId);
+  if (!seat) {
+    return { error: "That seat is gone — reload.", code: "shift_gone" };
+  }
+  const shift = await repo.getShift(seat.shiftId);
+  if (!shift || shift.state === "Cancelled" || shift.state === "Completed") {
+    return { error: "This shift is no longer live.", code: "shift_gone" };
+  }
+  if (seat.state !== "Open" && seat.state !== "Bailed") {
+    return {
+      error: "That seat isn't open to assign into.",
+      code: "no_gap",
+    };
+  }
+
+  const required = (await repo.listSeatsForShift(seat.shiftId)).filter(
+    (s) => s.kind === "required",
+  );
+  if (await holdsLiveAskOnShift(repo, required, crewMemberId)) {
+    return {
+      error: "Already asked on this shift — awaiting their reply.",
+      code: "already_asked",
+    };
+  }
+  if (await bailedOnShift(repo, crewMemberId, seat.shiftId)) {
+    return {
+      error: "They bailed on this shift — pick someone else.",
+      code: "bailed",
+    };
+  }
+
+  // Eligibility for THIS seat (distinct-pool enforced inside rankedEligible).
+  const pool = await rankedEligible(repo, seat, now);
+  if (!pool.some((c) => c.id === crewMemberId)) {
+    return { error: "Not eligible for this seat.", code: "ineligible" };
+  }
+
+  if (seat.state === "Bailed") {
+    // Resting precondition (empty pool) no longer holds — reopen, then ask.
+    await repo.saveSeat({ ...seat, state: "Open" });
+  }
+
+  const ask = await assignPerson(repo, seat.id, crewMemberId, now);
+  if (!ask) {
+    return {
+      error: "That seat just changed under you — reload.",
+      code: "raced",
+    };
+  }
+  return { error: null, seatId: seat.id };
 }

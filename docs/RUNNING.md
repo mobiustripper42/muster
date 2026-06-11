@@ -52,7 +52,7 @@ Admin needs **no seed** — there's no admin entity (DEC-020): the session subje
 handle, so any `?admin=<handle>` works in dev.
 
 ```bash
-npm run db:seed:atrisk   # 4 board scenarios, trips anchored to NOW (re-run anytime to re-anchor)
+npm run db:seed:atrisk   # 4 board + 2 cockpit scenarios, trips anchored to NOW (re-run to re-anchor)
 ```
 
 1. Open **http://mill-dev:3000/crew/dev-link?admin=spink** → tap the returned link → you land
@@ -65,15 +65,30 @@ npm run db:seed:atrisk   # 4 board scenarios, trips anchored to NOW (re-run anyt
 3. Tap **↗ Lean on Marisol** (Firkin row) → green *"Last action: leaned on Marisol — asked, not yet
    filled"* and the Firkin row is **gone** — its ask is now in flight, which is the engine working,
    not a bug. (`/crew/dev-link?crew=crew-ar-sub` shows Marisol's In/Out card if you want the loop.)
-4. Tap **Open in Assignment ↗** (Tidewater row) → read-only seat view, badge **Filling**; in the
-   pool, Lance reads *declined* (muted) and Gardner *silent* (red) — visibly different.
+4. Tap **Open in Assignment ↗** (Tidewater row) → the assignment cockpit (#54), badge **Filling**;
+   in the pool, Lance reads *declined* (muted, with a **↗ Nudge** button) and Gardner *👻 silent*
+   (red, **↗ Nudge**) — visibly different.
+
+## The assignment cockpit (#54/#55)
+Same seed. The cockpit is each board row's click-through, plus two off-board scenarios by URL:
+
+1. Open **http://mill-dev:3000/admin/shift/shift-ar-claimed** → header shows trips + a mono
+   **departs in Xd Xh** countdown; Petra's seat card is amber **Claimed** with *accepted — awaiting
+   your confirm*. Tap **Confirm into seat** → green *"Petra confirmed into the seat"*, card turns
+   green **Confirmed** with ✆ Call / ✉ Text links, badge flips to **Crewed**.
+2. On any cockpit, tap **Warming signals →** (bottom) → the warming panel (#55) lists **Kettle**
+   (*departs in ~4d · 1 seat unfilled · 50% answered · 1 silent*) — trending, deliberately NOT on
+   the board. Tap its link → Kettle's cockpit: Dale *declined*, Tessa *👻 silent*, both nudgeable.
+3. On Kettle, expand **Manual override…** on the seat card → tap **Place Marisol** → green
+   *"Marisol placed by override — confirmed"*; the warming panel empties ("Nothing warming.").
+4. Re-run `npm run db:seed:atrisk` to reset everything you just changed.
 
 ```bash
 npm run db:tick          # run one engine tick by hand (DEC-023 — no scheduler in v1)
 ```
 Prints the tick counters (asks fired, escalations, board landings). After a tick, refresh the
 board: **Tidewater disappears too** — Tier-2 sent a direct nudge, so an ask is in flight again.
-Re-running `db:seed:atrisk` resets all four scenarios (it closes any in-flight engine asks).
+Re-running `db:seed:atrisk` resets all scenarios (it closes any in-flight engine asks).
 
 ## Other endpoints
 - `GET /api/health` → `{ status, db.reachable, integrity: { ok, violationCount } }` (runs the no-FK

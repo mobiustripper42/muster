@@ -1,6 +1,7 @@
 /**
- * Dev seed for the At-Risk board (SPEC §2.5, #42/#43). Seeds one row per
- * membership reason so every board state is eyeball-able:
+ * Dev seed for the At-Risk board + assignment cockpit (SPEC §2.4–2.5,
+ * #42/#43/#54/#55). One row per board membership reason, plus the two
+ * off-board cockpit states (#54/#55):
  *
  *   A. willingness-exhausted — captain seat, whole pool answered (1 declined,
  *      1 silent), trip ~24h out → core row with a real SYSTEM-TRIED trail,
@@ -13,6 +14,8 @@
  *      out → pinned to the top; the bailer is excluded from Lean.
  *   D. credential lapse — fully-Crewed shift ~4d out whose confirmed
  *      captain's MMC expires tomorrow.
+ *   E. claimed (cockpit, off-board) — Petra accepted, awaits Spink's confirm.
+ *   F. warming (cockpit, off-board) — ~4d out, 1 declined + 1 ghost.
  *
  * Unlike seed-crewapp-dev's fixed dates, trips here are computed FROM SEED
  * TIME — the board is staffing-horizon-sensitive (DEC-022), so fixed dates
@@ -70,7 +73,7 @@ async function shipShift(
   vesselName: string,
   role: typeof CAPTAIN | typeof ENGINEER,
   tripAt: Date,
-  seatState: "Open" | "Bailed" | "Confirmed",
+  seatState: "Open" | "Bailed" | "Claimed" | "Confirmed",
   persisted: "Pending" | "Filling" | "AtRisk" | "Crewed",
   assigned?: ReturnType<typeof asId<"CrewMemberId">>,
 ) {
@@ -173,12 +176,56 @@ try {
   // D — credential lapse: Gus is confirmed, his MMC dies tomorrow, trip's in 4d.
   await shipShift("lapse", "Growler", CAPTAIN, at(96), "Confirmed", "Crewed", lapsing);
 
-  console.log("Seeded 4 At-Risk scenarios (trips anchored to now — re-run to re-anchor):");
-  console.log("  A shift-ar-willing   Tidewater  ~24h  core: asked 2 · 1 declined · 1 silent");
-  console.log("  B shift-ar-exhausted Mash Tun   ~5d   core: engineer seat, empty pool");
-  console.log("  C shift-ar-regress   Firkin     ~30h  regression: Cody bailed, seat rests Bailed");
-  console.log("  D shift-ar-lapse     Growler    ~4d   credential lapse: Gus's MMC expires tomorrow");
-  console.log("View: /crew/dev-link?admin=spink → tap link → /admin/at-risk");
+  // E — cockpit: Petra accepted and awaits Spink's confirm (#54). Off the board
+  // (a Claimed seat is a yes, not a gap) — reached by URL, the Confirm demo.
+  const petra = await captain("crew-ar-claimant", "Petra");
+  const e = await shipShift("claimed", "Tidewater II", CAPTAIN, at(72), "Claimed", "Filling", petra);
+  await closeLiveAsks(e.seatId);
+  await repo.saveAsk({
+    id: asId<"AskId">("ask-ar-claimed"),
+    seatId: e.seatId,
+    crewMemberId: petra,
+    channel: "push",
+    sentAt: at(-3).toISOString(),
+    respondedAt: at(-2).toISOString(),
+    response: "accepted",
+  });
+
+  // F — warming (#55): trip ~4d out (off the board's 48h willingness window),
+  // one declined + one ghost, seat reopened → ghosted signal, warming row.
+  // Dale/Tessa also widen every captain pool — more lean targets, harmless.
+  const dale = await captain("crew-ar-warm-no", "Dale");
+  const tessa = await captain("crew-ar-warm-ghost", "Tessa");
+  const f = await shipShift("warming", "Kettle", CAPTAIN, at(100), "Open", "Filling");
+  await closeLiveAsks(f.seatId);
+  await repo.saveAsk({
+    id: asId<"AskId">("ask-ar-warm-no"),
+    seatId: f.seatId,
+    crewMemberId: dale,
+    channel: "push",
+    sentAt: at(-4).toISOString(),
+    respondedAt: at(-3).toISOString(),
+    response: "declined",
+  });
+  await repo.saveAsk({
+    id: asId<"AskId">("ask-ar-warm-ghost"),
+    seatId: f.seatId,
+    crewMemberId: tessa,
+    channel: "push",
+    sentAt: at(-4).toISOString(),
+    respondedAt: at(-3).toISOString(),
+  });
+
+  console.log("Seeded 6 scenarios (trips anchored to now — re-run to re-anchor):");
+  console.log("  A shift-ar-willing   Tidewater    ~24h  board: asked 2 · 1 declined · 1 silent");
+  console.log("  B shift-ar-exhausted Mash Tun     ~5d   board: engineer seat, empty pool");
+  console.log("  C shift-ar-regress   Firkin       ~30h  board: Cody bailed, seat rests Bailed");
+  console.log("  D shift-ar-lapse     Growler      ~4d   board: Gus's MMC expires tomorrow");
+  console.log("  E shift-ar-claimed   Tidewater II ~3d   cockpit: Petra awaits confirm (off-board)");
+  console.log("  F shift-ar-warming   Kettle       ~4d   warming: 1 declined · 1 ghost (off-board)");
+  console.log("Board:   /crew/dev-link?admin=spink → tap link → /admin/at-risk");
+  console.log("Cockpit: /admin/shift/shift-ar-claimed  (Confirm demo)");
+  console.log("Warming: any cockpit → 'Warming signals →'  (shows Kettle)");
 } finally {
   await repo.close();
 }

@@ -11,6 +11,7 @@ import type { CrewMemberId, SeatId } from "../domain/ids.js";
 import type { Credential, CrewMember, Seat, Shift, Vessel } from "../domain/entities.js";
 import {
   assignPerson,
+  bail,
   broadcastAsk,
   confirmSeat,
   expireAsks,
@@ -141,6 +142,125 @@ describe("buildAssignmentView", () => {
     expect(view.seats[0]!.occupant).toBe("crew-a");
     expect(view.seats[0]!.pool).toBeUndefined();
     void a;
+  });
+});
+
+describe("buildAssignmentView — cockpit additions (#54)", () => {
+  it("carries header facts: trips + booked pax, tripStart, horizon", async () => {
+    await addCrew("crew-a");
+    await addSeat();
+    const e1 = asId<"EventId">("event-1");
+    const e2 = asId<"EventId">("event-2");
+    await repo.saveEvent({
+      id: e1,
+      vesselId: VESSEL,
+      date: DATE,
+      time: "15:00",
+      capacity: 12,
+      status: "scheduled",
+    });
+    await repo.saveEvent({
+      id: e2,
+      vesselId: VESSEL,
+      date: DATE,
+      time: "13:00",
+      capacity: 12,
+      status: "scheduled",
+    });
+    await repo.saveReservation({
+      id: asId<"ReservationId">("res-1"),
+      eventId: e2,
+      customerName: "Pat",
+      partySize: 5,
+      status: "booked",
+    });
+    await repo.saveReservation({
+      id: asId<"ReservationId">("res-2"),
+      eventId: e2,
+      customerName: "Quinn",
+      partySize: 3,
+      status: "cancelled", // not aboard, not counted
+    });
+    const shift = (await repo.getShift(SHIFT))!;
+    await repo.saveShift({ ...shift, eventIds: [e1, e2] });
+
+    const view = (await buildAssignmentView(repo, SHIFT, T0))!;
+    expect(view.trips).toEqual([
+      { departureTime: "13:00", pax: 5 },
+      { departureTime: "15:00", pax: 0 },
+    ]);
+    expect(view.paxTotal).toBe(5);
+    expect(view.tripStart).toEqual(new Date(`${DATE}T13:00:00.000Z`));
+    // Horizon = earliest start − 7d lead (DEC-022).
+    expect(view.horizon).toEqual(new Date("2026-06-24T13:00:00.000Z"));
+  });
+
+  it("an event-less shift has empty trips and null time anchors", async () => {
+    await addSeat();
+    const view = (await buildAssignmentView(repo, SHIFT, T0))!;
+    expect(view.trips).toEqual([]);
+    expect(view.paxTotal).toBe(0);
+    expect(view.tripStart).toBeNull();
+    expect(view.horizon).toBeNull();
+  });
+
+  it("labels each seat card with its role", async () => {
+    await addSeat();
+    await repo.saveRoleType({
+      id: CAPTAIN,
+      tenantId: asId<"TenantId">("tenant-1"),
+      name: "Captain",
+    });
+    const view = (await buildAssignmentView(repo, SHIFT, T0))!;
+    expect(view.seats[0]!.role).toBe(CAPTAIN);
+    expect(view.seats[0]!.roleName).toBe("Captain");
+  });
+
+  it("an Asked seat shows its pool — the monitor view of who's in flight", async () => {
+    const a = await addCrew("crew-a");
+    await addCrew("crew-b");
+    const seatId = await addSeat();
+    await broadcastAsk(repo, seatId, T0);
+    const view = (await buildAssignmentView(repo, SHIFT, T0))!;
+    const card = view.seats[0]!;
+    expect(card.state).toBe("Asked");
+    expect(card.pool!.map((p) => p.status)).toEqual(["asked", "asked"]);
+    void a;
+  });
+
+  it("a Bailed seat shows its pool, bailer excluded — the P3 gap, closed", async () => {
+    const a = await addCrew("crew-a");
+    const seatId = await addSeat();
+    const ask = await assignPerson(repo, seatId, a, T0);
+    await recordResponse(repo, ask!.id, "accepted", later(1000));
+    await confirmSeat(repo, seatId, later(2000));
+    await bail(repo, seatId, later(3000), 0); // alone in the pool → rests Bailed
+    const b = await addCrew("crew-b"); // a candidate exists now
+
+    const view = (await buildAssignmentView(repo, SHIFT, later(4000)))!;
+    const card = view.seats[0]!;
+    expect(card.state).toBe("Bailed");
+    expect(card.pool!.map((p) => p.crewMemberId)).toEqual([b]); // not the bailer
+  });
+
+  it("excludes crew already committed on another seat of this shift", async () => {
+    const a = await addCrew("crew-a");
+    const b = await addCrew("crew-b");
+    const seatId = await addSeat();
+    const seat2 = asId<"SeatId">("seat-2");
+    await repo.saveSeat({
+      id: seat2,
+      shiftId: SHIFT,
+      role: CAPTAIN,
+      kind: "required",
+      state: "Open",
+    });
+    const ask = await assignPerson(repo, seatId, a, T0);
+    await recordResponse(repo, ask!.id, "accepted", later(1000)); // a → Claimed
+
+    const view = (await buildAssignmentView(repo, SHIFT, later(2000)))!;
+    const open = view.seats.find((s) => s.seatId === seat2)!;
+    expect(open.pool!.map((p) => p.crewMemberId)).toEqual([b]); // a is taken
   });
 });
 

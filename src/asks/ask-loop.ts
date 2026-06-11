@@ -18,11 +18,15 @@
  * split needs the staffing-horizon clock and is left to that task.
  */
 
-import type { Ask, CrewMember, Seat } from "../domain/entities.js";
+import type { Ask, CrewMember, Event, Seat } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import type { AskId, CrewMemberId, SeatId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
-import { deriveShiftState } from "../builder/derive.js";
+import {
+  bailLatenessMs,
+  deriveShiftState,
+  earliestScheduledStart,
+} from "../builder/derive.js";
 import { eligiblePool } from "../oracle/oracle.js";
 import { rankEligibleIds } from "../oracle/reliability-score.js";
 import {
@@ -353,9 +357,19 @@ export async function bail(
   now: Date,
   latenessMs: number,
   noticeMs?: number,
+  expectedBailer?: CrewMemberId,
 ): Promise<BailOutcome> {
   const seat = await repo.getSeat(seatId);
-  if (!seat || seat.state !== "Confirmed" || !seat.assignedCrewMemberId) {
+  if (
+    !seat ||
+    seat.state !== "Confirmed" ||
+    !seat.assignedCrewMemberId ||
+    // Occupant pin: a caller that validated WHO is bailing passes them here,
+    // so an occupant swap between its read and this one can't log
+    // `shift_bailed` against the wrong person (no transactions — this re-check
+    // is the only thing closing that window).
+    (expectedBailer !== undefined && seat.assignedCrewMemberId !== expectedBailer)
+  ) {
     throw new Error(`seat ${seatId} is not a confirmed seat to bail`);
   }
   const bailer = seat.assignedCrewMemberId;
@@ -392,6 +406,66 @@ export async function bail(
   );
   await refreshShiftState(repo, seat.shiftId);
   return { reAsks, seatState: "Asked" };
+}
+
+export interface DerivedBailResult {
+  /**
+   * null = the bail landed. "raced" = the seat changed underfoot (gone, not
+   * Confirmed, or a different occupant than the caller validated) — reload.
+   */
+  code: "raced" | null;
+  outcome?: BailOutcome;
+}
+
+/**
+ * `bail()` with the DEC-028 lateness derived in core: loads the shift's
+ * events, computes `bailLatenessMs` + the raw signed notice, threads both, and
+ * pins the occupant. The ONE home of this glue — the crew "can't make it" and
+ * the admin "reports a bail" both call it, so the noticeMs threading (the
+ * permanent-log part, DEC-008) can't drift between surfaces.
+ *
+ * `expectedBailer` is the occupant the caller validated; an occupant swap in
+ * between reads returns `raced` instead of logging against the wrong person.
+ * Wrinkle: a repo failure *inside* `bail()` also surfaces as `raced` (the seat
+ * may have partially changed — "reload" is the honest instruction either way);
+ * failures in the reads BEFORE it propagate, so callers can still map a plain
+ * outage to their "nothing was changed" copy.
+ */
+export async function bailWithDerivedLateness(
+  repo: Repository,
+  seatId: SeatId,
+  now: Date,
+  expectedBailer?: CrewMemberId,
+): Promise<DerivedBailResult> {
+  const seat = await repo.getSeat(seatId);
+  if (
+    !seat ||
+    seat.state !== "Confirmed" ||
+    !seat.assignedCrewMemberId ||
+    (expectedBailer !== undefined && seat.assignedCrewMemberId !== expectedBailer)
+  ) {
+    return { code: "raced" };
+  }
+  const shift = await repo.getShift(seat.shiftId);
+  const events: Event[] = [];
+  for (const eventId of shift?.eventIds ?? []) {
+    const event = await repo.getEvent(eventId);
+    if (event) events.push(event);
+  }
+  const tripStart = earliestScheduledStart(events);
+  try {
+    const outcome = await bail(
+      repo,
+      seatId,
+      now,
+      bailLatenessMs(tripStart, now),
+      tripStart ? tripStart.getTime() - now.getTime() : undefined,
+      seat.assignedCrewMemberId,
+    );
+    return { code: null, outcome };
+  } catch {
+    return { code: "raced" };
+  }
 }
 
 /**

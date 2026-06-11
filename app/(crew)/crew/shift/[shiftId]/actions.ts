@@ -2,8 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { bail } from "@core/asks/ask-loop.js";
-import { bailLatenessMs, earliestScheduledStart } from "@core/builder/derive.js";
+import { bailWithDerivedLateness } from "@core/asks/ask-loop.js";
 import { asId } from "@core/domain/ids.js";
 import { readSubject } from "../../../../lib/auth";
 import { getRepo } from "../../../../lib/repo";
@@ -47,22 +46,15 @@ export async function bailFromSeat(formData: FormData): Promise<void> {
       // Not yours / already changed — the card they're looking at is stale.
       errorCode = "stale";
     } else {
-      const shift = await repo.getShift(seat.shiftId);
-      const events = [];
-      for (const eventId of shift?.eventIds ?? []) {
-        const event = await repo.getEvent(eventId);
-        if (event) events.push(event);
-      }
-      const now = new Date();
-      const tripStart = earliestScheduledStart(events);
-      await bail(
+      // Lateness derived in core (DEC-028) — occupant pinned to the session
+      // subject, so a swap between reads can't bail the wrong person.
+      const out = await bailWithDerivedLateness(
         repo,
         seat.id,
-        now,
-        bailLatenessMs(tripStart, now),
-        tripStart ? tripStart.getTime() - now.getTime() : undefined,
+        new Date(),
+        asId<"CrewMemberId">(subject.id),
       );
-      errorCode = null;
+      errorCode = out.code === "raced" ? "stale" : null;
     }
   } catch {
     errorCode = "unavailable";

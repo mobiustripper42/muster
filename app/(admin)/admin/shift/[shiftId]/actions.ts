@@ -2,9 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { bail, confirmSeat, manualOverride } from "@core/asks/ask-loop.js";
+import {
+  bailWithDerivedLateness,
+  confirmSeat,
+  manualOverride,
+} from "@core/asks/ask-loop.js";
 import { assignFromPool, lean } from "@core/asks/lean.js";
-import { bailLatenessMs, earliestScheduledStart } from "@core/builder/derive.js";
 import { asId } from "@core/domain/ids.js";
 import { readSubject } from "../../../../lib/auth";
 import { getRepo } from "../../../../lib/repo";
@@ -141,23 +144,14 @@ export async function reportBail(formData: FormData): Promise<void> {
     if (!seat || seat.state !== "Confirmed" || !seat.assignedCrewMemberId) {
       param = "act_error=not_confirmed";
     } else {
-      const shift = await repo.getShift(seat.shiftId);
-      const events = [];
-      for (const eventId of shift?.eventIds ?? []) {
-        const event = await repo.getEvent(eventId);
-        if (event) events.push(event);
-      }
-      const now = new Date();
-      const tripStart = earliestScheduledStart(events);
+      // Lateness derived in core (DEC-028); occupant pinned so a swap between
+      // reads maps to `raced`, never a wrong-person log.
       const bailer = seat.assignedCrewMemberId;
-      await bail(
-        repo,
-        seat.id,
-        now,
-        bailLatenessMs(tripStart, now),
-        tripStart ? tripStart.getTime() - now.getTime() : undefined,
-      );
-      param = `bail_logged=${encodeURIComponent(String(bailer))}`;
+      const out = await bailWithDerivedLateness(repo, seat.id, new Date(), bailer);
+      param =
+        out.code === "raced"
+          ? "act_error=raced"
+          : `bail_logged=${encodeURIComponent(String(bailer))}`;
     }
   } catch {
     param = "act_error=unavailable";

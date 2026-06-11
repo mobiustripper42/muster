@@ -243,6 +243,59 @@ describe("buildAssignmentView — cockpit additions (#54)", () => {
     expect(card.pool!.map((p) => p.crewMemberId)).toEqual([b]); // not the bailer
   });
 
+  it("excludes a bailer from EVERY pool on the shift — never 'said yes' on the seat they walked", async () => {
+    const a = await addCrew("crew-a"); // will bail seat-1
+    const b = await addCrew("crew-b"); // gets the re-ask (live on seat-1)
+    const c = await addCrew("crew-c"); // free
+    const seat1 = await addSeat();
+    const seat2 = asId<"SeatId">("seat-2");
+    await repo.saveSeat({
+      id: seat2,
+      shiftId: SHIFT,
+      role: CAPTAIN,
+      kind: "required",
+      state: "Open",
+    });
+    const ask = await assignPerson(repo, seat1, a, T0);
+    await recordResponse(repo, ask!.id, "accepted", later(1000));
+    await confirmSeat(repo, seat1, later(2000));
+    await bail(repo, seat1, later(3000), 0); // pool non-empty → seat-1 → Asked
+
+    const view = (await buildAssignmentView(repo, SHIFT, later(4000)))!;
+    const s1 = view.seats.find((s) => s.seatId === seat1)!;
+    const s2 = view.seats.find((s) => s.seatId === seat2)!;
+    expect(s1.state).toBe("Asked");
+    // The bailer's stale 'accepted' must NOT surface as "in" — they're gone.
+    expect(s1.pool!.map((p) => p.crewMemberId)).not.toContain(a);
+    expect(s2.pool!.map((p) => p.crewMemberId)).not.toContain(a);
+    // bail() re-asked the whole remaining pool (b AND c) — both visible as
+    // asked on seat-1, both held out of seat-2 while those asks are live.
+    expect(s1.pool!.map((p) => p.status)).toEqual(["asked", "asked"]);
+    expect(s1.pool!.map((p) => p.crewMemberId)).toEqual([b, c]);
+    expect(s2.pool).toEqual([]);
+  });
+
+  it("shows a live-ask holder only on the seat their ask is on", async () => {
+    const a = await addCrew("crew-a");
+    const b = await addCrew("crew-b");
+    const seat1 = await addSeat();
+    const seat2 = asId<"SeatId">("seat-2");
+    await repo.saveSeat({
+      id: seat2,
+      shiftId: SHIFT,
+      role: CAPTAIN,
+      kind: "required",
+      state: "Open",
+    });
+    await assignPerson(repo, seat1, a, T0); // a is live on seat-1
+
+    const view = (await buildAssignmentView(repo, SHIFT, later(1000)))!;
+    const s1 = view.seats.find((s) => s.seatId === seat1)!;
+    const s2 = view.seats.find((s) => s.seatId === seat2)!;
+    expect(s1.pool!.find((p) => p.crewMemberId === a)?.status).toBe("asked");
+    expect(s2.pool!.map((p) => p.crewMemberId)).toEqual([b]); // a held out
+  });
+
   it("excludes crew already committed on another seat of this shift", async () => {
     const a = await addCrew("crew-a");
     const b = await addCrew("crew-b");

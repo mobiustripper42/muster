@@ -148,13 +148,16 @@ export async function buildAssignmentView(
   }
   trips.sort((a, b) => a.departureTime.localeCompare(b.departureTime));
 
-  // Bailers are excluded from a Bailed seat's pool (the re-ask's own exclusion,
-  // DEC-019) — scanned once per shift, and only when a Bailed seat needs it.
-  // Same crew-keyed log walk + M4-index revisit as the board's.
-  let bailers: Set<CrewMemberId> | null = null;
-  const bailersOnShift = async (): Promise<Set<CrewMemberId>> => {
-    if (bailers) return bailers;
-    bailers = new Set();
+  // The actions' accept set is SHIFT-wide (lean/assignFromPool, DEC-026/027):
+  // bailers and live-ask holders are refused everywhere on the shift. The view
+  // must not render what the action refuses — nor a bailer's stale "accepted"
+  // as *said yes* on the seat they walked off. So: exclude this shift's bailers
+  // from EVERY pool, and live-ask holders from every pool EXCEPT the seat their
+  // ask is on (there they stay visible as `asked` — the monitor view).
+  const hasPooledSeat = required.some((s) => POOLED_STATES.has(s.state));
+  const bailers = new Set<CrewMemberId>();
+  if (hasPooledSeat) {
+    // Crew-keyed log walk — same pattern + M4-index revisit as the board's.
     for (const crew of await repo.listCrewMembers()) {
       const log = await repo.reliabilityEventsFor(crew.id);
       if (
@@ -165,8 +168,23 @@ export async function buildAssignmentView(
         bailers.add(crew.id);
       }
     }
-    return bailers;
-  };
+  }
+  const asksBySeat = new Map(
+    await Promise.all(
+      required.map(
+        async (s) => [String(s.id), await repo.listAsksForSeat(s.id)] as const,
+      ),
+    ),
+  );
+  const liveAskSeatOf = new Map<CrewMemberId, Set<string>>();
+  for (const [seatKey, asks] of asksBySeat) {
+    for (const ask of asks) {
+      if (ask.respondedAt !== undefined) continue;
+      const seats = liveAskSeatOf.get(ask.crewMemberId) ?? new Set<string>();
+      seats.add(seatKey);
+      liveAskSeatOf.set(ask.crewMemberId, seats);
+    }
+  }
 
   const seats: SeatCardView[] = [];
   for (const seat of required) {
@@ -181,13 +199,14 @@ export async function buildAssignmentView(
       if (crew) card.occupant = crew.name;
     }
     if (POOLED_STATES.has(seat.state)) {
-      // rankedEligible (not raw eligiblePool) so the view applies the same
-      // intra-shift distinct-pool exclusion the actions do — the board lesson:
-      // never render a name the action would refuse (DEC-026).
-      const exclude =
-        seat.state === "Bailed" ? await bailersOnShift() : new Set<CrewMemberId>();
+      const exclude = new Set<CrewMemberId>(bailers);
+      for (const [crewId, askSeats] of liveAskSeatOf) {
+        if (!askSeats.has(String(seat.id))) exclude.add(crewId);
+      }
+      // rankedEligible (not raw eligiblePool) so the view also applies the
+      // intra-shift distinct-pool exclusion the actions do.
       const ranked = await rankedEligible(repo, seat, now, exclude);
-      const seatAsks = await repo.listAsksForSeat(seat.id); // once, not per candidate
+      const seatAsks = asksBySeat.get(String(seat.id)) ?? [];
       card.pool = ranked.map((c) => {
         const asks = seatAsks.filter((a) => a.crewMemberId === c.id);
         const { status, replyMs } = statusFromAsks(asks);

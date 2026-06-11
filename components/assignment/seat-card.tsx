@@ -1,11 +1,12 @@
-import { assignTo, confirmInto, nudgeOn, overrideTo } from "../../app/(admin)/admin/shift/[shiftId]/actions";
+import { confirmInto, overrideTo } from "../../app/(admin)/admin/shift/[shiftId]/actions";
+import { HiddenIds, MiniButton } from "./bits";
+import { askedSummary, CandidateRow } from "./candidate-row";
 
 /**
  * One cockpit seat card (SPEC §2.4, #54) — sub-state + occupant zone, the
- * ranked pool with per-candidate ask status (silent ≠ declined, the binding
- * constraint: the ghost gets the loud treatment), and the manual actions.
- * Server component — pools and the override picker are <details>, forms post
- * server actions, no client JS (DEC-026 pattern).
+ * ranked pool with per-candidate ask status (see candidate-row.tsx), and the
+ * manual actions. Server component — pools and the override picker are
+ * <details>, forms post server actions, no client JS (DEC-026 pattern).
  *
  * Calm monitor posture: an Asked seat shows its pool as status only (people
  * mid-decision are the system working — no buttons to mash); action buttons
@@ -41,48 +42,8 @@ const STATE_TONE: Record<SeatCardVM["state"], string> = {
   Bailed: "border-bad-line bg-bad-bg text-bad",
 };
 
-const STATUS_COPY: Record<CandidateVM["status"], { label: string; cls: string }> = {
-  available: { label: "not yet asked", cls: "text-muted" },
-  asked: { label: "awaiting reply", cls: "text-accent" },
-  in: { label: "said yes", cls: "font-semibold text-ok" },
-  declined: { label: "declined", cls: "text-muted" },
-  silent: { label: "👻 silent — no reply, timed out", cls: "font-semibold text-bad" },
-};
-
 const tel = (p: string) => `tel:${p.replace(/[^0-9+]/g, "")}`;
 const sms = (p: string) => `sms:${p.replace(/[^0-9+]/g, "")}`;
-
-/** An Asked seat's collapsed line must say WHO is in flight (binding fact). */
-function askedSummary(pool: CandidateVM[]): string {
-  const waiting = pool.filter((c) => c.status === "asked").map((c) => c.name);
-  return waiting.length === 0
-    ? " — asks in flight, watching"
-    : ` — awaiting reply from ${waiting.join(", ")}`;
-}
-
-function HiddenIds({ vm, crewId }: { vm: SeatCardVM; crewId?: string }) {
-  return (
-    <>
-      <input type="hidden" name="shiftId" value={vm.shiftId} />
-      <input type="hidden" name="seatId" value={vm.seatId} />
-      {crewId !== undefined && (
-        <input type="hidden" name="crewMemberId" value={crewId} />
-      )}
-    </>
-  );
-}
-
-function MiniButton({ label, title }: { label: string; title?: string }) {
-  return (
-    <button
-      type="submit"
-      title={title}
-      className="rounded-full border border-line bg-card px-2.5 py-1 text-xs font-medium text-accent hover:border-accent"
-    >
-      {label}
-    </button>
-  );
-}
 
 /** The state-conditional occupant zone. */
 function OccupantZone({ vm }: { vm: SeatCardVM }) {
@@ -131,37 +92,6 @@ function OccupantZone({ vm }: { vm: SeatCardVM }) {
     );
   }
   return null;
-}
-
-function CandidateRow({ vm, c }: { vm: SeatCardVM; c: CandidateVM }) {
-  const s = STATUS_COPY[c.status];
-  return (
-    <li className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-1">
-      <span className="text-sm text-ink">{c.name}</span>
-      <span className="flex items-center gap-3">
-        <span className={`text-xs ${s.cls}`}>
-          {s.label}
-          {c.replyLabel && <span className="text-muted"> · {c.replyLabel}</span>}
-        </span>
-        {c.action === "assign" && (
-          <form action={assignTo} className="inline-flex">
-            <HiddenIds vm={vm} crewId={c.id} />
-            <MiniButton label="Assign" title="Name them into this seat — they get the ask" />
-          </form>
-        )}
-        {c.action === "nudge" && (
-          <form action={nudgeOn} className="inline-flex">
-            <HiddenIds vm={vm} crewId={c.id} />
-            {/* lean() is shift-level (first gap seat that fits) — say so. */}
-            <MiniButton
-              label="↗ Nudge"
-              title="Direct nudge — asks them onto this shift's open seat"
-            />
-          </form>
-        )}
-      </span>
-    </li>
-  );
 }
 
 export function SeatCard({

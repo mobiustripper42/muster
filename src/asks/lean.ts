@@ -183,7 +183,12 @@ export async function assignFromPool(
   if (!shift || shift.state === "Cancelled" || shift.state === "Completed") {
     return { error: "This shift is no longer live.", code: "shift_gone" };
   }
-  if (seat.state !== "Open" && seat.state !== "Bailed") {
+  // Required seats only — same universe as lean's gap scan; a supernumerary
+  // seat is unreachable from the cockpit and takes no guarded assign.
+  if (
+    seat.kind !== "required" ||
+    (seat.state !== "Open" && seat.state !== "Bailed")
+  ) {
     return {
       error: "That seat isn't open to assign into.",
       code: "no_gap",

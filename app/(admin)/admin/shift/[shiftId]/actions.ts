@@ -2,8 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { confirmSeat, manualOverride } from "@core/asks/ask-loop.js";
+import { bail, confirmSeat, manualOverride } from "@core/asks/ask-loop.js";
 import { assignFromPool, lean } from "@core/asks/lean.js";
+import { bailLatenessMs, earliestScheduledStart } from "@core/builder/derive.js";
 import { asId } from "@core/domain/ids.js";
 import { readSubject } from "../../../../lib/auth";
 import { getRepo } from "../../../../lib/repo";
@@ -22,6 +23,8 @@ import { getRepo } from "../../../../lib/repo";
  * - confirm → `confirmSeat` (Claimed → Confirmed)
  * - override→ `manualOverride` (the ONLY unguarded path — the authority
  *             backstop, and the label is the trail)
+ * - report a bail → `bail()` (#56 admin half, DEC-028) — Spink files the bail
+ *             he heard about; also the recovery for a mis-tapped override
  */
 
 /** Auth + the form's ids, or redirect out. Shared head of every action. */
@@ -116,6 +119,46 @@ export async function overrideTo(formData: FormData): Promise<void> {
     param = seat
       ? `overrode=${encodeURIComponent(crewMemberId)}`
       : "act_error=seat_gone";
+  } catch {
+    param = "act_error=unavailable";
+  }
+  finish(back, param);
+}
+
+/**
+ * Spink files a bail he heard about (#56 admin half, DEC-028) — the same
+ * `bail()` rail the crew's own "can't make it" uses, lateness computed here at
+ * report time (the DEC-028 caveat: stamped at report, not at the phone call —
+ * the clamp bounds the damage). Also the recovery for a mis-tapped override.
+ */
+export async function reportBail(formData: FormData): Promise<void> {
+  const { seatId, back } = await gate(formData);
+  if (!seatId) redirect(back);
+  let param: string;
+  try {
+    const repo = getRepo();
+    const seat = await repo.getSeat(asId<"SeatId">(seatId));
+    if (!seat || seat.state !== "Confirmed" || !seat.assignedCrewMemberId) {
+      param = "act_error=not_confirmed";
+    } else {
+      const shift = await repo.getShift(seat.shiftId);
+      const events = [];
+      for (const eventId of shift?.eventIds ?? []) {
+        const event = await repo.getEvent(eventId);
+        if (event) events.push(event);
+      }
+      const now = new Date();
+      const tripStart = earliestScheduledStart(events);
+      const bailer = seat.assignedCrewMemberId;
+      await bail(
+        repo,
+        seat.id,
+        now,
+        bailLatenessMs(tripStart, now),
+        tripStart ? tripStart.getTime() - now.getTime() : undefined,
+      );
+      param = `bail_logged=${encodeURIComponent(String(bailer))}`;
+    }
   } catch {
     param = "act_error=unavailable";
   }

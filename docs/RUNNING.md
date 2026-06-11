@@ -36,10 +36,19 @@ In dev there's a link issuer:
 1. Open **http://mill-dev:3000/crew/dev-link?crew=crew-quint** → returns `{"link": "http://mill-dev:3000/crew/auth?t=…"}`
 2. Open **that link** → it verifies + consumes the token, sets the `muster_session` cookie, and
    redirects to **`/crew`**.
-3. You should see Quint's **ask** (In/Out), **My shifts**, and the standing chip.
+3. You should see Quint's **ask** (In/Out), **My shifts**, the standing chip, and the amber
+   **credential line** (#57): "Your MMC expires &lt;~30d out&gt; — renew before it gates you out of pools."
 
 `/crew/dev-link` is **dev-only** (404 in production). What to try:
 - Tap **In** / **Out** on the ask → it resolves (In claims the seat → moves to My shifts; Out reopens).
+- **Bail (#56):** open the My-shifts row → at the card's bottom, expand **"I can’t make it…"** →
+  tap **Give up this seat** → you land back on `/crew` with the calm "You’re off the … shift"
+  notice and the shift is gone from My shifts. The fallout depends on who else is seeded
+  (DEC-019, both honest): with **only this seed** loaded, no other valid captain exists → the seat
+  rests **Bailed** and the Hops shift shows on **/admin/at-risk** as a red **Lacking crew · late
+  bail** regression; with the at-risk seed also loaded, the system instead **re-asks its captains**
+  — open the Hops cockpit and watch the pool read *awaiting reply*. Re-run `npm run db:seed:crew`
+  to undo.
 - Open `/crew` with no cookie (private window) → the signed-out state.
 - Mangle the `?t=` value → the expired/used-link copy.
 

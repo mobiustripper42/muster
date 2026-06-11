@@ -75,6 +75,7 @@ describe("buildShiftCard", () => {
     expect(card.callTime).toBe("14:15"); // earliest departure 15:00 − 45m
     expect(card.vesselName).toBe("Hops");
     expect(card.viewerRole).toBe("captain");
+    expect(card.mySeatId).toBe("seat-cap"); // what a bail acts on (#56)
   });
 
   it("manifest is per-event, soonest first, booked-only with pax", async () => {

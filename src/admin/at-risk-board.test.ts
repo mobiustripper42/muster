@@ -24,7 +24,14 @@ import type {
   Shift,
 } from "../domain/entities.js";
 import type { SeatState, ShiftState } from "../domain/states.js";
-import { broadcastAsk, expireAsks, recordResponse } from "../asks/ask-loop.js";
+import {
+  bail,
+  broadcastAsk,
+  confirmSeat,
+  expireAsks,
+  recordResponse,
+} from "../asks/ask-loop.js";
+import { bailLatenessMs } from "../builder/derive.js";
 import { logShiftBailed } from "../oracle/reliability-log.js";
 import { deriveAtRiskBoard, EXHAUSTED_THRESHOLD_HOURS } from "./at-risk-board.js";
 
@@ -378,5 +385,32 @@ describe("the available list (the lean's targets)", () => {
     const rows = await deriveAtRiskBoard(repo, T0);
     expect(rows.map((r) => r.shiftId)).toEqual([shiftId]);
     expect(rows[0]!.available).toEqual([sub]);
+  });
+});
+
+describe("crew bail → board regression, end-to-end (#56, DEC-028)", () => {
+  it("a 'can't make it' through the real rails lands as a regression with honest lateness", async () => {
+    const ann = await addCrew("ann"); // the only captain → the bail rests the seat
+    const tripAt = hoursAfterT0(36);
+    const { shiftId, seatIds } = await addShift("e2e", tripAt, [{}]);
+
+    // The full loop the crew action drives: ask → accept → confirm → bail.
+    const [ask] = await broadcastAsk(repo, seatIds[0]!, T0);
+    await recordResponse(repo, ask!.id, "accepted", T0);
+    await confirmSeat(repo, seatIds[0]!, T0);
+    const noticeMs = tripAt.getTime() - T0.getTime();
+    await bail(repo, seatIds[0]!, T0, bailLatenessMs(tripAt, T0), noticeMs);
+
+    // Board: regression row (rested Bailed = pool-exhaustion by construction).
+    const rows = await deriveAtRiskBoard(repo, T0);
+    expect(rows.map((r) => r.shiftId)).toEqual([shiftId]);
+    expect(rows[0]!.reasons).toContain("regression");
+
+    // Log: derived lateness = lead shortfall (7d − 36h), raw notice alongside.
+    const event = (await repo.reliabilityEventsFor(ann)).find(
+      (e) => e.type === "shift_bailed",
+    )!;
+    expect(event.metadata.latenessMs).toBe((7 * 24 - 36) * 3600_000);
+    expect(event.metadata.noticeMs).toBe(36 * 3600_000);
   });
 });

@@ -13,10 +13,13 @@
 
 import type { CrewMemberId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
+import { worstCredential } from "../admin/credential-health.js";
+import type { CredentialConcern } from "../admin/credential-health.js";
 import { summarizeStanding } from "./standing.js";
 import type { CrewStandingView } from "./standing.js";
 
 export type { CrewStandingView } from "./standing.js";
+export type { CredentialConcern } from "../admin/credential-health.js";
 
 /** One open ask awaiting this crew member's In/Out. */
 export interface OpenAskView {
@@ -46,6 +49,12 @@ export interface CrewAppView {
   asks: OpenAskView[];
   shifts: MyShiftView[];
   standing: CrewStandingView;
+  /**
+   * The crew member's own expiring/expired credential (§2.6, #57) — same
+   * 60-day window and date boundary as the roster flag and the oracle's gate.
+   * Null = nothing to say (the common case; no line renders).
+   */
+  credentialNudge: CredentialConcern | null;
 }
 
 /** Resolve a role type's display name, falling back to its id if it's gone. */
@@ -119,5 +128,12 @@ export async function buildCrewAppView(
     now,
   );
 
-  return { me: { id: me.id, name: me.name }, asks, shifts, standing };
+  // Credential nudge (#57): their own renewals, same window/boundary as the
+  // roster flag — individual and non-comparative, like everything else here.
+  const credentialNudge = worstCredential(
+    await repo.listCredentialsForCrew(crewMemberId),
+    now,
+  );
+
+  return { me: { id: me.id, name: me.name }, asks, shifts, standing, credentialNudge };
 }

@@ -352,13 +352,22 @@ export async function bail(
   seatId: SeatId,
   now: Date,
   latenessMs: number,
+  noticeMs?: number,
 ): Promise<BailOutcome> {
   const seat = await repo.getSeat(seatId);
   if (!seat || seat.state !== "Confirmed" || !seat.assignedCrewMemberId) {
     throw new Error(`seat ${seatId} is not a confirmed seat to bail`);
   }
   const bailer = seat.assignedCrewMemberId;
-  await logShiftBailed(repo, bailer, seat.shiftId, now, latenessMs, seat.id);
+  await logShiftBailed(
+    repo,
+    bailer,
+    seat.shiftId,
+    now,
+    latenessMs,
+    seat.id,
+    noticeMs,
+  );
 
   // Whether the seat lands at Asked or rests at Bailed depends on the re-ask
   // below — the bailer is excluded from it either way. (rankedEligible reads only

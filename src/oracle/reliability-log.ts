@@ -153,7 +153,12 @@ export function logShiftCompleted(
   });
 }
 
-/** Backed out after confirming — negative, scaled by `latenessMs` before call. */
+/**
+ * Backed out after confirming — negative, scaled by `latenessMs` (DEC-028:
+ * notice shortfall vs the horizon, clamped). Pass the raw signed `noticeMs`
+ * (`tripStart − now`) when an anchor exists — the derived lateness bakes in
+ * today's lead; the raw notice keeps history re-derivable (DEC-008).
+ */
 export function logShiftBailed(
   repo: Repository,
   crewMemberId: CrewMemberId,
@@ -161,11 +166,13 @@ export function logShiftBailed(
   now: Date,
   latenessMs: number,
   seatId?: SeatId,
+  noticeMs?: number,
 ): Promise<ReliabilityEvent> {
   return recordReliabilityEvent(repo, crewMemberId, "shift_bailed", now, {
     shiftId,
     latenessMs,
     ...(seatId ? { seatId } : {}),
+    ...(noticeMs !== undefined ? { noticeMs } : {}),
   });
 }
 

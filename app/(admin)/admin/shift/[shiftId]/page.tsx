@@ -48,6 +48,7 @@ const ACT_ERROR_COPY: Record<string, string> = {
   ineligible: "Not eligible for this seat.",
   raced: "That seat just changed — here’s the fresh state.",
   not_claimed: "Nothing is awaiting confirm on that seat.",
+  not_confirmed: "No confirmed crew on that seat to bail — it may have just changed.",
   seat_gone: "That seat is gone — here’s the fresh state.",
   unavailable: "Couldn’t reach the schedule — nothing was changed. Try again.",
 };
@@ -58,6 +59,7 @@ type Search = {
   nudged?: string;
   confirmed?: string;
   overrode?: string;
+  bail_logged?: string;
   act_error?: string;
 };
 
@@ -150,6 +152,7 @@ export default async function ShiftCockpit({
   const nudged = nameOf(sp.nudged);
   const confirmed = nameOf(sp.confirmed);
   const overrode = nameOf(sp.overrode);
+  const bailLogged = nameOf(sp.bail_logged);
   const actError = sp.act_error ? ACT_ERROR_COPY[sp.act_error] ?? null : null;
 
   const hoursToTrip =
@@ -221,6 +224,12 @@ export default async function ShiftCockpit({
       {nudged && <Notice tone="ok">↗ Leaned on {nudged} — asked, not yet filled.</Notice>}
       {confirmed && <Notice tone="ok">{confirmed} confirmed into the seat.</Notice>}
       {overrode && <Notice tone="ok">{overrode} placed by override — confirmed.</Notice>}
+      {bailLogged && (
+        <Notice tone="ok">
+          Logged {bailLogged}’s bail — the seat reopened and the system is
+          re-asking (or it rests here if nobody’s left).
+        </Notice>
+      )}
       {actError && <Notice tone="bad">{actError}</Notice>}
 
       <div className="flex flex-col gap-3">

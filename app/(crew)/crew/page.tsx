@@ -16,7 +16,7 @@ import { respondToAsk } from "./actions";
  * Server component: reads the session, builds the view model through the port,
  * renders. The In/Out buttons post to a server action — no client JS required.
  */
-type Search = { auth?: string };
+type Search = { auth?: string; bailed?: string };
 
 export default async function CrewHome({
   searchParams,
@@ -31,12 +31,25 @@ export default async function CrewHome({
   }
 
   let view: CrewAppView | null;
+  let bailedNote: string | null = null;
   try {
+    const repo = getRepo();
     view = await buildCrewAppView(
-      getRepo(),
+      repo,
       asId<"CrewMemberId">(subject.id),
       new Date(),
     );
+    // `bailed` carries a shift id (codes/ids only, DEC-026); resolve it to a
+    // date we know — a crafted URL with an unknown id renders nothing, and one
+    // naming a shift they're demonstrably still on is suppressed too. No
+    // re-asking claim: whether the seat refills (re-ask vs rested) is the
+    // operator's concern, not this surface's.
+    if (sp.bailed && view && !view.shifts.some((s) => s.shiftId === sp.bailed)) {
+      const shift = await repo.getShift(asId<"ShiftId">(sp.bailed));
+      if (shift) {
+        bailedNote = `You’re off the ${fmtDate(shift.date)} shift — nothing else needed from you.`;
+      }
+    }
   } catch {
     return <Shell>
       <Notice>Can’t reach the schedule right now. Try again in a moment.</Notice>
@@ -44,7 +57,7 @@ export default async function CrewHome({
   }
   if (!view) return <SignedOut reason="stale" />;
 
-  return <CrewApp view={view} />;
+  return <CrewApp view={view} bailedNote={bailedNote} />;
 }
 
 function fmtDate(iso: string): string {
@@ -68,7 +81,27 @@ function SignedOut({ reason }: { reason?: string }) {
   );
 }
 
-function CrewApp({ view }: { view: CrewAppView }) {
+/** The §2.6 credential line (#57) — individual, calm, warn tokens only. */
+function CredentialLine({ nudge }: { nudge: NonNullable<CrewAppView["credentialNudge"]> }) {
+  const date = fmtDate(nudge.expiry);
+  const copy =
+    nudge.health === "expired"
+      ? `Your ${nudge.type} expired ${date} — it’s holding you out of shift pools until it’s renewed.`
+      : `Your ${nudge.type} expires ${date} — renew before it gates you out of pools.`;
+  return (
+    <p className="rounded-card border border-warn-line bg-warn-bg px-4 py-3 text-sm text-warn">
+      {copy}
+    </p>
+  );
+}
+
+function CrewApp({
+  view,
+  bailedNote,
+}: {
+  view: CrewAppView;
+  bailedNote: string | null;
+}) {
   return (
     <Shell>
       <header className="flex flex-col gap-1">
@@ -83,6 +116,9 @@ function CrewApp({ view }: { view: CrewAppView }) {
           {view.standing.line}
         </p>
       </header>
+
+      {bailedNote && <Notice>{bailedNote}</Notice>}
+      {view.credentialNudge && <CredentialLine nudge={view.credentialNudge} />}
 
       {view.asks.length > 0 && (
         <section className="flex flex-col gap-2">

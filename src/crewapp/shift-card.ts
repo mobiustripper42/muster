@@ -68,6 +68,8 @@ export interface ShiftCardView {
   coCrew: CoCrewView[];
   /** The viewer's own role on this shift. */
   viewerRole: string;
+  /** The viewer's own confirmed seat — what a "can't make it" bail acts on (#56). */
+  mySeatId: string;
 }
 
 /** Subtract minutes from an "HH:mm" clock time (wraps within a day, just in case). */
@@ -157,5 +159,6 @@ export async function buildShiftCard(
     events,
     coCrew,
     viewerRole: await roleName(repo, mySeat.role),
+    mySeatId: mySeat.id,
   };
 }

@@ -33,13 +33,33 @@ work without config.
 The crew surfaces require a session, so you can't visit `/crew` cold — you enter through a magic link.
 In dev there's a link issuer:
 
-1. Open **http://mill-dev:3000/crew/dev-link?crew=crew-quint** → returns `{"link": "http://mill-dev:3000/crew/auth?t=…"}`
-2. Open **that link** → it verifies + consumes the token, sets the `muster_session` cookie, and
+1. Open **http://mill-dev:3000/crew/dev-link?crew=crew-quint** → a **"Tap to sign in →"** page.
+2. Tap the button → it verifies + consumes the token, sets the `muster_session` cookie, and
    redirects to **`/crew`**.
-3. You should see Quint's **ask** (In/Out), **My shifts**, and the standing chip.
+3. You should see Quint's **ask** (In/Out), **My shifts**, the standing chip, and the amber
+   **credential line** (#57): "Your MMC expires &lt;~30d out&gt; — renew it to keep getting asked for shifts."
 
 `/crew/dev-link` is **dev-only** (404 in production). What to try:
 - Tap **In** / **Out** on the ask → it resolves (In claims the seat → moves to My shifts; Out reopens).
+- **Bail (#56):** open the My-shifts row → at the card's bottom, expand **"I can’t make it…"** →
+  tap **Drop this seat** → you land back on `/crew` with the calm "You’re off the … shift"
+  notice and the shift is gone from My shifts. The fallout depends on who else is seeded
+  (DEC-019, both honest):
+  - **Crew seed only** → no other valid captain exists → the seat rests **Bailed** and the Hops
+    shift shows on **/admin/at-risk** as a red **Lacking crew · late bail** regression.
+    ⚠️ "Crew seed only" means a DB that has *never* run `db:seed:atrisk` — its captains persist
+    (upserts never delete; `db:migrate` is forward-only and won't drop them), so a plain re-run of
+    `db:seed:crew` on a contaminated DB **won't** get you here. Wipe the volume first:
+    `docker compose down -v && npm run db:up && npm run db:migrate && npm run db:seed:crew`,
+    *then* bail.
+  - **At-risk seed also loaded** → that seed adds eligible captains, so the bail **re-asks** instead
+    → seat goes `Asked`, shift `Filling`. A live ask far from the trip is suppressed from the board
+    by design — open the Hops cockpit (`/admin/shift/shift-soon`) and watch the pool read
+    *awaiting reply*. (Quick check of which path you're on: if `/admin/at-risk` shows
+    `vessel-ar-*` rows, the at-risk seed is loaded — you're on this branch.)
+
+  Re-running `npm run db:seed:crew` resets Quint's seat to Confirmed (undoes the bail), but does
+  **not** remove at-risk shifts — only `docker compose down -v` (drop the volume) does.
 - Open `/crew` with no cookie (private window) → the signed-out state.
 - Mangle the `?t=` value → the expired/used-link copy.
 
@@ -62,7 +82,7 @@ npm run db:seed:atrisk   # 4 board + 2 cockpit scenarios, trips anchored to NOW 
    (*⊘ Gus's credential lapses before the trip*), **Mash Tun** (*Lacking crew · none eligible*,
    "not yet worked — flagged by the oracle" + the "nobody left in the eligible pool" line, no Lean
    buttons).
-3. Tap **↗ Lean on Marisol** (Firkin row) → green *"Last action: leaned on Marisol — asked, not yet
+3. Tap **↗ Nudge Marisol** (Firkin row) → green *"Last action: nudged Marisol — asked, not yet
    filled"* and the Firkin row is **gone** — its ask is now in flight, which is the engine working,
    not a bug. (`/crew/dev-link?crew=crew-ar-sub` shows Marisol's In/Out card if you want the loop.)
 4. Tap **Assignment ↗** (Tidewater row) → the assignment cockpit (#54), badge **Filling**;

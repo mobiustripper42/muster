@@ -49,18 +49,53 @@ export function healthOf(
  * No credentials → "valid" (nothing is lapsed); the oracle's gating is a
  * separate concern (§1.3).
  */
+const HEALTH_RANK: Record<CredentialHealth, number> = {
+  valid: 0,
+  expiring_soon: 1,
+  expired: 2,
+};
+
 export function credentialHealth(
   credentials: Credential[],
   now: Date,
   windowDays: number = EXPIRING_SOON_DAYS,
 ): CredentialHealth {
-  const rank: Record<CredentialHealth, number> = {
-    valid: 0,
-    expiring_soon: 1,
-    expired: 2,
-  };
   return credentials.reduce<CredentialHealth>((worst, c) => {
     const h = healthOf(c, now, windowDays);
-    return rank[h] > rank[worst] ? h : worst;
+    return HEALTH_RANK[h] > HEALTH_RANK[worst] ? h : worst;
   }, "valid");
+}
+
+/** The band plus the credential behind it — what the crew nudge copy names. */
+export interface CredentialConcern {
+  type: Credential["type"];
+  /** ISO-8601 expiry date of the offending credential. */
+  expiry: string;
+  health: Exclude<CredentialHealth, "valid">;
+}
+
+/**
+ * The worst non-valid credential — the *which/when* behind the band, for the
+ * crew app's nudge line (SPEC §2.6, #57: "MMC expires Aug 12 — renew it to keep
+ * getting asked for shifts"). Null when everything is valid (no nudge). Worst
+ * health wins; within a band the soonest expiry (the most urgent renewal).
+ */
+export function worstCredential(
+  credentials: Credential[],
+  now: Date,
+  windowDays: number = EXPIRING_SOON_DAYS,
+): CredentialConcern | null {
+  let worst: CredentialConcern | null = null;
+  for (const c of credentials) {
+    const h = healthOf(c, now, windowDays);
+    if (h === "valid") continue;
+    if (
+      worst === null ||
+      HEALTH_RANK[h] > HEALTH_RANK[worst.health] ||
+      (HEALTH_RANK[h] === HEALTH_RANK[worst.health] && c.expiry < worst.expiry)
+    ) {
+      worst = { type: c.type, expiry: c.expiry, health: h };
+    }
+  }
+  return worst;
 }

@@ -1,4 +1,4 @@
-import { confirmInto, overrideTo } from "../../app/(admin)/admin/shift/[shiftId]/actions";
+import { confirmInto, overrideTo, reportBail } from "../../app/(admin)/admin/shift/[shiftId]/actions";
 import { HiddenIds, MiniButton } from "./bits";
 import { askedSummary, CandidateRow } from "./candidate-row";
 
@@ -68,18 +68,42 @@ function OccupantZone({ vm }: { vm: SeatCardVM }) {
   }
   if (vm.state === "Confirmed" && vm.occupant) {
     return (
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-ok-line bg-ok-bg px-3 py-2">
-        <span className="text-sm font-semibold text-ink">{vm.occupant.name}</span>
-        {vm.occupant.phone && (
-          <span className="flex gap-2">
-            <a href={tel(vm.occupant.phone)} className="text-xs font-semibold text-accent">
-              ✆ Call
-            </a>
-            <a href={sms(vm.occupant.phone)} className="text-xs font-semibold text-accent">
-              ✉ Text
-            </a>
-          </span>
-        )}
+      <div className="flex flex-col gap-1 rounded-lg border border-ok-line bg-ok-bg px-3 py-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-sm font-semibold text-ink">{vm.occupant.name}</span>
+          {vm.occupant.phone && (
+            <span className="flex gap-2">
+              <a href={tel(vm.occupant.phone)} className="text-xs font-semibold text-accent">
+                ✆ Call
+              </a>
+              <a href={sms(vm.occupant.phone)} className="text-xs font-semibold text-accent">
+                ✉ Text
+              </a>
+            </span>
+          )}
+        </div>
+        {/* #56 admin half (DEC-028): file the bail you heard about — same
+            rail as the crew's own "can't make it"; also the override-mistake
+            recovery. Deliberate friction: closed details + explicit button. */}
+        <details>
+          <summary className="cursor-pointer text-xs text-muted">
+            Reports a bail…
+          </summary>
+          <p className="py-1 text-xs text-muted">
+            Logs that {vm.occupant.name} backed out: clears the seat and
+            re-asks the next candidates — or the seat rests open if nobody’s
+            left. Lateness counts from now.
+          </p>
+          <form action={reportBail} className="py-1">
+            <HiddenIds vm={vm} />
+            <button
+              type="submit"
+              className="rounded-full border border-bad-line bg-bad-bg px-2.5 py-1 text-xs font-medium text-bad"
+            >
+              Log the bail
+            </button>
+          </form>
+        </details>
       </div>
     );
   }

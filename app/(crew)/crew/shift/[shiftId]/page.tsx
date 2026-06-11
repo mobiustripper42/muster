@@ -5,17 +5,26 @@ import { Notice } from "../../../../../components/ui/notice";
 import { Shell } from "../../../../../components/ui/shell";
 import { readSubject } from "../../../../lib/auth";
 import { getRepo } from "../../../../lib/repo";
+import { bailFromSeat } from "./actions";
 
 /**
  * Shift card (SPEC §2.6.3) — the single source of truth a crew member reads on
  * the dock: call time vs departure (the #1 confusion, shown distinct + labeled),
  * the per-event guest manifest (the hinge that ends the Xola split), the dock as
- * a tappable map pin, pax, and one-tap co-crew contact.
+ * a tappable map pin, pax, and one-tap co-crew contact. "Can't make it" (#56)
+ * lives at the bottom behind a deliberate confirm step — neutral voice, no
+ * guilt-trip; lateness is the signal (DEC-028), not the bail itself.
  *
  * Server component, session-gated; `buildShiftCard` returns null unless the
- * viewer is confirmed crew on this shift (no peeking at others' cards). Bail,
- * credential nudge, and the live-changed indicator are deferred follow-ups.
+ * viewer is confirmed crew on this shift (no peeking at others' cards). The
+ * live-changed indicator is a deferred follow-up.
  */
+
+/** Bail-error params carry codes only (DEC-026) — mapped to copy here. */
+const BAIL_ERROR_COPY: Record<string, string> = {
+  stale: "This card changed under you — what you see now is current. Check it before acting.",
+  unavailable: "Couldn’t reach the schedule — nothing was changed. Try again.",
+};
 const tel = (p: string) => `tel:${p.replace(/[^0-9+]/g, "")}`;
 const sms = (p: string) => `sms:${p.replace(/[^0-9+]/g, "")}`;
 const mapHref = (q: string) => `https://maps.google.com/?q=${encodeURIComponent(q)}`;
@@ -30,10 +39,13 @@ function fmtDate(iso: string): string {
 
 export default async function ShiftCardPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ shiftId: string }>;
+  searchParams: Promise<{ bail_error?: string }>;
 }) {
   const { shiftId } = await params;
+  const sp = await searchParams;
   const subject = await readSubject();
   if (!subject || subject.kind !== "crew") {
     return (
@@ -67,7 +79,8 @@ export default async function ShiftCardPage({
     );
   }
 
-  return <Card card={card} />;
+  const bailError = sp.bail_error ? BAIL_ERROR_COPY[sp.bail_error] ?? null : null;
+  return <Card card={card} shiftId={shiftId} bailError={bailError} />;
 }
 
 function BackLink() {
@@ -95,11 +108,20 @@ function DockPin({ dock }: { dock: string }) {
   );
 }
 
-function Card({ card }: { card: ShiftCardView }) {
+function Card({
+  card,
+  shiftId,
+  bailError,
+}: {
+  card: ShiftCardView;
+  shiftId: string;
+  bailError: string | null;
+}) {
   const firstDeparture = card.events[0]?.departureTime;
   return (
     <Shell>
       <BackLink />
+      {bailError && <Notice tone="bad">{bailError}</Notice>}
 
       <header className="flex flex-col">
         <span className="text-sm text-muted">{fmtDate(card.date)}</span>
@@ -231,6 +253,32 @@ function Card({ card }: { card: ShiftCardView }) {
           </details>
         ))}
       </section>
+
+      {/* "Can't make it" (#56) — deliberate friction: a closed <details> plus an
+          explicit confirm button. Neutral voice; lateness is the signal. */}
+      <details className="rounded-card border border-line bg-card px-4 pb-3">
+        {/* The summary owns the 44px hit area (clicks on details padding don't
+            toggle); marker kept deliberately — the "…" + triangle reads as
+            "more here" without borrowing the manifest's chevron idiom. */}
+        <summary className="flex min-h-[44px] cursor-pointer items-center text-sm font-semibold text-muted">
+          I can’t make it…
+        </summary>
+        <p className="pb-2 text-sm text-muted">
+          This drops a seat you confirmed. The less notice you give, the harder
+          it is to refill — so if there’s still plenty of time, dropping now is
+          the right move.
+        </p>
+        <form action={bailFromSeat}>
+          <input type="hidden" name="seatId" value={card.mySeatId} />
+          <input type="hidden" name="shiftId" value={shiftId} />
+          <button
+            type="submit"
+            className="min-h-[44px] w-full rounded-lg border border-bad-line bg-bad-bg px-4 font-semibold text-bad"
+          >
+            Drop this seat
+          </button>
+        </form>
+      </details>
     </Shell>
   );
 }

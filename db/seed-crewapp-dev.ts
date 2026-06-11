@@ -47,6 +47,11 @@ try {
   });
   await repo.saveCrewMember({ id: QUINT, name: "Quint", phone: "+15555550101", ratings: [CAPTAIN], status: "active", reliabilityScore: null });
   await repo.saveCrewMember({ id: HOOPER, name: "Hooper", phone: "+15555550102", ratings: [MATE], status: "active", reliabilityScore: null });
+  // Quint's MMC expires ~30d from seed time (anchored to now so the #57 nudge
+  // line always shows inside the 60d window); Hooper's is comfortably valid.
+  const in30d = new Date(Date.now() + 30 * 24 * 3600_000).toISOString().slice(0, 10);
+  await repo.saveCredential({ id: asId<"CredentialId">("cred-quint-mmc"), crewMemberId: QUINT, type: "MMC", expiry: in30d });
+  await repo.saveCredential({ id: asId<"CredentialId">("cred-hooper-mmc"), crewMemberId: HOOPER, type: "MMC", expiry: "2027-12-31" });
 
   // A confirmed upcoming shift with two events (3pm + 5pm, different docks) →
   // my-shifts row → the shift card (call/departure times, dock pins, per-event
@@ -59,6 +64,14 @@ try {
   await repo.saveEvent({ id: E5, vesselId: VESSEL, date: SOON, time: "17:00", capacity: 12, status: "scheduled", dock: "Pier 9, Lake Union, Seattle" });
   await repo.saveSeat({ id: asId<"SeatId">("seat-soon-cap"), shiftId: SHIFT_SOON, role: CAPTAIN, kind: "required", state: "Confirmed", assignedCrewMemberId: QUINT });
   await repo.saveSeat({ id: asId<"SeatId">("seat-soon-mate"), shiftId: SHIFT_SOON, role: MATE, kind: "required", state: "Confirmed", assignedCrewMemberId: HOOPER });
+  // Reap seats this seed no longer writes (upserts never delete, and a renamed
+  // seat id leaves a zombie row — e.g. a 3rd captain seat on a 2-crew boat that
+  // hijacks the card's mySeatId and the bail demo).
+  for (const s of await repo.listSeatsForShift(SHIFT_SOON)) {
+    if (s.id !== "seat-soon-cap" && s.id !== "seat-soon-mate") {
+      await repo.removeSeat(s.id);
+    }
+  }
   // Manifest: different guests on each event (the hinge).
   await repo.saveReservation({ id: asId<"ReservationId">("r-3pm-1"), eventId: E3, customerName: "Brody party", partySize: 4, phone: "+15555551111", status: "booked" });
   await repo.saveReservation({ id: asId<"ReservationId">("r-3pm-2"), eventId: E3, customerName: "Vaughn party", partySize: 6, status: "booked" });
@@ -95,6 +108,9 @@ try {
   }
 
   console.log("Seeded crew-quint: 1 confirmed shift (2 events, manifest, co-crew Hooper), 1 open ask.");
+  console.log("  + Quint's MMC expires ~30d out → the #57 credential nudge line shows on /crew.");
+  console.log("  + Bail demo (#56): open the shift card → 'I can't make it…' — Quint is the only");
+  console.log("    captain, so the seat rests Bailed and the shift lands on /admin/at-risk as a regression.");
   console.log("Seeded crew-dooley: full reliability log → worst-case standing line. View: /crew/dev-link?crew=crew-dooley");
 } finally {
   await repo.close();

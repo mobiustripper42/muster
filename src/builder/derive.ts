@@ -125,6 +125,36 @@ export function staffingHorizonFor(
   );
 }
 
+/**
+ * Bail lateness (DEC-028): the **notice shortfall versus the staffing-horizon
+ * lead, clamped to it** — `clamp(leadMs − (tripStart − now), 0, leadMs)`.
+ *
+ *  - Bail with ≥ `leadDays` notice → 0: full notice, the flat `shift_bailed`
+ *    weight is the whole penalty (SPEC §1.4 — "a cancel a week out is cheap").
+ *  - Bail at departure → `leadMs`: the maximum. Lateness means "how far inside
+ *    the window the system needed to refill" — same constant as DEC-022, on
+ *    purpose.
+ *  - Clamped past departure: a post-departure report is `no_show` territory
+ *    (separate event, its own weight) and a stale admin report must not
+ *    penalize by report latency.
+ *  - `tripStart === null` → 0: no anchor, nothing to be late against.
+ *
+ * Computed **server-side at bail time** from the shift's events — never
+ * client-supplied. Callers should log the raw signed notice
+ * (`tripStart − now`) alongside (DEC-008: the derived value bakes in today's
+ * `leadDays`; history must stay re-derivable).
+ */
+export function bailLatenessMs(
+  tripStart: Date | null,
+  now: Date,
+  leadDays: number = STAFFING_HORIZON_LEAD_DAYS,
+): number {
+  if (tripStart === null) return 0;
+  const leadMs = leadDays * DAY_MS;
+  const noticeMs = tripStart.getTime() - now.getTime();
+  return Math.min(leadMs, Math.max(0, leadMs - noticeMs));
+}
+
 export interface HorizonContext {
   /** The scoring/decision instant — injected, never read from a clock (DEC-023). */
   now: Date;

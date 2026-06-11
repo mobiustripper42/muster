@@ -99,4 +99,46 @@ describe("buildCrewAppView", () => {
     expect(view!.standing.reasons).toContain("showed 2/3");
     expect(view!.standing.line).toContain("showed 2/3");
   });
+
+  it("credentialNudge is null with healthy (or no) credentials — no line, no noise", async () => {
+    const repo = await seed();
+    expect((await buildCrewAppView(repo, ME, NOW))!.credentialNudge).toBeNull();
+
+    await repo.saveCredential({
+      id: asId<"CredentialId">("cred-ok"),
+      crewMemberId: ME,
+      type: "MMC",
+      expiry: "2027-12-31",
+    });
+    expect((await buildCrewAppView(repo, ME, NOW))!.credentialNudge).toBeNull();
+  });
+
+  it("credentialNudge names the expiring credential — same 60d window as the roster flag (#57)", async () => {
+    const repo = await seed();
+    await repo.saveCredential({
+      id: asId<"CredentialId">("cred-soon"),
+      crewMemberId: ME,
+      type: "MMC",
+      expiry: "2026-08-12", // inside 60d of NOW
+    });
+    const view = await buildCrewAppView(repo, ME, NOW);
+    expect(view!.credentialNudge).toEqual({
+      type: "MMC",
+      expiry: "2026-08-12",
+      health: "expiring_soon",
+    });
+  });
+
+  it("credentialNudge flags expired as expired", async () => {
+    const repo = await seed();
+    await repo.saveCredential({
+      id: asId<"CredentialId">("cred-dead"),
+      crewMemberId: ME,
+      type: "MMC",
+      expiry: "2026-06-01",
+    });
+    expect((await buildCrewAppView(repo, ME, NOW))!.credentialNudge!.health).toBe(
+      "expired",
+    );
+  });
 });

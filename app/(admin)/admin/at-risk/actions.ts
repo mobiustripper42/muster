@@ -38,7 +38,9 @@ export async function leanOn(formData: FormData): Promise<void> {
     );
     param = out.error
       ? `lean_error=${out.code ?? "unavailable"}`
-      : `leaned=${encodeURIComponent(crewMemberId)}`;
+      : // The leaned shift leaves the board (its ask is in flight), so the
+        // notice needs the shift id to offer the cockpit as the watch path.
+        `leaned=${encodeURIComponent(crewMemberId)}&leaned_shift=${encodeURIComponent(shiftId)}`;
   } catch {
     param = "lean_error=unavailable";
   }

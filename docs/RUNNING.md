@@ -33,8 +33,8 @@ work without config.
 The crew surfaces require a session, so you can't visit `/crew` cold — you enter through a magic link.
 In dev there's a link issuer:
 
-1. Open **http://mill-dev:3000/crew/dev-link?crew=crew-quint** → returns `{"link": "http://mill-dev:3000/crew/auth?t=…"}`
-2. Open **that link** → it verifies + consumes the token, sets the `muster_session` cookie, and
+1. Open **http://mill-dev:3000/crew/dev-link?crew=crew-quint** → a **"Tap to sign in →"** page.
+2. Tap the button → it verifies + consumes the token, sets the `muster_session` cookie, and
    redirects to **`/crew`**.
 3. You should see Quint's **ask** (In/Out), **My shifts**, the standing chip, and the amber
    **credential line** (#57): "Your MMC expires &lt;~30d out&gt; — renew it to keep getting asked for shifts."

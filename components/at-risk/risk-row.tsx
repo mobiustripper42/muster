@@ -137,7 +137,7 @@ export function RiskRow({ row }: { row: RiskRowVM }) {
           </span>
           {row.available.length === 0 ? (
             <span className="text-xs text-muted">
-              nobody left in the eligible pool — a lean won&apos;t help; this is
+              nobody left in the eligible pool — a nudge won&apos;t help; this is
               the reschedule / cancel call
             </span>
           ) : (
@@ -150,7 +150,7 @@ export function RiskRow({ row }: { row: RiskRowVM }) {
                   className="rounded-full border border-line bg-card px-2.5 py-1 text-xs font-medium text-accent hover:border-accent"
                   title={`Direct nudge — “I need you on this”`}
                 >
-                  ↗ Lean on {p.name}
+                  ↗ Nudge {p.name}
                 </button>
               </form>
             ))

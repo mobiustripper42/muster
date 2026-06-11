@@ -27,7 +27,7 @@ const TIGHT_HOURS = 36;
 /** Feedback params carry codes/ids, never prose (see actions.ts) — map here. */
 const LEAN_ERROR_COPY: Record<string, string> = {
   shift_gone: "That shift is no longer live.",
-  no_gap: "No open seat to fill — nothing to lean for.",
+  no_gap: "No open seat to fill — nothing to nudge for.",
   already_asked: "Already asked on this shift — awaiting their reply.",
   bailed: "They bailed on this shift — pick someone else.",
   ineligible: "Not eligible for this shift’s open seats.",
@@ -105,7 +105,7 @@ export default async function AtRiskBoard({
           "just happened") — the no-client-JS tradeoff (DEC-026). */}
       {leanedName && (
         <Notice tone="ok">
-          ↗ Last action: leaned on {leanedName} — asked, not yet filled. The
+          ↗ Last action: nudged {leanedName} — asked, not yet filled. The
           shift left the board while their answer is pending
           {leanedShiftId ? (
             <>

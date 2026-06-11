@@ -221,7 +221,7 @@ export default async function ShiftCockpit({
       </p>
 
       {assigned && <Notice tone="ok">Asked {assigned} into the seat — awaiting their reply.</Notice>}
-      {nudged && <Notice tone="ok">↗ Leaned on {nudged} — asked, not yet filled.</Notice>}
+      {nudged && <Notice tone="ok">↗ Nudged {nudged} — asked, not yet filled.</Notice>}
       {confirmed && <Notice tone="ok">{confirmed} confirmed into the seat.</Notice>}
       {overrode && <Notice tone="ok">{overrode} placed by override — confirmed.</Notice>}
       {bailLogged && (

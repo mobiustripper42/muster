@@ -82,7 +82,7 @@ npm run db:seed:atrisk   # 4 board + 2 cockpit scenarios, trips anchored to NOW 
    (*⊘ Gus's credential lapses before the trip*), **Mash Tun** (*Lacking crew · none eligible*,
    "not yet worked — flagged by the oracle" + the "nobody left in the eligible pool" line, no Lean
    buttons).
-3. Tap **↗ Lean on Marisol** (Firkin row) → green *"Last action: leaned on Marisol — asked, not yet
+3. Tap **↗ Nudge Marisol** (Firkin row) → green *"Last action: nudged Marisol — asked, not yet
    filled"* and the Firkin row is **gone** — its ask is now in flight, which is the engine working,
    not a bug. (`/crew/dev-link?crew=crew-ar-sub` shows Marisol's In/Out card if you want the loop.)
 4. Tap **Assignment ↗** (Tidewater row) → the assignment cockpit (#54), badge **Filling**;

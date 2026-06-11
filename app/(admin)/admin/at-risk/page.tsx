@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { deriveAtRiskBoard, type AtRiskRow } from "@core/admin/at-risk-board.js";
 import { asId } from "@core/domain/ids.js";
 import type { CrewMemberId } from "@core/domain/ids.js";
@@ -34,7 +35,7 @@ const LEAN_ERROR_COPY: Record<string, string> = {
   unavailable: "Couldn’t reach the schedule — nothing was sent. Try again.",
 };
 
-type Search = { leaned?: string; lean_error?: string };
+type Search = { leaned?: string; leaned_shift?: string; lean_error?: string };
 
 export default async function AtRiskBoard({
   searchParams,
@@ -61,11 +62,18 @@ export default async function AtRiskBoard({
 
   const regressions = vms.filter((v) => v.regression).length;
 
-  // `leaned` carries the crew id; resolve to a name we know (a crafted URL with
-  // an unknown id renders nothing). Errors map through LEAN_ERROR_COPY only.
+  // `leaned`/`leaned_shift` carry ids; resolve to entities we know (a crafted
+  // URL with an unknown id renders nothing). Errors map through
+  // LEAN_ERROR_COPY only.
   const leanedName = sp.leaned
     ? (await repo.getCrewMember(asId<"CrewMemberId">(sp.leaned)))?.name ?? null
     : null;
+  // The leaned shift left the board (ask in flight) — the notice offers its
+  // cockpit as the watch path, validated against a real shift.
+  const leanedShiftId =
+    sp.leaned_shift && (await repo.getShift(asId<"ShiftId">(sp.leaned_shift)))
+      ? sp.leaned_shift
+      : null;
   const leanError = sp.lean_error ? LEAN_ERROR_COPY[sp.lean_error] ?? null : null;
 
   return (
@@ -97,7 +105,21 @@ export default async function AtRiskBoard({
           "just happened") — the no-client-JS tradeoff (DEC-026). */}
       {leanedName && (
         <Notice tone="ok">
-          ↗ Last action: leaned on {leanedName} — asked, not yet filled.
+          ↗ Last action: leaned on {leanedName} — asked, not yet filled. The
+          shift left the board while their answer is pending
+          {leanedShiftId ? (
+            <>
+              {" — "}
+              <Link
+                href={`/admin/shift/${encodeURIComponent(leanedShiftId)}`}
+                className="font-semibold text-accent"
+              >
+                watch it ↗
+              </Link>
+            </>
+          ) : (
+            "."
+          )}
         </Notice>
       )}
       {leanError && <Notice tone="bad">{leanError}</Notice>}

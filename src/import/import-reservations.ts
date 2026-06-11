@@ -209,6 +209,9 @@ export async function importReservations(
 
     const internalId = asId<"ReservationId">(`resv-${reservationId}`);
     const existingReservation = await repo.getReservation(internalId);
+    // The fields below double as the materiality set — keep in lockstep with
+    // `reservationMateriallyChanged` so a new tracked field can't silently
+    // suppress the DEC-029 nudge.
     const core: Reservation = {
       id: internalId,
       eventId,

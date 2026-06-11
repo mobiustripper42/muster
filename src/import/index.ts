@@ -19,7 +19,8 @@ export async function importXlsx(
   repo: Repository,
   filePath: string,
   sheetName = "Reservations",
+  now: Date = new Date(),
 ): Promise<ImportResult> {
   const rows = readXlsxSheet(filePath, sheetName);
-  return importReservations(repo, rows);
+  return importReservations(repo, rows, now);
 }

@@ -264,8 +264,9 @@ function Card({
           I can’t make it…
         </summary>
         <p className="pb-2 text-sm text-muted">
-          This gives up your confirmed spot. The later the word, the harder the
-          seat is to fill — if it’s far off, saying so now is the right move.
+          This drops a seat you confirmed. The less notice you give, the harder
+          it is to refill — so if there’s still plenty of time, dropping now is
+          the right move.
         </p>
         <form action={bailFromSeat}>
           <input type="hidden" name="seatId" value={card.mySeatId} />
@@ -274,7 +275,7 @@ function Card({
             type="submit"
             className="min-h-[44px] w-full rounded-lg border border-bad-line bg-bad-bg px-4 font-semibold text-bad"
           >
-            Give up this seat
+            Drop this seat
           </button>
         </form>
       </details>

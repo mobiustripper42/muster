@@ -8,7 +8,7 @@ import { readSubject } from "../../../../lib/auth";
 import { getRepo } from "../../../../lib/repo";
 
 /**
- * "I can't make it" (SPEC §2.6.3, #56) — a confirmed crew member gives up
+ * "I can't make it" (SPEC §2.6.3, #56) — a confirmed crew member drops
  * their own seat. Auth + glue over the existing `bail()` rails (DEC-019):
  * the domain logs `shift_bailed`, clears the seat, and re-asks or rests
  * `Bailed` — nothing new here.

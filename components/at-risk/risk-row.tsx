@@ -178,7 +178,7 @@ export function RiskRow({ row }: { row: RiskRowVM }) {
               href={`/admin/shift/${row.shiftId}`}
               className="text-xs font-semibold text-accent"
             >
-              Open in Assignment ↗
+              Assignment ↗
             </Link>
           </div>
           <span className="text-xs text-muted">

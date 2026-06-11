@@ -65,7 +65,7 @@ npm run db:seed:atrisk   # 4 board + 2 cockpit scenarios, trips anchored to NOW 
 3. Tap **↗ Lean on Marisol** (Firkin row) → green *"Last action: leaned on Marisol — asked, not yet
    filled"* and the Firkin row is **gone** — its ask is now in flight, which is the engine working,
    not a bug. (`/crew/dev-link?crew=crew-ar-sub` shows Marisol's In/Out card if you want the loop.)
-4. Tap **Open in Assignment ↗** (Tidewater row) → the assignment cockpit (#54), badge **Filling**;
+4. Tap **Assignment ↗** (Tidewater row) → the assignment cockpit (#54), badge **Filling**;
    in the pool, Lance reads *declined* (muted, with a **↗ Nudge** button) and Gardner *👻 silent*
    (red, **↗ Nudge**) — visibly different.
 

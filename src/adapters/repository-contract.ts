@@ -204,6 +204,13 @@ export function runRepositoryContract(
       expect(await repo.listReservationsForEvent(EVENT)).toEqual([
         reservation({ phone: "555", email: "b@x.io" }),
       ]);
+      // updatedAt round-trips (DEC-029); absent stays absent
+      expect("updatedAt" in got!).toBe(false);
+      const stamped = reservation({ updatedAt: "2026-06-10T12:00:00.000Z" });
+      await repo.saveReservation(stamped);
+      expect(await repo.getReservation(asId<"ReservationId">("resv-1"))).toEqual(
+        stamped,
+      );
     });
 
     it("shifts: eventIds round-trip; lockedAt optional", async () => {

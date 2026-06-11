@@ -101,7 +101,13 @@ Same seed. The cockpit is each board row's click-through, plus two off-board sce
    the board. Tap its link → Kettle's cockpit: Dale *declined*, Tessa *👻 silent*, both nudgeable.
 3. On Kettle, expand **Manual override…** on the seat card → tap **Place Marisol** → green
    *"Marisol placed by override — confirmed"*; the warming panel empties ("Nothing warming.").
-4. Re-run `npm run db:seed:atrisk` to reset everything you just changed.
+4. **Changed since reviewed (#58):** open **http://mill-dev:3000/admin/shift/shift-ar-changed** →
+   under the header, an amber notice: *"Changed since you reviewed it — a booking landed or changed
+   after you locked this shift…"* The shift is fully **Crewed** and off the board; the nudge fires
+   because it was locked 2d ago and a booking landed 1h ago (an earlier booking, stamped before the
+   lock, is correctly ignored). Re-locking would clear it (no lock action wired to the cockpit yet —
+   derivation only, DEC-029).
+5. Re-run `npm run db:seed:atrisk` to reset everything you just changed.
 
 ```bash
 npm run db:tick          # run one engine tick by hand (DEC-023 — no scheduler in v1)

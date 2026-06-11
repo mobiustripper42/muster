@@ -173,6 +173,14 @@ export interface Reservation {
    */
   phone?: string;
   status: ReservationStatus;
+  /**
+   * When this reservation was created or last *materially* changed (ISO-8601 UTC).
+   * Stamped by the import on create + material change only (DEC-029) — the
+   * comparand for the builder's "changed since you reviewed it" nudge
+   * (`max(updatedAt) > shift.lockedAt`). Optional: absent = predates tracking →
+   * older than any lock → never nudges (no backfill needed).
+   */
+  updatedAt?: string;
   // No waiver field — DEC-012.
 }
 

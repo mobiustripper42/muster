@@ -121,6 +121,7 @@ const toReservation = (r: any): Reservation => ({
   status: r.status,
   ...opt("email", r.email),
   ...opt("phone", r.phone),
+  ...opt("updatedAt", r.updated_at),
 });
 
 const toShift = (r: any): Shift => ({
@@ -349,10 +350,11 @@ export class PostgresRepository implements Repository {
   // ── Reservations ───────────────────────────────────────────────────────────
   async saveReservation(r: Reservation): Promise<void> {
     await this.#pool.query(
-      `insert into reservations(id, event_id, customer_name, party_size, email, phone, status)
-       values ($1,$2,$3,$4,$5,$6,$7)
+      `insert into reservations(id, event_id, customer_name, party_size, email, phone, status, updated_at)
+       values ($1,$2,$3,$4,$5,$6,$7,$8)
        on conflict (id) do update set event_id=excluded.event_id, customer_name=excluded.customer_name,
-         party_size=excluded.party_size, email=excluded.email, phone=excluded.phone, status=excluded.status`,
+         party_size=excluded.party_size, email=excluded.email, phone=excluded.phone, status=excluded.status,
+         updated_at=excluded.updated_at`,
       [
         r.id,
         r.eventId,
@@ -361,6 +363,7 @@ export class PostgresRepository implements Repository {
         r.email ?? null,
         r.phone ?? null,
         r.status,
+        r.updatedAt ?? null,
       ],
     );
   }

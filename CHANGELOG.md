@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.5.2] - 2026-06-12
+- PR #62: Assignment cockpit + warming view (4.2+4.3, closes #54, closes #55)
+
 ## [0.5.1] - 2026-06-12
 - PR #61: Extract shared Shell/Notice into components/ui (4.8, closes #60)
 

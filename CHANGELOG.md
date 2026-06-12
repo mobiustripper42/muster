@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.5.3] - 2026-06-12
+- PR #64: Crew bail flow + credential nudge (4.4+4.5, closes #56, closes #57)
+
 ## [0.5.2] - 2026-06-12
 - PR #62: Assignment cockpit + warming view (4.2+4.3, closes #54, closes #55)
 

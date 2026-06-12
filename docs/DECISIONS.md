@@ -856,17 +856,21 @@ Twilio, no inbound webhook.** The binding mechanics:
    (single-use CAS), mints the session, 303-redirects. A bot can render the page forever; only the
    human's tap spends the token.
 5. **Single-click Send — the one `'use client'` exception (DEC-026), progressively enhanced.**
-   Send is an `<a href="sms:…">`: the composer opens via the NATIVE anchor even with no JS (the
-   graceful baseline — Send never fully dead-ends). The `onClick` is the enhancement: it fires
-   `recordSent` (no-redirect, no-revalidate server action) and optimistically flips the card to a
-   white **Resend** + a "sent · &lt;time&gt;" line. The `sms:` scheme doesn't unload the page, so
-   the `setState` commits alongside the native hand-off. `components/outbox/relay-send.tsx` is the
-   deliberate lone client island; everything else (cards, sort, inline In/Out, page) stays
-   server-rendered. "Sent" means "you fired the composer," not proof of delivery — **Resend**
-   re-opens it as the recovery. No separate un-send (the earlier two-tap mark-sent / move-back
-   toggle was replaced — the operator asked for one tap). *Note: being the app's first client
-   component, it needs a `next dev` restart to hydrate after a cold add — webpack dev HMR doesn't
-   wire a brand-new client boundary into a running server.*
+   Send is an `<a href="sms:…">`: with NO JS the composer still opens via the native anchor (the
+   graceful baseline). When hydrated the `onClick` takes over and **owns the order**:
+   (1) optimistically flip the card to a white **Resend** + "sent · &lt;time&gt;" (instant paint),
+   (2) `await recordSent` (no-redirect, no-revalidate server action) so the write FINISHES, then
+   (3) open the composer via `window.location`. The order is load-bearing: opening the `sms:`
+   composer is a navigation that **aborts an in-flight request** — a fire-and-forget `recordSent`
+   got killed mid-flight ("Failed to fetch") and never persisted. The write is one quick local
+   query and the flip already painted, so the wait is invisible; if it fails we open the composer
+   anyway (the text matters most — Resend is the recovery). `components/outbox/relay-send.tsx` is
+   the deliberate lone client island; everything else stays server-rendered. "Sent" means "you
+   fired Send," not proof of delivery. No separate un-send (the operator asked for one tap).
+   *Two dev-env gotchas, both fixed: (a) the app's first client component needs a `next dev`
+   rebuild/restart to hydrate — Fast Refresh won't wire a brand-new client boundary into a running
+   server; (b) Next 16 refuses HMR/hydration to non-localhost origins not in `allowedDevOrigins`
+   (we reach dev via the Tailscale host `mill-dev` — see `next.config.ts`).*
 6. **Channel wiring lives at the EDGE.** The fire paths surface their asks as return values
    (`TickResult.firedAsks`, `EscalateResult.asks`, `LeanResult.ask`, `BailOutcome.reAsks`) and the
    edge callers (app actions, the tick trigger) forward them via `forwardAsks` → the injected

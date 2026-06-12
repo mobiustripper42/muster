@@ -114,5 +114,24 @@ ask. At that point implicit-pause stops being emergent and needs the flag.
 
 ---
 
+## "View as crew" — the operator browsing the crew app as himself (parked 2026-06-11, DEC-030)
+
+The operator is also crew (DEC-030's operator-as-crew clause covers *answering his own asks* inline
+in the outbox), but he may also want to BROWSE the crew app as himself — my-shifts, the shift card,
+the manifest. Today that means tapping his own crew magic link, which clobbers the admin session
+cookie (the session is deliberately single-subject, DEC-020): he'd bounce between identities by
+re-tapping links.
+
+### What it would be
+A "view as crew" affordance on the admin side — render the crew surfaces for
+`OPERATOR_CREW_MEMBER_ID` under the ADMIN session (read-only or fully, to be decided), no cookie
+swap. The session stays single-subject; the affordance is a render-as, not a be-as.
+
+### Trigger / when to build
+If the cookie-clobber actually bites mid-pilot — i.e. Spink reports whiplash from flipping between
+his outbox and his own shift cards. (@architect parked it at 4.1; don't build speculatively.)
+
+---
+
 *Rule of thumb before promoting anything here into a spec v1.1: has the single-horizon vertical
 slice run a real BrewBoat weekend yet? If no, the answer is "still parked."*

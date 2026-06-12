@@ -34,8 +34,10 @@ The crew surfaces require a session, so you can't visit `/crew` cold — you ent
 In dev there's a link issuer:
 
 1. Open **http://mill-dev:3000/crew/dev-link?crew=crew-quint** → a **"Tap to sign in →"** page.
-2. Tap the button → it verifies + consumes the token, sets the `muster_session` cookie, and
-   redirects to **`/crew`**.
+2. Tap the button → the magic-link landing (`/crew/auth`) shows a second **"Tap to sign in →"**
+   confirm page. That extra tap is the prefetch guard (DEC-030): a GET only *peeks* at the token
+   (link-preview bots in iMessage/SMS GET every URL); the **POST** behind the button is what
+   consumes it, sets the `muster_session` cookie, and redirects to **`/crew`**.
 3. You should see Quint's **ask** (In/Out), **My shifts**, the standing chip, and the amber
    **credential line** (#57): "Your MMC expires &lt;~30d out&gt; — renew it to keep getting asked for shifts."
 
@@ -75,8 +77,9 @@ handle, so any `?admin=<handle>` works in dev.
 npm run db:seed:atrisk   # 4 board + 2 cockpit scenarios, trips anchored to NOW (re-run to re-anchor)
 ```
 
-1. Open **http://mill-dev:3000/crew/dev-link?admin=spink** → tap the returned link → you land
-   signed-in on **`/admin/at-risk`** with "4 shifts need a call · 1 late bail".
+1. Open **http://mill-dev:3000/crew/dev-link?admin=spink** → tap the returned link, then the
+   confirm page's **"Tap to sign in →"** (the DEC-030 prefetch guard) → you land signed-in on
+   **`/admin/at-risk`** with "4 shifts need a call · 1 late bail".
 2. The four rows, top to bottom: **Firkin** (red *Lacking crew · late bail* pill — always pinned
    first), **Tidewater** (trail: *asked 2 · 1 declined · 1 silent*, silent in red), **Growler**
    (*⊘ Gus's credential lapses before the trip*), **Mash Tun** (*Lacking crew · none eligible*,
@@ -112,14 +115,41 @@ Same seed. The cockpit is each board row's click-through, plus two off-board sce
 ```bash
 npm run db:tick          # run one engine tick by hand (DEC-023 — no scheduler in v1)
 ```
-Prints the tick counters (asks fired, escalations, board landings). After a tick, refresh the
-board: **Tidewater disappears too** — Tier-2 sent a direct nudge, so an ask is in flight again.
-Re-running `db:seed:atrisk` resets all scenarios (it closes any in-flight engine asks).
+Prints the tick counters (asks fired, escalations, board landings, outbox relays queued). After a
+tick, refresh the board: **Tidewater disappears too** — Tier-2 sent a direct nudge, so an ask is in
+flight again. Re-running `db:seed:atrisk` resets all scenarios (it closes any in-flight engine asks).
+
+## The operator outbox (#53, DEC-030)
+The pilot channel: the engine fires an ask → it lands in the **outbox** as a card → the operator
+texts it from their own phone via an `sms:` deep link. Best eyeballed **on a phone / at 375px** —
+the Send button only opens a Messages composer on a device that has one.
+
+```bash
+npm run db:seed:outbox   # 3 cards: 2 relays + 1 addressed to the operator (trips anchored to NOW)
+```
+
+1. Open **http://mill-dev:3000/crew/dev-link?admin=spink** → tap through both sign-in taps → then
+   open **http://mill-dev:3000/admin/outbox** → header shows **"3 asks need you"**, tightest trip
+   first: **Bo / Tideline** (red ~20h countdown, *"2nd ask · Lance declined"*), **Spink / Keelhaul**
+   (a **you** pill — inline red **Out** / green **In** buttons, NO Send link), **Mira / Maibock**
+   (*"1st ask"*).
+2. On the Bo card, tap **Text Bo →** (on a phone: Messages opens prefilled with the ask text + a
+   magic link; on a desktop browser the `sms:` link may do nothing — that's the OS, not a bug).
+   Nothing changes in the outbox yet — opening the composer isn't proof of send.
+3. Tap **Mark sent** on the Bo card → green *"Marked sent — waiting on Bo's reply."* and the card
+   drops to the muted **Sent · awaiting reply** section ("2 asks need you" now).
+4. On the sent Bo card, tap **Not sent? Move back** → it returns to the to-send list, top position.
+5. On the Keelhaul card (yours), tap **In** → green *"You're in — the seat is claimed."* and the
+   card is gone (the ask is answered; nothing left to relay).
+6. The full crew loop: paste the Bo card's magic link (it's the second line of the prefilled text)
+   into a private window → the **"Tap to sign in →"** confirm page → tap → you land on `/crew` as
+   Bo with the Tideline In/Out ask. Answer it → back in the outbox, Bo's card is gone.
+7. Re-run `npm run db:seed:outbox` to reset (old cards retire; fresh asks + links are minted).
 
 ## Other endpoints
 - `GET /api/health` → `{ status, db.reachable, integrity: { ok, violationCount } }` (runs the no-FK
   integrity diagnostic; `degraded` if the DB is down or a dangling ref exists).
-- `/admin` → links to the At-Risk board (roster/builder surfaces are later phases).
+- `/admin` → links to the At-Risk board + the Outbox (roster/builder surfaces are later phases).
 
 ## Checking a change
 - **The gate:** `npm run verify` → core typecheck + app typecheck + tests + webpack build. Docker-free

@@ -827,6 +827,59 @@ original `createdAt` proposal to `updatedAt` + the materiality guard.)
 
 ---
 
+## DEC-030: Pilot channel = operator-relayed web link; the outbox is adapter state, never domain state
+
+**Decision:** The DEC-MSG-3 pilot adapter is the **web-link relay**: `ChannelPort.send` does not
+transmit — it enqueues an **`OutboxEntry`**, and the operator works a mobile **outbox page**
+(`/admin/outbox`) where each pending ask is an **`sms:` deep-link Send button** (RFC 5724;
+`buildSmsUrl`/`normalizePhone` ported from Bushel's send-queue) that opens the native Messages app
+prefilled with the crew member's number, the ask body, and a magic link to the In/Out screen. The
+crew member taps → lands authenticated → answers through the existing `recordResponse`. **No
+Twilio, no inbound webhook.** The binding mechanics:
+
+1. **Outbox state is adapter-side.** `OutboxEntry` `{id, askId, seatId, crewMemberId, body, link,
+   status: pending|sent, createdAt, sentAt?}` is persisted via the Repository port (the `MagicToken`
+   precedent), but the domain `Ask` is UNCHANGED and **nothing in `src/asks`, `src/builder`, or
+   `src/oracle` may read outbox state** — only the adapter, the `outbox-view` read-model, and the
+   outbox page. That guardrail is what keeps the Twilio swap a zero-domain-change drop-in (DEC-MSG-1).
+2. **Mint at enqueue, render verbatim forever.** The magic link (**24h TTL** — the ask's answer
+   window; the 15-min TTL stays dev-link-only) is minted inside the adapter's `send` and frozen
+   onto the entry with the body — a page refresh must never re-mint and desync from what was
+   already texted. Accepted tradeoff: the raw link (secret included) lives in `outbox_entries.link`
+   — a DB leak yields live relay links, bounded by the 24h TTL + single-use consume; unavoidable if
+   the operator is to re-render exactly what they texted.
+3. **`SendResult.deliveredAt` = enqueue time.** The operator's physical text is `sentAt`,
+   channel-side bookkeeping the domain never reads.
+4. **Prefetch-safe consume.** Relay links travel through iMessage/Android SMS whose link-preview
+   bots GET URLs before the human taps. `/crew/auth` GET now **peeks** (`peekMagicLink` — verify
+   without consume, pure reads) and renders a "Tap to sign in" button; the **POST** consumes
+   (single-use CAS), mints the session, 303-redirects. A bot can render the page forever; only the
+   human's tap spends the token.
+5. **Send→Sent stays no-client-JS** (DEC-026): Send is a plain `<a href="sms:…">`; mark-sent and
+   toggle-back are form posts flipping `status` server-side, codes/ids-only redirect params. Two
+   taps (open composer, mark sent) is intended — opening the composer isn't proof of send.
+6. **Channel wiring lives at the EDGE.** The fire paths surface their asks as return values
+   (`TickResult.firedAsks`, `EscalateResult.asks`, `LeanResult.ask`, `BailOutcome.reAsks`) and the
+   edge callers (app actions, the tick trigger) forward them via `forwardAsks` → the injected
+   adapter, one line each. The channel is never threaded through the core ask loop; the forwarding
+   glue is the durable part Twilio reuses verbatim. Forwarding is best-effort — the domain action
+   already committed; a channel hiccup must not become a 500.
+7. **Operator-as-crew.** One tenant-config value, **`OPERATOR_CREW_MEMBER_ID`**
+   (`app/lib/operator.ts`, env-overridable constant — NOT a handle-keyed map; admin handles are
+   free-form non-identities per DEC-020 and the session stays single-subject). An outbox ask whose
+   `crewMemberId` matches renders **inline In/Out** instead of an `sms:` link — inline-or-relayed,
+   never both (kills the double-answer race). The inline action is guarded by `recordResponseAs`,
+   which refuses any ask not addressed to that identity (reliability-log integrity, DEC-008 —
+   mirrors the crew app's ownership gate).
+
+**ACCEPTED:** pilot `latencyMs` (ask `sentAt` → response) includes the **operator's relay delay** —
+the clock starts when the ask fires, not when the text goes out. Scores are MVP-flat (DEC-008), so
+nothing reads the skew yet, and it dies at the Twilio swap when `send` actually transmits.
+
+**Phase:** Phase 4 / 4.1 (#53). (@architect passes — Fable — 2026-06-11.)
+
+---
+
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)
 
 These are deferred by design. Each names an owner and a trigger. **Consult @architect (and the named

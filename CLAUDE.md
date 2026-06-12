@@ -177,7 +177,7 @@ default it inert. See DEC-004/DEC-005.
 | `/kill-this` | **Per task** | Build check, commit, push, open PR, @code-review, append `## Task <N>` block. N× per session |
 | `/its-dead` | Session end (once per window) | Stamp `ended:`, tally points, display wall_clock, close session file |
 | `/start-phase` | Phase boundary (start) | Materialize phase as Issues with `phase:N`, `points:X` labels |
-| `/retro` | Phase boundary (end) | Per-session time math, phase velocity, mark `[x]`, write retro, version bumps |
+| `/retro` | Phase boundary (end) | Phase throughput + estimate calibration (from GitHub issue dates/labels), mark `[x]`, write retro, version bumps |
 | `/bump-major` | Breaking change | Major bump + CHANGELOG + tag on `main`. Needs `package.json` |
 | `/promote-production` | Ship to prod | ff-merge `main` → `production`. **M4+ only** (no `production` branch yet) |
 | `/push-seeds` | After workflow improvements | Backport to seeds via @sync-config |

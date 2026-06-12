@@ -23,6 +23,10 @@ next-env.d.ts
 *.sqlite3
 *.db
 
+# Python bytecode (e.g. from .claude/scripts/throughput.py)
+__pycache__/
+*.pyc
+
 # OS / editor
 .DS_Store
 *.log

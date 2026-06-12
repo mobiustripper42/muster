@@ -18,6 +18,7 @@ import type {
   CrewMemberId,
   EventId,
   MagicTokenId,
+  OutboxEntryId,
   PtoWindowId,
   ReservationId,
   RoleTypeId,
@@ -271,6 +272,40 @@ export interface MagicToken {
   expiresAt: string;
   /** ISO-8601 UTC; absent until redeemed. Single-use: set once, by the CAS. */
   consumedAt?: string;
+}
+
+// ── OutboxEntry (channel-adapter state — DEC-030) ────────────────────────────
+
+/** `pending` = the operator hasn't texted it yet; `sent` = they marked it sent. */
+export type OutboxStatus = "pending" | "sent";
+
+/**
+ * One queued relay for the web-link pilot channel (DEC-030, DEC-MSG-3): the
+ * adapter's `send` enqueues this instead of transmitting, and the operator works
+ * the outbox page — tap the `sms:` link, text it, mark it sent.
+ *
+ * **Adapter-side state, never domain state** (the DEC-030 hard guardrail):
+ * nothing in `src/asks`, `src/builder`, or `src/oracle` may read it. The domain
+ * `Ask` is unchanged — that's what keeps the eventual Twilio swap a zero-domain-
+ * change adapter drop-in (DEC-MSG-1). `body` + `link` are minted ONCE at enqueue
+ * and rendered verbatim forever (a page refresh must never re-mint and desync
+ * from what was already texted). `sentAt` is the operator's physical text, a
+ * channel-side fact only; the domain's delivery stamp is `createdAt` (enqueue).
+ */
+export interface OutboxEntry {
+  id: OutboxEntryId;
+  askId: AskId;
+  seatId: SeatId;
+  crewMemberId: CrewMemberId;
+  /** The ask text the operator relays, frozen at enqueue. */
+  body: string;
+  /** The magic link (24h TTL) to the In/Out screen, minted + frozen at enqueue. */
+  link: string;
+  status: OutboxStatus;
+  /** ISO-8601 UTC — enqueue time, and the channel's `deliveredAt`. */
+  createdAt: string;
+  /** ISO-8601 UTC; set when the operator marks it sent. Channel-side only. */
+  sentAt?: string;
 }
 
 export type { ReliabilityEvent } from "./reliability.js";

@@ -20,6 +20,7 @@ import type {
   CrewMember,
   Event,
   MagicToken,
+  OutboxEntry,
   PtoWindow,
   Reservation,
   RoleType,
@@ -34,6 +35,7 @@ import type {
   CrewMemberId,
   EventId,
   MagicTokenId,
+  OutboxEntryId,
   PtoWindowId,
   ReservationId,
   RoleTypeId,
@@ -162,6 +164,18 @@ const toMagicToken = (r: any): MagicToken => ({
   createdAt: r.created_at,
   expiresAt: r.expires_at,
   ...opt("consumedAt", r.consumed_at),
+});
+
+const toOutboxEntry = (r: any): OutboxEntry => ({
+  id: asId<"OutboxEntryId">(r.id),
+  askId: asId<"AskId">(r.ask_id),
+  seatId: asId<"SeatId">(r.seat_id),
+  crewMemberId: asId<"CrewMemberId">(r.crew_member_id),
+  body: r.body,
+  link: r.link,
+  status: r.status,
+  createdAt: r.created_at,
+  ...opt("sentAt", r.sent_at),
 });
 
 const toReliability = (r: any): ReliabilityEvent => ({
@@ -539,6 +553,39 @@ export class PostgresRepository implements Repository {
   }
   async removeMagicToken(id: MagicTokenId): Promise<void> {
     await this.#pool.query("delete from magic_tokens where id=$1", [id]);
+  }
+
+  // ── Outbox entries (web-link channel adapter state — DEC-030) ──────────────
+  async saveOutboxEntry(e: OutboxEntry): Promise<void> {
+    await this.#pool.query(
+      `insert into outbox_entries(id, ask_id, seat_id, crew_member_id, body, link, status, created_at, sent_at)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       on conflict (id) do update set ask_id=excluded.ask_id, seat_id=excluded.seat_id,
+         crew_member_id=excluded.crew_member_id, body=excluded.body, link=excluded.link,
+         status=excluded.status, created_at=excluded.created_at, sent_at=excluded.sent_at`,
+      [
+        e.id,
+        e.askId,
+        e.seatId,
+        e.crewMemberId,
+        e.body,
+        e.link,
+        e.status,
+        e.createdAt,
+        e.sentAt ?? null,
+      ],
+    );
+  }
+  async getOutboxEntry(id: OutboxEntryId): Promise<OutboxEntry | null> {
+    const { rows } = await this.#pool.query(
+      "select * from outbox_entries where id=$1",
+      [id],
+    );
+    return rows[0] ? toOutboxEntry(rows[0]) : null;
+  }
+  async listOutboxEntries(): Promise<OutboxEntry[]> {
+    const { rows } = await this.#pool.query("select * from outbox_entries");
+    return rows.map(toOutboxEntry);
   }
 
   // ── Reliability log (append-only — DEC-008) ───────────────────────────────

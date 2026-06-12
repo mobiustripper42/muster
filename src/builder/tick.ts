@@ -15,7 +15,7 @@
  * lives. `now` is injected; the core reads no clock.
  */
 
-import type { Seat, Shift } from "../domain/entities.js";
+import type { Ask, Seat, Shift } from "../domain/entities.js";
 import type { Repository } from "../ports/repository.js";
 import { deriveAtRiskBoard } from "../admin/at-risk-board.js";
 import { broadcastAsk } from "../asks/ask-loop.js";
@@ -53,6 +53,13 @@ export interface TickResult {
    * DEC-MSG-3 pilot adapter later.
    */
   boardLanded: number;
+  /**
+   * Every ask this tick fired — Tier-1 broadcasts AND Tier-2 nudges — surfaced
+   * so the tick's TRIGGER (the dev script today, a cron route later) can
+   * forward them to the injected channel adapter (DEC-030). The core never
+   * talks to a transport (DEC-MSG-3); this return value is the seam.
+   */
+  firedAsks: Ask[];
 }
 
 /**
@@ -149,6 +156,7 @@ export async function tick(
     shiftsEscalated: 0,
     nudgesFired: 0,
     boardLanded: 0,
+    firedAsks: [],
   };
 
   for (const shift of await repo.listShifts()) {
@@ -184,6 +192,7 @@ export async function tick(
           if (seat.kind === "required" && seat.state === "Open") {
             const asks = await broadcastAsk(repo, seat.id, now);
             result.asksFired += asks.length;
+            result.firedAsks.push(...asks);
           }
         }
       } else if (isStalled(seats)) {
@@ -195,6 +204,7 @@ export async function tick(
         if (out.widened) {
           result.shiftsEscalated++;
           result.nudgesFired += out.nudged.length;
+          result.firedAsks.push(...out.asks);
         }
       }
     }

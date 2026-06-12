@@ -16,6 +16,7 @@ import type {
   CrewMember,
   Event,
   MagicToken,
+  OutboxEntry,
   PtoWindow,
   Reservation,
   RoleType,
@@ -29,6 +30,7 @@ import type {
   CrewMemberId,
   EventId,
   MagicTokenId,
+  OutboxEntryId,
   PtoWindowId,
   ReservationId,
   RoleTypeId,
@@ -151,6 +153,16 @@ export interface Repository {
    * hard delete, not a soft mark. No-op if the id is already gone.
    */
   removeMagicToken(id: MagicTokenId): Promise<void>;
+
+  // ── Outbox entries (web-link channel adapter state — DEC-030) ──────────────
+  // Adapter-side, like MagicToken: persisted through the port so the operator's
+  // outbox survives a restart, but NEVER read by the domain (`src/asks`,
+  // `src/builder`, `src/oracle` are forbidden readers — DEC-030 guardrail).
+  /** Persist an entry (upsert by id) — enqueue, mark-sent, toggle back. */
+  saveOutboxEntry(entry: OutboxEntry): Promise<void>;
+  getOutboxEntry(id: OutboxEntryId): Promise<OutboxEntry | null>;
+  /** Every entry — the outbox page's worklist + the integrity orphan scan. */
+  listOutboxEntries(): Promise<OutboxEntry[]>;
 
   // ── Reliability log (append-only — DEC-008) ───────────────────────────────
   /** Append a reliability event. The log is never mutated, only grown. */

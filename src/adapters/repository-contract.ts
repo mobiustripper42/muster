@@ -17,6 +17,7 @@ import type {
   CrewMember,
   Event,
   MagicToken,
+  OutboxEntry,
   PtoWindow,
   Reservation,
   RoleType,
@@ -111,6 +112,17 @@ const magicToken = (over: Partial<MagicToken> = {}): MagicToken => ({
   subjectId: CREW,
   createdAt: "2026-07-01T12:00:00.000Z",
   expiresAt: "2026-07-01T12:15:00.000Z",
+  ...over,
+});
+const outboxEntry = (over: Partial<OutboxEntry> = {}): OutboxEntry => ({
+  id: asId<"OutboxEntryId">("obx-ask-1"),
+  askId: asId<"AskId">("ask-1"),
+  seatId: SEAT,
+  crewMemberId: CREW,
+  body: "Muster: Wed, Jul 1 · Hops · captain — in or out?",
+  link: "https://app.example/crew/auth?t=secret",
+  status: "pending",
+  createdAt: "2026-07-01T12:00:00.000Z",
   ...over,
 });
 const relEvent = (id: string, type: ReliabilityEvent["type"]): ReliabilityEvent => ({
@@ -355,6 +367,22 @@ export function runRepositoryContract(
       await expect(repo.removeMagicToken(asId<"MagicTokenId">("ghost"))).resolves.toBeUndefined();
     });
 
+    it("outbox entries: round-trip incl. sentAt optional; status flip via upsert (DEC-030)", async () => {
+      await repo.saveOutboxEntry(outboxEntry()); // pending, never sent
+      const got = await repo.getOutboxEntry(asId<"OutboxEntryId">("obx-ask-1"));
+      expect(got).toEqual(outboxEntry());
+      expect("sentAt" in got!).toBe(false); // omitted, not undefined
+      expect(await repo.getOutboxEntry(asId<"OutboxEntryId">("ghost"))).toBeNull();
+      // Operator marks it sent → the upsert flips status + stamps sentAt; body
+      // and link must come back VERBATIM (frozen at enqueue — DEC-030).
+      await repo.saveOutboxEntry(
+        outboxEntry({ status: "sent", sentAt: "2026-07-01T12:30:00.000Z" }),
+      );
+      expect(await repo.listOutboxEntries()).toEqual([
+        outboxEntry({ status: "sent", sentAt: "2026-07-01T12:30:00.000Z" }),
+      ]);
+    });
+
     it("listAll enumerators feed the integrity diagnostic identically", async () => {
       // A small connected spine — both adapters must enumerate it the same way,
       // so checkIntegrity (which leans on every listAll*) returns the same verdict.
@@ -369,11 +397,13 @@ export function runRepositoryContract(
       await repo.saveSeat(seat({ state: "Confirmed", assignedCrewMemberId: CREW }));
       await repo.saveAsk(ask());
       await repo.saveMagicToken(magicToken());
+      await repo.saveOutboxEntry(outboxEntry());
 
       const clean = await checkIntegrity(repo);
       expect(clean.ok).toBe(true);
       expect(clean.scanned.seats).toBe(1);
       expect(clean.scanned.magicTokens).toBe(1);
+      expect(clean.scanned.outboxEntries).toBe(1);
 
       // Now break a reference the DB's missing FK would never have caught.
       await repo.saveSeat(

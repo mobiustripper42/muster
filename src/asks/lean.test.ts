@@ -86,11 +86,13 @@ describe("lean — the happy path", () => {
 
     const out = await lean(repo, SHIFT, bob, T0);
 
-    expect(out).toEqual({ error: null, seatId });
+    expect(out).toMatchObject({ error: null, seatId });
     expect((await repo.getSeat(seatId!))!.state).toBe("Asked");
     const asks = await repo.listAsksForSeat(seatId!);
     expect(asks).toHaveLength(1);
     expect(asks[0]!.crewMemberId).toBe(bob);
+    // The fired ask is surfaced for the edge's channel forwarding (DEC-030).
+    expect(out.ask).toEqual(asks[0]);
     const nudges = await nudgesFor(bob);
     expect(nudges).toHaveLength(1);
     expect(nudges[0]!.metadata.manual).toBe(true);

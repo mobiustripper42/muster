@@ -86,6 +86,11 @@ describe("tick — horizon advance", () => {
     expect(r.asksFired).toBe(1);
     expect(await shiftState()).toBe("Filling");
     expect(await seatState()).toBe("Asked"); // broadcastAsk moved it
+    // The fired asks themselves are surfaced so the tick's trigger can forward
+    // them to the channel adapter (DEC-030) — the core never sends.
+    expect(r.firedAsks).toHaveLength(1);
+    const seatAsks = await repo.listAsksForSeat(r.firedAsks[0]!.seatId);
+    expect(seatAsks).toEqual(r.firedAsks);
   });
 
   it("leaves a pre-horizon shift Pending and asks no one", async () => {
@@ -231,6 +236,9 @@ describe("tick — Tier-2 stall escalation (DEC-024)", () => {
 
     expect(r.shiftsEscalated).toBe(1);
     expect(r.nudgesFired).toBe(1);
+    // The Tier-2 nudge ask rides the same forwarding seam (DEC-030).
+    expect(r.firedAsks).toHaveLength(1);
+    expect(r.firedAsks[0]!.crewMemberId).toBe(asId<"CrewMemberId">("cap-1"));
     expect(await seatState()).toBe("Asked"); // direct-nudged
     expect(await shiftState()).toBe("Filling"); // still autonomous, no Spink
     const events = await repo.reliabilityEventsFor(asId<"CrewMemberId">("cap-1"));

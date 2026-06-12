@@ -14,6 +14,7 @@ import type {
   CrewMember,
   Event,
   MagicToken,
+  OutboxEntry,
   PtoWindow,
   Reservation,
   RoleType,
@@ -27,6 +28,7 @@ import type {
   CrewMemberId,
   EventId,
   MagicTokenId,
+  OutboxEntryId,
   PtoWindowId,
   ReservationId,
   RoleTypeId,
@@ -53,6 +55,7 @@ export class InMemoryRepository implements Repository {
   readonly #seats = new Map<SeatId, Seat>();
   readonly #asks = new Map<AskId, Ask>();
   readonly #magicTokens = new Map<MagicTokenId, MagicToken>();
+  readonly #outbox = new Map<OutboxEntryId, OutboxEntry>();
   readonly #reliability: ReliabilityEvent[] = [];
 
   // ── Role types (tenant config — DEC-ROLE-1) ───────────────────────────────
@@ -248,6 +251,18 @@ export class InMemoryRepository implements Repository {
   }
   async removeMagicToken(id: MagicTokenId): Promise<void> {
     this.#magicTokens.delete(id);
+  }
+
+  // ── Outbox entries (web-link channel adapter state — DEC-030) ──────────────
+  async saveOutboxEntry(entry: OutboxEntry): Promise<void> {
+    this.#outbox.set(entry.id, clone(entry));
+  }
+  async getOutboxEntry(id: OutboxEntryId): Promise<OutboxEntry | null> {
+    const e = this.#outbox.get(id);
+    return e ? clone(e) : null;
+  }
+  async listOutboxEntries(): Promise<OutboxEntry[]> {
+    return [...this.#outbox.values()].map(clone);
   }
 
   // ── Reliability log (append-only — DEC-008) ───────────────────────────────

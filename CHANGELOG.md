@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.5.4] - 2026-06-12
+- PR #67: Builder 'changed since reviewed' nudge (4.6, closes #58)
+
 ## [0.5.3] - 2026-06-12
 - PR #64: Crew bail flow + credential nudge (4.4+4.5, closes #56, closes #57)
 

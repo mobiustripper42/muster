@@ -14,11 +14,16 @@ export interface RiskRowVM {
   shiftId: string;
   vesselName: string;
   dateLabel: string;
-  departLabel: string | null;
   /** "1d 4h to trip" — null when no scheduled event anchors the shift. */
   toTrip: string | null;
   /** Inside 36h — the countdown turns red. */
   tight: boolean;
+  /** Every scheduled departure, earliest first ("departs 1:00 PM"). A two-trip
+   * day shows both; empty when no scheduled trip anchors the shift. */
+  departs: string[];
+  /** The "fills by" deadline (DEC-031); null when no event anchors the shift.
+   * `overdue` past the deadline — rendered honestly, never clamped. */
+  fillsBy: { label: string; overdue: boolean } | null;
   flag: { label: string; tone: "bad" | "warn" };
   regression: boolean;
   missing: { roleName: string; count: number }[];
@@ -94,8 +99,18 @@ export function RiskRow({ row }: { row: RiskRowVM }) {
             >
               {row.toTrip ?? "no scheduled trip"}
             </span>
-            {row.departLabel && (
-              <span className="font-mono text-xs text-muted">{row.departLabel}</span>
+            {row.departs.map((d, i) => (
+              <span key={i} className="font-mono text-xs text-muted">
+                {d}
+              </span>
+            ))}
+            {row.fillsBy && (
+              <span
+                className={`font-mono text-xs ${row.fillsBy.overdue ? "font-semibold text-bad" : "text-muted"}`}
+              >
+                fills by {row.fillsBy.label}
+                {row.fillsBy.overdue ? " · overdue" : ""}
+              </span>
             )}
           </div>
         </div>

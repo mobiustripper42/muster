@@ -76,6 +76,7 @@ async function shipShift(
   seatState: "Open" | "Bailed" | "Claimed" | "Confirmed",
   persisted: "Pending" | "Filling" | "AtRisk" | "Crewed",
   assigned?: ReturnType<typeof asId<"CrewMemberId">>,
+  extraTrips: Date[] = [],
 ) {
   const vesselId = asId<"VesselId">(`vessel-ar-${key}`);
   const shiftId = asId<"ShiftId">(`shift-ar-${key}`);
@@ -95,12 +96,27 @@ async function shipShift(
     status: "scheduled",
     dock: "Pier 9, Lake Union, Seattle",
   });
+  // A multi-trip day (#59): more scheduled departures on the SAME shift (one
+  // boat, one day, one crew requirement — the manning is per-vessel). The board
+  // shows every time; the fill deadline still anchors to the earliest.
+  const extraIds = extraTrips.map((_, i) => asId<"EventId">(`evt-ar-${key}-${i + 2}`));
+  for (const [i, t] of extraTrips.entries()) {
+    await repo.saveEvent({
+      id: extraIds[i]!,
+      vesselId,
+      date: dateOf(t),
+      time: timeOf(t),
+      capacity: 12,
+      status: "scheduled",
+      dock: "Pier 9, Lake Union, Seattle",
+    });
+  }
   await repo.saveShift({
     id: shiftId,
     vesselId,
     date: dateOf(tripAt),
     state: persisted,
-    eventIds: [eventId],
+    eventIds: [eventId, ...extraIds],
   });
   const seatId = asId<"SeatId">(`seat-ar-${key}`);
   await repo.saveSeat({
@@ -139,8 +155,12 @@ try {
   const lapsing = await captain("crew-ar-lapsing", "Gus", dateOf(at(24)));
 
   // A — willingness-exhausted: broadcast went out 2h ago; Lance said no, Gardner
-  // ghosted (timed out: respondedAt stamped, no response). Seat reopened.
-  const a = await shipShift("willing", "Tidewater", CAPTAIN, at(24), "Open", "Filling");
+  // ghosted (timed out: respondedAt stamped, no response). Seat reopened. Also a
+  // TWO-TRIP day (#59): a second departure ~3h after the first, so the board row
+  // shows both times and the fill deadline anchors to the earlier one.
+  const a = await shipShift(
+    "willing", "Tidewater", CAPTAIN, at(24), "Open", "Filling", undefined, [at(27)],
+  );
   await closeLiveAsks(a.seatId);
   await repo.saveAsk({
     id: asId<"AskId">("ask-ar-declined"),
@@ -242,7 +262,7 @@ try {
   });
 
   console.log("Seeded 7 scenarios (trips anchored to now — re-run to re-anchor):");
-  console.log("  A shift-ar-willing   Tidewater    ~24h  board: asked 2 · 1 declined · 1 silent");
+  console.log("  A shift-ar-willing   Tidewater    ~24h  board: asked 2 · 1 declined · 1 silent (two-trip day)");
   console.log("  B shift-ar-exhausted Mash Tun     ~5d   board: engineer seat, empty pool");
   console.log("  C shift-ar-regress   Firkin       ~30h  board: Cody bailed, seat rests Bailed");
   console.log("  D shift-ar-lapse     Growler      ~4d   board: Gus's MMC expires tomorrow");

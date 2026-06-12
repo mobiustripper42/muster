@@ -11,9 +11,13 @@ import {
   bailLatenessMs,
   deriveSeats,
   deriveShiftState,
+  fillDeadlineFor,
+  fillDeadlineFromEvents,
   resolveShiftState,
+  scheduledStarts,
   staffingHorizonFor,
   staffingHorizonFromEvents,
+  FILL_DEADLINE_HOURS,
 } from "./derive.js";
 
 const CAPTAIN = asId<"RoleTypeId">("role-captain");
@@ -136,6 +140,76 @@ describe("staffingHorizonFor", () => {
     const all = [ev("e1", "2026-05-16", "15:30"), ev("e9", "2026-05-01", "09:00")];
     const h = staffingHorizonFor(shiftWith(["e1"]), all); // e9 not in this shift
     expect(h?.toISOString()).toBe("2026-05-09T15:30:00.000Z");
+  });
+});
+
+// ── scheduledStarts + fill deadline ("fills by", DEC-031) ────────────────────
+
+describe("scheduledStarts", () => {
+  it("returns every scheduled departure, earliest first", () => {
+    const starts = scheduledStarts([
+      ev("e1", "2026-05-16", "19:30"),
+      ev("e2", "2026-05-16", "15:30"), // earlier — sorts first
+    ]);
+    expect(starts.map((d) => d.toISOString())).toEqual([
+      "2026-05-16T15:30:00.000Z",
+      "2026-05-16T19:30:00.000Z",
+    ]);
+  });
+
+  it("drops cancelled trips and is empty with nothing scheduled", () => {
+    expect(
+      scheduledStarts([ev("e1", "2026-05-16", "15:30", "cancelled")]),
+    ).toEqual([]);
+    expect(scheduledStarts([])).toEqual([]);
+  });
+});
+
+describe("fillDeadlineFromEvents", () => {
+  it("is the earliest scheduled departure minus FILL_DEADLINE_HOURS (default 48h)", () => {
+    const d = fillDeadlineFromEvents([
+      ev("e1", "2026-05-16", "19:30"),
+      ev("e2", "2026-05-16", "15:30"), // earliest anchors the deadline
+    ]);
+    // 2026-05-16T15:30Z − 48h = 2026-05-14T15:30Z
+    expect(d?.toISOString()).toBe("2026-05-14T15:30:00.000Z");
+    expect(FILL_DEADLINE_HOURS).toBe(48);
+  });
+
+  it("honors a custom hours override (the board threads deadlineHours)", () => {
+    const d = fillDeadlineFromEvents([ev("e1", "2026-05-16", "15:30")], 24);
+    expect(d?.toISOString()).toBe("2026-05-15T15:30:00.000Z");
+  });
+
+  it("ignores cancelled events when anchoring", () => {
+    const d = fillDeadlineFromEvents([
+      ev("e1", "2026-05-10", "08:00", "cancelled"),
+      ev("e2", "2026-05-16", "15:30"),
+    ]);
+    expect(d?.toISOString()).toBe("2026-05-14T15:30:00.000Z");
+  });
+
+  it("is null with no scheduled event to anchor to (rendered as absence)", () => {
+    expect(fillDeadlineFromEvents([])).toBeNull();
+    expect(
+      fillDeadlineFromEvents([ev("e1", "2026-05-16", "15:30", "cancelled")]),
+    ).toBeNull();
+  });
+
+  it("returns a past instant when overdue (callers render honestly, never clamped)", () => {
+    // A trip 1h out: the 48h deadline is 47h in the past.
+    const d = fillDeadlineFromEvents([ev("e1", "2026-05-16", "15:30")]);
+    expect(d!.getTime()).toBeLessThan(
+      new Date("2026-05-16T14:30:00.000Z").getTime(),
+    );
+  });
+});
+
+describe("fillDeadlineFor", () => {
+  it("resolves a shift's eventIds against the full event list", () => {
+    const all = [ev("e1", "2026-05-16", "15:30"), ev("e9", "2026-05-01", "09:00")];
+    const d = fillDeadlineFor(shiftWith(["e1"]), all); // e9 not in this shift
+    expect(d?.toISOString()).toBe("2026-05-14T15:30:00.000Z");
   });
 });
 

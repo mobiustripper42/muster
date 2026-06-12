@@ -6,6 +6,7 @@ import { RiskRow, type RiskRowVM } from "../../../../components/at-risk/risk-row
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { readSubject } from "../../../lib/auth";
+import { fmtDeadline } from "../../../lib/format";
 import { getRepo } from "../../../lib/repo";
 
 /**
@@ -47,11 +48,12 @@ export default async function AtRiskBoard({
   if (!subject || subject.kind !== "admin") return <SignedOut />;
 
   const repo = getRepo();
+  const now = new Date();
   let rows: AtRiskRow[];
   let vms: RiskRowVM[];
   try {
-    rows = await deriveAtRiskBoard(repo, new Date());
-    vms = await buildVMs(rows);
+    rows = await deriveAtRiskBoard(repo, now);
+    vms = await buildVMs(rows, now);
   } catch {
     return (
       <Shell width="3xl">
@@ -138,7 +140,8 @@ export default async function AtRiskBoard({
 }
 
 /** Resolve ids → names and format the row facts the component renders. */
-async function buildVMs(rows: AtRiskRow[]): Promise<RiskRowVM[]> {
+async function buildVMs(rows: AtRiskRow[], now: Date): Promise<RiskRowVM[]> {
+  const nowMs = now.getTime();
   const repo = getRepo();
   const [vessels, roles, crew] = await Promise.all([
     repo.listVessels(),
@@ -169,7 +172,10 @@ async function buildVMs(rows: AtRiskRow[]): Promise<RiskRowVM[]> {
       shiftId: String(r.shiftId),
       vesselName: vesselName.get(r.vesselId) ?? String(r.vesselId),
       dateLabel: fmtDate(r.date),
-      departLabel: r.tripStart ? `departs ${fmtTime(r.tripStart)}` : null,
+      departs: r.tripStarts.map((t) => `departs ${fmtTime(t)}`),
+      fillsBy: r.fillsBy
+        ? { label: fmtDeadline(r.fillsBy), overdue: r.fillsBy.getTime() < nowMs }
+        : null,
       toTrip: r.hoursToTrip === null ? null : ttLabel(r.hoursToTrip),
       tight: r.hoursToTrip !== null && r.hoursToTrip < TIGHT_HOURS,
       flag,

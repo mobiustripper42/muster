@@ -20,6 +20,7 @@ import {
 import { Notice } from "../../../../../components/ui/notice";
 import { Shell } from "../../../../../components/ui/shell";
 import { readSubject } from "../../../../lib/auth";
+import { fmtDeadline } from "../../../../lib/format";
 import { getRepo } from "../../../../lib/repo";
 
 /**
@@ -222,6 +223,18 @@ export default async function ShiftCockpit({
                 month: "short",
                 day: "numeric",
               })}
+            </span>
+          )}
+          {view.fillsBy && (
+            <span
+              className={`text-xs ${
+                view.fillsBy.getTime() < now.getTime()
+                  ? "font-semibold text-bad"
+                  : "text-muted"
+              }`}
+            >
+              fills by {fmtDeadline(view.fillsBy)}
+              {view.fillsBy.getTime() < now.getTime() ? " · overdue" : ""}
             </span>
           )}
         </div>

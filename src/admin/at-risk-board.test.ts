@@ -31,7 +31,7 @@ import {
   expireAsks,
   recordResponse,
 } from "../asks/ask-loop.js";
-import { bailLatenessMs } from "../builder/derive.js";
+import { bailLatenessMs, FILL_DEADLINE_HOURS } from "../builder/derive.js";
 import { logShiftBailed } from "../oracle/reliability-log.js";
 import { deriveAtRiskBoard, EXHAUSTED_THRESHOLD_HOURS } from "./at-risk-board.js";
 
@@ -278,6 +278,81 @@ describe("membership — regression and credential-lapse", () => {
     await addShift("x2", hoursAfterT0(24), [{ state: "Bailed" }], "Completed");
 
     expect(await deriveAtRiskBoard(repo, T0)).toEqual([]);
+  });
+});
+
+describe("fills-by deadline + multi-trip times (DEC-031, #59)", () => {
+  it("binds the displayed deadline to the boarding instant: fillsBy === tripStart − EXHAUSTED_THRESHOLD_HOURS", async () => {
+    // One constant (DEC-031): the rendered 'fills by' IS the instant the
+    // willingness-exhaustion route boards on — the two cannot drift.
+    expect(EXHAUSTED_THRESHOLD_HOURS).toBe(FILL_DEADLINE_HOURS);
+    await addCrew("ann");
+    const { shiftId, seatIds } = await addShift("f1", hoursAfterT0(24), [{}]);
+    await broadcastAllDecline(seatIds[0]!);
+
+    const rows = await deriveAtRiskBoard(repo, T0);
+    expect(rows.map((r) => r.shiftId)).toEqual([shiftId]);
+    const row = rows[0]!;
+    expect(row.fillsBy!.getTime()).toBe(
+      row.tripStart!.getTime() - FILL_DEADLINE_HOURS * 3600_000,
+    );
+  });
+
+  it("renders an honest past deadline — a willingness-exhausted row boards only AFTER fills-by", async () => {
+    // Trip 24h out, deadline 48h before → 24h in the past at T0. Not clamped.
+    await addCrew("ann");
+    const { seatIds } = await addShift("f2", hoursAfterT0(24), [{}]);
+    await broadcastAllDecline(seatIds[0]!);
+
+    const row = (await deriveAtRiskBoard(repo, T0))[0]!;
+    expect(row.fillsBy!.getTime()).toBeLessThan(T0.getTime());
+  });
+
+  it("carries every scheduled departure in tripStarts, earliest first (multi-trip day)", async () => {
+    // A two-trip day: one shift, two scheduled events. tripStart is just the
+    // earliest; tripStarts carries both so the board can show both times.
+    const shiftId = asId<"ShiftId">("mt1");
+    const vesselId = asId<"VesselId">("vessel-mt1");
+    const t1 = hoursAfterT0(24); // 15:30-ish, earlier
+    const t2 = hoursAfterT0(28); // later same window
+    const date = t1.toISOString().slice(0, 10);
+    for (const [i, t] of [t2, t1].entries()) {
+      // saved later-first to prove sorting, not insertion order
+      await repo.saveEvent({
+        id: asId<"EventId">(`event-mt1-${i}`),
+        vesselId,
+        date: t.toISOString().slice(0, 10),
+        time: t.toISOString().slice(11, 16),
+        capacity: 6,
+        status: "scheduled",
+      });
+    }
+    await repo.saveShift({
+      id: shiftId,
+      vesselId,
+      date,
+      state: "Filling",
+      eventIds: [asId<"EventId">("event-mt1-0"), asId<"EventId">("event-mt1-1")],
+    });
+    const seatId = asId<"SeatId">("seat-mt1-1");
+    await repo.saveSeat({
+      id: seatId,
+      shiftId,
+      role: CAPTAIN,
+      kind: "required",
+      state: "Open",
+    });
+    await addCrew("ann");
+    await broadcastAllDecline(seatId);
+
+    const row = (await deriveAtRiskBoard(repo, T0))[0]!;
+    expect(row.tripStarts.map((d) => d.getTime())).toEqual([
+      t1.getTime(),
+      t2.getTime(),
+    ]);
+    expect(row.tripStart!.getTime()).toBe(t1.getTime()); // earliest === [0]
+    // Deadline anchors to the earliest departure.
+    expect(row.fillsBy!.getTime()).toBe(t1.getTime() - FILL_DEADLINE_HOURS * 3600_000);
   });
 });
 

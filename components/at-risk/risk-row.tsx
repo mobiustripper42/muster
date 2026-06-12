@@ -99,8 +99,8 @@ export function RiskRow({ row }: { row: RiskRowVM }) {
             >
               {row.toTrip ?? "no scheduled trip"}
             </span>
-            {row.departs.map((d) => (
-              <span key={d} className="font-mono text-xs text-muted">
+            {row.departs.map((d, i) => (
+              <span key={i} className="font-mono text-xs text-muted">
                 {d}
               </span>
             ))}

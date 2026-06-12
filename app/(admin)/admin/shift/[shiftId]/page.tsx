@@ -20,6 +20,7 @@ import {
 import { Notice } from "../../../../../components/ui/notice";
 import { Shell } from "../../../../../components/ui/shell";
 import { readSubject } from "../../../../lib/auth";
+import { fmtDeadline } from "../../../../lib/format";
 import { getRepo } from "../../../../lib/repo";
 
 /**
@@ -232,15 +233,7 @@ export default async function ShiftCockpit({
                   : "text-muted"
               }`}
             >
-              fills by{" "}
-              {view.fillsBy.toLocaleString("en-US", {
-                weekday: "short",
-                month: "short",
-                day: "numeric",
-                hour: "numeric",
-                minute: "2-digit",
-                timeZone: "UTC",
-              })}
+              fills by {fmtDeadline(view.fillsBy)}
               {view.fillsBy.getTime() < now.getTime() ? " · overdue" : ""}
             </span>
           )}

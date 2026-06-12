@@ -20,12 +20,19 @@ All estimates from planning poker between Eric and Claude. Tests are baked into 
 **Wall-clock h/pt is not a velocity** (it's inflated by overnight gaps); forecast on active. The low
 active-per-point is the AI-assisted signature — human keyboard time is small relative to output.
 
+**P4 onward: throughput, not h/pt (DEC-S026).** Velocity is now **points per calendar week** from
+GitHub issue `closedAt` + `points:N` labels, plus an estimate-calibration tally — the transcript-based
+`active = wall − breaks` model is retired (its `breaks=0 → active=wall` fallback was the bug). The
+P0–P3 rows below are that retired metric, left as written (don't blend with throughput). Most solo
+phases are *burst-shaped* (clear inside a calendar week), so a per-week rate isn't quoted for them.
+
 | Phase | Sessions | Points | Wall (h) | Breaks (h) | Active (h) | h/pt (active) |
 |-------|----------|--------|----------|------------|------------|---------------|
 | 0     | 3        | 9      | 6.33     | 4.75       | 1.58       | 0.176 ⚠       |
 | 1     | 3        | 55     | 60.31    | 52.31      | 8.00       | 0.145         |
 | 2     | 2        | 16     | 31.59    | 29.52      | 2.08       | 0.130         |
 | 3     | 3        | 28     | 37.84    | 34.33      | 3.42       | 0.122         |
+| 4     | 3        | 28     | — (DEC-S026) | — | — | **burst** — 28 pts in ~1.8d; re-est'd 2, drift +4 |
 
 **Build strategy — vertical, not horizontal** (build plan §1): build a thin sliver through every
 layer so one real thing works end-to-end, then fatten it. The spine doesn't change as it thickens;
@@ -140,16 +147,18 @@ one run · C=4.4+4.5 one run · D=4.7 alone (decision-bearing) · E=4.6 alone.
 
 | # | Task | Effort | Notes |
 |---|------|--------|-------|
-| 4.1 | **Pilot channel adapter (DEC-MSG-3)** — wire one real adapter (web-link or Telegram) for crew asks + the admin board ping (DEC-026 delivery half) | 5 | **Blocked on operator pick** — ask each session start. Needs Eric in the loop (medium choice; bot/phone testing). [#53](https://github.com/mobiustripper42/muster/issues/53) |
-| 4.2 | **Assignment cockpit (§2.4)** — upgrade the thin click-through: seat-card actions (assign from ranked pool, nudge, manual override, confirm), fills-by countdown, calm monitor posture; fixes the P3 Bailed-seat-pool gap | 8 | One PR with 4.3 (Unit B). @architect pre-pass on the action set. [#54](https://github.com/mobiustripper42/muster/issues/54) |
-| 4.3 | **Warming view (§2.4)** — trending-toward-risk inside the cockpit, opened deliberately; never on the board | 3 | Rides Unit B. [#55](https://github.com/mobiustripper42/muster/issues/55) |
-| 4.4 | **Crew bail flow (§2.6)** — "can't make it" from the shift card → existing `bail()` rails (DEC-019), admin fallout visible | 3 | One PR with 4.5 (Unit C). [#56](https://github.com/mobiustripper42/muster/issues/56) |
-| 4.5 | **Crew credential nudge (§2.6)** — expiring-credential line in the crew app (reads credential-health) | 2 | Rides Unit C. [#57](https://github.com/mobiustripper42/muster/issues/57) |
-| 4.6 | **Builder: changed-since-reviewed nudge (§2.3)** — late booking on a locked shift raises it | 3 | Scope caution: no builder UI exists — domain derivation + minimal render on an existing surface. [#58](https://github.com/mobiustripper42/muster/issues/58) |
-| 4.7 | **Board polish: "fills by" deadline** — real fill-deadline concept on `AtRiskRow` + multi-trip times (P3 review follow-up) | 3 | Decision-bearing (@architect → likely DEC-027); solo PR. [#59](https://github.com/mobiustripper42/muster/issues/59) |
-| 4.8 | **UI chassis** — extract shared `components/ui` Shell/Notice (toned variant as superset) | 1 | **Built first** — or 4.2 mints a fourth copy. [#60](https://github.com/mobiustripper42/muster/issues/60) |
+| 4.1 | **Pilot channel adapter (DEC-MSG-3)** — wire one real adapter (web-link or Telegram) for crew asks + the admin board ping (DEC-026 delivery half) | 5 | **[x]** Web-link relay + operator outbox (DEC-030). Was blocked on operator pick → picked web-link; shipped as an 8-pt unit (planned 5). [#53](https://github.com/mobiustripper42/muster/issues/53) · PR #69 |
+| 4.2 | **Assignment cockpit (§2.4)** — upgrade the thin click-through: seat-card actions (assign from ranked pool, nudge, manual override, confirm), fills-by countdown, calm monitor posture; fixes the P3 Bailed-seat-pool gap | 8 | **[x]** One PR with 4.3 (Unit B). @architect pre-pass on the action set. [#54](https://github.com/mobiustripper42/muster/issues/54) · PR #62 |
+| 4.3 | **Warming view (§2.4)** — trending-toward-risk inside the cockpit, opened deliberately; never on the board | 3 | **[x]** Rides Unit B. [#55](https://github.com/mobiustripper42/muster/issues/55) · PR #62 |
+| 4.4 | **Crew bail flow (§2.6)** — "can't make it" from the shift card → existing `bail()` rails (DEC-019), admin fallout visible | 3 | **[x]** One PR with 4.5 (Unit C). [#56](https://github.com/mobiustripper42/muster/issues/56) · PR #64 |
+| 4.5 | **Crew credential nudge (§2.6)** — expiring-credential line in the crew app (reads credential-health) | 2 | **[x]** Rides Unit C (+1 admin-reporter add absorbed). [#57](https://github.com/mobiustripper42/muster/issues/57) · PR #64 |
+| 4.6 | **Builder: changed-since-reviewed nudge (§2.3)** — late booking on a locked shift raises it | 3 | **[x]** Scope caution held — domain derivation + minimal render (DEC-029). [#58](https://github.com/mobiustripper42/muster/issues/58) · PR #67 |
+| 4.7 | **Board polish: "fills by" deadline** — real fill-deadline concept on `AtRiskRow` + multi-trip times (P3 review follow-up) | 3 | **[x]** Decision-bearing (@architect → **DEC-031**, not 027 as guessed); solo PR. [#59](https://github.com/mobiustripper42/muster/issues/59) · PR #71 |
+| 4.8 | **UI chassis** — extract shared `components/ui` Shell/Notice (toned variant as superset) | 1 | **[x]** **Built first** — or 4.2 mints a fourth copy. [#60](https://github.com/mobiustripper42/muster/issues/60) · PR #61 |
 
-**Phase 4 total: 28 pts planned** (split/merge, bulk lock, live-card pings + hosted deploy deferred — see above)
+**Phase 4 total: 28 pts planned → 28 shipped, all 8 tasks `[x]`** (closed 2026-06-12; split/merge, bulk
+lock, live-card pings + hosted deploy still deferred — see above). Estimate calibration: 2 re-pointed
+(4.1 pilot 5→8; Unit C +1), net drift +4 pts under. Closed at **v0.6.0**.
 
 ## Phase 5: Pass D — Progressive commitment (soft-hold + staged horizons)
 

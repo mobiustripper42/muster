@@ -3,6 +3,32 @@
 Phase-end retrospectives. Written by `/retro` at each phase boundary — velocity, scope changes,
 process notes, forecast update. One entry per phase, newest at the top.
 
+## Phase 4 — 2026-06-12 — Pass C: Fast-follows
+
+**Points:** 28 / 28 planned (100%)
+**Span:** ~1.8 days (2026-06-10 → 2026-06-12) — burst phase
+**Throughput:** burst — 28 pts in ~1.8d (sub-week; no per-week rate quoted)  ← first phase on the DEC-S026 throughput model
+**Estimate calibration:** 2 tasks re-estimated, net drift **+4 pts under** (4.1 pilot channel 5→8; Unit C #56+#57 +1 admin-reporter add); the other 6 tasks hit estimate exactly  ← keeps the point unit honest
+**Sessions:** 3 (S12, S13, S14)   **PRs merged:** 9 (6 feature, 3 docs/infra)
+**Issues:** 8 created, 8 closed, 0 moved to Phase 5
+
+### Phase throughput line
+| Phase | Date | Points | Span(d) | Throughput | Re-est'd | Net drift | Sessions | PRs |
+|-------|------|--------|---------|------------|----------|-----------|----------|-----|
+| 4 | 2026-06-12 | 28 | ~1.8 | burst | 2 | +4 | 3 | 9 |
+
+### Cross-phase signal
+`throughput.py` flags pts/issue drifting **5.38 → 3.50** across phases 1→4 — possible point drift, consistent with this phase's +4 under-pointing (work ran a bit bigger than the points said). Not alarming at 14% of a 28-pt phase, but the calibration tally is now the thing to watch: persistent positive drift = under-pointing; shrink-with-rising-throughput would be inflation.
+
+### What worked / What didn't / Changes for next phase
+Retro reflection skipped at user request (S14). PM commentary skipped.
+
+### Scope changes
+- All 8 planned tasks shipped; nothing moved or descoped.
+- **Deferred-as-planned** (not started, by design): split/merge, bulk weekend-lock, live-card pings, hosted deploy.
+- **Surfaced mid-phase, parked to issues** (not Phase 4 scope): #65 (e2e/Playwright harness), #68 (operator manual), #70 (pilot prod-readiness gate — now incl. the timezone/UTC blocker), #73 (operator Xola import surface). Plus the slice-1 manual E2E walkthrough doc (#72).
+- **Slice-1 status:** build-complete. The real-crew test is gated on hosted deploy + #70 (prod auth + timezone) + #73 (real import) — tracked, not in this phase.
+
 ## Phase 3 — 2026-06-10 — Pass B: Tier 2 + At-Risk board
 
 **Sessions:** 3 (S9, S10, S11)

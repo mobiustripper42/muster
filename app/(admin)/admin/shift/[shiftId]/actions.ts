@@ -10,6 +10,7 @@ import {
 import { assignFromPool, lean } from "@core/asks/lean.js";
 import { asId } from "@core/domain/ids.js";
 import { readSubject } from "../../../../lib/auth";
+import { forwardToOutbox } from "../../../../lib/channel";
 import { getRepo } from "../../../../lib/repo";
 
 /**
@@ -67,6 +68,8 @@ export async function assignTo(formData: FormData): Promise<void> {
     param = out.error
       ? `act_error=${out.code ?? "unavailable"}`
       : `assigned=${encodeURIComponent(crewMemberId)}`;
+    // Edge channel wiring (DEC-030): the fired ask → the pilot outbox.
+    await forwardToOutbox(out.ask ? [out.ask] : undefined);
   } catch {
     param = "act_error=unavailable";
   }
@@ -87,6 +90,8 @@ export async function nudgeOn(formData: FormData): Promise<void> {
     param = out.error
       ? `act_error=${out.code ?? "unavailable"}`
       : `nudged=${encodeURIComponent(crewMemberId)}`;
+    // Edge channel wiring (DEC-030): the fired ask → the pilot outbox.
+    await forwardToOutbox(out.ask ? [out.ask] : undefined);
   } catch {
     param = "act_error=unavailable";
   }
@@ -152,6 +157,8 @@ export async function reportBail(formData: FormData): Promise<void> {
         out.code === "raced"
           ? "act_error=raced"
           : `bail_logged=${encodeURIComponent(String(bailer))}`;
+      // Edge channel wiring (DEC-030): the bail's re-asks → the pilot outbox.
+      await forwardToOutbox(out.outcome?.reAsks);
     }
   } catch {
     param = "act_error=unavailable";

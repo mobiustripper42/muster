@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { bailWithDerivedLateness } from "@core/asks/ask-loop.js";
 import { asId } from "@core/domain/ids.js";
 import { readSubject } from "../../../../lib/auth";
+import { forwardToOutbox } from "../../../../lib/channel";
 import { getRepo } from "../../../../lib/repo";
 
 /**
@@ -55,6 +56,8 @@ export async function bailFromSeat(formData: FormData): Promise<void> {
         asId<"CrewMemberId">(subject.id),
       );
       errorCode = out.code === "raced" ? "stale" : null;
+      // Edge channel wiring (DEC-030): the bail's re-asks → the pilot outbox.
+      await forwardToOutbox(out.outcome?.reAsks);
     }
   } catch {
     errorCode = "unavailable";

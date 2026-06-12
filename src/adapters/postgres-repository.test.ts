@@ -27,6 +27,7 @@ const TABLES = [
   "seats",
   "asks",
   "magic_tokens",
+  "outbox_entries",
   "reliability_events",
 ];
 

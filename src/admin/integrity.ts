@@ -48,6 +48,7 @@ export async function checkIntegrity(repo: Repository): Promise<IntegrityReport>
     credentials,
     ptoWindows,
     magicTokens,
+    outboxEntries,
   ] = await Promise.all([
     repo.listAllRoleTypes(),
     repo.listVessels(),
@@ -60,6 +61,7 @@ export async function checkIntegrity(repo: Repository): Promise<IntegrityReport>
     repo.listAllCredentials(),
     repo.listAllPtoWindows(),
     repo.listAllMagicTokens(),
+    repo.listOutboxEntries(),
   ]);
 
   const roleIds = new Set(roleTypes.map((r) => r.id as string));
@@ -118,6 +120,14 @@ export async function checkIntegrity(repo: Repository): Promise<IntegrityReport>
       miss(crewIds, "magicToken", t.id, "subjectId", t.subjectId);
     }
   }
+  // Outbox entries (DEC-030): channel-adapter state, but it points into the
+  // spine (ask/seat/crew) — a dangling ref means the relay card can't render.
+  const askIds = new Set(asks.map((a) => a.id as string));
+  for (const o of outboxEntries) {
+    miss(askIds, "outboxEntry", o.id, "askId", o.askId);
+    miss(seatIds, "outboxEntry", o.id, "seatId", o.seatId);
+    miss(crewIds, "outboxEntry", o.id, "crewMemberId", o.crewMemberId);
+  }
 
   return {
     ok: v.length === 0,
@@ -134,6 +144,7 @@ export async function checkIntegrity(repo: Repository): Promise<IntegrityReport>
       credentials: credentials.length,
       ptoWindows: ptoWindows.length,
       magicTokens: magicTokens.length,
+      outboxEntries: outboxEntries.length,
     },
   };
 }

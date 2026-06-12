@@ -32,9 +32,11 @@ export async function GET(req: NextRequest) {
   );
   const link = `${baseUrl(req)}/crew/auth?t=${secret}`;
   const who = crew ? `crew · ${crew}` : `admin · ${admin}`;
-  // HTML over JSON: this is a hand-driven dev tool, so render a tappable button
-  // instead of a payload you'd have to copy out. Escape the query-supplied
-  // subject — it's reflected into markup, dev-only or not. Link is single-use.
+  // HTML over JSON: this is a hand-driven dev tool. The BUTTON posts straight to
+  // the consume endpoint (one tap signs you in here — the dev shortcut); the URL
+  // below is the production-shaped link you'd actually text a crew member, which
+  // lands on the prefetch-safe GET interstitial (DEC-030). Escape the
+  // query-supplied subject — it's reflected into markup, dev-only or not.
   const esc = (s: string) =>
     s.replace(/[&<>"']/g, (c) =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!,
@@ -47,15 +49,18 @@ export async function GET(req: NextRequest) {
     place-items:center;background:#0f1115;color:#e6e8eb}
   .card{width:min(92vw,420px);text-align:center;padding:24px}
   .who{font:600 13px/1.4 ui-monospace,monospace;color:#9aa3af;margin-bottom:16px}
-  a.btn{display:block;min-height:52px;border-radius:12px;background:#16a34a;
-    color:#fff;font:600 16px/52px system-ui;text-decoration:none}
+  .btn{display:block;width:100%;min-height:52px;border:0;border-radius:12px;
+    background:#16a34a;color:#fff;font:600 16px system-ui;cursor:pointer}
   .url{margin-top:16px;font:12px/1.5 ui-monospace,monospace;color:#6b7280;
     word-break:break-all;user-select:all}
   .note{margin-top:12px;font:12px system-ui;color:#6b7280}
 </style>
 <div class="card">
   <div class="who">${esc(who)}</div>
-  <a class="btn" href="${esc(link)}">Tap to sign in →</a>
+  <form method="post" action="/crew/auth">
+    <input type="hidden" name="t" value="${esc(secret)}">
+    <button class="btn" type="submit">Tap to sign in →</button>
+  </form>
   <div class="url">${esc(link)}</div>
   <div class="note">Dev only · single-use · expires in 15 min</div>
 </div>`;

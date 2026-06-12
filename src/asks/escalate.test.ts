@@ -108,6 +108,10 @@ describe("escalate — nudging the ghosters", () => {
 
     expect(out.widened).toBe(true);
     expect(out.nudged).toEqual([silent]); // decliner excluded
+    // The nudge ask is surfaced for the edge's channel forwarding (DEC-030).
+    expect(out.asks).toHaveLength(1);
+    expect(out.asks[0]!.crewMemberId).toBe(silent);
+    expect(out.asks[0]!.seatId).toBe(seat);
     expect(await seatState(seat!)).toBe("Asked"); // assignPerson moved it
     expect(await nudgedEvents(silent)).toHaveLength(1);
     expect(await nudgedEvents(decliner)).toHaveLength(0);
@@ -185,7 +189,7 @@ describe("escalate — nudging the ghosters", () => {
 
     const out = await escalate(repo, SHIFT, later(120_000));
 
-    expect(out).toEqual({ widened: false, nudged: [] });
+    expect(out).toEqual({ widened: false, nudged: [], asks: [] });
     expect(await nudgedEvents(silent)).toHaveLength(0);
   });
 });

@@ -136,6 +136,33 @@ export async function verifyMagicLink(
   };
 }
 
+/**
+ * Inspect a presented secret WITHOUT consuming it — the prefetch-safe half of
+ * the landing flow (DEC-030). Relay links travel through iMessage/Android SMS,
+ * whose link-preview bots GET the URL before the human ever taps; if the GET
+ * landing consumed the single-use token, every relayed link would burn in
+ * transit. So the GET *peeks* (this function: pure reads, no CAS, no write) and
+ * renders a "Tap to sign in" button whose POST does the real `verifyMagicLink`
+ * consume. Same checks, same reasons — a peek that says ok means a consume
+ * attempted at that instant would have been racing only other humans.
+ */
+export async function peekMagicLink(
+  repo: Repository,
+  secret: string,
+  deps: VerifyDeps,
+): Promise<VerifyResult> {
+  const token = await repo.getMagicTokenByHash(hashSecret(secret));
+  if (!token) return { ok: false, reason: "not_found" };
+  if (token.consumedAt) return { ok: false, reason: "consumed" };
+  if (deps.now.getTime() >= Date.parse(token.expiresAt)) {
+    return { ok: false, reason: "expired" };
+  }
+  return {
+    ok: true,
+    subject: { kind: token.subjectKind, id: token.subjectId },
+  };
+}
+
 export interface ReapResult {
   /** How many expired tokens this sweep deleted. */
   reaped: number;

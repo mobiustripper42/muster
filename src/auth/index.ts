@@ -2,6 +2,7 @@ export {
   hashSecret,
   randomSecret,
   issueMagicLink,
+  peekMagicLink,
   verifyMagicLink,
   reapExpiredMagicLinks,
 } from "./magic-link.js";

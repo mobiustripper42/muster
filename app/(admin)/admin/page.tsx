@@ -17,6 +17,12 @@ export default function AdminHome() {
       >
         At-Risk board →
       </Link>
+      <Link
+        href="/admin/outbox"
+        className="rounded-card border border-line bg-card px-4 py-3 font-semibold text-accent shadow-sm"
+      >
+        Outbox — asks waiting on your text →
+      </Link>
       <p className="text-sm text-muted">
         Roster, event admin, and shift builder land here in later tasks.
       </p>

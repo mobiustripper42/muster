@@ -28,7 +28,7 @@
  * `at_risk_rescue` hook, derivable retroactively from the flagged log).
  */
 
-import type { Seat } from "../domain/entities.js";
+import type { Ask, Seat } from "../domain/entities.js";
 import type { CrewMemberId, SeatId, ShiftId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 import { logNudged } from "../oracle/reliability-log.js";
@@ -81,6 +81,12 @@ export interface LeanResult {
   code?: LeanErrorCode;
   /** The seat the person was leaned onto, on success. */
   seatId?: SeatId;
+  /**
+   * The ask this action fired, on success — surfaced so the EDGE caller can
+   * forward it to the injected channel adapter (DEC-030). The loop itself
+   * never talks to a transport (DEC-MSG-3).
+   */
+  ask?: Ask;
 }
 
 /** Direct-nudge `crewMemberId` onto the first gap seat of `shiftId` they can fill. */
@@ -154,7 +160,7 @@ export async function lean(
     };
   }
   await logNudged(repo, crewMemberId, target.id, shiftId, now, { manual: true });
-  return { error: null, seatId: target.id };
+  return { error: null, seatId: target.id, ask };
 }
 
 /**
@@ -229,5 +235,5 @@ export async function assignFromPool(
       code: "raced",
     };
   }
-  return { error: null, seatId: seat.id };
+  return { error: null, seatId: seat.id, ask };
 }

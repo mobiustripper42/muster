@@ -3,6 +3,7 @@ import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import {
   hashSecret,
   issueMagicLink,
+  peekMagicLink,
   randomSecret,
   reapExpiredMagicLinks,
   verifyMagicLink,
@@ -104,6 +105,55 @@ describe("verifyMagicLink", () => {
       verifyMagicLink(repo, secret, { now: T0 }),
     ]);
     expect([a.ok, b.ok].filter(Boolean)).toHaveLength(1);
+  });
+});
+
+describe("peekMagicLink — the prefetch-safe GET landing (DEC-030)", () => {
+  it("a GET-style peek does NOT consume: the human's tap still redeems after any number of previews", async () => {
+    const repo = new InMemoryRepository();
+    const { secret } = await issueMagicLink(
+      repo,
+      { subjectKind: "crew", subjectId: "crew-a", ttlMs: TTL },
+      { now: T0, mintSecret: counterSecrets() },
+    );
+
+    // iMessage/Android preview bots GET the link — possibly several times.
+    for (let i = 0; i < 3; i++) {
+      const peek = await peekMagicLink(repo, secret, { now: T0 });
+      expect(peek).toEqual({ ok: true, subject: { kind: "crew", id: "crew-a" } });
+    }
+    // Token untouched: still unconsumed in storage…
+    const stored = await repo.getMagicTokenByHash(hashSecret(secret));
+    expect("consumedAt" in stored!).toBe(false);
+    // …so the human's explicit tap (the POST) still logs them in, single-use.
+    const tap = await verifyMagicLink(repo, secret, { now: T0 });
+    expect(tap.ok).toBe(true);
+    const replay = await verifyMagicLink(repo, secret, { now: T0 });
+    expect(replay).toEqual({ ok: false, reason: "consumed" });
+  });
+
+  it("returns the same precise failure reasons as verify, still without writing", async () => {
+    const repo = new InMemoryRepository();
+    expect(await peekMagicLink(repo, "never-issued", { now: T0 })).toEqual({
+      ok: false,
+      reason: "not_found",
+    });
+
+    const { secret } = await issueMagicLink(
+      repo,
+      { subjectKind: "crew", subjectId: "crew-a", ttlMs: TTL },
+      { now: T0, mintSecret: counterSecrets() },
+    );
+    const atExpiry = new Date(T0.getTime() + TTL); // verify's exact boundary
+    expect(await peekMagicLink(repo, secret, { now: atExpiry })).toEqual({
+      ok: false,
+      reason: "expired",
+    });
+    await verifyMagicLink(repo, secret, { now: T0 }); // consume it
+    expect(await peekMagicLink(repo, secret, { now: T0 })).toEqual({
+      ok: false,
+      reason: "consumed",
+    });
   });
 });
 

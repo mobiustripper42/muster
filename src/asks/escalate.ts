@@ -25,6 +25,7 @@
  * Pure-ish over the port like the rest of the loop: `now` injected, no clock read.
  */
 
+import type { Ask } from "../domain/entities.js";
 import type { CrewMemberId, ShiftId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 import { logNudged, logPoolWidened } from "../oracle/reliability-log.js";
@@ -35,6 +36,12 @@ export interface EscalateResult {
   widened: boolean;
   /** Crew newly nudged this call, in seat order. */
   nudged: CrewMemberId[];
+  /**
+   * The nudge asks fired this call (parallel to `nudged`) — surfaced so the
+   * edge caller can forward them to the channel adapter (DEC-030); the loop
+   * itself never talks to a transport (DEC-MSG-3).
+   */
+  asks: Ask[];
 }
 
 /**
@@ -48,13 +55,15 @@ export async function escalate(
   now: Date,
 ): Promise<EscalateResult> {
   const shift = await repo.getShift(shiftId);
-  if (!shift || shift.state !== "Filling") return { widened: false, nudged: [] };
+  if (!shift || shift.state !== "Filling") {
+    return { widened: false, nudged: [], asks: [] };
+  }
 
   const required = (await repo.listSeatsForShift(shiftId)).filter(
     (s) => s.kind === "required",
   );
   const openSeats = required.filter((s) => s.state === "Open");
-  if (openSeats.length === 0) return { widened: false, nudged: [] };
+  if (openSeats.length === 0) return { widened: false, nudged: [], asks: [] };
 
   // Widen-stub: the engine re-confirmed full-pool exhaustion (DEC-024). Logged
   // even when no one is nudgeable — "pool widened · exhausted" is a real trail rung.
@@ -88,6 +97,7 @@ export async function escalate(
 
   // ── Nudge the top-ranked survivor per open seat ─────────────────────────────
   const nudged: CrewMemberId[] = [];
+  const asks: Ask[] = [];
   for (const seat of openSeats) {
     const [pick] = await rankedEligible(repo, seat, now, excluded);
     if (!pick) continue;
@@ -96,7 +106,8 @@ export async function escalate(
     await logNudged(repo, pick.id, seat.id, shiftId, now);
     excluded.add(pick.id); // distinct-pool: don't nudge one person into two seats
     nudged.push(pick.id);
+    asks.push(ask);
   }
 
-  return { widened: true, nudged };
+  return { widened: true, nudged, asks };
 }

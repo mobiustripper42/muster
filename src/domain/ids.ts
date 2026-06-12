@@ -22,6 +22,7 @@ export type SeatId = Brand<string, "SeatId">;
 export type AskId = Brand<string, "AskId">;
 export type ReliabilityEventId = Brand<string, "ReliabilityEventId">;
 export type MagicTokenId = Brand<string, "MagicTokenId">;
+export type OutboxEntryId = Brand<string, "OutboxEntryId">;
 
 /**
  * Cast a raw string into a branded ID. The single sanctioned entry point —

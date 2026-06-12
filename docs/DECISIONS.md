@@ -858,7 +858,9 @@ Twilio, no inbound webhook.** The binding mechanics:
 5. **Single-click Send — the one `'use client'` exception (DEC-026), progressively enhanced.**
    Send is an `<a href="sms:…">`: with NO JS the composer still opens via the native anchor (the
    graceful baseline). When hydrated the `onClick` takes over and **owns the order**:
-   (1) optimistically flip the card to a white **Resend** + "sent · &lt;time&gt;" (instant paint),
+   (1) `flushSync` the optimistic flip to a white **Resend** + "sent · &lt;time&gt;" (committed to
+   the DOM synchronously, else the `window.location` hand-off occasionally wins the race and the
+   flip never paints before the app switches to Messages),
    (2) `await recordSent` (no-redirect, no-revalidate server action) so the write FINISHES, then
    (3) open the composer via `window.location`. The order is load-bearing: opening the `sms:`
    composer is a navigation that **aborts an in-flight request** — a fire-and-forget `recordSent`

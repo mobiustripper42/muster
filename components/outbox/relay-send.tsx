@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { flushSync } from "react-dom";
 import { recordSent } from "../../app/(admin)/admin/outbox/actions";
 
 /**
@@ -45,8 +46,13 @@ export function RelaySend({
           // Own the order: paint the flip, let the write finish, THEN navigate
           // to the composer (navigation aborts an in-flight request).
           e.preventDefault();
-          setSent(true);
-          setLabel(`sent ${fmtNow()}`);
+          // Commit the flip to the DOM SYNCHRONOUSLY — otherwise the
+          // `window.location` hand-off below can occasionally win the race and
+          // the Resend state never paints before the app switches to Messages.
+          flushSync(() => {
+            setSent(true);
+            setLabel(`sent ${fmtNow()}`);
+          });
           try {
             await recordSent(entryId);
           } catch {

@@ -855,9 +855,15 @@ Twilio, no inbound webhook.** The binding mechanics:
    without consume, pure reads) and renders a "Tap to sign in" button; the **POST** consumes
    (single-use CAS), mints the session, 303-redirects. A bot can render the page forever; only the
    human's tap spends the token.
-5. **Send→Sent stays no-client-JS** (DEC-026): Send is a plain `<a href="sms:…">`; mark-sent and
-   toggle-back are form posts flipping `status` server-side, codes/ids-only redirect params. Two
-   taps (open composer, mark sent) is intended — opening the composer isn't proof of send.
+5. **Single-click Send — the one `'use client'` exception (DEC-026).** Send is a native
+   `<a href="sms:…">` (reliable OS composer handoff), but its `onClick` ALSO fires `recordSent`
+   (no-redirect server action) and optimistically flips the card to a white **Resend** + a
+   "sent · &lt;time&gt;" line — one tap opens Messages *and* records the send. An `sms:` anchor
+   can't also post server-side in the same tap without JS, so `components/outbox/relay-send.tsx`
+   is the deliberate lone client island on the admin surfaces; everything else (cards, sort, the
+   inline In/Out, the page) stays server-rendered. "Sent" still means "you fired the composer," not
+   proof of delivery — **Resend** re-opens the same composer as the recovery. No separate un-send
+   (the earlier two-tap mark-sent / move-back toggle was replaced — the operator asked for one tap).
 6. **Channel wiring lives at the EDGE.** The fire paths surface their asks as return values
    (`TickResult.firedAsks`, `EscalateResult.asks`, `LeanResult.ask`, `BailOutcome.reAsks`) and the
    edge callers (app actions, the tick trigger) forward them via `forwardAsks` → the injected

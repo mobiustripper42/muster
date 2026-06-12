@@ -15,9 +15,13 @@ import { getRepo } from "../../../lib/repo";
  * try; only the domain/repo call is guarded (an outage → a mapped notice, not
  * a 500).
  *
- * - markSent / markUnsent flip `OutboxEntry.status` — channel-side bookkeeping
- *   the domain never reads. Two taps (open composer, mark sent) is intended:
- *   opening the Messages composer isn't proof the text went out.
+ * - recordSent flips `OutboxEntry.status` to sent — channel-side bookkeeping the
+ *   domain never reads. Called from the single-click Send island (DEC-030): the
+ *   one `'use client'` exception on these surfaces, so a single tap can BOTH open
+ *   the Messages composer (native `sms:` anchor) AND record the send. It does NOT
+ *   redirect (that would interrupt the composer handoff) — it returns a status
+ *   and the island flips optimistically. "Sent" still means "you fired the
+ *   composer", not proof of delivery; Resend re-opens it.
  * - answerOwnAsk is the operator-as-crew inline In/Out. GUARDED: it answers
  *   only an ask addressed to `OPERATOR_CREW_MEMBER_ID` (`recordResponseAs`
  *   refuses anything else) — an admin session is not a back door for writing
@@ -38,47 +42,26 @@ async function gate(formData: FormData, field: string): Promise<string> {
   return id;
 }
 
-export async function markSent(formData: FormData): Promise<void> {
-  const entryId = await gate(formData, "entryId");
-  let param: string;
+export async function recordSent(entryId: string): Promise<{ ok: boolean }> {
+  const subject = await readSubject();
+  if (!subject || subject.kind !== "admin" || !entryId) return { ok: false };
   try {
     const repo = getRepo();
     const entry = await repo.getOutboxEntry(asId<"OutboxEntryId">(entryId));
-    if (!entry) {
-      param = "obx_error=gone";
-    } else {
-      await repo.saveOutboxEntry({
-        ...entry,
-        status: "sent",
-        sentAt: new Date().toISOString(),
-      });
-      param = `sent=${encodeURIComponent(entryId)}`;
-    }
+    if (!entry) return { ok: false };
+    await repo.saveOutboxEntry({
+      ...entry,
+      status: "sent",
+      sentAt: new Date().toISOString(),
+    });
+    // Mark the worklist stale so a later navigation re-sorts; no redirect — the
+    // island already flipped this card optimistically and the `sms:` anchor is
+    // mid-handoff to the composer.
+    revalidatePath(BACK);
+    return { ok: true };
   } catch {
-    param = "obx_error=unavailable";
+    return { ok: false };
   }
-  finish(param);
-}
-
-export async function markUnsent(formData: FormData): Promise<void> {
-  const entryId = await gate(formData, "entryId");
-  let param: string;
-  try {
-    const repo = getRepo();
-    const entry = await repo.getOutboxEntry(asId<"OutboxEntryId">(entryId));
-    if (!entry) {
-      param = "obx_error=gone";
-    } else {
-      // Back to to-send: drop the sent stamp entirely (not undefined — the
-      // optional field is simply absent again).
-      const { sentAt: _sent, ...rest } = entry;
-      await repo.saveOutboxEntry({ ...rest, status: "pending" });
-      param = `unsent=${encodeURIComponent(entryId)}`;
-    }
-  } catch {
-    param = "obx_error=unavailable";
-  }
-  finish(param);
 }
 
 export async function answerOwnAsk(formData: FormData): Promise<void> {

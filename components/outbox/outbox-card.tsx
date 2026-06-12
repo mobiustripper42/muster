@@ -1,10 +1,11 @@
-import { answerOwnAsk, markSent, markUnsent } from "../../app/(admin)/admin/outbox/actions";
+import { answerOwnAsk } from "../../app/(admin)/admin/outbox/actions";
+import { RelaySend } from "./relay-send";
 
 /**
  * One outbox card (DEC-030) — one ask the operator still owes a relay (or, for
- * an ask addressed to the operator themself, an inline answer). Server
- * component, no client JS: Send is a plain `sms:` anchor (opens the native
- * Messages app prefilled); mark-sent / not-sent / In / Out are form posts.
+ * an ask addressed to the operator themself, an inline answer). The relay Send
+ * is the single-click `RelaySend` island (the one `'use client'` exception,
+ * DEC-026); the inline In/Out and the no-phone notice stay server-rendered.
  *
  * A card is inline-OR-relayed, never both (`mode: "self"` replaces the relay
  * affordances entirely) — the same ask must not be answerable through two
@@ -58,25 +59,17 @@ export function OutboxCard({ card }: { card: OutboxCardVM }) {
         <span className="text-xs text-muted">{card.whyLabel}</span>
       </div>
 
-      {card.mode === "relay" &&
+      {card.mode !== "self" &&
         (card.smsHref ? (
-          // Two taps by design: opening the composer isn't proof of send.
-          <div className="grid grid-cols-[1fr_auto] gap-px border-t border-line bg-line">
-            <a
-              href={card.smsHref}
-              className="flex min-h-[52px] items-center justify-center bg-ok font-semibold text-white"
-            >
-              Text {card.crewName} →
-            </a>
-            <form action={markSent} className="flex">
-              <input type="hidden" name="entryId" value={card.entryId} />
-              <button
-                type="submit"
-                className="min-h-[52px] bg-card px-4 text-sm font-medium text-accent"
-              >
-                Mark sent
-              </button>
-            </form>
+          <RelaySend
+            entryId={card.entryId}
+            smsHref={card.smsHref}
+            initialSent={card.mode === "sent"}
+            initialSentLabel={card.sentLabel}
+          />
+        ) : card.mode === "sent" ? (
+          <div className="border-t border-line px-4 py-2 text-xs text-muted">
+            {card.sentLabel ?? "sent"} · awaiting reply
           </div>
         ) : (
           <p className="border-t border-warn-line bg-warn-bg px-4 py-3 text-sm text-warn">
@@ -110,20 +103,6 @@ export function OutboxCard({ card }: { card: OutboxCardVM }) {
             In
           </button>
         </form>
-      )}
-
-      {card.mode === "sent" && (
-        <div className="flex items-center justify-between gap-3 border-t border-line px-4 py-2">
-          <span className="text-xs text-muted">
-            {card.sentLabel ?? "sent"} · awaiting reply
-          </span>
-          <form action={markUnsent}>
-            <input type="hidden" name="entryId" value={card.entryId} />
-            <button type="submit" className="text-xs font-medium text-accent">
-              Not sent? Move back
-            </button>
-          </form>
-        </div>
       )}
     </article>
   );

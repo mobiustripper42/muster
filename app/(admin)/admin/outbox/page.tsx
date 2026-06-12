@@ -1,6 +1,5 @@
 import { buildOutboxView, type OutboxCardView } from "@core/admin/outbox-view.js";
 import { buildSmsUrl } from "@core/adapters/sms-deep-link.js";
-import { asId } from "@core/domain/ids.js";
 import { OutboxCard, type OutboxCardVM } from "../../../../components/outbox/outbox-card";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
@@ -39,8 +38,6 @@ const OBX_ERROR_COPY: Record<string, string> = {
 };
 
 type Search = {
-  sent?: string;
-  unsent?: string;
   answered?: string;
   obx_error?: string;
 };
@@ -56,19 +53,8 @@ export default async function Outbox({
 
   const repo = getRepo();
   let view;
-  let toggledName: { kind: "sent" | "unsent"; name: string } | null = null;
   try {
     view = await buildOutboxView(repo, new Date());
-    // `sent`/`unsent` carry an entry id (codes/ids only, DEC-026) — resolve it
-    // to a crew name we know; a crafted URL with an unknown id renders nothing.
-    const toggledId = sp.sent ?? sp.unsent;
-    if (toggledId) {
-      const entry = await repo.getOutboxEntry(asId<"OutboxEntryId">(toggledId));
-      const crew = entry && (await repo.getCrewMember(entry.crewMemberId));
-      if (crew) {
-        toggledName = { kind: sp.sent ? "sent" : "unsent", name: crew.name };
-      }
-    }
   } catch {
     return (
       <Shell>
@@ -88,8 +74,8 @@ export default async function Outbox({
         <div>
           <h1 className="text-xl font-semibold text-ink">Outbox</h1>
           <p className="text-sm text-muted">
-            Asks waiting on your text. Send opens Messages prefilled — then
-            mark it sent.
+            Asks waiting on your text. One tap on Send opens Messages prefilled
+            and marks it sent.
           </p>
         </div>
         {pending.length > 0 && (
@@ -104,14 +90,8 @@ export default async function Outbox({
         )}
       </header>
 
-      {/* Redirect-param feedback reads safely when stale (DEC-026). */}
-      {toggledName && (
-        <Notice tone="ok">
-          {toggledName.kind === "sent"
-            ? `Marked sent — waiting on ${toggledName.name}’s reply.`
-            : `Moved back to to-send — ${toggledName.name} hasn’t been texted.`}
-        </Notice>
-      )}
+      {/* Redirect-param feedback reads safely when stale (DEC-026). The relay
+          Send/Resend gives its own optimistic feedback in the card (the island). */}
       {answered && <Notice tone={answered.tone}>{answered.text}</Notice>}
       {obxError && <Notice tone="bad">{obxError}</Notice>}
 

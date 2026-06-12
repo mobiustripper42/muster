@@ -128,23 +128,24 @@ the Send button only opens a Messages composer on a device that has one.
 npm run db:seed:outbox   # 3 cards: 2 relays + 1 addressed to the operator (trips anchored to NOW)
 ```
 
-1. Open **http://mill-dev:3000/crew/dev-link?admin=spink** → tap through both sign-in taps → then
+1. Open **http://mill-dev:3000/crew/dev-link?admin=spink** → tap **Tap to sign in** (one tap) → then
    open **http://mill-dev:3000/admin/outbox** → header shows **"3 asks need you"**, tightest trip
    first: **Bo / Tideline** (red ~20h countdown, *"2nd ask · Lance declined"*), **Spink / Keelhaul**
    (a **you** pill — inline red **Out** / green **In** buttons, NO Send link), **Mira / Maibock**
    (*"1st ask"*).
-2. On the Bo card, tap **Text Bo →** (on a phone: Messages opens prefilled with the ask text + a
-   magic link; on a desktop browser the `sms:` link may do nothing — that's the OS, not a bug).
-   Nothing changes in the outbox yet — opening the composer isn't proof of send.
-3. Tap **Mark sent** on the Bo card → green *"Marked sent — waiting on Bo's reply."* and the card
-   drops to the muted **Sent · awaiting reply** section ("2 asks need you" now).
-4. On the sent Bo card, tap **Not sent? Move back** → it returns to the to-send list, top position.
-5. On the Keelhaul card (yours), tap **In** → green *"You're in — the seat is claimed."* and the
+2. On the Bo card, tap **Send** (one tap): on a phone, Messages opens prefilled with the ask + a
+   magic link; on a desktop browser the `sms:` link may do nothing — that's the OS, not a bug. Either
+   way the button **flips in place** to a white **Resend** with **"sent · &lt;time&gt; · awaiting
+   reply"**.
+3. Tap **Resend** → the same composer re-opens (the recovery if the first text didn't actually go
+   out; no state change). Refresh the page → the Bo card has moved to the muted **Sent · awaiting
+   reply** section and the header now reads **"2 asks need you"**.
+4. On the Keelhaul card (yours), tap **In** → green *"You're in — the seat is claimed."* and the
    card is gone (the ask is answered; nothing left to relay).
-6. The full crew loop: paste the Bo card's magic link (it's the second line of the prefilled text)
+5. The full crew loop: paste the Bo card's magic link (it's the second line of the prefilled text)
    into a private window → the **"Tap to sign in →"** confirm page → tap → you land on `/crew` as
    Bo with the Tideline In/Out ask. Answer it → back in the outbox, Bo's card is gone.
-7. Re-run `npm run db:seed:outbox` to reset (old cards retire; fresh asks + links are minted).
+6. Re-run `npm run db:seed:outbox` to reset (old cards retire; fresh asks + links are minted).
 
 ## Other endpoints
 - `GET /api/health` → `{ status, db.reachable, integrity: { ok, violationCount } }` (runs the no-FK

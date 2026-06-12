@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.5.1] - 2026-06-12
+- PR #61: Extract shared Shell/Notice into components/ui (4.8, closes #60)
+
 ## [0.5.0] - 2026-06-10 — Phase 3
 - 28 pts shipped across 3 sessions (0.122 h/pt active)
 - See `docs/RETROSPECTIVES.md` for the full retro

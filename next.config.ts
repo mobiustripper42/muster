@@ -18,6 +18,14 @@ import type { NextConfig } from "next";
  * correct resolver for a NodeNext core consumed directly.
  */
 const nextConfig: NextConfig = {
+  // The dev server is reached over Tailscale at `mill-dev:3000`, NOT localhost
+  // (docs/RUNNING.md). Next 15+/16 refuses its internal dev endpoints — the HMR
+  // WebSocket included — for any origin not listed here, which silently breaks
+  // hot-reload AND client hydration when the app is opened via this host. The
+  // breakage was invisible until the first `'use client'` component (the outbox
+  // Send island, DEC-030) needed hydration to work. Dev-only; the Vercel build
+  // is unaffected.
+  allowedDevOrigins: ["mill-dev"],
   experimental: {
     extensionAlias: {
       ".js": [".ts", ".tsx", ".js", ".jsx"],

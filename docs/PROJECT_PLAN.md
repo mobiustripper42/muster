@@ -160,7 +160,33 @@ one run · C=4.4+4.5 one run · D=4.7 alone (decision-bearing) · E=4.6 alone.
 lock, live-card pings + hosted deploy still deferred — see above). Estimate calibration: 2 re-pointed
 (4.1 pilot 5→8; Unit C +1), net drift +4 pts under. Closed at **v0.6.0**.
 
-## Phase 5: Pass D — Progressive commitment (soft-hold + staged horizons)
+## Phase 5: Pilot-readiness / go-live
+
+Get the build-complete slice to a **real-crew weekend** (2 mates + 2 captains on BrewBoat): hosted
+deploy, a production auth path, vessel-local time, and a real Xola-import surface. *Trigger: Phase 4
+done — the slice is build-complete but crew-untested.* (Decomposed 2026-06-12, @architect pass.)
+**This phase produces the "real weekend" that triggers Pass D (Phase 6).** It resolves 2 of #70's 4
+prod-readiness tells (auth + timezone); Twilio + the single-operator constant stay deferred — the
+deployed app is a **hosted pilot, not production**.
+
+**Ordering / smoke path:** 5.3 (no infra dep) ∥ 5.1→5.2 → *live app on synthetic seeds, poke from a
+real phone* → 5.4 (real data, needs 5.3) → 5.R last; 5.5 anywhere, first to cut.
+
+| # | Task | Effort | Notes |
+|---|------|--------|-------|
+| 5.1 | **Hosted deploy + `tick` cron + `production` branch** — Vercel; CRON_SECRET-guarded tick route; production branch + /promote-production; hosted PG provider | 5 | **DEC-033** — provider pick **OPEN** (owner/Eric; money + lead time; phase long pole). Fires DEC-020/023/S022. [#75](https://github.com/mobiustripper42/muster/issues/75) |
+| 5.2 | **Production auth path** — prod-minted operator magic link; /crew/dev-link stays 404; crew via DEC-030 relay | 3 | **DEC-034**; partially resolves #70. Email provider rejected. Verifies after 5.1. [#76](https://github.com/mobiustripper42/muster/issues/76) |
+| 5.3 | **Vessel-local time** — one-seam wall-clock→instant via tenant IANA tz + `Intl`; localize render | 5 | **DEC-032** (revises DEC-022). No DDL/dep. #70 gate item; gates 5.4 real data. Store-instants rejected. [#77](https://github.com/mobiustripper42/muster/issues/77) |
+| 5.4 | **Xola import surface** `/admin/import` — upload→preview/validate→importReservations+formShifts→board live | 8 | **DEC-035**; first upload surface (security pass). Needs 5.3 for real data. [#73](https://github.com/mobiustripper42/muster/issues/73) |
+| 5.R | **Pilot weekend runbook** — one page seed→import→tick→outbox→triage + pilot-only warning | 2 | Replaces #68 in-phase (#68 defers post-pilot). Build last. [#78](https://github.com/mobiustripper42/muster/issues/78) |
+| 5.5 | **e2e harness** — Playwright over crew+admin flows | 5 | **Non-gating, first to cut.** [#65](https://github.com/mobiustripper42/muster/issues/65) |
+
+**Phase 5 total: 28 pts** (gating for the weekend: 5.1–5.4 + 5.R = 23 pts; 5.5 e2e is the fast-follow/cut
+surface). #68 (full operator manual) + #70's Twilio / single-operator tells stay open past this phase
+by design. New decisions: **DEC-032** (timezone), **DEC-033** (deploy/provider), **DEC-034** (auth),
+**DEC-035** (import) — all proposed 2026-06-12, confirmed at build.
+
+## Phase 6: Pass D — Progressive commitment (soft-hold + staged horizons)
 
 The anxiety-reducer: bank crew willingness weeks out via a `Held` seat tier and earlier *soft*
 horizons converging on the hard confirm. Rides existing rails (data fields reserved in Phase 0/1).
@@ -223,6 +249,6 @@ the **thickening passes**, not the slice. Reference before any scope-cut convers
 
 | Task | Why it's cuttable | Defer to |
 |------|------------------|---------|
-| Pass D (Phase 5) | Soft-hold is an anxiety-reducer, not load-bearing; the single-horizon slice works without it | post-slice, only after a real weekend |
+| Pass D (Phase 6) | Soft-hold is an anxiety-reducer, not load-bearing; the single-horizon slice works without it | post-slice, only after a real weekend |
 | Pass C bits (split/merge, bulk lock, warming view) | Single-item versions cover the pilot | when friction appears |
 | Write-back sheet (DEC-011) | Unnecessary if the CSV export carries guest detail (decide at M1) | skip unless M1 says otherwise |

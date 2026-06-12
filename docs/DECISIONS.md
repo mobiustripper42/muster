@@ -941,6 +941,44 @@ needs tuning (the number, not the definition).
 
 ---
 
+## DEC-032: Vessel-local time — wall-clock storage + one tenant timezone, NOT stored instants
+
+**Status:** Proposed (Phase 5 / 5.3) — @architect 2026-06-12; confirm at build.
+
+**Decision (proposed):** Times stay stored as **vessel-local wall-clock** (`Event.date`/`Event.time` already are — the vessel-day shift grouping depends on it). Add **one tenant-config IANA timezone** (`America/Los_Angeles` for BrewBoat; code constant now, tenant data later — DEC-001 posture, like `STAFFING_HORIZON_LEAD_DAYS`). Convert wall-clock→instant at the **single seam** that currently interprets it as UTC (`src/builder/derive.ts` `eventStart`, ~L83) via Node `Intl` (DST-correct, **no new dependency**), and render through that tz in `app/lib/format.ts`. Audit every formatter + stray `new Date(<event string>)` + the outbox ask body (carries times).
+
+**Rejected:** "store true instants" — it breaks the vessel-day grouping model and forces a DDL migration; the one-seam conversion achieves correctness without it. **Why it matters:** DEC-022's "render everything UTC" v1 simplification shows a Pacific 6:50 AM departure as "1:50 PM" — wrong on the exact surface (the shift card) whose job is call-vs-departure clarity. Revises DEC-022. Gate for real Xola data (5.4). No DDL, no port change.
+
+---
+
+## DEC-033: Hosted deploy — provider pick (OPEN), Vercel topology, `tick` cron, `production` branch
+
+**Status:** Proposed (Phase 5 / 5.1) — @architect 2026-06-12. **Provider sub-decision OPEN (owner/Eric — money + account lead time).**
+
+**Decision (proposed):** First hosted deploy — fires the deferred triggers: DEC-020 (host deferred to "first task needing a real URL" — crew phones need one), DEC-023 (wire the `tick` cron caller at first deploy), DEC-S022 (`production` branch adopts here). Next app on **Vercel** (`next build --webpack`, DEC-020); a **CRON_SECRET-guarded cron route** calls `tick` on a schedule (`now` injected) so the engine self-advances unattended — without it a deployed Muster never ticks, failing "no babysitting"; `production` branch + `/promote-production` stand up per DEC-S022.
+
+**OPEN — hosted Postgres provider:** candidates Supabase (CLAUDE.md-named candidate, *not adopted*), Neon, Railway, etc. Owner decision (cost + account lead time) — **the phase's long pole; decide before 5.1 builds.** The in-memory adapter stays as the test substrate (DEC-DATA-1). The schema is plain Postgres DDL — vendor-agnostic behind the port.
+
+---
+
+## DEC-034: Production auth path — operator link mint, dev-link stays 404, NO email provider
+
+**Status:** Proposed (Phase 5 / 5.2) — @architect 2026-06-12; confirm at build.
+
+**Decision (proposed):** The operator signs in to the deployed app via a **prod-minted magic link** (a bootstrap/mint script against the prod DB, or a one-time env-seeded link) — `/crew/dev-link` keeps its hard `NODE_ENV==='production'` **404**. **Crew** links need no new work: they already flow through the DEC-030 outbox relay. Resolves the "no production auth path" tell of #70 (the Twilio swap + single-operator constant tells stay deferred — this is a *hosted pilot*, not production).
+
+**Rejected:** an email/magic-link **delivery provider** — fails the dependency bar (the relay + a mint script get there with what we have) and it's a vendor pick the pilot doesn't need.
+
+---
+
+## DEC-035: Xola import surface — import→formShifts chaining, re-import idempotency, upload security
+
+**Status:** Proposed (Phase 5 / 5.4, #73) — @architect 2026-06-12; confirm at build (@architect + security pass in-PR).
+
+**Decision (proposed):** Operator-facing `/admin/import` (admin-session-gated, 375px): upload `.xlsx` → **preview + validate** (unmapped products quarantined via `product-map.ts`, bad dates/missing fields surfaced) → confirm → `importReservations` (events + reservations) **then `formShifts`** (shifts + seats) so the board is live immediately. **Open at build:** re-import semantics for an overlapping week (upsert vs dupe — needs a rule); upload security posture (first file-upload surface — size/sheet/scope limits, no formula eval). Gated on DEC-032 (real Pacific times must render correctly before real data reaches crew). #73.
+
+---
+
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)
 
 These are deferred by design. Each names an owner and a trigger. **Consult @architect (and the named

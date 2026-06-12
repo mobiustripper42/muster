@@ -855,16 +855,18 @@ Twilio, no inbound webhook.** The binding mechanics:
    without consume, pure reads) and renders a "Tap to sign in" button; the **POST** consumes
    (single-use CAS), mints the session, 303-redirects. A bot can render the page forever; only the
    human's tap spends the token.
-5. **Single-click Send — the one `'use client'` exception (DEC-026).** One tap on **Send**
-   `flushSync`s the optimistic flip to a white **Resend** + a "sent · &lt;time&gt;" line (committed
-   to the DOM first), fires `recordSent` (no-redirect, no-revalidate server action), then opens the
-   `sms:` composer via `window.location`. It's a `<button>`, NOT an `<a href="sms:">`: the anchor's
-   default navigation to the `sms:` URI races — and on desktop cancels — the React commit + the
-   server call, so the flip never paints; owning the order (paint → record → hand off) fixes it.
-   `components/outbox/relay-send.tsx` is the deliberate lone client island; everything else (cards,
-   sort, inline In/Out, page) stays server-rendered. "Sent" means "you fired the composer," not
-   proof of delivery — **Resend** re-opens it as the recovery. No separate un-send (the earlier
-   two-tap mark-sent / move-back toggle was replaced — the operator asked for one tap).
+5. **Single-click Send — the one `'use client'` exception (DEC-026), progressively enhanced.**
+   Send is an `<a href="sms:…">`: the composer opens via the NATIVE anchor even with no JS (the
+   graceful baseline — Send never fully dead-ends). The `onClick` is the enhancement: it fires
+   `recordSent` (no-redirect, no-revalidate server action) and optimistically flips the card to a
+   white **Resend** + a "sent · &lt;time&gt;" line. The `sms:` scheme doesn't unload the page, so
+   the `setState` commits alongside the native hand-off. `components/outbox/relay-send.tsx` is the
+   deliberate lone client island; everything else (cards, sort, inline In/Out, page) stays
+   server-rendered. "Sent" means "you fired the composer," not proof of delivery — **Resend**
+   re-opens it as the recovery. No separate un-send (the earlier two-tap mark-sent / move-back
+   toggle was replaced — the operator asked for one tap). *Note: being the app's first client
+   component, it needs a `next dev` restart to hydrate after a cold add — webpack dev HMR doesn't
+   wire a brand-new client boundary into a running server.*
 6. **Channel wiring lives at the EDGE.** The fire paths surface their asks as return values
    (`TickResult.firedAsks`, `EscalateResult.asks`, `LeanResult.ask`, `BailOutcome.reAsks`) and the
    edge callers (app actions, the tick trigger) forward them via `forwardAsks` → the injected

@@ -54,10 +54,10 @@ export async function recordSent(entryId: string): Promise<{ ok: boolean }> {
       status: "sent",
       sentAt: new Date().toISOString(),
     });
-    // Mark the worklist stale so a later navigation re-sorts; no redirect — the
-    // island already flipped this card optimistically and the `sms:` anchor is
-    // mid-handoff to the composer.
-    revalidatePath(BACK);
+    // No redirect AND no revalidate: the island already flipped this card
+    // optimistically. A revalidate here would refetch the tree mid-click and
+    // could stomp that optimistic flip; the server truth shows on the next
+    // natural load (the card moves to the Sent section then).
     return { ok: true };
   } catch {
     return { ok: false };

@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.5.6] - 2026-06-12
+- PR #71: 4.7 fills-by deadline (DEC-031): name the escalation threshold, render it (closes #59)
+
 ## [0.5.5] - 2026-06-12
 - PR #69: Pilot channel: web-link relay + operator outbox (4.1, closes #53)
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.6.0] - 2026-06-12 — Phase 4
+- 28 pts shipped across 3 sessions (burst — ~1.8d span; DEC-S026 throughput model)
+- See `docs/RETROSPECTIVES.md` for the full retro
+
 ## [0.5.6] - 2026-06-12
 - PR #71: 4.7 fills-by deadline (DEC-031): name the escalation threshold, render it (closes #59)
 

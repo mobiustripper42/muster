@@ -1,6 +1,6 @@
 {
   "name": "muster",
-  "version": "0.5.6",
+  "version": "0.6.0",
   "description": "Crew engine for small-passenger-vessel operators",
   "type": "module",
   "private": true,

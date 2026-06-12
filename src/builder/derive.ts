@@ -99,6 +99,19 @@ export function earliestScheduledStart(events: Event[]): Date | null {
 }
 
 /**
+ * Every scheduled departure among `events`, earliest first — the trip times a
+ * multi-trip shift runs in a day (#59). `earliestScheduledStart` is `[0]` of
+ * this; the board renders the whole list so a two-trip day shows both, not just
+ * the first departure. Empty when nothing is scheduled.
+ */
+export function scheduledStarts(events: Event[]): Date[] {
+  return events
+    .filter((e) => e.status === "scheduled")
+    .map(eventStart)
+    .sort((a, b) => a.getTime() - b.getTime());
+}
+
+/**
  * Staffing-horizon instant for a set of events — the earliest scheduled event
  * minus `leadDays`. Pure; derived, never stored (DEC-022). `null` when there's
  * no scheduled event to anchor to (a cancelled-out or empty group).
@@ -122,6 +135,54 @@ export function staffingHorizonFor(
   return staffingHorizonFromEvents(
     allEvents.filter((e) => ids.has(e.id)),
     leadDays,
+  );
+}
+
+// ── Fill deadline ("fills by", DEC-031) ──────────────────────────────────────
+
+/**
+ * Default fill-deadline lead, in **hours** before the trip — the moment an
+ * unfilled shift stops being the engine's problem and becomes a human one
+ * (SPEC §2.4/§2.5 "fills by"). This is the **same instant** the At-Risk board
+ * boards a willingness-exhausted shift on (`at-risk-board` re-exports this as
+ * `EXHAUSTED_THRESHOLD_HOURS`), by design (DEC-031): the displayed deadline IS
+ * the escalation instant, so the two can't drift. Distinct from — and the
+ * *closing* counterpart to — the staffing horizon, which is the window's
+ * *opening* (Pending→Filling, DEC-022). Tune-later code constant; tenant-config
+ * later, like `STAFFING_HORIZON_LEAD_DAYS`.
+ */
+export const FILL_DEADLINE_HOURS = 48;
+
+const HOUR_MS = 60 * 60 * 1000;
+
+/**
+ * The fill deadline for a set of events — the earliest scheduled departure minus
+ * `hours`. Pure; derived, never stored (DEC-031, DEC-022's rationale verbatim —
+ * a stored deadline goes stale when events reschedule). `null` when no scheduled
+ * event anchors the shift; rendered as absence, never faked (the P3 line).
+ * Returns a past instant when the deadline has passed — callers render that
+ * honestly as overdue, never clamped (a willingness-exhausted shift boards only
+ * *after* this passes, by construction).
+ */
+export function fillDeadlineFromEvents(
+  events: Event[],
+  hours: number = FILL_DEADLINE_HOURS,
+): Date | null {
+  const start = earliestScheduledStart(events);
+  if (start === null) return null;
+  return new Date(start.getTime() - hours * HOUR_MS);
+}
+
+/** Fill deadline for a shift, resolving its `eventIds` against `allEvents`. */
+export function fillDeadlineFor(
+  shift: Shift,
+  allEvents: Event[],
+  hours: number = FILL_DEADLINE_HOURS,
+): Date | null {
+  const ids = new Set(shift.eventIds);
+  return fillDeadlineFromEvents(
+    allEvents.filter((e) => ids.has(e.id)),
+    hours,
   );
 }
 

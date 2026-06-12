@@ -47,11 +47,12 @@ export default async function AtRiskBoard({
   if (!subject || subject.kind !== "admin") return <SignedOut />;
 
   const repo = getRepo();
+  const now = new Date();
   let rows: AtRiskRow[];
   let vms: RiskRowVM[];
   try {
-    rows = await deriveAtRiskBoard(repo, new Date());
-    vms = await buildVMs(rows);
+    rows = await deriveAtRiskBoard(repo, now);
+    vms = await buildVMs(rows, now);
   } catch {
     return (
       <Shell width="3xl">
@@ -138,7 +139,8 @@ export default async function AtRiskBoard({
 }
 
 /** Resolve ids → names and format the row facts the component renders. */
-async function buildVMs(rows: AtRiskRow[]): Promise<RiskRowVM[]> {
+async function buildVMs(rows: AtRiskRow[], now: Date): Promise<RiskRowVM[]> {
+  const nowMs = now.getTime();
   const repo = getRepo();
   const [vessels, roles, crew] = await Promise.all([
     repo.listVessels(),
@@ -169,7 +171,10 @@ async function buildVMs(rows: AtRiskRow[]): Promise<RiskRowVM[]> {
       shiftId: String(r.shiftId),
       vesselName: vesselName.get(r.vesselId) ?? String(r.vesselId),
       dateLabel: fmtDate(r.date),
-      departLabel: r.tripStart ? `departs ${fmtTime(r.tripStart)}` : null,
+      departs: r.tripStarts.map((t) => `departs ${fmtTime(t)}`),
+      fillsBy: r.fillsBy
+        ? { label: fmtDeadline(r.fillsBy), overdue: r.fillsBy.getTime() < nowMs }
+        : null,
       toTrip: r.hoursToTrip === null ? null : ttLabel(r.hoursToTrip),
       tight: r.hoursToTrip !== null && r.hoursToTrip < TIGHT_HOURS,
       flag,
@@ -208,6 +213,18 @@ function fmtDate(iso: string): string {
 
 function fmtTime(d: Date): string {
   return d.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "UTC", // clock times are UTC by DEC-022's v1 simplification
+  });
+}
+
+/** "Mon Jun 15, 1:00 PM" — the fills-by deadline as a dated fact (DEC-031). */
+function fmtDeadline(d: Date): string {
+  return d.toLocaleString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
     hour: "numeric",
     minute: "2-digit",
     timeZone: "UTC", // clock times are UTC by DEC-022's v1 simplification

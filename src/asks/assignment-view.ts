@@ -12,9 +12,10 @@
  * less than the board is closed here (#54).
  *
  * Header facts for the cockpit (#54): trips + pax (booked only, like the shift
- * card), `tripStart` and the staffing `horizon` (DEC-022) — both **facts**, not a
- * "fills by" deadline. The named fill-deadline concept is deliberately NOT faked
- * here; it lands with #59 (DEC-027 §4).
+ * card), `tripStart`, the staffing `horizon` (DEC-022), and the `fillsBy`
+ * deadline (DEC-031) — the named fill-deadline concept, now real (#59), bound to
+ * the same constant the At-Risk board boards on, so the cockpit and the board
+ * read the same instant.
  */
 
 import type { Seat } from "../domain/entities.js";
@@ -22,6 +23,7 @@ import type { CrewMemberId, RoleTypeId, SeatId, ShiftId } from "../domain/ids.js
 import type { Repository } from "../ports/repository.js";
 import {
   earliestScheduledStart,
+  fillDeadlineFromEvents,
   staffingHorizonFromEvents,
 } from "../builder/derive.js";
 import { rankedEligible } from "./ask-loop.js";
@@ -80,6 +82,12 @@ export interface AssignmentView {
   tripStart: Date | null;
   /** The staffing horizon (DEC-022) — when asks start, NOT a fill deadline. */
   horizon: Date | null;
+  /**
+   * The "fills by" deadline (DEC-031): `tripStart − FILL_DEADLINE_HOURS`, the
+   * instant this shift becomes a human problem. `null` when no event anchors the
+   * shift; may be past (render as overdue, not clamped).
+   */
+  fillsBy: Date | null;
   seats: SeatCardView[];
 }
 
@@ -230,6 +238,7 @@ export async function buildAssignmentView(
     paxTotal: trips.reduce((sum, t) => sum + t.pax, 0),
     tripStart: earliestScheduledStart(events),
     horizon: staffingHorizonFromEvents(events),
+    fillsBy: fillDeadlineFromEvents(events),
     seats,
   };
 }

@@ -224,6 +224,26 @@ export default async function ShiftCockpit({
               })}
             </span>
           )}
+          {view.fillsBy && (
+            <span
+              className={`text-xs ${
+                view.fillsBy.getTime() < now.getTime()
+                  ? "font-semibold text-bad"
+                  : "text-muted"
+              }`}
+            >
+              fills by{" "}
+              {view.fillsBy.toLocaleString("en-US", {
+                weekday: "short",
+                month: "short",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                timeZone: "UTC",
+              })}
+              {view.fillsBy.getTime() < now.getTime() ? " · overdue" : ""}
+            </span>
+          )}
         </div>
       </header>
 

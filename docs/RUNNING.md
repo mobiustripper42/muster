@@ -85,6 +85,14 @@ npm run db:seed:atrisk   # 4 board + 2 cockpit scenarios, trips anchored to NOW 
    (*⊘ Gus's credential lapses before the trip*), **Mash Tun** (*Lacking crew · none eligible*,
    "not yet worked — flagged by the oracle" + the "nobody left in the eligible pool" line, no Lean
    buttons).
+2a. **Fills-by deadline + multi-trip (#59, DEC-031):** in each row's right column, under the
+   countdown, a **`fills by <day, time>`** line. **Firkin** and **Tidewater** (trips inside 48h) show
+   it red with **`· overdue`** — a willingness/eligibility-exhausted shift boards only *after* its
+   fills-by passes, so overdue there is correct, not a bug. **Growler** and **Mash Tun** (trips ~4–5d
+   out) show a future fills-by in grey, no "overdue". **Tidewater also shows TWO `departs …` lines**
+   (11-ish AM and ~2 PM — it's a two-trip day); the other rows show one. (Exact clock times shift
+   each re-seed since trips anchor to NOW; the *shape* — two lines on Tidewater, red-overdue on the
+   <48h rows — is the check.)
 3. Tap **↗ Nudge Marisol** (Firkin row) → green *"Last action: nudged Marisol — asked, not yet
    filled"* and the Firkin row is **gone** — its ask is now in flight, which is the engine working,
    not a bug. (`/crew/dev-link?crew=crew-ar-sub` shows Marisol's In/Out card if you want the loop.)
@@ -96,9 +104,11 @@ npm run db:seed:atrisk   # 4 board + 2 cockpit scenarios, trips anchored to NOW 
 Same seed. The cockpit is each board row's click-through, plus two off-board scenarios by URL:
 
 1. Open **http://mill-dev:3000/admin/shift/shift-ar-claimed** → header shows trips + a mono
-   **departs in Xd Xh** countdown; Petra's seat card is amber **Claimed** with *accepted — awaiting
-   your confirm*. Tap **Confirm into seat** → green *"Petra confirmed into the seat"*, card turns
-   green **Confirmed** with ✆ Call / ✉ Text links, badge flips to **Crewed**.
+   **departs in Xd Xh** countdown, plus a **`fills by <day, time>`** line under the staffing horizon
+   (#59, DEC-031 — grey here since this trip is ~3d out; red `· overdue` inside 48h). Petra's seat
+   card is amber **Claimed** with *accepted — awaiting your confirm*. Tap **Confirm into seat** →
+   green *"Petra confirmed into the seat"*, card turns green **Confirmed** with ✆ Call / ✉ Text
+   links, badge flips to **Crewed**.
 2. On any cockpit, tap **Warming signals →** (bottom) → the warming panel (#55) lists **Kettle**
    (*departs in ~4d · 1 seat unfilled · 50% answered · 1 silent*) — trending, deliberately NOT on
    the board. Tap its link → Kettle's cockpit: Dale *declined*, Tessa *👻 silent*, both nudgeable.

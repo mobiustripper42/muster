@@ -70,17 +70,22 @@ import { rankedEligible } from "../asks/ask-loop.js";
 import { mmcValidOnDate } from "../oracle/eligibility.js";
 import {
   earliestScheduledStart,
+  fillDeadlineFromEvents,
   resolveShiftState,
+  scheduledStarts,
   staffingHorizonFromEvents,
+  FILL_DEADLINE_HOURS,
   STAFFING_HORIZON_LEAD_DAYS,
 } from "../builder/derive.js";
 
 /**
  * How close (hours before trip start) a willingness-exhausted shift must be to
- * land on the board. The DEC-TBD "'Exhausted' threshold" knob — keep the bar
- * high (SPEC §2.5), tune later. Eligibility-exhaustion ignores this entirely.
+ * land on the board. **Definitionally the fill deadline** (DEC-031): one
+ * constant, so the row's rendered "fills by" IS the instant this shift boards —
+ * the two can't drift. Keep the bar high (SPEC §2.5), tune later.
+ * Eligibility-exhaustion ignores this entirely.
  */
-export const EXHAUSTED_THRESHOLD_HOURS = 48;
+export const EXHAUSTED_THRESHOLD_HOURS = FILL_DEADLINE_HOURS;
 
 /**
  * Urgency bonus for a regression row, in time-term units (hours). A regression
@@ -124,6 +129,20 @@ export interface AtRiskRow {
   gaps: RoleGap[];
   /** Earliest scheduled departure; null when no event anchors the shift. */
   tripStart: Date | null;
+  /**
+   * Every scheduled departure, earliest first (#59) — a multi-trip day carries
+   * both/all times, where `tripStart` is just `[0]`. Empty when no event anchors
+   * the shift.
+   */
+  tripStarts: Date[];
+  /**
+   * The "fills by" deadline (DEC-031): `tripStart − FILL_DEADLINE_HOURS`, the
+   * instant this shift becomes a human problem — definitionally the willingness-
+   * exhaustion boarding instant. `null` when no event anchors the shift (render
+   * as absence, never faked). May be **past** — render as overdue, never clamped
+   * (an exhaustion row boards only after it passes).
+   */
+  fillsBy: Date | null;
   /** The staffing horizon (DEC-022); null when no event anchors the shift. */
   horizon: Date | null;
   /** Hours from `now` to `tripStart`; null when `tripStart` is null. */
@@ -187,6 +206,10 @@ export async function deriveAtRiskBoard(
     const events = allEvents.filter((e) => ids.has(e.id));
     const horizon = staffingHorizonFromEvents(events, leadDays);
     const tripStart = earliestScheduledStart(events);
+    const tripStarts = scheduledStarts(events);
+    // Same `deadlineHours` the willingness-exhaustion route boards on below, so
+    // the rendered "fills by" IS that boarding instant (DEC-031).
+    const fillsBy = fillDeadlineFromEvents(events, deadlineHours);
     const hoursToTrip =
       tripStart === null
         ? null
@@ -302,6 +325,8 @@ export async function deriveAtRiskBoard(
       reasons,
       gaps: roleGaps(gapSeats),
       tripStart,
+      tripStarts,
+      fillsBy,
       horizon,
       hoursToTrip,
       trail,

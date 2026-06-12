@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.5.5] - 2026-06-12
+- PR #69: Pilot channel: web-link relay + operator outbox (4.1, closes #53)
+
 ## [0.5.4] - 2026-06-12
 - PR #67: Builder 'changed since reviewed' nudge (4.6, closes #58)
 

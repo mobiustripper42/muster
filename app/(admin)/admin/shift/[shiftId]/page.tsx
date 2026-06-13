@@ -8,6 +8,7 @@ import { deriveWarming } from "@core/admin/warming.js";
 import { asId } from "@core/domain/ids.js";
 import { resolveShiftStateOnRead } from "@core/builder/tick.js";
 import { changedSinceReviewed } from "@core/builder/lock.js";
+import { TENANT_TIMEZONE } from "@core/config/tenant.js";
 import {
   SeatCard,
   type CandidateVM,
@@ -222,6 +223,7 @@ export default async function ShiftCockpit({
                 weekday: "short",
                 month: "short",
                 day: "numeric",
+                timeZone: TENANT_TIMEZONE,
               })}
             </span>
           )}
@@ -330,10 +332,13 @@ function ttLabel(h: number): string {
 }
 
 function fmtDate(iso: string): string {
-  return new Date(iso + "T00:00:00").toLocaleDateString("en-US", {
+  // Date-only label: UTC both ends so the stored vessel-local date shows
+  // verbatim regardless of server zone (DEC-032).
+  return new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", {
     weekday: "short",
     month: "short",
     day: "numeric",
+    timeZone: "UTC",
   });
 }
 

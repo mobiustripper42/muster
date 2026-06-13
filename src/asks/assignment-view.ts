@@ -26,6 +26,7 @@ import {
   fillDeadlineFromEvents,
   staffingHorizonFromEvents,
 } from "../builder/derive.js";
+import { TENANT_TIMEZONE } from "../config/tenant.js";
 import { rankedEligible } from "./ask-loop.js";
 
 /** A candidate's ask status for one seat (§2.4 "ask status" vocabulary). */
@@ -126,6 +127,7 @@ export async function buildAssignmentView(
   repo: Repository,
   shiftId: ShiftId,
   now: Date,
+  tz: string = TENANT_TIMEZONE,
 ): Promise<AssignmentView | null> {
   const shift = await repo.getShift(shiftId);
   if (!shift) return null;
@@ -236,9 +238,9 @@ export async function buildAssignmentView(
     badge: shift.state,
     trips,
     paxTotal: trips.reduce((sum, t) => sum + t.pax, 0),
-    tripStart: earliestScheduledStart(events),
-    horizon: staffingHorizonFromEvents(events),
-    fillsBy: fillDeadlineFromEvents(events),
+    tripStart: earliestScheduledStart(events, tz),
+    horizon: staffingHorizonFromEvents(events, undefined, tz),
+    fillsBy: fillDeadlineFromEvents(events, undefined, tz),
     seats,
   };
 }

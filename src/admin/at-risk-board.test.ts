@@ -181,7 +181,9 @@ describe("membership — core (willingness-exhaustion)", () => {
     const { shiftId, seatIds } = await addShift("w6", atBound, [{}]);
     await broadcastAllDecline(seatIds[0]!);
 
-    const rows = await deriveAtRiskBoard(repo, T0);
+    // tz: "UTC" — the helper mints events from a UTC Date, so UTC interpretation
+    // keeps the boundary exactly EXHAUSTED_THRESHOLD_HOURS from T0 (DEC-032).
+    const rows = await deriveAtRiskBoard(repo, T0, { tz: "UTC" });
     expect(rows.map((r) => r.shiftId)).toEqual([shiftId]);
   });
 
@@ -345,7 +347,7 @@ describe("fills-by deadline + multi-trip times (DEC-031, #59)", () => {
     await addCrew("ann");
     await broadcastAllDecline(seatId);
 
-    const row = (await deriveAtRiskBoard(repo, T0))[0]!;
+    const row = (await deriveAtRiskBoard(repo, T0, { tz: "UTC" }))[0]!;
     expect(row.tripStarts.map((d) => d.getTime())).toEqual([
       t1.getTime(),
       t2.getTime(),

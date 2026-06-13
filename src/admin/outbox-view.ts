@@ -20,6 +20,7 @@
 import type { OutboxEntry, OutboxStatus } from "../domain/entities.js";
 import type { Repository } from "../ports/repository.js";
 import { earliestScheduledStart } from "../builder/derive.js";
+import { TENANT_TIMEZONE } from "../config/tenant.js";
 
 /** Why this relay exists — derived from the seat's prior ask rounds. */
 export interface OutboxWhy {
@@ -79,7 +80,9 @@ function byTightness(a: OutboxCardView, b: OutboxCardView): number {
 export async function buildOutboxView(
   repo: Repository,
   now: Date,
+  opts?: { tz?: string },
 ): Promise<OutboxView> {
+  const tz = opts?.tz ?? TENANT_TIMEZONE;
   const entries = await repo.listOutboxEntries();
   const [crew, vessels, roles] = await Promise.all([
     repo.listCrewMembers(),
@@ -106,7 +109,7 @@ export async function buildOutboxView(
       const event = await repo.getEvent(eventId);
       if (event) events.push(event);
     }
-    const tripStart = earliestScheduledStart(events);
+    const tripStart = earliestScheduledStart(events, tz);
 
     cards.push({
       entryId: entry.id,

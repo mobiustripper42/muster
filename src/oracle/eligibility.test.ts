@@ -64,7 +64,8 @@ describe("hasRating", () => {
 });
 
 describe("mmcValidOnDate", () => {
-  const tripDate = new Date("2026-07-01");
+  // Date-only ISO string (DEC-032: tz-invariant string comparison, no Date).
+  const tripDate = "2026-07-01";
 
   it("passes when an MMC expires on or after the trip date", () => {
     expect(mmcValidOnDate([cred("MMC", "2026-12-31")], tripDate).passed).toBe(true);

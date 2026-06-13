@@ -41,6 +41,7 @@ import {
   staffingHorizonFromEvents,
   STAFFING_HORIZON_LEAD_DAYS,
 } from "../builder/derive.js";
+import { TENANT_TIMEZONE } from "../config/tenant.js";
 import { deriveAtRiskBoard } from "./at-risk-board.js";
 
 const MS_PER_HOUR = 60 * 60 * 1000;
@@ -71,9 +72,10 @@ export interface WarmingRow {
 export async function deriveWarming(
   repo: Repository,
   now: Date,
-  opts?: { leadDays?: number; deadlineHours?: number },
+  opts?: { leadDays?: number; deadlineHours?: number; tz?: string },
 ): Promise<WarmingRow[]> {
   const leadDays = opts?.leadDays ?? STAFFING_HORIZON_LEAD_DAYS;
+  const tz = opts?.tz ?? TENANT_TIMEZONE;
 
   // The board's actual claim — membership single-sourced (DEC-026), subtracted.
   const onBoard = new Set(
@@ -89,8 +91,8 @@ export async function deriveWarming(
 
     const ids = new Set(shift.eventIds);
     const events = allEvents.filter((e) => ids.has(e.id));
-    const tripStart = earliestScheduledStart(events);
-    const horizon = staffingHorizonFromEvents(events, leadDays);
+    const tripStart = earliestScheduledStart(events, tz);
+    const horizon = staffingHorizonFromEvents(events, leadDays, tz);
     // Pre-horizon shifts aren't being worked yet; event-less shifts have
     // nothing to trend toward. Departed trips are the past, not a trend.
     if (tripStart === null || horizon === null) continue;

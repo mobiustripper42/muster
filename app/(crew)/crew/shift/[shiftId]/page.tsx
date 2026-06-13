@@ -30,10 +30,13 @@ const sms = (p: string) => `sms:${p.replace(/[^0-9+]/g, "")}`;
 const mapHref = (q: string) => `https://maps.google.com/?q=${encodeURIComponent(q)}`;
 
 function fmtDate(iso: string): string {
-  return new Date(iso + "T00:00:00").toLocaleDateString("en-US", {
+  // Date-only label: parse + format in UTC so the stored vessel-local date shows
+  // verbatim regardless of server zone (DEC-032).
+  return new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", {
     weekday: "long",
     month: "short",
     day: "numeric",
+    timeZone: "UTC",
   });
 }
 

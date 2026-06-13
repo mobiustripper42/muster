@@ -15,6 +15,7 @@ import type { Event, Seat, Shift, Vessel } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import type { ShiftId } from "../domain/ids.js";
 import type { ShiftState } from "../domain/states.js";
+import { TENANT_TIMEZONE, zonedWallClockToInstant } from "../config/tenant.js";
 
 /**
  * Required seats for a shift, derived by iterating the vessel's manning list.
@@ -74,13 +75,15 @@ export const STAFFING_HORIZON_LEAD_DAYS = 7;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
- * The instant a single scheduled event "starts", from its `date` + `time`.
- * v1 simplification (DEC-022): clock times are treated as **UTC** — Muster
- * carries no timezone yet, and every other date in the core is ISO text handled
- * the same way. Revisit when vessel-local time matters operationally.
+ * The instant a single scheduled event "starts", from its vessel-local `date` +
+ * `time`. Per **DEC-032** the wall-clock is interpreted in the vessel timezone
+ * (`tz`, default `TENANT_TIMEZONE`) — DST-correct — so all downstream math
+ * against a real `now` is right. (Supersedes DEC-022's "treat as UTC" v1
+ * simplification; pass `tz: "UTC"` to recover the old behaviour, which the engine
+ * tests do to keep fixtures deterministic.)
  */
-function eventStart(e: Event): Date {
-  return new Date(`${e.date}T${e.time}:00.000Z`);
+function eventStart(e: Event, tz: string = TENANT_TIMEZONE): Date {
+  return zonedWallClockToInstant(e.date, e.time, tz);
 }
 
 /**
@@ -88,11 +91,14 @@ function eventStart(e: Event): Date {
  * anchors to, and the "trip start" the At-Risk board counts down to (#41).
  * `null` when there's no scheduled event (a cancelled-out or empty group).
  */
-export function earliestScheduledStart(events: Event[]): Date | null {
+export function earliestScheduledStart(
+  events: Event[],
+  tz: string = TENANT_TIMEZONE,
+): Date | null {
   const scheduled = events.filter((e) => e.status === "scheduled");
   if (scheduled.length === 0) return null;
   const earliest = scheduled.reduce(
-    (min, e) => Math.min(min, eventStart(e).getTime()),
+    (min, e) => Math.min(min, eventStart(e, tz).getTime()),
     Infinity,
   );
   return new Date(earliest);
@@ -104,10 +110,13 @@ export function earliestScheduledStart(events: Event[]): Date | null {
  * this; the board renders the whole list so a two-trip day shows both, not just
  * the first departure. Empty when nothing is scheduled.
  */
-export function scheduledStarts(events: Event[]): Date[] {
+export function scheduledStarts(
+  events: Event[],
+  tz: string = TENANT_TIMEZONE,
+): Date[] {
   return events
     .filter((e) => e.status === "scheduled")
-    .map(eventStart)
+    .map((e) => eventStart(e, tz))
     .sort((a, b) => a.getTime() - b.getTime());
 }
 
@@ -119,8 +128,9 @@ export function scheduledStarts(events: Event[]): Date[] {
 export function staffingHorizonFromEvents(
   events: Event[],
   leadDays: number = STAFFING_HORIZON_LEAD_DAYS,
+  tz: string = TENANT_TIMEZONE,
 ): Date | null {
-  const start = earliestScheduledStart(events);
+  const start = earliestScheduledStart(events, tz);
   if (start === null) return null;
   return new Date(start.getTime() - leadDays * DAY_MS);
 }
@@ -130,11 +140,13 @@ export function staffingHorizonFor(
   shift: Shift,
   allEvents: Event[],
   leadDays: number = STAFFING_HORIZON_LEAD_DAYS,
+  tz: string = TENANT_TIMEZONE,
 ): Date | null {
   const ids = new Set(shift.eventIds);
   return staffingHorizonFromEvents(
     allEvents.filter((e) => ids.has(e.id)),
     leadDays,
+    tz,
   );
 }
 
@@ -167,8 +179,9 @@ const HOUR_MS = 60 * 60 * 1000;
 export function fillDeadlineFromEvents(
   events: Event[],
   hours: number = FILL_DEADLINE_HOURS,
+  tz: string = TENANT_TIMEZONE,
 ): Date | null {
-  const start = earliestScheduledStart(events);
+  const start = earliestScheduledStart(events, tz);
   if (start === null) return null;
   return new Date(start.getTime() - hours * HOUR_MS);
 }
@@ -178,11 +191,13 @@ export function fillDeadlineFor(
   shift: Shift,
   allEvents: Event[],
   hours: number = FILL_DEADLINE_HOURS,
+  tz: string = TENANT_TIMEZONE,
 ): Date | null {
   const ids = new Set(shift.eventIds);
   return fillDeadlineFromEvents(
     allEvents.filter((e) => ids.has(e.id)),
     hours,
+    tz,
   );
 }
 

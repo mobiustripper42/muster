@@ -184,7 +184,8 @@ describe("buildAssignmentView — cockpit additions (#54)", () => {
     const shift = (await repo.getShift(SHIFT))!;
     await repo.saveShift({ ...shift, eventIds: [e1, e2] });
 
-    const view = (await buildAssignmentView(repo, SHIFT, T0))!;
+    // tz: "UTC" — assert against UTC-interpreted instants (DEC-032).
+    const view = (await buildAssignmentView(repo, SHIFT, T0, "UTC"))!;
     expect(view.trips).toEqual([
       { departureTime: "13:00", pax: 5 },
       { departureTime: "15:00", pax: 0 },

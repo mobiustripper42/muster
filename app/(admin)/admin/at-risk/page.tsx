@@ -5,6 +5,7 @@ import type { CrewMemberId } from "@core/domain/ids.js";
 import { RiskRow, type RiskRowVM } from "../../../../components/at-risk/risk-row";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
+import { TENANT_TIMEZONE } from "@core/config/tenant.js";
 import { readSubject } from "../../../lib/auth";
 import { fmtDeadline } from "../../../lib/format";
 import { getRepo } from "../../../lib/repo";
@@ -205,10 +206,13 @@ async function buildVMs(rows: AtRiskRow[], now: Date): Promise<RiskRowVM[]> {
 }
 
 function fmtDate(iso: string): string {
-  return new Date(iso + "T00:00:00").toLocaleDateString("en-US", {
+  // Date-only label: UTC both ends so the stored vessel-local date shows
+  // verbatim regardless of server zone (DEC-032).
+  return new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", {
     weekday: "short",
     month: "short",
     day: "numeric",
+    timeZone: "UTC",
   });
 }
 
@@ -216,7 +220,7 @@ function fmtTime(d: Date): string {
   return d.toLocaleTimeString("en-US", {
     hour: "numeric",
     minute: "2-digit",
-    timeZone: "UTC", // clock times are UTC by DEC-022's v1 simplification
+    timeZone: TENANT_TIMEZONE, // vessel-local wall-clock (DEC-032)
   });
 }
 

@@ -146,6 +146,8 @@ export async function formShifts(
     const state = opts?.now
       ? resolveShiftState(seats, {
           now: opts.now,
+          // tz default-only by design (DEC-032): formShifts births state at the
+          // tenant zone; no per-call tz override needed until multi-tenant.
           horizon: staffingHorizonFromEvents(
             scheduled,
             opts.leadDays ?? STAFFING_HORIZON_LEAD_DAYS,

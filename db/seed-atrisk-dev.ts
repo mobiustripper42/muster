@@ -33,6 +33,7 @@
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
 import { asId } from "../src/domain/ids.js";
 import { logShiftBailed } from "../src/oracle/reliability-log.js";
+import { TENANT_TIMEZONE } from "../src/config/tenant.js";
 import { DEFAULT_DATABASE_URL } from "./migrate.js";
 
 const url = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
@@ -42,10 +43,24 @@ const TENANT = asId<"TenantId">("brewboat");
 const CAPTAIN = asId<"RoleTypeId">("role-captain");
 const ENGINEER = asId<"RoleTypeId">("role-engineer");
 
-// Trips relative to seed time — re-run to re-anchor.
+// Trips relative to seed time — re-run to re-anchor. Stored as **vessel-local**
+// wall-clock (DEC-032) so the board reads back the right hour and the trip is
+// exactly `hours` out (storing UTC would shift it by the Eastern offset).
 const at = (hours: number) => new Date(Date.now() + hours * 3600_000);
-const dateOf = (d: Date) => d.toISOString().slice(0, 10);
-const timeOf = (d: Date) => d.toISOString().slice(11, 16);
+const dateOf = (d: Date) =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: TENANT_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+const timeOf = (d: Date) =>
+  new Intl.DateTimeFormat("en-GB", {
+    timeZone: TENANT_TIMEZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(d);
 
 const MMC_GOOD = "2027-12-31";
 
@@ -94,7 +109,7 @@ async function shipShift(
     time: timeOf(tripAt),
     capacity: 12,
     status: "scheduled",
-    dock: "Pier 9, Lake Union, Seattle",
+    dock: "East Bank of the Flats at Canal Basin Park",
   });
   // A multi-trip day (#59): more scheduled departures on the SAME shift (one
   // boat, one day, one crew requirement — the manning is per-vessel). The board
@@ -108,7 +123,7 @@ async function shipShift(
       time: timeOf(t),
       capacity: 12,
       status: "scheduled",
-      dock: "Pier 9, Lake Union, Seattle",
+      dock: "East Bank of the Flats at Canal Basin Park",
     });
   }
   await repo.saveShift({

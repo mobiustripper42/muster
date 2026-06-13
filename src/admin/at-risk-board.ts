@@ -77,6 +77,7 @@ import {
   FILL_DEADLINE_HOURS,
   STAFFING_HORIZON_LEAD_DAYS,
 } from "../builder/derive.js";
+import { TENANT_TIMEZONE } from "../config/tenant.js";
 
 /**
  * How close (hours before trip start) a willingness-exhausted shift must be to
@@ -184,10 +185,11 @@ function roleGaps(gapSeats: Seat[]): RoleGap[] {
 export async function deriveAtRiskBoard(
   repo: Repository,
   now: Date,
-  opts?: { leadDays?: number; deadlineHours?: number },
+  opts?: { leadDays?: number; deadlineHours?: number; tz?: string },
 ): Promise<AtRiskRow[]> {
   const leadDays = opts?.leadDays ?? STAFFING_HORIZON_LEAD_DAYS;
   const deadlineHours = opts?.deadlineHours ?? EXHAUSTED_THRESHOLD_HOURS;
+  const tz = opts?.tz ?? TENANT_TIMEZONE;
   const allEvents = await repo.listEvents();
   const rows: AtRiskRow[] = [];
 
@@ -204,12 +206,12 @@ export async function deriveAtRiskBoard(
 
     const ids = new Set(shift.eventIds);
     const events = allEvents.filter((e) => ids.has(e.id));
-    const horizon = staffingHorizonFromEvents(events, leadDays);
-    const tripStart = earliestScheduledStart(events);
-    const tripStarts = scheduledStarts(events);
+    const horizon = staffingHorizonFromEvents(events, leadDays, tz);
+    const tripStart = earliestScheduledStart(events, tz);
+    const tripStarts = scheduledStarts(events, tz);
     // Same `deadlineHours` the willingness-exhaustion route boards on below, so
     // the rendered "fills by" IS that boarding instant (DEC-031).
-    const fillsBy = fillDeadlineFromEvents(events, deadlineHours);
+    const fillsBy = fillDeadlineFromEvents(events, deadlineHours, tz);
     const hoursToTrip =
       tripStart === null
         ? null
@@ -248,14 +250,14 @@ export async function deriveAtRiskBoard(
     if (required.some((s) => s.state === "Bailed")) reasons.push("regression");
 
     // Credential-lapse on committed bodies — every shift, Crewed included.
-    // Same boundary as the oracle's gate (mmcValidOnDate at date-only 00:00Z).
-    const tripDate = new Date(shift.date);
+    // Same boundary as the oracle's gate: a date-only ISO-string comparison
+    // (mmcValidOnDate), timezone-invariant by construction (DEC-032).
     const credentialLapsed: CrewMemberId[] = [];
     for (const seat of required) {
       if (!seat.assignedCrewMemberId) continue;
       if (seat.state !== "Claimed" && seat.state !== "Confirmed") continue;
       const creds = await repo.listCredentialsForCrew(seat.assignedCrewMemberId);
-      if (!mmcValidOnDate(creds, tripDate).passed) {
+      if (!mmcValidOnDate(creds, shift.date).passed) {
         credentialLapsed.push(seat.assignedCrewMemberId);
       }
     }

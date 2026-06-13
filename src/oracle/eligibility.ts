@@ -100,28 +100,27 @@ export function hasRating(crew: CrewMember, role: RoleTypeId): RuleResult {
 /**
  * Candidate holds a hard-gating credential valid on the trip date (§1.3).
  *
- * Same date-comparison semantics as `credential-health.ts` when both are
- * evaluated at day-start (that file's own comment asks the oracle to align):
- * expiry is a date-only ISO string parsed at 00:00Z, and a credential is expired
- * once the trip date is strictly past it. Equivalently: valid iff
- * `tripDate <= expiry`. (Note `healthOf` is fed a real clock instant `now`, this
- * a date-only midnight; they can differ by up to a day at the exact boundary —
- * the oracle is internally self-consistent, which is what matters for the pool.)
+ * Pure **date-only** comparison of ISO date strings (`tripDate` = the shift's
+ * `date`, `c.expiry` = a date-only ISO string): valid iff `expiry >= tripDate`.
+ * ISO `YYYY-MM-DD` sorts lexicographically identical to chronologically, so this
+ * is **timezone-invariant by construction** (DEC-032) — no `new Date`, no
+ * midnight-UTC vs vessel-midnight day-shift. The credential question is "is the
+ * expiry day on or after the trip day," which is a calendar-date fact, not an
+ * instant. (`credential-health.ts`'s soft "expires in N days" nudge stays a
+ * days-grained advisory and is intentionally not date-string-exact.)
  */
 export function mmcValidOnDate(
   credentials: Credential[],
-  tripDate: Date,
+  tripDate: string,
 ): RuleResult {
   const gating = credentials.filter((c) =>
     HARD_CREDENTIAL_TYPES.includes(c.type),
   );
-  const validOne = gating.find(
-    (c) => new Date(c.expiry).getTime() >= tripDate.getTime(),
-  );
+  const validOne = gating.find((c) => c.expiry >= tripDate);
   if (validOne) return pass("mmc_valid_on_date");
   return fail("mmc_valid_on_date", {
     required: HARD_CREDENTIAL_TYPES,
-    tripDate: tripDate.toISOString(),
+    tripDate,
     // Surface what they DO hold so the admin sees "MMC expired 2026-05" vs "none".
     held: gating.map((c) => ({ type: c.type, expiry: c.expiry })),
   });
@@ -185,11 +184,10 @@ export function evaluateCandidate(
   role: RoleTypeId,
   tripDate: string,
 ): CandidateVerdict {
-  const date = new Date(tripDate);
   const results = [
     isActive(ctx.crew),
     hasRating(ctx.crew, role),
-    mmcValidOnDate(ctx.credentials, date),
+    mmcValidOnDate(ctx.credentials, tripDate),
     notDoubleBooked(ctx.committedDates, tripDate),
     notOnPto(ctx.ptoWindows, tripDate),
   ];

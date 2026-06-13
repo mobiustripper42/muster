@@ -299,7 +299,9 @@ describe("bailWithDerivedLateness (DEC-028 glue — the one home of it)", () => 
     await recordResponse(repo, ask!.id, "accepted", later(1000));
     await confirmSeat(repo, seatId!, later(2000));
 
-    const out = await bailWithDerivedLateness(repo, seatId!, T0, a);
+    // tz: "UTC" — the event is minted from a UTC Date; UTC interpretation keeps
+    // the 36h notice exact (DEC-032).
+    const out = await bailWithDerivedLateness(repo, seatId!, T0, a, "UTC");
     expect(out.code).toBeNull();
     const event = (await repo.reliabilityEventsFor(a)).find(
       (e) => e.type === "shift_bailed",

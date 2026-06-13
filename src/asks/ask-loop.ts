@@ -27,6 +27,7 @@ import {
   deriveShiftState,
   earliestScheduledStart,
 } from "../builder/derive.js";
+import { TENANT_TIMEZONE } from "../config/tenant.js";
 import { eligiblePool } from "../oracle/oracle.js";
 import { rankEligibleIds } from "../oracle/reliability-score.js";
 import {
@@ -436,6 +437,7 @@ export async function bailWithDerivedLateness(
   seatId: SeatId,
   now: Date,
   expectedBailer?: CrewMemberId,
+  tz: string = TENANT_TIMEZONE,
 ): Promise<DerivedBailResult> {
   const seat = await repo.getSeat(seatId);
   if (
@@ -452,7 +454,7 @@ export async function bailWithDerivedLateness(
     const event = await repo.getEvent(eventId);
     if (event) events.push(event);
   }
-  const tripStart = earliestScheduledStart(events);
+  const tripStart = earliestScheduledStart(events, tz);
   try {
     const outcome = await bail(
       repo,

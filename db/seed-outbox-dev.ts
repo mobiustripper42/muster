@@ -29,6 +29,7 @@ import { WebLinkChannel } from "../src/adapters/web-link-channel.js";
 import { assignPerson } from "../src/asks/ask-loop.js";
 import type { Ask } from "../src/domain/entities.js";
 import { asId } from "../src/domain/ids.js";
+import { TENANT_TIMEZONE } from "../src/config/tenant.js";
 import { DEFAULT_DATABASE_URL } from "./migrate.js";
 
 const url = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
@@ -43,8 +44,21 @@ const TENANT = asId<"TenantId">("brewboat");
 const CAPTAIN = asId<"RoleTypeId">("role-captain");
 
 const at = (hours: number) => new Date(Date.now() + hours * 3600_000);
-const dateOf = (d: Date) => d.toISOString().slice(0, 10);
-const timeOf = (d: Date) => d.toISOString().slice(11, 16);
+// Vessel-local wall-clock (DEC-032) — see seed-atrisk-dev for the why.
+const dateOf = (d: Date) =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: TENANT_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+const timeOf = (d: Date) =>
+  new Intl.DateTimeFormat("en-GB", {
+    timeZone: TENANT_TIMEZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(d);
 
 async function captain(id: string, name: string, phone: string) {
   const crewId = asId<"CrewMemberId">(id);
@@ -78,7 +92,7 @@ async function shipShift(key: string, vesselName: string, tripAt: Date) {
     time: timeOf(tripAt),
     capacity: 12,
     status: "scheduled",
-    dock: "Pier 9, Lake Union, Seattle",
+    dock: "Pier 11, East River, New York",
   });
   await repo.saveShift({
     id: shiftId,

@@ -30,6 +30,7 @@ import {
   staffingHorizonFor,
   STAFFING_HORIZON_LEAD_DAYS,
 } from "./derive.js";
+import { TENANT_TIMEZONE } from "../config/tenant.js";
 
 export interface TickResult {
   /** Shifts whose persisted state changed this tick. */
@@ -127,7 +128,7 @@ export async function resolveShiftStateOnRead(
   repo: Repository,
   shiftId: Shift["id"],
   now: Date,
-  opts?: { leadDays?: number },
+  opts?: { leadDays?: number; tz?: string },
 ): Promise<Shift["state"] | null> {
   const shift = await repo.getShift(shiftId);
   if (!shift) return null;
@@ -136,6 +137,7 @@ export async function resolveShiftStateOnRead(
     shift,
     await repo.listEvents(),
     opts?.leadDays ?? STAFFING_HORIZON_LEAD_DAYS,
+    opts?.tz ?? TENANT_TIMEZONE,
   );
   const poolExhausted = await poolExhaustedFor(repo, shift, seats, now);
   return resolveShiftState(seats, { now, horizon, poolExhausted });
@@ -144,9 +146,10 @@ export async function resolveShiftStateOnRead(
 export async function tick(
   repo: Repository,
   now: Date,
-  opts?: { leadDays?: number },
+  opts?: { leadDays?: number; tz?: string },
 ): Promise<TickResult> {
   const leadDays = opts?.leadDays ?? STAFFING_HORIZON_LEAD_DAYS;
+  const tz = opts?.tz ?? TENANT_TIMEZONE;
   const allEvents = await repo.listEvents();
   const result: TickResult = {
     shiftsAdvanced: 0,
@@ -165,7 +168,7 @@ export async function tick(
     if (shift.state === "Cancelled" || shift.state === "Completed") continue;
 
     const seats = await repo.listSeatsForShift(shift.id);
-    const horizon = staffingHorizonFor(shift, allEvents, leadDays);
+    const horizon = staffingHorizonFor(shift, allEvents, leadDays, tz);
     const poolExhausted = await poolExhaustedFor(repo, shift, seats, now);
     const next = resolveShiftState(seats, { now, horizon, poolExhausted });
 
@@ -223,7 +226,7 @@ export async function tick(
       .filter((e) => e.type === "board_landed")
       .map((e) => `${e.metadata.shiftId}:${e.metadata.reason}`),
   );
-  for (const row of await deriveAtRiskBoard(repo, now, { leadDays })) {
+  for (const row of await deriveAtRiskBoard(repo, now, { leadDays, tz })) {
     for (const reason of row.reasons) {
       if (!seenLandings.has(`${row.shiftId}:${reason}`)) {
         await logBoardLanded(repo, row.shiftId, reason, now);

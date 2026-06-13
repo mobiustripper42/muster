@@ -106,18 +106,22 @@ const shiftWith = (eventIds: string[]): Shift => ({
   eventIds: eventIds.map((i) => asId<"EventId">(i)),
 });
 
+// These fixtures pin `tz: "UTC"` so the wall-clock interprets 1:1 to the asserted
+// instant (DEC-032 threads tz through; UTC keeps the engine's fixtures
+// deterministic). Vessel-tz interpretation + DST is covered by its own block below.
+
 describe("staffingHorizonFromEvents", () => {
   it("is the earliest scheduled event minus leadDays (default 7d)", () => {
     const h = staffingHorizonFromEvents([
       ev("e1", "2026-05-16", "19:30"),
       ev("e2", "2026-05-16", "15:30"), // earliest of the day
-    ]);
+    ], undefined, "UTC");
     // 2026-05-16T15:30Z − 7d = 2026-05-09T15:30Z
     expect(h?.toISOString()).toBe("2026-05-09T15:30:00.000Z");
   });
 
   it("honors a custom leadDays", () => {
-    const h = staffingHorizonFromEvents([ev("e1", "2026-05-16", "15:30")], 3);
+    const h = staffingHorizonFromEvents([ev("e1", "2026-05-16", "15:30")], 3, "UTC");
     expect(h?.toISOString()).toBe("2026-05-13T15:30:00.000Z");
   });
 
@@ -125,7 +129,7 @@ describe("staffingHorizonFromEvents", () => {
     const h = staffingHorizonFromEvents([
       ev("e1", "2026-05-10", "08:00", "cancelled"), // earlier but cancelled — skipped
       ev("e2", "2026-05-16", "15:30"),
-    ]);
+    ], undefined, "UTC");
     expect(h?.toISOString()).toBe("2026-05-09T15:30:00.000Z");
   });
 
@@ -138,7 +142,7 @@ describe("staffingHorizonFromEvents", () => {
 describe("staffingHorizonFor", () => {
   it("resolves a shift's eventIds against the full event list", () => {
     const all = [ev("e1", "2026-05-16", "15:30"), ev("e9", "2026-05-01", "09:00")];
-    const h = staffingHorizonFor(shiftWith(["e1"]), all); // e9 not in this shift
+    const h = staffingHorizonFor(shiftWith(["e1"]), all, undefined, "UTC"); // e9 not in this shift
     expect(h?.toISOString()).toBe("2026-05-09T15:30:00.000Z");
   });
 });
@@ -150,7 +154,7 @@ describe("scheduledStarts", () => {
     const starts = scheduledStarts([
       ev("e1", "2026-05-16", "19:30"),
       ev("e2", "2026-05-16", "15:30"), // earlier — sorts first
-    ]);
+    ], "UTC");
     expect(starts.map((d) => d.toISOString())).toEqual([
       "2026-05-16T15:30:00.000Z",
       "2026-05-16T19:30:00.000Z",
@@ -170,14 +174,14 @@ describe("fillDeadlineFromEvents", () => {
     const d = fillDeadlineFromEvents([
       ev("e1", "2026-05-16", "19:30"),
       ev("e2", "2026-05-16", "15:30"), // earliest anchors the deadline
-    ]);
+    ], undefined, "UTC");
     // 2026-05-16T15:30Z − 48h = 2026-05-14T15:30Z
     expect(d?.toISOString()).toBe("2026-05-14T15:30:00.000Z");
     expect(FILL_DEADLINE_HOURS).toBe(48);
   });
 
   it("honors a custom hours override (the board threads deadlineHours)", () => {
-    const d = fillDeadlineFromEvents([ev("e1", "2026-05-16", "15:30")], 24);
+    const d = fillDeadlineFromEvents([ev("e1", "2026-05-16", "15:30")], 24, "UTC");
     expect(d?.toISOString()).toBe("2026-05-15T15:30:00.000Z");
   });
 
@@ -185,7 +189,7 @@ describe("fillDeadlineFromEvents", () => {
     const d = fillDeadlineFromEvents([
       ev("e1", "2026-05-10", "08:00", "cancelled"),
       ev("e2", "2026-05-16", "15:30"),
-    ]);
+    ], undefined, "UTC");
     expect(d?.toISOString()).toBe("2026-05-14T15:30:00.000Z");
   });
 
@@ -198,7 +202,7 @@ describe("fillDeadlineFromEvents", () => {
 
   it("returns a past instant when overdue (callers render honestly, never clamped)", () => {
     // A trip 1h out: the 48h deadline is 47h in the past.
-    const d = fillDeadlineFromEvents([ev("e1", "2026-05-16", "15:30")]);
+    const d = fillDeadlineFromEvents([ev("e1", "2026-05-16", "15:30")], undefined, "UTC");
     expect(d!.getTime()).toBeLessThan(
       new Date("2026-05-16T14:30:00.000Z").getTime(),
     );
@@ -208,8 +212,43 @@ describe("fillDeadlineFromEvents", () => {
 describe("fillDeadlineFor", () => {
   it("resolves a shift's eventIds against the full event list", () => {
     const all = [ev("e1", "2026-05-16", "15:30"), ev("e9", "2026-05-01", "09:00")];
-    const d = fillDeadlineFor(shiftWith(["e1"]), all); // e9 not in this shift
+    const d = fillDeadlineFor(shiftWith(["e1"]), all, undefined, "UTC"); // e9 not in this shift
     expect(d?.toISOString()).toBe("2026-05-14T15:30:00.000Z");
+  });
+});
+
+// ── vessel-local interpretation + DST (DEC-032) ──────────────────────────────
+
+describe("vessel-local time interpretation (DEC-032)", () => {
+  const NY = "America/New_York";
+
+  it("mints a summer (EDT, −4) wall-clock as the true instant", () => {
+    // "2026-07-04 14:00" Eastern = 18:00 UTC (EDT is UTC−4).
+    const [start] = scheduledStarts([ev("e1", "2026-07-04", "14:00")], NY);
+    expect(start!.toISOString()).toBe("2026-07-04T18:00:00.000Z");
+  });
+
+  it("mints a winter (EST, −5) wall-clock as the true instant — DST-correct", () => {
+    // "2026-01-04 14:00" Eastern = 19:00 UTC (EST is UTC−5). Same wall-clock,
+    // different offset → proves the conversion follows DST, not a fixed offset.
+    const [start] = scheduledStarts([ev("e1", "2026-01-04", "14:00")], NY);
+    expect(start!.toISOString()).toBe("2026-01-04T19:00:00.000Z");
+  });
+
+  it("the default tz is the tenant zone (Eastern), not UTC", () => {
+    // No tz arg → TENANT_TIMEZONE. A summer noon Eastern is 16:00 UTC, not 12:00.
+    const [start] = scheduledStarts([ev("e1", "2026-07-04", "12:00")]);
+    expect(start!.toISOString()).toBe("2026-07-04T16:00:00.000Z");
+  });
+
+  it("horizon + fill deadline ride the vessel-local instant", () => {
+    const events = [ev("e1", "2026-07-04", "14:00")]; // 18:00Z
+    expect(staffingHorizonFromEvents(events, 7, NY)?.toISOString()).toBe(
+      "2026-06-27T18:00:00.000Z", // 18:00Z − 7d
+    );
+    expect(fillDeadlineFromEvents(events, 48, NY)?.toISOString()).toBe(
+      "2026-07-02T18:00:00.000Z", // 18:00Z − 48h
+    );
   });
 });
 

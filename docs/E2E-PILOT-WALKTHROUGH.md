@@ -83,13 +83,14 @@ issuer (404 in prod by design):
 > past those dates, Quint's *My shifts* goes empty (the ask still shows). Re-run `db:seed:crew` to
 > reset. The `atrisk`/`outbox` seeds anchor to *now*, so they never rot.
 
-> <a id="timezone-note-utc-everywhere"></a>**Timezone note (UTC everywhere).** Every clock time in
-> the app renders in **UTC / Zulu** — call times, departures, fills-by — by DEC-022's v1
-> simplification (Muster carries no timezone yet). For *this synthetic walkthrough* that's harmless:
-> seed times are arbitrary absolutes, so just read the **shape** (two trips ~3h apart, fills-by
-> overdue inside 48h), not the literal AM/PM. **It stops being harmless the moment real BrewBoat data
-> is involved** — a Pacific (UTC−7) departure entered as 6:50 AM would show "1:50 PM". That's why the
-> real-crew test is gated on a timezone fix (tracked on #70), not just a deploy.
+> <a id="timezone-note-utc-everywhere"></a>**Timezone note (vessel-local — DEC-032).** Every clock
+> time in the app now renders in the **vessel timezone** (`TENANT_TIMEZONE`, default Eastern /
+> `America/New_York`; env-overridable via `TENANT_TZ`) — call times, departures, fills-by, horizon —
+> the same boat-time crew and operator both read, regardless of viewer location. *(This replaced the
+> old "UTC everywhere" simplification; task 5.3 / #77 closed the timezone half of the #70 gate.)* The
+> seeds anchor trips to *now* and store wall-clock, so absolute times still shift each re-seed — read
+> the **shape** (two trips ~3h apart on Tidewater, fills-by overdue inside 48h), not the literal
+> AM/PM. With real Eastern Xola data the displayed time is now the true dock wall-clock.
 
 ---
 

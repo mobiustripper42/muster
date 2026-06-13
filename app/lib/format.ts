@@ -1,10 +1,13 @@
+import { TENANT_TIMEZONE } from "@core/config/tenant.js";
+
 /**
  * Shared admin-surface formatters. Kept here so the board and the cockpit render
  * the same fact the same way (DEC-031's "fills by" is shown on both — a single
  * formatter is what keeps them from drifting).
  *
- * Clock times are treated as UTC by DEC-022's v1 simplification — every
- * formatter here pins `timeZone: "UTC"` so a dated fact reads the same wherever
+ * Times are rendered in the **vessel** timezone (DEC-032, `TENANT_TIMEZONE`) —
+ * the instants are true (minted in vessel-local at `eventStart`), so formatting
+ * in that zone shows the dock wall-clock to crew and operator alike, wherever
  * the server runs.
  */
 
@@ -16,6 +19,6 @@ export function fmtDeadline(d: Date): string {
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
-    timeZone: "UTC",
+    timeZone: TENANT_TIMEZONE,
   });
 }

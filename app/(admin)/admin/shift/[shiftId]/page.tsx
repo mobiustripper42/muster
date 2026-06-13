@@ -8,6 +8,7 @@ import { deriveWarming } from "@core/admin/warming.js";
 import { asId } from "@core/domain/ids.js";
 import { resolveShiftStateOnRead } from "@core/builder/tick.js";
 import { changedSinceReviewed } from "@core/builder/lock.js";
+import { TENANT_TIMEZONE } from "@core/config/tenant.js";
 import {
   SeatCard,
   type CandidateVM,
@@ -222,6 +223,7 @@ export default async function ShiftCockpit({
                 weekday: "short",
                 month: "short",
                 day: "numeric",
+                timeZone: TENANT_TIMEZONE,
               })}
             </span>
           )}

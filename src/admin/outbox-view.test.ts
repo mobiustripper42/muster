@@ -124,7 +124,8 @@ describe("buildOutboxView", () => {
       sentAt: "2026-07-01T09:30:00.000Z",
     });
 
-    const view = await buildOutboxView(repo, NOW);
+    // tz: "UTC" — events are minted from UTC instants here (DEC-032).
+    const view = await buildOutboxView(repo, NOW, { tz: "UTC" });
 
     // Tightest pending first (20h before 96h); the 8h SENT card stays in its
     // own muted section even though its trip is tighter than every pending one.

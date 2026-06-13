@@ -5,6 +5,7 @@ import type { CrewMemberId } from "@core/domain/ids.js";
 import { RiskRow, type RiskRowVM } from "../../../../components/at-risk/risk-row";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
+import { TENANT_TIMEZONE } from "@core/config/tenant.js";
 import { readSubject } from "../../../lib/auth";
 import { fmtDeadline } from "../../../lib/format";
 import { getRepo } from "../../../lib/repo";
@@ -216,7 +217,7 @@ function fmtTime(d: Date): string {
   return d.toLocaleTimeString("en-US", {
     hour: "numeric",
     minute: "2-digit",
-    timeZone: "UTC", // clock times are UTC by DEC-022's v1 simplification
+    timeZone: TENANT_TIMEZONE, // vessel-local wall-clock (DEC-032)
   });
 }
 

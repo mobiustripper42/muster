@@ -13,6 +13,7 @@
 
 import type { CrewMemberId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
+import { TENANT_TIMEZONE, vesselDateOf } from "../config/tenant.js";
 import { worstCredential } from "../admin/credential-health.js";
 import type { CredentialConcern } from "../admin/credential-health.js";
 import { summarizeStanding } from "./standing.js";
@@ -75,11 +76,14 @@ export async function buildCrewAppView(
   repo: Repository,
   crewMemberId: CrewMemberId,
   now: Date,
+  tz: string = TENANT_TIMEZONE,
 ): Promise<CrewAppView | null> {
   const me = await repo.getCrewMember(crewMemberId);
   if (!me) return null;
 
-  const today = now.toISOString().slice(0, 10); // YYYY-MM-DD, vessel-local-day grain
+  // Vessel-local calendar date (DEC-032) — not the UTC date, which runs a day
+  // ahead in the evening Eastern hours and would hide a still-upcoming shift.
+  const today = vesselDateOf(now, tz);
 
   // Open asks: addressed to me, not yet answered, on a seat still being asked.
   const allAsks = await repo.listAllAsks();

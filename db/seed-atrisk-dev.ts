@@ -109,7 +109,7 @@ async function shipShift(
     time: timeOf(tripAt),
     capacity: 12,
     status: "scheduled",
-    dock: "Pier 11, East River, New York",
+    dock: "East Bank of the Flats at Canal Basin Park",
   });
   // A multi-trip day (#59): more scheduled departures on the SAME shift (one
   // boat, one day, one crew requirement — the manning is per-vessel). The board
@@ -123,7 +123,7 @@ async function shipShift(
       time: timeOf(t),
       capacity: 12,
       status: "scheduled",
-      dock: "Pier 11, East River, New York",
+      dock: "East Bank of the Flats at Canal Basin Park",
     });
   }
   await repo.saveShift({

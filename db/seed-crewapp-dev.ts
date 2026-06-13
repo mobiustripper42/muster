@@ -60,8 +60,8 @@ try {
   const E3 = asId<"EventId">("evt-soon-3pm");
   const E5 = asId<"EventId">("evt-soon-5pm");
   await repo.saveShift({ id: SHIFT_SOON, vesselId: VESSEL, date: SOON, state: "Crewed", eventIds: [E3, E5] });
-  await repo.saveEvent({ id: E3, vesselId: VESSEL, date: SOON, time: "15:00", capacity: 12, status: "scheduled", dock: "Pier 11, East River, New York" });
-  await repo.saveEvent({ id: E5, vesselId: VESSEL, date: SOON, time: "17:00", capacity: 12, status: "scheduled", dock: "Pier 11, East River, New York" });
+  await repo.saveEvent({ id: E3, vesselId: VESSEL, date: SOON, time: "15:00", capacity: 12, status: "scheduled", dock: "East Bank of the Flats at Canal Basin Park" });
+  await repo.saveEvent({ id: E5, vesselId: VESSEL, date: SOON, time: "17:00", capacity: 12, status: "scheduled", dock: "East Bank of the Flats at Canal Basin Park" });
   await repo.saveSeat({ id: asId<"SeatId">("seat-soon-cap"), shiftId: SHIFT_SOON, role: CAPTAIN, kind: "required", state: "Confirmed", assignedCrewMemberId: QUINT });
   await repo.saveSeat({ id: asId<"SeatId">("seat-soon-mate"), shiftId: SHIFT_SOON, role: MATE, kind: "required", state: "Confirmed", assignedCrewMemberId: HOOPER });
   // Reap seats this seed no longer writes (upserts never delete, and a renamed

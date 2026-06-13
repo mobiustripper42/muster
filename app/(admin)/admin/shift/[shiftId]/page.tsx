@@ -332,10 +332,13 @@ function ttLabel(h: number): string {
 }
 
 function fmtDate(iso: string): string {
-  return new Date(iso + "T00:00:00").toLocaleDateString("en-US", {
+  // Date-only label: UTC both ends so the stored vessel-local date shows
+  // verbatim regardless of server zone (DEC-032).
+  return new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", {
     weekday: "short",
     month: "short",
     day: "numeric",
+    timeZone: "UTC",
   });
 }
 

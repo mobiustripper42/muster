@@ -53,10 +53,14 @@ export function tzOffsetMs(at: Date, tz: string = TENANT_TIMEZONE): number {
  * "HH:mm") in timezone `tz`, DST-correct. **The DEC-032 mint seam** — every
  * event-departure instant is born here.
  *
- * Method: read the wall-clock as if UTC (a first guess), measure the zone's
- * offset at that guess, subtract it. One pass is exact except inside the 1-hour
- * spring-forward gap (a wall-clock that doesn't exist) — which vessel departures
- * never schedule into, accepted per DEC-032.
+ * Method: read the wall-clock as if UTC (a first guess), subtract the zone's
+ * offset at that guess to get a candidate, then **re-measure the offset at the
+ * candidate** and subtract that — a two-pass fix. The second pass is what makes
+ * the morning of the spring-forward day correct: a 03:00–06:59 wall-clock whose
+ * UTC-guess still sits before the transition would otherwise pick up the stale
+ * pre-DST offset (off by an hour). The only residue is the 1-hour spring-forward
+ * *gap* (02:00–02:59, a wall-clock that doesn't exist), which resolves forward
+ * and which vessel departures never schedule into — accepted per DEC-032.
  */
 export function zonedWallClockToInstant(
   date: string,
@@ -64,7 +68,8 @@ export function zonedWallClockToInstant(
   tz: string = TENANT_TIMEZONE,
 ): Date {
   const guess = new Date(`${date}T${time}:00.000Z`);
-  return new Date(guess.getTime() - tzOffsetMs(guess, tz));
+  const candidate = new Date(guess.getTime() - tzOffsetMs(guess, tz));
+  return new Date(guess.getTime() - tzOffsetMs(candidate, tz));
 }
 
 /**

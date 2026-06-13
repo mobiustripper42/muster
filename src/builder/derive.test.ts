@@ -235,6 +235,14 @@ describe("vessel-local time interpretation (DEC-032)", () => {
     expect(start!.toISOString()).toBe("2026-01-04T19:00:00.000Z");
   });
 
+  it("mints correctly on the spring-forward morning (two-pass — not off by an hour)", () => {
+    // 2026-03-08 is DST spring-forward (02:00 EST → 03:00 EDT). 03:30 is a valid
+    // EDT wall-clock = 07:30 UTC; a naive one-pass conversion mis-mints it to
+    // 08:30Z (picks up the stale EST offset at the UTC guess).
+    const [start] = scheduledStarts([ev("e1", "2026-03-08", "03:30")], NY);
+    expect(start!.toISOString()).toBe("2026-03-08T07:30:00.000Z");
+  });
+
   it("the default tz is the tenant zone (Eastern), not UTC", () => {
     // No tz arg → TENANT_TIMEZONE. A summer noon Eastern is 16:00 UTC, not 12:00.
     const [start] = scheduledStarts([ev("e1", "2026-07-04", "12:00")]);

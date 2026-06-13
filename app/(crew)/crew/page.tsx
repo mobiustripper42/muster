@@ -61,10 +61,13 @@ export default async function CrewHome({
 }
 
 function fmtDate(iso: string): string {
-  return new Date(iso + "T00:00:00").toLocaleDateString("en-US", {
+  // Date-only label: parse + format both in UTC so the stored vessel-local
+  // calendar date shows verbatim regardless of server zone (DEC-032).
+  return new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", {
     weekday: "short",
     month: "short",
     day: "numeric",
+    timeZone: "UTC",
   });
 }
 

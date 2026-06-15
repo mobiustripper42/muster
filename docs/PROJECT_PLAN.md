@@ -172,6 +172,20 @@ deployed app is a **hosted pilot, not production**.
 **Ordering / smoke path:** 5.3 (no infra dep) ∥ 5.1→5.2 → *live app on synthetic seeds, poke from a
 real phone* → 5.4 (real data, needs 5.3) → 5.R last; 5.5 anywhere, first to cut.
 
+**Pilot sequencing (live since 2026-06-15 — `muster-sigma.vercel.app`):** 5.1 + 5.3 done and
+**deployed**. Remaining order, decided with operator:
+1. **5.2 (auth, #76)** — next; the live app has no front door until the operator can mint a prod
+   sign-in link (`/crew/dev-link` 404s in prod).
+2. **Pre-crew shakedown on DEMO SEEDS** — run `docs/E2E-PILOT-WALKTHROUGH.md` (the **manual**
+   walkthrough, mostly local on `mill-dev`, some on the live deploy). This is the gate before crew —
+   **NOT** task 5.5. *Seeds, not real import* (they deterministically hit every branch real data
+   wouldn't). The walkthrough's sign-in steps need swapping to 5.2's mint-script for the prod run.
+3. **5.4 (import, #73)** — *after* the shakedown passes; swaps demo data for real BrewBoat
+   reservations. The import is for the real crew weekend, never before the shakedown.
+4. **Crew weekend** → triggers Pass D (Phase 6).
+- **5.5 (#65) is the automated Playwright harness — regression insurance, separate from the manual
+  shakedown above, optional, first to cut.** Don't conflate the two.
+
 | # | Task | Effort | Notes |
 |---|------|--------|-------|
 | 5.1 | **Hosted deploy + `tick` cron + `production` branch** — Vercel; CRON_SECRET-guarded tick route; production branch + /promote-production; hosted PG provider | 5 | **DEC-033** — provider pick **OPEN** (owner/Eric; money + lead time; phase long pole). Fires DEC-020/023/S022. [#75](https://github.com/mobiustripper42/muster/issues/75) |

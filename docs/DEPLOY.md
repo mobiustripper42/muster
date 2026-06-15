@@ -69,10 +69,18 @@ Env changes only apply to **new** deployments — redeploy after adding.
 PgBouncer (the pooled URL) discards session state between transactions and breaks DDL/prepared
 statements — so migrate through `DATABASE_URL_UNPOOLED`:
 ```bash
-vercel env pull .env.local                       # fetches DATABASE_URL + _UNPOOLED
+vercel env pull .env.local                       # WRITES the vars to a FILE — not your shell
+set -a; . ./.env.local; set +a                   # load them INTO this shell (the easy-to-miss step)
+echo "$DATABASE_URL_UNPOOLED"                     # sanity: a postgres:// URL whose host has NO "-pooler"
 DATABASE_URL="$DATABASE_URL_UNPOOLED" npm run db:migrate
 ```
-(`db/migrate.ts` reads `DATABASE_URL`; we point it at the unpooled value just for this run.)
+`db/migrate.ts` reads `DATABASE_URL`; we point it at the unpooled value just for this run.
+
+> **Gotcha (you'll hit it otherwise):** `vercel env pull` only writes the `.env.local` *file* — it does
+> **not** export into your shell. Skip the `source` line and `$DATABASE_URL_UNPOOLED` is empty, so
+> `DATABASE_URL=""` falls through to `migrate.ts`'s **localhost** default → `ECONNREFUSED ::1:5432`.
+> If the var is empty even after sourcing, check the actual name: `grep -iE 'postgres|database'
+> .env.local` (Neon also injects the legacy `POSTGRES_URL_NON_POOLING` — same direct endpoint).
 
 ### 4. Configure the production branch
 - Vercel project → **Settings → Git** → set the **Production Branch** to **`production`** (DEC-S022;

@@ -12,6 +12,7 @@
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
     "db:migrate": "tsx db/migrate.ts",
+    "db:mint": "tsx db/mint-link.ts",
     "db:seed:crew": "tsx db/seed-crewapp-dev.ts",
     "db:seed:atrisk": "tsx db/seed-atrisk-dev.ts",
     "db:seed:outbox": "tsx db/seed-outbox-dev.ts",

@@ -1050,6 +1050,12 @@ now. Building any of these is out of scope until its trigger condition is met.
 - **The Xola API bolt-on.** A live API integration is a maintained dependency on a system with an
   ~18-month kill date. The one-way CSV import + manual guide write-back (§3.5) replaces it on purpose.
   Different thing from the CSV bridge; do not conflate.
+  > **Correction (DEC-036, 2026-06-15):** the *reliability* premise above was wrong — a working,
+  > tested Xola client (`xola-tip-extractor`) falsifies "hard to extract from" (that pessimism
+  > traced to faulty crewbook info). The API is **revived as a read-only import Land adapter** behind
+  > the existing Map/Reconcile, replacing the manual export+upload. The kill-date / disposability
+  > point stands and now *licenses* the swap (the adapter dies in 2027 like the rest of the import
+  > path). The manual guide write-back sheet (§3.5) is unaffected. See DEC-036.
 
 ---
 

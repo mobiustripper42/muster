@@ -116,21 +116,30 @@ curl -s https://<domain>/api/cron/tick -H "Authorization: Bearer $CRON_SECRET"
 
 ### 7. Sign in as the operator (5.2, DEC-034)
 `/crew/dev-link` is **hard-404 in production** (it must never mint links there), so the operator's
-first sign-in is bootstrapped out-of-band — same shape as the migration in step 3, run against the
-**direct** endpoint:
+first sign-in is bootstrapped out-of-band. The script auto-sources `.env.local` (what step 3's
+`vercel env pull` wrote), so once that file holds `APP_BASE_URL` + a DB string the command is just:
 ```bash
-APP_BASE_URL="https://<domain>" \
-  DATABASE_URL="<paste-direct-unpooled-string>" \
-  npm run db:mint -- --admin=spink
-#  → Minted admin link · spink
+npm run db:mint -- --admin=spink
+#  → Minted admin link · spink   (db: ep-xxx.neon.tech)
 #      https://<domain>/crew/auth?t=<secret>
 #      single-use · expires ... (60 min)
 ```
+**The DB string is the catch.** Neon connection vars are **Sensitive**, so `vercel env pull` returns
+`DATABASE_URL` *empty* (step 3) — `APP_BASE_URL` (not sensitive) pulls fine, but the DB string doesn't.
+So either paste the **direct/unpooled** string into `.env.local` once (it's gitignored; survives until
+the next `env pull` overwrites the file), or pass it inline — inline always wins:
+```bash
+DATABASE_URL="<paste-direct-unpooled-string>" npm run db:mint -- --admin=spink
+```
+**Check the `db:` host** in the output — if it reads `localhost:5432` you minted against the wrong
+database (the DB string didn't take); a prod link must show the Neon host.
+
 Open the printed URL in a browser → tap **Tap to sign in** → you land on **`/admin/at-risk`** with a
-session cookie. The link is single-use and expires in 60 min (`--ttl-min=<n>` to change). `APP_BASE_URL`
-is **required** — the script refuses to mint without it (a CLI has no Host header, and a link on the
-wrong origin is host-spoofable / unopenable). **Crew** need none of this: their links flow through the
-DEC-030 outbox relay (`--crew=<id>` exists as a manual escape hatch, not the normal path).
+session cookie (a 14-day cookie that silently renews on use — you sign in once, not per visit). The link
+is single-use and expires in 60 min (`--ttl-min=<n>` to change). `APP_BASE_URL` is **required** — the
+script refuses without it (a CLI has no Host header, and a link on the wrong origin is host-spoofable /
+unopenable). **Crew** need none of this: their links flow through the DEC-030 outbox relay
+(`--crew=<id>` exists as a manual escape hatch, not the normal path).
 
 ---
 

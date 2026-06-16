@@ -28,11 +28,42 @@
 import { issueMagicLink, randomSecret } from "../src/auth/magic-link.js";
 import type { AuthSubjectKind } from "../src/domain/entities.js";
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
+import { existsSync } from "node:fs";
 import { DEFAULT_DATABASE_URL } from "./migrate.js";
+
+// Convenience: pull APP_BASE_URL / DATABASE_URL from .env.local if present, so the
+// operator can run `npm run db:mint -- --admin=spink` without re-pasting env on the
+// command line (the deploy flow's `vercel env pull` already writes .env.local).
+// Inline env STILL WINS — snapshot what was set, then restore it after the load —
+// so an explicit `DATABASE_URL=… npm run db:mint` overrides the file.
+//
+// CAVEAT (DEPLOY.md step 3): Neon marks its connection vars Sensitive, so
+// `vercel env pull` returns DATABASE_URL **empty**. APP_BASE_URL (not sensitive)
+// pulls fine; the operator pastes the direct/unpooled DB string into .env.local
+// once (it's gitignored) or passes it inline. The `db:` line printed below shows
+// which host the token actually landed in, so a silent localhost mis-target shows.
+if (existsSync(".env.local")) {
+  const inline = {
+    APP_BASE_URL: process.env.APP_BASE_URL,
+    DATABASE_URL: process.env.DATABASE_URL,
+  };
+  process.loadEnvFile(".env.local");
+  for (const [k, v] of Object.entries(inline)) if (v) process.env[k] = v;
+}
 
 function flag(name: string): string | undefined {
   const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
   return hit?.slice(name.length + 3);
+}
+
+/** The host:port a connection string targets — so the operator can SEE where the
+ *  token landed (Neon vs a stray localhost). Best-effort; never throws. */
+function dbHost(connectionString: string): string {
+  try {
+    return new URL(connectionString).host || "(unknown)";
+  } catch {
+    return "(unparseable)";
+  }
 }
 
 const admin = flag("admin");
@@ -61,7 +92,10 @@ if (!base) {
 const subjectKind: AuthSubjectKind = admin ? "admin" : "crew";
 const subjectId = (admin ?? crew)!;
 
-const url = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
+// `||` not `??`: an empty DATABASE_URL (what Sensitive vars pull as) is "unset",
+// not a valid connection string — fall to the local-dev default rather than
+// handing pg a "" it would resolve against libpq's localhost env defaults.
+const url = process.env.DATABASE_URL || DEFAULT_DATABASE_URL;
 const repo = PostgresRepository.fromConnectionString(url);
 
 try {
@@ -72,7 +106,7 @@ try {
     { now, mintSecret: randomSecret },
   );
   const link = `${base}/crew/auth?t=${secret}`;
-  console.log(`Minted ${subjectKind} link · ${subjectId}`);
+  console.log(`Minted ${subjectKind} link · ${subjectId}   (db: ${dbHost(url)})`);
   console.log(`  ${link}`);
   console.log(`  single-use · expires ${token.expiresAt} (${ttlMin} min)`);
 } finally {

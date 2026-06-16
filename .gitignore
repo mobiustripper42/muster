@@ -30,3 +30,5 @@ __pycache__/
 # OS / editor
 .DS_Store
 *.log
+.env*
+!.env.example

@@ -39,8 +39,9 @@ const SIG_CEN = 0x02014b50; // central directory file header
 const SIG_LOC = 0x04034b50; // local file header
 
 /**
- * Per-entry decompressed cap — the zip-bomb guard. A reservations sheet is well
- * under this; `inflateRaw` aborts past it rather than ballooning memory.
+ * Per-entry decompressed cap — the secondary zip-bomb guard (`inflateRaw` aborts
+ * past it rather than ballooning memory). The PRIMARY guard is the 5MB upload cap
+ * at the surface (actions.ts); a reservations sheet is far under both.
  */
 const MAX_ENTRY_BYTES = 32 * 1024 * 1024;
 
@@ -84,6 +85,12 @@ function indexZip(buf: Buffer): Map<string, ZipEntry> {
 
 /** Read + decompress one entry as UTF-8 text (stored or DEFLATE only). */
 function readEntry(buf: Buffer, e: ZipEntry, name: string): string {
+  // Bound the offset before reading — a hostile/truncated zip can carry a
+  // localOffset past the buffer; without this `readUInt32LE` throws a RangeError
+  // instead of our clean "corrupt zip" Error (the caller classifies by error).
+  if (e.localOffset < 0 || e.localOffset + 30 > buf.length) {
+    throw new Error(`corrupt zip local header for ${name}`);
+  }
   if (buf.readUInt32LE(e.localOffset) !== SIG_LOC) {
     throw new Error(`corrupt zip local header for ${name}`);
   }
@@ -176,8 +183,11 @@ export function readXlsxSheet(source: Buffer, sheetName: string): string[][] {
     throw new Error(`Sheet "${sheetName}" not found`);
   }
   const rid = sheetTag.match(/r:id="([^"]+)"/)?.[1];
+  // Escape rid before interpolating into a RegExp — it's upload-derived; a value
+  // with regex metacharacters would otherwise build a malformed pattern.
+  const ridEsc = (rid ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const rels = entry("xl/_rels/workbook.xml.rels");
-  const target = rels.match(new RegExp(`Id="${rid}"[^>]*Target="([^"]+)"`))?.[1];
+  const target = rels.match(new RegExp(`Id="${ridEsc}"[^>]*Target="([^"]+)"`))?.[1];
   if (!target) throw new Error(`Could not resolve sheet target for ${sheetName}`);
 
   const shared = zip.has("xl/sharedStrings.xml")

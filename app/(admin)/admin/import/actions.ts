@@ -40,11 +40,20 @@ export async function runImport(formData: FormData): Promise<void> {
     redirect("/admin/import?err=bad_type");
   }
 
-  // redirect() works by throwing, so it lives OUTSIDE the try — only parse/import
-  // is guarded (a bad zip or repo outage → a mapped notice, not a 500).
+  // Parse first, in its own guard: ANY throw from the reader is bad input (not a
+  // zip, no Reservations sheet, corrupt/hostile bytes) → parse_error. Classifying
+  // by SOURCE beats matching the error message — a RangeError from a malformed
+  // offset reads nothing like "sheet". redirect() throws, so it's outside the try.
+  let rows: string[][];
+  try {
+    rows = readXlsxSheet(buf, "Reservations");
+  } catch {
+    redirect("/admin/import?err=parse_error");
+  }
+
+  // Persist in a second guard: a throw here is the repo/schedule, not the file.
   let params: string;
   try {
-    const rows = readXlsxSheet(buf, "Reservations");
     const repo = getRepo();
     const now = new Date();
     const imp = await importReservations(repo, rows, now);
@@ -71,14 +80,8 @@ export async function runImport(formData: FormData): Promise<void> {
       skipped: String(imp.skipped.length),
       warn: String(imp.warnings.length),
     }).toString();
-  } catch (e) {
-    // A bad workbook (not a zip / no Reservations sheet) reads differently from a
-    // repo outage, but both mean "nothing landed, try again".
-    const code =
-      e instanceof Error && /sheet|zip|xlsx/i.test(e.message)
-        ? "parse_error"
-        : "unavailable";
-    redirect(`/admin/import?err=${code}`);
+  } catch {
+    redirect("/admin/import?err=unavailable");
   }
   revalidatePath("/admin/at-risk"); // new shifts should show on the board
   redirect(`/admin/import?${params}`);

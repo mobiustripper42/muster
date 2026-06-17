@@ -98,9 +98,11 @@ export default async function ImportPage({
         </Notice>
       )}
 
+      {/* No encType/method here: React sets them automatically for a function
+          action (it posts multipart when there's a file) and ERRORS if you also
+          specify them. */}
       <form
         action={runImport}
-        encType="multipart/form-data"
         className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-4"
       >
         <label className="text-sm font-semibold text-ink" htmlFor="file">

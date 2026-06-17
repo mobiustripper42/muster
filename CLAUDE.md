@@ -1,284 +1,218 @@
-# Muster — Claude Code Project Context
+# [Project Name] — Claude Code Project Context
 
-## What We're Building
-
-Muster is a **crew engine** for small-passenger-vessel operators. It turns a week's reservations
-into discrete **shifts** (one boat, one day), works out who is legally allowed to crew each shift
-(USCG manning, credentials, turnaround), asks them in **reliability order**, and surfaces only the
-shifts the automation could not close. It is the half of an eventual Xola replacement that Xola has
-no concept of: Xola knows a booking is paid; Muster knows whether anyone will be standing on the
-dock to run it. First tenant / worked example: **BrewBoat** — a real fleet of **4 inspected party
-boats** (two 12-pax, one 14, one 16), **each manned by 2 crew**; zero-crew rentals are also in scope
-(DEC-016). Manning is per-vessel data the deriver loops (0/1/2/N), never a fixed pair. *(The old
-"one boat, COI 6, 1 captain + 1 mate" example was a placeholder — corrected per DEC-016.)*
-
-The spine is a **policy/mechanism split** (DEC-001): the rules are tenant-owned data; the engine
-that runs them is generic.
-
-Roles:
-- **Spink** — the operator (BrewBoat's). Semi-retired; the design goal is **no babysitting**. Runs
-  the admin app, leans on crew, makes the 11pm cancel/reschedule call.
-- **Drew** — the owner. Owns the money/policy decisions (refunds, deposit-vs-full). Mostly out of
-  the 2026 build (payments are parked).
-- **Crew** — captains and mates. Their entire world is three crew-app surfaces (the ask, my shifts,
-  the shift card). Magic-link auth, no passwords.
-
-## Stack
-
-**Chosen at M4 — see DEC-020.** M0–M3 are a **stack-agnostic domain core** (entities, state machine,
-oracle, reliability-event log) behind a **`Repository` port**; that core under `src/` stays
-**framework-free** and is never moved. The M4 stack wraps it:
-
-- **Language/runtime:** Node + TypeScript (strict). Vitest (task 0.3).
-- **Web framework / host:** **Next.js (App Router) on Vercel** — one app, route groups
-  `app/(admin)` / `app/(crew)` / `app/api`. Next imports the core via the `@core/*` alias.
-- **Build:** `npm run build` = `next build --webpack`. **Webpack, not Turbopack** — the core's
-  NodeNext `.js` import specifiers need `extensionAlias` (`.js`→`.ts`), which Turbopack lacks
-  (DEC-020). Two TS profiles: `tsconfig.core.json` (strict NodeNext, the core — `npm run typecheck`)
-  and root `tsconfig.json` (Next/bundler, the app — `next build` / `typecheck:app`).
-- **Persistence:** **Postgres behind the port**, **local Postgres in dev**; schema is plain Postgres
-  DDL (DEC-DATA-1). **Hosted provider deferred to deploy, vendor-agnostic — Supabase is a candidate
-  host, not adopted.** In-memory adapter stays as the test substrate.
-- **Auth:** **self-rolled magic-link in the service layer** (no auth platform) — same for admin + crew.
-- **Channel (crew ask):** one port (DEC-MSG-3) — **fake/log adapter** (permanent test infra) +
-  **pilot seam** (web-link or Telegram, operator picks later). **Twilio/SMS** = later swap
-  (DEC-MSG-1); **native/Capacitor** = post-slice fast-follow (DEC-MSG-2).
-- **`.claude/project-type`** is `webapp` (flipped at M4); `@ui-reviewer` re-enabled via `/pull-seeds`.
-
-## Commands
-
-The per-task gate (run by `/kill-this`, `/pause-this`) is **`npm run verify`** — it chains the full
-check so a core-only regression can't ship behind a green app build:
-
-| Command | Covers |
-|---------|--------|
-| `npm run verify` | **the gate** — `typecheck` + `typecheck:app` + `test` + `build`, in order |
-| `npm run typecheck` | domain core only (`tsconfig.core.json`, strict NodeNext) |
-| `npm run typecheck:app` | Next app only (`tsconfig.json`, bundler) |
-| `npm run test` | Vitest (domain core) |
-| `npm run build` | `next build --webpack` (app; **webpack required** — DEC-020) |
-| `npm run dev` | `next dev --webpack` |
-
-`build` alone is **not** the gate — it validates the app, not the core. Use `verify`.
-
-## Conventions
-
-### Components
-- Server Components by default. Add `'use client'` only when needed.
-- No component library yet (DEC-021) — components are hand-built from Tailwind v4 utilities.
-- Feature components in `components/[feature]/`.
-- Keep components under 200 lines. Split if larger.
-
-### Error Handling
-- Form actions: return `string | null`. `null` = success, string = error message.
-- Button actions: return `{ error: string | null }`.
-- Never `throw` in server actions — return errors for inline feedback.
-- Forward guidance for *new* actions — `app/(crew)/crew/actions.ts` predates it; retrofit when touched.
-- **No-client-JS surfaces** (admin board pattern, DEC-026): an action may return `void` and surface
-  feedback via redirect search params — params carry **codes/ids only, never prose** (the page maps
-  them to copy), so a crafted URL can't inject text into a trusted surface. Wrap the domain call in
-  try/catch (a repo outage → a mapped notice, not a 500); `redirect()` throws by design, keep it
-  outside the try.
-
-### Naming
-- Files: `kebab-case.tsx`
-- Components: `PascalCase`
-- Server Actions: `camelCase` in `actions/` files
-- DB columns: `snake_case`
-
-### UI / Brand
-- Tokens are harvested from the mockups into `@theme` in `app/globals.css` (DEC-021) — colors,
-  radius scale (`--radius-card: 14px`). No color for color's sake. Binding constraints live in
-  `.claude/ui-context.md`.
-- Font: IBM Plex Sans/Mono, loaded via next/font in `app/layout.tsx`.
-- Layout padding in layout.tsx only
-- Every page works at 375px — eyeball at `mill-dev:3000` per `docs/RUNNING.md` (Playwright
-  screenshots when that tooling lands)
+> **Read `.claude/CLAUDE-context.md` first.** It holds this project's name, stack, data model, commands, and any project-specific overrides to the workflow and conventions below. Treat it as authoritative for every project-specific fact. If the file does not exist, stop and tell the user to create it from the seeds template (`dev/claude/CLAUDE-context.md`) before continuing.
+>
+> This `CLAUDE.md` is a **seeds-managed shell** (DEC-S019): it carries only project-agnostic workflow guidance and syncs from seeds untouched. Do **not** add project-specific content here — it belongs in `.claude/CLAUDE-context.md`, or the next sync will overwrite it.
 
 ## Key Docs
 | File | Purpose |
 |------|-------|
-| `docs/SPEC.md` | 🔒 **LOCKED v1.0** — the buildable source of truth. Scope, surfaces, substrate. Edits are corrections only (DEC-014). |
-| `docs/FUTURE_IDEAS.md` | The shiny-object parking lot. New ideas land here, not in the locked spec (DEC-014). |
-| `docs/DECISIONS.md` | Architectural decisions (DEC-NNN). DEC-001–012 extracted from the spec; 013–014 from setup. |
-| `docs/PROJECT_PLAN.md` | Phases, tasks, velocity. **Phase-boundary doc** — read at planning, written at retro. Current-phase tasks live in GitHub Issues. |
-| `docs/RETROSPECTIVES.md` | Phase-end retrospectives — written by `/retro` |
-| `docs/AGENTS.md` | Agent and skill specs (canonical) |
+| `docs/SPEC.md` | What we're building — scope, V1 vs V2 vs V3 |
+| `docs/DECISIONS.md` | Why we made each architectural choice |
 | `docs/USER_STORIES.md` | What each role does |
+| `docs/PROJECT_PLAN.md` | Phases, scope, velocity. **Phase-boundary doc** — read at planning, written at retro. Current-phase tasks live in GitHub Issues. |
+| `docs/RETROSPECTIVES.md` | Phase-end retrospectives — written by `/retro` |
+| `docs/AGENTS.md` | Agent and skill specs (canonical). |
 | `docs/BRAND.md` | Voice, visual direction, philosophy |
-| `docs/design/DESIGN-REFERENCE.md` | How to consume the UI mockups: spec wins on *what*, mockups inform *how*; **read JSX, never import**. Read before building any surface (M4). |
-| `docs/design/mockups/` | Claude Design export (HTML + JSX) per surface §2.1–2.6.3. **Visual-direction reference, not spec** — staged for M4 UI build. |
 | `docs/VELOCITY_AND_POKER_GUIDE.md` | Estimation methodology |
 | `docs/CHEATSHEET.md` | One-page printable skill reference |
-| `docs/RUNNING.md` | How to run the app locally, see the UI (Tailscale host, magic-link dev flow), and check a change. PRs link here for setup. |
-| `sessions/*.md` (orphan `sessions` branch via `.sessions-worktree/`) | Per-session files — `YYYY-MM-DD-HHMM-<dev>-<slug>.md` |
-| `.claude/seeds-version` | Schema version this project was installed at (`4`). Gates `/pull-seeds`. |
-| `.claude/project-type` | `webapp` (flipped from `tool` at M4 — DEC-020). Gates template files via `@sync-config` (DEC-S011). |
+| `sessions/*.md` (on orphan `sessions` branch via `.sessions-worktree/`) | Per-session files — `YYYY-MM-DD-HHMM-<dev>-<slug>.md`. Atomic after `/its-dead` closes (DEC-S013); orphan branch decouples session log from any code branch (DEC-S014). |
+| `.claude/seeds-version` | Schema version this project was last installed at. Used by `/pull-seeds` to gate template syncs. |
+| `.claude/project-type` | Project type — `webapp` or `tool`. Used by `@sync-config` to gate template files that don't apply to this project's type (DEC-S011). Optional. |
 
-## Core Data Model
-
-From SPEC §2.1–2.6 / build plan §2. Stack-agnostic entities; fields marked **(log day one)** must
-be real from the first commit even if nothing reads them yet (DEC-008).
-
-```
-Reservation → Event (n:1) → Shift (n:1, by vessel+day) → Seat (1:n) → CrewMember (n:1, via assignment)
-CrewMember → Credential / PtoWindow / ReliabilityEvent (1:n)
-Vessel → Event / Shift
-
-Vessel            coiMaxPax, manning [{roleTypeId,count}]   (per-vessel data, N lines — DEC-016/ROLE-1)
-CrewMember        name, phone, ratings[captain|mate], status, manualBoost?, manualFloor?,
-                  protocolOverride?, reliabilityScore (MVP-thin: null/flat)
-Credential        type (MMC universal; medical/TWIC/drug-consortium tenant-config), expiry
-PtoWindow         start, end                                (suppression-only — DEC-009)
-Event             vesselId, date, time, capacity, status
-Reservation       eventId, customerName, partySize, phone, status   (no waiver — DEC-012)
-Shift             vesselId, date, state, lockedAt?, eventIds[]
-                  state ∈ Pending/Filling/Crewed/AtRisk/Completed/Cancelled (derived — DEC-005)
-Seat              shiftId, role, kind (required|supernumerary), state, assignedCrewMemberId?
-                  state ∈ Open/Asked/Claimed/Confirmed/Bailed   (⏳ reserve a Held tier — DEC-005)
-Ask               seatId, crewMemberId, channel, sentAt, respondedAt?, response,
-                  type(confirm|hold)⏳, decisionBy?⏳          (doubles as a reliability event)
-ReliabilityEvent  crewMemberId, type, timestamp, metadata{latency?,lateness?,seatId?,shiftId?}
-                  (log day one — DEC-008; ⏳ room for hold_released)
-```
-
-⏳ = reserved-but-not-implemented field for Pass D (progressive commitment). Add the column now;
-default it inert. See DEC-004/DEC-005.
+Project-specific docs are listed in `.claude/CLAUDE-context.md` under `## Additional Docs`.
 
 ## Micro Workflow (every task, no exceptions)
 
 1. **Spec it** — poker estimate, acceptance criteria. Issue exists from `/start-phase`.
-2. **Plan it** — summarize the approach. Wait for explicit approval before writing code or running
-   commands (see Approval Before Action).
+2. **Plan it** — summarize what you're going to do. Wait for explicit approval before writing code or running commands.
 3. **Cut the branch** — once approved: `git checkout -b task/X.Y-short-description`.
-4. **Build it.**
-5. **Write the test** — against the chosen test runner (set at 0.3). Test-first when behavior
-   changes. The domain core (oracle, state machine, reliability log) is heavily unit/integration
-   tested; UI tests arrive with the stack at M4.
-6. **Run targeted tests** — the relevant file/suite, not the whole thing.
-7. **Ship the task** — `/kill-this` commits, pushes, opens a PR with `closes #<issue>`, runs
-   @code-review, appends a `## Task <N>` block to the session file. Run per task.
-8. **Pick up another task or close out** — new branch, or `/its-dead` once at the end of the window.
+4. **Build it**
+5. **Write the test** — Playwright integration test + pgTAP if RLS-touching. Test-first when behavior is changing.
+6. **Run targeted tests** — `npx playwright test tests/foo.spec.ts --project=desktop`. `supabase test db` if RLS-touching. Do NOT run full suite — that's the user's call.
+7. **Mobile screenshot** — confirm 375px viewport passes
+8. **Ship the task** — `/kill-this` commits, pushes, opens PR with `closes #<issue>`, appends a `## Task <N>` block to the session file (on the orphan `sessions` branch). Run per task; multiple per session.
+9. **Pick up another task or close out** — start step 1 with a new branch, or run `/its-dead` once at the end of the Claude window. Merge PRs whenever — order doesn't matter.
 
-**No test, no push.** Full suites are never run automatically — ask first.
+**No test, no push.**
 
-> Webapp specifics — Supabase migration protocol, pgTAP/Playwright/375px screenshots, the
-> `<VersionTag />` component — **land at M4** with the stack. Don't import them into the
-> domain-core phases. (Seeds' webapp CLAUDE.md sections were intentionally not copied here per
-> DEC-013; pull them in via `/pull-seeds` or by hand when the stack is chosen.)
+**Full suite (`npx playwright test`) is never run automatically.** Ask first.
+
+Project-specific step overrides (e.g. a tool project with no database swaps the test steps) live in `.claude/CLAUDE-context.md` under `## Workflow Overrides`.
+
+## Migration Protocol
+
+- **All schema changes go through migrations.** No exceptions. Migrations are the source of truth — never edit schema through a dashboard on any environment, and never hand-patch an already-applied migration.
+- **Before creating a migration:** check for open PRs touching the same tables (`gh pr list`). If overlap exists, merge the in-flight PR first, or rename the new migration to a later timestamp to keep ledger order clean.
+
+The project's migration **toolchain** — CLI commands, production-write protection (DEC-S009), and Supabase↔Vercel env-var sync — lives in `.claude/CLAUDE-context.md` under `## Migration Protocol (project)`. Projects without a database mark it `N/A` there.
+
+## Conventions
+
+Project coding conventions — typing, component structure, data fetching, auth/RLS, error-handling contract, naming, UI/brand, and testing layout — live in `.claude/CLAUDE-context.md` under `## Conventions`. They're stack-specific, so they're project-owned.
 
 ## Session Skills
 
 | Skill | When | What |
 |-------|------|------|
-| `/its-alive` | Session start | Open per-session file on orphan `sessions` branch, capture transcript, read context, recommend task |
-| `/pause-this` | Mid-session break | Build check, commit WIP on task branch, note pause |
+| `/its-alive` | Session start | Ensure `.sessions-worktree/` exists, open per-session file on orphan `sessions` branch, capture transcript, read context, recommend task |
+| `/pause-this` | Mid-session break | Build check, commit WIP on task branch, note pause in session file (sessions branch) |
 | `/restart-this` | Resume from pause | Reload context, continue same session |
-| `/kill-this` | **Per task** | Build check, commit, push, open PR, @code-review, append `## Task <N>` block. N× per session |
-| `/its-dead` | Session end (once per window) | Stamp `ended:`, tally points, display wall_clock, close session file |
+| `/kill-this` | **Per task** (DEC-S013) | Build check, commit code on task branch, open PR, append `## Task <N>` block to session file. Run N times per session — one per task. No time math. |
+| `/its-dead` | Session end (once per window) | Stamp `ended:`, tally points, display wall_clock to screen, close session file. No time math, no version bump (those moved to `/retro`). Merge PRs whenever — order doesn't matter. |
 | `/start-phase` | Phase boundary (start) | Materialize phase as Issues with `phase:N`, `points:X` labels |
-| `/retro` | Phase boundary (end) | Phase throughput + estimate calibration (from GitHub issue dates/labels), mark `[x]`, write retro, version bumps |
-| `/bump-major` | Breaking change | Major bump + CHANGELOG + tag on `main`. Needs `package.json` |
-| `/promote-production` | Ship to prod | ff-merge `main` → `production`. **M4+ only** (no `production` branch yet) |
-| `/push-seeds` | After workflow improvements | Backport to seeds via @sync-config |
-| `/pull-seeds` | After seeds improves | Pull template changes — schema-version-gated |
-| `/read-the-tape` | After a notable session | Audit JSONL for anti-patterns |
-| `/doc-consistency-check` | Docs drift / phase boundary | Cross-reference claims across docs. Report-only |
+| `/retro` | Phase boundary (end) | Compute per-session active time (wall − breaks) from `started`/`ended` + transcript break inference. Aggregate one phase velocity (active h/pt). Mark `[x]`, write retro, patch-bump per merged PR + minor-bump at close. |
+| `/bump-major` | Breaking change | Manually bump major version. CHANGELOG.md entry + tag on the trunk (`main`). Dev projects only |
+| `/promote-production` | Ship trunk to prod | ff-merge `main` → `production` (deploy-only; tag already on the commit), push. Projects with a `production` branch only |
+| `/push-seeds` | After workflow improvements | Backport project-side improvements to the seeds templates via @sync-config |
+| `/pull-seeds` | After seeds gets new improvements | Pull template changes into this project — schema-version-gated, applied via @sync-config |
+| `/read-the-tape` | After a session worth learning from | Audit JSONL transcript, find anti-patterns, propose skill improvements |
+| `/doc-consistency-check` | Ad-hoc, when docs feel drifted (no scheduled trigger) | Cross-reference factual claims across `docs/*.md` + root `CLAUDE.md`; flag mismatches + unfilled placeholders. Report-only via @doc-consistency |
 
-**Dev identity:** `~/.claude/devname` (one-line handle, e.g. `eric`). Set once per machine.
+**Dev identity:** `~/.claude/devname` (one-line file with handle, e.g. `eric`). Set once per machine.
 
-**Task model:** PROJECT_PLAN.md read at planning, written at retro. Current-phase tasks are GitHub
-Issues. A phase ends when its issues close.
+**Task model:** PROJECT_PLAN.md is read at planning, written at retro. Untouched mid-phase. Current-phase tasks live as GitHub Issues. The phase ends when its issues close.
 
 ## Agents
 
 | Agent | Model | When | Purpose |
 |-------|-------|------|-------|
-| @architect | Fable 5 | Before design decisions, new deps, scope creep, **any DEC-TBD** | Coherence vs SPEC + DECISIONS |
+| @architect | Opus 4.8 | Before design decisions, new dependencies, scope creep | Coherence vs SPEC + DECISIONS |
 | @code-review | Sonnet | After every commit (wired into `/kill-this`) | Catch issues early |
-| @pm | Sonnet | Start/end of sessions | Track progress, flag risks |
-| @sync-config | Sonnet | `/push-seeds`, `/pull-seeds` | Classify template-vs-project diffs |
-| @tape-reader | Sonnet | `/read-the-tape` | Audit session JSONL for anti-patterns |
-| @doc-consistency | Sonnet | `/doc-consistency-check` | Cross-reference doc claims. Report-only |
-| @ui-reviewer | Sonnet | After UI work, phase boundaries | Design-quality review (webapp) |
-
-> `@ui-reviewer` is **installed** (M4, `/pull-seeds`) but **inert until `.claude/ui-context.md`
-> exists** — it hard-stops without it. That context file (brand tokens, surfaces, viewports, the
-> review checklist) is authored with the first crew/admin surface (1.5b/#12); the reviewer earns its
-> keep once there's UI to review.
+| @pm | Sonnet | Start/end of sessions via skills | Track progress, flag risks |
+| @ui-reviewer | Sonnet | After UI work, phase boundaries | Design quality |
+| @sync-config | Sonnet | `/push-seeds` and `/pull-seeds` | Classifies template-vs-project diffs, gates structural backports |
+| @tape-reader | Sonnet | `/read-the-tape` | Audits session JSONL for workflow anti-patterns |
+| @doc-consistency | Sonnet | Via `/doc-consistency-check` skill, or ad-hoc | Cross-reference factual claims across project docs; flag mismatches + unfilled placeholders. Report-only |
 
 ## Model Selection
 
-Three tiers. Default low; escalate by **task length and complexity** — Fable 5's lead over Sonnet/Opus is smallest on short scoped tasks and widens the longer and more complex the work (migrations, schema design, cross-cutting refactors, long autonomous runs).
+Default to the cheapest model that does the job. **Opus 4.8 is the standing model** for real development and architecture; Sonnet handles cheap/scoped work; Fable is a deliberate, on-demand escalation for *bundled* long-horizon work — never the default, because $10/$50 per MTok (2× Opus) drains usage fast.
 
 | Tier | Model | Use for |
 |------|-------|---------|
-| Workhorse | `claude-sonnet-4-6` | Default main session and most agents. Single-file edits, scoped tasks, reviews. |
-| Hard | `claude-opus-4-8` | The "stuck" escalation; schema work; anything where being wrong is expensive but the task is bounded. |
-| Frontier | `claude-fable-5` | Long-horizon, multi-file, high-autonomy work where holding coherence across the whole change is the bottleneck — and architecture decisions (the oracle — see `@architect`). $10/$50 per MTok, 2× Opus both directions; reserve accordingly. |
+| Cheap | `claude-sonnet-4-6` | Trivial/scoped agents and reviews — fast, low-cost. |
+| Default | `claude-opus-4-8` | The standing model for development and architecture. Most work runs here. |
+| Frontier (on demand) | `claude-fable-5` | A *bundled* long-horizon unit — several related tasks combined into one coherent multi-file run. Spawned deliberately and scope-confirmed; the bundling is what amortizes the premium. One-off task → stay on Opus. |
 
-- **Reach for `effort` before reaching for a tier.** `effort` (`low`/`medium`/`high`/`xhigh`/`max`, set via `output_config`) buys quality more cheaply than a model jump on a task the current model can already do. `xhigh` is the floor for coding/agentic work, `high` for intelligence-sensitive work, `max` only when correctness must beat cost. Fable 5 reaches production-quality code at *medium* effort and is more token-efficient than prior models — frontier quality does **not** require max effort.
-- **Spec up front, then let it run.** Front-load the full task spec in one turn and let the model work long at high effort rather than over-decomposing a coherent task into tiny issues — Fable holds coherence across millions of tokens, and chopping the task throws that away. The Micro Workflow's *Spec it / Plan it* steps and the `docs/design/` mockups **are** the spec; point the model at them.
-- **File memory is a force multiplier — ~3× more effective on Fable than Opus 4.8.** Session files, `docs/design/`, `docs/DECISIONS.md`, and acceptance criteria are exactly the persistent notes Fable exploits to improve its own output. Keep them current; reference them explicitly in the task.
-- **Vision is a first-class input.** Fable 5 is state-of-the-art at vision and rebuilds UI from screenshots with minimal scaffolding — lean on `docs/design/mockups/*.jsx` and screenshot-vs-build diffs (see `@ui-reviewer`).
-- **Silent fallback caveat.** Fable routes <5% of sessions (cyber / bio-chem / distillation classifiers, conservatively tuned) to Opus 4.8 automatically and tells you when it does. Defensive auth work won't trip it in normal use — but if a session unexpectedly feels a tier weaker, check for a fallback notice before chasing a phantom regression.
-- **Agents:** model in agent frontmatter. `@architect` pins `claude-fable-5` — architecture decisions are where being wrong compounds, so they get the frontier tier. Reviewers (`@code-review`, `@pm`, `@doc-consistency`, `@tape-reader`) stay Sonnet. `@ui-reviewer` stays Sonnet but is worth bumping to Opus 4.8 / Fable for vision-heavy mockup-vs-build review.
-- **New agents:** default to Sonnet. Add a `model:` line only when the agent's job is architecture- or vision-level reasoning.
+**The Fable trigger — bundle, then escalate.** Fable's lead is largest on long, coherent, multi-file work, which is also where its cost amortizes across the most output — so don't route individual tasks to it.
+- When several queued/related tasks form one coherent unit, **Claude suggests** bundling them into a single Fable run *before* starting, with the proposed scope.
+- The **operator can request the same**: say `bundle for fable` (or describe the bundle). Either party can raise it.
+- A Fable run is opt-in and announced — confirm scope before spawning. Give it the full combined spec up front (Fable holds coherence across millions of tokens) and run it at high effort. That front-loaded spec is what makes the premium pay off.
+
+- **Reach for `effort` before reaching for a tier.** `effort` (`low`/`medium`/`high`/`xhigh`/`max`, via `output_config`) buys quality more cheaply than a model jump on a task the current model can already do. `xhigh` is the floor for coding/agentic work, `high` for intelligence-sensitive work, `max` only when correctness must beat cost.
+- **File memory is a force multiplier — ~3× more effective on Fable than Opus 4.8.** Session files, `design/`, `docs/DECISIONS.md`, and acceptance criteria are the persistent notes the model exploits to improve its own output. Keep them current and reference them explicitly — this matters most on a bundled Fable run.
+- **Vision.** Fable 5 is state-of-the-art at vision and rebuilds UI from screenshots with minimal scaffolding — a legitimate reason to escalate a vision-heavy unit (mockup-vs-build, `design/*.jsx`).
+- **Silent fallback caveat.** Fable routes <5% of sessions (cyber / bio-chem / distillation classifiers, conservatively tuned) to Opus 4.8 automatically and tells you when it does. Defensive RLS/auth work won't trip it in normal use — but if a Fable run unexpectedly feels a tier weaker, check for a fallback notice before chasing a phantom regression.
+- **Agents:** model in agent frontmatter. `@architect` runs Opus 4.8; escalate it to a Fable run for genuinely hard or bundled design work (Claude or operator suggests). Reviewers (`@code-review`, `@pm`, `@doc-consistency`, `@tape-reader`) and `@ui-reviewer` stay Sonnet.
+- **New agents:** default to Sonnet; pin `model: opus` only when the agent's standing job needs it. Don't pin Fable — reach it via the on-demand bundle trigger.
 
 ## PR Workflow
-- Each task gets a branch: `task/X.Y-short-description`.
-- Issues carry `phase:N` labels (from `/start-phase`); PR title references `closes #N`.
-- `/kill-this` opens the PR. Keep ≤3 open PRs; prefer 1.
-- **Small docs / idea-parking PRs ship standalone** off `main` (own branch + PR), **not** logged in
-  the session file — `## Task` blocks + `pr_numbers` are for substantive, issue-closing task PRs.
-- **PR / task test plans split two things:** *Verified (automated)* — what I already ran (`npm run
-  verify`, tests, CI, smoke) — from a short *Eyeball-it-yourself (human)* list of what you still need
-  to look at (UI surfaces, anything no test covers). The stable local-run recipe lives in
-  `docs/RUNNING.md` — link it, don't re-explain setup each PR.
-- **Eyeball steps must be executable and observable.** Each step is a copy-pasteable command that
-  exists in the repo **today** (a step that needs missing tooling → build the tooling in the same PR
-  or cut the step) or a tap on what a prior step produced, ending with the literal expected sight
-  ("green success card", not "verify it works"). Numbered, one line each — between terse and
-  verbose, never a wall. Claude verifies what it can before the PR (runs the seeds/scripts, traces
-  the render path); it cannot curl the dev server — what's visually unverified is labeled, not
-  dressed as a step.
-- Stacking PRs is preferred when tasks depend on each other — branch the next task off the previous
-  task branch.
-- **Never rebase a task branch that already has commits on origin** — use GitHub's "Update branch".
-- `production` branch + `/promote-production` are **M4+** (DEC-013/DEC-S022). **Adopt** when the first
-  hosted deploy lands: branch `production` off `main` at the release commit, push, then
-  `/promote-production` ff-merges `main`→`production` per release. **Remove** (delete the branch) if
-  the deploy model changes — `main` is always the active trunk (DEC-S022); `production` is only a
-  downstream deploy pointer, never a PR base.
+
+- Each task gets a branch: `git checkout -b task/X.Y-short-description`.
+- Issues assigned to phase via `phase:N` label (created by `/start-phase`).
+- PR title references issue: `closes #N`.
+- `/kill-this` opens PR. Self-merge after review unless stakeholder review needed.
+- Keep ≤3 open PRs. Prefer 1.
+- Never two open PRs with migrations on the same table — merge one first.
+- **Stacking PRs is preferred** when tasks depend on each other. Branch the next task off the previous task branch (`git checkout -b task/X.Y-next task/X.Y-prev`), not off main. Only wait for the previous PR to merge when there's a migration conflict on the same table.
+
+### Production branch (DEC-S022)
+
+`main` is the always-active trunk. Every task PRs into `main`; `/retro` patch-bumps per merged PR + minor-bumps at phase close, tagging on `main` immediately. This is the same workflow whether or not the project deploys.
+
+Deployable projects add a `production` branch — a downstream deploy pointer the host (Vercel, etc.) watches. It is **never** a PR base and is never touched by the sync. Ship with `/promote-production`, which ff-merges `main` → `production` and pushes (the version tag is already on the commit from the bump — promotion does not tag).
+
+Adopting a production branch:
+```
+git checkout -b production main && git push -u origin production
+```
+Then repoint the host's production branch from `main` to `production` (e.g. Vercel → Settings → Git → Production Branch) — **before** `main` takes active work, or WIP auto-deploys to prod. Removing it: delete the branch and point the host back at `main`. No skill changes to opt in or out — only `/promote-production` cares (it gates on `origin/production`).
+
+## Versioning
+
+Every dev project carries a SemVer version in `package.json`, mirrored to a git tag (`vX.Y.Z`) on `main`. `/retro` is the sole place version bumps happen (DEC-S013 moved patch bumps out of `/its-dead`).
+
+**Three triggers (all run at `/retro` per DEC-S013):**
+- **Patch:** `/retro` Step 8.2 — one bump + CHANGELOG entry per PR merged in the phase window. Title pulled from GitHub.
+- **Minor:** `/retro` Step 8.3 — at phase close after all patches. CHANGELOG entry summarizes the phase.
+- **Major:** `/bump-major` manual. User supplies the breaking-change rationale.
+
+**Tag rule:** tags are applied on the active trunk (`main`) at bump time (DEC-S022). A `production` deploy branch, if present, receives the already-tagged commit via `/promote-production` ff-merge — promotion does not tag.
+
+**Detection:** these skills check `package.json` exists at the repo root before bumping. If it doesn't (template/markdown-only project), they no-op silently.
+
+### `<VersionTag />` component
+
+Build-time version display, reads `process.env.NEXT_PUBLIC_APP_VERSION` + `process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA`. Renders e.g. `v1.2.3 (a1b2c3)`.
+
+Wiring:
+- `next.config.ts` (or `next.config.js`) forwards `npm_package_version` → `NEXT_PUBLIC_APP_VERSION`. Critical — without `NEXT_PUBLIC_`, client trees silently render `v0.0.0`.
+- Wire into login screen and footer.
+- Vercel sets `NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA` automatically. Local `npm run dev` outside Vercel omits the commit hash — that's intentional.
+
+```tsx
+import { VersionTag } from "@/components/VersionTag";
+<VersionTag className="text-xs text-muted-foreground" />
+```
+
+### CHANGELOG.md
+
+Auto-maintained by `/retro` and `/bump-major` (DEC-S013 — `/its-dead` no longer touches it). Don't edit by hand mid-flow — the skills always prepend after the `# Changelog` header. The first bump creates the file if absent.
+
+Format (Keep-a-Changelog inspired but simpler):
+```
+# Changelog
+
+## [1.2.3] - 2026-05-05
+- PR #42: Add login form
+
+## [1.2.2] - 2026-05-04
+- PR #41: Fix dashboard query
+```
 
 ### PR Review on Mobile (developer notes)
 
 Doing PR reviews from your phone is tolerable if you structure for it:
 - **GitHub mobile app, not web.** The native app's diff + approve + merge flow is usable. The mobile web is not.
-- **Tap the preview URL first.** Vercel posts it as a comment (once the hosted deploy lands — today the eyeball path is `mill-dev:3000` per `docs/RUNNING.md`). 60 seconds of clicking the actual feature catches more than reading the diff would.
+- **Tap the preview URL first.** Vercel posts it as a comment. 60 seconds of clicking the actual feature catches more than reading the diff would.
 - **Enable auto-merge.** Repo Settings → enable auto-merge, then "Enable auto-merge" on each PR. Checks pass → it merges itself. One less thing to remember to do.
-- **Branch protection:** require CI green once CI exists (build + tests). Skip reviewer count requirements for solo dev — they add friction with no benefit.
-- **Checklist PR descriptions.** `/kill-this` should populate: does this PR have a migration? Schema/DDL change? UI change at 375px? A checkbox list is fast to scan on a small screen.
+- **Branch protection:** require CI green (Vercel build + Playwright). Skip reviewer count requirements for solo dev — they add friction with no benefit.
+- **Checklist PR descriptions.** `/kill-this` should populate: does this PR have a migration? RLS change? UI change at 375px? A checkbox list is fast to scan on a small screen.
 - **`gh` CLI on your dev server** is faster than any UI when you're at a keyboard: `gh pr list`, `gh pr view 42 --web`, `gh pr merge 42 --auto`.
 
-## Versioning
-SemVer in `package.json` (created at task 0.3), mirrored to a git tag (`vX.Y.Z`) on `main`. `/retro`
-is the sole place bumps happen: patch per merged PR + minor at phase close; `/bump-major` is manual.
+## Workflow Notes
+- **Diagnostic commands** (build, lint, type check, test): run directly — see errors, fix them, don't bother the user.
+- **Environment-changing commands** (npm install, supabase migrations, git push, deploys): output these for the user to run.
+- **Never rebase a task branch that already has commits on origin.** If main has advanced while a PR branch is open, leave the branch as-is — GitHub's "Update branch" button handles this at merge time. Rebasing rewrites remote history and requires a force-push. Use `git merge --ff-only` only if explicitly asked.
+- **Debugging CI failures:** Before any multi-step local debug (spawning servers, reading cookies, modifying middleware), confirm the environment is functional: "Can you run the test suite locally right now? What env vars are set?" One environmental check before any code change.
+- **JSON parsing in Bash:** Prefer `gh ... --jq '...'` (built-in jq via `gh`) or `jq` over `python3 -c "import json,sys; ..."` one-liners. The python invocations trigger per-pattern permission prompts (each unique argument list is a new allowlist entry), while `gh --jq` runs under the existing `Bash(gh ...)` allowance. For non-`gh` JSON, install/use `jq` directly. Reserve python for cases where the data shape genuinely needs control flow.
+- **Bug reports:** create a GitHub issue, label `bug`, add to current or next phase.
 
-**CHANGELOG.md** — `/retro` and `/bump-major` append entries (Keep-a-Changelog style: Added /
-Changed / Fixed under each version). The human-readable companion to the git tags.
+Project-specific debugging gotchas (dev-server checks, stale-process traps, auth-redirect quirks) live in `.claude/CLAUDE-context.md` under `## Workflow Notes (project)`.
 
-The `<VersionTag />` component (Next/Vercel build-stamp) is **available but not yet wired** — pull
-`templates/VersionTag.tsx` from seeds and add it to a layout when a deployed build needs the stamp.
-Until then the tag lives only in `package.json` + git. Skills no-op silently until `package.json`
-exists.
+## Approval Before Action (all tasks)
+
+For every task — not just bugs — explain the plan and wait for approval before doing anything:
+1. State what files you'll create or modify and why
+2. List commands you'll run, especially commits, pushes, package installs,
+   anything touching production
+3. Wait for "go", "do it", or equivalent
+4. Do not edit files or run commands until approved
+
+## Bug Reports & Questions
+When a bug is reported or a question is asked:
+1. Explain the cause and your proposed fix
+2. Wait for approval before making any changes
+3. Do not edit files, run commands, or implement fixes until given the go-ahead
 
 ## Scope Discipline
-Check `docs/SPEC.md` §4 *Parked* + the 2027 line before adding anything — that's the "Not V1"
-guardrail. New ideas go to `docs/FUTURE_IDEAS.md`, **not** the locked spec (DEC-014).
+Check `docs/SPEC.md` "Not V1" before adding anything.
 
-If a task feels bigger than its estimate: stop, re-estimate, update PROJECT_PLAN at the next phase
-boundary (or via Issue mid-phase). If it's now a 13, break it down.
+If a task feels bigger than its estimate:
+1. Stop, re-estimate
+2. Update PROJECT_PLAN.md (at next phase boundary, or via Issue if mid-phase)
+3. If scope creep, flag and move on
 
 **Splitting is a reviewability call, not a model-capability one.** Points size *estimation*; they don't cap how much gets built in one run. Fable holds coherence across far more than an 8, and splitting a *coherent* task fragments context — two stitched-together 5s can land worse than one well-specified 8. So:
 - **Don't split a coherent 8** (one feature, one migration, one subsystem) just to honor a ceiling — run it as one unit with the full spec up front.
@@ -286,39 +220,14 @@ boundary (or via Issue mid-phase). If it's now a 13, break it down.
 - **Still break genuine 13s** — for review and risk, and because a 13 usually means the task isn't understood well enough yet. Not because the model can't hold it.
 - Larger units lean harder on a complete spec + crisp ACs and the `@architect` gate. Raise the ceiling only with those in place.
 
-## Workflow Notes
-- **Diagnostic commands** (build, lint, type check, test): run directly — see errors, fix them, don't bother the user.
-- **Environment-changing commands** (npm install, migrations, deploys): output these for the user to run. Exception: `git push` inside the approved `/kill-this` flow — that ritual owns commit + push + PR.
-- **JSON parsing in Bash:** Prefer `gh ... --jq '...'` (built-in jq via `gh`) or `jq` over `python3 -c "import json,sys; ..."` one-liners. The python invocations trigger per-pattern permission prompts (each unique argument list is a new allowlist entry), while `gh --jq` runs under the existing `Bash(gh ...)` allowance. For non-`gh` JSON, install/use `jq` directly. Reserve python for cases where the data shape genuinely needs control flow.
-- **Bug reports:** after the cause-and-fix approval (§ Bug Reports & Questions), file a GitHub issue labeled `bug`, add to current or next phase.
-
-## Approval Before Action (all tasks)
-For every task — explain the plan and wait for approval before doing anything:
-1. State what files you'll create or modify and why.
-2. List commands you'll run — especially commits, pushes, installs, anything touching production.
-3. Wait for "go", "do it", or equivalent.
-4. Do not edit files or run commands until approved.
-
-## Bug Reports & Questions
-1. Explain the cause and your proposed fix.
-2. Wait for approval before changing anything.
-
 ## Tone
 Occasional dry humor and sarcasm welcome. One good line beats three forced ones.
 
-**Push back and suggest — don't just execute.** Flag landmines (security, data-integrity, scope),
-propose the safer option, surface real forks rather than guessing. The goal is a collaborator that
-keeps the calls honest, *while* holding the vertical slice and not chasing tangents (new ideas →
-`docs/FUTURE_IDEAS.md`, DEC-014). Pushback and slice-focus together — don't trade one for the other.
-
-**The repo is the system of record.** Anything load-bearing lives in `CLAUDE.md` / `docs/` / the
-session files — version-controlled and visible. Auto-memory is a best-effort convenience hint, never
-the only home of something that matters.
-
 ## Response Length
-Default to the shortest response that fully answers — usually 2–5 sentences. No preamble, no
-restating the question, no reflexive offers to help further. Offer concrete follow-ups only when
-they'd save a round-trip. Be meticulous; skip disclaimers.
+
+Default to the shortest response that fully answers — usually 2–5 sentences. No preamble, no restating the question, no closing offers to help further. No reflexive "let me know if you need more" or "happy to expand." Do offer concrete follow-ups when they'd save a future round-trip. Length is requested explicitly ("expand," "give me the long version"), never the default.
+
+Be meticulous and skip disclaimers.
 
 ## Verbosity
 

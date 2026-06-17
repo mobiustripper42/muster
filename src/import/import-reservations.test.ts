@@ -6,11 +6,16 @@
 
 import { describe, expect, it } from "vitest";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
+import { formShifts } from "../builder/form-shifts.js";
+import { asId } from "../domain/ids.js";
 import {
+  importRecords,
   importReservations,
   parseXolaDate,
   parseXolaTime,
+  type RawReservationRecord,
 } from "./import-reservations.js";
+import { seedFleet } from "./product-map.js";
 
 // Mirrors the real sheet: row 0 = parent groups, row 1 = sub-headers, with a
 // drifting add-on column (idx 11) to prove targets resolve by name, not letter.
@@ -120,5 +125,59 @@ describe("importReservations", () => {
       ["resvA", "pA", BREW, "16-May-2026", "03:30 PM", "Ada", "a@x.com", "2", "2", "Confirmed", "", "Confirmed"],
     ]);
     expect(result.warnings.some((w) => /ambiguous header "Status"/.test(w))).toBe(true);
+  });
+});
+
+// Event status is DERIVED from reservation booked-ness (DEC-037): an event whose
+// every reservation has cancelled must itself be `cancelled`, so the
+// import→formShifts chain cancels its shift instead of stranding a ghost.
+describe("event status derivation + formShifts chain", () => {
+  // BREW → vessel-brewboat-party (product-map). Ids are deterministic.
+  const EVENT_ID = asId<"EventId">("evt-vessel-brewboat-party-2026-05-16-15:30");
+  const SHIFT_ID = asId<"ShiftId">("shift-vessel-brewboat-party-2026-05-16");
+  const rec = (
+    reservationId: string,
+    status: "booked" | "cancelled",
+  ): RawReservationRecord => ({
+    reservationId,
+    product: BREW,
+    date: "2026-05-16",
+    time: "15:30",
+    customerName: "Ada",
+    partySize: 4,
+    status,
+  });
+
+  it("a booked reservation → event scheduled", async () => {
+    const repo = new InMemoryRepository();
+    await importRecords(repo, [rec("r1", "booked")]);
+    expect((await repo.getEvent(EVENT_ID))?.status).toBe("scheduled");
+  });
+
+  it("one booked among cancelled → event still scheduled", async () => {
+    const repo = new InMemoryRepository();
+    await importRecords(repo, [rec("r1", "cancelled"), rec("r2", "booked")]);
+    expect((await repo.getEvent(EVENT_ID))?.status).toBe("scheduled");
+  });
+
+  it("all reservations cancelled → event cancelled", async () => {
+    const repo = new InMemoryRepository();
+    await importRecords(repo, [rec("r1", "cancelled"), rec("r2", "cancelled")]);
+    expect((await repo.getEvent(EVENT_ID))?.status).toBe("cancelled");
+  });
+
+  it("re-import that cancels the only reservation cancels the shift (no ghost)", async () => {
+    const repo = new InMemoryRepository();
+    await seedFleet(repo); // vessel manning so formShifts can derive seats
+
+    await importRecords(repo, [rec("r1", "booked")]);
+    await formShifts(repo);
+    expect((await repo.getShift(SHIFT_ID))?.state).not.toBe("Cancelled");
+
+    // The booking cancels in a later export → event derives cancelled → shift cancelled.
+    await importRecords(repo, [rec("r1", "cancelled")]);
+    expect((await repo.getEvent(EVENT_ID))?.status).toBe("cancelled");
+    await formShifts(repo);
+    expect((await repo.getShift(SHIFT_ID))?.state).toBe("Cancelled");
   });
 });

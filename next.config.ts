@@ -30,6 +30,11 @@ const nextConfig: NextConfig = {
     extensionAlias: {
       ".js": [".ts", ".tsx", ".js", ".jsx"],
     },
+    // The /admin/import xlsx upload (5.4a) posts a file through a Server Action;
+    // Next caps Server Action bodies at 1MB by default, which would clip the
+    // upload before our own 5MB guard runs. Set just above the app cap so the
+    // app's check is the binding one with a clean message (DEC-037).
+    serverActions: { bodySizeLimit: "6mb" },
   },
 };
 

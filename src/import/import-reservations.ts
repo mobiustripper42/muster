@@ -17,7 +17,7 @@
 
 import type { Event, Reservation } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
-import type { EventId } from "../domain/ids.js";
+import type { EventId, VesselId } from "../domain/ids.js";
 import {
   assertOptionalIsoDateTime,
   isClockTime,
@@ -30,6 +30,34 @@ export interface SkippedRow {
   reservationId?: string;
   product?: string;
   reason: string;
+}
+
+/**
+ * The seam between Land and Map (DEC-015/DEC-036). A decoded reservation row with
+ * date/time **already normalized** to ISO date + clock-time — so each Land adapter
+ * (the xlsx reader here; the Xola API adapter in 5.4b) does its own normalization
+ * before this point and `importRecords` never re-parses a Xola string. `product`
+ * stays a raw name — product→vessel resolution is Map's job (`importRecords`).
+ */
+export interface RawReservationRecord {
+  reservationId: string;
+  product: string;
+  /** ISO date (vessel-local day), e.g. "2026-05-16". Validated by the decoder. */
+  date: string;
+  /** Clock time, e.g. "15:30". Validated by the decoder. */
+  time: string;
+  customerName: string;
+  email?: string;
+  partySize: number;
+  status: "booked" | "cancelled";
+}
+
+export interface DecodeResult {
+  records: RawReservationRecord[];
+  /** Header ambiguity etc. — surfaced, not swallowed (DEC-015). */
+  warnings: string[];
+  /** Rows dropped at decode (missing column, blank id, unparseable date/time). */
+  skipped: SkippedRow[];
 }
 
 export interface ImportResult {
@@ -118,27 +146,21 @@ function reservationMateriallyChanged(
 }
 
 /**
- * Import the Reservations rows into the repository. `rows` is the full sheet
- * (both header rows + data). Idempotent on Xola `Reservation ID`. `now` is
- * injected (the import stamps `updatedAt`; the core never reads the clock).
+ * LAND: decode the raw Reservations sheet into normalized records. `rows` is the
+ * full sheet (both header rows + data). Pure (no repo, no clock) — header
+ * resolution, blank-row skipping, and Xola date/time parsing live here so the Map
+ * step (`importRecords`) sees only clean values. The xlsx-specific string parsing
+ * stays on this side of the seam; a different Land adapter (the API) emits the
+ * same `RawReservationRecord[]` its own way.
  */
-export async function importReservations(
-  repo: Repository,
-  rows: string[][],
-  now: Date = new Date(),
-): Promise<ImportResult> {
-  const result: ImportResult = {
-    reservationsAdded: 0,
-    reservationsUpdated: 0,
-    reservationsNewlyCancelled: 0,
-    eventsCreated: 0,
-    warnings: [],
-    skipped: [],
-  };
-  if (rows.length < 3) return result; // two header rows + at least one data row
+export function decodeXlsxRows(rows: string[][]): DecodeResult {
+  const warnings: string[] = [];
+  const skipped: SkippedRow[] = [];
+  const records: RawReservationRecord[] = [];
+  if (rows.length < 3) return { records, warnings, skipped }; // 2 headers + ≥1 data
 
   const headers = [rows[1] ?? [], rows[0] ?? []]; // sub-row first (DEC-015)
-  const col = (name: string) => resolveColumn(headers, name, result.warnings);
+  const col = (name: string) => resolveColumn(headers, name, warnings);
   const cReservationId = col("Reservation ID");
   const cProduct = col("Product");
   const cDate = col("Arrival Date");
@@ -150,31 +172,23 @@ export async function importReservations(
 
   for (const required of [cReservationId, cProduct, cDate, cTime, cStatus]) {
     if (required === -1) {
-      result.skipped.push({ reason: "missing a required column in the header" });
-      return result;
+      skipped.push({ reason: "missing a required column in the header" });
+      return { records, warnings, skipped };
     }
   }
-
-  const seenEvents = new Set<string>();
 
   for (const row of rows.slice(2)) {
     const reservationId = (row[cReservationId] ?? "").trim();
     if (!reservationId) continue; // blank/total row
 
     const product = (row[cProduct] ?? "").trim();
-    const resolution = resolveProduct(product);
-    if (resolution.kind !== "mapped") {
-      result.skipped.push({ reservationId, product, reason: resolution.reason });
-      continue;
-    }
-
     const date = parseXolaDate(row[cDate] ?? "");
     const time = parseXolaTime(row[cTime] ?? "");
     // The door (DEC-DATA-1): the parsers shape the strings, but only the shared
     // validator rejects impossible calendar dates (e.g. a malformed Feb 30) that
     // would otherwise persist as text rot. Batch-safe — skip the row, don't abort.
     if (!date || !time || !isIsoDate(date) || !isClockTime(time)) {
-      result.skipped.push({
+      skipped.push({
         reservationId,
         product,
         reason: `unparseable date/time: "${row[cDate]}" "${row[cTime]}"`,
@@ -182,32 +196,110 @@ export async function importReservations(
       continue;
     }
 
-    const { vesselId, capacity } = resolution.mapping;
-    const eventId = asId<"EventId">(`evt-${vesselId}-${date}-${time}`);
-
-    if (!seenEvents.has(eventId)) {
-      const existing = await repo.getEvent(eventId);
-      // Import is authoritative-for-now: this overwrites the event each run,
-      // including capacity. Once operator capacity-validation lands (DEC-016),
-      // guard this so a re-import doesn't stomp a corrected COI.
-      const event: Event = {
-        id: eventId,
-        vesselId,
-        date,
-        time,
-        capacity,
-        status: "scheduled",
-      };
-      await repo.saveEvent(event);
-      seenEvents.add(eventId);
-      if (!existing) result.eventsCreated++;
-    }
-
     const cancelled = /cancel/i.test((row[cStatus] ?? "").trim());
     const email = cEmail !== -1 ? (row[cEmail] ?? "").trim() : "";
     const pax = cPax !== -1 ? parseInt(row[cPax] ?? "", 10) : NaN;
+    records.push({
+      reservationId,
+      product,
+      date,
+      time,
+      customerName: (row[cName] ?? "").trim(),
+      partySize: Number.isFinite(pax) ? pax : 0,
+      status: cancelled ? "cancelled" : "booked",
+      ...(email ? { email } : {}),
+    });
+  }
 
-    const internalId = asId<"ReservationId">(`resv-${reservationId}`);
+  return { records, warnings, skipped };
+}
+
+/** Per-event accumulator: derive `status` from whether any reservation is booked. */
+interface PendingEvent {
+  vesselId: VesselId;
+  date: string;
+  time: string;
+  capacity: number;
+  /** True once any non-cancelled reservation maps to this event. */
+  anyBooked: boolean;
+}
+
+/**
+ * MAP + RECONCILE: persist decoded records as Events + Reservations (DEC-015).
+ * Idempotent on Xola `Reservation ID` (and Product+Date+Time for its Event). `now`
+ * is injected (the import stamps `updatedAt`; the core never reads the clock).
+ *
+ * Product→vessel resolution (and quarantine of the unmapped) happens here. An
+ * event's `status` is **derived**: an event with ≥1 booked reservation is
+ * `scheduled`; an event whose every reservation is cancelled is `cancelled`, so the
+ * import→`formShifts` chain cancels its shift instead of stranding a ghost (the
+ * automation must not ask crew for a trip with no passengers). An event that simply
+ * vanishes from a later export (vs reappearing with cancelled rows) is NOT
+ * reconciled here — out of pilot scope (DEC-037).
+ */
+export async function importRecords(
+  repo: Repository,
+  records: RawReservationRecord[],
+  now: Date = new Date(),
+): Promise<ImportResult> {
+  const result: ImportResult = {
+    reservationsAdded: 0,
+    reservationsUpdated: 0,
+    reservationsNewlyCancelled: 0,
+    eventsCreated: 0,
+    warnings: [],
+    skipped: [],
+  };
+
+  // Pass 1: resolve products, partition, and accumulate per-event booked-ness.
+  const events = new Map<EventId, PendingEvent>();
+  const persistable: { rec: RawReservationRecord; eventId: EventId }[] = [];
+  for (const rec of records) {
+    const resolution = resolveProduct(rec.product);
+    if (resolution.kind !== "mapped") {
+      result.skipped.push({
+        reservationId: rec.reservationId,
+        product: rec.product,
+        reason: resolution.reason,
+      });
+      continue;
+    }
+    const { vesselId, capacity } = resolution.mapping;
+    const eventId = asId<"EventId">(`evt-${vesselId}-${rec.date}-${rec.time}`);
+    const booked = rec.status === "booked";
+    const pe = events.get(eventId);
+    if (pe) pe.anyBooked ||= booked;
+    else
+      events.set(eventId, {
+        vesselId,
+        date: rec.date,
+        time: rec.time,
+        capacity,
+        anyBooked: booked,
+      });
+    persistable.push({ rec, eventId });
+  }
+
+  // Pass 2: upsert events with derived status. Import is authoritative-for-now —
+  // this overwrites the event each run, including capacity. Once operator
+  // capacity-validation lands (DEC-016), guard the capacity stomp.
+  for (const [eventId, pe] of events) {
+    const existing = await repo.getEvent(eventId);
+    const event: Event = {
+      id: eventId,
+      vesselId: pe.vesselId,
+      date: pe.date,
+      time: pe.time,
+      capacity: pe.capacity,
+      status: pe.anyBooked ? "scheduled" : "cancelled",
+    };
+    await repo.saveEvent(event);
+    if (!existing) result.eventsCreated++;
+  }
+
+  // Pass 3: upsert reservations (materiality-guarded updatedAt, DEC-029).
+  for (const { rec, eventId } of persistable) {
+    const internalId = asId<"ReservationId">(`resv-${rec.reservationId}`);
     const existingReservation = await repo.getReservation(internalId);
     // The fields below double as the materiality set — keep in lockstep with
     // `reservationMateriallyChanged` so a new tracked field can't silently
@@ -215,10 +307,10 @@ export async function importReservations(
     const core: Reservation = {
       id: internalId,
       eventId,
-      customerName: (row[cName] ?? "").trim(),
-      partySize: Number.isFinite(pax) ? pax : 0,
-      status: cancelled ? "cancelled" : "booked",
-      ...(email ? { email } : {}),
+      customerName: rec.customerName,
+      partySize: rec.partySize,
+      status: rec.status,
+      ...(rec.email ? { email: rec.email } : {}),
       // phone left undefined — joined from the customers export later (DEC-017).
     };
     // Stamp updatedAt on create + material change only (DEC-029); otherwise
@@ -237,10 +329,28 @@ export async function importReservations(
     if (existingReservation) result.reservationsUpdated++;
     else result.reservationsAdded++;
     // … newlyCancelled is the orthogonal "changed to cancelled this run" signal.
-    if (cancelled && existingReservation?.status !== "cancelled") {
+    if (rec.status === "cancelled" && existingReservation?.status !== "cancelled") {
       result.reservationsNewlyCancelled++;
     }
   }
 
+  return result;
+}
+
+/**
+ * Land→Map in one call: decode the full sheet and import it. Idempotent on Xola
+ * `Reservation ID`. Kept as the xlsx entry point (and so M1's tests still drive
+ * the whole path against raw rows); the seam (`decodeXlsxRows`/`importRecords`) is
+ * what the API adapter reuses (DEC-036/DEC-037).
+ */
+export async function importReservations(
+  repo: Repository,
+  rows: string[][],
+  now: Date = new Date(),
+): Promise<ImportResult> {
+  const decoded = decodeXlsxRows(rows);
+  const result = await importRecords(repo, decoded.records, now);
+  result.warnings.unshift(...decoded.warnings);
+  result.skipped.unshift(...decoded.skipped);
   return result;
 }

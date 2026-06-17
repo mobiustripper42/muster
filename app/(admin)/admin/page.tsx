@@ -23,6 +23,12 @@ export default function AdminHome() {
       >
         Outbox — asks waiting on your text →
       </Link>
+      <Link
+        href="/admin/import"
+        className="rounded-card border border-line bg-card px-4 py-3 font-semibold text-accent shadow-sm"
+      >
+        Import — load this week’s Xola reservations →
+      </Link>
       <p className="text-sm text-muted">
         Roster, event admin, and shift builder land here in later tasks.
       </p>

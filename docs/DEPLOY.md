@@ -143,6 +143,29 @@ unopenable). **Crew** need none of this: their links flow through the DEC-030 ou
 
 ---
 
+## Importing reservations (operator — 5.4a, DEC-037)
+The board is fed from the Xola Reservations export. In Xola: **Reports → Reservations**, set the date
+range to **Leading Year**, export the `.xlsx`, then upload it at **`/admin/import`** (admin sign-in
+required). Upload → the board fills with upcoming trips + their crew seats.
+
+- **Why Leading Year (every time).** That report filters by **booking date**, not trip date — so to
+  capture every *upcoming* trip you need every booking *made* over a long span. Leading Year covers
+  anyone who booked in the last ~12 months, i.e. essentially all your upcoming trips. A short/recent
+  range would silently miss a trip booked months ago. A *forward* range makes no sense here (you
+  can't book in the future).
+- **Re-import freely.** It's idempotent — keyed on the Xola `Reservation ID` — so re-uploading the
+  same week **updates in place, never duplicates**. Re-run before each crew weekend and whenever
+  bookings change.
+- **Cancellations propagate.** A cancelled booking exports as a `Cancelled` row; the import marks it
+  cancelled, and a trip whose *every* booking has cancelled has its shift **auto-cancelled** (crew
+  aren't asked for a dead trip).
+- **Caveats.** A trip booked **more than a year ahead** falls outside Leading Year (rare for day
+  trips — widen the range if it happens). And a trip that simply **vanishes** from the export isn't
+  cleaned up — only one that appears as `Cancelled` is (DEC-037) — so keep using the same Leading-Year
+  range rather than narrowing it. Skipped rows (unmapped product / bad date) are counted on the result
+  and logged server-side (Vercel function logs) for the dev — an unmapped product needs a code change
+  to `product-map.ts`, not an operator action.
+
 ## Operating notes
 - **The cron is the only autonomous mover.** Shift *state* is derived lazily on read; the cron only
   drives the outbound sends (firing asks). If it's wedged, the board still reads correctly — nothing

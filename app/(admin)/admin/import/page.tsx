@@ -60,7 +60,12 @@ export default async function ImportPage({
         <h1 className="text-xl font-semibold text-ink">Import reservations</h1>
         <p className="text-sm text-muted">
           Upload the Xola <strong>Reservations</strong> export (.xlsx). It fills
-          the board with this week’s trips and the crew seats they need.
+          the board with upcoming trips and the crew seats they need.
+        </p>
+        <p className="mt-1 text-xs text-muted">
+          In Xola: <strong>Reports → Reservations</strong>, date range{" "}
+          <strong>Leading Year</strong>, export <code>.xlsx</code>. Re-importing is
+          safe — it updates in place, never duplicates.
         </p>
       </header>
 

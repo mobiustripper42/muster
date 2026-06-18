@@ -9,7 +9,7 @@
     "build": "next build --webpack",
     "start": "next start",
     "build:core": "tsc -p tsconfig.build.json",
-    "db:up": "docker compose up -d",
+    "db:up": "docker compose up -d --wait",
     "db:down": "docker compose down",
     "db:migrate": "tsx db/migrate.ts",
     "db:mint": "tsx db/mint-link.ts",

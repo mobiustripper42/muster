@@ -59,7 +59,13 @@ npm run db:seed:outbox   # 3 outbox cards (shift-obx-*, anchored to NOW)
 npm run dev          # next dev --webpack on :3000  (leave running)
 ```
 
-**Full wipe** (only when a test says so — drops the data volume):
+> **Starting a fresh pass?** The seeds **upsert and never wipe**, so running setup on top of a stale
+> volume from a previous pass accumulates orphan rows — `/api/health` (0.2) then reads `degraded` with
+> `violationCount > 0`. For a clean run, do the **full wipe** below first. (Re-running a single seed
+> mid-run — a "reset" — is fine and does **not** need a wipe; only a *clean slate* does.) `db:up` now
+> waits for Postgres to accept connections (`--wait`), so the chained wipe-and-seed won't race `db:migrate`.
+
+**Full wipe** (drops the data volume — for a clean pass, or when a test says so):
 ```bash
 docker compose down -v && npm run db:up && npm run db:migrate && npm run db:seed:crew
 ```
@@ -103,10 +109,10 @@ Sign in as **Quint**: `http://mill-dev:3000/crew/dev-link?crew=crew-quint` → t
 | 1.1 | Land on `/crew` | Header is Quint's name; a quiet grey **standing line** under it (never red/comparative) | ☐ pass ☐ fail |
 | 1.2 | Read the **credential line** | Amber notice: *"Your MMC expires &lt;~date&gt; — renew it to keep getting asked for shifts."* — calm, not alarming | ☐ pass ☐ fail |
 | 1.3 | Find the **ask** card (top) | *"&lt;date&gt; · &lt;vessel&gt; · &lt;role&gt;. **In or out?**"* with a red **Out** (left) and green **In** (right) | ☐ pass ☐ fail |
-| 1.4 | Tap **In** | Page reloads; the ask is gone and the shift now appears under **My shifts** (the seat is claimed) | ☐ pass ☐ fail |
+| 1.4 | Tap **In** | Page reloads; the ask is gone and the shift now appears under **My shifts** badged *"Awaiting confirmation"* — a non-clickable row (the seat is `Claimed`, not yet operator-confirmed, so it has no shift card to open yet) | ☐ pass ☐ fail |
 | 1.5 | Re-seed (`npm run db:seed:crew` on the box), reload `/crew`, tap **Out** instead | Ask resolves and disappears; the seat reopens (does **not** move to My shifts) | ☐ pass ☐ fail |
 | 1.6 | Re-seed again; tap a **My shifts** row | Opens the **shift card** at `/crew/shift/<id>` | ☐ pass ☐ fail |
-| 1.7 | On the card, read the two big boxes | **Be there (call)** (green) and **First departure** (plain) — distinct, labeled, mono times. This call-vs-departure split is the #1 dock confusion; it must be unmistakable | ☐ pass ☐ fail |
+| 1.7 | On the card, read the two big boxes | **Shift Start** (green) and **First departure** (plain) — distinct, labeled, mono times. This start-vs-departure split is the #1 dock confusion; it must be unmistakable | ☐ pass ☐ fail |
 | 1.8 | Read the **Manifest** section | One collapsible per trip ("· different guests each trip"); expanding shows guest names ×party, phone tappable; a single-trip card is open by default | ☐ pass ☐ fail |
 | 1.9 | Check **Crewing with you** + dock | Co-crew rows with **Call**/**Text** buttons (if any seeded); a **📍 dock** pin links to Google Maps | ☐ pass ☐ fail |
 
@@ -122,10 +128,10 @@ docker compose down -v && npm run db:up && npm run db:migrate && npm run db:seed
 
 | # | Step | Expected | Result |
 |---|------|----------|--------|
-| 1.10 | As Quint, open the My-shifts card → expand **"I can't make it…"** | A neutral explanation (no guilt-trip) + a red **Drop this seat** button behind the disclosure | ☐ pass ☐ fail |
-| 1.11 | Tap **Drop this seat** | Back on `/crew` with a calm notice *"You're off the … shift — nothing else needed from you."*; the shift is gone from My shifts | ☐ pass ☐ fail |
+| 1.10 | As Quint, open the My-shifts card → expand **"I can't make it…"** | A neutral explanation (no guilt-trip) + a red **Drop this shift** button behind the disclosure. The explanation is horizon-aware: a far-out shift reads *"…the sooner you tell us, the easier it is to refill…"*; one inside the staffing horizon reads firmer *"…call your operator right away…"* | ☐ pass ☐ fail |
+| 1.11 | Tap **Drop this shift** | Back on `/crew` with a calm notice *"You're off the … shift — nothing else needed from you."*; the shift is gone from My shifts | ☐ pass ☐ fail |
 | 1.12 | Sign in as Spink, open `/admin/at-risk` | The shift is there as a red **Lacking crew · late bail** regression (rested Bailed — no other captain to auto-refill) | ☐ pass ☐ fail |
-| 1.13 | (Contrast) Re-run `db:seed:atrisk` so eligible captains exist, full-wipe + `db:seed:crew`, then bail again | This time the bail **re-asks** — seat goes `Asked`, shift `Filling`, and a far-off live ask is suppressed from the board (open `/admin/shift/shift-soon`, pool reads *awaiting reply*) | ☐ pass ☐ fail |
+| 1.13 | (Contrast) **Full-wipe, then seed crew AND atrisk** so eligible captains exist: `docker compose down -v && npm run db:up && npm run db:migrate && npm run db:seed:crew && npm run db:seed:atrisk`. Then bail again. *(Order matters — a wipe AFTER seeding atrisk would erase the captains you just added.)* | This time the bail **re-asks** — seat goes `Asked`, shift `Filling`, and a far-off live ask is suppressed from the board (open `/admin/shift/shift-soon`, pool reads *awaiting reply*) | ☐ pass ☐ fail |
 
 ### Part 1c — Auth edges
 
@@ -148,15 +154,15 @@ Reset to a clean scenario set: `npm run db:seed:atrisk` (on the box). Sign in as
 
 | # | Step | Expected | Result |
 |---|------|----------|--------|
-| 2.1 | Land on `/admin/at-risk` | Header *"Needs you"* + *"N shifts need a call"* (4 board rows from this seed) + a *"1 late bail"* chip | ☐ pass ☐ fail |
-| 2.2 | Read the four rows top-to-bottom | **Firkin** (red *Lacking crew · late bail*, pinned first) → **Tidewater** (*asked 2 · 1 declined · 1 silent*, silent in red) → **Growler** (*⊘ Gus's credential lapses…*) → **Mash Tun** (*none eligible*, "not yet worked", no Lean buttons) | ☐ pass ☐ fail |
+| 2.1 | Land on `/admin/at-risk` | Header *"Needs attention"* + *"N shifts need attention"* (4 board rows from this seed) + a *"1 late bail"* chip | ☐ pass ☐ fail |
+| 2.2 | Read the four rows top-to-bottom | **Firkin** (red *Lacking crew · late bail*, pinned first) → **Tidewater** (*asked 2 · 1 declined · 1 silent*, silent in red) → **Growler** (*⊘ Gus's credential lapses…*) → **Mash Tun** (*none eligible*, System tried reads *"no one eligible to ask"*, no Lean buttons) | ☐ pass ☐ fail |
 | 2.3 | Confirm the **ordering logic** | Sooner trips and the regression sort above never-filled shifts of similar time-to-trip; "captain vs mate" is *not* a label, it's pool-thinness | ☐ pass ☐ fail |
-| 2.4 | **Fills-by (#59):** each row's right column, under the countdown | A **`fills by <day, time>`** line. **Firkin** + **Tidewater** (trips &lt;48h) show it **red** with **`· overdue`** — correct, an exhausted shift only boards *after* its deadline passes. **Growler** + **Mash Tun** (~4–5d out) show a **grey future** date, no "overdue" | ☐ pass ☐ fail |
-| 2.5 | **Multi-trip (#59):** the **Tidewater** row | Shows **two** `departs …` lines (two times **~3h apart** — a two-trip day); every other row shows **one**. *Exact clock times vary per re-seed (trips anchor to NOW) and render in **UTC**, not local — see the [timezone note](#timezone-note-utc-everywhere). Check the **shape** (two lines, ~3h apart), not the absolute time.* | ☐ pass ☐ fail |
+| 2.4 | **No fills-by on the board (DEC-038):** each row's right column | Shows **only** the `Xd Xh to trip` countdown — **no** `fills by …` line. Once a shift is on the board the automation has given up and you must act, so the deadline is moot here; it lives in the cockpit instead (verified at 3.2, where it reads **`crew by …`**) | ☐ pass ☐ fail |
+| 2.5 | **Multi-trip (#59):** the **Tidewater** row | **Under the date** (left side, not split across the row — DEC-038) it shows **two** `departs …` lines (two times **~3h apart** — a two-trip day); every other row shows **one**. *Exact clock times vary per re-seed (trips anchor to NOW), render vessel-local — see the [timezone note](#timezone-note-utc-everywhere). Check the **shape** (two lines, ~3h apart), not the absolute time.* | ☐ pass ☐ fail |
 | 2.6 | Read the **System tried** trail on Tidewater | *asked 2 · 1 declined · 1 silent* — the silent ghost called out distinctly; this is the proof-of-work line | ☐ pass ☐ fail |
 | 2.7 | On the **Firkin** row, tap **↗ Nudge &lt;name&gt;** | Green *"Last action: nudged … — asked, not yet filled"* notice **and the Firkin row disappears** — its ask is now in flight (engine working, not a bug) + a "watch it ↗" link to its cockpit | ☐ pass ☐ fail |
 | 2.8 | On **Mash Tun** (none eligible) | **No Lean buttons** — instead the honest line *"nobody left in the eligible pool — this is the reschedule / cancel call."* The system doesn't offer a nudge it knows is futile | ☐ pass ☐ fail |
-| 2.9 | The disabled **Reschedule / Cancel** buttons on a row | Visibly disabled (greyed) with the note that customer-side cascades land with payments — handle by phone for now | ☐ pass ☐ fail |
+| 2.9 | The disabled **Reschedule / Cancel** buttons on a row | Visibly disabled (greyed) under a short note: *"Handle reschedule/cancel by phone for now."* The *why* (customer payment cascades, parked) is on the buttons' hover title, not cluttering the row | ☐ pass ☐ fail |
 
 ---
 
@@ -167,7 +173,7 @@ Same `atrisk` seed. The cockpit is each board row's click-through, plus off-boar
 | # | Step | Expected | Result |
 |---|------|----------|--------|
 | 3.1 | From a board row tap **Assignment ↗**, or open `/admin/shift/shift-ar-claimed` | The cockpit: vessel · date · state **Badge**; trips + pax; a mono **departs in Xd Xh** countdown | ☐ pass ☐ fail |
-| 3.2 | **Fills-by header (#59):** under the staffing-horizon line | A **`fills by <day, time>`** line (grey for `shift-ar-claimed`, ~3d out; red `· overdue` inside 48h) — the same instant the board shows | ☐ pass ☐ fail |
+| 3.2 | **Crew-by header (#59, DEC-038):** under the staffing-horizon line | A **`crew by <day, time>`** line (grey for `shift-ar-claimed`, ~3d out; red `· overdue` inside 48h). This is the cockpit's live deadline — it does **not** appear on the board (2.4), only here where the shift is still being worked | ☐ pass ☐ fail |
 | 3.3 | Read a **seat card** with a pool | Ranked eligible names with ask status: *declined* (muted), *👻 silent* (red) — visibly different — each with a **↗ Nudge** button | ☐ pass ☐ fail |
 | 3.4 | On `shift-ar-claimed`, tap **Confirm into seat** (Petra is Claimed) | Green *"Petra confirmed into the seat"*; card turns green **Confirmed** with ✆ Call / ✉ Text; badge flips to **Crewed** | ☐ pass ☐ fail |
 | 3.5 | Tap **Warming signals →** (bottom of any cockpit) | The warming panel lists **Kettle** (*~4d · 1 unfilled · 50% answered · 1 silent*) — a trending shift deliberately **not** on the board yet | ☐ pass ☐ fail |
@@ -230,7 +236,7 @@ any felt confusing in the moment, that's a **copy/UX bug worth logging**, not a 
 |---|-----------|------------------|-------------|
 | 7.1 | An **empty board** ("Nothing needs you right now") | Success — the automation closed everything. Not a blank screen, not a reminder to go check | ☐ yes ☐ confusing |
 | 7.2 | A row **vanishes** right after you Nudge/Lean | The ask is in flight — the shift left the triage list because it's being worked again | ☐ yes ☐ confusing |
-| 7.3 | A **fills-by `· overdue`** on a row that just appeared | A willingness-exhausted shift only boards *after* its deadline passes — overdue there is by construction | ☐ yes ☐ confusing |
+| 7.3 | A **`crew by … · overdue`** in the cockpit (no longer on the board — DEC-038) | A willingness-exhausted shift only boards *after* its deadline passes — overdue is by construction. The deadline shows in the cockpit (where the shift is worked pre-board), not on the board (where the automation has already given up) | ☐ yes ☐ confusing |
 | 7.4 | **Mash Tun has no Nudge buttons** | "Nobody eligible" — the system won't offer a futile nudge; that's the reschedule/cancel call | ☐ yes ☐ confusing |
 | 7.5 | A **far-off bail re-asks** instead of hitting the board | A live ask with time to spare is suppressed — the board is for what *can't* be auto-handled | ☐ yes ☐ confusing |
 | 7.6 | Reschedule/Cancel are **disabled** | Customer-side cascades land with payments (parked) — an honest disabled beats a half-working cancel | ☐ yes ☐ confusing |

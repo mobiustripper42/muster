@@ -35,7 +35,7 @@ export interface OpenAskView {
   sentAt: string;
 }
 
-/** One confirmed upcoming shift this crew member is crewing. */
+/** One upcoming shift this crew member is on — confirmed, or claimed-and-pending. */
 export interface MyShiftView {
   shiftId: string;
   seatId: string;
@@ -43,6 +43,13 @@ export interface MyShiftView {
   roleName: string;
   /** ISO-8601 date (vessel-local day). */
   date: string;
+  /**
+   * True when the seat is `Claimed` (the crew said "In" but the operator hasn't
+   * confirmed yet) vs `Confirmed` (locked). Shown so a fresh "In" lands visibly
+   * in My shifts instead of vanishing into nothing (#4); the surface labels it
+   * "awaiting confirmation".
+   */
+  pending: boolean;
 }
 
 export interface CrewAppView {
@@ -106,13 +113,17 @@ export async function buildCrewAppView(
     });
   }
 
-  // My shifts: seats confirmed to me, on an upcoming shift, soonest first.
+  // My shifts: seats I hold on an upcoming shift, soonest first. Includes both
+  // Confirmed (locked) and Claimed (I said "In", operator hasn't confirmed yet —
+  // #4: a fresh claim must show here, marked pending, not silently disappear).
   const allSeats = await repo.listAllSeats();
-  const confirmed = allSeats.filter(
-    (s) => s.state === "Confirmed" && s.assignedCrewMemberId === crewMemberId,
+  const held = allSeats.filter(
+    (s) =>
+      (s.state === "Confirmed" || s.state === "Claimed") &&
+      s.assignedCrewMemberId === crewMemberId,
   );
   const shifts: MyShiftView[] = [];
-  for (const seat of confirmed) {
+  for (const seat of held) {
     const shift = await repo.getShift(seat.shiftId);
     if (!shift || shift.date < today) continue; // past shifts drop off
     shifts.push({
@@ -121,6 +132,7 @@ export async function buildCrewAppView(
       vesselName: await vesselName(repo, shift.vesselId),
       roleName: await roleName(repo, seat.role),
       date: shift.date,
+      pending: seat.state === "Claimed",
     });
   }
   shifts.sort((a, b) => a.date.localeCompare(b.date));

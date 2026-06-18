@@ -138,7 +138,7 @@ function Card({
       <div className="grid grid-cols-2 gap-2">
         <div className="rounded-card border border-ok-line bg-ok-bg px-4 py-3">
           <div className="text-xs font-semibold uppercase tracking-wide text-ok">
-            Be there (call)
+            Shift Start
           </div>
           <div className="font-mono text-2xl font-semibold text-ink">
             {card.callTime ?? "—"}
@@ -267,9 +267,9 @@ function Card({
           I can’t make it…
         </summary>
         <p className="pb-2 text-sm text-muted">
-          This drops a seat you confirmed. The less notice you give, the harder
-          it is to refill — so if there’s still plenty of time, dropping now is
-          the right move.
+          {card.bailLate
+            ? "This shift is soon — dropping now may not leave time to refill it. We’ll still try, but call your operator right away so they can react."
+            : "This gives up your spot on a shift you confirmed. The sooner you tell us, the easier it is to refill — so if you can’t make it, drop it now."}
         </p>
         <form action={bailFromSeat}>
           <input type="hidden" name="seatId" value={card.mySeatId} />
@@ -278,7 +278,7 @@ function Card({
             type="submit"
             className="min-h-[44px] w-full rounded-lg border border-bad-line bg-bad-bg px-4 font-semibold text-bad"
           >
-            Drop this seat
+            Drop this shift
           </button>
         </form>
       </details>

@@ -235,7 +235,7 @@ export default async function ShiftCockpit({
                   : "text-muted"
               }`}
             >
-              fills by {fmtDeadline(view.fillsBy)}
+              crew by {fmtDeadline(view.fillsBy)}
               {view.fillsBy.getTime() < now.getTime() ? " · overdue" : ""}
             </span>
           )}

@@ -21,9 +21,6 @@ export interface RiskRowVM {
   /** Every scheduled departure, earliest first ("departs 1:00 PM"). A two-trip
    * day shows both; empty when no scheduled trip anchors the shift. */
   departs: string[];
-  /** The "fills by" deadline (DEC-031); null when no event anchors the shift.
-   * `overdue` past the deadline — rendered honestly, never clamped. */
-  fillsBy: { label: string; overdue: boolean } | null;
   flag: { label: string; tone: "bad" | "warn" };
   regression: boolean;
   missing: { roleName: string; count: number }[];
@@ -64,7 +61,7 @@ function TrailLine({ trail }: { trail: RiskRowVM["trail"] }) {
     push("n", <span className="whitespace-normal">nudged {trail.nudgedNames.join(", ")}</span>);
   if (trail.exhausted) push("e", <span className="font-semibold">exhausted</span>);
   if (segs.length === 0) {
-    push("z", <span className="text-muted">not yet worked — flagged by the oracle</span>);
+    push("z", <span className="text-muted">no one eligible to ask</span>);
   }
   return (
     <div className="flex flex-wrap items-baseline gap-y-1 border-t border-line pt-2 text-xs text-ink">
@@ -92,6 +89,13 @@ export function RiskRow({ row }: { row: RiskRowVM }) {
             <span className="text-ink">
               <b>{row.vesselName}</b> · {row.dateLabel}
             </span>
+            {/* Departures live with the date (all trips, earliest first) — the
+                "when's the trip" facts grouped, not split across the row. */}
+            {row.departs.map((d, i) => (
+              <span key={i} className="font-mono text-xs text-muted">
+                {d}
+              </span>
+            ))}
           </div>
           <div className="flex flex-col items-end">
             <span
@@ -99,19 +103,6 @@ export function RiskRow({ row }: { row: RiskRowVM }) {
             >
               {row.toTrip ?? "no scheduled trip"}
             </span>
-            {row.departs.map((d, i) => (
-              <span key={i} className="font-mono text-xs text-muted">
-                {d}
-              </span>
-            ))}
-            {row.fillsBy && (
-              <span
-                className={`font-mono text-xs ${row.fillsBy.overdue ? "font-semibold text-bad" : "text-muted"}`}
-              >
-                fills by {row.fillsBy.label}
-                {row.fillsBy.overdue ? " · overdue" : ""}
-              </span>
-            )}
           </div>
         </div>
 
@@ -178,12 +169,14 @@ export function RiskRow({ row }: { row: RiskRowVM }) {
             <div className="flex gap-2">
               <button
                 disabled
+                title="Disabled for now — customer-side cancellation cascades land with payments (parked, P3). Handle by phone."
                 className="cursor-not-allowed rounded-full border border-line px-2.5 py-1 text-xs text-faint"
               >
                 ↻ Reschedule
               </button>
               <button
                 disabled
+                title="Disabled for now — customer-side cancellation cascades land with payments (parked, P3). Handle by phone."
                 className="cursor-not-allowed rounded-full border border-line px-2.5 py-1 text-xs text-faint"
               >
                 ✕ Cancel…
@@ -197,8 +190,7 @@ export function RiskRow({ row }: { row: RiskRowVM }) {
             </Link>
           </div>
           <span className="text-xs text-muted">
-            Customer-side cascades land with payments — handle reschedule/cancel
-            by phone for now.
+            Handle reschedule/cancel by phone for now.
           </span>
         </div>
       </div>

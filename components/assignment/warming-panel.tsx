@@ -43,9 +43,6 @@ export function WarmingPanel({
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-ink">Trending at-risk</h2>
-          <p className="text-xs text-muted">
-            Heading that way — not yet At-Risk, so not on the board.
-          </p>
         </div>
         <Link href={basePath} className="text-xs font-semibold text-accent">
           Hide

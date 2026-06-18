@@ -161,11 +161,10 @@ export function SeatCard({
 
       <details className="border-t border-line pt-2">
         <summary className="cursor-pointer text-xs text-muted">
-          Manual override… <span>place anyone — backstop only</span>
+          Manual override
         </summary>
         <p className="py-1 text-xs text-muted">
-          Skips every check and confirms them straight into the seat. You are
-          the authority; the pool above is the advice.
+          Skips all checks and confirms them for the shift.
         </p>
         <ul className="flex flex-wrap gap-2 py-1">
           {roster.map((p) => (

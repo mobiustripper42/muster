@@ -229,7 +229,7 @@ describe("buildAssignmentView — cockpit additions (#54)", () => {
     void a;
   });
 
-  it("a Bailed seat shows its pool, bailer excluded — the P3 gap, closed", async () => {
+  it("a Bailed seat lists its bailer as 'bailed' (context, not re-asked) before who can step in (#3.3)", async () => {
     const a = await addCrew("crew-a");
     const seatId = await addSeat();
     const ask = await assignPerson(repo, seatId, a, T0);
@@ -241,7 +241,12 @@ describe("buildAssignmentView — cockpit additions (#54)", () => {
     const view = (await buildAssignmentView(repo, SHIFT, later(4000)))!;
     const card = view.seats[0]!;
     expect(card.state).toBe("Bailed");
-    expect(card.pool!.map((p) => p.crewMemberId)).toEqual([b]); // not the bailer
+    // Bailer listed first as `bailed` (seen, not re-asked — DEC-019), then the
+    // eligible candidate as `available` (the actionable one).
+    expect(card.pool!.map((p) => [p.crewMemberId, p.status])).toEqual([
+      [a, "bailed"],
+      [b, "available"],
+    ]);
   });
 
   it("excludes a bailer from EVERY pool on the shift — never 'said yes' on the seat they walked", async () => {

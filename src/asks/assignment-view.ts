@@ -7,9 +7,10 @@
  * eligible pool (§1.3/§1.4) with per-candidate ask status. **`silent` is
  * first-class and distinct from `declined`** (§2.4) — a ghost that was asked and
  * timed out must be obvious; silence is what Spink hates and what the score
- * penalizes. A **Bailed** seat's pool excludes that shift's bailers (the re-ask's
- * own exclusion, DEC-019) — the P3 gap where the regression click-through showed
- * less than the board is closed here (#54).
+ * penalizes. A **Bailed** seat lists that shift's bailer as a non-actionable
+ * `bailed`-status row (context — who walked) while still excluding them from the
+ * re-ask everywhere (DEC-019): seen, never re-offered. The P3 gap where the
+ * regression click-through showed less than the board is closed here (#54).
  *
  * Header facts for the cockpit (#54): trips + pax (booked only, like the shift
  * card), `tripStart`, the staffing `horizon` (DEC-022), and the `fillsBy`
@@ -35,7 +36,8 @@ export type CandidateAskStatus =
   | "asked" // ask out, awaiting response
   | "in" // accepted
   | "declined" // declined (neutral)
-  | "silent"; // asked, timed out — the ghost, distinct from declined
+  | "silent" // asked, timed out — the ghost, distinct from declined
+  | "bailed"; // bailed off this seat — listed for context, never re-asked (DEC-019)
 
 export interface PoolCandidateView {
   crewMemberId: CrewMemberId;
@@ -166,16 +168,22 @@ export async function buildAssignmentView(
   // ask is on (there they stay visible as `asked` — the monitor view).
   const hasPooledSeat = required.some((s) => POOLED_STATES.has(s.state));
   const bailers = new Set<CrewMemberId>();
+  // Which seat each bailer walked off (shift_bailed.seatId) — a Bailed seat
+  // lists its own bailer as context (#3.3); excluded from the re-ask regardless.
+  const bailersBySeat = new Map<string, CrewMemberId[]>();
   if (hasPooledSeat) {
     // Crew-keyed log walk — same pattern + M4-index revisit as the board's.
     for (const crew of await repo.listCrewMembers()) {
       const log = await repo.reliabilityEventsFor(crew.id);
-      if (
-        log.some(
-          (e) => e.type === "shift_bailed" && e.metadata.shiftId === shiftId,
-        )
-      ) {
+      for (const e of log) {
+        if (e.type !== "shift_bailed" || e.metadata.shiftId !== shiftId) continue;
         bailers.add(crew.id);
+        const seatKey = e.metadata.seatId ? String(e.metadata.seatId) : null;
+        if (seatKey) {
+          const arr = bailersBySeat.get(seatKey) ?? [];
+          if (!arr.includes(crew.id)) arr.push(crew.id);
+          bailersBySeat.set(seatKey, arr);
+        }
       }
     }
   }
@@ -227,6 +235,16 @@ export async function buildAssignmentView(
           ...(replyMs !== undefined ? { replyMs } : {}),
         };
       });
+      // A Bailed seat lists its own bailer(s) first, status `bailed`, no action
+      // (the re-ask refuses them — DEC-019); they're seen, never re-offered.
+      if (seat.state === "Bailed") {
+        const bailed: PoolCandidateView[] = [];
+        for (const crewId of bailersBySeat.get(String(seat.id)) ?? []) {
+          const crew = await repo.getCrewMember(crewId);
+          if (crew) bailed.push({ crewMemberId: crewId, name: crew.name, status: "bailed" });
+        }
+        card.pool = [...bailed, ...card.pool];
+      }
     }
     seats.push(card);
   }

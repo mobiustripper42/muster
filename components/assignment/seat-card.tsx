@@ -1,4 +1,4 @@
-import { confirmInto, overrideTo, reportBail } from "../../app/(admin)/admin/shift/[shiftId]/actions";
+import { confirmInto, overrideTo, removeSeat, reportBail } from "../../app/(admin)/admin/shift/[shiftId]/actions";
 import { HiddenIds, MiniButton } from "./bits";
 import { askedSummary, CandidateRow } from "./candidate-row";
 
@@ -17,7 +17,7 @@ import { askedSummary, CandidateRow } from "./candidate-row";
 export interface CandidateVM {
   id: string;
   name: string;
-  status: "available" | "asked" | "in" | "declined" | "silent";
+  status: "available" | "asked" | "in" | "declined" | "silent" | "bailed";
   /** "replied in 4m" — present when they answered. */
   replyLabel: string | null;
   /** Which form this row offers — null on a monitor-only row. */
@@ -82,27 +82,40 @@ function OccupantZone({ vm }: { vm: SeatCardVM }) {
             </span>
           )}
         </div>
-        {/* #56 admin half (DEC-028): file the bail you heard about — same
-            rail as the crew's own "can't make it"; also the override-mistake
-            recovery. Deliberate friction: closed details + explicit button. */}
+        {/* #87: two ways to clear a confirmed seat, split by whether a
+            reliability bail is logged. Remove = misassignment, no penalty
+            (vacateSeat). Bailed = crew actually backed out, logs lateness
+            (reportBail/DEC-028). Explicit choice, never a default — a wrong
+            default starves the reliability log or wrongly penalizes. */}
         <details>
           <summary className="cursor-pointer text-xs text-muted">
-            Reports a bail…
+            Remove from shift…
           </summary>
           <p className="py-1 text-xs text-muted">
-            Logs that {vm.occupant.name} backed out: clears the seat and
-            re-asks the next candidates — or the seat rests open if nobody’s
-            left. Lateness counts from now.
+            Wrong person in the seat? <b>Remove</b> — no penalty. {vm.occupant.name}{" "}
+            actually can&rsquo;t make it? <b>Bailed</b> — logs a late bail against
+            their record. Either way the seat reopens and re-asks.
           </p>
-          <form action={reportBail} className="py-1">
-            <HiddenIds vm={vm} />
-            <button
-              type="submit"
-              className="rounded-full border border-bad-line bg-bad-bg px-2.5 py-1 text-xs font-medium text-bad"
-            >
-              Log the bail
-            </button>
-          </form>
+          <div className="flex flex-wrap gap-2 py-1">
+            <form action={removeSeat} className="inline-flex">
+              <HiddenIds vm={vm} />
+              <button
+                type="submit"
+                className="rounded-full border border-line bg-bg px-2.5 py-1 text-xs font-medium text-muted"
+              >
+                Remove
+              </button>
+            </form>
+            <form action={reportBail} className="inline-flex">
+              <HiddenIds vm={vm} />
+              <button
+                type="submit"
+                className="rounded-full border border-bad-line bg-bad-bg px-2.5 py-1 text-xs font-medium text-bad"
+              >
+                Bailed
+              </button>
+            </form>
+          </div>
         </details>
       </div>
     );
@@ -110,8 +123,7 @@ function OccupantZone({ vm }: { vm: SeatCardVM }) {
   if (vm.state === "Bailed") {
     return (
       <div className="rounded-lg border border-bad-line bg-bad-bg px-3 py-2 text-sm text-bad">
-        ✕ Crew bailed with nobody left to re-ask at the time — the pool below
-        is who can take it now (the bailer isn’t offered).
+        Crew bailed with nobody left to re-ask at the time.
       </div>
     );
   }
@@ -163,11 +175,10 @@ export function SeatCard({
 
       <details className="border-t border-line pt-2">
         <summary className="cursor-pointer text-xs text-muted">
-          Manual override… <span>place anyone — backstop only</span>
+          Manual override
         </summary>
         <p className="py-1 text-xs text-muted">
-          Skips every check and confirms them straight into the seat. You are
-          the authority; the pool above is the advice.
+          Skips all checks and confirms them for the shift.
         </p>
         <ul className="flex flex-wrap gap-2 py-1">
           {roster.map((p) => (

@@ -34,7 +34,7 @@ export function WarmingPanel({
   if (!open) {
     return (
       <Link href={`${basePath}?warming=1`} className="text-xs font-semibold text-accent">
-        Warming signals →
+        Trending at-risk →
       </Link>
     );
   }
@@ -42,10 +42,7 @@ export function WarmingPanel({
     <section className="flex flex-col gap-2 rounded-card border border-line bg-card p-4 shadow-sm">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-semibold text-ink">Warming signals</h2>
-          <p className="text-xs text-muted">
-            Trending toward risk — not yet At-Risk, so not on the board.
-          </p>
+          <h2 className="text-sm font-semibold text-ink">Trending at-risk</h2>
         </div>
         <Link href={basePath} className="text-xs font-semibold text-accent">
           Hide
@@ -53,7 +50,7 @@ export function WarmingPanel({
       </div>
       {rows.length === 0 ? (
         <p className="text-sm text-muted">
-          Nothing warming. The asks that are out are being answered.
+          Nothing trending. All asks are being answered.
         </p>
       ) : (
         <ul className="flex flex-col divide-y divide-line/60">

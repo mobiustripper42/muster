@@ -19,6 +19,7 @@ import {
   manualOverride,
   recordResponse,
   resolveProtocol,
+  vacateSeat,
 } from "./ask-loop.js";
 
 const CAPTAIN = asId<"RoleTypeId">("role-captain");
@@ -276,6 +277,53 @@ describe("bail (DEC-019)", () => {
     await expect(bail(repo, seatId!, later(3000), 0, undefined, b)).rejects.toThrow();
     expect((await repo.getSeat(seatId!))!.state).toBe("Confirmed"); // untouched
     expect(await types(a)).not.toContain("shift_bailed"); // nobody penalized
+  });
+});
+
+describe("vacateSeat — no-penalty remove (#87)", () => {
+  async function confirmFirst(seatId: SeatId, crewId: CrewMemberId) {
+    const ask = await assignPerson(repo, seatId, crewId, T0);
+    await recordResponse(repo, ask!.id, "accepted", later(1000));
+    await confirmSeat(repo, seatId, later(2000));
+  }
+
+  it("clears + re-asks the next candidate and logs NO reliability bail", async () => {
+    const a = await addCrew("crew-a");
+    await addCrew("crew-b"); // a second eligible captain to re-ask
+    const [seatId] = await addShift(1);
+    await confirmFirst(seatId!, a);
+
+    const out = await vacateSeat(repo, seatId!, later(3000), a);
+    expect(out.seatState).toBe("Asked");
+    // Re-ask excludes the removed occupant, just like bail.
+    expect(out.reAsks.map((x) => x.crewMemberId)).toEqual([asId<"CrewMemberId">("crew-b")]);
+    expect((await repo.getSeat(seatId!))!.assignedCrewMemberId).toBeUndefined();
+    // The whole point: no bail logged against the removed person.
+    expect(await types(a)).not.toContain("shift_bailed");
+  });
+
+  it("rests at Open (not Bailed) when the pool is exhausted — no AtRisk", async () => {
+    const a = await addCrew("crew-a"); // the only eligible captain
+    const [seatId] = await addShift(1);
+    await confirmFirst(seatId!, a);
+
+    const out = await vacateSeat(repo, seatId!, later(3000), a);
+    expect(out).toMatchObject({ seatState: "Open", reAsks: [] });
+    expect(await seatState(seatId!)).toBe("Open");
+    // No bail → no immediate bail-driven AtRisk (Pending, horizon clock governs).
+    expect(await shiftState(SHIFT)).not.toBe("AtRisk");
+    expect(await types(a)).not.toContain("shift_bailed");
+  });
+
+  it("refuses to vacate a different occupant than the caller pinned", async () => {
+    const a = await addCrew("crew-a");
+    const b = await addCrew("crew-b");
+    const [seatId] = await addShift(1);
+    await confirmFirst(seatId!, a); // a holds the seat; caller validated b
+
+    await expect(vacateSeat(repo, seatId!, later(3000), b)).rejects.toThrow();
+    expect((await repo.getSeat(seatId!))!.state).toBe("Confirmed"); // untouched
+    expect((await repo.getSeat(seatId!))!.assignedCrewMemberId).toBe(a);
   });
 });
 

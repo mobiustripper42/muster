@@ -157,7 +157,7 @@ Reset to a clean scenario set: `npm run db:seed:atrisk` (on the box). Sign in as
 | 2.1 | Land on `/admin/at-risk` | Header *"Needs attention"* + *"N shifts need attention"* (4 board rows from this seed) + a *"1 late bail"* chip | ☐ pass ☐ fail |
 | 2.2 | Read the four rows top-to-bottom | **Firkin** (red *Lacking crew · late bail*, pinned first) → **Tidewater** (*asked 2 · 1 declined · 1 silent*, silent in red) → **Growler** (*⊘ Gus's credential lapses…*) → **Mash Tun** (*none eligible*, System tried reads *"no one eligible to ask"*, no Lean buttons) | ☐ pass ☐ fail |
 | 2.3 | Confirm the **ordering logic** | Sooner trips and the regression sort above never-filled shifts of similar time-to-trip; "captain vs mate" is *not* a label, it's pool-thinness | ☐ pass ☐ fail |
-| 2.4 | **No fills-by on the board (DEC-038):** each row's right column | Shows **only** the `Xd Xh to trip` countdown — **no** `fills by …` line. Once a shift is on the board the automation has given up and you must act, so the deadline is moot here; it lives in the cockpit instead (verified at 3.2, where it reads **`crew by …`**) | ☐ pass ☐ fail |
+| 2.4 | **No fills-by on the board (DEC-038):** each row's right column | Shows **only** the `Xd Xh to trip` countdown — **no** `fills by …` line. Once a shift is on the board the automation has given up and you must act, so the deadline is moot here; it lives in the cockpit instead (verified at 3.2, where it reads **`deadline …`**) | ☐ pass ☐ fail |
 | 2.5 | **Multi-trip (#59):** the **Tidewater** row | **Under the date** (left side, not split across the row — DEC-038) it shows **two** `departs …` lines (two times **~3h apart** — a two-trip day); every other row shows **one**. *Exact clock times vary per re-seed (trips anchor to NOW), render vessel-local — see the [timezone note](#timezone-note-utc-everywhere). Check the **shape** (two lines, ~3h apart), not the absolute time.* | ☐ pass ☐ fail |
 | 2.6 | Read the **System tried** trail on Tidewater | *asked 2 · 1 declined · 1 silent* — the silent ghost called out distinctly; this is the proof-of-work line | ☐ pass ☐ fail |
 | 2.7 | On the **Firkin** row, tap **↗ Nudge &lt;name&gt;** | Green *"Last action: nudged … — asked, not yet filled"* notice **and the Firkin row disappears** — its ask is now in flight (engine working, not a bug) + a "watch it ↗" link to its cockpit | ☐ pass ☐ fail |
@@ -173,12 +173,13 @@ Same `atrisk` seed. The cockpit is each board row's click-through, plus off-boar
 | # | Step | Expected | Result |
 |---|------|----------|--------|
 | 3.1 | From a board row tap **Assignment ↗**, or open `/admin/shift/shift-ar-claimed` | The cockpit: vessel · date · state **Badge**; trips + pax; a mono **departs in Xd Xh** countdown | ☐ pass ☐ fail |
-| 3.2 | **Crew-by header (#59, DEC-038):** under the staffing-horizon line | A **`crew by <day, time>`** line (grey for `shift-ar-claimed`, ~3d out; red `· overdue` inside 48h). This is the cockpit's live deadline — it does **not** appear on the board (2.4), only here where the shift is still being worked | ☐ pass ☐ fail |
+| 3.2 | **Deadline header (#59, DEC-038):** under the staffing line | A **`deadline <day, time>`** line (grey for `shift-ar-claimed`, ~3d out; red `· overdue` inside 48h). This is the cockpit's live deadline — it does **not** appear on the board (2.4), only here where the shift is still being worked. The line above reads **`staffing: started <date>`** | ☐ pass ☐ fail |
 | 3.3 | Read a **seat card** with a pool | Ranked eligible names with ask status: *declined* (muted), *👻 silent* (red) — visibly different — each with a **↗ Nudge** button | ☐ pass ☐ fail |
 | 3.4 | On `shift-ar-claimed`, tap **Confirm into seat** (Petra is Claimed) | Green *"Petra confirmed into the seat"*; card turns green **Confirmed** with ✆ Call / ✉ Text; badge flips to **Crewed** | ☐ pass ☐ fail |
-| 3.5 | Tap **Warming signals →** (bottom of any cockpit) | The warming panel lists **Kettle** (*~4d · 1 unfilled · 50% answered · 1 silent*) — a trending shift deliberately **not** on the board yet | ☐ pass ☐ fail |
-| 3.6 | Open Kettle's cockpit → expand **Manual override…** on the seat → **Place &lt;name&gt;** | Green *"… placed by override — confirmed"*; the warming panel empties ("Nothing warming.") | ☐ pass ☐ fail |
-| 3.7 | **Changed-since-reviewed (#58):** open `/admin/shift/shift-ar-changed` | Under the header, an amber notice *"Changed since you reviewed it — a booking landed or changed after you locked this shift…"*; the shift is fully Crewed and off the board (it was locked 2d ago; a booking landed 1h ago; an earlier booking before the lock is correctly ignored) | ☐ pass ☐ fail |
+| 3.4b | **Remove vs Bailed split (#87, DEC-039):** on Petra's now-Confirmed seat expand **Remove from shift…** | Two buttons — a plain **Remove** (no penalty) and a red **Bailed** — with a line explaining the difference (wrong person → Remove; can't make it → Bailed, logs a late bail). Tap **Remove**: green *"Removed Petra — no penalty…"*, the seat reopens/re-asks, and the shift does **not** show a late-bail regression (contrast 1.12 — Remove logs no reliability event). *(Destructive; 3.8 reset restores it.)* | ☐ pass ☐ fail |
+| 3.5 | Tap **Trending at-risk →** (bottom of any cockpit) | The panel lists **Kettle** (*~4d · 1 unfilled · 50% answered · 1 silent*) — a trending shift deliberately **not** on the board yet | ☐ pass ☐ fail |
+| 3.6 | Open Kettle's cockpit → expand **Manual override…** on the seat → **Place &lt;name&gt;** | Green *"… placed by override — confirmed"*; the panel empties ("Nothing trending.") | ☐ pass ☐ fail |
+| 3.7 | **Changed-since-reviewed (#58):** open `/admin/shift/shift-ar-changed` | Under the header, an amber notice *"A booking changed since this shift was last reviewed — take another look."*; the shift is fully Crewed and off the board (lockedAt seeded 2d ago; a booking landed 1h ago; an earlier booking before the lock is correctly ignored). NOTE: the lock/re-lock workflow ships with the Shift Builder (§2.3, later phase) — this notice only fires here from the seed | ☐ pass ☐ fail |
 | 3.8 | Reset: `npm run db:seed:atrisk` | All cockpit scenarios restored (in-flight asks closed) | ☐ pass ☐ fail |
 
 ---
@@ -236,7 +237,7 @@ any felt confusing in the moment, that's a **copy/UX bug worth logging**, not a 
 |---|-----------|------------------|-------------|
 | 7.1 | An **empty board** ("Nothing needs you right now") | Success — the automation closed everything. Not a blank screen, not a reminder to go check | ☐ yes ☐ confusing |
 | 7.2 | A row **vanishes** right after you Nudge/Lean | The ask is in flight — the shift left the triage list because it's being worked again | ☐ yes ☐ confusing |
-| 7.3 | A **`crew by … · overdue`** in the cockpit (no longer on the board — DEC-038) | A willingness-exhausted shift only boards *after* its deadline passes — overdue is by construction. The deadline shows in the cockpit (where the shift is worked pre-board), not on the board (where the automation has already given up) | ☐ yes ☐ confusing |
+| 7.3 | A **`deadline … · overdue`** in the cockpit (no longer on the board — DEC-038) | A willingness-exhausted shift only boards *after* its deadline passes — overdue is by construction. The deadline shows in the cockpit (where the shift is worked pre-board), not on the board (where the automation has already given up) | ☐ yes ☐ confusing |
 | 7.4 | **Mash Tun has no Nudge buttons** | "Nobody eligible" — the system won't offer a futile nudge; that's the reschedule/cancel call | ☐ yes ☐ confusing |
 | 7.5 | A **far-off bail re-asks** instead of hitting the board | A live ask with time to spare is suppressed — the board is for what *can't* be auto-handled | ☐ yes ☐ confusing |
 | 7.6 | Reschedule/Cancel are **disabled** | Customer-side cascades land with payments (parked) — an honest disabled beats a half-working cancel | ☐ yes ☐ confusing |
@@ -284,7 +285,7 @@ can file them if `gh` is available; otherwise paste this table into a CLI sessio
 
 - [ ] Part 1 — Crew app (ask, my shifts, shift card, credential, bail)
 - [ ] Part 2 — At-Risk board (membership, ordering, fills-by, multi-trip, lean)
-- [ ] Part 3 — Cockpit (confirm, override, warming, changed-since-reviewed, fills-by header)
+- [ ] Part 3 — Cockpit (confirm, remove vs bail, override, trending-at-risk, changed-since-reviewed, deadline header)
 - [ ] Part 4 — Pilot channel / outbox (relay send, resend, operator-as-crew, full loop)
 - [ ] Part 5 — Engine tick
 - [ ] Part 6 — Integrity + 375px

@@ -470,6 +470,75 @@ export async function bailWithDerivedLateness(
   }
 }
 
+export interface VacateOutcome {
+  /** Asks fired to re-crew the seat (empty → pool exhausted → seat rests Open). */
+  reAsks: Ask[];
+  /** The seat's state after the vacate: `Asked` if re-asked, else `Open`. */
+  seatState: Seat["state"];
+}
+
+/**
+ * No-penalty vacate of a confirmed seat (#87) — the operator corrects a
+ * *misassignment* (wrong person placed), not a bail. The `bail()` body **minus
+ * `logShiftBailed`**: drop the occupant, re-ask the next candidates, but write
+ * **no** reliability event — nobody actually backed out, so nothing should count
+ * against the removed person's record.
+ *
+ * The split from `bail()` is deliberate per #87: an explicit operator choice
+ * (correction vs bail), never a default checkbox — a wrong default either starves
+ * the reliability log or wrongly penalizes. `bail()`/`bailWithDerivedLateness`
+ * stay the home of the *did-bail* path.
+ *
+ * Two differences from `bail()` beyond the missing log:
+ * - **Exhausted pool rests at `Open`, not `Bailed`.** No one bailed, so the seat
+ *   is honestly just open again; `resolveShiftState`'s horizon clock decides when
+ *   that becomes AtRisk, rather than `deriveShiftState` flagging an immediate
+ *   bail-driven AtRisk with "crew bailed" copy.
+ * - The removed occupant is excluded from the immediate re-ask (you just decided
+ *   they shouldn't hold this seat); the operator can still override them back.
+ *
+ * `expectedOccupant` is the occupant the caller validated; an occupant swap
+ * between reads throws (mapped to `raced` by the action), so a correction can't
+ * silently clear a *different* person than the operator saw.
+ */
+export async function vacateSeat(
+  repo: Repository,
+  seatId: SeatId,
+  now: Date,
+  expectedOccupant?: CrewMemberId,
+): Promise<VacateOutcome> {
+  const seat = await repo.getSeat(seatId);
+  if (
+    !seat ||
+    seat.state !== "Confirmed" ||
+    !seat.assignedCrewMemberId ||
+    (expectedOccupant !== undefined && seat.assignedCrewMemberId !== expectedOccupant)
+  ) {
+    throw new Error(`seat ${seatId} is not a confirmed seat to vacate`);
+  }
+  const removed = seat.assignedCrewMemberId;
+  const pool = await rankedEligible(repo, seat, now, new Set([removed]));
+
+  if (pool.length === 0) {
+    // Exhausted: rest at Open (occupant cleared) — no bail, so no AtRisk yet;
+    // the horizon clock governs urgency via resolveShiftState.
+    const opened: Seat = { ...seat, state: "Open" };
+    delete opened.assignedCrewMemberId;
+    await repo.saveSeat(opened);
+    await refreshShiftState(repo, seat.shiftId);
+    return { reAsks: [], seatState: "Open" };
+  }
+
+  const reopened: Seat = { ...seat, state: "Asked" };
+  delete reopened.assignedCrewMemberId;
+  await repo.saveSeat(reopened);
+  const reAsks = await Promise.all(
+    pool.map((c) => fireAsk(repo, reopened, c.id, now)),
+  );
+  await refreshShiftState(repo, seat.shiftId);
+  return { reAsks, seatState: "Asked" };
+}
+
 /**
  * Manual override (SPEC §2.4): Spink drops any person directly into a seat,
  * regardless of pool, rank, or current state — the authority backstop. Goes

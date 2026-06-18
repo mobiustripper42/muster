@@ -15,6 +15,7 @@ const STATUS_COPY: Record<CandidateVM["status"], { label: string; cls: string }>
   in: { label: "said yes", cls: "font-semibold text-ok" },
   declined: { label: "declined", cls: "text-muted" },
   silent: { label: "👻 silent — no reply, timed out", cls: "font-semibold text-bad" },
+  bailed: { label: "bailed", cls: "font-semibold text-bad" },
 };
 
 /** An Asked seat's collapsed line must say WHO is in flight (binding fact). */

@@ -143,8 +143,7 @@ export function RiskRow({ row }: { row: RiskRowVM }) {
           </span>
           {row.available.length === 0 ? (
             <span className="text-xs text-muted">
-              nobody left in the eligible pool — a nudge won&apos;t help; this is
-              the reschedule / cancel call
+              nobody left in the eligible pool — this is the reschedule / cancel
             </span>
           ) : (
             row.available.map((p) => (

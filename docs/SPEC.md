@@ -637,7 +637,8 @@ to a calm monitor that exposes controls on demand.
 
 ### View structure / states to render
 - **Shift header:** boat · date · trips (1/3/5pm) · pax totals · overall crewing-state badge
-  (Filling / Crewed / At-Risk) · a **"fills by" countdown** to the staffing-horizon deadline.
+  (Filling / Crewed / At-Risk) · the **fills-by deadline** to the staffing horizon, **rendered "deadline"**
+  on the cockpit (DEC-038; the concept stays "fills by" in code/decisions).
 - **Seat cards** — one per required seat, each showing its sub-state + occupant:
   **Open** (expands to the eligible pool) · **Asked** (who/when) · **Claimed** (accepted, awaiting
   confirm) · **Confirmed** (name + one-tap contact) · **Bailed** (flips red; auto-reopens & re-asks).
@@ -694,7 +695,7 @@ default with per-person override (the override lives on the roster record, §2.1
 - [ ] A confirmed crew bailing flips the seat to Bailed, reopens it, and re-asks the next candidate
       without manual intervention.
 - [ ] Manual override places any person into a seat regardless of rank (authority backstop), and the
-      "fills by" countdown reflects the staffing-horizon deadline.
+      fills-by deadline (rendered **"deadline"**, DEC-038) reflects the staffing horizon.
 
 ### Open questions (Assignment View)
 - Whether the autonomous posture needs an explicit **"pause automation, I've got this"** toggle per
@@ -739,7 +740,8 @@ small, fickle pool — outranks a **mate**; a **regression** outranks a never-fi
 ### Triage from the list (context without clicking)
 Each row carries enough to act without opening it:
 - **What's missing** — 1 captain / 1 mate / both.
-- **Time to trip + horizon deadline.**
+- **Time to trip.** *(The fills-by/horizon deadline is **not** shown on the board — once a shift boards
+  the automation has given up and the deadline is moot; it lives on the cockpit only. DEC-038.)*
 - **Escalation transparency** — proof the system tried: "asked 6 mates · 4 declined · 2 silent ·
   pool widened · nudged Bob · exhausted." So Spink trusts it gave up for real reasons, not laziness.
 - **Who's still theoretically available** (if anyone) for a manual lean.

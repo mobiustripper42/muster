@@ -22,3 +22,16 @@ export function fmtDeadline(d: Date): string {
     timeZone: TENANT_TIMEZONE,
   });
 }
+
+/**
+ * "HH:mm" (24h, vessel-local wall-clock per DEC-032) → "h:mm AM/PM". The app
+ * renders 12-hour everywhere; default AM/PM (a 12h↔24h viewer preference is
+ * parked in FUTURE_IDEAS). String-in/string-out — these clock times are stored
+ * as wall-clock strings, not instants, so there's no tz conversion to do here.
+ */
+export function fmt12(hhmm: string): string {
+  const [h = 0, m = 0] = hhmm.split(":").map(Number);
+  const period = h < 12 ? "AM" : "PM";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
+}

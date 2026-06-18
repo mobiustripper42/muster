@@ -5,6 +5,7 @@ import { Notice } from "../../../../../components/ui/notice";
 import { Shell } from "../../../../../components/ui/shell";
 import { readSubject } from "../../../../lib/auth";
 import { getRepo } from "../../../../lib/repo";
+import { fmt12 } from "../../../../lib/format";
 import { bailFromSeat } from "./actions";
 
 /**
@@ -134,14 +135,15 @@ function Card({
         </span>
       </header>
 
-      {/* The load-bearing distinction: call time vs departure, distinct + labeled. */}
+      {/* The load-bearing distinction: shift start (call/report time, = first
+          departure − the lead) vs the first departure itself, distinct + labeled. */}
       <div className="grid grid-cols-2 gap-2">
         <div className="rounded-card border border-ok-line bg-ok-bg px-4 py-3">
           <div className="text-xs font-semibold uppercase tracking-wide text-ok">
             Shift Start
           </div>
           <div className="font-mono text-2xl font-semibold text-ink">
-            {card.callTime ?? "—"}
+            {card.callTime ? fmt12(card.callTime) : "—"}
           </div>
         </div>
         <div className="rounded-card border border-line bg-card px-4 py-3">
@@ -149,7 +151,7 @@ function Card({
             First departure
           </div>
           <div className="font-mono text-2xl font-semibold text-ink">
-            {firstDeparture ?? "—"}
+            {firstDeparture ? fmt12(firstDeparture) : "—"}
           </div>
         </div>
       </div>
@@ -203,7 +205,7 @@ function Card({
             open={card.events.length === 1}
           >
             <summary className="flex min-h-[44px] cursor-pointer items-center justify-between px-4 py-3 font-semibold text-ink [&::-webkit-details-marker]:hidden">
-              <span className="font-mono">{ev.departureTime}</span>
+              <span className="font-mono">{fmt12(ev.departureTime)}</span>
               <span className="flex items-center gap-2 text-sm font-normal text-muted">
                 {ev.pax} guests
                 <span className="text-faint transition-transform group-open:rotate-90" aria-hidden>

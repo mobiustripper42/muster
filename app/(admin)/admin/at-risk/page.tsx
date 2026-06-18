@@ -107,7 +107,7 @@ export default async function AtRiskBoard({
           "just happened") — the no-client-JS tradeoff (DEC-026). */}
       {leanedName && (
         <Notice tone="ok">
-          ↗ Last action: nudged {leanedName} — asked, not yet filled. The
+          Last action: nudged {leanedName} — asked, not yet filled. The
           shift left the board while their answer is pending
           {leanedShiftId ? (
             <>

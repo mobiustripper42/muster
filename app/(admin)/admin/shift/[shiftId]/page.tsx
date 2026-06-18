@@ -21,7 +21,7 @@ import {
 import { Notice } from "../../../../../components/ui/notice";
 import { Shell } from "../../../../../components/ui/shell";
 import { readSubject } from "../../../../lib/auth";
-import { fmtDeadline } from "../../../../lib/format";
+import { fmtDeadline, fmt12 } from "../../../../lib/format";
 import { getRepo } from "../../../../lib/repo";
 
 /**
@@ -51,7 +51,7 @@ const ACT_ERROR_COPY: Record<string, string> = {
   ineligible: "Not eligible for this seat.",
   raced: "That seat just changed — here’s the fresh state.",
   not_claimed: "Nothing is awaiting confirm on that seat.",
-  not_confirmed: "No confirmed crew on that seat to bail — it may have just changed.",
+  not_confirmed: "No confirmed crew on that seat — it may have just changed.",
   seat_gone: "That seat is gone — here’s the fresh state.",
   unavailable: "Couldn’t reach the schedule — nothing was changed. Try again.",
 };
@@ -62,6 +62,7 @@ type Search = {
   nudged?: string;
   confirmed?: string;
   overrode?: string;
+  removed?: string;
   bail_logged?: string;
   act_error?: string;
 };
@@ -167,6 +168,7 @@ export default async function ShiftCockpit({
   const nudged = nameOf(sp.nudged);
   const confirmed = nameOf(sp.confirmed);
   const overrode = nameOf(sp.overrode);
+  const removed = nameOf(sp.removed);
   const bailLogged = nameOf(sp.bail_logged);
   const actError = sp.act_error ? ACT_ERROR_COPY[sp.act_error] ?? null : null;
 
@@ -195,7 +197,7 @@ export default async function ShiftCockpit({
             <p className="flex flex-wrap gap-x-3 text-sm text-muted">
               {view.trips.map((t) => (
                 <span key={t.departureTime} className="whitespace-nowrap">
-                  <span className="font-mono">{t.departureTime}</span> · {t.pax} pax
+                  <span className="font-mono">{fmt12(t.departureTime)}</span> · {t.pax} pax
                 </span>
               ))}
               <span>— {view.paxTotal} aboard total</span>
@@ -218,7 +220,7 @@ export default async function ShiftCockpit({
           </span>
           {view.horizon && (
             <span className="text-xs text-muted">
-              staffing horizon: asks {now >= view.horizon ? "started" : "start"}{" "}
+              <b>staffing</b> {now >= view.horizon ? "started" : "starts"}:{" "}
               {view.horizon.toLocaleDateString("en-US", {
                 weekday: "short",
                 month: "short",
@@ -235,7 +237,7 @@ export default async function ShiftCockpit({
                   : "text-muted"
               }`}
             >
-              crew by {fmtDeadline(view.fillsBy)}
+              deadline: {fmtDeadline(view.fillsBy)}
               {view.fillsBy.getTime() < now.getTime() ? " · overdue" : ""}
             </span>
           )}
@@ -244,22 +246,20 @@ export default async function ShiftCockpit({
 
       {changedSinceLock && (
         <Notice tone="warn">
-          Changed since you reviewed it — a booking landed or changed after you
-          locked this shift. Nothing was altered silently; re-lock once you’ve
-          had a look.
+          A booking changed since this shift was last reviewed — take another look.
         </Notice>
       )}
-
-      <p className="text-xs text-muted">
-        The automation works this shift on its own — step in below when you
-        want to drive. It won’t fight you: once you ask someone, the system
-        waits for their answer instead of sending its own asks for that seat.
-      </p>
 
       {assigned && <Notice tone="ok">Asked {assigned} into the seat — awaiting their reply.</Notice>}
       {nudged && <Notice tone="ok">↗ Nudged {nudged} — asked, not yet filled.</Notice>}
       {confirmed && <Notice tone="ok">{confirmed} confirmed into the seat.</Notice>}
       {overrode && <Notice tone="ok">{overrode} placed by override — confirmed.</Notice>}
+      {removed && (
+        <Notice tone="ok">
+          Removed {removed} — no penalty. The seat reopened and the system is
+          re-asking (or it rests open if nobody&rsquo;s eligible).
+        </Notice>
+      )}
       {bailLogged && (
         <Notice tone="ok">
           Logged {bailLogged}’s bail — the seat reopened and the system is

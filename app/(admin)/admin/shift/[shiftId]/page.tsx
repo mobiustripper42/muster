@@ -252,8 +252,7 @@ export default async function ShiftCockpit({
 
       <p className="text-xs text-muted">
         The automation works this shift on its own — step in below when you
-        want to drive. It won’t fight you: once you ask someone, the system
-        waits for their answer instead of sending its own asks for that seat.
+        want to drive.
       </p>
 
       {assigned && <Notice tone="ok">Asked {assigned} into the seat — awaiting their reply.</Notice>}

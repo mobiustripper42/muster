@@ -50,7 +50,7 @@ export function WarmingPanel({
       </div>
       {rows.length === 0 ? (
         <p className="text-sm text-muted">
-          Nothing trending. The asks that are out are being answered.
+          Nothing Trending. All asks are being answered.
         </p>
       ) : (
         <ul className="flex flex-col divide-y divide-line/60">

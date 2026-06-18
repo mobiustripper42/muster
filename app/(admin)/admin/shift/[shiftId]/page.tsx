@@ -244,9 +244,7 @@ export default async function ShiftCockpit({
 
       {changedSinceLock && (
         <Notice tone="warn">
-          Changed since you reviewed it — a booking landed or changed after you
-          locked this shift. Nothing was altered silently; re-lock once you’ve
-          had a look.
+          A booking changed since this shift was last reviewed — take another look.
         </Notice>
       )}
 

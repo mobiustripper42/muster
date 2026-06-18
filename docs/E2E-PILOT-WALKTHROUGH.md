@@ -178,7 +178,7 @@ Same `atrisk` seed. The cockpit is each board row's click-through, plus off-boar
 | 3.4 | On `shift-ar-claimed`, tap **Confirm into seat** (Petra is Claimed) | Green *"Petra confirmed into the seat"*; card turns green **Confirmed** with ✆ Call / ✉ Text; badge flips to **Crewed** | ☐ pass ☐ fail |
 | 3.5 | Tap **Trending at-risk →** (bottom of any cockpit) | The panel lists **Kettle** (*~4d · 1 unfilled · 50% answered · 1 silent*) — a trending shift deliberately **not** on the board yet | ☐ pass ☐ fail |
 | 3.6 | Open Kettle's cockpit → expand **Manual override…** on the seat → **Place &lt;name&gt;** | Green *"… placed by override — confirmed"*; the panel empties ("Nothing trending.") | ☐ pass ☐ fail |
-| 3.7 | **Changed-since-reviewed (#58):** open `/admin/shift/shift-ar-changed` | Under the header, an amber notice *"Changed since you reviewed it — a booking landed or changed after you locked this shift…"*; the shift is fully Crewed and off the board (it was locked 2d ago; a booking landed 1h ago; an earlier booking before the lock is correctly ignored) | ☐ pass ☐ fail |
+| 3.7 | **Changed-since-reviewed (#58):** open `/admin/shift/shift-ar-changed` | Under the header, an amber notice *"A booking changed since this shift was last reviewed — take another look."*; the shift is fully Crewed and off the board (lockedAt seeded 2d ago; a booking landed 1h ago; an earlier booking before the lock is correctly ignored). NOTE: the lock/re-lock workflow ships with the Shift Builder (§2.3, later phase) — this notice only fires here from the seed | ☐ pass ☐ fail |
 | 3.8 | Reset: `npm run db:seed:atrisk` | All cockpit scenarios restored (in-flight asks closed) | ☐ pass ☐ fail |
 
 ---

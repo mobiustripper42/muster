@@ -103,4 +103,17 @@ describe("buildShiftCard", () => {
     const card = (await buildShiftCard(await seed(), SHIFT, ME, NOW))!;
     expect(card.coCrew).toEqual([{ crewMemberId: "crew-co", name: "Hooper", phone: "555-0002" }]);
   });
+
+  it("bailLate is true when a bail now falls inside the staffing horizon (#7)", async () => {
+    // Trip 2026-07-04; NOW 2026-07-01 → ~3 days notice, well inside the 7-day lead.
+    const card = (await buildShiftCard(await seed(), SHIFT, ME, NOW))!;
+    expect(card.bailLate).toBe(true);
+  });
+
+  it("bailLate is false with more than the staffing-horizon's notice (#7)", async () => {
+    // Same trip, but two weeks out → notice exceeds the lead → graceful.
+    const early = new Date("2026-06-20T08:00:00.000Z");
+    const card = (await buildShiftCard(await seed(), SHIFT, ME, early))!;
+    expect(card.bailLate).toBe(false);
+  });
 });

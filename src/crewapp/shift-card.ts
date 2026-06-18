@@ -10,7 +10,10 @@
  */
 
 import type { CrewMemberId, ShiftId } from "../domain/ids.js";
+import type { Event } from "../domain/entities.js";
 import type { Repository } from "../ports/repository.js";
+import { bailLatenessMs, earliestScheduledStart } from "../builder/derive.js";
+import { TENANT_TIMEZONE } from "../config/tenant.js";
 
 /**
  * Minutes a crew member must arrive before departure. FLAT, fleet-wide (DEC: a
@@ -70,6 +73,12 @@ export interface ShiftCardView {
   viewerRole: string;
   /** The viewer's own confirmed seat — what a "can't make it" bail acts on (#56). */
   mySeatId: string;
+  /**
+   * True iff a bail "now" would fall inside the staffing horizon (DEC-028: the
+   * notice shortfall is non-zero) — little/no time left to refill, so the
+   * "can't make it" copy turns firmer and pushes the operator call (#7).
+   */
+  bailLate: boolean;
 }
 
 /** Subtract minutes from an "HH:mm" clock time (wraps within a day, just in case). */
@@ -93,7 +102,7 @@ export async function buildShiftCard(
   repo: Repository,
   shiftId: ShiftId,
   viewerCrewId: CrewMemberId,
-  _now: Date,
+  now: Date,
 ): Promise<ShiftCardView | null> {
   const shift = await repo.getShift(shiftId);
   if (!shift) return null;
@@ -109,9 +118,11 @@ export async function buildShiftCard(
 
   // Per-event manifest, booked guests only (a cancelled booking isn't aboard).
   const events: EventManifestView[] = [];
+  const rawEvents: Event[] = [];
   for (const eventId of shift.eventIds) {
     const event = await repo.getEvent(eventId);
     if (!event) continue;
+    rawEvents.push(event);
     const reservations = (await repo.listReservationsForEvent(eventId)).filter(
       (r) => r.status === "booked",
     );
@@ -132,6 +143,11 @@ export async function buildShiftCard(
 
   const callTime =
     events.length > 0 ? minusMinutes(events[0]!.departureTime, CALL_LEAD_MINUTES) : undefined;
+
+  // A bail "now" is "late" iff it falls inside the staffing horizon — DEC-028's
+  // notice shortfall is non-zero (#7). Same instant the score penalizes; the
+  // copy uses it only to pick graceful vs firm wording, never to block.
+  const bailLate = bailLatenessMs(earliestScheduledStart(rawEvents, TENANT_TIMEZONE), now) > 0;
 
   // One pin when every event shares a dock; otherwise the per-event docks stand.
   const docks = events.map((e) => e.dock);
@@ -160,5 +176,6 @@ export async function buildShiftCard(
     coCrew,
     viewerRole: await roleName(repo, mySeat.role),
     mySeatId: mySeat.id,
+    bailLate,
   };
 }

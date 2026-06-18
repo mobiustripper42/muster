@@ -75,7 +75,18 @@ describe("buildCrewAppView", () => {
   it("lists confirmed upcoming shifts soonest-first, drops past ones", async () => {
     const view = await buildCrewAppView(await seed(), ME, NOW);
     expect(view!.shifts.map((s) => s.shiftId)).toEqual(["shift-up", "shift-ask"]);
-    expect(view!.shifts[0]).toMatchObject({ vesselName: "Hops", roleName: "captain", date: "2026-07-04" });
+    expect(view!.shifts[0]).toMatchObject({ vesselName: "Hops", roleName: "captain", date: "2026-07-04", pending: false });
+  });
+
+  it("includes a Claimed (not-yet-confirmed) seat in my-shifts, marked pending (#4)", async () => {
+    const repo = await seed();
+    // A claimed-but-unconfirmed seat to me on a new, sooner upcoming shift.
+    await repo.saveShift({ id: asId<"ShiftId">("shift-claim"), vesselId: VESSEL, date: "2026-07-03", state: "Filling", eventIds: [] });
+    await repo.saveSeat({ id: asId<"SeatId">("seat-claim"), shiftId: asId<"ShiftId">("shift-claim"), role: CAPTAIN, kind: "required", state: "Claimed", assignedCrewMemberId: ME });
+
+    const view = await buildCrewAppView(repo, ME, NOW);
+    expect(view!.shifts.find((s) => s.shiftId === "shift-claim")).toMatchObject({ date: "2026-07-03", pending: true });
+    expect(view!.shifts.find((s) => s.shiftId === "shift-up")!.pending).toBe(false);
   });
 
   it("standing reads neutral with no logged history", async () => {

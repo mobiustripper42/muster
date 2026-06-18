@@ -138,23 +138,43 @@ function CrewApp({
         {view.shifts.length === 0 ? (
           <Notice>No upcoming shifts.</Notice>
         ) : (
-          view.shifts.map((s) => (
-            <Link
-              key={s.seatId}
-              href={`/crew/shift/${s.shiftId}`}
-              className="flex items-center justify-between rounded-card border border-line bg-card px-4 py-3 shadow-sm"
-            >
-              <div className="flex flex-col">
-                <span className="font-semibold text-ink">{fmtDate(s.date)}</span>
-                <span className="text-sm text-muted">
-                  {s.vesselName} · {s.roleName}
+          view.shifts.map((s) =>
+            // A claimed-but-unconfirmed seat (#4) has no shift card yet (the card
+            // is Confirmed-only) — render it as a non-link "awaiting confirmation"
+            // row so the "In" visibly landed, without navigating to a dead card.
+            s.pending ? (
+              <div
+                key={s.seatId}
+                className="flex items-center justify-between rounded-card border border-line bg-card px-4 py-3 shadow-sm"
+              >
+                <div className="flex flex-col">
+                  <span className="font-semibold text-ink">{fmtDate(s.date)}</span>
+                  <span className="text-sm text-muted">
+                    {s.vesselName} · {s.roleName}
+                  </span>
+                </div>
+                <span className="rounded-full border border-line bg-bg px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted">
+                  Awaiting confirmation
                 </span>
               </div>
-              <span className="text-faint" aria-hidden>
-                ›
-              </span>
-            </Link>
-          ))
+            ) : (
+              <Link
+                key={s.seatId}
+                href={`/crew/shift/${s.shiftId}`}
+                className="flex items-center justify-between rounded-card border border-line bg-card px-4 py-3 shadow-sm"
+              >
+                <div className="flex flex-col">
+                  <span className="font-semibold text-ink">{fmtDate(s.date)}</span>
+                  <span className="text-sm text-muted">
+                    {s.vesselName} · {s.roleName}
+                  </span>
+                </div>
+                <span className="text-faint" aria-hidden>
+                  ›
+                </span>
+              </Link>
+            ),
+          )
         )}
       </section>
     </Shell>
@@ -165,10 +185,7 @@ function AskCard({ ask }: { ask: CrewAppView["asks"][number] }) {
   return (
     <div className="overflow-hidden rounded-card border border-line bg-card shadow-sm">
       <div className="border-b border-line px-4 py-3">
-        <div className="text-[10px] font-bold uppercase tracking-wider text-accent">
-          Muster · now
-        </div>
-        <div className="mt-1 text-ink">
+        <div className="text-ink">
           {fmtDate(ask.date)} · {ask.vesselName} · {ask.roleName}.{" "}
           <b>In or out?</b>
         </div>

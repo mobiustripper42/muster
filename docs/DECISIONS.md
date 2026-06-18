@@ -1042,6 +1042,24 @@ needs tuning (the number, not the definition).
 
 ---
 
+## DEC-038: Pilot-walkthrough UX/copy revisions (operator review of the slice-1 surfaces)
+
+**Context.** A click-through of `E2E-PILOT-WALKTHROUGH.md` with the operator surfaced ~17 findings. Most are copy (operator vocabulary over dev/brand jargon); four are design-bearing and recorded here. The copy set is applied as-is (label-only, no logic).
+
+**Decisions:**
+
+1. **My-shifts shows `Claimed`, not just `Confirmed` (#4).** A crew "In" lands the seat at `Claimed` (awaiting operator confirm), and the old my-shifts list was `Confirmed`-only — so a fresh "In" vanished with no feedback. My-shifts now includes `Claimed` seats, rendered as a **non-link** row badged *"Awaiting confirmation"* (the shift card + bail remain `Confirmed`-gated, so a claimed seat has no card to open yet). The full claimed-shift card + claim-rescind is a deferred follow-up.
+
+2. **Bail copy is horizon-aware (#6/#7).** The "can't make it" text branches on whether a bail *now* falls inside the staffing horizon — reusing **DEC-028**'s `bailLatenessMs > 0`, no new constant. Graceful (notice ≥ horizon): *"…the sooner you tell us, the easier it is to refill…"*. Late (inside horizon): *"This shift is soon — …call your operator right away…"*. Still **no time gate** — the drop always goes through (DEC-019); the copy only adjusts tone. The old line asked crew to judge "if there's still plenty of time" — information they can't see — and is removed.
+
+3. **"Fills by" leaves the At-Risk board; stays in the cockpit, relabeled "crew by" (#12/#15).** Amends **DEC-031** (which put the deadline on *both* surfaces for consistency). Operator rationale: once a shift is **on the board, the automation has already given up and a human must act** — the deadline is moot there, and "· overdue" is tautological (a willingness-exhausted row boards *because* the deadline passed; an eligibility-exhausted row boards regardless of it). The trip countdown already carries the only urgency acted on. The deadline remains meaningful in the **cockpit**, where a still-`Filling` shift is worked *before* it boards; there the label changes from "fills by" (read as a promise) to **"crew by"** (a deadline, domain verb). DEC-031's mechanic — the displayed instant IS the willingness-exhaustion boarding instant — is unchanged; only board *display* and the cockpit *label* move.
+
+**Copy set (applied, label-only):** board header "Needs you"→"Needs attention" (the board is the one surface that legitimately summons — the anti-anxiety-dashboard principle is about *other* surfaces); "need a call"→"need attention"; "all asks dry"→"no takers"; "not yet worked — flagged by the oracle"→"no one eligible to ask"; shift-card "Be there (call)"→"Shift Start"; bail "seat"→"shift"; drop the static "Muster · now" ask eyebrow; trim the reschedule/cancel note (why → button title); board departures move under the date (all trip times). **Deferred:** the board "Assignment ↗" link label (revisit after the cockpit is worked in Part 3).
+
+**Relationship:** amends DEC-031 (fills-by display/label); builds on DEC-028 (bail lateness) and DEC-019/DEC-007 (claim vs confirm). No change to seat/shift state machines or the scoring.
+
+---
+
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)
 
 These are deferred by design. Each names an owner and a trigger. **Consult @architect (and the named

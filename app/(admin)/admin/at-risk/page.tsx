@@ -7,7 +7,6 @@ import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { TENANT_TIMEZONE } from "@core/config/tenant.js";
 import { readSubject } from "../../../lib/auth";
-import { fmtDeadline } from "../../../lib/format";
 import { getRepo } from "../../../lib/repo";
 
 /**
@@ -54,7 +53,7 @@ export default async function AtRiskBoard({
   let vms: RiskRowVM[];
   try {
     rows = await deriveAtRiskBoard(repo, now);
-    vms = await buildVMs(rows, now);
+    vms = await buildVMs(rows);
   } catch {
     return (
       <Shell width="3xl">
@@ -83,9 +82,9 @@ export default async function AtRiskBoard({
     <Shell width="3xl">
       <header className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h1 className="text-xl font-semibold text-ink">Needs you</h1>
+          <h1 className="text-xl font-semibold text-ink">Needs attention</h1>
           <p className="text-sm text-muted">
-            Only shifts the automation couldn’t close land here.{" "}
+            Only shifts the automation couldn’t close.{" "}
             {vms.length === 0 ? "Right now, none do." : "Most-urgent first."}
           </p>
         </div>
@@ -93,7 +92,7 @@ export default async function AtRiskBoard({
           <div className="flex items-baseline gap-2">
             <span className="text-2xl font-semibold text-ink">{vms.length}</span>
             <span className="text-xs text-muted">
-              {vms.length === 1 ? "shift needs" : "shifts need"} a call
+              {vms.length === 1 ? "shift needs" : "shifts need"} attention
             </span>
             {regressions > 0 && (
               <span className="rounded-full border border-bad-line bg-bad-bg px-2 py-0.5 text-xs font-semibold text-bad">
@@ -141,8 +140,7 @@ export default async function AtRiskBoard({
 }
 
 /** Resolve ids → names and format the row facts the component renders. */
-async function buildVMs(rows: AtRiskRow[], now: Date): Promise<RiskRowVM[]> {
-  const nowMs = now.getTime();
+async function buildVMs(rows: AtRiskRow[]): Promise<RiskRowVM[]> {
   const repo = getRepo();
   const [vessels, roles, crew] = await Promise.all([
     repo.listVessels(),
@@ -166,7 +164,7 @@ async function buildVMs(rows: AtRiskRow[], now: Date): Promise<RiskRowVM[]> {
         : {
             label: r.trail.exhausted
               ? "Lacking crew · none eligible"
-              : "Lacking crew · all asks dry",
+              : "Lacking crew · no takers",
             tone: "warn" as const,
           };
     return {
@@ -174,9 +172,6 @@ async function buildVMs(rows: AtRiskRow[], now: Date): Promise<RiskRowVM[]> {
       vesselName: vesselName.get(r.vesselId) ?? String(r.vesselId),
       dateLabel: fmtDate(r.date),
       departs: r.tripStarts.map((t) => `departs ${fmtTime(t)}`),
-      fillsBy: r.fillsBy
-        ? { label: fmtDeadline(r.fillsBy), overdue: r.fillsBy.getTime() < nowMs }
-        : null,
       toTrip: r.hoursToTrip === null ? null : ttLabel(r.hoursToTrip),
       tight: r.hoursToTrip !== null && r.hoursToTrip < TIGHT_HOURS,
       flag,

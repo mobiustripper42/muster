@@ -51,7 +51,7 @@ const ACT_ERROR_COPY: Record<string, string> = {
   ineligible: "Not eligible for this seat.",
   raced: "That seat just changed — here’s the fresh state.",
   not_claimed: "Nothing is awaiting confirm on that seat.",
-  not_confirmed: "No confirmed crew on that seat to bail — it may have just changed.",
+  not_confirmed: "No confirmed crew on that seat — it may have just changed.",
   seat_gone: "That seat is gone — here’s the fresh state.",
   unavailable: "Couldn’t reach the schedule — nothing was changed. Try again.",
 };

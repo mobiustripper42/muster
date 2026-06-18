@@ -637,7 +637,7 @@ to a calm monitor that exposes controls on demand.
 
 ### View structure / states to render
 - **Shift header:** boat · date · trips (1/3/5pm) · pax totals · overall crewing-state badge
-  (Filling / Crewed / At-Risk) · the **fills-by deadline** to the staffing horizon, **rendered "crew by"**
+  (Filling / Crewed / At-Risk) · the **fills-by deadline** to the staffing horizon, **rendered "deadline"**
   on the cockpit (DEC-038; the concept stays "fills by" in code/decisions).
 - **Seat cards** — one per required seat, each showing its sub-state + occupant:
   **Open** (expands to the eligible pool) · **Asked** (who/when) · **Claimed** (accepted, awaiting
@@ -695,7 +695,7 @@ default with per-person override (the override lives on the roster record, §2.1
 - [ ] A confirmed crew bailing flips the seat to Bailed, reopens it, and re-asks the next candidate
       without manual intervention.
 - [ ] Manual override places any person into a seat regardless of rank (authority backstop), and the
-      fills-by deadline (rendered **"crew by"**, DEC-038) reflects the staffing horizon.
+      fills-by deadline (rendered **"deadline"**, DEC-038) reflects the staffing horizon.
 
 ### Open questions (Assignment View)
 - Whether the autonomous posture needs an explicit **"pause automation, I've got this"** toggle per

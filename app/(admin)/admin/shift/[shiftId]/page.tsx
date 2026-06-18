@@ -218,7 +218,7 @@ export default async function ShiftCockpit({
           </span>
           {view.horizon && (
             <span className="text-xs text-muted">
-              staffing horizon: asks {now >= view.horizon ? "started" : "start"}{" "}
+              staffing: {now >= view.horizon ? "started" : "starts"}{" "}
               {view.horizon.toLocaleDateString("en-US", {
                 weekday: "short",
                 month: "short",
@@ -235,7 +235,7 @@ export default async function ShiftCockpit({
                   : "text-muted"
               }`}
             >
-              crew by {fmtDeadline(view.fillsBy)}
+              deadline {fmtDeadline(view.fillsBy)}
               {view.fillsBy.getTime() < now.getTime() ? " · overdue" : ""}
             </span>
           )}
@@ -249,11 +249,6 @@ export default async function ShiftCockpit({
           had a look.
         </Notice>
       )}
-
-      <p className="text-xs text-muted">
-        The automation works this shift on its own — step in below when you
-        want to drive.
-      </p>
 
       {assigned && <Notice tone="ok">Asked {assigned} into the seat — awaiting their reply.</Notice>}
       {nudged && <Notice tone="ok">↗ Nudged {nudged} — asked, not yet filled.</Notice>}

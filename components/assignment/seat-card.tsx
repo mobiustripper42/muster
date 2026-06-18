@@ -1,4 +1,4 @@
-import { confirmInto, overrideTo, reportBail } from "../../app/(admin)/admin/shift/[shiftId]/actions";
+import { confirmInto, overrideTo, removeSeat, reportBail } from "../../app/(admin)/admin/shift/[shiftId]/actions";
 import { HiddenIds, MiniButton } from "./bits";
 import { askedSummary, CandidateRow } from "./candidate-row";
 
@@ -82,26 +82,40 @@ function OccupantZone({ vm }: { vm: SeatCardVM }) {
             </span>
           )}
         </div>
-        {/* #56 admin half (DEC-028): record a crew bail you heard about — same
-            rail as the crew's own "can't make it". Logs a reliability bail
-            (lateness from now), NOT a neutral remove. Deliberate friction. */}
+        {/* #87: two ways to clear a confirmed seat, split by whether a
+            reliability bail is logged. Remove = misassignment, no penalty
+            (vacateSeat). Bailed = crew actually backed out, logs lateness
+            (reportBail/DEC-028). Explicit choice, never a default — a wrong
+            default starves the reliability log or wrongly penalizes. */}
         <details>
           <summary className="cursor-pointer text-xs text-muted">
             Remove from shift…
           </summary>
           <p className="py-1 text-xs text-muted">
-            Logs a bail for {vm.occupant.name} and re-asks the pool — counts
-            against their record.
+            Wrong person in the seat? <b>Remove</b> — no penalty. {vm.occupant.name}{" "}
+            actually can&rsquo;t make it? <b>Bailed</b> — logs a late bail against
+            their record. Either way the seat reopens and re-asks.
           </p>
-          <form action={reportBail} className="py-1">
-            <HiddenIds vm={vm} />
-            <button
-              type="submit"
-              className="rounded-full border border-bad-line bg-bad-bg px-2.5 py-1 text-xs font-medium text-bad"
-            >
-              Remove
-            </button>
-          </form>
+          <div className="flex flex-wrap gap-2 py-1">
+            <form action={removeSeat} className="inline-flex">
+              <HiddenIds vm={vm} />
+              <button
+                type="submit"
+                className="rounded-full border border-line bg-bg px-2.5 py-1 text-xs font-medium text-muted"
+              >
+                Remove
+              </button>
+            </form>
+            <form action={reportBail} className="inline-flex">
+              <HiddenIds vm={vm} />
+              <button
+                type="submit"
+                className="rounded-full border border-bad-line bg-bad-bg px-2.5 py-1 text-xs font-medium text-bad"
+              >
+                Bailed
+              </button>
+            </form>
+          </div>
         </details>
       </div>
     );

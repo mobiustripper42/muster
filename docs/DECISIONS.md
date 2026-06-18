@@ -1064,6 +1064,21 @@ needs tuning (the number, not the definition).
 
 ---
 
+## DEC-039: Confirmed-seat vacate splits into Remove (no penalty) vs Bailed (logs lateness) (#87)
+
+**Context.** Vacating a confirmed seat carried one control (the DEC-038 "Remove from shift…" disclosure → "Remove"), and it *always* logged a reliability bail (DEC-028). But two genuinely different operator actions hide behind it, differing only in whether a bail is logged: a **misassignment** (Spink placed the wrong person — clear and re-ask, *no* penalty) vs a real **bail** (the crew member backed out — clear, re-ask, *log* the lateness). With one always-penalizing button, an accidental misassignment couldn't be undone without wrongly dinging the crew member. (Manual override already displaces a *replacement* silently with no bail; the gap was specifically remove-with-no-replacement, no penalty.)
+
+**Decision.** Two buttons on the confirmed-seat card, an **explicit operator choice — never a default checkbox** (a wrong default either starves the reliability log or wrongly penalizes):
+
+1. **Remove** (no penalty) — new core `vacateSeat()`: the `bail()` body **minus `logShiftBailed`**. Drops the occupant, re-asks the next candidates (the removed person excluded from the immediate re-ask, as in bail; override can still place them back), writes **no** reliability event. **Exhausted pool rests at `Open`, not `Bailed`** — no one bailed, so the seat is honestly open again and `resolveShiftState`'s horizon clock decides AtRisk, rather than `deriveShiftState` flagging an immediate bail-driven AtRisk with "crew bailed" copy.
+2. **Bailed** — unchanged `reportBail`/`bailWithDerivedLateness` (DEC-028): logs `shift_bailed` with lateness from now, clears, re-asks. Exhausted pool rests at `Bailed` → AtRisk, as before.
+
+Both share the **occupant-pin race guard** (a swap between reads → `raced`, reload — never act on a different person than Spink saw). The card's intro text names the distinction in a line.
+
+**Relationship:** supersedes the DEC-038 single always-bailing "Remove" button; builds on DEC-028 (the bail it deliberately does *not* fire) and DEC-019 (re-ask exclusion). `bail()` stays the sole home of the penalized path; `vacateSeat()` is the no-log sibling. No change to the seat/shift state machines beyond the new Open-resting vacate path.
+
+---
+
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)
 
 These are deferred by design. Each names an owner and a trigger. **Consult @architect (and the named

@@ -176,6 +176,7 @@ Same `atrisk` seed. The cockpit is each board row's click-through, plus off-boar
 | 3.2 | **Deadline header (#59, DEC-038):** under the staffing line | A **`deadline <day, time>`** line (grey for `shift-ar-claimed`, ~3d out; red `· overdue` inside 48h). This is the cockpit's live deadline — it does **not** appear on the board (2.4), only here where the shift is still being worked. The line above reads **`staffing: started <date>`** | ☐ pass ☐ fail |
 | 3.3 | Read a **seat card** with a pool | Ranked eligible names with ask status: *declined* (muted), *👻 silent* (red) — visibly different — each with a **↗ Nudge** button | ☐ pass ☐ fail |
 | 3.4 | On `shift-ar-claimed`, tap **Confirm into seat** (Petra is Claimed) | Green *"Petra confirmed into the seat"*; card turns green **Confirmed** with ✆ Call / ✉ Text; badge flips to **Crewed** | ☐ pass ☐ fail |
+| 3.4b | **Remove vs Bailed split (#87, DEC-039):** on Petra's now-Confirmed seat expand **Remove from shift…** | Two buttons — a plain **Remove** (no penalty) and a red **Bailed** — with a line explaining the difference (wrong person → Remove; can't make it → Bailed, logs a late bail). Tap **Remove**: green *"Removed Petra — no penalty…"*, the seat reopens/re-asks, and the shift does **not** show a late-bail regression (contrast 1.12 — Remove logs no reliability event). *(Destructive; 3.8 reset restores it.)* | ☐ pass ☐ fail |
 | 3.5 | Tap **Trending at-risk →** (bottom of any cockpit) | The panel lists **Kettle** (*~4d · 1 unfilled · 50% answered · 1 silent*) — a trending shift deliberately **not** on the board yet | ☐ pass ☐ fail |
 | 3.6 | Open Kettle's cockpit → expand **Manual override…** on the seat → **Place &lt;name&gt;** | Green *"… placed by override — confirmed"*; the panel empties ("Nothing trending.") | ☐ pass ☐ fail |
 | 3.7 | **Changed-since-reviewed (#58):** open `/admin/shift/shift-ar-changed` | Under the header, an amber notice *"A booking changed since this shift was last reviewed — take another look."*; the shift is fully Crewed and off the board (lockedAt seeded 2d ago; a booking landed 1h ago; an earlier booking before the lock is correctly ignored). NOTE: the lock/re-lock workflow ships with the Shift Builder (§2.3, later phase) — this notice only fires here from the seed | ☐ pass ☐ fail |
@@ -284,7 +285,7 @@ can file them if `gh` is available; otherwise paste this table into a CLI sessio
 
 - [ ] Part 1 — Crew app (ask, my shifts, shift card, credential, bail)
 - [ ] Part 2 — At-Risk board (membership, ordering, fills-by, multi-trip, lean)
-- [ ] Part 3 — Cockpit (confirm, override, trending-at-risk, changed-since-reviewed, deadline header)
+- [ ] Part 3 — Cockpit (confirm, remove vs bail, override, trending-at-risk, changed-since-reviewed, deadline header)
 - [ ] Part 4 — Pilot channel / outbox (relay send, resend, operator-as-crew, full loop)
 - [ ] Part 5 — Engine tick
 - [ ] Part 6 — Integrity + 375px

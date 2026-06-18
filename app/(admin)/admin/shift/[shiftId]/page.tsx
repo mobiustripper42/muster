@@ -62,6 +62,7 @@ type Search = {
   nudged?: string;
   confirmed?: string;
   overrode?: string;
+  removed?: string;
   bail_logged?: string;
   act_error?: string;
 };
@@ -167,6 +168,7 @@ export default async function ShiftCockpit({
   const nudged = nameOf(sp.nudged);
   const confirmed = nameOf(sp.confirmed);
   const overrode = nameOf(sp.overrode);
+  const removed = nameOf(sp.removed);
   const bailLogged = nameOf(sp.bail_logged);
   const actError = sp.act_error ? ACT_ERROR_COPY[sp.act_error] ?? null : null;
 
@@ -252,6 +254,12 @@ export default async function ShiftCockpit({
       {nudged && <Notice tone="ok">↗ Nudged {nudged} — asked, not yet filled.</Notice>}
       {confirmed && <Notice tone="ok">{confirmed} confirmed into the seat.</Notice>}
       {overrode && <Notice tone="ok">{overrode} placed by override — confirmed.</Notice>}
+      {removed && (
+        <Notice tone="ok">
+          Removed {removed} — no penalty. The seat reopened and the system is
+          re-asking (or it rests open if nobody&rsquo;s eligible).
+        </Notice>
+      )}
       {bailLogged && (
         <Notice tone="ok">
           Logged {bailLogged}’s bail — the seat reopened and the system is

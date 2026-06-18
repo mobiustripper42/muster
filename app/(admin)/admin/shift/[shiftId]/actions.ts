@@ -6,6 +6,7 @@ import {
   bailWithDerivedLateness,
   confirmSeat,
   manualOverride,
+  vacateSeat,
 } from "@core/asks/ask-loop.js";
 import { assignFromPool, lean } from "@core/asks/lean.js";
 import { asId } from "@core/domain/ids.js";
@@ -28,7 +29,10 @@ import { getRepo } from "../../../../lib/repo";
  * - override→ `manualOverride` (the ONLY unguarded path — the authority
  *             backstop, and the label is the trail)
  * - report a bail → `bail()` (#56 admin half, DEC-028) — Spink files the bail
- *             he heard about; also the recovery for a mis-tapped override
+ *             he heard about
+ * - remove      → `vacateSeat` (#87) — clears a *misassignment* with NO penalty;
+ *             the no-bail recovery for a wrong-person placement (Bailed carries
+ *             the reliability cost; this doesn't)
  */
 
 /** Auth + the form's ids, or redirect out. Shared head of every action. */
@@ -134,10 +138,45 @@ export async function overrideTo(formData: FormData): Promise<void> {
 }
 
 /**
+ * No-penalty remove (#87) — the operator placed the wrong person; clear the seat
+ * and re-ask, logging NO reliability event. Distinct from `reportBail`: same
+ * occupant-pin race guard, but `vacateSeat` skips `logShiftBailed`, so a
+ * correction never dings the removed crew's record.
+ */
+export async function removeSeat(formData: FormData): Promise<void> {
+  const { seatId, back } = await gate(formData);
+  if (!seatId) redirect(back);
+  let param: string;
+  try {
+    const repo = getRepo();
+    const seat = await repo.getSeat(asId<"SeatId">(seatId));
+    if (!seat || seat.state !== "Confirmed" || !seat.assignedCrewMemberId) {
+      param = "act_error=not_confirmed";
+    } else {
+      const occupant = seat.assignedCrewMemberId;
+      try {
+        const out = await vacateSeat(repo, seat.id, new Date(), occupant);
+        param = `removed=${encodeURIComponent(String(occupant))}`;
+        // Edge channel wiring (DEC-030): the re-asks → the pilot outbox.
+        await forwardToOutbox(out.reAsks);
+      } catch {
+        // Occupant swapped between reads (or a write raced) — reload, don't
+        // clear a different person than Spink saw.
+        param = "act_error=raced";
+      }
+    }
+  } catch {
+    param = "act_error=unavailable";
+  }
+  finish(back, param);
+}
+
+/**
  * Spink files a bail he heard about (#56 admin half, DEC-028) — the same
  * `bail()` rail the crew's own "can't make it" uses, lateness computed here at
  * report time (the DEC-028 caveat: stamped at report, not at the phone call —
- * the clamp bounds the damage). Also the recovery for a mis-tapped override.
+ * the clamp bounds the damage). The penalized sibling of `removeSeat` (#87):
+ * use this when the crew actually backed out, not for a misassignment.
  */
 export async function reportBail(formData: FormData): Promise<void> {
   const { seatId, back } = await gate(formData);

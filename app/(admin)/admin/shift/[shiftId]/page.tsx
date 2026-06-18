@@ -218,7 +218,7 @@ export default async function ShiftCockpit({
           </span>
           {view.horizon && (
             <span className="text-xs text-muted">
-              staffing: {now >= view.horizon ? "started" : "starts"}{" "}
+              <b>staffing</b> {now >= view.horizon ? "started" : "starts"}:{" "}
               {view.horizon.toLocaleDateString("en-US", {
                 weekday: "short",
                 month: "short",
@@ -235,7 +235,7 @@ export default async function ShiftCockpit({
                   : "text-muted"
               }`}
             >
-              deadline {fmtDeadline(view.fillsBy)}
+              deadline: {fmtDeadline(view.fillsBy)}
               {view.fillsBy.getTime() < now.getTime() ? " · overdue" : ""}
             </span>
           )}

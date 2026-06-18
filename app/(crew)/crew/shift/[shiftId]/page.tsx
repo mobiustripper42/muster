@@ -5,6 +5,7 @@ import { Notice } from "../../../../../components/ui/notice";
 import { Shell } from "../../../../../components/ui/shell";
 import { readSubject } from "../../../../lib/auth";
 import { getRepo } from "../../../../lib/repo";
+import { fmt12 } from "../../../../lib/format";
 import { bailFromSeat } from "./actions";
 
 /**
@@ -38,15 +39,6 @@ function fmtDate(iso: string): string {
     day: "numeric",
     timeZone: "UTC",
   });
-}
-
-/** "HH:mm" (24h, vessel-local wall-clock per DEC-032) → "h:mm AM/PM". Crew read
- *  12-hour; the operator surfaces already format this way (1.7). */
-function fmt12(hhmm: string): string {
-  const [h = 0, m = 0] = hhmm.split(":").map(Number);
-  const period = h < 12 ? "AM" : "PM";
-  const h12 = h % 12 === 0 ? 12 : h % 12;
-  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
 }
 
 export default async function ShiftCardPage({

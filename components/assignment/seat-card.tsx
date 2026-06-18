@@ -110,7 +110,7 @@ function OccupantZone({ vm }: { vm: SeatCardVM }) {
   if (vm.state === "Bailed") {
     return (
       <div className="rounded-lg border border-bad-line bg-bad-bg px-3 py-2 text-sm text-bad">
-        ✕ Crew bailed with nobody left to re-ask at the time — the pool below
+        Crew bailed with nobody left to re-ask at the time — the pool below
         is who can take it now (the bailer isn’t offered).
       </div>
     );

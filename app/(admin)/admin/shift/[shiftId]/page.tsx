@@ -21,7 +21,7 @@ import {
 import { Notice } from "../../../../../components/ui/notice";
 import { Shell } from "../../../../../components/ui/shell";
 import { readSubject } from "../../../../lib/auth";
-import { fmtDeadline } from "../../../../lib/format";
+import { fmtDeadline, fmt12 } from "../../../../lib/format";
 import { getRepo } from "../../../../lib/repo";
 
 /**
@@ -195,7 +195,7 @@ export default async function ShiftCockpit({
             <p className="flex flex-wrap gap-x-3 text-sm text-muted">
               {view.trips.map((t) => (
                 <span key={t.departureTime} className="whitespace-nowrap">
-                  <span className="font-mono">{t.departureTime}</span> · {t.pax} pax
+                  <span className="font-mono">{fmt12(t.departureTime)}</span> · {t.pax} pax
                 </span>
               ))}
               <span>— {view.paxTotal} aboard total</span>

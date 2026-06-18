@@ -116,4 +116,13 @@ describe("buildShiftCard", () => {
     const card = (await buildShiftCard(await seed(), SHIFT, ME, early))!;
     expect(card.bailLate).toBe(false);
   });
+
+  it("bailLate is false for an event-less shift — no horizon to be late against (#7)", async () => {
+    const repo = await seed();
+    // Strip the shift's events so there's no scheduled trip to anchor a horizon.
+    await repo.saveShift({ id: SHIFT, vesselId: VESSEL, date: "2026-07-04", state: "Crewed", eventIds: [] });
+    const card = (await buildShiftCard(repo, SHIFT, ME, NOW))!;
+    expect(card.bailLate).toBe(false);
+    expect(card.callTime).toBeUndefined();
+  });
 });

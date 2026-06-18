@@ -897,6 +897,8 @@ nothing reads the skew yet, and it dies at the Twilio swap when `send` actually 
 
 ## DEC-031: "Fills by" = the fill deadline — `tripStart − FILL_DEADLINE_HOURS`, derived, bound to the escalation threshold
 
+> **Superseded display (DEC-038):** the concept and code symbols (`fillsBy`, `FILL_DEADLINE_HOURS`) are unchanged, but the **board no longer renders this line** (moot once a shift boards) and the **cockpit relabels it "crew by."** The mechanic below — displayed instant == willingness-exhaustion boarding instant — still holds.
+
 **Decision:** The "fills by" deadline (SPEC §2.4/§2.5; the AtRiskRow's right column + the cockpit
 header — both deferred to here by DEC-027 §4) is **`earliestScheduledStart − FILL_DEADLINE_HOURS`**,
 computed on read beside `staffingHorizonFor` in `src/builder/derive.ts` (DEC-022's rule verbatim:

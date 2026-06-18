@@ -134,7 +134,8 @@ function Card({
         </span>
       </header>
 
-      {/* The load-bearing distinction: call time vs departure, distinct + labeled. */}
+      {/* The load-bearing distinction: shift start (call/report time, = first
+          departure − the lead) vs the first departure itself, distinct + labeled. */}
       <div className="grid grid-cols-2 gap-2">
         <div className="rounded-card border border-ok-line bg-ok-bg px-4 py-3">
           <div className="text-xs font-semibold uppercase tracking-wide text-ok">

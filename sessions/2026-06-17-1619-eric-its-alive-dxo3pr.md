@@ -47,7 +47,18 @@ transcript: /root/.claude/projects/-home-user-muster/f63485a5-d75c-5edf-9391-99c
 16. **[copy] "Lacking crew · all asks dry" → "Lacking crew · no takers" (2.2).** `app/(admin)/admin/at-risk/page.tsx:169` (the non-exhausted, non-regression flag). "Dry" awkwardly tries to fold *declined* + *silent* into one word; the trail line below already itemizes it (*asked 2 · 1 declined · 1 silent*). **User decision: "no takers"** (covers declined + silent, plain headline).
 17. **[copy — OPEN, revisit at Part 3] Board "Assignment ↗" link label may overframe the cockpit (2.x→3).** `components/at-risk/risk-row.tsx:196` → links to the cockpit (`/admin/shift/[shiftId]`). User's read: that screen is mostly *asking/nudging*, not *assigning*. Counterpoint (noted): the cockpit DOES assign — "Confirm into seat" + "Manual override → Place &lt;name&gt;" (`seat-card.tsx:63,177`); its own h1 is just `Vessel · Date`, never "Assignment" — only the board *link* says it. **Deferred:** user works Part 3 first, then decides. If it still overframes: candidates "Open shift ↗" / "Work this shift ↗" / "Triage ↗".
 
+## Applied — Session 17 (branch `claude/its-alive-dxo3pr`)
+
+Two commits pushed; `npm run typecheck` + `typecheck:app` + 408 unit tests + `next build` all green (no app/DB in container — live UI validation is a fresh walkthrough pass on mill-dev).
+
+- **Commit 95b0fa7 (app + tests):** findings **3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 15, 16** — crew app + at-risk board copy/UX, plus the two behavioral changes (#4 claimed-in-my-shifts marked "Awaiting confirmation"; #7 horizon-aware bail copy via DEC-028 `bailLatenessMs`). New tests: crew-view pending-claim, shift-card `bailLate` both bands.
+- **Commit 3a45a00 (docs + infra):** **DEC-038** (records #4/#7/#12/#15 + the copy set; amends DEC-031); E2E-PILOT-WALKTHROUGH synced to the new copy/behavior; finding **8** (1.13 step order) fixed; finding **1** (Part 0 fresh-pass-needs-wipe note); finding **2** (`db:up --wait`).
+- **Micro-pick defaults applied** (override on re-test): #3 dropped the eyebrow; #12 "crew by"; #14 trim + why-in-title.
+- **Not applied:** **#17** (Assignment label — deferred to Part 3); **#9** (Vercel ignored-build-step — already fixed live in the dashboard; the seeds backport stays a `/push-seeds` task).
+- Applied findings are now in code → no GitHub issues needed for them (supersedes the earlier "file 1–4 as issues" note).
+
 **Next Steps:**
+- **Re-run the walkthrough from the top on mill-dev** against `claude/its-alive-dxo3pr` (`git pull` first) to validate the applied changes live and continue Parts 3–7.
 - **Revisit finding #17** (the "Assignment ↗" label) after Part 3, once the cockpit's confirm/override actions have been used.
 - **`/push-seeds`:** bake finding #9 into the seeds — `/its-alive` Step 0.6 case-b should print the Vercel ignored-build-step instruction when it first bootstraps the orphan `sessions` branch on a deployable project; add to the DEC-S014 adoption notes. Durable fix so no future project hits the red-deploy spam.
 - File findings 1–4 as GitHub issues (`e2e` + `bug`; #4 also `crew`/major) — held at user request; GitHub MCP was disconnected at the time.

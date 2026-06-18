@@ -82,17 +82,16 @@ function OccupantZone({ vm }: { vm: SeatCardVM }) {
             </span>
           )}
         </div>
-        {/* #56 admin half (DEC-028): file the bail you heard about — same
-            rail as the crew's own "can't make it"; also the override-mistake
-            recovery. Deliberate friction: closed details + explicit button. */}
+        {/* #56 admin half (DEC-028): record a crew bail you heard about — same
+            rail as the crew's own "can't make it". Logs a reliability bail
+            (lateness from now), NOT a neutral remove. Deliberate friction. */}
         <details>
           <summary className="cursor-pointer text-xs text-muted">
-            Reports a bail…
+            Remove from shift…
           </summary>
           <p className="py-1 text-xs text-muted">
-            Logs that {vm.occupant.name} backed out: clears the seat and
-            re-asks the next candidates — or the seat rests open if nobody’s
-            left. Lateness counts from now.
+            Logs a bail for {vm.occupant.name} and re-asks the pool — counts
+            against their record.
           </p>
           <form action={reportBail} className="py-1">
             <HiddenIds vm={vm} />
@@ -100,7 +99,7 @@ function OccupantZone({ vm }: { vm: SeatCardVM }) {
               type="submit"
               className="rounded-full border border-bad-line bg-bad-bg px-2.5 py-1 text-xs font-medium text-bad"
             >
-              Log the bail
+              Remove
             </button>
           </form>
         </details>

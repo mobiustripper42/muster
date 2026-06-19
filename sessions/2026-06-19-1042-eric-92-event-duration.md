@@ -4,10 +4,10 @@ dev: eric
 slug: 92-event-duration
 branch: task/92-event-duration
 started: 2026-06-19T10:42:30Z
-ended:
-points:
+ended: 2026-06-19T19:45:28Z
+points: 22
 pr_numbers: [102, 103, 104, 105, 106, 107, 108]
-status: open
+status: closed
 transcript: /home/eric/.claude/projects/-home-eric-muster/0820d289-7d61-4cc5-8764-ec90397c77d9.jsonl
 ---
 
@@ -118,5 +118,12 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/0820d289-7d61-4cc5-876
 **Opened at:** 2026-06-19T19:38:39Z
 
 **Next Steps:**
+- Merge **#108** (last open PR; the other six merged).
+- Run **/retro** to close Phase 5 — patch-bumps per merged PR + minor bump at phase close, velocity math.
+- Next milestone is the **real crew weekend** (it triggers Phase 6, Pass D). The pilot runbook (`docs/PILOT_RUNBOOK.md`) is the operational path.
 
 **Context:**
+- **Phase 5 is functionally complete:** 5.1–5.4 (deploy/auth/tz/import) + 5.5 e2e harness (#65) + the manual (#68) + the pilot runbook (#78) all shipped. The hosted deploy is a **pilot, not production**.
+- **#70 closed** (its deliverable was the loud runbook warning); the two genuine prod gates remain deferred by design — Twilio (DEC-MSG-1) + the single-operator constant. Don't treat the channel as production-ready.
+- **e2e harness is live + non-rotting:** Playwright on :3100 against `muster_test`; all 3 seeds anchor to `now` (#101 fixed the crew seed). CI `e2e` job is **non-required** ("first to cut") — flip it on in branch protection when trusted.
+- **DEC-042** records the `/admin/shifts` all-shifts view as a deliberate anti-dashboard exception with a sunset trigger (deprecate when the operator stops opening it).

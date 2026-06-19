@@ -38,7 +38,9 @@ export async function resetAndSeed(...seeds: SeedName[]): Promise<void> {
 export async function signInAsCrew(page: Page, crewId: string): Promise<void> {
   await page.goto(`/crew/dev-link?crew=${encodeURIComponent(crewId)}`);
   await page.getByRole("button", { name: /tap to sign in/i }).click();
-  await page.waitForURL(/\/crew(\/|\?|$)/);
+  // Success lands on a clean /crew; a FAILED consume lands on /crew?auth=<reason>.
+  // Exclude the failure param so a broken sign-in fails here, loudly, not later.
+  await page.waitForURL((u) => u.pathname === "/crew" && !u.searchParams.has("auth"));
 }
 
 /** Same flow, operator subject — lands on the at-risk board. */

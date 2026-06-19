@@ -11,9 +11,12 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { migrate } from "./migrate.js";
 
-/** The throwaway test DB the harness drives. Overridable for CI. */
+/** The throwaway test DB the harness drives. Overridable for CI. `||` (not `??`)
+ * so an empty `TEST_DATABASE_URL=""` falls back to the safe default rather than
+ * resolving to "" and letting pg drift to libpq defaults — the one crack in the
+ * never-touch-muster_dev guarantee. */
 export const TEST_DATABASE_URL =
-  process.env.TEST_DATABASE_URL ??
+  process.env.TEST_DATABASE_URL ||
   "postgres://muster:muster@localhost:5432/muster_test";
 
 /**

@@ -65,9 +65,8 @@ In dev there's a link issuer:
 - Open `/crew` with no cookie (private window) → the signed-out state.
 - Mangle the `?t=` value → the expired/used-link copy.
 
-> **Gotcha:** the seed's shift dates are fixed (2026-07-04/05). They show as "upcoming" relative to
-> mid-2026; if the machine clock is ever past them, My shifts goes empty (the ask still shows). Re-run
-> `npm run db:seed:crew` to reset state.
+> **Note:** the crew seed's shifts anchor to *now* (~2 weeks out, #101), like the `atrisk`/`outbox`
+> seeds — they never rot on a future clock. Re-run `npm run db:seed:crew` to re-anchor + reset state.
 
 ## Seeing the At-Risk board (admin)
 Admin needs **no seed** — there's no admin entity (DEC-020): the session subject is a free-form
@@ -179,10 +178,8 @@ npm run db:seed:outbox   # 3 cards: 2 relays + 1 addressed to the operator (trip
   npm run test:e2e:ui         # interactive runner
   ```
   Covers: dev-link sign-in + crew render, ask In/Out, bail→regression (crew-only), bail→re-ask
-  suppression (both seeds), board nudge. **Note:** the crew seed's shifts are fixed-date
-  (2026-07-04/05); the bail specs navigate straight to the shift-card URL so they don't depend on
-  the "upcoming" filter, but if the machine clock is past those dates the board derivations for that
-  shift may differ — re-anchoring the crew seed to `now` (like the at-risk seed) is the eventual fix.
+  suppression (both seeds), board nudge. All three seeds anchor their shifts to *now* (#101), so the
+  suite never rots on a future clock.
 - **Other UI changes:** for surfaces the harness doesn't cover, eyeball by hand via the flow above.
   PRs call out exactly which surface to look at.
 

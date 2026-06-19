@@ -48,6 +48,14 @@ export interface RawReservationRecord {
   time: string;
   customerName: string;
   email?: string;
+  /**
+   * Customer phone, when the Land adapter has it inline. The xlsx reader leaves
+   * this undefined (its phone came from a separate customers export, DEC-017);
+   * the Xola API adapter sets it from `order.phoneCanonical`/`phone` (DEC-036) —
+   * which retires that join. Excluded from materiality (a phone correction isn't
+   * shift-material), so it populates without crying wolf on a locked shift.
+   */
+  phone?: string;
   partySize: number;
   status: "booked" | "cancelled";
 }
@@ -311,7 +319,10 @@ export async function importRecords(
       partySize: rec.partySize,
       status: rec.status,
       ...(rec.email ? { email: rec.email } : {}),
-      // phone left undefined — joined from the customers export later (DEC-017).
+      // phone: inline from the API adapter when present (DEC-036, retiring the
+      // DEC-017 customers-export join); undefined on the xlsx path. Not in the
+      // materiality set below — a phone change isn't a shift-material edit.
+      ...(rec.phone ? { phone: rec.phone } : {}),
     };
     // Stamp updatedAt on create + material change only (DEC-029); otherwise
     // preserve the stored timestamp so re-imports don't bump unchanged rows.

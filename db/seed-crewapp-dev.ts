@@ -10,6 +10,7 @@
  * Dev tooling, not app code. Uses the same Postgres adapter the app runs on.
  */
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
+import { TENANT_TIMEZONE } from "../src/config/tenant.js";
 import { asId } from "../src/domain/ids.js";
 import {
   logAskAccepted,
@@ -32,9 +33,20 @@ const VESSEL = asId<"VesselId">("vessel-hops");
 const QUINT = asId<"CrewMemberId">("crew-quint");
 const HOOPER = asId<"CrewMemberId">("crew-hooper");
 
-// near-future dates relative to a fixed seed day (kept deterministic, not `now`)
-const SOON = "2026-07-04";
-const LATER = "2026-07-05";
+// Near-future shift dates, anchored to NOW so the seed never rots (#101) — like
+// seed-atrisk-dev. ~2 weeks out keeps shift-soon comfortably upcoming AND before
+// its staffing horizon (7d lead), preserving the far-from-trip suppression demo.
+// Vessel-local calendar day (DEC-032).
+const at = (hours: number) => new Date(Date.now() + hours * 3600_000);
+const dateOf = (d: Date) =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: TENANT_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+const SOON = dateOf(at(15 * 24));
+const LATER = dateOf(at(16 * 24));
 
 try {
   await repo.saveRoleType({ id: CAPTAIN, tenantId: TENANT, name: "captain" });

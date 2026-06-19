@@ -53,7 +53,7 @@ shell commands **on the box** (`ssh mill-dev`), not on Windows.
 ```bash
 npm run db:up        # postgres in docker
 npm run db:migrate   # forward-only schema
-npm run db:seed:crew     # Quint: 1 confirmed shift + 1 open ask  (fixed dates 2026-07-04/05)
+npm run db:seed:crew     # Quint: 1 confirmed shift + 1 open ask  (anchored to NOW, ~2wk out)
 npm run db:seed:atrisk   # 7 board/cockpit scenarios (vessel-ar-*, anchored to NOW)
 npm run db:seed:outbox   # 3 outbox cards (shift-obx-*, anchored to NOW)
 npm run dev          # next dev --webpack on :3000  (leave running)
@@ -85,9 +85,9 @@ issuer (404 in prod by design):
 | 0.2 | Open `http://mill-dev:3000/api/health` | JSON `{ status: "ok", db: { reachable: true }, integrity: { ok: true, violationCount: 0 } }` | ☐ pass ☐ fail |
 | 0.3 | Open `http://mill-dev:3000/crew/dev-link?admin=spink` → tap the green button | You land on an admin surface signed in (no "signed out" notice) | ☐ pass ☐ fail |
 
-> **Clock gotcha:** the crew seed's shift is fixed at **2026-07-04/05**. If the box's clock is ever
-> past those dates, Quint's *My shifts* goes empty (the ask still shows). Re-run `db:seed:crew` to
-> reset. The `atrisk`/`outbox` seeds anchor to *now*, so they never rot.
+> **Seed dates:** all three seeds (`crew`, `atrisk`, `outbox`) anchor their shifts to *now* (#101) —
+> the crew shift lands ~2 weeks out — so none of them rot on a future clock. Re-run any seed to
+> re-anchor + reset its scenario.
 
 > <a id="timezone-note-utc-everywhere"></a>**Timezone note (vessel-local — DEC-032).** Every clock
 > time in the app now renders in the **vessel timezone** (`TENANT_TIMEZONE`, default Eastern /

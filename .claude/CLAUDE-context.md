@@ -79,6 +79,7 @@ Project-specific docs beyond the baseline `## Key Docs` table in the `CLAUDE.md`
 | `docs/DEPLOY.md` | Go-live runbook — Vercel + Neon Postgres (Phase 5.1, DEC-033). |
 | `docs/E2E-PILOT-WALKTHROUGH.md` | Click-by-click acceptance test of the whole first slice — the crew engine end to end. |
 | `docs/OPERATOR_MANUAL.md` | Task-oriented operator (Spink) manual + flow/state diagrams — the human-facing translation of SPEC/DECISIONS. Centerpiece: "empty board = success" (#68). |
+| `docs/PILOT_RUNBOOK.md` | One-page operational sequence for running a real crew weekend on the hosted pilot (seed→import→tick→outbox→triage); carries #70's pilot-only-not-production warning (5.R / #78). |
 | `docs/design/DESIGN-REFERENCE.md` | How to consume the UI mockups: spec wins on *what*, mockups inform *how*; **read JSX, never import**. Read before building any surface (M4). |
 | `docs/design/mockups/` | Claude Design export (HTML + JSX) per surface §2.1–2.6.3. **Visual-direction reference, not spec.** |
 

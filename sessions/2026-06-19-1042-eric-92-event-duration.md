@@ -6,7 +6,7 @@ branch: task/92-event-duration
 started: 2026-06-19T10:42:30Z
 ended:
 points:
-pr_numbers: [102, 103]
+pr_numbers: [102, 103, 104]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/0820d289-7d61-4cc5-8764-ec90397c77d9.jsonl
 ---
@@ -45,6 +45,20 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/0820d289-7d61-4cc5-876
 **Points:** 3
 **Branch:** task/68-operator-manual
 **Opened at:** 2026-06-19T16:20:11Z
+
+## Task 3: #78 — Pilot weekend runbook (5.R), closes #70
+
+**Completed:**
+- `docs/PILOT_RUNBOOK.md` (new) — one-page operational sequence for a real crew weekend on the hosted pilot: sign-in → seed/shakedown → import → tick → outbox → triage, plus a "when something looks off" table. Links out to DEPLOY/OPERATOR_MANUAL/WALKTHROUGH instead of duplicating.
+- Carries **#70's pilot-only-not-production warning verbatim** (Gate paragraph, emphasis preserved) in a top callout, annotated with current gate status: auth (5.2/#76) + timezone (5.3/#77) ✅ resolved; manual outbox relay (Twilio/DEC-MSG-1) + single-operator ⛔ still pilot-only.
+- **Closed #70** (the prod-readiness gate) — its deliverable was the loud runbook warning, now met. Left a [closing comment](https://github.com/mobiustripper42/muster/issues/70#issuecomment-4753310027) recording the two deferred tells (Twilio, single-operator) so they survive in DEC-MSG-1 + the plan. PR carries `closes #78` + `closes #70`.
+- Indexed in `.claude/CLAUDE-context.md`.
+
+**Code review:** Clean bill — verbatim #70 quote is a word-for-word match (the #78 AC), all operational claims trace to DEPLOY.md + code, gate annotations consistent with #76/#77 closed. One optional parity note taken (the `/api/health` example now matches the canonical payload).
+**PR:** [#104](https://github.com/mobiustripper42/muster/pull/104)
+**Points:** 2
+**Branch:** task/78-pilot-runbook
+**Opened at:** 2026-06-19T16:34:09Z
 
 **Next Steps:**
 

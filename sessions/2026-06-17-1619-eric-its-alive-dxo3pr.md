@@ -6,12 +6,14 @@ branch: claude/its-alive-dxo3pr
 started: 2026-06-17T16:19:26Z
 ended:
 points:
-pr_numbers: []
-status: open
+pr_numbers: [86]
+status: abandoned
 transcript: /root/.claude/projects/-home-user-muster/f63485a5-d75c-5edf-9391-99ce14a697d8.jsonl
 ---
 
 # Session 17 — its-alive-dxo3pr
+
+> **Abandoned 2026-06-19** (never `/its-dead`'d). The pass-1 walkthrough work shipped via **PR #86** (merged) — recorded in `pr_numbers` so it isn't mistaken for lost work. Closed only to clear the two-open-sessions ambiguity for `/kill-this` and `/its-dead`.
 
 <!-- Task blocks appended by /kill-this, one per task. -->
 

@@ -13,6 +13,11 @@ coverage/
 next-env.d.ts
 .vercel
 
+# Playwright e2e harness (#65)
+/test-results/
+/playwright-report/
+/playwright/.cache/
+
 # Env / secrets
 .env
 .env.*

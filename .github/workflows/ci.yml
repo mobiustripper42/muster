@@ -55,3 +55,50 @@ jobs:
       - run: npm run verify
         env:
           TEST_DATABASE_URL: postgres://muster:muster@localhost:5432/muster_test
+
+  # The browser harness (#65, Phase 5.5). Separate job, NOT part of `verify` —
+  # `verify` stays Docker-free, and this is the "first to cut" surface. It boots
+  # `next dev` against the test DB (Playwright's webServer) and drives the crew +
+  # admin flows. Make it a required check in branch protection only once trusted.
+  e2e:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: muster
+          POSTGRES_PASSWORD: muster
+          POSTGRES_DB: muster_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U muster -d muster_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx playwright install --with-deps chromium
+
+      # The harness migrates + seeds the test DB itself (fixtures' beforeEach);
+      # webServer boots the app against it. CI=true → fresh server, no reuse.
+      - run: npm run test:e2e
+        env:
+          TEST_DATABASE_URL: postgres://muster:muster@localhost:5432/muster_test
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

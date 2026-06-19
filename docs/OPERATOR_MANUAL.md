@@ -83,7 +83,8 @@ for it — it's the same organs running in sequence.
 
 ## Your surfaces
 
-In the pilot you have four screens, reached from `/admin`. You sign in once with the magic link you
+In the pilot you have four surfaces — three off the `/admin` hub (board, outbox, import), plus a
+shift's **cockpit** you open by drilling into a board row. You sign in once with the magic link you
 were sent (in dev: open `/crew/dev-link?admin=spink` and tap the green button). You do **not** need a
 password.
 
@@ -201,8 +202,8 @@ a bail — the system just stops compensating for it.
 ### A late booking landed on a shift I'd already settled
 
 If a booking lands or changes *after* a shift was reviewed/locked, the shift's cockpit shows an amber
-**"changed since reviewed"** notice — a heads-up that the picture moved under you (a guest was added,
-a trip shifted). Re-open it and take another look. (In the pilot this is a derived flag — there's no
+notice — *"A booking changed since this shift was last reviewed — take another look."* — a heads-up
+that the picture moved under you (a guest was added, a trip shifted). Re-open it and check. (In the pilot this is a derived flag — there's no
 manual "lock" button wired into the cockpit yet; the notice is the signal to re-check.)
 
 ### Nobody's answering a shift
@@ -242,10 +243,12 @@ make it honest:
 - **The lateness of a bail is what matters, not the bail.** A cancel a week out is cheap; an 11pm
   bail is expensive; a no-show is the worst.
 
-**Your thumb on the scale:** you can set a per-person **boost** or **floor** ("this veteran never
-ranks below X"). A flat score forgets a four-year veteran after a slow couple of months — the manual
-knob is how you carry judgment the algorithm can't. Crew see *their own* standing (plain and
-individual — "answered fast · showed 8/8 · one late bail"), never a leaderboard.
+**Your thumb on the scale:** Muster supports a per-person **boost** or **floor** ("this veteran never
+ranks below X") — how you carry judgment a flat score can't (it would forget a four-year veteran
+after a slow couple of months). *In the pilot this is set on the crew record, so the knob arrives
+with the roster screen in a later phase (see [what's not in the pilot yet](#whats-not-in-the-pilot-yet)).*
+Crew see *their own* standing (plain and individual — "answered fast · showed 8/8 · one late bail"),
+never a leaderboard.
 
 ### The tiers (what runs without you, and when you're pulled in)
 

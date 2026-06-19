@@ -15,9 +15,13 @@ import {
   fillDeadlineFromEvents,
   resolveShiftState,
   scheduledStarts,
+  latestScheduledStart,
+  shiftEndFromEvents,
   staffingHorizonFor,
   staffingHorizonFromEvents,
   FILL_DEADLINE_HOURS,
+  TRIP_DURATION_MINUTES,
+  CALL_LEAD_MINUTES,
 } from "./derive.js";
 
 const CAPTAIN = asId<"RoleTypeId">("role-captain");
@@ -166,6 +170,42 @@ describe("scheduledStarts", () => {
       scheduledStarts([ev("e1", "2026-05-16", "15:30", "cancelled")]),
     ).toEqual([]);
     expect(scheduledStarts([])).toEqual([]);
+  });
+});
+
+// ── Shift window: latest departure + shift end (DEC-041) ──────────────────────
+
+describe("latestScheduledStart", () => {
+  it("is the last scheduled departure (mirror of earliest), null when empty", () => {
+    const d = latestScheduledStart([
+      ev("e1", "2026-05-16", "15:30"),
+      ev("e2", "2026-05-16", "19:30"), // latest
+    ], "UTC");
+    expect(d?.toISOString()).toBe("2026-05-16T19:30:00.000Z");
+    expect(latestScheduledStart([ev("e1", "2026-05-16", "19:30", "cancelled")], "UTC")).toBeNull();
+    expect(latestScheduledStart([])).toBeNull();
+  });
+});
+
+describe("shiftEndFromEvents", () => {
+  it("is the latest departure + trip length + call lead (DEC-041)", () => {
+    const end = shiftEndFromEvents([
+      ev("e1", "2026-05-16", "15:30"),
+      ev("e2", "2026-05-16", "19:30"), // last trip anchors the end
+    ], "UTC");
+    // 19:30Z + (100 + 45)m = 19:30 + 2h25m = 21:55Z
+    expect(end?.toISOString()).toBe("2026-05-16T21:55:00.000Z");
+    expect(TRIP_DURATION_MINUTES).toBe(100);
+    expect(CALL_LEAD_MINUTES).toBe(45);
+  });
+
+  it("ignores cancelled trips and is null with nothing scheduled", () => {
+    const end = shiftEndFromEvents([
+      ev("e1", "2026-05-16", "19:30"),
+      ev("e2", "2026-05-20", "12:00", "cancelled"), // later but cancelled — skipped
+    ], "UTC");
+    expect(end?.toISOString()).toBe("2026-05-16T21:55:00.000Z");
+    expect(shiftEndFromEvents([])).toBeNull();
   });
 });
 

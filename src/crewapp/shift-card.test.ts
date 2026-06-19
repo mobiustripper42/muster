@@ -78,6 +78,12 @@ describe("buildShiftCard", () => {
     expect(card.mySeatId).toBe("seat-cap"); // what a bail acts on (#56)
   });
 
+  it("shift end = latest departure + trip length + call lead (DEC-041)", async () => {
+    const card = (await buildShiftCard(await seed(), SHIFT, ME, NOW))!;
+    // latest departure 17:00 + (100 trip + 45 lead) = 17:00 + 2h25m = 19:25
+    expect(card.shiftEndTime).toBe("19:25");
+  });
+
   it("manifest is per-event, soonest first, booked-only with pax", async () => {
     const card = (await buildShiftCard(await seed(), SHIFT, ME, NOW))!;
     expect(card.events.map((e) => e.eventId)).toEqual(["evt-3pm", "evt-5pm"]); // sorted by time
@@ -124,5 +130,6 @@ describe("buildShiftCard", () => {
     const card = (await buildShiftCard(repo, SHIFT, ME, NOW))!;
     expect(card.bailLate).toBe(false);
     expect(card.callTime).toBeUndefined();
+    expect(card.shiftEndTime).toBeUndefined(); // no trip → no end
   });
 });

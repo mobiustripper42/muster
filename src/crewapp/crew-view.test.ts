@@ -95,7 +95,9 @@ describe("buildCrewAppView", () => {
     await repo.saveAsk({ id: asId<"AskId">("ask-ev"), seatId: asId<"SeatId">("seat-ev"), crewMemberId: ME, channel: "push", sentAt: "2026-07-01T09:30:00.000Z" });
 
     const view = await buildCrewAppView(repo, ME, NOW);
-    expect(view!.asks.find((a) => a.askId === "ask-ev")?.departureTime).toBe("15:00"); // earliest of 15:00/17:00
+    const ask = view!.asks.find((a) => a.askId === "ask-ev");
+    expect(ask?.departureTime).toBe("15:00"); // earliest of 15:00/17:00
+    expect(ask?.shiftEndTime).toBe("19:25"); // latest 17:00 + 100 trip + 45 lead (DEC-041)
   });
 
   it("lists confirmed upcoming shifts soonest-first, drops past ones", async () => {

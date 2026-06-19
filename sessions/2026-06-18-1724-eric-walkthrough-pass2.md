@@ -6,7 +6,7 @@ branch: walkthrough-pass2
 started: 2026-06-18T17:24:12Z
 ended:
 points:
-pr_numbers: [88, 89]
+pr_numbers: [88, 89, 91]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/4daf4597-f010-42e0-8823-7cb2fb10869e.jsonl
 ---
@@ -50,8 +50,23 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/4daf4597-f010-42e0-882
 **Branch:** task/5.4b-xola-api-pull
 **Opened at:** 2026-06-19T00:30:00Z
 
+## Task 3: Operator "Pull from Xola now" button on /admin/import (5.4b follow-on)
+
+**Completed:**
+- `app/(admin)/admin/import/actions.ts` — new admin-gated `pullFromXola` server action (mirrors `runImport`); calls the same `runXolaPull` the hourly cron fires; counts ride redirect params (codes only, DEC-026); distinct `x_not_configured` (env unset) vs `x_unavailable` (Xola down) errors.
+- `app/(admin)/admin/import/page.tsx` — error copy, `xpull`/`fetched`/`xerr` params, result notice (clean zero-state), and the button form below the xlsx upload.
+- A manual on-demand pull, independent of the cron — the "import now + watch counts" path for E2E and the pilot's first import. app typecheck + `next build` green.
+
+**Code review:** clean bill — auth airtight, error handling leak-free, mirrors proven `runImport`. Two cleanups applied: contradictory zero-orders copy; dead `XolaError`/fallback ternary branch + its unused import.
+**PR:** [#91](https://github.com/mobiustripper42/muster/pull/91)
+**Points:** 2
+**Branch:** task/xola-pull-button
+**Opened at:** 2026-06-19T03:30:00Z
+
 **Next Steps:**
-- **5.4c (webhooks)** — deferred pending the operator's Xola webhook verification docs (signature/secret method). Receiver `/api/webhooks/xola` → verify → `getOrder` re-fetch → `importRecords`; reuses the 5.4b client. The user can create sandbox test orders to exercise it.
+- **Webhooks: abandoned, no 5.4c** (DEC-040) — they're an approved-App feature (App Store Console), production app approval is the unmet gate. Poll is the permanent ingest; cadence is the latency lever. Don't revisit unless a prod app lands.
+- **Pre-production task list (before cutting/pointing the `production` branch):** (1) branch split — point Vercel's Production Branch at `production` (DEC-S022/DEPLOY.md step 4) so `main` stops auto-deploying live; (2) DB-isolation call — one Neon DB shared by preview+prod vs a separate staging DB (pilot-simple: test on local, treat Neon as prod-only); (3) set prod `XOLA_*` in Vercel (seller key w/ `orders` perm, base `https://xola.com/api`); (4) seed the real fleet/manning + crew roster + operator identity (the pull only fills reservations/events, not vessels/crew). Host is NOT open — DEC-033 resolved to Vercel+Neon (docs/DEPLOY.md). Current state per operator: `db:migrate` run against Neon; Vercel Production Branch still defaults to `main` (production branch not yet pointed).
+- **E2E (walkthrough pass 2) not finished** — resume on local (mill-dev), continue the parts after 3.x.
 - **Verify-at-pilot (DEC-040):** cancelled-*order* visibility (create a cancelled sandbox order); multi-guest party size on a 2+ order; sandbox product names not in `PRODUCT_MAP` (add them, or rely on prod's real names).
 - **Stale Session 17** (`2026-06-17-1619-eric-its-alive-dxo3pr.md`) is still `status: open` — never `/its-dead`'d. Two open sessions confuse `/kill-this`'s `head -1`; close or abandon it.
 

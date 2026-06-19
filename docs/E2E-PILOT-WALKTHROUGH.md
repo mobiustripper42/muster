@@ -190,6 +190,12 @@ Same `atrisk` seed. The cockpit is each board row's click-through, plus off-boar
 on a device that has one. Reset: `npm run db:seed:outbox` (on the box). Sign in as Spink, open
 **`/admin/outbox`**.
 
+> **Re-running the outbox seed isn't a clean reset (#94).** Asks have no delete primitive, so a re-run
+> *closes* the prior ask (a "silent" round) rather than removing it — the why-line drifts to "3rd ask ·
+> Bo went silent" etc. For the documented "2nd ask · Lance declined" state, **full-wipe first**:
+> `docker compose down -v && npm run db:up && npm run db:migrate && npm run db:seed:outbox`. (Point Bo
+> at a real phone with `OUTBOX_TEST_PHONE=+1…` for the 4.2/4.6 relay loop.)
+
 | # | Step | Expected | Result |
 |---|------|----------|--------|
 | 4.1 | Land on `/admin/outbox` | Header **"3 asks need you"**, tightest trip first: **Bo / Tideline** (red ~20h, *"2nd ask · Lance declined"*) → **Spink / Keelhaul** (a **you** pill, inline **Out**/**In**, no Send link) → **Mira / Maibock** (*"1st ask"*) | ☐ pass ☐ fail |

@@ -73,10 +73,6 @@ export default async function Outbox({
       <header className="flex items-end justify-between gap-2">
         <div>
           <h1 className="text-xl font-semibold text-ink">Outbox</h1>
-          <p className="text-sm text-muted">
-            Asks waiting on your text. One tap on Send opens Messages prefilled
-            and marks it sent.
-          </p>
         </div>
         {pending.length > 0 && (
           <div className="flex shrink-0 items-baseline gap-1.5">

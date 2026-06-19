@@ -6,7 +6,7 @@ branch: task/92-event-duration
 started: 2026-06-19T10:42:30Z
 ended:
 points:
-pr_numbers: [102, 103, 104, 105, 106, 107]
+pr_numbers: [102, 103, 104, 105, 106, 107, 108]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/0820d289-7d61-4cc5-8764-ec90397c77d9.jsonl
 ---
@@ -103,6 +103,19 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/0820d289-7d61-4cc5-876
 **Points:** 5
 **Branch:** task/100-all-shifts
 **Opened at:** 2026-06-19T18:01:17Z
+
+## Task 7: #101 — Anchor the crew seed's shifts to now (stop the harness rotting)
+
+**Completed:**
+- `db/seed-crewapp-dev.ts` — `SOON`/`LATER` now derive from `now` (+15d/+16d) via the at-risk seed's `dateOf` helper (vessel-local, DEC-032). ~2 weeks out keeps shift-soon upcoming AND before its 7d staffing horizon, preserving the far-from-trip suppression demo.
+- `docs/RUNNING.md` + `docs/E2E-PILOT-WALKTHROUGH.md` — the four "fixed 2026-07-04/05" references updated to "anchored to now, never rots"; the #65 known-limitation note removed (resolved).
+- Validated: seed lands shift-soon today+15 (dynamic); **full e2e suite 15/15** with the anchored seed — the direct acceptance test for #101. verify green. Dev-seed + docs only, no app/core, no migration.
+
+**Code review:** Clean bill of health — `dateOf(at(15*24))` matches the at-risk pattern byte-for-byte, +15d confirmed beyond STAFFING_HORIZON_LEAD_DAYS=7, the hardcoded `sentAt` on the open ask traced and verified inert, Dooley's fixed past dates correctly untouched, docs carry no stale claims.
+**PR:** [#108](https://github.com/mobiustripper42/muster/pull/108)
+**Points:** 2
+**Branch:** task/101-crew-seed-anchor
+**Opened at:** 2026-06-19T19:38:39Z
 
 **Next Steps:**
 

@@ -84,6 +84,18 @@ describe("buildShiftCard", () => {
     expect(card.shiftEndTime).toBe("19:25");
   });
 
+  it("a cancelled later trip moves neither the window's start nor end (DEC-041)", async () => {
+    const repo = await seed();
+    // A 9pm trip exists but is CANCELLED — must not anchor the shift end; the
+    // window stays the scheduled 15:00–17:00 span, same as the other surfaces.
+    const E9 = asId<"EventId">("evt-9pm");
+    await repo.saveEvent({ id: E9, vesselId: VESSEL, date: "2026-07-04", time: "21:00", capacity: 12, status: "cancelled" });
+    await repo.saveShift({ id: SHIFT, vesselId: VESSEL, date: "2026-07-04", state: "Crewed", eventIds: [E5, E1, E9] });
+    const card = (await buildShiftCard(repo, SHIFT, ME, NOW))!;
+    expect(card.callTime).toBe("14:15"); // earliest SCHEDULED 15:00 − 45m
+    expect(card.shiftEndTime).toBe("19:25"); // latest SCHEDULED 17:00, not the cancelled 21:00
+  });
+
   it("manifest is per-event, soonest first, booked-only with pax", async () => {
     const card = (await buildShiftCard(await seed(), SHIFT, ME, NOW))!;
     expect(card.events.map((e) => e.eventId)).toEqual(["evt-3pm", "evt-5pm"]); // sorted by time

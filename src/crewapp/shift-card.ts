@@ -157,15 +157,22 @@ export async function buildShiftCard(
   }
   events.sort((a, b) => a.departureTime.localeCompare(b.departureTime));
 
+  // Window math uses SCHEDULED departures only — a cancelled trip moves neither
+  // the call time nor the shift end. Matches `bailLate` here (via
+  // `earliestScheduledStart`) and the outbox / ask-card surfaces, so all three
+  // agree on the window (DEC-041). The manifest above still lists every event.
+  const departures = rawEvents
+    .filter((e) => e.status === "scheduled")
+    .map((e) => e.time)
+    .sort((a, b) => a.localeCompare(b));
   const callTime =
-    events.length > 0 ? minusMinutes(events[0]!.departureTime, CALL_LEAD_MINUTES) : undefined;
-  // End of commitment = latest departure (events are soonest-first) + trip
-  // length + the lead reused as a teardown buffer (DEC-041). Clock-string math,
-  // parallel to `callTime`; shares the constants with the outbox so the two
-  // can't disagree on the window.
+    departures.length > 0 ? minusMinutes(departures[0]!, CALL_LEAD_MINUTES) : undefined;
+  // End of commitment = latest departure + trip length + the lead reused as a
+  // teardown buffer (DEC-041). Clock-string math, parallel to `callTime`; shares
+  // the constants with the outbox so the two can't disagree on the window.
   const shiftEndTime =
-    events.length > 0
-      ? plusMinutes(events[events.length - 1]!.departureTime, TRIP_DURATION_MINUTES + CALL_LEAD_MINUTES)
+    departures.length > 0
+      ? plusMinutes(departures[departures.length - 1]!, TRIP_DURATION_MINUTES + CALL_LEAD_MINUTES)
       : undefined;
 
   // A bail "now" is "late" iff it falls inside the staffing horizon — DEC-028's

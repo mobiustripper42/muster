@@ -43,11 +43,17 @@ function mintId(
   timestamp: string,
   seatId?: SeatId,
   reason?: string,
+  shiftId?: ShiftId,
 ): ReliabilityEvent["id"] {
+  // System-actor, shift-level events (pool_widened, board_landed) share the
+  // "system" actor and carry no seat, so without the shiftId two shifts handled
+  // in the SAME tick (same timestamp) mint the same id → pkey collision. Folding
+  // shiftId in disambiguates them; adding a part can only split ids, never merge.
+  const shiftPart = shiftId ? `-${shiftId}` : "";
   const seatPart = seatId ? `-${seatId}` : "";
   const reasonPart = reason ? `-${reason}` : "";
   return asId<"ReliabilityEventId">(
-    `rel-${crewMemberId}-${type}-${timestamp}${seatPart}${reasonPart}`,
+    `rel-${crewMemberId}-${type}-${timestamp}${shiftPart}${seatPart}${reasonPart}`,
   );
 }
 
@@ -65,7 +71,7 @@ export async function recordReliabilityEvent(
 ): Promise<ReliabilityEvent> {
   const timestamp = now.toISOString();
   const event: ReliabilityEvent = {
-    id: mintId(crewMemberId, type, timestamp, metadata.seatId, metadata.reason),
+    id: mintId(crewMemberId, type, timestamp, metadata.seatId, metadata.reason, metadata.shiftId),
     crewMemberId,
     type,
     timestamp,

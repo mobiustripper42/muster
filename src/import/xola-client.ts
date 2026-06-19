@@ -162,7 +162,9 @@ export function mapXolaOrders(orders: XolaOrder[]): {
         });
         continue;
       }
-      const phone = (order.phoneCanonical ?? order.phone ?? "").trim();
+      // Logical-OR, not ??: prefer the richer phoneCanonical only when it's a
+      // non-empty value — an empty "" must fall through to the raw phone, not win.
+      const phone = (order.phoneCanonical || order.phone || "").trim();
       const email = (order.email ?? "").trim();
       const partySize = Number.isFinite(item.quantity) ? Number(item.quantity) : 0;
       records.push({
@@ -228,6 +230,10 @@ export async function fetchOrders(
     const rows = Array.isArray(page?.data) ? page.data : [];
     all.push(...rows);
     const next = page?.paging?.next ?? null;
+    // Terminate on either signal: a null `next` (the authoritative cursor) OR a
+    // short page. The short-page short-circuit is the standard skip-pagination
+    // idiom (matches the sibling extractor) — a deliberate optimization, safe as
+    // long as Xola doesn't hand back a non-null `next` on an under-full page.
     if (rows.length < limit || !next) return all;
     if (all.length >= maxItems) {
       throw new XolaError(`fetchOrders: exceeded ${maxItems} items — refusing to loop`, {

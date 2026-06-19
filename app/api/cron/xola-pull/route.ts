@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { XolaError } from "@core/import/xola-client.js";
 import { getRepo } from "../../../lib/repo";
 import { runXolaPull } from "../../../lib/xola";
 
@@ -45,11 +46,11 @@ export async function GET(req: Request) {
     });
   } catch (e) {
     // A Xola outage / config gap is reported as a failed run (502), not a 500
-    // stack — the cron retries next hour, and the error code carries no secrets
-    // (XolaError messages hold the path, never the key).
-    return NextResponse.json(
-      { ok: false, at: now.toISOString(), error: e instanceof Error ? e.message : "pull_failed" },
-      { status: 502 },
-    );
+    // stack — the cron retries next hour. Only echo a XolaError's message (path +
+    // status, never the key); anything else collapses to a generic code so a
+    // future thrower can't leak a secret into the response. Full error → logs.
+    console.error("xola-pull failed", e);
+    const error = e instanceof XolaError ? e.message : "pull_failed";
+    return NextResponse.json({ ok: false, at: now.toISOString(), error }, { status: 502 });
   }
 }

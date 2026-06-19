@@ -6,7 +6,7 @@ branch: task/92-event-duration
 started: 2026-06-19T10:42:30Z
 ended:
 points:
-pr_numbers: [102]
+pr_numbers: [102, 103]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/0820d289-7d61-4cc5-8764-ec90397c77d9.jsonl
 ---
@@ -30,6 +30,21 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/0820d289-7d61-4cc5-876
 **Points:** 5
 **Branch:** task/65-e2e-harness
 **Opened at:** 2026-06-19T11:41:36Z
+
+## Task 2: #68 — Operator manual + flow/state diagrams
+
+**Completed:**
+- `docs/OPERATOR_MANUAL.md` (new) — task-oriented operator manual, the human-facing translation of SPEC §1 + DECISIONS + BRAND. Centerpiece: "empty board = success" + the vanished-shift/suppression explainer (the operator's two recurring confusions).
+- Three Mermaid diagrams (render on GitHub): the spine flowchart (reservation→event→shift→ask→crewed/at-risk→you) + the Shift and Seat state machines.
+- Documents the **actual live** pilot surfaces (board, cockpit, outbox, import), a playbook of the issue's "how do I…" scenarios, the reliability/tiers/call-vs-departure/silent-vs-declined concepts, a glossary, and an honest "what's not in the pilot yet" (no auto-text → outbox relay; no roster/builder UI; reschedule/cancel by phone).
+- Indexed in `.claude/CLAUDE-context.md` Additional Docs.
+- Fact-checked every surface claim against the components; caught two stale refs in `docs/RUNNING.md` ("Warming signals →"/"4 shifts" vs live "Trending at-risk →") — left out of scope, flagged in the PR.
+
+**Code review:** Docs-accuracy pass — matches the code closely, all 3 diagrams valid. One real gap fixed (boost/floor was written as a live button; it has no UI yet → now flagged as roster-phase) + two wording nits (surface count, verbatim "changed since reviewed" copy).
+**PR:** [#103](https://github.com/mobiustripper42/muster/pull/103)
+**Points:** 3
+**Branch:** task/68-operator-manual
+**Opened at:** 2026-06-19T16:20:11Z
 
 **Next Steps:**
 

@@ -7,6 +7,7 @@ import { importReservations } from "@core/import/import-reservations.js";
 import { readXlsxSheet } from "@core/import/xlsx-extract.js";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
+import { runXolaPull } from "../../../lib/xola";
 
 /** A week of Xola reservations is tiny; this is the upload hard cap (DEC-037). */
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
@@ -84,5 +85,51 @@ export async function runImport(formData: FormData): Promise<void> {
     redirect("/admin/import?err=unavailable");
   }
   revalidatePath("/admin/at-risk"); // new shifts should show on the board
+  redirect(`/admin/import?${params}`);
+}
+
+/**
+ * Pull live reservations from Xola on demand (5.4b — the operator button atop the
+ * same `runXolaPull` the hourly cron fires). Reuses the import seam: pull the
+ * [today−1, today+horizon] window → events + reservations → form shifts. Admin-
+ * gated. Lets the operator import *now* and watch real counts, independent of the
+ * cron. Errors split: a missing/blank `XOLA_*` config (`not_configured`) reads
+ * differently from a reachable-but-failing Xola (`unavailable`) — one is a deploy
+ * gap, the other is "try again". Counts ride redirect params (codes only, DEC-026).
+ */
+export async function pullFromXola(): Promise<void> {
+  const subject = await readSubject();
+  if (!subject || subject.kind !== "admin") redirect("/admin/import");
+
+  let params: string;
+  try {
+    const r = await runXolaPull(getRepo(), new Date());
+    if (r.import.skipped.length) {
+      console.warn(
+        `[xola-pull] ${r.import.skipped.length} record(s) skipped:`,
+        r.import.skipped.map((s) => s.reason),
+      );
+    }
+    params = new URLSearchParams({
+      xpull: "1",
+      fetched: String(r.ordersFetched),
+      added: String(r.import.reservationsAdded),
+      updated: String(r.import.reservationsUpdated),
+      cancelled: String(r.import.reservationsNewlyCancelled),
+      events: String(r.import.eventsCreated),
+      shifts: String(r.form.shiftsCreated),
+      shiftsCancelled: String(r.form.shiftsCancelled),
+      skipped: String(r.import.skipped.length),
+    }).toString();
+  } catch (e) {
+    // Config gap (env unset) reads differently from Xola unreachable / any other
+    // throw (XolaError or unexpected) → the generic "try again".
+    const code =
+      e instanceof Error && /not configured/i.test(e.message)
+        ? "x_not_configured"
+        : "x_unavailable";
+    redirect(`/admin/import?xerr=${code}`);
+  }
+  revalidatePath("/admin/at-risk");
   redirect(`/admin/import?${params}`);
 }

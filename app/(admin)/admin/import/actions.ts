@@ -5,7 +5,6 @@ import { redirect } from "next/navigation";
 import { formShifts } from "@core/builder/form-shifts.js";
 import { importReservations } from "@core/import/import-reservations.js";
 import { readXlsxSheet } from "@core/import/xlsx-extract.js";
-import { XolaError } from "@core/import/xola-client.js";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
 import { runXolaPull } from "../../../lib/xola";
@@ -123,13 +122,12 @@ export async function pullFromXola(): Promise<void> {
       skipped: String(r.import.skipped.length),
     }).toString();
   } catch (e) {
-    // Config gap (env unset) vs Xola unreachable — distinct operator messages.
+    // Config gap (env unset) reads differently from Xola unreachable / any other
+    // throw (XolaError or unexpected) → the generic "try again".
     const code =
-      e instanceof XolaError
-        ? "x_unavailable"
-        : e instanceof Error && /not configured/i.test(e.message)
-          ? "x_not_configured"
-          : "x_unavailable";
+      e instanceof Error && /not configured/i.test(e.message)
+        ? "x_not_configured"
+        : "x_unavailable";
     redirect(`/admin/import?xerr=${code}`);
   }
   revalidatePath("/admin/at-risk");

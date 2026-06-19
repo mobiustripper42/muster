@@ -108,36 +108,42 @@ export default async function ImportPage({
         </Notice>
       )}
 
-      {sp.xpull && (
-        <Notice tone={skipped > 0 ? "warn" : "ok"}>
-          ✓ Pulled {n(sp.fetched)} order{plural(n(sp.fetched))} from Xola —{" "}
-          {n(sp.added)} new and {n(sp.updated)} updated reservation
-          {plural(n(sp.added) + n(sp.updated))} · {n(sp.events)} new event
-          {plural(n(sp.events))} · {n(sp.shifts)} shift{plural(n(sp.shifts))} formed
-          {cancelled > 0 && (
-            <>
-              {" "}
-              · {cancelled} shift{plural(cancelled)} cancelled
-            </>
-          )}
-          .
-          {n(sp.fetched) === 0 && (
-            <> No trips in the next week’s window — nothing to import (normal if the calendar’s clear).</>
-          )}
-          {skipped > 0 && (
-            <>
-              {" "}
-              <strong>
-                {skipped} row{plural(skipped)} skipped
-              </strong>{" "}
-              (unmapped product or bad date) — check with your dev.
-            </>
-          )}{" "}
-          <Link href="/admin/at-risk" className="font-semibold text-accent">
-            See the board →
-          </Link>
-        </Notice>
-      )}
+      {sp.xpull &&
+        (n(sp.fetched) === 0 ? (
+          <Notice tone="ok">
+            ✓ Pulled from Xola — no trips in the next week’s window, so nothing to
+            import (normal if the calendar’s clear).{" "}
+            <Link href="/admin/at-risk" className="font-semibold text-accent">
+              See the board →
+            </Link>
+          </Notice>
+        ) : (
+          <Notice tone={skipped > 0 ? "warn" : "ok"}>
+            ✓ Pulled {n(sp.fetched)} order{plural(n(sp.fetched))} from Xola —{" "}
+            {n(sp.added)} new and {n(sp.updated)} updated reservation
+            {plural(n(sp.added) + n(sp.updated))} · {n(sp.events)} new event
+            {plural(n(sp.events))} · {n(sp.shifts)} shift{plural(n(sp.shifts))} formed
+            {cancelled > 0 && (
+              <>
+                {" "}
+                · {cancelled} shift{plural(cancelled)} cancelled
+              </>
+            )}
+            .
+            {skipped > 0 && (
+              <>
+                {" "}
+                <strong>
+                  {skipped} row{plural(skipped)} skipped
+                </strong>{" "}
+                (unmapped product or bad date) — check with your dev.
+              </>
+            )}{" "}
+            <Link href="/admin/at-risk" className="font-semibold text-accent">
+              See the board →
+            </Link>
+          </Notice>
+        ))}
 
       {/* No encType/method here: React sets them automatically for a function
           action (it posts multipart when there's a file) and ERRORS if you also

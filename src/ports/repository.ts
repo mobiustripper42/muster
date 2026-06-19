@@ -129,6 +129,15 @@ export interface Repository {
   listAsksForSeat(seatId: SeatId): Promise<Ask[]>;
   /** Every ask — the integrity diagnostic's orphan scan. */
   listAllAsks(): Promise<Ask[]>;
+  /**
+   * Remove an ask row (#94). Dev-seed reset primitive: a fixture re-run deletes
+   * its prior asks rather than closing them (a closed-with-no-response ask is a
+   * real "silent" round, so re-runs would otherwise stack fake history). Real
+   * operation never deletes an ask — they're true reliability history. The caller
+   * owns referential cleanup (no-FK schema, DEC-DATA-1): an outbox entry
+   * referencing the ask must be removed too. No-op if the id is already gone.
+   */
+  removeAsk(id: AskId): Promise<void>;
 
   // ── Magic-link tokens (self-rolled auth — DEC-010, DEC-020) ────────────────
   /** Persist a token (upsert by id). Only the secret's hash is stored. */
@@ -163,6 +172,12 @@ export interface Repository {
   getOutboxEntry(id: OutboxEntryId): Promise<OutboxEntry | null>;
   /** Every entry — the outbox page's worklist + the integrity orphan scan. */
   listOutboxEntries(): Promise<OutboxEntry[]>;
+  /**
+   * Remove an outbox entry (#94). Adapter-side delete, paired with removeAsk for
+   * the dev-seed reset: an entry references an ask, so a fixture re-run drops the
+   * entry alongside its ask to keep the relay worklist clean. No-op if absent.
+   */
+  removeOutboxEntry(id: OutboxEntryId): Promise<void>;
 
   // ── Reliability log (append-only — DEC-008) ───────────────────────────────
   /** Append a reliability event. The log is never mutated, only grown. */

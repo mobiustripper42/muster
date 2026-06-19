@@ -15,10 +15,10 @@
  * a phone produces a text whose link actually signs the crew member in.
  *
  * Trips are computed FROM SEED TIME (like seed-atrisk-dev) — re-run any time
- * to re-anchor. Idempotent-enough: entity writes are upserts; before re-firing,
- * any live ask on a scenario seat is closed (stamped respondedAt), which also
- * retires its old outbox card from the page (the view drops settled asks).
- * Dead entries/tokens linger as rows; harmless in dev.
+ * to re-anchor. Idempotent (#94): entity writes are upserts, and each scenario
+ * seat's prior asks + outbox entries are DELETED before re-firing — so a re-run
+ * reproduces round-1-Lance-declined / round-2-Bo-live exactly, no wipe needed.
+ * (Magic tokens linger as harmless dev rows; the reaper handles those.)
  *
  * Run: npm run db:seed:outbox  (DB up + migrated first).
  * Then: /crew/dev-link?admin=spink → tap through → /admin/outbox.
@@ -101,12 +101,18 @@ async function shipShift(key: string, vesselName: string, tripAt: Date) {
     state: "Filling",
     eventIds: [eventId],
   });
-  // Close any live ask a prior run left (retires its old outbox card too),
-  // then reset the seat to Open so assignPerson can fire a fresh ask.
+  // Clean-reset this scenario's fixtures so a re-run reproduces the same rounds
+  // exactly — no wipe needed (#94). DELETE the prior asks + their outbox entries
+  // rather than closing them: a closed-with-no-response ask is a real "silent"
+  // round, so the old close-don't-delete path stacked a fake "Bo went silent"
+  // every re-run and bumped the why-line ordinal. Drop the entries first (they
+  // reference the asks), then the asks; then reset the seat to Open for a fresh
+  // fire. (removeSeat can't help — it would orphan the asks, tripping integrity.)
+  for (const entry of await repo.listOutboxEntries()) {
+    if (entry.seatId === seatId) await repo.removeOutboxEntry(entry.id);
+  }
   for (const ask of await repo.listAsksForSeat(seatId)) {
-    if (ask.respondedAt === undefined) {
-      await repo.saveAsk({ ...ask, respondedAt: new Date().toISOString() });
-    }
+    await repo.removeAsk(ask.id);
   }
   await repo.saveSeat({
     id: seatId,

@@ -222,6 +222,9 @@ export class InMemoryRepository implements Repository {
   async listAllAsks(): Promise<Ask[]> {
     return [...this.#asks.values()].map(clone);
   }
+  async removeAsk(id: AskId): Promise<void> {
+    this.#asks.delete(id);
+  }
 
   // ── Magic-link tokens (self-rolled auth — DEC-010, DEC-020) ────────────────
   async saveMagicToken(token: MagicToken): Promise<void> {
@@ -263,6 +266,9 @@ export class InMemoryRepository implements Repository {
   }
   async listOutboxEntries(): Promise<OutboxEntry[]> {
     return [...this.#outbox.values()].map(clone);
+  }
+  async removeOutboxEntry(id: OutboxEntryId): Promise<void> {
+    this.#outbox.delete(id);
   }
 
   // ── Reliability log (append-only — DEC-008) ───────────────────────────────

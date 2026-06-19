@@ -16,7 +16,7 @@ export interface OutboxCardVM {
   entryId: string;
   askId: string;
   crewName: string;
-  /** "Sat, Jul 4 · Tidewater · captain" */
+  /** "Sat, Jul 4 · 3:00 PM · Tidewater · captain" (departure time when scheduled) */
   factsLabel: string;
   /** "20h to trip" / "departed" — null when no scheduled event anchors it. */
   toTrip: string | null;

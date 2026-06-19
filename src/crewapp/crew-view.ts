@@ -31,6 +31,10 @@ export interface OpenAskView {
   roleName: string;
   /** ISO-8601 date of the shift (vessel-local day). */
   date: string;
+  /** Earliest scheduled departure, "HH:mm" vessel-local — so the card shows WHEN
+   * the shift is (can't answer In/Out without it). Undefined when no event
+   * anchors the ask. (End time waits on Event length — #92.) */
+  departureTime?: string;
   /** ISO-8601 UTC when the ask went out (for "answered fast" / ordering). */
   sentAt: string;
 }
@@ -92,10 +96,14 @@ export async function buildCrewAppView(
   // ahead in the evening Eastern hours and would hide a still-upcoming shift.
   const today = vesselDateOf(now, tz);
 
-  // Open asks: addressed to me, not yet answered, on a seat still being asked.
+  // Open asks: addressed to me, not yet RESPONDED, on a seat still being asked.
+  // `respondedAt === undefined` (not `response === undefined`) is the live-ask
+  // test used everywhere else — a timed-out/closed ask stamps respondedAt with
+  // no response, and must NOT resurface as answerable (would double a re-asked
+  // card alongside the fresh ask).
   const allAsks = await repo.listAllAsks();
   const mine = allAsks
-    .filter((a) => a.crewMemberId === crewMemberId && a.response === undefined)
+    .filter((a) => a.crewMemberId === crewMemberId && a.respondedAt === undefined)
     .sort((a, b) => a.sentAt.localeCompare(b.sentAt));
   const asks: OpenAskView[] = [];
   for (const ask of mine) {
@@ -103,12 +111,21 @@ export async function buildCrewAppView(
     if (!seat || seat.state !== "Asked") continue; // resolved/contested — drop it
     const shift = await repo.getShift(seat.shiftId);
     if (!shift) continue;
+    // Earliest scheduled departure (vessel-local "HH:mm") so the card shows when.
+    const evs = [];
+    for (const id of shift.eventIds) {
+      const e = await repo.getEvent(id);
+      if (e && e.status === "scheduled") evs.push(e);
+    }
+    evs.sort((a, b) => a.time.localeCompare(b.time));
+    const departureTime = evs[0]?.time;
     asks.push({
       askId: ask.id,
       seatId: seat.id,
       vesselName: await vesselName(repo, shift.vesselId),
       roleName: await roleName(repo, seat.role),
       date: shift.date,
+      ...(departureTime ? { departureTime } : {}),
       sentAt: ask.sentAt,
     });
   }

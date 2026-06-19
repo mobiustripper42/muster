@@ -1,5 +1,6 @@
 import { buildOutboxView, type OutboxCardView } from "@core/admin/outbox-view.js";
 import { buildSmsUrl } from "@core/adapters/sms-deep-link.js";
+import { TENANT_TIMEZONE } from "@core/config/tenant.js";
 import { OutboxCard, type OutboxCardVM } from "../../../../components/outbox/outbox-card";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
@@ -123,7 +124,14 @@ function toVM(c: OutboxCardView): OutboxCardVM {
     entryId: c.entryId,
     askId: c.askId,
     crewName: c.crewName,
-    factsLabel: `${fmtDate(c.date)} · ${c.vesselName} · ${c.roleName}`,
+    factsLabel: [
+      fmtDate(c.date),
+      c.tripStart ? fmtDepart(c.tripStart) : null,
+      c.vesselName,
+      c.roleName,
+    ]
+      .filter(Boolean)
+      .join(" · "),
     toTrip: c.hoursToTrip === null ? null : ttLabel(c.hoursToTrip),
     tight: c.hoursToTrip !== null && c.hoursToTrip < TIGHT_HOURS,
     whyLabel: whyLabel(c),
@@ -161,6 +169,15 @@ function fmtTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("en-US", {
     hour: "numeric",
     minute: "2-digit",
+  });
+}
+
+/** Trip departure in vessel-local wall-clock (DEC-032), 12-hour. */
+function fmtDepart(iso: string): string {
+  return new Date(iso).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: TENANT_TIMEZONE,
   });
 }
 

@@ -12,6 +12,8 @@ import {
   logAskDeclined,
   logAskIgnored,
   logAskSent,
+  logBoardLanded,
+  logPoolWidened,
   logShiftBailed,
   logShiftCompleted,
   recordReliabilityEvent,
@@ -25,6 +27,20 @@ const NOW = new Date("2026-07-01T12:00:00.000Z");
 let repo: InMemoryRepository;
 beforeEach(() => {
   repo = new InMemoryRepository();
+});
+
+describe("system shift-level events get distinct ids per shift in one tick", () => {
+  it("pool_widened on two shifts at the same instant doesn't collide", async () => {
+    const a = await logPoolWidened(repo, asId<"ShiftId">("shift-a"), NOW);
+    const b = await logPoolWidened(repo, asId<"ShiftId">("shift-b"), NOW);
+    expect(a.id).not.toBe(b.id); // both 'system'/pool_widened/same NOW → shiftId must split them
+  });
+
+  it("board_landed on two shifts with the same reason at the same instant doesn't collide", async () => {
+    const a = await logBoardLanded(repo, asId<"ShiftId">("shift-a"), "exhausted", NOW);
+    const b = await logBoardLanded(repo, asId<"ShiftId">("shift-b"), "exhausted", NOW);
+    expect(a.id).not.toBe(b.id);
+  });
 });
 
 describe("ask lifecycle logging", () => {

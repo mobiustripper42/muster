@@ -5,6 +5,7 @@ import { Notice } from "../../../components/ui/notice";
 import { Shell } from "../../../components/ui/shell";
 import { readSubject } from "../../lib/auth";
 import { getRepo } from "../../lib/repo";
+import { fmt12 } from "../../lib/format";
 import { respondToAsk } from "./actions";
 
 /**
@@ -186,7 +187,9 @@ function AskCard({ ask }: { ask: CrewAppView["asks"][number] }) {
     <div className="overflow-hidden rounded-card border border-line bg-card shadow-sm">
       <div className="border-b border-line px-4 py-3">
         <div className="text-ink">
-          {fmtDate(ask.date)} · {ask.vesselName} · {ask.roleName}.{" "}
+          {fmtDate(ask.date)}
+          {ask.departureTime ? ` · ${fmt12(ask.departureTime)}` : ""} ·{" "}
+          {ask.vesselName} · {ask.roleName}.{" "}
           <b>In or out?</b>
         </div>
       </div>

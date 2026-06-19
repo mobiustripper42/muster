@@ -121,7 +121,10 @@ async function shipShift(key: string, vesselName: string, tripAt: Date) {
 try {
   await repo.saveRoleType({ id: CAPTAIN, tenantId: TENANT, name: "captain" });
 
-  const bo = await captain("crew-obx-bo", "Bo", "+15555550101");
+  // Bo's number is env-overridable so you can point the 4.2 Send + 4.6
+  // magic-link loop at a real phone you control, without committing it:
+  //   OUTBOX_TEST_PHONE=+14155550123 npm run db:seed:outbox
+  const bo = await captain("crew-obx-bo", "Bo", process.env.OUTBOX_TEST_PHONE ?? "+15555550101");
   const mira = await captain("crew-obx-mira", "Mira", "+15555550102");
   const lance = await captain("crew-obx-lance", "Lance", "+15555550103");
   // The operator's own crew identity — must match OPERATOR_CREW_MEMBER_ID

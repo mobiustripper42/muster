@@ -188,8 +188,10 @@ function AskCard({ ask }: { ask: CrewAppView["asks"][number] }) {
       <div className="border-b border-line px-4 py-3">
         <div className="text-ink">
           {fmtDate(ask.date)}
-          {ask.departureTime ? ` · ${fmt12(ask.departureTime)}` : ""} ·{" "}
-          {ask.vesselName} · {ask.roleName}.{" "}
+          {ask.departureTime
+            ? ` · ${fmt12(ask.departureTime)}${ask.shiftEndTime ? `–${fmt12(ask.shiftEndTime)}` : ""}`
+            : ""}{" "}
+          · {ask.vesselName} · {ask.roleName}.{" "}
           <b>In or out?</b>
         </div>
       </div>

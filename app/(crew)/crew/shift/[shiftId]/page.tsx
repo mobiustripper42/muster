@@ -154,6 +154,17 @@ function Card({
             {firstDeparture ? fmt12(firstDeparture) : "—"}
           </div>
         </div>
+        {/* The other end of the commitment (DEC-041): last trip + trip length +
+            teardown. Spans both columns under the start/departure pair so "when
+            am I free" sits with "when do I report". */}
+        <div className="col-span-2 rounded-card border border-line bg-card px-4 py-3">
+          <div className="text-xs font-semibold uppercase tracking-wide text-muted">
+            Shift End <span className="font-normal normal-case text-faint">· off the clock</span>
+          </div>
+          <div className="font-mono text-2xl font-semibold text-ink">
+            {card.shiftEndTime ? fmt12(card.shiftEndTime) : "—"}
+          </div>
+        </div>
       </div>
 
       {card.events.length === 0 && <Notice>No departures scheduled yet.</Notice>}

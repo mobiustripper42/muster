@@ -16,6 +16,8 @@ import type { Repository } from "../ports/repository.js";
 import { TENANT_TIMEZONE, vesselDateOf } from "../config/tenant.js";
 import { worstCredential } from "../admin/credential-health.js";
 import type { CredentialConcern } from "../admin/credential-health.js";
+import { CALL_LEAD_MINUTES, TRIP_DURATION_MINUTES } from "../builder/derive.js";
+import { plusMinutes } from "./shift-card.js";
 import { summarizeStanding } from "./standing.js";
 import type { CrewStandingView } from "./standing.js";
 
@@ -33,8 +35,12 @@ export interface OpenAskView {
   date: string;
   /** Earliest scheduled departure, "HH:mm" vessel-local — so the card shows WHEN
    * the shift is (can't answer In/Out without it). Undefined when no event
-   * anchors the ask. (End time waits on Event length — #92.) */
+   * anchors the ask. */
   departureTime?: string;
+  /** Shift end, "HH:mm" vessel-local (DEC-041) — latest departure + trip length
+   * + call lead, the "how long am I committed" half of the In/Out decision (#92).
+   * Undefined when no event anchors the ask, same as `departureTime`. */
+  shiftEndTime?: string;
   /** ISO-8601 UTC when the ask went out (for "answered fast" / ordering). */
   sentAt: string;
 }
@@ -119,6 +125,12 @@ export async function buildCrewAppView(
     }
     evs.sort((a, b) => a.time.localeCompare(b.time));
     const departureTime = evs[0]?.time;
+    // Shift end = latest departure + trip length + the call lead reused as a
+    // teardown buffer (DEC-041), same constants + clock math as the shift card.
+    const lastDeparture = evs[evs.length - 1]?.time;
+    const shiftEndTime = lastDeparture
+      ? plusMinutes(lastDeparture, TRIP_DURATION_MINUTES + CALL_LEAD_MINUTES)
+      : undefined;
     asks.push({
       askId: ask.id,
       seatId: seat.id,
@@ -126,6 +138,7 @@ export async function buildCrewAppView(
       roleName: await roleName(repo, seat.role),
       date: shift.date,
       ...(departureTime ? { departureTime } : {}),
+      ...(shiftEndTime ? { shiftEndTime } : {}),
       sentAt: ask.sentAt,
     });
   }

@@ -201,6 +201,68 @@ export function fillDeadlineFor(
   );
 }
 
+// ── Shift window: call lead + trip length (DEC-021, DEC-041) ──────────────────
+
+const MINUTE_MS = 60 * 1000;
+
+/**
+ * Minutes a crew member must arrive before departure — the day-of manifest call
+ * lead (DEC-021). FLAT, fleet-wide: a single number was the explicit ask. The
+ * richer model (per-vessel prep + additive positioning/transit computed from
+ * storage→dock) is parked in FUTURE_IDEAS; swap this constant for that resolver
+ * when it lands. NOT the same lead as `STAFFING_HORIZON_LEAD_DAYS` /
+ * `FILL_DEADLINE_HOURS` above — those are engine *days/hours* horizons; this is
+ * the same-day clock lead. Lives here (not in the crew card) because the shift
+ * *end* needs it too, and the outbox reads that end (DEC-041).
+ */
+export const CALL_LEAD_MINUTES = 45;
+
+/**
+ * Flat trip length in minutes — the (c) stopgap source for a trip's duration
+ * (DEC-041), sibling to `CALL_LEAD_MINUTES`. There is no per-event duration in
+ * the model yet (Xola exposes no length; no operator-config surface): until a
+ * real source lands — Xola product duration (a) or an operator-set value (b) —
+ * every trip is assumed this long. Swap this constant for `Event.durationMinutes`
+ * when that field and its source arrive.
+ */
+export const TRIP_DURATION_MINUTES = 100;
+
+/**
+ * The latest scheduled departure among `events` — the trip that ends the shift.
+ * Mirror of `earliestScheduledStart`; `null` when nothing is scheduled.
+ */
+export function latestScheduledStart(
+  events: Event[],
+  tz: string = TENANT_TIMEZONE,
+): Date | null {
+  const scheduled = events.filter((e) => e.status === "scheduled");
+  if (scheduled.length === 0) return null;
+  const latest = scheduled.reduce(
+    (max, e) => Math.max(max, eventStart(e, tz).getTime()),
+    -Infinity,
+  );
+  return new Date(latest);
+}
+
+/**
+ * The instant a shift "ends" (DEC-041): the latest scheduled departure + the
+ * trip length + the call lead reused as a post-trip teardown buffer ("report
+ * time" is the same lead, applied symmetrically at both ends — not a new
+ * constant). Pure; derived, never stored. `null` when no scheduled event
+ * anchors the shift. With a flat trip length the latest *departure* yields the
+ * latest *end*; when per-event durations land this becomes max(start+duration).
+ */
+export function shiftEndFromEvents(
+  events: Event[],
+  tz: string = TENANT_TIMEZONE,
+): Date | null {
+  const last = latestScheduledStart(events, tz);
+  if (last === null) return null;
+  return new Date(
+    last.getTime() + (TRIP_DURATION_MINUTES + CALL_LEAD_MINUTES) * MINUTE_MS,
+  );
+}
+
 /**
  * Bail lateness (DEC-028): the **notice shortfall versus the staffing-horizon
  * lead, clamped to it** — `clamp(leadMs − (tripStart − now), 0, leadMs)`.

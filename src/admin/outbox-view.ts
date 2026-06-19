@@ -19,7 +19,7 @@
 
 import type { OutboxEntry, OutboxStatus } from "../domain/entities.js";
 import type { Repository } from "../ports/repository.js";
-import { earliestScheduledStart } from "../builder/derive.js";
+import { earliestScheduledStart, shiftEndFromEvents } from "../builder/derive.js";
 import { TENANT_TIMEZONE } from "../config/tenant.js";
 
 /** Why this relay exists — derived from the seat's prior ask rounds. */
@@ -51,6 +51,12 @@ export interface OutboxCardView {
   date: string;
   /** Earliest scheduled departure, ISO-8601 UTC — null if the shift lost its events. */
   tripStart: string | null;
+  /**
+   * Shift end, ISO-8601 UTC (DEC-041) — latest departure + trip length + call
+   * lead. The close of the start–end window the card shows; null when no
+   * scheduled event anchors the shift (same as `tripStart`).
+   */
+  tripEnd: string | null;
   /** Hours from `now` to `tripStart` (negative = departed) — the urgency key. */
   hoursToTrip: number | null;
   status: OutboxStatus;
@@ -110,6 +116,7 @@ export async function buildOutboxView(
       if (event) events.push(event);
     }
     const tripStart = earliestScheduledStart(events, tz);
+    const tripEnd = shiftEndFromEvents(events, tz);
 
     cards.push({
       entryId: entry.id,
@@ -121,6 +128,7 @@ export async function buildOutboxView(
       roleName: roleName.get(seat.role) ?? String(seat.role),
       date: shift.date,
       tripStart: tripStart ? tripStart.toISOString() : null,
+      tripEnd: tripEnd ? tripEnd.toISOString() : null,
       hoursToTrip: tripStart
         ? (tripStart.getTime() - now.getTime()) / 3_600_000
         : null,

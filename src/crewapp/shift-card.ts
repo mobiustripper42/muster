@@ -12,16 +12,18 @@
 import type { CrewMemberId, ShiftId } from "../domain/ids.js";
 import type { Event } from "../domain/entities.js";
 import type { Repository } from "../ports/repository.js";
-import { bailLatenessMs, earliestScheduledStart } from "../builder/derive.js";
+import {
+  bailLatenessMs,
+  earliestScheduledStart,
+  CALL_LEAD_MINUTES,
+  TRIP_DURATION_MINUTES,
+} from "../builder/derive.js";
 import { TENANT_TIMEZONE } from "../config/tenant.js";
 
-/**
- * Minutes a crew member must arrive before departure. FLAT, fleet-wide (DEC: a
- * single number was the explicit ask). The richer model — per-vessel prep +
- * additive per-event positioning/transit time computed from storage→dock — is
- * parked in FUTURE_IDEAS; swap this constant for that resolver when it lands.
- */
-export const CALL_LEAD_MINUTES = 45;
+// The call lead + trip length live in `builder/derive` (the shift *end* needs
+// them too, and the outbox reads that end — DEC-041). Re-exported here so the
+// card's contract and its test keep importing them from the card.
+export { CALL_LEAD_MINUTES };
 
 /** One guest on an event's manifest. Name + party + phone; no waiver (DEC-012). */
 export interface ManifestGuest {
@@ -56,6 +58,13 @@ export interface ShiftCardView {
   date: string;
   /** Derived show-up time, "HH:mm" — earliest departure minus the call lead. */
   callTime?: string;
+  /**
+   * Derived end of the time commitment, "HH:mm" — latest departure + the trip
+   * length + the call lead reused as a post-trip teardown buffer (DEC-041). The
+   * "when am I free" half of the In/Out decision. Absent on an event-less shift,
+   * same as `callTime`.
+   */
+  shiftEndTime?: string;
   /** Total booked pax across all the shift's events. */
   paxTotal: number;
   /**
@@ -83,8 +92,15 @@ export interface ShiftCardView {
 
 /** Subtract minutes from an "HH:mm" clock time (wraps within a day, just in case). */
 function minusMinutes(hhmm: string, mins: number): string {
+  return plusMinutes(hhmm, -mins);
+}
+
+/** Add minutes to an "HH:mm" clock time (wraps within a day — a late trip whose
+ * end rolls past midnight reads as the next-day wall clock, like `callTime`).
+ * Exported so the crew-view ask card derives its shift end the same way (#92). */
+export function plusMinutes(hhmm: string, mins: number): string {
   const [h = 0, m = 0] = hhmm.split(":").map(Number);
-  const total = (((h * 60 + m - mins) % 1440) + 1440) % 1440;
+  const total = (((h * 60 + m + mins) % 1440) + 1440) % 1440;
   return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
 }
 
@@ -141,8 +157,23 @@ export async function buildShiftCard(
   }
   events.sort((a, b) => a.departureTime.localeCompare(b.departureTime));
 
+  // Window math uses SCHEDULED departures only — a cancelled trip moves neither
+  // the call time nor the shift end. Matches `bailLate` here (via
+  // `earliestScheduledStart`) and the outbox / ask-card surfaces, so all three
+  // agree on the window (DEC-041). The manifest above still lists every event.
+  const departures = rawEvents
+    .filter((e) => e.status === "scheduled")
+    .map((e) => e.time)
+    .sort((a, b) => a.localeCompare(b));
   const callTime =
-    events.length > 0 ? minusMinutes(events[0]!.departureTime, CALL_LEAD_MINUTES) : undefined;
+    departures.length > 0 ? minusMinutes(departures[0]!, CALL_LEAD_MINUTES) : undefined;
+  // End of commitment = latest departure + trip length + the lead reused as a
+  // teardown buffer (DEC-041). Clock-string math, parallel to `callTime`; shares
+  // the constants with the outbox so the two can't disagree on the window.
+  const shiftEndTime =
+    departures.length > 0
+      ? plusMinutes(departures[departures.length - 1]!, TRIP_DURATION_MINUTES + CALL_LEAD_MINUTES)
+      : undefined;
 
   // A bail "now" is "late" iff it falls inside the staffing horizon — DEC-028's
   // notice shortfall is non-zero (#7). Same instant the score penalizes; the
@@ -170,6 +201,7 @@ export async function buildShiftCard(
     vesselName,
     date: shift.date,
     ...(callTime !== undefined ? { callTime } : {}),
+    ...(shiftEndTime !== undefined ? { shiftEndTime } : {}),
     paxTotal: events.reduce((sum, e) => sum + e.pax, 0),
     ...(sharedDock !== undefined ? { sharedDock } : {}),
     events,

@@ -126,7 +126,7 @@ function toVM(c: OutboxCardView): OutboxCardVM {
     crewName: c.crewName,
     factsLabel: [
       fmtDate(c.date),
-      c.tripStart ? fmtDepart(c.tripStart) : null,
+      fmtWindow(c.tripStart, c.tripEnd),
       c.vesselName,
       c.roleName,
     ]
@@ -179,6 +179,14 @@ function fmtDepart(iso: string): string {
     minute: "2-digit",
     timeZone: TENANT_TIMEZONE,
   });
+}
+
+/** The shift's start–end window (DEC-041), vessel-local. Falls back to the bare
+ * departure if there's no end, and to null when the shift has no scheduled trip. */
+function fmtWindow(startIso: string | null, endIso: string | null): string | null {
+  if (!startIso) return null;
+  const start = fmtDepart(startIso);
+  return endIso ? `${start}–${fmtDepart(endIso)}` : start;
 }
 
 function ttLabel(h: number): string {

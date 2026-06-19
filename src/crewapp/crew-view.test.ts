@@ -86,6 +86,18 @@ describe("buildCrewAppView", () => {
     expect(ids).toContain("ask-open"); // the genuinely-open one still shows
   });
 
+  it("ask card carries the earliest scheduled departure (so the crew knows when)", async () => {
+    const repo = await seed();
+    await repo.saveShift({ id: asId<"ShiftId">("shift-ev"), vesselId: VESSEL, date: "2026-07-07", state: "Filling", eventIds: [asId<"EventId">("e-5pm"), asId<"EventId">("e-3pm")] });
+    await repo.saveEvent({ id: asId<"EventId">("e-3pm"), vesselId: VESSEL, date: "2026-07-07", time: "15:00", capacity: 12, status: "scheduled" });
+    await repo.saveEvent({ id: asId<"EventId">("e-5pm"), vesselId: VESSEL, date: "2026-07-07", time: "17:00", capacity: 12, status: "scheduled" });
+    await repo.saveSeat({ id: asId<"SeatId">("seat-ev"), shiftId: asId<"ShiftId">("shift-ev"), role: CAPTAIN, kind: "required", state: "Asked" });
+    await repo.saveAsk({ id: asId<"AskId">("ask-ev"), seatId: asId<"SeatId">("seat-ev"), crewMemberId: ME, channel: "push", sentAt: "2026-07-01T09:30:00.000Z" });
+
+    const view = await buildCrewAppView(repo, ME, NOW);
+    expect(view!.asks.find((a) => a.askId === "ask-ev")?.departureTime).toBe("15:00"); // earliest of 15:00/17:00
+  });
+
   it("lists confirmed upcoming shifts soonest-first, drops past ones", async () => {
     const view = await buildCrewAppView(await seed(), ME, NOW);
     expect(view!.shifts.map((s) => s.shiftId)).toEqual(["shift-up", "shift-ask"]);

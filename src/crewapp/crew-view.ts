@@ -31,6 +31,10 @@ export interface OpenAskView {
   roleName: string;
   /** ISO-8601 date of the shift (vessel-local day). */
   date: string;
+  /** Earliest scheduled departure, "HH:mm" vessel-local — so the card shows WHEN
+   * the shift is (can't answer In/Out without it). Undefined when no event
+   * anchors the ask. (End time waits on Event length — #92.) */
+  departureTime?: string;
   /** ISO-8601 UTC when the ask went out (for "answered fast" / ordering). */
   sentAt: string;
 }
@@ -107,12 +111,21 @@ export async function buildCrewAppView(
     if (!seat || seat.state !== "Asked") continue; // resolved/contested — drop it
     const shift = await repo.getShift(seat.shiftId);
     if (!shift) continue;
+    // Earliest scheduled departure (vessel-local "HH:mm") so the card shows when.
+    const evs = [];
+    for (const id of shift.eventIds) {
+      const e = await repo.getEvent(id);
+      if (e && e.status === "scheduled") evs.push(e);
+    }
+    evs.sort((a, b) => a.time.localeCompare(b.time));
+    const departureTime = evs[0]?.time;
     asks.push({
       askId: ask.id,
       seatId: seat.id,
       vesselName: await vesselName(repo, shift.vesselId),
       roleName: await roleName(repo, seat.role),
       date: shift.date,
+      ...(departureTime ? { departureTime } : {}),
       sentAt: ask.sentAt,
     });
   }

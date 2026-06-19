@@ -6,7 +6,7 @@ branch: task/92-event-duration
 started: 2026-06-19T10:42:30Z
 ended:
 points:
-pr_numbers: [102, 103, 104]
+pr_numbers: [102, 103, 104, 105]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/0820d289-7d61-4cc5-8764-ec90397c77d9.jsonl
 ---
@@ -59,6 +59,19 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/0820d289-7d61-4cc5-876
 **Points:** 2
 **Branch:** task/78-pilot-runbook
 **Opened at:** 2026-06-19T16:34:09Z
+
+## Task 4: #93 + #97 — Stale-safe outbox notices + session-aware root redirect (PR A of the 93/94/97 bundle)
+
+**Completed:**
+- **#97** — `app/page.tsx` placeholder → session-aware server component (`readSubject`): crew → `/crew`, operator → `/admin`, else the sign-in prompt. Crew bookmark / home-screen shortcut now lands on My Shifts (interim ahead of the parked crew "living link").
+- **#93** — `app/(admin)/admin/outbox/page.tsx` `ANSWERED_COPY` reworded past-tense/action-framed ("You answered: in./out.") so a lingering redirect param reads true, matching the board's stale-safe style. `lost` was already stale-safe.
+- New `e2e/root-redirect.spec.ts` (3 cases: no-session prompt, crew→/crew, operator→/admin) — green. `verify` green.
+
+**Code review:** Clean bill of health — readSubject exhaustive + null/expired falls through to prompt, redirect() outside try/catch, import paths correct, no sibling present-tense notice missed, e2e well-isolated. No changes required.
+**PR:** [#105](https://github.com/mobiustripper42/muster/pull/105)
+**Points:** 2
+**Branch:** task/93-97-crew-reentry-polish
+**Opened at:** 2026-06-19T16:51:20Z
 
 **Next Steps:**
 

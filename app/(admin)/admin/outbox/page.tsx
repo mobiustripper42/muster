@@ -24,9 +24,12 @@ export const dynamic = "force-dynamic";
 const TIGHT_HOURS = 36;
 
 /** Feedback params carry codes/ids, never prose (DEC-026) — map here. */
+// Past-tense / action-framed so a lingering redirect param (manual reload, or a
+// reseed while sitting on the param'd URL) still reads true — the same stale-safe
+// phrasing the At-Risk board uses for its "Last action: …" notices (#93).
 const ANSWERED_COPY: Record<string, { tone: "ok" | "bad"; text: string }> = {
-  accepted: { tone: "ok", text: "You’re in — the seat is claimed." },
-  declined: { tone: "ok", text: "Logged your out." },
+  accepted: { tone: "ok", text: "You answered: in." },
+  declined: { tone: "ok", text: "You answered: out." },
   lost: {
     tone: "bad",
     text: "Your yes landed second — the seat was already filled.",

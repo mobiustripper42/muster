@@ -6,7 +6,7 @@ branch: task/92-event-duration
 started: 2026-06-19T10:42:30Z
 ended:
 points:
-pr_numbers: [102, 103, 104, 105]
+pr_numbers: [102, 103, 104, 105, 106]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/0820d289-7d61-4cc5-8764-ec90397c77d9.jsonl
 ---
@@ -72,6 +72,21 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/0820d289-7d61-4cc5-876
 **Points:** 2
 **Branch:** task/93-97-crew-reentry-polish
 **Opened at:** 2026-06-19T16:51:20Z
+
+## Task 5: #94 — removeAsk/removeOutboxEntry + idempotent outbox seed (PR B of the 93/94/97 bundle)
+
+**Completed:**
+- Added `removeAsk` + `removeOutboxEntry` to the `Repository` port (`src/ports/repository.ts`) with the no-FK referential-cleanup caveat documented, plus both adapter impls (`in-memory-repository.ts`, `postgres-repository.ts`).
+- 2 new equivalence tests in `repository-contract.ts` → `npm run test:pg` **25/25 against Postgres** (was 23).
+- `db/seed-outbox-dev.ts` `shipShift` now deletes each scenario seat's prior outbox entries + asks before re-firing (delete-and-recreate), fixing the non-idempotency: a closed-no-response ask was a fake "silent" round that stacked on re-run ("3rd ask · Bo went silent"). Header comment updated.
+- `docs/E2E-PILOT-WALKTHROUGH.md` #94 note flipped from "full-wipe first" to "clean reset, no wipe needed."
+- **#94 acceptance proven:** ran the seed twice with no wipe → tide seat has exactly 2 asks (Lance declined + Bo live) + 1 outbox entry → why-line stays "2nd ask · Lance declined". `verify` green.
+
+**Code review:** Clean bill of health — adapter parity locked by the contract tests, delete order integrity-safe (entries before asks; never deletes seats/crew; reliability log excluded from the integrity scan), deterministic reproduction, convention-consistent. No changes required.
+**PR:** [#106](https://github.com/mobiustripper42/muster/pull/106)
+**Points:** 3
+**Branch:** task/94-outbox-seed-idempotent
+**Opened at:** 2026-06-19T17:02:19Z
 
 **Next Steps:**
 

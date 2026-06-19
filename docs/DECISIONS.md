@@ -1128,6 +1128,25 @@ Both share the **occupant-pin race guard** (a swap between reads → `raced`, re
 
 ---
 
+## DEC-042: "All shifts" full-visibility view — a deliberate, opt-in pull surface (#100)
+
+**Status:** Built (#100). A read-only `/admin/shifts` listing every *current* shift (Pending/Filling/Crewed/At-Risk; not Cancelled/Completed), day-filterable, click-through to the cockpit. Shift-centric — pax/booking counts per shift, not a reservation list (decided with operator; the reservation lens is the parked Living Link). Pure read over existing derivations (`resolveShiftStateOnRead`, `listShifts`/events/reservations) in `src/admin/all-shifts.ts`; no migration. Ships with the complete `/admin` nav (Part B).
+
+**Why this is not the anxiety dashboard (BRAND, SPEC §2.5):** the anti-pattern is a surface that *invites monitoring* — auto-refreshing, everything glowing, summoning by ambient presence. This is the opposite shape: opt-in **pull** (operator's words: *"for now I'm going to want to see everything… perhaps after this runs for a while I'll stop looking"*), deliberately opened, no pings, no auto-refresh. Same precedent as the warming view (DEC-027 §3) — off-board, never-pings, conservatively scoped — with a wider membership predicate. The operator named it a knowing exception; recorded as one. (@architect-gated per #100, 2026-06-19.)
+
+**Guardrails (binding — they live in the surface, not the derivation):**
+- Default filter = **today**, not all-time. Presets: today · this weekend · a from/to range. Window clamped to `[today−30d, today+45d]` so "everything" can't render an unbounded wall.
+- **No auto-refresh, no polling, no live counts.** `force-dynamic` server render on navigation only. A bare row count for orientation is fine; a per-state scoreboard/badge is not.
+- **State renders as neutral ink, not colour.** Warm/bad tokens stay reserved for the At-Risk board; an At-Risk row here shows a quiet *"needs attention ↗"* pointer to the board, never a red block.
+- `/admin` ranks the At-Risk board **first and heavier**; All-shifts is a plainer link with **no count badge**. "Needs attention" framing belongs to the board alone.
+- **Empty ≠ success here.** The At-Risk board's ✓ "empty = the system did its job" must stay uncontaminated, so All-shifts renders a plain *"No shifts …"* line and does **not** reuse the board's `EmptySuccess` component.
+
+**Deprecation:** a trust-building crutch, expected to be deprecated once the operator trusts the engine. Nothing routes *to* it (no ping; no root redirect — #97 lands on the board), so removal is a single-route, no-migration delete. **Sunset trigger:** operator reports he's stopped opening it.
+
+**Relationship:** reuses DEC-023 (resolve-on-read), DEC-032 (vessel-local dates), DEC-026 (no-client-JS, codes-in-params); the off-board pull precedent is DEC-027 §3 (warming view); the nav dovetails with #97 (session-aware root). Adds no domain state or schema.
+
+---
+
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)
 
 These are deferred by design. Each names an owner and a trigger. **Consult @architect (and the named

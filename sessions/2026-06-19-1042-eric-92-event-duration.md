@@ -6,7 +6,7 @@ branch: task/92-event-duration
 started: 2026-06-19T10:42:30Z
 ended:
 points:
-pr_numbers: [102, 103, 104, 105, 106]
+pr_numbers: [102, 103, 104, 105, 106, 107]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/0820d289-7d61-4cc5-8764-ec90397c77d9.jsonl
 ---
@@ -87,6 +87,22 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/0820d289-7d61-4cc5-876
 **Points:** 3
 **Branch:** task/94-outbox-seed-idempotent
 **Opened at:** 2026-06-19T17:02:19Z
+
+## Task 6: #100 — All-shifts full-visibility view + complete /admin nav (DEC-042)
+
+**Completed:**
+- **Part A:** `src/admin/all-shifts.ts` (core `deriveAllShifts`, pure read over existing derivations) + `app/(admin)/admin/shifts/page.tsx` — every current shift, day-filterable (today · weekend · range), → cockpit. 5 unit tests.
+- **Part B:** `app/(admin)/admin/page.tsx` links every surface, At-Risk first/heavier, All-shifts a plain badge-less link.
+- **DEC-042** recorded (the deliberate anti-dashboard exception + binding guardrails + sunset trigger).
+- 3 e2e tests (`e2e/all-shifts.spec.ts`: list + At-Risk pointer, empty-state firewall, nav). verify + unit + e2e all green.
+- **@architect-gated** (ran on Opus per operator call): default-today, neutral-ink state (no colour), no auto-refresh/scoreboard, a separate empty state from the board's ✓, window clamped. Guardrails enforced in code, not just documented.
+- **Branch hygiene note:** initially built on the task/94 branch by mistake; relocated cleanly to `task/100-all-shifts` off main (independent of #94/PR #106) before shipping.
+
+**Code review:** Every binding DEC-042 guardrail verified enforced; derivation sound; no nested-anchor bug. Four cleanup findings all fixed in-PR (encode cockpit link, scope label after clamp, accurate Today chip, weekend-on-Sunday). N+1 in resolveShiftStateOnRead noted as pilot-scale-fine follow-up.
+**PR:** [#107](https://github.com/mobiustripper42/muster/pull/107)
+**Points:** 5
+**Branch:** task/100-all-shifts
+**Opened at:** 2026-06-19T18:01:17Z
 
 **Next Steps:**
 

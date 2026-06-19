@@ -63,34 +63,53 @@ function fmtDate(iso: string): string {
   });
 }
 
+type Scope = "today" | "weekend" | "range";
+
 /** Resolve the date window from the filter params — defaulting to TODAY, clamped
  * to a sane horizon so "everything" can't render an unbounded wall (DEC-042). */
-function resolveWindow(sp: Search, now: Date): { from: string; to: string; scope: string } {
+function resolveWindow(
+  sp: Search,
+  now: Date,
+): { from: string; to: string; scope: string; kind: Scope } {
   const today = todayLocal(now);
   const minFrom = addDays(today, -30);
   const maxTo = addDays(today, 45);
 
   let from: string;
   let to: string;
-  let scope: string;
+  let kind: Scope;
   if (sp.preset === "weekend") {
-    const sat = addDays(today, (6 - dowOf(today) + 7) % 7);
+    // The current weekend's Sat–Sun: on a Sunday that's yesterday→today; any
+    // other day, the coming Saturday and the day after.
+    const dow = dowOf(today);
+    const sat = dow === 0 ? addDays(today, -1) : addDays(today, (6 - dow) % 7);
     from = sat;
     to = addDays(sat, 1);
-    scope = "this weekend";
+    kind = "weekend";
   } else if (isDate(sp.from) || isDate(sp.to)) {
     from = isDate(sp.from) ? sp.from : today;
     to = isDate(sp.to) ? sp.to : from;
-    if (to < from) to = from;
-    scope = from === to ? fmtDate(from) : `${fmtDate(from)} – ${fmtDate(to)}`;
+    kind = "range";
   } else {
     from = today;
     to = today;
-    scope = "today";
+    kind = "today";
   }
+  // Clamp to the horizon, then re-guard ordering. The scope LABEL is built after
+  // so the header never disagrees with the actual (clamped) window.
   if (from < minFrom) from = minFrom;
   if (to > maxTo) to = maxTo;
-  return { from, to, scope };
+  if (to < from) to = from;
+
+  const scope =
+    kind === "weekend"
+      ? "this weekend"
+      : kind === "today"
+        ? "today"
+        : from === to
+          ? fmtDate(from)
+          : `${fmtDate(from)} – ${fmtDate(to)}`;
+  return { from, to, scope, kind };
 }
 
 export default async function AllShifts({
@@ -103,7 +122,7 @@ export default async function AllShifts({
 
   const sp = await searchParams;
   const now = new Date();
-  const { from, to, scope } = resolveWindow(sp, now);
+  const { from, to, scope, kind } = resolveWindow(sp, now);
 
   let rows: AllShiftsRow[];
   try {
@@ -127,7 +146,7 @@ export default async function AllShifts({
         </p>
       </header>
 
-      <Filter from={from} to={to} preset={sp.preset} />
+      <Filter from={from} to={to} kind={kind} />
 
       {rows.length === 0 ? (
         // NOT the board's ✓ success state — a quiet day is just a quiet day.
@@ -146,22 +165,18 @@ export default async function AllShifts({
   );
 }
 
-/** Date-range filter — preset links + a no-JS GET form (DEC-026 pattern). */
-function Filter({ from, to, preset }: { from: string; to: string; preset?: string }) {
-  const presetActive = preset === "weekend";
+/** Date-range filter — preset links + a no-JS GET form (DEC-026 pattern). The
+ * active chip reflects the RESOLVED scope (not "any single day"). */
+function Filter({ from, to, kind }: { from: string; to: string; kind: Scope }) {
+  const chip = (active: boolean) =>
+    `rounded-full border px-3 py-1 ${active ? "border-accent text-accent" : "border-line text-muted"}`;
   return (
     <div className="flex flex-col gap-2 rounded-card border border-line bg-card px-4 py-3">
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        <Link
-          href="/admin/shifts"
-          className={`rounded-full border px-3 py-1 ${!presetActive && from === to ? "border-accent text-accent" : "border-line text-muted"}`}
-        >
+        <Link href="/admin/shifts" className={chip(kind === "today")}>
           Today
         </Link>
-        <Link
-          href="/admin/shifts?preset=weekend"
-          className={`rounded-full border px-3 py-1 ${presetActive ? "border-accent text-accent" : "border-line text-muted"}`}
-        >
+        <Link href="/admin/shifts?preset=weekend" className={chip(kind === "weekend")}>
           This weekend
         </Link>
       </div>
@@ -208,7 +223,10 @@ function ShiftRow({ row }: { row: AllShiftsRow }) {
       : row.trips.map((t) => `${fmt12(t.time)} · ${t.pax} pax`).join("   ");
   return (
     <div className="flex items-start justify-between gap-4 rounded-card border border-line bg-card px-4 py-3 shadow-sm">
-      <Link href={`/admin/shift/${row.shiftId}`} className="flex min-w-0 flex-col">
+      <Link
+        href={`/admin/shift/${encodeURIComponent(row.shiftId)}`}
+        className="flex min-w-0 flex-col"
+      >
         <span className="text-ink">
           <b>{row.vesselName}</b> · {fmtDate(row.date)}
         </span>

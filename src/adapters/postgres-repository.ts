@@ -507,6 +507,9 @@ export class PostgresRepository implements Repository {
     const { rows } = await this.#pool.query("select * from asks");
     return rows.map(toAsk);
   }
+  async removeAsk(id: AskId): Promise<void> {
+    await this.#pool.query("delete from asks where id=$1", [id]);
+  }
 
   // ── Magic-link tokens (self-rolled auth — DEC-010, DEC-020) ────────────────
   async saveMagicToken(t: MagicToken): Promise<void> {
@@ -586,6 +589,9 @@ export class PostgresRepository implements Repository {
   async listOutboxEntries(): Promise<OutboxEntry[]> {
     const { rows } = await this.#pool.query("select * from outbox_entries");
     return rows.map(toOutboxEntry);
+  }
+  async removeOutboxEntry(id: OutboxEntryId): Promise<void> {
+    await this.#pool.query("delete from outbox_entries where id=$1", [id]);
   }
 
   // ── Reliability log (append-only — DEC-008) ───────────────────────────────

@@ -305,6 +305,15 @@ export function runRepositoryContract(
       ]);
     });
 
+    it("removeAsk: deletes the row; absent id is a no-op (#94 seed reset)", async () => {
+      await repo.saveAsk(ask());
+      await repo.removeAsk(asId<"AskId">("ask-1"));
+      expect(await repo.getAsk(asId<"AskId">("ask-1"))).toBeNull();
+      expect(await repo.listAsksForSeat(SEAT)).toHaveLength(0);
+      // Removing something already gone must not throw.
+      await expect(repo.removeAsk(asId<"AskId">("ghost"))).resolves.toBeUndefined();
+    });
+
     it("reliability log: append-only, insertion order, filtered by crew", async () => {
       await repo.logReliabilityEvent(relEvent("rel-1", "ask_sent"));
       await repo.logReliabilityEvent(relEvent("rel-2", "ask_accepted"));
@@ -381,6 +390,17 @@ export function runRepositoryContract(
       expect(await repo.listOutboxEntries()).toEqual([
         outboxEntry({ status: "sent", sentAt: "2026-07-01T12:30:00.000Z" }),
       ]);
+    });
+
+    it("removeOutboxEntry: deletes the row; absent id is a no-op (#94 seed reset)", async () => {
+      await repo.saveOutboxEntry(outboxEntry());
+      await repo.removeOutboxEntry(asId<"OutboxEntryId">("obx-ask-1"));
+      expect(await repo.getOutboxEntry(asId<"OutboxEntryId">("obx-ask-1"))).toBeNull();
+      expect(await repo.listOutboxEntries()).toHaveLength(0);
+      // Removing something already gone must not throw.
+      await expect(
+        repo.removeOutboxEntry(asId<"OutboxEntryId">("ghost")),
+      ).resolves.toBeUndefined();
     });
 
     it("listAll enumerators feed the integrity diagnostic identically", async () => {

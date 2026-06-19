@@ -34,7 +34,7 @@ triage**. This is the *operational sequence*; for the why behind each surface re
 
 ## Before the weekend (one-time)
 - The app is deployed and healthy — see [`DEPLOY.md`](DEPLOY.md). `/api/health` reads
-  `{ status: "ok", … integrity: { ok: true } }`.
+  `{ status: "ok", db: { reachable: true }, integrity: { ok: true, violationCount: 0 } }`.
 - The Vercel project is on a **Pro plan** — Hobby throttles the cron to once a day, and the cron is
   what fires asks. Confirm at Vercel → project → Cron Jobs.
 

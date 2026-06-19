@@ -169,8 +169,22 @@ npm run db:seed:outbox   # 3 cards: 2 relays + 1 addressed to the operator (trip
 - **The adapter contract on real Postgres:** with the DB up, `npm run test:pg` (or just `npm run verify`
   while `db:up` is running) exercises the in-memory↔Postgres equivalence suite instead of skipping it.
   CI always runs this against a Postgres service container.
-- **UI changes:** there's no browser test harness yet, so eyeball UI surfaces by hand via the flow
-  above. PRs call out exactly which surface to look at.
+- **The e2e harness (#65):** Playwright over the crew + admin flows. Needs the DB up; it drives its
+  own app server (`next dev` on **:3100**, pointed at `muster_test`) and resets+seeds the test DB
+  per spec, so it never touches your dev data or the `:3000` server.
+  ```bash
+  npm run db:up               # if not already running
+  npx playwright install chromium   # one-time, installs the browser
+  npm run test:e2e            # headless run
+  npm run test:e2e:ui         # interactive runner
+  ```
+  Covers: dev-link sign-in + crew render, ask In/Out, bail→regression (crew-only), bail→re-ask
+  suppression (both seeds), board nudge. **Note:** the crew seed's shifts are fixed-date
+  (2026-07-04/05); the bail specs navigate straight to the shift-card URL so they don't depend on
+  the "upcoming" filter, but if the machine clock is past those dates the board derivations for that
+  shift may differ — re-anchoring the crew seed to `now` (like the at-risk seed) is the eventual fix.
+- **Other UI changes:** for surfaces the harness doesn't cover, eyeball by hand via the flow above.
+  PRs call out exactly which surface to look at.
 
 ## Production notes (not needed for local dev)
 Two env vars are dev-defaulted locally but **must be set in production**:

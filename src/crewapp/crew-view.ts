@@ -92,10 +92,14 @@ export async function buildCrewAppView(
   // ahead in the evening Eastern hours and would hide a still-upcoming shift.
   const today = vesselDateOf(now, tz);
 
-  // Open asks: addressed to me, not yet answered, on a seat still being asked.
+  // Open asks: addressed to me, not yet RESPONDED, on a seat still being asked.
+  // `respondedAt === undefined` (not `response === undefined`) is the live-ask
+  // test used everywhere else — a timed-out/closed ask stamps respondedAt with
+  // no response, and must NOT resurface as answerable (would double a re-asked
+  // card alongside the fresh ask).
   const allAsks = await repo.listAllAsks();
   const mine = allAsks
-    .filter((a) => a.crewMemberId === crewMemberId && a.response === undefined)
+    .filter((a) => a.crewMemberId === crewMemberId && a.respondedAt === undefined)
     .sort((a, b) => a.sentAt.localeCompare(b.sentAt));
   const asks: OpenAskView[] = [];
   for (const ask of mine) {

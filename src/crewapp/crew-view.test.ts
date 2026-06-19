@@ -72,6 +72,20 @@ describe("buildCrewAppView", () => {
     });
   });
 
+  it("does NOT surface a timed-out ask (respondedAt set, no response) — the double-card bug", async () => {
+    const repo = await seed();
+    // A closed/timed-out ask to me on a still-Asked seat: respondedAt stamped,
+    // response left undefined (what expireAsks / the outbox seed's close-prior do).
+    await repo.saveShift({ id: asId<"ShiftId">("shift-to"), vesselId: VESSEL, date: "2026-07-06", state: "Filling", eventIds: [] });
+    await repo.saveSeat({ id: asId<"SeatId">("seat-to"), shiftId: asId<"ShiftId">("shift-to"), role: CAPTAIN, kind: "required", state: "Asked" });
+    await repo.saveAsk({ id: asId<"AskId">("ask-timedout"), seatId: asId<"SeatId">("seat-to"), crewMemberId: ME, channel: "push", sentAt: "2026-07-01T09:00:00.000Z", respondedAt: "2026-07-01T10:00:00.000Z" });
+
+    const view = await buildCrewAppView(repo, ME, NOW);
+    const ids = view!.asks.map((a) => a.askId);
+    expect(ids).not.toContain("ask-timedout"); // closed → not answerable
+    expect(ids).toContain("ask-open"); // the genuinely-open one still shows
+  });
+
   it("lists confirmed upcoming shifts soonest-first, drops past ones", async () => {
     const view = await buildCrewAppView(await seed(), ME, NOW);
     expect(view!.shifts.map((s) => s.shiftId)).toEqual(["shift-up", "shift-ask"]);

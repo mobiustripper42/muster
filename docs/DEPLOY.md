@@ -134,6 +134,18 @@ DATABASE_URL="<paste-direct-unpooled-string>" npm run db:mint -- --admin=spink
 **Check the `db:` host** in the output — if it reads `localhost:5432` you minted against the wrong
 database (the DB string didn't take); a prod link must show the Neon host.
 
+**On the dev box (mill-dev), don't edit `.env.local` for this.** Your `.env.local` points at *local*
+dev (mill-dev origin + localhost DB), and inline env is one-shot — it never touches that file, so
+there's nothing to restore afterward. Save a one-time alias and you get a clean second command:
+```bash
+echo 'postgres://<neon-direct-unpooled-string>' > ~/.muster-prod-db   # once; gitignored home file
+# add this line to ~/.bashrc so it persists:
+alias mint-prod='APP_BASE_URL=https://muster-sigma.vercel.app DATABASE_URL="$(cat ~/.muster-prod-db)" npm run db:mint --'
+```
+Then `mint-prod --admin=spink` mints a **prod** link, while plain `npm run db:mint -- --admin=spink`
+still mints **local** — two commands, no editing, no switch-back. (Rarely needed: the sign-in cookie
+lasts 14 days and renews on use, so it's a first-sign-in / long-gap thing.)
+
 Open the printed URL in a browser → tap **Tap to sign in** → you land on **`/admin/at-risk`** with a
 session cookie (a 14-day cookie that silently renews on use — you sign in once, not per visit). The link
 is single-use and expires in 60 min (`--ttl-min=<n>` to change). `APP_BASE_URL` is **required** — the

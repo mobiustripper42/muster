@@ -33,19 +33,26 @@ triage**. This is the *operational sequence*; for the why behind each surface re
 ---
 
 ## Before the weekend (one-time)
-- The app is deployed and healthy — see [`DEPLOY.md`](DEPLOY.md). `/api/health` reads
-  `{ status: "ok", db: { reachable: true }, integrity: { ok: true, violationCount: 0 } }`.
-- The Vercel project is on a **Pro plan** — Hobby throttles the cron to once a day, and the cron is
-  what fires asks. Confirm at Vercel → project → Cron Jobs.
+**1. Make the deploy match `main`.** Vercel serves the **`production`** branch, not `main`:
+```bash
+/promote-production    # ff-merges main → production, pushes; Vercel auto-redeploys
+# if main added a DB migration, run it against prod FIRST:
+APP_BASE_URL=https://muster-sigma.vercel.app DATABASE_URL="<prod-neon-direct>" npm run db:migrate
+```
+**2. Confirm it's up:** open `https://muster-sigma.vercel.app/api/health` →
+`{ status: "ok", db: { reachable: true }, integrity: { ok: true, violationCount: 0 } }`.
+**3. Vercel on a Pro plan** — Hobby throttles the cron (which fires asks) to once a day. Vercel → Cron Jobs.
 
 ## 0. Sign in
-`/crew/dev-link` is 404 in production, so mint your link from the box:
+`/crew/dev-link` is 404 in prod, so mint a **prod** link — set `APP_BASE_URL` + the prod `DATABASE_URL`
+inline (or use the `mint-prod` alias from [`DEPLOY.md` §7](DEPLOY.md)):
 ```bash
-npm run db:mint -- --admin=spink
-#  → open the printed https://<domain>/crew/auth?t=… link → "Tap to sign in" → /admin/at-risk
+APP_BASE_URL=https://muster-sigma.vercel.app DATABASE_URL="<prod-neon-direct>" \
+  npm run db:mint -- --admin=spink
+#  → CHECK the output's "(db: …)" shows the Neon host, NOT localhost:5432
+#  → open the printed https://muster-sigma.vercel.app/crew/auth?t=… → "Tap to sign in" → /admin/at-risk
 ```
-One sign-in lasts ~14 days (the cookie renews on use). If the DB string is empty, pass it inline —
-see [`DEPLOY.md` §7](DEPLOY.md).
+One sign-in lasts ~14 days (the cookie renews on use).
 
 ## 1. Seed — dress rehearsal first
 **Do not point real crew at an untested weekend.** Run the demo-seed shakedown

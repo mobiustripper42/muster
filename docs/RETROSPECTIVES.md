@@ -3,6 +3,33 @@
 Phase-end retrospectives. Written by `/retro` at each phase boundary — velocity, scope changes,
 process notes, forecast update. One entry per phase, newest at the top.
 
+## Phase 5 — 2026-06-19 — Pilot-readiness / go-live
+
+**Points:** 28 / 28 planned (100%)
+**Span:** 8 days (2026-06-11 → 2026-06-19)
+**Throughput:** 24.5 pts/calendar-week (28 pts over 8d)  ← headline (span ≥7d, so a per-week rate is quoted)
+**Estimate calibration:** 0 tasks re-estimated, net drift **0 pts** — the six `phase:5` issues hit their plan estimates exactly (5/3/5/8/2/5)  ← keeps the point unit honest
+**Sessions:** 8 in window (S13–S20)   **PRs merged:** ~24 since the Phase-4 v0.6.0 close (Phase-5 features + 3 walkthrough passes + docs)
+**Issues:** 6 `phase:5` created, 6 closed, 0 moved — **plus 6 added-scope issues** shipped (see Scope changes)
+
+### Phase throughput line
+| Phase | Date | Points | Span(d) | Throughput | Re-est'd | Net drift | Sessions | PRs |
+|-------|------|--------|---------|------------|----------|-----------|----------|-----|
+| 5 | 2026-06-19 | 28 | 8 | 24.5 pts/wk | 0 | 0 | 8 | ~24 |
+
+### Cross-phase signal
+Phase 4 was a 1.8d burst; Phase 5 spread its 28 planned pts over 8 calendar days (24.5 pts/wk) — but that headline understates delivery: ~15 pts of **unplanned** scope also shipped in the window (manual, all-shifts view, walkthrough fast-follows), so real throughput in the window was closer to ~43 pts. Calibration on the *planned* set was perfect (0 drift) — a clean reversal of Phase 4's +4 under-pointing. The signal to watch stays the same: the planned set held its point value; the variance this phase was scope *added*, not estimates *missed*.
+
+### What worked / What didn't / Changes for next phase
+Retro reflection skipped at user request (S20). PM commentary skipped.
+
+### Scope changes
+- **All 6 planned `phase:5` tasks shipped** (5.1 deploy, 5.2 auth, 5.3 vessel-local time, 5.4 import, 5.5 e2e, 5.R runbook); nothing moved or descoped. 5.5 (e2e) was flagged "first to cut" but shipped — not cut.
+- **Added scope (shipped this phase, not in the `phase:5` plan, ~15 pts):** #68 operator manual; #93+#97 stale-safe outbox copy + session-aware root redirect; #94 `removeAsk`/`removeOutboxEntry` + idempotent outbox seed; #100 all-shifts full-visibility view + complete /admin nav (DEC-042, @architect-gated); #101 crew-seed `now`-anchoring (fixes the e2e harness rot). Mostly walkthrough fast-follows + operator-visibility.
+- **#70 closed** (prod-readiness gate) — its deliverable (the loud pilot-only runbook warning) was met. The two genuine prod tells remain deferred by design: Twilio auto-send (DEC-MSG-1) + the single-operator constant.
+- **New decisions:** DEC-032 (vessel-local time), DEC-033 (Vercel+Neon deploy), DEC-034 (operator auth), DEC-035/036/037/040 (import: xlsx + live Xola pull), DEC-041 (trip length→shift end), DEC-042 (all-shifts deliberate anti-dashboard exception).
+- **Pilot status:** hosted pilot live (`muster-sigma.vercel.app`) — a pilot, **not** production. Next milestone is the real-crew weekend, which triggers Phase 6 (Pass D).
+
 ## Phase 4 — 2026-06-12 — Pass C: Fast-follows
 
 **Points:** 28 / 28 planned (100%)

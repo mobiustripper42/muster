@@ -33,6 +33,7 @@ phases are *burst-shaped* (clear inside a calendar week), so a per-week rate isn
 | 2     | 2        | 16     | 31.59    | 29.52      | 2.08       | 0.130         |
 | 3     | 3        | 28     | 37.84    | 34.33      | 3.42       | 0.122         |
 | 4     | 3        | 28     | — (DEC-S026) | — | — | **burst** — 28 pts in ~1.8d; re-est'd 2, drift +4 |
+| 5     | 8        | 28     | — (DEC-S026) | — | — | **24.5 pts/wk** — 28 pts over 8d (06-11→06-19); re-est'd 0, drift 0 |
 
 **Build strategy — vertical, not horizontal** (build plan §1): build a thin sliver through every
 layer so one real thing works end-to-end, then fatten it. The spine doesn't change as it thickens;
@@ -188,12 +189,12 @@ real phone* → 5.4 (real data, needs 5.3) → 5.R last; 5.5 anywhere, first to 
 
 | # | Task | Effort | Notes |
 |---|------|--------|-------|
-| 5.1 | **Hosted deploy + `tick` cron + `production` branch** — Vercel; CRON_SECRET-guarded tick route; production branch + /promote-production; hosted PG provider | 5 | **DEC-033** — provider pick **OPEN** (owner/Eric; money + lead time; phase long pole). Fires DEC-020/023/S022. [#75](https://github.com/mobiustripper42/muster/issues/75) |
-| 5.2 | **Production auth path** — prod-minted operator magic link; /crew/dev-link stays 404; crew via DEC-030 relay | 3 | **DEC-034**; partially resolves #70. Email provider rejected. Verifies after 5.1. [#76](https://github.com/mobiustripper42/muster/issues/76) |
-| 5.3 | **Vessel-local time** — one-seam wall-clock→instant via tenant IANA tz + `Intl`; localize render | 5 | **DEC-032** (revises DEC-022). No DDL/dep. #70 gate item; gates 5.4 real data. Store-instants rejected. [#77](https://github.com/mobiustripper42/muster/issues/77) |
-| 5.4 | **Xola import surface** `/admin/import` — upload→preview/validate→importReservations+formShifts→board live | 8 | **DEC-035**; first upload surface (security pass). Needs 5.3 for real data. [#73](https://github.com/mobiustripper42/muster/issues/73) |
-| 5.R | **Pilot weekend runbook** — one page seed→import→tick→outbox→triage + pilot-only warning | 2 | Replaces #68 in-phase (#68 defers post-pilot). Build last. [#78](https://github.com/mobiustripper42/muster/issues/78) |
-| 5.5 | **e2e harness** — Playwright over crew+admin flows | 5 | **Non-gating, first to cut.** [#65](https://github.com/mobiustripper42/muster/issues/65) |
+| 5.1 | **Hosted deploy + `tick` cron + `production` branch** — Vercel; CRON_SECRET-guarded tick route; production branch + /promote-production; hosted PG provider | 5 | **[x]** **DEC-033** — provider resolved (Neon). Fires DEC-020/023/S022. [#75](https://github.com/mobiustripper42/muster/issues/75) · PR #80 |
+| 5.2 | **Production auth path** — prod-minted operator magic link; /crew/dev-link stays 404; crew via DEC-030 relay | 3 | **[x]** **DEC-034**; resolves the auth half of #70. Email provider rejected. [#76](https://github.com/mobiustripper42/muster/issues/76) · PR #82 |
+| 5.3 | **Vessel-local time** — one-seam wall-clock→instant via tenant IANA tz + `Intl`; localize render | 5 | **[x]** **DEC-032** (revises DEC-022). No DDL/dep. Resolved the timezone half of #70. Store-instants rejected. [#77](https://github.com/mobiustripper42/muster/issues/77) · PR #79 |
+| 5.4 | **Xola import surface** `/admin/import` — upload→preview/validate→importReservations+formShifts→board live | 8 | **[x]** **DEC-035/037**; xlsx upload (5.4a) + live-API pull (5.4b, DEC-036/040). [#73](https://github.com/mobiustripper42/muster/issues/73) · PRs #83, #89, #91 |
+| 5.R | **Pilot weekend runbook** — one page seed→import→tick→outbox→triage + pilot-only warning | 2 | **[x]** `docs/PILOT_RUNBOOK.md`; carries #70's pilot-only warning verbatim → closed #70. #68 full manual also shipped this phase (added scope). [#78](https://github.com/mobiustripper42/muster/issues/78) · PR #104 |
+| 5.5 | **e2e harness** — Playwright over crew+admin flows | 5 | **[x]** Playwright on :3100 over `muster_test`; CI `e2e` job (non-required). Not cut after all. [#65](https://github.com/mobiustripper42/muster/issues/65) · PR #102 |
 
 **Phase 5 total: 28 pts** (gating for the weekend: 5.1–5.4 + 5.R = 23 pts; 5.5 e2e is the fast-follow/cut
 surface). #68 (full operator manual) + #70's Twilio / single-operator tells stay open past this phase

@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.7.0] - 2026-06-20 — Phase 5
+- 28 pts shipped across 8 sessions (throughput 24.5 pts/calendar-week) — pilot-readiness/go-live: hosted deploy (Vercel+Neon), prod operator auth, vessel-local time, Xola import (xlsx + live pull), e2e Playwright harness, pilot weekend runbook
+- Plus ~15 pts added scope: operator manual (#68), all-shifts full-visibility view (#100, DEC-042), walkthrough fast-follows (#93/#94/#97/#101); #70 prod-readiness gate closed
+- Clean minor at phase close (per-PR patches collapsed — ~25 PRs in window; operator call at retro)
+- See `docs/RETROSPECTIVES.md` for the full retro
+
 ## [0.6.0] - 2026-06-12 — Phase 4
 - 28 pts shipped across 3 sessions (burst — ~1.8d span; DEC-S026 throughput model)
 - See `docs/RETROSPECTIVES.md` for the full retro

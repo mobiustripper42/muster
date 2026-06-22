@@ -156,9 +156,9 @@ Check `docs/SPEC.md` §4 *Parked* + the 2027 line before adding anything — tha
 
 ## Model Selection (project override)
 
-The shell's `## Model Selection` is the standing policy (Opus 4.8 default, Fable on-demand for bundled work). Muster's overrides:
-- **`@architect` is pinned to `claude-fable-5`** (`.claude/agents/architect.md` frontmatter is authoritative) — architecture decisions (the oracle) are where being wrong compounds, so they get the frontier tier rather than the shell's on-demand bundle trigger.
-- **`@ui-reviewer` stays Sonnet** but is worth bumping to Opus 4.8 / Fable for vision-heavy mockup-vs-build review (`docs/design/mockups/*.jsx`).
+The shell's `## Model Selection` is the standing policy (Opus 4.8 default, Sonnet for cheap/scoped work). **Fable is disabled (seeds DEC-S029)**, so muster's prior "architect on the frontier tier" override collapses to:
+- **`@architect` runs `claude-opus-4-8`** (`.claude/agents/architect.md` frontmatter is authoritative) — architecture decisions (the oracle) are where being wrong compounds, so they get the standing top tier. Revisit pinning it back to the frontier if/when Fable is re-enabled.
+- **`@ui-reviewer` stays Sonnet** but is worth bumping to Opus 4.8 for vision-heavy mockup-vs-build review (`docs/design/mockups/*.jsx`).
 
 Everything else follows the shell unchanged.
 

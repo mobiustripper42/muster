@@ -2,100 +2,19 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { formShifts } from "@core/builder/form-shifts.js";
-import { importReservations } from "@core/import/import-reservations.js";
-import { readXlsxSheet } from "@core/import/xlsx-extract.js";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
 import { runXolaPull } from "../../../lib/xola";
 
-/** A week of Xola reservations is tiny; this is the upload hard cap (DEC-037). */
-const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
-/** Every .xlsx is a zip — "PK\x03\x04". Checked on the bytes, never the extension. */
-const ZIP_MAGIC = [0x50, 0x4b, 0x03, 0x04];
-
 /**
- * Import a Xola **Reservations** .xlsx (5.4a, DEC-037). Single-step: parse →
- * `importReservations` (events + reservations) → `formShifts` (shifts + seats) →
- * the board is live. Admin-gated; the file is parsed **server-side in memory**
- * (no temp file, never reaches the client). Idempotent — re-importing a week
- * updates in place, never duplicates.
+ * Pull live reservations from Xola on demand (DEC-043) — the operator button atop
+ * the same hourly `runXolaPull`. Reuses the import seam: pull the
+ * [today−1, today+horizon] window of `/events` ⨝ `/orders` → import → form shifts.
+ * Admin-gated. Counts ride redirect params (codes only, DEC-026); the per-pull
+ * assignment summary + any skips/unknown boats are logged server-side for the dev.
  *
- * Feedback rides redirect params as CODES/counts only (DEC-026): a crafted URL
- * can't inject text into Spink's surface. Quarantined product **names** go to
- * server logs for the dev — there's no operator product-mapping UI to act on them,
- * so the visible "N skipped" count + the dev's log read is the pilot answer.
- */
-export async function runImport(formData: FormData): Promise<void> {
-  const subject = await readSubject();
-  if (!subject || subject.kind !== "admin") redirect("/admin/import");
-
-  // Upload guards run before any parse. redirect() throws, so these early-outs
-  // never fall through.
-  const file = formData.get("file");
-  if (!(file instanceof File) || file.size === 0) redirect("/admin/import?err=no_file");
-  if (file.size > MAX_UPLOAD_BYTES) redirect("/admin/import?err=too_big");
-
-  const buf = Buffer.from(await file.arrayBuffer());
-  if (buf.length < 4 || !ZIP_MAGIC.every((b, i) => buf[i] === b)) {
-    redirect("/admin/import?err=bad_type");
-  }
-
-  // Parse first, in its own guard: ANY throw from the reader is bad input (not a
-  // zip, no Reservations sheet, corrupt/hostile bytes) → parse_error. Classifying
-  // by SOURCE beats matching the error message — a RangeError from a malformed
-  // offset reads nothing like "sheet". redirect() throws, so it's outside the try.
-  let rows: string[][];
-  try {
-    rows = readXlsxSheet(buf, "Reservations");
-  } catch {
-    redirect("/admin/import?err=parse_error");
-  }
-
-  // Persist in a second guard: a throw here is the repo/schedule, not the file.
-  let params: string;
-  try {
-    const repo = getRepo();
-    const now = new Date();
-    const imp = await importReservations(repo, rows, now);
-    const form = await formShifts(repo, { now });
-
-    // The quarantine list goes to server logs (Vercel function logs) for the dev;
-    // the operator can't remap a product from the UI, so names off the surface.
-    if (imp.skipped.length) {
-      console.warn(
-        `[import] ${imp.skipped.length} row(s) skipped:`,
-        imp.skipped.map((s) => s.reason),
-      );
-    }
-    if (imp.warnings.length) console.warn("[import] warnings:", imp.warnings);
-
-    params = new URLSearchParams({
-      ok: "1",
-      added: String(imp.reservationsAdded),
-      updated: String(imp.reservationsUpdated),
-      cancelled: String(imp.reservationsNewlyCancelled),
-      events: String(imp.eventsCreated),
-      shifts: String(form.shiftsCreated),
-      shiftsCancelled: String(form.shiftsCancelled),
-      skipped: String(imp.skipped.length),
-      warn: String(imp.warnings.length),
-    }).toString();
-  } catch {
-    redirect("/admin/import?err=unavailable");
-  }
-  revalidatePath("/admin/at-risk"); // new shifts should show on the board
-  redirect(`/admin/import?${params}`);
-}
-
-/**
- * Pull live reservations from Xola on demand (5.4b — the operator button atop the
- * same `runXolaPull` the hourly cron fires). Reuses the import seam: pull the
- * [today−1, today+horizon] window → events + reservations → form shifts. Admin-
- * gated. Lets the operator import *now* and watch real counts, independent of the
- * cron. Errors split: a missing/blank `XOLA_*` config (`not_configured`) reads
- * differently from a reachable-but-failing Xola (`unavailable`) — one is a deploy
- * gap, the other is "try again". Counts ride redirect params (codes only, DEC-026).
+ * The xlsx upload is retired (DEC-043): the spreadsheet carries no Resource column,
+ * so it can't resolve a boat — the live pull is the only ingest.
  */
 export async function pullFromXola(): Promise<void> {
   const subject = await readSubject();
@@ -110,6 +29,16 @@ export async function pullFromXola(): Promise<void> {
         r.import.skipped.map((s) => s.reason),
       );
     }
+    if (r.unmappedResources.length) {
+      console.warn(
+        `[xola-pull] ${r.unmappedResources.length} UNKNOWN resource id(s) — a new/renamed boat to add to resource-map.ts:`,
+        r.unmappedResources.map((s) => s.reason),
+      );
+    }
+    // The per-day boat→times view (the operator's bad-assignment review surface) —
+    // logged for the dev; the operator's live view is /admin/shifts + the board.
+    console.info("[xola-pull] assignments:", JSON.stringify(r.assignments));
+
     params = new URLSearchParams({
       xpull: "1",
       fetched: String(r.ordersFetched),
@@ -120,10 +49,11 @@ export async function pullFromXola(): Promise<void> {
       shifts: String(r.form.shiftsCreated),
       shiftsCancelled: String(r.form.shiftsCancelled),
       skipped: String(r.import.skipped.length),
+      unmapped: String(r.unmappedResources.length),
     }).toString();
   } catch (e) {
     // Config gap (env unset) reads differently from Xola unreachable / any other
-    // throw (XolaError or unexpected) → the generic "try again".
+    // throw → the generic "try again".
     const code =
       e instanceof Error && /not configured/i.test(e.message)
         ? "x_not_configured"

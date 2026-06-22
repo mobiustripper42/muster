@@ -23,6 +23,7 @@
 
 import type { Event, Seat, Shift } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
+import type { VesselId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 import {
   deriveSeats,
@@ -61,12 +62,20 @@ export async function formShifts(
   // events have all cancelled must still be revisited so its shift can derive to
   // `Cancelled` (SPEC §5 reconciliation). The scheduled/cancelled split happens
   // per group below.
-  const groups = new Map<string, Event[]>();
+  const groups = new Map<string, { vesselId: VesselId; date: string; events: Event[] }>();
   for (const e of await repo.listEvents()) {
     const key = `${e.vesselId}|${e.date}`;
-    const arr = groups.get(key);
-    if (arr) arr.push(e);
-    else groups.set(key, [e]);
+    const g = groups.get(key);
+    if (g) g.events.push(e);
+    else groups.set(key, { vesselId: e.vesselId, date: e.date, events: [e] });
+  }
+  // DEC-043: an existing shift whose every event has RELOCATED (a reassigned boat)
+  // or vanished now has no events in its vessel+day — seed it with an empty set so
+  // the loop below derives it to `Cancelled`, instead of orphaning a ghost shift on
+  // the old boat. (The new boat's vessel+day forms its own shift from the events.)
+  for (const s of await repo.listShifts()) {
+    const key = `${s.vesselId}|${s.date}`;
+    if (!groups.has(key)) groups.set(key, { vesselId: s.vesselId, date: s.date, events: [] });
   }
 
   const result: FormResult = {
@@ -78,11 +87,10 @@ export async function formShifts(
     shiftsCancelled: 0,
   };
 
-  for (const evs of groups.values()) {
-    const first = evs[0]!;
-    const { vesselId, date } = first;
+  for (const g of groups.values()) {
+    const { vesselId, date } = g;
     const shiftId = asId<"ShiftId">(`shift-${vesselId}-${date}`);
-    const scheduled = evs.filter((e) => e.status === "scheduled");
+    const scheduled = g.events.filter((e) => e.status === "scheduled");
 
     // All events cancelled → cancel the shift (lifecycle, not seat-derived).
     // Never create a shift from cancelled-only events; never re-cancel a trip

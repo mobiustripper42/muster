@@ -6,12 +6,12 @@ import { describe, expect, it } from "vitest";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import { asId } from "../domain/ids.js";
 import type { Event, Seat } from "../domain/entities.js";
-import { seedFleet } from "../import/product-map.js";
+import { seedFleet } from "../import/resource-map.js";
 import { formShifts } from "./form-shifts.js";
 import { isLocked, lockShift } from "./lock.js";
 
-const PARTY = asId<"VesselId">("vessel-brewboat-party"); // 2-crew, per product-map
-const DUFFY = asId<"VesselId">("vessel-duffy-rental"); // 0-crew, self-captained
+const PARTY = asId<"VesselId">("vessel-brew-2"); // 2-crew (captain+mate), seeded by the fleet
+const DUFFY = asId<"VesselId">("vessel-duffy-rental"); // 0-crew, seeded manually (Duffys aren't in the crewed fleet)
 
 const event = (id: string, vesselId: typeof PARTY, date: string, time: string): Event => ({
   id: asId<"EventId">(id),
@@ -24,6 +24,9 @@ const event = (id: string, vesselId: typeof PARTY, date: string, time: string): 
 
 async function seedEvents(repo: InMemoryRepository): Promise<void> {
   await seedFleet(repo);
+  // A zero-crew vessel seeded directly — Duffy rentals are excluded from the crewed
+  // fleet, but formShifts must still handle a 0-manning vessel (vacuously Crewed).
+  await repo.saveVessel({ id: DUFFY, name: "Duffy Rental", coiMaxPax: 12, manning: [] });
   // Two party-boat trips same day → one shift; a third on another day → separate.
   await repo.saveEvent(event("e1", PARTY, "2026-05-16", "15:30"));
   await repo.saveEvent(event("e2", PARTY, "2026-05-16", "19:30"));

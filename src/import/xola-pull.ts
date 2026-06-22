@@ -1,29 +1,32 @@
 /**
- * The Xola pull orchestrator (DEC-036, task 5.4b) — Architecture B's primary
- * ingest: a windowed `fetchOrders` → `mapXolaOrders` → `importRecords` →
- * `formShifts`, so the board self-updates without anyone uploading a spreadsheet.
- * Runs hourly off its own cron (`/api/cron/xola-pull`), isolated from the ask
- * `tick` so a Xola outage can't disrupt the engine.
+ * The Xola pull orchestrator (DEC-036 → DEC-043) — Architecture B's primary
+ * ingest: a windowed `fetchOrders` ⨝ `fetchEvents` → `mapXolaOrders` →
+ * `importRecords` → `formShifts`, so the board self-updates without anyone
+ * uploading a spreadsheet. Runs hourly off its own cron (`/api/cron/xola-pull`),
+ * isolated from the ask `tick` so a Xola outage can't disrupt the engine.
  *
- * Pure of real I/O: the network `fetcher` is injected (the edge supplies the
- * `makeXolaFetcher` one; tests supply a fake), and `now` is injected like every
- * other clock op (DEC-023). So the whole chain — window math included — is
- * unit-tested against the in-memory repo. `app/lib/xola.ts` is the only piece
- * that touches `process.env` + global `fetch`.
+ * **Two feeds, joined on `event.id` (DEC-043):** orders carry the bookings; events
+ * carry the assigned boat (`resourceUsages`). `eventVesselMap` resolves events →
+ * vessels; `mapXolaOrders` stamps each booked record with its boat. Orders are
+ * windowed [today−1, today+lead+1]; the events feed is now-forward (Xola ignores
+ * its date filter), so the orders window is what bounds the import — a booked trip
+ * whose event isn't boated-in-window surfaces in `mapSkipped` (the truncation tell).
  *
- * The window spans [today − 1d, today + leadDays + 1d] in vessel-local dates: the
- * back-day catches a just-cancelled near trip (reconcile — Architecture B job #3),
- * the forward span covers the staffing horizon the builder forms shifts within.
+ * Pure of real I/O: the network `fetcher` is injected, and `now` is injected like
+ * every clock op (DEC-023). So the whole chain — window math included — is
+ * unit-tested against the in-memory repo. `app/lib/xola.ts` is the only piece that
+ * touches `process.env` + global `fetch`.
  */
 
 import { STAFFING_HORIZON_LEAD_DAYS } from "../builder/derive.js";
 import { formShifts } from "../builder/form-shifts.js";
 import type { FormResult } from "../builder/form-shifts.js";
 import { TENANT_TIMEZONE } from "../config/tenant.js";
+import type { VesselId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 import { importRecords } from "./import-reservations.js";
-import type { ImportResult } from "./import-reservations.js";
-import { fetchOrders, mapXolaOrders } from "./xola-client.js";
+import type { ImportResult, RawReservationRecord, SkippedRow } from "./import-reservations.js";
+import { eventVesselMap, fetchEvents, fetchOrders, mapXolaOrders } from "./xola-client.js";
 import type { XolaFetcher } from "./xola-client.js";
 
 /** The vessel-local calendar date ("YYYY-MM-DD") of an instant, DST-correct. */
@@ -55,20 +58,71 @@ export function pullWindow(
   return { start: addDays(today, -1), end: addDays(today, leadDays + 1) };
 }
 
+/** One boat's trips on one day — a row of the operator's per-pull assignment review. */
+export interface BoatAssignment {
+  vesselId: VesselId;
+  /** Departure clock times this boat runs that day, earliest first. */
+  times: string[];
+}
+
+/** What this pull says runs each day — the surface the operator eyeballs to catch a
+ * bad Xola boat assignment ("why is Brew 3 on Saturday?") before it matters. */
+export interface DayAssignments {
+  date: string;
+  boats: BoatAssignment[];
+}
+
+/**
+ * Group the pull's BOOKED records into a per-day boat→times view. Cancelled records
+ * are omitted (they carry no boat and represent trips coming off the board). Pure.
+ */
+export function summarizeAssignments(records: RawReservationRecord[]): DayAssignments[] {
+  // date → vesselId → set of times
+  const byDay = new Map<string, Map<VesselId, Set<string>>>();
+  for (const rec of records) {
+    if (rec.status !== "booked" || !rec.vesselId) continue;
+    const boats = byDay.get(rec.date) ?? new Map<VesselId, Set<string>>();
+    const times = boats.get(rec.vesselId) ?? new Set<string>();
+    times.add(rec.time);
+    boats.set(rec.vesselId, times);
+    byDay.set(rec.date, boats);
+  }
+  return [...byDay.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, boats]) => ({
+      date,
+      boats: [...boats.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([vesselId, times]) => ({
+          vesselId,
+          times: [...times].sort(),
+        })),
+    }));
+}
+
 export interface XolaPullResult {
   window: { start: string; end: string };
   ordersFetched: number;
+  eventsFetched: number;
+  /** Events with a resolved crewed boat (the join's usable rows). */
+  boatedEvents: number;
+  /** Boated events on a self-captained Duffy resource — excluded from crewing. */
+  excludedResources: number;
+  /** Events on an UNKNOWN resource id — a new/renamed boat to confirm (DEC-018). */
+  unmappedResources: SkippedRow[];
   recordsMapped: number;
   mapSkipped: number;
   import: ImportResult;
   form: FormResult;
+  /** Per-day boat→times — the operator's review surface (catch bad assignments). */
+  assignments: DayAssignments[];
 }
 
 /**
  * One pull cycle. `sellerId` + the `fetcher` come from the edge (env-derived);
- * `now`/`leadDays`/`tz` are injectable for tests. Order of ops matters: import the
- * reservations (which upserts events with derived status), THEN form shifts off
- * the refreshed events — same chain the xlsx surface uses.
+ * `now`/`leadDays`/`tz` are injectable for tests. Order of ops: resolve the boats
+ * from `/events`, join them onto the windowed `/orders`, import (which upserts
+ * events with derived status), THEN form shifts off the refreshed events.
  */
 export async function pullXola(
   repo: Repository,
@@ -86,16 +140,24 @@ export async function pullXola(
     start: window.start,
     end: window.end,
   });
-  const { records, skipped } = mapXolaOrders(orders);
+  const events = await fetchEvents(fetcher, { sellerId });
+  const { vessels, excluded, unmapped } = eventVesselMap(events);
+
+  const { records, skipped } = mapXolaOrders(orders, vessels);
   const imported = await importRecords(repo, records, now);
   const formed = await formShifts(repo, { now, leadDays });
 
   return {
     window,
     ordersFetched: orders.length,
+    eventsFetched: events.length,
+    boatedEvents: vessels.size,
+    excludedResources: excluded,
+    unmappedResources: unmapped,
     recordsMapped: records.length,
     mapSkipped: skipped.length,
     import: imported,
     form: formed,
+    assignments: summarizeAssignments(records),
   };
 }

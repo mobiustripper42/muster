@@ -1,9 +1,9 @@
 /**
  * Production fleet seed — materializes the vessels + role types that the Xola
- * import resolves products to (src/import/product-map.ts → seedFleet).
+ * import resolves boats to (src/import/resource-map.ts → seedFleet).
  *
  * WITHOUT THIS, AN IMPORT FORMS SHIFTS WITH ZERO SEATS AND THE BOARD STAYS
- * EMPTY: the importer *looks vessels up* by product name, it does not create
+ * EMPTY: the importer *looks vessels up* by Xola resource id, it does not create
  * them. This is the one-time bootstrap the deploy needs before the first import.
  *
  * Idempotent (every write is an upsert). Run once per environment:
@@ -12,7 +12,7 @@
  * Dev tooling, not app code. Uses the same Postgres adapter the app runs on.
  */
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
-import { seedFleet } from "../src/import/product-map.js";
+import { seedFleet } from "../src/import/resource-map.js";
 import { DEFAULT_DATABASE_URL } from "./migrate.js";
 
 const url = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
@@ -27,7 +27,7 @@ try {
     console.log(`  - ${v.id}  (cap ${v.coiMaxPax}; ${manning})`);
   }
   console.log("\nNext: edit + run db/seed-pilot-crew.ts (npm run db:seed:crew:pilot), then import at /admin/import.");
-  console.log("⚠ The vessel capacities + manning in product-map.ts are INVENTED (DEC-016) — confirm against the real COIs.");
+  console.log("Fleet = the 4 real BrewBoats, capacities validated against live Xola Resources (DEC-043).");
 } finally {
   await repo.close();
 }

@@ -12,7 +12,8 @@
  *     `item.event.id` join key) — same shape DEC-036 settled.
  *   - `/events` → one boat-trip per row, carrying `resourceUsages` (the boat)
  *     inline. A BARE ARRAY, not a `{data,paging}` page; it ignores date filters,
- *     so it returns a now-forward window the caller trims to the staffing horizon.
+ *     so it returns a now-forward window — the windowed `/orders` pull is what
+ *     bounds the import (a booked trip out of that window forms no record).
  * `eventVesselMap` resolves the events to real vessels; `mapXolaOrders` stamps the
  * resolved `vesselId` + the real `eventId` onto each booked record.
  *
@@ -183,18 +184,29 @@ export function eventVesselMap(events: XolaEvent[]): {
   const unmapped: SkippedRow[] = [];
   for (const ev of events) {
     const eventId = (ev.id ?? "").trim();
-    const resourceId = ev.resourceUsages?.[0]?.resource?.id;
-    if (!eventId || !resourceId) continue; // boat-less / malformed — not an error
-    const res = resolveResource(resourceId);
-    if (res.kind === "ignored") {
-      excluded++;
-      continue;
+    if (!eventId) continue;
+    // An event can carry more than one resource usage — take the FIRST that maps to
+    // a crewed boat (don't assume index 0 is the boat). If none does, report why:
+    // a self-captained Duffy → excluded; an unknown id → quarantined; no usable
+    // resource at all → boat-less, silently skipped (not an error).
+    let resolved = false;
+    let sawExcluded = false;
+    let unmappedReason: string | undefined;
+    for (const u of ev.resourceUsages ?? []) {
+      const rid = u.resource?.id;
+      if (!rid) continue;
+      const res = resolveResource(rid);
+      if (res.kind === "mapped") {
+        vessels.set(eventId, res.vessel.vesselId);
+        resolved = true;
+        break;
+      }
+      if (res.kind === "ignored") sawExcluded = true;
+      else unmappedReason ??= res.reason;
     }
-    if (res.kind === "unmapped") {
-      unmapped.push({ reason: res.reason });
-      continue;
-    }
-    vessels.set(eventId, res.vessel.vesselId);
+    if (resolved) continue;
+    if (sawExcluded) excluded++;
+    else if (unmappedReason) unmapped.push({ reason: unmappedReason });
   }
   return { vessels, excluded, unmapped };
 }
@@ -343,7 +355,7 @@ export async function fetchOrders(
 /**
  * Pull the `/events` feed (one boat-trip per element). Xola returns a BARE ARRAY
  * here, not a paged `{data}`, and ignores date filters — so this is a single GET of
- * the default now-forward window; the caller filters to the staffing horizon.
+ * the default now-forward window; the windowed `/orders` pull bounds the import.
  */
 export async function fetchEvents(
   fetcher: XolaFetcher,

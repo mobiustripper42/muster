@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Notice } from "../../../components/ui/notice";
 import { Shell } from "../../../components/ui/shell";
+import { readSubject } from "../../lib/auth";
 import { getRepo } from "../../lib/repo";
 import { setEnginePaused } from "./actions";
 
@@ -36,6 +37,12 @@ export default async function AdminHome({
   searchParams: Promise<Search>;
 }) {
   const sp = await searchParams;
+
+  // Admin-gate inline, like every sibling admin surface (there's no (admin)
+  // layout/middleware). Pre-#124 the hub was a static link list; now it reads
+  // engine state + shows the operator control, so it must gate too.
+  const subject = await readSubject();
+  if (!subject || subject.kind !== "admin") return <SignedOut />;
 
   // Absent flag ⇒ running (DEC-054). A DB outage shows an unknown state rather
   // than 500-ing the hub.
@@ -139,5 +146,17 @@ function EngineControl({ paused }: { paused: boolean | null }) {
         </button>
       </form>
     </div>
+  );
+}
+
+function SignedOut() {
+  return (
+    <Shell width="3xl">
+      <h1 className="text-lg font-semibold text-ink">Muster · Admin</h1>
+      <Notice>
+        You’re signed out. Tap an operator magic link to get in — this surface is
+        Spink’s.
+      </Notice>
+    </Shell>
   );
 }

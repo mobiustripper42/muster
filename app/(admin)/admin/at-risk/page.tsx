@@ -64,6 +64,15 @@ export default async function AtRiskBoard({
 
   const regressions = vms.filter((v) => v.regression).length;
 
+  // Engine paused (#124, DEC-054): an empty board below is a MUTED engine, not
+  // success — say so loudly. Unreadable flag → skip the banner, never fail the board.
+  let enginePaused = false;
+  try {
+    enginePaused = await repo.isEnginePaused();
+  } catch {
+    /* flag unreadable — omit the banner rather than break the board */
+  }
+
   // `leaned`/`leaned_shift` carry ids; resolve to entities we know (a crafted
   // URL with an unknown id renders nothing). Errors map through
   // LEAN_ERROR_COPY only.
@@ -102,6 +111,17 @@ export default async function AtRiskBoard({
           </div>
         )}
       </header>
+
+      {/* A paused engine makes "empty board = success" lie — name it (#124, DEC-054). */}
+      {enginePaused && (
+        <Notice tone="warn">
+          Engine paused — the automation isn’t firing asks. An empty board here
+          means the engine is muted, not that every shift is covered.{" "}
+          <Link href="/admin" className="font-semibold text-accent">
+            Resume staffing ↗
+          </Link>
+        </Notice>
+      )}
 
       {/* Redirect-param feedback reads safely when stale ("last action", not
           "just happened") — the no-client-JS tradeoff (DEC-026). */}

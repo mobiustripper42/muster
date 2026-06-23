@@ -29,6 +29,7 @@ const TABLES = [
   "magic_tokens",
   "outbox_entries",
   "reliability_events",
+  "app_settings",
 ];
 
 async function canConnect(url: string): Promise<boolean> {

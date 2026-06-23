@@ -36,6 +36,16 @@ export async function GET(req: Request) {
 
   const now = new Date();
   const repo = getRepo();
+
+  // Operator pause gate (#124, DEC-054): the cron still fires every 15 min, but a
+  // paused engine no-ops here — staffing arms/disarms from /admin without a
+  // redeploy. Default is running (absent flag ⇒ false); pause is an explicit
+  // operator state, never inferred. Enforced here at the edge, not in `tick`,
+  // so the engine core stays pure.
+  if (await repo.isEnginePaused()) {
+    return NextResponse.json({ ok: true, paused: true, at: now.toISOString() });
+  }
+
   const r = await tick(repo, now);
   // Edge channel wiring (DEC-030): every ask this tick fired → the pilot outbox.
   await forwardToOutbox(r.firedAsks);

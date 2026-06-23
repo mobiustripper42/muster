@@ -611,4 +611,21 @@ export class PostgresRepository implements Repository {
     );
     return rows.map(toReliability);
   }
+
+  // ── Engine pause flag (operator control — #124, DEC-054) ───────────────────
+  async isEnginePaused(): Promise<boolean> {
+    const { rows } = await this.#pool.query(
+      "select value from app_settings where key='engine_paused'",
+    );
+    // Absent ⇒ running (DEC-054): no row means no one has touched the switch,
+    // which for an autonomous engine must mean ON. Only an explicit "true" pauses.
+    return rows[0]?.value === "true";
+  }
+  async setEnginePaused(paused: boolean, at: string): Promise<void> {
+    await this.#pool.query(
+      `insert into app_settings(key, value, updated_at) values ('engine_paused', $1, $2)
+       on conflict (key) do update set value=excluded.value, updated_at=excluded.updated_at`,
+      [paused ? "true" : "false", at],
+    );
+  }
 }

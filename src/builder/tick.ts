@@ -13,6 +13,12 @@
  * Vercel cron) waits for the first hosted deploy. For now its callers are tests
  * and any manual "run the engine" trigger — exactly how `formShifts` already
  * lives. `now` is injected; the core reads no clock.
+ *
+ * **Pause is enforced at the cron edge, NOT here** (#124, DEC-054): the operator
+ * pause flag is checked in `app/api/cron/tick/route.ts`, which skips calling
+ * `tick` when paused — `tick` stays pure (pause is an ops concern, not engine
+ * logic). Any *new* autonomous caller of `tick` must check `isEnginePaused`
+ * itself; the dev CLI (`db/tick-dev.ts`) and manual cockpit asks bypass by design.
  */
 
 import type { Ask, Seat, Shift } from "../domain/entities.js";

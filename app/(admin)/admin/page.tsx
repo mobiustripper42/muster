@@ -1,18 +1,67 @@
 import Link from "next/link";
+import { Notice } from "../../../components/ui/notice";
 import { Shell } from "../../../components/ui/shell";
+import { getRepo } from "../../lib/repo";
+import { setEnginePaused } from "./actions";
 
 /**
- * Admin hub (Spink) — nav to every reachable surface (#100 Part B). The At-Risk
- * board is ranked FIRST and heavier: it's the one surface that legitimately
- * summons (push). The rest — Outbox, Import, and the deliberate-PULL All-shifts
- * view — are plainer links below it, and All-shifts carries NO count badge (a
- * badge would turn a pull surface into ambient monitor-bait — DEC-042, BRAND).
- * The per-shift cockpit is reached from the boards, not listed here.
+ * Admin hub (Spink) — nav to every reachable surface (#100 Part B), plus the
+ * engine arm/disarm control (#124, DEC-054). The At-Risk board is ranked FIRST
+ * and heavier: it's the one surface that legitimately summons (push). The rest —
+ * Outbox, Import, and the deliberate-PULL All-shifts view — are plainer links
+ * below it, and All-shifts carries NO count badge (a badge would turn a pull
+ * surface into ambient monitor-bait — DEC-042, BRAND). The per-shift cockpit is
+ * reached from the boards, not listed here.
  */
-export default function AdminHome() {
+
+export const dynamic = "force-dynamic";
+
+/** Redirect-param feedback carries codes, never prose (DEC-026) — map here. */
+const ENGINE_FEEDBACK: Record<string, { tone: "ok" | "warn"; text: string }> = {
+  paused: {
+    tone: "warn",
+    text: "Engine paused. Scheduled ticks will no-op until you resume — no asks fire automatically. Manual asks still work.",
+  },
+  running: {
+    tone: "ok",
+    text: "Engine running. The automation will fire asks on the next scheduled tick.",
+  },
+};
+
+type Search = { engine?: string; engine_error?: string };
+
+export default async function AdminHome({
+  searchParams,
+}: {
+  searchParams: Promise<Search>;
+}) {
+  const sp = await searchParams;
+
+  // Absent flag ⇒ running (DEC-054). A DB outage shows an unknown state rather
+  // than 500-ing the hub.
+  let paused: boolean | null;
+  try {
+    paused = await getRepo().isEnginePaused();
+  } catch {
+    paused = null;
+  }
+
+  const feedback = sp.engine ? (ENGINE_FEEDBACK[sp.engine] ?? null) : null;
+
   return (
     <Shell width="3xl">
       <h1 className="text-xl font-semibold text-ink">Admin</h1>
+
+      {feedback && <Notice tone={feedback.tone}>{feedback.text}</Notice>}
+      {sp.engine_error && (
+        <Notice tone="bad">
+          Couldn’t reach the engine setting — nothing changed. Try again.
+        </Notice>
+      )}
+
+      {/* Engine arm/disarm (#124, DEC-054). The cron fires regardless; this flag
+          decides whether a scheduled tick actually does anything. */}
+      <EngineControl paused={paused} />
 
       {/* Primary / push: the board that summons you. */}
       <Link
@@ -49,5 +98,46 @@ export default function AdminHome() {
         Roster, event admin, and shift builder land here in later phases.
       </p>
     </Shell>
+  );
+}
+
+/** The engine pause/resume control. Server-rendered, no client JS (DEC-026):
+ * the button posts the desired next state to `setEnginePaused`. */
+function EngineControl({ paused }: { paused: boolean | null }) {
+  if (paused === null) {
+    return (
+      <div className="rounded-card border border-line bg-card px-4 py-3">
+        <p className="text-sm text-muted">
+          Engine status unavailable — couldn’t reach the database.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-card border border-line bg-card px-4 py-4 shadow-sm">
+      <div className="flex flex-col gap-0.5">
+        <span className="font-semibold text-ink">
+          Engine: {paused ? "Paused" : "Running"}
+        </span>
+        <span className="text-sm text-muted">
+          {paused
+            ? "Scheduled ticks no-op — no asks fire automatically. (Manual asks still work.)"
+            : "The automation fires asks on each scheduled tick."}
+        </span>
+      </div>
+      <form action={setEnginePaused}>
+        <input type="hidden" name="paused" value={String(!paused)} />
+        <button
+          type="submit"
+          className={`shrink-0 rounded-card border px-4 py-2 text-sm font-semibold shadow-sm ${
+            paused
+              ? "border-ok-line bg-ok-bg text-ok"
+              : "border-warn-line bg-warn-bg text-warn"
+          }`}
+        >
+          {paused ? "Resume staffing" : "Pause staffing"}
+        </button>
+      </form>
+    </div>
   );
 }

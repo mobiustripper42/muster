@@ -1147,6 +1147,38 @@ Both share the **occupant-pin race guard** (a swap between reads → `raced`, re
 
 ---
 
+## DEC-043: Ingest is events-driven — the boat is the event's assigned Resource, not a vessel invented from the product string (supersedes DEC-016's collapse)
+
+**Status:** Built (Session 22, PR #110). @architect-gated. The Xola Land adapter pulls **`/events`** alongside `/orders` and joins them on the real `event.id`; everything downstream of the DEC-015 seam is unchanged.
+
+**The bug it fixes:** `importRecords` keyed events as `vessel+date+time`, resolving the vessel from the free-text product via `PRODUCT_MAP` (DEC-016). BrewBoat is ONE experience run across 4 boats, so every boat-trip at the same slot collapsed into one event/shift — under-counting crews. Both the xlsx and the orders pull shared this collapse. Verified in production (Session 22): the assigned boat is a **Resource on the event** (`event.resourceUsages[].resource.id`), which the orders feed drops.
+
+**Decision:**
+- **Events-driven join.** `fetchEvents` (a bare-array, now-forward feed) → `eventVesselMap` resolves each boated event to a real vessel; `mapXolaOrders` stamps the resolved `vesselId` + the real `eventId` onto each booked record. Orders carry the bookings + the `item.event.id` join key; the windowed orders pull bounds the import.
+- **Key the event on the real `event.id`.** Four boats at one slot → four events → four shifts. A reassigned boat (Drew moves a >12-pax trip) reconciles **in place** — same `event.id`, new vessel — and `formShifts` now cancels the old vessel+day shift instead of orphaning it (the one builder change).
+- **The fleet is seeded by resource id**, not invented: Brew 1/2/3/4 (cap 14/16/12/12, all captain+mate); the 2 self-captained Duffy resources are excluded; an unknown resource id is quarantined (fulfilling DEC-018's "key off a stable id" revisit). `product-map.ts` → `resource-map.ts`.
+- **Time = wall-clock string-slice off `event.start`** (DEC-032) — never `new Date()`, which would shift every departure by the offset (`start` carries the local wall-clock under a `Z` suffix; verified against `arrivalDatetime`'s offset).
+- **Cancels are explicit status-700 rows, not absences** (verified) — matched by `items[].id`, status `200→700`. A fully-cancelled trip de-boats; its 700 row reconciles against the **stored** event (which kept its vessel) → event `cancelled` → shift cancelled. No vanish/absence-detection (DEC-037 punt holds).
+- **Boat-less events are skipped + counted**; the next pull picks them up once a boat is assigned.
+- **Crew is seeded manually, not imported** (the guide roster is 403 for the seller key); Xola guide *assignments* are **not** imported as seats (DEC-009 — Muster owns crewing).
+- **Operator trust model:** auto-import stays, Xola is the single source of truth; a bad boat assignment is fixed **in Xola + "Pull now"** (no Muster-side staging/override). `XolaPullResult.assignments` (per-day boat→times) + `unmappedResources` (an unknown boat id) are the operator's review surface to catch a bad assignment.
+
+**Supersedes:** DEC-016's single-vessel-per-product collapse + its 5 invented vessels (the durable DEC-016 / DEC-ROLE-1 principle — manning is data the deriver loops — **stands**; only the invented fleet dies). **Amends:** DEC-036/DEC-037 (the planned `fetchEvents` half is now the primary adapter; the xlsx upload is retired — it can't resolve a boat), DEC-018 (quarantine keys off `resource.id`), DEC-029 (`vesselId` joins the material set; event identity is the real `event.id`). **Untouched:** DEC-015 (seam), DEC-032 (vessel-local), DEC-022/DEC-031 (horizon / fills-by), DEC-009.
+
+**Relationship:** the second Land adapter DEC-015 anticipated, and simpler than the orders adapter (boat + crew inline). G1–G9 reconcile harness in `xola-pull.test.ts` pins the behavior — it caught the reassignment-orphan bug before ship.
+
+---
+
+## DEC-044: Crew seed carries a placeholder MMC until BrewBoat tracks real credentials
+
+**Status:** Built (Session 22). `db/seed-pilot-crew.ts` seeds every crew member a far-future sentinel MMC expiry (`2099-12-31`); a real `mmcExpiry` overrides it per person as records are collected.
+
+**Why:** MMC is a **universal** hard credential gate (`src/oracle/eligibility.ts` → `HARD_CREDENTIAL_TYPES = ["MMC"]`) — no valid MMC → eligible for *no* seat, captain or mate. BrewBoat keeps **no MMC records today** (the operator has never had a tool; Muster will become that tool). Without a placeholder the eligible pool is empty and the board crews nobody. This is an **operator-authorized stopgap, not invented data** — the distinction that matters after DEC-016: the operator named the gap and chose the placeholder, and a real (or lapsed) date replaces the sentinel the moment it exists.
+
+**How to apply:** do not treat the `2099-12-31` MMC as a bug. When MMC tracking lands in Muster, replace the sentinel with captured expiries; a lapsed date then correctly drops that person from the eligible pool.
+
+---
+
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)
 
 These are deferred by design. Each names an owner and a trigger. **Consult @architect (and the named

@@ -1,35 +1,42 @@
 /**
- * Xola live-API Land adapter (DEC-036, task 5.4b) — the second ingest source
- * behind the DEC-015 Land→Map→Reconcile seam. It produces the same
- * `RawReservationRecord[]` the xlsx reader does and hands them to `importRecords`;
- * everything downstream (event upsert, identity, DEC-029 materiality, DEC-018
- * product quarantine) is unchanged.
+ * Xola live-API Land adapter (DEC-036 → DEC-043) — the ingest behind the DEC-015
+ * Land→Map→Reconcile seam. It produces `RawReservationRecord[]` and hands them to
+ * `importRecords`; everything downstream (event upsert, identity, DEC-029
+ * materiality) is unchanged.
  *
- * Ported from the sibling `xola-tip-extractor` client, trimmed to the two things
- * Muster needs (orders only — no gratuity/guide machinery) and re-grounded on a
- * live sandbox response (2026-06-18). What that response settled, vs DEC-036's
- * guesses:
- *  - **No `expand` needed.** `items[]`, the item `name`, `arrival*`, and `quantity`
- *    all come inline; `event`/`experience`/`organizer`/`travelers` are `{id}` refs
- *    we don't need to form shifts.
- *  - **Contact is order-level, inline:** `order.phone` / `order.phoneCanonical`
- *    (NOT `organizer.phone`) — so the DEC-017 customers-export email-join dies; we
- *    thread phone straight through.
- *  - **Reservation identity = `items[].id`** (one record per item, since a Xola
- *    order can hold several bookable items).
- *  - **Party size = `items[].quantity`** (agrees with `guests.length`).
- *  - **Time is vessel-local inline:** `arrivalDatetime` ("…T18:00:00-04:00") carries
- *    the vessel offset, so the wall-clock components need no tz math (DEC-032) — no
- *    instant laundering, which was DEC-036 seam-B's whole worry.
+ * **DEC-043 (events-driven):** the boat a trip runs on is a Xola **Resource** on
+ * the trip's *event* (`event.resourceUsages[].resource.id`), not a vessel invented
+ * from the product string (DEC-016, retired). So a pull is two feeds joined on
+ * `event.id`:
+ *   - `/orders` → the bookings (reservation id, customer, pax, status, the
+ *     `item.event.id` join key) — same shape DEC-036 settled.
+ *   - `/events` → one boat-trip per row, carrying `resourceUsages` (the boat)
+ *     inline. A BARE ARRAY, not a `{data,paging}` page; it ignores date filters,
+ *     so it returns a now-forward window — the windowed `/orders` pull is what
+ *     bounds the import (a booked trip out of that window forms no record).
+ * `eventVesselMap` resolves the events to real vessels; `mapXolaOrders` stamps the
+ * resolved `vesselId` + the real `eventId` onto each booked record.
  *
- * Layering (DEC-020): the pure pieces — `mapXolaOrders` and the `fetchOrders`
- * pagination loop — take an injected `fetcher` and are unit-tested with no I/O.
- * The real network call (`makeXolaFetcher`: global `fetch` + auth headers + retry)
- * is built at the Next edge and passed in, like the postgres adapter's connection.
+ * What the live (prod) response settled (Session 22), vs DEC-036's guesses:
+ *  - **Reservation identity = `items[].id`** — stable, unique, cross-referenced on
+ *    `event.purchaseItems[].id`. We do NOT synthesize a key.
+ *  - **Cancels are status-flip-in-place:** a cancelled booking keeps its `id` +
+ *    `event.id` and flips to status 700 (verified on real cancellations) — so
+ *    cancel detection is a status match across pulls, never absence-tracking.
+ *  - **Time is vessel-local wall-clock under a misleading `Z`/offset:** the order
+ *    item's `arrivalDatetime` ("…T18:00:00-04:00") and the event's `start`
+ *    ("…T18:00:00+00:00") are BOTH 18:00 *local* (DEC-032) — string-slice, never
+ *    `new Date(...)`, or every departure shifts by the offset.
+ *
+ * Layering (DEC-020): the pure pieces — `mapXolaOrders`, `eventVesselMap`, and the
+ * `fetchOrders` pagination loop — take an injected `fetcher` and are unit-tested
+ * with no I/O. The real network call (`makeXolaFetcher`) is built at the Next edge.
  */
 
 import { isClockTime, isIsoDate } from "../domain/iso-date.js";
+import type { VesselId } from "../domain/ids.js";
 import type { RawReservationRecord, SkippedRow } from "./import-reservations.js";
+import { resolveResource } from "./resource-map.js";
 
 export const XOLA_API_VERSION = "2021-03-10";
 export const XOLA_API_BASE_DEFAULT = "https://xola.com/api";
@@ -38,9 +45,8 @@ export const XOLA_API_BASE_DEFAULT = "https://xola.com/api";
  * The confirmed-booking family (matches the sibling extractor / crewbook DEC-115):
  * 200 confirmed, 201 deposit, 202 confirmed-uncharged, 203 pay-later. 700 is a
  * cancelled item — we **include** it in the pull (unlike the tip extractor, which
- * drops it) so a booked→cancelled transition actually reconciles (Architecture B
- * job #3); the mapper turns 700 into a `cancelled` record and the rest into
- * `booked`, exactly as the xlsx Status column does.
+ * drops it) so a booked→cancelled transition actually reconciles; the mapper turns
+ * 700 into a `cancelled` record and the rest into `booked`.
  */
 export const BOOKED_STATUS_CODES = [200, 201, 202, 203] as const;
 export const CANCELLED_STATUS_CODE = 700;
@@ -82,6 +88,8 @@ export interface XolaOrderItem {
   arrivalDatetime?: string;
   quantity?: number;
   status?: number;
+  /** The boat-trip this item belongs to — the join key into `/events` (DEC-043). */
+  event?: { id?: string };
 }
 
 export interface XolaOrder {
@@ -98,10 +106,27 @@ export interface XolaPage {
   paging?: { next?: string | null };
 }
 
-/** One HTTP GET against a `/api`-relative path → parsed page. Injected for tests. */
-export type XolaFetcher = (path: string) => Promise<XolaPage>;
+/** One assigned Resource on an event — the boat lives in `resource.id` (DEC-043). */
+export interface XolaResourceUsage {
+  resource?: { id?: string };
+}
 
-// ── Pure mapping: orders → records ───────────────────────────────────────────
+/** A Xola event = one boat-trip. The `/events` list returns these inline. */
+export interface XolaEvent {
+  id?: string;
+  /**
+   * Vessel-local wall-clock under a misleading `Z`/`+00:00` suffix (DEC-032):
+   * "2026-07-04T18:00:00+00:00" means 18:00 *local*. Slice it, never parse it.
+   */
+  start?: string;
+  resourceUsages?: XolaResourceUsage[];
+}
+
+/** One HTTP GET against a `/api`-relative path → parsed JSON. An orders call is a
+ * `{data,paging}` page; the events call is a bare array — callers cast. Injected. */
+export type XolaFetcher = (path: string) => Promise<unknown>;
+
+// ── Pure mapping: orders ⨝ events → records ──────────────────────────────────
 
 /** 1800 → "18:00", 930 → "09:30". Null if not a sane HHMM. */
 function formatHhmm(t: number): string | null {
@@ -115,13 +140,11 @@ function formatHhmm(t: number): string | null {
 /** Pull vessel-local date + time off an item, preferring the offset-bearing instant. */
 function itemDateTime(item: XolaOrderItem): { date: string; time: string } | null {
   // arrivalDatetime is "YYYY-MM-DDTHH:MM:SS±HH:MM" — the wall-clock is already
-  // vessel-local (the offset IS the vessel zone, DEC-032), so a string slice is
-  // exact and tz-free.
+  // vessel-local (DEC-032), so a string slice is exact and tz-free.
   const dt = item.arrivalDatetime;
   if (typeof dt === "string" && dt.length >= 16) {
     return { date: dt.slice(0, 10), time: dt.slice(11, 16) };
   }
-  // Fallback: the split components.
   if (typeof item.arrival === "string" && typeof item.arrivalTime === "number") {
     const time = formatHhmm(item.arrivalTime);
     if (time) return { date: item.arrival, time };
@@ -130,14 +153,78 @@ function itemDateTime(item: XolaOrderItem): { date: string; time: string } | nul
 }
 
 /**
- * Pure: explode orders → one `RawReservationRecord` per item. A missing id, a
- * blank product name, or an unparseable date/time drops just that item to
- * `skipped` (batch-safe, mirrors the xlsx decoder) — never aborts the run.
+ * Vessel-local date+time from a Xola event `start` — a **string slice, never a
+ * `Date` parse** (DEC-032). `start` carries the local wall-clock under a `Z`/offset
+ * suffix that is NOT the real zone, so `new Date(start)` would shift it by the
+ * offset (verified: order `…-04:00` == event `start …+00:00`, both 18:00 local).
  */
-export function mapXolaOrders(orders: XolaOrder[]): {
-  records: RawReservationRecord[];
-  skipped: SkippedRow[];
+function eventDateTime(ev: XolaEvent): { date: string; time: string } | null {
+  const s = ev.start;
+  if (typeof s === "string" && s.length >= 16) {
+    return { date: s.slice(0, 10), time: s.slice(11, 16) };
+  }
+  return null;
+}
+
+/**
+ * Build `eventId → vesselId` from the `/events` feed. Only **boated** events whose
+ * resource maps to a crewed BrewBoat are included; self-captained Duffy resources
+ * are excluded and unknown resource ids are quarantined (DEC-018, now keyed off the
+ * stable resource id). Boat-less events (no `resourceUsages`) are simply absent —
+ * a booking against one can't form a crewed shift (they reconcile, if cancelled,
+ * against their stored event).
+ */
+export function eventVesselMap(events: XolaEvent[]): {
+  vessels: Map<string, VesselId>;
+  excluded: number;
+  unmapped: SkippedRow[];
 } {
+  const vessels = new Map<string, VesselId>();
+  let excluded = 0;
+  const unmapped: SkippedRow[] = [];
+  for (const ev of events) {
+    const eventId = (ev.id ?? "").trim();
+    if (!eventId) continue;
+    // An event can carry more than one resource usage — take the FIRST that maps to
+    // a crewed boat (don't assume index 0 is the boat). If none does, report why:
+    // a self-captained Duffy → excluded; an unknown id → quarantined; no usable
+    // resource at all → boat-less, silently skipped (not an error).
+    let resolved = false;
+    let sawExcluded = false;
+    let unmappedReason: string | undefined;
+    for (const u of ev.resourceUsages ?? []) {
+      const rid = u.resource?.id;
+      if (!rid) continue;
+      const res = resolveResource(rid);
+      if (res.kind === "mapped") {
+        vessels.set(eventId, res.vessel.vesselId);
+        resolved = true;
+        break;
+      }
+      if (res.kind === "ignored") sawExcluded = true;
+      else unmappedReason ??= res.reason;
+    }
+    if (resolved) continue;
+    if (sawExcluded) excluded++;
+    else if (unmappedReason) unmapped.push({ reason: unmappedReason });
+  }
+  return { vessels, excluded, unmapped };
+}
+
+/**
+ * Pure: explode orders → one `RawReservationRecord` per item, stamping the resolved
+ * boat (`vesselId`) + the real `eventId` from the join. Rules:
+ *  - A missing item id, blank product name, missing `event.id`, or unparseable
+ *    date/time drops just that item to `skipped` (batch-safe, never aborts).
+ *  - A **booked** item whose event isn't boated-in-window is skipped (it can't form
+ *    a crewed shift — rare; only the truncated-window edge, since boated ⟺ booked).
+ *  - A **cancelled** item emits even without a resolved boat (its trip de-boated);
+ *    `importRecords` reconciles it against its already-stored, already-boated event.
+ */
+export function mapXolaOrders(
+  orders: XolaOrder[],
+  eventVessels: Map<string, VesselId>,
+): { records: RawReservationRecord[]; skipped: SkippedRow[] } {
   const records: RawReservationRecord[] = [];
   const skipped: SkippedRow[] = [];
 
@@ -153,6 +240,11 @@ export function mapXolaOrders(orders: XolaOrder[]): {
         skipped.push({ reservationId, reason: "item missing product name" });
         continue;
       }
+      const eventId = (item.event?.id ?? "").trim();
+      if (!eventId) {
+        skipped.push({ reservationId, product, reason: "item missing event ref" });
+        continue;
+      }
       const when = itemDateTime(item);
       if (!when || !isIsoDate(when.date) || !isClockTime(when.time)) {
         skipped.push({
@@ -162,8 +254,18 @@ export function mapXolaOrders(orders: XolaOrder[]): {
         });
         continue;
       }
-      // Logical-OR, not ??: prefer the richer phoneCanonical only when it's a
-      // non-empty value — an empty "" must fall through to the raw phone, not win.
+      const status = item.status === CANCELLED_STATUS_CODE ? "cancelled" : "booked";
+      const vesselId = eventVessels.get(eventId);
+      if (status === "booked" && !vesselId) {
+        skipped.push({
+          reservationId,
+          product,
+          reason: `booked item's event not boated/in-window: ${eventId}`,
+        });
+        continue;
+      }
+      // Logical-OR, not ??: prefer phoneCanonical only when non-empty; an empty ""
+      // must fall through to the raw phone, not win.
       const phone = (order.phoneCanonical || order.phone || "").trim();
       const email = (order.email ?? "").trim();
       const partySize = Number.isFinite(item.quantity) ? Number(item.quantity) : 0;
@@ -172,9 +274,11 @@ export function mapXolaOrders(orders: XolaOrder[]): {
         product,
         date: when.date,
         time: when.time,
+        eventId,
         customerName: (order.customerName ?? "").trim(),
         partySize,
-        status: item.status === CANCELLED_STATUS_CODE ? "cancelled" : "booked",
+        status,
+        ...(vesselId ? { vesselId } : {}),
         ...(email ? { email } : {}),
         ...(phone ? { phone } : {}),
       });
@@ -203,11 +307,18 @@ export function ordersPath(opts: {
   return `/orders?${params.toString()}`;
 }
 
+/** Build the `/events?seller=…` path. Xola ignores date filters here and returns a
+ * now-forward window as a bare array, so there's nothing to page — the caller trims. */
+export function eventsPath(opts: { sellerId: string }): string {
+  const params = new URLSearchParams();
+  params.set("seller", opts.sellerId);
+  return `/events?${params.toString()}`;
+}
+
 /**
- * Follow Xola's skip-based pagination: accumulate `data`, advance via
- * `paging.next` (a ready-made path) until it's null or a short page lands. The
- * `maxItems` backstop turns a never-terminating `next` into a loud error instead
- * of an infinite loop.
+ * Follow Xola's skip-based pagination on `/orders`: accumulate `data`, advance via
+ * `paging.next` until it's null or a short page lands. `maxItems` turns a
+ * never-terminating `next` into a loud error instead of an infinite loop.
  */
 export async function fetchOrders(
   fetcher: XolaFetcher,
@@ -226,14 +337,10 @@ export async function fetchOrders(
   let path: string | null = ordersPath({ ...opts, limit });
 
   while (path) {
-    const page: XolaPage = await fetcher(path);
+    const page = (await fetcher(path)) as XolaPage;
     const rows = Array.isArray(page?.data) ? page.data : [];
     all.push(...rows);
     const next = page?.paging?.next ?? null;
-    // Terminate on either signal: a null `next` (the authoritative cursor) OR a
-    // short page. The short-page short-circuit is the standard skip-pagination
-    // idiom (matches the sibling extractor) — a deliberate optimization, safe as
-    // long as Xola doesn't hand back a non-null `next` on an under-full page.
     if (rows.length < limit || !next) return all;
     if (all.length >= maxItems) {
       throw new XolaError(`fetchOrders: exceeded ${maxItems} items — refusing to loop`, {
@@ -243,6 +350,19 @@ export async function fetchOrders(
     path = next;
   }
   return all;
+}
+
+/**
+ * Pull the `/events` feed (one boat-trip per element). Xola returns a BARE ARRAY
+ * here, not a paged `{data}`, and ignores date filters — so this is a single GET of
+ * the default now-forward window; the windowed `/orders` pull bounds the import.
+ */
+export async function fetchEvents(
+  fetcher: XolaFetcher,
+  opts: { sellerId: string },
+): Promise<XolaEvent[]> {
+  const raw = await fetcher(eventsPath(opts));
+  return Array.isArray(raw) ? (raw as XolaEvent[]) : [];
 }
 
 // ── Real fetcher (edge I/O: global fetch + auth + retry) ──────────────────────
@@ -274,7 +394,7 @@ export function makeXolaFetcher(
   const doSleep = deps.sleeper ?? sleep;
   const base = env.base.replace(/\/+$/, "");
 
-  return async (path: string): Promise<XolaPage> => {
+  return async (path: string): Promise<unknown> => {
     const url = `${base}${path.startsWith("/") ? path : `/${path}`}`;
     for (let attempt = 1; ; attempt++) {
       let res: Response;
@@ -293,7 +413,7 @@ export function makeXolaFetcher(
         await doSleep(RETRY_BASE_MS * 2 ** (attempt - 1));
         continue;
       }
-      if (res.ok) return (await res.json()) as XolaPage;
+      if (res.ok) return (await res.json()) as unknown;
       const retriable = res.status >= 500 || res.status === 429;
       if (!retriable || attempt >= RETRY_MAX_ATTEMPTS) {
         throw new XolaError(`Xola ${res.status} ${res.statusText} for ${path}`, {

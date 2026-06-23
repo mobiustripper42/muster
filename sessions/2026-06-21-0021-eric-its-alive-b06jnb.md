@@ -4,10 +4,10 @@ dev: eric
 slug: its-alive-b06jnb
 branch: claude/its-alive-b06jnb
 started: 2026-06-21T00:21:15Z
-ended:
-points:
+ended: 2026-06-23T03:01:57Z
+points: 8
 pr_numbers: [110]
-status: open
+status: closed
 transcript: /home/eric/.claude/projects/-home-eric-muster/182202e7-7637-47a8-97b5-90528c70d8a9.jsonl
 ---
 
@@ -44,3 +44,6 @@ the operator since outbound HTTP is blocked here).
   the handoff. `main` is 3 commits ahead of `production` (deploy-doc PR #109) — a
   `/promote-production` candidate, not blocking.
 - Session 21's "Phase 5 retro un-run" note was stale — retro ran, v0.7.0 tagged.
+- **Session close — PILOT IS LIVE ON PROD.** PR #110 merged + promoted (`production` @ 6b2ad55). Prod Neon wiped clean + reseeded: 4 real boats + **4 active pilot crew** (Whalen + Stoffer captains, Suarez + McGovern mates; via `PILOT_GUIDES`), placeholder MMC. This weekend's real Xola schedule imported — board correct, boats split right. Verified on live data.
+- **Both crons are OFF** (PR #123 xola-pull, #125 tick): nothing auto-pulls or auto-staffs. The manual **Pull-now** button + the `tick` route still exist. **To start staffing the pilot: re-add the `tick` cron to `vercel.json` + `/promote-production`** (or build the in-app toggle, #124).
+- Parked follow-ups: #121 (import error-UX out of the URL), #122 (`/admin/shifts` design pass under real density), #124 (engine pause/resume toggle), crew-notify (own PR). Prod Neon password was rotated (briefly pasted in chat).

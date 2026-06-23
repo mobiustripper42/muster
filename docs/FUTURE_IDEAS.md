@@ -22,6 +22,46 @@ don't re-log them:
 
 ---
 
+## Max-slice candidates — prioritized index (2026-06-23)
+
+A reading-order *index* over the parking lot below, grouped by feature with a working priority.
+The chronological table is still the source of detail (the "why / catch / verdict"); this just says
+what's near the top. Priority is Eric's working call, not a commitment — re-rank freely. **The rule
+still holds:** nothing here is built until the single-horizon slice has run a real BrewBoat weekend.
+
+### HIGH — next-up max-slice
+| Feature | One-liner | Detail |
+|---|---|---|
+| **Crew time-off / sign-up (availability + blackout)** | Crew state "can't work this weekend" (blackout) or opt in to dates *before* asks, so the oracle pool reflects stated availability and stops firing dead asks | 2026-06-23 row |
+| **Shift editor** | First-class edit surface for a formed shift — split/merge, manning/seat tweak, manual compose/override, retime. **UX screen already designed** | 2026-06-23 row |
+| **Post-shift report card** | "Shift complete" wrap-up on the card + 8-of-8 attendance capture — closes the card lifecycle and is where reliability data is born | 2026-06-07 ("post-shift state") |
+| **Calendar view of reservations / shifts** | Week/month grid — the weekend at a glance | 2026-06-23 row |
+| **Filter-by-crew-on-boats** | Cross-shift roster: "show only Liam's boats Saturday" / who's on each boat | 2026-06-23 row |
+
+### MED — strong, not first
+| Feature | One-liner | Detail |
+|---|---|---|
+| **Weekend staffing heatmap** | Boats × slots colored by crewing health — one calm zoom-out, folds calendar + at-risk | 2026-06-23 row |
+| **Per-vessel crew qualification gate** | Oracle gates on which boats a crew is checked out on ("Liam isn't on Brew 3") — a correctness hole if missing | 2026-06-23 row |
+| **Crew "living link" → My Shifts + iCal feed** | Persistent bookmarkable home + calendar push | 2026-06-19 row |
+| **`/admin/shifts` in-flight list + global nav** | Standing path back to a nudged shift's cockpit | 2026-06-19 row |
+| **Operator "My shifts" in the admin session** | Spink is captain+operator — stop the two-browser dance | 2026-06-19 row |
+| **Import audit — on-screen + DB** | Per-run audit, history browse ([#128](https://github.com/mobiustripper42/muster/issues/128)) | issue #128 |
+
+### LATER — real but parked
+| Feature | One-liner | Detail |
+|---|---|---|
+| **Volume-neutral reliability scoring** | Average / confidence-weighted vs today's plain sum | 2026-06-07 row |
+| **Inverse-exponential bail-lateness penalty** | Steep near call time vs today's linear | 2026-06-07 row |
+| **Richer call-time model** | Per-vessel prep + transit vs flat 45-min lead | 2026-06-07 row |
+| **Booking modification (party-size → reassignment)** | Scheduler-mediated Tier 1; writeup below | parked row + writeup |
+| **Smart same-day booking** | Oracle-gated open times + request-a-grey-slot | 2026-06-11 row |
+| **"View as crew" render-as** | Operator browses crew surfaces, no cookie swap | DEC-030 writeup |
+| **Periodic keep-warm touch** | Light-week "still in touch" — **overlaps the messaging slice** | 2026-06-17 row |
+| **12h / 24h time-format preference** | Honor the device clock | 2026-06-18 row |
+
+---
+
 ## Parking lot
 
 *(date · idea · why it's tempting · the catch / guardrail · verdict: parked / folding-into-v1.1 / dropped)*
@@ -46,6 +86,12 @@ don't re-log them:
 | 2026-06-18 (Eric) | **Admin navigation — reach an off-board shift's cockpit** — once a shift leaves the At-Risk board (nudged → in-flight) and isn't in the outbox, there's no standing path back to its cockpit; the only link is the **one-shot** lean toast (DEC-026 redirect param), gone after you navigate away | A nudged shift you want to re-check has no entry point — the board correctly hides it (being worked), the breadcrumb only returns to the board, the toast link is ephemeral | Needs a global nav / shift list / search (an "in-flight / being worked" view, or `/admin/shifts`) — a surface v1 deliberately lacks (admin home links only board + outbox; roster/builder are later phases). All current behavior is correct by design | parked — out of slice; revisit when admin nav lands |
 | 2026-06-19 (Eric) | **Operator "My shifts" in the admin session** — the operator who's also crew (Spink: captain + operator) can't see their own assignments while signed in as admin; `/crew` is `kind === "crew"`-gated, so today it's two sessions / two browsers. Want it all in one. | Spink is both roles; switching sessions just to check his own My Shifts is daily friction. The data's already there (his `crew-spink` assignments); the outbox already bridges one case (answer your own ask inline) | Admin & crew are deliberately separate sessions (one cookie, one `kind`). Options: a dual-role session, or an admin-side "My shifts" panel that reads the operator's `OPERATOR_CREW_MEMBER_ID` assignments. Keep the role separation honest (don't blur what's an operator action vs a crew action) | parked — quality-of-life; revisit post-slice |
 | 2026-06-19 (Eric) | **Crew "living link" → My Shifts (+ calendar feed)** — give each crew member a **persistent** capability-URL that always lands on their current My Shifts (and shift cards): textable, no login, **bookmarkable forever**, always-current. Plus an **iCal / Google calendar feed** off the same link so shifts appear in their phone calendar (push, not pull — they never navigate). Crew *will* need easy re-entry to My Shifts (re-check call time / dock / manifest), and the placeholder root + single-use ask link don't give a durable home. | **The customer side already designed this** — `the-living-link.md` §6, "same capability-URL family as the crew magic-link auth (DEC-020)." So the primitive exists; this is applying the *persistent* flavor to crew. The calendar feed is the strongest re-entry: the shift is already in their calendar. | Today's crew magic link is **single-use** (24h, consumed, prefetch-safe); a living link is a **persistent bearer credential** — forward it and someone sees your shifts (the customer doc accepts that tradeoff; calendar-feed tokens carry it too). Decide token model (rotating? revocable?). **Cheap interim for the pilot:** session-aware root redirect (`/` → `/crew` for a crew session) + "bookmark / add to home screen" — the 14-day session cookie covers active crew until the real thing. | parked — but the re-entry *need* is real for the crew test; do the cheap interim first |
+| 2026-06-23 (Eric) | **Crew time-off / sign-up — availability + blackout input** — crew mark "can't work this weekend" (blackout) or opt in to dates *ahead of asks*, so the oracle pool reflects stated availability before it fires | Stops dead asks at the source: today the pool is credential + reliability only, so the engine can ask people who were never going to say yes. Stated availability makes every ask land warmer and the at-risk picture honest earlier | New crew-side surface + a pool filter the oracle honors (an availability gate alongside credentials). Decide hard-exclude vs ranking-deprioritize. Watch it doesn't become a scheduling-app obligation ("now I HAVE to mark off") that erodes the no-babysitting stance (§2.6) | **HIGH** — improves the existing engine, not garnish; build candidate |
+| 2026-06-23 (Eric) | **Shift editor** — a first-class edit surface for a formed shift: split/merge, adjust manning/seats, manual compose/override, retime. **The UX screen is already designed** | Consolidates the deferred Pass-C builder bits (split/merge, bulk lock) into one real surface instead of one-off actions; the operator already has the mental model (the screen exists) | Edits cascade into the seat machine + crew re-evaluation (same edges as a late booking / reassignment) — reuse the reconciliation rails, don't reinvent. A manual override that fights the automation wants the parked `automationPaused` lever (DEC-027 §2) once it can act on a seat carrying a live ask | **HIGH** — designed already; build candidate |
+| 2026-06-23 (Eric) | **Calendar view of reservations / shifts** — a week/month grid of the weekend's trips + their shifts, read at a glance | The operator's missing "zoom-out": today it's the at-risk board + per-shift cockpit, with no single time-grid of "what's running this weekend." Pairs with the heatmap | A read-model over events + shifts (pure deriver); the work is the surface, not the data. Decide grain (day/week/month) and whether crewing state colors the cells | **HIGH** — named operator ask |
+| 2026-06-23 (Eric) | **Filter-by-crew-on-boats** — a cross-shift roster: pick a crew member → see only their boats/shifts this weekend; or read each boat's assigned crew at a glance | Answers "where's Liam Saturday?" / "who's on Brew 3?" — assignment is legible only one-shift-at-a-time in the cockpit today | Pure projection over seats + assignments + shifts; shares the calendar's read-model. No new aggregate | **HIGH** — named operator ask |
+| 2026-06-23 (Eric) | **Weekend staffing heatmap** — boats × time-slots colored by crewing health (green/yellow/red), folding calendar + at-risk into one operator home | One screen answers "is the weekend covered?" without walking the board; the board shows *problems*, this shows *the whole field* | Risks becoming the "anxiety dashboard" §2.5 deliberately avoids — keep it a calm zoom-out, not a blinking wall. Derives from the same shift-state read-model as the board | **MED** — composes the named views; build after the calendar lands |
+| 2026-06-23 (Eric) | **Per-vessel crew qualification gate** — the oracle gates eligibility on which boats a crew is checked out on ("Liam isn't qualified on Brew 3"), not just credential + reliability | If the engine can ask an unqualified person, that's a correctness hole, not a nicety; real fleets have boat-specific checkouts | **Confirm whether the oracle already models this before building.** Likely a per-crew vessel-qualification field + a pool filter; small if the oracle's pool filter is already pluggable | **MED** — verify-then-build; correctness candidate |
 
 ---
 

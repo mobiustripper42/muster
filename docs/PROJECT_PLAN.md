@@ -166,7 +166,7 @@ lock, live-card pings + hosted deploy still deferred — see above). Estimate ca
 Get the build-complete slice to a **real-crew weekend** (2 mates + 2 captains on BrewBoat): hosted
 deploy, a production auth path, vessel-local time, and a real Xola-import surface. *Trigger: Phase 4
 done — the slice is build-complete but crew-untested.* (Decomposed 2026-06-12, @architect pass.)
-**This phase produces the "real weekend" that triggers Pass D (Phase 6).** It resolves 2 of #70's 4
+**This phase produces the "real weekend" that triggers Pass D (Phase 7).** It resolves 2 of #70's 4
 prod-readiness tells (auth + timezone); Twilio + the single-operator constant stay deferred — the
 deployed app is a **hosted pilot, not production**.
 
@@ -183,7 +183,7 @@ real phone* → 5.4 (real data, needs 5.3) → 5.R last; 5.5 anywhere, first to 
    wouldn't). The walkthrough's sign-in steps need swapping to 5.2's mint-script for the prod run.
 3. **5.4 (import, #73)** — *after* the shakedown passes; swaps demo data for real BrewBoat
    reservations. The import is for the real crew weekend, never before the shakedown.
-4. **Crew weekend** → triggers Pass D (Phase 6).
+4. **Crew weekend** → triggers Pass D (Phase 7).
 - **5.5 (#65) is the automated Playwright harness — regression insurance, separate from the manual
   shakedown above, optional, first to cut.** Don't conflate the two.
 
@@ -201,7 +201,65 @@ surface). #68 (full operator manual) + #70's Twilio / single-operator tells stay
 by design. New decisions: **DEC-032** (timezone), **DEC-033** (deploy/provider), **DEC-034** (auth),
 **DEC-035** (import) — all proposed 2026-06-12, confirmed at build.
 
-## Phase 6: Pass D — Progressive commitment (soft-hold + staged horizons)
+## Phase 6: Messaging & the Smart Doorbell
+
+The crew-app's group-messaging organ + the **Smart Doorbell** (the notify-the-phone engine).
+Builds the day-cohort thread the locked spec parked (SPEC §2.6.3 → §4) plus full-mesh threads
+(cohort / shift / all-staff / DM) and a generic notification rule engine deciding **when a phone
+actually rings**. Net-new scope → folds into a deliberate **SPEC v1.1 unlock** (DEC-014); does not
+modify the locked v1.0 crew engine (may enhance it per the artifact §13 — parked). *Inserted ahead
+of Pass D per the artifact's priority note (post-pilot, ships with the live crew app).* Source:
+`messaging-smart-doorbell.md` (13th artifact); @architect pass 2026-06-21 (Opus — Fable unavailable).
+
+**Load-bearing decisions (operator-confirmed 2026-06-21):**
+- **No realtime vendor for v1.** Instant live chat is deferred; v1 ships **refresh-to-see-new**.
+  Presence (the doorbell's "is this person looking" signal) rides a **light activity signal behind a
+  swap-later seam** (`PresencePort`) — a hosted realtime service (or self-host) drops in later *only*
+  if instant chat is wanted. Vercel-fit, zero new dependency. Crew is **20–25** (corrected from the
+  old "6"): the doorbell's batch/suppress value is real at that size, but 25 connections is still
+  trivial — no infra forcing.
+- **The batch/cancel-window interval is a researched, config-tunable default** (task 6.3), *not* the
+  artifact's placeholder "~1 min" — chosen deliberately, then tuned on real use ("dumb default, tune"
+  posture).
+- **DMs are operator-visible for v1** (the §14 privacy question, resolved to ship; private-DM later).
+
+*Trigger: the pilot is live (Phase 5); this is the near-term build that ships with the live crew app.
+10DLC registration is in motion (owner-driven) — the real SMS doorbell number (6.9) rides it but
+stays off the critical path (DEC-MSG-1 posture).*
+
+| # | Task | Effort | Notes |
+|---|------|--------|-------|
+| 6.1 | **Message store** — threads (cohort/shift/all-staff/DM) + participants + messages; membership **derived** for cohort/shift/all-staff, only DM persisted (DEC-009-spirit anti-stale); pure core + in-mem adapter + plain DDL | 5 | The substrate. Derivation-not-snapshot is the load-bearing call. · [#111](https://github.com/mobiustripper42/muster/issues/111) |
+| 6.2 | **Presence / activity signal** — light "is-active" tracking behind a `PresencePort`; realtime-vendor swap deferred | 3 | Isolates the realtime decision; no chatty heartbeat, no vendor. · [#112](https://github.com/mobiustripper42/muster/issues/112) |
+| 6.3 | **Notification-interval research spike** — pick a sensible default batch/cancel window (read + reason + document); feeds 6.4. Config-tunable | 2 | Owner asked for real thought on the default, not a guess. · [#113](https://github.com/mobiustripper42/muster/issues/113) |
+| 6.4 | **The doorbell decider (pure fn)** — presence-suppression, batch/cancel window, first-only-until-read, priority jump, short-notice-as-text, in-app-toast vs SMS | 8 | Crown jewel; coherent 8 — **don't split** (the rules interact). · [#114](https://github.com/mobiustripper42/muster/issues/114) |
+| 6.5 | **★ Human-drivable doorbell harness** — simulate multiple crew, who's-present-in-which-thread, advance the clock, observe who-rings-vs-silent; extends the fake adapter + `tick-dev.ts` | 5 | First-class — the decider's observable-behavior spec, not a test page. · [#115](https://github.com/mobiustripper42/muster/issues/115) |
+| 6.6 | **Doorbell tick + delivery wiring** — clock-driven sweep over the pending/cancel-window queue → channel/outbox relay (DEC-030); likely a **separate cron** (DEC-040 precedent) | 5 | Closes the loop end-to-end: a real message → decider → a real (relayed) ring. · [#116](https://github.com/mobiustripper42/muster/issues/116) |
+| 6.7 | **Crew messaging UI** — thread list, view + compose, start-DM-from-shift-card, in-app badge/toast (§7.6); **refresh-to-see-new** (instant deferred) | 5 | ↓ from 8 — instant live chat deferred. Split for review if the diff is large. · [#117](https://github.com/mobiustripper42/muster/issues/117) |
+| 6.8 | **Operator messaging surface** — post to cohort / all-staff, cross-thread visibility (§10) | 3 | Fast-follow; rides 6.7 components. · [#118](https://github.com/mobiustripper42/muster/issues/118) |
+| 6.9 | **Second sender number / phone-thread separation** (§5) — scheduling vs doorbell number, both on the crew campaign; the real SMS doorbell adapter | 3 | **10DLC-gated, off critical path** — final adapter swap (DEC-MSG-1). · [#119](https://github.com/mobiustripper42/muster/issues/119) |
+
+**Phase 6 total: 39 pts.** Ships-with-the-crew-app core = **6.1–6.7 (33 pts)**; 6.8 + 6.9 are
+fast-follows (6.9 waits on 10DLC). **Build order (de-risk first):** 6.1 → 6.2 → 6.3 →
+**6.4 + 6.5 together** → 6.6 → 6.7. Prove the invisible doorbell logic with the harness *before*
+building chat UI on top of it.
+
+**Deferred to later fast-follows:** instant live chat (the hosted-realtime swap behind 6.2's seam);
+customer-side messaging (§11 — waits on reservations, Tier 4); native push (DEC-MSG-2); read
+receipts / typing.
+
+**DECs to pin (drafted with this phase):** v1.1 messaging unlock (DEC-014 batch; absorbs FUTURE_IDEAS
+"two-way/multi-party messaging" + part of "keep-warm touch") · presence **observed-only, never
+crew-curated** (DEC-009 guard) · **no-realtime-vendor / activity-signal behind `PresencePort`**
+(realtime a deferred adapter swap) · doorbell is a **pure core decider** (DEC-001 / DEC-DATA-1) · the
+**doorbell tick** (separate cron) · channel port widens with a **`sendNotification` sibling** to
+`sendAsk` · **membership derived, not snapshotted** · **DMs operator-visible** v1 · **two sender
+numbers** on the crew 10DLC campaign · *(flag)* short-notice-as-text SMS content / TCPA posture —
+owner + 10DLC.
+
+---
+
+## Phase 7: Pass D — Progressive commitment (soft-hold + staged horizons)
 
 The anxiety-reducer: bank crew willingness weeks out via a `Held` seat tier and earlier *soft*
 horizons converging on the hard confirm. Rides existing rails (data fields reserved in Phase 0/1).
@@ -264,6 +322,6 @@ the **thickening passes**, not the slice. Reference before any scope-cut convers
 
 | Task | Why it's cuttable | Defer to |
 |------|------------------|---------|
-| Pass D (Phase 6) | Soft-hold is an anxiety-reducer, not load-bearing; the single-horizon slice works without it | post-slice, only after a real weekend |
+| Pass D (Phase 7) | Soft-hold is an anxiety-reducer, not load-bearing; the single-horizon slice works without it | post-slice, only after a real weekend |
 | Pass C bits (split/merge, bulk lock, warming view) | Single-item versions cover the pilot | when friction appears |
 | Write-back sheet (DEC-011) | Unnecessary if the CSV export carries guest detail (decide at M1) | skip unless M1 says otherwise |

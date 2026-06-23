@@ -28,7 +28,7 @@ Retro reflection skipped at user request (S20). PM commentary skipped.
 - **Added scope (shipped this phase, not in the `phase:5` plan, ~15 pts):** #68 operator manual; #93+#97 stale-safe outbox copy + session-aware root redirect; #94 `removeAsk`/`removeOutboxEntry` + idempotent outbox seed; #100 all-shifts full-visibility view + complete /admin nav (DEC-042, @architect-gated); #101 crew-seed `now`-anchoring (fixes the e2e harness rot). Mostly walkthrough fast-follows + operator-visibility.
 - **#70 closed** (prod-readiness gate) — its deliverable (the loud pilot-only runbook warning) was met. The two genuine prod tells remain deferred by design: Twilio auto-send (DEC-MSG-1) + the single-operator constant.
 - **New decisions:** DEC-032 (vessel-local time), DEC-033 (Vercel+Neon deploy), DEC-034 (operator auth), DEC-035/036/037/040 (import: xlsx + live Xola pull), DEC-041 (trip length→shift end), DEC-042 (all-shifts deliberate anti-dashboard exception).
-- **Pilot status:** hosted pilot live (`muster-sigma.vercel.app`) — a pilot, **not** production. Next milestone is the real-crew weekend, which triggers Phase 6 (Pass D).
+- **Pilot status:** hosted pilot live (`muster-sigma.vercel.app`) — a pilot, **not** production. Next milestone is the real-crew weekend, which triggers Phase 7 (Pass D).
 
 ## Phase 4 — 2026-06-12 — Pass C: Fast-follows
 

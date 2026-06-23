@@ -1179,6 +1179,147 @@ Both share the **occupant-pin race guard** (a swap between reads → `raced`, re
 
 ---
 
+## DEC-045: Messaging & the Smart Doorbell — a deliberate SPEC v1.1 unlock
+**Status:** Proposed (Phase 6) — @architect 2026-06-21 (Opus; Fable unavailable). Confirm at build.
+**Decision:** The 13th design artifact (`messaging-smart-doorbell.md`) — full-mesh in-app group
+messaging (cohort / shift / all-staff / DM) + the Smart Doorbell notification engine — folds into a
+deliberate **SPEC v1.1 unlock** under DEC-014, **not** a correction to the frozen v1.0 baseline. It
+*builds* the day-cohort thread the locked spec already named-and-parked (SPEC §2.6.3 → §4); it does
+not relitigate a deferral or modify the locked crew engine (it *may* enhance it per artifact §13 —
+parked, not bolted into the locked spec). Supersedes the 12th artifact (`cohort-messaging.md`,
+broadcast-only). **Absorbs** two FUTURE_IDEAS entries: "Two-way / multi-party messaging"
+(2026-06-11, Drew) wholesale, and the messaging substrate half of "Periodic crew keep-warm touch"
+(2026-06-17, Eric).
+**Why:** Additive scope beyond a LOCKED doc; DEC-014 routes that through a batched v1.1 unlock, not a
+drip into the baseline. The cohort thread was parked-with-a-pointer, so this is the deliberate moment
+to fold it in.
+**Tradeoff:** A v1.1 spec-edit ceremony is owed (the SPEC stays untouched until that batch lands —
+this phase does not edit `docs/SPEC.md`). **Phase:** Phase 6.
+
+---
+
+## DEC-046: Presence is observed-only, never crew-curated (the DEC-009 guard for messaging)
+**Decision:** The doorbell's presence signal is **observed** (the app reports activity / focus),
+never **maintained** by crew. There is no "set your notification preferences / quiet hours /
+availability" surface for crew. The doorbell's windows and priorities are **operator** tenant-config,
+never crew-set.
+**Why:** DEC-009 forbids a crew-maintained positive-availability calendar (the Xola trap — it goes
+stale and lies). Observing live activity is the right side of that line; a crew-tended
+notification-settings screen would re-introduce the exact failure. Naming the guard now stops scope
+drift toward it.
+**Tradeoff:** Crew can't tune their own notification behavior in v1 (operator config only).
+**Revisit if:** never for observed-only; any future per-crew notification preference must not become a
+stale self-maintained calendar. **Phase:** Phase 6.
+
+---
+
+## DEC-047: No realtime vendor for v1 — presence via an activity signal behind a `PresencePort`
+**Status:** Proposed (Phase 6) — operator-confirmed 2026-06-21.
+**Decision:** v1 ships **no managed-realtime dependency** (no Ably / Pusher / Supabase Realtime) and
+**no self-hosted socket server**. Presence — the doorbell's "is this person looking right now" input —
+is a **coarse activity signal**: natural app activity (loading a thread, sending) plus an occasional
+lightweight check, read behind an injected **`PresencePort`**. Instant live chat is **deferred**;
+v1's crew chat is **refresh-to-see-new**. A hosted realtime service (or a self-hosted socket process)
+is a **later, additive adapter swap** behind the same `PresencePort`, adopted only if/when instant
+chat is wanted — with **zero change to the doorbell decider**.
+**Why:** Vercel's serverless runtime (DEC-020) can't host a long-lived socket, and the doorbell's
+value (suppress, batch, first-only-until-read, priority) is fully expressible over a coarse signal —
+the batch window absorbs the signal's staleness, and "fail toward ringing" makes a missed-present
+harmless. Crew is 20–25 → no scale forcing. Holds the dependency-minimal posture (DEC-020/033/034 all
+rejected premature vendors).
+**Tradeoff:** Live chat lags a few seconds (refresh/poll) until a realtime adapter lands — accepted;
+instant chat isn't needed day one. **Rejected:** managed realtime *in* the slice (a vendor + cost the
+doorbell doesn't need); a self-hosted socket server (breaks the single-app-on-Vercel topology — two
+always-on deploy targets for one operator). **Revisit if:** crew want instant chat → drop a realtime
+adapter behind `PresencePort`. **Phase:** Phase 6 (6.2).
+
+---
+
+## DEC-048: The doorbell is a pure core decider; presence-state and delivery-I/O live at the edge
+**Decision:** The doorbell decision logic — presence-suppression, batch / cancel window,
+first-only-until-read, priority, short-notice-as-text, in-app-toast-vs-SMS — is a **pure function in
+the framework-free core** (`src/`): over injected (pending messages, presence, read-state, rules,
+`now`) → notification decisions. Same shape as the oracle / refund engine (DEC-001/002). The doorbell
+**never opens a connection and never sends**: presence capture (stateful / I/O) and delivery (I/O)
+stay at the **Next edge**, behind ports. Doorbell logic **never** lives in RLS policies, DB triggers,
+`NOTIFY`, or a realtime subscription.
+**Why:** DEC-DATA-1 — procedural / stateful decisioning belongs in the service/domain layer, not
+smeared across the database. A pure decider is the only way the timing/attention logic is
+unit-testable with injected `now`, the way every Muster engine is.
+**Tradeoff:** One indirection (the decider emits decisions; a separate edge adapter delivers them).
+**Rejected:** trigger / `NOTIFY`-driven notification or RLS-gated presence — the stored-procedure
+trap DEC-DATA-1 exists to prevent. **Phase:** Phase 6 (6.4).
+
+---
+
+## DEC-049: The doorbell tick — a clock-driven sweep on a separate cron
+**Decision:** The batch / cancel window is realized by a **`tick`-style sweep**: a clock-driven job
+reads the pending-notification / cancel-window queue, runs the pure decider against current presence
++ read-state, and emits "ring now" decisions to the delivery adapter. It reuses the **explicit-tick
+pattern** (DEC-023) and runs as a **separate cron** from the engine `tick` and the Xola pull — so a
+doorbell failure can't disturb the ask loop (the DEC-040 precedent: `/api/cron/xola-pull` is separate
+from `/api/cron/tick`).
+**Why:** The decider is pure, but something must fire it on a clock; a separate cron isolates fault
+domains (a messaging bug must not stall crewing). **Tradeoff:** A third cron to operate.
+**Phase:** Phase 6 (6.6).
+
+---
+
+## DEC-050: The channel port widens with a `sendNotification` sibling to `sendAsk`
+**Decision:** Doorbell delivery rides the existing channel seam (DEC-MSG-1/3) but as a **new outbound
+method `sendNotification`**, *not* by overloading `sendAsk`. The ask is a structured yes/no with
+atomic-claim semantics (REQ-CLAIM-1) and an inbound `recordReply`; the doorbell ring is a **different
+payload** — "new message, tap to open" (or a content-carrying short-notice text) with **no claim
+logic and no inbound reply to record**. Both methods share the adapter family (fake / relay / Twilio)
+and the outbox/relay machinery (DEC-030); the SMS doorbell adapter is the **final swap**
+(DEC-MSG-1 posture).
+**Why:** Overloading `sendAsk` with a no-claim payload would muddy the claim guarantees and break the
+"zero domain change to swap Twilio" property for both. Distinct methods keep each clean.
+**Tradeoff:** A second port method. **Rejected:** reusing `sendAsk` for rings. **Phase:** Phase 6
+(6.6 / 6.9).
+
+---
+
+## DEC-051: Messaging membership is derived, not snapshotted
+**Decision:** Thread membership is **computed from existing aggregates at read time**, not copied into
+participant rows: **cohort** = the same vessel+day grouping `formShifts` computes; **shift** = the
+seats on the shift; **all-staff** = the roster (`listCrew`). Only the **DM** participant set — the one
+truly ad-hoc membership — is **persisted**. Thread `kind` is **data, not a hardcoded enum branch** (the
+DEC-ROLE-1 discipline applied to threads).
+**Why:** A snapshotted cohort/shift membership goes stale exactly when the schedule changes — the same
+anti-pattern as the Xola-trap calendar (DEC-009 spirit). Derive what's derivable; persist only the
+irreducible. **Tradeoff:** Membership is recomputed per read (cheap; the inputs are already in hand).
+**Phase:** Phase 6 (6.1).
+
+---
+
+## DEC-052: Crew-to-crew DMs are operator-visible for v1
+**Status:** Proposed (Phase 6) — operator-confirmed 2026-06-21.
+**Decision:** Resolves the artifact's §14 open question (DM private-to-two vs operator-visible) to
+**operator-visible** for v1. A DM thread is readable by the operator (matches the "office-overseen"
+framing of the absorbed FUTURE_IDEAS multi-party item, defensible for a 20–25-person ops crew). A
+**private-DM** model is a documented later path, not v1.
+**Why:** DM visibility is a **DEC-DATA-1 authorization decision** (who reads which rows) — a
+"decide-before-building" gate, not a tune-later knob. Operator-visible is the simplest correct model
+and fits the ops context. **Tradeoff:** No truly private crew channel in v1. **Revisit if:** a genuine
+need for private crew DMs appears (then a per-thread visibility model). **Phase:** Phase 6 (6.1).
+
+---
+
+## DEC-053: Two sender numbers — scheduling vs doorbell — on the crew 10DLC campaign
+**Decision:** Per artifact §5, scheduling SMS (the crew ask; call-time / dock changes) and
+message-notification SMS (the doorbell ring) must land as **separate phone threads on the handset**.
+Since phones thread by number, that requires **two sender numbers**, both registered under the crew
+A2P / 10DLC campaign. Plain Programmable Messaging carries both (Twilio Conversations not required,
+artifact §4). The real SMS doorbell number is gated to **10DLC** (registration in motion,
+owner-driven) and stays **off the critical path** — the slice runs on the fake / relay adapter; the
+SMS number is the final swap (DEC-MSG-1).
+**Why:** Spink's explicit requirement that scheduling and chat pings not collapse into one
+undifferentiated phone stream. **Tradeoff:** A second number to provision + carry on the campaign.
+**Phase:** Phase 6 (6.9), gated to 10DLC.
+
+---
+
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)
 
 These are deferred by design. Each names an owner and a trigger. **Consult @architect (and the named
@@ -1207,3 +1348,11 @@ human owner) before building past the trigger.**
   only; eligibility-exhaustion boards immediately. Default ships at 48h; only the number remains
   tune-later. Split-suggestion gap still open.)*
 - **Historical Xola data** — migrate vs read-only archive. *Leaning archive. SPEC §4.*
+- **Doorbell batch / cancel-window interval** (Phase 6) — the default wait-before-ring / cancel-on-open
+  window. *A researched default is chosen at task 6.3 (NOT the artifact's placeholder "~1 min"), then
+  tuned on real use. Owner: Eric, against pilot behavior. Config-tunable per DEC-047's doorbell-config
+  posture.*
+- **Short-notice-as-text content posture** (Phase 6, artifact §7.5) — the SMS body carrying message
+  *content* (vs a bare "tap to open" ping) is a different TCPA / content posture than the
+  strictly-transactional ask (DEC-MSG-1). *Owner: Drew + the 10DLC registration — confirm which
+  message types / lengths qualify before the SMS doorbell adapter ships.*

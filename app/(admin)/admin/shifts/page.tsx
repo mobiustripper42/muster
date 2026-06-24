@@ -63,6 +63,35 @@ function fmtDate(iso: string): string {
   });
 }
 
+/** Day-section header: full weekday so a weekend reads at a glance (#122). */
+function fmtDayHeader(iso: string): string {
+  return new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+/** Group rows into day buckets (chronological) — the operator scans a real
+ * weekend day-by-day, not as one flat stack (#122). **Within a day the core's
+ * order is preserved** (`deriveAllShifts` sorts date → earliest departure), so a
+ * day reads in time order, not alphabetical-by-vessel. Pure presentation: no core
+ * change, the brand guardrails (neutral ink, no scoreboard) are untouched. */
+function groupByDay(
+  rows: AllShiftsRow[],
+): { date: string; rows: AllShiftsRow[] }[] {
+  const byDate = new Map<string, AllShiftsRow[]>();
+  for (const r of rows) {
+    const bucket = byDate.get(r.date);
+    if (bucket) bucket.push(r);
+    else byDate.set(r.date, [r]);
+  }
+  return [...byDate.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, rows]) => ({ date, rows }));
+}
+
 type Scope = "today" | "weekend" | "range";
 
 /** Resolve the date window from the filter params — defaulting to TODAY, clamped
@@ -152,13 +181,31 @@ export default async function AllShifts({
         // NOT the board's ✓ success state — a quiet day is just a quiet day.
         <Notice>No shifts {scope === "today" ? "today" : `for ${scope}`}.</Notice>
       ) : (
+        // Day sections (gap-5) with tighter rows inside (gap-2) give the weekend
+        // visual rhythm under real density (#122) without adding colour/scoreboard.
         <div className="flex flex-col gap-2">
+          {/* The summary caption hugs the sections; day-sections (gap-5) carry
+              the rhythm between them, not around this line (@ui-reviewer). */}
           <p className="text-xs text-muted">
             {rows.length} shift{rows.length === 1 ? "" : "s"} · {scope}
           </p>
-          {rows.map((r) => (
-            <ShiftRow key={r.shiftId} row={r} />
-          ))}
+          <div className="flex flex-col gap-5">
+            {groupByDay(rows).map((day) => (
+              <section key={day.date} className="flex flex-col gap-2">
+                <h2 className="flex items-baseline justify-between border-b border-line pb-1">
+                  <span className="text-sm font-semibold text-ink">
+                    {fmtDayHeader(day.date)}
+                  </span>
+                  <span className="text-xs text-muted">
+                    {day.rows.length} shift{day.rows.length === 1 ? "" : "s"}
+                  </span>
+                </h2>
+                {day.rows.map((r) => (
+                  <ShiftRow key={r.shiftId} row={r} />
+                ))}
+              </section>
+            ))}
+          </div>
         </div>
       )}
     </Shell>
@@ -227,9 +274,8 @@ function ShiftRow({ row }: { row: AllShiftsRow }) {
         href={`/admin/shift/${encodeURIComponent(row.shiftId)}`}
         className="flex min-w-0 flex-col"
       >
-        <span className="text-ink">
-          <b>{row.vesselName}</b> · {fmtDate(row.date)}
-        </span>
+        {/* Vessel leads — the date now lives in the day-section header (#122). */}
+        <span className="font-medium text-ink">{row.vesselName}</span>
         <span className="font-mono text-xs text-muted">{trips}</span>
       </Link>
       <div className="flex shrink-0 flex-col items-end gap-0.5">

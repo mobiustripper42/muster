@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { XolaError } from "@core/import/xola-client.js";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
 import { runXolaPull } from "../../../lib/xola";
@@ -52,12 +53,21 @@ export async function pullFromXola(): Promise<void> {
       unmapped: String(r.unmappedResources.length),
     }).toString();
   } catch (e) {
-    // Config gap (env unset) reads differently from Xola unreachable / any other
-    // throw → the generic "try again".
+    // Log the real error server-side (#121): a 4xx used to read as a transient
+    // blip with an empty console — that cost a debugging session. Distinguish
+    // three causes so the operator copy + the dev's log both tell the truth:
+    //   env unset → x_not_configured · Xola 4xx (bad key/seller/perms) → x_auth ·
+    //   5xx / network / anything else → x_unavailable ("try again").
+    console.error("[xola-pull] manual pull failed:", e);
     const code =
       e instanceof Error && /not configured/i.test(e.message)
         ? "x_not_configured"
-        : "x_unavailable";
+        : e instanceof XolaError &&
+            e.status !== undefined &&
+            e.status >= 400 &&
+            e.status < 500
+          ? "x_auth"
+          : "x_unavailable";
     redirect(`/admin/import?xerr=${code}`);
   }
   revalidatePath("/admin/at-risk");

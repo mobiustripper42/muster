@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { XolaError } from "@core/import/xola-client.js";
+import { persistImportRun } from "../../../lib/import-audit";
 import { getRepo } from "../../../lib/repo";
 import { runXolaPull } from "../../../lib/xola";
 
@@ -28,11 +29,16 @@ export async function GET(req: Request) {
   }
 
   const now = new Date();
+  const repo = getRepo();
   try {
-    const r = await runXolaPull(getRepo(), now);
+    const r = await runXolaPull(repo, now);
+    // Persist the audit record (#128, DEC-056) — the cron is the highest-payoff
+    // path: an unattended hourly pull left no trace before this.
+    const runId = await persistImportRun(repo, r, "cron", now);
     return NextResponse.json({
       ok: true,
       at: now.toISOString(),
+      runId,
       window: r.window,
       ordersFetched: r.ordersFetched,
       recordsMapped: r.recordsMapped,

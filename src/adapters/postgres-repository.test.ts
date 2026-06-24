@@ -30,6 +30,8 @@ const TABLES = [
   "outbox_entries",
   "reliability_events",
   "app_settings",
+  "import_runs",
+  "import_run_items",
 ];
 
 async function canConnect(url: string): Promise<boolean> {

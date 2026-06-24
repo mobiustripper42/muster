@@ -46,6 +46,14 @@ import type {
 } from "../domain/ids.js";
 import type { ReliabilityEvent } from "../domain/reliability.js";
 import type { SeatState } from "../domain/states.js";
+import type { ImportRunId } from "../domain/ids.js";
+import type {
+  ImportRun,
+  ImportRunItem,
+  ImportRunItemKind,
+  ImportRunSource,
+  ImportRunSummary,
+} from "../import/import-audit.js";
 import type { Repository } from "../ports/repository.js";
 
 /** Add `key: value` only when value is non-null — keeps optional fields absent. */
@@ -184,6 +192,22 @@ const toReliability = (r: any): ReliabilityEvent => ({
   type: r.type,
   timestamp: r.timestamp,
   metadata: r.metadata,
+});
+
+const toImportRun = (r: any): ImportRun => ({
+  id: asId<"ImportRunId">(r.id),
+  source: r.source as ImportRunSource,
+  ranAt: r.ran_at,
+  window: { start: r.window_start, end: r.window_end },
+  summary: r.summary as ImportRunSummary, // jsonb → object (node-pg parses)
+});
+
+const toImportRunItem = (r: any): ImportRunItem => ({
+  id: asId<"ImportRunItemId">(r.id),
+  runId: asId<"ImportRunId">(r.run_id),
+  kind: r.kind as ImportRunItemKind,
+  refId: r.ref_id,
+  label: r.label, // text NULL → null (label is `string | null`, not optional)
 });
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -627,5 +651,62 @@ export class PostgresRepository implements Repository {
        on conflict (key) do update set value=excluded.value, updated_at=excluded.updated_at`,
       [paused ? "true" : "false", at],
     );
+  }
+
+  // ── Import-run audit (#128, DEC-056) ───────────────────────────────────────
+  async saveImportRun(run: ImportRun, items: ImportRunItem[]): Promise<void> {
+    // One run + its identity rows are a unit — write them in a transaction so a
+    // mid-write failure never leaves a run with half its items (or vice versa).
+    const client = await this.#pool.connect();
+    try {
+      await client.query("begin");
+      await client.query(
+        `insert into import_runs(id, source, ran_at, window_start, window_end, summary)
+         values ($1,$2,$3,$4,$5,$6)
+         on conflict (id) do update set source=excluded.source, ran_at=excluded.ran_at,
+           window_start=excluded.window_start, window_end=excluded.window_end, summary=excluded.summary`,
+        [
+          run.id,
+          run.source,
+          run.ranAt,
+          run.window.start,
+          run.window.end,
+          JSON.stringify(run.summary),
+        ],
+      );
+      for (const it of items) {
+        await client.query(
+          `insert into import_run_items(id, run_id, kind, ref_id, label) values ($1,$2,$3,$4,$5)
+           on conflict (id) do update set run_id=excluded.run_id, kind=excluded.kind,
+             ref_id=excluded.ref_id, label=excluded.label`,
+          [it.id, it.runId, it.kind, it.refId, it.label ?? null],
+        );
+      }
+      await client.query("commit");
+    } catch (e) {
+      await client.query("rollback");
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+  async getImportRun(
+    id: ImportRunId,
+  ): Promise<{ run: ImportRun; items: ImportRunItem[] } | null> {
+    const runQ = await this.#pool.query(
+      "select * from import_runs where id=$1",
+      [id],
+    );
+    if (!runQ.rows[0]) return null;
+    // Zero-padded item ids (`<run>-item-NNNN`) make lexical `order by id` match the
+    // in-memory adapter's insertion order — the parity the contract suite checks.
+    const itemsQ = await this.#pool.query(
+      "select * from import_run_items where run_id=$1 order by id",
+      [id],
+    );
+    return {
+      run: toImportRun(runQ.rows[0]),
+      items: itemsQ.rows.map(toImportRunItem),
+    };
   }
 }

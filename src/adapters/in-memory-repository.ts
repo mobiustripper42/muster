@@ -39,6 +39,8 @@ import type {
 } from "../domain/ids.js";
 import type { ReliabilityEvent } from "../domain/reliability.js";
 import type { SeatState } from "../domain/states.js";
+import type { ImportRun, ImportRunItem } from "../import/import-audit.js";
+import type { ImportRunId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 
 const clone = <T>(value: T): T => structuredClone(value);
@@ -62,6 +64,10 @@ export class InMemoryRepository implements Repository {
   // audit column (no read path through the port — parity, not a feature).
   #enginePaused = false;
   #enginePausedAt: string | null = null;
+  readonly #importRuns = new Map<
+    ImportRunId,
+    { run: ImportRun; items: ImportRunItem[] }
+  >();
 
   // ── Role types (tenant config — DEC-ROLE-1) ───────────────────────────────
   async saveRoleType(roleType: RoleType): Promise<void> {
@@ -295,5 +301,16 @@ export class InMemoryRepository implements Repository {
   async setEnginePaused(paused: boolean, at: string): Promise<void> {
     this.#enginePaused = paused;
     this.#enginePausedAt = at;
+  }
+
+  // ── Import-run audit (#128) ────────────────────────────────────────────────
+  async saveImportRun(run: ImportRun, items: ImportRunItem[]): Promise<void> {
+    this.#importRuns.set(run.id, clone({ run, items }));
+  }
+  async getImportRun(
+    id: ImportRunId,
+  ): Promise<{ run: ImportRun; items: ImportRunItem[] } | null> {
+    const r = this.#importRuns.get(id);
+    return r ? clone(r) : null;
   }
 }

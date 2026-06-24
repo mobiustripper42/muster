@@ -46,6 +46,10 @@ export interface FormResult {
   seatsStranded: number;
   /** Existing shifts transitioned to `Cancelled` because every event cancelled. */
   shiftsCancelled: number;
+  /** Identity behind the counts (#128) — the shift ids created / cancelled this
+   * run, for the import audit. `.length` equals the matching count. */
+  createdShiftIds: string[];
+  cancelledShiftIds: string[];
 }
 
 /**
@@ -85,6 +89,8 @@ export async function formShifts(
     seatsPruned: 0,
     seatsStranded: 0,
     shiftsCancelled: 0,
+    createdShiftIds: [],
+    cancelledShiftIds: [],
   };
 
   for (const g of groups.values()) {
@@ -105,6 +111,7 @@ export async function formShifts(
         await repo.saveShift({ ...existing, state: "Cancelled" });
         result.shiftsUpdated++;
         result.shiftsCancelled++;
+        result.cancelledShiftIds.push(String(shiftId));
       }
       continue;
     }
@@ -173,8 +180,12 @@ export async function formShifts(
       ...(existing?.lockedAt ? { lockedAt: existing.lockedAt } : {}),
     };
     await repo.saveShift(shift);
-    if (existing) result.shiftsUpdated++;
-    else result.shiftsCreated++;
+    if (existing) {
+      result.shiftsUpdated++;
+    } else {
+      result.shiftsCreated++;
+      result.createdShiftIds.push(String(shiftId));
+    }
   }
 
   return result;

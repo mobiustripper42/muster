@@ -59,6 +59,13 @@ export interface RawReservationRecord {
   status: "booked" | "cancelled";
 }
 
+/** A reservation's identity in the audit detail (#128) — id + customer name, so a
+ * run reads "Brody, Hooper" not just "2 added". */
+export interface ReservationRef {
+  id: string;
+  name: string;
+}
+
 export interface ImportResult {
   /** New reservation ids this run. `added + updated` partitions all imported rows. */
   reservationsAdded: number;
@@ -74,6 +81,11 @@ export interface ImportResult {
   /** Non-fatal issues surfaced rather than swallowed (DEC-015). */
   warnings: string[];
   skipped: SkippedRow[];
+  /** Identity behind the counts (#128) — same rows, named. `added.length` etc.
+   * equals the matching count; kept alongside so existing count readers don't churn. */
+  added: ReservationRef[];
+  updated: ReservationRef[];
+  newlyCancelled: ReservationRef[];
 }
 
 /**
@@ -134,6 +146,9 @@ export async function importRecords(
     eventsCreated: 0,
     warnings: [],
     skipped: [],
+    added: [],
+    updated: [],
+    newlyCancelled: [],
   };
 
   // Pass 1: group records by the real Xola event id; carry the resolved vessel
@@ -226,10 +241,17 @@ export async function importRecords(
     const reservation: Reservation = updatedAt ? { ...core, updatedAt } : core;
     await repo.saveReservation(reservation);
 
-    if (existingReservation) result.reservationsUpdated++;
-    else result.reservationsAdded++;
+    const ref: ReservationRef = { id: String(internalId), name: rec.customerName };
+    if (existingReservation) {
+      result.reservationsUpdated++;
+      result.updated.push(ref);
+    } else {
+      result.reservationsAdded++;
+      result.added.push(ref);
+    }
     if (rec.status === "cancelled" && existingReservation?.status !== "cancelled") {
       result.reservationsNewlyCancelled++;
+      result.newlyCancelled.push(ref);
     }
   }
 

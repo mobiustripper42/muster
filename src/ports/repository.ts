@@ -41,6 +41,8 @@ import type {
 } from "../domain/ids.js";
 import type { ReliabilityEvent } from "../domain/reliability.js";
 import type { SeatState } from "../domain/states.js";
+import type { ImportRun, ImportRunItem } from "../import/import-audit.js";
+import type { ImportRunId } from "../domain/ids.js";
 
 export interface Repository {
   // ── Role types (tenant config — DEC-ROLE-1) ───────────────────────────────
@@ -196,4 +198,15 @@ export interface Repository {
   isEnginePaused(): Promise<boolean>;
   /** Set the engine paused/running. `at` = ISO-8601 UTC change time (audit). */
   setEnginePaused(paused: boolean, at: string): Promise<void>;
+
+  // ── Import-run audit (operator import observability — #128, DEC-056) ───────
+  // Adapter-side, like the outbox (DEC-030): persisted through the port so a run's
+  // detail survives, but NEVER read by the domain — the importer returns the
+  // envelope; the edge assembles + saves the run.
+  /** Persist one import run + its identity rows (atomically). */
+  saveImportRun(run: ImportRun, items: ImportRunItem[]): Promise<void>;
+  /** Read one run + its items by id — the single-run detail view. Null if absent. */
+  getImportRun(
+    id: ImportRunId,
+  ): Promise<{ run: ImportRun; items: ImportRunItem[] } | null>;
 }

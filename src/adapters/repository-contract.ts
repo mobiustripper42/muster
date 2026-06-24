@@ -26,6 +26,7 @@ import type {
   Vessel,
 } from "../domain/entities.js";
 import type { ReliabilityEvent } from "../domain/reliability.js";
+import type { ImportRun, ImportRunItem } from "../import/import-audit.js";
 import type { Repository } from "../ports/repository.js";
 
 const TENANT = asId<"TenantId">("tenant-x");
@@ -125,6 +126,50 @@ const outboxEntry = (over: Partial<OutboxEntry> = {}): OutboxEntry => ({
   createdAt: "2026-07-01T12:00:00.000Z",
   ...over,
 });
+const importRun = (over: Partial<ImportRun> = {}): ImportRun => ({
+  id: asId<"ImportRunId">("run-1"),
+  source: "manual-pull",
+  ranAt: "2026-07-01T12:00:00.000Z",
+  window: { start: "2026-06-30", end: "2026-07-07" },
+  summary: {
+    ordersFetched: 5,
+    eventsFetched: 4,
+    boatedEvents: 4,
+    excludedResources: 0,
+    recordsMapped: 5,
+    mapSkipped: 0,
+    eventsCreated: 2,
+    reservationsAdded: 2,
+    reservationsUpdated: 1,
+    reservationsNewlyCancelled: 0,
+    shiftsCreated: 2,
+    shiftsCancelled: 0,
+    seatsCreated: 4,
+    seatsPruned: 0,
+    seatsStranded: 0,
+    unmappedResources: [{ reason: "unknown resource xyz" }],
+    skipped: [],
+    warnings: ["heads up"],
+    assignments: [{ date: "2026-07-01", boats: [] }],
+  },
+  ...over,
+});
+const importRunItems = (): ImportRunItem[] => [
+  {
+    id: asId<"ImportRunItemId">("run-1-item-0000"),
+    runId: asId<"ImportRunId">("run-1"),
+    kind: "reservation_added",
+    refId: "resv-a",
+    label: "Brody",
+  },
+  {
+    id: asId<"ImportRunItemId">("run-1-item-0001"),
+    runId: asId<"ImportRunId">("run-1"),
+    kind: "shift_created",
+    refId: "shift-x-2026-07-01",
+    label: null,
+  },
+];
 const relEvent = (id: string, type: ReliabilityEvent["type"]): ReliabilityEvent => ({
   id: asId<"ReliabilityEventId">(id),
   crewMemberId: CREW,
@@ -448,6 +493,19 @@ export function runRepositoryContract(
       // Resuming is an explicit write back to false — both adapters agree.
       await repo.setEnginePaused(false, "2026-07-01T12:05:00.000Z");
       expect(await repo.isEnginePaused()).toBe(false);
+    });
+
+    it("import runs: save + get round-trips run + items; absent → null (#128)", async () => {
+      expect(await repo.getImportRun(asId<"ImportRunId">("run-1"))).toBeNull();
+      await repo.saveImportRun(importRun(), importRunItems());
+      const got = await repo.getImportRun(asId<"ImportRunId">("run-1"));
+      expect(got).toEqual({ run: importRun(), items: importRunItems() });
+      // jsonb summary survives the round-trip identically on both adapters.
+      expect(got!.run.summary.unmappedResources).toEqual([
+        { reason: "unknown resource xyz" },
+      ]);
+      // The null label (a shift item) stays null, not absent.
+      expect(got!.items[1]!.label).toBeNull();
     });
 
     it("reliability metadata: an absent optional stays absent across adapters", async () => {

@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { XolaError } from "@core/import/xola-client.js";
+import type { XolaPullResult } from "@core/import/xola-pull.js";
 import { readSubject } from "../../../lib/auth";
+import { persistImportRun } from "../../../lib/import-audit";
 import { getRepo } from "../../../lib/repo";
 import { runXolaPull } from "../../../lib/xola";
 
@@ -11,8 +13,9 @@ import { runXolaPull } from "../../../lib/xola";
  * Pull live reservations from Xola on demand (DEC-043) — the operator button atop
  * the same hourly `runXolaPull`. Reuses the import seam: pull the
  * [today−1, today+horizon] window of `/events` ⨝ `/orders` → import → form shifts.
- * Admin-gated. Counts ride redirect params (codes only, DEC-026); the per-pull
- * assignment summary + any skips/unknown boats are logged server-side for the dev.
+ * Admin-gated. The run is persisted as an audit record (#128, DEC-056) and we
+ * redirect to its detail view — the same surface a cron run is reviewed on — so
+ * "what did that pull do?" is answerable, not a one-line count that vanished.
  *
  * The xlsx upload is retired (DEC-043): the spreadsheet carries no Resource column,
  * so it can't resolve a boat — the live pull is the only ingest.
@@ -21,43 +24,18 @@ export async function pullFromXola(): Promise<void> {
   const subject = await readSubject();
   if (!subject || subject.kind !== "admin") redirect("/admin/import");
 
-  let params: string;
-  try {
-    const r = await runXolaPull(getRepo(), new Date());
-    if (r.import.skipped.length) {
-      console.warn(
-        `[xola-pull] ${r.import.skipped.length} record(s) skipped:`,
-        r.import.skipped.map((s) => s.reason),
-      );
-    }
-    if (r.unmappedResources.length) {
-      console.warn(
-        `[xola-pull] ${r.unmappedResources.length} UNKNOWN resource id(s) — a new/renamed boat to add to resource-map.ts:`,
-        r.unmappedResources.map((s) => s.reason),
-      );
-    }
-    // The per-day boat→times view (the operator's bad-assignment review surface) —
-    // logged for the dev; the operator's live view is /admin/shifts + the board.
-    console.info("[xola-pull] assignments:", JSON.stringify(r.assignments));
+  const now = new Date();
+  const repo = getRepo();
 
-    params = new URLSearchParams({
-      xpull: "1",
-      fetched: String(r.ordersFetched),
-      added: String(r.import.reservationsAdded),
-      updated: String(r.import.reservationsUpdated),
-      cancelled: String(r.import.reservationsNewlyCancelled),
-      events: String(r.import.eventsCreated),
-      shifts: String(r.form.shiftsCreated),
-      shiftsCancelled: String(r.form.shiftsCancelled),
-      skipped: String(r.import.skipped.length),
-      unmapped: String(r.unmappedResources.length),
-    }).toString();
+  // The IMPORT is the contract. Its failure (and only its failure) means "nothing
+  // was pulled" (#128 code-review). Map three causes (#121): env unset →
+  // x_not_configured · Xola 4xx (bad key/seller/perms) → x_auth · 5xx / network →
+  // x_unavailable. The real error is logged — a 4xx used to vanish into an empty
+  // console (cost a debugging session).
+  let result: XolaPullResult;
+  try {
+    result = await runXolaPull(repo, now);
   } catch (e) {
-    // Log the real error server-side (#121): a 4xx used to read as a transient
-    // blip with an empty console — that cost a debugging session. Distinguish
-    // three causes so the operator copy + the dev's log both tell the truth:
-    //   env unset → x_not_configured · Xola 4xx (bad key/seller/perms) → x_auth ·
-    //   5xx / network / anything else → x_unavailable ("try again").
     console.error("[xola-pull] manual pull failed:", e);
     const code =
       e instanceof Error && /not configured/i.test(e.message)
@@ -70,6 +48,27 @@ export async function pullFromXola(): Promise<void> {
           : "x_unavailable";
     redirect(`/admin/import?xerr=${code}`);
   }
+
+  if (result.unmappedResources.length) {
+    // Worth a dev log too — the audit record names them, but an unknown boat is
+    // the one alert worth seeing in the server logs.
+    console.warn(
+      `[xola-pull] ${result.unmappedResources.length} UNKNOWN resource id(s) — a new/renamed boat to add to resource-map.ts:`,
+      result.unmappedResources.map((s) => s.reason),
+    );
+  }
+
+  // The AUDIT is best-effort — the import already committed (reservations saved,
+  // shifts formed). A failed audit write must NOT tell the operator "nothing was
+  // pulled". Saved → its detail view; failed → land on /admin/import with an
+  // honest "imported, audit unavailable" notice.
+  let runId: string | null = null;
+  try {
+    runId = await persistImportRun(repo, result, "manual-pull", now);
+  } catch (e) {
+    console.error("[xola-pull] audit persist failed (import succeeded):", e);
+  }
+
   revalidatePath("/admin/at-risk");
-  redirect(`/admin/import?${params}`);
+  redirect(runId ? `/admin/import/run/${runId}` : "/admin/import?ximported=1");
 }

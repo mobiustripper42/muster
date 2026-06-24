@@ -25,6 +25,9 @@ export type MagicTokenId = Brand<string, "MagicTokenId">;
 export type OutboxEntryId = Brand<string, "OutboxEntryId">;
 export type ImportRunId = Brand<string, "ImportRunId">;
 export type ImportRunItemId = Brand<string, "ImportRunItemId">;
+export type ThreadId = Brand<string, "ThreadId">;
+export type ParticipantId = Brand<string, "ParticipantId">;
+export type MessageId = Brand<string, "MessageId">;
 
 /**
  * Cast a raw string into a branded ID. The single sanctioned entry point —

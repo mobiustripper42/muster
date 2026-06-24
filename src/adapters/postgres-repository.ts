@@ -54,6 +54,14 @@ import type {
   ImportRunSource,
   ImportRunSummary,
 } from "../import/import-audit.js";
+import type {
+  Message,
+  MessageSenderKind,
+  Participant,
+  Thread,
+  ThreadKind,
+} from "../messaging/entities.js";
+import type { ThreadId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 
 /** Add `key: value` only when value is non-null — keeps optional fields absent. */
@@ -208,6 +216,29 @@ const toImportRunItem = (r: any): ImportRunItem => ({
   kind: r.kind as ImportRunItemKind,
   refId: r.ref_id,
   label: r.label, // text NULL → null (label is `string | null`, not optional)
+});
+
+const toThread = (r: any): Thread => ({
+  id: asId<"ThreadId">(r.id),
+  tenantId: asId<"TenantId">(r.tenant_id),
+  kind: r.kind as ThreadKind,
+  scopeRef: r.scope_ref, // text NULL → null (scopeRef is `string | null`, not optional)
+  createdAt: r.created_at,
+});
+
+const toParticipant = (r: any): Participant => ({
+  id: asId<"ParticipantId">(r.id),
+  threadId: asId<"ThreadId">(r.thread_id),
+  crewMemberId: asId<"CrewMemberId">(r.crew_member_id),
+});
+
+const toMessage = (r: any): Message => ({
+  id: asId<"MessageId">(r.id),
+  threadId: asId<"ThreadId">(r.thread_id),
+  senderId: r.sender_id,
+  senderKind: r.sender_kind as MessageSenderKind,
+  body: r.body,
+  createdAt: r.created_at,
 });
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -717,5 +748,53 @@ export class PostgresRepository implements Repository {
       [limit],
     );
     return rows.map(toImportRun);
+  }
+
+  // ── Messaging (threads / participants / messages — #111, DEC-051) ──────────
+  async saveThread(t: Thread): Promise<void> {
+    await this.#pool.query(
+      `insert into threads(id, tenant_id, kind, scope_ref, created_at) values ($1,$2,$3,$4,$5)
+       on conflict (id) do update set tenant_id=excluded.tenant_id, kind=excluded.kind,
+         scope_ref=excluded.scope_ref, created_at=excluded.created_at`,
+      [t.id, t.tenantId, t.kind, t.scopeRef, t.createdAt],
+    );
+  }
+  async getThread(id: ThreadId): Promise<Thread | null> {
+    const { rows } = await this.#pool.query(
+      "select * from threads where id=$1",
+      [id],
+    );
+    return rows[0] ? toThread(rows[0]) : null;
+  }
+  async saveParticipant(p: Participant): Promise<void> {
+    await this.#pool.query(
+      `insert into thread_participants(id, thread_id, crew_member_id) values ($1,$2,$3)
+       on conflict (id) do update set thread_id=excluded.thread_id, crew_member_id=excluded.crew_member_id`,
+      [p.id, p.threadId, p.crewMemberId],
+    );
+  }
+  async listParticipantsForThread(threadId: ThreadId): Promise<Participant[]> {
+    const { rows } = await this.#pool.query(
+      "select * from thread_participants where thread_id=$1",
+      [threadId],
+    );
+    return rows.map(toParticipant);
+  }
+  async saveMessage(m: Message): Promise<void> {
+    await this.#pool.query(
+      `insert into messages(id, thread_id, sender_id, sender_kind, body, created_at) values ($1,$2,$3,$4,$5,$6)
+       on conflict (id) do update set thread_id=excluded.thread_id, sender_id=excluded.sender_id,
+         sender_kind=excluded.sender_kind, body=excluded.body, created_at=excluded.created_at`,
+      [m.id, m.threadId, m.senderId, m.senderKind, m.body, m.createdAt],
+    );
+  }
+  async listMessagesForThread(threadId: ThreadId): Promise<Message[]> {
+    // created_at asc, id asc — chronological with a deterministic tie-break that
+    // matches the in-memory adapter's secondary sort (the parity the contract checks).
+    const { rows } = await this.#pool.query(
+      "select * from messages where thread_id=$1 order by created_at, id",
+      [threadId],
+    );
+    return rows.map(toMessage);
   }
 }

@@ -27,6 +27,7 @@ import type {
 } from "../domain/entities.js";
 import type { ReliabilityEvent } from "../domain/reliability.js";
 import type { ImportRun, ImportRunItem } from "../import/import-audit.js";
+import type { Message, Participant, Thread } from "../messaging/entities.js";
 import type { Repository } from "../ports/repository.js";
 
 const TENANT = asId<"TenantId">("tenant-x");
@@ -36,6 +37,8 @@ const CREW = asId<"CrewMemberId">("crew-a");
 const EVENT = asId<"EventId">("evt-1");
 const SHIFT = asId<"ShiftId">("shift-1");
 const SEAT = asId<"SeatId">("seat-1");
+const CREW_B = asId<"CrewMemberId">("crew-b");
+const THREAD = asId<"ThreadId">("thread-1");
 
 const roleType = (): RoleType => ({ id: CAPTAIN, tenantId: TENANT, name: "captain" });
 const vessel = (): Vessel => ({
@@ -170,6 +173,29 @@ const importRunItems = (): ImportRunItem[] => [
     label: null,
   },
 ];
+const thread = (over: Partial<Thread> = {}): Thread => ({
+  id: THREAD,
+  tenantId: TENANT,
+  kind: "dm",
+  scopeRef: null,
+  createdAt: "2026-07-01T12:00:00.000Z",
+  ...over,
+});
+const participant = (over: Partial<Participant> = {}): Participant => ({
+  id: asId<"ParticipantId">("part-1"),
+  threadId: THREAD,
+  crewMemberId: CREW,
+  ...over,
+});
+const message = (over: Partial<Message> = {}): Message => ({
+  id: asId<"MessageId">("msg-1"),
+  threadId: THREAD,
+  senderId: String(CREW),
+  senderKind: "crew",
+  body: "hello",
+  createdAt: "2026-07-01T12:00:00.000Z",
+  ...over,
+});
 const relEvent = (id: string, type: ReliabilityEvent["type"]): ReliabilityEvent => ({
   id: asId<"ReliabilityEventId">(id),
   crewMemberId: CREW,
@@ -548,6 +574,66 @@ export function runRepositoryContract(
       expect(got!.metadata).toEqual({ shiftId: SHIFT });
       expect("seatId" in got!.metadata).toBe(false);
       expect("latencyMs" in got!.metadata).toBe(false);
+    });
+
+    it("threads: round-trip incl. null scopeRef; upsert updates (#111)", async () => {
+      expect(await repo.getThread(THREAD)).toBeNull();
+      await repo.saveThread(thread());
+      const got = await repo.getThread(THREAD);
+      expect(got).toEqual(thread());
+      expect(got!.scopeRef).toBeNull(); // null, not absent — matches the `label` posture
+      // A cohort thread carries its day in scopeRef; upsert by id, not a second row.
+      await repo.saveThread(thread({ kind: "cohort", scopeRef: "2026-07-04" }));
+      expect(await repo.getThread(THREAD)).toMatchObject({
+        kind: "cohort",
+        scopeRef: "2026-07-04",
+      });
+    });
+
+    it("participants: DM membership persists + listForThread is scoped (#111, DEC-051)", async () => {
+      await repo.saveParticipant(participant());
+      await repo.saveParticipant(
+        participant({ id: asId<"ParticipantId">("part-2"), crewMemberId: CREW_B }),
+      );
+      const members = await repo.listParticipantsForThread(THREAD);
+      expect(members.map((p) => String(p.crewMemberId)).sort()).toEqual([
+        "crew-a",
+        "crew-b",
+      ]);
+      // A thread with no persisted participants → empty (the derived kinds' shape).
+      expect(
+        await repo.listParticipantsForThread(asId<"ThreadId">("thread-none")),
+      ).toEqual([]);
+    });
+
+    it("messages: listForThread is chronological, id-broken on ties, thread-scoped (#111)", async () => {
+      await repo.saveMessage(
+        message({ id: asId<"MessageId">("m-b"), createdAt: "2026-07-01T12:00:02.000Z", body: "second" }),
+      );
+      await repo.saveMessage(
+        message({ id: asId<"MessageId">("m-a"), createdAt: "2026-07-01T12:00:01.000Z", body: "first" }),
+      );
+      // equal timestamp → deterministic id tie-break, identical on both adapters.
+      await repo.saveMessage(
+        message({ id: asId<"MessageId">("m-c"), createdAt: "2026-07-01T12:00:02.000Z", body: "third" }),
+      );
+      // operator sender round-trips alongside crew (DEC-052 — operators post too).
+      await repo.saveMessage(
+        message({
+          id: asId<"MessageId">("m-op"),
+          senderId: "spink",
+          senderKind: "operator",
+          createdAt: "2026-07-01T12:00:03.000Z",
+          body: "op note",
+        }),
+      );
+      // a message in another thread must not leak in.
+      await repo.saveMessage(
+        message({ id: asId<"MessageId">("m-other"), threadId: asId<"ThreadId">("thread-2"), body: "elsewhere" }),
+      );
+      const msgs = await repo.listMessagesForThread(THREAD);
+      expect(msgs.map((m) => m.body)).toEqual(["first", "second", "third", "op note"]);
+      expect(msgs.at(-1)!.senderKind).toBe("operator");
     });
   });
 }

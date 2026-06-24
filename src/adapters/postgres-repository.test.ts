@@ -32,6 +32,9 @@ const TABLES = [
   "app_settings",
   "import_runs",
   "import_run_items",
+  "threads",
+  "thread_participants",
+  "messages",
 ];
 
 async function canConnect(url: string): Promise<boolean> {

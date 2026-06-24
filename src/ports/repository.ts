@@ -184,4 +184,16 @@ export interface Repository {
   logReliabilityEvent(event: ReliabilityEvent): Promise<void>;
   /** Read one crew member's events, in insertion order. */
   reliabilityEventsFor(crewMemberId: CrewMemberId): Promise<ReliabilityEvent[]>;
+
+  // ── Engine pause flag (operator control — #124, DEC-054) ───────────────────
+  // A single mutable ops setting, NOT a domain aggregate: the autonomous engine
+  // tick's arm/disarm switch, flipped from /admin without a redeploy. Typed here
+  // on purpose — the adapter hides the `app_settings` key/value mapping so the
+  // domain/edge never touches stringly-typed KV (DEC-013).
+  /** True if the operator has paused the autonomous engine tick. Absent ⇒ false
+   * (running): an autonomous "no babysitting" engine must never infer pause from
+   * a missing row (DEC-054). */
+  isEnginePaused(): Promise<boolean>;
+  /** Set the engine paused/running. `at` = ISO-8601 UTC change time (audit). */
+  setEnginePaused(paused: boolean, at: string): Promise<void>;
 }

@@ -66,12 +66,24 @@ In Xola: **Reports → Reservations**, date range **Leading Year**, export the `
 - **Re-import freely** — idempotent on the Xola Reservation ID; updates in place, never duplicates. Re-run whenever bookings change.
 - A booking exported as `Cancelled` auto-cancels its trip's shift (crew aren't asked for a dead trip).
 
-## 3. Tick — let the engine work
-The **Vercel cron (`*/15`) is the only autonomous mover** — it fires the asks as each shift crosses
-its staffing horizon. You don't trigger it; just confirm it's running at **Vercel → Cron Jobs**
-(invocation history + logs). A manual tick (rare) is the CRON_SECRET'd route in
-[`DEPLOY.md` §6c](DEPLOY.md). *Shift state is derived on read, so the board is always correct even if
-the cron is wedged — a wedged cron only stops sends.*
+## 3. Tick — arm the engine when you're ready
+The **Vercel cron (`*/15`) is the only autonomous mover** — it fires asks as each shift crosses its
+staffing horizon. But **whether a scheduled tick actually does anything is your call**, flipped from
+**`/admin`** without a redeploy (#124, DEC-054):
+- **Engine: Paused** — scheduled ticks no-op; no asks fire. *Set this first* if you want to import and
+  look the week over before anyone gets texted. (Manual asks from a shift cockpit still work.)
+- **Engine: Running** — the automation fires asks on each tick. Hit **Resume staffing** when the week
+  looks right.
+
+> **Default is Running** — a never-touched engine is *on* by design (it must never silently stop). So
+> at go-live, if you want the look-around window, **click Pause on `/admin` before the first real crew
+> weekend**, then Resume when ready. While paused, `/admin/at-risk` shows a banner so an empty board
+> doesn't read as "all covered."
+
+Confirm the cron itself is alive at **Vercel → Cron Jobs** (invocation history + logs). A manual tick
+(rare) is the CRON_SECRET'd route in [`DEPLOY.md` §6c](DEPLOY.md). *Shift state is derived on read, so
+the board is always correct even if the cron is wedged — a wedged cron (or a paused engine) only stops
+sends.*
 
 ## 4. Outbox — relay the asks (from your phone)
 Open **`/admin/outbox`** on your phone. Each card is an ask the engine fired:
@@ -95,6 +107,7 @@ For each row that lands:
 | Empty board | The engine closed everything | Nothing — that's the win |
 | A shift vanished from the board | A fresh ask is in flight for it | Open its cockpit → seat reads *awaiting reply* |
 | No asks landing in the outbox | Cron not firing (Hobby plan? wedged?) | Vercel → Cron Jobs; confirm Pro plan |
+| Banner: "Engine paused" on the board | You (or a DB restore) left it paused | `/admin` → **Resume staffing** if you meant to staff |
 | `/api/health` → `degraded` | DB unreachable or a dangling ref | Check Neon / the deploy; don't run the weekend on it |
 | A confirmed shift went red (late bail) | Someone backed out with no time to refill | Lean on whoever's left, or phone the customer |
 

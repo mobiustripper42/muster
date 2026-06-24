@@ -57,6 +57,11 @@ export class InMemoryRepository implements Repository {
   readonly #magicTokens = new Map<MagicTokenId, MagicToken>();
   readonly #outbox = new Map<OutboxEntryId, OutboxEntry>();
   readonly #reliability: ReliabilityEvent[] = [];
+  // Engine pause flag (#124, DEC-054). Default false = running, mirroring the
+  // KV's "absent row ⇒ running" semantics. `#enginePausedAt` mirrors the DB's
+  // audit column (no read path through the port — parity, not a feature).
+  #enginePaused = false;
+  #enginePausedAt: string | null = null;
 
   // ── Role types (tenant config — DEC-ROLE-1) ───────────────────────────────
   async saveRoleType(roleType: RoleType): Promise<void> {
@@ -281,5 +286,14 @@ export class InMemoryRepository implements Repository {
     return this.#reliability
       .filter((e) => e.crewMemberId === crewMemberId)
       .map(clone);
+  }
+
+  // ── Engine pause flag (operator control — #124, DEC-054) ───────────────────
+  async isEnginePaused(): Promise<boolean> {
+    return this.#enginePaused;
+  }
+  async setEnginePaused(paused: boolean, at: string): Promise<void> {
+    this.#enginePaused = paused;
+    this.#enginePausedAt = at;
   }
 }

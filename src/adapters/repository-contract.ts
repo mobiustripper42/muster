@@ -439,6 +439,17 @@ export function runRepositoryContract(
       });
     });
 
+    it("engine pause flag: absent ⇒ running; set/clear round-trips (DEC-054)", async () => {
+      // The load-bearing default: a fresh store (no row) reads as RUNNING. An
+      // autonomous engine must never infer pause from an absent/cleared row.
+      expect(await repo.isEnginePaused()).toBe(false);
+      await repo.setEnginePaused(true, "2026-07-01T12:00:00.000Z");
+      expect(await repo.isEnginePaused()).toBe(true);
+      // Resuming is an explicit write back to false — both adapters agree.
+      await repo.setEnginePaused(false, "2026-07-01T12:05:00.000Z");
+      expect(await repo.isEnginePaused()).toBe(false);
+    });
+
     it("reliability metadata: an absent optional stays absent across adapters", async () => {
       // structuredClone (in-memory) vs JSON round-trip (Postgres) must agree that
       // a key never set is never present on read — the parity the contract exists

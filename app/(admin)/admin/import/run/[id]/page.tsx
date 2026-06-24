@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { asId } from "@core/domain/ids.js";
-import { TENANT_TIMEZONE } from "@core/config/tenant.js";
 import type { ImportRunItemKind } from "@core/import/import-audit.js";
 import { Notice } from "../../../../../../components/ui/notice";
 import { Shell } from "../../../../../../components/ui/shell";
 import { readSubject } from "../../../../../lib/auth";
+import { fmt12, fmtRunWhen, IMPORT_SOURCE_LABEL } from "../../../../../lib/format";
 import { getRepo } from "../../../../../lib/repo";
 
 /**
@@ -17,11 +17,6 @@ import { getRepo } from "../../../../../lib/repo";
  */
 
 export const dynamic = "force-dynamic";
-
-const SOURCE_LABEL: Record<string, string> = {
-  "manual-pull": "Manual pull",
-  cron: "Hourly cron",
-};
 
 export default async function ImportRunView({
   params,
@@ -68,7 +63,7 @@ export default async function ImportRunView({
       <header className="flex flex-col gap-1">
         <h1 className="text-xl font-semibold text-ink">Import run</h1>
         <p className="text-sm text-muted">
-          {SOURCE_LABEL[run.source] ?? run.source} · {fmtWhen(run.ranAt)} · window{" "}
+          {IMPORT_SOURCE_LABEL[run.source] ?? run.source} · {fmtRunWhen(run.ranAt)} · window{" "}
           {fmtDate(run.window.start)} – {fmtDate(run.window.end)}
         </p>
       </header>
@@ -145,7 +140,7 @@ export default async function ImportRunView({
                 day.boats.map((b) => (
                   <div key={String(b.vesselId)} className="text-xs text-muted">
                     {vesselName.get(String(b.vesselId)) ?? String(b.vesselId)} ·{" "}
-                    {b.times.map(fmtTime).join("  ")}
+                    {b.times.map(fmt12).join("  ")}
                   </div>
                 ))
               )}
@@ -187,13 +182,6 @@ function ItemList({
 
 const plural = (n: number) => (n === 1 ? "" : "s");
 
-function fmtWhen(iso: string): string {
-  return new Date(iso).toLocaleString("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: TENANT_TIMEZONE,
-  });
-}
 function fmtDate(iso: string): string {
   return new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", {
     weekday: "short",
@@ -201,15 +189,6 @@ function fmtDate(iso: string): string {
     day: "numeric",
     timeZone: "UTC",
   });
-}
-function fmtTime(t: string): string {
-  // Departure clock times are vessel-local wall-clock strings (e.g. "14:00").
-  const [h, m] = t.split(":");
-  const hh = Number(h);
-  if (!Number.isFinite(hh)) return t;
-  const ampm = hh >= 12 ? "pm" : "am";
-  const h12 = hh % 12 === 0 ? 12 : hh % 12;
-  return `${h12}:${m ?? "00"}${ampm}`;
 }
 
 function SignedOut() {

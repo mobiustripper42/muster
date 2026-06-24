@@ -524,6 +524,15 @@ export function runRepositoryContract(
       const recent = await repo.listImportRuns(2);
       expect(recent.map((r) => String(r.id))).toEqual(["run-c", "run-b"]); // newest 2, desc
       expect(await repo.listImportRuns(10)).toHaveLength(3);
+
+      // Equal ranAt → deterministic tie-break (id desc), identical on both
+      // adapters — the parity this list claims to guarantee.
+      await repo.saveImportRun(
+        importRun({ id: asId<"ImportRunId">("run-d"), ranAt: "2026-07-01T12:00:00.000Z" }),
+        [],
+      );
+      const tied = await repo.listImportRuns(2);
+      expect(tied.map((r) => String(r.id))).toEqual(["run-d", "run-c"]); // same ts → id desc
     });
 
     it("reliability metadata: an absent optional stays absent across adapters", async () => {

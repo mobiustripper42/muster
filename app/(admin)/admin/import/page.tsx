@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { TENANT_TIMEZONE } from "@core/config/tenant.js";
 import type { ImportRun, ImportRunSummary } from "@core/import/import-audit.js";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { readSubject } from "../../../lib/auth";
+import { fmtRunWhen, IMPORT_SOURCE_LABEL } from "../../../lib/format";
 import { getRepo } from "../../../lib/repo";
 import { pullFromXola } from "./actions";
 import { ClearFeedbackParams } from "./clear-feedback-params";
@@ -23,11 +23,6 @@ const ERR_COPY: Record<string, string> = {
   x_auth:
     "Xola rejected the request — likely a bad API key, seller id, or missing permission. Check XOLA_API_KEY / XOLA_SELLER_ID. Nothing was pulled.",
   x_unavailable: "Couldn’t reach Xola — nothing was pulled. Try again in a moment.",
-};
-
-const SOURCE_LABEL: Record<string, string> = {
-  "manual-pull": "Manual pull",
-  cron: "Hourly cron",
 };
 
 type Search = { xerr?: string; ximported?: string };
@@ -110,9 +105,9 @@ export default async function ImportPage({
               >
                 <span className="flex items-baseline justify-between gap-2">
                   <span className="font-semibold text-ink">
-                    {SOURCE_LABEL[run.source] ?? run.source}
+                    {IMPORT_SOURCE_LABEL[run.source] ?? run.source}
                   </span>
-                  <span className="text-xs text-muted">{fmtWhen(run.ranAt)}</span>
+                  <span className="text-xs text-muted">{fmtRunWhen(run.ranAt)}</span>
                 </span>
                 <span className="text-xs text-muted">{summaryLine(run.summary)}</span>
               </Link>
@@ -142,14 +137,6 @@ function summaryLine(s: ImportRunSummary): string {
       `⚠ ${s.unmappedResources.length} unknown boat${s.unmappedResources.length === 1 ? "" : "s"}`,
     );
   return parts.join(" · ");
-}
-
-function fmtWhen(iso: string): string {
-  return new Date(iso).toLocaleString("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: TENANT_TIMEZONE,
-  });
 }
 
 function SignedOut() {

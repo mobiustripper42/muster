@@ -316,7 +316,13 @@ export class InMemoryRepository implements Repository {
   async listImportRuns(limit: number): Promise<ImportRun[]> {
     return [...this.#importRuns.values()]
       .map((e) => e.run)
-      .sort((a, b) => b.ranAt.localeCompare(a.ranAt)) // newest first
+      // newest first; id desc breaks ranAt ties deterministically so the order
+      // matches the Postgres adapter's `order by ran_at desc, id desc` (parity).
+      .sort(
+        (a, b) =>
+          b.ranAt.localeCompare(a.ranAt) ||
+          String(b.id).localeCompare(String(a.id)),
+      )
       .slice(0, limit)
       .map(clone);
   }

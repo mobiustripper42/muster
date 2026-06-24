@@ -29,6 +29,22 @@ export function fmtDeadline(d: Date): string {
  * parked in FUTURE_IDEAS). String-in/string-out — these clock times are stored
  * as wall-clock strings, not instants, so there's no tz conversion to do here.
  */
+/** Import-run source → operator label (#128 — shared by the import list + the
+ * run-detail view so a third source can't drift between them). */
+export const IMPORT_SOURCE_LABEL: Record<string, string> = {
+  "manual-pull": "Manual pull",
+  cron: "Hourly cron",
+};
+
+/** "Jun 15, 2026, 1:00 PM" — an import run's timestamp, vessel-local (DEC-032). */
+export function fmtRunWhen(iso: string): string {
+  return new Date(iso).toLocaleString("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: TENANT_TIMEZONE,
+  });
+}
+
 export function fmt12(hhmm: string): string {
   const [h = 0, m = 0] = hhmm.split(":").map(Number);
   const period = h < 12 ? "AM" : "PM";

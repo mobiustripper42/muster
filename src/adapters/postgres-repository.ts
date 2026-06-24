@@ -710,8 +710,10 @@ export class PostgresRepository implements Repository {
     };
   }
   async listImportRuns(limit: number): Promise<ImportRun[]> {
+    // id desc breaks ran_at ties deterministically — matches the in-memory
+    // adapter's secondary sort so the contract's parity check is real.
     const { rows } = await this.#pool.query(
-      "select * from import_runs order by ran_at desc limit $1",
+      "select * from import_runs order by ran_at desc, id desc limit $1",
       [limit],
     );
     return rows.map(toImportRun);

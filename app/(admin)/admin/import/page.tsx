@@ -3,6 +3,7 @@ import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { readSubject } from "../../../lib/auth";
 import { pullFromXola } from "./actions";
+import { ClearFeedbackParams } from "./clear-feedback-params";
 
 /**
  * Import surface (DEC-043) — the operator's path to get live Xola trips onto the
@@ -15,6 +16,8 @@ export const dynamic = "force-dynamic";
 const ERR_COPY: Record<string, string> = {
   x_not_configured:
     "Xola isn’t configured on this server (XOLA_API_KEY / XOLA_SELLER_ID unset) — nothing was pulled.",
+  x_auth:
+    "Xola rejected the request — likely a bad API key, seller id, or missing permission. Check XOLA_API_KEY / XOLA_SELLER_ID. Nothing was pulled.",
   x_unavailable: "Couldn’t reach Xola — nothing was pulled. Try again in a moment.",
 };
 
@@ -53,6 +56,9 @@ export default async function ImportPage({
 
   return (
     <Shell width="2xl">
+      {/* Strip the one-shot feedback params after render (#121, DEC-055) — the
+          code never lingers in the URL or re-renders on reload. */}
+      <ClearFeedbackParams />
       <header>
         <h1 className="text-xl font-semibold text-ink">Pull from Xola</h1>
         <p className="text-sm text-muted">

@@ -30,5 +30,7 @@ export async function setEnginePaused(formData: FormData): Promise<void> {
   }
   revalidatePath("/admin");
   revalidatePath("/admin/at-risk");
-  redirect(`/admin?engine=${paused ? "paused" : "running"}`);
+  // The card itself shows the new state (green running / red paused) after
+  // revalidation — no top-of-page feedback notice needed.
+  redirect("/admin");
 }

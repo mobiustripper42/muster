@@ -209,4 +209,12 @@ export interface Repository {
   getImportRun(
     id: ImportRunId,
   ): Promise<{ run: ImportRun; items: ImportRunItem[] } | null>;
+  /**
+   * The most recent runs, newest first, capped at `limit` — the import history
+   * list (#128 Part B). Returns runs only (not their items); the detail view
+   * fetches items on drill-in. Takes an explicit `limit` because, unlike the
+   * bounded aggregates, the audit log grows with every hourly cron — the one
+   * place the port's no-DSL thinness yields to a cap.
+   */
+  listImportRuns(limit: number): Promise<ImportRun[]>;
 }

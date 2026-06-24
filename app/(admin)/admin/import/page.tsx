@@ -1,7 +1,10 @@
 import Link from "next/link";
+import { TENANT_TIMEZONE } from "@core/config/tenant.js";
+import type { ImportRun, ImportRunSummary } from "@core/import/import-audit.js";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { readSubject } from "../../../lib/auth";
+import { getRepo } from "../../../lib/repo";
 import { pullFromXola } from "./actions";
 import { ClearFeedbackParams } from "./clear-feedback-params";
 
@@ -22,6 +25,11 @@ const ERR_COPY: Record<string, string> = {
   x_unavailable: "Couldn’t reach Xola — nothing was pulled. Try again in a moment.",
 };
 
+const SOURCE_LABEL: Record<string, string> = {
+  "manual-pull": "Manual pull",
+  cron: "Hourly cron",
+};
+
 type Search = { xerr?: string; ximported?: string };
 
 export default async function ImportPage({
@@ -34,6 +42,15 @@ export default async function ImportPage({
   if (!subject || subject.kind !== "admin") return <SignedOut />;
 
   const err = sp.xerr ? (ERR_COPY[sp.xerr] ?? null) : null;
+
+  // Recent imports (#128 Part B) — the history list, drill-in to each run's
+  // detail. A flaky DB just hides the list rather than 500-ing the pull button.
+  let recent: ImportRun[] = [];
+  try {
+    recent = await getRepo().listImportRuns(20);
+  } catch {
+    /* history unavailable — the Pull button still works */
+  }
 
   return (
     <Shell width="2xl">
@@ -81,11 +98,58 @@ export default async function ImportPage({
         </button>
       </form>
 
+      {recent.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-sm font-semibold text-ink">Recent imports</h2>
+          <div className="flex flex-col gap-2">
+            {recent.map((run) => (
+              <Link
+                key={run.id}
+                href={`/admin/import/run/${run.id}`}
+                className="flex flex-col gap-0.5 rounded-card border border-line bg-card px-4 py-3 shadow-sm"
+              >
+                <span className="flex items-baseline justify-between gap-2">
+                  <span className="font-semibold text-ink">
+                    {SOURCE_LABEL[run.source] ?? run.source}
+                  </span>
+                  <span className="text-xs text-muted">{fmtWhen(run.ranAt)}</span>
+                </span>
+                <span className="text-xs text-muted">{summaryLine(run.summary)}</span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
       <Link href="/admin" className="text-sm font-semibold text-accent">
         ← Admin
       </Link>
     </Shell>
   );
+}
+
+/** One-line count digest for a history row; flags unknown boats inline (the one
+ * alert worth seeing without drilling in). */
+function summaryLine(s: ImportRunSummary): string {
+  const parts = [
+    `${s.reservationsAdded} new`,
+    `${s.reservationsUpdated} updated`,
+    `${s.shiftsCreated} shift${s.shiftsCreated === 1 ? "" : "s"} formed`,
+  ];
+  if (s.shiftsCancelled > 0) parts.push(`${s.shiftsCancelled} cancelled`);
+  if (s.unmappedResources.length > 0)
+    parts.push(
+      `⚠ ${s.unmappedResources.length} unknown boat${s.unmappedResources.length === 1 ? "" : "s"}`,
+    );
+  return parts.join(" · ");
+}
+
+function fmtWhen(iso: string): string {
+  return new Date(iso).toLocaleString("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: TENANT_TIMEZONE,
+  });
 }
 
 function SignedOut() {

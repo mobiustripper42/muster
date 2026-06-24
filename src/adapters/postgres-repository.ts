@@ -709,4 +709,11 @@ export class PostgresRepository implements Repository {
       items: itemsQ.rows.map(toImportRunItem),
     };
   }
+  async listImportRuns(limit: number): Promise<ImportRun[]> {
+    const { rows } = await this.#pool.query(
+      "select * from import_runs order by ran_at desc limit $1",
+      [limit],
+    );
+    return rows.map(toImportRun);
+  }
 }

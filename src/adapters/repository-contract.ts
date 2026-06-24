@@ -508,6 +508,33 @@ export function runRepositoryContract(
       expect(got!.items[1]!.label).toBeNull();
     });
 
+    it("listImportRuns: most recent first, capped at limit (#128 Part B)", async () => {
+      await repo.saveImportRun(
+        importRun({ id: asId<"ImportRunId">("run-a"), ranAt: "2026-07-01T10:00:00.000Z" }),
+        [],
+      );
+      await repo.saveImportRun(
+        importRun({ id: asId<"ImportRunId">("run-c"), ranAt: "2026-07-01T12:00:00.000Z" }),
+        [],
+      );
+      await repo.saveImportRun(
+        importRun({ id: asId<"ImportRunId">("run-b"), ranAt: "2026-07-01T11:00:00.000Z" }),
+        [],
+      );
+      const recent = await repo.listImportRuns(2);
+      expect(recent.map((r) => String(r.id))).toEqual(["run-c", "run-b"]); // newest 2, desc
+      expect(await repo.listImportRuns(10)).toHaveLength(3);
+
+      // Equal ranAt → deterministic tie-break (id desc), identical on both
+      // adapters — the parity this list claims to guarantee.
+      await repo.saveImportRun(
+        importRun({ id: asId<"ImportRunId">("run-d"), ranAt: "2026-07-01T12:00:00.000Z" }),
+        [],
+      );
+      const tied = await repo.listImportRuns(2);
+      expect(tied.map((r) => String(r.id))).toEqual(["run-d", "run-c"]); // same ts → id desc
+    });
+
     it("reliability metadata: an absent optional stays absent across adapters", async () => {
       // structuredClone (in-memory) vs JSON round-trip (Postgres) must agree that
       // a key never set is never present on read — the parity the contract exists

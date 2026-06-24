@@ -9,8 +9,8 @@ import { useEffect } from "react";
  * no-prose-in-the-URL security holds); this just cleans the address bar so the
  * code doesn't sit there or re-render on reload. A contained client island — the
  * only no-middleware way to clear a param post-render in the App Router. The
- * import page's only params are feedback (xpull/xerr/counts), so clearing them
- * all is safe; navigational params (none here) would need to be preserved.
+ * import page's only params are one-shot feedback (`xerr`, `ximported`), so
+ * clearing them all is safe; navigational params (none here) would need to be preserved.
  */
 export function ClearFeedbackParams() {
   useEffect(() => {

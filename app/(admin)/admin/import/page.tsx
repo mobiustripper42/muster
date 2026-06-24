@@ -22,7 +22,7 @@ const ERR_COPY: Record<string, string> = {
   x_unavailable: "Couldn’t reach Xola — nothing was pulled. Try again in a moment.",
 };
 
-type Search = { xerr?: string };
+type Search = { xerr?: string; ximported?: string };
 
 export default async function ImportPage({
   searchParams,
@@ -51,6 +51,18 @@ export default async function ImportPage({
       </header>
 
       {err && <Notice tone="bad">{err}</Notice>}
+
+      {/* Import succeeded but its audit detail couldn't be saved (#128) — the
+          import is the contract, so say so honestly instead of an error. */}
+      {sp.ximported && (
+        <Notice tone="warn">
+          ✓ Imported — the board’s updated.{" "}
+          <Link href="/admin/at-risk" className="font-semibold text-accent">
+            See the board →
+          </Link>{" "}
+          (Couldn’t save this run’s audit detail this time; nothing else is wrong.)
+        </Notice>
+      )}
 
       <form
         action={pullFromXola}

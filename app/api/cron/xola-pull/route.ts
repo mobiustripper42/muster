@@ -33,8 +33,15 @@ export async function GET(req: Request) {
   try {
     const r = await runXolaPull(repo, now);
     // Persist the audit record (#128, DEC-056) — the cron is the highest-payoff
-    // path: an unattended hourly pull left no trace before this.
-    const runId = await persistImportRun(repo, r, "cron", now);
+    // path: an unattended hourly pull left no trace before this. BEST-EFFORT: a
+    // failed audit write must not mask a successful import as a 502 (false alert +
+    // a needless retry) — log it and still report ok (#128 code-review).
+    let runId: string | null = null;
+    try {
+      runId = await persistImportRun(repo, r, "cron", now);
+    } catch (auditErr) {
+      console.error("xola-pull audit persist failed (import succeeded)", auditErr);
+    }
     return NextResponse.json({
       ok: true,
       at: now.toISOString(),

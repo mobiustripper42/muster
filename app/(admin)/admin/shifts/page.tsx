@@ -73,10 +73,11 @@ function fmtDayHeader(iso: string): string {
   });
 }
 
-/** Group rows into day buckets (chronological), each ordered by vessel — the
- * operator scans a real weekend day-by-day, not as one flat stack (#122). Pure
- * presentation: no core change, the brand guardrails (neutral ink, no scoreboard)
- * are untouched. */
+/** Group rows into day buckets (chronological) — the operator scans a real
+ * weekend day-by-day, not as one flat stack (#122). **Within a day the core's
+ * order is preserved** (`deriveAllShifts` sorts date → earliest departure), so a
+ * day reads in time order, not alphabetical-by-vessel. Pure presentation: no core
+ * change, the brand guardrails (neutral ink, no scoreboard) are untouched. */
 function groupByDay(
   rows: AllShiftsRow[],
 ): { date: string; rows: AllShiftsRow[] }[] {
@@ -88,10 +89,7 @@ function groupByDay(
   }
   return [...byDate.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([date, rs]) => ({
-      date,
-      rows: rs.sort((a, b) => a.vesselName.localeCompare(b.vesselName)),
-    }));
+    .map(([date, rows]) => ({ date, rows }));
 }
 
 type Scope = "today" | "weekend" | "range";
@@ -193,19 +191,19 @@ export default async function AllShifts({
           </p>
           <div className="flex flex-col gap-5">
             {groupByDay(rows).map((day) => (
-            <section key={day.date} className="flex flex-col gap-2">
-              <h2 className="flex items-baseline justify-between border-b border-line pb-1">
-                <span className="text-sm font-semibold text-ink">
-                  {fmtDayHeader(day.date)}
-                </span>
-                <span className="text-xs text-muted">
-                  {day.rows.length} shift{day.rows.length === 1 ? "" : "s"}
-                </span>
-              </h2>
-              {day.rows.map((r) => (
-                <ShiftRow key={r.shiftId} row={r} />
-              ))}
-            </section>
+              <section key={day.date} className="flex flex-col gap-2">
+                <h2 className="flex items-baseline justify-between border-b border-line pb-1">
+                  <span className="text-sm font-semibold text-ink">
+                    {fmtDayHeader(day.date)}
+                  </span>
+                  <span className="text-xs text-muted">
+                    {day.rows.length} shift{day.rows.length === 1 ? "" : "s"}
+                  </span>
+                </h2>
+                {day.rows.map((r) => (
+                  <ShiftRow key={r.shiftId} row={r} />
+                ))}
+              </section>
             ))}
           </div>
         </div>

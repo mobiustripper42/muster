@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { recordResponse } from "@core/asks/ask-loop.js";
+import { recordResponseAndConfirm } from "@core/asks/ask-loop.js";
 import { asId } from "@core/domain/ids.js";
 import { readSubject } from "../../lib/auth";
 import { getRepo } from "../../lib/repo";
@@ -11,7 +11,8 @@ import { getRepo } from "../../lib/repo";
  * works with no client JS. Guards two ways: the caller must hold a crew session,
  * AND the ask must actually be addressed to them (no answering someone else's ask
  * by forging the id). The seat-state race itself is handled downstream by
- * recordResponse's CAS (REQ-CLAIM-1).
+ * recordResponse's CAS (REQ-CLAIM-1). A winning "in" auto-confirms — `Claimed →
+ * Confirmed` in one step (DEC-061), so "in" means committed, no operator gate.
  */
 export async function respondToAsk(formData: FormData): Promise<void> {
   const subject = await readSubject();
@@ -25,6 +26,6 @@ export async function respondToAsk(formData: FormData): Promise<void> {
   const ask = await repo.getAsk(asId<"AskId">(askId));
   if (!ask || ask.crewMemberId !== subject.id) return; // not yours — ignore
 
-  await recordResponse(repo, asId<"AskId">(askId), response, new Date());
+  await recordResponseAndConfirm(repo, asId<"AskId">(askId), response, new Date());
   revalidatePath("/crew");
 }

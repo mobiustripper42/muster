@@ -193,6 +193,12 @@ Two protocols ride the same seat machine:
 - **Ask-then-assign** (mates): broadcast → yeses accrue → ranked → confirm down the list.
 - **Assign-then-confirm** (captains): name a person → they confirm/decline → decline kicks to next.
 
+> **Superseded for v1 by DEC-061:** the explicit "confirm" step is now automatic — a winning "in"
+> advances `Asked → Claimed → Confirmed` in one operation (both protocols). The first-acceptable-yes
+> CAS already picked the winner; the operator's confirm only rubber-stamped it. "In" now means
+> committed (a retraction is a penalized bail). The reserved `Held` soft-hold (DEC-005) is the place
+> a future soft-commitment buffer would go — not a resting `Claimed`.
+
 **Decided:** per-role default (mates ask-then-assign, captains assign-then-confirm), with a
 per-person override toggle. Default contested-seat winner is **first-acceptable-yes-wins** for
 rollout (simple, matches Spink's instinct, feels fair); **best-by-score** is a knob to flip once
@@ -690,8 +696,9 @@ default with per-person override (the override lives on the roster record, §2.1
 - [ ] Each required seat renders its current sub-state and, when Open, an eligible pool ranked by
       reliability containing only legally fillable people.
 - [ ] A `silent` candidate is visually distinct from a `declined` one.
-- [ ] Broadcasting an ask, a candidate accepting, and Spink confirming moves the seat
-      Open → Asked → Claimed → Confirmed and reflects it in the shift badge.
+- [ ] Broadcasting an ask and a candidate accepting moves the seat
+      Open → Asked → Confirmed (auto-confirm, DEC-061; `Claimed` is momentary) and reflects it in
+      the shift badge. (Pre-DEC-061 this required a separate Spink confirm.)
 - [ ] A confirmed crew bailing flips the seat to Bailed, reopens it, and re-asks the next candidate
       without manual intervention.
 - [ ] Manual override places any person into a seat regardless of rank (authority backstop), and the

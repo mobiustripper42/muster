@@ -43,6 +43,8 @@ import type { ReliabilityEvent } from "../domain/reliability.js";
 import type { SeatState } from "../domain/states.js";
 import type { ImportRun, ImportRunItem } from "../import/import-audit.js";
 import type { ImportRunId } from "../domain/ids.js";
+import type { Message, Participant, Thread } from "../messaging/entities.js";
+import type { ThreadId } from "../domain/ids.js";
 
 export interface Repository {
   // ── Role types (tenant config — DEC-ROLE-1) ───────────────────────────────
@@ -217,4 +219,29 @@ export interface Repository {
    * place the port's no-DSL thinness yields to a cap.
    */
   listImportRuns(limit: number): Promise<ImportRun[]>;
+
+  // ── Messaging (threads / participants / messages — #111, DEC-051) ──────────
+  // The in-app group-chat substrate. Membership is DERIVED at read for the three
+  // standing kinds (cohort/shift/all-staff, via deriveMembers over shifts/seats/
+  // roster) and PERSISTED only for DMs (DEC-051) — so the sole membership rows
+  // are `Participant`s, written for DM threads alone. A snapshotted cohort goes
+  // stale the moment the schedule moves (the Xola-trap calendar, DEC-009 spirit).
+  /**
+   * Persist a thread (upsert by id). The standing kinds use a deterministic id
+   * (`standingThreadId`), so `getThread(id) ?? saveThread(...)` is an idempotent
+   * find-or-create — one thread per (kind, scope), never a duplicate day-thread.
+   */
+  saveThread(thread: Thread): Promise<void>;
+  getThread(id: ThreadId): Promise<Thread | null>;
+  /** Persist a DM participant (upsert by id). DM-only by design (DEC-051) — the
+   *  derived kinds compute membership and write nothing here. */
+  saveParticipant(participant: Participant): Promise<void>;
+  /** A (DM) thread's persisted participants — the input `deriveMembers` reads for
+   *  `kind: "dm"`. Empty for the derived kinds (they persist no rows). */
+  listParticipantsForThread(threadId: ThreadId): Promise<Participant[]>;
+  /** Persist a message (upsert by id). */
+  saveMessage(message: Message): Promise<void>;
+  /** One thread's messages, oldest-first — chronological by `createdAt`, id as the
+   *  deterministic tie-break (parity across adapters). */
+  listMessagesForThread(threadId: ThreadId): Promise<Message[]>;
 }

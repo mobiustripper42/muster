@@ -41,6 +41,8 @@ import type { ReliabilityEvent } from "../domain/reliability.js";
 import type { SeatState } from "../domain/states.js";
 import type { ImportRun, ImportRunItem } from "../import/import-audit.js";
 import type { ImportRunId } from "../domain/ids.js";
+import type { Message, Participant, Thread } from "../messaging/entities.js";
+import type { MessageId, ParticipantId, ThreadId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 
 const clone = <T>(value: T): T => structuredClone(value);
@@ -68,6 +70,9 @@ export class InMemoryRepository implements Repository {
     ImportRunId,
     { run: ImportRun; items: ImportRunItem[] }
   >();
+  readonly #threads = new Map<ThreadId, Thread>();
+  readonly #participants = new Map<ParticipantId, Participant>();
+  readonly #messages = new Map<MessageId, Message>();
 
   // ── Role types (tenant config — DEC-ROLE-1) ───────────────────────────────
   async saveRoleType(roleType: RoleType): Promise<void> {
@@ -324,6 +329,37 @@ export class InMemoryRepository implements Repository {
           String(b.id).localeCompare(String(a.id)),
       )
       .slice(0, limit)
+      .map(clone);
+  }
+
+  // ── Messaging (threads / participants / messages — #111, DEC-051) ──────────
+  async saveThread(thread: Thread): Promise<void> {
+    this.#threads.set(thread.id, clone(thread));
+  }
+  async getThread(id: ThreadId): Promise<Thread | null> {
+    const t = this.#threads.get(id);
+    return t ? clone(t) : null;
+  }
+  async saveParticipant(participant: Participant): Promise<void> {
+    this.#participants.set(participant.id, clone(participant));
+  }
+  async listParticipantsForThread(threadId: ThreadId): Promise<Participant[]> {
+    return [...this.#participants.values()]
+      .filter((p) => p.threadId === threadId)
+      .map(clone);
+  }
+  async saveMessage(message: Message): Promise<void> {
+    this.#messages.set(message.id, clone(message));
+  }
+  async listMessagesForThread(threadId: ThreadId): Promise<Message[]> {
+    return [...this.#messages.values()]
+      .filter((m) => m.threadId === threadId)
+      // chronological; id break matches the pg adapter's `order by created_at, id`.
+      .sort(
+        (a, b) =>
+          a.createdAt.localeCompare(b.createdAt) ||
+          String(a.id).localeCompare(String(b.id)),
+      )
       .map(clone);
   }
 }

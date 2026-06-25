@@ -26,6 +26,7 @@ import type {
   ThreadId,
 } from "../domain/ids.js";
 import { asId } from "../domain/ids.js";
+import type { AuthSubjectKind } from "../domain/entities.js";
 
 /**
  * The kind of thread. **Data, not a hardcoded enum branch** (DEC-051 — the
@@ -51,14 +52,19 @@ export interface Thread {
   createdAt: string;
 }
 
-export type MessageSenderKind = "crew" | "operator";
+/** A message's sender kind = the canonical subject kind (DEC-058). `"admin"` is
+ *  the operator/office, posting as `OPERATOR_CREW_MEMBER_ID` (DEC-030 §7) — there
+ *  is no separate `"operator"` vocabulary. */
+export type MessageSenderKind = AuthSubjectKind;
 
 export interface Message {
   id: MessageId;
   threadId: ThreadId;
-  /** Subject ref — a `CrewMemberId` (crew) or an operator subject id. Stored as a
-   *  plain string because senders span two identity spaces (DEC-052: operators
-   *  post too, and DMs are operator-visible). `senderKind` tags which. */
+  /** Subject ref — a `CrewMemberId` (crew) or the operator/office id (`"admin"`,
+   *  `OPERATOR_CREW_MEMBER_ID` in v1 — DEC-030 §7). Stored as a plain string
+   *  because senders span identity spaces (DEC-052: operators post too, and DMs
+   *  are operator-visible). `senderKind` (the canonical subject kind, DEC-058)
+   *  tags which. */
   senderId: string;
   senderKind: MessageSenderKind;
   body: string;

@@ -131,12 +131,16 @@ npm run db:mint -- --admin=spink
 **The DB string is the catch.** Neon connection vars are **Sensitive**, so `vercel env pull` returns
 `DATABASE_URL` *empty* (step 3) — `APP_BASE_URL` (not sensitive) pulls fine, but the DB string doesn't.
 So either paste the **direct/unpooled** string into `.env.local` once (it's gitignored; survives until
-the next `env pull` overwrites the file), or pass it inline — inline always wins:
+the next `env pull` overwrites the file), or pass it inline — inline always wins. **Both `APP_BASE_URL`
+and `DATABASE_URL` are required:** omit `APP_BASE_URL` and the printed link silently falls back to the
+local host (`http://mill-dev:3000`), not your domain. Quote the DB string — an unquoted `&` in it is a
+bash background operator and splits the command, so `DATABASE_URL` never reaches the script:
 ```bash
-DATABASE_URL="<paste-direct-unpooled-string>" npm run db:mint -- --admin=spink
+APP_BASE_URL=https://<prod-domain> DATABASE_URL="<paste-direct-unpooled-string>" npm run db:mint -- --admin=spink
 ```
-**Check the `db:` host** in the output — if it reads `localhost:5432` you minted against the wrong
-database (the DB string didn't take); a prod link must show the Neon host.
+**Check both in the output** — the `db:` host must be the Neon host (not `localhost:5432`), AND the
+printed link must be your `<prod-domain>` (not `http://mill-dev:3000`). Either one wrong means that env
+var didn't take.
 
 **On the dev box (mill-dev), don't edit `.env.local` for this.** Your `.env.local` points at *local*
 dev (mill-dev origin + localhost DB), and inline env is one-shot — it never touches that file, so

@@ -152,9 +152,10 @@ the app — they get **zero** texts. Only the absent get pinged. Six-people-blow
 - The server knows *which* thread they're in → hush **only that thread**, not all of Muster.
 
 ### 7.2 Delay-to-batch (+ the cancel window)
-A notification doesn't fire instantly — hold ~1 minute and group multiple messages into one ping
-("3 new in Saturday cohort," not three rings). The delay doubles as a **cancel window**: if they
-open and read within it, the pending text is cancelled — no ring at all.
+A notification doesn't fire instantly — hold **90 s** (default, `DOORBELL_BATCH_WINDOW_MS`; DEC-060)
+and group multiple messages into one ping ("3 new in Saturday cohort," not three rings). The delay
+doubles as a **cancel window**: if they open and read within it, the pending text is cancelled — no
+ring at all. Priority messages (§7.4) bypass the hold entirely.
 
 ### 7.3 First-only-until-read
 Ring on the **first** unread message in a thread; suppress further rings for that thread until
@@ -264,7 +265,10 @@ Note the seams; don't widen the crew spec yet.
 
 ## 14. Deferred / open
 
-- Exact **delay window** (~1 min) and the batch/priority rules — config knobs, tune on real use.
+- ~~Exact **delay window** (~1 min)~~ — **resolved (DEC-060, 6.3):** batch/cancel **90 s**
+  (`DOORBELL_BATCH_WINDOW_MS`), presence-staleness **5 min** (`DOORBELL_PRESENCE_WINDOW_MS`);
+  env-overridable, tune on real use. The batch/priority *rules* (ordering, what flags as priority)
+  remain 6.4's to compose.
 - **DM privacy** — is a crew-to-crew DM private to the two, or operator-visible for ops? Decide.
 - **Presence edge cases** — multiple devices, flaky connections, app backgrounded vs closed.
 - **Read receipts / typing** in-app — nice-to-have, not v1.

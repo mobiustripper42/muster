@@ -87,3 +87,54 @@ export function vesselDateOf(at: Date, tz: string = TENANT_TIMEZONE): string {
     day: "2-digit",
   }).format(at);
 }
+
+/**
+ * A positive-ms env knob with a fallback. Non-numeric / non-positive env values
+ * fall back rather than poison the default — a fat-fingered override degrades to
+ * the researched value instead of disabling the window. The env value must be a
+ * **plain integer of milliseconds**: `90000`, not `90_000` — `Number("90_000")`
+ * is `NaN` (no JS numeric separators in env strings) and silently falls back.
+ */
+function envMs(name: string, fallbackMs: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallbackMs;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : fallbackMs;
+}
+
+/**
+ * Doorbell window defaults — the 6.3 spike, **DEC-060**. Two distinct knobs,
+ * both env-overridable and tune-on-real-use; tenant-config data later (same
+ * posture as `TENANT_TIMEZONE` / DEC-001, DEC-046's operator-config doorbell).
+ *
+ * **Batch / cancel window** (§7.2) — how long a pending *non-priority*
+ * notification is held before it rings, grouping a flurry into one ping. The
+ * hold doubles as the cancel-on-read window: open the thread inside it and the
+ * SMS is cancelled. 90 s — Slack's explicit-leave push delay (~1 min), the ~90 s
+ * SMS response cadence, and the 1–2 min debounce norm; longer than the artifact's
+ * "~1 min" placeholder buys batch/cancel headroom (every cancel saves a send) at
+ * trivial latency cost, and priority bypasses entirely (§7.4) so urgency isn't held.
+ */
+export const DOORBELL_BATCH_WINDOW_MS: number = envMs(
+  "DOORBELL_BATCH_WINDOW_MS",
+  90_000,
+);
+
+/**
+ * **Presence-staleness window** (§7.1) — how recently a subject must have been
+ * observed active to count as "present" and *suppress* a ring (the window
+ * `isPresent` takes as a param). 5 min — pulled under the ~10 min passive-idle
+ * peers (Slack cursor-idle, Discord idle) because presence is narrow + fails
+ * toward ringing, but kept well above the batch window: the coarse observed
+ * signal (DEC-046, no socket yet) emits nothing while a crew member *reads* a
+ * thread without tapping, so a shorter window would text someone staring at the
+ * message — breaking the keystone. Collapses toward realtime when DEC-047's
+ * websocket lands. Invariant: must exceed `DOORBELL_BATCH_WINDOW_MS` — `envMs`
+ * validates each value in isolation, so this cross-field check is **not** enforced
+ * here (a no-throw config module); the 6.4 decider validates the combined pair at
+ * startup (#114).
+ */
+export const DOORBELL_PRESENCE_WINDOW_MS: number = envMs(
+  "DOORBELL_PRESENCE_WINDOW_MS",
+  300_000,
+);

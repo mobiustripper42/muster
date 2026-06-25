@@ -21,7 +21,7 @@
     "db:tick": "tsx db/tick-dev.ts",
     "db:reset:test": "tsx db/reset-test.ts",
     "test": "vitest run",
-    "test:pg": "vitest run src/adapters/postgres-repository.test.ts",
+    "test:pg": "vitest run src/adapters/postgres-repository.test.ts src/adapters/postgres-presence.test.ts",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",

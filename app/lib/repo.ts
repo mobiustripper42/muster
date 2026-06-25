@@ -1,5 +1,6 @@
 import pg from "pg";
 import { PostgresRepository } from "@core/adapters/postgres-repository.js";
+import { PostgresPresence } from "@core/adapters/postgres-presence.js";
 
 /**
  * App-side repository access (DEC-020, DEC-DATA-1). The app talks to the domain
@@ -26,4 +27,13 @@ const pool = (g.__musterPool ??= new pg.Pool({
 
 export function getRepo(): PostgresRepository {
   return new PostgresRepository(pool);
+}
+
+/**
+ * App-side presence access (#112, DEC-047). The `PresencePort` behind the shared
+ * pool — separate from the `Repository` so the realtime swap (DEC-047) is a
+ * one-adapter change that never touches persistence.
+ */
+export function getPresence(): PostgresPresence {
+  return new PostgresPresence(pool);
 }

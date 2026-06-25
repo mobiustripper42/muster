@@ -172,6 +172,37 @@ export async function assignPerson(
   return ask;
 }
 
+/**
+ * Drip widen (DEC-063): fire **one** ask to the top-ranked *un-asked* eligible
+ * candidate for a seat — the staged counterpart to `broadcastAsk`'s blast. Sets
+ * `Open → Asked` if the seat just (re)opened; earlier asks are left untouched, so
+ * the open asks **accumulate** and first-acceptable-yes-wins still decides among
+ * them. Returns the ask, or `null` when no un-asked candidate is left to widen to
+ * (pool walked) or the seat isn't workable (not `Open`/`Asked`). The tick gates
+ * *when* this fires (`ASK_DRIP_INTERVAL_MINUTES`); keeping the fan-out primitive
+ * here means the seed and every widen are the same one tested call. Looping it
+ * until `null` blasts the remaining pool (the tick's urgent / interval-0 path).
+ */
+export async function widenAsk(
+  repo: Repository,
+  seatId: SeatId,
+  now: Date,
+): Promise<Ask | null> {
+  const seat = await repo.getSeat(seatId);
+  if (!seat || (seat.state !== "Open" && seat.state !== "Asked")) return null;
+  const asked = new Set(
+    (await repo.listAsksForSeat(seatId)).map((a) => a.crewMemberId),
+  );
+  const [pick] = await rankedEligible(repo, seat, now, asked);
+  if (!pick) return null; // pool walked — nothing un-asked left
+  if (seat.state === "Open") {
+    await repo.saveSeat({ ...seat, state: "Asked" });
+  }
+  const ask = await fireAsk(repo, seat, pick.id, now);
+  await refreshShiftState(repo, seat.shiftId);
+  return ask;
+}
+
 // ── Responses ───────────────────────────────────────────────────────────────
 
 export interface ResponseOutcome {

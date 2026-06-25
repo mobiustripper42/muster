@@ -193,6 +193,11 @@ Two protocols ride the same seat machine:
 - **Ask-then-assign** (mates): broadcast → yeses accrue → ranked → confirm down the list.
 - **Assign-then-confirm** (captains): name a person → they confirm/decline → decline kicks to next.
 
+> **Refined by DEC-063:** the ask-then-assign "broadcast" is **staged (a drip)** — one ask to the
+> top-ranked candidate, widening by one every `ASK_DRIP_INTERVAL_MINUTES` (default 15), asks
+> accumulating, first-acceptable-yes-wins unchanged. `interval=0` is the original blast-all; inside
+> the fills-by deadline (DEC-031) it blasts regardless. Ranking now drives *timing*, not just display.
+
 **Decided:** per-role default (mates ask-then-assign, captains assign-then-confirm), with a
 per-person override toggle. Default contested-seat winner is **first-acceptable-yes-wins** for
 rollout (simple, matches Spink's instinct, feels fair); **best-by-score** is a knob to flip once

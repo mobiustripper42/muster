@@ -20,6 +20,7 @@ import {
   recordResponse,
   resolveProtocol,
   vacateSeat,
+  widenAsk,
 } from "./ask-loop.js";
 
 const CAPTAIN = asId<"RoleTypeId">("role-captain");
@@ -118,6 +119,35 @@ describe("assign-then-confirm (captain flow)", () => {
     await recordResponse(repo, ask!.id, "accepted", later(1000));
     await confirmSeat(repo, seatId!, later(2000));
     expect(await seatState(seatId!)).toBe("Confirmed");
+  });
+});
+
+describe("widenAsk — drip primitive (DEC-063)", () => {
+  it("fires ONE ask to the top-ranked candidate and opens the seat", async () => {
+    await addCrew("crew-a");
+    await addCrew("crew-b");
+    const [seatId] = await addShift(1);
+    const ask = await widenAsk(repo, seatId!, T0);
+    expect(ask).not.toBeNull();
+    expect(await seatState(seatId!)).toBe("Asked");
+    expect(await repo.listAsksForSeat(seatId!)).toHaveLength(1);
+  });
+
+  it("excludes already-asked crew — successive widens pick distinct people", async () => {
+    await addCrew("crew-a");
+    await addCrew("crew-b");
+    const [seatId] = await addShift(1);
+    const a1 = await widenAsk(repo, seatId!, T0);
+    const a2 = await widenAsk(repo, seatId!, later(1000));
+    expect(a1!.crewMemberId).not.toBe(a2!.crewMemberId);
+    expect(await repo.listAsksForSeat(seatId!)).toHaveLength(2);
+  });
+
+  it("returns null once the pool is walked (nothing un-asked left)", async () => {
+    await addCrew("crew-a");
+    const [seatId] = await addShift(1);
+    expect(await widenAsk(repo, seatId!, T0)).not.toBeNull(); // the one candidate
+    expect(await widenAsk(repo, seatId!, later(1000))).toBeNull(); // nobody left
   });
 });
 

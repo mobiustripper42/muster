@@ -385,3 +385,75 @@ describe("resolveShiftStateOnRead (DEC-023 corollary)", () => {
     ).toBeNull();
   });
 });
+
+describe("tick — Tier-1 drip (DEC-063)", () => {
+  // Post-horizon (≥ trip−7d = 2026-06-24T19:00Z) but well before fills-by
+  // (trip−48h = 2026-06-29T19:00Z), so the tick drips rather than urgent-blasts.
+  const DRIP = new Date("2026-06-26T12:00:00.000Z");
+  const MIN = 60_000;
+  const after = (ms: number) => new Date(DRIP.getTime() + ms);
+  const seatId = () => repo.listSeatsForShift(SHIFT).then((s) => s[0]!.id);
+  const askCount = async () =>
+    (await repo.listAsksForSeat(await seatId())).length;
+
+  async function seededShift(nCrew: number): Promise<void> {
+    await seedVesselEvent();
+    for (let i = 1; i <= nCrew; i++) await addCaptain(`cap-${i}`);
+    await formShifts(repo); // Pending, one Open captain seat
+  }
+
+  it("seeds ONE ask (top-ranked), not the whole pool", async () => {
+    await seededShift(3);
+    const r = await tick(repo, DRIP);
+    expect(r.bornFilling).toBe(1);
+    expect(r.asksFired).toBe(1); // drip seeds one; blast would be 3
+    expect(await askCount()).toBe(1);
+    expect(await seatState()).toBe("Asked");
+  });
+
+  it("widens by one after the interval, accumulating (default 15m)", async () => {
+    await seededShift(3);
+    await tick(repo, DRIP); // seed #1
+    const early = await tick(repo, after(5 * MIN)); // before interval → no widen
+    expect(early.asksFired).toBe(0);
+    expect(await askCount()).toBe(1);
+    const due = await tick(repo, after(16 * MIN)); // past interval → widen #2
+    expect(due.asksFired).toBe(1);
+    expect(await askCount()).toBe(2); // accumulated — #1 still open
+  });
+
+  it("interval 0 blasts the whole pool (the pre-drip rollback)", async () => {
+    await seededShift(3);
+    const r = await tick(repo, DRIP, { dripIntervalMinutes: 0 });
+    expect(r.asksFired).toBe(3);
+    expect(await askCount()).toBe(3);
+  });
+
+  it("blasts inside the fills-by deadline, even with a drip interval", async () => {
+    await seededShift(3);
+    const r = await tick(repo, AFTER); // AFTER is within trip−48h → urgent
+    expect(r.asksFired).toBe(3);
+    expect(await askCount()).toBe(3);
+  });
+
+  it("a decline reopens the seat and widens immediately (no fresh interval wait)", async () => {
+    await seededShift(3);
+    await tick(repo, DRIP); // seed #1
+    const [first] = await repo.listAsksForSeat(await seatId());
+    await recordResponse(repo, first!.id, "declined", after(MIN)); // #1 says no
+    expect(await seatState()).toBe("Open"); // single ask closed → reopened
+    const r = await tick(repo, after(2 * MIN)); // only 2m later, but Open → widen now
+    expect(r.asksFired).toBe(1);
+    expect(await seatState()).toBe("Asked");
+    expect(await askCount()).toBe(2); // #1 (declined) + #2 (fresh)
+  });
+
+  it("a pool of one seeds then never widens (nothing to widen to)", async () => {
+    await seededShift(1);
+    await tick(repo, DRIP); // seed the only candidate
+    expect(await askCount()).toBe(1);
+    const r = await tick(repo, after(20 * MIN)); // interval passed, no un-asked left
+    expect(r.asksFired).toBe(0);
+    expect(await askCount()).toBe(1);
+  });
+});

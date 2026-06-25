@@ -7,20 +7,25 @@
  * which truncates *every* table against the throwaway test DB; this one runs
  * against a real (prod) DB and truncates an **explicit, classified** subset.
  *
- * **Destructive + prod-targeted, so it is guarded three ways:**
+ * **Destructive + prod-targeted, so it is guarded four ways:**
  *  1. `DATABASE_URL` MUST be set — no fallback (unlike reset-test's safe local
  *     default). An unset URL aborts rather than drifting to libpq defaults.
  *  2. Every table in `pg_tables` must be classified KEEP or CLEAR here. A new
  *     migration's table that nobody classified aborts the run — so a future
  *     table can never be silently kept *or* silently wiped.
- *  3. It is a **dry run by default**: it prints the host, the keep/clear lists,
- *     and a live row count per table, then stops. It only deletes when
+ *  3. It is a **dry run by default**: it prints the connected DB + keep/clear
+ *     lists + a live row count per table, then stops. It only deletes when
  *     `RESET_PILOT_CONFIRM=yes` is set — a deliberate second action.
+ *  4. **Target identity is enforced, not echoed**: execute also requires
+ *     `RESET_PILOT_EXPECT_DB` to equal the server's `current_database()`, so a
+ *     wrong-but-same-schema URL (muster_dev, another tenant) can't slip through
+ *     on the confirm token alone. The dry run prints the exact value to set.
  *
- * Run (dry run — shows the blast radius, touches nothing):
+ * Run (dry run — shows the blast radius + the DB name to confirm, touches nothing):
  *   DATABASE_URL='<prod-direct-unpooled-url>' npx tsx db/reset-pilot.ts
  * Run (execute):
- *   DATABASE_URL='<prod-direct-unpooled-url>' RESET_PILOT_CONFIRM=yes npx tsx db/reset-pilot.ts
+ *   DATABASE_URL='<prod-direct-unpooled-url>' RESET_PILOT_CONFIRM=yes \
+ *     RESET_PILOT_EXPECT_DB='<the-db-name-the-dry-run-printed>' npx tsx db/reset-pilot.ts
  *
  * After it runs: re-import from Xola (operator "Pull from Xola now", or the
  * hourly cron) to repopulate events → re-form shifts with the fixed engine.
@@ -82,6 +87,13 @@ export async function resetPilot(): Promise<void> {
   const client = new pg.Client({ connectionString });
   await client.connect();
   try {
+    // Authoritative connected-DB name (from the server, not the URL parse) — the
+    // target-identity guard and the plan echo both key off this.
+    const { rows: dbRows } = await client.query<{ db: string }>(
+      `select current_database() as db`,
+    );
+    const currentDb = dbRows[0]!.db;
+
     // Classification guard: every real table must be KEEP or CLEAR (or the
     // migrations ledger). An unclassified table aborts — never silently handled.
     const { rows } = await client.query<{ tablename: string }>(
@@ -107,7 +119,9 @@ export async function resetPilot(): Promise<void> {
       counts[t] = Number(c[0]!.n);
     }
 
-    console.log(`\nPilot reset — target: ${hostOf(connectionString)}`);
+    console.log(
+      `\nPilot reset — connected to DB "${currentDb}" at ${hostOf(connectionString)}`,
+    );
     console.log(`KEEP (untouched): ${[...KEEP].join(", ")}`);
     console.log("CLEAR:");
     for (const t of CLEAR) console.log(`  ${t.padEnd(20)} ${counts[t]} rows`);
@@ -116,9 +130,23 @@ export async function resetPilot(): Promise<void> {
     if (!confirmed) {
       console.log(
         `\nDRY RUN — nothing deleted (${total} rows would be cleared).` +
-          `\nRe-run with RESET_PILOT_CONFIRM=yes to execute.\n`,
+          `\nTo execute: RESET_PILOT_CONFIRM=yes RESET_PILOT_EXPECT_DB="${currentDb}"\n`,
       );
       return;
+    }
+
+    // Target-identity guard: the confirm token proves intent, but NOT that this is
+    // the intended DB. A wrong-but-same-schema URL (muster_dev, another tenant)
+    // passes every other guard. Require the operator to name the DB they mean and
+    // assert it against the server's own `current_database()` — an enforced second
+    // look, not a fire-and-forget host echo.
+    const expectDb = process.env.RESET_PILOT_EXPECT_DB;
+    if (expectDb !== currentDb) {
+      throw new Error(
+        `Target-identity mismatch: connected to "${currentDb}" but ` +
+          `RESET_PILOT_EXPECT_DB=${expectDb ?? "(unset)"}. ` +
+          `Set RESET_PILOT_EXPECT_DB="${currentDb}" to confirm THIS is the DB to wipe.`,
+      );
     }
 
     const list = CLEAR.map((t) => `"${t}"`).join(", ");

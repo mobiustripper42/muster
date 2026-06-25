@@ -93,6 +93,7 @@ Overrides to the shell's `## Micro Workflow`. Muster's stack is Next.js over a f
 - **Step 5 (Write the test):** Vitest against the domain core (oracle, state machine, reliability log) — heavily unit/integration tested. Test-first when behavior changes. **No pgTAP** — there's no Supabase/RLS; persistence is plain Postgres behind the `Repository` port with an in-memory adapter as the test substrate.
 - **Step 6 (Run targeted tests):** the relevant Vitest file/suite, not the whole thing. Full suite is the user's call.
 - **Step 7 (Mobile screenshot):** Playwright screenshots land when that tooling does (M4 fast-follow). Until then, **every page works at 375px — eyeball at `mill-dev:3000`** per `docs/RUNNING.md`.
+- **Feature branches for multi-PR features (DEC-059 — overrides the shell's `## PR Workflow`):** `main` must stay **promotable to `production` at all times**. A feature shipping across multiple PRs that isn't independently releasable lands on a long-lived `feature/<name>` branch off `main` — its task PRs target *that* branch — and merges to `main` only when the whole feature is prod-ready **or** dark behind a flag. Independently-shippable tasks still PR straight to `main`. The shell's "stack PRs onto `main`" guidance applies only to independently-shippable work; do **not** land partial features on `main`.
 
 ## Migration Protocol (project)
 

@@ -128,6 +128,21 @@ async function broadcastAllDecline(seatId: SeatId): Promise<number> {
   return asks.length;
 }
 
+describe("past-trip guard (#147, DEC-062)", () => {
+  it("a departed shift never boards, even short + willingness-exhausted", async () => {
+    await addCrew("ann");
+    // Trip departed 24h before the board's `now`; whole pool declined → this
+    // WOULD board on willingness-exhaustion if it weren't past. The guard drops
+    // it so Spink isn't pinged about a trip that already left the dock.
+    const { shiftId, seatIds } = await addShift("past1", hoursAfterT0(-24), [{}]);
+    await broadcastAllDecline(seatIds[0]!);
+
+    const rows = await deriveAtRiskBoard(repo, T0);
+    expect(rows.map((r) => r.shiftId)).not.toContain(shiftId);
+    expect(rows).toHaveLength(0);
+  });
+});
+
 describe("membership — core (willingness-exhaustion)", () => {
   it("boards a still-short shift whose whole pool declined, trip inside the threshold", async () => {
     await addCrew("ann");

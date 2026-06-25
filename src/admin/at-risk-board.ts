@@ -197,6 +197,15 @@ export async function deriveAtRiskBoard(
     // Lifecycle states are terminal — mirrors tick's guard.
     if (shift.state === "Cancelled" || shift.state === "Completed") continue;
 
+    const ids = new Set(shift.eventIds);
+    const events = allEvents.filter((e) => ids.has(e.id));
+    const tripStart = earliestScheduledStart(events, tz);
+    // Past-trip guard (#147, DEC-062): a departed shift drops off the board too —
+    // shares tick's work-loop rule so board membership and engine work agree (no
+    // pinging Spink about a trip that already left). A shift with no scheduled
+    // event has no departure → falls through.
+    if (tripStart !== null && tripStart.getTime() <= now.getTime()) continue;
+
     const seats = await repo.listSeatsForShift(shift.id);
     const required = seats.filter((s) => s.kind === "required");
 
@@ -204,10 +213,7 @@ export async function deriveAtRiskBoard(
     // the resolve below reuses it instead of calling solveShift again.
     const trail = await escalationTrailFor(repo, shift.id, now);
 
-    const ids = new Set(shift.eventIds);
-    const events = allEvents.filter((e) => ids.has(e.id));
     const horizon = staffingHorizonFromEvents(events, leadDays, tz);
-    const tripStart = earliestScheduledStart(events, tz);
     const tripStarts = scheduledStarts(events, tz);
     // Same `deadlineHours` the willingness-exhaustion route boards on below, so
     // the rendered "fills by" IS that boarding instant (DEC-031).

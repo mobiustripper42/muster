@@ -388,7 +388,7 @@ describe("STAFFING_HORIZON_LEAD_DAYS env override (DEC-062)", () => {
   });
 
   it("a non-integer or non-positive override falls back to 7", async () => {
-    for (const bad of ["7.5", "0", "-2", "lots"]) {
+    for (const bad of ["7.5", "0", "-2", "lots", "", " "]) {
       vi.stubEnv("STAFFING_HORIZON_LEAD_DAYS", bad);
       vi.resetModules();
       const m = await import("./derive.js");

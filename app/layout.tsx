@@ -24,7 +24,20 @@ export const metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={`${plexSans.variable} ${plexMono.variable}`}>
-      <body>{children}</body>
+      <body>
+        {/* Environment tell (server-rendered, no client JS): a 4px line pinned to
+            the top edge — red on local dev, yellow on a Vercel preview, nothing in
+            production. Keys off the same VERCEL_ENV the dev-link gate uses (DEC-057).
+            The two conditions are mutually exclusive: Vercel sets NODE_ENV=production
+            on both preview and prod builds, so `development` only matches local. */}
+        {process.env.NODE_ENV === "development" && (
+          <div className="fixed inset-x-0 top-0 z-[9999] h-1 bg-red-600" />
+        )}
+        {process.env.VERCEL_ENV === "preview" && (
+          <div className="fixed inset-x-0 top-0 z-[9999] h-1 bg-yellow-400" />
+        )}
+        {children}
+      </body>
     </html>
   );
 }

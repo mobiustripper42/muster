@@ -32,6 +32,7 @@ import {
   SYSTEM_ACTOR_ID,
 } from "../oracle/reliability-log.js";
 import {
+  earliestScheduledStart,
   resolveShiftState,
   staffingHorizonFor,
   STAFFING_HORIZON_LEAD_DAYS,
@@ -172,6 +173,19 @@ export async function tick(
     // Lifecycle states are terminal here — a tick never resurrects a cancelled
     // or completed shift (mirrors how #20 guards `Completed` in formShifts).
     if (shift.state === "Cancelled" || shift.state === "Completed") continue;
+
+    // Past-trip guard (#147, DEC-062): once the earliest scheduled trip has
+    // departed, the shift is no longer the engine's to work — never broadcast,
+    // escalate, or (post-DEC-061) auto-crew a shift whose trip already left the
+    // dock. `resolveShiftState` gates the *near* side of the staffing window
+    // (before-horizon → Pending); this gates the *far* side. A shift with no
+    // scheduled event (`null`) has no departure to be past, so it falls through.
+    const ids = new Set(shift.eventIds);
+    const tripStart = earliestScheduledStart(
+      allEvents.filter((e) => ids.has(e.id)),
+      tz,
+    );
+    if (tripStart !== null && tripStart.getTime() <= now.getTime()) continue;
 
     const seats = await repo.listSeatsForShift(shift.id);
     const horizon = staffingHorizonFor(shift, allEvents, leadDays, tz);

@@ -1479,6 +1479,16 @@ remove). **Revisit if:** previews ever stop being isolated branches, or carry se
 
 ---
 
+> _Note: DEC-060 lands via `feature/messaging` (PR #144) and DEC-061 via the auto-confirm PR (#146); both arrive on `main` when those merge. This pilot fix branched off `main` allocates **DEC-062** — the temporary 060/061 gap on `main` is expected concurrent-branch numbering._
+
+## DEC-062: The engine never works a departed shift; staffing horizon is env-tunable
+**Decision:** Two pilot fixes to the engine tick. **(1) Past-trip guard (#147):** `tick()` skips any shift whose earliest scheduled start is `<= now` — no broadcast, no escalate, no auto-crew. `resolveShiftState` already gates the *near* side of the staffing window (before-horizon → `Pending`); this gates the *far* side (trip already departed). A shift with no scheduled event has no departure and falls through unchanged. **(2) Horizon env-tunable:** `STAFFING_HORIZON_LEAD_DAYS` (`src/builder/derive.ts`) now reads `process.env.STAFFING_HORIZON_LEAD_DAYS` (positive integer days), default **7** — the operator tunes the value per deploy without a code change. Refines DEC-022 (which fixed only that the lead lives in *one* place) and partially resolves the DEC-TBD "concrete horizon values" (the *value* stays Eric's; the *plumbing* is now an env knob).
+**Why:** The armed tick cron (#130, `*/15`) was working **all** non-terminal shifts, so departed trips got asked and — post-DEC-061 auto-confirm — **crewed** (operator saw past shifts crew themselves). A trip that has left the dock cannot be crewed; working it is pure noise + bad state. Separately, the 7-day default is a guess the operator needs to dial against real pilot behavior, and a redeploy-per-tweak loop is the wrong ergonomics for a tune-later knob.
+**Tradeoff / scope:** The guard *skips* past shifts, it does not re-state them — a past unfilled shift keeps its last-persisted badge (stale, harmless) rather than transitioning to a "missed/expired" terminal state (deferred; would need a new shift state + board filtering). The at-risk board may still surface past shifts (follow-up on #147). Env (not a DB-backed `/admin` setting) means a horizon change needs a Vercel redeploy — a change-it-from-the-cockpit setting is a larger follow-up. The guard uses the *earliest* scheduled trip: a multi-trip day where trip 1 departed but a later trip is upcoming is treated as past (BrewBoat is single-trip; revisit if multi-trip days become common).
+**Revisit if:** multi-trip days need per-trip crewing; or the operator wants the horizon (or a "missed" state) controllable from `/admin` without a redeploy.
+
+---
+
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)
 
 These are deferred by design. Each names an owner and a trigger. **Consult @architect (and the named
@@ -1496,8 +1506,9 @@ human owner) before building past the trigger.**
 - **Which "M" (soft) rules ship** for BrewBoat v1 (TWIC, medical, drug consortium, duty-hour,
   weather/tide) — *Owner: Spink/Drew against real operations. SPEC §1.3.*
 - **Concrete horizon values** — how many days is the staffing horizon? *Ship a dumb default, tune.
-  SPEC §4.* **(Where the value lives is now fixed by DEC-022 — a single `leadDays` config constant;
-  only the number remains tune-later. Default ships at 7d in task 3.1a.)*
+  SPEC §4.* **(Where the value lives is fixed by DEC-022 — a single `leadDays` constant — and now
+  **env-tunable** per DEC-062 (`STAFFING_HORIZON_LEAD_DAYS`, default 7d). Only the operator's chosen
+  number remains open; the plumbing is done.)*
 - **Reliability weights** — bail-lateness curve, ack weight, decay. *Flat v1; tune in Pass A. SPEC §1.4.*
 - **Event-Admin merge rule** — manual entries vs CSV re-import reconciliation. *Default "manual wins,
   flag conflicts"; refine against a real export. SPEC §2.2.*

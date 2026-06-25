@@ -1,6 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "next build --webpack",
+  "git": {
+    "deploymentEnabled": { "main": false }
+  },
   "crons": [
     { "path": "/api/cron/tick", "schedule": "*/15 * * * *" }
   ]

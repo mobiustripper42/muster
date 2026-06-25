@@ -17,7 +17,7 @@
 -- string (that's the in-memory Map key only). ADDITIVE — no existing table changes.
 
 create table presence (
-  subject_kind   text not null,   -- canonical AuthSubjectKind: crew | admin (+ customer, portal-era — DEC-058)
+  subject_kind   text not null,   -- canonical AuthSubjectKind: admin | crew (+ customer, portal-era — DEC-058)
   subject_id     text not null,   -- namespace-local subject id (no FK — DEC-DATA-1)
   last_active_at text not null,   -- ISO-8601 UTC; observed activity, latest-wins (DEC-046)
   primary key (subject_kind, subject_id)

@@ -12,18 +12,12 @@ import type { PresencePort } from "../ports/presence.js";
 export class PostgresPresence implements PresencePort {
   readonly #pool: pg.Pool;
 
+  // No fromConnectionString/close: the app constructs this from the shared pool
+  // (getPresence), and the tests own their pool — a close() here would end the
+  // shared app pool the Repository also uses. The realtime swap (DEC-047) is a
+  // sibling adapter, so this one never owns a connection lifecycle.
   constructor(pool: pg.Pool) {
     this.#pool = pool;
-  }
-
-  /** Convenience: build a pool from a connection string (caller owns `close`). */
-  static fromConnectionString(connectionString: string): PostgresPresence {
-    return new PostgresPresence(new pg.Pool({ connectionString }));
-  }
-
-  /** Release the pool. */
-  async close(): Promise<void> {
-    await this.#pool.end();
   }
 
   async recordActivity(subject: Subject, at: string): Promise<void> {

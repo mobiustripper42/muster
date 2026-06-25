@@ -25,7 +25,7 @@ export interface AnswerAsResult {
    * `asCrewMemberId` (nothing written). `gone` = no such ask (nothing written).
    */
   code: "not_yours" | "gone" | null;
-  /** The seat outcome from `recordResponse`, when the answer landed. */
+  /** The seat outcome from `recordResponseAndConfirm`, when the answer landed. */
   outcome?: ResponseOutcome;
 }
 

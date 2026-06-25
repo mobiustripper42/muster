@@ -91,7 +91,9 @@ export function vesselDateOf(at: Date, tz: string = TENANT_TIMEZONE): string {
 /**
  * A positive-ms env knob with a fallback. Non-numeric / non-positive env values
  * fall back rather than poison the default — a fat-fingered override degrades to
- * the researched value instead of disabling the window.
+ * the researched value instead of disabling the window. The env value must be a
+ * **plain integer of milliseconds**: `90000`, not `90_000` — `Number("90_000")`
+ * is `NaN` (no JS numeric separators in env strings) and silently falls back.
  */
 function envMs(name: string, fallbackMs: number): number {
   const raw = process.env[name];
@@ -127,7 +129,10 @@ export const DOORBELL_BATCH_WINDOW_MS: number = envMs(
  * signal (DEC-046, no socket yet) emits nothing while a crew member *reads* a
  * thread without tapping, so a shorter window would text someone staring at the
  * message — breaking the keystone. Collapses toward realtime when DEC-047's
- * websocket lands. Invariant: must exceed `DOORBELL_BATCH_WINDOW_MS`.
+ * websocket lands. Invariant: must exceed `DOORBELL_BATCH_WINDOW_MS` — `envMs`
+ * validates each value in isolation, so this cross-field check is **not** enforced
+ * here (a no-throw config module); the 6.4 decider validates the combined pair at
+ * startup (#114).
  */
 export const DOORBELL_PRESENCE_WINDOW_MS: number = envMs(
   "DOORBELL_PRESENCE_WINDOW_MS",

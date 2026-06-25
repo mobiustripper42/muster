@@ -13,6 +13,11 @@
  * constant — the STAFFING_HORIZON_LEAD_DAYS shape), env-overridable per deploy;
  * a tenant-config table is a multi-tenant-era concern. The dev default matches
  * `db/seed-outbox-dev.ts`'s seeded operator.
+ *
+ * Messaging (DEC-058): the operator participates as THIS crew id — posts and gets
+ * doorbell-rung as `OPERATOR_CREW_MEMBER_ID` with the canonical `senderKind:
+ * "admin"` ("from the office"). No durable operator entity is minted here; that
+ * stays the parked admin-roles revision of DEC-020.
  */
 export const OPERATOR_CREW_MEMBER_ID =
   process.env.OPERATOR_CREW_MEMBER_ID ?? "crew-spink";

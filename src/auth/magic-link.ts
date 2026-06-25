@@ -20,7 +20,7 @@
  */
 
 import { createHash, randomBytes } from "node:crypto";
-import type { AuthSubjectKind, MagicToken } from "../domain/entities.js";
+import type { AuthSubjectKind, MagicToken, Subject } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import { assertIsoDateTime } from "../domain/iso-date.js";
 import type { Repository } from "../ports/repository.js";
@@ -39,11 +39,9 @@ export function randomSecret(): string {
   return randomBytes(32).toString("base64url");
 }
 
-/** Who a verified link authenticates. `id` is interpreted per `kind` (DEC-010). */
-export interface AuthSubject {
-  kind: AuthSubjectKind;
-  id: string;
-}
+/** Who a verified link authenticates — the canonical `Subject` (DEC-058). `id` is
+ *  interpreted per `kind` (DEC-010). */
+export type AuthSubject = Subject;
 
 export interface IssueParams {
   subjectKind: AuthSubjectKind;

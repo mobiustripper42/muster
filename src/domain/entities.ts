@@ -251,6 +251,22 @@ export interface Ask {
 export type AuthSubjectKind = "admin" | "crew";
 
 /**
+ * The canonical messaging/notification identity (DEC-058). ONE type for everyone
+ * the system can address — crew (a `CrewMemberId`) and the operator/office
+ * (kind `"admin"`, participating as `OPERATOR_CREW_MEMBER_ID` in v1 — DEC-030 §7).
+ * `id` is namespace-local, interpreted per `kind` (no FK — DEC-DATA-1). Auth's
+ * `AuthSubject` is an alias of this; `Message.senderKind` and the `PresencePort`
+ * (#112) key on this same `AuthSubjectKind` — never a parallel vocabulary, never
+ * an `"operator"` synonym for `"admin"`. A future `"customer"` kind (portal
+ * ~2027) widens `AuthSubjectKind` in one line — type- and schema-free; the
+ * per-kind resolution surfaces it then touches are bounded, not free (DEC-058).
+ */
+export interface Subject {
+  kind: AuthSubjectKind;
+  id: string;
+}
+
+/**
  * A single-use, short-lived magic-link credential. Only the **hash** of the link
  * secret is ever stored (`tokenHash`) — a DB leak yields no usable links. Verify
  * re-hashes the presented secret, finds this row, and consumes it via a port CAS

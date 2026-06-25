@@ -11,17 +11,28 @@ import { getRepo } from "../../../lib/repo";
  * surfaces. In real life the link leaves via the channel port
  * (fake/SMS/Telegram). Hard-disabled in prod, live on previews + local (DEC-057).
  *
- * Gate on `VERCEL_ENV`, NOT `NODE_ENV`: Vercel sets `NODE_ENV=production` on
- * preview deploys too, so a `NODE_ENV` gate 404s previews — killing the only way
- * to sign in (crew OR admin) and smoke-test a preview before promoting. `VERCEL_ENV`
- * is `"production"` only on the real prod deploy, `"preview"` on previews, and
- * undefined locally — so this stays hard-off in prod while live everywhere we test.
- * Mint-into-a-preview is contained to that preview's isolated Neon branch DB (a
- * clone, never prod); pair with `APP_BASE_URL` scoped to Production only so the
- * minted link's host resolves to the preview, not prod (DEC-057, base-url.ts).
+ * Disabled on every PRODUCTION deploy, host-agnostic; live on previews + local
+ * (DEC-057). `VERCEL_ENV` is the primary gate because Vercel sets
+ * `NODE_ENV=production` on preview deploys too — so a `NODE_ENV`-only gate 404s
+ * previews, killing the only way to sign in (crew OR admin) and smoke-test a
+ * preview before promoting. `VERCEL_ENV` is `"production"` only on the real prod
+ * deploy, `"preview"` on previews, undefined off-Vercel. The `NODE_ENV` fallback
+ * re-closes the gate on a self-hosted prod (`next start` / Docker) where
+ * `VERCEL_ENV` is absent — so the minter never goes live in production on ANY host.
+ *
+ * Mint-into-a-preview is contained two ways: the preview's isolated Neon branch DB
+ * (a clone, never prod), and `SESSION_SECRET` must be set on the Preview env or the
+ * mint throws (auth.ts) — no forgeable session from a bare preview URL. Pair with
+ * `APP_BASE_URL` scoped to Production only so the minted link's host resolves to the
+ * preview, not prod (DEC-057, base-url.ts).
  */
 export async function GET(req: NextRequest) {
-  if (process.env.VERCEL_ENV === "production") {
+  // 404 on any prod deploy: Vercel prod (VERCEL_ENV) OR self-hosted prod
+  // (no VERCEL_ENV, NODE_ENV=production). Live only on Vercel previews + local dev.
+  const isProdDeploy =
+    process.env.VERCEL_ENV === "production" ||
+    (!process.env.VERCEL_ENV && process.env.NODE_ENV === "production");
+  if (isProdDeploy) {
     return new NextResponse("Not found", { status: 404 });
   }
   const crew = req.nextUrl.searchParams.get("crew");

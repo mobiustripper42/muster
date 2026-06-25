@@ -86,8 +86,12 @@ gives you `DATABASE_URL=""`, which falls through to `migrate.ts`'s localhost def
 ### 4. Configure the production branch
 - Vercel project → **Settings → Git** → set the **Production Branch** to **`production`** (DEC-S022;
   `main` stays the active trunk, `production` is the deploy pointer advanced by `/promote-production`).
-- Vercel auto-builds Preview deploys for every PR/branch and a Production deploy when `production`
-  moves. The build command + cron come from `vercel.json`.
+- Vercel builds a Production deploy when `production` moves, plus Preview deploys for PR/task
+  branches — with two exceptions: `main` deploys are disabled in `vercel.json`
+  (`git.deploymentEnabled`, #138) so the trunk never hits the prod DB; and an **Ignored Build Step**
+  (Settings → Build & Deployment, `bash -c '[ -f package.json ] && exit 1 || exit 0'`) skips any
+  branch with no `package.json`, so the orphan `sessions` log branch doesn't deploy. The build
+  command + cron come from `vercel.json`.
 
 ### 5. Deploy
 Push `production` (or merge `main` → `production` via `/promote-production`). Vercel builds with

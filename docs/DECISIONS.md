@@ -1417,6 +1417,35 @@ identity); writing the audit in the core (would drag clock + randomness into the
 
 ---
 
+## DEC-057: The dev-link minter is gated by `VERCEL_ENV`, not `NODE_ENV` — live on previews, off in prod
+
+**Status:** Built (Session 24).
+
+**Decision:** `/crew/dev-link` (the hand-driven magic-link minter for **both** crew `?crew=<id>` and
+operator `?admin=<handle>`) gates on `process.env.VERCEL_ENV === "production"` instead of
+`NODE_ENV === "production"`. So it is **404 only on the real prod deploy**, and **live on Vercel
+previews** (`VERCEL_ENV="preview"`) and **local** (`VERCEL_ENV` undefined). Pairs with `APP_BASE_URL`
+**scoped to the Production env only** in Vercel — left unset for Preview, `base-url.ts` falls back to
+the request `Host`, so a minted link's origin resolves to the preview's own domain (DEC-034 host-spoof
+guard intact: prod still has the trusted origin set).
+
+**Why:** Vercel sets `NODE_ENV=production` on **preview** builds too, so the old `NODE_ENV` gate 404'd
+previews — killing the only sign-in path (crew or admin) and making a preview impossible to smoke-test
+before `/promote-production`. Previews are exactly where the Vercel-only failure modes (cold starts,
+pool limits, cron, host/`APP_BASE_URL` bugs) surface; a preview you can't log into can't catch them.
+`VERCEL_ENV` distinguishes prod-vs-preview where `NODE_ENV` can't.
+
+**Tradeoff:** the unauthenticated minter is now reachable on preview URLs — anyone with the (obscure,
+non-secret) preview link can mint a crew/operator session. **Contained:** a preview's `DATABASE_URL`
+is its own **isolated Neon branch** (a clone, never prod), so a minted preview session touches branch
+data only; the prod deploy stays hard-404. **Rejected:** a preview-only shared secret on the route
+(ceremony the contained blast radius doesn't warrant); leaving it `NODE_ENV`-gated + minting admin
+links out-of-band via `db:mint` against each preview branch (the friction this fix exists to remove).
+**Revisit if:** previews ever stop being isolated branches, or carry sensitive data — then re-gate.
+**Phase:** out-of-phase pilot-infra (#135).
+
+---
+
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)
 
 These are deferred by design. Each names an owner and a trigger. **Consult @architect (and the named

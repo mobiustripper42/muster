@@ -9,10 +9,19 @@ import { getRepo } from "../../../lib/repo";
  * `GET /crew/dev-link?crew=<crewMemberId>` → a clickable link, or
  * `GET /crew/dev-link?admin=<handle>` → an operator (Spink) link for the admin
  * surfaces. In real life the link leaves via the channel port
- * (fake/SMS/Telegram). Hard-disabled in prod.
+ * (fake/SMS/Telegram). Hard-disabled in prod, live on previews + local (DEC-057).
+ *
+ * Gate on `VERCEL_ENV`, NOT `NODE_ENV`: Vercel sets `NODE_ENV=production` on
+ * preview deploys too, so a `NODE_ENV` gate 404s previews — killing the only way
+ * to sign in (crew OR admin) and smoke-test a preview before promoting. `VERCEL_ENV`
+ * is `"production"` only on the real prod deploy, `"preview"` on previews, and
+ * undefined locally — so this stays hard-off in prod while live everywhere we test.
+ * Mint-into-a-preview is contained to that preview's isolated Neon branch DB (a
+ * clone, never prod); pair with `APP_BASE_URL` scoped to Production only so the
+ * minted link's host resolves to the preview, not prod (DEC-057, base-url.ts).
  */
 export async function GET(req: NextRequest) {
-  if (process.env.NODE_ENV === "production") {
+  if (process.env.VERCEL_ENV === "production") {
     return new NextResponse("Not found", { status: 404 });
   }
   const crew = req.nextUrl.searchParams.get("crew");

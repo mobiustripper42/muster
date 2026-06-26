@@ -28,6 +28,8 @@ export interface SeatCardVM {
   seatId: string;
   shiftId: string;
   roleName: string;
+  /** The seat's role id — scopes the override picker to rated crew (DEC-064). */
+  role: string;
   state: "Open" | "Asked" | "Claimed" | "Confirmed" | "Bailed";
   occupant: { name: string; phone: string | null } | null;
   /** Present on Open/Asked/Bailed seats; null on Claimed/Confirmed. */
@@ -135,7 +137,8 @@ export function SeatCard({
   roster,
 }: {
   vm: SeatCardVM;
-  /** Whole active roster — the override picker's list (anyone, that's the point). */
+  /** Override picker's list — crew **rated for this seat's role** (DEC-064: a
+   *  mate can't be placed as captain; the page scopes this per seat). */
   roster: { id: string; name: string }[];
 }) {
   return (
@@ -178,7 +181,8 @@ export function SeatCard({
           Manual override
         </summary>
         <p className="py-1 text-xs text-muted">
-          Skips all checks and confirms them for the shift.
+          Skips the queue and confirms them for the shift. Only crew rated for
+          this role appear.
         </p>
         <ul className="flex flex-wrap gap-2 py-1">
           {roster.map((p) => (

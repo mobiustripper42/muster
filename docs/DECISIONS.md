@@ -1479,7 +1479,7 @@ remove). **Revisit if:** previews ever stop being isolated branches, or carry se
 
 ---
 
-> _Note: DEC-060 (doorbell window defaults) lands on the `feature/messaging` branch (PR #144) and reaches `main` when that feature merges — the temporary 060-gap on `main` is expected concurrent-branch numbering. (DEC-063 follows via the stacked drip PR #152.)_
+> _Note: DEC-060 (doorbell window defaults) lands on the `feature/messaging` branch (PR #144) and reaches `main` when that feature merges — the temporary 060-gap on `main` is expected concurrent-branch numbering._
 
 ## DEC-061: A winning "in" auto-confirms — `Claimed` is momentary on the happy path
 **Decision:** A winning accept advances `Asked → Claimed → Confirmed` in one operation. New core composition `recordResponseAndConfirm(repo, askId, response, now)` calls `recordResponse` (unchanged: CAS claim, reliability log, double-book/contested handling) and, **only when `outcome.claimed === true`**, calls the existing `confirmSeat`. Both answer surfaces route through it: crew `respondToAsk` and the operator-as-crew path (`recordResponseAs` → composition, ownership gate preserved). `recordResponse` and `confirmSeat` stay untouched (channel adapters, tests, and the manual cockpit confirm — now a vestigial backstop — depend on them). Applies to **both** protocols (DEC-007): the mate broadcast's first-yes and the named-captain's accept.
@@ -1506,6 +1506,15 @@ remove). **Revisit if:** previews ever stop being isolated branches, or carry se
 **Not this:** **Not** the Pass-D staged *horizons* / soft-hold reservation (SPEC §1.3/§4, Phase 7). That banks willingness across *multiple horizons*; this paces hard asks across *wall-clock intervals at the single hard horizon*. Soft-hold / `Held` stay reserved.
 **Refines:** SPEC §1.2, DEC-007 (fan-out timing), DEC-008 (ranking drives timing); reuses DEC-062 (env knob + `envNonNegativeInt`), DEC-031 (fills-by urgent boundary), DEC-023 (tick clock). **Untouched:** DEC-005, DEC-019, DEC-020 REQ-CLAIM-1, DEC-024, DEC-026, DEC-061.
 **Revisit if:** the operator tunes the interval more than ~twice per deploy (promote to a typed `app_settings` setting like `isEnginePaused`); or the flat fills-by urgent boundary proves too eager (switch to a `remaining_slack < remaining_pool × interval` test). Built on the #149/#147 base (DEC-062); stacked PR.
+
+---
+
+## DEC-064: The manual override honors the role-competency floor — no mate as captain
+**Decision:** The cockpit's manual override (`overrideSeat`, `src/asks/ask-loop.ts`) still bypasses pool, rank, and current state — but **not** the seat's role rating. A crew member is placeable only if `isRatedFor(crew.ratings, seat.role)` (`src/oracle/eligibility.ts`). Enforced in **two** places: the shift-view override picker lists only crew rated for that seat's role (`page.tsx` scopes the roster per seat via `ratingsById`), and the `overrideTo` action re-checks server-side so a crafted form post can't seat a mate as captain (→ `act_error=not_rated`). `manualOverride` (the pure, unguarded primitive) is unchanged; `overrideSeat` composes the rating gate in front of it.
+**Why:** Operator-reported (Eric): the override for a captain seat offered **mates**, which is a no-go — a mate can't hold a captain's license. The asymmetry "captains can sub for mates, not the other way" is already encoded in the **ratings**: on the pilot roster captains are rated `[captain, mate]` and mates `[mate]` (`db/seed-pilot-crew.ts`), so the exact-match `isRatedFor` passes a captain into a mate seat (the legit downward sub) while never passing a mate into a captain seat. No role hierarchy needed (DEC-ROLE-1 stays intact — roles remain a flat, tenant-defined set). The auto-ask / assign paths were already correct (they use eligibility); only the override bypassed it.
+**Tradeoff:** The override is no longer *literally* "place anyone" — the role floor is the one thing it won't skip. Accepted: seating an unlicensed person as captain is a legal/safety floor, not a policy knob, so even the authority backstop shouldn't cross it. If a genuine "the rating data is wrong" case ever needs a true bypass, that's a data fix (correct the crew's ratings), not an override.
+**Distinct from #148:** #148 (don't *auto-ask* dual-rated captains for mate seats) is the **downward** direction and needs a primary-role/precedence model the ratings don't carry. This DEC is the **upward** block (mate→captain), which the flat ratings already express — so it ships now without #148's model.
+**Revisit if:** a tenant defines more than two roles with partial overlaps where exact-match rating is too coarse (then a precedence/rank model — the #148 work — would subsume this).
 
 ---
 

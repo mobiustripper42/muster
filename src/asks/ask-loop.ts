@@ -28,6 +28,7 @@ import {
   earliestScheduledStart,
 } from "../builder/derive.js";
 import { TENANT_TIMEZONE } from "../config/tenant.js";
+import { isRatedFor } from "../oracle/eligibility.js";
 import { eligiblePool } from "../oracle/oracle.js";
 import { rankEligibleIds } from "../oracle/reliability-score.js";
 import {
@@ -628,6 +629,38 @@ export async function manualOverride(
   await repo.saveSeat(confirmed);
   await refreshShiftState(repo, seat.shiftId);
   return confirmed;
+}
+
+export interface OverrideResult {
+  /**
+   * null = placed. `not_rated` = the crew lacks the seat's role rating — a mate
+   * can't hold a captain seat (DEC-064). `gone` = no such seat or crew.
+   */
+  code: "not_rated" | "gone" | null;
+  seat?: Seat;
+}
+
+/**
+ * Role-guarded manual override (DEC-064). The cockpit's "place anyone" backstop,
+ * minus the one thing it must not do: seat a crew member who isn't rated for the
+ * role (a mate as captain — a license floor, not Spink's to override). Still
+ * bypasses pool, rank, and current state — that's `manualOverride`, which this
+ * composes after the rating check. Captains stay placeable into mate seats: on
+ * the pilot roster they're rated `[captain, mate]`, so `isRatedFor` passes them.
+ */
+export async function overrideSeat(
+  repo: Repository,
+  seatId: SeatId,
+  crewMemberId: CrewMemberId,
+  now: Date,
+): Promise<OverrideResult> {
+  const seat = await repo.getSeat(seatId);
+  if (!seat) return { code: "gone" };
+  const crew = await repo.getCrewMember(crewMemberId);
+  if (!crew) return { code: "gone" };
+  if (!isRatedFor(crew.ratings, seat.role)) return { code: "not_rated" };
+  const placed = await manualOverride(repo, seatId, crewMemberId, now);
+  return placed ? { code: null, seat: placed } : { code: "gone" };
 }
 
 /**

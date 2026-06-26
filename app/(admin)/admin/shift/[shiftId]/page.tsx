@@ -52,6 +52,7 @@ const ACT_ERROR_COPY: Record<string, string> = {
   raced: "That seat just changed — here’s the fresh state.",
   not_claimed: "Nothing is awaiting confirm on that seat.",
   not_confirmed: "No confirmed crew on that seat — it may have just changed.",
+  not_rated: "They’re not rated for this seat’s role.",
   seat_gone: "That seat is gone — here’s the fresh state.",
   unavailable: "Couldn’t reach the schedule — nothing was changed. Try again.",
 };
@@ -93,6 +94,7 @@ export default async function ShiftCockpit({
   let view: AssignmentView | null;
   let resolved: string | null;
   let crew: Map<string, { name: string; phone: string | null }>;
+  let ratingsById: Map<string, string[]>;
   let seatOccupant: Map<string, string>;
   let warmingRows: WarmingRowVM[] = [];
   let changedSinceLock = false;
@@ -118,11 +120,16 @@ export default async function ShiftCockpit({
       ).flat();
       changedSinceLock = changedSinceReviewed(shift, reservations);
     }
+    const crewMembers = await repo.listCrewMembers();
     crew = new Map(
-      (await repo.listCrewMembers()).map((c) => [
+      crewMembers.map((c) => [
         String(c.id),
         { name: c.name, phone: c.phone ?? null },
       ]),
+    );
+    // Ratings drive the override picker's per-seat scope (DEC-064).
+    ratingsById = new Map(
+      crewMembers.map((c) => [String(c.id), c.ratings.map(String)]),
     );
     seatOccupant = new Map(
       (await repo.listSeatsForShift(shiftId))
@@ -270,7 +277,14 @@ export default async function ShiftCockpit({
 
       <div className="flex flex-col gap-3">
         {seatVMs.map((vm) => (
-          <SeatCard key={vm.seatId} vm={vm} roster={roster} />
+          <SeatCard
+            key={vm.seatId}
+            vm={vm}
+            // Override picker scoped to crew rated for THIS seat's role (DEC-064).
+            roster={roster.filter((p) =>
+              (ratingsById.get(p.id) ?? []).includes(vm.role),
+            )}
+          />
         ))}
       </div>
 
@@ -293,6 +307,7 @@ function toSeatVM(
     seatId: String(s.seatId),
     shiftId,
     roleName: s.roleName,
+    role: String(s.role),
     state: s.state,
     occupant: occ ? { name: occ.name, phone: occ.phone } : null,
     pool:

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { flushSync } from "react-dom";
 import { recordSent } from "../../app/(admin)/admin/outbox/actions";
 
@@ -44,6 +44,14 @@ export function RelaySend({
 }) {
   const [sent, setSent] = useState(initialSent);
   const [label, setLabel] = useState(initialSentLabel);
+  // Web Share is a client capability — unknown during SSR, so detect post-mount.
+  // Gates whether a no-phone card has ANY send channel (see the no-channel branch).
+  const [canShare, setCanShare] = useState(false);
+  useEffect(() => {
+    setCanShare(
+      typeof navigator !== "undefined" && typeof navigator.share === "function",
+    );
+  }, []);
 
   function fire() {
     // Paint the flip SYNCHRONOUSLY first — committed before either the share sheet
@@ -75,33 +83,48 @@ export function RelaySend({
       });
   }
 
-  if (!sent) {
+  // No send channel on this device — no phone for the `sms:` baseline AND no Web
+  // Share (e.g. desktop). Don't render a Send that would mark-sent without sending
+  // (#160 review): the operator relays by copying the message above.
+  if (!smsHref && !canShare) {
     return (
-      <a
-        href={smsHref ?? undefined}
-        onClick={(e) => {
-          e.preventDefault();
-          fire();
-        }}
-        className="flex min-h-[52px] w-full items-center justify-center border-t border-line bg-ok font-semibold text-white"
-      >
-        Send
-      </a>
+      <div className="border-t border-line px-4 py-2 text-xs text-muted">
+        {sent
+          ? `${label ?? "sent"} · awaiting reply`
+          : "No phone or share target here — copy the message above to relay."}
+      </div>
     );
   }
 
+  // `<a href="sms:…">` keeps the no-JS baseline when there's a number; a `<button>`
+  // is the keyboard-accessible element when the only path is Web Share (no href).
+  if (!sent) {
+    const cls =
+      "flex min-h-[52px] w-full items-center justify-center border-t border-line bg-ok font-semibold text-white";
+    return smsHref ? (
+      <a href={smsHref} onClick={(e) => { e.preventDefault(); fire(); }} className={cls}>
+        Send
+      </a>
+    ) : (
+      <button type="button" onClick={() => fire()} className={cls}>
+        Send
+      </button>
+    );
+  }
+
+  const resendCls =
+    "min-h-[44px] rounded-lg border border-line bg-card px-4 py-1.5 text-sm font-medium text-ink";
   return (
     <div className="flex items-center justify-between gap-3 border-t border-line px-4 py-2">
-      <a
-        href={smsHref ?? undefined}
-        onClick={(e) => {
-          e.preventDefault();
-          fire();
-        }}
-        className="rounded-lg border border-line bg-card px-4 py-1.5 text-sm font-medium text-ink"
-      >
-        Resend
-      </a>
+      {smsHref ? (
+        <a href={smsHref} onClick={(e) => { e.preventDefault(); fire(); }} className={resendCls}>
+          Resend
+        </a>
+      ) : (
+        <button type="button" onClick={() => fire()} className={resendCls}>
+          Resend
+        </button>
+      )}
       <span className="text-xs text-muted">
         {label ?? "sent"} · awaiting reply
       </span>

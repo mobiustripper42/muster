@@ -30,7 +30,7 @@ export function CopyButton({
           // the operator can still copy it by hand. No error surface needed.
         }
       }}
-      className="shrink-0 rounded-lg border border-line bg-card px-2 py-1 text-xs font-medium text-ink"
+      className="min-h-[44px] shrink-0 rounded-lg border border-line bg-card px-3 text-xs font-medium text-ink"
     >
       {copied ? "Copied ✓" : label}
     </button>

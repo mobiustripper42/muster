@@ -24,7 +24,7 @@
 import type { Ask, Seat, Shift } from "../domain/entities.js";
 import type { Repository } from "../ports/repository.js";
 import { deriveAtRiskBoard } from "../admin/at-risk-board.js";
-import { rankedEligible, widenAsk } from "../asks/ask-loop.js";
+import { expireAsks, rankedEligible, widenAsk } from "../asks/ask-loop.js";
 import { escalate } from "../asks/escalate.js";
 import { solveShift } from "../oracle/oracle.js";
 import {
@@ -33,6 +33,7 @@ import {
 } from "../oracle/reliability-log.js";
 import {
   ASK_DRIP_INTERVAL_MINUTES,
+  ASK_SILENT_TIMEOUT_MINUTES,
   earliestScheduledStart,
   fillDeadlineFromEvents,
   FILL_DEADLINE_HOURS,
@@ -140,12 +141,19 @@ export async function resolveShiftStateOnRead(
 export async function tick(
   repo: Repository,
   now: Date,
-  opts?: { leadDays?: number; tz?: string; dripIntervalMinutes?: number },
+  opts?: {
+    leadDays?: number;
+    tz?: string;
+    dripIntervalMinutes?: number;
+    silentTimeoutMinutes?: number;
+  },
 ): Promise<TickResult> {
   const leadDays = opts?.leadDays ?? STAFFING_HORIZON_LEAD_DAYS;
   const tz = opts?.tz ?? TENANT_TIMEZONE;
   const dripMs =
     (opts?.dripIntervalMinutes ?? ASK_DRIP_INTERVAL_MINUTES) * 60_000;
+  const silentTimeoutMs =
+    (opts?.silentTimeoutMinutes ?? ASK_SILENT_TIMEOUT_MINUTES) * 60_000;
   const allEvents = await repo.listEvents();
   const result: TickResult = {
     shiftsAdvanced: 0,
@@ -173,6 +181,17 @@ export async function tick(
     const events = allEvents.filter((e) => ids.has(e.id));
     const tripStart = earliestScheduledStart(events, tz);
     if (tripStart !== null && tripStart.getTime() <= now.getTime()) continue;
+
+    // #151 (DEC-067): sweep silently-ignored asks BEFORE working the shift. An
+    // ask unanswered past the silent-timeout is stamped `ask_ignored` and, if it
+    // was the seat's last live ask, the seat reopens — so this tick's state
+    // resolution and drip see the reopen (the drip widens past the ghoster; a
+    // walked-then-Open seat escalates). expireAsks is idempotent + clock-injected.
+    for (const seat of await repo.listSeatsForShift(shift.id)) {
+      if (seat.kind === "required") {
+        await expireAsks(repo, seat.id, now, silentTimeoutMs);
+      }
+    }
 
     const seats = await repo.listSeatsForShift(shift.id);
     const horizon = staffingHorizonFromEvents(events, leadDays, tz);

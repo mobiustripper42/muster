@@ -224,8 +224,10 @@ export interface ResponseOutcome {
    *  - `already_filled` — another candidate won this seat first (contested).
    *  - `double_booked` — the accepter already holds another seat on this shift
    *    (DEC-003 shared-pool: can't be two crew on one boat the same day).
+   *  - `already_answered` — this ask was already responded to (or timed out);
+   *    a re-tap is an idempotent no-op and never re-logs (#145).
    */
-  reason?: "already_filled" | "double_booked";
+  reason?: "already_filled" | "double_booked" | "already_answered";
   /** The seat's state after the response. */
   seatState: Seat["state"];
 }
@@ -255,6 +257,12 @@ export async function recordResponse(
   if (!ask) throw new Error(`no ask ${askId}`);
   const seat = await repo.getSeat(ask.seatId);
   if (!seat) throw new Error(`no seat ${ask.seatId}`);
+
+  // #145: an already-answered (or timed-out) ask is closed — a re-tap must not
+  // re-log ask_accepted/declined or re-stamp respondedAt. No-op idempotently.
+  if (ask.respondedAt !== undefined) {
+    return { claimed: false, reason: "already_answered", seatState: seat.state };
+  }
 
   const latencyMs = now.getTime() - new Date(ask.sentAt).getTime();
   await repo.saveAsk({ ...ask, respondedAt: now.toISOString(), response });

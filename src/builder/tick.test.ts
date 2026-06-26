@@ -408,6 +408,47 @@ describe("resolveShiftStateOnRead (DEC-023 corollary)", () => {
   });
 });
 
+describe("tick — silent-ask sweep (#151, DEC-067)", () => {
+  it("expires an unanswered ask past the timeout: stamps it silent + logs ask_ignored", async () => {
+    await seedVesselEvent();
+    const cap = await addCaptain("cap-1");
+    await formShifts(repo);
+
+    // Tick 1 (~39h out, inside fills-by → urgent-blasts the lone captain): seeds the ask.
+    await tick(repo, AFTER, { silentTimeoutMinutes: 60 });
+    expect(await seatState()).toBe("Asked");
+
+    // cap-1 ghosts. A tick 61 min later — past the 60-min timeout — sweeps the ask.
+    const later61 = new Date(AFTER.getTime() + 61 * 60_000);
+    await tick(repo, later61, { silentTimeoutMinutes: 60 });
+
+    const seatId = (await repo.listSeatsForShift(SHIFT))[0]!.id;
+    const ghost = (await repo.listAsksForSeat(seatId)).find(
+      (a) => a.crewMemberId === cap,
+    )!;
+    expect(ghost.respondedAt).toBeDefined(); // timed out (stamped)
+    expect(ghost.response).toBeUndefined(); // silent, not a real response
+    const evTypes = (await repo.reliabilityEventsFor(cap)).map((e) => e.type);
+    expect(evTypes).toContain("ask_ignored"); // the negative silent signal
+  });
+
+  it("leaves an ask still inside the timeout untouched", async () => {
+    await seedVesselEvent();
+    const cap = await addCaptain("cap-1");
+    await formShifts(repo);
+
+    await tick(repo, AFTER, { silentTimeoutMinutes: 120 });
+    // 30 min later, well within the 120-min timeout: the ask stays live.
+    await tick(repo, new Date(AFTER.getTime() + 30 * 60_000), {
+      silentTimeoutMinutes: 120,
+    });
+
+    expect(await seatState()).toBe("Asked");
+    const evTypes = (await repo.reliabilityEventsFor(cap)).map((e) => e.type);
+    expect(evTypes).not.toContain("ask_ignored");
+  });
+});
+
 describe("tick — Tier-1 drip (DEC-063)", () => {
   // Post-horizon (≥ trip−7d = 2026-06-24T19:00Z) but well before fills-by
   // (trip−48h = 2026-06-29T19:00Z), so the tick drips rather than urgent-blasts.

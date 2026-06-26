@@ -300,6 +300,25 @@ describe("all-declined reopens the seat", () => {
   });
 });
 
+describe("recordResponse — re-tap is idempotent (#145)", () => {
+  it("a second response to an already-answered ask doesn't re-log and reports already_answered", async () => {
+    const a = await addCrew("crew-a");
+    const [seatId] = await addShift(1);
+    const asks = await broadcastAsk(repo, seatId!, T0);
+
+    await recordResponse(repo, asks[0]!.id, "declined", later(1000));
+    // Re-tap the same (now-answered) ask — must be a no-op, not a second log.
+    const out = await recordResponse(repo, asks[0]!.id, "accepted", later(2000));
+
+    expect(out).toEqual({
+      claimed: false,
+      reason: "already_answered",
+      seatState: "Open",
+    });
+    expect(await types(a)).toEqual(["ask_sent", "ask_declined"]); // no re-logged accept
+  });
+});
+
 describe("expireAsks — the clockless ask_ignored sweep", () => {
   it("logs ask_ignored, reopens the seat, and is idempotent", async () => {
     const a = await addCrew("crew-a");

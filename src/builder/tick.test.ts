@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import { asId } from "../domain/ids.js";
-import type { CrewMemberId } from "../domain/ids.js";
+import type { CrewMemberId, SeatId } from "../domain/ids.js";
 import type { CrewMember, Event, Shift, Vessel } from "../domain/entities.js";
 import { formShifts } from "./form-shifts.js";
 import { resolveShiftStateOnRead, tick } from "./tick.js";
@@ -60,6 +60,25 @@ async function addCaptain(id: string, over: Partial<CrewMember> = {}): Promise<C
     status: "active",
     reliabilityScore: null,
     ...over,
+  });
+  await repo.saveCredential({
+    id: asId<"CredentialId">(`cred-${id}`),
+    crewMemberId: crewId,
+    type: "MMC",
+    expiry: "2026-12-31",
+  });
+  return crewId;
+}
+
+async function addMate(id: string): Promise<CrewMemberId> {
+  const crewId = asId<"CrewMemberId">(id);
+  await repo.saveCrewMember({
+    id: crewId,
+    name: id,
+    phone: "555",
+    ratings: [MATE],
+    status: "active",
+    reliabilityScore: null,
   });
   await repo.saveCredential({
     id: asId<"CredentialId">(`cred-${id}`),
@@ -455,5 +474,57 @@ describe("tick — Tier-1 drip (DEC-063)", () => {
     const r = await tick(repo, after(20 * MIN)); // interval passed, no un-asked left
     expect(r.asksFired).toBe(0);
     expect(await askCount()).toBe(1);
+  });
+
+  it("two seats drip independently; escalating a walked seat leaves the sibling untouched", async () => {
+    // 2-role vessel: a captain seat + a mate seat, distinct pools.
+    await repo.saveVessel({
+      id: VESSEL,
+      name: "X",
+      coiMaxPax: 16,
+      manning: [
+        { roleTypeId: CAPTAIN, count: 1 },
+        { roleTypeId: MATE, count: 1 },
+      ],
+    });
+    await repo.saveEvent({
+      id: asId<"EventId">("e1"),
+      vesselId: VESSEL,
+      date: "2026-07-01",
+      time: "15:00",
+      capacity: 16,
+      status: "scheduled",
+    });
+    await addCaptain("cap-1");
+    await addCaptain("cap-2");
+    await addMate("mate-1");
+    await addMate("mate-2");
+    await formShifts(repo);
+
+    const seatRole = async (role: typeof CAPTAIN | typeof MATE) =>
+      (await repo.listSeatsForShift(SHIFT)).find((s) => s.role === role)!.id;
+    const liveAsk = async (seat: SeatId) =>
+      (await repo.listAsksForSeat(seat)).find((a) => a.respondedAt === undefined);
+
+    // Tick 1: each seat seeds ONE ask from its OWN pool — independent drip.
+    const r1 = await tick(repo, DRIP);
+    expect(r1.asksFired).toBe(2);
+    const capSeat = await seatRole(CAPTAIN);
+    const mateSeat = await seatRole(MATE);
+    expect(await repo.listAsksForSeat(capSeat)).toHaveLength(1);
+    expect(await repo.listAsksForSeat(mateSeat)).toHaveLength(1);
+
+    // Walk the captain pool by declines, all within the mate's 15m interval so the
+    // mate seat never widens — it sits at its single mid-drip ask the whole time.
+    await recordResponse(repo, (await liveAsk(capSeat))!.id, "declined", after(MIN));
+    await tick(repo, after(2 * MIN)); // captain seat Open → widen cap-2 (mate not due)
+    await recordResponse(repo, (await liveAsk(capSeat))!.id, "declined", after(3 * MIN));
+
+    // Tick: captain pool walked + seat Open → escalate; mate seat is mid-drip Asked.
+    const r = await tick(repo, after(4 * MIN));
+    expect(r.shiftsEscalated).toBe(1); // the captain seat escalated
+    // The mate seat is provably untouched — escalate only acts on Open seats.
+    expect(await repo.listAsksForSeat(mateSeat)).toHaveLength(1);
+    expect((await repo.getSeat(mateSeat))!.state).toBe("Asked");
   });
 });

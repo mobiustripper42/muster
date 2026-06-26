@@ -134,6 +134,10 @@ export default async function Outbox({
 /** Format one read-model card into the component's display strings. */
 function toVM(c: OutboxCardView): OutboxCardVM {
   const self = c.crewMemberId === OPERATOR_CREW_MEMBER_ID;
+  // The text the operator sends = the frozen relay body + the frozen magic link
+  // (DEC-030 — never re-minted on render). One value feeds the sms: href, the
+  // Web Share sheet (#160), and the copy-pasteable card display.
+  const message = `${c.body}\n${c.link}`;
   return {
     entryId: c.entryId,
     askId: c.askId,
@@ -149,11 +153,11 @@ function toVM(c: OutboxCardView): OutboxCardVM {
     toTrip: c.hoursToTrip === null ? null : ttLabel(c.hoursToTrip),
     tight: c.hoursToTrip !== null && c.hoursToTrip < TIGHT_HOURS,
     whyLabel: whyLabel(c),
-    // The text the operator sends = the frozen relay body + the frozen magic
-    // link (DEC-030 — never re-minted on render).
     smsHref: c.crewPhone
-      ? buildSmsUrl({ phone: c.crewPhone, body: `${c.body}\n${c.link}` })
+      ? buildSmsUrl({ phone: c.crewPhone, body: message })
       : null,
+    shareText: message,
+    crewPhone: c.crewPhone,
     mode: c.status === "sent" ? "sent" : self ? "self" : "relay",
     sentLabel: c.sentAt ? `sent ${fmtTime(c.sentAt)}` : null,
   };

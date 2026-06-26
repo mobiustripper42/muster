@@ -2,6 +2,7 @@ import {
   answerOwnAsk,
   dismissOutboxEntry,
 } from "../../app/(admin)/admin/outbox/actions";
+import { CopyButton } from "./copy-button";
 import { RelaySend } from "./relay-send";
 
 /**
@@ -29,6 +30,10 @@ export interface OutboxCardVM {
   whyLabel: string;
   /** The prefilled `sms:` href — null when the crew member has no phone. */
   smsHref: string | null;
+  /** The full relay message (body + magic link) — copy-pasteable + the Web Share text (#160). */
+  shareText: string;
+  /** The crew member's number for the relay (Google Voice lookup / copy) — "" when none. */
+  crewPhone: string;
   mode: "relay" | "self" | "sent";
   /** "sent 2:14 PM" — sent cards only. */
   sentLabel: string | null;
@@ -62,24 +67,39 @@ export function OutboxCard({ card }: { card: OutboxCardVM }) {
         <span className="text-xs text-muted">{card.whyLabel}</span>
       </div>
 
-      {card.mode !== "self" &&
-        (card.smsHref ? (
+      {card.mode !== "self" && (
+        <>
+          {/* Relay details (#160): the full message to copy-paste + the recipient's
+              name/number, so the operator can send from Google Voice (manual
+              conversation pick) or any channel — the cross-platform baseline. The
+              text is `select-all` so a blocked clipboard still copies by hand. */}
+          <div className="flex flex-col gap-2 border-t border-line px-4 py-3">
+            <div className="flex items-start justify-between gap-2">
+              <p className="select-all whitespace-pre-wrap break-words text-sm text-ink">
+                {card.shareText}
+              </p>
+              <CopyButton value={card.shareText} label="Copy" />
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="select-all text-sm text-muted">
+                {card.crewName} · {card.crewPhone || "no phone on file"}
+              </span>
+              {card.crewPhone && (
+                <CopyButton value={card.crewPhone} label="Copy #" />
+              )}
+            </div>
+          </div>
+          {/* Send: Web Share (Google Voice) → sms: fallback. Works even with no
+              phone — share has no recipient field; sms: is the with-number path. */}
           <RelaySend
             entryId={card.entryId}
+            shareText={card.shareText}
             smsHref={card.smsHref}
             initialSent={card.mode === "sent"}
             initialSentLabel={card.sentLabel}
           />
-        ) : card.mode === "sent" ? (
-          <div className="border-t border-line px-4 py-2 text-xs text-muted">
-            {card.sentLabel ?? "sent"} · awaiting reply
-          </div>
-        ) : (
-          <p className="border-t border-warn-line bg-warn-bg px-4 py-3 text-sm text-warn">
-            No phone on file for {card.crewName} — add one on the roster, then
-            relay from here.
-          </p>
-        ))}
+        </>
+      )}
 
       {card.mode === "self" && (
         // The operator's own ask: answer it right here (admin session), exactly

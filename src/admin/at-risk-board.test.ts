@@ -143,7 +143,7 @@ describe("past-trip guard (#147, DEC-062)", () => {
   });
 });
 
-describe("membership — core (willingness-exhaustion)", () => {
+describe("membership — core (imminence / route (b), DEC-065)", () => {
   it("boards a still-short shift whose whole pool declined, trip inside the threshold", async () => {
     await addCrew("ann");
     await addCrew("bob");
@@ -215,6 +215,16 @@ describe("membership — core (willingness-exhaustion)", () => {
     expect(rows[0]!.reasons).toEqual(["core"]);
     expect(rows[0]!.trail.asked).toBe(0); // not asked yet — on the board anyway
     expect(rows[0]!.resolvedState).toBe("Filling");
+  });
+
+  it("does NOT board a Claimed-but-unconfirmed seat inside the threshold — gapSeats is the sole guard now (DEC-065)", async () => {
+    const yes = await addCrew("ann");
+    // Someone already said yes, awaiting confirm — not a hole to fill. With the
+    // asked/pending gate gone, `gapSeats` excluding Claimed is the ONLY thing
+    // keeping this actively-progressing shift from summoning Spink.
+    await addShift("cl1", hoursAfterT0(24), [{ state: "Claimed", assigned: yes }]);
+
+    expect(await deriveAtRiskBoard(repo, T0)).toEqual([]);
   });
 });
 

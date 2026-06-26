@@ -143,10 +143,10 @@ export interface AtRiskRow {
   tripStarts: Date[];
   /**
    * The "fills by" deadline (DEC-031): `tripStart − FILL_DEADLINE_HOURS`, the
-   * instant this shift becomes a human problem — definitionally the willingness-
-   * exhaustion boarding instant. `null` when no event anchors the shift (render
+   * instant this shift becomes a human problem — definitionally the route-(b)
+   * boarding instant (DEC-065). `null` when no event anchors the shift (render
    * as absence, never faked). May be **past** — render as overdue, never clamped
-   * (an exhaustion row boards only after it passes).
+   * (a route-(b) row boards only once `now` reaches it).
    */
   fillsBy: Date | null;
   /** The staffing horizon (DEC-022); null when no event anchors the shift. */
@@ -185,7 +185,7 @@ function roleGaps(gapSeats: Seat[]): RoleGap[] {
 /**
  * Derive the At-Risk board as of `now` — see the module doc for membership and
  * ordering. `opts.leadDays` / `opts.deadlineHours` override the horizon lead
- * (DEC-022) and the willingness threshold for tests/tuning.
+ * (DEC-022) and the route-(b) imminence threshold for tests/tuning.
  */
 export async function deriveAtRiskBoard(
   repo: Repository,
@@ -220,8 +220,8 @@ export async function deriveAtRiskBoard(
 
     const horizon = staffingHorizonFromEvents(events, leadDays, tz);
     const tripStarts = scheduledStarts(events, tz);
-    // Same `deadlineHours` the willingness-exhaustion route boards on below, so
-    // the rendered "fills by" IS that boarding instant (DEC-031).
+    // Same `deadlineHours` route (b) boards on below, so the rendered "fills by"
+    // IS that boarding instant (DEC-031).
     const fillsBy = fillDeadlineFromEvents(events, deadlineHours, tz);
     const hoursToTrip =
       tripStart === null

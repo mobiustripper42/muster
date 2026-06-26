@@ -140,6 +140,10 @@ phone** with one tap:
   Messages, not a bug.) The button flips to **Resend / awaiting reply**.
 - Cards addressed to **you** (a *you* pill) have inline **In / Out** buttons — no text to send,
   you're answering your own ask.
+- **Dismiss** (the small link under a card) clears it from your worklist without sending — for an ask
+  you've handled off-system or don't want to relay. The card goes, but the **ask stays live**: it
+  times out on its own (~2h), and the engine may surface a fresh card for the *next* crew member in
+  the meantime. So a new card after a dismiss isn't a failure — it's the engine moving on.
 - Best done on your phone. The header counts how many asks still need you.
 
 ### 4. Import — `/admin/import`

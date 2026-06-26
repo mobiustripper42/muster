@@ -1518,6 +1518,16 @@ remove). **Revisit if:** previews ever stop being isolated branches, or carry se
 
 ---
 
+## DEC-065: The At-Risk board shows every uncrewed shift within the fill deadline — no hide-while-working
+**Decision:** Route (b) of `deriveAtRiskBoard` (`src/admin/at-risk-board.ts`) boards a still-`Filling` shift whenever a required seat is uncrewed (`gapSeats.length > 0`) and the trip is within `EXHAUSTED_THRESHOLD_HOURS` (= `FILL_DEADLINE_HOURS`, 48h, DEC-031) — **regardless of ask state**. The old willingness-exhaustion gate (`trail.asked > 0 && trail.pending === 0`) is deleted: a shift no longer waits until every ask is answered to appear. Route (a) (eligibility-exhaustion / rested-`Bailed`) is unchanged — it still boards however far out. Regression and credential-lapse reasons unchanged.
+**Why:** Operator-reported (Eric, pilot): a 2-days-out shift with no crew was invisible because asks were in flight, and **nudging a candidate removed the shift from the board** — the engine flipped it back to "actively working" and the hide rule swallowed it. The hide-while-working assumption ("on the board" == "the automation gave up") fails exactly when the operator most needs sight: a near-term uncrewed shift mid-ask. Compounded by ghosting + unwired `expireAsks` (#151), `pending` never drained, so willingness-exhaustion could never fire. Within 48h the operator wants to see every uncrewed shift, full stop.
+**Tradeoff:** The board shifts from a pure "automation exhausted" surface toward a "near-term uncrewed" surface within the deadline — a small move toward the anxiety-dashboard BRAND/SPEC §2.5 guard against. Bounded deliberately: only inside `EXHAUSTED_THRESHOLD_HOURS` (48h), only for genuinely uncrewed seats; beyond 48h a `Filling` shift the engine is working still stays off (route (a) catches the truly-unfillable early). The urgency sort already orders within the board, so a still-working row doesn't bury a confirmed problem at similar time-to-trip.
+**Supersedes:** the membership half of the board's willingness-exhaustion rule. DEC-031's "displayed instant IS the boarding instant" mechanic still holds — the instant is unchanged; what's removed is the *additional* all-asks-answered precondition. The "on the board = automation gave up" framing (the §2.5 board copy rationale) no longer holds for route (b). DEC-025 (urgency = pool-thinness) untouched.
+**Relationship:** decouples the board from #151 (wire `expireAsks`) — visibility no longer depends on `pending` draining, though #151 still matters for the silent/ghost reliability signal and seat-reopen. Distinct from #148 (captain-for-mate auto-ask). No new state, schema, port, or constant — one boolean expression removed.
+**Revisit if:** the board gets noisy at real pilot volume (many uncrewed-but-actively-dripping rows) — then split into sections (working vs exhausted) or tighten the imminence window below 48h. Tune `EXHAUSTED_THRESHOLD_HOURS` per pilot feel.
+
+---
+
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)
 
 These are deferred by design. Each names an owner and a trigger. **Consult @architect (and the named
@@ -1543,8 +1553,9 @@ human owner) before building past the trigger.**
   flag conflicts"; refine against a real export. SPEC §2.2.*
 - **"Exhausted" threshold** (when a shift lands on the At-Risk board) and the **split-suggestion gap
   threshold** — *keep the bar high; tune later. SPEC §2.5, §2.3.* **(Where the value lives is now
-  fixed by task 3.3 — `EXHAUSTED_THRESHOLD_HOURS` in `at-risk-board.ts`, gating willingness-exhaustion
-  only; eligibility-exhaustion boards immediately. Default ships at 48h; only the number remains
+  fixed by task 3.3 — `EXHAUSTED_THRESHOLD_HOURS` in `at-risk-board.ts`, gating route-(b) imminence
+  (any uncrewed required seat within the window, **DEC-065** — no longer the willingness-exhaustion
+  gate); eligibility-exhaustion boards immediately. Default ships at 48h; only the number remains
   tune-later. Split-suggestion gap still open.)*
 - **Historical Xola data** — migrate vs read-only archive. *Leaning archive. SPEC §4.*
 - **Doorbell batch / cancel-window interval** (Phase 6) — the default wait-before-ring / cancel-on-open

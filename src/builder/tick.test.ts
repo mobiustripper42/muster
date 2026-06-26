@@ -370,13 +370,16 @@ describe("tick — board-landing detection (DEC-026)", () => {
     expect(r.boardLanded).toBe(1); // regression is new; core already recorded
   });
 
-  it("a worked or crewed shift never lands", async () => {
+  it("a near-term uncrewed shift lands even while worked (DEC-065); a Crewed one never does", async () => {
     await seedVesselEvent();
     await addCaptain("cap-1");
     await formShifts(repo);
 
-    const r1 = await tick(repo, AFTER); // born Filling, live ask out
-    expect(r1.boardLanded).toBe(0);
+    // Born Filling with a live ask out, uncrewed, ~39h to the trip (inside the
+    // 48h fills-by). DEC-065: a live ask no longer hides it — the operator IS
+    // pinged about a near-term uncrewed shift, mid-ask.
+    const r1 = await tick(repo, AFTER);
+    expect(r1.boardLanded).toBe(1);
 
     const asks = await repo.listAsksForSeat(
       (await repo.listSeatsForShift(SHIFT))[0]!.id,
@@ -384,7 +387,7 @@ describe("tick — board-landing detection (DEC-026)", () => {
     await recordResponse(repo, asks[0]!.id, "accepted", AFTER);
     await confirmSeat(repo, (await repo.listSeatsForShift(SHIFT))[0]!.id, AFTER);
 
-    const r2 = await tick(repo, AFTER); // Crewed and healthy
+    const r2 = await tick(repo, AFTER); // now Crewed and healthy → off the board
     expect(r2.boardLanded).toBe(0);
   });
 });

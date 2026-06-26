@@ -248,10 +248,12 @@ export async function tick(
   // ── Board-landing detection (DEC-026) ───────────────────────────────────────
   // Membership stays single-sourced: tick asks the SAME deriver the board page
   // renders, never a hand-rolled "did it land" check. Derived AFTER the
-  // advance/escalate sweep above — load-bearing order: a fresh Tier-2 nudge is a
-  // live ask, which keeps the shift off the board this tick (the nudge gets its
-  // chance before Spink is summoned). Dedup memory is one `board_landed` event
-  // per (shift, reason) on the system actor's log, so a rescued shift that later
+  // advance/escalate sweep above so membership reflects this tick's state changes
+  // (a bail re-ask that exhausts a pool, a seat reopened). Note (DEC-065): a fresh
+  // nudge/ask no longer keeps a near-term uncrewed shift off the board — within the
+  // fill deadline it boards regardless of in-flight asks, so the operator IS pinged
+  // about it (the point of DEC-065). Dedup memory is one `board_landed` event per
+  // (shift, reason) on the system actor's log, so a rescued shift that later
   // REGRESSES re-pings while a same-reason re-landing stays quiet.
   const seenLandings = new Set(
     (await repo.reliabilityEventsFor(SYSTEM_ACTOR_ID))

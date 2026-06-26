@@ -28,7 +28,7 @@ import {
   earliestScheduledStart,
 } from "../builder/derive.js";
 import { TENANT_TIMEZONE } from "../config/tenant.js";
-import { isRatedFor } from "../oracle/eligibility.js";
+import { isAskableFor, isRatedFor } from "../oracle/eligibility.js";
 import { eligiblePool } from "../oracle/oracle.js";
 import { rankEligibleIds } from "../oracle/reliability-score.js";
 import {
@@ -109,7 +109,11 @@ async function committedOnShift(
  * The eligible crew for a seat, ranked by reliability (§2.4), optionally
  * excluding ids (e.g. a bailer). Already-committed-on-shift crew are dropped
  * internally (distinct-pool, DEC-003) — callers pass only their *extra*
- * exclusions. `now` is the scoring instant for the ranker. Exported so Tier-2
+ * exclusions. Also drops crew **over-ranked** for the seat (#148, DEC-066): a
+ * captain rated `[captain, mate]` is never *asked* for a mate seat. This is the
+ * one askable pool — auto-ask, drip, re-ask, lean, escalate all read it; the
+ * cockpit override seats by `isRatedFor` and does NOT, so captains stay manually
+ * assignable. `now` is the scoring instant for the ranker. Exported so Tier-2
  * (`escalate`) shares one copy of the intra-shift distinct-pool rule.
  */
 export async function rankedEligible(
@@ -124,7 +128,11 @@ export async function rankedEligible(
   // Also exclude anyone already holding another seat on this same shift.
   const onShift = await committedOnShift(repo, seat.shiftId, seat.id);
   const ids = pool.eligible.filter((id) => !exclude.has(id) && !onShift.has(id));
-  return rankEligibleIds(repo, ids, now);
+  const ranked = await rankEligibleIds(repo, ids, now);
+  // #148 (DEC-066): drop crew over-ranked for this seat — a captain rated
+  // [captain, mate] is never *asked* for a mate seat. The override seats them by
+  // isRatedFor (DEC-064), not this pool, so manual placement is unaffected.
+  return ranked.filter((c) => isAskableFor(c.ratings, seat.role));
 }
 
 // ── Entry: the two protocols ────────────────────────────────────────────────

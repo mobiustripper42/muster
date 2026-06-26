@@ -20,6 +20,7 @@
 import type { Credential, CrewMember, PtoWindow } from "../domain/entities.js";
 import type { CredentialType } from "../domain/entities.js";
 import type { CrewMemberId, RoleTypeId } from "../domain/ids.js";
+import { ROLE_PRECEDENCE } from "../config/tenant.js";
 
 /**
  * Credential types that HARD-gate the eligible pool in v1. MMC only.
@@ -109,6 +110,30 @@ export function hasRating(crew: CrewMember, role: RoleTypeId): RuleResult {
   return isRatedFor(crew.ratings, role)
     ? pass("has_rating")
     : fail("has_rating", { required: role, held: crew.ratings });
+}
+
+/**
+ * Auto-ask eligibility (#148, DEC-066): a crew member is *asked* for a seat only
+ * if they don't also hold a role ranked **above** it in `ROLE_PRECEDENCE`. So a
+ * captain rated `[captain, mate]` is never auto-asked or leaned for a mate seat
+ * (they stay manually assignable via the override, DEC-064); a mate, holding
+ * nothing senior, is asked normally. `isRatedFor` already blocks the upward case
+ * (a mate can't captain). This layers on top of — never replaces — the rating
+ * gate, and is an ask-routing preference, not an eligibility gate (the oracle
+ * still counts a captain as able to crew a mate seat). A seat role absent from
+ * the precedence list imposes no extra rule. Pure; precedence is tenant config.
+ */
+export function isAskableFor(
+  ratings: readonly RoleTypeId[],
+  role: RoleTypeId,
+): boolean {
+  if (!isRatedFor(ratings, role)) return false;
+  const seatRank = ROLE_PRECEDENCE.indexOf(role);
+  if (seatRank === -1) return true; // unranked seat role → rating gate only
+  return !ratings.some((r) => {
+    const rank = ROLE_PRECEDENCE.indexOf(r);
+    return rank !== -1 && rank < seatRank; // holds a strictly-more-senior role
+  });
 }
 
 /**

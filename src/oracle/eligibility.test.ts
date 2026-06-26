@@ -11,6 +11,7 @@ import {
   evaluateCandidate,
   hasRating,
   isActive,
+  isAskableFor,
   mmcValidOnDate,
   notDoubleBooked,
   notOnPto,
@@ -60,6 +61,21 @@ describe("hasRating", () => {
     const r = hasRating(crew({ ratings: [MATE] }), CAPTAIN);
     expect(r.passed).toBe(false);
     expect(r.details).toEqual({ required: CAPTAIN, held: [MATE] });
+  });
+});
+
+describe("isAskableFor (#148, DEC-066) — captains aren't asked for mate seats", () => {
+  it("a mate is askable for a mate seat", () => {
+    expect(isAskableFor([MATE], MATE)).toBe(true);
+  });
+  it("a dual-rated captain is NOT askable for a mate seat (over-ranked)", () => {
+    expect(isAskableFor([CAPTAIN, MATE], MATE)).toBe(false);
+  });
+  it("a captain is askable for a captain seat (nothing ranked above it)", () => {
+    expect(isAskableFor([CAPTAIN, MATE], CAPTAIN)).toBe(true);
+  });
+  it("a mate is not askable for a captain seat (the upward block — not rated)", () => {
+    expect(isAskableFor([MATE], CAPTAIN)).toBe(false);
   });
 });
 

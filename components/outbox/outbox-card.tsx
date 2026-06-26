@@ -1,4 +1,7 @@
-import { answerOwnAsk } from "../../app/(admin)/admin/outbox/actions";
+import {
+  answerOwnAsk,
+  dismissOutboxEntry,
+} from "../../app/(admin)/admin/outbox/actions";
 import { RelaySend } from "./relay-send";
 
 /**
@@ -104,6 +107,19 @@ export function OutboxCard({ card }: { card: OutboxCardVM }) {
           </button>
         </form>
       )}
+
+      {/* Dismiss — clear this card from the worklist without sending (#158). The
+          ask stays live and rides to its silent-timeout (#151); this only hides
+          the relay. Low-emphasis so it's not fat-fingered next to Send. */}
+      <form action={dismissOutboxEntry} className="border-t border-line">
+        <input type="hidden" name="entryId" value={card.entryId} />
+        <button
+          type="submit"
+          className="w-full px-4 py-1.5 text-xs text-muted hover:text-bad"
+        >
+          Dismiss — clear from your list (the ask still times out on its own)
+        </button>
+      </form>
     </article>
   );
 }

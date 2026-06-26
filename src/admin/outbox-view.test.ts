@@ -140,6 +140,24 @@ describe("buildOutboxView", () => {
     expect(view.sent[0]!.sentAt).toBe("2026-07-01T09:30:00.000Z");
   });
 
+  it("dismiss (removeOutboxEntry) hides the card; the ask stays live (#158)", async () => {
+    const bo = await addCrew("crew-bo", "Bo");
+    const near = await addShift("near", 20);
+    const ask = await addAsk(near.seatId, bo, "2026-07-01T11:00:00.000Z");
+    const entry = await addEntry(ask);
+    expect(
+      (await buildOutboxView(repo, NOW, { tz: "UTC" })).pending,
+    ).toHaveLength(1);
+
+    // What the dismiss action does: delete the outbox row only.
+    await repo.removeOutboxEntry(entry.id);
+
+    const view = await buildOutboxView(repo, NOW, { tz: "UTC" });
+    expect(view.pending).toHaveLength(0); // card cleared from the worklist
+    const stillLive = await repo.getAsk(ask.id);
+    expect(stillLive?.respondedAt).toBeUndefined(); // ask untouched — rides to its timeout
+  });
+
   it("carries the start–end window: tripEnd = tripStart + trip length + lead (DEC-041)", async () => {
     const bo = await addCrew("crew-bo", "Bo");
     const near = await addShift("near", 20); // trip 2026-07-02T08:00Z

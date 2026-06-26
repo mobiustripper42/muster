@@ -6,7 +6,7 @@ branch: task/reset-pilot-absent-tables
 started: 2026-06-26T11:51:52Z
 ended:
 points:
-pr_numbers: [155, 156, 159, 162]
+pr_numbers: [155, 156, 159, 162, 163]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/948be534-0713-4f32-aa75-82dd87d6f9e4.jsonl
 ---
@@ -79,6 +79,23 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/948be534-0713-4f32-aa7
 **Branch:** task/outbox-dismiss-env-docs
 **Opened at:** 2026-06-26T16:37:14Z
 
+## Task 5: Crew notices — lost-race feedback + 'added by operator' (#161 cases 3 & 1)
+
+**Completed:**
+- **#161 case 3** (day-one bug): `app/(crew)/crew/actions.ts` `respondToAsk` redirects with its outcome instead of a silent `revalidatePath` — an "In" that loses the CAS race (REQ-CLAIM-1) now shows a notice instead of the card vanishing. Pure `src/crewapp/answered-code.ts` (`answeredNoticeCode`) maps outcome→code with **distinct copy** per not-claimed reason (lost-race / double-booked / re-tap-after-win), unit-tested.
+- **#161 case 1**: `src/crewapp/crew-view.ts` adds `addedByOperator` (Confirmed seat + no accepted ask by occupant) → an "Added for you" badge on the My-shifts row. Derived, no storage.
+- **#161 case 2**: deferred to Phase 6 (operator remove erases the link; needs the persisted per-crew notice the #111 message store provides). Issue stays open for it.
+
+**Verification:** full `vitest` **576 pass** (6 new); typecheck + build clean; full Playwright e2e **15/15** local.
+
+**Code review:** `@code-review` — both mechanisms correct, nothing breaks in prod. **Fixes folded in:** the badge mislabeled pre-confirmed *seeded* seats (dev crew app showed it on a normal shift) → fixed `db/seed-crewapp-dev.ts` (accepted asks behind the demo confirms) + documented the absence-of-accept heuristic's limit (prod reaches Confirmed only via accepted asks; a future pre-confirming import is the latent case — the robust fix wants a positive operator-placed marker = Phase 6 work); the 3 not-claimed outcomes now get distinct copy; bare `catch` now logs.
+**PR:** [#163](https://github.com/mobiustripper42/muster/pull/163)
+**Points:** 3
+**Branch:** task/161-crew-notices
+**Opened at:** 2026-06-26T17:16:54Z
+
 **Next Steps:**
+- **#160** (outbox relay ergonomics) still to build: show copy-pasteable message body + crew name/phone on the card; Send via `navigator.share({text})` (Google Voice) with `sms:` fallback. Well-scoped from the operator's Android testing.
+- **#161 case 2** + active push for cases 1/2 → Phase 6 (message store #111).
 
 **Context:**

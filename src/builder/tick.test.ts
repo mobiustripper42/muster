@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import { asId } from "../domain/ids.js";
-import type { CrewMemberId } from "../domain/ids.js";
+import type { CrewMemberId, SeatId } from "../domain/ids.js";
 import type { CrewMember, Event, Shift, Vessel } from "../domain/entities.js";
 import { formShifts } from "./form-shifts.js";
 import { resolveShiftStateOnRead, tick } from "./tick.js";
@@ -60,6 +60,25 @@ async function addCaptain(id: string, over: Partial<CrewMember> = {}): Promise<C
     status: "active",
     reliabilityScore: null,
     ...over,
+  });
+  await repo.saveCredential({
+    id: asId<"CredentialId">(`cred-${id}`),
+    crewMemberId: crewId,
+    type: "MMC",
+    expiry: "2026-12-31",
+  });
+  return crewId;
+}
+
+async function addMate(id: string): Promise<CrewMemberId> {
+  const crewId = asId<"CrewMemberId">(id);
+  await repo.saveCrewMember({
+    id: crewId,
+    name: id,
+    phone: "555",
+    ratings: [MATE],
+    status: "active",
+    reliabilityScore: null,
   });
   await repo.saveCredential({
     id: asId<"CredentialId">(`cred-${id}`),
@@ -383,5 +402,129 @@ describe("resolveShiftStateOnRead (DEC-023 corollary)", () => {
     expect(
       await resolveShiftStateOnRead(repo, asId<"ShiftId">("nope"), AFTER),
     ).toBeNull();
+  });
+});
+
+describe("tick — Tier-1 drip (DEC-063)", () => {
+  // Post-horizon (≥ trip−7d = 2026-06-24T19:00Z) but well before fills-by
+  // (trip−48h = 2026-06-29T19:00Z), so the tick drips rather than urgent-blasts.
+  const DRIP = new Date("2026-06-26T12:00:00.000Z");
+  const MIN = 60_000;
+  const after = (ms: number) => new Date(DRIP.getTime() + ms);
+  const seatId = () => repo.listSeatsForShift(SHIFT).then((s) => s[0]!.id);
+  const askCount = async () =>
+    (await repo.listAsksForSeat(await seatId())).length;
+
+  async function seededShift(nCrew: number): Promise<void> {
+    await seedVesselEvent();
+    for (let i = 1; i <= nCrew; i++) await addCaptain(`cap-${i}`);
+    await formShifts(repo); // Pending, one Open captain seat
+  }
+
+  it("seeds ONE ask (top-ranked), not the whole pool", async () => {
+    await seededShift(3);
+    const r = await tick(repo, DRIP);
+    expect(r.bornFilling).toBe(1);
+    expect(r.asksFired).toBe(1); // drip seeds one; blast would be 3
+    expect(await askCount()).toBe(1);
+    expect(await seatState()).toBe("Asked");
+  });
+
+  it("widens by one after the interval, accumulating (default 15m)", async () => {
+    await seededShift(3);
+    await tick(repo, DRIP); // seed #1
+    const early = await tick(repo, after(5 * MIN)); // before interval → no widen
+    expect(early.asksFired).toBe(0);
+    expect(await askCount()).toBe(1);
+    const due = await tick(repo, after(16 * MIN)); // past interval → widen #2
+    expect(due.asksFired).toBe(1);
+    expect(await askCount()).toBe(2); // accumulated — #1 still open
+  });
+
+  it("interval 0 blasts the whole pool (the pre-drip rollback)", async () => {
+    await seededShift(3);
+    const r = await tick(repo, DRIP, { dripIntervalMinutes: 0 });
+    expect(r.asksFired).toBe(3);
+    expect(await askCount()).toBe(3);
+  });
+
+  it("blasts inside the fills-by deadline, even with a drip interval", async () => {
+    await seededShift(3);
+    const r = await tick(repo, AFTER); // AFTER is within trip−48h → urgent
+    expect(r.asksFired).toBe(3);
+    expect(await askCount()).toBe(3);
+  });
+
+  it("a decline reopens the seat and widens immediately (no fresh interval wait)", async () => {
+    await seededShift(3);
+    await tick(repo, DRIP); // seed #1
+    const [first] = await repo.listAsksForSeat(await seatId());
+    await recordResponse(repo, first!.id, "declined", after(MIN)); // #1 says no
+    expect(await seatState()).toBe("Open"); // single ask closed → reopened
+    const r = await tick(repo, after(2 * MIN)); // only 2m later, but Open → widen now
+    expect(r.asksFired).toBe(1);
+    expect(await seatState()).toBe("Asked");
+    expect(await askCount()).toBe(2); // #1 (declined) + #2 (fresh)
+  });
+
+  it("a pool of one seeds then never widens (nothing to widen to)", async () => {
+    await seededShift(1);
+    await tick(repo, DRIP); // seed the only candidate
+    expect(await askCount()).toBe(1);
+    const r = await tick(repo, after(20 * MIN)); // interval passed, no un-asked left
+    expect(r.asksFired).toBe(0);
+    expect(await askCount()).toBe(1);
+  });
+
+  it("two seats drip independently; escalating a walked seat leaves the sibling untouched", async () => {
+    // 2-role vessel: a captain seat + a mate seat, distinct pools.
+    await repo.saveVessel({
+      id: VESSEL,
+      name: "X",
+      coiMaxPax: 16,
+      manning: [
+        { roleTypeId: CAPTAIN, count: 1 },
+        { roleTypeId: MATE, count: 1 },
+      ],
+    });
+    await repo.saveEvent({
+      id: asId<"EventId">("e1"),
+      vesselId: VESSEL,
+      date: "2026-07-01",
+      time: "15:00",
+      capacity: 16,
+      status: "scheduled",
+    });
+    await addCaptain("cap-1");
+    await addCaptain("cap-2");
+    await addMate("mate-1");
+    await addMate("mate-2");
+    await formShifts(repo);
+
+    const seatRole = async (role: typeof CAPTAIN | typeof MATE) =>
+      (await repo.listSeatsForShift(SHIFT)).find((s) => s.role === role)!.id;
+    const liveAsk = async (seat: SeatId) =>
+      (await repo.listAsksForSeat(seat)).find((a) => a.respondedAt === undefined);
+
+    // Tick 1: each seat seeds ONE ask from its OWN pool — independent drip.
+    const r1 = await tick(repo, DRIP);
+    expect(r1.asksFired).toBe(2);
+    const capSeat = await seatRole(CAPTAIN);
+    const mateSeat = await seatRole(MATE);
+    expect(await repo.listAsksForSeat(capSeat)).toHaveLength(1);
+    expect(await repo.listAsksForSeat(mateSeat)).toHaveLength(1);
+
+    // Walk the captain pool by declines, all within the mate's 15m interval so the
+    // mate seat never widens — it sits at its single mid-drip ask the whole time.
+    await recordResponse(repo, (await liveAsk(capSeat))!.id, "declined", after(MIN));
+    await tick(repo, after(2 * MIN)); // captain seat Open → widen cap-2 (mate not due)
+    await recordResponse(repo, (await liveAsk(capSeat))!.id, "declined", after(3 * MIN));
+
+    // Tick: captain pool walked + seat Open → escalate; mate seat is mid-drip Asked.
+    const r = await tick(repo, after(4 * MIN));
+    expect(r.shiftsEscalated).toBe(1); // the captain seat escalated
+    // The mate seat is provably untouched — escalate only acts on Open seats.
+    expect(await repo.listAsksForSeat(mateSeat)).toHaveLength(1);
+    expect((await repo.getSeat(mateSeat))!.state).toBe("Asked");
   });
 });

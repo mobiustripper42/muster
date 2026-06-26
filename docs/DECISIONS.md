@@ -1479,7 +1479,7 @@ remove). **Revisit if:** previews ever stop being isolated branches, or carry se
 
 ---
 
-> _Note: DEC-060 (doorbell window defaults) lands on the `feature/messaging` branch (PR #144) and arrives on `main` when that feature merges. This pilot fix on `main` allocates DEC-061; the temporary 060-gap on `main` is expected concurrent-branch numbering._
+> _Note: DEC-060 (doorbell window defaults) lands on the `feature/messaging` branch (PR #144) and reaches `main` when that feature merges — the temporary 060-gap on `main` is expected concurrent-branch numbering. (DEC-063 follows via the stacked drip PR #152.)_
 
 ## DEC-061: A winning "in" auto-confirms — `Claimed` is momentary on the happy path
 **Decision:** A winning accept advances `Asked → Claimed → Confirmed` in one operation. New core composition `recordResponseAndConfirm(repo, askId, response, now)` calls `recordResponse` (unchanged: CAS claim, reliability log, double-book/contested handling) and, **only when `outcome.claimed === true`**, calls the existing `confirmSeat`. Both answer surfaces route through it: crew `respondToAsk` and the operator-as-crew path (`recordResponseAs` → composition, ownership gate preserved). `recordResponse` and `confirmSeat` stay untouched (channel adapters, tests, and the manual cockpit confirm — now a vestigial backstop — depend on them). Applies to **both** protocols (DEC-007): the mate broadcast's first-yes and the named-captain's accept.
@@ -1487,6 +1487,14 @@ remove). **Revisit if:** previews ever stop being isolated branches, or carry se
 **Tradeoff / supersedes:** Amends SPEC §2.4 (the "confirm down the list" step) and the §2.6 acceptance ("…and Spink confirming moves the seat"), now auto. `Claimed` becomes non-resting on the happy path; the crew "awaiting confirmation" affordance goes dark. **"In" now means committed** — a retraction is a penalized `bail()` (a `shift_bailed` reliability hit), not a free pre-confirm backout. The soft-commitment buffer, if ever wanted, remains the reserved `Held` tier (DEC-005), **not** a resting `Claimed`. Hard-codes first-acceptable-yes (DEC-007) — but does not worsen a future best-by-score flip, because the CAS claim already locks the first yes *before* any confirm step; the claim policy, not the confirm step, is the knob to change.
 **Gotcha (M4):** the inbound SMS-reply adapter must funnel to `recordResponseAndConfirm`, **not** raw `recordResponse` — else real "in" texts strand at `Claimed` and silently reintroduce this bug. The channel-port comments (`ports/channel.ts`, `adapters/web-link-channel.ts`, `adapters/fake-channel.ts`) now say so.
 **Revisit if:** Pass D adds the `Held` soft-hold tier, or DEC-007 flips to best-by-score.
+
+---
+
+## DEC-062: The engine never works a departed shift; staffing horizon is env-tunable
+**Decision:** Two pilot fixes to the engine tick. **(1) Past-trip guard (#147):** `tick()` skips any shift whose earliest scheduled start is `<= now` — no broadcast, no escalate, no auto-crew. `resolveShiftState` already gates the *near* side of the staffing window (before-horizon → `Pending`); this gates the *far* side (trip already departed). A shift with no scheduled event has no departure and falls through unchanged. **(2) Horizon env-tunable:** `STAFFING_HORIZON_LEAD_DAYS` (`src/builder/derive.ts`) now reads `process.env.STAFFING_HORIZON_LEAD_DAYS` (positive integer days), default **7** — the operator tunes the value per deploy without a code change. Refines DEC-022 (which fixed only that the lead lives in *one* place) and partially resolves the DEC-TBD "concrete horizon values" (the *value* stays Eric's; the *plumbing* is now an env knob).
+**Why:** The armed tick cron (#130, `*/15`) was working **all** non-terminal shifts, so departed trips got asked and — post-DEC-061 auto-confirm — **crewed** (operator saw past shifts crew themselves). A trip that has left the dock cannot be crewed; working it is pure noise + bad state. Separately, the 7-day default is a guess the operator needs to dial against real pilot behavior, and a redeploy-per-tweak loop is the wrong ergonomics for a tune-later knob.
+**Tradeoff / scope:** The guard *skips* past shifts, it does not re-state them — a past unfilled shift keeps its last-persisted badge (stale, harmless) rather than transitioning to a "missed/expired" terminal state (deferred; would need a new shift state). **Both** the engine tick's work loop AND the at-risk board (`deriveAtRiskBoard`) apply the same `tripStart <= now` skip, so a departed shift neither gets worked nor pings Spink — board membership and engine work share one definition of "past." Env (not a DB-backed `/admin` setting) means a horizon change needs a Vercel redeploy — a change-it-from-the-cockpit setting is a larger follow-up. The guard uses the *earliest* scheduled trip: a multi-trip day where trip 1 departed but a later trip is upcoming is treated as past (BrewBoat is single-trip; revisit if multi-trip days become common).
+**Revisit if:** multi-trip days need per-trip crewing; or the operator wants the horizon (or a "missed" state) controllable from `/admin` without a redeploy.
 
 ---
 
@@ -1507,8 +1515,9 @@ human owner) before building past the trigger.**
 - **Which "M" (soft) rules ship** for BrewBoat v1 (TWIC, medical, drug consortium, duty-hour,
   weather/tide) — *Owner: Spink/Drew against real operations. SPEC §1.3.*
 - **Concrete horizon values** — how many days is the staffing horizon? *Ship a dumb default, tune.
-  SPEC §4.* **(Where the value lives is now fixed by DEC-022 — a single `leadDays` config constant;
-  only the number remains tune-later. Default ships at 7d in task 3.1a.)*
+  SPEC §4.* **(Where the value lives is fixed by DEC-022 — a single `leadDays` constant — and now
+  **env-tunable** per DEC-062 (`STAFFING_HORIZON_LEAD_DAYS`, default 7d). Only the operator's chosen
+  number remains open; the plumbing is done.)*
 - **Reliability weights** — bail-lateness curve, ack weight, decay. *Flat v1; tune in Pass A. SPEC §1.4.*
 - **Event-Admin merge rule** — manual entries vs CSV re-import reconciliation. *Default "manual wins,
   flag conflicts"; refine against a real export. SPEC §2.2.*

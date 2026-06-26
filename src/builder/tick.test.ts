@@ -24,6 +24,7 @@ const SHIFT = asId<"ShiftId">(`shift-${VESSEL}-2026-07-01`);
 // Event 2026-07-01T15:00Z; horizon = −7d = 2026-06-24T15:00Z.
 const BEFORE = new Date("2026-06-01T00:00:00.000Z");
 const AFTER = new Date("2026-06-30T00:00:00.000Z");
+const DEPARTED = new Date("2026-07-02T00:00:00.000Z"); // after the 2026-07-01 trip
 
 let repo: InMemoryRepository;
 beforeEach(() => {
@@ -91,6 +92,24 @@ describe("tick — horizon advance", () => {
     expect(r.firedAsks).toHaveLength(1);
     const seatAsks = await repo.listAsksForSeat(r.firedAsks[0]!.seatId);
     expect(seatAsks).toEqual(r.firedAsks);
+  });
+
+  it("never works a shift whose trip has already departed (#147, DEC-062)", async () => {
+    await seedVesselEvent();
+    await addCaptain("cap-1");
+    await formShifts(repo); // Pending, one Open captain seat
+
+    // `now` is AFTER the 2026-07-01 trip start — its horizon is long crossed, so
+    // without the past-trip guard the shift would broadcast and (post-DEC-061)
+    // auto-crew a departed trip. The guard skips it entirely.
+    const r = await tick(repo, DEPARTED);
+
+    expect(r.asksFired).toBe(0);
+    expect(r.bornFilling).toBe(0);
+    expect(r.shiftsAdvanced).toBe(0);
+    expect(r.firedAsks).toHaveLength(0);
+    expect(await shiftState()).toBe("Pending"); // untouched
+    expect(await seatState()).toBe("Open"); // never asked
   });
 
   it("leaves a pre-horizon shift Pending and asks no one", async () => {

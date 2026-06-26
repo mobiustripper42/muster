@@ -64,13 +64,30 @@ export function deriveShiftState(seats: Seat[]): ShiftState {
 // ── Staffing-horizon clock (DEC-022) ─────────────────────────────────────────
 
 /**
- * Default staffing-horizon lead, in **days** — how far ahead of the trip the
- * system starts working a shift (Pending→Filling). A dumb default; the value is
- * the tune-later knob (DEC-TBD "concrete horizon values"), DEC-022 fixes only
- * that it lives in one constant. NOT the same as the 45-min same-day manifest
- * call lead (DEC-021) — different lead, different purpose.
+ * A positive-integer env knob (days/hours/count) with a fallback. Non-integer or
+ * non-positive overrides fall back rather than poison the default — a fat-fingered
+ * value degrades to the sane constant instead of disabling the horizon.
  */
-export const STAFFING_HORIZON_LEAD_DAYS = 7;
+function envPositiveInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : fallback;
+}
+
+/**
+ * Staffing-horizon lead, in **days** — how far ahead of the trip the system
+ * starts working a shift (Pending→Filling). The tune-later knob (DEC-TBD
+ * "concrete horizon values", DEC-062): **env-overridable** via
+ * `STAFFING_HORIZON_LEAD_DAYS` (positive integer days), default **7**. DEC-022
+ * fixes only that it lives in one place; the value is the operator's (Eric's) to
+ * tune per deploy without a code change. NOT the same as the 45-min same-day
+ * manifest call lead (DEC-021) — different lead, different purpose.
+ */
+export const STAFFING_HORIZON_LEAD_DAYS = envPositiveInt(
+  "STAFFING_HORIZON_LEAD_DAYS",
+  7,
+);
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 

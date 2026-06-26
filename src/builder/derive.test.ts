@@ -3,7 +3,7 @@
  * (Task 1.3 / M2.)
  */
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { asId } from "../domain/ids.js";
 import type { EventId, RoleTypeId, ShiftId } from "../domain/ids.js";
 import type { Event, Seat, Shift, Vessel } from "../domain/entities.js";
@@ -20,6 +20,7 @@ import {
   staffingHorizonFor,
   staffingHorizonFromEvents,
   FILL_DEADLINE_HOURS,
+  STAFFING_HORIZON_LEAD_DAYS,
   TRIP_DURATION_MINUTES,
   CALL_LEAD_MINUTES,
 } from "./derive.js";
@@ -366,5 +367,32 @@ describe("bailLatenessMs (DEC-028)", () => {
 
   it("honors a custom leadDays", () => {
     expect(bailLatenessMs(trip, before(1), 3)).toBe(2 * DAY);
+  });
+});
+
+describe("STAFFING_HORIZON_LEAD_DAYS env override (DEC-062)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  it("defaults to 7 days", () => {
+    expect(STAFFING_HORIZON_LEAD_DAYS).toBe(7);
+  });
+
+  it("a positive-integer env override replaces the default", async () => {
+    vi.stubEnv("STAFFING_HORIZON_LEAD_DAYS", "3");
+    vi.resetModules();
+    const m = await import("./derive.js");
+    expect(m.STAFFING_HORIZON_LEAD_DAYS).toBe(3);
+  });
+
+  it("a non-integer or non-positive override falls back to 7", async () => {
+    for (const bad of ["7.5", "0", "-2", "lots", "", " "]) {
+      vi.stubEnv("STAFFING_HORIZON_LEAD_DAYS", bad);
+      vi.resetModules();
+      const m = await import("./derive.js");
+      expect(m.STAFFING_HORIZON_LEAD_DAYS).toBe(7);
+    }
   });
 });

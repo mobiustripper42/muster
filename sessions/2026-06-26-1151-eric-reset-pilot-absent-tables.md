@@ -6,7 +6,7 @@ branch: task/reset-pilot-absent-tables
 started: 2026-06-26T11:51:52Z
 ended:
 points:
-pr_numbers: [155, 156, 159]
+pr_numbers: [155, 156, 159, 162]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/948be534-0713-4f32-aa75-82dd87d6f9e4.jsonl
 ---
@@ -62,6 +62,22 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/948be534-0713-4f32-aa7
 **Points:** 3
 **Branch:** task/151-145-ask-hardening
 **Opened at:** 2026-06-26T16:05:59Z
+
+## Task 4: Outbox dismiss-without-send + document engine env knobs (#158, #157)
+
+**Completed:**
+- **#158** — outbox **Dismiss** button (`components/outbox/outbox-card.tsx`, relay/sent cards only): clears a card from the worklist without sending. New `dismissOutboxEntry` action (`app/(admin)/admin/outbox/actions.ts`) deletes the outbox **entry** (`removeOutboxEntry`, channel-adapter state, DEC-030) but leaves the **ask live** — it rides to its silent-timeout (#151/DEC-067) and the seat self-resolves. The operator's chosen semantics (issue option b), now safe because #151 bounds the previously-unbounded "pending forever." Confirmation notice on `page.tsx`; `OPERATOR_MANUAL.md` explains the follow-up-card-is-the-engine-working subtlety.
+- **#157** — `STAFFING_HORIZON_LEAD_DAYS` was already env-overridable (DEC-062 — issue premise stale). Documented it + `ASK_DRIP_INTERVAL_MINUTES` + `ASK_SILENT_TIMEOUT_MINUTES` in `.env.example` + `docs/DEPLOY.md`. (Decimal-days idea declined; `envPositiveInt`'s guard beats `Number()||7`.)
+- **#145** — already shipped in #159; closed the issue separately.
+- Test: `src/admin/outbox-view.test.ts` — dismiss hides the card, ask untouched.
+
+**Verification:** full `vitest` **569 pass** (1 new); typecheck + build clean; full Playwright e2e **15/15** local.
+
+**Code review:** `@code-review` — no blockers; auth/redirect/DEC-030 guardrail respected, docs match constants, a dismissed card can't resurrect (`obx-${askId}` + `widenAsk` mints fresh ids). **Real fix folded in:** Dismiss was rendering on `self` cards → would log `ask_ignored` against the operator; gated off. Accepted gap: server-action wrapper not e2e-tested (no outbox e2e exists; unit test covers the domain effect).
+**PR:** [#162](https://github.com/mobiustripper42/muster/pull/162)
+**Points:** 3
+**Branch:** task/outbox-dismiss-env-docs
+**Opened at:** 2026-06-26T16:37:14Z
 
 **Next Steps:**
 

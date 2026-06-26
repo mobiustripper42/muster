@@ -18,6 +18,7 @@ import {
   expireAsks,
   manualOverride,
   overrideSeat,
+  rankedEligible,
   recordResponse,
   recordResponseAndConfirm,
   resolveProtocol,
@@ -539,6 +540,66 @@ describe("overrideSeat — role-guarded override (DEC-064)", () => {
     const cap = await addCrew("cap-1");
     const out = await overrideSeat(repo, asId<"SeatId">("nope"), cap, T0);
     expect(out.code).toBe("gone");
+  });
+});
+
+describe("broadcast — captains aren't asked for mate seats (#148, DEC-066)", () => {
+  const MATE = asId<"RoleTypeId">("role-mate");
+  async function mkSeat(id: string, role: typeof CAPTAIN): Promise<SeatId> {
+    const seatId = asId<"SeatId">(id);
+    await repo.saveShift({
+      id: SHIFT,
+      vesselId: VESSEL,
+      date: DATE,
+      state: "Pending",
+      eventIds: [],
+    });
+    await repo.saveSeat({
+      id: seatId,
+      shiftId: SHIFT,
+      role,
+      kind: "required",
+      state: "Open",
+    });
+    return seatId;
+  }
+
+  it("a mate seat is broadcast only to mates — the dual-rated captain is spared", async () => {
+    const cap = await addCrew("cap-1", { ratings: [CAPTAIN, MATE] });
+    const mate = await addCrew("mate-1", { ratings: [MATE] });
+    const seatId = await mkSeat("seat-mate", MATE);
+
+    const asks = await broadcastAsk(repo, seatId, T0);
+    const askedIds = asks.map((a) => a.crewMemberId);
+    expect(askedIds).toEqual([mate]); // only the mate is asked
+    expect(askedIds).not.toContain(cap); // captain never asked for mate work
+  });
+
+  it("the same dual-rated captain IS broadcast for a captain seat", async () => {
+    const cap = await addCrew("cap-1", { ratings: [CAPTAIN, MATE] });
+    const seatId = await mkSeat("seat-cap", CAPTAIN);
+
+    const asks = await broadcastAsk(repo, seatId, T0);
+    expect(asks.map((a) => a.crewMemberId)).toEqual([cap]);
+  });
+
+  it("a mate seat with only captains gets no broadcast and stays Open (the reported edge)", async () => {
+    await addCrew("cap-1", { ratings: [CAPTAIN, MATE] });
+    await addCrew("cap-2", { ratings: [CAPTAIN, MATE] });
+    const seatId = await mkSeat("seat-mate", MATE);
+
+    const asks = await broadcastAsk(repo, seatId, T0);
+    expect(asks).toEqual([]); // nobody asked — captains are spared
+    expect((await repo.getSeat(seatId))!.state).toBe("Open"); // operator overrides
+  });
+
+  it("rankedEligible (the pool lean/escalate/board share) excludes the over-ranked captain", async () => {
+    await addCrew("cap-1", { ratings: [CAPTAIN, MATE] });
+    const mate = await addCrew("mate-1", { ratings: [MATE] });
+    const seatId = await mkSeat("seat-mate", MATE);
+
+    const pool = await rankedEligible(repo, (await repo.getSeat(seatId))!, T0);
+    expect(pool.map((c) => c.id)).toEqual([mate]);
   });
 });
 

@@ -13,6 +13,9 @@
  * deploy via `TENANT_TZ`; defaults to the BrewBoat fleet's zone.
  */
 
+import { asId } from "../domain/ids.js";
+import type { RoleTypeId } from "../domain/ids.js";
+
 /**
  * The vessel/tenant IANA timezone. Env-overridable (`TENANT_TZ`);
  * tenant-config-later (DEC-032, DEC-001). One fleet today (BrewBoat, Eastern).
@@ -87,3 +90,19 @@ export function vesselDateOf(at: Date, tz: string = TENANT_TIMEZONE): string {
     day: "2-digit",
   }).format(at);
 }
+
+/**
+ * Role precedence (#148, DEC-066), **most-senior first** — tenant data, tune-later
+ * like the timezone (DEC-001). The pilot fleet's two roles: a captain outranks a
+ * mate. Used **only to decide who gets _asked_**: a crew member is never auto-asked
+ * or leaned for a seat below a role they also hold, so a captain (rated
+ * `[captain, mate]`) is never asked for a mate seat — they stay manually assignable
+ * via the cockpit override (DEC-064). A role absent from this list is unranked: it
+ * imposes no over-qualification rule. This is an **ask-routing preference**, NOT a
+ * domain hierarchy (DEC-ROLE-1's flat roles stand) and NOT an eligibility gate (the
+ * oracle still counts a captain as able to crew a mate seat).
+ */
+export const ROLE_PRECEDENCE: readonly RoleTypeId[] = [
+  asId<"RoleTypeId">("role-captain"),
+  asId<"RoleTypeId">("role-mate"),
+];

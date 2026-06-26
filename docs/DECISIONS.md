@@ -1528,6 +1528,15 @@ remove). **Revisit if:** previews ever stop being isolated branches, or carry se
 
 ---
 
+## DEC-066: Captains are never *asked* for mate seats — over-ranked crew drop from the askable pool
+**Decision:** `rankedEligible` (`src/asks/ask-loop.ts`) — the one "who do we ask, ranked" pool that auto-ask, the drip (DEC-063), bail/remove re-asks, lean, the guarded assign (`assignFromPool`), the assignment-view seat-card pool, escalate, and the At-Risk board's `available` lean list all read — now also drops crew **over-ranked** for the seat: anyone holding a role ranked above the seat's role in `ROLE_PRECEDENCE` (`src/config/tenant.ts`, most-senior-first tenant data, `[captain, mate]`) is excluded. The pure gate is `isAskableFor(ratings, role)` in `src/oracle/eligibility.ts`, layered on top of `isRatedFor`. So a pilot captain (rated `[captain, mate]`) is never auto-asked or leaned for a mate seat — but stays **manually assignable** via the cockpit override (DEC-064, which seats by `isRatedFor` and does not read this pool).
+**Why:** Operator-reported (Eric, pilot): the engine kept asking him — a captain — for mate shifts. Spending scarce captains on mate seats (and spamming them) is exactly backwards; he wanted them simply never asked, with manual placement as the escape hatch ("really easy: they don't ever get asked, but they are manually assignable"). #148 had been deferred pending a "role-rank model"; this is the minimal version — one tenant precedence list, no schema, no per-crew primary-role field.
+**Tradeoff / scope:** Introduces a *role precedence* where DEC-ROLE-1 declared roles a **flat** set. Bounded deliberately: precedence is an **ask-routing preference**, not a domain hierarchy and not an eligibility gate — the oracle (`solveShift`/`eligiblePool`) still counts a captain as able to crew a mate seat, so satisfiability/exhaustion and manual assignment are unchanged. A mate seat with *only* captains left gets no auto-ask and shows no lean targets; it surfaces on the board within 48h (DEC-065) for the operator to override a captain in — acceptable and rare. The precedence hardcodes the pilot's two role ids in tenant config (tune-later, DEC-001), not a migration.
+**Distinct from DEC-064:** DEC-064 was the **upward** block (a mate can't be *placed* as captain — `isRatedFor`, honored even by the override). This is the **downward** ask-suppression (a captain isn't *asked* for a mate seat) that DEC-064 explicitly deferred to #148. Together: mate→captain impossible; captain→mate manual-only.
+**Revisit if:** a tenant defines 3+ roles with partial/overlapping competencies where a single linear precedence is too coarse (then a per-role capability model, perhaps a `role_types.rank` column, subsumes this); or operators want captains *asked* for mate seats once the mate pool is walked (a fallback this hard rule omits by design).
+
+---
+
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)
 
 These are deferred by design. Each names an owner and a trigger. **Consult @architect (and the named

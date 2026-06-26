@@ -1,10 +1,11 @@
 /**
  * Flow 4 (#65) — the suppression rule, the OTHER thing manual eyeballing kept
  * re-explaining. Both seeds loaded: the at-risk seed widens every captain pool,
- * so when Quint drops his seat there IS someone eligible → the engine re-asks,
- * the seat goes Asked, the shift goes Filling, and the board deliberately
- * SUPPRESSES Hops (a live ask in flight isn't yet a problem). The cockpit is
- * where the operator sees the true in-flight state.
+ * so when Quint drops his seat there IS someone eligible → the engine re-asks and
+ * the seat goes Asked. Hops stays OFF the board because the trip is **>2wk out,
+ * before its staffing horizon** (resolves Pending — not yet worked) — NOT because
+ * an ask is in flight: post-DEC-065 a live ask no longer suppresses a shift within
+ * the 48h deadline. The cockpit is where the operator sees the true seat state.
  *
  * Same direct-to-card navigation as the regression spec, for the same reason.
  */

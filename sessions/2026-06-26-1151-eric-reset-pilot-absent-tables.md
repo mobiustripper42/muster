@@ -6,7 +6,7 @@ branch: task/reset-pilot-absent-tables
 started: 2026-06-26T11:51:52Z
 ended:
 points:
-pr_numbers: [155, 156]
+pr_numbers: [155, 156, 159]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/948be534-0713-4f32-aa75-82dd87d6f9e4.jsonl
 ---
@@ -46,6 +46,22 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/948be534-0713-4f32-aa7
 **Points:** 3
 **Branch:** task/148-captains-not-asked-for-mate
 **Opened at:** 2026-06-26T14:56:58Z
+
+## Task 3: Wire expireAsks into the tick + idempotent recordResponse (#151, #145, DEC-067)
+
+**Completed:**
+- **#151** — `expireAsks` shipped clockless (DEC-MSG-3) with no prod caller, so ghosted asks sat `pending` forever: the engine stalled on the first non-responder (seat never reopened, drip stuck, no escalate, no reliability ding). `src/builder/tick.ts` now sweeps each **`Asked`** required seat through `expireAsks` before state-resolution + drip; timeout = new env knob `ASK_SILENT_TIMEOUT_MINUTES` (`src/builder/derive.ts`, `envPositiveInt`, default **120/2h**). A ghoster → silent (`ask_ignored`), seat reopens, same tick widens to the next candidate / escalates.
+- **#145** — `src/asks/ask-loop.ts`: `recordResponse` no-ops on an already-answered ask (guards `respondedAt`) → no double-logged `ask_accepted` on a re-tap. New `already_answered` outcome reason; outbox copy reads "already answered," not "you lost the seat."
+- **Review-caught bug (fixed before merge):** the sweep first ran on *every* required seat → a filled seat's losing broadcast siblings got dinged `ask_ignored`. Gated to `seat.state === "Asked"`. Regression test + the reopen→widen headline test added.
+- `docs/DECISIONS.md` **DEC-067** (incl. the `Asked`-only gate rationale).
+
+**Verification:** full `vitest` **568 pass** (5 new); typecheck + build clean; **full Playwright e2e 15/15 local**.
+
+**Code review:** `@code-review` — found one real bug (unconditional sweep dinging broadcast losers on filled seats), **fixed + regression-tested**. Other findings folded in (outbox copy, reopen→widen test). Deferred (noted): crew flipping their own prior answer via a stale link is a silent no-op — a mind-change path is a separate product call.
+**PR:** [#159](https://github.com/mobiustripper42/muster/pull/159)
+**Points:** 3
+**Branch:** task/151-145-ask-hardening
+**Opened at:** 2026-06-26T16:05:59Z
 
 **Next Steps:**
 

@@ -86,6 +86,32 @@ describe("buildCrewAppView", () => {
     expect(ids).toContain("ask-open"); // the genuinely-open one still shows
   });
 
+  it("flags an operator-placed shift (Confirmed, no accepted ask) as addedByOperator (#161)", async () => {
+    const view = await buildCrewAppView(await seed(), ME, NOW);
+    const up = view!.shifts.find((s) => s.shiftId === "shift-up")!; // seat-up: no ask → operator placed me
+    const ans = view!.shifts.find((s) => s.shiftId === "shift-ask")!; // seat-ans: I accepted the ask
+    expect(up.addedByOperator).toBe(true);
+    expect(ans.addedByOperator).toBe(false);
+  });
+
+  it("addedByOperator edges: declined-then-placed flags; a Claimed (pending) seat never does (#161)", async () => {
+    const repo = await seed();
+    // Confirmed seat I DECLINED an ask for, then was placed onto → still operator-added.
+    await repo.saveShift({ id: asId<"ShiftId">("shift-dec"), vesselId: VESSEL, date: "2026-07-08", state: "Crewed", eventIds: [] });
+    await repo.saveSeat({ id: asId<"SeatId">("seat-dec"), shiftId: asId<"ShiftId">("shift-dec"), role: CAPTAIN, kind: "required", state: "Confirmed", assignedCrewMemberId: ME });
+    await repo.saveAsk({ id: asId<"AskId">("ask-dec"), seatId: asId<"SeatId">("seat-dec"), crewMemberId: ME, channel: "push", sentAt: "2026-07-01T08:00:00.000Z", respondedAt: "2026-07-01T08:05:00.000Z", response: "declined" });
+    // Claimed (pending) seat — claim = "In", so never operator-added.
+    await repo.saveShift({ id: asId<"ShiftId">("shift-cl"), vesselId: VESSEL, date: "2026-07-09", state: "Filling", eventIds: [] });
+    await repo.saveSeat({ id: asId<"SeatId">("seat-cl"), shiftId: asId<"ShiftId">("shift-cl"), role: CAPTAIN, kind: "required", state: "Claimed", assignedCrewMemberId: ME });
+
+    const view = await buildCrewAppView(repo, ME, NOW);
+    const dec = view!.shifts.find((s) => s.shiftId === "shift-dec")!;
+    const cl = view!.shifts.find((s) => s.shiftId === "shift-cl")!;
+    expect(dec.addedByOperator).toBe(true); // declined ≠ accepted → operator placed me
+    expect(cl.addedByOperator).toBe(false); // Claimed (pending) is never operator-added
+    expect(cl.pending).toBe(true);
+  });
+
   it("ask card carries the earliest scheduled departure (so the crew knows when)", async () => {
     const repo = await seed();
     await repo.saveShift({ id: asId<"ShiftId">("shift-ev"), vesselId: VESSEL, date: "2026-07-07", state: "Filling", eventIds: [asId<"EventId">("e-5pm"), asId<"EventId">("e-3pm")] });

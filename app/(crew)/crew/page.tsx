@@ -8,6 +8,16 @@ import { getRepo } from "../../lib/repo";
 import { fmt12 } from "../../lib/format";
 import { respondToAsk } from "./actions";
 
+/** #161: the In/Out tap's outcome → a calm /crew notice (codes only, DEC-026). */
+const ANSWERED_NOTE: Record<string, string> = {
+  in: "You’re in — it’s in My shifts below.",
+  out: "Marked out — thanks for the quick reply.",
+  filled: "That seat was already filled — nothing more needed from you.",
+  booked: "You’re already on another seat that day — can’t take two.",
+  already: "You already answered this one — you’re all set.",
+  error: "Couldn’t record that just now — try the tap again.",
+};
+
 /**
  * Crew App (SPEC §2.6) — the crew member's whole world: their open ask(s), their
  * confirmed upcoming shifts, their own standing. Insultingly small (BRAND). The
@@ -17,7 +27,7 @@ import { respondToAsk } from "./actions";
  * Server component: reads the session, builds the view model through the port,
  * renders. The In/Out buttons post to a server action — no client JS required.
  */
-type Search = { auth?: string; bailed?: string };
+type Search = { auth?: string; bailed?: string; answered?: string };
 
 export default async function CrewHome({
   searchParams,
@@ -58,7 +68,10 @@ export default async function CrewHome({
   }
   if (!view) return <SignedOut reason="stale" />;
 
-  return <CrewApp view={view} bailedNote={bailedNote} />;
+  const answeredNote = sp.answered ? ANSWERED_NOTE[sp.answered] ?? null : null;
+  return (
+    <CrewApp view={view} bailedNote={bailedNote} answeredNote={answeredNote} />
+  );
 }
 
 function fmtDate(iso: string): string {
@@ -102,9 +115,11 @@ function CredentialLine({ nudge }: { nudge: NonNullable<CrewAppView["credentialN
 function CrewApp({
   view,
   bailedNote,
+  answeredNote,
 }: {
   view: CrewAppView;
   bailedNote: string | null;
+  answeredNote: string | null;
 }) {
   return (
     <Shell>
@@ -122,6 +137,7 @@ function CrewApp({
       </header>
 
       {bailedNote && <Notice>{bailedNote}</Notice>}
+      {answeredNote && <Notice>{answeredNote}</Notice>}
       {view.credentialNudge && <CredentialLine nudge={view.credentialNudge} />}
 
       {view.asks.length > 0 && (
@@ -170,9 +186,16 @@ function CrewApp({
                     {s.vesselName} · {s.roleName}
                   </span>
                 </div>
-                <span className="text-faint" aria-hidden>
-                  ›
-                </span>
+                <div className="flex shrink-0 items-center gap-2">
+                  {s.addedByOperator && (
+                    <span className="rounded-full border border-line bg-bg px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted">
+                      Added for you
+                    </span>
+                  )}
+                  <span className="text-faint" aria-hidden>
+                    ›
+                  </span>
+                </div>
               </Link>
             ),
           )

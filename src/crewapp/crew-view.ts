@@ -60,6 +60,14 @@ export interface MyShiftView {
    * "awaiting confirmation".
    */
   pending: boolean;
+  /**
+   * True when the crew member holds this (`Confirmed`) seat but never accepted an
+   * ask for it — the operator force-placed them (override / force-assign), so they
+   * got no In/Out (#161). The surface flags it so a shift they didn't sign up for
+   * isn't a silent surprise. A `Claimed` seat is self-accepted by definition, so
+   * this only ever marks `Confirmed`.
+   */
+  addedByOperator: boolean;
 }
 
 export interface CrewAppView {
@@ -156,6 +164,12 @@ export async function buildCrewAppView(
   for (const seat of held) {
     const shift = await repo.getShift(seat.shiftId);
     if (!shift || shift.date < today) continue; // past shifts drop off
+    // #161: a seat I hold but never accepted an ask for = the operator placed me
+    // (override / force-assign — I got no ask). Flag it so /crew can say so.
+    const seatAsks = await repo.listAsksForSeat(seat.id);
+    const iAccepted = seatAsks.some(
+      (a) => a.crewMemberId === crewMemberId && a.response === "accepted",
+    );
     shifts.push({
       shiftId: shift.id,
       seatId: seat.id,
@@ -163,6 +177,7 @@ export async function buildCrewAppView(
       roleName: await roleName(repo, seat.role),
       date: shift.date,
       pending: seat.state === "Claimed",
+      addedByOperator: seat.state === "Confirmed" && !iAccepted,
     });
   }
   shifts.sort((a, b) => a.date.localeCompare(b.date));

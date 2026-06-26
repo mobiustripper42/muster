@@ -76,6 +76,12 @@ try {
   await repo.saveEvent({ id: E5, vesselId: VESSEL, date: SOON, time: "17:00", capacity: 12, status: "scheduled", dock: "East Bank of the Flats at Canal Basin Park" });
   await repo.saveSeat({ id: asId<"SeatId">("seat-soon-cap"), shiftId: SHIFT_SOON, role: CAPTAIN, kind: "required", state: "Confirmed", assignedCrewMemberId: QUINT });
   await repo.saveSeat({ id: asId<"SeatId">("seat-soon-mate"), shiftId: SHIFT_SOON, role: MATE, kind: "required", state: "Confirmed", assignedCrewMemberId: HOOPER });
+  // Accepted asks behind the two confirmed seats — the normal "they said In" path,
+  // so the crew app doesn't mislabel them "Added for you" (#161: that badge is for an
+  // operator force-place — a Confirmed seat with NO accepted ask by the occupant).
+  const acceptedAt = new Date(Date.now() - 3600_000).toISOString();
+  await repo.saveAsk({ id: asId<"AskId">("ask-soon-cap"), seatId: asId<"SeatId">("seat-soon-cap"), crewMemberId: QUINT, channel: "push", sentAt: acceptedAt, respondedAt: acceptedAt, response: "accepted" });
+  await repo.saveAsk({ id: asId<"AskId">("ask-soon-mate"), seatId: asId<"SeatId">("seat-soon-mate"), crewMemberId: HOOPER, channel: "push", sentAt: acceptedAt, respondedAt: acceptedAt, response: "accepted" });
   // Reap seats this seed no longer writes (upserts never delete, and a renamed
   // seat id leaves a zombie row — e.g. a 3rd captain seat on a 2-crew boat that
   // hijacks the card's mySeatId and the bail demo).

@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { recordResponseAndConfirm } from "@core/asks/ask-loop.js";
+import { answeredNoticeCode } from "@core/crewapp/answered-code.js";
 import { asId } from "@core/domain/ids.js";
 import { readSubject } from "../../lib/auth";
 import { getRepo } from "../../lib/repo";
@@ -40,14 +41,12 @@ export async function respondToAsk(formData: FormData): Promise<void> {
         response,
         new Date(),
       );
-      param =
-        response === "declined"
-          ? "answered=out"
-          : out.claimed
-            ? "answered=in"
-            : "answered=filled"; // #161: lost the CAS race / already filled
+      // #161: distinct codes per outcome — a lost race, a double-book, and a
+      // re-tap each say something different (the crew member isn't always shut out).
+      param = `answered=${answeredNoticeCode(response, out)}`;
     }
-  } catch {
+  } catch (e) {
+    console.error("respondToAsk failed", e);
     param = "answered=error";
   }
   redirect(param ? `/crew?${param}` : "/crew");

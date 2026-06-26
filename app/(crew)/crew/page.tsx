@@ -13,6 +13,8 @@ const ANSWERED_NOTE: Record<string, string> = {
   in: "You’re in — it’s in My shifts below.",
   out: "Marked out — thanks for the quick reply.",
   filled: "That seat was already filled — nothing more needed from you.",
+  booked: "You’re already on another seat that day — can’t take two.",
+  already: "You already answered this one — you’re all set.",
   error: "Couldn’t record that just now — try the tap again.",
 };
 

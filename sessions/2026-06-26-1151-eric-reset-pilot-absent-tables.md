@@ -6,7 +6,7 @@ branch: task/reset-pilot-absent-tables
 started: 2026-06-26T11:51:52Z
 ended:
 points:
-pr_numbers: [155]
+pr_numbers: [155, 156]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/948be534-0713-4f32-aa75-82dd87d6f9e4.jsonl
 ---
@@ -29,6 +29,23 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/948be534-0713-4f32-aa7
 **Points:** 2
 **Branch:** task/at-risk-show-uncrewed-48h
 **Opened at:** 2026-06-26T12:50:50Z
+
+## Task 2: Captains are never asked for mate seats (#148, DEC-066)
+
+**Completed:**
+- Operator-reported pilot bug: the engine kept asking him (a captain) for mate shifts. Captains are rated `[captain, mate]` (downward eligibility); the auto-ask had no precedence keeping them out of mate pools. Operator wanted it dead simple: captains **never asked** for mate seats, but still **manually assignable**.
+- `src/asks/ask-loop.ts` — filter `rankedEligible` (the one askable pool every ask/suggest path reads) by a new `isAskableFor`: drop crew **over-ranked** for the seat. So a captain is never *asked* for a mate seat anywhere (auto-ask, drip, re-ask, lean, guarded assign, assignment-view, escalate, board lean list). The cockpit override seats by `isRatedFor` (DEC-064) and does NOT read this pool → manual placement unaffected.
+- `src/oracle/eligibility.ts` — `isAskableFor(ratings, role)`: rating gate + "holds no role ranked above the seat." An **ask-routing preference**, not an eligibility gate (oracle/`solveShift` unchanged → satisfiability/AtRisk unaffected) and not a domain hierarchy (DEC-ROLE-1's flat roles stand).
+- `src/config/tenant.ts` — `ROLE_PRECEDENCE` (`[captain, mate]`, most-senior-first tenant data). No schema/migration. Role ids match the live pilot seed + Xola import map (verified by review — won't no-op in prod).
+- Tests: 8 new (4 `isAskableFor` unit + 4 broadcast/`rankedEligible`, incl. the mate-seat-with-only-captains terminal state). `docs/DECISIONS.md` **DEC-066**.
+
+**Verification:** full `vitest` **563 pass** (8 new); typecheck + build clean; **full Playwright e2e 15/15 local** (ask-routing change — ran the whole suite, not just units).
+
+**Code review:** `@code-review` — **no bugs, no security issues.** Verified oracle/override paths untouched + prod role-id parity. Folded in both advisory cleanups: documented the 3 extra `rankedEligible` consumers + added the 2 edge tests. Deferred (noted in DEC-066 tradeoff): a board copy hint for the "mate seat, only captains → 0 available" edge.
+**PR:** [#156](https://github.com/mobiustripper42/muster/pull/156)
+**Points:** 3
+**Branch:** task/148-captains-not-asked-for-mate
+**Opened at:** 2026-06-26T14:56:58Z
 
 **Next Steps:**
 

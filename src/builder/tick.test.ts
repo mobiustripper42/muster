@@ -408,6 +408,101 @@ describe("resolveShiftStateOnRead (DEC-023 corollary)", () => {
   });
 });
 
+describe("tick — silent-ask sweep (#151, DEC-067)", () => {
+  it("expires an unanswered ask past the timeout: stamps it silent + logs ask_ignored", async () => {
+    await seedVesselEvent();
+    const cap = await addCaptain("cap-1");
+    await formShifts(repo);
+
+    // Tick 1 (~39h out, inside fills-by → urgent-blasts the lone captain): seeds the ask.
+    await tick(repo, AFTER, { silentTimeoutMinutes: 60 });
+    expect(await seatState()).toBe("Asked");
+
+    // cap-1 ghosts. A tick 61 min later — past the 60-min timeout — sweeps the ask.
+    const later61 = new Date(AFTER.getTime() + 61 * 60_000);
+    await tick(repo, later61, { silentTimeoutMinutes: 60 });
+
+    const seatId = (await repo.listSeatsForShift(SHIFT))[0]!.id;
+    const ghost = (await repo.listAsksForSeat(seatId)).find(
+      (a) => a.crewMemberId === cap,
+    )!;
+    expect(ghost.respondedAt).toBeDefined(); // timed out (stamped)
+    expect(ghost.response).toBeUndefined(); // silent, not a real response
+    const evTypes = (await repo.reliabilityEventsFor(cap)).map((e) => e.type);
+    expect(evTypes).toContain("ask_ignored"); // the negative silent signal
+  });
+
+  it("leaves an ask still inside the timeout untouched", async () => {
+    await seedVesselEvent();
+    const cap = await addCaptain("cap-1");
+    await formShifts(repo);
+
+    await tick(repo, AFTER, { silentTimeoutMinutes: 120 });
+    // 30 min later, well within the 120-min timeout: the ask stays live.
+    await tick(repo, new Date(AFTER.getTime() + 30 * 60_000), {
+      silentTimeoutMinutes: 120,
+    });
+
+    expect(await seatState()).toBe("Asked");
+    const evTypes = (await repo.reliabilityEventsFor(cap)).map((e) => e.type);
+    expect(evTypes).not.toContain("ask_ignored");
+  });
+
+  it("does NOT sweep a FILLED seat — losing broadcast siblings keep a clean record", async () => {
+    await seedVesselEvent();
+    const a = await addCaptain("cap-1");
+    const b = await addCaptain("cap-2");
+    await formShifts(repo);
+
+    // Urgent blast at AFTER asks both captains; cap-1 accepts → seat Claimed.
+    await tick(repo, AFTER, { silentTimeoutMinutes: 60 });
+    const seatId = (await repo.listSeatsForShift(SHIFT))[0]!.id;
+    const aAsk = (await repo.listAsksForSeat(seatId)).find(
+      (k) => k.crewMemberId === a,
+    )!;
+    await recordResponse(repo, aAsk.id, "accepted", AFTER);
+    expect(await seatState()).toBe("Claimed");
+
+    // A tick well past the timeout: cap-2's losing ask is still live, but the seat
+    // is filled, so it is NOT swept — cap-2 is never dinged for not answering.
+    await tick(repo, new Date(AFTER.getTime() + 61 * 60_000), {
+      silentTimeoutMinutes: 60,
+    });
+    const bTypes = (await repo.reliabilityEventsFor(b)).map((e) => e.type);
+    expect(bTypes).not.toContain("ask_ignored");
+  });
+
+  it("reopens a ghosted seat and the SAME tick widens to the next candidate (drip)", async () => {
+    // Non-urgent window (post-horizon, pre-fills-by) so the engine drips one at a time.
+    const DRIP = new Date("2026-06-26T12:00:00.000Z");
+    await seedVesselEvent();
+    await addCaptain("cap-1");
+    await addCaptain("cap-2");
+    await formShifts(repo);
+
+    await tick(repo, DRIP, { silentTimeoutMinutes: 60 }); // seeds ONE top-ranked ask
+    const seatId = (await repo.listSeatsForShift(SHIFT))[0]!.id;
+    const seeded = await repo.listAsksForSeat(seatId);
+    expect(seeded).toHaveLength(1);
+    const ghostId = seeded[0]!.crewMemberId;
+
+    // The seeded candidate ghosts. A tick past the timeout expires the ask,
+    // reopens the seat, and widens to the OTHER captain — all this same tick.
+    const r = await tick(repo, new Date(DRIP.getTime() + 61 * 60_000), {
+      silentTimeoutMinutes: 60,
+    });
+    expect(r.asksFired).toBe(1); // widened to the next candidate this tick
+
+    const asks = await repo.listAsksForSeat(seatId);
+    const live = asks.filter((k) => k.respondedAt === undefined);
+    expect(live).toHaveLength(1); // one live ask — the fresh candidate
+    expect(live[0]!.crewMemberId).not.toBe(ghostId); // a DIFFERENT captain
+    const ghost = asks.find((k) => k.crewMemberId === ghostId)!;
+    expect(ghost.response).toBeUndefined(); // silent, not a real answer
+    expect(ghost.respondedAt).toBeDefined();
+  });
+});
+
 describe("tick — Tier-1 drip (DEC-063)", () => {
   // Post-horizon (≥ trip−7d = 2026-06-24T19:00Z) but well before fills-by
   // (trip−48h = 2026-06-29T19:00Z), so the tick drips rather than urgent-blasts.

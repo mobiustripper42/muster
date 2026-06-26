@@ -81,8 +81,11 @@ export async function answerOwnAsk(formData: FormData): Promise<void> {
     if (out.code !== null) {
       param = `obx_error=${out.code}`;
     } else if (response === "accepted" && !out.outcome!.claimed) {
-      // A real yes, logged — but someone else won the seat first (REQ-CLAIM-1).
-      param = "answered=lost";
+      // A re-tap of an already-closed ask is a no-op, not a contested loss (#145).
+      param =
+        out.outcome!.reason === "already_answered"
+          ? "answered=closed"
+          : "answered=lost"; // a real yes, logged, but someone else won (REQ-CLAIM-1)
     } else {
       param = `answered=${response}`;
     }

@@ -34,6 +34,10 @@ const ANSWERED_COPY: Record<string, { tone: "ok" | "bad"; text: string }> = {
     tone: "bad",
     text: "Your yes landed second — the seat was already filled.",
   },
+  closed: {
+    tone: "ok",
+    text: "That ask was already answered — nothing changed.",
+  },
 };
 const OBX_ERROR_COPY: Record<string, string> = {
   gone: "That card just changed — here’s the fresh outbox.",

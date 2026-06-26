@@ -117,6 +117,22 @@ export const ASK_DRIP_INTERVAL_MINUTES = envNonNegativeInt(
   15,
 );
 
+/**
+ * How long an unanswered ask waits before it counts as **silent** (#151,
+ * DEC-067) — the timeout the tick hands `expireAsks` each sweep. Past this, an
+ * un-responded ask is stamped `ask_ignored` (the negative reliability signal,
+ * DEC-008) and, if it was the seat's last live ask, the seat reopens so the drip
+ * widens past the ghoster and Tier-2 can escalate. Env-overridable
+ * (`ASK_SILENT_TIMEOUT_MINUTES`, positive int minutes), default **120** (2h) —
+ * the operator's to tune per pilot, same posture as the drip/horizon knobs. NOT
+ * zero-valued (a 0 timeout would expire every ask the instant it's sent), so it
+ * uses `envPositiveInt`, not the drip's non-negative helper.
+ */
+export const ASK_SILENT_TIMEOUT_MINUTES = envPositiveInt(
+  "ASK_SILENT_TIMEOUT_MINUTES",
+  120,
+);
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**

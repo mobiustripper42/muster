@@ -447,6 +447,60 @@ describe("tick — silent-ask sweep (#151, DEC-067)", () => {
     const evTypes = (await repo.reliabilityEventsFor(cap)).map((e) => e.type);
     expect(evTypes).not.toContain("ask_ignored");
   });
+
+  it("does NOT sweep a FILLED seat — losing broadcast siblings keep a clean record", async () => {
+    await seedVesselEvent();
+    const a = await addCaptain("cap-1");
+    const b = await addCaptain("cap-2");
+    await formShifts(repo);
+
+    // Urgent blast at AFTER asks both captains; cap-1 accepts → seat Claimed.
+    await tick(repo, AFTER, { silentTimeoutMinutes: 60 });
+    const seatId = (await repo.listSeatsForShift(SHIFT))[0]!.id;
+    const aAsk = (await repo.listAsksForSeat(seatId)).find(
+      (k) => k.crewMemberId === a,
+    )!;
+    await recordResponse(repo, aAsk.id, "accepted", AFTER);
+    expect(await seatState()).toBe("Claimed");
+
+    // A tick well past the timeout: cap-2's losing ask is still live, but the seat
+    // is filled, so it is NOT swept — cap-2 is never dinged for not answering.
+    await tick(repo, new Date(AFTER.getTime() + 61 * 60_000), {
+      silentTimeoutMinutes: 60,
+    });
+    const bTypes = (await repo.reliabilityEventsFor(b)).map((e) => e.type);
+    expect(bTypes).not.toContain("ask_ignored");
+  });
+
+  it("reopens a ghosted seat and the SAME tick widens to the next candidate (drip)", async () => {
+    // Non-urgent window (post-horizon, pre-fills-by) so the engine drips one at a time.
+    const DRIP = new Date("2026-06-26T12:00:00.000Z");
+    await seedVesselEvent();
+    await addCaptain("cap-1");
+    await addCaptain("cap-2");
+    await formShifts(repo);
+
+    await tick(repo, DRIP, { silentTimeoutMinutes: 60 }); // seeds ONE top-ranked ask
+    const seatId = (await repo.listSeatsForShift(SHIFT))[0]!.id;
+    const seeded = await repo.listAsksForSeat(seatId);
+    expect(seeded).toHaveLength(1);
+    const ghostId = seeded[0]!.crewMemberId;
+
+    // The seeded candidate ghosts. A tick past the timeout expires the ask,
+    // reopens the seat, and widens to the OTHER captain — all this same tick.
+    const r = await tick(repo, new Date(DRIP.getTime() + 61 * 60_000), {
+      silentTimeoutMinutes: 60,
+    });
+    expect(r.asksFired).toBe(1); // widened to the next candidate this tick
+
+    const asks = await repo.listAsksForSeat(seatId);
+    const live = asks.filter((k) => k.respondedAt === undefined);
+    expect(live).toHaveLength(1); // one live ask — the fresh candidate
+    expect(live[0]!.crewMemberId).not.toBe(ghostId); // a DIFFERENT captain
+    const ghost = asks.find((k) => k.crewMemberId === ghostId)!;
+    expect(ghost.response).toBeUndefined(); // silent, not a real answer
+    expect(ghost.respondedAt).toBeDefined();
+  });
 });
 
 describe("tick — Tier-1 drip (DEC-063)", () => {

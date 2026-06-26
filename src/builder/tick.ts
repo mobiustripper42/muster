@@ -182,13 +182,17 @@ export async function tick(
     const tripStart = earliestScheduledStart(events, tz);
     if (tripStart !== null && tripStart.getTime() <= now.getTime()) continue;
 
-    // #151 (DEC-067): sweep silently-ignored asks BEFORE working the shift. An
-    // ask unanswered past the silent-timeout is stamped `ask_ignored` and, if it
-    // was the seat's last live ask, the seat reopens — so this tick's state
-    // resolution and drip see the reopen (the drip widens past the ghoster; a
-    // walked-then-Open seat escalates). expireAsks is idempotent + clock-injected.
+    // #151 (DEC-067): sweep silently-ignored asks BEFORE working the shift, but
+    // ONLY on `Asked` seats — the ones with a live ask whose timeout is meaningful.
+    // A FILLED seat (Claimed/Confirmed) still carries the losing recipients' live
+    // sibling asks (a broadcast/blast doesn't close the losers); sweeping those
+    // would wrongly log `ask_ignored` against people who never ghosted a fillable
+    // seat and poison the ranker (DEC-008). On an `Asked` seat, an ask past the
+    // timeout is stamped `ask_ignored` and, if it was the last live ask, the seat
+    // reopens — so this tick's state resolution + drip see the reopen (drip widens
+    // past the ghoster; a walked-then-Open seat escalates). Idempotent + clock-injected.
     for (const seat of await repo.listSeatsForShift(shift.id)) {
-      if (seat.kind === "required") {
+      if (seat.kind === "required" && seat.state === "Asked") {
         await expireAsks(repo, seat.id, now, silentTimeoutMs);
       }
     }

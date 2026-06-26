@@ -1,7 +1,8 @@
 /**
- * Flow 2 (#65): the In/Out tap. In claims the seat → it shows in My shifts as
- * awaiting confirmation and the ask card clears. Out declines → the card clears
- * with no new shift. Both assert the ask is *gone* afterward (the tap landed).
+ * Flow 2 (#65): the In/Out tap. In confirms the seat (DEC-061 auto-confirm) → it
+ * joins My shifts as a confirmed (clickable) shift and the ask card clears. Out
+ * declines → the card clears with no new shift. Both assert the ask is *gone*
+ * afterward (the tap landed).
  */
 import { test, expect, resetAndSeed, signInAsCrew } from "./fixtures.js";
 
@@ -10,7 +11,7 @@ test.describe("crew ask — In / Out", () => {
     await resetAndSeed("crew");
   });
 
-  test("In claims the seat → My shifts shows it awaiting confirmation", async ({
+  test("In auto-confirms the seat → My shifts shows it as a confirmed shift", async ({
     page,
   }) => {
     await signInAsCrew(page, "crew-quint");
@@ -18,8 +19,11 @@ test.describe("crew ask — In / Out", () => {
 
     await page.getByRole("button", { name: "In" }).click();
 
-    // A claimed-but-unconfirmed seat renders as the awaiting-confirmation row…
-    await expect(page.getByText("Awaiting confirmation")).toBeVisible();
+    // Auto-confirm (DEC-061): the "In" locks the seat immediately — no operator
+    // confirm step — so `shift-ask` joins My shifts as a confirmed, clickable row,
+    // never an "awaiting confirmation" placeholder.
+    await expect(page.locator('a[href="/crew/shift/shift-ask"]')).toBeVisible();
+    await expect(page.getByText("Awaiting confirmation")).toHaveCount(0);
     // …and the ask is answered, so the card is gone.
     await expect(page.getByText("In or out?")).toHaveCount(0);
   });

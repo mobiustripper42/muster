@@ -93,8 +93,8 @@ export default async function AtRiskBoard({
         <div>
           <h1 className="text-xl font-semibold text-ink">Needs attention</h1>
           <p className="text-sm text-muted">
-            Only shifts the automation couldn’t close.{" "}
-            {vms.length === 0 ? "Right now, none do." : "Most-urgent first."}
+            Uncrewed shifts within ~2 days, plus any the engine can’t fill.{" "}
+            {vms.length === 0 ? "Right now, none." : "Most-urgent first."}
           </p>
         </div>
         {vms.length > 0 && (

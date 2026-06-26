@@ -173,17 +173,20 @@ would have put a row on the board.
 
 ### A shift vanished from the board — where did it go?
 
-This is the #1 source of confusion, and it's almost always **the engine working**, not a dropped
-ball. The most common cause:
+**First, how far out is the trip?** Within ~2 days (the fills-by deadline), an uncrewed shift does
+**not** vanish like this — it stays on the board even with an ask in flight, and nudging someone no
+longer hides it (DEC-065). Near the dock you always see what isn't crewed.
+
+For a trip **more than ~2 days out**, a vanish is almost always **the engine working**, not a dropped
+ball:
 
 > The shift had run out of *immediately* available crew, so it showed up. Then the engine widened the
-> pool and **put a fresh ask in flight** to someone newly eligible. A shift with a live ask out is no
-> longer *stuck* — so it correctly leaves the board while that person decides.
+> pool and **put a fresh ask in flight** to someone newly eligible. A far-off shift with a live ask out
+> is no longer *stuck* — so it correctly leaves the board while that person decides.
 
-To confirm what happened: open the shift's **cockpit** (`/admin/shift/<id>`). You'll see the seat is
-**Asked** and the pool reads **awaiting reply**. The shift is being handled; it'll come back to the
-board only if that ask also fails. (A far-off shift behaves this way especially — it's well before
-its fills-by deadline, so a pending ask is exactly where it should be.)
+To confirm: open the shift's **cockpit** (`/admin/shift/<id>`). You'll see the seat is **Asked** and
+the pool reads **awaiting reply**. The shift is being handled; it'll come back to the board only if
+that ask also fails — or as soon as the trip crosses inside the ~2-day deadline.
 
 ### Someone bailed
 

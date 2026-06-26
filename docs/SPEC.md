@@ -734,15 +734,19 @@ The list of shifts that genuinely need a human — and almost nothing else.
   Keep the bar for landing here **high**.
 
 ### What lands on the board (states to render)
-- **At-Risk shifts** — Tiers 1–2 exhausted, still short, deadline closing. The core case.
+- **Uncrewed shifts** — a required seat still empty, by either route: (a) eligibility-exhausted
+  (nobody left to ask — boards however far out) or (b) the trip is within the fill deadline (48h),
+  **whether or not asks are still in flight** (DEC-065). The core case.
 - **Regressions (late bails)** — a `Crewed` shift lost a confirmed crew close to the trip and can't
   auto-refill in time (the 11pm bail). **Distinct regression flag; rockets to the top** — was
   solved, now broken, little time.
 - **Credential lapse on assigned crew** — an assigned person's MMC/medical/TWIC will expire before
   the trip date, invalidating the assignment. Surfaces here so it's caught **before the dock**.
 - **Empty state** — rendered as success, not as an error/void.
-- A shift still being actively worked (pool not exhausted, deadline not close) **does not** appear —
-  it stays the system's problem in the assignment view.
+- A shift still being actively worked **and more than the fill deadline (48h) from its trip** does
+  not appear — it stays the system's problem in the assignment view. Inside the deadline it boards
+  regardless of in-flight asks (DEC-065): a near-term uncrewed shift is the operator's to see, and a
+  nudge no longer hides it.
 
 ### Urgency model (sort order)
 A blend of **time to trip** (sooner = more urgent) · **severity of gap** (missing a **captain** —
@@ -752,8 +756,9 @@ small, fickle pool — outranks a **mate**; a **regression** outranks a never-fi
 ### Triage from the list (context without clicking)
 Each row carries enough to act without opening it:
 - **What's missing** — 1 captain / 1 mate / both.
-- **Time to trip.** *(The fills-by/horizon deadline is **not** shown on the board — once a shift boards
-  the automation has given up and the deadline is moot; it lives on the cockpit only. DEC-038.)*
+- **Time to trip.** *(The fills-by/horizon deadline is **not** shown on the board — it lives on the
+  cockpit only. DEC-038. A board row no longer implies the automation has given up: within the
+  deadline a still-worked uncrewed shift boards too, DEC-065.)*
 - **Escalation transparency** — proof the system tried: "asked 6 mates · 4 declined · 2 silent ·
   pool widened · nudged Bob · exhausted." So Spink trusts it gave up for real reasons, not laziness.
 - **Who's still theoretically available** (if anyone) for a manual lean.

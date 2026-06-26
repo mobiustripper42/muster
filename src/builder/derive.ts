@@ -201,7 +201,7 @@ export function staffingHorizonFor(
  * Default fill-deadline lead, in **hours** before the trip — the moment an
  * unfilled shift stops being the engine's problem and becomes a human one
  * (SPEC §2.4/§2.5 "fills by"). This is the **same instant** the At-Risk board
- * boards a willingness-exhausted shift on (`at-risk-board` re-exports this as
+ * boards an uncrewed shift on via route (b) (`at-risk-board` re-exports this as
  * `EXHAUSTED_THRESHOLD_HOURS`), by design (DEC-031): the displayed deadline IS
  * the escalation instant, so the two can't drift. Distinct from — and the
  * *closing* counterpart to — the staffing horizon, which is the window's
@@ -218,8 +218,8 @@ const HOUR_MS = 60 * 60 * 1000;
  * a stored deadline goes stale when events reschedule). `null` when no scheduled
  * event anchors the shift; rendered as absence, never faked (the P3 line).
  * Returns a past instant when the deadline has passed — callers render that
- * honestly as overdue, never clamped (a willingness-exhausted shift boards only
- * *after* this passes, by construction).
+ * honestly as overdue, never clamped (a route-(b) shift boards only once `now`
+ * reaches this instant, by construction).
  */
 export function fillDeadlineFromEvents(
   events: Event[],

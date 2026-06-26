@@ -11,17 +11,20 @@
  *
  * A shift lands on the board for any of three reasons:
  *
- *  - **core** — the engine is out of moves. Two routes, deliberately asymmetric:
+ *  - **core** — a required seat is uncrewed and needs eyes. Two routes,
+ *    deliberately asymmetric in *how far out* they summon:
  *    (a) the shift *resolves* `AtRisk` (eligibility-exhaustion: nobody CAN
  *        legally crew it, or a required seat rests `Bailed` — DEC-019/022) —
  *        summoned immediately, however far out the trip is; or
- *    (b) **willingness-exhaustion**: the shift still resolves `Filling` because
- *        eligible people exist, but everyone asked said no or went silent
- *        (`asked > 0`, `pending === 0`, still short) — this only boards once the
- *        trip is within `EXHAUSTED_THRESHOLD_HOURS`, because a late yes can
- *        still save it without Spink. The asymmetry is the anti-anxiety-
- *        dashboard line: "no one may" is urgent now; "no one wants to" is
- *        urgent close to the dock.
+ *    (b) **imminence** (DEC-065): the shift still resolves `Filling` (eligible
+ *        people exist, the engine is working it) but a required seat is still
+ *        uncrewed and the trip is within `EXHAUSTED_THRESHOLD_HOURS` — boards
+ *        **regardless of whether asks are in flight**. The operator needs to see
+ *        every uncrewed near-term shift, not just the ones the automation has
+ *        given up on; a live ask — or a nudge — no longer hides it (the old
+ *        `asked > 0 && pending === 0` willingness gate is gone). The asymmetry
+ *        is the time bound: "no one may" is urgent however far out; "still
+ *        nobody crewed" becomes the operator's to watch within the deadline.
  *  - **regression** — a required seat is `Bailed` (DEC-019 makes resting-Bailed
  *    reachable only when the re-ask found an exhausted pool, so "can't
  *    auto-refill" is true by construction). Flagged independently of the
@@ -35,12 +38,13 @@
  *    shift, `Crewed` included — the headline case is precisely the boat that
  *    looks fine.
  *
- * A shift still actively worked — a live ask in flight, or willingness-
- * exhausted but the trip far off — does NOT appear. An event-less shift (every
- * event cancelled) has no horizon and no trip start: it can't board via core
- * (the resolve falls back to the seat-fold and the threshold has nothing to
- * count down to) and its time term is neutral — the cancel flow, not this
- * board, is what mops those up.
+ * A `Filling` shift whose trip is still beyond `EXHAUSTED_THRESHOLD_HOURS` does
+ * NOT appear — the engine has runway and route (b)'s clock hasn't started
+ * (eligibility-exhaustion still boards it early via route (a)). An event-less
+ * shift (every event cancelled) has no horizon and no trip start: it can't board
+ * via core (the resolve falls back to the seat-fold and the threshold has
+ * nothing to count down to) and its time term is neutral — the cancel flow, not
+ * this board, is what mops those up.
  *
  * Urgency is a flat additive blend (tune-later weights, DEC-025): time-to-trip
  * + pool-thinness + a regression constant. "Captain > mate" is expressed ONLY
@@ -80,11 +84,12 @@ import {
 import { TENANT_TIMEZONE } from "../config/tenant.js";
 
 /**
- * How close (hours before trip start) a willingness-exhausted shift must be to
- * land on the board. **Definitionally the fill deadline** (DEC-031): one
- * constant, so the row's rendered "fills by" IS the instant this shift boards —
- * the two can't drift. Keep the bar high (SPEC §2.5), tune later.
- * Eligibility-exhaustion ignores this entirely.
+ * How close (hours before trip start) a still-`Filling` shift with an uncrewed
+ * required seat must be to land on the board (route (b) imminence, DEC-065).
+ * **Definitionally the fill deadline** (DEC-031): one constant, so the row's
+ * rendered "fills by" IS the instant this shift boards — the two can't drift.
+ * Keep the bar high (SPEC §2.5), tune later. Eligibility-exhaustion (route (a))
+ * ignores this entirely.
  */
 export const EXHAUSTED_THRESHOLD_HOURS = FILL_DEADLINE_HOURS;
 
@@ -138,10 +143,10 @@ export interface AtRiskRow {
   tripStarts: Date[];
   /**
    * The "fills by" deadline (DEC-031): `tripStart − FILL_DEADLINE_HOURS`, the
-   * instant this shift becomes a human problem — definitionally the willingness-
-   * exhaustion boarding instant. `null` when no event anchors the shift (render
+   * instant this shift becomes a human problem — definitionally the route-(b)
+   * boarding instant (DEC-065). `null` when no event anchors the shift (render
    * as absence, never faked). May be **past** — render as overdue, never clamped
-   * (an exhaustion row boards only after it passes).
+   * (a route-(b) row boards only once `now` reaches it).
    */
   fillsBy: Date | null;
   /** The staffing horizon (DEC-022); null when no event anchors the shift. */
@@ -180,7 +185,7 @@ function roleGaps(gapSeats: Seat[]): RoleGap[] {
 /**
  * Derive the At-Risk board as of `now` — see the module doc for membership and
  * ordering. `opts.leadDays` / `opts.deadlineHours` override the horizon lead
- * (DEC-022) and the willingness threshold for tests/tuning.
+ * (DEC-022) and the route-(b) imminence threshold for tests/tuning.
  */
 export async function deriveAtRiskBoard(
   repo: Repository,
@@ -215,8 +220,8 @@ export async function deriveAtRiskBoard(
 
     const horizon = staffingHorizonFromEvents(events, leadDays, tz);
     const tripStarts = scheduledStarts(events, tz);
-    // Same `deadlineHours` the willingness-exhaustion route boards on below, so
-    // the rendered "fills by" IS that boarding instant (DEC-031).
+    // Same `deadlineHours` route (b) boards on below, so the rendered "fills by"
+    // IS that boarding instant (DEC-031).
     const fillsBy = fillDeadlineFromEvents(events, deadlineHours, tz);
     const hoursToTrip =
       tripStart === null
@@ -241,16 +246,17 @@ export async function deriveAtRiskBoard(
 
     const reasons: AtRiskReason[] = [];
     if (resolvedState === "AtRisk") {
-      reasons.push("core"); // route (a): eligibility-exhausted / rested-Bailed
+      reasons.push("core"); // route (a): eligibility-exhausted / rested-Bailed — boards however far out
     } else if (
       resolvedState === "Filling" &&
-      trail.asked > 0 &&
-      trail.pending === 0 &&
       gapSeats.length > 0 &&
       hoursToTrip !== null &&
       hoursToTrip <= deadlineHours
     ) {
-      reasons.push("core"); // route (b): willingness-exhausted, deadline closing
+      // route (b) — imminence (DEC-065): uncrewed required seat within the fill
+      // deadline, boards regardless of in-flight asks. The pending/asked gate is
+      // gone — a live ask (or a nudge) no longer hides a near-term uncrewed shift.
+      reasons.push("core");
     }
 
     if (required.some((s) => s.state === "Bailed")) reasons.push("regression");

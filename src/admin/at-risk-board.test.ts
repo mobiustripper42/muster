@@ -143,7 +143,7 @@ describe("past-trip guard (#147, DEC-062)", () => {
   });
 });
 
-describe("membership — core (willingness-exhaustion)", () => {
+describe("membership — core (imminence / route (b), DEC-065)", () => {
   it("boards a still-short shift whose whole pool declined, trip inside the threshold", async () => {
     await addCrew("ann");
     await addCrew("bob");
@@ -173,15 +173,19 @@ describe("membership — core (willingness-exhaustion)", () => {
     expect(rows[0]!.reasons).toEqual(["core"]);
   });
 
-  it("does NOT board while an ask is live — the shift is still being worked", async () => {
+  it("boards an uncrewed shift even with a live ask in flight (DEC-065 — no hide-while-working)", async () => {
     await addCrew("ann");
-    const { seatIds } = await addShift("w3", hoursAfterT0(24), [{}]);
-    await broadcastAsk(repo, seatIds[0]!, T0);
+    const { shiftId, seatIds } = await addShift("w3", hoursAfterT0(24), [{}]);
+    await broadcastAsk(repo, seatIds[0]!, T0); // ann mid-decision — the ask is pending
 
-    expect(await deriveAtRiskBoard(repo, T0)).toEqual([]);
+    const rows = await deriveAtRiskBoard(repo, T0);
+    expect(rows.map((r) => r.shiftId)).toEqual([shiftId]);
+    expect(rows[0]!.reasons).toEqual(["core"]);
+    expect(rows[0]!.resolvedState).toBe("Filling");
+    expect(rows[0]!.trail.pending).toBe(1); // the live ask that USED to hide it
   });
 
-  it("does NOT board a willingness-exhausted shift whose trip is still far out", async () => {
+  it("does NOT board a still-Filling shift whose trip is still far out", async () => {
     await addCrew("ann");
     const farOut = hoursAfterT0(EXHAUSTED_THRESHOLD_HOURS + 100);
     const { seatIds } = await addShift("w4", farOut, [{}]);
@@ -202,9 +206,23 @@ describe("membership — core (willingness-exhaustion)", () => {
     expect(rows.map((r) => r.shiftId)).toEqual([shiftId]);
   });
 
-  it("does NOT board a never-asked shift inside the threshold (Tier-1's job, not Spink's)", async () => {
+  it("boards a never-asked uncrewed shift inside the threshold (DEC-065 — visible before the engine even asks)", async () => {
     await addCrew("ann");
-    await addShift("w5", hoursAfterT0(24), [{}]);
+    const { shiftId } = await addShift("w5", hoursAfterT0(24), [{}]);
+
+    const rows = await deriveAtRiskBoard(repo, T0);
+    expect(rows.map((r) => r.shiftId)).toEqual([shiftId]);
+    expect(rows[0]!.reasons).toEqual(["core"]);
+    expect(rows[0]!.trail.asked).toBe(0); // not asked yet — on the board anyway
+    expect(rows[0]!.resolvedState).toBe("Filling");
+  });
+
+  it("does NOT board a Claimed-but-unconfirmed seat inside the threshold — gapSeats is the sole guard now (DEC-065)", async () => {
+    const yes = await addCrew("ann");
+    // Someone already said yes, awaiting confirm — not a hole to fill. With the
+    // asked/pending gate gone, `gapSeats` excluding Claimed is the ONLY thing
+    // keeping this actively-progressing shift from summoning Spink.
+    await addShift("cl1", hoursAfterT0(24), [{ state: "Claimed", assigned: yes }]);
 
     expect(await deriveAtRiskBoard(repo, T0)).toEqual([]);
   });

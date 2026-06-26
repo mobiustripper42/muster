@@ -94,3 +94,20 @@ export async function answerOwnAsk(formData: FormData): Promise<void> {
   }
   finish(param);
 }
+
+export async function dismissOutboxEntry(formData: FormData): Promise<void> {
+  const entryId = await gate(formData, "entryId");
+  let param: string;
+  try {
+    // Hide the card only (#158): delete the channel-adapter outbox row. The ask
+    // is left untouched — it stays live and rides to its silent-timeout (#151,
+    // DEC-067), so the seat self-resolves; this just clears the operator's
+    // worklist. (Per the operator's choice — the issue's option (b), now bounded
+    // by the timeout that didn't exist when it was filed.)
+    await getRepo().removeOutboxEntry(asId<"OutboxEntryId">(entryId));
+    param = "dismissed=ok";
+  } catch {
+    param = "obx_error=unavailable";
+  }
+  finish(param);
+}

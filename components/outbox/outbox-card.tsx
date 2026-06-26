@@ -1,4 +1,7 @@
-import { answerOwnAsk } from "../../app/(admin)/admin/outbox/actions";
+import {
+  answerOwnAsk,
+  dismissOutboxEntry,
+} from "../../app/(admin)/admin/outbox/actions";
 import { RelaySend } from "./relay-send";
 
 /**
@@ -101,6 +104,23 @@ export function OutboxCard({ card }: { card: OutboxCardVM }) {
             className="min-h-[52px] w-full bg-ok font-semibold text-white"
           >
             In
+          </button>
+        </form>
+      )}
+
+      {/* Dismiss — clear this card from the worklist without sending (#158). The
+          ask stays live and rides to its silent-timeout (#151); this only hides
+          the relay. NOT on `self` cards: the operator answers their own ask inline
+          (In/Out above), and leaving it to time out would log THEM as a ghoster
+          (DEC-067). Low-emphasis so it's not fat-fingered next to Send. */}
+      {card.mode !== "self" && (
+        <form action={dismissOutboxEntry} className="border-t border-line">
+          <input type="hidden" name="entryId" value={card.entryId} />
+          <button
+            type="submit"
+            className="w-full px-4 py-2 text-xs text-muted hover:text-bad"
+          >
+            Dismiss — clear from your list (the ask still times out on its own)
           </button>
         </form>
       )}

@@ -48,6 +48,7 @@ const OBX_ERROR_COPY: Record<string, string> = {
 type Search = {
   answered?: string;
   obx_error?: string;
+  dismissed?: string;
 };
 
 export default async function Outbox({
@@ -73,6 +74,7 @@ export default async function Outbox({
 
   const answered = sp.answered ? ANSWERED_COPY[sp.answered] ?? null : null;
   const obxError = sp.obx_error ? OBX_ERROR_COPY[sp.obx_error] ?? null : null;
+  const dismissed = sp.dismissed === "ok";
   const pending = view.pending.map(toVM);
   const sent = view.sent.map(toVM);
 
@@ -97,6 +99,11 @@ export default async function Outbox({
       {/* Redirect-param feedback reads safely when stale (DEC-026). The relay
           Send/Resend gives its own optimistic feedback in the card (the island). */}
       {answered && <Notice tone={answered.tone}>{answered.text}</Notice>}
+      {dismissed && (
+        <Notice tone="ok">
+          Dismissed — cleared from your list. The ask still rides to its timeout.
+        </Notice>
+      )}
       {obxError && <Notice tone="bad">{obxError}</Notice>}
 
       {pending.length === 0 && sent.length === 0 ? (

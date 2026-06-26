@@ -110,9 +110,17 @@ export async function resetPilot(): Promise<void> {
       );
     }
 
+    // Only touch CLEAR tables that actually EXIST. A prod DB missing a migration
+    // (e.g. 0009 `presence` was never applied) shouldn't crash the reset — there's
+    // nothing to clear in a table that isn't there. Absent tables are reported and
+    // skipped, never counted or truncated.
+    const existing = new Set(rows.map((r) => r.tablename));
+    const clearPresent = CLEAR.filter((t) => existing.has(t));
+    const clearAbsent = CLEAR.filter((t) => !existing.has(t));
+
     // Row counts for the blast-radius echo (cheap on pilot-scale tables).
     const counts: Record<string, number> = {};
-    for (const t of CLEAR) {
+    for (const t of clearPresent) {
       const { rows: c } = await client.query<{ n: string }>(
         `select count(*)::text as n from "${t}"`,
       );
@@ -124,7 +132,9 @@ export async function resetPilot(): Promise<void> {
     );
     console.log(`KEEP (untouched): ${[...KEEP].join(", ")}`);
     console.log("CLEAR:");
-    for (const t of CLEAR) console.log(`  ${t.padEnd(20)} ${counts[t]} rows`);
+    for (const t of clearPresent) console.log(`  ${t.padEnd(20)} ${counts[t]} rows`);
+    for (const t of clearAbsent)
+      console.log(`  ${t.padEnd(20)} (absent — migration not applied, skipped)`);
     const total = Object.values(counts).reduce((a, b) => a + b, 0);
 
     if (!confirmed) {
@@ -149,11 +159,12 @@ export async function resetPilot(): Promise<void> {
       );
     }
 
-    const list = CLEAR.map((t) => `"${t}"`).join(", ");
+    const list = clearPresent.map((t) => `"${t}"`).join(", ");
     await client.query(`truncate ${list} restart identity cascade`);
     console.log(
-      `\nDONE — cleared ${total} rows across ${CLEAR.length} tables. ` +
-        `Re-import from Xola to repopulate.\n`,
+      `\nDONE — cleared ${total} rows across ${clearPresent.length} tables` +
+        (clearAbsent.length ? ` (${clearAbsent.length} absent, skipped)` : "") +
+        `. Re-import from Xola to repopulate.\n`,
     );
   } finally {
     await client.end();

@@ -16,9 +16,11 @@
  *   3. Twilio/SMS — the eventual production swap (DEC-MSG-1), same interface.
  *
  * Replies are NOT modeled here. An inbound "yes/no" re-enters the domain through
- * the ask loop's `recordResponse` (asks/ask-loop.ts) — the adapter's inbound
- * webhook/endpoint calls it. The port is outbound-only by design: delivery is the
- * swappable part; the claim/response state machine stays domain logic (REQ-CLAIM-1).
+ * the ask loop's `recordResponseAndConfirm` (asks/ask-loop.ts) — the adapter's
+ * inbound webhook/endpoint calls it, NOT raw `recordResponse` (which would strand
+ * a winning "in" at `Claimed`; DEC-061 auto-confirms). The port is outbound-only
+ * by design: delivery is the swappable part; the claim/response state machine
+ * stays domain logic (REQ-CLAIM-1).
  */
 
 import type { AskId, CrewMemberId, SeatId } from "../domain/ids.js";

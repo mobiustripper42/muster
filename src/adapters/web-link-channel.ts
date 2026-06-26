@@ -5,8 +5,9 @@
  * enqueues an `OutboxEntry` the operator works from the outbox page, where each
  * pending ask is an `sms:` deep link that opens their native Messages app
  * pre-filled (recipient + ask body + magic link). The crew member taps the
- * link, lands authenticated on the In/Out screen, and answers through the
- * existing `recordResponse` — no inbound webhook, no Twilio.
+ * link, lands authenticated on the In/Out screen, and answers through
+ * `recordResponseAndConfirm` (a winning "in" auto-confirms, DEC-061) — no inbound
+ * webhook, no Twilio.
  *
  * Two load-bearing rules (DEC-030):
  *  - **Mint at enqueue.** The magic link (24h TTL — the ask's answer window;

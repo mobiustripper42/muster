@@ -19,6 +19,7 @@ import {
   manualOverride,
   overrideSeat,
   recordResponse,
+  recordResponseAndConfirm,
   resolveProtocol,
   vacateSeat,
 } from "./ask-loop.js";
@@ -106,6 +107,69 @@ describe("happy path — broadcast → accept → confirm", () => {
     expect(await seatState(seatId!)).toBe("Confirmed");
     expect(await shiftState(SHIFT)).toBe("Crewed");
     expect(await types(a)).toEqual(["ask_sent", "ask_accepted"]);
+  });
+});
+
+describe("recordResponseAndConfirm — a winning in auto-confirms (DEC-061)", () => {
+  it("broadcast: a winning accept lands Confirmed in one step, badge Crewed", async () => {
+    const a = await addCrew("crew-a");
+    const [seatId] = await addShift(1);
+    const asks = await broadcastAsk(repo, seatId!, T0);
+
+    const out = await recordResponseAndConfirm(repo, asks[0]!.id, "accepted", later(3000));
+    expect(out).toMatchObject({ claimed: true, seatState: "Confirmed" });
+    expect(await seatState(seatId!)).toBe("Confirmed");
+    expect((await repo.getSeat(seatId!))!.assignedCrewMemberId).toBe(a);
+    expect(await shiftState(SHIFT)).toBe("Crewed");
+    // One accept event, NO confirm event (confirm logs nothing) — no double-count.
+    expect(await types(a)).toEqual(["ask_sent", "ask_accepted"]);
+  });
+
+  it("captain (assign-then-confirm): the named person's accept auto-confirms", async () => {
+    const a = await addCrew("crew-a");
+    const [seatId] = await addShift(1);
+    const ask = await assignPerson(repo, seatId!, a, T0);
+    const out = await recordResponseAndConfirm(repo, ask!.id, "accepted", later(1000));
+    expect(out.seatState).toBe("Confirmed");
+    expect(await seatState(seatId!)).toBe("Confirmed");
+  });
+
+  it("contested loser does NOT confirm — only the CAS winner is locked", async () => {
+    const a = await addCrew("crew-a");
+    const b = await addCrew("crew-b");
+    const [seatId] = await addShift(1);
+    const asks = await broadcastAsk(repo, seatId!, T0);
+    const first = asks.find((x) => x.crewMemberId === a)!;
+    const second = asks.find((x) => x.crewMemberId === b)!;
+
+    const w = await recordResponseAndConfirm(repo, first.id, "accepted", later(1000));
+    const l = await recordResponseAndConfirm(repo, second.id, "accepted", later(2000));
+
+    expect(w).toMatchObject({ claimed: true, seatState: "Confirmed" });
+    // The loser's response must not flip the winner's confirmed seat to the loser.
+    expect(l).toMatchObject({ claimed: false, reason: "already_filled" });
+    expect(await seatState(seatId!)).toBe("Confirmed");
+    expect((await repo.getSeat(seatId!))!.assignedCrewMemberId).toBe(a);
+  });
+
+  it("double-booked accept does not confirm (DEC-003 shared pool)", async () => {
+    const a = await addCrew("crew-a");
+    const [s1, s2] = await addShift(2);
+    const a1 = (await broadcastAsk(repo, s1!, T0)).find((x) => x.crewMemberId === a)!;
+    const a2 = (await broadcastAsk(repo, s2!, T0)).find((x) => x.crewMemberId === a)!;
+    await recordResponseAndConfirm(repo, a1.id, "accepted", later(1000)); // confirms s1
+    const out = await recordResponseAndConfirm(repo, a2.id, "accepted", later(2000));
+    expect(out).toMatchObject({ claimed: false, reason: "double_booked" });
+    expect(await seatState(s2!)).not.toBe("Confirmed");
+  });
+
+  it("a decline never confirms (neutral, passes through)", async () => {
+    await addCrew("crew-a");
+    const [seatId] = await addShift(1);
+    const asks = await broadcastAsk(repo, seatId!, T0);
+    const out = await recordResponseAndConfirm(repo, asks[0]!.id, "declined", later(1000));
+    expect(out.claimed).toBe(false);
+    expect(await seatState(seatId!)).toBe("Open"); // single ask declined → reopened
   });
 });
 

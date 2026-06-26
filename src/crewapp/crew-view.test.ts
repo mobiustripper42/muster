@@ -86,6 +86,14 @@ describe("buildCrewAppView", () => {
     expect(ids).toContain("ask-open"); // the genuinely-open one still shows
   });
 
+  it("flags an operator-placed shift (Confirmed, no accepted ask) as addedByOperator (#161)", async () => {
+    const view = await buildCrewAppView(await seed(), ME, NOW);
+    const up = view!.shifts.find((s) => s.shiftId === "shift-up")!; // seat-up: no ask → operator placed me
+    const ans = view!.shifts.find((s) => s.shiftId === "shift-ask")!; // seat-ans: I accepted the ask
+    expect(up.addedByOperator).toBe(true);
+    expect(ans.addedByOperator).toBe(false);
+  });
+
   it("ask card carries the earliest scheduled departure (so the crew knows when)", async () => {
     const repo = await seed();
     await repo.saveShift({ id: asId<"ShiftId">("shift-ev"), vesselId: VESSEL, date: "2026-07-07", state: "Filling", eventIds: [asId<"EventId">("e-5pm"), asId<"EventId">("e-3pm")] });

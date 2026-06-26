@@ -103,6 +103,18 @@ function envMs(name: string, fallbackMs: number): number {
 }
 
 /**
+ * A positive-**integer** env knob with a fallback (same poison-resistance as
+ * `envMs`, but for counts rather than milliseconds — a fractional or non-positive
+ * override degrades to the default). Integer-only, same as the DEC-060 windows.
+ */
+function envPositiveInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : fallback;
+}
+
+/**
  * Doorbell window defaults — the 6.3 spike, **DEC-060**. Two distinct knobs,
  * both env-overridable and tune-on-real-use; tenant-config data later (same
  * posture as `TENANT_TIMEZONE` / DEC-001, DEC-046's operator-config doorbell).
@@ -137,4 +149,17 @@ export const DOORBELL_BATCH_WINDOW_MS: number = envMs(
 export const DOORBELL_PRESENCE_WINDOW_MS: number = envMs(
   "DOORBELL_PRESENCE_WINDOW_MS",
   300_000,
+);
+
+/**
+ * **Short-notice content-carry threshold** (§7.5, the 6.4 decider) — at or under
+ * this body length a *lone* unread doorbell SMS carries the message text inline
+ * ("slip B, call 12:30"), no app trip; longer or batched → an "N new" summary.
+ * 160 = one GSM-7 SMS segment: if the note fits a single text, send the text.
+ * Env-overridable, tune-on-real-use (DEC-068); the decider reads it via
+ * `DoorbellRules`. Sibling to the DEC-060 windows.
+ */
+export const DOORBELL_SHORT_NOTICE_MAX_CHARS: number = envPositiveInt(
+  "DOORBELL_SHORT_NOTICE_MAX_CHARS",
+  160,
 );

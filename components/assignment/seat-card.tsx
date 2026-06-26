@@ -182,7 +182,7 @@ export function SeatCard({
         </summary>
         <p className="py-1 text-xs text-muted">
           Skips the queue and confirms them for the shift. Only crew rated for
-          this seat appear (a mate can&rsquo;t hold a captain seat).
+          this role appear.
         </p>
         <ul className="flex flex-wrap gap-2 py-1">
           {roster.map((p) => (

@@ -17,6 +17,7 @@ import {
   confirmSeat,
   expireAsks,
   manualOverride,
+  overrideSeat,
   recordResponse,
   resolveProtocol,
   vacateSeat,
@@ -390,6 +391,60 @@ describe("manualOverride — the authority backstop (§2.4)", () => {
     expect(seat!.assignedCrewMemberId).toBe(a);
     expect(await shiftState(SHIFT)).toBe("Crewed");
     expect(await types(a)).not.toContain("ask_accepted"); // override isn't responsiveness
+  });
+});
+
+describe("overrideSeat — role-guarded override (DEC-064)", () => {
+  const MATE = asId<"RoleTypeId">("role-mate");
+  async function mkSeat(id: string, role: typeof CAPTAIN): Promise<SeatId> {
+    const seatId = asId<"SeatId">(id);
+    await repo.saveShift({
+      id: SHIFT,
+      vesselId: VESSEL,
+      date: DATE,
+      state: "Pending",
+      eventIds: [],
+    });
+    await repo.saveSeat({
+      id: seatId,
+      shiftId: SHIFT,
+      role,
+      kind: "required",
+      state: "Open",
+    });
+    return seatId;
+  }
+
+  it("rejects a mate placed into a captain seat (not_rated, seat untouched)", async () => {
+    const mate = await addCrew("mate-1", { ratings: [MATE] });
+    const seatId = await mkSeat("seat-cap", CAPTAIN);
+    const out = await overrideSeat(repo, seatId, mate, T0);
+    expect(out.code).toBe("not_rated");
+    expect((await repo.getSeat(seatId))!.state).toBe("Open");
+    expect((await repo.getSeat(seatId))!.assignedCrewMemberId).toBeUndefined();
+  });
+
+  it("places a dual-rated captain into a MATE seat (the legit downward sub)", async () => {
+    const cap = await addCrew("cap-1", { ratings: [CAPTAIN, MATE] });
+    const seatId = await mkSeat("seat-mate", MATE);
+    const out = await overrideSeat(repo, seatId, cap, T0);
+    expect(out.code).toBeNull();
+    const seat = await repo.getSeat(seatId);
+    expect(seat!.state).toBe("Confirmed");
+    expect(seat!.assignedCrewMemberId).toBe(cap);
+  });
+
+  it("places a captain into a captain seat", async () => {
+    const cap = await addCrew("cap-1"); // ratings [CAPTAIN] by default
+    const seatId = await mkSeat("seat-cap", CAPTAIN);
+    expect((await overrideSeat(repo, seatId, cap, T0)).code).toBeNull();
+    expect((await repo.getSeat(seatId))!.state).toBe("Confirmed");
+  });
+
+  it("gone for an unknown seat", async () => {
+    const cap = await addCrew("cap-1");
+    const out = await overrideSeat(repo, asId<"SeatId">("nope"), cap, T0);
+    expect(out.code).toBe("gone");
   });
 });
 

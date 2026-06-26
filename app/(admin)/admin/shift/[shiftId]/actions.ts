@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import {
   bailWithDerivedLateness,
   confirmSeat,
-  manualOverride,
+  overrideSeat,
   vacateSeat,
 } from "@core/asks/ask-loop.js";
 import { assignFromPool, lean } from "@core/asks/lean.js";
@@ -26,8 +26,8 @@ import { getRepo } from "../../../../lib/repo";
  *             crafted form post cannot reach unlabeled override semantics)
  * - nudge   → `lean` (manual Tier-2; the shift-level seat pick is the domain's)
  * - confirm → `confirmSeat` (Claimed → Confirmed)
- * - override→ `manualOverride` (the ONLY unguarded path — the authority
- *             backstop, and the label is the trail)
+ * - override→ `overrideSeat` (the authority backstop — bypasses pool/rank/state,
+ *             but honors the role-competency floor: no mate as captain, DEC-064)
  * - report a bail → `bail()` (#56 admin half, DEC-028) — Spink files the bail
  *             he heard about
  * - remove      → `vacateSeat` (#87) — clears a *misassignment* with NO penalty;
@@ -122,15 +122,21 @@ export async function overrideTo(formData: FormData): Promise<void> {
   if (!seatId || !crewMemberId) redirect(back);
   let param: string;
   try {
-    const seat = await manualOverride(
+    // Role-guarded (DEC-064): the override bypasses pool/rank/state but NOT the
+    // role-competency floor — a mate can't be placed as captain even by a crafted
+    // form post. Captains still place into mate seats (rated for both).
+    const out = await overrideSeat(
       getRepo(),
       asId<"SeatId">(seatId),
       asId<"CrewMemberId">(crewMemberId),
       new Date(),
     );
-    param = seat
-      ? `overrode=${encodeURIComponent(crewMemberId)}`
-      : "act_error=seat_gone";
+    param =
+      out.code === "not_rated"
+        ? "act_error=not_rated"
+        : out.code === "gone"
+          ? "act_error=seat_gone"
+          : `overrode=${encodeURIComponent(crewMemberId)}`;
   } catch {
     param = "act_error=unavailable";
   }

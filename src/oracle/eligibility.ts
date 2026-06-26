@@ -90,9 +90,23 @@ export function isActive(crew: CrewMember): RuleResult {
     : fail("is_active", { status: crew.status });
 }
 
+/**
+ * The pure role-competency check (DEC-ROLE-1): does the crew hold the seat's role
+ * rating? A captain seat needs `captain`; a mate seat needs `mate`. On the pilot
+ * roster captains are rated `[captain, mate]`, so a captain passes a mate seat too
+ * (the legitimate downward sub) while a mate never passes a captain seat. The one
+ * eligibility floor even the manual override honors (DEC-064).
+ */
+export function isRatedFor(
+  ratings: readonly RoleTypeId[],
+  role: RoleTypeId,
+): boolean {
+  return ratings.includes(role);
+}
+
 /** Candidate's ratings include the seat's role (DEC-ROLE-1). */
 export function hasRating(crew: CrewMember, role: RoleTypeId): RuleResult {
-  return crew.ratings.includes(role)
+  return isRatedFor(crew.ratings, role)
     ? pass("has_rating")
     : fail("has_rating", { required: role, held: crew.ratings });
 }

@@ -18,6 +18,7 @@ import {
   expireAsks,
   manualOverride,
   overrideSeat,
+  rankedEligible,
   recordResponse,
   recordResponseAndConfirm,
   resolveProtocol,
@@ -580,6 +581,25 @@ describe("broadcast — captains aren't asked for mate seats (#148, DEC-066)", (
 
     const asks = await broadcastAsk(repo, seatId, T0);
     expect(asks.map((a) => a.crewMemberId)).toEqual([cap]);
+  });
+
+  it("a mate seat with only captains gets no broadcast and stays Open (the reported edge)", async () => {
+    await addCrew("cap-1", { ratings: [CAPTAIN, MATE] });
+    await addCrew("cap-2", { ratings: [CAPTAIN, MATE] });
+    const seatId = await mkSeat("seat-mate", MATE);
+
+    const asks = await broadcastAsk(repo, seatId, T0);
+    expect(asks).toEqual([]); // nobody asked — captains are spared
+    expect((await repo.getSeat(seatId))!.state).toBe("Open"); // operator overrides
+  });
+
+  it("rankedEligible (the pool lean/escalate/board share) excludes the over-ranked captain", async () => {
+    await addCrew("cap-1", { ratings: [CAPTAIN, MATE] });
+    const mate = await addCrew("mate-1", { ratings: [MATE] });
+    const seatId = await mkSeat("seat-mate", MATE);
+
+    const pool = await rankedEligible(repo, (await repo.getSeat(seatId))!, T0);
+    expect(pool.map((c) => c.id)).toEqual([mate]);
   });
 });
 

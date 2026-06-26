@@ -328,6 +328,38 @@ export async function confirmSeat(
   return confirmed;
 }
 
+/**
+ * Record a response and, on a winning accept, confirm it in one step — the
+ * "in = committed" path (DEC-061). A winning accept advances
+ * `Asked → Claimed → Confirmed`; every other outcome (contested loss,
+ * double-book, decline, no live claim) passes `recordResponse`'s result through
+ * untouched. Applies to both protocols (DEC-007): the mate broadcast's first-yes
+ * and the named-captain's accept.
+ *
+ * **Confirm is gated on `outcome.claimed === true`, never on seat state.** A
+ * contested loser's response leaves the seat `Claimed` *by the winner*, so a
+ * state-keyed gate would confirm the wrong person; only the CAS winner is
+ * `claimed:true`. If the seat moved underfoot between the claim and the confirm,
+ * `confirmSeat` returns null and we pass the claim outcome through — never throw.
+ *
+ * Both answer surfaces route here (crew `respondToAsk`, operator-as-crew
+ * `recordResponseAs`), and the M4 inbound-channel adapter must too — funnelling a
+ * real "in" reply into raw `recordResponse` would strand it at `Claimed`.
+ */
+export async function recordResponseAndConfirm(
+  repo: Repository,
+  askId: AskId,
+  response: "accepted" | "declined",
+  now: Date,
+): Promise<ResponseOutcome> {
+  const outcome = await recordResponse(repo, askId, response, now);
+  if (!outcome.claimed) return outcome;
+  const ask = await repo.getAsk(askId);
+  if (!ask) return outcome; // unreachable after a winning claim; defensive
+  const confirmed = await confirmSeat(repo, ask.seatId, now);
+  return confirmed ? { ...outcome, seatState: "Confirmed" } : outcome;
+}
+
 // ── Timeout + bail + override ───────────────────────────────────────────────
 
 /**

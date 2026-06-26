@@ -6,7 +6,7 @@ branch: task/reset-pilot-absent-tables
 started: 2026-06-26T11:51:52Z
 ended:
 points:
-pr_numbers: [155, 156, 159, 162, 163]
+pr_numbers: [155, 156, 159, 162, 163, 164]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/948be534-0713-4f32-aa75-82dd87d6f9e4.jsonl
 ---
@@ -94,8 +94,25 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/948be534-0713-4f32-aa7
 **Branch:** task/161-crew-notices
 **Opened at:** 2026-06-26T17:16:54Z
 
+## Task 6: Outbox relay ergonomics — copy-pasteable message + Web Share / Google Voice (#160)
+
+**Completed:**
+- **Part 1** — `components/outbox/outbox-card.tsx`: each relay/sent card shows the **full message** (body + magic link, `select-all` + new `CopyButton` island) and the crew **name + number** (Copy #). `toVM` (`page.tsx`) exposes `shareText` (= `body+link`) + `crewPhone`.
+- **Part 2** — `components/outbox/relay-send.tsx`: Send prefers `navigator.share({text})` (Web Share → **Google Voice** on Android, relay from GV not the personal cell; manual conversation-pick) with the **`sms:` composer fallback**; `<a href=sms:>` stays the no-JS baseline. Per-path gesture/record ordering preserved.
+- New `e2e/outbox-relay.spec.ts` (render + optimistic-flip; Web Share stubbed).
+
+**Verification:** full `vitest` **569 pass**; typecheck + build clean; full Playwright e2e **16/16** local.
+
+**Code review:** `@code-review` — no production-breaking bugs (DEC-030 freeze, share/sms ordering, user-activation all verified). **Fixes folded in:** a **new no-phone dead-end** (desktop, no phone → Send marked-sent without sending) → copy-hint when no channel; **a11y** (`<a>` no-href not keyboard-accessible) → `<button>` on the share-only path; **Copy touch targets** to the 44px floor; **added the island e2e** the review wanted. Kept (intended): dismissed/failed share records as sent (optimistic; Resend recovers).
+**PR:** [#164](https://github.com/mobiustripper42/muster/pull/164)
+**Points:** 3
+**Branch:** task/160-outbox-relay-ergonomics
+**Opened at:** 2026-06-26T20:42:47Z
+
 **Next Steps:**
-- **#160** (outbox relay ergonomics) still to build: show copy-pasteable message body + crew name/phone on the card; Send via `navigator.share({text})` (Google Voice) with `sms:` fallback. Well-scoped from the operator's Android testing.
-- **#161 case 2** + active push for cases 1/2 → Phase 6 (message store #111).
+- **#161 case 2** (operator-remove notice) + active push for cases 1/2 → Phase 6 (message store #111).
+- Phase 6 dev track (`feature/messaging`): next is **#114** doorbell decider (6.4). Apply `0009_presence` migration before messaging ships.
 
 **Context:**
+- Session 28 ran a long pilot-hardening string off `main` (DEC-059): board visibility (DEC-065), captain/mate ask filter (DEC-066), silent-ask sweep (DEC-067), outbox dismiss, crew notices, outbox relay. Open PRs at close: #163, #164 (others merged). Engine env knobs now documented (`.env.example` + `docs/DEPLOY.md`).
+- `addedByOperator` (#161-1) is a derived heuristic (Confirmed + no accepted ask) — prod-clean today; a future pre-confirming import would mislabel (robust fix wants a positive marker = Phase 6).

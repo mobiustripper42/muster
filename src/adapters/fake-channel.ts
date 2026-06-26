@@ -7,7 +7,8 @@
  * `send` records the message instead of transmitting it; tests/dev read `sent`
  * to assert what would have gone out (and to pull the magic link a dev needs to
  * click). Inbound replies are not this adapter's job — they re-enter through the
- * ask loop's `recordResponse` (the port is outbound-only by design).
+ * ask loop's `recordResponseAndConfirm` (a winning "in" auto-confirms, DEC-061;
+ * the port is outbound-only by design).
  *
  * Clockless like the rest of the core: the delivery stamp comes from an injected
  * clock so tests are deterministic. Default clock is the wall clock for dev use.

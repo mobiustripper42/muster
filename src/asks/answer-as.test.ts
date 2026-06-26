@@ -70,15 +70,17 @@ describe("recordResponseAs — identity-guarded inline answer", () => {
     expect((await repo.getSeat(SEAT))!.state).toBe("Asked"); // seat unchanged
   });
 
-  it("records a matching identity's answer through the normal rails (claim + log)", async () => {
+  it("records a matching identity's answer through the normal rails (auto-confirm + log)", async () => {
     const spink = await addCrew("crew-spink");
     const ask = await seedAskedSeat(spink);
 
     const out = await recordResponseAs(repo, ask.id, spink, "accepted", T0);
 
     expect(out.code).toBeNull();
-    expect(out.outcome).toMatchObject({ claimed: true, seatState: "Claimed" });
+    // A winning "in" auto-confirms (DEC-061) — the operator-as-crew path too.
+    expect(out.outcome).toMatchObject({ claimed: true, seatState: "Confirmed" });
     const seat = await repo.getSeat(SEAT);
+    expect(seat!.state).toBe("Confirmed");
     expect(seat!.assignedCrewMemberId).toBe(spink);
     const events = await repo.reliabilityEventsFor(spink);
     expect(events.some((e) => e.type === "ask_accepted")).toBe(true);

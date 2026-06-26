@@ -163,6 +163,18 @@ export function memberThreadKey(threadId: ThreadId, subject: Subject): string {
  * place that sees both. `decideNotifications` trusts the returned rules.
  */
 export function makeDoorbellRules(rules: DoorbellRules): DoorbellRules {
+  // Each window positive + finite first — `envMs` guards the env path, but a direct
+  // construction with a negative batch window would otherwise make every thread ring
+  // instantly (nowMs - oldest >= -5). This is the one place that sees both, so it
+  // validates both absolutely, not just the relative invariant.
+  for (const [name, ms] of [
+    ["batchWindowMs", rules.batchWindowMs],
+    ["presenceWindowMs", rules.presenceWindowMs],
+  ] as const) {
+    if (!Number.isFinite(ms) || ms <= 0) {
+      throw new Error(`Doorbell ${name} must be a positive, finite number of ms (got ${ms})`);
+    }
+  }
   if (!(rules.presenceWindowMs > rules.batchWindowMs)) {
     throw new Error(
       `Doorbell window invariant (DEC-060): presenceWindowMs (${rules.presenceWindowMs}ms) must exceed batchWindowMs (${rules.batchWindowMs}ms)`,
@@ -170,7 +182,7 @@ export function makeDoorbellRules(rules: DoorbellRules): DoorbellRules {
   }
   if (!Number.isFinite(rules.shortNoticeMaxChars) || rules.shortNoticeMaxChars < 0) {
     throw new Error(
-      `Doorbell shortNoticeMaxChars must be a non-negative number (got ${rules.shortNoticeMaxChars})`,
+      `Doorbell shortNoticeMaxChars must be a non-negative, finite number (got ${rules.shortNoticeMaxChars})`,
     );
   }
   return rules;
@@ -207,8 +219,8 @@ export function decideNotifications(input: DoorbellInput): NotificationDecision[
 
       const unread = threadMsgs
         .filter((m) => !authoredBy(m, subject))
-        .filter((m) => lastReadMs === null || Date.parse(m.createdAt) > lastReadMs)
-        .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+        .filter((m) => !isReadBy(m, lastReadMs))
+        .sort((a, b) => ageKey(a) - ageKey(b));
 
       const base = {
         subject,
@@ -237,8 +249,10 @@ export function decideNotifications(input: DoorbellInput): NotificationDecision[
 
       // 3a. Priority jump (§7.4) — a priority that arrived AFTER our last ring rings through now,
       //     bypassing both the batch window and first-only-until-read. One we already rang doesn't.
+      // `!(t <= lastNotified)` not `t > lastNotified` so an unparseable stamp (NaN)
+      // counts as a NEW priority → rings (fail toward ringing), never silently skipped.
       const hasNewPriority = unread.some(
-        (m) => m.priority && (lastNotifiedMs === null || Date.parse(m.createdAt) > lastNotifiedMs),
+        (m) => m.priority && (lastNotifiedMs === null || !(Date.parse(m.createdAt) <= lastNotifiedMs)),
       );
       if (hasNewPriority) {
         decisions.push(sms(base, unread, rules, "priority_bypass"));
@@ -246,15 +260,17 @@ export function decideNotifications(input: DoorbellInput): NotificationDecision[
       }
 
       // 3b. First-only-until-read (§7.3) — rang since they last read, no new priority → don't nag.
+      //     Strict `>` so the exact ring==read tie re-arms (fail toward ringing, §7.3 boundary).
       const notifiedSinceRead =
-        lastNotifiedMs !== null && (lastReadMs === null || lastNotifiedMs >= lastReadMs);
+        lastNotifiedMs !== null && (lastReadMs === null || lastNotifiedMs > lastReadMs);
       if (notifiedSinceRead) {
         decisions.push(hold(base, "none", "already_notified"));
         continue;
       }
 
       // 3c. Batch / cancel window (§7.2) — ring once the oldest unread has aged past the window.
-      const oldestMs = Math.min(...unread.map((m) => Date.parse(m.createdAt)));
+      //     `ageKey` maps an unparseable stamp to -∞ → "infinitely old" → rings, never held.
+      const oldestMs = Math.min(...unread.map(ageKey));
       if (nowMs - oldestMs >= rules.batchWindowMs) {
         decisions.push(sms(base, unread, rules, "batched"));
       } else {
@@ -298,6 +314,34 @@ function authoredBy(m: PendingMessage, subject: Subject): boolean {
   return m.senderKind === subject.kind && m.senderId === subject.id;
 }
 
+/**
+ * Read-state, fail-toward-ringing: a message counts as read only with a *parseable*
+ * stamp at or under the last-read mark. An absent mark (`null`) or an unparseable
+ * `createdAt` (NaN) is not *provably* read → the message stays unread. The module's
+ * one direction (header / §7.1): corruption rings, it never silently drops.
+ */
+function isReadBy(m: PendingMessage, lastReadMs: number | null): boolean {
+  if (lastReadMs === null) return false;
+  const t = Date.parse(m.createdAt);
+  return !Number.isNaN(t) && t <= lastReadMs;
+}
+
+/**
+ * Sort + batch-aging key. An unparseable `createdAt` sorts oldest (−∞) so a corrupt
+ * message surfaces first and ages past any window → rings, never silently held.
+ */
+function ageKey(m: PendingMessage): number {
+  const t = Date.parse(m.createdAt);
+  return Number.isNaN(t) ? Number.NEGATIVE_INFINITY : t;
+}
+
+/**
+ * Read / notify state → ms, fail-toward-ringing: absent OR unparseable reads as
+ * `null` ("never"), so a corrupt state entry leans toward ringing — never the
+ * all-silent `all_read` a raw NaN would otherwise produce for the whole member.
+ */
 function parseOrNull(iso: string | undefined): number | null {
-  return iso === undefined ? null : Date.parse(iso);
+  if (iso === undefined) return null;
+  const t = Date.parse(iso);
+  return Number.isNaN(t) ? null : t;
 }

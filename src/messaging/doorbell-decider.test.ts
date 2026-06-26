@@ -346,4 +346,90 @@ describe("totality and fan-out", () => {
     const d = forSubject(run({ messages: [m1, m2] }), ALICE);
     expect(d.messageIds).toEqual([m1.id, m2.id]);
   });
+
+  it("reports the unread count on a within-window hold", () => {
+    const d = forSubject(
+      run({ messages: [msg({ createdAt: RECENT }), msg({ createdAt: RECENT })] }),
+      ALICE,
+    );
+    expect(d).toMatchObject({ reason: "within_batch_window", messageCount: 2 });
+  });
+
+  it("emits nothing for an empty member set", () => {
+    expect(run({ members: new Map() })).toEqual([]);
+  });
+
+  it("a thread with no pending messages → all_read", () => {
+    const d = forSubject(run({ messages: [], members: new Map([[T, [ALICE]]]) }), ALICE);
+    expect(d).toMatchObject({ reason: "all_read", messageCount: 0 });
+  });
+});
+
+// ── review hardening (#114): boundaries + fail-toward-ringing on corruption ──
+
+describe("boundary conditions", () => {
+  it("rings exactly at the batch-window boundary (>= is inclusive)", () => {
+    // 90s before NOW → nowMs - oldestMs === batchWindowMs
+    const d = forSubject(run({ messages: [msg({ createdAt: "2026-07-04T11:58:30.000Z" })] }), ALICE);
+    expect(d).toMatchObject({ ring: true, reason: "batched" });
+  });
+
+  it("the notify==read tie re-arms, not already_notified (§7.3 boundary)", () => {
+    const TIE = "2026-07-04T11:59:30.000Z";
+    const d = forSubject(
+      run({
+        messages: [msg({ createdAt: RECENT })], // 11:59:45 — after the tie → unread, still in window
+        notify: [[T, crew(ALICE), TIE]],
+        read: [[T, crew(ALICE), TIE]],
+      }),
+      ALICE,
+    );
+    expect(d.reason).toBe("within_batch_window"); // NOT "already_notified"
+  });
+
+  it("makeDoorbellRules rejects a non-positive or non-finite window", () => {
+    expect(() => makeDoorbellRules({ ...RULES, batchWindowMs: 0 })).toThrow(/batchWindowMs/);
+    expect(() => makeDoorbellRules({ ...RULES, batchWindowMs: -5 })).toThrow(/batchWindowMs/);
+    expect(() =>
+      makeDoorbellRules({ ...RULES, presenceWindowMs: Number.POSITIVE_INFINITY }),
+    ).toThrow(/presenceWindowMs/);
+  });
+
+  it("makeDoorbellRules rejects a non-finite short-notice threshold", () => {
+    expect(() => makeDoorbellRules({ ...RULES, shortNoticeMaxChars: Number.NaN })).toThrow(/shortNotice/);
+  });
+});
+
+describe("malformed timestamps fail toward ringing (module invariant)", () => {
+  it("an unparseable createdAt is treated as unread and rings", () => {
+    const d = forSubject(run({ messages: [msg({ createdAt: "not-a-date" })] }), ALICE);
+    expect(d).toMatchObject({ ring: true, messageCount: 1 });
+  });
+
+  it("a corrupt readState entry does not silence the member — still rings", () => {
+    const d = forSubject(
+      run({ messages: [msg({ createdAt: AGED })], read: [[T, crew(ALICE), "garbage"]] }),
+      ALICE,
+    );
+    expect(d.ring).toBe(true);
+  });
+
+  it("a corrupt notifyState entry does not suppress — still rings", () => {
+    const d = forSubject(
+      run({ messages: [msg({ createdAt: AGED })], notify: [[T, crew(ALICE), "garbage"]] }),
+      ALICE,
+    );
+    expect(d.ring).toBe(true);
+  });
+
+  it("a priority with an unparseable stamp still bypasses (rings now)", () => {
+    const d = forSubject(
+      run({
+        messages: [msg({ createdAt: "nope", priority: true })],
+        notify: [[T, crew(ALICE), "2026-07-04T11:59:00.000Z"]],
+      }),
+      ALICE,
+    );
+    expect(d).toMatchObject({ ring: true, reason: "priority_bypass" });
+  });
 });

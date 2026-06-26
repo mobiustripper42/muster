@@ -4,10 +4,10 @@ dev: eric
 slug: reset-pilot-absent-tables
 branch: task/reset-pilot-absent-tables
 started: 2026-06-26T11:51:52Z
-ended:
-points:
+ended: 2026-06-26T22:17:58Z
+points: 17
 pr_numbers: [155, 156, 159, 162, 163, 164]
-status: open
+status: closed
 transcript: /home/eric/.claude/projects/-home-eric-muster/948be534-0713-4f32-aa75-82dd87d6f9e4.jsonl
 ---
 

@@ -802,6 +802,14 @@ export class PostgresRepository implements Repository {
     );
     return rows.map(toMessage);
   }
+  async listThreadsWithMessages(): Promise<Thread[]> {
+    // id-sorted for parity with the in-memory adapter; `exists` avoids dragging
+    // message rows. Not time-bounded (DEC-070).
+    const { rows } = await this.#pool.query(
+      "select t.* from threads t where exists (select 1 from messages m where m.thread_id = t.id) order by t.id",
+    );
+    return rows.map(toThread);
+  }
 
   // ── Doorbell read / notify state (6.6a, #116, DEC-069) ─────────────────────
   // Thread-scoped, subjectKey-keyed — symmetric with PostgresPresence.lastActiveFor.

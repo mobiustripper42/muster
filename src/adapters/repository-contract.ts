@@ -658,6 +658,16 @@ export function runRepositoryContract(
       expect(byId.get("m-urgent")!.priority).toBe(true);
     });
 
+    it("listThreadsWithMessages: only threads that have messages, id-sorted (#167)", async () => {
+      await repo.saveThread(thread({ id: asId<"ThreadId">("thread-b") }));
+      await repo.saveThread(thread({ id: asId<"ThreadId">("thread-a") }));
+      await repo.saveThread(thread({ id: asId<"ThreadId">("thread-quiet") })); // no messages
+      await repo.saveMessage(message({ id: asId<"MessageId">("mm-b"), threadId: asId<"ThreadId">("thread-b") }));
+      await repo.saveMessage(message({ id: asId<"MessageId">("mm-a"), threadId: asId<"ThreadId">("thread-a") }));
+      const ids = (await repo.listThreadsWithMessages()).map((t) => String(t.id));
+      expect(ids).toEqual(["thread-a", "thread-b"]); // quiet excluded, id-sorted
+    });
+
     describe("doorbell read/notify state (#116, DEC-069)", () => {
       const A: Subject = { kind: "crew", id: "crew-a" };
       const B: Subject = { kind: "crew", id: "crew-b" };

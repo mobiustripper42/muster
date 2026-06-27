@@ -1,5 +1,5 @@
 import { asId } from "@core/domain/ids.js";
-import { myThreads } from "@core/crewapp/thread-list.js";
+import { threadMembership } from "@core/crewapp/thread-list.js";
 import { readSubject } from "../../../lib/auth";
 import { getRepo, getPresence } from "../../../lib/repo";
 import { TENANT_ID } from "../../../lib/tenant";
@@ -33,8 +33,14 @@ export async function POST(req: Request): Promise<Response> {
 
   if (threadId) {
     const repo = getRepo();
-    const mine = await myThreads(repo, asId<"CrewMemberId">(subject.id), TENANT_ID, now);
-    if (mine.some((t) => String(t.thread.id) === threadId)) {
+    const member = await threadMembership(
+      repo,
+      asId<"ThreadId">(threadId),
+      asId<"CrewMemberId">(subject.id),
+      TENANT_ID,
+      now,
+    );
+    if (member) {
       await repo.recordRead(asId<"ThreadId">(threadId), subject, nowIso);
     }
   }

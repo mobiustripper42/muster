@@ -19,9 +19,11 @@
  */
 
 import type { Subject } from "../domain/entities.js";
+import { asId } from "../domain/ids.js";
 import type { CrewMemberId, TenantId, ThreadId } from "../domain/ids.js";
 import { subjectKey } from "../domain/subject.js";
 import { standingThreadId, type Message, type Thread } from "../messaging/entities.js";
+import { deriveMembers } from "../messaging/membership.js";
 import type { Repository } from "../ports/repository.js";
 import { TENANT_TIMEZONE, vesselDateOf } from "../config/tenant.js";
 
@@ -169,6 +171,92 @@ export async function myThreads(
   out.push(...named);
 
   return out;
+}
+
+/** A thread's surface label, computed from the `Thread` alone (any date) — the one
+ *  the thread view renders. Matches the inline labels `myThreads` builds for the
+ *  list, so a thread reads the same in both places. */
+export async function threadTitle(
+  repo: Repository,
+  thread: Thread,
+  viewerCrewId: CrewMemberId,
+  now: Date,
+  tz: string = TENANT_TIMEZONE,
+): Promise<string> {
+  switch (thread.kind) {
+    case "all_staff":
+      return "All staff";
+    case "cohort": {
+      const day = thread.scopeRef ?? "";
+      const label = day === vesselDateOf(now, tz) ? "Today’s crew" : "Crew";
+      return `${label} · ${fmtDay(day)}`;
+    }
+    case "shift": {
+      const sh = thread.scopeRef ? await repo.getShift(asId<"ShiftId">(thread.scopeRef)) : null;
+      const vessel = sh ? (await repo.getVessel(sh.vesselId))?.name ?? String(sh.vesselId) : "";
+      return `${vessel} · ${fmtDay(sh?.date ?? thread.scopeRef ?? "")}`;
+    }
+    case "dm": {
+      const parts = await repo.listParticipantsForThread(thread.id);
+      const otherId = parts
+        .map((p) => String(p.crewMemberId))
+        .find((id) => id !== String(viewerCrewId));
+      const other = otherId ? await repo.getCrewMember(asId<"CrewMemberId">(otherId)) : null;
+      return other?.name ?? otherId ?? "Direct message";
+    }
+  }
+}
+
+/** Is the crew member a member of `thread` — the SAME `deriveMembers` the doorbell
+ *  rings on (DEC-058), with NO date filter. Authorization must match attention: a
+ *  thread that can ring a member must open for them, even a past-day one rung at the
+ *  midnight rollover. */
+async function isMemberOf(
+  repo: Repository,
+  thread: Thread,
+  crewId: CrewMemberId,
+): Promise<boolean> {
+  if (thread.kind === "dm") {
+    const participants = await repo.listParticipantsForThread(thread.id);
+    return deriveMembers(thread, { shifts: [], seats: [], roster: [], participants }).some(
+      (id) => String(id) === String(crewId),
+    );
+  }
+  const [shifts, seats, roster] = await Promise.all([
+    repo.listShifts(),
+    repo.listAllSeats(),
+    repo.listCrewMembers(),
+  ]);
+  return deriveMembers(thread, { shifts, seats, roster, participants: [] }).some(
+    (id) => String(id) === String(crewId),
+  );
+}
+
+/**
+ * The viewing/posting authorization for ONE thread (DEC-071) — date-agnostic, so it
+ * never refuses a thread the doorbell would ring (the rung-but-can't-read trap at
+ * the vessel-day boundary). A persisted thread authorizes via `deriveMembers` (the
+ * ring's own predicate) and returns the REAL row (so its `createdAt` is preserved on
+ * a re-save). A thread with no row yet was never rung (no messages → no ring), so
+ * it's reachable only as an empty standing thread from the viewer's own list —
+ * `myThreads` (date-filtered) is the right resolver there. Returns null when the
+ * viewer may not read it.
+ */
+export async function threadMembership(
+  repo: Repository,
+  threadId: ThreadId,
+  viewerCrewId: CrewMemberId,
+  tenantId: TenantId,
+  now: Date,
+  tz: string = TENANT_TIMEZONE,
+): Promise<MyThread | null> {
+  const existing = await repo.getThread(threadId);
+  if (existing) {
+    if (!(await isMemberOf(repo, existing, viewerCrewId))) return null;
+    return { thread: existing, title: await threadTitle(repo, existing, viewerCrewId, now, tz) };
+  }
+  const mine = await myThreads(repo, viewerCrewId, tenantId, now, tz);
+  return mine.find((t) => String(t.thread.id) === String(threadId)) ?? null;
 }
 
 /** Operator/office sender → a stable label; crew senders resolve to their name. */

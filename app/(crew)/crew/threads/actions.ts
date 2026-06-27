@@ -9,7 +9,7 @@ import {
   participantId,
   type Message,
 } from "@core/messaging/entities.js";
-import { myThreads } from "@core/crewapp/thread-list.js";
+import { threadMembership } from "@core/crewapp/thread-list.js";
 import { readSubject } from "../../../lib/auth";
 import { getRepo, getPresence } from "../../../lib/repo";
 import { TENANT_ID } from "../../../lib/tenant";
@@ -34,11 +34,18 @@ export async function postMessage(formData: FormData): Promise<void> {
   const repo = getRepo();
   const now = new Date();
   const nowIso = now.toISOString();
-  const mine = await myThreads(repo, asId<"CrewMemberId">(subject.id), TENANT_ID, now);
-  const match = mine.find((t) => String(t.thread.id) === threadId);
+  const match = await threadMembership(
+    repo,
+    asId<"ThreadId">(threadId),
+    asId<"CrewMemberId">(subject.id),
+    TENANT_ID,
+    now,
+  );
   if (!match) return; // not a member — ignore
 
-  await repo.saveThread(match.thread); // idempotent find-or-create
+  // Idempotent find-or-create: an existing row (preserving its createdAt) or the
+  // synthesized standing thread on its first post.
+  await repo.saveThread(match.thread);
 
   const message: Message = {
     id: asId<"MessageId">(`msg-${randomUUID()}`),

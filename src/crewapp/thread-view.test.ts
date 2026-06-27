@@ -14,6 +14,7 @@ import { buildThreadView } from "./thread-view.js";
 const NOW = new Date("2026-07-01T08:00:00.000Z");
 const TZ = "UTC";
 const TODAY = "2026-07-01";
+const YESTERDAY = "2026-06-30";
 const TENANT = asId<"TenantId">("t");
 const ME = asId<"CrewMemberId">("crew-me");
 const CO = asId<"CrewMemberId">("crew-co");
@@ -23,6 +24,7 @@ const MINE: Subject = { kind: "crew", id: String(ME) };
 
 const SHIFT_MINE = asId<"ShiftId">("shift-mine");
 const SHIFT_OTHERS = asId<"ShiftId">("shift-others"); // ME not seated here
+const SHIFT_PAST = asId<"ShiftId">("shift-past"); // ME seated, but departed (yesterday)
 
 const crew = (id: typeof ME, name: string): CrewMember => ({
   id,
@@ -32,10 +34,10 @@ const crew = (id: typeof ME, name: string): CrewMember => ({
   status: "active",
   reliabilityScore: null,
 });
-const shift = (id: typeof SHIFT_MINE): Shift => ({
+const shift = (id: typeof SHIFT_MINE, date: string = TODAY): Shift => ({
   id,
   vesselId: VESSEL,
-  date: TODAY,
+  date,
   state: "Crewed",
   eventIds: [],
 });
@@ -69,8 +71,10 @@ async function seed(): Promise<InMemoryRepository> {
   await repo.saveCrewMember(crew(CO, "Hooper"));
   await repo.saveShift(shift(SHIFT_MINE));
   await repo.saveShift(shift(SHIFT_OTHERS));
+  await repo.saveShift(shift(SHIFT_PAST, YESTERDAY));
   await repo.saveSeat(seat("s-mine", SHIFT_MINE, ME));
   await repo.saveSeat(seat("s-others", SHIFT_OTHERS, CO)); // ME absent here
+  await repo.saveSeat(seat("s-past", SHIFT_PAST, ME)); // ME was on it
   return repo;
 }
 
@@ -114,10 +118,28 @@ describe("buildThreadView — authorization + shaping (#117, DEC-071)", () => {
     expect(view!.messages).toEqual([]);
   });
 
-  it("a non-member thread returns null (attention ≠ authorization, DEC-052)", async () => {
+  it("a non-member thread returns null even when it exists (attention ≠ authorization, DEC-052)", async () => {
     const repo = await seed();
-    const view = await buildThreadView(repo, shiftThread(SHIFT_OTHERS), MINE, TENANT, NOW, TZ);
+    const t = shiftThread(SHIFT_OTHERS);
+    await repo.saveThread({ id: t, tenantId: TENANT, kind: "shift", scopeRef: String(SHIFT_OTHERS), createdAt: NOW.toISOString() });
+    await repo.saveMessage(msg({ id: asId<"MessageId">("o1"), threadId: t, body: "their thread" }));
+    const view = await buildThreadView(repo, t, MINE, TENANT, NOW, TZ);
     expect(view).toBeNull();
+  });
+
+  it("a PAST shift thread still opens for its member — rung-but-can't-read is the wrong direction (DEC-071)", async () => {
+    const repo = await seed();
+    // The thread exists (it was posted to + would ring), but its shift is yesterday.
+    // The date-agnostic membership (the doorbell's own deriveMembers) must still let
+    // a member in — otherwise a midnight-rollover ring lands on a dead-end view.
+    const t = shiftThread(SHIFT_PAST);
+    await repo.saveThread({ id: t, tenantId: TENANT, kind: "shift", scopeRef: String(SHIFT_PAST), createdAt: NOW.toISOString() });
+    await repo.saveMessage(msg({ id: asId<"MessageId">("p1"), threadId: t, body: "left a cooler aboard" }));
+
+    const view = await buildThreadView(repo, t, MINE, TENANT, NOW, TZ);
+    expect(view).not.toBeNull();
+    expect(view!.messages.map((m) => m.body)).toEqual(["left a cooler aboard"]);
+    expect(view!.title).toBe("Hops · Tue, Jun 30"); // not "Today's", and not refused
   });
 
   it("a non-crew (operator) viewer returns null — the 6.8 seam", async () => {

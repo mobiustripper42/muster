@@ -23,7 +23,7 @@ import type { CrewMemberId, TenantId, ThreadId } from "../domain/ids.js";
 import type { Thread } from "../messaging/entities.js";
 import type { Repository } from "../ports/repository.js";
 import { TENANT_TIMEZONE } from "../config/tenant.js";
-import { myThreads, senderLabel } from "./thread-list.js";
+import { senderLabel, threadMembership } from "./thread-list.js";
 
 export interface ThreadMessageView {
   id: string;
@@ -60,8 +60,14 @@ export async function buildThreadView(
   // DEC-052 predicate. 6.8 ORs in `|| operatorCanRead(threadId)` for viewer.kind
   // === "admin"; until then only the crew-member branch is reachable.
   if (viewer.kind !== "crew") return null;
-  const mine = await myThreads(repo, asId<"CrewMemberId">(viewer.id), tenantId, now, tz);
-  const match = mine.find((t) => String(t.thread.id) === String(threadId));
+  const match = await threadMembership(
+    repo,
+    threadId,
+    asId<"CrewMemberId">(viewer.id),
+    tenantId,
+    now,
+    tz,
+  );
   if (!match) return null;
 
   const messages = await repo.listMessagesForThread(threadId);

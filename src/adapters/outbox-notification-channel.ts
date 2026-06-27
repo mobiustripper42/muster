@@ -66,7 +66,11 @@ export class OutboxNotificationChannel implements NotificationPort {
 
     const entry: RingOutboxEntry = {
       // One slot per (thread, member), deterministic — a new ring-cycle upserts it,
-      // never duplicating the operator's worklist (DEC-073).
+      // never duplicating the operator's worklist (DEC-073). Both ids are
+      // hyphen-bearing, so this concatenation is injective by their `thread-`/`crew-`
+      // prefixes (not by a delimiter ids can't contain); a real collision is
+      // effectively impossible and degrades to a dropped ring (best-effort), never a
+      // misdelivery.
       id: asId<"RingOutboxEntryId">(`ring-${message.threadId}-${crewId}`),
       crewMemberId: crewId,
       threadId: message.threadId,

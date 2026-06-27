@@ -37,7 +37,12 @@ export async function runDoorbellTick(now: Date): Promise<{
   // every broadcast they send would ring them. They monitor via /admin/messages.
   const r = await doorbellTick(repo, getPresence(), now, rules, OPERATOR_CREW_MEMBER_ID);
   // Delivered links MUST be host-safe — APP_BASE_URL in prod (base-url.ts on
-  // host-header poisoning); the cron has no trustworthy request Host. Dev falls back.
+  // host-header poisoning); the cron has no trustworthy request Host. Fail LOUD in
+  // prod when unset: otherwise every relayed ring is a dead localhost link the
+  // operator texts to crew with no error signal. Dev falls back to localhost.
+  if (!process.env.APP_BASE_URL && process.env.NODE_ENV === "production") {
+    throw new Error("APP_BASE_URL must be set in production — ring links would dead-link to localhost");
+  }
   const linkBase = (process.env.APP_BASE_URL ?? "http://localhost:3000").replace(/\/+$/, "");
   const channel = new OutboxNotificationChannel(repo, { linkBase, now: () => now });
   const relayed = await forwardNotifications(repo, channel, r.rings);

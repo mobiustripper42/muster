@@ -28,7 +28,7 @@ export function AdminNav() {
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
   return (
-    <nav className="sticky top-0 z-10 border-b border-line bg-card">
+    <nav aria-label="Admin" className="sticky top-0 z-10 border-b border-line bg-card">
       {/* max-w-3xl + px-4 align the bar to the 3xl admin Shell width. */}
       <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-2.5">
         <Link href="/admin" className="shrink-0 font-semibold text-ink">

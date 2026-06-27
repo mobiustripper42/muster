@@ -12,7 +12,7 @@ test.describe("admin nav", () => {
 
   test("admin sees the nav; the active link follows the route", async ({ page }) => {
     await signInAsAdmin(page, "spink"); // lands on /admin/at-risk
-    const nav = page.getByRole("navigation");
+    const nav = page.getByRole("navigation", { name: "Admin" });
     await expect(nav.getByRole("link", { name: "Muster" })).toBeVisible();
 
     // At-Risk is the active link on the board.
@@ -27,12 +27,12 @@ test.describe("admin nav", () => {
 
   test("a signed-out visitor sees no operator nav", async ({ page }) => {
     await page.goto("/admin/at-risk");
-    await expect(page.getByRole("navigation")).toHaveCount(0);
+    await expect(page.getByRole("navigation", { name: "Admin" })).toHaveCount(0);
   });
 
   test("a crew subject sees no admin nav", async ({ page }) => {
     await signInAsCrew(page, "crew-quint");
     await page.goto("/admin/at-risk");
-    await expect(page.getByRole("navigation")).toHaveCount(0);
+    await expect(page.getByRole("navigation", { name: "Admin" })).toHaveCount(0);
   });
 });

@@ -6,7 +6,7 @@ branch: task/160-outbox-relay-ergonomics
 started: 2026-06-26T22:22:03Z
 ended:
 points:
-pr_numbers: [165]
+pr_numbers: [165, 166]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/654055f2-9b19-4465-b5fe-4f24785f87c6.jsonl
 ---
@@ -30,8 +30,23 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/654055f2-9b19-4465-b5f
 **Branch:** task/114-doorbell-decider (base: feature/messaging)
 **Opened at:** 2026-06-26T23:59:32Z
 
+## Task 2: Human-drivable doorbell harness (6.5, #115)
+
+**Completed:**
+- `src/messaging/doorbell-harness.ts` — `DoorbellHarness`: a faithful mini edge+tick around the pure decider (#114) + a fake would-ring sink (sends nothing). World-building (crew, threads, per-`(crew,thread)` presence as the DEC-068 three-state verdict, posts, logical clock, reads), `decide()` (side-effect-free preview) vs `tick()` (fires + records notify-state and a would-ring log, DEC-049), a rendered board, and one `exec()` command surface the REPL/scenarios/tests share. Rules default from real DEC-060 config via `makeDoorbellRules`.
+- `db/doorbell-dev.ts` — CLI glue (the `db/tick-dev.ts` analog): `npm run db:doorbell` (interactive REPL) + `-- saturday` (narrated artifact-§9 walkthrough). No DB, no real sends.
+- `src/messaging/doorbell-harness.test.ts` — 9 tests; the Saturday walkthrough as the **executable observable spec** (suppress → toast → within-window hold → batched summary → cancel-on-read → first-only-until-read → priority content vs summary) + parser + `parseDuration`.
+- `package.json` `db:doorbell` script. No DEC (consumes 6.4's), no migration, no UI.
+- **Verified:** core+app typecheck ✓, build ✓, 64 messaging tests ✓; ran both the scenario and the REPL end-to-end (only the absent ever show would-SMS).
+
+**Code review:** `@code-review` — clean, faithful edge+tick, real assertions, **no blockers**. The harness *is* the edge, so the board could mislead → documented (header + `help`) that presence is a **sticky manual verdict (no decay across `advance`)** — real v1 lapses `present_*`→`absent` after `presenceWindowMs` and SMS-rings — and that a same-tick read→post ties toward read. Fixed a foot-gun: `post … -p` was minting an empty-body ringing SMS (strip flag before the body guard; +1 test). Dropped unused `setNow`; clarified the declarative `#crew` roster.
+**PR:** [#166](https://github.com/mobiustripper42/muster/pull/166)
+**Points:** 5
+**Branch:** task/115-doorbell-harness (base: feature/messaging — #165 merged mid-session, the stack collapsed)
+**Opened at:** 2026-06-27T02:23:48Z
+
 **Next Steps:**
-- **6.5 (#115)** — the human-drivable doorbell harness — is the intended next stacked task on `feature/messaging` (branch off `task/114-doorbell-decider` or `feature/messaging` after #165 merges). It makes the decider observable.
+- **6.6 (#116)** — doorbell tick + delivery wiring — is next: a clock-driven cron sweep that runs the decider against current presence/read state and relays `ring:true` decisions to a channel/outbox (DEC-030), persisting notify-state. It needs the read-state + a `messages.priority` source the decider currently consumes injected (the first migration of Phase 6's messaging tables beyond 0008/0009).
 - Fold the doorbell env knobs into `docs/DEPLOY.md` when `feature/messaging` reconciles with main's #157 env-docs (deferred to avoid a doc-merge tangle now).
 
 **Context:**

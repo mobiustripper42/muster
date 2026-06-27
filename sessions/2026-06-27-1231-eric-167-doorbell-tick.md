@@ -6,7 +6,7 @@ branch: task/167-doorbell-tick
 started: 2026-06-27T12:31:54Z
 ended:
 points:
-pr_numbers: [171]
+pr_numbers: [171, 172]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/6ff44aec-cd6a-4598-9273-f798a6c7d340.jsonl
 ---
@@ -29,13 +29,29 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/6ff44aec-cd6a-4598-927
 **Branch:** task/117-crew-messaging-ui (base: feature/messaging)
 **Opened at:** 2026-06-27T16:04:44Z
 
+## Task 2: Operator messaging surface (6.8, #118)
+
+**Completed:**
+- `/admin/messages` — the operator reads **every** thread (DEC-052 cross-visibility, incl. crew DMs) and posts to the two broadcast doors (all-staff + today's cohort) as the office, optional priority. Stacked on 6.7 (PR base = task/117). No migration.
+- **Reuse, not fork** (architect-gated): `buildThreadView` gains an **admin branch** (one DEC-052 auth site) + a shared `shapeMessages`; `mine` = the office's one voice (`senderKind==="admin"`). New `src/admin/operator-threads.ts` `buildOperatorThreads` (post-targets ∪ `listThreadsWithMessages`, dedup real-over-synth, recency). `threadTitle` gains a `viewerCrewId: null` (operator) branch → DM titles name both sides. `operatorPostTargets`/`operatorStandingTarget` in thread-list.
+- **The `crew-eric-stoffer` correction's load-bearing fix:** the operator is a **seated** crew member (DEC-030 operator-as-crew), so they're a member of all-staff + their shifts — every broadcast would self-ring them. The doorbell tick now **excludes `OPERATOR_CREW_MEMBER_ID` from ring-membership** (passed from `app/lib/doorbell.ts`). DEC-072 pins the invariant. ⚠️ Ops: `OPERATOR_CREW_MEMBER_ID` env must = `crew-eric-stoffer` in prod (defaults to `crew-spink`).
+- **DEC-072.** Verified: typecheck core+app ✓, **636 unit** ✓ (Postgres parity 47), build ✓, operator e2e 4/4 ✓ (desktop + 375px), screenshots eyeballed.
+
+**Code review:** `@code-review` was **529-down** (overloaded, twice) → **self-reviewed**. Caught + fixed one real issue: the operator post action resolved *any* existing thread, so the office could inject into a private crew↔crew **DM**. Restricted to the two broadcast doors (#118 AC) via `ThreadView.canPost` (gates compose UI) + post-action rejection; every other thread is read-only. Re-run `@code-review` on merge if the API recovered.
+**PR:** [#172](https://github.com/mobiustripper42/muster/pull/172)
+**Points:** 3
+**Branch:** task/118-operator-messaging (base: task/117-crew-messaging-ui)
+**Opened at:** 2026-06-27T18:05:37Z
+
 **Next Steps:**
-- **6.8 (#118)** — operator messaging surface **+** the deferred operator-outbox relay of doorbell rings (the real `NotificationPort` adapter replacing the fake/log). **Must land before Phase 6 is promoted** (record-on-decide under fake delivery silently suppresses — DEC-070). 6.8 also wires the **operator branch of the DEC-052 auth predicate** (read any thread incl. DMs) — `threadMembership` is written so it ORs in without a rewrite. Operator-set **priority** + any all-staff broadcast lock also live here.
-- Then **6.9 (#119, Twilio/second number, 10DLC-gated)** closes the phase.
+- **The real ring relay (the next stack, the promotion gate)** — swap `FakeNotificationChannel` → an `OutboxNotificationChannel` that drops doorbell rings into the operator outbox (DEC-030 web-link model), + the one-line swap in `app/lib/doorbell.ts`. **Must land before Phase 6 is promoted** (record-on-decide under fake delivery silently suppresses — DEC-070). Pure delivery-adapter work; `forwardNotifications` + the `NotificationPort` already exist. Stack it off task/118.
+- **6.9 (#119, Twilio/second number, 10DLC-gated)** closes the phase.
+- **Crew-side DM-visibility disclosure** (flagged in DEC-072) — a one-line "your DMs are visible to the office" on the crew DM surface; a real §6 trust gap, raise with the operator first. Thin fast-follow.
 - The **live popping toast** (vs the v1 refresh-time badge) waits on the realtime socket (DEC-047) — deferred with instant chat (DEC-045).
-- Fold the doorbell + messaging env knobs into `docs/DEPLOY.md` when `feature/messaging` reconciles with main's #157 env-docs (still deferred).
+- Fold the doorbell + messaging env knobs into `docs/DEPLOY.md` when `feature/messaging` reconciles with main's #157 env-docs (still deferred). ⚠️ Confirm `OPERATOR_CREW_MEMBER_ID=crew-eric-stoffer` in prod env (DEC-072 ring-exclusion targets it; defaults to `crew-spink`).
 
 **Context:**
-- Phase 6 lives on `feature/messaging` (DEC-059), behind main on pilot-hardening + DEC numbers (max here is now DEC-071 vs main's DEC-067; DEC-068+ numbered past 067 so the eventual merge carries no dup). #117's PR targets `feature/messaging`, NOT main — `closes #117` won't fire until feature/messaging merges to main (same as #111–#116/#167, all still open).
+- Phase 6 lives on `feature/messaging` (DEC-059), behind main on pilot-hardening + DEC numbers (max here is now **DEC-072** vs main's DEC-067; DEC-068+ numbered past 067 so the eventual merge carries no dup). PRs #171/#172 target `feature/messaging`/`task/117` (stacked), NOT main — `closes #117/#118` won't fire until feature/messaging merges to main (same as #111–#116/#167, all still open).
+- **6.7 (#171) + 6.8 (#172) are stacked**: #172's base is task/117. When #171 merges to feature/messaging, retarget/rebase #172 (GitHub offers the base change).
 - **Crew-compose policy (DEC-071):** crew may post in any thread they're a member of, incl. all-staff. If that proves noisy at pilot, an operator thread-lock is the 6.8 refinement.
 - `myThreads` (date-filtered) = the **list display**; `threadMembership` (date-agnostic, deriveMembers) = the **view/post authorization**. Don't re-merge them — the split is the rung-but-can't-read fix.

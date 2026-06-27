@@ -6,5 +6,6 @@ export * from "./credential-health.js";
 export * from "./integrity.js";
 export * from "./operator-threads.js";
 export * from "./outbox-view.js";
+export * from "./ring-outbox-view.js";
 export * from "./roster.js";
 export * from "./seed-brewboat.js";

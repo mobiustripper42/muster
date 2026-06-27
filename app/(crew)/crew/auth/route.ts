@@ -39,8 +39,27 @@ const esc = (s: string) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!,
   );
 
-/** The tap-to-sign-in interstitial — same visual family as the dev-link page. */
-function signInPage(secret: string): NextResponse {
+/**
+ * Post-auth crew landing (DEC-073 thread deep-link). A doorbell-ring link carries
+ * `&thread=<threadId>` so the crew member lands IN the thread they were rung about
+ * (artifact §9). The threadId is a NAV HINT, not an authz grant — the thread page
+ * independently membership-gates (DEC-052/071), so a tampered value just navigates
+ * to a page that refuses. Still: validate to a conservative id shape and
+ * `encodeURIComponent` into the FIXED `/crew/threads/` prefix — the param is never
+ * used as a raw URL, so it can't carry `//`, `..`, or a scheme. Anything off → home.
+ */
+function crewLanding(thread: string | null): string {
+  if (!thread || !/^[A-Za-z0-9:_-]{1,200}$/.test(thread)) return "/crew";
+  return `/crew/threads/${encodeURIComponent(thread)}`;
+}
+
+/** The tap-to-sign-in interstitial — same visual family as the dev-link page. The
+ *  `thread` hint rides as a hidden field so it survives the GET→POST (the query
+ *  string doesn't reach the form submit). */
+function signInPage(secret: string, thread: string | null): NextResponse {
+  const threadField = thread
+    ? `\n    <input type="hidden" name="thread" value="${esc(thread)}">`
+    : "";
   const html = `<!doctype html><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex">
@@ -57,7 +76,7 @@ function signInPage(secret: string): NextResponse {
 <div class="card">
   <div class="brand">Muster</div>
   <form method="post" action="/crew/auth">
-    <input type="hidden" name="t" value="${esc(secret)}">
+    <input type="hidden" name="t" value="${esc(secret)}">${threadField}
     <button type="submit">Tap to sign in →</button>
   </form>
   <div class="note">One tap signs you in on this device.</div>
@@ -82,15 +101,18 @@ export async function GET(req: NextRequest) {
   }
   if (!result.ok) return fail(result.reason);
 
-  return signInPage(secret);
+  return signInPage(secret, req.nextUrl.searchParams.get("thread"));
 }
 
 export async function POST(req: NextRequest) {
   const fail = (reason: string) => redirectTo(`/crew?auth=${reason}`, 303);
 
   let secret: string;
+  let thread: string | null = null;
   try {
-    secret = String((await req.formData()).get("t") ?? "");
+    const form = await req.formData();
+    secret = String(form.get("t") ?? "");
+    thread = form.get("thread") ? String(form.get("thread")) : null;
   } catch {
     return fail("missing");
   }
@@ -105,8 +127,10 @@ export async function POST(req: NextRequest) {
   }
   if (!result.ok) return fail(result.reason);
 
-  // Land each subject on their world: crew → the crew app, the operator → the
-  // At-Risk board (the admin surface that summons them, SPEC §2.5).
-  const home = result.subject.kind === "admin" ? "/admin/at-risk" : "/crew";
+  // Land each subject on their world: the operator → the At-Risk board (SPEC §2.5);
+  // crew → the crew app, OR straight into the thread a doorbell ring named (DEC-073,
+  // crew branch only — `thread` is validated + path-built, never a raw redirect).
+  const home =
+    result.subject.kind === "admin" ? "/admin/at-risk" : crewLanding(thread);
   return redirectTo(home, 303, buildSessionCookie(result.subject));
 }

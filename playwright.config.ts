@@ -67,6 +67,9 @@ export default defineConfig({
       // Dev-default secret is fine for tests; pin it so cookies stay valid across
       // a server restart within a run.
       SESSION_SECRET: process.env.SESSION_SECRET ?? "e2e-test-secret",
+      // The doorbell cron is CRON_SECRET-gated; pin one so the ring-relay e2e can
+      // trigger a tick (the only way to exercise the relay end-to-end).
+      CRON_SECRET: process.env.CRON_SECRET ?? "e2e-cron-secret",
     },
   },
 });

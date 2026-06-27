@@ -1,4 +1,4 @@
-import { answerOwnAsk } from "../../app/(admin)/admin/outbox/actions";
+import { answerOwnAsk, recordSent } from "../../app/(admin)/admin/outbox/actions";
 import { RelaySend } from "./relay-send";
 
 /**
@@ -66,6 +66,7 @@ export function OutboxCard({ card }: { card: OutboxCardVM }) {
             smsHref={card.smsHref}
             initialSent={card.mode === "sent"}
             initialSentLabel={card.sentLabel}
+            onRecord={recordSent}
           />
         ) : card.mode === "sent" ? (
           <div className="border-t border-line px-4 py-2 text-xs text-muted">

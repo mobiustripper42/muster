@@ -28,6 +28,7 @@ const TABLES = [
   "asks",
   "magic_tokens",
   "outbox_entries",
+  "ring_outbox",
   "reliability_events",
   "app_settings",
   "import_runs",

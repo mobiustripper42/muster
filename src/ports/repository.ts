@@ -17,6 +17,7 @@ import type {
   Event,
   MagicToken,
   OutboxEntry,
+  RingOutboxEntry,
   PtoWindow,
   Reservation,
   RoleType,
@@ -32,6 +33,7 @@ import type {
   EventId,
   MagicTokenId,
   OutboxEntryId,
+  RingOutboxEntryId,
   PtoWindowId,
   ReservationId,
   RoleTypeId,
@@ -183,6 +185,18 @@ export interface Repository {
    * entry alongside its ask to keep the relay worklist clean. No-op if absent.
    */
   removeOutboxEntry(id: OutboxEntryId): Promise<void>;
+
+  // ── Ring outbox entries (doorbell-relay channel adapter state — DEC-073) ───
+  // Sibling to the ask outbox, its OWN slot (not a union): the doorbell-ring relay's
+  // worklist. Same adapter-side guardrail — only the `OutboxNotificationChannel`
+  // writes it, only the ring-outbox view reads it; the domain never does.
+  /** Persist a ring entry (upsert by id) — enqueue per ring-cycle, mark-sent. */
+  saveRingOutboxEntry(entry: RingOutboxEntry): Promise<void>;
+  getRingOutboxEntry(id: RingOutboxEntryId): Promise<RingOutboxEntry | null>;
+  /** Every ring entry — the outbox page's "New messages" section + a reset scan. */
+  listRingOutboxEntries(): Promise<RingOutboxEntry[]>;
+  /** Remove a ring entry (dev-seed reset / housekeeping). No-op if absent. */
+  removeRingOutboxEntry(id: RingOutboxEntryId): Promise<void>;
 
   // ── Reliability log (append-only — DEC-008) ───────────────────────────────
   /** Append a reliability event. The log is never mutated, only grown. */

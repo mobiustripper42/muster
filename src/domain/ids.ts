@@ -23,6 +23,7 @@ export type AskId = Brand<string, "AskId">;
 export type ReliabilityEventId = Brand<string, "ReliabilityEventId">;
 export type MagicTokenId = Brand<string, "MagicTokenId">;
 export type OutboxEntryId = Brand<string, "OutboxEntryId">;
+export type RingOutboxEntryId = Brand<string, "RingOutboxEntryId">;
 export type ImportRunId = Brand<string, "ImportRunId">;
 export type ImportRunItemId = Brand<string, "ImportRunItemId">;
 export type ThreadId = Brand<string, "ThreadId">;

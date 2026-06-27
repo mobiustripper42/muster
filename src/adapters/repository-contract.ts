@@ -18,6 +18,7 @@ import type {
   Event,
   MagicToken,
   OutboxEntry,
+  RingOutboxEntry,
   PtoWindow,
   Reservation,
   RoleType,
@@ -127,6 +128,16 @@ const outboxEntry = (over: Partial<OutboxEntry> = {}): OutboxEntry => ({
   crewMemberId: CREW,
   body: "Muster: Wed, Jul 1 · Hops · captain — in or out?",
   link: "https://app.example/crew/auth?t=secret",
+  status: "pending",
+  createdAt: "2026-07-01T12:00:00.000Z",
+  ...over,
+});
+const ringOutboxEntry = (over: Partial<RingOutboxEntry> = {}): RingOutboxEntry => ({
+  id: asId<"RingOutboxEntryId">("ring-thread-1-crew-a"),
+  crewMemberId: CREW,
+  threadId: asId<"ThreadId">("thread-1"),
+  body: "2 new messages",
+  link: "https://app.example/crew/auth?t=secret&thread=thread-1",
   status: "pending",
   createdAt: "2026-07-01T12:00:00.000Z",
   ...over,
@@ -474,6 +485,27 @@ export function runRepositoryContract(
       // Removing something already gone must not throw.
       await expect(
         repo.removeOutboxEntry(asId<"OutboxEntryId">("ghost")),
+      ).resolves.toBeUndefined();
+    });
+
+    it("ring outbox entries: round-trip incl. sentAt optional; status flip via upsert (#118, DEC-073)", async () => {
+      await repo.saveRingOutboxEntry(ringOutboxEntry()); // pending, never sent
+      const got = await repo.getRingOutboxEntry(asId<"RingOutboxEntryId">("ring-thread-1-crew-a"));
+      expect(got).toEqual(ringOutboxEntry());
+      expect("sentAt" in got!).toBe(false); // omitted, not undefined
+      expect(await repo.getRingOutboxEntry(asId<"RingOutboxEntryId">("ghost"))).toBeNull();
+      // Mark sent → upsert flips status + stamps sentAt; body/link come back VERBATIM.
+      await repo.saveRingOutboxEntry(
+        ringOutboxEntry({ status: "sent", sentAt: "2026-07-01T12:30:00.000Z" }),
+      );
+      expect(await repo.listRingOutboxEntries()).toEqual([
+        ringOutboxEntry({ status: "sent", sentAt: "2026-07-01T12:30:00.000Z" }),
+      ]);
+      // Remove: gone, and an absent id is a no-op.
+      await repo.removeRingOutboxEntry(asId<"RingOutboxEntryId">("ring-thread-1-crew-a"));
+      expect(await repo.listRingOutboxEntries()).toHaveLength(0);
+      await expect(
+        repo.removeRingOutboxEntry(asId<"RingOutboxEntryId">("ghost")),
       ).resolves.toBeUndefined();
     });
 

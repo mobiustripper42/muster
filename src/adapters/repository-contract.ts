@@ -28,6 +28,8 @@ import type {
 import type { ReliabilityEvent } from "../domain/reliability.js";
 import type { ImportRun, ImportRunItem } from "../import/import-audit.js";
 import type { Message, Participant, Thread } from "../messaging/entities.js";
+import type { Subject } from "../domain/entities.js";
+import { subjectKey } from "../domain/subject.js";
 import type { Repository } from "../ports/repository.js";
 
 const TENANT = asId<"TenantId">("tenant-x");
@@ -194,6 +196,7 @@ const message = (over: Partial<Message> = {}): Message => ({
   senderKind: "crew",
   body: "hello",
   createdAt: "2026-07-01T12:00:00.000Z",
+  priority: false,
   ...over,
 });
 const relEvent = (id: string, type: ReliabilityEvent["type"]): ReliabilityEvent => ({
@@ -636,6 +639,83 @@ export function runRepositoryContract(
       const msgs = await repo.listMessagesForThread(THREAD);
       expect(msgs.map((m) => m.body)).toEqual(["first", "second", "third", "op note"]);
       expect(msgs.at(-1)!.senderKind).toBe("admin");
+    });
+
+    it("messages: priority round-trips — false and true both persist (#116, 0010)", async () => {
+      await repo.saveMessage(message({ id: asId<"MessageId">("m-normal"), body: "chatter" }));
+      await repo.saveMessage(
+        message({
+          id: asId<"MessageId">("m-urgent"),
+          body: "dock moved",
+          priority: true,
+          createdAt: "2026-07-01T12:00:05.000Z",
+        }),
+      );
+      const byId = new Map(
+        (await repo.listMessagesForThread(THREAD)).map((m) => [String(m.id), m]),
+      );
+      expect(byId.get("m-normal")!.priority).toBe(false);
+      expect(byId.get("m-urgent")!.priority).toBe(true);
+    });
+
+    describe("doorbell read/notify state (#116, DEC-069)", () => {
+      const A: Subject = { kind: "crew", id: "crew-a" };
+      const B: Subject = { kind: "crew", id: "crew-b" };
+      const RA = "2026-07-01T12:00:00.000Z";
+      const NA = "2026-07-01T12:05:00.000Z";
+
+      it("records then reads last-read / last-rang, keyed by subjectKey", async () => {
+        await repo.recordRead(THREAD, A, RA);
+        await repo.recordNotification(THREAD, A, NA);
+        expect((await repo.readStateForThread(THREAD)).get(subjectKey(A))).toBe(RA);
+        expect((await repo.notifyStateForThread(THREAD)).get(subjectKey(A))).toBe(NA);
+      });
+
+      it("upsert is latest-wins (one mark per (subject,thread))", async () => {
+        await repo.recordNotification(THREAD, A, RA);
+        await repo.recordNotification(THREAD, A, NA);
+        const m = await repo.notifyStateForThread(THREAD);
+        expect(m.get(subjectKey(A))).toBe(NA);
+        expect(m.size).toBe(1);
+      });
+
+      it("a never-recorded subject is omitted (decider reads absent → null → rings)", async () => {
+        await repo.recordRead(THREAD, A, RA);
+        const m = await repo.readStateForThread(THREAD);
+        expect(m.has(subjectKey(A))).toBe(true);
+        expect(m.has(subjectKey(B))).toBe(false);
+        expect(m.size).toBe(1);
+      });
+
+      it("state is thread-scoped — a mark in one thread never leaks to another", async () => {
+        const OTHER = asId<"ThreadId">("thread-2");
+        await repo.recordRead(THREAD, A, RA);
+        await repo.recordRead(OTHER, A, NA);
+        expect((await repo.readStateForThread(THREAD)).get(subjectKey(A))).toBe(RA);
+        expect((await repo.readStateForThread(OTHER)).get(subjectKey(A))).toBe(NA);
+      });
+
+      it("read and notify are independent stores for the same (subject,thread)", async () => {
+        await repo.recordRead(THREAD, A, RA);
+        expect((await repo.notifyStateForThread(THREAD)).has(subjectKey(A))).toBe(false);
+      });
+
+      it("the composite key separates the same id across kinds (DEC-058)", async () => {
+        const crewShared: Subject = { kind: "crew", id: "shared" };
+        const adminShared: Subject = { kind: "admin", id: "shared" };
+        await repo.recordNotification(THREAD, crewShared, RA);
+        await repo.recordNotification(THREAD, adminShared, NA);
+        const m = await repo.notifyStateForThread(THREAD);
+        expect(m.get(subjectKey(crewShared))).toBe(RA);
+        expect(m.get(subjectKey(adminShared))).toBe(NA);
+        expect(m.size).toBe(2);
+      });
+
+      it("an unwritten thread → empty maps", async () => {
+        const empty = asId<"ThreadId">("thread-empty");
+        expect((await repo.readStateForThread(empty)).size).toBe(0);
+        expect((await repo.notifyStateForThread(empty)).size).toBe(0);
+      });
     });
   });
 }

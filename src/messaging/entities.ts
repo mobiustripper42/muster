@@ -70,6 +70,11 @@ export interface Message {
   body: string;
   /** ISO-8601 UTC; the chronological order key (`listMessagesForThread`). */
   createdAt: string;
+  /** §7.4 — operator-flagged / type-derived priority. The doorbell decider's
+   *  `PendingMessage.priority` (DEC-068) flows from this; a priority message
+   *  bypasses the batch window + first-only-until-read. Persisted in 6.6a; the
+   *  operator flag that SETS it is later (6.7/6.8). */
+  priority: boolean;
 }
 
 /**

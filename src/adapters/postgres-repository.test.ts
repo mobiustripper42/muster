@@ -35,6 +35,8 @@ const TABLES = [
   "threads",
   "thread_participants",
   "messages",
+  "message_reads",
+  "doorbell_notifications",
 ];
 
 async function canConnect(url: string): Promise<boolean> {

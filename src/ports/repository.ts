@@ -245,6 +245,14 @@ export interface Repository {
   /** One thread's messages, oldest-first — chronological by `createdAt`, id as the
    *  deterministic tie-break (parity across adapters). */
   listMessagesForThread(threadId: ThreadId): Promise<Message[]>;
+  /**
+   * Every thread that has ≥1 message, id-sorted — the doorbell sweep's domain
+   * (6.6b, DEC-070). **Not** time-bounded: §7.4 priority can be flipped on an
+   * *old* message, so a `createdAt` window would miss it; a quiet thread instead
+   * costs the decider one cheap `all_read` pass. A thread with no message never
+   * had a ring to fire, so it's excluded.
+   */
+  listThreadsWithMessages(): Promise<Thread[]>;
 
   // ── Doorbell read / notify state (6.6a, #116, DEC-069) ─────────────────────
   // Per-(subject,thread) last-read / last-rang — the decider's INJECTED readState

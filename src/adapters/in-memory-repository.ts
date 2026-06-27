@@ -381,6 +381,15 @@ export class InMemoryRepository implements Repository {
       )
       .map(clone);
   }
+  async listThreadsWithMessages(): Promise<Thread[]> {
+    const withMsg = new Set(
+      [...this.#messages.values()].map((m) => String(m.threadId)),
+    );
+    return [...this.#threads.values()]
+      .filter((t) => withMsg.has(String(t.id)))
+      .sort((a, b) => String(a.id).localeCompare(String(b.id))) // parity: id-sorted
+      .map(clone);
+  }
 
   // ── Doorbell read / notify state (6.6a, #116, DEC-069) ─────────────────────
   // Thread-scoped, subjectKey-keyed — byte-identical to PostgresRepository (the

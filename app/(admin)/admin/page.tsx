@@ -74,6 +74,12 @@ export default async function AdminHome({
         Outbox — asks waiting on your text →
       </Link>
       <Link
+        href="/admin/messages"
+        className="rounded-card border border-line bg-card px-4 py-3 font-semibold text-accent shadow-sm"
+      >
+        Messages — post to crew &amp; read every thread →
+      </Link>
+      <Link
         href="/admin/import"
         className="rounded-card border border-line bg-card px-4 py-3 font-semibold text-accent shadow-sm"
       >

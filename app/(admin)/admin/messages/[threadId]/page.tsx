@@ -1,0 +1,122 @@
+import Link from "next/link";
+import { buildThreadView, type ThreadView } from "@core/crewapp/thread-view.js";
+import { asId } from "@core/domain/ids.js";
+import { Notice } from "../../../../../components/ui/notice";
+import { Shell } from "../../../../../components/ui/shell";
+import { readSubject } from "../../../../lib/auth";
+import { getRepo } from "../../../../lib/repo";
+import { TENANT_ID } from "../../../../lib/tenant";
+import { fmtRunWhen } from "../../../../lib/format";
+import { postOperatorMessage } from "../actions";
+
+/**
+ * Operator thread view (#118, §10) — reuses `buildThreadView` with the admin viewer
+ * (DEC-052 cross-visibility, DEC-072): the operator reads ANY thread. Compose posts
+ * as the office (`senderKind:"admin"`), with an optional **priority** flag (§7.4 —
+ * the operator's alone). Same bubble idiom as the crew view; no read/presence is
+ * recorded (the operator isn't a doorbell recipient — DEC-072).
+ */
+
+export const dynamic = "force-dynamic";
+
+export default async function AdminThread({
+  params,
+}: {
+  params: Promise<{ threadId: string }>;
+}) {
+  const { threadId } = await params;
+  const subject = await readSubject();
+  if (!subject || subject.kind !== "admin") {
+    return (
+      <Shell>
+        <Notice>You’re signed out. Tap an operator magic link to get in.</Notice>
+      </Shell>
+    );
+  }
+
+  let view: ThreadView | null;
+  try {
+    view = await buildThreadView(getRepo(), asId<"ThreadId">(threadId), subject, TENANT_ID, new Date());
+  } catch {
+    return (
+      <Shell>
+        <BackLink />
+        <Notice tone="bad">Can’t reach this conversation right now. Try again in a moment.</Notice>
+      </Shell>
+    );
+  }
+  if (!view) {
+    return (
+      <Shell>
+        <BackLink />
+        <Notice>That thread isn’t available.</Notice>
+      </Shell>
+    );
+  }
+
+  return (
+    <Shell>
+      <BackLink />
+      <h1 className="text-lg font-semibold text-ink">{view.title}</h1>
+
+      <section className="flex flex-col gap-2">
+        {view.messages.length === 0 ? (
+          <Notice>No messages yet. Post the first one below.</Notice>
+        ) : (
+          view.messages.map((m) => (
+            <div
+              key={m.id}
+              className={`flex max-w-[85%] flex-col gap-0.5 rounded-card border px-3 py-2 ${
+                m.mine
+                  ? "self-end border-accent bg-accent text-white"
+                  : "self-start border-line bg-card text-ink"
+              }`}
+            >
+              <span
+                className={`flex items-center gap-2 text-[11px] ${m.mine ? "text-white/80" : "text-muted"}`}
+              >
+                <span className="font-semibold">{m.mine ? "You (office)" : m.senderLabel}</span>
+                {m.priority && (
+                  <span className="font-semibold uppercase tracking-wide">· Priority</span>
+                )}
+                <span>· {fmtRunWhen(m.createdAt)}</span>
+              </span>
+              <span className="whitespace-pre-wrap break-words text-sm">{m.body}</span>
+            </div>
+          ))
+        )}
+      </section>
+
+      {/* Compose as the office. Priority (§7.4) bypasses the doorbell's batch hold —
+          the operator's only; crew can't set it. Server action, no client JS. */}
+      <form action={postOperatorMessage} className="mt-2 flex flex-col gap-2">
+        <input type="hidden" name="threadId" value={view.threadId} />
+        <textarea
+          name="body"
+          required
+          rows={2}
+          placeholder="Message…"
+          className="w-full resize-none rounded-card border border-line bg-card px-3 py-2 text-sm text-ink placeholder:text-faint"
+        />
+        <label className="flex items-center gap-2 text-sm text-muted">
+          <input type="checkbox" name="priority" className="h-4 w-4" />
+          Priority — ring now, skip the batch hold
+        </label>
+        <button
+          type="submit"
+          className="min-h-[44px] w-full rounded-lg bg-accent px-4 font-semibold text-white"
+        >
+          Send
+        </button>
+      </form>
+    </Shell>
+  );
+}
+
+function BackLink() {
+  return (
+    <Link href="/admin/messages" className="text-sm font-semibold text-accent">
+      ‹ Messages
+    </Link>
+  );
+}

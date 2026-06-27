@@ -8,6 +8,7 @@ import {
   DOORBELL_SHORT_NOTICE_MAX_CHARS,
 } from "@core/config/tenant.js";
 import { getPresence, getRepo } from "./repo";
+import { OPERATOR_CREW_MEMBER_ID } from "./operator";
 
 /**
  * Run one doorbell sweep + relay the rings — the edge wiring (DEC-070), the
@@ -32,7 +33,10 @@ export async function runDoorbellTick(now: Date): Promise<{
     presenceWindowMs: DOORBELL_PRESENCE_WINDOW_MS,
     shortNoticeMaxChars: DOORBELL_SHORT_NOTICE_MAX_CHARS,
   });
-  const r = await doorbellTick(repo, getPresence(), now, rules);
+  // Exclude the operator from ring-membership (DEC-072): they hold seats as crew
+  // (DEC-030) so they'd otherwise be a member of all-staff + their shifts, and
+  // every broadcast they send would ring them. They monitor via /admin/messages.
+  const r = await doorbellTick(repo, getPresence(), now, rules, OPERATOR_CREW_MEMBER_ID);
   const channel = new FakeNotificationChannel(() => now);
   const relayed = await forwardNotifications(repo, channel, r.rings);
   return { threadsSwept: r.threadsSwept, rings: r.rings.length, relayed };

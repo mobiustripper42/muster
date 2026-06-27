@@ -133,6 +133,17 @@ describe("doorbellTick + forwardNotifications (the loop, #167)", () => {
     expect(r.rings).toHaveLength(2); // alice + bob only
   });
 
+  it("never rings the operator — a member by seat/roster, but excluded (#118, DEC-072)", async () => {
+    const repo = await seed();
+    // The operator is a real, active roster crew member (operator-as-crew, DEC-030),
+    // so all-staff membership includes them — but the doorbell must not ring them.
+    await repo.saveCrewMember(crew("crew-operator", "Spink"));
+    await post(repo, "m1", "hi");
+    const r = await doorbellTick(repo, new InMemoryPresence(), NOW, RULES, "crew-operator");
+    expect(r.decisions.some((d) => d.subject.id === "crew-operator")).toBe(false);
+    expect(r.rings).toHaveLength(2); // alice + bob only — the operator is not rung
+  });
+
   it("sweeps only threads that have messages", async () => {
     const repo = await seed(); // thread saved, but no messages posted
     const r = await doorbellTick(repo, new InMemoryPresence(), NOW, RULES);

@@ -47,6 +47,19 @@ export async function doorbellTick(
   presence: PresencePort,
   now: Date,
   rules: DoorbellRules,
+  /**
+   * The operator's crew id (`OPERATOR_CREW_MEMBER_ID`), excluded from ring-
+   * membership (#118, DEC-072). The operator IS a real roster crew member who holds
+   * seats (the operator-as-crew clause, DEC-030 — the engine asks them for shifts),
+   * so `deriveMembers` returns them for all-staff + their seated threads. But the
+   * operator monitors every thread via the admin surface (`/admin/messages`, DEC-052
+   * cross-visibility) — they are never a doorbell recipient. Without this, the
+   * operator's own `admin` broadcast can't be self-filtered against their
+   * `crew`-addressed membership (the decider keys `authoredBy` on `senderKind`), so
+   * every operator post would ring the operator about their own message. Asks still
+   * reach them (the outbox path is separate). Omitted → no exclusion (tests).
+   */
+  operatorCrewMemberId?: string,
 ): Promise<DoorbellTickResult> {
   const nowIso = now.toISOString();
   // Global membership inputs — loaded ONCE for the whole sweep, not per thread
@@ -60,7 +73,8 @@ export async function doorbellTick(
   // The doorbell never rings INACTIVE crew — the engine's active gate
   // (oracle/eligibility.ts); `membership.ts` leaves the active/inactive policy to
   // the caller, so it's applied here (covers all_staff's roster + a stale
-  // inactive crew still sitting on a shift seat).
+  // inactive crew still sitting on a shift seat). The operator is excluded the same
+  // way and for the same reason — a member the doorbell must not ring (DEC-072).
   const activeIds = new Set(
     roster.filter((c) => c.status === "active").map((c) => String(c.id)),
   );
@@ -72,7 +86,7 @@ export async function doorbellTick(
     const participants: Participant[] =
       thread.kind === "dm" ? await repo.listParticipantsForThread(thread.id) : [];
     const members = deriveMembers(thread, { shifts, seats, roster, participants }).filter(
-      (id) => activeIds.has(String(id)),
+      (id) => activeIds.has(String(id)) && String(id) !== operatorCrewMemberId,
     );
     if (members.length === 0) continue;
     const subjects: Subject[] = members.map((id) => ({ kind: "crew", id: String(id) }));

@@ -641,7 +641,7 @@ export function runRepositoryContract(
       expect(msgs.at(-1)!.senderKind).toBe("admin");
     });
 
-    it("messages: priority round-trips — default false, true persists (#116, 0010)", async () => {
+    it("messages: priority round-trips — false and true both persist (#116, 0010)", async () => {
       await repo.saveMessage(message({ id: asId<"MessageId">("m-normal"), body: "chatter" }));
       await repo.saveMessage(
         message({

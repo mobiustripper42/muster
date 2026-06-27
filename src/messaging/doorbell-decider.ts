@@ -62,9 +62,9 @@ export type PresenceState = "present_here" | "present_elsewhere" | "absent";
 
 /**
  * What the decider consumes for one pending message. A DTO, not the stored
- * `Message` (which has no `priority` — §7.4): the edge builds this from a `Message`
- * plus its priority source (6.6). `priority` here is the field 6.6's column flows
- * into unchanged.
+ * `Message`: the 6.6b edge maps a `Message` 1:1 into this — `priority` flows
+ * straight from `Message.priority` (the column added in 6.6a, §7.4), no separate
+ * source to wire.
  */
 export interface PendingMessage {
   id: MessageId;

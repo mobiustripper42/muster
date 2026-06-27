@@ -22,6 +22,7 @@ import type {
   RoleType,
   Seat,
   Shift,
+  Subject,
   Vessel,
 } from "../domain/entities.js";
 import type {
@@ -244,4 +245,22 @@ export interface Repository {
   /** One thread's messages, oldest-first — chronological by `createdAt`, id as the
    *  deterministic tie-break (parity across adapters). */
   listMessagesForThread(threadId: ThreadId): Promise<Message[]>;
+
+  // ── Doorbell read / notify state (6.6a, #116, DEC-069) ─────────────────────
+  // Per-(subject,thread) last-read / last-rang — the decider's INJECTED readState
+  // and notifyState (DEC-068). Thread-scoped + `subjectKey`-keyed, symmetric with
+  // `PresencePort.lastActiveFor`: a never-recorded subject is OMITTED from the map
+  // (the decider reads absent → null → fail toward ringing). The edge intersects
+  // each map with `deriveMembers` and re-keys to the decider's `memberThreadKey`
+  // (6.6b) — so the port stays below the decider, never importing its key helper.
+  // Substrate now; the call-sites land later — `recordRead` is the crew-app read
+  // path (6.7), `recordNotification` is the doorbell tick on a ring (6.6b).
+  /** A thread's last-read marks, keyed by `subjectKey` (`${kind}:${id}`). */
+  readStateForThread(threadId: ThreadId): Promise<Map<string, string>>;
+  /** A thread's last-rang marks, keyed by `subjectKey`. */
+  notifyStateForThread(threadId: ThreadId): Promise<Map<string, string>>;
+  /** Upsert a subject's last-read for a thread (latest-wins). */
+  recordRead(threadId: ThreadId, subject: Subject, at: string): Promise<void>;
+  /** Upsert a subject's last-rang for a thread (latest-wins). */
+  recordNotification(threadId: ThreadId, subject: Subject, at: string): Promise<void>;
 }

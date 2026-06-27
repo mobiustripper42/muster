@@ -20,8 +20,10 @@ import type {
   RoleType,
   Seat,
   Shift,
+  Subject,
   Vessel,
 } from "../domain/entities.js";
+import { subjectKey } from "../domain/subject.js";
 import type {
   AskId,
   CredentialId,
@@ -46,6 +48,19 @@ import type { MessageId, ParticipantId, ThreadId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 
 const clone = <T>(value: T): T => structuredClone(value);
+
+/** Upsert `subjectKey → at` into a threadId→(subjectKey→ISO) store (latest-wins). */
+const upsertThreadState = (
+  store: Map<string, Map<string, string>>,
+  threadId: ThreadId,
+  subject: Subject,
+  at: string,
+): void => {
+  const key = String(threadId);
+  const inner = store.get(key) ?? new Map<string, string>();
+  inner.set(subjectKey(subject), at);
+  store.set(key, inner);
+};
 
 export class InMemoryRepository implements Repository {
   readonly #roleTypes = new Map<RoleTypeId, RoleType>();
@@ -73,6 +88,10 @@ export class InMemoryRepository implements Repository {
   readonly #threads = new Map<ThreadId, Thread>();
   readonly #participants = new Map<ParticipantId, Participant>();
   readonly #messages = new Map<MessageId, Message>();
+  // Doorbell read / notify state (6.6a, DEC-069): threadId → (subjectKey → ISO).
+  // Two single-writer stores, mirroring the two Postgres tables.
+  readonly #reads = new Map<string, Map<string, string>>();
+  readonly #notifies = new Map<string, Map<string, string>>();
 
   // ── Role types (tenant config — DEC-ROLE-1) ───────────────────────────────
   async saveRoleType(roleType: RoleType): Promise<void> {
@@ -361,5 +380,21 @@ export class InMemoryRepository implements Repository {
           String(a.id).localeCompare(String(b.id)),
       )
       .map(clone);
+  }
+
+  // ── Doorbell read / notify state (6.6a, #116, DEC-069) ─────────────────────
+  // Thread-scoped, subjectKey-keyed — byte-identical to PostgresRepository (the
+  // contract pins it). A fresh Map per read so callers can't mutate the store.
+  async readStateForThread(threadId: ThreadId): Promise<Map<string, string>> {
+    return new Map(this.#reads.get(String(threadId)) ?? []);
+  }
+  async notifyStateForThread(threadId: ThreadId): Promise<Map<string, string>> {
+    return new Map(this.#notifies.get(String(threadId)) ?? []);
+  }
+  async recordRead(threadId: ThreadId, subject: Subject, at: string): Promise<void> {
+    upsertThreadState(this.#reads, threadId, subject, at);
+  }
+  async recordNotification(threadId: ThreadId, subject: Subject, at: string): Promise<void> {
+    upsertThreadState(this.#notifies, threadId, subject, at);
   }
 }

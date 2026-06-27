@@ -1277,6 +1277,7 @@ and the outbox/relay machinery (DEC-030); the SMS doorbell adapter is the **fina
 "zero domain change to swap Twilio" property for both. Distinct methods keep each clean.
 **Tradeoff:** A second port method. **Rejected:** reusing `sendAsk` for rings. **Phase:** Phase 6
 (6.6 / 6.9).
+**Realized (6.6a, 2026-06-27):** as a **separate `NotificationPort` interface** (`send(NotificationMessage): Promise<SendResult>`), not a second method on `ChannelPort`. DEC-050 predates the seam becoming `send(OutboundMessage)`+`MessageKind`; a separate interface realizes "sibling to the ask path" most cleanly today and keeps the just-hardened ask `send`/`WebLinkChannel`/outbox (#158/#160) literally untouched, while preserving convergence — one future Twilio class implements **both** interfaces (DEC-MSG-1). Payload is **ring-only**: `{to, threadId, mode:"summary"|"content", body, messageIds}` — a toast (`in_app_toast`) is a 6.7 in-app read-model (DEC-068), never a port send, so there is no `channel` discriminator and no `mode:null`. 6.6a ships the port + `FakeNotificationChannel` recorder; the operator relay-of-rings adapter is **6.8** (#118, DEC-030 machinery).
 
 ---
 
@@ -1495,6 +1496,14 @@ remove). **Revisit if:** previews ever stop being isolated branches, or carry se
 **Rejected:** two-state `present | absent` inside the decider (breaks DEC-047's zero-decider-change promise); decider-side timestamp classification (the here/elsewhere upgrade isn't expressible from a global timestamp).
 **Revisit if:** DEC-047's realtime adapter lands — the edge begins emitting `present_here` and v1's full-suppression gap closes with **no decider change**.
 **Phase:** Phase 6 (6.4).
+
+---
+
+## DEC-069: Doorbell read/notify state — two single-writer tables, not one consolidated row
+**Status:** Accepted (Phase 6 / 6.6a) — @architect 2026-06-27 (Opus).
+**Decision:** The decider's injected `readState` / `notifyState` (DEC-068) persist as **two** tables (migration `0010`): `message_reads(thread_id, subject_kind, subject_id, last_read_at)` and `doorbell_notifications(thread_id, subject_kind, subject_id, last_notified_at)`, PK on the triple with `thread_id` leading; plus `messages.priority boolean not null default false` (the decider's `PendingMessage.priority` source, §7.4). Repository methods are thread-scoped + `subjectKey`-keyed (`readStateForThread` / `notifyStateForThread` / `recordRead` / `recordNotification`), symmetric with `PresencePort.lastActiveFor` — a never-recorded subject is omitted (decider reads null → fail toward ringing).
+**Why:** Separate because the two have **different owners and lifecycles**, not because of lock contention (a single-column `ON CONFLICT DO UPDATE` has none, and a 20–25-crew pilot has no write volume): `message_reads` is the **crew-app's** unread substrate (written by the read path, 6.7, useful beyond the doorbell); `doorbell_notifications` is **doorbell-private** last-rang state (written by the tick, 6.6b). One concern per table — the instinct that gave `presence` / `outbox_entries` / `app_settings` their own tables. Keying reuses DEC-058's composite `(subject_kind, subject_id)` (the 0009_presence precedent). `priority` is a 1:1 message column (not a per-(subject,thread) relation), a **native boolean** (the schema's first — not text-encoded, which is a KV-store artifact).
+**Tradeoff:** A consolidated `thread_member_state(last_read_at, last_notified_at)` would return both columns in one fetch, but it mis-homes general read-tracking inside a doorbell-flavored table and couples the 6.7 read-path migration to the 6.6b write-path. **Rejected:** the consolidated row; a partial index on `messages.priority` (no SQL filters by priority — the tick fetches all pending per thread and the decider filters in-memory); text-encoding the boolean. **Phase:** Phase 6 (6.6a). Substrate now — `recordRead`'s call-site is 6.7, `recordNotification`'s is 6.6b; the adapter-parity contract + a decider-boundary fixture pin the semantics before either consumer exists.
 
 ---
 

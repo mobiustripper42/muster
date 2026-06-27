@@ -16,6 +16,7 @@
 import pg from "pg";
 import type {
   Ask,
+  AuthSubjectKind,
   Credential,
   CrewMember,
   Event,
@@ -26,9 +27,11 @@ import type {
   RoleType,
   Seat,
   Shift,
+  Subject,
   Vessel,
 } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
+import { subjectKey } from "../domain/subject.js";
 import type {
   AskId,
   CredentialId,
@@ -239,6 +242,7 @@ const toMessage = (r: any): Message => ({
   senderKind: r.sender_kind as MessageSenderKind,
   body: r.body,
   createdAt: r.created_at,
+  priority: r.priority, // native boolean (0010) — pg returns a JS boolean
 });
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -782,10 +786,11 @@ export class PostgresRepository implements Repository {
   }
   async saveMessage(m: Message): Promise<void> {
     await this.#pool.query(
-      `insert into messages(id, thread_id, sender_id, sender_kind, body, created_at) values ($1,$2,$3,$4,$5,$6)
+      `insert into messages(id, thread_id, sender_id, sender_kind, body, created_at, priority) values ($1,$2,$3,$4,$5,$6,$7)
        on conflict (id) do update set thread_id=excluded.thread_id, sender_id=excluded.sender_id,
-         sender_kind=excluded.sender_kind, body=excluded.body, created_at=excluded.created_at`,
-      [m.id, m.threadId, m.senderId, m.senderKind, m.body, m.createdAt],
+         sender_kind=excluded.sender_kind, body=excluded.body, created_at=excluded.created_at,
+         priority=excluded.priority`,
+      [m.id, m.threadId, m.senderId, m.senderKind, m.body, m.createdAt, m.priority],
     );
   }
   async listMessagesForThread(threadId: ThreadId): Promise<Message[]> {
@@ -796,5 +801,53 @@ export class PostgresRepository implements Repository {
       [threadId],
     );
     return rows.map(toMessage);
+  }
+
+  // ── Doorbell read / notify state (6.6a, #116, DEC-069) ─────────────────────
+  // Thread-scoped, subjectKey-keyed — symmetric with PostgresPresence.lastActiveFor.
+  // Two single-writer tables (DEC-069); the `priority` source is the messages column.
+  async readStateForThread(threadId: ThreadId): Promise<Map<string, string>> {
+    const { rows } = await this.#pool.query<{
+      subject_kind: string;
+      subject_id: string;
+      last_read_at: string;
+    }>(
+      "select subject_kind, subject_id, last_read_at from message_reads where thread_id=$1",
+      [threadId],
+    );
+    const out = new Map<string, string>();
+    for (const r of rows) {
+      out.set(subjectKey({ kind: r.subject_kind as AuthSubjectKind, id: r.subject_id }), r.last_read_at);
+    }
+    return out;
+  }
+  async notifyStateForThread(threadId: ThreadId): Promise<Map<string, string>> {
+    const { rows } = await this.#pool.query<{
+      subject_kind: string;
+      subject_id: string;
+      last_notified_at: string;
+    }>(
+      "select subject_kind, subject_id, last_notified_at from doorbell_notifications where thread_id=$1",
+      [threadId],
+    );
+    const out = new Map<string, string>();
+    for (const r of rows) {
+      out.set(subjectKey({ kind: r.subject_kind as AuthSubjectKind, id: r.subject_id }), r.last_notified_at);
+    }
+    return out;
+  }
+  async recordRead(threadId: ThreadId, subject: Subject, at: string): Promise<void> {
+    await this.#pool.query(
+      `insert into message_reads(thread_id, subject_kind, subject_id, last_read_at) values ($1,$2,$3,$4)
+       on conflict (thread_id, subject_kind, subject_id) do update set last_read_at=excluded.last_read_at`,
+      [threadId, subject.kind, subject.id, at],
+    );
+  }
+  async recordNotification(threadId: ThreadId, subject: Subject, at: string): Promise<void> {
+    await this.#pool.query(
+      `insert into doorbell_notifications(thread_id, subject_kind, subject_id, last_notified_at) values ($1,$2,$3,$4)
+       on conflict (thread_id, subject_kind, subject_id) do update set last_notified_at=excluded.last_notified_at`,
+      [threadId, subject.kind, subject.id, at],
+    );
   }
 }

@@ -4,10 +4,10 @@ dev: eric
 slug: 160-outbox-relay-ergonomics
 branch: task/160-outbox-relay-ergonomics
 started: 2026-06-26T22:22:03Z
-ended:
-points:
+ended: 2026-06-27T04:43:22Z
+points: 23
 pr_numbers: [165, 166, 168, 169]
-status: open
+status: closed
 transcript: /home/eric/.claude/projects/-home-eric-muster/654055f2-9b19-4465-b5fe-4f24785f87c6.jsonl
 ---
 

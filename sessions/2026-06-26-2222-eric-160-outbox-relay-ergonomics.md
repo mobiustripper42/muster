@@ -6,7 +6,7 @@ branch: task/160-outbox-relay-ergonomics
 started: 2026-06-26T22:22:03Z
 ended:
 points:
-pr_numbers: [165, 166]
+pr_numbers: [165, 166, 168]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/654055f2-9b19-4465-b5fe-4f24785f87c6.jsonl
 ---
@@ -45,8 +45,27 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/654055f2-9b19-4465-b5f
 **Branch:** task/115-doorbell-harness (base: feature/messaging — #165 merged mid-session, the stack collapsed)
 **Opened at:** 2026-06-27T02:23:48Z
 
+## Task 3: Doorbell storage + sendNotification port substrate (6.6a, #116)
+
+**Completed:**
+- **Re-estimated & split:** #116 (6.6) was a labelled 5 but really ~13. Split into **6.6a** (this — substrate) + **6.6b** (#167, the tick/cron/relay loop); operator-facing outbox relay of rings deferred to **6.8** (#118, commented). Board made honest via `gh issue edit/create`.
+- **Architect-gated** (two calls): separate read/notify tables (domain-ownership, not contention); separate `NotificationPort` — which the architect found was **already decided by DEC-050** (sibling to the ask seam, rejecting the overload-the-ask-path route). Payload trimmed to ring-only.
+- `db/migrations/0010_doorbell_state.sql` — `message_reads` + `doorbell_notifications` (two single-writer tables, DEC-069) + `messages.priority` (native boolean, the decider's `PendingMessage.priority` source).
+- Repository port + Postgres + in-memory: `readStateForThread`/`notifyStateForThread` (thread-scoped, `subjectKey`-keyed, symmetric with `PresencePort.lastActiveFor`; absent → omitted → decider rings) + `recordRead`/`recordNotification` (upserts). `Message` gains `priority`, round-tripped both adapters.
+- `src/ports/notification.ts` `NotificationPort` + `src/adapters/fake-notification-channel.ts` recorder (ask `ChannelPort`/outbox untouched). DEC-069 + DEC-050 amended.
+- **Architect's key mitigation landed:** parity contract (read/notify + priority round-trip in `repository-contract.ts`, both adapters) + `store-decider-boundary.test.ts` (store maps → `decideNotifications` → first-only-until-read boundary) — because every 6.6a output is **unconsumed until 6.6b**, these pin the contract to the consumer now.
+- **Verified:** typecheck core+app ✓, build ✓, in-memory contract 39 ✓, **Postgres contract 45 ✓ (byte-identical; 0010 applied to test DB by `migrate()`)**, fake channel 3 ✓, messaging 67 ✓. No cron/tick/live-flow change.
+
+**Code review:** `@code-review` — house style + adapter parity + decider boundary all correctly pinned, **no blockers**. Folded two cleanups: corrected the stale `PendingMessage` docstring (the comment 6.6b reads to wire priority) + renamed the priority test to not over-claim a column-default assertion.
+**PR:** [#168](https://github.com/mobiustripper42/muster/pull/168)
+**Points:** 5
+**Branch:** task/116-doorbell-substrate (base: feature/messaging)
+**Opened at:** 2026-06-27T03:38:05Z
+
 **Next Steps:**
-- **6.6 (#116)** — doorbell tick + delivery wiring — is next: a clock-driven cron sweep that runs the decider against current presence/read state and relays `ring:true` decisions to a channel/outbox (DEC-030), persisting notify-state. It needs the read-state + a `messages.priority` source the decider currently consumes injected (the first migration of Phase 6's messaging tables beyond 0008/0009).
+- **6.6b (#167)** — the loop: `src/builder/doorbell-tick.ts` (enumerate threads-with-messages → derive members → classify presence at the edge → `decideNotifications` → `recordNotification` per ring) + `forwardNotifications` → the `NotificationPort` (fake adapter) + a separate `/api/cron/doorbell-tick` (CRON_SECRET, DEC-040) + `vercel.json` + e2e. The thread-enumeration primitive (`listThreadsWithMessages` vs a time-bounded slice) was deliberately deferred to 6.6b — its shape is undecidable without the tick (priority can be flipped on an *old* message, so a naive `createdAt` slice is unsafe).
+- **Operator note:** 0010 applied to the **test** DB only (by the pg test); dev/prod is operator-run, additive + backfills `priority=false`.
+- Then 6.7 (#117 crew messaging UI, writes `recordRead`) → 6.8 (#118, the deferred operator outbox relay).
 - Fold the doorbell env knobs into `docs/DEPLOY.md` when `feature/messaging` reconciles with main's #157 env-docs (deferred to avoid a doc-merge tangle now).
 
 **Context:**

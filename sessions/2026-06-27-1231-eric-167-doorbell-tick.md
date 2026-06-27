@@ -6,7 +6,7 @@ branch: task/167-doorbell-tick
 started: 2026-06-27T12:31:54Z
 ended:
 points:
-pr_numbers: [171, 172]
+pr_numbers: [171, 172, 175]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/6ff44aec-cd6a-4598-9273-f798a6c7d340.jsonl
 ---
@@ -43,9 +43,24 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/6ff44aec-cd6a-4598-927
 **Branch:** task/118-operator-messaging (base: task/117-crew-messaging-ui)
 **Opened at:** 2026-06-27T18:05:37Z
 
+## Task 3: Real doorbell-ring relay — the promotion gate (DEC-073)
+
+**Completed:**
+- The deferred ring relay (the thing that must land before Phase 6 promotes, DEC-070): swapped `FakeNotificationChannel` → `OutboxNotificationChannel` (`src/adapters/outbox-notification-channel.ts`, swapped at `app/lib/doorbell.ts`) — each ring enqueues a `RingOutboxEntry` (thread deep-link) the operator texts from `/admin/outbox`'s new "New messages" section. DEC-030 web-link model, mirroring asks. Stacked on 6.8 (base task/118).
+- **Own `ring_outbox` table** (`db/migrations/0011`, architect's call over a union — keeps the ask outbox's NOT NULL invariant). `RingOutboxEntry` + 4 port methods + both adapters + contract. **Drop-on-read** (`buildRingOutboxView`): a ring self-clears once `message_reads.last_read_at >= createdAt` (reuses DEC-069 — the architect's catch; without it the worklist rots). **Thread deep-link** in `/crew/auth` (`&thread=` → validated, server-built `/crew/threads/{id}` redirect; no open-redirect; leans on DEC-071 beacon-only read-marking). `RelaySend` generalized to an `onRecord` prop (asks/rings share the hardened island).
+- **DEC-073.** Verified: typecheck core+app ✓, **643 unit** ✓ (Postgres parity 48), build ✓, ring-relay e2e 3/3 ✓ (priority-broadcast→tick→outbox, deep-link lands in thread, tampered-param→/crew), ask+messaging e2e regression 5/5 ✓, 375px screenshot. **Migration 0011 to run on dev/prod.**
+
+**Code review:** `@code-review` — **no blockers**; deep-link security + drop-on-read traced clean. Folded the one finding with teeth: the cron's `linkBase` silently fell back to `localhost` when `APP_BASE_URL` unset → dead-linked rings; now **throws in prod**. + a ring-id delimiter note. Nits left (e2e `CRON_SECRET` dev-shell mismatch, an unused status index mirroring 0005) non-blocking.
+**PR:** [#175](https://github.com/mobiustripper42/muster/pull/175)
+**Points:** 5
+**Branch:** task/ring-relay (base: task/118-operator-messaging)
+**Opened at:** 2026-06-27T20:09:52Z
+
 **Next Steps:**
-- **The real ring relay (the next stack, the promotion gate)** — swap `FakeNotificationChannel` → an `OutboxNotificationChannel` that drops doorbell rings into the operator outbox (DEC-030 web-link model), + the one-line swap in `app/lib/doorbell.ts`. **Must land before Phase 6 is promoted** (record-on-decide under fake delivery silently suppresses — DEC-070). Pure delivery-adapter work; `forwardNotifications` + the `NotificationPort` already exist. Stack it off task/118.
-- **6.9 (#119, Twilio/second number, 10DLC-gated)** closes the phase.
+- **6.9 (#119, Twilio/second number, 10DLC-gated)** closes the phase — the real SMS doorbell number replaces the operator-relay (the manual relay + the DEC-072 exclusion + the deep-link all stay).
+- **The whole messaging stack (#171→#172→#175) is in review** (Eric reviewing). Merge order: #171 → #172 → #175 into feature/messaging, then feature/messaging → main.
+- **#174 (admin nav shell, 2pt)** — picked up on `main` (independent of the messaging stack), in flight this session.
+- **⚠️ Merge reconciliation:** #175's `relay-send.tsx`/`outbox-card.tsx` are off `feature/messaging` (pre-#160); **`main` already has the #160 Web Share versions** of both. The `feature/messaging`→`main` merge must reconcile the `onRecord` generalization (rings) with main's Web Share send path — not a textual auto-merge.
 - **Crew-side DM-visibility disclosure** (flagged in DEC-072) — a one-line "your DMs are visible to the office" on the crew DM surface; a real §6 trust gap, raise with the operator first. Thin fast-follow.
 - The **live popping toast** (vs the v1 refresh-time badge) waits on the realtime socket (DEC-047) — deferred with instant chat (DEC-045).
 - Fold the doorbell + messaging env knobs into `docs/DEPLOY.md` when `feature/messaging` reconciles with main's #157 env-docs (still deferred). ⚠️ Confirm `OPERATOR_CREW_MEMBER_ID=crew-eric-stoffer` in prod env (DEC-072 ring-exclusion targets it; defaults to `crew-spink`).

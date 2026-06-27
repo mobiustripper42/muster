@@ -6,7 +6,7 @@ branch: task/160-outbox-relay-ergonomics
 started: 2026-06-26T22:22:03Z
 ended:
 points:
-pr_numbers: [165, 166, 168]
+pr_numbers: [165, 166, 168, 169]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/654055f2-9b19-4465-b5fe-4f24785f87c6.jsonl
 ---
@@ -62,10 +62,27 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/654055f2-9b19-4465-b5f
 **Branch:** task/116-doorbell-substrate (base: feature/messaging)
 **Opened at:** 2026-06-27T03:38:05Z
 
+## Task 4: Doorbell tick + cron + relay — the loop (6.6b, #167)
+
+**Completed:**
+- `src/builder/doorbell-tick.ts` — the sweep (engine-tick analog): load shifts/seats/roster + `listThreadsWithMessages` once → per thread: `deriveMembers` (filtered to **active** crew) → assemble decider inputs (edge presence classification DEC-068: coarse → `present_elsewhere|absent`, never `present_here`; re-key store maps to `memberThreadKey`) → `decideNotifications` → `recordNotification` per ring (record-on-decide).
+- **`listThreadsWithMessages`** (port + Postgres + in-memory + contract): the enumeration the 6.6a architect deferred — sweep **all** threads-with-messages, not a `createdAt` slice (a priority can be flipped on an old message). Resolved here because its shape needed the tick in hand.
+- `src/adapters/forward-notifications.ts` — best-effort relay (mirrors `forward-asks.ts`): composes the body (content inlines the note, summary = "N new"), `NotificationPort.send`.
+- `app/api/cron/doorbell-tick/route.ts` + `app/lib/doorbell.ts` + `vercel.json` `*/2`: a **separate** CRON_SECRET-guarded cron (DEC-040), pause-gated (DEC-054), fake/log delivery (operator outbox = 6.8, Twilio = 6.9). Crons run only on prod; Phase 6 isn't promoted until 6.8 — fake delivery never hits live traffic.
+- **DEC-070** (the doorbell tick). No migration (uses 0010).
+- **Verified:** typecheck core+app ✓, build ✓ (`/api/cron/doorbell-tick` registered), integration loop 6 ✓ (post→tick→ring→relay, first-only, presence-suppress, priority bypass, inactive-crew, empty-sweep), forward-notifications 5 ✓, in-memory contract 40 ✓, **Postgres parity 46 ✓**, builder+messaging 150 ✓ no regression.
+
+**Code review:** `@code-review` — correct keying/presence, real round-trip tests, **no blockers**. Folded: (1) the sweep would ring **inactive crew** on all_staff → filtered to `status==="active"` (the engine's gate) +test; (2) `listParticipantsForThread` ran per-thread serially though only DM reads it → `kind==="dm"` only; (3) +throwing-channel test for the best-effort swallow. Record-on-decide-under-fake-delivery watch-item documented in DEC-070, accepted.
+**PR:** [#169](https://github.com/mobiustripper42/muster/pull/169)
+**Points:** 5
+**Branch:** task/167-doorbell-tick (base: feature/messaging)
+**Opened at:** 2026-06-27T04:29:33Z
+
 **Next Steps:**
-- **6.6b (#167)** — the loop: `src/builder/doorbell-tick.ts` (enumerate threads-with-messages → derive members → classify presence at the edge → `decideNotifications` → `recordNotification` per ring) + `forwardNotifications` → the `NotificationPort` (fake adapter) + a separate `/api/cron/doorbell-tick` (CRON_SECRET, DEC-040) + `vercel.json` + e2e. The thread-enumeration primitive (`listThreadsWithMessages` vs a time-bounded slice) was deliberately deferred to 6.6b — its shape is undecidable without the tick (priority can be flipped on an *old* message, so a naive `createdAt` slice is unsafe).
-- **Operator note:** 0010 applied to the **test** DB only (by the pg test); dev/prod is operator-run, additive + backfills `priority=false`.
-- Then 6.7 (#117 crew messaging UI, writes `recordRead`) → 6.8 (#118, the deferred operator outbox relay).
+- **6.7 (#117)** — crew messaging UI (thread list, view + compose, in-app badge/toast, refresh-to-see-new). This is where `recordRead` gets its call-site (cancel-on-read) and the `in_app_toast` decisions become the actual in-app badge. ↑ the doorbell's read-state finally gets written by a real surface.
+- **6.8 (#118)** — operator messaging surface **+** the deferred operator-outbox relay of doorbell rings (the real `NotificationPort` adapter replacing the fake/log). Must land before Phase 6 is promoted (record-on-decide under fake delivery would otherwise silently suppress — DEC-070).
+- Then 6.9 (#119, Twilio/second number, 10DLC-gated) closes the phase.
+- **Mid-session:** promoted `main`→`production` (#156→#164, the forgotten S28 pilot-hardening); untagged so prod `<VersionTag/>` reads v0.7.0 until a `/retro` patch-bump. Messaging stayed on `feature/messaging`, untouched.
 - Fold the doorbell env knobs into `docs/DEPLOY.md` when `feature/messaging` reconciles with main's #157 env-docs (deferred to avoid a doc-merge tangle now).
 
 **Context:**

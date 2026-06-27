@@ -20,7 +20,7 @@
 
 import type { Subject } from "../domain/entities.js";
 import { subjectKey } from "../domain/subject.js";
-import type { Message } from "../messaging/entities.js";
+import type { Message, Participant } from "../messaging/entities.js";
 import { deriveMembers } from "../messaging/membership.js";
 import { isPresent } from "../messaging/presence.js";
 import {
@@ -57,11 +57,23 @@ export async function doorbellTick(
     repo.listCrewMembers(),
     repo.listThreadsWithMessages(),
   ]);
+  // The doorbell never rings INACTIVE crew — the engine's active gate
+  // (oracle/eligibility.ts); `membership.ts` leaves the active/inactive policy to
+  // the caller, so it's applied here (covers all_staff's roster + a stale
+  // inactive crew still sitting on a shift seat).
+  const activeIds = new Set(
+    roster.filter((c) => c.status === "active").map((c) => String(c.id)),
+  );
 
   const decisions: NotificationDecision[] = [];
   for (const thread of threads) {
-    const participants = await repo.listParticipantsForThread(thread.id);
-    const members = deriveMembers(thread, { shifts, seats, roster, participants });
+    // Only DM membership reads participants; the standing kinds derive from the
+    // schedule/roster — skip the query (and its serial round-trip) for them.
+    const participants: Participant[] =
+      thread.kind === "dm" ? await repo.listParticipantsForThread(thread.id) : [];
+    const members = deriveMembers(thread, { shifts, seats, roster, participants }).filter(
+      (id) => activeIds.has(String(id)),
+    );
     if (members.length === 0) continue;
     const subjects: Subject[] = members.map((id) => ({ kind: "crew", id: String(id) }));
 

@@ -124,6 +124,15 @@ describe("doorbellTick + forwardNotifications (the loop, #167)", () => {
     expect(r.rings.every((d) => d.reason === "priority_bypass")).toBe(true);
   });
 
+  it("never rings inactive crew (membership respects the active gate)", async () => {
+    const repo = await seed();
+    await repo.saveCrewMember({ ...crew("crew-carol", "Carol"), status: "inactive" });
+    await post(repo, "m1", "hi");
+    const r = await doorbellTick(repo, new InMemoryPresence(), NOW, RULES);
+    expect(r.decisions.some((d) => d.subject.id === "crew-carol")).toBe(false);
+    expect(r.rings).toHaveLength(2); // alice + bob only
+  });
+
   it("sweeps only threads that have messages", async () => {
     const repo = await seed(); // thread saved, but no messages posted
     const r = await doorbellTick(repo, new InMemoryPresence(), NOW, RULES);

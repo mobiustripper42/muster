@@ -3,6 +3,7 @@ import { asId } from "../domain/ids.js";
 import type { CrewMember } from "../domain/entities.js";
 import type { Message } from "../messaging/entities.js";
 import type { NotificationDecision } from "../messaging/doorbell-decider.js";
+import type { NotificationPort } from "../ports/notification.js";
 import { FakeNotificationChannel } from "./fake-notification-channel.js";
 import { forwardNotifications } from "./forward-notifications.js";
 import { InMemoryRepository } from "./in-memory-repository.js";
@@ -66,6 +67,26 @@ describe("forwardNotifications", () => {
     const ch = new FakeNotificationChannel(AT);
     await forwardNotifications(repo, ch, [ring({ mode: "content", messageIds: [m.id] })]);
     expect(ch.last()?.body).toBe("slip B, 12:30");
+  });
+
+  it("swallows a per-ring send failure and forwards the rest (best-effort)", async () => {
+    const repo = new InMemoryRepository();
+    await repo.saveCrewMember(crew("crew-a"));
+    await repo.saveCrewMember(crew("crew-b"));
+    let calls = 0;
+    const flaky: NotificationPort = {
+      async send() {
+        calls += 1;
+        if (calls === 1) throw new Error("medium rejected");
+        return { deliveredAt: "2026-07-04T12:00:00.000Z", ref: "ok" };
+      },
+    };
+    const n = await forwardNotifications(repo, flaky, [
+      ring({ subject: { kind: "crew", id: "crew-a" } }),
+      ring({ subject: { kind: "crew", id: "crew-b" } }),
+    ]);
+    expect(n).toBe(1); // first threw, second still forwarded
+    expect(calls).toBe(2);
   });
 
   it("skips non-ring decisions and a dangling crew ref (best-effort)", async () => {

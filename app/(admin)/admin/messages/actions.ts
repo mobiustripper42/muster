@@ -35,13 +35,14 @@ export async function postOperatorMessage(formData: FormData): Promise<void> {
 
   const repo = getRepo();
   const now = new Date();
-  // An existing thread (any kind — operator posts anywhere) or a synth post-target.
-  const thread =
-    (await repo.getThread(asId<"ThreadId">(threadId))) ??
-    operatorStandingTarget(asId<"ThreadId">(threadId), TENANT_ID, now);
-  if (!thread) return; // not a real thread, not a recognized post-target — ignore
-
-  await repo.saveThread(thread); // idempotent find-or-create (real row preserved)
+  // The operator posts ONLY to the two broadcast doors — all-staff / today's cohort
+  // (§10 / #118 AC). A non-target id (a shift thread, or a crew DM the operator can
+  // merely read) is rejected, so the office never injects into a private DM.
+  const target = operatorStandingTarget(asId<"ThreadId">(threadId), TENANT_ID, now);
+  if (!target) return;
+  // Preserve an existing row's createdAt; else find-or-create from the synth target.
+  const thread = (await repo.getThread(asId<"ThreadId">(threadId))) ?? target;
+  await repo.saveThread(thread); // idempotent
 
   const message: Message = {
     id: asId<"MessageId">(`msg-${randomUUID()}`),

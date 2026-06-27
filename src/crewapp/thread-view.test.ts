@@ -168,6 +168,7 @@ describe("buildThreadView — operator (admin) cross-visibility (#118, DEC-072)"
       ["Hooper", false],
       ["Operator", true],
     ]);
+    expect(view!.canPost).toBe(false); // a shift thread is read-only for the operator
   });
 
   it("reads a DM between two other crew (operator-visible, DEC-050/052), titled with both", async () => {
@@ -182,13 +183,15 @@ describe("buildThreadView — operator (admin) cross-visibility (#118, DEC-072)"
     expect(view).not.toBeNull();
     expect(view!.title).toBe("Hooper ↔ Quint");
     expect(view!.messages[0]!.body).toBe("between us");
+    expect(view!.canPost).toBe(false); // the operator never posts into a crew DM
   });
 
-  it("opens an unposted post-target (all-staff) — synth-resolved, empty", async () => {
+  it("opens an unposted post-target (all-staff) — synth-resolved, empty, postable", async () => {
     const repo = await seed();
     const view = await buildThreadView(repo, standingThreadId("all_staff", TENANT, null), OP, TENANT, NOW, TZ);
     expect(view).not.toBeNull();
     expect(view!.title).toBe("All staff");
     expect(view!.messages).toEqual([]);
+    expect(view!.canPost).toBe(true); // all-staff is a broadcast door
   });
 });

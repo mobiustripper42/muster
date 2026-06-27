@@ -87,28 +87,36 @@ export default async function AdminThread({
         )}
       </section>
 
-      {/* Compose as the office. Priority (§7.4) bypasses the doorbell's batch hold —
-          the operator's only; crew can't set it. Server action, no client JS. */}
-      <form action={postOperatorMessage} className="mt-2 flex flex-col gap-2">
-        <input type="hidden" name="threadId" value={view.threadId} />
-        <textarea
-          name="body"
-          required
-          rows={2}
-          placeholder="Message…"
-          className="w-full resize-none rounded-card border border-line bg-card px-3 py-2 text-sm text-ink placeholder:text-faint"
-        />
-        <label className="flex items-center gap-2 text-sm text-muted">
-          <input type="checkbox" name="priority" className="h-4 w-4" />
-          Priority — ring now, skip the batch hold
-        </label>
-        <button
-          type="submit"
-          className="min-h-[44px] w-full rounded-lg bg-accent px-4 font-semibold text-white"
-        >
-          Send
-        </button>
-      </form>
+      {/* Compose as the office — only the two broadcast doors (all-staff / today's
+          cohort, §10). Shift threads + crew DMs are read-only: the operator sees
+          them (DEC-052) but never posts in (no injecting into a private DM).
+          Priority (§7.4) is the operator's alone; crew can't set it. No client JS. */}
+      {view.canPost ? (
+        <form action={postOperatorMessage} className="mt-2 flex flex-col gap-2">
+          <input type="hidden" name="threadId" value={view.threadId} />
+          <textarea
+            name="body"
+            required
+            rows={2}
+            placeholder="Message…"
+            className="w-full resize-none rounded-card border border-line bg-card px-3 py-2 text-sm text-ink placeholder:text-faint"
+          />
+          <label className="flex items-center gap-2 text-sm text-muted">
+            <input type="checkbox" name="priority" className="h-4 w-4" />
+            Priority — ring now, skip the batch hold
+          </label>
+          <button
+            type="submit"
+            className="min-h-[44px] w-full rounded-lg bg-accent px-4 font-semibold text-white"
+          >
+            Send
+          </button>
+        </form>
+      ) : (
+        <p className="mt-2 text-sm text-muted">
+          Read-only — post to <b>All staff</b> or <b>Today’s crew</b> to reach crew.
+        </p>
+      )}
     </Shell>
   );
 }

@@ -47,6 +47,13 @@ export interface ThreadView {
   kind: Thread["kind"];
   title: string;
   messages: ThreadMessageView[];
+  /**
+   * May the viewer post here? A **crew** member always can in a thread they're in
+   * (DEC-071). The **operator** can post ONLY to the two broadcast doors — all-staff
+   * and today's cohort (§10 / #118 AC); every other thread they can *see* (shift
+   * threads, crew DMs) is read-only, so the office never injects into a private DM.
+   */
+  canPost: boolean;
 }
 
 /** Shape stored messages into the view DTO, deciding "mine" per the viewer's lens
@@ -89,17 +96,21 @@ export async function buildThreadView(
 ): Promise<ThreadView | null> {
   let thread: Thread;
   let title: string;
+  let canPost: boolean;
   if (viewer.kind === "crew") {
     const match = await threadMembership(repo, threadId, asId<"CrewMemberId">(viewer.id), tenantId, now, tz);
     if (!match) return null;
     thread = match.thread;
     title = match.title;
+    canPost = true; // a member may post in their own thread (DEC-071)
   } else {
-    // Operator (admin) reads all (DEC-052 / DEC-072).
+    // Operator (admin) reads all (DEC-052 / DEC-072) but posts only to the two
+    // broadcast doors — every other thread (incl. crew DMs) is read-only.
     const resolved = (await repo.getThread(threadId)) ?? operatorStandingTarget(threadId, tenantId, now, tz);
     if (!resolved) return null;
     thread = resolved;
     title = await threadTitle(repo, thread, null, now, tz);
+    canPost = operatorStandingTarget(threadId, tenantId, now, tz) !== null;
   }
 
   const isMine = (m: Message): boolean =>
@@ -113,5 +124,6 @@ export async function buildThreadView(
     kind: thread.kind,
     title,
     messages,
+    canPost,
   };
 }

@@ -7,6 +7,7 @@ import { readSubject } from "../../../../lib/auth";
 import { getRepo } from "../../../../lib/repo";
 import { fmt12 } from "../../../../lib/format";
 import { bailFromSeat } from "./actions";
+import { startDm } from "../../threads/actions";
 
 /**
  * Shift card (SPEC §2.6.3) — the single source of truth a crew member reads on
@@ -181,21 +182,33 @@ function Card({
               className="flex items-center justify-between rounded-card border border-line bg-card px-4 py-3"
             >
               <span className="font-semibold text-ink">{c.name}</span>
-              <span className="flex gap-2">
+              {/* Call/Text expose the phone (SPEC §2.6.3); Message is the in-app DM
+                  — the §6 number-privacy channel, additive, not a replacement. */}
+              <span className="flex flex-wrap items-center justify-end gap-2">
                 <a
                   href={tel(c.phone)}
-                  className="inline-flex min-h-[44px] items-center rounded-lg border border-line bg-bg px-4 font-semibold text-accent"
+                  className="inline-flex min-h-[44px] items-center rounded-lg border border-line bg-bg px-3 font-semibold text-accent"
                   aria-label={`Call ${c.name}`}
                 >
                   Call
                 </a>
                 <a
                   href={sms(c.phone)}
-                  className="inline-flex min-h-[44px] items-center rounded-lg border border-line bg-bg px-4 font-semibold text-accent"
+                  className="inline-flex min-h-[44px] items-center rounded-lg border border-line bg-bg px-3 font-semibold text-accent"
                   aria-label={`Text ${c.name}`}
                 >
                   Text
                 </a>
+                <form action={startDm} className="inline-flex">
+                  <input type="hidden" name="crewMemberId" value={c.crewMemberId} />
+                  <button
+                    type="submit"
+                    className="inline-flex min-h-[44px] items-center rounded-lg border border-accent bg-accent px-3 font-semibold text-white"
+                    aria-label={`Message ${c.name}`}
+                  >
+                    Message
+                  </button>
+                </form>
               </span>
             </div>
           ))}

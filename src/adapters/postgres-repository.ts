@@ -810,6 +810,20 @@ export class PostgresRepository implements Repository {
     );
     return rows.map(toThread);
   }
+  async listDmThreadsForCrew(crewMemberId: CrewMemberId): Promise<Thread[]> {
+    // The participant→thread index (#117, DEC-071). Join through the DM-only
+    // participant rows; id-sorted for parity with the in-memory adapter. `kind`
+    // is redundant with the join (only DMs persist participants) but pinned
+    // explicitly so a future non-DM participant row could never leak in.
+    const { rows } = await this.#pool.query(
+      `select t.* from threads t
+         join thread_participants p on p.thread_id = t.id
+        where t.kind = 'dm' and p.crew_member_id = $1
+        order by t.id`,
+      [crewMemberId],
+    );
+    return rows.map(toThread);
+  }
 
   // ── Doorbell read / notify state (6.6a, #116, DEC-069) ─────────────────────
   // Thread-scoped, subjectKey-keyed — symmetric with PostgresPresence.lastActiveFor.

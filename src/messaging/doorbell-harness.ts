@@ -24,6 +24,16 @@
  * notify-state for every ring, so first-only-until-read and re-arm-after-read are
  * demonstrable across `advance`. The clock is logical: `advance(ms)` moves an
  * injected `now`; nothing here reads the wall clock.
+ *
+ * **Two deliberate simplifications vs real v1** — the board can otherwise mislead:
+ *   - **Presence is a *sticky manual verdict* — it does NOT decay.** The real edge
+ *     expires `present_*` to `absent` after `presenceWindowMs` (DEC-060) and then
+ *     SMS-rings; here a `present` setting holds across every `advance` until you
+ *     change it. So a standing toast/suppress here is permanent; in prod it lapses.
+ *   - **The clock has no sub-tick resolution.** A `read` and a later `post` at the
+ *     *same* logical instant tie toward "read" (the decider's `isReadBy` uses `<=`),
+ *     so that message is treated as already-read. `advance` between a read and a
+ *     subsequent post to see the new message ring.
  */
 
 import { asId } from "../domain/ids.js";
@@ -65,6 +75,8 @@ export interface HarnessOptions {
 export class DoorbellHarness {
   #now: string;
   readonly #rules: DoorbellRules;
+  /** Declared roster — satisfies "define crew" (#115 AC) + the `crew:` echo; the
+   *  decider derives recipients from thread membership, not this set. */
   readonly #crew = new Set<string>();
   readonly #threads = new Map<ThreadId, CrewMemberId[]>();
   readonly #messages: PendingMessage[] = [];
@@ -128,15 +140,11 @@ export class DoorbellHarness {
     this.#now = new Date(Date.parse(this.#now) + ms).toISOString();
   }
 
-  setNow(iso: string): void {
-    this.#now = iso;
-  }
-
   get now(): string {
     return this.#now;
   }
 
-  /** The would-ring log (a copy — callers can't mutate it), in fire order. */
+  /** The would-ring log in fire order — a fresh array (entries are shared refs; dev infra). */
   get rings(): readonly WouldRing[] {
     return [...this.#rings];
   }
@@ -234,10 +242,10 @@ export class DoorbellHarness {
       }
       case "post": {
         const [thread, sender, ...bodyTokens] = rest;
+        const priority = popPriorityFlag(bodyTokens); // strip the flag FIRST, then guard the body
         if (!thread || !sender || bodyTokens.length === 0) {
           return "usage: post <thread> <sender> <body...> [-p]";
         }
-        const priority = popPriorityFlag(bodyTokens);
         this.post(thread, sender, bodyTokens.join(" "), { priority });
         return `posted to ${thread} by ${sender}${priority ? " [priority]" : ""} @ ${this.#now}`;
       }
@@ -341,4 +349,8 @@ const HELP = [
   "  decide | board                            preview the doorbell (no side effects)",
   "  tick                                      fire it — records rings",
   "  rings | now | help | quit",
+  "",
+  "notes: presence is a sticky verdict — it does NOT decay across 'advance' (real v1",
+  "       lapses it to absent after the presence window). A 'read' then a same-tick",
+  "       'post' ties toward read — 'advance' between them to see the new message ring.",
 ].join("\n");

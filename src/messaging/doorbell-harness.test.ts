@@ -99,6 +99,14 @@ describe("command parser (REPL / scenario / test share one surface)", () => {
     expect(d).toMatchObject({ ring: true, reason: "priority_bypass" });
   });
 
+  it("rejects a flag-only post instead of minting an empty-body ring", () => {
+    const h = new DoorbellHarness();
+    h.exec("thread t a");
+    expect(h.exec("post t operator -p")).toMatch(/usage: post/);
+    h.advance(parseDuration("2m"));
+    expect(h.decide().every((d) => !d.ring)).toBe(true); // nothing was posted → nothing rings
+  });
+
   it("maps present aliases to the three-state verdict", () => {
     const h = new DoorbellHarness();
     h.exec("thread t a b c");

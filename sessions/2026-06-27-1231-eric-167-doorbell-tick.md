@@ -6,7 +6,7 @@ branch: task/167-doorbell-tick
 started: 2026-06-27T12:31:54Z
 ended:
 points:
-pr_numbers: [171, 172, 175]
+pr_numbers: [171, 172, 175, 176]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/6ff44aec-cd6a-4598-9273-f798a6c7d340.jsonl
 ---
@@ -55,6 +55,19 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/6ff44aec-cd6a-4598-927
 **Points:** 5
 **Branch:** task/ring-relay (base: task/118-operator-messaging)
 **Opened at:** 2026-06-27T20:09:52Z
+
+## Task 4: Persistent admin nav shell (#174)
+
+**Completed:**
+- A sticky admin nav above every `/admin/*` surface — wayfinding only (no restyle, no hub/data/color change). On `main`, **not** the messaging stack (PRs straight to main per the issue).
+- `app/(admin)/admin/layout.tsx` — NEW route-group layout: renders `<AdminNav>` only for an admin subject (`readSubject`); per-page gates untouched. `components/admin/admin-nav.tsx` — the one client island: `usePathname` active highlight, `Muster` → hub + the four built surfaces, `aria-label="Admin"`, existing tokens, no hamburger.
+- Verified: `npm run verify` ✓ (typecheck ×2, full suite, build), admin-nav e2e **6/6** ✓ (desktop + 375px: admin sees nav, highlight follows route, signed-out + crew see no chrome), 375px screenshot eyeballed (single row fits).
+
+**Code review:** `@code-review` — **no blockers**; auth gating + highlight logic + island scoping all clean. Folded one nit: `aria-label="Admin"` on the landmark + scoped the e2e to it. Left the dev-only env-banner 4px overlap + the by-design dark cockpit highlight.
+**PR:** [#176](https://github.com/mobiustripper42/muster/pull/176)
+**Points:** 2
+**Branch:** task/174-admin-nav (base: main)
+**Opened at:** 2026-06-27T20:20:56Z
 
 **Next Steps:**
 - **6.9 (#119, Twilio/second number, 10DLC-gated)** closes the phase — the real SMS doorbell number replaces the operator-relay (the manual relay + the DEC-072 exclusion + the deep-link all stay).

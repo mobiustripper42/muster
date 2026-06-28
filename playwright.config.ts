@@ -46,10 +46,10 @@ export default defineConfig({
     },
     {
       // 375px render pass — wires failure screenshots into @ui-reviewer (#65).
-      // Scoped to the crew render surface; the functional flows don't vary by
-      // viewport, so re-running all of them at 375px would only burn wall-clock.
+      // The crew render surface + the outbox (its copy/overflow + Dismiss|Send
+      // layout are real 375px concerns — the bug that prompted this was mobile-only).
       name: "mobile",
-      testMatch: /auth-crew\.spec\.ts/,
+      testMatch: /(auth-crew|outbox-relay)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 375, height: 812 } },
     },
   ],

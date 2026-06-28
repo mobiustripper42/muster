@@ -49,7 +49,7 @@ export default defineConfig({
       // Scoped to the crew render surface; the functional flows don't vary by
       // viewport, so re-running all of them at 375px would only burn wall-clock.
       name: "mobile",
-      testMatch: /auth-crew\.spec\.ts/,
+      testMatch: /(auth-crew|admin-nav)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 375, height: 812 } },
     },
   ],

@@ -8,7 +8,12 @@ import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import { asId } from "../domain/ids.js";
 import type { CrewMember, Seat, Shift, Vessel } from "../domain/entities.js";
 import type { Subject } from "../domain/entities.js";
-import { standingThreadId, type Message } from "../messaging/entities.js";
+import {
+  dmThreadId,
+  participantId,
+  standingThreadId,
+  type Message,
+} from "../messaging/entities.js";
 import { buildThreadView } from "./thread-view.js";
 
 const NOW = new Date("2026-07-01T08:00:00.000Z");
@@ -142,16 +147,51 @@ describe("buildThreadView — authorization + shaping (#117, DEC-071)", () => {
     expect(view!.title).toBe("Hops · Tue, Jun 30"); // not "Today's", and not refused
   });
 
-  it("a non-crew (operator) viewer returns null — the 6.8 seam", async () => {
+});
+
+describe("buildThreadView — operator (admin) cross-visibility (#118, DEC-072)", () => {
+  const OP: Subject = { kind: "admin", id: "spink" };
+
+  it("reads ANY thread; mine = the office's own admin messages, not the handle", async () => {
     const repo = await seed();
-    const view = await buildThreadView(
-      repo,
-      shiftThread(SHIFT_MINE),
-      { kind: "admin", id: "crew-spink" },
-      TENANT,
-      NOW,
-      TZ,
+    // A thread the operator is NOT a member of (CO's shift, ME/operator absent).
+    const t = shiftThread(SHIFT_OTHERS);
+    await repo.saveThread({ id: t, tenantId: TENANT, kind: "shift", scopeRef: String(SHIFT_OTHERS), createdAt: NOW.toISOString() });
+    await repo.saveMessage(msg({ id: asId<"MessageId">("c1"), threadId: t, body: "from co" }));
+    await repo.saveMessage(
+      msg({ id: asId<"MessageId">("o1"), threadId: t, senderId: "crew-spink", senderKind: "admin", body: "from office", createdAt: "2026-07-01T07:01:00.000Z" }),
     );
-    expect(view).toBeNull();
+
+    const view = await buildThreadView(repo, t, OP, TENANT, NOW, TZ);
+    expect(view).not.toBeNull();
+    expect(view!.messages.map((m) => [m.senderLabel, m.mine])).toEqual([
+      ["Hooper", false],
+      ["Operator", true],
+    ]);
+    expect(view!.canPost).toBe(false); // a shift thread is read-only for the operator
+  });
+
+  it("reads a DM between two other crew (operator-visible, DEC-050/052), titled with both", async () => {
+    const repo = await seed();
+    const dm = dmThreadId(TENANT, ME, CO);
+    await repo.saveThread({ id: dm, tenantId: TENANT, kind: "dm", scopeRef: null, createdAt: NOW.toISOString() });
+    await repo.saveParticipant({ id: participantId(dm, ME), threadId: dm, crewMemberId: ME });
+    await repo.saveParticipant({ id: participantId(dm, CO), threadId: dm, crewMemberId: CO });
+    await repo.saveMessage(msg({ id: asId<"MessageId">("dm1"), threadId: dm, body: "between us" }));
+
+    const view = await buildThreadView(repo, dm, OP, TENANT, NOW, TZ);
+    expect(view).not.toBeNull();
+    expect(view!.title).toBe("Hooper ↔ Quint");
+    expect(view!.messages[0]!.body).toBe("between us");
+    expect(view!.canPost).toBe(false); // the operator never posts into a crew DM
+  });
+
+  it("opens an unposted post-target (all-staff) — synth-resolved, empty, postable", async () => {
+    const repo = await seed();
+    const view = await buildThreadView(repo, standingThreadId("all_staff", TENANT, null), OP, TENANT, NOW, TZ);
+    expect(view).not.toBeNull();
+    expect(view!.title).toBe("All staff");
+    expect(view!.messages).toEqual([]);
+    expect(view!.canPost).toBe(true); // all-staff is a broadcast door
   });
 });

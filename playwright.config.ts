@@ -51,7 +51,7 @@ export default defineConfig({
       // only burn wall-clock. Messaging (#117) earns a slot — new chat bubbles, a
       // 3-button co-crew row, and a compose box are real 375px layout.
       name: "mobile",
-      testMatch: /(auth-crew|crew-messaging)\.spec\.ts/,
+      testMatch: /(auth-crew|crew-messaging|operator-messaging)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 375, height: 812 } },
     },
   ],

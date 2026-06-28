@@ -179,7 +179,7 @@ export async function myThreads(
 export async function threadTitle(
   repo: Repository,
   thread: Thread,
-  viewerCrewId: CrewMemberId,
+  viewerCrewId: CrewMemberId | null,
   now: Date,
   tz: string = TENANT_TIMEZONE,
 ): Promise<string> {
@@ -198,6 +198,16 @@ export async function threadTitle(
     }
     case "dm": {
       const parts = await repo.listParticipantsForThread(thread.id);
+      // Operator view (viewerCrewId === null, DEC-072): no "other" — name both sides.
+      if (viewerCrewId === null) {
+        const names: string[] = [];
+        for (const p of parts) {
+          const c = await repo.getCrewMember(p.crewMemberId);
+          names.push(c?.name ?? String(p.crewMemberId));
+        }
+        names.sort();
+        return names.join(" ↔ ") || "Direct message";
+      }
       const otherId = parts
         .map((p) => String(p.crewMemberId))
         .find((id) => id !== String(viewerCrewId));
@@ -205,6 +215,37 @@ export async function threadTitle(
       return other?.name ?? otherId ?? "Direct message";
     }
   }
+}
+
+/**
+ * The two threads the operator can ORIGINATE (artifact §9/§10, DEC-072): the
+ * all-staff broadcast and TODAY's cohort. Synthesized with deterministic ids
+ * (`standingThreadId`) so an unposted one is still a post target; a real row, once
+ * posted, supersedes the synth (the list + find-or-create dedup on id). Future-day
+ * cohorts are deferred (they interact with ring-on-future-membership — DEC-072).
+ */
+export function operatorPostTargets(
+  tenantId: TenantId,
+  now: Date,
+  tz: string = TENANT_TIMEZONE,
+): Thread[] {
+  const nowIso = now.toISOString();
+  const today = vesselDateOf(now, tz);
+  return [
+    { id: standingThreadId("all_staff", tenantId, null), tenantId, kind: "all_staff", scopeRef: null, createdAt: nowIso },
+    { id: standingThreadId("cohort", tenantId, today), tenantId, kind: "cohort", scopeRef: today, createdAt: nowIso },
+  ];
+}
+
+/** The synthesized `Thread` if `threadId` is one of the operator's post-targets,
+ *  else null — lets the operator open/post an all-staff/cohort with no row yet. */
+export function operatorStandingTarget(
+  threadId: ThreadId,
+  tenantId: TenantId,
+  now: Date,
+  tz: string = TENANT_TIMEZONE,
+): Thread | null {
+  return operatorPostTargets(tenantId, now, tz).find((t) => String(t.id) === String(threadId)) ?? null;
 }
 
 /** Is the crew member a member of `thread` — the SAME `deriveMembers` the doorbell

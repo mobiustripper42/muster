@@ -20,10 +20,15 @@
 import type { Subject } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import type { CrewMemberId, TenantId, ThreadId } from "../domain/ids.js";
-import type { Thread } from "../messaging/entities.js";
+import type { Message, Thread } from "../messaging/entities.js";
 import type { Repository } from "../ports/repository.js";
 import { TENANT_TIMEZONE } from "../config/tenant.js";
-import { senderLabel, threadMembership } from "./thread-list.js";
+import {
+  operatorStandingTarget,
+  senderLabel,
+  threadMembership,
+  threadTitle,
+} from "./thread-list.js";
 
 export interface ThreadMessageView {
   id: string;
@@ -42,12 +47,44 @@ export interface ThreadView {
   kind: Thread["kind"];
   title: string;
   messages: ThreadMessageView[];
+  /**
+   * May the viewer post here? A **crew** member always can in a thread they're in
+   * (DEC-071). The **operator** can post ONLY to the two broadcast doors — all-staff
+   * and today's cohort (§10 / #118 AC); every other thread they can *see* (shift
+   * threads, crew DMs) is read-only, so the office never injects into a private DM.
+   */
+  canPost: boolean;
+}
+
+/** Shape stored messages into the view DTO, deciding "mine" per the viewer's lens
+ *  (the only thing that differs between the crew and operator branches). */
+async function shapeMessages(
+  repo: Repository,
+  messages: Message[],
+  isMine: (m: Message) => boolean,
+): Promise<ThreadMessageView[]> {
+  const out: ThreadMessageView[] = [];
+  for (const m of messages) {
+    out.push({
+      id: String(m.id),
+      senderLabel: await senderLabel(repo, m),
+      body: m.body,
+      createdAt: m.createdAt,
+      mine: isMine(m),
+      priority: m.priority,
+    });
+  }
+  return out;
 }
 
 /**
- * Build one thread's view for `viewer`, or null when they may not read it (not a
- * member — or not crew, the 6.8 operator seam). `now` feeds the same `myThreads`
- * membership the list uses, so the authorization and the title stay in one place.
+ * Build one thread's view for `viewer`, or null when they may not read it. ONE
+ * authorization site (DEC-071/072): a **crew** viewer must be a member (the
+ * date-agnostic `threadMembership`, matching the doorbell's ring); the **operator**
+ * (admin) reads ANY thread (DEC-052 cross-visibility) — a real row, or a synth of
+ * the two post-targets (all-staff / today-cohort) so an unposted broadcast is still
+ * openable. "Mine" is per-lens: for the operator, every `admin` message is the
+ * office's one voice (DEC-058/030), not keyed on the non-identity handle.
  */
 export async function buildThreadView(
   repo: Repository,
@@ -57,36 +94,36 @@ export async function buildThreadView(
   now: Date,
   tz: string = TENANT_TIMEZONE,
 ): Promise<ThreadView | null> {
-  // DEC-052 predicate. 6.8 ORs in `|| operatorCanRead(threadId)` for viewer.kind
-  // === "admin"; until then only the crew-member branch is reachable.
-  if (viewer.kind !== "crew") return null;
-  const match = await threadMembership(
-    repo,
-    threadId,
-    asId<"CrewMemberId">(viewer.id),
-    tenantId,
-    now,
-    tz,
-  );
-  if (!match) return null;
-
-  const messages = await repo.listMessagesForThread(threadId);
-  const views: ThreadMessageView[] = [];
-  for (const m of messages) {
-    views.push({
-      id: String(m.id),
-      senderLabel: await senderLabel(repo, m),
-      body: m.body,
-      createdAt: m.createdAt,
-      mine: m.senderKind === viewer.kind && m.senderId === viewer.id,
-      priority: m.priority,
-    });
+  let thread: Thread;
+  let title: string;
+  let canPost: boolean;
+  if (viewer.kind === "crew") {
+    const match = await threadMembership(repo, threadId, asId<"CrewMemberId">(viewer.id), tenantId, now, tz);
+    if (!match) return null;
+    thread = match.thread;
+    title = match.title;
+    canPost = true; // a member may post in their own thread (DEC-071)
+  } else {
+    // Operator (admin) reads all (DEC-052 / DEC-072) but posts only to the two
+    // broadcast doors — every other thread (incl. crew DMs) is read-only.
+    const resolved = (await repo.getThread(threadId)) ?? operatorStandingTarget(threadId, tenantId, now, tz);
+    if (!resolved) return null;
+    thread = resolved;
+    title = await threadTitle(repo, thread, null, now, tz);
+    canPost = operatorStandingTarget(threadId, tenantId, now, tz) !== null;
   }
+
+  const isMine = (m: Message): boolean =>
+    viewer.kind === "admin"
+      ? m.senderKind === "admin"
+      : m.senderKind === viewer.kind && m.senderId === viewer.id;
+  const messages = await shapeMessages(repo, await repo.listMessagesForThread(threadId), isMine);
 
   return {
     threadId: String(threadId),
-    kind: match.thread.kind,
-    title: match.title,
-    messages: views,
+    kind: thread.kind,
+    title,
+    messages,
+    canPost,
   };
 }

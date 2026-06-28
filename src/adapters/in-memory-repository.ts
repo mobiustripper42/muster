@@ -15,6 +15,7 @@ import type {
   Event,
   MagicToken,
   OutboxEntry,
+  RingOutboxEntry,
   PtoWindow,
   Reservation,
   RoleType,
@@ -31,6 +32,7 @@ import type {
   EventId,
   MagicTokenId,
   OutboxEntryId,
+  RingOutboxEntryId,
   PtoWindowId,
   ReservationId,
   RoleTypeId,
@@ -75,6 +77,7 @@ export class InMemoryRepository implements Repository {
   readonly #asks = new Map<AskId, Ask>();
   readonly #magicTokens = new Map<MagicTokenId, MagicToken>();
   readonly #outbox = new Map<OutboxEntryId, OutboxEntry>();
+  readonly #ringOutbox = new Map<RingOutboxEntryId, RingOutboxEntry>();
   readonly #reliability: ReliabilityEvent[] = [];
   // Engine pause flag (#124, DEC-054). Default false = running, mirroring the
   // KV's "absent row ⇒ running" semantics. `#enginePausedAt` mirrors the DB's
@@ -304,6 +307,21 @@ export class InMemoryRepository implements Repository {
   }
   async removeOutboxEntry(id: OutboxEntryId): Promise<void> {
     this.#outbox.delete(id);
+  }
+
+  // ── Ring outbox entries (doorbell-relay channel adapter state — DEC-073) ────
+  async saveRingOutboxEntry(entry: RingOutboxEntry): Promise<void> {
+    this.#ringOutbox.set(entry.id, clone(entry));
+  }
+  async getRingOutboxEntry(id: RingOutboxEntryId): Promise<RingOutboxEntry | null> {
+    const e = this.#ringOutbox.get(id);
+    return e ? clone(e) : null;
+  }
+  async listRingOutboxEntries(): Promise<RingOutboxEntry[]> {
+    return [...this.#ringOutbox.values()].map(clone);
+  }
+  async removeRingOutboxEntry(id: RingOutboxEntryId): Promise<void> {
+    this.#ringOutbox.delete(id);
   }
 
   // ── Reliability log (append-only — DEC-008) ───────────────────────────────

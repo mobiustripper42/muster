@@ -1,6 +1,6 @@
 import { doorbellTick } from "@core/builder/doorbell-tick.js";
 import { forwardNotifications } from "@core/adapters/forward-notifications.js";
-import { FakeNotificationChannel } from "@core/adapters/fake-notification-channel.js";
+import { OutboxNotificationChannel } from "@core/adapters/outbox-notification-channel.js";
 import { makeDoorbellRules } from "@core/messaging/doorbell-decider.js";
 import {
   DOORBELL_BATCH_WINDOW_MS,
@@ -15,12 +15,11 @@ import { OPERATOR_CREW_MEMBER_ID } from "./operator";
  * doorbell analog of `forwardToOutbox`. This is the ONE place the app picks the
  * notification adapter.
  *
- * **Pilot delivery is the FAKE/log adapter** (DEC-050): the loop is closed end to
- * end — decider → recorded ring → relay — but the real ring relay is 6.8 (operator
- * outbox, DEC-030) then 6.9 (Twilio, DEC-MSG-1). The fake channel records to a
- * per-request array, so its job here is to prove the loop *fires* and to count
- * rings, not to reach a phone. Swapping it for the real adapter is a one-line
- * change here, zero domain change.
+ * **Delivery is the operator-outbox relay** (DEC-073, the promotion gate): each ring
+ * enqueues a `RingOutboxEntry` (thread deep-link) the operator texts from
+ * `/admin/outbox` — the DEC-030 web-link model, mirroring asks. The Twilio swap (6.9,
+ * DEC-MSG-1) is a different constructor here, zero domain change. Best-effort
+ * (DEC-070): a failed enqueue drops that cycle's ring until read / re-ring.
  */
 export async function runDoorbellTick(now: Date): Promise<{
   threadsSwept: number;
@@ -37,7 +36,15 @@ export async function runDoorbellTick(now: Date): Promise<{
   // (DEC-030) so they'd otherwise be a member of all-staff + their shifts, and
   // every broadcast they send would ring them. They monitor via /admin/messages.
   const r = await doorbellTick(repo, getPresence(), now, rules, OPERATOR_CREW_MEMBER_ID);
-  const channel = new FakeNotificationChannel(() => now);
+  // Delivered links MUST be host-safe — APP_BASE_URL in prod (base-url.ts on
+  // host-header poisoning); the cron has no trustworthy request Host. Fail LOUD in
+  // prod when unset: otherwise every relayed ring is a dead localhost link the
+  // operator texts to crew with no error signal. Dev falls back to localhost.
+  if (!process.env.APP_BASE_URL && process.env.NODE_ENV === "production") {
+    throw new Error("APP_BASE_URL must be set in production — ring links would dead-link to localhost");
+  }
+  const linkBase = (process.env.APP_BASE_URL ?? "http://localhost:3000").replace(/\/+$/, "");
+  const channel = new OutboxNotificationChannel(repo, { linkBase, now: () => now });
   const relayed = await forwardNotifications(repo, channel, r.rings);
   return { threadsSwept: r.threadsSwept, rings: r.rings.length, relayed };
 }

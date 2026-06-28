@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { flushSync } from "react-dom";
-import { recordSent } from "../../app/(admin)/admin/outbox/actions";
 
 /**
  * Single-click relay Send (DEC-030) — the ONE `'use client'` island on the admin
@@ -29,11 +28,15 @@ export function RelaySend({
   smsHref,
   initialSent,
   initialSentLabel,
+  onRecord,
 }: {
   entryId: string;
   smsHref: string;
   initialSent: boolean;
   initialSentLabel: string | null;
+  /** The "mark sent" server action — `recordSent` for asks, `recordRingSent` for
+   *  rings (DEC-073). Passed in so the one hardened island serves both. */
+  onRecord: (entryId: string) => Promise<{ ok: boolean }>;
 }) {
   const [sent, setSent] = useState(initialSent);
   const [label, setLabel] = useState(initialSentLabel);
@@ -54,7 +57,7 @@ export function RelaySend({
             setLabel(`sent ${fmtNow()}`);
           });
           try {
-            await recordSent(entryId);
+            await onRecord(entryId);
           } catch {
             // Network hiccup: the flip stays, the text still goes — Resend covers
             // re-send and a refresh will show the un-persisted truth.

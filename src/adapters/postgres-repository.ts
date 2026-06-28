@@ -23,6 +23,7 @@ import type {
   MagicToken,
   OutboxEntry,
   PtoWindow,
+  RingOutboxEntry,
   Reservation,
   RoleType,
   Seat,
@@ -40,6 +41,7 @@ import type {
   MagicTokenId,
   OutboxEntryId,
   PtoWindowId,
+  RingOutboxEntryId,
   ReservationId,
   RoleTypeId,
   SeatId,
@@ -190,6 +192,17 @@ const toOutboxEntry = (r: any): OutboxEntry => ({
   askId: asId<"AskId">(r.ask_id),
   seatId: asId<"SeatId">(r.seat_id),
   crewMemberId: asId<"CrewMemberId">(r.crew_member_id),
+  body: r.body,
+  link: r.link,
+  status: r.status,
+  createdAt: r.created_at,
+  ...opt("sentAt", r.sent_at),
+});
+
+const toRingOutboxEntry = (r: any): RingOutboxEntry => ({
+  id: asId<"RingOutboxEntryId">(r.id),
+  crewMemberId: asId<"CrewMemberId">(r.crew_member_id),
+  threadId: asId<"ThreadId">(r.thread_id),
   body: r.body,
   link: r.link,
   status: r.status,
@@ -651,6 +664,29 @@ export class PostgresRepository implements Repository {
   }
   async removeOutboxEntry(id: OutboxEntryId): Promise<void> {
     await this.#pool.query("delete from outbox_entries where id=$1", [id]);
+  }
+
+  // ── Ring outbox entries (doorbell-relay channel adapter state — DEC-073) ────
+  async saveRingOutboxEntry(e: RingOutboxEntry): Promise<void> {
+    await this.#pool.query(
+      `insert into ring_outbox(id, crew_member_id, thread_id, body, link, status, created_at, sent_at)
+       values ($1,$2,$3,$4,$5,$6,$7,$8)
+       on conflict (id) do update set crew_member_id=excluded.crew_member_id,
+         thread_id=excluded.thread_id, body=excluded.body, link=excluded.link,
+         status=excluded.status, created_at=excluded.created_at, sent_at=excluded.sent_at`,
+      [e.id, e.crewMemberId, e.threadId, e.body, e.link, e.status, e.createdAt, e.sentAt ?? null],
+    );
+  }
+  async getRingOutboxEntry(id: RingOutboxEntryId): Promise<RingOutboxEntry | null> {
+    const { rows } = await this.#pool.query("select * from ring_outbox where id=$1", [id]);
+    return rows[0] ? toRingOutboxEntry(rows[0]) : null;
+  }
+  async listRingOutboxEntries(): Promise<RingOutboxEntry[]> {
+    const { rows } = await this.#pool.query("select * from ring_outbox");
+    return rows.map(toRingOutboxEntry);
+  }
+  async removeRingOutboxEntry(id: RingOutboxEntryId): Promise<void> {
+    await this.#pool.query("delete from ring_outbox where id=$1", [id]);
   }
 
   // ── Reliability log (append-only — DEC-008) ───────────────────────────────

@@ -1,28 +1,54 @@
 /**
  * Persistent admin nav (#174): the operator sees the bar on every admin surface,
- * the active link follows the route, and a signed-out visitor never sees operator
- * chrome. Runs at 375px too (the no-hamburger single-row AC).
+ * the active link follows the route, and a signed-out / crew visitor sees no
+ * operator chrome. Responsive — desktop inline links, mobile hamburger → slide-in
+ * drawer. Runs at desktop + 375px (the mobile drawer is exercised at 375).
  */
 import { test, expect, resetAndSeed, signInAsCrew, signInAsAdmin } from "./fixtures.js";
+
+/** On mobile the links live behind the hamburger; open it first. No-op on desktop. */
+async function openMenuIfMobile(page: import("@playwright/test").Page): Promise<void> {
+  const burger = page.getByRole("button", { name: "Open menu" });
+  if (await burger.isVisible()) await burger.click();
+}
 
 test.describe("admin nav", () => {
   test.beforeEach(async () => {
     await resetAndSeed("crew");
   });
 
-  test("admin sees the nav; the active link follows the route", async ({ page }) => {
+  test("admin navigates via the bar; the active link follows the route", async ({ page }) => {
     await signInAsAdmin(page, "spink"); // lands on /admin/at-risk
     const nav = page.getByRole("navigation", { name: "Admin" });
     await expect(nav.getByRole("link", { name: "Muster" })).toBeVisible();
 
-    // At-Risk is the active link on the board.
+    await openMenuIfMobile(page);
     await expect(nav.getByRole("link", { name: "At-Risk" })).toHaveAttribute("aria-current", "page");
 
-    // Navigate via the bar → the highlight moves.
-    await nav.getByRole("link", { name: "Outbox" }).click();
+    await nav.getByRole("link", { name: "Outbox" }).click(); // closes the drawer on mobile
     await page.waitForURL(/\/admin\/outbox/);
+
+    await openMenuIfMobile(page);
     await expect(nav.getByRole("link", { name: "Outbox" })).toHaveAttribute("aria-current", "page");
     await expect(nav.getByRole("link", { name: "At-Risk" })).not.toHaveAttribute("aria-current", "page");
+  });
+
+  test("mobile: the hamburger toggles the drawer; a link tap navigates + closes it", async ({ page }) => {
+    await signInAsAdmin(page, "spink");
+    const burger = page.getByRole("button", { name: "Open menu" });
+    test.skip(!(await burger.isVisible()), "desktop: inline links, no hamburger");
+
+    // Closed → open: aria-expanded is the reliable state signal (a transformed
+    // off-screen drawer still reads "visible" to Playwright, so assert on this).
+    await expect(burger).toHaveAttribute("aria-expanded", "false");
+    await burger.click();
+    await expect(burger).toHaveAttribute("aria-expanded", "true");
+
+    // The drawer's Shifts link is now on-screen + actionable; tapping it navigates.
+    await page.getByRole("link", { name: "Shifts" }).click();
+    await page.waitForURL(/\/admin\/shifts/);
+    // …and the drawer closed itself on the route change.
+    await expect(burger).toHaveAttribute("aria-expanded", "false");
   });
 
   test("a signed-out visitor sees no operator nav", async ({ page }) => {

@@ -6,7 +6,7 @@ branch: task/167-doorbell-tick
 started: 2026-06-27T12:31:54Z
 ended:
 points:
-pr_numbers: [171, 172, 175, 176]
+pr_numbers: [171, 172, 175, 176, 178]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/6ff44aec-cd6a-4598-9273-f798a6c7d340.jsonl
 ---
@@ -69,6 +69,19 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/6ff44aec-cd6a-4598-927
 **Points:** 2
 **Branch:** task/174-admin-nav (base: main)
 **Opened at:** 2026-06-27T20:20:56Z
+
+## Task 5: Outbox card fixes — Copy, mobile overflow, Dismiss|Send (#177)
+
+**Completed:**
+- Operator-reported bugs on the #160 outbox card (on `main`): (1) **Copy didn't work** — `navigator.clipboard` is undefined over `http://mill-dev` (Tailscale, insecure context) → added an `execCommand('copy')` fallback (`copy-button.tsx`). (2) **Copy button shoved off-card on mobile** — long magic-link URL forced the flex row wider → `min-w-0` on the message so it wraps. (3) **Dismiss → In/Out idiom**: pending card actions reworked to a 2-col **white/red Dismiss | green/white Send** bar matching the operator's-own-ask Out|In (`outbox-card.tsx`); sent card keeps its muted layout.
+- Verified: core+app typecheck ✓, outbox e2e **4/4** ✓ (desktop + 375px: Copy→"Copied ✓", Send→compact "Sent ✓", Dismiss-clears-card), 375px screenshots eyeballed. **All checks ran in isolated git worktrees** — Eric's `npm run dev` on :3000 holds Next 16's per-dir lock, so the main-dir e2e/build can't run without disrupting his server.
+- **Mid-task the DB (:5432) dropped** (blocked the e2e + Eric's :3000); resumed once he brought it back.
+
+**Code review:** `@code-review` — **no blockers**. Folded both findings: (1) the optimistic Send flip rendered the full Resend bar in the **half-width** grid cell → cramped/overflowed at 375px; added a `compact` RelaySend mode (clean "Sent ✓"; Resend returns on reload). (2) clipboard textarea `removeChild` → `finally`. ⚠️ The `execCommand` fallback (the actual bug) is CI-untestable (localhost is secure) — eyeball over `http://mill-dev`.
+**PR:** [#178](https://github.com/mobiustripper42/muster/pull/178) (closes #177)
+**Points:** 3
+**Branch:** task/outbox-card-fixes (base: main)
+**Opened at:** 2026-06-28T03:33:06Z
 
 **Next Steps:**
 - **6.9 (#119, Twilio/second number, 10DLC-gated)** closes the phase — the real SMS doorbell number replaces the operator-relay (the manual relay + the DEC-072 exclusion + the deep-link all stay).

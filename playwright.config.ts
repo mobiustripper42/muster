@@ -46,10 +46,12 @@ export default defineConfig({
     },
     {
       // 375px render pass — wires failure screenshots into @ui-reviewer (#65).
-      // The crew render surface + the outbox (its copy/overflow + Dismiss|Send
-      // layout are real 375px concerns — the bug that prompted this was mobile-only).
+      // The surfaces with real mobile layout: crew (auth-crew), the admin nav +
+      // hamburger drawer (admin-nav), and the outbox copy/overflow + Dismiss|Send
+      // (outbox-relay). The functional flows don't vary by viewport, so the rest
+      // stays desktop-only.
       name: "mobile",
-      testMatch: /(auth-crew|outbox-relay)\.spec\.ts/,
+      testMatch: /(auth-crew|admin-nav|outbox-relay)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 375, height: 812 } },
     },
   ],

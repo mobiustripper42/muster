@@ -33,6 +33,7 @@ export function RelaySend({
   smsHref,
   initialSent,
   initialSentLabel,
+  compact = false,
 }: {
   entryId: string;
   /** The full message (body + magic link) for the Web Share sheet — no recipient. */
@@ -41,6 +42,10 @@ export function RelaySend({
   smsHref: string | null;
   initialSent: boolean;
   initialSentLabel: string | null;
+  /** Rendered inside a half-width grid cell (the Dismiss|Send pair) — the post-send
+   *  flip becomes a clean "Sent ✓" instead of the full Resend + label bar, which
+   *  would overflow the cell at 375px (#177). Resend returns on reload (sent card). */
+  compact?: boolean;
 }) {
   const [sent, setSent] = useState(initialSent);
   const [label, setLabel] = useState(initialSentLabel);
@@ -109,6 +114,17 @@ export function RelaySend({
       <button type="button" onClick={() => fire()} className={cls}>
         Send
       </button>
+    );
+  }
+
+  // In the Dismiss|Send pair the cell is half-width — show a clean "Sent ✓" rather
+  // than the full Resend + "awaiting reply" bar (which overflows at 375px, #177). The
+  // muted sent card (full-width) keeps Resend on the next load.
+  if (compact) {
+    return (
+      <div className="flex min-h-[52px] w-full items-center justify-center border-t border-line bg-card text-sm font-semibold text-ok">
+        Sent ✓
+      </div>
     );
   }
 

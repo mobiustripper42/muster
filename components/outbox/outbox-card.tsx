@@ -113,6 +113,7 @@ export function OutboxCard({ card }: { card: OutboxCardVM }) {
                 smsHref={card.smsHref}
                 initialSent={false}
                 initialSentLabel={null}
+                compact
               />
             </div>
           ) : (

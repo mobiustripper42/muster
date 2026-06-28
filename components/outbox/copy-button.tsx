@@ -18,8 +18,8 @@ async function copyText(value: string): Promise<boolean> {
   } catch {
     // Secure-context API blocked/denied — fall through to the legacy path.
   }
+  const ta = document.createElement("textarea");
   try {
-    const ta = document.createElement("textarea");
     ta.value = value;
     ta.setAttribute("readonly", ""); // don't pop the mobile keyboard
     ta.style.position = "fixed";
@@ -29,11 +29,12 @@ async function copyText(value: string): Promise<boolean> {
     document.body.appendChild(ta);
     ta.focus();
     ta.select();
-    const ok = document.execCommand("copy");
-    document.body.removeChild(ta);
-    return ok;
+    return document.execCommand("copy");
   } catch {
     return false;
+  } finally {
+    // Always remove the node — even if select()/execCommand threw.
+    ta.remove();
   }
 }
 

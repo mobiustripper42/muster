@@ -37,9 +37,10 @@ test.describe("outbox relay (#160)", () => {
     await copy.click();
     await expect(bo.getByRole("button", { name: /Copied/ })).toBeVisible();
 
-    // Part 2: Send flips optimistically to the sent state.
+    // Part 2: Send flips optimistically to the sent state — in the Dismiss|Send
+    // pair that's the compact "Sent ✓" (the full Resend bar would overflow the cell).
     await bo.getByRole("link", { name: "Send" }).click();
-    await expect(bo.getByText(/awaiting reply/i)).toBeVisible();
+    await expect(bo.getByText("Sent ✓")).toBeVisible();
   });
 
   test("Dismiss (the In/Out-style red button) clears the card from the worklist", async ({ page }) => {

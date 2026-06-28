@@ -16,19 +16,23 @@
 import pg from "pg";
 import type {
   Ask,
+  AuthSubjectKind,
   Credential,
   CrewMember,
   Event,
   MagicToken,
   OutboxEntry,
   PtoWindow,
+  RingOutboxEntry,
   Reservation,
   RoleType,
   Seat,
   Shift,
+  Subject,
   Vessel,
 } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
+import { subjectKey } from "../domain/subject.js";
 import type {
   AskId,
   CredentialId,
@@ -37,6 +41,7 @@ import type {
   MagicTokenId,
   OutboxEntryId,
   PtoWindowId,
+  RingOutboxEntryId,
   ReservationId,
   RoleTypeId,
   SeatId,
@@ -194,6 +199,17 @@ const toOutboxEntry = (r: any): OutboxEntry => ({
   ...opt("sentAt", r.sent_at),
 });
 
+const toRingOutboxEntry = (r: any): RingOutboxEntry => ({
+  id: asId<"RingOutboxEntryId">(r.id),
+  crewMemberId: asId<"CrewMemberId">(r.crew_member_id),
+  threadId: asId<"ThreadId">(r.thread_id),
+  body: r.body,
+  link: r.link,
+  status: r.status,
+  createdAt: r.created_at,
+  ...opt("sentAt", r.sent_at),
+});
+
 const toReliability = (r: any): ReliabilityEvent => ({
   id: asId<"ReliabilityEventId">(r.id),
   crewMemberId: asId<"CrewMemberId">(r.crew_member_id),
@@ -239,6 +255,7 @@ const toMessage = (r: any): Message => ({
   senderKind: r.sender_kind as MessageSenderKind,
   body: r.body,
   createdAt: r.created_at,
+  priority: r.priority, // native boolean (0010) — pg returns a JS boolean
 });
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -649,6 +666,29 @@ export class PostgresRepository implements Repository {
     await this.#pool.query("delete from outbox_entries where id=$1", [id]);
   }
 
+  // ── Ring outbox entries (doorbell-relay channel adapter state — DEC-073) ────
+  async saveRingOutboxEntry(e: RingOutboxEntry): Promise<void> {
+    await this.#pool.query(
+      `insert into ring_outbox(id, crew_member_id, thread_id, body, link, status, created_at, sent_at)
+       values ($1,$2,$3,$4,$5,$6,$7,$8)
+       on conflict (id) do update set crew_member_id=excluded.crew_member_id,
+         thread_id=excluded.thread_id, body=excluded.body, link=excluded.link,
+         status=excluded.status, created_at=excluded.created_at, sent_at=excluded.sent_at`,
+      [e.id, e.crewMemberId, e.threadId, e.body, e.link, e.status, e.createdAt, e.sentAt ?? null],
+    );
+  }
+  async getRingOutboxEntry(id: RingOutboxEntryId): Promise<RingOutboxEntry | null> {
+    const { rows } = await this.#pool.query("select * from ring_outbox where id=$1", [id]);
+    return rows[0] ? toRingOutboxEntry(rows[0]) : null;
+  }
+  async listRingOutboxEntries(): Promise<RingOutboxEntry[]> {
+    const { rows } = await this.#pool.query("select * from ring_outbox");
+    return rows.map(toRingOutboxEntry);
+  }
+  async removeRingOutboxEntry(id: RingOutboxEntryId): Promise<void> {
+    await this.#pool.query("delete from ring_outbox where id=$1", [id]);
+  }
+
   // ── Reliability log (append-only — DEC-008) ───────────────────────────────
   async logReliabilityEvent(e: ReliabilityEvent): Promise<void> {
     await this.#pool.query(
@@ -782,10 +822,11 @@ export class PostgresRepository implements Repository {
   }
   async saveMessage(m: Message): Promise<void> {
     await this.#pool.query(
-      `insert into messages(id, thread_id, sender_id, sender_kind, body, created_at) values ($1,$2,$3,$4,$5,$6)
+      `insert into messages(id, thread_id, sender_id, sender_kind, body, created_at, priority) values ($1,$2,$3,$4,$5,$6,$7)
        on conflict (id) do update set thread_id=excluded.thread_id, sender_id=excluded.sender_id,
-         sender_kind=excluded.sender_kind, body=excluded.body, created_at=excluded.created_at`,
-      [m.id, m.threadId, m.senderId, m.senderKind, m.body, m.createdAt],
+         sender_kind=excluded.sender_kind, body=excluded.body, created_at=excluded.created_at,
+         priority=excluded.priority`,
+      [m.id, m.threadId, m.senderId, m.senderKind, m.body, m.createdAt, m.priority],
     );
   }
   async listMessagesForThread(threadId: ThreadId): Promise<Message[]> {
@@ -796,5 +837,75 @@ export class PostgresRepository implements Repository {
       [threadId],
     );
     return rows.map(toMessage);
+  }
+  async listThreadsWithMessages(): Promise<Thread[]> {
+    // id-sorted for parity with the in-memory adapter; `exists` avoids dragging
+    // message rows. Not time-bounded (DEC-070).
+    const { rows } = await this.#pool.query(
+      "select t.* from threads t where exists (select 1 from messages m where m.thread_id = t.id) order by t.id",
+    );
+    return rows.map(toThread);
+  }
+  async listDmThreadsForCrew(crewMemberId: CrewMemberId): Promise<Thread[]> {
+    // The participant→thread index (#117, DEC-071). Join through the DM-only
+    // participant rows; id-sorted for parity with the in-memory adapter. `kind`
+    // is redundant with the join (only DMs persist participants) but pinned
+    // explicitly so a future non-DM participant row could never leak in.
+    const { rows } = await this.#pool.query(
+      `select t.* from threads t
+         join thread_participants p on p.thread_id = t.id
+        where t.kind = 'dm' and p.crew_member_id = $1
+        order by t.id`,
+      [crewMemberId],
+    );
+    return rows.map(toThread);
+  }
+
+  // ── Doorbell read / notify state (6.6a, #116, DEC-069) ─────────────────────
+  // Thread-scoped, subjectKey-keyed — symmetric with PostgresPresence.lastActiveFor.
+  // Two single-writer tables (DEC-069); the `priority` source is the messages column.
+  async readStateForThread(threadId: ThreadId): Promise<Map<string, string>> {
+    const { rows } = await this.#pool.query<{
+      subject_kind: string;
+      subject_id: string;
+      last_read_at: string;
+    }>(
+      "select subject_kind, subject_id, last_read_at from message_reads where thread_id=$1",
+      [threadId],
+    );
+    const out = new Map<string, string>();
+    for (const r of rows) {
+      out.set(subjectKey({ kind: r.subject_kind as AuthSubjectKind, id: r.subject_id }), r.last_read_at);
+    }
+    return out;
+  }
+  async notifyStateForThread(threadId: ThreadId): Promise<Map<string, string>> {
+    const { rows } = await this.#pool.query<{
+      subject_kind: string;
+      subject_id: string;
+      last_notified_at: string;
+    }>(
+      "select subject_kind, subject_id, last_notified_at from doorbell_notifications where thread_id=$1",
+      [threadId],
+    );
+    const out = new Map<string, string>();
+    for (const r of rows) {
+      out.set(subjectKey({ kind: r.subject_kind as AuthSubjectKind, id: r.subject_id }), r.last_notified_at);
+    }
+    return out;
+  }
+  async recordRead(threadId: ThreadId, subject: Subject, at: string): Promise<void> {
+    await this.#pool.query(
+      `insert into message_reads(thread_id, subject_kind, subject_id, last_read_at) values ($1,$2,$3,$4)
+       on conflict (thread_id, subject_kind, subject_id) do update set last_read_at=excluded.last_read_at`,
+      [threadId, subject.kind, subject.id, at],
+    );
+  }
+  async recordNotification(threadId: ThreadId, subject: Subject, at: string): Promise<void> {
+    await this.#pool.query(
+      `insert into doorbell_notifications(thread_id, subject_kind, subject_id, last_notified_at) values ($1,$2,$3,$4)
+       on conflict (thread_id, subject_kind, subject_id) do update set last_notified_at=excluded.last_notified_at`,
+      [threadId, subject.kind, subject.id, at],
+    );
   }
 }

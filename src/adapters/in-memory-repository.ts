@@ -15,13 +15,16 @@ import type {
   Event,
   MagicToken,
   OutboxEntry,
+  RingOutboxEntry,
   PtoWindow,
   Reservation,
   RoleType,
   Seat,
   Shift,
+  Subject,
   Vessel,
 } from "../domain/entities.js";
+import { subjectKey } from "../domain/subject.js";
 import type {
   AskId,
   CredentialId,
@@ -29,6 +32,7 @@ import type {
   EventId,
   MagicTokenId,
   OutboxEntryId,
+  RingOutboxEntryId,
   PtoWindowId,
   ReservationId,
   RoleTypeId,
@@ -47,6 +51,19 @@ import type { Repository } from "../ports/repository.js";
 
 const clone = <T>(value: T): T => structuredClone(value);
 
+/** Upsert `subjectKey → at` into a threadId→(subjectKey→ISO) store (latest-wins). */
+const upsertThreadState = (
+  store: Map<string, Map<string, string>>,
+  threadId: ThreadId,
+  subject: Subject,
+  at: string,
+): void => {
+  const key = String(threadId);
+  const inner = store.get(key) ?? new Map<string, string>();
+  inner.set(subjectKey(subject), at);
+  store.set(key, inner);
+};
+
 export class InMemoryRepository implements Repository {
   readonly #roleTypes = new Map<RoleTypeId, RoleType>();
   readonly #vessels = new Map<VesselId, Vessel>();
@@ -60,6 +77,7 @@ export class InMemoryRepository implements Repository {
   readonly #asks = new Map<AskId, Ask>();
   readonly #magicTokens = new Map<MagicTokenId, MagicToken>();
   readonly #outbox = new Map<OutboxEntryId, OutboxEntry>();
+  readonly #ringOutbox = new Map<RingOutboxEntryId, RingOutboxEntry>();
   readonly #reliability: ReliabilityEvent[] = [];
   // Engine pause flag (#124, DEC-054). Default false = running, mirroring the
   // KV's "absent row ⇒ running" semantics. `#enginePausedAt` mirrors the DB's
@@ -73,6 +91,10 @@ export class InMemoryRepository implements Repository {
   readonly #threads = new Map<ThreadId, Thread>();
   readonly #participants = new Map<ParticipantId, Participant>();
   readonly #messages = new Map<MessageId, Message>();
+  // Doorbell read / notify state (6.6a, DEC-069): threadId → (subjectKey → ISO).
+  // Two single-writer stores, mirroring the two Postgres tables.
+  readonly #reads = new Map<string, Map<string, string>>();
+  readonly #notifies = new Map<string, Map<string, string>>();
 
   // ── Role types (tenant config — DEC-ROLE-1) ───────────────────────────────
   async saveRoleType(roleType: RoleType): Promise<void> {
@@ -287,6 +309,21 @@ export class InMemoryRepository implements Repository {
     this.#outbox.delete(id);
   }
 
+  // ── Ring outbox entries (doorbell-relay channel adapter state — DEC-073) ────
+  async saveRingOutboxEntry(entry: RingOutboxEntry): Promise<void> {
+    this.#ringOutbox.set(entry.id, clone(entry));
+  }
+  async getRingOutboxEntry(id: RingOutboxEntryId): Promise<RingOutboxEntry | null> {
+    const e = this.#ringOutbox.get(id);
+    return e ? clone(e) : null;
+  }
+  async listRingOutboxEntries(): Promise<RingOutboxEntry[]> {
+    return [...this.#ringOutbox.values()].map(clone);
+  }
+  async removeRingOutboxEntry(id: RingOutboxEntryId): Promise<void> {
+    this.#ringOutbox.delete(id);
+  }
+
   // ── Reliability log (append-only — DEC-008) ───────────────────────────────
   async logReliabilityEvent(event: ReliabilityEvent): Promise<void> {
     this.#reliability.push(clone(event));
@@ -361,5 +398,41 @@ export class InMemoryRepository implements Repository {
           String(a.id).localeCompare(String(b.id)),
       )
       .map(clone);
+  }
+  async listThreadsWithMessages(): Promise<Thread[]> {
+    const withMsg = new Set(
+      [...this.#messages.values()].map((m) => String(m.threadId)),
+    );
+    return [...this.#threads.values()]
+      .filter((t) => withMsg.has(String(t.id)))
+      .sort((a, b) => String(a.id).localeCompare(String(b.id))) // parity: id-sorted
+      .map(clone);
+  }
+  async listDmThreadsForCrew(crewMemberId: CrewMemberId): Promise<Thread[]> {
+    const myThreadIds = new Set(
+      [...this.#participants.values()]
+        .filter((p) => String(p.crewMemberId) === String(crewMemberId))
+        .map((p) => String(p.threadId)),
+    );
+    return [...this.#threads.values()]
+      .filter((t) => t.kind === "dm" && myThreadIds.has(String(t.id)))
+      .sort((a, b) => String(a.id).localeCompare(String(b.id))) // parity: id-sorted
+      .map(clone);
+  }
+
+  // ── Doorbell read / notify state (6.6a, #116, DEC-069) ─────────────────────
+  // Thread-scoped, subjectKey-keyed — byte-identical to PostgresRepository (the
+  // contract pins it). A fresh Map per read so callers can't mutate the store.
+  async readStateForThread(threadId: ThreadId): Promise<Map<string, string>> {
+    return new Map(this.#reads.get(String(threadId)) ?? []);
+  }
+  async notifyStateForThread(threadId: ThreadId): Promise<Map<string, string>> {
+    return new Map(this.#notifies.get(String(threadId)) ?? []);
+  }
+  async recordRead(threadId: ThreadId, subject: Subject, at: string): Promise<void> {
+    upsertThreadState(this.#reads, threadId, subject, at);
+  }
+  async recordNotification(threadId: ThreadId, subject: Subject, at: string): Promise<void> {
+    upsertThreadState(this.#notifies, threadId, subject, at);
   }
 }

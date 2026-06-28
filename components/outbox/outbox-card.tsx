@@ -1,6 +1,7 @@
 import {
   answerOwnAsk,
   dismissOutboxEntry,
+  recordSent,
 } from "../../app/(admin)/admin/outbox/actions";
 import { CopyButton } from "./copy-button";
 import { RelaySend } from "./relay-send";
@@ -113,6 +114,7 @@ export function OutboxCard({ card }: { card: OutboxCardVM }) {
                 smsHref={card.smsHref}
                 initialSent={false}
                 initialSentLabel={null}
+                onRecord={recordSent}
                 compact
               />
             </div>
@@ -126,6 +128,7 @@ export function OutboxCard({ card }: { card: OutboxCardVM }) {
                 smsHref={card.smsHref}
                 initialSent
                 initialSentLabel={card.sentLabel}
+                onRecord={recordSent}
               />
               <form action={dismissOutboxEntry} className="border-t border-line">
                 <input type="hidden" name="entryId" value={card.entryId} />

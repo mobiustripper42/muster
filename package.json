@@ -19,6 +19,7 @@
     "db:seed:atrisk": "tsx db/seed-atrisk-dev.ts",
     "db:seed:outbox": "tsx db/seed-outbox-dev.ts",
     "db:tick": "tsx db/tick-dev.ts",
+    "db:doorbell": "tsx db/doorbell-dev.ts",
     "db:reset:test": "tsx db/reset-test.ts",
     "test": "vitest run",
     "test:pg": "vitest run src/adapters/postgres-repository.test.ts src/adapters/postgres-presence.test.ts",

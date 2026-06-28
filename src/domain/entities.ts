@@ -21,10 +21,12 @@ import type {
   OutboxEntryId,
   PtoWindowId,
   ReservationId,
+  RingOutboxEntryId,
   RoleTypeId,
   SeatId,
   ShiftId,
   TenantId,
+  ThreadId,
   VesselId,
 } from "./ids.js";
 import type { SeatKind, SeatState, ShiftState } from "./states.js";
@@ -319,6 +321,36 @@ export interface OutboxEntry {
   link: string;
   status: OutboxStatus;
   /** ISO-8601 UTC — enqueue time, and the channel's `deliveredAt`. */
+  createdAt: string;
+  /** ISO-8601 UTC; set when the operator marks it sent. Channel-side only. */
+  sentAt?: string;
+}
+
+/**
+ * One queued doorbell-ring relay (DEC-073, the promotion gate). The
+ * `OutboxNotificationChannel`'s `send` enqueues this instead of transmitting; the
+ * operator works the same `/admin/outbox` page (a "New messages" section), texts the
+ * deep link, marks it sent — the DEC-030 web-link model, mirroring {@link OutboxEntry}.
+ *
+ * Its OWN type + table (`ring_outbox`), NOT a union on `OutboxEntry` (DEC-073): a ring
+ * has no ask/seat/claim — it carries a `threadId` and a deep-link to that thread. Same
+ * adapter-side guardrail (nothing in the domain reads it) and freeze rule, but a fresh
+ * one-time `link` is minted per ring-cycle, and the entry **drops from the worklist on
+ * read** (`message_reads.last_read_at >= createdAt`) rather than settling on an answer —
+ * so `createdAt` is the read-cancellation anchor.
+ */
+export interface RingOutboxEntry {
+  /** Deterministic `ring-<threadId>-<crewMemberId>` — one slot per (thread, member). */
+  id: RingOutboxEntryId;
+  crewMemberId: CrewMemberId;
+  /** The thread the ring covers — the deep-link target and the drop-on-read key. */
+  threadId: ThreadId;
+  /** The relay text ("N new" / inlined short note), frozen at enqueue. */
+  body: string;
+  /** The thread deep-link magic link (24h TTL), minted fresh per cycle + frozen. */
+  link: string;
+  status: OutboxStatus;
+  /** ISO-8601 UTC — enqueue time / `deliveredAt`, and the drop-on-read anchor. */
   createdAt: string;
   /** ISO-8601 UTC; set when the operator marks it sent. Channel-side only. */
   sentAt?: string;

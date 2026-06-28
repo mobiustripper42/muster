@@ -253,6 +253,17 @@ export interface Repository {
    * had a ring to fire, so it's excluded.
    */
   listThreadsWithMessages(): Promise<Thread[]>;
+  /**
+   * A crew member's DM threads — the participant→thread index (#117, DEC-071).
+   * The inverse of `listParticipantsForThread`: which DMs is this person in. The
+   * crew thread list needs it (DMs are the one kind with no derivable membership —
+   * DEC-051 — so they can't be computed from the schedule like cohort/shift), and
+   * it's deliberately NOT a scan of `listThreadsWithMessages` (the doorbell's
+   * all-subject sweep, DEC-070) filtered to my rows. Id-sorted for parity; empty
+   * when the crew member is in no DMs. 6.8's operator "all conversations" view is a
+   * separate query — this stays crew-participant-scoped (DMs have only crew rows).
+   */
+  listDmThreadsForCrew(crewMemberId: CrewMemberId): Promise<Thread[]>;
 
   // ── Doorbell read / notify state (6.6a, #116, DEC-069) ─────────────────────
   // Per-(subject,thread) last-read / last-rang — the decider's INJECTED readState

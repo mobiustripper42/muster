@@ -46,10 +46,12 @@ export default defineConfig({
     },
     {
       // 375px render pass — wires failure screenshots into @ui-reviewer (#65).
-      // Scoped to the crew render surface; the functional flows don't vary by
-      // viewport, so re-running all of them at 375px would only burn wall-clock.
+      // Scoped to the crew render surfaces with real layout risk; the functional
+      // flows don't vary by viewport, so re-running ALL of them at 375px would
+      // only burn wall-clock. Messaging (#117) earns a slot — new chat bubbles, a
+      // 3-button co-crew row, and a compose box are real 375px layout.
       name: "mobile",
-      testMatch: /auth-crew\.spec\.ts/,
+      testMatch: /(auth-crew|crew-messaging)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 375, height: 812 } },
     },
   ],

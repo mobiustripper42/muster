@@ -115,3 +115,16 @@ export function dmThreadId(
   const [lo, hi] = [String(a), String(b)].sort();
   return asId<"ThreadId">(`thread-dm-${tenantId}-${lo}-${hi}`);
 }
+
+/**
+ * Deterministic participant-row id for `(thread, crew member)` → starting a DM is
+ * idempotent: re-tapping a crewmate upserts the same two rows (`saveParticipant`
+ * keys on id), never duplicating membership. The DM thread id is already stable
+ * (`dmThreadId`), so a stable participant id completes the find-or-create.
+ */
+export function participantId(
+  threadId: ThreadId,
+  crewMemberId: CrewMemberId,
+): ParticipantId {
+  return asId<"ParticipantId">(`participant-${threadId}-${crewMemberId}`);
+}

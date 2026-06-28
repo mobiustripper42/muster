@@ -668,6 +668,28 @@ export function runRepositoryContract(
       expect(ids).toEqual(["thread-a", "thread-b"]); // quiet excluded, id-sorted
     });
 
+    it("listDmThreadsForCrew: my DMs only, id-sorted; derived kinds + others' DMs excluded (#117, DEC-071)", async () => {
+      // Two DMs I'm in (id order deliberately reversed on save).
+      const dmY = asId<"ThreadId">("thread-dm-y");
+      const dmX = asId<"ThreadId">("thread-dm-x");
+      await repo.saveThread(thread({ id: dmY, kind: "dm" }));
+      await repo.saveThread(thread({ id: dmX, kind: "dm" }));
+      await repo.saveParticipant(participant({ id: asId<"ParticipantId">("p-y"), threadId: dmY }));
+      await repo.saveParticipant(participant({ id: asId<"ParticipantId">("p-x"), threadId: dmX }));
+      // A DM between two OTHER people — I'm not a participant.
+      const dmOther = asId<"ThreadId">("thread-dm-other");
+      await repo.saveThread(thread({ id: dmOther, kind: "dm" }));
+      await repo.saveParticipant(
+        participant({ id: asId<"ParticipantId">("p-o1"), threadId: dmOther, crewMemberId: CREW_B }),
+      );
+      // A derived-kind thread is never a DM even if a stray row pointed at it.
+      await repo.saveThread(thread({ id: asId<"ThreadId">("thread-cohort"), kind: "cohort", scopeRef: "2026-07-04" }));
+
+      const mine = (await repo.listDmThreadsForCrew(CREW)).map((t) => String(t.id));
+      expect(mine).toEqual(["thread-dm-x", "thread-dm-y"]); // id-sorted; others' DM + cohort excluded
+      expect((await repo.listDmThreadsForCrew(CREW)).every((t) => t.kind === "dm")).toBe(true);
+    });
+
     describe("doorbell read/notify state (#116, DEC-069)", () => {
       const A: Subject = { kind: "crew", id: "crew-a" };
       const B: Subject = { kind: "crew", id: "crew-b" };

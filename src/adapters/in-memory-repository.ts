@@ -390,6 +390,17 @@ export class InMemoryRepository implements Repository {
       .sort((a, b) => String(a.id).localeCompare(String(b.id))) // parity: id-sorted
       .map(clone);
   }
+  async listDmThreadsForCrew(crewMemberId: CrewMemberId): Promise<Thread[]> {
+    const myThreadIds = new Set(
+      [...this.#participants.values()]
+        .filter((p) => String(p.crewMemberId) === String(crewMemberId))
+        .map((p) => String(p.threadId)),
+    );
+    return [...this.#threads.values()]
+      .filter((t) => t.kind === "dm" && myThreadIds.has(String(t.id)))
+      .sort((a, b) => String(a.id).localeCompare(String(b.id))) // parity: id-sorted
+      .map(clone);
+  }
 
   // ── Doorbell read / notify state (6.6a, #116, DEC-069) ─────────────────────
   // Thread-scoped, subjectKey-keyed — byte-identical to PostgresRepository (the

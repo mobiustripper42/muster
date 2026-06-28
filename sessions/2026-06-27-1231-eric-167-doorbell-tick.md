@@ -4,10 +4,10 @@ dev: eric
 slug: 167-doorbell-tick
 branch: task/167-doorbell-tick
 started: 2026-06-27T12:31:54Z
-ended:
-points:
+ended: 2026-06-28T14:21:04Z
+points: 18
 pr_numbers: [171, 172, 175, 176, 178]
-status: open
+status: closed
 transcript: /home/eric/.claude/projects/-home-eric-muster/6ff44aec-cd6a-4598-9273-f798a6c7d340.jsonl
 ---
 
@@ -84,9 +84,13 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/6ff44aec-cd6a-4598-927
 **Opened at:** 2026-06-28T03:33:06Z
 
 **Next Steps:**
+- **`db:seed:messages` — NOT YET BUILT (Eric wants it, approved-in-principle).** A new `db/seed-messages-dev.ts` that **respects `PILOT_GUIDES`** (reuse seed-pilot-crew's active-token logic) + `TENANT_ID` + `OPERATOR_CREW_MEMBER_ID`; seeds an **All-staff broadcast from the office + a crew reply + a DM between two active pilot crew**, idempotent, runs after `seed:crew:pilot`. So shifts AND messages share one pilot set. Build on a branch with the messaging UI (off the stack), or standalone on feature/messaging (needs only the 6.1 message store). Was waiting on Eric's go when we closed.
+- **Messaging-test gotchas (hit live this session):** the doorbell tick is the `/api/cron/doorbell-tick` GET, **CRON_SECRET-gated** (set it in `.env.local` AND restart dev; curl with the LITERAL value, not `$CRON_SECRET` — the shell doesn't load .env.local). It also **shares the engine pause gate** (`{paused:true}` = no rings → unpause at `/admin`). Deep-links use **`APP_BASE_URL`** — must be reachable from the tester's phone (Tailscale/mill-dev isn't, so real-people tests need a public deploy). `muster_dev` was missing `0010` (message_reads) → "Can't reach messages" until `db:migrate`.
+- **`PILOT_GUIDES` is the pilot-users env var** (comma-sep name/id tokens → crew `status: active/inactive`). The engine asks only active crew for shifts; the **doorbell already rings only active crew** (the `activeIds` filter), so messaging respects it where it counts. (all_staff `deriveMembers` returns the full roster, but the tick filters active at ring time.)
+- **Native app is Eric's stated endgame for messaging** — and the architecture supports it: the doorbell **decider is transport-independent** (pure fn), delivery is a `NotificationPort` adapter. Arc: web relay (now) → Twilio SMS (6.9, removes manual relay) → native push + WebSocket (removes relay + unlocks full `present_here` suppression per DEC-047/068 + live chat), decider constant throughout. Native parked by DEC-MSG-2, not killed. **Offered to record as a DEC/FUTURE_IDEAS — Eric didn't answer before close; do it next session.**
 - **6.9 (#119, Twilio/second number, 10DLC-gated)** closes the phase — the real SMS doorbell number replaces the operator-relay (the manual relay + the DEC-072 exclusion + the deep-link all stay).
-- **The whole messaging stack (#171→#172→#175) is in review** (Eric reviewing). Merge order: #171 → #172 → #175 into feature/messaging, then feature/messaging → main.
-- **#174 (admin nav shell, 2pt)** — picked up on `main` (independent of the messaging stack), in flight this session.
+- **The whole messaging stack (#171→#172→#175) is in review.** Eric **validated #171 + #172** this session (tested live); **#175 mid-test** at close. Merge order: #171 → #172 → #175 into feature/messaging, then feature/messaging → main.
+- **#174 (admin nav shell + #178 outbox fixes) MERGED to main + PROMOTED to production** this session (production at ff6c149, untagged — `/retro` to patch-bump #176/#178 + tag). Working dir was left on a messaging branch after testing (started the promote on `production`).
 - **⚠️ Merge reconciliation:** #175's `relay-send.tsx`/`outbox-card.tsx` are off `feature/messaging` (pre-#160); **`main` already has the #160 Web Share versions** of both. The `feature/messaging`→`main` merge must reconcile the `onRecord` generalization (rings) with main's Web Share send path — not a textual auto-merge.
 - **Crew-side DM-visibility disclosure** (flagged in DEC-072) — a one-line "your DMs are visible to the office" on the crew DM surface; a real §6 trust gap, raise with the operator first. Thin fast-follow.
 - The **live popping toast** (vs the v1 refresh-time badge) waits on the realtime socket (DEC-047) — deferred with instant chat (DEC-045).

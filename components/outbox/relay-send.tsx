@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { flushSync } from "react-dom";
-import { recordSent } from "../../app/(admin)/admin/outbox/actions";
 
 /**
  * Single-click relay Send (DEC-030) — the ONE `'use client'` island on the admin
@@ -34,6 +33,7 @@ export function RelaySend({
   initialSent,
   initialSentLabel,
   compact = false,
+  onRecord,
 }: {
   entryId: string;
   /** The full message (body + magic link) for the Web Share sheet — no recipient. */
@@ -46,6 +46,9 @@ export function RelaySend({
    *  flip becomes a clean "Sent ✓" instead of the full Resend + label bar, which
    *  would overflow the cell at 375px (#177). Resend returns on reload (sent card). */
   compact?: boolean;
+  /** The "mark sent" server action — `recordSent` for asks, `recordRingSent` for
+   *  rings (DEC-073). Passed in so the one hardened island serves both. */
+  onRecord: (entryId: string) => Promise<{ ok: boolean }>;
 }) {
   const [sent, setSent] = useState(initialSent);
   const [label, setLabel] = useState(initialSentLabel);
@@ -75,13 +78,13 @@ export function RelaySend({
         .share({ text: shareText })
         .catch(() => {})
         .finally(() => {
-          void recordSent(entryId).catch(() => {});
+          void onRecord(entryId).catch(() => {});
         });
       return;
     }
     // Fallback: the sms: composer. Record BEFORE navigating (navigation aborts an
     // in-flight request); the text matters most, so navigate even if the write fails.
-    void recordSent(entryId)
+    void onRecord(entryId)
       .catch(() => {})
       .finally(() => {
         if (smsHref) window.location.href = smsHref;

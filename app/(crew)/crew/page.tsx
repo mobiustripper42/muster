@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { buildCrewAppView, type CrewAppView } from "@core/crewapp/crew-view.js";
+import { buildThreadList } from "@core/crewapp/thread-list.js";
 import { asId } from "@core/domain/ids.js";
 import { Notice } from "../../../components/ui/notice";
 import { Shell } from "../../../components/ui/shell";
 import { readSubject } from "../../lib/auth";
 import { getRepo } from "../../lib/repo";
+import { TENANT_ID } from "../../lib/tenant";
 import { fmt12 } from "../../lib/format";
 import { respondToAsk } from "./actions";
 
@@ -43,6 +45,7 @@ export default async function CrewHome({
 
   let view: CrewAppView | null;
   let bailedNote: string | null = null;
+  let unreadTotal = 0;
   try {
     const repo = getRepo();
     view = await buildCrewAppView(
@@ -50,6 +53,15 @@ export default async function CrewHome({
       asId<"CrewMemberId">(subject.id),
       new Date(),
     );
+    // In-app unread badge (§7.6) — best-effort: a messaging hiccup must never
+    // break the crew member's home (asks/shifts are the priority surface).
+    try {
+      unreadTotal = (
+        await buildThreadList(repo, asId<"CrewMemberId">(subject.id), TENANT_ID, new Date())
+      ).totalUnread;
+    } catch {
+      unreadTotal = 0;
+    }
     // `bailed` carries a shift id (codes/ids only, DEC-026); resolve it to a
     // date we know — a crafted URL with an unknown id renders nothing, and one
     // naming a shift they're demonstrably still on is suppressed too. No
@@ -70,7 +82,12 @@ export default async function CrewHome({
 
   const answeredNote = sp.answered ? ANSWERED_NOTE[sp.answered] ?? null : null;
   return (
-    <CrewApp view={view} bailedNote={bailedNote} answeredNote={answeredNote} />
+    <CrewApp
+      view={view}
+      bailedNote={bailedNote}
+      answeredNote={answeredNote}
+      unreadTotal={unreadTotal}
+    />
   );
 }
 
@@ -116,10 +133,12 @@ function CrewApp({
   view,
   bailedNote,
   answeredNote,
+  unreadTotal,
 }: {
   view: CrewAppView;
   bailedNote: string | null;
   answeredNote: string | null;
+  unreadTotal: number;
 }) {
   return (
     <Shell>
@@ -135,6 +154,28 @@ function CrewApp({
           {view.standing.line}
         </p>
       </header>
+
+      {/* Messages (§7.6 in-app): a calm entry point with the unread count — an
+          accent pill, never an alarm color (the anxiety-dashboard guard). */}
+      <Link
+        href="/crew/threads"
+        prefetch={false}
+        className="flex items-center justify-between rounded-card border border-line bg-card px-4 py-3 shadow-sm"
+      >
+        <span className="font-semibold text-ink">Messages</span>
+        {unreadTotal > 0 ? (
+          <span
+            className="rounded-full bg-accent px-2 py-0.5 text-xs font-bold text-white"
+            aria-label={`${unreadTotal} unread`}
+          >
+            {unreadTotal}
+          </span>
+        ) : (
+          <span className="text-faint" aria-hidden>
+            ›
+          </span>
+        )}
+      </Link>
 
       {bailedNote && <Notice>{bailedNote}</Notice>}
       {answeredNote && <Notice>{answeredNote}</Notice>}

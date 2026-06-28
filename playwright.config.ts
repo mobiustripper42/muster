@@ -46,12 +46,13 @@ export default defineConfig({
     },
     {
       // 375px render pass — wires failure screenshots into @ui-reviewer (#65).
-      // The surfaces with real mobile layout: crew (auth-crew), the admin nav +
-      // hamburger drawer (admin-nav), and the outbox copy/overflow + Dismiss|Send
-      // (outbox-relay). The functional flows don't vary by viewport, so the rest
-      // stays desktop-only.
+      // Scoped to the surfaces with real mobile layout risk; the functional flows
+      // don't vary by viewport, so the rest stays desktop-only to save wall-clock.
+      // Covers: crew (auth-crew), the admin nav + hamburger drawer (admin-nav), the
+      // outbox copy/overflow + Dismiss|Send (outbox-relay), and the messaging
+      // surfaces (#117 — chat bubbles, the 3-button co-crew row, the compose box).
       name: "mobile",
-      testMatch: /(auth-crew|admin-nav|outbox-relay)\.spec\.ts/,
+      testMatch: /(auth-crew|admin-nav|outbox-relay|crew-messaging|operator-messaging)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 375, height: 812 } },
     },
   ],
@@ -67,6 +68,9 @@ export default defineConfig({
       // Dev-default secret is fine for tests; pin it so cookies stay valid across
       // a server restart within a run.
       SESSION_SECRET: process.env.SESSION_SECRET ?? "e2e-test-secret",
+      // The doorbell cron is CRON_SECRET-gated; pin one so the ring-relay e2e can
+      // trigger a tick (the only way to exercise the relay end-to-end).
+      CRON_SECRET: process.env.CRON_SECRET ?? "e2e-cron-secret",
     },
   },
 });

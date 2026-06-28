@@ -17,11 +17,13 @@ import type {
   Event,
   MagicToken,
   OutboxEntry,
+  RingOutboxEntry,
   PtoWindow,
   Reservation,
   RoleType,
   Seat,
   Shift,
+  Subject,
   Vessel,
 } from "../domain/entities.js";
 import type {
@@ -31,6 +33,7 @@ import type {
   EventId,
   MagicTokenId,
   OutboxEntryId,
+  RingOutboxEntryId,
   PtoWindowId,
   ReservationId,
   RoleTypeId,
@@ -183,6 +186,18 @@ export interface Repository {
    */
   removeOutboxEntry(id: OutboxEntryId): Promise<void>;
 
+  // ── Ring outbox entries (doorbell-relay channel adapter state — DEC-073) ───
+  // Sibling to the ask outbox, its OWN slot (not a union): the doorbell-ring relay's
+  // worklist. Same adapter-side guardrail — only the `OutboxNotificationChannel`
+  // writes it, only the ring-outbox view reads it; the domain never does.
+  /** Persist a ring entry (upsert by id) — enqueue per ring-cycle, mark-sent. */
+  saveRingOutboxEntry(entry: RingOutboxEntry): Promise<void>;
+  getRingOutboxEntry(id: RingOutboxEntryId): Promise<RingOutboxEntry | null>;
+  /** Every ring entry — the outbox page's "New messages" section + a reset scan. */
+  listRingOutboxEntries(): Promise<RingOutboxEntry[]>;
+  /** Remove a ring entry (dev-seed reset / housekeeping). No-op if absent. */
+  removeRingOutboxEntry(id: RingOutboxEntryId): Promise<void>;
+
   // ── Reliability log (append-only — DEC-008) ───────────────────────────────
   /** Append a reliability event. The log is never mutated, only grown. */
   logReliabilityEvent(event: ReliabilityEvent): Promise<void>;
@@ -244,4 +259,41 @@ export interface Repository {
   /** One thread's messages, oldest-first — chronological by `createdAt`, id as the
    *  deterministic tie-break (parity across adapters). */
   listMessagesForThread(threadId: ThreadId): Promise<Message[]>;
+  /**
+   * Every thread that has ≥1 message, id-sorted — the doorbell sweep's domain
+   * (6.6b, DEC-070). **Not** time-bounded: §7.4 priority can be flipped on an
+   * *old* message, so a `createdAt` window would miss it; a quiet thread instead
+   * costs the decider one cheap `all_read` pass. A thread with no message never
+   * had a ring to fire, so it's excluded.
+   */
+  listThreadsWithMessages(): Promise<Thread[]>;
+  /**
+   * A crew member's DM threads — the participant→thread index (#117, DEC-071).
+   * The inverse of `listParticipantsForThread`: which DMs is this person in. The
+   * crew thread list needs it (DMs are the one kind with no derivable membership —
+   * DEC-051 — so they can't be computed from the schedule like cohort/shift), and
+   * it's deliberately NOT a scan of `listThreadsWithMessages` (the doorbell's
+   * all-subject sweep, DEC-070) filtered to my rows. Id-sorted for parity; empty
+   * when the crew member is in no DMs. 6.8's operator "all conversations" view is a
+   * separate query — this stays crew-participant-scoped (DMs have only crew rows).
+   */
+  listDmThreadsForCrew(crewMemberId: CrewMemberId): Promise<Thread[]>;
+
+  // ── Doorbell read / notify state (6.6a, #116, DEC-069) ─────────────────────
+  // Per-(subject,thread) last-read / last-rang — the decider's INJECTED readState
+  // and notifyState (DEC-068). Thread-scoped + `subjectKey`-keyed, symmetric with
+  // `PresencePort.lastActiveFor`: a never-recorded subject is OMITTED from the map
+  // (the decider reads absent → null → fail toward ringing). The edge intersects
+  // each map with `deriveMembers` and re-keys to the decider's `memberThreadKey`
+  // (6.6b) — so the port stays below the decider, never importing its key helper.
+  // Substrate now; the call-sites land later — `recordRead` is the crew-app read
+  // path (6.7), `recordNotification` is the doorbell tick on a ring (6.6b).
+  /** A thread's last-read marks, keyed by `subjectKey` (`${kind}:${id}`). */
+  readStateForThread(threadId: ThreadId): Promise<Map<string, string>>;
+  /** A thread's last-rang marks, keyed by `subjectKey`. */
+  notifyStateForThread(threadId: ThreadId): Promise<Map<string, string>>;
+  /** Upsert a subject's last-read for a thread (latest-wins). */
+  recordRead(threadId: ThreadId, subject: Subject, at: string): Promise<void>;
+  /** Upsert a subject's last-rang for a thread (latest-wins). */
+  recordNotification(threadId: ThreadId, subject: Subject, at: string): Promise<void>;
 }

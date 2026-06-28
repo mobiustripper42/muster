@@ -1,7 +1,9 @@
 import { buildOutboxView, type OutboxCardView } from "@core/admin/outbox-view.js";
+import { buildRingOutboxView, type RingOutboxCardView } from "@core/admin/ring-outbox-view.js";
 import { buildSmsUrl } from "@core/adapters/sms-deep-link.js";
 import { TENANT_TIMEZONE } from "@core/config/tenant.js";
 import { OutboxCard, type OutboxCardVM } from "../../../../components/outbox/outbox-card";
+import { RingOutboxCard, type RingOutboxCardVM } from "../../../../components/outbox/ring-outbox-card";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { readSubject } from "../../../lib/auth";
@@ -78,6 +80,18 @@ export default async function Outbox({
   const pending = view.pending.map(toVM);
   const sent = view.sent.map(toVM);
 
+  // Doorbell-ring relays (DEC-073) — best-effort: a ring-view hiccup must never
+  // 500 the ask worklist (the time-critical half).
+  let ringPending: RingOutboxCardVM[] = [];
+  let ringSent: RingOutboxCardVM[] = [];
+  try {
+    const ringView = await buildRingOutboxView(repo);
+    ringPending = ringView.pending.map(toRingVM);
+    ringSent = ringView.sent.map(toRingVM);
+  } catch {
+    // leave rings empty
+  }
+
   return (
     <Shell>
       <header className="flex items-end justify-between gap-2">
@@ -106,23 +120,42 @@ export default async function Outbox({
       )}
       {obxError && <Notice tone="bad">{obxError}</Notice>}
 
-      {pending.length === 0 && sent.length === 0 ? (
+      {pending.length === 0 &&
+      sent.length === 0 &&
+      ringPending.length === 0 &&
+      ringSent.length === 0 ? (
         <EmptySuccess />
       ) : (
         <>
-          <section className="flex flex-col gap-2">
-            {pending.length === 0 ? (
-              <Notice>Nothing left to send — the rest is waiting on replies.</Notice>
-            ) : (
-              pending.map((c) => <OutboxCard key={c.entryId} card={c} />)
-            )}
-          </section>
-          {sent.length > 0 && (
+          {(pending.length > 0 || sent.length > 0) && (
+            <>
+              <section className="flex flex-col gap-2">
+                {pending.length === 0 ? (
+                  <Notice>Nothing left to send — the rest is waiting on replies.</Notice>
+                ) : (
+                  pending.map((c) => <OutboxCard key={c.entryId} card={c} />)
+                )}
+              </section>
+              {sent.length > 0 && (
+                <section className="flex flex-col gap-2">
+                  <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">
+                    Sent · awaiting reply
+                  </h2>
+                  {sent.map((c) => <OutboxCard key={c.entryId} card={c} />)}
+                </section>
+              )}
+            </>
+          )}
+
+          {/* Doorbell-ring relays (DEC-073) — a separate section, sorted by recency
+              (rings carry no trip to sort by). Clears itself once the crew reads. */}
+          {(ringPending.length > 0 || ringSent.length > 0) && (
             <section className="flex flex-col gap-2">
               <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">
-                Sent · awaiting reply
+                New messages{ringPending.length > 0 ? ` · ${ringPending.length} to send` : ""}
               </h2>
-              {sent.map((c) => <OutboxCard key={c.entryId} card={c} />)}
+              {ringPending.map((c) => <RingOutboxCard key={c.entryId} card={c} />)}
+              {ringSent.map((c) => <RingOutboxCard key={c.entryId} card={c} />)}
             </section>
           )}
         </>
@@ -159,6 +192,22 @@ function toVM(c: OutboxCardView): OutboxCardVM {
     shareText: message,
     crewPhone: c.crewPhone,
     mode: c.status === "sent" ? "sent" : self ? "self" : "relay",
+    sentLabel: c.sentAt ? `sent ${fmtTime(c.sentAt)}` : null,
+  };
+}
+
+/** Format one ring read-model into the ring card's display strings (DEC-073). */
+function toRingVM(c: RingOutboxCardView): RingOutboxCardVM {
+  // The frozen relay body + the frozen deep-link (DEC-030 — never re-minted). One
+  // value feeds the sms: href and the Web Share sheet (#160).
+  const message = `${c.body}\n${c.link}`;
+  return {
+    entryId: c.entryId,
+    crewName: c.crewName,
+    body: c.body,
+    shareText: message,
+    smsHref: c.crewPhone ? buildSmsUrl({ phone: c.crewPhone, body: message }) : null,
+    initialSent: c.status === "sent",
     sentLabel: c.sentAt ? `sent ${fmtTime(c.sentAt)}` : null,
   };
 }

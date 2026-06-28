@@ -70,6 +70,11 @@ export interface Message {
   body: string;
   /** ISO-8601 UTC; the chronological order key (`listMessagesForThread`). */
   createdAt: string;
+  /** §7.4 — operator-flagged / type-derived priority. The doorbell decider's
+   *  `PendingMessage.priority` (DEC-068) flows from this; a priority message
+   *  bypasses the batch window + first-only-until-read. Persisted in 6.6a; the
+   *  operator flag that SETS it is later (6.7/6.8). */
+  priority: boolean;
 }
 
 /**
@@ -109,4 +114,17 @@ export function dmThreadId(
 ): ThreadId {
   const [lo, hi] = [String(a), String(b)].sort();
   return asId<"ThreadId">(`thread-dm-${tenantId}-${lo}-${hi}`);
+}
+
+/**
+ * Deterministic participant-row id for `(thread, crew member)` → starting a DM is
+ * idempotent: re-tapping a crewmate upserts the same two rows (`saveParticipant`
+ * keys on id), never duplicating membership. The DM thread id is already stable
+ * (`dmThreadId`), so a stable participant id completes the find-or-create.
+ */
+export function participantId(
+  threadId: ThreadId,
+  crewMemberId: CrewMemberId,
+): ParticipantId {
+  return asId<"ParticipantId">(`participant-${threadId}-${crewMemberId}`);
 }

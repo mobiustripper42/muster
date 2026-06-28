@@ -5,6 +5,7 @@
     "deploymentEnabled": { "main": false }
   },
   "crons": [
-    { "path": "/api/cron/tick", "schedule": "*/15 * * * *" }
+    { "path": "/api/cron/tick", "schedule": "*/15 * * * *" },
+    { "path": "/api/cron/doorbell-tick", "schedule": "*/2 * * * *" }
   ]
 }

@@ -75,7 +75,9 @@ export function OutboxCard({ card }: { card: OutboxCardVM }) {
               text is `select-all` so a blocked clipboard still copies by hand. */}
           <div className="flex flex-col gap-2 border-t border-line px-4 py-3">
             <div className="flex items-start justify-between gap-2">
-              <p className="select-all whitespace-pre-wrap break-words text-sm text-ink">
+              {/* min-w-0 so the long magic-link URL WRAPS instead of forcing the row
+                  wider than the card and shoving the Copy button off-screen. */}
+              <p className="min-w-0 select-all whitespace-pre-wrap break-words text-sm text-ink">
                 {card.shareText}
               </p>
               <CopyButton value={card.shareText} label="Copy" />
@@ -89,15 +91,53 @@ export function OutboxCard({ card }: { card: OutboxCardVM }) {
               )}
             </div>
           </div>
-          {/* Send: Web Share (Google Voice) → sms: fallback. Works even with no
-              phone — share has no recipient field; sms: is the with-number path. */}
-          <RelaySend
-            entryId={card.entryId}
-            shareText={card.shareText}
-            smsHref={card.smsHref}
-            initialSent={card.mode === "sent"}
-            initialSentLabel={card.sentLabel}
-          />
+          {card.mode === "relay" ? (
+            // Pending: Dismiss | Send as a two-button row — the In/Out idiom
+            // (white-red Dismiss | green-white Send). Send is Web Share (Google
+            // Voice) → sms: fallback; works even with no phone (share has no
+            // recipient field). Both buttons carry the top border so the row reads
+            // as one bar with a center divider (gap-px bg-line).
+            <div className="grid grid-cols-2 gap-px bg-line">
+              <form action={dismissOutboxEntry}>
+                <input type="hidden" name="entryId" value={card.entryId} />
+                <button
+                  type="submit"
+                  className="min-h-[52px] w-full border-t border-line bg-card font-semibold text-bad"
+                >
+                  Dismiss
+                </button>
+              </form>
+              <RelaySend
+                entryId={card.entryId}
+                shareText={card.shareText}
+                smsHref={card.smsHref}
+                initialSent={false}
+                initialSentLabel={null}
+                compact
+              />
+            </div>
+          ) : (
+            // Sent: the muted awaiting-reply state (Resend) above a low-emphasis
+            // Dismiss — the card is already opacity-60, so this stays quiet.
+            <>
+              <RelaySend
+                entryId={card.entryId}
+                shareText={card.shareText}
+                smsHref={card.smsHref}
+                initialSent
+                initialSentLabel={card.sentLabel}
+              />
+              <form action={dismissOutboxEntry} className="border-t border-line">
+                <input type="hidden" name="entryId" value={card.entryId} />
+                <button
+                  type="submit"
+                  className="w-full px-4 py-2 text-xs text-muted hover:text-bad"
+                >
+                  Dismiss — clear from your list (the ask still times out on its own)
+                </button>
+              </form>
+            </>
+          )}
         </>
       )}
 
@@ -128,22 +168,6 @@ export function OutboxCard({ card }: { card: OutboxCardVM }) {
         </form>
       )}
 
-      {/* Dismiss — clear this card from the worklist without sending (#158). The
-          ask stays live and rides to its silent-timeout (#151); this only hides
-          the relay. NOT on `self` cards: the operator answers their own ask inline
-          (In/Out above), and leaving it to time out would log THEM as a ghoster
-          (DEC-067). Low-emphasis so it's not fat-fingered next to Send. */}
-      {card.mode !== "self" && (
-        <form action={dismissOutboxEntry} className="border-t border-line">
-          <input type="hidden" name="entryId" value={card.entryId} />
-          <button
-            type="submit"
-            className="w-full px-4 py-2 text-xs text-muted hover:text-bad"
-          >
-            Dismiss — clear from your list (the ask still times out on its own)
-          </button>
-        </form>
-      )}
     </article>
   );
 }

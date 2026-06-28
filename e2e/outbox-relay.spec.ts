@@ -21,6 +21,7 @@ test.describe("outbox relay (#160)", () => {
         value: () => Promise.resolve(),
       });
     });
+    await page.context().grantPermissions(["clipboard-write"]); // for the Copy flip
     await signInAsAdmin(page, "spink");
     await page.goto("/admin/outbox");
 
@@ -28,14 +29,28 @@ test.describe("outbox relay (#160)", () => {
     const bo = page.locator("article").filter({ hasText: "+15555550101" });
     await expect(bo).toBeVisible();
 
-    // Part 1: the full message (incl. the magic link) + a Copy button on the card.
+    // Part 1: the full message (incl. the magic link) + a Copy button that WORKS
+    // (flips to "Copied ✓" — on localhost the secure-context clipboard path runs).
     await expect(bo.getByText(/crew\/auth/)).toBeVisible();
-    await expect(
-      bo.getByRole("button", { name: "Copy", exact: true }),
-    ).toBeVisible();
+    const copy = bo.getByRole("button", { name: "Copy", exact: true });
+    await expect(copy).toBeVisible();
+    await copy.click();
+    await expect(bo.getByRole("button", { name: /Copied/ })).toBeVisible();
 
-    // Part 2: Send flips optimistically to the sent state.
+    // Part 2: Send flips optimistically to the sent state — in the Dismiss|Send
+    // pair that's the compact "Sent ✓" (the full Resend bar would overflow the cell).
     await bo.getByRole("link", { name: "Send" }).click();
-    await expect(bo.getByText(/awaiting reply/i)).toBeVisible();
+    await expect(bo.getByText("Sent ✓")).toBeVisible();
+  });
+
+  test("Dismiss (the In/Out-style red button) clears the card from the worklist", async ({ page }) => {
+    await signInAsAdmin(page, "spink");
+    await page.goto("/admin/outbox");
+    const bo = page.locator("article").filter({ hasText: "+15555550101" });
+    await expect(bo).toBeVisible();
+
+    await bo.getByRole("button", { name: "Dismiss", exact: true }).click();
+    // The entry is deleted → the card is gone from the worklist on the reload.
+    await expect(page.locator("article").filter({ hasText: "+15555550101" })).toHaveCount(0);
   });
 });

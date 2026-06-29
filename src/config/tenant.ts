@@ -92,6 +92,20 @@ export function vesselDateOf(at: Date, tz: string = TENANT_TIMEZONE): string {
 }
 
 /**
+ * Add `n` (possibly negative) days to a "YYYY-MM-DD" string. Pure, UTC-anchored —
+ * day arithmetic on a date-only string has no time-of-day, so UTC is exact here
+ * (unlike deriving the *current* date from an instant, which needs `vesselDateOf`).
+ * `src/import/xola-pull.ts` keeps a local twin for the pull window; consolidating
+ * the two is a future cleanup, not this task.
+ */
+export function addDays(date: string, n: number): string {
+  const [y, m, d] = date.split("-").map(Number);
+  const dt = new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, d ?? 1));
+  dt.setUTCDate(dt.getUTCDate() + n);
+  return dt.toISOString().slice(0, 10);
+}
+
+/**
  * Role precedence (#148, DEC-066), **most-senior first** — tenant data, tune-later
  * like the timezone (DEC-001). The pilot fleet's two roles: a captain outranks a
  * mate. Used **only to decide who gets _asked_**: a crew member is never auto-asked

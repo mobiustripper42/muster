@@ -137,6 +137,26 @@ export function isAskableFor(
 }
 
 /**
+ * A crew member's **native role** (DEC-076) — the single role the self-claim door
+ * shows them, distinct from the full `ratings` the operator-assign door keeps.
+ *
+ * The highest-precedence role they hold (captain > mate via `ROLE_PRECEDENCE`),
+ * so a dual-rated `[captain, mate]` member is a captain here and never sees mate
+ * seats on the browse surface — while `isRatedFor` still lets the operator drop
+ * them into a mate seat (the dual-rating fill hack, DEC-064/066). Falls back to a
+ * lone unranked rating; `null` only if ratings are empty or ambiguously unranked
+ * (not a state the two-role fleet produces). Hardcoded precedence is the
+ * acknowledged wart for the two-role world — DEC-076 names the graduation path (a
+ * stored `primary_role` / `role_types.rank`) for when genuine multi-role lands.
+ */
+export function nativeRole(crew: CrewMember): RoleTypeId | null {
+  for (const role of ROLE_PRECEDENCE) {
+    if (crew.ratings.includes(role)) return role;
+  }
+  return crew.ratings.length === 1 ? crew.ratings[0]! : null;
+}
+
+/**
  * Candidate holds a hard-gating credential valid on the trip date (§1.3).
  *
  * Pure **date-only** comparison of ISO date strings (`tripDate` = the shift's

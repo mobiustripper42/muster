@@ -68,16 +68,37 @@ export function readEmailEnv(): EmailEnv | null {
  *  never awaited on the request hot path (see the timing note above). */
 export async function sendLoginCodeEmail(d: LoginCodeDelivery): Promise<void> {
   const env = readEmailEnv();
-  if (!env) return; // dev/e2e: the echo already covered it
+  if (!env) {
+    // In prod with the flag ON, a missing or half-set config means the crew
+    // member sees "check your email" but nothing ever sends. The both-or-nothing
+    // no-op is the safe behavior (never half-send), but make the misconfig
+    // VISIBLE — it runs in after() (off the hot path), gated so dev/e2e stay quiet.
+    if (isProdDeploy()) {
+      console.error(
+        "[login-code] email send skipped — set RESEND_API_KEY and EMAIL_FROM",
+      );
+    }
+    return;
+  }
 
   const channel = new EmailChannel({ apiKey: env.apiKey, from: env.from });
-  await channel.send({
-    to: { crewMemberId: asId<"CrewMemberId">(d.crewMemberId), email: d.email },
-    kind: "magic_link",
-    body:
-      `Hi ${d.name},\n\n` +
-      `Your Muster sign-in code is ${d.code}.\n\n` +
-      `It expires in 10 minutes. If you didn't request it, you can ignore this email.\n\n` +
-      `— Muster`,
-  });
+  try {
+    await channel.send({
+      to: { crewMemberId: asId<"CrewMemberId">(d.crewMemberId), email: d.email },
+      kind: "magic_link",
+      body:
+        `Hi ${d.name},\n\n` +
+        `Your Muster sign-in code is ${d.code}.\n\n` +
+        `It expires in 10 minutes. If you didn't request it, you can ignore this email.\n\n` +
+        `— Muster`,
+    });
+  } catch (e) {
+    // Runs in after(), so a failure never reaches the crew member's response.
+    // Log a CONTROLLED line — crewMemberId + reason, never the code or body —
+    // instead of letting Next dump the raw rejection.
+    console.error(
+      `[login-code] email send failed for ${d.crewMemberId}:`,
+      e instanceof Error ? e.message : e,
+    );
+  }
 }

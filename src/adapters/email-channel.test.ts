@@ -75,10 +75,10 @@ describe("EmailChannel", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("throws on a non-2xx from Resend, surfacing the status", async () => {
+  it("throws on a non-2xx from Resend, surfacing the status AND the detail", async () => {
     const { fetch } = fakeFetch({ ok: false, status: 422, body: '{"message":"bad from"}' });
     await expect(new EmailChannel(opts(fetch)).send(codeMessage())).rejects.toThrow(
-      /Resend send failed \(422\)/,
+      /Resend send failed \(422\):.*bad from/,
     );
   });
 

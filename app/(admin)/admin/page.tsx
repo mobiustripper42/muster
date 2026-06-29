@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Notice } from "../../../components/ui/notice";
 import { Shell } from "../../../components/ui/shell";
+import { VersionTag } from "../../../components/ui/version-tag";
 import { readSubject } from "../../lib/auth";
 import { getRepo } from "../../lib/repo";
 import { setEnginePaused } from "./actions";
@@ -95,6 +96,8 @@ export default async function AdminHome({
       <p className="text-sm text-muted">
         Roster, event admin, and shift builder land here in later phases.
       </p>
+
+      <VersionTag />
     </Shell>
   );
 }

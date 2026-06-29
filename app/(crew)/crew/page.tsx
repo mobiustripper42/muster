@@ -51,7 +51,7 @@ export default async function CrewHome({
 
   if (!subject || subject.kind !== "crew") {
     // The entered email is carried in an httpOnly cookie across the two-step
-    // code flow (DEC-080) — read it here to render the code-entry screen.
+    // code flow (DEC-081) — read it here to render the code-entry screen.
     const pendingEmail = (await cookies()).get(LOGIN_EMAIL_COOKIE)?.value ?? null;
     return (
       <SignedOut
@@ -176,7 +176,7 @@ const inputClass =
 const primaryButtonClass =
   "min-h-[52px] w-full rounded-card bg-accent font-semibold text-white";
 
-/** Step 1: enter your crew email → a code is emailed (DEC-080). */
+/** Step 1: enter your crew email → a code is emailed (DEC-081). */
 function EmailStep({ err }: { err?: string }) {
   return (
     <div className="flex flex-col gap-3">
@@ -208,7 +208,7 @@ function EmailStep({ err }: { err?: string }) {
   );
 }
 
-/** Step 2: paste the 6-digit code (DEC-080). The email line is non-committal —
+/** Step 2: paste the 6-digit code (DEC-081). The email line is non-committal —
  *  it never confirms roster membership (no-enumeration). */
 function CodeStep({ email, err }: { email: string; err?: string }) {
   return (
@@ -377,7 +377,7 @@ function CrewApp({
         )}
       </section>
 
-      {/* Sign-out (DEC-080): quiet, always available — matters on shared/family
+      {/* Sign-out (DEC-081): quiet, always available — matters on shared/family
           phones with a standing 14-day session. No flag; it only clears the
           caller's own cookie. */}
       <form action={signOut} className="pt-2">

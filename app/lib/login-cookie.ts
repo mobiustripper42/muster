@@ -1,5 +1,5 @@
 /**
- * The pending-email cookie (DEC-080) — one source of truth for the wire contract
+ * The pending-email cookie (DEC-081) — one source of truth for the wire contract
  * between the request action (writes it) and the signed-out page (reads it). A
  * bare literal in two places would silently desync on a rename.
  *

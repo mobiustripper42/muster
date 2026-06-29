@@ -471,7 +471,7 @@ export function runRepositoryContract(
       await expect(repo.removeMagicToken(asId<"MagicTokenId">("ghost"))).resolves.toBeUndefined();
     });
 
-    it("login codes: round-trip incl. consumedAt optional; keyed by subject (DEC-080)", async () => {
+    it("login codes: round-trip incl. consumedAt optional; keyed by subject (DEC-081)", async () => {
       await repo.saveLoginCode(loginCode()); // not yet consumed
       const got = await repo.getLoginCode("crew", CREW);
       expect(got).toEqual(loginCode());

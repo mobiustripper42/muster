@@ -1,5 +1,5 @@
 /**
- * Crew self-serve login codes (DEC-080) — the service layer, no platform.
+ * Crew self-serve login codes (DEC-081) — the service layer, no platform.
  *
  * The crew front door (DEC-079): a crew member opens the app on their own
  * initiative, enters their email, gets a 6-digit code in that email, and pastes
@@ -10,7 +10,7 @@
  *             live and under the attempt cap, and CONSUME it atomically (CAS) so
  *             a code can't be redeemed twice.
  *
- * Why a code and not a magic link (DEC-080): the link opens in the email app's
+ * Why a code and not a magic link (DEC-081): the link opens in the email app's
  * browser, not the installed PWA, so the session lands in the wrong context — the
  * #1 magic-link failure on mobile. A code never leaves the app you started in.
  *
@@ -41,7 +41,7 @@ export const CODE_TTL_MS = 10 * 60_000;
  * Failed guesses before the code is dead — the brute-force ceiling PER CODE.
  * NOT a per-target bound: a re-mint after the cooldown writes a fresh row with
  * `attempts: 0`, so the sustained rate is MAX_ATTEMPTS per RESEND_COOLDOWN_MS,
- * indefinitely. That's the accepted DEC-080 "throttle does the work" posture at
+ * indefinitely. That's the accepted DEC-081 "throttle does the work" posture at
  * pilot scale; a daily re-mint cap / escalating lockout is a 7.0b hardening
  * follow-up (issue #189), not a hard guarantee this constant gives today.
  */
@@ -66,7 +66,7 @@ export function normalizeEmail(email: string): string {
 
 /**
  * Resolve an entered email to a single roster crew member, or null. Pilot-scale
- * in-memory match (no by-email index — DEC-080); deterministic on id when an
+ * in-memory match (no by-email index — DEC-081); deterministic on id when an
  * email is somehow shared, so the same email always binds to the same subject.
  */
 function matchCrewByEmail(

@@ -66,7 +66,7 @@ export async function respondToAsk(formData: FormData): Promise<void> {
 }
 
 /**
- * Sign out (DEC-080) — drop the session and land on the signed-out front door.
+ * Sign out (DEC-081) — drop the session and land on the signed-out front door.
  * Driven by a <form action>, no client JS. Always safe to ship: it only clears
  * the caller's own cookie. `redirect()` throws by design, outside any try.
  */
@@ -76,7 +76,7 @@ export async function signOut(): Promise<void> {
 }
 
 /**
- * Step 1 of self-serve sign-in (DEC-080): take an email, mint+deliver a 6-digit
+ * Step 1 of self-serve sign-in (DEC-081): take an email, mint+deliver a 6-digit
  * code to a matching roster member, and advance to the code-entry screen.
  *
  * No-enumeration is the load-bearing property: the redirect to `?stage=code` and
@@ -120,7 +120,7 @@ export async function requestLoginCode(formData: FormData): Promise<void> {
 }
 
 /**
- * Step 2 of self-serve sign-in (DEC-080): verify the pasted code against the
+ * Step 2 of self-serve sign-in (DEC-081): verify the pasted code against the
  * email carried in the cookie. A correct code mints the session; a wrong one
  * counts against the attempt cap. `locked`/`expired` send the crew member back
  * to the start; `invalid` keeps them on the code screen to retry.

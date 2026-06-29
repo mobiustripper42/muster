@@ -641,7 +641,7 @@ export class PostgresRepository implements Repository {
     await this.#pool.query("delete from magic_tokens where id=$1", [id]);
   }
 
-  // ── Login codes (crew self-serve sign-in — DEC-080) ────────────────────────
+  // ── Login codes (crew self-serve sign-in — DEC-081) ────────────────────────
   async saveLoginCode(c: LoginCode): Promise<void> {
     await this.#pool.query(
       `insert into login_codes(subject_kind, subject_id, code_hash, created_at, expires_at, attempts, consumed_at)

@@ -172,7 +172,7 @@ export interface Repository {
    */
   removeMagicToken(id: MagicTokenId): Promise<void>;
 
-  // ── Login codes (crew self-serve sign-in — DEC-080) ────────────────────────
+  // ── Login codes (crew self-serve sign-in — DEC-081) ────────────────────────
   // A SIBLING to magic tokens, keyed by subject (one live code per subject) so a
   // non-unique 6-digit code can be looked up by WHO and attempt-capped. Only the
   // code's hash is stored.

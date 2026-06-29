@@ -293,7 +293,7 @@ export interface MagicToken {
 }
 
 /**
- * A short numeric login code (DEC-080) — the crew self-serve sign-in primitive.
+ * A short numeric login code (DEC-081) — the crew self-serve sign-in primitive.
  *
  * A SIBLING to `MagicToken`, not a reuse: a 6-digit code is NOT globally unique
  * (two crew can mint the same digits), so it cannot ride `magic_tokens` (its

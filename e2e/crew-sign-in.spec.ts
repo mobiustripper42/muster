@@ -1,5 +1,5 @@
 /**
- * 7.0a (DEC-080) — crew self-serve front door: sign out, and the signed-out
+ * 7.0a (DEC-081) — crew self-serve front door: sign out, and the signed-out
  * email→code sign-in flow. The security-sensitive surface (an unauthenticated
  * endpoint + the no-enumeration property) gets the e2e attention.
  *
@@ -14,7 +14,7 @@ import { test, expect, resetAndSeed, signInAsCrew } from "./fixtures.js";
 const QUINT_EMAIL = "quint@brewboat.test";
 const CODE_SENT = /a 6-digit code is on its way/i;
 
-test.describe("crew self-serve sign-in (DEC-080)", () => {
+test.describe("crew self-serve sign-in (DEC-081)", () => {
   test.beforeEach(async () => {
     await resetAndSeed("crew");
   });

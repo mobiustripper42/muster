@@ -297,7 +297,7 @@ export class InMemoryRepository implements Repository {
     this.#magicTokens.delete(id);
   }
 
-  // ── Login codes (crew self-serve sign-in — DEC-080) ────────────────────────
+  // ── Login codes (crew self-serve sign-in — DEC-081) ────────────────────────
   async saveLoginCode(c: LoginCode): Promise<void> {
     this.#loginCodes.set(`${c.subjectKind}:${c.subjectId}`, clone(c));
   }

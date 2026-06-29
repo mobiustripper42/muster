@@ -1,7 +1,7 @@
 import { isProdDeploy } from "./flags";
 
 /**
- * Login-code delivery seam (DEC-080) — server-only (no client import). 7.0a
+ * Login-code delivery seam (DEC-081) — server-only (no client import). 7.0a
  * delivers through the fake channel: the code is logged + echoed (non-prod only),
  * not emailed — exactly how the magic link is "delivered" in dev
  * (fake-channel.ts). 7.0b swaps the BODY of `deliverLoginCode` for an

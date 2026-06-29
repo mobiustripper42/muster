@@ -101,6 +101,21 @@ export const STAFFING_HORIZON_LEAD_DAYS = envPositiveInt(
 );
 
 /**
+ * Xola **pull-window** lead, in **days** — how far ahead the importer fetches
+ * reservations from Xola (the `/orders` arrival window). **Decoupled** from
+ * `STAFFING_HORIZON_LEAD_DAYS` (DEC-080): the operator can pull a month of
+ * bookings to review without the engine starting to *ask* crew that far out —
+ * shift-formation (Pending→Filling, and therefore the asks) still keys off the
+ * staffing horizon, not this. Env-overridable via `XOLA_PULL_LEAD_DAYS`
+ * (positive integer days); **defaults to `STAFFING_HORIZON_LEAD_DAYS`** so an
+ * unset value reproduces the prior coupled behaviour exactly.
+ */
+export const XOLA_PULL_LEAD_DAYS = envPositiveInt(
+  "XOLA_PULL_LEAD_DAYS",
+  STAFFING_HORIZON_LEAD_DAYS,
+);
+
+/**
  * Tier-1 ask **drip** interval, in **minutes** (DEC-063). The engine seeds one ask
  * to the top-ranked candidate per seat, then widens by one more every interval
  * until someone accepts or the pool is walked — so the reliability ranking finally

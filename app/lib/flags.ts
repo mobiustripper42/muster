@@ -1,7 +1,7 @@
 /**
  * Feature flags (env-driven). One place so the gate reads the same everywhere.
  *
- * `CREW_SELF_SERVE` (DEC-080, DEC-059): the crew code-login front door. OFF by
+ * `CREW_SELF_SERVE` (DEC-081, DEC-059): the crew code-login front door. OFF by
  * default so `main` stays promotable to production at all times — until 7.0b
  * wires real email delivery (Resend on a DKIM-verified `crew.brewcle.com`), a
  * login that says "check your email" and emails nothing would be a broken prod

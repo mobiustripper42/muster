@@ -970,7 +970,7 @@ de-prioritized fast-follow whose only job is reliable push, never the participat
 ## 3.2 Authentication
 
 - **Crew: passwordless.** Casual crew will not manage credentials; a forgotten password is a ghosted
-  shift (§2.6.1). Two passwordless entries (**DEC-080**, refining the original magic-link-only plan):
+  shift (§2.6.1). Two passwordless entries (**DEC-081**, refining the original magic-link-only plan):
   operator-relayed **action links** (magic links) drop crew straight onto the relevant card/ask; a crew
   member opening the app **on their own initiative** signs in with a **6-digit code emailed to their
   roster email**. One login primitive — *a login is always a code; a link is only ever an addressed

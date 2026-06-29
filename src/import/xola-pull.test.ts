@@ -10,6 +10,7 @@ import { describe, expect, it, beforeEach } from "vitest";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import { asId } from "../domain/ids.js";
 import type { SeatId, ShiftId, VesselId } from "../domain/ids.js";
+import { STAFFING_HORIZON_LEAD_DAYS } from "../builder/derive.js";
 import { seedFleet } from "./resource-map.js";
 import { addDays, pullWindow, pullXola, vesselLocalDate } from "./xola-pull.js";
 import type { XolaEvent, XolaFetcher, XolaOrder, XolaOrderItem } from "./xola-client.js";
@@ -42,6 +43,37 @@ describe("window math", () => {
       start: "2026-06-30",
       end: "2026-07-09",
     });
+  });
+});
+
+describe("pull window decoupled from staffing horizon (DEC-080)", () => {
+  let repo: InMemoryRepository;
+  const NOW = new Date("2026-07-01T12:00:00Z");
+  // Empty fetch — we only care about the computed window, which pullXola returns.
+  const fetcher: XolaFetcher = async (path) =>
+    path.startsWith("/events") ? [] : { data: [], paging: { next: null } };
+
+  beforeEach(async () => {
+    repo = new InMemoryRepository();
+    await seedFleet(repo);
+  });
+
+  it("pullLeadDays widens the /orders fetch window", async () => {
+    const r = await pullXola(repo, fetcher, "seller-x", NOW, { pullLeadDays: 30, tz: "UTC" });
+    expect(r.window).toEqual({ start: "2026-06-30", end: "2026-08-01" });
+  });
+
+  it("the staffing horizon (leadDays) no longer moves the pull window", async () => {
+    // Pre-DEC-080 this widened the window too; now it must not — the window
+    // stays at the default pull lead while leadDays only feeds shift formation.
+    const r = await pullXola(repo, fetcher, "seller-x", NOW, { leadDays: 30, tz: "UTC" });
+    expect(r.window).toEqual({ start: "2026-06-30", end: "2026-07-09" });
+  });
+
+  it("pullWindow defaults its lead to XOLA_PULL_LEAD_DAYS (== horizon when unset)", () => {
+    expect(pullWindow(NOW, undefined, "UTC")).toEqual(
+      pullWindow(NOW, STAFFING_HORIZON_LEAD_DAYS, "UTC"),
+    );
   });
 });
 

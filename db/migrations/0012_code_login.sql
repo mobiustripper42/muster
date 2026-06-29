@@ -1,4 +1,4 @@
--- 0012_code_login — crew self-serve sign-in via numeric login codes (DEC-080).
+-- 0012_code_login — crew self-serve sign-in via numeric login codes (DEC-081).
 --
 -- Same design rules as 0001/0002: text columns, ISO dates as `text` (verbatim
 -- round-trip, parity with the in-memory double), no foreign keys (integrity is
@@ -22,7 +22,7 @@ create table login_codes (
   primary key (subject_kind, subject_id)   -- one live code per subject
 );
 
--- NOTE (DEC-080): email is the crew login channel, so every crew member who
+-- NOTE (DEC-081): email is the crew login channel, so every crew member who
 -- self-serves must have one. We do NOT make `crew_members.email` NOT NULL here:
 -- the codebase treats crew-without-email as a supported shape (repository
 -- contract + entity `email?`), and a system-wide required-email change is its

@@ -18,7 +18,10 @@
  * touches `process.env` + global `fetch`.
  */
 
-import { STAFFING_HORIZON_LEAD_DAYS } from "../builder/derive.js";
+import {
+  STAFFING_HORIZON_LEAD_DAYS,
+  XOLA_PULL_LEAD_DAYS,
+} from "../builder/derive.js";
 import { formShifts } from "../builder/form-shifts.js";
 import type { FormResult } from "../builder/form-shifts.js";
 import { TENANT_TIMEZONE } from "../config/tenant.js";
@@ -48,10 +51,11 @@ export function addDays(date: string, n: number): string {
   return dt.toISOString().slice(0, 10);
 }
 
-/** [today − 1, today + leadDays + 1] in vessel-local dates. */
+/** [today − 1, today + leadDays + 1] in vessel-local dates. `leadDays` is the
+ * Xola **pull** lead (DEC-080), decoupled from the staffing horizon. */
 export function pullWindow(
   now: Date,
-  leadDays: number = STAFFING_HORIZON_LEAD_DAYS,
+  leadDays: number = XOLA_PULL_LEAD_DAYS,
   tz: string = TENANT_TIMEZONE,
 ): { start: string; end: string } {
   const today = vesselLocalDate(now, tz);
@@ -120,7 +124,11 @@ export interface XolaPullResult {
 
 /**
  * One pull cycle. `sellerId` + the `fetcher` come from the edge (env-derived);
- * `now`/`leadDays`/`tz` are injectable for tests. Order of ops: resolve the boats
+ * `now`/`tz` and the two leads are injectable for tests. The Xola **pull** lead
+ * (`opts.pullLeadDays`, default `XOLA_PULL_LEAD_DAYS`) sizes the `/orders`
+ * fetch window; the **staffing horizon** (`opts.leadDays`, default
+ * `STAFFING_HORIZON_LEAD_DAYS`) drives shift formation — decoupled per DEC-080,
+ * so a wide pull never widens the ask horizon. Order of ops: resolve the boats
  * from `/events`, join them onto the windowed `/orders`, import (which upserts
  * events with derived status), THEN form shifts off the refreshed events.
  */
@@ -129,11 +137,12 @@ export async function pullXola(
   fetcher: XolaFetcher,
   sellerId: string,
   now: Date = new Date(),
-  opts: { leadDays?: number; tz?: string } = {},
+  opts: { leadDays?: number; pullLeadDays?: number; tz?: string } = {},
 ): Promise<XolaPullResult> {
-  const leadDays = opts.leadDays ?? STAFFING_HORIZON_LEAD_DAYS;
+  const horizonLeadDays = opts.leadDays ?? STAFFING_HORIZON_LEAD_DAYS;
+  const pullLeadDays = opts.pullLeadDays ?? XOLA_PULL_LEAD_DAYS;
   const tz = opts.tz ?? TENANT_TIMEZONE;
-  const window = pullWindow(now, leadDays, tz);
+  const window = pullWindow(now, pullLeadDays, tz);
 
   const orders = await fetchOrders(fetcher, {
     sellerId,
@@ -145,7 +154,7 @@ export async function pullXola(
 
   const { records, skipped } = mapXolaOrders(orders, vessels);
   const imported = await importRecords(repo, records, now);
-  const formed = await formShifts(repo, { now, leadDays });
+  const formed = await formShifts(repo, { now, leadDays: horizonLeadDays });
 
   return {
     window,

@@ -166,7 +166,8 @@ lock, live-card pings + hosted deploy still deferred — see above). Estimate ca
 Get the build-complete slice to a **real-crew weekend** (2 mates + 2 captains on BrewBoat): hosted
 deploy, a production auth path, vessel-local time, and a real Xola-import surface. *Trigger: Phase 4
 done — the slice is build-complete but crew-untested.* (Decomposed 2026-06-12, @architect pass.)
-**This phase produces the "real weekend" that triggers Pass D (Phase 7).** It resolves 2 of #70's 4
+**This phase produces the "real weekend" that triggers the post-pilot phases (6 messaging, then 7
+crew self-serve — the slot that was Pass D).** It resolves 2 of #70's 4
 prod-readiness tells (auth + timezone); Twilio + the single-operator constant stay deferred — the
 deployed app is a **hosted pilot, not production**.
 
@@ -183,7 +184,7 @@ real phone* → 5.4 (real data, needs 5.3) → 5.R last; 5.5 anywhere, first to 
    wouldn't). The walkthrough's sign-in steps need swapping to 5.2's mint-script for the prod run.
 3. **5.4 (import, #73)** — *after* the shakedown passes; swaps demo data for real BrewBoat
    reservations. The import is for the real crew weekend, never before the shakedown.
-4. **Crew weekend** → triggers Pass D (Phase 7).
+4. **Crew weekend** → triggers the post-pilot phases (6 messaging, then 7 crew self-serve).
 - **5.5 (#65) is the automated Playwright harness — regression insurance, separate from the manual
   shakedown above, optional, first to cut.** Don't conflate the two.
 
@@ -259,12 +260,61 @@ owner + 10DLC.
 
 ---
 
-## Phase 7: Pass D — Progressive commitment (soft-hold + staged horizons)
+## Phase 7: Crew Self-Serve — "Pick your shifts"
 
-The anxiety-reducer: bank crew willingness weeks out via a `Held` seat tier and earlier *soft*
-horizons converging on the hard confirm. Rides existing rails (data fields reserved in Phase 0/1).
-*Trigger: the single-horizon slice has run a real weekend.* (SPEC §1.1, §1.3, §4 + Xola-trap
-guardrail.)
+**Restoration, not a new bet.** Two years ago crew grabbed posted shifts by text — *mates gone in
+minutes* — until the chase forced crewing push-only (the ask cascade). A crew member asked to pick
+shifts again "because they really liked it." This brings back self-serve picking for the people who
+always loved it (mates) and keeps the cascade as the backstop for the ones who never self-served
+(captains). Adds (a) a crew-facing **pull** surface to claim an Open seat, and (b) the affordance that
+a claim means the **whole vessel-day**. Source: the *Crew Self-Serve* design handoff (2026-06-29);
+operator pre-decided, Drew cleared the ops-policy change. New surface → SPEC **§2.7**.
+
+**Key architectural finding (grounds the build):** a `shift` is already `shift-{vessel}-{date}` — one
+per vessel per day — with seats attached to the **shift**, not the event, and `formShifts` is idempotent
+(a later reservation folds into the same shift's `eventIds`; **Confirmed seats are never reset**). So
+"another reservation either side, same crew" is *already built* at day granularity. This feature does
+**not** add elastic absorption — it adds a crew pull surface plus the whole-vessel-day affordance.
+
+**Load-bearing decisions (operator-confirmed 2026-06-29 — DEC-074…DEC-079):**
+- **A 4th crew surface, recorded as a knowing exception** to BRAND's "three surfaces" (DEC-074). Pull,
+  opt-in, anti-anxiety — inherits DEC-042's guardrails verbatim (today default, `[today, today+45d]`
+  clamp, no auto-refresh / no live counts, neutral ink). **Not** the parked availability calendar.
+- **Self-claim is auto-lock** `Open → Confirmed`, bypassing `Asked` (DEC-075). Operator-confirm-required
+  is a **dormant `app_settings` seam** (`self_claim_requires_confirmation`, absent ⇒ auto-lock) — branch
+  on the flag now, do **not** build the `Held` tier / confirm queue (that's the parked Pass D primitive).
+- **Two eligibility doors** (DEC-076): self-claim = **native role only** (`nativeRole`, captain>mate
+  precedence, derived, no migration); operator-assign stays **ratings-inclusive** (the dual-rating
+  last-minute fill hack, admin-only). Multi-role is an explicit **NON-GOAL**.
+- **Day-granularity commitment** (DEC-077): claiming = crewing every trip that day incl. ones added
+  later. Sub-day "watches" are pre-scoped but **deferred**.
+- **Guarded transition + one-shift-per-date conflict guard + self-release via the existing bail edge**
+  (DEC-078), reliability lead-time-weighted; the claim itself emits no reliability event.
+
+> **Pass D (progressive commitment / soft-hold) is deferred,** not built here. It survives as the
+> DEC-075 `self_claim_requires_confirmation` seam and the reserved `Held` tier (SPEC §1.1, §4) — flip
+> the flag later, no re-architecture. This phase repurposes the Phase 7 slot from soft-hold to
+> self-serve per the handoff.
+
+| # | Task | Effort | Notes |
+|---|------|--------|-------|
+| 7.0 | **Crew front door — sign-in + sign-out** — wire existing `endSession()` to a sign-out button; signed-out `/crew` landing with phone-entry → roster lookup (generic non-enumerating response) → rate-limited `magic_tokens` mint → deliver. MVP delivery = operator-relay-once + 14-day session + **email fallback**; automated SMS deferred (10DLC). Reuses `app/lib/auth.ts` + magic-link core — **no migration** | 5 | DEC-079. **Do FIRST** — 7.3 is unreachable without it. · [#180](https://github.com/mobiustripper42/muster/issues/180) |
+| 7.1 | **`nativeRole` + two-door eligibility** — derive `nativeRole(crew)` (captain>mate); add `claimableSeatsFor(crewId, window)` (eligible-pool + native-role + `Pending`/`Filling` + Open + required + `[today, today+45d]`). Operator-assign keeps full-`ratings`. Contract tests both doors incl. dual-rated | 3 | DEC-076. Pure domain, no schema. · [#181](https://github.com/mobiustripper42/muster/issues/181) |
+| 7.2 | **Claim service (`Open → Confirmed`, guarded)** — `claimSeat`: guarded CAS, one-shift-per-date conflict guard, reads `self_claim_requires_confirmation` (default false ⇒ auto-lock; true branch → reserved tier, **stub only**). `releaseSelfClaim`: `Confirmed→Open` via the bail edge + lead-time-weighted reliability event. Race + conflict + reliability tests | 5 | DEC-075/078. Reuses bail/CAS/reliability edges. · [#182](https://github.com/mobiustripper42/muster/issues/182) |
+| 7.3 | **`/crew/open` surface** — the list (§2.7.1) + confirm sheet (§2.7.2, DEC-077 copy with live trip count + call/back window) + "just taken" / "already have a shift that day" handling. DEC-042 guardrails. My-shifts already reflects the new Confirmed seat — **verify, don't rebuild** | 5 | DEC-074. Crew app + magic-link auth (§3.2). · [#183](https://github.com/mobiustripper42/muster/issues/183) |
+| 7.4 | **Cascade coexistence** — confirm the horizon/ask loop skips already-Confirmed seats and a self-released seat re-enters the cascade. **No new code expected** — test + any glue | 2 | DEC-078 §2.7.5. · [#184](https://github.com/mobiustripper42/muster/issues/184) |
+
+**Phase 7 total: 20 pts.** **Build order: 7.0 → 7.1 → 7.2 → 7.3 → 7.4** (7.0 first; the surface is
+unreachable without the front door, DEC-079).
+
+**Fast-follows (NOT Phase 7):** social-proof on half-crewed shifts ("Jake's on this — captain needed");
+an active "trip added to your day" push (the live card already shows it on open). **Deferred (DEC'd
+non-goals):** sub-day watches (DEC-077); operator-confirm mode / `Held` tier — the old Pass D (DEC-075,
+§4); genuine multi-role (DEC-076, §4).
+
+**The one data-model note:** Phase 7 needs **no migration**. `nativeRole` is derived; the
+confirm-required flag uses the existing `app_settings` KV. A column (`primary_role` / `role_types.rank`)
+is owed only when multi-role graduates from non-goal to feature.
 
 > **Not V1 (parked — SPEC §4 + the 2027 line):** payments (cancel cascade, disputes), customer
 > portal, live booking feed replacing CSV. Out of the 2026 build entirely. See `docs/SPEC.md` §4
@@ -322,6 +372,6 @@ the **thickening passes**, not the slice. Reference before any scope-cut convers
 
 | Task | Why it's cuttable | Defer to |
 |------|------------------|---------|
-| Pass D (Phase 7) | Soft-hold is an anxiety-reducer, not load-bearing; the single-horizon slice works without it | post-slice, only after a real weekend |
+| Pass D — progressive commitment / soft-hold (deferred; was the Phase 7 slot, now Crew Self-Serve) | Soft-hold is an anxiety-reducer, not load-bearing; the single-horizon slice works without it. Survives as the DEC-075 `self_claim_requires_confirmation` seam | post-self-serve, only if a real weekend asks for it |
 | Pass C bits (split/merge, bulk lock, warming view) | Single-item versions cover the pilot | when friction appears |
 | Write-back sheet (DEC-011) | Unnecessary if the CSV export carries guest detail (decide at M1) | skip unless M1 says otherwise |

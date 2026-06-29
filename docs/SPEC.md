@@ -20,7 +20,7 @@ crew-reliability-score, admin-1-shift-builder, admin-2-assignment-view, admin-3-
 payments-topology, coexistence-rollout, event-admin, customer-portal-sketch.
 
 > **Section status legend:** ✅ written · ◻️ not yet written.
-> 0 Overview ✅ · 1 Substrate ✅ · 2 Surfaces ✅ (2.1 Roster · 2.2 Event Admin · 2.3 Builder · 2.4 Assignment · 2.5 At-Risk · 2.6 Crew App) · 3 Cross-cutting ✅ · 4 Parked ✅
+> 0 Overview ✅ · 1 Substrate ✅ · 2 Surfaces ✅ (2.1 Roster · 2.2 Event Admin · 2.3 Builder · 2.4 Assignment · 2.5 At-Risk · 2.6 Crew App · 2.7 Crew Self-Serve) · 3 Cross-cutting ✅ · 4 Parked ✅
 
 ---
 
@@ -889,6 +889,39 @@ Everything needed on one screen, no hunting. This is where "bulletproof" lives.
 - [ ] Bailing reopens the seat and re-asks the next candidate with no operator action.
 - [ ] A crew member sees only their own standing and reasons — never a ranking against other crew.
 - [ ] A credential nearing expiry triggers a crew-facing nudge before the person drops from the pool.
+
+---
+
+## 2.7 Crew Self-Serve — "Pick your shifts" (the crew pull surface)
+
+> **Stance:** a fourth crew surface, added as a knowing exception to §2.6's "three surfaces" (DEC-074) —
+> a *restoration* of the self-pick workflow mates always loved. It is **pull, opt-in, anti-anxiety**
+> (DEC-042 guardrails) and is **not** the parked positive-availability calendar (§4): crew claim
+> concrete, already-formed shifts, never declare abstract availability.
+
+**2.7.1 The list.** Open **required** seats the viewer is **eligible** for (credentials valid on the
+trip date + native role per DEC-076 + not suppressed, §1.3), on shifts in `Pending`/`Filling`, within
+`[today, today+45d]`. Default filter **today**; presets **this weekend** / from–to range. One row per
+claimable seat: **date · vessel · role · committed window (call → back) · Claim**. No auto-refresh, no
+live counts, neutral ink (DEC-042). Empty = normal, not an error.
+
+**2.7.2 The claim.** One tap → confirm sheet stating the **whole-day** scope, the **live trip count**,
+and the **call/back window** (DEC-077 copy). Confirm → seat `Open → Confirmed` (auto-lock, DEC-075). The
+seat now appears in **My shifts** (§2.6.2). Guarded against races and the one-shift-per-date conflict
+(DEC-078).
+
+**2.7.3 Release.** Releasing a self-claimed seat is as easy as claiming it (§2.6 principle 2): seat
+returns to `Open` and re-asks; a reliability event is recorded, lead-time-weighted (§1.4).
+
+**2.7.4 What this surface is NOT (Phase 7 non-goals).** No sub-day blocks/"watches" (whole-day only,
+DEC-077). No multi-role / role-picker (native-role-only; dual-rating is the operator-assign hack,
+DEC-076). No supernumerary self-claim. No operator-confirm gate (auto-lock; the confirm-required mode is
+a dormant `app_settings` seam, DEC-075). No availability calendar (§4).
+
+**2.7.5 Relationship to the cascade.** Pull and push **coexist**. Self-claim front-loads fills
+(especially mates) during `Pending`/early `Filling`; whatever's still `Open` at the staffing horizon
+flows into the existing ask cascade (§1.2) — which remains the primary captain-fill tool. The two never
+conflict: both end at a `Confirmed` seat via the same state machine.
 
 ---
 

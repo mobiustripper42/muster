@@ -48,6 +48,13 @@ summons him when it genuinely can't.
 - SP-14: I get a weekend "enter these in Xola" sheet so I key crew assignments from one list — *only
   if* the Xola export doesn't already carry guest detail (decided at M1).
 
+### Crew Self-Serve (SPEC §2.7)
+- SP-15: Mates self-fill so I stop blasting Sunday texts; the cascade still chases the seats nobody
+  grabbed (mostly captains); and I can still drop a dual-rated captain into a mate seat at the last
+  minute when I'm stuck.
+- SP-16: A self-claim locks the seat immediately, but I can still see and override it, and I have a
+  switch to require my confirmation later if auto-lock ever bites me.
+
 ## Crew — captains and mates (crew app)
 
 Their entire world is three surfaces. The failure mode is friction and stale info, not missing
@@ -65,6 +72,13 @@ features (SPEC §2.6).
 - CR-6: I get a quiet **nudge before my MMC/medical expires** so I renew before dropping from the
   pool.
 - CR-7: I see **my own** reliability standing and reasons — never a ranking against other crew.
+- CR-8: I open the app, see the boats that need my role this weekend, tap one, and it's mine —
+  **without waiting for a text** (SPEC §2.7).
+- CR-9: When I claim a day, the confirm screen tells me plainly it's the **whole day** on that boat
+  including trips added later, with the current trips and my call/back times, so I know exactly what
+  I'm agreeing to.
+- CR-10: When my plans change, I **release** a claimed day as easily as I grabbed it, and it
+  immediately re-opens for someone else.
 
 ## Drew — the owner
 

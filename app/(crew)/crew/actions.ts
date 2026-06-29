@@ -1,6 +1,7 @@
 "use server";
 
 import { cookies } from "next/headers";
+import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { recordResponseAndConfirm } from "@core/asks/ask-loop.js";
 import {
@@ -11,7 +12,7 @@ import {
 import { answeredNoticeCode } from "@core/crewapp/answered-code.js";
 import { asId } from "@core/domain/ids.js";
 import { endSession, readSubject, startSession } from "../../lib/auth";
-import { deliverLoginCode } from "../../lib/auth-delivery";
+import { echoLoginCodeForDev, sendLoginCodeEmail } from "../../lib/auth-delivery";
 import { selfServeEnabled } from "../../lib/flags";
 import {
   LOGIN_EMAIL_COOKIE,
@@ -99,11 +100,17 @@ export async function requestLoginCode(formData: FormData): Promise<void> {
       { now: new Date(), mintCode: randomCode },
     );
     if (result.outcome === "deliver") {
-      await deliverLoginCode({
+      const d = {
+        crewMemberId: result.subject.id,
         email: result.recipientEmail,
         name: result.recipientName,
         code: result.code,
-      });
+      };
+      echoLoginCodeForDev(d); // non-prod: instant log + dev-code echo
+      // Real email runs AFTER the response (Vercel keeps the fn alive). Off the
+      // hot path so a match doesn't return slower than a miss — the timing-oracle
+      // half of no-enumeration (DEC-081). Errors stay inside the callback.
+      after(() => sendLoginCodeEmail(d));
     }
   } catch (e) {
     // A delivery/DB hiccup must not reveal more than the generic path — log and

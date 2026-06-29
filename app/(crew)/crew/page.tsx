@@ -4,6 +4,7 @@ import { buildThreadList } from "@core/crewapp/thread-list.js";
 import { asId } from "@core/domain/ids.js";
 import { Notice } from "../../../components/ui/notice";
 import { Shell } from "../../../components/ui/shell";
+import { VersionTag } from "../../../components/ui/version-tag";
 import { readSubject } from "../../lib/auth";
 import { getRepo } from "../../lib/repo";
 import { TENANT_ID } from "../../lib/tenant";
@@ -242,6 +243,8 @@ function CrewApp({
           )
         )}
       </section>
+
+      <VersionTag />
     </Shell>
   );
 }

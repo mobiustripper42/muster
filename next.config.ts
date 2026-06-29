@@ -26,6 +26,11 @@ const nextConfig: NextConfig = {
   // Send island, DEC-030) needed hydration to work. Dev-only; the Vercel build
   // is unaffected.
   allowedDevOrigins: ["mill-dev"],
+  // Forward package.json's version to the client as NEXT_PUBLIC_APP_VERSION so the
+  // <VersionTag /> corner stamp can render it (the NEXT_PUBLIC_ prefix is what gets
+  // it into client trees — without it the tag renders blank). Build-time only; the
+  // commit SHA rides Vercel's own NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA.
+  env: { NEXT_PUBLIC_APP_VERSION: process.env.npm_package_version },
   experimental: {
     extensionAlias: {
       ".js": [".ts", ".tsx", ".js", ".jsx"],

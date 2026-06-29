@@ -49,10 +49,11 @@ export default defineConfig({
       // Scoped to the surfaces with real mobile layout risk; the functional flows
       // don't vary by viewport, so the rest stays desktop-only to save wall-clock.
       // Covers: crew (auth-crew), the admin nav + hamburger drawer (admin-nav), the
-      // outbox copy/overflow + Dismiss|Send (outbox-relay), and the messaging
-      // surfaces (#117 — chat bubbles, the 3-button co-crew row, the compose box).
+      // outbox copy/overflow + Dismiss|Send (outbox-relay), the messaging surfaces
+      // (#117 — chat bubbles, the 3-button co-crew row, the compose box), and the
+      // fixed corner version tag (version-tag — must clear content at 375px).
       name: "mobile",
-      testMatch: /(auth-crew|admin-nav|outbox-relay|crew-messaging|operator-messaging)\.spec\.ts/,
+      testMatch: /(auth-crew|admin-nav|outbox-relay|crew-messaging|operator-messaging|version-tag)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 375, height: 812 } },
     },
   ],

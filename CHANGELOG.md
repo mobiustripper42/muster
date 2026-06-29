@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.8.0] - 2026-06-29 — Phase 6
+- 43 pts shipped across 10 sessions (throughput ~38 pts/calendar-week; work landed 06-28 via the feature→main merge) — Messaging & the Smart Doorbell: message store + derived membership, the pure doorbell decider + human-drivable harness, doorbell tick/cron, crew messaging UI, operator messaging surface, and the operator-outbox ring relay
+- Shipped behind a **manual operator ring-relay**; 6.9 (Twilio second number) deferred — 10DLC-gated. #173 (crew DM-visibility disclosure) deferred
+- Landed on main via the DEC-059 feature/messaging integration (PR #179); clean minor at phase close (per-PR patches collapsed — 30 PRs in window, operator call at retro)
+- See `docs/RETROSPECTIVES.md` for the full retro
+
 ## [0.7.0] - 2026-06-20 — Phase 5
 - 28 pts shipped across 8 sessions (throughput 24.5 pts/calendar-week) — pilot-readiness/go-live: hosted deploy (Vercel+Neon), prod operator auth, vessel-local time, Xola import (xlsx + live pull), e2e Playwright harness, pilot weekend runbook
 - Plus ~15 pts added scope: operator manual (#68), all-shifts full-visibility view (#100, DEC-042), walkthrough fast-follows (#93/#94/#97/#101); #70 prod-readiness gate closed

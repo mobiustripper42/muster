@@ -171,6 +171,30 @@ describe("claimableSeatsFor (DEC-076)", () => {
     expect(await claimedIds(c)).toEqual([]);
   });
 
+  it("window boundaries: today and today+45d are in; today+46d is out", async () => {
+    // NOW = 2026-06-15 08:00 ET → today = 2026-06-15, window end = 2026-07-30.
+    const c = await crew("c", [CAPTAIN]);
+    const todayShift = await shift("today", { date: "2026-06-15" });
+    const lastShift = await shift("last", { date: "2026-07-30" }); // today+45
+    const overShift = await shift("over", { date: "2026-07-31" }); // today+46
+    const tSeat = await seat(todayShift, "seat-today");
+    const lSeat = await seat(lastShift, "seat-last");
+    await seat(overShift, "seat-over");
+    expect(new Set(await claimedIds(c))).toEqual(new Set([tSeat, lSeat]));
+  });
+
+  it("uses the VESSEL-local date, not UTC — evening-Eastern shifts don't slip (DEC-032)", async () => {
+    // 2026-06-16 02:00 UTC = 2026-06-15 22:00 ET. Vessel-local today is still
+    // June 15, so a June-15 shift stays claimable. A naive UTC slice would read
+    // "2026-06-16" and wrongly drop it off the floor.
+    const evening = new Date("2026-06-16T02:00:00.000Z");
+    const c = await crew("c", [CAPTAIN]);
+    const s = await shift("sh", { date: "2026-06-15" });
+    const seatId = await seat(s, "seat-1");
+    const result = await claimableSeatsFor(repo, c, evening);
+    expect(result.map((r) => r.seatId)).toEqual([seatId]);
+  });
+
   it("both doors, dual-rated: self-claim hides the mate seat the operator can still assign", async () => {
     const cap = await crew("cap", [CAPTAIN, MATE]);
     const s = await shift("sh");

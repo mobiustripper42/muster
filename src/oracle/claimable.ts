@@ -13,6 +13,7 @@
  * transition is 7.2's `claimSeat`; this only answers "what could you claim?".
  */
 
+import { addDays, vesselDateOf } from "../config/tenant.js";
 import type { CrewMember } from "../domain/entities.js";
 import type { CrewMemberId, RoleTypeId, SeatId, ShiftId, VesselId } from "../domain/ids.js";
 import type { ShiftState } from "../domain/states.js";
@@ -29,11 +30,6 @@ const CLAIMABLE_SHIFT_STATES: ReadonlySet<ShiftState> = new Set<ShiftState>([
 
 /** How far ahead the browse window reaches (DEC-074/042 guardrail: today+45d). */
 export const CLAIMABLE_WINDOW_DAYS = 45;
-
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
-
-/** Date-only (YYYY-MM-DD), UTC — sorts identically to chronological (DEC-032). */
-const isoDate = (d: Date): string => d.toISOString().slice(0, 10);
 
 /** One seat the crew member could claim — ids + date + role; the §2.7.1 view
  *  layer resolves vessel name + trip count (7.3), so this stays structural. */
@@ -68,8 +64,11 @@ export async function claimableSeatsFor(
   const role = nativeRole(crew);
   if (!role) return [];
 
-  const today = isoDate(now);
-  const until = isoDate(new Date(now.getTime() + windowDays * MS_PER_DAY));
+  // Vessel-local "today" (DEC-032) — NOT a UTC slice, which would slide the whole
+  // window forward a day in the evening Eastern hours when filling tomorrow's
+  // boat matters most. Same precedent as the Xola pull window.
+  const today = vesselDateOf(now);
+  const until = addDays(today, windowDays);
 
   const [credentials, ptoWindows, committedByCrew] = await Promise.all([
     repo.listCredentialsForCrew(crewId),

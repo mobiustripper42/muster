@@ -52,7 +52,7 @@ export interface SeatPool {
  * shifts and their seats — fine for the throwaway in-memory store; a real DB
  * indexes this later.
  */
-async function committedDatesByCrew(
+export async function committedDatesByCrew(
   repo: Repository,
   excludeShiftId?: ShiftId,
 ): Promise<Map<CrewMemberId, Set<string>>> {

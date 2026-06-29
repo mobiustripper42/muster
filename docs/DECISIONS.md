@@ -1622,6 +1622,232 @@ remove). **Revisit if:** previews ever stop being isolated branches, or carry se
 
 ---
 
+## DEC-074: Crew self-serve is a fourth crew surface — a knowing, recorded exception to "insultingly small"
+
+**Status:** Accepted (Phase 7). Reverses BRAND "insultingly small (crew app) — the crew member's
+entire world is three surfaces." A crew member named the exception (asked for shift-picking back);
+recorded as one, the same way DEC-042's all-shifts view was an operator-named pull exception.
+
+**Decision:**
+- A **crew-facing pull surface** (`/crew/open` or similar) lists **Open required seats the viewer is
+  eligible for** and lets them claim one. This is the 4th crew surface (alongside ask / my-shifts /
+  shift-card). Recorded as a deliberate exception, not a drift.
+- **It is NOT a positive-availability calendar** (BRAND §"No positive-availability calendar … suppression
+  only"). The crew member claims a **specific, already-formed shift** that exists because trips are
+  booked — they are not declaring abstract future availability. The suppression-only oracle (§1.3,
+  PTO windows) is untouched; this surface reads *through* it (a suppressed person sees nothing in their
+  PTO window). State this distinction explicitly so the surface isn't mistaken for the parked
+  availability calendar.
+- **Inherits DEC-042's anti-anxiety guardrails verbatim:** default filter = today (+ "this weekend" /
+  range presets), forward window clamped to `[today, today+45d]`, **no auto-refresh / no polling / no
+  live counts**, `force-dynamic` render on navigation only, **neutral ink not colour** (warm/bad tokens
+  stay reserved for the At-Risk board). A bare row count for orientation is fine; a per-state scoreboard
+  is not.
+
+**Why:** The "three surfaces" rule guards against friction and stale info, not against a surface crew
+actively want. Restoring a loved workflow that *removes* operator toil (mates self-fill; the Sunday
+text-blast dies) is squarely on-mission. Framing it as a DEC-042-style recorded exception keeps the
+brand discipline honest rather than silently eroded.
+
+**Tradeoff:** A 4th crew surface (the thing BRAND warns against) — accepted because it's pull, opt-in,
+and inherits the proven guardrails. Crew can now cherry-pick the good shifts, leaving dregs to the
+cascade — *desired* here (the eager people self-serving is the win; the cascade was always the tool for
+the rest). **Rejected:** an availability calendar (the parked §4 feature — wrong shape, declares
+abstract availability not concrete claims); leaving crewing push-only (ignores explicit crew demand +
+keeps the mate toil that never needed to exist). **Revisit if:** cherry-picking strands hard shifts such
+that the cascade's captain-fill gets *worse*, not just unchanged. **Phase:** 7.
+
+## DEC-075: Self-claim is auto-lock (`Open → Confirmed`), bypassing `Asked`; operator-confirm-required is a built-in seam, not built
+
+**Status:** Accepted (Phase 7).
+
+**Decision:**
+- A self-claim transitions the seat **`Open → Confirmed`** directly (auto-lock), skipping `Asked`. This
+  reuses the existing **assign-then-confirm** path (§1.1: `Claimed` already means "accepted *or a named
+  person was assigned*") — a self-claim is the crew member assigning themselves — collapsed straight to
+  `Confirmed`. No invariant requires a preceding `Ask`.
+- **The operator retains full confirm/override capability** post-hoc: a self-Confirmed seat is visible
+  in the cockpit and can be reassigned/released by the operator like any other Confirmed seat.
+- **Seam for operator-confirm-required (not built):** the claim service reads an `app_settings` flag
+  `self_claim_requires_confirmation` (absent ⇒ false ⇒ auto-lock, mirroring DEC-054's `engine_paused`
+  absent-⇒-running). When true (future), a self-claim lands in **the reserved `Held`/`Claimed` tier**
+  (§1.1 "⏳ RESERVED … a tentative `Held`") pending operator confirm — i.e. the parked **Progressive
+  crew commitment** primitive (§4). Write the service to branch on the flag now; do **not** build the
+  Held tier or the confirm queue in Phase 7.
+
+**Why:** Mates loved the *finality* of grabbing a shift — an operator-confirm gate kills that snap.
+Auto-lock is the right MVP. But the operator explicitly wants the confirm capability to exist; the
+cheapest honest version is a flag-guarded branch toward the tier the design already reserved, so flipping
+it later is config + a queue, not a re-architecture.
+
+**Tradeoff:** A self-Confirmed seat with no operator gate means a flaky self-claimer can lock a real
+seat — mitigated by reliability tracking (DEC-078) and the operator override. **Rejected:**
+`Open → Claimed` (tentative) as the MVP default (kills the finality crew asked for); building the full
+Held tier now (premature — it's parked §4); a bespoke "self-claim pending" state outside the reserved
+tier (forks the state machine the §1.1 reserve already anticipated). **Revisit if:** auto-lock produces
+material no-shows from low-reliability self-claimers → flip the flag. **Phase:** 7.
+
+## DEC-076: Two eligibility doors — self-claim is native-role-only; operator-assign is ratings-inclusive (the dual-rating escape hatch)
+
+**Status:** Accepted (Phase 7).
+
+**Decision:**
+- **Self-claim door = native role only.** The browse list shows a viewer only the Open seats whose role
+  is their **native role**, layered on top of the existing eligible-pool filter (§1.1: credentials valid
+  on the trip date + holds the rating; §1.3 not-suppressed). A captain never sees mate seats.
+- **`nativeRole(crew)` is derived, no migration for MVP.** With the captain+mate fleet (DEC-043), native
+  role = the most senior role the member holds, precedence **captain > mate** (concretely: `captain` if
+  `"captain" ∈ ratings`, else the sole role). The precedence is hardcoded *for the two-role world* and
+  is the one acknowledged wart.
+- **Operator-assign door = ratings-inclusive.** Operator manual assignment (the existing assign path)
+  uses full `ratings`, so the operator can drop a captain-rated member into an Open **mate** seat
+  last-minute to fill a shift. This door is admin-only and bypasses the browse surface entirely.
+- Same seat, same state machine; **two different gatekeepers**. The dual-rating stopgap stays in the
+  operator's hands and never enters the crew mental model.
+
+**Why:** "No captain will ever self-assign to a mate shift" (operator). Dual-rating is purely a
+last-minute operator fill hack, not a crew-facing concept; modelling it as two eligibility predicates
+keeps the crew UX single-role-simple while preserving the hack.
+
+**Tradeoff:** Hardcoded captain>mate precedence in `nativeRole` violates DEC-ROLE-1's "manning is data
+the deriver loops" purity — accepted as scoped debt for a two-role fleet, with the graduation path
+named. **Rejected:** adding a `primary_role` column now (premature for two roles; the derived rule
+suffices); showing dual-rated crew both seat types with a role-picker (the confusion the operator
+explicitly wants to avoid); a `role_types.rank` column now (the principled fix, but scope creep for
+MVP). **Revisit if / graduation:** when **genuine multi-role work** lands (a person who actually *works*
+more than one role, not pinch-hits) — promote native role to stored data (`crew_members.primary_role`
+or `role_types.rank`) and design role-selection as a real crew-facing feature. *Until then, multi-role
+is an explicit NON-GOAL (see SPEC §2.7 / §4).*
+**Forward-planning — reliability floor on self-claim (post-MVP, additive, no re-architecture):** gate the
+self-claim door on a tunable `reliability_score >= floor` — one more predicate on `claimableSeatsFor`, not
+a new layer (the score is already on the crew row, §1.4 / DEC-008). It gates the *privilege*, not the
+work: below-floor crew lose **self-serve only** and are still crewed normally via the cascade (operator
+has eyes on it). It's the trust-tier cousin of the DEC-075 confirm-required seam — likely **one or the
+other, not both**. Build-time decisions: a `null`-score **cold-start rule** (DEC-008 "no history yet" —
+provisional pass / N training claims / neutral start; the real call, since a naive floor locks out exactly
+the newcomers who need reps); a tunable threshold (`app_settings`/env like the horizon lead-days; `floor =
+0` disables); `manual_floor`/`manual_boost`/`protocol_override` as the per-person exception hatch. **No
+"not trusted enough" wall** — the surface just quietly appears once earned (§1.4 non-comparative ethos).
+**Phase:** 7.
+
+## DEC-077: Day-granularity commitment; elastic absorption is already built; sub-day "watches" are deferred
+
+**Status:** Accepted (Phase 7).
+
+**Decision:**
+- The commitment unit is the **whole vessel-day shift** (current `shift-{vessel}-{date}`). Claiming a
+  seat = committing to crew **every trip on that boat that day, including trips booked later.** No schema
+  or grouping change.
+- **Elastic absorption needs no new code** — it's the existing idempotent `formShifts` (`src/builder/
+  form-shifts.ts`): a later reservation → event on that vessel-day → folds into the same shift's
+  `eventIds`; the Confirmed seat (the self-claimer) is preserved.
+- **The affordance lives in the claim confirm sheet** and must state the elastic scope in words, mirroring
+  the ask format (§2.6.1 `… call 12:30, back ~6 …`):
+  > *Claim Sat Jul 18 on Brew 2 as **captain**? That's the **whole day** — every trip booked, including
+  > any added later. Right now: **2 trips** (1:00 & 4:00 PM), call 12:30, back ~6.*
+  The **live trip count** makes "whole day" concrete; the **"incl. added later"** clause sets the elastic
+  expectation so a Thursday-booked 7 PM trip isn't a betrayal. Use the §2.6.3 DEC-041 committed-window
+  computation (latest departure + trip length + call lead) for "back ~6".
+- **The "a trip was added to your Saturday" nudge is not new** — it's the §2.6 principle 1 live-card
+  behavior ("departure changes → card changes → crew gets a ping", §3.1) applied to the
+  event-added-to-a-held-shift case. Reuse it; do not invent a parallel nudge.
+- **Sub-day blocks ("watches") are deferred.** When whole-day proves too coarse, the refinement is small
+  and known: change the grouping key `vessel|date` → `vessel|date|block` and the id mint to
+  `shift-{vessel}-{date}-{block}`, deriving `block` from `event.time`; everything downstream keys off
+  `shiftId` and is untouched. Fixed named windows (admin-set boundaries), **not** crew-defined windows.
+  **NON-GOAL for Phase 7.**
+
+**Why:** Day-first is the minimum coherent build and reuses the strongest existing machinery. The
+operator confirmed day-granularity is the right MVP; "afternoon/evening" is a real future need but not a
+day-one blocker.
+
+**Tradeoff:** Whole-day commitment may deter crew who only want evenings — accepted for MVP; the
+sub-day path is pre-scoped so it's a fast refinement, not a rewrite. **Rejected:** a new
+`Block`/`Watch` entity above shifts (fights the model — the shift *is* the day-container); crew-defined
+availability windows (needs an availability entity, breaks the deterministic shift id, and is really the
+parked calendar). **Revisit if:** crew decline whole-day claims they'd take as evening-only → ship the
+grouping-key refinement. **Phase:** 7 (day); sub-day deferred.
+
+## DEC-078: Concurrency, conflict, and crew self-release
+
+**Status:** Accepted (Phase 7).
+
+**Decision:**
+- **Concurrency:** the claim is a **guarded transition** in the claim service — write `Confirmed` **only
+  if the seat is still `Open`** (domain-owned optimistic check, no FK, per DEC-DATA-1). Loser of a race
+  gets a clean "just taken" and a refreshed list. No locking.
+- **Conflict guard:** a crew member may hold **at most one shift per date** via self-claim (whole-day
+  commitment = can't be on two boats the same day). Reject a self-claim for date *D* if they already hold
+  a Confirmed seat on a different shift on *D*. The operator-assign door may override (it owns edge cases).
+- **Self-release reuses the existing bail edge** (§2.6 principle 2 "bailing is as easy as accepting"):
+  crew can release a self-claimed seat → seat returns to `Open` via the `Confirmed → Bailed → Open` /
+  graceful `Crewed → Filling` edge (§1.1), which **re-opens and re-asks** automatically. A self-release
+  **emits a reliability event** (§1.4 / DEC-008); the existing score machinery weights it by lead time
+  (a release weeks out barely registers; a near-departure release is effectively a bail and is weighted
+  as one). No new cutoff logic — lean on §1.4 weighting. A **claim itself emits no reliability event**
+  (it's an assignment, like an operator assign; reliability is earned at `Completed`).
+- **MVP claimable set:** Open **required** seats on shifts in **`Pending` or `Filling`** (claiming during
+  `Pending`, *before* the cascade fires, is the point — it front-loads commitment and the later horizon
+  crossing finds the seat already Confirmed and skips it). Supernumerary seats are **out of scope** for
+  Phase 7. Self-claim during `Pending` does not violate "crew rules abstain" (§1.1) — the *system* still
+  abstains from asking; a crew member pulling is orthogonal.
+
+**Why:** Reuses the seat machine's existing re-open/re-ask edges and the reliability model rather than
+inventing release rules; the guarded transition is the minimal correct concurrency story for the
+no-FK/domain-owns-integrity substrate.
+
+**Tradeoff:** Optimistic-only (no reservation/hold during the confirm tap) can briefly show a
+since-taken seat — accepted at pilot scale; the guard makes the failure clean. **Rejected:** pessimistic
+seat locking (overkill at this scale); a fixed release-cutoff constant (the §1.4 lead-time weighting
+already encodes "later = worse"); reliability-dinging the claim (wrong signal — showing up is what
+counts). **Revisit if:** race "just taken" rejections become common enough to annoy → add a brief
+client-side optimistic hold. **Phase:** 7.
+
+## DEC-079: Crew-initiated sign-in + sign-out — the self-serve front door (a small addition, not a re-architecture)
+
+**Status:** Accepted (Phase 7, issue **7.0** — sequenced *before* the 7.3 browse surface, which is
+unreachable without it). Surfaced while reviewing this handoff: self-serve breaks the assumption that
+every crew entry is an operator-relayed, action-scoped link (DEC-030/073). A crew member opening the app
+*on their own initiative* to browse open shifts has **no link source**.
+
+**What already exists (do not rebuild):** `app/lib/auth.ts` runs a real **14-day sliding session
+cookie** (httpOnly, `sameSite=lax`, renewed inside the last 3 days) minted on magic-link consumption
+(`/crew/auth` POST, prefetch-safe GET-peek / POST-consume). **`endSession()` — sign-out — already
+exists** as a function. The `magic_tokens` mint/verify core (single-use CAS, hashed secret) is built. The
+gap is purely the *self-initiated entry point* and a *button* for the existing sign-out.
+
+**Decision:**
+- **Sign-out button** — wire the existing `endSession()` to a tap in the crew shell. Trivial; matters now
+  (shared/family phones; a standing 14-day session worth being able to drop).
+- **Signed-out crew landing with self-service sign-in** — phone entry → mint a magic link → deliver →
+  the existing POST-consume path mints the session. **Crew do NOT self-register** (§3.2): the phone must
+  match a roster `crew_members.phone`; an unknown phone returns a **generic** "if you're on the crew, a
+  link is on its way — otherwise check with the operator" (no enumeration leak of roster membership).
+  **Rate-limit** the mint endpoint (anti-spam/enumeration).
+- **Delivery channel — MVP = lean on the 14-day session, automated SMS deferred.** The whole current
+  model deliberately avoids automated outbound SMS (operator hand-relays every link — the web-link model,
+  DEC-030/073). A crew-initiated "text me a link" button *is* automated outbound SMS = the A2P **10DLC**
+  trigger (the Sailbook thread; BrewBoat on Sole-Proprietor/Telegram fallback). MVP avoids forcing that:
+  crew tap one operator-relayed link, **install the PWA / bookmark**, and stay signed in for 14 days
+  (renewed every visit), so a fresh self-service link is needed only on expiry / new device / cleared
+  cookies — rare. **Email the link** (`crew_members.email`, nullable) where on file as the non-SMS
+  fallback. Automated SMS sign-in links ride the eventual Twilio/10DLC cutover, not this phase.
+- **Admin auth is separate and unchanged** (§3.2 "a real authenticated login"); this DEC is crew-side only.
+
+**Why:** The session/auth core is already correctly shaped — this is additive UI + one mint-and-deliver
+path, not a re-architecture. Deferring automated SMS keeps Phase 7 from being held hostage by the 10DLC
+timeline while still giving crew a working front door (relayed-link-once + long session + email fallback).
+
+**Tradeoff:** Until automated SMS lands, a crew member with an expired session and no email on file needs
+an operator-relayed link to get back in — acceptable at pilot scale; the 14-day sliding window makes it
+infrequent. **Rejected:** automated SMS sign-in links in MVP (forces the 10DLC decision prematurely);
+crew self-registration (violates §3.2 — roster is operator-created); revealing whether a phone matched
+(roster-membership enumeration leak); building sign-in as a per-action link only (the very gap self-serve
+exposes). **Revisit if:** the relayed-link-once + long-session path proves too leaky (crew locked out too
+often) → promote to automated SMS as the forcing function for the Twilio/10DLC cutover. **Phase:** 7 (7.0).
+
+---
+
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)
 
 These are deferred by design. Each names an owner and a trigger. **Consult @architect (and the named

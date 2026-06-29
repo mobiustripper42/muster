@@ -34,6 +34,7 @@ phases are *burst-shaped* (clear inside a calendar week), so a per-week rate isn
 | 3     | 3        | 28     | 37.84    | 34.33      | 3.42       | 0.122         |
 | 4     | 3        | 28     | — (DEC-S026) | — | — | **burst** — 28 pts in ~1.8d; re-est'd 2, drift +4 |
 | 5     | 8        | 28     | — (DEC-S026) | — | — | **24.5 pts/wk** — 28 pts over 8d (06-11→06-19); re-est'd 0, drift 0 |
+| 6     | 10       | 43     | — (DEC-S026) | — | — | **~38 pts/wk** — 43 pts over 8d (06-21→06-29, work landed 06-28); re-est'd 1, drift +7 (6.6 split a/b, 6.1b added); 6.9 deferred |
 
 **Build strategy — vertical, not horizontal** (build plan §1): build a thin sliver through every
 layer so one real thing works end-to-end, then fatten it. The spine doesn't change as it thickens;
@@ -229,20 +230,25 @@ stays off the critical path (DEC-MSG-1 posture).*
 
 | # | Task | Effort | Notes |
 |---|------|--------|-------|
-| 6.1 | **Message store** — threads (cohort/shift/all-staff/DM) + participants + messages; membership **derived** for cohort/shift/all-staff, only DM persisted (DEC-009-spirit anti-stale); pure core + in-mem adapter + plain DDL | 5 | The substrate. Derivation-not-snapshot is the load-bearing call. · [#111](https://github.com/mobiustripper42/muster/issues/111) |
-| 6.2 | **Presence / activity signal** — light "is-active" tracking behind a `PresencePort`; realtime-vendor swap deferred | 3 | Isolates the realtime decision; no chatty heartbeat, no vendor. · [#112](https://github.com/mobiustripper42/muster/issues/112) |
-| 6.3 | **Notification-interval research spike** — pick a sensible default batch/cancel window (read + reason + document); feeds 6.4. Config-tunable | 2 | Owner asked for real thought on the default, not a guess. · [#113](https://github.com/mobiustripper42/muster/issues/113) |
-| 6.4 | **The doorbell decider (pure fn)** — presence-suppression, batch/cancel window, first-only-until-read, priority jump, short-notice-as-text, in-app-toast vs SMS | 8 | Crown jewel; coherent 8 — **don't split** (the rules interact). · [#114](https://github.com/mobiustripper42/muster/issues/114) |
-| 6.5 | **★ Human-drivable doorbell harness** — simulate multiple crew, who's-present-in-which-thread, advance the clock, observe who-rings-vs-silent; extends the fake adapter + `tick-dev.ts` | 5 | First-class — the decider's observable-behavior spec, not a test page. · [#115](https://github.com/mobiustripper42/muster/issues/115) |
-| 6.6 | **Doorbell tick + delivery wiring** — clock-driven sweep over the pending/cancel-window queue → channel/outbox relay (DEC-030); likely a **separate cron** (DEC-040 precedent) | 5 | Closes the loop end-to-end: a real message → decider → a real (relayed) ring. · [#116](https://github.com/mobiustripper42/muster/issues/116) |
-| 6.7 | **Crew messaging UI** — thread list, view + compose, start-DM-from-shift-card, in-app badge/toast (§7.6); **refresh-to-see-new** (instant deferred) | 5 | ↓ from 8 — instant live chat deferred. Split for review if the diff is large. · [#117](https://github.com/mobiustripper42/muster/issues/117) |
-| 6.8 | **Operator messaging surface** — post to cohort / all-staff, cross-thread visibility (§10) | 3 | Fast-follow; rides 6.7 components. · [#118](https://github.com/mobiustripper42/muster/issues/118) |
-| 6.9 | **Second sender number / phone-thread separation** (§5) — scheduling vs doorbell number, both on the crew campaign; the real SMS doorbell adapter | 3 | **10DLC-gated, off critical path** — final adapter swap (DEC-MSG-1). · [#119](https://github.com/mobiustripper42/muster/issues/119) |
+| 6.1 | **Message store** — threads (cohort/shift/all-staff/DM) + participants + messages; membership **derived** for cohort/shift/all-staff, only DM persisted (DEC-009-spirit anti-stale); pure core + in-mem adapter + plain DDL | 5 | **[x]** **DEC-051** — derived membership, no snapshot. [#111](https://github.com/mobiustripper42/muster/issues/111) · PR #134 |
+| 6.1b | **Canonical messaging subject model** — converge `senderKind` on a `Subject` | 2 | **[x]** **DEC-058**. `Added during P6 (+2)`. [#141](https://github.com/mobiustripper42/muster/issues/141) · PR #142 |
+| 6.2 | **Presence / activity signal** — light "is-active" tracking behind a `PresencePort`; realtime-vendor swap deferred | 3 | **[x]** coarse observed signal, swap-later seam. [#112](https://github.com/mobiustripper42/muster/issues/112) · PR #143 |
+| 6.3 | **Notification-interval research spike** — pick a sensible default batch/cancel window (read + reason + document); feeds 6.4. Config-tunable | 2 | **[x]** **DEC-060** — batch/cancel 90s, presence 5min. [#113](https://github.com/mobiustripper42/muster/issues/113) · PR #144 |
+| 6.4 | **The doorbell decider (pure fn)** — presence-suppression, batch/cancel window, first-only-until-read, priority jump, short-notice-as-text, in-app-toast vs SMS | 8 | **[x]** **DEC-068** — coherent 8, not split. [#114](https://github.com/mobiustripper42/muster/issues/114) · PR #165 |
+| 6.5 | **★ Human-drivable doorbell harness** — simulate multiple crew, who's-present-in-which-thread, advance the clock, observe who-rings-vs-silent; extends the fake adapter + `tick-dev.ts` | 5 | **[x]** the decider's observable-behavior spec. [#115](https://github.com/mobiustripper42/muster/issues/115) · PR #166 |
+| 6.6a | **Doorbell storage + `sendNotification` port** (substrate) — split from 6.6 | 5 | **[x]** **DEC-069** — two single-writer tables. [#116](https://github.com/mobiustripper42/muster/issues/116) · PR #168 |
+| 6.6b | **Doorbell tick + cron + ring relay** (the loop) — split from 6.6 | 5 | **[x]** **DEC-070/073** — separate cron + operator-outbox ring relay. `6.6 split a/b during P6 (+5)`. [#167](https://github.com/mobiustripper42/muster/issues/167) · PRs #169, #175 |
+| 6.7 | **Crew messaging UI** — thread list, view + compose, start-DM-from-shift-card, in-app badge/toast (§7.6); **refresh-to-see-new** (instant deferred) | 5 | **[x]** **DEC-071** — read+presence beacon, refresh-to-see-new. [#117](https://github.com/mobiustripper42/muster/issues/117) · PR #171 |
+| 6.8 | **Operator messaging surface** — post to cohort / all-staff, cross-thread visibility (§10) | 3 | **[x]** **DEC-072** — cross-visibility + operator ring-exclusion. [#118](https://github.com/mobiustripper42/muster/issues/118) · PR #172 |
+| 6.9 | **Second sender number / phone-thread separation** (§5) — scheduling vs doorbell number, both on the crew campaign; the real SMS doorbell adapter | 3 | **[~]** **deferred at P6 retro** — 10DLC-gated, indefinite (weeks+); cut off-phase, manual operator relay ships in its place. [#119](https://github.com/mobiustripper42/muster/issues/119) (open) |
 
-**Phase 6 total: 39 pts.** Ships-with-the-crew-app core = **6.1–6.7 (33 pts)**; 6.8 + 6.9 are
-fast-follows (6.9 waits on 10DLC). **Build order (de-risk first):** 6.1 → 6.2 → 6.3 →
-**6.4 + 6.5 together** → 6.6 → 6.7. Prove the invisible doorbell logic with the harness *before*
-building chat UI on top of it.
+**Phase 6: planned 39 pts; shipped 43 pts** (6.1–6.8 + the 6.1b subject model added mid-phase + the
+6.6 split into 6.6a/6.6b; net drift +7). **6.9 deferred** (#119, 10DLC-gated, cut off-phase at retro)
+and the #173 DM-visibility disclosure deferred — the messaging core shipped behind a **manual
+operator ring-relay**, with Twilio automation the parked final swap. The whole stack landed on `main`
+via the DEC-059 `feature/messaging` integration (**PR #179**). **Build order ran as planned
+(de-risk first):** 6.1 → 6.2 → 6.3 → **6.4 + 6.5 together** → 6.6 → 6.7 — the harness proved the
+invisible doorbell logic before chat UI rode on top.
 
 **Deferred to later fast-follows:** instant live chat (the hosted-realtime swap behind 6.2's seam);
 customer-side messaging (§11 — waits on reservations, Tier 4); native push (DEC-MSG-2); read

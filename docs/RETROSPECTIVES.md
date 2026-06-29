@@ -3,6 +3,47 @@
 Phase-end retrospectives. Written by `/retro` at each phase boundary — velocity, scope changes,
 process notes, forecast update. One entry per phase, newest at the top.
 
+## Phase 6 — 2026-06-29 — Messaging & the Smart Doorbell
+
+**Points:** 43 / 39 planned (110%) — +4 net (6.1b added +2, 6.6 split +5, 6.9 deferred −3)
+**Span:** 8 days (2026-06-21 → 2026-06-29) — work landed 2026-06-28 via the `feature/messaging`→`main` merge; 6 issues bookkeeping-closed the next day
+**Throughput:** ~38 pts/calendar-week (43 pts over 8d; ~43/wk to the 06-28 merge)  ← headline (span ≥7d) — read as one big integrated landing, not even drip
+**Estimate calibration:** 1 re-estimated (6.6: labelled 5 → split into 6.6a+6.6b, +5), 1 added mid-phase (6.1b subject model, +2); net drift +7. Every other task hit its original estimate exactly.  ← keeps the point unit honest
+**Sessions:** 10 in window   **PRs merged:** 30 since the Phase-5 v0.7.0 close
+**Issues:** 10 `phase:6` closed; 2 deferred off-phase and left open (#119 Twilio 6.9, #173 DM-visibility disclosure)
+
+### Phase throughput line
+| Phase | Date | Points | Span(d) | Throughput | Re-est'd | Net drift | Sessions | PRs |
+|-------|------|--------|---------|------------|----------|-----------|----------|-----|
+| 6 | 2026-06-29 | 43 | 8 | ~38 pts/wk (work landed 06-28) | 1 | +7 | 10 | 30 |
+
+### What worked
+- First use of a feature branch was smooth and establishes a great pattern. Able to throw in a few quick fixes (straight to main) while still developing on the feature branch. *(DEC-059 validated — the stay-promotable trunk let #174/#178 ship mid-feature.)*
+
+### What didn't
+- Overall very smooth, nothing to add. *(Friction this phase was operational — the @code-review API 529'ing into a self-review, the Tailscale insecure-context clipboard bug, Next 16's per-dir lock forcing isolated worktrees, the DB dropping mid-task — absorbed without touching the slice; nothing architectural broke.)*
+
+### Changes for next phase
+- None.
+
+### Scope changes
+- **Added:** 6.1b canonical messaging subject model (#141, +2, DEC-058) mid-phase.
+- **Split:** 6.6 (planned 5) → 6.6a substrate (#116) + 6.6b tick/cron/ring-relay (#167), +5 — re-estimated up front, not mid-build.
+- **Deferred off-phase (kept open, `phase:6` removed):** 6.9 Twilio second number (#119 — 10DLC-gated, indefinite) and #173 crew DM-visibility disclosure. The messaging core shipped behind a **manual operator ring-relay**; Twilio is the parked final swap.
+- **Landing:** the whole stack reached `main` via the DEC-059 `feature/messaging` integration (**PR #179**) — a 7-conflict + 1-ripple reconciliation, verified (typecheck, build, 689 unit, 37 e2e).
+
+### PM read
+
+**Pace.** 43 points across 10 closed issues is the largest planned phase this project has shipped, and at ~38 pts/calendar-week (~43 to the real merge) it clears Phase 5's 24.5 and matches the Phase 4 burst — except this wasn't a burst, it was a sustained multi-session feature build. The 8-day span flatters the calendar: the work compressed into the 06-28 `feature/messaging`→`main` landing, and six of the ten issues got their close stamp the next day as bookkeeping. Read the throughput as one big integrated landing, not eight days of even drip. Either way it's the high-water mark for a planned phase.
+
+**Scope.** +4 over the 39-pt plan, +7 gross drift, and — same as every phase since 3 — none of it is estimates missed. 6.6 was a labelled 5 that was honestly ~13, re-estimated and split into 6.6a/6.6b up front (the rule firing as written); 6.1b (subject model, +2) walked in mid-phase. Every other task hit its original number exactly. The two cuts — 6.9 (Twilio, 10DLC-gated) and #173 (DM-visibility disclosure) — were deferred *off* the phase, not dropped mid-build. The point unit is still honest; the variance is splits-decided-early plus added scope, which is this project's signature, not a smell.
+
+**Patterns.** Two themes from the session files. The architect gate paid for itself again — edge-classified three-state presence so the realtime swap stays decider-neutral (DEC-068), catching that the `NotificationPort` was already decided (DEC-050), separate read/notify tables, the 6.6 split, the own `ring_outbox` table over a union. Decision-before-code is a four-phase habit now. Sharper: the doorbell's presence branches were *dead in the pilot* until 6.7 wired the first `recordRead`/`recordActivity` call-site — built-ahead-of-its-consumer code goes silently inert, and only the architect's call-site audit caught it. The store→decider boundary tests were the right mitigation; keep pinning a substrate to its consumer whenever it lands before its reader. And review kept catching fail-toward-silence bugs the green build was happy with: NaN timestamps silencing rings, `APP_BASE_URL`→localhost dead-linking, the sweep ringing inactive crew, the office able to inject into a private DM. Green-build-ships-real-bugs, intact since Phase 1.
+
+**On your answers.** Agreed on the feature branch, and the record backs it harder than the one-liner: #174 and #178 shipped straight to main mid-feature precisely because the trunk stayed promotable — that's the whole point of DEC-059. But "smooth" earned an asterisk it doesn't mention. The landing was a 7-conflict + 1-ripple reconciliation, and #175's relay-send/outbox-card had to be hand-merged against main's #160 Web Share versions — not a textual auto-merge. It *felt* smooth because the cost was paid upfront: DEC-068+ numbered past main's DEC-067 to dodge a collision, the reconciliation flagged a full session in advance. Keep the pattern; bank that the smoothness was bought, not free. And "nothing to add" on what-didn't is a real signal, not a blank to fill — the friction this phase was all operational (the @code-review API 529'ing twice into a self-review, the Tailscale insecure-context clipboard bug, Next 16's per-dir lock forcing isolated worktrees, the DB dropping mid-task) and you absorbed every bit of it without it touching the slice. Nothing architectural broke. Correct answer.
+
+**Forward.** Phase 7 (Pass D, progressive commitment / soft-hold) is materialized with 5 issues. Carry one thing in clear-eyed: the Smart Doorbell is functionally live but human-in-the-loop — it rings into `/admin/outbox` and the operator texts each one by hand. 6.9 (Twilio, the wire that removes the thumbs) is gated on 10DLC carrier approval, which is weeks out and not on your schedule to move. So the messaging arc closes Phase 6 with an open tail that can't be velocity-planned — fine, but don't let "Phase 6 closed" read as "doorbell done." And #173, the one-line "your DMs are visible to the office" disclosure, is a thin fast-follow on a real trust gap — exactly the kind of item that rots in a Next-Steps list. Pull it into Phase 7's early slack before it ages.
+
 ## Phase 5 — 2026-06-19 — Pilot-readiness / go-live
 
 **Points:** 28 / 28 planned (100%)

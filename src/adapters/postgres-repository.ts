@@ -20,6 +20,7 @@ import type {
   Credential,
   CrewMember,
   Event,
+  LoginCode,
   MagicToken,
   OutboxEntry,
   PtoWindow,
@@ -184,6 +185,16 @@ const toMagicToken = (r: any): MagicToken => ({
   subjectId: r.subject_id,
   createdAt: r.created_at,
   expiresAt: r.expires_at,
+  ...opt("consumedAt", r.consumed_at),
+});
+
+const toLoginCode = (r: any): LoginCode => ({
+  subjectKind: r.subject_kind,
+  subjectId: r.subject_id,
+  codeHash: r.code_hash,
+  createdAt: r.created_at,
+  expiresAt: r.expires_at,
+  attempts: r.attempts,
   ...opt("consumedAt", r.consumed_at),
 });
 
@@ -628,6 +639,64 @@ export class PostgresRepository implements Repository {
   }
   async removeMagicToken(id: MagicTokenId): Promise<void> {
     await this.#pool.query("delete from magic_tokens where id=$1", [id]);
+  }
+
+  // ── Login codes (crew self-serve sign-in — DEC-081) ────────────────────────
+  async saveLoginCode(c: LoginCode): Promise<void> {
+    await this.#pool.query(
+      `insert into login_codes(subject_kind, subject_id, code_hash, created_at, expires_at, attempts, consumed_at)
+       values ($1,$2,$3,$4,$5,$6,$7)
+       on conflict (subject_kind, subject_id) do update set
+         code_hash=excluded.code_hash, created_at=excluded.created_at,
+         expires_at=excluded.expires_at, attempts=excluded.attempts,
+         consumed_at=excluded.consumed_at`,
+      [
+        c.subjectKind,
+        c.subjectId,
+        c.codeHash,
+        c.createdAt,
+        c.expiresAt,
+        c.attempts,
+        c.consumedAt ?? null,
+      ],
+    );
+  }
+  async getLoginCode(
+    subjectKind: AuthSubjectKind,
+    subjectId: string,
+  ): Promise<LoginCode | null> {
+    const { rows } = await this.#pool.query(
+      "select * from login_codes where subject_kind=$1 and subject_id=$2",
+      [subjectKind, subjectId],
+    );
+    return rows[0] ? toLoginCode(rows[0]) : null;
+  }
+  async consumeLoginCodeIfUnused(
+    subjectKind: AuthSubjectKind,
+    subjectId: string,
+    consumedAt: string,
+  ): Promise<boolean> {
+    // Single-use CAS, the magic-token precedent: the `and consumed_at is null`
+    // predicate under the row lock means only the first of two concurrent
+    // submits commits a non-zero update.
+    const { rowCount } = await this.#pool.query(
+      `update login_codes set consumed_at=$3
+       where subject_kind=$1 and subject_id=$2 and consumed_at is null`,
+      [subjectKind, subjectId, consumedAt],
+    );
+    return rowCount === 1;
+  }
+  async bumpLoginCodeAttempts(
+    subjectKind: AuthSubjectKind,
+    subjectId: string,
+  ): Promise<number> {
+    const { rows } = await this.#pool.query(
+      `update login_codes set attempts=attempts+1
+       where subject_kind=$1 and subject_id=$2 returning attempts`,
+      [subjectKind, subjectId],
+    );
+    // A vanished code can't be guessed against — report it at the ceiling.
+    return rows[0] ? rows[0].attempts : Number.MAX_SAFE_INTEGER;
   }
 
   // ── Outbox entries (web-link channel adapter state — DEC-030) ──────────────

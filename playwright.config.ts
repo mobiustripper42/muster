@@ -50,10 +50,11 @@ export default defineConfig({
       // don't vary by viewport, so the rest stays desktop-only to save wall-clock.
       // Covers: crew (auth-crew), the admin nav + hamburger drawer (admin-nav), the
       // outbox copy/overflow + Dismiss|Send (outbox-relay), the messaging surfaces
-      // (#117 — chat bubbles, the 3-button co-crew row, the compose box), and the
-      // fixed corner version tag (version-tag — must clear content at 375px).
+      // (#117 — chat bubbles, the 3-button co-crew row, the compose box), the
+      // fixed corner version tag (version-tag — must clear content at 375px), and
+      // the crew self-serve sign-in form + code entry (crew-sign-in — DEC-081).
       name: "mobile",
-      testMatch: /(auth-crew|admin-nav|outbox-relay|crew-messaging|operator-messaging|version-tag)\.spec\.ts/,
+      testMatch: /(auth-crew|admin-nav|outbox-relay|crew-messaging|operator-messaging|version-tag|crew-sign-in)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 375, height: 812 } },
     },
   ],
@@ -72,6 +73,9 @@ export default defineConfig({
       // The doorbell cron is CRON_SECRET-gated; pin one so the ring-relay e2e can
       // trigger a tick (the only way to exercise the relay end-to-end).
       CRON_SECRET: process.env.CRON_SECRET ?? "e2e-cron-secret",
+      // Crew self-serve code login (DEC-081) is flag-gated OFF in prod until 7.0b
+      // wires real email; the e2e env is where we exercise it, so turn it on.
+      CREW_SELF_SERVE: "1",
     },
   },
 });

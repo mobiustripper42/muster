@@ -292,6 +292,32 @@ export interface MagicToken {
   consumedAt?: string;
 }
 
+/**
+ * A short numeric login code (DEC-081) — the crew self-serve sign-in primitive.
+ *
+ * A SIBLING to `MagicToken`, not a reuse: a 6-digit code is NOT globally unique
+ * (two crew can mint the same digits), so it cannot ride `magic_tokens` (its
+ * `token_hash` is `unique`) and cannot be looked up by hash. Instead it is keyed
+ * by SUBJECT — exactly one live code per subject (re-request upserts) — which is
+ * also what lets `attempts` cap brute-force guesses against the short secret.
+ * Only `sha256(code)` is stored; the digits themselves never touch storage.
+ */
+export interface LoginCode {
+  subjectKind: AuthSubjectKind;
+  /** crewMemberId (crew) | operator handle (admin). The other half of the PK. */
+  subjectId: string;
+  /** sha256 of the raw code (hex). The code itself is never stored. */
+  codeHash: string;
+  /** ISO-8601 UTC. */
+  createdAt: string;
+  /** ISO-8601 UTC. Past this instant the code is dead even if unconsumed. */
+  expiresAt: string;
+  /** Failed verify attempts — capped to defeat brute-force of the short secret. */
+  attempts: number;
+  /** ISO-8601 UTC; absent until redeemed. Single-use: set once, by the CAS. */
+  consumedAt?: string;
+}
+
 // ── OutboxEntry (channel-adapter state — DEC-030) ────────────────────────────
 
 /** `pending` = the operator hasn't texted it yet; `sent` = they marked it sent. */

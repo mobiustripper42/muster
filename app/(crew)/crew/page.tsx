@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { buildCrewAppView, type CrewAppView } from "@core/crewapp/crew-view.js";
 import { buildThreadList } from "@core/crewapp/thread-list.js";
@@ -6,10 +7,12 @@ import { Notice } from "../../../components/ui/notice";
 import { Shell } from "../../../components/ui/shell";
 import { VersionTag } from "../../../components/ui/version-tag";
 import { readSubject } from "../../lib/auth";
+import { selfServeEnabled } from "../../lib/flags";
+import { LOGIN_EMAIL_COOKIE } from "../../lib/login-cookie";
 import { getRepo } from "../../lib/repo";
 import { TENANT_ID } from "../../lib/tenant";
 import { fmt12 } from "../../lib/format";
-import { respondToAsk } from "./actions";
+import { requestLoginCode, respondToAsk, signOut, verifyLoginCode } from "./actions";
 
 /** #161: the In/Out tap's outcome → a calm /crew notice (codes only, DEC-026). */
 const ANSWERED_NOTE: Record<string, string> = {
@@ -30,7 +33,13 @@ const ANSWERED_NOTE: Record<string, string> = {
  * Server component: reads the session, builds the view model through the port,
  * renders. The In/Out buttons post to a server action — no client JS required.
  */
-type Search = { auth?: string; bailed?: string; answered?: string };
+type Search = {
+  auth?: string;
+  bailed?: string;
+  answered?: string;
+  stage?: string;
+  err?: string;
+};
 
 export default async function CrewHome({
   searchParams,
@@ -41,7 +50,18 @@ export default async function CrewHome({
   const subject = await readSubject();
 
   if (!subject || subject.kind !== "crew") {
-    return <SignedOut reason={sp.auth} />;
+    // The entered email is carried in an httpOnly cookie across the two-step
+    // code flow (DEC-081) — read it here to render the code-entry screen.
+    const pendingEmail = (await cookies()).get(LOGIN_EMAIL_COOKIE)?.value ?? null;
+    return (
+      <SignedOut
+        reason={sp.auth}
+        flag={selfServeEnabled()}
+        stage={sp.stage}
+        err={sp.err}
+        pendingEmail={pendingEmail}
+      />
+    );
   }
 
   let view: CrewAppView | null;
@@ -79,7 +99,14 @@ export default async function CrewHome({
       <Notice>Can’t reach the schedule right now. Try again in a moment.</Notice>
     </Shell>;
   }
-  if (!view) return <SignedOut reason="stale" />;
+  if (!view)
+    return (
+      <SignedOut
+        reason="stale"
+        flag={selfServeEnabled()}
+        pendingEmail={null}
+      />
+    );
 
   const answeredNote = sp.answered ? ANSWERED_NOTE[sp.answered] ?? null : null;
   return (
@@ -103,16 +130,122 @@ function fmtDate(iso: string): string {
   });
 }
 
-function SignedOut({ reason }: { reason?: string }) {
-  const message =
-    reason && reason !== "stale"
-      ? "That link didn’t work — it may have expired or already been used. Ask your operator for a fresh one."
-      : "You’re signed out. Tap the link your operator sent to get back in.";
+function SignedOut({
+  reason,
+  flag,
+  stage,
+  err,
+  pendingEmail,
+}: {
+  reason?: string;
+  flag: boolean;
+  stage?: string;
+  err?: string;
+  pendingEmail: string | null;
+}) {
+  // Flag OFF (prod until 7.0b wires real email, DEC-059/080): today's behavior —
+  // the only way in is the operator-relayed link.
+  if (!flag) {
+    const message =
+      reason && reason !== "stale"
+        ? "That link didn’t work — it may have expired or already been used. Ask your operator for a fresh one."
+        : "You’re signed out. Tap the link your operator sent to get back in.";
+    return (
+      <Shell>
+        <h1 className="text-lg font-semibold text-ink">Muster</h1>
+        <Notice>{message}</Notice>
+      </Shell>
+    );
+  }
+
+  const onCodeStep = stage === "code" && !!pendingEmail;
   return (
     <Shell>
       <h1 className="text-lg font-semibold text-ink">Muster</h1>
-      <Notice>{message}</Notice>
+      {onCodeStep ? (
+        <CodeStep email={pendingEmail!} err={err} />
+      ) : (
+        <EmailStep err={err} />
+      )}
     </Shell>
+  );
+}
+
+const inputClass =
+  "min-h-[52px] rounded-card border border-line bg-card px-4 text-ink placeholder:text-faint";
+const primaryButtonClass =
+  "min-h-[52px] w-full rounded-card bg-accent font-semibold text-white";
+
+/** Step 1: enter your crew email → a code is emailed (DEC-081). */
+function EmailStep({ err }: { err?: string }) {
+  return (
+    <div className="flex flex-col gap-3">
+      {err === "locked" && (
+        <Notice>Too many tries on that code. Request a fresh one below.</Notice>
+      )}
+      {err === "expired" && (
+        <Notice>That code expired. Request a fresh one below.</Notice>
+      )}
+      <form action={requestLoginCode} className="flex flex-col gap-3">
+        <label htmlFor="email" className="text-sm text-muted">
+          Sign in with your crew email
+        </label>
+        <input
+          id="email"
+          name="email"
+          type="email"
+          inputMode="email"
+          autoComplete="email"
+          required
+          placeholder="you@example.com"
+          className={inputClass}
+        />
+        <button type="submit" className={primaryButtonClass}>
+          Email me a code
+        </button>
+      </form>
+    </div>
+  );
+}
+
+/** Step 2: paste the 6-digit code (DEC-081). The email line is non-committal —
+ *  it never confirms roster membership (no-enumeration). */
+function CodeStep({ email, err }: { email: string; err?: string }) {
+  return (
+    <div className="flex flex-col gap-3">
+      <Notice>
+        If {email} is on the crew, a 6-digit code is on its way. Enter it below.
+      </Notice>
+      {err === "invalid" && (
+        <Notice>That code didn’t match — check it and try again.</Notice>
+      )}
+      <form action={verifyLoginCode} className="flex flex-col gap-3">
+        <label htmlFor="code" className="text-sm text-muted">
+          Enter your code
+        </label>
+        <input
+          id="code"
+          name="code"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          pattern="[0-9]*"
+          maxLength={6}
+          required
+          placeholder="123456"
+          className={`${inputClass} tracking-[0.5em]`}
+        />
+        <button type="submit" className={primaryButtonClass}>
+          Sign in
+        </button>
+      </form>
+      {/* Re-mint: the email rides as a hidden field (the cookie also holds it). */}
+      <form action={requestLoginCode}>
+        <input type="hidden" name="email" value={email} />
+        <button type="submit" className="text-sm text-muted underline">
+          Send a new code
+        </button>
+      </form>
+    </div>
   );
 }
 
@@ -243,6 +376,15 @@ function CrewApp({
           )
         )}
       </section>
+
+      {/* Sign-out (DEC-081): quiet, always available — matters on shared/family
+          phones with a standing 14-day session. No flag; it only clears the
+          caller's own cookie. */}
+      <form action={signOut} className="pt-2">
+        <button type="submit" className="text-xs text-muted underline">
+          Sign out
+        </button>
+      </form>
 
       <VersionTag />
     </Shell>

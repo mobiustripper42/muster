@@ -10,9 +10,11 @@
 
 import type {
   Ask,
+  AuthSubjectKind,
   Credential,
   CrewMember,
   Event,
+  LoginCode,
   MagicToken,
   OutboxEntry,
   RingOutboxEntry,
@@ -76,6 +78,7 @@ export class InMemoryRepository implements Repository {
   readonly #seats = new Map<SeatId, Seat>();
   readonly #asks = new Map<AskId, Ask>();
   readonly #magicTokens = new Map<MagicTokenId, MagicToken>();
+  readonly #loginCodes = new Map<string, LoginCode>();
   readonly #outbox = new Map<OutboxEntryId, OutboxEntry>();
   readonly #ringOutbox = new Map<RingOutboxEntryId, RingOutboxEntry>();
   readonly #reliability: ReliabilityEvent[] = [];
@@ -292,6 +295,42 @@ export class InMemoryRepository implements Repository {
   }
   async removeMagicToken(id: MagicTokenId): Promise<void> {
     this.#magicTokens.delete(id);
+  }
+
+  // ── Login codes (crew self-serve sign-in — DEC-081) ────────────────────────
+  async saveLoginCode(c: LoginCode): Promise<void> {
+    this.#loginCodes.set(`${c.subjectKind}:${c.subjectId}`, clone(c));
+  }
+  async getLoginCode(
+    subjectKind: AuthSubjectKind,
+    subjectId: string,
+  ): Promise<LoginCode | null> {
+    const c = this.#loginCodes.get(`${subjectKind}:${subjectId}`);
+    return c ? clone(c) : null;
+  }
+  async consumeLoginCodeIfUnused(
+    subjectKind: AuthSubjectKind,
+    subjectId: string,
+    consumedAt: string,
+  ): Promise<boolean> {
+    // Single-threaded JS makes this atomic; the contract — single-use CAS — is
+    // what Postgres enforces under real concurrency.
+    const key = `${subjectKind}:${subjectId}`;
+    const current = this.#loginCodes.get(key);
+    if (!current || current.consumedAt !== undefined) return false;
+    this.#loginCodes.set(key, clone({ ...current, consumedAt }));
+    return true;
+  }
+  async bumpLoginCodeAttempts(
+    subjectKind: AuthSubjectKind,
+    subjectId: string,
+  ): Promise<number> {
+    const key = `${subjectKind}:${subjectId}`;
+    const current = this.#loginCodes.get(key);
+    if (!current) return Number.MAX_SAFE_INTEGER;
+    const attempts = current.attempts + 1;
+    this.#loginCodes.set(key, clone({ ...current, attempts }));
+    return attempts;
   }
 
   // ── Outbox entries (web-link channel adapter state — DEC-030) ──────────────

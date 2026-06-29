@@ -23,8 +23,9 @@ test.describe("crew sign-in + render", () => {
 
     // The open ask (§2.6.1) with its In/Out polarity.
     await expect(page.getByText("In or out?")).toBeVisible();
-    await expect(page.getByRole("button", { name: "In" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Out" })).toBeVisible();
+    // exact: the page now also has a "Sign out" button (DEC-081).
+    await expect(page.getByRole("button", { name: "In", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Out", exact: true })).toBeVisible();
 
     // My shifts section.
     await expect(page.getByRole("heading", { name: "My shifts" })).toBeVisible();
@@ -36,8 +37,12 @@ test.describe("crew sign-in + render", () => {
   });
 
   test("no session → the signed-out state, not the app", async ({ page }) => {
+    // With self-serve on (DEC-081), the signed-out state is the email sign-in
+    // prompt — still NOT the app.
     await page.goto("/crew");
-    await expect(page.getByText(/signed out/i)).toBeVisible();
+    await expect(
+      page.getByText(/sign in with your crew email/i),
+    ).toBeVisible();
     await expect(page.getByText("In or out?")).toHaveCount(0);
   });
 });

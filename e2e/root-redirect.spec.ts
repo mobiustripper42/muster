@@ -12,6 +12,8 @@ import {
 
 test.describe("root redirect (#97)", () => {
   test("no session → the sign-in prompt", async ({ page }) => {
+    // The root `/` is a thin session router with its own prompt (app/page.tsx);
+    // the self-serve email form lives on /crew, not here (DEC-081 left root alone).
     await page.goto("/");
     await expect(page.getByText(/tap the link your operator sent/i)).toBeVisible();
   });

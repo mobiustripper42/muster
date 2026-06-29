@@ -969,10 +969,14 @@ de-prioritized fast-follow whose only job is reliable push, never the participat
 
 ## 3.2 Authentication
 
-- **Crew: magic-link, passwordless.** Casual crew will not manage credentials; a forgotten password
-  is a ghosted shift (§2.6.1). The link drops them straight onto the relevant card/ask.
-- **Crew do not self-register.** Roster records are operator-created (§2.1); the magic link is for
-  *responding and viewing*, not signup.
+- **Crew: passwordless.** Casual crew will not manage credentials; a forgotten password is a ghosted
+  shift (§2.6.1). Two passwordless entries (**DEC-080**, refining the original magic-link-only plan):
+  operator-relayed **action links** (magic links) drop crew straight onto the relevant card/ask; a crew
+  member opening the app **on their own initiative** signs in with a **6-digit code emailed to their
+  roster email**. One login primitive — *a login is always a code; a link is only ever an addressed
+  deep-link, never a bare login*.
+- **Crew do not self-register.** Roster records are operator-created (§2.1); passwordless entry is for
+  *responding, viewing, and self-serve sign-in*, never signup.
 - **Admin (Spink): a real authenticated login.** Lower-stakes to specify (one trusted operator);
   the load-bearing decision is the crew side. Exact admin auth mechanism is a build-phase detail.
 

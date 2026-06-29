@@ -1,10 +1,23 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { recordResponseAndConfirm } from "@core/asks/ask-loop.js";
+import {
+  randomCode,
+  requestLoginCode as mintLoginCode,
+  verifyLoginCode as checkLoginCode,
+} from "@core/auth/login-code.js";
 import { answeredNoticeCode } from "@core/crewapp/answered-code.js";
 import { asId } from "@core/domain/ids.js";
-import { readSubject } from "../../lib/auth";
+import { endSession, readSubject, startSession } from "../../lib/auth";
+import { deliverLoginCode } from "../../lib/auth-delivery";
+import { selfServeEnabled } from "../../lib/flags";
+import {
+  LOGIN_EMAIL_COOKIE,
+  LOGIN_EMAIL_TTL_S,
+  loginCookieOptions,
+} from "../../lib/login-cookie";
 import { getRepo } from "../../lib/repo";
 
 /**
@@ -50,4 +63,96 @@ export async function respondToAsk(formData: FormData): Promise<void> {
     param = "answered=error";
   }
   redirect(param ? `/crew?${param}` : "/crew");
+}
+
+/**
+ * Sign out (DEC-080) — drop the session and land on the signed-out front door.
+ * Driven by a <form action>, no client JS. Always safe to ship: it only clears
+ * the caller's own cookie. `redirect()` throws by design, outside any try.
+ */
+export async function signOut(): Promise<void> {
+  await endSession();
+  redirect("/crew");
+}
+
+/**
+ * Step 1 of self-serve sign-in (DEC-080): take an email, mint+deliver a 6-digit
+ * code to a matching roster member, and advance to the code-entry screen.
+ *
+ * No-enumeration is the load-bearing property: the redirect to `?stage=code` and
+ * the screen it renders are IDENTICAL whether or not the email matched — only an
+ * actual delivery differs, which the requester can't observe. The entered email
+ * rides an httpOnly cookie (never the URL) into step 2. Feedback is codes-only on
+ * the URL (DEC-026); `redirect()` stays outside the try.
+ */
+export async function requestLoginCode(formData: FormData): Promise<void> {
+  if (!selfServeEnabled()) redirect("/crew");
+
+  const email = String(formData.get("email") ?? "").trim();
+  // A blank submit isn't an enumeration probe — just re-show the email step.
+  if (!email) redirect("/crew");
+
+  try {
+    const result = await mintLoginCode(
+      getRepo(),
+      { email },
+      { now: new Date(), mintCode: randomCode },
+    );
+    if (result.outcome === "deliver") {
+      await deliverLoginCode({
+        email: result.recipientEmail,
+        name: result.recipientName,
+        code: result.code,
+      });
+    }
+  } catch (e) {
+    // A delivery/DB hiccup must not reveal more than the generic path — log and
+    // fall through to the same code screen (a wrong/absent code just won't verify).
+    console.error("requestLoginCode failed", e);
+  }
+
+  (await cookies()).set(
+    LOGIN_EMAIL_COOKIE,
+    email,
+    loginCookieOptions(LOGIN_EMAIL_TTL_S),
+  );
+  redirect("/crew?stage=code");
+}
+
+/**
+ * Step 2 of self-serve sign-in (DEC-080): verify the pasted code against the
+ * email carried in the cookie. A correct code mints the session; a wrong one
+ * counts against the attempt cap. `locked`/`expired` send the crew member back
+ * to the start; `invalid` keeps them on the code screen to retry.
+ */
+export async function verifyLoginCode(formData: FormData): Promise<void> {
+  if (!selfServeEnabled()) redirect("/crew");
+
+  const jar = await cookies();
+  const email = jar.get(LOGIN_EMAIL_COOKIE)?.value ?? "";
+  const code = String(formData.get("code") ?? "").trim();
+  if (!email) redirect("/crew");
+
+  // Domain call inside the try; every redirect() (it throws by design) stays
+  // OUTSIDE it, or the success redirect would be swallowed as an error.
+  let result: Awaited<ReturnType<typeof checkLoginCode>> | null = null;
+  try {
+    result = await checkLoginCode(getRepo(), { email, code }, { now: new Date() });
+  } catch (e) {
+    console.error("verifyLoginCode failed", e);
+  }
+
+  if (result?.ok) {
+    await startSession(result.subject); // cookie write, not a throw
+    jar.delete(LOGIN_EMAIL_COOKIE);
+    redirect("/crew");
+  }
+
+  // A dead code (locked/expired) restarts the flow; a wrong one stays put.
+  const reason = result && !result.ok ? result.reason : "invalid";
+  if (reason === "locked" || reason === "expired") {
+    jar.delete(LOGIN_EMAIL_COOKIE);
+    redirect(`/crew?err=${reason}`);
+  }
+  redirect("/crew?stage=code&err=invalid");
 }

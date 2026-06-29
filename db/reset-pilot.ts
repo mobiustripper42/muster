@@ -54,6 +54,8 @@ const CLEAR: readonly string[] = [
   "seats", // assignments live here (assignedCrewMemberId + state)
   "asks",
   "outbox_entries",
+  "login_codes", // transient 10-min sign-in codes — clearing doesn't log anyone
+                 // out (sessions are cookies, not these); harmless to wipe (DEC-080)
   "events", // the Xola trips shifts form from — wiped for a clean re-import
   "reservations",
   "import_runs",

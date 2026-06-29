@@ -17,7 +17,7 @@ test.describe("crew ask — In / Out", () => {
     await signInAsCrew(page, "crew-quint");
     await expect(page.getByText("In or out?")).toBeVisible();
 
-    await page.getByRole("button", { name: "In" }).click();
+    await page.getByRole("button", { name: "In", exact: true }).click();
 
     // Auto-confirm (DEC-061): the "In" locks the seat immediately — no operator
     // confirm step — so `shift-ask` joins My shifts as a confirmed, clickable row,
@@ -32,7 +32,7 @@ test.describe("crew ask — In / Out", () => {
     await signInAsCrew(page, "crew-quint");
     await expect(page.getByText("In or out?")).toBeVisible();
 
-    await page.getByRole("button", { name: "Out" }).click();
+    await page.getByRole("button", { name: "Out", exact: true }).click();
 
     await expect(page.getByText("In or out?")).toHaveCount(0);
     await expect(page.getByText("Awaiting confirmation")).toHaveCount(0);

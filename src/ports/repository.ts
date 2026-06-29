@@ -12,9 +12,11 @@
 
 import type {
   Ask,
+  AuthSubjectKind,
   Credential,
   CrewMember,
   Event,
+  LoginCode,
   MagicToken,
   OutboxEntry,
   RingOutboxEntry,
@@ -169,6 +171,36 @@ export interface Repository {
    * hard delete, not a soft mark. No-op if the id is already gone.
    */
   removeMagicToken(id: MagicTokenId): Promise<void>;
+
+  // ── Login codes (crew self-serve sign-in — DEC-080) ────────────────────────
+  // A SIBLING to magic tokens, keyed by subject (one live code per subject) so a
+  // non-unique 6-digit code can be looked up by WHO and attempt-capped. Only the
+  // code's hash is stored.
+  /** Persist a code (upsert by `(subjectKind, subjectId)`) — re-request replaces. */
+  saveLoginCode(code: LoginCode): Promise<void>;
+  /** The subject's current code, or null — verify's first read. */
+  getLoginCode(
+    subjectKind: AuthSubjectKind,
+    subjectId: string,
+  ): Promise<LoginCode | null>;
+  /**
+   * Single-use consume as a compare-and-swap (the MagicToken precedent): set
+   * `consumedAt` **only if** still unconsumed; `true` iff this call consumed it.
+   * Two concurrent submits of the same code → exactly one `true`.
+   */
+  consumeLoginCodeIfUnused(
+    subjectKind: AuthSubjectKind,
+    subjectId: string,
+    consumedAt: string,
+  ): Promise<boolean>;
+  /**
+   * Count a failed guess against the brute-force cap; returns the new attempt
+   * total. No-op-safe if the code is gone (returns a value at/over the ceiling).
+   */
+  bumpLoginCodeAttempts(
+    subjectKind: AuthSubjectKind,
+    subjectId: string,
+  ): Promise<number>;
 
   // ── Outbox entries (web-link channel adapter state — DEC-030) ──────────────
   // Adapter-side, like MagicToken: persisted through the port so the operator's

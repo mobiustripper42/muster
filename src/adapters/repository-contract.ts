@@ -16,6 +16,7 @@ import type {
   Credential,
   CrewMember,
   Event,
+  LoginCode,
   MagicToken,
   OutboxEntry,
   RingOutboxEntry,
@@ -119,6 +120,15 @@ const magicToken = (over: Partial<MagicToken> = {}): MagicToken => ({
   subjectId: CREW,
   createdAt: "2026-07-01T12:00:00.000Z",
   expiresAt: "2026-07-01T12:15:00.000Z",
+  ...over,
+});
+const loginCode = (over: Partial<LoginCode> = {}): LoginCode => ({
+  subjectKind: "crew",
+  subjectId: CREW,
+  codeHash: "code-hash-1",
+  createdAt: "2026-07-01T12:00:00.000Z",
+  expiresAt: "2026-07-01T12:10:00.000Z",
+  attempts: 0,
   ...over,
 });
 const outboxEntry = (over: Partial<OutboxEntry> = {}): OutboxEntry => ({
@@ -459,6 +469,52 @@ export function runRepositoryContract(
       ]);
       // Removing something already gone must not throw.
       await expect(repo.removeMagicToken(asId<"MagicTokenId">("ghost"))).resolves.toBeUndefined();
+    });
+
+    it("login codes: round-trip incl. consumedAt optional; keyed by subject (DEC-080)", async () => {
+      await repo.saveLoginCode(loginCode()); // not yet consumed
+      const got = await repo.getLoginCode("crew", CREW);
+      expect(got).toEqual(loginCode());
+      expect("consumedAt" in got!).toBe(false); // omitted, not undefined
+      expect(await repo.getLoginCode("crew", "no-such-crew")).toBeNull();
+      // Re-request upserts the single per-subject row, not a second one.
+      await repo.saveLoginCode(loginCode({ codeHash: "code-hash-2" }));
+      expect((await repo.getLoginCode("crew", CREW))!.codeHash).toBe("code-hash-2");
+    });
+
+    it("consumeLoginCodeIfUnused: consumes once, no-op when already spent", async () => {
+      await repo.saveLoginCode(loginCode());
+      const first = await repo.consumeLoginCodeIfUnused("crew", CREW, "2026-07-01T12:05:00.000Z");
+      expect(first).toBe(true);
+      expect((await repo.getLoginCode("crew", CREW))!.consumedAt).toBe(
+        "2026-07-01T12:05:00.000Z",
+      );
+      const second = await repo.consumeLoginCodeIfUnused("crew", CREW, "2026-07-01T12:09:00.000Z");
+      expect(second).toBe(false);
+      expect((await repo.getLoginCode("crew", CREW))!.consumedAt).toBe(
+        "2026-07-01T12:05:00.000Z",
+      );
+    });
+
+    it("consumeLoginCodeIfUnused: false for an absent code; exactly one of two submits wins", async () => {
+      expect(
+        await repo.consumeLoginCodeIfUnused("crew", "ghost", "2026-07-01T12:05:00.000Z"),
+      ).toBe(false);
+      await repo.saveLoginCode(loginCode());
+      const [a, b] = await Promise.all([
+        repo.consumeLoginCodeIfUnused("crew", CREW, "2026-07-01T12:05:00.000Z"),
+        repo.consumeLoginCodeIfUnused("crew", CREW, "2026-07-01T12:05:00.000Z"),
+      ]);
+      expect([a, b].filter(Boolean)).toHaveLength(1);
+    });
+
+    it("bumpLoginCodeAttempts: increments + returns the new total; ceiling when absent", async () => {
+      await repo.saveLoginCode(loginCode());
+      expect(await repo.bumpLoginCodeAttempts("crew", CREW)).toBe(1);
+      expect(await repo.bumpLoginCodeAttempts("crew", CREW)).toBe(2);
+      expect((await repo.getLoginCode("crew", CREW))!.attempts).toBe(2);
+      // A vanished code can't be guessed against — reported at/over the ceiling.
+      expect(await repo.bumpLoginCodeAttempts("crew", "ghost")).toBeGreaterThan(1000);
     });
 
     it("outbox entries: round-trip incl. sentAt optional; status flip via upsert (DEC-030)", async () => {

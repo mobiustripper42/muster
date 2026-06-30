@@ -111,6 +111,9 @@ describe("claimSeat (DEC-075/078)", () => {
     const stored = await repo.getSeat(seatId);
     expect(stored?.state).toBe("Confirmed");
     expect(stored?.assignedCrewMemberId).toBe(c);
+    // Provenance (#196): a self-claim records `self_claim`, so My shifts won't
+    // badge it "Added for you".
+    expect(stored?.acquiredVia).toBe("self_claim");
   });
 
   it("a filled native-role seat confirms the shift → Crewed", async () => {

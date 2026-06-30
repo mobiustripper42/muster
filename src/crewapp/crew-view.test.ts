@@ -112,6 +112,21 @@ describe("buildCrewAppView", () => {
     expect(cl.pending).toBe(true);
   });
 
+  it("provenance decides addedByOperator: a self-claim is NOT flagged; an operator override is (#196)", async () => {
+    const repo = await seed();
+    // A SELF-claimed Confirmed seat (no accepted ask) — the #196 bug: the old
+    // `!iAccepted` inference flagged it. Provenance `self_claim` must override → no badge.
+    await repo.saveShift({ id: asId<"ShiftId">("shift-self"), vesselId: VESSEL, date: "2026-07-10", state: "Crewed", eventIds: [] });
+    await repo.saveSeat({ id: asId<"SeatId">("seat-self"), shiftId: asId<"ShiftId">("shift-self"), role: CAPTAIN, kind: "required", state: "Confirmed", assignedCrewMemberId: ME, acquiredVia: "self_claim" });
+    // An operator-override Confirmed seat — provenance `operator` → badge.
+    await repo.saveShift({ id: asId<"ShiftId">("shift-op"), vesselId: VESSEL, date: "2026-07-11", state: "Crewed", eventIds: [] });
+    await repo.saveSeat({ id: asId<"SeatId">("seat-op"), shiftId: asId<"ShiftId">("shift-op"), role: CAPTAIN, kind: "required", state: "Confirmed", assignedCrewMemberId: ME, acquiredVia: "operator" });
+
+    const view = await buildCrewAppView(repo, ME, NOW);
+    expect(view!.shifts.find((s) => s.shiftId === "shift-self")!.addedByOperator).toBe(false);
+    expect(view!.shifts.find((s) => s.shiftId === "shift-op")!.addedByOperator).toBe(true);
+  });
+
   it("ask card carries the earliest scheduled departure (so the crew knows when)", async () => {
     const repo = await seed();
     await repo.saveShift({ id: asId<"ShiftId">("shift-ev"), vesselId: VESSEL, date: "2026-07-07", state: "Filling", eventIds: [asId<"EventId">("e-5pm"), asId<"EventId">("e-3pm")] });

@@ -160,12 +160,20 @@ export async function buildCrewAppView(
   for (const seat of held) {
     const shift = await repo.getShift(seat.shiftId);
     if (!shift || shift.date < today) continue; // past shifts drop off
-    // #161: a seat I hold but never accepted an ask for = the operator placed me
-    // (override / force-assign — I got no ask). Flag it so /crew can say so.
+    // #196: seat provenance decides the "Added for you" badge. An operator
+    // override is a force-place → badge; a self-claim or an accepted ask is an
+    // opt-in → no badge (the bug #196 fixes: a self-claim has no accepted ask, so
+    // the old `!iAccepted` inference wrongly flagged it). For LEGACY seats with no
+    // provenance recorded (pre-#196), fall back to that inference — a Confirmed
+    // seat the holder never accepted an ask for was operator-placed (#161).
     const seatAsks = await repo.listAsksForSeat(seat.id);
     const iAccepted = seatAsks.some(
       (a) => a.crewMemberId === crewMemberId && a.response === "accepted",
     );
+    const addedByOperator =
+      seat.state === "Confirmed" &&
+      (seat.acquiredVia === "operator" ||
+        (seat.acquiredVia === undefined && !iAccepted));
     shifts.push({
       shiftId: shift.id,
       seatId: seat.id,
@@ -173,7 +181,7 @@ export async function buildCrewAppView(
       roleName: await roleName(repo, seat.role),
       date: shift.date,
       pending: seat.state === "Claimed",
-      addedByOperator: seat.state === "Confirmed" && !iAccepted,
+      addedByOperator,
     });
   }
   shifts.sort((a, b) => a.date.localeCompare(b.date));

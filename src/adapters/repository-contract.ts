@@ -343,6 +343,22 @@ export function runRepositoryContract(
       expect(await repo.listSeatsForShift(SHIFT)).toHaveLength(1);
     });
 
+    it("seats: acquiredVia provenance round-trips and is optional (#196)", async () => {
+      await repo.saveShift(shift());
+      // Absent → stays absent (exactOptionalPropertyTypes; toEqual(seat()) asserts it).
+      await repo.saveSeat(seat());
+      expect((await repo.getSeat(SEAT))?.acquiredVia).toBeUndefined();
+      // Set on saveSeat → round-trips.
+      const placed = seat({ state: "Confirmed", assignedCrewMemberId: CREW, acquiredVia: "operator" });
+      await repo.saveSeat(placed);
+      expect(await repo.getSeat(SEAT)).toEqual(placed);
+      // Preserved through the CAS write (claimSeat sets it this way).
+      await repo.saveSeat(seat()); // reset to Open
+      const claimed = seat({ state: "Confirmed", assignedCrewMemberId: CREW, acquiredVia: "self_claim" });
+      expect(await repo.saveSeatIfState(claimed, "Open")).toBe(true);
+      expect((await repo.getSeat(SEAT))?.acquiredVia).toBe("self_claim");
+    });
+
     it("saveSeatIfState: applies on match, no-op on mismatch", async () => {
       await repo.saveShift(shift());
       await repo.saveSeat(seat()); // Open

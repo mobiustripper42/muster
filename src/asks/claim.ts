@@ -150,6 +150,9 @@ export async function claimSeat(
     ...seat,
     state: "Confirmed",
     assignedCrewMemberId: crewId,
+    // Provenance (#196): a self-claim is an opt-in, so My shifts must NOT badge it
+    // "Added for you" — that badge fires only on `acquiredVia === "operator"`.
+    acquiredVia: "self_claim",
   };
   const won = await repo.saveSeatIfState(confirmed, "Open");
   if (!won) return { code: "just_taken" };

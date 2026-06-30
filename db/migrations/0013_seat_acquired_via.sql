@@ -1,0 +1,12 @@
+-- 0013 — seat provenance (#196, DEC-076/075).
+--
+-- How the current occupant came to hold a Confirmed seat: a self-claim (the crew
+-- member pulled it), an operator override (force-placed), or an accepted ask.
+-- My shifts needs this to stop badging a SELF-claimed seat "Added for you" — a
+-- self-claim and an operator-place are otherwise indistinguishable on the seat
+-- (both are Confirmed with no accepted ask).
+--
+-- Nullable, no backfill: legacy seats read null = "not operator-placed" (the badge
+-- only fires on 'operator'). Cleared when a seat re-opens (bail/vacate). Plain
+-- text, not an enum — same DEC-ROLE-1 no-enum posture as the rest of the schema.
+alter table seats add column acquired_via text; -- 'ask' | 'operator' | 'self_claim' | null

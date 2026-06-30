@@ -164,6 +164,7 @@ const toSeat = (r: any): Seat => ({
   kind: r.kind,
   state: r.state,
   ...opt("assignedCrewMemberId", r.assigned_crew_member_id),
+  ...opt("acquiredVia", r.acquired_via),
 });
 
 const toAsk = (r: any): Ask => ({
@@ -506,10 +507,10 @@ export class PostgresRepository implements Repository {
   // ── Seats ──────────────────────────────────────────────────────────────────
   async saveSeat(s: Seat): Promise<void> {
     await this.#pool.query(
-      `insert into seats(id, shift_id, role, kind, state, assigned_crew_member_id) values ($1,$2,$3,$4,$5,$6)
+      `insert into seats(id, shift_id, role, kind, state, assigned_crew_member_id, acquired_via) values ($1,$2,$3,$4,$5,$6,$7)
        on conflict (id) do update set shift_id=excluded.shift_id, role=excluded.role, kind=excluded.kind,
-         state=excluded.state, assigned_crew_member_id=excluded.assigned_crew_member_id`,
-      [s.id, s.shiftId, s.role, s.kind, s.state, s.assignedCrewMemberId ?? null],
+         state=excluded.state, assigned_crew_member_id=excluded.assigned_crew_member_id, acquired_via=excluded.acquired_via`,
+      [s.id, s.shiftId, s.role, s.kind, s.state, s.assignedCrewMemberId ?? null, s.acquiredVia ?? null],
     );
   }
   async getSeat(id: SeatId): Promise<Seat | null> {
@@ -535,7 +536,7 @@ export class PostgresRepository implements Repository {
     // concurrent claims only the first to commit matches — the second sees the
     // already-changed state and updates zero rows.
     const { rowCount } = await this.#pool.query(
-      `update seats set role=$2, kind=$3, state=$4, assigned_crew_member_id=$5
+      `update seats set role=$2, kind=$3, state=$4, assigned_crew_member_id=$5, acquired_via=$7
        where id=$1 and state=$6`,
       [
         seat.id,
@@ -544,6 +545,7 @@ export class PostgresRepository implements Repository {
         seat.state,
         seat.assignedCrewMemberId ?? null,
         expectedState,
+        seat.acquiredVia ?? null,
       ],
     );
     return rowCount === 1;

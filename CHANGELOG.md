@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.8.4] - 2026-06-30
+- PR #197: 7.3 /crew/open self-serve pull surface — browse + claim
+
 ## [0.8.3] - 2026-06-30
 - PR #194: 7.2 claim service — claimSeat (Open→Confirmed) + releaseSelfClaim
 

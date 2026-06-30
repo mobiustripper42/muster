@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.8.3] - 2026-06-30
+- PR #194: 7.2 claim service — claimSeat (Open→Confirmed) + releaseSelfClaim
+
 ## [0.8.2] - 2026-06-30
 - PR #193: Fix VersionTag blank in prod (read version from package.json)
 

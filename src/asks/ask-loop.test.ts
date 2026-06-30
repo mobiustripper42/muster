@@ -372,6 +372,15 @@ describe("bail (DEC-019)", () => {
     expect((await repo.getSeat(seatId!))!.acquiredVia).toBeUndefined();
   });
 
+  it("clears provenance even when resting Bailed — exhausted pool (#196)", async () => {
+    const a = await addCrew("crew-a"); // the only eligible captain → pool exhausts on bail
+    const [seatId] = await addShift(1);
+    await manualOverride(repo, seatId!, a, T0); // Confirmed, acquiredVia "operator"
+    const out = await bail(repo, seatId!, later(3000), 30 * 60_000);
+    expect(out.seatState).toBe("Bailed");
+    expect((await repo.getSeat(seatId!))!.acquiredVia).toBeUndefined();
+  });
+
   it("rests at Bailed → AtRisk when the pool is exhausted", async () => {
     const a = await addCrew("crew-a"); // the only eligible captain
     const [seatId] = await addShift(1);

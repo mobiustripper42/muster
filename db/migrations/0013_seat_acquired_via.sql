@@ -9,4 +9,4 @@
 -- Nullable, no backfill: legacy seats read null = "not operator-placed" (the badge
 -- only fires on 'operator'). Cleared when a seat re-opens (bail/vacate). Plain
 -- text, not an enum — same DEC-ROLE-1 no-enum posture as the rest of the schema.
-alter table seats add column acquired_via text; -- 'ask' | 'operator' | 'self_claim' | null
+alter table seats add column acquired_via text; -- 'operator' | 'self_claim' | null (accepted-ask inferred, not stored)

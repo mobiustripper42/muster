@@ -313,6 +313,8 @@ export async function recordResponse(
     latencyMs,
   );
   if (seat.state === "Asked" && (await allAsksClosed(repo, seat.id))) {
+    // No `delete acquiredVia` needed: an Asked seat never carries provenance
+    // (only a Confirmed write sets it; bail/vacate clear it on the way back). #196.
     await repo.saveSeat({ ...seat, state: "Open" });
     await refreshShiftState(repo, seat.shiftId);
     return { claimed: false, seatState: "Open" };
@@ -412,6 +414,7 @@ export async function expireAsks(
     seat.state === "Asked" &&
     (await allAsksClosed(repo, seatId))
   ) {
+    // Asked seats carry no provenance, so no `delete acquiredVia` here (#196).
     await repo.saveSeat({ ...seat, state: "Open" });
     await refreshShiftState(repo, seat.shiftId);
   }

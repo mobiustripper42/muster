@@ -210,12 +210,15 @@ export interface Seat {
   assignedCrewMemberId?: CrewMemberId;
   /**
    * How the current occupant came to hold this seat (#196): `self_claim` (pulled
-   * it on /crew/open), `operator` (force-placed via the override), or `ask`
-   * (accepted an ask). Drives the My-shifts "Added for you" badge, which fires
-   * ONLY for `operator` — a self-claim/ask is an opt-in. Absent on Open/Bailed
-   * seats (cleared on re-open) and on legacy rows (null reads as not-operator).
+   * it on /crew/open) or `operator` (force-placed via the override). Drives the
+   * My-shifts "Added for you" badge, which fires ONLY for `operator` — a self-claim
+   * is an opt-in. **Absent** for an accepted-ask seat (the badge infers that opt-in
+   * from the accepted ask itself), for Open/Bailed seats (cleared on re-open), and
+   * for legacy pre-#196 rows (null reads as not-operator). An explicit `"ask"`
+   * value isn't written — the accepted ask is the record; add it only if the
+   * inference is ever retired.
    */
-  acquiredVia?: "ask" | "operator" | "self_claim";
+  acquiredVia?: "operator" | "self_claim";
 }
 
 // ── Ask ─────────────────────────────────────────────────────────────────────

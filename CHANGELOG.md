@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.8.5] - 2026-06-30
+- PR #198: docs: AUTH.md — auth/identity model + sign-in doors
+
 ## [0.8.4] - 2026-06-30
 - PR #197: 7.3 /crew/open self-serve pull surface — browse + claim
 

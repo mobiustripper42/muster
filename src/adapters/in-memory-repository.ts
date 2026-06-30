@@ -87,6 +87,10 @@ export class InMemoryRepository implements Repository {
   // audit column (no read path through the port — parity, not a feature).
   #enginePaused = false;
   #enginePausedAt: string | null = null;
+  // Self-claim confirm-gate flag (DEC-075). Default false = auto-lock, mirroring
+  // the KV's "absent row ⇒ false" semantics. `#selfClaimAt` mirrors the audit col.
+  #selfClaimRequiresConfirmation = false;
+  #selfClaimAt: string | null = null;
   readonly #importRuns = new Map<
     ImportRunId,
     { run: ImportRun; items: ImportRunItem[] }
@@ -382,6 +386,18 @@ export class InMemoryRepository implements Repository {
   async setEnginePaused(paused: boolean, at: string): Promise<void> {
     this.#enginePaused = paused;
     this.#enginePausedAt = at;
+  }
+
+  // ── Self-claim confirm-gate flag (DEC-075) ─────────────────────────────────
+  async selfClaimRequiresConfirmation(): Promise<boolean> {
+    return this.#selfClaimRequiresConfirmation;
+  }
+  async setSelfClaimRequiresConfirmation(
+    value: boolean,
+    at: string,
+  ): Promise<void> {
+    this.#selfClaimRequiresConfirmation = value;
+    this.#selfClaimAt = at;
   }
 
   // ── Import-run audit (#128) ────────────────────────────────────────────────

@@ -23,10 +23,8 @@ import { committedDatesByCrew } from "./oracle.js";
 
 /** Self-claim only browses shifts the system is (or will be) working — never a
  *  Crewed/AtRisk/Completed/Cancelled one. Mirrors §2.7.1. */
-const CLAIMABLE_SHIFT_STATES: ReadonlySet<ShiftState> = new Set<ShiftState>([
-  "Pending",
-  "Filling",
-]);
+export const CLAIMABLE_SHIFT_STATES: ReadonlySet<ShiftState> =
+  new Set<ShiftState>(["Pending", "Filling"]);
 
 /** How far ahead the browse window reaches (DEC-074/042 guardrail: today+45d). */
 export const CLAIMABLE_WINDOW_DAYS = 45;

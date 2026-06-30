@@ -45,7 +45,7 @@ const DEFAULT_CHANNEL = "push" as const;
 // ── Internal helpers ────────────────────────────────────────────────────────
 
 /** Re-derive and persist a shift's state after a seat change (keeps the badge true). */
-async function refreshShiftState(
+export async function refreshShiftState(
   repo: Repository,
   shiftId: Seat["shiftId"],
 ): Promise<void> {

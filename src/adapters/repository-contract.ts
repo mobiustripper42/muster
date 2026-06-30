@@ -612,6 +612,16 @@ export function runRepositoryContract(
       expect(await repo.isEnginePaused()).toBe(false);
     });
 
+    it("self-claim confirm-gate flag: absent ⇒ false; set/clear round-trips (DEC-075)", async () => {
+      // Absent row ⇒ false ⇒ auto-lock (the MVP default, mirroring engine_paused):
+      // a missing row must never imply the unbuilt confirm tier is engaged.
+      expect(await repo.selfClaimRequiresConfirmation()).toBe(false);
+      await repo.setSelfClaimRequiresConfirmation(true, "2026-07-01T12:00:00.000Z");
+      expect(await repo.selfClaimRequiresConfirmation()).toBe(true);
+      await repo.setSelfClaimRequiresConfirmation(false, "2026-07-01T12:05:00.000Z");
+      expect(await repo.selfClaimRequiresConfirmation()).toBe(false);
+    });
+
     it("import runs: save + get round-trips run + items; absent → null (#128)", async () => {
       expect(await repo.getImportRun(asId<"ImportRunId">("run-1"))).toBeNull();
       await repo.saveImportRun(importRun(), importRunItems());

@@ -230,7 +230,10 @@ type RangeLabel = "today" | "weekend" | "range";
 /** Resolve the active date range from search params (default today). */
 function resolveRange(sp: Search, today: string): { range: DateRange; label: RangeLabel } {
   if (sp.from && sp.to) {
-    return { range: { from: sp.from, to: sp.to }, label: "range" };
+    // Tolerate a backwards range (from > to) — swap rather than render a confusing
+    // empty window. The domain [today, today+45d] clamp still bounds the result.
+    const [from, to] = sp.from <= sp.to ? [sp.from, sp.to] : [sp.to, sp.from];
+    return { range: { from, to }, label: "range" };
   }
   if (sp.range === "weekend") {
     return { range: weekendRange(today), label: "weekend" };

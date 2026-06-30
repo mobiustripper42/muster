@@ -1,4 +1,13 @@
+import { readFileSync } from "node:fs";
 import type { NextConfig } from "next";
+
+// Read straight from package.json, NOT process.env.npm_package_version — the env
+// var is only set when the build runs via `npm run build`; Vercel's build command
+// (`next build --webpack`) bypasses npm, so the version came through blank and the
+// <VersionTag /> rendered nothing in prod. Reading the file is invocation-independent.
+const { version } = JSON.parse(readFileSync("./package.json", "utf8")) as {
+  version: string;
+};
 
 /**
  * Next.js config (DEC-020, M4). Deliberately minimal — the stack is Next (App
@@ -30,7 +39,7 @@ const nextConfig: NextConfig = {
   // <VersionTag /> corner stamp can render it (the NEXT_PUBLIC_ prefix is what gets
   // it into client trees — without it the tag renders blank). Build-time only; the
   // commit SHA rides Vercel's own NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA.
-  env: { NEXT_PUBLIC_APP_VERSION: process.env.npm_package_version },
+  env: { NEXT_PUBLIC_APP_VERSION: version },
   experimental: {
     extensionAlias: {
       ".js": [".ts", ".tsx", ".js", ".jsx"],

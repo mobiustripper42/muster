@@ -118,8 +118,12 @@ describe("cascade coexistence (DEC-078, §2.7.5)", () => {
     expect(asks.map((a) => a.crewMemberId)).toContain(cap2); // next candidate asked
     expect(asks.map((a) => a.crewMemberId)).not.toContain(cap); // not the releaser
 
-    // The tick then works it as an ordinary Filling seat — no special-casing, no crash.
-    await expect(tick(repo, AFTER)).resolves.toBeDefined();
+    // The tick then works it as an ordinary live Filling seat — still Asked with
+    // the re-ask intact (not skipped like a Confirmed seat, not dropped to Open).
+    await tick(repo, AFTER);
+    const reworked = (await repo.getSeat(capSeat))!;
+    expect(reworked.state).toBe("Asked");
+    expect((await repo.listAsksForSeat(capSeat)).map((a) => a.crewMemberId)).toContain(cap2);
   });
 
   it("the system abstains during Pending, but a crew pull is orthogonal and still works", async () => {

@@ -104,6 +104,36 @@ export function plusMinutes(hhmm: string, mins: number): string {
   return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
 }
 
+/** The crew member's committed call→back window for a shift-day (DEC-041). */
+export interface CommittedWindow {
+  /** Show-up time, "HH:mm" — earliest scheduled departure − the call lead. */
+  callTime?: string;
+  /** End of commitment, "HH:mm" — latest departure + trip length + the call lead
+   *  reused as a teardown buffer. */
+  shiftEndTime?: string;
+}
+
+/**
+ * THE committed-window computation (DEC-041) — one home, shared by the shift card,
+ * the crew-view ask card, and the /crew/open claimable view so all three agree on
+ * the call→back times. Pass **scheduled** departure clock times ("HH:mm"); a
+ * cancelled trip moves neither boundary, so the caller filters first. Empty in →
+ * empty out (an event-less shift has no window).
+ */
+export function committedWindow(
+  scheduledTimes: readonly string[],
+): CommittedWindow {
+  if (scheduledTimes.length === 0) return {};
+  const sorted = [...scheduledTimes].sort((a, b) => a.localeCompare(b));
+  return {
+    callTime: minusMinutes(sorted[0]!, CALL_LEAD_MINUTES),
+    shiftEndTime: plusMinutes(
+      sorted[sorted.length - 1]!,
+      TRIP_DURATION_MINUTES + CALL_LEAD_MINUTES,
+    ),
+  };
+}
+
 async function roleName(repo: Repository, roleId: string): Promise<string> {
   const rt = await repo.getRoleType(roleId as Parameters<Repository["getRoleType"]>[0]);
   return rt?.name ?? roleId;
@@ -158,22 +188,12 @@ export async function buildShiftCard(
   events.sort((a, b) => a.departureTime.localeCompare(b.departureTime));
 
   // Window math uses SCHEDULED departures only — a cancelled trip moves neither
-  // the call time nor the shift end. Matches `bailLate` here (via
-  // `earliestScheduledStart`) and the outbox / ask-card surfaces, so all three
-  // agree on the window (DEC-041). The manifest above still lists every event.
-  const departures = rawEvents
-    .filter((e) => e.status === "scheduled")
-    .map((e) => e.time)
-    .sort((a, b) => a.localeCompare(b));
-  const callTime =
-    departures.length > 0 ? minusMinutes(departures[0]!, CALL_LEAD_MINUTES) : undefined;
-  // End of commitment = latest departure + trip length + the lead reused as a
-  // teardown buffer (DEC-041). Clock-string math, parallel to `callTime`; shares
-  // the constants with the outbox so the two can't disagree on the window.
-  const shiftEndTime =
-    departures.length > 0
-      ? plusMinutes(departures[departures.length - 1]!, TRIP_DURATION_MINUTES + CALL_LEAD_MINUTES)
-      : undefined;
+  // the call time nor the shift end (DEC-041). One computation (`committedWindow`)
+  // shared with the ask card and the /crew/open claimable view, so all three agree
+  // on the window. The manifest above still lists every event.
+  const { callTime, shiftEndTime } = committedWindow(
+    rawEvents.filter((e) => e.status === "scheduled").map((e) => e.time),
+  );
 
   // A bail "now" is "late" iff it falls inside the staffing horizon — DEC-028's
   // notice shortfall is non-zero (#7). Same instant the score penalizes; the

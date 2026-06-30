@@ -100,6 +100,20 @@ try {
   await repo.saveSeat({ id: asId<"SeatId">("seat-ask"), shiftId: asId<"ShiftId">("shift-ask"), role: CAPTAIN, kind: "required", state: "Asked" });
   await repo.saveAsk({ id: asId<"AskId">("ask-quint-1"), seatId: asId<"SeatId">("seat-ask"), crewMemberId: QUINT, channel: "push", sentAt: "2026-07-01T09:00:00.000Z" });
 
+  // A self-claimable shift → the /crew/open pull surface (7.3). An OPEN required
+  // captain seat (Quint's native role, DEC-076) on a Filling shift ~7d out — inside
+  // the today+45d window AND before Quint's 30d MMC, on a date he's not already
+  // committed (shift-soon is 15d out). Two scheduled trips (1pm & 4pm) drive the
+  // DEC-077 confirm-sheet copy ("2 trips … call 12:30, back ~6").
+  const OPEN = dateOf(at(7 * 24));
+  const EO1 = asId<"EventId">("evt-open-1pm");
+  const EO4 = asId<"EventId">("evt-open-4pm");
+  await repo.saveShift({ id: asId<"ShiftId">("shift-open"), vesselId: VESSEL, date: OPEN, state: "Filling", eventIds: [EO1, EO4] });
+  await repo.saveEvent({ id: EO1, vesselId: VESSEL, date: OPEN, time: "13:00", capacity: 12, status: "scheduled", dock: "East Bank of the Flats at Canal Basin Park" });
+  await repo.saveEvent({ id: EO4, vesselId: VESSEL, date: OPEN, time: "16:00", capacity: 12, status: "scheduled", dock: "East Bank of the Flats at Canal Basin Park" });
+  await repo.saveSeat({ id: asId<"SeatId">("seat-open-cap"), shiftId: asId<"ShiftId">("shift-open"), role: CAPTAIN, kind: "required", state: "Open" });
+  await repo.saveSeat({ id: asId<"SeatId">("seat-open-mate"), shiftId: asId<"ShiftId">("shift-open"), role: MATE, kind: "required", state: "Open" });
+
   // crew-dooley: a busy reliability history, so /crew shows the worst-case
   // standing line (every reason kind at once — #32). No shifts/asks of his own;
   // this seed is purely to eyeball the standing subline wrapping + neutral tone.
@@ -125,7 +139,7 @@ try {
     await logAskIgnored(repo, DOOLEY, SEAT("ig2"), S("ig2"), day(14));
   }
 
-  console.log("Seeded crew-quint: 1 confirmed shift (2 events, manifest, co-crew Hooper), 1 open ask.");
+  console.log("Seeded crew-quint: 1 confirmed shift (2 events, manifest, co-crew Hooper), 1 open ask, 1 self-claimable shift (/crew/open).");
   console.log("  + Quint's MMC expires ~30d out → the #57 credential nudge line shows on /crew.");
   console.log("  + Bail demo (#56): open the shift card → 'I can't make it…' — Quint is the only");
   console.log("    captain, so the seat rests Bailed and the shift lands on /admin/at-risk as a regression.");

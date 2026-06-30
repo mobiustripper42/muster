@@ -136,6 +136,10 @@ try {
   // The operator's own crew identity — must match OPERATOR_CREW_MEMBER_ID
   // (app/lib/operator.ts; default "crew-spink").
   const spink = await captain("crew-spink", "Spink", "+15555550100");
+  // A no-phone crew member (#186) — exercises the ring relay's "no number, but
+  // shareable via Web Share" path: the ring card offers Send on a Web-Share device
+  // instead of dead-ending at "No phone on file".
+  const nora = await captain("crew-obx-nophone", "Nora No-Phone", "");
 
   // 1 — relay, tight, with a prior declined round (the why-line).
   const tide = await shipShift("tide", "Tideline", at(20));
@@ -169,10 +173,24 @@ try {
     throw new Error(`expected 3 outbox entries, queued ${queued}`);
   }
 
+  // A pending doorbell ring for the no-phone crew → the "New messages" section
+  // (#186). Seeded directly (no doorbell-tick pipeline needed — the ring CARD is
+  // what #186 fixes). Upsert by id; e2e runs start from a truncated DB anyway.
+  await repo.saveRingOutboxEntry({
+    id: asId<"RingOutboxEntryId">("ring-obx-nophone"),
+    crewMemberId: nora,
+    threadId: asId<"ThreadId">("thread-obx-nophone"),
+    body: "2 new messages",
+    link: `${process.env.APP_BASE_URL ?? "http://mill-dev:3000"}/crew/threads/thread-obx-nophone`,
+    status: "pending",
+    createdAt: new Date().toISOString(),
+  });
+
   console.log("Seeded 3 outbox cards (trips anchored to now — re-run to re-anchor):");
   console.log("  1 Tideline  ~20h  RELAY — Bo · '2nd ask · Lance declined' · red countdown");
   console.log("  2 Keelhaul  ~30h  SELF  — Spink ('you' pill) · inline In/Out, no Send link");
   console.log("  3 Maibock   ~4d   RELAY — Mira · '1st ask'");
+  console.log("  + New messages: Nora No-Phone — a no-phone ring (Web Share relay, #186)");
   console.log("Outbox: /crew/dev-link?admin=spink → tap through → /admin/outbox");
 } finally {
   await repo.close();

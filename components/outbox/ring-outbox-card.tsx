@@ -32,25 +32,19 @@ export function RingOutboxCard({ card }: { card: RingOutboxCardVM }) {
         <span className="text-sm text-muted">{card.body}</span>
       </div>
 
-      {card.smsHref ? (
-        <RelaySend
-          entryId={card.entryId}
-          shareText={card.shareText}
-          smsHref={card.smsHref}
-          initialSent={card.initialSent}
-          initialSentLabel={card.sentLabel}
-          onRecord={recordRingSent}
-        />
-      ) : card.initialSent ? (
-        <div className="border-t border-line px-4 py-2 text-xs text-muted">
-          {card.sentLabel ?? "sent"} · awaiting read
-        </div>
-      ) : (
-        <p className="border-t border-warn-line bg-warn-bg px-4 py-3 text-sm text-warn">
-          No phone on file for {card.crewName} — add one on the roster, then relay
-          from here.
-        </p>
-      )}
+      {/* Always render RelaySend (mirroring the ask {@link OutboxCard}, #186): a
+          no-phone crew member is still relayable via Web Share (Google Voice) on a
+          device that has it. RelaySend's internal `!smsHref && !canShare` branch
+          owns the no-channel copy — so we DON'T gate on `smsHref` here, which would
+          wrongly decline the "no phone, but shareable" state (#160 / DEC-073). */}
+      <RelaySend
+        entryId={card.entryId}
+        shareText={card.shareText}
+        smsHref={card.smsHref}
+        initialSent={card.initialSent}
+        initialSentLabel={card.sentLabel}
+        onRecord={recordRingSent}
+      />
     </article>
   );
 }

@@ -3,6 +3,46 @@
 Phase-end retrospectives. Written by `/retro` at each phase boundary — velocity, scope changes,
 process notes, forecast update. One entry per phase, newest at the top.
 
+## Phase 7 — 2026-06-30 — Crew Self-Serve ("Pick your shifts")
+
+**Points:** 20 / 20 planned (100%)
+**Span:** ~1.1 days (2026-06-29 13:45 → 06-30 17:01) — burst (<7d)
+**Throughput:** burst — 20 pts in ~1.1d (no per-week rate quoted; sub-7-day phase)
+**Estimate calibration:** 1 re-estimated (7.0 split into 7.0a/7.0b, points preserved), net drift 0
+**Sessions:** 2 (S32, S33)   **PRs merged:** ~13 in window; 7 versioned at this retro (→ v0.8.2–0.8.8), the 7.0a/7.0b/7.1 PRs rolled up in the v0.8.0/v0.8.1 interim release
+**Issues:** 6 created, 6 closed, 0 moved
+
+### Phase throughput line
+| Phase | Date | Points | Span(d) | Throughput | Re-est'd | Net drift | Sessions | PRs |
+|-------|------|--------|---------|------------|----------|-----------|----------|-----|
+| 7 | 2026-06-30 | 20 | ~1.1 | burst — 20 pts in ~1.1d | 1 | 0 | 2 | ~13 (7 versioned) |
+
+### What worked
+- "Very tight turnaround." (Densest burst the project's logged — 20 pts in ~1.1d across two effectively-continuous sessions.)
+
+### What didn't
+- (None raised — retro kept terse.)
+
+### Changes for next phase
+- (None raised.)
+
+### Scope changes
+- **7.0 split** into 7.0a (#180, sign-out + 6-digit code sign-in, dark/fake delivery, PR #190) + 7.0b (#189, real Resend email, PR #191) — points preserved (3+2=5).
+- **+2 follow-ups** pulled in to end out the phase: **#186** (ring-relay: no-phone crew relayable via Web Share, PR #200) and **#196** (seat provenance — the "Added for you" badge fix, migration **0013**, PR #201). #196 closed a loop 7.3's own code review opened.
+- **Deferred as designed:** Pass D / Held-tier (DEC-075 seam), genuine multi-role (DEC-076), sub-day watches (DEC-077).
+- **Shipped DARK:** `CREW_SELF_SERVE` stays off until the operator's Resend DKIM/DNS + Vercel env steps land (out-of-band, not on the velocity plan). "Phase 7 closed" = code shipped, not crew-self-serve live.
+
+### PM read
+**Pace.** 20 points in ~1.1 days is the densest burst this project has logged — tighter than Phase 4's 28-in-1.8d per-day, and the two sessions were effectively continuous (S32 closed 00:50Z, S33 opened 01:02Z — a session rotation, not a rest). It's also the smallest *planned* phase since Phase 2, reading as scoping discipline returning after Phase 6's 43-pt high-water mark: one coherent vertical, not a sprawling arc.
+
+**Scope.** 20/20, net drift 0 — fourth straight phase where variance is *added* scope, not missed estimates. The lone re-estimate (7.0 → 7.0a/7.0b) preserved points. The two follow-ups pulled in to "end out 7" are both healthy: #196 closed a loop *7.3's own review* opened; #186 pulled a Phase 6 tail forward. Deferrals (Pass D, multi-role) stayed parked behind DEC-075/076 as designed.
+
+**Patterns.** Strict layering paid off — read door → write door → surface → verification, with the two doors sharing exported constants so they can't drift. Review earned its keep seven phases running (the 7.1 UTC-vs-vessel-local window bug, the 7.2 cross-seat race, #186's dead-end copy). And the **merge-train DEC collision recurred again** (#188 took DEC-080 → forced DEC-081) — a three-plus-time offender; the "stack DEC-touching PRs" advice is still unheeded.
+
+**On your answer.** "Very tight turnaround" is accurate — but tight was *bought*: by the build order being right so every dependency was already merged, and by review catching the window bug and the race before they hit *real crew*. Small tension worth naming — "tight turnaround" closes fast, but you then pulled in two extra items, the opposite instinct. Both fine; the planned set was tight, the extra scope stretched the calendar. The thing keeping a fast going-live phase safe is the `CREW_SELF_SERVE` dark flag — not the speed.
+
+**Forward.** "Phase 7 closed" = shipped *dark*, not crew-self-serve-live; the flag flip is gated on the operator's Resend/Vercel steps, out-of-band. Two review forward-notes that rot if left in Next-Steps: the cross-seat double-confirm race may want a DEC-078 amendment (decide at a seam, not a comment), and `committedDatesByCrew` is a full scan wanting a durable index before the roster grows.
+
 ## Phase 6 — 2026-06-29 — Messaging & the Smart Doorbell
 
 **Points:** 43 / 39 planned (110%) — +4 net (6.1b added +2, 6.6 split +5, 6.9 deferred −3)

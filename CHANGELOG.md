@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.9.0] - 2026-06-30 — Phase 7: Crew Self-Serve
+- 20 pts shipped across 2 sessions (burst — ~1.1d); see docs/RETROSPECTIVES.md
+- Crew self-serve: front door (7.0a/b), two-door eligibility (7.1), claim service (7.2), /crew/open surface (7.3), cascade coexistence (7.4) — shipped DARK behind CREW_SELF_SERVE
+- Follow-ups: ring-relay no-phone Web Share (#186), seat provenance (#196, migration 0013)
+
 ## [0.8.8] - 2026-06-30
 - PR #199: 7.4 cascade coexistence — verify pull/push coexist
 

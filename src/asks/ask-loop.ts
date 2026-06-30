@@ -313,6 +313,8 @@ export async function recordResponse(
     latencyMs,
   );
   if (seat.state === "Asked" && (await allAsksClosed(repo, seat.id))) {
+    // No `delete acquiredVia` needed: an Asked seat never carries provenance
+    // (only a Confirmed write sets it; bail/vacate clear it on the way back). #196.
     await repo.saveSeat({ ...seat, state: "Open" });
     await refreshShiftState(repo, seat.shiftId);
     return { claimed: false, seatState: "Open" };
@@ -412,6 +414,7 @@ export async function expireAsks(
     seat.state === "Asked" &&
     (await allAsksClosed(repo, seatId))
   ) {
+    // Asked seats carry no provenance, so no `delete acquiredVia` here (#196).
     await repo.saveSeat({ ...seat, state: "Open" });
     await refreshShiftState(repo, seat.shiftId);
   }
@@ -475,6 +478,7 @@ export async function bail(
     // Exhausted: rest at Bailed (occupant cleared) → shift derives AtRisk.
     const bailed: Seat = { ...seat, state: "Bailed" };
     delete bailed.assignedCrewMemberId;
+    delete bailed.acquiredVia; // provenance is the occupant's — clear on re-open (#196)
     await repo.saveSeat(bailed);
     await refreshShiftState(repo, seat.shiftId);
     return { reAsks: [], seatState: "Bailed" };
@@ -483,6 +487,7 @@ export async function bail(
   // Candidates exist: clear Bailed, re-ask, seat → Asked.
   const reopened: Seat = { ...seat, state: "Asked" };
   delete reopened.assignedCrewMemberId;
+  delete reopened.acquiredVia; // provenance is the occupant's — clear on re-open (#196)
   await repo.saveSeat(reopened);
   const reAsks = await Promise.all(
     pool.map((c) => fireAsk(repo, reopened, c.id, now)),
@@ -606,6 +611,7 @@ export async function vacateSeat(
     // the horizon clock governs urgency via resolveShiftState.
     const opened: Seat = { ...seat, state: "Open" };
     delete opened.assignedCrewMemberId;
+    delete opened.acquiredVia; // provenance is the occupant's — clear on re-open (#196)
     await repo.saveSeat(opened);
     await refreshShiftState(repo, seat.shiftId);
     return { reAsks: [], seatState: "Open" };
@@ -613,6 +619,7 @@ export async function vacateSeat(
 
   const reopened: Seat = { ...seat, state: "Asked" };
   delete reopened.assignedCrewMemberId;
+  delete reopened.acquiredVia; // provenance is the occupant's — clear on re-open (#196)
   await repo.saveSeat(reopened);
   const reAsks = await Promise.all(
     pool.map((c) => fireAsk(repo, reopened, c.id, now)),
@@ -643,6 +650,10 @@ export async function manualOverride(
     ...seat,
     state: "Confirmed",
     assignedCrewMemberId: crewMemberId,
+    // Provenance (#196): an override is the operator force-placing someone, so My
+    // shifts flags it "Added for you". Overwrites any prior `self_claim` if the
+    // operator is displacing a self-claimer.
+    acquiredVia: "operator",
   };
   await repo.saveSeat(confirmed);
   await refreshShiftState(repo, seat.shiftId);

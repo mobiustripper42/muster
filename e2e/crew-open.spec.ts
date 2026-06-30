@@ -48,7 +48,11 @@ test.describe("crew /crew/open — pick up a shift", () => {
     // Lands on /crew, the seat now a confirmed row in My shifts (§2.6.2).
     await page.waitForURL((u) => u.pathname === "/crew");
     await expect(page.getByText(/you’re on the .* shift/i)).toBeVisible();
-    await expect(page.locator('a[href="/crew/shift/shift-open"]')).toBeVisible();
+    const myShift = page.locator('a[href="/crew/shift/shift-open"]');
+    await expect(myShift).toBeVisible();
+    // #196: a self-claim is an opt-in, so it must NOT carry the "Added for you"
+    // operator-placed badge (the seat's provenance is `self_claim`).
+    await expect(myShift.getByText(/Added for you/i)).toHaveCount(0);
   });
 
   test("a since-taken claim shows the clean 'just taken' message", async ({

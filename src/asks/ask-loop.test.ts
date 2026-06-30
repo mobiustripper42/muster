@@ -359,6 +359,28 @@ describe("bail (DEC-019)", () => {
     expect(await types(a)).toContain("shift_bailed");
   });
 
+  it("clears seat provenance on re-open (#196)", async () => {
+    const a = await addCrew("crew-a");
+    await addCrew("crew-b"); // a re-ask pool so the seat lands Asked, not Bailed
+    const [seatId] = await addShift(1);
+    await manualOverride(repo, seatId!, a, T0); // Confirmed, acquiredVia "operator"
+    expect((await repo.getSeat(seatId!))!.acquiredVia).toBe("operator");
+
+    await bail(repo, seatId!, later(3000), 90 * 60_000);
+    // The provenance is the occupant's; a re-opened seat carries none, so the next
+    // occupant's path sets it fresh (no stale "operator" badging an ask-accepter).
+    expect((await repo.getSeat(seatId!))!.acquiredVia).toBeUndefined();
+  });
+
+  it("clears provenance even when resting Bailed — exhausted pool (#196)", async () => {
+    const a = await addCrew("crew-a"); // the only eligible captain → pool exhausts on bail
+    const [seatId] = await addShift(1);
+    await manualOverride(repo, seatId!, a, T0); // Confirmed, acquiredVia "operator"
+    const out = await bail(repo, seatId!, later(3000), 30 * 60_000);
+    expect(out.seatState).toBe("Bailed");
+    expect((await repo.getSeat(seatId!))!.acquiredVia).toBeUndefined();
+  });
+
   it("rests at Bailed → AtRisk when the pool is exhausted", async () => {
     const a = await addCrew("crew-a"); // the only eligible captain
     const [seatId] = await addShift(1);
@@ -503,6 +525,7 @@ describe("manualOverride — the authority backstop (§2.4)", () => {
     const seat = await manualOverride(repo, seatId!, a, later(5000));
     expect(seat!.state).toBe("Confirmed");
     expect(seat!.assignedCrewMemberId).toBe(a);
+    expect(seat!.acquiredVia).toBe("operator"); // provenance (#196) → My shifts badges it
     expect(await shiftState(SHIFT)).toBe("Crewed");
     expect(await types(a)).not.toContain("ask_accepted"); // override isn't responsiveness
   });

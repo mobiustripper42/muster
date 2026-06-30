@@ -177,7 +177,9 @@ try {
   // (#186). Seeded directly (no doorbell-tick pipeline needed — the ring CARD is
   // what #186 fixes). Upsert by id; e2e runs start from a truncated DB anyway.
   await repo.saveRingOutboxEntry({
-    id: asId<"RingOutboxEntryId">("ring-obx-nophone"),
+    // Canonical id shape the real channel mints (ring-${threadId}-${crewId}), so a
+    // genuine ring for this pair would upsert this slot, not insert a second row.
+    id: asId<"RingOutboxEntryId">("ring-thread-obx-nophone-crew-obx-nophone"),
     crewMemberId: nora,
     threadId: asId<"ThreadId">("thread-obx-nophone"),
     body: "2 new messages",

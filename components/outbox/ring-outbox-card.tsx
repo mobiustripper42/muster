@@ -1,4 +1,5 @@
 import { recordRingSent } from "../../app/(admin)/admin/outbox/actions";
+import { CopyButton } from "./copy-button";
 import { RelaySend } from "./relay-send";
 
 /**
@@ -30,6 +31,17 @@ export function RingOutboxCard({ card }: { card: RingOutboxCardVM }) {
       <div className="flex flex-col gap-1 px-4 py-3">
         <span className="font-semibold text-ink">{card.crewName}</span>
         <span className="text-sm text-muted">{card.body}</span>
+      </div>
+
+      {/* The full relay message to copy-paste (#186) — mirrors the ask card so
+          RelaySend's "copy the message above" fallback is actually true here (the
+          ring card otherwise renders no copyable text). `select-all` so a blocked
+          clipboard still copies by hand; `min-w-0` so the deep-link wraps. */}
+      <div className="flex items-start justify-between gap-2 border-t border-line px-4 py-3">
+        <p className="min-w-0 select-all whitespace-pre-wrap break-words text-sm text-ink">
+          {card.shareText}
+        </p>
+        <CopyButton value={card.shareText} label="Copy" />
       </div>
 
       {/* Always render RelaySend (mirroring the ask {@link OutboxCard}, #186): a

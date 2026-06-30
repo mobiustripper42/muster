@@ -248,6 +248,18 @@ export interface Repository {
   /** Set the engine paused/running. `at` = ISO-8601 UTC change time (audit). */
   setEnginePaused(paused: boolean, at: string): Promise<void>;
 
+  // ── Self-claim confirm-gate flag (crew self-serve — DEC-075) ───────────────
+  // The seam DEC-075 reserves: when true, a self-claim lands in the (unbuilt)
+  // Held/Claimed tier pending operator confirm instead of auto-locking to
+  // Confirmed. Typed here — like the engine-pause flag — so the domain never
+  // touches the stringly `app_settings` KV (DEC-013).
+  /** True if self-claims need operator confirmation. Absent ⇒ false ⇒ auto-lock
+   * (mirroring DEC-054's engine_paused absent-⇒-running): a missing row is the
+   * MVP default, never a pause toward the reserved tier. */
+  selfClaimRequiresConfirmation(): Promise<boolean>;
+  /** Set the confirm-gate flag. `at` = ISO-8601 UTC change time (audit). */
+  setSelfClaimRequiresConfirmation(value: boolean, at: string): Promise<void>;
+
   // ── Import-run audit (operator import observability — #128, DEC-056) ───────
   // Adapter-side, like the outbox (DEC-030): persisted through the port so a run's
   // detail survives, but NEVER read by the domain — the importer returns the

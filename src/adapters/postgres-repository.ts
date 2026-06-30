@@ -793,6 +793,26 @@ export class PostgresRepository implements Repository {
     );
   }
 
+  // ── Self-claim confirm-gate flag (DEC-075) ─────────────────────────────────
+  async selfClaimRequiresConfirmation(): Promise<boolean> {
+    const { rows } = await this.#pool.query(
+      "select value from app_settings where key='self_claim_requires_confirmation'",
+    );
+    // Absent ⇒ auto-lock (DEC-075): no row means no one has set the gate, the MVP
+    // default. Only an explicit "true" routes a self-claim toward the reserved tier.
+    return rows[0]?.value === "true";
+  }
+  async setSelfClaimRequiresConfirmation(
+    value: boolean,
+    at: string,
+  ): Promise<void> {
+    await this.#pool.query(
+      `insert into app_settings(key, value, updated_at) values ('self_claim_requires_confirmation', $1, $2)
+       on conflict (key) do update set value=excluded.value, updated_at=excluded.updated_at`,
+      [value ? "true" : "false", at],
+    );
+  }
+
   // ── Import-run audit (#128, DEC-056) ───────────────────────────────────────
   async saveImportRun(run: ImportRun, items: ImportRunItem[]): Promise<void> {
     // One run + its identity rows are a unit — write them in a transaction so a

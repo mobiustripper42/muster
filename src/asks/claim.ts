@@ -103,8 +103,19 @@ export async function claimSeat(
   // §1.3 eligible-pool gate (active / rating / MMC valid on date / not
   // double-booked / not on PTO). `committedDates` over Claimed+Confirmed seats:
   // its `not_double_booked` rule IS DEC-078's one-shift-per-date conflict guard
-  // (the seat is still Open, so any same-date commitment is necessarily another
-  // shift). No bespoke guard — one definition of double-booked (DEC-DATA-1).
+  // (a same-date commitment on another committed seat — another shift, or another
+  // seat on this one). No bespoke guard — one definition of double-booked
+  // (DEC-DATA-1).
+  //
+  // KNOWN GAP (pilot-accepted, not a closed hole): this read-then-CAS guards one
+  // seat, not the cross-seat invariant. Two *concurrent* claims by the same crew
+  // for *different* same-date shifts both read an empty `committedDates`, both
+  // pass `notDoubleBooked`, and each per-seat CAS wins → confirmed to two boats
+  // the same day. Same window class as `recordResponse`'s `committedOnShift`
+  // check; the no-FK store can't enforce a crew+date uniqueness, so the cross-
+  // record invariant is the integrity tripwire's job (service-layer-integrity
+  // discipline), not the hot path. Narrow at pilot scale (needs two in-flight
+  // taps); revisit if double-confirms actually appear.
   const [credentials, ptoWindows, committedByCrew] = await Promise.all([
     repo.listCredentialsForCrew(crewId),
     repo.listPtoWindowsForCrew(crewId),
@@ -147,7 +158,12 @@ export async function claimSeat(
 }
 
 /**
- * Release a self-claimed seat (`Confirmed → Open`, re-open + re-ask — DEC-078).
+ * Release a confirmed seat the crew member holds (`Confirmed → Open`, re-open +
+ * re-ask — DEC-078). Provenance-agnostic: it bails any `Confirmed` seat they
+ * occupy, whether self-claimed or operator-assigned — a "can't make it" is a bail
+ * regardless of how the seat was acquired, and the release surface only ever lists
+ * seats they hold. (The asymmetry with `claimSeat`, which is native-role + window
+ * + Open gated, is intended.)
  *
  * A thin authorization wrapper over the existing bail edge: it pins the occupant
  * to `crewId`, so a crew member can only release a seat **they** hold — never bail

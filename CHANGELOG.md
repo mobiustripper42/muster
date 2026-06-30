@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.8.2] - 2026-06-30
+- PR #193: Fix VersionTag blank in prod (read version from package.json)
+
 ## [0.8.1] - 2026-06-30 — Crew Self-Serve front door (interim prod release)
 - Crew self-serve sign-in: 6-digit email-code login + sign-out, shipped **dark** behind `CREW_SELF_SERVE` until `crew.brewcle.com` DKIM is live (7.0a/7.0b — #190/#191)
 - Two-door eligibility: `nativeRole` + `claimableSeatsFor` (self-claim is native-role-only; operator-assign keeps full ratings) — domain only, no surface yet (7.1 — #192)

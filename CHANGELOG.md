@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.8.6] - 2026-06-30
+- PR #201: 7/#196 seat provenance — fix self-claim Added-for-you badge (migration 0013)
+
 ## [0.8.5] - 2026-06-30
 - PR #198: docs: AUTH.md — auth/identity model + sign-in doors
 

@@ -36,6 +36,7 @@ const ANSWERED_NOTE: Record<string, string> = {
 type Search = {
   auth?: string;
   bailed?: string;
+  claimed?: string;
   answered?: string;
   stage?: string;
   err?: string;
@@ -66,6 +67,7 @@ export default async function CrewHome({
 
   let view: CrewAppView | null;
   let bailedNote: string | null = null;
+  let claimedNote: string | null = null;
   let unreadTotal = 0;
   try {
     const repo = getRepo();
@@ -94,6 +96,14 @@ export default async function CrewHome({
         bailedNote = `You’re off the ${fmtDate(shift.date)} shift — nothing else needed from you.`;
       }
     }
+    // `claimed` carries a shift id (DEC-026) — resolve to a date for the calm
+    // self-serve confirmation. The seat is already Confirmed, so it's in My shifts.
+    if (sp.claimed) {
+      const shift = await repo.getShift(asId<"ShiftId">(sp.claimed));
+      if (shift) {
+        claimedNote = `You’re on the ${fmtDate(shift.date)} shift — it’s in My shifts below.`;
+      }
+    }
   } catch {
     return <Shell>
       <Notice>Can’t reach the schedule right now. Try again in a moment.</Notice>
@@ -113,8 +123,10 @@ export default async function CrewHome({
     <CrewApp
       view={view}
       bailedNote={bailedNote}
+      claimedNote={claimedNote}
       answeredNote={answeredNote}
       unreadTotal={unreadTotal}
+      selfServe={selfServeEnabled()}
     />
   );
 }
@@ -266,13 +278,17 @@ function CredentialLine({ nudge }: { nudge: NonNullable<CrewAppView["credentialN
 function CrewApp({
   view,
   bailedNote,
+  claimedNote,
   answeredNote,
   unreadTotal,
+  selfServe,
 }: {
   view: CrewAppView;
   bailedNote: string | null;
+  claimedNote: string | null;
   answeredNote: string | null;
   unreadTotal: number;
+  selfServe: boolean;
 }) {
   return (
     <Shell>
@@ -311,7 +327,21 @@ function CrewApp({
         )}
       </Link>
 
+      {/* The 4th surface (DEC-074): a calm pull entry point, flag-gated. Neutral
+          accent, never an alarm — it's an invitation, not a demand. */}
+      {selfServe && (
+        <Link
+          href="/crew/open"
+          prefetch={false}
+          className="flex items-center justify-between rounded-card border border-accent bg-accent px-4 py-3 font-semibold text-white shadow-sm"
+        >
+          <span>Pick up a shift</span>
+          <span aria-hidden>›</span>
+        </Link>
+      )}
+
       {bailedNote && <Notice>{bailedNote}</Notice>}
+      {claimedNote && <Notice>{claimedNote}</Notice>}
       {answeredNote && <Notice>{answeredNote}</Notice>}
       {view.credentialNudge && <CredentialLine nudge={view.credentialNudge} />}
 

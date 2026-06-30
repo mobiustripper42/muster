@@ -16,8 +16,7 @@ import type { Repository } from "../ports/repository.js";
 import { TENANT_TIMEZONE, vesselDateOf } from "../config/tenant.js";
 import { worstCredential } from "../admin/credential-health.js";
 import type { CredentialConcern } from "../admin/credential-health.js";
-import { CALL_LEAD_MINUTES, TRIP_DURATION_MINUTES } from "../builder/derive.js";
-import { plusMinutes } from "./shift-card.js";
+import { committedWindow } from "./shift-card.js";
 import { summarizeStanding } from "./standing.js";
 import type { CrewStandingView } from "./standing.js";
 
@@ -133,12 +132,9 @@ export async function buildCrewAppView(
     }
     evs.sort((a, b) => a.time.localeCompare(b.time));
     const departureTime = evs[0]?.time;
-    // Shift end = latest departure + trip length + the call lead reused as a
-    // teardown buffer (DEC-041), same constants + clock math as the shift card.
-    const lastDeparture = evs[evs.length - 1]?.time;
-    const shiftEndTime = lastDeparture
-      ? plusMinutes(lastDeparture, TRIP_DURATION_MINUTES + CALL_LEAD_MINUTES)
-      : undefined;
+    // Shift end via the shared DEC-041 window computation (the ask card shows the
+    // raw earliest departure, not the call-lead-adjusted callTime).
+    const { shiftEndTime } = committedWindow(evs.map((e) => e.time));
     asks.push({
       askId: ask.id,
       seatId: seat.id,

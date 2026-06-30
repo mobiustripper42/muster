@@ -53,4 +53,32 @@ test.describe("outbox relay (#160)", () => {
     // The entry is deleted → the card is gone from the worklist on the reload.
     await expect(page.locator("article").filter({ hasText: "+15555550101" })).toHaveCount(0);
   });
+
+  test("a no-phone crew's RING is still relayable via Web Share (#186)", async ({
+    page,
+  }) => {
+    // The doorbell-ring card used to gate the whole Send on `smsHref`, so a no-phone
+    // crew dead-ended at "No phone on file" even where Web Share works. With the fix
+    // it mirrors the ask card — RelaySend renders and offers Send on a share device.
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, "share", {
+        configurable: true,
+        value: () => Promise.resolve(),
+      });
+    });
+    await signInAsAdmin(page, "spink");
+    await page.goto("/admin/outbox");
+
+    const nora = page.locator("article").filter({ hasText: "Nora No-Phone" });
+    await expect(nora).toBeVisible();
+    // No longer the dead-end warn…
+    await expect(nora.getByText(/No phone on file/i)).toHaveCount(0);
+    // …a real Send (a <button>, since there's no `sms:` href — Web Share only).
+    const send = nora.getByRole("button", { name: "Send", exact: true });
+    await expect(send).toBeVisible();
+
+    // And it relays: the optimistic flip to the sent state.
+    await send.click();
+    await expect(nora.getByText(/awaiting reply/i)).toBeVisible();
+  });
 });

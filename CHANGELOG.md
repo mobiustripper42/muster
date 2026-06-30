@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.8.1] - 2026-06-30 — Crew Self-Serve front door (interim prod release)
+- Crew self-serve sign-in: 6-digit email-code login + sign-out, shipped **dark** behind `CREW_SELF_SERVE` until `crew.brewcle.com` DKIM is live (7.0a/7.0b — #190/#191)
+- Two-door eligibility: `nativeRole` + `claimableSeatsFor` (self-claim is native-role-only; operator-assign keeps full ratings) — domain only, no surface yet (7.1 — #192)
+- Xola pull window decoupled from the staffing horizon (`XOLA_PULL_LEAD_DAYS`, defaults to no behavior change — #188)
+- Manual interim release outside the `/retro` flow; Phase 7 retro reconciles per-PR versioning at phase close
+
 ## [0.8.0] - 2026-06-29 — Phase 6
 - 43 pts shipped across 10 sessions (throughput ~38 pts/calendar-week; work landed 06-28 via the feature→main merge) — Messaging & the Smart Doorbell: message store + derived membership, the pure doorbell decider + human-drivable harness, doorbell tick/cron, crew messaging UI, operator messaging surface, and the operator-outbox ring relay
 - Shipped behind a **manual operator ring-relay**; 6.9 (Twilio second number) deferred — 10DLC-gated. #173 (crew DM-visibility disclosure) deferred

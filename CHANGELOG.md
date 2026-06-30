@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.8.8] - 2026-06-30
+- PR #199: 7.4 cascade coexistence — verify pull/push coexist
+
 ## [0.8.7] - 2026-06-30
 - PR #200: 7/#186 ring relay — no-phone crew relayable via Web Share
 

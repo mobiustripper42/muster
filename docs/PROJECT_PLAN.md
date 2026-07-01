@@ -329,6 +329,55 @@ is owed only when multi-role graduates from non-goal to feature.
 
 ---
 
+## Phase 8: Shift Builder — review, edit & gap-aware grouping
+
+Completes the **locked-spec §2.3 Shift Builder** as a production-grade surface: the actionable
+**build → review** board (proposed shifts grouped boat→day, per-shift lock, changed-since-review),
+the gap/span **split-suggestion** the time-blind grouper is missing (#203), and the deferred §2.3
+edit actions (split / merge / seat-manning override / bulk weekend-lock) Phase 4 cut to its defer
+list — folding in the **"Shift editor"** FUTURE_IDEA (its one net-new sub-piece, *retime*, stays
+parked as Event-Admin §2.2 territory: retiming re-keys `eventId`). **Posture shift (2026-07-01):
+the vertical slice is over and the pilot is healthy — from here interfaces ship *fully baked*, not
+thin click-throughs.** This surface **sunsets the read-only All-Shifts list** (`/admin/shifts`,
+DEC-042's pre-authorized deletion trigger): the Builder absorbs its full-visibility read job, with
+the @architect gate preserving DEC-042's anti-anxiety guardrails in the merged surface. Source:
+SPEC §2.3 + `shiftboard.jsx` / `shiftdetail.jsx` mockups; #203; FUTURE_IDEAS "Shift editor" (HIGH).
+@architect pass 2026-07-01.
+
+**Load-bearing decisions (confirm at build):**
+- **Flag, don't auto-split (#203).** `formShifts` stays one-candidate-shift-per-vessel-day; a large
+  inter-trip **dead-gap** or a long **total-span** raises a non-destructive "split this?" suggestion
+  (thresholds as env knobs, the `derive.ts` tune-later pattern). Auto-splitting would break the
+  deterministic-`shift-{vessel}-{date}`-id + idempotency contract.
+- **Manual split/merge must survive re-derivation** — the @architect + **new DEC** question (8.3):
+  how does a human grouping decision persist when `formShifts` re-derives the vessel-day group? Plus
+  the `automationPaused` question (editing a shift carrying a live ask — the Shift-editor writeup's
+  own trigger).
+- **Builder supersedes All-Shifts** (DEC-042 sunset) — one surface, anti-anxiety guardrails intact.
+
+| # | Task | Effort | Notes |
+|---|------|--------|-------|
+| 8.1 | **Gap/span split-suggestion detector** (engine) — pure fn, two triggers (inter-trip dead-gap + total-span) over a shift's scheduled trips using the trip-window constants; thresholds as env knobs; expose the flag in the shift read model. Vitest-first, no schema | 3 | [#204](https://github.com/mobiustripper42/muster/issues/204) · SPEC §2.3 auto-group · #203 Slice 1 |
+| 8.2 | **Builder review + lock surface** — boat→day proposed-shift blocks (state badge, trips/pax, required + supernumerary seat pips), per-shift **Lock** (fires Tier-1 inside horizon — reuses the ask loop), "changed since review" / "new · review" tags (reuse DEC-029), 8.1 split-suggestion display, range bar. **Supersedes `/admin/shifts`** (DEC-042 sunset). @architect: merged-surface anti-anxiety posture | 5 | [#205](https://github.com/mobiustripper42/muster/issues/205) · SPEC §2.3 · shiftboard.jsx · absorbs #100 |
+| 8.3 | **Manual Split** — split a vessel-day shift into two; re-derive seats each side. **@architect + new DEC**: re-derivation survival + automationPaused | 5 | [#206](https://github.com/mobiustripper42/muster/issues/206) · SPEC §2.3 action · Shift editor · #203 Slice 2 |
+| 8.4 | **Manual Merge** — merge two proposed shifts on the same vessel-day; inverse of split, rides 8.3's DEC + reconciliation rails | 3 | [#207](https://github.com/mobiustripper42/muster/issues/207) · SPEC §2.3 action · Shift editor |
+| 8.5 | **Seat/manning override** — add a required working hand (gates `Crewed`) / add a supernumerary-trainee seat (non-gating, consumes a pax slot vs COI max); remove an added seat. Reuses `kind: required\|supernumerary` + the `removeSeat` port | 3 | [#208](https://github.com/mobiustripper42/muster/issues/208) · SPEC §2.3 · shiftdetail.jsx |
+| 8.6 | **Bulk "lock the weekend"** — the Lock-all(N) action across the range; rides 8.2's lock action | 2 | [#209](https://github.com/mobiustripper42/muster/issues/209) · SPEC §2.3 · shiftboard.jsx |
+
+**Phase 8 total: 21 pts.** Build order: 8.1 → 8.2 → 8.6 → 8.5 → 8.3 → 8.4 (surface first; the two
+decision-bearing edits last, after the @architect/DEC pass). **Quality bar: fully-baked surfaces —
+all states handled, no thin stubs (2026-07-01 posture).**
+
+**Gates:** @architect light-touch on 8.2 (All-Shifts merge posture); @architect + new DEC before 8.3
+(split/merge persistence vs `formShifts` re-derivation; automationPaused).
+
+**Not folded (stay parked — anti-shiny-object, post-slice):** *retime* (Event-Admin §2.2, re-keys
+`eventId`); Calendar view, Weekend heatmap, **Filter-by-crew** (distinct crew-centric read surfaces —
+Phase 9 candidates, more valuable exactly as All-Shifts sunsets); per-vessel qualification gate
+(oracle); richer call-time model.
+
+---
+
 ## Velocity Table
 
 Updated at end of each phase. Used by @pm to project remaining time.

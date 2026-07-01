@@ -217,6 +217,10 @@ export async function buildCrewAppView(
       const cm = await repo.getCrewMember(otherCrew);
       if (cm) coCrew.push({ name: cm.name, roleName: await roleName(repo, other.role) });
     }
+    // Stable order (code review): `listAllSeats` has no ORDER BY, so sort by name
+    // — otherwise the truncated "+N" / "& " display could flicker across loads
+    // once a shift carries 3+ crew (a no-op at BrewBoat's 2-crew scale).
+    coCrew.sort((a, b) => a.name.localeCompare(b.name));
     shifts.push({
       shiftId: shift.id,
       seatId: seat.id,

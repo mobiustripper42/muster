@@ -66,3 +66,18 @@ Harvested from the mockups per DESIGN-REFERENCE — read values, re-express as t
 Function over form; polish is post-slice (BRAND). The slice's job is to run a real weekend, not to
 look finished — review for clarity, correct hierarchy, and the binding constraints, not for visual
 polish.
+
+## Using the `frontend-design` skill (Muster-local, post-slice)
+The slice is over (production posture — fully-baked interfaces, 2026-07-01), so the execution craft
+the `frontend-design` skill brings is now warranted. Invoke it for UI work — but pass **`docs/BRAND.md`
++ this file + the `@theme` tokens (`app/globals.css`)** as the authoritative brief. **The brand wins
+every conflict.** The skill defaults to making UI *distinctive* (a signature element, an aesthetic
+risk, a characterful display face, motion); Muster is the deliberate opposite — calm, anti-anxiety,
+"insultingly small," neutral ink, no gamification, function-over-form, palette/IBM Plex/radius locked
+(DEC-021, no component library). The skill itself defers to a pinned brief ("the brief's own words
+always win"), so binding it is natural.
+- **Take from it:** precise spacing + hierarchy, type scale *within IBM Plex*, empty/error states as
+  invitations, active-voice end-user copy, keyboard focus, `prefers-reduced-motion`.
+- **Hold back:** new palette, signature element, aesthetic risk, motion/animation — not applicable to
+  a locked, calm identity.
+Muster-local (not backported to seeds).

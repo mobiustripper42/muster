@@ -332,10 +332,9 @@ is owed only when multi-role graduates from non-goal to feature.
 ## Phase 8: Shift Builder — review, edit & gap-aware grouping
 
 Completes the **locked-spec §2.3 Shift Builder** as a production-grade surface: the actionable
-**build → review** board (proposed shifts grouped boat→day, per-shift lock, changed-since-review),
-the gap/span **split-suggestion** the time-blind grouper is missing (#203), and the deferred §2.3
-edit actions (split / merge / seat-manning override / bulk weekend-lock) Phase 4 cut to its defer
-list — folding in the **"Shift editor"** FUTURE_IDEA (its one net-new sub-piece, *retime*, stays
+**build → review** surface (proposed shifts grouped boat→day, plus the gap/span **split-suggestion**
+the time-blind grouper is missing, #203), and the deferred §2.3 edit actions (split / merge /
+seat-manning override) Phase 4 cut to its defer list — folding in the **"Shift editor"** FUTURE_IDEA (its one net-new sub-piece, *retime*, stays
 parked as Event-Admin §2.2 territory: retiming re-keys `eventId`). **Posture shift (2026-07-01):
 the vertical slice is over and the pilot is healthy — from here interfaces ship *fully baked*, not
 thin click-throughs.** This surface **sunsets the read-only All-Shifts list** (`/admin/shifts`,
@@ -353,21 +352,21 @@ SPEC §2.3 + `shiftboard.jsx` / `shiftdetail.jsx` mockups; #203; FUTURE_IDEAS "S
   how does a human grouping decision persist when `formShifts` re-derives the vessel-day group? Plus
   the `automationPaused` question (editing a shift carrying a live ask — the Shift-editor writeup's
   own trigger).
-- **Builder = one surface, two modes** (DEC-042 sunset; refined 2026-07-01 from real pilot need — the operator needs upcoming-shift visibility *now*, before he trusts the automation enough to watch only At-Risk). **View mode** (default): the calm full-visibility read — **7-day default** + weekend/range presets, neutral ink, tap-through — *absorbing* All-Shifts (not deleting the capability he relies on). **Edit mode**: the build→review actions. Anti-anxiety guardrails intact. Calendar *grid* stays parked (Phase 9); View mode ships as a 7-day **list**.
+- **Builder View mode** (DEC-042 sunset; refined 2026-07-01 from real pilot need — the operator needs upcoming-shift visibility *now*). The calm full-visibility read — **7-day default** + weekend/range presets, neutral ink, tap-through — *absorbing* All-Shifts. Anti-anxiety guardrails intact. Calendar *grid* stays parked (Phase 9); View mode ships as a 7-day **list**. *(The old "Edit mode = per-shift lock" half was **cut** — **DEC-082**: locking is meaningless when Xola owns truth + pushes changes. The Edit affordances are the crew-native actions 8.3–8.5; the View/Edit toggle rides in with 8.3.)*
 
 | # | Task | Effort | Notes |
 |---|------|--------|-------|
 | 8.1 | **Gap/span split-suggestion detector** (engine) — pure fn, two triggers (inter-trip dead-gap + total-span) over a shift's scheduled trips using the trip-window constants; thresholds as env knobs; expose the flag in the shift read model. Vitest-first, no schema | 3 | [#204](https://github.com/mobiustripper42/muster/issues/204) · SPEC §2.3 auto-group · #203 Slice 1 |
-| 8.2 | **Builder — View/Edit-mode surface** (re-est 5→8, 2026-07-01, for the two-mode scope; splittable 8.2a View / 8.2b Edit at build). **View mode** (default, ships first — the pilot visibility need): calm full read — 7-day default + weekend/range presets, neutral ink, tap-through — reuses `deriveAllShifts`, **absorbs `/admin/shifts`** (DEC-042 sunset). **Edit mode**: boat→day blocks, per-shift **Lock** (fires Tier-1 inside horizon), "changed since review"/"new·review" tags (DEC-029), 8.1 split-suggestion display. @architect: merged-surface anti-anxiety posture | 8 | [#205](https://github.com/mobiustripper42/muster/issues/205) · SPEC §2.3 · shiftboard.jsx · absorbs #100 |
-| 8.3 | **Manual Split** — split a vessel-day shift into two; re-derive seats each side. **@architect + new DEC**: re-derivation survival + automationPaused | 5 | [#206](https://github.com/mobiustripper42/muster/issues/206) · SPEC §2.3 action · Shift editor · #203 Slice 2 |
+| 8.2 | **Builder View mode** (View-only; the Edit=lock half **cut** — DEC-082). Calm full read on `/admin/shifts`: 7-day default + weekend/range presets, neutral ink, tap-through — reuses `deriveAllShifts`, **absorbs `/admin/shifts`** (DEC-042 sunset) + renders the 8.1 split cue | 3 | [#205](https://github.com/mobiustripper42/muster/issues/205) · [PR #213](https://github.com/mobiustripper42/muster/pull/213) · SPEC §2.3 · absorbs #100 |
+| 8.3 | **Manual Split** — split a vessel-day shift into two; re-derive seats each side. **Introduces the View/Edit toggle** (the Edit-mode shell, ex-8.2b). **@architect + new DEC**: re-derivation survival — sharpened by DEC-082, a manual split must survive the importer re-forming the vessel-day from Xola — + automationPaused | 5 | [#206](https://github.com/mobiustripper42/muster/issues/206) · SPEC §2.3 action · Shift editor · #203 Slice 2 |
 | 8.4 | **Manual Merge** — merge two proposed shifts on the same vessel-day; inverse of split, rides 8.3's DEC + reconciliation rails | 3 | [#207](https://github.com/mobiustripper42/muster/issues/207) · SPEC §2.3 action · Shift editor |
 | 8.5 | **Seat/manning override** — add a required working hand (gates `Crewed`) / add a supernumerary-trainee seat (non-gating, consumes a pax slot vs COI max); remove an added seat. Reuses `kind: required\|supernumerary` + the `removeSeat` port | 3 | [#208](https://github.com/mobiustripper42/muster/issues/208) · SPEC §2.3 · shiftdetail.jsx |
-| 8.6 | **Bulk "lock the weekend"** — the Lock-all(N) action across the range; rides 8.2's lock action | 2 | [#209](https://github.com/mobiustripper42/muster/issues/209) · SPEC §2.3 · shiftboard.jsx |
+| ~~8.6~~ | ~~Bulk "lock the weekend"~~ — **CUT (DEC-082, locking removed)**. Issue [#209](https://github.com/mobiustripper42/muster/issues/209) closed won't-do | — | — |
 
-**Phase 8 total: 24 pts** (8.2 re-est 5→8 for the View/Edit two-mode scope, 2026-07-01). Build order:
-8.1 → 8.2 (**View mode first** — the operator's pilot visibility need) → 8.6 → 8.5 → 8.3 → 8.4 (the two
-decision-bearing edits last, after the @architect/DEC pass). **Quality bar: fully-baked surfaces —
-all states handled, no thin stubs (2026-07-01 posture).**
+**Phase 8 total: 17 pts** (was 24 — **8.2b Edit=lock and 8.6 bulk-lock cut; DEC-082**: locking is
+meaningless when Xola owns truth + changes). Build order: 8.1 ✅ → 8.2 View mode ✅ ([#213](https://github.com/mobiustripper42/muster/pull/213))
+→ 8.3 (introduces the View/Edit toggle) → 8.4 → 8.5. **Quality bar: fully-baked surfaces — all states
+handled, no thin stubs (2026-07-01 posture).**
 
 **Gates:** @architect light-touch on 8.2 (All-Shifts merge posture); @architect + new DEC before 8.3
 (split/merge persistence vs `formShifts` re-derivation; automationPaused).

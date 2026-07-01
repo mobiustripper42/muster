@@ -40,6 +40,7 @@ async function addShift(
   trips: TripSpec[],
   seats: SeatSpec[],
   state: Shift["state"] = "Filling",
+  splitCutTime?: string,
 ): Promise<void> {
   const vesselId = asId<"VesselId">(`vessel-${id}`);
   await repo.saveVessel({
@@ -70,7 +71,14 @@ async function addShift(
     }
     eventIds.push(eventId);
   }
-  await repo.saveShift({ id: asId<"ShiftId">(id), vesselId, date, state, eventIds });
+  await repo.saveShift({
+    id: asId<"ShiftId">(id),
+    vesselId,
+    date,
+    state,
+    eventIds,
+    ...(splitCutTime ? { splitCutTime } : {}),
+  });
   for (const [i, s] of seats.entries()) {
     const seat: Seat = {
       id: asId<"SeatId">(`seat-${id}-${i}`),
@@ -178,5 +186,33 @@ describe("deriveAllShifts", () => {
       boundary: { before: "11:30", after: "17:30" },
     });
     expect(tight.splitSuggestion).toBeNull();
+  });
+
+  it("marks the two halves of a split vessel-day (A carries the cut, B borrows it)", async () => {
+    // Side A is the canonical row carrying `splitCutTime`; side B is the `-b`
+    // sibling, which borrows the boundary from its canonical (DEC-083).
+    await addShift("pair", "2026-07-05", "Brew 3", [{ time: "11:00", pax: [2] }], [{ state: "Confirmed" }], "Crewed", "17:30");
+    await addShift("pair-b", "2026-07-05", "Brew 3", [{ time: "17:30", pax: [2] }], [{ state: "Open" }], "Filling");
+    await addShift("solo", "2026-07-05", "Kettle", [{ time: "15:00", pax: [2] }], [{ state: "Open" }]);
+
+    const rows = await deriveAllShifts(repo, { from: "2026-07-01", to: "2026-07-31" }, T0, OPTS);
+    const byId = new Map(rows.map((r) => [r.shiftId, r]));
+    expect(byId.get("pair")!.split).toEqual({ side: "A", cutTime: "17:30" });
+    expect(byId.get("pair-b")!.split).toEqual({ side: "B", cutTime: "17:30" });
+    expect(byId.get("solo")!.split).toBeNull();
+  });
+
+  it("resolves side B's cut even when the canonical side-A husk is cancelled (collapse)", async () => {
+    // Collapse (DEC-083): side A's trips all left → canonical derives to Cancelled
+    // but KEEPS its splitCutTime, so it's filtered from the rows yet still sources
+    // side B's boundary from the pre-scan map.
+    await addShift("coll", "2026-07-05", "Brew 3", [{ time: "11:00", pax: [2] }], [{ state: "Open" }], "Cancelled", "17:30");
+    await addShift("coll-b", "2026-07-05", "Brew 3", [{ time: "17:30", pax: [2] }], [{ state: "Open" }], "Filling");
+
+    const rows = await deriveAllShifts(repo, { from: "2026-07-01", to: "2026-07-31" }, T0, OPTS);
+    const ids = rows.map((r) => r.shiftId);
+    expect(ids).toContain("coll-b");
+    expect(ids).not.toContain("coll"); // the cancelled husk is excluded from the surface
+    expect(rows.find((r) => r.shiftId === "coll-b")!.split).toEqual({ side: "B", cutTime: "17:30" });
   });
 });

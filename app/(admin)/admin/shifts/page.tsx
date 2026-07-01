@@ -6,6 +6,7 @@ import { Shell } from "../../../../components/ui/shell";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
 import { fmt12 } from "../../../lib/format";
+import { splitAction } from "./actions";
 
 /**
  * All-shifts view (#100 Part A, DEC-042) — the operator's deliberate full-
@@ -27,11 +28,26 @@ import { fmt12 } from "../../../lib/format";
  *  - Nothing routes *to* this surface (no ping, no root redirect) — it's a
  *    trust-building crutch, deletable as a single route when the operator stops
  *    opening it (DEC-042 sunset trigger).
+ *
+ * **Edit mode (8.3b, DEC-083).** A `?mode=edit` toggle turns the read surface into
+ * the Shift Builder: an un-split multi-trip vessel-day gets a Split control (pick
+ * the cut → `splitShift`), and the two halves of an existing split are paired and
+ * tagged. Still server-rendered on navigation, still no client JS (form + redirect,
+ * DEC-026); View stays the calm default so Edit is a deliberate step in.
  */
 
 export const dynamic = "force-dynamic";
 
-type Search = { from?: string; to?: string; preset?: string };
+type Mode = "view" | "edit";
+
+type Search = {
+  from?: string;
+  to?: string;
+  preset?: string;
+  mode?: string;
+  split_ok?: string;
+  split_err?: string;
+};
 
 const isDate = (s?: string): s is string => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
 
@@ -152,6 +168,27 @@ function resolveWindow(
   return { from, to, scope, kind };
 }
 
+/** The filter half of the querystring (preset OR range) — no mode/feedback. Both
+ * the mode toggle and the split action's return URL rebuild the window from this,
+ * so a Split or a View↔Edit flip never drops the operator's chosen days. */
+function filterParams(sp: Search): URLSearchParams {
+  const p = new URLSearchParams();
+  if (sp.preset === "today" || sp.preset === "weekend") p.set("preset", sp.preset);
+  else {
+    if (isDate(sp.from)) p.set("from", sp.from);
+    if (isDate(sp.to)) p.set("to", sp.to);
+  }
+  return p;
+}
+
+/** Href for the same window in the requested mode (Edit adds `mode=edit`). */
+function hrefFor(sp: Search, mode: Mode): string {
+  const p = filterParams(sp);
+  if (mode === "edit") p.set("mode", "edit");
+  const qs = p.toString();
+  return qs ? `/admin/shifts?${qs}` : "/admin/shifts";
+}
+
 export default async function AllShifts({
   searchParams,
 }: {
@@ -161,12 +198,14 @@ export default async function AllShifts({
   if (!subject || subject.kind !== "admin") return <SignedOut />;
 
   const sp = await searchParams;
+  const mode: Mode = sp.mode === "edit" ? "edit" : "view";
   const now = new Date();
   const { from, to, scope, kind } = resolveWindow(sp, now);
+  const repo = getRepo();
 
   let rows: AllShiftsRow[];
   try {
-    rows = await deriveAllShifts(getRepo(), { from, to }, now);
+    rows = await deriveAllShifts(repo, { from, to }, now);
   } catch {
     return (
       <Shell width="3xl">
@@ -175,18 +214,48 @@ export default async function AllShifts({
     );
   }
 
+  // Import-diff cue (DEC-083): canonical ids of split days the LATEST pull reshaped.
+  // Best-effort — a runs-table hiccup drops the cue, never the page.
+  let changedDays = new Set<string>();
+  try {
+    const runs = await repo.listImportRuns(1);
+    changedDays = new Set(runs[0]?.summary.splitDaysChanged ?? []);
+  } catch {
+    /* leave the cue off */
+  }
+
+  // The split action returns here (Edit mode, same window) — reused as the form's
+  // `back` so it lands the operator on the two new rows.
+  const back = hrefFor(sp, "edit").split("?")[1] ?? "mode=edit";
+
   return (
     <Shell width="3xl">
-      <header className="flex flex-col gap-1">
-        <h1 className="text-xl font-semibold text-ink">All shifts</h1>
-        {/* The single line that does the brand work: this is pull, not push. */}
-        <p className="text-sm text-muted">
-          Everything on the books — for reference. The board summons you; this you
-          check when you want to.
-        </p>
+      <header className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-xl font-semibold text-ink">All shifts</h1>
+          {/* The single line that does the brand work: this is pull, not push. */}
+          <p className="text-sm text-muted">
+            {mode === "edit"
+              ? "Editing — split a long day into two shifts. Tap a shift to open its cockpit."
+              : "Everything on the books — for reference. The board summons you; this you check when you want to."}
+          </p>
+        </div>
+        <ModeToggle sp={sp} mode={mode} />
       </header>
 
-      <Filter from={from} to={to} kind={kind} />
+      {sp.split_ok && (
+        <Notice tone="ok">
+          Split done — that day now shows a “before” half and a “from” half.
+        </Notice>
+      )}
+      {sp.split_err && (
+        <Notice tone="bad">
+          Couldn’t split that shift — its trips may have changed since the page
+          loaded. Reload and try again.
+        </Notice>
+      )}
+
+      <Filter from={from} to={to} kind={kind} mode={mode} />
 
       {rows.length === 0 ? (
         // NOT the board's ✓ success state — a quiet day is just a quiet day.
@@ -212,7 +281,13 @@ export default async function AllShifts({
                   </span>
                 </h2>
                 {day.rows.map((r) => (
-                  <ShiftRow key={r.shiftId} row={r} />
+                  <ShiftRow
+                    key={r.shiftId}
+                    row={r}
+                    mode={mode}
+                    back={back}
+                    changed={changedDays.has(canonicalIdOf(r))}
+                  />
                 ))}
               </section>
             ))}
@@ -223,25 +298,68 @@ export default async function AllShifts({
   );
 }
 
+/** The canonical (split-day) id a row belongs to — itself for side A / un-split,
+ * the `-b`-stripped sibling for side B. Only split rows ever match `splitDaysChanged`. */
+function canonicalIdOf(row: AllShiftsRow): string {
+  return row.split?.side === "B" ? row.shiftId.slice(0, -2) : row.shiftId;
+}
+
+/** View ↔ Edit toggle — two links preserving the current window (DEC-026: plain
+ * navigation, no client JS). Active side is accent; the other is a muted step away. */
+function ModeToggle({ sp, mode }: { sp: Search; mode: Mode }) {
+  const seg = (active: boolean) =>
+    `px-3 py-1 ${active ? "font-semibold text-accent" : "text-muted"}`;
+  return (
+    <div className="flex shrink-0 items-center divide-x divide-line rounded-full border border-line text-sm">
+      <Link href={hrefFor(sp, "view")} className={seg(mode === "view")}>
+        View
+      </Link>
+      <Link href={hrefFor(sp, "edit")} className={seg(mode === "edit")}>
+        Edit
+      </Link>
+    </div>
+  );
+}
+
 /** Date-range filter — preset links + a no-JS GET form (DEC-026 pattern). The
- * active chip reflects the RESOLVED scope (not "any single day"). */
-function Filter({ from, to, kind }: { from: string; to: string; kind: Scope }) {
+ * active chip reflects the RESOLVED scope (not "any single day"). Presets and the
+ * range form both carry the current `mode`, so filtering never kicks you out of Edit. */
+function Filter({
+  from,
+  to,
+  kind,
+  mode,
+}: {
+  from: string;
+  to: string;
+  kind: Scope;
+  mode: Mode;
+}) {
   const chip = (active: boolean) =>
     `rounded-full border px-3 py-1 ${active ? "border-accent text-accent" : "border-line text-muted"}`;
+  const edit = mode === "edit";
+  const href = (preset?: string) => {
+    const p = new URLSearchParams();
+    if (preset) p.set("preset", preset);
+    if (edit) p.set("mode", "edit");
+    const qs = p.toString();
+    return qs ? `/admin/shifts?${qs}` : "/admin/shifts";
+  };
   return (
     <div className="flex flex-col gap-2 rounded-card border border-line bg-card px-4 py-3">
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        <Link href="/admin/shifts?preset=today" className={chip(kind === "today")}>
+        <Link href={href("today")} className={chip(kind === "today")}>
           Today
         </Link>
-        <Link href="/admin/shifts" className={chip(kind === "next7")}>
+        <Link href={href()} className={chip(kind === "next7")}>
           Next 7 days
         </Link>
-        <Link href="/admin/shifts?preset=weekend" className={chip(kind === "weekend")}>
+        <Link href={href("weekend")} className={chip(kind === "weekend")}>
           This weekend
         </Link>
       </div>
       <form method="get" className="flex flex-wrap items-end gap-2 text-sm">
+        {edit && <input type="hidden" name="mode" value="edit" />}
         <label className="flex flex-col gap-0.5 text-xs text-muted">
           From
           <input
@@ -272,8 +390,20 @@ function Filter({ from, to, kind }: { from: string; to: string; kind: Scope }) {
 }
 
 /** One neutral row → the cockpit. State is plain ink; an At-Risk row gets a quiet
- * pointer to the board (where that state is actually worked), never a red block. */
-function ShiftRow({ row }: { row: AllShiftsRow }) {
+ * pointer to the board (where that state is actually worked), never a red block.
+ * In Edit mode an un-split multi-trip day grows a Split control; the two halves of
+ * an existing split are tagged (DEC-083). */
+function ShiftRow({
+  row,
+  mode,
+  back,
+  changed,
+}: {
+  row: AllShiftsRow;
+  mode: Mode;
+  back: string;
+  changed: boolean;
+}) {
   const fill =
     row.requiredSeats === 0
       ? "—"
@@ -282,39 +412,107 @@ function ShiftRow({ row }: { row: AllShiftsRow }) {
     row.trips.length === 0
       ? "no scheduled trip"
       : row.trips.map((t) => `${fmt12(t.time)} · ${t.pax} pax`).join("   ");
+  const splitTag =
+    row.split == null
+      ? null
+      : row.split.side === "A"
+        ? `split · before ${fmt12(row.split.cutTime)}`
+        : `split · from ${fmt12(row.split.cutTime)}`;
+  // Split is offered only on an un-split day with something to cut; a split side
+  // waits for Merge (8.4), never a nested re-split.
+  const canSplit = mode === "edit" && row.split == null && row.trips.length >= 2;
+  // Default the cut to the suggested gap boundary when there is one — else the
+  // first inter-trip line. Always a real trip time, so it's a valid option below.
+  const defaultCut =
+    row.splitSuggestion?.reason === "large-gap" && row.splitSuggestion.boundary
+      ? row.splitSuggestion.boundary.after
+      : row.trips[1]?.time ?? "";
+
   return (
-    <div className="flex items-start justify-between gap-4 rounded-card border border-line bg-card px-4 py-3 shadow-sm">
-      <Link
-        href={`/admin/shift/${encodeURIComponent(row.shiftId)}`}
-        className="flex min-w-0 flex-col"
-      >
-        {/* Vessel leads — the date now lives in the day-section header (#122). */}
-        <span className="font-medium text-ink">{row.vesselName}</span>
-        <span className="font-mono text-xs text-muted">{trips}</span>
-        {row.splitSuggestion && (
-          // Calm read-only cue (8.1/#204): Muster noticed this vessel-day might be
-          // two shifts. Advisory only — acting on it is the Builder Edit mode /
-          // Split (8.3). Muted, never an alarm token (anti-anxiety, DEC-042).
-          <span className="text-xs text-muted">
-            {row.splitSuggestion.reason === "large-gap" &&
-            row.splitSuggestion.boundary
-              ? `long gap ${fmt12(row.splitSuggestion.boundary.before)}–${fmt12(row.splitSuggestion.boundary.after)} · could be two shifts`
-              : "long day · could be two shifts"}
+    <div className="flex flex-col gap-2 rounded-card border border-line bg-card px-4 py-3 shadow-sm">
+      <div className="flex items-start justify-between gap-4">
+        <Link
+          href={`/admin/shift/${encodeURIComponent(row.shiftId)}`}
+          className="flex min-w-0 flex-col"
+        >
+          {/* Vessel leads — the date now lives in the day-section header (#122). */}
+          <span className="font-medium text-ink">
+            {row.vesselName}
+            {splitTag && (
+              <span className="ml-2 text-xs font-normal text-muted">
+                {splitTag}
+              </span>
+            )}
           </span>
-        )}
-      </Link>
-      <div className="flex shrink-0 flex-col items-end gap-0.5">
-        {/* Neutral ink — no per-state colour (DEC-042). */}
-        <span className="text-sm text-ink">
-          {row.state === "AtRisk" ? "At-Risk" : row.state}
-        </span>
-        <span className="text-xs text-muted">{fill}</span>
-        {row.state === "AtRisk" && (
-          <Link href="/admin/at-risk" className="text-xs font-semibold text-accent">
-            needs attention ↗
-          </Link>
-        )}
+          <span className="font-mono text-xs text-muted">{trips}</span>
+          {row.splitSuggestion && row.split == null && (
+            // Calm read-only cue (8.1/#204): Muster noticed this vessel-day might be
+            // two shifts. Advisory only — acting on it is Edit mode → Split (below).
+            // Muted, never an alarm token (anti-anxiety, DEC-042). Hidden once split.
+            <span className="text-xs text-muted">
+              {row.splitSuggestion.reason === "large-gap" &&
+              row.splitSuggestion.boundary
+                ? `long gap ${fmt12(row.splitSuggestion.boundary.before)}–${fmt12(row.splitSuggestion.boundary.after)} · could be two shifts`
+                : "long day · could be two shifts"}
+            </span>
+          )}
+          {changed && (
+            // Import-diff cue (DEC-083): the last pull moved trips across this
+            // split — a nudge to eyeball that the cut still makes sense. Muted.
+            <span className="text-xs text-muted">
+              changed in the last pull — check the split
+            </span>
+          )}
+        </Link>
+        <div className="flex shrink-0 flex-col items-end gap-0.5">
+          {/* Neutral ink — no per-state colour (DEC-042). */}
+          <span className="text-sm text-ink">
+            {row.state === "AtRisk" ? "At-Risk" : row.state}
+          </span>
+          <span className="text-xs text-muted">{fill}</span>
+          {row.state === "AtRisk" && (
+            <Link href="/admin/at-risk" className="text-xs font-semibold text-accent">
+              needs attention ↗
+            </Link>
+          )}
+        </div>
       </div>
+
+      {canSplit && (
+        // No-JS Split (DEC-026): pick the cut → server action → re-form. The cut
+        // options are this day's own departure times (each makes a non-empty
+        // before/from split), so a picked cut always partitions.
+        <form
+          action={splitAction}
+          className="flex flex-wrap items-center gap-2 border-t border-line pt-2 text-sm"
+        >
+          <input type="hidden" name="shiftId" value={row.shiftId} />
+          <input type="hidden" name="back" value={back} />
+          <label className="flex items-center gap-1.5 text-muted">
+            Split at
+            <select
+              name="cut"
+              defaultValue={defaultCut}
+              className="rounded-lg border border-line bg-bg px-2 py-1 font-mono text-ink"
+            >
+              {row.trips.slice(1).map((t) => (
+                <option key={t.time} value={t.time}>
+                  {fmt12(t.time)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="submit"
+            className="rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent"
+          >
+            Split
+          </button>
+          <span className="text-xs text-muted">
+            makes two shifts — before &amp; from the cut
+          </span>
+        </form>
+      )}
     </div>
   );
 }

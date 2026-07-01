@@ -339,6 +339,106 @@ export function shiftEndFromEvents(
   );
 }
 
+// ── Split suggestion (SPEC §2.3 "large mid-day gaps → 'split this?'") ──────────
+
+/**
+ * Dead-gap threshold, in **minutes** — inter-trip idle time above which a shift's
+ * trips read as two work sessions ("go home and come back"), not one. Env knob
+ * `SPLIT_SUGGEST_GAP_MINUTES`, default **120**. Tune-later, same posture as the
+ * horizon leads.
+ */
+export const SPLIT_SUGGEST_GAP_MINUTES = envPositiveInt(
+  "SPLIT_SUGGEST_GAP_MINUTES",
+  120,
+);
+
+/**
+ * Total-span threshold, in **minutes** — a day longer than this (first prep →
+ * last teardown) is a one-crew-or-two fatigue/turnaround call even with no single
+ * big gap. Env knob `SPLIT_SUGGEST_SPAN_MINUTES`, default **600** (10h).
+ */
+export const SPLIT_SUGGEST_SPAN_MINUTES = envPositiveInt(
+  "SPLIT_SUGGEST_SPAN_MINUTES",
+  600,
+);
+
+export interface SplitSuggestion {
+  /**
+   * `large-gap` — a concrete split point (crew would go home between trips);
+   * `long-span` — no single big gap but the whole day is long (a human call).
+   */
+  reason: "large-gap" | "long-span";
+  /** Dead-gap minutes (large-gap) or total-span minutes (long-span), rounded. */
+  minutes: number;
+  /** Present for `large-gap`: the departure clock times straddling the gap. */
+  boundary?: { before: string; after: string };
+}
+
+/**
+ * Whether a shift's trips warrant a **"split this?"** suggestion (SPEC §2.3).
+ * PURE + ADVISORY — never auto-splits: `formShifts` stays one-shift-per-vessel-day
+ * (the deterministic `shift-{vessel}-{date}` id + idempotency contract depends on
+ * it), so a human resolves the suggestion in the Builder. Two independent triggers:
+ *
+ *  - **large-gap** — the dead time between one trip's teardown and the next's prep
+ *    exceeds `gapMinutes`. Each trip occupies `[dep − CALL_LEAD, dep +
+ *    TRIP_DURATION + CALL_LEAD]`, so the dead gap between consecutive departures is
+ *    `Δdep − (TRIP_DURATION + 2·CALL_LEAD)`. The largest qualifying gap is reported
+ *    (it names the split point) — gap wins over span.
+ *  - **long-span** — no single big gap, but the whole day (first prep → last
+ *    teardown = `Δ(first→last) + TRIP_DURATION + 2·CALL_LEAD`) exceeds `spanMinutes`;
+ *    one crew across it is a judgment call, hence a *suggestion*, not an auto-rule.
+ *
+ * `null` = no suggestion (fewer than two scheduled trips, or everything contiguous).
+ * Cancelled events are ignored — a cancelled mid-day trip does not bridge the gap
+ * its neighbours straddle.
+ */
+export function suggestSplit(
+  events: Event[],
+  tz: string = TENANT_TIMEZONE,
+  opts?: { gapMinutes?: number; spanMinutes?: number },
+): SplitSuggestion | null {
+  const gapThreshold = opts?.gapMinutes ?? SPLIT_SUGGEST_GAP_MINUTES;
+  const spanThreshold = opts?.spanMinutes ?? SPLIT_SUGGEST_SPAN_MINUTES;
+  const trips = events
+    .filter((e) => e.status === "scheduled")
+    .map((e) => ({ at: eventStart(e, tz).getTime(), time: e.time }))
+    .sort((a, b) => a.at - b.at);
+  if (trips.length < 2) return null;
+  const first = trips[0];
+  const last = trips[trips.length - 1];
+  if (!first || !last) return null; // unreachable (length ≥ 2) — narrows for noUncheckedIndexedAccess
+
+  // Consecutive trips leave `Δdep − (TRIP_DURATION + 2·CALL_LEAD)` of dead time
+  // between one's teardown and the next's prep.
+  const occupiedMin = TRIP_DURATION_MINUTES + 2 * CALL_LEAD_MINUTES;
+
+  let worst: { minutes: number; before: string; after: string } | null = null;
+  let prev = first;
+  for (let i = 1; i < trips.length; i++) {
+    const cur = trips[i];
+    if (!cur) continue;
+    const deadMin = (cur.at - prev.at) / MINUTE_MS - occupiedMin;
+    if (deadMin > gapThreshold && (worst === null || deadMin > worst.minutes)) {
+      worst = { minutes: deadMin, before: prev.time, after: cur.time };
+    }
+    prev = cur;
+  }
+  if (worst) {
+    return {
+      reason: "large-gap",
+      minutes: Math.round(worst.minutes),
+      boundary: { before: worst.before, after: worst.after },
+    };
+  }
+
+  const spanMin = (last.at - first.at) / MINUTE_MS + occupiedMin;
+  if (spanMin > spanThreshold) {
+    return { reason: "long-span", minutes: Math.round(spanMin) };
+  }
+  return null;
+}
+
 /**
  * Bail lateness (DEC-028): the **notice shortfall versus the staffing-horizon
  * lead, clamped to it** — `clamp(leadMs − (tripStart − now), 0, leadMs)`.

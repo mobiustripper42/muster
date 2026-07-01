@@ -10,9 +10,10 @@
  * empty state from the board's ✓) live in the SURFACE, not here —
  * see app/(admin)/admin/shifts/page.tsx and DEC-042.
  */
-import type { Shift } from "../domain/entities.js";
+import type { Event, Shift } from "../domain/entities.js";
 import type { Repository } from "../ports/repository.js";
 import { resolveShiftStateOnRead } from "../builder/tick.js";
+import { suggestSplit, type SplitSuggestion } from "../builder/derive.js";
 
 export interface AllShiftsTrip {
   /** Departure clock time, vessel-local wall-clock ("14:00"). */
@@ -33,6 +34,12 @@ export interface AllShiftsRow {
   paxTotal: number;
   requiredSeats: number;
   confirmedSeats: number;
+  /**
+   * A "split this?" suggestion when the shift's trips span a large mid-day gap or
+   * a long day (SPEC §2.3, #204) — advisory only; `null` when contiguous. The
+   * Builder (8.2) renders it; `formShifts` never auto-splits (idempotency contract).
+   */
+  splitSuggestion: SplitSuggestion | null;
 }
 
 /**
@@ -62,9 +69,11 @@ export async function deriveAllShifts(
       (await resolveShiftStateOnRead(repo, shift.id, now, opts)) ?? shift.state;
 
     const trips: AllShiftsTrip[] = [];
+    const scheduledEvents: Event[] = [];
     for (const eventId of shift.eventIds) {
       const event = await repo.getEvent(eventId);
       if (!event || event.status !== "scheduled") continue;
+      scheduledEvents.push(event);
       const booked = (await repo.listReservationsForEvent(event.id)).filter(
         (r) => r.status === "booked",
       );
@@ -87,6 +96,7 @@ export async function deriveAllShifts(
       paxTotal: trips.reduce((sum, t) => sum + t.pax, 0),
       requiredSeats: required.length,
       confirmedSeats: required.filter((s) => s.state === "Confirmed").length,
+      splitSuggestion: suggestSplit(scheduledEvents, opts?.tz),
     });
   }
 

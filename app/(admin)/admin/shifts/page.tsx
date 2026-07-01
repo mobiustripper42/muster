@@ -92,7 +92,7 @@ function groupByDay(
     .map(([date, rows]) => ({ date, rows }));
 }
 
-type Scope = "today" | "weekend" | "range";
+type Scope = "today" | "next7" | "weekend" | "range";
 
 /** Resolve the date window from the filter params — defaulting to TODAY, clamped
  * to a sane horizon so "everything" can't render an unbounded wall (DEC-042). */
@@ -107,7 +107,11 @@ function resolveWindow(
   let from: string;
   let to: string;
   let kind: Scope;
-  if (sp.preset === "weekend") {
+  if (sp.preset === "today") {
+    from = today;
+    to = today;
+    kind = "today";
+  } else if (sp.preset === "weekend") {
     // The current weekend's Sat–Sun: on a Sunday that's yesterday→today; any
     // other day, the coming Saturday and the day after.
     const dow = dowOf(today);
@@ -120,9 +124,12 @@ function resolveWindow(
     to = isDate(sp.to) ? sp.to : from;
     kind = "range";
   } else {
+    // Default: the next 7 days — the operator's "what's coming up" (8.2a, #205).
+    // The day-only default (DEC-042) was too narrow for real pilot use — the
+    // operator needs upcoming visibility, not just today.
     from = today;
-    to = today;
-    kind = "today";
+    to = addDays(today, 6);
+    kind = "next7";
   }
   // Clamp to the horizon, then re-guard ordering. The scope LABEL is built after
   // so the header never disagrees with the actual (clamped) window.
@@ -133,11 +140,13 @@ function resolveWindow(
   const scope =
     kind === "weekend"
       ? "this weekend"
-      : kind === "today"
-        ? "today"
-        : from === to
-          ? fmtDate(from)
-          : `${fmtDate(from)} – ${fmtDate(to)}`;
+      : kind === "next7"
+        ? "the next 7 days"
+        : kind === "today"
+          ? "today"
+          : from === to
+            ? fmtDate(from)
+            : `${fmtDate(from)} – ${fmtDate(to)}`;
   return { from, to, scope, kind };
 }
 
@@ -220,8 +229,11 @@ function Filter({ from, to, kind }: { from: string; to: string; kind: Scope }) {
   return (
     <div className="flex flex-col gap-2 rounded-card border border-line bg-card px-4 py-3">
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        <Link href="/admin/shifts" className={chip(kind === "today")}>
+        <Link href="/admin/shifts?preset=today" className={chip(kind === "today")}>
           Today
+        </Link>
+        <Link href="/admin/shifts" className={chip(kind === "next7")}>
+          Next 7 days
         </Link>
         <Link href="/admin/shifts?preset=weekend" className={chip(kind === "weekend")}>
           This weekend
@@ -277,6 +289,17 @@ function ShiftRow({ row }: { row: AllShiftsRow }) {
         {/* Vessel leads — the date now lives in the day-section header (#122). */}
         <span className="font-medium text-ink">{row.vesselName}</span>
         <span className="font-mono text-xs text-muted">{trips}</span>
+        {row.splitSuggestion && (
+          // Calm read-only cue (8.1/#204): Muster noticed this vessel-day might be
+          // two shifts. Advisory only — acting on it is the Builder Edit mode /
+          // Split (8.3). Muted, never an alarm token (anti-anxiety, DEC-042).
+          <span className="text-xs text-muted">
+            {row.splitSuggestion.reason === "large-gap" &&
+            row.splitSuggestion.boundary
+              ? `long gap ${fmt12(row.splitSuggestion.boundary.before)}–${fmt12(row.splitSuggestion.boundary.after)} · could be two shifts`
+              : "long day · could be two shifts"}
+          </span>
+        )}
       </Link>
       <div className="flex shrink-0 flex-col items-end gap-0.5">
         {/* Neutral ink — no per-state colour (DEC-042). */}

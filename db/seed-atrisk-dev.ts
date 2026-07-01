@@ -276,7 +276,56 @@ try {
     updatedAt: at(-1).toISOString(), // after the lock — fires the nudge
   });
 
-  console.log("Seeded 7 scenarios (trips anchored to now — re-run to re-anchor):");
+  // H — gappy day (8.1/#204): Barrel runs 11:00 and 18:00 on the SAME day ~2d out
+  // (7h apart) → the Builder View flags it "could be two shifts". Fixed times (not
+  // now-relative) so the two trips never straddle midnight into separate shifts.
+  // Crewed + off-board — enriches /admin/shifts without touching the board scenarios.
+  const bram = await captain("crew-ar-barrel", "Bram");
+  const gapVessel = asId<"VesselId">("vessel-ar-gappy");
+  const gapShift = asId<"ShiftId">("shift-ar-gappy");
+  const gapDate = dateOf(at(48));
+  await repo.saveVessel({
+    id: gapVessel,
+    name: "Barrel",
+    coiMaxPax: 12,
+    manning: [{ roleTypeId: CAPTAIN, count: 1 }],
+  });
+  await repo.saveEvent({
+    id: asId<"EventId">("evt-ar-gappy-1"),
+    vesselId: gapVessel,
+    date: gapDate,
+    time: "11:00",
+    capacity: 12,
+    status: "scheduled",
+  });
+  await repo.saveEvent({
+    id: asId<"EventId">("evt-ar-gappy-2"),
+    vesselId: gapVessel,
+    date: gapDate,
+    time: "18:00",
+    capacity: 12,
+    status: "scheduled",
+  });
+  await repo.saveShift({
+    id: gapShift,
+    vesselId: gapVessel,
+    date: gapDate,
+    state: "Crewed",
+    eventIds: [
+      asId<"EventId">("evt-ar-gappy-1"),
+      asId<"EventId">("evt-ar-gappy-2"),
+    ],
+  });
+  await repo.saveSeat({
+    id: asId<"SeatId">("seat-ar-gappy"),
+    shiftId: gapShift,
+    role: CAPTAIN,
+    kind: "required",
+    state: "Confirmed",
+    assignedCrewMemberId: bram,
+  });
+
+  console.log("Seeded 8 scenarios (trips anchored to now — re-run to re-anchor):");
   console.log("  A shift-ar-willing   Tidewater    ~24h  board: asked 2 · 1 declined · 1 silent (two-trip day)");
   console.log("  B shift-ar-exhausted Mash Tun     ~5d   board: engineer seat, empty pool");
   console.log("  C shift-ar-regress   Firkin       ~30h  board: Cody bailed, seat rests Bailed");
@@ -284,6 +333,7 @@ try {
   console.log("  E shift-ar-claimed   Tidewater II ~3d   cockpit: Petra awaits confirm (off-board)");
   console.log("  F shift-ar-warming   Kettle       ~4d   warming: 1 declined · 1 ghost (off-board)");
   console.log("  G shift-ar-changed   Stout        ~5d   cockpit: locked, late booking → review nudge");
+  console.log("  H shift-ar-gappy     Barrel       ~2d   view: 11:00 + 18:00 (7h gap) → split cue");
   console.log("Board:   /crew/dev-link?admin=spink → tap link → /admin/at-risk");
   console.log("Cockpit: /admin/shift/shift-ar-claimed  (Confirm demo)");
   console.log("         /admin/shift/shift-ar-changed  (changed-since-reviewed nudge)");

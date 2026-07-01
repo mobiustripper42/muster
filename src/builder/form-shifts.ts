@@ -108,7 +108,9 @@ export async function formShifts(
     // Un-split (the byte-identical path): one shift for the whole vessel-day.
     // (A brand-new vessel-day, `canonical == null`, is un-split too.)
     if (canonical == null || cut == null) {
-      await formOneShift(repo, canonicalId, vesselId, date, scheduled, opts, result);
+      await formOneShift(repo, canonicalId, vesselId, date, scheduled, opts, result, {
+        existing: canonical,
+      });
       continue;
     }
 
@@ -139,8 +141,11 @@ export async function formShifts(
 
     await formOneShift(repo, canonicalId, vesselId, date, sideA, opts, result, {
       splitCutTime: cut,
+      existing: canonical,
     });
-    await formOneShift(repo, sideBId, vesselId, date, sideB, opts, result);
+    await formOneShift(repo, sideBId, vesselId, date, sideB, opts, result, {
+      existing: existingB,
+    });
   }
 
   return result;
@@ -165,12 +170,16 @@ async function formOneShift(
   scheduled: Event[],
   opts: { now?: Date; leadDays?: number } | undefined,
   result: FormResult,
-  carry?: { splitCutTime?: string },
+  extra?: { splitCutTime?: string; existing?: Shift | null },
 ): Promise<void> {
+  // The loop already fetched this shift — reuse it to avoid a second PK lookup in
+  // the hot import path (`existing` is passed explicitly, `null` for a new day).
+  const existing =
+    extra?.existing !== undefined ? extra.existing : await repo.getShift(shiftId);
+
   // All events cancelled → cancel the shift (lifecycle, not seat-derived). Never
   // create a shift from cancelled-only events; never re-cancel a Completed/Cancelled.
   if (scheduled.length === 0) {
-    const existing = await repo.getShift(shiftId);
     if (
       existing &&
       existing.state !== "Completed" &&
@@ -184,7 +193,6 @@ async function formOneShift(
     return;
   }
 
-  const existing = await repo.getShift(shiftId);
   const vessel = await repo.getVessel(vesselId);
 
   // Reconcile seats against current manning (a missing vessel yields no derivable
@@ -238,7 +246,7 @@ async function formOneShift(
     state,
     eventIds: scheduled.map((e) => e.id).sort(),
     ...(existing?.lockedAt ? { lockedAt: existing.lockedAt } : {}),
-    ...(carry?.splitCutTime ? { splitCutTime: carry.splitCutTime } : {}),
+    ...(extra?.splitCutTime ? { splitCutTime: extra.splitCutTime } : {}),
   };
   await repo.saveShift(shift);
   if (existing) {

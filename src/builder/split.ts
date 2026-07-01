@@ -26,6 +26,13 @@ export async function splitShift(
   cutTime: string,
   now?: Date,
 ): Promise<FormResult> {
+  // Validate the cut FIRST — the partition is a lexical "HH:MM" compare
+  // (`e.time < cut`), so a malformed cut ("9:00", "2pm") would be stored verbatim
+  // and silently mis-partition. The engine is the trust boundary for the 8.3b UI.
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(cutTime)) {
+    throw new Error(`Invalid cut time ${cutTime} — expected zero-padded "HH:MM"`);
+  }
+
   const shift = await repo.getShift(shiftId);
   if (!shift) throw new Error(`No shift ${shiftId}`);
   if (shift.splitCutTime != null) {
@@ -35,12 +42,16 @@ export async function splitShift(
     throw new Error(`Cannot split a split side (${shiftId})`);
   }
 
-  // The cut must produce two non-empty sides from the CURRENT scheduled trips.
-  const times: string[] = [];
-  for (const id of shift.eventIds) {
-    const e = await repo.getEvent(id);
-    if (e && e.status === "scheduled") times.push(e.time);
-  }
+  // The cut must produce two non-empty sides from the vessel-day's LIVE scheduled
+  // trips — what `formShifts` will actually partition, not a stale `eventIds`.
+  const times = (await repo.listEvents())
+    .filter(
+      (e) =>
+        e.vesselId === shift.vesselId &&
+        e.date === shift.date &&
+        e.status === "scheduled",
+    )
+    .map((e) => e.time);
   const hasBefore = times.some((t) => t < cutTime);
   const hasAfter = times.some((t) => t >= cutTime);
   if (!hasBefore || !hasAfter) {

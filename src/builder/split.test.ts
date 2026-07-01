@@ -130,4 +130,11 @@ describe("splitShift (DEC-083)", () => {
     await expect(splitShift(repo, CANON, "12:00")).rejects.toThrow(/already split/);
     await expect(splitShift(repo, SIDE_B, "18:00")).rejects.toThrow(/split side/);
   });
+
+  it("rejects a malformed cut time — the partition is a lexical HH:MM compare", async () => {
+    const repo = await seedDay();
+    for (const bad of ["9:00", "2pm", "24:00", "12:60", ""]) {
+      await expect(splitShift(repo, CANON, bad)).rejects.toThrow(/Invalid cut time/);
+    }
+  });
 });

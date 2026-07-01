@@ -236,7 +236,12 @@ const toImportRun = (r: any): ImportRun => ({
   source: r.source as ImportRunSource,
   ranAt: r.ran_at,
   window: { start: r.window_start, end: r.window_end },
-  summary: r.summary as ImportRunSummary, // jsonb → object (node-pg parses)
+  // Default `splitDaysChanged` — runs persisted before DEC-083 have no such key,
+  // so `.length`/`.map()` on a historical "latest run" would throw (#206 review).
+  summary: {
+    ...r.summary,
+    splitDaysChanged: r.summary.splitDaysChanged ?? [],
+  } as ImportRunSummary, // jsonb → object (node-pg parses)
 });
 
 const toImportRunItem = (r: any): ImportRunItem => ({

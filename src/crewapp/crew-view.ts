@@ -13,6 +13,7 @@
 
 import type { CrewMemberId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
+import type { Shift } from "../domain/entities.js";
 import { TENANT_TIMEZONE, vesselDateOf } from "../config/tenant.js";
 import { worstCredential } from "../admin/credential-health.js";
 import type { CredentialConcern } from "../admin/credential-health.js";
@@ -52,6 +53,11 @@ export interface MyShiftView {
   roleName: string;
   /** ISO-8601 date (vessel-local day). */
   date: string;
+  /** The shift's working window — earliest departure / shift end, vessel-local
+   * "HH:mm" (#216, DEC-041), so the card shows WHEN without opening it. Omitted
+   * when no scheduled event anchors the shift. */
+  departureTime?: string;
+  shiftEndTime?: string;
   /**
    * True when the seat is `Claimed` (the crew said "In" but the operator hasn't
    * confirmed yet) vs `Confirmed` (locked). Shown so a fresh "In" lands visibly
@@ -67,6 +73,9 @@ export interface MyShiftView {
    * this only ever marks `Confirmed`.
    */
   addedByOperator: boolean;
+  /** Others on this shift (#216) — who you're crewing with. Confirmed/Claimed
+   * seats, excluding you. Empty on a solo / 0-crew shift. */
+  coCrew: { name: string; roleName: string }[];
 }
 
 export interface CrewAppView {
@@ -90,6 +99,30 @@ async function roleName(repo: Repository, roleId: string): Promise<string> {
 async function vesselName(repo: Repository, vesselId: string): Promise<string> {
   const v = await repo.getVessel(vesselId as Parameters<Repository["getVessel"]>[0]);
   return v?.name ?? vesselId;
+}
+
+/**
+ * The committed working window for a shift — earliest scheduled departure and the
+ * DEC-041 shift end. Shared by the ask card (§2.6.1) and My shifts (§2.6.2, #216)
+ * so both show WHEN. Vessel-local "HH:mm"; a field is omitted when no scheduled
+ * event anchors the shift.
+ */
+async function departureWindow(
+  repo: Repository,
+  shift: Shift,
+): Promise<{ departureTime?: string; shiftEndTime?: string }> {
+  const evs = [];
+  for (const id of shift.eventIds) {
+    const e = await repo.getEvent(id);
+    if (e && e.status === "scheduled") evs.push(e);
+  }
+  evs.sort((a, b) => a.time.localeCompare(b.time));
+  const departureTime = evs[0]?.time;
+  const { shiftEndTime } = committedWindow(evs.map((e) => e.time));
+  return {
+    ...(departureTime ? { departureTime } : {}),
+    ...(shiftEndTime ? { shiftEndTime } : {}),
+  };
 }
 
 /**
@@ -124,25 +157,15 @@ export async function buildCrewAppView(
     if (!seat || seat.state !== "Asked") continue; // resolved/contested — drop it
     const shift = await repo.getShift(seat.shiftId);
     if (!shift) continue;
-    // Earliest scheduled departure (vessel-local "HH:mm") so the card shows when.
-    const evs = [];
-    for (const id of shift.eventIds) {
-      const e = await repo.getEvent(id);
-      if (e && e.status === "scheduled") evs.push(e);
-    }
-    evs.sort((a, b) => a.time.localeCompare(b.time));
-    const departureTime = evs[0]?.time;
-    // Shift end via the shared DEC-041 window computation (the ask card shows the
-    // raw earliest departure, not the call-lead-adjusted callTime).
-    const { shiftEndTime } = committedWindow(evs.map((e) => e.time));
+    // Earliest departure + shift end (vessel-local "HH:mm") so the card shows when.
+    const window = await departureWindow(repo, shift);
     asks.push({
       askId: ask.id,
       seatId: seat.id,
       vesselName: await vesselName(repo, shift.vesselId),
       roleName: await roleName(repo, seat.role),
       date: shift.date,
-      ...(departureTime ? { departureTime } : {}),
-      ...(shiftEndTime ? { shiftEndTime } : {}),
+      ...window,
       sentAt: ask.sentAt,
     });
   }
@@ -174,14 +197,40 @@ export async function buildCrewAppView(
       seat.state === "Confirmed" &&
       (seat.acquiredVia === "operator" ||
         (seat.acquiredVia === undefined && !iAccepted));
+    const window = await departureWindow(repo, shift);
+    // Co-crew (#216): others holding a Confirmed/Claimed seat on this shift — who
+    // you're running the day with. BrewBoat is 2 crew, so usually one name; dedupe
+    // in case anyone holds two seats.
+    const coCrew: { name: string; roleName: string }[] = [];
+    const seen = new Set<string>();
+    for (const other of allSeats) {
+      const otherCrew = other.assignedCrewMemberId;
+      if (
+        other.shiftId !== shift.id ||
+        (other.state !== "Confirmed" && other.state !== "Claimed") ||
+        !otherCrew ||
+        otherCrew === crewMemberId ||
+        seen.has(otherCrew)
+      )
+        continue;
+      seen.add(otherCrew);
+      const cm = await repo.getCrewMember(otherCrew);
+      if (cm) coCrew.push({ name: cm.name, roleName: await roleName(repo, other.role) });
+    }
+    // Stable order (code review): `listAllSeats` has no ORDER BY, so sort by name
+    // — otherwise the truncated "+N" / "& " display could flicker across loads
+    // once a shift carries 3+ crew (a no-op at BrewBoat's 2-crew scale).
+    coCrew.sort((a, b) => a.name.localeCompare(b.name));
     shifts.push({
       shiftId: shift.id,
       seatId: seat.id,
       vesselName: await vesselName(repo, shift.vesselId),
       roleName: await roleName(repo, seat.role),
       date: shift.date,
+      ...window,
       pending: seat.state === "Claimed",
       addedByOperator,
+      coCrew,
     });
   }
   shifts.sort((a, b) => a.date.localeCompare(b.date));

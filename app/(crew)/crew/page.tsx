@@ -142,6 +142,42 @@ function fmtDate(iso: string): string {
   });
 }
 
+/** The shift's working window "11:00 AM–5:45 PM" (or just the departure) for a
+ *  My-shifts card (#216) — Mono, so crew see WHEN at a glance. Null = no time. */
+function timeWindow(s: { departureTime?: string; shiftEndTime?: string }): string | null {
+  if (!s.departureTime) return null;
+  return s.shiftEndTime
+    ? `${fmt12(s.departureTime)}–${fmt12(s.shiftEndTime)}`
+    : fmt12(s.departureTime);
+}
+
+/** "with Jamie" / "with Jamie & Sam" / "with Jamie +2" (#216). Null when solo. */
+function withCrew(coCrew: { name: string }[]): string | null {
+  if (coCrew.length === 0) return null;
+  if (coCrew.length === 1) return `with ${coCrew[0]!.name}`;
+  if (coCrew.length === 2) return `with ${coCrew[0]!.name} & ${coCrew[1]!.name}`;
+  return `with ${coCrew[0]!.name} +${coCrew.length - 1}`;
+}
+
+/** A My-shifts card's when + what/who (#216): date + time window (the hero, Mono),
+ *  then one quiet vessel · role · co-crew line. Shared by confirmed + pending. */
+function ShiftWhenWhat({ s }: { s: CrewAppView["shifts"][number] }) {
+  const window = timeWindow(s);
+  const crew = withCrew(s.coCrew);
+  return (
+    <div className="flex min-w-0 flex-col">
+      <span className="flex flex-wrap items-baseline gap-x-2">
+        <span className="font-semibold text-ink">{fmtDate(s.date)}</span>
+        {window && <span className="font-mono text-sm text-ink">{window}</span>}
+      </span>
+      <span className="text-sm text-muted">
+        {s.vesselName} · {s.roleName}
+        {crew ? ` · ${crew}` : ""}
+      </span>
+    </div>
+  );
+}
+
 function SignedOut({
   reason,
   flag,
@@ -367,40 +403,32 @@ function CrewApp({
             s.pending ? (
               <div
                 key={s.seatId}
-                className="flex items-center justify-between rounded-card border border-line bg-card px-4 py-3 shadow-sm"
+                className="flex flex-col gap-1 rounded-card border border-line bg-card px-4 py-3 shadow-sm"
               >
-                <div className="flex flex-col">
-                  <span className="font-semibold text-ink">{fmtDate(s.date)}</span>
-                  <span className="text-sm text-muted">
-                    {s.vesselName} · {s.roleName}
+                <div className="flex items-center justify-between gap-2">
+                  <ShiftWhenWhat s={s} />
+                  <span className="shrink-0 rounded-full border border-line bg-bg px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted">
+                    Awaiting confirmation
                   </span>
                 </div>
-                <span className="rounded-full border border-line bg-bg px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted">
-                  Awaiting confirmation
-                </span>
               </div>
             ) : (
               <Link
                 key={s.seatId}
                 href={`/crew/shift/${s.shiftId}`}
-                className="flex items-center justify-between rounded-card border border-line bg-card px-4 py-3 shadow-sm"
+                className="flex flex-col gap-1 rounded-card border border-line bg-card px-4 py-3 shadow-sm"
               >
-                <div className="flex flex-col">
-                  <span className="font-semibold text-ink">{fmtDate(s.date)}</span>
-                  <span className="text-sm text-muted">
-                    {s.vesselName} · {s.roleName}
-                  </span>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  {s.addedByOperator && (
-                    <span className="rounded-full border border-line bg-bg px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted">
-                      Added for you
-                    </span>
-                  )}
-                  <span className="text-faint" aria-hidden>
+                <div className="flex items-center justify-between gap-2">
+                  <ShiftWhenWhat s={s} />
+                  <span className="shrink-0 text-faint" aria-hidden>
                     ›
                   </span>
                 </div>
+                {s.addedByOperator && (
+                  <span className="self-start rounded-full border border-line bg-bg px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted">
+                    Added for you
+                  </span>
+                )}
               </Link>
             ),
           )

@@ -418,15 +418,26 @@ function ShiftRow({
       : row.split.side === "A"
         ? `split · before ${fmt12(row.split.cutTime)}`
         : `split · from ${fmt12(row.split.cutTime)}`;
-  // Split is offered only on an un-split day with something to cut; a split side
-  // waits for Merge (8.4), never a nested re-split.
-  const canSplit = mode === "edit" && row.split == null && row.trips.length >= 2;
-  // Default the cut to the suggested gap boundary when there is one — else the
-  // first inter-trip line. Always a real trip time, so it's a valid option below.
+  // Candidate cuts = this day's DISTINCT departure times after the first — each
+  // leaves a non-empty "before" (at least trips[0]) and "from" (the cut trip) side.
+  // Dedupe + drop `<= first` guards the rare same-time pair, which would dup a
+  // `<select>` key and offer a cut with an empty before-side (splitShift rejects
+  // it, but don't offer what can't work). A split side waits for Merge (8.4).
+  const firstTime = row.trips[0]?.time ?? "";
+  const cutOptions = [...new Set(row.trips.map((t) => t.time))].filter(
+    (t) => t > firstTime,
+  );
+  const canSplit = mode === "edit" && row.split == null && cutOptions.length > 0;
+  // Default the cut to the suggested gap boundary when it's a real candidate —
+  // else the first valid cut. Always one of `cutOptions`, so the option is selected.
+  const suggestedCut =
+    row.splitSuggestion?.reason === "large-gap"
+      ? row.splitSuggestion.boundary?.after
+      : undefined;
   const defaultCut =
-    row.splitSuggestion?.reason === "large-gap" && row.splitSuggestion.boundary
-      ? row.splitSuggestion.boundary.after
-      : row.trips[1]?.time ?? "";
+    suggestedCut && cutOptions.includes(suggestedCut)
+      ? suggestedCut
+      : cutOptions[0] ?? "";
 
   return (
     <div className="flex flex-col gap-2 rounded-card border border-line bg-card px-4 py-3 shadow-sm">
@@ -495,9 +506,9 @@ function ShiftRow({
               defaultValue={defaultCut}
               className="rounded-lg border border-line bg-bg px-2 py-1 font-mono text-ink"
             >
-              {row.trips.slice(1).map((t) => (
-                <option key={t.time} value={t.time}>
-                  {fmt12(t.time)}
+              {cutOptions.map((t) => (
+                <option key={t} value={t}>
+                  {fmt12(t)}
                 </option>
               ))}
             </select>

@@ -158,6 +158,29 @@ describe("buildCrewAppView", () => {
     expect(view!.shifts.find((s) => s.shiftId === "shift-up")!.pending).toBe(false);
   });
 
+  it("My-shifts card carries the working window + co-crew (#216)", async () => {
+    const repo = await seed();
+    // A confirmed shift I'm on, with two trips and a co-crew captain (Jamie).
+    const jamie = asId<"CrewMemberId">("crew-jamie");
+    await repo.saveCrewMember({ id: jamie, name: "Jamie", phone: "555", ratings: [CAPTAIN], status: "active", reliabilityScore: null });
+    await repo.saveShift({ id: asId<"ShiftId">("shift-w"), vesselId: VESSEL, date: "2026-07-02", state: "Crewed", eventIds: [asId<"EventId">("w-pm"), asId<"EventId">("w-am")] });
+    await repo.saveEvent({ id: asId<"EventId">("w-am"), vesselId: VESSEL, date: "2026-07-02", time: "11:00", capacity: 12, status: "scheduled" });
+    await repo.saveEvent({ id: asId<"EventId">("w-pm"), vesselId: VESSEL, date: "2026-07-02", time: "17:00", capacity: 12, status: "scheduled" });
+    await repo.saveSeat({ id: asId<"SeatId">("seat-w-me"), shiftId: asId<"ShiftId">("shift-w"), role: CAPTAIN, kind: "required", state: "Confirmed", assignedCrewMemberId: ME });
+    await repo.saveSeat({ id: asId<"SeatId">("seat-w-jamie"), shiftId: asId<"ShiftId">("shift-w"), role: CAPTAIN, kind: "required", state: "Confirmed", assignedCrewMemberId: jamie });
+
+    const view = await buildCrewAppView(repo, ME, NOW);
+    const row = view!.shifts.find((s) => s.shiftId === "shift-w")!;
+    expect(row.departureTime).toBe("11:00"); // earliest of 11:00/17:00
+    expect(row.shiftEndTime).toBe("19:25"); // latest 17:00 + 100 trip + 45 lead (DEC-041)
+    expect(row.coCrew).toEqual([{ name: "Jamie", roleName: "captain" }]); // the OTHER crew, not me
+
+    // A solo/no-events shift: empty co-crew, no window.
+    const up = view!.shifts.find((s) => s.shiftId === "shift-up")!;
+    expect(up.coCrew).toEqual([]);
+    expect(up.departureTime).toBeUndefined();
+  });
+
   it("standing reads neutral with no logged history", async () => {
     const view = await buildCrewAppView(await seed(), ME, NOW);
     expect(view!.standing).toEqual({

@@ -198,6 +198,13 @@ export interface Shift {
   state: ShiftState;
   lockedAt?: string;
   eventIds: EventId[];
+  /**
+   * A manual split (DEC-083, #206): vessel-local "HH:MM" cut, on the **canonical**
+   * (side-A) row only. Present → this vessel-day is split; `formShifts` derives
+   * side A (`e.time < cut`) on this id and side B (`e.time >= cut`) on `{id}-b`
+   * every pull, so the split survives Xola re-import. Absent → not split.
+   */
+  splitCutTime?: string;
 }
 
 export interface Seat {

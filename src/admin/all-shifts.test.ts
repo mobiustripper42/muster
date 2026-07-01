@@ -152,4 +152,31 @@ describe("deriveAllShifts", () => {
     const rows = await deriveAllShifts(repo, { from: "2026-07-01", to: "2026-07-31" }, T0, OPTS);
     expect(rows[0]!.paxTotal).toBe(3);
   });
+
+  it("surfaces a split suggestion for a large mid-day gap, null for contiguous trips", async () => {
+    await addShift(
+      "gappy",
+      "2026-07-05",
+      "Gappy",
+      [{ time: "11:30", pax: [2] }, { time: "17:30", pax: [2] }, { time: "19:30", pax: [2] }],
+      [{ state: "Open" }],
+    );
+    await addShift(
+      "tight",
+      "2026-07-05",
+      "Tight",
+      [{ time: "15:00", pax: [2] }, { time: "17:00", pax: [2] }],
+      [{ state: "Open" }],
+    );
+
+    const rows = await deriveAllShifts(repo, { from: "2026-07-01", to: "2026-07-31" }, T0, OPTS);
+    const gappy = rows.find((r) => r.vesselName === "Gappy")!;
+    const tight = rows.find((r) => r.vesselName === "Tight")!;
+    expect(gappy.splitSuggestion).toEqual({
+      reason: "large-gap",
+      minutes: 170,
+      boundary: { before: "11:30", after: "17:30" },
+    });
+    expect(tight.splitSuggestion).toBeNull();
+  });
 });

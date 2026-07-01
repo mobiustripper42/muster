@@ -85,4 +85,31 @@ describe("suggestSplit", () => {
       boundary: { before: "11:30", after: "17:30" },
     });
   });
+
+  // Boundary pins — the thresholds are strict `>` ("exceeds"), and these are
+  // tune-later env knobs, so a `>`↔`>=` regression must fail loudly. 11:30·17:30
+  // is exactly 170 dead-min (span 550); 11:30·3:30·7:30 is exactly 670 span (gaps 50).
+  it("gap threshold is strict: dead-gap == threshold does NOT flag", () => {
+    expect(
+      suggestSplit([ev("11:30"), ev("17:30")], UTC, { gapMinutes: 170 }),
+    ).toBeNull();
+  });
+
+  it("gap threshold is strict: one minute over DOES flag", () => {
+    expect(
+      suggestSplit([ev("11:30"), ev("17:30")], UTC, { gapMinutes: 169 }),
+    ).toEqual({ reason: "large-gap", minutes: 170, boundary: { before: "11:30", after: "17:30" } });
+  });
+
+  it("span threshold is strict: span == threshold does NOT flag", () => {
+    expect(
+      suggestSplit([ev("11:30"), ev("15:30"), ev("19:30")], UTC, { spanMinutes: 670 }),
+    ).toBeNull();
+  });
+
+  it("span threshold is strict: one minute under DOES flag", () => {
+    expect(
+      suggestSplit([ev("11:30"), ev("15:30"), ev("19:30")], UTC, { spanMinutes: 669 }),
+    ).toEqual({ reason: "long-span", minutes: 670 });
+  });
 });

@@ -14,7 +14,9 @@ import { fmt12 } from "../../../lib/format";
  * This is a knowing, opt-in exception to the anti-anxiety-dashboard stance
  * (BRAND), so the brand guardrails from the @architect review are LOAD-BEARING,
  * not decoration:
- *  - Default scope is TODAY, never "everything" — no infinite glowing wall.
+ *  - Default scope is the NEXT 7 DAYS (8.2a widened it from today — DEC-042
+ *    amendment, #205), still clamped to [today−30d, today+45d] — never an
+ *    unbounded wall; the operator needs "what's coming up," not just today.
  *  - State renders as NEUTRAL INK, never colour. Warm/bad tokens belong to the
  *    At-Risk board alone; a board where every row glows is the named failure mode.
  *  - No auto-refresh / no polling / no per-state scoreboard. Server-render on

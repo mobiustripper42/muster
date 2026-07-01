@@ -47,6 +47,10 @@ export interface ImportRunSummary {
   warnings: string[];
   /** Per-day boat→times — the "why is Brew 3 on Saturday?" review surface. */
   assignments: DayAssignments[];
+  /** Canonical shift ids of SPLIT vessel-days whose trip composition this pull
+   * changed (DEC-083) — the Builder View's "changed in the last pull — check the
+   * split" cue reads the latest run's list. Empty on most runs. */
+  splitDaysChanged: string[];
 }
 
 export interface ImportRun {

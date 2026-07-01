@@ -50,6 +50,7 @@ export async function persistImportRun(
       skipped: result.import.skipped,
       warnings: result.import.warnings,
       assignments: result.assignments,
+      splitDaysChanged: result.form.splitDaysChanged,
     },
   };
 

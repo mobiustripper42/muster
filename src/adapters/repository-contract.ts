@@ -177,6 +177,7 @@ const importRun = (over: Partial<ImportRun> = {}): ImportRun => ({
     skipped: [],
     warnings: ["heads up"],
     assignments: [{ date: "2026-07-01", boats: [] }],
+    splitDaysChanged: [],
   },
   ...over,
 });
@@ -320,16 +321,22 @@ export function runRepositoryContract(
       );
     });
 
-    it("shifts: eventIds round-trip; lockedAt optional", async () => {
+    it("shifts: eventIds round-trip; lockedAt + splitCutTime optional", async () => {
       await repo.saveShift(shift());
       const got = await repo.getShift(SHIFT);
       expect(got).toEqual(shift());
       expect("lockedAt" in got!).toBe(false);
+      expect("splitCutTime" in got!).toBe(false);
       await repo.saveShift(shift({ lockedAt: "2026-06-30T00:00:00.000Z", state: "Crewed" }));
       expect(await repo.getShift(SHIFT)).toMatchObject({
         lockedAt: "2026-06-30T00:00:00.000Z",
         state: "Crewed",
       });
+      // splitCutTime round-trips (DEC-083) and clears back to absent (merge/collapse).
+      await repo.saveShift(shift({ splitCutTime: "14:00" }));
+      expect(await repo.getShift(SHIFT)).toMatchObject({ splitCutTime: "14:00" });
+      await repo.saveShift(shift());
+      expect("splitCutTime" in (await repo.getShift(SHIFT))!).toBe(false);
     });
 
     it("seats: round-trip + listForShift; assignedCrewMemberId optional", async () => {

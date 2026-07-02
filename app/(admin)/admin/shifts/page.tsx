@@ -533,9 +533,6 @@ function ShiftRow({
           >
             Split
           </button>
-          <span className="text-xs text-muted">
-            makes two shifts — before &amp; from the cut
-          </span>
         </form>
       )}
     </div>

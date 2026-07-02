@@ -230,16 +230,11 @@ export default async function AllShifts({
 
   return (
     <Shell width="3xl">
-      <header className="flex items-start justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-xl font-semibold text-ink">All shifts</h1>
-          {/* The single line that does the brand work: this is pull, not push. */}
-          <p className="text-sm text-muted">
-            {mode === "edit"
-              ? "Editing — split a long day into two shifts. Tap a shift to open its cockpit."
-              : "Everything on the books — for reference. The board summons you; this you check when you want to."}
-          </p>
-        </div>
+      <header className="flex items-center justify-between gap-4">
+        {/* The View/Edit toggle is the mode signal — no subtitle needed. The
+            DEC-042 pull-not-push posture is held structurally (neutral ink, no
+            scoreboard, a separate empty state), not by a line of prose. */}
+        <h1 className="text-xl font-semibold text-ink">All shifts</h1>
         <ModeToggle sp={sp} mode={mode} />
       </header>
 
@@ -304,17 +299,29 @@ function canonicalIdOf(row: AllShiftsRow): string {
   return row.split?.side === "B" ? row.shiftId.slice(0, -2) : row.shiftId;
 }
 
-/** View ↔ Edit toggle — two links preserving the current window (DEC-026: plain
- * navigation, no client JS). Active side is accent; the other is a muted step away. */
+/** View ↔ Edit toggle — the surface's mode signal now that the subtitle is gone,
+ * so it's a pronounced segmented control: the active mode is a filled accent pill
+ * (the app's established "selected" idiom — see the crew primary buttons), the
+ * other a muted step away. Plain navigation, no client JS (DEC-026); each side
+ * preserves the current window. `aria-current` carries the mode to assistive tech
+ * now that fill, not prose, marks it. */
 function ModeToggle({ sp, mode }: { sp: Search; mode: Mode }) {
   const seg = (active: boolean) =>
-    `px-3 py-1 ${active ? "font-semibold text-accent" : "text-muted"}`;
+    `rounded-full px-4 py-1.5 font-semibold ${active ? "bg-accent text-white" : "text-muted"}`;
   return (
-    <div className="flex shrink-0 items-center divide-x divide-line rounded-full border border-line text-sm">
-      <Link href={hrefFor(sp, "view")} className={seg(mode === "view")}>
+    <div className="flex shrink-0 items-center gap-0.5 rounded-full border border-line bg-card p-0.5 text-sm">
+      <Link
+        href={hrefFor(sp, "view")}
+        aria-current={mode === "view" ? "page" : undefined}
+        className={seg(mode === "view")}
+      >
         View
       </Link>
-      <Link href={hrefFor(sp, "edit")} className={seg(mode === "edit")}>
+      <Link
+        href={hrefFor(sp, "edit")}
+        aria-current={mode === "edit" ? "page" : undefined}
+        className={seg(mode === "edit")}
+      >
         Edit
       </Link>
     </div>

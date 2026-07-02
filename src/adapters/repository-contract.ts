@@ -20,6 +20,7 @@ import type {
   MagicToken,
   OutboxEntry,
   RingOutboxEntry,
+  NoticeOutboxEntry,
   PtoWindow,
   Reservation,
   RoleType,
@@ -148,6 +149,18 @@ const ringOutboxEntry = (over: Partial<RingOutboxEntry> = {}): RingOutboxEntry =
   threadId: asId<"ThreadId">("thread-1"),
   body: "2 new messages",
   link: "https://app.example/crew/auth?t=secret&thread=thread-1",
+  status: "pending",
+  createdAt: "2026-07-01T12:00:00.000Z",
+  ...over,
+});
+const noticeOutboxEntry = (
+  over: Partial<NoticeOutboxEntry> = {},
+): NoticeOutboxEntry => ({
+  id: asId<"NoticeOutboxEntryId">("notice-shift-1-crew-a-removed"),
+  crewMemberId: CREW,
+  action: "removed",
+  body: "Muster: you're off the Sat, Jul 4 · Barrel shift.",
+  link: "https://app.example/crew/auth?t=secret",
   status: "pending",
   createdAt: "2026-07-01T12:00:00.000Z",
   ...over,
@@ -412,6 +425,14 @@ export function runRepositoryContract(
       await repo.removeSeat(SEAT); // idempotent — already gone
     });
 
+    it("removeShift: deletes the row; absent-id is a no-op (DEC-083 merge teardown)", async () => {
+      await repo.saveShift(shift());
+      await repo.removeShift(SHIFT);
+      expect(await repo.getShift(SHIFT)).toBeNull();
+      expect(await repo.listShifts()).toHaveLength(0);
+      await repo.removeShift(SHIFT); // idempotent — already gone
+    });
+
     it("asks: optional response fields present and absent; listForSeat", async () => {
       await repo.saveAsk(ask());
       const got = await repo.getAsk(asId<"AskId">("ask-1"));
@@ -585,6 +606,33 @@ export function runRepositoryContract(
       expect(await repo.listRingOutboxEntries()).toHaveLength(0);
       await expect(
         repo.removeRingOutboxEntry(asId<"RingOutboxEntryId">("ghost")),
+      ).resolves.toBeUndefined();
+    });
+
+    it("notice outbox entries: round-trip incl. sentAt optional; status flip via upsert (DEC-084)", async () => {
+      await repo.saveNoticeOutboxEntry(noticeOutboxEntry()); // pending, never sent
+      const got = await repo.getNoticeOutboxEntry(
+        asId<"NoticeOutboxEntryId">("notice-shift-1-crew-a-removed"),
+      );
+      expect(got).toEqual(noticeOutboxEntry());
+      expect("sentAt" in got!).toBe(false); // omitted, not undefined
+      expect(
+        await repo.getNoticeOutboxEntry(asId<"NoticeOutboxEntryId">("ghost")),
+      ).toBeNull();
+      // Mark sent → upsert flips status + stamps sentAt; body/link come back VERBATIM.
+      await repo.saveNoticeOutboxEntry(
+        noticeOutboxEntry({ status: "sent", sentAt: "2026-07-01T12:30:00.000Z" }),
+      );
+      expect(await repo.listNoticeOutboxEntries()).toEqual([
+        noticeOutboxEntry({ status: "sent", sentAt: "2026-07-01T12:30:00.000Z" }),
+      ]);
+      // Remove: gone, and an absent id is a no-op.
+      await repo.removeNoticeOutboxEntry(
+        asId<"NoticeOutboxEntryId">("notice-shift-1-crew-a-removed"),
+      );
+      expect(await repo.listNoticeOutboxEntries()).toHaveLength(0);
+      await expect(
+        repo.removeNoticeOutboxEntry(asId<"NoticeOutboxEntryId">("ghost")),
       ).resolves.toBeUndefined();
     });
 

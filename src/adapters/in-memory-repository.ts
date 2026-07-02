@@ -18,6 +18,7 @@ import type {
   MagicToken,
   OutboxEntry,
   RingOutboxEntry,
+  NoticeOutboxEntry,
   PtoWindow,
   Reservation,
   RoleType,
@@ -35,6 +36,7 @@ import type {
   MagicTokenId,
   OutboxEntryId,
   RingOutboxEntryId,
+  NoticeOutboxEntryId,
   PtoWindowId,
   ReservationId,
   RoleTypeId,
@@ -81,6 +83,7 @@ export class InMemoryRepository implements Repository {
   readonly #loginCodes = new Map<string, LoginCode>();
   readonly #outbox = new Map<OutboxEntryId, OutboxEntry>();
   readonly #ringOutbox = new Map<RingOutboxEntryId, RingOutboxEntry>();
+  readonly #noticeOutbox = new Map<NoticeOutboxEntryId, NoticeOutboxEntry>();
   readonly #reliability: ReliabilityEvent[] = [];
   // Engine pause flag (#124, DEC-054). Default false = running, mirroring the
   // KV's "absent row ⇒ running" semantics. `#enginePausedAt` mirrors the DB's
@@ -220,6 +223,9 @@ export class InMemoryRepository implements Repository {
   }
   async listShifts(): Promise<Shift[]> {
     return [...this.#shifts.values()].map(clone);
+  }
+  async removeShift(id: ShiftId): Promise<void> {
+    this.#shifts.delete(id);
   }
 
   // ── Seats ──────────────────────────────────────────────────────────────────
@@ -365,6 +371,21 @@ export class InMemoryRepository implements Repository {
   }
   async removeRingOutboxEntry(id: RingOutboxEntryId): Promise<void> {
     this.#ringOutbox.delete(id);
+  }
+
+  // ── Notice outbox entries (assignment-change relay adapter state — DEC-084) ─
+  async saveNoticeOutboxEntry(entry: NoticeOutboxEntry): Promise<void> {
+    this.#noticeOutbox.set(entry.id, clone(entry));
+  }
+  async getNoticeOutboxEntry(id: NoticeOutboxEntryId): Promise<NoticeOutboxEntry | null> {
+    const e = this.#noticeOutbox.get(id);
+    return e ? clone(e) : null;
+  }
+  async listNoticeOutboxEntries(): Promise<NoticeOutboxEntry[]> {
+    return [...this.#noticeOutbox.values()].map(clone);
+  }
+  async removeNoticeOutboxEntry(id: NoticeOutboxEntryId): Promise<void> {
+    this.#noticeOutbox.delete(id);
   }
 
   // ── Reliability log (append-only — DEC-008) ───────────────────────────────

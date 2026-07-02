@@ -22,6 +22,7 @@ import type {
   Event,
   LoginCode,
   MagicToken,
+  NoticeOutboxEntry,
   OutboxEntry,
   PtoWindow,
   RingOutboxEntry,
@@ -40,6 +41,7 @@ import type {
   CrewMemberId,
   EventId,
   MagicTokenId,
+  NoticeOutboxEntryId,
   OutboxEntryId,
   PtoWindowId,
   RingOutboxEntryId,
@@ -216,6 +218,17 @@ const toRingOutboxEntry = (r: any): RingOutboxEntry => ({
   id: asId<"RingOutboxEntryId">(r.id),
   crewMemberId: asId<"CrewMemberId">(r.crew_member_id),
   threadId: asId<"ThreadId">(r.thread_id),
+  body: r.body,
+  link: r.link,
+  status: r.status,
+  createdAt: r.created_at,
+  ...opt("sentAt", r.sent_at),
+});
+
+const toNoticeOutboxEntry = (r: any): NoticeOutboxEntry => ({
+  id: asId<"NoticeOutboxEntryId">(r.id),
+  crewMemberId: asId<"CrewMemberId">(r.crew_member_id),
+  action: r.action,
   body: r.body,
   link: r.link,
   status: r.status,
@@ -510,6 +523,9 @@ export class PostgresRepository implements Repository {
     const { rows } = await this.#pool.query("select * from shifts");
     return rows.map(toShift);
   }
+  async removeShift(id: ShiftId): Promise<void> {
+    await this.#pool.query("delete from shifts where id=$1", [id]);
+  }
 
   // ── Seats ──────────────────────────────────────────────────────────────────
   async saveSeat(s: Seat): Promise<void> {
@@ -765,6 +781,29 @@ export class PostgresRepository implements Repository {
   }
   async removeRingOutboxEntry(id: RingOutboxEntryId): Promise<void> {
     await this.#pool.query("delete from ring_outbox where id=$1", [id]);
+  }
+
+  // ── Notice outbox entries (assignment-change relay adapter state — DEC-084) ─
+  async saveNoticeOutboxEntry(e: NoticeOutboxEntry): Promise<void> {
+    await this.#pool.query(
+      `insert into notice_outbox(id, crew_member_id, action, body, link, status, created_at, sent_at)
+       values ($1,$2,$3,$4,$5,$6,$7,$8)
+       on conflict (id) do update set crew_member_id=excluded.crew_member_id,
+         action=excluded.action, body=excluded.body, link=excluded.link,
+         status=excluded.status, created_at=excluded.created_at, sent_at=excluded.sent_at`,
+      [e.id, e.crewMemberId, e.action, e.body, e.link, e.status, e.createdAt, e.sentAt ?? null],
+    );
+  }
+  async getNoticeOutboxEntry(id: NoticeOutboxEntryId): Promise<NoticeOutboxEntry | null> {
+    const { rows } = await this.#pool.query("select * from notice_outbox where id=$1", [id]);
+    return rows[0] ? toNoticeOutboxEntry(rows[0]) : null;
+  }
+  async listNoticeOutboxEntries(): Promise<NoticeOutboxEntry[]> {
+    const { rows } = await this.#pool.query("select * from notice_outbox");
+    return rows.map(toNoticeOutboxEntry);
+  }
+  async removeNoticeOutboxEntry(id: NoticeOutboxEntryId): Promise<void> {
+    await this.#pool.query("delete from notice_outbox where id=$1", [id]);
   }
 
   // ── Reliability log (append-only — DEC-008) ───────────────────────────────

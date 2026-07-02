@@ -22,6 +22,7 @@ import type {
   PtoWindowId,
   ReservationId,
   RingOutboxEntryId,
+  NoticeOutboxEntryId,
   RoleTypeId,
   SeatId,
   ShiftId,
@@ -395,6 +396,40 @@ export interface RingOutboxEntry {
   link: string;
   status: OutboxStatus;
   /** ISO-8601 UTC — enqueue time / `deliveredAt`, and the drop-on-read anchor. */
+  createdAt: string;
+  /** ISO-8601 UTC; set when the operator marks it sent. Channel-side only. */
+  sentAt?: string;
+}
+
+/** A crew member put ON or taken OFF a shift (DEC-084) — the two assignment-change
+ * notices. `removed` is what merge (8.4) emits for a dropped side-B occupant. */
+export type AssignmentAction = "added" | "removed";
+
+/**
+ * One queued assignment-change relay (DEC-084, the THIRD operator-relay sibling to
+ * {@link OutboxEntry} and {@link RingOutboxEntry}). `OutboxNoticeChannel.send`
+ * enqueues this instead of transmitting; the operator works the `/admin/outbox`
+ * "Assignment changes" section, texts the `/crew` link, marks it sent — the DEC-030
+ * web-link model.
+ *
+ * Its OWN type + table (`notice_outbox`), NOT a union: a notice has no ask/seat/claim
+ * (so not the ask outbox's NOT NULL correlation) and no thread/read-state (so not the
+ * ring's drop-on-read). Same adapter-side guardrail (nothing in the domain reads it)
+ * and freeze rule (`body` + `link` minted once at enqueue). **Terminal-on-sent**: a
+ * sent notice STAYS as the durable "we told them" record — no drop-on-read, no
+ * settle-on-answer. Deterministic id = one slot per (shift, member, action).
+ */
+export interface NoticeOutboxEntry {
+  /** `notice-<shiftId>-<crewMemberId>-<action>` — one slot per (shift, member, action). */
+  id: NoticeOutboxEntryId;
+  crewMemberId: CrewMemberId;
+  action: AssignmentAction;
+  /** The relay text, frozen at enqueue. */
+  body: string;
+  /** The `/crew` magic link (24h TTL), minted + frozen at enqueue. */
+  link: string;
+  status: OutboxStatus;
+  /** ISO-8601 UTC — enqueue time / `deliveredAt`. */
   createdAt: string;
   /** ISO-8601 UTC; set when the operator marks it sent. Channel-side only. */
   sentAt?: string;

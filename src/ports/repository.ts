@@ -20,6 +20,7 @@ import type {
   MagicToken,
   OutboxEntry,
   RingOutboxEntry,
+  NoticeOutboxEntry,
   PtoWindow,
   Reservation,
   RoleType,
@@ -36,6 +37,7 @@ import type {
   MagicTokenId,
   OutboxEntryId,
   RingOutboxEntryId,
+  NoticeOutboxEntryId,
   PtoWindowId,
   ReservationId,
   RoleTypeId,
@@ -105,6 +107,13 @@ export interface Repository {
   saveShift(shift: Shift): Promise<void>;
   getShift(id: ShiftId): Promise<Shift | null>;
   listShifts(): Promise<Shift[]>;
+  /**
+   * Remove a shift row (DEC-083 merge — tear down the `…-b` side when two split
+   * shifts are merged back into one; clearing the cut alone would orphan it). The
+   * caller owns referential cleanup: no-FK schema (DEC-DATA-1), so remove the
+   * shift's seats first (merge does). No-op if absent.
+   */
+  removeShift(id: ShiftId): Promise<void>;
 
   // ── Seats ──────────────────────────────────────────────────────────────────
   saveSeat(seat: Seat): Promise<void>;
@@ -229,6 +238,19 @@ export interface Repository {
   listRingOutboxEntries(): Promise<RingOutboxEntry[]>;
   /** Remove a ring entry (dev-seed reset / housekeeping). No-op if absent. */
   removeRingOutboxEntry(id: RingOutboxEntryId): Promise<void>;
+
+  // ── Notice outbox entries (assignment-change relay adapter state — DEC-084) ─
+  // The THIRD operator-relay sibling (asks / rings / notices), its OWN slot: the
+  // "you're on/off a shift" relay worklist. Same guardrail — only `OutboxNoticeChannel`
+  // writes it, only the notice-outbox view reads it; the domain never does. Terminal-
+  // on-sent (a sent notice stays as the record), so no read-cancellation query.
+  /** Persist a notice entry (upsert by id) — enqueue, mark-sent. */
+  saveNoticeOutboxEntry(entry: NoticeOutboxEntry): Promise<void>;
+  getNoticeOutboxEntry(id: NoticeOutboxEntryId): Promise<NoticeOutboxEntry | null>;
+  /** Every notice entry — the outbox page's "Assignment changes" section + a reset scan. */
+  listNoticeOutboxEntries(): Promise<NoticeOutboxEntry[]>;
+  /** Remove a notice entry (dev-seed reset / housekeeping). No-op if absent. */
+  removeNoticeOutboxEntry(id: NoticeOutboxEntryId): Promise<void>;
 
   // ── Reliability log (append-only — DEC-008) ───────────────────────────────
   /** Append a reliability event. The log is never mutated, only grown. */

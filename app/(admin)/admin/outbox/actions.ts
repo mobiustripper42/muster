@@ -87,6 +87,31 @@ export async function recordRingSent(entryId: string): Promise<{ ok: boolean }> 
   }
 }
 
+/**
+ * Mark an assignment-change relay sent (DEC-084) — the notice analog of recordSent,
+ * over `notice_outbox`. Same single-click-island contract: no redirect/revalidate
+ * (the island flipped optimistically), "sent" = composer fired, not delivery.
+ */
+export async function recordNoticeSent(entryId: string): Promise<{ ok: boolean }> {
+  const subject = await readSubject();
+  if (!subject || subject.kind !== "admin" || !entryId) return { ok: false };
+  try {
+    const repo = getRepo();
+    const entry = await repo.getNoticeOutboxEntry(
+      asId<"NoticeOutboxEntryId">(entryId),
+    );
+    if (!entry) return { ok: false };
+    await repo.saveNoticeOutboxEntry({
+      ...entry,
+      status: "sent",
+      sentAt: new Date().toISOString(),
+    });
+    return { ok: true };
+  } catch {
+    return { ok: false };
+  }
+}
+
 export async function answerOwnAsk(formData: FormData): Promise<void> {
   const askId = await gate(formData, "askId");
   const response = String(formData.get("response") ?? "");

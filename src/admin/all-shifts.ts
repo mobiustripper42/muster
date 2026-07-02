@@ -40,6 +40,14 @@ export interface AllShiftsRow {
    * Builder (8.2) renders it; `formShifts` never auto-splits (idempotency contract).
    */
   splitSuggestion: SplitSuggestion | null;
+  /**
+   * When this row is one HALF of a manually-split vessel-day (DEC-083): `side` is
+   * `A` (the canonical row carrying `splitCutTime`, trips `< cut`) or `B` (the
+   * `{id}-b` sibling, trips `>= cut`); `cutTime` is the shared vessel-local "HH:MM"
+   * boundary (side B borrows it from its canonical). `null` for an un-split shift.
+   * The Builder pairs the two rows and never offers Split on a side (Merge is 8.4).
+   */
+  split: { side: "A" | "B"; cutTime: string } | null;
 }
 
 /**
@@ -61,7 +69,17 @@ export async function deriveAllShifts(
   );
   const rows: AllShiftsRow[] = [];
 
-  for (const shift of await repo.listShifts()) {
+  // Split marking (DEC-083): a canonical row carries `splitCutTime`; its side-B
+  // sibling (`{id}-b`) does not, so borrow the cut from the canonical. Pre-map
+  // canonical id → cut once (including a Cancelled canonical, filtered from the
+  // rows below but still the source of side B's boundary) — O(shifts), not O(n²).
+  const allShifts = await repo.listShifts();
+  const cutById = new Map<string, string>();
+  for (const s of allShifts) {
+    if (s.splitCutTime != null) cutById.set(String(s.id), s.splitCutTime);
+  }
+
+  for (const shift of allShifts) {
     if (shift.state === "Cancelled" || shift.state === "Completed") continue;
     if (shift.date < window.from || shift.date > window.to) continue;
 
@@ -87,8 +105,18 @@ export async function deriveAllShifts(
     const required = (await repo.listSeatsForShift(shift.id)).filter(
       (s) => s.kind === "required",
     );
+
+    const idStr = String(shift.id);
+    let split: AllShiftsRow["split"] = null;
+    if (shift.splitCutTime != null) {
+      split = { side: "A", cutTime: shift.splitCutTime };
+    } else if (idStr.endsWith("-b")) {
+      const cut = cutById.get(idStr.slice(0, -2));
+      if (cut != null) split = { side: "B", cutTime: cut };
+    }
+
     rows.push({
-      shiftId: String(shift.id),
+      shiftId: idStr,
       vesselName: vesselName.get(shift.vesselId) ?? String(shift.vesselId),
       date: shift.date,
       state,
@@ -97,6 +125,7 @@ export async function deriveAllShifts(
       requiredSeats: required.length,
       confirmedSeats: required.filter((s) => s.state === "Confirmed").length,
       splitSuggestion: suggestSplit(scheduledEvents, opts?.tz),
+      split,
     });
   }
 

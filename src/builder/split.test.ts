@@ -137,4 +137,21 @@ describe("splitShift (DEC-083)", () => {
       await expect(splitShift(repo, CANON, bad)).rejects.toThrow(/Invalid cut time/);
     }
   });
+
+  it("rejects a non-canonical shift id — split/merge key on `shift-{vessel}-{date}`", async () => {
+    const repo = await seedDay();
+    // A hand-authored fixture: right vessel + day, but an id that isn't the
+    // canonical form `formShifts` re-forms (the dev-seed trap, #206). Splitting it
+    // would duplicate the vessel-day; refuse instead.
+    await repo.saveShift({
+      id: asId<"ShiftId">("shift-fixture-legacy"),
+      vesselId: PARTY,
+      date: DAY,
+      state: "Filling",
+      eventIds: [asId<"EventId">("am"), asId<"EventId">("pm")],
+    });
+    await expect(
+      splitShift(repo, asId<"ShiftId">("shift-fixture-legacy"), "14:00"),
+    ).rejects.toThrow(/not the canonical/);
+  });
 });

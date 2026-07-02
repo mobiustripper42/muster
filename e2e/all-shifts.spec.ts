@@ -24,7 +24,8 @@ test.describe("all shifts (#100)", () => {
     await page.goto(`/admin/shifts?from=${today()}&to=${plusDays(10)}`);
 
     await expect(page.getByRole("heading", { name: "All shifts" })).toBeVisible();
-    await expect(page.getByText(/The board summons you; this you check/)).toBeVisible();
+    // The header subtitle was dropped (8.3b); the View/Edit toggle is the mode signal.
+    await expect(page.getByRole("link", { name: "Edit" })).toBeVisible();
 
     // A known seeded shift shows up regardless of its state…
     await expect(page.getByText("Firkin")).toBeVisible();

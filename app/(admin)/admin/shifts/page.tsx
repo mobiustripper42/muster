@@ -308,22 +308,29 @@ function canonicalIdOf(row: AllShiftsRow): string {
 function ModeToggle({ sp, mode }: { sp: Search; mode: Mode }) {
   const seg = (active: boolean) =>
     `rounded-full px-4 py-1.5 font-semibold ${active ? "bg-accent text-white" : "text-muted"}`;
+  // The active mode is an inert <span>, not a <Link> to itself — clicking the mode
+  // you're already on shouldn't fire a navigation + full re-render of this
+  // force-dynamic page. Only the OTHER mode navigates.
   return (
     <div className="flex shrink-0 items-center gap-0.5 rounded-full border border-line bg-card p-0.5 text-sm">
-      <Link
-        href={hrefFor(sp, "view")}
-        aria-current={mode === "view" ? "page" : undefined}
-        className={seg(mode === "view")}
-      >
-        View
-      </Link>
-      <Link
-        href={hrefFor(sp, "edit")}
-        aria-current={mode === "edit" ? "page" : undefined}
-        className={seg(mode === "edit")}
-      >
-        Edit
-      </Link>
+      {mode === "view" ? (
+        <span aria-current="page" className={seg(true)}>
+          View
+        </span>
+      ) : (
+        <Link href={hrefFor(sp, "view")} className={seg(false)}>
+          View
+        </Link>
+      )}
+      {mode === "edit" ? (
+        <span aria-current="page" className={seg(true)}>
+          Edit
+        </span>
+      ) : (
+        <Link href={hrefFor(sp, "edit")} className={seg(false)}>
+          Edit
+        </Link>
+      )}
     </div>
   );
 }

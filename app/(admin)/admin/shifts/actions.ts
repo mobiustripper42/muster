@@ -3,8 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { splitShift } from "@core/builder/split.js";
+import { mergeShift } from "@core/builder/merge.js";
 import { asId } from "@core/domain/ids.js";
 import { readSubject } from "../../../lib/auth";
+import { forwardNoticesToOutbox } from "../../../lib/channel";
+import { OPERATOR_CREW_MEMBER_ID } from "../../../lib/operator";
 import { getRepo } from "../../../lib/repo";
 
 /**
@@ -34,6 +37,57 @@ export async function splitAction(formData: FormData): Promise<void> {
     // collapses to one honest, reload-and-retry notice — the operator only ever
     // picks a valid trip-time cut, so a reachable failure is always a race.
     param = "split_err=failed";
+  }
+  revalidatePath("/admin/shifts");
+  redirect(`/admin/shifts?${back}&${param}`);
+}
+
+/**
+ * Builder Edit-mode merge (SPEC §2.3, DEC-083 inverse + DEC-084) — auth + glue over
+ * `mergeShift`. The engine tears down the `…-b` side, clears the cut, re-forms to one
+ * shift, and returns the dropped side-B crew (`freedCrew`); the edge relays each an
+ * `action:"removed"` assignment notice so nobody is silently un-booked (DEC-084). The
+ * operator-as-crew is excluded here (DEC-072/084) — the operator id is an edge value.
+ *
+ * Same DEC-026 posture as split: feedback rides the redirect as a CODE, `redirect()`
+ * stays OUTSIDE the try, only the domain + relay are guarded (a race → an honest
+ * notice, not a 500). The notice relay is best-effort by design (`forwardNotices`
+ * swallows) — the merge already committed, so a channel hiccup can't fail it.
+ */
+export async function mergeAction(formData: FormData): Promise<void> {
+  const subject = await readSubject();
+  const shiftId = String(formData.get("shiftId") ?? "");
+  const back = String(formData.get("back") ?? "mode=edit");
+  if (!subject || subject.kind !== "admin" || !shiftId) redirect("/admin/shifts");
+
+  let param: string;
+  try {
+    const { freedCrew } = await mergeShift(getRepo(), asId<"ShiftId">(shiftId));
+    // Notify everyone dropped off the far side — except the operator about their own
+    // action (DEC-072/084).
+    const toNotify = freedCrew.filter(
+      (id) => String(id) !== OPERATOR_CREW_MEMBER_ID,
+    );
+    // The merge is COMMITTED — the relay is best-effort and must never flip this to
+    // merge_err (a channel-setup hiccup would otherwise report a false failure for a
+    // merge that happened, and a retry then throws `not split`). Its own guard here
+    // covers the channel construction too, not just forwardNotices' per-change swallow.
+    try {
+      await forwardNoticesToOutbox(
+        toNotify.map((crewMemberId) => ({
+          crewMemberId,
+          action: "removed" as const,
+          shiftId: asId<"ShiftId">(shiftId),
+        })),
+      );
+    } catch {
+      // Relay is best-effort; the merge stands regardless (DEC-084).
+    }
+    // Surface the count so the page can confirm who got told (button feedback, #202).
+    param = `merge_ok=${toNotify.length}`;
+  } catch {
+    // A race (already merged, day vanished, non-split target) → one honest notice.
+    param = "merge_err=failed";
   }
   revalidatePath("/admin/shifts");
   redirect(`/admin/shifts?${back}&${param}`);

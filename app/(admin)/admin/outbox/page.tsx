@@ -1,9 +1,11 @@
 import { buildOutboxView, type OutboxCardView } from "@core/admin/outbox-view.js";
 import { buildRingOutboxView, type RingOutboxCardView } from "@core/admin/ring-outbox-view.js";
+import { buildNoticeOutboxView, type NoticeOutboxCardView } from "@core/admin/notice-outbox-view.js";
 import { buildSmsUrl } from "@core/adapters/sms-deep-link.js";
 import { TENANT_TIMEZONE } from "@core/config/tenant.js";
 import { OutboxCard, type OutboxCardVM } from "../../../../components/outbox/outbox-card";
 import { RingOutboxCard, type RingOutboxCardVM } from "../../../../components/outbox/ring-outbox-card";
+import { NoticeOutboxCard, type NoticeOutboxCardVM } from "../../../../components/outbox/notice-outbox-card";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { readSubject } from "../../../lib/auth";
@@ -92,6 +94,17 @@ export default async function Outbox({
     // leave rings empty
   }
 
+  // Assignment-change relays (DEC-084) — best-effort, same posture as rings.
+  let noticePending: NoticeOutboxCardVM[] = [];
+  let noticeSent: NoticeOutboxCardVM[] = [];
+  try {
+    const noticeView = await buildNoticeOutboxView(repo);
+    noticePending = noticeView.pending.map(toNoticeVM);
+    noticeSent = noticeView.sent.map(toNoticeVM);
+  } catch {
+    // leave notices empty
+  }
+
   return (
     <Shell>
       <header className="flex items-end justify-between gap-2">
@@ -123,7 +136,9 @@ export default async function Outbox({
       {pending.length === 0 &&
       sent.length === 0 &&
       ringPending.length === 0 &&
-      ringSent.length === 0 ? (
+      ringSent.length === 0 &&
+      noticePending.length === 0 &&
+      noticeSent.length === 0 ? (
         <EmptySuccess />
       ) : (
         <>
@@ -156,6 +171,18 @@ export default async function Outbox({
               </h2>
               {ringPending.map((c) => <RingOutboxCard key={c.entryId} card={c} />)}
               {ringSent.map((c) => <RingOutboxCard key={c.entryId} card={c} />)}
+            </section>
+          )}
+
+          {/* Assignment-change relays (DEC-084) — "you're on/off a shift" notices,
+              recency-sorted. Terminal-on-sent: sent ones stay as the record. */}
+          {(noticePending.length > 0 || noticeSent.length > 0) && (
+            <section className="flex flex-col gap-2">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">
+                Assignment changes{noticePending.length > 0 ? ` · ${noticePending.length} to send` : ""}
+              </h2>
+              {noticePending.map((c) => <NoticeOutboxCard key={c.entryId} card={c} />)}
+              {noticeSent.map((c) => <NoticeOutboxCard key={c.entryId} card={c} />)}
             </section>
           )}
         </>
@@ -200,6 +227,20 @@ function toVM(c: OutboxCardView): OutboxCardVM {
 function toRingVM(c: RingOutboxCardView): RingOutboxCardVM {
   // The frozen relay body + the frozen deep-link (DEC-030 — never re-minted). One
   // value feeds the sms: href and the Web Share sheet (#160).
+  const message = `${c.body}\n${c.link}`;
+  return {
+    entryId: c.entryId,
+    crewName: c.crewName,
+    body: c.body,
+    shareText: message,
+    smsHref: c.crewPhone ? buildSmsUrl({ phone: c.crewPhone, body: message }) : null,
+    initialSent: c.status === "sent",
+    sentLabel: c.sentAt ? `sent ${fmtTime(c.sentAt)}` : null,
+  };
+}
+
+/** Format one notice read-model into the notice card's display strings (DEC-084). */
+function toNoticeVM(c: NoticeOutboxCardView): NoticeOutboxCardVM {
   const message = `${c.body}\n${c.link}`;
   return {
     entryId: c.entryId,

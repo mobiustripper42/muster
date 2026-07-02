@@ -1,6 +1,11 @@
 import { headers } from "next/headers";
 import { forwardAsks } from "@core/adapters/forward-asks.js";
+import {
+  forwardNotices,
+  type AssignmentChange,
+} from "@core/adapters/forward-notices.js";
 import { WebLinkChannel } from "@core/adapters/web-link-channel.js";
+import { OutboxNoticeChannel } from "@core/adapters/outbox-notice-channel.js";
 import type { Ask } from "@core/domain/entities.js";
 import { getRepo } from "./repo";
 
@@ -39,4 +44,20 @@ export async function forwardToOutbox(
   const repo = getRepo();
   const channel = new WebLinkChannel(repo, { linkBase: await linkBase() });
   await forwardAsks(repo, channel, asks);
+}
+
+/**
+ * Forward assignment-change notices (DEC-084) to the pilot outbox — the notice
+ * sibling of `forwardToOutbox`, same edge-injection + best-effort posture. The pilot
+ * adapter is `OutboxNoticeChannel` (enqueues a `NoticeOutboxEntry`); the Twilio swap
+ * later is a different constructor here, zero domain change (DEC-MSG-1). The caller
+ * has already excluded the operator (DEC-072/084).
+ */
+export async function forwardNoticesToOutbox(
+  changes: readonly AssignmentChange[] | undefined,
+): Promise<void> {
+  if (!changes || changes.length === 0) return;
+  const repo = getRepo();
+  const channel = new OutboxNoticeChannel(repo, { linkBase: await linkBase() });
+  await forwardNotices(repo, channel, changes);
 }

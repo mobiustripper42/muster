@@ -6,7 +6,7 @@ import { Shell } from "../../../../components/ui/shell";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
 import { fmt12 } from "../../../lib/format";
-import { splitAction } from "./actions";
+import { splitAction, mergeAction } from "./actions";
 
 /**
  * All-shifts view (#100 Part A, DEC-042) — the operator's deliberate full-
@@ -47,6 +47,8 @@ type Search = {
   mode?: string;
   split_ok?: string;
   split_err?: string;
+  merge_ok?: string;
+  merge_err?: string;
 };
 
 const isDate = (s?: string): s is string => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
@@ -224,9 +226,25 @@ export default async function AllShifts({
     /* leave the cue off */
   }
 
-  // The split action returns here (Edit mode, same window) — reused as the form's
-  // `back` so it lands the operator on the two new rows.
+  // The split/merge actions return here (Edit mode, same window) — reused as each
+  // form's `back` so the operator lands where they were.
   const back = hrefFor(sp, "edit").split("?")[1] ?? "mode=edit";
+
+  // `merge_ok` carries the count of freed crew notified (a number, not prose —
+  // DEC-026); numeric-guarded so a crafted param can't inject text.
+  const mergedCount =
+    sp.merge_ok !== undefined && /^\d+$/.test(sp.merge_ok)
+      ? Number(sp.merge_ok)
+      : null;
+
+  // The Merge control lives on side A; if a collapsed morning hid side A, fall back
+  // to side B so Merge stays reachable — exactly one Merge control per split pair.
+  const sideAVisible = new Set(
+    rows.filter((r) => r.split?.side === "A").map((r) => r.shiftId),
+  );
+  const canMergeRow = (r: AllShiftsRow): boolean =>
+    r.split != null &&
+    (r.split.side === "A" || !sideAVisible.has(canonicalIdOf(r)));
 
   return (
     <Shell width="3xl">
@@ -243,6 +261,19 @@ export default async function AllShifts({
         <Notice tone="bad">
           Couldn’t split that shift — its trips may have changed since the page
           loaded. Reload and try again.
+        </Notice>
+      )}
+      {mergedCount !== null && (
+        <Notice tone="ok">
+          {mergedCount === 0
+            ? "Merged into one shift."
+            : `Merged into one shift — ${mergedCount} crew notified they’re off the later half.`}
+        </Notice>
+      )}
+      {sp.merge_err && (
+        <Notice tone="bad">
+          Couldn’t merge — the shift may have changed since the page loaded. Reload
+          and try again.
         </Notice>
       )}
 
@@ -278,6 +309,7 @@ export default async function AllShifts({
                     mode={mode}
                     back={back}
                     changed={changedDays.has(canonicalIdOf(r))}
+                    canMerge={canMergeRow(r)}
                   />
                 ))}
               </section>
@@ -408,11 +440,13 @@ function ShiftRow({
   mode,
   back,
   changed,
+  canMerge,
 }: {
   row: AllShiftsRow;
   mode: Mode;
   back: string;
   changed: boolean;
+  canMerge: boolean;
 }) {
   const fill =
     row.requiredSeats === 0
@@ -528,6 +562,26 @@ function ShiftRow({
             className="rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent"
           >
             Split
+          </button>
+        </form>
+      )}
+
+      {mode === "edit" && canMerge && (
+        // No-JS Merge (DEC-083 inverse): recombine the split's two sides into one
+        // shift. Posts the CANONICAL id (mergeShift requires it) — for a side-B row
+        // that's the `-b`-stripped id. Any dropped far-side crew get an assignment
+        // notice (DEC-084), surfaced back as the merge count.
+        <form
+          action={mergeAction}
+          className="flex items-center gap-2 border-t border-line pt-2 text-sm"
+        >
+          <input type="hidden" name="shiftId" value={canonicalIdOf(row)} />
+          <input type="hidden" name="back" value={back} />
+          <button
+            type="submit"
+            className="rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent"
+          >
+            Merge back into one shift
           </button>
         </form>
       )}

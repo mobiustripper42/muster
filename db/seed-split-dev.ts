@@ -15,12 +15,14 @@
  *   seeds alongside:
  *     docker compose down -v && npm run db:up && npm run db:migrate && npm run db:seed:split
  *
- * Produces one 3-trip party day (11:00 / 18:00 / 20:00 — a morning trip + an
- * evening cluster, ~7h gap → the Builder flags "could be two shifts"), crewed
- * (captain + mate confirmed) so a split visibly PRESERVES side A's crew, plus two
- * spare crew to fill the far side. Then:
+ * Produces one busy party day — 5 trips, a morning cluster (9:00 / 10:30 / 12:00)
+ * and an evening cluster (7:00 / 8:30) with a ~7h afternoon gap → the Builder flags
+ * "could be two shifts" AND the cut dropdown is a real choice (10:30 / 12:00 / 7:00
+ * / 8:30), not a single option. Crewed (captain + mate confirmed) so a split visibly
+ * PRESERVES side A's crew, plus two spare crew to fill the far side. Then:
  *   /crew/dev-link?admin=spink → /admin/shifts?mode=edit
- *   1. Split at 6:00 PM → side A (11:00, keeps Quill + Reef) + side B (18:00, 20:00, born fresh).
+ *   1. Split at 7:00 PM (the suggested gap) — or pick another cut from the dropdown —
+ *      → side A (morning, keeps Quill + Reef) + side B (evening, born fresh).
  *   2. Crew side B, then Merge (8.4) → the far crew get a release notice.
  *
  * Idempotent: entity writes are upserts; `formShifts` preserves seat state on re-run.
@@ -97,14 +99,22 @@ try {
   await crew("crew-split-mate2", "Wren", MATE, "+15555550204"); // spare, far side
 
   const date = dateOf(at(3 * 24)); // ~3 days out — inside the default next-7 window
-  const times = ["11:00", "18:00", "20:00"];
-  for (const [i, time] of times.entries()) {
+  // A morning cluster + an evening cluster with a ~7h afternoon gap: enough trips
+  // that the cut dropdown is a real choice, with the gap driving a sensible default.
+  const trips: Array<{ time: string; pax: number }> = [
+    { time: "09:00", pax: 6 },
+    { time: "10:30", pax: 4 },
+    { time: "12:00", pax: 2 },
+    { time: "19:00", pax: 8 },
+    { time: "20:30", pax: 5 },
+  ];
+  for (const [i, trip] of trips.entries()) {
     const eventId = asId<"EventId">(`evt-split-${i}`);
     await repo.saveEvent({
       id: eventId,
       vesselId: VESSEL,
       date,
-      time,
+      time: trip.time,
       capacity: 12,
       status: "scheduled",
       dock: DOCK,
@@ -113,7 +123,7 @@ try {
       id: asId<"ReservationId">(`resv-split-${i}`),
       eventId,
       customerName: `Party ${i + 1}`,
-      partySize: 4,
+      partySize: trip.pax,
       status: "booked",
     });
   }
@@ -134,11 +144,12 @@ try {
 
   console.log("Seeded split/merge demo — one canonical, production-shaped shift:");
   console.log(`  Shift:  ${shiftId}`);
-  console.log(`  Vessel: Split Demo   Date: ${date}   Trips: ${times.join(" · ")}`);
+  console.log(`  Vessel: Split Demo   Date: ${date}   Trips: ${trips.map((t) => t.time).join(" · ")}`);
   console.log("  Crewed: Quill (captain) + Reef (mate); Dale + Wren spare for the far side.");
   console.log("");
   console.log("Test:  /crew/dev-link?admin=spink → /admin/shifts?mode=edit");
-  console.log("  1. Split at 6:00 PM → side A (11:00, keeps Quill + Reef) + side B (18:00, 20:00).");
+  console.log("  1. Split at 7:00 PM (suggested) — or pick 10:30 / 12:00 / 8:30 from the dropdown");
+  console.log("     → side A (morning, keeps Quill + Reef) + side B (evening, born fresh).");
   console.log("  2. Crew side B, then Merge (8.4) → the far crew get a release notice.");
   console.log("");
   console.log("⚠  Run on a CLEAN DB — splitting fires formShifts globally; any non-canonical");

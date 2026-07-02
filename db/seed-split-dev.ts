@@ -15,20 +15,22 @@
  *   seeds alongside:
  *     docker compose down -v && npm run db:up && npm run db:migrate && npm run db:seed:split
  *
- * Produces one busy party day — 5 trips, a morning cluster (9:00 / 10:30 / 12:00)
- * and an evening cluster (7:00 / 8:30) with a ~7h afternoon gap → the Builder flags
- * "could be two shifts" AND the cut dropdown is a real choice (10:30 / 12:00 / 7:00
- * / 8:30), not a single option. Crewed (captain + mate confirmed) so a split visibly
- * PRESERVES side A's crew, plus two spare crew to fill the far side. Then:
+ * Produces two canonical party days:
+ *   • Split Demo — 5 trips, morning cluster (9:00 / 10:30 / 12:00) + evening cluster
+ *     (7:00 / 8:30) with a ~7h gap → the Builder flags "could be two shifts" and the
+ *     cut dropdown is a real choice. Crewed so a split visibly PRESERVES side A's crew.
+ *   • Steady — 3 tight afternoon trips (1:00 / 3:00 / 5:00), NO gap → no suggestion,
+ *     but the Split control is STILL there (splitting isn't gated on a gap). Uncrewed.
+ * Plus two spare crew to fill the far side. Then:
  *   /crew/dev-link?admin=spink → /admin/shifts?mode=edit
- *   1. Split at 7:00 PM (the suggested gap) — or pick another cut from the dropdown —
- *      → side A (morning, keeps Quill + Reef) + side B (evening, born fresh).
+ *   1. Split either day at any cut → side A (before) + side B (from), born fresh.
  *   2. Crew side B, then Merge (8.4) → the far crew get a release notice.
  *
  * Idempotent: entity writes are upserts; `formShifts` preserves seat state on re-run.
  */
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
 import { asId } from "../src/domain/ids.js";
+import type { VesselId } from "../src/domain/ids.js";
 import { formShifts } from "../src/builder/form-shifts.js";
 import { TENANT_TIMEZONE } from "../src/config/tenant.js";
 import { DEFAULT_DATABASE_URL } from "./migrate.js";
@@ -39,7 +41,8 @@ const repo = PostgresRepository.fromConnectionString(url);
 const TENANT = asId<"TenantId">("brewboat");
 const CAPTAIN = asId<"RoleTypeId">("role-captain");
 const MATE = asId<"RoleTypeId">("role-mate");
-const VESSEL = asId<"VesselId">("vessel-split-demo");
+const VESSEL = asId<"VesselId">("vessel-split-demo"); // Day 1 — gappy, crewed
+const VESSEL2 = asId<"VesselId">("vessel-split-tight"); // Day 2 — tight, uncrewed
 const DOCK = "East Bank of the Flats at Canal Basin Park";
 
 // A trip N hours out, stored as vessel-local wall-clock date (DEC-032).
@@ -78,41 +81,19 @@ async function crew(
   return crewId;
 }
 
-try {
-  await repo.saveRoleType({ id: CAPTAIN, tenantId: TENANT, name: "captain" });
-  await repo.saveRoleType({ id: MATE, tenantId: TENANT, name: "mate" });
-
-  // A 2-crew BrewBoat party boat (captain + mate) — matches the real manning.
-  await repo.saveVessel({
-    id: VESSEL,
-    name: "Split Demo",
-    coiMaxPax: 12,
-    manning: [
-      { roleTypeId: CAPTAIN, count: 1 },
-      { roleTypeId: MATE, count: 1 },
-    ],
-  });
-
-  const cap = await crew("crew-split-cap", "Quill", CAPTAIN, "+15555550201");
-  const mate = await crew("crew-split-mate", "Reef", MATE, "+15555550202");
-  await crew("crew-split-cap2", "Dale", CAPTAIN, "+15555550203"); // spare, far side
-  await crew("crew-split-mate2", "Wren", MATE, "+15555550204"); // spare, far side
-
-  const date = dateOf(at(3 * 24)); // ~3 days out — inside the default next-7 window
-  // A morning cluster + an evening cluster with a ~7h afternoon gap: enough trips
-  // that the cut dropdown is a real choice, with the gap driving a sensible default.
-  const trips: Array<{ time: string; pax: number }> = [
-    { time: "09:00", pax: 6 },
-    { time: "10:30", pax: 4 },
-    { time: "12:00", pax: 2 },
-    { time: "19:00", pax: 8 },
-    { time: "20:30", pax: 5 },
-  ];
+/** Seed a vessel-day's scheduled trips + a booking each; `formShifts` (called once,
+ * after all days) turns each into a canonical shift with engine-derived seats. */
+async function seedDay(
+  vesselId: VesselId,
+  keyPrefix: string,
+  date: string,
+  trips: Array<{ time: string; pax: number }>,
+) {
   for (const [i, trip] of trips.entries()) {
-    const eventId = asId<"EventId">(`evt-split-${i}`);
+    const eventId = asId<"EventId">(`evt-${keyPrefix}-${i}`);
     await repo.saveEvent({
       id: eventId,
-      vesselId: VESSEL,
+      vesselId,
       date,
       time: trip.time,
       capacity: 12,
@@ -120,37 +101,79 @@ try {
       dock: DOCK,
     });
     await repo.saveReservation({
-      id: asId<"ReservationId">(`resv-split-${i}`),
+      id: asId<"ReservationId">(`resv-${keyPrefix}-${i}`),
       eventId,
       customerName: `Party ${i + 1}`,
       partySize: trip.pax,
       status: "booked",
     });
   }
+}
 
-  // Build the shift the production way: formShifts → canonical `shift-{vessel}-{date}`
-  // + engine-derived seats (so a later split partitions + preserves crew cleanly).
+try {
+  await repo.saveRoleType({ id: CAPTAIN, tenantId: TENANT, name: "captain" });
+  await repo.saveRoleType({ id: MATE, tenantId: TENANT, name: "mate" });
+
+  // Two 2-crew BrewBoat party boats (captain + mate) — matches the real manning.
+  const manning = [
+    { roleTypeId: CAPTAIN, count: 1 },
+    { roleTypeId: MATE, count: 1 },
+  ];
+  await repo.saveVessel({ id: VESSEL, name: "Split Demo", coiMaxPax: 12, manning });
+  await repo.saveVessel({ id: VESSEL2, name: "Steady", coiMaxPax: 12, manning });
+
+  const cap = await crew("crew-split-cap", "Quill", CAPTAIN, "+15555550201");
+  const mate = await crew("crew-split-mate", "Reef", MATE, "+15555550202");
+  await crew("crew-split-cap2", "Dale", CAPTAIN, "+15555550203"); // spare, far side
+  await crew("crew-split-mate2", "Wren", MATE, "+15555550204"); // spare, far side
+
+  // Day 1 (Split Demo, ~3d out): a morning + evening cluster with a ~7h afternoon
+  // gap — the Builder flags "could be two shifts" AND the cut dropdown is a real
+  // choice (10:30 / 12:00 / 7:00 / 8:30), with the gap driving a sensible default.
+  const gapDate = dateOf(at(3 * 24));
+  await seedDay(VESSEL, "split", gapDate, [
+    { time: "09:00", pax: 6 },
+    { time: "10:30", pax: 4 },
+    { time: "12:00", pax: 2 },
+    { time: "19:00", pax: 8 },
+    { time: "20:30", pax: 5 },
+  ]);
+
+  // Day 2 (Steady, ~4d out): a tight afternoon, NO long gap → no split suggestion,
+  // but the Split control STILL appears (splitting isn't gated on a gap — the "long
+  // break" note is only a suggestion). Left uncrewed to show splitting a plain day.
+  const tightDate = dateOf(at(4 * 24));
+  await seedDay(VESSEL2, "tight", tightDate, [
+    { time: "13:00", pax: 5 },
+    { time: "15:00", pax: 7 },
+    { time: "17:00", pax: 3 },
+  ]);
+
+  // Build both the production way: formShifts → canonical `shift-{vessel}-{date}`
+  // ids + engine-derived seats (so a later split partitions + preserves crew cleanly).
   await formShifts(repo);
-  const shiftId = asId<"ShiftId">(`shift-${VESSEL}-${date}`);
+  const gapShift = asId<"ShiftId">(`shift-${VESSEL}-${gapDate}`);
+  const tightShift = asId<"ShiftId">(`shift-${VESSEL2}-${tightDate}`);
 
-  // Crew it (Confirmed) directly on the derived seats — a dev fixture, no ask
-  // ceremony. State is resolved on read (deriveAllShifts), so the board shows Crewed.
-  for (const seat of await repo.listSeatsForShift(shiftId)) {
+  // Crew Day 1 (Confirmed) directly on the derived seats — a dev fixture, no ask
+  // ceremony. State resolves on read (deriveAllShifts), so the board shows Crewed.
+  for (const seat of await repo.listSeatsForShift(gapShift)) {
     const who = seat.role === CAPTAIN ? cap : seat.role === MATE ? mate : null;
     if (who) {
       await repo.saveSeat({ ...seat, state: "Confirmed", assignedCrewMemberId: who });
     }
   }
 
-  console.log("Seeded split/merge demo — one canonical, production-shaped shift:");
-  console.log(`  Shift:  ${shiftId}`);
-  console.log(`  Vessel: Split Demo   Date: ${date}   Trips: ${trips.map((t) => t.time).join(" · ")}`);
-  console.log("  Crewed: Quill (captain) + Reef (mate); Dale + Wren spare for the far side.");
+  console.log("Seeded split/merge demo — two canonical, production-shaped shifts:");
+  console.log(`  1. Split Demo  ${gapDate}  09:00·10:30·12:00·19:00·20:30  (crewed; ~7h gap → suggestion + rich dropdown)`);
+  console.log(`     ${gapShift}`);
+  console.log(`  2. Steady      ${tightDate}  13:00·15:00·17:00              (uncrewed; no gap → no suggestion, still splittable)`);
+  console.log(`     ${tightShift}`);
   console.log("");
   console.log("Test:  /crew/dev-link?admin=spink → /admin/shifts?mode=edit");
-  console.log("  1. Split at 7:00 PM (suggested) — or pick 10:30 / 12:00 / 8:30 from the dropdown");
-  console.log("     → side A (morning, keeps Quill + Reef) + side B (evening, born fresh).");
-  console.log("  2. Crew side B, then Merge (8.4) → the far crew get a release notice.");
+  console.log("  • Split Demo — Split at 7:00 PM (suggested) or pick another → side A (morning, keeps Quill+Reef) + side B (evening).");
+  console.log("  • Steady — no 'could be two shifts' hint, but the Split control is still there. Split at 3:00 or 5:00.");
+  console.log("  • Crew a far side, then Merge (8.4) → the far crew get a release notice.");
   console.log("");
   console.log("⚠  Run on a CLEAN DB — splitting fires formShifts globally; any non-canonical");
   console.log("   scenario-seed shift (atrisk/crewapp/outbox) would duplicate. Reset before seeding.");

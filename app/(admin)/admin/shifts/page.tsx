@@ -238,11 +238,7 @@ export default async function AllShifts({
         <ModeToggle sp={sp} mode={mode} />
       </header>
 
-      {sp.split_ok && (
-        <Notice tone="ok">
-          Split done — that day now shows a “before” half and a “from” half.
-        </Notice>
-      )}
+      {sp.split_ok && <Notice tone="ok">Split done.</Notice>}
       {sp.split_err && (
         <Notice tone="bad">
           Couldn’t split that shift — its trips may have changed since the page

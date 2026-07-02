@@ -40,7 +40,7 @@ const channel = new WebLinkChannel(repo, {
   linkBase: process.env.APP_BASE_URL ?? "http://mill-dev:3000",
 });
 
-const TENANT = asId<"TenantId">("brewboat");
+const TENANT = asId<"TenantId">("tenant-brewboat"); // match app TENANT_ID + canonical seeds
 const CAPTAIN = asId<"RoleTypeId">("role-captain");
 
 const at = (hours: number) => new Date(Date.now() + hours * 3600_000);

@@ -41,6 +41,18 @@ export async function splitShift(
   if (String(shiftId).endsWith("-b")) {
     throw new Error(`Cannot split a split side (${shiftId})`);
   }
+  // DEC-083 keys the whole split/merge design on the canonical vessel-day id
+  // (`shift-{vessel}-{date}`) — `formShifts` only ever re-forms THAT id. Splitting a
+  // NON-canonical shift (e.g. a hand-authored dev fixture with an id like
+  // `shift-ar-gappy`) sets the cut on a row the re-form ignores, silently spawning a
+  // duplicate canonical shift + an orphan husk (the "two rows, same times" trap). A
+  // real shift is always canonical (formShifts minted it), so refuse anything else.
+  const canonicalId = `shift-${shift.vesselId}-${shift.date}`;
+  if (String(shiftId) !== canonicalId) {
+    throw new Error(
+      `Shift ${shiftId} is not the canonical vessel-day shift (${canonicalId})`,
+    );
+  }
 
   // The cut must produce two non-empty sides from the vessel-day's LIVE scheduled
   // trips — what `formShifts` will actually partition, not a stale `eventIds`.

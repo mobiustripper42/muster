@@ -166,6 +166,7 @@ const toSeat = (r: any): Seat => ({
   state: r.state,
   ...opt("assignedCrewMemberId", r.assigned_crew_member_id),
   ...opt("acquiredVia", r.acquired_via),
+  ...opt("override", r.override),
 });
 
 const toAsk = (r: any): Ask => ({
@@ -514,10 +515,11 @@ export class PostgresRepository implements Repository {
   // ── Seats ──────────────────────────────────────────────────────────────────
   async saveSeat(s: Seat): Promise<void> {
     await this.#pool.query(
-      `insert into seats(id, shift_id, role, kind, state, assigned_crew_member_id, acquired_via) values ($1,$2,$3,$4,$5,$6,$7)
+      `insert into seats(id, shift_id, role, kind, state, assigned_crew_member_id, acquired_via, override) values ($1,$2,$3,$4,$5,$6,$7,$8)
        on conflict (id) do update set shift_id=excluded.shift_id, role=excluded.role, kind=excluded.kind,
-         state=excluded.state, assigned_crew_member_id=excluded.assigned_crew_member_id, acquired_via=excluded.acquired_via`,
-      [s.id, s.shiftId, s.role, s.kind, s.state, s.assignedCrewMemberId ?? null, s.acquiredVia ?? null],
+         state=excluded.state, assigned_crew_member_id=excluded.assigned_crew_member_id, acquired_via=excluded.acquired_via,
+         override=excluded.override`,
+      [s.id, s.shiftId, s.role, s.kind, s.state, s.assignedCrewMemberId ?? null, s.acquiredVia ?? null, s.override ?? null],
     );
   }
   async getSeat(id: SeatId): Promise<Seat | null> {

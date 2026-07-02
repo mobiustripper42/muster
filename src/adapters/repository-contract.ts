@@ -366,6 +366,23 @@ export function runRepositoryContract(
       expect((await repo.getSeat(SEAT))?.acquiredVia).toBe("self_claim");
     });
 
+    it("seats: override flag round-trips and is optional (8.5)", async () => {
+      await repo.saveShift(shift());
+      // Absent on a derived seat → stays absent (exactOptionalPropertyTypes).
+      await repo.saveSeat(seat());
+      expect((await repo.getSeat(SEAT))?.override).toBeUndefined();
+      // An operator-added override seat round-trips true.
+      const added = seat({ kind: "supernumerary", override: true });
+      await repo.saveSeat(added);
+      expect(await repo.getSeat(SEAT)).toEqual(added);
+      // The CAS write preserves the override flag (both adapters — the parity
+      // invariant every claim relies on, since callers spread the repo-read seat).
+      await repo.saveSeat(seat({ override: true })); // required, Open, override
+      const claimed = seat({ state: "Claimed", assignedCrewMemberId: CREW, override: true });
+      expect(await repo.saveSeatIfState(claimed, "Open")).toBe(true);
+      expect((await repo.getSeat(SEAT))?.override).toBe(true);
+    });
+
     it("saveSeatIfState: applies on match, no-op on mismatch", async () => {
       await repo.saveShift(shift());
       await repo.saveSeat(seat()); // Open

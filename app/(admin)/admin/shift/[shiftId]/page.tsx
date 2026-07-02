@@ -8,6 +8,7 @@ import { deriveWarming } from "@core/admin/warming.js";
 import { asId } from "@core/domain/ids.js";
 import { resolveShiftStateOnRead } from "@core/builder/tick.js";
 import { changedSinceReviewed } from "@core/builder/lock.js";
+import type { SeatKind } from "@core/domain/states.js";
 import { TENANT_TIMEZONE } from "@core/config/tenant.js";
 import {
   SeatCard,
@@ -23,6 +24,8 @@ import { Shell } from "../../../../../components/ui/shell";
 import { readSubject } from "../../../../lib/auth";
 import { fmtDeadline, fmt12 } from "../../../../lib/format";
 import { getRepo } from "../../../../lib/repo";
+import { TENANT_ID } from "../../../../lib/tenant";
+import { addManningSeat, removeManningSeat } from "./actions";
 
 /**
  * The assignment cockpit (SPEC §2.4, #54/#55, DEC-027) — monitor by default,
@@ -66,7 +69,16 @@ type Search = {
   removed?: string;
   bail_logged?: string;
   act_error?: string;
+  manning_added?: string;
+  manning_removed?: string;
 };
+
+interface OverrideSeatVM {
+  seatId: string;
+  roleName: string;
+  kind: SeatKind;
+  occupied: boolean;
+}
 
 export default async function ShiftCockpit({
   params,
@@ -97,6 +109,8 @@ export default async function ShiftCockpit({
   let ratingsById: Map<string, string[]>;
   let seatOccupant: Map<string, string>;
   let warmingRows: WarmingRowVM[] = [];
+  let overrideSeats: OverrideSeatVM[] = [];
+  let roleOptions: { id: string; name: string }[] = [];
   let changedSinceLock = false;
   const warmingOpen = sp.warming === "1";
   try {
@@ -131,11 +145,25 @@ export default async function ShiftCockpit({
     ratingsById = new Map(
       crewMembers.map((c) => [String(c.id), c.ratings.map(String)]),
     );
+    const allSeats = await repo.listSeatsForShift(shiftId);
     seatOccupant = new Map(
-      (await repo.listSeatsForShift(shiftId))
+      allSeats
         .filter((s) => s.assignedCrewMemberId)
         .map((s) => [String(s.id), String(s.assignedCrewMemberId)]),
     );
+    // Manning override (8.5): the tenant's roles for the add picker, and the current
+    // override seats (each removable when Open).
+    const roleTypes = await repo.listRoleTypes(TENANT_ID);
+    const roleName = new Map(roleTypes.map((r) => [String(r.id), r.name]));
+    roleOptions = roleTypes.map((r) => ({ id: String(r.id), name: r.name }));
+    overrideSeats = allSeats
+      .filter((s) => s.override)
+      .map((s) => ({
+        seatId: String(s.id),
+        roleName: roleName.get(String(s.role)) ?? String(s.role),
+        kind: s.kind,
+        occupied: s.state !== "Open",
+      }));
     if (warmingOpen) {
       const vessels = new Map(
         (await repo.listVessels()).map((v) => [v.id, v.name]),
@@ -273,6 +301,15 @@ export default async function ShiftCockpit({
           re-asking (or it rests here if nobody’s left).
         </Notice>
       )}
+      {sp.manning_added === "required" && (
+        <Notice tone="ok">Added a required hand — the shift needs one more to crew.</Notice>
+      )}
+      {sp.manning_added === "supernumerary" && (
+        <Notice tone="ok">
+          Added a trainee seat — rides along (takes a pax slot), doesn’t gate crewing.
+        </Notice>
+      )}
+      {sp.manning_removed === "1" && <Notice tone="ok">Removed the added seat.</Notice>}
       {actError && <Notice tone="bad">{actError}</Notice>}
 
       <div className="flex flex-col gap-3">
@@ -288,8 +325,110 @@ export default async function ShiftCockpit({
         ))}
       </div>
 
+      <ManningSection
+        shiftId={String(shiftId)}
+        overrideSeats={overrideSeats}
+        roleOptions={roleOptions}
+      />
+
       <WarmingPanel rows={warmingRows} open={warmingOpen} basePath={basePath} />
     </Shell>
+  );
+}
+
+/**
+ * Manning override (SPEC §2.3, 8.5) — adjust a shift's crew requirement beyond the
+ * COI minimum. Add a required hand (gates `Crewed`) or a trainee that rides along
+ * (takes a pax slot, doesn't gate); remove an added seat while it's still Open (an
+ * occupied one is vacated first via the seat card above). No client JS — plain forms
+ * → server actions → redirect (DEC-026). The COI-derived seats aren't shown here;
+ * these are the additive overrides only.
+ */
+function ManningSection({
+  shiftId,
+  overrideSeats,
+  roleOptions,
+}: {
+  shiftId: string;
+  overrideSeats: OverrideSeatVM[];
+  roleOptions: { id: string; name: string }[];
+}) {
+  const rolePicker = (
+    <select
+      name="role"
+      className="rounded-lg border border-line bg-bg px-2 py-1 text-ink"
+    >
+      {roleOptions.map((r) => (
+        <option key={r.id} value={r.id}>
+          {r.name}
+        </option>
+      ))}
+    </select>
+  );
+  return (
+    <section className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-3">
+      <div className="flex flex-col gap-0.5">
+        <h2 className="text-sm font-semibold text-ink">Manning</h2>
+        <p className="text-xs text-muted">
+          Extra hands beyond the COI minimum. A required hand gates crewing; a trainee
+          rides along — takes a pax slot, doesn’t gate.
+        </p>
+      </div>
+
+      {overrideSeats.length > 0 && (
+        <ul className="flex flex-col gap-1.5">
+          {overrideSeats.map((s) => (
+            <li
+              key={s.seatId}
+              className="flex items-center justify-between gap-2 text-sm"
+            >
+              <span className="text-ink">
+                +1 {s.roleName}
+                {s.kind === "supernumerary" && (
+                  <span className="text-muted"> · trainee</span>
+                )}
+              </span>
+              {s.occupied ? (
+                <span className="text-xs text-muted">occupied — vacate to remove</span>
+              ) : (
+                <form action={removeManningSeat}>
+                  <input type="hidden" name="shiftId" value={shiftId} />
+                  <input type="hidden" name="seatId" value={s.seatId} />
+                  <button type="submit" className="text-xs font-semibold text-accent">
+                    Remove
+                  </button>
+                </form>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="flex flex-wrap gap-2 border-t border-line pt-2 text-sm">
+        <form action={addManningSeat} className="flex items-center gap-1.5">
+          <input type="hidden" name="shiftId" value={shiftId} />
+          <input type="hidden" name="kind" value="required" />
+          {rolePicker}
+          <button
+            type="submit"
+            className="rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent"
+          >
+            + Required hand
+          </button>
+        </form>
+        <form action={addManningSeat} className="flex items-center gap-1.5">
+          <input type="hidden" name="shiftId" value={shiftId} />
+          <input type="hidden" name="kind" value="supernumerary" />
+          {rolePicker}
+          <button
+            type="submit"
+            className="rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent"
+          >
+            + Trainee seat
+          </button>
+        </form>
+      </div>
+    </section>
   );
 }
 

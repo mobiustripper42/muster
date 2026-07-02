@@ -196,15 +196,24 @@ async function formOneShift(
       result.shiftsCancelled++;
       result.cancelledShiftIds.push(String(shiftId));
       // DEC-084: the assigned crew on this now-cancelled shift silently lose it —
-      // collect them so the import edge relays "you're off." Inside the not-already-
-      // Cancelled guard, so it's transition-only: a later pull of the same cancelled
-      // shift won't re-collect (and the deterministic notice id is belt-and-suspenders).
-      for (const seat of await repo.listSeatsForShift(shiftId)) {
-        if (seat.assignedCrewMemberId) {
-          result.cancelledCrew.push({
-            shiftId,
-            crewMemberId: seat.assignedCrewMemberId,
-          });
+      // collect them so the import edge relays "you're off." Transition-only (inside
+      // the not-already-Cancelled guard), so a re-pull won't re-collect.
+      //
+      // ONLY for an UN-split shift — a true Xola cancellation. A SPLIT side collapsing
+      // (its trips moved to the other side, not cancelled) must NOT fire: that crew
+      // may still be working the day on the SURVIVING side, and this per-side path has
+      // no cross-side view to net them out the way `mergeShift` does. Notifying on a
+      // split-collapse is a tracked follow-up; scope the fast-follow to un-split here.
+      const isSplitSide =
+        extra?.splitCutTime != null || String(shiftId).endsWith("-b");
+      if (!isSplitSide) {
+        for (const seat of await repo.listSeatsForShift(shiftId)) {
+          if (seat.assignedCrewMemberId) {
+            result.cancelledCrew.push({
+              shiftId,
+              crewMemberId: seat.assignedCrewMemberId,
+            });
+          }
         }
       }
     }

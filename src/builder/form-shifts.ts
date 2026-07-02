@@ -23,7 +23,7 @@
 
 import type { Event, Seat, Shift } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
-import type { VesselId, ShiftId } from "../domain/ids.js";
+import type { VesselId, ShiftId, CrewMemberId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 import {
   deriveSeats,
@@ -54,6 +54,11 @@ export interface FormResult {
    * run (DEC-083) — the "changed in the last pull" cue the Builder View reads when
    * the run is an import. `.length` = how many split days an import touched. */
   splitDaysChanged: string[];
+  /** DEC-084: assigned crew on shifts NEWLY cancelled this run — the import edge
+   * relays each a "you're off" notice, closing the gap where a Xola-cancelled shift
+   * silently dropped its confirmed crew. Transition-only (guarded by the not-already-
+   * Cancelled check below), so a re-pull of an already-cancelled shift doesn't re-fire. */
+  cancelledCrew: { shiftId: ShiftId; crewMemberId: CrewMemberId }[];
 }
 
 /**
@@ -96,6 +101,7 @@ export async function formShifts(
     createdShiftIds: [],
     cancelledShiftIds: [],
     splitDaysChanged: [],
+    cancelledCrew: [],
   };
 
   for (const g of groups.values()) {
@@ -189,6 +195,27 @@ async function formOneShift(
       result.shiftsUpdated++;
       result.shiftsCancelled++;
       result.cancelledShiftIds.push(String(shiftId));
+      // DEC-084: the assigned crew on this now-cancelled shift silently lose it —
+      // collect them so the import edge relays "you're off." Transition-only (inside
+      // the not-already-Cancelled guard), so a re-pull won't re-collect.
+      //
+      // ONLY for an UN-split shift — a true Xola cancellation. A SPLIT side collapsing
+      // (its trips moved to the other side, not cancelled) must NOT fire: that crew
+      // may still be working the day on the SURVIVING side, and this per-side path has
+      // no cross-side view to net them out the way `mergeShift` does. Notifying on a
+      // split-collapse is a tracked follow-up; scope the fast-follow to un-split here.
+      const isSplitSide =
+        extra?.splitCutTime != null || String(shiftId).endsWith("-b");
+      if (!isSplitSide) {
+        for (const seat of await repo.listSeatsForShift(shiftId)) {
+          if (seat.assignedCrewMemberId) {
+            result.cancelledCrew.push({
+              shiftId,
+              crewMemberId: seat.assignedCrewMemberId,
+            });
+          }
+        }
+      }
     }
     return;
   }

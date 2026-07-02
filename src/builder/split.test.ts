@@ -154,4 +154,24 @@ describe("splitShift (DEC-083)", () => {
       splitShift(repo, asId<"ShiftId">("shift-fixture-legacy"), "14:00"),
     ).rejects.toThrow(/not the canonical/);
   });
+
+  it("a split-side collapse does NOT fire a cancellation notice (DEC-084 scoped to un-split)", async () => {
+    const repo = await seedDay(); // am 11:00 (side A), pm 17:00 (side B)
+    await splitShift(repo, CANON, "14:00");
+    // Confirm crew onto side B, then cancel side B's only trip → side B collapses.
+    const bSeat = (await repo.listSeatsForShift(SIDE_B))[0]!;
+    await repo.saveSeat({
+      ...bSeat,
+      state: "Confirmed",
+      assignedCrewMemberId: asId<"CrewMemberId">("mate-b"),
+    });
+    const pm = (await repo.getEvent(asId<"EventId">("pm")))!;
+    await repo.saveEvent({ ...pm, status: "cancelled" });
+
+    const r = await formShifts(repo);
+    // Side B is now Cancelled, but a split-side collapse must NOT notify (the crew may
+    // still be on the surviving side; this path can't net them out like merge does).
+    expect((await repo.getShift(SIDE_B))?.state).toBe("Cancelled");
+    expect(r.cancelledCrew).toEqual([]);
+  });
 });

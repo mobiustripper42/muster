@@ -9,10 +9,12 @@ import {
   vacateSeat,
 } from "@core/asks/ask-loop.js";
 import { assignFromPool, lean } from "@core/asks/lean.js";
+import { addOverrideSeat, removeOverrideSeat } from "@core/builder/manning.js";
 import { asId } from "@core/domain/ids.js";
 import { readSubject } from "../../../../lib/auth";
 import { forwardToOutbox } from "../../../../lib/channel";
 import { getRepo } from "../../../../lib/repo";
+import { TENANT_ID } from "../../../../lib/tenant";
 
 /**
  * Cockpit seat actions (SPEC §2.4, #54, DEC-027 §1) — auth + glue over the
@@ -207,6 +209,63 @@ export async function reportBail(formData: FormData): Promise<void> {
     }
   } catch {
     param = "act_error=unavailable";
+  }
+  finish(back, param);
+}
+
+/**
+ * Add a manning-override seat (#208, 8.5) — a required hand (gates `Crewed`) or a
+ * supernumerary/trainee (non-gating). Additive over the COI minimum; the seat is
+ * marked `override` so `formShifts` won't prune it (survives Xola re-import). Not the
+ * person-override (`overrideTo`) — this adds the SEAT.
+ */
+export async function addManningSeat(formData: FormData): Promise<void> {
+  const subject = await readSubject();
+  const shiftId = String(formData.get("shiftId") ?? "");
+  const kind = String(formData.get("kind") ?? "");
+  const role = String(formData.get("role") ?? "");
+  const back = `/admin/shift/${encodeURIComponent(shiftId)}`;
+  if (!subject || subject.kind !== "admin" || !shiftId) redirect("/admin/at-risk");
+  if ((kind !== "required" && kind !== "supernumerary") || !role) redirect(back);
+  let param: string;
+  try {
+    const repo = getRepo();
+    // Validate the role against the tenant's roles — a crafted POST must not create
+    // a REQUIRED seat for an unknown role (it would gate Crewed with an empty
+    // eligible pool → permanently unfillable, silently un-crewing the shift).
+    const roles = await repo.listRoleTypes(TENANT_ID);
+    if (!roles.some((r) => String(r.id) === role)) {
+      param = "act_error=unavailable";
+    } else {
+      await addOverrideSeat(repo, asId<"ShiftId">(shiftId), kind, asId<"RoleTypeId">(role));
+      param = `manning_added=${kind}`;
+    }
+  } catch {
+    param = "act_error=unavailable";
+  }
+  finish(back, param);
+}
+
+/**
+ * Remove a manning-override seat (#208, 8.5). Guarded in `removeOverrideSeat`: only an
+ * `Open` override seat — an occupied one must be vacated first (the Remove-from-shift
+ * action above), so this never strands crew. The UI only offers Remove on Open
+ * override seats, so a reachable failure is a race → generic `seat_gone`.
+ */
+export async function removeManningSeat(formData: FormData): Promise<void> {
+  const subject = await readSubject();
+  const shiftId = String(formData.get("shiftId") ?? "");
+  const seatId = String(formData.get("seatId") ?? "");
+  const back = `/admin/shift/${encodeURIComponent(shiftId)}`;
+  if (!subject || subject.kind !== "admin" || !shiftId || !seatId) {
+    redirect("/admin/at-risk");
+  }
+  let param: string;
+  try {
+    await removeOverrideSeat(getRepo(), asId<"SeatId">(seatId));
+    param = "manning_removed=1";
+  } catch {
+    param = "act_error=seat_gone";
   }
   finish(back, param);
 }

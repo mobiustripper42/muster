@@ -217,6 +217,14 @@ export interface Seat {
   state: SeatState;
   assignedCrewMemberId?: CrewMemberId;
   /**
+   * `true` for an operator-added manning-override seat (8.5, SPEC §2.3) — a required
+   * hand or a supernumerary/trainee beyond the derived COI minimum. `deriveSeats`
+   * never produces one, so this flag protects a surplus REQUIRED override from
+   * `formShifts`' manning-shrink prune (it survives re-import, like the split cut).
+   * **Absent** for derived seats (null reads as not-override). Removed via `removeSeat`.
+   */
+  override?: boolean;
+  /**
    * How the current occupant came to hold this seat (#196): `self_claim` (pulled
    * it on /crew/open) or `operator` (force-placed via the override). Drives the
    * My-shifts "Added for you" badge, which fires ONLY for `operator` — a self-claim

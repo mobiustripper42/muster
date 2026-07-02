@@ -39,7 +39,7 @@ import { DEFAULT_DATABASE_URL } from "./migrate.js";
 const url = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
 const repo = PostgresRepository.fromConnectionString(url);
 
-const TENANT = asId<"TenantId">("brewboat");
+const TENANT = asId<"TenantId">("tenant-brewboat"); // match app TENANT_ID + canonical seeds
 const CAPTAIN = asId<"RoleTypeId">("role-captain");
 const ENGINEER = asId<"RoleTypeId">("role-engineer");
 

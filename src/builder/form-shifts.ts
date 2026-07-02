@@ -212,9 +212,11 @@ async function formOneShift(
       }
     }
     // Prune a surplus `Open` required seat (manning shrank); an occupied one is
-    // surfaced (`seatsStranded`), never silently deleted — don't strand crew.
+    // surfaced (`seatsStranded`), never silently deleted — don't strand crew. An
+    // operator-added override seat (8.5) is NOT surplus — it's a deliberate manning
+    // bump above the COI minimum, so it's exempt from the prune (survives re-import).
     for (const s of current) {
-      if (s.kind === "required" && !desiredIds.has(s.id)) {
+      if (s.kind === "required" && !s.override && !desiredIds.has(s.id)) {
         if (s.state === "Open") {
           await repo.removeSeat(s.id);
           seats = seats.filter((x) => x.id !== s.id);

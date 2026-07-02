@@ -23,7 +23,7 @@
 
 import type { Event, Seat, Shift } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
-import type { VesselId, ShiftId } from "../domain/ids.js";
+import type { VesselId, ShiftId, CrewMemberId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 import {
   deriveSeats,
@@ -54,6 +54,11 @@ export interface FormResult {
    * run (DEC-083) — the "changed in the last pull" cue the Builder View reads when
    * the run is an import. `.length` = how many split days an import touched. */
   splitDaysChanged: string[];
+  /** DEC-084: assigned crew on shifts NEWLY cancelled this run — the import edge
+   * relays each a "you're off" notice, closing the gap where a Xola-cancelled shift
+   * silently dropped its confirmed crew. Transition-only (guarded by the not-already-
+   * Cancelled check below), so a re-pull of an already-cancelled shift doesn't re-fire. */
+  cancelledCrew: { shiftId: ShiftId; crewMemberId: CrewMemberId }[];
 }
 
 /**
@@ -96,6 +101,7 @@ export async function formShifts(
     createdShiftIds: [],
     cancelledShiftIds: [],
     splitDaysChanged: [],
+    cancelledCrew: [],
   };
 
   for (const g of groups.values()) {
@@ -189,6 +195,18 @@ async function formOneShift(
       result.shiftsUpdated++;
       result.shiftsCancelled++;
       result.cancelledShiftIds.push(String(shiftId));
+      // DEC-084: the assigned crew on this now-cancelled shift silently lose it —
+      // collect them so the import edge relays "you're off." Inside the not-already-
+      // Cancelled guard, so it's transition-only: a later pull of the same cancelled
+      // shift won't re-collect (and the deterministic notice id is belt-and-suspenders).
+      for (const seat of await repo.listSeatsForShift(shiftId)) {
+        if (seat.assignedCrewMemberId) {
+          result.cancelledCrew.push({
+            shiftId,
+            crewMemberId: seat.assignedCrewMemberId,
+          });
+        }
+      }
     }
     return;
   }

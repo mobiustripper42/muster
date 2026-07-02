@@ -151,6 +151,31 @@ describe("formShifts — reconciliation (#20)", () => {
     expect((await repo.getShift(day1))?.state).toBe("Cancelled");
   });
 
+  it("reports the cancelled shift's assigned crew (DEC-084), transition-only", async () => {
+    const repo = new InMemoryRepository();
+    await seedEvents(repo);
+    await formShifts(repo);
+    // Confirm a crew member onto one of the shift's seats.
+    const seat = (await repo.listSeatsForShift(day1))[0]!;
+    await repo.saveSeat({
+      ...seat,
+      state: "Confirmed",
+      assignedCrewMemberId: asId<"CrewMemberId">("cap"),
+    });
+
+    await cancelEvent(repo, "e1");
+    await cancelEvent(repo, "e2");
+    const r1 = await formShifts(repo);
+    expect(r1.shiftsCancelled).toBe(1);
+    expect(r1.cancelledCrew).toEqual([
+      { shiftId: day1, crewMemberId: asId<"CrewMemberId">("cap") },
+    ]);
+
+    // A re-pull of the ALREADY-cancelled shift must NOT re-report (transition-only).
+    const r2 = await formShifts(repo);
+    expect(r2.cancelledCrew).toEqual([]);
+  });
+
   it("never forms a shift from cancelled-only events (no prior shift)", async () => {
     const repo = new InMemoryRepository();
     await seedEvents(repo);

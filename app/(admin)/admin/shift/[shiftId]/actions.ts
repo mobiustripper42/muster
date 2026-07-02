@@ -12,8 +12,9 @@ import { assignFromPool, lean } from "@core/asks/lean.js";
 import { addOverrideSeat, removeOverrideSeat } from "@core/builder/manning.js";
 import { asId } from "@core/domain/ids.js";
 import { readSubject } from "../../../../lib/auth";
-import { forwardToOutbox } from "../../../../lib/channel";
+import { forwardToOutbox, forwardNoticesToOutbox } from "../../../../lib/channel";
 import { getRepo } from "../../../../lib/repo";
+import { OPERATOR_CREW_MEMBER_ID } from "../../../../lib/operator";
 import { TENANT_ID } from "../../../../lib/tenant";
 
 /**
@@ -58,6 +59,31 @@ async function gate(formData: FormData): Promise<{
 function finish(back: string, param: string): never {
   revalidatePath(back);
   redirect(`${back}?${param}`);
+}
+
+/**
+ * Relay a "you're on / off this shift" assignment notice (DEC-084) — best-effort,
+ * excluding the operator about their own action (DEC-072/084). Never throws: the
+ * domain action already committed, so a channel hiccup must not fail it. Lands in
+ * the /admin/outbox "Assignment changes" section (and auto-SMS once Twilio is wired).
+ */
+async function notify(
+  crewMemberId: string,
+  action: "added" | "removed",
+  shiftId: string,
+): Promise<void> {
+  if (!crewMemberId || crewMemberId === OPERATOR_CREW_MEMBER_ID) return;
+  try {
+    await forwardNoticesToOutbox([
+      {
+        crewMemberId: asId<"CrewMemberId">(crewMemberId),
+        action,
+        shiftId: asId<"ShiftId">(shiftId),
+      },
+    ]);
+  } catch {
+    // best-effort
+  }
 }
 
 export async function assignTo(formData: FormData): Promise<void> {
@@ -120,7 +146,7 @@ export async function confirmInto(formData: FormData): Promise<void> {
 }
 
 export async function overrideTo(formData: FormData): Promise<void> {
-  const { crewMemberId, seatId, back } = await gate(formData);
+  const { shiftId, crewMemberId, seatId, back } = await gate(formData);
   if (!seatId || !crewMemberId) redirect(back);
   let param: string;
   try {
@@ -133,12 +159,15 @@ export async function overrideTo(formData: FormData): Promise<void> {
       asId<"CrewMemberId">(crewMemberId),
       new Date(),
     );
-    param =
-      out.code === "not_rated"
-        ? "act_error=not_rated"
-        : out.code === "gone"
-          ? "act_error=seat_gone"
-          : `overrode=${encodeURIComponent(crewMemberId)}`;
+    if (out.code === "not_rated") {
+      param = "act_error=not_rated";
+    } else if (out.code === "gone") {
+      param = "act_error=seat_gone";
+    } else {
+      param = `overrode=${encodeURIComponent(crewMemberId)}`;
+      // DEC-084: the placed crew get a "you're on this shift" notice.
+      await notify(crewMemberId, "added", shiftId);
+    }
   } catch {
     param = "act_error=unavailable";
   }
@@ -152,7 +181,7 @@ export async function overrideTo(formData: FormData): Promise<void> {
  * correction never dings the removed crew's record.
  */
 export async function removeSeat(formData: FormData): Promise<void> {
-  const { seatId, back } = await gate(formData);
+  const { shiftId, seatId, back } = await gate(formData);
   if (!seatId) redirect(back);
   let param: string;
   try {
@@ -167,6 +196,8 @@ export async function removeSeat(formData: FormData): Promise<void> {
         param = `removed=${encodeURIComponent(String(occupant))}`;
         // Edge channel wiring (DEC-030): the re-asks → the pilot outbox.
         await forwardToOutbox(out.reAsks);
+        // DEC-084: the removed crew get a "you're off this shift" notice.
+        await notify(String(occupant), "removed", shiftId);
       } catch {
         // Occupant swapped between reads (or a write raced) — reload, don't
         // clear a different person than Spink saw.
@@ -187,7 +218,7 @@ export async function removeSeat(formData: FormData): Promise<void> {
  * use this when the crew actually backed out, not for a misassignment.
  */
 export async function reportBail(formData: FormData): Promise<void> {
-  const { seatId, back } = await gate(formData);
+  const { shiftId, seatId, back } = await gate(formData);
   if (!seatId) redirect(back);
   let param: string;
   try {
@@ -200,12 +231,16 @@ export async function reportBail(formData: FormData): Promise<void> {
       // reads maps to `raced`, never a wrong-person log.
       const bailer = seat.assignedCrewMemberId;
       const out = await bailWithDerivedLateness(repo, seat.id, new Date(), bailer);
-      param =
-        out.code === "raced"
-          ? "act_error=raced"
-          : `bail_logged=${encodeURIComponent(String(bailer))}`;
-      // Edge channel wiring (DEC-030): the bail's re-asks → the pilot outbox.
-      await forwardToOutbox(out.outcome?.reAsks);
+      if (out.code === "raced") {
+        param = "act_error=raced";
+      } else {
+        param = `bail_logged=${encodeURIComponent(String(bailer))}`;
+        // Edge channel wiring (DEC-030): the bail's re-asks → the pilot outbox.
+        await forwardToOutbox(out.outcome?.reAsks);
+        // DEC-084: an operator-reported bail tells the bailer they're off (a crew
+        // self-bail doesn't — they initiated it). Only fires on a real log, not a race.
+        await notify(String(bailer), "removed", shiftId);
+      }
     }
   } catch {
     param = "act_error=unavailable";

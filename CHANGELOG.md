@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.10.0] - 2026-07-03 — Phase 8: Shift Builder
+- 19 pts shipped across 2 sessions (burst — ~2d); see docs/RETROSPECTIVES.md
+- Split-suggestion detector + manual split/merge engine & UI (8.1/8.3/8.4), DEC-084 crew assignment-change notice subsystem, seat/manning override (8.5)
+- Locking CUT (DEC-082 — Xola owns booking truth); out-of-band SMS consent for Twilio 10DLC (#229, migration 0017)
+
 ## [0.9.10] - 2026-07-03
 - PR #229: SMS consent block on public crew login (Twilio 10DLC opt-in) + sms_consent audit
 

@@ -9,12 +9,15 @@ import type { CandidateVM, SeatCardVM } from "./seat-card";
  * refuses).
  */
 
-const STATUS_COPY: Record<CandidateVM["status"], { label: string; cls: string }> = {
+const STATUS_COPY: Record<
+  CandidateVM["status"],
+  { label: string; glyph?: string; cls: string }
+> = {
   available: { label: "not yet asked", cls: "text-muted" },
   asked: { label: "awaiting reply", cls: "text-accent" },
   in: { label: "said yes", cls: "font-semibold text-ok" },
   declined: { label: "declined", cls: "text-muted" },
-  silent: { label: "👻 silent — no reply, timed out", cls: "font-semibold text-bad" },
+  silent: { label: "silent — no reply, timed out", glyph: "👻", cls: "font-semibold text-bad" },
   bailed: { label: "bailed", cls: "font-semibold text-bad" },
 };
 
@@ -33,6 +36,8 @@ export function CandidateRow({ vm, c }: { vm: SeatCardVM; c: CandidateVM }) {
       <span className="text-sm text-ink">{c.name}</span>
       <span className="flex items-center gap-3">
         <span className={`text-xs ${s.cls}`}>
+          {/* The ghost is decorative (9.8) — the label says "silent" in words. */}
+          {s.glyph && <span aria-hidden="true">{s.glyph} </span>}
           {s.label}
           {c.replyLabel && <span className="text-muted"> · {c.replyLabel}</span>}
         </span>

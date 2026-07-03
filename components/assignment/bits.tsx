@@ -22,7 +22,7 @@ export function MiniButton({ label, title }: { label: string; title?: string }) 
     <button
       type="submit"
       title={title}
-      className="rounded-full border border-line bg-card px-2.5 py-1 text-xs font-medium text-accent hover:border-accent"
+      className="min-h-9 rounded-full border border-line bg-card px-3 py-1 text-xs font-medium text-accent hover:border-accent"
     >
       {label}
     </button>

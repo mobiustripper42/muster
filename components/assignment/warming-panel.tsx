@@ -41,8 +41,11 @@ export function WarmingPanel({
 }) {
   if (!open) {
     return (
-      <Link href={openHref} className="text-xs font-semibold text-accent">
-        Trending at-risk →
+      <Link
+        href={openHref}
+        className="inline-flex min-h-9 items-center self-start text-xs font-semibold text-accent"
+      >
+        Trending at-risk <span aria-hidden="true">&nbsp;→</span>
       </Link>
     );
   }
@@ -50,9 +53,15 @@ export function WarmingPanel({
     <section className="flex flex-col gap-2 rounded-card border border-line bg-card p-4 shadow-sm">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-semibold text-ink">Trending at-risk</h2>
+          {/* Section kicker scale (9.8) — matches the seat-card kicker. */}
+          <h2 className="text-[10px] font-bold uppercase tracking-wider text-muted">
+            Trending at-risk
+          </h2>
         </div>
-        <Link href={closeHref} className="text-xs font-semibold text-accent">
+        <Link
+          href={closeHref}
+          className="inline-flex min-h-9 items-center px-1.5 text-xs font-semibold text-accent"
+        >
           Hide
         </Link>
       </div>
@@ -71,8 +80,12 @@ export function WarmingPanel({
                 {r.href === null ? (
                   <b>This shift</b>
                 ) : (
-                  <Link href={r.href} className="font-semibold text-accent">
-                    {r.vesselName} · {r.dateLabel} ↗
+                  <Link
+                    href={r.href}
+                    className="inline-flex min-h-9 items-center font-semibold text-accent"
+                  >
+                    {r.vesselName} · {r.dateLabel}
+                    <span aria-hidden="true">&nbsp;↗</span>
                   </Link>
                 )}
               </span>

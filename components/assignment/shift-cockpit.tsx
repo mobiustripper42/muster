@@ -207,9 +207,9 @@ export async function ShiftCockpit({
         // drill-in's way back (desktop shows the board alongside — link hidden).
         <Link
           href={ctx ? `/admin/shifts?${ctx}` : "/admin/shifts"}
-          className="text-xs font-semibold text-accent lg:hidden"
+          className="inline-flex min-h-9 items-center self-start text-xs font-semibold text-accent lg:hidden"
         >
-          ← All shifts
+          <span aria-hidden="true">←&nbsp;</span>All shifts
         </Link>
       )}
 
@@ -332,6 +332,18 @@ export async function ShiftCockpit({
             )}
           />
         ))}
+        {/* Crewed-gate summary (9.8) — what stands between here and Crewed,
+            said in one line. `view.seats` is required seats only (incl. added
+            required hands), exactly the set that gates. */}
+        {seatVMs.length > 0 && (
+          <p className="text-xs text-faint">
+            {seatVMs.filter((s) => s.state === "Confirmed").length}/
+            {seatVMs.length} required seats confirmed
+            {seatVMs.every((s) => s.state === "Confirmed")
+              ? " — fully crewed"
+              : " — Crewed when all confirm"}
+          </p>
+        )}
       </div>
 
       <ManningSection

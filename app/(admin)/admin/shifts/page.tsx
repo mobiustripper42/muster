@@ -319,7 +319,7 @@ export default async function AllShifts({
         <div className="flex flex-col gap-2">
           {/* The summary caption hugs the sections; day-sections (gap-5) carry
               the rhythm between them, not around this line (@ui-reviewer). */}
-          <p className="text-xs text-muted">
+          <p className="text-xs text-faint">
             {rows.length} shift{rows.length === 1 ? "" : "s"} · {scope}
           </p>
           <div className="flex flex-col gap-5">
@@ -329,7 +329,7 @@ export default async function AllShifts({
                   <span className="text-sm font-semibold text-ink">
                     {fmtDayHeader(day.date)}
                   </span>
-                  <span className="text-xs text-muted">
+                  <span className="text-xs text-faint">
                     {day.rows.length} shift{day.rows.length === 1 ? "" : "s"}
                   </span>
                 </h2>
@@ -364,8 +364,11 @@ export default async function AllShifts({
         <div className="hidden min-w-0 lg:flex lg:flex-col lg:gap-4">{board}</div>
         <div className="flex min-w-0 flex-col gap-4">
           <div className="hidden lg:flex lg:justify-end">
-            <Link href={boardHref} className="text-xs font-semibold text-accent">
-              Close ✕
+            <Link
+              href={boardHref}
+              className="inline-flex min-h-9 items-center px-1.5 text-xs font-semibold text-accent"
+            >
+              Close<span aria-hidden="true">&nbsp;✕</span>
             </Link>
           </div>
           <ShiftCockpit shiftId={sel} sp={sp} ctx={ctx} headingLevel="h2" />
@@ -546,12 +549,18 @@ function ShiftRow({
 
   return (
     <div
-      className={`flex flex-col gap-2 rounded-card border bg-card px-4 py-3 shadow-sm ${
+      className={`relative flex flex-col gap-2 rounded-card border bg-card px-4 py-3 shadow-sm ${
         selected ? "border-accent" : "border-line"
       }`}
     >
       <div className="flex items-start justify-between gap-4">
-        <Link href={href} className="flex min-w-0 flex-col gap-0.5">
+        {/* Stretched link (9.8): the whole card opens the cockpit; the split/
+            merge forms and the At-Risk pointer below are positioned, so they
+            stack above the ::after overlay and stay independently tappable. */}
+        <Link
+          href={href}
+          className="flex min-w-0 flex-col gap-0.5 after:absolute after:inset-0 after:content-['']"
+        >
           {/* Vessel leads — the date now lives in the day-section header (#122).
               The dot is the DEC-086 identity hue: same boat, same hue, always —
               it answers "which boat", never state (aria-hidden; the name is the
@@ -607,8 +616,11 @@ function ShiftRow({
           </span>
           <span className="text-xs text-muted">{fill}</span>
           {row.state === "AtRisk" && (
-            <Link href="/admin/at-risk" className="text-xs font-semibold text-accent">
-              needs attention ↗
+            <Link
+              href="/admin/at-risk"
+              className="relative inline-flex min-h-9 items-center text-xs font-semibold text-accent"
+            >
+              needs attention<span aria-hidden="true">&nbsp;↗</span>
             </Link>
           )}
         </div>
@@ -620,7 +632,7 @@ function ShiftRow({
         // before/from split), so a picked cut always partitions.
         <form
           action={splitAction}
-          className="flex flex-wrap items-center gap-2 border-t border-line pt-2 text-sm"
+          className="relative flex flex-wrap items-center gap-2 border-t border-line pt-2 text-sm"
         >
           <input type="hidden" name="shiftId" value={row.shiftId} />
           <input type="hidden" name="back" value={back} />
@@ -654,7 +666,7 @@ function ShiftRow({
         // notice (DEC-084), surfaced back as the merge count.
         <form
           action={mergeAction}
-          className="flex items-center gap-2 border-t border-line pt-2 text-sm"
+          className="relative flex items-center gap-2 border-t border-line pt-2 text-sm"
         >
           <input type="hidden" name="shiftId" value={canonicalIdOf(row)} />
           <input type="hidden" name="back" value={back} />

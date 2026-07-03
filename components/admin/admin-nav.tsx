@@ -23,7 +23,15 @@ const LINKS = [
   { href: "/admin/shifts", label: "Shifts" },
 ] as const;
 
-export function AdminNav() {
+export function AdminNav({
+  tenant,
+  dateLabel,
+}: {
+  /** Tenant display name + today's VESSEL-LOCAL date (9.8) — computed by the
+   *  server layout (DEC-032: never the viewer's clock) and passed down. */
+  tenant: string;
+  dateLabel: string;
+}) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -47,9 +55,15 @@ export function AdminNav() {
   return (
     <nav aria-label="Admin" className="sticky top-0 z-20 border-b border-line bg-card">
       <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-2.5">
-        <Link href="/admin" className="shrink-0 font-semibold text-ink">
-          Muster
-        </Link>
+        <span className="flex min-w-0 items-baseline gap-2">
+          <Link href="/admin" className="shrink-0 font-semibold text-ink">
+            Muster
+          </Link>
+          {/* Whose board, which day (9.8) — vessel-local, tertiary ink. */}
+          <span className="truncate text-xs text-faint">
+            {tenant} · {dateLabel}
+          </span>
+        </span>
 
         {/* Desktop: inline links. */}
         <div className="hidden items-center gap-5 text-sm sm:flex">

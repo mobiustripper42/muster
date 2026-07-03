@@ -40,8 +40,9 @@ test.describe("two-pane builder (9.5, DEC-085)", () => {
     ).toBeVisible();
     await expect(page.getByRole("heading", { name: "Manning" })).toBeVisible();
 
-    // Close ✕ (desktop-only) collapses back to the single-column board.
-    await page.getByRole("link", { name: "Close ✕" }).click();
+    // Close (desktop-only; the ✕ glyph is aria-hidden) collapses back to the
+    // single-column board.
+    await page.getByRole("link", { name: "Close", exact: true }).click();
     await page.waitForURL((u) => !u.searchParams.has("sel"));
     await expect(page.getByRole("heading", { name: /^Firkin/ })).toHaveCount(0);
   });
@@ -102,25 +103,28 @@ test.describe("two-pane builder (9.5, DEC-085)", () => {
       page.getByRole("heading", { level: 1, name: /^Firkin/ }),
     ).toBeVisible();
 
-    await page.getByRole("link", { name: "← All shifts" }).click();
+    // The arrow glyph is aria-hidden (9.8) — the accessible name is the words.
+    await page.getByRole("link", { name: "All shifts", exact: true }).click();
     await page.waitForURL((u) => !u.searchParams.has("sel"));
     await expect(page.getByRole("heading", { name: "All shifts" })).toBeVisible();
   });
 
-  test("the standalone cockpit route is unchanged for deep links", async ({
+  test("the standalone cockpit route still serves deep links", async ({
     page,
   }) => {
     await signInAsAdmin(page, "spink");
     await page.goto("/admin/shift/shift-ar-regress");
 
-    // h1 standalone (the host supplies the heading level), At-Risk back link,
-    // and no pane furniture.
+    // h1 standalone (the host supplies the heading level), no pane furniture,
+    // and the AdminNav carries wayfinding (the hardcoded "← At-Risk board"
+    // back-link was dropped in 9.7 — it lied about non-board entries).
     await expect(
       page.getByRole("heading", { level: 1, name: /^Firkin/ }),
     ).toBeVisible();
     await expect(
-      page.getByRole("link", { name: "← At-Risk board" }),
+      page.getByRole("navigation", { name: "Admin" }).getByRole("link", { name: "At-Risk" }),
     ).toBeVisible();
-    await expect(page.getByRole("link", { name: "← All shifts" })).toHaveCount(0);
+    await expect(page.getByText("← At-Risk board")).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "All shifts" })).toHaveCount(0);
   });
 });

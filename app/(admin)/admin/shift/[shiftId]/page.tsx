@@ -1,4 +1,3 @@
-import Link from "next/link";
 import {
   ShiftCockpit,
   type CockpitSearch,
@@ -13,6 +12,10 @@ import { readSubject } from "../../../../lib/auth";
  * wrapper: auth + Shell + the shared cockpit body, which the board's desktop
  * right pane (`/admin/shifts?sel=`) also renders. `ctx={null}` marks this host,
  * so action redirects come back here.
+ *
+ * The old hardcoded "← At-Risk board" back-link is DROPPED (9.7): it lied when
+ * the entry was All-shifts/outbox, and the AdminNav covers wayfinding. Width is
+ * the unified 3xl (9.8 — board and cockpit no longer disagree).
  */
 
 export const dynamic = "force-dynamic";
@@ -27,7 +30,7 @@ export default async function ShiftCockpitPage({
   const subject = await readSubject();
   if (!subject || subject.kind !== "admin") {
     return (
-      <Shell width="2xl">
+      <Shell width="3xl">
         <Notice>You’re signed out. Tap an operator magic link to get in.</Notice>
       </Shell>
     );
@@ -37,10 +40,7 @@ export default async function ShiftCockpitPage({
   const sp = await searchParams;
 
   return (
-    <Shell width="2xl">
-      <Link href="/admin/at-risk" className="text-xs font-semibold text-accent">
-        ← At-Risk board
-      </Link>
+    <Shell width="3xl">
       <ShiftCockpit
         shiftId={decodeURIComponent(raw)}
         sp={sp}

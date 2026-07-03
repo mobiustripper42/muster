@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.9.8] - 2026-07-03
+- PR #223: Phase 8.5 — Seat/manning override (closes #208)
+
 ## [0.9.7] - 2026-07-03
 - PR #221: Phase 8.4 — Manual Merge + crew assignment-change notices (closes #207)
 

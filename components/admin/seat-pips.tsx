@@ -14,30 +14,46 @@ export function SeatPips({ seats }: { seats: AllShiftsSeat[] }) {
   if (seats.length === 0) return null;
   const required = seats.filter((s) => !s.supernumerary);
   const trainees = seats.filter((s) => s.supernumerary);
+  // The pips are sighted-density; this summary is the SAME per-role facts for
+  // AT — the aggregate "X/Y crewed" alone doesn't say which role is open or
+  // that a trainee rides along.
+  const summary = seats
+    .map(
+      (s) =>
+        `${s.roleName}${s.supernumerary ? " trainee" : ""} ${s.filled ? "filled" : "open"}`,
+    )
+    .join(", ");
   return (
-    <span aria-hidden="true" className="flex items-center gap-1">
-      {required.map((s, i) => (
-        <span
-          key={i}
-          title={`${s.roleName} · ${s.filled ? "filled" : "open"}`}
-          className={`flex h-[18px] w-[18px] items-center justify-center rounded-[5px] border text-[10px] font-bold uppercase ${
-            s.filled
-              ? "border-muted bg-muted text-white"
-              : "border-line bg-bg text-muted"
-          }`}
-        >
-          {s.roleName.charAt(0)}
-        </span>
-      ))}
-      {trainees.map((s, i) => (
-        <span
-          key={`t-${i}`}
-          title={`${s.roleName} · trainee`}
-          className="flex h-[18px] w-[18px] items-center justify-center rounded-[5px] border border-dashed border-faint bg-card text-[10px] font-bold text-faint"
-        >
-          +
-        </span>
-      ))}
-    </span>
+    <>
+      <span className="sr-only">Seats: {summary}</span>
+      <span aria-hidden="true" className="flex items-center gap-1">
+        {required.map((s, i) => (
+          <span
+            key={i}
+            title={`${s.roleName} · ${s.filled ? "filled" : "open"}`}
+            className={`flex h-[18px] w-[18px] items-center justify-center rounded-[5px] border text-[10px] font-bold uppercase ${
+              s.filled
+                ? "border-muted bg-muted text-white"
+                : "border-line bg-bg text-muted"
+            }`}
+          >
+            {s.roleName.charAt(0)}
+          </span>
+        ))}
+        {trainees.map((s, i) => (
+          <span
+            key={`t-${i}`}
+            title={`${s.roleName} · trainee · ${s.filled ? "filled" : "open"}`}
+            className={`flex h-[18px] w-[18px] items-center justify-center rounded-[5px] border border-dashed text-[10px] font-bold ${
+              s.filled
+                ? "border-faint bg-faint text-white"
+                : "border-faint bg-card text-faint"
+            }`}
+          >
+            +
+          </span>
+        ))}
+      </span>
+    </>
   );
 }

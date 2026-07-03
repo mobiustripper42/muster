@@ -20,6 +20,13 @@ import {
   loginCookieOptions,
 } from "../../lib/login-cookie";
 import { getRepo } from "../../lib/repo";
+import {
+  SMS_CONSENT_FIELD,
+  SMS_CONSENT_FIELD_VALUE,
+  SMS_CONSENT_TEXT,
+  SMS_CONSENT_VERSION,
+} from "../../lib/sms-consent";
+import { randomUUID } from "node:crypto";
 
 /**
  * Answer an ask — the In/Out tap (SPEC §2.6.1). Driven by a <form action>, so it
@@ -90,6 +97,10 @@ export async function requestLoginCode(formData: FormData): Promise<void> {
   if (!selfServeEnabled()) redirect("/crew");
 
   const email = String(formData.get("email") ?? "").trim();
+  // SMS opt-in (Twilio 10DLC): voluntary, NEVER gates login — just a checkbox we
+  // record if it was ticked. Read before the try so it's in scope for the relay.
+  const consented =
+    formData.get(SMS_CONSENT_FIELD) === SMS_CONSENT_FIELD_VALUE;
   // A blank submit isn't an enumeration probe — just re-show the email step.
   if (!email) redirect("/crew");
 
@@ -111,6 +122,12 @@ export async function requestLoginCode(formData: FormData): Promise<void> {
       // hot path so a match doesn't return slower than a miss — the timing-oracle
       // half of no-enumeration (DEC-081). Errors stay inside the callback.
       after(() => sendLoginCodeEmail(d));
+      // Record the SMS opt-in only on a roster match (an unknown email has no
+      // number to consent for) and only AFTER the response — same no-enumeration
+      // discipline as the email send. Best-effort: swallowed so it never blocks login.
+      if (consented) {
+        after(() => recordConsentBestEffort(result.subject.id, result.recipientEmail));
+      }
     }
   } catch (e) {
     // A delivery/DB hiccup must not reveal more than the generic path — log and
@@ -124,6 +141,35 @@ export async function requestLoginCode(formData: FormData): Promise<void> {
     loginCookieOptions(LOGIN_EMAIL_TTL_S),
   );
   redirect("/crew?stage=code");
+}
+
+/**
+ * Best-effort SMS-consent record (Twilio 10DLC opt-in). Off the hot path (called
+ * via `after`, so it can't add a timing signal vs the no-match path) and fully
+ * swallowed — a missing table (migration 0017 not yet applied) or any other error
+ * must NEVER break login or hold the public page hostage. The stored phone is the
+ * roster number the crew member is consenting for ("SMS to my number on file").
+ */
+async function recordConsentBestEffort(
+  crewSubjectId: string,
+  email: string,
+): Promise<void> {
+  try {
+    const repo = getRepo();
+    const crewMemberId = asId<"CrewMemberId">(crewSubjectId);
+    const crew = await repo.getCrewMember(crewMemberId);
+    await repo.recordSmsConsent({
+      id: asId<"SmsConsentId">(randomUUID()),
+      crewMemberId,
+      email,
+      phone: crew?.phone ?? null,
+      disclosureVersion: SMS_CONSENT_VERSION,
+      disclosureText: SMS_CONSENT_TEXT,
+      consentedAt: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.error("recordConsentBestEffort failed", e);
+  }
 }
 
 /**

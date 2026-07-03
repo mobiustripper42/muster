@@ -9,6 +9,11 @@ import { VersionTag } from "../../../components/ui/version-tag";
 import { readSubject } from "../../lib/auth";
 import { selfServeEnabled } from "../../lib/flags";
 import { LOGIN_EMAIL_COOKIE } from "../../lib/login-cookie";
+import {
+  SMS_CONSENT_FIELD,
+  SMS_CONSENT_FIELD_VALUE,
+  SMS_CONSENT_POLICY_URL,
+} from "../../lib/sms-consent";
 import { getRepo } from "../../lib/repo";
 import { TENANT_ID } from "../../lib/tenant";
 import { fmt12 } from "../../lib/format";
@@ -224,6 +229,53 @@ const inputClass =
 const primaryButtonClass =
   "min-h-[52px] w-full rounded-card bg-accent font-semibold text-white";
 
+/**
+ * SMS opt-in consent block (Twilio 10DLC vetting). A public, visible,
+ * UNCHECKED-by-default checkbox with the full disclosure + working policy links.
+ * It NEVER gates login — checking is voluntary; opt-in as a condition of access
+ * is an automatic 10DLC rejection, and this is kept separate from any ToS accept.
+ * The copy is the verbatim `SMS_CONSENT_TEXT` (`app/lib/sms-consent`) rendered
+ * with the two policy phrases linked — keep them in sync (that constant is the
+ * exact string stored with each opt-in).
+ */
+function SmsConsentBlock() {
+  return (
+    <div className="flex items-start gap-2 rounded-card border border-line bg-card px-3 py-2">
+      <input
+        id={SMS_CONSENT_FIELD}
+        name={SMS_CONSENT_FIELD}
+        type="checkbox"
+        value={SMS_CONSENT_FIELD_VALUE}
+        className="mt-0.5 h-4 w-4 shrink-0"
+      />
+      <label htmlFor={SMS_CONSENT_FIELD} className="text-xs leading-snug text-muted">
+        I agree to receive SMS text messages from Cleveland Cycleboats, LLC
+        (BrewBoat) at the mobile number on my crew record about shift availability
+        and scheduling. Message frequency varies. Message and data rates may apply.
+        Reply STOP to opt out, HELP for help. See our{" "}
+        <a
+          href={SMS_CONSENT_POLICY_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-accent underline"
+        >
+          Privacy Policy
+        </a>{" "}
+        and{" "}
+        <a
+          href={SMS_CONSENT_POLICY_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-accent underline"
+        >
+          Terms
+        </a>
+        .
+      </label>
+    </div>
+  );
+}
+
 /** Step 1: enter your crew email → a code is emailed (DEC-081). */
 function EmailStep({ err }: { err?: string }) {
   return (
@@ -248,6 +300,7 @@ function EmailStep({ err }: { err?: string }) {
           placeholder="you@example.com"
           className={inputClass}
         />
+        <SmsConsentBlock />
         <button type="submit" className={primaryButtonClass}>
           Email me a code
         </button>

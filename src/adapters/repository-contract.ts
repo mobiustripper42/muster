@@ -21,6 +21,7 @@ import type {
   OutboxEntry,
   RingOutboxEntry,
   NoticeOutboxEntry,
+  SmsConsent,
   PtoWindow,
   Reservation,
   RoleType,
@@ -480,6 +481,26 @@ export function runRepositoryContract(
       const mine = await repo.reliabilityEventsFor(CREW);
       expect(mine.map((e) => e.type)).toEqual(["ask_sent", "ask_accepted"]); // order preserved, crew-b excluded
       expect(mine[0]!.metadata).toEqual({ seatId: SEAT, shiftId: SHIFT });
+    });
+
+    it("sms consent: append-only, insertion order, filtered by crew; null phone round-trips", async () => {
+      const consent = (id: string, over: Partial<SmsConsent> = {}): SmsConsent => ({
+        id: asId<"SmsConsentId">(id),
+        crewMemberId: CREW,
+        email: "a@x.io",
+        phone: "+15551234567",
+        disclosureVersion: "v1",
+        disclosureText: "I agree to receive SMS …",
+        consentedAt: "2026-07-03T04:00:00.000Z",
+        ...over,
+      });
+      await repo.recordSmsConsent(consent("con-1"));
+      await repo.recordSmsConsent(consent("con-2", { phone: null }));
+      await repo.recordSmsConsent(consent("con-3", { crewMemberId: CREW_B }));
+      const mine = await repo.listSmsConsentsForCrew(CREW);
+      expect(mine.map((c) => c.id)).toEqual(["con-1", "con-2"]); // order preserved, crew-b excluded
+      expect(mine[1]!.phone).toBeNull(); // null phone round-trips
+      expect(mine[0]!.disclosureVersion).toBe("v1");
     });
 
     it("magic tokens: round-trip incl. consumedAt optional; lookup by hash", async () => {

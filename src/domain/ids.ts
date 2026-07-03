@@ -19,6 +19,7 @@ export type EventId = Brand<string, "EventId">;
 export type ReservationId = Brand<string, "ReservationId">;
 export type ShiftId = Brand<string, "ShiftId">;
 export type SeatId = Brand<string, "SeatId">;
+export type SmsConsentId = Brand<string, "SmsConsentId">;
 export type AskId = Brand<string, "AskId">;
 export type ReliabilityEventId = Brand<string, "ReliabilityEventId">;
 export type MagicTokenId = Brand<string, "MagicTokenId">;

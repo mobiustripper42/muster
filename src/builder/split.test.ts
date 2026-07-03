@@ -234,6 +234,27 @@ describe("splitShift (DEC-083)", () => {
       ]);
     });
 
+    it("seat-state parity with the un-split path: a Bailed occupant (assignment cleared by bail) is never notified; a Claimed one is", async () => {
+      const repo = await seedDay();
+      await splitShift(repo, CANON, "14:00");
+      const [s1, s2] = await repo.listSeatsForShift(SIDE_B);
+      // Bailed rests with assignedCrewMemberId CLEARED (ask-loop invariant) —
+      // so a prior bailer can't collect a spurious "you're off."
+      await repo.saveSeat({ ...s1!, state: "Bailed" });
+      // Claimed carries the assignment — a claimant loses the shift for real.
+      await repo.saveSeat({
+        ...s2!,
+        state: "Claimed",
+        assignedCrewMemberId: asId<"CrewMemberId">("crew-claimant"),
+      });
+      await cancelEvent(repo, "pm");
+
+      const r = await formShifts(repo);
+      expect(r.cancelledCrew).toEqual([
+        { shiftId: CANON, crewMemberId: asId<"CrewMemberId">("crew-claimant") },
+      ]);
+    });
+
     it("transition-only: a re-pull of an already-collapsed side does not re-fire", async () => {
       const repo = await seedDay();
       await splitShift(repo, CANON, "14:00");

@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.9.4] - 2026-07-03
+- PR #217: Crew My Shifts cards: show shift times + co-crew (#216)
+
 ## [0.9.3] - 2026-07-03
 - PR #214: Cut locking from Phase 8 (Xola is source of truth, DEC-082) + frontend-design binding
 

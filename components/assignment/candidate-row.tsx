@@ -55,7 +55,8 @@ export function CandidateRow({ vm, c }: { vm: SeatCardVM; c: CandidateVM }) {
             <HiddenIds vm={vm} crewId={c.id} />
             {/* lean() is shift-level (first gap seat that fits) — say so. */}
             <MiniButton
-              label="↗ Nudge"
+              label="Nudge"
+              glyph="↗"
               title="Direct nudge — asks them onto this shift's open seat"
             />
           </form>

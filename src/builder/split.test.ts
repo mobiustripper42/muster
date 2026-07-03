@@ -155,23 +155,111 @@ describe("splitShift (DEC-083)", () => {
     ).rejects.toThrow(/not the canonical/);
   });
 
-  it("a split-side collapse does NOT fire a cancellation notice (DEC-084 scoped to un-split)", async () => {
-    const repo = await seedDay(); // am 11:00 (side A), pm 17:00 (side B)
-    await splitShift(repo, CANON, "14:00");
-    // Confirm crew onto side B, then cancel side B's only trip → side B collapses.
-    const bSeat = (await repo.listSeatsForShift(SIDE_B))[0]!;
-    await repo.saveSeat({
-      ...bSeat,
-      state: "Confirmed",
-      assignedCrewMemberId: asId<"CrewMemberId">("mate-b"),
-    });
-    const pm = (await repo.getEvent(asId<"EventId">("pm")))!;
-    await repo.saveEvent({ ...pm, status: "cancelled" });
+  /**
+   * 9.2 (#226) — split-side collapse notices, netted like mergeShift. The
+   * known-hazard class: telling a dual-side crew member "you're off" when
+   * they're still working the day's other half bit twice in Phase 8 — every
+   * case below exists to pin the who-got-dropped math.
+   */
+  describe("split-side collapse notices (9.2/#226, DEC-084)", () => {
+    /** Confirm `who` into the first seat of `shiftId`. */
+    async function confirmInto(
+      repo: InMemoryRepository,
+      shiftId: typeof CANON,
+      who: string,
+      seatIndex = 0,
+    ) {
+      const seat = (await repo.listSeatsForShift(shiftId))[seatIndex]!;
+      await repo.saveSeat({
+        ...seat,
+        state: "Confirmed",
+        assignedCrewMemberId: asId<"CrewMemberId">(who),
+      });
+    }
+    async function cancelEvent(repo: InMemoryRepository, id: string) {
+      const e = (await repo.getEvent(asId<"EventId">(id)))!;
+      await repo.saveEvent({ ...e, status: "cancelled" });
+    }
 
-    const r = await formShifts(repo);
-    // Side B is now Cancelled, but a split-side collapse must NOT notify (the crew may
-    // still be on the surviving side; this path can't net them out like merge does).
-    expect((await repo.getShift(SIDE_B))?.state).toBe("Cancelled");
-    expect(r.cancelledCrew).toEqual([]);
+    it("side B collapses: a B-only person is notified (keyed to the CANONICAL id); a dual-side person surviving on A is NOT", async () => {
+      const repo = await seedDay(); // am 11:00 (side A), pm 17:00 (side B)
+      await splitShift(repo, CANON, "14:00");
+      // dual works BOTH sides; solo works side B only.
+      await confirmInto(repo, CANON, "crew-dual", 0);
+      await confirmInto(repo, SIDE_B, "crew-dual", 0);
+      await confirmInto(repo, SIDE_B, "crew-solo", 1);
+      await cancelEvent(repo, "pm"); // side B's only trip → B collapses
+
+      const r = await formShifts(repo);
+      expect((await repo.getShift(SIDE_B))?.state).toBe("Cancelled");
+      expect((await repo.getShift(CANON))?.state).not.toBe("Cancelled");
+      // The who-got-dropped math (#226's hazard class): dual survives on A.
+      expect(r.cancelledCrew).toEqual([
+        { shiftId: CANON, crewMemberId: asId<"CrewMemberId">("crew-solo") },
+      ]);
+    });
+
+    it("side A collapses: netting works the other way (survivors read from side B)", async () => {
+      const repo = await seedDay();
+      await splitShift(repo, CANON, "14:00");
+      await confirmInto(repo, CANON, "crew-dual", 0);
+      await confirmInto(repo, SIDE_B, "crew-dual", 0);
+      await confirmInto(repo, CANON, "crew-a-only", 1);
+      await cancelEvent(repo, "am"); // side A's only trip → A collapses
+
+      const r = await formShifts(repo);
+      expect((await repo.getShift(CANON))?.state).toBe("Cancelled");
+      expect((await repo.getShift(SIDE_B))?.state).not.toBe("Cancelled");
+      expect(r.cancelledCrew).toEqual([
+        { shiftId: CANON, crewMemberId: asId<"CrewMemberId">("crew-a-only") },
+      ]);
+    });
+
+    it("the whole split day collapses: each person once, keyed canonical — a dual-sider gets ONE notice, not two", async () => {
+      const repo = await seedDay();
+      await splitShift(repo, CANON, "14:00");
+      await confirmInto(repo, CANON, "crew-dual", 0);
+      await confirmInto(repo, SIDE_B, "crew-dual", 0);
+      await confirmInto(repo, SIDE_B, "crew-solo", 1);
+      await cancelEvent(repo, "am");
+      await cancelEvent(repo, "pm");
+
+      const r = await formShifts(repo);
+      const got = r.cancelledCrew
+        .map((c) => `${c.shiftId}|${c.crewMemberId}`)
+        .sort();
+      expect(got).toEqual([
+        `${CANON}|crew-dual`,
+        `${CANON}|crew-solo`,
+      ]);
+    });
+
+    it("transition-only: a re-pull of an already-collapsed side does not re-fire", async () => {
+      const repo = await seedDay();
+      await splitShift(repo, CANON, "14:00");
+      await confirmInto(repo, SIDE_B, "crew-solo", 0);
+      await cancelEvent(repo, "pm");
+
+      const r1 = await formShifts(repo);
+      expect(r1.cancelledCrew).toHaveLength(1);
+      const r2 = await formShifts(repo);
+      expect(r2.cancelledCrew).toEqual([]);
+    });
+
+    it("an already-Cancelled far side never counts as a survivor (its crew aren't working the day)", async () => {
+      const repo = await seedDay();
+      await splitShift(repo, CANON, "14:00");
+      await confirmInto(repo, CANON, "crew-dual", 0);
+      await confirmInto(repo, SIDE_B, "crew-dual", 0);
+      // Pull 1: side A collapses — dual survives on B, no notice.
+      await cancelEvent(repo, "am");
+      expect((await formShifts(repo)).cancelledCrew).toEqual([]);
+      // Pull 2: side B collapses too — dual is NOW genuinely off the day.
+      // Side A (Cancelled) must not shield them as a "survivor."
+      await cancelEvent(repo, "pm");
+      expect((await formShifts(repo)).cancelledCrew).toEqual([
+        { shiftId: CANON, crewMemberId: asId<"CrewMemberId">("crew-dual") },
+      ]);
+    });
   });
 });

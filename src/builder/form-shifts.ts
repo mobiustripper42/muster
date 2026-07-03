@@ -57,7 +57,10 @@ export interface FormResult {
   /** DEC-084: assigned crew on shifts NEWLY cancelled this run — the import edge
    * relays each a "you're off" notice, closing the gap where a Xola-cancelled shift
    * silently dropped its confirmed crew. Transition-only (guarded by the not-already-
-   * Cancelled check below), so a re-pull of an already-cancelled shift doesn't re-fire. */
+   * Cancelled check below), so a re-pull of an already-cancelled shift doesn't re-fire.
+   * A collapsed SPLIT side contributes too (9.2/#226) — netted against the surviving
+   * side's assignees (the mergeShift precedent) and keyed to the CANONICAL id, so a
+   * dual-side person still working the day is never told "you're off." */
   cancelledCrew: { shiftId: ShiftId; crewMemberId: CrewMemberId }[];
 }
 
@@ -152,6 +155,58 @@ export async function formShifts(
     await formOneShift(repo, sideBId, vesselId, date, sideB, opts, result, {
       existing: existingB,
     });
+
+    // 9.2 (#226): a collapsed split SIDE notifies its dropped crew, netted
+    // against the surviving side — the cross-side view `formOneShift`'s
+    // per-side cancel path deliberately lacks (its isSplitSide guard stays; the
+    // netting lives HERE, the one place that sees both sides). Mirrors
+    // `mergeShift`'s `surviving` set (DEC-084): a dual-side person still
+    // working the day's other half must NOT be told "you're off."
+    const live = (s: Shift | null | undefined): boolean =>
+      s != null && s.state !== "Cancelled" && s.state !== "Completed";
+    // Collapsed THIS run = no scheduled trips left AND the side was live before
+    // (the same transition guard the cancel path uses — a re-pull of an
+    // already-collapsed side never re-fires).
+    const aCollapsed = sideA.length === 0 && live(canonical);
+    const bCollapsed = sideB.length === 0 && live(existingB);
+    if (aCollapsed || bCollapsed) {
+      // Survivors = assignees on a side that RUNS after this pull (it has
+      // scheduled trips — alive post-form regardless of prior state, covering
+      // resurrection). Read post-re-form, the merge precedent.
+      const surviving = new Set<string>();
+      for (const [hasTrips, id] of [
+        [sideA.length > 0, canonicalId],
+        [sideB.length > 0, sideBId],
+      ] as const) {
+        if (!hasTrips) continue;
+        for (const seat of await repo.listSeatsForShift(id)) {
+          if (seat.assignedCrewMemberId) {
+            surviving.add(String(seat.assignedCrewMemberId));
+          }
+        }
+      }
+      const dropped = new Set<string>();
+      for (const [collapsed, id] of [
+        [aCollapsed, canonicalId],
+        [bCollapsed, sideBId],
+      ] as const) {
+        if (!collapsed) continue;
+        for (const seat of await repo.listSeatsForShift(id)) {
+          const who = seat.assignedCrewMemberId;
+          if (who && !surviving.has(String(who))) dropped.add(String(who));
+        }
+      }
+      // Keyed to the CANONICAL id (the mergeShift/DEC-084 precedent): one
+      // "you're off the [day] · [vessel] shift" per person even when both
+      // sides collapse at once — the edge's deterministic notice slot
+      // (shift, member, action) dedupes on exactly this key.
+      for (const who of dropped) {
+        result.cancelledCrew.push({
+          shiftId: canonicalId,
+          crewMemberId: asId<"CrewMemberId">(who),
+        });
+      }
+    }
   }
 
   return result;
@@ -200,10 +255,10 @@ async function formOneShift(
       // the not-already-Cancelled guard), so a re-pull won't re-collect.
       //
       // ONLY for an UN-split shift — a true Xola cancellation. A SPLIT side collapsing
-      // (its trips moved to the other side, not cancelled) must NOT fire: that crew
-      // may still be working the day on the SURVIVING side, and this per-side path has
-      // no cross-side view to net them out the way `mergeShift` does. Notifying on a
-      // split-collapse is a tracked follow-up; scope the fast-follow to un-split here.
+      // must NOT fire HERE: that crew may still be working the day on the SURVIVING
+      // side, and this per-side path has no cross-side view. The split-collapse
+      // notify lives in `formShifts`' split branch (9.2/#226), which sees both
+      // sides and nets survivors out the way `mergeShift` does.
       const isSplitSide =
         extra?.splitCutTime != null || String(shiftId).endsWith("-b");
       if (!isSplitSide) {

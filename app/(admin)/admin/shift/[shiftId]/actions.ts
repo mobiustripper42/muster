@@ -12,6 +12,7 @@ import { assignFromPool, lean } from "@core/asks/lean.js";
 import { addOverrideSeat, removeOverrideSeat } from "@core/builder/manning.js";
 import { asId } from "@core/domain/ids.js";
 import { readSubject } from "../../../../lib/auth";
+import { cockpitHref } from "../../../../lib/cockpit-href";
 import { forwardToOutbox, forwardNoticesToOutbox } from "../../../../lib/channel";
 import { getRepo } from "../../../../lib/repo";
 import { OPERATOR_CREW_MEMBER_ID } from "../../../../lib/operator";
@@ -38,27 +39,44 @@ import { TENANT_ID } from "../../../../lib/tenant";
  *             the reliability cost; this doesn't)
  */
 
+/**
+ * The host context (DEC-085 pane mechanics): a hidden `ctx` input marks a
+ * board-pane render and carries the board's filter QUERY STRING ("" is the
+ * default window). Never a form-supplied path — `cockpitHref` interpolates it
+ * after the `?` of a hard-coded path, the split/merge `back` posture (DEC-026).
+ * Absent (`null`) → the standalone cockpit route.
+ */
+function hostCtx(formData: FormData): string | null {
+  const v = formData.get("ctx");
+  return typeof v === "string" ? v : null;
+}
+
 /** Auth + the form's ids, or redirect out. Shared head of every action. */
 async function gate(formData: FormData): Promise<{
   shiftId: string;
   crewMemberId: string;
   seatId: string;
+  ctx: string | null;
   back: string;
 }> {
   const subject = await readSubject();
   const shiftId = String(formData.get("shiftId") ?? "");
   if (!subject || subject.kind !== "admin" || !shiftId) redirect("/admin/at-risk");
+  const ctx = hostCtx(formData);
   return {
     shiftId,
     crewMemberId: String(formData.get("crewMemberId") ?? ""),
     seatId: String(formData.get("seatId") ?? ""),
-    back: `/admin/shift/${encodeURIComponent(shiftId)}`,
+    ctx,
+    back: cockpitHref(shiftId, ctx),
   };
 }
 
-function finish(back: string, param: string): never {
-  revalidatePath(back);
-  redirect(`${back}?${param}`);
+function finish(shiftId: string, ctx: string | null, param: string): never {
+  // The standalone route always revalidates; a pane host revalidates the board too.
+  revalidatePath(`/admin/shift/${encodeURIComponent(shiftId)}`);
+  if (ctx !== null) revalidatePath("/admin/shifts");
+  redirect(cockpitHref(shiftId, ctx, param));
 }
 
 /**
@@ -87,7 +105,7 @@ async function notify(
 }
 
 export async function assignTo(formData: FormData): Promise<void> {
-  const { crewMemberId, seatId, back } = await gate(formData);
+  const { shiftId, crewMemberId, seatId, ctx, back } = await gate(formData);
   if (!seatId || !crewMemberId) redirect(back);
   let param: string;
   try {
@@ -105,11 +123,11 @@ export async function assignTo(formData: FormData): Promise<void> {
   } catch {
     param = "act_error=unavailable";
   }
-  finish(back, param);
+  finish(shiftId, ctx, param);
 }
 
 export async function nudgeOn(formData: FormData): Promise<void> {
-  const { shiftId, crewMemberId, back } = await gate(formData);
+  const { shiftId, crewMemberId, ctx, back } = await gate(formData);
   if (!crewMemberId) redirect(back);
   let param: string;
   try {
@@ -127,11 +145,11 @@ export async function nudgeOn(formData: FormData): Promise<void> {
   } catch {
     param = "act_error=unavailable";
   }
-  finish(back, param);
+  finish(shiftId, ctx, param);
 }
 
 export async function confirmInto(formData: FormData): Promise<void> {
-  const { seatId, back } = await gate(formData);
+  const { shiftId, seatId, ctx, back } = await gate(formData);
   if (!seatId) redirect(back);
   let param: string;
   try {
@@ -142,11 +160,11 @@ export async function confirmInto(formData: FormData): Promise<void> {
   } catch {
     param = "act_error=unavailable";
   }
-  finish(back, param);
+  finish(shiftId, ctx, param);
 }
 
 export async function overrideTo(formData: FormData): Promise<void> {
-  const { shiftId, crewMemberId, seatId, back } = await gate(formData);
+  const { shiftId, crewMemberId, seatId, ctx, back } = await gate(formData);
   if (!seatId || !crewMemberId) redirect(back);
   let param: string;
   try {
@@ -171,7 +189,7 @@ export async function overrideTo(formData: FormData): Promise<void> {
   } catch {
     param = "act_error=unavailable";
   }
-  finish(back, param);
+  finish(shiftId, ctx, param);
 }
 
 /**
@@ -181,7 +199,7 @@ export async function overrideTo(formData: FormData): Promise<void> {
  * correction never dings the removed crew's record.
  */
 export async function removeSeat(formData: FormData): Promise<void> {
-  const { shiftId, seatId, back } = await gate(formData);
+  const { shiftId, seatId, ctx, back } = await gate(formData);
   if (!seatId) redirect(back);
   let param: string;
   try {
@@ -207,7 +225,7 @@ export async function removeSeat(formData: FormData): Promise<void> {
   } catch {
     param = "act_error=unavailable";
   }
-  finish(back, param);
+  finish(shiftId, ctx, param);
 }
 
 /**
@@ -218,7 +236,7 @@ export async function removeSeat(formData: FormData): Promise<void> {
  * use this when the crew actually backed out, not for a misassignment.
  */
 export async function reportBail(formData: FormData): Promise<void> {
-  const { shiftId, seatId, back } = await gate(formData);
+  const { shiftId, seatId, ctx, back } = await gate(formData);
   if (!seatId) redirect(back);
   let param: string;
   try {
@@ -245,7 +263,7 @@ export async function reportBail(formData: FormData): Promise<void> {
   } catch {
     param = "act_error=unavailable";
   }
-  finish(back, param);
+  finish(shiftId, ctx, param);
 }
 
 /**
@@ -259,7 +277,8 @@ export async function addManningSeat(formData: FormData): Promise<void> {
   const shiftId = String(formData.get("shiftId") ?? "");
   const kind = String(formData.get("kind") ?? "");
   const role = String(formData.get("role") ?? "");
-  const back = `/admin/shift/${encodeURIComponent(shiftId)}`;
+  const ctx = hostCtx(formData);
+  const back = cockpitHref(shiftId, ctx);
   if (!subject || subject.kind !== "admin" || !shiftId) redirect("/admin/at-risk");
   if ((kind !== "required" && kind !== "supernumerary") || !role) redirect(back);
   let param: string;
@@ -278,7 +297,7 @@ export async function addManningSeat(formData: FormData): Promise<void> {
   } catch {
     param = "act_error=unavailable";
   }
-  finish(back, param);
+  finish(shiftId, ctx, param);
 }
 
 /**
@@ -291,7 +310,8 @@ export async function removeManningSeat(formData: FormData): Promise<void> {
   const subject = await readSubject();
   const shiftId = String(formData.get("shiftId") ?? "");
   const seatId = String(formData.get("seatId") ?? "");
-  const back = `/admin/shift/${encodeURIComponent(shiftId)}`;
+  const ctx = hostCtx(formData);
+  const back = cockpitHref(shiftId, ctx);
   if (!subject || subject.kind !== "admin" || !shiftId || !seatId) {
     redirect("/admin/at-risk");
   }
@@ -302,5 +322,5 @@ export async function removeManningSeat(formData: FormData): Promise<void> {
   } catch {
     param = "act_error=seat_gone";
   }
-  finish(back, param);
+  finish(shiftId, ctx, param);
 }

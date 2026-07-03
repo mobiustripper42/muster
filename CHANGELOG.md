@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.9.5] - 2026-07-03
+- PR #218: Phase 8.3a — manual split engine (cut-time partition, DEC-083)
+
 ## [0.9.4] - 2026-07-03
 - PR #217: Crew My Shifts cards: show shift times + co-crew (#216)
 

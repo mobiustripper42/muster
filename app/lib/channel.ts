@@ -8,13 +8,15 @@ import { WebLinkChannel } from "@core/adapters/web-link-channel.js";
 import { OutboxNoticeChannel } from "@core/adapters/outbox-notice-channel.js";
 import type { Ask } from "@core/domain/entities.js";
 import { getRepo } from "./repo";
+import { makeTwilioChannel } from "./sms";
 
 /**
- * App-side channel wiring (DEC-030, DEC-MSG-3). The pilot channel is the
- * web-link relay: `send` enqueues an OutboxEntry the operator works from
- * /admin/outbox. This module is the ONE place the app picks an adapter — the
- * Twilio swap later is a different constructor here, zero domain change
- * (DEC-MSG-1).
+ * App-side channel wiring (DEC-030, DEC-MSG-3). This module is the ONE place
+ * the app picks the ask/notice adapters. **With Twilio configured (9.4,
+ * DEC-MSG-1) crew relays go out as real SMS**; unset, the pilot web-link relay
+ * stays: `send` enqueues an OutboxEntry the operator works from /admin/outbox —
+ * dark until the env is set (#70). The swap is exactly the constructors below,
+ * zero domain change.
  *
  * Link base: delivered links must come from `APP_BASE_URL` in production (the
  * Host header is client-controlled — see app/lib/base-url.ts on host-header
@@ -42,7 +44,9 @@ export async function forwardToOutbox(
 ): Promise<void> {
   if (!asks || asks.length === 0) return;
   const repo = getRepo();
-  const channel = new WebLinkChannel(repo, { linkBase: await linkBase() });
+  const base = await linkBase();
+  const channel =
+    makeTwilioChannel(repo, base) ?? new WebLinkChannel(repo, { linkBase: base });
   await forwardAsks(repo, channel, asks);
 }
 
@@ -58,6 +62,9 @@ export async function forwardNoticesToOutbox(
 ): Promise<void> {
   if (!changes || changes.length === 0) return;
   const repo = getRepo();
-  const channel = new OutboxNoticeChannel(repo, { linkBase: await linkBase() });
+  const base = await linkBase();
+  const channel =
+    makeTwilioChannel(repo, base) ??
+    new OutboxNoticeChannel(repo, { linkBase: base });
   await forwardNotices(repo, channel, changes);
 }

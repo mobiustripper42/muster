@@ -9,6 +9,7 @@ import {
 } from "@core/config/tenant.js";
 import { getPresence, getRepo } from "./repo";
 import { OPERATOR_CREW_MEMBER_ID } from "./operator";
+import { makeTwilioChannel } from "./sms";
 
 /**
  * Run one doorbell sweep + relay the rings — the edge wiring (DEC-070), the
@@ -44,7 +45,11 @@ export async function runDoorbellTick(now: Date): Promise<{
     throw new Error("APP_BASE_URL must be set in production — ring links would dead-link to localhost");
   }
   const linkBase = (process.env.APP_BASE_URL ?? "http://localhost:3000").replace(/\/+$/, "");
-  const channel = new OutboxNotificationChannel(repo, { linkBase, now: () => now });
+  // Twilio configured (9.4, DEC-MSG-1) ⇒ rings go out as real SMS; unset ⇒ the
+  // operator-relay ring outbox stays (DEC-073). Same constructor-swap as channel.ts.
+  const channel =
+    makeTwilioChannel(repo, linkBase) ??
+    new OutboxNotificationChannel(repo, { linkBase, now: () => now });
   const relayed = await forwardNotifications(repo, channel, r.rings);
   return { threadsSwept: r.threadsSwept, rings: r.rings.length, relayed };
 }

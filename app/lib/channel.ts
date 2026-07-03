@@ -26,6 +26,14 @@ import { makeTwilioChannel } from "./sms";
 async function linkBase(): Promise<string> {
   const configured = process.env.APP_BASE_URL;
   if (configured) return configured.replace(/\/+$/, "");
+  // Fail LOUD in prod (the doorbell.ts posture): pre-9.4 a poisoned-Host link
+  // at least passed through the operator's outbox; with Twilio live it would be
+  // auto-texted straight to a crew phone with an embedded auth token.
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "APP_BASE_URL must be set in production — delivered links would ride the client-controlled Host header",
+    );
+  }
   const h = await headers();
   const host = h.get("host") ?? "localhost:3000";
   const proto = h.get("x-forwarded-proto") ?? "http";

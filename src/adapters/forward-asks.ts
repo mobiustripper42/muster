@@ -15,6 +15,11 @@
  * the source of truth; delivery is the swappable part). Failures are swallowed
  * per ask and the return value says how many actually forwarded, so a caller
  * that wants to surface "some relays didn't queue" can.
+ *
+ * NO IDEMPOTENCY NET (9.4): the outbox adapter deduped re-forwards via its
+ * deterministic entry id; the Twilio adapter just sends. Every call site today
+ * fires once per committed domain event — a new retry-prone caller must bring
+ * its own guard or crew get duplicate texts.
  */
 
 import type { Ask } from "../domain/entities.js";

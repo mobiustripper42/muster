@@ -65,7 +65,8 @@ function finish(back: string, param: string): never {
  * Relay a "you're on / off this shift" assignment notice (DEC-084) — best-effort,
  * excluding the operator about their own action (DEC-072/084). Never throws: the
  * domain action already committed, so a channel hiccup must not fail it. Lands in
- * the /admin/outbox "Assignment changes" section (and auto-SMS once Twilio is wired).
+ * the /admin/outbox "Assignment changes" section (or straight out as SMS when
+ * Twilio is configured — 9.4, DEC-MSG-1).
  */
 async function notify(
   crewMemberId: string,

@@ -33,6 +33,11 @@ function fmtDate(iso: string): string {
  * is an app-edge value (`OPERATOR_CREW_MEMBER_ID`), so `mergeAction` filters it out of
  * the change list before calling this. This adapter stays operator-agnostic (and
  * clock-free); it relays exactly the changes it's handed.
+ *
+ * NO IDEMPOTENCY NET (9.4): the outbox adapter's deterministic slot (terminal
+ * on sent) deduped re-issued changes; the Twilio adapter just sends. Call sites
+ * today fire once per committed change — a new retry-prone caller must bring
+ * its own guard or crew get duplicate texts.
  */
 export async function forwardNotices(
   repo: Repository,

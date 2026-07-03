@@ -16,11 +16,11 @@ import { makeTwilioChannel } from "./sms";
  * doorbell analog of `forwardToOutbox`. This is the ONE place the app picks the
  * notification adapter.
  *
- * **Delivery is the operator-outbox relay** (DEC-073, the promotion gate): each ring
- * enqueues a `RingOutboxEntry` (thread deep-link) the operator texts from
- * `/admin/outbox` — the DEC-030 web-link model, mirroring asks. The Twilio swap (6.9,
- * DEC-MSG-1) is a different constructor here, zero domain change. Best-effort
- * (DEC-070): a failed enqueue drops that cycle's ring until read / re-ring.
+ * **Delivery**: with Twilio configured (9.4, DEC-MSG-1) each ring goes out as a
+ * real SMS; unset, the operator-outbox relay stays (DEC-073, the promotion gate):
+ * each ring enqueues a `RingOutboxEntry` (thread deep-link) the operator texts
+ * from `/admin/outbox` — the DEC-030 web-link model, mirroring asks. Best-effort
+ * (DEC-070): a failed enqueue/send drops that cycle's ring until read / re-ring.
  */
 export async function runDoorbellTick(now: Date): Promise<{
   threadsSwept: number;

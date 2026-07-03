@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.9.1] - 2026-07-03
+- PR #212: Phase 8.1 — shift split-suggestion detector (gap/span)
+
 ## [0.9.0] - 2026-06-30 — Phase 7: Crew Self-Serve
 - 20 pts shipped across 2 sessions (burst — ~1.1d); see docs/RETROSPECTIVES.md
 - Crew self-serve: front door (7.0a/b), two-door eligibility (7.1), claim service (7.2), /crew/open surface (7.3), cascade coexistence (7.4) — shipped DARK behind CREW_SELF_SERVE

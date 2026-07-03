@@ -9,7 +9,12 @@ import { asId } from "../domain/ids.js";
 import { seedFleet } from "../import/resource-map.js";
 import { refreshShiftState } from "../asks/ask-loop.js";
 import { formShifts } from "./form-shifts.js";
-import { addOverrideSeat, removeOverrideSeat } from "./manning.js";
+import {
+  addOverrideSeat,
+  removeOverrideSeat,
+  staffTraineeSeat,
+  unstaffTraineeSeat,
+} from "./manning.js";
 
 const PARTY = asId<"VesselId">("vessel-brew-2"); // 2-crew (captain + mate), fleet-seeded
 const DAY = "2026-07-18";
@@ -96,5 +101,168 @@ describe("manning override (8.5)", () => {
       assignedCrewMemberId: asId<"CrewMemberId">("someone"),
     });
     await expect(removeOverrideSeat(repo, seat.id)).rejects.toThrow(/vacate/);
+  });
+});
+
+
+/**
+ * Trainee staffing (9.3/#224, DEC-087) — the person-placer for supernumerary
+ * seats. Eligibility = evaluateCandidate minus the rating floor (a SCOPING of
+ * DEC-064, not a bypass); unstaff is bespoke (never vacateSeat) so nothing
+ * ever re-asks a trainee seat.
+ */
+describe("trainee staffing (9.3, DEC-087)", () => {
+  const NOW = new Date("2026-07-10T12:00:00.000Z");
+  const RIDER = asId<"CrewMemberId">("crew-rider");
+
+  /** An UNRATED (that's the point), active crew member with a valid MMC. */
+  async function seedRider(repo: InMemoryRepository, over: object = {}) {
+    await repo.saveCrewMember({
+      id: RIDER,
+      name: "Robin Rider",
+      phone: "+15035550199",
+      ratings: [],
+      status: "active",
+      reliabilityScore: null,
+      ...over,
+    });
+    await repo.saveCredential({
+      id: asId<"CredentialId">("cred-rider-mmc"),
+      crewMemberId: RIDER,
+      type: "MMC",
+      expiry: "2030-01-01",
+    });
+  }
+
+  async function seedTraineeSeat(repo: InMemoryRepository) {
+    return addOverrideSeat(repo, CANON, "supernumerary", MATE);
+  }
+
+  it("staffs an eligible UNRATED person: Confirmed, operator provenance, no asks fired", async () => {
+    const repo = await seedShift();
+    await seedRider(repo);
+    const seat = await seedTraineeSeat(repo);
+
+    const out = await staffTraineeSeat(repo, seat.id, RIDER, NOW);
+    expect(out.code).toBeNull();
+    expect(out.seat?.state).toBe("Confirmed");
+    expect(out.seat?.assignedCrewMemberId).toBe(RIDER);
+    expect(out.seat?.acquiredVia).toBe("operator"); // my-shifts "Added for you" (#196)
+    // The ask engine must stay silent — no ask ever fires for a trainee seat.
+    expect(await repo.listAsksForSeat(seat.id)).toHaveLength(0);
+    // Non-gating: the shift's Crewed math is untouched by the rider.
+    expect((await repo.getShift(CANON))?.state).not.toBe("Crewed");
+  });
+
+  it("refuses a required seat — that path is the DEC-064-guarded overrideSeat", async () => {
+    const repo = await seedShift();
+    await seedRider(repo);
+    const required = await addOverrideSeat(repo, CANON, "required", MATE);
+    expect((await staffTraineeSeat(repo, required.id, RIDER, NOW)).code).toBe(
+      "not_trainee_seat",
+    );
+  });
+
+  it("refuses an occupied trainee seat", async () => {
+    const repo = await seedShift();
+    await seedRider(repo);
+    const seat = await seedTraineeSeat(repo);
+    await staffTraineeSeat(repo, seat.id, RIDER, NOW);
+    expect((await staffTraineeSeat(repo, seat.id, RIDER, NOW)).code).toBe(
+      "occupied",
+    );
+  });
+
+  it("rejects PTO, expired MMC, and inactive riders (trainee rule set) — one rider per rule", async () => {
+    const repo = await seedShift();
+    const seat = await seedTraineeSeat(repo);
+
+    // PTO covers the shift day.
+    const onPto = asId<"CrewMemberId">("crew-pto");
+    await repo.saveCrewMember({
+      id: onPto, name: "Pat Pto", phone: "+15035550301",
+      ratings: [], status: "active", reliabilityScore: null,
+    });
+    await repo.saveCredential({
+      id: asId<"CredentialId">("cred-pto-mmc"),
+      crewMemberId: onPto, type: "MMC", expiry: "2030-01-01",
+    });
+    await repo.savePtoWindow({
+      id: asId<"PtoWindowId">("pto-1"),
+      crewMemberId: onPto, start: DAY, end: DAY,
+    });
+    expect((await staffTraineeSeat(repo, seat.id, onPto, NOW)).code).toBe("ineligible");
+
+    // MMC aged out before the shift day.
+    const lapsed = asId<"CrewMemberId">("crew-lapsed");
+    await repo.saveCrewMember({
+      id: lapsed, name: "Lee Lapsed", phone: "+15035550302",
+      ratings: [], status: "active", reliabilityScore: null,
+    });
+    await repo.saveCredential({
+      id: asId<"CredentialId">("cred-lapsed-mmc"),
+      crewMemberId: lapsed, type: "MMC", expiry: "2026-01-01",
+    });
+    expect((await staffTraineeSeat(repo, seat.id, lapsed, NOW)).code).toBe("ineligible");
+
+    // Inactive.
+    const inactive = asId<"CrewMemberId">("crew-inactive");
+    await repo.saveCrewMember({
+      id: inactive, name: "Ida Inactive", phone: "+15035550303",
+      ratings: [], status: "inactive", reliabilityScore: null,
+    });
+    await repo.saveCredential({
+      id: asId<"CredentialId">("cred-inactive-mmc"),
+      crewMemberId: inactive, type: "MMC", expiry: "2030-01-01",
+    });
+    expect((await staffTraineeSeat(repo, seat.id, inactive, NOW)).code).toBe("ineligible");
+  });
+
+  it("rejects crew already confirmed on this shift's own required seats (double-book, no bespoke check)", async () => {
+    const repo = await seedShift();
+    await seedRider(repo);
+    // Put the rider on a REQUIRED seat of the same shift first.
+    const required = (await repo.listSeatsForShift(CANON)).find(
+      (s) => s.kind === "required",
+    )!;
+    await repo.saveSeat({
+      ...required,
+      state: "Confirmed",
+      assignedCrewMemberId: RIDER,
+    });
+    const seat = await seedTraineeSeat(repo);
+    expect((await staffTraineeSeat(repo, seat.id, RIDER, NOW)).code).toBe(
+      "ineligible",
+    );
+  });
+
+  it("unstaffs back to Open — occupant + provenance cleared, no re-asks, Remove works again", async () => {
+    const repo = await seedShift();
+    await seedRider(repo);
+    const seat = await seedTraineeSeat(repo);
+    await staffTraineeSeat(repo, seat.id, RIDER, NOW);
+
+    const out = await unstaffTraineeSeat(repo, seat.id, RIDER);
+    expect(out.code).toBeNull();
+    const reopened = await repo.getSeat(seat.id);
+    expect(reopened?.state).toBe("Open");
+    expect(reopened?.assignedCrewMemberId).toBeUndefined();
+    expect(reopened?.acquiredVia).toBeUndefined();
+    // The load-bearing difference from vacateSeat: NOTHING was re-asked.
+    expect(await repo.listAsksForSeat(seat.id)).toHaveLength(0);
+    // Seat is Open again, so 8.5's remove path works.
+    await removeOverrideSeat(repo, seat.id);
+    expect(await repo.getSeat(seat.id)).toBeNull();
+  });
+
+  it("unstaff pins the expected occupant — a swapped rider maps to raced", async () => {
+    const repo = await seedShift();
+    await seedRider(repo);
+    const seat = await seedTraineeSeat(repo);
+    await staffTraineeSeat(repo, seat.id, RIDER, NOW);
+    expect(
+      (await unstaffTraineeSeat(repo, seat.id, asId<"CrewMemberId">("crew-else")))
+        .code,
+    ).toBe("raced");
   });
 });

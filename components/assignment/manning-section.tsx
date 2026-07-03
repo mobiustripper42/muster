@@ -2,6 +2,8 @@ import type { SeatKind } from "@core/domain/states.js";
 import {
   addManningSeat,
   removeManningSeat,
+  staffTrainee,
+  unstaffTrainee,
 } from "../../app/(admin)/admin/shift/[shiftId]/actions";
 
 export interface OverrideSeatVM {
@@ -9,6 +11,9 @@ export interface OverrideSeatVM {
   roleName: string;
   kind: SeatKind;
   occupied: boolean;
+  /** Who's in it (staffed trainee / vacate-first required hand); null when Open. */
+  occupantId: string | null;
+  occupantName: string | null;
 }
 
 /**
@@ -25,11 +30,15 @@ export function ManningSection({
   ctx,
   overrideSeats,
   roleOptions,
+  traineeOptions,
 }: {
   shiftId: string;
   ctx: string | null;
   overrideSeats: OverrideSeatVM[];
   roleOptions: { id: string; name: string }[];
+  /** Trainee-eligible crew (DEC-087 rule set, operator excluded) for the
+   *  staff picker on each unstaffed trainee line. */
+  traineeOptions: { id: string; name: string }[];
 }) {
   const hostCtx =
     ctx !== null ? <input type="hidden" name="ctx" value={ctx} /> : null;
@@ -76,8 +85,72 @@ export function ManningSection({
                   <span className="text-muted"> · trainee</span>
                 )}
               </span>
-              {s.occupied ? (
+              {s.occupied && s.kind === "supernumerary" && s.occupantId ? (
+                // A staffed trainee (9.3, DEC-087) — supernumerary seats have no
+                // seat card, so THIS line owns the unstaff (no penalty, no
+                // re-ask; they get the DEC-084 "you're off" notice).
+                <form action={unstaffTrainee} className="flex items-center gap-2">
+                  <input type="hidden" name="shiftId" value={shiftId} />
+                  <input type="hidden" name="seatId" value={s.seatId} />
+                  <input type="hidden" name="crewMemberId" value={s.occupantId} />
+                  {hostCtx}
+                  <span className="text-xs text-muted">{s.occupantName ?? "riding"}</span>
+                  <button
+                    type="submit"
+                    className="inline-flex min-h-9 items-center px-2 text-xs font-semibold text-accent"
+                  >
+                    Take off seat
+                  </button>
+                </form>
+              ) : s.occupied ? (
                 <span className="text-xs text-muted">occupied — vacate to remove</span>
+              ) : s.kind === "supernumerary" ? (
+                // Unstaffed trainee seat: name a person so Muster can reach them
+                // (my-shifts, threads, the DEC-084 notice). Picker scope is the
+                // DEC-087 trainee rule set; the action re-checks server-side.
+                <span className="flex items-center gap-2">
+                  {traineeOptions.length === 0 ? (
+                    <span className="text-xs text-muted">
+                      nobody eligible to ride this day
+                    </span>
+                  ) : (
+                    <form action={staffTrainee} className="flex items-center gap-1.5">
+                      <input type="hidden" name="shiftId" value={shiftId} />
+                      <input type="hidden" name="seatId" value={s.seatId} />
+                      {hostCtx}
+                      <label className="flex items-center">
+                        <span className="sr-only">Trainee for this seat</span>
+                        <select
+                          name="crewMemberId"
+                          className="min-h-9 rounded-lg border border-line bg-bg px-2 py-1 text-ink"
+                        >
+                          {traineeOptions.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <button
+                        type="submit"
+                        className="min-h-9 rounded-lg border border-line bg-bg px-3 py-1 text-xs font-semibold text-accent"
+                      >
+                        Assign
+                      </button>
+                    </form>
+                  )}
+                  <form action={removeManningSeat}>
+                    <input type="hidden" name="shiftId" value={shiftId} />
+                    <input type="hidden" name="seatId" value={s.seatId} />
+                    {hostCtx}
+                    <button
+                      type="submit"
+                      className="inline-flex min-h-9 items-center px-2 text-xs font-semibold text-accent"
+                    >
+                      Remove
+                    </button>
+                  </form>
+                </span>
               ) : (
                 <form action={removeManningSeat}>
                   <input type="hidden" name="shiftId" value={shiftId} />

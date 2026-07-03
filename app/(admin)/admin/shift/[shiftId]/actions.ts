@@ -212,6 +212,10 @@ export async function removeSeat(formData: FormData): Promise<void> {
     const seat = await repo.getSeat(asId<"SeatId">(seatId));
     if (!seat || seat.state !== "Confirmed" || !seat.assignedCrewMemberId) {
       param = "act_error=not_confirmed";
+    } else if (seat.kind === "supernumerary") {
+      // DEC-087: a staffed trainee comes off via unstaffTrainee (Manning
+      // section) — vacate would re-ask a seat the engine ignores.
+      param = "act_error=trainee_seat";
     } else {
       const occupant = seat.assignedCrewMemberId;
       try {
@@ -249,12 +253,15 @@ export async function reportBail(formData: FormData): Promise<void> {
     const seat = await repo.getSeat(asId<"SeatId">(seatId));
     if (!seat || seat.state !== "Confirmed" || !seat.assignedCrewMemberId) {
       param = "act_error=not_confirmed";
+    } else if (seat.kind === "supernumerary") {
+      // DEC-087: a trainee stepping off is not a bail — no reliability event.
+      param = "act_error=trainee_seat";
     } else {
       // Lateness derived in core (DEC-028); occupant pinned so a swap between
       // reads maps to `raced`, never a wrong-person log.
       const bailer = seat.assignedCrewMemberId;
       const out = await bailWithDerivedLateness(repo, seat.id, new Date(), bailer);
-      if (out.code === "raced") {
+      if (out.code === "raced" || out.code === "trainee_seat") {
         param = "act_error=raced";
       } else {
         param = `bail_logged=${encodeURIComponent(String(bailer))}`;
@@ -341,7 +348,6 @@ export async function staffTrainee(formData: FormData): Promise<void> {
   const { shiftId, crewMemberId, seatId, ctx, back } = await gate(formData);
   if (!seatId || !crewMemberId) redirect(back);
   let param: string;
-  let placed = false;
   try {
     const out = await staffTraineeSeat(
       getRepo(),
@@ -351,7 +357,9 @@ export async function staffTrainee(formData: FormData): Promise<void> {
     );
     if (out.code === null) {
       param = `trainee_on=${encodeURIComponent(crewMemberId)}`;
-      placed = true;
+      // DEC-084: the rider gets a "you're on this shift" notice (best-effort,
+      // operator excluded inside notify).
+      await notify(crewMemberId, "added", shiftId);
     } else if (out.code === "ineligible") {
       param = "act_error=trainee_ineligible";
     } else if (out.code === "occupied") {
@@ -362,9 +370,6 @@ export async function staffTrainee(formData: FormData): Promise<void> {
   } catch {
     param = "act_error=unavailable";
   }
-  // DEC-084: the rider gets a "you're on this shift" notice (best-effort,
-  // operator excluded inside notify).
-  if (placed) await notify(crewMemberId, "added", shiftId);
   finish(shiftId, ctx, param);
 }
 
@@ -378,7 +383,6 @@ export async function unstaffTrainee(formData: FormData): Promise<void> {
   const { shiftId, crewMemberId, seatId, ctx, back } = await gate(formData);
   if (!seatId || !crewMemberId) redirect(back);
   let param: string;
-  let cleared = false;
   try {
     const out = await unstaffTraineeSeat(
       getRepo(),
@@ -387,7 +391,8 @@ export async function unstaffTrainee(formData: FormData): Promise<void> {
     );
     if (out.code === null) {
       param = `trainee_off=${encodeURIComponent(crewMemberId)}`;
-      cleared = true;
+      // DEC-084: the removed rider gets a "you're off" notice.
+      await notify(crewMemberId, "removed", shiftId);
     } else if (out.code === "raced") {
       param = "act_error=raced";
     } else {
@@ -396,6 +401,5 @@ export async function unstaffTrainee(formData: FormData): Promise<void> {
   } catch {
     param = "act_error=unavailable";
   }
-  if (cleared) await notify(crewMemberId, "removed", shiftId);
   finish(shiftId, ctx, param);
 }

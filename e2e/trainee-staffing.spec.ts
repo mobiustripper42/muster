@@ -41,6 +41,12 @@ test.describe("trainee staffing (9.3, DEC-087)", () => {
     await signInAsCrew(page, "crew-ar-sub");
     await expect(page.getByText(/Added for you/).first()).toBeVisible();
 
+    // The ride's shift card has NO bail control (DEC-087 rail guard) — a ride
+    // isn't a reliability commitment; the calm "tell the office" line instead.
+    await page.getByText(/Added for you/).first().click();
+    await expect(page.getByText(/riding this shift as a trainee/)).toBeVisible();
+    await expect(page.getByText("I can’t make it…")).toHaveCount(0);
+
     // Unstaff: back as admin, take them off — notice + picker returns.
     await signInAsAdmin(page, "spink");
     await page.goto("/admin/shift/shift-ar-regress");

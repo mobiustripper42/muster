@@ -15,6 +15,7 @@ import {
   staffTraineeSeat,
   unstaffTraineeSeat,
 } from "./manning.js";
+import { bailWithDerivedLateness, vacateSeat } from "../asks/ask-loop.js";
 
 const PARTY = asId<"VesselId">("vessel-brew-2"); // 2-crew (captain + mate), fleet-seeded
 const DAY = "2026-07-18";
@@ -253,6 +254,27 @@ describe("trainee staffing (9.3, DEC-087)", () => {
     // Seat is Open again, so 8.5's remove path works.
     await removeOverrideSeat(repo, seat.id);
     expect(await repo.getSeat(seat.id)).toBeNull();
+  });
+
+  it("the bail/vacate rails REFUSE a staffed trainee seat (DEC-087 guard)", async () => {
+    const repo = await seedShift();
+    await seedRider(repo);
+    const seat = await seedTraineeSeat(repo);
+    await staffTraineeSeat(repo, seat.id, RIDER, NOW);
+
+    // bail → trainee_seat code, NO reliability event, seat untouched. Covers
+    // both the crew self-drop (releaseSelfClaim) and the admin bail report.
+    const bail = await bailWithDerivedLateness(repo, seat.id, NOW, RIDER);
+    expect(bail.code).toBe("trainee_seat");
+    expect(await repo.reliabilityEventsFor(RIDER)).toHaveLength(0);
+    expect((await repo.getSeat(seat.id))?.state).toBe("Confirmed");
+
+    // vacate → throws (its kind-blind rankedEligible re-ask must never fire
+    // for a trainee seat); nothing was asked.
+    await expect(vacateSeat(repo, seat.id, NOW, RIDER)).rejects.toThrow(
+      /trainee seat/,
+    );
+    expect(await repo.listAsksForSeat(seat.id)).toHaveLength(0);
   });
 
   it("unstaff pins the expected occupant — a swapped rider maps to raced", async () => {

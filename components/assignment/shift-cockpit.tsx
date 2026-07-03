@@ -60,6 +60,8 @@ const ACT_ERROR_COPY: Record<string, string> = {
   unavailable: "Couldn’t reach the schedule — nothing was changed. Try again.",
   trainee_ineligible:
     "They can’t ride this shift — inactive, MMC lapsed, on PTO, or already committed that day.",
+  trainee_seat:
+    "That’s a trainee seat — take them off from the Manning section below.",
 };
 
 /** The cockpit's feedback/toggle params. Shares a URL with the board's

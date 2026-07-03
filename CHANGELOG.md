@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.9.9] - 2026-07-03
+- PR #227: DEC-084 fast-follow — assignment notices on all add/drop sites
+
 ## [0.9.8] - 2026-07-03
 - PR #223: Phase 8.5 — Seat/manning override (closes #208)
 

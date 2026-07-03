@@ -2009,6 +2009,68 @@ SMS code channel) or the email-less gap bites (promote to a required-email task 
 
 ---
 
+## DEC-085: Shift Builder — responsive dual-form-factor over one no-JS core
+
+**Status:** Decided 2026-07-03 (Eric, Phase 9). Architecture detailed at the 9.5 @architect gate; this
+records the *decision + why*.
+
+**Decision.** The Shift Builder — and admin surfaces generally — present **two co-equal, first-class
+experiences**: a real **desktop app** (multi-pane master-detail: the board on the left, the selected
+shift's cockpit/detail on the right) and a real **mobile app** (drill-in, thumb-native, full-screen
+detail). **Same functions, equal priority** — not one layout squished into the other's viewport. Both
+ride **one server-rendered no-JS core** (DEC-026):
+- Selection is a URL param (`?sel=<shiftId>`), exactly the idiom the page already uses for mode/filters
+  — a plain `<Link>`, no client JS.
+- The cockpit/detail body is **extracted into a shared server component** rendered in two places: the
+  standalone `/admin/shift/[shiftId]` route (mobile drill-in, deep-links) **and** the desktop right pane.
+- CSS decides which panes show per form factor; mobile shows the board OR (when `?sel` is set) the
+  full-screen detail; desktop shows both.
+
+**Why.** The operator works from a desktop *and* a phone and does the same work on each; a breakpoint
+squish serves neither. Corrects the reconciliation punch-list, which mis-classified the mockup's
+two-pane layout as "superseded by DEC-042/026" — **no DEC forecloses a server-rendered two-pane**; a
+URL-param selection is the sanctioned no-JS pattern. DEC-042's guardrails (neutral ink, no scoreboard,
+no auto-refresh, a distinct empty state) are **held** in the merged surface.
+
+**Day-grouping blessed (supersedes SPEC §2.3 "grouped by boat then day").** The board groups **day →
+time** (#122) — a weekend scans day-by-day, within-day time order preserved. This was shipped in Phase
+8 without a decision line against the binding SPEC text; recorded here as decided, not drift. Vessel
+identity returns as an information-encoding hue (DEC-086), not as the primary grouping axis.
+
+**Relationship:** builds on DEC-042 (pull-surface guardrails), DEC-026 (no-JS forms + server render),
+the Phase 8 Builder. Companion to DEC-086 (the identity palette the board uses). Detailed component
+extraction + pane mechanics land at the Phase 9.5 @architect gate. Supersedes nothing; reframes the
+reconciliation's two-pane "superseded" call.
+
+---
+
+## DEC-086: Vessel + role identity palette — color that encodes information
+
+**Status:** Decided 2026-07-03 (Eric, Phase 9). Hue values set when the 9.6 board bundle lands.
+
+**Decision.** Add a small **identity** palette to the DEC-021 locked token set: a distinct **calm hue
+per vessel** (rendered as a per-vessel dot on board rows so a same-brand fleet is legible at a glance)
+and the existing **role hues** (`captain`/`mate`, defined in `globals.css` but currently unused in
+shipped TSX) put to work. The rule: **color that encodes information is permitted; decorative color is
+not.**
+
+**Why (the rule this refines).** DEC-021 locks the palette and DEC-042 mandates neutral ink precisely to
+bar two failure modes — color added "to make it look good," and the risk-scoreboard where every row
+glows. Identity color is **neither**: a vessel hue answers *which boat*, a role hue answers *which
+role* — each carries a value. Eric's framing: *"the rule is so color isn't added for dumb reasons; it
+needs to carry a value. vessel hue, role hue — that's value, so we add it."* Identity ≠ risk, so
+DEC-042 is untouched (warm/bad tokens stay reserved for the At-Risk board).
+
+**Guardrails.** Hues are calm/desaturated, **one deliberate hue per vessel** (not a rainbow), chosen —
+not auto-generated garishly. They encode **identity only**, never state/risk. Each hue's meaning is
+recorded when the values are set. A ~4-boat fleet needs ~4 identity tokens beyond `captain`/`mate`.
+
+**Relationship:** refines DEC-021 (adds *informational* tokens to the locked palette), compatible with
+DEC-042 (identity color ≠ risk color). Companion to DEC-085 (the board that renders them). Supersedes
+nothing.
+
+---
+
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)
 
 These are deferred by design. Each names an owner and a trigger. **Consult @architect (and the named

@@ -4,10 +4,10 @@ dev: eric
 slug: dec084-followup-notices
 branch: task/dec084-followup-notices
 started: 2026-07-02T17:32:36Z
-ended:
-points:
+ended: 2026-07-03T20:10:43Z
+points: 3
 pr_numbers: [228, 229]
-status: open
+status: closed
 transcript: /home/eric/.claude/projects/-home-eric-muster/96d3b86b-4fd0-412f-a6a3-e27eaff45ed7.jsonl
 ---
 
@@ -46,13 +46,14 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/96d3b86b-4fd0-412f-a6a
 **Opened at:** 2026-07-03T13:19:32Z
 
 **Next Steps:**
-- **SMS consent (#229) is the time-sensitive one — Twilio 10DLC.** Merge it into the promote. **Requires `CREW_SELF_SERVE=1` in prod** or the vetter won't see the block. After deploy, grab the public `/crew` URL for the Twilio opt-in field (replaces the Google Drive link).
-- **Merge #228** (Phase 9/10 plan), then the boundary sequence: **`/start-phase` Phase 9** (relabel #215/#224/#225/#226 to `phase:9` + points; create issues for 9.0/9.5–9.10) → **`/retro` Phase 8** (close; patch+minor bump) → **`/promote-production`**.
-- Then build Phase 9 from **9.0 (MCP fast-fix loop)**. @architect gates before 9.5 (two-pane) + on the 9.6 palette (DEC-086 vs DEC-021).
-- Migrations **0014–0017** need out-of-band apply before the promote (operator) — 0017 = `sms_consent` (best-effort write, so an unapplied 0017 won't break login).
+- **Phase 8 CLOSED + promoted** — /retro (v0.10.0 tagged on `main`), `production` ff'd to v0.10.0. SMS consent live in prod for Twilio 10DLC; migrations 0014–0017 applied to prod (operator-confirmed). **Verify:** prod `/crew` logged-out shows the consent block (needs `CREW_SELF_SERVE=1`, set) + `<VersionTag/>` = v0.10.0 → grab that URL for the Twilio opt-in field.
+- **Phase 9 materialized — 55 pts, 13 issues.** New: #230 (9.0 MCP) · #231 (9.5 two-pane) · #232 (9.6 board) · #233 (9.7 cockpit/a11y) · #234 (9.8 low polish) · #235 (9.9 civil-send) · #236 (9.10 spawned-cue) · #237 (9.11 crew reconciliation) · #238 (9.12 nav). Relabeled #215/#226/#224/#225 = 9.1–9.4.
+- **Start Phase 9 at 9.0 (MCP #230)** — kills the by-hand migration pain. @architect gates before 9.5 / 9.6 / 9.9 / 9.11 / 9.12.
 
 **Context:**
 - **Design decisions locked (Eric, 2026-07-03):** responsive dual-form-factor — desktop-app + mobile-app both first-class, no squish (DEC-085); vessel/role hue = information, so allowed against the DEC-021 palette lock (DEC-086); no-JS kept (break only for a recorded reason). Saved to memory (`dual-form-factor-coequal`, `color-encodes-information`).
 - **Production-need scan:** civil send window + admin deprovision are pre-launch **required**; per-vessel qualification + capacity-stomp stay **parked** (Xola is truth for now); reliability loop is **post-launch #1**.
 - **Fable one-off:** the reconciliation ran on Fable per owner override; DEC-S029 (Fable disabled) stays in force.
 - Orphan branch `claude/muster-next-phase-dfupeo` (4 commits, superseded Phase 6 planning) still awaiting delete — offered, not yet actioned.
+- **This session did far more than its 2 Task PRs:** closed Phase 8 (/retro → v0.10.0, patch-per-PR + minor), promoted `main`→`production` (v0.10.0 live), and /start-phase 9 (13 issues). Those commit directly — not in Task blocks. Phase 9 grew **42→55** when the owner caught the reconciliation was admin-only (added 9.11 crew reconciliation + 9.12 nav — the crew app + navigation had never been reconciled against the crew mockups).
+- **#226 is a known-hazard class** (PM read): the "tell a dual-side crew member you're off when they're not" false-positive hit twice in Phase 8 (8.4 `freedCrew` + the DEC-084 fast-follow). Anywhere crew span two split sides, watch the who-got-dropped math.

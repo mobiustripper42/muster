@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.9.3] - 2026-07-03
+- PR #214: Cut locking from Phase 8 (Xola is source of truth, DEC-082) + frontend-design binding
+
 ## [0.9.2] - 2026-07-03
 - PR #213: Phase 8.2a — Builder View mode: next-7-days default + split cue
 

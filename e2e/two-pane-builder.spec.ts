@@ -92,11 +92,15 @@ test.describe("two-pane builder (9.5, DEC-085)", () => {
     await signInAsAdmin(page, "spink");
     await page.goto(`${board()}&sel=shift-ar-regress`);
 
-    // The board list is display-hidden on mobile — cockpit only.
+    // The board list is display-hidden on mobile — cockpit only. With the
+    // board's h1 out of the a11y tree, the cockpit's own heading is the page's
+    // h1 (the level tracks the breakpoint, not just the host).
     await expect(
       page.getByRole("heading", { name: "All shifts" }),
     ).toBeHidden();
-    await expect(page.getByRole("heading", { name: /^Firkin/ })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { level: 1, name: /^Firkin/ }),
+    ).toBeVisible();
 
     await page.getByRole("link", { name: "← All shifts" }).click();
     await page.waitForURL((u) => !u.searchParams.has("sel"));

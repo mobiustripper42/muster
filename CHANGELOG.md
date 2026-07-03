@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.9.10] - 2026-07-03
+- PR #229: SMS consent block on public crew login (Twilio 10DLC opt-in) + sms_consent audit
+
 ## [0.9.9] - 2026-07-03
 - PR #227: DEC-084 fast-follow — assignment notices on all add/drop sites
 

@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.9.2] - 2026-07-03
+- PR #213: Phase 8.2a — Builder View mode: next-7-days default + split cue
+
 ## [0.9.1] - 2026-07-03
 - PR #212: Phase 8.1 — shift split-suggestion detector (gap/span)
 

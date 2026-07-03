@@ -382,9 +382,9 @@ read surfaces — Phase 9, more valuable as All-Shifts sunsets); per-vessel qual
 ## Phase 9: Finish the production build — Shift Builder reconciliation + deferred fast-follows
 
 Take the healthy-pilot slice to a **fully-baked production interface**. Two threads: (a) the deferred
-Phase-8 fast-follows (#215/#224/#225/#226), and (b) the **design reconciliation** of the Shift Builder
-+ cockpit against the mockups — a two-Fable-lens adopt/supersede punch-list (`docs/design/BUILDER-RECONCILIATION.md`)
-the owner ruled on 2026-07-03. Headline builds: a **responsive dual-form-factor** builder (a real
+Phase-8 fast-follows (#215/#224/#225/#226), and (b) the **design reconciliation + polish of both interfaces** — the admin Shift Builder
++ cockpit (a two-lens adopt/supersede punch-list, `docs/design/BUILDER-RECONCILIATION.md`, ruled on 2026-07-03),
+**the crew app** (its own reconciliation, 9.11), and real **navigation** for both (9.12). Headline builds: a **responsive dual-form-factor** builder (a real
 desktop-app AND a real mobile-app over one no-JS core — **DEC-085**), a **vessel/role identity palette**
 (color that encodes information — **DEC-086**), and the **civil send window** (a pre-launch ask-timing
 fix pulled from FUTURE_IDEAS). Wire the **MCP fast-fix loop** first (9.0) — it accelerates the phase.
@@ -415,10 +415,12 @@ on 9.5 (two-pane architecture) and the 9.6 palette.
 | 9.8 | **Low polish bundle** — seat-card role glyph (uses the DEC-086 tokens), `aria-hidden` on admin decorative glyphs, unified content width (3xl), `text-faint` tertiary tier, whole-card click target, consistent section-header scale, Crewed-gate summary line, tenant+date in nav | 3 | the reconciliation Low tier, folded in (owner: finish it properly) |
 | 9.9 | **Civil send window** — split the staffing horizon into a **runway** (eligibility opens at trip−leadDays) and a tenant **civil send window** (e.g. 08:00–20:00) outside which asks don't fire; eligibility can open any hour, the ask fires at the next in-window moment. Supersedes #157's bare-number tuning. **@architect** (ask-timing change) | 5 | required-before-launch; per-crew learned timing stays a parked LOW stretch |
 | 9.10 | **Freshly-spawned-shift cue** — *(owner fork, decide at task start)* a muted "new in the last pull" line (DEC-083 import-diff idiom) **or** formally supersede the SPEC §2.3 "new block needing review" text | 2 | park-or-build |
+| 9.11 | **Crew app reconciliation + polish** — the crew counterpart to the Builder pass (an admin-only blind spot): same two-lens (frontend-design + ui-review) reconciliation on the crew surfaces (ask card, my-shifts, `/crew/open`, shift card, threads) vs the crew mockups (`crewapp.jsx`, `Crew App.html`, `assignmobile.jsx`, `mobile*`) → adopt/supersede punch-list → build. The mobile-first surface real crew live in; never reconciled. | 8 | may split at its reconciliation gate; DEC-085 dual-form-factor applies |
+| 9.12 | **Navigation** — a coherent **crew IA/nav** (brand-bound: minimal, no dashboard, "insultingly small" intact — **@architect gate**, it's in real tension with BRAND; crew has *no* nav today, 5 surfaces reached by ad-hoc inline links) + finish the **admin nav** (`admin-nav.tsx` is a flat 4-link bar missing `/admin/messages`) | 5 | both form factors |
 
-**Phase 9 total: ~42 pts** (pokered 2026-07-03; 9.5 expected to split at the @architect gate). Suggested
-build order: **9.0 → 9.1 → 9.6/9.7/9.8 (design bundles) → 9.2/9.3 → 9.9 → 9.5 → 9.4**; 9.10 anywhere or cut.
-**Gates:** @architect before 9.5 (two-pane architecture) and on the 9.6 palette (DEC-086 vs DEC-021).
+**Phase 9 total: ~55 pts** (pokered 2026-07-03; **+9.11/9.12** added — crew UI + nav were an admin-only blind spot. Owner: *"55 is fine, just a grind; splitting it would only be window dressing."* 9.5 + 9.11 expected to split at their gates). Suggested
+build order: **9.0 → 9.1 → 9.6/9.7/9.8 (admin design bundles) → 9.11 (crew) → 9.12 (nav) → 9.2/9.3 → 9.9 → 9.5 → 9.4**; 9.10 anywhere or cut.
+**Gates:** @architect before 9.5 (two-pane architecture), on the 9.6 palette (DEC-086 vs DEC-021), and on 9.12 crew nav (BRAND "insultingly small" tension).
 **Quality bar: fully-baked, both form factors first-class (no responsive squish).**
 
 **Not in Phase 9 (parked — production-need scan, 2026-07-03):** per-vessel qualification gate (no

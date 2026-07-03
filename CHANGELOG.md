@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.9.6] - 2026-07-03
+- PR #219: Phase 8.3b — Shift Builder Edit-mode Split UI (closes #206)
+
 ## [0.9.5] - 2026-07-03
 - PR #218: Phase 8.3a — manual split engine (cut-time partition, DEC-083)
 

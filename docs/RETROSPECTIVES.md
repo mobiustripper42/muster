@@ -3,6 +3,39 @@
 Phase-end retrospectives. Written by `/retro` at each phase boundary — velocity, scope changes,
 process notes, forecast update. One entry per phase, newest at the top.
 
+## Phase 8 — 2026-07-03 — Shift Builder (review, edit & gap-aware grouping)
+
+**Points:** 19 shipped (24 planned → 17 after the DEC-082 lock cut → 19 as 8.4 grew 3→5)
+**Span:** ~2 days (2026-07-01 14:25 → 2026-07-03) — burst (<7d)
+**Throughput:** burst — 19 pts in ~2d (no per-week rate; sub-7-day phase)
+**Estimate calibration:** 3 re-estimated (8.2 View 5→3, 8.4 3→5, 8.6 cut), net drift −2 pts (two descopes vs one growth)
+**Sessions:** 2 (S34, S35)   **PRs merged:** 14 in window; 10 versioned at this retro (→ v0.9.1–0.9.10), 4 non-feature PRs skipped (idea-parks #210/#211/#220, auto-sync #222)
+**Issues:** 6 created, 6 closed (8.6/#209 cut won't-do), 0 moved
+
+### Phase throughput line
+| Phase | Date | Points | Span(d) | Throughput | Re-est'd | Net drift | Sessions | PRs |
+|-------|------|--------|---------|------------|----------|-----------|----------|-----|
+| 8 | 2026-07-03 | 19 | ~2 | burst — 19 pts in ~2d | 3 | −2 | 2 | 14 (10 versioned) |
+
+### Reflection questions
+Skipped this retro (owner opted out of what-worked / what-didn't / changes-for-next-phase).
+
+### Scope changes
+- **CUT (DEC-082 — locking removed, Xola owns booking truth):** 8.2b Edit=lock + 8.6 bulk "lock the weekend." Retired the unwired lock scaffolding shipped in 4.6. 24 → 17.
+- **GREW:** 8.4 re-estimated 3→5 — absorbed the entire DEC-084 crew assignment-change notice subsystem (third operator-relay sibling: `notice_outbox`, migration 0015). 17 → 19.
+- **Out-of-band:** urgent SMS-consent fix (#229, migration 0017) shipped post-close for Twilio 10DLC vetting.
+
+### PM read
+Phase 8 shipped 19 points across 8 task-PRs in roughly two calendar days, but the number that matters isn't the 19 — it's the 24→17→19 path it took to get there. This is the first phase in the project's run where the headline story is *subtraction*: DEC-082 cut a whole locking subsystem that had already shipped (unwired) in 4.6, on the grounds that Xola owns booking truth and a "reviewed/locked" stamp over Xola-derived data is theater. Two planned tasks (8.2b Edit=lock, 8.6 bulk weekend-lock) evaporated with it. Every prior phase's variance was scope *added* — Phase 5 shipped ~15 unplanned points, Phase 6 drifted +7, Phase 7 pulled two follow-ups in. Phase 8 is the inverse: the team deleted built code to keep the model honest. That's a harder call than adding, and it's the right one.
+
+On pace: 19 pts in ~2 days is consistent with the burst cadence since Phase 4 — the honest read is "another burst," not a velocity delta. The calibration is worth pinning precisely: net drift is −2, but that nets two deliberate descopes (8.2b + 8.6) against one real growth — 8.4 went 3→5 when it absorbed the entire DEC-084 assignment-change notice subsystem. That growth is the same signature as every prior phase: not an estimate missed, a coherent unit turning out bigger than its label once you commit to building it fully-baked. The point unit held; the posture underneath changed — the 2026-07-01 "no thin stubs" shift is exactly why 8.4 grew rather than shipping a notice stub.
+
+The pattern the session files surface, four-phases-running now: review kept catching *fail-toward-a-false-message* bugs the green build was happy with. Twice this phase the *exact same* failure — telling a dual-side crew member "you're off" when they weren't. Once in 8.4's `freedCrew`, once in the DEC-084 fast-follow. Same bug, two paths, neither caught by tests until review demanded the test. The split/merge crew-accounting is the sharp edge — anywhere crew belong to two sides of a split, "who got dropped" is a false-positive waiting to happen, and #226 is that edge still open. Treat it as a known-hazard class, not four isolated bugs.
+
+One thing the metrics flatten: this phase *generated its own next phase* mid-stride. The builder doesn't match the mockups; that drift became a formal reconciliation pass and Phase 9 ballooned to ~42 pts around it. "Phase 8 complete" should not be read as "builder done" — same asterisk Phase 6 earned when the doorbell shipped human-in-the-loop.
+
+Forward: the sequencing into the production push is the risk to watch, not velocity. Phase 9 is ~42 pts with a responsive rebuild at its center, Phase 10 carries a required security audit + admin deprovision, and an urgent SMS-consent fix already had to go through for a deadline the team doesn't control. Two tails rot if left in Next-Steps: #226 and the 0014–0017 migration stack. The merge-train hazard is back — 14 PRs all appending DECISIONS.md at the same spot. The one to pull forward hardest is 9.9 civil-send-window: it's a "we texted a crew member at 3am" bug, cheap now and reputational after go-live.
+
 ## Phase 7 — 2026-06-30 — Crew Self-Serve ("Pick your shifts")
 
 **Points:** 20 / 20 planned (100%)

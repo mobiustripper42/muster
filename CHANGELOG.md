@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.9.7] - 2026-07-03
+- PR #221: Phase 8.4 — Manual Merge + crew assignment-change notices (closes #207)
+
 ## [0.9.6] - 2026-07-03
 - PR #219: Phase 8.3b — Shift Builder Edit-mode Split UI (closes #206)
 

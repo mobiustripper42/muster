@@ -21,6 +21,7 @@ import type {
   OutboxEntry,
   RingOutboxEntry,
   NoticeOutboxEntry,
+  SmsConsent,
   PtoWindow,
   Reservation,
   RoleType,
@@ -257,6 +258,15 @@ export interface Repository {
   logReliabilityEvent(event: ReliabilityEvent): Promise<void>;
   /** Read one crew member's events, in insertion order. */
   reliabilityEventsFor(crewMemberId: CrewMemberId): Promise<ReliabilityEvent[]>;
+
+  // ── SMS consent log (Twilio 10DLC opt-in — append-only audit) ──────────────
+  // Written best-effort from the crew-login action when a crew member checks the
+  // opt-in box (adapter/edge-side; the domain never reads it). Append-only like the
+  // reliability log — a standing "they agreed to vX at HH:MM" record, never mutated.
+  /** Append an SMS-consent record. */
+  recordSmsConsent(consent: SmsConsent): Promise<void>;
+  /** One crew member's consent records, insertion order — the audit read. */
+  listSmsConsentsForCrew(crewMemberId: CrewMemberId): Promise<SmsConsent[]>;
 
   // ── Engine pause flag (operator control — #124, DEC-054) ───────────────────
   // A single mutable ops setting, NOT a domain aggregate: the autonomous engine

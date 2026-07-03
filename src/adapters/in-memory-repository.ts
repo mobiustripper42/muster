@@ -19,6 +19,7 @@ import type {
   OutboxEntry,
   RingOutboxEntry,
   NoticeOutboxEntry,
+  SmsConsent,
   PtoWindow,
   Reservation,
   RoleType,
@@ -85,6 +86,7 @@ export class InMemoryRepository implements Repository {
   readonly #ringOutbox = new Map<RingOutboxEntryId, RingOutboxEntry>();
   readonly #noticeOutbox = new Map<NoticeOutboxEntryId, NoticeOutboxEntry>();
   readonly #reliability: ReliabilityEvent[] = [];
+  readonly #smsConsent: SmsConsent[] = [];
   // Engine pause flag (#124, DEC-054). Default false = running, mirroring the
   // KV's "absent row ⇒ running" semantics. `#enginePausedAt` mirrors the DB's
   // audit column (no read path through the port — parity, not a feature).
@@ -397,6 +399,15 @@ export class InMemoryRepository implements Repository {
   ): Promise<ReliabilityEvent[]> {
     return this.#reliability
       .filter((e) => e.crewMemberId === crewMemberId)
+      .map(clone);
+  }
+
+  async recordSmsConsent(consent: SmsConsent): Promise<void> {
+    this.#smsConsent.push(clone(consent));
+  }
+  async listSmsConsentsForCrew(crewMemberId: CrewMemberId): Promise<SmsConsent[]> {
+    return this.#smsConsent
+      .filter((c) => c.crewMemberId === crewMemberId)
       .map(clone);
   }
 

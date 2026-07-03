@@ -23,6 +23,7 @@ import type {
   ReservationId,
   RingOutboxEntryId,
   NoticeOutboxEntryId,
+  SmsConsentId,
   RoleTypeId,
   SeatId,
   ShiftId,
@@ -441,6 +442,28 @@ export interface NoticeOutboxEntry {
   createdAt: string;
   /** ISO-8601 UTC; set when the operator marks it sent. Channel-side only. */
   sentAt?: string;
+}
+
+/**
+ * SMS-consent record (Twilio 10DLC opt-in — append-only audit). One row per opt-in
+ * submission on the public crew login: WHO consented, at WHAT number, WHEN, and the
+ * EXACT disclosure string + version they agreed to (so wording changes stay
+ * auditable). Written best-effort from the login action; never read by the domain.
+ */
+export interface SmsConsent {
+  id: SmsConsentId;
+  /** The crew member the login email resolved to (recorded only on a roster match). */
+  crewMemberId: CrewMemberId;
+  /** The email entered at opt-in. */
+  email: string;
+  /** The roster phone at consent time (the number consented for); null if none on file. */
+  phone: string | null;
+  /** Disclosure version agreed to — bump when the copy changes. */
+  disclosureVersion: string;
+  /** The exact disclosure string shown, frozen. */
+  disclosureText: string;
+  /** ISO-8601 UTC. */
+  consentedAt: string;
 }
 
 export type { ReliabilityEvent } from "./reliability.js";

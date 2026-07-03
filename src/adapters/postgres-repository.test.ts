@@ -31,6 +31,7 @@ const TABLES = [
   "outbox_entries",
   "ring_outbox",
   "reliability_events",
+  "sms_consent",
   "app_settings",
   "import_runs",
   "import_run_items",

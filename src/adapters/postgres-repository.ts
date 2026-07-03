@@ -23,6 +23,7 @@ import type {
   LoginCode,
   MagicToken,
   NoticeOutboxEntry,
+  SmsConsent,
   OutboxEntry,
   PtoWindow,
   RingOutboxEntry,
@@ -243,6 +244,16 @@ const toReliability = (r: any): ReliabilityEvent => ({
   type: r.type,
   timestamp: r.timestamp,
   metadata: r.metadata,
+});
+
+const toSmsConsent = (r: any): SmsConsent => ({
+  id: asId<"SmsConsentId">(r.id),
+  crewMemberId: asId<"CrewMemberId">(r.crew_member_id),
+  email: r.email,
+  phone: r.phone ?? null,
+  disclosureVersion: r.disclosure_version,
+  disclosureText: r.disclosure_text,
+  consentedAt: r.consented_at,
 });
 
 const toImportRun = (r: any): ImportRun => ({
@@ -824,6 +835,29 @@ export class PostgresRepository implements Repository {
       [crewMemberId],
     );
     return rows.map(toReliability);
+  }
+
+  async recordSmsConsent(c: SmsConsent): Promise<void> {
+    await this.#pool.query(
+      `insert into sms_consent(id, crew_member_id, email, phone, disclosure_version, disclosure_text, consented_at)
+       values ($1,$2,$3,$4,$5,$6,$7)`,
+      [
+        c.id,
+        c.crewMemberId,
+        c.email,
+        c.phone,
+        c.disclosureVersion,
+        c.disclosureText,
+        c.consentedAt,
+      ],
+    );
+  }
+  async listSmsConsentsForCrew(crewMemberId: CrewMemberId): Promise<SmsConsent[]> {
+    const { rows } = await this.#pool.query(
+      "select * from sms_consent where crew_member_id=$1 order by seq",
+      [crewMemberId],
+    );
+    return rows.map(toSmsConsent);
   }
 
   // ── Engine pause flag (operator control — #124, DEC-054) ───────────────────

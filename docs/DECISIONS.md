@@ -2082,6 +2082,15 @@ recorded when the values are set. A ~4-boat fleet needs ~4 identity tokens beyon
 DEC-042 (identity color ≠ risk color). Companion to DEC-085 (the board that renders them). Supersedes
 nothing.
 
+**Amendment — hue values set (9.6, 2026-07-03).** Six `--color-vessel-N` tokens land in `@theme`
+(`app/globals.css`): 1 indigo `#5b64a8`, 2 plum `#8a5f93`, 3 olive `#6e7f46`, 4 clay `#9c6b4e`,
+5 lagoon `#4f7f8b`, 6 driftwood `#7c6a54` — all calm/desaturated, deliberately distant from
+accent/captain/mate and every status hue so a dot never reads as a badge. The real fleet is **pinned**
+(the "chosen, not auto-generated" guardrail) in `app/lib/vessel-hue.ts`: Brew 1→indigo, Brew 2→plum,
+Brew 3→olive, Brew 4→clay; unpinned vessels (dev seeds, a future boat before someone pins it) fall to
+a stable hash over the pool, so an id always keeps its hue. Rendered as a 10px dot before the vessel
+name on board rows — identity only, `aria-hidden`, the name stays the accessible answer.
+
 ---
 
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)

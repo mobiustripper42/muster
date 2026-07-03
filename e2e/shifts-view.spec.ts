@@ -37,3 +37,53 @@ test.describe("builder view — /admin/shifts (8.2a)", () => {
     await expect(page.getByText(/could be two shifts/)).toHaveCount(1);
   });
 });
+
+/**
+ * 9.6 (#232) — the board bundle: per-trip spans (the join("   ") run-on fix),
+ * neutral-ink seat pips (role initial, filled vs open, dashed trainee), and the
+ * DEC-086 vessel identity dot. All neutral/identity ink — no state color leaks
+ * onto this surface (DEC-042 holds).
+ */
+test.describe("board bundle — /admin/shifts (9.6)", () => {
+  test.beforeEach(async () => {
+    await resetAndSeed("atrisk");
+  });
+
+  test("a multi-trip day renders one span per trip, not a run-on string", async ({
+    page,
+  }) => {
+    await signInAsAdmin(page, "spink");
+    await page.goto("/admin/shifts");
+
+    // Barrel's two departures are separate nowrap spans — each time·pax fact
+    // holds together at any width. The trips live inside the row link.
+    const barrel = page.getByRole("link", { name: /Barrel/ }).first();
+    await expect(barrel.getByText(/11:00 AM · \d+ pax/)).toBeVisible();
+    await expect(barrel.getByText(/6:00 PM · \d+ pax/)).toBeVisible();
+  });
+
+  test("rows carry neutral-ink seat pips — filled for Confirmed, open otherwise", async ({
+    page,
+  }) => {
+    await signInAsAdmin(page, "spink");
+    await page.goto("/admin/shifts");
+
+    // Growler's captain seat is Confirmed → a filled pip; Firkin's is Bailed →
+    // an open (outline) pip. Pips are title-labeled, never state-colored.
+    await expect(page.locator('[title="captain · filled"]').first()).toBeVisible();
+    await expect(page.locator('[title="captain · open"]').first()).toBeVisible();
+  });
+
+  test("every row leads with its vessel identity dot (DEC-086)", async ({
+    page,
+  }) => {
+    await signInAsAdmin(page, "spink");
+    await page.goto("/admin/shifts");
+
+    // One dot per row, hue keyed off the vessel id — identity, aria-hidden.
+    const dots = page.locator('span[class*="bg-vessel-"]');
+    const rows = page.locator('a[href*="sel="]');
+    await expect(dots.first()).toBeVisible();
+    expect(await dots.count()).toBe(await rows.count());
+  });
+});

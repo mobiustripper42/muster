@@ -5,11 +5,13 @@ import {
   ShiftCockpit,
   type CockpitSearch,
 } from "../../../../components/assignment/shift-cockpit";
+import { SeatPips } from "../../../../components/admin/seat-pips";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
 import { fmt12 } from "../../../lib/format";
+import { vesselHueClass } from "../../../lib/vessel-hue";
 import { splitAction, mergeAction } from "./actions";
 
 /**
@@ -515,10 +517,6 @@ function ShiftRow({
     row.requiredSeats === 0
       ? "—"
       : `${row.confirmedSeats}/${row.requiredSeats} crewed`;
-  const trips =
-    row.trips.length === 0
-      ? "no scheduled trip"
-      : row.trips.map((t) => `${fmt12(t.time)} · ${t.pax} pax`).join("   ");
   const splitTag =
     row.split == null
       ? null
@@ -553,17 +551,36 @@ function ShiftRow({
       }`}
     >
       <div className="flex items-start justify-between gap-4">
-        <Link href={href} className="flex min-w-0 flex-col">
-          {/* Vessel leads — the date now lives in the day-section header (#122). */}
-          <span className="font-medium text-ink">
+        <Link href={href} className="flex min-w-0 flex-col gap-0.5">
+          {/* Vessel leads — the date now lives in the day-section header (#122).
+              The dot is the DEC-086 identity hue: same boat, same hue, always —
+              it answers "which boat", never state (aria-hidden; the name is the
+              accessible answer). */}
+          <span className="flex items-center gap-1.5 font-medium text-ink">
+            <span
+              aria-hidden="true"
+              className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${vesselHueClass(row.vesselId)}`}
+            />
             {row.vesselName}
             {splitTag && (
-              <span className="ml-2 text-xs font-normal text-muted">
-                {splitTag}
-              </span>
+              <span className="text-xs font-normal text-muted">{splitTag}</span>
             )}
           </span>
-          <span className="font-mono text-xs text-muted">{trips}</span>
+          {/* One span per trip (the cockpit idiom) — the old join("   ")
+              collapsed to a single space in HTML, so multi-trip days read as a
+              run-on string and wrapped mid-fact at 375px (9.6 High fix). */}
+          {row.trips.length === 0 ? (
+            <span className="font-mono text-xs text-muted">no scheduled trip</span>
+          ) : (
+            <span className="flex flex-wrap gap-x-3 font-mono text-xs text-muted">
+              {row.trips.map((t, i) => (
+                <span key={i} className="whitespace-nowrap">
+                  {fmt12(t.time)} · {t.pax} pax
+                </span>
+              ))}
+            </span>
+          )}
+          <SeatPips seats={row.seats} />
           {row.splitSuggestion && row.split == null && (
             // Calm read-only cue (8.1/#204): Muster noticed this vessel-day might be
             // two shifts. Advisory only — acting on it is Edit mode → Split (below).

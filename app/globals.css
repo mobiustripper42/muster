@@ -26,6 +26,22 @@
   --color-captain: #2f5d86;
   --color-mate: #2f7d70;
 
+  /*
+   * Vessel identity hues (DEC-086, values set at 9.6) — calm, desaturated,
+   * IDENTITY ONLY, never state/risk (those stay ok/warn/bad, the At-Risk
+   * board's alone). Meaning record: the real fleet pins 1→Brew 1 (indigo),
+   * 2→Brew 2 (plum), 3→Brew 3 (olive), 4→Brew 4 (clay) in
+   * app/lib/vessel-hue.ts; 5–6 are the stable-hash pool for unpinned
+   * (dev-seed) vessels. Deliberately distant from accent/captain/mate and
+   * every status hue so a dot never reads as a badge.
+   */
+  --color-vessel-1: #5b64a8;
+  --color-vessel-2: #8a5f93;
+  --color-vessel-3: #6e7f46;
+  --color-vessel-4: #9c6b4e;
+  --color-vessel-5: #4f7f8b;
+  --color-vessel-6: #7c6a54;
+
   /* Status: ok / warn / bad, each with a soft bg + line (badges, banners) */
   --color-ok: #15803d;
   --color-ok-bg: #e7f4ec;

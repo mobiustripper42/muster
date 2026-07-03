@@ -380,6 +380,83 @@ read surfaces — Phase 9, more valuable as All-Shifts sunsets); per-vessel qual
 
 ---
 
+## Phase 9: Finish the production build — Shift Builder reconciliation + deferred fast-follows
+
+Take the healthy-pilot slice to a **fully-baked production interface**. Two threads: (a) the deferred
+Phase-8 fast-follows (#215/#224/#225/#226), and (b) the **design reconciliation + polish of both interfaces** — the admin Shift Builder
++ cockpit (a two-lens adopt/supersede punch-list, `docs/design/BUILDER-RECONCILIATION.md`, ruled on 2026-07-03),
+**the crew app** (its own reconciliation, 9.11), and real **navigation** for both (9.12). Headline builds: a **responsive dual-form-factor** builder (a real
+desktop-app AND a real mobile-app over one no-JS core — **DEC-085**), a **vessel/role identity palette**
+(color that encodes information — **DEC-086**), and the **civil send window** (a pre-launch ask-timing
+fix pulled from FUTURE_IDEAS). Wire the **MCP fast-fix loop** first (9.0) — it accelerates the phase.
+Source: `docs/design/BUILDER-RECONCILIATION.md`; DEC-085/086; FUTURE_IDEAS (civil-send). @architect gates
+on 9.5 (two-pane architecture) and the 9.6 palette.
+
+**Load-bearing decisions (Eric, 2026-07-03):**
+- **Two native experiences, one core (DEC-085).** Desktop = multi-pane master-detail (board + shift
+  detail side-by-side, `?sel=<id>`); mobile = drill-in / full-screen. Same functions, equal priority,
+  **not** a responsive squish. Shared server-rendered cockpit component; CSS picks the panes. No-JS held.
+- **Color encodes information (DEC-086).** A calm per-vessel identity hue (same-brand fleet legibility)
+  + the existing role hues, added to the DEC-021 locked palette because they carry a *value*, not
+  decoration. Identity ≠ risk (DEC-042 neutral-ink intact).
+- **Day-grouping blessed** (supersedes SPEC §2.3 "boat then day") — a weekend scans day-by-day (#122);
+  recorded in DEC-085 so it's decided, not drift.
+- **Civil send window is required before real crews** — asks must not fire at antisocial hours.
+
+| # | Task | Effort | Notes |
+|---|------|--------|-------|
+| 9.0 | **MCP fast-fix loop** — wire Neon MCP (read/diagnose the DB directly; prod writes stay gated behind migrations + out-of-band apply) + Vercel MCP (build logs / deploy status / env / preview URLs). Mostly operator config + a verify pass | 2 | Unblocks the phase; MCP is the sanctioned path around the no-outbound-HTTP limit |
+| 9.1 | **#215 retire lock scaffolding** — `lockShift`/`changedSinceReviewed` (`src/builder/lock.ts`), the cockpit "changed since reviewed" nudge, seed scenario-G lock; optional `Shift.lockedAt` prune migration | 3 | DEC-082 cleanup; the cockpit-half was confirmed still-shipping in the reconciliation |
+| 9.2 | **#226 split-side collapse notify** — DEC-084 fast-follow: notify crew dropped when a split side collapses (the per-side path merge's survivor-netting can't cover) | 3 | engine + test |
+| 9.3 | **#224 trainee → supernumerary seat** — staff a crew member into an added supernumerary seat from the cockpit | 3 | engine + cockpit action |
+| 9.4 | **#225 Twilio SMS adapter** — the real SMS class implementing the ask/ring/notice ports (DEC-MSG-1 swap); Drew's test number + env/secrets; 10DLC campaign number later | 5 | notice subsystem already exists; operator wires secrets |
+| 9.5 | **Two-pane responsive builder (DEC-085)** — extract the cockpit body into a shared server component; render it as both the `/admin/shift/[shiftId]` route and the desktop right pane; `?sel=` selection; mobile drill-in. **@architect gate**; likely splits 9.5a (extract + shell) / 9.5b (panes + mobile) | 8 | the long pole; the interesting bit is two native form factors over one no-JS core |
+| 9.6 | **Board bundle** — trip-line fix (multi-trip run-on, High), neutral-ink seat pips (per-role filled/open + dashed-+ trainee), vessel identity dot + palette (**DEC-086**, @architect), day-grouping bless | 5 | requires an `AllShiftsRow`/`deriveAllShifts` extension for pips |
+| 9.7 | **Cockpit / a11y bundle** — manning role `<select>` accessible name (WCAG, High), sub-target tap affordances, entry-aware/dropped back-link, `ok` token contrast (confirm ≥4.5:1) | 3 | all reconciliation "cheap-Med" items |
+| 9.8 | **Low polish bundle** — seat-card role glyph (uses the DEC-086 tokens), `aria-hidden` on admin decorative glyphs, unified content width (3xl), `text-faint` tertiary tier, whole-card click target, consistent section-header scale, Crewed-gate summary line, tenant+date in nav | 3 | the reconciliation Low tier, folded in (owner: finish it properly) |
+| 9.9 | **Civil send window** — split the staffing horizon into a **runway** (eligibility opens at trip−leadDays) and a tenant **civil send window** (e.g. 08:00–20:00) outside which asks don't fire; eligibility can open any hour, the ask fires at the next in-window moment. Supersedes #157's bare-number tuning. **@architect** (ask-timing change) | 5 | required-before-launch; per-crew learned timing stays a parked LOW stretch |
+| 9.10 | **Freshly-spawned-shift cue** — *(owner fork, decide at task start)* a muted "new in the last pull" line (DEC-083 import-diff idiom) **or** formally supersede the SPEC §2.3 "new block needing review" text | 2 | park-or-build |
+| 9.11 | **Crew app reconciliation + polish** — the crew counterpart to the Builder pass (an admin-only blind spot): same two-lens (frontend-design + ui-review) reconciliation on the crew surfaces (ask card, my-shifts, `/crew/open`, shift card, threads) vs the crew mockups (`crewapp.jsx`, `Crew App.html`, `assignmobile.jsx`, `mobile*`) → adopt/supersede punch-list → build. The mobile-first surface real crew live in; never reconciled. | 8 | may split at its reconciliation gate; DEC-085 dual-form-factor applies |
+| 9.12 | **Navigation** — a coherent **crew IA/nav** (brand-bound: minimal, no dashboard, "insultingly small" intact — **@architect gate**, it's in real tension with BRAND; crew has *no* nav today, 5 surfaces reached by ad-hoc inline links) + finish the **admin nav** (`admin-nav.tsx` is a flat 4-link bar missing `/admin/messages`) | 5 | both form factors |
+
+**Phase 9 total: ~55 pts** (pokered 2026-07-03; **+9.11/9.12** added — crew UI + nav were an admin-only blind spot. Owner: *"55 is fine, just a grind; splitting it would only be window dressing."* 9.5 + 9.11 expected to split at their gates). Suggested
+build order: **9.0 → 9.1 → 9.6/9.7/9.8 (admin design bundles) → 9.11 (crew) → 9.12 (nav) → 9.2/9.3 → 9.9 → 9.5 → 9.4**; 9.10 anywhere or cut.
+**Gates:** @architect before 9.5 (two-pane architecture), on the 9.6 palette (DEC-086 vs DEC-021), and on 9.12 crew nav (BRAND "insultingly small" tension).
+**Quality bar: fully-baked, both form factors first-class (no responsive squish).**
+
+**Not in Phase 9 (parked — production-need scan, 2026-07-03):** per-vessel qualification gate (no
+boat-checkouts for BrewBoat), re-import capacity-stomp override (Xola is truth for now). Both stay in
+FUTURE_IDEAS.
+
+---
+
+## Phase 10: Production Ops & Onboarding
+
+Everything between "the build is done" and "real crews are on it." Rollout safety, the multi-admin auth
+gap, a **full security audit**, support, crew onboarding, and end-user docs. Outline captured
+2026-07-03; **pokered formally at `/start-phase` Phase 10** (rough estimates below). Two items are hard
+**required-before-launch**: the admin entity (10.2) and the security audit (10.3).
+
+| # | Task | Effort | Notes |
+|---|------|--------|-------|
+| 10.1 | **Migration↔deploy safety** — resolve the **Neon preview→prod backdoor** (`main` deploys hit the prod DB) + a **pre-promote migration-ledger guardrail** (block `/promote-production` when prod's applied-migration set is behind the repo) | ~5 | FUTURE_IDEAS "Migration↔deploy decoupling"; rollout safety blocker |
+| 10.2 | **Admin entity — deprovision + roles** *(required)* — a real admin entity (add/remove individuals), granular roles (full / read-only / scoped), **per-person revoke** (today the only lever is rotating `SESSION_SECRET`, which kills everyone). **@architect + revises DEC-020** "no admin entity" | ~5 | FUTURE_IDEAS HIGH; required once a 2nd admin (Drew) exists |
+| 10.3 | **Security audit** *(required)* — full pre-production review: magic-link/session auth, the admin gate + new roles, input handling on all server actions, secrets/env, PII exposure (crew phones, the DM operator-visibility gap), rate-limits, the Neon backdoor | ~5 | pre-launch gate; `/security-review` + a manual pass |
+| 10.4 | **Staged rollout + rollback runbook** — who goes live first, the promote sequence, migration ordering (DEC-S009), a tested rollback | ~3 | |
+| 10.5 | **Support channel + report path** — a crew/operator-facing "something's wrong" path + a triage cadence (bug→issue flow already exists for the dev side) | ~3 | |
+| 10.6 | **Crew onboarding / intro message** — first-contact when a crew member is added (magic link + a plain "what is Muster / how to answer an ask"), plus the **durable re-entry interim** (session-aware root redirect + add-to-home-screen so crew get back to My Shifts) | ~3 | FUTURE_IDEAS "living link" interim |
+| 10.7 | **Operator cheatsheet + crew quick-start** — end-user docs (distinct from the dev `CHEATSHEET.md`); = **#68** operator manual | ~3 | ties to the counterintuitive-behavior explainer |
+
+**Phase 10 total: ~25 pts (rough — poker at start).** **Required-before-launch:** 10.2 + 10.3 (+ 10.1
+if real crews touch preview links).
+
+> **Post-launch priority #1 (VERY HIGH, not a launch gate):** the **reliability loop** — a shift
+> `Completed` transition + "did they show — 8/8" attendance capture (DEC-008 is where reliability data
+> is born). Without it, the ranked pool stays flat at cold-start forever. Owner: build first *after*
+> launch (seeds a Phase 11). FUTURE_IDEAS "Post-shift state".
+
+---
+
 ## Velocity Table
 
 Updated at end of each phase. Used by @pm to project remaining time.

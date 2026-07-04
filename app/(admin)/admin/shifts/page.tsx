@@ -240,14 +240,25 @@ export default async function AllShifts({
     );
   }
 
-  // Import-diff cue (DEC-083): canonical ids of split days the LATEST pull reshaped.
-  // Best-effort — a runs-table hiccup drops the cue, never the page.
+  // Import-diff cues (DEC-083 + its 9.10 amendment): from the LATEST pull, the
+  // canonical ids of split days it reshaped AND the shifts it freshly minted.
+  // Best-effort — a runs-table hiccup drops the cues, never the page.
   let changedDays = new Set<string>();
+  let newShifts = new Set<string>();
   try {
     const runs = await repo.listImportRuns(1);
-    changedDays = new Set(runs[0]?.summary.splitDaysChanged ?? []);
+    const latest = runs[0];
+    changedDays = new Set(latest?.summary.splitDaysChanged ?? []);
+    if (latest) {
+      const detail = await repo.getImportRun(latest.id);
+      newShifts = new Set(
+        (detail?.items ?? [])
+          .filter((i) => i.kind === "shift_created")
+          .map((i) => i.refId),
+      );
+    }
   } catch {
-    /* leave the cue off */
+    /* leave the cues off */
   }
 
   // The split/merge actions return here (Edit mode, same window + selection) —
@@ -342,6 +353,7 @@ export default async function AllShifts({
                     href={hrefFor(sp, mode, r.shiftId)}
                     selected={sel === r.shiftId}
                     changed={changedDays.has(canonicalIdOf(r))}
+                    isNew={newShifts.has(r.shiftId)}
                     canMerge={canMergeRow(r)}
                   />
                 ))}
@@ -506,6 +518,7 @@ function ShiftRow({
   href,
   selected,
   changed,
+  isNew,
   canMerge,
 }: {
   row: AllShiftsRow;
@@ -514,6 +527,8 @@ function ShiftRow({
   href: string;
   selected: boolean;
   changed: boolean;
+  /** The latest pull minted this shift (9.10) — a calm "it's new" fact. */
+  isNew: boolean;
   canMerge: boolean;
 }) {
   const fill =
@@ -607,6 +622,13 @@ function ShiftRow({
             <span className="text-xs text-muted">
               changed in the last pull — check the split
             </span>
+          )}
+          {isNew && (
+            // Freshly-spawned cue (9.10, DEC-083 amendment): the last pull
+            // minted this shift. A calm fact in the DEC-083 idiom — never the
+            // amber "new · review" approval demand DEC-082 killed; nothing to
+            // approve, the engine is already working it.
+            <span className="text-xs text-muted">new in the last pull</span>
           )}
         </Link>
         <div className="flex shrink-0 flex-col items-end gap-0.5">

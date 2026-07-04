@@ -35,6 +35,10 @@ test.describe("builder view — /admin/shifts (8.2a)", () => {
     // Barrel's 11:00 + 18:00 (7h apart) → the advisory cue; only the gappy day gets it.
     await expect(page.getByText(/could be two shifts/).first()).toBeVisible();
     await expect(page.getByText(/could be two shifts/)).toHaveCount(1);
+    // Import-diff cues (DEC-083 + 9.10) stay OFF with no import runs seeded —
+    // the dev seeds aren't pulls, so nothing here is "new in the last pull".
+    await expect(page.getByText(/new in the last pull/)).toHaveCount(0);
+    await expect(page.getByText(/changed in the last pull/)).toHaveCount(0);
   });
 });
 

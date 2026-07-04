@@ -5,6 +5,10 @@ import Link from "next/link";
  * opened DELIBERATELY from the cockpit (a link, not a toggle — no client JS).
  * Never on the At-Risk board, never pings: this is the weather, not the alarm.
  * Empty when open is the calm answer, said plainly.
+ *
+ * Host-agnostic (DEC-085): every href is supplied by the cockpit body, which
+ * knows its host — standalone rows link `/admin/shift/<id>`, pane rows link
+ * `/admin/shifts?…&sel=<id>` so the operator never falls out of two-pane.
  */
 
 export interface WarmingRowVM {
@@ -17,23 +21,27 @@ export interface WarmingRowVM {
   /** "67% answered" or null before any ask settles. */
   responseLabel: string | null;
   silent: number;
-  /** True when this row IS the shift the cockpit is showing. */
-  isCurrent: boolean;
+  /** Link to this row's cockpit (host-aware); null when this row IS the shift
+   *  the cockpit is showing. */
+  href: string | null;
 }
 
 export function WarmingPanel({
   rows,
   open,
-  basePath,
+  openHref,
+  closeHref,
 }: {
   rows: WarmingRowVM[];
   open: boolean;
-  /** The cockpit path the open/close links return to. */
-  basePath: string;
+  /** This cockpit with `warming=1` — the "Trending at-risk →" link. */
+  openHref: string;
+  /** This cockpit without the warming param — the "Hide" link. */
+  closeHref: string;
 }) {
   if (!open) {
     return (
-      <Link href={`${basePath}?warming=1`} className="text-xs font-semibold text-accent">
+      <Link href={openHref} className="text-xs font-semibold text-accent">
         Trending at-risk →
       </Link>
     );
@@ -44,7 +52,7 @@ export function WarmingPanel({
         <div>
           <h2 className="text-sm font-semibold text-ink">Trending at-risk</h2>
         </div>
-        <Link href={basePath} className="text-xs font-semibold text-accent">
+        <Link href={closeHref} className="text-xs font-semibold text-accent">
           Hide
         </Link>
       </div>
@@ -60,13 +68,10 @@ export function WarmingPanel({
               className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2"
             >
               <span className="text-sm text-ink">
-                {r.isCurrent ? (
+                {r.href === null ? (
                   <b>This shift</b>
                 ) : (
-                  <Link
-                    href={`/admin/shift/${encodeURIComponent(r.shiftId)}?warming=1`}
-                    className="font-semibold text-accent"
-                  >
+                  <Link href={r.href} className="font-semibold text-accent">
                     {r.vesselName} · {r.dateLabel} ↗
                   </Link>
                 )}

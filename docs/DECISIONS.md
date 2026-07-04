@@ -2042,6 +2042,19 @@ the Phase 8 Builder. Companion to DEC-086 (the identity palette the board uses).
 extraction + pane mechanics land at the Phase 9.5 @architect gate. Supersedes nothing; reframes the
 reconciliation's two-pane "superseded" call.
 
+**Amendment — pane mechanics (9.5 @architect gate, 2026-07-03).** The cockpit body extracts to
+`components/assignment/shift-cockpit.tsx` — an async server component owning its own data loads,
+rendering no Shell, returning error states as bare Notices; heading level is host-supplied (h1
+standalone, h2 in-pane). Hosts: the thin standalone route (deep links, mobile) and the board's right
+pane (`?sel=<shiftId>`). Mobile detail = the board route with the list `display:none`-hidden (one link
+per row; the dual-link variant rejected for duplicated interactive DOM). Cockpit action returns ride a
+hidden `ctx` **query-string** (never a form-supplied path — the split/merge idiom): `ctx` present →
+redirect to the fixed board path + `sel` + feedback code; absent → standalone. `sel` joins the board's
+filter-param set so mode/filter/split navigation preserves the open pane. Shell gains a literal `6xl`
+width used only when `sel` is set. Board and cockpit param namespaces stay disjoint by convention.
+Perf revisit trigger: board-pane renders stack cockpit reads on `deriveAllShifts`'s per-shift N+1 —
+fine at pilot scale, index before the window or fleet grows.
+
 ---
 
 ## DEC-086: Vessel + role identity palette — color that encodes information

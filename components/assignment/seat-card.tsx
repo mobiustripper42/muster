@@ -27,6 +27,10 @@ export interface CandidateVM {
 export interface SeatCardVM {
   seatId: string;
   shiftId: string;
+  /** Board filter query string when the cockpit is hosted in the board pane
+   *  (DEC-085) — rides every action form so the redirect returns to the pane.
+   *  Null when the standalone route is the host. */
+  ctx: string | null;
   roleName: string;
   /** The seat's role id — scopes the override picker to rated crew (DEC-064). */
   role: string;

@@ -10,6 +10,9 @@ export function HiddenIds({ vm, crewId }: { vm: SeatCardVM; crewId?: string }) {
       {crewId !== undefined && (
         <input type="hidden" name="crewMemberId" value={crewId} />
       )}
+      {/* Host context (DEC-085): present ⇒ the action redirects back to the
+          board pane; "" is a real value (default window). Absent ⇒ standalone. */}
+      {vm.ctx !== null && <input type="hidden" name="ctx" value={vm.ctx} />}
     </>
   );
 }

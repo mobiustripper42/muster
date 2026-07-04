@@ -216,10 +216,11 @@ export async function tick(
       if (bornFilling) result.bornFilling++;
       // Civil send window (DEC-088): outside vessel-local civil hours the
       // engine's own initiative defers — no drip, no blast, no Tier-2. State
-      // advance, the DEC-067 timeout sweep, and board-landing detection all
-      // already ran above; nothing queues. The first in-window tick fires
-      // naturally: `widenDue` is immediately true for an Open seat, and an
-      // Asked seat's drip interval elapsed overnight.
+      // advance and the DEC-067 timeout sweep already ran above; board-landing
+      // detection is a separate pass AFTER this loop, unaffected by any
+      // shift's continue. Nothing queues: the first in-window tick fires
+      // naturally (`widenDue` is immediately true for an Open seat, and an
+      // Asked seat's drip interval elapsed overnight).
       if (!withinCivilWindow(now, tz, opts?.civilWindow)) continue;
       // Tier-1 fan-out is a staged **drip** (DEC-063): per required seat, seed the
       // top-ranked candidate, then widen by one more each `dripMs` — earlier asks

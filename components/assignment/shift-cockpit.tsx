@@ -290,13 +290,19 @@ export async function ShiftCockpit({
           {view.trips.length === 0 ? (
             <p className="text-sm text-muted">No scheduled trips.</p>
           ) : (
-            <p className="flex flex-wrap gap-x-3 text-sm text-muted">
+            // Trip chips (operator QA on 9.5): each time·pax fact gets its own
+            // quiet chip — one wrapping line, but the eye can segment it. The
+            // "aboard total" tail is dropped for now (add back if missed).
+            <p className="flex flex-wrap gap-1.5 text-xs text-muted">
               {view.trips.map((t) => (
-                <span key={t.departureTime} className="whitespace-nowrap">
-                  <span className="font-mono">{fmt12(t.departureTime)}</span> · {t.pax} pax
+                <span
+                  key={t.departureTime}
+                  className="whitespace-nowrap rounded-md border border-line bg-bg px-1.5 py-0.5"
+                >
+                  <span className="font-mono text-ink">{fmt12(t.departureTime)}</span>
+                  {" "}· {t.pax} pax
                 </span>
               ))}
-              <span>— {view.paxTotal} aboard total</span>
             </p>
           )}
         </div>

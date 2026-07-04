@@ -38,7 +38,7 @@ export function SeatPips({ seats }: { seats: AllShiftsSeat[] }) {
             title={`${s.roleName} · ${s.filled ? "filled" : "open"}`}
             className={`flex h-[18px] w-[18px] items-center justify-center rounded-[5px] border text-[10px] font-bold uppercase ${
               s.filled
-                ? "border-muted bg-muted text-white"
+                ? `border-transparent text-white ${roleHueClass(s.roleName)}`
                 : "border-line bg-bg text-muted"
             }`}
           >

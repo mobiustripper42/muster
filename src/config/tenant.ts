@@ -196,3 +196,70 @@ export const DOORBELL_SHORT_NOTICE_MAX_CHARS: number = envPositiveInt(
   "DOORBELL_SHORT_NOTICE_MAX_CHARS",
   160,
 );
+
+// ── Civil send window (DEC-088, 9.9) ─────────────────────────────────────────
+
+/**
+ * A wall-clock "HH:MM" env knob with a fallback — the `envMs` poison-resistance
+ * posture: a malformed value degrades to the researched default rather than
+ * throwing (a thrown config error here would kill the cron route and silence
+ * the whole engine).
+ */
+function envWallClock(name: string, fallback: string): string {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  if (/^([01]\d|2[0-3]):[0-5]\d$/.test(raw)) return raw;
+  console.error(`[tenant] ${name}="${raw}" is not HH:MM — using ${fallback}`);
+  return fallback;
+}
+
+const CIVIL_DEFAULT_START = "08:00";
+const CIVIL_DEFAULT_END = "20:00";
+const civilStartRaw = envWallClock("CIVIL_SEND_START", CIVIL_DEFAULT_START);
+const civilEndRaw = envWallClock("CIVIL_SEND_END", CIVIL_DEFAULT_END);
+// Inverted/equal pair (incl. an overnight window like 22:00–06:00, unsupported
+// in the slice) degrades to the defaults as a PAIR — never throws.
+const civilInverted = civilStartRaw >= civilEndRaw;
+if (civilInverted) {
+  console.error(
+    `[tenant] CIVIL_SEND_START ${civilStartRaw} >= CIVIL_SEND_END ${civilEndRaw} — using ${CIVIL_DEFAULT_START}–${CIVIL_DEFAULT_END}`,
+  );
+}
+
+/**
+ * The civil send window (DEC-088): vessel-local wall-clock bounds outside which
+ * the engine's OWN initiative defers its ask sends (tick drip/blast/escalate,
+ * bail/vacate re-asks). Half-open [start, end) per the DEC-083 precedent —
+ * 08:00 fires, 20:00 doesn't. Operator-explicit sends are never gated.
+ */
+export const CIVIL_SEND_START: string = civilInverted
+  ? CIVIL_DEFAULT_START
+  : civilStartRaw;
+export const CIVIL_SEND_END: string = civilInverted
+  ? CIVIL_DEFAULT_END
+  : civilEndRaw;
+
+/** Vessel-local wall-clock "HH:MM" of an instant (DST-immune via Intl, DEC-032). */
+export function vesselClockOf(at: Date, tz: string = TENANT_TIMEZONE): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: tz,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(at);
+}
+
+/**
+ * Is `now` inside the civil send window, vessel-local? Pure given its inputs;
+ * `window` is injectable for tests (defaults to the tenant constants).
+ */
+export function withinCivilWindow(
+  now: Date,
+  tz: string = TENANT_TIMEZONE,
+  window?: { start: string; end: string },
+): boolean {
+  const clock = vesselClockOf(now, tz);
+  const start = window?.start ?? CIVIL_SEND_START;
+  const end = window?.end ?? CIVIL_SEND_END;
+  return clock >= start && clock < end;
+}

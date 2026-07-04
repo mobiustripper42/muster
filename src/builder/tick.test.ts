@@ -11,8 +11,10 @@ import type { CrewMember, Event, Shift, Vessel } from "../domain/entities.js";
 import { formShifts } from "./form-shifts.js";
 import { resolveShiftStateOnRead, tick } from "./tick.js";
 import {
+  bail,
   confirmSeat,
   expireAsks,
+  manualOverride,
   recordResponse,
 } from "../asks/ask-loop.js";
 import { SYSTEM_ACTOR_ID } from "../oracle/reliability-log.js";
@@ -624,5 +626,99 @@ describe("tick — Tier-1 drip (DEC-063)", () => {
     // The mate seat is provably untouched — escalate only acts on Open seats.
     expect(await repo.listAsksForSeat(mateSeat)).toHaveLength(1);
     expect((await repo.getSeat(mateSeat))!.state).toBe("Asked");
+  });
+});
+
+/**
+ * Civil send window (9.9/#235, DEC-088) — outside vessel-local civil hours the
+ * engine's own initiative defers; state advance, the DEC-067 sweep, and the
+ * next in-window pickup all keep working. Windows injected explicitly (the
+ * suite-wide env holds the default wide open); tz pinned UTC so the wall-clock
+ * IS the instant.
+ */
+describe("tick — civil send window (DEC-088)", () => {
+  const WINDOW = { start: "08:00", end: "20:00" };
+  const NIGHT = new Date("2026-06-30T03:00:00.000Z"); // 03:00 UTC — outside
+  const MORNING = new Date("2026-06-30T08:00:00.000Z"); // 08:00 — half-open start: fires
+  const CLOSE = new Date("2026-06-30T20:00:00.000Z"); // 20:00 — half-open end: defers
+  const civil = { tz: "UTC", civilWindow: WINDOW };
+
+  it("defers sends outside the window but still advances state (Pending → Filling, zero asks)", async () => {
+    await seedVesselEvent();
+    await addCaptain("cpt-a");
+    await formShifts(repo);
+
+    const r = await tick(repo, NIGHT, civil);
+    expect(await shiftState()).toBe("Filling"); // the runway is untouched…
+    expect(r.asksFired).toBe(0); // …only the sends defer
+    expect(r.nudgesFired).toBe(0);
+    expect(await seatState()).toBe("Open");
+  });
+
+  it("the first in-window tick fires what the night deferred — no queue needed", async () => {
+    await seedVesselEvent();
+    await addCaptain("cpt-a");
+    await formShifts(repo);
+    await tick(repo, NIGHT, civil);
+
+    const r = await tick(repo, MORNING, civil);
+    expect(r.asksFired).toBe(1); // widenDue is immediate for an Open seat
+    expect(await seatState()).toBe("Asked");
+  });
+
+  it("boundaries are half-open [start, end): 08:00 fires, 20:00 does not", async () => {
+    await seedVesselEvent();
+    await addCaptain("cpt-a");
+    await formShifts(repo);
+    expect((await tick(repo, CLOSE, civil)).asksFired).toBe(0);
+    expect((await tick(repo, MORNING, civil)).asksFired).toBe(1);
+  });
+
+  it("a night-deferred bail is re-crewed by the first in-window tick via the drip", async () => {
+    await seedVesselEvent();
+    const a = await addCaptain("cpt-a");
+    await addCaptain("cpt-b");
+    await formShifts(repo);
+    const seat = (await repo.listSeatsForShift(SHIFT))[0]!;
+    await manualOverride(repo, seat.id, a, AFTER); // Confirmed
+
+    // 23:00 bail (days before the fills-by deadline — drip, not urgent-blast):
+    // logs + clears, re-ask deferred → seat rests Open (DEC-088).
+    const night = new Date("2026-06-25T23:00:00.000Z");
+    const out = await bail(repo, seat.id, night, 60_000, undefined, undefined, civil);
+    expect(out.seatState).toBe("Open");
+    expect(out.reAsks).toEqual([]);
+
+    const r = await tick(repo, new Date("2026-06-26T08:30:00.000Z"), civil);
+    expect(r.asksFired).toBe(1); // one widen — the deferred re-crew rides DEC-063
+    const asks = await repo.listAsksForSeat(seat.id);
+    // The drip seeds the TOP-ranked candidate: the fresh bail dents cpt-a's
+    // score, so cpt-b leads. (An override-placed bailer has no ask history, so
+    // their exclusion is score-driven here, not structural — a live inline
+    // re-ask pins the exclusion; the deferred path leans on ranking.)
+    expect(asks.map((x) => String(x.crewMemberId))).toEqual(["cpt-b"]);
+  });
+
+  it("the DEC-067 silent sweep still runs outside the window", async () => {
+    await seedVesselEvent();
+    await addCaptain("cpt-a");
+    await addCaptain("cpt-b");
+    await formShifts(repo);
+    // Fire in-window, then let the timeout elapse into the night.
+    await tick(repo, MORNING, civil);
+    const lateNight = new Date("2026-06-30T22:30:00.000Z"); // 2.5h later, outside
+    const r = await tick(repo, lateNight, {
+      ...civil,
+      silentTimeoutMinutes: 120,
+    });
+    // The unanswered ask expired even though no NEW asks fired this tick:
+    // silent = respondedAt stamped with NO response, and the ghost is logged.
+    expect(r.asksFired).toBe(0);
+    const seat = (await repo.listSeatsForShift(SHIFT))[0]!;
+    const asks = await repo.listAsksForSeat(seat.id);
+    expect(asks[0]!.respondedAt).toBeDefined();
+    expect(asks[0]!.response).toBeUndefined();
+    const events = await repo.reliabilityEventsFor(asks[0]!.crewMemberId);
+    expect(events.some((e) => e.type === "ask_ignored")).toBe(true);
   });
 });

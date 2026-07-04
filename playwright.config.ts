@@ -67,6 +67,10 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     env: {
       DATABASE_URL: TEST_DATABASE_URL,
+      // Civil send window (DEC-088) wide open: e2e runs at arbitrary wall-clock
+      // times, and the bail/ask flows it drives must not defer past 20:00.
+      CIVIL_SEND_START: "00:00",
+      CIVIL_SEND_END: "23:59",
       // Dev-default secret is fine for tests; pin it so cookies stay valid across
       // a server restart within a run.
       SESSION_SECRET: process.env.SESSION_SECRET ?? "e2e-test-secret",

@@ -5,7 +5,7 @@
  * resolves each one's state through the horizon layer (`resolveShiftState`,
  * DEC-022), persists any change, and — for a shift newly crossing into
  * `Filling` — **eagerly fires Tier-1 asks** by reusing the ask loop's
- * `broadcastAsk`. The advance must be eager because `Pending`→`Filling` kicks off
+ * `widenAsk`. The advance must be eager because `Pending`→`Filling` kicks off
  * asking (SPEC §1.1); a lazy on-read derivation could show the state but never
  * send the ask.
  *
@@ -31,6 +31,7 @@ import {
   logBoardLanded,
   SYSTEM_ACTOR_ID,
 } from "../oracle/reliability-log.js";
+import { withinCivilWindow } from "../config/tenant.js";
 import {
   ASK_DRIP_INTERVAL_MINUTES,
   ASK_SILENT_TIMEOUT_MINUTES,
@@ -146,6 +147,8 @@ export async function tick(
     tz?: string;
     dripIntervalMinutes?: number;
     silentTimeoutMinutes?: number;
+    /** Test injection — defaults to the tenant CIVIL_SEND_* constants (DEC-088). */
+    civilWindow?: { start: string; end: string };
   },
 ): Promise<TickResult> {
   const leadDays = opts?.leadDays ?? STAFFING_HORIZON_LEAD_DAYS;
@@ -211,6 +214,13 @@ export async function tick(
 
     if (next === "Filling") {
       if (bornFilling) result.bornFilling++;
+      // Civil send window (DEC-088): outside vessel-local civil hours the
+      // engine's own initiative defers — no drip, no blast, no Tier-2. State
+      // advance, the DEC-067 timeout sweep, and board-landing detection all
+      // already ran above; nothing queues. The first in-window tick fires
+      // naturally: `widenDue` is immediately true for an Open seat, and an
+      // Asked seat's drip interval elapsed overnight.
+      if (!withinCivilWindow(now, tz, opts?.civilWindow)) continue;
       // Tier-1 fan-out is a staged **drip** (DEC-063): per required seat, seed the
       // top-ranked candidate, then widen by one more each `dripMs` — earlier asks
       // stay open and accumulate, first-acceptable-yes-wins still decides. Inside

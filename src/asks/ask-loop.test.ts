@@ -661,3 +661,60 @@ describe("resolveProtocol", () => {
     ).toBe("assign_then_confirm");
   });
 });
+
+/**
+ * Civil send window on the inline re-ask paths (9.9/#235, DEC-088) — outside
+ * civil hours a bail/vacate still commits (log, occupant cleared) but the
+ * engine's re-ask defers: the seat rests **Open** (never a fake `Bailed` →
+ * AtRisk), and the next in-window tick's drip re-crews it. Windows injected
+ * (the suite env holds the default wide open); tz UTC so wall-clock = instant.
+ */
+describe("bail/vacate — civil send window deferral (DEC-088)", () => {
+  const NIGHT_OPTS = {
+    tz: "UTC",
+    civilWindow: { start: "08:00", end: "20:00" },
+  };
+  // T0 is 2026-06-25T12:00Z in this suite; 12:00 is inside — build a night clock.
+  const NIGHT = new Date("2026-06-25T23:00:00.000Z");
+
+  async function confirmFirst(seatId: SeatId, crewId: CrewMemberId) {
+    const ask = await assignPerson(repo, seatId, crewId, T0);
+    await recordResponse(repo, ask!.id, "accepted", later(1000));
+    await confirmSeat(repo, seatId, later(2000));
+  }
+
+  it("a night bail logs + clears but DEFERS the re-ask: seat rests Open, zero sends", async () => {
+    const a = await addCrew("crew-a");
+    await addCrew("crew-b"); // a live pool — the deferral, not exhaustion, is why nothing fires
+    const [seatId] = await addShift(1);
+    await confirmFirst(seatId!, a);
+
+    const out = await bail(repo, seatId!, NIGHT, 90 * 60_000, undefined, undefined, NIGHT_OPTS);
+    expect(out.seatState).toBe("Open"); // NOT Bailed (nobody's exhausted), NOT Asked (no sends)
+    expect(out.reAsks).toEqual([]);
+    const seat = (await repo.getSeat(seatId!))!;
+    expect(seat.assignedCrewMemberId).toBeUndefined();
+    expect(seat.acquiredVia).toBeUndefined();
+    expect(await types(a)).toContain("shift_bailed"); // the log is NOT deferred
+  });
+
+  it("an exhausted-pool night bail still rests Bailed → the honest AtRisk (no sends involved)", async () => {
+    const a = await addCrew("crew-a"); // only captain — pool exhausts
+    const [seatId] = await addShift(1);
+    await confirmFirst(seatId!, a);
+    const out = await bail(repo, seatId!, NIGHT, 90 * 60_000, undefined, undefined, NIGHT_OPTS);
+    expect(out.seatState).toBe("Bailed");
+  });
+
+  it("a night vacate takes the rest-Open branch: no re-asks fired", async () => {
+    const a = await addCrew("crew-a");
+    await addCrew("crew-b");
+    const [seatId] = await addShift(1);
+    await confirmFirst(seatId!, a);
+
+    const out = await vacateSeat(repo, seatId!, NIGHT, a, NIGHT_OPTS);
+    expect(out.seatState).toBe("Open");
+    expect(out.reAsks).toEqual([]);
+    expect(await types(a)).not.toContain("shift_bailed"); // vacate stays penalty-free
+  });
+});

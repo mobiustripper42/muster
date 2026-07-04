@@ -51,6 +51,12 @@ export interface ImportRunSummary {
    * changed (DEC-083) — the Builder View's "changed in the last pull — check the
    * split" cue reads the latest run's list. Empty on most runs. */
   splitDaysChanged: string[];
+  /** Shift ids this pull MINTED (9.10, DEC-083 amendment) — the Builder View's
+   * "new in the last pull" cue. Per-side raw ids (a born side B is `{id}-b`).
+   * Same latest-run-transient posture as `splitDaysChanged`; the identity also
+   * lives in the run's `shift_created` items — this list just spares the board
+   * a second per-render item fetch. Absent on pre-9.10 runs → read as []. */
+  createdShiftIds?: string[];
 }
 
 export interface ImportRun {

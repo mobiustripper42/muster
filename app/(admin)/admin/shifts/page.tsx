@@ -240,23 +240,16 @@ export default async function AllShifts({
     );
   }
 
-  // Import-diff cues (DEC-083 + its 9.10 amendment): from the LATEST pull, the
-  // canonical ids of split days it reshaped AND the shifts it freshly minted.
-  // Best-effort — a runs-table hiccup drops the cues, never the page.
+  // Import-diff cues (DEC-083 + its 9.10 amendment): from the LATEST pull's
+  // summary, the canonical ids of split days it reshaped AND the raw ids of
+  // shifts it freshly minted (`createdShiftIds` absent on pre-9.10 runs → []).
+  // One read, best-effort — a runs-table hiccup drops the cues, never the page.
   let changedDays = new Set<string>();
   let newShifts = new Set<string>();
   try {
     const runs = await repo.listImportRuns(1);
-    const latest = runs[0];
-    changedDays = new Set(latest?.summary.splitDaysChanged ?? []);
-    if (latest) {
-      const detail = await repo.getImportRun(latest.id);
-      newShifts = new Set(
-        (detail?.items ?? [])
-          .filter((i) => i.kind === "shift_created")
-          .map((i) => i.refId),
-      );
-    }
+    changedDays = new Set(runs[0]?.summary.splitDaysChanged ?? []);
+    newShifts = new Set(runs[0]?.summary.createdShiftIds ?? []);
   } catch {
     /* leave the cues off */
   }

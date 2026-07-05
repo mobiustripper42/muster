@@ -144,6 +144,19 @@ The shell's `## PR Workflow` is the baseline. Muster adds:
 
 Follows the shell. SemVer in `package.json` (created at task 0.3), tag on `main`, bumps only at `/retro`. The `<VersionTag />` component is **available but not yet wired** — pull `templates/VersionTag.tsx` from seeds into a layout when a deployed build needs the stamp; until then the version lives in `package.json` + git tags.
 
+## MCP fast-fix loop (9.0/#230)
+
+Project-scoped MCP servers in `.mcp.json` (checked in): **Neon** (`https://mcp.neon.tech/mcp`) and
+**Vercel** (`https://mcp.vercel.com`), both remote/OAuth. One-time per machine: run `/mcp` in a
+session and authenticate each (browser OAuth). After that any session can read prod state directly —
+Neon: query/diagnose the production DB; Vercel: build logs, deploy status, env vars, preview URLs.
+
+**Write discipline (the DEC-S009 posture, MCP edition):** Neon MCP can execute arbitrary SQL — treat
+it as **read/diagnose only**. Schema changes STILL go through `db/migrations/*.sql` applied by the
+operator (see Migration Protocol); ad-hoc prod data fixes are the operator's explicit call, never a
+silent Claude action. If a provider URL ever 404s, check that provider's MCP docs — the endpoints are
+theirs to move.
+
 ## Workflow Notes (project)
 
 - **Webpack, not Turbopack** (DEC-020) — `next build --webpack` / `next dev --webpack`. The core's NodeNext `.js`→`.ts` `extensionAlias` is unsupported by Turbopack.

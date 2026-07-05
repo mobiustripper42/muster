@@ -302,9 +302,9 @@ function EmailStep({ err }: { err?: string }) {
           className={inputClass}
         />
         <SmsConsentBlock />
-        <button type="submit" className={primaryButtonClass}>
+        <SubmitButton className={primaryButtonClass}>
           Email me a code
-        </button>
+        </SubmitButton>
       </form>
     </div>
   );
@@ -336,16 +336,16 @@ function CodeStep({ email, err }: { email: string; err?: string }) {
           placeholder="123456"
           className={`${inputClass} tracking-[0.5em]`}
         />
-        <button type="submit" className={primaryButtonClass}>
+        <SubmitButton className={primaryButtonClass}>
           Sign in
-        </button>
+        </SubmitButton>
       </form>
       {/* Re-mint: the email rides as a hidden field (the cookie also holds it). */}
       <form action={requestLoginCode}>
         <input type="hidden" name="email" value={email} />
-        <button type="submit" className="text-sm text-muted underline">
+        <SubmitButton className="text-sm text-muted underline">
           Send a new code
-        </button>
+        </SubmitButton>
       </form>
     </div>
   );
@@ -493,9 +493,9 @@ function CrewApp({
           phones with a standing 14-day session. No flag; it only clears the
           caller's own cookie. */}
       <form action={signOut} className="pt-2">
-        <button type="submit" className="text-xs text-muted underline">
+        <SubmitButton className="text-xs text-muted underline">
           Sign out
-        </button>
+        </SubmitButton>
       </form>
 
       <VersionTag />

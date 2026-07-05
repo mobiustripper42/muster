@@ -7,9 +7,12 @@ import { deriveWarming } from "@core/admin/warming.js";
 import { asId } from "@core/domain/ids.js";
 import { resolveShiftStateOnRead } from "@core/builder/tick.js";
 import { changedSinceReviewed } from "@core/builder/lock.js";
+import { evaluateTraineeCandidate } from "@core/oracle/eligibility.js";
+import { committedDatesByCrew } from "@core/oracle/oracle.js";
 import { TENANT_TIMEZONE } from "@core/config/tenant.js";
 import { cockpitHref } from "../../app/lib/cockpit-href";
 import { fmtDeadline, fmt12 } from "../../app/lib/format";
+import { OPERATOR_CREW_MEMBER_ID } from "../../app/lib/operator";
 import { getRepo } from "../../app/lib/repo";
 import { TENANT_ID } from "../../app/lib/tenant";
 import { Notice } from "../ui/notice";
@@ -55,6 +58,10 @@ const ACT_ERROR_COPY: Record<string, string> = {
   not_rated: "They’re not rated for this seat’s role.",
   seat_gone: "That seat is gone — here’s the fresh state.",
   unavailable: "Couldn’t reach the schedule — nothing was changed. Try again.",
+  trainee_ineligible:
+    "They can’t ride this shift — inactive, MMC lapsed, on PTO, or already committed that day.",
+  trainee_seat:
+    "That’s a trainee seat — take them off from the Manning section below.",
 };
 
 /** The cockpit's feedback/toggle params. Shares a URL with the board's
@@ -71,6 +78,8 @@ export type CockpitSearch = {
   act_error?: string;
   manning_added?: string;
   manning_removed?: string;
+  trainee_on?: string;
+  trainee_off?: string;
 };
 
 export async function ShiftCockpit({
@@ -98,6 +107,7 @@ export async function ShiftCockpit({
   let warmingRows: WarmingRowVM[] = [];
   let overrideSeats: OverrideSeatVM[] = [];
   let roleOptions: { id: string; name: string }[] = [];
+  let traineeOptions: { id: string; name: string }[] = [];
   let changedSinceLock = false;
   const warmingOpen = sp.warming === "1";
   try {
@@ -141,12 +151,52 @@ export async function ShiftCockpit({
     roleOptions = roleTypes.map((r) => ({ id: String(r.id), name: r.name }));
     overrideSeats = allSeats
       .filter((s) => s.override)
-      .map((s) => ({
-        seatId: String(s.id),
-        roleName: roleName.get(String(s.role)) ?? String(s.role),
-        kind: s.kind,
-        occupied: s.state !== "Open",
-      }));
+      .map((s) => {
+        const occupantId = s.assignedCrewMemberId
+          ? String(s.assignedCrewMemberId)
+          : null;
+        return {
+          seatId: String(s.id),
+          roleName: roleName.get(String(s.role)) ?? String(s.role),
+          kind: s.kind,
+          occupied: s.state !== "Open",
+          occupantId,
+          occupantName: occupantId ? crew.get(occupantId)?.name ?? null : null,
+        };
+      });
+    // Trainee picker scope (9.3, DEC-087): the trainee rule set — active +
+    // valid MMC + not on PTO + not double-booked (which also excludes this
+    // shift's own confirmed crew) — with NO rating requirement. Computed only
+    // when an unstaffed trainee seat is actually on screen; the action
+    // re-checks server-side, so this scope is convenience, not the guard.
+    // The operator is UI noise, not an eligibility rule — excluded here only.
+    if (overrideSeats.some((s) => s.kind === "supernumerary" && !s.occupied)) {
+      const shiftDate = view.date; // narrowed here; the closure below can't re-narrow the `let`
+      const committed = await committedDatesByCrew(repo);
+      const candidates = await Promise.all(
+        crewMembers
+          .filter((c) => String(c.id) !== String(OPERATOR_CREW_MEMBER_ID))
+          .map(async (c) => {
+            const [credentials, ptoWindows] = await Promise.all([
+              repo.listCredentialsForCrew(c.id),
+              repo.listPtoWindowsForCrew(c.id),
+            ]);
+            const v = evaluateTraineeCandidate(
+              {
+                crew: c,
+                credentials,
+                ptoWindows,
+                committedDates: committed.get(c.id) ?? new Set<string>(),
+              },
+              shiftDate,
+            );
+            return v.eligible ? { id: String(c.id), name: c.name } : null;
+          }),
+      );
+      traineeOptions = candidates.filter(
+        (c): c is { id: string; name: string } => c !== null,
+      );
+    }
     if (warmingOpen) {
       const vessels = new Map(
         (await repo.listVessels()).map((v) => [v.id, v.name]),
@@ -191,6 +241,8 @@ export async function ShiftCockpit({
   const overrode = nameOf(sp.overrode);
   const removed = nameOf(sp.removed);
   const bailLogged = nameOf(sp.bail_logged);
+  const traineeOn = nameOf(sp.trainee_on);
+  const traineeOff = nameOf(sp.trainee_off);
   const actError = sp.act_error ? ACT_ERROR_COPY[sp.act_error] ?? null : null;
 
   const hoursToTrip =
@@ -319,6 +371,16 @@ export async function ShiftCockpit({
         </Notice>
       )}
       {sp.manning_removed === "1" && <Notice tone="ok">Removed the added seat.</Notice>}
+      {traineeOn && (
+        <Notice tone="ok">
+          {traineeOn} is riding this shift as a trainee — they’ve been told.
+        </Notice>
+      )}
+      {traineeOff && (
+        <Notice tone="ok">
+          Took {traineeOff} off the trainee seat — no penalty, they’ve been told.
+        </Notice>
+      )}
       {actError && <Notice tone="bad">{actError}</Notice>}
 
       <div className="flex flex-col gap-3">
@@ -351,6 +413,7 @@ export async function ShiftCockpit({
         ctx={ctx}
         overrideSeats={overrideSeats}
         roleOptions={roleOptions}
+        traineeOptions={traineeOptions}
       />
 
       <WarmingPanel

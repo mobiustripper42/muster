@@ -500,8 +500,11 @@ export interface DerivedBailResult {
   /**
    * null = the bail landed. "raced" = the seat changed underfoot (gone, not
    * Confirmed, or a different occupant than the caller validated) — reload.
+   * "trainee_seat" = a supernumerary ride (DEC-087): a trainee stepping off is
+   * not a bail — no reliability event, no re-ask; `unstaffTraineeSeat` is the
+   * path (the caller maps this to "tell the office" copy).
    */
-  code: "raced" | null;
+  code: "raced" | "trainee_seat" | null;
   outcome?: BailOutcome;
 }
 
@@ -527,6 +530,11 @@ export async function bailWithDerivedLateness(
   tz: string = TENANT_TIMEZONE,
 ): Promise<DerivedBailResult> {
   const seat = await repo.getSeat(seatId);
+  // Trainee seats never take the bail rail (DEC-087): the ask engine ignores
+  // them, so re-asking is wrong, and a ride isn't a reliability commitment, so
+  // logging shift_bailed is wrong too. Checked BEFORE the raced conditions so
+  // both the crew self-drop and the admin report get the specific code.
+  if (seat && seat.kind === "supernumerary") return { code: "trainee_seat" };
   if (
     !seat ||
     seat.state !== "Confirmed" ||
@@ -595,6 +603,12 @@ export async function vacateSeat(
   expectedOccupant?: CrewMemberId,
 ): Promise<VacateOutcome> {
   const seat = await repo.getSeat(seatId);
+  // DEC-087 rail guard: vacating re-asks via the kind-blind rankedEligible,
+  // which must never fire for a trainee seat — `unstaffTraineeSeat` is the
+  // no-re-ask path. Edges guard first; this is the backstop.
+  if (seat && seat.kind === "supernumerary") {
+    throw new Error(`seat ${seatId} is a trainee seat — unstaff it, don't vacate`);
+  }
   if (
     !seat ||
     seat.state !== "Confirmed" ||

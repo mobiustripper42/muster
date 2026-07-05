@@ -55,7 +55,12 @@ export async function bailFromSeat(formData: FormData): Promise<void> {
         new Date(),
         asId<"CrewMemberId">(subject.id),
       );
-      errorCode = out.code === "raced" ? "stale" : null;
+      errorCode =
+        out.code === "raced"
+          ? "stale"
+          : out.code === "trainee_seat"
+            ? "trainee_seat" // DEC-087: a ride isn't a bail — the office unstaffs
+            : null;
       // Edge channel wiring (DEC-030): the bail's re-asks → the pilot outbox.
       await forwardToOutbox(out.outcome?.reAsks);
     }

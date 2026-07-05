@@ -17,6 +17,7 @@ import {
 import { getRepo } from "../../lib/repo";
 import { TENANT_ID } from "../../lib/tenant";
 import { fmt12 } from "../../lib/format";
+import { vesselHueClass } from "../../lib/vessel-hue";
 import { requestLoginCode, respondToAsk, signOut, verifyLoginCode } from "./actions";
 import { SubmitButton } from "../../../components/ui/submit-button";
 
@@ -176,9 +177,17 @@ function ShiftWhenWhat({ s }: { s: CrewAppView["shifts"][number] }) {
         <span className="font-semibold text-ink">{fmtDate(s.date)}</span>
         {window && <span className="font-mono text-sm text-ink">{window}</span>}
       </span>
-      <span className="text-sm text-muted">
-        {s.vesselName} · {s.roleName}
-        {crew ? ` · ${crew}` : ""}
+      <span className="flex flex-wrap items-center gap-x-1.5 text-sm text-muted">
+        {/* DEC-086 vessel identity dot — which boat, at a glance across a
+            mixed-vessel list. aria-hidden; the vessel name is the accessible answer. */}
+        <span
+          className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${vesselHueClass(s.vesselId)}`}
+          aria-hidden
+        />
+        <span>
+          {s.vesselName} · {s.roleName}
+          {crew ? ` · ${crew}` : ""}
+        </span>
       </span>
     </div>
   );
@@ -208,6 +217,7 @@ function SignedOut({
       <Shell>
         <h1 className="text-lg font-semibold text-ink">Muster</h1>
         <Notice>{message}</Notice>
+        <VersionTag />
       </Shell>
     );
   }
@@ -221,6 +231,7 @@ function SignedOut({
       ) : (
         <EmailStep err={err} />
       )}
+      <VersionTag />
     </Shell>
   );
 }
@@ -356,8 +367,8 @@ function CredentialLine({ nudge }: { nudge: NonNullable<CrewAppView["credentialN
   const date = fmtDate(nudge.expiry);
   const copy =
     nudge.health === "expired"
-      ? `Your ${nudge.type} expired ${date} — you won’t be asked for shifts until you renew it.`
-      : `Your ${nudge.type} expires ${date} — renew it to keep getting asked for shifts.`;
+      ? `Your ${nudge.type} expired ${date} — you won’t be asked for shifts until it’s renewed. Renew it and the office will update your record.`
+      : `Your ${nudge.type} expires ${date} — renew it to keep getting asked for shifts. The office updates your record once you have.`;
   return (
     <p className="rounded-card border border-warn-line bg-warn-bg px-4 py-3 text-sm text-warn">
       {copy}
@@ -450,7 +461,10 @@ function CrewApp({
           My shifts
         </h2>
         {view.shifts.length === 0 ? (
-          <Notice>No upcoming shifts.</Notice>
+          <Notice>
+            Nothing booked right now — that’s normal. You’ll get a ping when
+            there’s a trip for you.
+          </Notice>
         ) : (
           view.shifts.map((s) =>
             // A claimed-but-unconfirmed seat (#4) has no shift card yet (the card

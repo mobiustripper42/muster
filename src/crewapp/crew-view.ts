@@ -50,6 +50,10 @@ export interface MyShiftView {
   shiftId: string;
   seatId: string;
   vesselName: string;
+  /** Vessel id — feeds the DEC-086 identity hue dot on the My-shifts row so a
+   *  mixed-vessel list is legible at a glance. Identity only, `aria-hidden` in
+   *  the UI; `vesselName` stays the accessible answer. */
+  vesselId: string;
   roleName: string;
   /** ISO-8601 date (vessel-local day). */
   date: string;
@@ -225,6 +229,7 @@ export async function buildCrewAppView(
       shiftId: shift.id,
       seatId: seat.id,
       vesselName: await vesselName(repo, shift.vesselId),
+      vesselId: shift.vesselId,
       roleName: await roleName(repo, seat.role),
       date: shift.date,
       ...window,

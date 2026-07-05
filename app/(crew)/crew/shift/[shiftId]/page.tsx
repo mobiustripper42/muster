@@ -1,7 +1,8 @@
-import { AppLink } from "../../../../../components/ui/app-link";
+import { BackLink } from "../../../../../components/ui/back-link";
 import { buildShiftCard, type ShiftCardView } from "@core/crewapp/shift-card.js";
 import { asId } from "@core/domain/ids.js";
 import { Notice } from "../../../../../components/ui/notice";
+import { RoleGlyph } from "../../../../../components/ui/role-glyph";
 import { Shell } from "../../../../../components/ui/shell";
 import { SubmitButton } from "../../../../../components/ui/submit-button";
 import { readSubject } from "../../../../lib/auth";
@@ -81,7 +82,7 @@ export default async function ShiftCardPage({
   if (!card) {
     return (
       <Shell>
-        <BackLink />
+        <BackLink href="/crew">Shifts</BackLink>
         <Notice>That shift isn’t on your list.</Notice>
       </Shell>
     );
@@ -89,14 +90,6 @@ export default async function ShiftCardPage({
 
   const bailError = sp.bail_error ? BAIL_ERROR_COPY[sp.bail_error] ?? null : null;
   return <Card card={card} shiftId={shiftId} bailError={bailError} />;
-}
-
-function BackLink() {
-  return (
-    <AppLink href="/crew" className="text-sm font-semibold text-accent">
-      ‹ Shifts
-    </AppLink>
-  );
 }
 
 /** Standalone dock pin (the shared-dock case) — prominent, above the manifest. */
@@ -128,7 +121,7 @@ function Card({
   const firstDeparture = card.events[0]?.departureTime;
   return (
     <Shell>
-      <BackLink />
+      <BackLink href="/crew">Shifts</BackLink>
       {bailError && <Notice tone="bad">{bailError}</Notice>}
 
       <header className="flex flex-col">
@@ -163,7 +156,7 @@ function Card({
             am I free" sits with "when do I report". */}
         <div className="col-span-2 rounded-card border border-line bg-card px-4 py-3">
           <div className="text-xs font-semibold uppercase tracking-wide text-muted">
-            Shift End <span className="font-normal normal-case text-faint">· off the clock</span>
+            Shift End <span className="font-normal normal-case text-muted">· off the clock</span>
           </div>
           <div className="font-mono text-2xl font-semibold text-ink">
             {card.shiftEndTime ? fmt12(card.shiftEndTime) : "—"}
@@ -182,22 +175,30 @@ function Card({
           {card.coCrew.map((c) => (
             <div
               key={c.crewMemberId}
-              className="flex items-center justify-between rounded-card border border-line bg-card px-4 py-3"
+              className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-3"
             >
-              <span className="font-semibold text-ink">{c.name}</span>
+              {/* Role glyph (DEC-086, aria-hidden) + name + role — who's running the
+                  boat at a glance. Name/role take their own row above the actions so
+                  the three contact buttons never squeeze the name at 375px; truncate
+                  is the safety net for an unusually long name. */}
+              <span className="flex min-w-0 items-center gap-2">
+                <RoleGlyph roleName={c.role} />
+                <span className="truncate font-semibold text-ink">{c.name}</span>
+                <span className="shrink-0 text-xs capitalize text-muted">· {c.role}</span>
+              </span>
               {/* Call/Text expose the phone (SPEC §2.6.3); Message is the in-app DM
                   — the §6 number-privacy channel, additive, not a replacement. */}
-              <span className="flex flex-wrap items-center justify-end gap-2">
+              <span className="flex flex-wrap items-center gap-2">
                 <a
                   href={tel(c.phone)}
-                  className="inline-flex min-h-[44px] items-center rounded-lg border border-line bg-bg px-3 font-semibold text-accent"
+                  className="inline-flex min-h-[44px] items-center rounded-card border border-line bg-bg px-3 font-semibold text-accent"
                   aria-label={`Call ${c.name}`}
                 >
                   Call
                 </a>
                 <a
                   href={sms(c.phone)}
-                  className="inline-flex min-h-[44px] items-center rounded-lg border border-line bg-bg px-3 font-semibold text-accent"
+                  className="inline-flex min-h-[44px] items-center rounded-card border border-line bg-bg px-3 font-semibold text-accent"
                   aria-label={`Text ${c.name}`}
                 >
                   Text
@@ -205,7 +206,7 @@ function Card({
                 <form action={startDm} className="inline-flex">
                   <input type="hidden" name="crewMemberId" value={c.crewMemberId} />
                   <SubmitButton
-                    className="inline-flex min-h-[44px] items-center rounded-lg border border-accent bg-accent px-3 font-semibold text-white"
+                    className="inline-flex min-h-[44px] items-center rounded-card border border-accent bg-accent px-3 font-semibold text-white"
                     aria-label={`Message ${c.name}`}
                   >
                     Message
@@ -220,7 +221,7 @@ function Card({
       <section className="flex flex-col gap-2">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">
           Manifest{" "}
-          <span className="font-normal normal-case text-faint">
+          <span className="font-normal normal-case text-muted">
             · different guests each trip
           </span>
         </h2>
@@ -308,7 +309,7 @@ function Card({
         <form action={bailFromSeat}>
           <input type="hidden" name="seatId" value={card.mySeatId} />
           <input type="hidden" name="shiftId" value={shiftId} />
-          <SubmitButton className="min-h-[44px] w-full rounded-lg border border-bad-line bg-bad-bg px-4 font-semibold text-bad">
+          <SubmitButton className="min-h-[44px] w-full rounded-card border border-bad-line bg-bad-bg px-4 font-semibold text-bad">
             Drop this shift
           </SubmitButton>
         </form>

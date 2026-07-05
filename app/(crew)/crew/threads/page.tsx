@@ -1,4 +1,5 @@
 import { AppLink } from "../../../../components/ui/app-link";
+import { BackLink } from "../../../../components/ui/back-link";
 import { buildThreadList, type ThreadListView } from "@core/crewapp/thread-list.js";
 import { asId } from "@core/domain/ids.js";
 import { Notice } from "../../../../components/ui/notice";
@@ -29,7 +30,7 @@ export default async function ThreadsPage() {
   } catch {
     return (
       <Shell>
-        <BackLink />
+        <BackLink href="/crew">Home</BackLink>
         <Notice>Can’t reach messages right now. Try again in a moment.</Notice>
       </Shell>
     );
@@ -37,7 +38,7 @@ export default async function ThreadsPage() {
 
   return (
     <Shell>
-      <BackLink />
+      <BackLink href="/crew">Home</BackLink>
       <h1 className="text-lg font-semibold text-ink">Messages</h1>
       <section className="flex flex-col gap-2">
         {view.threads.map((t) => (
@@ -71,10 +72,3 @@ export default async function ThreadsPage() {
   );
 }
 
-function BackLink() {
-  return (
-    <AppLink href="/crew" className="text-sm font-semibold text-accent">
-      ‹ Home
-    </AppLink>
-  );
-}

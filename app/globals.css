@@ -85,32 +85,30 @@ body {
   .pressable {
     touch-action: manipulation;
   }
+  /* Press feedback tuned to be UNMISTAKABLE (the subtle 4% version read as "no
+   * feedback"). Buttons darken hard (brightness 0.8 = 20% darker) — filter isn't
+   * overridden by any Tailwind utility on these, and works on every button colour.
+   * Excludes disabled buttons. */
   button:not(:disabled):active,
   summary:active,
   [role="button"]:active,
   .pressable:active {
-    filter: brightness(0.96);
+    filter: brightness(0.8);
   }
-  /* Links get an obvious press cue too — this app is mostly navigation (rows,
-   * nav, chips, back-links), so a link with no feedback reads as "nothing
-   * happened." OPACITY, not transform/filter: opacity doesn't establish a
-   * containing block, so it's safe on the ShiftRow stretched link (whose
-   * `after:inset-0` overlay would collapse under transform/filter). A firm dip so
-   * the press is unmistakable. Excludes disabled/aria-disabled links. */
+  /* Links: a firm opacity dip — NOT transform/filter, which would establish a
+   * containing block and collapse the ShiftRow stretched link's `after:inset-0`
+   * overlay. 0.4 = clearly dimmed. Excludes aria-disabled links. */
   a:not([aria-disabled="true"]):active {
-    opacity: 0.5;
+    opacity: 0.4;
   }
-  /* Scale is motion — gate it on reduced-motion. The brightness dip and the
-   * focus ring are non-motion and stay unconditional. NB: never put transform
-   * or filter on an element that owns a stretched-link `::after` overlay — both
-   * establish a containing block and collapse the overlay to the element's own
-   * box (the ShiftRow row link uses an `active:` background on the card instead). */
+  /* Tactile shrink for buttons (motion-gated). Scale on a stretched-link <a>
+   * would collapse its ::after overlay, so links get the darken/dip only. */
   @media (prefers-reduced-motion: no-preference) {
     button:not(:disabled):active,
     summary:active,
     [role="button"]:active,
     .pressable:active {
-      transform: scale(0.97);
+      transform: scale(0.94);
     }
   }
   button:focus-visible,

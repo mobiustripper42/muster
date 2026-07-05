@@ -1981,6 +1981,15 @@ SMS code channel) or the email-less gap bites (promote to a required-email task 
 
 **Relationship:** implements SPEC §2.3 Split action + AC; reuses DEC-005 (derived state, seat-id preservation), DEC-032 (vessel-local wall-clock), DEC-056/#128 (import audit), DEC-082 (Xola is truth; change-detection anchored to import diffs, never a lock), DEC-043 (events-driven ingest). Supersedes the prior draft's `splitId` + event-id-list partition.
 
+**Amendment — freshly-spawned-shift cue (9.10/#236, 2026-07-04).** SPEC §2.3's "new block needing
+review" text is realized as a second muted row cue in this DEC's idiom: a shift the LATEST pull
+minted reads **"new in the last pull"** on the Builder View (fed by the run's `shift_created` audit
+items, #128 — best-effort like the changed-cue). This formally supersedes the mockup/SPEC amber
+"new · review" treatment DEC-082 already killed: a fresh shift is a calm fact, not an approval
+demand — the engine is already working it (empty board = success). Operator-made splits don't fire
+it (run items exist only for imports); a resurrected side reads as new only when the pull re-creates
+it.
+
 ---
 
 ## DEC-084: Crew assignment-change notice — a third operator-relay sibling
@@ -2042,6 +2051,19 @@ the Phase 8 Builder. Companion to DEC-086 (the identity palette the board uses).
 extraction + pane mechanics land at the Phase 9.5 @architect gate. Supersedes nothing; reframes the
 reconciliation's two-pane "superseded" call.
 
+**Amendment — pane mechanics (9.5 @architect gate, 2026-07-03).** The cockpit body extracts to
+`components/assignment/shift-cockpit.tsx` — an async server component owning its own data loads,
+rendering no Shell, returning error states as bare Notices; heading level is host-supplied (h1
+standalone, h2 in-pane). Hosts: the thin standalone route (deep links, mobile) and the board's right
+pane (`?sel=<shiftId>`). Mobile detail = the board route with the list `display:none`-hidden (one link
+per row; the dual-link variant rejected for duplicated interactive DOM). Cockpit action returns ride a
+hidden `ctx` **query-string** (never a form-supplied path — the split/merge idiom): `ctx` present →
+redirect to the fixed board path + `sel` + feedback code; absent → standalone. `sel` joins the board's
+filter-param set so mode/filter/split navigation preserves the open pane. Shell gains a literal `6xl`
+width used only when `sel` is set. Board and cockpit param namespaces stay disjoint by convention.
+Perf revisit trigger: board-pane renders stack cockpit reads on `deriveAllShifts`'s per-shift N+1 —
+fine at pilot scale, index before the window or fleet grows.
+
 ---
 
 ## DEC-086: Vessel + role identity palette — color that encodes information
@@ -2068,6 +2090,63 @@ recorded when the values are set. A ~4-boat fleet needs ~4 identity tokens beyon
 **Relationship:** refines DEC-021 (adds *informational* tokens to the locked palette), compatible with
 DEC-042 (identity color ≠ risk color). Companion to DEC-085 (the board that renders them). Supersedes
 nothing.
+
+**Amendment — hue values set (9.6, 2026-07-03).** Six `--color-vessel-N` tokens land in `@theme`
+(`app/globals.css`): 1 indigo `#5b64a8`, 2 plum `#8a5f93`, 3 olive `#6e7f46`, 4 clay `#9c6b4e`,
+5 lagoon `#4f7f8b`, 6 driftwood `#7c6a54` — all calm/desaturated, deliberately distant from
+accent/captain/mate and every status hue so a dot never reads as a badge. The real fleet is **pinned**
+(the "chosen, not auto-generated" guardrail) in `app/lib/vessel-hue.ts`: Brew 1→indigo, Brew 2→plum,
+Brew 3→olive, Brew 4→clay; unpinned vessels (dev seeds, a future boat before someone pins it) fall to
+a stable hash over the pool, so an id always keeps its hue. Rendered as a 10px dot before the vessel
+name on board rows — identity only, `aria-hidden`, the name stays the accessible answer.
+**Role hues:** first surface = the 9.8 seat-card role glyph; extended (operator call, 2026-07-04)
+to the board's FILLED pips so both surfaces speak one language — a captain-blue/mate-teal square
+means "a person of that role, aboard." Identity, not state: fill-vs-outline still carries the state
+(open pips stay light outline grey so gaps jump), filled trainees stay faint, and warm/bad tones
+never appear on the board.
+
+---
+
+## DEC-087: Trainee seats are staffable — DEC-064's rating floor is scoped to required manning
+
+**Status:** Decided 2026-07-03 (@architect gate, Phase 9.3, #224).
+
+**Decision.** `staffTraineeSeat` / `unstaffTraineeSeat` (`src/builder/manning.ts`, siblings of the
+8.5 add/remove pair) place a named person into / out of a `kind:"supernumerary"` seat.
+
+- **Staff** guards (seat is supernumerary + `Open`; candidate passes `evaluateTraineeCandidate`)
+  then composes `manualOverride` — straight to `Confirmed`, `acquiredVia:"operator"`, no
+  reliability event, no ask round-trip. Server-side re-check + picker scope, the DEC-064 posture.
+- **Trainee eligibility = `evaluateCandidate` minus `hasRating`** (`evaluateTraineeCandidate`,
+  `src/oracle/eligibility.ts`): isActive + mmcValidOnDate (DEC-044 sentinel keeps BrewBoat open) +
+  notOnPto + notDoubleBooked over `committedDatesByCrew(repo)` with NO shift exclusion — so crew
+  already committed anywhere that date, including this shift's own required seats, are excluded by
+  the existing rule, no bespoke same-shift check. No rating requirement: trainees are unrated by
+  definition.
+- **DEC-064 scoping, not bypass:** the rating floor protects role-holding on REQUIRED manning (a
+  license floor). A supernumerary seat holds no role in that sense — its `role` is the track being
+  trained toward. DEC-064 is untouched for `kind:"required"`.
+- **Unstaff is bespoke, never `vacateSeat`:** `vacateSeat` re-asks via the kind-blind
+  `rankedEligible` and would fire real asks for a trainee seat. `unstaffTraineeSeat` is the
+  vacate-exhausted branch only: clear occupant + provenance, rest `Open`, no penalty, no re-ask.
+  After unstaff, 8.5's Remove reappears (seat is `Open` again).
+- **Comms verified kind-blind, zero changes:** my-shifts (`crew-view.ts`), thread membership
+  (`membership.ts` `assignedOn`), doorbell (`doorbell-tick` via `deriveMembers`) all derive from
+  seat assignment without a kind filter. DEC-084 notices wired at the edge via the existing
+  `notify()` ("added" on staff, "removed" on unstaff; operator excluded per DEC-072).
+- **Edge:** picker excludes `OPERATOR_CREW_MEMBER_ID` (UI scope, not an engine rule). Occupied
+  supernumerary line in `ManningSection` shows occupant + unstaff (it has no seat card); occupied
+  required override lines keep the vacate-first text.
+
+**Documented side effect:** `committedDatesByCrew` is kind-blind, so a staffed trainee is
+double-booking-excluded from required-seat auto-asks and claims on that date. Correct (they're
+aboard) — not a pool bug.
+
+**Relationship:** builds on 8.5 seat add/remove (manning.ts), DEC-064/066 (rating gates),
+DEC-084/072 (notices), DEC-044 (MMC sentinel), #196 (provenance badge).
+**Revisit if:** trainees should remain askable/claimable for required seats on their trainee day
+(drop the kind-blind committed-date, add a kind filter); or trainee hours want tracking (a log,
+not seat state).
 
 ---
 

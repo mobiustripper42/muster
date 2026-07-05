@@ -5,6 +5,8 @@ const widths = {
   md: "max-w-md",
   "2xl": "max-w-2xl",
   "3xl": "max-w-3xl",
+  // Two-pane board+cockpit (DEC-085) — the only 6xl surface.
+  "6xl": "max-w-6xl",
 } as const;
 
 export function Shell({

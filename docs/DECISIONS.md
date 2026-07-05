@@ -1981,6 +1981,15 @@ SMS code channel) or the email-less gap bites (promote to a required-email task 
 
 **Relationship:** implements SPEC §2.3 Split action + AC; reuses DEC-005 (derived state, seat-id preservation), DEC-032 (vessel-local wall-clock), DEC-056/#128 (import audit), DEC-082 (Xola is truth; change-detection anchored to import diffs, never a lock), DEC-043 (events-driven ingest). Supersedes the prior draft's `splitId` + event-id-list partition.
 
+**Amendment — freshly-spawned-shift cue (9.10/#236, 2026-07-04).** SPEC §2.3's "new block needing
+review" text is realized as a second muted row cue in this DEC's idiom: a shift the LATEST pull
+minted reads **"new in the last pull"** on the Builder View (fed by the run's `shift_created` audit
+items, #128 — best-effort like the changed-cue). This formally supersedes the mockup/SPEC amber
+"new · review" treatment DEC-082 already killed: a fresh shift is a calm fact, not an approval
+demand — the engine is already working it (empty board = success). Operator-made splits don't fire
+it (run items exist only for imports); a resurrected side reads as new only when the pull re-creates
+it.
+
 ---
 
 ## DEC-084: Crew assignment-change notice — a third operator-relay sibling

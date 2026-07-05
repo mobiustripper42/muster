@@ -42,12 +42,15 @@ export function SubmitButton({
   name,
   value,
   title,
+  "aria-label": ariaLabel,
 }: {
   children: ReactNode;
   className?: string;
   name?: string;
   value?: string;
   title?: string;
+  /** For an icon/short-label button whose accessible name needs to be fuller. */
+  "aria-label"?: string;
 }) {
   const { pending, data } = useFormStatus();
   // `mine` = this button fired the pending submit. A named button (multi-submit
@@ -63,6 +66,7 @@ export function SubmitButton({
       name={name}
       value={value}
       title={title}
+      aria-label={ariaLabel}
       disabled={pending}
       aria-busy={showing}
       // `relative` only while spinning, to host the centered spinner overlay.

@@ -1,5 +1,6 @@
 import { AppLink } from "../../../../components/ui/app-link";
 import { GetFormSubmit } from "../../../../components/ui/get-form-submit";
+import { SubmitButton } from "../../../../components/ui/submit-button";
 import { deriveAllShifts, type AllShiftsRow } from "@core/admin/all-shifts.js";
 import { TENANT_TIMEZONE } from "@core/config/tenant.js";
 import {
@@ -683,12 +684,9 @@ function ShiftRow({
               ))}
             </select>
           </label>
-          <button
-            type="submit"
-            className="rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent"
-          >
+          <SubmitButton className="rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent">
             Split
-          </button>
+          </SubmitButton>
         </form>
       )}
 
@@ -703,12 +701,9 @@ function ShiftRow({
         >
           <input type="hidden" name="shiftId" value={canonicalIdOf(row)} />
           <input type="hidden" name="back" value={back} />
-          <button
-            type="submit"
-            className="rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent"
-          >
+          <SubmitButton className="rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent">
             Merge back into one shift
-          </button>
+          </SubmitButton>
         </form>
       )}
     </div>

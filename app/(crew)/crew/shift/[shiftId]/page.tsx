@@ -204,13 +204,12 @@ function Card({
                 </a>
                 <form action={startDm} className="inline-flex">
                   <input type="hidden" name="crewMemberId" value={c.crewMemberId} />
-                  <button
-                    type="submit"
+                  <SubmitButton
                     className="inline-flex min-h-[44px] items-center rounded-lg border border-accent bg-accent px-3 font-semibold text-white"
                     aria-label={`Message ${c.name}`}
                   >
                     Message
-                  </button>
+                  </SubmitButton>
                 </form>
               </span>
             </div>

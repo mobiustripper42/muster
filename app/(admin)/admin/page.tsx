@@ -1,4 +1,5 @@
 import { AppLink } from "../../../components/ui/app-link";
+import { SubmitButton } from "../../../components/ui/submit-button";
 import { Notice } from "../../../components/ui/notice";
 import { Shell } from "../../../components/ui/shell";
 import { VersionTag } from "../../../components/ui/version-tag";
@@ -133,14 +134,13 @@ function EngineControl({ paused }: { paused: boolean | null }) {
         <input type="hidden" name="paused" value={String(!paused)} />
         {/* Button color = the state you'd switch TO (white card so it reads on
             the tinted status card). */}
-        <button
-          type="submit"
+        <SubmitButton
           className={`shrink-0 rounded-card border bg-card px-4 py-2 text-sm font-semibold shadow-sm ${
             paused ? "border-ok-line text-ok" : "border-bad-line text-bad"
           }`}
         >
           {paused ? "Resume staffing" : "Pause staffing"}
-        </button>
+        </SubmitButton>
       </form>
     </div>
   );

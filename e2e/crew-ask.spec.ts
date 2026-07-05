@@ -28,6 +28,35 @@ test.describe("crew ask — In / Out", () => {
     await expect(page.getByText("In or out?")).toHaveCount(0);
   });
 
+  test("only the tapped button spins; both disable while in flight (DEC-089)", async ({
+    page,
+  }) => {
+    await signInAsCrew(page, "crew-quint");
+    await expect(page.getByText("In or out?")).toBeVisible();
+
+    // Delay the respondToAsk server-action POST so the transient pending frame is
+    // observable (it clears on the redirect the action fires).
+    await page.route("**/crew", async (route) => {
+      if (route.request().method() === "POST") {
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+      await route.continue();
+    });
+
+    const inBtn = page.getByRole("button", { name: "In", exact: true });
+    const outBtn = page.getByRole("button", { name: "Out", exact: true });
+    await inBtn.click();
+
+    // In flight: only the tapped button (In) is busy, but BOTH disable — the
+    // shared-form double-tap guard (useFormStatus is form-wide; spinsWhen scopes
+    // only the spinner). opacity-0 (not visibility:hidden) keeps the name "In", so
+    // the locator still resolves while spinning.
+    await expect(inBtn).toHaveAttribute("aria-busy", "true");
+    await expect(inBtn).toBeDisabled();
+    await expect(outBtn).toBeDisabled();
+    await expect(outBtn).toHaveAttribute("aria-busy", "false");
+  });
+
   test("Out declines → the ask card clears, no new shift", async ({ page }) => {
     await signInAsCrew(page, "crew-quint");
     await expect(page.getByText("In or out?")).toBeVisible();

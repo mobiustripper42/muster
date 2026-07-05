@@ -66,10 +66,12 @@ export function SubmitButton({
     >
       {mine ? (
         <>
-          {/* Label stays in flow but hidden → reserves its exact width so the
-              button never grows/jitters when pending flips (DEC-042 calm, the
+          {/* Label stays in flow but `opacity-0` (NOT `invisible`/visibility:hidden,
+              which would drop it from the a11y tree and leave a busy button with no
+              accessible name). Opacity keeps the name and reserves the exact width,
+              so the button never grows/jitters when pending flips (DEC-042 calm, the
               @architect no-layout-shift mod). Spinner overlays it, centered. */}
-          <span className="invisible">{children}</span>
+          <span className="opacity-0">{children}</span>
           <span className="absolute inset-0 flex items-center justify-center">
             <Spinner />
           </span>

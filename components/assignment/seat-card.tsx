@@ -51,23 +51,16 @@ const STATE_TONE: Record<SeatCardVM["state"], string> = {
 const tel = (p: string) => `tel:${p.replace(/[^0-9+]/g, "")}`;
 const sms = (p: string) => `sms:${p.replace(/[^0-9+]/g, "")}`;
 
-/** DEC-086 role hues (9.8): the seat-card glyph is the role tokens' first
- *  shipped surface. Literal classes for Tailwind's scanner; identity only —
- *  an unknown role falls to neutral, never a status tone. */
-const ROLE_HUE: Record<string, string> = {
-  captain: "bg-captain",
-  mate: "bg-mate",
-};
+import { roleHueClass } from "./role-hue";
 
-/** The role glyph pip — identity color + initial; decorative (the kicker text
- *  right beside it is the accessible name). */
+/** The role glyph pip (9.8, DEC-086) — identity color + initial; decorative
+ *  (the kicker text right beside it is the accessible name). Shares its hue
+ *  map with the board's filled pips (role-hue.ts). */
 function RoleGlyph({ roleName }: { roleName: string }) {
   return (
     <span
       aria-hidden="true"
-      className={`flex h-[18px] w-[18px] items-center justify-center rounded-[5px] text-[10px] font-bold uppercase text-white ${
-        ROLE_HUE[roleName.toLowerCase()] ?? "bg-muted"
-      }`}
+      className={`flex h-[18px] w-[18px] items-center justify-center rounded-[5px] text-[10px] font-bold uppercase text-white ${roleHueClass(roleName)}`}
     >
       {roleName.charAt(0)}
     </span>

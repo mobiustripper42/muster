@@ -2099,9 +2099,11 @@ accent/captain/mate and every status hue so a dot never reads as a badge. The re
 Brew 3→olive, Brew 4→clay; unpinned vessels (dev seeds, a future boat before someone pins it) fall to
 a stable hash over the pool, so an id always keeps its hue. Rendered as a 10px dot before the vessel
 name on board rows — identity only, `aria-hidden`, the name stays the accessible answer.
-**Role hues:** still defined (`--color-captain`/`--color-mate`), still unshipped at 9.6 — the board
-pips stay neutral ink by the reconciliation's adopt ruling (density minus color); the role hues' first
-surface is the 9.8 seat-card role glyph, which the punch-list assigns the DEC-086 tokens.
+**Role hues:** first surface = the 9.8 seat-card role glyph; extended (operator call, 2026-07-04)
+to the board's FILLED pips so both surfaces speak one language — a captain-blue/mate-teal square
+means "a person of that role, aboard." Identity, not state: fill-vs-outline still carries the state
+(open pips stay light outline grey so gaps jump), filled trainees stay faint, and warm/bad tones
+never appear on the board.
 
 ---
 

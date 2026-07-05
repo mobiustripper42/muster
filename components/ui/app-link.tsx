@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ComponentProps, ReactNode } from "react";
-import { NavSpinner } from "./nav-spinner";
+import { NavSpinner, NavLinkLabel } from "./nav-spinner";
 
 /**
  * The standard internal-navigation link (#250) — a `next/link` with the loading
@@ -14,9 +14,9 @@ import { NavSpinner } from "./nav-spinner";
  * The `<Link>` stays server-rendered; only the tiny `<NavSpinner>` is a client
  * island (it reads `useLinkStatus`, which must be a descendant of the Link).
  *
- * - `spinner="inline"` (default) — a small spinner after the label (nav items,
- *   chips, back-links, text links). The link should be `inline-flex`/`flex` with
- *   `items-center` so it aligns; most already are.
+ * - `spinner="inline"` (default) — the label swaps to a spinner IN PLACE while
+ *   navigating (no layout shift; the link doesn't grow, siblings don't move). For
+ *   nav items, chips, back-links, text links.
  * - `spinner="overlay"` — a scrim + big centered spinner over the nearest
  *   positioned ancestor (a card/row). The link must sit inside a `relative` box.
  * - `spinner="none"` — opt out (rarely needed; external hrefs opt out on their own).
@@ -24,28 +24,30 @@ import { NavSpinner } from "./nav-spinner";
 export function AppLink({
   children,
   spinner = "inline",
-  spinnerClassName,
   ...props
 }: ComponentProps<typeof Link> & {
   children?: ReactNode;
   spinner?: "inline" | "overlay" | "none";
-  spinnerClassName?: string;
 }) {
   const href = typeof props.href === "string" ? props.href : "";
   const external =
     /^(https?:|tel:|mailto:|#)/.test(href) || props.target === "_blank";
   const mode = external ? "none" : spinner;
 
-  return (
-    <Link {...props}>
-      {children}
-      {mode === "inline" && (
-        <NavSpinner
-          size="h-4 w-4"
-          className={spinnerClassName ?? "ml-1.5 text-accent"}
-        />
-      )}
-      {mode === "overlay" && <NavSpinner overlay />}
-    </Link>
-  );
+  if (mode === "overlay") {
+    return (
+      <Link {...props}>
+        {children}
+        <NavSpinner overlay />
+      </Link>
+    );
+  }
+  if (mode === "inline") {
+    return (
+      <Link {...props}>
+        <NavLinkLabel>{children}</NavLinkLabel>
+      </Link>
+    );
+  }
+  return <Link {...props}>{children}</Link>;
 }

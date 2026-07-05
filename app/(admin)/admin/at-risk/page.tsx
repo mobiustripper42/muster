@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { AppLink } from "../../../../components/ui/app-link";
 import { deriveAtRiskBoard, type AtRiskRow } from "@core/admin/at-risk-board.js";
 import { asId } from "@core/domain/ids.js";
 import type { CrewMemberId } from "@core/domain/ids.js";
@@ -117,9 +117,9 @@ export default async function AtRiskBoard({
         <Notice tone="warn">
           Engine paused — the automation isn’t firing asks. An empty board here
           means the engine is muted, not that every shift is covered.{" "}
-          <Link href="/admin" className="font-semibold text-accent">
+          <AppLink href="/admin" className="font-semibold text-accent">
             Resume staffing ↗
-          </Link>
+          </AppLink>
         </Notice>
       )}
 
@@ -132,12 +132,12 @@ export default async function AtRiskBoard({
           {leanedShiftId ? (
             <>
               {" — "}
-              <Link
+              <AppLink
                 href={`/admin/shift/${encodeURIComponent(leanedShiftId)}`}
                 className="font-semibold text-accent"
               >
                 watch it ↗
-              </Link>
+              </AppLink>
             </>
           ) : (
             "."

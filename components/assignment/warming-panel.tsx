@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { AppLink } from "../ui/app-link";
 
 /**
  * The warming view (SPEC §2.4, #55, DEC-027 §3) — shifts trending toward risk,
@@ -41,12 +41,12 @@ export function WarmingPanel({
 }) {
   if (!open) {
     return (
-      <Link
+      <AppLink
         href={openHref}
         className="inline-flex min-h-9 items-center self-start text-xs font-semibold text-accent"
       >
         Trending at-risk <span aria-hidden="true">&nbsp;→</span>
-      </Link>
+      </AppLink>
     );
   }
   return (
@@ -58,12 +58,12 @@ export function WarmingPanel({
             Trending at-risk
           </h2>
         </div>
-        <Link
+        <AppLink
           href={closeHref}
           className="inline-flex min-h-9 items-center px-1.5 text-xs font-semibold text-accent"
         >
           Hide
-        </Link>
+        </AppLink>
       </div>
       {rows.length === 0 ? (
         <p className="text-sm text-muted">
@@ -80,13 +80,13 @@ export function WarmingPanel({
                 {r.href === null ? (
                   <b>This shift</b>
                 ) : (
-                  <Link
+                  <AppLink
                     href={r.href}
                     className="inline-flex min-h-9 items-center font-semibold text-accent"
                   >
                     {r.vesselName} · {r.dateLabel}
                     <span aria-hidden="true">&nbsp;↗</span>
-                  </Link>
+                  </AppLink>
                 )}
               </span>
               <span className="flex flex-wrap items-center gap-x-3 text-xs">

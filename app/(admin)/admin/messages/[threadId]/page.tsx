@@ -1,4 +1,5 @@
-import Link from "next/link";
+import { AppLink } from "../../../../../components/ui/app-link";
+import { SubmitButton } from "../../../../../components/ui/submit-button";
 import { buildThreadView, type ThreadView } from "@core/crewapp/thread-view.js";
 import { asId } from "@core/domain/ids.js";
 import { Notice } from "../../../../../components/ui/notice";
@@ -105,12 +106,9 @@ export default async function AdminThread({
             <input type="checkbox" name="priority" className="h-4 w-4" />
             Priority — ring now, skip the batch hold
           </label>
-          <button
-            type="submit"
-            className="min-h-[44px] w-full rounded-lg bg-accent px-4 font-semibold text-white"
-          >
+          <SubmitButton className="min-h-[44px] w-full rounded-lg bg-accent px-4 font-semibold text-white">
             Send
-          </button>
+          </SubmitButton>
         </form>
       ) : (
         <p className="mt-2 text-sm text-muted">
@@ -123,8 +121,8 @@ export default async function AdminThread({
 
 function BackLink() {
   return (
-    <Link href="/admin/messages" className="text-sm font-semibold text-accent">
+    <AppLink href="/admin/messages" className="text-sm font-semibold text-accent">
       ‹ Messages
-    </Link>
+    </AppLink>
   );
 }

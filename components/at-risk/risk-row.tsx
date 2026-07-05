@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { AppLink } from "../ui/app-link";
 import { leanOn } from "../../app/(admin)/admin/at-risk/actions";
 import { SubmitButton } from "../ui/submit-button";
 
@@ -181,12 +181,12 @@ export function RiskRow({ row }: { row: RiskRowVM }) {
                 ✕ Cancel…
               </button>
             </div>
-            <Link
+            <AppLink
               href={`/admin/shift/${row.shiftId}`}
               className="text-xs font-semibold text-accent"
             >
               Assignment ↗
-            </Link>
+            </AppLink>
           </div>
           <span className="text-xs text-muted">
             Handle reschedule/cancel by phone for now.

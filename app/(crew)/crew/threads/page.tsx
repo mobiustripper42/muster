@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { AppLink } from "../../../../components/ui/app-link";
 import { buildThreadList, type ThreadListView } from "@core/crewapp/thread-list.js";
 import { asId } from "@core/domain/ids.js";
 import { Notice } from "../../../../components/ui/notice";
@@ -41,11 +41,12 @@ export default async function ThreadsPage() {
       <h1 className="text-lg font-semibold text-ink">Messages</h1>
       <section className="flex flex-col gap-2">
         {view.threads.map((t) => (
-          <Link
+          <AppLink
             key={t.threadId}
             href={`/crew/threads/${t.threadId}`}
             prefetch={false}
-            className="flex items-center justify-between gap-3 rounded-card border border-line bg-card px-4 py-3 shadow-sm"
+            spinner="overlay"
+            className="relative flex items-center justify-between gap-3 rounded-card border border-line bg-card px-4 py-3 shadow-sm"
           >
             <span className="flex min-w-0 flex-col">
               <span className="truncate font-semibold text-ink">{t.title}</span>
@@ -63,7 +64,7 @@ export default async function ThreadsPage() {
                 {t.unread}
               </span>
             )}
-          </Link>
+          </AppLink>
         ))}
       </section>
     </Shell>
@@ -72,8 +73,8 @@ export default async function ThreadsPage() {
 
 function BackLink() {
   return (
-    <Link href="/crew" className="text-sm font-semibold text-accent">
+    <AppLink href="/crew" className="text-sm font-semibold text-accent">
       ‹ Home
-    </Link>
+    </AppLink>
   );
 }

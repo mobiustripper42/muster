@@ -1,4 +1,5 @@
-import Link from "next/link";
+import { AppLink } from "../../../../components/ui/app-link";
+import { SubmitButton } from "../../../../components/ui/submit-button";
 import type { ImportRun, ImportRunSummary } from "@core/import/import-audit.js";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
@@ -69,9 +70,9 @@ export default async function ImportPage({
       {sp.ximported && (
         <Notice tone="warn">
           ✓ Imported — the board’s updated.{" "}
-          <Link href="/admin/at-risk" className="font-semibold text-accent">
+          <AppLink href="/admin/at-risk" className="font-semibold text-accent">
             See the board →
-          </Link>{" "}
+          </AppLink>{" "}
           (Couldn’t save this run’s audit detail this time; nothing else is wrong.)
         </Notice>
       )}
@@ -85,12 +86,9 @@ export default async function ImportPage({
           The live pull also runs every hour on its own; press this to import now —
           you’ll land on a full breakdown of what changed.
         </p>
-        <button
-          type="submit"
-          className="mt-1 min-h-11 rounded-card bg-accent px-4 font-semibold text-white shadow-sm"
-        >
+        <SubmitButton className="mt-1 min-h-11 rounded-card bg-accent px-4 font-semibold text-white shadow-sm">
           Pull from Xola now
-        </button>
+        </SubmitButton>
       </form>
 
       {recent.length > 0 && (
@@ -98,10 +96,11 @@ export default async function ImportPage({
           <h2 className="text-sm font-semibold text-ink">Recent imports</h2>
           <div className="flex flex-col gap-2">
             {recent.map((run) => (
-              <Link
+              <AppLink
                 key={run.id}
                 href={`/admin/import/run/${run.id}`}
-                className="flex flex-col gap-0.5 rounded-card border border-line bg-card px-4 py-3 shadow-sm"
+                spinner="overlay"
+                className="relative flex flex-col gap-0.5 rounded-card border border-line bg-card px-4 py-3 shadow-sm"
               >
                 <span className="flex items-baseline justify-between gap-2">
                   <span className="font-semibold text-ink">
@@ -110,15 +109,15 @@ export default async function ImportPage({
                   <span className="text-xs text-muted">{fmtRunWhen(run.ranAt)}</span>
                 </span>
                 <span className="text-xs text-muted">{summaryLine(run.summary)}</span>
-              </Link>
+              </AppLink>
             ))}
           </div>
         </section>
       )}
 
-      <Link href="/admin" className="text-sm font-semibold text-accent">
+      <AppLink href="/admin" className="text-sm font-semibold text-accent">
         ← Admin
-      </Link>
+      </AppLink>
     </Shell>
   );
 }

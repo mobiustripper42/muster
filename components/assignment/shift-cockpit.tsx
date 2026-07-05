@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { AppLink } from "../ui/app-link";
 import {
   buildAssignmentView,
   type AssignmentView,
@@ -244,12 +244,12 @@ export async function ShiftCockpit({
       {ctx !== null && (
         // Pane host on a phone: the board list is display-hidden, so this is the
         // drill-in's way back (desktop shows the board alongside — link hidden).
-        <Link
+        <AppLink
           href={ctx ? `/admin/shifts?${ctx}` : "/admin/shifts"}
           className="inline-flex min-h-9 items-center self-start text-xs font-semibold text-accent lg:hidden"
         >
           <span aria-hidden="true">←&nbsp;</span>All shifts
-        </Link>
+        </AppLink>
       )}
 
       <header className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">

@@ -22,8 +22,23 @@ export interface AllShiftsTrip {
   pax: number;
 }
 
+/**
+ * One seat's pip facts (9.6, DEC-086-adjacent density) — the board renders these
+ * as neutral-ink pips. `roleName` is the resolved display name (glyph derivation
+ * is the edge's job — role names are tenant data, so no initials minted here);
+ * `filled` mirrors the `confirmedSeats` definition (state === Confirmed).
+ * Supernumerary seats ARE included (unlike the required-only fill counts).
+ */
+export interface AllShiftsSeat {
+  roleName: string;
+  filled: boolean;
+  supernumerary: boolean;
+}
+
 export interface AllShiftsRow {
   shiftId: string;
+  /** The vessel's id — the edge keys the DEC-086 identity hue off this. */
+  vesselId: string;
   vesselName: string;
   /** ISO-8601 vessel-local date. */
   date: string;
@@ -34,6 +49,9 @@ export interface AllShiftsRow {
   paxTotal: number;
   requiredSeats: number;
   confirmedSeats: number;
+  /** Every seat's pip facts, required AND supernumerary, deterministically
+   *  sorted (roleName, then kind — required first, then seat id). */
+  seats: AllShiftsSeat[];
   /**
    * A "split this?" suggestion when the shift's trips span a large mid-day gap or
    * a long day (SPEC §2.3, #204) — advisory only; `null` when contiguous. The
@@ -66,6 +84,11 @@ export async function deriveAllShifts(
 ): Promise<AllShiftsRow[]> {
   const vesselName = new Map(
     (await repo.listVessels()).map((v) => [v.id, v.name]),
+  );
+  // Role display names for the seat pips — resolved once here so the surface
+  // needn't re-join (the assignment-view idiom).
+  const roleNames = new Map(
+    (await repo.listAllRoleTypes()).map((r) => [String(r.id), r.name]),
   );
   const rows: AllShiftsRow[] = [];
 
@@ -102,9 +125,23 @@ export async function deriveAllShifts(
     }
     trips.sort((a, b) => a.time.localeCompare(b.time));
 
-    const required = (await repo.listSeatsForShift(shift.id)).filter(
-      (s) => s.kind === "required",
-    );
+    // The pip list carries EVERY seat (a trainee reads as a dashed pip); the
+    // fill counts keep their required-only definition — don't change their meaning.
+    const allSeatRows = await repo.listSeatsForShift(shift.id);
+    const required = allSeatRows.filter((s) => s.kind === "required");
+    const seats: AllShiftsSeat[] = [...allSeatRows]
+      .sort((a, b) => {
+        const roleA = roleNames.get(String(a.role)) ?? String(a.role);
+        const roleB = roleNames.get(String(b.role)) ?? String(b.role);
+        if (roleA !== roleB) return roleA.localeCompare(roleB);
+        if (a.kind !== b.kind) return a.kind === "required" ? -1 : 1;
+        return String(a.id).localeCompare(String(b.id));
+      })
+      .map((s) => ({
+        roleName: roleNames.get(String(s.role)) ?? String(s.role),
+        filled: s.state === "Confirmed",
+        supernumerary: s.kind === "supernumerary",
+      }));
 
     const idStr = String(shift.id);
     let split: AllShiftsRow["split"] = null;
@@ -117,6 +154,7 @@ export async function deriveAllShifts(
 
     rows.push({
       shiftId: idStr,
+      vesselId: String(shift.vesselId),
       vesselName: vesselName.get(shift.vesselId) ?? String(shift.vesselId),
       date: shift.date,
       state,
@@ -124,6 +162,7 @@ export async function deriveAllShifts(
       paxTotal: trips.reduce((sum, t) => sum + t.pax, 0),
       requiredSeats: required.length,
       confirmedSeats: required.filter((s) => s.state === "Confirmed").length,
+      seats,
       splitSuggestion: suggestSplit(scheduledEvents, opts?.tz),
       split,
     });

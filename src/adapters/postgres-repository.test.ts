@@ -30,6 +30,7 @@ const TABLES = [
   "login_codes",
   "outbox_entries",
   "ring_outbox",
+  "notice_outbox",
   "reliability_events",
   "sms_consent",
   "app_settings",

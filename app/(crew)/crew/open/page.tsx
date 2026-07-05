@@ -1,4 +1,5 @@
 import { AppLink } from "../../../../components/ui/app-link";
+import { GetFormSubmit } from "../../../../components/ui/get-form-submit";
 import { notFound, redirect } from "next/navigation";
 import {
   buildClaimableView,
@@ -161,8 +162,7 @@ function Filters({
             className="min-h-[40px] rounded-card border border-line bg-card px-2 text-sm text-ink"
           />
         </label>
-        <button
-          type="submit"
+        <GetFormSubmit
           className={`min-h-[40px] rounded-card border px-3 text-sm font-semibold ${
             label === "range"
               ? "border-accent bg-accent text-white"
@@ -170,7 +170,7 @@ function Filters({
           }`}
         >
           Go
-        </button>
+        </GetFormSubmit>
       </form>
     </div>
   );

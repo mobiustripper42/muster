@@ -1,4 +1,5 @@
 import { AppLink } from "../../../../components/ui/app-link";
+import { GetFormSubmit } from "../../../../components/ui/get-form-submit";
 import { deriveAllShifts, type AllShiftsRow } from "@core/admin/all-shifts.js";
 import { TENANT_TIMEZONE } from "@core/config/tenant.js";
 import {
@@ -502,12 +503,9 @@ function Filter({
             className="rounded-lg border border-line bg-bg px-2 py-1 text-ink"
           />
         </label>
-        <button
-          type="submit"
-          className="rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent"
-        >
+        <GetFormSubmit className="rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent">
           Show
-        </button>
+        </GetFormSubmit>
       </form>
     </div>
   );

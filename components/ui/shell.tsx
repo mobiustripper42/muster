@@ -12,13 +12,24 @@ const widths = {
 export function Shell({
   children,
   width = "md",
+  fill = false,
 }: {
   children: React.ReactNode;
   width?: keyof typeof widths;
+  /**
+   * Viewport-fit mode (#253): on desktop (`lg:`) the shell is bounded to the
+   * space below the admin nav so an inner grid can give its columns independent
+   * scroll — the WINDOW never scrolls, so opening/switching a pane can't snap the
+   * list to the top. No effect below `lg`: mobile stays normal-flow (min-h-screen,
+   * window-scrolled, full-screen drill-in). Opt-in; only the two-pane board uses it.
+   */
+  fill?: boolean;
 }) {
   return (
     <main
-      className={`mx-auto flex min-h-screen w-full ${widths[width]} flex-col gap-4 px-4 py-6`}
+      className={`mx-auto flex min-h-screen w-full ${widths[width]} flex-col gap-4 px-4 py-6 ${
+        fill ? "lg:h-[calc(100dvh-3.25rem)] lg:min-h-0" : ""
+      }`}
     >
       {children}
     </main>

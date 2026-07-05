@@ -27,6 +27,10 @@ export interface CandidateVM {
 export interface SeatCardVM {
   seatId: string;
   shiftId: string;
+  /** Board filter query string when the cockpit is hosted in the board pane
+   *  (DEC-085) — rides every action form so the redirect returns to the pane.
+   *  Null when the standalone route is the host. */
+  ctx: string | null;
   roleName: string;
   /** The seat's role id — scopes the override picker to rated crew (DEC-064). */
   role: string;
@@ -47,6 +51,22 @@ const STATE_TONE: Record<SeatCardVM["state"], string> = {
 const tel = (p: string) => `tel:${p.replace(/[^0-9+]/g, "")}`;
 const sms = (p: string) => `sms:${p.replace(/[^0-9+]/g, "")}`;
 
+import { roleHueClass } from "./role-hue";
+
+/** The role glyph pip (9.8, DEC-086) — identity color + initial; decorative
+ *  (the kicker text right beside it is the accessible name). Shares its hue
+ *  map with the board's filled pips (role-hue.ts). */
+function RoleGlyph({ roleName }: { roleName: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`flex h-[18px] w-[18px] items-center justify-center rounded-[5px] text-[10px] font-bold uppercase text-white ${roleHueClass(roleName)}`}
+    >
+      {roleName.charAt(0)}
+    </span>
+  );
+}
+
 /** The state-conditional occupant zone. */
 function OccupantZone({ vm }: { vm: SeatCardVM }) {
   if (vm.state === "Claimed" && vm.occupant) {
@@ -60,7 +80,7 @@ function OccupantZone({ vm }: { vm: SeatCardVM }) {
           <HiddenIds vm={vm} />
           <button
             type="submit"
-            className="rounded-full border border-ok-line bg-ok px-3 py-1 text-xs font-semibold text-white"
+            className="min-h-9 rounded-full border border-ok-line bg-ok px-3 py-1 text-xs font-semibold text-white"
           >
             Confirm into seat
           </button>
@@ -74,12 +94,18 @@ function OccupantZone({ vm }: { vm: SeatCardVM }) {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-sm font-semibold text-ink">{vm.occupant.name}</span>
           {vm.occupant.phone && (
-            <span className="flex gap-2">
-              <a href={tel(vm.occupant.phone)} className="text-xs font-semibold text-accent">
-                ✆ Call
+            <span className="flex gap-1">
+              <a
+                href={tel(vm.occupant.phone)}
+                className="inline-flex min-h-9 items-center px-1.5 text-xs font-semibold text-accent"
+              >
+                <span aria-hidden="true">✆&nbsp;</span>Call
               </a>
-              <a href={sms(vm.occupant.phone)} className="text-xs font-semibold text-accent">
-                ✉ Text
+              <a
+                href={sms(vm.occupant.phone)}
+                className="inline-flex min-h-9 items-center px-1.5 text-xs font-semibold text-accent"
+              >
+                <span aria-hidden="true">✉&nbsp;</span>Text
               </a>
             </span>
           )}
@@ -103,7 +129,7 @@ function OccupantZone({ vm }: { vm: SeatCardVM }) {
               <HiddenIds vm={vm} />
               <button
                 type="submit"
-                className="rounded-full border border-line bg-bg px-2.5 py-1 text-xs font-medium text-muted"
+                className="min-h-9 rounded-full border border-line bg-bg px-3 py-1 text-xs font-medium text-muted"
               >
                 Remove
               </button>
@@ -112,7 +138,7 @@ function OccupantZone({ vm }: { vm: SeatCardVM }) {
               <HiddenIds vm={vm} />
               <button
                 type="submit"
-                className="rounded-full border border-bad-line bg-bad-bg px-2.5 py-1 text-xs font-medium text-bad"
+                className="min-h-9 rounded-full border border-bad-line bg-bad-bg px-3 py-1 text-xs font-medium text-bad"
               >
                 Bailed
               </button>
@@ -144,7 +170,8 @@ export function SeatCard({
   return (
     <article className="flex flex-col gap-2 rounded-card border border-line bg-card p-4 shadow-sm">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-muted">
+        <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted">
+          <RoleGlyph roleName={vm.roleName} />
           {vm.roleName} · required
         </span>
         <span

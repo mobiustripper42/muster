@@ -26,6 +26,8 @@ import { startDm } from "../../threads/actions";
 const BAIL_ERROR_COPY: Record<string, string> = {
   stale: "This card changed under you — what you see now is current. Check it before acting.",
   unavailable: "Couldn’t reach the schedule — nothing was changed. Try again.",
+  trainee_seat:
+    "You’re riding this shift as a trainee — ask the office to take you off; no penalty.",
 };
 const tel = (p: string) => `tel:${p.replace(/[^0-9+]/g, "")}`;
 const sms = (p: string) => `sms:${p.replace(/[^0-9+]/g, "")}`;
@@ -283,8 +285,14 @@ function Card({
         ))}
       </section>
 
-      {/* "Can't make it" (#56) — deliberate friction: a closed <details> plus an
-          explicit confirm button. Neutral voice; lateness is the signal. */}
+      {/* A trainee ride (DEC-087) has no bail: it's not a reliability
+          commitment, and the seat must never re-ask — the office unstaffs. */}
+      {card.traineeSeat ? (
+        <p className="rounded-card border border-line bg-card px-4 py-3 text-sm text-muted">
+          You’re riding this shift as a trainee. Can’t make it? Tell the office
+          and they’ll take you off — no penalty.
+        </p>
+      ) : (
       <details className="rounded-card border border-line bg-card px-4 pb-3">
         {/* The summary owns the 44px hit area (clicks on details padding don't
             toggle); marker kept deliberately — the "…" + triangle reads as
@@ -308,6 +316,7 @@ function Card({
           </button>
         </form>
       </details>
+      )}
     </Shell>
   );
 }

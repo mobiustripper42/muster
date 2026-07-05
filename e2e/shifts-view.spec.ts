@@ -35,5 +35,66 @@ test.describe("builder view — /admin/shifts (8.2a)", () => {
     // Barrel's 11:00 + 18:00 (7h apart) → the advisory cue; only the gappy day gets it.
     await expect(page.getByText(/could be two shifts/).first()).toBeVisible();
     await expect(page.getByText(/could be two shifts/)).toHaveCount(1);
+    // Import-diff cues (DEC-083 + 9.10) stay OFF with no import runs seeded —
+    // the dev seeds aren't pulls, so nothing here is "new in the last pull".
+    await expect(page.getByText(/new in the last pull/)).toHaveCount(0);
+    await expect(page.getByText(/changed in the last pull/)).toHaveCount(0);
+  });
+});
+
+/**
+ * 9.6 (#232) — the board bundle: per-trip spans (the join("   ") run-on fix),
+ * neutral-ink seat pips (role initial, filled vs open, dashed trainee), and the
+ * DEC-086 vessel identity dot. All neutral/identity ink — no state color leaks
+ * onto this surface (DEC-042 holds).
+ */
+test.describe("board bundle — /admin/shifts (9.6)", () => {
+  test.beforeEach(async () => {
+    await resetAndSeed("atrisk");
+  });
+
+  test("a multi-trip day reads 'start · N trips'; the per-trip detail lives in the cockpit", async ({
+    page,
+  }) => {
+    await signInAsAdmin(page, "spink");
+    await page.goto("/admin/shifts");
+
+    // Operator QA on 9.5: the list stays scannable — Barrel's two departures
+    // collapse to one compact fact; a single-trip row keeps time · pax.
+    const barrel = page.getByRole("link", { name: /Barrel/ }).first();
+    await expect(barrel.getByText("11:00 AM · 2 trips")).toBeVisible();
+    await expect(page.getByText(/\d+:\d+ [AP]M · \d+ pax/).first()).toBeVisible();
+
+    // The cockpit keeps every trip, chip-per-trip, no aboard-total tail.
+    await barrel.click();
+    await page.waitForURL(/sel=/);
+    await expect(page.getByText(/11:00 AM/).last()).toBeVisible();
+    await expect(page.getByText(/6:00 PM · \d+ pax/)).toBeVisible();
+    await expect(page.getByText(/aboard total/)).toHaveCount(0);
+  });
+
+  test("rows carry neutral-ink seat pips — filled for Confirmed, open otherwise", async ({
+    page,
+  }) => {
+    await signInAsAdmin(page, "spink");
+    await page.goto("/admin/shifts");
+
+    // Growler's captain seat is Confirmed → a filled pip; Firkin's is Bailed →
+    // an open (outline) pip. Pips are title-labeled, never state-colored.
+    await expect(page.locator('[title="captain · filled"]').first()).toBeVisible();
+    await expect(page.locator('[title="captain · open"]').first()).toBeVisible();
+  });
+
+  test("every row leads with its vessel identity dot (DEC-086)", async ({
+    page,
+  }) => {
+    await signInAsAdmin(page, "spink");
+    await page.goto("/admin/shifts");
+
+    // One dot per row, hue keyed off the vessel id — identity, aria-hidden.
+    const dots = page.locator('span[class*="bg-vessel-"]');
+    const rows = page.locator('a[href*="sel="]');
+    await expect(dots.first()).toBeVisible();
+    expect(await dots.count()).toBe(await rows.count());
   });
 });

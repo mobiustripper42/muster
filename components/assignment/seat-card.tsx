@@ -1,4 +1,5 @@
 import { confirmInto, overrideTo, removeSeat, reportBail } from "../../app/(admin)/admin/shift/[shiftId]/actions";
+import { SubmitButton } from "../ui/submit-button";
 import { HiddenIds, MiniButton } from "./bits";
 import { askedSummary, CandidateRow } from "./candidate-row";
 
@@ -78,12 +79,9 @@ function OccupantZone({ vm }: { vm: SeatCardVM }) {
         </span>
         <form action={confirmInto} className="inline-flex">
           <HiddenIds vm={vm} />
-          <button
-            type="submit"
-            className="min-h-9 rounded-full border border-ok-line bg-ok px-3 py-1 text-xs font-semibold text-white"
-          >
+          <SubmitButton className="min-h-9 rounded-full border border-ok-line bg-ok px-3 py-1 text-xs font-semibold text-white">
             Confirm into seat
-          </button>
+          </SubmitButton>
         </form>
       </div>
     );
@@ -127,21 +125,15 @@ function OccupantZone({ vm }: { vm: SeatCardVM }) {
           <div className="flex flex-wrap gap-2 py-1">
             <form action={removeSeat} className="inline-flex">
               <HiddenIds vm={vm} />
-              <button
-                type="submit"
-                className="min-h-9 rounded-full border border-line bg-bg px-3 py-1 text-xs font-medium text-muted"
-              >
+              <SubmitButton className="min-h-9 rounded-full border border-line bg-bg px-3 py-1 text-xs font-medium text-muted">
                 Remove
-              </button>
+              </SubmitButton>
             </form>
             <form action={reportBail} className="inline-flex">
               <HiddenIds vm={vm} />
-              <button
-                type="submit"
-                className="min-h-9 rounded-full border border-bad-line bg-bad-bg px-3 py-1 text-xs font-medium text-bad"
-              >
+              <SubmitButton className="min-h-9 rounded-full border border-bad-line bg-bad-bg px-3 py-1 text-xs font-medium text-bad">
                 Bailed
-              </button>
+              </SubmitButton>
             </form>
           </div>
         </details>

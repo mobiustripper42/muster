@@ -18,6 +18,7 @@ import { getRepo } from "../../lib/repo";
 import { TENANT_ID } from "../../lib/tenant";
 import { fmt12 } from "../../lib/format";
 import { requestLoginCode, respondToAsk, signOut, verifyLoginCode } from "./actions";
+import { SubmitButton } from "../../../components/ui/submit-button";
 
 /** #161: the In/Out tap's outcome → a calm /crew notice (codes only, DEC-026). */
 const ANSWERED_NOTE: Record<string, string> = {
@@ -519,22 +520,22 @@ function AskCard({ ask }: { ask: CrewAppView["asks"][number] }) {
           No client JS; green In / red Out is the scannable polarity (mockup). */}
       <form action={respondToAsk} className="grid grid-cols-2 gap-px bg-line">
         <input type="hidden" name="askId" value={ask.askId} />
-        <button
-          type="submit"
+        <SubmitButton
           name="response"
           value="declined"
+          spinsWhen={(d) => d.get("response") === "declined"}
           className="min-h-[52px] w-full bg-card font-semibold text-bad"
         >
           Out
-        </button>
-        <button
-          type="submit"
+        </SubmitButton>
+        <SubmitButton
           name="response"
           value="accepted"
+          spinsWhen={(d) => d.get("response") === "accepted"}
           className="min-h-[52px] w-full bg-ok font-semibold text-white"
         >
           In
-        </button>
+        </SubmitButton>
       </form>
     </div>
   );

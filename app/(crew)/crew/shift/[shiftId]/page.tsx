@@ -3,6 +3,7 @@ import { buildShiftCard, type ShiftCardView } from "@core/crewapp/shift-card.js"
 import { asId } from "@core/domain/ids.js";
 import { Notice } from "../../../../../components/ui/notice";
 import { Shell } from "../../../../../components/ui/shell";
+import { SubmitButton } from "../../../../../components/ui/submit-button";
 import { readSubject } from "../../../../lib/auth";
 import { getRepo } from "../../../../lib/repo";
 import { fmt12 } from "../../../../lib/format";
@@ -308,12 +309,9 @@ function Card({
         <form action={bailFromSeat}>
           <input type="hidden" name="seatId" value={card.mySeatId} />
           <input type="hidden" name="shiftId" value={shiftId} />
-          <button
-            type="submit"
-            className="min-h-[44px] w-full rounded-lg border border-bad-line bg-bad-bg px-4 font-semibold text-bad"
-          >
+          <SubmitButton className="min-h-[44px] w-full rounded-lg border border-bad-line bg-bad-bg px-4 font-semibold text-bad">
             Drop this shift
-          </button>
+          </SubmitButton>
         </form>
       </details>
       )}

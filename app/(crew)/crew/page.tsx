@@ -516,14 +516,14 @@ function AskCard({ ask }: { ask: CrewAppView["asks"][number] }) {
           <b>In or out?</b>
         </div>
       </div>
-      {/* One form, two submit buttons — only the tapped button's response posts.
-          No client JS; green In / red Out is the scannable polarity (mockup). */}
+      {/* One form, two submit buttons — only the tapped button's response posts;
+          each spins alone via its own name/value (DEC-089). No-JS still submits;
+          green In / red Out is the scannable polarity (mockup). */}
       <form action={respondToAsk} className="grid grid-cols-2 gap-px bg-line">
         <input type="hidden" name="askId" value={ask.askId} />
         <SubmitButton
           name="response"
           value="declined"
-          spinsWhen={(d) => d.get("response") === "declined"}
           className="min-h-[52px] w-full bg-card font-semibold text-bad"
         >
           Out
@@ -531,7 +531,6 @@ function AskCard({ ask }: { ask: CrewAppView["asks"][number] }) {
         <SubmitButton
           name="response"
           value="accepted"
-          spinsWhen={(d) => d.get("response") === "accepted"}
           className="min-h-[52px] w-full bg-ok font-semibold text-white"
         >
           In

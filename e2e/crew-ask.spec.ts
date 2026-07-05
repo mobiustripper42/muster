@@ -48,9 +48,9 @@ test.describe("crew ask — In / Out", () => {
     await inBtn.click();
 
     // In flight: only the tapped button (In) is busy, but BOTH disable — the
-    // shared-form double-tap guard (useFormStatus is form-wide; spinsWhen scopes
-    // only the spinner). opacity-0 (not visibility:hidden) keeps the name "In", so
-    // the locator still resolves while spinning.
+    // shared-form double-tap guard (useFormStatus is form-wide; each button scopes
+    // its own spinner by name/value against the pending FormData). opacity-0 (not
+    // visibility:hidden) keeps the name "In", so the locator still resolves spinning.
     await expect(inBtn).toHaveAttribute("aria-busy", "true");
     await expect(inBtn).toBeDisabled();
     await expect(outBtn).toBeDisabled();

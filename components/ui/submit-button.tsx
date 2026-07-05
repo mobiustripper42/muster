@@ -29,10 +29,12 @@ function Spinner() {
  * JS posture for pending state only (DEC-089). Plain nav `<Link>`s and `<details>`
  * toggles have no pending state and stay press-only (Layer 1's `:active` cue).
  *
- * **Multi-submit forms** (the crew In/Out ask: one form, two buttons): pass
- * `spinsWhen` so only the tapped button spins. `useFormStatus().pending` is
- * form-wide (both buttons `disabled`), but `.data` carries the submitted FormData,
- * so `spinsWhen={(d) => d.get("response") === "accepted"}` scopes the spinner.
+ * **Multi-submit forms** (the crew In/Out ask: one form, two buttons): give each
+ * button a distinct `name`/`value`. `useFormStatus().pending` is form-wide (both
+ * buttons `disabled`), but `.data` carries the submitted FormData, so a NAMED
+ * button spins only when its own `name`/`value` is the pair that was submitted.
+ * This is derived from serializable props on purpose — a function prop can't cross
+ * the Server→Client boundary (`AskCard` is a Server Component).
  */
 export function SubmitButton({
   children,
@@ -40,19 +42,19 @@ export function SubmitButton({
   name,
   value,
   title,
-  spinsWhen,
 }: {
   children: ReactNode;
   className?: string;
   name?: string;
   value?: string;
   title?: string;
-  /** For a multi-submit form: spin only when the pending FormData matches. */
-  spinsWhen?: (data: FormData) => boolean;
 }) {
   const { pending, data } = useFormStatus();
-  // `mine` = this specific button is the one that fired the pending submit.
-  const mine = pending && (spinsWhen ? (data ? spinsWhen(data) : false) : true);
+  // `mine` = this button fired the pending submit. A named button (multi-submit
+  // form) matches its own name/value in the submitted FormData; an unnamed button
+  // is the form's sole submit, so it spins whenever the form is pending.
+  const mine =
+    pending && (name != null ? data?.get(name) === value : true);
   return (
     <button
       type="submit"

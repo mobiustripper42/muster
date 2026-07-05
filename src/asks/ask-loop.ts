@@ -27,7 +27,7 @@ import {
   deriveShiftState,
   earliestScheduledStart,
 } from "../builder/derive.js";
-import { TENANT_TIMEZONE } from "../config/tenant.js";
+import { TENANT_TIMEZONE, withinCivilWindow } from "../config/tenant.js";
 import { isAskableFor, isRatedFor } from "../oracle/eligibility.js";
 import { eligiblePool } from "../oracle/oracle.js";
 import { rankEligibleIds } from "../oracle/reliability-score.js";
@@ -424,7 +424,9 @@ export async function expireAsks(
 export interface BailOutcome {
   /** Asks fired to re-crew the seat (empty → pool exhausted → seat rests Bailed). */
   reAsks: Ask[];
-  /** The seat's state after the bail: `Asked` if re-asked, else `Bailed`. */
+  /** The seat's state after the bail: `Asked` if re-asked; `Bailed` when the
+   * pool is exhausted; `Open` when the re-ask deferred past civil hours
+   * (DEC-088 — the next in-window tick re-crews it). */
   seatState: Seat["state"];
 }
 
@@ -444,6 +446,7 @@ export async function bail(
   latenessMs: number,
   noticeMs?: number,
   expectedBailer?: CrewMemberId,
+  opts?: { tz?: string; civilWindow?: { start: string; end: string } },
 ): Promise<BailOutcome> {
   const seat = await repo.getSeat(seatId);
   if (
@@ -482,6 +485,21 @@ export async function bail(
     await repo.saveSeat(bailed);
     await refreshShiftState(repo, seat.shiftId);
     return { reAsks: [], seatState: "Bailed" };
+  }
+
+  // Civil send window (DEC-088): candidates exist, but outside civil hours the
+  // engine defers its own re-ask — rest at **Open** (occupant cleared; the
+  // `shift_bailed` log above already happened at bail time). The next in-window
+  // tick's drip re-crews it immediately (`widenDue` is true for an Open seat) —
+  // and rides the DEC-063 drip rather than this inline pool-wide blast. NOT
+  // `Bailed`: nobody's exhausted; resting Bailed would fake an AtRisk.
+  if (!withinCivilWindow(now, opts?.tz, opts?.civilWindow)) {
+    const deferred: Seat = { ...seat, state: "Open" };
+    delete deferred.assignedCrewMemberId;
+    delete deferred.acquiredVia; // provenance is the occupant's — clear on re-open (#196)
+    await repo.saveSeat(deferred);
+    await refreshShiftState(repo, seat.shiftId);
+    return { reAsks: [], seatState: "Open" };
   }
 
   // Candidates exist: clear Bailed, re-ask, seat → Asked.
@@ -558,6 +576,7 @@ export async function bailWithDerivedLateness(
       bailLatenessMs(tripStart, now),
       tripStart ? tripStart.getTime() - now.getTime() : undefined,
       seat.assignedCrewMemberId,
+      { tz },
     );
     return { code: null, outcome };
   } catch {
@@ -601,6 +620,7 @@ export async function vacateSeat(
   seatId: SeatId,
   now: Date,
   expectedOccupant?: CrewMemberId,
+  opts?: { tz?: string; civilWindow?: { start: string; end: string } },
 ): Promise<VacateOutcome> {
   const seat = await repo.getSeat(seatId);
   // DEC-087 rail guard: vacating re-asks via the kind-blind rankedEligible,
@@ -620,7 +640,13 @@ export async function vacateSeat(
   const removed = seat.assignedCrewMemberId;
   const pool = await rankedEligible(repo, seat, now, new Set([removed]));
 
-  if (pool.length === 0) {
+  // Civil send window (DEC-088): a vacate's re-ask is engine initiative (the
+  // operator's intent was "remove this person", not "text the pool at 23:00")
+  // — outside civil hours it takes the exhausted branch below: rest Open, no
+  // sends; the next in-window tick's drip re-crews it.
+  const deferSends = !withinCivilWindow(now, opts?.tz, opts?.civilWindow);
+
+  if (pool.length === 0 || deferSends) {
     // Exhausted: rest at Open (occupant cleared) — no bail, so no AtRisk yet;
     // the horizon clock governs urgency via resolveShiftState.
     const opened: Seat = { ...seat, state: "Open" };

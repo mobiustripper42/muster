@@ -70,13 +70,16 @@ body {
  * An instant :active scale makes the press unmistakable the moment it lands, on
  * EVERY interactive control including nav links and <details> toggles a spinner
  * can't touch. `touch-action: manipulation` kills the 300ms mobile tap delay;
- * :focus-visible gives a token ring for keyboard/assistive taps. Buttons cover
- * every server-action submit; link-styled-as-buttons opt in with `.pressable`.
- * The PENDING spinner for async submits is the separate client-JS layer
- * (<SubmitButton>, #250 Layer 2) — this layer needs no JS at all.
+ * :focus-visible gives a token ring for keyboard/assistive taps. EVERY button and
+ * EVERY link gets a press cue (buttons scale+dim, links dip opacity) — this app is
+ * navigation-heavy, so a link with no feedback is the main "did my tap land?" gap.
+ * `.pressable` remains an escape hatch for a non-button/non-anchor control that
+ * still needs the button-style scale. The PENDING spinner for async submits is the
+ * separate client-JS layer (<SubmitButton>, #250 Layer 2) — this layer needs no JS.
  */
 @layer base {
   button,
+  a,
   summary,
   [role="button"],
   .pressable {
@@ -87,6 +90,15 @@ body {
   [role="button"]:active,
   .pressable:active {
     filter: brightness(0.96);
+  }
+  /* Links get an obvious press cue too — this app is mostly navigation (rows,
+   * nav, chips, back-links), so a link with no feedback reads as "nothing
+   * happened." OPACITY, not transform/filter: opacity doesn't establish a
+   * containing block, so it's safe on the ShiftRow stretched link (whose
+   * `after:inset-0` overlay would collapse under transform/filter). A firm dip so
+   * the press is unmistakable. Excludes disabled/aria-disabled links. */
+  a:not([aria-disabled="true"]):active {
+    opacity: 0.5;
   }
   /* Scale is motion — gate it on reduced-motion. The brightness dip and the
    * focus ring are non-motion and stay unconditional. NB: never put transform
@@ -102,6 +114,7 @@ body {
     }
   }
   button:focus-visible,
+  a:focus-visible,
   summary:focus-visible,
   [role="button"]:focus-visible,
   .pressable:focus-visible {

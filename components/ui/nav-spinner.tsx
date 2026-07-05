@@ -1,6 +1,7 @@
 "use client";
 
 import { useLinkStatus } from "next/link";
+import { useHeld } from "./use-held";
 
 /**
  * Navigation loading spinner (#250) — shows WHILE the enclosing `<Link>`'s
@@ -32,7 +33,9 @@ export function NavSpinner({
   overlay?: boolean;
 }) {
   const { pending } = useLinkStatus();
-  if (!pending) return null;
+  // Held for a minimum beat so a fast navigation still shows a visible spinner.
+  const showing = useHeld(pending);
+  if (!showing) return null;
 
   const ring = (
     <span

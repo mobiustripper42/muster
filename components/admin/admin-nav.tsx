@@ -1,9 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { NavSpinner } from "../ui/nav-spinner";
+import { AppLink } from "../ui/app-link";
 
 /**
  * Persistent admin nav (#174) — the frame that stitches the per-screen admin
@@ -57,9 +56,9 @@ export function AdminNav({
     <nav aria-label="Admin" className="sticky top-0 z-20 border-b border-line bg-card">
       <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-2.5">
         <span className="flex min-w-0 items-baseline gap-2">
-          <Link href="/admin" className="shrink-0 font-semibold text-ink">
+          <AppLink href="/admin" className="shrink-0 font-semibold text-ink">
             Muster
-          </Link>
+          </AppLink>
           {/* Whose board, which day (9.8) — vessel-local, tertiary ink. */}
           <span className="truncate text-xs text-faint">
             {tenant} · {dateLabel}
@@ -69,15 +68,15 @@ export function AdminNav({
         {/* Desktop: inline links. */}
         <div className="hidden items-center gap-5 text-sm sm:flex">
           {LINKS.map((l) => (
-            <Link
+            <AppLink
               key={l.href}
               href={l.href}
+              spinnerClassName="text-accent"
               aria-current={isActive(l.href) ? "page" : undefined}
               className={`inline-flex items-center gap-1.5 ${isActive(l.href) ? "font-semibold text-accent" : "text-muted"}`}
             >
               {l.label}
-              <NavSpinner size="h-4 w-4" className="text-accent" />
-            </Link>
+            </AppLink>
           ))}
         </div>
 
@@ -131,17 +130,17 @@ export function AdminNav({
             </button>
           </div>
           {LINKS.map((l) => (
-            <Link
+            <AppLink
               key={l.href}
               href={l.href}
+              spinnerClassName="text-accent"
               aria-current={isActive(l.href) ? "page" : undefined}
               className={`flex items-center gap-2 rounded-lg px-3 py-2.5 text-base ${
                 isActive(l.href) ? "bg-bg font-semibold text-accent" : "text-ink"
               }`}
             >
               {l.label}
-              <NavSpinner size="h-4 w-4" className="text-accent" />
-            </Link>
+            </AppLink>
           ))}
         </div>
       </div>

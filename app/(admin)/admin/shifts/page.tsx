@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { AppLink } from "../../../../components/ui/app-link";
 import { deriveAllShifts, type AllShiftsRow } from "@core/admin/all-shifts.js";
 import { TENANT_TIMEZONE } from "@core/config/tenant.js";
 import {
@@ -7,7 +7,6 @@ import {
 } from "../../../../components/assignment/shift-cockpit";
 import { SeatPips } from "../../../../components/admin/seat-pips";
 import { Notice } from "../../../../components/ui/notice";
-import { NavSpinner } from "../../../../components/ui/nav-spinner";
 import { Shell } from "../../../../components/ui/shell";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
@@ -46,7 +45,7 @@ import { splitAction, mergeAction } from "./actions";
  * (`components/assignment/shift-cockpit.tsx`) alongside the board: desktop shows
  * both panes (6xl grid), mobile shows the cockpit full-screen (the list is
  * display-hidden — its "← All shifts" link is the way back). Selection is a plain
- * row `<Link>`; deep links from At-Risk/outbox keep the standalone route. `sel`
+ * row `<AppLink>`; deep links from At-Risk/outbox keep the standalone route. `sel`
  * rides the filter-param set so mode/filter/split navigation never closes the pane.
  */
 
@@ -385,12 +384,12 @@ export default async function AllShifts({
           className="flex min-w-0 flex-col gap-4 lg:min-h-0 lg:overflow-y-auto lg:pr-1"
         >
           <div className="hidden lg:flex lg:justify-end">
-            <Link
+            <AppLink
               href={boardHref}
               className="inline-flex min-h-9 items-center px-1.5 text-xs font-semibold text-accent"
             >
               Close<span aria-hidden="true">&nbsp;✕</span>
-            </Link>
+            </AppLink>
           </div>
           <ShiftCockpit shiftId={sel} sp={sp} ctx={ctx} headingLevel="h2" />
         </div>
@@ -414,7 +413,7 @@ function canonicalIdOf(row: AllShiftsRow): string {
 function ModeToggle({ sp, mode }: { sp: Search; mode: Mode }) {
   const seg = (active: boolean) =>
     `rounded-full px-4 py-1.5 font-semibold ${active ? "bg-accent text-white" : "text-muted"}`;
-  // The active mode is an inert <span>, not a <Link> to itself — clicking the mode
+  // The active mode is an inert <span>, not a <AppLink> to itself — clicking the mode
   // you're already on shouldn't fire a navigation + full re-render of this
   // force-dynamic page. Only the OTHER mode navigates.
   return (
@@ -424,18 +423,18 @@ function ModeToggle({ sp, mode }: { sp: Search; mode: Mode }) {
           View
         </span>
       ) : (
-        <Link href={hrefFor(sp, "view")} className={`${seg(false)} pressable`}>
+        <AppLink href={hrefFor(sp, "view")} className={`${seg(false)} pressable`}>
           View
-        </Link>
+        </AppLink>
       )}
       {mode === "edit" ? (
         <span aria-current="page" className={seg(true)}>
           Edit
         </span>
       ) : (
-        <Link href={hrefFor(sp, "edit")} className={`${seg(false)} pressable`}>
+        <AppLink href={hrefFor(sp, "edit")} className={`${seg(false)} pressable`}>
           Edit
-        </Link>
+        </AppLink>
       )}
     </div>
   );
@@ -472,15 +471,15 @@ function Filter({
   return (
     <div className="flex flex-col gap-2 rounded-card border border-line bg-card px-4 py-3">
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        <Link href={href("today")} className={chip(kind === "today")}>
+        <AppLink href={href("today")} className={chip(kind === "today")}>
           Today
-        </Link>
-        <Link href={href()} className={chip(kind === "next7")}>
+        </AppLink>
+        <AppLink href={href()} className={chip(kind === "next7")}>
           Next 7 days
-        </Link>
-        <Link href={href("weekend")} className={chip(kind === "weekend")}>
+        </AppLink>
+        <AppLink href={href("weekend")} className={chip(kind === "weekend")}>
           This weekend
-        </Link>
+        </AppLink>
       </div>
       <form method="get" className="flex flex-wrap items-end gap-2 text-sm">
         {edit && <input type="hidden" name="mode" value="edit" />}
@@ -574,7 +573,7 @@ function ShiftRow({
   return (
     <div
       // Press cue for the stretched-link row (#250): a calm whole-card background
-      // dip on :active — fires because the row `<Link>` is in the card's activation
+      // dip on :active — fires because the row `<AppLink>` is in the card's activation
       // chain. Background, NOT transform/filter, so it can't collapse the link's
       // `after:inset-0` overlay (that would establish a containing block).
       className={`relative flex flex-col gap-2 rounded-card border bg-card px-4 py-3 shadow-sm active:bg-accent/10 ${
@@ -585,15 +584,14 @@ function ShiftRow({
         {/* Stretched link (9.8): the whole card opens the cockpit; the split/
             merge forms and the At-Risk pointer below are positioned, so they
             stack above the ::after overlay and stay independently tappable. */}
-        <Link
+        {/* AppLink spinner="overlay" (#250): from the click until the cockpit pane
+            renders, a scrim + centered spinner covers the row — "you clicked, it's
+            loading." Overlays the relative card (the link isn't a positioned box). */}
+        <AppLink
           href={href}
+          spinner="overlay"
           className="flex min-w-0 flex-col gap-0.5 after:absolute after:inset-0 after:content-['']"
         >
-          {/* Loading spinner (#250): from the click until the cockpit pane has
-              rendered, a scrim + big centered spinner covers the row — unmistakable
-              "you clicked, it's loading." Overlays the whole card (the Link isn't a
-              positioned box, so inset-0 resolves to the relative card). */}
-          <NavSpinner overlay size="h-7 w-7" />
           {/* Vessel leads — the date now lives in the day-section header (#122).
               The dot is the DEC-086 identity hue: same boat, same hue, always —
               it answers "which boat", never state (aria-hidden; the name is the
@@ -645,7 +643,7 @@ function ShiftRow({
             // approve, the engine is already working it.
             <span className="text-xs text-muted">new in the last pull</span>
           )}
-        </Link>
+        </AppLink>
         <div className="flex shrink-0 flex-col items-end gap-0.5">
           {/* Neutral ink — no per-state colour (DEC-042). */}
           <span className="text-sm text-ink">
@@ -653,12 +651,12 @@ function ShiftRow({
           </span>
           <span className="text-xs text-muted">{fill}</span>
           {row.state === "AtRisk" && (
-            <Link
+            <AppLink
               href="/admin/at-risk"
               className="relative inline-flex min-h-9 items-center text-xs font-semibold text-accent"
             >
               needs attention<span aria-hidden="true">&nbsp;↗</span>
-            </Link>
+            </AppLink>
           )}
         </div>
       </div>

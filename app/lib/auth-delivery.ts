@@ -46,7 +46,6 @@ export function peekLastLoginCode(email: string): string | undefined {
  *  prod flag-flip can never write a live credential to a production log. */
 export function echoLoginCodeForDev(d: LoginCodeDelivery): void {
   if (isProdDeploy()) return;
-  // eslint-disable-next-line no-console
   console.log(`[login-code] → ${d.name} <${d.email}>: ${d.code}`);
   lastCodeByEmail.set(d.email.trim().toLowerCase(), d.code);
 }

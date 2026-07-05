@@ -2211,7 +2211,7 @@ clock should pause overnight or sends should buffer before close; a tenant needs
 
 **Minimum display time (`useHeld`, ~600ms):** both spinners are held for a floor duration so a fast round-trip still shows a *visible* spinner rather than a sub-frame flash (the earlier bug — the spinner rendered but for ~15ms, so it effectively wasn't there). The hold is a floor, not an addition; it can't outlive an unmount (a redirecting button), but same-surface cases (a row opening a pane, a non-redirecting submit) get the full floor.
 
-**Enforcement (lint):** the project has no ESLint yet; a follow-up stands it up with two rules — `no-restricted-imports` banning raw `next/link` (use `<AppLink>`), and `no-restricted-syntax` flagging raw `<button type="submit">` (use `<SubmitButton>`; native GET-form submits opt out with an `eslint-disable` + reason). Until then the rule is convention, documented here. **Phase:** 9.
+**Enforcement (lint):** ESLint (`eslint.config.mjs`, the project's first — minimal, via the typescript-eslint parser) enforces it: `no-restricted-imports` bans the raw `next/link` default import (use `<AppLink>`); `no-restricted-syntax` flags raw `<button type="submit">` (use `<SubmitButton>` or `<GetFormSubmit>`). Wired into `verify` + CI, so a raw link/button fails the build. Exempt: the wrapper components, and `outbox-card.tsx` (owns its optimistic "Sent ✓"/"Copied ✓" feedback). **Phase:** 9.
 
 ---
 

@@ -1,4 +1,5 @@
 import { AppLink } from "../../../../components/ui/app-link";
+import { SubmitButton } from "../../../../components/ui/submit-button";
 import type { ImportRun, ImportRunSummary } from "@core/import/import-audit.js";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
@@ -85,12 +86,9 @@ export default async function ImportPage({
           The live pull also runs every hour on its own; press this to import now —
           you’ll land on a full breakdown of what changed.
         </p>
-        <button
-          type="submit"
-          className="mt-1 min-h-11 rounded-card bg-accent px-4 font-semibold text-white shadow-sm"
-        >
+        <SubmitButton className="mt-1 min-h-11 rounded-card bg-accent px-4 font-semibold text-white shadow-sm">
           Pull from Xola now
-        </button>
+        </SubmitButton>
       </form>
 
       {recent.length > 0 && (

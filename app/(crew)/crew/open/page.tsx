@@ -169,7 +169,7 @@ function Filters({
               : "border-line bg-card text-accent"
           }`}
         >
-          Go
+          Show
         </GetFormSubmit>
       </form>
     </div>

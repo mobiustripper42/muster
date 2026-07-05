@@ -48,15 +48,27 @@ export async function runXolaPull(
   // transition-only (form-shifts) + the notice id is deterministic, so a later pull
   // of the same cancelled shift doesn't duplicate.
   try {
-    await forwardNoticesToOutbox(
-      result.form.cancelledCrew
+    await forwardNoticesToOutbox([
+      // DEC-084: a cancelled shift silently drops its confirmed crew → "you're off".
+      ...result.form.cancelledCrew
         .filter((c) => String(c.crewMemberId) !== OPERATOR_CREW_MEMBER_ID)
         .map((c) => ({
           crewMemberId: c.crewMemberId,
           action: "removed" as const,
           shiftId: c.shiftId,
         })),
-    );
+      // #244: a resurrected shift silently re-confirms crew who were told "you're
+      // off" → the matching "you're on", closing the mismatch. Distinct notice slot
+      // (action "added"), so it rides the same edge without clobbering the earlier
+      // "removed". Best-effort, same as the cancel relay.
+      ...result.form.restoredCrew
+        .filter((c) => String(c.crewMemberId) !== OPERATOR_CREW_MEMBER_ID)
+        .map((c) => ({
+          crewMemberId: c.crewMemberId,
+          action: "added" as const,
+          shiftId: c.shiftId,
+        })),
+    ]);
   } catch {
     // best-effort — the pull stands regardless
   }

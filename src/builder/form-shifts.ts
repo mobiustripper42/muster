@@ -62,6 +62,16 @@ export interface FormResult {
    * side's assignees (the mergeShift precedent) and keyed to the CANONICAL id, so a
    * dual-side person still working the day is never told "you're off." */
   cancelledCrew: { shiftId: ShiftId; crewMemberId: CrewMemberId }[];
+  /** #244: assigned crew on shifts RESURRECTED this run (Cancelled → live, trips
+   * returned — routine for splits per DEC-083, since each pull re-partitions; also
+   * possible for un-split days). Cancel never clears seats, so the crew re-form
+   * straight back to `Confirmed` — but they were told "you're off" at cancel/collapse
+   * time (DEC-084, 9.2), so the import edge relays each a matching "you're on" notice,
+   * closing the silent re-confirm. Transition-only (guarded by the was-Cancelled check),
+   * so a steady live re-pull doesn't re-fire. Keyed to the CANONICAL id like
+   * `cancelledCrew`. The `added` notice slot is distinct from the earlier `removed`
+   * one (id = shift·member·action), so it fires cleanly. */
+  restoredCrew: { shiftId: ShiftId; crewMemberId: CrewMemberId }[];
 }
 
 /**
@@ -105,6 +115,7 @@ export async function formShifts(
     cancelledShiftIds: [],
     splitDaysChanged: [],
     cancelledCrew: [],
+    restoredCrew: [],
   };
 
   for (const g of groups.values()) {
@@ -207,6 +218,36 @@ export async function formShifts(
         });
       }
     }
+
+    // #244 (resurrection, the collapse's mirror): a side that was Cancelled and
+    // now RUNS again this pull silently re-confirms its still-assigned crew — they
+    // were told "you're off" when it collapsed, so relay each a "you're on". No
+    // netting (unlike collapse): "you're on" only goes to crew actually assigned to
+    // a side that runs, so a dual-side worker is never falsely told anything. Read
+    // post-re-form seats; keyed to the CANONICAL id like `cancelledCrew`.
+    const aResurrected = sideA.length > 0 && canonical.state === "Cancelled";
+    const bResurrected =
+      sideB.length > 0 && existingB != null && existingB.state === "Cancelled";
+    if (aResurrected || bResurrected) {
+      const restored = new Set<string>();
+      for (const [resurrected, id] of [
+        [aResurrected, canonicalId],
+        [bResurrected, sideBId],
+      ] as const) {
+        if (!resurrected) continue;
+        for (const seat of await repo.listSeatsForShift(id)) {
+          if (seat.assignedCrewMemberId) {
+            restored.add(String(seat.assignedCrewMemberId));
+          }
+        }
+      }
+      for (const who of restored) {
+        result.restoredCrew.push({
+          shiftId: canonicalId,
+          crewMemberId: asId<"CrewMemberId">(who),
+        });
+      }
+    }
   }
 
   return result;
@@ -281,6 +322,25 @@ async function formOneShift(
   // seats and is left untouched — absence isn't a manning-shrank-to-zero signal).
   const current = await repo.listSeatsForShift(shiftId);
   const currentById = new Map(current.map((s) => [s.id, s]));
+
+  // #244: an UN-split shift resurrecting (was Cancelled, trips returned) puts its
+  // still-assigned crew back on with no notice — they were told "you're off" at
+  // cancel time (DEC-084), so collect them for a matching "you're on". Transition-
+  // only (existing was Cancelled), so a steady live re-pull doesn't re-fire. The
+  // SPLIT resurrection nets in `formShifts`' branch (cross-side view), mirroring how
+  // the cancel path splits its `!isSplitSide` guard from the split-collapse netting.
+  const isSplitSide =
+    extra?.splitCutTime != null || String(shiftId).endsWith("-b");
+  if (existing?.state === "Cancelled" && !isSplitSide) {
+    for (const seat of current) {
+      if (seat.assignedCrewMemberId) {
+        result.restoredCrew.push({
+          shiftId,
+          crewMemberId: seat.assignedCrewMemberId,
+        });
+      }
+    }
+  }
   let seats: Seat[] = [...current];
   if (vessel) {
     const desired = deriveSeats(vessel, shiftId);

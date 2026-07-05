@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { AppLink } from "../../../../../../components/ui/app-link";
 import { asId } from "@core/domain/ids.js";
 import type { ImportRunItemKind } from "@core/import/import-audit.js";
 import { Notice } from "../../../../../../components/ui/notice";
@@ -46,9 +46,9 @@ export default async function ImportRunView({
     return (
       <Shell width="2xl">
         <Notice>That import run wasn’t found.</Notice>
-        <Link href="/admin/import" className="text-sm font-semibold text-accent">
+        <AppLink href="/admin/import" className="text-sm font-semibold text-accent">
           ← Import
-        </Link>
+        </AppLink>
       </Shell>
     );
   }
@@ -149,9 +149,9 @@ export default async function ImportRunView({
         </section>
       )}
 
-      <Link href="/admin/import" className="text-sm font-semibold text-accent">
+      <AppLink href="/admin/import" className="text-sm font-semibold text-accent">
         ← Import
-      </Link>
+      </AppLink>
     </Shell>
   );
 }

@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import Link from "next/link";
+import { AppLink } from "../../../components/ui/app-link";
 import { buildCrewAppView, type CrewAppView } from "@core/crewapp/crew-view.js";
 import { buildThreadList } from "@core/crewapp/thread-list.js";
 import { asId } from "@core/domain/ids.js";
@@ -397,10 +397,11 @@ function CrewApp({
 
       {/* Messages (§7.6 in-app): a calm entry point with the unread count — an
           accent pill, never an alarm color (the anxiety-dashboard guard). */}
-      <Link
+      <AppLink
         href="/crew/threads"
         prefetch={false}
-        className="flex items-center justify-between rounded-card border border-line bg-card px-4 py-3 shadow-sm"
+        spinner="overlay"
+        className="relative flex items-center justify-between rounded-card border border-line bg-card px-4 py-3 shadow-sm"
       >
         <span className="font-semibold text-ink">Messages</span>
         {unreadTotal > 0 ? (
@@ -415,19 +416,20 @@ function CrewApp({
             ›
           </span>
         )}
-      </Link>
+      </AppLink>
 
       {/* The 4th surface (DEC-074): a calm pull entry point, flag-gated. Neutral
           accent, never an alarm — it's an invitation, not a demand. */}
       {selfServe && (
-        <Link
+        <AppLink
           href="/crew/open"
           prefetch={false}
-          className="flex items-center justify-between rounded-card border border-accent bg-accent px-4 py-3 font-semibold text-white shadow-sm"
+          spinner="overlay"
+          className="relative flex items-center justify-between rounded-card border border-accent bg-accent px-4 py-3 font-semibold text-white shadow-sm"
         >
           <span>Pick up a shift</span>
           <span aria-hidden>›</span>
-        </Link>
+        </AppLink>
       )}
 
       {bailedNote && <Notice>{bailedNote}</Notice>}
@@ -467,10 +469,11 @@ function CrewApp({
                 </div>
               </div>
             ) : (
-              <Link
+              <AppLink
                 key={s.seatId}
                 href={`/crew/shift/${s.shiftId}`}
-                className="flex flex-col gap-1 rounded-card border border-line bg-card px-4 py-3 shadow-sm"
+                spinner="overlay"
+                className="relative flex flex-col gap-1 rounded-card border border-line bg-card px-4 py-3 shadow-sm"
               >
                 <div className="flex items-center justify-between gap-2">
                   <ShiftWhenWhat s={s} />
@@ -483,7 +486,7 @@ function CrewApp({
                     Added for you
                   </span>
                 )}
-              </Link>
+              </AppLink>
             ),
           )
         )}

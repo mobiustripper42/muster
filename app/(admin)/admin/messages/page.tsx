@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { AppLink } from "../../../../components/ui/app-link";
 import { buildOperatorThreads, type OperatorThreadsView } from "@core/admin/operator-threads.js";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
@@ -38,16 +38,17 @@ export default async function AdminMessages() {
       <h1 className="text-lg font-semibold text-ink">Messages</h1>
       <section className="flex flex-col gap-2">
         {view.threads.map((t) => (
-          <Link
+          <AppLink
             key={t.threadId}
             href={`/admin/messages/${t.threadId}`}
-            className="flex min-w-0 flex-col rounded-card border border-line bg-card px-4 py-3 shadow-sm"
+            spinner="overlay"
+            className="relative flex min-w-0 flex-col rounded-card border border-line bg-card px-4 py-3 shadow-sm"
           >
             <span className="truncate font-semibold text-ink">{t.title}</span>
             <span className="truncate text-sm text-muted">
               {t.preview ? `${t.preview.senderLabel}: ${t.preview.body}` : "No messages yet"}
             </span>
-          </Link>
+          </AppLink>
         ))}
       </section>
     </Shell>
@@ -56,9 +57,9 @@ export default async function AdminMessages() {
 
 function BackLink() {
   return (
-    <Link href="/admin" className="text-sm font-semibold text-accent">
+    <AppLink href="/admin" className="text-sm font-semibold text-accent">
       ‹ Admin
-    </Link>
+    </AppLink>
   );
 }
 

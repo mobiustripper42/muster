@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { AppLink } from "../../../../../components/ui/app-link";
 import { buildShiftCard, type ShiftCardView } from "@core/crewapp/shift-card.js";
 import { asId } from "@core/domain/ids.js";
 import { Notice } from "../../../../../components/ui/notice";
@@ -93,9 +93,9 @@ export default async function ShiftCardPage({
 
 function BackLink() {
   return (
-    <Link href="/crew" className="text-sm font-semibold text-accent">
+    <AppLink href="/crew" className="text-sm font-semibold text-accent">
       ‹ Shifts
-    </Link>
+    </AppLink>
   );
 }
 

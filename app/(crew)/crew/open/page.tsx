@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { AppLink } from "../../../../components/ui/app-link";
 import { notFound, redirect } from "next/navigation";
 import {
   buildClaimableView,
@@ -107,9 +107,9 @@ export default async function CrewOpenPage({
 
 function BackLink() {
   return (
-    <Link href="/crew" className="text-sm font-semibold text-accent">
+    <AppLink href="/crew" className="text-sm font-semibold text-accent">
       ‹ Shifts
-    </Link>
+    </AppLink>
   );
 }
 
@@ -132,12 +132,12 @@ function Filters({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap gap-2">
-        <Link href="/crew/open" className={chip(label === "today")}>
+        <AppLink href="/crew/open" className={chip(label === "today")}>
           Today
-        </Link>
-        <Link href="/crew/open?range=weekend" className={chip(label === "weekend")}>
+        </AppLink>
+        <AppLink href="/crew/open?range=weekend" className={chip(label === "weekend")}>
           This weekend
-        </Link>
+        </AppLink>
       </div>
       {/* No-JS date range: a GET form submits ?from&to back to this page. */}
       <form method="get" action="/crew/open" className="flex flex-wrap items-end gap-2">

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { AppLink } from "../../../components/ui/app-link";
 import { Notice } from "../../../components/ui/notice";
 import { Shell } from "../../../components/ui/shell";
 import { VersionTag } from "../../../components/ui/version-tag";
@@ -57,7 +57,7 @@ export default async function AdminHome({
       <EngineControl paused={paused} />
 
       {/* Primary / push: the board that summons you. */}
-      <Link
+      <AppLink
         href="/admin/at-risk"
         className="flex flex-col gap-0.5 rounded-card border border-accent bg-card px-4 py-4 shadow-sm"
       >
@@ -65,33 +65,33 @@ export default async function AdminHome({
         <span className="text-sm text-muted">
           The trips the automation couldn’t close. Empty is good.
         </span>
-      </Link>
+      </AppLink>
 
       {/* Secondary: the surfaces you reach for when you want them. */}
-      <Link
+      <AppLink
         href="/admin/outbox"
         className="rounded-card border border-line bg-card px-4 py-3 font-semibold text-accent shadow-sm"
       >
         Outbox — asks waiting on your text →
-      </Link>
-      <Link
+      </AppLink>
+      <AppLink
         href="/admin/messages"
         className="rounded-card border border-line bg-card px-4 py-3 font-semibold text-accent shadow-sm"
       >
         Messages — post to crew &amp; read every thread →
-      </Link>
-      <Link
+      </AppLink>
+      <AppLink
         href="/admin/import"
         className="rounded-card border border-line bg-card px-4 py-3 font-semibold text-accent shadow-sm"
       >
         Import — load this week’s Xola reservations →
-      </Link>
-      <Link
+      </AppLink>
+      <AppLink
         href="/admin/shifts"
         className="rounded-card border border-line bg-card px-4 py-3 font-semibold text-accent shadow-sm"
       >
         All shifts — everything on the books, for reference →
-      </Link>
+      </AppLink>
 
       <p className="text-sm text-muted">
         Roster, event admin, and shift builder land here in later phases.

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { AppLink } from "../../../../../components/ui/app-link";
 import { buildThreadView, type ThreadView } from "@core/crewapp/thread-view.js";
 import { asId } from "@core/domain/ids.js";
 import { Notice } from "../../../../../components/ui/notice";
@@ -123,8 +123,8 @@ export default async function AdminThread({
 
 function BackLink() {
   return (
-    <Link href="/admin/messages" className="text-sm font-semibold text-accent">
+    <AppLink href="/admin/messages" className="text-sm font-semibold text-accent">
       ‹ Messages
-    </Link>
+    </AppLink>
   );
 }

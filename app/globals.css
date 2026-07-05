@@ -105,12 +105,14 @@ body {
    * would collapse its ::after overlay, so links get the darken/dip only. */
   @media (prefers-reduced-motion: no-preference) {
     button:not(:disabled):active,
-    summary:active,
     [role="button"]:active,
     .pressable:active {
       transform: scale(0.94);
     }
   }
+  /* Summaries are LEFT-ALIGNED text toggles — a center-origin scale pulls their
+   * left edge rightward (a visible "jump right" on click), so they get the
+   * brightness dip only, no scale. */
   button:focus-visible,
   a:focus-visible,
   summary:focus-visible,

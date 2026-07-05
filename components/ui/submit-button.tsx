@@ -2,15 +2,15 @@
 
 import { useFormStatus } from "react-dom";
 import type { ReactNode } from "react";
+import { useHeld } from "./use-held";
 
-/** Calm inline spinner — currentColor ring, ~14px, no layout box of its own beyond
- * its fixed size. `animate-spin` (Tailwind). Decorative; the button carries
- * `aria-busy` for assistive tech. */
+/** Inline spinner — currentColor ring, ~20px so it's clearly visible in a button.
+ * `animate-spin` (Tailwind). Decorative; the button carries `aria-busy` for AT. */
 function Spinner() {
   return (
     <span
       aria-hidden="true"
-      className="inline-block h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-current border-r-transparent align-[-2px]"
+      className="inline-block h-5 w-5 shrink-0 animate-spin rounded-full border-[3px] border-current border-r-transparent"
     />
   );
 }
@@ -55,6 +55,8 @@ export function SubmitButton({
   // is the form's sole submit, so it spins whenever the form is pending.
   const mine =
     pending && (name != null ? data?.get(name) === value : true);
+  // Held for a minimum beat so a fast submit still shows a visible spinner.
+  const showing = useHeld(mine);
   return (
     <button
       type="submit"
@@ -62,11 +64,11 @@ export function SubmitButton({
       value={value}
       title={title}
       disabled={pending}
-      aria-busy={mine}
+      aria-busy={showing}
       // `relative` only while spinning, to host the centered spinner overlay.
-      className={mine ? `relative ${className ?? ""}` : className}
+      className={showing ? `relative ${className ?? ""}` : className}
     >
-      {mine ? (
+      {showing ? (
         <>
           {/* Label stays in flow but `opacity-0` (NOT `invisible`/visibility:hidden,
               which would drop it from the a11y tree and leave a busy button with no

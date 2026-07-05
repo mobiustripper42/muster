@@ -180,6 +180,10 @@ describe("splitShift (DEC-083)", () => {
       const e = (await repo.getEvent(asId<"EventId">(id)))!;
       await repo.saveEvent({ ...e, status: "cancelled" });
     }
+    async function reviveEvent(repo: InMemoryRepository, id: string) {
+      const e = (await repo.getEvent(asId<"EventId">(id)))!;
+      await repo.saveEvent({ ...e, status: "scheduled" });
+    }
 
     it("side B collapses: a B-only person is notified (keyed to the CANONICAL id); a dual-side person surviving on A is NOT", async () => {
       const repo = await seedDay(); // am 11:00 (side A), pm 17:00 (side B)
@@ -265,6 +269,53 @@ describe("splitShift (DEC-083)", () => {
       expect(r1.cancelledCrew).toHaveLength(1);
       const r2 = await formShifts(repo);
       expect(r2.cancelledCrew).toEqual([]);
+    });
+
+    it("side B resurrects (#244): a still-assigned crew on the returned side gets 'you're on', keyed canonical, transition-only", async () => {
+      const repo = await seedDay();
+      await splitShift(repo, CANON, "14:00");
+      await confirmInto(repo, SIDE_B, "crew-solo", 0);
+      // Collapse side B → crew-solo told "you're off" (the cancel side).
+      await cancelEvent(repo, "pm");
+      const rCollapse = await formShifts(repo);
+      expect((await repo.getShift(SIDE_B))?.state).toBe("Cancelled");
+      expect(rCollapse.cancelledCrew).toEqual([
+        { shiftId: CANON, crewMemberId: asId<"CrewMemberId">("crew-solo") },
+      ]);
+      expect(rCollapse.restoredCrew).toEqual([]);
+
+      // The pm trip returns → side B re-forms live with crew-solo still assigned on
+      // the husk → reported for the matching "you're on", keyed to CANON.
+      await reviveEvent(repo, "pm");
+      const r = await formShifts(repo);
+      expect((await repo.getShift(SIDE_B))?.state).not.toBe("Cancelled");
+      expect(r.restoredCrew).toEqual([
+        { shiftId: CANON, crewMemberId: asId<"CrewMemberId">("crew-solo") },
+      ]);
+      // A steady live re-pull must NOT re-fire (transition-only).
+      expect((await formShifts(repo)).restoredCrew).toEqual([]);
+    });
+
+    it("resurrection nets a continuous dual-sider (#244): reviving side A never tells someone still working side B 'you're on'", async () => {
+      const repo = await seedDay();
+      await splitShift(repo, CANON, "14:00");
+      await confirmInto(repo, CANON, "crew-dual", 0);
+      await confirmInto(repo, SIDE_B, "crew-dual", 0);
+      await confirmInto(repo, CANON, "crew-a-only", 1);
+      // Side A collapses — dual survives on B (never told "off"); a-only is told off.
+      await cancelEvent(repo, "am");
+      const rCollapse = await formShifts(repo);
+      expect(rCollapse.cancelledCrew).toEqual([
+        { shiftId: CANON, crewMemberId: asId<"CrewMemberId">("crew-a-only") },
+      ]);
+
+      // Side A's trip returns: a-only genuinely comes back ("you're on"); dual, who
+      // worked B throughout and was never told "off", is netted out — no false "on".
+      await reviveEvent(repo, "am");
+      const r = await formShifts(repo);
+      expect(r.restoredCrew).toEqual([
+        { shiftId: CANON, crewMemberId: asId<"CrewMemberId">("crew-a-only") },
+      ]);
     });
 
     it("an already-Cancelled far side never counts as a survivor (its crew aren't working the day)", async () => {

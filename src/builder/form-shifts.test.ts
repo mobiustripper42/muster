@@ -93,6 +93,12 @@ async function cancelEvent(repo: InMemoryRepository, id: string): Promise<void> 
   await repo.saveEvent({ ...e!, status: "cancelled" });
 }
 
+/** Un-cancel an event — the trip returns (Xola resurrection, #244). */
+async function reviveEvent(repo: InMemoryRepository, id: string): Promise<void> {
+  const e = await repo.getEvent(asId<"EventId">(id));
+  await repo.saveEvent({ ...e!, status: "scheduled" });
+}
+
 describe("formShifts — reconciliation (#20)", () => {
   const day1 = asId<"ShiftId">(`shift-${PARTY}-2026-05-16`);
 
@@ -173,6 +179,39 @@ describe("formShifts — reconciliation (#20)", () => {
     // A re-pull of the ALREADY-cancelled shift must NOT re-report (transition-only).
     const r2 = await formShifts(repo);
     expect(r2.cancelledCrew).toEqual([]);
+  });
+
+  it("reports resurrected crew (#244) when a cancelled shift comes back — transition-only", async () => {
+    const repo = new InMemoryRepository();
+    await seedEvents(repo);
+    await formShifts(repo);
+    // Confirm a crew member onto a seat, then cancel the whole shift out from
+    // under them — the seat assignment survives on the Cancelled husk.
+    const seat = (await repo.listSeatsForShift(day1))[0]!;
+    await repo.saveSeat({
+      ...seat,
+      state: "Confirmed",
+      assignedCrewMemberId: asId<"CrewMemberId">("cap"),
+    });
+    await cancelEvent(repo, "e1");
+    await cancelEvent(repo, "e2");
+    const rCancel = await formShifts(repo);
+    expect((await repo.getShift(day1))?.state).toBe("Cancelled");
+    expect(rCancel.restoredCrew).toEqual([]); // cancel is not a resurrection
+
+    // The trips return → the shift re-forms live and the still-assigned crew are
+    // reported for the matching "you're on" notice (the silent re-confirm, closed).
+    await reviveEvent(repo, "e1");
+    await reviveEvent(repo, "e2");
+    const r = await formShifts(repo);
+    expect((await repo.getShift(day1))?.state).not.toBe("Cancelled");
+    expect(r.restoredCrew).toEqual([
+      { shiftId: day1, crewMemberId: asId<"CrewMemberId">("cap") },
+    ]);
+
+    // A steady live re-pull must NOT re-report (transition-only).
+    const r2 = await formShifts(repo);
+    expect(r2.restoredCrew).toEqual([]);
   });
 
   it("never forms a shift from cancelled-only events (no prior shift)", async () => {

@@ -576,7 +576,7 @@ function ShiftRow({
       // dip on :active — fires because the row `<Link>` is in the card's activation
       // chain. Background, NOT transform/filter, so it can't collapse the link's
       // `after:inset-0` overlay (that would establish a containing block).
-      className={`relative flex flex-col gap-2 rounded-card border bg-card px-4 py-3 shadow-sm active:bg-bg ${
+      className={`relative flex flex-col gap-2 rounded-card border bg-card px-4 py-3 shadow-sm active:bg-accent/10 ${
         selected ? "border-accent" : "border-line"
       }`}
     >

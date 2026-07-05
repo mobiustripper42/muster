@@ -423,7 +423,7 @@ function ModeToggle({ sp, mode }: { sp: Search; mode: Mode }) {
           View
         </span>
       ) : (
-        <Link href={hrefFor(sp, "view")} className={seg(false)}>
+        <Link href={hrefFor(sp, "view")} className={`${seg(false)} pressable`}>
           View
         </Link>
       )}
@@ -432,7 +432,7 @@ function ModeToggle({ sp, mode }: { sp: Search; mode: Mode }) {
           Edit
         </span>
       ) : (
-        <Link href={hrefFor(sp, "edit")} className={seg(false)}>
+        <Link href={hrefFor(sp, "edit")} className={`${seg(false)} pressable`}>
           Edit
         </Link>
       )}
@@ -458,7 +458,7 @@ function Filter({
   sel: string | null;
 }) {
   const chip = (active: boolean) =>
-    `rounded-full border px-3 py-1 ${active ? "border-accent text-accent" : "border-line text-muted"}`;
+    `pressable rounded-full border px-3 py-1 ${active ? "border-accent text-accent" : "border-line text-muted"}`;
   const edit = mode === "edit";
   const href = (preset?: string) => {
     const p = new URLSearchParams();
@@ -582,7 +582,7 @@ function ShiftRow({
             stack above the ::after overlay and stay independently tappable. */}
         <Link
           href={href}
-          className="flex min-w-0 flex-col gap-0.5 after:absolute after:inset-0 after:content-['']"
+          className="pressable flex min-w-0 flex-col gap-0.5 after:absolute after:inset-0 after:content-['']"
         >
           {/* Vessel leads — the date now lives in the day-section header (#122).
               The dot is the DEC-086 identity hue: same boat, same hue, always —

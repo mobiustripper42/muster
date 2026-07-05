@@ -6,7 +6,6 @@ import {
 import { deriveWarming } from "@core/admin/warming.js";
 import { asId } from "@core/domain/ids.js";
 import { resolveShiftStateOnRead } from "@core/builder/tick.js";
-import { changedSinceReviewed } from "@core/builder/lock.js";
 import { evaluateTraineeCandidate } from "@core/oracle/eligibility.js";
 import { committedDatesByCrew } from "@core/oracle/oracle.js";
 import { TENANT_TIMEZONE } from "@core/config/tenant.js";
@@ -108,7 +107,6 @@ export async function ShiftCockpit({
   let overrideSeats: OverrideSeatVM[] = [];
   let roleOptions: { id: string; name: string }[] = [];
   let traineeOptions: { id: string; name: string }[] = [];
-  let changedSinceLock = false;
   const warmingOpen = sp.warming === "1";
   try {
     view = await buildAssignmentView(repo, shiftId, now);
@@ -116,17 +114,6 @@ export async function ShiftCockpit({
       return <Notice>No such shift. It may have been removed.</Notice>;
     }
     resolved = await resolveShiftStateOnRead(repo, shiftId, now);
-    // "Changed since you reviewed it" (§2.3, DEC-029) — a booking landed/changed
-    // after this shift was locked. Derived, never a stored flag; relock clears.
-    const shift = await repo.getShift(shiftId);
-    if (shift?.lockedAt) {
-      const reservations = (
-        await Promise.all(
-          shift.eventIds.map((id) => repo.listReservationsForEvent(id)),
-        )
-      ).flat();
-      changedSinceLock = changedSinceReviewed(shift, reservations);
-    }
     const crewMembers = await repo.listCrewMembers();
     crew = new Map(
       crewMembers.map((c) => [
@@ -345,12 +332,6 @@ export async function ShiftCockpit({
           )}
         </div>
       </header>
-
-      {changedSinceLock && (
-        <Notice tone="warn">
-          A booking changed since this shift was last reviewed — take another look.
-        </Notice>
-      )}
 
       {assigned && <Notice tone="ok">Asked {assigned} into the seat — awaiting their reply.</Notice>}
       {nudged && <Notice tone="ok">↗ Nudged {nudged} — asked, not yet filled.</Notice>}

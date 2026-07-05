@@ -7,7 +7,6 @@ import {
 } from "../../../../components/assignment/shift-cockpit";
 import { SeatPips } from "../../../../components/admin/seat-pips";
 import { Notice } from "../../../../components/ui/notice";
-import { NavSpinner } from "../../../../components/ui/nav-spinner";
 import { Shell } from "../../../../components/ui/shell";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
@@ -589,11 +588,6 @@ function ShiftRow({
           href={href}
           className="flex min-w-0 flex-col gap-0.5 after:absolute after:inset-0 after:content-['']"
         >
-          {/* Loading spinner (#250): while this row's navigation is in flight (the
-              server is building the cockpit pane), a spinner sits at the row's right
-              edge — the "clicked, now loading" beat. z-10 to clear the ::after
-              overlay; positioned to the card since the Link isn't a positioned box. */}
-          <NavSpinner className="absolute top-1/2 right-4 z-10 -translate-y-1/2 text-accent" />
           {/* Vessel leads — the date now lives in the day-section header (#122).
               The dot is the DEC-086 identity hue: same boat, same hue, always —
               it answers "which boat", never state (aria-hidden; the name is the

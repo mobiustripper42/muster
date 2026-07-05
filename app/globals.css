@@ -55,6 +55,18 @@
 
   /* Card radius scale */
   --radius-card: 14px;
+
+  /* Navigation progress bar sweep (#250, NavProgress). */
+  --animate-navbar: navbar 1.1s ease-in-out infinite;
+}
+
+@keyframes navbar {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(400%);
+  }
 }
 
 body {

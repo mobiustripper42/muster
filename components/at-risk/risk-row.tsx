@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { leanOn } from "../../app/(admin)/admin/at-risk/actions";
+import { SubmitButton } from "../ui/submit-button";
 
 /**
  * One At-Risk board row (SPEC §2.5, #42) — enough to act without opening it:
@@ -150,13 +151,12 @@ export function RiskRow({ row }: { row: RiskRowVM }) {
               <form key={p.id} action={leanOn} className="inline-flex">
                 <input type="hidden" name="shiftId" value={row.shiftId} />
                 <input type="hidden" name="crewMemberId" value={p.id} />
-                <button
-                  type="submit"
+                <SubmitButton
                   className="min-h-9 rounded-full border border-line bg-card px-3 py-1 text-xs font-medium text-accent hover:border-accent"
                   title={`Direct nudge — “I need you on this”`}
                 >
                   <span aria-hidden="true">↗ </span>Nudge {p.name}
-                </button>
+                </SubmitButton>
               </form>
             ))
           )}

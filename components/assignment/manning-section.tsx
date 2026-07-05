@@ -5,6 +5,7 @@ import {
   staffTrainee,
   unstaffTrainee,
 } from "../../app/(admin)/admin/shift/[shiftId]/actions";
+import { SubmitButton } from "../ui/submit-button";
 
 export interface OverrideSeatVM {
   seatId: string;
@@ -95,12 +96,9 @@ export function ManningSection({
                   <input type="hidden" name="crewMemberId" value={s.occupantId} />
                   {hostCtx}
                   <span className="text-xs text-muted">{s.occupantName ?? "riding"}</span>
-                  <button
-                    type="submit"
-                    className="inline-flex min-h-9 items-center px-2 text-xs font-semibold text-accent"
-                  >
+                  <SubmitButton className="inline-flex min-h-9 items-center px-2 text-xs font-semibold text-accent">
                     Take off seat
-                  </button>
+                  </SubmitButton>
                 </form>
               ) : s.occupied ? (
                 <span className="text-xs text-muted">occupied — vacate to remove</span>
@@ -131,24 +129,18 @@ export function ManningSection({
                           ))}
                         </select>
                       </label>
-                      <button
-                        type="submit"
-                        className="min-h-9 rounded-lg border border-line bg-bg px-3 py-1 text-xs font-semibold text-accent"
-                      >
+                      <SubmitButton className="min-h-9 rounded-lg border border-line bg-bg px-3 py-1 text-xs font-semibold text-accent">
                         Assign
-                      </button>
+                      </SubmitButton>
                     </form>
                   )}
                   <form action={removeManningSeat}>
                     <input type="hidden" name="shiftId" value={shiftId} />
                     <input type="hidden" name="seatId" value={s.seatId} />
                     {hostCtx}
-                    <button
-                      type="submit"
-                      className="inline-flex min-h-9 items-center px-2 text-xs font-semibold text-accent"
-                    >
+                    <SubmitButton className="inline-flex min-h-9 items-center px-2 text-xs font-semibold text-accent">
                       Remove
-                    </button>
+                    </SubmitButton>
                   </form>
                 </span>
               ) : (
@@ -157,12 +149,9 @@ export function ManningSection({
                   <input type="hidden" name="seatId" value={s.seatId} />
                   {hostCtx}
                   {/* min-h-9 + padding: real tap target (9.7) — operator's on a phone. */}
-                  <button
-                    type="submit"
-                    className="inline-flex min-h-9 items-center px-2 text-xs font-semibold text-accent"
-                  >
+                  <SubmitButton className="inline-flex min-h-9 items-center px-2 text-xs font-semibold text-accent">
                     Remove
-                  </button>
+                  </SubmitButton>
                 </form>
               )}
             </li>
@@ -176,24 +165,18 @@ export function ManningSection({
           <input type="hidden" name="kind" value="required" />
           {hostCtx}
           {rolePicker("Role for the required hand")}
-          <button
-            type="submit"
-            className="min-h-9 rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent"
-          >
+          <SubmitButton className="min-h-9 rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent">
             + Required hand
-          </button>
+          </SubmitButton>
         </form>
         <form action={addManningSeat} className="flex items-center gap-1.5">
           <input type="hidden" name="shiftId" value={shiftId} />
           <input type="hidden" name="kind" value="supernumerary" />
           {hostCtx}
           {rolePicker("Role for the trainee seat")}
-          <button
-            type="submit"
-            className="min-h-9 rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent"
-          >
+          <SubmitButton className="min-h-9 rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent">
             + Trainee seat
-          </button>
+          </SubmitButton>
         </form>
       </div>
     </section>

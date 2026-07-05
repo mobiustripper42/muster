@@ -1,4 +1,5 @@
 import type { SeatCardVM } from "./seat-card";
+import { SubmitButton } from "../ui/submit-button";
 
 /** Shared form primitives for the cockpit's no-client-JS action forms. */
 
@@ -27,14 +28,15 @@ export function MiniButton({
   /** Decorative lead glyph (9.8) — aria-hidden; `label` stays the accessible name. */
   glyph?: string;
 }) {
+  // Folds into <SubmitButton> (DEC-089): every candidate-row Ask/Nudge gets the
+  // pending spinner + disabled double-tap guard for free.
   return (
-    <button
-      type="submit"
+    <SubmitButton
       title={title}
       className="min-h-9 rounded-full border border-line bg-card px-3 py-1 text-xs font-medium text-accent hover:border-accent"
     >
       {glyph && <span aria-hidden="true">{glyph} </span>}
       {label}
-    </button>
+    </SubmitButton>
   );
 }

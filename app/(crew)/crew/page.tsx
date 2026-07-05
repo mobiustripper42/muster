@@ -18,6 +18,7 @@ import { getRepo } from "../../lib/repo";
 import { TENANT_ID } from "../../lib/tenant";
 import { fmt12 } from "../../lib/format";
 import { requestLoginCode, respondToAsk, signOut, verifyLoginCode } from "./actions";
+import { SubmitButton } from "../../../components/ui/submit-button";
 
 /** #161: the In/Out tap's outcome → a calm /crew notice (codes only, DEC-026). */
 const ANSWERED_NOTE: Record<string, string> = {
@@ -301,9 +302,9 @@ function EmailStep({ err }: { err?: string }) {
           className={inputClass}
         />
         <SmsConsentBlock />
-        <button type="submit" className={primaryButtonClass}>
+        <SubmitButton className={primaryButtonClass}>
           Email me a code
-        </button>
+        </SubmitButton>
       </form>
     </div>
   );
@@ -335,16 +336,16 @@ function CodeStep({ email, err }: { email: string; err?: string }) {
           placeholder="123456"
           className={`${inputClass} tracking-[0.5em]`}
         />
-        <button type="submit" className={primaryButtonClass}>
+        <SubmitButton className={primaryButtonClass}>
           Sign in
-        </button>
+        </SubmitButton>
       </form>
       {/* Re-mint: the email rides as a hidden field (the cookie also holds it). */}
       <form action={requestLoginCode}>
         <input type="hidden" name="email" value={email} />
-        <button type="submit" className="text-sm text-muted underline">
+        <SubmitButton className="text-sm text-muted underline">
           Send a new code
-        </button>
+        </SubmitButton>
       </form>
     </div>
   );
@@ -492,9 +493,9 @@ function CrewApp({
           phones with a standing 14-day session. No flag; it only clears the
           caller's own cookie. */}
       <form action={signOut} className="pt-2">
-        <button type="submit" className="text-xs text-muted underline">
+        <SubmitButton className="text-xs text-muted underline">
           Sign out
-        </button>
+        </SubmitButton>
       </form>
 
       <VersionTag />
@@ -515,26 +516,25 @@ function AskCard({ ask }: { ask: CrewAppView["asks"][number] }) {
           <b>In or out?</b>
         </div>
       </div>
-      {/* One form, two submit buttons — only the tapped button's response posts.
-          No client JS; green In / red Out is the scannable polarity (mockup). */}
+      {/* One form, two submit buttons — only the tapped button's response posts;
+          each spins alone via its own name/value (DEC-089). No-JS still submits;
+          green In / red Out is the scannable polarity (mockup). */}
       <form action={respondToAsk} className="grid grid-cols-2 gap-px bg-line">
         <input type="hidden" name="askId" value={ask.askId} />
-        <button
-          type="submit"
+        <SubmitButton
           name="response"
           value="declined"
           className="min-h-[52px] w-full bg-card font-semibold text-bad"
         >
           Out
-        </button>
-        <button
-          type="submit"
+        </SubmitButton>
+        <SubmitButton
           name="response"
           value="accepted"
           className="min-h-[52px] w-full bg-ok font-semibold text-white"
         >
           In
-        </button>
+        </SubmitButton>
       </form>
     </div>
   );

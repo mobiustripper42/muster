@@ -9,6 +9,7 @@ import { addDays, vesselDateOf } from "@core/config/tenant.js";
 import { asId } from "@core/domain/ids.js";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
+import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { readSubject } from "../../../lib/auth";
 import { selfServeEnabled } from "../../../lib/flags";
@@ -202,12 +203,9 @@ function ClaimRow({ row, back }: { row: ClaimableSeatView; back: string }) {
         <form action={claimSeat}>
           <input type="hidden" name="seatId" value={row.seatId} />
           <input type="hidden" name="back" value={back} />
-          <button
-            type="submit"
-            className="min-h-[44px] w-full rounded-lg border border-accent bg-accent px-4 font-semibold text-white"
-          >
+          <SubmitButton className="min-h-[44px] w-full rounded-lg border border-accent bg-accent px-4 font-semibold text-white">
             Claim this shift
-          </button>
+          </SubmitButton>
         </form>
       </div>
     </details>

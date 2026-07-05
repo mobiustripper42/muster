@@ -107,12 +107,14 @@ body {
    * box (the ShiftRow row link uses an `active:` background on the card instead). */
   @media (prefers-reduced-motion: no-preference) {
     button:not(:disabled):active,
-    summary:active,
     [role="button"]:active,
     .pressable:active {
       transform: scale(0.97);
     }
   }
+  /* Summaries are LEFT-ALIGNED text toggles — a center-origin scale pulls their
+   * left edge rightward (a visible "jump right" on click), so they get the
+   * brightness dip only, no scale. */
   button:focus-visible,
   a:focus-visible,
   summary:focus-visible,

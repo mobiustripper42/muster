@@ -50,8 +50,17 @@ export interface TwilioChannelOptions {
   accountSid: string;
   /** Twilio auth token — server-only, never logged. */
   authToken: string;
-  /** The sending number, E.164 (test number now; the 10DLC campaign number later — #119). */
-  from: string;
+  /**
+   * Messaging Service SID (MG…) of the approved A2P 10DLC campaign — the
+   * PREFERRED sender: Twilio routes the send through the campaign's sender
+   * pool, which is what clears error 30034 (a bare +1 long code not attached
+   * to a campaign is blocked for US A2P traffic). Wins over `from` when both
+   * are set.
+   */
+  messagingServiceSid?: string;
+  /** Fallback sender: a single E.164 number (toll-free, or a campaign-attached
+   *  long code). Required only when `messagingServiceSid` is absent. */
+  from?: string;
   /**
    * Externally-reachable origin for delivered links (no trailing slash); MUST be
    * the trusted `APP_BASE_URL` in prod (host-header poisoning — see base-url.ts).
@@ -67,7 +76,10 @@ export interface TwilioChannelOptions {
 
 export class TwilioChannel implements ChannelPort, NoticePort, NotificationPort {
   readonly #repo: Repository;
-  readonly #opts: Required<Pick<TwilioChannelOptions, "accountSid" | "authToken" | "from">>;
+  readonly #opts: Pick<
+    TwilioChannelOptions,
+    "accountSid" | "authToken" | "from" | "messagingServiceSid"
+  >;
   readonly #linkBase: string;
   readonly #fetch: FetchLike;
   readonly #now: () => Date;
@@ -75,10 +87,16 @@ export class TwilioChannel implements ChannelPort, NoticePort, NotificationPort 
 
   constructor(repo: Repository, options: TwilioChannelOptions) {
     this.#repo = repo;
+    if (!options.messagingServiceSid && !options.from) {
+      throw new Error("twilio channel needs messagingServiceSid or from");
+    }
     this.#opts = {
       accountSid: options.accountSid,
       authToken: options.authToken,
-      from: options.from,
+      ...(options.from !== undefined ? { from: options.from } : {}),
+      ...(options.messagingServiceSid !== undefined
+        ? { messagingServiceSid: options.messagingServiceSid }
+        : {}),
     };
     this.#linkBase = options.linkBase.replace(/\/+$/, "");
     this.#fetch = options.fetch ?? (globalThis.fetch as unknown as FetchLike);
@@ -148,9 +166,13 @@ export class TwilioChannel implements ChannelPort, NoticePort, NotificationPort 
         Authorization: `Basic ${auth}`,
         "Content-Type": "application/x-www-form-urlencoded",
       },
+      // Campaign routing beats a bare number: MessagingServiceSid sends via
+      // the A2P campaign's sender pool (no 30034); From is the fallback.
       body: new URLSearchParams({
         To: to,
-        From: this.#opts.from,
+        ...(this.#opts.messagingServiceSid
+          ? { MessagingServiceSid: this.#opts.messagingServiceSid }
+          : { From: this.#opts.from! }),
         Body: body,
       }).toString(),
     });

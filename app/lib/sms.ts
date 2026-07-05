@@ -17,17 +17,29 @@ import { isProdDeploy } from "./flags";
 interface TwilioEnv {
   accountSid: string;
   authToken: string;
-  from: string;
+  messagingServiceSid?: string;
+  from?: string;
 }
 
 export function readTwilioEnv(): TwilioEnv | null {
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const authToken = process.env.TWILIO_AUTH_TOKEN;
+  // Sender: the A2P campaign's Messaging Service SID (MG…) is PREFERRED — it
+  // routes through the campaign's sender pool and clears error 30034; a bare
+  // TWILIO_FROM number is the fallback (toll-free / campaign-attached code).
+  const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
   const from = process.env.TWILIO_FROM;
-  if (accountSid && authToken && from) return { accountSid, authToken, from };
-  if ((accountSid || authToken || from) && isProdDeploy()) {
+  if (accountSid && authToken && (messagingServiceSid || from)) {
+    return {
+      accountSid,
+      authToken,
+      ...(messagingServiceSid ? { messagingServiceSid } : {}),
+      ...(from ? { from } : {}),
+    };
+  }
+  if ((accountSid || authToken || messagingServiceSid || from) && isProdDeploy()) {
     console.error(
-      "[sms] Twilio half-configured — set ALL of TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM (falling back to the operator outbox)",
+      "[sms] Twilio half-configured — need TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN + (TWILIO_MESSAGING_SERVICE_SID or TWILIO_FROM); falling back to the operator outbox",
     );
   }
   return null;

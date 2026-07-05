@@ -82,6 +82,38 @@ describe("TwilioChannel", () => {
     expect(result.deliveredAt).toBe(NOW.toISOString());
   });
 
+  it("sends via MessagingServiceSid when configured — the A2P campaign route (no From, no 30034)", async () => {
+    const { fetch, calls } = fakeFetch();
+    const repo = new InMemoryRepository();
+    const ch = new TwilioChannel(repo, {
+      accountSid: "ACtest",
+      authToken: "token-test",
+      messagingServiceSid: "MGcampaign",
+      from: "+15005550006", // present but the service SID must win
+      linkBase: "https://muster.test",
+      fetch,
+      now: () => NOW,
+      mintSecret: () => "s3cret",
+    });
+    await ch.send(ask());
+
+    const form = new URLSearchParams(calls[0]!.init.body);
+    expect(form.get("MessagingServiceSid")).toBe("MGcampaign");
+    expect(form.get("From")).toBeNull();
+    expect(form.get("To")).toBe("+15035550111");
+  });
+
+  it("refuses construction with neither messagingServiceSid nor from", () => {
+    expect(
+      () =>
+        new TwilioChannel(new InMemoryRepository(), {
+          accountSid: "ACtest",
+          authToken: "token-test",
+          linkBase: "https://muster.test",
+        }),
+    ).toThrow(/messagingServiceSid or from/);
+  });
+
   it("an ask SMS carries the body + a freshly minted In/Out magic link", async () => {
     const { fetch, calls } = fakeFetch();
     const repo = new InMemoryRepository();

@@ -1,8 +1,6 @@
 import type { ReactNode } from "react";
-import { Suspense } from "react";
 import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import "./globals.css";
-import { NavProgress } from "../components/ui/nav-progress";
 
 // IBM Plex (the mockups' faces). next/font self-hosts them — no layout shift,
 // no external request. Exposed as CSS variables the @theme tokens bind to.
@@ -27,11 +25,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={`${plexSans.variable} ${plexMono.variable}`}>
       <body>
-        {/* Global navigation loading bar (#250) — shows on every internal link/row
-            click until the next page/pane lands. Suspense: it reads useSearchParams. */}
-        <Suspense fallback={null}>
-          <NavProgress />
-        </Suspense>
         {/* Environment tell (server-rendered, no client JS): a 4px line pinned to
             the top edge — red on local dev, yellow on a Vercel preview, nothing in
             production. Keys off the same VERCEL_ENV the dev-link gate uses (DEC-057).

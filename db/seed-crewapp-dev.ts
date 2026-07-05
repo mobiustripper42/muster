@@ -65,6 +65,15 @@ try {
   await repo.saveCredential({ id: asId<"CredentialId">("cred-quint-mmc"), crewMemberId: QUINT, type: "MMC", expiry: in30d });
   await repo.saveCredential({ id: asId<"CredentialId">("cred-hooper-mmc"), crewMemberId: HOOPER, type: "MMC", expiry: "2027-12-31" });
 
+  // Eric — REAL phone, for the Twilio live-SMS smoke (#242): MATE-rated (NOT
+  // captain — bail-regression.spec depends on Quint being the only valid
+  // captain) with a long MMC, so he lands in mate-seat ask pools; "Ask to
+  // fill" on shift-open's mate seat texts his actual phone once the three
+  // TWILIO_* vars are set. Dev seed only.
+  const ERIC = asId<"CrewMemberId">("crew-eric");
+  await repo.saveCrewMember({ id: ERIC, name: "Eric Stoffer", phone: "+14403631599", ratings: [MATE], status: "active", reliabilityScore: null });
+  await repo.saveCredential({ id: asId<"CredentialId">("cred-eric-mmc"), crewMemberId: ERIC, type: "MMC", expiry: "2030-12-31" });
+
   // A confirmed upcoming shift with two events (3pm + 5pm, different docks) →
   // my-shifts row → the shift card (call/departure times, dock pins, per-event
   // manifest, co-crew). Quint (captain) + Hooper (mate) both confirmed.

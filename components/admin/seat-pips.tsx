@@ -1,14 +1,19 @@
 import type { AllShiftsSeat } from "@core/admin/all-shifts.js";
+import { roleHueClass } from "../assignment/role-hue";
 
 /**
- * Neutral-ink seat pips (9.6 — the reconciliation's density adopt, minus the
- * mockup's DEC-042-forbidden state colors). One pip per seat: role initial,
- * filled (Confirmed) vs open outline, dashed "+" for a trainee. Required seats
- * lead, trainees trail (the core ships them sorted role → kind).
+ * Seat pips (9.6 — the reconciliation's density adopt, minus the mockup's
+ * DEC-042-forbidden state colors). One pip per seat: role initial, filled
+ * (Confirmed) vs open outline, dashed "+" for a trainee. Required seats lead,
+ * trainees trail (the core ships them sorted role → kind).
  *
- * Strictly ink/line/faint tokens — a pip must never read as a status badge; the
- * row's state + fill text stay the accessible facts (`aria-hidden` here, the
- * 9.8 decorative-glyph rule).
+ * A FILLED pip wears its DEC-086 role hue (operator call, 2026-07-04) —
+ * matching the cockpit's RoleGlyph: a captain-blue/mate-teal square means "a
+ * person of that role, aboard." That's identity color, not state color: the
+ * state stays in fill-vs-outline (open = light outline grey, so gaps still
+ * jump), and warm/bad status tones never appear here. A filled trainee stays
+ * FAINT — a rider shouldn't read with required-crew weight. The row's state +
+ * fill text stay the accessible facts (`aria-hidden` + sr-only summary).
  */
 export function SeatPips({ seats }: { seats: AllShiftsSeat[] }) {
   if (seats.length === 0) return null;
@@ -33,7 +38,7 @@ export function SeatPips({ seats }: { seats: AllShiftsSeat[] }) {
             title={`${s.roleName} · ${s.filled ? "filled" : "open"}`}
             className={`flex h-[18px] w-[18px] items-center justify-center rounded-[5px] border text-[10px] font-bold uppercase ${
               s.filled
-                ? "border-muted bg-muted text-white"
+                ? `border-transparent text-white ${roleHueClass(s.roleName)}`
                 : "border-line bg-bg text-muted"
             }`}
           >

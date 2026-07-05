@@ -43,7 +43,7 @@
   --color-vessel-6: #7c6a54;
 
   /* Status: ok / warn / bad, each with a soft bg + line (badges, banners) */
-  --color-ok: #15803d;
+  --color-ok: #157a3a; /* 4.78:1 on --color-ok-bg (was #15803d @ 4.43 — 9.7 AA fix, same treatment warn got) */
   --color-ok-bg: #e7f4ec;
   --color-ok-line: #cbe6d5;
   --color-warn: #92400e; /* ≥4.5:1 on --color-warn-bg — pills render at 10px */

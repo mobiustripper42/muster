@@ -152,10 +152,10 @@ export function RiskRow({ row }: { row: RiskRowVM }) {
                 <input type="hidden" name="crewMemberId" value={p.id} />
                 <button
                   type="submit"
-                  className="rounded-full border border-line bg-card px-2.5 py-1 text-xs font-medium text-accent hover:border-accent"
+                  className="min-h-9 rounded-full border border-line bg-card px-3 py-1 text-xs font-medium text-accent hover:border-accent"
                   title={`Direct nudge — “I need you on this”`}
                 >
-                  ↗ Nudge {p.name}
+                  <span aria-hidden="true">↗ </span>Nudge {p.name}
                 </button>
               </form>
             ))

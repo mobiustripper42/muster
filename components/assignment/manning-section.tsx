@@ -33,22 +33,30 @@ export function ManningSection({
 }) {
   const hostCtx =
     ctx !== null ? <input type="hidden" name="ctx" value={ctx} /> : null;
-  const rolePicker = (
-    <select
-      name="role"
-      className="rounded-lg border border-line bg-bg px-2 py-1 text-ink"
-    >
-      {roleOptions.map((r) => (
-        <option key={r.id} value={r.id}>
-          {r.name}
-        </option>
-      ))}
-    </select>
+  // Each select gets its own accessible name via a wrapping label (WCAG 4.1.2,
+  // 9.7 — the Split form idiom); sr-only text keeps the visual row compact and
+  // the two same-named selects distinct to AT.
+  const rolePicker = (label: string) => (
+    <label className="flex items-center">
+      <span className="sr-only">{label}</span>
+      <select
+        name="role"
+        className="min-h-9 rounded-lg border border-line bg-bg px-2 py-1 text-ink"
+      >
+        {roleOptions.map((r) => (
+          <option key={r.id} value={r.id}>
+            {r.name}
+          </option>
+        ))}
+      </select>
+    </label>
   );
   return (
     <section className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-3">
       <div className="flex flex-col gap-0.5">
-        <h2 className="text-sm font-semibold text-ink">Manning</h2>
+        <h2 className="text-[10px] font-bold uppercase tracking-wider text-muted">
+          Manning
+        </h2>
         <p className="text-xs text-muted">
           Extra hands beyond the COI minimum. A required hand gates crewing; a trainee
           rides along — takes a pax slot, doesn’t gate.
@@ -75,7 +83,11 @@ export function ManningSection({
                   <input type="hidden" name="shiftId" value={shiftId} />
                   <input type="hidden" name="seatId" value={s.seatId} />
                   {hostCtx}
-                  <button type="submit" className="text-xs font-semibold text-accent">
+                  {/* min-h-9 + padding: real tap target (9.7) — operator's on a phone. */}
+                  <button
+                    type="submit"
+                    className="inline-flex min-h-9 items-center px-2 text-xs font-semibold text-accent"
+                  >
                     Remove
                   </button>
                 </form>
@@ -90,10 +102,10 @@ export function ManningSection({
           <input type="hidden" name="shiftId" value={shiftId} />
           <input type="hidden" name="kind" value="required" />
           {hostCtx}
-          {rolePicker}
+          {rolePicker("Role for the required hand")}
           <button
             type="submit"
-            className="rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent"
+            className="min-h-9 rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent"
           >
             + Required hand
           </button>
@@ -102,10 +114,10 @@ export function ManningSection({
           <input type="hidden" name="shiftId" value={shiftId} />
           <input type="hidden" name="kind" value="supernumerary" />
           {hostCtx}
-          {rolePicker}
+          {rolePicker("Role for the trainee seat")}
           <button
             type="submit"
-            className="rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent"
+            className="min-h-9 rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent"
           >
             + Trainee seat
           </button>

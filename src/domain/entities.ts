@@ -180,10 +180,10 @@ export interface Reservation {
   status: ReservationStatus;
   /**
    * When this reservation was created or last *materially* changed (ISO-8601 UTC).
-   * Stamped by the import on create + material change only (DEC-029) — the
-   * comparand for the builder's "changed since you reviewed it" nudge
-   * (`max(updatedAt) > shift.lockedAt`). Optional: absent = predates tracking →
-   * older than any lock → never nudges (no backfill needed).
+   * Stamped by the import on create + material change only (DEC-029). Optional:
+   * absent = predates tracking. Retained as the raw change signal; a future
+   * "changed since you last looked" cue may re-anchor on it or on Xola import
+   * diffs (the lock-anchored nudge was retired with locking, DEC-082/#215).
    */
   updatedAt?: string;
   // No waiver field — DEC-012.
@@ -198,7 +198,6 @@ export interface Shift {
   date: string;
   /** Derived from seats (DEC-005); stored for query convenience. */
   state: ShiftState;
-  lockedAt?: string;
   eventIds: EventId[];
   /**
    * A manual split (DEC-083, #206): vessel-local "HH:MM" cut, on the **canonical**

@@ -251,31 +251,6 @@ try {
     respondedAt: at(-3).toISOString(),
   });
 
-  // G — changed since reviewed (#58, DEC-029): fully-Crewed shift, LOCKED 2d ago,
-  // then a booking landed an hour ago → cockpit header shows the review nudge.
-  // Off-board (it's crewed — no gap); reached by URL. An original booking stamped
-  // before the lock proves the derivation picks the *late* one, not just any.
-  const orin = await captain("crew-ar-changed", "Orin");
-  const g = await shipShift("changed", "Stout", CAPTAIN, at(120), "Confirmed", "Crewed", orin);
-  const gShift = await repo.getShift(g.shiftId);
-  await repo.saveShift({ ...gShift!, lockedAt: at(-48).toISOString() });
-  await repo.saveReservation({
-    id: asId<"ReservationId">("resv-ar-changed-orig"),
-    eventId: asId<"EventId">("evt-ar-changed"),
-    customerName: "Brody party",
-    partySize: 4,
-    status: "booked",
-    updatedAt: at(-72).toISOString(), // before the lock — does NOT nudge
-  });
-  await repo.saveReservation({
-    id: asId<"ReservationId">("resv-ar-changed-late"),
-    eventId: asId<"EventId">("evt-ar-changed"),
-    customerName: "Vaughn party",
-    partySize: 6,
-    status: "booked",
-    updatedAt: at(-1).toISOString(), // after the lock — fires the nudge
-  });
-
   // H — gappy day (8.1/#204): Barrel runs 11:00 and 18:00 on the SAME day ~2d out
   // (7h apart) → the Builder View flags it "could be two shifts". Fixed times (not
   // now-relative) so the two trips never straddle midnight into separate shifts.
@@ -325,18 +300,16 @@ try {
     assignedCrewMemberId: bram,
   });
 
-  console.log("Seeded 8 scenarios (trips anchored to now — re-run to re-anchor):");
+  console.log("Seeded 7 scenarios (trips anchored to now — re-run to re-anchor):");
   console.log("  A shift-ar-willing   Tidewater    ~24h  board: asked 2 · 1 declined · 1 silent (two-trip day)");
   console.log("  B shift-ar-exhausted Mash Tun     ~5d   board: engineer seat, empty pool");
   console.log("  C shift-ar-regress   Firkin       ~30h  board: Cody bailed, seat rests Bailed");
   console.log("  D shift-ar-lapse     Growler      ~4d   board: Gus's MMC expires tomorrow");
   console.log("  E shift-ar-claimed   Tidewater II ~3d   cockpit: Petra awaits confirm (off-board)");
   console.log("  F shift-ar-warming   Kettle       ~4d   warming: 1 declined · 1 ghost (off-board)");
-  console.log("  G shift-ar-changed   Stout        ~5d   cockpit: locked, late booking → review nudge");
   console.log("  H shift-ar-gappy     Barrel       ~2d   view: 11:00 + 18:00 (7h gap) → split cue");
   console.log("Board:   /crew/dev-link?admin=spink → tap link → /admin/at-risk");
   console.log("Cockpit: /admin/shift/shift-ar-claimed  (Confirm demo)");
-  console.log("         /admin/shift/shift-ar-changed  (changed-since-reviewed nudge)");
   console.log("Warming: any cockpit → 'Warming signals →'  (shows Kettle)");
 } finally {
   await repo.close();

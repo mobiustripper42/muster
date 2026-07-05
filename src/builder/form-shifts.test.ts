@@ -1,5 +1,5 @@
 /**
- * Auto-form + lock (Task 1.3 / M2, SPEC §2.3, DEC-005).
+ * Auto-form (Task 1.3 / M2, SPEC §2.3, DEC-005).
  */
 
 import { describe, expect, it } from "vitest";
@@ -8,7 +8,6 @@ import { asId } from "../domain/ids.js";
 import type { Event, Seat } from "../domain/entities.js";
 import { seedFleet } from "../import/resource-map.js";
 import { formShifts } from "./form-shifts.js";
-import { isLocked, lockShift } from "./lock.js";
 
 const PARTY = asId<"VesselId">("vessel-brew-2"); // 2-crew (captain+mate), seeded by the fleet
 const DUFFY = asId<"VesselId">("vessel-duffy-rental"); // 0-crew, seeded manually (Duffys aren't in the crewed fleet)
@@ -229,28 +228,5 @@ describe("formShifts — reconciliation (#20)", () => {
     const shift = await repo.getShift(day1);
     expect(shift?.state).not.toBe("Cancelled");
     expect(shift?.eventIds).toEqual([asId("e2")]);
-  });
-});
-
-describe("lockShift", () => {
-  it("stamps lockedAt and survives a re-form", async () => {
-    const repo = new InMemoryRepository();
-    await seedEvents(repo);
-    await formShifts(repo);
-    const shiftId = asId<"ShiftId">(`shift-${PARTY}-2026-05-16`);
-
-    const locked = await lockShift(repo, shiftId, new Date("2026-05-10T09:00:00Z"));
-    expect(isLocked(locked)).toBe(true);
-    expect(locked.lockedAt).toBe("2026-05-10T09:00:00.000Z");
-
-    await formShifts(repo); // re-form must not clear the lock
-    expect((await repo.getShift(shiftId))?.lockedAt).toBe("2026-05-10T09:00:00.000Z");
-  });
-
-  it("throws on an unknown shift", async () => {
-    const repo = new InMemoryRepository();
-    await expect(
-      lockShift(repo, asId("shift-none"), new Date("2026-05-10T09:00:00Z")),
-    ).rejects.toThrow(/No shift/);
   });
 });

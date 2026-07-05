@@ -5,12 +5,11 @@
  * There is no blank-slate build step (builder fork resolved): shifts form
  * continuously; this is the mechanism. Idempotent — re-forming after bookings or
  * crewing progress **preserves existing seat states** (a Confirmed seat is never
- * reset to Open) and preserves a shift's `lockedAt`.
+ * reset to Open).
  *
  * Forming is how a shift is *born* into the state machine (SPEC §2.3 "Data
  * read") — here into `Pending` (all seats Open). Horizon-based birth straight
- * into `Filling`, and the "changed since you reviewed it" nudge for locked
- * shifts, arrive with the ask loop (M3 / task 1.4b).
+ * into `Filling` arrives with the ask loop (M3 / task 1.4b).
  *
  * Re-forming also **reconciles** against edited reservations (SPEC §2.3, #20):
  *  - **Manning shrink** — a surplus required seat (manning corrected downward) is
@@ -329,7 +328,6 @@ async function formOneShift(
     date,
     state,
     eventIds: scheduled.map((e) => e.id).sort(),
-    ...(existing?.lockedAt ? { lockedAt: existing.lockedAt } : {}),
     ...(extra?.splitCutTime ? { splitCutTime: extra.splitCutTime } : {}),
   };
   await repo.saveShift(shift);

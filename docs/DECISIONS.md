@@ -2199,6 +2199,22 @@ clock should pause overnight or sends should buffer before close; a tenant needs
 
 ---
 
+## DEC-090: Click & loading feedback — the standing rule (`<SubmitButton>` for submits, `<AppLink>` for links; lint-enforced)
+
+**Decision:** Every interactive control gives feedback, by construction. Three layers:
+
+1. **Press feedback** (instant, zero-JS, automatic) — a global `@layer base` rule in `app/globals.css` darkens/shrinks any `button`/`[role=button]` and dips the opacity of any `a` on `:active`. Applies to every control forever, no wiring.
+2. **In-flight spinner for form submits** — `<SubmitButton>` (DEC-089). A raw `<button type="submit">` in a server-action form must be a `<SubmitButton>`.
+3. **In-flight spinner for navigations** — `<AppLink>` (`components/ui/app-link.tsx`): a `next/link` with `<NavSpinner>` (`useLinkStatus`) built in. **Every internal link is an `<AppLink>`**; raw `next/link` is reserved for the wrapper itself. `tel:`/`mailto:`/external/`#` targets are plain `<a>` (no page load, no spinner — AppLink also auto-suppresses). `spinner="overlay"` for card/row links (scrim + centered spinner over a `relative` box); `spinner="inline"` (default) for text/nav links.
+
+**Why every internal link gets one:** every page is `force-dynamic` — there are no "fast" internal navigations, so every one deserves feedback.
+
+**Minimum display time (`useHeld`, ~600ms):** both spinners are held for a floor duration so a fast round-trip still shows a *visible* spinner rather than a sub-frame flash (the earlier bug — the spinner rendered but for ~15ms, so it effectively wasn't there). The hold is a floor, not an addition; it can't outlive an unmount (a redirecting button), but same-surface cases (a row opening a pane, a non-redirecting submit) get the full floor.
+
+**Enforcement (lint):** the project has no ESLint yet; a follow-up stands it up with two rules — `no-restricted-imports` banning raw `next/link` (use `<AppLink>`), and `no-restricted-syntax` flagging raw `<button type="submit">` (use `<SubmitButton>`; native GET-form submits opt out with an `eslint-disable` + reason). Until then the rule is convention, documented here. **Phase:** 9.
+
+---
+
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)
 
 These are deferred by design. Each names an owner and a trigger. **Consult @architect (and the named

@@ -1,7 +1,38 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useLinkStatus } from "next/link";
 import { useHeld } from "./use-held";
+
+/**
+ * Inline nav-loading label (#250) — wraps a link's label so that WHILE the link's
+ * navigation is in flight, the label is hidden (kept in-flow via `opacity-0`, so it
+ * reserves its exact width) and a spinner is centered over it. Swapping in place —
+ * not appending — means **no layout shift**: the link doesn't grow and its siblings
+ * don't move (the bug an appended spinner caused). Matches `<SubmitButton>`'s in-
+ * button spinner. currentColor, held for a minimum beat. Used by `<AppLink>` inline.
+ */
+export function NavLinkLabel({ children }: { children: ReactNode }) {
+  const { pending } = useLinkStatus();
+  const showing = useHeld(pending);
+  return (
+    <span className="relative inline-flex items-center">
+      <span className={showing ? "opacity-0" : undefined}>{children}</span>
+      {showing && (
+        <span
+          role="status"
+          aria-label="Loading"
+          className="absolute inset-0 flex items-center justify-center"
+        >
+          <span
+            aria-hidden="true"
+            className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-[3px] border-current border-r-transparent"
+          />
+        </span>
+      )}
+    </span>
+  );
+}
 
 /**
  * Navigation loading spinner (#250) — shows WHILE the enclosing `<Link>`'s

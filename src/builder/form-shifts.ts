@@ -221,14 +221,28 @@ export async function formShifts(
 
     // #244 (resurrection, the collapse's mirror): a side that was Cancelled and
     // now RUNS again this pull silently re-confirms its still-assigned crew — they
-    // were told "you're off" when it collapsed, so relay each a "you're on". No
-    // netting (unlike collapse): "you're on" only goes to crew actually assigned to
-    // a side that runs, so a dual-side worker is never falsely told anything. Read
-    // post-re-form seats; keyed to the CANONICAL id like `cancelledCrew`.
+    // were told "you're off" when it collapsed, so relay each a "you're on". Keyed
+    // to the CANONICAL id like `cancelledCrew`; read post-re-form seats.
     const aResurrected = sideA.length > 0 && canonical.state === "Cancelled";
     const bResurrected =
       sideB.length > 0 && existingB != null && existingB.state === "Cancelled";
     if (aResurrected || bResurrected) {
+      // Netting mirror of the collapse path (its hazard class, inverted): a crew
+      // member continuously working a SIBLING side that stayed live across this
+      // pull was never told "you're off", so a resurrection of the other side is
+      // not news to them — don't tell them "you're on." `kept` = assignees on a
+      // side that was live BEFORE this pull and still runs. (Both sides dead →
+      // both resurrect → `kept` empty → everyone genuinely returns.)
+      const kept = new Set<string>();
+      for (const [continuous, id] of [
+        [live(canonical) && sideA.length > 0, canonicalId],
+        [live(existingB) && sideB.length > 0, sideBId],
+      ] as const) {
+        if (!continuous) continue;
+        for (const seat of await repo.listSeatsForShift(id)) {
+          if (seat.assignedCrewMemberId) kept.add(String(seat.assignedCrewMemberId));
+        }
+      }
       const restored = new Set<string>();
       for (const [resurrected, id] of [
         [aResurrected, canonicalId],
@@ -236,9 +250,8 @@ export async function formShifts(
       ] as const) {
         if (!resurrected) continue;
         for (const seat of await repo.listSeatsForShift(id)) {
-          if (seat.assignedCrewMemberId) {
-            restored.add(String(seat.assignedCrewMemberId));
-          }
+          const who = seat.assignedCrewMemberId;
+          if (who && !kept.has(String(who))) restored.add(String(who));
         }
       }
       for (const who of restored) {

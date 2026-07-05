@@ -58,9 +58,13 @@ export async function runXolaPull(
           shiftId: c.shiftId,
         })),
       // #244: a resurrected shift silently re-confirms crew who were told "you're
-      // off" → the matching "you're on", closing the mismatch. Distinct notice slot
-      // (action "added"), so it rides the same edge without clobbering the earlier
-      // "removed". Best-effort, same as the cancel relay.
+      // off" → the matching "you're on", closing the mismatch. Best-effort, same as
+      // the cancel relay. NB the notice slot is keyed (shift, member, action): the
+      // "added" here can't clobber the sibling "removed" from the same cancel/revive
+      // pair, but it DOES share a slot with a manual admin "you're on" for the same
+      // shift+member — if that fired+sent earlier, this resurrection "on" no-ops
+      // (OutboxNoticeChannel is terminal-on-sent). Pre-existing slot-reopen gap,
+      // tracked in #259.
       ...result.form.restoredCrew
         .filter((c) => String(c.crewMemberId) !== OPERATOR_CREW_MEMBER_ID)
         .map((c) => ({

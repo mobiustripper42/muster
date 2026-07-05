@@ -423,7 +423,7 @@ function ModeToggle({ sp, mode }: { sp: Search; mode: Mode }) {
           View
         </span>
       ) : (
-        <Link href={hrefFor(sp, "view")} className={seg(false)}>
+        <Link href={hrefFor(sp, "view")} className={`${seg(false)} pressable`}>
           View
         </Link>
       )}
@@ -432,7 +432,7 @@ function ModeToggle({ sp, mode }: { sp: Search; mode: Mode }) {
           Edit
         </span>
       ) : (
-        <Link href={hrefFor(sp, "edit")} className={seg(false)}>
+        <Link href={hrefFor(sp, "edit")} className={`${seg(false)} pressable`}>
           Edit
         </Link>
       )}
@@ -458,7 +458,7 @@ function Filter({
   sel: string | null;
 }) {
   const chip = (active: boolean) =>
-    `rounded-full border px-3 py-1 ${active ? "border-accent text-accent" : "border-line text-muted"}`;
+    `pressable rounded-full border px-3 py-1 ${active ? "border-accent text-accent" : "border-line text-muted"}`;
   const edit = mode === "edit";
   const href = (preset?: string) => {
     const p = new URLSearchParams();
@@ -572,7 +572,11 @@ function ShiftRow({
 
   return (
     <div
-      className={`relative flex flex-col gap-2 rounded-card border bg-card px-4 py-3 shadow-sm ${
+      // Press cue for the stretched-link row (#250): a calm whole-card background
+      // dip on :active — fires because the row `<Link>` is in the card's activation
+      // chain. Background, NOT transform/filter, so it can't collapse the link's
+      // `after:inset-0` overlay (that would establish a containing block).
+      className={`relative flex flex-col gap-2 rounded-card border bg-card px-4 py-3 shadow-sm active:bg-bg ${
         selected ? "border-accent" : "border-line"
       }`}
     >

@@ -53,17 +53,24 @@ test.describe("board bundle — /admin/shifts (9.6)", () => {
     await resetAndSeed("atrisk");
   });
 
-  test("a multi-trip day renders one span per trip, not a run-on string", async ({
+  test("a multi-trip day reads 'start · N trips'; the per-trip detail lives in the cockpit", async ({
     page,
   }) => {
     await signInAsAdmin(page, "spink");
     await page.goto("/admin/shifts");
 
-    // Barrel's two departures are separate nowrap spans — each time·pax fact
-    // holds together at any width. The trips live inside the row link.
+    // Operator QA on 9.5: the list stays scannable — Barrel's two departures
+    // collapse to one compact fact; a single-trip row keeps time · pax.
     const barrel = page.getByRole("link", { name: /Barrel/ }).first();
-    await expect(barrel.getByText(/11:00 AM · \d+ pax/)).toBeVisible();
-    await expect(barrel.getByText(/6:00 PM · \d+ pax/)).toBeVisible();
+    await expect(barrel.getByText("11:00 AM · 2 trips")).toBeVisible();
+    await expect(page.getByText(/\d+:\d+ [AP]M · \d+ pax/).first()).toBeVisible();
+
+    // The cockpit keeps every trip, chip-per-trip, no aboard-total tail.
+    await barrel.click();
+    await page.waitForURL(/sel=/);
+    await expect(page.getByText(/11:00 AM/).last()).toBeVisible();
+    await expect(page.getByText(/6:00 PM · \d+ pax/)).toBeVisible();
+    await expect(page.getByText(/aboard total/)).toHaveCount(0);
   });
 
   test("rows carry neutral-ink seat pips — filled for Confirmed, open otherwise", async ({

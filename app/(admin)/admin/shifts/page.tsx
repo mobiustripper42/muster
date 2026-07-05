@@ -583,20 +583,17 @@ function ShiftRow({
               <span className="text-xs font-normal text-muted">{splitTag}</span>
             )}
           </span>
-          {/* One span per trip (the cockpit idiom) — the old join("   ")
-              collapsed to a single space in HTML, so multi-trip days read as a
-              run-on string and wrapped mid-fact at 375px (9.6 High fix). */}
-          {row.trips.length === 0 ? (
-            <span className="font-mono text-xs text-muted">no scheduled trip</span>
-          ) : (
-            <span className="flex flex-wrap gap-x-3 font-mono text-xs text-muted">
-              {row.trips.map((t, i) => (
-                <span key={i} className="whitespace-nowrap">
-                  {fmt12(t.time)} · {t.pax} pax
-                </span>
-              ))}
-            </span>
-          )}
+          {/* The LIST stays scannable (operator QA on 9.5): a multi-trip day
+              reads as "start · N trips" — the per-trip detail lives in the
+              cockpit. A single trip keeps its time · pax fact. (Also renders
+              the 9.6 run-on wrap moot: one compact span either way.) */}
+          <span className="font-mono text-xs text-muted">
+            {row.trips.length === 0
+              ? "no scheduled trip"
+              : row.trips.length === 1
+                ? `${fmt12(row.trips[0]!.time)} · ${row.trips[0]!.pax} pax`
+                : `${fmt12(row.trips[0]!.time)} · ${row.trips.length} trips`}
+          </span>
           <SeatPips seats={row.seats} />
           {row.splitSuggestion && row.split == null && (
             // Calm read-only cue (8.1/#204): Muster noticed this vessel-day might be

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { NavSpinner } from "../ui/nav-spinner";
 
 /**
  * Persistent admin nav (#174) — the frame that stitches the per-screen admin
@@ -72,9 +73,10 @@ export function AdminNav({
               key={l.href}
               href={l.href}
               aria-current={isActive(l.href) ? "page" : undefined}
-              className={isActive(l.href) ? "font-semibold text-accent" : "text-muted"}
+              className={`inline-flex items-center gap-1.5 ${isActive(l.href) ? "font-semibold text-accent" : "text-muted"}`}
             >
               {l.label}
+              <NavSpinner className="text-accent" />
             </Link>
           ))}
         </div>
@@ -133,11 +135,12 @@ export function AdminNav({
               key={l.href}
               href={l.href}
               aria-current={isActive(l.href) ? "page" : undefined}
-              className={`rounded-lg px-3 py-2.5 text-base ${
+              className={`flex items-center gap-2 rounded-lg px-3 py-2.5 text-base ${
                 isActive(l.href) ? "bg-bg font-semibold text-accent" : "text-ink"
               }`}
             >
               {l.label}
+              <NavSpinner className="text-accent" />
             </Link>
           ))}
         </div>

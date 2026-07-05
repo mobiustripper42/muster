@@ -88,6 +88,12 @@ export interface ShiftCardView {
    * "can't make it" copy turns firmer and pushes the operator call (#7).
    */
   bailLate: boolean;
+  /**
+   * True when the viewer's seat is a supernumerary/trainee ride (DEC-087) —
+   * the card hides the bail control (a ride isn't a reliability commitment;
+   * the office unstaffs, no penalty) and says so instead.
+   */
+  traineeSeat: boolean;
 }
 
 /** Subtract minutes from an "HH:mm" clock time (wraps within a day, just in case). */
@@ -229,5 +235,6 @@ export async function buildShiftCard(
     viewerRole: await roleName(repo, mySeat.role),
     mySeatId: mySeat.id,
     bailLate,
+    traineeSeat: mySeat.kind === "supernumerary",
   };
 }

@@ -10,17 +10,30 @@ export function HiddenIds({ vm, crewId }: { vm: SeatCardVM; crewId?: string }) {
       {crewId !== undefined && (
         <input type="hidden" name="crewMemberId" value={crewId} />
       )}
+      {/* Host context (DEC-085): present ⇒ the action redirects back to the
+          board pane; "" is a real value (default window). Absent ⇒ standalone. */}
+      {vm.ctx !== null && <input type="hidden" name="ctx" value={vm.ctx} />}
     </>
   );
 }
 
-export function MiniButton({ label, title }: { label: string; title?: string }) {
+export function MiniButton({
+  label,
+  title,
+  glyph,
+}: {
+  label: string;
+  title?: string;
+  /** Decorative lead glyph (9.8) — aria-hidden; `label` stays the accessible name. */
+  glyph?: string;
+}) {
   return (
     <button
       type="submit"
       title={title}
-      className="rounded-full border border-line bg-card px-2.5 py-1 text-xs font-medium text-accent hover:border-accent"
+      className="min-h-9 rounded-full border border-line bg-card px-3 py-1 text-xs font-medium text-accent hover:border-accent"
     >
+      {glyph && <span aria-hidden="true">{glyph} </span>}
       {label}
     </button>
   );

@@ -51,6 +51,7 @@ export async function persistImportRun(
       warnings: result.import.warnings,
       assignments: result.assignments,
       splitDaysChanged: result.form.splitDaysChanged,
+      createdShiftIds: result.form.createdShiftIds,
     },
   };
 

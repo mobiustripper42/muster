@@ -15,3 +15,11 @@ import type { TenantId } from "@core/domain/ids.js";
 export const TENANT_ID: TenantId = asId<"TenantId">(
   process.env.TENANT_ID ?? "tenant-brewboat",
 );
+
+/**
+ * The tenant's display name (9.8 — shown with today's date in the AdminNav so
+ * the operator always knows whose board and which day they're on). Same posture
+ * as TENANT_ID / TENANT_TIMEZONE: one env-overridable value, tenant-config-data
+ * in the multi-tenant era.
+ */
+export const TENANT_NAME: string = process.env.TENANT_NAME ?? "BrewBoat";

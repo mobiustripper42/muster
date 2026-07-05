@@ -257,3 +257,32 @@ export function evaluateCandidate(
     failures,
   };
 }
+
+/**
+ * Trainee eligibility (DEC-087, 9.3): `evaluateCandidate` minus `hasRating` —
+ * trainees are unrated by definition; they ride a supernumerary seat to build
+ * hours toward the seat's role. This is a SCOPING of DEC-064, not a bypass:
+ * the rating floor protects role-holding on REQUIRED manning (a license
+ * floor); a supernumerary seat holds no role in that sense, so competency
+ * isn't implicated. Everything else still applies — a trainee is aboard as
+ * crew (active, valid MMC, not on PTO) and physically on one boat per day
+ * (`notDoubleBooked`; with an unexcluded committed-date set this also rejects
+ * crew already confirmed on the SAME shift's required seats).
+ */
+export function evaluateTraineeCandidate(
+  ctx: CandidateContext,
+  tripDate: string,
+): CandidateVerdict {
+  const results = [
+    isActive(ctx.crew),
+    mmcValidOnDate(ctx.credentials, tripDate),
+    notDoubleBooked(ctx.committedDates, tripDate),
+    notOnPto(ctx.ptoWindows, tripDate),
+  ];
+  const failures = results.filter((r) => !r.passed);
+  return {
+    crewMemberId: ctx.crew.id,
+    eligible: failures.length === 0,
+    failures,
+  };
+}

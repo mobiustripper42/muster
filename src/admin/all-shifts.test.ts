@@ -31,6 +31,7 @@ interface TripSpec {
 interface SeatSpec {
   role?: typeof CAPTAIN | typeof MATE;
   state?: SeatState;
+  kind?: Seat["kind"];
 }
 
 async function addShift(
@@ -49,6 +50,10 @@ async function addShift(
     coiMaxPax: 12,
     manning: [{ roleTypeId: CAPTAIN, count: 1 }],
   });
+  // Role display names for the seat pips (idempotent upserts).
+  const TENANT = asId<"TenantId">("tenant-test");
+  await repo.saveRoleType({ id: CAPTAIN, tenantId: TENANT, name: "captain" });
+  await repo.saveRoleType({ id: MATE, tenantId: TENANT, name: "mate" });
   const eventIds = [];
   for (const [i, t] of trips.entries()) {
     const eventId = asId<"EventId">(`evt-${id}-${i}`);
@@ -84,7 +89,7 @@ async function addShift(
       id: asId<"SeatId">(`seat-${id}-${i}`),
       shiftId: asId<"ShiftId">(id),
       role: s.role ?? CAPTAIN,
-      kind: "required",
+      kind: s.kind ?? "required",
       state: s.state ?? "Open",
     };
     await repo.saveSeat(seat);
@@ -111,6 +116,7 @@ describe("deriveAllShifts", () => {
 
     expect(rows).toHaveLength(1);
     const row = rows[0]!;
+    expect(row.vesselId).toBe("vessel-s-crewed"); // the DEC-086 hue key
     expect(row.vesselName).toBe("Hops");
     expect(row.state).toBe("Crewed"); // resolved on read, not the persisted badge
     expect(row.trips.map((t) => t.time)).toEqual(["15:00", "17:00"]); // earliest first
@@ -118,6 +124,39 @@ describe("deriveAllShifts", () => {
     expect(row.paxTotal).toBe(12);
     expect(row.requiredSeats).toBe(2);
     expect(row.confirmedSeats).toBe(2);
+  });
+
+  it("ships per-seat pip facts — every seat incl. supernumerary, sorted role → kind — without changing the required-only fill counts", async () => {
+    await addShift(
+      "s-pips",
+      "2026-07-03",
+      "Hops",
+      [{ time: "15:00", pax: [2] }],
+      [
+        // Deliberately out of display order: trainee mate, open mate, confirmed captain.
+        { role: MATE, state: "Open", kind: "supernumerary" },
+        { role: MATE, state: "Open" },
+        { state: "Confirmed" },
+      ],
+    );
+
+    const rows = await deriveAllShifts(
+      repo,
+      { from: "2026-07-01", to: "2026-07-31" },
+      T0,
+      OPTS,
+    );
+
+    const row = rows[0]!;
+    // Sorted roleName, then kind (required before supernumerary).
+    expect(row.seats).toEqual([
+      { roleName: "captain", filled: true, supernumerary: false },
+      { roleName: "mate", filled: false, supernumerary: false },
+      { roleName: "mate", filled: false, supernumerary: true },
+    ]);
+    // The fill counts keep their required-only meaning — the trainee isn't in them.
+    expect(row.requiredSeats).toBe(2);
+    expect(row.confirmedSeats).toBe(1);
   });
 
   it("excludes cancelled and completed shifts", async () => {

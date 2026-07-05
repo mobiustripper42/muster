@@ -1,11 +1,17 @@
 import Link from "next/link";
 import { deriveAllShifts, type AllShiftsRow } from "@core/admin/all-shifts.js";
 import { TENANT_TIMEZONE } from "@core/config/tenant.js";
+import {
+  ShiftCockpit,
+  type CockpitSearch,
+} from "../../../../components/assignment/shift-cockpit";
+import { SeatPips } from "../../../../components/admin/seat-pips";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
 import { fmt12 } from "../../../lib/format";
+import { vesselHueClass } from "../../../lib/vessel-hue";
 import { splitAction, mergeAction } from "./actions";
 
 /**
@@ -34,13 +40,22 @@ import { splitAction, mergeAction } from "./actions";
  * the cut → `splitShift`), and the two halves of an existing split are paired and
  * tagged. Still server-rendered on navigation, still no client JS (form + redirect,
  * DEC-026); View stays the calm default so Edit is a deliberate step in.
+ *
+ * **Two-pane (9.5, DEC-085).** `?sel=<shiftId>` opens the shared cockpit body
+ * (`components/assignment/shift-cockpit.tsx`) alongside the board: desktop shows
+ * both panes (6xl grid), mobile shows the cockpit full-screen (the list is
+ * display-hidden — its "← All shifts" link is the way back). Selection is a plain
+ * row `<Link>`; deep links from At-Risk/outbox keep the standalone route. `sel`
+ * rides the filter-param set so mode/filter/split navigation never closes the pane.
  */
 
 export const dynamic = "force-dynamic";
 
 type Mode = "view" | "edit";
 
-type Search = {
+/** Board params. Shares the URL with the cockpit's CockpitSearch namespace when
+ * `?sel` is set — keep the two disjoint. */
+type Search = CockpitSearch & {
   from?: string;
   to?: string;
   preset?: string;
@@ -49,6 +64,8 @@ type Search = {
   split_err?: string;
   merge_ok?: string;
   merge_err?: string;
+  /** Open cockpit pane (DEC-085). */
+  sel?: string;
 };
 
 const isDate = (s?: string): s is string => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
@@ -170,9 +187,11 @@ function resolveWindow(
   return { from, to, scope, kind };
 }
 
-/** The filter half of the querystring (preset OR range) — no mode/feedback. Both
- * the mode toggle and the split action's return URL rebuild the window from this,
- * so a Split or a View↔Edit flip never drops the operator's chosen days. */
+/** The filter half of the querystring (preset OR range) — no mode/sel/feedback.
+ * Both the mode toggle and the split action's return URL rebuild the window from
+ * this, so a Split or a View↔Edit flip never drops the operator's chosen days.
+ * This is also the `ctx` the cockpit's action forms carry (DEC-085) — the action
+ * appends `sel` + its feedback code itself, so neither belongs here. */
 function filterParams(sp: Search): URLSearchParams {
   const p = new URLSearchParams();
   if (sp.preset === "today" || sp.preset === "weekend") p.set("preset", sp.preset);
@@ -183,10 +202,14 @@ function filterParams(sp: Search): URLSearchParams {
   return p;
 }
 
-/** Href for the same window in the requested mode (Edit adds `mode=edit`). */
-function hrefFor(sp: Search, mode: Mode): string {
+/** Href for the same window in the requested mode (Edit adds `mode=edit`).
+ * `sel` is part of the preserved state (DEC-085): defaulting to the current
+ * selection keeps the pane open across mode flips and split/merge round-trips;
+ * pass an explicit id for a row link. */
+function hrefFor(sp: Search, mode: Mode, sel: string | undefined = sp.sel): string {
   const p = filterParams(sp);
   if (mode === "edit") p.set("mode", "edit");
+  if (sel) p.set("sel", sel);
   const qs = p.toString();
   return qs ? `/admin/shifts?${qs}` : "/admin/shifts";
 }
@@ -201,6 +224,7 @@ export default async function AllShifts({
 
   const sp = await searchParams;
   const mode: Mode = sp.mode === "edit" ? "edit" : "view";
+  const sel = typeof sp.sel === "string" && sp.sel !== "" ? sp.sel : null;
   const now = new Date();
   const { from, to, scope, kind } = resolveWindow(sp, now);
   const repo = getRepo();
@@ -216,19 +240,30 @@ export default async function AllShifts({
     );
   }
 
-  // Import-diff cue (DEC-083): canonical ids of split days the LATEST pull reshaped.
-  // Best-effort — a runs-table hiccup drops the cue, never the page.
+  // Import-diff cues (DEC-083 + its 9.10 amendment): from the LATEST pull's
+  // summary, the canonical ids of split days it reshaped AND the raw ids of
+  // shifts it freshly minted (`createdShiftIds` absent on pre-9.10 runs → []).
+  // One read, best-effort — a runs-table hiccup drops the cues, never the page.
   let changedDays = new Set<string>();
+  let newShifts = new Set<string>();
   try {
     const runs = await repo.listImportRuns(1);
     changedDays = new Set(runs[0]?.summary.splitDaysChanged ?? []);
+    newShifts = new Set(runs[0]?.summary.createdShiftIds ?? []);
   } catch {
-    /* leave the cue off */
+    /* leave the cues off */
   }
 
-  // The split/merge actions return here (Edit mode, same window) — reused as each
-  // form's `back` so the operator lands where they were.
+  // The split/merge actions return here (Edit mode, same window + selection) —
+  // reused as each form's `back` so the operator lands where they were.
   const back = hrefFor(sp, "edit").split("?")[1] ?? "mode=edit";
+
+  // The cockpit pane's host context (DEC-085): window + mode, never sel/feedback
+  // — its action forms carry it, and `finish()` appends sel + the feedback code.
+  const ctxParams = filterParams(sp);
+  if (mode === "edit") ctxParams.set("mode", "edit");
+  const ctx = ctxParams.toString();
+  const boardHref = ctx ? `/admin/shifts?${ctx}` : "/admin/shifts";
 
   // `merge_ok` carries the count of freed crew notified (a number, not prose —
   // DEC-026); numeric-guarded so a crafted param can't inject text.
@@ -246,8 +281,8 @@ export default async function AllShifts({
     r.split != null &&
     (r.split.side === "A" || !sideAVisible.has(canonicalIdOf(r)));
 
-  return (
-    <Shell width="3xl">
+  const board = (
+    <>
       <header className="flex items-center justify-between gap-4">
         {/* The View/Edit toggle is the mode signal — no subtitle needed. The
             DEC-042 pull-not-push posture is held structurally (neutral ink, no
@@ -277,7 +312,7 @@ export default async function AllShifts({
         </Notice>
       )}
 
-      <Filter from={from} to={to} kind={kind} mode={mode} />
+      <Filter from={from} to={to} kind={kind} mode={mode} sel={sel} />
 
       {rows.length === 0 ? (
         // NOT the board's ✓ success state — a quiet day is just a quiet day.
@@ -288,7 +323,7 @@ export default async function AllShifts({
         <div className="flex flex-col gap-2">
           {/* The summary caption hugs the sections; day-sections (gap-5) carry
               the rhythm between them, not around this line (@ui-reviewer). */}
-          <p className="text-xs text-muted">
+          <p className="text-xs text-faint">
             {rows.length} shift{rows.length === 1 ? "" : "s"} · {scope}
           </p>
           <div className="flex flex-col gap-5">
@@ -298,7 +333,7 @@ export default async function AllShifts({
                   <span className="text-sm font-semibold text-ink">
                     {fmtDayHeader(day.date)}
                   </span>
-                  <span className="text-xs text-muted">
+                  <span className="text-xs text-faint">
                     {day.rows.length} shift{day.rows.length === 1 ? "" : "s"}
                   </span>
                 </h2>
@@ -308,7 +343,10 @@ export default async function AllShifts({
                     row={r}
                     mode={mode}
                     back={back}
+                    href={hrefFor(sp, mode, r.shiftId)}
+                    selected={sel === r.shiftId}
                     changed={changedDays.has(canonicalIdOf(r))}
+                    isNew={newShifts.has(r.shiftId)}
                     canMerge={canMergeRow(r)}
                   />
                 ))}
@@ -317,6 +355,30 @@ export default async function AllShifts({
           </div>
         </div>
       )}
+    </>
+  );
+
+  if (!sel) return <Shell width="3xl">{board}</Shell>;
+
+  // Two-pane host (DEC-085): desktop = board + cockpit side by side; mobile =
+  // the cockpit full-screen (the list is display-hidden; the cockpit's own
+  // "← All shifts" link, rendered when ctx is set, is the way back).
+  return (
+    <Shell width="6xl">
+      <div className="lg:grid lg:grid-cols-[minmax(0,3fr)_minmax(0,4fr)] lg:items-start lg:gap-6">
+        <div className="hidden min-w-0 lg:flex lg:flex-col lg:gap-4">{board}</div>
+        <div className="flex min-w-0 flex-col gap-4">
+          <div className="hidden lg:flex lg:justify-end">
+            <Link
+              href={boardHref}
+              className="inline-flex min-h-9 items-center px-1.5 text-xs font-semibold text-accent"
+            >
+              Close<span aria-hidden="true">&nbsp;✕</span>
+            </Link>
+          </div>
+          <ShiftCockpit shiftId={sel} sp={sp} ctx={ctx} headingLevel="h2" />
+        </div>
+      </div>
     </Shell>
   );
 }
@@ -331,8 +393,8 @@ function canonicalIdOf(row: AllShiftsRow): string {
  * so it's a pronounced segmented control: the active mode is a filled accent pill
  * (the app's established "selected" idiom — see the crew primary buttons), the
  * other a muted step away. Plain navigation, no client JS (DEC-026); each side
- * preserves the current window. `aria-current` carries the mode to assistive tech
- * now that fill, not prose, marks it. */
+ * preserves the current window (and open pane — DEC-085). `aria-current` carries
+ * the mode to assistive tech now that fill, not prose, marks it. */
 function ModeToggle({ sp, mode }: { sp: Search; mode: Mode }) {
   const seg = (active: boolean) =>
     `rounded-full px-4 py-1.5 font-semibold ${active ? "bg-accent text-white" : "text-muted"}`;
@@ -365,17 +427,20 @@ function ModeToggle({ sp, mode }: { sp: Search; mode: Mode }) {
 
 /** Date-range filter — preset links + a no-JS GET form (DEC-026 pattern). The
  * active chip reflects the RESOLVED scope (not "any single day"). Presets and the
- * range form both carry the current `mode`, so filtering never kicks you out of Edit. */
+ * range form carry the current `mode` AND `sel` (DEC-085), so filtering never
+ * kicks you out of Edit or closes the open pane. */
 function Filter({
   from,
   to,
   kind,
   mode,
+  sel,
 }: {
   from: string;
   to: string;
   kind: Scope;
   mode: Mode;
+  sel: string | null;
 }) {
   const chip = (active: boolean) =>
     `rounded-full border px-3 py-1 ${active ? "border-accent text-accent" : "border-line text-muted"}`;
@@ -384,6 +449,7 @@ function Filter({
     const p = new URLSearchParams();
     if (preset) p.set("preset", preset);
     if (edit) p.set("mode", "edit");
+    if (sel) p.set("sel", sel);
     const qs = p.toString();
     return qs ? `/admin/shifts?${qs}` : "/admin/shifts";
   };
@@ -402,6 +468,7 @@ function Filter({
       </div>
       <form method="get" className="flex flex-wrap items-end gap-2 text-sm">
         {edit && <input type="hidden" name="mode" value="edit" />}
+        {sel && <input type="hidden" name="sel" value={sel} />}
         <label className="flex flex-col gap-0.5 text-xs text-muted">
           From
           <input
@@ -434,28 +501,33 @@ function Filter({
 /** One neutral row → the cockpit. State is plain ink; an At-Risk row gets a quiet
  * pointer to the board (where that state is actually worked), never a red block.
  * In Edit mode an un-split multi-trip day grows a Split control; the two halves of
- * an existing split are tagged (DEC-083). */
+ * an existing split are tagged (DEC-083). The row link opens the cockpit PANE
+ * (`?sel=` — DEC-085): a new pane on desktop, full-screen drill-in on mobile; the
+ * selected row's border marks the open pane (selection state, not risk colour). */
 function ShiftRow({
   row,
   mode,
   back,
+  href,
+  selected,
   changed,
+  isNew,
   canMerge,
 }: {
   row: AllShiftsRow;
   mode: Mode;
   back: string;
+  href: string;
+  selected: boolean;
   changed: boolean;
+  /** The latest pull minted this shift (9.10) — a calm "it's new" fact. */
+  isNew: boolean;
   canMerge: boolean;
 }) {
   const fill =
     row.requiredSeats === 0
       ? "—"
       : `${row.confirmedSeats}/${row.requiredSeats} crewed`;
-  const trips =
-    row.trips.length === 0
-      ? "no scheduled trip"
-      : row.trips.map((t) => `${fmt12(t.time)} · ${t.pax} pax`).join("   ");
   const splitTag =
     row.split == null
       ? null
@@ -484,22 +556,45 @@ function ShiftRow({
       : cutOptions[0] ?? "";
 
   return (
-    <div className="flex flex-col gap-2 rounded-card border border-line bg-card px-4 py-3 shadow-sm">
+    <div
+      className={`relative flex flex-col gap-2 rounded-card border bg-card px-4 py-3 shadow-sm ${
+        selected ? "border-accent" : "border-line"
+      }`}
+    >
       <div className="flex items-start justify-between gap-4">
+        {/* Stretched link (9.8): the whole card opens the cockpit; the split/
+            merge forms and the At-Risk pointer below are positioned, so they
+            stack above the ::after overlay and stay independently tappable. */}
         <Link
-          href={`/admin/shift/${encodeURIComponent(row.shiftId)}`}
-          className="flex min-w-0 flex-col"
+          href={href}
+          className="flex min-w-0 flex-col gap-0.5 after:absolute after:inset-0 after:content-['']"
         >
-          {/* Vessel leads — the date now lives in the day-section header (#122). */}
-          <span className="font-medium text-ink">
+          {/* Vessel leads — the date now lives in the day-section header (#122).
+              The dot is the DEC-086 identity hue: same boat, same hue, always —
+              it answers "which boat", never state (aria-hidden; the name is the
+              accessible answer). */}
+          <span className="flex items-center gap-1.5 font-medium text-ink">
+            <span
+              aria-hidden="true"
+              className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${vesselHueClass(row.vesselId)}`}
+            />
             {row.vesselName}
             {splitTag && (
-              <span className="ml-2 text-xs font-normal text-muted">
-                {splitTag}
-              </span>
+              <span className="text-xs font-normal text-muted">{splitTag}</span>
             )}
           </span>
-          <span className="font-mono text-xs text-muted">{trips}</span>
+          {/* The LIST stays scannable (operator QA on 9.5): a multi-trip day
+              reads as "start · N trips" — the per-trip detail lives in the
+              cockpit. A single trip keeps its time · pax fact. (Also renders
+              the 9.6 run-on wrap moot: one compact span either way.) */}
+          <span className="font-mono text-xs text-muted">
+            {row.trips.length === 0
+              ? "no scheduled trip"
+              : row.trips.length === 1
+                ? `${fmt12(row.trips[0]!.time)} · ${row.trips[0]!.pax} pax`
+                : `${fmt12(row.trips[0]!.time)} · ${row.trips.length} trips`}
+          </span>
+          <SeatPips seats={row.seats} />
           {row.splitSuggestion && row.split == null && (
             // Calm read-only cue (8.1/#204): Muster noticed this vessel-day might be
             // two shifts. Advisory only — acting on it is Edit mode → Split (below).
@@ -518,6 +613,13 @@ function ShiftRow({
               changed in the last pull — check the split
             </span>
           )}
+          {isNew && (
+            // Freshly-spawned cue (9.10, DEC-083 amendment): the last pull
+            // minted this shift. A calm fact in the DEC-083 idiom — never the
+            // amber "new · review" approval demand DEC-082 killed; nothing to
+            // approve, the engine is already working it.
+            <span className="text-xs text-muted">new in the last pull</span>
+          )}
         </Link>
         <div className="flex shrink-0 flex-col items-end gap-0.5">
           {/* Neutral ink — no per-state colour (DEC-042). */}
@@ -526,8 +628,11 @@ function ShiftRow({
           </span>
           <span className="text-xs text-muted">{fill}</span>
           {row.state === "AtRisk" && (
-            <Link href="/admin/at-risk" className="text-xs font-semibold text-accent">
-              needs attention ↗
+            <Link
+              href="/admin/at-risk"
+              className="relative inline-flex min-h-9 items-center text-xs font-semibold text-accent"
+            >
+              needs attention<span aria-hidden="true">&nbsp;↗</span>
             </Link>
           )}
         </div>
@@ -539,7 +644,7 @@ function ShiftRow({
         // before/from split), so a picked cut always partitions.
         <form
           action={splitAction}
-          className="flex flex-wrap items-center gap-2 border-t border-line pt-2 text-sm"
+          className="relative flex flex-wrap items-center gap-2 border-t border-line pt-2 text-sm"
         >
           <input type="hidden" name="shiftId" value={row.shiftId} />
           <input type="hidden" name="back" value={back} />
@@ -573,7 +678,7 @@ function ShiftRow({
         // notice (DEC-084), surfaced back as the merge count.
         <form
           action={mergeAction}
-          className="flex items-center gap-2 border-t border-line pt-2 text-sm"
+          className="relative flex items-center gap-2 border-t border-line pt-2 text-sm"
         >
           <input type="hidden" name="shiftId" value={canonicalIdOf(row)} />
           <input type="hidden" name="back" value={back} />

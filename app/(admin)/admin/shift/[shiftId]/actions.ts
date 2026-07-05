@@ -9,9 +9,15 @@ import {
   vacateSeat,
 } from "@core/asks/ask-loop.js";
 import { assignFromPool, lean } from "@core/asks/lean.js";
-import { addOverrideSeat, removeOverrideSeat } from "@core/builder/manning.js";
+import {
+  addOverrideSeat,
+  removeOverrideSeat,
+  staffTraineeSeat,
+  unstaffTraineeSeat,
+} from "@core/builder/manning.js";
 import { asId } from "@core/domain/ids.js";
 import { readSubject } from "../../../../lib/auth";
+import { cockpitHref } from "../../../../lib/cockpit-href";
 import { forwardToOutbox, forwardNoticesToOutbox } from "../../../../lib/channel";
 import { getRepo } from "../../../../lib/repo";
 import { OPERATOR_CREW_MEMBER_ID } from "../../../../lib/operator";
@@ -38,27 +44,44 @@ import { TENANT_ID } from "../../../../lib/tenant";
  *             the reliability cost; this doesn't)
  */
 
+/**
+ * The host context (DEC-085 pane mechanics): a hidden `ctx` input marks a
+ * board-pane render and carries the board's filter QUERY STRING ("" is the
+ * default window). Never a form-supplied path — `cockpitHref` interpolates it
+ * after the `?` of a hard-coded path, the split/merge `back` posture (DEC-026).
+ * Absent (`null`) → the standalone cockpit route.
+ */
+function hostCtx(formData: FormData): string | null {
+  const v = formData.get("ctx");
+  return typeof v === "string" ? v : null;
+}
+
 /** Auth + the form's ids, or redirect out. Shared head of every action. */
 async function gate(formData: FormData): Promise<{
   shiftId: string;
   crewMemberId: string;
   seatId: string;
+  ctx: string | null;
   back: string;
 }> {
   const subject = await readSubject();
   const shiftId = String(formData.get("shiftId") ?? "");
   if (!subject || subject.kind !== "admin" || !shiftId) redirect("/admin/at-risk");
+  const ctx = hostCtx(formData);
   return {
     shiftId,
     crewMemberId: String(formData.get("crewMemberId") ?? ""),
     seatId: String(formData.get("seatId") ?? ""),
-    back: `/admin/shift/${encodeURIComponent(shiftId)}`,
+    ctx,
+    back: cockpitHref(shiftId, ctx),
   };
 }
 
-function finish(back: string, param: string): never {
-  revalidatePath(back);
-  redirect(`${back}?${param}`);
+function finish(shiftId: string, ctx: string | null, param: string): never {
+  // The standalone route always revalidates; a pane host revalidates the board too.
+  revalidatePath(`/admin/shift/${encodeURIComponent(shiftId)}`);
+  if (ctx !== null) revalidatePath("/admin/shifts");
+  redirect(cockpitHref(shiftId, ctx, param));
 }
 
 /**
@@ -88,7 +111,7 @@ async function notify(
 }
 
 export async function assignTo(formData: FormData): Promise<void> {
-  const { crewMemberId, seatId, back } = await gate(formData);
+  const { shiftId, crewMemberId, seatId, ctx, back } = await gate(formData);
   if (!seatId || !crewMemberId) redirect(back);
   let param: string;
   try {
@@ -106,11 +129,11 @@ export async function assignTo(formData: FormData): Promise<void> {
   } catch {
     param = "act_error=unavailable";
   }
-  finish(back, param);
+  finish(shiftId, ctx, param);
 }
 
 export async function nudgeOn(formData: FormData): Promise<void> {
-  const { shiftId, crewMemberId, back } = await gate(formData);
+  const { shiftId, crewMemberId, ctx, back } = await gate(formData);
   if (!crewMemberId) redirect(back);
   let param: string;
   try {
@@ -128,11 +151,11 @@ export async function nudgeOn(formData: FormData): Promise<void> {
   } catch {
     param = "act_error=unavailable";
   }
-  finish(back, param);
+  finish(shiftId, ctx, param);
 }
 
 export async function confirmInto(formData: FormData): Promise<void> {
-  const { seatId, back } = await gate(formData);
+  const { shiftId, seatId, ctx, back } = await gate(formData);
   if (!seatId) redirect(back);
   let param: string;
   try {
@@ -143,11 +166,11 @@ export async function confirmInto(formData: FormData): Promise<void> {
   } catch {
     param = "act_error=unavailable";
   }
-  finish(back, param);
+  finish(shiftId, ctx, param);
 }
 
 export async function overrideTo(formData: FormData): Promise<void> {
-  const { shiftId, crewMemberId, seatId, back } = await gate(formData);
+  const { shiftId, crewMemberId, seatId, ctx, back } = await gate(formData);
   if (!seatId || !crewMemberId) redirect(back);
   let param: string;
   try {
@@ -172,7 +195,7 @@ export async function overrideTo(formData: FormData): Promise<void> {
   } catch {
     param = "act_error=unavailable";
   }
-  finish(back, param);
+  finish(shiftId, ctx, param);
 }
 
 /**
@@ -182,7 +205,7 @@ export async function overrideTo(formData: FormData): Promise<void> {
  * correction never dings the removed crew's record.
  */
 export async function removeSeat(formData: FormData): Promise<void> {
-  const { shiftId, seatId, back } = await gate(formData);
+  const { shiftId, seatId, ctx, back } = await gate(formData);
   if (!seatId) redirect(back);
   let param: string;
   try {
@@ -190,6 +213,10 @@ export async function removeSeat(formData: FormData): Promise<void> {
     const seat = await repo.getSeat(asId<"SeatId">(seatId));
     if (!seat || seat.state !== "Confirmed" || !seat.assignedCrewMemberId) {
       param = "act_error=not_confirmed";
+    } else if (seat.kind === "supernumerary") {
+      // DEC-087: a staffed trainee comes off via unstaffTrainee (Manning
+      // section) — vacate would re-ask a seat the engine ignores.
+      param = "act_error=trainee_seat";
     } else {
       const occupant = seat.assignedCrewMemberId;
       try {
@@ -208,7 +235,7 @@ export async function removeSeat(formData: FormData): Promise<void> {
   } catch {
     param = "act_error=unavailable";
   }
-  finish(back, param);
+  finish(shiftId, ctx, param);
 }
 
 /**
@@ -219,7 +246,7 @@ export async function removeSeat(formData: FormData): Promise<void> {
  * use this when the crew actually backed out, not for a misassignment.
  */
 export async function reportBail(formData: FormData): Promise<void> {
-  const { shiftId, seatId, back } = await gate(formData);
+  const { shiftId, seatId, ctx, back } = await gate(formData);
   if (!seatId) redirect(back);
   let param: string;
   try {
@@ -227,12 +254,15 @@ export async function reportBail(formData: FormData): Promise<void> {
     const seat = await repo.getSeat(asId<"SeatId">(seatId));
     if (!seat || seat.state !== "Confirmed" || !seat.assignedCrewMemberId) {
       param = "act_error=not_confirmed";
+    } else if (seat.kind === "supernumerary") {
+      // DEC-087: a trainee stepping off is not a bail — no reliability event.
+      param = "act_error=trainee_seat";
     } else {
       // Lateness derived in core (DEC-028); occupant pinned so a swap between
       // reads maps to `raced`, never a wrong-person log.
       const bailer = seat.assignedCrewMemberId;
       const out = await bailWithDerivedLateness(repo, seat.id, new Date(), bailer);
-      if (out.code === "raced") {
+      if (out.code === "raced" || out.code === "trainee_seat") {
         param = "act_error=raced";
       } else {
         param = `bail_logged=${encodeURIComponent(String(bailer))}`;
@@ -246,7 +276,7 @@ export async function reportBail(formData: FormData): Promise<void> {
   } catch {
     param = "act_error=unavailable";
   }
-  finish(back, param);
+  finish(shiftId, ctx, param);
 }
 
 /**
@@ -260,7 +290,8 @@ export async function addManningSeat(formData: FormData): Promise<void> {
   const shiftId = String(formData.get("shiftId") ?? "");
   const kind = String(formData.get("kind") ?? "");
   const role = String(formData.get("role") ?? "");
-  const back = `/admin/shift/${encodeURIComponent(shiftId)}`;
+  const ctx = hostCtx(formData);
+  const back = cockpitHref(shiftId, ctx);
   if (!subject || subject.kind !== "admin" || !shiftId) redirect("/admin/at-risk");
   if ((kind !== "required" && kind !== "supernumerary") || !role) redirect(back);
   let param: string;
@@ -279,7 +310,7 @@ export async function addManningSeat(formData: FormData): Promise<void> {
   } catch {
     param = "act_error=unavailable";
   }
-  finish(back, param);
+  finish(shiftId, ctx, param);
 }
 
 /**
@@ -292,7 +323,8 @@ export async function removeManningSeat(formData: FormData): Promise<void> {
   const subject = await readSubject();
   const shiftId = String(formData.get("shiftId") ?? "");
   const seatId = String(formData.get("seatId") ?? "");
-  const back = `/admin/shift/${encodeURIComponent(shiftId)}`;
+  const ctx = hostCtx(formData);
+  const back = cockpitHref(shiftId, ctx);
   if (!subject || subject.kind !== "admin" || !shiftId || !seatId) {
     redirect("/admin/at-risk");
   }
@@ -303,5 +335,72 @@ export async function removeManningSeat(formData: FormData): Promise<void> {
   } catch {
     param = "act_error=seat_gone";
   }
-  finish(back, param);
+  finish(shiftId, ctx, param);
+}
+
+/**
+ * Staff a named person into a supernumerary/trainee seat (9.3/#224, DEC-087) —
+ * the person half 8.5's placeholder seats were waiting for. Engine re-checks
+ * the trainee rule set server-side (picker scope is UI convenience only); a
+ * placed rider gets the DEC-084 "you're on this shift" notice, so Muster can
+ * finally reach the trainee.
+ */
+export async function staffTrainee(formData: FormData): Promise<void> {
+  const { shiftId, crewMemberId, seatId, ctx, back } = await gate(formData);
+  if (!seatId || !crewMemberId) redirect(back);
+  let param: string;
+  try {
+    const out = await staffTraineeSeat(
+      getRepo(),
+      asId<"SeatId">(seatId),
+      asId<"CrewMemberId">(crewMemberId),
+      new Date(),
+    );
+    if (out.code === null) {
+      param = `trainee_on=${encodeURIComponent(crewMemberId)}`;
+      // DEC-084: the rider gets a "you're on this shift" notice (best-effort,
+      // operator excluded inside notify).
+      await notify(crewMemberId, "added", shiftId);
+    } else if (out.code === "ineligible") {
+      param = "act_error=trainee_ineligible";
+    } else if (out.code === "occupied") {
+      param = "act_error=raced";
+    } else {
+      param = "act_error=seat_gone";
+    }
+  } catch {
+    param = "act_error=unavailable";
+  }
+  finish(shiftId, ctx, param);
+}
+
+/**
+ * Take the trainee back off the seat (DEC-087) — the bespoke no-re-ask unstaff
+ * (NEVER vacateSeat: that path fires real asks for a seat the engine ignores).
+ * Occupant-pinned like removeSeat, so a swap between reads maps to `raced`.
+ * The removed rider gets the DEC-084 "you're off" notice.
+ */
+export async function unstaffTrainee(formData: FormData): Promise<void> {
+  const { shiftId, crewMemberId, seatId, ctx, back } = await gate(formData);
+  if (!seatId || !crewMemberId) redirect(back);
+  let param: string;
+  try {
+    const out = await unstaffTraineeSeat(
+      getRepo(),
+      asId<"SeatId">(seatId),
+      asId<"CrewMemberId">(crewMemberId),
+    );
+    if (out.code === null) {
+      param = `trainee_off=${encodeURIComponent(crewMemberId)}`;
+      // DEC-084: the removed rider gets a "you're off" notice.
+      await notify(crewMemberId, "removed", shiftId);
+    } else if (out.code === "raced") {
+      param = "act_error=raced";
+    } else {
+      param = "act_error=seat_gone";
+    }
+  } catch {
+    param = "act_error=unavailable";
+  }
+  finish(shiftId, ctx, param);
 }

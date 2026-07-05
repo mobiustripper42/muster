@@ -30,6 +30,23 @@ test.describe("cockpit polish (9.7/9.8)", () => {
     ).toBeVisible();
   });
 
+  test("each seat's eligible pool starts collapsed (operator preference, 2026-07-05)", async ({
+    page,
+  }) => {
+    await signInAsAdmin(page, "spink");
+    await page.goto("/admin/shift/shift-ar-regress");
+
+    // Firkin's captain seat has an eligible pool (Marisol et al.). Its <details>
+    // renders closed by default now — the summary shows, the candidate rows don't.
+    const pool = page
+      .locator("details", { has: page.getByText(/^Eligible pool ·/) })
+      .first();
+    await expect(pool).toBeVisible();
+    expect(await pool.evaluate((el) => (el as HTMLDetailsElement).open)).toBe(
+      false,
+    );
+  });
+
   test("the whole board card is a click target (stretched link), controls still tappable", async ({
     page,
   }) => {

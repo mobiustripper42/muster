@@ -184,7 +184,13 @@ export function SeatCard({
       <OccupantZone vm={vm} />
 
       {vm.pool && (
-        <details open={vm.state !== "Asked"} className="border-t border-line pt-2">
+        // Collapsed by default (operator preference, 2026-07-05): every seat's
+        // eligible pool starts closed — the summary line (count, + who's in flight
+        // when Asked) is enough at a glance; expand only the seat you're working.
+        // Previously an un-Asked seat auto-expanded its pool; the operator wants a
+        // uniformly compact cockpit for now (may revisit if daily use wants the
+        // actively-worked seat pre-opened).
+        <details className="border-t border-line pt-2">
           <summary className="cursor-pointer text-xs font-semibold text-muted">
             Eligible pool · {vm.pool.length}
             {vm.state === "Asked" && askedSummary(vm.pool)}

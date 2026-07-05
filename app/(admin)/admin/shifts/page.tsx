@@ -364,10 +364,25 @@ export default async function AllShifts({
   // the cockpit full-screen (the list is display-hidden; the cockpit's own
   // "← All shifts" link, rendered when ctx is set, is the way back).
   return (
-    <Shell width="6xl">
-      <div className="lg:grid lg:grid-cols-[minmax(0,3fr)_minmax(0,4fr)] lg:items-start lg:gap-6">
-        <div className="hidden min-w-0 lg:flex lg:flex-col lg:gap-4">{board}</div>
-        <div className="flex min-w-0 flex-col gap-4">
+    <Shell width="6xl" fill>
+      {/* Independent-scroll columns on desktop (#253): the grid fills the
+          viewport-bounded shell (lg:flex-1 lg:min-h-0) and each column carries its
+          own scroll (lg:overflow-y-auto lg:min-h-0). The window itself never
+          scrolls on lg, so opening a pane from deep in a long list — or switching
+          the selected row — can't snap the list to the top; the cockpit stays put
+          while you scroll the list, and vice-versa. Below lg none of this applies:
+          normal-flow full-screen drill-in, the list display-hidden (DEC-085). */}
+      <div className="lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,3fr)_minmax(0,4fr)] lg:gap-6">
+        <div
+          data-testid="board-col"
+          className="hidden min-w-0 lg:flex lg:min-h-0 lg:flex-col lg:gap-4 lg:overflow-y-auto lg:pr-1"
+        >
+          {board}
+        </div>
+        <div
+          data-testid="pane-col"
+          className="flex min-w-0 flex-col gap-4 lg:min-h-0 lg:overflow-y-auto lg:pr-1"
+        >
           <div className="hidden lg:flex lg:justify-end">
             <Link
               href={boardHref}

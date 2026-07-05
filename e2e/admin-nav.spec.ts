@@ -33,6 +33,20 @@ test.describe("admin nav", () => {
     await expect(nav.getByRole("link", { name: "At-Risk" })).not.toHaveAttribute("aria-current", "page");
   });
 
+  test("desktop: the nav fits the two-pane height budget (guards #253)", async ({ page }) => {
+    // The two-pane board's independent-scroll layout (#253) bounds its shell to
+    // `calc(100dvh - 3.25rem)` on lg, where 3.25rem (52px) is the budget for this
+    // sticky nav. That constant lives in shell.tsx and can't see the nav; if the
+    // nav ever outgrows 52px the calc under-subtracts and the #253 scroll-snap
+    // quietly returns. This pins the budget so that change fails CI here instead.
+    const width = page.viewportSize()?.width ?? 0;
+    test.skip(width < 1024, "the fill-height budget only applies at lg (≥1024px)");
+    await signInAsAdmin(page, "spink");
+    const nav = page.getByRole("navigation", { name: "Admin" });
+    const height = await nav.evaluate((el) => el.getBoundingClientRect().height);
+    expect(height).toBeLessThanOrEqual(52); // 3.25rem — the shell.tsx cutoff
+  });
+
   test("mobile: the hamburger toggles the drawer; a link tap navigates + closes it", async ({ page }) => {
     await signInAsAdmin(page, "spink");
     const burger = page.getByRole("button", { name: "Open menu" });

@@ -124,11 +124,24 @@ curl -s https://<domain>/api/cron/tick -H "Authorization: Bearer $CRON_SECRET"
 
 ### 7. Sign in as an admin (5.2, DEC-034; admin entity DEC-092)
 
-**Admins (DEC-092).** Admin is now a first-class, individually-revocable identity — the `admins` table,
-seeded by the `0018_admins` migration with the launch roster: **`eric`** (Eric Stoffer), **`brendan`**
-(Brendan McGovern), **`drew`** (Drew Johnson). `--admin=<handle>` must be a **seeded, active** handle —
-mint refuses an unknown or deactivated one and prints the active handles. (`spink` is the dev/e2e-only
-operator; it is not a prod admin.)
+**Admins (DEC-092/DEC-093).** Admin is a first-class, individually-revocable identity in the `admins`
+table — and `admin.id` **is a crew member's id** (every admin is also crew). Admins are **managed by the
+`db:admin` CLI**, not seeded (0019 removed 0018's provisional roster — the real crew ids + emails aren't
+known at migration time). So the launch sequence is: import the crew roster → set each admin's crew
+**email** (crew are **not** Xola customers, so emails don't arrive with bookings — set them on the crew
+record) → add them:
+
+```bash
+DATABASE_URL="<neon-direct-unpooled>" npm run db:admin -- add --email=eric@stoffer.net --handle=eric
+#   → resolves the crew member with that email, makes them an admin (id = their crew id)
+DATABASE_URL="<neon-direct>" npm run db:admin -- add --crew=<crewId> --handle=drew   # or explicit id
+DATABASE_URL="<neon-direct>" npm run db:admin -- list
+```
+
+The **primary sign-in for admins is the crew code login** (DEC-081, live now that email is wired): log in
+with a code as crew, then **"Switch to admin"** (DEC-093). `db:mint --admin=<handle>` remains the
+out-of-band **bootstrap** magic link — it must be a **seeded, active** handle (mint refuses an unknown or
+deactivated one and prints the active handles). (`spink` is the dev/e2e-only operator, never a prod admin.)
 
 `/crew/dev-link` is **hard-404 in production** (it must never mint links there), so an admin's first
 sign-in is bootstrapped out-of-band. The script auto-sources `.env.local` (what step 3's
@@ -172,29 +185,21 @@ script refuses without it (a CLI has no Host header, and a link on the wrong ori
 unopenable). **Crew** need none of this: their links flow through the DEC-030 outbox relay
 (`--crew=<id>` exists as a manual escape hatch, not the normal path).
 
-### 7b. Deprovision an admin (per-person revoke — DEC-092)
+### 7b. Deprovision / manage admins — `db:admin` (per-person revoke — DEC-092)
 
-Removing **one** admin's access is a single `active` flip — **immediate** (their next request dies at
-`readSubject`'s admin gate) and **scoped** (no other admin is affected; contrast rotating `SESSION_SECRET`,
-which logs everyone out). Migrations are hand-applied out-of-band, so this is a documented one-liner, run
-the same way as `db:migrate` (direct/unpooled prod DB string):
+Removing **one** admin's access is **immediate** (their next request dies at `readSubject`'s admin gate)
+and **scoped** (no other admin is affected; contrast rotating `SESSION_SECRET`, which logs everyone out).
+Use the CLI — same DB wiring as `db:migrate` (direct/unpooled prod string):
 
-```sql
--- revoke:
-update admins set active = false, deactivated_at = now()::text where handle = 'drew';
--- re-instate:
-update admins set active = true,  deactivated_at = null      where handle = 'drew';
--- who's active:
-select handle, name, active from admins order by handle;
+```bash
+DATABASE_URL="<neon-direct>" npm run db:admin -- revoke drew        # immediate, scoped
+DATABASE_URL="<neon-direct>" npm run db:admin -- reactivate drew
+DATABASE_URL="<neon-direct>" npm run db:admin -- list               # who's active (● / ○)
 ```
 
-Add an admin the same way (insert a row with their crew id + a short handle):
-```sql
-insert into admins (id, handle, name, active, created_at)
-values ('crew-<slug>', '<handle>', '<Full Name>', true, now()::text);
-```
-There is no admin-management UI at launch (DEC-092 — deferred); this SQL path is the interface for ~3
-admins. `SESSION_SECRET` rotation remains the global break-glass (kills *all* sessions at once).
+There is no admin-management UI at launch (DEC-092 — deferred); `db:admin` is the interface for ~3 admins
+(it validates handle uniqueness and resolves `--email`→crew id, which raw SQL won't). `SESSION_SECRET`
+rotation remains the global break-glass (kills *all* sessions at once).
 
 ---
 

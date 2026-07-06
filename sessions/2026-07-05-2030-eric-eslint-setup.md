@@ -6,7 +6,7 @@ branch: task/eslint-setup
 started: 2026-07-05T20:30:21Z
 ended:
 points:
-pr_numbers: [273, 274]
+pr_numbers: [273, 274, 276]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/e8236a0e-69f4-48e9-8829-2b9396bda84e.jsonl
 ---
@@ -49,8 +49,28 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/e8236a0e-69f4-48e9-882
 **Branch:** task/9.11b-crew-open-polish
 **Opened at:** 2026-07-06T00:47:46Z
 
+## Task 3: crew/open refinements — presets, admin-matched filters, trip count, copy (9.11c, #237 follow-up)
+
+**Completed:**
+- Iterative operator feedback on `/crew/open`, all in `app/(crew)/crew/open/page.tsx` + `e2e/crew-open.spec.ts`:
+  - **Presets** reoriented for a pull surface: **This weekend (default) · Next 2 weeks · Next 4 weeks**; dropped Today + Next 7 days. Default changed from `today` → `weekend` (crew browse ahead). From/To default today → +30. `resolveRange`/`backHref`/`RangeLabel` rewritten.
+  - **Filter bar matches the admin board** (`app/(admin)/admin/shifts` `Filter`): rounded-card container, outline-active pills, rounded-lg date inputs on bg-bg — "one style throughout" (operator ask). Kept `min-h-[44px]` touch targets on the crew instance (DEC-085; admin denser as desktop) — was a @code-review catch (the restyle first dropped them).
+  - **Trip count** ("2 trips") under the bold departure time on the collapsed row.
+  - **Confirm copy**: dropped "as captain" (role's in the row header); "every trip booked, including any added later" → "including any trips added or cancelled later".
+- verify green; crew-open e2e 10/10 desktop + mobile; screenshots eyeballed 375px.
+
+**⚠️ Process note (cross-machine / merge-timing):** operator merged **#274 while these refinements were still local/unpushed** → main got only the FIRST 9.11b batch (vessel dot, right-justified time, initial copy, old Today/weekend filters). Recovered by branching `9.11c` off the merged main and re-landing the refinements as **#276** (no work lost). #274's branch was auto-deleted on merge; a stray recreated push was cleaned up. Lesson: push before saying "going to merge."
+
+**Code review:** 1 finding (44px targets dropped by the admin restyle) — fixed. Rest clean (presets/clamp/layout/copy/tests).
+**PR:** [#276](https://github.com/mobiustripper42/muster/pull/276) — **needs merge** (the refinements are NOT in main; #274 shipped incomplete).
+**Points:** 3
+**Branch:** task/9.11c-crew-open-refinements
+**Opened at:** 2026-07-06T01:18:37Z
+
 **Next Steps:**
-- **File as follow-ups:** full `<Button>` primitive (admin adopts the shared glyph + radius token — the C3 boundary); **C2** the "changed since you last looked" crew cue (a *feature*, ties to `Reservation.updatedAt` / #259, not polish).
+- **Merge #276** — main currently has an incomplete `/crew/open` (only #274's first batch).
+- **Filed:** #275 (DEC-041 shift-end "back" time reuses call lead → distinct `TEARDOWN_MINUTES` ~20–30; deferred by operator).
+- **Still to file as follow-ups:** full `<Button>` primitive (admin adopts the shared glyph + radius token — the C3 boundary); **C2** the "changed since you last looked" crew cue (a *feature*, ties to `Reservation.updatedAt` / #259, not polish).
 - **Spinners on prod (parked):** crew nav spinners work in dev; unverified on Vercel. If a preview shows page-to-page nav eating the spinner, add `loading.tsx` to the crew segments (no crew `loading.tsx` exists). Don't diagnose spinner/latency off the mill-dev dev server ([[dev-server-confounds-latency-observations]]).
 - Remaining Phase 9: #247 (civil-hours notices — prod-Twilio blocker), #238 (nav — @architect BRAND gate), #250 (still open). Filed earlier: #256 (drop inert `locked_at` col), #259, #268, #271.
 

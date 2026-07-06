@@ -17,6 +17,7 @@ import { readSubject } from "../../../lib/auth";
 import { selfServeEnabled } from "../../../lib/flags";
 import { getRepo } from "../../../lib/repo";
 import { fmt12 } from "../../../lib/format";
+import { vesselHueClass } from "../../../lib/vessel-hue";
 import { claimSeat } from "./actions";
 
 /**
@@ -171,28 +172,48 @@ function Filters({
 
 /** One claimable seat: a <details> whose open state is the DEC-077 confirm sheet. */
 function ClaimRow({ row, back }: { row: ClaimableSeatView; back: string }) {
-  const window =
-    row.callTime && row.shiftEndTime
-      ? `${fmt12(row.callTime)} → ~${approxBack(row.shiftEndTime)}`
-      : "times TBD";
+  // The collapsed row's hero time — the first scheduled departure ("when it
+  // leaves"). The full call→back window + trip list live in the confirm sheet.
+  const departure = row.tripTimes[0] ? fmt12(row.tripTimes[0]) : null;
+  const facts = confirmFacts(row);
   return (
     <details className="group overflow-hidden rounded-card border border-line bg-card shadow-sm">
-      <summary className="flex min-h-[44px] cursor-pointer items-center justify-between px-4 py-3 [&::-webkit-details-marker]:hidden">
-        <span className="flex flex-col">
-          <span className="font-semibold text-ink">{fmtDate(row.date)}</span>
-          <span className="text-sm text-muted">
-            {row.vesselName} · {row.roleName} · {window}
+      <summary className="flex min-h-[44px] cursor-pointer items-start justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
+        <span className="flex min-w-0 flex-1 flex-col">
+          {/* Day left, departure time right-justified + bold on the same line —
+              the same scannable "when" hierarchy as the My-shifts card. */}
+          <span className="flex items-baseline justify-between gap-2">
+            <span className="font-semibold text-ink">{fmtDate(row.date)}</span>
+            <span className="font-mono text-sm font-semibold text-ink">
+              {departure ?? "TBD"}
+            </span>
+          </span>
+          <span className="flex items-center gap-1.5 text-sm text-muted">
+            {/* DEC-086 vessel identity dot — which boat, at a glance. aria-hidden;
+                the vessel name is the accessible answer. */}
+            <span
+              className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${vesselHueClass(row.vesselId)}`}
+              aria-hidden
+            />
+            {row.vesselName} · {row.roleName}
           </span>
         </span>
         <span
-          className="text-faint transition-transform group-open:rotate-90"
+          className="shrink-0 self-center text-faint transition-transform group-open:rotate-90"
           aria-hidden
         >
           ›
         </span>
       </summary>
       <div className="flex flex-col gap-3 border-t border-line px-4 py-3">
-        <p className="text-sm text-muted">{confirmCopy(row)}</p>
+        <div className="flex flex-col gap-1 text-sm text-muted">
+          <p>{confirmLead(row)}</p>
+          {facts && (
+            <p>
+              <span className="font-semibold text-ink">Currently:</span> {facts}
+            </p>
+          )}
+        </div>
         <form action={claimSeat}>
           <input type="hidden" name="seatId" value={row.seatId} />
           <input type="hidden" name="back" value={back} />
@@ -205,15 +226,39 @@ function ClaimRow({ row, back }: { row: ClaimableSeatView; back: string }) {
   );
 }
 
-/** The DEC-077 confirm copy: whole-day scope + live trip count/times + window. */
-function confirmCopy(r: ClaimableSeatView): string {
+/** The DEC-077 confirm lead: whole-day scope. When no trips are scheduled yet,
+ *  it carries that note itself (there's no facts line to hang it on). */
+function confirmLead(r: ClaimableSeatView): string {
   const head = `Claim ${fmtDate(r.date)} on ${r.vesselName} as ${r.roleName.toLowerCase()}? That’s the whole day — every trip booked, including any added later.`;
-  if (r.tripTimes.length === 0 || !r.callTime || !r.shiftEndTime) {
-    return `${head} No trips are scheduled yet.`;
-  }
-  const trips = r.tripTimes.map(fmt12).join(" & ");
+  return hasTrips(r) ? head : `${head} No trips are scheduled yet.`;
+}
+
+/** The DEC-077 live facts — trip count/times · call · back — rendered after a
+ *  "Currently:" label. Null when the shift has no scheduled trips yet. */
+function confirmFacts(r: ClaimableSeatView): string | null {
+  if (!hasTrips(r)) return null;
   const n = r.tripTimes.length;
-  return `${head} Right now: ${n} trip${n === 1 ? "" : "s"} (${trips}), call ${fmt12(r.callTime)}, back ~${approxBack(r.shiftEndTime)}.`;
+  return `${n} trip${n === 1 ? "" : "s"} (${joinTimes(r.tripTimes)}) · call ${fmt12(r.callTime!)} · back ~${backAt(r.shiftEndTime!)}`;
+}
+
+/** A shift has a renderable trip picture only if it has scheduled trips AND a
+ *  derived call/back window (an event-less shift has neither). */
+function hasTrips(r: ClaimableSeatView): boolean {
+  return r.tripTimes.length > 0 && !!r.callTime && !!r.shiftEndTime;
+}
+
+/** "1:30 PM", "1:30 PM & 3:30 PM", "1:30 PM, 3:30 PM & 7:30 PM". Keeps each
+ *  time's period — collapsing to a trailing AM/PM would misread a mixed list
+ *  (an 11 AM trip before a 1 PM one). */
+function joinTimes(times: string[]): string {
+  const t = times.map(fmt12);
+  if (t.length <= 1) return t.join("");
+  return `${t.slice(0, -1).join(", ")} & ${t[t.length - 1]}`;
+}
+
+/** approxBack, cased + spaced for prose: "10pm" → "10 PM". */
+function backAt(hhmm: string): string {
+  return approxBack(hhmm).replace(/(am|pm)$/i, " $1").toUpperCase();
 }
 
 type RangeLabel = "today" | "weekend" | "range";

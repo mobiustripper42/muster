@@ -55,6 +55,24 @@ test.describe("crew /crew/open — pick up a shift", () => {
     await expect(myShift.getByText(/Added for you/i)).toHaveCount(0);
   });
 
+  test("row leads with a vessel dot + right-justified departure time; confirm reads 'Currently:'", async ({
+    page,
+  }) => {
+    await signInAsCrew(page, "crew-quint");
+    await page.goto(ALL);
+
+    const row = page.locator("details", { hasText: "Hops" });
+    // The DEC-086 vessel identity dot the row was missing before 9.11b.
+    await expect(row.locator('span[class*="bg-vessel-"]')).toBeVisible();
+    // First-departure time is the collapsed row's hero (seed shift-open: 1pm & 4pm).
+    // Scope to the summary — the same time also lives in the (collapsed) facts line.
+    await expect(row.locator("summary").getByText("1:00 PM")).toBeVisible();
+
+    await row.locator("summary").click();
+    await expect(row.getByText("Currently:", { exact: true })).toBeVisible();
+    await expect(row.getByText(/1:00 PM & 4:00 PM/)).toBeVisible();
+  });
+
   test("a since-taken claim shows the clean 'just taken' message", async ({
     page,
   }) => {

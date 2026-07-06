@@ -90,6 +90,7 @@ describe("buildClaimableView (DEC-074/077)", () => {
     expect(rest).toHaveLength(0);
     expect(row).toMatchObject({
       vesselName: "Brew 2",
+      vesselId: "vessel-x",
       roleName: "Mate",
       date: IN_WINDOW,
       tripTimes: ["13:00", "16:00"],

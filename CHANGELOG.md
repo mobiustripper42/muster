@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.11.0] - 2026-07-06 — Phase 9: Finish the production build
+- 55 pts across 9.0–9.12, burst phase (~55 pts in ~4 days, 2026-07-01 → 07-06); see docs/RETROSPECTIVES.md
+- Two-pane responsive Shift Builder (DEC-085) + board bundle: trip-line, seat pips, vessel/role palette (DEC-086); Twilio SMS adapter — one class, three relay ports (DEC-MSG-1); civil send window (DEC-088); crew app design reconciliation + /crew/open polish; click/loading-feedback system (<AppLink>/<SubmitButton>/<GetFormSubmit> + ESLint enforcement, DEC-090); drop-shift confirm gate; SMS on every add/remove (split/merge relay); crew navigation is hub-and-spoke (DEC-091) + admin Messages link
+- ~32 PRs merged; single minor bump (burst phase). #247 (civil-hours notices — blocked on prod Twilio) moved to Phase 10
+
 ## [0.10.0] - 2026-07-03 — Phase 8: Shift Builder
 - 19 pts shipped across 2 sessions (burst — ~2d); see docs/RETROSPECTIVES.md
 - Split-suggestion detector + manual split/merge engine & UI (8.1/8.3/8.4), DEC-084 crew assignment-change notice subsystem, seat/manning override (8.5)

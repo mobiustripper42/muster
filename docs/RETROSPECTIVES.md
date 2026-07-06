@@ -3,6 +3,48 @@
 Phase-end retrospectives. Written by `/retro` at each phase boundary — velocity, scope changes,
 process notes, forecast update. One entry per phase, newest at the top.
 
+## Phase 9 — 2026-07-06
+
+**Points:** 55 / 55 (100%)
+**Span:** ~4.3 days (2026-07-01 → 2026-07-06)
+**Throughput:** burst — 55 pts in ~4 days (sub-week; no per-week rate quoted)
+**Estimate calibration:** 1 task re-estimated (9.12 Navigation: pointed 5, collapsed to a ~2-pt decision at the @architect gate; label held at 5), net drift ~0
+**Sessions:** ~5   **PRs merged:** ~32
+**Issues:** 17 total — 16 closed, 1 moved to Phase 10 (#247, blocked on live prod Twilio)
+**Closed at:** v0.11.0 (single minor bump — burst phase, over 32 per-PR patches)
+
+### Phase throughput line
+| Phase | Date | Points | Span(d) | Throughput | Re-est'd | Net drift | Sessions | PRs |
+|-------|------|--------|---------|------------|----------|-----------|----------|-----|
+| 9 | 2026-07-06 | 55 | 4.3 | burst (~55 pts in ~4d) | 1 | ~0 | 5 | ~32 |
+
+### What worked
+- "The UI agent and the finished product were great. Fable knocked out the most of the tasks quickly and efficiently."
+
+### What didn't
+- "The Spinner change." *(The #202/#250 click/loading-feedback saga sprawled to ~8 PRs #262–#272; then in S38 a "spinner not working on my phone" report drove a full prod-mechanics diagnosis before it turned out to be a dev-server artifact.)*
+
+### Changes for next phase
+- "Try to slow down and communicate better when there is misunderstanding — like I try to do with my humans."
+
+### Scope changes
+- **9.11** (crew reconciliation) ran as 3 PRs (#273/#274/#276) — the two-lens gate found the live crew surfaces *ahead* of the mockups, so its output was confirming intentional supersedes, not a build backlog.
+- **9.12** (nav) collapsed 5→~2 at the @architect gate → **DEC-091**: crew is hub-and-spoke, no persistent nav.
+- **#259** reframed: the outbox notice-swallow was moot (outbox retiring; Twilio has no dedup) — the real gap was split/merge not relaying SMS on add/remove, plus a Twilio-env leak masking as a bug in the e2e harness.
+- **#247** (civil-hours notices) moved to Phase 10 — blocked on live prod Twilio.
+- 3 closed issues carried no `points:` label (#253, #250, #244).
+
+### PM read
+Phase 9 shipped roughly 55 points and 32 PRs in about four days — the burst shape, not a pace you can annualize. What's real is that "finish the production build" actually finished: Shift Builder reconciliation landed, the deferred fast-follows cleared, the Twilio adapter and crew-notify are live end-to-end, closing at 0.11.0 on a single deliberate minor bump rather than 32 reflexive patches. The build is done — worth being precise about what that phrase does and doesn't buy.
+
+The estimation held almost everywhere, and the one notable re-estimate is the pattern to repeat. 9.12 Navigation was pointed a 5 and the @architect gate collapsed it to a ~2-point decision plus DEC-091: crew gets no persistent nav because home already *is* the hub. That's the gate doing its actual job — killing a build before it starts because the answer was "don't," not "build it smaller." The sharp lesson underneath: the crew surfaces were *ahead* of the mockups, so the gate confirmed intentional supersedes, not a backlog. A mockup is not the target when the live code post-dates it.
+
+Now the counter-pattern, which is also the operator's own "what didn't work" answer — and the record agrees without being talked into it. The spinner saga sprawled across ~8 PRs (#262–#272), and then a "spinner not working on my phone" report sent a full prod-mechanics diagnosis into motion before it turned out to be a dev-server artifact. Two memories exist specifically warning not to diagnose latency off that dev server, and the chase happened anyway. Eight PRs for click feedback in a phase where a 5-point nav task took two is the altitude problem in miniature: the cheap polish absorbed more iteration than the load-bearing decision did.
+
+On the operator's answers directly: the praise for the UI agent and Fable's throughput is earned — Fable moved fast and the product is genuinely good. But speed is exactly what makes "slow down and communicate when there's a misunderstanding — like I try to do with my humans" the most important line in this retro. I'd extend it rather than just agree: the spinner episode wasn't slow *work*, it was fast work aimed at the wrong target for several PRs before anyone stopped to reconcile what was actually broken. Same in the #259 reframe. The fix isn't going slower everywhere — it's spending thirty seconds on "what is actually the failure here" before the fourth PR, which is cheaper than the four PRs.
+
+Forward into Phase 10, where "build done" earns its scare-quotes. Phase 9 finished the product; it did not touch what makes a product safe to point at production. Phase 10 carries the real gates: the security audit (10.3), per-person admin revoke (10.2), and the Neon preview→prod backdoor (10.1) — that last a still-open memory where a `main` preview deploy hits the *prod* database, a live foot-gun. #247 (civil-hours, blocked on live Twilio) moved here too. Phase 9 rewarded velocity; Phase 10 rewards the opposite, because the security and DB-backdoor work is exactly where fast-and-wrong is expensive in a way a mis-tuned spinner never was.
+
 ## Phase 8 — 2026-07-03 — Shift Builder (review, edit & gap-aware grouping)
 
 **Points:** 19 shipped (24 planned → 17 after the DEC-082 lock cut → 19 as 8.4 grew 3→5)

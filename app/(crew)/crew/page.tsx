@@ -116,8 +116,10 @@ export default async function CrewHome({
       }
     }
     // `claimed` carries a shift id (DEC-026) — resolve to a date for the calm
-    // self-serve confirmation. The seat is already Confirmed, so it's in My shifts.
-    if (sp.claimed) {
+    // self-serve confirmation. A real claim is Confirmed, so it's in the viewer's
+    // own shifts; gate on that (10.3 audit) so a crafted `?claimed=<foreign-shift>`
+    // can't spoof a "you're on" note or oracle a shift's existence/date.
+    if (sp.claimed && view?.shifts.some((s) => s.shiftId === sp.claimed)) {
       const shift = await repo.getShift(asId<"ShiftId">(sp.claimed));
       if (shift) {
         claimedNote = `You’re on the ${fmtDate(shift.date)} shift — it’s in My shifts below.`;

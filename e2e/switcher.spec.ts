@@ -59,7 +59,7 @@ test.describe("crew ↔ admin switcher (DEC-093)", () => {
     await expect(page.getByRole(SWITCH_TO_ADMIN.role, { name: SWITCH_TO_ADMIN.name })).toHaveCount(0);
   });
 
-  test("a revoked admin loses the switch (the gate, not just the button)", async ({
+  test("a revoked admin's switch control disappears on the next render", async ({
     page,
   }) => {
     await signInAsCrew(page, "crew-spink");
@@ -68,8 +68,26 @@ test.describe("crew ↔ admin switcher (DEC-093)", () => {
     await setAdminActive("spink", false); // deprovision
     await page.reload();
 
-    // viewerIsActiveAdmin is now false → the control is gone (and switchToAdmin
-    // would bounce even if forced, sharing readSubject's getAdmin(active) gate).
+    // viewerIsActiveAdmin is now false → the control is gone (visibility only).
+    await expect(page.getByRole(SWITCH_TO_ADMIN.role, { name: SWITCH_TO_ADMIN.name })).toHaveCount(0);
+  });
+
+  test("revoke is enforced by the ACTION, not the button: a stale click is refused server-side", async ({
+    page,
+  }) => {
+    await signInAsCrew(page, "crew-spink");
+    const btn = page.getByRole(SWITCH_TO_ADMIN.role, { name: SWITCH_TO_ADMIN.name });
+    await expect(btn).toBeVisible();
+
+    // Revoke WITHOUT reloading — the button is now stale in the DOM, so this
+    // click actually invokes switchToAdmin whose getAdmin(active) gate now fails.
+    await setAdminActive("spink", false);
+    await btn.click();
+
+    // Bounced to /crew — NOT escalated to /admin, no admin session minted.
+    await page.waitForURL((u) => u.pathname === "/crew");
+    expect(new URL(page.url()).pathname).not.toMatch(/^\/admin/);
+    await expect(page.getByRole(CREW_VIEW.role, { name: CREW_VIEW.name })).toHaveCount(0);
     await expect(page.getByRole(SWITCH_TO_ADMIN.role, { name: SWITCH_TO_ADMIN.name })).toHaveCount(0);
   });
 });

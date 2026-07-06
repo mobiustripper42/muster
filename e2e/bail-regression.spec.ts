@@ -30,9 +30,11 @@ test.describe("bail → board regression (crew-only seed)", () => {
     await page.goto("/crew/shift/shift-soon");
     await expect(page.getByRole("heading", { name: "Hops" })).toBeVisible();
 
-    // "I can't make it…" is a closed <details>; open it, then drop.
+    // "I can't make it…" is a closed <details>; open it, reveal the confirm
+    // (#271: "Drop this shift" now gates the drop), then confirm.
     await page.getByText(/I can.t make it/).click();
-    await page.getByRole("button", { name: "Drop this shift" }).click();
+    await page.getByText("Drop this shift", { exact: true }).click();
+    await page.getByRole("button", { name: "Yes, drop this shift" }).click();
 
     // Calm off-the-shift confirmation back on /crew.
     await expect(page).toHaveURL(/\/crew\?bailed=/);

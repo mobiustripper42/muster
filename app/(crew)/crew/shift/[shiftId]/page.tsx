@@ -306,13 +306,28 @@ function Card({
             ? "This shift is soon — dropping now may not leave time to refill it. We’ll still try, but call your operator right away so they can react."
             : "This gives up your spot on a shift you confirmed. The sooner you tell us, the easier it is to refill — so if you can’t make it, drop it now."}
         </p>
-        <form action={bailFromSeat}>
-          <input type="hidden" name="seatId" value={card.mySeatId} />
-          <input type="hidden" name="shiftId" value={shiftId} />
-          <SubmitButton className="min-h-[44px] w-full rounded-card border border-bad-line bg-bad-bg px-4 font-semibold text-bad">
+        {/* Confirm gate (#271): the drop is destructive AND logs a bail on the
+            crew member's reliability record (DEC-028), so it sits behind one more
+            deliberate tap — the button reveals the confirm rather than dropping.
+            No-JS: a nested <details>, same posture as the claim confirm (DEC-077). */}
+        <details className="rounded-card border border-bad-line bg-bad-bg">
+          <summary className="flex min-h-[44px] cursor-pointer items-center justify-center px-4 text-sm font-semibold text-bad [&::-webkit-details-marker]:hidden">
             Drop this shift
-          </SubmitButton>
-        </form>
+          </summary>
+          <div className="flex flex-col gap-2 border-t border-bad-line px-4 py-3">
+            <p className="text-sm text-muted">
+              This gives up your seat — it’s logged on your reliability record and
+              can’t be undone. Sure you can’t make it?
+            </p>
+            <form action={bailFromSeat}>
+              <input type="hidden" name="seatId" value={card.mySeatId} />
+              <input type="hidden" name="shiftId" value={shiftId} />
+              <SubmitButton className="min-h-[44px] w-full rounded-card border border-bad-line bg-bad px-4 font-semibold text-white">
+                Yes, drop this shift
+              </SubmitButton>
+            </form>
+          </div>
+        </details>
       </details>
       )}
     </Shell>

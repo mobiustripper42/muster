@@ -29,7 +29,8 @@ test.describe("bail → re-ask + board suppression (both seeds)", () => {
 
     await page.goto("/crew/shift/shift-soon");
     await page.getByText(/I can.t make it/).click();
-    await page.getByRole("button", { name: "Drop this shift" }).click();
+    await page.getByText("Drop this shift", { exact: true }).click(); // reveal confirm (#271)
+    await page.getByRole("button", { name: "Yes, drop this shift" }).click();
     await expect(page).toHaveURL(/\/crew\?bailed=/);
 
     await signInAsAdmin(page, "spink");
@@ -46,5 +47,22 @@ test.describe("bail → re-ask + board suppression (both seeds)", () => {
     const captainSeat = page.locator("article", { hasText: "captain" });
     await expect(captainSeat).toContainText("Asked");
     await expect(captainSeat).toContainText("awaiting reply");
+  });
+
+  test("#271: 'Drop this shift' reveals a confirm — one tap does NOT bail", async ({
+    page,
+  }) => {
+    await signInAsCrew(page, "crew-quint");
+    await page.goto("/crew/shift/shift-soon");
+    await page.getByText(/I can.t make it/).click();
+
+    // Tapping "Drop this shift" reveals the confirm; it must not bail.
+    await page.getByText("Drop this shift", { exact: true }).click();
+    await expect(page).toHaveURL(/\/crew\/shift\/shift-soon/);
+    await expect(page.getByRole("button", { name: "Yes, drop this shift" })).toBeVisible();
+
+    // The confirm is what actually bails.
+    await page.getByRole("button", { name: "Yes, drop this shift" }).click();
+    await expect(page).toHaveURL(/\/crew\?bailed=/);
   });
 });

@@ -7,7 +7,10 @@ import {
 import { WebLinkChannel } from "@core/adapters/web-link-channel.js";
 import { OutboxNoticeChannel } from "@core/adapters/outbox-notice-channel.js";
 import type { Ask } from "@core/domain/entities.js";
+import type { FormResult } from "@core/builder/form-shifts.js";
+import { formNoticeChanges } from "@core/builder/form-notices.js";
 import { getRepo } from "./repo";
+import { OPERATOR_CREW_MEMBER_ID } from "./operator";
 import { makeTwilioChannel } from "./sms";
 
 /**
@@ -75,4 +78,17 @@ export async function forwardNoticesToOutbox(
     makeTwilioChannel(repo, base) ??
     new OutboxNoticeChannel(repo, { linkBase: base });
   await forwardNotices(repo, channel, changes);
+}
+
+/**
+ * Forward the crew transitions a {@link FormResult} observed (DEC-084) — the
+ * `cancelledCrew`→"you're off" / `restoredCrew`→"you're on" mapping. Shared by
+ * the Xola pull AND the manual split/merge commands: each runs `formShifts` once
+ * and CONSUMES any transition it observes (the new state is written, so no later
+ * pull re-sees it), so this single call is the only relay chance. Miss it and a
+ * crew member added/removed by that reshape never gets the SMS (#259 finding-3).
+ * Operator excluded (DEC-072/084). Best-effort is the caller's (wrap in try/catch).
+ */
+export async function forwardFormNotices(form: FormResult): Promise<void> {
+  await forwardNoticesToOutbox(formNoticeChanges(form, OPERATOR_CREW_MEMBER_ID));
 }

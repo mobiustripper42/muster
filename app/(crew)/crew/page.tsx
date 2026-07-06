@@ -19,6 +19,7 @@ import { TENANT_ID } from "../../lib/tenant";
 import { fmt12 } from "../../lib/format";
 import { vesselHueClass } from "../../lib/vessel-hue";
 import { requestLoginCode, respondToAsk, signOut, verifyLoginCode } from "./actions";
+import { switchToAdmin } from "../../lib/switch-actions";
 import { SubmitButton } from "../../../components/ui/submit-button";
 
 /** #161: the In/Out tap's outcome → a calm /crew notice (codes only, DEC-026). */
@@ -75,6 +76,17 @@ export default async function CrewHome({
   let view: CrewAppView | null;
   let bailedNote: string | null = null;
   let claimedNote: string | null = null;
+  // Dual-role (DEC-093): a crew member who is ALSO an active admin gets a
+  // "Switch to admin" control by sign-out. `getAdmin` is null for the (near-all)
+  // crew-only majority — one cheap lookup on an already-DB-heavy home render.
+  // Best-effort: a hiccup here just hides the switch, never breaks the crew home
+  // (asks/shifts are the priority surface). The escalation is gated server-side
+  // regardless — this only decides whether the button shows.
+  const viewerIsActiveAdmin = await getRepo()
+    .getAdmin(subject.id)
+    .then((a) => !!a?.active)
+    .catch(() => false);
+
   let unreadTotal = 0;
   try {
     const repo = getRepo();
@@ -134,6 +146,7 @@ export default async function CrewHome({
       answeredNote={answeredNote}
       unreadTotal={unreadTotal}
       selfServe={selfServeEnabled()}
+      viewerIsActiveAdmin={viewerIsActiveAdmin}
     />
   );
 }
@@ -383,6 +396,7 @@ function CrewApp({
   answeredNote,
   unreadTotal,
   selfServe,
+  viewerIsActiveAdmin,
 }: {
   view: CrewAppView;
   bailedNote: string | null;
@@ -390,6 +404,7 @@ function CrewApp({
   answeredNote: string | null;
   unreadTotal: number;
   selfServe: boolean;
+  viewerIsActiveAdmin: boolean;
 }) {
   return (
     <Shell>
@@ -508,12 +523,22 @@ function CrewApp({
 
       {/* Sign-out (DEC-081): quiet, always available — matters on shared/family
           phones with a standing 14-day session. No flag; it only clears the
-          caller's own cookie. */}
-      <form action={signOut} className="pt-2">
-        <SubmitButton className="text-xs text-muted underline">
-          Sign out
-        </SubmitButton>
-      </form>
+          caller's own cookie. Beside it, for a dual-role person, the switch UP
+          to the admin cockpit (DEC-093 — gated server-side on active-admin). */}
+      <div className="flex items-center gap-4 pt-2">
+        {viewerIsActiveAdmin && (
+          <form action={switchToAdmin}>
+            <SubmitButton className="text-xs text-accent underline">
+              Switch to admin
+            </SubmitButton>
+          </form>
+        )}
+        <form action={signOut}>
+          <SubmitButton className="text-xs text-muted underline">
+            Sign out
+          </SubmitButton>
+        </form>
+      </div>
 
       <VersionTag />
     </Shell>

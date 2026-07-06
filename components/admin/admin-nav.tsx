@@ -3,6 +3,8 @@
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { AppLink } from "../ui/app-link";
+import { SubmitButton } from "../ui/submit-button";
+import { switchToCrew } from "../../app/lib/switch-actions";
 
 /**
  * Persistent admin nav (#174) — the frame that stitches the per-screen admin
@@ -57,7 +59,7 @@ export function AdminNav({
   return (
     <nav aria-label="Admin" className="sticky top-0 z-20 border-b border-line bg-card">
       <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-2.5">
-        <span className="flex min-w-0 items-baseline gap-2">
+        <div className="flex min-w-0 items-baseline gap-2">
           <AppLink href="/admin" className="shrink-0 font-semibold text-ink">
             Muster
           </AppLink>
@@ -65,7 +67,14 @@ export function AdminNav({
           <span className="truncate text-xs text-faint">
             {tenant} · {dateLabel}
           </span>
-        </span>
+          {/* Switch down to the crew app (DEC-093) — the admin is also crew.
+              Always safe (de-escalation); gated server-side. */}
+          <form action={switchToCrew} className="shrink-0">
+            <SubmitButton className="text-xs text-muted underline hover:text-ink">
+              Crew view
+            </SubmitButton>
+          </form>
+        </div>
 
         {/* Desktop: inline links. */}
         <div className="hidden items-center gap-5 text-sm sm:flex">

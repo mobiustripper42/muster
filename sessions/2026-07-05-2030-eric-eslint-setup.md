@@ -6,7 +6,7 @@ branch: task/eslint-setup
 started: 2026-07-05T20:30:21Z
 ended:
 points:
-pr_numbers: [273]
+pr_numbers: [273, 274]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/e8236a0e-69f4-48e9-8829-2b9396bda84e.jsonl
 ---
@@ -33,8 +33,25 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/e8236a0e-69f4-48e9-882
 **Branch:** task/9.11-crew-reconciliation
 **Opened at:** 2026-07-05T22:03:34Z
 
+## Task 2: Polish /crew/open — day + right-justified time, vessel dot, cleaner confirm copy (9.11b, #237 follow-up)
+
+**Completed:**
+- `/crew/open` post-dates the mockups (DEC-074) so it was skipped on the 9.11 reconciliation and read flat. Brought it up to the app's language:
+- **Vessel hue dot** on each claim row (DEC-086): added `vesselId` to `ClaimableSeatView` (`src/crewapp/claimable-view.ts`), rendered the same `aria-hidden` dot as My-shifts/board in `ClaimRow`.
+- **Row header** (`app/(crew)/crew/open/page.tsx`): day left semibold + **first-departure time bold mono right-justified on the same line**, quiet `● vessel · role` beneath — the My-shifts "when" hierarchy. My-shifts itself left untouched (operator call: pull crew/open up, don't swap formats).
+- **Confirm copy**: split `confirmCopy` → `confirmLead` + `confirmFacts` (+ helpers `hasTrips`, `joinTimes`, `backAt`); lead sentence then a separate **`Currently:`** facts line (trips · call · back), middot separators, comma+ampersand trip list keeping each period (avoids AM/PM ambiguity on a mixed list), `~6 PM` cased. "Right now" → "Currently".
+- e2e `crew-open.spec.ts` extended (vessel dot, summary-scoped header time, `Currently:` copy); `claimable-view.test.ts` asserts `vesselId`. 10/10 desktop + mobile, screenshots eyeballed at 375px.
+- **Env note:** operator's `next dev` held Next's per-dir dev lock → Playwright couldn't start its dev server. Ran a **prod** server (`next start` + `VERCEL_ENV=preview`) on :3100 against muster_test — prod mode dodges the lock, `VERCEL_ENV=preview` keeps the dev-link route live. Recipe saved to memory ([[e2e-while-dev-lock-held]]).
+
+**Code review:** Clean Bill of Health — traced `joinTimes`/`backAt`/`hasTrips` gating + the `!` assertions (safe: `committedWindow` sets call/back together iff trips exist), header 375px layout, summary-scoped e2e locator. No issues.
+**PR:** [#274](https://github.com/mobiustripper42/muster/pull/274)
+**Points:** 2
+**Branch:** task/9.11b-crew-open-polish
+**Opened at:** 2026-07-06T00:47:46Z
+
 **Next Steps:**
 - **File as follow-ups:** full `<Button>` primitive (admin adopts the shared glyph + radius token — the C3 boundary); **C2** the "changed since you last looked" crew cue (a *feature*, ties to `Reservation.updatedAt` / #259, not polish).
+- **Spinners on prod (parked):** crew nav spinners work in dev; unverified on Vercel. If a preview shows page-to-page nav eating the spinner, add `loading.tsx` to the crew segments (no crew `loading.tsx` exists). Don't diagnose spinner/latency off the mill-dev dev server ([[dev-server-confounds-latency-observations]]).
 - Remaining Phase 9: #247 (civil-hours notices — prod-Twilio blocker), #238 (nav — @architect BRAND gate), #250 (still open). Filed earlier: #256 (drop inert `locked_at` col), #259, #268, #271.
 
 **Context:**

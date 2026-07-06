@@ -62,7 +62,8 @@ export async function runAdminCommand(
         throw new AdminCliError(`add: handle "${handle}" is already an admin.`);
 
       let id: string;
-      let name = flag(args, "name");
+      // Empty `--name=` reads as unset, so it falls back to the crew record's name.
+      let name = flag(args, "name") || undefined;
       if (email) {
         const norm = normalizeEmail(email);
         const match = (await repo.listCrewMembers())
@@ -77,12 +78,18 @@ export async function runAdminCommand(
         name ??= match.name;
       } else {
         id = crew!;
-        name ??= (await repo.getCrewMember(asId<"CrewMemberId">(id)))?.name;
+        // Validate ALWAYS (even with an explicit --name): an admin id MUST be a real
+        // crew id (DEC-092) or the switcher (DEC-093) re-mints a crew session for a
+        // ghost and dead-ends. This is the CLI's guardrail, not a DB FK.
+        const c = await repo.getCrewMember(asId<"CrewMemberId">(id));
+        if (!c)
+          throw new AdminCliError(
+            `add: no crew member with id "${id}". An admin id must be a real crew id — ` +
+              `check the id, or use --email=<addr> to resolve it from the roster.`,
+          );
+        name ??= c.name;
       }
-      if (!name)
-        throw new AdminCliError(
-          `add: no crew member found for ${id} to take a name from — pass --name="<name>".`,
-        );
+      // `name` is set now: both paths take it from a crew member (name is required).
 
       const clash = await repo.getAdmin(id);
       if (clash)

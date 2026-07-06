@@ -18,8 +18,10 @@ const crew = (over: Partial<CrewMember> = {}): CrewMember => ({
 
 describe("db:admin CLI (DEC-092)", () => {
   let repo: InMemoryRepository;
-  beforeEach(() => {
+  beforeEach(async () => {
     repo = new InMemoryRepository();
+    // crew-eric exists (admin ids must be real crew ids — DEC-092).
+    await repo.saveCrewMember(crew());
   });
 
   it("add --crew --handle --name → the admin round-trips and lists", async () => {
@@ -50,6 +52,13 @@ describe("db:admin CLI (DEC-092)", () => {
     );
     expect(out).toContain("crew-eric");
     expect((await repo.getAdminByHandle("eric"))!.id).toBe("crew-eric");
+  });
+
+  it("add --crew validates the crew id exists, even with an explicit --name", async () => {
+    await expect(
+      runAdminCommand(repo, ["add", "--crew=crew-ghost", "--handle=g", "--name=Ghost"], NOW),
+    ).rejects.toThrow(/no crew member with id "crew-ghost"/i);
+    expect(await repo.getAdminByHandle("g")).toBeNull();
   });
 
   it("add --email with no roster match is a clear error (crew ≠ Xola customers)", async () => {

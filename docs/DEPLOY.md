@@ -198,8 +198,9 @@ DATABASE_URL="<neon-direct>" npm run db:admin -- list               # who's acti
 ```
 
 There is no admin-management UI at launch (DEC-092 — deferred); `db:admin` is the interface for ~3 admins
-(it validates handle uniqueness and resolves `--email`→crew id, which raw SQL won't). `SESSION_SECRET`
-rotation remains the global break-glass (kills *all* sessions at once).
+(it validates handle uniqueness, checks the id **is a real crew member**, and resolves `--email`→crew id —
+guardrails raw SQL won't give you). `SESSION_SECRET` rotation remains the global break-glass (kills *all*
+sessions at once).
 
 ---
 

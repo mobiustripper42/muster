@@ -89,13 +89,18 @@ export async function mergeAction(formData: FormData): Promise<void> {
           shiftId: asId<"ShiftId">(shiftId),
         })),
       );
-      // Plus any external Cancelled↔live transition the merge's one-shot re-form
-      // observed (#259) — same consume-once reasoning as split. A duplicate
-      // "removed" to a just-freed member is fine (Twilio: an extra text beats a
-      // missed one; the outbox fallback dedupes by slot).
-      await forwardFormNotices(form);
     } catch {
       // Relay is best-effort; the merge stands regardless (DEC-084).
+    }
+    // INDEPENDENT relay (its own guard): any external Cancelled↔live transition
+    // the merge's one-shot re-form observed (#259) — same consume-once reasoning
+    // as split. Kept separate from the freedCrew relay so one relay's failure
+    // can't suppress the other. A duplicate "removed" to a just-freed member is
+    // fine (Twilio: an extra text beats a missed one; the outbox dedupes by slot).
+    try {
+      await forwardFormNotices(form);
+    } catch {
+      // best-effort; the merge stands regardless (DEC-084)
     }
     // Surface the count so the page can confirm who got told (button feedback, #202).
     param = `merge_ok=${toNotify.length}`;

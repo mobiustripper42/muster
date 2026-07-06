@@ -20,6 +20,10 @@ export interface ClaimableSeatView {
   seatId: string;
   shiftId: string;
   vesselName: string;
+  /** Vessel id — feeds the DEC-086 identity hue dot on the claim row, so a
+   *  mixed-vessel claimable list reads which-boat at a glance (same as My-shifts
+   *  and the board). Identity only, `aria-hidden`; the vessel name is the answer. */
+  vesselId: string;
   roleName: string;
   /** ISO-8601 date (vessel-local day). */
   date: string;
@@ -67,6 +71,7 @@ export async function buildClaimableView(
       seatId: seat.seatId,
       shiftId: seat.shiftId,
       vesselName: vessel?.name ?? seat.vesselId,
+      vesselId: seat.vesselId,
       roleName: role?.name ?? seat.role,
       date: seat.date,
       tripTimes,

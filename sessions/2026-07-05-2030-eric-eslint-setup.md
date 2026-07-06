@@ -6,7 +6,7 @@ branch: task/eslint-setup
 started: 2026-07-05T20:30:21Z
 ended:
 points:
-pr_numbers: [273, 274, 276]
+pr_numbers: [273, 274, 276, 277]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/e8236a0e-69f4-48e9-8829-2b9396bda84e.jsonl
 ---
@@ -67,8 +67,24 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/e8236a0e-69f4-48e9-882
 **Branch:** task/9.11c-crew-open-refinements
 **Opened at:** 2026-07-06T01:18:37Z
 
+## Task 4: Confirm before dropping a shift — no accidental one-tap bail (closes #271)
+
+**Completed:**
+- Prod-triage of the 10 open issues → 2 real prod-blockers (#259, #271); closed #250 (feedback saga shipped; spinner-on-prod deferred) + #173 (SMS consent live, submitted to Twilio); #247/#119 blocked on prod Twilio; 9.12 nav deemed post-launch.
+- **#271:** the crew shift-card bail (`bailFromSeat`) was one-tap destructive (removes seat + logs a DEC-028 reliability bail). Gated it: `app/(crew)/crew/shift/[shiftId]/page.tsx` — "Drop this shift" is now a nested no-JS `<details>` that reveals "logged on your record, can't be undone — Yes, drop this shift". Same posture as DEC-077 claim confirm; trainee path unchanged.
+- Updated `bail-reask` + `bail-regression` for the new flow; added a gate test (one tap must NOT bail). verify green; bail specs 3/3.
+
+**⚠️ Surfaced (pre-existing, NOT this PR):** `trainee-staffing.spec.ts` fails on an `/admin/outbox` "you're on" notice assertion (trainee-**assignment** notice path — untouched by #271). Suspected **#259** (notice swallow/visibility). It's the canary for the next blocker.
+**Code review:** Clean — no-JS nesting correct, action untouched, copy accurate under DEC-028, tests properly updated.
+**PR:** [#277](https://github.com/mobiustripper42/muster/pull/277)
+**Points:** 2
+**Branch:** task/271-drop-shift-confirm
+**Opened at:** 2026-07-06T02:23:51Z
+
 **Next Steps:**
-- **Merge #276** — main currently has an incomplete `/crew/open` (only #274's first batch).
+- **#259 (2nd prod-blocker, IN PROGRESS):** notices terminal-on-sent → a repeated (shift,member,action) transition swallowed. Needs a design pass (re-open paired slot on opposite transition, OR sequence/epoch the slot id) — changes `OutboxNoticeChannel` semantics. Use `trainee-staffing.spec.ts` as the canary. Plus finding-3: split/merge actions don't forward `cancelledCrew`/`restoredCrew` to the outbox.
+- **Open PRs to merge:** #277 (#271 bail confirm). (#273/#274/#276 already merged.)
+- **@pm pass** on remaining open issues (operator will take after) → full prod-cut plan.
 - **Filed:** #275 (DEC-041 shift-end "back" time reuses call lead → distinct `TEARDOWN_MINUTES` ~20–30; deferred by operator).
 - **Still to file as follow-ups:** full `<Button>` primitive (admin adopts the shared glyph + radius token — the C3 boundary); **C2** the "changed since you last looked" crew cue (a *feature*, ties to `Reservation.updatedAt` / #259, not polish).
 - **Spinners on prod (parked):** crew nav spinners work in dev; unverified on Vercel. If a preview shows page-to-page nav eating the spinner, add `loading.tsx` to the crew segments (no crew `loading.tsx` exists). Don't diagnose spinner/latency off the mill-dev dev server ([[dev-server-confounds-latency-observations]]).

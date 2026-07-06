@@ -6,7 +6,7 @@ branch: task/eslint-setup
 started: 2026-07-05T20:30:21Z
 ended:
 points:
-pr_numbers: [273, 274, 276, 277, 278]
+pr_numbers: [273, 274, 276, 277, 278, 280]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/e8236a0e-69f4-48e9-8829-2b9396bda84e.jsonl
 ---
@@ -95,8 +95,22 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/e8236a0e-69f4-48e9-882
 **Branch:** task/259-sms-coverage-split-merge
 **Opened at:** 2026-07-06T03:21:23Z
 
+## Task 6: Phase 9.12 — Navigation: crew hub-and-spoke (DEC-091) + admin Messages link (closes #238)
+
+**Completed:**
+- **@architect gate** on crew nav (the BRAND tension): **GO — crew gets NO persistent nav.** Home already contains every entry point → the hub-and-spoke IS the "insultingly small" IA. Rejected a bottom tab bar + admin-style top nav (admin has co-equal destinations + no hub; crew's home *is* the hub); a persistent unread badge = anxiety vector (DEC-042/071). This collapsed 9.12 from a 5-pt build to a small consistency task.
+- **DEC-091** recorded (`docs/DECISIONS.md`) — crew navigation is hub-and-spoke, no persistent nav chrome; revisit if crew surfaces grow past ~5. Crew `BackLink` already uniform across all drill-in surfaces (#273) → no crew code change.
+- **Admin nav finish:** added `/admin/messages` to `admin-nav.tsx` LINKS (covers desktop inline + mobile drawer). `admin-nav.spec.ts` asserts Messages navigates + active-highlights; #253 52px height budget holds (5th short link adds width not height).
+- verify green; admin-nav 10/10 desktop + mobile.
+
+**Code review:** self-reviewed (1-entry LINKS add + DEC record + nav test; @architect blessed the decision) — disproportionate to spawn an agent.
+**PR:** [#280](https://github.com/mobiustripper42/muster/pull/280)
+**Points:** 2 (was estimated 5 — the gate decided "no nav needed")
+**Branch:** task/9.12-navigation
+**Opened at:** 2026-07-06T03:44:21Z
+
 **Next Steps:**
-- **Merge PRs:** #277 (#271 bail confirm — copy tightened per operator) + #278 (#259). (#273/#274/#276 merged.)
+- **Merge open PRs:** #277 (#271 bail confirm — copy tightened) + #280 (9.12 nav). (#273/#274/#276/#278 merged.)
 - **@pm pass** (operator will take) → full production-cut plan over remaining open issues.
 - **Filed follow-ups:** #275 (back-time teardown), #279 (integration e2e for split/merge notices), + still-unfiled: `<Button>` primitive, C2 changed-cue.
 - **Both prod-blockers cleared** (#271→#277, #259→#278). Remaining opens: #268 (pool layout), #256 (drop locked_at col), #238 (9.12 nav — post-launch), #247/#119 (blocked on prod Twilio/10DLC).

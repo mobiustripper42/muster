@@ -13,6 +13,7 @@
     "db:down": "docker compose down",
     "db:migrate": "tsx db/migrate.ts",
     "db:mint": "tsx db/mint-link.ts",
+    "db:admin": "tsx db/admin.ts",
     "db:seed:fleet": "tsx db/seed-fleet.ts",
     "db:seed:crew:pilot": "tsx db/seed-pilot-crew.ts",
     "db:seed:crew": "tsx db/seed-crewapp-dev.ts",

@@ -122,13 +122,20 @@ curl -s https://<domain>/api/cron/tick -H "Authorization: Bearer $CRON_SECRET"
 #    shift whose horizon just opened, with cards landing in /admin/outbox.
 ```
 
-### 7. Sign in as the operator (5.2, DEC-034)
-`/crew/dev-link` is **hard-404 in production** (it must never mint links there), so the operator's
-first sign-in is bootstrapped out-of-band. The script auto-sources `.env.local` (what step 3's
+### 7. Sign in as an admin (5.2, DEC-034; admin entity DEC-092)
+
+**Admins (DEC-092).** Admin is now a first-class, individually-revocable identity — the `admins` table,
+seeded by the `0018_admins` migration with the launch roster: **`eric`** (Eric Stoffer), **`brendan`**
+(Brendan McGovern), **`drew`** (Drew Johnson). `--admin=<handle>` must be a **seeded, active** handle —
+mint refuses an unknown or deactivated one and prints the active handles. (`spink` is the dev/e2e-only
+operator; it is not a prod admin.)
+
+`/crew/dev-link` is **hard-404 in production** (it must never mint links there), so an admin's first
+sign-in is bootstrapped out-of-band. The script auto-sources `.env.local` (what step 3's
 `vercel env pull` wrote), so once that file holds `APP_BASE_URL` + a DB string the command is just:
 ```bash
-npm run db:mint -- --admin=spink
-#  → Minted admin link · spink   (db: ep-xxx.neon.tech)
+npm run db:mint -- --admin=eric
+#  → Minted admin link · crew-eric-stoffer (eric)   (db: ep-xxx.neon.tech)
 #      https://<domain>/crew/auth?t=<secret>
 #      single-use · expires ... (60 min)
 ```
@@ -140,7 +147,7 @@ and `DATABASE_URL` are required:** omit `APP_BASE_URL` and the printed link sile
 local host (`http://mill-dev:3000`), not your domain. Quote the DB string — an unquoted `&` in it is a
 bash background operator and splits the command, so `DATABASE_URL` never reaches the script:
 ```bash
-APP_BASE_URL=https://<prod-domain> DATABASE_URL="<paste-direct-unpooled-string>" npm run db:mint -- --admin=spink
+APP_BASE_URL=https://<prod-domain> DATABASE_URL="<paste-direct-unpooled-string>" npm run db:mint -- --admin=brendan
 ```
 **Check both in the output** — the `db:` host must be the Neon host (not `localhost:5432`), AND the
 printed link must be your `<prod-domain>` (not `http://mill-dev:3000`). Either one wrong means that env
@@ -154,7 +161,7 @@ echo 'postgres://<neon-direct-unpooled-string>' > ~/.muster-prod-db   # once; gi
 # add this line to ~/.bashrc so it persists:
 alias mint-prod='APP_BASE_URL=https://muster-sigma.vercel.app DATABASE_URL="$(cat ~/.muster-prod-db)" npm run db:mint --'
 ```
-Then `mint-prod --admin=spink` mints a **prod** link, while plain `npm run db:mint -- --admin=spink`
+Then `mint-prod --admin=eric` mints a **prod** link, while plain `npm run db:mint -- --admin=eric`
 still mints **local** — two commands, no editing, no switch-back. (Rarely needed: the sign-in cookie
 lasts 14 days and renews on use, so it's a first-sign-in / long-gap thing.)
 
@@ -164,6 +171,30 @@ is single-use and expires in 60 min (`--ttl-min=<n>` to change). `APP_BASE_URL` 
 script refuses without it (a CLI has no Host header, and a link on the wrong origin is host-spoofable /
 unopenable). **Crew** need none of this: their links flow through the DEC-030 outbox relay
 (`--crew=<id>` exists as a manual escape hatch, not the normal path).
+
+### 7b. Deprovision an admin (per-person revoke — DEC-092)
+
+Removing **one** admin's access is a single `active` flip — **immediate** (their next request dies at
+`readSubject`'s admin gate) and **scoped** (no other admin is affected; contrast rotating `SESSION_SECRET`,
+which logs everyone out). Migrations are hand-applied out-of-band, so this is a documented one-liner, run
+the same way as `db:migrate` (direct/unpooled prod DB string):
+
+```sql
+-- revoke:
+update admins set active = false, deactivated_at = now()::text where handle = 'drew';
+-- re-instate:
+update admins set active = true,  deactivated_at = null      where handle = 'drew';
+-- who's active:
+select handle, name, active from admins order by handle;
+```
+
+Add an admin the same way (insert a row with their crew id + a short handle):
+```sql
+insert into admins (id, handle, name, active, created_at)
+values ('crew-<slug>', '<handle>', '<Full Name>', true, now()::text);
+```
+There is no admin-management UI at launch (DEC-092 — deferred); this SQL path is the interface for ~3
+admins. `SESSION_SECRET` rotation remains the global break-glass (kills *all* sessions at once).
 
 ---
 

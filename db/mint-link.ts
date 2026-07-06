@@ -90,7 +90,6 @@ if (!base) {
 }
 
 const subjectKind: AuthSubjectKind = admin ? "admin" : "crew";
-const subjectId = (admin ?? crew)!;
 
 // `||` not `??`: an empty DATABASE_URL (what Sensitive vars pull as) is "unset",
 // not a valid connection string — fall to the local-dev default rather than
@@ -99,6 +98,29 @@ const url = process.env.DATABASE_URL || DEFAULT_DATABASE_URL;
 const repo = PostgresRepository.fromConnectionString(url);
 
 try {
+  // `--admin=<handle>` resolves to the admin's id (= a crew id) and REFUSES an
+  // unknown or deactivated handle — you can't mint a link for a revoked admin
+  // (DEC-092). Crew links pass the id straight through (unchanged).
+  let subjectId: string;
+  if (admin) {
+    const record = await repo.getAdminByHandle(admin);
+    if (!record || !record.active) {
+      const known = (await repo.listAdmins())
+        .filter((a) => a.active)
+        .map((a) => a.handle)
+        .join(", ");
+      console.error(
+        `No active admin with handle "${admin}".` +
+          (known ? ` Active handles: ${known}.` : " No active admins seeded."),
+      );
+      await repo.close();
+      process.exit(1);
+    }
+    subjectId = record.id;
+  } else {
+    subjectId = crew!;
+  }
+
   const now = new Date();
   const { token, secret } = await issueMagicLink(
     repo,
@@ -106,7 +128,8 @@ try {
     { now, mintSecret: randomSecret },
   );
   const link = `${base}/crew/auth?t=${secret}`;
-  console.log(`Minted ${subjectKind} link · ${subjectId}   (db: ${dbHost(url)})`);
+  const who = admin ? `${subjectId} (${admin})` : subjectId;
+  console.log(`Minted ${subjectKind} link · ${who}   (db: ${dbHost(url)})`);
   console.log(`  ${link}`);
   console.log(`  single-use · expires ${token.expiresAt} (${ttlMin} min)`);
 } finally {

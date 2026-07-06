@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { checkIntegrity } from "../admin/integrity.js";
 import { asId } from "../domain/ids.js";
 import type {
+  Admin,
   Ask,
   Credential,
   CrewMember,
@@ -122,6 +123,15 @@ const magicToken = (over: Partial<MagicToken> = {}): MagicToken => ({
   subjectId: CREW,
   createdAt: "2026-07-01T12:00:00.000Z",
   expiresAt: "2026-07-01T12:15:00.000Z",
+  ...over,
+});
+const admin = (over: Partial<Admin> = {}): Admin => ({
+  id: CREW,
+  handle: "cap",
+  name: "Cap Ahab",
+  active: true,
+  createdAt: "2026-07-01T12:00:00.000Z",
+  deactivatedAt: null,
   ...over,
 });
 const loginCode = (over: Partial<LoginCode> = {}): LoginCode => ({
@@ -545,6 +555,31 @@ export function runRepositoryContract(
       ]);
       // Removing something already gone must not throw.
       await expect(repo.removeMagicToken(asId<"MagicTokenId">("ghost"))).resolves.toBeUndefined();
+    });
+
+    it("admins: round-trip; lookup by id and by handle; upsert (DEC-092)", async () => {
+      await repo.saveAdmin(admin());
+      expect(await repo.getAdmin(CREW)).toEqual(admin());
+      expect(await repo.getAdminByHandle("cap")).toEqual(admin());
+      expect(await repo.getAdmin("no-such-id")).toBeNull();
+      expect(await repo.getAdminByHandle("no-such-handle")).toBeNull();
+      // Upsert by id, not a second row.
+      await repo.saveAdmin(admin({ name: "Captain Ahab" }));
+      expect((await repo.getAdmin(CREW))!.name).toBe("Captain Ahab");
+      expect(await repo.listAdmins()).toHaveLength(1);
+    });
+
+    it("admins: deactivation round-trips the flag + timestamp (the revoke lever)", async () => {
+      await repo.saveAdmin(admin());
+      expect((await repo.getAdmin(CREW))!.active).toBe(true);
+      await repo.saveAdmin(
+        admin({ active: false, deactivatedAt: "2026-07-02T09:00:00.000Z" }),
+      );
+      const got = (await repo.getAdmin(CREW))!;
+      expect(got.active).toBe(false);
+      expect(got.deactivatedAt).toBe("2026-07-02T09:00:00.000Z");
+      // A revoked admin still resolves by handle (mint refuses on the active check).
+      expect((await repo.getAdminByHandle("cap"))!.active).toBe(false);
     });
 
     it("login codes: round-trip incl. consumedAt optional; keyed by subject (DEC-081)", async () => {

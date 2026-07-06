@@ -296,6 +296,32 @@ export interface Subject {
 }
 
 /**
+ * A person with admin access (DEC-092, revises DEC-020's "admin is a free-form
+ * non-identity"). Every admin is also crew, so `id` **is** the crew member's id
+ * — an admin session is `{kind:"admin", id:<crewId>}`, that same person's crew
+ * session is `{kind:"crew", id:<crewId>}`; `kind` disambiguates, no FK (DEC-DATA-1),
+ * no crew-row validation (the service layer is the boundary). This table is the
+ * *auth identity* only — deliberately NOT the DEC-058 messaging identity.
+ *
+ * `active` is the per-person revoke lever: `readSubject` fails an admin whose row
+ * is missing or `active=false` on its next request — immediate, scoped to admins,
+ * so the stateless crew hot path is untouched. `handle` is the short mint key
+ * (`db:mint --admin=<handle>`). No `role` column — all admins are equal at launch
+ * (roles deferred; the column is the clean seam). Dates are ISO-8601 UTC text.
+ */
+export interface Admin {
+  /** = the crew id of the crew member who has admin access. */
+  id: string;
+  /** Short, unique mint key (e.g. `eric`). */
+  handle: string;
+  name: string;
+  active: boolean;
+  createdAt: string;
+  /** ISO-8601 UTC; null while active. */
+  deactivatedAt: string | null;
+}
+
+/**
  * A single-use, short-lived magic-link credential. Only the **hash** of the link
  * secret is ever stored (`tokenHash`) — a DB leak yields no usable links. Verify
  * re-hashes the presented secret, finds this row, and consumes it via a port CAS

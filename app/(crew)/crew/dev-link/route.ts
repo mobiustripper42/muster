@@ -42,9 +42,27 @@ export async function GET(req: NextRequest) {
       status: 400,
     });
   }
-  const subject = crew
-    ? { subjectKind: "crew" as const, subjectId: crew }
-    : { subjectKind: "admin" as const, subjectId: admin! };
+  // Admin `?admin=<handle>` resolves handle→admins.id (a crew id) and refuses an
+  // unknown/deactivated handle — same rule as the prod `db:mint` path (DEC-092),
+  // so a dev/preview link can't mint a session for a non-admin. Crew passes through.
+  let subject: { subjectKind: "crew" | "admin"; subjectId: string };
+  if (crew) {
+    subject = { subjectKind: "crew", subjectId: crew };
+  } else {
+    const record = await getRepo().getAdminByHandle(admin!);
+    if (!record || !record.active) {
+      const known = (await getRepo().listAdmins())
+        .filter((a) => a.active)
+        .map((a) => a.handle)
+        .join(", ");
+      return new NextResponse(
+        `No active admin with handle "${admin}".` +
+          (known ? ` Active handles: ${known}.` : " No active admins seeded."),
+        { status: 400 },
+      );
+    }
+    subject = { subjectKind: "admin", subjectId: record.id };
+  }
   const { secret } = await issueMagicLink(
     getRepo(),
     { ...subject, ttlMs: 15 * 60_000 },

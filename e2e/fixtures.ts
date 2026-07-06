@@ -11,6 +11,7 @@
 import { execFileSync } from "node:child_process";
 import { test as base, expect, type Page } from "@playwright/test";
 import { resetTestDb, TEST_DATABASE_URL } from "../db/reset-test.js";
+import { PostgresRepository } from "../src/adapters/postgres-repository.js";
 
 /** Local tsx binary — resolved explicitly so we don't depend on PATH/npx. */
 const TSX = "node_modules/.bin/tsx";
@@ -23,9 +24,63 @@ const SEED_SCRIPTS = {
 
 type SeedName = keyof typeof SEED_SCRIPTS;
 
-/** Truncate the test DB, then run the named dev seeds against it, in order. */
+/**
+ * The e2e operator: a seeded admin whose short handle is `spink` — what every
+ * `signInAsAdmin(page, "spink")` resolves through the dev-link handle→id lookup
+ * (DEC-092). Its id is the operator crew id (`crew-spink`, = OPERATOR_CREW_MEMBER_ID).
+ * `resetTestDb` truncates `admins` (dynamic all-tables wipe), so we re-seed it on
+ * every reset; the prod roster (the 0018 migration's eric/brendan/drew) is wiped
+ * too, which is fine — e2e drives its own synthetic operator.
+ */
+async function seedAdmin(a: {
+  id: string;
+  handle: string;
+  name?: string;
+  active?: boolean;
+}): Promise<void> {
+  const active = a.active ?? true;
+  const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
+  try {
+    await repo.saveAdmin({
+      id: a.id,
+      handle: a.handle,
+      name: a.name ?? a.handle,
+      active,
+      createdAt: "2026-07-06T00:00:00.000Z",
+      deactivatedAt: active ? null : "2026-07-06T09:00:00.000Z",
+    });
+  } finally {
+    await repo.close();
+  }
+}
+
+/** Seed an extra admin (e.g. a second operator for the per-person-revoke test). */
+export async function seedExtraAdmin(
+  a: { id: string; handle: string; name?: string; active?: boolean },
+): Promise<void> {
+  await seedAdmin(a);
+}
+
+/** Flip an admin's `active` flag — the per-person revoke lever (DEC-092). */
+export async function setAdminActive(handle: string, active: boolean): Promise<void> {
+  const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
+  try {
+    const a = await repo.getAdminByHandle(handle);
+    if (!a) throw new Error(`no admin with handle "${handle}"`);
+    await repo.saveAdmin({
+      ...a,
+      active,
+      deactivatedAt: active ? null : "2026-07-06T09:00:00.000Z",
+    });
+  } finally {
+    await repo.close();
+  }
+}
+
+/** Truncate the test DB, seed the operator admin, then run the named dev seeds. */
 export async function resetAndSeed(...seeds: SeedName[]): Promise<void> {
   await resetTestDb();
+  await seedAdmin({ id: "crew-spink", handle: "spink", name: "Spink" });
   for (const name of seeds) {
     execFileSync(TSX, [SEED_SCRIPTS[name]], {
       env: { ...process.env, DATABASE_URL: TEST_DATABASE_URL },

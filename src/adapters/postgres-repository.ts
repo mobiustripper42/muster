@@ -763,17 +763,28 @@ export class PostgresRepository implements Repository {
     );
     return rowCount === 1;
   }
-  async bumpLoginCodeAttempts(
+  async claimLoginAttempt(
     subjectKind: AuthSubjectKind,
     subjectId: string,
-  ): Promise<number> {
+    maxAttempts: number,
+  ): Promise<{ codeHash: string; expiresAt: string; attempts: number } | null> {
+    // Guarded increment: the `attempts < $3` predicate under the row lock means
+    // K concurrent claims serialize and only the first `maxAttempts` succeed — the
+    // rest return no row. Race-safe brute-force ceiling (#297).
     const { rows } = await this.#pool.query(
-      `update login_codes set attempts=attempts+1
-       where subject_kind=$1 and subject_id=$2 returning attempts`,
-      [subjectKind, subjectId],
+      `update login_codes set attempts = attempts + 1
+        where subject_kind=$1 and subject_id=$2 and consumed_at is null
+          and attempts < $3
+        returning code_hash, expires_at, attempts`,
+      [subjectKind, subjectId, maxAttempts],
     );
-    // A vanished code can't be guessed against — report it at the ceiling.
-    return rows[0] ? rows[0].attempts : Number.MAX_SAFE_INTEGER;
+    return rows[0]
+      ? {
+          codeHash: rows[0].code_hash,
+          expiresAt: rows[0].expires_at,
+          attempts: rows[0].attempts,
+        }
+      : null;
   }
 
   // ── Outbox entries (web-link channel adapter state — DEC-030) ──────────────

@@ -351,16 +351,23 @@ export class InMemoryRepository implements Repository {
     this.#loginCodes.set(key, clone({ ...current, consumedAt }));
     return true;
   }
-  async bumpLoginCodeAttempts(
+  async claimLoginAttempt(
     subjectKind: AuthSubjectKind,
     subjectId: string,
-  ): Promise<number> {
+    maxAttempts: number,
+  ): Promise<{ codeHash: string; expiresAt: string; attempts: number } | null> {
     const key = `${subjectKind}:${subjectId}`;
     const current = this.#loginCodes.get(key);
-    if (!current) return Number.MAX_SAFE_INTEGER;
+    if (
+      !current ||
+      current.consumedAt !== undefined ||
+      current.attempts >= maxAttempts
+    ) {
+      return null;
+    }
     const attempts = current.attempts + 1;
     this.#loginCodes.set(key, clone({ ...current, attempts }));
-    return attempts;
+    return { codeHash: current.codeHash, expiresAt: current.expiresAt, attempts };
   }
 
   // ── Outbox entries (web-link channel adapter state — DEC-030) ──────────────

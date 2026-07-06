@@ -619,13 +619,29 @@ export function runRepositoryContract(
       expect([a, b].filter(Boolean)).toHaveLength(1);
     });
 
-    it("bumpLoginCodeAttempts: increments + returns the new total; ceiling when absent", async () => {
+    it("claimLoginAttempt: increments + returns codeHash/expiresAt; null when absent/consumed", async () => {
       await repo.saveLoginCode(loginCode());
-      expect(await repo.bumpLoginCodeAttempts("crew", CREW)).toBe(1);
-      expect(await repo.bumpLoginCodeAttempts("crew", CREW)).toBe(2);
+      const c1 = await repo.claimLoginAttempt("crew", CREW, 5);
+      expect(c1).toMatchObject({ codeHash: "code-hash-1", attempts: 1 });
+      expect(c1!.expiresAt).toBe("2026-07-01T12:10:00.000Z");
+      expect((await repo.claimLoginAttempt("crew", CREW, 5))!.attempts).toBe(2);
       expect((await repo.getLoginCode("crew", CREW))!.attempts).toBe(2);
-      // A vanished code can't be guessed against — reported at/over the ceiling.
-      expect(await repo.bumpLoginCodeAttempts("crew", "ghost")).toBeGreaterThan(1000);
+      // Absent → null; consumed → null (can't guess a spent code).
+      expect(await repo.claimLoginAttempt("crew", "ghost", 5)).toBeNull();
+      await repo.consumeLoginCodeIfUnused("crew", CREW, "2026-07-01T12:05:00.000Z");
+      expect(await repo.claimLoginAttempt("crew", CREW, 5)).toBeNull();
+    });
+
+    it("claimLoginAttempt: the cap is atomic — concurrent claims can't exceed maxAttempts (#297)", async () => {
+      await repo.saveLoginCode(loginCode());
+      // 10 concurrent guesses against a max of 3 → exactly 3 non-null claims.
+      const results = await Promise.all(
+        Array.from({ length: 10 }, () => repo.claimLoginAttempt("crew", CREW, 3)),
+      );
+      expect(results.filter((r) => r !== null)).toHaveLength(3);
+      expect((await repo.getLoginCode("crew", CREW))!.attempts).toBe(3);
+      // Once at the cap, further claims stay null.
+      expect(await repo.claimLoginAttempt("crew", CREW, 3)).toBeNull();
     });
 
     it("outbox entries: round-trip incl. sentAt optional; status flip via upsert (DEC-030)", async () => {

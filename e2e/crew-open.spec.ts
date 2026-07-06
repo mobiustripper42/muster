@@ -19,12 +19,17 @@ test.describe("crew /crew/open — pick up a shift", () => {
     await resetAndSeed("crew");
   });
 
-  test("default window is today → the ~7d-out shift isn't shown (empty reads as normal)", async ({
+  test("default is This weekend; widening to Next 2 weeks reveals the ~7d-out shift", async ({
     page,
   }) => {
     await signInAsCrew(page, "crew-quint");
     await page.goto("/crew/open");
+    // Pull surface → default is This weekend (crew browse ahead, not "today"). The
+    // seeded open shift is ~7d out, beyond this weekend → empty reads as normal.
     await expect(page.getByText(/nothing open in this window/i)).toBeVisible();
+    // Stepping out to Next 2 weeks includes it.
+    await page.getByRole("link", { name: "Next 2 weeks" }).click();
+    await expect(page.locator("details", { hasText: "Hops" })).toBeVisible();
   });
 
   test("claim flow: confirm sheet states whole-day scope, then it lands in My shifts", async ({
@@ -40,8 +45,9 @@ test.describe("crew /crew/open — pick up a shift", () => {
     await summary.click();
 
     // The confirm sheet states the DEC-077 scope (whole-day + live trip count).
-    await expect(page.getByText(/every trip booked, including any added later/i)).toBeVisible();
-    await expect(page.getByText(/2 trips/i)).toBeVisible();
+    await expect(page.getByText(/including any trips added or cancelled later/i)).toBeVisible();
+    // The facts line specifically (the "(" disambiguates from the collapsed count).
+    await expect(page.getByText(/2 trips \(/i)).toBeVisible();
 
     await page.getByRole("button", { name: /claim this shift/i }).click();
 
@@ -64,11 +70,15 @@ test.describe("crew /crew/open — pick up a shift", () => {
     const row = page.locator("details", { hasText: "Hops" });
     // The DEC-086 vessel identity dot the row was missing before 9.11b.
     await expect(row.locator('span[class*="bg-vessel-"]')).toBeVisible();
-    // First-departure time is the collapsed row's hero (seed shift-open: 1pm & 4pm).
-    // Scope to the summary — the same time also lives in the (collapsed) facts line.
+    // First-departure time is the collapsed row's hero (seed shift-open: 1pm & 4pm),
+    // with the trip count right under it. Scope to the summary — both strings also
+    // live in the (collapsed) facts line.
     await expect(row.locator("summary").getByText("1:00 PM")).toBeVisible();
+    await expect(row.locator("summary").getByText("2 trips")).toBeVisible();
 
     await row.locator("summary").click();
+    // Confirm: reworded whole-day scope (no "as captain") + the Currently: facts.
+    await expect(row.getByText(/including any trips added or cancelled later/i)).toBeVisible();
     await expect(row.getByText("Currently:", { exact: true })).toBeVisible();
     await expect(row.getByText(/1:00 PM & 4:00 PM/)).toBeVisible();
   });

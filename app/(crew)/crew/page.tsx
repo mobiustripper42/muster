@@ -531,7 +531,6 @@ function CrewApp({
         <AppLink
           href="/crew/help"
           prefetch={false}
-          spinner="overlay"
           className="text-xs text-muted underline"
         >
           How Muster works

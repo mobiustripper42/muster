@@ -1,4 +1,5 @@
 import { AppLink } from "../../../../components/ui/app-link";
+import { BackLink } from "../../../../components/ui/back-link";
 import { GetFormSubmit } from "../../../../components/ui/get-form-submit";
 import { notFound, redirect } from "next/navigation";
 import {
@@ -66,7 +67,7 @@ export default async function CrewOpenPage({
   } catch {
     return (
       <Shell>
-        <BackLink />
+        <BackLink href="/crew">Shifts</BackLink>
         <Notice>Can’t reach the schedule right now. Try again in a moment.</Notice>
       </Shell>
     );
@@ -76,7 +77,7 @@ export default async function CrewOpenPage({
 
   return (
     <Shell>
-      <BackLink />
+      <BackLink href="/crew">Shifts</BackLink>
       <header className="flex flex-col gap-1">
         <h1 className="text-lg font-semibold text-ink">Pick up a shift</h1>
         <p className="text-sm text-muted">
@@ -106,14 +107,6 @@ export default async function CrewOpenPage({
   );
 }
 
-function BackLink() {
-  return (
-    <AppLink href="/crew" className="text-sm font-semibold text-accent">
-      ‹ Shifts
-    </AppLink>
-  );
-}
-
 /** Today / This weekend presets (links) + a from–to GET form. Active = filled. */
 function Filters({
   label,
@@ -125,7 +118,7 @@ function Filters({
   sp: Search;
 }) {
   const chip = (active: boolean) =>
-    `inline-flex min-h-[36px] items-center rounded-full border px-3 text-sm font-semibold ${
+    `inline-flex min-h-[44px] items-center rounded-full border px-3 text-sm font-semibold ${
       active
         ? "border-accent bg-accent text-white"
         : "border-line bg-card text-muted"
@@ -149,7 +142,7 @@ function Filters({
             name="from"
             defaultValue={label === "range" ? sp.from : today}
             min={today}
-            className="min-h-[40px] rounded-card border border-line bg-card px-2 text-sm text-ink"
+            className="min-h-[44px] rounded-card border border-line bg-card px-2 text-sm text-ink"
           />
         </label>
         <label className="flex flex-col text-xs text-muted">
@@ -159,11 +152,11 @@ function Filters({
             name="to"
             defaultValue={label === "range" ? sp.to : addDays(today, 45)}
             max={addDays(today, 45)}
-            className="min-h-[40px] rounded-card border border-line bg-card px-2 text-sm text-ink"
+            className="min-h-[44px] rounded-card border border-line bg-card px-2 text-sm text-ink"
           />
         </label>
         <GetFormSubmit
-          className={`min-h-[40px] rounded-card border px-3 text-sm font-semibold ${
+          className={`min-h-[44px] rounded-card border px-3 text-sm font-semibold ${
             label === "range"
               ? "border-accent bg-accent text-white"
               : "border-line bg-card text-accent"
@@ -203,7 +196,7 @@ function ClaimRow({ row, back }: { row: ClaimableSeatView; back: string }) {
         <form action={claimSeat}>
           <input type="hidden" name="seatId" value={row.seatId} />
           <input type="hidden" name="back" value={back} />
-          <SubmitButton className="min-h-[44px] w-full rounded-lg border border-accent bg-accent px-4 font-semibold text-white">
+          <SubmitButton className="min-h-[44px] w-full rounded-card border border-accent bg-accent px-4 font-semibold text-white">
             Claim this shift
           </SubmitButton>
         </form>

@@ -49,6 +49,10 @@ export interface CoCrewView {
   crewMemberId: string;
   name: string;
   phone: string;
+  /** Their role on this shift (captain/mate), from the seat — the same
+   *  resolution as `viewerRole`. Drives the DEC-086 role glyph on the card's
+   *  "Crewing with you" rows: who's running the boat, at a glance. */
+  role: string;
 }
 
 export interface ShiftCardView {
@@ -145,6 +149,20 @@ async function roleName(repo: Repository, roleId: string): Promise<string> {
   return rt?.name ?? roleId;
 }
 
+/** A per-call memo over `roleName` — the viewer's seat and every co-crew seat
+ *  share the same handful of role ids, so resolve each id's name once rather
+ *  than re-hitting the port per member (architect note on the co-crew loop). */
+function roleResolver(repo: Repository): (roleId: string) => Promise<string> {
+  const cache = new Map<string, string>();
+  return async (roleId: string) => {
+    const hit = cache.get(roleId);
+    if (hit !== undefined) return hit;
+    const name = await roleName(repo, roleId);
+    cache.set(roleId, name);
+    return name;
+  };
+}
+
 /**
  * Build the shift card for `viewerCrewId`. Returns null if the shift doesn't
  * exist OR the viewer isn't crewing it (a crew member only sees cards for shifts
@@ -213,13 +231,22 @@ export async function buildShiftCard(
       ? docks[0]
       : undefined;
 
-  // Co-crew: other confirmed, assigned seats on this shift, with contact.
+  // Co-crew: other confirmed, assigned seats on this shift, with contact + role.
+  // One role resolver shared with viewerRole below — the seat ids repeat, so the
+  // getRoleType lookups collapse to one per distinct role.
+  const resolveRole = roleResolver(repo);
   const coCrew: CoCrewView[] = [];
   for (const seat of seats) {
     if (seat.state !== "Confirmed" || !seat.assignedCrewMemberId) continue;
     if (seat.assignedCrewMemberId === viewerCrewId) continue;
     const mate = await repo.getCrewMember(seat.assignedCrewMemberId);
-    if (mate) coCrew.push({ crewMemberId: mate.id, name: mate.name, phone: mate.phone });
+    if (mate)
+      coCrew.push({
+        crewMemberId: mate.id,
+        name: mate.name,
+        phone: mate.phone,
+        role: await resolveRole(seat.role),
+      });
   }
 
   return {
@@ -232,7 +259,7 @@ export async function buildShiftCard(
     ...(sharedDock !== undefined ? { sharedDock } : {}),
     events,
     coCrew,
-    viewerRole: await roleName(repo, mySeat.role),
+    viewerRole: await resolveRole(mySeat.role),
     mySeatId: mySeat.id,
     bailLate,
     traineeSeat: mySeat.kind === "supernumerary",

@@ -2105,6 +2105,19 @@ means "a person of that role, aboard." Identity, not state: fill-vs-outline stil
 (open pips stay light outline grey so gaps jump), filled trainees stay faint, and warm/bad tones
 never appear on the board.
 
+**Amendment — identity color reaches the crew surfaces (9.11, 2026-07-05, #237, @architect GO).**
+Two render sites added on the crew app, both direct reuse of the pinned system, no new token:
+- **Vessel dot on `/crew` My-shifts rows** (`app/(crew)/crew/page.tsx`) — a 10px `vesselHueClass`
+  dot before the vessel name, so a mixed-vessel list is legible at a glance (the same disambiguation
+  value the board earns). `aria-hidden`; the vessel name stays the accessible answer. The single-vessel
+  shift-card **header** carries **no** dot — the 2xl boat name already fully answers "which boat," so
+  a dot there would be decoration, not information (the architect's one cut).
+- **Co-crew role glyph on the shift card** (`app/(crew)/crew/shift/[shiftId]`) — each "Crewing with
+  you" row shows the captain/mate C/M role glyph (shared `RoleGlyph`, `components/ui/role-glyph.tsx`,
+  same `roleHueClass` as the seat-card + board), from the seat's role — the identical resolution as
+  `viewerRole`, now memoized per build. Identity, not state. The visible role label beside the glyph
+  is the accessible answer (glyph is `aria-hidden`).
+
 ---
 
 ## DEC-087: Trainee seats are staffable — DEC-064's rating floor is scoped to required manning

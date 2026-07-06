@@ -119,7 +119,7 @@ describe("buildShiftCard", () => {
 
   it("co-crew lists the other confirmed crew with contact, excludes the viewer", async () => {
     const card = (await buildShiftCard(await seed(), SHIFT, ME, NOW))!;
-    expect(card.coCrew).toEqual([{ crewMemberId: "crew-co", name: "Hooper", phone: "555-0002" }]);
+    expect(card.coCrew).toEqual([{ crewMemberId: "crew-co", name: "Hooper", phone: "555-0002", role: "mate" }]);
   });
 
   it("bailLate is true when a bail now falls inside the staffing horizon (#7)", async () => {

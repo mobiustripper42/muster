@@ -144,7 +144,7 @@ describe("buildCrewAppView", () => {
   it("lists confirmed upcoming shifts soonest-first, drops past ones", async () => {
     const view = await buildCrewAppView(await seed(), ME, NOW);
     expect(view!.shifts.map((s) => s.shiftId)).toEqual(["shift-up", "shift-ask"]);
-    expect(view!.shifts[0]).toMatchObject({ vesselName: "Hops", roleName: "captain", date: "2026-07-04", pending: false });
+    expect(view!.shifts[0]).toMatchObject({ vesselName: "Hops", vesselId: "vessel-1", roleName: "captain", date: "2026-07-04", pending: false });
   });
 
   it("includes a Claimed (not-yet-confirmed) seat in my-shifts, marked pending (#4)", async () => {

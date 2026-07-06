@@ -1,4 +1,4 @@
-import { AppLink } from "../../../../../components/ui/app-link";
+import { BackLink } from "../../../../../components/ui/back-link";
 import { SubmitButton } from "../../../../../components/ui/submit-button";
 import { buildThreadView, type ThreadView } from "@core/crewapp/thread-view.js";
 import { asId } from "@core/domain/ids.js";
@@ -38,7 +38,7 @@ export default async function ThreadPage({
   } catch {
     return (
       <Shell>
-        <BackLink />
+        <BackLink href="/crew/threads" prefetch={false}>Messages</BackLink>
         <Notice>Can’t reach this conversation right now. Try again in a moment.</Notice>
       </Shell>
     );
@@ -46,7 +46,7 @@ export default async function ThreadPage({
   if (!view) {
     return (
       <Shell>
-        <BackLink />
+        <BackLink href="/crew/threads" prefetch={false}>Messages</BackLink>
         <Notice>That conversation isn’t on your list.</Notice>
       </Shell>
     );
@@ -54,7 +54,7 @@ export default async function ThreadPage({
 
   return (
     <Shell>
-      <BackLink />
+      <BackLink href="/crew/threads" prefetch={false}>Messages</BackLink>
       <h1 className="text-lg font-semibold text-ink">{view.title}</h1>
 
       <section className="flex flex-col gap-2">
@@ -93,10 +93,11 @@ export default async function ThreadPage({
           name="body"
           required
           rows={2}
+          aria-label="Message"
           placeholder="Message…"
           className="w-full resize-none rounded-card border border-line bg-card px-3 py-2 text-sm text-ink placeholder:text-faint"
         />
-        <SubmitButton className="min-h-[44px] w-full rounded-lg bg-accent px-4 font-semibold text-white">
+        <SubmitButton className="min-h-[44px] w-full rounded-card bg-accent px-4 font-semibold text-white">
           Send
         </SubmitButton>
       </form>
@@ -104,10 +105,3 @@ export default async function ThreadPage({
   );
 }
 
-function BackLink() {
-  return (
-    <AppLink href="/crew/threads" prefetch={false} className="text-sm font-semibold text-accent">
-      ‹ Messages
-    </AppLink>
-  );
-}

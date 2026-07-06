@@ -121,9 +121,11 @@ function Filters({
   sp: Search;
 }) {
   // One app-wide filter style — matches the admin board's Filter (outline-active
-  // pills, rounded-card container, rounded-lg date inputs on bg-bg).
+  // pills, rounded-card container, rounded-lg date inputs on bg-bg). One deliberate
+  // divergence: the crew controls keep min-h-[44px] touch targets (this is the
+  // mobile-primary surface, DEC-085); admin is denser because it's desktop-first.
   const chip = (active: boolean) =>
-    `pressable rounded-full border px-3 py-1.5 ${active ? "border-accent text-accent" : "border-line text-muted"}`;
+    `pressable inline-flex min-h-[44px] items-center rounded-full border px-4 ${active ? "border-accent text-accent" : "border-line text-muted"}`;
   return (
     <div className="flex flex-col gap-2 rounded-card border border-line bg-card px-4 py-3">
       <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -147,7 +149,7 @@ function Filters({
             name="from"
             defaultValue={label === "range" ? sp.from : today}
             min={today}
-            className="rounded-lg border border-line bg-bg px-2 py-1 text-ink"
+            className="min-h-[44px] rounded-lg border border-line bg-bg px-2 text-ink"
           />
         </label>
         <label className="flex flex-col gap-0.5 text-xs text-muted">
@@ -157,10 +159,10 @@ function Filters({
             name="to"
             defaultValue={label === "range" ? sp.to : addDays(today, 30)}
             max={addDays(today, 45)}
-            className="rounded-lg border border-line bg-bg px-2 py-1 text-ink"
+            className="min-h-[44px] rounded-lg border border-line bg-bg px-2 text-ink"
           />
         </label>
-        <GetFormSubmit className="rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent">
+        <GetFormSubmit className="inline-flex min-h-[44px] items-center rounded-lg border border-line bg-bg px-3 font-semibold text-accent">
           Show
         </GetFormSubmit>
       </form>

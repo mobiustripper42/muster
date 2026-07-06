@@ -96,6 +96,35 @@ describe("db:crew CLI (Phase 10.5)", () => {
     ).rejects.toThrow(/a crew id is required/i);
   });
 
+  it("set rejects an email already on another crew member (login-collision guard)", async () => {
+    await repo.saveCrewMember(crew({ id: asId<"CrewMemberId">("crew-quint"), email: "shared@x.com" }));
+    await expect(
+      runCrewCommand(repo, ["set", "crew-eric", "--email=Shared@x.com"]),
+    ).rejects.toThrow(/already on crew-quint/i);
+    // the target's email was not changed
+    expect((await repo.getCrewMember(asId<"CrewMemberId">("crew-eric")))!.email).toBeUndefined();
+    // ...but re-setting a crew's own email to what it already has is fine (no self-clash)
+    await runCrewCommand(repo, ["set", "crew-quint", "--email=shared@x.com"]);
+    expect((await repo.getCrewMember(asId<"CrewMemberId">("crew-quint")))!.email).toBe("shared@x.com");
+  });
+
+  it("set rejects a mistyped flag rather than silently no-op it", async () => {
+    await expect(
+      runCrewCommand(repo, ["set", "crew-eric", "--pone=+15035550123"]),
+    ).rejects.toThrow(/unrecognized flag "--pone=\+15035550123"/i);
+    // a flag missing its "=" is caught too
+    await expect(
+      runCrewCommand(repo, ["set", "crew-eric", "--phone"]),
+    ).rejects.toThrow(/unrecognized flag/i);
+  });
+
+  it("set leaves engine-owned fields alone (targeted update, DEC-094)", async () => {
+    await repo.saveCrewMember(crew({ reliabilityScore: 9, manualBoost: 2 }));
+    await runCrewCommand(repo, ["set", "crew-eric", "--phone=+15035550123"]);
+    const c = await repo.getCrewMember(asId<"CrewMemberId">("crew-eric"));
+    expect(c).toMatchObject({ phone: "+15035550123", reliabilityScore: 9, manualBoost: 2 });
+  });
+
   it("list shows crew sorted by name with a (no email) placeholder", async () => {
     await repo.saveCrewMember(crew({ id: asId<"CrewMemberId">("crew-abe"), name: "Abe" }));
     const out = await runCrewCommand(repo, ["list"]);

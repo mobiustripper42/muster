@@ -406,6 +406,24 @@ export class PostgresRepository implements Repository {
     );
     return rows[0] ? toCrew(rows[0]) : null;
   }
+  async updateCrewContact(
+    id: CrewMemberId,
+    fields: { name?: string; phone?: string; email?: string | null },
+  ): Promise<CrewMember | null> {
+    // Only SET the columns actually passed — a single UPDATE that leaves
+    // reliability_score/status/ratings/etc. untouched (DEC-094 lost-update fix).
+    const sets: string[] = [];
+    const vals: unknown[] = [];
+    if (fields.name !== undefined) sets.push(`name=$${vals.push(fields.name)}`);
+    if (fields.phone !== undefined) sets.push(`phone=$${vals.push(fields.phone)}`);
+    if (fields.email !== undefined) sets.push(`email=$${vals.push(fields.email)}`); // null clears
+    if (sets.length === 0) return this.getCrewMember(id);
+    const { rows } = await this.#pool.query(
+      `update crew_members set ${sets.join(", ")} where id=$${vals.push(id)} returning *`,
+      vals,
+    );
+    return rows[0] ? toCrew(rows[0]) : null;
+  }
   async listCrewMembers(): Promise<CrewMember[]> {
     const { rows } = await this.#pool.query("select * from crew_members");
     return rows.map(toCrew);

@@ -73,6 +73,18 @@ export interface Repository {
   saveCrewMember(crew: CrewMember): Promise<void>;
   getCrewMember(id: CrewMemberId): Promise<CrewMember | null>;
   listCrewMembers(): Promise<CrewMember[]>;
+  /**
+   * Break-glass contact fix (DEC-094): a TARGETED update of only the passed
+   * columns, so a concurrent engine/cockpit write to reliability/status/ratings
+   * isn't clobbered by a whole-row read-modify-write (crew_members is written
+   * live, unlike the admins table). A key present updates it (`email: null`
+   * clears); an omitted key is left untouched. Returns the updated record, or
+   * null if no crew member has that id.
+   */
+  updateCrewContact(
+    id: CrewMemberId,
+    fields: { name?: string; phone?: string; email?: string | null },
+  ): Promise<CrewMember | null>;
 
   // ── Credentials (1:n per crew member — SPEC §2.1) ──────────────────────────
   saveCredential(credential: Credential): Promise<void>;

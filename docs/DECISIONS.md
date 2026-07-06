@@ -2360,6 +2360,13 @@ pilot fires. That gap also blocked `db:admin add --email` (which resolves an adm
 direct prod `DATABASE_URL`. Scope is **contact edits only** — it never creates or deletes crew (they come
 from seed/import), keeping the diff and the blast radius small.
 
+**Concurrency-safe by construction.** Unlike the `admins` table (mutated only by `db:admin`), `crew_members`
+is written live by the engine/cockpit (reliability, status, ratings). So `set` uses a **targeted
+`updateCrewContact`** — a narrow `UPDATE` of only the touched columns via a new port method — never a
+whole-row read-modify-write, which would silently revert a concurrent engine write. And it **refuses a
+duplicate email** (another crew already holds it): two crew on one email makes login resolve to just one of
+them — the exact failure the tool exists to prevent.
+
 **Why no UI.** DEC-092 already deferred an admin-management UI at ~3 admins; the same logic holds for crew
 contact fixes at pilot scale. A CLI + runbook is the cheaper, more auditable lever now — every command
 prints the DB host it hit. Building `db:crew` is what *lets* the UI keep being deferred, rather than forcing

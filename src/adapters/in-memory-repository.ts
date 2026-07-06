@@ -9,6 +9,7 @@
  */
 
 import type {
+  Admin,
   Ask,
   AuthSubjectKind,
   Credential,
@@ -81,6 +82,7 @@ export class InMemoryRepository implements Repository {
   readonly #seats = new Map<SeatId, Seat>();
   readonly #asks = new Map<AskId, Ask>();
   readonly #magicTokens = new Map<MagicTokenId, MagicToken>();
+  readonly #admins = new Map<string, Admin>();
   readonly #loginCodes = new Map<string, LoginCode>();
   readonly #outbox = new Map<OutboxEntryId, OutboxEntry>();
   readonly #ringOutbox = new Map<RingOutboxEntryId, RingOutboxEntry>();
@@ -307,6 +309,22 @@ export class InMemoryRepository implements Repository {
   }
   async removeMagicToken(id: MagicTokenId): Promise<void> {
     this.#magicTokens.delete(id);
+  }
+
+  // ── Admins (auth identity + per-person revoke — DEC-092) ───────────────────
+  async saveAdmin(admin: Admin): Promise<void> {
+    this.#admins.set(admin.id, clone(admin));
+  }
+  async getAdmin(id: string): Promise<Admin | null> {
+    const a = this.#admins.get(id);
+    return a ? clone(a) : null;
+  }
+  async getAdminByHandle(handle: string): Promise<Admin | null> {
+    const a = [...this.#admins.values()].find((x) => x.handle === handle);
+    return a ? clone(a) : null;
+  }
+  async listAdmins(): Promise<Admin[]> {
+    return [...this.#admins.values()].map(clone);
   }
 
   // ── Login codes (crew self-serve sign-in — DEC-081) ────────────────────────

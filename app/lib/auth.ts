@@ -6,6 +6,7 @@ import {
   type Session,
 } from "@core/auth/session.js";
 import type { AuthSubject } from "@core/auth/magic-link.js";
+import { getRepo } from "./repo";
 
 /**
  * Session-cookie glue (DEC-010, DEC-020). The crypto lives in the framework-free
@@ -83,6 +84,16 @@ export async function readSubject(): Promise<AuthSubject | null> {
   const now = new Date();
   const result = verifySession(token, secret(), now);
   if (!result.ok) return null;
+
+  // Per-person revoke (DEC-092): an admin's session is only good while their row
+  // exists and `active`. This is the ONE stateful check — deprovisioning flips the
+  // flag and the next request dies here. Scoped to admin subjects (~3, cold
+  // cockpit); crew subjects skip the lookup, so the magic-link hot path stays
+  // fully stateless. A revoked admin is treated exactly like no session.
+  if (result.subject.kind === "admin") {
+    const admin = await getRepo().getAdmin(result.subject.id);
+    if (!admin || !admin.active) return null;
+  }
 
   if (shouldRenew(result.session, now, RENEW_WITHIN_MS)) {
     const renewed = makeSession(result.subject, now);

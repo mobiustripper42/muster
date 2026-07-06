@@ -15,6 +15,7 @@
  */
 import pg from "pg";
 import type {
+  Admin,
   Ask,
   AuthSubjectKind,
   Credential,
@@ -90,6 +91,15 @@ const toRoleType = (r: any): RoleType => ({
   id: asId<"RoleTypeId">(r.id),
   tenantId: asId<"TenantId">(r.tenant_id),
   name: r.name,
+});
+
+const toAdmin = (r: any): Admin => ({
+  id: r.id,
+  handle: r.handle,
+  name: r.name,
+  active: r.active,
+  createdAt: r.created_at,
+  deactivatedAt: r.deactivated_at ?? null,
 });
 
 const toVessel = (r: any): Vessel => ({
@@ -676,6 +686,36 @@ export class PostgresRepository implements Repository {
   }
   async removeMagicToken(id: MagicTokenId): Promise<void> {
     await this.#pool.query("delete from magic_tokens where id=$1", [id]);
+  }
+
+  // ── Admins (auth identity + per-person revoke — DEC-092) ───────────────────
+  async saveAdmin(a: Admin): Promise<void> {
+    await this.#pool.query(
+      `insert into admins(id, handle, name, active, created_at, deactivated_at)
+       values ($1,$2,$3,$4,$5,$6)
+       on conflict (id) do update set
+         handle=excluded.handle, name=excluded.name, active=excluded.active,
+         created_at=excluded.created_at, deactivated_at=excluded.deactivated_at`,
+      [a.id, a.handle, a.name, a.active, a.createdAt, a.deactivatedAt],
+    );
+  }
+  async getAdmin(id: string): Promise<Admin | null> {
+    const { rows } = await this.#pool.query(
+      "select * from admins where id=$1",
+      [id],
+    );
+    return rows[0] ? toAdmin(rows[0]) : null;
+  }
+  async getAdminByHandle(handle: string): Promise<Admin | null> {
+    const { rows } = await this.#pool.query(
+      "select * from admins where handle=$1",
+      [handle],
+    );
+    return rows[0] ? toAdmin(rows[0]) : null;
+  }
+  async listAdmins(): Promise<Admin[]> {
+    const { rows } = await this.#pool.query("select * from admins order by handle");
+    return rows.map(toAdmin);
   }
 
   // ── Login codes (crew self-serve sign-in — DEC-081) ────────────────────────

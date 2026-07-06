@@ -11,6 +11,7 @@
  */
 
 import type {
+  Admin,
   Ask,
   AuthSubjectKind,
   Credential,
@@ -181,6 +182,16 @@ export interface Repository {
    * hard delete, not a soft mark. No-op if the id is already gone.
    */
   removeMagicToken(id: MagicTokenId): Promise<void>;
+
+  // ── Admins (auth identity + per-person revoke — DEC-092, revises DEC-020) ──
+  /** Persist an admin (upsert by id). */
+  saveAdmin(admin: Admin): Promise<void>;
+  /** By id (= a crew id). `readSubject`'s revoke gate reads this, then `active`. */
+  getAdmin(id: string): Promise<Admin | null>;
+  /** By short mint handle — `db:mint --admin=<handle>` resolves handle→id here. */
+  getAdminByHandle(handle: string): Promise<Admin | null>;
+  /** Every admin — seeding/diagnostics; the set is small (~3). */
+  listAdmins(): Promise<Admin[]>;
 
   // ── Login codes (crew self-serve sign-in — DEC-081) ────────────────────────
   // A SIBLING to magic tokens, keyed by subject (one live code per subject) so a

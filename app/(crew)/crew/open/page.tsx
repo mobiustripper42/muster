@@ -24,10 +24,12 @@ import { claimSeat } from "./actions";
  * /crew/open (SPEC §2.7.1, DEC-074) — the crew-facing PULL surface, the 4th crew
  * surface (a knowing exception to "three surfaces"). Lists the viewer's claimable
  * Open seats and lets them claim one (auto-lock, DEC-075). Inherits DEC-042's
- * anti-anxiety guardrails: default filter = today (+ weekend / from–to presets),
- * [today, today+45d] clamp (owned by `claimableSeatsFor`), NO auto-refresh / NO
- * polling / NO live per-state counts (a bare row count for orientation is fine),
- * neutral ink (warm/bad tokens stay reserved for the At-Risk board).
+ * anti-anxiety guardrails: [today, today+45d] clamp (owned by `claimableSeatsFor`),
+ * NO auto-refresh / NO polling / NO live per-state counts (a bare row count for
+ * orientation is fine), neutral ink (warm/bad tokens stay reserved for the At-Risk
+ * board). The default filter is **This weekend** (not today, per DEC-042's board
+ * echo) — this is a pull surface, so crew browse ahead: presets step out to Next 2
+ * weeks / Next 4 weeks, plus a from–to form defaulting to the next 30 days.
  *
  * Server-rendered, no client JS: presets are GET links, the confirm "sheet" is a
  * native <details> disclosure (the bail pattern), Claim is a <form action>.
@@ -118,51 +120,47 @@ function Filters({
   today: string;
   sp: Search;
 }) {
+  // One app-wide filter style — matches the admin board's Filter (outline-active
+  // pills, rounded-card container, rounded-lg date inputs on bg-bg).
   const chip = (active: boolean) =>
-    `inline-flex min-h-[44px] items-center rounded-full border px-3 text-sm font-semibold ${
-      active
-        ? "border-accent bg-accent text-white"
-        : "border-line bg-card text-muted"
-    }`;
+    `pressable rounded-full border px-3 py-1.5 ${active ? "border-accent text-accent" : "border-line text-muted"}`;
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap gap-2">
-        <AppLink href="/crew/open" className={chip(label === "today")}>
-          Today
-        </AppLink>
-        <AppLink href="/crew/open?range=weekend" className={chip(label === "weekend")}>
+    <div className="flex flex-col gap-2 rounded-card border border-line bg-card px-4 py-3">
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <AppLink href="/crew/open" className={chip(label === "weekend")}>
           This weekend
         </AppLink>
+        <AppLink href="/crew/open?range=2w" className={chip(label === "2w")}>
+          Next 2 weeks
+        </AppLink>
+        <AppLink href="/crew/open?range=4w" className={chip(label === "4w")}>
+          Next 4 weeks
+        </AppLink>
       </div>
-      {/* No-JS date range: a GET form submits ?from&to back to this page. */}
-      <form method="get" action="/crew/open" className="flex flex-wrap items-end gap-2">
-        <label className="flex flex-col text-xs text-muted">
+      {/* No-JS date range: a GET form submits ?from&to back to this page. Defaults
+          to the next 30 days, so a bare "Show" gives a month. */}
+      <form method="get" action="/crew/open" className="flex flex-wrap items-end gap-2 text-sm">
+        <label className="flex flex-col gap-0.5 text-xs text-muted">
           From
           <input
             type="date"
             name="from"
             defaultValue={label === "range" ? sp.from : today}
             min={today}
-            className="min-h-[44px] rounded-card border border-line bg-card px-2 text-sm text-ink"
+            className="rounded-lg border border-line bg-bg px-2 py-1 text-ink"
           />
         </label>
-        <label className="flex flex-col text-xs text-muted">
+        <label className="flex flex-col gap-0.5 text-xs text-muted">
           To
           <input
             type="date"
             name="to"
-            defaultValue={label === "range" ? sp.to : addDays(today, 45)}
+            defaultValue={label === "range" ? sp.to : addDays(today, 30)}
             max={addDays(today, 45)}
-            className="min-h-[44px] rounded-card border border-line bg-card px-2 text-sm text-ink"
+            className="rounded-lg border border-line bg-bg px-2 py-1 text-ink"
           />
         </label>
-        <GetFormSubmit
-          className={`min-h-[44px] rounded-card border px-3 text-sm font-semibold ${
-            label === "range"
-              ? "border-accent bg-accent text-white"
-              : "border-line bg-card text-accent"
-          }`}
-        >
+        <GetFormSubmit className="rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent">
           Show
         </GetFormSubmit>
       </form>
@@ -175,19 +173,16 @@ function ClaimRow({ row, back }: { row: ClaimableSeatView; back: string }) {
   // The collapsed row's hero time — the first scheduled departure ("when it
   // leaves"). The full call→back window + trip list live in the confirm sheet.
   const departure = row.tripTimes[0] ? fmt12(row.tripTimes[0]) : null;
+  const n = row.tripTimes.length;
+  const tripCount = n > 0 ? `${n} trip${n === 1 ? "" : "s"}` : null;
   const facts = confirmFacts(row);
   return (
     <details className="group overflow-hidden rounded-card border border-line bg-card shadow-sm">
       <summary className="flex min-h-[44px] cursor-pointer items-start justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
-        <span className="flex min-w-0 flex-1 flex-col">
-          {/* Day left, departure time right-justified + bold on the same line —
-              the same scannable "when" hierarchy as the My-shifts card. */}
-          <span className="flex items-baseline justify-between gap-2">
-            <span className="font-semibold text-ink">{fmtDate(row.date)}</span>
-            <span className="font-mono text-sm font-semibold text-ink">
-              {departure ?? "TBD"}
-            </span>
-          </span>
+        {/* Left: day over vessel · role. The role lives here, so the confirm copy
+            below doesn't repeat "as captain". */}
+        <span className="flex min-w-0 flex-col">
+          <span className="font-semibold text-ink">{fmtDate(row.date)}</span>
           <span className="flex items-center gap-1.5 text-sm text-muted">
             {/* DEC-086 vessel identity dot — which boat, at a glance. aria-hidden;
                 the vessel name is the accessible answer. */}
@@ -198,11 +193,21 @@ function ClaimRow({ row, back }: { row: ClaimableSeatView; back: string }) {
             {row.vesselName} · {row.roleName}
           </span>
         </span>
-        <span
-          className="shrink-0 self-center text-faint transition-transform group-open:rotate-90"
-          aria-hidden
-        >
-          ›
+        {/* Right: departure time (the scannable "when") with the trip count right
+            under it — end time is left to the confirm sheet (too busy collapsed). */}
+        <span className="flex shrink-0 items-center gap-3">
+          <span className="flex flex-col items-end">
+            <span className="font-mono text-sm font-semibold text-ink">
+              {departure ?? "TBD"}
+            </span>
+            {tripCount && <span className="text-xs text-muted">{tripCount}</span>}
+          </span>
+          <span
+            className="text-faint transition-transform group-open:rotate-90"
+            aria-hidden
+          >
+            ›
+          </span>
         </span>
       </summary>
       <div className="flex flex-col gap-3 border-t border-line px-4 py-3">
@@ -229,7 +234,8 @@ function ClaimRow({ row, back }: { row: ClaimableSeatView; back: string }) {
 /** The DEC-077 confirm lead: whole-day scope. When no trips are scheduled yet,
  *  it carries that note itself (there's no facts line to hang it on). */
 function confirmLead(r: ClaimableSeatView): string {
-  const head = `Claim ${fmtDate(r.date)} on ${r.vesselName} as ${r.roleName.toLowerCase()}? That’s the whole day — every trip booked, including any added later.`;
+  // No "as {role}" — the role is right above in the row header (● vessel · role).
+  const head = `Claim ${fmtDate(r.date)} on ${r.vesselName}? That’s the whole day — including any trips added or cancelled later.`;
   return hasTrips(r) ? head : `${head} No trips are scheduled yet.`;
 }
 
@@ -261,9 +267,10 @@ function backAt(hhmm: string): string {
   return approxBack(hhmm).replace(/(am|pm)$/i, " $1").toUpperCase();
 }
 
-type RangeLabel = "today" | "weekend" | "range";
+type RangeLabel = "weekend" | "2w" | "4w" | "range";
 
-/** Resolve the active date range from search params (default today). */
+/** Resolve the active date range from search params. Default = This weekend (a
+ *  pull surface — crew browse ahead, so "today" is the wrong landing). */
 function resolveRange(sp: Search, today: string): { range: DateRange; label: RangeLabel } {
   if (sp.from && sp.to) {
     // Tolerate a backwards range (from > to) — swap rather than render a confusing
@@ -271,15 +278,15 @@ function resolveRange(sp: Search, today: string): { range: DateRange; label: Ran
     const [from, to] = sp.from <= sp.to ? [sp.from, sp.to] : [sp.to, sp.from];
     return { range: { from, to }, label: "range" };
   }
-  if (sp.range === "weekend") {
-    return { range: weekendRange(today), label: "weekend" };
-  }
-  return { range: { from: today, to: today }, label: "today" };
+  if (sp.range === "2w") return { range: { from: today, to: addDays(today, 14) }, label: "2w" };
+  if (sp.range === "4w") return { range: { from: today, to: addDays(today, 28) }, label: "4w" };
+  return { range: weekendRange(today), label: "weekend" };
 }
 
 /** The relative path (with the active filter) the claim action returns to on error. */
 function backHref(label: RangeLabel, sp: Search): string {
-  if (label === "weekend") return "/crew/open?range=weekend";
+  if (label === "2w") return "/crew/open?range=2w";
+  if (label === "4w") return "/crew/open?range=4w";
   if (label === "range" && sp.from && sp.to) {
     return `/crew/open?from=${encodeURIComponent(sp.from)}&to=${encodeURIComponent(sp.to)}`;
   }

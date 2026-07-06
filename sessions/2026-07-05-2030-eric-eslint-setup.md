@@ -6,7 +6,7 @@ branch: task/eslint-setup
 started: 2026-07-05T20:30:21Z
 ended:
 points:
-pr_numbers: [273, 274, 276, 277]
+pr_numbers: [273, 274, 276, 277, 278]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/e8236a0e-69f4-48e9-8829-2b9396bda84e.jsonl
 ---
@@ -81,10 +81,25 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/e8236a0e-69f4-48e9-882
 **Branch:** task/271-drop-shift-confirm
 **Opened at:** 2026-07-06T02:23:51Z
 
+## Task 5: SMS on every add/remove — relay split/merge transitions + harden e2e Twilio (closes #259, reframed)
+
+**Completed:**
+- **Reframed #259** (operator call): admin outbox is being retired, and the prod **Twilio channel has no dedup slot** (`twilio-channel.ts:19-22`, sends per notice) → the terminal-on-sent *swallow* is **outbox-only, can't affect SMS**. Dropped the slot-semantics fix (moot + off/on/off/on rare). Reframe recorded on #259.
+- **Investigation** (Explore + a live write-vs-read DB check): SMS add/remove coverage was complete (override/remove/bail/staff/unstaff + Xola cancelled/restored) **except split/merge** — their one-shot re-form *consumes* an external Cancelled↔live transition it observes (writes new state → no later pull re-sees it), and neither action relayed it → **no SMS on a split/merge add/remove**.
+- **Fix:** new pure `formNoticeChanges(form, operatorId)` (`src/builder/form-notices.ts` + unit test 3/3) — the DEC-084 cancelled→removed / restored→added mapping, operator-excluded. `channel.ts forwardFormNotices` wraps it; `xola.ts` DRYs onto it (behavior unchanged); `split`/`mergeAction` now relay their transitions (independent try/catch each — @code-review fix).
+- **Harden:** blank `TWILIO_*` in `playwright.config` webServer env. `.env.local` holds live Twilio creds (#242/#252) that `next` auto-loads → notice e2e were hitting live Twilio, 400ing on fake seed phones, swallowed by 3 best-effort catches → empty outbox → **false failures** (this is what made `trainee-staffing` look broken; it was NOT a bug, NOT #259). Blank → outbox channel. Recipe saved to [[e2e-while-dev-lock-held]].
+
+**Code review:** 1 fix applied (mergeAction relay isolation). Verified: xola refactor exactly equivalent; no double-notify from merge teardown (side B deleted, not Cancelled); best-effort posture holds; harden routes to outbox.
+**PR:** [#278](https://github.com/mobiustripper42/muster/pull/278)
+**Points:** 3
+**Branch:** task/259-sms-coverage-split-merge
+**Opened at:** 2026-07-06T03:21:23Z
+
 **Next Steps:**
-- **#259 (2nd prod-blocker, IN PROGRESS):** notices terminal-on-sent → a repeated (shift,member,action) transition swallowed. Needs a design pass (re-open paired slot on opposite transition, OR sequence/epoch the slot id) — changes `OutboxNoticeChannel` semantics. Use `trainee-staffing.spec.ts` as the canary. Plus finding-3: split/merge actions don't forward `cancelledCrew`/`restoredCrew` to the outbox.
-- **Open PRs to merge:** #277 (#271 bail confirm). (#273/#274/#276 already merged.)
-- **@pm pass** on remaining open issues (operator will take after) → full prod-cut plan.
+- **Merge PRs:** #277 (#271 bail confirm — copy tightened per operator) + #278 (#259). (#273/#274/#276 merged.)
+- **@pm pass** (operator will take) → full production-cut plan over remaining open issues.
+- **Filed follow-ups:** #275 (back-time teardown), #279 (integration e2e for split/merge notices), + still-unfiled: `<Button>` primitive, C2 changed-cue.
+- **Both prod-blockers cleared** (#271→#277, #259→#278). Remaining opens: #268 (pool layout), #256 (drop locked_at col), #238 (9.12 nav — post-launch), #247/#119 (blocked on prod Twilio/10DLC).
 - **Filed:** #275 (DEC-041 shift-end "back" time reuses call lead → distinct `TEARDOWN_MINUTES` ~20–30; deferred by operator).
 - **Still to file as follow-ups:** full `<Button>` primitive (admin adopts the shared glyph + radius token — the C3 boundary); **C2** the "changed since you last looked" crew cue (a *feature*, ties to `Reservation.updatedAt` / #259, not polish).
 - **Spinners on prod (parked):** crew nav spinners work in dev; unverified on Vercel. If a preview shows page-to-page nav eating the spinner, add `loading.tsx` to the crew segments (no crew `loading.tsx` exists). Don't diagnose spinner/latency off the mill-dev dev server ([[dev-server-confounds-latency-observations]]).

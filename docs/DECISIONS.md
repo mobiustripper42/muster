@@ -2228,6 +2228,37 @@ clock should pause overnight or sends should buffer before close; a tenant needs
 
 ---
 
+## DEC-091: Crew navigation is hub-and-spoke — no persistent nav chrome (9.12, #238)
+
+**Status:** Decided 2026-07-06 (Eric, Phase 9). @architect-gated.
+
+**Decision.** The crew app keeps its hub-and-spoke IA: `/crew` (home) is the single hub containing
+every entry point — open asks, my-shifts, the Messages card, the flag-gated pick-up surface (DEC-074),
+own standing, sign-out. Drill-in surfaces (shift card, `/crew/open`, threads) return to the hub via the
+shared 44px `BackLink` primitive (`components/ui/back-link.tsx`). There is **no** persistent crew nav.
+
+**Rejected: a bottom tab bar and an admin-style top nav.** Admin's persistent nav (#174,
+`admin-nav.tsx`) does **not** port — admin has 4 co-equal destinations and *no hub*, so it needs
+lateral wayfinding; crew's home *is* the hub (every destination one tap away), so persistent chrome
+adds nothing but the app-frame the "insultingly small" ethos (BRAND) resists. A persistent, always-on
+unread badge would be an ambient-pull anxiety vector against BRAND "push, not pull" and DEC-042 — the
+Messages unread count stays on the deliberately-**opened** home card (DEC-071), never floating. The
+flag-gated pick-up surface (DEC-074) is a recorded exception, not a destination to promote into
+permanent nav.
+
+**Scope of 9.12:** consistency only — uniform `BackLink` across all drill-in surfaces (done); no new
+tokens (DEC-021 holds). The admin nav's other half of 9.12 is unrelated: add the now-built
+`/admin/messages` link to `admin-nav.tsx`.
+
+**Relationship:** refines the crew-app IA under BRAND ("insultingly small, no dashboard"); compatible
+with DEC-085 (dual form factor — crew is a native mobile hub, not a squished admin), DEC-074 (pick-up
+as a knowing exception), DEC-071/042 (calm, opened-not-monitored unread). Companion-contrast to #174
+(admin's persistent nav). Supersedes nothing.
+
+**Revisit if:** crew surfaces grow past ~5 and home stops being a genuine single-tap hub.
+
+---
+
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)
 
 These are deferred by design. Each names an owner and a trigger. **Consult @architect (and the named

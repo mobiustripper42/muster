@@ -33,6 +33,16 @@ test.describe("admin nav", () => {
     await expect(nav.getByRole("link", { name: "At-Risk" })).not.toHaveAttribute("aria-current", "page");
   });
 
+  test("9.12: the nav links the built Messages surface (#238)", async ({ page }) => {
+    await signInAsAdmin(page, "spink");
+    const nav = page.getByRole("navigation", { name: "Admin" });
+    await openMenuIfMobile(page);
+    await nav.getByRole("link", { name: "Messages" }).click();
+    await page.waitForURL(/\/admin\/messages/);
+    await openMenuIfMobile(page);
+    await expect(nav.getByRole("link", { name: "Messages" })).toHaveAttribute("aria-current", "page");
+  });
+
   test("desktop: the nav fits the two-pane height budget (guards #253)", async ({ page }) => {
     // The two-pane board's independent-scroll layout (#253) bounds its shell to
     // `calc(100dvh - 3.25rem)` on lg, where 3.25rem (52px) is the budget for this

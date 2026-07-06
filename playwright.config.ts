@@ -3,9 +3,21 @@ import { defineConfig, devices } from "@playwright/test";
 /**
  * e2e harness config (#65, Phase 5.5). First browser-test tooling in the project.
  *
- * Two deliberate constraints:
- *  - **`next dev`, not `next start`.** `/crew/dev-link` is dev-only (404 in prod)
- *    and every flow signs in through it — a production server can't run these.
+ * Server mode — **`E2E_PROD` picks `next start` vs `next dev`** (defaults to `!CI`,
+ * so local runs go prod, CI stays dev):
+ *  - **Local → `next start` (prod build) + `VERCEL_ENV=preview`.** A second
+ *    `next dev` in this directory can't start while the operator's `next dev` holds
+ *    Next's per-directory dev lock (`⨯ Another next dev server is already running`),
+ *    which is the common case on the dev box. `next start` takes no dev lock, so the
+ *    suite runs alongside a live dev server. `/crew/dev-link` (every flow signs in
+ *    through it) 404s only when `isProdDeploy` — i.e. `VERCEL_ENV==="production"` or
+ *    (no `VERCEL_ENV` && `NODE_ENV==="production"`). `next start` sets the latter, so
+ *    `VERCEL_ENV=preview` is load-bearing: it flips `isProdDeploy` false and keeps the
+ *    minter live exactly as on a real Vercel preview. Bonus: prod rendering catches the
+ *    RSC serialization bugs `next dev` masks. Cost: a cold run pays a `next build`;
+ *    `reuseExistingServer` amortizes it across warm runs.
+ *  - **CI → `next dev`.** No dev lock and no `.env.local` in CI, so the collision never
+ *    bites; skipping the build keeps the e2e job fast.
  *  - **A dedicated port (3100) + the throwaway `muster_test` DB.** The app under
  *    test must never reuse a running `npm run dev` (that one points at muster_dev);
  *    the dedicated port keeps the two from colliding and the test DB from leaking
@@ -14,6 +26,14 @@ import { defineConfig, devices } from "@playwright/test";
  * Single worker: the specs reset+seed one shared test DB in beforeEach, which is
  * only deterministic if they don't overlap.
  */
+
+// Prod server locally (dodges the per-dir `next dev` lock), dev server in CI.
+// Override explicitly with E2E_PROD=1 / E2E_PROD=0 (only "1"/"true" enable it, so
+// a stray `E2E_PROD=false` reads as off, not on).
+const E2E_PROD =
+  process.env.E2E_PROD != null
+    ? process.env.E2E_PROD === "1" || process.env.E2E_PROD === "true"
+    : !process.env.CI;
 
 const PORT = Number(process.env.E2E_PORT ?? 3100);
 const BASE_URL = process.env.E2E_BASE_URL ?? `http://localhost:${PORT}`;
@@ -59,14 +79,27 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `npm run dev -- --port ${PORT}`,
+    // Prod: build once, then `next start` (no dev lock). reuseExistingServer skips
+    // the rebuild when a server is already warm on the port.
+    command: E2E_PROD
+      ? `npm run build && npx next start --port ${PORT}`
+      : `npm run dev -- --port ${PORT}`,
     url: BASE_URL,
-    timeout: 120_000,
+    // Prod path includes a `next build`; give it room. Dev path compiles lazily.
+    timeout: E2E_PROD ? 300_000 : 120_000,
     // Safe to reuse locally because the port is e2e-dedicated (only ever an
-    // e2e/test-DB server). Never reuse in CI.
+    // e2e/test-DB server). Never reuse in CI. NB on the prod path a reused server
+    // serves its *frozen* `.next-e2e` build — a `next start` left listening on the
+    // port from a prior run means later runs skip the rebuild and test stale code.
+    // The normal flow tears the server down between runs (so each rebuilds); only a
+    // manually-left server goes stale — kill :3100 if you changed app code.
     reuseExistingServer: !process.env.CI,
     env: {
       DATABASE_URL: TEST_DATABASE_URL,
+      // Prod server only: keep `/crew/dev-link` live (isProdDeploy → false) exactly
+      // as on a Vercel preview, and pin E2E_PROD so the build/start subprocess picks
+      // the `.next-e2e` distDir (next.config.ts) instead of the operator's `.next`.
+      ...(E2E_PROD ? { VERCEL_ENV: "preview", E2E_PROD: "1" } : {}),
       // Civil send window (DEC-088) wide open: e2e runs at arbitrary wall-clock
       // times, and the bail/ask flows it drives must not defer past 20:00.
       CIVIL_SEND_START: "00:00",

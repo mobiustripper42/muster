@@ -161,7 +161,7 @@ echo 'postgres://<neon-direct-unpooled-string>' > ~/.muster-prod-db   # once; gi
 # add this line to ~/.bashrc so it persists:
 alias mint-prod='APP_BASE_URL=https://muster-sigma.vercel.app DATABASE_URL="$(cat ~/.muster-prod-db)" npm run db:mint --'
 ```
-Then `mint-prod --admin=spink` mints a **prod** link, while plain `npm run db:mint -- --admin=eric`
+Then `mint-prod --admin=eric` mints a **prod** link, while plain `npm run db:mint -- --admin=eric`
 still mints **local** — two commands, no editing, no switch-back. (Rarely needed: the sign-in cookie
 lasts 14 days and renews on use, so it's a first-sign-in / long-gap thing.)
 

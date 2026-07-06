@@ -6,7 +6,7 @@ import { splitShift } from "@core/builder/split.js";
 import { mergeShift } from "@core/builder/merge.js";
 import { asId } from "@core/domain/ids.js";
 import { readSubject } from "../../../lib/auth";
-import { forwardNoticesToOutbox } from "../../../lib/channel";
+import { forwardFormNotices, forwardNoticesToOutbox } from "../../../lib/channel";
 import { OPERATOR_CREW_MEMBER_ID } from "../../../lib/operator";
 import { getRepo } from "../../../lib/repo";
 
@@ -30,7 +30,16 @@ export async function splitAction(formData: FormData): Promise<void> {
 
   let param: string;
   try {
-    await splitShift(getRepo(), asId<"ShiftId">(shiftId), cut);
+    const form = await splitShift(getRepo(), asId<"ShiftId">(shiftId), cut);
+    // A split's one-shot re-form CONSUMES any external Cancelled↔live transition
+    // it's first to observe (the new state is written, so no later Xola pull
+    // re-sees it) — relay it here or that crew member is never texted (#259).
+    // Best-effort, like the merge relay: the split already committed.
+    try {
+      await forwardFormNotices(form);
+    } catch {
+      // relay is best-effort; the split stands regardless (DEC-084)
+    }
     param = "split_ok=1";
   } catch {
     // Every failure (bad/duplicate cut, already-split, day vanished mid-edit)
@@ -62,7 +71,7 @@ export async function mergeAction(formData: FormData): Promise<void> {
 
   let param: string;
   try {
-    const { freedCrew } = await mergeShift(getRepo(), asId<"ShiftId">(shiftId));
+    const { form, freedCrew } = await mergeShift(getRepo(), asId<"ShiftId">(shiftId));
     // Notify everyone dropped off the far side — except the operator about their own
     // action (DEC-072/084).
     const toNotify = freedCrew.filter(
@@ -80,6 +89,11 @@ export async function mergeAction(formData: FormData): Promise<void> {
           shiftId: asId<"ShiftId">(shiftId),
         })),
       );
+      // Plus any external Cancelled↔live transition the merge's one-shot re-form
+      // observed (#259) — same consume-once reasoning as split. A duplicate
+      // "removed" to a just-freed member is fine (Twilio: an extra text beats a
+      // missed one; the outbox fallback dedupes by slot).
+      await forwardFormNotices(form);
     } catch {
       // Relay is best-effort; the merge stands regardless (DEC-084).
     }

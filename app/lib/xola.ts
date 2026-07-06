@@ -7,8 +7,7 @@ import type { XolaEnv } from "@core/import/xola-client.js";
 import { pullXola } from "@core/import/xola-pull.js";
 import type { XolaPullResult } from "@core/import/xola-pull.js";
 import type { Repository } from "@core/ports/repository.js";
-import { forwardNoticesToOutbox } from "./channel";
-import { OPERATOR_CREW_MEMBER_ID } from "./operator";
+import { forwardFormNotices } from "./channel";
 
 /**
  * Edge glue for the Xola pull (DEC-036, DEC-020) — the ONLY place that reads the
@@ -47,32 +46,11 @@ export async function runXolaPull(
   // already committed, so a channel hiccup must not fail the pull. The source is
   // transition-only (form-shifts) + the notice id is deterministic, so a later pull
   // of the same cancelled shift doesn't duplicate.
+  // cancelledCrew → "you're off"; restoredCrew (#244 resurrection) → "you're on".
+  // Shared with the split/merge commands via `forwardFormNotices`. In prod the
+  // channel is Twilio (per-send, no dedup); the outbox fallback dedupes by slot.
   try {
-    await forwardNoticesToOutbox([
-      // DEC-084: a cancelled shift silently drops its confirmed crew → "you're off".
-      ...result.form.cancelledCrew
-        .filter((c) => String(c.crewMemberId) !== OPERATOR_CREW_MEMBER_ID)
-        .map((c) => ({
-          crewMemberId: c.crewMemberId,
-          action: "removed" as const,
-          shiftId: c.shiftId,
-        })),
-      // #244: a resurrected shift silently re-confirms crew who were told "you're
-      // off" → the matching "you're on", closing the mismatch. Best-effort, same as
-      // the cancel relay. NB the notice slot is keyed (shift, member, action): the
-      // "added" here can't clobber the sibling "removed" from the same cancel/revive
-      // pair, but it DOES share a slot with a manual admin "you're on" for the same
-      // shift+member — if that fired+sent earlier, this resurrection "on" no-ops
-      // (OutboxNoticeChannel is terminal-on-sent). Pre-existing slot-reopen gap,
-      // tracked in #259.
-      ...result.form.restoredCrew
-        .filter((c) => String(c.crewMemberId) !== OPERATOR_CREW_MEMBER_ID)
-        .map((c) => ({
-          crewMemberId: c.crewMemberId,
-          action: "added" as const,
-          shiftId: c.shiftId,
-        })),
-    ]);
+    await forwardFormNotices(result.form);
   } catch {
     // best-effort — the pull stands regardless
   }

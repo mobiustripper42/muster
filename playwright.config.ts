@@ -80,6 +80,16 @@ export default defineConfig({
       // Crew self-serve code login (DEC-081) is flag-gated OFF in prod until 7.0b
       // wires real email; the e2e env is where we exercise it, so turn it on.
       CREW_SELF_SERVE: "1",
+      // Blank Twilio so notice/SMS e2e uses the OUTBOX channel, not live Twilio.
+      // `.env.local` (auto-loaded by next dev/start) holds real Twilio creds for
+      // the live-SMS smoke (#242/#252); without this override the notice path
+      // would send to the fake seed phones and 400 ("not a valid phone number"),
+      // which the best-effort catches swallow → an empty outbox → a false failure
+      // (e.g. trainee-staffing's "you're on" assertion). Empty overrides .env.local.
+      TWILIO_ACCOUNT_SID: "",
+      TWILIO_AUTH_TOKEN: "",
+      TWILIO_FROM: "",
+      TWILIO_MESSAGING_SERVICE_SID: "",
     },
   },
 });

@@ -9,16 +9,18 @@ import { AppLink } from "../ui/app-link";
  * surfaces into one app. Wayfinding, not a redesign: existing tokens only (BRAND /
  * DEC-021), one client island.
  *
- * Responsive (the operator runs the pilot from a phone): on desktop the four links
+ * Responsive (the operator runs the pilot from a phone): on desktop the links
  * sit inline; on mobile they collapse to a **hamburger on the right** that opens a
  * **slide-in drawer** from the right edge (backdrop dim, closes on link-tap /
  * backdrop-tap / Escape). The active link is highlighted in both via `usePathname`.
  * The original "no hamburger" AC was revised by the operator (DEC-021 stays — no new
- * colors). Links only the four BUILT surfaces; the rest are one line each later.
+ * colors). Links the BUILT surfaces (9.12 added Messages); the rest are one line
+ * each later.
  */
 const LINKS = [
   { href: "/admin/at-risk", label: "At-Risk" },
   { href: "/admin/outbox", label: "Outbox" },
+  { href: "/admin/messages", label: "Messages" },
   { href: "/admin/import", label: "Import" },
   { href: "/admin/shifts", label: "Shifts" },
 ] as const;

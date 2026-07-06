@@ -101,6 +101,15 @@ Overrides to the shell's `## Micro Workflow`. Muster's stack is Next.js over a f
 
 Persistence is **Postgres behind the `Repository` port**: **local Postgres in dev**, **Neon in production** (Vercel + Neon, DEC-033 — `docs/DEPLOY.md`), schema as **plain Postgres DDL** (DEC-DATA-1). The in-memory adapter is the test substrate and never goes away. The shell's universal migration *discipline* still holds: schema changes go through migration files (plain DDL here), migrations are the source of truth, never hand-patch an applied migration, and check for open PRs touching the same tables before adding one.
 
+**Prod migrations are applied by hand, out-of-band** — they are *not* part of the Vercel deploy. So code on `production` can outrun the prod schema. Apply the migration to prod *before* promoting the code that needs it.
+
+**Pre-promote checks** (run by `/promote-production` before the ff-merge — the generic skill's project-checks hook honors whatever's listed here; #282):
+- **Migration-ledger drift.** Confirm prod has applied every migration in the repo. Read prod's applied set via the **Neon MCP** — `run_sql` against project **`delicate-art-65084110`** (neon-red-pendant, org `org-spring-feather-31353161`, in the Vercel-managed Neon org), **default branch = the prod DB**: `select filename from _migrations order by filename;`. Diff against `db/migrations/*.sql` basenames.
+  - **Repo has a file prod's `_migrations` lacks → STOP.** List the unapplied migration(s); apply them to prod first, then re-run `/promote-production`. Promoting now would ship code ahead of the schema.
+  - **Prod ahead of repo** (an applied migration not in the repo) → warn and ask promote/abort. Unusual; means a hand-applied migration was never committed.
+  - **Neon MCP unavailable** (headless/cron) → have the operator paste `select filename from _migrations order by filename;` output from prod, and diff against that.
+  - Naming trap: Neon's own **default branch = the prod DB** (Neon calls its root branch "main" in its dashboard — unrelated to git `main`, which never deploys here per `vercel.json` `git.deploymentEnabled.main:false`).
+
 ## Conventions
 
 ### Components

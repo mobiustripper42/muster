@@ -241,6 +241,30 @@ required). Upload → the board fills with upcoming trips + their crew seats.
 - **Rollback** = redeploy a previous build from the Vercel dashboard (instant; the DB is unchanged
   unless a migration ran).
 
+## Break-glass — fixing things in a pinch
+
+The levers you have when something's wedged mid-pilot. Almost none of this needs a redeploy. Most CLI
+levers take the direct/unpooled prod `DATABASE_URL` (same as `db:migrate`, step 3).
+
+| The fire | Lever | How |
+|----------|-------|-----|
+| **Crew can't log in — wrong email on file** | `db:crew` | `db:crew -- set <id> --email=<addr>` then they re-request a code (or hand them a link — next row) |
+| **Crew can't log in — locked out / need them in NOW** | `db:mint` | `APP_BASE_URL=<domain> DATABASE_URL="<direct>" npm run db:mint -- --crew=<id>` — a single-use magic link that **bypasses the login-code cap** entirely |
+| **Crew not getting SMS — wrong phone** | `db:crew` | `db:crew -- set <id> --phone=+1XXXXXXXXXX` (must be E.164 — the CLI rejects anything else) |
+| **Don't know the crew id** | `db:crew` | `db:crew -- list` — id · name · phone · email, sorted by name |
+| **Runaway / broken sends (notification storm)** | engine pause | `/admin` → **Pause staffing** — stops *new* asks instantly, no redeploy. Clear leftover cards in `/admin/outbox` (dismiss). Resume when fixed |
+| **Xola data stale or wrong** | re-import | `/admin/import` → re-pull (idempotent, keyed on reservation id — updates in place, never duplicates) |
+| **Bad seat / assignment on a shift** | cockpit | `/admin/shift/<id>` → override / remove seat (remove = no reliability penalty) · split / merge |
+| **An admin needs removing (or is locked out)** | `db:admin` | `db:admin -- revoke <handle>` / `reactivate <handle>` — immediate + scoped (§7b) |
+| **Session compromise — log EVERYONE out** | `SESSION_SECRET` | Rotate the env var in Vercel + redeploy — kills all admin **and** crew sessions at once (the global hammer) |
+| **Operational slate corrupted — clean re-import** | `reset-pilot.ts` | `DATABASE_URL="<direct>" npx tsx db/reset-pilot.ts` (dry-run), then re-run with `RESET_PILOT_CONFIRM=yes RESET_PILOT_EXPECT_DB=<name>`. Truncates shifts/asks/outbox/etc. but **keeps** crew/vessels/credentials/admins — then re-import from Xola. Heavy; guarded four ways |
+| **Prod build broken** | Vercel | Redeploy a previous build from the dashboard — instant, DB untouched (see Operating notes) |
+
+Guardrails to remember: `db:crew` and `db:admin` are **contact/status edits only** — they never create or
+delete a crew member (crew come from seed/import). There's **no per-crew session revoke** (crew sessions are
+stateless by design — #300); the only crew-session lever is the global `SESSION_SECRET` rotation. Every CLI
+prints the DB host it hit — read it before you trust a "done."
+
 ## Follow-ups (not blocking the pilot)
 - `attachDatabasePool` from `@vercel/functions` closes idle connections before a function suspends —
   a connection-churn optimization worth adding if Neon shows connection pressure. One small dep; left

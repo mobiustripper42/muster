@@ -4,10 +4,10 @@ dev: eric
 slug: eslint-setup
 branch: task/eslint-setup
 started: 2026-07-05T20:30:21Z
-ended:
-points:
+ended: 2026-07-06T14:45:10Z
+points: 20
 pr_numbers: [273, 274, 276, 277, 278, 280]
-status: open
+status: closed
 transcript: /home/eric/.claude/projects/-home-eric-muster/e8236a0e-69f4-48e9-8829-2b9396bda84e.jsonl
 ---
 

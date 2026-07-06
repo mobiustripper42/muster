@@ -40,6 +40,15 @@ const nextConfig: NextConfig = {
   // it into client trees — without it the tag renders blank). Build-time only; the
   // commit SHA rides Vercel's own NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA.
   env: { NEXT_PUBLIC_APP_VERSION: version },
+  // The e2e prod-server path (playwright.config.ts `E2E_PROD`) builds into its own
+  // output dir so `next build` never writes into the `.next` the operator's live
+  // `next dev` is actively reading — that shared-manifest corruption is exactly the
+  // coexistence footgun the prod-server switch exists to avoid. Only the e2e build
+  // subprocess sets E2E_PROD; a normal `next dev`/`next build`/Vercel build sees `.next`.
+  distDir:
+    process.env.E2E_PROD === "1" || process.env.E2E_PROD === "true"
+      ? ".next-e2e"
+      : ".next",
   experimental: {
     extensionAlias: {
       ".js": [".ts", ".tsx", ".js", ".jsx"],

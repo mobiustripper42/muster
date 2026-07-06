@@ -215,13 +215,19 @@ export interface Repository {
     consumedAt: string,
   ): Promise<boolean>;
   /**
-   * Count a failed guess against the brute-force cap; returns the new attempt
-   * total. No-op-safe if the code is gone (returns a value at/over the ceiling).
+   * Atomically claim one guess against the brute-force cap (10.3, #297). Increments
+   * `attempts` **only if** the code is live (unconsumed) and still under
+   * `maxAttempts`, returning its `codeHash`/`expiresAt` + the new `attempts`; `null`
+   * if there's no such code (gone, consumed, or already at the cap). Check-and-
+   * increment is ONE row-locked statement, so K concurrent guesses can't all read
+   * the same pre-increment count and blow past the cap — the ceiling is the whole
+   * security model (DEC-081), so it must be race-safe, not check-then-bump.
    */
-  bumpLoginCodeAttempts(
+  claimLoginAttempt(
     subjectKind: AuthSubjectKind,
     subjectId: string,
-  ): Promise<number>;
+    maxAttempts: number,
+  ): Promise<{ codeHash: string; expiresAt: string; attempts: number } | null>;
 
   // ── Outbox entries (web-link channel adapter state — DEC-030) ──────────────
   // Adapter-side, like MagicToken: persisted through the port so the operator's

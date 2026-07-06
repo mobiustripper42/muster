@@ -200,18 +200,27 @@ export async function verifyLoginCode(
   const crew = matchCrewByEmail(await repo.listCrewMembers(), params.email);
   if (!crew) return { ok: false, reason: "invalid" };
 
-  const record = await repo.getLoginCode("crew", crew.id);
-  if (!record || record.consumedAt) return { ok: false, reason: "invalid" };
-  if (deps.now.getTime() >= Date.parse(record.expiresAt)) {
+  // Atomically claim one guess BEFORE evaluating it (#297): the increment-if-under-cap
+  // is a single row-locked UPDATE, so concurrent submits can't all read attempts=0 and
+  // bypass the cap that IS the security model (DEC-081). null ⇒ no live under-cap code.
+  const claim = await repo.claimLoginAttempt("crew", crew.id, MAX_ATTEMPTS);
+  if (!claim) {
+    // Distinguish the reason for copy (no code / consumed / locked at the cap).
+    const record = await repo.getLoginCode("crew", crew.id);
+    if (!record || record.consumedAt) return { ok: false, reason: "invalid" };
+    if (deps.now.getTime() >= Date.parse(record.expiresAt)) {
+      return { ok: false, reason: "expired" };
+    }
+    return { ok: false, reason: "locked" };
+  }
+  if (deps.now.getTime() >= Date.parse(claim.expiresAt)) {
     return { ok: false, reason: "expired" };
   }
-  if (record.attempts >= MAX_ATTEMPTS) return { ok: false, reason: "locked" };
 
-  if (hashCode(params.code) !== record.codeHash) {
-    const attempts = await repo.bumpLoginCodeAttempts("crew", crew.id);
+  if (hashCode(params.code) !== claim.codeHash) {
     return {
       ok: false,
-      reason: attempts >= MAX_ATTEMPTS ? "locked" : "invalid",
+      reason: claim.attempts >= MAX_ATTEMPTS ? "locked" : "invalid",
     };
   }
 

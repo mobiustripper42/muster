@@ -316,8 +316,7 @@ function Card({
           </summary>
           <div className="flex flex-col gap-2 border-t border-bad-line px-4 py-3">
             <p className="text-sm text-muted">
-              This gives up your seat — it’s logged on your reliability record and
-              can’t be undone. Sure you can’t make it?
+              This gives up your shift — sure you can’t make it?
             </p>
             <form action={bailFromSeat}>
               <input type="hidden" name="seatId" value={card.mySeatId} />

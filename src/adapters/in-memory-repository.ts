@@ -14,6 +14,7 @@ import type {
   AuthSubjectKind,
   Credential,
   CrewMember,
+  CrewStatus,
   Event,
   LoginCode,
   MagicToken,
@@ -162,6 +163,17 @@ export class InMemoryRepository implements Repository {
       else c.email = fields.email;
     }
     return clone(c);
+  }
+  async setCrewStatus(id: CrewMemberId, status: CrewStatus): Promise<CrewMember | null> {
+    const c = this.#crew.get(id);
+    if (!c) return null;
+    c.status = status;
+    return clone(c);
+  }
+  async addCrewMemberWithCredential(m: CrewMember, cred: Credential): Promise<void> {
+    // In-memory can't partially fail, but keep the both-or-neither contract.
+    this.#crew.set(m.id, clone(m));
+    this.#credentials.set(cred.id, clone(cred));
   }
   async listCrewMembers(): Promise<CrewMember[]> {
     return [...this.#crew.values()].map(clone);

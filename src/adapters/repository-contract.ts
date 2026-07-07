@@ -322,6 +322,27 @@ export function runRepositoryContract(
       expect(await repo.updateCrewContact(CREW_B, { name: "x" })).toBeNull();
     });
 
+    it("setCrewStatus: flips active↔inactive; unknown id → null", async () => {
+      await repo.saveCrewMember(crew({ status: "active", reliabilityScore: 5 }));
+      const disabled = await repo.setCrewStatus(CREW, "inactive");
+      expect(disabled).toMatchObject({ status: "inactive", reliabilityScore: 5 });
+      expect((await repo.getCrewMember(CREW))!.status).toBe("inactive");
+      expect((await repo.setCrewStatus(CREW, "active"))!.status).toBe("active");
+      expect(await repo.setCrewStatus(CREW_B, "inactive")).toBeNull();
+    });
+
+    it("addCrewMemberWithCredential: member + credential land together", async () => {
+      const cred = {
+        id: asId<"CredentialId">("cred-crew-b-mmc"),
+        crewMemberId: CREW_B,
+        type: "MMC" as const,
+        expiry: "2099-12-31",
+      };
+      await repo.addCrewMemberWithCredential(crew({ id: CREW_B, name: "New Hire" }), cred);
+      expect((await repo.getCrewMember(CREW_B))!.name).toBe("New Hire");
+      expect(await repo.listCredentialsForCrew(CREW_B)).toEqual([cred]);
+    });
+
     it("credentials: save/get/listForCrew/remove", async () => {
       await repo.saveCredential(credential());
       expect(await repo.getCredential(asId<"CredentialId">("cred-1"))).toEqual(credential());

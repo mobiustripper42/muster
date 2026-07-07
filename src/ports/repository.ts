@@ -16,6 +16,7 @@ import type {
   AuthSubjectKind,
   Credential,
   CrewMember,
+  CrewStatus,
   Event,
   LoginCode,
   MagicToken,
@@ -85,6 +86,14 @@ export interface Repository {
     id: CrewMemberId,
     fields: { name?: string; phone?: string; email?: string | null },
   ): Promise<CrewMember | null>;
+  /** Flip active↔inactive (enable/disable) — a targeted status UPDATE, same
+   *  lost-update safety as {@link updateCrewContact}. Null if id is unknown. */
+  setCrewStatus(id: CrewMemberId, status: CrewStatus): Promise<CrewMember | null>;
+  /** Onboard a crew member + their gating credential ATOMICALLY (DEC-094/044).
+   *  A half-write (member saved, credential lost) would strand an active crew
+   *  record with no MMC — eligible for nothing, and blocked from re-adding by
+   *  the id-unique guard. Both land, or neither does. */
+  addCrewMemberWithCredential(member: CrewMember, credential: Credential): Promise<void>;
 
   // ── Credentials (1:n per crew member — SPEC §2.1) ──────────────────────────
   saveCredential(credential: Credential): Promise<void>;

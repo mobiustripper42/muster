@@ -1,13 +1,17 @@
 /**
- * `db:crew` — fix a crew member's contact info (phone/email) on a live DB
- * (Phase 10.5 break-glass). The launch lever for the two most likely pilot
- * fires: a wrong phone (no SMS) or a wrong email (login code never matches).
- * Logic lives in the framework-free `src/crew/crew-cli.ts` (unit-tested); this
- * is the thin DB shell.
+ * `db:crew` — manage the crew roster on a live DB (DEC-094). Onboard a new hire,
+ * fix contact info, or take someone in/out of the ask pool — no admin UI. Logic
+ * lives in the framework-free `src/crew/crew-cli.ts` (unit-tested); this is the
+ * thin DB shell.
  *
  *   npm run db:crew -- list
- *   npm run db:crew -- set crew-eric --email=eric@stoffer.net
+ *   npm run db:crew -- add --name="Jane Roe" --phone=+12165550142 --ratings=captain,mate --email=jane@roe.com
  *   npm run db:crew -- set crew-eric --phone=+15035550123 --name="Eric Stoffer"
+ *   npm run db:crew -- disable crew-jane-roe        # out of the ask pool
+ *   npm run db:crew -- enable  crew-jane-roe        # back in
+ *
+ * `add` also seeds the DEC-044 placeholder MMC so the new hire is actually
+ * askable (no MMC ⇒ eligible for nothing); pass --mmc=YYYY-MM-DD for a real date.
  *
  * Connects via DATABASE_URL — same as db:migrate/db:mint/db:admin — falling back
  * to local muster_dev. For PROD, point it at the Neon **direct/unpooled** string:

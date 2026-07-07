@@ -20,6 +20,7 @@ import type {
   AuthSubjectKind,
   Credential,
   CrewMember,
+  CrewStatus,
   Event,
   LoginCode,
   MagicToken,
@@ -423,6 +424,48 @@ export class PostgresRepository implements Repository {
       vals,
     );
     return rows[0] ? toCrew(rows[0]) : null;
+  }
+  async setCrewStatus(id: CrewMemberId, status: CrewStatus): Promise<CrewMember | null> {
+    const { rows } = await this.#pool.query(
+      "update crew_members set status=$1 where id=$2 returning *",
+      [status, id],
+    );
+    return rows[0] ? toCrew(rows[0]) : null;
+  }
+  async addCrewMemberWithCredential(m: CrewMember, cred: Credential): Promise<void> {
+    // One unit — a new hire is useless without their gating credential, so a
+    // mid-write failure must leave NEITHER (mirrors saveImportRun).
+    const client = await this.#pool.connect();
+    try {
+      await client.query("begin");
+      await client.query(
+        `insert into crew_members
+           (id, name, phone, email, ratings, status, manual_boost, manual_floor, protocol_override, reliability_score)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [
+          m.id,
+          m.name,
+          m.phone,
+          m.email ?? null,
+          JSON.stringify(m.ratings),
+          m.status,
+          m.manualBoost ?? null,
+          m.manualFloor ?? null,
+          m.protocolOverride ?? null,
+          m.reliabilityScore,
+        ],
+      );
+      await client.query(
+        `insert into credentials(id, crew_member_id, type, identifier, expiry) values ($1,$2,$3,$4,$5)`,
+        [cred.id, cred.crewMemberId, cred.type, cred.identifier ?? null, cred.expiry],
+      );
+      await client.query("commit");
+    } catch (e) {
+      await client.query("rollback");
+      throw e;
+    } finally {
+      client.release();
+    }
   }
   async listCrewMembers(): Promise<CrewMember[]> {
     const { rows } = await this.#pool.query("select * from crew_members");

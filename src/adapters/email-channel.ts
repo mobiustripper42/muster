@@ -44,7 +44,7 @@ const SUBJECT_BY_KIND: Record<MessageKind, string> = {
   receipt: "Muster",
   // admin_alert goes out over SMS (DEC-095), never email — here only so the
   // exhaustive Record can't fall through to blank if that ever changes.
-  admin_alert: "Muster — a shift needs you",
+  admin_alert: "Muster — At-Risk alert",
 };
 
 export interface EmailChannelOptions {

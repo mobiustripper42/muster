@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { tick } from "@core/builder/tick.js";
 import { getRepo } from "../../../lib/repo";
 import { forwardToOutbox } from "../../../lib/channel";
+import { forwardBoardAlerts } from "../../../lib/alert";
 
 /**
  * The engine tick, on a schedule — the DEC-023 "explicit clock op" trigger, fired
@@ -47,8 +48,10 @@ export async function GET(req: Request) {
   }
 
   const r = await tick(repo, now);
-  // Edge channel wiring (DEC-030): every ask this tick fired → the pilot outbox.
+  // Edge channel wiring: every ask this tick fired → crew (DEC-030), and every
+  // NEW At-Risk landing → the active admins by SMS (DEC-095). Both best-effort.
   await forwardToOutbox(r.firedAsks);
+  const alertsSent = await forwardBoardAlerts(r.boardLandings);
 
   return NextResponse.json({
     ok: true,
@@ -57,6 +60,7 @@ export async function GET(req: Request) {
     bornFilling: r.bornFilling,
     toAtRisk: r.toAtRisk,
     asksFired: r.asksFired,
+    alertsSent,
     shiftsEscalated: r.shiftsEscalated,
     nudgesFired: r.nudgesFired,
     boardLanded: r.boardLanded,

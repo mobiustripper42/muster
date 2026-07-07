@@ -64,10 +64,17 @@ export interface TickResult {
   nudgesFired: number;
   /**
    * New (shift, reason) board landings recorded this tick (DEC-026) — the
-   * detection half of "landing on the board pings Spink"; delivery rides the
-   * DEC-MSG-3 pilot adapter later.
+   * detection half of "landing on the board pings Spink".
    */
   boardLanded: number;
+  /**
+   * The newly-recorded landings themselves (DEC-095) — the delivery seam for the
+   * operator alert, sibling to `firedAsks`. Populated ONLY in the dedup branch,
+   * so it holds first-detections + regressions this tick, NEVER full board
+   * membership: a steady-state board yields `[]` (no re-blast). The edge
+   * (`app/lib/alert.ts`) SMSes the active admins; core stays transport-free.
+   */
+  boardLandings: { shiftId: string; reason: string }[];
   /**
    * Every ask this tick fired — Tier-1 broadcasts AND Tier-2 nudges — surfaced
    * so the tick's TRIGGER (the dev script today, a cron route later) can
@@ -166,6 +173,7 @@ export async function tick(
     shiftsEscalated: 0,
     nudgesFired: 0,
     boardLanded: 0,
+    boardLandings: [],
     firedAsks: [],
   };
 
@@ -299,6 +307,9 @@ export async function tick(
       if (!seenLandings.has(`${row.shiftId}:${reason}`)) {
         await logBoardLanded(repo, row.shiftId, reason, now);
         result.boardLanded++;
+        // Surface the new landing for the operator alert (DEC-095). Only here —
+        // inside the dedup guard — so an unchanged board re-blasts nobody.
+        result.boardLandings.push({ shiftId: row.shiftId, reason });
       }
     }
   }

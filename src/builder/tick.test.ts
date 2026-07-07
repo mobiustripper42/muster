@@ -156,6 +156,22 @@ describe("tick — horizon advance", () => {
     expect(r.toAtRisk).toBe(1);
     expect(r.asksFired).toBe(0);
     expect(await shiftState()).toBe("AtRisk");
+    // DEC-095: the landing is surfaced once for the operator alert…
+    expect(r.boardLanded).toBe(1);
+    expect(r.boardLandings).toEqual([{ shiftId: SHIFT, reason: "core" }]);
+  });
+
+  it("board landing is surfaced ONCE — a second tick on an unchanged board re-blasts nobody (DEC-095)", async () => {
+    await seedVesselEvent();
+    await formShifts(repo);
+    const first = await tick(repo, AFTER);
+    expect(first.boardLandings).toHaveLength(1);
+
+    const second = await tick(repo, AFTER);
+    // Still AtRisk, but already recorded → no new landing → the alert edge sends nothing.
+    expect(await shiftState()).toBe("AtRisk");
+    expect(second.boardLanded).toBe(0);
+    expect(second.boardLandings).toEqual([]);
   });
 
   it("is idempotent — a second tick after birth advances nothing", async () => {

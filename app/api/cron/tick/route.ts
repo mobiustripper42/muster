@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { tick } from "@core/builder/tick.js";
 import { getRepo } from "../../../lib/repo";
 import { forwardToOutbox } from "../../../lib/channel";
+import { forwardBoardAlerts } from "../../../lib/alert";
 
 /**
  * The engine tick, on a schedule — the DEC-023 "explicit clock op" trigger, fired
@@ -47,8 +48,23 @@ export async function GET(req: Request) {
   }
 
   const r = await tick(repo, now);
-  // Edge channel wiring (DEC-030): every ask this tick fired → the pilot outbox.
-  await forwardToOutbox(r.firedAsks);
+  // Edge channel wiring: every ask this tick fired → crew (DEC-030), and every
+  // NEW At-Risk landing → the active admins by SMS (DEC-095). Best-effort at the
+  // route level too: `tick` already committed its state, so a delivery OR config
+  // hiccup (e.g. the alert's APP_BASE_URL guard) must not 500 the cron's own
+  // response/monitoring — and an ask-relay failure must not skip the alert, or
+  // vice versa. Independent try/catch each.
+  try {
+    await forwardToOutbox(r.firedAsks);
+  } catch (e) {
+    console.error("tick: forwardToOutbox failed — asks may not have relayed", e);
+  }
+  let alertsSent = 0;
+  try {
+    alertsSent = await forwardBoardAlerts(r.boardLandings);
+  } catch (e) {
+    console.error("tick: forwardBoardAlerts failed — admin At-Risk alert not sent", e);
+  }
 
   return NextResponse.json({
     ok: true,
@@ -57,6 +73,7 @@ export async function GET(req: Request) {
     bornFilling: r.bornFilling,
     toAtRisk: r.toAtRisk,
     asksFired: r.asksFired,
+    alertsSent,
     shiftsEscalated: r.shiftsEscalated,
     nudgesFired: r.nudgesFired,
     boardLanded: r.boardLanded,

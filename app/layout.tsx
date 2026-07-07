@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { Viewport } from "next";
 import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import "./globals.css";
 
@@ -18,6 +19,25 @@ const plexMono = IBM_Plex_Mono({
 export const metadata = {
   title: "Muster",
   description: "Crew engine for small-passenger-vessel operators",
+  applicationName: "Muster",
+  // Installable to a phone home screen (Phase 10.6). app/manifest.ts is
+  // auto-linked; these give iOS its touch icon + standalone chrome.
+  appleWebApp: { capable: true, title: "Muster", statusBarStyle: "default" as const },
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/favicon-32.png", sizes: "32x32", type: "image/png" },
+    ],
+    apple: "/apple-touch-icon.png",
+  },
+};
+
+/** Mobile-first: the crew app is a co-equal native-feeling surface (dual form
+ *  factor), so the root viewport + brand theme-color apply app-wide. */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#2f5d86",
 };
 
 /** Root layout — the single shell over both surface groups (admin + crew). */

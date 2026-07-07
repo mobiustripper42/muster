@@ -528,6 +528,13 @@ function CrewApp({
           caller's own cookie. Beside it, for a dual-role person, the switch UP
           to the admin cockpit (DEC-093 — gated server-side on active-admin). */}
       <div className="flex items-center gap-4 pt-2">
+        <AppLink
+          href="/crew/help"
+          prefetch={false}
+          className="text-xs text-muted underline"
+        >
+          How Muster works
+        </AppLink>
         {viewerIsActiveAdmin && (
           <form action={switchToAdmin}>
             <SubmitButton className="text-xs text-accent underline">
@@ -558,6 +565,13 @@ function AskCard({ ask }: { ask: CrewAppView["asks"][number] }) {
             : ""}{" "}
           · {ask.vesselName} · {ask.roleName}.{" "}
           <b>In or out?</b>
+        </div>
+        {/* First-timer orientation (10.6): name what the tap commits — this one
+            shift (NOT "the whole day" — that's the open-shift claim). Nudge
+            toward answering either way (silence is what hurts the score). Muted,
+            non-alarming (the anxiety-dashboard guard). */}
+        <div className="mt-1 text-xs text-muted">
+          In = you’re on for this shift. Out = you’re not — either way, please tap.
         </div>
       </div>
       {/* One form, two submit buttons — only the tapped button's response posts;

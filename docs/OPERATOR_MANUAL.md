@@ -168,6 +168,29 @@ events and shifts the engine then works. This is how real data gets in for the c
 
 That's the whole job: feed it the week, relay the asks, triage the few it can't close.
 
+### Onboard a new crew member
+
+Muster doesn't add crew from a screen yet — a new person is added to the roster out-of-band (a seed/
+import the dev runs), then you set their contact and say hello:
+
+1. **Make sure their phone + email are right.** Wrong phone = no texts; wrong email = login codes never
+   match. Fix either with the `db:crew` CLI (see the **break-glass** section of `DEPLOY.md`):
+   `db:crew -- list` to find their id, `db:crew -- set <id> --phone=+1… --email=…`.
+2. **Send them a hello** so the first Muster text isn't a mystery. Text this (swap the name + your
+   company), or send it to everyone new via **`/admin/messages`** → all-staff:
+
+   > Hi <NAME> — this is <COMPANY>'s crew scheduler, **Muster**. When there's a trip for you, you'll
+   > get a text here; tap **In** or **Out**. Save this number. How it works: `https://<your-domain>/crew/help`
+
+3. **How they sign in.** The normal front door is a **code**: they open the app, enter their email, and
+   get a 6-digit code to sign in (a sign-in lasts ~14 days). Two shortcuts skip the code — the **link in an
+   ask text** signs them in *and* opens the ask in one tap, and `db:mint -- --crew=<id>` mints a one-off
+   sign-in link you can hand someone who's stuck. So a new crew member's first sign-in is usually just
+   tapping their first ask; the code is how they get back in later.
+
+Point crew at **`docs/CREW_QUICKSTART.md`** (the same content as the in-app **How Muster works** page,
+`/crew/help`) — it's printable/pasteable.
+
 ### The board is empty — is that bad?
 
 **No. It's the best case.** An empty board means every trip is crewed or still being actively worked

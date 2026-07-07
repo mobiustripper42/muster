@@ -20,6 +20,7 @@ import type {
   AuthSubjectKind,
   Credential,
   CrewMember,
+  CrewStatus,
   Event,
   LoginCode,
   MagicToken,
@@ -421,6 +422,13 @@ export class PostgresRepository implements Repository {
     const { rows } = await this.#pool.query(
       `update crew_members set ${sets.join(", ")} where id=$${vals.push(id)} returning *`,
       vals,
+    );
+    return rows[0] ? toCrew(rows[0]) : null;
+  }
+  async setCrewStatus(id: CrewMemberId, status: CrewStatus): Promise<CrewMember | null> {
+    const { rows } = await this.#pool.query(
+      "update crew_members set status=$1 where id=$2 returning *",
+      [status, id],
     );
     return rows[0] ? toCrew(rows[0]) : null;
   }

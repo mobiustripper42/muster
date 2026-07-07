@@ -322,6 +322,15 @@ export function runRepositoryContract(
       expect(await repo.updateCrewContact(CREW_B, { name: "x" })).toBeNull();
     });
 
+    it("setCrewStatus: flips active↔inactive; unknown id → null", async () => {
+      await repo.saveCrewMember(crew({ status: "active", reliabilityScore: 5 }));
+      const disabled = await repo.setCrewStatus(CREW, "inactive");
+      expect(disabled).toMatchObject({ status: "inactive", reliabilityScore: 5 });
+      expect((await repo.getCrewMember(CREW))!.status).toBe("inactive");
+      expect((await repo.setCrewStatus(CREW, "active"))!.status).toBe("active");
+      expect(await repo.setCrewStatus(CREW_B, "inactive")).toBeNull();
+    });
+
     it("credentials: save/get/listForCrew/remove", async () => {
       await repo.saveCredential(credential());
       expect(await repo.getCredential(asId<"CredentialId">("cred-1"))).toEqual(credential());

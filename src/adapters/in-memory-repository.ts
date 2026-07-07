@@ -14,6 +14,7 @@ import type {
   AuthSubjectKind,
   Credential,
   CrewMember,
+  CrewStatus,
   Event,
   LoginCode,
   MagicToken,
@@ -161,6 +162,12 @@ export class InMemoryRepository implements Repository {
       if (fields.email === null) delete c.email;
       else c.email = fields.email;
     }
+    return clone(c);
+  }
+  async setCrewStatus(id: CrewMemberId, status: CrewStatus): Promise<CrewMember | null> {
+    const c = this.#crew.get(id);
+    if (!c) return null;
+    c.status = status;
     return clone(c);
   }
   async listCrewMembers(): Promise<CrewMember[]> {

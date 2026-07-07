@@ -14,11 +14,92 @@ const crew = (over: Partial<CrewMember> = {}): CrewMember => ({
   ...over,
 });
 
+const TENANT = asId<"TenantId">("tenant-x");
+
 describe("db:crew CLI (Phase 10.5)", () => {
   let repo: InMemoryRepository;
   beforeEach(async () => {
     repo = new InMemoryRepository();
     await repo.saveCrewMember(crew());
+    // Role types `add --ratings` resolves against.
+    await repo.saveRoleType({ id: asId<"RoleTypeId">("role-captain"), tenantId: TENANT, name: "captain" });
+    await repo.saveRoleType({ id: asId<"RoleTypeId">("role-mate"), tenantId: TENANT, name: "mate" });
+  });
+
+  it("add creates an ASKABLE crew member: record + placeholder MMC + derived id", async () => {
+    const out = await runCrewCommand(repo, [
+      "add",
+      "--name=Jane Roe",
+      "--phone=+12165550142",
+      "--ratings=captain,mate",
+      "--email=Jane@Roe.com",
+    ]);
+    expect(out).toContain("crew-jane-roe");
+    const c = await repo.getCrewMember(asId<"CrewMemberId">("crew-jane-roe"));
+    expect(c).toMatchObject({
+      name: "Jane Roe",
+      phone: "+12165550142",
+      email: "jane@roe.com",
+      status: "active",
+      reliabilityScore: null,
+    });
+    expect(c!.ratings).toEqual([asId<"RoleTypeId">("role-captain"), asId<"RoleTypeId">("role-mate")]);
+    // The MMC credential (DEC-044) — without it the hire is eligible for nothing.
+    const creds = await repo.listCredentialsForCrew(asId<"CrewMemberId">("crew-jane-roe"));
+    expect(creds).toHaveLength(1);
+    expect(creds[0]).toMatchObject({ type: "MMC", expiry: "2099-12-31" });
+    expect(out).toContain("placeholder");
+  });
+
+  it("add: --mmc sets a real expiry; --id overrides the derived id; ratings dedupe", async () => {
+    const out = await runCrewCommand(repo, [
+      "add",
+      "--name=Sam Poe",
+      "--phone=+12165550143",
+      "--ratings=mate,mate",
+      "--id=crew-sammy",
+      "--mmc=2027-03-01",
+    ]);
+    expect(out).toContain("crew-sammy");
+    expect(out).toContain("valid to 2027-03-01");
+    const c = await repo.getCrewMember(asId<"CrewMemberId">("crew-sammy"));
+    expect(c!.ratings).toEqual([asId<"RoleTypeId">("role-mate")]); // deduped
+    expect("email" in c!).toBe(false); // no --email → omitted
+    const creds = await repo.listCredentialsForCrew(asId<"CrewMemberId">("crew-sammy"));
+    expect(creds[0]!.expiry).toBe("2027-03-01");
+  });
+
+  it("add validates required fields, E.164, roles, dates, and rejects a dup id/email", async () => {
+    await expect(runCrewCommand(repo, ["add", "--phone=+12165550142", "--ratings=mate"])).rejects.toThrow(
+      /--name.*required/i,
+    );
+    await expect(
+      runCrewCommand(repo, ["add", "--name=X", "--phone=216-555", "--ratings=mate"]),
+    ).rejects.toThrow(/E\.164/i);
+    await expect(
+      runCrewCommand(repo, ["add", "--name=X", "--phone=+12165550142", "--ratings=skipper"]),
+    ).rejects.toThrow(/isn't a known role.*captain, mate/i);
+    await expect(
+      runCrewCommand(repo, ["add", "--name=X", "--phone=+12165550142", "--ratings=mate", "--mmc=03/01/2027"]),
+    ).rejects.toThrow(/YYYY-MM-DD/i);
+    // dup id (crew-eric already exists)
+    await expect(
+      runCrewCommand(repo, ["add", "--name=Eric", "--phone=+12165550142", "--ratings=mate", "--id=crew-eric"]),
+    ).rejects.toThrow(/already exists/i);
+    // dup email
+    await repo.saveCrewMember(crew({ id: asId<"CrewMemberId">("crew-x"), email: "taken@x.com" }));
+    await expect(
+      runCrewCommand(repo, ["add", "--name=Y", "--phone=+12165550142", "--ratings=mate", "--email=taken@x.com"]),
+    ).rejects.toThrow(/already on crew-x/i);
+  });
+
+  it("disable → inactive, enable → active; unknown id errors", async () => {
+    expect(await runCrewCommand(repo, ["disable", "crew-eric"])).toMatch(/won't be asked/i);
+    expect((await repo.getCrewMember(asId<"CrewMemberId">("crew-eric")))!.status).toBe("inactive");
+    expect(await runCrewCommand(repo, ["enable", "crew-eric"])).toMatch(/ask pool/i);
+    expect((await repo.getCrewMember(asId<"CrewMemberId">("crew-eric")))!.status).toBe("active");
+    await expect(runCrewCommand(repo, ["disable", "crew-ghost"])).rejects.toThrow(/no crew member/i);
+    await expect(runCrewCommand(repo, ["enable"])).rejects.toThrow(/a crew id is required/i);
   });
 
   it("set --email normalizes (trim + lowercase) and persists", async () => {

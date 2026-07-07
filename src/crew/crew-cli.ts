@@ -1,18 +1,24 @@
 /**
- * Crew contact management — the break-glass lever for fixing a crew member's
- * phone/email on a live DB (Phase 10.5). A wrong phone means no SMS; a wrong
- * email means the login code never matches — the two most likely pilot fires,
- * and until this existed the only fix was raw SQL.
+ * Crew roster CLI — the operator's lever for the crew roster on a live DB, no
+ * admin UI (mirrors `db:admin`; DEC-094):
+ *   list           — the roster (active ● / inactive ○)
+ *   add            — a new hire (DEC-044 note below)
+ *   set            — fix contact fields (phone/email/name) in a pinch
+ *   enable/disable — flip active↔inactive (inactive = never asked)
  *
- * Scope is deliberately `list` + `set` (contact fields only). Crew are created
- * elsewhere (seed / import); this doesn't `add` or delete — it just corrects the
- * fields an operator needs to fix in a pinch. Setting a real crew email here is
- * also the prerequisite for `db:admin add --email=…` (DEC-092), which resolves
- * an admin against the crew roster.
+ * `add` must produce an **askable** crew member. MMC is the universal hard gate
+ * (`eligibility.ts` HARD_CREDENTIAL_TYPES), so a new hire with no MMC credential
+ * is eligible for nothing and silently never gets asked. BrewBoat keeps no real
+ * MMC dates yet (DEC-044), so `add` seeds the same far-future placeholder the
+ * roster seed does — replace with a real `--mmc` date once collected. A wrong
+ * phone means no SMS; a wrong email means the login code never matches — `set`
+ * fixes those (and a real crew email is the prerequisite for `db:admin add
+ * --email=…`, DEC-092).
  *
  * Framework-free (Repository port), so it's unit-testable on the in-memory
  * double and runs on Postgres unchanged — same shape as `admin-cli.ts`.
  */
+import type { CrewMember, RoleType } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import { normalizeEmail } from "../auth/login-code.js";
 import type { Repository } from "../ports/repository.js";
@@ -30,13 +36,39 @@ const flag = (args: string[], name: string): string | undefined =>
 // lever exists to fix, so reject it loudly rather than persist junk.
 const E164 = /^\+[1-9]\d{6,14}$/;
 const looksLikeEmail = (s: string): boolean => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s);
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const KNOWN_SET_FLAGS = ["email", "phone", "name"] as const;
+const KNOWN_ADD_FLAGS = ["name", "phone", "ratings", "email", "id", "mmc"] as const;
+
+/** DEC-044 far-future sentinel MMC — keeps the universal MMC gate open until real
+ *  credential tracking lands. Same value as `db/seed-pilot-crew.ts`. */
+const PLACEHOLDER_MMC_EXPIRY = "2099-12-31";
+
+/** `crew-<slug>` id from a name: "Jane Roe" → "crew-jane-roe". */
+const slugify = (s: string): string =>
+  s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+
+/** Resolve a `--ratings` token to a real RoleTypeId, by name ("captain"), id
+ *  ("role-captain"), or bare suffix. Throws with the valid set on no match. */
+const resolveRating = (roleTypes: RoleType[], token: string) => {
+  const t = token.toLowerCase();
+  const rt = roleTypes.find(
+    (r) => r.name.toLowerCase() === t || r.id.toLowerCase() === t || r.id.toLowerCase() === `role-${t}`,
+  );
+  if (!rt) {
+    const valid = roleTypes.map((r) => r.name).join(", ") || "(none — run db:seed:fleet first)";
+    throw new CrewCliError(`add: "${token}" isn't a known role. Valid: ${valid}.`);
+  }
+  return rt.id;
+};
 
 const USAGE =
   "Usage:\n" +
   "  db:crew list\n" +
+  '  db:crew add --name="<name>" --phone=<+E164> --ratings=<r1,r2> [--email=<addr>] [--id=<crewId>] [--mmc=<YYYY-MM-DD>]\n' +
   '  db:crew set <crewId> [--email=<addr>] [--phone=<+E164>] [--name="<name>"]\n' +
-  "  (empty --email= clears the email; phone and name cannot be blanked)";
+  "  db:crew disable <crewId>   |   db:crew enable <crewId>\n" +
+  "  (set: empty --email= clears the email; phone/name can't be blanked)";
 
 /** Execute one crew command. Returns the human-readable result line(s);
  *  throws {@link CrewCliError} on bad input or a missing target. */
@@ -56,6 +88,122 @@ export async function runCrewCommand(repo: Repository, args: string[]): Promise<
             `${c.phone.padEnd(15)} ${c.email ?? "(no email)"}`,
         )
         .join("\n");
+    }
+
+    case "add": {
+      const stray = args.slice(1).find((a) => !a.startsWith("--"));
+      if (stray)
+        throw new CrewCliError(`add: unexpected argument "${stray}" — add takes only --flags.\n${USAGE}`);
+      const bad = args
+        .slice(1)
+        .find((a) => !KNOWN_ADD_FLAGS.some((k) => a.startsWith(`--${k}=`)));
+      if (bad) throw new CrewCliError(`add: unrecognized flag "${bad}".\n${USAGE}`);
+
+      const name = (flag(args, "name") ?? "").trim();
+      if (!name) throw new CrewCliError(`add: --name="<full name>" is required.\n${USAGE}`);
+
+      const phone = (flag(args, "phone") ?? "").trim();
+      if (!E164.test(phone))
+        throw new CrewCliError(
+          `add: --phone must be E.164 (e.g. +15035550123) — got "${flag(args, "phone") ?? ""}".`,
+        );
+
+      const ratingsArg = flag(args, "ratings");
+      if (!ratingsArg)
+        throw new CrewCliError("add: --ratings=<role,role> is required (e.g. --ratings=captain,mate).");
+      const roleTypes = await repo.listAllRoleTypes();
+      const ratings = [
+        ...new Set(
+          ratingsArg
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .map((tok) => resolveRating(roleTypes, tok)),
+        ),
+      ];
+      if (ratings.length === 0)
+        throw new CrewCliError("add: --ratings needs at least one role (e.g. --ratings=mate).");
+
+      let normEmail: string | undefined;
+      const email = flag(args, "email");
+      if (email !== undefined && email !== "") {
+        const norm = normalizeEmail(email);
+        if (!looksLikeEmail(norm))
+          throw new CrewCliError(`add: "${email}" doesn't look like an email address.`);
+        const clash = (await repo.listCrewMembers()).find(
+          (o) => o.email && normalizeEmail(o.email) === norm,
+        );
+        if (clash)
+          throw new CrewCliError(
+            `add: email "${norm}" is already on ${clash.id} (${clash.name}). One email can't serve two crew.`,
+          );
+        normEmail = norm;
+      }
+
+      const idArg = flag(args, "id")?.trim();
+      const id = idArg && idArg.length > 0 ? idArg : `crew-${slugify(name)}`;
+      if (id === "crew-")
+        throw new CrewCliError(`add: couldn't derive an id from "${name}" — pass --id=<crewId>.`);
+      if (await repo.getCrewMember(asId<"CrewMemberId">(id)))
+        throw new CrewCliError(
+          `add: id "${id}" already exists. Pass a different --id, or use \`db:crew set\` to edit them.`,
+        );
+
+      const mmcArg = flag(args, "mmc")?.trim();
+      let mmcExpiry = PLACEHOLDER_MMC_EXPIRY;
+      if (mmcArg) {
+        if (!ISO_DATE.test(mmcArg) || Number.isNaN(Date.parse(mmcArg)))
+          throw new CrewCliError(`add: --mmc must be a date YYYY-MM-DD (got "${mmcArg}").`);
+        mmcExpiry = mmcArg;
+      }
+
+      const crewId = asId<"CrewMemberId">(id);
+      const member: CrewMember = {
+        id: crewId,
+        name,
+        phone,
+        ...(normEmail ? { email: normEmail } : {}),
+        ratings,
+        status: "active",
+        reliabilityScore: null,
+      };
+      await repo.saveCrewMember(member);
+      // MMC is the universal hard gate (DEC-044) — without it the new hire is
+      // eligible for nothing. Seed the placeholder (or a real --mmc date).
+      await repo.saveCredential({
+        id: asId<"CredentialId">(`cred-${id}-mmc`),
+        crewMemberId: crewId,
+        type: "MMC",
+        expiry: mmcExpiry,
+      });
+
+      const roleNames = ratings
+        .map((rid) => roleTypes.find((r) => r.id === rid)?.name ?? rid)
+        .join(", ");
+      const mmcNote = mmcArg
+        ? `MMC valid to ${mmcExpiry}`
+        : `MMC = placeholder (${PLACEHOLDER_MMC_EXPIRY}, DEC-044) — set a real --mmc date when you collect it`;
+      return (
+        `Added ${name} (${id}):\n` +
+        `  phone   ${phone}\n` +
+        `  email   ${normEmail ?? "(none)"}\n` +
+        `  ratings ${roleNames}\n` +
+        `  ${mmcNote}`
+      );
+    }
+
+    case "enable":
+    case "disable": {
+      const id = args[1];
+      if (!id || id.startsWith("--"))
+        throw new CrewCliError(`${cmd}: a crew id is required. Usage: db:crew ${cmd} <crewId>.`);
+      const status = cmd === "enable" ? "active" : "inactive";
+      const updated = await repo.setCrewStatus(asId<"CrewMemberId">(id), status);
+      if (!updated)
+        throw new CrewCliError(`${cmd}: no crew member with id "${id}". Run \`db:crew list\`.`);
+      return cmd === "enable"
+        ? `Enabled ${updated.name} (${updated.id}) — back in the ask pool.`
+        : `Disabled ${updated.name} (${updated.id}) — they won't be asked for shifts until you enable them again.`;
     }
 
     case "set": {

@@ -116,7 +116,7 @@ export default function CrewHelpPage() {
       <Block title="Pick up a shift">
         If there are open spots you’re cleared for, <b className="text-ink">Pick up
         a shift</b> lets you claim one yourself. This one’s different from answering
-        an ask: claiming an open shift locks you in for the <b>whole day</b>, not just
+        an ask: claiming an open shift puts you on for the <b>whole day</b>, not just
         a single trip.
       </Block>
 

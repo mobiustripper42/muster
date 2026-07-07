@@ -84,7 +84,7 @@ export default async function CrewOpenPage({
       <header className="flex flex-col gap-1">
         <h1 className="text-lg font-semibold text-ink">Pick up a shift</h1>
         <p className="text-sm text-muted">
-          Open spots you’re cleared for. Claiming locks you in for the whole day.
+          Open spots you’re cleared for. Claiming puts you on for the whole day.
         </p>
       </header>
 

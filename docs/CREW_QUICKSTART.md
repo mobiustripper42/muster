@@ -58,7 +58,7 @@ can count on get asked first.
   and who else is aboard.
 - **Messages** — notes from the office. A number means something unread.
 - **Pick up a shift** — if there are open spots you’re cleared for, claim one
-  yourself. Unlike answering an ask, claiming an open shift locks you in for the
+  yourself. Unlike answering an ask, claiming an open shift puts you on for the
   **whole day**, not just a single trip.
 
 ## Add Muster to your home screen

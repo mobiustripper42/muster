@@ -182,8 +182,8 @@ Open the printed URL in a browser → tap **Tap to sign in** → you land on **`
 session cookie (a 14-day cookie that silently renews on use — you sign in once, not per visit). The link
 is single-use and expires in 60 min (`--ttl-min=<n>` to change). `APP_BASE_URL` is **required** — the
 script refuses without it (a CLI has no Host header, and a link on the wrong origin is host-spoofable /
-unopenable). **Crew** need none of this: their links flow through the DEC-030 outbox relay
-(`--crew=<id>` exists as a manual escape hatch, not the normal path).
+unopenable). **Crew** need none of this: they sign in with an emailed code, or the link in an ask text
+that Muster sends them automatically (`--crew=<id>` exists as a manual escape hatch, not the normal path).
 
 ### 7b. Deprovision / manage admins — `db:admin` (per-person revoke — DEC-092)
 
@@ -285,7 +285,7 @@ levers take the direct/unpooled prod `DATABASE_URL` (same as `db:migrate`, step 
 | **Don't know the crew id** | `db:crew` | `db:crew -- list` — id · name · phone · email, sorted by name |
 | **Onboard a new hire** | `db:crew` | `db:crew -- add --name="<name>" --phone=+1XXXXXXXXXX --ratings=captain,mate [--email=<addr>]` — creates them **and** the DEC-044 placeholder MMC, so they're actually askable. `--id` overrides the derived `crew-<slug>`; `--mmc=YYYY-MM-DD` sets a real credential date |
 | **Take someone out of / back into rotation** | `db:crew` | `db:crew -- disable <id>` (won't be asked) · `db:crew -- enable <id>` (back in) |
-| **Runaway / broken sends (notification storm)** | engine pause | `/admin` → **Pause staffing** — stops *new* asks instantly, no redeploy. Clear leftover cards in `/admin/outbox` (dismiss). Resume when fixed |
+| **Runaway / broken sends (notification storm)** | engine pause | `/admin` → **Pause staffing** — stops *new* asks/texts instantly, no redeploy. Texts already sent are out (there's no queue to recall) — pause stops the bleeding, then fix and resume |
 | **Xola data stale or wrong** | re-import | `/admin/import` → re-pull (idempotent, keyed on reservation id — updates in place, never duplicates) |
 | **Bad seat / assignment on a shift** | cockpit | `/admin/shift/<id>` → override / remove seat (remove = no reliability penalty) · split / merge |
 | **An admin needs removing (or is locked out)** | `db:admin` | `db:admin -- revoke <handle>` / `reactivate <handle>` — immediate + scoped (§7b) |

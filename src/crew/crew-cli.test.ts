@@ -93,6 +93,22 @@ describe("db:crew CLI (Phase 10.5)", () => {
     ).rejects.toThrow(/already on crew-x/i);
   });
 
+  it("add rejects an invalid calendar date and derives colliding ids / empty slugs", async () => {
+    // A shape-valid but impossible date must not silently roll forward.
+    await expect(
+      runCrewCommand(repo, ["add", "--name=X", "--phone=+12165550142", "--ratings=mate", "--mmc=2027-04-31"]),
+    ).rejects.toThrow(/real date/i);
+    // Two hires with the same name collide on the derived crew-<slug> id.
+    await runCrewCommand(repo, ["add", "--name=Jane Roe", "--phone=+12165550142", "--ratings=mate"]);
+    await expect(
+      runCrewCommand(repo, ["add", "--name=Jane Roe", "--phone=+12165550143", "--ratings=mate"]),
+    ).rejects.toThrow(/id "crew-jane-roe" already exists/i);
+    // A name that slugifies to empty must demand an explicit --id.
+    await expect(
+      runCrewCommand(repo, ["add", "--name=!!!", "--phone=+12165550144", "--ratings=mate"]),
+    ).rejects.toThrow(/couldn't derive an id/i);
+  });
+
   it("disable → inactive, enable → active; unknown id errors", async () => {
     expect(await runCrewCommand(repo, ["disable", "crew-eric"])).toMatch(/won't be asked/i);
     expect((await repo.getCrewMember(asId<"CrewMemberId">("crew-eric")))!.status).toBe("inactive");
@@ -100,6 +116,10 @@ describe("db:crew CLI (Phase 10.5)", () => {
     expect((await repo.getCrewMember(asId<"CrewMemberId">("crew-eric")))!.status).toBe("active");
     await expect(runCrewCommand(repo, ["disable", "crew-ghost"])).rejects.toThrow(/no crew member/i);
     await expect(runCrewCommand(repo, ["enable"])).rejects.toThrow(/a crew id is required/i);
+    // a stray trailing arg is rejected, not silently ignored
+    await expect(runCrewCommand(repo, ["disable", "crew-eric", "--typo=1"])).rejects.toThrow(
+      /unexpected argument/i,
+    );
   });
 
   it("set --email normalizes (trim + lowercase) and persists", async () => {

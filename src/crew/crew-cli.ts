@@ -152,8 +152,11 @@ export async function runCrewCommand(repo: Repository, args: string[]): Promise<
       const mmcArg = flag(args, "mmc")?.trim();
       let mmcExpiry = PLACEHOLDER_MMC_EXPIRY;
       if (mmcArg) {
-        if (!ISO_DATE.test(mmcArg) || Number.isNaN(Date.parse(mmcArg)))
-          throw new CrewCliError(`add: --mmc must be a date YYYY-MM-DD (got "${mmcArg}").`);
+        // Strict: shape AND a real calendar date — 2027-04-31 must NOT roll to
+        // May 1 and get stored as the operator's typo'd string.
+        const d = new Date(`${mmcArg}T00:00:00Z`);
+        if (!ISO_DATE.test(mmcArg) || Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== mmcArg)
+          throw new CrewCliError(`add: --mmc must be a real date YYYY-MM-DD (got "${mmcArg}").`);
         mmcExpiry = mmcArg;
       }
 
@@ -167,10 +170,10 @@ export async function runCrewCommand(repo: Repository, args: string[]): Promise<
         status: "active",
         reliabilityScore: null,
       };
-      await repo.saveCrewMember(member);
-      // MMC is the universal hard gate (DEC-044) — without it the new hire is
-      // eligible for nothing. Seed the placeholder (or a real --mmc date).
-      await repo.saveCredential({
+      // Atomic: the crew record AND its MMC gate land together, or neither. MMC
+      // is the universal hard gate (DEC-044) — a member without it is eligible
+      // for nothing, and a half-write would strand an un-re-addable ghost.
+      await repo.addCrewMemberWithCredential(member, {
         id: asId<"CredentialId">(`cred-${id}-mmc`),
         crewMemberId: crewId,
         type: "MMC",
@@ -197,6 +200,12 @@ export async function runCrewCommand(repo: Repository, args: string[]): Promise<
       const id = args[1];
       if (!id || id.startsWith("--"))
         throw new CrewCliError(`${cmd}: a crew id is required. Usage: db:crew ${cmd} <crewId>.`);
+      // Reject a stray/mistyped trailing arg rather than silently ignore it
+      // (same principle as add/set — a typo mustn't read as success).
+      if (args.length > 2)
+        throw new CrewCliError(
+          `${cmd}: unexpected argument "${args[2]}". Usage: db:crew ${cmd} <crewId>.`,
+        );
       const status = cmd === "enable" ? "active" : "inactive";
       const updated = await repo.setCrewStatus(asId<"CrewMemberId">(id), status);
       if (!updated)

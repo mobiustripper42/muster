@@ -170,6 +170,11 @@ export class InMemoryRepository implements Repository {
     c.status = status;
     return clone(c);
   }
+  async addCrewMemberWithCredential(m: CrewMember, cred: Credential): Promise<void> {
+    // In-memory can't partially fail, but keep the both-or-neither contract.
+    this.#crew.set(m.id, clone(m));
+    this.#credentials.set(cred.id, clone(cred));
+  }
   async listCrewMembers(): Promise<CrewMember[]> {
     return [...this.#crew.values()].map(clone);
   }

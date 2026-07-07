@@ -566,11 +566,12 @@ function AskCard({ ask }: { ask: CrewAppView["asks"][number] }) {
           · {ask.vesselName} · {ask.roleName}.{" "}
           <b>In or out?</b>
         </div>
-        {/* First-timer orientation (10.6): the tap silently commits the day —
-            say so, quietly. A shift is the day's trips grouped, so In holds them
-            all. Muted, non-alarming (the anxiety-dashboard guard). */}
+        {/* First-timer orientation (10.6): name what the tap commits — this one
+            shift (NOT "the whole day" — that's the open-shift claim). Nudge
+            toward answering either way (silence is what hurts the score). Muted,
+            non-alarming (the anxiety-dashboard guard). */}
         <div className="mt-1 text-xs text-muted">
-          In = you’re on for the whole day. Out = you’re not.
+          In = you’re on for this shift. Out = you’re not — either way, please tap.
         </div>
       </div>
       {/* One form, two submit buttons — only the tapped button's response posts;

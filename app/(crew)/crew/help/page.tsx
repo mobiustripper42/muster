@@ -50,17 +50,42 @@ export default function CrewHelpPage() {
         An ask shows the day, time, boat, and role, then two buttons:
         <ul className="mt-1 ml-4 list-disc">
           <li>
-            <b className="text-ink">In</b> — you’re on for the <b>whole day</b>.
-            If the day has more than one trip, In takes them all.
+            <b className="text-ink">In</b> — you’re on for <b>that shift</b> (the one
+            on the card). Just that shift — not a standing commitment.
           </li>
           <li>
-            <b className="text-ink">Out</b> — you’re not available. No penalty,
-            no explanation needed.
+            <b className="text-ink">Out</b> — you’re not available for this one.
           </li>
         </ul>
         <span className="mt-1 block">
-          Answer when you can. If the seat fills before you tap, we’ll tell you —
-          nothing more needed.
+          If the seat fills before you tap, we’ll tell you — nothing more needed.
+        </span>
+      </Block>
+
+      <Block title="Why we ask you to answer — even Out">
+        Everyone has a quiet <b className="text-ink">reliability score</b>. It isn’t a
+        grade and it isn’t a gate on what you’re qualified for — the only thing it does
+        is set who gets asked <b>first</b>. Here’s the deal, and it’s meant to be fair:
+        <ul className="mt-1 ml-4 list-disc">
+          <li>
+            A quick <b className="text-ink">Out</b> costs you nothing — it’s a real
+            answer, and it frees Muster to ask the next person right away instead of
+            waiting on you.
+          </li>
+          <li>
+            The one thing that hurts is <b>silence</b> — an ask nobody answers is what
+            leaves a boat short at the last minute. So ignoring an ask is what pulls
+            your score down, not saying no.
+          </li>
+          <li>
+            Bailing on a shift you already took hurts by <i>how late</i> it is — days
+            ahead is cheap, an hour before is not, a no-show is the worst.
+          </li>
+        </ul>
+        <span className="mt-1 block">
+          Answer quickly either way and you drift <b>up</b> the order — you’ll see more
+          shifts and get first crack at them. That’s the whole point of the score: the
+          people the office can count on get asked first.
         </span>
       </Block>
 
@@ -77,8 +102,9 @@ export default function CrewHelpPage() {
 
       <Block title="Pick up a shift">
         If there are open spots you’re cleared for, <b className="text-ink">Pick up
-        a shift</b> lets you claim one yourself. Claiming locks you in for the
-        whole day, same as tapping In.
+        a shift</b> lets you claim one yourself. This one’s different from answering
+        an ask: claiming an open shift locks you in for the <b>whole day</b>, not just
+        a single trip.
       </Block>
 
       <Block title="Add Muster to your home screen">

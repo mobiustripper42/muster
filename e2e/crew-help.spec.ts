@@ -11,12 +11,12 @@ test.describe("crew onboarding — orientation", () => {
     await resetAndSeed("crew");
   });
 
-  test("the ask card states the In/Out consequence (In = the whole day)", async ({
+  test("the ask card states the In/Out consequence (In = this shift)", async ({
     page,
   }) => {
     await signInAsCrew(page, "crew-quint");
     await expect(page.getByText("In or out?")).toBeVisible();
-    await expect(page.getByText(/In = you.re on for the whole day/)).toBeVisible();
+    await expect(page.getByText(/In = you.re on for this shift/)).toBeVisible();
   });
 
   test('"How Muster works" on the crew home opens the help page', async ({ page }) => {

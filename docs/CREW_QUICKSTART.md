@@ -12,11 +12,17 @@ pasting into a welcome message. Operator onboarding steps live in
 Muster is how the office asks who’s working which trips. When there’s a shift for
 you, you get a text. No app to check, no schedule to refresh — it comes to you.
 
-## When you’ll hear from it
+## Signing in
 
-You’ll get a **text with a link** when there’s a trip you can crew. Tap the link
-to open your page. It signs you in on that phone and **stays signed in**, so next
-time you can just open Muster from your home screen.
+Two ways in:
+
+- **From an ask:** when there’s a trip for you, you get a text with a **link**. Tap
+  it — it opens the ask *and* signs you in, no code needed.
+- **Any other time:** open Muster and enter your **email**; we text you a **6-digit
+  code**. Type it in and you’re in.
+
+Either way you stay signed in for about two weeks, so most days you just open Muster
+from your home screen and it’s already you.
 
 ## Answering an ask
 

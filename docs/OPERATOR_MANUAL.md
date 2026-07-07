@@ -182,8 +182,11 @@ import the dev runs), then you set their contact and say hello:
    > Hi <NAME> — this is <COMPANY>'s crew scheduler, **Muster**. When there's a trip for you, you'll
    > get a text here; tap **In** or **Out**. Save this number. How it works: `https://<your-domain>/crew/help`
 
-3. **That's it.** Their real sign-in happens the first time you relay an ask (or you can hand them a
-   link now with `db:mint -- --crew=<id>`). The link signs them in and stays signed in.
+3. **How they sign in.** The normal front door is a **code**: they open the app, enter their email, and
+   get a 6-digit code to sign in (a sign-in lasts ~14 days). Two shortcuts skip the code — the **link in an
+   ask text** signs them in *and* opens the ask in one tap, and `db:mint -- --crew=<id>` mints a one-off
+   sign-in link you can hand someone who's stuck. So a new crew member's first sign-in is usually just
+   tapping their first ask; the code is how they get back in later.
 
 Point crew at **`docs/CREW_QUICKSTART.md`** (the same content as the in-app **How Muster works** page,
 `/crew/help`) — it's printable/pasteable.

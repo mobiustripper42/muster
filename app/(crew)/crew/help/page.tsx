@@ -40,10 +40,23 @@ export default function CrewHelpPage() {
         refresh.
       </Block>
 
-      <Block title="When we’ll text you">
-        You’ll get a text with a link when there’s a trip you can crew. Tap the
-        link to open your page. The link signs you in on that phone and stays
-        signed in — so next time you can just open Muster from your home screen.
+      <Block title="Signing in">
+        Two ways in:
+        <ul className="mt-1 ml-4 list-disc">
+          <li>
+            <b className="text-ink">From an ask</b> — when there’s a trip for you, you
+            get a text with a <b>link</b>. Tap it and it opens the ask <i>and</i> signs
+            you in, no code needed.
+          </li>
+          <li>
+            <b className="text-ink">Any other time</b> — open Muster and enter your
+            <b> email</b>; we text you a <b>6-digit code</b>. Type it in and you’re in.
+          </li>
+        </ul>
+        <span className="mt-1 block">
+          Either way you stay signed in for about two weeks, so most days you just open
+          Muster from your home screen and it’s already you.
+        </span>
       </Block>
 
       <Block title="Answering an ask">

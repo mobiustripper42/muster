@@ -304,6 +304,24 @@ export function runRepositoryContract(
       );
     });
 
+    it("updateCrewContact: touches only passed columns; leaves score/status/ratings (DEC-094)", async () => {
+      await repo.saveCrewMember(
+        crew({ email: "old@x.io", reliabilityScore: 7, manualBoost: 3, status: "active" }),
+      );
+      // Fix only the phone — the engine-owned fields must survive (the lost-update
+      // the whole-row read-modify-write would have caused).
+      const updated = await repo.updateCrewContact(CREW, { phone: "+15035550199" });
+      expect(updated).toMatchObject({ phone: "+15035550199", reliabilityScore: 7, manualBoost: 3 });
+      const got = await repo.getCrewMember(CREW);
+      expect(got).toEqual(
+        crew({ email: "old@x.io", phone: "+15035550199", reliabilityScore: 7, manualBoost: 3 }),
+      );
+      // email: null clears; an unknown id returns null.
+      await repo.updateCrewContact(CREW, { email: null });
+      expect("email" in (await repo.getCrewMember(CREW))!).toBe(false);
+      expect(await repo.updateCrewContact(CREW_B, { name: "x" })).toBeNull();
+    });
+
     it("credentials: save/get/listForCrew/remove", async () => {
       await repo.saveCredential(credential());
       expect(await repo.getCredential(asId<"CredentialId">("cred-1"))).toEqual(credential());

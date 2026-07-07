@@ -147,6 +147,22 @@ export class InMemoryRepository implements Repository {
     const c = this.#crew.get(id);
     return c ? clone(c) : null;
   }
+  async updateCrewContact(
+    id: CrewMemberId,
+    fields: { name?: string; phone?: string; email?: string | null },
+  ): Promise<CrewMember | null> {
+    const c = this.#crew.get(id);
+    if (!c) return null;
+    // Mutate only the passed fields — mirrors the targeted UPDATE (DEC-094): a
+    // whole-entity overwrite would drop concurrent reliability/status changes.
+    if (fields.name !== undefined) c.name = fields.name;
+    if (fields.phone !== undefined) c.phone = fields.phone;
+    if (fields.email !== undefined) {
+      if (fields.email === null) delete c.email;
+      else c.email = fields.email;
+    }
+    return clone(c);
+  }
   async listCrewMembers(): Promise<CrewMember[]> {
     return [...this.#crew.values()].map(clone);
   }

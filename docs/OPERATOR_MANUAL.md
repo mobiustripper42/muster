@@ -36,8 +36,8 @@ At-Risk board shows you *only* the trips the automation genuinely could not crew
   it's *being handled*. (See ["A shift vanished"](#a-shift-vanished-from-the-board--where-did-it-go)
   below.)
 - **You get summoned, you don't subscribe.** The right amount of time to spend staring at Muster is
-  none, until it pings you. When a trip truly needs a human, it lands on the board with the full
-  story of what was already tried.
+  none, until it pings you. When a trip truly needs a human, it lands on the board **and texts you** —
+  so you don't have to be watching — with the full story of what was already tried.
 
 The failure mode this design fights is the *anxiety dashboard* — the wall of yellow that makes you
 feel you must babysit it. Muster deliberately refuses to be that. Trust the empty board.
@@ -55,7 +55,7 @@ flowchart TD
   Q -->|"yes"| C["Crewed ✓<br/>you get an FYI, not a task"]
   Q -->|"Tier 1 stalls"| T2["Tier 2: widen the pool,<br/>direct-nudge top people"]
   T2 -->|"fills"| C
-  T2 -->|"exhausted, trip closing in"| AR["At-Risk<br/>lands on your board"]
+  T2 -->|"exhausted, trip closing in"| AR["At-Risk<br/>lands on your board<br/>+ texts you"]
   AR --> YOU["You: nudge / assign /<br/>reschedule / cancel"]
 ```
 
@@ -72,7 +72,7 @@ Read top to bottom:
    This runs with no involvement from you.
 4. **Crewed, or At-Risk.** If every required seat gets confirmed, the shift goes **Crewed** (green;
    you get an FYI at most). If the automation runs out of people to ask and the trip is closing in,
-   the shift goes **At-Risk** — and *that* is when it lands on your board.
+   the shift goes **At-Risk** — and *that* is when it lands on your board and **texts you**.
 
 The last-minute booking just falls out of this: a customer books Saturday on Friday night, it's
 already inside the staffing horizon, so the shift is born straight into **Filling**, Tier 1 fires,
@@ -83,14 +83,18 @@ for it — it's the same organs running in sequence.
 
 ## Your surfaces
 
-In the pilot you have four surfaces — three off the `/admin` hub (board, outbox, import), plus a
-shift's **cockpit** you open by drilling into a board row. You sign in once with the magic link you
-were sent (in dev: open `/crew/dev-link?admin=spink` and tap the green button). You do **not** need a
+You have three surfaces — the **At-Risk board** and **Import** off the `/admin` hub, plus a shift's
+**cockpit** you open by drilling into a board row. You sign in once and stay signed in (~14 days) — no
 password.
+
+**Muster texts crew automatically.** When the engine fires an ask (or a "you're on/off" notice, or a
+message), it goes out as a real SMS — there's no outbox to work, no relay step, nothing for you to
+send. Your job is the board, not the sending.
 
 ### 1. The At-Risk board — `/admin/at-risk`
 
-Your worklist. **The only trips here are ones the automation couldn't close**, most-urgent first.
+Your worklist. **The only trips here are ones the automation couldn't close**, most-urgent first. When
+a shift lands here, Muster also **texts every admin** — so you find out without watching the board.
 
 - **Empty** → the calm "Nothing needs you right now" card. That's the win state. Stop here.
 - **A row** carries everything you need to act without opening it:
@@ -128,25 +132,7 @@ controls on demand."
   toward trouble but aren't on the board yet. This is intentionally not on the board — it's there
   when you go looking, never glowing at you.
 
-### 3. The Outbox — `/admin/outbox`
-
-**The pilot's send mechanism.** Muster doesn't text crew automatically yet (that's a later swap).
-Instead, when the engine fires an ask, it lands here as a card, and **you send the text from your own
-phone** with one tap:
-
-- Each card shows who to ask, for which trip, and why (1st ask, 2nd ask, who declined).
-- Tap **Send** → on a phone, your Messages app opens pre-filled with the ask and a magic link for the
-  crew member. (On a desktop browser the link may do nothing — that's the computer not having
-  Messages, not a bug.) The button flips to **Resend / awaiting reply**.
-- Cards addressed to **you** (a *you* pill) have inline **In / Out** buttons — no text to send,
-  you're answering your own ask.
-- **Dismiss** (the small link under a card) clears it from your worklist without sending — for an ask
-  you've handled off-system or don't want to relay. The card goes, but the **ask stays live**: it
-  times out on its own (~2h), and the engine may surface a fresh card for the *next* crew member in
-  the meantime. So a new card after a dismiss isn't a failure — it's the engine moving on.
-- Best done on your phone. The header counts how many asks still need you.
-
-### 4. Import — `/admin/import`
+### 3. Import — `/admin/import`
 
 Load the week's Xola reservations: upload the export, preview and validate it, import. That builds the
 events and shifts the engine then works. This is how real data gets in for the crew weekend.
@@ -159,14 +145,14 @@ events and shifts the engine then works. This is how real data gets in for the c
 
 1. **Import** the week's Xola reservations (`/admin/import`).
 2. **Let it run.** As each shift crosses its staffing horizon, the engine asks the eligible crew in
-   reliability order. In the pilot, those asks pile up in the **Outbox** — work through it, tapping
-   **Send** on each, so the texts actually go out from your phone.
-3. **Glance at the board** when you have a minute. Most of the time it's empty or nearly so — that's
-   the engine closing trips without you.
+   reliability order and **texts them automatically** — no relay step, nothing for you to send.
+3. **Wait for a text.** You don't need to watch the board — Muster texts you when a shift needs a
+   human. Glance at it if you like; most of the time it's empty, which is the engine closing trips
+   without you.
 4. **Act only on what lands.** A trip on the board is one the automation couldn't close. Open it,
    read the "System tried" trail, and lean on someone (or handle it by phone).
 
-That's the whole job: feed it the week, relay the asks, triage the few it can't close.
+That's the whole job: feed it the week, and triage the few it can't close.
 
 ### Onboard a new crew member
 
@@ -217,24 +203,27 @@ that ask also fails — or as soon as the trip crosses inside the ~2-day deadlin
 
 ### Someone bailed
 
-What happens depends on *how late* the bail is — that's the whole signal:
+A bail always does the same first thing: the seat **reopens and the engine re-asks automatically**,
+working back down the tiers to refill it. What happens *next* depends on whether it can:
 
-- **Early bail (time to refill):** the seat reopens and the engine **re-asks automatically**. The
-  shift drops back to **Filling** and works itself. You may never see it. Nothing for you to do.
-- **Late bail (no time, or nobody left to ask):** the shift goes **At-Risk** and lands on your board
-  with a red *Lacking crew · late bail* pill, pinned to the top. This is the 11pm-bail case — open
-  it, lean on whoever's left (**↗ Nudge**), or handle by phone.
+- **It refills** — there's still time before the trip and someone eligible left to ask → the shift
+  quietly works itself back to **Crewed**. You may never see it. Nothing for you to do.
+- **It can't** — out of time before the trip, *or* nobody eligible left → *then* it lands on your
+  board **At-Risk** and texts you, with a red *Lacking crew · late bail* pill pinned to the top. This
+  is the 11pm-bail case — lean on whoever's left (**↗ Nudge**), or handle by phone.
 
-Either way the bail is logged against that crew member's reliability (scaled by lateness), so it
-quietly affects where they sit in the ask queue next time. You don't have to do anything to "punish"
-a bail — the system just stops compensating for it.
+So a bail only reaches you if the engine genuinely couldn't cover it — not just because it was late.
+The bail's *lateness* drives the reliability penalty on the person who bailed (a cancel a week out is
+cheap; an 11pm bail is expensive), which quietly affects where they sit in the ask queue next time —
+but it doesn't decide whether the shift hits your board. You never have to "punish" a bail; the system
+just stops compensating for it.
 
 ### A late booking landed on a shift I'd already settled
 
-If a booking lands or changes *after* a shift was reviewed/locked, the shift's cockpit shows an amber
-notice — *"A booking changed since this shift was last reviewed — take another look."* — a heads-up
-that the picture moved under you (a guest was added, a trip shifted). Re-open it and check. (In the pilot this is a derived flag — there's no
-manual "lock" button wired into the cockpit yet; the notice is the signal to re-check.)
+If a booking lands or changes *after* you've last looked at a shift, its cockpit shows an amber notice
+— *"A booking changed since this shift was last reviewed — take another look."* — a heads-up that the
+picture moved under you (a guest was added, a trip shifted). Re-open it and check. It's just a signal
+to re-check; nothing is frozen or locked.
 
 ### Nobody's answering a shift
 
@@ -275,10 +264,9 @@ make it honest:
 
 **Your thumb on the scale:** Muster supports a per-person **boost** or **floor** ("this veteran never
 ranks below X") — how you carry judgment a flat score can't (it would forget a four-year veteran
-after a slow couple of months). *In the pilot this is set on the crew record, so the knob arrives
-with the roster screen in a later phase (see [what's not in the pilot yet](#whats-not-in-the-pilot-yet)).*
-Crew see *their own* standing (plain and individual — "answered fast · showed 8/8 · one late bail"),
-never a leaderboard.
+after a slow couple of months). *This is set on the crew record today; a screen to edit it comes
+later (see [what's not built yet](#whats-not-built-yet)).* Crew see *their own* standing (plain and
+individual — "answered fast · showed 8/8 · one late bail"), never a leaderboard.
 
 ### The tiers (what runs without you, and when you're pulled in)
 
@@ -319,8 +307,8 @@ stateDiagram-v2
   Pending --> Filling: staffing horizon reached
   Filling --> Crewed: all required seats confirmed
   Filling --> AtRisk: automation exhausted, still short
-  Crewed --> Filling: confirmed crew bails, time to refill
-  Crewed --> AtRisk: late bail, no time or pool
+  Crewed --> Filling: bail — re-asks, refilling
+  Crewed --> AtRisk: bail can't refill (no time or pool)
   AtRisk --> Crewed: you lean, a seat fills
   AtRisk --> Cancelled: pull the plug
   Crewed --> Completed: trip ran
@@ -331,8 +319,9 @@ stateDiagram-v2
 - **Pending** — booked, too early to staff. **Filling** — being worked (Tiers 1–2), whether zero or
   some seats are filled. **Crewed** — all required seats confirmed (green). **At-Risk** — human-only;
   on your board. **Completed** — trip ran; feeds reliability. **Cancelled** — killed.
-- A "locked" Crewed shift is never *truly* locked until the trip runs — a late bail can drop it to
-  At-Risk. That's the whole reason the board exists.
+- A **Crewed** shift isn't final until the trip runs — a bail can drop it back to **Filling** (it
+  refills itself) or, if it can't refill, to **At-Risk** (it needs you). That's the whole reason the
+  board exists.
 
 ### Seat
 
@@ -342,14 +331,14 @@ stateDiagram-v2
   Open --> Asked: ask is out
   Asked --> Claimed: someone accepted
   Asked --> Open: timed out or all declined
-  Claimed --> Confirmed: locked to a person
+  Claimed --> Confirmed: held by a person
   Claimed --> Open: claim rescinded
   Confirmed --> Bailed: confirmed person backs out
   Bailed --> Open: re-opens and re-asks
 ```
 
 - **Open** → eligible pool computed. **Asked** → ask is out, awaiting reply. **Claimed** → someone
-  accepted (tentative). **Confirmed** → locked to a person. **Bailed** → a confirmed person backed
+  accepted (tentative). **Confirmed** → held by a person. **Bailed** → a confirmed person backed
   out; the seat reopens and re-asks.
 
 ---
@@ -374,19 +363,18 @@ stateDiagram-v2
 
 ---
 
-## What's not in the pilot yet
+## What's not built yet
 
 So nothing surprises you — these are deliberate omissions, not missing pieces:
 
-- **No roster / event-admin / shift-builder screens.** Crew, events, and shifts come in via
-  **Import** (or dev seeds). Editing them through a UI lands in a later phase.
-- **No automatic texting.** Muster does not send crew texts on its own yet. Asks land in the
-  **Outbox** and you relay them from your phone (the pilot channel). Twilio auto-send is a later swap.
+- **No roster / event-admin / shift-builder screens.** Crew are managed with the **`db:crew` CLI**
+  (add a hire, fix contact, enable/disable — see `DEPLOY.md`); events and shifts come in via
+  **Import**. Editing them through a UI lands in a later phase.
 - **No reschedule / cancel cascades.** Those buttons are disabled. Handle reschedule and cancel **by
   phone** with the customer for now (they're parked with payments).
 - **No customer-facing anything.** No guest portal, no payments, no booking feed — Xola still owns
   the customer side. Muster is the crew half only.
-- **One operator.** The pilot assumes you're the only operator. Multi-operator handling comes later.
+- **No per-admin alert subscriptions.** Multiple admins are supported (each added via `db:admin`), and
+  At-Risk alerts text them all; letting each admin choose which alerts they get comes later.
 
-This is a **hosted pilot, not production.** It's enough to run a real weekend — which is exactly its
-job.
+This runs a real weekend, in production. That's the job.

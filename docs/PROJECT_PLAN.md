@@ -431,7 +431,11 @@ FUTURE_IDEAS.
 
 ---
 
-## Phase 10: Production Ops & Onboarding
+## Phase 10: Production Ops & Onboarding — ✅ COMPLETE 2026-07-08 (shipped at **v1.0.0**)
+
+> **Closed at Phase 10 retro (2026-07-08):** 24/24 pts, 2-day burst, 0 estimate drift. Shipped to
+> production at **v1.0.0**. Left open as post-1.0 backlog: #301, #293, #285, #247. Full write-up in
+> [`RETROSPECTIVES.md`](RETROSPECTIVES.md).
 
 Everything between "the build is done" and "real crews are on it." Rollout safety, the multi-admin auth
 gap, a **full security audit**, support, crew onboarding, and end-user docs. Outline captured

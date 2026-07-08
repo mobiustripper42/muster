@@ -3,6 +3,51 @@
 Phase-end retrospectives. Written by `/retro` at each phase boundary — velocity, scope changes,
 process notes, forecast update. One entry per phase, newest at the top.
 
+## Phase 10 — 2026-07-08 — Production Ops & Onboarding → **v1.0.0**
+
+**Points:** 24 / 24 (100%) — 10.1–10.7 (#282/#283/#284 @5, #286/#287/#288 @3)
+**Span:** 2 days (2026-07-06 → 2026-07-08)
+**Throughput:** burst — 24 pts in 2 days (sub-week; no per-week rate quoted)
+**Estimate calibration:** 0 tasks re-estimated, net drift 0 pts — every task held its points
+**Sessions:** 2 (S39, S40)   **PRs merged:** ~13 (#289–#309, phase-10 slice)
+**Issues:** 15 phase-labelled — 11 closed, 4 left open as post-1.0 backlog
+**Closed at:** **v1.0.0** — single **major** bump (production launch; burst phase, following the Phase-9 single-bump precedent over ~13 per-PR patches)
+
+### Phase throughput line
+| Phase | Date | Points | Span(d) | Throughput | Re-est'd | Net drift | Sessions | PRs |
+|-------|------|--------|---------|------------|----------|-----------|----------|-----|
+| 10 | 2026-07-08 | 24 | 2 | burst (24 pts in 2d) | 0 | 0 | 2 | ~13 |
+
+### What worked
+- Fine — no specific callout.
+
+### What didn't
+- **Corrections didn't always land.** The operator had to restate settled decisions more than once —
+  "this is go-time, not a pilot" (pilot framing kept resurfacing) and "no xola-pull cron in production"
+  (re-raised as a "gap" after it was decided). His nuance: he'd rather I double-check than blindly
+  accept — the verification has caught real things — but the *same* item boomeranging after a clear
+  call is the problem. Fix captured in memory: register a stated decision as settled, verify once, never
+  re-litigate.
+
+### Changes for next phase
+- **Post-production, be more careful with updates.** Real crews depend on it now — higher caution on any
+  change/deploy: verify end-to-end, prefer small reversible changes, confirm before touching the live
+  prod path.
+
+### Scope changes
+- **Reshaped 10.4/10.5:** "support channel" (10.5) became the operator break-glass kit (`db:crew` +
+  runbook); 10.4's rollback ceremony was cut as meaningless pre-data (rollback = redeploy a previous
+  build). #285 (rollout runbook) left open, largely moot at a single-operator launch.
+- **Added mid-phase, shipped:** DEC-094 `db:crew` (add/set/enable/disable), DEC-095 operator At-Risk SMS
+  alert (completing DEC-026's deferred delivery), the go-time OM/docs rewrite (retired the Outbox, killed
+  "locked", fixed the bail model).
+- **Left open (post-1.0 backlog):** #301 (low hardening), #293 (retire the operator singleton — helper
+  already seeded by the alert fan-out), #285 (rollout runbook), #247 (civil-hours for notices/rings —
+  newly relevant with Twilio live).
+- **Decisions filed + closed:** #297 (login-code race — fixed), #298 (DM disclosure — deferred to first
+  use), #299 (guest phone to crew — accepted), #300 (no crew-session revocation — `db:crew disable`
+  covers it), #302 (no prod import cron — by design).
+
 ## Phase 9 — 2026-07-06
 
 **Points:** 55 / 55 (100%)

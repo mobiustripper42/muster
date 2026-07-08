@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.0] - 2026-07-08 — Phase 10: Production launch 🚀
+- **Production launch.** 24 pts across 10.1–10.7 (2 sessions, burst phase); see docs/RETROSPECTIVES.md
+- 10.1 migration↔deploy safety (#282) · 10.2 admin entity + per-person revoke (#283, DEC-092) · 10.3 security audit (#284, docs/SECURITY_AUDIT.md) · 10.5 `db:crew` operator break-glass CLI + runbook (DEC-094) · 10.6 crew onboarding + installable PWA · 10.7 operator manual + crew quick-start (#68)
+- DEC-094 `db:crew` (add/set/enable/disable, atomic crew+MMC); DEC-095 operator At-Risk SMS alert to all active admins (completes DEC-026's deferred delivery); go-time docs rewrite — retired the operator Outbox (Twilio auto-sends), removed "locked", fixed the bail model
+- PRs #289–#309; single major bump (burst phase, per the Phase-9 precedent)
+
 ## [0.11.0] - 2026-07-06 — Phase 9: Finish the production build
 - 55 pts across 9.0–9.12, burst phase (~55 pts in ~4 days, 2026-07-01 → 07-06); see docs/RETROSPECTIVES.md
 - Two-pane responsive Shift Builder (DEC-085) + board bundle: trip-line, seat pips, vessel/role palette (DEC-086); Twilio SMS adapter — one class, three relay ports (DEC-MSG-1); civil send window (DEC-088); crew app design reconciliation + /crew/open polish; click/loading-feedback system (<AppLink>/<SubmitButton>/<GetFormSubmit> + ESLint enforcement, DEC-090); drop-shift confirm gate; SMS on every add/remove (split/merge relay); crew navigation is hub-and-spoke (DEC-091) + admin Messages link

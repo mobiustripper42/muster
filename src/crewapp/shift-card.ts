@@ -10,7 +10,7 @@
  */
 
 import type { CrewMemberId, ShiftId } from "../domain/ids.js";
-import type { Event } from "../domain/entities.js";
+import type { Event, Shift } from "../domain/entities.js";
 import type { Repository } from "../ports/repository.js";
 import {
   bailLatenessMs,
@@ -164,28 +164,28 @@ function roleResolver(repo: Repository): (roleId: string) => Promise<string> {
 }
 
 /**
- * Build the shift card for `viewerCrewId`. Returns null if the shift doesn't
- * exist OR the viewer isn't crewing it (a crew member only sees cards for shifts
- * they're assigned to — not an open ask, not someone else's shift).
+ * The viewer-independent manifest of a shift — every event's booked guests, pax,
+ * and dock, soonest departure first — plus the raw event rows callers need for
+ * schedule math. Shared by the crew shift card (which layers the viewer's seat,
+ * co-crew, and bail state on top) and the operator cockpit (#319), so both read
+ * ONE assembly, never a parallel query. Booked reservations only — a cancelled
+ * booking isn't aboard (DEC-012 no-waiver already encoded in `ManifestGuest`).
  */
-export async function buildShiftCard(
+export interface ShiftManifestView {
+  /** Per-event manifests, soonest departure first. */
+  events: EventManifestView[];
+  /** Total booked pax across all the shift's events. */
+  paxTotal: number;
+  /** The one dock when every event shares it; else absent (per-event docks stand). */
+  sharedDock?: string;
+  /** Underlying event rows (scheduled + cancelled) — for callers doing window/bail math. */
+  rawEvents: Event[];
+}
+
+export async function buildShiftManifest(
   repo: Repository,
-  shiftId: ShiftId,
-  viewerCrewId: CrewMemberId,
-  now: Date,
-): Promise<ShiftCardView | null> {
-  const shift = await repo.getShift(shiftId);
-  if (!shift) return null;
-
-  const seats = await repo.listSeatsForShift(shiftId);
-  const mySeat = seats.find(
-    (s) => s.assignedCrewMemberId === viewerCrewId && s.state === "Confirmed",
-  );
-  if (!mySeat) return null; // viewer isn't (confirmed) crew on this shift
-
-  const vessel = await repo.getVessel(shift.vesselId);
-  const vesselName = vessel?.name ?? shift.vesselId;
-
+  shift: Shift,
+): Promise<ShiftManifestView> {
   // Per-event manifest, booked guests only (a cancelled booking isn't aboard).
   const events: EventManifestView[] = [];
   const rawEvents: Event[] = [];
@@ -211,6 +211,51 @@ export async function buildShiftCard(
   }
   events.sort((a, b) => a.departureTime.localeCompare(b.departureTime));
 
+  // One pin when every event shares a dock; otherwise the per-event docks stand.
+  const docks = events.map((e) => e.dock);
+  const sharedDock =
+    events.length > 0 && docks.every((d) => d !== undefined && d === docks[0])
+      ? docks[0]
+      : undefined;
+
+  return {
+    events,
+    paxTotal: events.reduce((sum, e) => sum + e.pax, 0),
+    ...(sharedDock !== undefined ? { sharedDock } : {}),
+    rawEvents,
+  };
+}
+
+/**
+ * Build the shift card for `viewerCrewId`. Returns null if the shift doesn't
+ * exist OR the viewer isn't crewing it (a crew member only sees cards for shifts
+ * they're assigned to — not an open ask, not someone else's shift).
+ */
+export async function buildShiftCard(
+  repo: Repository,
+  shiftId: ShiftId,
+  viewerCrewId: CrewMemberId,
+  now: Date,
+): Promise<ShiftCardView | null> {
+  const shift = await repo.getShift(shiftId);
+  if (!shift) return null;
+
+  const seats = await repo.listSeatsForShift(shiftId);
+  const mySeat = seats.find(
+    (s) => s.assignedCrewMemberId === viewerCrewId && s.state === "Confirmed",
+  );
+  if (!mySeat) return null; // viewer isn't (confirmed) crew on this shift
+
+  const vessel = await repo.getVessel(shift.vesselId);
+  const vesselName = vessel?.name ?? shift.vesselId;
+
+  // Per-event manifest + pax + shared dock — the viewer-independent assembly,
+  // shared with the operator cockpit (#319). `rawEvents` feed the window/bail math.
+  const { events, paxTotal, sharedDock, rawEvents } = await buildShiftManifest(
+    repo,
+    shift,
+  );
+
   // Window math uses SCHEDULED departures only — a cancelled trip moves neither
   // the call time nor the shift end (DEC-041). One computation (`committedWindow`)
   // shared with the ask card and the /crew/open claimable view, so all three agree
@@ -223,13 +268,6 @@ export async function buildShiftCard(
   // notice shortfall is non-zero (#7). Same instant the score penalizes; the
   // copy uses it only to pick graceful vs firm wording, never to block.
   const bailLate = bailLatenessMs(earliestScheduledStart(rawEvents, TENANT_TIMEZONE), now) > 0;
-
-  // One pin when every event shares a dock; otherwise the per-event docks stand.
-  const docks = events.map((e) => e.dock);
-  const sharedDock =
-    events.length > 0 && docks.every((d) => d !== undefined && d === docks[0])
-      ? docks[0]
-      : undefined;
 
   // Co-crew: other confirmed, assigned seats on this shift, with contact + role.
   // One role resolver shared with viewerRole below — the seat ids repeat, so the
@@ -255,7 +293,7 @@ export async function buildShiftCard(
     date: shift.date,
     ...(callTime !== undefined ? { callTime } : {}),
     ...(shiftEndTime !== undefined ? { shiftEndTime } : {}),
-    paxTotal: events.reduce((sum, e) => sum + e.pax, 0),
+    paxTotal,
     ...(sharedDock !== undefined ? { sharedDock } : {}),
     events,
     coCrew,

@@ -16,8 +16,10 @@ import { getRepo } from "../../app/lib/repo";
 import { TENANT_ID } from "../../app/lib/tenant";
 import { Notice } from "../ui/notice";
 import { Badge, fmtDate, toSeatVM, ttLabel } from "./cockpit-bits";
+import { buildShiftManifest, type ShiftManifestView } from "@core/crewapp/shift-card.js";
 import { ManningSection, type OverrideSeatVM } from "./manning-section";
 import { SeatCard } from "./seat-card";
+import { ShiftManifest } from "./shift-manifest";
 import { WarmingPanel, type WarmingRowVM } from "./warming-panel";
 
 /**
@@ -107,6 +109,7 @@ export async function ShiftCockpit({
   let overrideSeats: OverrideSeatVM[] = [];
   let roleOptions: { id: string; name: string }[] = [];
   let traineeOptions: { id: string; name: string }[] = [];
+  let manifest: ShiftManifestView | null = null;
   const warmingOpen = sp.warming === "1";
   try {
     view = await buildAssignmentView(repo, shiftId, now);
@@ -114,6 +117,11 @@ export async function ShiftCockpit({
       return <Notice>No such shift. It may have been removed.</Notice>;
     }
     resolved = await resolveShiftStateOnRead(repo, shiftId, now);
+    // The per-event guest manifest (#319) — same assembly the crew card reads
+    // (`buildShiftManifest`), so the operator sees who's booked without switching
+    // to the crew view. Booked guests only; DEC-012 no-waiver.
+    const shiftRow = await repo.getShift(shiftId);
+    manifest = shiftRow ? await buildShiftManifest(repo, shiftRow) : null;
     const crewMembers = await repo.listCrewMembers();
     crew = new Map(
       crewMembers.map((c) => [
@@ -394,6 +402,10 @@ export async function ShiftCockpit({
           </p>
         )}
       </div>
+
+      {manifest && manifest.events.length > 0 && (
+        <ShiftManifest events={manifest.events} sharedDock={manifest.sharedDock} />
+      )}
 
       <ManningSection
         shiftId={String(shiftId)}

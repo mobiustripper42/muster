@@ -63,7 +63,9 @@ export async function forwardAsks(
       // The relay text the operator forwards. The magic link is NOT here — the
       // web-link adapter mints + appends it at enqueue (DEC-030); a future
       // Twilio adapter does its own link handling the same way.
-      const body = `Muster: ${fmtDate(shift.date)} · ${vessel?.name ?? shift.vesselId} · ${role?.name ?? seat.role} — in or out?`;
+      // GSM-7 only (no · or — ) so the SMS stays a 1-segment 160-char message,
+      // not a 70-char UCS-2 one that costs 2 segments for zero value.
+      const body = `Muster: ${fmtDate(shift.date)} - ${vessel?.name ?? shift.vesselId} - ${role?.name ?? seat.role}. In or out?`;
 
       await channel.send({
         to: { crewMemberId: crew.id, phone: crew.phone },

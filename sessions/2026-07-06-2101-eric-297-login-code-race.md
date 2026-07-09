@@ -4,10 +4,10 @@ dev: eric
 slug: 297-login-code-race
 branch: task/297-login-code-race
 started: 2026-07-06T21:01:31Z
-ended:
-points:
-pr_numbers: [305, 306]
-status: open
+ended: 2026-07-09T16:34:39Z
+points: 6
+pr_numbers: [305, 306, 307, 308, 309, 311, 314]
+status: closed
 transcript: /home/eric/.claude/projects/-home-eric-muster/ad6dae92-c42a-4bbd-a9d3-2d195b6d80fc.jsonl
 ---
 
@@ -45,5 +45,12 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/ad6dae92-c42a-4bbd-a9d
 **Opened at:** 2026-07-06T23:47:00Z
 
 **Next Steps:**
+- **Backlog issues (all filed):** #316 (At-Risk board N+1 — 10s→sub-second; fix = hoist crew+reliabilityEvents out of the per-shift loop, diagnosis in issue), #317 (Cohort subject prefix + Cohort button on /crew/shift/[id]), #318 (all-staff broadcast misses recently-added crew + double-rings — stale membership), #293 (retire OPERATOR_CREW_MEMBER_ID — helper `listActiveAdminRecipients` already seeded), #301/#247/#189 (hardening / civil-hours / login throttle).
+- **Horizon lever:** set `STAFFING_HORIZON_LEAD_DAYS` in Vercel + redeploy. Analysis favored **~12.1** (asks land Mon/Tue off-days, ~12d notice); operator to decide. Research prompt written for the muster chat.
+- **Roster:** add remaining admins (`db:admin add` brendan/drew), enable inactive crew as they come online. Melissa Montague still ○.
 
 **Context:**
+- **This was a marathon (2026-07-06→07-09) that shipped FAR beyond the 2 logged /kill-this tasks** — the rest were manual PRs: **v1.0.0 production launch** (retro + promote-production), db:crew add/enable/disable (#307), operator At-Risk SMS alert DEC-095 (#308), go-time OM/docs rewrite — retired Outbox, killed "locked", fixed bail model (#309), SMS GSM-7 1-segment cost fix (#311), assigned-crew-on-shifts #310 (#314), STAFFING_HORIZON float lever. **All merged + promoted: prod is at v1.0.2, live on crew.brewcle.com.**
+- **Prod ops gotchas (now in memory):** run `npm run verify` not just `build` (webpack skips exactOptionalPropertyTypes); **MCP for reads, CLIs for prod writes** (never MCP for migrations); env changes need a **redeploy**; `~/.muster-prod-db` = the **direct (non-`-pooler`) Neon string + `?sslmode=require`, no `channel_binding`**; Twilio env must be **Production-scoped** + fresh (no build cache) redeploy.
+- `OPERATOR_CREW_MEMBER_ID` deleted in prod (eric is now normal crew → gets own placement notices). Twilio sender = Drew's registered 10DLC number (+19846006778).
+- Wall clock is huge (multi-day span with overnights) — ignore; retro infers active time.

@@ -74,8 +74,8 @@ describe("forwardAsks — the edge wiring's shared seam (DEC-030)", () => {
       seatId: SEAT,
       crewMemberId: CREW,
       status: "pending",
-      // Human relay text from the spine — date · vessel · role.
-      body: "Muster: Sat, Jul 4 · Hops · captain — in or out?",
+      // Human relay text from the spine — GSM-7 only (1-segment SMS).
+      body: "Muster: Sat, Jul 4 - Hops - captain. In or out?",
       link: "http://mill-dev:3000/crew/auth?t=secret-0",
     });
   });

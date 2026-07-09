@@ -52,7 +52,8 @@ export async function forwardNotices(
       const shift = await repo.getShift(change.shiftId);
       if (!shift) continue;
       const vessel = await repo.getVessel(shift.vesselId);
-      const where = `${fmtDate(shift.date)} · ${vessel?.name ?? shift.vesselId}`;
+      // GSM-7 only (no ·) to keep the SMS a 1-segment message, not UCS-2.
+      const where = `${fmtDate(shift.date)} - ${vessel?.name ?? shift.vesselId}`;
       const body =
         change.action === "removed"
           ? `Muster: you're off the ${where} shift.`

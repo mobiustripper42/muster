@@ -49,7 +49,7 @@ describe("forwardNotices (DEC-084)", () => {
     ]);
     expect(n).toBe(1);
     const sent = fake.last()!;
-    expect(sent.body).toBe("Muster: you're off the Sat, Jul 4 · Barrel shift.");
+    expect(sent.body).toBe("Muster: you're off the Sat, Jul 4 - Barrel shift.");
     expect(sent.to.crewMemberId).toBe(CREW);
     expect(sent.to.phone).toBe("+15555550101");
     expect(sent.action).toBe("removed");
@@ -62,7 +62,7 @@ describe("forwardNotices (DEC-084)", () => {
     await forwardNotices(repo, fake, [
       { crewMemberId: CREW, action: "added", shiftId: SHIFT },
     ]);
-    expect(fake.last()!.body).toBe("Muster: you're on the Sat, Jul 4 · Barrel shift.");
+    expect(fake.last()!.body).toBe("Muster: you're on the Sat, Jul 4 - Barrel shift.");
   });
 
   it("skips a dangling crew ref (best-effort) without throwing", async () => {

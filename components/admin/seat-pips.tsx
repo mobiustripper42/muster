@@ -15,6 +15,34 @@ import { roleHueClass } from "../assignment/role-hue";
  * FAINT — a rider shouldn't read with required-crew weight. The row's state +
  * fill text stay the accessible facts (`aria-hidden` + sr-only summary).
  */
+/**
+ * Assigned crew (#310) — the names behind the filled pips, so the operator can
+ * scan who's on each shift, not just how many. Full names, `·`-separated, in the
+ * SAME role→kind order as the pips they sit beside (operator call — Variant C):
+ * pip order carries "who's the captain", so no visible role prefix. Open seats
+ * contribute nothing (the pips show the gap). Muted — a fact to scan, not a
+ * status signal (DEC-042). A screen-reader-only role keeps the name→role link.
+ */
+export function AssignedCrew({ seats }: { seats: AllShiftsSeat[] }) {
+  const filled = seats.filter((s) => s.filled && s.crewName);
+  if (filled.length === 0) return null;
+  return (
+    <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted">
+      {filled.map((s, i) => (
+        <span key={i} className="whitespace-nowrap">
+          {i > 0 && (
+            <span aria-hidden="true" className="text-faint">
+              ·{" "}
+            </span>
+          )}
+          <span className="sr-only">{s.roleName} </span>
+          {s.crewName}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 export function SeatPips({ seats }: { seats: AllShiftsSeat[] }) {
   if (seats.length === 0) return null;
   const required = seats.filter((s) => !s.supernumerary);

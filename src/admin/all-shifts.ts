@@ -33,6 +33,10 @@ export interface AllShiftsSeat {
   roleName: string;
   filled: boolean;
   supernumerary: boolean;
+  /** The confirmed crew member's name, when the seat is filled (#310) — so the
+   *  operator can scan WHO is on each shift, not just how many. Undefined for an
+   *  open seat. */
+  crewName?: string;
 }
 
 export interface AllShiftsRow {
@@ -90,6 +94,11 @@ export async function deriveAllShifts(
   const roleNames = new Map(
     (await repo.listAllRoleTypes()).map((r) => [String(r.id), r.name]),
   );
+  // Crew display names for the filled seats (#310) — resolved once, like the
+  // vessel/role name maps, so the seat map needn't re-join per shift.
+  const crewNames = new Map(
+    (await repo.listCrewMembers()).map((c) => [String(c.id), c.name]),
+  );
   const rows: AllShiftsRow[] = [];
 
   // Split marking (DEC-083): a canonical row carries `splitCutTime`; its side-B
@@ -137,11 +146,20 @@ export async function deriveAllShifts(
         if (a.kind !== b.kind) return a.kind === "required" ? -1 : 1;
         return String(a.id).localeCompare(String(b.id));
       })
-      .map((s) => ({
-        roleName: roleNames.get(String(s.role)) ?? String(s.role),
-        filled: s.state === "Confirmed",
-        supernumerary: s.kind === "supernumerary",
-      }));
+      .map((s) => {
+        const crewName =
+          s.state === "Confirmed" && s.assignedCrewMemberId
+            ? crewNames.get(String(s.assignedCrewMemberId))
+            : undefined;
+        return {
+          roleName: roleNames.get(String(s.role)) ?? String(s.role),
+          filled: s.state === "Confirmed",
+          supernumerary: s.kind === "supernumerary",
+          // Conditional include — exactOptionalPropertyTypes rejects an explicit
+          // `crewName: undefined` on the optional field.
+          ...(crewName !== undefined ? { crewName } : {}),
+        };
+      });
 
     const idStr = String(shift.id);
     let split: AllShiftsRow["split"] = null;

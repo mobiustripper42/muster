@@ -7,7 +7,7 @@ import {
   ShiftCockpit,
   type CockpitSearch,
 } from "../../../../components/assignment/shift-cockpit";
-import { SeatPips } from "../../../../components/admin/seat-pips";
+import { SeatPips, AssignedCrew } from "../../../../components/admin/seat-pips";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { readSubject } from "../../../lib/auth";
@@ -616,7 +616,13 @@ function ShiftRow({
                 ? `${fmt12(row.trips[0]!.time)} · ${row.trips[0]!.pax} pax`
                 : `${fmt12(row.trips[0]!.time)} · ${row.trips.length} trips`}
           </span>
-          <SeatPips seats={row.seats} />
+          {/* Pips + assigned crew on one line (Variant C, #310): the pips lead,
+              the names sit inline to their right in pip order, wrapping under
+              when the row is tight (375px / many seats). */}
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <SeatPips seats={row.seats} />
+            <AssignedCrew seats={row.seats} />
+          </span>
           {row.splitSuggestion && row.split == null && (
             // Calm read-only cue (8.1/#204): Muster noticed this vessel-day might be
             // two shifts. Advisory only — acting on it is Edit mode → Split (below).

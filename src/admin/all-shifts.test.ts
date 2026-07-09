@@ -32,6 +32,8 @@ interface SeatSpec {
   role?: typeof CAPTAIN | typeof MATE;
   state?: SeatState;
   kind?: Seat["kind"];
+  /** Assign a crew member to this seat (#310) — seeds the member + pins the seat. */
+  crew?: { id: string; name: string };
 }
 
 async function addShift(
@@ -85,12 +87,23 @@ async function addShift(
     ...(splitCutTime ? { splitCutTime } : {}),
   });
   for (const [i, s] of seats.entries()) {
+    if (s.crew) {
+      await repo.saveCrewMember({
+        id: asId<"CrewMemberId">(s.crew.id),
+        name: s.crew.name,
+        phone: "555",
+        ratings: [],
+        status: "active",
+        reliabilityScore: null,
+      });
+    }
     const seat: Seat = {
       id: asId<"SeatId">(`seat-${id}-${i}`),
       shiftId: asId<"ShiftId">(id),
       role: s.role ?? CAPTAIN,
       kind: s.kind ?? "required",
       state: s.state ?? "Open",
+      ...(s.crew ? { assignedCrewMemberId: asId<"CrewMemberId">(s.crew.id) } : {}),
     };
     await repo.saveSeat(seat);
   }
@@ -157,6 +170,17 @@ describe("deriveAllShifts", () => {
     // The fill counts keep their required-only meaning — the trainee isn't in them.
     expect(row.requiredSeats).toBe(2);
     expect(row.confirmedSeats).toBe(1);
+  });
+
+  it("carries the assigned crew name on a filled seat, undefined on an open one (#310)", async () => {
+    await addShift("s-crew", "2026-07-03", "Hops", [{ time: "15:00", pax: [2] }], [
+      { role: CAPTAIN, state: "Confirmed", crew: { id: "crew-eric", name: "Eric Stoffer" } },
+      { role: MATE, state: "Open" },
+    ]);
+    const rows = await deriveAllShifts(repo, { from: "2026-07-01", to: "2026-07-31" }, T0, OPTS);
+    const seats = rows[0]!.seats;
+    expect(seats.find((s) => s.roleName === "captain")!.crewName).toBe("Eric Stoffer");
+    expect(seats.find((s) => s.roleName === "mate")!.crewName).toBeUndefined();
   });
 
   it("excludes cancelled and completed shifts", async () => {

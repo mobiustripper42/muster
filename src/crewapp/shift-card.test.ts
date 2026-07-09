@@ -10,7 +10,7 @@ import type {
   Shift,
   Vessel,
 } from "../domain/entities.js";
-import { buildShiftCard, CALL_LEAD_MINUTES } from "./shift-card.js";
+import { buildShiftCard, buildShiftManifest, CALL_LEAD_MINUTES } from "./shift-card.js";
 
 const NOW = new Date("2026-07-01T08:00:00.000Z");
 const TENANT = asId<"TenantId">("t");
@@ -143,5 +143,40 @@ describe("buildShiftCard", () => {
     expect(card.bailLate).toBe(false);
     expect(card.callTime).toBeUndefined();
     expect(card.shiftEndTime).toBeUndefined(); // no trip → no end
+  });
+});
+
+// The viewer-independent manifest the operator cockpit reuses (#319) — no seat /
+// no viewer, unlike the crew card. Same booked-only + sort + shared-dock rules.
+describe("buildShiftManifest", () => {
+  it("assembles booked guests per event, sorted, pax totalled, cancelled excluded", async () => {
+    const repo = await seed();
+    const shift = (await repo.getShift(SHIFT))!;
+    const m = await buildShiftManifest(repo, shift);
+
+    // Sorted soonest-first (seeded out of order), booked-only (Cancelled Carl gone).
+    expect(m.events.map((e) => e.departureTime)).toEqual(["15:00", "17:00"]);
+    const [threePm, fivePm] = m.events;
+    expect(threePm!.guests.map((g) => g.name)).toEqual(["Brody", "Vaughn"]);
+    expect(threePm!.pax).toBe(10); // 4 + 6; the cancelled 8 is not aboard
+    expect(fivePm!.pax).toBe(2);
+    expect(m.paxTotal).toBe(12);
+    // A guest without a phone carries none (DEC-017 nullable), not an empty string.
+    expect(threePm!.guests[1]).toEqual({ name: "Vaughn", party: 6 });
+  });
+
+  it("no shared dock when events differ (one has a dock, one doesn't)", async () => {
+    const repo = await seed();
+    const m = await buildShiftManifest(repo, (await repo.getShift(SHIFT))!);
+    expect(m.sharedDock).toBeUndefined();
+    expect(m.events.find((e) => e.departureTime === "15:00")?.dock).toBe("Pier 9, Lake Union");
+  });
+
+  it("shared dock surfaces when every event departs the same place", async () => {
+    const repo = await seed();
+    // Give the 5pm the same dock as the 3pm → one shared pin.
+    await repo.saveEvent({ id: E5, vesselId: VESSEL, date: "2026-07-04", time: "17:00", capacity: 12, status: "scheduled", dock: "Pier 9, Lake Union" });
+    const m = await buildShiftManifest(repo, (await repo.getShift(SHIFT))!);
+    expect(m.sharedDock).toBe("Pier 9, Lake Union");
   });
 });

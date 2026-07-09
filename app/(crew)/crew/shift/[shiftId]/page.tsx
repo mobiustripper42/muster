@@ -1,5 +1,6 @@
 import { BackLink } from "../../../../../components/ui/back-link";
 import { buildShiftCard, type ShiftCardView } from "@core/crewapp/shift-card.js";
+import { ShiftManifest } from "../../../../../components/assignment/shift-manifest";
 import { asId } from "@core/domain/ids.js";
 import { Notice } from "../../../../../components/ui/notice";
 import { RoleGlyph } from "../../../../../components/ui/role-glyph";
@@ -218,73 +219,7 @@ function Card({
         </section>
       )}
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">
-          Manifest{" "}
-          <span className="font-normal normal-case text-muted">
-            · different guests each trip
-          </span>
-        </h2>
-        {card.events.map((ev) => (
-          <details
-            key={ev.eventId}
-            className="group overflow-hidden rounded-card border border-line bg-card"
-            open={card.events.length === 1}
-          >
-            <summary className="flex min-h-[44px] cursor-pointer items-center justify-between px-4 py-3 font-semibold text-ink [&::-webkit-details-marker]:hidden">
-              <span className="font-mono">{fmt12(ev.departureTime)}</span>
-              <span className="flex items-center gap-2 text-sm font-normal text-muted">
-                {ev.pax} guests
-                <span className="text-faint transition-transform group-open:rotate-90" aria-hidden>
-                  ›
-                </span>
-              </span>
-            </summary>
-            {!card.sharedDock && ev.dock && (
-              <a
-                href={mapHref(ev.dock)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex min-h-[44px] items-center justify-between border-t border-line px-4 py-3 text-sm"
-              >
-                <span className="text-ink">
-                  <span aria-hidden>📍</span> {ev.dock}
-                </span>
-                <span className="font-semibold text-accent">Map ›</span>
-              </a>
-            )}
-            <div className="border-t border-line">
-              {ev.guests.length === 0 ? (
-                <div className="px-4 py-3 text-sm text-muted">No guests booked.</div>
-              ) : (
-                ev.guests.map((g, i) =>
-                  g.phone ? (
-                    <a
-                      key={i}
-                      href={tel(g.phone)}
-                      className="flex min-h-[44px] items-center justify-between px-4 py-3 text-sm"
-                    >
-                      <span className="text-ink">
-                        {g.name} <span className="text-muted">×{g.party}</span>
-                      </span>
-                      <span className="font-mono text-accent">{g.phone}</span>
-                    </a>
-                  ) : (
-                    <div
-                      key={i}
-                      className="flex min-h-[44px] items-center justify-between px-4 py-3 text-sm"
-                    >
-                      <span className="text-ink">
-                        {g.name} <span className="text-muted">×{g.party}</span>
-                      </span>
-                    </div>
-                  ),
-                )
-              )}
-            </div>
-          </details>
-        ))}
-      </section>
+      <ShiftManifest events={card.events} sharedDock={card.sharedDock} />
 
       {/* A trainee ride (DEC-087) has no bail: it's not a reliability
           commitment, and the seat must never re-ask — the office unstaffs. */}

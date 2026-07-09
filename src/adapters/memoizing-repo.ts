@@ -15,6 +15,12 @@
  * derive path is pure reads (no `logReliabilityEvent`/`saveSeat`/…), so within one
  * render there is nothing to invalidate.
  *
+ * **Cached results are SHARED references.** A memoized read hands the same array/
+ * object to every caller this render, so callers must treat them as read-only —
+ * never sort/push/splice a `repo.*` result in place (copy first). The at-risk
+ * derive path already does (`.filter`/`.map` into fresh arrays); a future wrapper
+ * of a call site that mutates in place would leak across consumers.
+ *
  * **Built as a `Proxy`, not `Object.create(repo)`.** The Postgres adapter keeps
  * `#pool` as a true private field; an un-overridden method reached via a prototype
  * chain would run with `this` = the wrapper (never constructed by

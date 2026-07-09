@@ -83,6 +83,24 @@ test.describe("crew /crew/open — pick up a shift", () => {
     await expect(row.getByText(/1:00 PM & 4:00 PM/)).toBeVisible();
   });
 
+  test("the list is grouped under a full-weekday day header (#313)", async ({
+    page,
+  }) => {
+    await signInAsCrew(page, "crew-quint");
+    await page.goto(ALL);
+
+    // The claimable seat now sits under a day-section header (not a flat stack).
+    // Date-agnostic: the seed shift is ~7d out, so assert the header SHAPE — a
+    // full weekday + the per-day open count — and that the Hops row is under it.
+    const dayHeader = page.getByRole("heading", { level: 2 });
+    await expect(dayHeader).toBeVisible();
+    await expect(dayHeader).toContainText(
+      /^(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday),/,
+    );
+    await expect(dayHeader).toContainText("open");
+    await expect(page.locator("details", { hasText: "Hops" })).toBeVisible();
+  });
+
   test("a since-taken claim shows the clean 'just taken' message", async ({
     page,
   }) => {

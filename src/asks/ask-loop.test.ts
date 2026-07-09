@@ -578,6 +578,22 @@ describe("overrideSeat — role-guarded override (DEC-064)", () => {
     expect((await repo.getSeat(seatId))!.state).toBe("Confirmed");
   });
 
+  it("rejects an ARCHIVED crew even when rated (archived, seat untouched) — #323", async () => {
+    const cap = await addCrew("cap-archived", { status: "archived" });
+    const seatId = await mkSeat("seat-cap", CAPTAIN);
+    const out = await overrideSeat(repo, seatId, cap, T0);
+    expect(out.code).toBe("archived");
+    expect((await repo.getSeat(seatId))!.state).toBe("Open");
+    expect((await repo.getSeat(seatId))!.assignedCrewMemberId).toBeUndefined();
+  });
+
+  it("still places an INACTIVE (benched) crew — disable ≠ removal (#323)", async () => {
+    const cap = await addCrew("cap-inactive", { status: "inactive" });
+    const seatId = await mkSeat("seat-cap", CAPTAIN);
+    expect((await overrideSeat(repo, seatId, cap, T0)).code).toBeNull();
+    expect((await repo.getSeat(seatId))!.assignedCrewMemberId).toBe(cap);
+  });
+
   it("gone for an unknown seat", async () => {
     const cap = await addCrew("cap-1");
     const out = await overrideSeat(repo, asId<"SeatId">("nope"), cap, T0);

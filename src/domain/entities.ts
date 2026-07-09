@@ -72,7 +72,16 @@ export interface Vessel {
 
 // ── CrewMember + sub-records ────────────────────────────────────────────────
 
-export type CrewStatus = "active" | "inactive";
+/**
+ * Crew lifecycle (DEC-096, #323):
+ *  - `active`   — in the ask pool + manually placeable.
+ *  - `inactive` — NOT auto-asked (fails the `isActive` eligibility gate), but still
+ *                 manually placeable via the cockpit override (a temporary bench).
+ *  - `archived` — no longer with the operation: out of the ask pool AND out of the
+ *                 manual override picker/guard — off every list. History is kept
+ *                 (no hard delete); reversible via `db:crew unarchive`.
+ */
+export type CrewStatus = "active" | "inactive" | "archived";
 
 /**
  * MMC is universal (captain gating, 5-yr renewal). medical / TWIC /

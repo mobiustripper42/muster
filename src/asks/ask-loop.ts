@@ -703,19 +703,24 @@ export async function manualOverride(
 export interface OverrideResult {
   /**
    * null = placed. `not_rated` = the crew lacks the seat's role rating — a mate
-   * can't hold a captain seat (DEC-064). `gone` = no such seat or crew.
+   * can't hold a captain seat (DEC-064). `archived` = the crew is archived (#323,
+   * DEC-096) — off every list, the one status the override backstop honors, so a
+   * crafted post can't re-place someone who's been removed. `gone` = no such seat
+   * or crew.
    */
-  code: "not_rated" | "gone" | null;
+  code: "not_rated" | "archived" | "gone" | null;
   seat?: Seat;
 }
 
 /**
  * Role-guarded manual override (DEC-064). The cockpit's "place anyone" backstop,
- * minus the one thing it must not do: seat a crew member who isn't rated for the
- * role (a mate as captain — a license floor, not Spink's to override). Still
- * bypasses pool, rank, and current state — that's `manualOverride`, which this
- * composes after the rating check. Captains stay placeable into mate seats: on
+ * minus the two things it must not do: seat a crew member who isn't rated for the
+ * role (a mate as captain — a license floor, not Spink's to override), or seat an
+ * ARCHIVED crew member (#323, DEC-096 — they're off every list). Still bypasses
+ * pool, rank, and current state — that's `manualOverride`, which this composes
+ * after the rating + archived checks. Captains stay placeable into mate seats: on
  * the pilot roster they're rated `[captain, mate]`, so `isRatedFor` passes them.
+ * `inactive` is still placeable — a bench, not a removal.
  */
 export async function overrideSeat(
   repo: Repository,
@@ -728,6 +733,10 @@ export async function overrideSeat(
   const crew = await repo.getCrewMember(crewMemberId);
   if (!crew) return { code: "gone" };
   if (!isRatedFor(crew.ratings, seat.role)) return { code: "not_rated" };
+  // Archived crew are off EVERY list (#323, DEC-096) — the override backstop is
+  // the one place that ignores `inactive` (a bench stays placeable), so it must
+  // still honor `archived`, or a crafted post could re-seat someone removed.
+  if (crew.status === "archived") return { code: "archived" };
   const placed = await manualOverride(repo, seatId, crewMemberId, now);
   return placed ? { code: null, seat: placed } : { code: "gone" };
 }

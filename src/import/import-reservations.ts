@@ -18,6 +18,12 @@ import { vesselCapacity } from "./resource-map.js";
 export interface SkippedRow {
   reservationId?: string;
   product?: string;
+  /** Vessel-local trip date "YYYY-MM-DD" (#320) — so a skip says WHICH trip got
+   *  dropped, not just an opaque event id. Absent on non-reservation skips
+   *  (e.g. an unmapped boat resource, which has only a `reason`). */
+  date?: string;
+  /** Vessel-local departure clock "HH:mm" (#320). */
+  time?: string;
   reason: string;
 }
 
@@ -161,6 +167,8 @@ export async function importRecords(
       result.skipped.push({
         reservationId: rec.reservationId,
         product: rec.product,
+        date: rec.date,
+        time: rec.time,
         reason: "record missing event id",
       });
       continue;
@@ -195,6 +203,8 @@ export async function importRecords(
         result.skipped.push({
           reservationId: rec.reservationId,
           product: rec.product,
+          date: rec.date,
+          time: rec.time,
           reason: `no resolvable boat for event ${rawEventId}`,
         });
       }

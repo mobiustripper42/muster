@@ -104,10 +104,35 @@ export default async function ImportRunView({
       )}
       {(s.mapSkipped > 0 || s.skipped.length > 0) && (
         <Notice>
-          {s.skipped.length + s.mapSkipped} row
-          {plural(s.skipped.length + s.mapSkipped)} skipped (boat-less or outside the
-          pulled window)
-          {s.skipped.length > 0 && <>: {s.skipped.map((r) => r.reason).join("; ")}</>}.
+          <div>
+            {s.skipped.length + s.mapSkipped} row
+            {plural(s.skipped.length + s.mapSkipped)} skipped (boat-less or outside
+            the pulled window).
+          </div>
+          {/* Per-row detail (#320): WHICH trip got dropped — date · time · event,
+              so a skip is actionable, not an opaque event id. Rows without trip
+              facts (e.g. an unmapped boat resource) fall back to the reason. */}
+          {s.skipped.length > 0 && (
+            <ul className="mt-1 flex flex-col gap-0.5 text-sm">
+              {s.skipped.map((r, i) => (
+                <li key={i}>
+                  {r.date ? (
+                    <>
+                      <span className="font-mono">
+                        {fmtSkipDate(r.date)}
+                        {r.time ? ` · ${fmt12(r.time)}` : ""}
+                      </span>
+                      {" · "}
+                      {r.product ?? "—"}
+                      <span className="text-muted"> — {r.reason}</span>
+                    </>
+                  ) : (
+                    r.reason
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
         </Notice>
       )}
       {s.warnings.map((w, i) => (
@@ -181,6 +206,17 @@ function ItemList({
 }
 
 const plural = (n: number) => (n === 1 ? "" : "s");
+
+/** A skipped row's vessel-local trip date "YYYY-MM-DD" → "Sat Jul 11" (#320).
+ *  UTC-anchored so the stored vessel-local date shows verbatim (DEC-032). */
+function fmtSkipDate(date: string): string {
+  return new Date(date + "T00:00:00Z").toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
 
 function fmtDate(iso: string): string {
   return new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", {

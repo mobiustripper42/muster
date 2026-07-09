@@ -57,7 +57,15 @@ describe("importRecords — event-id-keyed Map+Reconcile (DEC-043)", () => {
     const r = await importRecords(repo, [cancelled("r1")]);
     expect(await repo.getEvent(EVENT_ID)).toBeNull();
     expect(r.eventsCreated).toBe(0);
-    expect(r.skipped.some((s) => /no resolvable boat/.test(s.reason))).toBe(true);
+    const boatless = r.skipped.find((s) => /no resolvable boat/.test(s.reason));
+    expect(boatless).toBeDefined();
+    // #320: the skip carries WHICH trip got dropped, not just an opaque event id.
+    expect(boatless).toMatchObject({
+      reservationId: "r1",
+      product: BREW,
+      date: "2026-05-16",
+      time: "15:30",
+    });
   });
 
   it("a de-boated cancel reconciles against the stored event → cancelled", async () => {
@@ -72,7 +80,9 @@ describe("importRecords — event-id-keyed Map+Reconcile (DEC-043)", () => {
     const rec = booked("r1");
     delete rec.eventId;
     const r = await importRecords(repo, [rec]);
-    expect(r.skipped.some((s) => /missing event id/.test(s.reason))).toBe(true);
+    const missing = r.skipped.find((s) => /missing event id/.test(s.reason));
+    expect(missing).toBeDefined();
+    expect(missing).toMatchObject({ reservationId: "r1", date: "2026-05-16", time: "15:30" }); // #320
     expect((await repo.listEvents()).length).toBe(0);
   });
 

@@ -114,23 +114,26 @@ export default async function ImportRunView({
               facts (e.g. an unmapped boat resource) fall back to the reason. */}
           {s.skipped.length > 0 && (
             <ul className="mt-1 flex flex-col gap-0.5 text-sm">
-              {s.skipped.map((r, i) => (
-                <li key={i}>
-                  {r.date ? (
-                    <>
-                      <span className="font-mono">
-                        {fmtSkipDate(r.date)}
-                        {r.time ? ` · ${fmt12(r.time)}` : ""}
-                      </span>
-                      {" · "}
-                      {r.product ?? "—"}
-                      <span className="text-muted"> — {r.reason}</span>
-                    </>
-                  ) : (
-                    r.reason
-                  )}
-                </li>
-              ))}
+              {s.skipped.map((r, i) => {
+                const when = r.date ? fmtSkipDate(r.date) : null;
+                return (
+                  <li key={i}>
+                    {when ? (
+                      <>
+                        <span className="font-mono">
+                          {when}
+                          {r.time ? ` · ${fmt12(r.time)}` : ""}
+                        </span>
+                        {" · "}
+                        {r.product ?? "—"}
+                        <span className="text-muted"> — {r.reason}</span>
+                      </>
+                    ) : (
+                      r.reason
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </Notice>
@@ -208,9 +211,13 @@ function ItemList({
 const plural = (n: number) => (n === 1 ? "" : "s");
 
 /** A skipped row's vessel-local trip date "YYYY-MM-DD" → "Sat Jul 11" (#320).
- *  UTC-anchored so the stored vessel-local date shows verbatim (DEC-032). */
-function fmtSkipDate(date: string): string {
-  return new Date(date + "T00:00:00Z").toLocaleDateString("en-US", {
+ *  UTC-anchored so the stored vessel-local date shows verbatim (DEC-032). Returns
+ *  null on a malformed/empty date — this is bad-data diagnostic UI, so it degrades
+ *  to the raw reason rather than rendering "Invalid Date". */
+function fmtSkipDate(date: string): string | null {
+  const d = new Date(date + "T00:00:00Z");
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString("en-US", {
     weekday: "short",
     month: "short",
     day: "numeric",

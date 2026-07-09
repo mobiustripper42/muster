@@ -146,15 +146,20 @@ export async function deriveAllShifts(
         if (a.kind !== b.kind) return a.kind === "required" ? -1 : 1;
         return String(a.id).localeCompare(String(b.id));
       })
-      .map((s) => ({
-        roleName: roleNames.get(String(s.role)) ?? String(s.role),
-        filled: s.state === "Confirmed",
-        supernumerary: s.kind === "supernumerary",
-        crewName:
+      .map((s) => {
+        const crewName =
           s.state === "Confirmed" && s.assignedCrewMemberId
             ? crewNames.get(String(s.assignedCrewMemberId))
-            : undefined,
-      }));
+            : undefined;
+        return {
+          roleName: roleNames.get(String(s.role)) ?? String(s.role),
+          filled: s.state === "Confirmed",
+          supernumerary: s.kind === "supernumerary",
+          // Conditional include — exactOptionalPropertyTypes rejects an explicit
+          // `crewName: undefined` on the optional field.
+          ...(crewName !== undefined ? { crewName } : {}),
+        };
+      });
 
     const idStr = String(shift.id);
     let split: AllShiftsRow["split"] = null;

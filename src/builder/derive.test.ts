@@ -387,8 +387,15 @@ describe("STAFFING_HORIZON_LEAD_DAYS env override (DEC-062)", () => {
     expect(m.STAFFING_HORIZON_LEAD_DAYS).toBe(3);
   });
 
-  it("a non-integer or non-positive override falls back to 7", async () => {
-    for (const bad of ["7.5", "0", "-2", "lots", "", " "]) {
+  it("accepts a positive FRACTION (sub-day lead — DEC-062 float knob)", async () => {
+    vi.stubEnv("STAFFING_HORIZON_LEAD_DAYS", "6.1");
+    vi.resetModules();
+    const m = await import("./derive.js");
+    expect(m.STAFFING_HORIZON_LEAD_DAYS).toBe(6.1);
+  });
+
+  it("a non-positive or garbage override falls back to 7", async () => {
+    for (const bad of ["0", "-2", "lots", "", " ", "NaN"]) {
       vi.stubEnv("STAFFING_HORIZON_LEAD_DAYS", bad);
       vi.resetModules();
       const m = await import("./derive.js");

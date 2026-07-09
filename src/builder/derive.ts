@@ -87,15 +87,27 @@ function envNonNegativeInt(name: string, fallback: number): number {
 }
 
 /**
- * Staffing-horizon lead, in **days** — how far ahead of the trip the system
- * starts working a shift (Pending→Filling). The tune-later knob (DEC-TBD
- * "concrete horizon values", DEC-062): **env-overridable** via
- * `STAFFING_HORIZON_LEAD_DAYS` (positive integer days), default **7**. DEC-022
- * fixes only that it lives in one place; the value is the operator's (Eric's) to
- * tune per deploy without a code change. NOT the same as the 45-min same-day
- * manifest call lead (DEC-021) — different lead, different purpose.
+ * Like `envPositiveInt` but accepts a positive **fraction** — the horizon is
+ * millisecond math (`start − leadDays·DAY_MS`), so a sub-day lead (e.g. `6.1` =
+ * 6d 2.4h) is meaningful for landing the ask at a good hour vs. the trip's
+ * clock time. Only `> 0` and finite; a garbage value still falls back.
  */
-export const STAFFING_HORIZON_LEAD_DAYS = envPositiveInt(
+function envPositiveNumber(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+/**
+ * Staffing-horizon lead, in **days** — how far ahead of the trip the system
+ * starts working a shift (Pending→Filling). The tune-later knob (DEC-062):
+ * **env-overridable** via `STAFFING_HORIZON_LEAD_DAYS`, a **positive number**
+ * (fractional allowed — `6.1` = 6d 2.4h, to time the ask off the trip's clock
+ * hour), default **7**. The value is the operator's to tune per deploy without a
+ * code change. NOT the same as the 45-min same-day manifest call lead (DEC-021).
+ */
+export const STAFFING_HORIZON_LEAD_DAYS = envPositiveNumber(
   "STAFFING_HORIZON_LEAD_DAYS",
   7,
 );

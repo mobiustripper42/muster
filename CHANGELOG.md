@@ -1,5 +1,8 @@
 # Changelog
 
+## [1.0.2] - 2026-07-09
+- STAFFING_HORIZON_LEAD_DAYS accepts a fractional lead (DEC-062 float knob), e.g. 6.1 = 6d 2.4h — time the ask off the trip clock hour
+
 ## [1.0.1] - 2026-07-09
 - PR #311: SMS copy is GSM-7 only — 1 segment instead of 2 (dropped `·`/`—` that forced UCS-2), halving per-message cost
 - PR #314: Show assigned crew names on the `/admin/shifts` list (#310)

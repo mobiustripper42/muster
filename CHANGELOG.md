@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.0.1] - 2026-07-09
+- PR #311: SMS copy is GSM-7 only — 1 segment instead of 2 (dropped `·`/`—` that forced UCS-2), halving per-message cost
+- PR #314: Show assigned crew names on the `/admin/shifts` list (#310)
+
 ## [1.0.0] - 2026-07-08 — Phase 10: Production launch 🚀
 - **Production launch.** 24 pts across 10.1–10.7 (2 sessions, burst phase); see docs/RETROSPECTIVES.md
 - 10.1 migration↔deploy safety (#282) · 10.2 admin entity + per-person revoke (#283, DEC-092) · 10.3 security audit (#284, docs/SECURITY_AUDIT.md) · 10.5 `db:crew` operator break-glass CLI + runbook (DEC-094) · 10.6 crew onboarding + installable PWA · 10.7 operator manual + crew quick-start (#68)

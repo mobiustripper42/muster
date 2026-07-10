@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.3] - 2026-07-10
+- PR #324: Guest manifest on the operator cockpit (`/admin/shift/[id]`), above Manning — same assembly as the crew card (#319)
+- PR #325: Skipped import rows name the trip — date · time · event — instead of a bare event id (#320)
+- PR #326: `/crew/open` grouped by day with full-weekday headers, not one flat list (#313)
+- PR #327: New `archived` crew status (DEC-096) — off every list incl. the manual override picker/guard; distinct from `inactive`; `db:crew archive|unarchive` (#323)
+- PR #328: At-Risk board ~10s → sub-second — a render-scoped read cache kills the shifts×crew N+1 (#316)
+- PR #329: Manual override is a first-name-sorted dropdown instead of variable-width buttons (#312)
+
 ## [1.0.2] - 2026-07-09
 - STAFFING_HORIZON_LEAD_DAYS accepts a fractional lead (DEC-062 float knob), e.g. 6.1 = 6d 2.4h — time the ask off the trip clock hour
 

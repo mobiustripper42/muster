@@ -215,6 +215,9 @@ export class InMemoryRepository implements Repository {
   async listAllPtoWindows(): Promise<PtoWindow[]> {
     return [...this.#ptoWindows.values()].map(clone);
   }
+  async removePtoWindow(id: PtoWindowId): Promise<void> {
+    this.#ptoWindows.delete(id);
+  }
 
   // ── Events ─────────────────────────────────────────────────────────────────
   async saveEvent(event: Event): Promise<void> {

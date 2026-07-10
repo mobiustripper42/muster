@@ -128,6 +128,13 @@ describe("mapXolaOrders — orders ⨝ events → records", () => {
     const { records, skipped } = mapXolaOrders([order], VESSELS);
     expect(records).toHaveLength(0);
     expect(skipped[0]!.reason).toMatch(/not boated/i);
+    // #338: carry date/time + the category so the pull can flag an in-window
+    // booked-no-boat trip as an operator alert.
+    expect(skipped[0]).toMatchObject({
+      category: "booked_no_boat",
+      date: "2026-06-06",
+      time: "18:00",
+    });
   });
 
   it("emits a CANCELLED item even without a resolved boat (de-boated trip)", () => {

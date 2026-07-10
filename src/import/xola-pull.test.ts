@@ -240,6 +240,42 @@ describe("pullXola — G1–G9 reconcile harness", () => {
     expect(await seatCount(V.brew1)).toBe(2);
   });
 
+  it("G3.4b an IN-WINDOW booked boat-less trip is flagged in bookedNoBoat (#338)", async () => {
+    const r = await pull([ev("e1", null)], ordersOf(item("e1")), NOW); // 2026-07-04, in window
+    expect(r.mapSkipped).toBe(1);
+    expect(r.bookedNoBoat).toHaveLength(1);
+    expect(r.bookedNoBoat[0]).toMatchObject({
+      date: "2026-07-04",
+      category: "booked_no_boat",
+      product: "Brew Boat Party Boats with Captain",
+    });
+  });
+
+  // #338 window boundary: the classify uses an inclusive [start, end] string
+  // compare. Pin both edges (a trip dated exactly on a bound is IN) and one day
+  // past the end (OUT) so the >=/<= can't silently drift to >/<. The `pull` helper
+  // runs with tz UTC + the default lead, so `pullWindow(NOW, undefined, "UTC")` is
+  // the exact window; use a +00:00 arrival so the trip date is unambiguous.
+  const W = pullWindow(NOW, undefined, "UTC");
+  const bookedOn = (date: string): XolaOrderItem =>
+    item("e1", { arrivalDatetime: `${date}T12:00:00+00:00` });
+
+  it("G3.4c a booked boat-less trip on the window's last day is flagged (inclusive end)", async () => {
+    const r = await pull([ev("e1", null)], ordersOf(bookedOn(W.end)), NOW);
+    expect(r.bookedNoBoat.map((b) => b.date)).toEqual([W.end]);
+  });
+
+  it("G3.4d a booked boat-less trip on the window's first day is flagged (inclusive start)", async () => {
+    const r = await pull([ev("e1", null)], ordersOf(bookedOn(W.start)), NOW);
+    expect(r.bookedNoBoat.map((b) => b.date)).toEqual([W.start]);
+  });
+
+  it("G3.4e one day past the window end counts as mapSkipped but is NOT flagged", async () => {
+    const r = await pull([ev("e1", null)], ordersOf(bookedOn(addDays(W.end, 1))), NOW);
+    expect(r.mapSkipped).toBe(1);
+    expect(r.bookedNoBoat).toHaveLength(0);
+  });
+
   // ── G4: cancellations (the 11pm-call signal) ─────────────────────────────────
   it("G4.1 one of several bookings cancels → trip stays scheduled, shift unchanged", async () => {
     await pull([ev("e1", RES.brew2)], ordersOf(item("e1", { id: "a" }), item("e1", { id: "b" })), NOW);

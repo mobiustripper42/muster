@@ -1,6 +1,7 @@
 import { AppLink } from "../../../../../../components/ui/app-link";
 import { asId } from "@core/domain/ids.js";
 import type { ImportRunItemKind } from "@core/import/import-audit.js";
+import type { SkippedRow } from "@core/import/import-reservations.js";
 import { Notice } from "../../../../../../components/ui/notice";
 import { Shell } from "../../../../../../components/ui/shell";
 import { readSubject } from "../../../../../lib/auth";
@@ -55,6 +56,9 @@ export default async function ImportRunView({
 
   const { run, items } = data;
   const s = run.summary;
+  // `bookedNoBoat` (and `splitDaysChanged`) are normalized to [] for pre-field runs
+  // at the read seam (`toImportRun`), so no guard is needed here.
+  const bookedNoBoat = s.bookedNoBoat;
   const labels = (k: ImportRunItemKind) =>
     items.filter((i) => i.kind === k).map((i) => i.label ?? i.refId);
 
@@ -95,6 +99,22 @@ export default async function ImportRunView({
           {s.unmappedResources.map((r) => r.reason).join("; ")}.
         </Notice>
       )}
+      {/* Booked trips with no boat, in-window (#338) — the one skip an operator must
+          NOT miss: a paying trip that can't form a crewed shift until Xola boats it.
+          Loud (bad), itemized, and above the benign skip tally. */}
+      {bookedNoBoat.length > 0 && (
+        <Notice tone="bad">
+          <div>
+            <b>
+              {bookedNoBoat.length} booked trip{plural(bookedNoBoat.length)}
+            </b>{" "}
+            {bookedNoBoat.length === 1 ? "has" : "have"} no boat in Xola — assign a
+            boat to {bookedNoBoat.length === 1 ? "it" : "each"}, then re-import. Until
+            then {bookedNoBoat.length === 1 ? "it" : "they"} can’t form a crewed shift.
+          </div>
+          <SkippedRowList rows={bookedNoBoat} />
+        </Notice>
+      )}
       {s.seatsStranded > 0 && (
         <Notice tone="warn">
           <b>{s.seatsStranded} occupied seat{plural(s.seatsStranded)}</b> left in place
@@ -105,37 +125,22 @@ export default async function ImportRunView({
       {(s.mapSkipped > 0 || s.skipped.length > 0) && (
         <Notice>
           <div>
+            {/* Two disjoint buckets summed into the headline count. `skipped` is
+                per-row (listed below); `mapSkipped` is a count of items dropped at
+                the pull before they became rows — the actionable subset (in-window
+                booked-no-boat) is itemized in the bad alert above (#338), the rest
+                (out-of-window / malformed) stays a tally. Reconcile the arithmetic. */}
             {s.skipped.length + s.mapSkipped} row
-            {plural(s.skipped.length + s.mapSkipped)} skipped (boat-less or outside
-            the pulled window).
+            {plural(s.skipped.length + s.mapSkipped)} skipped.
+            {s.skipped.length > 0 &&
+              ` ${s.skipped.length} with no boat to crew${s.mapSkipped > 0 ? " (listed below)" : ""}.`}
+            {s.mapSkipped > 0 &&
+              ` ${s.mapSkipped} dropped during the pull — outside the window, or booked with no boat${bookedNoBoat.length > 0 ? " (flagged above)" : ""}.`}
           </div>
           {/* Per-row detail (#320): WHICH trip got dropped — date · time · event,
               so a skip is actionable, not an opaque event id. Rows without trip
               facts (e.g. an unmapped boat resource) fall back to the reason. */}
-          {s.skipped.length > 0 && (
-            <ul className="mt-1 flex flex-col gap-0.5 text-sm">
-              {s.skipped.map((r, i) => {
-                const when = r.date ? fmtSkipDate(r.date) : null;
-                return (
-                  <li key={i}>
-                    {when ? (
-                      <>
-                        <span className="font-mono">
-                          {when}
-                          {r.time ? ` · ${fmt12(r.time)}` : ""}
-                        </span>
-                        {" · "}
-                        {r.product ?? "—"}
-                        <span className="text-muted"> — {r.reason}</span>
-                      </>
-                    ) : (
-                      r.reason
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+          {s.skipped.length > 0 && <SkippedRowList rows={s.skipped} showReason />}
         </Notice>
       )}
       {s.warnings.map((w, i) => (
@@ -209,6 +214,37 @@ function ItemList({
 }
 
 const plural = (n: number) => (n === 1 ? "" : "s");
+
+/** One dropped-row list — `date · time · product`, falling back to the bare reason
+ *  when a row has no trip facts (#320). Shared by the booked-no-boat alert (#338)
+ *  and the benign skip tally so their formatting can't drift; `showReason` appends
+ *  the "— reason" suffix the skip tally wants and the alert doesn't. */
+function SkippedRowList({ rows, showReason }: { rows: SkippedRow[]; showReason?: boolean }) {
+  return (
+    <ul className="mt-1 flex flex-col gap-0.5 text-sm">
+      {rows.map((r, i) => {
+        const when = r.date ? fmtSkipDate(r.date) : null;
+        return (
+          <li key={i}>
+            {when ? (
+              <>
+                <span className="font-mono">
+                  {when}
+                  {r.time ? ` · ${fmt12(r.time)}` : ""}
+                </span>
+                {" · "}
+                {r.product ?? "—"}
+                {showReason && <span className="text-muted"> — {r.reason}</span>}
+              </>
+            ) : (
+              r.reason
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
 
 /** A skipped row's vessel-local trip date "YYYY-MM-DD" → "Sat Jul 11" (#320).
  *  UTC-anchored so the stored vessel-local date shows verbatim (DEC-032). Returns

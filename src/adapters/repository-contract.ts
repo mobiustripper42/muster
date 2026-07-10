@@ -199,6 +199,7 @@ const importRun = (over: Partial<ImportRun> = {}): ImportRun => ({
     seatsStranded: 0,
     unmappedResources: [{ reason: "unknown resource xyz" }],
     skipped: [],
+    bookedNoBoat: [],
     warnings: ["heads up"],
     assignments: [{ date: "2026-07-01", boats: [] }],
     splitDaysChanged: [],
@@ -358,6 +359,15 @@ export function runRepositoryContract(
     it("pto windows: save + listForCrew", async () => {
       await repo.savePtoWindow(pto());
       expect(await repo.listPtoWindowsForCrew(CREW)).toEqual([pto()]);
+    });
+
+    it("pto windows: remove drops it from both lists; second remove is a no-op", async () => {
+      await repo.savePtoWindow(pto());
+      await repo.removePtoWindow(asId<"PtoWindowId">("pto-1"));
+      expect(await repo.listPtoWindowsForCrew(CREW)).toEqual([]);
+      expect(await repo.listAllPtoWindows()).toEqual([]);
+      // Idempotent — removing an absent id must not throw (surfaces double-submit).
+      await repo.removePtoWindow(asId<"PtoWindowId">("pto-1"));
     });
 
     it("events: round-trip + list; dock optional present and absent", async () => {

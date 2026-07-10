@@ -1,6 +1,6 @@
 import { confirmInto, overrideTo, removeSeat, reportBail } from "../../app/(admin)/admin/shift/[shiftId]/actions";
 import { SubmitButton } from "../ui/submit-button";
-import { HiddenIds, MiniButton } from "./bits";
+import { HiddenIds } from "./bits";
 import { askedSummary, CandidateRow } from "./candidate-row";
 
 /**
@@ -209,16 +209,36 @@ export function SeatCard({
           Skips the queue and confirms them for the shift. Only crew rated for
           this role appear.
         </p>
-        <ul className="flex flex-wrap gap-2 py-1">
-          {roster.map((p) => (
-            <li key={p.id}>
-              <form action={overrideTo} className="inline-flex">
-                <HiddenIds vm={vm} crewId={p.id} />
-                <MiniButton label={`Place ${p.name}`} />
-              </form>
-            </li>
-          ))}
-        </ul>
+        {/* #312: a dropdown, not a wrapping row of variable-width buttons —
+            scannable, one fixed control, names sorted alpha by first name
+            upstream. The empty default is a no-op (the action guards a blank
+            crewMemberId), so "Place" without a pick does nothing. */}
+        {roster.length === 0 ? (
+          <p className="py-1 text-xs text-faint">No rated crew available to place.</p>
+        ) : (
+          <form action={overrideTo} className="flex flex-wrap items-center gap-2 py-1">
+            <HiddenIds vm={vm} />
+            <label htmlFor={`override-${vm.seatId}`} className="sr-only">
+              Crew to place on this seat
+            </label>
+            <select
+              id={`override-${vm.seatId}`}
+              name="crewMemberId"
+              defaultValue=""
+              className="min-h-[36px] min-w-[10rem] rounded-lg border border-line bg-bg px-2 text-sm text-ink"
+            >
+              <option value="">Select crew…</option>
+              {roster.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            <SubmitButton className="inline-flex min-h-[36px] items-center rounded-lg border border-accent bg-accent px-3 text-sm font-semibold text-white">
+              Place
+            </SubmitButton>
+          </form>
+        )}
       </details>
     </article>
   );

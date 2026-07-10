@@ -149,6 +149,26 @@ export function committedWindow(
   };
 }
 
+/**
+ * The on-clock DURATION of the committed window, in minutes (DEC-041) — the payroll
+ * report's per-shift hours (#347). Same boundaries as {@link committedWindow}
+ * (call = first departure − lead; end = last departure + trip + lead), so
+ * `end − call = (last − first) + trip + 2×lead`. Computed as a true minute span
+ * (not by subtracting the wrapped "HH:mm" clock strings, which lose the day when the
+ * end rolls past midnight). Both departures are same-day wall clocks, sorted, so
+ * `last − first` is a safe within-day difference. Empty in → 0.
+ */
+export function committedMinutes(scheduledTimes: readonly string[]): number {
+  if (scheduledTimes.length === 0) return 0;
+  const toMin = (hhmm: string) => {
+    const [h = 0, m = 0] = hhmm.split(":").map(Number);
+    return h * 60 + m;
+  };
+  const sorted = [...scheduledTimes].sort((a, b) => a.localeCompare(b));
+  const span = toMin(sorted[sorted.length - 1]!) - toMin(sorted[0]!);
+  return span + TRIP_DURATION_MINUTES + 2 * CALL_LEAD_MINUTES;
+}
+
 async function roleName(repo: Repository, roleId: string): Promise<string> {
   const rt = await repo.getRoleType(roleId as Parameters<Repository["getRoleType"]>[0]);
   return rt?.name ?? roleId;

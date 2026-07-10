@@ -36,6 +36,17 @@ export const PICKUP_MAP_URL: string =
   process.env.PICKUP_MAP_URL ?? "https://maps.app.goo.gl/A2vG7Q9LjKdZJpod9";
 
 /**
+ * Biweekly payroll anchor — a known period START, phasing the 14-day pay periods
+ * the payroll report (#347) lists. Ported to match the sibling `xola-tip-extractor`
+ * EXACTLY (its `PAY_PERIOD_ANCHOR` env + `DEFAULT_ANCHOR` fallback), so both tools
+ * name the same periods for the same dates. Env-overridable to track the live
+ * payroll calendar; default `2026-01-05` (the extractor's aligned fallback:
+ * …, 5/25–6/7, 6/8–6/21, …).
+ */
+export const PAY_PERIOD_ANCHOR: string =
+  process.env.PAY_PERIOD_ANCHOR ?? "2026-01-05";
+
+/**
  * Offset (tz-local − UTC) in ms at instant `at`, DST-correct via `Intl`.
  * Negative west of UTC (e.g. −4h for EDT, −5h for EST). Pure.
  */

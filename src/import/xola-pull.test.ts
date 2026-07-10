@@ -240,6 +240,25 @@ describe("pullXola — G1–G9 reconcile harness", () => {
     expect(await seatCount(V.brew1)).toBe(2);
   });
 
+  it("G3.4b an IN-WINDOW booked boat-less trip is flagged in bookedNoBoat (#338)", async () => {
+    const r = await pull([ev("e1", null)], ordersOf(item("e1")), NOW); // 2026-07-04, in window
+    expect(r.mapSkipped).toBe(1);
+    expect(r.bookedNoBoat).toHaveLength(1);
+    expect(r.bookedNoBoat[0]).toMatchObject({
+      date: "2026-07-04",
+      category: "booked_no_boat",
+      product: "Brew Boat Party Boats with Captain",
+    });
+  });
+
+  it("G3.4c an OUT-OF-WINDOW booked boat-less trip counts but is NOT flagged (#338)", async () => {
+    // Window is [today-1, today+lead+1]; a December trip is well past it → benign edge.
+    const far = item("e1", { arrivalDatetime: "2026-12-25T18:00:00-04:00" });
+    const r = await pull([ev("e1", null, "2026-12-25T18:00:00+00:00")], ordersOf(far), NOW);
+    expect(r.mapSkipped).toBe(1);
+    expect(r.bookedNoBoat).toHaveLength(0);
+  });
+
   // ── G4: cancellations (the 11pm-call signal) ─────────────────────────────────
   it("G4.1 one of several bookings cancels → trip stays scheduled, shift unchanged", async () => {
     await pull([ev("e1", RES.brew2)], ordersOf(item("e1", { id: "a" }), item("e1", { id: "b" })), NOW);

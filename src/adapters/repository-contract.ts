@@ -199,6 +199,7 @@ const importRun = (over: Partial<ImportRun> = {}): ImportRun => ({
     seatsStranded: 0,
     unmappedResources: [{ reason: "unknown resource xyz" }],
     skipped: [],
+    bookedNoBoat: [],
     warnings: ["heads up"],
     assignments: [{ date: "2026-07-01", boats: [] }],
     splitDaysChanged: [],

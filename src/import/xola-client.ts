@@ -257,9 +257,15 @@ export function mapXolaOrders(
       const status = item.status === CANCELLED_STATUS_CODE ? "cancelled" : "booked";
       const vesselId = eventVessels.get(eventId);
       if (status === "booked" && !vesselId) {
+        // Carry date/time + the category (#338): a booked item with no boat is
+        // usually the window-edge (harmless), but an IN-WINDOW one is a real trip
+        // Xola hasn't boated yet — the pull classifies it into an operator alert.
         skipped.push({
           reservationId,
           product,
+          date: when.date,
+          time: when.time,
+          category: "booked_no_boat",
           reason: `booked item's event not boated/in-window: ${eventId}`,
         });
         continue;

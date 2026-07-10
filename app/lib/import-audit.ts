@@ -48,6 +48,7 @@ export async function persistImportRun(
       seatsStranded: result.form.seatsStranded,
       unmappedResources: result.unmappedResources,
       skipped: result.import.skipped,
+      bookedNoBoat: result.bookedNoBoat,
       warnings: result.import.warnings,
       assignments: result.assignments,
       splitDaysChanged: result.form.splitDaysChanged,

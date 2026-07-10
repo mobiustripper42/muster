@@ -2476,6 +2476,63 @@ archived rows there too), or archived members should auto-hide from the roster a
 
 ---
 
+## DEC-097 (PROPOSED — awaiting Eric): Same-day decline cooldown — one "no" per day, coverage-safe
+
+> **Status: PROPOSED, not ratified.** Drafted 2026-07-10 from the ask-timing research review. The
+> *mechanism* is settled; the **dial** (how aggressive) is Eric's call — that's the whole point of this
+> entry. Ratify (drop this tag) once the dial is picked, or delete if we keep today's behavior.
+
+**Context.** Two facts about today's ask engine combine into a gap:
+- A **decline is reliability-neutral** — `recordResponse` logs `ask_declined` (+latency) and reopens the
+  seat; it applies **no** score penalty and no demotion (`ask-loop.ts`).
+- **Cross-shift dedup fires only on *committed* seats.** `committedDatesByCrew` (`oracle.ts`) excludes a
+  crew member from a day's *other* asks only once they hold a **Claimed/Confirmed** seat. A *decline*
+  commits them nowhere, so they stay in every other shift's ranked-eligible pool for that day.
+
+Result: a reliable crew member who declines the 11:30 boat keeps topping the 1:30 and 3:30 pools and gets
+asked again — and again. The "**everybody gets asked**" goal is met; the "**nobody gets spammed once
+they've said no**" goal is **unaddressed** at the day level. (This is distinct from within-seat re-asking,
+which the drip already avoids — a declined candidate is in the `asked` set and the widen skips past them on
+*that* seat.)
+
+**Decision (proposed).** A **same-day, per-person cooldown on autonomous asks**: after crew C declines an
+ask for a shift on date D, the engine suppresses further **auto**-asks to C for shifts on date D. Not a
+penalty, not a permanent state — a one-day quiet after a "no."
+- **Pull stays open.** C can still self-claim any open seat via `/crew/open` (`claimableSeatsFor`) — the
+  cooldown gates only the *push* engine, never the crew's own initiative.
+- **Operator stays unaffected.** Spink's manual lean / override (`overrideSeat`) never reads the cooldown —
+  it's the human backstop, and he may knowingly want to reach someone.
+- **No new data, no migration.** The signal already exists: `ask_declined` events carry `crewMemberId` +
+  `shiftId` (→ `shift.date`) + timestamp (DEC-008). The cooldown is a reliability-log read feeding the
+  auto-ask candidate filter — the **same seam** the proposed on-shift suppression would use (see the
+  FUTURE_IDEAS "On-shift ask suppression" row).
+
+**The dial — Eric's call (this is what "PROPOSED" is waiting on).**
+- **Option A (recommended): decline suppresses auto-asks for the whole date D.** One "no" per day is
+  enough; simplest to reason about and matches the stated intent most directly.
+- **Option A + last-resort valve:** as A, but if suppressing C would leave a required seat with **no other
+  eligible candidate** (the pool would otherwise exhaust and the shift would land on Spink's board), allow
+  the re-ask. Preserves coverage; only re-asks a decliner when they're genuinely the last option.
+- **Option B (softer): suppress only re-asks for that same shift/time.** Close to today's behavior (the
+  drip already skips a decliner on the same seat) — does little; listed for completeness.
+
+**Recommendation: A + last-resort valve.** It honors "don't spam after a no" in the common case and refuses
+to convert a fillable seat into a board landing in the rare case. Plain A is fine if the valve isn't worth
+the branch; B is not worth building.
+
+**Tradeoff to accept.** Any hard cooldown (plain A) can turn a shift that *would* have filled on a re-ask
+into an At-Risk board landing on Spink — that's the coverage cost of quiet. The last-resort valve buys it
+back; without the valve, watch board-landing volume after rollout.
+
+**Scope held.** Autonomous asks only (tick drip + Tier-2 escalate + bail/vacate re-asks). Self-claim,
+operator manual placement, and the reliability score are untouched — a decline stays neutral; this changes
+*who the engine re-asks*, not *what a "no" costs the person*. **Env-tunable** cooldown window later (default
+= rest of date D), same posture as the DEC-062/088 knobs. **Revisit if:** board landings rise after
+rollout (loosen / add the valve), or crew still report ask-spam (tighten — e.g. carry a short cooldown
+across adjacent days).
+
+---
+
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)
 
 These are deferred by design. Each names an owner and a trigger. **Consult @architect (and the named

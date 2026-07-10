@@ -22,6 +22,7 @@ import type {
   RingOutboxEntry,
   NoticeOutboxEntry,
   SmsConsent,
+  GuestContact,
   PtoWindow,
   Reservation,
   RoleType,
@@ -90,6 +91,8 @@ export class InMemoryRepository implements Repository {
   readonly #noticeOutbox = new Map<NoticeOutboxEntryId, NoticeOutboxEntry>();
   readonly #reliability: ReliabilityEvent[] = [];
   readonly #smsConsent: SmsConsent[] = [];
+  // Guest contacts (#345 Part B) — keyed by reservationId, upsert-latest.
+  readonly #guestContacts = new Map<string, GuestContact>();
   // Engine pause flag (#124, DEC-054). Default false = running, mirroring the
   // KV's "absent row ⇒ running" semantics. `#enginePausedAt` mirrors the DB's
   // audit column (no read path through the port — parity, not a feature).
@@ -214,6 +217,9 @@ export class InMemoryRepository implements Repository {
   }
   async listAllPtoWindows(): Promise<PtoWindow[]> {
     return [...this.#ptoWindows.values()].map(clone);
+  }
+  async removePtoWindow(id: PtoWindowId): Promise<void> {
+    this.#ptoWindows.delete(id);
   }
 
   // ── Events ─────────────────────────────────────────────────────────────────
@@ -461,6 +467,15 @@ export class InMemoryRepository implements Repository {
   async listSmsConsentsForCrew(crewMemberId: CrewMemberId): Promise<SmsConsent[]> {
     return this.#smsConsent
       .filter((c) => c.crewMemberId === crewMemberId)
+      .map(clone);
+  }
+
+  async recordGuestContact(contact: GuestContact): Promise<void> {
+    this.#guestContacts.set(String(contact.reservationId), clone(contact));
+  }
+  async listGuestContactsForShift(shiftId: ShiftId): Promise<GuestContact[]> {
+    return [...this.#guestContacts.values()]
+      .filter((c) => c.shiftId === shiftId)
       .map(clone);
   }
 

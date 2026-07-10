@@ -214,6 +214,59 @@ describe("formShifts — reconciliation (#20)", () => {
     expect(r2.restoredCrew).toEqual([]);
   });
 
+  it("reports changed crew when a trip is added to a surviving shift (#350), transition-only", async () => {
+    const repo = new InMemoryRepository();
+    await seedEvents(repo);
+    await formShifts(repo);
+    // Confirm a crew member onto day1 (the 05-16 shift, trips e1 + e2).
+    const seat = (await repo.listSeatsForShift(day1))[0]!;
+    await repo.saveSeat({
+      ...seat,
+      state: "Confirmed",
+      assignedCrewMemberId: asId<"CrewMemberId">("cap"),
+    });
+
+    // A new booking adds a third trip to the same vessel-day — the import case.
+    // The import opts into the notice (`notifyTripChanges`).
+    await repo.saveEvent(event("e1b", PARTY, "2026-05-16", "17:00"));
+    const r1 = await formShifts(repo, { notifyTripChanges: true });
+    expect(r1.changedCrew).toEqual([
+      { shiftId: day1, crewMemberId: asId<"CrewMemberId">("cap") },
+    ]);
+    // Not also reported as a cancel/resurrection — it stayed live.
+    expect(r1.cancelledCrew).toEqual([]);
+    expect(r1.restoredCrew).toEqual([]);
+
+    // A re-pull with no trip-set change must NOT re-report (diff-gated).
+    const r2 = await formShifts(repo, { notifyTripChanges: true });
+    expect(r2.changedCrew).toEqual([]);
+
+    // A partial cancellation that leaves the shift LIVE also reports "changed".
+    await cancelEvent(repo, "e1b");
+    const r3 = await formShifts(repo, { notifyTripChanges: true });
+    expect((await repo.getShift(day1))?.state).not.toBe("Cancelled");
+    expect(r3.changedCrew).toEqual([
+      { shiftId: day1, crewMemberId: asId<"CrewMemberId">("cap") },
+    ]);
+  });
+
+  it("does NOT report changed crew without the opt-in — the notice is command-driven (#350)", async () => {
+    const repo = new InMemoryRepository();
+    await seedEvents(repo);
+    await formShifts(repo);
+    const seat = (await repo.listSeatsForShift(day1))[0]!;
+    await repo.saveSeat({
+      ...seat,
+      state: "Confirmed",
+      assignedCrewMemberId: asId<"CrewMemberId">("cap"),
+    });
+    // Same trip-set change, but a caller that doesn't opt in (a silent re-form) fires
+    // no notice — only the explicit commands (import/split/merge) pass the flag.
+    await repo.saveEvent(event("e1b", PARTY, "2026-05-16", "17:00"));
+    const r = await formShifts(repo); // no notifyTripChanges
+    expect(r.changedCrew).toEqual([]);
+  });
+
   it("never forms a shift from cancelled-only events (no prior shift)", async () => {
     const repo = new InMemoryRepository();
     await seedEvents(repo);

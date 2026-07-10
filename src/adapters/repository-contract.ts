@@ -23,6 +23,7 @@ import type {
   RingOutboxEntry,
   NoticeOutboxEntry,
   SmsConsent,
+  GuestContact,
   PtoWindow,
   Reservation,
   RoleType,
@@ -199,6 +200,7 @@ const importRun = (over: Partial<ImportRun> = {}): ImportRun => ({
     seatsStranded: 0,
     unmappedResources: [{ reason: "unknown resource xyz" }],
     skipped: [],
+    bookedNoBoat: [],
     warnings: ["heads up"],
     assignments: [{ date: "2026-07-01", boats: [] }],
     splitDaysChanged: [],
@@ -358,6 +360,15 @@ export function runRepositoryContract(
     it("pto windows: save + listForCrew", async () => {
       await repo.savePtoWindow(pto());
       expect(await repo.listPtoWindowsForCrew(CREW)).toEqual([pto()]);
+    });
+
+    it("pto windows: remove drops it from both lists; second remove is a no-op", async () => {
+      await repo.savePtoWindow(pto());
+      await repo.removePtoWindow(asId<"PtoWindowId">("pto-1"));
+      expect(await repo.listPtoWindowsForCrew(CREW)).toEqual([]);
+      expect(await repo.listAllPtoWindows()).toEqual([]);
+      // Idempotent — removing an absent id must not throw (surfaces double-submit).
+      await repo.removePtoWindow(asId<"PtoWindowId">("pto-1"));
     });
 
     it("events: round-trip + list; dock optional present and absent", async () => {
@@ -548,6 +559,33 @@ export function runRepositoryContract(
       expect(mine.map((c) => c.id)).toEqual(["con-1", "con-2"]); // order preserved, crew-b excluded
       expect(mine[1]!.phone).toBeNull(); // null phone round-trips
       expect(mine[0]!.disclosureVersion).toBe("v1");
+    });
+
+    it("guest contacts: upsert-latest by reservation, filtered by shift", async () => {
+      const contact = (over: Partial<GuestContact> = {}): GuestContact => ({
+        reservationId: asId<"ReservationId">("resv-1"),
+        shiftId: SHIFT,
+        contactedBy: "crew-a",
+        contactedByName: "Quint",
+        contactedAt: "2026-07-10T14:00:00.000Z",
+        ...over,
+      });
+      await repo.recordGuestContact(contact());
+      // Re-texting the same booking overwrites (latest wins) — not a second row.
+      await repo.recordGuestContact(
+        contact({ contactedBy: "crew-b", contactedByName: "Hooper", contactedAt: "2026-07-10T15:00:00.000Z" }),
+      );
+      // A different booking on the same shift, and one on another shift.
+      await repo.recordGuestContact(contact({ reservationId: asId<"ReservationId">("resv-2") }));
+      await repo.recordGuestContact(
+        contact({ reservationId: asId<"ReservationId">("resv-3"), shiftId: asId<"ShiftId">("shift-2") }),
+      );
+
+      const onShift = await repo.listGuestContactsForShift(SHIFT);
+      expect(onShift.map((c) => String(c.reservationId)).sort()).toEqual(["resv-1", "resv-2"]);
+      const r1 = onShift.find((c) => String(c.reservationId) === "resv-1")!;
+      expect(r1.contactedByName).toBe("Hooper"); // the later text won
+      expect(r1.contactedAt).toBe("2026-07-10T15:00:00.000Z");
     });
 
     it("magic tokens: round-trip incl. consumedAt optional; lookup by hash", async () => {

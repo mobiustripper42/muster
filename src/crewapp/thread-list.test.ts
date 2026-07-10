@@ -13,7 +13,7 @@ import {
   standingThreadId,
   type Message,
 } from "../messaging/entities.js";
-import { buildThreadList } from "./thread-list.js";
+import { buildThreadList, operatorStandingTarget } from "./thread-list.js";
 
 const NOW = new Date("2026-07-01T08:00:00.000Z");
 const TZ = "UTC"; // deterministic: today = the UTC date of NOW
@@ -166,5 +166,34 @@ describe("buildThreadList — assembly (#117, DEC-071)", () => {
     const view = await buildThreadList(repo, ME, TENANT, NOW, TZ);
     expect(view.threads.map((t) => t.threadId)).not.toContain(String(empty));
     expect(view.threads.some((t) => t.kind === "dm")).toBe(false);
+  });
+});
+
+describe("operatorStandingTarget — the operator's post authorization (#317)", () => {
+  const NOW = new Date("2026-07-10T12:00:00Z");
+  // A tenant id WITH dashes — the slice-and-reconstruct must still parse the date.
+  const T = asId<"TenantId">("tenant-brewboat");
+
+  it("accepts all-staff", () => {
+    const t = operatorStandingTarget(standingThreadId("all_staff", T, null), T, NOW);
+    expect(t?.kind).toBe("all_staff");
+  });
+
+  it("accepts today's + any FUTURE day's cohort (the ungated Cohort button), tz UTC", () => {
+    for (const day of ["2026-07-10", "2026-07-25", "2027-01-01"]) {
+      const t = operatorStandingTarget(standingThreadId("cohort", T, day), T, NOW, "UTC");
+      expect(t).toMatchObject({ kind: "cohort", scopeRef: day });
+    }
+  });
+
+  it("REFUSES a past-day cohort — no ringing crew about a day that already ran", () => {
+    expect(operatorStandingTarget(standingThreadId("cohort", T, "2026-07-09"), T, NOW, "UTC")).toBeNull();
+    expect(operatorStandingTarget(standingThreadId("cohort", T, "2026-01-01"), T, NOW, "UTC")).toBeNull();
+  });
+
+  it("rejects a shift thread, a DM, and a malformed id", () => {
+    expect(operatorStandingTarget(standingThreadId("shift", T, "shift-x"), T, NOW)).toBeNull();
+    expect(operatorStandingTarget(asId<"ThreadId">("thread-cohort-tenant-brewboat-nope"), T, NOW)).toBeNull();
+    expect(operatorStandingTarget(asId<"ThreadId">("garbage"), T, NOW)).toBeNull();
   });
 });

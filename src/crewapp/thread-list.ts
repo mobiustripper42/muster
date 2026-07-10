@@ -23,6 +23,7 @@ import { asId } from "../domain/ids.js";
 import type { CrewMemberId, TenantId, ThreadId } from "../domain/ids.js";
 import { subjectKey } from "../domain/subject.js";
 import { standingThreadId, type Message, type Thread } from "../messaging/entities.js";
+import { isIsoDate } from "../domain/iso-date.js";
 import { deriveMembers } from "../messaging/membership.js";
 import type { Repository } from "../ports/repository.js";
 import { TENANT_TIMEZONE, vesselDateOf } from "../config/tenant.js";
@@ -218,11 +219,13 @@ export async function threadTitle(
 }
 
 /**
- * The two threads the operator can ORIGINATE (artifact §9/§10, DEC-072): the
+ * The two standing DOORS the operator's thread list surfaces (artifact §9/§10): the
  * all-staff broadcast and TODAY's cohort. Synthesized with deterministic ids
  * (`standingThreadId`) so an unposted one is still a post target; a real row, once
- * posted, supersedes the synth (the list + find-or-create dedup on id). Future-day
- * cohorts are deferred (they interact with ring-on-future-membership — DEC-072).
+ * posted, supersedes the synth (the list + find-or-create dedup on id). These are the
+ * default doors; the operator may ALSO post to any today-or-future cohort via the
+ * cockpit Cohort button (#317, amending DEC-072) — see `operatorStandingTarget`, which
+ * is the authorization (broader than this list, which is just what's shown by default).
  */
 export function operatorPostTargets(
   tenantId: TenantId,
@@ -245,7 +248,30 @@ export function operatorStandingTarget(
   now: Date,
   tz: string = TENANT_TIMEZONE,
 ): Thread | null {
-  return operatorPostTargets(tenantId, now, tz).find((t) => String(t.id) === String(threadId)) ?? null;
+  const s = String(threadId);
+  const createdAt = now.toISOString();
+  // The two standing DOORS the operator's thread list surfaces are today-only
+  // (all-staff + today's cohort — `operatorPostTargets`). But the operator may ALSO
+  // post to any TODAY-OR-FUTURE cohort (#317, amends DEC-072's future-cohort deferral):
+  // the Cohort button on a shift deep-links here for that shift's date. The doorbell
+  // rings a cohort's crew with no date filter, so a future-day post is advance notice
+  // (it surfaces in the crew thread list on the day; the ring links them in meanwhile).
+  if (s === String(standingThreadId("all_staff", tenantId, null))) {
+    return { id: threadId, tenantId, kind: "all_staff", scopeRef: null, createdAt };
+  }
+  // A cohort thread id ends in its day (`…-YYYY-MM-DD`); take the trailing 10 chars and
+  // reconstruct to confirm (robust to a tenant id that itself contains dashes). PAST
+  // cohorts are refused — ringing crew about a day that already ran is a footgun (and
+  // the cockpit hides the button there); `YYYY-MM-DD` string compare is a true date order.
+  const date = s.slice(-10);
+  if (
+    isIsoDate(date) &&
+    s === String(standingThreadId("cohort", tenantId, date)) &&
+    date >= vesselDateOf(now, tz)
+  ) {
+    return { id: threadId, tenantId, kind: "cohort", scopeRef: date, createdAt };
+  }
+  return null;
 }
 
 /** Is the crew member a member of `thread` — the SAME `deriveMembers` the doorbell

@@ -26,6 +26,7 @@ import type {
   MagicToken,
   NoticeOutboxEntry,
   SmsConsent,
+  GuestContact,
   OutboxEntry,
   PtoWindow,
   RingOutboxEntry,
@@ -266,16 +267,27 @@ const toSmsConsent = (r: any): SmsConsent => ({
   consentedAt: r.consented_at,
 });
 
+const toGuestContact = (r: any): GuestContact => ({
+  reservationId: asId<"ReservationId">(r.reservation_id),
+  shiftId: asId<"ShiftId">(r.shift_id),
+  contactedBy: r.contacted_by,
+  contactedByName: r.contacted_by_name,
+  contactedAt: r.contacted_at,
+});
+
 const toImportRun = (r: any): ImportRun => ({
   id: asId<"ImportRunId">(r.id),
   source: r.source as ImportRunSource,
   ranAt: r.ran_at,
   window: { start: r.window_start, end: r.window_end },
-  // Default `splitDaysChanged` — runs persisted before DEC-083 have no such key,
-  // so `.length`/`.map()` on a historical "latest run" would throw (#206 review).
+  // Default the jsonb summary's list fields that post-date some persisted runs, so
+  // `.length`/`.map()` on a historical run never throws: `splitDaysChanged` (DEC-083,
+  // #206 review) and `bookedNoBoat` (#338). Normalize here — the one read seam — so
+  // no per-caller guard is needed (the type can stay required).
   summary: {
     ...r.summary,
     splitDaysChanged: r.summary.splitDaysChanged ?? [],
+    bookedNoBoat: r.summary.bookedNoBoat ?? [],
   } as ImportRunSummary, // jsonb → object (node-pg parses)
 });
 
@@ -524,6 +536,9 @@ export class PostgresRepository implements Repository {
   async listAllPtoWindows(): Promise<PtoWindow[]> {
     const { rows } = await this.#pool.query("select * from pto_windows");
     return rows.map(toPto);
+  }
+  async removePtoWindow(id: PtoWindowId): Promise<void> {
+    await this.#pool.query("delete from pto_windows where id=$1", [id]);
   }
 
   // ── Events ─────────────────────────────────────────────────────────────────
@@ -969,6 +984,25 @@ export class PostgresRepository implements Repository {
       [crewMemberId],
     );
     return rows.map(toSmsConsent);
+  }
+
+  // ── Guest contacts (#345 Part B — upsert-latest by reservation) ────────────
+  async recordGuestContact(c: GuestContact): Promise<void> {
+    await this.#pool.query(
+      `insert into guest_contacts(reservation_id, shift_id, contacted_by, contacted_by_name, contacted_at)
+       values ($1,$2,$3,$4,$5)
+       on conflict (reservation_id) do update set
+         shift_id=excluded.shift_id, contacted_by=excluded.contacted_by,
+         contacted_by_name=excluded.contacted_by_name, contacted_at=excluded.contacted_at`,
+      [c.reservationId, c.shiftId, c.contactedBy, c.contactedByName, c.contactedAt],
+    );
+  }
+  async listGuestContactsForShift(shiftId: ShiftId): Promise<GuestContact[]> {
+    const { rows } = await this.#pool.query(
+      "select * from guest_contacts where shift_id=$1",
+      [shiftId],
+    );
+    return rows.map(toGuestContact);
   }
 
   // ── Engine pause flag (operator control — #124, DEC-054) ───────────────────

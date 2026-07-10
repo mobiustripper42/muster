@@ -73,5 +73,9 @@ export async function splitShift(
   }
 
   await repo.saveShift({ ...shift, splitCutTime: cutTime });
-  return formShifts(repo, now ? { now } : undefined);
+  // notifyTripChanges (#350): this is an explicit operator command, so the crew who
+  // stay on side A — now a shorter day (the later trips split off into `…-b`) — get a
+  // "your shift changed" notice. Opting in from the command (not the idempotent
+  // re-form) is the DEC-084 posture.
+  return formShifts(repo, { notifyTripChanges: true, ...(now ? { now } : {}) });
 }

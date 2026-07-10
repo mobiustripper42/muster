@@ -74,6 +74,24 @@ describe("mergeShift (DEC-083 inverse / DEC-084)", () => {
     expect(String(kept?.assignedCrewMemberId)).toBe("cap");
   });
 
+  it("notifies the surviving side-A crew that their shift changed — now the longer day (#350)", async () => {
+    const repo = await seedDay();
+    const seat = (await repo.listSeatsForShift(CANON))[0]!;
+    await repo.saveSeat({
+      ...seat,
+      state: "Confirmed",
+      assignedCrewMemberId: asId<"CrewMemberId">("cap"),
+    });
+    await splitShift(repo, CANON, "14:00");
+    // Merging folds side B's trips back → side A's crew's day grew, so they get a
+    // "your shift changed" notice (distinct from side B's dropped crew, who'd get
+    // "you're off" via `freedCrew`).
+    const { form } = await mergeShift(repo, CANON);
+    expect(form.changedCrew).toEqual([
+      { shiftId: CANON, crewMemberId: asId<"CrewMemberId">("cap") },
+    ]);
+  });
+
   it("reports side B's assigned crew as freed (the release-notice list)", async () => {
     const repo = await seedDay();
     await splitShift(repo, CANON, "14:00");

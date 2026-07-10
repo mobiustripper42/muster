@@ -8,7 +8,7 @@ import { Shell } from "../../../../../components/ui/shell";
 import { SubmitButton } from "../../../../../components/ui/submit-button";
 import { readSubject } from "../../../../lib/auth";
 import { getRepo } from "../../../../lib/repo";
-import { fmt12 } from "../../../../lib/format";
+import { fmt12, tel, sms } from "../../../../lib/format";
 import { bailFromSeat } from "./actions";
 import { startDm } from "../../threads/actions";
 
@@ -32,8 +32,6 @@ const BAIL_ERROR_COPY: Record<string, string> = {
   trainee_seat:
     "You’re riding this shift as a trainee — ask the office to take you off; no penalty.",
 };
-const tel = (p: string) => `tel:${p.replace(/[^0-9+]/g, "")}`;
-const sms = (p: string) => `sms:${p.replace(/[^0-9+]/g, "")}`;
 const mapHref = (q: string) => `https://maps.google.com/?q=${encodeURIComponent(q)}`;
 
 function fmtDate(iso: string): string {
@@ -90,7 +88,14 @@ export default async function ShiftCardPage({
   }
 
   const bailError = sp.bail_error ? BAIL_ERROR_COPY[sp.bail_error] ?? null : null;
-  return <Card card={card} shiftId={shiftId} bailError={bailError} />;
+  // The viewer's name → the guest intro text names its sender (#345). One cheap
+  // read; a hiccup just omits the name (the builder falls back gracefully).
+  const me = await getRepo()
+    .getCrewMember(asId<"CrewMemberId">(subject.id))
+    .catch(() => null);
+  return (
+    <Card card={card} shiftId={shiftId} bailError={bailError} senderName={me?.name} />
+  );
 }
 
 /** Standalone dock pin (the shared-dock case) — prominent, above the manifest. */
@@ -114,10 +119,12 @@ function Card({
   card,
   shiftId,
   bailError,
+  senderName,
 }: {
   card: ShiftCardView;
   shiftId: string;
   bailError: string | null;
+  senderName?: string | undefined;
 }) {
   const firstDeparture = card.events[0]?.departureTime;
   return (
@@ -219,7 +226,7 @@ function Card({
         </section>
       )}
 
-      <ShiftManifest events={card.events} sharedDock={card.sharedDock} />
+      <ShiftManifest events={card.events} sharedDock={card.sharedDock} senderName={senderName} shiftId={shiftId} />
 
       {/* A trainee ride (DEC-087) has no bail: it's not a reliability
           commitment, and the seat must never re-ask — the office unstaffs. */}

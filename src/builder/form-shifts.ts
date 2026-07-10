@@ -71,6 +71,13 @@ export interface FormResult {
    * `cancelledCrew`. The `added` notice slot is distinct from the earlier `removed`
    * one (id = shift·member·action), so it fires cleanly. */
   restoredCrew: { shiftId: ShiftId; crewMemberId: CrewMemberId }[];
+  /** #350: assigned crew on a SURVIVING shift whose scheduled TRIP SET changed this
+   * run (a trip added, or one of several cancelled while the shift lives on) — their
+   * committed day moved (call time / trips / manifest), so the import edge relays each
+   * a "your shift changed" notice. Transition-only (diff-gated: no set change → no
+   * entry), so a steady re-pull doesn't re-fire. Excludes the cancel (→`cancelledCrew`)
+   * and resurrection (→`restoredCrew`) transitions, which carry their own notice. */
+  changedCrew: { shiftId: ShiftId; crewMemberId: CrewMemberId }[];
 }
 
 /**
@@ -81,7 +88,7 @@ export interface FormResult {
  */
 export async function formShifts(
   repo: Repository,
-  opts?: { now?: Date; leadDays?: number },
+  opts?: { now?: Date; leadDays?: number; notifyTripChanges?: boolean },
 ): Promise<FormResult> {
   // Group by vessel + day across ALL events (not just `scheduled`): a group whose
   // events have all cancelled must still be revisited so its shift can derive to
@@ -115,6 +122,7 @@ export async function formShifts(
     splitDaysChanged: [],
     cancelledCrew: [],
     restoredCrew: [],
+    changedCrew: [],
   };
 
   for (const g of groups.values()) {
@@ -282,7 +290,7 @@ async function formOneShift(
   vesselId: VesselId,
   date: string,
   scheduled: Event[],
-  opts: { now?: Date; leadDays?: number } | undefined,
+  opts: { now?: Date; leadDays?: number; notifyTripChanges?: boolean } | undefined,
   result: FormResult,
   extra?: { splitCutTime?: string; existing?: Shift | null },
 ): Promise<void> {
@@ -406,6 +414,32 @@ async function formOneShift(
   await repo.saveShift(shift);
   if (existing) {
     result.shiftsUpdated++;
+    // #350: the shift SURVIVES (we're past the all-cancelled return) and existed
+    // before. If its scheduled trip set actually CHANGED — a trip added, or one of
+    // several cancelled — its assigned crew's committed day moved, so relay each a
+    // "your shift changed" notice. Skip a resurrection (was Cancelled → `restoredCrew`
+    // says "you're on") and a Completed shift (already ran); diff-gate so a no-change
+    // re-pull adds nothing.
+    //
+    // ONLY when the caller opts in (`notifyTripChanges`) — the three explicit commands
+    // that move a crew member's day: the Xola import (a real booking change) and the
+    // manual split/merge (the operator reshapes the day). Each passes the flag; a silent
+    // idempotent re-form (were one added) would leave it off, so it never fires notices
+    // no human action drove. Keyed to THIS shift's id (each split side notifies its own —
+    // a dual-side person whose trip crosses the cut in one pull can get two texts; rare,
+    // accepted, mirrors merge.ts's tolerated duplicate).
+    if (
+      opts?.notifyTripChanges &&
+      existing.state !== "Cancelled" &&
+      existing.state !== "Completed" &&
+      !idSetEq(existing.eventIds.map(String), shift.eventIds.map(String))
+    ) {
+      for (const seat of seats) {
+        if (seat.assignedCrewMemberId) {
+          result.changedCrew.push({ shiftId, crewMemberId: seat.assignedCrewMemberId });
+        }
+      }
+    }
   } else {
     result.shiftsCreated++;
     result.createdShiftIds.push(String(shiftId));

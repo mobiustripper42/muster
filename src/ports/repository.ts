@@ -24,6 +24,7 @@ import type {
   RingOutboxEntry,
   NoticeOutboxEntry,
   SmsConsent,
+  GuestContact,
   PtoWindow,
   Reservation,
   RoleType,
@@ -113,6 +114,9 @@ export interface Repository {
   listPtoWindowsForCrew(crewMemberId: CrewMemberId): Promise<PtoWindow[]>;
   /** Every PTO window — the integrity diagnostic's orphan scan. */
   listAllPtoWindows(): Promise<PtoWindow[]>;
+  /** Delete one PTO window — the add/remove surfaces (#332). Mirrors
+   *  {@link removeCredential}: idempotent, no-op if the id is already gone. */
+  removePtoWindow(id: PtoWindowId): Promise<void>;
 
   // ── Events ─────────────────────────────────────────────────────────────────
   saveEvent(event: Event): Promise<void>;
@@ -305,6 +309,15 @@ export interface Repository {
   recordSmsConsent(consent: SmsConsent): Promise<void>;
   /** One crew member's consent records, insertion order — the audit read. */
   listSmsConsentsForCrew(crewMemberId: CrewMemberId): Promise<SmsConsent[]>;
+
+  // ── Guest contacts (manifest "we texted them" — #345 Part B) ───────────────
+  // Written best-effort from the /api/guest-contact route when someone taps a
+  // guest's Text button (edge-side; the domain never reads it). Upsert-latest by
+  // reservation: one row per booking = who last texted the guest, and when.
+  /** Record (upsert-latest) that a guest was texted. */
+  recordGuestContact(contact: GuestContact): Promise<void>;
+  /** Every guest contact on one shift — the manifest's per-guest ✓ read. */
+  listGuestContactsForShift(shiftId: ShiftId): Promise<GuestContact[]>;
 
   // ── Engine pause flag (operator control — #124, DEC-054) ───────────────────
   // A single mutable ops setting, NOT a domain aggregate: the autonomous engine

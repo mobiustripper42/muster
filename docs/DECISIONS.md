@@ -1609,6 +1609,8 @@ remove). **Revisit if:** previews ever stop being isolated branches, or carry se
 **Tradeoff:** All crew DMs are operator-visible with **no crew-side disclosure** in v1 — a real §6 trust gap (crew read "DM" as private; §6 promises only number-privacy, not content-privacy). Surfaced, not silently shipped: a one-line crew disclosure is a thin fast-follow to raise with the operator. The ring-exclusion couples the tick to one operator id (a `string` param, defaulted off).
 **Invariant:** operator correctness now rests on the tick being **passed** `OPERATOR_CREW_MEMBER_ID` (it is, from `app/lib/doorbell.ts`). If the operator id ever changes without the env propagating, or a second operator identity is added, revisit the exclusion. **Rejected:** a separate operator view-model; keying `mine` on the handle/operator-id; relying on the operator being unseeded; future-cohort posting and type-derived priority (deferred). **Revisit if:** crew-DM-visibility disclosure is requested; the live socket lands; a second sender number / the ring relay (next stack) ships — the relay makes the (now-excluded) operator ring path moot but must keep the exclusion. **No migration.** **Phase:** Phase 6 (6.8).
 
+**Amendment (#317, 2026-07-10):** the future-cohort deferral above is **lifted** — the operator may now post to any **today-or-future** cohort, not just today's. `operatorStandingTarget` (the authorization) accepts any well-formed cohort thread whose date `>= today`; `operatorPostTargets` (the two default doors in the list) is unchanged, so the *authorization* is now broader than the *shown* doors. The trigger is the cockpit's **Cohort button** (message a shift's whole-day cohort), but the widened predicate also makes any today/future cohort the operator can already *see* (cross-visibility) postable — intended. The ring-on-future-membership interaction that motivated the deferral resolves as **advance notice**: a future-day cohort post rings that day's crew now (the doorbell has no date filter), surfaces in their thread list on the day, and links them in via the ring meanwhile. **PAST cohorts stay refused** (ringing crew about a day that already ran is a footgun; the cockpit hides the button there). A cohort post auto-leads its body with "Cohort" so it's distinguishable from an all-staff broadcast.
+
 ---
 
 ## DEC-073: Real doorbell-ring relay — the operator-outbox `NotificationPort` adapter, on its own table
@@ -2473,6 +2475,34 @@ list, including the manual picker — without a hard delete (history must surviv
 **No migration:** `crew_members.status` is a plain `text` column, so the new value round-trips with no
 schema change (contract-tested on both adapters). **Revisit if:** a web roster surface lands (grey the
 archived rows there too), or archived members should auto-hide from the roster after some retention.
+
+---
+
+## DEC-097: Guest-contact tracking is a progressive-enhancement client island (#345 Part B)
+
+**Context.** The manifest's guest Text button preloads an intro SMS (Part A). Part B needs the tap to
+**record who texted which guest**, so every crew member on the shift sees who's been contacted. A plain
+`<a href="sms:…">` navigates straight to the phone's Messages app — there's no server round-trip to
+hang a record on, and the DEC-026 default is *no client JS required*.
+
+**Decision.** A contained **client island** (`GuestTextButton`, `"use client"`) that, on tap, fires a
+best-effort `keepalive` POST to `/api/guest-contact` **and then lets the `<a>` navigate as normal**. The
+server resolves *who* from the session (can't be forged) and upserts a latest-contact row per booking;
+`buildShiftManifest` reads them so each guest shows "✓ Texted by <name> · <time>", shared across every
+viewer of that shift.
+
+**Why this is within the no-JS posture, not a break from it.** The tap is **never gated on JS**: with
+scripting off, the same `<a>` still opens Messages with the intro preloaded — the recording is purely
+additive enhancement. This is the same family as the existing `GetFormSubmit`/spinner client components
+(DEC-026 allows client JS for *enhancement*, forbids it as a *requirement*). Data model: `guest_contacts`
+(0020), upsert-latest by `reservation_id`, denormalized contacter name (no-FK read, DEC-DATA-1),
+edge-written best-effort — never the domain.
+
+**Known gap (accepted for v1).** The *sender* navigates away to Messages, so they see their own ✓ only
+on returning + a reload; *other* crew see it on their next load (the cross-crew visibility that's the
+point). An optimistic instant-✓ would need client state — deferred. **Revisit if:** the record needs to
+be tamper-checked per-shift (currently any signed-in subject can post), or an append-only contact *history*
+(who texted, how many times) is wanted over the latest-only state.
 
 ---
 

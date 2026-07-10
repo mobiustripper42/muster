@@ -116,6 +116,11 @@ export interface XolaPullResult {
   unmappedResources: SkippedRow[];
   recordsMapped: number;
   mapSkipped: number;
+  /** Booked trips whose event has no boat AND fall inside the pulled window (#338)
+   *  — the actionable subset of `mapSkipped`: a real trip Xola hasn't boated yet.
+   *  Assign a boat in Xola + re-import and it crews. Out-of-window booked-boatless
+   *  rows stay a benign part of the `mapSkipped` count, not itemized here. */
+  bookedNoBoat: SkippedRow[];
   import: ImportResult;
   form: FormResult;
   /** Per-day boat→times — the operator's review surface (catch bad assignments). */
@@ -153,8 +158,23 @@ export async function pullXola(
   const { vessels, excluded, unmapped } = eventVesselMap(events);
 
   const { records, skipped } = mapXolaOrders(orders, vessels);
+  // A booked item with no boat is only actionable when its trip date lands inside
+  // the pulled window (#338) — an out-of-window one is just the window edge. Dates
+  // are `YYYY-MM-DD`, same shape as the window bounds, so string compare is correct.
+  const inWindow = (d?: string): boolean =>
+    !!d && d >= window.start && d <= window.end;
+  const bookedNoBoat = skipped.filter(
+    (s) => s.category === "booked_no_boat" && inWindow(s.date),
+  );
   const imported = await importRecords(repo, records, now);
-  const formed = await formShifts(repo, { now, leadDays: horizonLeadDays });
+  // notifyTripChanges (#350): the import is the one caller that should relay "your
+  // shift changed" to a shift's assigned crew — a real Xola booking moved their day.
+  // The manual split/merge commands re-form too but carry their own notice story.
+  const formed = await formShifts(repo, {
+    now,
+    leadDays: horizonLeadDays,
+    notifyTripChanges: true,
+  });
 
   return {
     window,
@@ -165,6 +185,7 @@ export async function pullXola(
     unmappedResources: unmapped,
     recordsMapped: records.length,
     mapSkipped: skipped.length,
+    bookedNoBoat,
     import: imported,
     form: formed,
     assignments: summarizeAssignments(records),

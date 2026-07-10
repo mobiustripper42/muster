@@ -446,7 +446,7 @@ export interface RingOutboxEntry {
 
 /** A crew member put ON or taken OFF a shift (DEC-084) — the two assignment-change
  * notices. `removed` is what merge (8.4) emits for a dropped side-B occupant. */
-export type AssignmentAction = "added" | "removed";
+export type AssignmentAction = "added" | "removed" | "changed";
 
 /**
  * One queued assignment-change relay (DEC-084, the THIRD operator-relay sibling to
@@ -498,6 +498,21 @@ export interface SmsConsent {
   disclosureText: string;
   /** ISO-8601 UTC. */
   consentedAt: string;
+}
+
+/**
+ * A "we texted this guest" record (#345 Part B) — one per booking, upsert-latest:
+ * who last texted them and when, so every crew member on the shift sees who's been
+ * contacted. `contactedBy` is a subject id (crew or admin); `contactedByName` is a
+ * display snapshot (no join on read, no-FK — DEC-DATA-1).
+ */
+export interface GuestContact {
+  reservationId: ReservationId;
+  shiftId: ShiftId;
+  contactedBy: string;
+  contactedByName: string;
+  /** ISO-8601 UTC. */
+  contactedAt: string;
 }
 
 export type { ReliabilityEvent } from "./reliability.js";

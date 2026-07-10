@@ -162,7 +162,26 @@ describe("buildShiftManifest", () => {
     expect(fivePm!.pax).toBe(2);
     expect(m.paxTotal).toBe(12);
     // A guest without a phone carries none (DEC-017 nullable), not an empty string.
-    expect(threePm!.guests[1]).toEqual({ name: "Vaughn", party: 6 });
+    // Carries its reservationId (#345 — keys the Text button + contact record).
+    expect(threePm!.guests[1]).toEqual({ reservationId: "r2", name: "Vaughn", party: 6 });
+  });
+
+  it("attaches the latest guest-contact record to its guest, only where one exists (#345)", async () => {
+    const repo = await seed();
+    const shift = (await repo.getShift(SHIFT))!;
+    await repo.recordGuestContact({
+      reservationId: asId<"ReservationId">("r1"), // Brody
+      shiftId: SHIFT,
+      contactedBy: "crew-x",
+      contactedByName: "Quint",
+      contactedAt: "2026-07-04T12:00:00.000Z",
+    });
+    const guests = (await buildShiftManifest(repo, shift)).events[0]!.guests;
+    expect(guests.find((g) => g.name === "Brody")!.contact).toEqual({
+      by: "Quint",
+      at: "2026-07-04T12:00:00.000Z",
+    });
+    expect(guests.find((g) => g.name === "Vaughn")!.contact).toBeUndefined();
   });
 
   it("no shared dock when events differ (one has a dock, one doesn't)", async () => {

@@ -36,5 +36,16 @@ test.describe("cockpit guest manifest (#319)", () => {
     await page.getByText("10 guests").click();
     await expect(page.getByText("Brody party")).toBeVisible();
     await expect(page.getByText("×4")).toBeVisible();
+
+    // Brody has a phone → Call + Text buttons (the seat-card idiom), wired to the
+    // tel:/sms: deep links. Vaughn has no phone in the seed → no contact buttons.
+    await expect(page.locator('a[href="tel:+15555551111"]')).toHaveText(/Call/);
+    await expect(page.locator('a[href="sms:+15555551111"]')).toHaveText(/Text/);
+    await expect(page.getByText("Vaughn party")).toBeVisible();
+    // Two of the three seeded guests have phones (Brody 3pm, Ellen 5pm) → two Call
+    // links WITHIN the manifest; phone-less Vaughn contributes none. Scope to the
+    // manifest region so the crew seat-card Call buttons elsewhere don't count.
+    const manifest = page.getByRole("region", { name: "Manifest" });
+    await expect(manifest.locator('a[href^="tel:"]')).toHaveCount(2);
   });
 });

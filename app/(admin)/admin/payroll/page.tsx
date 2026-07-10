@@ -35,9 +35,12 @@ export default async function AdminPayroll({
   const cur = currentPeriod(PAY_PERIOD_ANCHOR, today);
   const periods = periodsForYear(PAY_PERIOD_ANCHOR, Number(today.slice(0, 4)));
 
-  // Selected period from ?period=start|end, else the current one.
+  // Selected period from ?period=start|end, else the current one. Validate the shape
+  // (mirrors the all-shifts isDate idiom) so a garbled param falls back to current
+  // instead of rendering "Invalid Date" and running over an arbitrary window.
   const [selFrom, selTo] = (sp.period ?? "").split("|");
-  const sel = selFrom && selTo ? { start: selFrom, end: selTo } : cur;
+  const isDate = (s?: string): s is string => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
+  const sel = isDate(selFrom) && isDate(selTo) ? { start: selFrom, end: selTo } : cur;
   const selValue = `${sel.start}|${sel.end}`;
 
   let rows: PayrollRow[];

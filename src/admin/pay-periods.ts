@@ -32,6 +32,10 @@ export function currentPeriod(anchorISO: string, todayISO: string): PayPeriod {
   const anchor = new Date(anchorISO + "T00:00:00Z");
   const t = new Date(todayISO + "T00:00:00Z");
   const days = Math.floor((t.getTime() - anchor.getTime()) / DAY_MS);
+  // `max(0, …)` clamps any date BEFORE the anchor to the anchor's own period —
+  // harmless while the anchor stays in the past (it always has), but a future
+  // `PAY_PERIOD_ANCHOR` override would misdate everything before it. Kept as-is for
+  // verbatim parity with the sibling extractor; revisit if the anchor ever moves ahead.
   const periodsIn = Math.max(0, Math.floor(days / 14));
   const start = new Date(anchor.getTime() + periodsIn * PERIOD_MS);
   const end = new Date(start.getTime() + 13 * DAY_MS);

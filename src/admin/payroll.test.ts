@@ -102,6 +102,19 @@ describe("buildPayrollReport", () => {
     expect(report.find((r) => r.crewMemberId === "crew-trainee")).toBeUndefined();
   });
 
+  it("counts a shift once even if the same crew holds two required seats on it (override backstop)", async () => {
+    const repo = await seed();
+    // The operator override can seat Quint on BOTH required seats of one shift
+    // (bypasses the DEC-003 double-book guard). His hours for that shift must not double.
+    await repo.saveEvent(event("e5", "2026-07-14", "15:00"));
+    await repo.saveShift(shift("s5", "2026-07-14", ["e5"]));
+    await repo.saveSeat(seat("s5-a", "s5", "crew-quint"));
+    await repo.saveSeat(seat("s5-b", "s5", "crew-quint")); // same person, second required seat
+    const quint = (await buildPayrollReport(repo, WINDOW)).find((r) => r.crewMemberId === "crew-quint")!;
+    // S1 190 + S2 370 + S5 190 (counted ONCE, not 380) = 750; shiftCount 3, not 4.
+    expect(quint).toMatchObject({ shiftCount: 3, minutes: 750 });
+  });
+
   it("skips out-of-window and cancelled shifts", async () => {
     // Quint's S3 (June, out of window) and S4 (cancelled) contribute nothing — his
     // total is exactly S1 + S2.

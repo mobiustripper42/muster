@@ -32,6 +32,8 @@ export async function buildPayrollReport(
   const acc = new Map<string, { shiftCount: number; minutes: number }>();
 
   for (const shift of await repo.listShifts()) {
+    // Cancelled only — Completed IS counted (unlike the forward-looking all-shifts
+    // board): a completed past shift is exactly the work being paid for.
     if (shift.state === "Cancelled") continue;
     if (shift.date < window.from || shift.date > window.to) continue;
 
@@ -44,11 +46,17 @@ export async function buildPayrollReport(
     const minutes = committedMinutes(times);
     if (minutes === 0) continue; // event-less / all-cancelled → nobody's on the clock
 
+    // Distinct crew on this shift's required Confirmed seats — dedupe so the operator
+    // override backstop (which can seat one person twice, bypassing the DEC-003
+    // double-book guard) doesn't count their hours twice for the one shift.
+    const seatedHere = new Set<string>();
     for (const seat of await repo.listSeatsForShift(shift.id)) {
       if (seat.state !== "Confirmed" || seat.kind !== "required" || !seat.assignedCrewMemberId) {
         continue;
       }
-      const id = String(seat.assignedCrewMemberId);
+      seatedHere.add(String(seat.assignedCrewMemberId));
+    }
+    for (const id of seatedHere) {
       const row = acc.get(id) ?? { shiftCount: 0, minutes: 0 };
       row.shiftCount += 1;
       row.minutes += minutes;

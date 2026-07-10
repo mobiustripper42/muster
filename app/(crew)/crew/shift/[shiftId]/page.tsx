@@ -226,7 +226,7 @@ function Card({
         </section>
       )}
 
-      <ShiftManifest events={card.events} sharedDock={card.sharedDock} senderName={senderName} />
+      <ShiftManifest events={card.events} sharedDock={card.sharedDock} senderName={senderName} shiftId={shiftId} />
 
       {/* A trainee ride (DEC-087) has no bail: it's not a reliability
           commitment, and the seat must never re-ask — the office unstaffs. */}

@@ -423,7 +423,7 @@ export async function ShiftCockpit({
       </div>
 
       {manifest && manifest.events.length > 0 && (
-        <ShiftManifest events={manifest.events} sharedDock={manifest.sharedDock} senderName={senderName} />
+        <ShiftManifest events={manifest.events} sharedDock={manifest.sharedDock} senderName={senderName} shiftId={String(shiftId)} />
       )}
 
       <ManningSection

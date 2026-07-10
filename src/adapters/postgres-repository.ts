@@ -26,6 +26,7 @@ import type {
   MagicToken,
   NoticeOutboxEntry,
   SmsConsent,
+  GuestContact,
   OutboxEntry,
   PtoWindow,
   RingOutboxEntry,
@@ -264,6 +265,14 @@ const toSmsConsent = (r: any): SmsConsent => ({
   disclosureVersion: r.disclosure_version,
   disclosureText: r.disclosure_text,
   consentedAt: r.consented_at,
+});
+
+const toGuestContact = (r: any): GuestContact => ({
+  reservationId: asId<"ReservationId">(r.reservation_id),
+  shiftId: asId<"ShiftId">(r.shift_id),
+  contactedBy: r.contacted_by,
+  contactedByName: r.contacted_by_name,
+  contactedAt: r.contacted_at,
 });
 
 const toImportRun = (r: any): ImportRun => ({
@@ -969,6 +978,25 @@ export class PostgresRepository implements Repository {
       [crewMemberId],
     );
     return rows.map(toSmsConsent);
+  }
+
+  // ── Guest contacts (#345 Part B — upsert-latest by reservation) ────────────
+  async recordGuestContact(c: GuestContact): Promise<void> {
+    await this.#pool.query(
+      `insert into guest_contacts(reservation_id, shift_id, contacted_by, contacted_by_name, contacted_at)
+       values ($1,$2,$3,$4,$5)
+       on conflict (reservation_id) do update set
+         shift_id=excluded.shift_id, contacted_by=excluded.contacted_by,
+         contacted_by_name=excluded.contacted_by_name, contacted_at=excluded.contacted_at`,
+      [c.reservationId, c.shiftId, c.contactedBy, c.contactedByName, c.contactedAt],
+    );
+  }
+  async listGuestContactsForShift(shiftId: ShiftId): Promise<GuestContact[]> {
+    const { rows } = await this.#pool.query(
+      "select * from guest_contacts where shift_id=$1",
+      [shiftId],
+    );
+    return rows.map(toGuestContact);
   }
 
   // ── Engine pause flag (operator control — #124, DEC-054) ───────────────────

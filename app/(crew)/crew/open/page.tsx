@@ -95,14 +95,29 @@ export default async function CrewOpenPage({
       {rows.length === 0 ? (
         <Notice>Nothing open in this window. Check back, or widen the dates above.</Notice>
       ) : (
-        <section className="flex flex-col gap-2">
+        <div className="flex flex-col gap-5">
           <p className="text-xs uppercase tracking-wide text-muted">
             {rows.length} open
           </p>
-          {rows.map((r) => (
-            <ClaimRow key={r.seatId} row={r} back={back} />
+          {/* Day-grouped (#313): the flat list read as one dense stack. Same
+              pattern as the admin board — a full-weekday header per day, rows
+              within a day kept in the core's time order (date → departure). */}
+          {groupByDay(rows).map((day) => (
+            <section key={day.date} className="flex flex-col gap-2">
+              <h2 className="flex items-baseline justify-between border-b border-line pb-1">
+                <span className="text-sm font-semibold text-ink">
+                  {fmtDayHeader(day.date)}
+                </span>
+                <span className="text-xs text-faint">
+                  {day.rows.length} open
+                </span>
+              </h2>
+              {day.rows.map((r) => (
+                <ClaimRow key={r.seatId} row={r} back={back} />
+              ))}
+            </section>
           ))}
-        </section>
+        </div>
       )}
 
       <VersionTag />
@@ -168,6 +183,35 @@ function Filters({
       </form>
     </div>
   );
+}
+
+/** Day-section header (#313): full weekday so a weekend reads at a glance, UTC-
+ *  anchored so the stored vessel-local date shows verbatim (DEC-032). Mirrors the
+ *  admin board's `fmtDayHeader`. */
+function fmtDayHeader(iso: string): string {
+  return new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+/** Group the already-sorted (date → departure) rows into chronological day
+ *  buckets — order within a day is preserved, so a day reads in time order. Pure
+ *  presentation; the core view already clamps + sorts (#313, admin-board pattern). */
+function groupByDay(
+  rows: ClaimableSeatView[],
+): { date: string; rows: ClaimableSeatView[] }[] {
+  const byDate = new Map<string, ClaimableSeatView[]>();
+  for (const r of rows) {
+    const bucket = byDate.get(r.date);
+    if (bucket) bucket.push(r);
+    else byDate.set(r.date, [r]);
+  }
+  return [...byDate.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, rows]) => ({ date, rows }));
 }
 
 /** One claimable seat: a <details> whose open state is the DEC-077 confirm sheet. */

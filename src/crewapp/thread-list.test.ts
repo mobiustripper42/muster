@@ -179,11 +179,16 @@ describe("operatorStandingTarget — the operator's post authorization (#317)", 
     expect(t?.kind).toBe("all_staff");
   });
 
-  it("accepts ANY day's cohort — not just today (the ungated Cohort button)", () => {
-    for (const day of ["2026-07-10", "2026-07-25", "2026-01-01"]) {
-      const t = operatorStandingTarget(standingThreadId("cohort", T, day), T, NOW);
+  it("accepts today's + any FUTURE day's cohort (the ungated Cohort button), tz UTC", () => {
+    for (const day of ["2026-07-10", "2026-07-25", "2027-01-01"]) {
+      const t = operatorStandingTarget(standingThreadId("cohort", T, day), T, NOW, "UTC");
       expect(t).toMatchObject({ kind: "cohort", scopeRef: day });
     }
+  });
+
+  it("REFUSES a past-day cohort — no ringing crew about a day that already ran", () => {
+    expect(operatorStandingTarget(standingThreadId("cohort", T, "2026-07-09"), T, NOW, "UTC")).toBeNull();
+    expect(operatorStandingTarget(standingThreadId("cohort", T, "2026-01-01"), T, NOW, "UTC")).toBeNull();
   });
 
   it("rejects a shift thread, a DM, and a malformed id", () => {

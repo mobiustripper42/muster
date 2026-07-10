@@ -14,8 +14,9 @@ import { TENANT_ID } from "../../../lib/tenant";
  * Post a message as the operator (#118, §10). Admin session only. The office posts
  * AS `OPERATOR_CREW_MEMBER_ID` with `senderKind:"admin"` — one voice, not the
  * non-identity handle (DEC-058/030 §7). The operator may post to ANY thread
- * (DEC-052): an existing one (reply), or a synth post-target (all-staff / today's
- * cohort) find-or-created on first post. An optional **priority** flag is the
+ * (DEC-052): an existing one (reply), or a synth post-target (all-staff / any
+ * today-or-future cohort — #317, amending DEC-072) find-or-created on first post. A
+ * cohort post auto-leads with "Cohort" (#317). An optional **priority** flag is the
  * operator's alone (§7.4 / DEC-069 — crew hardcode false); manual checkbox only,
  * type-derivation deferred (DEC-072).
  *

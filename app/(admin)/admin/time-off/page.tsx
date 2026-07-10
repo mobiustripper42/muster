@@ -1,11 +1,12 @@
 import { buildAllTimeOff, type TimeOffByCrew } from "@core/crew/time-off.js";
-import type { CrewMember, PtoWindow } from "@core/domain/entities.js";
+import type { CrewMember } from "@core/domain/entities.js";
 import { BackLink } from "../../../../components/ui/back-link";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { readSubject } from "../../../lib/auth";
+import { fmtDateRange } from "../../../lib/format";
 import { getRepo } from "../../../lib/repo";
 import { adminAddTimeOff, adminRemoveTimeOff } from "./actions";
 
@@ -84,13 +85,22 @@ export default async function AdminTimeOff({
           groups.map((g) => (
             <div
               key={g.crewMemberId}
-              className="flex flex-col gap-2 rounded-card border border-line bg-card px-4 py-3 shadow-sm"
+              className={`flex flex-col gap-2 rounded-card border border-line px-4 py-3 shadow-sm ${
+                g.archived ? "bg-bg opacity-60" : "bg-card"
+              }`}
             >
-              <span className="font-semibold text-ink">{g.crewName}</span>
+              <span className="flex items-center gap-2">
+                <span className="font-semibold text-ink">{g.crewName}</span>
+                {g.archived && (
+                  <span className="rounded-full border border-line bg-bg px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted">
+                    Archived
+                  </span>
+                )}
+              </span>
               <ul className="flex flex-col gap-1">
                 {g.windows.map((w) => (
                   <li key={w.id} className="flex items-center justify-between gap-3">
-                    <span className="text-sm text-ink">{fmtRange(w)}</span>
+                    <span className="text-sm text-ink">{fmtDateRange(w.start, w.end)}</span>
                     <form action={adminRemoveTimeOff}>
                       <input type="hidden" name="id" value={w.id} />
                       <SubmitButton className="text-sm text-bad underline">
@@ -154,17 +164,6 @@ function AddForm({ crew }: { crew: CrewMember[] }) {
       </SubmitButton>
     </form>
   );
-}
-
-function fmtRange(w: PtoWindow): string {
-  const one = (iso: string) =>
-    new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      timeZone: "UTC",
-    });
-  return w.start === w.end ? one(w.start) : `${one(w.start)} – ${one(w.end)}`;
 }
 
 function SignedOut() {

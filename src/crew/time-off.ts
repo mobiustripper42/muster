@@ -83,6 +83,9 @@ export function sortWindows(windows: PtoWindow[]): PtoWindow[] {
 export interface TimeOffByCrew {
   crewMemberId: CrewMemberId;
   crewName: string;
+  /** Archived crew keep any stale windows but are off every list — the scan greys
+   *  them so a stale window isn't read as an active person's (DEC-096). */
+  archived: boolean;
   windows: PtoWindow[];
 }
 
@@ -97,18 +100,19 @@ export async function buildAllTimeOff(repo: Repository): Promise<TimeOffByCrew[]
     repo.listAllPtoWindows(),
     repo.listCrewMembers(),
   ]);
-  const nameById = new Map(crew.map((c) => [String(c.id), c.name]));
+  const byId = new Map(crew.map((c) => [String(c.id), c]));
   const byCrew = new Map<string, TimeOffByCrew>();
   for (const w of windows) {
-    const name = nameById.get(String(w.crewMemberId));
-    if (name === undefined) continue; // orphan (no-FK) — don't render nameless
+    const member = byId.get(String(w.crewMemberId));
+    if (member === undefined) continue; // orphan (no-FK) — don't render nameless
     const group = byCrew.get(String(w.crewMemberId));
     if (group) {
       group.windows.push(w);
     } else {
       byCrew.set(String(w.crewMemberId), {
         crewMemberId: w.crewMemberId,
-        crewName: name,
+        crewName: member.name,
+        archived: member.status === "archived",
         windows: [w],
       });
     }

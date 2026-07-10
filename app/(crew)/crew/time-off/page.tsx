@@ -8,6 +8,7 @@ import { Shell } from "../../../../components/ui/shell";
 import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { readSubject } from "../../../lib/auth";
+import { fmtDateRange } from "../../../lib/format";
 import { getRepo } from "../../../lib/repo";
 import { addMyTimeOff, removeMyTimeOff } from "./actions";
 
@@ -41,7 +42,7 @@ export default async function CrewTimeOff({
   let windows: PtoWindow[];
   try {
     windows = sortWindows(
-      await getRepo().listPtoWindowsForCrew(asId<"CrewMemberId">(subject!.id)),
+      await getRepo().listPtoWindowsForCrew(asId<"CrewMemberId">(subject.id)),
     );
   } catch {
     return (
@@ -80,7 +81,7 @@ export default async function CrewTimeOff({
               key={w.id}
               className="flex items-center justify-between gap-3 rounded-card border border-line bg-card px-4 py-3 shadow-sm"
             >
-              <span className="font-medium text-ink">{fmtRange(w)}</span>
+              <span className="font-medium text-ink">{fmtDateRange(w.start, w.end)}</span>
               <form action={removeMyTimeOff}>
                 <input type="hidden" name="id" value={w.id} />
                 <SubmitButton className="text-sm text-bad underline">Remove</SubmitButton>
@@ -123,18 +124,4 @@ function AddForm({ action }: { action: (fd: FormData) => Promise<void> }) {
       </SubmitButton>
     </form>
   );
-}
-
-/** "Sat Jul 11" for a single day, "Sat Jul 11 – Sun Jul 19" for a span. Both
- *  dates parsed + formatted in UTC so the stored vessel-local date shows verbatim
- *  regardless of server zone (DEC-032). */
-function fmtRange(w: PtoWindow): string {
-  const one = (iso: string) =>
-    new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      timeZone: "UTC",
-    });
-  return w.start === w.end ? one(w.start) : `${one(w.start)} – ${one(w.end)}`;
 }

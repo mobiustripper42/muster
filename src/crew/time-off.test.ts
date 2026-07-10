@@ -18,12 +18,16 @@ import {
 const CREW = asId<"CrewMemberId">("crew-1");
 const OTHER = asId<"CrewMemberId">("crew-2");
 
-const crewMember = (id: string, name: string): CrewMember => ({
+const crewMember = (
+  id: string,
+  name: string,
+  status: CrewMember["status"] = "active",
+): CrewMember => ({
   id: asId<"CrewMemberId">(id),
   name,
   phone: "+15035559000",
   ratings: [],
-  status: "active",
+  status,
   reliabilityScore: null,
 });
 
@@ -102,6 +106,17 @@ describe("buildAllTimeOff", () => {
     expect(view.map((g) => g.crewName)).toEqual(["Ann", "Zed"]); // name sort
     const zed = view.find((g) => g.crewName === "Zed")!;
     expect(zed.windows.map((w) => w.start)).toEqual(["2026-07-01", "2026-08-01"]); // start sort
+  });
+
+  it("flags an archived crew member's group as archived (DEC-096 grey trigger)", async () => {
+    const repo = new InMemoryRepository();
+    await repo.saveCrewMember(crewMember("crew-1", "Ann"));
+    await repo.saveCrewMember(crewMember("crew-2", "Bob", "archived"));
+    await addTimeOff(repo, win("pto-a", CREW));
+    await addTimeOff(repo, win("pto-b", OTHER));
+    const view = await buildAllTimeOff(repo);
+    expect(view.find((g) => g.crewName === "Ann")!.archived).toBe(false);
+    expect(view.find((g) => g.crewName === "Bob")!.archived).toBe(true);
   });
 
   it("skips an orphaned window (crew id with no member — no-FK bet)", async () => {

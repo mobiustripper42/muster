@@ -23,6 +23,19 @@ import type { RoleTypeId } from "../domain/ids.js";
 export const TENANT_TIMEZONE: string = process.env.TENANT_TZ ?? "America/New_York";
 
 /**
+ * Guest pickup location (#345) — hard-coded because BrewBoat runs from ONE spot
+ * today. When the tenant gets per-event pickups (their own reservation system,
+ * operator's note), this moves onto `Event` and the intro-text builder reads it
+ * per trip instead of this constant. Env-overridable meanwhile.
+ * `PICKUP_LOCATION` is the human string dropped in the guest text; `PICKUP_MAP_URL`
+ * is the exact Google Maps pin the text links to.
+ */
+export const PICKUP_LOCATION: string =
+  process.env.PICKUP_LOCATION ?? "Canal Basin Park near Flatiron Cafe";
+export const PICKUP_MAP_URL: string =
+  process.env.PICKUP_MAP_URL ?? "https://maps.app.goo.gl/A2vG7Q9LjKdZJpod9";
+
+/**
  * Offset (tz-local − UTC) in ms at instant `at`, DST-correct via `Intl`.
  * Negative west of UTC (e.g. −4h for EDT, −5h for EST). Pure.
  */

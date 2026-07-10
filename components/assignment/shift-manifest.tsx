@@ -1,4 +1,6 @@
 import type { EventManifestView } from "@core/crewapp/shift-card.js";
+import { buildIntroText } from "@core/crewapp/intro-text.js";
+import { PICKUP_LOCATION, PICKUP_MAP_URL } from "@core/config/tenant.js";
 import { fmt12, tel, sms } from "../../app/lib/format";
 
 const mapHref = (q: string) => `https://maps.google.com/?q=${encodeURIComponent(q)}`;
@@ -10,15 +12,20 @@ const mapHref = (q: string) => `https://maps.google.com/?q=${encodeURIComponent(
  * never a parallel query. When every event shares a dock the caller renders that
  * dock prominently, so the per-event dock row here is suppressed (`sharedDock`
  * set) — matching the crew card's layout exactly.
+ *
+ * `senderName` (the viewer's name, #345) makes the guest Text button preload the
+ * intro message. Absent → the Text button is a plain (empty) sms, the #319 behavior.
  */
 export function ShiftManifest({
   events,
   sharedDock,
+  senderName,
 }: {
   events: EventManifestView[];
   // Explicit `| undefined` so a possibly-absent shared dock can be passed straight
   // through under exactOptionalPropertyTypes (crew card + cockpit both do).
   sharedDock?: string | undefined;
+  senderName?: string | undefined;
 }) {
   return (
     <section aria-label="Manifest" className="flex flex-col gap-2">
@@ -86,7 +93,15 @@ export function ShiftManifest({
                         <span aria-hidden="true">✆&nbsp;</span>Call
                       </a>
                       <a
-                        href={sms(g.phone)}
+                        href={sms(
+                          g.phone,
+                          buildIntroText({
+                            senderName,
+                            departureLabel: fmt12(ev.departureTime),
+                            location: PICKUP_LOCATION,
+                            mapUrl: PICKUP_MAP_URL,
+                          }),
+                        )}
                         title={g.phone}
                         className="inline-flex min-h-9 items-center px-1.5 text-xs font-semibold text-accent"
                       >

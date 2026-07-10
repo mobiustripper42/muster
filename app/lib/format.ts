@@ -56,4 +56,12 @@ export function fmt12(hhmm: string): string {
  *  Shared by every contact button (seat-card, crew shift page, guest manifest) so
  *  the three can't drift. */
 export const tel = (p: string) => `tel:${p.replace(/[^0-9+]/g, "")}`;
-export const sms = (p: string) => `sms:${p.replace(/[^0-9+]/g, "")}`;
+
+/** `sms:` deep link, optionally with a preloaded message body (#345). The `?&body=`
+ *  form is the cross-platform one: iOS wants `&body=`, Android `?body=`, and `?&body=`
+ *  satisfies both. NB body-prefill is fiddly across OS/versions — verify on a real
+ *  device before trusting it. */
+export const sms = (p: string, body?: string) => {
+  const num = p.replace(/[^0-9+]/g, "");
+  return body ? `sms:${num}?&body=${encodeURIComponent(body)}` : `sms:${num}`;
+};

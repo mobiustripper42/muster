@@ -88,7 +88,14 @@ export default async function ShiftCardPage({
   }
 
   const bailError = sp.bail_error ? BAIL_ERROR_COPY[sp.bail_error] ?? null : null;
-  return <Card card={card} shiftId={shiftId} bailError={bailError} />;
+  // The viewer's name → the guest intro text names its sender (#345). One cheap
+  // read; a hiccup just omits the name (the builder falls back gracefully).
+  const me = await getRepo()
+    .getCrewMember(asId<"CrewMemberId">(subject.id))
+    .catch(() => null);
+  return (
+    <Card card={card} shiftId={shiftId} bailError={bailError} senderName={me?.name} />
+  );
 }
 
 /** Standalone dock pin (the shared-dock case) — prominent, above the manifest. */
@@ -112,10 +119,12 @@ function Card({
   card,
   shiftId,
   bailError,
+  senderName,
 }: {
   card: ShiftCardView;
   shiftId: string;
   bailError: string | null;
+  senderName?: string | undefined;
 }) {
   const firstDeparture = card.events[0]?.departureTime;
   return (
@@ -217,7 +226,7 @@ function Card({
         </section>
       )}
 
-      <ShiftManifest events={card.events} sharedDock={card.sharedDock} />
+      <ShiftManifest events={card.events} sharedDock={card.sharedDock} senderName={senderName} />
 
       {/* A trainee ride (DEC-087) has no bail: it's not a reliability
           commitment, and the seat must never re-ask — the office unstaffs. */}

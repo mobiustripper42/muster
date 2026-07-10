@@ -13,6 +13,7 @@ import { cockpitHref } from "../../app/lib/cockpit-href";
 import { fmtDeadline, fmt12 } from "../../app/lib/format";
 import { OPERATOR_CREW_MEMBER_ID } from "../../app/lib/operator";
 import { getRepo } from "../../app/lib/repo";
+import { readSubject } from "../../app/lib/auth";
 import { TENANT_ID } from "../../app/lib/tenant";
 import { Notice } from "../ui/notice";
 import { Badge, fmtDate, toSeatVM, ttLabel } from "./cockpit-bits";
@@ -111,6 +112,9 @@ export async function ShiftCockpit({
   let roleOptions: { id: string; name: string }[] = [];
   let traineeOptions: { id: string; name: string }[] = [];
   let manifest: ShiftManifestView | null = null;
+  // The operator's name → the guest intro text names its sender (#345). Best-effort:
+  // a lookup hiccup just omits the name (the builder falls back).
+  let senderName: string | undefined;
   const warmingOpen = sp.warming === "1";
   try {
     view = await buildAssignmentView(repo, shiftId, now);
@@ -123,6 +127,10 @@ export async function ShiftCockpit({
     // to the crew view. Booked guests only; DEC-012 no-waiver.
     const shiftRow = await repo.getShift(shiftId);
     manifest = shiftRow ? await buildShiftManifest(repo, shiftRow) : null;
+    const viewer = await readSubject();
+    senderName = viewer
+      ? (await repo.getAdmin(viewer.id).catch(() => null))?.name
+      : undefined;
     const crewMembers = await repo.listCrewMembers();
     crew = new Map(
       crewMembers.map((c) => [
@@ -419,7 +427,7 @@ export async function ShiftCockpit({
       </div>
 
       {manifest && manifest.events.length > 0 && (
-        <ShiftManifest events={manifest.events} sharedDock={manifest.sharedDock} />
+        <ShiftManifest events={manifest.events} sharedDock={manifest.sharedDock} senderName={senderName} />
       )}
 
       <ManningSection

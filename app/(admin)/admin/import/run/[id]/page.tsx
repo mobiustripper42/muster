@@ -105,9 +105,17 @@ export default async function ImportRunView({
       {(s.mapSkipped > 0 || s.skipped.length > 0) && (
         <Notice>
           <div>
+            {/* Two disjoint buckets summed into the headline count (#338 will
+                itemize the second). `skipped` is per-row (listed below); `mapSkipped`
+                is a count of BOOKED items whose event isn't boated-in-window —
+                dropped at the pull, before they became rows, so only a tally exists.
+                Reconcile the arithmetic so "5 but only 3 shown" isn't a mystery. */}
             {s.skipped.length + s.mapSkipped} row
-            {plural(s.skipped.length + s.mapSkipped)} skipped (boat-less or outside
-            the pulled window).
+            {plural(s.skipped.length + s.mapSkipped)} skipped.
+            {s.skipped.length > 0 &&
+              ` ${s.skipped.length} with no boat to crew${s.mapSkipped > 0 ? " (listed below)" : ""}.`}
+            {s.mapSkipped > 0 &&
+              ` ${s.mapSkipped} dropped during the pull — outside the window, or booked with no boat yet (not itemized).`}
           </div>
           {/* Per-row detail (#320): WHICH trip got dropped — date · time · event,
               so a skip is actionable, not an opaque event id. Rows without trip

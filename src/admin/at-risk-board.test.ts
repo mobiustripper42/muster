@@ -12,7 +12,7 @@
  * states, not loop reachability (escalate/bail have their own suites).
  */
 
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach, vi } from "vitest";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import { asId } from "../domain/ids.js";
 import type { CrewMemberId, SeatId, ShiftId, VesselId } from "../domain/ids.js";
@@ -522,5 +522,41 @@ describe("crew bail → board regression, end-to-end (#56, DEC-028)", () => {
     )!;
     expect(event.metadata.latenessMs).toBe((7 * 24 - 36) * 3600_000);
     expect(event.metadata.noticeMs).toBe(36 * 3600_000);
+  });
+});
+
+// #316 — the board re-read the SAME crew's reliability/credentials/PTO once per
+// shift (directly + through escalationTrailFor/solveShift/rankedEligible), an
+// `N shifts × M crew` round-trip explosion. The render-scoped cache collapses it:
+// each per-crew key is read at most once, regardless of how many shifts board.
+describe("query batching (#316)", () => {
+  const noRepeatedKeys = (calls: unknown[][]) => {
+    const keys = calls.map((c) => String(c[0]));
+    expect(new Set(keys).size).toBe(keys.length); // each id fetched at most once
+  };
+
+  it("reads each crew's reliability/credentials/PTO at most once across many shifts", async () => {
+    for (const id of ["ann", "bob", "cy", "dot"]) await addCrew(id);
+    // Three at-risk shifts (a resting Bailed required seat → regression). Each
+    // exercises the full read path (trail + solve + rankedEligible over the pool).
+    for (let i = 0; i < 3; i++) {
+      await addShift(`br-${i}`, hoursAfterT0(24), [{ state: "Bailed" }]);
+    }
+
+    const relSpy = vi.spyOn(repo, "reliabilityEventsFor");
+    const credSpy = vi.spyOn(repo, "listCredentialsForCrew");
+    const ptoSpy = vi.spyOn(repo, "listPtoWindowsForCrew");
+
+    const board = await deriveAtRiskBoard(repo, T0);
+
+    expect(board).toHaveLength(3); // all three boarded — behavior preserved
+    // The fix: no key re-fetched. Pre-cache this was 3× these counts.
+    noRepeatedKeys(relSpy.mock.calls);
+    noRepeatedKeys(credSpy.mock.calls);
+    noRepeatedKeys(ptoSpy.mock.calls);
+
+    relSpy.mockRestore();
+    credSpy.mockRestore();
+    ptoSpy.mockRestore();
   });
 });

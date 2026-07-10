@@ -54,9 +54,11 @@
  * thinner beats deeper), never exact scores, so the weights stay tunable.
  *
  * Scale note: each row costs one distinct-pool solve inside the trail plus one
- * `rankedEligible` per gap seat — repeated reads, no caching. Cheap at
- * BrewBoat's size; same revisit trigger as DEC-022/DEC-024 (an indexed,
- * DB-scale board read).
+ * `rankedEligible` per gap seat. Those re-read the same per-crew data every
+ * shift, so the derive wraps the repo in a render-scoped read cache (#316,
+ * `memoizing-repo.ts`) — each key fetched once, not once-per-shift. Beyond that,
+ * the row count itself is bounded by shifts in the window; same DB-scale revisit
+ * trigger as DEC-022/DEC-024 (an indexed board read).
  */
 
 import type { Seat } from "../domain/entities.js";
@@ -68,6 +70,7 @@ import type {
 } from "../domain/ids.js";
 import type { ShiftState } from "../domain/states.js";
 import type { Repository } from "../ports/repository.js";
+import { memoizingRepo } from "../adapters/memoizing-repo.js";
 import type { EscalationTrail } from "../asks/escalation-trail.js";
 import { escalationTrailFor } from "../asks/escalation-trail.js";
 import { rankedEligible } from "../asks/ask-loop.js";
@@ -188,10 +191,16 @@ function roleGaps(gapSeats: Seat[]): RoleGap[] {
  * (DEC-022) and the route-(b) imminence threshold for tests/tuning.
  */
 export async function deriveAtRiskBoard(
-  repo: Repository,
+  baseRepo: Repository,
   now: Date,
   opts?: { leadDays?: number; deadlineHours?: number; tz?: string },
 ): Promise<AtRiskRow[]> {
+  // #316: one board render re-reads the SAME crew's reliability/credentials/PTO
+  // once per shift — directly and through `escalationTrailFor`/`solveShift`/
+  // `rankedEligible`. Wrap the repo in a render-scoped read cache so each key is
+  // fetched once, collapsing the `shifts × crew` round-trips. Read-only + local to
+  // this call (see memoizing-repo.ts) — never shared, never held past a write.
+  const repo = memoizingRepo(baseRepo);
   const leadDays = opts?.leadDays ?? STAFFING_HORIZON_LEAD_DAYS;
   const deadlineHours = opts?.deadlineHours ?? EXHAUSTED_THRESHOLD_HOURS;
   const tz = opts?.tz ?? TENANT_TIMEZONE;

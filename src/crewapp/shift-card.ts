@@ -27,9 +27,14 @@ export { CALL_LEAD_MINUTES };
 
 /** One guest on an event's manifest. Name + party + phone; no waiver (DEC-012). */
 export interface ManifestGuest {
+  /** The booking id — keys the guest's Text button + its contact record (#345). */
+  reservationId: string;
   name: string;
   party: number;
   phone?: string;
+  /** The latest "we texted them" record (#345 Part B), when one exists — `by` is
+   *  the contacter's display name, `at` the ISO-8601 instant. */
+  contact?: { by: string; at: string };
 }
 
 /** One event's slice of the card — its own departure, dock, pax, and guests. */
@@ -187,6 +192,14 @@ export async function buildShiftManifest(
   shift: Shift,
 ): Promise<ShiftManifestView> {
   // Per-event manifest, booked guests only (a cancelled booking isn't aboard).
+  // The shift's guest-contact records (#345 Part B), keyed by reservation, so each
+  // guest row shows who (if anyone) has texted them — loaded once for the shift.
+  const contactByReservation = new Map(
+    (await repo.listGuestContactsForShift(shift.id)).map((c) => [
+      String(c.reservationId),
+      { by: c.contactedByName, at: c.contactedAt },
+    ]),
+  );
   const events: EventManifestView[] = [];
   const rawEvents: Event[] = [];
   for (const eventId of shift.eventIds) {
@@ -196,11 +209,16 @@ export async function buildShiftManifest(
     const reservations = (await repo.listReservationsForEvent(eventId)).filter(
       (r) => r.status === "booked",
     );
-    const guests: ManifestGuest[] = reservations.map((r) => ({
-      name: r.customerName,
-      party: r.partySize,
-      ...(r.phone !== undefined ? { phone: r.phone } : {}),
-    }));
+    const guests: ManifestGuest[] = reservations.map((r) => {
+      const contact = contactByReservation.get(String(r.id));
+      return {
+        reservationId: String(r.id),
+        name: r.customerName,
+        party: r.partySize,
+        ...(r.phone !== undefined ? { phone: r.phone } : {}),
+        ...(contact ? { contact } : {}),
+      };
+    });
     events.push({
       eventId: event.id,
       departureTime: event.time,

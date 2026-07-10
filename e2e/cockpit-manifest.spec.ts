@@ -56,4 +56,29 @@ test.describe("cockpit guest manifest (#319)", () => {
     const manifest = page.getByRole("region", { name: "Manifest" });
     await expect(manifest.locator('a[href^="tel:"]')).toHaveCount(2);
   });
+
+  test("tapping a guest's Text records the contact; the shared ✓ then shows (#345 Part B)", async ({
+    page,
+  }) => {
+    await signInAsAdmin(page, "spink");
+    await page.goto("/admin/shift/shift-soon");
+    await page.getByText("10 guests").click(); // expand the 3pm trip (Brody has a phone)
+    const manifest = page.getByRole("region", { name: "Manifest" });
+    await expect(manifest.getByText(/Texted by/)).toHaveCount(0); // nobody contacted yet
+
+    // Tap Text → the client island fires the record (then hands off to Messages,
+    // which headless Chromium can't open — noWaitAfter so the click doesn't hang).
+    const textLink = manifest.locator('a[href^="sms:+15555551111?&body="]');
+    const [resp] = await Promise.all([
+      page.waitForResponse((r) => r.url().includes("/api/guest-contact")),
+      textLink.click({ noWaitAfter: true }),
+    ]);
+    expect(resp.status()).toBe(204);
+
+    // Any subsequent render (the sender reloads, or another crew loads it) shows the
+    // shared mark — "✓ Texted by Spink · <time>".
+    await page.goto("/admin/shift/shift-soon");
+    await page.getByText("10 guests").click();
+    await expect(manifest.getByText(/✓ Texted by Spink/)).toBeVisible();
+  });
 });

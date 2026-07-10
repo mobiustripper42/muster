@@ -525,6 +525,9 @@ export class PostgresRepository implements Repository {
     const { rows } = await this.#pool.query("select * from pto_windows");
     return rows.map(toPto);
   }
+  async removePtoWindow(id: PtoWindowId): Promise<void> {
+    await this.#pool.query("delete from pto_windows where id=$1", [id]);
+  }
 
   // ── Events ─────────────────────────────────────────────────────────────────
   async saveEvent(e: Event): Promise<void> {

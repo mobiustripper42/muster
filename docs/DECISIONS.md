@@ -2533,6 +2533,66 @@ across adjacent days).
 
 ---
 
+## DEC-098: On-shift ask suppression — "if you're working, you don't get asked"
+
+> **Status: accepted (Eric, 2026-07-10); implementation pending.** The rule is decided; two small
+> implementation sub-choices (flagged below) still want a nod before code. Sibling to DEC-097.
+
+**Context — why horizon tuning can't do this.** An ask fires at a rigid instant: `trip_start − leadDays`.
+The **whole-day part** decides which *day-of-week* the ask lands on; the **fractional part** shifts only the
+*time-of-day*. Crew rest Mon–Tue and trips run Wed–Sun, so the day-of-week map is a bijection: 5 distinct
+trip-days map to 5 *distinct* ask-days, and **at most 2 of 5 can land on the 2 rest days**. `leadDays = 5`
+already hits that optimum — Sat/Sun trips (BrewBoat's high-volume days) ask on Mon/Tue, when nobody works —
+and `leadDays = 7` is the *worst* value (each ask lands on the same weekday + clock-hour a week earlier,
+maximally aligned with a weekly-recurring shift). A **fractional** value (5.1, 6.9) only slides the
+time-of-day uniformly, and the fleet blankets the civil daytime (4 boats × slots across the day), so it
+swaps which crew get hit rather than opening a gap — and `leadDays` can't stray far from ~5 without hurting
+fill quality (DEC-062 / the ask-timing research). **Conclusion: no send-time value eliminates the
+collision.** DEC-088's civil window gates the *global* vessel-clock (08:00–20:00) and by construction can't
+see that a *specific recipient* is aboard at a civil hour — a Thu 1:30 shift's 5-day horizon crosses Sat
+1:30, mid-cruise but fully inside civil hours. Only a **per-recipient** check covers the Wed/Thu/Fri trips
+that `leadDays = 5` still lands on working days.
+
+**Decision.** The engine does **not** fire an autonomous ask to a crew member who is currently on a live
+committed shift. Working = not asked.
+- **"Working" = `now` ∈ the shift's committed window** for any shift where the crew member holds a
+  **Claimed/Confirmed** seat. The window is `committedWindow` (DEC-041, `CALL_LEAD_MINUTES` /
+  `TRIP_DURATION_MINUTES`). Trip-end is a flat-duration estimate today — an approximate tail, fine for a
+  suppression heuristic (fail toward *not* asking; tightens for free when per-event duration lands, the
+  existing FUTURE_IDEAS row).
+- **Defer, don't drop.** A working candidate is *skipped this tick*, not removed: the drip widens to the
+  next free candidate, coverage keeps moving, and the worker re-enters the pool automatically once their
+  shift ends (a later in-window tick asks them). **No reliability event, no penalty** — same neutral posture
+  as the DEC-088 civil-window defer. This is a *reachability* suppression, not a judgment.
+- **Autonomous paths only.** The filter lives in the engine's own send decision — the tick drip, Tier-2
+  `escalate`, and bail/vacate re-asks. It is **not** applied in `rankedEligible` wholesale, because that
+  same pool feeds Spink's manual lean list on the board, and the operator may knowingly want to reach
+  someone whose shift is about to end. Manual lean / `overrideSeat` never read the suppression.
+- **Self-claim unaffected.** `/crew/open` (`claimableSeatsFor`) is the crew's own initiative — someone
+  browsing open seats on their break is pulling, not being pushed; the cooldown/suppression gates only push.
+- **Sole-candidate case.** If the only eligible person for a required seat is working, the seat defers
+  (exactly like the civil window) until they're free; if that runs past the fill deadline it lands on
+  Spink's At-Risk board — normal Tier-3 escalation, no special case.
+- **No new data, no migration.** Derived at send time from committed seats + `committedWindow`. Shares the
+  **auto-ask candidate-filter seam** with DEC-097's cooldown — the two are one filter with two reasons.
+
+**Implementation sub-choices (want a nod).**
+1. **Window start = call time or departure?** Recommend **call time** — from call they're committed and
+   prepping (on the dock, boarding guests), which is exactly when an ask is an intrusion. `committedWindow`
+   already starts at call.
+2. **Any buffer around the window?** Recommend **none** — a clean half-open `[call, end)`, no fuzz. Simpler
+   to reason about and to test; revisit only if real use shows edge friction.
+
+**Relationship.** Per-recipient sibling to **DEC-088** (global civil window); consumes **DEC-041**
+(`committedWindow`); shares the auto-ask filter seam with **DEC-097** (same-day decline cooldown); the
+engine-side cousin of the parked doorbell "presence as reachability" idea (`messaging-smart-doorbell.md`
+§13). **Reinforces the 7→5 `STAFFING_HORIZON_LEAD_DAYS` change** (5 puts weekend asks on rest days and
+breaks 7's exact weekly alignment; suppression covers the weekday remainder). **Revisit if:** the
+flat-duration trip-end proves too coarse (adopt per-event duration), or crew want suppression to extend to a
+pre-call buffer.
+
+---
+
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)
 
 These are deferred by design. Each names an owner and a trigger. **Consult @architect (and the named

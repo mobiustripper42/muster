@@ -8,7 +8,7 @@ import { asId } from "@core/domain/ids.js";
 import { resolveShiftStateOnRead } from "@core/builder/tick.js";
 import { evaluateTraineeCandidate } from "@core/oracle/eligibility.js";
 import { committedDatesByCrew } from "@core/oracle/oracle.js";
-import { TENANT_TIMEZONE } from "@core/config/tenant.js";
+import { TENANT_TIMEZONE, vesselDateOf } from "@core/config/tenant.js";
 import { cockpitHref } from "../../app/lib/cockpit-href";
 import { fmtDeadline, fmt12 } from "../../app/lib/format";
 import { OPERATOR_CREW_MEMBER_ID } from "../../app/lib/operator";
@@ -17,6 +17,7 @@ import { TENANT_ID } from "../../app/lib/tenant";
 import { Notice } from "../ui/notice";
 import { Badge, fmtDate, toSeatVM, ttLabel } from "./cockpit-bits";
 import { buildShiftManifest, type ShiftManifestView } from "@core/crewapp/shift-card.js";
+import { standingThreadId } from "@core/messaging/entities.js";
 import { ManningSection, type OverrideSeatVM } from "./manning-section";
 import { SeatCard } from "./seat-card";
 import { ShiftManifest } from "./shift-manifest";
@@ -355,6 +356,20 @@ export async function ShiftCockpit({
           )}
         </div>
       </header>
+
+      {/* Cohort action (#317): message everyone crewing THIS DAY (all shifts), not
+          just this shift — deep-links to the day's cohort thread where the operator
+          composes (the post auto-leads with "Cohort"). Today or future only: a
+          future-day post is advance notice; a PAST day is hidden (posting would ring
+          crew about a day that already ran — and the post target refuses it anyway). */}
+      {view.date >= vesselDateOf(now) && (
+        <AppLink
+          href={`/admin/messages/${standingThreadId("cohort", TENANT_ID, view.date)}`}
+          className="inline-flex min-h-9 items-center self-start rounded-card border border-line bg-card px-3 text-sm font-semibold text-accent shadow-sm"
+        >
+          ✉ Message this day’s crew →
+        </AppLink>
+      )}
 
       {assigned && <Notice tone="ok">Asked {assigned} into the seat — awaiting their reply.</Notice>}
       {nudged && <Notice tone="ok">↗ Nudged {nudged} — asked, not yet filled.</Notice>}

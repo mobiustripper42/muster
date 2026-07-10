@@ -81,9 +81,9 @@ async function shapeMessages(
  * Build one thread's view for `viewer`, or null when they may not read it. ONE
  * authorization site (DEC-071/072): a **crew** viewer must be a member (the
  * date-agnostic `threadMembership`, matching the doorbell's ring); the **operator**
- * (admin) reads ANY thread (DEC-052 cross-visibility) — a real row, or a synth of
- * the two post-targets (all-staff / today-cohort) so an unposted broadcast is still
- * openable. "Mine" is per-lens: for the operator, every `admin` message is the
+ * (admin) reads ANY thread (DEC-052 cross-visibility) — a real row, or a synth
+ * post-target (all-staff / any today-or-future cohort, #317) so an unposted broadcast
+ * is still openable. "Mine" is per-lens: for the operator, every `admin` message is the
  * office's one voice (DEC-058/030), not keyed on the non-identity handle.
  */
 export async function buildThreadView(

@@ -36,6 +36,23 @@ test.describe("operator messaging", () => {
     await expect(page.getByText("· Priority")).toBeVisible(); // the bubble marker, not the checkbox label
   });
 
+  test("Cohort button on the cockpit → posts to the day's cohort, prefixed 'Cohort' (#317)", async ({
+    page,
+  }) => {
+    await signInAsAdmin(page, "spink");
+    // shift-soon is ~15 days out (not today) — proves the un-gated any-day cohort.
+    await page.goto("/admin/shift/shift-soon");
+    await page.getByRole("link", { name: /Message this day.s crew/ }).click();
+    await page.waitForURL(/\/admin\/messages\/thread-cohort-/);
+
+    await page.getByRole("textbox").fill("dock is slip B, call 12:30");
+    await page.getByRole("button", { name: "Send" }).click();
+
+    // Stored + rendered body LEADS with "Cohort —", posted as the office.
+    await expect(page.getByText("Cohort — dock is slip B, call 12:30")).toBeVisible();
+    await expect(page.getByText("You (office)")).toBeVisible();
+  });
+
   test("operator sees a crew-created thread (cross-visibility)", async ({ page }) => {
     // Crew posts into their shift thread first.
     await signInAsCrew(page, "crew-quint");

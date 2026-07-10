@@ -24,6 +24,10 @@ export interface SkippedRow {
   date?: string;
   /** Vessel-local departure clock "HH:mm" (#320). */
   time?: string;
+  /** Marks a booked-but-boatless skip (#338) so the pull can tell an actionable
+   *  "booked trip has no boat" (assign one in Xola + re-import) from the benign
+   *  malformed / out-of-window drops. Only that one skip path sets it. */
+  category?: "booked_no_boat";
   reason: string;
 }
 

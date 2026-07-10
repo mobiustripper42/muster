@@ -44,6 +44,9 @@ export interface ImportRunSummary {
   unmappedResources: SkippedRow[];
   /** Rows dropped during import (boat-less / window-truncated). */
   skipped: SkippedRow[];
+  /** In-window booked trips with no boat (#338) — the actionable subset of
+   *  `mapSkipped`. Assign a boat in Xola + re-import to crew them. */
+  bookedNoBoat: SkippedRow[];
   warnings: string[];
   /** Per-day boat→times — the "why is Brew 3 on Saturday?" review surface. */
   assignments: DayAssignments[];

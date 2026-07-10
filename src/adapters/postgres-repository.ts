@@ -271,11 +271,14 @@ const toImportRun = (r: any): ImportRun => ({
   source: r.source as ImportRunSource,
   ranAt: r.ran_at,
   window: { start: r.window_start, end: r.window_end },
-  // Default `splitDaysChanged` — runs persisted before DEC-083 have no such key,
-  // so `.length`/`.map()` on a historical "latest run" would throw (#206 review).
+  // Default the jsonb summary's list fields that post-date some persisted runs, so
+  // `.length`/`.map()` on a historical run never throws: `splitDaysChanged` (DEC-083,
+  // #206 review) and `bookedNoBoat` (#338). Normalize here — the one read seam — so
+  // no per-caller guard is needed (the type can stay required).
   summary: {
     ...r.summary,
     splitDaysChanged: r.summary.splitDaysChanged ?? [],
+    bookedNoBoat: r.summary.bookedNoBoat ?? [],
   } as ImportRunSummary, // jsonb → object (node-pg parses)
 });
 

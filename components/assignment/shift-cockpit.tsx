@@ -228,7 +228,16 @@ export async function ShiftCockpit({
   }
 
   const badge = resolved ?? view.badge;
-  const roster = [...crew.entries()].map(([id, c]) => ({ id, name: c.name }));
+  // Override-picker candidates, sorted alpha by FIRST name (#312 — humans scan a
+  // roster by who they're looking for, not by surname). Tiebreak on the full name
+  // so the order is stable. Sorted once here; the per-seat rating filter below
+  // preserves it.
+  const roster = [...crew.entries()]
+    .map(([id, c]) => ({ id, name: c.name }))
+    .sort((a, b) => {
+      const first = (n: string) => n.trim().split(/\s+/)[0] ?? n;
+      return first(a.name).localeCompare(first(b.name)) || a.name.localeCompare(b.name);
+    });
   const seatVMs = view.seats.map((s) =>
     toSeatVM(s, String(shiftId), ctx, seatOccupant, crew),
   );

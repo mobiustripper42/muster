@@ -21,6 +21,8 @@ export function firstName(name: string | null | undefined): string {
 export function buildIntroText(p: {
   /** The sender's name (full is fine — only the first token is used). */
   senderName: string | null | undefined;
+  /** The tenant/brand name (TENANT_NAME) — not inlined, per the 9.8 constant. */
+  tenantName: string;
   /** Departure time already formatted for humans, e.g. "11:30 AM". */
   departureLabel: string;
   /** The pickup location string (PICKUP_LOCATION). */
@@ -31,7 +33,9 @@ export function buildIntroText(p: {
   const first = firstName(p.senderName);
   // With a name: "Hi, this is Eric with BrewBoat". Without: drop the name cleanly
   // rather than render an empty gap.
-  const intro = first ? `Hi, this is ${first} with BrewBoat` : `Hi, this is BrewBoat`;
+  const intro = first
+    ? `Hi, this is ${first} with ${p.tenantName}`
+    : `Hi, this is ${p.tenantName}`;
   return (
     `${intro} — I'll be taking you out at ${p.departureLabel} today. ` +
     `Please confirm the pickup location: ${p.location}. ${p.mapUrl}`

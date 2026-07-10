@@ -5,6 +5,7 @@ import {
 import { Notice } from "../../../../../components/ui/notice";
 import { Shell } from "../../../../../components/ui/shell";
 import { readSubject } from "../../../../lib/auth";
+import { getRepo } from "../../../../lib/repo";
 
 /**
  * Standalone cockpit host (DEC-085 pane mechanics) — the mobile drill-in and
@@ -38,6 +39,9 @@ export default async function ShiftCockpitPage({
 
   const { shiftId: raw } = await params;
   const sp = await searchParams;
+  // Operator name → the guest intro text's sender (#345). Resolved here from the
+  // gate's subject; best-effort (a hiccup just omits the name).
+  const senderName = (await getRepo().getAdmin(subject.id).catch(() => null))?.name;
 
   return (
     <Shell width="3xl">
@@ -46,6 +50,7 @@ export default async function ShiftCockpitPage({
         sp={sp}
         ctx={null}
         headingLevel="h1"
+        senderName={senderName}
       />
     </Shell>
   );

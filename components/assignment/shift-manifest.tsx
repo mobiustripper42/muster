@@ -2,6 +2,7 @@ import type { EventManifestView } from "@core/crewapp/shift-card.js";
 import { buildIntroText } from "@core/crewapp/intro-text.js";
 import { PICKUP_LOCATION, PICKUP_MAP_URL } from "@core/config/tenant.js";
 import { fmt12, tel, sms } from "../../app/lib/format";
+import { TENANT_NAME } from "../../app/lib/tenant";
 
 const mapHref = (q: string) => `https://maps.google.com/?q=${encodeURIComponent(q)}`;
 
@@ -97,6 +98,7 @@ export function ShiftManifest({
                           g.phone,
                           buildIntroText({
                             senderName,
+                            tenantName: TENANT_NAME,
                             departureLabel: fmt12(ev.departureTime),
                             location: PICKUP_LOCATION,
                             mapUrl: PICKUP_MAP_URL,

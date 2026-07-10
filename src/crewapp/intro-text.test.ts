@@ -21,9 +21,9 @@ describe("firstName", () => {
 });
 
 describe("buildIntroText", () => {
-  it("interpolates sender first name, time, location, and map link", () => {
+  it("interpolates sender first name, tenant, time, location, and map link", () => {
     expect(
-      buildIntroText({ senderName: "Eric Stoffer", departureLabel: "11:30 AM", location: LOC, mapUrl: MAP }),
+      buildIntroText({ senderName: "Eric Stoffer", tenantName: "BrewBoat", departureLabel: "11:30 AM", location: LOC, mapUrl: MAP }),
     ).toBe(
       "Hi, this is Eric with BrewBoat — I'll be taking you out at 11:30 AM today. " +
         `Please confirm the pickup location: ${LOC}. ${MAP}`,
@@ -31,7 +31,7 @@ describe("buildIntroText", () => {
   });
 
   it("drops the name cleanly when the sender name is empty", () => {
-    const body = buildIntroText({ senderName: "", departureLabel: "5:45 PM", location: LOC, mapUrl: MAP });
+    const body = buildIntroText({ senderName: "", tenantName: "BrewBoat", departureLabel: "5:45 PM", location: LOC, mapUrl: MAP });
     expect(body).toContain("Hi, this is BrewBoat — I'll be taking you out at 5:45 PM today.");
     expect(body).not.toContain("this is  with"); // no empty gap
   });

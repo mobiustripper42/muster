@@ -68,6 +68,8 @@ const USAGE =
   '  db:crew add --name="<name>" --phone=<+E164> --ratings=<r1,r2> [--email=<addr>] [--id=<crewId>] [--mmc=<YYYY-MM-DD>]\n' +
   '  db:crew set <crewId> [--email=<addr>] [--phone=<+E164>] [--name="<name>"]\n' +
   "  db:crew disable <crewId>   |   db:crew enable <crewId>\n" +
+  "  db:crew archive <crewId>   |   db:crew unarchive <crewId>\n" +
+  "  (disable = benched but still manually placeable; archive = off every list)\n" +
   "  (set: empty --email= clears the email; phone/name can't be blanked)";
 
 /** Execute one crew command. Returns the human-readable result line(s);
@@ -84,7 +86,8 @@ export async function runCrewCommand(repo: Repository, args: string[]): Promise<
       return crew
         .map(
           (c) =>
-            `${c.status === "active" ? "●" : "○"} ${c.id.padEnd(20)} ${c.name.padEnd(22)} ` +
+            // ● active · ○ inactive (benched) · ✗ archived (off every list, #323)
+            `${c.status === "active" ? "●" : c.status === "archived" ? "✗" : "○"} ${c.id.padEnd(20)} ${c.name.padEnd(22)} ` +
             `${c.phone.padEnd(15)} ${c.email ?? "(no email)"}`,
         )
         .join("\n");
@@ -213,6 +216,27 @@ export async function runCrewCommand(repo: Repository, args: string[]): Promise<
       return cmd === "enable"
         ? `Enabled ${updated.name} (${updated.id}) — back in the ask pool.`
         : `Disabled ${updated.name} (${updated.id}) — they won't be asked for shifts until you enable them again.`;
+    }
+
+    case "archive":
+    case "unarchive": {
+      const id = args[1];
+      if (!id || id.startsWith("--"))
+        throw new CrewCliError(`${cmd}: a crew id is required. Usage: db:crew ${cmd} <crewId>.`);
+      if (args.length > 2)
+        throw new CrewCliError(
+          `${cmd}: unexpected argument "${args[2]}". Usage: db:crew ${cmd} <crewId>.`,
+        );
+      // archive → off every list (asks + the manual override picker/guard, #323).
+      // unarchive → back to `active` (they're with the operation again); disable
+      // after if you want them benched. History is untouched either way.
+      const status = cmd === "archive" ? "archived" : "active";
+      const updated = await repo.setCrewStatus(asId<"CrewMemberId">(id), status);
+      if (!updated)
+        throw new CrewCliError(`${cmd}: no crew member with id "${id}". Run \`db:crew list\`.`);
+      return cmd === "archive"
+        ? `Archived ${updated.name} (${updated.id}) — off every list, including the manual override picker. History kept; \`db:crew unarchive ${updated.id}\` to restore.`
+        : `Unarchived ${updated.name} (${updated.id}) — back in the ask pool and placeable again.`;
     }
 
     case "set": {

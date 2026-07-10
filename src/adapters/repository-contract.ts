@@ -322,11 +322,15 @@ export function runRepositoryContract(
       expect(await repo.updateCrewContact(CREW_B, { name: "x" })).toBeNull();
     });
 
-    it("setCrewStatus: flips active↔inactive; unknown id → null", async () => {
+    it("setCrewStatus: flips active↔inactive↔archived; unknown id → null", async () => {
       await repo.saveCrewMember(crew({ status: "active", reliabilityScore: 5 }));
       const disabled = await repo.setCrewStatus(CREW, "inactive");
       expect(disabled).toMatchObject({ status: "inactive", reliabilityScore: 5 });
       expect((await repo.getCrewMember(CREW))!.status).toBe("inactive");
+      expect((await repo.setCrewStatus(CREW, "active"))!.status).toBe("active");
+      // archived round-trips too (#323, DEC-096) — a plain text column, no enum.
+      expect((await repo.setCrewStatus(CREW, "archived"))!.status).toBe("archived");
+      expect((await repo.getCrewMember(CREW))!.status).toBe("archived");
       expect((await repo.setCrewStatus(CREW, "active"))!.status).toBe("active");
       expect(await repo.setCrewStatus(CREW_B, "inactive")).toBeNull();
     });

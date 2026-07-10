@@ -57,6 +57,7 @@ const ACT_ERROR_COPY: Record<string, string> = {
   not_claimed: "Nothing is awaiting confirm on that seat.",
   not_confirmed: "No confirmed crew on that seat — it may have just changed.",
   not_rated: "They’re not rated for this seat’s role.",
+  archived: "They’ve been removed from Muster — unarchive them first to place them.",
   seat_gone: "That seat is gone — here’s the fresh state.",
   unavailable: "Couldn’t reach the schedule — nothing was changed. Try again.",
   trainee_ineligible:
@@ -129,9 +130,14 @@ export async function ShiftCockpit({
         { name: c.name, phone: c.phone ?? null },
       ]),
     );
-    // Ratings drive the override picker's per-seat scope (DEC-064).
+    // Ratings drive the override picker's per-seat scope (DEC-064). Archived crew
+    // are dropped here (#323, DEC-096) — off the manual picker, so a removed
+    // member can't be placed; `inactive` stays (a bench is still placeable). They
+    // remain in `crew` above so an already-seated occupant still renders by name.
     ratingsById = new Map(
-      crewMembers.map((c) => [String(c.id), c.ratings.map(String)]),
+      crewMembers
+        .filter((c) => c.status !== "archived")
+        .map((c) => [String(c.id), c.ratings.map(String)]),
     );
     const allSeats = await repo.listSeatsForShift(shiftId);
     seatOccupant = new Map(

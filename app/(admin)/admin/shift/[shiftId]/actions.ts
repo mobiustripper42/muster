@@ -185,6 +185,8 @@ export async function overrideTo(formData: FormData): Promise<void> {
     );
     if (out.code === "not_rated") {
       param = "act_error=not_rated";
+    } else if (out.code === "archived") {
+      param = "act_error=archived";
     } else if (out.code === "gone") {
       param = "act_error=seat_gone";
     } else {

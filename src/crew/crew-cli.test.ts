@@ -122,6 +122,23 @@ describe("db:crew CLI (Phase 10.5)", () => {
     );
   });
 
+  it("archive → archived, unarchive → active; list marks archived with ✗ (#323)", async () => {
+    const eric = asId<"CrewMemberId">("crew-eric");
+    expect(await runCrewCommand(repo, ["archive", "crew-eric"])).toMatch(/off every list/i);
+    expect((await repo.getCrewMember(eric))!.status).toBe("archived");
+    // list renders the archived marker, distinct from ● active / ○ inactive.
+    expect(await runCrewCommand(repo, ["list"])).toMatch(/^✗ /m);
+
+    expect(await runCrewCommand(repo, ["unarchive", "crew-eric"])).toMatch(/back in the ask pool/i);
+    expect((await repo.getCrewMember(eric))!.status).toBe("active");
+
+    await expect(runCrewCommand(repo, ["archive", "crew-ghost"])).rejects.toThrow(/no crew member/i);
+    await expect(runCrewCommand(repo, ["archive"])).rejects.toThrow(/a crew id is required/i);
+    await expect(runCrewCommand(repo, ["archive", "crew-eric", "--typo=1"])).rejects.toThrow(
+      /unexpected argument/i,
+    );
+  });
+
   it("set --email normalizes (trim + lowercase) and persists", async () => {
     const out = await runCrewCommand(repo, ["set", "crew-eric", "--email=  Eric@Stoffer.Net "]);
     expect(out).toContain("eric@stoffer.net");

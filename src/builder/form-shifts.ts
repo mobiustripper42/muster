@@ -71,6 +71,13 @@ export interface FormResult {
    * `cancelledCrew`. The `added` notice slot is distinct from the earlier `removed`
    * one (id = shift·member·action), so it fires cleanly. */
   restoredCrew: { shiftId: ShiftId; crewMemberId: CrewMemberId }[];
+  /** #350: assigned crew on a SURVIVING shift whose scheduled TRIP SET changed this
+   * run (a trip added, or one of several cancelled while the shift lives on) — their
+   * committed day moved (call time / trips / manifest), so the import edge relays each
+   * a "your shift changed" notice. Transition-only (diff-gated: no set change → no
+   * entry), so a steady re-pull doesn't re-fire. Excludes the cancel (→`cancelledCrew`)
+   * and resurrection (→`restoredCrew`) transitions, which carry their own notice. */
+  changedCrew: { shiftId: ShiftId; crewMemberId: CrewMemberId }[];
 }
 
 /**
@@ -115,6 +122,7 @@ export async function formShifts(
     splitDaysChanged: [],
     cancelledCrew: [],
     restoredCrew: [],
+    changedCrew: [],
   };
 
   for (const g of groups.values()) {
@@ -406,6 +414,23 @@ async function formOneShift(
   await repo.saveShift(shift);
   if (existing) {
     result.shiftsUpdated++;
+    // #350: the shift SURVIVES (we're past the all-cancelled return) and existed
+    // before. If its scheduled trip set actually CHANGED — a trip added, or one of
+    // several cancelled — its assigned crew's committed day moved, so relay each a
+    // "your shift changed" notice. Skip a resurrection (was Cancelled → `restoredCrew`
+    // says "you're on") and a Completed shift (already ran); diff-gate so a no-change
+    // re-pull adds nothing. Keyed to THIS shift's id (each split side notifies its own).
+    if (
+      existing.state !== "Cancelled" &&
+      existing.state !== "Completed" &&
+      !idSetEq(existing.eventIds.map(String), shift.eventIds.map(String))
+    ) {
+      for (const seat of seats) {
+        if (seat.assignedCrewMemberId) {
+          result.changedCrew.push({ shiftId, crewMemberId: seat.assignedCrewMemberId });
+        }
+      }
+    }
   } else {
     result.shiftsCreated++;
     result.createdShiftIds.push(String(shiftId));

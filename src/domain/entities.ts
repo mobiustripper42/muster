@@ -446,7 +446,7 @@ export interface RingOutboxEntry {
 
 /** A crew member put ON or taken OFF a shift (DEC-084) — the two assignment-change
  * notices. `removed` is what merge (8.4) emits for a dropped side-B occupant. */
-export type AssignmentAction = "added" | "removed";
+export type AssignmentAction = "added" | "removed" | "changed";
 
 /**
  * One queued assignment-change relay (DEC-084, the THIRD operator-relay sibling to

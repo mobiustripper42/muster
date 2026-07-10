@@ -44,12 +44,18 @@ export async function postOperatorMessage(formData: FormData): Promise<void> {
   const thread = (await repo.getThread(asId<"ThreadId">(threadId))) ?? target;
   await repo.saveThread(thread); // idempotent
 
+  // A day-of cohort message leads with "Cohort" (#317) so recipients — and the
+  // operator scanning /admin/messages — tell it apart from an all-staff broadcast at a
+  // glance. Prepend on the cohort thread only, idempotently (never double-prefix).
+  const finalBody =
+    thread.kind === "cohort" && !/^cohort\b/i.test(body) ? `Cohort — ${body}` : body;
+
   const message: Message = {
     id: asId<"MessageId">(`msg-${randomUUID()}`),
     threadId: thread.id,
     senderId: OPERATOR_CREW_MEMBER_ID,
     senderKind: "admin",
-    body,
+    body: finalBody,
     createdAt: now.toISOString(),
     priority,
   };

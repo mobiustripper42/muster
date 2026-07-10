@@ -23,6 +23,7 @@ import { asId } from "../domain/ids.js";
 import type { CrewMemberId, TenantId, ThreadId } from "../domain/ids.js";
 import { subjectKey } from "../domain/subject.js";
 import { standingThreadId, type Message, type Thread } from "../messaging/entities.js";
+import { isIsoDate } from "../domain/iso-date.js";
 import { deriveMembers } from "../messaging/membership.js";
 import type { Repository } from "../ports/repository.js";
 import { TENANT_TIMEZONE, vesselDateOf } from "../config/tenant.js";
@@ -243,9 +244,28 @@ export function operatorStandingTarget(
   threadId: ThreadId,
   tenantId: TenantId,
   now: Date,
-  tz: string = TENANT_TIMEZONE,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for the 4-arg
+  // callers (tz no longer needed now that the target isn't date-derived).
+  _tz: string = TENANT_TIMEZONE,
 ): Thread | null {
-  return operatorPostTargets(tenantId, now, tz).find((t) => String(t.id) === String(threadId)) ?? null;
+  const s = String(threadId);
+  const createdAt = now.toISOString();
+  // The two standing DOORS the operator's thread list surfaces are today-only
+  // (all-staff + today's cohort — `operatorPostTargets`). But the operator may ALSO
+  // post to ANY day's cohort (#317): the Cohort button on a shift deep-links here for
+  // that shift's date. No "today" restriction — the doorbell rings a cohort's crew with
+  // no date filter (a future-day post is advance notice; it surfaces in the crew thread
+  // list on the day, and the ring links them in meanwhile).
+  if (s === String(standingThreadId("all_staff", tenantId, null))) {
+    return { id: threadId, tenantId, kind: "all_staff", scopeRef: null, createdAt };
+  }
+  // A cohort thread id ends in its day (`…-YYYY-MM-DD`); take the trailing 10 chars and
+  // reconstruct to confirm (robust to a tenant id that itself contains dashes).
+  const date = s.slice(-10);
+  if (isIsoDate(date) && s === String(standingThreadId("cohort", tenantId, date))) {
+    return { id: threadId, tenantId, kind: "cohort", scopeRef: date, createdAt };
+  }
+  return null;
 }
 
 /** Is the crew member a member of `thread` — the SAME `deriveMembers` the doorbell

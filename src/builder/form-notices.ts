@@ -1,8 +1,9 @@
 /**
  * Map a {@link FormResult}'s observed crew transitions to DEC-084 assignment-notice
  * changes: `cancelledCrew` → `"removed"` ("you're off"), `restoredCrew` → `"added"`
- * ("you're on"). The operator is never notified about crew-state changes they drove
- * (DEC-072/084) — excluded here by id.
+ * ("you're on"), `changedCrew` → `"changed"` ("your shift changed", #350). The
+ * operator is never notified about crew-state changes they drove (DEC-072/084) —
+ * excluded here by id.
  *
  * Pure + framework-free so it's unit-testable; the edge (`app/lib/channel`) wraps it
  * with the real channel + operator id. Shared by every place a `formShifts` runs and
@@ -32,6 +33,13 @@ export function formNoticeChanges(
       .map((c) => ({
         crewMemberId: c.crewMemberId,
         action: "added" as const,
+        shiftId: c.shiftId,
+      })),
+    ...form.changedCrew
+      .filter((c) => notOperator(String(c.crewMemberId)))
+      .map((c) => ({
+        crewMemberId: c.crewMemberId,
+        action: "changed" as const,
         shiftId: c.shiftId,
       })),
   ];

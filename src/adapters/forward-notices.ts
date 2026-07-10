@@ -57,7 +57,9 @@ export async function forwardNotices(
       const body =
         change.action === "removed"
           ? `Muster: you're off the ${where} shift.`
-          : `Muster: you're on the ${where} shift.`;
+          : change.action === "changed"
+            ? `Muster: your ${where} shift changed - check the app.`
+            : `Muster: you're on the ${where} shift.`;
 
       await channel.send({
         to: { crewMemberId: crew.id, phone: crew.phone },

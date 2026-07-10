@@ -21,6 +21,7 @@ function form(over: Partial<FormResult>): FormResult {
     splitDaysChanged: [],
     cancelledCrew: [],
     restoredCrew: [],
+    changedCrew: [],
     ...over,
   };
 }
@@ -53,6 +54,21 @@ describe("formNoticeChanges (DEC-084 transition → notice mapping)", () => {
     );
     expect(changes).toEqual([
       { crewMemberId: "crew-a", action: "removed", shiftId: "shift-1" },
+    ]);
+  });
+
+  it("maps changedCrew → changed, excluding the operator (#350)", () => {
+    const changes = formNoticeChanges(
+      form({
+        changedCrew: [
+          { shiftId: S("shift-1"), crewMemberId: C("crew-a") },
+          { shiftId: S("shift-1"), crewMemberId: C(OP) },
+        ],
+      }),
+      OP,
+    );
+    expect(changes).toEqual([
+      { crewMemberId: "crew-a", action: "changed", shiftId: "shift-1" },
     ]);
   });
 

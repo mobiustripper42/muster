@@ -65,6 +65,15 @@ describe("forwardNotices (DEC-084)", () => {
     expect(fake.last()!.body).toBe("Muster: you're on the Sat, Jul 4 - Barrel shift.");
   });
 
+  it("phrases a changed notice as a shift-changed prompt (#350)", async () => {
+    const repo = await seed();
+    const fake = new FakeNoticeChannel();
+    await forwardNotices(repo, fake, [
+      { crewMemberId: CREW, action: "changed", shiftId: SHIFT },
+    ]);
+    expect(fake.last()!.body).toBe("Muster: your Sat, Jul 4 - Barrel shift changed - check the app.");
+  });
+
   it("skips a dangling crew ref (best-effort) without throwing", async () => {
     const repo = await seed();
     const fake = new FakeNoticeChannel();

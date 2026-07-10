@@ -167,7 +167,14 @@ export async function pullXola(
     (s) => s.category === "booked_no_boat" && inWindow(s.date),
   );
   const imported = await importRecords(repo, records, now);
-  const formed = await formShifts(repo, { now, leadDays: horizonLeadDays });
+  // notifyTripChanges (#350): the import is the one caller that should relay "your
+  // shift changed" to a shift's assigned crew — a real Xola booking moved their day.
+  // The manual split/merge commands re-form too but carry their own notice story.
+  const formed = await formShifts(repo, {
+    now,
+    leadDays: horizonLeadDays,
+    notifyTripChanges: true,
+  });
 
   return {
     window,

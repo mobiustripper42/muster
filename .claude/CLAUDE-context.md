@@ -75,6 +75,7 @@ Project-specific docs beyond the baseline `## Key Docs` table in the `CLAUDE.md`
 | File | Purpose |
 |------|---------|
 | `docs/FUTURE_IDEAS.md` | The shiny-object parking lot. New ideas land here, not in the locked spec (DEC-014). |
+| `docs/ask-timing-research.md` | One-page record of the 2026-07 ask-timing deep-research pass — findings, the "did we nail it" scorecard, and the tweaks it produced (horizon 7→5, DEC-097/098). Read before revisiting ask send-timing. |
 | `docs/RUNNING.md` | How to run the app locally, see the UI (Tailscale host, magic-link dev flow), check a change. PRs link here for setup. |
 | `docs/DEPLOY.md` | Go-live runbook — Vercel + Neon Postgres (Phase 5.1, DEC-033). |
 | `docs/E2E-PILOT-WALKTHROUGH.md` | Click-by-click acceptance test of the whole first slice — the crew engine end to end. |

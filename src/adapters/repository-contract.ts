@@ -360,6 +360,15 @@ export function runRepositoryContract(
       expect(await repo.listPtoWindowsForCrew(CREW)).toEqual([pto()]);
     });
 
+    it("pto windows: remove drops it from both lists; second remove is a no-op", async () => {
+      await repo.savePtoWindow(pto());
+      await repo.removePtoWindow(asId<"PtoWindowId">("pto-1"));
+      expect(await repo.listPtoWindowsForCrew(CREW)).toEqual([]);
+      expect(await repo.listAllPtoWindows()).toEqual([]);
+      // Idempotent — removing an absent id must not throw (surfaces double-submit).
+      await repo.removePtoWindow(asId<"PtoWindowId">("pto-1"));
+    });
+
     it("events: round-trip + list; dock optional present and absent", async () => {
       await repo.saveEvent(event()); // no dock
       const got = await repo.getEvent(EVENT);

@@ -93,6 +93,12 @@ export default async function AdminHome({
       >
         All shifts — everything on the books, for reference →
       </AppLink>
+      <AppLink
+        href="/admin/payroll"
+        className="rounded-card border border-line bg-card px-4 py-3 font-semibold text-accent shadow-sm"
+      >
+        Payroll — estimated hours per crew, by pay period →
+      </AppLink>
 
       <p className="text-sm text-muted">
         Roster, event admin, and shift builder land here in later phases.

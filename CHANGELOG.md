@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.4] - 2026-07-10
+- PR #334: Time-off surfaces — crew add/remove their own blackout dates + admin view-and-set for anyone (#332)
+- PR #337: Ask-history browse surface — every ask fired, per crew/day/shift (#331 half 1)
+- PR #339: Import run — reconcile the skipped-rows count (the "5 but only 3 shown" mystery)
+- PR #344: Import — surface in-window booked trips with no boat as a loud alert (#338)
+- PR #346: Manifest — per-guest Call/Text buttons, like the crew card (#319 follow-up)
+- PR #348: Manifest — the Text button preloads the guest intro message (#345 Part A)
+- PR #349: Manifest — all-crew "contacted" tracking; who's texted which guest (#345 Part B, migration 0020)
+- PR #351: Admin payroll report — estimated hours per crew by pay period (#347)
+- PR #353: Notify assigned crew when an import or a manual split/merge changes their shift's trips (#350)
+- PR #354: Cohort messaging — "Cohort" subject prefix + a Cohort button on the cockpit (#317)
+
 ## [1.0.3] - 2026-07-10
 - PR #324: Guest manifest on the operator cockpit (`/admin/shift/[id]`), above Manning — same assembly as the crew card (#319)
 - PR #325: Skipped import rows name the trip — date · time · event — instead of a bare event id (#320)

@@ -88,7 +88,7 @@ export interface FormResult {
  */
 export async function formShifts(
   repo: Repository,
-  opts?: { now?: Date; leadDays?: number },
+  opts?: { now?: Date; leadDays?: number; notifyTripChanges?: boolean },
 ): Promise<FormResult> {
   // Group by vessel + day across ALL events (not just `scheduled`): a group whose
   // events have all cancelled must still be revisited so its shift can derive to
@@ -290,7 +290,7 @@ async function formOneShift(
   vesselId: VesselId,
   date: string,
   scheduled: Event[],
-  opts: { now?: Date; leadDays?: number } | undefined,
+  opts: { now?: Date; leadDays?: number; notifyTripChanges?: boolean } | undefined,
   result: FormResult,
   extra?: { splitCutTime?: string; existing?: Shift | null },
 ): Promise<void> {
@@ -419,8 +419,18 @@ async function formOneShift(
     // several cancelled — its assigned crew's committed day moved, so relay each a
     // "your shift changed" notice. Skip a resurrection (was Cancelled → `restoredCrew`
     // says "you're on") and a Completed shift (already ran); diff-gate so a no-change
-    // re-pull adds nothing. Keyed to THIS shift's id (each split side notifies its own).
+    // re-pull adds nothing.
+    //
+    // ONLY when the caller opts in (`notifyTripChanges`) — i.e. the Xola import, where
+    // a real booking change moved the day. The manual split/merge commands ALSO run
+    // `formShifts`, but their re-partition legitimately changes each side's trip set
+    // without anyone's assignment really changing; they carry their own DEC-084 notice
+    // story (merge.ts: "from the explicit command, never the idempotent re-form"), so
+    // they leave this off. Keyed to THIS shift's id (each split side notifies its own —
+    // a dual-side person whose trip crosses the cut in one pull can get two texts; rare,
+    // accepted, mirrors merge.ts's tolerated duplicate).
     if (
+      opts?.notifyTripChanges &&
       existing.state !== "Cancelled" &&
       existing.state !== "Completed" &&
       !idSetEq(existing.eventIds.map(String), shift.eventIds.map(String))

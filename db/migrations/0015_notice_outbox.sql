@@ -22,7 +22,7 @@
 create table notice_outbox (
   id              text primary key,          -- notice-<shiftId>-<crewMemberId>-<action>
   crew_member_id  text not null,
-  action          text not null,             -- added | removed
+  action          text not null,             -- added | removed | changed
   body            text not null,             -- relay text, frozen at enqueue
   link            text not null,             -- /crew magic link (24h TTL), frozen
   status          text not null,             -- pending | sent

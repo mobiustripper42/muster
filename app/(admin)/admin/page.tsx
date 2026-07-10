@@ -93,6 +93,18 @@ export default async function AdminHome({
       >
         All shifts — everything on the books, for reference →
       </AppLink>
+      <AppLink
+        href="/admin/time-off"
+        className="rounded-card border border-line bg-card px-4 py-3 font-semibold text-accent shadow-sm"
+      >
+        Time off — who’s out, and set crew off →
+      </AppLink>
+      <AppLink
+        href="/admin/asks"
+        className="rounded-card border border-line bg-card px-4 py-3 font-semibold text-accent shadow-sm"
+      >
+        Ask history — every ask sent, who answered what →
+      </AppLink>
 
       <p className="text-sm text-muted">
         Roster, event admin, and shift builder land here in later phases.

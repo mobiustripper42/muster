@@ -57,3 +57,22 @@ export function fmt12(hhmm: string): string {
  *  the three can't drift. */
 export const tel = (p: string) => `tel:${p.replace(/[^0-9+]/g, "")}`;
 export const sms = (p: string) => `sms:${p.replace(/[^0-9+]/g, "")}`;
+
+/**
+ * A date-only inclusive span → "Sat Jul 11" (single day) or "Sat Jul 11 – Sun
+ * Jul 19" (#332 time-off windows). Unlike the instant formatters above, these are
+ * bare `YYYY-MM-DD` calendar dates (no tz), so both ends are anchored at
+ * `T00:00:00Z` and formatted in **UTC** — that shows the stored vessel-local date
+ * verbatim regardless of server zone (DEC-032). Shared by the crew + admin
+ * time-off surfaces so the two can't drift.
+ */
+export function fmtDateRange(start: string, end: string): string {
+  const one = (iso: string) =>
+    new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      timeZone: "UTC",
+    });
+  return start === end ? one(start) : `${one(start)} – ${one(end)}`;
+}

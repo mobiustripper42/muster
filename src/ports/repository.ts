@@ -113,6 +113,9 @@ export interface Repository {
   listPtoWindowsForCrew(crewMemberId: CrewMemberId): Promise<PtoWindow[]>;
   /** Every PTO window — the integrity diagnostic's orphan scan. */
   listAllPtoWindows(): Promise<PtoWindow[]>;
+  /** Delete one PTO window — the add/remove surfaces (#332). Mirrors
+   *  {@link removeCredential}: idempotent, no-op if the id is already gone. */
+  removePtoWindow(id: PtoWindowId): Promise<void>;
 
   // ── Events ─────────────────────────────────────────────────────────────────
   saveEvent(event: Event): Promise<void>;

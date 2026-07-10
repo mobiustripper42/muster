@@ -446,6 +446,21 @@ function CrewApp({
         )}
       </AppLink>
 
+      {/* Time off (#332, DEC-009): a quiet self-serve entry — set the dates you're
+          off. Neutral, never accent — it's a utility, not a summons, and
+          deliberately NOT an availability screen (DEC-009 line). */}
+      <AppLink
+        href="/crew/time-off"
+        prefetch={false}
+        spinner="overlay"
+        className="flex items-center justify-between rounded-card border border-line bg-card px-4 py-3 shadow-sm"
+      >
+        <span className="font-semibold text-ink">Time off</span>
+        <span className="text-faint" aria-hidden>
+          ›
+        </span>
+      </AppLink>
+
       {/* The 4th surface (DEC-074): a calm pull entry point, flag-gated. Neutral
           accent, never an alarm — it's an invitation, not a demand. */}
       {selfServe && (

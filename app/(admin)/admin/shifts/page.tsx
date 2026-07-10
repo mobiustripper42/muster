@@ -230,6 +230,11 @@ export default async function AllShifts({
   const now = new Date();
   const { from, to, scope, kind } = resolveWindow(sp, now);
   const repo = getRepo();
+  // Operator name for the cockpit's guest intro text (#345) — only when a pane is
+  // open. Best-effort; a hiccup just omits the sender name.
+  const senderName = sel
+    ? (await repo.getAdmin(subject.id).catch(() => null))?.name
+    : undefined;
 
   let rows: AllShiftsRow[];
   try {
@@ -393,7 +398,7 @@ export default async function AllShifts({
               Close<span aria-hidden="true">&nbsp;✕</span>
             </AppLink>
           </div>
-          <ShiftCockpit shiftId={sel} sp={sp} ctx={ctx} headingLevel="h2" />
+          <ShiftCockpit shiftId={sel} sp={sp} ctx={ctx} headingLevel="h2" senderName={senderName} />
         </div>
       </div>
     </Shell>

@@ -90,6 +90,7 @@ export async function ShiftCockpit({
   sp,
   ctx,
   headingLevel = "h1",
+  senderName,
 }: {
   shiftId: string;
   sp: CockpitSearch;
@@ -97,6 +98,9 @@ export async function ShiftCockpit({
   ctx: string | null;
   /** h1 standalone; h2 in the pane — the board already ships the page's h1. */
   headingLevel?: "h1" | "h2";
+  /** The viewing operator's name (#345) — names the sender in the guest intro
+   *  text. Resolved by the admin page from its own gate (no re-read here). */
+  senderName?: string | undefined;
 }) {
   const shiftId = asId<"ShiftId">(rawShiftId);
   const repo = getRepo();
@@ -434,7 +438,7 @@ export async function ShiftCockpit({
       </div>
 
       {manifest && manifest.events.length > 0 && (
-        <ShiftManifest events={manifest.events} sharedDock={manifest.sharedDock} />
+        <ShiftManifest events={manifest.events} sharedDock={manifest.sharedDock} senderName={senderName} />
       )}
 
       <ManningSection

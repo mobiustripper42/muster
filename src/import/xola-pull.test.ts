@@ -251,10 +251,27 @@ describe("pullXola — G1–G9 reconcile harness", () => {
     });
   });
 
-  it("G3.4c an OUT-OF-WINDOW booked boat-less trip counts but is NOT flagged (#338)", async () => {
-    // Window is [today-1, today+lead+1]; a December trip is well past it → benign edge.
-    const far = item("e1", { arrivalDatetime: "2026-12-25T18:00:00-04:00" });
-    const r = await pull([ev("e1", null, "2026-12-25T18:00:00+00:00")], ordersOf(far), NOW);
+  // #338 window boundary: the classify uses an inclusive [start, end] string
+  // compare. Pin both edges (a trip dated exactly on a bound is IN) and one day
+  // past the end (OUT) so the >=/<= can't silently drift to >/<. The `pull` helper
+  // runs with tz UTC + the default lead, so `pullWindow(NOW, undefined, "UTC")` is
+  // the exact window; use a +00:00 arrival so the trip date is unambiguous.
+  const W = pullWindow(NOW, undefined, "UTC");
+  const bookedOn = (date: string): XolaOrderItem =>
+    item("e1", { arrivalDatetime: `${date}T12:00:00+00:00` });
+
+  it("G3.4c a booked boat-less trip on the window's last day is flagged (inclusive end)", async () => {
+    const r = await pull([ev("e1", null)], ordersOf(bookedOn(W.end)), NOW);
+    expect(r.bookedNoBoat.map((b) => b.date)).toEqual([W.end]);
+  });
+
+  it("G3.4d a booked boat-less trip on the window's first day is flagged (inclusive start)", async () => {
+    const r = await pull([ev("e1", null)], ordersOf(bookedOn(W.start)), NOW);
+    expect(r.bookedNoBoat.map((b) => b.date)).toEqual([W.start]);
+  });
+
+  it("G3.4e one day past the window end counts as mapSkipped but is NOT flagged", async () => {
+    const r = await pull([ev("e1", null)], ordersOf(bookedOn(addDays(W.end, 1))), NOW);
     expect(r.mapSkipped).toBe(1);
     expect(r.bookedNoBoat).toHaveLength(0);
   });

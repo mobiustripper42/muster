@@ -1,8 +1,6 @@
 import type { EventManifestView } from "@core/crewapp/shift-card.js";
-import { fmt12 } from "../../app/lib/format";
+import { fmt12, tel, sms } from "../../app/lib/format";
 
-const tel = (p: string) => `tel:${p.replace(/[^0-9+]/g, "")}`;
-const sms = (p: string) => `sms:${p.replace(/[^0-9+]/g, "")}`;
 const mapHref = (q: string) => `https://maps.google.com/?q=${encodeURIComponent(q)}`;
 
 /**
@@ -77,14 +75,19 @@ export function ShiftManifest({
                   </span>
                   {g.phone && (
                     <span className="flex shrink-0 gap-1">
+                      {/* `title` keeps the number reachable (hover/long-press) now
+                          that it's not rendered — matters on a desktop with no
+                          tel:/sms: handler. */}
                       <a
                         href={tel(g.phone)}
+                        title={g.phone}
                         className="inline-flex min-h-9 items-center px-1.5 text-xs font-semibold text-accent"
                       >
                         <span aria-hidden="true">✆&nbsp;</span>Call
                       </a>
                       <a
                         href={sms(g.phone)}
+                        title={g.phone}
                         className="inline-flex min-h-9 items-center px-1.5 text-xs font-semibold text-accent"
                       >
                         <span aria-hidden="true">✉&nbsp;</span>Text

@@ -8,7 +8,7 @@ import { Shell } from "../../../../../components/ui/shell";
 import { SubmitButton } from "../../../../../components/ui/submit-button";
 import { readSubject } from "../../../../lib/auth";
 import { getRepo } from "../../../../lib/repo";
-import { fmt12 } from "../../../../lib/format";
+import { fmt12, tel, sms } from "../../../../lib/format";
 import { bailFromSeat } from "./actions";
 import { startDm } from "../../threads/actions";
 
@@ -32,8 +32,6 @@ const BAIL_ERROR_COPY: Record<string, string> = {
   trainee_seat:
     "You’re riding this shift as a trainee — ask the office to take you off; no penalty.",
 };
-const tel = (p: string) => `tel:${p.replace(/[^0-9+]/g, "")}`;
-const sms = (p: string) => `sms:${p.replace(/[^0-9+]/g, "")}`;
 const mapHref = (q: string) => `https://maps.google.com/?q=${encodeURIComponent(q)}`;
 
 function fmtDate(iso: string): string {

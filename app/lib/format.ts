@@ -51,3 +51,9 @@ export function fmt12(hhmm: string): string {
   const h12 = h % 12 === 0 ? 12 : h % 12;
   return `${h12}:${String(m).padStart(2, "0")} ${period}`;
 }
+
+/** Phone → a `tel:` / `sms:` deep-link href, stripped to digits + a leading `+`.
+ *  Shared by every contact button (seat-card, crew shift page, guest manifest) so
+ *  the three can't drift. */
+export const tel = (p: string) => `tel:${p.replace(/[^0-9+]/g, "")}`;
+export const sms = (p: string) => `sms:${p.replace(/[^0-9+]/g, "")}`;

@@ -421,12 +421,11 @@ async function formOneShift(
     // says "you're on") and a Completed shift (already ran); diff-gate so a no-change
     // re-pull adds nothing.
     //
-    // ONLY when the caller opts in (`notifyTripChanges`) — i.e. the Xola import, where
-    // a real booking change moved the day. The manual split/merge commands ALSO run
-    // `formShifts`, but their re-partition legitimately changes each side's trip set
-    // without anyone's assignment really changing; they carry their own DEC-084 notice
-    // story (merge.ts: "from the explicit command, never the idempotent re-form"), so
-    // they leave this off. Keyed to THIS shift's id (each split side notifies its own —
+    // ONLY when the caller opts in (`notifyTripChanges`) — the three explicit commands
+    // that move a crew member's day: the Xola import (a real booking change) and the
+    // manual split/merge (the operator reshapes the day). Each passes the flag; a silent
+    // idempotent re-form (were one added) would leave it off, so it never fires notices
+    // no human action drove. Keyed to THIS shift's id (each split side notifies its own —
     // a dual-side person whose trip crosses the cut in one pull can get two texts; rare,
     // accepted, mirrors merge.ts's tolerated duplicate).
     if (

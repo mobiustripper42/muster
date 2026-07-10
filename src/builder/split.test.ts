@@ -71,6 +71,23 @@ describe("splitShift (DEC-083)", () => {
     expect(kept?.assignedCrewMemberId).toBe(asId<"CrewMemberId">("cap"));
   });
 
+  it("notifies side A's crew that their shift changed — now the shorter half (#350)", async () => {
+    const repo = await seedDay();
+    const seat = (await repo.listSeatsForShift(CANON))[0]!;
+    await repo.saveSeat({
+      ...seat,
+      state: "Confirmed",
+      assignedCrewMemberId: asId<"CrewMemberId">("cap"),
+    });
+    // Splitting drops the day's later trips off side A → its crew's committed day
+    // changed, so the command relays them a "your shift changed" notice (side B is
+    // born fresh + unstaffed, so it has nobody to notify).
+    const form = await splitShift(repo, CANON, "14:00");
+    expect(form.changedCrew).toEqual([
+      { shiftId: CANON, crewMemberId: asId<"CrewMemberId">("cap") },
+    ]);
+  });
+
   it("survives re-import: a new Xola trip auto-lands on the correct side by its time", async () => {
     const repo = await seedDay();
     await splitShift(repo, CANON, "14:00");

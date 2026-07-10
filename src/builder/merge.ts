@@ -89,7 +89,12 @@ export async function mergeShift(
   const uncut = { ...shift };
   delete uncut.splitCutTime;
   await repo.saveShift(uncut);
-  const form = await formShifts(repo, now ? { now } : undefined);
+  // notifyTripChanges (#350): explicit operator command, so the surviving side-A crew
+  // — now a LONGER day (side B's trips folded back in) — get a "your shift changed"
+  // notice. The dropped side-B crew get their "you're off" via `freedCrew` above; a
+  // dual-side person is netted out of `freed` and gets only the "changed" (they kept
+  // the day). Opt-in from the command, not the idempotent re-form (DEC-084 posture).
+  const form = await formShifts(repo, { notifyTripChanges: true, ...(now ? { now } : {}) });
 
   return {
     form,

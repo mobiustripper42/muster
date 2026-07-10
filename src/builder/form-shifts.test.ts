@@ -250,7 +250,7 @@ describe("formShifts — reconciliation (#20)", () => {
     ]);
   });
 
-  it("does NOT report changed crew without the opt-in (manual split/merge re-form) (#350)", async () => {
+  it("does NOT report changed crew without the opt-in — the notice is command-driven (#350)", async () => {
     const repo = new InMemoryRepository();
     await seedEvents(repo);
     await formShifts(repo);
@@ -260,7 +260,8 @@ describe("formShifts — reconciliation (#20)", () => {
       state: "Confirmed",
       assignedCrewMemberId: asId<"CrewMemberId">("cap"),
     });
-    // Same trip-set change, but the caller (like splitShift/mergeShift) doesn't opt in.
+    // Same trip-set change, but a caller that doesn't opt in (a silent re-form) fires
+    // no notice — only the explicit commands (import/split/merge) pass the flag.
     await repo.saveEvent(event("e1b", PARTY, "2026-05-16", "17:00"));
     const r = await formShifts(repo); // no notifyTripChanges
     expect(r.changedCrew).toEqual([]);

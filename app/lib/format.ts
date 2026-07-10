@@ -52,6 +52,12 @@ export function fmt12(hhmm: string): string {
   return `${h12}:${String(m).padStart(2, "0")} ${period}`;
 }
 
+/** Phone → a `tel:` / `sms:` deep-link href, stripped to digits + a leading `+`.
+ *  Shared by every contact button (seat-card, crew shift page, guest manifest) so
+ *  the three can't drift. */
+export const tel = (p: string) => `tel:${p.replace(/[^0-9+]/g, "")}`;
+export const sms = (p: string) => `sms:${p.replace(/[^0-9+]/g, "")}`;
+
 /**
  * A date-only inclusive span → "Sat Jul 11" (single day) or "Sat Jul 11 – Sun
  * Jul 19" (#332 time-off windows). Unlike the instant formatters above, these are

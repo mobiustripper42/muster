@@ -1,7 +1,6 @@
 import type { EventManifestView } from "@core/crewapp/shift-card.js";
-import { fmt12 } from "../../app/lib/format";
+import { fmt12, tel, sms } from "../../app/lib/format";
 
-const tel = (p: string) => `tel:${p.replace(/[^0-9+]/g, "")}`;
 const mapHref = (q: string) => `https://maps.google.com/?q=${encodeURIComponent(q)}`;
 
 /**
@@ -22,7 +21,7 @@ export function ShiftManifest({
   sharedDock?: string | undefined;
 }) {
   return (
-    <section className="flex flex-col gap-2">
+    <section aria-label="Manifest" className="flex flex-col gap-2">
       <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">
         Manifest{" "}
         <span className="font-normal normal-case text-muted">
@@ -61,29 +60,42 @@ export function ShiftManifest({
             {ev.guests.length === 0 ? (
               <div className="px-4 py-3 text-sm text-muted">No guests booked.</div>
             ) : (
-              ev.guests.map((g, i) =>
-                g.phone ? (
-                  <a
-                    key={i}
-                    href={tel(g.phone)}
-                    className="flex min-h-[44px] items-center justify-between px-4 py-3 text-sm"
-                  >
-                    <span className="text-ink">
-                      {g.name} <span className="text-muted">×{g.party}</span>
+              ev.guests.map((g, i) => (
+                // Guest row: name ×party, then Call/Text buttons (the seat-card
+                // idiom, #319-followup) when we have a number. The number itself is
+                // dropped — it lives in the button hrefs; the two compact buttons
+                // keep the row no busier than the crew card, with room for the
+                // per-guest trip info coming later.
+                <div
+                  key={i}
+                  className="flex min-h-[44px] items-center justify-between gap-2 px-4 py-3 text-sm"
+                >
+                  <span className="text-ink">
+                    {g.name} <span className="text-muted">×{g.party}</span>
+                  </span>
+                  {g.phone && (
+                    <span className="flex shrink-0 gap-1">
+                      {/* `title` keeps the number reachable (hover/long-press) now
+                          that it's not rendered — matters on a desktop with no
+                          tel:/sms: handler. */}
+                      <a
+                        href={tel(g.phone)}
+                        title={g.phone}
+                        className="inline-flex min-h-9 items-center px-1.5 text-xs font-semibold text-accent"
+                      >
+                        <span aria-hidden="true">✆&nbsp;</span>Call
+                      </a>
+                      <a
+                        href={sms(g.phone)}
+                        title={g.phone}
+                        className="inline-flex min-h-9 items-center px-1.5 text-xs font-semibold text-accent"
+                      >
+                        <span aria-hidden="true">✉&nbsp;</span>Text
+                      </a>
                     </span>
-                    <span className="font-mono text-accent">{g.phone}</span>
-                  </a>
-                ) : (
-                  <div
-                    key={i}
-                    className="flex min-h-[44px] items-center justify-between px-4 py-3 text-sm"
-                  >
-                    <span className="text-ink">
-                      {g.name} <span className="text-muted">×{g.party}</span>
-                    </span>
-                  </div>
-                ),
-              )
+                  )}
+                </div>
+              ))
             )}
           </div>
         </details>

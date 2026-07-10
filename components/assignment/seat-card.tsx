@@ -1,4 +1,5 @@
 import { confirmInto, overrideTo, removeSeat, reportBail } from "../../app/(admin)/admin/shift/[shiftId]/actions";
+import { tel, sms } from "../../app/lib/format";
 import { SubmitButton } from "../ui/submit-button";
 import { HiddenIds } from "./bits";
 import { askedSummary, CandidateRow } from "./candidate-row";
@@ -48,9 +49,6 @@ const STATE_TONE: Record<SeatCardVM["state"], string> = {
   Confirmed: "border-ok-line bg-ok-bg text-ok",
   Bailed: "border-bad-line bg-bad-bg text-bad",
 };
-
-const tel = (p: string) => `tel:${p.replace(/[^0-9+]/g, "")}`;
-const sms = (p: string) => `sms:${p.replace(/[^0-9+]/g, "")}`;
 
 import { roleHueClass } from "./role-hue";
 

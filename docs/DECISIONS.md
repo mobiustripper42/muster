@@ -2510,6 +2510,24 @@ be tamper-checked per-shift (currently any signed-in subject can post), or an ap
 
 ---
 
+## DEC-098: Crew calendar feed — the first persistent bearer capability URL; hash-only, guest-PII-free, UTC-instant ICS
+
+**Status:** Accepted (#355, @architect-gated 2026-07-11). Muster's first *persistent* bearer credential — magic tokens (DEC-020) and login codes (DEC-081) are both ephemeral. Establishes the model the parked "living link" family will inherit. **Correction:** the issue cited `docs/the-living-link.md §6` as a precedent to mirror — that doc was never committed (PR #98 only parked prose into FUTURE_IDEAS), so there is no prior accepted persistent-URL model; this DEC sets it.
+
+**Decision.** Each crew member can mint a subscribable iCal URL (`GET /api/calendar/{token}.ics`, unauthenticated, the token IS the credential, **404 on miss** — no oracle, the DEC-081 posture). Their confirmed shifts then appear in Google/Apple Calendar automatically (push, not pull), re-synced on each client poll.
+
+**Token model.** Stored as **`sha256(token)` only** in a new `calendar_feeds` table (looked up BY hash of the presented token, the `magic_tokens` shape — but persistent, no expiry, and **one live feed per crew**, `crew_member_id` PK; no FK, text/ISO columns per DEC-DATA-1). The plaintext URL is shown **exactly once** at mint (carried to the page via a short-lived flash cookie); "lost it" == **regenerate**, which replaces the row and kills the old hash — the same single lever that revokes/rotates. Token = 32 crypto-random bytes base64url (~256-bit) → enumeration is infeasible, so **no rate-limiter** (and no new dependency). Reuses `magic-link`'s `randomSecret`/`hashSecret`.
+
+**Content.** Confirmed seats only (a tentative Claimed isn't a calendar commitment); confirmed supernumerary rides included, labelled "(training)". VEVENT `DTSTART`/`DTEND` = the DEC-041 committed window (call time = earliest departure − call lead; end via `shiftEndFromEvents`), emitted as **UTC instants via the instant-returning `derive` helpers, NO VTIMEZONE** — a documented DEC-032 *render* exception (DEC-032 governs display; a VEVENT is an absolute instant each client renders in its own zone, and hand-rolled VTIMEZONE blocks are the classic ICS footgun). Stable `UID` per shift id → re-polls **update** rather than duplicate. Live regen (a bailed/removed shift simply isn't emitted → the client drops it); window today−7d forward, self-bounding on the far end. **ICS is hand-rolled** (RFC-5545 TEXT escaping + 75-octet line folding) — no `ics`/`ical-generator` dependency (fails DEC-020's "could we do it with what we have?"). **UI is no-JS** (DEC-026 — mint/show-once/regenerate/turn-off are server-action forms) with **one small client-JS island**: a copy-to-clipboard button beside the shown URL (the reused `CopyButton`, moved to `components/ui/`; DEC-097 progressive-enhancement posture — no-JS still works, the URL stays selectable; handles the insecure `http://mill-dev` context where `navigator.clipboard` is undefined). A shared "Add it to your calendar" block gives the Google (web "From URL") + Apple (iPhone "Add Subscribed Calendar") steps + an honest sync-cadence note (instant on first add, then client-controlled — Apple as-set, Google hours).
+
+**PII boundary (load-bearing).** The feed lives on third-party calendar servers behind a forwardable bearer URL, so it carries only the *skeleton*: vessel, the viewer's own role, call/end times, dock (`LOCATION`), and **co-crew FIRST names**. It **NEVER** carries the guest manifest (customer names/phones) or co-crew phone numbers — those stay behind the authenticated app; the `DESCRIPTION` ends with a deep link back. *(Operator judgment call, flagged in the PR: pax count was omitted from V1 to keep the feed lean; trivial to add.)*
+
+**Not a login.** A read-only data capability adjacent to the addressed-deep-link family; it mints **no session** and grants only `text/calendar` read of one person's schedule — so it does **not** reopen DEC-081 ("all login is a code"). Pre-empts the "is this a backdoor login?" reading.
+
+**Relationship:** first persistent flavor of the parked capability-URL idea (FUTURE_IDEAS 2026-06-19); reuses DEC-041 (committed window), DEC-032 (instant seam + a recorded render exception), DEC-DATA-1 (no-FK), the `magic_tokens` hash-lookup shape (DEC-020); distinct from DEC-081.
+
+---
+
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)
 
 These are deferred by design. Each names an owner and a trigger. **Consult @architect (and the named

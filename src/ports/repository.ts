@@ -14,6 +14,7 @@ import type {
   Admin,
   Ask,
   AuthSubjectKind,
+  CalendarFeed,
   Credential,
   CrewMember,
   CrewStatus,
@@ -253,6 +254,23 @@ export interface Repository {
     subjectId: string,
     maxAttempts: number,
   ): Promise<{ codeHash: string; expiresAt: string; attempts: number } | null>;
+
+  // ── Calendar feeds (crew iCal subscription — #355, DEC-098) ────────────────
+  // The first PERSISTENT bearer credential. Stores only sha256(token); looked up by
+  // hash of the presented token (the MagicToken shape), but persistent + one per
+  // crew (`crewMemberId` PK). No re-display — recovery is regenerate (replace).
+  /** Mint/replace the crew member's feed (upsert by `crewMemberId`) — rotate = replace. */
+  saveCalendarFeed(feed: CalendarFeed): Promise<void>;
+  /** The feed whose token hashes to `tokenHash`, or null — the public route's lookup. */
+  getCalendarFeedByTokenHash(tokenHash: string): Promise<CalendarFeed | null>;
+  /** The crew member's current feed, or null — the UI's "you have a live feed since
+   *  `createdAt`" check. Carries no token (hash-only), just existence + timestamps. */
+  getCalendarFeedForCrew(crewMemberId: CrewMemberId): Promise<CalendarFeed | null>;
+  /** Revoke (hard delete) the crew member's feed. No-op if none. */
+  deleteCalendarFeed(crewMemberId: CrewMemberId): Promise<void>;
+  /** Best-effort "last synced" stamp — set `lastPolledAt` on a successful fetch.
+   *  Keyed by hash (what the route holds); no-op if the feed is gone. */
+  touchCalendarFeedPoll(tokenHash: string, polledAt: string): Promise<void>;
 
   // ── Outbox entries (web-link channel adapter state — DEC-030) ──────────────
   // Adapter-side, like MagicToken: persisted through the port so the operator's

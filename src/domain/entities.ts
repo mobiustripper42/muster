@@ -380,6 +380,30 @@ export interface LoginCode {
   consumedAt?: string;
 }
 
+/**
+ * A crew member's persistent calendar-feed credential (#355, DEC-098) — the token
+ * behind their subscribable iCal URL.
+ *
+ * Muster's FIRST persistent bearer credential (magic tokens / login codes are both
+ * ephemeral). Like `MagicToken` it stores only `sha256(token)` and is looked up by
+ * hash of the presented token — but unlike it, it never expires and there is exactly
+ * ONE live feed per crew (`crewMemberId` is the PK). "Re-see the URL" is impossible
+ * by design (hash-only); the recovery path is REGENERATE, which replaces this row and
+ * kills the old hash — the same lever that revokes/rotates. It mints no session: a
+ * read-only data capability, not a login (does not reopen DEC-081).
+ */
+export interface CalendarFeed {
+  /** The crew member this feed belongs to — one live feed each (rotate = replace). */
+  crewMemberId: CrewMemberId;
+  /** sha256 of the raw token (hex). The token itself is never stored. */
+  tokenHash: string;
+  /** ISO-8601 UTC of the mint. */
+  createdAt: string;
+  /** ISO-8601 UTC of the last feed fetch — a best-effort "last synced" signal for
+   *  the crew UI. Absent until the first poll. */
+  lastPolledAt?: string;
+}
+
 // ── OutboxEntry (channel-adapter state — DEC-030) ────────────────────────────
 
 /** `pending` = the operator hasn't texted it yet; `sent` = they marked it sent. */

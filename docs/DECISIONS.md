@@ -2640,11 +2640,17 @@ through the service layer, replaced wholesale in P12. The **real, designed custo
   to a customer it is **"your booking link,"** to crew **"your shifts."** Confirmation email + SMS both
   carry the link and emphasize **"save this link — it's how you manage your booking."**
 - **Link recovery — a public "lost your link?" form.** The general public loses emails and won't grok a
-  bare bearer URL. Recovery is **resend, not reveal:** the customer enters an identifying combo
-  (recommended: **email-or-phone + last name**; exact fields operator-confirmed), we match the reservation
-  and **re-send the existing link to the email/phone already on file** — we **never** display the booking or
-  link from typed input (that would let anyone enumerate others' bookings). Same magic-link-resend primitive
-  as crew auth; preserves the bearer-token model (you must control the on-file contact to recover). *(P12.)*
+  bare bearer URL. Recovery is **resend, not reveal:** the customer enters **email-or-phone + last name**
+  (operator-confirmed 2026-07-11), we match the reservation and **re-send the existing link to the
+  email/phone already on file** — we **never** display the booking or link from typed input. **The match
+  fields are a lookup key, not the authorization:** the real gate is controlling the on-file contact
+  (same boundary as any magic-link / password-reset). Two hygiene rules make the enumeration-resistance
+  real: **(1) neutral response always** — "if we found a booking, we've sent your link," identical whether
+  or not a match exists (no found/not-found existence leak); **(2) rate-limit the resend** per IP + per
+  target contact (against enumeration + mailbombing). **Right-sized:** the protected asset is a
+  booking-management link (view + request-cancel-out-of-band), not payment/account creds (money already
+  moved through Stripe), so neutral-response + throttle is proportionate — no OTP on top (the resent link
+  *is* the delivered-to-verified-channel token). *(P12.)*
 - **The public "Book Now" entry point is a single flag** pointing at **Muster or Xola**. Flipping back to
   Xola is one setting, instant and total — the rollback contract behind DEC-098's "switch back to Xola."
   Combined with pilot volume (~5 bookings, deletable + re-keyable; the only manual wrinkle is Stripe-held

@@ -6,7 +6,7 @@ branch: task/268-scrollbar-gutter
 started: 2026-07-11T18:01:40Z
 ended:
 points:
-pr_numbers: [375, 377, 378]
+pr_numbers: [375, 377, 378, 379]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/079da17b-1b62-4fa4-9b6a-b394651a3f5d.jsonl
 ---
@@ -61,6 +61,21 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/079da17b-1b62-4fa4-9b6
 **Points:** 2
 **Branch:** task/322-fill-deadline-env
 **Opened at:** 2026-07-11T19:57:40Z
+
+## Task 4: Split teardown from the call lead in the shift-end (closes #275)
+
+**Completed:**
+- Shift-end "back" reused `CALL_LEAD_MINUTES` (45, pre-trip prep) as the post-trip teardown → ran long. Added `TEARDOWN_MINUTES = 25` (`src/builder/derive.ts`) for the tail; front call time unchanged. Applied to all three window computations: `shiftEndFromEvents`, `committedWindow`, `committedMinutes`.
+- **Code review caught a real miss:** `suggestSplit`'s gap/span math still used the same symmetric `2×CALL_LEAD` (its docstring literally says "teardown") → under-counted dead gaps 20min/boundary (90-min gap read as 70, missed split cues). Fixed `occupiedMin = TRIP_DURATION + TEARDOWN + CALL_LEAD`; repinned split-suggestion + all-shifts tests.
+- DEC-041 **amended in place** (was contradicting the code) — placed at DEC-041, NOT the append point, so no conflict with #377/#378. No new DEC (constant refinement).
+- All ripples updated: payroll (`committedMinutes`, hours 90→70/shift), calendar DTEND, outbox/crew-view shift-end + comments.
+- Verified: **full unit 968 pass**; e2e `payroll` (5h10m→4h50m), `calendar-feed`, `crew-ask/open`, `shifts-view` split cue, `all-shifts` — all green.
+
+**Code review:** 2 passes. Caught the split-suggestion miss (same buffer, unfixed) + DEC-041 contradiction + stale test title — all addressed. Front/call-time verified untouched.
+**PR:** [#379](https://github.com/mobiustripper42/muster/pull/379) — off main. Shares derive.ts with #378 (different regions, trivial merge). **Payroll hours drop ~20min/shift — expected.**
+**Points:** 3 (grew via the split-suggestion consistency fix)
+**Branch:** task/275-teardown-minutes
+**Opened at:** 2026-07-11T20:13:59Z
 
 **Next Steps:**
 

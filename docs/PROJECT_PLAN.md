@@ -458,7 +458,87 @@ if real crews touch preview links).
 > **Post-launch priority #1 (VERY HIGH, not a launch gate):** the **reliability loop** — a shift
 > `Completed` transition + "did they show — 8/8" attendance capture (DEC-008 is where reliability data
 > is born). Without it, the ranked pool stays flat at cold-start forever. Owner: build first *after*
-> launch (seeds a Phase 11). FUTURE_IDEAS "Post-shift state".
+> launch (seeds a later phase — reservations took the P11/P12 slots). FUTURE_IDEAS "Post-shift state".
+
+---
+
+## Phase 11: Reservations — service layer + coexistence (throwaway-thin UI)
+
+**DEC-105–111 (2026-07-11).** Reopens the parked customer-portal / 2027 scope: Muster starts taking real,
+paid reservations for a subset of inventory it owns end-to-end, **running alongside Xola** (permanent
+coexistence, **not** a cutover, **no** data migration — DEC-105).
+
+**The frame is NOT "thin slice to prove it."** The crew engine was built extra-thin because it was a *bet* —
+unproven, so no UI investment until it worked. A reservation system is not a bet; it's known-to-work and
+known-to-be-needed. So Phase 11 builds the **service layer properly and tests it adequately**, behind a
+**throwaway-thin UI** that exists only to drive one real paid booking end-to-end. **The real customer-facing
+UI is Phase 12** (mockup-first). No design investment in Phase 11 — its UI gets thrown away.
+
+**Prime directive:** the crew engine shipped 4 days ago and is exceeding expectations. **Nothing in Phase
+11 touches the `xola-pull` cron, the ask `tick`, or the shift/seat state machine.** All work rides
+`feature/reservations` behind a `RESERVATIONS` flag (DEC-111); the only shared change — the `source`
+discriminator (DEC-106) — is inert (backfills `'xola'`) until a vessel-day is marked Muster-owned. Rollback
+is a single flag flip (DEC-108): worst case, ~5 bookings deleted and hand-keyed into Xola.
+
+**Exit gate — one real paid reservation, end to end:** seed one Muster-owned event → availability read →
+throwaway booking form → Stripe (deposit) → webhook writes the reservation atomically → it appears on the
+vessel-day shift's per-event manifest, with the confirmation link emitted. Proven in Stripe test-mode, then
+a single live payment. Correctness and tests are the deliverable here — not looks.
+
+| # | Task | Effort | Notes |
+|---|------|--------|-------|
+| 11.0 | **Partition + `source` discriminator** — migration (`Event.source`, `Reservation.source`, backfill `'xola'`); importer guard: skip + itemize a Xola event on a Muster-owned vessel-day; Muster-owned-vessel-day config. Contract tests both adapters | 5 | **DEC-106** · lands on `main` (inert until a vessel-day is Muster-owned) · @architect gate |
+| 11.1 | **Availability read model** — remaining capacity per Muster-owned event (`COI max − Σ booked party sizes`, `source='muster'`); pure deriver + tests | 3 | additive, safe on `main` |
+| 11.2 | **Stripe charge/refund/deposit service** — `stripe` dep; **lift + audit charge + refund from the sibling `sailbook` project** (deposit + balance-link is the net-new piece); create-session server action, success/cancel routes, env/secrets (Drew's keys). Service-layer + adapter-tested | 8 | **DEC-107** · may be more complex than sized · requires `sailbook` in session scope · @architect gate · likely splits 11.2a lift/audit / 11.2b deposit+balance-link |
+| 11.3 | **Booking write + atomic capacity claim** — signature-verified idempotent `checkout.session.completed` webhook → writes Muster-native Event(if new)+Reservation under an atomic capacity guard; contract-tested both adapters | 5 | **DEC-109** (REQ-CLAIM-1 sibling) · the correctness task · @architect gate; split webhook-infra vs capacity-guard only if the diff balloons |
+| 11.4 | **Booking-link generation + confirmation emit** — generate the DEC-020 capability-URL for the reservation; emit confirmation with the link over email + SMS. Service-layer (copy polish + the manage *page* are P12) | 3 | **DEC-108** · the customer half of the capability-URL ("living link") family — internal name only, never in customer/crew copy |
+| 11.5 | **Waiver consent field (pilot)** — checkbox + linked terms + consent timestamp on the reservation | 2 | **DEC-110** · Drew/Spink legal-sufficiency flag · real provider integration is P12 · do **not** build a waiver subsystem |
+| 11.6 | **Throwaway booking harness** — the extremely-thin, unstyled `app/(public)` form + availability list that exercises the whole service layer to put one real booking through. **Explicitly disposable — replaced wholesale in P12** | 3 | not customer-quality; just enough to drive the exit gate |
+| 11.7 | **Manifest hinge verification** — confirm Muster-native reservations surface on the shift card per-event manifest with no write-back sheet (§2.6.3 / DEC-012 already source-agnostic) | 2 | **test, don't rebuild** |
+| 11.8 | **Go-live hardening + rollback runbook** — one real paid reservation end-to-end on the live boat/slot; flag flip; runbook (refunds-manual-in-Stripe, dispute-watch-in-Stripe, single-flip revert, ~5-booking manual rollback incl. Stripe-held money) | 3 | feature → `main` merge gate |
+
+**Phase 11 total: ~31 pts (rough — poker at `/start-phase`).** **Owner-gated before 11.2/11.5** (not
+before the phase starts): deposit-%, balance timing, refund policy, **which Stripe account**, waiver
+provider + legal sufficiency — all Drew/Spink (DEC-107/103).
+
+**Explicitly deferred out of Phase 11:** the **real customer UI** (all of P12), refund cascade (§3.3),
+dispute surfacing (§3.4), customer self-service cancel/reschedule, deposit auto-charge (saved card), and
+multi-boat / full-catalog selling.
+
+---
+
+## Phase 12: Reservations — the real customer UI + flip new sales (Sept/Oct)
+
+*Trigger: Phase 11's service layer proved out — a real paid booking ran end-to-end and is trusted.*
+Phase 12 is where the **design investment** lives: the actual customer-facing reservation system, then the
+sales-channel flip. The flip itself is a **channel switch, not a data event** (DEC-105) — new bookings move
+to Muster, Xola stops taking new inventory and its forward-book drains naturally; when the last Xola-sold
+trip has sailed, Xola is empty and the subscription is cancelled. No migration, no de-listing sweep.
+
+**Design method for every UI task below — mockup-first on mildev, no Claude Design:** spec the surface →
+build an HTML mockup → serve it on `mill-dev:3000` for review → then build for real. Xola's booking screens
+are the pattern reference; `BRAND.md` is the styling authority.
+
+Outline (poker at the boundary; each UI surface carries its own mockup step):
+- **Availability page (real)** — designed public browse-and-pick surface, replacing the P11 harness.
+- **Booking form (real)** — the customer detail-entry surface (name, party size, contact, waiver consent).
+- **Confirmation + manage page (real)** — the "your booking" surface behind the capability-URL. Customer
+  copy calls it **"your booking link" — never "living link"** (internal name only). Confirmation email + SMS
+  emphasize **"save this link — it's how you manage your booking."**
+- **Link recovery flow** — a public "lost your link?" form: customer enters **email-or-phone + last name**,
+  we **re-send the existing link to the contact on file** (never display the booking/link from typed input —
+  preserves the bearer-token model; the same magic-link-resend primitive as crew auth). *(Exact match fields
+  to confirm with the operator.)*
+- **Waiver provider integration** (DEC-110) — the real e-waiver wiring, replacing P11's minimal consent.
+  Which provider is a last-minute Drew/Spink call.
+- **Flip + broaden** — move new sales to Muster; broaden Muster-owned inventory from the pilot boat/slot to
+  the full catalog (de-list those vessel-days in Xola per the DEC-106 discipline).
+- **Overlap accounting** — revenue split across Xola + Stripe until Xola drains (an operator/Drew reality,
+  not a build item; reinforces the "which Stripe account" decision).
+
+**Watch for** the point where Muster's own-booking volume makes an **in-app refund/cancel surface** (§3.3)
+worth pulling out of the Stripe dashboard — a candidate Phase 13, not a Phase 12 commitment. **Not a phase:**
+a hard cutover / historical Xola migration. It does not happen (DEC-105).
 
 ---
 

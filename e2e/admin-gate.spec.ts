@@ -5,7 +5,7 @@
  * CREW (every admin is also crew, DEC-092/093) and just needs to switch up. The
  * fallback now branches on WHO the caller is:
  *   - crew who is an active admin → a "Switch to admin" control (the operator's case)
- *   - crew, not an admin        → "this surface is Spink's" + a link home
+ *   - crew, not an admin        → redirect straight to their crew home (no dead-end)
  *   - no session                → "sign in" (the crew-code front door at /crew)
  *
  * `crew-spink` is the dual-role subject (seeded crew + fixture admin); `crew-obx-bo`
@@ -46,16 +46,14 @@ test.describe("admin-gate fallback (#352)", () => {
     await page.waitForURL(/\/admin/);
   });
 
-  test("a crew-only member is told it's not their surface, with a way home (no switch)", async ({
+  test("a crew-only member is redirected to their crew home (no dead-end, no switch)", async ({
     page,
   }) => {
     await signInAsCrew(page, "crew-obx-bo"); // crew, not an admin
     await page.goto(ADMIN_SURFACE);
 
-    await expect(page.getByText(/this surface is spink/i)).toBeVisible();
-    await expect(
-      page.getByRole("link", { name: /back to your crew home/i }),
-    ).toBeVisible();
+    // Redirected straight home — never parked on a "not for you" admin screen.
+    await page.waitForURL((u) => u.pathname === "/crew");
     await expect(
       page.getByRole(SWITCH_TO_ADMIN.role, { name: SWITCH_TO_ADMIN.name }),
     ).toHaveCount(0);

@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import type { AuthSubject } from "@core/auth/magic-link.js";
 import { getRepo } from "../../app/lib/repo";
 import { switchToAdmin } from "../../app/lib/switch-actions";
@@ -14,7 +15,8 @@ import { SubmitButton } from "../ui/submit-button";
  * component branches on WHO the caller actually is so the message is actionable:
  *
  *  - **crew who is an active admin** → the switch-up control (the operator's case).
- *  - **crew, not an admin** → this really isn't their surface; point home.
+ *  - **crew, not an admin** → not their surface; redirect straight to their crew
+ *    home (no dead-end message, no naming who the surface belongs to).
  *  - **no session at all** → sign in (the crew-code login at `/crew` is the front
  *    door, DEC-081 — then switch up).
  *
@@ -48,18 +50,9 @@ export async function AdminSignedOut({
         </Shell>
       );
     }
-    // Signed in as crew, but not an admin — genuinely not their surface.
-    return (
-      <Shell width="3xl">
-        <h1 className="text-lg font-semibold text-ink">Muster · Admin</h1>
-        <Notice>
-          This surface is Spink’s.{" "}
-          <AppLink href="/crew" className="font-semibold underline">
-            Back to your crew home →
-          </AppLink>
-        </Notice>
-      </Shell>
-    );
+    // Signed in as crew, but not an admin — not their surface. Send them straight
+    // to their crew home rather than showing a dead-end "not for you" message.
+    redirect("/crew");
   }
 
   // No session — sign in via the crew-code front door, then switch up.

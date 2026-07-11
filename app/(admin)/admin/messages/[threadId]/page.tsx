@@ -4,6 +4,7 @@ import { buildThreadView, type ThreadView } from "@core/crewapp/thread-view.js";
 import { asId } from "@core/domain/ids.js";
 import { Notice } from "../../../../../components/ui/notice";
 import { Shell } from "../../../../../components/ui/shell";
+import { AdminSignedOut } from "../../../../../components/admin/admin-signed-out";
 import { readSubject } from "../../../../lib/auth";
 import { getRepo } from "../../../../lib/repo";
 import { TENANT_ID } from "../../../../lib/tenant";
@@ -28,11 +29,7 @@ export default async function AdminThread({
   const { threadId } = await params;
   const subject = await readSubject();
   if (!subject || subject.kind !== "admin") {
-    return (
-      <Shell>
-        <Notice>You’re signed out. Tap an operator magic link to get in.</Notice>
-      </Shell>
-    );
+    return <AdminSignedOut subject={subject} />;
   }
 
   let view: ThreadView | null;

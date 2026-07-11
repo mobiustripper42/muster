@@ -3,6 +3,7 @@ import { SubmitButton } from "../../../../components/ui/submit-button";
 import type { ImportRun, ImportRunSummary } from "@core/import/import-audit.js";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
+import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { readSubject } from "../../../lib/auth";
 import { fmtRunWhen, IMPORT_SOURCE_LABEL } from "../../../lib/format";
 import { getRepo } from "../../../lib/repo";
@@ -35,7 +36,8 @@ export default async function ImportPage({
 }) {
   const sp = await searchParams;
   const subject = await readSubject();
-  if (!subject || subject.kind !== "admin") return <SignedOut />;
+  if (!subject || subject.kind !== "admin")
+    return <AdminSignedOut subject={subject} />;
 
   const err = sp.xerr ? (ERR_COPY[sp.xerr] ?? null) : null;
 
@@ -136,16 +138,4 @@ function summaryLine(s: ImportRunSummary): string {
       `⚠ ${s.unmappedResources.length} unknown boat${s.unmappedResources.length === 1 ? "" : "s"}`,
     );
   return parts.join(" · ");
-}
-
-function SignedOut() {
-  return (
-    <Shell width="2xl">
-      <h1 className="text-lg font-semibold text-ink">Muster · Import</h1>
-      <Notice>
-        You’re signed out. Tap an operator magic link to get in — this surface is
-        Spink’s.
-      </Notice>
-    </Shell>
-  );
 }

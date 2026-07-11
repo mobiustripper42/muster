@@ -4,6 +4,7 @@ import type { ImportRunItemKind } from "@core/import/import-audit.js";
 import type { SkippedRow } from "@core/import/import-reservations.js";
 import { Notice } from "../../../../../../components/ui/notice";
 import { Shell } from "../../../../../../components/ui/shell";
+import { AdminSignedOut } from "../../../../../../components/admin/admin-signed-out";
 import { readSubject } from "../../../../../lib/auth";
 import { fmt12, fmtRunWhen, IMPORT_SOURCE_LABEL } from "../../../../../lib/format";
 import { getRepo } from "../../../../../lib/repo";
@@ -25,7 +26,8 @@ export default async function ImportRunView({
   params: Promise<{ id: string }>;
 }) {
   const subject = await readSubject();
-  if (!subject || subject.kind !== "admin") return <SignedOut />;
+  if (!subject || subject.kind !== "admin")
+    return <AdminSignedOut subject={subject} />;
 
   const { id } = await params;
   const repo = getRepo();
@@ -268,16 +270,4 @@ function fmtDate(iso: string): string {
     day: "numeric",
     timeZone: "UTC",
   });
-}
-
-function SignedOut() {
-  return (
-    <Shell width="2xl">
-      <h1 className="text-lg font-semibold text-ink">Muster · Import run</h1>
-      <Notice>
-        You’re signed out. Tap an operator magic link to get in — this surface is
-        Spink’s.
-      </Notice>
-    </Shell>
-  );
 }

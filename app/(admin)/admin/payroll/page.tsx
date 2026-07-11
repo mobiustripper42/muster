@@ -2,6 +2,7 @@ import { BackLink } from "../../../../components/ui/back-link";
 import { GetFormSubmit } from "../../../../components/ui/get-form-submit";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
+import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { buildPayrollReport, type PayrollRow } from "@core/admin/payroll.js";
 import { currentPeriod, periodsForYear, periodLabel } from "@core/admin/pay-periods.js";
 import { PAY_PERIOD_ANCHOR, vesselDateOf } from "@core/config/tenant.js";
@@ -29,7 +30,8 @@ export default async function AdminPayroll({
 }) {
   const sp = await searchParams;
   const subject = await readSubject();
-  if (!subject || subject.kind !== "admin") return <SignedOut />;
+  if (!subject || subject.kind !== "admin")
+    return <AdminSignedOut subject={subject} />;
 
   const today = vesselDateOf(new Date());
   const cur = currentPeriod(PAY_PERIOD_ANCHOR, today);
@@ -133,15 +135,6 @@ export default async function AdminPayroll({
           </div>
         )}
       </section>
-    </Shell>
-  );
-}
-
-function SignedOut() {
-  return (
-    <Shell width="3xl">
-      <h1 className="text-lg font-semibold text-ink">Muster · Admin</h1>
-      <Notice>You’re signed out. Tap an operator magic link to get in.</Notice>
     </Shell>
   );
 }

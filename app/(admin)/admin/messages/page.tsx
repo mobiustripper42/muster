@@ -2,6 +2,7 @@ import { AppLink } from "../../../../components/ui/app-link";
 import { buildOperatorThreads, type OperatorThreadsView } from "@core/admin/operator-threads.js";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
+import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
 import { TENANT_ID } from "../../../lib/tenant";
@@ -18,7 +19,8 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminMessages() {
   const subject = await readSubject();
-  if (!subject || subject.kind !== "admin") return <SignedOut />;
+  if (!subject || subject.kind !== "admin")
+    return <AdminSignedOut subject={subject} />;
 
   let view: OperatorThreadsView;
   try {
@@ -60,14 +62,5 @@ function BackLink() {
     <AppLink href="/admin" className="text-sm font-semibold text-accent">
       ‹ Admin
     </AppLink>
-  );
-}
-
-function SignedOut() {
-  return (
-    <Shell>
-      <h1 className="text-lg font-semibold text-ink">Muster · Admin</h1>
-      <Notice>You’re signed out. Tap an operator magic link to get in.</Notice>
-    </Shell>
   );
 }

@@ -3,6 +3,7 @@ import type { CrewMember } from "@core/domain/entities.js";
 import { BackLink } from "../../../../components/ui/back-link";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
+import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { readSubject } from "../../../lib/auth";
@@ -36,7 +37,8 @@ export default async function AdminTimeOff({
 }) {
   const sp = await searchParams;
   const subject = await readSubject();
-  if (!subject || subject.kind !== "admin") return <SignedOut />;
+  if (!subject || subject.kind !== "admin")
+    return <AdminSignedOut subject={subject} />;
 
   let groups: TimeOffByCrew[];
   let crew: CrewMember[];
@@ -163,14 +165,5 @@ function AddForm({ crew }: { crew: CrewMember[] }) {
         Add time off
       </SubmitButton>
     </form>
-  );
-}
-
-function SignedOut() {
-  return (
-    <Shell width="3xl">
-      <h1 className="text-lg font-semibold text-ink">Muster · Admin</h1>
-      <Notice>You’re signed out. Tap an operator magic link to get in.</Notice>
-    </Shell>
   );
 }

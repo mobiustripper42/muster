@@ -279,3 +279,78 @@ describe("deriveAllShifts", () => {
     expect(rows.find((r) => r.shiftId === "coll-b")!.split).toEqual({ side: "B", cutTime: "17:30" });
   });
 });
+
+describe("deriveAllShifts — crew filter (#330)", () => {
+  const WIN = { from: "2026-07-01", to: "2026-07-31" };
+  const QUINT = { id: "crew-quint", name: "Quint" };
+  const HOOPER = { id: "crew-hooper", name: "Hooper" };
+
+  it("narrows to shifts the crew member is seated on (by id), dropping the rest", async () => {
+    await addShift("q1", "2026-07-05", "Orca", [{ time: "09:00", pax: [2] }], [
+      { role: CAPTAIN, state: "Confirmed", crew: QUINT },
+    ]);
+    await addShift("h1", "2026-07-06", "Orca2", [{ time: "09:00", pax: [2] }], [
+      { role: CAPTAIN, state: "Confirmed", crew: HOOPER },
+    ]);
+
+    const rows = await deriveAllShifts(repo, WIN, T0, {
+      ...OPTS,
+      crewMemberId: QUINT.id,
+    });
+    expect(rows.map((r) => r.shiftId)).toEqual(["q1"]);
+  });
+
+  it("counts a tentative (Claimed) seat, not just Confirmed", async () => {
+    await addShift("claimed", "2026-07-05", "Orca", [{ time: "09:00", pax: [2] }], [
+      { role: CAPTAIN, state: "Claimed", crew: QUINT },
+    ]);
+
+    const rows = await deriveAllShifts(repo, WIN, T0, {
+      ...OPTS,
+      crewMemberId: QUINT.id,
+    });
+    expect(rows.map((r) => r.shiftId)).toEqual(["claimed"]);
+  });
+
+  it("counts a crew member on a supernumerary (trainee) seat", async () => {
+    await addShift("super", "2026-07-05", "Orca", [{ time: "09:00", pax: [2] }], [
+      { role: CAPTAIN, state: "Confirmed", crew: HOOPER },
+      { role: MATE, kind: "supernumerary", state: "Confirmed", crew: QUINT },
+    ]);
+
+    const rows = await deriveAllShifts(repo, WIN, T0, {
+      ...OPTS,
+      crewMemberId: QUINT.id,
+    });
+    expect(rows.map((r) => r.shiftId)).toEqual(["super"]);
+  });
+
+  it("does NOT count an Asked/Open/Bailed seat — those don't bind a person to the shift", async () => {
+    // Quint has an outstanding ask (not a commitment) on one shift, and is
+    // Confirmed on another. Only the confirmed one should surface.
+    await addShift("asked", "2026-07-05", "Orca", [{ time: "09:00", pax: [2] }], [
+      { role: CAPTAIN, state: "Asked", crew: QUINT },
+    ]);
+    await addShift("real", "2026-07-06", "Orca2", [{ time: "09:00", pax: [2] }], [
+      { role: CAPTAIN, state: "Confirmed", crew: QUINT },
+    ]);
+
+    const rows = await deriveAllShifts(repo, WIN, T0, {
+      ...OPTS,
+      crewMemberId: QUINT.id,
+    });
+    expect(rows.map((r) => r.shiftId)).toEqual(["real"]);
+  });
+
+  it("returns everything when no crew filter is set (unchanged behavior)", async () => {
+    await addShift("q1", "2026-07-05", "Orca", [{ time: "09:00", pax: [2] }], [
+      { role: CAPTAIN, state: "Confirmed", crew: QUINT },
+    ]);
+    await addShift("h1", "2026-07-06", "Orca2", [{ time: "09:00", pax: [2] }], [
+      { role: CAPTAIN, state: "Confirmed", crew: HOOPER },
+    ]);
+
+    const rows = await deriveAllShifts(repo, WIN, T0, OPTS);
+    expect(rows.map((r) => r.shiftId).sort()).toEqual(["h1", "q1"]);
+  });
+});

@@ -6,8 +6,8 @@
  * the shared SESSION_SECRET (which logs everyone out at once).
  *
  * The seeded operator admin is `spink` (fixtures) — what signInAsAdmin resolves via
- * the dev-link handle→id lookup. "You're signed out … tap an operator magic link"
- * is the SignedOut notice unique to a null subject, so it's the discriminator.
+ * the dev-link handle→id lookup. The "You're signed out" notice (#352 AdminSignedOut,
+ * null-subject branch) is unique to a null subject, so it's the discriminator.
  */
 import {
   test,
@@ -18,7 +18,7 @@ import {
   setAdminActive,
 } from "./fixtures.js";
 
-const SIGNED_OUT = /tap an operator magic link/i;
+const SIGNED_OUT = /you.re signed out/i;
 
 test.describe("admin entity + per-person revoke (DEC-092)", () => {
   test.beforeEach(async () => {

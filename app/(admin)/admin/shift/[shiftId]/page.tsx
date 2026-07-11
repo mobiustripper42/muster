@@ -2,8 +2,8 @@ import {
   ShiftCockpit,
   type CockpitSearch,
 } from "../../../../../components/assignment/shift-cockpit";
-import { Notice } from "../../../../../components/ui/notice";
 import { Shell } from "../../../../../components/ui/shell";
+import { AdminSignedOut } from "../../../../../components/admin/admin-signed-out";
 import { readSubject } from "../../../../lib/auth";
 import { getRepo } from "../../../../lib/repo";
 
@@ -30,11 +30,7 @@ export default async function ShiftCockpitPage({
 }) {
   const subject = await readSubject();
   if (!subject || subject.kind !== "admin") {
-    return (
-      <Shell width="3xl">
-        <Notice>You’re signed out. Tap an operator magic link to get in.</Notice>
-      </Shell>
-    );
+    return <AdminSignedOut subject={subject} />;
   }
 
   const { shiftId: raw } = await params;

@@ -8,6 +8,7 @@ import { RingOutboxCard, type RingOutboxCardVM } from "../../../../components/ou
 import { NoticeOutboxCard, type NoticeOutboxCardVM } from "../../../../components/outbox/notice-outbox-card";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
+import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { readSubject } from "../../../lib/auth";
 import { OPERATOR_CREW_MEMBER_ID } from "../../../lib/operator";
 import { getRepo } from "../../../lib/repo";
@@ -62,7 +63,8 @@ export default async function Outbox({
 }) {
   const sp = await searchParams;
   const subject = await readSubject();
-  if (!subject || subject.kind !== "admin") return <SignedOut />;
+  if (!subject || subject.kind !== "admin")
+    return <AdminSignedOut subject={subject} />;
 
   const repo = getRepo();
   let view;
@@ -316,17 +318,5 @@ function EmptySuccess() {
         moment the engine fires them.
       </p>
     </div>
-  );
-}
-
-function SignedOut() {
-  return (
-    <Shell>
-      <h1 className="text-lg font-semibold text-ink">Muster · Outbox</h1>
-      <Notice>
-        You’re signed out. Tap an operator magic link to get in — this surface
-        is Spink’s.
-      </Notice>
-    </Shell>
   );
 }

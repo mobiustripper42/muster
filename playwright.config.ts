@@ -71,10 +71,12 @@ export default defineConfig({
       // Covers: crew (auth-crew), the admin nav + hamburger drawer (admin-nav), the
       // outbox copy/overflow + Dismiss|Send (outbox-relay), the messaging surfaces
       // (#117 — chat bubbles, the 3-button co-crew row, the compose box), the
-      // fixed corner version tag (version-tag — must clear content at 375px), and
-      // the crew self-serve sign-in form + code entry (crew-sign-in — DEC-081).
+      // fixed corner version tag (version-tag — must clear content at 375px), the
+      // crew self-serve sign-in form + code entry (crew-sign-in — DEC-081), and the
+      // all-shifts filter bar (shifts-view — 5 preset chips + date + crew dropdown
+      // that must wrap, not overflow, at 375px — #321/#330).
       name: "mobile",
-      testMatch: /(auth-crew|admin-nav|outbox-relay|crew-messaging|operator-messaging|version-tag|crew-sign-in|crew-open|crew-reconciliation|crew-help|cockpit-manifest|cockpit-override|ask-trail|time-off|payroll|calendar-feed)\.spec\.ts/,
+      testMatch: /(auth-crew|admin-nav|outbox-relay|crew-messaging|operator-messaging|version-tag|crew-sign-in|crew-open|crew-reconciliation|crew-help|cockpit-manifest|cockpit-override|ask-trail|time-off|payroll|shifts-view|calendar-feed)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 375, height: 812 } },
     },
   ],

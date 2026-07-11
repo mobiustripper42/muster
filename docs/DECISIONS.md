@@ -2506,6 +2506,190 @@ be tamper-checked per-shift (currently any signed-in subject can post), or an ap
 
 ---
 
+## DEC-098: Reservations go live in 2026 as a Muster-native parallel-run — permanent coexistence, not a cutover
+
+**Status:** Decided 2026-07-11 (Eric + @architect). Reopens the parked customer-portal / 2027 scope
+(SPEC §0.2/§0.3/§2.2/§4). Umbrella DEC for Phase 11–12; the mechanism DECs (099–104) sit under it.
+
+**Context.** The crew engine shipped at v1.0.0 and, four days into real crew use, is exceeding
+expectations. The operator wants the *other* half of the eventual Xola replacement — taking bookings —
+built the same way: a thin vertical slice, real paid reservations, proven before it's leaned on. SPEC
+locked this as "2027 — Muster takes bookings" (§0.3) and parked the customer portal + payments (§4). This
+DEC pulls that forward to 2026 for a Muster-owned subset, **without** a hard cutover or a data migration.
+
+**Decision.** Muster begins selling and taking payment for a **subset of inventory it owns end-to-end**,
+running **alongside Xola indefinitely**. The model is **permanent coexistence**, not a transition to a
+cutover:
+- **Xola-originated reservations** keep importing exactly as today (DEC-011/036/043), forever, until they
+  drain. Their **money stays in Xola** — refund/cancel is done *in Xola* by the operator. Muster operates
+  on them (board, crewing, manifest) "as if Xola doesn't exist" but **never touches their money** and shows
+  **no refund/cancel affordance** on them (or a "cancel in Xola" pointer, not an action). Muster already
+  *reflects* a Xola-side cancel via the existing status-700 pull row — the at-risk flow stays: **decide
+  from Muster's board → execute the money in Xola → next pull updates Muster** (coherent with DEC-082).
+- **Muster-originated reservations** are full-stack: public site → Stripe → atomic capacity claim →
+  native manifest on the crew card. Their money lives in Stripe.
+- **The "cutover" is a sales-channel flip, not a data event.** When new sales move to Muster (Phase 12),
+  Xola stops taking *new* bookings; its forward-book sails out naturally. When the last Xola trip has run,
+  Xola is empty and the subscription is cancelled — "until all the reservations are gone." **No historical
+  Xola migration** (this ratifies the DEC-TBD "leaning archive" as *settled: never migrate*), **no forced
+  cutover, no de-listing sweep.**
+
+**Why this is safe next to a 4-day-old live engine.** The whole reservations build is **additive and
+flag-dark** (DEC-104): it never touches the `xola-pull` cron, the ask `tick`, or the shift/seat state
+machine. The one shared change — the `source` discriminator (DEC-099) — is inert (backfills `'xola'`) until
+an operator marks a vessel-day Muster-owned. **Rollback is a single flag flip** (DEC-101): worst case is a
+handful of Muster bookings deleted and hand-keyed into Xola.
+
+**Explicitly NOT reopened:** the **killed Xola API write-back** (§4 / DEC-011). Muster owns its *own*
+inventory and money; it never writes bookings, guides, or refunds back into Xola's API. Owning your own
+sales channel is orthogonal to — and does not revive — the write-back bolt-on.
+
+**Owner-gated (Drew/Spink), not ours to set — gate the payment/waiver tasks, not the start:** deposit-%,
+balance timing, refund policy, which Stripe account Muster bills through, and waiver legal sufficiency.
+**Relationship:** supersedes SPEC §0.3 timing + §4 portal/payments-out-of-2026 park (amend via a SPEC v1.1
+§2.8 write-up per the DEC-045 precedent — new DECs now, the §2.8 + v1.1 stamp when Phase 11 is prod-ready).
+**Revisit if:** the parallel-run fails to prove out (then fall back to Xola-only — the rollback is free).
+
+---
+
+## DEC-099: Coexistence partition = whole vessel-day; an event is owned by exactly one system
+
+**Status:** Decided 2026-07-11 (@architect, under DEC-098). Extends the DEC-029/043 import merge rule.
+
+**Context.** The make-or-break risk of selling on two systems at once is **double-selling the same seats**.
+Capacity truth for any given event must be unambiguous.
+
+**Decision.** Partition at the **whole vessel-day** — the existing `shift-{vessel}-{date}` grouping grain.
+A concrete boat + date is owned by **exactly one** system; a Muster-owned vessel-day forms its shift
+entirely from `source='muster'` events, a Xola vessel-day entirely from Xola events. Both flow through the
+same `formShifts` → same state machine → same crewing.
+- **`source: 'xola' | 'muster'`** discriminator on `Event` and `Reservation` (small migration, backfill
+  `'xola'`). The importer writes **only** `source='xola'` rows (it structurally can't produce a Muster id —
+  it upserts by Xola id and never reaps). Muster-native selling reads remaining capacity **only** from
+  same-event `source='muster'` reservations. **No cross-source capacity arithmetic ever happens**, so
+  double-counting on the next pull is impossible by construction — this makes the DEC-029 "manual-add
+  survives re-import" guarantee a first-class invariant, not an accident of id-namespacing.
+- **Importer guard for the one residual risk (listing discipline):** when a Xola event resolves onto a
+  **Muster-owned** vessel-day, the importer **skips it and surfaces a counted, itemized skip** (same idiom
+  as the excluded-resource / `bookedNoBoat` reporting in `xola-pull.ts`) — an actionable "you double-listed
+  this boat-day," never a silent clobber. **Operator discipline:** a Muster-owned vessel-day is de-listed
+  in Xola.
+
+**Why whole-vessel-day, not finer/coarser.** Per-product straddles capacity across both systems (both sell
+the same BrewBoat product). Per-event is the correctness floor but mixing Xola + Muster events inside one
+vessel-day means one shift's manifest draws from two truth sources — a reconciliation trap on the crewing
+atom. Whole-vessel-day aligns the ownership boundary with the shift boundary already in the code.
+**Revisit if:** an operator genuinely needs to sell the same boat-day split across both systems (not a
+BrewBoat need — would require per-event capacity reconciliation).
+
+---
+
+## DEC-100: Payments — Stripe hosted Checkout, deposit + balance, webhook-driven booking write
+
+**Status:** Decided 2026-07-11 (Eric + @architect, under DEC-098). New dependency: the `stripe` Node SDK.
+
+**Context.** Muster-native bookings need to take money. The operator chose **deposit + balance** over
+full-upfront (the closer match to how Xola works, which matters for a Xola replacement).
+
+**Decision.** **Stripe hosted Checkout (redirect)**, not embedded Payment Intents — Stripe hosts the card
+fields (PCI SAQ-A, no card data touches Muster), handles 3DS/SCA + wallets free, and is the fastest path to
+a working redirect. Embedded UX control isn't worth the PCI surface for a thin slice.
+- **Deposit + balance:** deposit taken at Checkout; **balance collected later via an emitted payment-link**,
+  **not** an off-session auto-charge of a saved card — the auto-charge path drags in off-session card-decline
+  handling not worth it at pilot scale.
+- **Webhook-driven write:** the signature-verified, idempotent `checkout.session.completed` webhook is the
+  thing that writes the Muster-native Reservation — **never** the browser redirect (not proof of payment).
+- **New dependency (`stripe` SDK) cleared:** it saves well beyond hand-rolling a PCI-safe payment +
+  reconciliation path and its webhook-signature verification + typed session API justify the SDK over the
+  raw-`fetch` posture DEC-081 took for email. (Confirm SDK-vs-fetch at build.)
+
+**Stays parked (do not build in Phase 11):** the **refund cascade (§3.3)** and **dispute/chargeback
+surfacing (§3.4)**. For Xola bookings, refunds live in Xola (DEC-098) — *permanently*. For Muster bookings
+at pilot volume, a refund/cancel is handled **manually in the Stripe dashboard** (documented in the
+runbook); an in-app money-ops surface is a later phase, gated on Muster carrying real volume.
+
+**Owner-gated (Drew), flag each — gates the Stripe task only:** deposit-% and balance timing; per-seat /
+product pricing; refund policy + terms shown at booking; **whether Muster bills through BrewBoat's existing
+Stripe account or a separate one** (payout/tax/reconciliation-against-Xola implications during the overlap);
+tax/fees; cancellation / no-show terms. **Revisit if:** deposit auto-charge (saved card) becomes worth the
+off-session-decline handling, or refund volume justifies pulling §3.3 in-house.
+
+---
+
+## DEC-101: Public surface `app/(public)` + single-flip "Book Now" entry (instant Xola rollback)
+
+**Status:** Decided 2026-07-11 (@architect, under DEC-098). First net-new route group since DEC-020.
+
+**Decision.** A new **`app/(public)`** route group — deliberately thin (one product/boat/timeslot is
+acceptable for the first live slice):
+- **Availability read** — Muster-owned events with remaining capacity (`COI max − Σ booked party sizes`
+  over `source='muster'` reservations); read-only, no auth, pure deriver.
+- **Booking form** → **Stripe redirect** (DEC-100) → **confirmation + manage** page.
+- **Manage link reuses the DEC-020 capability-URL primitive as an addressed deep-link, not a login**
+  (respecting DEC-081 "a link is only ever a deep-link"). v1 "manage" = view + request-cancel-out-of-band;
+  no self-service cancel.
+- **The public "Book Now" entry point is a single flag** pointing at **Muster or Xola**. Flipping back to
+  Xola is one setting, instant and total — the rollback contract behind DEC-098's "switch back to Xola."
+  Combined with pilot volume (~5 bookings, deletable + re-keyable; the only manual wrinkle is Stripe-held
+  money), a failed launch is a five-minute reversal.
+
+**Revisit if:** the redirect UX proves unacceptable (then reconsider embedded Payment Intents, DEC-100).
+
+---
+
+## DEC-102: Atomic capacity claim on public booking (the customer-side REQ-CLAIM-1)
+
+**Status:** Decided 2026-07-11 (@architect, under DEC-098). The correctness hinge on the public side.
+
+**Context.** Selling a seat against COI max is the customer-side twin of REQ-CLAIM-1 (the atomic
+first-come seat claim for crew). Two customers checking out the last seats of a boat must not both succeed.
+
+**Decision.** The capacity check at the **webhook booking-write** (DEC-100) is **atomic at the data layer**
+— a conditional/transactional claim (row lock / conditional update against remaining capacity), **never**
+read-then-write. Contract-tested on both repository adapters, exactly as REQ-CLAIM-1 was for crew seats.
+An over-capacity booking whose payment already captured is resolved as a **refund-and-notify** (manual in
+Stripe at pilot volume), never a silent oversell. **Revisit if:** overbooking-with-waitlist is ever wanted
+(explicitly not now).
+
+---
+
+## DEC-103: Waiver — Muster-sold side only; integrate a provider (deferred pre-flip); pilot uses minimal consent
+
+**Status:** Decided 2026-07-11 (Eric + @architect, under DEC-098). Direction set; provider + wiring
+deferred ("decided at the last minute").
+
+**Context.** A Xola replacement collects waivers. But waivers **don't feed the crew engine** (crew don't
+need them, SPEC §0.4) — it's a self-contained, liability-grade capture-and-store, exactly the kind of thing
+not to hand-roll. And it's needed **only on the Muster-sold side**: Xola bookings keep their Xola waivers
+(collected when Xola sold the trip).
+
+**Decision.** **Integrate a dedicated e-waiver provider** (Smartwaiver / WaiverForever / similar) — the
+provider owns signature capture, legal enforceability, storage, and retention; Muster stores the
+signed-waiver reference on the reservation. **Staged:**
+- **Pilot (Phase 11):** a **minimal in-flow consent checkbox** + linked terms + consent timestamp; the
+  operator collects the real signed waiver **by hand** for the ~5 bookings. Does **not** block the first
+  live paid booking.
+- **Before the public flip (Phase 12):** wire the provider. Which provider + integration shape is a
+  **last-minute call** and a **Drew/Spink liability decision** (including whether an in-flow checkbox is
+  ever legally sufficient). Do **not** build a native waiver subsystem. **Revisit if:** a provider can't
+  meet retention/enforceability needs (then re-scope).
+
+---
+
+## DEC-104: `feature/reservations` dark behind a `RESERVATIONS` flag until the first real paid booking
+
+**Status:** Decided 2026-07-11 (@architect, under DEC-098 + DEC-059).
+
+**Decision.** All Phase 11 work rides **`feature/reservations`** off `main`, behind a **`RESERVATIONS`
+flag** (DEC-059) — the public surface is a broken half-feature until the webhook lands, and **money must
+not reach `main`/`production` until one real paid reservation validates end-to-end**. **Exception:** the
+`source` migration (DEC-099) and the availability deriver are additive and inert — land the **migration on
+`main` first** (DEC-059 merge-hygiene: avoid long-lived schema divergence), then branch. The flag flips to
+live only after the spine is proven in Stripe test-mode + a single real payment. **Revisit if:** the slice
+proves out and the flag becomes permanent-on (then retire the flag at the Phase 12 flip).
+
+---
+
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)
 
 These are deferred by design. Each names an owner and a trigger. **Consult @architect (and the named
@@ -2516,10 +2700,12 @@ human owner) before building past the trigger.**
   production adapter, not in the slice) + DEC-MSG-2 (native Capacitor, de-prioritized) + DEC-MSG-3
   (one port; fake + pilot adapters at M4). Remaining: operator picks the pilot adapter (web-link or
   Telegram) at M4; Twilio + 10DLC confirmed at the later adapter swap.
-- **Deposit-vs-full payment & refund-schedule numbers** — *Owner: Drew. Recommendation: full upfront
-  for v1. SPEC §4. (Payments are out of the 2026 build entirely — build plan §6.)*
+- **Deposit-vs-full payment & refund-schedule numbers** — **ACTIVATED by DEC-100** (payments are now in
+  the 2026 build for Muster-native sales). Operator chose **deposit + balance**; the deposit-%, balance
+  timing, refund policy, and **which Stripe account** remain *Owner: Drew* and gate only the Stripe task.
 - **Credit-vs-cash default ordering** in the cancel flow — lean credit-first, cash always available.
-  *Owner: Drew.*
+  *Owner: Drew.* (Muster-side refund cascade stays parked — DEC-100; Xola-booking refunds stay in Xola —
+  DEC-098.)
 - **Which "M" (soft) rules ship** for BrewBoat v1 (TWIC, medical, drug consortium, duty-hour,
   weather/tide) — *Owner: Spink/Drew against real operations. SPEC §1.3.*
 - **Concrete horizon values** — how many days is the staffing horizon? *Ship a dumb default, tune.
@@ -2535,7 +2721,9 @@ human owner) before building past the trigger.**
   (any uncrewed required seat within the window, **DEC-065** — no longer the willingness-exhaustion
   gate); eligibility-exhaustion boards immediately. Default ships at 48h; only the number remains
   tune-later. Split-suggestion gap still open.)*
-- **Historical Xola data** — migrate vs read-only archive. *Leaning archive. SPEC §4.*
+- ~~**Historical Xola data** — migrate vs read-only archive. *Leaning archive. SPEC §4.*~~ — **SETTLED by
+  DEC-098: never migrate.** Coexistence is permanent; Xola drains naturally and is cancelled when empty.
+  No historical import, no forced cutover.
 - ~~**Doorbell batch / cancel-window interval** (Phase 6)~~ — **RESOLVED by DEC-060** (task 6.3):
   batch/cancel **90 s** (`DOORBELL_BATCH_WINDOW_MS`), presence-staleness **5 min**
   (`DOORBELL_PRESENCE_WINDOW_MS`); env-overridable, ratified by Eric, tune-on-real-use stays.

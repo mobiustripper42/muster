@@ -458,7 +458,69 @@ if real crews touch preview links).
 > **Post-launch priority #1 (VERY HIGH, not a launch gate):** the **reliability loop** — a shift
 > `Completed` transition + "did they show — 8/8" attendance capture (DEC-008 is where reliability data
 > is born). Without it, the ranked pool stays flat at cold-start forever. Owner: build first *after*
-> launch (seeds a Phase 11). FUTURE_IDEAS "Post-shift state".
+> launch (seeds a later phase — reservations took the P11/P12 slots). FUTURE_IDEAS "Post-shift state".
+
+---
+
+## Phase 11: Reservations — Muster-native parallel-run (prove it)
+
+**DEC-098–104 (2026-07-11).** Reopens the parked customer-portal / 2027 scope: Muster starts taking real,
+paid reservations for a subset of inventory it owns end-to-end, **running alongside Xola** (permanent
+coexistence, **not** a cutover, **no** data migration — DEC-098). Built like the crew engine: a thin
+vertical slice, one real paid booking, proven before it's leaned on.
+
+**Prime directive:** the crew engine shipped 4 days ago and is exceeding expectations. **Nothing in Phase
+11 touches the `xola-pull` cron, the ask `tick`, or the shift/seat state machine.** All work rides
+`feature/reservations` behind a `RESERVATIONS` flag (DEC-104); the only shared change — the `source`
+discriminator (DEC-099) — is inert (backfills `'xola'`) until a vessel-day is marked Muster-owned. Rollback
+is a single flag flip (DEC-101): worst case, ~5 bookings deleted and hand-keyed into Xola.
+
+**First milestone — the smallest thing that puts one real paid reservation into Muster:** the spine
+11.0 → 11.1 → 11.2 → 11.3 → 11.4 → 11.7 (seed one Muster-owned event → availability shows it → booking form
+→ Stripe Checkout → webhook writes the reservation atomically → it appears on the vessel-day shift's
+per-event manifest). Ship the spine end-to-end (Stripe test-mode, then a single live payment) before
+broadening beyond one boat/timeslot. 11.5 / 11.6 / 11.8 fatten it.
+
+| # | Task | Effort | Notes |
+|---|------|--------|-------|
+| 11.0 | **Partition + `source` discriminator** — migration (`Event.source`, `Reservation.source`, backfill `'xola'`); importer guard: skip + itemize a Xola event on a Muster-owned vessel-day; Muster-owned-vessel-day config. Contract tests both adapters | 5 | **DEC-099** · lands on `main` (inert until a vessel-day is Muster-owned) · @architect gate |
+| 11.1 | **Availability read model** — remaining capacity per Muster-owned event (`COI max − Σ booked party sizes`, `source='muster'`); pure deriver + tests | 3 | additive, safe on `main` |
+| 11.2 | **`app/(public)` scaffold + availability list + single-flip Book-Now entry** — new route group, read-only no-auth availability, the Muster/Xola flag switch (DEC-101) | 3 | feature branch |
+| 11.3 | **Stripe hosted Checkout — deposit + balance** — `stripe` dep, create-session server action, deposit at checkout + balance payment-link mechanism, success/cancel routes, env/secrets (Drew's keys) | 7 | **DEC-100** · new dependency · @architect gate · likely splits 11.3a wiring / 11.3b balance-link at its gate |
+| 11.4 | **Booking write + atomic capacity claim** — signature-verified idempotent `checkout.session.completed` webhook → writes Muster-native Event(if new)+Reservation under an atomic capacity guard | 5 | **DEC-102** (REQ-CLAIM-1 sibling) · the correctness task · @architect gate; split webhook-infra vs capacity-guard only if the diff balloons |
+| 11.5 | **Confirmation + manage deep-link** — reuse DEC-020/DEC-081 primitive (addressed deep-link); booking-view page; cancel = out-of-band for v1 | 3 | feature branch |
+| 11.6 | **Waiver — minimal in-flow consent (pilot)** — checkbox + linked terms + consent timestamp on the reservation | 2 | **DEC-103** · Drew/Spink legal-sufficiency flag · provider integration deferred to Phase 12 · do **not** build a waiver subsystem |
+| 11.7 | **Manifest hinge verification** — confirm Muster-native reservations surface on the shift card per-event manifest with no write-back sheet (§2.6.3 / DEC-012 already source-agnostic) | 2 | **test, don't rebuild** |
+| 11.8 | **Go-live hardening + rollback runbook** — one real paid reservation end-to-end on the live boat/slot; flag flip; runbook (refunds-manual-in-Stripe, dispute-watch-in-Stripe, single-flip revert, ~5-booking manual rollback incl. Stripe-held money) | 3 | feature → `main` merge gate |
+
+**Phase 11 total: ~30 pts (rough — poker at `/start-phase`).** **Owner-gated before 11.3/11.6** (not
+before the phase starts): deposit-%, balance timing, refund policy, **which Stripe account**, waiver
+provider + legal sufficiency — all Drew/Spink (DEC-100/103).
+
+**Explicitly deferred within Phase 11 (decide, don't drift):** refund cascade (§3.3), dispute surfacing
+(§3.4), customer self-service cancel/reschedule, deposit auto-charge (saved card), and multi-boat /
+full-catalog selling. All wait for the parallel-run to prove out.
+
+---
+
+## Phase 12: Reservations — flip new sales to Muster (Sept/Oct)
+
+*Trigger: Phase 11 proved out — a real paid booking ran end-to-end and the parallel-run is trusted.*
+The sales-channel flip: **new** bookings move to Muster; Xola stops taking new inventory and its
+forward-book drains naturally (DEC-098). This is a **channel switch, not a data event** — no migration, no
+de-listing sweep. When the last Xola-sold trip has sailed, Xola is empty and the subscription is cancelled.
+
+Outline (poker at the boundary):
+- **Broaden Muster-owned inventory** from the one pilot boat/slot to the full catalog (mark vessel-days
+  Muster-owned; de-list them in Xola per the DEC-099 discipline).
+- **Waiver provider integration** (DEC-103) — the real e-waiver wiring, replacing the pilot's minimal
+  consent. Which provider is a last-minute Drew/Spink call.
+- **Overlap accounting** — revenue split across Xola + Stripe until Xola drains (an operator/Drew reality,
+  not a build item; reinforces the "which Stripe account" decision).
+- **Watch for** the point where Muster's own-booking volume makes an **in-app refund/cancel surface** (§3.3)
+  worth pulling out of the Stripe dashboard — a candidate Phase 13, not a Phase 12 commitment.
+
+**Not a phase:** a hard cutover / historical Xola migration. It does not happen (DEC-098).
 
 ---
 

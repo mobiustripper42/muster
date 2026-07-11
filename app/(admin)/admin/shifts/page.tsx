@@ -397,7 +397,7 @@ export default async function AllShifts({
         <Notice>
           {selectedCrewName
             ? `${selectedCrewName} has no shifts ${
-                scope === "today" ? "today" : `in ${scope}`
+                scope === "today" ? "today" : `for ${scope}`
               }.`
             : `No shifts ${scope === "today" ? "today" : `for ${scope}`}.`}
         </Notice>

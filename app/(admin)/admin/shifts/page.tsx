@@ -169,6 +169,14 @@ function resolveWindow(
     from = sat;
     to = addDays(sat, 1);
     kind = "weekend";
+  } else if (sp.preset === "next7") {
+    // Explicit "Week (7 days)" pick. Distinct from the bare default (no preset)
+    // BECAUSE the default's absence-of-preset is exactly what triggers the
+    // crew-widen below — so a crew filter + this explicit preset must stay a 7-day
+    // window, not widen to 45. (Fixes: crew + 7-days read "the next 45 days".)
+    from = today;
+    to = addDays(today, 6);
+    kind = "next7";
   } else if (sp.preset === "next8to15") {
     // The bucket AFTER "next 7": days 8–15 from today (today+7 .. today+14), the
     // planning gap between "this week" and a full fortnight. Non-overlapping with
@@ -237,6 +245,7 @@ function filterParams(sp: Search): URLSearchParams {
   if (
     sp.preset === "today" ||
     sp.preset === "weekend" ||
+    sp.preset === "next7" ||
     sp.preset === "next8to15" ||
     sp.preset === "days30"
   )
@@ -386,6 +395,7 @@ export default async function AllShifts({
         from={from}
         to={to}
         kind={kind}
+        presetParam={sp.preset}
         mode={mode}
         sel={sel}
         crew={sp.crew ?? null}
@@ -533,6 +543,7 @@ function Filter({
   from,
   to,
   kind,
+  presetParam,
   mode,
   sel,
   crew,
@@ -541,6 +552,10 @@ function Filter({
   from: string;
   to: string;
   kind: Scope;
+  /** The RAW `?preset` param — distinguishes an explicit "Week (7 days)" pick from
+   *  the bare default (both resolve to kind "next7"); needed so the crew form
+   *  preserves an explicit next7 but lets a bare-default crew pick widen (#330). */
+  presetParam?: string;
   mode: Mode;
   sel: string | null;
   crew: string | null;
@@ -560,101 +575,120 @@ function Filter({
     const qs = p.toString();
     return qs ? `/admin/shifts?${qs}` : "/admin/shifts";
   };
-  // Hidden inputs that re-assert the ACTIVE window on the crew form, so picking a
-  // crew narrows within the current preset/range. With none set, a bare crew pick
-  // hits the #330 widen. `next7`/`next45` carry nothing (they're the no-param
-  // defaults — next7 with no crew, next45 once a crew is picked).
-  const windowHidden =
-    kind === "today" ||
-    kind === "weekend" ||
-    kind === "next8to15" ||
-    kind === "days30" ? (
-      <input type="hidden" name="preset" value={kind} />
-    ) : kind === "range" ? (
-      <>
-        <input type="hidden" name="from" value={from} />
-        <input type="hidden" name="to" value={to} />
-      </>
-    ) : null;
+  // Re-assert the ACTIVE window on the crew form, so picking a crew narrows WITHIN
+  // the current preset/range. An EXPLICIT preset — including "Week (7 days)"
+  // (next7) — is carried; the bare default (no preset) carries nothing, so a crew
+  // pick there widens to the horizon (#330). That's exactly why next7 is an
+  // explicit preset: crew + 7-days must stay 7 days, not read "the next 45 days".
+  const KNOWN_PRESETS = new Set([
+    "today",
+    "weekend",
+    "next7",
+    "next8to15",
+    "days30",
+  ]);
+  const activePreset =
+    presetParam && KNOWN_PRESETS.has(presetParam) ? presetParam : null;
+  const windowHidden = activePreset ? (
+    <input type="hidden" name="preset" value={activePreset} />
+  ) : kind === "range" ? (
+    <>
+      <input type="hidden" name="from" value={from} />
+      <input type="hidden" name="to" value={to} />
+    </>
+  ) : null;
+  // Open the More panel by default when a custom range or crew filter is actually
+  // in effect, so an active advanced filter is never hidden behind the toggle.
+  const moreOpen = kind === "range" || !!crew;
   return (
     <div className="flex flex-col gap-2 rounded-card border border-line bg-card px-4 py-3">
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <AppLink href={href("today")} className={chip(kind === "today")}>
           Today
         </AppLink>
-        <AppLink href={href()} className={chip(kind === "next7")}>
-          Next 7 days
-        </AppLink>
         <AppLink href={href("weekend")} className={chip(kind === "weekend")}>
-          This weekend
+          Weekend
+        </AppLink>
+        <AppLink href={href("next7")} className={chip(kind === "next7")}>
+          Week
         </AppLink>
         <AppLink href={href("next8to15")} className={chip(kind === "next8to15")}>
-          2 weeks out
+          2 Weeks out
         </AppLink>
         <AppLink href={href("days30")} className={chip(kind === "days30")}>
-          30 days
+          30 Days
         </AppLink>
       </div>
-      <form method="get" className="flex flex-wrap items-end gap-2 text-sm">
-        {edit && <input type="hidden" name="mode" value="edit" />}
-        {sel && <input type="hidden" name="sel" value={sel} />}
-        {/* Keep the crew filter across an explicit date-range submit. */}
-        {crew && <input type="hidden" name="crew" value={crew} />}
-        <label className="flex flex-col gap-0.5 text-xs text-muted">
-          From
-          <input
-            type="date"
-            name="from"
-            defaultValue={from}
-            className="rounded-lg border border-line bg-bg px-2 py-1 text-ink"
-          />
-        </label>
-        <label className="flex flex-col gap-0.5 text-xs text-muted">
-          To
-          <input
-            type="date"
-            name="to"
-            defaultValue={to}
-            className="rounded-lg border border-line bg-bg px-2 py-1 text-ink"
-          />
-        </label>
-        <GetFormSubmit className="rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent">
-          Show
-        </GetFormSubmit>
-      </form>
 
-      {/* Crew filter (#330, DEC-042 amendment) — narrow the board to one crew
-          member's shifts. A no-JS GET form (DEC-026): the window hidden inputs
-          preserve the active preset/range so a pick narrows within it; with no
-          preset set, a bare pick widens to the full horizon (resolveWindow). No
-          per-crew count/scoreboard — that's the monitor-bait failure mode this
-          surface is guarded against (DEC-042). */}
-      <form
-        method="get"
-        className="flex flex-wrap items-end gap-2 border-t border-line pt-2 text-sm"
-      >
-        {edit && <input type="hidden" name="mode" value="edit" />}
-        {sel && <input type="hidden" name="sel" value={sel} />}
-        {windowHidden}
-        <label className="flex flex-col gap-0.5 text-xs text-muted">
-          Crew
-          <select
-            name="crew"
-            defaultValue={crew ?? ""}
-            className="rounded-lg border border-line bg-bg px-2 py-1 text-ink"
-          >
-            <option value="">All crew</option>
-            {crewList.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <GetFormSubmit className="rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent">
-          Filter
-        </GetFormSubmit>
-      </form>
+      {/* Custom date range + crew filter, tucked behind a no-JS <details> toggle
+          (DEC-026 — native disclosure, no client JS). Open by default when one of
+          them is actually active so an in-effect filter is never hidden. */}
+      <details open={moreOpen} className="flex flex-col gap-2">
+        <summary className="cursor-pointer select-none text-xs font-semibold text-accent">
+          More filters
+        </summary>
+
+        <form method="get" className="flex flex-wrap items-end gap-2 text-sm">
+          {edit && <input type="hidden" name="mode" value="edit" />}
+          {sel && <input type="hidden" name="sel" value={sel} />}
+          {/* Keep the crew filter across an explicit date-range submit. */}
+          {crew && <input type="hidden" name="crew" value={crew} />}
+          <label className="flex flex-col gap-0.5 text-xs text-muted">
+            From
+            <input
+              type="date"
+              name="from"
+              defaultValue={from}
+              className="rounded-lg border border-line bg-bg px-2 py-1 text-ink"
+            />
+          </label>
+          <label className="flex flex-col gap-0.5 text-xs text-muted">
+            To
+            <input
+              type="date"
+              name="to"
+              defaultValue={to}
+              className="rounded-lg border border-line bg-bg px-2 py-1 text-ink"
+            />
+          </label>
+          <GetFormSubmit className="rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent">
+            Show
+          </GetFormSubmit>
+        </form>
+
+        {/* Crew filter (#330, DEC-042 amendment) — narrow the board to one crew
+            member's shifts. A no-JS GET form (DEC-026): the window hidden inputs
+            preserve the active preset/range so a pick narrows within it; with no
+            preset set, a bare pick widens to the full horizon (resolveWindow). No
+            per-crew count/scoreboard — that's the monitor-bait failure mode this
+            surface is guarded against (DEC-042). */}
+        <form
+          method="get"
+          className="flex flex-wrap items-end gap-2 border-t border-line pt-2 text-sm"
+        >
+          {edit && <input type="hidden" name="mode" value="edit" />}
+          {sel && <input type="hidden" name="sel" value={sel} />}
+          {windowHidden}
+          <label className="flex flex-col gap-0.5 text-xs text-muted">
+            Crew
+            <select
+              name="crew"
+              defaultValue={crew ?? ""}
+              className="rounded-lg border border-line bg-bg px-2 py-1 text-ink"
+            >
+              <option value="">All crew</option>
+              {crewList.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <GetFormSubmit className="rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent">
+            Filter
+          </GetFormSubmit>
+        </form>
+      </details>
     </div>
   );
 }

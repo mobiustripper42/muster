@@ -22,8 +22,11 @@ test.describe("builder view — /admin/shifts (8.2a)", () => {
     await page.goto("/admin/shifts"); // no params → the default window
 
     await expect(page.getByRole("heading", { name: "All shifts" })).toBeVisible();
-    // The default is Next 7 days — a today-only default would hide these upcoming shifts.
-    await expect(page.getByRole("link", { name: "Next 7 days" })).toBeVisible();
+    // The default is the 7-day week — a today-only default would hide these upcoming shifts.
+    // `exact` so "Week" doesn't also match the "Weekend" chip.
+    await expect(
+      page.getByRole("link", { name: "Week", exact: true }),
+    ).toBeVisible();
     // Barrel is ~2 days out → visible only because the default reaches a week ahead.
     await expect(page.getByText("Barrel")).toBeVisible();
   });
@@ -35,23 +38,24 @@ test.describe("builder view — /admin/shifts (8.2a)", () => {
     await page.goto("/admin/shifts");
 
     // Both new preset chips are present alongside the existing ones.
-    const twoWeeks = page.getByRole("link", { name: "2 weeks out" });
-    const thirty = page.getByRole("link", { name: "30 days" });
+    const twoWeeks = page.getByRole("link", { name: "2 Weeks out" });
+    const thirty = page.getByRole("link", { name: "30 Days" });
     await expect(twoWeeks).toBeVisible();
     await expect(thirty).toBeVisible();
 
-    // 30 days: preset carried in the URL; window reaches the ~2-day-out Barrel,
+    // 30 Days: preset carried in the URL; window reaches the ~2-day-out Barrel,
     // and the count line names the resolved scope.
     await thirty.click();
     await page.waitForURL(/preset=days30/);
     await expect(page.getByText(/· the next 30 days/)).toBeVisible();
     await expect(page.getByText("Barrel")).toBeVisible();
 
-    // 2 weeks out: days 8–15 — a forward bucket that starts the day after "next 7"
-    // ends, so the ~2-day-out Barrel day falls outside it (the window really moved).
+    // 2 Weeks out: days 8–15 — a forward bucket that starts the day after the 7-day
+    // week ends, so the ~2-day-out Barrel day falls outside it (the window moved).
     await page.goto("/admin/shifts");
-    await page.getByRole("link", { name: "2 weeks out" }).click();
+    await page.getByRole("link", { name: "2 Weeks out" }).click();
     await page.waitForURL(/preset=next8to15/);
+    // Scope label (lowercase) shows in the count/empty line, distinct from the chip.
     await expect(page.getByText(/2 weeks out/).last()).toBeVisible();
     await expect(page.getByText("Barrel")).toHaveCount(0);
   });
@@ -63,11 +67,12 @@ test.describe("builder view — /admin/shifts (8.2a)", () => {
     await page.goto("/admin/shifts");
 
     // Gus is Confirmed on Growler (~4 days out); Bram is on Barrel (~2 days out).
-    // Default next-7 shows both vessels.
+    // Default 7-day week shows both vessels.
     await expect(page.getByText("Growler")).toBeVisible();
     await expect(page.getByText("Barrel")).toBeVisible();
 
-    // Pick Gus and submit the no-JS crew form.
+    // The crew filter lives behind the "More filters" disclosure — open it first.
+    await page.getByText("More filters").click();
     await page.getByLabel("Crew").selectOption({ label: "Gus" });
     await page.getByRole("button", { name: "Filter" }).click();
 
@@ -79,6 +84,16 @@ test.describe("builder view — /admin/shifts (8.2a)", () => {
     // Only Gus's shift survives — Growler stays, Barrel (Bram's) is gone.
     await expect(page.getByText("Growler")).toBeVisible();
     await expect(page.getByText("Barrel")).toHaveCount(0);
+
+    // Bug fix: with a crew active, clicking "Week" narrows to a real 7-day window
+    // and the caption says so — it must NOT read "the next 45 days" (the old bug
+    // where crew + the default 7-day view widened because next7 had no explicit
+    // preset). Gus's Growler shift (~4 days out) is inside the week.
+    await page.getByRole("link", { name: "Week", exact: true }).click();
+    await page.waitForURL(/preset=next7/);
+    await expect(page.getByText(/· the next 7 days/)).toBeVisible();
+    await expect(page.getByText(/· the next 45 days/)).toHaveCount(0);
+    await expect(page.getByText("Growler")).toBeVisible();
   });
 
   test("renders a calm split cue on a large-gap day", async ({ page }) => {

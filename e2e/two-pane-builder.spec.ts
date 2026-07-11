@@ -79,7 +79,7 @@ test.describe("two-pane builder (9.5, DEC-085)", () => {
       page.getByRole("heading", { level: 2, name: /^Firkin/ }),
     ).toBeVisible();
 
-    await page.getByRole("link", { name: "Next 7 days" }).click();
+    await page.getByRole("link", { name: "Week", exact: true }).click();
     await page.waitForURL((u) => u.searchParams.get("sel") === "shift-ar-regress");
     await expect(
       page.getByRole("heading", { level: 2, name: /^Firkin/ }),

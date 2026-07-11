@@ -1143,6 +1143,10 @@ Both share the **occupant-pin race guard** (a swap between reads → `raced`, re
 
 **Amendment (#205, Phase 8.2a, @architect-gated 2026-07-01):** Default filter widened **today → next 7 days**. Rationale: live-pilot operator needs a bounded upcoming-shift look-ahead while trust in the engine builds — the exact "for now I want to see everything" case this DEC quotes; 7 days is strictly inside the existing `[today−30d, today+45d]` clamp. **Shape unchanged:** the default's *width* moved, not the surface's shape. Guardrails 2–5 (no auto-refresh/no live counts, neutral ink, board-first/no badge, empty≠success) stand verbatim; the clamp is unchanged. Surface becomes the Shift Builder's **View mode** (read-only; Edit mode lands 8.2b) and renders 8.1's advisory "split this?" as a muted, actionless line — no badge, count, or colour. **Watch:** the wider default must not grow a per-day/per-state scoreboard — the no-live-counts guardrail governs the new width too.
 
+**Amendment (#321, quick date presets, 2026-07-11):** Two preset chips added to the filter — **"2 weeks out"** (days 8–15, `today+7..today+14` — the non-overlapping bucket after "next 7") and **"30 days"** (`today..today+29`). Both strictly inside the `[today−30d, today+45d]` clamp; same preset mechanics as Today/Weekend, no shape change.
+
+**Amendment (#330, crew filter, @architect-gated 2026-07-11):** Adds a **crew filter** axis — an opt-in dropdown (`listCrewMembers`, no-JS GET param `?crew=<id>`) narrowing rows to shifts a selected crew member is seated on. **Match by id, not name:** the predicate lives in `deriveAllShifts` (`opts.crewMemberId`), matching the **raw seat's `assignedCrewMemberId`** — name-matching is barred by the no-FK/service-layer-integrity posture (duplicate names cross-match with no FK to catch it). Because the match runs in-core against the real seat id, the `AllShiftsSeat` DTO gains **no** field (a smaller surface than first scoped). The seat read is hoisted **before** the per-shift state/trip/reservation derivation so a non-match short-circuits without the expensive work. **Match set:** seats where `assignedCrewMemberId` = selection and state ∈ **{Claimed, Confirmed}**, required *and* supernumerary (a trainee on a super seat is working); Asked/Open/Bailed excluded (they don't bind a person). *(Operator judgment call flagged in the PR: include tentative Claimed matches vs Confirmed-only — shipped as Claimed+Confirmed, revertible.)* **Window: the crew filter does NOT change the window** — it respects whatever preset/range is shown ("what you see is what you filter"). *(This REVERSES the architect's original recommendation to auto-widen a bare crew pick to `today..+45`. The auto-widen shipped first, but in the built UI the default screen shows the "Week" chip highlighted while carrying no explicit `preset` param — so a crew pick from a fresh load jumped to 45 days while an identical-looking screen after tapping "Week" stayed at 7: two same-looking starts, two results — an invisible-state trap. Operator chose predictability 2026-07-11: crew filtering never moves the window; to see all of someone's upcoming, pick a wider preset (30 Days) or a From/To range.)* Presets narrow/widen as always; clamp unchanged. **UI:** preset chips are **Today · Weekend · Week · 2 Weeks out · 30 Days**; the custom date range + crew dropdown sit behind a no-JS `<details>` "More filters" disclosure (open by default when either is active). **Guardrails 2–5 stand verbatim:** no per-crew scoreboard/count badge (bare "N shifts · scope" caption is the ceiling), neutral ink, no auto-refresh, empty≠success (empty reads *"[name] has no shifts for …"*). **Watch:** the crew control must not grow per-crew counts — the monitor-bait failure mode this DEC exists to prevent.
+
 **Deprecation:** a trust-building crutch, expected to be deprecated once the operator trusts the engine. Nothing routes *to* it (no ping; no root redirect — #97 lands on the board), so removal is a single-route, no-migration delete. **Sunset trigger:** operator reports he's stopped opening it.
 
 **Relationship:** reuses DEC-023 (resolve-on-read), DEC-032 (vessel-local dates), DEC-026 (no-client-JS, codes-in-params); the off-board pull precedent is DEC-027 §3 (warming view); the nav dovetails with #97 (session-aware root). Adds no domain state or schema.
@@ -2506,7 +2510,25 @@ be tamper-checked per-shift (currently any signed-in subject can post), or an ap
 
 ---
 
-## DEC-098: Reservations go live in 2026 as a Muster-native parallel-run — permanent coexistence, not a cutover
+## DEC-098: Crew calendar feed — the first persistent bearer capability URL; hash-only, guest-PII-free, UTC-instant ICS
+
+**Status:** Accepted (#355, @architect-gated 2026-07-11). Muster's first *persistent* bearer credential — magic tokens (DEC-020) and login codes (DEC-081) are both ephemeral. Establishes the model the parked "living link" family will inherit. **Correction:** the issue cited `docs/the-living-link.md §6` as a precedent to mirror — that doc was never committed (PR #98 only parked prose into FUTURE_IDEAS), so there is no prior accepted persistent-URL model; this DEC sets it.
+
+**Decision.** Each crew member can mint a subscribable iCal URL (`GET /api/calendar/{token}.ics`, unauthenticated, the token IS the credential, **404 on miss** — no oracle, the DEC-081 posture). Their confirmed shifts then appear in Google/Apple Calendar automatically (push, not pull), re-synced on each client poll.
+
+**Token model.** Stored as **`sha256(token)` only** in a new `calendar_feeds` table (looked up BY hash of the presented token, the `magic_tokens` shape — but persistent, no expiry, and **one live feed per crew**, `crew_member_id` PK; no FK, text/ISO columns per DEC-DATA-1). The plaintext URL is shown **exactly once** at mint (carried to the page via a short-lived flash cookie); "lost it" == **regenerate**, which replaces the row and kills the old hash — the same single lever that revokes/rotates. Token = 32 crypto-random bytes base64url (~256-bit) → enumeration is infeasible, so **no rate-limiter** (and no new dependency). Reuses `magic-link`'s `randomSecret`/`hashSecret`.
+
+**Content.** Confirmed seats only (a tentative Claimed isn't a calendar commitment); confirmed supernumerary rides included, labelled "(training)". VEVENT `DTSTART`/`DTEND` = the DEC-041 committed window (call time = earliest departure − call lead; end via `shiftEndFromEvents`), emitted as **UTC instants via the instant-returning `derive` helpers, NO VTIMEZONE** — a documented DEC-032 *render* exception (DEC-032 governs display; a VEVENT is an absolute instant each client renders in its own zone, and hand-rolled VTIMEZONE blocks are the classic ICS footgun). Stable `UID` per shift id → re-polls **update** rather than duplicate. Live regen (a bailed/removed shift simply isn't emitted → the client drops it); window today−7d forward, self-bounding on the far end. **ICS is hand-rolled** (RFC-5545 TEXT escaping + 75-octet line folding) — no `ics`/`ical-generator` dependency (fails DEC-020's "could we do it with what we have?"). **UI is no-JS** (DEC-026 — mint/show-once/regenerate/turn-off are server-action forms) with **one small client-JS island**: a copy-to-clipboard button beside the shown URL (the reused `CopyButton`, moved to `components/ui/`; DEC-097 progressive-enhancement posture — no-JS still works, the URL stays selectable; handles the insecure `http://mill-dev` context where `navigator.clipboard` is undefined). A shared "Add it to your calendar" block gives the Google (web "From URL") + Apple (iPhone "Add Subscribed Calendar") steps + an honest sync-cadence note (instant on first add, then client-controlled — Apple as-set, Google hours).
+
+**PII boundary (load-bearing).** The feed lives on third-party calendar servers behind a forwardable bearer URL, so it carries only the *skeleton*: vessel, the viewer's own role, call/end times, dock (`LOCATION`), and **co-crew FIRST names**. It **NEVER** carries the guest manifest (customer names/phones) or co-crew phone numbers — those stay behind the authenticated app; the `DESCRIPTION` ends with a deep link back. *(Operator judgment call, flagged in the PR: pax count was omitted from V1 to keep the feed lean; trivial to add.)*
+
+**Not a login.** A read-only data capability adjacent to the addressed-deep-link family; it mints **no session** and grants only `text/calendar` read of one person's schedule — so it does **not** reopen DEC-081 ("all login is a code"). Pre-empts the "is this a backdoor login?" reading.
+
+**Relationship:** first persistent flavor of the parked capability-URL idea (FUTURE_IDEAS 2026-06-19); reuses DEC-041 (committed window), DEC-032 (instant seam + a recorded render exception), DEC-DATA-1 (no-FK), the `magic_tokens` hash-lookup shape (DEC-020); distinct from DEC-081.
+
+---
+
+## DEC-105: Reservations go live in 2026 as a Muster-native parallel-run — permanent coexistence, not a cutover
 
 **Status:** Decided 2026-07-11 (Eric + @architect). Reopens the parked customer-portal / 2027 scope
 (SPEC §0.2/§0.3/§2.2/§4). Umbrella DEC for Phase 11–12; the mechanism DECs (099–104) sit under it.
@@ -2535,9 +2557,9 @@ cutover:
   cutover, no de-listing sweep.**
 
 **Why this is safe next to a 4-day-old live engine.** The whole reservations build is **additive and
-flag-dark** (DEC-104): it never touches the `xola-pull` cron, the ask `tick`, or the shift/seat state
-machine. The one shared change — the `source` discriminator (DEC-099) — is inert (backfills `'xola'`) until
-an operator marks a vessel-day Muster-owned. **Rollback is a single flag flip** (DEC-101): worst case is a
+flag-dark** (DEC-111): it never touches the `xola-pull` cron, the ask `tick`, or the shift/seat state
+machine. The one shared change — the `source` discriminator (DEC-106) — is inert (backfills `'xola'`) until
+an operator marks a vessel-day Muster-owned. **Rollback is a single flag flip** (DEC-108): worst case is a
 handful of Muster bookings deleted and hand-keyed into Xola.
 
 **Explicitly NOT reopened:** the **killed Xola API write-back** (§4 / DEC-011). Muster owns its *own*
@@ -2552,9 +2574,9 @@ balance timing, refund policy, which Stripe account Muster bills through, and wa
 
 ---
 
-## DEC-099: Coexistence partition = whole vessel-day; an event is owned by exactly one system
+## DEC-106: Coexistence partition = whole vessel-day; an event is owned by exactly one system
 
-**Status:** Decided 2026-07-11 (@architect, under DEC-098). Extends the DEC-029/043 import merge rule.
+**Status:** Decided 2026-07-11 (@architect, under DEC-105). Extends the DEC-029/043 import merge rule.
 
 **Context.** The make-or-break risk of selling on two systems at once is **double-selling the same seats**.
 Capacity truth for any given event must be unambiguous.
@@ -2584,9 +2606,9 @@ BrewBoat need — would require per-event capacity reconciliation).
 
 ---
 
-## DEC-100: Payments — Stripe hosted Checkout, deposit + balance, webhook-driven booking write
+## DEC-107: Payments — Stripe hosted Checkout, deposit + balance, webhook-driven booking write
 
-**Status:** Decided 2026-07-11 (Eric + @architect, under DEC-098). New dependency: the `stripe` Node SDK.
+**Status:** Decided 2026-07-11 (Eric + @architect, under DEC-105). New dependency: the `stripe` Node SDK.
 
 **Context.** Muster-native bookings need to take money. The operator chose **deposit + balance** over
 full-upfront (the closer match to how Xola works, which matters for a Xola replacement).
@@ -2609,7 +2631,7 @@ a working redirect. Embedded UX control isn't worth the PCI surface for a thin s
   raw-`fetch` posture DEC-081 took for email. (Confirm SDK-vs-fetch at build.)
 
 **Stays parked (do not build in Phase 11):** the **refund cascade (§3.3)** and **dispute/chargeback
-surfacing (§3.4)**. For Xola bookings, refunds live in Xola (DEC-098) — *permanently*. For Muster bookings
+surfacing (§3.4)**. For Xola bookings, refunds live in Xola (DEC-105) — *permanently*. For Muster bookings
 at pilot volume, a refund/cancel is handled **manually in the Stripe dashboard** (documented in the
 runbook); an in-app money-ops surface is a later phase, gated on Muster carrying real volume.
 
@@ -2621,9 +2643,9 @@ off-session-decline handling, or refund volume justifies pulling §3.3 in-house.
 
 ---
 
-## DEC-101: Public surface `app/(public)` + single-flip "Book Now" entry (instant Xola rollback)
+## DEC-108: Public surface `app/(public)` + single-flip "Book Now" entry (instant Xola rollback)
 
-**Status:** Decided 2026-07-11 (@architect, under DEC-098). First net-new route group since DEC-020.
+**Status:** Decided 2026-07-11 (@architect, under DEC-105). First net-new route group since DEC-020.
 
 **Decision.** A new **`app/(public)`** route group. **Built in two stages, matching the P11/P12 split:**
 the **Phase 11 surface is a throwaway, unstyled harness** — the minimum to drive one real paid booking
@@ -2631,12 +2653,13 @@ through the service layer, replaced wholesale in P12. The **real, designed custo
 (mockup-first on mildev, no Claude Design). The service-layer pieces below are P11; the UI is P12.
 - **Availability read** — Muster-owned events with remaining capacity (`COI max − Σ booked party sizes`
   over `source='muster'` reservations); read-only, no auth, pure deriver. *(Read model P11; real page P12.)*
-- **Booking form → Stripe redirect (DEC-100) → confirmation + manage page.** *(Throwaway form P11; real
+- **Booking form → Stripe redirect (DEC-107) → confirmation + manage page.** *(Throwaway form P11; real
   surfaces P12.)*
 - **Manage link reuses the DEC-020 capability-URL primitive as an addressed deep-link, not a login**
   (respecting DEC-081 "a link is only ever a deep-link"). v1 "manage" = view + request-cancel-out-of-band;
-  no self-service cancel. This is the **customer half of the same capability-URL family as the crew "living
-  link."** **"Living link" is an internal name only — it never appears in customer- or crew-facing copy;**
+  no self-service cancel. This is the **customer half of the same capability-URL family** — the crew
+  calendar feed (**DEC-098**) is the first persistent bearer flavor shipped; this is the customer one.
+  **"Living link" is an internal name only — it never appears in customer- or crew-facing copy;**
   to a customer it is **"your booking link,"** to crew **"your shifts."** Confirmation email + SMS both
   carry the link and emphasize **"save this link — it's how you manage your booking."**
 - **Link recovery — a public "lost your link?" form.** The general public loses emails and won't grok a
@@ -2652,22 +2675,22 @@ through the service layer, replaced wholesale in P12. The **real, designed custo
   moved through Stripe), so neutral-response + throttle is proportionate — no OTP on top (the resent link
   *is* the delivered-to-verified-channel token). *(P12.)*
 - **The public "Book Now" entry point is a single flag** pointing at **Muster or Xola**. Flipping back to
-  Xola is one setting, instant and total — the rollback contract behind DEC-098's "switch back to Xola."
+  Xola is one setting, instant and total — the rollback contract behind DEC-105's "switch back to Xola."
   Combined with pilot volume (~5 bookings, deletable + re-keyable; the only manual wrinkle is Stripe-held
   money), a failed launch is a five-minute reversal.
 
-**Revisit if:** the redirect UX proves unacceptable (then reconsider embedded Payment Intents, DEC-100).
+**Revisit if:** the redirect UX proves unacceptable (then reconsider embedded Payment Intents, DEC-107).
 
 ---
 
-## DEC-102: Atomic capacity claim on public booking (the customer-side REQ-CLAIM-1)
+## DEC-109: Atomic capacity claim on public booking (the customer-side REQ-CLAIM-1)
 
-**Status:** Decided 2026-07-11 (@architect, under DEC-098). The correctness hinge on the public side.
+**Status:** Decided 2026-07-11 (@architect, under DEC-105). The correctness hinge on the public side.
 
 **Context.** Selling a seat against COI max is the customer-side twin of REQ-CLAIM-1 (the atomic
 first-come seat claim for crew). Two customers checking out the last seats of a boat must not both succeed.
 
-**Decision.** The capacity check at the **webhook booking-write** (DEC-100) is **atomic at the data layer**
+**Decision.** The capacity check at the **webhook booking-write** (DEC-107) is **atomic at the data layer**
 — a conditional/transactional claim (row lock / conditional update against remaining capacity), **never**
 read-then-write. Contract-tested on both repository adapters, exactly as REQ-CLAIM-1 was for crew seats.
 An over-capacity booking whose payment already captured is resolved as a **refund-and-notify** (manual in
@@ -2676,9 +2699,9 @@ Stripe at pilot volume), never a silent oversell. **Revisit if:** overbooking-wi
 
 ---
 
-## DEC-103: Waiver — Muster-sold side only; integrate a provider (deferred pre-flip); pilot uses minimal consent
+## DEC-110: Waiver — Muster-sold side only; integrate a provider (deferred pre-flip); pilot uses minimal consent
 
-**Status:** Decided 2026-07-11 (Eric + @architect, under DEC-098). Direction set; provider + wiring
+**Status:** Decided 2026-07-11 (Eric + @architect, under DEC-105). Direction set; provider + wiring
 deferred ("decided at the last minute").
 
 **Context.** A Xola replacement collects waivers. But waivers **don't feed the crew engine** (crew don't
@@ -2699,14 +2722,14 @@ signed-waiver reference on the reservation. **Staged:**
 
 ---
 
-## DEC-104: `feature/reservations` dark behind a `RESERVATIONS` flag until the first real paid booking
+## DEC-111: `feature/reservations` dark behind a `RESERVATIONS` flag until the first real paid booking
 
-**Status:** Decided 2026-07-11 (@architect, under DEC-098 + DEC-059).
+**Status:** Decided 2026-07-11 (@architect, under DEC-105 + DEC-059).
 
 **Decision.** All Phase 11 work rides **`feature/reservations`** off `main`, behind a **`RESERVATIONS`
 flag** (DEC-059) — the public surface is a broken half-feature until the webhook lands, and **money must
 not reach `main`/`production` until one real paid reservation validates end-to-end**. **Exception:** the
-`source` migration (DEC-099) and the availability deriver are additive and inert — land the **migration on
+`source` migration (DEC-106) and the availability deriver are additive and inert — land the **migration on
 `main` first** (DEC-059 merge-hygiene: avoid long-lived schema divergence), then branch. The flag flips to
 live only after the spine is proven in Stripe test-mode + a single real payment. **Revisit if:** the slice
 proves out and the flag becomes permanent-on (then retire the flag at the Phase 12 flip).
@@ -2723,12 +2746,12 @@ human owner) before building past the trigger.**
   production adapter, not in the slice) + DEC-MSG-2 (native Capacitor, de-prioritized) + DEC-MSG-3
   (one port; fake + pilot adapters at M4). Remaining: operator picks the pilot adapter (web-link or
   Telegram) at M4; Twilio + 10DLC confirmed at the later adapter swap.
-- **Deposit-vs-full payment & refund-schedule numbers** — **ACTIVATED by DEC-100** (payments are now in
+- **Deposit-vs-full payment & refund-schedule numbers** — **ACTIVATED by DEC-107** (payments are now in
   the 2026 build for Muster-native sales). Operator chose **deposit + balance**; the deposit-%, balance
   timing, refund policy, and **which Stripe account** remain *Owner: Drew* and gate only the Stripe task.
 - **Credit-vs-cash default ordering** in the cancel flow — lean credit-first, cash always available.
-  *Owner: Drew.* (Muster-side refund cascade stays parked — DEC-100; Xola-booking refunds stay in Xola —
-  DEC-098.)
+  *Owner: Drew.* (Muster-side refund cascade stays parked — DEC-107; Xola-booking refunds stay in Xola —
+  DEC-105.)
 - **Which "M" (soft) rules ship** for BrewBoat v1 (TWIC, medical, drug consortium, duty-hour,
   weather/tide) — *Owner: Spink/Drew against real operations. SPEC §1.3.*
 - **Concrete horizon values** — how many days is the staffing horizon? *Ship a dumb default, tune.
@@ -2745,7 +2768,7 @@ human owner) before building past the trigger.**
   gate); eligibility-exhaustion boards immediately. Default ships at 48h; only the number remains
   tune-later. Split-suggestion gap still open.)*
 - ~~**Historical Xola data** — migrate vs read-only archive. *Leaning archive. SPEC §4.*~~ — **SETTLED by
-  DEC-098: never migrate.** Coexistence is permanent; Xola drains naturally and is cancelled when empty.
+  DEC-105: never migrate.** Coexistence is permanent; Xola drains naturally and is cancelled when empty.
   No historical import, no forced cutover.
 - ~~**Doorbell batch / cancel-window interval** (Phase 6)~~ — **RESOLVED by DEC-060** (task 6.3):
   batch/cancel **90 s** (`DOORBELL_BATCH_WINDOW_MS`), presence-staleness **5 min**

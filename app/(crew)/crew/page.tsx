@@ -461,6 +461,20 @@ function CrewApp({
         </span>
       </AppLink>
 
+      {/* Calendar sync (#355, DEC-098) — a subscribable iCal feed of your confirmed
+          shifts. Push, not pull: the shift lands in your own calendar. */}
+      <AppLink
+        href="/crew/calendar"
+        prefetch={false}
+        spinner="overlay"
+        className="flex items-center justify-between rounded-card border border-line bg-card px-4 py-3 shadow-sm"
+      >
+        <span className="font-semibold text-ink">Calendar sync</span>
+        <span className="text-faint" aria-hidden>
+          ›
+        </span>
+      </AppLink>
+
       {/* The 4th surface (DEC-074): a calm pull entry point, flag-gated. Neutral
           accent, never an alarm — it's an invitation, not a demand. */}
       {selfServe && (

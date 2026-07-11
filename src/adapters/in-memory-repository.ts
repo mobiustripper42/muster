@@ -17,6 +17,7 @@ import type {
   CrewStatus,
   Event,
   LoginCode,
+  CalendarFeed,
   MagicToken,
   OutboxEntry,
   RingOutboxEntry,
@@ -86,6 +87,7 @@ export class InMemoryRepository implements Repository {
   readonly #magicTokens = new Map<MagicTokenId, MagicToken>();
   readonly #admins = new Map<string, Admin>();
   readonly #loginCodes = new Map<string, LoginCode>();
+  readonly #calendarFeeds = new Map<string, CalendarFeed>();
   readonly #outbox = new Map<OutboxEntryId, OutboxEntry>();
   readonly #ringOutbox = new Map<RingOutboxEntryId, RingOutboxEntry>();
   readonly #noticeOutbox = new Map<NoticeOutboxEntryId, NoticeOutboxEntry>();
@@ -402,6 +404,35 @@ export class InMemoryRepository implements Repository {
     const attempts = current.attempts + 1;
     this.#loginCodes.set(key, clone({ ...current, attempts }));
     return { codeHash: current.codeHash, expiresAt: current.expiresAt, attempts };
+  }
+
+  // ── Calendar feeds (crew iCal subscription — #355, DEC-098) ────────────────
+  async saveCalendarFeed(feed: CalendarFeed): Promise<void> {
+    this.#calendarFeeds.set(String(feed.crewMemberId), clone(feed));
+  }
+  async getCalendarFeedByTokenHash(tokenHash: string): Promise<CalendarFeed | null> {
+    const f = [...this.#calendarFeeds.values()].find(
+      (x) => x.tokenHash === tokenHash,
+    );
+    return f ? clone(f) : null;
+  }
+  async getCalendarFeedForCrew(
+    crewMemberId: CrewMemberId,
+  ): Promise<CalendarFeed | null> {
+    const f = this.#calendarFeeds.get(String(crewMemberId));
+    return f ? clone(f) : null;
+  }
+  async deleteCalendarFeed(crewMemberId: CrewMemberId): Promise<void> {
+    this.#calendarFeeds.delete(String(crewMemberId));
+  }
+  async touchCalendarFeedPoll(
+    tokenHash: string,
+    polledAt: string,
+  ): Promise<void> {
+    const entry = [...this.#calendarFeeds.entries()].find(
+      ([, x]) => x.tokenHash === tokenHash,
+    );
+    if (entry) this.#calendarFeeds.set(entry[0], clone({ ...entry[1], lastPolledAt: polledAt }));
   }
 
   // ── Outbox entries (web-link channel adapter state — DEC-030) ──────────────

@@ -2,6 +2,7 @@ import { AppLink } from "../../../components/ui/app-link";
 import { SubmitButton } from "../../../components/ui/submit-button";
 import { Notice } from "../../../components/ui/notice";
 import { Shell } from "../../../components/ui/shell";
+import { AdminSignedOut } from "../../../components/admin/admin-signed-out";
 import { VersionTag } from "../../../components/ui/version-tag";
 import { readSubject } from "../../lib/auth";
 import { getRepo } from "../../lib/repo";
@@ -32,7 +33,8 @@ export default async function AdminHome({
   // layout/middleware). Pre-#124 the hub was a static link list; now it reads
   // engine state + shows the operator control, so it must gate too.
   const subject = await readSubject();
-  if (!subject || subject.kind !== "admin") return <SignedOut />;
+  if (!subject || subject.kind !== "admin")
+    return <AdminSignedOut subject={subject} />;
 
   // Absent flag ⇒ running (DEC-054). A DB outage shows an unknown state rather
   // than 500-ing the hub.
@@ -112,10 +114,6 @@ export default async function AdminHome({
         Payroll — estimated hours per crew, by pay period →
       </AppLink>
 
-      <p className="text-sm text-muted">
-        Roster, event admin, and shift builder land here in later phases.
-      </p>
-
       <VersionTag />
     </Shell>
   );
@@ -161,17 +159,5 @@ function EngineControl({ paused }: { paused: boolean | null }) {
         </SubmitButton>
       </form>
     </div>
-  );
-}
-
-function SignedOut() {
-  return (
-    <Shell width="3xl">
-      <h1 className="text-lg font-semibold text-ink">Muster · Admin</h1>
-      <Notice>
-        You’re signed out. Tap an operator magic link to get in — this surface is
-        Spink’s.
-      </Notice>
-    </Shell>
   );
 }

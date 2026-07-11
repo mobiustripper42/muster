@@ -1,5 +1,5 @@
 import { recordNoticeSent } from "../../app/(admin)/admin/outbox/actions";
-import { CopyButton } from "./copy-button";
+import { CopyButton } from "../ui/copy-button";
 import { RelaySend } from "./relay-send";
 
 /**

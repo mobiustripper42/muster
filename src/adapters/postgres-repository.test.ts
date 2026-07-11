@@ -29,6 +29,7 @@ const TABLES = [
   "magic_tokens",
   "admins",
   "login_codes",
+  "calendar_feeds",
   "outbox_entries",
   "ring_outbox",
   "notice_outbox",

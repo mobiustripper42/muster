@@ -72,18 +72,17 @@ export function ShiftRow({
 
   return (
     <div
-      // Scroll anchor (#365): the row link's href ends with `#shiftrow-<id>`, so a
-      // click reveals THIS row instead of snapping the independently-scrolling
-      // board-col (DEC-085) back to the top — on a long list you keep your place.
-      // `scroll-mt` leaves a little breathing room from the column's top edge. On
-      // mobile the whole board list is `display:none`, so this target has no box and
-      // the fragment jump is a no-op — the full-screen drill-in still opens at top.
+      // Scroll target for the selected-row reveal (#365, DEC-112): the
+      // `RevealSelectedRow` client island finds this row by id and nudges
+      // board-col's own scroll so a click doesn't snap the list back to the top on
+      // a long list. Kept keyed off `shiftId` (matches the React key + split-side
+      // ids), so no collisions.
       id={`shiftrow-${row.shiftId}`}
       // Press cue for the stretched-link row (#250): a calm whole-card background
       // dip on :active — fires because the row `<AppLink>` is in the card's activation
       // chain. Background, NOT transform/filter, so it can't collapse the link's
       // `after:inset-0` overlay (that would establish a containing block).
-      className={`relative flex scroll-mt-4 flex-col gap-2 rounded-card border bg-card px-4 py-3 shadow-sm active:bg-accent/10 ${
+      className={`relative flex flex-col gap-2 rounded-card border bg-card px-4 py-3 shadow-sm active:bg-accent/10 ${
         selected ? "border-accent" : "border-line"
       }`}
     >

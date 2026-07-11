@@ -109,42 +109,45 @@ test.describe("two-pane builder (9.5, DEC-085)", () => {
     await expect(page.getByRole("heading", { name: "All shifts" })).toBeVisible();
   });
 
-  test("desktop: a row click reveals that row via the #shiftrow anchor, not a snap to top (#365)", async ({
+  test("desktop: opening a row reveals it in board-col WITHOUT scrolling the window (#365, DEC-112)", async ({
     page,
   }) => {
-    // A short viewport so the board column overflows and actually scrolls — the
-    // condition under which the old behaviour snapped the list back to the top.
+    // A short viewport so the board column overflows and the last row sits below
+    // its fold — the condition under which the list snapped back to the top, and
+    // (crucially) under which the document has enough slack for the window to
+    // scroll if the reveal weren't scoped to board-col.
     await page.setViewportSize({ width: 1280, height: 380 });
     await signInAsAdmin(page, "spink");
     await page.goto(`${board()}&sel=shift-ar-regress`);
 
     const boardCol = page.getByTestId("board-col");
-    const rowLinks = boardCol.locator('a[href*="#shiftrow-"]');
-    // Mechanism: every row link carries its own #shiftrow-<id> fragment.
-    expect(await rowLinks.count()).toBeGreaterThan(1);
+    const rows = boardCol.locator('[id^="shiftrow-"]');
+    expect(await rows.count()).toBeGreaterThan(1);
 
-    // Click the LAST row (below the fold on a short viewport) with the column
-    // scrolled to the top, then assert it's brought INTO view — the anchor did its
-    // job instead of resetting board-col to scrollTop 0.
+    // Scroll the column to the top, confirm the last row is genuinely below the
+    // fold (non-vacuous), then open it and assert the island brought it INTO view.
     await boardCol.evaluate((el) => el.scrollTo(0, 0));
-    const last = rowLinks.last();
-    const href = await last.getAttribute("href");
-    const anchorId = href!.split("#")[1]!; // shiftrow-<id>
-    await last.click();
-    await page.waitForURL((u) => u.href.includes(`#${anchorId}`));
-    await expect(boardCol.locator(`#${anchorId}`)).toBeInViewport();
+    const lastRow = rows.last();
+    const rowId = (await lastRow.getAttribute("id"))!; // shiftrow-<id>
+    const sel = rowId.replace("shiftrow-", "");
+    await expect(lastRow).not.toBeInViewport();
+
+    await lastRow.getByRole("link").first().click();
+    await page.waitForURL((u) => u.searchParams.get("sel") === sel);
+    await expect(lastRow).toBeInViewport();
+    // The DEC-085 guarantee the pure-CSS anchor broke: the WINDOW never moved.
+    expect(await page.evaluate(() => window.scrollY)).toBeLessThan(5);
   });
 
-  test("375px: the #shiftrow anchor is inert (hidden list) — the drill-in opens at top (#365)", async ({
+  test("375px: the reveal island is inert (hidden list) — the drill-in opens at top (#365)", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await signInAsAdmin(page, "spink");
-    // Land via a row href exactly as the list would build it — sel + the fragment.
-    await page.goto(`${board()}&sel=shift-ar-regress#shiftrow-shift-ar-regress`);
+    await page.goto(`${board()}&sel=shift-ar-regress`);
 
-    // The board list is display-hidden at 375px, so the fragment target has no box
-    // and the browser can't jump to it — the cockpit drill-in must sit at the top.
+    // Below lg the board list is display:none, so the island bails (offsetParent
+    // null) and Next's default scroll-to-top leaves the drill-in at the top.
     const heading = page.getByRole("heading", { level: 1, name: /^Firkin/ });
     await expect(heading).toBeVisible();
     const boxTop = (await heading.boundingBox())!.y;

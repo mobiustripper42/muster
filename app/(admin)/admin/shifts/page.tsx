@@ -10,6 +10,7 @@ import { Shell } from "../../../../components/ui/shell";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { Filter } from "../../../../components/admin/shifts-filter";
 import { ShiftRow, canonicalIdOf } from "../../../../components/admin/shift-row";
+import { RevealSelectedRow } from "../../../../components/admin/reveal-selected-row";
 import type { Mode, Scope } from "../../../../components/admin/shifts-view-types";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
@@ -420,10 +421,7 @@ export default async function AllShifts({
                     row={r}
                     mode={mode}
                     back={back}
-                    // #shiftrow-<id> keeps the clicked row in view instead of
-                    // snapping board-col to the top on navigation (#365). The row
-                    // carries the matching id + scroll-mt (see ShiftRow).
-                    href={`${hrefFor(sp, mode, r.shiftId)}#shiftrow-${r.shiftId}`}
+                    href={hrefFor(sp, mode, r.shiftId)}
                     selected={sel === r.shiftId}
                     changed={changedDays.has(canonicalIdOf(r))}
                     isNew={newShifts.has(r.shiftId)}
@@ -474,6 +472,10 @@ export default async function AllShifts({
           <ShiftCockpit shiftId={sel} sp={sp} ctx={ctx} headingLevel="h2" senderName={senderName} />
         </div>
       </div>
+      {/* Keep the operator's place in the list when a row opens the pane (#365,
+          DEC-112) — a DEC-026-family client-JS island, scoped to board-col's own
+          scroll (never the window), inert on mobile. */}
+      <RevealSelectedRow sel={sel} />
     </Shell>
   );
 }

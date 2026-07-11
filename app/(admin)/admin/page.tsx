@@ -114,10 +114,6 @@ export default async function AdminHome({
         Payroll — estimated hours per crew, by pay period →
       </AppLink>
 
-      <p className="text-sm text-muted">
-        Roster, event admin, and shift builder land here in later phases.
-      </p>
-
       <VersionTag />
     </Shell>
   );

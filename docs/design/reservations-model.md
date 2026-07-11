@@ -1,6 +1,20 @@
 # Reservations — Verified Data Model (build-facing)
 
-Status: **draft, pending @architect verification** · 2026-07-11 · owner: reservations (Phase 11/12)
+Status: **VERIFIED by @architect 2026-07-11 — proceed w/ corrections** · owner: reservations (Phase 11/12)
+
+**Verification outcome (@architect, 2026-07-11):**
+- **Capacity is a whole-boat MUTEX, not seat subtraction.** DEC-108/109 + tasks 11.1/11.3 said "COI −
+  Σ party sizes" — wrong for whole-boat. Correct rule: an event is available iff it has **zero active
+  `source='muster'` reservations** AND party **≤ `Event.capacity`**; remaining = step function
+  (`capacity` or `0`). DEC-109's atomic-claim *mechanism* is unchanged; only the predicate. → amend
+  DEC-108/109.
+- **`Offering` is P12, not P11** — derived/seeded; the Phase 11 exit gate seeds one `Event` directly.
+- **Insurance-as-flag** is a recorded decision (DEC-113 draft) but a **P12 build** — not in the P11 harness.
+- **Per-event price** = nullable `Event.price` column, folded into **11.0's migration** (additive/inert,
+  lands on `main`); P11 resolution order is `Event.price` only (no Offering cascade yet). → DEC-112 draft.
+- **11.0 logic unchanged** (source + vessel-day partition) — only gains the inert `Event.price` column.
+- Owner-gated (Drew) — price values, deposit-%, balance timing, refund tiers, Stripe account, waiver
+  provider — gate 11.2/11.5 only, not the phase start.
 Supersedes the "Tier 4 / 2027 / parked" scope notes on `the-booking-1.md` + `the-living-link-1.md`
 for build purposes — **DEC-105 decided reservations go live in 2026**, so those design docs are now
 the *substrate* for Phase 11/12, not parked futures.
@@ -45,15 +59,17 @@ the *substrate* for Phase 11/12, not parked futures.
 7. **Split-pay is a reimbursement layer, never a trip gate.** Owner (reservationist) is whole at booking;
    each guest may optionally pay a share via the shared link; operator reimburses/nets out. No min-pax.
    *(This is the "each guest pays their share" idea — already designed in `the-living-link-1.md §6/§8`.)*
-8. **Waiver facilitated, not gated** (`the-living-link-1.md §6`; matches DEC-110). **Oracle IS the
-   customer calendar** — the booking funnel is a thin `first-fail` face over the existing availability
-   oracle. **Staffing horizon is the weld** — one number = crew-ask trigger AND customer self-reschedule
-   cutoff.
+8. **Waiver facilitated, not gated** (`the-living-link-1.md §6`; matches DEC-110). **Customer availability
+   is a NEW pure deriver (task 11.1)** reading event capacity vs. muster reservations — **distinct from
+   the crew-eligibility oracle in `src/oracle`** (do not route customer availability through it). The
+   booking funnel is a thin face over that deriver. **Staffing horizon is the weld** — one number =
+   crew-ask trigger AND customer self-reschedule cutoff.
 
 ## Entity model
 ```
-Offering  (= Xola Experience; NEW, native)
-   name · duration (100 min) · schedule + default price · insurance option · [general add-ons parked]
+Offering  (= Xola Experience) — **PHASE 12, derived-or-deferred; NOT a P11 entity**
+   name · duration · schedule + default price · insurance option · [general add-ons parked]
+   (P11 seeds a single Event directly; no Offering. Price default-cascade is P12.)
       │  one offering → many events
       ▼
 Event  [EXISTS — src/domain/entities.ts]  extend

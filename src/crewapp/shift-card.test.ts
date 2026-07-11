@@ -78,7 +78,7 @@ describe("buildShiftCard", () => {
     expect(card.mySeatId).toBe("seat-cap"); // what a bail acts on (#56)
   });
 
-  it("shift end = latest departure + trip length + call lead (DEC-041)", async () => {
+  it("shift end = latest departure + trip length + teardown (DEC-041, #275)", async () => {
     const card = (await buildShiftCard(await seed(), SHIFT, ME, NOW))!;
     // latest departure 17:00 + (100 trip + 25 teardown) = 17:00 + 2h5m = 19:05 (#275)
     expect(card.shiftEndTime).toBe("19:05");

@@ -406,12 +406,14 @@ export interface SplitSuggestion {
  *
  *  - **large-gap** — the dead time between one trip's teardown and the next's prep
  *    exceeds `gapMinutes`. Each trip occupies `[dep − CALL_LEAD, dep +
- *    TRIP_DURATION + CALL_LEAD]`, so the dead gap between consecutive departures is
- *    `Δdep − (TRIP_DURATION + 2·CALL_LEAD)`. The largest qualifying gap is reported
- *    (it names the split point) — gap wins over span.
+ *    TRIP_DURATION + TEARDOWN]` (#275 — the trailing buffer is the shorter
+ *    teardown, not the call lead), so the dead gap between consecutive departures
+ *    is `Δdep − (TRIP_DURATION + TEARDOWN + CALL_LEAD)`. The largest qualifying gap
+ *    is reported (it names the split point) — gap wins over span.
  *  - **long-span** — no single big gap, but the whole day (first prep → last
- *    teardown = `Δ(first→last) + TRIP_DURATION + 2·CALL_LEAD`) exceeds `spanMinutes`;
- *    one crew across it is a judgment call, hence a *suggestion*, not an auto-rule.
+ *    teardown = `Δ(first→last) + TRIP_DURATION + CALL_LEAD + TEARDOWN`) exceeds
+ *    `spanMinutes`; one crew across it is a judgment call, hence a *suggestion*,
+ *    not an auto-rule.
  *
  * `null` = no suggestion (fewer than two scheduled trips, or everything contiguous).
  * Cancelled events are ignored — a cancelled mid-day trip does not bridge the gap
@@ -433,9 +435,11 @@ export function suggestSplit(
   const last = trips[trips.length - 1];
   if (!first || !last) return null; // unreachable (length ≥ 2) — narrows for noUncheckedIndexedAccess
 
-  // Consecutive trips leave `Δdep − (TRIP_DURATION + 2·CALL_LEAD)` of dead time
-  // between one's teardown and the next's prep.
-  const occupiedMin = TRIP_DURATION_MINUTES + 2 * CALL_LEAD_MINUTES;
+  // Consecutive trips leave `Δdep − (TRIP_DURATION + TEARDOWN + CALL_LEAD)` of dead
+  // time between one trip's teardown and the next's prep (#275 — teardown ≠ call
+  // lead; same buffer split the shift-end got).
+  const occupiedMin =
+    TRIP_DURATION_MINUTES + TEARDOWN_MINUTES + CALL_LEAD_MINUTES;
 
   let worst: { minutes: number; before: string; after: string } | null = null;
   let prev = first;

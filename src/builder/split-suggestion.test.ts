@@ -28,7 +28,7 @@ describe("suggestSplit", () => {
   it("flags a large mid-day gap: 11:30 · 5:30 · 7:30 → split at 11:30/5:30", () => {
     expect(suggestSplit([ev("11:30"), ev("17:30"), ev("19:30")], UTC)).toEqual({
       reason: "large-gap",
-      minutes: 170,
+      minutes: 190, // dead gap = 360 − (100 trip + 25 teardown + 45 lead) = 190 (#275)
       boundary: { before: "11:30", after: "17:30" },
     });
   });
@@ -44,7 +44,7 @@ describe("suggestSplit", () => {
   it("flags a long span with no single big gap as the human call: 11:30 · 3:30 · 7:30", () => {
     expect(suggestSplit([ev("11:30"), ev("15:30"), ev("19:30")], UTC)).toEqual({
       reason: "long-span",
-      minutes: 670,
+      minutes: 650, // span = 480 + (100 trip + 45 lead + 25 teardown) = 650 (#275)
     });
   });
 
@@ -63,7 +63,7 @@ describe("suggestSplit", () => {
   });
 
   it("gap wins over span, and the largest qualifying gap is reported", () => {
-    // 06:00 · 12:00 (gap 170) · 18:30 (gap 200) — the larger gap wins the boundary.
+    // 06:00 · 12:00 (gap 190) · 18:30 (gap 220) — the larger gap wins the boundary.
     const s = suggestSplit([ev("06:00"), ev("12:00"), ev("18:30")], UTC);
     expect(s?.reason).toBe("large-gap");
     expect(s?.boundary).toEqual({ before: "12:00", after: "18:30" });
@@ -81,35 +81,36 @@ describe("suggestSplit", () => {
   it("is order-independent (unsorted input sorts by instant)", () => {
     expect(suggestSplit([ev("19:30"), ev("11:30"), ev("17:30")], UTC)).toEqual({
       reason: "large-gap",
-      minutes: 170,
+      minutes: 190,
       boundary: { before: "11:30", after: "17:30" },
     });
   });
 
   // Boundary pins — the thresholds are strict `>` ("exceeds"), and these are
   // tune-later env knobs, so a `>`↔`>=` regression must fail loudly. 11:30·17:30
-  // is exactly 170 dead-min (span 550); 11:30·3:30·7:30 is exactly 670 span (gaps 50).
+  // is exactly 190 dead-min (span 530); 11:30·3:30·7:30 is exactly 650 span (gaps 70)
+  // (#275 — occupied buffer is now 100 trip + 25 teardown + 45 lead = 170).
   it("gap threshold is strict: dead-gap == threshold does NOT flag", () => {
     expect(
-      suggestSplit([ev("11:30"), ev("17:30")], UTC, { gapMinutes: 170 }),
+      suggestSplit([ev("11:30"), ev("17:30")], UTC, { gapMinutes: 190 }),
     ).toBeNull();
   });
 
   it("gap threshold is strict: one minute over DOES flag", () => {
     expect(
-      suggestSplit([ev("11:30"), ev("17:30")], UTC, { gapMinutes: 169 }),
-    ).toEqual({ reason: "large-gap", minutes: 170, boundary: { before: "11:30", after: "17:30" } });
+      suggestSplit([ev("11:30"), ev("17:30")], UTC, { gapMinutes: 189 }),
+    ).toEqual({ reason: "large-gap", minutes: 190, boundary: { before: "11:30", after: "17:30" } });
   });
 
   it("span threshold is strict: span == threshold does NOT flag", () => {
     expect(
-      suggestSplit([ev("11:30"), ev("15:30"), ev("19:30")], UTC, { spanMinutes: 670 }),
+      suggestSplit([ev("11:30"), ev("15:30"), ev("19:30")], UTC, { spanMinutes: 650 }),
     ).toBeNull();
   });
 
   it("span threshold is strict: one minute under DOES flag", () => {
     expect(
-      suggestSplit([ev("11:30"), ev("15:30"), ev("19:30")], UTC, { spanMinutes: 669 }),
-    ).toEqual({ reason: "long-span", minutes: 670 });
+      suggestSplit([ev("11:30"), ev("15:30"), ev("19:30")], UTC, { spanMinutes: 649 }),
+    ).toEqual({ reason: "long-span", minutes: 650 });
   });
 });

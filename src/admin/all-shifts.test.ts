@@ -245,7 +245,7 @@ describe("deriveAllShifts", () => {
     const tight = rows.find((r) => r.vesselName === "Tight")!;
     expect(gappy.splitSuggestion).toEqual({
       reason: "large-gap",
-      minutes: 170,
+      minutes: 190, // 360 gap − (100 trip + 25 teardown + 45 lead) = 190 (#275)
       boundary: { before: "11:30", after: "17:30" },
     });
     expect(tight.splitSuggestion).toBeNull();

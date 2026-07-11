@@ -403,3 +403,37 @@ describe("STAFFING_HORIZON_LEAD_DAYS env override (DEC-062)", () => {
     }
   });
 });
+
+describe("FILL_DEADLINE_HOURS env override (DEC-113 / #322)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  it("defaults to 48 hours (2 days) — value unchanged by #322", () => {
+    expect(FILL_DEADLINE_HOURS).toBe(48);
+  });
+
+  it("a positive-integer env override replaces the default (e.g. 72 = 3 days)", async () => {
+    vi.stubEnv("FILL_DEADLINE_HOURS", "72");
+    vi.resetModules();
+    const m = await import("./derive.js");
+    expect(m.FILL_DEADLINE_HOURS).toBe(72);
+  });
+
+  it("accepts a positive FRACTION (sub-hour tuning)", async () => {
+    vi.stubEnv("FILL_DEADLINE_HOURS", "60.5");
+    vi.resetModules();
+    const m = await import("./derive.js");
+    expect(m.FILL_DEADLINE_HOURS).toBe(60.5);
+  });
+
+  it("a non-positive or garbage override falls back to 48", async () => {
+    for (const bad of ["0", "-12", "soon", "", " ", "NaN"]) {
+      vi.stubEnv("FILL_DEADLINE_HOURS", bad);
+      vi.resetModules();
+      const m = await import("./derive.js");
+      expect(m.FILL_DEADLINE_HOURS).toBe(48);
+    }
+  });
+});

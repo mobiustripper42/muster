@@ -6,7 +6,7 @@ branch: task/268-scrollbar-gutter
 started: 2026-07-11T18:01:40Z
 ended:
 points:
-pr_numbers: [375, 377, 378, 379]
+pr_numbers: [375, 377, 378, 379, 380]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/079da17b-1b62-4fa4-9b6a-b394651a3f5d.jsonl
 ---
@@ -77,6 +77,31 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/079da17b-1b62-4fa4-9b6
 **Branch:** task/275-teardown-minutes
 **Opened at:** 2026-07-11T20:13:59Z
 
+## Task 5: Crew 'other shifts today' on the shift card (closes #315)
+
+**Completed:**
+- User-scoped this session: an expand/collapse "other shifts today" on `crew/shift/[id]` listing the day's other boats — boat, first departure, crew. Designed to later host a cohort-message button (its own issue; DTO carries `shiftId`).
+- `src/crewapp/other-shifts.ts` `otherShiftsOnDay()` — reuses admin `deriveAllShifts`, narrows to a lean crew DTO. **PII boundary: no guest manifest** (physically can't — narrow DTO); **no scoreboard** (DEC-042). `crewName` only populates for Confirmed seats (no tentative-claim "aboard" leak).
+- `components/crew/other-shifts-today.tsx` — no-JS `<details>`, collapsed default, renders null when sole shift that day.
+- Wired into page.tsx (best-effort fetch AFTER the crew-on-this-shift auth gate).
+- Crew seed: 2nd same-day boat (Growler/Gilly) — Gilly UNRATED + force-Confirmed → inert (no ask-pool disturbance). Added `other-shifts-today` to the mobile 375px allowlist.
+- Verified: 3 unit tests; **full suite 971 pass**; e2e desktop + 375px mobile; **52 crew-seed specs green (no regressions)**.
+
+**Code review:** Clean bill of health — PII boundary by construction, auth ordering correct, Confirmed-only crew, seed inert + non-colliding.
+**PR:** [#380](https://github.com/mobiustripper42/muster/pull/380) — off main, independent.
+**Points:** 5
+**Branch:** task/315-other-shifts-today
+**Opened at:** 2026-07-11T20:43:12Z
+
 **Next Steps:**
+- **#293** (retire OPERATOR_CREW_MEMBER_ID singleton) held for a fresh session — delicate 7-site auth/messaging refactor (act-as → acting admin's crew id; is-this → admins-set membership; exclude-from-ring → doorbell). Needs @architect. NOT started (stray local `task/293` branch, no commits).
+- **Merge order:** #375 (357) then #377 (365, stacked). #378/#379 both touch derive.ts (diff regions, trivial). #378 DEC-113 + #377 DEC-112 append same DECISIONS.md spot → resolve conflict on 2nd merge (keep both). #379 amended DEC-041 in place (no conflict).
+- **#376** filed (latent ~100px lg document overflow — pre-existing DEC-085 violation, decoupled from #365).
+- Concurrent **Session 46** (feature/reservations, Phase 11) ran in another window this whole session.
+
+**Context:**
+- Phase 10.5 = backlog cleanup (non-deferred, non-low). Labeled the 6 in-scope issues `phase:10.5`; #330 closed as already-shipped (#358).
+- #365 was the big detour: simple CSS anchor leaked window scroll (verified) → DEC-112 client-JS island (@architect-gated) + spun-off #376. #275 grew via a review-caught split-suggestion miss (same teardown buffer). Both landed fully-baked, not half-fixed.
+- Two-review-passes each on #357/#365/#275/#315 caught real issues (window-leak, filter-change gap, split-suggestion, none on #315). `E2E_PROD=1` for the dev-lock-safe e2e path throughout.
 
 **Context:**

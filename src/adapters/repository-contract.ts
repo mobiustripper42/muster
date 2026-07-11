@@ -725,6 +725,46 @@ export function runRepositoryContract(
       expect(await repo.claimLoginAttempt("crew", CREW, 3)).toBeNull();
     });
 
+    it("calendar feeds: hash-lookup round-trip; one per crew (rotate replaces); revoke + touch (DEC-098)", async () => {
+      await repo.saveCalendarFeed({
+        crewMemberId: CREW,
+        tokenHash: "hash-1",
+        createdAt: "2026-07-01T12:00:00.000Z",
+      });
+      // Looked up BY hash (the route's path) and by crew (the UI's existence check).
+      const byHash = await repo.getCalendarFeedByTokenHash("hash-1");
+      expect(byHash).toEqual({
+        crewMemberId: CREW,
+        tokenHash: "hash-1",
+        createdAt: "2026-07-01T12:00:00.000Z",
+      });
+      expect("lastPolledAt" in byHash!).toBe(false); // omitted, not undefined
+      expect(await repo.getCalendarFeedForCrew(CREW)).toEqual(byHash);
+      expect(await repo.getCalendarFeedByTokenHash("nope")).toBeNull();
+
+      // Rotate: a fresh mint REPLACES the single per-crew row — old hash is dead.
+      await repo.saveCalendarFeed({
+        crewMemberId: CREW,
+        tokenHash: "hash-2",
+        createdAt: "2026-07-02T12:00:00.000Z",
+      });
+      expect(await repo.getCalendarFeedByTokenHash("hash-1")).toBeNull();
+      expect((await repo.getCalendarFeedForCrew(CREW))!.tokenHash).toBe("hash-2");
+
+      // Touch stamps lastPolledAt (best-effort "last synced"); no-op on a dead hash.
+      await repo.touchCalendarFeedPoll("hash-2", "2026-07-03T09:00:00.000Z");
+      expect((await repo.getCalendarFeedForCrew(CREW))!.lastPolledAt).toBe(
+        "2026-07-03T09:00:00.000Z",
+      );
+      await repo.touchCalendarFeedPoll("dead-hash", "2026-07-03T09:00:00.000Z"); // no throw
+
+      // Revoke hard-deletes; a second revoke is a no-op.
+      await repo.deleteCalendarFeed(CREW);
+      expect(await repo.getCalendarFeedForCrew(CREW)).toBeNull();
+      expect(await repo.getCalendarFeedByTokenHash("hash-2")).toBeNull();
+      await repo.deleteCalendarFeed(CREW); // no throw
+    });
+
     it("outbox entries: round-trip incl. sentAt optional; status flip via upsert (DEC-030)", async () => {
       await repo.saveOutboxEntry(outboxEntry()); // pending, never sent
       const got = await repo.getOutboxEntry(asId<"OutboxEntryId">("obx-ask-1"));

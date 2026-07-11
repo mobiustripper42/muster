@@ -23,6 +23,7 @@ import type {
   CrewStatus,
   Event,
   LoginCode,
+  CalendarFeed,
   MagicToken,
   NoticeOutboxEntry,
   SmsConsent,
@@ -213,6 +214,13 @@ const toLoginCode = (r: any): LoginCode => ({
   expiresAt: r.expires_at,
   attempts: r.attempts,
   ...opt("consumedAt", r.consumed_at),
+});
+
+const toCalendarFeed = (r: any): CalendarFeed => ({
+  crewMemberId: asId<"CrewMemberId">(r.crew_member_id),
+  tokenHash: r.token_hash,
+  createdAt: r.created_at,
+  ...opt("lastPolledAt", r.last_polled_at),
 });
 
 const toOutboxEntry = (r: any): OutboxEntry => ({
@@ -861,6 +869,45 @@ export class PostgresRepository implements Repository {
           attempts: rows[0].attempts,
         }
       : null;
+  }
+
+  // ── Calendar feeds (crew iCal subscription — #355, DEC-098) ────────────────
+  async saveCalendarFeed(feed: CalendarFeed): Promise<void> {
+    await this.#pool.query(
+      `insert into calendar_feeds(crew_member_id, token_hash, created_at, last_polled_at)
+       values ($1,$2,$3,$4)
+       on conflict (crew_member_id) do update set
+         token_hash=excluded.token_hash, created_at=excluded.created_at,
+         last_polled_at=excluded.last_polled_at`,
+      [feed.crewMemberId, feed.tokenHash, feed.createdAt, feed.lastPolledAt ?? null],
+    );
+  }
+  async getCalendarFeedByTokenHash(tokenHash: string): Promise<CalendarFeed | null> {
+    const { rows } = await this.#pool.query(
+      "select * from calendar_feeds where token_hash=$1",
+      [tokenHash],
+    );
+    return rows[0] ? toCalendarFeed(rows[0]) : null;
+  }
+  async getCalendarFeedForCrew(
+    crewMemberId: CrewMemberId,
+  ): Promise<CalendarFeed | null> {
+    const { rows } = await this.#pool.query(
+      "select * from calendar_feeds where crew_member_id=$1",
+      [crewMemberId],
+    );
+    return rows[0] ? toCalendarFeed(rows[0]) : null;
+  }
+  async deleteCalendarFeed(crewMemberId: CrewMemberId): Promise<void> {
+    await this.#pool.query("delete from calendar_feeds where crew_member_id=$1", [
+      crewMemberId,
+    ]);
+  }
+  async touchCalendarFeedPoll(tokenHash: string, polledAt: string): Promise<void> {
+    await this.#pool.query(
+      "update calendar_feeds set last_polled_at=$2 where token_hash=$1",
+      [tokenHash, polledAt],
+    );
   }
 
   // ── Outbox entries (web-link channel adapter state — DEC-030) ──────────────

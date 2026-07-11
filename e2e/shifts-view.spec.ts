@@ -28,6 +28,59 @@ test.describe("builder view — /admin/shifts (8.2a)", () => {
     await expect(page.getByText("Barrel")).toBeVisible();
   });
 
+  test("the '2 weeks out' and '30 days' quick filters resolve their windows (#321)", async ({
+    page,
+  }) => {
+    await signInAsAdmin(page, "spink");
+    await page.goto("/admin/shifts");
+
+    // Both new preset chips are present alongside the existing ones.
+    const twoWeeks = page.getByRole("link", { name: "2 weeks out" });
+    const thirty = page.getByRole("link", { name: "30 days" });
+    await expect(twoWeeks).toBeVisible();
+    await expect(thirty).toBeVisible();
+
+    // 30 days: preset carried in the URL; window reaches the ~2-day-out Barrel,
+    // and the count line names the resolved scope.
+    await thirty.click();
+    await page.waitForURL(/preset=days30/);
+    await expect(page.getByText(/· the next 30 days/)).toBeVisible();
+    await expect(page.getByText("Barrel")).toBeVisible();
+
+    // 2 weeks out: days 8–15 — a forward bucket that starts the day after "next 7"
+    // ends, so the ~2-day-out Barrel day falls outside it (the window really moved).
+    await page.goto("/admin/shifts");
+    await page.getByRole("link", { name: "2 weeks out" }).click();
+    await page.waitForURL(/preset=next8to15/);
+    await expect(page.getByText(/2 weeks out/).last()).toBeVisible();
+    await expect(page.getByText("Barrel")).toHaveCount(0);
+  });
+
+  test("the crew filter narrows to one member's shifts and widens the window (#330)", async ({
+    page,
+  }) => {
+    await signInAsAdmin(page, "spink");
+    await page.goto("/admin/shifts");
+
+    // Gus is Confirmed on Growler (~4 days out); Bram is on Barrel (~2 days out).
+    // Default next-7 shows both vessels.
+    await expect(page.getByText("Growler")).toBeVisible();
+    await expect(page.getByText("Barrel")).toBeVisible();
+
+    // Pick Gus and submit the no-JS crew form.
+    await page.getByLabel("Crew").selectOption({ label: "Gus" });
+    await page.getByRole("button", { name: "Filter" }).click();
+
+    // Crew rides the URL; a bare pick (no preset) widens to the full horizon so a
+    // person-lookup never hides a later shift.
+    await page.waitForURL(/crew=/);
+    await expect(page.getByText(/· the next 45 days/)).toBeVisible();
+
+    // Only Gus's shift survives — Growler stays, Barrel (Bram's) is gone.
+    await expect(page.getByText("Growler")).toBeVisible();
+    await expect(page.getByText("Barrel")).toHaveCount(0);
+  });
+
   test("renders a calm split cue on a large-gap day", async ({ page }) => {
     await signInAsAdmin(page, "spink");
     await page.goto("/admin/shifts");

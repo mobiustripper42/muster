@@ -2,6 +2,7 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { asId } from "@core/domain/ids.js";
 import { BackLink } from "../../../../components/ui/back-link";
+import { CopyButton } from "../../../../components/ui/copy-button";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { SubmitButton } from "../../../../components/ui/submit-button";
@@ -70,12 +71,19 @@ export default async function CrewCalendar() {
           </Notice>
           <label className="flex flex-col gap-1 text-sm font-semibold text-ink">
             Your calendar link
-            <input
-              readOnly
-              value={feedUrl}
-              aria-label="Your calendar feed link"
-              className="w-full rounded-lg border border-line bg-bg px-3 py-2 font-mono text-xs text-ink"
-            />
+            <span className="flex items-stretch gap-2">
+              <input
+                readOnly
+                value={feedUrl}
+                aria-label="Your calendar feed link"
+                className="w-full min-w-0 flex-1 rounded-lg border border-line bg-bg px-3 py-2 font-mono text-xs text-ink"
+              />
+              {/* Client-JS island (DEC-098, mirrors DEC-097's progressive-enhancement
+                  posture): copying a long URL by hand on a phone is fiddly. No-JS
+                  still works — the input is selectable. Handles the insecure
+                  http://mill-dev context where navigator.clipboard is undefined. */}
+              <CopyButton value={feedUrl} />
+            </span>
           </label>
           <AddInstructions />
           <form action={hideCalendarUrl}>

@@ -486,14 +486,14 @@ broadening beyond one boat/timeslot. 11.5 / 11.6 / 11.8 fatten it.
 | 11.0 | **Partition + `source` discriminator** — migration (`Event.source`, `Reservation.source`, backfill `'xola'`); importer guard: skip + itemize a Xola event on a Muster-owned vessel-day; Muster-owned-vessel-day config. Contract tests both adapters | 5 | **DEC-099** · lands on `main` (inert until a vessel-day is Muster-owned) · @architect gate |
 | 11.1 | **Availability read model** — remaining capacity per Muster-owned event (`COI max − Σ booked party sizes`, `source='muster'`); pure deriver + tests | 3 | additive, safe on `main` |
 | 11.2 | **`app/(public)` scaffold + availability list + single-flip Book-Now entry** — new route group, read-only no-auth availability, the Muster/Xola flag switch (DEC-101) | 3 | feature branch |
-| 11.3 | **Stripe hosted Checkout — deposit + balance** — `stripe` dep, create-session server action, deposit at checkout + balance payment-link mechanism, success/cancel routes, env/secrets (Drew's keys) | 7 | **DEC-100** · new dependency · @architect gate · likely splits 11.3a wiring / 11.3b balance-link at its gate |
+| 11.3 | **Stripe hosted Checkout — deposit + balance** — `stripe` dep, create-session server action, deposit at checkout + balance payment-link mechanism, success/cancel routes, env/secrets (Drew's keys). **Charge + refund lifted + audited from the sibling `sailbook` project; deposit is the net-new piece** | 8 | **DEC-100** · may be more complex than sized · requires `sailbook` in session scope · @architect gate · likely splits 11.3a lift/wiring / 11.3b deposit+balance-link at its gate |
 | 11.4 | **Booking write + atomic capacity claim** — signature-verified idempotent `checkout.session.completed` webhook → writes Muster-native Event(if new)+Reservation under an atomic capacity guard | 5 | **DEC-102** (REQ-CLAIM-1 sibling) · the correctness task · @architect gate; split webhook-infra vs capacity-guard only if the diff balloons |
 | 11.5 | **Confirmation + manage deep-link** — reuse DEC-020/DEC-081 primitive (addressed deep-link); booking-view page; cancel = out-of-band for v1 | 3 | feature branch |
 | 11.6 | **Waiver — minimal in-flow consent (pilot)** — checkbox + linked terms + consent timestamp on the reservation | 2 | **DEC-103** · Drew/Spink legal-sufficiency flag · provider integration deferred to Phase 12 · do **not** build a waiver subsystem |
 | 11.7 | **Manifest hinge verification** — confirm Muster-native reservations surface on the shift card per-event manifest with no write-back sheet (§2.6.3 / DEC-012 already source-agnostic) | 2 | **test, don't rebuild** |
 | 11.8 | **Go-live hardening + rollback runbook** — one real paid reservation end-to-end on the live boat/slot; flag flip; runbook (refunds-manual-in-Stripe, dispute-watch-in-Stripe, single-flip revert, ~5-booking manual rollback incl. Stripe-held money) | 3 | feature → `main` merge gate |
 
-**Phase 11 total: ~30 pts (rough — poker at `/start-phase`).** **Owner-gated before 11.3/11.6** (not
+**Phase 11 total: ~34 pts (rough — poker at `/start-phase`).** **Owner-gated before 11.3/11.6** (not
 before the phase starts): deposit-%, balance timing, refund policy, **which Stripe account**, waiver
 provider + legal sufficiency — all Drew/Spink (DEC-100/103).
 

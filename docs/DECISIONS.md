@@ -2597,6 +2597,11 @@ a working redirect. Embedded UX control isn't worth the PCI surface for a thin s
 - **Deposit + balance:** deposit taken at Checkout; **balance collected later via an emitted payment-link**,
   **not** an off-session auto-charge of a saved card — the auto-charge path drags in off-session card-decline
   handling not worth it at pilot scale.
+- **Charge + refund are a port, not a from-scratch build:** the sibling **`sailbook`** project already runs
+  working Stripe **charge + refund** code — **lift and audit** it into strict TS (precedent: the DEC-036
+  `xola-tip-extractor` port). **Deposit collection is the net-new piece.** This lifts refund *mechanism*
+  only — the refund *cascade* surface (§3.3) stays parked. Build-time dependency: add `sailbook` to the
+  session scope so the source can be read + audited on lift.
 - **Webhook-driven write:** the signature-verified, idempotent `checkout.session.completed` webhook is the
   thing that writes the Muster-native Reservation — **never** the browser redirect (not proof of payment).
 - **New dependency (`stripe` SDK) cleared:** it saves well beyond hand-rolling a PCI-safe payment +

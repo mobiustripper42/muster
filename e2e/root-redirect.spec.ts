@@ -1,6 +1,7 @@
 /**
  * #97 — the bare base URL is session-aware: a crew bookmark lands on My Shifts,
- * an operator on the admin hub, and a signed-out visitor on the sign-in prompt.
+ * an operator on the admin hub, and a signed-out visitor is routed to the /crew
+ * sign-in form (root no longer dead-ends with its own prompt).
  */
 import {
   test,
@@ -11,11 +12,14 @@ import {
 } from "./fixtures.js";
 
 test.describe("root redirect (#97)", () => {
-  test("no session → the sign-in prompt", async ({ page }) => {
-    // The root `/` is a thin session router with its own prompt (app/page.tsx);
-    // the self-serve email form lives on /crew, not here (DEC-081 left root alone).
+  test("no session → routed to the /crew sign-in form", async ({ page }) => {
+    // Root is a thin session router; a signed-out visitor lands on /crew, which
+    // owns the crew-code sign-in form (DEC-081) — no bare-root dead-end.
     await page.goto("/");
-    await expect(page.getByText(/tap the link your operator sent/i)).toBeVisible();
+    await expect(page).toHaveURL(/\/crew(\/|\?|$)/);
+    await expect(
+      page.getByText(/sign in with your crew email/i),
+    ).toBeVisible();
   });
 
   test("signed-in crew → /crew", async ({ page }) => {

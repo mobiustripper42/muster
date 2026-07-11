@@ -60,7 +60,7 @@ test.describe("builder view — /admin/shifts (8.2a)", () => {
     await expect(page.getByText("Barrel")).toHaveCount(0);
   });
 
-  test("the crew filter narrows to one member's shifts and widens the window (#330)", async ({
+  test("the crew filter narrows to one member's shifts and RESPECTS the window (#330)", async ({
     page,
   }) => {
     await signInAsAdmin(page, "spink");
@@ -75,24 +75,22 @@ test.describe("builder view — /admin/shifts (8.2a)", () => {
     await page.getByText("More filters").click();
     await page.getByLabel("Crew").selectOption({ label: "Gus" });
     await page.getByRole("button", { name: "Filter" }).click();
-
-    // Crew rides the URL; a bare pick (no preset) widens to the full horizon so a
-    // person-lookup never hides a later shift.
     await page.waitForURL(/crew=/);
-    await expect(page.getByText(/· the next 45 days/)).toBeVisible();
 
-    // Only Gus's shift survives — Growler stays, Barrel (Bram's) is gone.
+    // The crew pick does NOT change the window (operator's call — "what you see is
+    // what you filter"): it stays the default 7-day week, NOT a widened 45 days.
+    await expect(page.getByText(/· the next 7 days/)).toBeVisible();
+    await expect(page.getByText(/the next 45 days/)).toHaveCount(0);
+
+    // Only Gus's shift survives — Growler (in the week) stays, Barrel (Bram's) is gone.
     await expect(page.getByText("Growler")).toBeVisible();
     await expect(page.getByText("Barrel")).toHaveCount(0);
 
-    // Bug fix: with a crew active, clicking "Week" narrows to a real 7-day window
-    // and the caption says so — it must NOT read "the next 45 days" (the old bug
-    // where crew + the default 7-day view widened because next7 had no explicit
-    // preset). Gus's Growler shift (~4 days out) is inside the week.
-    await page.getByRole("link", { name: "Week", exact: true }).click();
-    await page.waitForURL(/preset=next7/);
-    await expect(page.getByText(/· the next 7 days/)).toBeVisible();
-    await expect(page.getByText(/· the next 45 days/)).toHaveCount(0);
+    // To see more of Gus's schedule, widen with a preset — the crew filter rides along.
+    await page.getByRole("link", { name: "30 Days" }).click();
+    await page.waitForURL(/preset=days30/);
+    await expect(page).toHaveURL(/crew=/); // crew preserved across the window change
+    await expect(page.getByText(/· the next 30 days/)).toBeVisible();
     await expect(page.getByText("Growler")).toBeVisible();
   });
 

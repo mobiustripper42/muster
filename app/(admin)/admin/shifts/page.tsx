@@ -67,8 +67,8 @@ type Search = CockpitSearch & {
   merge_ok?: string;
   merge_err?: string;
   /** Crew filter (#330, DEC-042 amendment) — a crew member id; narrows rows to
-   *  shifts they're seated on. Widens the window to the full horizon when set
-   *  without a preset/range. */
+   *  shifts they're seated on. Does NOT change the window (respects whatever preset/
+   *  range is shown); pick a wider preset to see more of their schedule. */
   crew?: string;
   /** Open cockpit pane (DEC-085). */
   sel?: string;
@@ -141,7 +141,6 @@ type Scope =
   | "weekend"
   | "next8to15"
   | "days30"
-  | "next45"
   | "range";
 
 /** Resolve the date window from the filter params — defaulting to TODAY, clamped
@@ -170,10 +169,9 @@ function resolveWindow(
     to = addDays(sat, 1);
     kind = "weekend";
   } else if (sp.preset === "next7") {
-    // Explicit "Week (7 days)" pick. Distinct from the bare default (no preset)
-    // BECAUSE the default's absence-of-preset is exactly what triggers the
-    // crew-widen below — so a crew filter + this explicit preset must stay a 7-day
-    // window, not widen to 45. (Fixes: crew + 7-days read "the next 45 days".)
+    // Explicit "Week" pick — the 7-day week. Same window as the bare default; the
+    // explicit preset just records the selection in the URL (bookmarkable, and it
+    // rides the crew form so a crew pick stays on the week).
     from = today;
     to = addDays(today, 6);
     kind = "next7";
@@ -192,20 +190,13 @@ function resolveWindow(
     from = isDate(sp.from) ? sp.from : today;
     to = isDate(sp.to) ? sp.to : from;
     kind = "range";
-  } else if (sp.crew) {
-    // A crew member is selected with no preset/range → widen to the full upcoming
-    // horizon (#330, DEC-042 amendment). The JTBD is a person-lookup ("when is X
-    // next on?"); the next-7 default would hide a day-9 shift and read as a false
-    // "not scheduled". today..+45 (not the −30 past) keeps the NEXT shift at the
-    // top of the ascending list rather than buried under history — the past stays
-    // reachable via the explicit From/To range.
-    from = today;
-    to = maxTo;
-    kind = "next45";
   } else {
     // Default: the next 7 days — the operator's "what's coming up" (8.2a, #205).
     // The day-only default (DEC-042) was too narrow for real pilot use — the
-    // operator needs upcoming visibility, not just today.
+    // operator needs upcoming visibility, not just today. The crew filter (#330)
+    // does NOT change the window — it respects whatever's shown (operator's call:
+    // "what you see is what you filter"). To see all of one crew member's upcoming,
+    // pick a wider preset (30 Days) or a From/To range.
     from = today;
     to = addDays(today, 6);
     kind = "next7";
@@ -225,8 +216,6 @@ function resolveWindow(
           ? "2 weeks out"
           : kind === "days30"
             ? "the next 30 days"
-            : kind === "next45"
-            ? "the next 45 days"
             : kind === "today"
               ? "today"
               : from === to
@@ -552,9 +541,8 @@ function Filter({
   from: string;
   to: string;
   kind: Scope;
-  /** The RAW `?preset` param — distinguishes an explicit "Week (7 days)" pick from
-   *  the bare default (both resolve to kind "next7"); needed so the crew form
-   *  preserves an explicit next7 but lets a bare-default crew pick widen (#330). */
+  /** The RAW `?preset` param — carried by the crew form so picking a crew stays on
+   *  the active preset/range (#330). */
   presetParam?: string;
   mode: Mode;
   sel: string | null;
@@ -569,17 +557,16 @@ function Filter({
     if (preset) p.set("preset", preset);
     if (edit) p.set("mode", "edit");
     if (sel) p.set("sel", sel);
-    // Preset chips keep the active crew filter (a bare crew pick with no preset
-    // widens to the horizon — resolveWindow #330; a preset here narrows it).
+    // Preset chips keep the active crew filter selected as you switch windows (#330).
     if (crew) p.set("crew", crew);
     const qs = p.toString();
     return qs ? `/admin/shifts?${qs}` : "/admin/shifts";
   };
-  // Re-assert the ACTIVE window on the crew form, so picking a crew narrows WITHIN
-  // the current preset/range. An EXPLICIT preset — including "Week (7 days)"
-  // (next7) — is carried; the bare default (no preset) carries nothing, so a crew
-  // pick there widens to the horizon (#330). That's exactly why next7 is an
-  // explicit preset: crew + 7-days must stay 7 days, not read "the next 45 days".
+  // Re-assert the ACTIVE window on the crew form so picking a crew stays in the
+  // window you're looking at (#330 — "what you see is what you filter"; the crew
+  // filter never changes the window). An explicit preset is carried; a bare default
+  // (no preset) carries nothing and falls back to the default 7-day week — same
+  // window either way.
   const KNOWN_PRESETS = new Set([
     "today",
     "weekend",
@@ -658,10 +645,10 @@ function Filter({
 
         {/* Crew filter (#330, DEC-042 amendment) — narrow the board to one crew
             member's shifts. A no-JS GET form (DEC-026): the window hidden inputs
-            preserve the active preset/range so a pick narrows within it; with no
-            preset set, a bare pick widens to the full horizon (resolveWindow). No
-            per-crew count/scoreboard — that's the monitor-bait failure mode this
-            surface is guarded against (DEC-042). */}
+            preserve the active preset/range so the pick stays in the window you're
+            looking at ("what you see is what you filter" — the crew filter never
+            changes the window). No per-crew count/scoreboard — that's the
+            monitor-bait failure mode this surface is guarded against (DEC-042). */}
         <form
           method="get"
           className="flex flex-wrap items-end gap-2 border-t border-line pt-2 text-sm"

@@ -5,6 +5,7 @@ import { BackLink } from "../../../../components/ui/back-link";
 import { GetFormSubmit } from "../../../../components/ui/get-form-submit";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
+import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
 import { fmtRunWhen } from "../../../lib/format";
@@ -36,7 +37,8 @@ export default async function AdminAsks({
 }) {
   const sp = await searchParams;
   const subject = await readSubject();
-  if (!subject || subject.kind !== "admin") return <SignedOut />;
+  if (!subject || subject.kind !== "admin")
+    return <AdminSignedOut subject={subject} />;
 
   let rows: AskTrailRow[];
   let crew: { id: string; name: string }[];
@@ -180,13 +182,4 @@ function fmtDate(iso: string): string {
     day: "numeric",
     timeZone: "UTC",
   });
-}
-
-function SignedOut() {
-  return (
-    <Shell width="3xl">
-      <h1 className="text-lg font-semibold text-ink">Muster · Admin</h1>
-      <Notice>You’re signed out. Tap an operator magic link to get in.</Notice>
-    </Shell>
-  );
 }

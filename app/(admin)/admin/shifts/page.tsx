@@ -10,6 +10,7 @@ import {
 import { SeatPips, AssignedCrew } from "../../../../components/admin/seat-pips";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
+import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
 import { fmt12 } from "../../../lib/format";
@@ -222,7 +223,8 @@ export default async function AllShifts({
   searchParams: Promise<Search>;
 }) {
   const subject = await readSubject();
-  if (!subject || subject.kind !== "admin") return <SignedOut />;
+  if (!subject || subject.kind !== "admin")
+    return <AdminSignedOut subject={subject} />;
 
   const sp = await searchParams;
   const mode: Mode = sp.mode === "edit" ? "edit" : "view";
@@ -718,17 +720,5 @@ function ShiftRow({
         </form>
       )}
     </div>
-  );
-}
-
-function SignedOut() {
-  return (
-    <Shell width="3xl">
-      <h1 className="text-lg font-semibold text-ink">Muster · All shifts</h1>
-      <Notice>
-        You’re signed out. Tap an operator magic link to get in — this surface is
-        Spink’s.
-      </Notice>
-    </Shell>
   );
 }

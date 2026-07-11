@@ -77,10 +77,7 @@ export default async function CrewCalendar() {
               className="w-full rounded-lg border border-line bg-bg px-3 py-2 font-mono text-xs text-ink"
             />
           </label>
-          <p className="text-xs text-muted">
-            Add it in <b>Google Calendar</b> (Other calendars → From URL) or{" "}
-            <b>Apple Calendar</b> (File → New Calendar Subscription).
-          </p>
+          <AddInstructions />
           <form action={hideCalendarUrl}>
             <SubmitButton className="min-h-[44px] w-full rounded-lg bg-accent px-4 font-semibold text-white">
               I’ve saved it — done
@@ -97,6 +94,7 @@ export default async function CrewCalendar() {
               Last synced {fmtWhen(feed.lastPolledAt)}.
             </p>
           )}
+          <AddInstructions />
           <p className="text-xs text-muted">
             The link is only shown once, when you create it. Lost it? Make a new one —
             the old link stops working.
@@ -128,5 +126,30 @@ export default async function CrewCalendar() {
 
       <VersionTag />
     </Shell>
+  );
+}
+
+/** How to subscribe the copied link in Google / Apple Calendar (#355). Crew are
+ *  mobile-primary, so Apple gets the iPhone flow; Google's "From URL" is web-only. */
+function AddInstructions() {
+  return (
+    <div className="rounded-lg border border-line bg-bg px-3 py-2 text-xs text-muted">
+      <p className="font-semibold text-ink">Add it to your calendar</p>
+      <ul className="mt-1 flex list-disc flex-col gap-1 pl-4">
+        <li>
+          <b>Google Calendar</b> (on a computer): Other calendars <b>+</b> → From
+          URL → paste the link → Add calendar.
+        </li>
+        <li>
+          <b>Apple Calendar</b> (iPhone): Settings → Calendar → Accounts → Add
+          Account → Other → Add Subscribed Calendar → paste the link.
+        </li>
+      </ul>
+      <p className="mt-2 text-[11px] text-faint">
+        Your shifts show up right away when you first add the link. After that, a
+        new or changed shift appears the next time your calendar app checks in —
+        Apple refreshes as often as you set it; Google can take a few hours.
+      </p>
+    </div>
   );
 }

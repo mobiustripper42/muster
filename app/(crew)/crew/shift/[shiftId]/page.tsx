@@ -1,6 +1,11 @@
 import { BackLink } from "../../../../../components/ui/back-link";
 import { buildShiftCard, type ShiftCardView } from "@core/crewapp/shift-card.js";
+import {
+  otherShiftsOnDay,
+  type OtherShiftToday,
+} from "@core/crewapp/other-shifts.js";
 import { ShiftManifest } from "../../../../../components/assignment/shift-manifest";
+import { OtherShiftsToday } from "../../../../../components/crew/other-shifts-today";
 import { asId } from "@core/domain/ids.js";
 import { Notice } from "../../../../../components/ui/notice";
 import { RoleGlyph } from "../../../../../components/ui/role-glyph";
@@ -93,8 +98,22 @@ export default async function ShiftCardPage({
   const me = await getRepo()
     .getCrewMember(asId<"CrewMemberId">(subject.id))
     .catch(() => null);
+  // The rest of the day (#315) — other boats out, when, and who's aboard. Best-
+  // effort: a hiccup just drops the section, never the card.
+  const otherShifts = await otherShiftsOnDay(
+    getRepo(),
+    card.date,
+    shiftId,
+    new Date(),
+  ).catch(() => [] as OtherShiftToday[]);
   return (
-    <Card card={card} shiftId={shiftId} bailError={bailError} senderName={me?.name} />
+    <Card
+      card={card}
+      shiftId={shiftId}
+      bailError={bailError}
+      senderName={me?.name}
+      otherShifts={otherShifts}
+    />
   );
 }
 
@@ -120,11 +139,13 @@ function Card({
   shiftId,
   bailError,
   senderName,
+  otherShifts,
 }: {
   card: ShiftCardView;
   shiftId: string;
   bailError: string | null;
   senderName?: string | undefined;
+  otherShifts: OtherShiftToday[];
 }) {
   const firstDeparture = card.events[0]?.departureTime;
   return (
@@ -227,6 +248,10 @@ function Card({
       )}
 
       <ShiftManifest events={card.events} sharedDock={card.sharedDock} senderName={senderName} shiftId={shiftId} />
+
+      {/* The rest of the day (#315) — collapsed by default; renders nothing when
+          this is the only shift that day. */}
+      <OtherShiftsToday shifts={otherShifts} />
 
       {/* A trainee ride (DEC-087) has no bail: it's not a reliability
           commitment, and the seat must never re-ask — the office unstaffs. */}

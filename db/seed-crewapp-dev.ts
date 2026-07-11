@@ -91,6 +91,21 @@ try {
   const acceptedAt = new Date(Date.now() - 3600_000).toISOString();
   await repo.saveAsk({ id: asId<"AskId">("ask-soon-cap"), seatId: asId<"SeatId">("seat-soon-cap"), crewMemberId: QUINT, channel: "push", sentAt: acceptedAt, respondedAt: acceptedAt, response: "accepted" });
   await repo.saveAsk({ id: asId<"AskId">("ask-soon-mate"), seatId: asId<"SeatId">("seat-soon-mate"), crewMemberId: HOOPER, channel: "push", sentAt: acceptedAt, respondedAt: acceptedAt, response: "accepted" });
+
+  // A SECOND boat out the SAME day as shift-soon (#315) — so the shift card's
+  // "Other shifts today" has something to show. Its captain (Gilly) is seeded
+  // UNRATED + already-Confirmed (a force-place): she never enters any ask pool,
+  // so this doesn't disturb bail-regression's "Quint is the only captain"
+  // assumption or Eric's mate availability. Different vessel, one 1pm trip.
+  const GROWLER = asId<"VesselId">("vessel-growler");
+  const GILLY = asId<"CrewMemberId">("crew-gilly");
+  await repo.saveVessel({ id: GROWLER, name: "Growler", coiMaxPax: 12, manning: [{ roleTypeId: CAPTAIN, count: 1 }] });
+  await repo.saveCrewMember({ id: GILLY, name: "Gilly", phone: "+15555550109", ratings: [], status: "active", reliabilityScore: null });
+  const SHIFT_SOON_B = asId<"ShiftId">("shift-soon-growler");
+  const EGB = asId<"EventId">("evt-soon-growler-1pm");
+  await repo.saveShift({ id: SHIFT_SOON_B, vesselId: GROWLER, date: SOON, state: "Crewed", eventIds: [EGB] });
+  await repo.saveEvent({ id: EGB, vesselId: GROWLER, date: SOON, time: "13:00", capacity: 12, status: "scheduled", dock: "East Bank of the Flats at Canal Basin Park" });
+  await repo.saveSeat({ id: asId<"SeatId">("seat-soon-growler-cap"), shiftId: SHIFT_SOON_B, role: CAPTAIN, kind: "required", state: "Confirmed", assignedCrewMemberId: GILLY });
   // Reap seats this seed no longer writes (upserts never delete, and a renamed
   // seat id leaves a zombie row — e.g. a 3rd captain seat on a 2-crew boat that
   // hijacks the card's mySeatId and the bail demo).

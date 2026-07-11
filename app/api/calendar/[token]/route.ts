@@ -47,8 +47,11 @@ export async function GET(
     now,
   });
 
-  // Best-effort "last synced" stamp — a write hiccup must never fail the feed.
-  void repo.touchCalendarFeedPoll(tokenHash, now.toISOString()).catch(() => {});
+  // Best-effort "last synced" stamp — a write hiccup must never fail the feed, but a
+  // persistently-failing write shouldn't be invisible either.
+  void repo
+    .touchCalendarFeedPoll(tokenHash, now.toISOString())
+    .catch((e) => console.error("calendar feed touch failed", e));
 
   return new NextResponse(ics, {
     status: 200,

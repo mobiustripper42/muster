@@ -38,7 +38,7 @@ export async function mintCalendarFeed(): Promise<void> {
 }
 
 export async function hideCalendarUrl(): Promise<void> {
-  (await cookies()).delete(FLASH_COOKIE);
+  await clearFlash();
   redirect("/crew/calendar");
 }
 
@@ -46,6 +46,14 @@ export async function revokeCalendarFeed(): Promise<void> {
   const subject = await readSubject();
   if (!subject || subject.kind !== "crew") redirect("/crew");
   await getRepo().deleteCalendarFeed(asId<"CrewMemberId">(subject.id));
-  (await cookies()).delete(FLASH_COOKIE);
+  await clearFlash();
   redirect("/crew/calendar");
+}
+
+/** Clear the show-once flash cookie. The `path` MUST match the one used at `set()`
+ *  (`/crew/calendar`) — a delete keyed to the default `/` wouldn't remove a cookie
+ *  stored at the sub-path, silently leaving the plaintext token readable (DEC-098
+ *  show-once). */
+async function clearFlash(): Promise<void> {
+  (await cookies()).delete({ name: FLASH_COOKIE, path: "/crew/calendar" });
 }

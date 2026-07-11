@@ -49,8 +49,13 @@ test.describe("crew calendar feed (#355)", () => {
     // "Done" hides the URL; the feed stays live (now shown as on).
     await page.getByRole("button", { name: /i.ve saved it/i }).click();
     await expect(page.getByText(/your calendar sync is on/i)).toBeVisible();
-    // The one-time URL is no longer on screen.
     await expect(page.getByLabel("Your calendar feed link")).toHaveCount(0);
+
+    // Show-once is REAL: the flash cookie is actually cleared, so a later revisit
+    // doesn't resurrect the token (guards the set/delete cookie-path match, DEC-098).
+    await page.reload();
+    await expect(page.getByLabel("Your calendar feed link")).toHaveCount(0);
+    await expect(page.getByText(/your calendar sync is on/i)).toBeVisible();
   });
 
   test("regenerate rotates the token — old URL 404s, unknown token 404s (no oracle)", async ({

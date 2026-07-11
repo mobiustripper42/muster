@@ -30,7 +30,11 @@ import { useEffect } from "react";
  * `display:none` — if the board-hide ever becomes `visibility:hidden`, offsetParent
  * is no longer null and the island would fire on mobile; revisit here if so.
  */
-export function RevealSelectedRow({ sel }: { sel: string }) {
+export function RevealSelectedRow({ sel, nav }: { sel: string; nav: string }) {
+  // `useEffect` (not `useLayoutEffect`) on purpose: this is a "use client"
+  // component that Next still SSRs, and `useLayoutEffect` warns during SSR. The
+  // reveal runs a frame after paint; any flash is negligible (board-col is
+  // reconciled across client nav, so it usually isn't even reset to 0 first).
   useEffect(() => {
     const col = document.querySelector<HTMLElement>(
       '[data-testid="board-col"]',
@@ -48,7 +52,11 @@ export function RevealSelectedRow({ sel }: { sel: string }) {
     if (rowRect.top < colRect.top + OFFSET || rowRect.bottom > colRect.bottom) {
       col.scrollTop += rowRect.top - colRect.top - OFFSET;
     }
-  }, [sel]);
+    // Re-run on `nav` too, not just `sel`: any board re-render (preset/crew/mode
+    // change while the pane stays open) resets board-col's scroll, so the still-
+    // selected row must be re-revealed even though `sel` didn't change. `nav` is
+    // the host's filter+mode param string, which changes on exactly those navs.
+  }, [sel, nav]);
 
   return null;
 }

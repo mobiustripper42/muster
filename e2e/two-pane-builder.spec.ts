@@ -139,6 +139,30 @@ test.describe("two-pane builder (9.5, DEC-085)", () => {
     expect(await page.evaluate(() => window.scrollY)).toBeLessThan(5);
   });
 
+  test("desktop: a mode/filter change with the pane open keeps the selected row revealed (#365, DEC-112)", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 380 });
+    await signInAsAdmin(page, "spink");
+    await page.goto(`${board()}&sel=shift-ar-regress`);
+
+    // Open the pane on the LAST (deep, below-fold) row — the island reveals it.
+    const boardCol = page.getByTestId("board-col");
+    const lastRow = boardCol.locator('[id^="shiftrow-"]').last();
+    const rowId = (await lastRow.getAttribute("id"))!;
+    const sel = rowId.replace("shiftrow-", "");
+    await lastRow.getByRole("link").first().click();
+    await page.waitForURL((u) => u.searchParams.get("sel") === sel);
+    await expect(lastRow).toBeInViewport();
+
+    // Flip View→Edit: same rows, pane stays open, board-col re-renders (resets to
+    // top). The nav-keyed effect must re-reveal the still-selected deep row.
+    await page.getByRole("link", { name: "Edit", exact: true }).click();
+    await page.waitForURL(/mode=edit/);
+    await expect(page.getByTestId("board-col").locator(`#${rowId}`)).toBeInViewport();
+    expect(await page.evaluate(() => window.scrollY)).toBeLessThan(5);
+  });
+
   test("375px: the reveal island is inert (hidden list) — the drill-in opens at top (#365)", async ({
     page,
   }) => {

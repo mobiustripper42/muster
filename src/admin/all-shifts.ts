@@ -84,7 +84,7 @@ export async function deriveAllShifts(
   repo: Repository,
   window: { from: string; to: string },
   now: Date,
-  opts?: { leadDays?: number; tz?: string },
+  opts?: { leadDays?: number; tz?: string; crewMemberId?: string },
 ): Promise<AllShiftsRow[]> {
   const vesselName = new Map(
     (await repo.listVessels()).map((v) => [v.id, v.name]),
@@ -115,6 +115,24 @@ export async function deriveAllShifts(
     if (shift.state === "Cancelled" || shift.state === "Completed") continue;
     if (shift.date < window.from || shift.date > window.to) continue;
 
+    // Seats are read first so the crew filter (#330, DEC-042 amendment) can
+    // short-circuit BEFORE the expensive per-shift state/trip/reservation
+    // derivation when the requested crew member isn't seated here. Match by id
+    // against the raw seat's `assignedCrewMemberId` (reliable — no name
+    // collision), state ∈ {Claimed, Confirmed}: a tentative accept still means
+    // "they're working it"; Asked/Open/Bailed don't bind a person to the shift.
+    const allSeatRows = await repo.listSeatsForShift(shift.id);
+    if (opts?.crewMemberId != null) {
+      const cid = String(opts.crewMemberId);
+      const seated = allSeatRows.some(
+        (s) =>
+          s.assignedCrewMemberId != null &&
+          String(s.assignedCrewMemberId) === cid &&
+          (s.state === "Claimed" || s.state === "Confirmed"),
+      );
+      if (!seated) continue;
+    }
+
     const state =
       (await resolveShiftStateOnRead(repo, shift.id, now, opts)) ?? shift.state;
 
@@ -136,7 +154,6 @@ export async function deriveAllShifts(
 
     // The pip list carries EVERY seat (a trainee reads as a dashed pip); the
     // fill counts keep their required-only definition — don't change their meaning.
-    const allSeatRows = await repo.listSeatsForShift(shift.id);
     const required = allSeatRows.filter((s) => s.kind === "required");
     const seats: AllShiftsSeat[] = [...allSeatRows]
       .sort((a, b) => {

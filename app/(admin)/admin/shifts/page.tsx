@@ -67,6 +67,10 @@ type Search = CockpitSearch & {
   split_err?: string;
   merge_ok?: string;
   merge_err?: string;
+  /** Crew filter (#330, DEC-042 amendment) — a crew member id; narrows rows to
+   *  shifts they're seated on. Does NOT change the window (respects whatever preset/
+   *  range is shown); pick a wider preset to see more of their schedule. */
+  crew?: string;
   /** Open cockpit pane (DEC-085). */
   sel?: string;
 };
@@ -132,7 +136,13 @@ function groupByDay(
     .map(([date, rows]) => ({ date, rows }));
 }
 
-type Scope = "today" | "next7" | "weekend" | "range";
+type Scope =
+  | "today"
+  | "next7"
+  | "weekend"
+  | "next8to15"
+  | "days30"
+  | "range";
 
 /** Resolve the date window from the filter params — defaulting to TODAY, clamped
  * to a sane horizon so "everything" can't render an unbounded wall (DEC-042). */
@@ -159,6 +169,24 @@ function resolveWindow(
     from = sat;
     to = addDays(sat, 1);
     kind = "weekend";
+  } else if (sp.preset === "next7") {
+    // Explicit "Week" pick — the 7-day week. Same window as the bare default; the
+    // explicit preset just records the selection in the URL (bookmarkable, and it
+    // rides the crew form so a crew pick stays on the week).
+    from = today;
+    to = addDays(today, 6);
+    kind = "next7";
+  } else if (sp.preset === "next8to15") {
+    // The bucket AFTER "next 7": days 8–15 from today (today+7 .. today+14), the
+    // planning gap between "this week" and a full fortnight. Non-overlapping with
+    // next7 by construction (starts the day next7 ends + 1).
+    from = addDays(today, 7);
+    to = addDays(today, 14);
+    kind = "next8to15";
+  } else if (sp.preset === "days30") {
+    from = today;
+    to = addDays(today, 29);
+    kind = "days30";
   } else if (isDate(sp.from) || isDate(sp.to)) {
     from = isDate(sp.from) ? sp.from : today;
     to = isDate(sp.to) ? sp.to : from;
@@ -166,7 +194,10 @@ function resolveWindow(
   } else {
     // Default: the next 7 days — the operator's "what's coming up" (8.2a, #205).
     // The day-only default (DEC-042) was too narrow for real pilot use — the
-    // operator needs upcoming visibility, not just today.
+    // operator needs upcoming visibility, not just today. The crew filter (#330)
+    // does NOT change the window — it respects whatever's shown (operator's call:
+    // "what you see is what you filter"). To see all of one crew member's upcoming,
+    // pick a wider preset (30 Days) or a From/To range.
     from = today;
     to = addDays(today, 6);
     kind = "next7";
@@ -182,11 +213,15 @@ function resolveWindow(
       ? "this weekend"
       : kind === "next7"
         ? "the next 7 days"
-        : kind === "today"
-          ? "today"
-          : from === to
-            ? fmtDate(from)
-            : `${fmtDate(from)} – ${fmtDate(to)}`;
+        : kind === "next8to15"
+          ? "2 weeks out"
+          : kind === "days30"
+            ? "the next 30 days"
+            : kind === "today"
+              ? "today"
+              : from === to
+                ? fmtDate(from)
+                : `${fmtDate(from)} – ${fmtDate(to)}`;
   return { from, to, scope, kind };
 }
 
@@ -197,11 +232,21 @@ function resolveWindow(
  * appends `sel` + its feedback code itself, so neither belongs here. */
 function filterParams(sp: Search): URLSearchParams {
   const p = new URLSearchParams();
-  if (sp.preset === "today" || sp.preset === "weekend") p.set("preset", sp.preset);
+  if (
+    sp.preset === "today" ||
+    sp.preset === "weekend" ||
+    sp.preset === "next7" ||
+    sp.preset === "next8to15" ||
+    sp.preset === "days30"
+  )
+    p.set("preset", sp.preset);
   else {
     if (isDate(sp.from)) p.set("from", sp.from);
     if (isDate(sp.to)) p.set("to", sp.to);
   }
+  // Crew filter (#330) rides the preserved param set so mode/preset/split
+  // navigation and the open cockpit pane never drop the selected crew member.
+  if (sp.crew) p.set("crew", sp.crew);
   return p;
 }
 
@@ -238,9 +283,25 @@ export default async function AllShifts({
     ? (await repo.getAdmin(subject.id).catch(() => null))?.name
     : undefined;
 
+  // Crew roster for the #330 filter dropdown + the empty-state name. Best-effort
+  // (a hiccup just drops the options / the name). Non-archived only — archived
+  // crew are off everything, so filtering the board to one is meaningless.
+  const crewList = (await repo.listCrewMembers().catch(() => []))
+    .filter((c) => c.status !== "archived")
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((c) => ({ id: String(c.id), name: c.name }));
+  const selectedCrewName = sp.crew
+    ? crewList.find((c) => c.id === sp.crew)?.name
+    : undefined;
+
   let rows: AllShiftsRow[];
   try {
-    rows = await deriveAllShifts(repo, { from, to }, now);
+    rows = await deriveAllShifts(
+      repo,
+      { from, to },
+      now,
+      sp.crew ? { crewMemberId: sp.crew } : undefined,
+    );
   } catch {
     return (
       <Shell width="3xl">
@@ -321,11 +382,26 @@ export default async function AllShifts({
         </Notice>
       )}
 
-      <Filter from={from} to={to} kind={kind} mode={mode} sel={sel} />
+      <Filter
+        from={from}
+        to={to}
+        kind={kind}
+        presetParam={sp.preset}
+        mode={mode}
+        sel={sel}
+        crew={sp.crew ?? null}
+        crewList={crewList}
+      />
 
       {rows.length === 0 ? (
         // NOT the board's ✓ success state — a quiet day is just a quiet day.
-        <Notice>No shifts {scope === "today" ? "today" : `for ${scope}`}.</Notice>
+        <Notice>
+          {selectedCrewName
+            ? `${selectedCrewName} has no shifts ${
+                scope === "today" ? "today" : `for ${scope}`
+              }.`
+            : `No shifts ${scope === "today" ? "today" : `for ${scope}`}.`}
+        </Notice>
       ) : (
         // Day sections (gap-5) with tighter rows inside (gap-2) give the weekend
         // visual rhythm under real density (#122) without adding colour/scoreboard.
@@ -449,22 +525,31 @@ function ModeToggle({ sp, mode }: { sp: Search; mode: Mode }) {
   );
 }
 
-/** Date-range filter — preset links + a no-JS GET form (DEC-026 pattern). The
- * active chip reflects the RESOLVED scope (not "any single day"). Presets and the
- * range form carry the current `mode` AND `sel` (DEC-085), so filtering never
- * kicks you out of Edit or closes the open pane. */
+/** Date-range + crew filter — preset links, a no-JS date GET form, and a no-JS
+ * crew dropdown (DEC-026 pattern). The active chip reflects the RESOLVED scope
+ * (not "any single day"). Every control carries the current `mode`, `sel`
+ * (DEC-085), AND the selected `crew` (#330), so changing one axis never kicks you
+ * out of Edit, closes the open pane, or drops the crew filter. */
 function Filter({
   from,
   to,
   kind,
+  presetParam,
   mode,
   sel,
+  crew,
+  crewList,
 }: {
   from: string;
   to: string;
   kind: Scope;
+  /** The RAW `?preset` param — carried by the crew form so picking a crew stays on
+   *  the active preset/range (#330). */
+  presetParam?: string;
   mode: Mode;
   sel: string | null;
+  crew: string | null;
+  crewList: { id: string; name: string }[];
 }) {
   const chip = (active: boolean) =>
     `pressable rounded-full border px-3 py-1 ${active ? "border-accent text-accent" : "border-line text-muted"}`;
@@ -474,47 +559,125 @@ function Filter({
     if (preset) p.set("preset", preset);
     if (edit) p.set("mode", "edit");
     if (sel) p.set("sel", sel);
+    // Preset chips keep the active crew filter selected as you switch windows (#330).
+    if (crew) p.set("crew", crew);
     const qs = p.toString();
     return qs ? `/admin/shifts?${qs}` : "/admin/shifts";
   };
+  // Re-assert the ACTIVE window on the crew form so picking a crew stays in the
+  // window you're looking at (#330 — "what you see is what you filter"; the crew
+  // filter never changes the window). An explicit preset is carried; a bare default
+  // (no preset) carries nothing and falls back to the default 7-day week — same
+  // window either way.
+  const KNOWN_PRESETS = new Set([
+    "today",
+    "weekend",
+    "next7",
+    "next8to15",
+    "days30",
+  ]);
+  const activePreset =
+    presetParam && KNOWN_PRESETS.has(presetParam) ? presetParam : null;
+  const windowHidden = activePreset ? (
+    <input type="hidden" name="preset" value={activePreset} />
+  ) : kind === "range" ? (
+    <>
+      <input type="hidden" name="from" value={from} />
+      <input type="hidden" name="to" value={to} />
+    </>
+  ) : null;
+  // Open the More panel by default when a custom range or crew filter is actually
+  // in effect, so an active advanced filter is never hidden behind the toggle.
+  const moreOpen = kind === "range" || !!crew;
   return (
     <div className="flex flex-col gap-2 rounded-card border border-line bg-card px-4 py-3">
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <AppLink href={href("today")} className={chip(kind === "today")}>
           Today
         </AppLink>
-        <AppLink href={href()} className={chip(kind === "next7")}>
-          Next 7 days
-        </AppLink>
         <AppLink href={href("weekend")} className={chip(kind === "weekend")}>
-          This weekend
+          Weekend
+        </AppLink>
+        <AppLink href={href("next7")} className={chip(kind === "next7")}>
+          Week
+        </AppLink>
+        <AppLink href={href("next8to15")} className={chip(kind === "next8to15")}>
+          2 Weeks out
+        </AppLink>
+        <AppLink href={href("days30")} className={chip(kind === "days30")}>
+          30 Days
         </AppLink>
       </div>
-      <form method="get" className="flex flex-wrap items-end gap-2 text-sm">
-        {edit && <input type="hidden" name="mode" value="edit" />}
-        {sel && <input type="hidden" name="sel" value={sel} />}
-        <label className="flex flex-col gap-0.5 text-xs text-muted">
-          From
-          <input
-            type="date"
-            name="from"
-            defaultValue={from}
-            className="rounded-lg border border-line bg-bg px-2 py-1 text-ink"
-          />
-        </label>
-        <label className="flex flex-col gap-0.5 text-xs text-muted">
-          To
-          <input
-            type="date"
-            name="to"
-            defaultValue={to}
-            className="rounded-lg border border-line bg-bg px-2 py-1 text-ink"
-          />
-        </label>
-        <GetFormSubmit className="rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent">
-          Show
-        </GetFormSubmit>
-      </form>
+
+      {/* Custom date range + crew filter, tucked behind a no-JS <details> toggle
+          (DEC-026 — native disclosure, no client JS). Open by default when one of
+          them is actually active so an in-effect filter is never hidden. */}
+      <details open={moreOpen} className="flex flex-col gap-2">
+        <summary className="cursor-pointer select-none text-xs font-semibold text-accent">
+          More filters
+        </summary>
+
+        <form method="get" className="flex flex-wrap items-end gap-2 text-sm">
+          {edit && <input type="hidden" name="mode" value="edit" />}
+          {sel && <input type="hidden" name="sel" value={sel} />}
+          {/* Keep the crew filter across an explicit date-range submit. */}
+          {crew && <input type="hidden" name="crew" value={crew} />}
+          <label className="flex flex-col gap-0.5 text-xs text-muted">
+            From
+            <input
+              type="date"
+              name="from"
+              defaultValue={from}
+              className="rounded-lg border border-line bg-bg px-2 py-1 text-ink"
+            />
+          </label>
+          <label className="flex flex-col gap-0.5 text-xs text-muted">
+            To
+            <input
+              type="date"
+              name="to"
+              defaultValue={to}
+              className="rounded-lg border border-line bg-bg px-2 py-1 text-ink"
+            />
+          </label>
+          <GetFormSubmit className="rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent">
+            Show
+          </GetFormSubmit>
+        </form>
+
+        {/* Crew filter (#330, DEC-042 amendment) — narrow the board to one crew
+            member's shifts. A no-JS GET form (DEC-026): the window hidden inputs
+            preserve the active preset/range so the pick stays in the window you're
+            looking at ("what you see is what you filter" — the crew filter never
+            changes the window). No per-crew count/scoreboard — that's the
+            monitor-bait failure mode this surface is guarded against (DEC-042). */}
+        <form
+          method="get"
+          className="flex flex-wrap items-end gap-2 border-t border-line pt-2 text-sm"
+        >
+          {edit && <input type="hidden" name="mode" value="edit" />}
+          {sel && <input type="hidden" name="sel" value={sel} />}
+          {windowHidden}
+          <label className="flex flex-col gap-0.5 text-xs text-muted">
+            Crew
+            <select
+              name="crew"
+              defaultValue={crew ?? ""}
+              className="rounded-lg border border-line bg-bg px-2 py-1 text-ink"
+            >
+              <option value="">All crew</option>
+              {crewList.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <GetFormSubmit className="rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent">
+            Filter
+          </GetFormSubmit>
+        </form>
+      </details>
     </div>
   );
 }

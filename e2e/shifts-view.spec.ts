@@ -22,10 +22,76 @@ test.describe("builder view — /admin/shifts (8.2a)", () => {
     await page.goto("/admin/shifts"); // no params → the default window
 
     await expect(page.getByRole("heading", { name: "All shifts" })).toBeVisible();
-    // The default is Next 7 days — a today-only default would hide these upcoming shifts.
-    await expect(page.getByRole("link", { name: "Next 7 days" })).toBeVisible();
+    // The default is the 7-day week — a today-only default would hide these upcoming shifts.
+    // `exact` so "Week" doesn't also match the "Weekend" chip.
+    await expect(
+      page.getByRole("link", { name: "Week", exact: true }),
+    ).toBeVisible();
     // Barrel is ~2 days out → visible only because the default reaches a week ahead.
     await expect(page.getByText("Barrel")).toBeVisible();
+  });
+
+  test("the '2 weeks out' and '30 days' quick filters resolve their windows (#321)", async ({
+    page,
+  }) => {
+    await signInAsAdmin(page, "spink");
+    await page.goto("/admin/shifts");
+
+    // Both new preset chips are present alongside the existing ones.
+    const twoWeeks = page.getByRole("link", { name: "2 Weeks out" });
+    const thirty = page.getByRole("link", { name: "30 Days" });
+    await expect(twoWeeks).toBeVisible();
+    await expect(thirty).toBeVisible();
+
+    // 30 Days: preset carried in the URL; window reaches the ~2-day-out Barrel,
+    // and the count line names the resolved scope.
+    await thirty.click();
+    await page.waitForURL(/preset=days30/);
+    await expect(page.getByText(/· the next 30 days/)).toBeVisible();
+    await expect(page.getByText("Barrel")).toBeVisible();
+
+    // 2 Weeks out: days 8–15 — a forward bucket that starts the day after the 7-day
+    // week ends, so the ~2-day-out Barrel day falls outside it (the window moved).
+    await page.goto("/admin/shifts");
+    await page.getByRole("link", { name: "2 Weeks out" }).click();
+    await page.waitForURL(/preset=next8to15/);
+    // Scope label (lowercase) shows in the count/empty line, distinct from the chip.
+    await expect(page.getByText(/2 weeks out/).last()).toBeVisible();
+    await expect(page.getByText("Barrel")).toHaveCount(0);
+  });
+
+  test("the crew filter narrows to one member's shifts and RESPECTS the window (#330)", async ({
+    page,
+  }) => {
+    await signInAsAdmin(page, "spink");
+    await page.goto("/admin/shifts");
+
+    // Gus is Confirmed on Growler (~4 days out); Bram is on Barrel (~2 days out).
+    // Default 7-day week shows both vessels.
+    await expect(page.getByText("Growler")).toBeVisible();
+    await expect(page.getByText("Barrel")).toBeVisible();
+
+    // The crew filter lives behind the "More filters" disclosure — open it first.
+    await page.getByText("More filters").click();
+    await page.getByLabel("Crew").selectOption({ label: "Gus" });
+    await page.getByRole("button", { name: "Filter" }).click();
+    await page.waitForURL(/crew=/);
+
+    // The crew pick does NOT change the window (operator's call — "what you see is
+    // what you filter"): it stays the default 7-day week, NOT a widened 45 days.
+    await expect(page.getByText(/· the next 7 days/)).toBeVisible();
+    await expect(page.getByText(/the next 45 days/)).toHaveCount(0);
+
+    // Only Gus's shift survives — Growler (in the week) stays, Barrel (Bram's) is gone.
+    await expect(page.getByText("Growler")).toBeVisible();
+    await expect(page.getByText("Barrel")).toHaveCount(0);
+
+    // To see more of Gus's schedule, widen with a preset — the crew filter rides along.
+    await page.getByRole("link", { name: "30 Days" }).click();
+    await page.waitForURL(/preset=days30/);
+    await expect(page).toHaveURL(/crew=/); // crew preserved across the window change
+    await expect(page.getByText(/· the next 30 days/)).toBeVisible();
+    await expect(page.getByText("Growler")).toBeVisible();
   });
 
   test("renders a calm split cue on a large-gap day", async ({ page }) => {

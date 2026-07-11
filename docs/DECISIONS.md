@@ -2625,14 +2625,26 @@ off-session-decline handling, or refund volume justifies pulling §3.3 in-house.
 
 **Status:** Decided 2026-07-11 (@architect, under DEC-098). First net-new route group since DEC-020.
 
-**Decision.** A new **`app/(public)`** route group — deliberately thin (one product/boat/timeslot is
-acceptable for the first live slice):
+**Decision.** A new **`app/(public)`** route group. **Built in two stages, matching the P11/P12 split:**
+the **Phase 11 surface is a throwaway, unstyled harness** — the minimum to drive one real paid booking
+through the service layer, replaced wholesale in P12. The **real, designed customer surface is Phase 12**
+(mockup-first on mildev, no Claude Design). The service-layer pieces below are P11; the UI is P12.
 - **Availability read** — Muster-owned events with remaining capacity (`COI max − Σ booked party sizes`
-  over `source='muster'` reservations); read-only, no auth, pure deriver.
-- **Booking form** → **Stripe redirect** (DEC-100) → **confirmation + manage** page.
+  over `source='muster'` reservations); read-only, no auth, pure deriver. *(Read model P11; real page P12.)*
+- **Booking form → Stripe redirect (DEC-100) → confirmation + manage page.** *(Throwaway form P11; real
+  surfaces P12.)*
 - **Manage link reuses the DEC-020 capability-URL primitive as an addressed deep-link, not a login**
   (respecting DEC-081 "a link is only ever a deep-link"). v1 "manage" = view + request-cancel-out-of-band;
-  no self-service cancel.
+  no self-service cancel. This is the **customer half of the same capability-URL family as the crew "living
+  link."** **"Living link" is an internal name only — it never appears in customer- or crew-facing copy;**
+  to a customer it is **"your booking link,"** to crew **"your shifts."** Confirmation email + SMS both
+  carry the link and emphasize **"save this link — it's how you manage your booking."**
+- **Link recovery — a public "lost your link?" form.** The general public loses emails and won't grok a
+  bare bearer URL. Recovery is **resend, not reveal:** the customer enters an identifying combo
+  (recommended: **email-or-phone + last name**; exact fields operator-confirmed), we match the reservation
+  and **re-send the existing link to the email/phone already on file** — we **never** display the booking or
+  link from typed input (that would let anyone enumerate others' bookings). Same magic-link-resend primitive
+  as crew auth; preserves the bearer-token model (you must control the on-file contact to recover). *(P12.)*
 - **The public "Book Now" entry point is a single flag** pointing at **Muster or Xola**. Flipping back to
   Xola is one setting, instant and total — the rollback contract behind DEC-098's "switch back to Xola."
   Combined with pilot volume (~5 bookings, deletable + re-keyable; the only manual wrinkle is Stripe-held

@@ -6,7 +6,7 @@ branch: task/268-scrollbar-gutter
 started: 2026-07-11T18:01:40Z
 ended:
 points:
-pr_numbers: [375, 377]
+pr_numbers: [375, 377, 378]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/079da17b-1b62-4fa4-9b6a-b394651a3f5d.jsonl
 ---
@@ -46,6 +46,21 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/079da17b-1b62-4fa4-9b6
 **Points:** 5 (grew from the window-leak detour)
 **Branch:** task/365-preserve-list-scroll
 **Opened at:** 2026-07-11T19:53:46Z
+
+## Task 3: Make FILL_DEADLINE_HOURS env-tunable (closes #322)
+
+**Completed:**
+- Decided (user, this session): env-tunable, **keep 48h default** — ship the knob, not the value (issue said "do not change the value yet"). `src/builder/derive.ts`: `FILL_DEADLINE_HOURS = 48` → `envPositiveNumber("FILL_DEADLINE_HOURS", 48)`, mirroring DEC-062's `STAFFING_HORIZON_LEAD_DAYS`. Operator flips prod to 3 days later via Vercel env `FILL_DEADLINE_HOURS=72`, no code change.
+- DEC-031 double-duty preserved (same instant = shown "fills by" AND route-(b) At-Risk boarding via `EXHAUSTED_THRESHOLD_HOURS` re-export).
+- `derive.test.ts`: env-override test block (default 48 / 72 override / fraction / garbage→48) mirroring the STAFFING one. DEC-113 recorded.
+- Verified: `derive` + `at-risk-board` tests **77 pass** (incl. 4 new); typecheck core+app, build green. Core-only, no UI/e2e.
+- Self-reviewed (mechanical exact-mirror of an established pattern; no agent).
+
+**Code review:** Self — mechanical mirror, default preserved, no schema/domain state.
+**PR:** [#378](https://github.com/mobiustripper42/muster/pull/378) — off main, independent. DEC-113 shares the DECISIONS.md append spot with #377's DEC-112 → trivial conflict on 2nd merge.
+**Points:** 2
+**Branch:** task/322-fill-deadline-env
+**Opened at:** 2026-07-11T19:57:40Z
 
 **Next Steps:**
 

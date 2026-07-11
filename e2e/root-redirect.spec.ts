@@ -22,6 +22,24 @@ test.describe("root redirect (#97)", () => {
     ).toBeVisible();
   });
 
+  test("an unmatched /crew/* path is redirected to /crew, not a 404", async ({
+    page,
+  }) => {
+    const res = await page.goto("/crew/definitely-not-a-real-page");
+    // Landed on the crew home (no hard 404), and the final response is 200.
+    await expect(page).toHaveURL((u) => u.pathname === "/crew");
+    expect(res?.status()).toBe(200);
+  });
+
+  test("an unmatched /admin/* path is redirected to /admin, not a 404", async ({
+    page,
+  }) => {
+    const res = await page.goto("/admin/definitely-not-a-real-page");
+    // Bounces to the admin hub (which then gates); no hard 404.
+    await expect(page).toHaveURL((u) => u.pathname === "/admin");
+    expect(res?.status()).toBe(200);
+  });
+
   test("signed-in crew → /crew", async ({ page }) => {
     await resetAndSeed("crew");
     await signInAsCrew(page, "crew-quint");

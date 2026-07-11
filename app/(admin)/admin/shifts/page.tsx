@@ -420,7 +420,10 @@ export default async function AllShifts({
                     row={r}
                     mode={mode}
                     back={back}
-                    href={hrefFor(sp, mode, r.shiftId)}
+                    // #shiftrow-<id> keeps the clicked row in view instead of
+                    // snapping board-col to the top on navigation (#365). The row
+                    // carries the matching id + scroll-mt (see ShiftRow).
+                    href={`${hrefFor(sp, mode, r.shiftId)}#shiftrow-${r.shiftId}`}
                     selected={sel === r.shiftId}
                     changed={changedDays.has(canonicalIdOf(r))}
                     isNew={newShifts.has(r.shiftId)}

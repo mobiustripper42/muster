@@ -57,8 +57,8 @@ const seat = (
   assignedCrewMemberId: asId<"CrewMemberId">(crewId),
 });
 
-// committedMinutes = (last − first departure) + TRIP_DURATION(100) + 2×CALL_LEAD(45).
-// One trip @15:00 → 0 + 190 = 190. Two trips 12:00+15:00 → 180 + 190 = 370.
+// committedMinutes = (last − first departure) + TRIP_DURATION(100) + CALL_LEAD(45) + TEARDOWN(25) (#275).
+// One trip @15:00 → 0 + 170 = 170. Two trips 12:00+15:00 → 180 + 170 = 350.
 const WINDOW = { from: "2026-07-06", to: "2026-07-19" };
 
 async function seed(): Promise<InMemoryRepository> {
@@ -92,8 +92,8 @@ describe("buildPayrollReport", () => {
   it("sums on-clock minutes per required crew member, in-window, sorted by name", async () => {
     const report = await buildPayrollReport(await seed(), WINDOW);
     expect(report).toEqual([
-      { crewMemberId: "crew-hooper", name: "Hooper", shiftCount: 1, minutes: 190 }, // S1 only
-      { crewMemberId: "crew-quint", name: "Quint", shiftCount: 2, minutes: 560 }, // S1 190 + S2 370
+      { crewMemberId: "crew-hooper", name: "Hooper", shiftCount: 1, minutes: 170 }, // S1 only
+      { crewMemberId: "crew-quint", name: "Quint", shiftCount: 2, minutes: 520 }, // S1 170 + S2 350
     ]);
   });
 
@@ -111,14 +111,14 @@ describe("buildPayrollReport", () => {
     await repo.saveSeat(seat("s5-a", "s5", "crew-quint"));
     await repo.saveSeat(seat("s5-b", "s5", "crew-quint")); // same person, second required seat
     const quint = (await buildPayrollReport(repo, WINDOW)).find((r) => r.crewMemberId === "crew-quint")!;
-    // S1 190 + S2 370 + S5 190 (counted ONCE, not 380) = 750; shiftCount 3, not 4.
-    expect(quint).toMatchObject({ shiftCount: 3, minutes: 750 });
+    // S1 170 + S2 350 + S5 170 (counted ONCE, not 340) = 690; shiftCount 3, not 4.
+    expect(quint).toMatchObject({ shiftCount: 3, minutes: 690 });
   });
 
   it("skips out-of-window and cancelled shifts", async () => {
     // Quint's S3 (June, out of window) and S4 (cancelled) contribute nothing — his
     // total is exactly S1 + S2.
     const quint = (await buildPayrollReport(await seed(), WINDOW)).find((r) => r.crewMemberId === "crew-quint");
-    expect(quint).toMatchObject({ shiftCount: 2, minutes: 560 });
+    expect(quint).toMatchObject({ shiftCount: 2, minutes: 520 });
   });
 });

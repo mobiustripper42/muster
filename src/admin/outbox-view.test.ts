@@ -158,7 +158,7 @@ describe("buildOutboxView", () => {
     expect(stillLive?.respondedAt).toBeUndefined(); // ask untouched — rides to its timeout
   });
 
-  it("carries the start–end window: tripEnd = tripStart + trip length + lead (DEC-041)", async () => {
+  it("carries the start–end window: tripEnd = tripStart + trip length + teardown (DEC-041, #275)", async () => {
     const bo = await addCrew("crew-bo", "Bo");
     const near = await addShift("near", 20); // trip 2026-07-02T08:00Z
     await addEntry(await addAsk(near.seatId, bo, "2026-07-01T11:00:00.000Z"));
@@ -166,7 +166,7 @@ describe("buildOutboxView", () => {
     const view = await buildOutboxView(repo, NOW, { tz: "UTC" });
     const card = view.pending[0]!;
     expect(card.tripStart).toBe("2026-07-02T08:00:00.000Z");
-    expect(card.tripEnd).toBe("2026-07-02T10:25:00.000Z"); // +100 trip +45 lead
+    expect(card.tripEnd).toBe("2026-07-02T10:05:00.000Z"); // +100 trip +25 teardown
   });
 
   it("drops an entry the moment its ask settles — answered, timed out, or vanished", async () => {

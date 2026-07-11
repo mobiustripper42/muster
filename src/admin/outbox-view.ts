@@ -52,9 +52,9 @@ export interface OutboxCardView {
   /** Earliest scheduled departure, ISO-8601 UTC — null if the shift lost its events. */
   tripStart: string | null;
   /**
-   * Shift end, ISO-8601 UTC (DEC-041) — latest departure + trip length + call
-   * lead. The close of the start–end window the card shows; null when no
-   * scheduled event anchors the shift (same as `tripStart`).
+   * Shift end, ISO-8601 UTC (DEC-041) — latest departure + trip length +
+   * teardown (#275). The close of the start–end window the card shows; null when
+   * no scheduled event anchors the shift (same as `tripStart`).
    */
   tripEnd: string | null;
   /** Hours from `now` to `tripStart` (negative = departed) — the urgency key. */

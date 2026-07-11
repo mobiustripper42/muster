@@ -306,6 +306,18 @@ const MINUTE_MS = 60 * 1000;
 export const CALL_LEAD_MINUTES = 45;
 
 /**
+ * Minutes a crew member stays AFTER the last trip returns to secure the boat —
+ * the post-trip teardown buffer (#275, amends DEC-041). Distinct from, and
+ * genuinely SHORTER than, the pre-trip `CALL_LEAD_MINUTES`: getting ready to sail
+ * (fuel, safety brief, cast off) is more than tying up at the end. Was previously
+ * the call lead reused symmetrically (a simplification that ran "back" long — a
+ * 4pm last trip read as "back ~6pm"); split out so the shift-end reflects reality.
+ * Flat, fleet-wide, plain constant — same posture as its siblings until a per-
+ * vessel resolver lands.
+ */
+export const TEARDOWN_MINUTES = 25;
+
+/**
  * Flat trip length in minutes — the (c) stopgap source for a trip's duration
  * (DEC-041), sibling to `CALL_LEAD_MINUTES`. There is no per-event duration in
  * the model yet (Xola exposes no length; no operator-config surface): until a
@@ -334,11 +346,11 @@ export function latestScheduledStart(
 
 /**
  * The instant a shift "ends" (DEC-041): the latest scheduled departure + the
- * trip length + the call lead reused as a post-trip teardown buffer ("report
- * time" is the same lead, applied symmetrically at both ends — not a new
- * constant). Pure; derived, never stored. `null` when no scheduled event
- * anchors the shift. With a flat trip length the latest *departure* yields the
- * latest *end*; when per-event durations land this becomes max(start+duration).
+ * trip length + the post-trip `TEARDOWN_MINUTES` (#275 — a shorter, distinct
+ * buffer than the pre-trip call lead; teardown < prep). Pure; derived, never
+ * stored. `null` when no scheduled event anchors the shift. With a flat trip
+ * length the latest *departure* yields the latest *end*; when per-event durations
+ * land this becomes max(start+duration).
  */
 export function shiftEndFromEvents(
   events: Event[],
@@ -347,7 +359,7 @@ export function shiftEndFromEvents(
   const last = latestScheduledStart(events, tz);
   if (last === null) return null;
   return new Date(
-    last.getTime() + (TRIP_DURATION_MINUTES + CALL_LEAD_MINUTES) * MINUTE_MS,
+    last.getTime() + (TRIP_DURATION_MINUTES + TEARDOWN_MINUTES) * MINUTE_MS,
   );
 }
 

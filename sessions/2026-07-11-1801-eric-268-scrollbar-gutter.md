@@ -6,7 +6,7 @@ branch: task/268-scrollbar-gutter
 started: 2026-07-11T18:01:40Z
 ended:
 points:
-pr_numbers: [375, 377, 378, 379, 380, 385]
+pr_numbers: [375, 377, 378, 379, 380, 385, 388]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/079da17b-1b62-4fa4-9b6a-b394651a3f5d.jsonl
 ---
@@ -107,7 +107,21 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/079da17b-1b62-4fa4-9b6
 **Branch:** task/384-import-no-boat-past
 **Opened at:** 2026-07-12T12:49:47Z
 
+## Task 7: Doorbell SMS — bare 'You have a new Muster message [link]' (closes #387)
+
+**Completed:**
+- Operator-reported: the doorbell notification SMS inlined a single short note's raw text (§7.5 content mode) → confusing (message out of context + link). Now every ring's body is the fixed "You have a new Muster message"; channel appends the deep link. Fixes auto-SMS + operator relay text (same field); keeps message content off SMS entirely.
+- `src/adapters/forward-notifications.ts`: body = `RING_NOTIFICATION_BODY`; dropped content-inline + "N new" count + unused message fetch. `mode` still flows for the ring-outbox record.
+- Tests repinned (forward-notifications, doorbell-tick, ring-relay) + an assert the note text does NOT leak. 967 unit pass; ring-relay e2e 3/3.
+
+**Code review:** Self — scoped copy change, tests cover the no-leak.
+**PR:** [#388](https://github.com/mobiustripper42/muster/pull/388) — off main, independent.
+**Points:** 1
+**Branch:** task/387-doorbell-sms-bare
+**Opened at:** 2026-07-12T14:57:39Z
+
 **Next Steps:**
+- **IN PROGRESS: MESSAGING flag** (disable ALL messaging via env flag, DEC-059-style; user decided 2026-07-12) — hide crew Messages link + shift-card Message buttons, admin Messages nav/tile, cockpit cohort link. Leave routes/code. Own issue+PR.
 - **#293** (retire OPERATOR_CREW_MEMBER_ID singleton) held for a fresh session — delicate 7-site auth/messaging refactor (act-as → acting admin's crew id; is-this → admins-set membership; exclude-from-ring → doorbell). Needs @architect. NOT started (stray local `task/293` branch, no commits).
 - **Merge order:** #375 (357) then #377 (365, stacked). #378/#379 both touch derive.ts (diff regions, trivial). #378 DEC-113 + #377 DEC-112 append same DECISIONS.md spot → resolve conflict on 2nd merge (keep both). #379 amended DEC-041 in place (no conflict).
 - **#376** filed (latent ~100px lg document overflow — pre-existing DEC-085 violation, decoupled from #365).

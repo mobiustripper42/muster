@@ -16,10 +16,16 @@ import { fmt12 } from "../../app/lib/format";
 export function OtherShiftsToday({ shifts }: { shifts: OtherShiftToday[] }) {
   if (shifts.length === 0) return null;
   return (
-    <details className="rounded-card border border-line bg-card px-4 pb-3">
-      <summary className="flex min-h-[44px] cursor-pointer items-center text-sm font-semibold text-muted">
-        Other shifts today
-        <span className="ml-1 font-normal text-faint">({shifts.length})</span>
+    <details className="group rounded-card border border-line bg-card px-4 pb-3">
+      <summary className="flex min-h-[44px] cursor-pointer items-center justify-between text-sm font-semibold text-muted [&::-webkit-details-marker]:hidden">
+        <span>
+          Other shifts today
+          <span className="ml-1 font-normal text-faint">({shifts.length})</span>
+        </span>
+        {/* Same caret idiom as the Manifest above (rotates right→down on open). */}
+        <span className="text-faint transition-transform group-open:rotate-90" aria-hidden>
+          ›
+        </span>
       </summary>
       <div className="flex flex-col gap-2 pb-1">
         {shifts.map((s) => (

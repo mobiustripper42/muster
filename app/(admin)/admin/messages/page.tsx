@@ -6,6 +6,8 @@ import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
 import { TENANT_ID } from "../../../lib/tenant";
+import { messagingEnabled } from "../../../lib/flags";
+import { notFound } from "next/navigation";
 
 /**
  * Operator messaging (#118, artifact §10) — every thread the operator can read or
@@ -18,6 +20,7 @@ import { TENANT_ID } from "../../../lib/tenant";
 export const dynamic = "force-dynamic";
 
 export default async function AdminMessages() {
+  if (!messagingEnabled()) notFound(); // messaging disabled (#389) — route is dark
   const subject = await readSubject();
   if (!subject || subject.kind !== "admin")
     return <AdminSignedOut subject={subject} />;

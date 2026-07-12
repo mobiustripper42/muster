@@ -8,6 +8,7 @@ import { Shell } from "../../../../../components/ui/shell";
 import { SubmitButton } from "../../../../../components/ui/submit-button";
 import { readSubject } from "../../../../lib/auth";
 import { getRepo } from "../../../../lib/repo";
+import { messagingEnabled } from "../../../../lib/flags";
 import { fmt12, tel, sms } from "../../../../lib/format";
 import { bailFromSeat } from "./actions";
 import { startDm } from "../../threads/actions";
@@ -195,7 +196,9 @@ function Card({
                 <span className="shrink-0 text-xs capitalize text-muted">· {c.role}</span>
               </span>
               {/* Call/Text expose the phone (SPEC §2.6.3); Message is the in-app DM
-                  — the §6 number-privacy channel, additive, not a replacement. */}
+                  — the §6 number-privacy channel, additive, not a replacement.
+                  Message is hidden when messaging is disabled (#389); Call/Text
+                  stay — they're phone, not the messaging feature. */}
               <span className="flex flex-wrap items-center gap-2">
                 <a
                   href={tel(c.phone)}
@@ -211,15 +214,17 @@ function Card({
                 >
                   Text
                 </a>
-                <form action={startDm} className="inline-flex">
-                  <input type="hidden" name="crewMemberId" value={c.crewMemberId} />
-                  <SubmitButton
-                    className="inline-flex min-h-[44px] items-center rounded-card border border-accent bg-accent px-3 font-semibold text-white"
-                    aria-label={`Message ${c.name}`}
-                  >
-                    Message
-                  </SubmitButton>
-                </form>
+                {messagingEnabled() && (
+                  <form action={startDm} className="inline-flex">
+                    <input type="hidden" name="crewMemberId" value={c.crewMemberId} />
+                    <SubmitButton
+                      className="inline-flex min-h-[44px] items-center rounded-card border border-accent bg-accent px-3 font-semibold text-white"
+                      aria-label={`Message ${c.name}`}
+                    >
+                      Message
+                    </SubmitButton>
+                  </form>
+                )}
               </span>
             </div>
           ))}

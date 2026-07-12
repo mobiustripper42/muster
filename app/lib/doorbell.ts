@@ -10,6 +10,7 @@ import {
 import { getPresence, getRepo } from "./repo";
 import { OPERATOR_CREW_MEMBER_ID } from "./operator";
 import { makeTwilioChannel } from "./sms";
+import { messagingEnabled } from "./flags";
 
 /**
  * Run one doorbell sweep + relay the rings — the edge wiring (DEC-070), the
@@ -27,6 +28,10 @@ export async function runDoorbellTick(now: Date): Promise<{
   rings: number;
   relayed: number;
 }> {
+  // Messaging disabled (#389) → the doorbell is inert: no sweep, so the cron can't
+  // ring crew about pre-existing unread threads once the entry points are gone.
+  if (!messagingEnabled()) return { threadsSwept: 0, rings: 0, relayed: 0 };
+
   const repo = getRepo();
   const rules = makeDoorbellRules({
     batchWindowMs: DOORBELL_BATCH_WINDOW_MS,

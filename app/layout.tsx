@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { Viewport } from "next";
 import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import "./globals.css";
+import { RegisterSW } from "../components/ui/register-sw";
 
 // IBM Plex (the mockups' faces). next/font self-hosts them — no layout shift,
 // no external request. Exposed as CSS variables the @theme tokens bind to.
@@ -57,6 +58,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <div className="pointer-events-none fixed inset-x-0 top-0 z-[9999] h-1 bg-yellow-400" />
         )}
         {children}
+        {/* Registers the minimal service worker (#391) — required for the Android
+            Chrome install prompt. Client-only; inert with JS off. */}
+        <RegisterSW />
       </body>
     </html>
   );

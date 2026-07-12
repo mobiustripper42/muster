@@ -25,6 +25,7 @@ import type {
   LoginCode,
   CalendarFeed,
   MusterOwnedVesselDay,
+  Payment,
   MagicToken,
   NoticeOutboxEntry,
   SmsConsent,
@@ -49,6 +50,7 @@ import type {
   MagicTokenId,
   NoticeOutboxEntryId,
   OutboxEntryId,
+  PaymentId,
   PtoWindowId,
   RingOutboxEntryId,
   ReservationId,
@@ -76,6 +78,10 @@ import type {
   ThreadKind,
 } from "../messaging/entities.js";
 import type { ThreadId } from "../domain/ids.js";
+import {
+  PAYMENT_CONFIG_DEFAULTS,
+  type PaymentConfig,
+} from "../reservations/payment-config.js";
 import type { Repository } from "../ports/repository.js";
 
 /** Add `key: value` only when value is non-null — keeps optional fields absent. */
@@ -172,6 +178,21 @@ const toMusterOwnedVesselDay = (r: any): MusterOwnedVesselDay => ({
   vesselId: asId<"VesselId">(r.vessel_id),
   date: r.date,
   markedAt: r.marked_at,
+});
+
+const toPayment = (r: any): Payment => ({
+  id: asId<"PaymentId">(r.id),
+  reservationId: asId<"ReservationId">(r.reservation_id),
+  method: r.method,
+  kind: r.kind,
+  amountCents: r.amount_cents,
+  taxCents: r.tax_cents,
+  currency: r.currency,
+  status: r.status,
+  createdAt: r.created_at,
+  ...opt("stripeCheckoutSessionId", r.stripe_checkout_session_id),
+  ...opt("stripePaymentIntentId", r.stripe_payment_intent_id),
+  ...opt("refundedCents", r.refunded_cents),
 });
 
 const toShift = (r: any): Shift => ({
@@ -597,6 +618,82 @@ export class PostgresRepository implements Repository {
        on conflict (vessel_id, date) do update set marked_at=excluded.marked_at`,
       [vesselId, date, markedAt],
     );
+  }
+
+  // ── Payments (DEC-107) ──────────────────────────────────────────────────────
+  async getPaymentConfig(): Promise<PaymentConfig> {
+    const { rows } = await this.#pool.query(
+      "select key, value from app_settings where key like 'payment.%'",
+    );
+    const kv = new Map<string, string>(rows.map((r) => [r.key, r.value]));
+    const num = (k: string, d: number): number => {
+      const n = kv.has(k) ? Number(kv.get(k)) : NaN;
+      return Number.isFinite(n) ? n : d; // absent / unparseable ⇒ default (DEC-054)
+    };
+    const mode = kv.get("payment.deposit_mode");
+    return {
+      depositMode:
+        mode === "full" || mode === "deposit"
+          ? mode
+          : PAYMENT_CONFIG_DEFAULTS.depositMode,
+      depositPercent: num("payment.deposit_percent", PAYMENT_CONFIG_DEFAULTS.depositPercent),
+      taxRateBps: num("payment.tax_rate_bps", PAYMENT_CONFIG_DEFAULTS.taxRateBps),
+      balanceDueDaysBeforeEvent: num(
+        "payment.balance_due_days",
+        PAYMENT_CONFIG_DEFAULTS.balanceDueDaysBeforeEvent,
+      ),
+    };
+  }
+  async setPaymentConfig(patch: Partial<PaymentConfig>, at: string): Promise<void> {
+    const entries: [string, string][] = [];
+    if (patch.depositMode !== undefined) entries.push(["payment.deposit_mode", patch.depositMode]);
+    if (patch.depositPercent !== undefined) entries.push(["payment.deposit_percent", String(patch.depositPercent)]);
+    if (patch.taxRateBps !== undefined) entries.push(["payment.tax_rate_bps", String(patch.taxRateBps)]);
+    if (patch.balanceDueDaysBeforeEvent !== undefined) entries.push(["payment.balance_due_days", String(patch.balanceDueDaysBeforeEvent)]);
+    for (const [key, value] of entries) {
+      await this.#pool.query(
+        `insert into app_settings(key, value, updated_at) values ($1,$2,$3)
+         on conflict (key) do update set value=excluded.value, updated_at=excluded.updated_at`,
+        [key, value, at],
+      );
+    }
+  }
+  async savePayment(p: Payment): Promise<void> {
+    await this.#pool.query(
+      `insert into payments(id, reservation_id, method, kind, amount_cents, tax_cents, currency,
+         stripe_checkout_session_id, stripe_payment_intent_id, status, refunded_cents, created_at)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       on conflict (id) do update set reservation_id=excluded.reservation_id, method=excluded.method,
+         kind=excluded.kind, amount_cents=excluded.amount_cents, tax_cents=excluded.tax_cents,
+         currency=excluded.currency, stripe_checkout_session_id=excluded.stripe_checkout_session_id,
+         stripe_payment_intent_id=excluded.stripe_payment_intent_id, status=excluded.status,
+         refunded_cents=excluded.refunded_cents, created_at=excluded.created_at`,
+      [
+        p.id,
+        p.reservationId,
+        p.method,
+        p.kind,
+        p.amountCents,
+        p.taxCents,
+        p.currency,
+        p.stripeCheckoutSessionId ?? null,
+        p.stripePaymentIntentId ?? null,
+        p.status,
+        p.refundedCents ?? null,
+        p.createdAt,
+      ],
+    );
+  }
+  async getPayment(id: PaymentId): Promise<Payment | null> {
+    const { rows } = await this.#pool.query("select * from payments where id=$1", [id]);
+    return rows[0] ? toPayment(rows[0]) : null;
+  }
+  async listPaymentsForReservation(reservationId: ReservationId): Promise<Payment[]> {
+    const { rows } = await this.#pool.query(
+      "select * from payments where reservation_id=$1 order by created_at",
+      [reservationId],
+    );
+    return rows.map(toPayment);
   }
 
   // ── Reservations ───────────────────────────────────────────────────────────

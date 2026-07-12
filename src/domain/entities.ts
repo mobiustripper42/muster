@@ -19,6 +19,7 @@ import type {
   EventId,
   MagicTokenId,
   OutboxEntryId,
+  PaymentId,
   PtoWindowId,
   ReservationId,
   RingOutboxEntryId,
@@ -218,6 +219,53 @@ export interface Reservation {
    */
   updatedAt?: string;
   // No waiver field — DEC-012.
+}
+
+// ── Payment (Muster-native reservations only — DEC-107) ──────────────────────
+
+/**
+ * How a payment was taken. Only `stripe` (card via Checkout) is implemented; the
+ * discriminator is log-day-one (DEC-008) so `cash` / `venmo` are a one-line widen
+ * later, with no schema change — the `stripe*` ids below go unused for those.
+ */
+export type PaymentMethod = "stripe" | (string & {});
+
+/** full = paid in one shot; deposit + balance = the two-part flow (DEC-107, 11.2b). */
+export type PaymentKind = "full" | "deposit" | "balance";
+
+/** `refunded` states exist for the record only — refunds are ALWAYS manual in the
+ *  Stripe dashboard (operator decision); nothing in Muster issues a programmatic refund. */
+export type PaymentStatus = "succeeded" | "refunded" | "partially_refunded";
+
+/**
+ * One money movement against a Muster-native reservation (DEC-107). A booking is a
+ * 1:n money log — `full`, or `deposit` then `balance` — modeled as a separate append
+ * record like every other Muster side-effect log (reliability, outbox, audit), NOT as
+ * columns on `Reservation` (which is shared with Xola, whose money lives in Xola —
+ * DEC-105/106; payment columns would sit null on every imported row). No FK
+ * (DEC-DATA-1). Balance-due is DERIVED (`price + tax − Σ succeeded`), never stored.
+ */
+export interface Payment {
+  /** Deterministic from the Stripe checkout-session id — idempotent write. */
+  id: PaymentId;
+  reservationId: ReservationId;
+  method: PaymentMethod;
+  kind: PaymentKind;
+  /** Amount captured, integer cents (DEC-112). */
+  amountCents: number;
+  /** Tax portion of `amountCents`, cents — recorded for the (parked) sales-tax report. */
+  taxCents: number;
+  /** ISO-4217 lowercase, e.g. "usd". */
+  currency: string;
+  /** Stripe Checkout session id (present when `method="stripe"`). */
+  stripeCheckoutSessionId?: string;
+  /** Stripe PaymentIntent id (present once the charge settles). */
+  stripePaymentIntentId?: string;
+  status: PaymentStatus;
+  /** Cents refunded so far — set by hand-reconciliation if ever tracked; refunds are manual. */
+  refundedCents?: number;
+  /** ISO-8601 UTC. */
+  createdAt: string;
 }
 
 /**

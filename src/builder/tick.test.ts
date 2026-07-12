@@ -47,7 +47,7 @@ async function seedVesselEvent(): Promise<void> {
     date: "2026-07-01",
     time: "15:00",
     capacity: 16,
-    status: "scheduled",
+    source: "xola", status: "scheduled",
   };
   await repo.saveEvent(event);
 }
@@ -203,7 +203,7 @@ describe("tick — horizon advance", () => {
       date: "2026-07-01",
       time: "15:00",
       capacity: 16,
-      status: "scheduled",
+      source: "xola", status: "scheduled",
     });
     const cap = await addCaptain("cap-1");
     await formShifts(repo);
@@ -236,7 +236,7 @@ describe("tick — horizon advance", () => {
       date: "2026-07-02",
       time: "10:00",
       capacity: 12,
-      status: "scheduled",
+      source: "xola", status: "scheduled",
     });
     await formShifts(repo);
 
@@ -609,7 +609,7 @@ describe("tick — Tier-1 drip (DEC-063)", () => {
       date: "2026-07-01",
       time: "15:00",
       capacity: 16,
-      status: "scheduled",
+      source: "xola", status: "scheduled",
     });
     await addCaptain("cap-1");
     await addCaptain("cap-2");

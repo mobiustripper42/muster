@@ -15,6 +15,7 @@ import type {
   Ask,
   AuthSubjectKind,
   CalendarFeed,
+  MusterOwnedVesselDay,
   Credential,
   CrewMember,
   CrewStatus,
@@ -130,6 +131,18 @@ export interface Repository {
   listReservationsForEvent(eventId: EventId): Promise<Reservation[]>;
   /** Every reservation — the integrity diagnostic's orphan scan. */
   listAllReservations(): Promise<Reservation[]>;
+
+  // ── Coexistence partition — Muster-owned vessel-days (DEC-106) ───────────────
+  /** Every vessel-day marked Muster-owned. The importer hoists this to a Set once
+   *  per run to skip + itemize Xola events landing on an owned day. Empty in prod
+   *  until an operator marks one via `db:own`. */
+  listMusterOwnedVesselDays(): Promise<MusterOwnedVesselDay[]>;
+  /** Mark a vessel-day Muster-owned — upsert on (vesselId, date). Set via `db:own`. */
+  markVesselDayMusterOwned(
+    vesselId: VesselId,
+    date: string,
+    markedAt: string,
+  ): Promise<void>;
 
   // ── Shifts ─────────────────────────────────────────────────────────────────
   saveShift(shift: Shift): Promise<void>;

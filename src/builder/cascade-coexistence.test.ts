@@ -43,7 +43,7 @@ beforeEach(async () => {
     date: "2026-07-01",
     time: "15:00",
     capacity: 16,
-    status: "scheduled",
+    source: "xola", status: "scheduled",
   });
 });
 

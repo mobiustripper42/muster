@@ -101,6 +101,7 @@ const ev = (id: string, date: string, time: string, status: Event["status"] = "s
   time,
   capacity: 16,
   status,
+  source: "xola",
 });
 
 const shiftWith = (eventIds: string[]): Shift => ({

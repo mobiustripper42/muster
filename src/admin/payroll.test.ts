@@ -40,6 +40,7 @@ const event = (id: string, date: string, time: string, status: Event["status"] =
   time,
   capacity: 6,
   status,
+  source: "xola",
 });
 
 const seat = (

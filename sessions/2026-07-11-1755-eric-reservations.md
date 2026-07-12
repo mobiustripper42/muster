@@ -6,7 +6,7 @@ branch: feature/reservations
 started: 2026-07-11T17:55:10Z
 ended:
 points:
-pr_numbers: [382, 383, 386, 396]
+pr_numbers: [382, 383, 386, 396, 397]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/3e406f73-c6f5-4b97-acea-59decccd4662.jsonl
 ---
@@ -74,11 +74,25 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/3e406f73-c6f5-4b97-ace
 **Branch:** task/11.2a-stripe-charge-spine
 **Opened at:** 2026-07-12T20:17:30Z
 
+## Task 5: Phase 11.6 — throwaway booking harness (closes #372)
+
+**Completed:**
+- The disposable public surface that **closes the clickable exit-gate loop**: `/book` → pick boat → form → Stripe Checkout → pay → webhook books. Explicitly replaced in P12.
+- `app/(public)/book/page.tsx` — lists bookable Muster events (11.1 `deriveAvailability`, available + priced), bare form per event (name/party/email/phone) + `SubmitButton` (DEC-090). Flag-gated (`RESERVATIONS`).
+- `app/(public)/book/actions.ts` — `startBooking` → `createBookingCheckout` (11.2) → redirect to Stripe. Writes nothing (webhook books).
+- Also shipped in 11.2a's #396: `db:checkout` CLI smoke test (`--dry-run` validated). `verify` green (**1025 + build**).
+
+**Code review:** Clean bill of health — can't bypass validation (`createBookingCheckout` re-validates source/price/party/`canBook`; page filter is display-only); no XSS (`err` is a fixed union, JSX-escaped); redirect control flow correct; writes nothing.
+**PR:** [#397](https://github.com/mobiustripper42/muster/pull/397) — **stacked on 11.2a**, base `task/11.2a-stripe-charge-spine`. Retarget to `feature/reservations` after #396 merges.
+**Points:** 3
+**Branch:** task/11.6-booking-harness
+**Opened at:** 2026-07-12T21:47:26Z
+
 **Next Steps:**
-- **#382/#383 merged to `main`; #386 (11.3) merged to `feature/reservations`.** **Merge #396 (11.2a)** into `feature/reservations`.
-- **Prod migrations owed:** `0021`+`0022`+`0023` (+ now `0024`) hand-apply on next push (verify which already applied out-of-band): `DATABASE_URL=<neon-direct> npm run db:migrate`.
-- **Drive a real Stripe test payment:** personal test keys in `.env.local` + `stripe listen --forward-to localhost:3000/api/webhooks/stripe` → card 4242… → expect a `payments` + `reservations` row.
-- **11.2b** — deposit + balance-link (second Checkout). **Also buildable:** 11.4 (booking-link + confirmation emit #370), 11.5 (waiver flag #371), 11.6 (throwaway harness — the availability+checkout form, #372), 11.7 (manifest hinge #373). `typecheck:db` prevention still owed; all-admins alert wiring owed.
+- **Merge order:** #396 (11.2a) into `feature/reservations` FIRST, then #397 (11.6) — retarget #397's base to `feature/reservations` after #396 lands (it's stacked). #382/#383 on `main`; #386 (11.3) on `feature/reservations`.
+- **EXIT GATE reachable now:** with 11.0–11.3 + 11.2a + 11.6, drive one real paid booking — `RESERVATIONS=true` + Stripe test keys in `.env.local`, `db:migrate` (0024), seed a muster event (`db:checkout --dry-run` or `db:own`), `npm run dev` + `stripe listen`, open `mill-dev:3000/book` → pay 4242… → expect `payments` + `reservations` rows.
+- **Prod migrations owed:** `0021`–`0024` hand-apply on next push (verify which already applied): `DATABASE_URL=<neon-direct> npm run db:migrate`.
+- **Remaining Phase 11:** 11.2b (deposit balance-link), 11.4 (booking-link + confirmation emit #370), 11.5 (waiver flag #371), 11.7 (manifest hinge #373), 11.8 (go-live + runbook, flag flip). Owed asides: `typecheck:db` prevention, all-admins alert wiring.
 - 11.x ride `feature/reservations` behind `RESERVATIONS` (DEC-111).
 
 **Context:**

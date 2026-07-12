@@ -40,10 +40,11 @@ test.describe("admin /admin/payroll — estimated hours by pay period", () => {
     await page.getByRole("button", { name: "View", exact: true }).click();
     await page.waitForURL(/period=/);
 
-    // shift-soon: two trips (15:00 + 17:00) → (120) + trip 100 + 2×lead 90 = 310 min
-    // = 5h 10m, for both confirmed required crew (Quint captain, Hooper mate).
+    // shift-soon: two trips (15:00 + 17:00) → span 120 + trip 100 + call lead 45 +
+    // teardown 25 = 290 min = 4h 50m (#275), for both confirmed required crew
+    // (Quint captain, Hooper mate).
     await expect(page.getByText("Quint")).toBeVisible();
     await expect(page.getByText("Hooper")).toBeVisible();
-    await expect(page.getByText("5h 10m").first()).toBeVisible();
+    await expect(page.getByText("4h 50m").first()).toBeVisible();
   });
 });

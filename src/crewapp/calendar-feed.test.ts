@@ -74,7 +74,7 @@ async function seedShift(
 describe("buildCalendarFeed (#355)", () => {
   it("returns the crew member's confirmed shifts as call→end instants", async () => {
     // 6:00 PM ET departure on 2026-07-15. Call = 6:00 PM − 45m = 5:15 PM;
-    // end = 6:00 PM + 100m trip + 45m teardown = 8:25 PM ET.
+    // end = 6:00 PM + 100m trip + 25m teardown = 8:05 PM ET (#275).
     await seedShift("s1", "2026-07-15", "18:00", { dock: "Canal Basin" });
 
     const feed = await buildCalendarFeed(repo, ME, NOW, TZ);
@@ -84,8 +84,8 @@ describe("buildCalendarFeed (#355)", () => {
     const ev = feed!.events[0]!;
     // 5:15 PM ET = 21:15 UTC (EDT, −4).
     expect(ev.start.toISOString()).toBe("2026-07-15T21:15:00.000Z");
-    // 8:25 PM ET = 00:25 UTC next day.
-    expect(ev.end.toISOString()).toBe("2026-07-16T00:25:00.000Z");
+    // 8:05 PM ET = 00:05 UTC next day.
+    expect(ev.end.toISOString()).toBe("2026-07-16T00:05:00.000Z");
     expect(ev.uid).toBe("s1");
     expect(ev.vesselName).toBe("Orca");
     expect(ev.roleName).toBe("captain");
@@ -173,7 +173,7 @@ describe("renderCalendar (#355) — RFC-5545", () => {
     expect(ics).toContain("\r\n"); // CRLF line endings
     expect(ics).toContain("UID:s1@muster");
     expect(ics).toContain("DTSTART:20260715T211500Z");
-    expect(ics).toContain("DTEND:20260716T002500Z");
+    expect(ics).toContain("DTEND:20260716T000500Z");
     expect(ics).toContain("SUMMARY:Orca — captain");
     expect(ics).toContain("LOCATION:Canal Basin");
     expect(ics).toContain("Manifest & contacts in Muster: https://muster.example/crew");

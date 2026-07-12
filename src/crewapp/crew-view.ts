@@ -38,8 +38,8 @@ export interface OpenAskView {
    * anchors the ask. */
   departureTime?: string;
   /** Shift end, "HH:mm" vessel-local (DEC-041) — latest departure + trip length
-   * + call lead, the "how long am I committed" half of the In/Out decision (#92).
-   * Undefined when no event anchors the ask, same as `departureTime`. */
+   * + teardown (#275), the "how long am I committed" half of the In/Out decision
+   * (#92). Undefined when no event anchors the ask, same as `departureTime`. */
   shiftEndTime?: string;
   /** ISO-8601 UTC when the ask went out (for "answered fast" / ordering). */
   sentAt: string;

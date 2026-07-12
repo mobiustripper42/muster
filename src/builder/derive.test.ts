@@ -23,6 +23,7 @@ import {
   STAFFING_HORIZON_LEAD_DAYS,
   TRIP_DURATION_MINUTES,
   CALL_LEAD_MINUTES,
+  TEARDOWN_MINUTES,
 } from "./derive.js";
 
 const CAPTAIN = asId<"RoleTypeId">("role-captain");
@@ -190,15 +191,17 @@ describe("latestScheduledStart", () => {
 });
 
 describe("shiftEndFromEvents", () => {
-  it("is the latest departure + trip length + call lead (DEC-041)", () => {
+  it("is the latest departure + trip length + teardown (DEC-041, #275)", () => {
     const end = shiftEndFromEvents([
       ev("e1", "2026-05-16", "15:30"),
       ev("e2", "2026-05-16", "19:30"), // last trip anchors the end
     ], "UTC");
-    // 19:30Z + (100 + 45)m = 19:30 + 2h25m = 21:55Z
-    expect(end?.toISOString()).toBe("2026-05-16T21:55:00.000Z");
+    // 19:30Z + (100 trip + 25 teardown)m = 19:30 + 2h5m = 21:35Z
+    expect(end?.toISOString()).toBe("2026-05-16T21:35:00.000Z");
     expect(TRIP_DURATION_MINUTES).toBe(100);
-    expect(CALL_LEAD_MINUTES).toBe(45);
+    expect(TEARDOWN_MINUTES).toBe(25);
+    // Teardown is genuinely shorter than the pre-trip call lead (#275).
+    expect(TEARDOWN_MINUTES).toBeLessThan(CALL_LEAD_MINUTES);
   });
 
   it("ignores cancelled trips and is null with nothing scheduled", () => {
@@ -206,7 +209,7 @@ describe("shiftEndFromEvents", () => {
       ev("e1", "2026-05-16", "19:30"),
       ev("e2", "2026-05-20", "12:00", "cancelled"), // later but cancelled — skipped
     ], "UTC");
-    expect(end?.toISOString()).toBe("2026-05-16T21:55:00.000Z");
+    expect(end?.toISOString()).toBe("2026-05-16T21:35:00.000Z");
     expect(shiftEndFromEvents([])).toBeNull();
   });
 });

@@ -78,10 +78,10 @@ describe("buildShiftCard", () => {
     expect(card.mySeatId).toBe("seat-cap"); // what a bail acts on (#56)
   });
 
-  it("shift end = latest departure + trip length + call lead (DEC-041)", async () => {
+  it("shift end = latest departure + trip length + teardown (DEC-041, #275)", async () => {
     const card = (await buildShiftCard(await seed(), SHIFT, ME, NOW))!;
-    // latest departure 17:00 + (100 trip + 45 lead) = 17:00 + 2h25m = 19:25
-    expect(card.shiftEndTime).toBe("19:25");
+    // latest departure 17:00 + (100 trip + 25 teardown) = 17:00 + 2h5m = 19:05 (#275)
+    expect(card.shiftEndTime).toBe("19:05");
   });
 
   it("a cancelled later trip moves neither the window's start nor end (DEC-041)", async () => {
@@ -93,7 +93,7 @@ describe("buildShiftCard", () => {
     await repo.saveShift({ id: SHIFT, vesselId: VESSEL, date: "2026-07-04", state: "Crewed", eventIds: [E5, E1, E9] });
     const card = (await buildShiftCard(repo, SHIFT, ME, NOW))!;
     expect(card.callTime).toBe("14:15"); // earliest SCHEDULED 15:00 − 45m
-    expect(card.shiftEndTime).toBe("19:25"); // latest SCHEDULED 17:00, not the cancelled 21:00
+    expect(card.shiftEndTime).toBe("19:05"); // latest SCHEDULED 17:00, not the cancelled 21:00 (#275 teardown)
   });
 
   it("manifest is per-event, soonest first, booked-only with pax", async () => {

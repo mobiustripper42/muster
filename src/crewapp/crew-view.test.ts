@@ -138,7 +138,7 @@ describe("buildCrewAppView", () => {
     const view = await buildCrewAppView(repo, ME, NOW);
     const ask = view!.asks.find((a) => a.askId === "ask-ev");
     expect(ask?.departureTime).toBe("15:00"); // earliest of 15:00/17:00
-    expect(ask?.shiftEndTime).toBe("19:25"); // latest 17:00 + 100 trip + 45 lead (DEC-041)
+    expect(ask?.shiftEndTime).toBe("19:05"); // latest 17:00 + 100 trip + 25 teardown (DEC-041, #275)
   });
 
   it("lists confirmed upcoming shifts soonest-first, drops past ones", async () => {
@@ -172,7 +172,7 @@ describe("buildCrewAppView", () => {
     const view = await buildCrewAppView(repo, ME, NOW);
     const row = view!.shifts.find((s) => s.shiftId === "shift-w")!;
     expect(row.departureTime).toBe("11:00"); // earliest of 11:00/17:00
-    expect(row.shiftEndTime).toBe("19:25"); // latest 17:00 + 100 trip + 45 lead (DEC-041)
+    expect(row.shiftEndTime).toBe("19:05"); // latest 17:00 + 100 trip + 25 teardown (DEC-041, #275)
     expect(row.coCrew).toEqual([{ name: "Jamie", roleName: "captain" }]); // the OTHER crew, not me
 
     // A solo/no-events shift: empty co-crew, no window.

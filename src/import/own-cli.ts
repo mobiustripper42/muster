@@ -47,10 +47,15 @@ export async function runOwnCommand(
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       throw new OwnCliError(`date must be YYYY-MM-DD, got '${date}'`);
     }
-    // DEC-106 sequencing check: warn (don't block — operator judgment) if a Xola
-    // event already sits on this vessel-day, since marking it owned strands it.
+    // DEC-106 sequencing check: warn (don't block — operator judgment) if a LIVE Xola
+    // event already sits on this vessel-day, since marking it owned strands it. Only
+    // `scheduled` events matter — a long-cancelled Xola event strands nothing.
     const stranded = (await repo.listEvents()).filter(
-      (e) => String(e.vesselId) === vesselId && e.date === date && e.source === "xola",
+      (e) =>
+        String(e.vesselId) === vesselId &&
+        e.date === date &&
+        e.source === "xola" &&
+        e.status === "scheduled",
     );
     await repo.markVesselDayMusterOwned(
       asId<"VesselId">(vesselId),

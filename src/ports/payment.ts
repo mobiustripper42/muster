@@ -9,6 +9,13 @@
  * and parses the resulting webhook.
  */
 
+/**
+ * Thrown by `parseCheckoutCompleted` when the webhook signature is invalid/absent — a
+ * client error (return 400). Distinct from an infra failure downstream (return 500 so
+ * Stripe RETRIES rather than dropping the event).
+ */
+export class PaymentSignatureError extends Error {}
+
 export interface CreateCheckoutInput {
   /** Amount to charge now, integer cents (deposit or full — computed by the caller). */
   amountCents: number;

@@ -3,11 +3,12 @@
  * charge→webhook→booking spine be tested end-to-end in the unit suite. The live
  * `StripePaymentPort` is the production twin.
  */
-import type {
-  CheckoutCompleted,
-  CheckoutSession,
-  CreateCheckoutInput,
-  PaymentPort,
+import {
+  PaymentSignatureError,
+  type CheckoutCompleted,
+  type CheckoutSession,
+  type CreateCheckoutInput,
+  type PaymentPort,
 } from "../ports/payment.js";
 
 /** The signature the fake accepts — tests pass this as the "Stripe-Signature" header. */
@@ -27,7 +28,7 @@ export class FakePaymentPort implements PaymentPort {
 
   parseCheckoutCompleted(rawBody: string, signature: string): CheckoutCompleted | null {
     if (signature !== FAKE_SIGNATURE) {
-      throw new Error("FakePaymentPort: bad signature");
+      throw new PaymentSignatureError("FakePaymentPort: bad signature");
     }
     // The test constructs the event body as CheckoutCompleted JSON (or "null" to model a
     // verified-but-ignored event type).

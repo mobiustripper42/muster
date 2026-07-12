@@ -8,11 +8,12 @@
  * and passed to the constructor — the adapter itself is env-agnostic + unit-constructable.
  */
 import Stripe from "stripe";
-import type {
-  CheckoutCompleted,
-  CheckoutSession,
-  CreateCheckoutInput,
-  PaymentPort,
+import {
+  PaymentSignatureError,
+  type CheckoutCompleted,
+  type CheckoutSession,
+  type CreateCheckoutInput,
+  type PaymentPort,
 } from "../ports/payment.js";
 
 export class StripePaymentPort implements PaymentPort {
@@ -48,12 +49,14 @@ export class StripePaymentPort implements PaymentPort {
   }
 
   parseCheckoutCompleted(rawBody: string, signature: string): CheckoutCompleted | null {
-    // Throws on a bad/absent signature (the DEC-107 verification boundary).
-    const event = this.#stripe.webhooks.constructEvent(
-      rawBody,
-      signature,
-      this.#webhookSecret,
-    );
+    // Verify + parse; a bad/absent signature is a client error (400), distinct from a
+    // downstream infra failure (500) — so re-throw it as our typed signature error.
+    let event: Stripe.Event;
+    try {
+      event = this.#stripe.webhooks.constructEvent(rawBody, signature, this.#webhookSecret);
+    } catch (e) {
+      throw new PaymentSignatureError(e instanceof Error ? e.message : "signature verification failed");
+    }
     if (event.type !== "checkout.session.completed") return null;
     const s = event.data.object as Stripe.Checkout.Session;
     const paymentIntentId =

@@ -66,8 +66,9 @@ export async function processBookingWebhook(
   }
 
   // Paid but no booking (lost the race, or the event changed post-payment) → manual-refund alert.
+  const detail = result.outcome === "unbookable" ? `${result.outcome}/${result.reason}` : result.outcome;
   await deps.alertPaidButUnbooked(
-    `⚠️ Paid booking could NOT be placed (${result.outcome}) — Stripe session ${completed.sessionId}, ` +
+    `⚠️ Paid booking could NOT be placed (${detail}) — Stripe session ${completed.sessionId}, ` +
       `${m.customerName || "customer"} party of ${partySize}. REFUND MANUALLY in Stripe.`,
   );
   return { handled: true, outcome: result.outcome };

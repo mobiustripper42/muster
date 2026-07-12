@@ -660,14 +660,13 @@ export class PostgresRepository implements Repository {
   }
   async savePayment(p: Payment): Promise<void> {
     await this.#pool.query(
+      // Insert-only: a payment row is immutable once written. A re-delivered webhook must
+      // NOT rewrite created_at (or, once refund reconciliation lands, reset status) — so
+      // do nothing on a duplicate id rather than overwrite. Idempotent by construction.
       `insert into payments(id, reservation_id, method, kind, amount_cents, tax_cents, currency,
          stripe_checkout_session_id, stripe_payment_intent_id, status, refunded_cents, created_at)
        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-       on conflict (id) do update set reservation_id=excluded.reservation_id, method=excluded.method,
-         kind=excluded.kind, amount_cents=excluded.amount_cents, tax_cents=excluded.tax_cents,
-         currency=excluded.currency, stripe_checkout_session_id=excluded.stripe_checkout_session_id,
-         stripe_payment_intent_id=excluded.stripe_payment_intent_id, status=excluded.status,
-         refunded_cents=excluded.refunded_cents, created_at=excluded.created_at`,
+       on conflict (id) do nothing`,
       [
         p.id,
         p.reservationId,

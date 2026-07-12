@@ -271,7 +271,9 @@ export class InMemoryRepository implements Repository {
     this.#paymentConfig = { ...this.#paymentConfig, ...patch };
   }
   async savePayment(payment: Payment): Promise<void> {
-    this.#payments.set(payment.id, clone(payment)); // idempotent upsert on deterministic id
+    // Insert-only (mirrors the postgres `on conflict do nothing`): a payment row is
+    // immutable once written, so a re-delivered webhook is a no-op, not an overwrite.
+    if (!this.#payments.has(payment.id)) this.#payments.set(payment.id, clone(payment));
   }
   async getPayment(id: PaymentId): Promise<Payment | null> {
     const p = this.#payments.get(id);

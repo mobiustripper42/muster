@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { StripePaymentPort } from "@core/adapters/stripe-payment.js";
+import { PaymentSignatureError } from "@core/ports/payment.js";
 import { processBookingWebhook } from "@core/reservations/booking-webhook.js";
 import { getRepo } from "../../../lib/repo";
 
@@ -47,9 +48,15 @@ export async function POST(req: Request): Promise<Response> {
     );
     return NextResponse.json({ received: true, ...result });
   } catch (e) {
-    // Signature verification failed → 400 (Stripe backs off on a 4xx).
     const message = e instanceof Error ? e.message : "webhook error";
-    console.error(`Stripe webhook rejected: ${message}`);
-    return NextResponse.json({ error: message }, { status: 400 });
+    if (e instanceof PaymentSignatureError) {
+      // Bad/forged signature → 400 (a client error; Stripe won't retry a forged event).
+      console.error(`Stripe webhook signature rejected: ${message}`);
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+    // Infra failure (DB, etc.) after a VALID signature → 500 so Stripe RETRIES; a 4xx here
+    // would drop a paid event and silently lose the booking.
+    console.error(`Stripe webhook processing failed: ${message}`);
+    return NextResponse.json({ error: "processing failed" }, { status: 500 });
   }
 }

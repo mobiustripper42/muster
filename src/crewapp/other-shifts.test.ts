@@ -87,7 +87,7 @@ describe("otherShiftsOnDay (#315)", () => {
     await addShift("mine", "2026-07-03", "Orca", ["10:00"], [
       { state: "Confirmed", crew: { id: "crew-me", name: "Me" } },
     ]);
-    await addShift("other-late", "2026-07-03", "Hops", ["17:00"], [
+    await addShift("other-late", "2026-07-03", "Hops", ["17:00", "19:00"], [
       { state: "Confirmed", crew: { id: "crew-quint", name: "Quint" } },
     ]);
     await addShift("other-early", "2026-07-03", "Firkin", ["09:00"], [
@@ -105,10 +105,12 @@ describe("otherShiftsOnDay (#315)", () => {
       shiftId: "other-early",
       vesselName: "Firkin",
       firstDeparture: "09:00",
+      tripCount: 1, // single-trip day
       crew: [{ name: "Bo", role: "mate" }],
     });
     expect(rows[1]!.vesselName).toBe("Hops");
-    expect(rows[1]!.firstDeparture).toBe("17:00");
+    expect(rows[1]!.firstDeparture).toBe("17:00"); // earliest of the two trips
+    expect(rows[1]!.tripCount).toBe(2); // 17:00 + 19:00
     expect(rows[1]!.crew).toEqual([{ name: "Quint", role: "captain" }]);
   });
 

@@ -27,12 +27,21 @@ export function OtherShiftsToday({ shifts }: { shifts: OtherShiftToday[] }) {
             key={s.shiftId}
             className="rounded-card border border-line bg-bg px-3 py-2"
           >
-            <div className="flex items-baseline justify-between gap-2">
+            {/* items-start (not baseline): the stacked time+trips on the right
+                would otherwise pull the boat name off a shared baseline. */}
+            <div className="flex items-start justify-between gap-2">
               <span className="min-w-0 truncate font-semibold text-ink">
                 {s.vesselName}
               </span>
-              <span className="shrink-0 font-mono text-sm text-muted">
-                {s.firstDeparture ? fmt12(s.firstDeparture) : "—"}
+              <span className="flex shrink-0 flex-col items-end leading-tight">
+                <span className="font-mono text-sm text-ink">
+                  {s.firstDeparture ? fmt12(s.firstDeparture) : "—"}
+                </span>
+                {s.tripCount > 1 && (
+                  <span className="font-mono text-xs text-faint">
+                    {s.tripCount} trips
+                  </span>
+                )}
               </span>
             </div>
             <div className="mt-0.5 text-sm text-muted">

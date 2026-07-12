@@ -27,10 +27,11 @@ test.describe("crew shift card — other shifts today (#315)", () => {
     // The count is in the summary before you even open it.
     await expect(section.getByText("Other shifts today")).toContainText("(1)");
 
-    // Expand → the sibling Growler shift: boat, 1:00 PM departure, its crew.
+    // Expand → the sibling Growler shift: boat, 1:00 PM departure, "2 trips", crew.
     await section.getByText("Other shifts today").click();
     await expect(section.getByText("Growler")).toBeVisible();
     await expect(section.getByText("1:00 PM")).toBeVisible();
+    await expect(section.getByText("2 trips")).toBeVisible(); // multi-trip count (#315 follow-up)
     await expect(section.getByText("Gilly")).toBeVisible();
 
     // PII boundary: no guest manifest leaks into the other-shift row.

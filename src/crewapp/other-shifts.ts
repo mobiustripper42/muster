@@ -13,6 +13,10 @@ export interface OtherShiftToday {
   vesselName: string;
   /** First scheduled departure, vessel-local "HH:mm"; null when none scheduled. */
   firstDeparture: string | null;
+  /** How many scheduled trips this shift runs — surfaced as "N trips" under the
+   *  first departure when > 1 (#315 follow-up), so a multi-trip day reads at a
+   *  glance without listing every clock time (kept calm, not a full timetable). */
+  tripCount: number;
   /** Assigned crew (name + role), in the board's deterministic seat order; empty
    *  when nothing's crewed yet. */
   crew: OtherShiftCrew[];
@@ -45,6 +49,7 @@ export async function otherShiftsOnDay(
       shiftId: r.shiftId,
       vesselName: r.vesselName,
       firstDeparture: r.trips[0]?.time ?? null,
+      tripCount: r.trips.length,
       crew: r.seats
         .filter((s) => s.crewName)
         .map((s) => ({ name: s.crewName as string, role: s.roleName })),

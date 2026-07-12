@@ -6,7 +6,7 @@ branch: task/268-scrollbar-gutter
 started: 2026-07-11T18:01:40Z
 ended:
 points:
-pr_numbers: [375, 377, 378, 379, 380, 385, 388, 390]
+pr_numbers: [375, 377, 378, 379, 380, 385, 388, 390, 394]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/079da17b-1b62-4fa4-9b6a-b394651a3f5d.jsonl
 ---
@@ -134,7 +134,22 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/079da17b-1b62-4fa4-9b6
 **Branch:** task/messaging-flag
 **Opened at:** 2026-07-12T15:15:50Z
 
+## Task 9: PWA manifest screenshots — make Android/desktop offer install (closes #391)
+
+**Completed:**
+- Operator couldn't add Muster to Android home screen. Diagnosed via Chrome DevTools → Manifest (operator ran it): app IS installable (manifest/icons/HTTPS/no-CSP all verified by me in the built app), only gap = **no `screenshots`** → Chrome's minimal install UI, entry missing on some Chrome versions. **No service worker needed** (Chrome didn't flag one — verified, didn't guess).
+- Added `public/screenshot-mobile.png` (390×844) + `screenshot-wide.png` (1280×800) — real captures of public /crew/help via a throwaway e2e; dims match manifest `sizes`. `app/manifest.ts` `screenshots` (narrow + wide form_factor). crew/help Android copy → leads with "Install app" + in-app-browser caveat (iPhone unchanged).
+- Verified: served manifest advertises both screenshots (200 image/png, correct dims); typecheck/lint/build; crew-help e2e 3/3.
+- **`/crew/help` admin-404: NOT reproducible** — returns 200 for admin/crew/public on main; prod has identical page. Operator retried, couldn't repro. No code change (stale-deploy artifact).
+
+**Code review:** Self — manifest + 2 assets + 1 copy line; verified serving end-to-end.
+**PR:** [#394](https://github.com/mobiustripper42/muster/pull/394) — off main, independent. Ships to prod on next promote (prod v1.0.4 predates it).
+**Points:** 2
+**Branch:** task/pwa-screenshots
+**Opened at:** 2026-07-12T18:18:22Z
+
 **Next Steps:**
+- After #394 deploys: operator re-checks Android install (⋮ → Install app / richer dialog) + desktop (address-bar ⊕). If still missing → Chrome-variant/policy quirk, not the site.
 - **OFF-path e2e for #390** owed — needs a 2nd webServer/project (flag can't vary per-run on one server); deferred as fragile-harness. Off is construction-verified + reviewer-traced.
 - **#293** (retire OPERATOR_CREW_MEMBER_ID singleton) held for a fresh session — delicate 7-site auth/messaging refactor (act-as → acting admin's crew id; is-this → admins-set membership; exclude-from-ring → doorbell). Needs @architect. NOT started (stray local `task/293` branch, no commits).
 - **Merge order:** #375 (357) then #377 (365, stacked). #378/#379 both touch derive.ts (diff regions, trivial). #378 DEC-113 + #377 DEC-112 append same DECISIONS.md spot → resolve conflict on 2nd merge (keep both). #379 amended DEC-041 in place (no conflict).

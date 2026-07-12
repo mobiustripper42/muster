@@ -638,6 +638,59 @@ export class PostgresRepository implements Repository {
     const { rows } = await this.#pool.query("select * from reservations");
     return rows.map(toReservation);
   }
+  async saveReservationIfUnclaimed(r: Reservation): Promise<boolean> {
+    // Atomic whole-boat claim (DEC-109). The mutex is a `select … for update` on the
+    // pre-existing EVENT row — NOT a unique constraint (n:1 on reservations→event
+    // stays intact per DEC-DATA-1). A plain `insert … where not exists` would oversell
+    // under READ COMMITTED (two concurrent inserts each snapshot before the other's
+    // uncommitted row); the row lock serializes claims on this boat, so the loser's
+    // guarded insert re-evaluates against the winner's committed row and writes zero.
+    // `id <> $1` + `on conflict (id) do nothing` make a retry of the SAME reservation
+    // idempotent (its own row never blocks it, never duplicates).
+    const client = await this.#pool.connect();
+    try {
+      await client.query("begin");
+      const ev = await client.query("select 1 from events where id=$1 for update", [
+        r.eventId,
+      ]);
+      if (ev.rowCount === 0) {
+        await client.query("rollback");
+        return false; // no such event — unbookable
+      }
+      await client.query(
+        `insert into reservations
+           (id, event_id, customer_name, party_size, email, phone, status, updated_at, source)
+         select $1,$2,$3,$4,$5,$6,$7,$8,$9
+         where not exists (
+           select 1 from reservations
+           where event_id=$2 and source='muster' and status='booked' and id <> $1
+         )
+         on conflict (id) do nothing`,
+        [
+          r.id,
+          r.eventId,
+          r.customerName,
+          r.partySize,
+          r.email ?? null,
+          r.phone ?? null,
+          r.status,
+          r.updatedAt ?? null,
+          r.source,
+        ],
+      );
+      const won = await client.query(
+        "select 1 from reservations where id=$1",
+        [r.id],
+      );
+      await client.query("commit");
+      return won.rowCount === 1;
+    } catch (e) {
+      await client.query("rollback");
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
 
   // ── Shifts ─────────────────────────────────────────────────────────────────
   async saveShift(s: Shift): Promise<void> {

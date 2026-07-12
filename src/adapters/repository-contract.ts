@@ -400,6 +400,59 @@ export function runRepositoryContract(
       ).toBe("muster");
     });
 
+    // ── saveReservationIfUnclaimed — the whole-boat claim (DEC-109) ────────────
+    const rid = (s: string) => asId<"ReservationId">(s);
+
+    it("saveReservationIfUnclaimed: writes when the boat is unclaimed", async () => {
+      await repo.saveEvent(event({ source: "muster" }));
+      expect(await repo.saveReservationIfUnclaimed(reservation({ source: "muster" }))).toBe(true);
+      expect(await repo.listReservationsForEvent(EVENT)).toHaveLength(1);
+    });
+
+    it("saveReservationIfUnclaimed: idempotent on id — same reservation twice, no duplicate", async () => {
+      await repo.saveEvent(event({ source: "muster" }));
+      const r = reservation({ source: "muster" });
+      expect(await repo.saveReservationIfUnclaimed(r)).toBe(true);
+      expect(await repo.saveReservationIfUnclaimed(r)).toBe(true); // idempotent re-put
+      expect(await repo.listReservationsForEvent(EVENT)).toHaveLength(1);
+    });
+
+    it("saveReservationIfUnclaimed: blocked by a DIFFERENT active Muster reservation", async () => {
+      await repo.saveEvent(event({ source: "muster" }));
+      expect(await repo.saveReservationIfUnclaimed(reservation({ id: rid("resv-a"), source: "muster" }))).toBe(true);
+      expect(await repo.saveReservationIfUnclaimed(reservation({ id: rid("resv-b"), source: "muster" }))).toBe(false);
+      expect(await repo.listReservationsForEvent(EVENT)).toHaveLength(1);
+    });
+
+    it("saveReservationIfUnclaimed: an active Xola reservation does NOT block (source-scoped)", async () => {
+      await repo.saveEvent(event({ source: "muster" }));
+      await repo.saveReservation(reservation({ id: rid("resv-x"), source: "xola" }));
+      expect(await repo.saveReservationIfUnclaimed(reservation({ id: rid("resv-m"), source: "muster" }))).toBe(true);
+    });
+
+    it("saveReservationIfUnclaimed: a cancelled Muster reservation does NOT block", async () => {
+      await repo.saveEvent(event({ source: "muster" }));
+      await repo.saveReservation(reservation({ id: rid("resv-c"), source: "muster", status: "cancelled" }));
+      expect(await repo.saveReservationIfUnclaimed(reservation({ id: rid("resv-m"), source: "muster" }))).toBe(true);
+    });
+
+    it("saveReservationIfUnclaimed: false for a nonexistent event", async () => {
+      expect(await repo.saveReservationIfUnclaimed(reservation({ source: "muster" }))).toBe(false);
+    });
+
+    it("saveReservationIfUnclaimed: exactly one of two concurrent claims wins (DEC-109)", async () => {
+      await repo.saveEvent(event({ source: "muster" }));
+      const [a, b] = await Promise.all([
+        repo.saveReservationIfUnclaimed(reservation({ id: rid("resv-a"), source: "muster", customerName: "A" })),
+        repo.saveReservationIfUnclaimed(reservation({ id: rid("resv-b"), source: "muster", customerName: "B" })),
+      ]);
+      expect([a, b].filter(Boolean)).toHaveLength(1); // exactly one winner
+      const active = (await repo.listReservationsForEvent(EVENT)).filter(
+        (r) => r.source === "muster" && r.status === "booked",
+      );
+      expect(active).toHaveLength(1);
+    });
+
     it("muster-owned vessel-days: mark + list; upsert on (vessel,date) (DEC-106)", async () => {
       expect(await repo.listMusterOwnedVesselDays()).toEqual([]);
       await repo.markVesselDayMusterOwned(

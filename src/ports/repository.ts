@@ -131,6 +131,18 @@ export interface Repository {
   listReservationsForEvent(eventId: EventId): Promise<Reservation[]>;
   /** Every reservation — the integrity diagnostic's orphan scan. */
   listAllReservations(): Promise<Reservation[]>;
+  /**
+   * Atomic whole-boat claim (DEC-109, the customer-side REQ-CLAIM-1). Writes
+   * `reservation` (source='muster', status='booked') IFF the boat-event carries no
+   * OTHER active Muster reservation. Returns `true` iff, after the call, the event is
+   * held by exactly this reservation id — freshly inserted OR already present from a
+   * prior identical call (idempotent on id). Returns `false` iff a DIFFERENT active
+   * Muster reservation holds the event, or the event does not exist. The mutex lives
+   * HERE in the port — identical across adapters, never a DB unique constraint (n:1
+   * stays intact, DEC-DATA-1). Source-scoped: an active `xola` reservation never
+   * blocks. Capacity is NOT checked here (it can't race) — that's `canBook`'s job.
+   */
+  saveReservationIfUnclaimed(reservation: Reservation): Promise<boolean>;
 
   // ── Coexistence partition — Muster-owned vessel-days (DEC-106) ───────────────
   /** Every vessel-day marked Muster-owned. The importer hoists this to a Set once

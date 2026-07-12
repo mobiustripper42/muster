@@ -248,10 +248,17 @@ export function staffingHorizonFor(
  * `EXHAUSTED_THRESHOLD_HOURS`), by design (DEC-031): the displayed deadline IS
  * the escalation instant, so the two can't drift. Distinct from — and the
  * *closing* counterpart to — the staffing horizon, which is the window's
- * *opening* (Pending→Filling, DEC-022). Tune-later code constant; tenant-config
- * later, like `STAFFING_HORIZON_LEAD_DAYS`.
+ * *opening* (Pending→Filling, DEC-022).
+ *
+ * **Env-overridable** via `FILL_DEADLINE_HOURS` (DEC-115, mirroring DEC-062's
+ * `STAFFING_HORIZON_LEAD_DAYS`), a **positive number** (fractional hours allowed;
+ * garbage falls back), default **48** (2 days). The operator tunes it per deploy
+ * — e.g. a Vercel env `FILL_DEADLINE_HOURS=72` for a 3-day At-Risk window — with
+ * no code change. **Double-duty (DEC-031):** this same instant is the shown "fills
+ * by" deadline AND the route-(b) At-Risk boarding instant, so a bump moves both by
+ * design. The code default stays 48; #322 shipped the knob, not a value change.
  */
-export const FILL_DEADLINE_HOURS = 48;
+export const FILL_DEADLINE_HOURS = envPositiveNumber("FILL_DEADLINE_HOURS", 48);
 
 const HOUR_MS = 60 * 60 * 1000;
 

@@ -158,13 +158,20 @@ export async function pullXola(
   const { vessels, excluded, unmapped } = eventVesselMap(events);
 
   const { records, skipped } = mapXolaOrders(orders, vessels);
-  // A booked item with no boat is only actionable when its trip date lands inside
-  // the pulled window (#338) — an out-of-window one is just the window edge. Dates
-  // are `YYYY-MM-DD`, same shape as the window bounds, so string compare is correct.
-  const inWindow = (d?: string): boolean =>
-    !!d && d >= window.start && d <= window.end;
+  const today = vesselLocalDate(now, tz);
+  // A booked item with no boat is only *actionable* when its trip is TODAY or later
+  // (#338, #384). A PAST trip — including the `today − 1` fetch buffer day the pull
+  // reaches back to for reconciliation — can't form a crewed shift no matter what
+  // Xola does, so it must NOT land in the loud "assign a boat & re-import" alert;
+  // it drops into the benign `mapSkipped` tally instead. Lower bound is `today`,
+  // NOT `window.start` (= yesterday). Dates are `YYYY-MM-DD`, same shape as the
+  // bounds, so string compare is correct.
   const bookedNoBoat = skipped.filter(
-    (s) => s.category === "booked_no_boat" && inWindow(s.date),
+    (s) =>
+      s.category === "booked_no_boat" &&
+      !!s.date &&
+      s.date >= today &&
+      s.date <= window.end,
   );
   const imported = await importRecords(repo, records, now);
   // notifyTripChanges (#350): the import is the one caller that should relay "your

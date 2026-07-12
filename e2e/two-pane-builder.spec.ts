@@ -109,7 +109,7 @@ test.describe("two-pane builder (9.5, DEC-085)", () => {
     await expect(page.getByRole("heading", { name: "All shifts" })).toBeVisible();
   });
 
-  test("desktop: opening a row reveals it in board-col WITHOUT scrolling the window (#365, DEC-112)", async ({
+  test("desktop: opening a row reveals it in board-col WITHOUT scrolling the window (#365, DEC-114)", async ({
     page,
   }) => {
     // A short viewport so the board column overflows and the last row sits below
@@ -139,7 +139,7 @@ test.describe("two-pane builder (9.5, DEC-085)", () => {
     expect(await page.evaluate(() => window.scrollY)).toBeLessThan(5);
   });
 
-  test("desktop: a mode/filter change with the pane open keeps the selected row revealed (#365, DEC-112)", async ({
+  test("desktop: a mode/filter change with the pane open keeps the selected row revealed (#365, DEC-114)", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 380 });

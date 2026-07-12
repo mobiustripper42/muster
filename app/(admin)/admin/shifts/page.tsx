@@ -452,7 +452,7 @@ export default async function AllShifts({
           normal-flow full-screen drill-in, the list display-hidden (DEC-085). */}
       <div className="lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,3fr)_minmax(0,4fr)] lg:gap-6">
         <div
-          // DUAL-PURPOSE hook: e2e selects `board-col`, AND the DEC-112
+          // DUAL-PURPOSE hook: e2e selects `board-col`, AND the DEC-114
           // `RevealSelectedRow` island scrolls this exact node. Renaming the
           // testid silently breaks the scroll reveal (no type/test error) — keep
           // the two in sync.
@@ -477,7 +477,7 @@ export default async function AllShifts({
         </div>
       </div>
       {/* Keep the operator's place in the list when a row opens the pane (#365,
-          DEC-112) — a DEC-026-family client-JS island, scoped to board-col's own
+          DEC-114) — a DEC-026-family client-JS island, scoped to board-col's own
           scroll (never the window), inert on mobile. `nav={ctx}` re-reveals the
           selected row after a filter/mode change too, not just on row-click. */}
       <RevealSelectedRow sel={sel} nav={ctx} />

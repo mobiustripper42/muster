@@ -72,7 +72,7 @@ export function ShiftRow({
 
   return (
     <div
-      // Scroll target for the selected-row reveal (#365, DEC-112): the
+      // Scroll target for the selected-row reveal (#365, DEC-114): the
       // `RevealSelectedRow` client island finds this row by id and nudges
       // board-col's own scroll so a click doesn't snap the list back to the top on
       // a long list. Kept keyed off `shiftId` (matches the React key + split-side

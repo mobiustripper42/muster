@@ -18,7 +18,7 @@ import { useEffect } from "react";
  * scrolls on lg" guarantee). Imperative, board-col-scoped scroll is the only way
  * to reveal the row without that leak.
  *
- * **A `'use client'` island in the DEC-026 family (DEC-112)** — joining the
+ * **A `'use client'` island in the DEC-026 family (DEC-114)** — joining the
  * redirect-feedback (DEC-097), submit-spinner (DEC-100), and copy/relay (DEC-030)
  * islands: JS is an *enhancement* here, never a requirement. With JS off the row
  * still selects and the cockpit still renders; only the auto-place-keeping is lost
@@ -26,7 +26,7 @@ import { useEffect } from "react";
  *
  * Inert on mobile: below `lg` the board list is `display:none`, so `offsetParent`
  * is null and the effect bails, leaving the full-screen drill-in at top (Next's
- * default scroll-to-top). **Fragility (DEC-112):** this mobile guard keys off
+ * default scroll-to-top). **Fragility (DEC-114):** this mobile guard keys off
  * `display:none` — if the board-hide ever becomes `visibility:hidden`, offsetParent
  * is no longer null and the island would fire on mobile; revisit here if so.
  */

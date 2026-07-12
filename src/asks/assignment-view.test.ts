@@ -157,7 +157,7 @@ describe("buildAssignmentView — cockpit additions (#54)", () => {
       date: DATE,
       time: "15:00",
       capacity: 12,
-      status: "scheduled",
+      source: "xola", status: "scheduled",
     });
     await repo.saveEvent({
       id: e2,
@@ -165,11 +165,12 @@ describe("buildAssignmentView — cockpit additions (#54)", () => {
       date: DATE,
       time: "13:00",
       capacity: 12,
-      status: "scheduled",
+      source: "xola", status: "scheduled",
     });
     await repo.saveReservation({
       id: asId<"ReservationId">("res-1"),
       eventId: e2,
+      source: "xola",
       customerName: "Pat",
       partySize: 5,
       status: "booked",
@@ -177,6 +178,7 @@ describe("buildAssignmentView — cockpit additions (#54)", () => {
     await repo.saveReservation({
       id: asId<"ReservationId">("res-2"),
       eventId: e2,
+      source: "xola",
       customerName: "Quinn",
       partySize: 3,
       status: "cancelled", // not aboard, not counted

@@ -48,11 +48,12 @@ async function seedSpine(): Promise<InMemoryRepository> {
     date: "2026-07-01",
     time: "14:00",
     capacity: 12,
-    status: "scheduled",
+    source: "xola", status: "scheduled",
   };
   const reservation: Reservation = {
     id: asId<"ReservationId">("resv-1"),
     eventId: EVENT,
+    source: "xola",
     customerName: "Brody",
     partySize: 4,
     status: "booked",

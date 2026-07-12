@@ -115,7 +115,7 @@ Persistence is **Postgres behind the `Repository` port**: **local Postgres in de
 ### Components
 - Server Components by default. Add `'use client'` only when needed.
 - No component library yet (DEC-021) — components are hand-built from Tailwind v4 utilities.
-- Feature components in `components/[feature]/`. Keep components under 200 lines; split if larger.
+- Feature components in `components/[feature]/`. **Guideline, not a rule: keep a component under ~300 lines of code** (the doc-comment block doesn't count — this repo comments heavily). Split when it's genuinely two responsibilities or the diff is hard to review, **not to hit a number** — same posture as the Scope Discipline "don't split a coherent 8" rule. Route orchestrators (`page.tsx`/`layout.tsx`) do auth + data + layout + composition and run larger by nature; judge them by coherence, not line count.
 
 ### Error Handling
 - Form actions: return `string | null`. `null` = success, string = error message.

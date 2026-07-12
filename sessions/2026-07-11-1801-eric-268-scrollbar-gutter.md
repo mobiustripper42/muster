@@ -6,7 +6,7 @@ branch: task/268-scrollbar-gutter
 started: 2026-07-11T18:01:40Z
 ended:
 points:
-pr_numbers: [375, 377, 378, 379, 380, 385, 388]
+pr_numbers: [375, 377, 378, 379, 380, 385, 388, 390]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/079da17b-1b62-4fa4-9b6a-b394651a3f5d.jsonl
 ---
@@ -120,8 +120,22 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/079da17b-1b62-4fa4-9b6
 **Branch:** task/387-doorbell-sms-bare
 **Opened at:** 2026-07-12T14:57:39Z
 
+## Task 8: MESSAGING flag — disable all messaging, leave code (closes #389)
+
+**Completed:**
+- Operator kill switch (decided 2026-07-12): `messagingEnabled()` (`app/lib/flags.ts`, `MESSAGING === "1"`, OFF by default → prod dark with no env action; DEC-059-style). Code all left in place.
+- Gated: entry points (crew Messages link, shift-card Message button [Call/Text stay], admin-hub tile, admin-nav item via server→client `messaging` prop, cockpit cohort link); routes `notFound()` (/crew/threads(+[id]), /admin/messages(+[id])); **server actions** inert (startDm/postMessage/postOperatorMessage — closes the crafted-POST gap); **doorbell sweep no-ops** (else it'd ring about pre-existing threads — the non-obvious bit); outbox ring section + crew-home unread query skipped when off. playwright: MESSAGING=1 so retained e2e runs.
+- @code-review: **no missed entry point** (every path traced). Follow-ups applied (action gating + query skip).
+- Verified: typecheck+lint+build; ON-path e2e (crew-messaging, operator-messaging, ring-relay, admin-nav, outbox-relay) all green. **OFF-path NOT automated** (single-server harness can't vary the flag) — trivial guards, eyeball in PR.
+
+**Code review:** Clean/complete (traced all paths); action + query-skip follow-ups done.
+**PR:** [#390](https://github.com/mobiustripper42/muster/pull/390) — off main, independent. **Deploy: leave MESSAGING unset in prod = off; set MESSAGING=1 to restore.**
+**Points:** 5
+**Branch:** task/messaging-flag
+**Opened at:** 2026-07-12T15:15:50Z
+
 **Next Steps:**
-- **IN PROGRESS: MESSAGING flag** (disable ALL messaging via env flag, DEC-059-style; user decided 2026-07-12) — hide crew Messages link + shift-card Message buttons, admin Messages nav/tile, cockpit cohort link. Leave routes/code. Own issue+PR.
+- **OFF-path e2e for #390** owed — needs a 2nd webServer/project (flag can't vary per-run on one server); deferred as fragile-harness. Off is construction-verified + reviewer-traced.
 - **#293** (retire OPERATOR_CREW_MEMBER_ID singleton) held for a fresh session — delicate 7-site auth/messaging refactor (act-as → acting admin's crew id; is-this → admins-set membership; exclude-from-ring → doorbell). Needs @architect. NOT started (stray local `task/293` branch, no commits).
 - **Merge order:** #375 (357) then #377 (365, stacked). #378/#379 both touch derive.ts (diff regions, trivial). #378 DEC-113 + #377 DEC-112 append same DECISIONS.md spot → resolve conflict on 2nd merge (keep both). #379 amended DEC-041 in place (no conflict).
 - **#376** filed (latent ~100px lg document overflow — pre-existing DEC-085 violation, decoupled from #365).

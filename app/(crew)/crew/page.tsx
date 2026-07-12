@@ -96,11 +96,15 @@ export default async function CrewHome({
       new Date(),
     );
     // In-app unread badge (§7.6) — best-effort: a messaging hiccup must never
-    // break the crew member's home (asks/shifts are the priority surface).
+    // break the crew member's home (asks/shifts are the priority surface). Skipped
+    // entirely when messaging is disabled (#389) — the badge is hidden anyway, so
+    // the thread-list query is pure waste.
     try {
-      unreadTotal = (
-        await buildThreadList(repo, asId<"CrewMemberId">(subject.id), TENANT_ID, new Date())
-      ).totalUnread;
+      unreadTotal = messagingEnabled()
+        ? (
+            await buildThreadList(repo, asId<"CrewMemberId">(subject.id), TENANT_ID, new Date())
+          ).totalUnread
+        : 0;
     } catch {
       unreadTotal = 0;
     }

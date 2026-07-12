@@ -4,10 +4,10 @@ dev: eric
 slug: 268-scrollbar-gutter
 branch: task/268-scrollbar-gutter
 started: 2026-07-11T18:01:40Z
-ended:
-points:
+ended: 2026-07-12T21:51:37Z
+points: 27
 pr_numbers: [375, 377, 378, 379, 380, 385, 388, 390, 394]
-status: open
+status: closed
 transcript: /home/eric/.claude/projects/-home-eric-muster/079da17b-1b62-4fa4-9b6a-b394651a3f5d.jsonl
 ---
 
@@ -149,12 +149,14 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/079da17b-1b62-4fa4-9b6
 **Opened at:** 2026-07-12T18:18:22Z
 
 **Next Steps:**
-- After #394 deploys: operator re-checks Android install (⋮ → Install app / richer dialog) + desktop (address-bar ⊕). If still missing → Chrome-variant/policy quirk, not the site.
-- **OFF-path e2e for #390** owed — needs a 2nd webServer/project (flag can't vary per-run on one server); deferred as fragile-harness. Off is construction-verified + reviewer-traced.
-- **#293** (retire OPERATOR_CREW_MEMBER_ID singleton) held for a fresh session — delicate 7-site auth/messaging refactor (act-as → acting admin's crew id; is-this → admins-set membership; exclude-from-ring → doorbell). Needs @architect. NOT started (stray local `task/293` branch, no commits).
-- **Merge order:** #375 (357) then #377 (365, stacked). #378/#379 both touch derive.ts (diff regions, trivial). #378 DEC-113 + #377 DEC-112 append same DECISIONS.md spot → resolve conflict on 2nd merge (keep both). #379 amended DEC-041 in place (no conflict).
-- **#376** filed (latent ~100px lg document overflow — pre-existing DEC-085 violation, decoupled from #365).
-- Concurrent **Session 46** (feature/reservations, Phase 11) ran in another window this whole session.
+- **PWA install (#394) UNRESOLVED — left OPEN.** Operator's Android Chrome shows NO "Install" even with manifest + screenshots + a registered/active service worker (`public/sw.js` + `RegisterSW` island) all live on the #394 preview (all verified in-build). **Leading lead for next session: the SW `fetch` handler is a NO-OP (no `respondWith`) — current Chrome may require real offline capability (serve `start_url` offline), not just a registered fetch listener. Try that first.** A diagnostic prompt was handed to the operator for ChatGPT. If a full SW still doesn't fix it → device/Chrome-variant.
+- **#390 (disable all messaging) left OPEN by operator choice** — the ask was exploratory ("what would it take"), NOT a merge directive; the real ask (SMS copy) shipped separately as **#388 (MERGED)**. Don't merge #390 unless the operator decides to actually kill messaging (and note: #390 + #388 are mutually exclusive — disabling messaging moots the SMS fix).
+- **DEC collisions RESOLVED at merge:** the concurrent reservations work (Session 46) took **DEC-112 (price) + DEC-113 (flex-insurance)**. Renumbered #365's island **112→114** (#377) and #322's FILL_DEADLINE **113→115** (#378) — DECISIONS.md + all code/test refs. #377/#378 merged clean after.
+- **#385 no-boat: by design + diagnosed.** Operator chose "keep today+future" flagged (declined the time-aware cutoff). "No data importing" root cause = **Xola's `/events` feed is now-forward**, so PAST trips lose boat resolution (the boat lives on the event) — not a Muster bug. Open question for a future pull: do upcoming (future) boated trips import? If the operator has them and they don't → real orders-fetch/window bug to chase.
+- **#380 polished** post-review: right-side align fix, "N trips" under the departure, Manifest-matching disclosure caret.
+- **#293** (retire OPERATOR_CREW_MEMBER_ID singleton) still held — delicate 7-site auth/messaging refactor, needs @architect. Stray local `task/293` branch (no commits).
+- **#376** filed (latent ~100px lg document overflow, pre-existing DEC-085 violation).
+- **Still-OPEN PRs at close:** #379, #380, #385, #390, #394 (merge #379/#380/#385 anytime; #390/#394 are operator-parked). Concurrent **Session 46** (reservations) ran in another window throughout — its file (`1755-eric-reservations`) is ALSO open; do NOT close it.
 
 **Context:**
 - Phase 10.5 = backlog cleanup (non-deferred, non-low). Labeled the 6 in-scope issues `phase:10.5`; #330 closed as already-shipped (#358).

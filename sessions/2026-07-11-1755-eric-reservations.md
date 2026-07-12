@@ -6,7 +6,7 @@ branch: feature/reservations
 started: 2026-07-11T17:55:10Z
 ended:
 points:
-pr_numbers: [382, 383, 386]
+pr_numbers: [382, 383, 386, 396]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/3e406f73-c6f5-4b97-acea-59decccd4662.jsonl
 ---
@@ -59,12 +59,27 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/3e406f73-c6f5-4b97-ace
 **Branch:** task/11.3-booking-claim
 **Opened at:** 2026-07-12T14:07:36Z
 
+## Task 4: Phase 11.2a — Stripe charge spine + payments (part of #368)
+
+**Completed:**
+- **The charge→booking→payment spine** (DEC-107, @architect-designed). **Settings decision:** operator-tunable config → `app_settings` (NOT env, NOT new table); env = secrets only. **Payment state → a separate `Payment` 1:n table (0024), NOT columns on `Reservation`** (shared w/ Xola). **Refunds ALWAYS manual** (no `refund()` method; on paid-but-unbooked → record + loud alert, no auto-refund). **Personal Stripe account** (test-mode).
+- `Payment` entity (+ `method` discriminator: cash/Venmo widen later) · `0024_payments.sql` · `payment-config.ts` (`PaymentConfig` in `app_settings`: deposit mode/%, Ohio tax bps, balance-days) + tax/charge helpers · port + both adapters + contract tests.
+- `PaymentPort` + live `StripePaymentPort` (lifted from `sailbook`) + `FakePaymentPort`. `createBookingCheckout` (config-driven charge+tax, writes nothing) + `processBookingWebhook` (verify → 11.3 `writeBooking` → record `Payment`). Next glue: webhook route + `(public)/book/{success,cancel}`.
+- **26 reservation tests** + payments contract (both adapters). `stripe` SDK added. `verify` green (**1025 tests + build**).
+
+**Code review:** 2 edge-case bugs FIXED — webhook returns **500 (not 400) on infra error** so Stripe retries (a 4xx would lose a paid event); `savePayment` **insert-only** (no rewrite on re-delivery). Alert now carries the specific reason.
+**⚠️ DEPLOY:** migration `0024_payments` — apply on next push. **Follow-up:** wire the paid-but-unbooked alert to the DEC-095 all-admins SMS (currently `console.error`+TODO).
+**PR:** [#396](https://github.com/mobiustripper42/muster/pull/396) — into **`feature/reservations`**. Base≠main → CI skipped; `verify` local.
+**Points:** 5
+**Branch:** task/11.2a-stripe-charge-spine
+**Opened at:** 2026-07-12T20:17:30Z
+
 **Next Steps:**
-- **#382 (11.0) + #383 (11.1) merged to `main`.** **Merge #386 (11.3)** into `feature/reservations` (base≠main → CI skipped, verified locally).
-- **Prod migration owed:** `0021`+`0022`+`0023` hand-apply on next push (verify 0021/0022 weren't already applied out-of-band): `DATABASE_URL=<neon-direct> npm run db:migrate`.
-- **BLOCKED on Drew — 11.2 Stripe (#368):** deposit-or-full (+%), balance timing, **which Stripe account** + test/live keys + webhook secret, pilot price, refund tiers (confirm ≥14d −$50 / <14d $0 / operator-cancel full). Insurance $30→72h (11.5), tax/fee, waiver provider. **Skipped until answered.** If Drew says full-upfront, 11.2 shrinks (no balance-link).
-- **Buildable without Drew:** 11.4 (booking-link + confirmation emit, #370), 11.7 (manifest hinge verify, #373), the availability+writeBooking half of 11.6. `typecheck:db` prevention still owed.
-- 11.4–11.8 ride `feature/reservations` behind `RESERVATIONS` (DEC-111).
+- **#382/#383 merged to `main`; #386 (11.3) merged to `feature/reservations`.** **Merge #396 (11.2a)** into `feature/reservations`.
+- **Prod migrations owed:** `0021`+`0022`+`0023` (+ now `0024`) hand-apply on next push (verify which already applied out-of-band): `DATABASE_URL=<neon-direct> npm run db:migrate`.
+- **Drive a real Stripe test payment:** personal test keys in `.env.local` + `stripe listen --forward-to localhost:3000/api/webhooks/stripe` → card 4242… → expect a `payments` + `reservations` row.
+- **11.2b** — deposit + balance-link (second Checkout). **Also buildable:** 11.4 (booking-link + confirmation emit #370), 11.5 (waiver flag #371), 11.6 (throwaway harness — the availability+checkout form, #372), 11.7 (manifest hinge #373). `typecheck:db` prevention still owed; all-admins alert wiring owed.
+- 11.x ride `feature/reservations` behind `RESERVATIONS` (DEC-111).
 
 **Context:**
 - **Dedicated worktree:** this session builds in `/home/eric/muster-reservations` on `feature/reservations` (off main `5bac70a`), independent of main→production. Everything rides the `RESERVATIONS` flag (DEC-111) except the inert `source` migration (11.0 → main).

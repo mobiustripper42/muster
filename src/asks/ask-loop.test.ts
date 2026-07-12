@@ -476,7 +476,7 @@ describe("bailWithDerivedLateness (DEC-028 glue — the one home of it)", () => 
       date: tripAt.toISOString().slice(0, 10),
       time: tripAt.toISOString().slice(11, 16),
       capacity: 6,
-      status: "scheduled",
+      source: "xola", status: "scheduled",
     });
     const shift = (await repo.getShift(SHIFT))!;
     await repo.saveShift({ ...shift, eventIds: [asId<"EventId">("evt-bail")] });

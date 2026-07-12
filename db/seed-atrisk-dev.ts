@@ -108,7 +108,7 @@ async function shipShift(
     date: dateOf(tripAt),
     time: timeOf(tripAt),
     capacity: 12,
-    status: "scheduled",
+    source: "xola", status: "scheduled",
     dock: "East Bank of the Flats at Canal Basin Park",
   });
   // A multi-trip day (#59): more scheduled departures on the SAME shift (one
@@ -122,7 +122,7 @@ async function shipShift(
       date: dateOf(t),
       time: timeOf(t),
       capacity: 12,
-      status: "scheduled",
+      source: "xola", status: "scheduled",
       dock: "East Bank of the Flats at Canal Basin Park",
     });
   }
@@ -271,7 +271,7 @@ try {
     date: gapDate,
     time: "11:00",
     capacity: 12,
-    status: "scheduled",
+    source: "xola", status: "scheduled",
   });
   await repo.saveEvent({
     id: asId<"EventId">("evt-ar-gappy-2"),
@@ -279,7 +279,7 @@ try {
     date: gapDate,
     time: "18:00",
     capacity: 12,
-    status: "scheduled",
+    source: "xola", status: "scheduled",
   });
   await repo.saveShift({
     id: gapShift,

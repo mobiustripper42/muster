@@ -65,12 +65,13 @@ async function addShift(
       date,
       time: t.time,
       capacity: 12,
-      status: "scheduled",
+      source: "xola", status: "scheduled",
     });
     for (const [j, party] of t.pax.entries()) {
       await repo.saveReservation({
         id: asId<"ReservationId">(`r-${id}-${i}-${j}`),
         eventId,
+        source: "xola",
         customerName: `party ${j}`,
         partySize: party,
         status: "booked",
@@ -216,6 +217,7 @@ describe("deriveAllShifts", () => {
     await repo.saveReservation({
       id: asId<"ReservationId">("r-cancelled"),
       eventId: asId<"EventId">("evt-mixed-0"),
+      source: "xola",
       customerName: "no-show party",
       partySize: 5,
       status: "cancelled",

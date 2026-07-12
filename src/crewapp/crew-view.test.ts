@@ -130,8 +130,8 @@ describe("buildCrewAppView", () => {
   it("ask card carries the earliest scheduled departure (so the crew knows when)", async () => {
     const repo = await seed();
     await repo.saveShift({ id: asId<"ShiftId">("shift-ev"), vesselId: VESSEL, date: "2026-07-07", state: "Filling", eventIds: [asId<"EventId">("e-5pm"), asId<"EventId">("e-3pm")] });
-    await repo.saveEvent({ id: asId<"EventId">("e-3pm"), vesselId: VESSEL, date: "2026-07-07", time: "15:00", capacity: 12, status: "scheduled" });
-    await repo.saveEvent({ id: asId<"EventId">("e-5pm"), vesselId: VESSEL, date: "2026-07-07", time: "17:00", capacity: 12, status: "scheduled" });
+    await repo.saveEvent({ id: asId<"EventId">("e-3pm"), vesselId: VESSEL, date: "2026-07-07", time: "15:00", capacity: 12, source: "xola", status: "scheduled" });
+    await repo.saveEvent({ id: asId<"EventId">("e-5pm"), vesselId: VESSEL, date: "2026-07-07", time: "17:00", capacity: 12, source: "xola", status: "scheduled" });
     await repo.saveSeat({ id: asId<"SeatId">("seat-ev"), shiftId: asId<"ShiftId">("shift-ev"), role: CAPTAIN, kind: "required", state: "Asked" });
     await repo.saveAsk({ id: asId<"AskId">("ask-ev"), seatId: asId<"SeatId">("seat-ev"), crewMemberId: ME, channel: "push", sentAt: "2026-07-01T09:30:00.000Z" });
 
@@ -164,8 +164,8 @@ describe("buildCrewAppView", () => {
     const jamie = asId<"CrewMemberId">("crew-jamie");
     await repo.saveCrewMember({ id: jamie, name: "Jamie", phone: "555", ratings: [CAPTAIN], status: "active", reliabilityScore: null });
     await repo.saveShift({ id: asId<"ShiftId">("shift-w"), vesselId: VESSEL, date: "2026-07-02", state: "Crewed", eventIds: [asId<"EventId">("w-pm"), asId<"EventId">("w-am")] });
-    await repo.saveEvent({ id: asId<"EventId">("w-am"), vesselId: VESSEL, date: "2026-07-02", time: "11:00", capacity: 12, status: "scheduled" });
-    await repo.saveEvent({ id: asId<"EventId">("w-pm"), vesselId: VESSEL, date: "2026-07-02", time: "17:00", capacity: 12, status: "scheduled" });
+    await repo.saveEvent({ id: asId<"EventId">("w-am"), vesselId: VESSEL, date: "2026-07-02", time: "11:00", capacity: 12, source: "xola", status: "scheduled" });
+    await repo.saveEvent({ id: asId<"EventId">("w-pm"), vesselId: VESSEL, date: "2026-07-02", time: "17:00", capacity: 12, source: "xola", status: "scheduled" });
     await repo.saveSeat({ id: asId<"SeatId">("seat-w-me"), shiftId: asId<"ShiftId">("shift-w"), role: CAPTAIN, kind: "required", state: "Confirmed", assignedCrewMemberId: ME });
     await repo.saveSeat({ id: asId<"SeatId">("seat-w-jamie"), shiftId: asId<"ShiftId">("shift-w"), role: CAPTAIN, kind: "required", state: "Confirmed", assignedCrewMemberId: jamie });
 

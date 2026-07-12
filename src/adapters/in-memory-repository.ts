@@ -18,6 +18,7 @@ import type {
   Event,
   LoginCode,
   CalendarFeed,
+  MusterOwnedVesselDay,
   MagicToken,
   OutboxEntry,
   RingOutboxEntry,
@@ -81,6 +82,8 @@ export class InMemoryRepository implements Repository {
   readonly #ptoWindows = new Map<PtoWindowId, PtoWindow>();
   readonly #events = new Map<EventId, Event>();
   readonly #reservations = new Map<ReservationId, Reservation>();
+  /** Muster-owned vessel-days (DEC-106), keyed `${vesselId}|${date}`. */
+  readonly #musterOwnedVesselDays = new Map<string, MusterOwnedVesselDay>();
   readonly #shifts = new Map<ShiftId, Shift>();
   readonly #seats = new Map<SeatId, Seat>();
   readonly #asks = new Map<AskId, Ask>();
@@ -234,6 +237,21 @@ export class InMemoryRepository implements Repository {
   }
   async listEvents(): Promise<Event[]> {
     return [...this.#events.values()].map(clone);
+  }
+
+  // ── Coexistence partition — Muster-owned vessel-days (DEC-106) ───────────────
+  async listMusterOwnedVesselDays(): Promise<MusterOwnedVesselDay[]> {
+    return [...this.#musterOwnedVesselDays.values()].map(clone);
+  }
+  async markVesselDayMusterOwned(
+    vesselId: VesselId,
+    date: string,
+    markedAt: string,
+  ): Promise<void> {
+    this.#musterOwnedVesselDays.set(
+      `${String(vesselId)}|${date}`,
+      clone({ vesselId, date, markedAt }),
+    );
   }
 
   // ── Reservations ───────────────────────────────────────────────────────────

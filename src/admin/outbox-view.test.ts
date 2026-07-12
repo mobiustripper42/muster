@@ -53,7 +53,7 @@ async function addShift(key: string, hoursOut: number): Promise<{ shiftId: Shift
     date: trip.toISOString().slice(0, 10),
     time: trip.toISOString().slice(11, 16),
     capacity: 12,
-    status: "scheduled",
+    source: "xola", status: "scheduled",
   });
   await repo.saveShift({
     id: shiftId,

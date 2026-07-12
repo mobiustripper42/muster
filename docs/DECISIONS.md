@@ -2681,6 +2681,15 @@ through the service layer, replaced wholesale in P12. The **real, designed custo
 
 **Revisit if:** the redirect UX proves unacceptable (then reconsider embedded Payment Intents, DEC-107).
 
+**Amendment (2026-07-11, @architect, under DEC-105 — verified reservations model, `docs/design/reservations-model.md`):**
+the "Availability read" bullet's formula **`COI max − Σ booked party sizes`** is **corrected to a whole-boat
+mutex** — BrewBoat sells whole-boat-private charters, one reservationist per boat-event, so seat-subtraction
+is wrong (it would re-offer a booked boat's residual seats to a stranger). An event is available **iff it
+carries zero active (`booked`) `source='muster'` reservations** AND the requested party **≤ `Event.capacity`**
+(the per-event COI cap). Remaining-capacity is a step function — `Event.capacity` unclaimed, `0` claimed —
+never a running subtraction. See the DEC-109 amendment for the claim predicate. Customer availability is a
+**new pure deriver (task 11.1)**, distinct from the crew-eligibility oracle in `src/oracle`.
+
 ---
 
 ## DEC-109: Atomic capacity claim on public booking (the customer-side REQ-CLAIM-1)
@@ -2696,6 +2705,14 @@ read-then-write. Contract-tested on both repository adapters, exactly as REQ-CLA
 An over-capacity booking whose payment already captured is resolved as a **refund-and-notify** (manual in
 Stripe at pilot volume), never a silent oversell. **Revisit if:** overbooking-with-waitlist is ever wanted
 (explicitly not now).
+
+**Amendment (2026-07-11, @architect, under DEC-105 — verified reservations model):** the claim **predicate**
+is corrected from "remaining ≥ party" to a **whole-boat mutex** — *claim only if the event carries **no**
+active `source='muster'` reservation* (and party ≤ `Event.capacity`). The **mechanism is unchanged**:
+service-layer conditional/transactional CAS, contract-tested on both adapters, **no DB unique constraint on
+`reservations.event_id`** — the schema stays n:1 deliberately, so multi-reservation-per-event is **not
+precluded** (a future policy change in this predicate, not a migration) and **not designed for** (operator
+directive, 2026-07-11). Only the capacity *function* changed (DEC-108 amendment), not this claim's design.
 
 ---
 
@@ -2733,6 +2750,48 @@ not reach `main`/`production` until one real paid reservation validates end-to-e
 `main` first** (DEC-059 merge-hygiene: avoid long-lived schema divergence), then branch. The flag flips to
 live only after the spine is proven in Stripe test-mode + a single real payment. **Revisit if:** the slice
 proves out and the flag becomes permanent-on (then retire the flag at the Phase 12 flip).
+
+---
+
+## DEC-112: Reservation price resolves per-`Event`; nullable `Event.price` column
+
+**Status:** Decided 2026-07-11 (@architect + Eric, under DEC-105/107 — verified reservations model,
+`docs/design/reservations-model.md`).
+
+**Context.** The operator confirmed (2026-07-11) that **each individual event can carry its own price** —
+per-event pricing, not a flat experience rate. (Xola models a per-schedule price variation — Prime Sat +$50,
+Sunday −20% — *and* the operator states finer per-event flexibility.)
+
+**Decision.** Add a **nullable `price` column on `Event`** — per-event, source-agnostic (`source='xola'`
+events leave it `null`; their money lives in Xola, DEC-105). It is **additive + inert**, so it **rides the
+DEC-106 `source` migration onto `main`** in the same task (11.0). **Phase 11 resolution order is `Event.price`
+only** — there is no `Offering`/schedule default cascade because **`Offering` is a Phase 12 entity** (P11
+seeds a single `Event` directly). The "offering/schedule default → per-event override" cascade is deferred to
+P12 when `Offering` materializes. The customer party cap reads the existing per-event **`Event.capacity`** —
+**no** new `Vessel.coiMaxPax` lookup in the customer path. **Ownership split:** the **schema column is not
+owner-gated** (build it); the **price value, deposit-%, and balance timing are owner-gated (Drew, DEC-107)**
+and gate task 11.2 only. **Revisit if:** the `Offering` catalog lands (P12) — then add the default-cascade.
+
+---
+
+## DEC-113: Flex-insurance is a boolean selector on the reservation, not a priced add-on product
+
+**Status:** Decided 2026-07-11 (@architect + Eric, under DEC-105/107/110). **Recorded now to prevent
+mis-modeling; the build is Phase 12.**
+
+**Context.** Xola exposes general add-ons + a questionnaire; the operator's own booking design keeps exactly
+**one** upsell — cancellation insurance ("Flex Insurance: Yes/No") — and models it as a policy flag, not a
+product (`docs/design/the-booking-1.md §4`, `the-living-link-1.md §5`; confirmed by the Xola purchase line
+"Flex Insurance: No — $0.00").
+
+**Decision.** Insurance is a **boolean on the reservation** that flips which tier the refund policy reads
+(BrewBoat: 14-day free-cancel → 72-hour) — **not** a general add-on / line-item and **not** a questionnaire
+field. It rides the existing `terms` argument of `refund_owed(who, when, paid, terms)`; **no new machinery**.
+**General add-ons stay parked** — model as Xola `item.addOns[]` only if ever built. The flag is **inert until
+refund-policy-as-code exists**, which is **Phase 12** and **owner-gated (Drew — refund tiers)**; it is **not
+required for the Phase 11 exit gate** (one paid booking) and adds **no** field to the throwaway P11 harness.
+Recording now fixes the *shape* so it isn't later built as a priced product. **Revisit if:** the operator
+ever wants true multi-add-on selling (then reopen as `item.addOns[]`, a conscious scope widen).
 
 ---
 

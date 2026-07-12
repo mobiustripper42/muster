@@ -149,6 +149,17 @@ export interface CrewMember {
 
 export type EventStatus = "scheduled" | "cancelled";
 
+/**
+ * Coexistence discriminator (DEC-106): which system OWNS this event/reservation.
+ * `'xola'` = imported from Xola (the importer structurally only ever writes this);
+ * `'muster'` = a Muster-native reservation (the booking path sets it explicitly).
+ * Plain text union, never a DB enum/CHECK — validation is the service layer's
+ * (DEC-DATA-1), so the in-memory + Postgres adapters stay behaviorally identical.
+ * A future source widens this in one line. Log day one (DEC-008): real from the
+ * first commit even though the availability deriver (11.1) is the first reader.
+ */
+export type Source = "xola" | "muster";
+
 export interface Event {
   id: EventId;
   vesselId: VesselId;
@@ -158,6 +169,15 @@ export interface Event {
   time: string;
   capacity: number;
   status: EventStatus;
+  /** Coexistence owner (DEC-106). Log day one; `'xola'` for every imported event. */
+  source: Source;
+  /**
+   * Per-event price in integer CENTS (DEC-112) — Stripe-aligned, float-safe.
+   * Optional + source-agnostic: `'xola'` events leave it undefined (their money
+   * lives in Xola, DEC-105); the Muster booking path sets it. Phase 11 resolves
+   * price from here directly — the Offering/schedule default-cascade is Phase 12.
+   */
+  price?: number;
   /**
    * Where this event departs from — a place name/address the shift card turns
    * into a tappable map pin (SPEC §2.6.3). Per-EVENT, not per-vessel: the same
@@ -172,6 +192,8 @@ export type ReservationStatus = "booked" | "cancelled";
 export interface Reservation {
   id: ReservationId;
   eventId: EventId;
+  /** Coexistence owner (DEC-106). Log day one; `'xola'` for every imported reservation. */
+  source: Source;
   customerName: string;
   partySize: number;
   /**
@@ -196,6 +218,21 @@ export interface Reservation {
    */
   updatedAt?: string;
   // No waiver field — DEC-012.
+}
+
+/**
+ * One vessel-day marked Muster-owned (DEC-106) — the coexistence partition unit.
+ * When present, the importer skips + itemizes any Xola event landing on this
+ * vessel+date (whole-vessel-day grain, NOT time); the day's events are Muster-native.
+ * No FK, text date — house style (DEC-DATA-1). Keyed on (vesselId, date). Marked via
+ * the `db:own` CLI; empty in production until an operator marks a day.
+ */
+export interface MusterOwnedVesselDay {
+  vesselId: VesselId;
+  /** ISO-8601 vessel-local day. */
+  date: string;
+  /** ISO-8601 UTC of the mark. */
+  markedAt: string;
 }
 
 // ── Shift + Seat ────────────────────────────────────────────────────────────

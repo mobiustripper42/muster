@@ -91,7 +91,7 @@ async function shipShift(key: string, vesselName: string, tripAt: Date) {
     date: dateOf(tripAt),
     time: timeOf(tripAt),
     capacity: 12,
-    status: "scheduled",
+    source: "xola", status: "scheduled",
     dock: "East Bank of the Flats at Canal Basin Park",
   });
   await repo.saveShift({

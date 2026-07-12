@@ -24,7 +24,7 @@ const ev = (id: string, time: string): Event => ({
   date: DAY,
   time,
   capacity: 16,
-  status: "scheduled",
+  source: "xola", status: "scheduled",
 });
 
 /** A party-day with a morning + evening trip, formed into one un-split shift. */

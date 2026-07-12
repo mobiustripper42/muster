@@ -18,7 +18,7 @@ const event = (id: string, vesselId: typeof PARTY, date: string, time: string): 
   date,
   time,
   capacity: 16,
-  status: "scheduled",
+  source: "xola", status: "scheduled",
 });
 
 async function seedEvents(repo: InMemoryRepository): Promise<void> {

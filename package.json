@@ -15,6 +15,7 @@
     "db:mint": "tsx db/mint-link.ts",
     "db:admin": "tsx db/admin.ts",
     "db:crew": "tsx db/crew.ts",
+    "db:own": "tsx db/own-vessel-day.ts",
     "db:seed:fleet": "tsx db/seed-fleet.ts",
     "db:seed:crew:pilot": "tsx db/seed-pilot-crew.ts",
     "db:seed:crew": "tsx db/seed-crewapp-dev.ts",

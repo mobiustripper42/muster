@@ -487,10 +487,10 @@ a single live payment. Correctness and tests are the deliverable here — not lo
 
 | # | Task | Effort | Notes |
 |---|------|--------|-------|
-| 11.0 | **Partition + `source` discriminator** — migration (`Event.source`, `Reservation.source`, backfill `'xola'`); importer guard: skip + itemize a Xola event on a Muster-owned vessel-day; Muster-owned-vessel-day config. Contract tests both adapters | 5 | **DEC-106** · lands on `main` (inert until a vessel-day is Muster-owned) · @architect gate |
-| 11.1 | **Availability read model** — remaining capacity per Muster-owned event (`COI max − Σ booked party sizes`, `source='muster'`); pure deriver + tests | 3 | additive, safe on `main` |
+| 11.0 | **Partition + `source` discriminator (+ per-event price)** — migration (`Event.source`, `Reservation.source`, backfill `'xola'`, **+ nullable `Event.price`** — DEC-112); importer guard: skip + itemize a Xola event on a Muster-owned vessel-day; Muster-owned-vessel-day config. Contract tests both adapters | 5 | **DEC-106/112** · lands on `main` (inert until a vessel-day is Muster-owned) · @architect gate |
+| 11.1 | **Availability read model — whole-boat mutex** — an event is bookable iff it carries **no active `source='muster'` reservation** AND party ≤ `Event.capacity` (remaining = `capacity`-or-`0`, **NOT** `COI − Σ party sizes` — DEC-108/109 amended for whole-boat-private); surface `Event.price` (DEC-112). Pure deriver, **distinct from the crew-eligibility oracle** + tests | 3 | additive, safe on `main` |
 | 11.2 | **Stripe charge/refund/deposit service** — `stripe` dep; **lift + audit charge + refund from the sibling `sailbook` project** (deposit + balance-link is the net-new piece); create-session server action, success/cancel routes, env/secrets (Drew's keys). Service-layer + adapter-tested | 8 | **DEC-107** · may be more complex than sized · requires `sailbook` in session scope · @architect gate · likely splits 11.2a lift/audit / 11.2b deposit+balance-link |
-| 11.3 | **Booking write + atomic capacity claim** — signature-verified idempotent `checkout.session.completed` webhook → writes Muster-native Event(if new)+Reservation under an atomic capacity guard; contract-tested both adapters | 5 | **DEC-109** (REQ-CLAIM-1 sibling) · the correctness task · @architect gate; split webhook-infra vs capacity-guard only if the diff balloons |
+| 11.3 | **Booking write + atomic whole-boat claim** — signature-verified idempotent `checkout.session.completed` webhook → writes Muster-native Event(if new)+Reservation under an **atomic whole-boat mutex** (claim iff the event is unclaimed by any active `source='muster'` reservation — DEC-109 amended; same CAS mechanism, **no DB unique constraint**); contract-tested both adapters | 5 | **DEC-109** (REQ-CLAIM-1 sibling) · the correctness task · @architect gate; split webhook-infra vs capacity-guard only if the diff balloons |
 | 11.4 | **Booking-link generation + confirmation emit** — generate the DEC-020 capability-URL for the reservation; emit confirmation with the link over email + SMS. Service-layer (copy polish + the manage *page* are P12) | 3 | **DEC-108** · the customer half of the capability-URL ("living link") family — internal name only, never in customer/crew copy |
 | 11.5 | **Waiver consent field (pilot)** — checkbox + linked terms + consent timestamp on the reservation | 2 | **DEC-110** · Drew/Spink legal-sufficiency flag · real provider integration is P12 · do **not** build a waiver subsystem |
 | 11.6 | **Throwaway booking harness** — the extremely-thin, unstyled `app/(public)` form + availability list that exercises the whole service layer to put one real booking through. **Explicitly disposable — replaced wholesale in P12** | 3 | not customer-quality; just enough to drive the exit gate |
@@ -501,9 +501,16 @@ a single live payment. Correctness and tests are the deliverable here — not lo
 before the phase starts): deposit-%, balance timing, refund policy, **which Stripe account**, waiver
 provider + legal sufficiency — all Drew/Spink (DEC-107/103).
 
-**Explicitly deferred out of Phase 11:** the **real customer UI** (all of P12), refund cascade (§3.3),
-dispute surfacing (§3.4), customer self-service cancel/reschedule, deposit auto-charge (saved card), and
-multi-boat / full-catalog selling.
+**Explicitly deferred out of Phase 11:** the **real customer UI** (all of P12), the **`Offering`/experience
+catalog** (P11 seeds a single `Event` directly — `Offering` is a P12 entity, derived-or-deferred; DEC-112),
+the **insurance-flag build + split-pay** (recorded DEC-113, but a P12 booking-funnel concern), refund cascade
+(§3.3), dispute surfacing (§3.4), customer self-service cancel/reschedule, deposit auto-charge (saved card),
+and multi-boat / full-catalog selling.
+
+> **Verified model of record:** `docs/design/reservations-model.md` (whole-boat-private, one reservationist;
+> `Offering → Event(one boat, per-event price) → Reservation`; whole-boat mutex not pooled seats; insurance
+> as a flag). @architect-verified 2026-07-11. Grounded in `docs/design/the-booking-1.md`,
+> `the-living-link-1.md`, and the Xola seller screens (`docs/design/xola *.png`).
 
 ---
 
@@ -535,6 +542,16 @@ Outline (poker at the boundary; each UI surface carries its own mockup step):
   the full catalog (de-list those vessel-days in Xola per the DEC-106 discipline).
 - **Overlap accounting** — revenue split across Xola + Stripe until Xola drains (an operator/Drew reality,
   not a build item; reinforces the "which Stripe account" decision).
+
+> **⚠️ Unspecced — the reservation ADMIN surfaces (likely the larger half of P12).** The outline above is
+> **customer-facing** only. The operator/back-office side is **not yet specced**, and from the Xola seller UI
+> (`docs/design/xola *.png`) it looks **more extensive than the customer funnel** — the customer books in ~6
+> taps; the admin runs a whole back-office. Surfaces to spec at the P12 boundary (own pass, own poker):
+> **`Offering`/experience catalog** (create/edit, descriptive content, photos), **schedules + per-event
+> pricing** (DEC-112), **boat/equipment assignment**, **reservation list + management** (change arrival,
+> cancel, refund, message guests, resend confirmation/waiver, email/print roster), **event admin/detail**
+> (guides, capacity, notes), and **add-on config** (parked, DEC-113). Open question: how much rides the
+> existing crew-admin cockpit vs. a distinct reservations-admin area — settle before P12 poker.
 
 **Watch for** the point where Muster's own-booking volume makes an **in-app refund/cancel surface** (§3.3)
 worth pulling out of the Stripe dashboard — a candidate Phase 13, not a Phase 12 commitment. **Not a phase:**

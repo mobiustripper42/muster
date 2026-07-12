@@ -24,6 +24,7 @@ const ev = (id: string, time: string, status: Event["status"] = "scheduled"): Ev
   time,
   capacity: 16,
   status,
+  source: "xola",
 });
 
 /** A party-day with a morning + evening trip, formed into one un-split shift. */

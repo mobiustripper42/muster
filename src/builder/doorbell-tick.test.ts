@@ -86,7 +86,12 @@ describe("doorbellTick + forwardNotifications (the loop, #167)", () => {
     const channel = new FakeNotificationChannel(() => NOW);
     const relayed = await forwardNotifications(repo, channel, r.rings);
     expect(relayed).toBe(2);
-    expect(channel.sent.map((s) => s.body)).toEqual(["dock at slip B", "dock at slip B"]); // content inlined
+    // Bare notification (#387) — the note's text never rides the SMS, even in
+    // content mode; both absent members get the same pointer line.
+    expect(channel.sent.map((s) => s.body)).toEqual([
+      "You have a new Muster message",
+      "You have a new Muster message",
+    ]);
   });
 
   it("a second sweep is quiet — first-only-until-read holds on recorded notify-state", async () => {

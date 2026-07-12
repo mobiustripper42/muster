@@ -33,25 +33,17 @@ const ring = (over: Partial<NotificationDecision> = {}): NotificationDecision =>
 });
 
 describe("forwardNotifications", () => {
-  it("summary mode → an 'N new' body", async () => {
+  it("every ring carries the bare 'You have a new Muster message' body (no count) (#387)", async () => {
     const repo = new InMemoryRepository();
     await repo.saveCrewMember(crew("crew-a"));
     const ch = new FakeNotificationChannel(AT);
     const n = await forwardNotifications(repo, ch, [ring({ messageCount: 3, mode: "summary" })]);
     expect(n).toBe(1);
-    expect(ch.last()?.body).toBe("3 new messages");
+    expect(ch.last()?.body).toBe("You have a new Muster message"); // not "3 new messages"
     expect(ch.last()?.to.phone).toBe("555-crew-a"); // recipient resolved for the later real adapter
   });
 
-  it("count of 1 is singular", async () => {
-    const repo = new InMemoryRepository();
-    await repo.saveCrewMember(crew("crew-a"));
-    const ch = new FakeNotificationChannel(AT);
-    await forwardNotifications(repo, ch, [ring({ messageCount: 1, mode: "summary" })]);
-    expect(ch.last()?.body).toBe("1 new message");
-  });
-
-  it("content mode → inlines the message body", async () => {
+  it("a content-mode ring does NOT inline the note's text into the SMS (#387)", async () => {
     const repo = new InMemoryRepository();
     await repo.saveCrewMember(crew("crew-a"));
     const m: Message = {
@@ -66,7 +58,8 @@ describe("forwardNotifications", () => {
     await repo.saveMessage(m);
     const ch = new FakeNotificationChannel(AT);
     await forwardNotifications(repo, ch, [ring({ mode: "content", messageIds: [m.id] })]);
-    expect(ch.last()?.body).toBe("slip B, 12:30");
+    expect(ch.last()?.body).toBe("You have a new Muster message");
+    expect(ch.last()?.body).not.toContain("slip B"); // the message text stays out of the SMS
   });
 
   it("swallows a per-ring send failure and forwards the rest (best-effort)", async () => {

@@ -67,7 +67,7 @@ async function addShift(
     date,
     time: tripAt.toISOString().slice(11, 16),
     capacity: 6,
-    status: "scheduled",
+    source: "xola", status: "scheduled",
   };
   await repo.saveEvent(event);
   const shift: Shift = { id: shiftId, vesselId, date, state, eventIds: [eventId] };

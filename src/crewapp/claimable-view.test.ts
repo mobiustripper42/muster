@@ -61,12 +61,12 @@ async function openShift(
   let n = 0;
   for (const time of times) {
     const eid = asId<"EventId">(`${id}-ev-${n++}`);
-    await repo.saveEvent({ id: eid, vesselId: VESSEL, date, time, capacity: 12, status: "scheduled" });
+    await repo.saveEvent({ id: eid, vesselId: VESSEL, date, time, capacity: 12, source: "xola", status: "scheduled" });
     eventIds.push(eid);
   }
   for (const time of opts.cancelledTimes ?? []) {
     const eid = asId<"EventId">(`${id}-cx-${n++}`);
-    await repo.saveEvent({ id: eid, vesselId: VESSEL, date, time, capacity: 12, status: "cancelled" });
+    await repo.saveEvent({ id: eid, vesselId: VESSEL, date, time, capacity: 12, source: "xola", status: "cancelled" });
     eventIds.push(eid);
   }
   await repo.saveShift({ id: shiftId, vesselId: VESSEL, date, state: "Filling", eventIds });

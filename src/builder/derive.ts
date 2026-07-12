@@ -250,7 +250,7 @@ export function staffingHorizonFor(
  * *closing* counterpart to — the staffing horizon, which is the window's
  * *opening* (Pending→Filling, DEC-022).
  *
- * **Env-overridable** via `FILL_DEADLINE_HOURS` (DEC-113, mirroring DEC-062's
+ * **Env-overridable** via `FILL_DEADLINE_HOURS` (DEC-115, mirroring DEC-062's
  * `STAFFING_HORIZON_LEAD_DAYS`), a **positive number** (fractional hours allowed;
  * garbage falls back), default **48** (2 days). The operator tunes it per deploy
  * — e.g. a Vercel env `FILL_DEADLINE_HOURS=72` for a 3-day At-Risk window — with

@@ -101,6 +101,7 @@ const ev = (id: string, date: string, time: string, status: Event["status"] = "s
   time,
   capacity: 16,
   status,
+  source: "xola",
 });
 
 const shiftWith = (eventIds: string[]): Shift => ({
@@ -404,7 +405,7 @@ describe("STAFFING_HORIZON_LEAD_DAYS env override (DEC-062)", () => {
   });
 });
 
-describe("FILL_DEADLINE_HOURS env override (DEC-113 / #322)", () => {
+describe("FILL_DEADLINE_HOURS env override (DEC-115 / #322)", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.resetModules();

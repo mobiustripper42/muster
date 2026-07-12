@@ -1,21 +1,19 @@
 import { AppLink } from "../../../../components/ui/app-link";
-import { GetFormSubmit } from "../../../../components/ui/get-form-submit";
-import { SubmitButton } from "../../../../components/ui/submit-button";
 import { deriveAllShifts, type AllShiftsRow } from "@core/admin/all-shifts.js";
 import { TENANT_TIMEZONE } from "@core/config/tenant.js";
 import {
   ShiftCockpit,
   type CockpitSearch,
 } from "../../../../components/assignment/shift-cockpit";
-import { SeatPips, AssignedCrew } from "../../../../components/admin/seat-pips";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
+import { Filter } from "../../../../components/admin/shifts-filter";
+import { ShiftRow, canonicalIdOf } from "../../../../components/admin/shift-row";
+import { RevealSelectedRow } from "../../../../components/admin/reveal-selected-row";
+import type { Mode, Scope } from "../../../../components/admin/shifts-view-types";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
-import { fmt12 } from "../../../lib/format";
-import { vesselHueClass } from "../../../lib/vessel-hue";
-import { splitAction, mergeAction } from "./actions";
 
 /**
  * All-shifts view (#100 Part A, DEC-042) — the operator's deliberate full-
@@ -50,11 +48,14 @@ import { splitAction, mergeAction } from "./actions";
  * display-hidden — its "← All shifts" link is the way back). Selection is a plain
  * row `<AppLink>`; deep links from At-Risk/outbox keep the standalone route. `sel`
  * rides the filter-param set so mode/filter/split navigation never closes the pane.
+ *
+ * **Filter + ShiftRow live in `components/admin/`** (#357): this file grew past 4×
+ * the component ceiling across two filter features, so the row card and the filter
+ * bar are extracted; page.tsx now orchestrates (auth, window, data, layout) and
+ * composes them. Behaviour unchanged — pure move-refactor.
  */
 
 export const dynamic = "force-dynamic";
-
-type Mode = "view" | "edit";
 
 /** Board params. Shares the URL with the cockpit's CockpitSearch namespace when
  * `?sel` is set — keep the two disjoint. */
@@ -135,14 +136,6 @@ function groupByDay(
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([date, rows]) => ({ date, rows }));
 }
-
-type Scope =
-  | "today"
-  | "next7"
-  | "weekend"
-  | "next8to15"
-  | "days30"
-  | "range";
 
 /** Resolve the date window from the filter params — defaulting to TODAY, clamped
  * to a sane horizon so "everything" can't render an unbounded wall (DEC-042). */
@@ -459,6 +452,10 @@ export default async function AllShifts({
           normal-flow full-screen drill-in, the list display-hidden (DEC-085). */}
       <div className="lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,3fr)_minmax(0,4fr)] lg:gap-6">
         <div
+          // DUAL-PURPOSE hook: e2e selects `board-col`, AND the DEC-114
+          // `RevealSelectedRow` island scrolls this exact node. Renaming the
+          // testid silently breaks the scroll reveal (no type/test error) — keep
+          // the two in sync.
           data-testid="board-col"
           className="hidden min-w-0 lg:flex lg:min-h-0 lg:flex-col lg:gap-4 lg:overflow-y-auto lg:[scrollbar-gutter:stable] lg:pr-1"
         >
@@ -479,14 +476,13 @@ export default async function AllShifts({
           <ShiftCockpit shiftId={sel} sp={sp} ctx={ctx} headingLevel="h2" senderName={senderName} />
         </div>
       </div>
+      {/* Keep the operator's place in the list when a row opens the pane (#365,
+          DEC-114) — a DEC-026-family client-JS island, scoped to board-col's own
+          scroll (never the window), inert on mobile. `nav={ctx}` re-reveals the
+          selected row after a filter/mode change too, not just on row-click. */}
+      <RevealSelectedRow sel={sel} nav={ctx} />
     </Shell>
   );
-}
-
-/** The canonical (split-day) id a row belongs to — itself for side A / un-split,
- * the `-b`-stripped sibling for side B. Only split rows ever match `splitDaysChanged`. */
-function canonicalIdOf(row: AllShiftsRow): string {
-  return row.split?.side === "B" ? row.shiftId.slice(0, -2) : row.shiftId;
 }
 
 /** View ↔ Edit toggle — the surface's mode signal now that the subtitle is gone,
@@ -520,367 +516,6 @@ function ModeToggle({ sp, mode }: { sp: Search; mode: Mode }) {
         <AppLink href={hrefFor(sp, "edit")} className={`${seg(false)} pressable`}>
           Edit
         </AppLink>
-      )}
-    </div>
-  );
-}
-
-/** Date-range + crew filter — preset links, a no-JS date GET form, and a no-JS
- * crew dropdown (DEC-026 pattern). The active chip reflects the RESOLVED scope
- * (not "any single day"). Every control carries the current `mode`, `sel`
- * (DEC-085), AND the selected `crew` (#330), so changing one axis never kicks you
- * out of Edit, closes the open pane, or drops the crew filter. */
-function Filter({
-  from,
-  to,
-  kind,
-  presetParam,
-  mode,
-  sel,
-  crew,
-  crewList,
-}: {
-  from: string;
-  to: string;
-  kind: Scope;
-  /** The RAW `?preset` param — carried by the crew form so picking a crew stays on
-   *  the active preset/range (#330). */
-  presetParam?: string;
-  mode: Mode;
-  sel: string | null;
-  crew: string | null;
-  crewList: { id: string; name: string }[];
-}) {
-  const chip = (active: boolean) =>
-    `pressable rounded-full border px-3 py-1 ${active ? "border-accent text-accent" : "border-line text-muted"}`;
-  const edit = mode === "edit";
-  const href = (preset?: string) => {
-    const p = new URLSearchParams();
-    if (preset) p.set("preset", preset);
-    if (edit) p.set("mode", "edit");
-    if (sel) p.set("sel", sel);
-    // Preset chips keep the active crew filter selected as you switch windows (#330).
-    if (crew) p.set("crew", crew);
-    const qs = p.toString();
-    return qs ? `/admin/shifts?${qs}` : "/admin/shifts";
-  };
-  // Re-assert the ACTIVE window on the crew form so picking a crew stays in the
-  // window you're looking at (#330 — "what you see is what you filter"; the crew
-  // filter never changes the window). An explicit preset is carried; a bare default
-  // (no preset) carries nothing and falls back to the default 7-day week — same
-  // window either way.
-  const KNOWN_PRESETS = new Set([
-    "today",
-    "weekend",
-    "next7",
-    "next8to15",
-    "days30",
-  ]);
-  const activePreset =
-    presetParam && KNOWN_PRESETS.has(presetParam) ? presetParam : null;
-  const windowHidden = activePreset ? (
-    <input type="hidden" name="preset" value={activePreset} />
-  ) : kind === "range" ? (
-    <>
-      <input type="hidden" name="from" value={from} />
-      <input type="hidden" name="to" value={to} />
-    </>
-  ) : null;
-  // Open the More panel by default when a custom range or crew filter is actually
-  // in effect, so an active advanced filter is never hidden behind the toggle.
-  const moreOpen = kind === "range" || !!crew;
-  return (
-    <div className="flex flex-col gap-2 rounded-card border border-line bg-card px-4 py-3">
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <AppLink href={href("today")} className={chip(kind === "today")}>
-          Today
-        </AppLink>
-        <AppLink href={href("weekend")} className={chip(kind === "weekend")}>
-          Weekend
-        </AppLink>
-        <AppLink href={href("next7")} className={chip(kind === "next7")}>
-          Week
-        </AppLink>
-        <AppLink href={href("next8to15")} className={chip(kind === "next8to15")}>
-          2 Weeks out
-        </AppLink>
-        <AppLink href={href("days30")} className={chip(kind === "days30")}>
-          30 Days
-        </AppLink>
-      </div>
-
-      {/* Custom date range + crew filter, tucked behind a no-JS <details> toggle
-          (DEC-026 — native disclosure, no client JS). Open by default when one of
-          them is actually active so an in-effect filter is never hidden. */}
-      <details open={moreOpen} className="flex flex-col gap-2">
-        <summary className="cursor-pointer select-none text-xs font-semibold text-accent">
-          More filters
-        </summary>
-
-        <form method="get" className="flex flex-wrap items-end gap-2 text-sm">
-          {edit && <input type="hidden" name="mode" value="edit" />}
-          {sel && <input type="hidden" name="sel" value={sel} />}
-          {/* Keep the crew filter across an explicit date-range submit. */}
-          {crew && <input type="hidden" name="crew" value={crew} />}
-          <label className="flex flex-col gap-0.5 text-xs text-muted">
-            From
-            <input
-              type="date"
-              name="from"
-              defaultValue={from}
-              className="rounded-lg border border-line bg-bg px-2 py-1 text-ink"
-            />
-          </label>
-          <label className="flex flex-col gap-0.5 text-xs text-muted">
-            To
-            <input
-              type="date"
-              name="to"
-              defaultValue={to}
-              className="rounded-lg border border-line bg-bg px-2 py-1 text-ink"
-            />
-          </label>
-          <GetFormSubmit className="rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent">
-            Show
-          </GetFormSubmit>
-        </form>
-
-        {/* Crew filter (#330, DEC-042 amendment) — narrow the board to one crew
-            member's shifts. A no-JS GET form (DEC-026): the window hidden inputs
-            preserve the active preset/range so the pick stays in the window you're
-            looking at ("what you see is what you filter" — the crew filter never
-            changes the window). No per-crew count/scoreboard — that's the
-            monitor-bait failure mode this surface is guarded against (DEC-042). */}
-        <form
-          method="get"
-          className="flex flex-wrap items-end gap-2 border-t border-line pt-2 text-sm"
-        >
-          {edit && <input type="hidden" name="mode" value="edit" />}
-          {sel && <input type="hidden" name="sel" value={sel} />}
-          {windowHidden}
-          <label className="flex flex-col gap-0.5 text-xs text-muted">
-            Crew
-            <select
-              name="crew"
-              defaultValue={crew ?? ""}
-              className="rounded-lg border border-line bg-bg px-2 py-1 text-ink"
-            >
-              <option value="">All crew</option>
-              {crewList.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <GetFormSubmit className="rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent">
-            Filter
-          </GetFormSubmit>
-        </form>
-      </details>
-    </div>
-  );
-}
-
-/** One neutral row → the cockpit. State is plain ink; an At-Risk row gets a quiet
- * pointer to the board (where that state is actually worked), never a red block.
- * In Edit mode an un-split multi-trip day grows a Split control; the two halves of
- * an existing split are tagged (DEC-083). The row link opens the cockpit PANE
- * (`?sel=` — DEC-085): a new pane on desktop, full-screen drill-in on mobile; the
- * selected row's border marks the open pane (selection state, not risk colour). */
-function ShiftRow({
-  row,
-  mode,
-  back,
-  href,
-  selected,
-  changed,
-  isNew,
-  canMerge,
-}: {
-  row: AllShiftsRow;
-  mode: Mode;
-  back: string;
-  href: string;
-  selected: boolean;
-  changed: boolean;
-  /** The latest pull minted this shift (9.10) — a calm "it's new" fact. */
-  isNew: boolean;
-  canMerge: boolean;
-}) {
-  const fill =
-    row.requiredSeats === 0
-      ? "—"
-      : `${row.confirmedSeats}/${row.requiredSeats} crewed`;
-  const splitTag =
-    row.split == null
-      ? null
-      : row.split.side === "A"
-        ? `split · before ${fmt12(row.split.cutTime)}`
-        : `split · from ${fmt12(row.split.cutTime)}`;
-  // Candidate cuts = this day's DISTINCT departure times after the first — each
-  // leaves a non-empty "before" (at least trips[0]) and "from" (the cut trip) side.
-  // Dedupe + drop `<= first` guards the rare same-time pair, which would dup a
-  // `<select>` key and offer a cut with an empty before-side (splitShift rejects
-  // it, but don't offer what can't work). A split side waits for Merge (8.4).
-  const firstTime = row.trips[0]?.time ?? "";
-  const cutOptions = [...new Set(row.trips.map((t) => t.time))].filter(
-    (t) => t > firstTime,
-  );
-  const canSplit = mode === "edit" && row.split == null && cutOptions.length > 0;
-  // Default the cut to the suggested gap boundary when it's a real candidate —
-  // else the first valid cut. Always one of `cutOptions`, so the option is selected.
-  const suggestedCut =
-    row.splitSuggestion?.reason === "large-gap"
-      ? row.splitSuggestion.boundary?.after
-      : undefined;
-  const defaultCut =
-    suggestedCut && cutOptions.includes(suggestedCut)
-      ? suggestedCut
-      : cutOptions[0] ?? "";
-
-  return (
-    <div
-      // Press cue for the stretched-link row (#250): a calm whole-card background
-      // dip on :active — fires because the row `<AppLink>` is in the card's activation
-      // chain. Background, NOT transform/filter, so it can't collapse the link's
-      // `after:inset-0` overlay (that would establish a containing block).
-      className={`relative flex flex-col gap-2 rounded-card border bg-card px-4 py-3 shadow-sm active:bg-accent/10 ${
-        selected ? "border-accent" : "border-line"
-      }`}
-    >
-      <div className="flex items-start justify-between gap-4">
-        {/* Stretched link (9.8): the whole card opens the cockpit; the split/
-            merge forms and the At-Risk pointer below are positioned, so they
-            stack above the ::after overlay and stay independently tappable. */}
-        {/* AppLink spinner="overlay" (#250): from the click until the cockpit pane
-            renders, a scrim + centered spinner covers the row — "you clicked, it's
-            loading." Overlays the relative card (the link isn't a positioned box). */}
-        <AppLink
-          href={href}
-          spinner="overlay"
-          className="flex min-w-0 flex-col gap-0.5 after:absolute after:inset-0 after:content-['']"
-        >
-          {/* Vessel leads — the date now lives in the day-section header (#122).
-              The dot is the DEC-086 identity hue: same boat, same hue, always —
-              it answers "which boat", never state (aria-hidden; the name is the
-              accessible answer). */}
-          <span className="flex items-center gap-1.5 font-medium text-ink">
-            <span
-              aria-hidden="true"
-              className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${vesselHueClass(row.vesselId)}`}
-            />
-            {row.vesselName}
-            {splitTag && (
-              <span className="text-xs font-normal text-muted">{splitTag}</span>
-            )}
-          </span>
-          {/* The LIST stays scannable (operator QA on 9.5): a multi-trip day
-              reads as "start · N trips" — the per-trip detail lives in the
-              cockpit. A single trip keeps its time · pax fact. (Also renders
-              the 9.6 run-on wrap moot: one compact span either way.) */}
-          <span className="font-mono text-xs text-muted">
-            {row.trips.length === 0
-              ? "no scheduled trip"
-              : row.trips.length === 1
-                ? `${fmt12(row.trips[0]!.time)} · ${row.trips[0]!.pax} pax`
-                : `${fmt12(row.trips[0]!.time)} · ${row.trips.length} trips`}
-          </span>
-          {/* Pips + assigned crew on one line (Variant C, #310): the pips lead,
-              the names sit inline to their right in pip order, wrapping under
-              when the row is tight (375px / many seats). */}
-          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <SeatPips seats={row.seats} />
-            <AssignedCrew seats={row.seats} />
-          </span>
-          {row.splitSuggestion && row.split == null && (
-            // Calm read-only cue (8.1/#204): Muster noticed this vessel-day might be
-            // two shifts. Advisory only — acting on it is Edit mode → Split (below).
-            // Muted, never an alarm token (anti-anxiety, DEC-042). Hidden once split.
-            <span className="text-xs text-muted">
-              {row.splitSuggestion.reason === "large-gap" &&
-              row.splitSuggestion.boundary
-                ? `long gap ${fmt12(row.splitSuggestion.boundary.before)}–${fmt12(row.splitSuggestion.boundary.after)} · could be two shifts`
-                : "long day · could be two shifts"}
-            </span>
-          )}
-          {changed && (
-            // Import-diff cue (DEC-083): the last pull moved trips across this
-            // split — a nudge to eyeball that the cut still makes sense. Muted.
-            <span className="text-xs text-muted">
-              changed in the last pull — check the split
-            </span>
-          )}
-          {isNew && (
-            // Freshly-spawned cue (9.10, DEC-083 amendment): the last pull
-            // minted this shift. A calm fact in the DEC-083 idiom — never the
-            // amber "new · review" approval demand DEC-082 killed; nothing to
-            // approve, the engine is already working it.
-            <span className="text-xs text-muted">new in the last pull</span>
-          )}
-        </AppLink>
-        <div className="flex shrink-0 flex-col items-end gap-0.5">
-          {/* Neutral ink — no per-state colour (DEC-042). */}
-          <span className="text-sm text-ink">
-            {row.state === "AtRisk" ? "At-Risk" : row.state}
-          </span>
-          <span className="text-xs text-muted">{fill}</span>
-          {row.state === "AtRisk" && (
-            <AppLink
-              href="/admin/at-risk"
-              className="relative inline-flex min-h-9 items-center text-xs font-semibold text-accent"
-            >
-              needs attention<span aria-hidden="true">&nbsp;↗</span>
-            </AppLink>
-          )}
-        </div>
-      </div>
-
-      {canSplit && (
-        // No-JS Split (DEC-026): pick the cut → server action → re-form. The cut
-        // options are this day's own departure times (each makes a non-empty
-        // before/from split), so a picked cut always partitions.
-        <form
-          action={splitAction}
-          className="relative flex flex-wrap items-center gap-2 border-t border-line pt-2 text-sm"
-        >
-          <input type="hidden" name="shiftId" value={row.shiftId} />
-          <input type="hidden" name="back" value={back} />
-          <label className="flex items-center gap-1.5 text-muted">
-            Split at
-            <select
-              name="cut"
-              defaultValue={defaultCut}
-              className="rounded-lg border border-line bg-bg px-2 py-1 font-mono text-ink"
-            >
-              {cutOptions.map((t) => (
-                <option key={t} value={t}>
-                  {fmt12(t)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <SubmitButton className="rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent">
-            Split
-          </SubmitButton>
-        </form>
-      )}
-
-      {mode === "edit" && canMerge && (
-        // No-JS Merge (DEC-083 inverse): recombine the split's two sides into one
-        // shift. Posts the CANONICAL id (mergeShift requires it) — for a side-B row
-        // that's the `-b`-stripped id. Any dropped far-side crew get an assignment
-        // notice (DEC-084), surfaced back as the merge count.
-        <form
-          action={mergeAction}
-          className="relative flex items-center gap-2 border-t border-line pt-2 text-sm"
-        >
-          <input type="hidden" name="shiftId" value={canonicalIdOf(row)} />
-          <input type="hidden" name="back" value={back} />
-          <SubmitButton className="rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent">
-            Merge back into one shift
-          </SubmitButton>
-        </form>
       )}
     </div>
   );

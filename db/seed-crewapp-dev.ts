@@ -81,8 +81,8 @@ try {
   const E3 = asId<"EventId">("evt-soon-3pm");
   const E5 = asId<"EventId">("evt-soon-5pm");
   await repo.saveShift({ id: SHIFT_SOON, vesselId: VESSEL, date: SOON, state: "Crewed", eventIds: [E3, E5] });
-  await repo.saveEvent({ id: E3, vesselId: VESSEL, date: SOON, time: "15:00", capacity: 12, status: "scheduled", dock: "East Bank of the Flats at Canal Basin Park" });
-  await repo.saveEvent({ id: E5, vesselId: VESSEL, date: SOON, time: "17:00", capacity: 12, status: "scheduled", dock: "East Bank of the Flats at Canal Basin Park" });
+  await repo.saveEvent({ id: E3, vesselId: VESSEL, date: SOON, time: "15:00", capacity: 12, source: "xola", status: "scheduled", dock: "East Bank of the Flats at Canal Basin Park" });
+  await repo.saveEvent({ id: E5, vesselId: VESSEL, date: SOON, time: "17:00", capacity: 12, source: "xola", status: "scheduled", dock: "East Bank of the Flats at Canal Basin Park" });
   await repo.saveSeat({ id: asId<"SeatId">("seat-soon-cap"), shiftId: SHIFT_SOON, role: CAPTAIN, kind: "required", state: "Confirmed", assignedCrewMemberId: QUINT });
   await repo.saveSeat({ id: asId<"SeatId">("seat-soon-mate"), shiftId: SHIFT_SOON, role: MATE, kind: "required", state: "Confirmed", assignedCrewMemberId: HOOPER });
   // Accepted asks behind the two confirmed seats — the normal "they said In" path,
@@ -100,9 +100,9 @@ try {
     }
   }
   // Manifest: different guests on each event (the hinge).
-  await repo.saveReservation({ id: asId<"ReservationId">("r-3pm-1"), eventId: E3, customerName: "Brody party", partySize: 4, phone: "+15555551111", status: "booked" });
-  await repo.saveReservation({ id: asId<"ReservationId">("r-3pm-2"), eventId: E3, customerName: "Vaughn party", partySize: 6, status: "booked" });
-  await repo.saveReservation({ id: asId<"ReservationId">("r-5pm-1"), eventId: E5, customerName: "Ellen party", partySize: 2, phone: "+15555552222", status: "booked" });
+  await repo.saveReservation({ id: asId<"ReservationId">("r-3pm-1"), eventId: E3, customerName: "Brody party", partySize: 4, source: "xola", phone: "+15555551111", status: "booked" });
+  await repo.saveReservation({ id: asId<"ReservationId">("r-3pm-2"), eventId: E3, customerName: "Vaughn party", partySize: 6, source: "xola", status: "booked" });
+  await repo.saveReservation({ id: asId<"ReservationId">("r-5pm-1"), eventId: E5, customerName: "Ellen party", partySize: 2, source: "xola", phone: "+15555552222", status: "booked" });
 
   // An open ask → the In/Out card on /crew.
   await repo.saveShift({ id: asId<"ShiftId">("shift-ask"), vesselId: VESSEL, date: LATER, state: "Filling", eventIds: [] });
@@ -118,8 +118,8 @@ try {
   const EO1 = asId<"EventId">("evt-open-1pm");
   const EO4 = asId<"EventId">("evt-open-4pm");
   await repo.saveShift({ id: asId<"ShiftId">("shift-open"), vesselId: VESSEL, date: OPEN, state: "Filling", eventIds: [EO1, EO4] });
-  await repo.saveEvent({ id: EO1, vesselId: VESSEL, date: OPEN, time: "13:00", capacity: 12, status: "scheduled", dock: "East Bank of the Flats at Canal Basin Park" });
-  await repo.saveEvent({ id: EO4, vesselId: VESSEL, date: OPEN, time: "16:00", capacity: 12, status: "scheduled", dock: "East Bank of the Flats at Canal Basin Park" });
+  await repo.saveEvent({ id: EO1, vesselId: VESSEL, date: OPEN, time: "13:00", capacity: 12, source: "xola", status: "scheduled", dock: "East Bank of the Flats at Canal Basin Park" });
+  await repo.saveEvent({ id: EO4, vesselId: VESSEL, date: OPEN, time: "16:00", capacity: 12, source: "xola", status: "scheduled", dock: "East Bank of the Flats at Canal Basin Park" });
   await repo.saveSeat({ id: asId<"SeatId">("seat-open-cap"), shiftId: asId<"ShiftId">("shift-open"), role: CAPTAIN, kind: "required", state: "Open" });
   await repo.saveSeat({ id: asId<"SeatId">("seat-open-mate"), shiftId: asId<"ShiftId">("shift-open"), role: MATE, kind: "required", state: "Open" });
 

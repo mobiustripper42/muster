@@ -97,12 +97,13 @@ async function seedDay(
       date,
       time: trip.time,
       capacity: 12,
-      status: "scheduled",
+      source: "xola", status: "scheduled",
       dock: DOCK,
     });
     await repo.saveReservation({
       id: asId<"ReservationId">(`resv-${keyPrefix}-${i}`),
       eventId,
+      source: "xola",
       customerName: `Party ${i + 1}`,
       partySize: trip.pax,
       status: "booked",

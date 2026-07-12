@@ -6,7 +6,7 @@ branch: task/268-scrollbar-gutter
 started: 2026-07-11T18:01:40Z
 ended:
 points:
-pr_numbers: [375, 377, 378, 379, 380]
+pr_numbers: [375, 377, 378, 379, 380, 385]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/079da17b-1b62-4fa4-9b6a-b394651a3f5d.jsonl
 ---
@@ -92,6 +92,20 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/079da17b-1b62-4fa4-9b6
 **Points:** 5
 **Branch:** task/315-other-shifts-today
 **Opened at:** 2026-07-11T20:43:12Z
+
+## Task 6: Import — don't flag yesterday's un-boated trips as 'assign a boat' (closes #384)
+
+**Completed:**
+- Operator-reported (2026-07-12): the daily import's loud "N booked trips have no boat — assign a boat & re-import" alert listed trips **all from yesterday** (past trips can't be crewed → noise). Filed #384, diagnosed + fixed same session.
+- Cause: `pullWindow` starts at `today−1` (reconciliation back-buffer), but `bookedNoBoat` filtered `>= window.start` (yesterday) → past un-boated trips got the actionable alarm. Fix (`src/import/xola-pull.ts`): lower bound `>= today`; past drops into the benign `mapSkipped` tally. Fetch buffer unchanged.
+- Discovered the **.xlsx upload is retired (DEC-043)** — prod import is now the manual **API pull** (`pullXola`), not xlsx. **Corrected the stale `xola-ingest-credential-model` memory** + MEMORY.md hook.
+- Tests: `xola-pull.test.ts` boundary repinned (today IN, today−1 OUT-but-counted, end IN, past-end OUT). **Full suite 969 pass**; typecheck+build clean. Self-reviewed (one-filter change, boundaries pinned).
+
+**Code review:** Self — minimal, boundary-pinned.
+**PR:** [#385](https://github.com/mobiustripper42/muster/pull/385) — off main, independent. Core-only, no migration/UI.
+**Points:** 1
+**Branch:** task/384-import-no-boat-past
+**Opened at:** 2026-07-12T12:49:47Z
 
 **Next Steps:**
 - **#293** (retire OPERATOR_CREW_MEMBER_ID singleton) held for a fresh session — delicate 7-site auth/messaging refactor (act-as → acting admin's crew id; is-this → admins-set membership; exclude-from-ring → doorbell). Needs @architect. NOT started (stray local `task/293` branch, no commits).

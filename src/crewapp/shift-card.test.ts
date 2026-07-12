@@ -34,17 +34,17 @@ async function seed(): Promise<InMemoryRepository> {
   const co: CrewMember = { id: CO, name: "Hooper", phone: "555-0002", ratings: [MATE], status: "active", reliabilityScore: null };
   const shift: Shift = { id: SHIFT, vesselId: VESSEL, date: "2026-07-04", state: "Crewed", eventIds: [E5, E1] /* out of order on purpose */ };
   // Two events, different docks/times; the 5pm listed first to test sorting.
-  const e3: Event = { id: E1, vesselId: VESSEL, date: "2026-07-04", time: "15:00", capacity: 12, status: "scheduled", dock: "Pier 9, Lake Union" };
-  const e5: Event = { id: E5, vesselId: VESSEL, date: "2026-07-04", time: "17:00", capacity: 12, status: "scheduled" /* no dock */ };
+  const e3: Event = { id: E1, vesselId: VESSEL, date: "2026-07-04", time: "15:00", capacity: 12, source: "xola", status: "scheduled", dock: "Pier 9, Lake Union" };
+  const e5: Event = { id: E5, vesselId: VESSEL, date: "2026-07-04", time: "17:00", capacity: 12, source: "xola", status: "scheduled" /* no dock */ };
   const seats: Seat[] = [
     { id: asId<"SeatId">("seat-cap"), shiftId: SHIFT, role: CAPTAIN, kind: "required", state: "Confirmed", assignedCrewMemberId: ME },
     { id: asId<"SeatId">("seat-mate"), shiftId: SHIFT, role: MATE, kind: "required", state: "Confirmed", assignedCrewMemberId: CO },
   ];
   const reservations: Reservation[] = [
-    { id: asId<"ReservationId">("r1"), eventId: E1, customerName: "Brody", partySize: 4, phone: "555-1111", status: "booked" },
-    { id: asId<"ReservationId">("r2"), eventId: E1, customerName: "Vaughn", partySize: 6, status: "booked" }, // no phone
-    { id: asId<"ReservationId">("r3"), eventId: E1, customerName: "Cancelled Carl", partySize: 8, status: "cancelled" }, // excluded
-    { id: asId<"ReservationId">("r4"), eventId: E5, customerName: "Ellen", partySize: 2, status: "booked" },
+    { id: asId<"ReservationId">("r1"), eventId: E1, customerName: "Brody", partySize: 4, source: "xola", phone: "555-1111", status: "booked" },
+    { id: asId<"ReservationId">("r2"), eventId: E1, customerName: "Vaughn", partySize: 6, source: "xola", status: "booked" }, // no phone
+    { id: asId<"ReservationId">("r3"), eventId: E1, customerName: "Cancelled Carl", partySize: 8, source: "xola", status: "cancelled" }, // excluded
+    { id: asId<"ReservationId">("r4"), eventId: E5, customerName: "Ellen", partySize: 2, source: "xola", status: "booked" },
   ];
   for (const r of roles) await repo.saveRoleType(r);
   await repo.saveVessel(vessel);
@@ -89,7 +89,7 @@ describe("buildShiftCard", () => {
     // A 9pm trip exists but is CANCELLED — must not anchor the shift end; the
     // window stays the scheduled 15:00–17:00 span, same as the other surfaces.
     const E9 = asId<"EventId">("evt-9pm");
-    await repo.saveEvent({ id: E9, vesselId: VESSEL, date: "2026-07-04", time: "21:00", capacity: 12, status: "cancelled" });
+    await repo.saveEvent({ id: E9, vesselId: VESSEL, date: "2026-07-04", time: "21:00", capacity: 12, source: "xola", status: "cancelled" });
     await repo.saveShift({ id: SHIFT, vesselId: VESSEL, date: "2026-07-04", state: "Crewed", eventIds: [E5, E1, E9] });
     const card = (await buildShiftCard(repo, SHIFT, ME, NOW))!;
     expect(card.callTime).toBe("14:15"); // earliest SCHEDULED 15:00 − 45m
@@ -112,7 +112,7 @@ describe("buildShiftCard", () => {
   it("sharedDock is set only when every event departs the same place", async () => {
     const repo = await seed();
     // give the 5pm event the same dock as the 3pm → now they share
-    await repo.saveEvent({ id: E5, vesselId: VESSEL, date: "2026-07-04", time: "17:00", capacity: 12, status: "scheduled", dock: "Pier 9, Lake Union" });
+    await repo.saveEvent({ id: E5, vesselId: VESSEL, date: "2026-07-04", time: "17:00", capacity: 12, source: "xola", status: "scheduled", dock: "Pier 9, Lake Union" });
     const card = (await buildShiftCard(repo, SHIFT, ME, NOW))!;
     expect(card.sharedDock).toBe("Pier 9, Lake Union");
   });
@@ -194,7 +194,7 @@ describe("buildShiftManifest", () => {
   it("shared dock surfaces when every event departs the same place", async () => {
     const repo = await seed();
     // Give the 5pm the same dock as the 3pm → one shared pin.
-    await repo.saveEvent({ id: E5, vesselId: VESSEL, date: "2026-07-04", time: "17:00", capacity: 12, status: "scheduled", dock: "Pier 9, Lake Union" });
+    await repo.saveEvent({ id: E5, vesselId: VESSEL, date: "2026-07-04", time: "17:00", capacity: 12, source: "xola", status: "scheduled", dock: "Pier 9, Lake Union" });
     const m = await buildShiftManifest(repo, (await repo.getShift(SHIFT))!);
     expect(m.sharedDock).toBe("Pier 9, Lake Union");
   });

@@ -23,6 +23,7 @@ const TABLES = [
   "pto_windows",
   "events",
   "reservations",
+  "muster_owned_vessel_days",
   "shifts",
   "seats",
   "asks",

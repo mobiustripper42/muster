@@ -72,7 +72,7 @@ async function event(
     date: opts.date ?? IN_WINDOW,
     time: opts.time ?? "10:00",
     capacity: 20,
-    status: "scheduled",
+    source: "xola", status: "scheduled",
   });
 }
 

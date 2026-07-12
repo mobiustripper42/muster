@@ -32,7 +32,7 @@ async function seedShift(): Promise<InMemoryRepository> {
     date: DAY,
     time: "11:00",
     capacity: 16,
-    status: "scheduled",
+    source: "xola", status: "scheduled",
   });
   await formShifts(repo);
   return repo;

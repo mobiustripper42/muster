@@ -83,6 +83,7 @@ const event = (over: Partial<Event> = {}): Event => ({
   time: "14:00",
   capacity: 12,
   status: "scheduled",
+  source: "xola",
   ...over,
 });
 const reservation = (over: Partial<Reservation> = {}): Reservation => ({
@@ -91,6 +92,7 @@ const reservation = (over: Partial<Reservation> = {}): Reservation => ({
   customerName: "Brody",
   partySize: 4,
   status: "booked",
+  source: "xola",
   ...over,
 });
 const shift = (over: Partial<Shift> = {}): Shift => ({
@@ -379,6 +381,51 @@ export function runRepositoryContract(
       expect(await repo.listEvents()).toEqual([event()]);
       await repo.saveEvent(event({ dock: "Pier 9, Lake Union" }));
       expect(await repo.getEvent(EVENT)).toEqual(event({ dock: "Pier 9, Lake Union" }));
+    });
+
+    it("events: source + price round-trip; price optional (DEC-106/112)", async () => {
+      await repo.saveEvent(event()); // 'xola' default, no price
+      const got = await repo.getEvent(EVENT);
+      expect(got!.source).toBe("xola");
+      expect("price" in got!).toBe(false); // omitted, not undefined
+      const priced = event({ source: "muster", price: 49900 }); // $499.00 in cents
+      await repo.saveEvent(priced);
+      expect(await repo.getEvent(EVENT)).toEqual(priced);
+    });
+
+    it("reservations: source round-trips (DEC-106)", async () => {
+      await repo.saveReservation(reservation({ source: "muster" }));
+      expect(
+        (await repo.getReservation(asId<"ReservationId">("resv-1")))!.source,
+      ).toBe("muster");
+    });
+
+    it("muster-owned vessel-days: mark + list; upsert on (vessel,date) (DEC-106)", async () => {
+      expect(await repo.listMusterOwnedVesselDays()).toEqual([]);
+      await repo.markVesselDayMusterOwned(
+        VESSEL,
+        "2026-07-04",
+        "2026-07-01T00:00:00.000Z",
+      );
+      expect(await repo.listMusterOwnedVesselDays()).toEqual([
+        { vesselId: VESSEL, date: "2026-07-04", markedAt: "2026-07-01T00:00:00.000Z" },
+      ]);
+      // upsert on (vessel, date): re-mark updates markedAt, no duplicate row
+      await repo.markVesselDayMusterOwned(
+        VESSEL,
+        "2026-07-04",
+        "2026-07-02T00:00:00.000Z",
+      );
+      const one = await repo.listMusterOwnedVesselDays();
+      expect(one).toHaveLength(1);
+      expect(one[0]!.markedAt).toBe("2026-07-02T00:00:00.000Z");
+      // a different date is a distinct row
+      await repo.markVesselDayMusterOwned(
+        VESSEL,
+        "2026-07-05",
+        "2026-07-02T00:00:00.000Z",
+      );
+      expect(await repo.listMusterOwnedVesselDays()).toHaveLength(2);
     });
 
     it("reservations: nullable phone present and absent; listForEvent", async () => {

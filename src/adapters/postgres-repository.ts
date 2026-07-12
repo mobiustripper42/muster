@@ -24,6 +24,7 @@ import type {
   Event,
   LoginCode,
   CalendarFeed,
+  MusterOwnedVesselDay,
   MagicToken,
   NoticeOutboxEntry,
   SmsConsent,
@@ -150,18 +151,27 @@ const toEvent = (r: any): Event => ({
   time: r.time,
   capacity: r.capacity,
   status: r.status,
+  source: r.source,
   ...opt("dock", r.dock),
+  ...opt("price", r.price),
 });
 
 const toReservation = (r: any): Reservation => ({
   id: asId<"ReservationId">(r.id),
   eventId: asId<"EventId">(r.event_id),
+  source: r.source,
   customerName: r.customer_name,
   partySize: r.party_size,
   status: r.status,
   ...opt("email", r.email),
   ...opt("phone", r.phone),
   ...opt("updatedAt", r.updated_at),
+});
+
+const toMusterOwnedVesselDay = (r: any): MusterOwnedVesselDay => ({
+  vesselId: asId<"VesselId">(r.vessel_id),
+  date: r.date,
+  markedAt: r.marked_at,
 });
 
 const toShift = (r: any): Shift => ({
@@ -552,10 +562,11 @@ export class PostgresRepository implements Repository {
   // ── Events ─────────────────────────────────────────────────────────────────
   async saveEvent(e: Event): Promise<void> {
     await this.#pool.query(
-      `insert into events(id, vessel_id, date, time, capacity, status, dock) values ($1,$2,$3,$4,$5,$6,$7)
+      `insert into events(id, vessel_id, date, time, capacity, status, dock, source, price) values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
        on conflict (id) do update set vessel_id=excluded.vessel_id, date=excluded.date,
-         time=excluded.time, capacity=excluded.capacity, status=excluded.status, dock=excluded.dock`,
-      [e.id, e.vesselId, e.date, e.time, e.capacity, e.status, e.dock ?? null],
+         time=excluded.time, capacity=excluded.capacity, status=excluded.status, dock=excluded.dock,
+         source=excluded.source, price=excluded.price`,
+      [e.id, e.vesselId, e.date, e.time, e.capacity, e.status, e.dock ?? null, e.source, e.price ?? null],
     );
   }
   async getEvent(id: EventId): Promise<Event | null> {
@@ -569,14 +580,33 @@ export class PostgresRepository implements Repository {
     return rows.map(toEvent);
   }
 
+  // ── Coexistence partition — Muster-owned vessel-days (DEC-106) ───────────────
+  async listMusterOwnedVesselDays(): Promise<MusterOwnedVesselDay[]> {
+    const { rows } = await this.#pool.query(
+      "select * from muster_owned_vessel_days",
+    );
+    return rows.map(toMusterOwnedVesselDay);
+  }
+  async markVesselDayMusterOwned(
+    vesselId: VesselId,
+    date: string,
+    markedAt: string,
+  ): Promise<void> {
+    await this.#pool.query(
+      `insert into muster_owned_vessel_days(vessel_id, date, marked_at) values ($1,$2,$3)
+       on conflict (vessel_id, date) do update set marked_at=excluded.marked_at`,
+      [vesselId, date, markedAt],
+    );
+  }
+
   // ── Reservations ───────────────────────────────────────────────────────────
   async saveReservation(r: Reservation): Promise<void> {
     await this.#pool.query(
-      `insert into reservations(id, event_id, customer_name, party_size, email, phone, status, updated_at)
-       values ($1,$2,$3,$4,$5,$6,$7,$8)
+      `insert into reservations(id, event_id, customer_name, party_size, email, phone, status, updated_at, source)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
        on conflict (id) do update set event_id=excluded.event_id, customer_name=excluded.customer_name,
          party_size=excluded.party_size, email=excluded.email, phone=excluded.phone, status=excluded.status,
-         updated_at=excluded.updated_at`,
+         updated_at=excluded.updated_at, source=excluded.source`,
       [
         r.id,
         r.eventId,
@@ -586,6 +616,7 @@ export class PostgresRepository implements Repository {
         r.phone ?? null,
         r.status,
         r.updatedAt ?? null,
+        r.source,
       ],
     );
   }

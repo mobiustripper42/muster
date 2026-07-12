@@ -50,7 +50,7 @@ async function seedShift(
     date,
     time,
     capacity: 12,
-    status: "scheduled",
+    source: "xola", status: "scheduled",
     ...(opts.dock ? { dock: opts.dock } : {}),
   });
   await repo.saveShift({

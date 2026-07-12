@@ -21,6 +21,7 @@ function ev(time: string, status: Event["status"] = "scheduled"): Event {
     time,
     capacity: 12,
     status,
+    source: "xola",
   };
 }
 

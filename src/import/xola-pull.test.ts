@@ -251,12 +251,15 @@ describe("pullXola — G1–G9 reconcile harness", () => {
     });
   });
 
-  // #338 window boundary: the classify uses an inclusive [start, end] string
-  // compare. Pin both edges (a trip dated exactly on a bound is IN) and one day
-  // past the end (OUT) so the >=/<= can't silently drift to >/<. The `pull` helper
-  // runs with tz UTC + the default lead, so `pullWindow(NOW, undefined, "UTC")` is
-  // the exact window; use a +00:00 arrival so the trip date is unambiguous.
+  // Actionable-alert boundary (#338, #384): bookedNoBoat is inclusive [today, end]
+  // — NOT [window.start, end]. window.start is the today−1 fetch buffer (a PAST
+  // day; can't crew), so a trip there is counted (mapSkipped) but NOT flagged. Pin
+  // the buffer day (OUT), today (IN, the new lower edge), the inclusive end (IN),
+  // and one day past the end (OUT), so the >=/<= can't drift. The `pull` helper
+  // runs tz UTC + the default lead, so `pullWindow(NOW, undefined, "UTC")` is the
+  // exact window; a +00:00 arrival makes the trip date unambiguous.
   const W = pullWindow(NOW, undefined, "UTC");
+  const TODAY = vesselLocalDate(NOW, "UTC");
   const bookedOn = (date: string): XolaOrderItem =>
     item("e1", { arrivalDatetime: `${date}T12:00:00+00:00` });
 
@@ -265,9 +268,16 @@ describe("pullXola — G1–G9 reconcile harness", () => {
     expect(r.bookedNoBoat.map((b) => b.date)).toEqual([W.end]);
   });
 
-  it("G3.4d a booked boat-less trip on the window's first day is flagged (inclusive start)", async () => {
+  it("G3.4d a booked boat-less trip dated TODAY is flagged (inclusive lower bound, #384)", async () => {
+    const r = await pull([ev("e1", null)], ordersOf(bookedOn(TODAY)), NOW);
+    expect(r.bookedNoBoat.map((b) => b.date)).toEqual([TODAY]);
+  });
+
+  it("G3.4d2 a booked boat-less trip on the today−1 buffer day is NOT flagged — it's past, can't crew (#384)", async () => {
     const r = await pull([ev("e1", null)], ordersOf(bookedOn(W.start)), NOW);
-    expect(r.bookedNoBoat.map((b) => b.date)).toEqual([W.start]);
+    expect(W.start).toBe(addDays(TODAY, -1)); // guard: W.start really is yesterday
+    expect(r.mapSkipped).toBe(1); // still counted in the pull...
+    expect(r.bookedNoBoat).toHaveLength(0); // ...just not the actionable alert
   });
 
   it("G3.4e one day past the window end counts as mapSkipped but is NOT flagged", async () => {

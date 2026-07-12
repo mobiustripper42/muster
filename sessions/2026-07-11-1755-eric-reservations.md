@@ -6,7 +6,7 @@ branch: feature/reservations
 started: 2026-07-11T17:55:10Z
 ended:
 points:
-pr_numbers: [382]
+pr_numbers: [382, 383]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/3e406f73-c6f5-4b97-acea-59decccd4662.jsonl
 ---
@@ -29,11 +29,26 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/3e406f73-c6f5-4b97-ace
 **Branch:** task/11.0-source-discriminator
 **Opened at:** 2026-07-12T00:47:58Z
 
+## Task 2: Phase 11.1 — availability read model (whole-boat mutex) (closes #367)
+
+**Completed:**
+- **New `src/reservations/availability.ts`** (reservations domain area, distinct from the crew oracle):
+  - `deriveAvailability(events, reservations)` — pure; per-Muster-event availability as a **whole-boat MUTEX** (`available` iff zero active `booked` `source='muster'` reservations), only `scheduled` Muster events, surfaces `Event.price` (DEC-112).
+  - `canBook(event, reservations, partySize)` — the pure claim predicate (`1 ≤ party ≤ capacity` AND unclaimed) that 11.3's atomic webhook will wrap (DEC-109 mechanism unchanged).
+- 11 tests (`availability.test.ts`): mutex proof (party of 4 on a 12-cap boat reads unavailable — not "8 left"), Xola/cancelled exclusion, cancelled-reservation-doesn't-claim, price surfacing, full `canBook` bounds.
+- Purely additive — no migration/seed/DB touch, so no e2e-seed risk. `npm run verify` green (**992 tests + build**, +11).
+
+**Code review:** Clean bill of health — mutex correctness, `canBook` bounds, no seat-subtraction, function parity (shared `isActiveMusterClaim`), exhaustive filtering over closed unions.
+**PR:** [#383](https://github.com/mobiustripper42/muster/pull/383) — into `main`.
+**Points:** 3
+**Branch:** task/11.1-availability
+**Opened at:** 2026-07-12T05:45:58Z
+
 **Next Steps:**
-- **Merge #382** once CI green → then migration `0023` hand-applied to prod on the next push (with any other pending: 0021/0022 from S43 if not yet applied — verify).
-- **11.1 — availability read model = whole-boat MUTEX** (bookable iff no active `source='muster'` reservation AND party ≤ `Event.capacity`; **not** `Σ party sizes`); surface `Event.price`; pure deriver **distinct from the crew oracle**; additive/safe on main (#367, body corrected).
-- **11.3** claim predicate restated to the mutex (#369). **11.2 Stripe** owner-gated (Drew): deposit %, balance timing, refund policy, **which Stripe account** — lifts from `/home/eric/sailbook`.
-- Phase 11 issues #366–#374 exist (`/start-phase` ran). Build rides `feature/reservations` behind `RESERVATIONS` flag EXCEPT 11.0/11.1 (additive, land on main).
+- **#382 merged** (11.0 on `main`). **Merge #383** (11.1) once CI green.
+- **Prod migration owed:** `0021`+`0022`+`0023` hand-apply on the next push (verify which of 0021/0022 were already applied out-of-band in S43): `DATABASE_URL=<neon-direct> npm run db:migrate`.
+- **11.3** booking write + atomic whole-boat claim (#369, @architect gate) — wraps `canBook` in a transactional CAS. **11.2 Stripe** (#368) owner-gated (Drew): deposit %, balance timing, refund policy, **which Stripe account** — lifts from `/home/eric/sailbook`. 11.2/11.3 ride `feature/reservations` behind `RESERVATIONS` (DEC-111).
+- **Prevention follow-up:** add a `typecheck:db` step (db/ seeds dodge `tsconfig.core` — that gap caused the 11.0 e2e break, fixed reactively).
 
 **Context:**
 - **Dedicated worktree:** this session builds in `/home/eric/muster-reservations` on `feature/reservations` (off main `5bac70a`), independent of main→production. Everything rides the `RESERVATIONS` flag (DEC-111) except the inert `source` migration (11.0 → main).

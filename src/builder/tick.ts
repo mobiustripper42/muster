@@ -204,7 +204,15 @@ export async function tick(
       if (ts === null) continue;
       const day = vesselDateOf(ts, tz);
       for (const seat of await repo.listSeatsForShift(s.id)) {
-        seatDay.set(seat.id, day);
+        // Only seats still IN PLAY reserve a person for the day. A Claimed/
+        // Confirmed seat's asks must not: the winner is already kept off other
+        // same-day boats by the committed-dates eligibility gate, and the LOSING
+        // broadcast siblings (never swept on a filled seat, DEC-067) are free —
+        // bucketing either would silently, permanently shrink every other
+        // same-day boat's drip pool for anyone who ever lost a broadcast.
+        if (seat.state === "Open" || seat.state === "Asked") {
+          seatDay.set(seat.id, day);
+        }
       }
     }
     for (const ask of await repo.listAllAsks()) {
@@ -297,10 +305,14 @@ export async function tick(
         }
         if (urgent) {
           // Blast the remaining un-asked pool this tick (loop the widen primitive).
+          // Urgent doesn't EXCLUDE (fill at all costs), but its picks still count
+          // toward spreading (#393), so a same-day *drip* seat processed later this
+          // tick skips them rather than hammering one person across two boats.
           let a: Ask | null;
           while ((a = await widenAsk(repo, seat.id, now)) !== null) {
             result.asksFired++;
             result.firedAsks.push(a);
+            if (tripDay !== null) markAskedOnDay(tripDay, a.crewMemberId);
           }
         } else if (widenDue(seat, seatAsks, dripMs, now)) {
           // One-boat-per-day (#393): skip anyone already holding a live ask on

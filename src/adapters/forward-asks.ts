@@ -82,18 +82,32 @@ export async function forwardAsks(
   let forwarded = 0;
   for (const group of byCrew.values()) {
     try {
-      const rep = group[0]!; // group is non-empty by construction
-      const crew = await repo.getCrewMember(rep.crewMemberId);
+      const crew = await repo.getCrewMember(group[0]!.crewMemberId);
       if (!crew) continue; // dangling ref — nothing to relay
-      const body =
-        group.length === 1
-          ? await singleAskBody(repo, rep)
-          : `Muster: ${group.length} shifts need you. Tap to answer.`;
-      if (body === null) continue; // seat/shift vanished
 
-      // A batch has no single seat; correlate the outbox entry / reply to the
-      // representative (first) ask. The link is crew-scoped → `/crew`, so every
-      // ask in the group is answerable there regardless of which one anchors it.
+      // The ask that anchors the outbox entry / reply correlation must have a seat
+      // that still resolves — a seat can vanish between firing and forwarding
+      // (manning/merge/form-shifts), and a stale `seatId` writes an orphan entry.
+      // Lone ask: resolving IS composing its body. Batch: the body is a count, so
+      // just walk to the first surviving ask. Skip the group if none survive.
+      let rep: Ask | null = null;
+      let body: string | null = null;
+      if (group.length === 1) {
+        body = await singleAskBody(repo, group[0]!);
+        if (body !== null) rep = group[0]!;
+      } else {
+        for (const ask of group) {
+          if (await repo.getSeat(ask.seatId)) {
+            rep = ask;
+            break;
+          }
+        }
+        // Link is crew-scoped → `/crew`, so every live ask in the group is
+        // answerable there regardless of which one anchors the entry.
+        if (rep !== null) body = `Muster: ${group.length} shifts need you. Tap to answer.`;
+      }
+      if (rep === null || body === null) continue;
+
       await channel.send({
         to: { crewMemberId: crew.id, phone: crew.phone },
         kind: "ask",

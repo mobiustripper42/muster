@@ -194,4 +194,19 @@ describe("forwardAsks — per-recipient batching (#393)", () => {
     expect(bodyByCrew[CREW]).toBe("Muster: 2 shifts need you. Tap to answer.");
     expect(bodyByCrew[crewB]).toContain("In or out?");
   });
+
+  it("anchors a batch to a surviving ask when the first ask's seat vanished", async () => {
+    const repo = new InMemoryRepository();
+    const a1 = await seedSpine(repo); // CREW, seat-1
+    const a2 = await addSeatAsk(repo, CREW, "seat-2", "ask-2");
+    await repo.removeSeat(SEAT); // a1's seat gone between firing and forwarding
+    const fake = new FakeChannel(() => T0);
+
+    expect(await forwardAsks(repo, fake, [a1, a2])).toBe(2);
+    expect(fake.sent).toHaveLength(1);
+    // Correlates to the SURVIVING ask (a2/seat-2), never the stale a1/seat-1 —
+    // no orphan outbox entry.
+    expect(fake.sent[0]!.seatId).toBe(a2.seatId);
+    expect(fake.sent[0]!.body).toBe("Muster: 2 shifts need you. Tap to answer.");
+  });
 });

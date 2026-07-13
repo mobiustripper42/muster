@@ -795,4 +795,35 @@ describe("tick — one boat per day: same-day boats spread across people (#393)"
     // real candidate — there just isn't a second distinct person to spread to).
     expect(r.firedAsks).toHaveLength(1);
   });
+
+  it("a losing broadcast sibling on a FILLED same-day boat stays eligible for another boat's drip", async () => {
+    await seedTwoBoatsSameDay();
+    const capX = await addCaptain("cap-x", { reliabilityScore: 0.9 });
+    const capY = await addCaptain("cap-y", { reliabilityScore: 0.5 });
+
+    const shifts = await repo.listShifts();
+    const boatA = shifts[0]!;
+    const boatB = shifts[1]!;
+    const seatA = (await repo.listSeatsForShift(boatA.id))[0]!;
+    const seatB = (await repo.listSeatsForShift(boatB.id))[0]!;
+
+    // Boat A is filled by capY; capX holds a LOSING sibling ask on it (no
+    // respondedAt, never swept on a filled seat). capX lost — they're free.
+    await repo.saveShift({ ...boatA, state: "Filling" });
+    await repo.saveSeat({ ...seatA, state: "Claimed", assignedCrewMemberId: capY });
+    await repo.saveAsk({
+      id: asId<"AskId">("losing-x"),
+      seatId: seatA.id,
+      crewMemberId: capX,
+      channel: "push",
+      sentAt: DRIP.toISOString(),
+    });
+
+    await tick(repo, DRIP);
+
+    // The filled Boat A must NOT reserve capX — Boat B's drip can still seed them.
+    // (Pre-fix, capX's stale losing ask kept them out of every same-day boat.)
+    const seatBAsks = await repo.listAsksForSeat(seatB.id);
+    expect(seatBAsks.map((a) => a.crewMemberId)).toContain(capX);
+  });
 });

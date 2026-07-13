@@ -9,7 +9,7 @@
  * manually.** Refunds are always manual (Stripe dashboard); nothing here refunds
  * automatically. Provider-agnostic + fully testable via `FakePaymentPort`.
  */
-import type { Payment } from "../domain/entities.js";
+import type { Payment, Reservation } from "../domain/entities.js";
 import { asId, type EventId, type ReservationId } from "../domain/ids.js";
 import type { CheckoutCompleted, PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
@@ -25,6 +25,14 @@ export interface WebhookDeps {
    * refund — refunds are always manual in the Stripe dashboard.
    */
   alertPaidButUnbooked: (message: string) => Promise<void>;
+  /**
+   * Email + SMS the customer their booking-management link (11.4, DEC-119). Fires ONLY on a
+   * fresh `booked` outcome — never on the idempotent `already` (Stripe redelivers
+   * `checkout.session.completed`; each redelivery resolves to `already`, and re-sending would
+   * re-notify the customer every retry). MUST be best-effort — a confirmation failure never
+   * throws here, so a committed booking never 500s the webhook (which would trigger a retry).
+   */
+  sendConfirmation: (reservation: Reservation) => Promise<void>;
 }
 
 export type WebhookResult =
@@ -62,6 +70,11 @@ export async function processBookingWebhook(
   await recordPayment(deps, completed, kind, reservationId);
 
   if (result.outcome === "booked" || result.outcome === "already") {
+    // Confirm ONLY the fresh booking — never the idempotent `already` (a Stripe
+    // redelivery), or the customer gets re-texted on every retry (DEC-119).
+    if (result.outcome === "booked") {
+      await deps.sendConfirmation(result.reservation);
+    }
     return { handled: true, outcome: result.outcome };
   }
 

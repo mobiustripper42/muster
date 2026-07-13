@@ -28,10 +28,11 @@
 
 import type { OutboxEntry } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
-import type {
-  ChannelPort,
-  OutboundMessage,
-  SendResult,
+import {
+  type ChannelPort,
+  type OutboundMessage,
+  requireCrewId,
+  type SendResult,
 } from "../ports/channel.js";
 import type { Repository } from "../ports/repository.js";
 import { issueMagicLink, randomSecret } from "../auth/magic-link.js";
@@ -76,13 +77,14 @@ export class WebLinkChannel implements ChannelPort {
     }
 
     const now = this.#now();
+    const crewMemberId = requireCrewId(message.to);
     // Minted at enqueue, stored verbatim (DEC-030): the link in the entry IS
     // the link that gets texted, forever.
     const { secret } = await issueMagicLink(
       this.#repo,
       {
         subjectKind: "crew",
-        subjectId: message.to.crewMemberId,
+        subjectId: crewMemberId,
         ttlMs: RELAY_LINK_TTL_MS,
       },
       { now, mintSecret: this.#mintSecret },
@@ -94,7 +96,7 @@ export class WebLinkChannel implements ChannelPort {
       id: asId<"OutboxEntryId">(`obx-${message.askId}`),
       askId: message.askId,
       seatId: message.seatId,
-      crewMemberId: message.to.crewMemberId,
+      crewMemberId,
       body: message.body,
       link: `${this.#linkBase}/crew/auth?t=${secret}`,
       status: "pending",

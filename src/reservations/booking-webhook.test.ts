@@ -43,25 +43,30 @@ const completed = (over: Partial<CheckoutCompleted> = {}): CheckoutCompleted => 
 
 function makeDeps(repo: InMemoryRepository) {
   const alert = vi.fn(async (_message: string) => {});
+  const confirm = vi.fn(async (_reservation: unknown) => {});
   const deps: WebhookDeps = {
     repo,
     payments: new FakePaymentPort(),
     now: NOW,
     alertPaidButUnbooked: alert,
+    sendConfirmation: confirm,
   };
-  return { deps, alert };
+  return { deps, alert, confirm };
 }
 
 describe("processBookingWebhook", () => {
   it("booked: writes the reservation + records the payment", async () => {
     const repo = new InMemoryRepository();
     await repo.saveEvent(musterEvent());
-    const { deps, alert } = makeDeps(repo);
+    const { deps, alert, confirm } = makeDeps(repo);
 
     const r = await processBookingWebhook(deps, JSON.stringify(completed()), FAKE_SIGNATURE);
     expect(r).toEqual({ handled: true, outcome: "booked" });
 
     const resId = reservationIdFor("cs_test_1");
+    // Confirmation fires once, with the freshly-booked reservation (11.4, DEC-119).
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(confirm.mock.calls[0]![0]).toMatchObject({ id: resId, status: "booked" });
     expect(await repo.getReservation(resId)).not.toBeNull();
     const payments = await repo.listPaymentsForReservation(resId);
     expect(payments).toHaveLength(1);
@@ -79,7 +84,7 @@ describe("processBookingWebhook", () => {
   it("already: a re-delivered webhook (same session) is idempotent — no duplicate booking or payment", async () => {
     const repo = new InMemoryRepository();
     await repo.saveEvent(musterEvent());
-    const { deps } = makeDeps(repo);
+    const { deps, confirm } = makeDeps(repo);
 
     await processBookingWebhook(deps, JSON.stringify(completed()), FAKE_SIGNATURE);
     const r = await processBookingWebhook(deps, JSON.stringify(completed()), FAKE_SIGNATURE);
@@ -89,6 +94,9 @@ describe("processBookingWebhook", () => {
     expect(
       await repo.listPaymentsForReservation(reservationIdFor("cs_test_1")),
     ).toHaveLength(1);
+    // The re-delivery resolves to `already` → NO second confirmation (DEC-119):
+    // one send across both calls, or the customer is re-texted on every retry.
+    expect(confirm).toHaveBeenCalledOnce();
   });
 
   it("paid-but-unbooked (rival holds the boat): records the payment + alerts admins to refund manually", async () => {
@@ -102,12 +110,13 @@ describe("processBookingWebhook", () => {
       partySize: 4,
       status: "booked",
     });
-    const { deps, alert } = makeDeps(repo);
+    const { deps, alert, confirm } = makeDeps(repo);
 
     const r = await processBookingWebhook(deps, JSON.stringify(completed()), FAKE_SIGNATURE);
     expect(r).toEqual({ handled: true, outcome: "unbookable" });
     expect(alert).toHaveBeenCalledOnce();
     expect(alert.mock.calls[0]![0]).toContain("REFUND MANUALLY");
+    expect(confirm).not.toHaveBeenCalled(); // no booking → no confirmation
     // the money moved, so the payment is still recorded (for the audit trail)
     expect(
       await repo.listPaymentsForReservation(reservationIdFor("cs_test_1")),

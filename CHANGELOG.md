@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.0.8] - 2026-07-13
+- PR #409: db:crew rank — crew by reliability score, best first (#404)
+- PR #410: Fix stale audit e2e (repointed from ask-trail to the audit list)
+
 ## [1.0.7] - 2026-07-13
 - PR #407: Audit trail shows all 14 crew events, one list on /admin/asks (#400)
 

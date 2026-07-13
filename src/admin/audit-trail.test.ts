@@ -1,8 +1,7 @@
 /**
- * Audit trail (#400 Slice B, DEC-118) — the one-list projection. Covers the union
- * of audit facts + reliability add/drop projection, the exclusion of ask-context
- * types, actor labelling, newest-first ordering, crew/kind filters, and shift
- * label resolution (incl. the no-FK orphan).
+ * Audit trail (#400, DEC-118) — the one-list, every-crew-event projection. Covers
+ * that all 14 crew event types map to their own row, that the two shift-level
+ * types are excluded, actor labelling, ordering, and the crew/kind filters.
  */
 
 import { describe, expect, it } from "vitest";
@@ -38,7 +37,7 @@ async function seedBase(repo: InMemoryRepository): Promise<void> {
   await repo.saveRoleType({ id: CAPTAIN, tenantId: TENANT, name: "captain" } as RoleType);
   await repo.saveVessel({ id: V1, name: "Hops", coiMaxPax: 6, manning: [] } as Vessel);
   await repo.saveCrewMember(crew("crew-quint", "Quint"));
-  await repo.saveCrewMember(crew("crew-hooper", "Hooper")); // an admin actor
+  await repo.saveCrewMember(crew("crew-hooper", "Hooper"));
   await repo.saveShift(shift("shift-1", "2026-07-11"));
 }
 
@@ -76,57 +75,41 @@ function rel(
   };
 }
 
-describe("buildAuditTrail — union + projection", () => {
-  it("projects audit facts to added/removed/changed with resolved crew + shift context", async () => {
+describe("buildAuditTrail — every crew event, its own row", () => {
+  it("maps all 11 crew reliability types to their kinds and EXCLUDES the 2 shift-level ones", async () => {
     const repo = new InMemoryRepository();
     await seedBase(repo);
-    await repo.appendAuditEvent(
-      aud("crew-quint", "admin", "crew_removed", "2026-07-13T16:00:00.000Z", {
-        shiftId: asId<"ShiftId">("shift-1"),
-        reason: "misassignment",
-      }, "crew-hooper"),
-    );
-
-    const [row] = await buildAuditTrail(repo);
-    expect(row).toMatchObject({
-      source: "audit",
-      action: "removed",
-      crewName: "Quint",
-      actorLabel: "Hooper", // admin actorId → crew name
-      detail: "misassignment",
-      date: "2026-07-11",
-      vesselName: "Hops",
-    });
-  });
-
-  it("labels each actor kind: self-claim, Xola import, engine", async () => {
-    const repo = new InMemoryRepository();
-    await seedBase(repo);
-    await repo.appendAuditEvent(aud("crew-quint", "crew", "crew_added", "2026-07-13T10:00:00.000Z", { via: "self_claim" }));
-    await repo.appendAuditEvent(aud("crew-quint", "importer", "shift_changed", "2026-07-13T11:00:00.000Z", {}, "xola"));
-    await repo.appendAuditEvent(aud("crew-quint", "engine", "crew_removed", "2026-07-13T12:00:00.000Z"));
-
-    const labels = new Map((await buildAuditTrail(repo)).map((r) => [r.action + ":" + r.timestamp, r.actorLabel]));
-    expect(labels.get("added:2026-07-13T10:00:00.000Z")).toBe("self-claim");
-    expect(labels.get("changed:2026-07-13T11:00:00.000Z")).toBe("Xola import");
-    expect(labels.get("removed:2026-07-13T12:00:00.000Z")).toBe("Automatic");
-  });
-
-  it("projects reliability add/drop and EXCLUDES ask-context types", async () => {
-    const repo = new InMemoryRepository();
-    await seedBase(repo);
-    await repo.logReliabilityEvent(rel("crew-quint", "ask_accepted", "2026-07-13T09:00:00.000Z", { shiftId: asId<"ShiftId">("shift-1") }));
-    await repo.logReliabilityEvent(rel("crew-quint", "shift_bailed", "2026-07-13T09:30:00.000Z"));
-    await repo.logReliabilityEvent(rel("crew-hooper", "no_show", "2026-07-13T09:45:00.000Z"));
-    // These must NOT appear — they aren't add/drop/change:
-    await repo.logReliabilityEvent(rel("crew-quint", "ask_declined", "2026-07-13T09:10:00.000Z"));
-    await repo.logReliabilityEvent(rel("crew-quint", "ask_ignored", "2026-07-13T09:20:00.000Z"));
-    await repo.logReliabilityEvent(rel("crew-quint", "nudged", "2026-07-13T09:25:00.000Z"));
-    await repo.logReliabilityEvent(rel("crew-quint", "shift_completed", "2026-07-13T09:26:00.000Z"));
-
+    const types: ReliabilityEventType[] = [
+      "ask_sent", "nudged", "ask_accepted", "escalation_accepted", "ask_declined",
+      "ask_ignored", "shift_acknowledged", "shift_completed", "shift_bailed",
+      "no_show", "at_risk_rescue",
+      "pool_widened", "board_landed", // excluded
+    ];
+    let t = 0;
+    for (const ty of types) {
+      await repo.logReliabilityEvent(rel("crew-quint", ty, `2026-07-13T10:${String(t++).padStart(2, "0")}:00.000Z`));
+    }
     const rows = await buildAuditTrail(repo);
-    expect(rows.map((r) => r.action).sort()).toEqual(["added", "removed", "removed"]);
-    expect(rows.every((r) => r.source === "reliability")).toBe(true);
+    // 11 crew types → 11 rows; pool_widened / board_landed produced none.
+    expect(rows.length).toBe(11);
+    expect(rows.map((r) => r.kind).sort()).toEqual(
+      ["acknowledged", "asked", "bailed", "completed", "escalation_in", "in", "no_reply", "no_show", "nudged", "out", "rescue"],
+    );
+  });
+
+  it("maps the 3 audit types to added/removed/changed with resolved context", async () => {
+    const repo = new InMemoryRepository();
+    await seedBase(repo);
+    await repo.appendAuditEvent(aud("crew-quint", "crew", "crew_added", "2026-07-13T09:00:00.000Z", { via: "self_claim" }));
+    await repo.appendAuditEvent(
+      aud("crew-quint", "admin", "crew_removed", "2026-07-13T09:30:00.000Z", { shiftId: asId<"ShiftId">("shift-1"), reason: "misassignment" }, "crew-hooper"),
+    );
+    await repo.appendAuditEvent(aud("crew-quint", "importer", "shift_changed", "2026-07-13T10:00:00.000Z", {}, "xola"));
+
+    const byKind = new Map((await buildAuditTrail(repo)).map((r) => [r.kind, r]));
+    expect(byKind.get("added")!.actorLabel).toBe("self-claim");
+    expect(byKind.get("removed")).toMatchObject({ actorLabel: "Hooper", detail: "misassignment", date: "2026-07-11" });
+    expect(byKind.get("changed")!.actorLabel).toBe("Xola import");
   });
 
   it("labels a self-bail vs an operator-reported bail", async () => {
@@ -135,34 +118,30 @@ describe("buildAuditTrail — union + projection", () => {
     await repo.logReliabilityEvent(rel("crew-quint", "shift_bailed", "2026-07-13T09:00:00.000Z"));
     await repo.logReliabilityEvent(rel("crew-hooper", "shift_bailed", "2026-07-13T09:30:00.000Z", { manual: true }));
     const byCrew = new Map((await buildAuditTrail(repo)).map((r) => [r.crewName, r.actorLabel]));
-    expect(byCrew.get("Quint")).toBe("bailed");
-    expect(byCrew.get("Hooper")).toBe("reported bail");
+    expect(byCrew.get("Quint")).toBe("self");
+    expect(byCrew.get("Hooper")).toBe("admin (reported)");
   });
 
-  it("unions both sources newest-first", async () => {
+  it("unions both logs newest-first", async () => {
     const repo = new InMemoryRepository();
     await seedBase(repo);
-    await repo.appendAuditEvent(aud("crew-quint", "crew", "crew_added", "2026-07-13T08:00:00.000Z", { via: "self_claim" }));
-    await repo.logReliabilityEvent(rel("crew-quint", "shift_bailed", "2026-07-13T10:00:00.000Z"));
-    await repo.appendAuditEvent(aud("crew-quint", "admin", "crew_removed", "2026-07-13T09:00:00.000Z", {}, "crew-hooper"));
-    expect((await buildAuditTrail(repo)).map((r) => r.timestamp)).toEqual([
-      "2026-07-13T10:00:00.000Z",
-      "2026-07-13T09:00:00.000Z",
-      "2026-07-13T08:00:00.000Z",
-    ]);
+    await repo.logReliabilityEvent(rel("crew-quint", "ask_sent", "2026-07-13T08:00:00.000Z"));
+    await repo.appendAuditEvent(aud("crew-quint", "crew", "crew_added", "2026-07-13T10:00:00.000Z", { via: "self_claim" }));
+    await repo.logReliabilityEvent(rel("crew-quint", "ask_accepted", "2026-07-13T09:00:00.000Z"));
+    expect((await buildAuditTrail(repo)).map((r) => r.kind)).toEqual(["added", "in", "asked"]);
   });
 
   it("filters by crew and by kind", async () => {
     const repo = new InMemoryRepository();
     await seedBase(repo);
-    await repo.appendAuditEvent(aud("crew-quint", "crew", "crew_added", "2026-07-13T08:00:00.000Z", { via: "self_claim" }));
-    await repo.appendAuditEvent(aud("crew-quint", "admin", "crew_removed", "2026-07-13T09:00:00.000Z", {}, "crew-hooper"));
-    await repo.appendAuditEvent(aud("crew-hooper", "crew", "crew_added", "2026-07-13T10:00:00.000Z", { via: "self_claim" }));
+    await repo.logReliabilityEvent(rel("crew-quint", "ask_declined", "2026-07-13T08:00:00.000Z"));
+    await repo.logReliabilityEvent(rel("crew-quint", "ask_accepted", "2026-07-13T09:00:00.000Z"));
+    await repo.logReliabilityEvent(rel("crew-hooper", "ask_declined", "2026-07-13T10:00:00.000Z"));
 
     expect((await buildAuditTrail(repo, { crewMemberId: asId<"CrewMemberId">("crew-quint") })).length).toBe(2);
-    const added = await buildAuditTrail(repo, { action: "added" });
-    expect(added.length).toBe(2);
-    expect(added.every((r) => r.action === "added")).toBe(true);
+    const outs = await buildAuditTrail(repo, { kind: "out" });
+    expect(outs.length).toBe(2);
+    expect(outs.every((r) => r.kind === "out")).toBe(true);
   });
 
   it("orphan shift → null date/vessel, still listed (no-FK)", async () => {

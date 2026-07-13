@@ -15,7 +15,13 @@ import type { Event, Seat, Shift, Vessel } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import type { ShiftId } from "../domain/ids.js";
 import type { ShiftState } from "../domain/states.js";
-import { TENANT_TIMEZONE, zonedWallClockToInstant } from "../config/tenant.js";
+import {
+  addDays,
+  envWallClock,
+  TENANT_TIMEZONE,
+  vesselDateOf,
+  zonedWallClockToInstant,
+} from "../config/tenant.js";
 
 /**
  * Required seats for a shift, derived by iterating the vessel's manning list.
@@ -100,6 +106,36 @@ function envPositiveNumber(name: string, fallback: number): number {
 }
 
 /**
+ * A day-of-week env knob, **Mon=0 … Sun=6**, bounded `[0,6]`. `envPositiveInt`
+ * won't do — it rejects the valid `0` (Monday) and has no upper bound. Garbage or
+ * out-of-range degrades to `fallback` (poison-resistant, same as the other knobs).
+ */
+function envDayOfWeek(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 0 && n <= 6 ? n : fallback;
+}
+
+/**
+ * A **space-separated set** of weekdays (Mon=0 … Sun=6) — e.g. `"4 5 6"` = Fri Sat
+ * Sun. Empty/unset → **empty set = weekend batching OFF** (flat behaviour, the
+ * backward-compat / other-tenant default). Non-integer or out-of-range tokens are
+ * dropped individually, so a fully-garbage value degrades to off rather than
+ * throwing (a config throw kills the cron).
+ */
+function envDaySet(name: string): Set<number> {
+  const out = new Set<number>();
+  const raw = process.env[name];
+  if (!raw) return out;
+  for (const tok of raw.trim().split(/\s+/)) {
+    const n = Number(tok);
+    if (Number.isInteger(n) && n >= 0 && n <= 6) out.add(n);
+  }
+  return out;
+}
+
+/**
  * Staffing-horizon lead, in **days** — how far ahead of the trip the system
  * starts working a shift (Pending→Filling). The tune-later knob (DEC-062):
  * **env-overridable** via `STAFFING_HORIZON_LEAD_DAYS`, a **positive number**
@@ -111,6 +147,35 @@ export const STAFFING_HORIZON_LEAD_DAYS = envPositiveNumber(
   "STAFFING_HORIZON_LEAD_DAYS",
   7,
 );
+
+/**
+ * Weekend-batch trigger policy (DEC-116) — extends DEC-088's "decouple ask
+ * send-time from the trip's clock" from the hour axis to the day. A trip whose
+ * vessel-local weekday ∈ `weekendDays` fires its asks on ONE shared instant —
+ * that week's `triggerDay` at `askTime` — so all of Fri/Sat/Sun collapse onto a
+ * single (e.g. Monday 09:00) send instead of each tripping its own flat lead.
+ *
+ * `STAFFING_HORIZON_WEEKEND_DAYS` empty/unset ⇒ **off** (flat behaviour,
+ * unchanged). `STAFFING_HORIZON_LEAD_DAYS` keeps its name and is now "the
+ * non-cohort lead" — every non-weekend trip-day still uses it. All three knobs are
+ * env-overridable + poison-resistant. `triggerDay` values 1–5 walk into the prior
+ * week (`(7−triggerDay)%7` days before that Monday) — only `0` (Mon) and `6` (the
+ * Sun before) are sensible; documented, not enforced.
+ */
+export interface WeekendCohortPolicy {
+  /** Mon=0 … Sun=6 trip-days that use the shared trigger. Empty ⇒ off. */
+  weekendDays: ReadonlySet<number>;
+  /** Mon=0 … Sun=6 — the weekday the batch fires on (0 = that week's Monday). */
+  triggerDay: number;
+  /** "HH:MM" vessel-local send time. */
+  askTime: string;
+}
+
+export const WEEKEND_COHORT_POLICY: WeekendCohortPolicy = {
+  weekendDays: envDaySet("STAFFING_HORIZON_WEEKEND_DAYS"),
+  triggerDay: envDayOfWeek("STAFFING_HORIZON_TRIGGER_DAY", 0),
+  askTime: envWallClock("STAFFING_HORIZON_WEEKEND_ASK_TIME", "09:00"),
+};
 
 /**
  * Xola **pull-window** lead, in **days** — how far ahead the importer fetches
@@ -209,17 +274,46 @@ export function scheduledStarts(
 }
 
 /**
- * Staffing-horizon instant for a set of events — the earliest scheduled event
- * minus `leadDays`. Pure; derived, never stored (DEC-022). `null` when there's
- * no scheduled event to anchor to (a cancelled-out or empty group).
+ * Mon-zero weekday (Mon=0 … Sun=6) of a vessel-local `"YYYY-MM-DD"`. Pure day math
+ * on a date-only string, so UTC-anchored is exact (no time-of-day — same reasoning
+ * as `addDays`). The Mon-zero index doubles as the day-count back to that week's
+ * Monday, so `addDays(date, -weekday)` lands on the anchor Monday.
+ */
+function mondayZeroWeekday(date: string): number {
+  const [y, m, d] = date.split("-").map(Number);
+  const dow = new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, d ?? 1)).getUTCDay(); // Sun=0…Sat=6
+  return (dow + 6) % 7;
+}
+
+/**
+ * Staffing-horizon instant for a set of events. Pure; derived, never stored
+ * (DEC-022). `null` when there's no scheduled event to anchor to.
+ *
+ * Default (`cohort.weekendDays` empty) is the flat DEC-022/062 lead: earliest
+ * scheduled event minus `leadDays`. When weekend batching is on (DEC-116) and the
+ * trip's **vessel-local** weekday is a configured weekend day, the horizon is
+ * instead that week's shared trigger — `triggerDay` at `askTime` — so all of
+ * Fri/Sat/Sun collapse onto one send. Weekday derives from `vesselDateOf`, never
+ * `getUTCDay` on the raw instant, or an evening-Eastern trip lands in the wrong
+ * day (DEC-032-class).
  */
 export function staffingHorizonFromEvents(
   events: Event[],
   leadDays: number = STAFFING_HORIZON_LEAD_DAYS,
   tz: string = TENANT_TIMEZONE,
+  cohort: WeekendCohortPolicy = WEEKEND_COHORT_POLICY,
 ): Date | null {
   const start = earliestScheduledStart(events, tz);
   if (start === null) return null;
+  if (cohort.weekendDays.size > 0) {
+    const tripDate = vesselDateOf(start, tz);
+    const weekday = mondayZeroWeekday(tripDate);
+    if (cohort.weekendDays.has(weekday)) {
+      const anchorMonday = addDays(tripDate, -weekday);
+      const triggerDate = addDays(anchorMonday, -((7 - cohort.triggerDay) % 7));
+      return zonedWallClockToInstant(triggerDate, cohort.askTime, tz);
+    }
+  }
   return new Date(start.getTime() - leadDays * DAY_MS);
 }
 
@@ -229,12 +323,14 @@ export function staffingHorizonFor(
   allEvents: Event[],
   leadDays: number = STAFFING_HORIZON_LEAD_DAYS,
   tz: string = TENANT_TIMEZONE,
+  cohort: WeekendCohortPolicy = WEEKEND_COHORT_POLICY,
 ): Date | null {
   const ids = new Set(shift.eventIds);
   return staffingHorizonFromEvents(
     allEvents.filter((e) => ids.has(e.id)),
     leadDays,
     tz,
+    cohort,
   );
 }
 

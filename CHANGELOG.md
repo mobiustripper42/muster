@@ -1,5 +1,8 @@
 # Changelog
 
+## [1.0.7] - 2026-07-13
+- PR #407: Audit trail shows all 14 crew events, one list on /admin/asks (#400)
+
 ## [1.0.6] - 2026-07-13
 - PR #402: Crew audit log — audit_events store + edge emitters (#400 Slice A, DEC-118)
 - PR #406: Crew audit trail — one list on /admin/asks, crew + kind filters (#400 Slice B)

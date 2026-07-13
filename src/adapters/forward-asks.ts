@@ -23,6 +23,7 @@
  */
 
 import type { Ask } from "../domain/entities.js";
+import type { CrewMemberId } from "../domain/ids.js";
 import type { ChannelPort } from "../ports/channel.js";
 import type { Repository } from "../ports/repository.js";
 
@@ -37,44 +38,70 @@ function fmtDate(iso: string): string {
 }
 
 /**
- * Forward fired asks to the channel. Returns how many were accepted by the
- * adapter (≤ asks.length; the shortfall is logged nowhere — see header).
+ * The per-seat relay text (GSM-7 only — no · or — — so the SMS stays a 1-segment
+ * 160-char message, not a 2-segment UCS-2 one). `null` if the seat/shift vanished
+ * between firing and forwarding (dangling ref — nothing to relay).
+ */
+async function singleAskBody(repo: Repository, ask: Ask): Promise<string | null> {
+  const seat = await repo.getSeat(ask.seatId);
+  if (!seat) return null;
+  const shift = await repo.getShift(seat.shiftId);
+  if (!shift) return null;
+  const [vessel, role] = await Promise.all([
+    repo.getVessel(shift.vesselId),
+    repo.getRoleType(seat.role),
+  ]);
+  return `Muster: ${fmtDate(shift.date)} - ${vessel?.name ?? shift.vesselId} - ${role?.name ?? seat.role}. In or out?`;
+}
+
+/**
+ * Forward fired asks to the channel, **batched per recipient** (#393). A crew
+ * member who drew several asks in one tick gets ONE message — its magic link
+ * lands on `/crew`, which already renders all their live asks as In/Out — instead
+ * of one SMS per ask (the top candidate for a whole weekend batch would otherwise
+ * get a pile of simultaneous texts). Only *delivery* is coalesced: the per-ask
+ * domain records are untouched and all show on `/crew`; a batch is sent once,
+ * upstream of the channel's per-send cost (one SMS on Twilio; one outbox card on
+ * web-link). This is also the module header's missing idempotency net — one send
+ * per (recipient, tick), and the tick fires each ask once.
+ *
+ * Returns how many asks were covered by an accepted send (≤ `asks.length`).
  */
 export async function forwardAsks(
   repo: Repository,
   channel: ChannelPort,
   asks: readonly Ask[],
 ): Promise<number> {
-  let forwarded = 0;
+  const byCrew = new Map<CrewMemberId, Ask[]>();
   for (const ask of asks) {
+    const group = byCrew.get(ask.crewMemberId);
+    if (group) group.push(ask);
+    else byCrew.set(ask.crewMemberId, [ask]);
+  }
+
+  let forwarded = 0;
+  for (const group of byCrew.values()) {
     try {
-      const [crew, seat] = await Promise.all([
-        repo.getCrewMember(ask.crewMemberId),
-        repo.getSeat(ask.seatId),
-      ]);
-      if (!crew || !seat) continue; // dangling ref — nothing to relay
-      const shift = await repo.getShift(seat.shiftId);
-      if (!shift) continue;
-      const [vessel, role] = await Promise.all([
-        repo.getVessel(shift.vesselId),
-        repo.getRoleType(seat.role),
-      ]);
+      const rep = group[0]!; // group is non-empty by construction
+      const crew = await repo.getCrewMember(rep.crewMemberId);
+      if (!crew) continue; // dangling ref — nothing to relay
+      const body =
+        group.length === 1
+          ? await singleAskBody(repo, rep)
+          : `Muster: ${group.length} shifts need you. Tap to answer.`;
+      if (body === null) continue; // seat/shift vanished
 
-      // The relay text the operator forwards. The magic link is NOT here — the
-      // web-link adapter mints + appends it at enqueue (DEC-030); a future
-      // Twilio adapter does its own link handling the same way.
-      // GSM-7 only (no · or — ) so the SMS stays a 1-segment 160-char message,
-      // not a 70-char UCS-2 one that costs 2 segments for zero value.
-      const body = `Muster: ${fmtDate(shift.date)} - ${vessel?.name ?? shift.vesselId} - ${role?.name ?? seat.role}. In or out?`;
-
+      // A batch has no single seat; correlate the outbox entry / reply to the
+      // representative (first) ask. The link is crew-scoped → `/crew`, so every
+      // ask in the group is answerable there regardless of which one anchors it.
       await channel.send({
         to: { crewMemberId: crew.id, phone: crew.phone },
         kind: "ask",
         body,
-        seatId: seat.id,
-        askId: ask.id,
+        seatId: rep.seatId,
+        askId: rep.id,
       });
-      forwarded++;
+      forwarded += group.length;
     } catch {
       // Best-effort (see header): the domain action already succeeded.
     }

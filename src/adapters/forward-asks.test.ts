@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { asId } from "../domain/ids.js";
+import type { CrewMemberId } from "../domain/ids.js";
 import type { Ask } from "../domain/entities.js";
 import type { ChannelPort } from "../ports/channel.js";
 import { FakeChannel } from "./fake-channel.js";
@@ -114,5 +115,83 @@ describe("forwardAsks — the edge wiring's shared seam (DEC-030)", () => {
     const fake = new FakeChannel(() => T0);
     expect(await forwardAsks(repo, fake, [ask])).toBe(0);
     expect(fake.sent).toHaveLength(0);
+  });
+});
+
+// ── Per-recipient batching (#393) ────────────────────────────────────────────
+
+async function addSeatAsk(
+  repo: InMemoryRepository,
+  crewId: CrewMemberId,
+  seat: string,
+  ask: string,
+): Promise<Ask> {
+  await repo.saveSeat({
+    id: asId<"SeatId">(seat),
+    shiftId: SHIFT,
+    role: CAPTAIN,
+    kind: "required",
+    state: "Asked",
+  });
+  const a: Ask = {
+    id: asId<"AskId">(ask),
+    seatId: asId<"SeatId">(seat),
+    crewMemberId: crewId,
+    channel: "push",
+    sentAt: T0.toISOString(),
+  };
+  await repo.saveAsk(a);
+  return a;
+}
+
+describe("forwardAsks — per-recipient batching (#393)", () => {
+  it("coalesces one person's multiple asks into a single send with a count body", async () => {
+    const repo = new InMemoryRepository();
+    const a1 = await seedSpine(repo); // CREW, seat-1
+    const a2 = await addSeatAsk(repo, CREW, "seat-2", "ask-2");
+    const a3 = await addSeatAsk(repo, CREW, "seat-3", "ask-3");
+    const fake = new FakeChannel(() => T0);
+
+    // 3 asks covered, but only ONE message goes out.
+    expect(await forwardAsks(repo, fake, [a1, a2, a3])).toBe(3);
+    expect(fake.sent).toHaveLength(1);
+    expect(fake.sent[0]!.body).toBe("Muster: 3 shifts need you. Tap to answer.");
+    // Correlates to the representative (first) ask; link is crew-scoped → /crew.
+    expect(fake.sent[0]).toMatchObject({ kind: "ask", askId: a1.id, seatId: a1.seatId });
+    expect(fake.sent[0]!.to.crewMemberId).toBe(CREW);
+  });
+
+  it("a lone ask still sends the per-seat 'In or out?' body (no batching)", async () => {
+    const repo = new InMemoryRepository();
+    const ask = await seedSpine(repo);
+    const fake = new FakeChannel(() => T0);
+    await forwardAsks(repo, fake, [ask]);
+    expect(fake.sent).toHaveLength(1);
+    expect(fake.sent[0]!.body).toContain("In or out?");
+  });
+
+  it("batches per recipient — two people get two sends, not one blob", async () => {
+    const repo = new InMemoryRepository();
+    const a1 = await seedSpine(repo); // CREW
+    const a2 = await addSeatAsk(repo, CREW, "seat-2", "ask-2"); // CREW again
+    const crewB = asId<"CrewMemberId">("crew-b");
+    await repo.saveCrewMember({
+      id: crewB,
+      name: "Hooper",
+      phone: "+15555550111",
+      ratings: [CAPTAIN],
+      status: "active",
+      reliabilityScore: null,
+    });
+    const b1 = await addSeatAsk(repo, crewB, "seat-b", "ask-b");
+    const fake = new FakeChannel(() => T0);
+
+    expect(await forwardAsks(repo, fake, [a1, a2, b1])).toBe(3);
+    expect(fake.sent).toHaveLength(2); // CREW batched (1) + crewB single (1)
+    const bodyByCrew = Object.fromEntries(
+      fake.sent.map((s) => [s.to.crewMemberId, s.body]),
+    );
+    expect(bodyByCrew[CREW]).toBe("Muster: 2 shifts need you. Tap to answer.");
+    expect(bodyByCrew[crewB]).toContain("In or out?");
   });
 });

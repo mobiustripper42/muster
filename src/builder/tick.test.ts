@@ -738,3 +738,61 @@ describe("tick — civil send window (DEC-088)", () => {
     expect(events.some((e) => e.type === "ask_ignored")).toBe(true);
   });
 });
+
+describe("tick — one boat per day: same-day boats spread across people (#393)", () => {
+  const V1 = asId<"VesselId">("vessel-1");
+  const V2 = asId<"VesselId">("vessel-2");
+  // Trip 2026-07-01 15:00Z; horizon −7d = 06-24 15:00; fill deadline −48h =
+  // 06-29 15:00. Pick a `now` in the DRIP window (past horizon, before the
+  // deadline) + inside civil hours — the urgent blast bypasses the exclusion.
+  const DRIP = new Date("2026-06-26T16:00:00.000Z"); // noon EDT
+
+  async function seedTwoBoatsSameDay(): Promise<void> {
+    for (const [v, e] of [
+      [V1, "ev-1"],
+      [V2, "ev-2"],
+    ] as const) {
+      await repo.saveVessel({
+        id: v,
+        name: v,
+        coiMaxPax: 16,
+        manning: [{ roleTypeId: CAPTAIN, count: 1 }],
+      });
+      await repo.saveEvent({
+        id: asId<"EventId">(e),
+        vesselId: v,
+        date: "2026-07-01",
+        time: "15:00",
+        capacity: 16,
+        source: "xola",
+        status: "scheduled",
+      });
+    }
+    await formShifts(repo); // one Pending captain-seat shift per boat
+  }
+
+  it("two boats on one day seed two different captains, not the top one twice", async () => {
+    await seedTwoBoatsSameDay();
+    await addCaptain("cap-hi", { reliabilityScore: 0.9 });
+    await addCaptain("cap-lo", { reliabilityScore: 0.1 });
+
+    const r = await tick(repo, DRIP);
+
+    // One seed per boat, but the second boat can't re-seed the first boat's
+    // captain (one boat per day) → the two asks land on two different people.
+    expect(r.firedAsks).toHaveLength(2);
+    expect(new Set(r.firedAsks.map((a) => a.crewMemberId)).size).toBe(2);
+  });
+
+  it("a lone captain still gets asked for one of the two same-day boats (no starvation)", async () => {
+    await seedTwoBoatsSameDay();
+    await addCaptain("cap-only", { reliabilityScore: 0.5 });
+
+    const r = await tick(repo, DRIP);
+
+    // Only one captain exists: one boat seeds them, the other finds the pool
+    // same-day-excluded and simply doesn't seed this tick (it isn't starved of a
+    // real candidate — there just isn't a second distinct person to spread to).
+    expect(r.firedAsks).toHaveLength(1);
+  });
+});

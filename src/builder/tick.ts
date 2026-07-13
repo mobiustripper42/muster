@@ -22,6 +22,7 @@
  */
 
 import type { Ask, Seat, Shift } from "../domain/entities.js";
+import type { CrewMemberId, SeatId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 import { deriveAtRiskBoard } from "../admin/at-risk-board.js";
 import { expireAsks, rankedEligible, widenAsk } from "../asks/ask-loop.js";
@@ -31,7 +32,7 @@ import {
   logBoardLanded,
   SYSTEM_ACTOR_ID,
 } from "../oracle/reliability-log.js";
-import { withinCivilWindow } from "../config/tenant.js";
+import { vesselDateOf, withinCivilWindow } from "../config/tenant.js";
 import {
   ASK_DRIP_INTERVAL_MINUTES,
   ASK_SILENT_TIMEOUT_MINUTES,
@@ -44,6 +45,8 @@ import {
   STAFFING_HORIZON_LEAD_DAYS,
 } from "./derive.js";
 import { TENANT_TIMEZONE } from "../config/tenant.js";
+
+const NO_EXCLUDE: ReadonlySet<CrewMemberId> = new Set();
 
 export interface TickResult {
   /** Shifts whose persisted state changed this tick. */
@@ -177,6 +180,40 @@ export async function tick(
     firedAsks: [],
   };
 
+  // One-boat-per-day (#393): a crew member holds at most one live ask across the
+  // boats running a given vessel-local trip day, so same-day boats spread across
+  // people instead of all seeding the top candidate. `askedOnDay` maps a trip day
+  // → the crew already holding (or seeded, this tick) a live ask that day; the
+  // drip excludes them. Pre-seeded from EXISTING live asks (prior ticks) so a
+  // later widen can't re-ask someone already holding a same-day boat.
+  const askedOnDay = new Map<string, Set<CrewMemberId>>();
+  const markAskedOnDay = (day: string, crewId: CrewMemberId): void => {
+    const set = askedOnDay.get(day);
+    if (set) set.add(crewId);
+    else askedOnDay.set(day, new Set([crewId]));
+  };
+  {
+    const seatDay = new Map<SeatId, string>();
+    for (const s of await repo.listShifts()) {
+      if (s.state === "Cancelled" || s.state === "Completed") continue;
+      const ids = new Set(s.eventIds);
+      const ts = earliestScheduledStart(
+        allEvents.filter((e) => ids.has(e.id)),
+        tz,
+      );
+      if (ts === null) continue;
+      const day = vesselDateOf(ts, tz);
+      for (const seat of await repo.listSeatsForShift(s.id)) {
+        seatDay.set(seat.id, day);
+      }
+    }
+    for (const ask of await repo.listAllAsks()) {
+      if (ask.respondedAt !== undefined) continue; // only LIVE asks reserve a day
+      const day = seatDay.get(ask.seatId);
+      if (day) markAskedOnDay(day, ask.crewMemberId);
+    }
+  }
+
   for (const shift of await repo.listShifts()) {
     // Lifecycle states are terminal here — a tick never resurrects a cancelled
     // or completed shift (mirrors how #20 guards `Completed` in formShifts).
@@ -192,6 +229,9 @@ export async function tick(
     const events = allEvents.filter((e) => ids.has(e.id));
     const tripStart = earliestScheduledStart(events, tz);
     if (tripStart !== null && tripStart.getTime() <= now.getTime()) continue;
+    // The shift's vessel-local trip day — the key for the one-boat-per-day drip
+    // exclusion (#393). `null` when nothing's scheduled (no day to reserve).
+    const tripDay = tripStart !== null ? vesselDateOf(tripStart, tz) : null;
 
     // #151 (DEC-067): sweep silently-ignored asks BEFORE working the shift, but
     // ONLY on `Asked` seats — the ones with a live ask whose timeout is meaningful.
@@ -263,10 +303,18 @@ export async function tick(
             result.firedAsks.push(a);
           }
         } else if (widenDue(seat, seatAsks, dripMs, now)) {
-          const a = await widenAsk(repo, seat.id, now);
+          // One-boat-per-day (#393): skip anyone already holding a live ask on
+          // another boat this day, so same-day boats spread across people. Drip
+          // only — the urgent blast above fills at all costs, spreading yields.
+          const excl =
+            tripDay !== null
+              ? (askedOnDay.get(tripDay) ?? NO_EXCLUDE)
+              : NO_EXCLUDE;
+          const a = await widenAsk(repo, seat.id, now, excl);
           if (a) {
             result.asksFired++;
             result.firedAsks.push(a);
+            if (tripDay !== null) markAskedOnDay(tripDay, a.crewMemberId);
           }
         }
       }

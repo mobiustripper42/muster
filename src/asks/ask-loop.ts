@@ -193,17 +193,24 @@ export async function assignPerson(
  * *when* this fires (`ASK_DRIP_INTERVAL_MINUTES`); keeping the fan-out primitive
  * here means the seed and every widen are the same one tested call. Looping it
  * until `null` blasts the remaining pool (the tick's urgent / interval-0 path).
+ *
+ * `exclude` is unioned onto the seat's own already-asked set — the tick passes it
+ * to enforce one-boat-per-day (#393): a candidate holding a live ask on another
+ * boat the same vessel-local day is skipped so same-day boats spread across
+ * people. Defaults to empty, so every non-tick caller is unchanged.
  */
 export async function widenAsk(
   repo: Repository,
   seatId: SeatId,
   now: Date,
+  exclude: ReadonlySet<CrewMemberId> = new Set(),
 ): Promise<Ask | null> {
   const seat = await repo.getSeat(seatId);
   if (!seat || (seat.state !== "Open" && seat.state !== "Asked")) return null;
   const asked = new Set(
     (await repo.listAsksForSeat(seatId)).map((a) => a.crewMemberId),
   );
+  for (const id of exclude) asked.add(id);
   const [pick] = await rankedEligible(repo, seat, now, asked);
   if (!pick) return null; // pool walked — nothing un-asked left
   if (seat.state === "Open") {

@@ -7,7 +7,7 @@ started: 2026-07-13T04:28:28Z
 ended:
 points:
 pr_numbers: []
-status: open
+status: abandoned
 transcript: /home/eric/.claude/projects/-home-eric-muster/9cca4acb-4918-445d-bdf5-2bda645a3415.jsonl
 ---
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.0.6] - 2026-07-13
+- PR #402: Crew audit log — audit_events store + edge emitters (#400 Slice A, DEC-118)
+- PR #406: Crew audit trail — one list on /admin/asks, crew + kind filters (#400 Slice B)
+
 ## [1.0.5] - 2026-07-13
 - PR #356: Admin-gate fallback — switch-up / sign-in instead of a dead end (#352)
 - PR #358: Shifts filters — "2 weeks out" + "30 days" presets, filter-by-crew (#321, #330)

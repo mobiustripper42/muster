@@ -123,6 +123,20 @@ describe("processBookingWebhook", () => {
     ).toHaveLength(1);
   });
 
+  it("a throwing sendConfirmation never breaks the committed booking (best-effort, DEC-119)", async () => {
+    const repo = new InMemoryRepository();
+    await repo.saveEvent(musterEvent());
+    const { deps } = makeDeps(repo);
+    deps.sendConfirmation = async () => {
+      throw new Error("confirmation blew up");
+    };
+
+    // The booking is committed; a confirmation throw must not 500 the webhook.
+    const r = await processBookingWebhook(deps, JSON.stringify(completed()), FAKE_SIGNATURE);
+    expect(r).toEqual({ handled: true, outcome: "booked" });
+    expect(await repo.getReservation(reservationIdFor("cs_test_1"))).not.toBeNull();
+  });
+
   it("paid-but-unbooked (event missing): records payment + alerts admins", async () => {
     const repo = new InMemoryRepository(); // no event
     const { deps, alert } = makeDeps(repo);

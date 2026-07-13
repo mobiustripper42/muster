@@ -73,7 +73,16 @@ export async function processBookingWebhook(
     // Confirm ONLY the fresh booking — never the idempotent `already` (a Stripe
     // redelivery), or the customer gets re-texted on every retry (DEC-119).
     if (result.outcome === "booked") {
-      await deps.sendConfirmation(result.reservation);
+      // Structurally best-effort: the booking is committed, so a confirmation
+      // failure — from a channel OR from anything upstream in the injected dep —
+      // must never bubble to a 500 (Stripe would retry the whole webhook). The
+      // dep owns surfacing its own failure detail (DEC-119); here we only ensure
+      // it can't break the booking, whatever dep is wired in.
+      try {
+        await deps.sendConfirmation(result.reservation);
+      } catch {
+        // swallowed by contract — see above
+      }
     }
     return { handled: true, outcome: result.outcome };
   }

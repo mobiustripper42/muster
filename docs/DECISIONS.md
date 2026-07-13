@@ -2824,9 +2824,12 @@ re-openable) and NOT touching `writeBooking`'s race-critical CAS.
 re-notifies the customer every retry). The recipient is modeled as a **discriminated `GuestRecipient`**
 (email/phone, no `crewMemberId`), **not** by widening `Recipient.crewMemberId` to optional — the crew
 "always has a crewMemberId" invariant stays compiler-enforced (crew adapters narrow via `requireCrewId`).
-Send is **best-effort per channel** (a paid booking never 500s the webhook → no Stripe retry storm) and fires
-for **whichever channels exist** (a booking may be email-only or phone-only); a failure emits a **low-severity**
-observer (durable log / admin notice), distinct from the urgent `alertPaidButUnbooked` money path. The
+Send is **structurally best-effort** — a confirmation failure (a channel send OR anything upstream: env, repo,
+wiring) can never 500 the webhook (a committed booking → a 500 → Stripe retries the whole event); the core
+webhook guards its `sendConfirmation` call AND the app wiring wraps its whole body, so the promise holds at
+both layers. It fires for **whichever channels exist** (a booking may be email-only or phone-only); a failure
+emits a **low-severity** observer (durable log / admin notice), distinct from the urgent `alertPaidButUnbooked`
+money path. The
 confirmation SMS is **transactional, not marketing** — it does not route through the crew `SmsConsent` gate.
 
 **Release gate.** 11.4 ships the token **generator**; the **verifier** (manage page) is **P12**. Between the two,

@@ -2959,6 +2959,16 @@ seam + no-backfill clock); B (~3) read port + union projection + `/admin/audit` 
 stays a **sibling** of `/admin/asks` — no fold-in. **Revisit if:** audit volume outgrows the union read
 (materialize), or a compliance need makes the post-mutation append gap unacceptable (transactional outbox).
 
+**Deferred emitter — trainee staffing (carried into Slice B, do NOT drop).** Slice A emits at four edges:
+override, vacate, self-claim, import `changedCrew`. It does **not** emit for `staffTrainee`/`unstaffTrainee`
+(operator force-place/pull of a trainee onto a supernumerary seat) — the *same* operator-authority add/drop
+shape that leaves no reliability trace, so it's squarely inside this DEC's "every crew add/drop/change" bar,
+just outside Slice A's edge list. Closing it is cheap and edge-only (a `logCrewAdded` on staff success, a
+`logCrewRemoved` on unstaff success in `app/(admin)/admin/shift/[shiftId]/actions.ts` — the action already
+holds crew/seat/shift ids; no domain return-shape change). **Close this in Slice B** alongside the read UI so
+the union view is complete on day one. (Split/merge `changedCrew` — a shared `forwardFormNotices` path with
+an `admin` actor — is a second, lower-priority follow-up in the same spirit.)
+
 ---
 
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)

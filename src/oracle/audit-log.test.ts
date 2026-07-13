@@ -103,6 +103,21 @@ describe("deterministic id", () => {
     expect(a.id).toBe(b.id);
   });
 
+  it("one import run touching TWO shifts for the same crew mints distinct ids (no PK collision)", async () => {
+    const { repo } = spyRepo();
+    // The dropped-row bug: shift_changed carries no seatId, so shiftId MUST split
+    // the key — else same crew + same instant + same runId → identical id.
+    const satur = await logShiftChanged(repo, CREW, { kind: "importer", id: "xola" }, NOW, {
+      shiftId: asId<"ShiftId">("shift-sat"),
+      runId: "run-1",
+    });
+    const sunday = await logShiftChanged(repo, CREW, { kind: "importer", id: "xola" }, NOW, {
+      shiftId: asId<"ShiftId">("shift-sun"),
+      runId: "run-1",
+    });
+    expect(satur.id).not.toBe(sunday.id);
+  });
+
   it("an override's two events (placed vs displaced) never collide despite sharing now/seat", async () => {
     const { repo } = spyRepo();
     // The exact pair the override edge fires: crew_added for the placed crew, a

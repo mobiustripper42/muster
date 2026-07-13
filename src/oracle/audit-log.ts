@@ -41,10 +41,14 @@ function mintId(
   metadata: AuditEventMetadata,
 ): AuditEvent["id"] {
   const seatPart = metadata.seatId ? `-${metadata.seatId}` : "";
+  // shiftId MUST be in the key: `shift_changed` carries no seatId, so without it
+  // one import run touching two shifts for the same crew at one instant (same
+  // runId) mints an identical id → PK collision → the second row silently dropped.
+  const shiftPart = metadata.shiftId ? `-${metadata.shiftId}` : "";
   const runPart = metadata.runId ? `-${metadata.runId}` : "";
   const reasonPart = metadata.reason ? `-${metadata.reason}` : "";
   return asId<"AuditEventId">(
-    `aud-${crewMemberId}-${actorKind}-${type}-${timestamp}${seatPart}${runPart}${reasonPart}`,
+    `aud-${crewMemberId}-${actorKind}-${type}-${timestamp}${seatPart}${shiftPart}${runPart}${reasonPart}`,
   );
 }
 

@@ -1,7 +1,9 @@
 import {
   buildAuditTrail,
   type AuditTrailRow,
-  type AuditAction,
+  type AuditKind,
+  AUDIT_KIND_LABEL,
+  AUDIT_KINDS,
 } from "@core/admin/audit-trail.js";
 import { asId } from "@core/domain/ids.js";
 import { AppLink } from "../../../../components/ui/app-link";
@@ -15,27 +17,18 @@ import { getRepo } from "../../../lib/repo";
 import { fmtRunWhen } from "../../../lib/format";
 
 /**
- * /admin/asks — the crew audit trail (#400, DEC-118). ONE list of every crew
- * add / drop / change, newest first, filterable by crew and by kind. The union
- * (`buildAuditTrail`) folds the audit facts and the reliability add/drop
- * projection into a single list — no second page, no separate asks view. Calm/
- * neutral: the action is a word, not an alarm. No backfill; the header says so.
+ * /admin/asks — the crew audit trail (#400, DEC-118). ONE list of every event
+ * that happens to a crew member (asked, in, out, added, removed, bailed, …),
+ * newest first, filterable by crew and by kind. `buildAuditTrail` is the source
+ * of truth for what belongs. Calm/neutral — the kind is a word, not an alarm.
  */
 
 export const dynamic = "force-dynamic";
 
 type Search = { crew?: string; kind?: string };
 
-const ACTION_LABEL: Record<AuditAction, string> = {
-  added: "Added",
-  removed: "Removed",
-  changed: "Changed",
-};
-
-const KINDS: readonly AuditAction[] = ["added", "removed", "changed"];
-
-const asAction = (v?: string): AuditAction | undefined =>
-  v === "added" || v === "removed" || v === "changed" ? v : undefined;
+const asKind = (v?: string): AuditKind | undefined =>
+  v && (AUDIT_KINDS as readonly string[]).includes(v) ? (v as AuditKind) : undefined;
 
 export default async function AdminAudit({
   searchParams,
@@ -47,7 +40,7 @@ export default async function AdminAudit({
   if (!subject || subject.kind !== "admin")
     return <AdminSignedOut subject={subject} />;
 
-  const action = asAction(sp.kind);
+  const kind = asKind(sp.kind);
 
   let rows: AuditTrailRow[];
   let crew: { id: string; name: string }[];
@@ -56,7 +49,7 @@ export default async function AdminAudit({
     const [trail, members] = await Promise.all([
       buildAuditTrail(repo, {
         ...(sp.crew ? { crewMemberId: asId<"CrewMemberId">(sp.crew) } : {}),
-        ...(action ? { action } : {}),
+        ...(kind ? { kind } : {}),
       }),
       repo.listCrewMembers(),
     ]);
@@ -72,16 +65,15 @@ export default async function AdminAudit({
     );
   }
 
-  const filtered = !!(sp.crew || action);
+  const filtered = !!(sp.crew || kind);
 
   return (
     <Shell width="3xl">
       <BackLink href="/admin">Back</BackLink>
       <h1 className="text-xl font-semibold text-ink">Audit</h1>
       <p className="text-sm text-muted">
-        Every crew add, drop, and change — who it happened to, what happened, and
-        who did it. Records begin when this feature shipped; earlier changes
-        weren’t kept.
+        Every event on a crew member — asked, in, out, added, removed, bailed, and
+        the rest — one list, newest first.
       </p>
 
       <FilterForm crew={crew} sp={sp} />
@@ -94,7 +86,9 @@ export default async function AdminAudit({
         {rows.length === 0 ? (
           <Notice>Nothing to show — try a wider filter.</Notice>
         ) : (
-          rows.map((r, i) => <AuditRow key={`${r.timestamp}-${r.crewMemberId}-${i}`} row={r} />)
+          rows.map((r, i) => (
+            <AuditRow key={`${r.timestamp}-${r.crewMemberId}-${r.kind}-${i}`} row={r} />
+          ))
         )}
       </section>
     </Shell>
@@ -108,28 +102,24 @@ function AuditRow({ row }: { row: AuditTrailRow }) {
       : row.date
         ? fmtDate(row.date)
         : null;
+  const secondary = [row.actorLabel, row.detail, trip].filter(Boolean).join(" · ");
   return (
     <div className="flex flex-col gap-1 rounded-card border border-line bg-card px-4 py-3 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <span className="font-medium text-ink">{row.crewName}</span>
-        <ActionTag action={row.action} />
+        <KindTag kind={row.kind} />
       </div>
-      <span className="text-sm text-muted">
-        {row.actorLabel}
-        {row.detail ? ` · ${row.detail}` : ""}
-        {trip ? ` · ${trip}` : ""}
-      </span>
+      {secondary && <span className="text-sm text-muted">{secondary}</span>}
       <span className="text-xs text-faint">{fmtRunWhen(row.timestamp)}</span>
     </div>
   );
 }
 
-/** The action as a calm neutral pill — the word carries it (BRAND, no alarm
- *  colour on a pull surface). */
-function ActionTag({ action }: { action: AuditAction }) {
+/** The kind as a calm neutral pill — the word carries it (BRAND, no alarm colour). */
+function KindTag({ kind }: { kind: AuditKind }) {
   return (
     <span className="shrink-0 rounded-full border border-line bg-bg px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted">
-      {ACTION_LABEL[action]}
+      {AUDIT_KIND_LABEL[kind]}
     </span>
   );
 }
@@ -158,9 +148,9 @@ function FilterForm({ crew, sp }: { crew: { id: string; name: string }[]; sp: Se
         </label>
         <select id="kind" name="kind" defaultValue={sp.kind ?? ""} className={inputClass}>
           <option value="">All</option>
-          {KINDS.map((k) => (
+          {AUDIT_KINDS.map((k) => (
             <option key={k} value={k}>
-              {ACTION_LABEL[k]}
+              {AUDIT_KIND_LABEL[k]}
             </option>
           ))}
         </select>

@@ -6,7 +6,7 @@ branch: task/400-crew-audit-log
 started: 2026-07-13T15:17:03Z
 ended:
 points:
-pr_numbers: [402, 406]
+pr_numbers: [402, 406, 407, 409]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/488147c1-61df-4696-9ad2-2abd45d1cce6.jsonl
 ---
@@ -45,7 +45,23 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/488147c1-61df-4696-9ad
 **Branch:** task/400-crew-audit-log-slice-b
 **Opened at:** 2026-07-13T17:03:00Z
 
+## Task 3: #404 db:crew rank — crew by reliability score (CLI)
+
+**Completed:**
+- `src/crew/crew-cli.ts` — new `rank` subcommand: ranks all crew by reliability via the SAME `scoreCrewMember` + `effectiveRankScore` the ask loop uses (true ask order, manual thumb `*` included), best-first, id tiebreak; prints score + event count + status marks. `runCrewCommand` gained an optional `now` param (default `new Date()`) for testability — backward-compatible.
+- `src/crew/crew-cli.test.ts` — ordering + thumb-marker + events-column test. `npm run verify` green (1028). Ran live on dev DB (full roster ranked, +5 → −109).
+- **Decision (#404):** CLI now (cheap, true ask order); the richer crew **admin surface** option split to **#408** — build when a crew admin page lands, fold ranking in there then.
+
+**Code review:** clean bill of health — sort parity with `rankByReliability` confirmed byte-for-byte, `now` param non-breaking, display/markers mirror `list`.
+**PR:** [#409](https://github.com/mobiustripper42/muster/pull/409)
+**Points:** 2
+**Branch:** task/404-crew-rank-cli
+**Opened at:** 2026-07-13T21:17:00Z
+
 **Next Steps:**
+- **Audit fix #407** (all-14-events list) merged + promoted as **v1.0.7** — prod correct. (Not its own `/kill-this`; continued Task 2.)
+- **#409 rank CLI** open — merge whenever; no migration, no conflicts.
+- **#408** parked — crew admin surface (reliability ranking + crew mgmt), build when that page lands.
 - **#400 is COMPLETE** (Slice A #402 merged + Slice B #406 open). Once #406 merges, hand-apply migration 0024 to prod if not already (verify ledger). Eyeball `/admin/audit` at 375px on mill-dev — I couldn't self-screenshot (no outbound HTTP; mill-dev is your browser).
 - **Merge order:** #406 overlaps concurrent session 48's open PRs — #401 (DECISIONS.md) + #405 (postgres-repository.ts). Use "Update branch" or merge those first; neither is a migration conflict.
 - Follow-up (parked, DEC-118): split/merge `changedCrew` audit emit — lower-priority, `admin` actor via `forwardFormNotices`.

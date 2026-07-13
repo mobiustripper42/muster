@@ -511,10 +511,18 @@ export class InMemoryRepository implements Repository {
       .filter((e) => e.crewMemberId === crewMemberId)
       .map(clone);
   }
+  async listAllReliabilityEvents(): Promise<ReliabilityEvent[]> {
+    // Newest first, matching the pg `order by timestamp desc` (append order is a
+    // proxy for time here; both adapters hand the read model the same shape).
+    return this.#reliability.map(clone).reverse();
+  }
 
   // ── Crew audit log (append-only — #400, DEC-118) ──────────────────────────
   async appendAuditEvent(event: AuditEvent): Promise<void> {
     this.#auditEvents.push(clone(event));
+  }
+  async listAuditEvents(): Promise<AuditEvent[]> {
+    return this.#auditEvents.map(clone).reverse(); // newest first
   }
 
   async recordSmsConsent(consent: SmsConsent): Promise<void> {

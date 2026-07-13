@@ -2959,15 +2959,20 @@ seam + no-backfill clock); B (~3) read port + union projection + `/admin/audit` 
 stays a **sibling** of `/admin/asks` — no fold-in. **Revisit if:** audit volume outgrows the union read
 (materialize), or a compliance need makes the post-mutation append gap unacceptable (transactional outbox).
 
-**Deferred emitter — trainee staffing (carried into Slice B, do NOT drop).** Slice A emits at four edges:
-override, vacate, self-claim, import `changedCrew`. It does **not** emit for `staffTrainee`/`unstaffTrainee`
-(operator force-place/pull of a trainee onto a supernumerary seat) — the *same* operator-authority add/drop
-shape that leaves no reliability trace, so it's squarely inside this DEC's "every crew add/drop/change" bar,
-just outside Slice A's edge list. Closing it is cheap and edge-only (a `logCrewAdded` on staff success, a
-`logCrewRemoved` on unstaff success in `app/(admin)/admin/shift/[shiftId]/actions.ts` — the action already
-holds crew/seat/shift ids; no domain return-shape change). **Close this in Slice B** alongside the read UI so
-the union view is complete on day one. (Split/merge `changedCrew` — a shared `forwardFormNotices` path with
-an `admin` actor — is a second, lower-priority follow-up in the same spirit.)
+**Trainee staffing emitter — CLOSED in Slice B.** Slice A emitted at four edges (override, vacate,
+self-claim, import `changedCrew`) and deferred `staffTrainee`/`unstaffTrainee` (operator force-place/pull of a
+trainee onto a supernumerary seat) — the *same* operator-authority add/drop shape, inside this DEC's "every
+crew add/drop/change" bar. Slice B closed it: a `logCrewAdded` on staff success + a `logCrewRemoved` on
+unstaff success (`app/(admin)/admin/shift/[shiftId]/actions.ts`, admin actor, `reason:"trainee"`), so the
+union view is complete on day one. (Split/merge `changedCrew` — a shared `forwardFormNotices` path with an
+`admin` actor — remains a lower-priority follow-up in the same spirit.)
+
+**Slice B read shape.** `/admin/audit` is ONE list (not a sibling of `/admin/asks`, not two lists) — the
+union folds the reliability add/drop projection into the same rows, filterable by **crew** and by **kind**
+(added / removed / changed). The `ask_declined`/`ask_ignored`/`nudged` "context" rows floated above are
+**excluded**: they aren't an add/drop/change of a seat and belong on `/admin/asks` — including them would
+smuggle the asks list back in. Projection kept minimal: `ask_accepted`→added, `shift_bailed`/`no_show`→
+removed; the audit facts carry the rest.
 
 ---
 

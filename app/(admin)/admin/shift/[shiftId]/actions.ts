@@ -396,21 +396,33 @@ export async function removeManningSeat(formData: FormData): Promise<void> {
  * finally reach the trainee.
  */
 export async function staffTrainee(formData: FormData): Promise<void> {
-  const { shiftId, crewMemberId, seatId, ctx, back } = await gate(formData);
+  const { shiftId, crewMemberId, seatId, ctx, back, actorId } = await gate(formData);
   if (!seatId || !crewMemberId) redirect(back);
+  const now = new Date();
   let param: string;
   try {
+    const repo = getRepo();
     const out = await staffTraineeSeat(
-      getRepo(),
+      repo,
       asId<"SeatId">(seatId),
       asId<"CrewMemberId">(crewMemberId),
-      new Date(),
+      now,
     );
     if (out.code === null) {
       param = `trainee_on=${encodeURIComponent(crewMemberId)}`;
       // DEC-084: the rider gets a "you're on this shift" notice (best-effort,
       // operator excluded inside notify).
       await notify(crewMemberId, "added", shiftId);
+      // Audit (#400, DEC-118): operator force-placed a trainee — same
+      // operator-authority add DEC-118 tracks; deferred from Slice A, closed here.
+      await audit(() =>
+        logCrewAdded(repo, asId<"CrewMemberId">(crewMemberId), { kind: "admin", id: actorId }, now, {
+          seatId: asId<"SeatId">(seatId),
+          shiftId: asId<"ShiftId">(shiftId),
+          via: "operator",
+          reason: "trainee",
+        }),
+      );
     } else if (out.code === "ineligible") {
       param = "act_error=trainee_ineligible";
     } else if (out.code === "occupied") {
@@ -431,12 +443,14 @@ export async function staffTrainee(formData: FormData): Promise<void> {
  * The removed rider gets the DEC-084 "you're off" notice.
  */
 export async function unstaffTrainee(formData: FormData): Promise<void> {
-  const { shiftId, crewMemberId, seatId, ctx, back } = await gate(formData);
+  const { shiftId, crewMemberId, seatId, ctx, back, actorId } = await gate(formData);
   if (!seatId || !crewMemberId) redirect(back);
+  const now = new Date();
   let param: string;
   try {
+    const repo = getRepo();
     const out = await unstaffTraineeSeat(
-      getRepo(),
+      repo,
       asId<"SeatId">(seatId),
       asId<"CrewMemberId">(crewMemberId),
     );
@@ -444,6 +458,15 @@ export async function unstaffTrainee(formData: FormData): Promise<void> {
       param = `trainee_off=${encodeURIComponent(crewMemberId)}`;
       // DEC-084: the removed rider gets a "you're off" notice.
       await notify(crewMemberId, "removed", shiftId);
+      // Audit (#400, DEC-118): operator pulled a trainee — the drop half, closed
+      // here (deferred from Slice A).
+      await audit(() =>
+        logCrewRemoved(repo, asId<"CrewMemberId">(crewMemberId), { kind: "admin", id: actorId }, now, {
+          seatId: asId<"SeatId">(seatId),
+          shiftId: asId<"ShiftId">(shiftId),
+          reason: "trainee",
+        }),
+      );
     } else if (out.code === "raced") {
       param = "act_error=raced";
     } else {

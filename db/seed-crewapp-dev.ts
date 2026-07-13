@@ -106,8 +106,8 @@ try {
   const EGB2 = asId<"EventId">("evt-soon-growler-4pm");
   // Two trips (1pm + 4pm) so the "other shifts today" card shows "1:00 PM / 2 trips".
   await repo.saveShift({ id: SHIFT_SOON_B, vesselId: GROWLER, date: SOON, state: "Crewed", eventIds: [EGB, EGB2] });
-  await repo.saveEvent({ id: EGB, vesselId: GROWLER, date: SOON, time: "13:00", capacity: 12, status: "scheduled", dock: "East Bank of the Flats at Canal Basin Park" });
-  await repo.saveEvent({ id: EGB2, vesselId: GROWLER, date: SOON, time: "16:00", capacity: 12, status: "scheduled", dock: "East Bank of the Flats at Canal Basin Park" });
+  await repo.saveEvent({ id: EGB, vesselId: GROWLER, date: SOON, time: "13:00", capacity: 12, source: "xola", status: "scheduled", dock: "East Bank of the Flats at Canal Basin Park" });
+  await repo.saveEvent({ id: EGB2, vesselId: GROWLER, date: SOON, time: "16:00", capacity: 12, source: "xola", status: "scheduled", dock: "East Bank of the Flats at Canal Basin Park" });
   await repo.saveSeat({ id: asId<"SeatId">("seat-soon-growler-cap"), shiftId: SHIFT_SOON_B, role: CAPTAIN, kind: "required", state: "Confirmed", assignedCrewMemberId: GILLY });
   // Reap seats this seed no longer writes (upserts never delete, and a renamed
   // seat id leaves a zombie row — e.g. a 3rd captain seat on a 2-crew boat that

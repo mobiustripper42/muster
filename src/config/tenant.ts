@@ -229,7 +229,7 @@ export const DOORBELL_SHORT_NOTICE_MAX_CHARS: number = envPositiveInt(
  * throwing (a thrown config error here would kill the cron route and silence
  * the whole engine).
  */
-function envWallClock(name: string, fallback: string): string {
+export function envWallClock(name: string, fallback: string): string {
   const raw = process.env[name];
   if (!raw) return fallback;
   if (/^([01]\d|2[0-3]):[0-5]\d$/.test(raw)) return raw;

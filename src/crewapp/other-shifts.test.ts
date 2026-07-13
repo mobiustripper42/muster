@@ -54,6 +54,7 @@ async function addShift(
       time: t,
       capacity: 12,
       status: "scheduled",
+      source: "xola",
     });
     eventIds.push(eventId);
   }

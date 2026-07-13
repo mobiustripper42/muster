@@ -44,5 +44,10 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/60da5bf5-e4ad-43be-a45
 **Opened at:** 2026-07-13T11:26:00Z
 
 **Next Steps:**
+- **#400 crew audit log — resume the risk seam** on branch `task/400-crew-audit-log` (foundation committed `0b90678`, NOT PR'd — incomplete slice). Done: `audit_events` store (migration 0024, `src/domain/audit.ts`, `src/oracle/audit-log.ts`, port `appendAuditEvent` + both adapters, DEC-118), typechecks clean. **Remaining Slice A:** return-shape changes to `vacateSeat` (+`removed`) and `manualOverride`/`overrideSeat` (+`displaced` — capture BEFORE the `saveSeat` overwrite) + callers; the 4 **edge emitters** (vacate, override, self-claim, import `changedCrew`) in the server actions; per-emitter tests. Then **Slice B** = `listAuditEvents` union read + `/admin/audit` UI (sibling of `/admin/asks`, no fold-in). Architect design in DEC-118.
+- **Weekend batch (#398/#399, DEC-116/117) is LIVE on prod at v1.0.5 but INERT.** Go-live = set `STAFFING_HORIZON_WEEKEND_DAYS="4 5 6"` (+ `TRIGGER_DAY=0`, `WEEKEND_ASK_TIME=09:00`) in Vercel — do NOT until you want it on. Optional: `STAFFING_HORIZON_LEAD_DAYS=6.5` (afternoon-trip timing, undecided, still 7).
+- `ASK_SILENT_TIMEOUT_MINUTES=240` set in prod this session — confirm the var name has the trailing `S`.
 
 **Context:**
+- v1.0.5 promoted to production (17-PR cross-phase batch); release note in `docs/RETROSPECTIVES.md`. Bump/tag/promote done out-of-order (promote-then-nothing; bump-first) per operator.
+- Two `Event.source` drive-by CI fixes this session (other-shifts.test.ts typecheck, seed-crewapp-dev.ts e2e) — a stacked-PR-skipped-CI pattern; watch for more if e2e breaks.

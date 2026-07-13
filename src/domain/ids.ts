@@ -22,6 +22,7 @@ export type SeatId = Brand<string, "SeatId">;
 export type SmsConsentId = Brand<string, "SmsConsentId">;
 export type AskId = Brand<string, "AskId">;
 export type ReliabilityEventId = Brand<string, "ReliabilityEventId">;
+export type AuditEventId = Brand<string, "AuditEventId">;
 export type MagicTokenId = Brand<string, "MagicTokenId">;
 export type OutboxEntryId = Brand<string, "OutboxEntryId">;
 export type RingOutboxEntryId = Brand<string, "RingOutboxEntryId">;

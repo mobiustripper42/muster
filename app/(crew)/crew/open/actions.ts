@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { claimSeat as claimSeatService } from "@core/asks/claim.js";
 import { asId } from "@core/domain/ids.js";
+import { logCrewAdded } from "@core/oracle/audit-log.js";
 import { readSubject } from "../../../lib/auth";
 import { selfServeEnabled } from "../../../lib/flags";
 import { getRepo } from "../../../lib/repo";
@@ -29,23 +30,40 @@ export async function claimSeat(formData: FormData): Promise<void> {
   const back = backRaw.startsWith("/crew/open") ? backRaw : "/crew/open";
   if (!subject || subject.kind !== "crew" || !seatId) redirect("/crew");
 
+  const now = new Date();
+  const repo = getRepo();
   type ClaimResult = Awaited<ReturnType<typeof claimSeatService>>;
   let result: ClaimResult | null = null;
   try {
     result = await claimSeatService(
-      getRepo(),
+      repo,
       asId<"CrewMemberId">(subject.id),
       asId<"SeatId">(seatId),
-      new Date(),
+      now,
     );
   } catch {
     redirect(withParam(back, "claim_error", "unavailable"));
   }
 
   if (result!.code === null) {
+    const claimed = result!.seat;
+    // Audit (#400, DEC-118): a crew self-claim — actor is the crew themselves, so
+    // `crew` kind with no actor id (the subject IS the crew). Best-effort,
+    // post-mutation: the seat already Confirmed, an audit hiccup must not fail it.
+    if (claimed) {
+      try {
+        await logCrewAdded(repo, asId<"CrewMemberId">(subject.id), { kind: "crew" }, now, {
+          seatId: claimed.id,
+          shiftId: claimed.shiftId,
+          via: "self_claim",
+        });
+      } catch {
+        // best-effort — the claim stands regardless
+      }
+    }
     // Confirmed — it now shows in My shifts (§2.6.2).
     revalidatePath("/crew");
-    redirect(`/crew?claimed=${encodeURIComponent(String(result!.seat?.shiftId ?? ""))}`);
+    redirect(`/crew?claimed=${encodeURIComponent(String(claimed?.shiftId ?? ""))}`);
   }
 
   // just_taken / conflict get their own copy; every other code (not_claimable,

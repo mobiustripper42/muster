@@ -59,6 +59,7 @@ import type {
   VesselId,
 } from "../domain/ids.js";
 import type { ReliabilityEvent } from "../domain/reliability.js";
+import type { AuditEvent } from "../domain/audit.js";
 import type { SeatState } from "../domain/states.js";
 import type { ImportRunId } from "../domain/ids.js";
 import type {
@@ -1039,6 +1040,22 @@ export class PostgresRepository implements Repository {
       [crewMemberId],
     );
     return rows.map(toReliability);
+  }
+
+  async appendAuditEvent(e: AuditEvent): Promise<void> {
+    await this.#pool.query(
+      `insert into audit_events(id, crew_member_id, actor_kind, actor_id, type, timestamp, metadata)
+       values ($1,$2,$3,$4,$5,$6,$7)`,
+      [
+        e.id,
+        e.crewMemberId,
+        e.actorKind,
+        e.actorId ?? null,
+        e.type,
+        e.timestamp,
+        JSON.stringify(e.metadata),
+      ],
+    );
   }
 
   async recordSmsConsent(c: SmsConsent): Promise<void> {

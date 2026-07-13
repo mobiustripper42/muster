@@ -52,6 +52,7 @@ import type {
   VesselId,
 } from "../domain/ids.js";
 import type { ReliabilityEvent } from "../domain/reliability.js";
+import type { AuditEvent } from "../domain/audit.js";
 import type { SeatState } from "../domain/states.js";
 import type { ImportRun, ImportRunItem } from "../import/import-audit.js";
 import type { ImportRunId } from "../domain/ids.js";
@@ -95,6 +96,7 @@ export class InMemoryRepository implements Repository {
   readonly #ringOutbox = new Map<RingOutboxEntryId, RingOutboxEntry>();
   readonly #noticeOutbox = new Map<NoticeOutboxEntryId, NoticeOutboxEntry>();
   readonly #reliability: ReliabilityEvent[] = [];
+  readonly #auditEvents: AuditEvent[] = [];
   readonly #smsConsent: SmsConsent[] = [];
   // Guest contacts (#345 Part B) — keyed by reservationId, upsert-latest.
   readonly #guestContacts = new Map<string, GuestContact>();
@@ -508,6 +510,11 @@ export class InMemoryRepository implements Repository {
     return this.#reliability
       .filter((e) => e.crewMemberId === crewMemberId)
       .map(clone);
+  }
+
+  // ── Crew audit log (append-only — #400, DEC-118) ──────────────────────────
+  async appendAuditEvent(event: AuditEvent): Promise<void> {
+    this.#auditEvents.push(clone(event));
   }
 
   async recordSmsConsent(consent: SmsConsent): Promise<void> {

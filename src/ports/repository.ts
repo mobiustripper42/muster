@@ -53,6 +53,7 @@ import type {
   VesselId,
 } from "../domain/ids.js";
 import type { ReliabilityEvent } from "../domain/reliability.js";
+import type { AuditEvent } from "../domain/audit.js";
 import type { SeatState } from "../domain/states.js";
 import type { ImportRun, ImportRunItem } from "../import/import-audit.js";
 import type { ImportRunId } from "../domain/ids.js";
@@ -331,6 +332,12 @@ export interface Repository {
   logReliabilityEvent(event: ReliabilityEvent): Promise<void>;
   /** Read one crew member's events, in insertion order. */
   reliabilityEventsFor(crewMemberId: CrewMemberId): Promise<ReliabilityEvent[]>;
+
+  // ── Crew audit log (append-only — #400, DEC-118) ──────────────────────────
+  /** Append a crew audit event (add/drop/change + actor). Never mutated, only
+   *  grown; separate from the reliability log and never feeds the scorer. The
+   *  all-crew / by-type / date-range read (`listAuditEvents`) lands in Slice B. */
+  appendAuditEvent(event: AuditEvent): Promise<void>;
 
   // ── SMS consent log (Twilio 10DLC opt-in — append-only audit) ──────────────
   // Written best-effort from the crew-login action when a crew member checks the

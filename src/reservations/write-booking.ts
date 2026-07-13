@@ -22,6 +22,10 @@ export interface BookingRequest {
   partySize: number;
   email?: string;
   phone?: string;
+  /** Liability-waiver consent (11.5, DEC-110) — carried from the checkout metadata
+   *  (gated required at checkout-start, so a booked reservation always has both). */
+  waiverConsentAt?: string;
+  waiverVersion?: string;
   /**
    * Provider-agnostic idempotency key. Two requests with the same key resolve to the
    * same reservation, so a retry is a no-op. The Stripe webhook (11.2) passes
@@ -90,6 +94,8 @@ export async function writeBooking(
     partySize: req.partySize,
     ...(req.email !== undefined ? { email: req.email } : {}),
     ...(req.phone !== undefined ? { phone: req.phone } : {}),
+    ...(req.waiverConsentAt !== undefined ? { waiverConsentAt: req.waiverConsentAt } : {}),
+    ...(req.waiverVersion !== undefined ? { waiverVersion: req.waiverVersion } : {}),
     status: "booked",
     updatedAt: now(),
   };

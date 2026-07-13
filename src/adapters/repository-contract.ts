@@ -401,6 +401,15 @@ export function runRepositoryContract(
       ).toBe("muster");
     });
 
+    it("reservations: waiver consent round-trips (11.5, DEC-110)", async () => {
+      await repo.saveReservation(
+        reservation({ source: "muster", waiverConsentAt: "2026-07-13T12:00:00.000Z", waiverVersion: "v1" }),
+      );
+      const got = (await repo.getReservation(asId<"ReservationId">("resv-1")))!;
+      expect(got.waiverConsentAt).toBe("2026-07-13T12:00:00.000Z");
+      expect(got.waiverVersion).toBe("v1");
+    });
+
     // ── saveReservationIfUnclaimed — the whole-boat claim (DEC-109) ────────────
     const rid = (s: string) => asId<"ReservationId">(s);
 

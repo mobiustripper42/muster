@@ -432,6 +432,7 @@ describe("vacateSeat — no-penalty remove (#87)", () => {
 
     const out = await vacateSeat(repo, seatId!, later(3000), a);
     expect(out.seatState).toBe("Asked");
+    expect(out.removed).toBe(a); // the audit `crew_removed` subject (#400, DEC-118)
     // Re-ask excludes the removed occupant, just like bail.
     expect(out.reAsks.map((x) => x.crewMemberId)).toEqual([asId<"CrewMemberId">("crew-b")]);
     expect((await repo.getSeat(seatId!))!.assignedCrewMemberId).toBeUndefined();
@@ -445,7 +446,7 @@ describe("vacateSeat — no-penalty remove (#87)", () => {
     await confirmFirst(seatId!, a);
 
     const out = await vacateSeat(repo, seatId!, later(3000), a);
-    expect(out).toMatchObject({ seatState: "Open", reAsks: [] });
+    expect(out).toMatchObject({ seatState: "Open", reAsks: [], removed: a });
     expect(await seatState(seatId!)).toBe("Open");
     // No bail → no immediate bail-driven AtRisk (Pending, horizon clock governs).
     expect(await shiftState(SHIFT)).not.toBe("AtRisk");
@@ -522,10 +523,12 @@ describe("manualOverride — the authority backstop (§2.4)", () => {
     const a = await addCrew("crew-a");
     const [seatId] = await addShift(1);
     await broadcastAsk(repo, seatId!, T0); // seat now Asked
-    const seat = await manualOverride(repo, seatId!, a, later(5000));
-    expect(seat!.state).toBe("Confirmed");
-    expect(seat!.assignedCrewMemberId).toBe(a);
-    expect(seat!.acquiredVia).toBe("operator"); // provenance (#196) → My shifts badges it
+    const placed = await manualOverride(repo, seatId!, a, later(5000));
+    const seat = placed!.seat;
+    expect(seat.state).toBe("Confirmed");
+    expect(seat.assignedCrewMemberId).toBe(a);
+    expect(seat.acquiredVia).toBe("operator"); // provenance (#196) → My shifts badges it
+    expect(placed!.displaced).toBeUndefined(); // seat was Asked/empty — no bump
     expect(await shiftState(SHIFT)).toBe("Crewed");
     expect(await types(a)).not.toContain("ask_accepted"); // override isn't responsiveness
   });
@@ -576,6 +579,27 @@ describe("overrideSeat — role-guarded override (DEC-064)", () => {
     const seatId = await mkSeat("seat-cap", CAPTAIN);
     expect((await overrideSeat(repo, seatId, cap, T0)).code).toBeNull();
     expect((await repo.getSeat(seatId))!.state).toBe("Confirmed");
+  });
+
+  it("reports the displaced prior occupant when an override bumps someone (#400, DEC-118)", async () => {
+    const first = await addCrew("cap-first");
+    const second = await addCrew("cap-second");
+    const seatId = await mkSeat("seat-cap", CAPTAIN);
+    // Seat first Confirmed to `first`, then overridden to `second`.
+    expect((await overrideSeat(repo, seatId, first, T0)).displaced).toBeUndefined();
+    const out = await overrideSeat(repo, seatId, second, later(1000));
+    expect(out.code).toBeNull();
+    expect(out.displaced).toBe(first); // captured before the overwrite
+    expect((await repo.getSeat(seatId))!.assignedCrewMemberId).toBe(second);
+  });
+
+  it("no displacement when the override re-places the SAME occupant (#400)", async () => {
+    const cap = await addCrew("cap-1");
+    const seatId = await mkSeat("seat-cap", CAPTAIN);
+    await overrideSeat(repo, seatId, cap, T0);
+    const out = await overrideSeat(repo, seatId, cap, later(1000));
+    expect(out.code).toBeNull();
+    expect(out.displaced).toBeUndefined(); // same person → nobody bumped
   });
 
   it("rejects an ARCHIVED crew even when rated (archived, seat untouched) — #323", async () => {

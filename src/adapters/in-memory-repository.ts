@@ -511,10 +511,28 @@ export class InMemoryRepository implements Repository {
       .filter((e) => e.crewMemberId === crewMemberId)
       .map(clone);
   }
+  async listAllReliabilityEvents(): Promise<ReliabilityEvent[]> {
+    // Match pg's `order by timestamp desc, seq desc` exactly: reverse gives
+    // insertion-desc (the seq-desc tiebreak), then a STABLE sort by timestamp
+    // desc keeps that order within equal timestamps. Same shape on both adapters
+    // so a direct caller isn't at the mercy of which repo it holds.
+    return this.#reliability
+      .map(clone)
+      .reverse()
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  }
 
   // ── Crew audit log (append-only — #400, DEC-118) ──────────────────────────
   async appendAuditEvent(event: AuditEvent): Promise<void> {
     this.#auditEvents.push(clone(event));
+  }
+  async listAuditEvents(): Promise<AuditEvent[]> {
+    // Same ordering contract as listAllReliabilityEvents / pg: timestamp desc,
+    // insertion-desc tiebreak (stable sort over the reversed array).
+    return this.#auditEvents
+      .map(clone)
+      .reverse()
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
   }
 
   async recordSmsConsent(consent: SmsConsent): Promise<void> {

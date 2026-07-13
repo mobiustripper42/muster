@@ -276,6 +276,16 @@ const toReliability = (r: any): ReliabilityEvent => ({
   metadata: r.metadata,
 });
 
+const toAudit = (r: any): AuditEvent => ({
+  id: asId<"AuditEventId">(r.id),
+  crewMemberId: asId<"CrewMemberId">(r.crew_member_id),
+  actorKind: r.actor_kind,
+  ...(r.actor_id != null ? { actorId: r.actor_id } : {}),
+  type: r.type,
+  timestamp: r.timestamp,
+  metadata: r.metadata,
+});
+
 const toSmsConsent = (r: any): SmsConsent => ({
   id: asId<"SmsConsentId">(r.id),
   crewMemberId: asId<"CrewMemberId">(r.crew_member_id),
@@ -1041,6 +1051,12 @@ export class PostgresRepository implements Repository {
     );
     return rows.map(toReliability);
   }
+  async listAllReliabilityEvents(): Promise<ReliabilityEvent[]> {
+    const { rows } = await this.#pool.query(
+      "select * from reliability_events order by timestamp desc, seq desc",
+    );
+    return rows.map(toReliability);
+  }
 
   async appendAuditEvent(e: AuditEvent): Promise<void> {
     await this.#pool.query(
@@ -1056,6 +1072,12 @@ export class PostgresRepository implements Repository {
         JSON.stringify(e.metadata),
       ],
     );
+  }
+  async listAuditEvents(): Promise<AuditEvent[]> {
+    const { rows } = await this.#pool.query(
+      "select * from audit_events order by timestamp desc, seq desc",
+    );
+    return rows.map(toAudit);
   }
 
   async recordSmsConsent(c: SmsConsent): Promise<void> {

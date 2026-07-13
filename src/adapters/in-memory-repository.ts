@@ -19,6 +19,7 @@ import type {
   LoginCode,
   CalendarFeed,
   MusterOwnedVesselDay,
+  Payment,
   MagicToken,
   OutboxEntry,
   RingOutboxEntry,
@@ -43,6 +44,7 @@ import type {
   OutboxEntryId,
   RingOutboxEntryId,
   NoticeOutboxEntryId,
+  PaymentId,
   PtoWindowId,
   ReservationId,
   RoleTypeId,
@@ -57,6 +59,10 @@ import type { ImportRun, ImportRunItem } from "../import/import-audit.js";
 import type { ImportRunId } from "../domain/ids.js";
 import type { Message, Participant, Thread } from "../messaging/entities.js";
 import type { MessageId, ParticipantId, ThreadId } from "../domain/ids.js";
+import {
+  PAYMENT_CONFIG_DEFAULTS,
+  type PaymentConfig,
+} from "../reservations/payment-config.js";
 import type { Repository } from "../ports/repository.js";
 
 const clone = <T>(value: T): T => structuredClone(value);
@@ -84,6 +90,9 @@ export class InMemoryRepository implements Repository {
   readonly #reservations = new Map<ReservationId, Reservation>();
   /** Muster-owned vessel-days (DEC-106), keyed `${vesselId}|${date}`. */
   readonly #musterOwnedVesselDays = new Map<string, MusterOwnedVesselDay>();
+  readonly #payments = new Map<PaymentId, Payment>();
+  /** Payment-config overrides (DEC-107); absent fields fall to PAYMENT_CONFIG_DEFAULTS. */
+  #paymentConfig: Partial<PaymentConfig> = {};
   readonly #shifts = new Map<ShiftId, Shift>();
   readonly #seats = new Map<SeatId, Seat>();
   readonly #asks = new Map<AskId, Ask>();
@@ -252,6 +261,28 @@ export class InMemoryRepository implements Repository {
       `${String(vesselId)}|${date}`,
       clone({ vesselId, date, markedAt }),
     );
+  }
+
+  // ── Payments (DEC-107) ──────────────────────────────────────────────────────
+  async getPaymentConfig(): Promise<PaymentConfig> {
+    return { ...PAYMENT_CONFIG_DEFAULTS, ...this.#paymentConfig };
+  }
+  async setPaymentConfig(patch: Partial<PaymentConfig>, _at: string): Promise<void> {
+    this.#paymentConfig = { ...this.#paymentConfig, ...patch };
+  }
+  async savePayment(payment: Payment): Promise<void> {
+    // Insert-only (mirrors the postgres `on conflict do nothing`): a payment row is
+    // immutable once written, so a re-delivered webhook is a no-op, not an overwrite.
+    if (!this.#payments.has(payment.id)) this.#payments.set(payment.id, clone(payment));
+  }
+  async getPayment(id: PaymentId): Promise<Payment | null> {
+    const p = this.#payments.get(id);
+    return p ? clone(p) : null;
+  }
+  async listPaymentsForReservation(reservationId: ReservationId): Promise<Payment[]> {
+    return [...this.#payments.values()]
+      .filter((p) => p.reservationId === reservationId)
+      .map(clone);
   }
 
   // ── Reservations ───────────────────────────────────────────────────────────

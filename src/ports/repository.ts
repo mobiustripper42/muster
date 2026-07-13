@@ -16,6 +16,7 @@ import type {
   AuthSubjectKind,
   CalendarFeed,
   MusterOwnedVesselDay,
+  Payment,
   Credential,
   CrewMember,
   CrewStatus,
@@ -44,6 +45,7 @@ import type {
   OutboxEntryId,
   RingOutboxEntryId,
   NoticeOutboxEntryId,
+  PaymentId,
   PtoWindowId,
   ReservationId,
   RoleTypeId,
@@ -57,6 +59,7 @@ import type { SeatState } from "../domain/states.js";
 import type { ImportRun, ImportRunItem } from "../import/import-audit.js";
 import type { ImportRunId } from "../domain/ids.js";
 import type { Message, Participant, Thread } from "../messaging/entities.js";
+import type { PaymentConfig } from "../reservations/payment-config.js";
 import type { ThreadId } from "../domain/ids.js";
 
 export interface Repository {
@@ -155,6 +158,16 @@ export interface Repository {
     date: string,
     markedAt: string,
   ): Promise<void>;
+
+  // ── Payments (Muster-native reservations — DEC-107) ─────────────────────────
+  /** Operator payment config (deposit mode/%, tax rate, balance-due-days), backed by the
+   *  `app_settings` KV; an absent key falls to `PAYMENT_CONFIG_DEFAULTS` per field. */
+  getPaymentConfig(): Promise<PaymentConfig>;
+  setPaymentConfig(patch: Partial<PaymentConfig>, at: string): Promise<void>;
+  /** Idempotent upsert on the deterministic id — a re-delivered webhook can't double-write. */
+  savePayment(payment: Payment): Promise<void>;
+  getPayment(id: PaymentId): Promise<Payment | null>;
+  listPaymentsForReservation(reservationId: ReservationId): Promise<Payment[]>;
 
   // ── Shifts ─────────────────────────────────────────────────────────────────
   saveShift(shift: Shift): Promise<void>;

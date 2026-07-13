@@ -24,6 +24,7 @@ const TABLES = [
   "events",
   "reservations",
   "muster_owned_vessel_days",
+  "payments",
   "shifts",
   "seats",
   "asks",

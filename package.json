@@ -16,6 +16,7 @@
     "db:admin": "tsx db/admin.ts",
     "db:crew": "tsx db/crew.ts",
     "db:own": "tsx db/own-vessel-day.ts",
+    "db:checkout": "tsx db/checkout-dev.ts",
     "db:seed:fleet": "tsx db/seed-fleet.ts",
     "db:seed:crew:pilot": "tsx db/seed-pilot-crew.ts",
     "db:seed:crew": "tsx db/seed-crewapp-dev.ts",
@@ -56,6 +57,7 @@
     "next": "^16.2.7",
     "pg": "^8.21.0",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "stripe": "^22.3.1"
   }
 }

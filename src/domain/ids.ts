@@ -17,6 +17,7 @@ export type CredentialId = Brand<string, "CredentialId">;
 export type PtoWindowId = Brand<string, "PtoWindowId">;
 export type EventId = Brand<string, "EventId">;
 export type ReservationId = Brand<string, "ReservationId">;
+export type PaymentId = Brand<string, "PaymentId">;
 export type ShiftId = Brand<string, "ShiftId">;
 export type SeatId = Brand<string, "SeatId">;
 export type SmsConsentId = Brand<string, "SmsConsentId">;

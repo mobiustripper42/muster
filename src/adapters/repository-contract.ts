@@ -25,6 +25,7 @@ import type {
   SmsConsent,
   GuestContact,
   PtoWindow,
+  Payment,
   Reservation,
   RoleType,
   Seat,
@@ -451,6 +452,49 @@ export function runRepositoryContract(
         (r) => r.source === "muster" && r.status === "booked",
       );
       expect(active).toHaveLength(1);
+    });
+
+    // ── Payments (DEC-107) ────────────────────────────────────────────────────
+    const payment = (over: Partial<Payment> = {}): Payment => ({
+      id: asId<"PaymentId">("pay-1"),
+      reservationId: asId<"ReservationId">("resv-1"),
+      method: "stripe",
+      kind: "full",
+      amountCents: 53521,
+      taxCents: 3621,
+      currency: "usd",
+      status: "succeeded",
+      createdAt: "2026-07-12T00:00:00.000Z",
+      stripeCheckoutSessionId: "cs_test_1",
+      ...over,
+    });
+
+    it("payment config: defaults when unset; per-field override round-trips (DEC-107)", async () => {
+      expect(await repo.getPaymentConfig()).toEqual({
+        depositMode: "deposit",
+        depositPercent: 25,
+        taxRateBps: 725,
+        balanceDueDaysBeforeEvent: 14,
+      });
+      await repo.setPaymentConfig({ depositMode: "full", taxRateBps: 800 }, "2026-07-12T00:00:00.000Z");
+      const cfg = await repo.getPaymentConfig();
+      expect(cfg.depositMode).toBe("full");
+      expect(cfg.taxRateBps).toBe(800);
+      expect(cfg.depositPercent).toBe(25); // untouched field keeps its default
+    });
+
+    it("payments: save/get/listForReservation; idempotent upsert on id; optional stripe ids", async () => {
+      await repo.savePayment(payment());
+      const got = await repo.getPayment(asId<"PaymentId">("pay-1"));
+      expect(got).toEqual(payment());
+      // idempotent: same id again doesn't duplicate
+      await repo.savePayment(payment({ amountCents: 53521 }));
+      expect(await repo.listPaymentsForReservation(asId<"ReservationId">("resv-1"))).toHaveLength(1);
+      // a balance payment for the same reservation is a second row
+      await repo.savePayment(payment({ id: asId<"PaymentId">("pay-2"), kind: "balance", stripeCheckoutSessionId: "cs_test_2" }));
+      expect(await repo.listPaymentsForReservation(asId<"ReservationId">("resv-1"))).toHaveLength(2);
+      // optional stripePaymentIntentId omitted stays omitted (not undefined)
+      expect("stripePaymentIntentId" in got!).toBe(false);
     });
 
     it("muster-owned vessel-days: mark + list; upsert on (vessel,date) (DEC-106)", async () => {

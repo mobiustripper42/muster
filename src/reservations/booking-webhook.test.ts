@@ -131,3 +131,97 @@ describe("processBookingWebhook", () => {
     ).rejects.toThrow();
   });
 });
+
+// ── 11.2b — balance payments (purpose="balance") ─────────────────────────────
+const RES = asId<"ReservationId">("resv-bal");
+
+const balanceCompleted = (over: Partial<CheckoutCompleted> = {}): CheckoutCompleted => ({
+  sessionId: "cs_bal_1",
+  paymentIntentId: "pi_bal",
+  amountTotalCents: 37500, // the outstanding balance (500 + 36.25 tax − 161.25 deposit)
+  currency: "usd",
+  metadata: { purpose: "balance", reservationId: "resv-bal", taxCents: "0" },
+  ...over,
+});
+
+async function seedDepositBooking(repo: InMemoryRepository): Promise<void> {
+  await repo.saveEvent(musterEvent());
+  await repo.saveReservation({
+    id: RES,
+    eventId: EVENT,
+    source: "muster",
+    customerName: "Mary",
+    partySize: 6,
+    status: "booked",
+  });
+  await repo.savePayment({
+    id: asId<"PaymentId">("pay_dep"),
+    reservationId: RES,
+    method: "stripe",
+    kind: "deposit",
+    amountCents: 16125,
+    taxCents: 3625,
+    currency: "usd",
+    status: "succeeded",
+    createdAt: "2026-07-01T00:00:00.000Z",
+  });
+}
+
+describe("processBookingWebhook — balance (11.2b)", () => {
+  it("records a Payment{kind:'balance'} against the existing reservation — no second reservation, no alert", async () => {
+    const repo = new InMemoryRepository();
+    await seedDepositBooking(repo);
+    const { deps, alert } = makeDeps(repo);
+
+    const r = await processBookingWebhook(deps, JSON.stringify(balanceCompleted()), FAKE_SIGNATURE);
+    expect(r).toEqual({ handled: true, outcome: "balance_paid" });
+
+    const payments = await repo.listPaymentsForReservation(RES);
+    expect(payments.map((p) => p.kind).sort()).toEqual(["balance", "deposit"]);
+    const bal = payments.find((p) => p.kind === "balance")!;
+    expect(bal).toMatchObject({ amountCents: 37500, taxCents: 0, status: "succeeded" });
+    // did NOT run the booking path (no new reservation off the balance session id)
+    expect(await repo.listReservationsForEvent(EVENT)).toHaveLength(1);
+    expect(alert).not.toHaveBeenCalled();
+  });
+
+  it("is idempotent — a re-delivered balance session writes one balance payment", async () => {
+    const repo = new InMemoryRepository();
+    await seedDepositBooking(repo);
+    const { deps } = makeDeps(repo);
+    await processBookingWebhook(deps, JSON.stringify(balanceCompleted()), FAKE_SIGNATURE);
+    await processBookingWebhook(deps, JSON.stringify(balanceCompleted()), FAKE_SIGNATURE);
+    const balances = (await repo.listPaymentsForReservation(RES)).filter((p) => p.kind === "balance");
+    expect(balances).toHaveLength(1);
+  });
+
+  it("OVERPAY (two balance sessions raced): records the money + loudly flags a manual refund", async () => {
+    const repo = new InMemoryRepository();
+    await seedDepositBooking(repo);
+    const { deps, alert } = makeDeps(repo);
+    // First balance pays the real 37500 → paid in full.
+    await processBookingWebhook(deps, JSON.stringify(balanceCompleted()), FAKE_SIGNATURE);
+    // A second balance session (different id) also completes → overpay.
+    const r = await processBookingWebhook(
+      deps,
+      JSON.stringify(balanceCompleted({ sessionId: "cs_bal_2" })),
+      FAKE_SIGNATURE,
+    );
+    expect(r).toEqual({ handled: true, outcome: "balance_paid" });
+    expect(alert).toHaveBeenCalledOnce();
+    expect(alert.mock.calls[0]![0]).toContain("OVERPAID");
+  });
+
+  it("unknown purpose is loudly flagged and NOT booked (no orphan reservation)", async () => {
+    const repo = new InMemoryRepository();
+    const { deps, alert } = makeDeps(repo);
+    const r = await processBookingWebhook(
+      deps,
+      JSON.stringify(balanceCompleted({ metadata: { purpose: "refund" } })),
+      FAKE_SIGNATURE,
+    );
+    expect(r).toEqual({ handled: true, outcome: "ignored" });
+    expect(alert).toHaveBeenCalledOnce();
+    expect(await repo.listAllReservations()).toHaveLength(0);
+  });
+});

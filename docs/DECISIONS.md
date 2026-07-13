@@ -2795,6 +2795,31 @@ ever wants true multi-add-on selling (then reopen as `item.addOns[]`, a consciou
 
 ---
 
+## DEC-107 amendment (11.2b) — on-demand balance collection
+
+**Status:** Decided 2026-07-13 (@architect, under DEC-107).
+
+Balance is collected **on demand** (the auto-emit scheduler that reads `balanceDueDaysBeforeEvent`
+stays P12+). **Amount authority is the canonical deriver `balanceOwedCents = (event.price + tax) −
+Σ succeeded payments`, computed at click time** — never a config recompute of the deposit share, so it
+can't drift when `depositPercent`/price change between deposit and balance (the `Payment` entity already
+mandates balance be *derived, never stored*). It sums only `status==='succeeded'`, so a future refund
+re-opens the balance through the same one function.
+
+The **Stripe Checkout URL, re-minted per request, is the balance link** — no durable/custom token (and no
+dependency on 11.4's `booking-link.ts`); a re-minted link always reflects the current outstanding balance.
+
+The webhook **routes on `metadata.purpose`**: `"balance"` records a `Payment{kind:'balance'}` against the
+existing reservation (**no `writeBooking`, no confirmation emit** — the boat was claimed at deposit,
+DEC-109); absent/`"booking"` keeps the existing spine; any **other** purpose is loudly flagged and NOT
+booked (a non-booking session has no `eventId` → would orphan a reservation). **Overpay** from a
+two-session race is recorded (the money moved) then loudly flagged for a **manual** refund — consistent
+with the DEC-107 paid-but-unbooked posture; nothing auto-refunds. Balance is never stored on `Reservation`
+(DEC-105/106); the payment log is the sole source of truth. No migration (`payments` table + `kind:'balance'`
+already exist). Trigger for now is the `db:balance` CLI; the customer-facing email/page is P12.
+
+---
+
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)
 
 These are deferred by design. Each names an owner and a trigger. **Consult @architect (and the named

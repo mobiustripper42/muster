@@ -3,6 +3,30 @@
 Phase-end retrospectives. Written by `/retro` at each phase boundary — velocity, scope changes,
 process notes, forecast update. One entry per phase, newest at the top.
 
+## Release v1.0.5 — 2026-07-13 (cross-phase batch, not a phase close)
+
+A promote-and-ship batch rather than a phase boundary — 17 PRs merged since v1.0.4 (2026-07-10),
+promoted `main` → `production` at v1.0.5. Bump + tag done manually, out of the usual retro order, per
+operator. No phase closed (Phase 10 has 3 open, Phase 11 reservations is mid-flight; #392/#393 were
+unphased). Retro questions skipped per operator (time).
+
+**Highlights:**
+- **Weekend-batch crewing (#392/#393, DEC-116/117) — ships INERT.** Fri/Sat/Sun shifts can go live
+  together on one Monday-09:00 trigger; ask distribution then sends **one text per person** (not one per
+  shift) and spreads same-day boats across people (**one boat per day**). Gated behind
+  `STAFFING_HORIZON_WEEKEND_DAYS` — unset in prod until the operator flips it. Rescoped mid-session from an
+  over-built turn-queue/round-robin design down to two small fixes on the existing ask path (batch delivery +
+  drip seed dedup).
+- **PWA install (#394).** Service worker + manifest screenshots so Android/desktop offer Install.
+- **Phase-10.5 backlog cleanup (13 PRs):** scroll-position keeping, teardown-vs-call-lead split,
+  `FILL_DEADLINE_HOURS` env-tunable, shifts filters + filter-by-crew, crew iCal feed, bare doorbell SMS,
+  "other shifts today", admin-gate fallback, scrollbar gutter, drop `locked_at`, component-size guideline,
+  reservations go-live docs.
+
+**Drive-by CI unblocks:** two files still missing `Event.source` after the #382 NOT-NULL column landed —
+`other-shifts.test.ts` (typecheck) and `seed-crewapp-dev.ts` (e2e). Both fixed; a symptom of
+stacked-PR-skipped verify/e2e CI.
+
 ## Phase 10 — 2026-07-08 — Production Ops & Onboarding → **v1.0.0**
 
 **Points:** 24 / 24 (100%) — 10.1–10.7 (#282/#283/#284 @5, #286/#287/#288 @3)

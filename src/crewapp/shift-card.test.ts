@@ -198,4 +198,37 @@ describe("buildShiftManifest", () => {
     const m = await buildShiftManifest(repo, (await repo.getShift(SHIFT))!);
     expect(m.sharedDock).toBe("Pier 9, Lake Union");
   });
+
+  // 11.7 (DEC-012) — the manifest is the hinge that retires the Xola write-back:
+  // a Muster-native (`source='muster'`) booking must surface on the shift card
+  // exactly like a Xola one, with no source filter and no write-back path. The
+  // whole read path is source-agnostic; these prove it end to end.
+  const EM = asId<"EventId">("evt-muster-7pm");
+  async function seedWithMusterEvent(): Promise<InMemoryRepository> {
+    const repo = await seed();
+    // A Muster-owned event on the same shift + a booked Muster-native reservation.
+    await repo.saveEvent({ id: EM, vesselId: VESSEL, date: "2026-07-04", time: "19:00", capacity: 12, source: "muster", status: "scheduled", price: 50000 });
+    await repo.saveShift({ id: SHIFT, vesselId: VESSEL, date: "2026-07-04", state: "Crewed", eventIds: [E5, E1, EM] });
+    await repo.saveReservation({ id: asId<"ReservationId">("rm"), eventId: EM, customerName: "Muster Mary", partySize: 5, source: "muster", phone: "555-9999", status: "booked" });
+    return repo;
+  }
+
+  it("surfaces a Muster-native reservation on the manifest, same as Xola (no source filter)", async () => {
+    const repo = await seedWithMusterEvent();
+    const m = await buildShiftManifest(repo, (await repo.getShift(SHIFT))!);
+    const mEvent = m.events.find((e) => e.eventId === EM);
+    expect(mEvent).toBeDefined();
+    expect(mEvent!.guests.map((g) => g.name)).toEqual(["Muster Mary"]);
+    expect(mEvent!.guests[0]).toMatchObject({ name: "Muster Mary", party: 5, phone: "555-9999" });
+    expect(mEvent!.pax).toBe(5);
+    // The Muster pax count into the whole-shift total — nothing drops it.
+    expect(m.paxTotal).toBe(17); // 10 (E1) + 2 (E5) + 5 (Muster)
+  });
+
+  it("the Muster reservation rides the full crew shift card the same way", async () => {
+    const card = (await buildShiftCard(await seedWithMusterEvent(), SHIFT, ME, NOW))!;
+    const mEvent = card.events.find((e) => e.eventId === EM)!;
+    expect(mEvent.guests.map((g) => g.name)).toEqual(["Muster Mary"]);
+    expect(card.events.map((e) => e.eventId)).toEqual(["evt-3pm", "evt-5pm", "evt-muster-7pm"]); // sorted by time, Muster last
+  });
 });

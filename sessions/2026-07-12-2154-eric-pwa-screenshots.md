@@ -4,10 +4,10 @@ dev: eric
 slug: pwa-screenshots
 branch: task/pwa-screenshots
 started: 2026-07-12T21:54:42Z
-ended:
-points:
+ended: 2026-07-13T15:11:46Z
+points: 10
 pr_numbers: [398, 399]
-status: open
+status: closed
 transcript: /home/eric/.claude/projects/-home-eric-muster/60da5bf5-e4ad-43be-a451-6810ed010434.jsonl
 ---
 

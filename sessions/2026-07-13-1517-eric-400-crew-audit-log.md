@@ -4,10 +4,10 @@ dev: eric
 slug: 400-crew-audit-log
 branch: task/400-crew-audit-log
 started: 2026-07-13T15:17:03Z
-ended:
-points:
-pr_numbers: [402, 406, 407, 409]
-status: open
+ended: 2026-07-13T21:44:02Z
+points: 11
+pr_numbers: [402, 406, 407, 409, 410]
+status: closed
 transcript: /home/eric/.claude/projects/-home-eric-muster/488147c1-61df-4696-9ad2-2abd45d1cce6.jsonl
 ---
 
@@ -69,4 +69,9 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/488147c1-61df-4696-9ad
 **Context:**
 - **Concurrent session 48** (`11.4-booking-link-confirm`, PRs 401/403/405) ran on another machine this whole window — separate session file, no branch conflict on `sessions`. `/kill-this`'s `head -1` grabbed IT first; had to target session 49 explicitly. Watch this at `/its-dead`.
 
-**Context:**
+**Context (close):**
+- **#400 shipped end-to-end + live.** Audit list is `/admin/asks` (repurposed from ask-history), shows ALL 14 crew events each as its own row, crew + kind filters. `db:crew rank` CLI shipped (#404 → #409). Prod at **v1.0.8**; migrations 0021–0024 applied to prod.
+- **The audit UI took ~10 turns of wrong shapes** before converging. Root cause + fix saved as memory [[spec-convergence-enumerate-then-confirm]]: enumerate the set from source + confirm BEFORE coding; don't let prior DECs/dedup instincts override plain words. Operator self-noted skipping QA on the promote (in a hurry).
+- **Stale-test trap:** repurposing `/admin/asks` broke `e2e/ask-trail.spec.ts`; red from #407, rode through #407/#409 merges because **e2e isn't a required check**. Fixed in #410 (renamed → `audit-trail.spec.ts`). Lessons: renaming a route = check its e2e; check CI **pass/fail**, not `--watch` exit code (merged #409 on red before catching it).
+- **`src/admin/ask-trail.ts`** read model now unused by any page (only its test + `listAllAsks` port). Candidate for removal later.
+- **Concurrent session 48** still open on another machine — leave its file alone.

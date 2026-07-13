@@ -21,6 +21,7 @@
 import type { CrewMember, RoleType } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import { normalizeEmail } from "../auth/login-code.js";
+import { scoreCrewMember, effectiveRankScore } from "../oracle/reliability-score.js";
 import type { Repository } from "../ports/repository.js";
 
 /** A user-facing CLI error (bad args / not found) — the entrypoint prints its
@@ -65,6 +66,7 @@ const resolveRating = (roleTypes: RoleType[], token: string) => {
 const USAGE =
   "Usage:\n" +
   "  db:crew list\n" +
+  "  db:crew rank                — crew by reliability score, best first (#404)\n" +
   '  db:crew add --name="<name>" --phone=<+E164> --ratings=<r1,r2> [--email=<addr>] [--id=<crewId>] [--mmc=<YYYY-MM-DD>]\n' +
   '  db:crew set <crewId> [--email=<addr>] [--phone=<+E164>] [--name="<name>"]\n' +
   "  db:crew disable <crewId>   |   db:crew enable <crewId>\n" +
@@ -74,7 +76,11 @@ const USAGE =
 
 /** Execute one crew command. Returns the human-readable result line(s);
  *  throws {@link CrewCliError} on bad input or a missing target. */
-export async function runCrewCommand(repo: Repository, args: string[]): Promise<string> {
+export async function runCrewCommand(
+  repo: Repository,
+  args: string[],
+  now: Date = new Date(),
+): Promise<string> {
   const cmd = args[0];
 
   switch (cmd) {
@@ -91,6 +97,34 @@ export async function runCrewCommand(repo: Repository, args: string[]): Promise<
             `${c.phone.padEnd(15)} ${c.email ?? "(no email)"}`,
         )
         .join("\n");
+    }
+
+    // Crew ranked by reliability, best first (#404). Uses the SAME score + manual
+    // thumb the ask loop ranks on (`scoreCrewMember` + `effectiveRankScore`), so
+    // this is the true ask order — not a parallel metric. Empty log ⇒ neutral 0
+    // (`events` shows why a name sits at 0); a `*` marks a manual floor/boost.
+    case "rank": {
+      const crew = await repo.listCrewMembers();
+      if (crew.length === 0) return "No crew members.";
+      const keyed = await Promise.all(
+        crew.map(async (c) => {
+          const s = await scoreCrewMember(repo, c.id, now);
+          return { c, key: effectiveRankScore(s.score, c), events: s.eventCount };
+        }),
+      );
+      keyed.sort((a, b) =>
+        a.key !== b.key ? b.key - a.key : a.c.id < b.c.id ? -1 : a.c.id > b.c.id ? 1 : 0,
+      );
+      const header = " #   score  events  crew";
+      const rows = keyed.map(({ c, key, events }, i) => {
+        const thumb = c.manualFloor !== undefined || c.manualBoost !== undefined ? "*" : " ";
+        const mark = c.status === "active" ? "●" : c.status === "archived" ? "✗" : "○";
+        return (
+          `${String(i + 1).padStart(2)}  ${key.toFixed(1).padStart(6)}${thumb} ` +
+          `${String(events).padStart(5)}   ${mark} ${c.name} (${c.id})`
+        );
+      });
+      return [header, ...rows, "", "* = manual floor/boost applied · ● active ○ benched ✗ archived"].join("\n");
     }
 
     case "add": {

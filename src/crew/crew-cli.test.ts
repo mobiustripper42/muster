@@ -51,6 +51,30 @@ describe("db:crew CLI (Phase 10.5)", () => {
     expect(out).toContain("placeholder");
   });
 
+  it("rank: orders crew by reliability score, best first, with events + thumb marker", async () => {
+    const now = new Date("2026-07-13T12:00:00.000Z");
+    await repo.saveCrewMember(crew({ id: asId<"CrewMemberId">("crew-quint"), name: "Quint" }));
+    await repo.saveCrewMember(crew({ id: asId<"CrewMemberId">("crew-brody"), name: "Brody", manualFloor: 5 }));
+    // Eric: two completed shifts (+5 each = 10). Quint: empty log (neutral 0).
+    // Brody: empty but a manual floor of 5 sits him between them.
+    for (const id of ["r1", "r2"]) {
+      await repo.logReliabilityEvent({
+        id: asId<"ReliabilityEventId">(id),
+        crewMemberId: asId<"CrewMemberId">("crew-eric"),
+        type: "shift_completed",
+        timestamp: "2026-07-10T12:00:00.000Z",
+        metadata: {},
+      });
+    }
+    const out = await runCrewCommand(repo, ["rank"], now);
+    const pos = (name: string) => out.indexOf(name);
+    // Eric (10) above Brody (floored to 5) above Quint (0).
+    expect(pos("Eric")).toBeLessThan(pos("Brody"));
+    expect(pos("Brody")).toBeLessThan(pos("Quint"));
+    expect(out).toContain("events"); // the column renders
+    expect(out).toMatch(/5\.0\*/); // Brody's floored score carries the manual-thumb marker
+  });
+
   it("add: --mmc sets a real expiry; --id overrides the derived id; ratings dedupe", async () => {
     const out = await runCrewCommand(repo, [
       "add",

@@ -51,6 +51,13 @@ export async function refreshShiftState(
 ): Promise<void> {
   const shift = await repo.getShift(shiftId);
   if (!shift) return;
+  // Lifecycle states are terminal — a seat mutation never resurrects a cancelled
+  // or completed shift. `deriveShiftState` is a pure seat-fold that can only yield
+  // Crewed/AtRisk/Filling/Pending, so without this guard a bail/decline/claim on a
+  // leftover seat (DEC-084 keeps seats on cancel) would overwrite `Cancelled` with a
+  // live state, un-hiding the shift and re-arming the tick's ask loop. Mirrors the
+  // tick's own terminal guard and #20's Completed guard in formShifts.
+  if (shift.state === "Cancelled" || shift.state === "Completed") return;
   const seats = await repo.listSeatsForShift(shiftId);
   await repo.saveShift({ ...shift, state: deriveShiftState(seats) });
 }

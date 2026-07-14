@@ -758,3 +758,51 @@ describe("bail/vacate — civil send window deferral (DEC-088)", () => {
     expect(await types(a)).not.toContain("shift_bailed"); // vacate stays penalty-free
   });
 });
+
+// A Xola cancellation makes a shift terminal, but DEC-084 leaves its seats. A seat
+// mutation afterwards runs `refreshShiftState`, whose pure seat-fold can't yield
+// Cancelled — so without the lifecycle guard it overwrote `Cancelled` with a live
+// state, un-hiding the shift and re-arming the tick's ask loop. Prod repro: a crew
+// "no" on a leftover ask auto-resurrected a cancelled trip (brew-1/19th), and an
+// operator bail did the same (brew-3/18th).
+describe("refreshShiftState — terminal shifts never resurrect (cancel/complete guard)", () => {
+  async function cancel(state: Shift["state"] = "Cancelled") {
+    const shift = (await repo.getShift(SHIFT))!;
+    await repo.saveShift({ ...shift, state });
+  }
+
+  it("a crew decline on a leftover ask does NOT un-cancel the shift", async () => {
+    await addCrew("crew-a");
+    const [seatId] = await addShift(1);
+    const asks = await broadcastAsk(repo, seatId!, T0); // live ask on the seat
+    await cancel(); // Xola cancels the trip out from under the ask (seat stays, DEC-084)
+
+    await recordResponse(repo, asks[0]!.id, "declined", later(1000)); // the crew taps "no"
+
+    expect(await shiftState(SHIFT)).toBe("Cancelled");
+  });
+
+  it("an operator bail on a leftover confirmed seat does NOT un-cancel the shift", async () => {
+    const a = await addCrew("crew-a");
+    await addCrew("crew-b"); // a pool exists to re-ask, so the bail path runs fully
+    const [seatId] = await addShift(1);
+    const seat = (await repo.getSeat(seatId!))!;
+    await repo.saveSeat({ ...seat, state: "Confirmed", assignedCrewMemberId: a });
+    await cancel();
+
+    await bail(repo, seatId!, later(1000), 0);
+
+    expect(await shiftState(SHIFT)).toBe("Cancelled");
+  });
+
+  it("a Completed shift is equally inert to a seat mutation", async () => {
+    await addCrew("crew-a");
+    const [seatId] = await addShift(1);
+    const asks = await broadcastAsk(repo, seatId!, T0);
+    await cancel("Completed");
+
+    await recordResponse(repo, asks[0]!.id, "declined", later(1000));
+
+    expect(await shiftState(SHIFT)).toBe("Completed");
+  });
+});

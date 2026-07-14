@@ -47,6 +47,21 @@ describe("writeBooking", () => {
     expect(await repo.listReservationsForEvent(EVENT)).toHaveLength(1);
   });
 
+  it("carries waiver consent onto the booked reservation (11.5, DEC-110)", async () => {
+    const repo = new InMemoryRepository();
+    await repo.saveEvent(musterEvent());
+    const r = await writeBooking(
+      repo,
+      req({ waiverConsentAt: "2026-07-01T00:00:00.000Z", waiverVersion: "v1" }),
+      NOW,
+    );
+    expect(r.outcome).toBe("booked");
+    if (r.outcome === "booked") {
+      expect(r.reservation.waiverConsentAt).toBe("2026-07-01T00:00:00.000Z");
+      expect(r.reservation.waiverVersion).toBe("v1");
+    }
+  });
+
   it("already: a retry with the same idempotency key is a no-op (no double-write)", async () => {
     const repo = new InMemoryRepository();
     await repo.saveEvent(musterEvent());

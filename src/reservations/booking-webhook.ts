@@ -61,6 +61,8 @@ export async function processBookingWebhook(
       partySize,
       ...(m.email ? { email: m.email } : {}),
       ...(m.phone ? { phone: m.phone } : {}),
+      ...(m.waiverConsentAt ? { waiverConsentAt: m.waiverConsentAt } : {}),
+      ...(m.waiverVersion ? { waiverVersion: m.waiverVersion } : {}),
       idempotencyKey,
     },
     deps.now,

@@ -99,6 +99,20 @@ describe("processBookingWebhook", () => {
     expect(confirm).toHaveBeenCalledOnce();
   });
 
+  it("carries waiver consent from checkout metadata onto the reservation (11.5, DEC-110)", async () => {
+    const repo = new InMemoryRepository();
+    await repo.saveEvent(musterEvent());
+    const { deps } = makeDeps(repo);
+    const withWaiver = completed({
+      metadata: { ...completed().metadata, waiverConsentAt: "2026-07-13T12:00:00.000Z", waiverVersion: "v1" },
+    });
+
+    await processBookingWebhook(deps, JSON.stringify(withWaiver), FAKE_SIGNATURE);
+    const res = (await repo.getReservation(reservationIdFor("cs_test_1")))!;
+    expect(res.waiverConsentAt).toBe("2026-07-13T12:00:00.000Z");
+    expect(res.waiverVersion).toBe("v1");
+  });
+
   it("paid-but-unbooked (rival holds the boat): records the payment + alerts admins to refund manually", async () => {
     const repo = new InMemoryRepository();
     await repo.saveEvent(musterEvent());

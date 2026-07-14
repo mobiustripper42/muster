@@ -171,6 +171,8 @@ const toReservation = (r: any): Reservation => ({
   status: r.status,
   ...opt("email", r.email),
   ...opt("phone", r.phone),
+  ...opt("waiverConsentAt", r.waiver_consent_at),
+  ...opt("waiverVersion", r.waiver_version),
   ...opt("updatedAt", r.updated_at),
 });
 
@@ -698,11 +700,12 @@ export class PostgresRepository implements Repository {
   // ── Reservations ───────────────────────────────────────────────────────────
   async saveReservation(r: Reservation): Promise<void> {
     await this.#pool.query(
-      `insert into reservations(id, event_id, customer_name, party_size, email, phone, status, updated_at, source)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      `insert into reservations(id, event_id, customer_name, party_size, email, phone, status, updated_at, source, waiver_consent_at, waiver_version)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        on conflict (id) do update set event_id=excluded.event_id, customer_name=excluded.customer_name,
          party_size=excluded.party_size, email=excluded.email, phone=excluded.phone, status=excluded.status,
-         updated_at=excluded.updated_at, source=excluded.source`,
+         updated_at=excluded.updated_at, source=excluded.source,
+         waiver_consent_at=excluded.waiver_consent_at, waiver_version=excluded.waiver_version`,
       [
         r.id,
         r.eventId,
@@ -713,6 +716,8 @@ export class PostgresRepository implements Repository {
         r.status,
         r.updatedAt ?? null,
         r.source,
+        r.waiverConsentAt ?? null,
+        r.waiverVersion ?? null,
       ],
     );
   }
@@ -755,8 +760,8 @@ export class PostgresRepository implements Repository {
       }
       await client.query(
         `insert into reservations
-           (id, event_id, customer_name, party_size, email, phone, status, updated_at, source)
-         select $1,$2,$3,$4,$5,$6,$7,$8,$9
+           (id, event_id, customer_name, party_size, email, phone, status, updated_at, source, waiver_consent_at, waiver_version)
+         select $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11
          where not exists (
            select 1 from reservations
            where event_id=$2 and source='muster' and status='booked' and id <> $1
@@ -772,6 +777,8 @@ export class PostgresRepository implements Repository {
           r.status,
           r.updatedAt ?? null,
           r.source,
+          r.waiverConsentAt ?? null,
+          r.waiverVersion ?? null,
         ],
       );
       const won = await client.query(

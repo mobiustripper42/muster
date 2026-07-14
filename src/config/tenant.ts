@@ -36,6 +36,20 @@ export const PICKUP_MAP_URL: string =
   process.env.PICKUP_MAP_URL ?? "https://maps.app.goo.gl/A2vG7Q9LjKdZJpod9";
 
 /**
+ * Liability-waiver consent (11.5, DEC-110) — the Muster-sold booking form shows
+ * `WAIVER_TERMS_URL` as the "I agree to the [liability waiver]" link, and stamps
+ * `WAIVER_TERMS_VERSION` onto the reservation as the terms version consented to.
+ * The version is **server-authoritative** — bumped here (not trusted from the
+ * form) whenever the terms change, so an old consent proves which text was agreed.
+ * Env-overridable to track the live terms without a deploy. A real waiver provider
+ * is P12; this is the minimal consent record.
+ */
+export const WAIVER_TERMS_VERSION: string =
+  process.env.WAIVER_TERMS_VERSION ?? "v1";
+export const WAIVER_TERMS_URL: string =
+  process.env.WAIVER_TERMS_URL ?? "https://www.brewcle.com/liability-waiver/";
+
+/**
  * Biweekly payroll anchor — a known period START, phasing the 14-day pay periods
  * the payroll report (#347) lists. Ported to match the sibling `xola-tip-extractor`
  * EXACTLY (its `PAY_PERIOD_ANCHOR` env + `DEFAULT_ANCHOR` fallback), so both tools

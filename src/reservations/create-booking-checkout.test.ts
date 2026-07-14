@@ -23,7 +23,14 @@ const musterEvent = (over: Partial<Event> = {}): Event => ({
   ...over,
 });
 
-const req = { eventId: EVENT, customerName: "Mary", partySize: 6, email: "m@x.io" };
+const req = {
+  eventId: EVENT,
+  customerName: "Mary",
+  partySize: 6,
+  email: "m@x.io",
+  waiverConsentAt: "2026-07-13T12:00:00.000Z",
+  waiverVersion: "v1",
+};
 
 describe("createBookingCheckout", () => {
   it("full mode: charges price + Ohio tax, writes nothing, returns the checkout url + metadata", async () => {
@@ -45,6 +52,8 @@ describe("createBookingCheckout", () => {
       taxCents: "3625",
       customerName: "Mary",
       email: "m@x.io",
+      waiverConsentAt: "2026-07-13T12:00:00.000Z",
+      waiverVersion: "v1",
     });
     // does NOT write a reservation — the webhook does
     expect(await repo.listReservationsForEvent(EVENT)).toHaveLength(0);
@@ -91,5 +100,16 @@ describe("createBookingCheckout", () => {
       status: "booked",
     });
     expect(await createBookingCheckout(repo, pay, req, URLS)).toMatchObject({ reason: "already_claimed" });
+  });
+
+  it("rejects waiver_required with no consent — no checkout, no charge (11.5, DEC-110)", async () => {
+    const repo = new InMemoryRepository();
+    await repo.saveEvent(musterEvent());
+    await repo.setPaymentConfig({ depositMode: "full", taxRateBps: 725 }, "now");
+    const pay = new FakePaymentPort();
+    const { waiverConsentAt: _a, waiverVersion: _v, ...noWaiver } = req;
+
+    expect(await createBookingCheckout(repo, pay, noWaiver, URLS)).toMatchObject({ reason: "waiver_required" });
+    expect(pay.created).toHaveLength(0); // never reached Stripe → no charge without a waiver
   });
 });

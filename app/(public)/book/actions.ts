@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { StripePaymentPort } from "@core/adapters/stripe-payment.js";
+import { WAIVER_TERMS_VERSION } from "@core/config/tenant.js";
 import { asId } from "@core/domain/ids.js";
 import { createBookingCheckout } from "@core/reservations/create-booking-checkout.js";
 import { getRepo } from "../../lib/repo";
@@ -24,6 +25,12 @@ export async function startBooking(formData: FormData): Promise<void> {
   const partySize = Number(formData.get("partySize") ?? 0);
   const email = String(formData.get("email") ?? "").trim();
   const phone = String(formData.get("phone") ?? "").trim();
+  // Waiver consent (11.5, DEC-110): the box must be checked. Enforced here AND at
+  // the engine (createBookingCheckout rejects without it) — the box can't be spoofed
+  // past the charge. The version is server-authoritative (config), never from the form;
+  // the timestamp is the agreement instant (now — this submit).
+  const waiverConsent = formData.get("waiverConsent") === "yes";
+  if (!waiverConsent) redirect("/book?err=waiver_required");
   const base = (process.env.APP_BASE_URL || "http://localhost:3000").replace(/\/+$/, "");
 
   const result = await createBookingCheckout(
@@ -35,6 +42,8 @@ export async function startBooking(formData: FormData): Promise<void> {
       partySize,
       ...(email ? { email } : {}),
       ...(phone ? { phone } : {}),
+      waiverConsentAt: new Date().toISOString(),
+      waiverVersion: WAIVER_TERMS_VERSION,
     },
     { successUrl: `${base}/book/success`, cancelUrl: `${base}/book/cancel` },
   );

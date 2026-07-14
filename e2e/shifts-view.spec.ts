@@ -73,8 +73,9 @@ test.describe("builder view — /admin/shifts (8.2a)", () => {
 
     // The crew filter lives behind the "More filters" disclosure — open it first.
     await page.getByText("More filters").click();
+    // The crew select auto-submits on change now (no "Filter" button) — picking a
+    // crew navigates on its own.
     await page.getByLabel("Crew").selectOption({ label: "Gus" });
-    await page.getByRole("button", { name: "Filter" }).click();
     await page.waitForURL(/crew=/);
 
     // The crew pick does NOT change the window (operator's call — "what you see is

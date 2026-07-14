@@ -154,6 +154,10 @@ describe("buildCrewAppView", () => {
     // appear in my-shifts even though it's future-dated and I'm Confirmed on it.
     await repo.saveShift({ id: asId<"ShiftId">("shift-cxl"), vesselId: VESSEL, date: "2026-07-18", state: "Cancelled", eventIds: [] });
     await repo.saveSeat({ id: asId<"SeatId">("seat-cxl"), shiftId: asId<"ShiftId">("shift-cxl"), role: CAPTAIN, kind: "required", state: "Confirmed", assignedCrewMemberId: ME });
+    // Same for a Claimed (pending) seat on a Cancelled shift — the guard is
+    // state-agnostic on the SEAT, so a pending claim on a killed shift drops too.
+    await repo.saveShift({ id: asId<"ShiftId">("shift-cxl-cl"), vesselId: VESSEL, date: "2026-07-20", state: "Cancelled", eventIds: [] });
+    await repo.saveSeat({ id: asId<"SeatId">("seat-cxl-cl"), shiftId: asId<"ShiftId">("shift-cxl-cl"), role: CAPTAIN, kind: "required", state: "Claimed", assignedCrewMemberId: ME });
     // A live ask on a since-Cancelled shift — the same phantom on the asks list.
     await repo.saveShift({ id: asId<"ShiftId">("shift-cxl-ask"), vesselId: VESSEL, date: "2026-07-19", state: "Cancelled", eventIds: [] });
     await repo.saveSeat({ id: asId<"SeatId">("seat-cxl-ask"), shiftId: asId<"ShiftId">("shift-cxl-ask"), role: CAPTAIN, kind: "required", state: "Asked" });
@@ -161,6 +165,7 @@ describe("buildCrewAppView", () => {
 
     const view = await buildCrewAppView(repo, ME, NOW);
     expect(view!.shifts.map((s) => s.shiftId)).not.toContain("shift-cxl");
+    expect(view!.shifts.map((s) => s.shiftId)).not.toContain("shift-cxl-cl");
     expect(view!.asks.map((a) => a.askId)).not.toContain("ask-cxl");
     // The live ones are untouched.
     expect(view!.shifts.map((s) => s.shiftId)).toContain("shift-up");

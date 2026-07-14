@@ -10,25 +10,37 @@ import { VersionTag } from "../../../../components/ui/version-tag";
 import { readSubject } from "../../../lib/auth";
 import { fmtDateRange } from "../../../lib/format";
 import { getRepo } from "../../../lib/repo";
-import { addMyTimeOff, removeMyTimeOff } from "./actions";
+import { addMyTimeOff, removeMyTimeOff, setMyDaysOff } from "./actions";
 
 /**
- * /crew/time-off (SPEC §2.1, DEC-009) — the crew member's own blackout dates:
- * "Days I'm off." Add a window (start–end), remove one. Subtractive by design —
- * this is NOT an availability/scheduling screen (DEC-009: a window means OFF;
- * absence means available). Server-rendered, no client JS (DEC-026): both forms
- * post to server actions. Mobile-primary (DEC-085).
+ * /crew/time-off (SPEC §2.1, DEC-009) — the crew member's own time off, two axes on
+ * one surface: specific **dated windows** ("Days I'm off", add/remove) and a
+ * **recurring weekday** blackout ("Weekdays I never work", #426/DEC-119). Both are
+ * subtractive — a window or a checked weekday means OFF; absence means available.
+ * This is NOT an availability/scheduling screen (DEC-009). Server-rendered, no
+ * client JS (DEC-026): every form posts to a server action. Mobile-primary (DEC-085).
  */
 
 export const dynamic = "force-dynamic";
 
-type Search = { added?: string; removed?: string; err?: string };
+type Search = { added?: string; removed?: string; saved?: string; err?: string };
 
 const ERR_COPY: Record<string, string> = {
   bad_date: "That date didn’t look right — check the day and try again.",
   end_before_start: "The end date is before the start — flip them and try again.",
   error: "Couldn’t save that just now — try again in a moment.",
 };
+
+// Mon=0…Sun=6 (DEC-119 convention). Display order = the week, Monday first.
+const WEEKDAYS: readonly { value: number; label: string }[] = [
+  { value: 0, label: "Monday" },
+  { value: 1, label: "Tuesday" },
+  { value: 2, label: "Wednesday" },
+  { value: 3, label: "Thursday" },
+  { value: 4, label: "Friday" },
+  { value: 5, label: "Saturday" },
+  { value: 6, label: "Sunday" },
+];
 
 export default async function CrewTimeOff({
   searchParams,
@@ -40,10 +52,16 @@ export default async function CrewTimeOff({
   if (!subject || subject.kind !== "crew") redirect("/crew");
 
   let windows: PtoWindow[];
+  let weekdaysOff: number[];
   try {
-    windows = sortWindows(
-      await getRepo().listPtoWindowsForCrew(asId<"CrewMemberId">(subject.id)),
-    );
+    const repo = getRepo();
+    const id = asId<"CrewMemberId">(subject.id);
+    const [w, crew] = await Promise.all([
+      repo.listPtoWindowsForCrew(id),
+      repo.getCrewMember(id),
+    ]);
+    windows = sortWindows(w);
+    weekdaysOff = crew?.weekdaysOff ?? [];
   } catch {
     return (
       <Shell>
@@ -53,6 +71,7 @@ export default async function CrewTimeOff({
   }
 
   const errCopy = sp.err ? ERR_COPY[sp.err] ?? ERR_COPY.error : null;
+  const offSet = new Set(weekdaysOff);
 
   return (
     <Shell>
@@ -60,13 +79,15 @@ export default async function CrewTimeOff({
       <header className="flex flex-col gap-1">
         <h1 className="text-lg font-semibold text-ink">Time off</h1>
         <p className="text-sm text-muted">
-          Days you’re off. You won’t be asked for shifts on these dates. Leave a day
-          off this list and you’re available — there’s nothing to opt into.
+          Days and weekdays you’re off. You won’t be asked for shifts on them —
+          there’s nothing to opt into, so anything not listed here means you’re
+          available.
         </p>
       </header>
 
       {sp.added && <Notice tone="ok">Added — you’re off those dates.</Notice>}
       {sp.removed && <Notice tone="ok">Removed — you’re available those dates again.</Notice>}
+      {sp.saved && <Notice tone="ok">Saved — your recurring days off are updated.</Notice>}
       {errCopy && <Notice tone="bad">{errCopy}</Notice>}
 
       <section className="flex flex-col gap-2">
@@ -93,14 +114,45 @@ export default async function CrewTimeOff({
 
       <AddForm action={addMyTimeOff} />
 
-      {/* Sibling axis (#426, DEC-119): recurring weekdays ("never Sundays"), as
-          opposed to the specific dated windows above. Kept as its own surface. */}
-      <a
-        href="/crew/days-off"
-        className="text-sm text-muted underline underline-offset-2"
-      >
-        Never work certain weekdays? Set recurring days off →
-      </a>
+      {/* Recurring weekday blackout (#426, DEC-119) — the every-Sunday-forever axis,
+          distinct from the dated windows above but the same subtractive idea. */}
+      <section className="flex flex-col gap-2">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">
+          Weekdays I never work
+        </h2>
+        <p className="text-sm text-muted">
+          Check the days you’re never available. You won’t be asked for shifts on
+          them, every week until you change it.
+        </p>
+        <form
+          action={setMyDaysOff}
+          className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-4 shadow-sm"
+        >
+          <ul className="flex flex-col">
+            {WEEKDAYS.map((d) => (
+              <li key={d.value} className="border-b border-line last:border-b-0">
+                <label
+                  htmlFor={`day-${d.value}`}
+                  className="flex min-h-[52px] cursor-pointer items-center gap-3"
+                >
+                  <input
+                    id={`day-${d.value}`}
+                    type="checkbox"
+                    name="days"
+                    value={d.value}
+                    defaultChecked={offSet.has(d.value)}
+                    className="h-5 w-5 accent-accent"
+                  />
+                  <span className="font-medium text-ink">{d.label}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+          <SubmitButton className="min-h-[52px] w-full rounded-card bg-accent font-semibold text-white">
+            Save
+          </SubmitButton>
+        </form>
+      </section>
 
       <VersionTag />
     </Shell>

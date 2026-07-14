@@ -59,3 +59,39 @@ export async function removeMyTimeOff(formData: FormData): Promise<void> {
   revalidatePath("/crew/time-off");
   redirect("/crew/time-off?removed=1");
 }
+
+/**
+ * Crew self-serve recurring weekday-off (#426, DEC-119) — the write half of the
+ * "Weekdays I never work" section. Replaces the whole set from the checkbox form,
+ * so unchecking a day and saving clears it (Mon=0…Sun=6). Subtractive (DEC-009),
+ * never availability. Glue over the DEC-094-safe `updateCrewWeekdaysOff` (touches
+ * only that column); `redirect()` throws → OUTSIDE the try.
+ */
+export async function setMyDaysOff(formData: FormData): Promise<void> {
+  const subject = await readSubject();
+  if (!subject || subject.kind !== "crew") redirect("/crew");
+
+  // Only CHECKED boxes submit a `days` value (0…6). Parse defensively — drop
+  // anything not a whole weekday index — then de-dupe + sort.
+  const weekdaysOff = [
+    ...new Set(
+      formData
+        .getAll("days")
+        .map((v) => Number(v))
+        .filter((n) => Number.isInteger(n) && n >= 0 && n <= 6),
+    ),
+  ].sort((a, b) => a - b);
+
+  try {
+    await getRepo().updateCrewWeekdaysOff(
+      asId<"CrewMemberId">(subject.id),
+      weekdaysOff,
+    );
+  } catch {
+    revalidatePath("/crew/time-off");
+    redirect("/crew/time-off?err=error");
+  }
+
+  revalidatePath("/crew/time-off");
+  redirect("/crew/time-off?saved=1");
+}

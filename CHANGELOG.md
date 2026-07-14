@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.0.11] - 2026-07-14
+- PR #427: Recurring weekday time-off — backend + `db:crew days-off` CLI (#411, DEC-119)
+- PR #429: Reliability retune — reward responsiveness (In+2/Out+1), bail floor/ramp recalibrated (#425, DEC-120)
+- PR #430: Crew UI for recurring weekday time-off, folded into /crew/time-off (#426)
+
 ## [1.0.10] - 2026-07-14
 - PR #423: Guard refreshShiftState against Cancelled/Completed shifts — a seat mutation (bail/decline/claim) no longer resurrects a cancelled shift and re-fires asks (#422)
 

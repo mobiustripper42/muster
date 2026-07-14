@@ -22,6 +22,7 @@ import {
   rankByReliability,
   scoreCrewMember,
 } from "./reliability-score.js";
+import { bailLatenessMs } from "../builder/derive.js";
 
 const CREW = asId<"CrewMemberId">("crew-quint");
 const NOW = new Date("2026-07-01T12:00:00.000Z");
@@ -130,6 +131,19 @@ describe("computeReliabilityScore — bail lateness is the signal", () => {
   it("a bail with no lateness recorded takes only the flat penalty", () => {
     const flat = scoreOf([evt("shift_bailed", daysAgo(1))]);
     expect(flat).toBe(DEFAULT_WEIGHTS.perEvent.shift_bailed);
+  });
+
+  it("a zero-notice bail stays ABOVE the no_show floor at the DEFAULT horizon (DEC-120)", () => {
+    // The floor invariant that matters — composed against the REAL `bailLatenessMs`
+    // at the shipped 7-day (168h) horizon, not a hardcoded stand-in. A prior draft
+    // calibrated the ramp for 48h and silently drove this below no_show (-89 at 7d);
+    // this test is the guard that would have caught it.
+    const maxLateness = bailLatenessMs(NOW, NOW); // zero notice → full horizon window
+    const worstBail = scoreOf([
+      evt("shift_bailed", daysAgo(1), { latenessMs: maxLateness }),
+    ]);
+    expect(worstBail).toBeGreaterThan(DEFAULT_WEIGHTS.perEvent.no_show); // above -15
+    expect(worstBail).toBeLessThan(DEFAULT_WEIGHTS.perEvent.shift_bailed); // worse than full-notice -3
   });
 
   it("non-positive lateness does not turn the penalty into a reward", () => {

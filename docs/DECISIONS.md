@@ -3030,12 +3030,17 @@ ever required — that's a different model, not more flags on this one.
   −3) is penalized at the ask level. New ask gradient: **In(+2) > Out(+1) > silence(−3)**.
   `shift_completed (+5)` still dominates — actually working a shift is worth far more than any single
   answer.
-- `shift_bailed` flat −5 → **−3**; `bailLatenessPerHour` −0.5 → **−0.2**. A full-notice bail now
+- `shift_bailed` flat −5 → **−3**; `bailLatenessPerHour` −0.5 → **−0.05**. A full-notice bail now
   costs −3 (= `ask_ignored`, never *softer* — so "confirm-then-cancel-early" never scores better than
-  a ghost, and `ask_declined (+1)` beats both); lateness ramps to ≈ −12.6 at zero notice under the
-  48h horizon — reserving the pain for late bails and restoring `no_show (−15)` as the true floor.
-  The prior −0.5 ramp reached −29 at zero notice, *below* `no_show`, contradicting DEC-028's
-  "no_show is the worst case."
+  a ghost, and `ask_declined (+1)` beats both); lateness ramps to ≈ **−11.4** at zero notice under
+  the **default 7-day (168h)** horizon — reserving the pain for late bails while keeping
+  `no_show (−15)` as the true floor. Math (max lateness = `leadMs` = 168h): `−3 + 168·(−0.05) = −11.4`.
+  The prior weights (flat −5, ramp −0.5) put a zero-notice bail at `−5 + 168·(−0.5) = −89` — absurdly
+  below `no_show`, contradicting DEC-028's "no_show is the worst case." (The @architect draft
+  mis-assumed a 48h horizon; the real default is 7 days, so the coefficient was recalibrated to
+  −0.05 to hold the floor invariant at the **shipped** config. Note the ramp is horizon-coupled: the
+  margin shrinks if `STAFFING_HORIZON_LEAD_DAYS` is raised past ~10 days — the horizon-independent
+  shape is parked in FUTURE_IDEAS.)
 
 **Why.** Reward crew who are always reachable even when they say no ("always reachable, always says
 no — god bless them"); a well-noticed bail is a communicative act (SPEC §1.4 "a cancel a week out is

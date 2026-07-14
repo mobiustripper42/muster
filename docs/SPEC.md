@@ -318,7 +318,9 @@ compensating for them, which is the thing Spink does in his head today.
 
 ### v1 formula — deliberately dumb
 Rolling window (last ~90 days or ~N shifts — pick one). `+` for `ask_accepted` and
-`shift_completed`; `+` small for low `ask_declined` latency; `0` for the decline itself; `−` for
+`shift_completed`; `+` small for low `ask_declined` latency; `0` for the decline itself
+(**superseded by DEC-120**: an Out now scores **+1**, an In **+2** — "reward responsiveness regardless
+of answer" is implemented as a small positive, not zero); `−` for
 `ask_ignored`; `−` for `shift_bailed` scaled by lateness; `−−` for `no_show`; `+` bonus for
 `escalation_accepted` / `at_risk_rescue`. One number, rolling window, no tuning machinery. Weights
 are an anticipated near-term knob (e.g. exponential bail-lateness penalty) — fine to add against

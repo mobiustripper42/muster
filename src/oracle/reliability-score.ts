@@ -30,9 +30,11 @@
  *  - **Bail lateness is the signal.** `shift_bailed` carries a fixed floor (−3, =
  *    a ghosted ask so "confirm-then-cancel-early" never beats vanishing) plus a
  *    lateness-scaled penalty from `metadata.latenessMs`, so a late bail weighs
- *    more than an early one. `no_show` (−15) is the worst case, flat — the ramp is
- *    scaled (DEC-120) so even a zero-notice bail lands ABOVE it. (Lateness scales
- *    linearly in v1; a steeper near-call ramp is parked in FUTURE_IDEAS.)
+ *    more than an early one. `no_show` (−15) is the worst case, flat — the ramp
+ *    (−0.05/hr, DEC-120) is scaled so a zero-notice bail lands ≈ −11.4 at the
+ *    default 7-day (168h) horizon, ABOVE the no_show floor. (Lateness scales
+ *    linearly in v1; the ramp is horizon-coupled — see FUTURE_IDEAS — so this
+ *    margin shrinks if `STAFFING_HORIZON_LEAD_DAYS` is raised past ~10 days.)
  *
  * All weights and the window size are tunable constants overridable per call —
  * the tuning lever for when real data arrives. The function is pure and
@@ -103,7 +105,7 @@ export const DEFAULT_WEIGHTS: ReliabilityWeights = {
     pool_widened: 0,
     board_landed: 0,
   },
-  bailLatenessPerHour: -0.2,
+  bailLatenessPerHour: -0.05,
 };
 
 export interface ScoreOptions {

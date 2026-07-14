@@ -191,6 +191,28 @@ describe("deriveAllShifts", () => {
 
     const rows = await deriveAllShifts(repo, { from: "2026-07-01", to: "2026-07-31" }, T0, OPTS);
     expect(rows.map((r) => r.vesselName)).toEqual(["Hops"]);
+    expect(rows[0]!.cancelled).toBe(false);
+  });
+
+  it("includeCancelled folds Cancelled in (flagged), still excludes Completed (#416)", async () => {
+    await addShift("alive", "2026-07-03", "Hops", [{ time: "15:00", pax: [2] }], [{ state: "Confirmed" }], "Crewed");
+    await addShift("dead", "2026-07-03", "Kettle", [{ time: "15:00", pax: [2] }], [{ state: "Open" }], "Cancelled");
+    await addShift("done", "2026-07-03", "Firkin", [{ time: "15:00", pax: [2] }], [{ state: "Confirmed" }], "Completed");
+
+    const rows = await deriveAllShifts(
+      repo,
+      { from: "2026-07-01", to: "2026-07-31" },
+      T0,
+      { ...OPTS, includeCancelled: true },
+    );
+    // Cancelled now present + flagged; Completed still excluded.
+    expect(rows.map((r) => r.vesselName).sort()).toEqual(["Hops", "Kettle"]);
+    const dead = rows.find((r) => r.vesselName === "Kettle")!;
+    expect(dead.cancelled).toBe(true);
+    // State stays "Cancelled" — NOT relabelled by the seat-folding resolver, which
+    // would sprout a live At-Risk link on a dead shift (code review).
+    expect(dead.state).toBe("Cancelled");
+    expect(rows.find((r) => r.vesselName === "Hops")!.cancelled).toBe(false);
   });
 
   it("filters to the date window (inclusive)", async () => {

@@ -58,7 +58,10 @@ export function ShiftRow({
   const cutOptions = [...new Set(row.trips.map((t) => t.time))].filter(
     (t) => t > firstTime,
   );
-  const canSplit = mode === "edit" && row.split == null && cutOptions.length > 0;
+  // A cancelled shift is dead — never offer to split it (#416). splitShift doesn't
+  // guard state, so the gate must live here.
+  const canSplit =
+    mode === "edit" && !row.cancelled && row.split == null && cutOptions.length > 0;
   // Default the cut to the suggested gap boundary when it's a real candidate —
   // else the first valid cut. Always one of `cutOptions`, so the option is selected.
   const suggestedCut =
@@ -84,7 +87,7 @@ export function ShiftRow({
       // `after:inset-0` overlay (that would establish a containing block).
       className={`relative flex flex-col gap-2 rounded-card border bg-card px-4 py-3 shadow-sm active:bg-accent/10 ${
         selected ? "border-accent" : "border-line"
-      }`}
+      } ${row.cancelled ? "opacity-60" : ""}`}
     >
       <div className="flex items-start justify-between gap-4">
         {/* Stretched link (9.8): the whole card opens the cockpit; the split/
@@ -130,7 +133,7 @@ export function ShiftRow({
             <SeatPips seats={row.seats} />
             <AssignedCrew seats={row.seats} />
           </span>
-          {row.splitSuggestion && row.split == null && (
+          {row.splitSuggestion && row.split == null && !row.cancelled && (
             // Calm read-only cue (8.1/#204): Muster noticed this vessel-day might be
             // two shifts. Advisory only — acting on it is Edit mode → Split (below).
             // Muted, never an alarm token (anti-anxiety, DEC-042). Hidden once split.

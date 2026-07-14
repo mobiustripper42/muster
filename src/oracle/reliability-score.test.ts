@@ -56,24 +56,38 @@ describe("computeReliabilityScore — baselines", () => {
   });
 
   it("a log that nets to zero sorts at neutral, same as cold start", () => {
-    // +5 completed and -5 flat bail cancel: a real history (eventCount 2) that
-    // nonetheless sits at the cold-start neutral 0 — the docstring invariant.
+    // -3 bail, +2 accept, +1 decline cancel (DEC-120 weights): a real history
+    // (eventCount 3) that nonetheless sits at the cold-start neutral 0 — the
+    // docstring invariant.
     const r = computeReliabilityScore(
-      [evt("shift_completed", daysAgo(1)), evt("shift_bailed", daysAgo(2))],
+      [
+        evt("shift_bailed", daysAgo(1)),
+        evt("ask_accepted", daysAgo(2)),
+        evt("ask_declined", daysAgo(3)),
+      ],
       NOW,
     );
     expect(r.score).toBe(0);
-    expect(r.eventCount).toBe(2);
+    expect(r.eventCount).toBe(3);
   });
 });
 
 describe("computeReliabilityScore — the load-bearing distinctions", () => {
-  it("decline is neutral — declining does not hurt the score", () => {
+  it("decline is rewarded a little — answering 'no' lifts the score (DEC-120)", () => {
+    // Reverses the old decline-neutral rule: Out is now +1 (responsiveness), so
+    // two declines net +2 — still far below a completed shift, but not free.
     const declined = scoreOf([
       evt("ask_declined", daysAgo(1)),
       evt("ask_declined", daysAgo(2)),
     ]);
-    expect(declined).toBe(0);
+    expect(declined).toBe(2 * DEFAULT_WEIGHTS.perEvent.ask_declined);
+    // In (+2) still beats Out (+1) beats silence (-3).
+    expect(scoreOf([evt("ask_accepted", daysAgo(1))])).toBeGreaterThan(
+      scoreOf([evt("ask_declined", daysAgo(1))]),
+    );
+    expect(scoreOf([evt("ask_declined", daysAgo(1))])).toBeGreaterThan(
+      scoreOf([evt("ask_ignored", daysAgo(1))]),
+    );
   });
 
   it("ask_ignored is penalized (the lone ask-level sin)", () => {

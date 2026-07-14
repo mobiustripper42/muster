@@ -3020,6 +3020,37 @@ ever required — that's a different model, not more flags on this one.
 
 ---
 
+## DEC-120: Reliability retune — reward responsiveness; bail floor lowered, ramp rescaled (#425)
+
+**Status:** Decided 2026-07-14 (Eric + @architect).
+
+**Decision.** Shift the reliability score from commitment-only toward responsiveness.
+- `ask_accepted` +1 → **+2**, `ask_declined` 0 → **+1**. Reverses the decline-neutral principle
+  (DEC-008/DEC-025): answering either way is a positive; only silence (`ask_ignored`, unchanged at
+  −3) is penalized at the ask level. New ask gradient: **In(+2) > Out(+1) > silence(−3)**.
+  `shift_completed (+5)` still dominates — actually working a shift is worth far more than any single
+  answer.
+- `shift_bailed` flat −5 → **−3**; `bailLatenessPerHour` −0.5 → **−0.2**. A full-notice bail now
+  costs −3 (= `ask_ignored`, never *softer* — so "confirm-then-cancel-early" never scores better than
+  a ghost, and `ask_declined (+1)` beats both); lateness ramps to ≈ −12.6 at zero notice under the
+  48h horizon — reserving the pain for late bails and restoring `no_show (−15)` as the true floor.
+  The prior −0.5 ramp reached −29 at zero notice, *below* `no_show`, contradicting DEC-028's
+  "no_show is the worst case."
+
+**Why.** Reward crew who are always reachable even when they say no ("always reachable, always says
+no — god bless them"); a well-noticed bail is a communicative act (SPEC §1.4 "a cancel a week out is
+cheap") and shouldn't carry the same hit as a same-day bail. The score remains **ranking-only**
+(DEC-008) — never a gate; this changes *who the engine asks first*, not who is eligible.
+
+**Amends** DEC-008 (decline-neutral) and DEC-028 (bail lateness floor). **Weights only** — scorer
+mechanics, the count-based window, and the state machines are untouched. **Parked** (FUTURE_IDEAS):
+the ramp coefficient is per-hour and coupled to the env-tunable `STAFFING_HORIZON_LEAD_DAYS`, so a
+raised horizon deepens the worst case proportionally; a horizon-independent (fraction-of-`leadMs`)
+shape is a scorer refactor, not a weights change. **Note:** `no_show (−15)` has no emitter yet
+(#428) — the floor is theoretical until a no-show can be recorded.
+
+---
+
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)
 
 These are deferred by design. Each names an owner and a trigger. **Consult @architect (and the named

@@ -22,13 +22,17 @@
  *    veteran would reset to neutral each spring — flat ranking exactly when
  *    you're rebuilding the crew. A count window carries history across the gap
  *    (the off-season simply has no events to consume the count).
- *  - **Decline-neutral.** `ask_declined` weighs 0. Saying "no" is information,
- *    not a sin. The only ask-level penalty is `ask_ignored` (never answered).
- *  - **Bail lateness is the signal.** `shift_bailed` carries a fixed penalty
- *    plus a lateness-scaled penalty from `metadata.latenessMs`, so a late bail
- *    weighs more than an early one. `no_show` is the worst case, flat. (Lateness
- *    scales linearly in v1; a steeper near-call ramp — inverse-exponential — is
- *    parked in FUTURE_IDEAS.)
+ *  - **Responsiveness-rewarded (DEC-120).** Answering at all is a positive:
+ *    `ask_accepted` +2 (In) > `ask_declined` +1 (Out) > `ask_ignored` −3 (silence).
+ *    A fast "no" costs nothing and earns a little — reachability is the signal;
+ *    silence is the only ask-level sin. (Reverses the prior decline-neutral rule,
+ *    DEC-008/DEC-025 — a decline used to weigh 0.)
+ *  - **Bail lateness is the signal.** `shift_bailed` carries a fixed floor (−3, =
+ *    a ghosted ask so "confirm-then-cancel-early" never beats vanishing) plus a
+ *    lateness-scaled penalty from `metadata.latenessMs`, so a late bail weighs
+ *    more than an early one. `no_show` (−15) is the worst case, flat — the ramp is
+ *    scaled (DEC-120) so even a zero-notice bail lands ABOVE it. (Lateness scales
+ *    linearly in v1; a steeper near-call ramp is parked in FUTURE_IDEAS.)
  *
  * All weights and the window size are tunable constants overridable per call —
  * the tuning lever for when real data arrives. The function is pure and
@@ -70,9 +74,11 @@ const MS_PER_HOUR = 60 * 60 * 1000;
  * calibrated — the point is the *ordering* they produce, not the absolute number.
  * Rationale per arm:
  *  - `shift_completed` is the load-bearing positive: showed up, ran the trip.
- *  - `ask_accepted` / `shift_acknowledged` are small willingness signals.
- *  - `ask_declined` / `ask_sent` are 0 — neutral by design (decline-neutral).
- *  - `ask_ignored` is the lone ask penalty; `shift_bailed` and `no_show` are the
+ *  - `ask_accepted` (+2) is the willingness signal — stronger than `shift_acknowledged`
+ *    (+1, acking a shift you're already on).
+ *  - `ask_declined` (+1) rewards answering; `ask_sent` is 0 (an engine action, not
+ *    crew behavior). Responsiveness over commitment (DEC-120).
+ *  - `ask_ignored` (−3) is the lone ask penalty; `shift_bailed` and `no_show` are the
  *    commitment penalties, with `no_show` the floor (confirmed, then vanished).
  *  - `escalation_accepted` / `at_risk_rescue` reward stepping up when it counts.
  *  - `nudged` / `pool_widened` / `board_landed` are 0 — engine *actions*, not
@@ -84,11 +90,11 @@ const MS_PER_HOUR = 60 * 60 * 1000;
 export const DEFAULT_WEIGHTS: ReliabilityWeights = {
   perEvent: {
     ask_sent: 0,
-    ask_accepted: 1,
-    ask_declined: 0,
+    ask_accepted: 2,
+    ask_declined: 1,
     ask_ignored: -3,
     shift_completed: 5,
-    shift_bailed: -5,
+    shift_bailed: -3,
     no_show: -15,
     escalation_accepted: 4,
     at_risk_rescue: 6,
@@ -97,7 +103,7 @@ export const DEFAULT_WEIGHTS: ReliabilityWeights = {
     pool_widened: 0,
     board_landed: 0,
   },
-  bailLatenessPerHour: -0.5,
+  bailLatenessPerHour: -0.2,
 };
 
 export interface ScoreOptions {

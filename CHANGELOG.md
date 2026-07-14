@@ -1,5 +1,8 @@
 # Changelog
 
+## [1.0.10] - 2026-07-14
+- PR #423: Guard refreshShiftState against Cancelled/Completed shifts — a seat mutation (bail/decline/claim) no longer resurrects a cancelled shift and re-fires asks (#422)
+
 ## [1.0.9] - 2026-07-14
 - PR #417: Hide cancelled/completed shifts on crew My-shifts + asks (#415)
 - PR #418: Admin Shifts "Show cancelled" toggle — additive, below the fold (#416)

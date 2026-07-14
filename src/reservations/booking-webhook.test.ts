@@ -212,6 +212,17 @@ describe("processBookingWebhook — balance (11.2b)", () => {
     expect(alert.mock.calls[0]![0]).toContain("OVERPAID");
   });
 
+  it("a balance against a missing/cancelled reservation is recorded but loudly flagged for reconciliation", async () => {
+    const repo = new InMemoryRepository(); // no reservation seeded
+    const { deps, alert } = makeDeps(repo);
+    const r = await processBookingWebhook(deps, JSON.stringify(balanceCompleted()), FAKE_SIGNATURE);
+    expect(r).toEqual({ handled: true, outcome: "balance_paid" });
+    // money moved → payment recorded, but admins are paged (can't reconcile)
+    expect(await repo.listPaymentsForReservation(RES)).toHaveLength(1);
+    expect(alert).toHaveBeenCalledOnce();
+    expect(alert.mock.calls[0]![0]).toContain("RECONCILE");
+  });
+
   it("unknown purpose is loudly flagged and NOT booked (no orphan reservation)", async () => {
     const repo = new InMemoryRepository();
     const { deps, alert } = makeDeps(repo);

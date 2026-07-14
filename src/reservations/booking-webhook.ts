@@ -143,18 +143,29 @@ async function recordBalancePayment(
   };
   await deps.repo.savePayment(payment);
 
+  // Reconcile against the reservation. If it went missing / cancelled / unpriced underneath
+  // the checkout session, the money can't be applied — LOUDLY flag for manual review, same
+  // posture as a paid-but-unbooked booking (never silently keep an unreconcilable payment).
   const reservation = await deps.repo.getReservation(reservationId);
   const event = reservation ? await deps.repo.getEvent(reservation.eventId) : null;
-  if (reservation && event?.price !== undefined) {
-    const config = await deps.repo.getPaymentConfig();
-    const payments = await deps.repo.listPaymentsForReservation(reservationId);
-    const owed = balanceOwedCents(event.price, config.taxRateBps, payments);
-    if (owed < 0) {
-      await deps.alertPaidButUnbooked(
-        `⚠️ Reservation ${reservationId} OVERPAID by ${-owed} cents — a balance was likely paid ` +
-          `twice (two checkout sessions raced). REFUND the excess MANUALLY in Stripe.`,
-      );
-    }
+  if (!reservation || reservation.status !== "booked" || event?.price === undefined) {
+    await deps.alertPaidButUnbooked(
+      `⚠️ Balance payment recorded for reservation ${reservationId}, but it is missing, ` +
+        `cancelled, or unpriced — Stripe session ${completed.sessionId}. RECONCILE / REFUND MANUALLY in Stripe.`,
+    );
+    return { handled: true, outcome: "balance_paid" };
+  }
+
+  // Overpay guard: a two-session race over-collects. The append log reflects the money that
+  // moved; if the derived balance has gone NEGATIVE, flag the excess for a manual refund.
+  const config = await deps.repo.getPaymentConfig();
+  const payments = await deps.repo.listPaymentsForReservation(reservationId);
+  const owed = balanceOwedCents(event.price, config.taxRateBps, payments);
+  if (owed < 0) {
+    await deps.alertPaidButUnbooked(
+      `⚠️ Reservation ${reservationId} OVERPAID by ${-owed} cents — a balance was likely paid ` +
+        `twice (two checkout sessions raced). REFUND the excess MANUALLY in Stripe.`,
+    );
   }
   return { handled: true, outcome: "balance_paid" };
 }

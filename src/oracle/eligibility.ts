@@ -20,7 +20,7 @@
 import type { Credential, CrewMember, PtoWindow } from "../domain/entities.js";
 import type { CredentialType } from "../domain/entities.js";
 import type { CrewMemberId, RoleTypeId } from "../domain/ids.js";
-import { ROLE_PRECEDENCE } from "../config/tenant.js";
+import { mondayZeroWeekday, ROLE_PRECEDENCE } from "../config/tenant.js";
 
 /**
  * Credential types that HARD-gate the eligible pool in v1. MMC only.
@@ -48,7 +48,8 @@ export type EligibilityRuleId =
   | "has_rating"
   | "mmc_valid_on_date"
   | "not_double_booked"
-  | "not_on_pto";
+  | "not_on_pto"
+  | "not_recurring_off";
 
 /**
  * One rule's verdict. `severity` is always `"hard"` here — every eligibility rule
@@ -222,6 +223,23 @@ export function notOnPto(
     : pass("not_on_pto");
 }
 
+/**
+ * Trip weekday is not in the crew member's recurring blackout (#411, DEC-119).
+ * `weekdaysOff` is Mon=0…Sun=6; `tripDate` is already the vessel-local date, so the
+ * weekday is pure string math (no tz read). Absent ⇒ never off. Sibling to
+ * `notOnPto` — a categorically different reason ("never works Sundays"), so it
+ * carries its own `ruleId` and `weekday` detail rather than folding into PTO.
+ */
+export function notRecurringOff(
+  weekdaysOff: number[] | undefined,
+  tripDate: string,
+): RuleResult {
+  const weekday = mondayZeroWeekday(tripDate);
+  return weekdaysOff?.includes(weekday)
+    ? fail("not_recurring_off", { weekday })
+    : pass("not_recurring_off");
+}
+
 // ── Composite per-candidate verdict ─────────────────────────────────────────
 
 /** The state slice one candidate's evaluation needs. Assembled by the caller. */
@@ -249,6 +267,7 @@ export function evaluateCandidate(
     mmcValidOnDate(ctx.credentials, tripDate),
     notDoubleBooked(ctx.committedDates, tripDate),
     notOnPto(ctx.ptoWindows, tripDate),
+    notRecurringOff(ctx.crew.weekdaysOff, tripDate),
   ];
   const failures = results.filter((r) => !r.passed);
   return {
@@ -278,6 +297,7 @@ export function evaluateTraineeCandidate(
     mmcValidOnDate(ctx.credentials, tripDate),
     notDoubleBooked(ctx.committedDates, tripDate),
     notOnPto(ctx.ptoWindows, tripDate),
+    notRecurringOff(ctx.crew.weekdaysOff, tripDate),
   ];
   const failures = results.filter((r) => !r.passed);
   return {

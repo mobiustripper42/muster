@@ -9,12 +9,14 @@ import type { RoleTypeId } from "../domain/ids.js";
 import type { Credential, CrewMember, PtoWindow } from "../domain/entities.js";
 import {
   evaluateCandidate,
+  evaluateTraineeCandidate,
   hasRating,
   isActive,
   isAskableFor,
   mmcValidOnDate,
   notDoubleBooked,
   notOnPto,
+  notRecurringOff,
 } from "./eligibility.js";
 
 const CAPTAIN = asId<"RoleTypeId">("role-captain");
@@ -125,6 +127,22 @@ describe("notOnPto", () => {
   });
 });
 
+describe("notRecurringOff (#411, DEC-119 — Mon=0…Sun=6)", () => {
+  // 2026-07-05 is a Sunday (weekday 6); 2026-07-01 a Wednesday (weekday 2).
+  it("fails when the trip's weekday is in the blackout set", () => {
+    const r = notRecurringOff([6], "2026-07-05");
+    expect(r.passed).toBe(false);
+    expect(r.details).toEqual({ weekday: 6 });
+  });
+  it("passes when the trip's weekday is not in the set", () => {
+    expect(notRecurringOff([6], "2026-07-01").passed).toBe(true); // Wed trip, Sun off
+  });
+  it("passes on an empty set and on absent (never off)", () => {
+    expect(notRecurringOff([], "2026-07-05").passed).toBe(true);
+    expect(notRecurringOff(undefined, "2026-07-05").passed).toBe(true);
+  });
+});
+
 describe("evaluateCandidate (collect-all)", () => {
   const ctx = (over: Partial<Parameters<typeof evaluateCandidate>[0]> = {}) => ({
     crew: crew(),
@@ -159,5 +177,32 @@ describe("evaluateCandidate (collect-all)", () => {
       "not_double_booked",
       "not_on_pto",
     ]);
+  });
+
+  it("fails a recurring day-off, and only on that weekday (#411)", () => {
+    const off = crew({ weekdaysOff: [6] }); // never works Sundays
+    const sun = evaluateCandidate(ctx({ crew: off }), CAPTAIN, "2026-07-05");
+    expect(sun.eligible).toBe(false);
+    expect(sun.failures.map((f) => f.ruleId)).toContain("not_recurring_off");
+    // Same crew on a Wednesday is fine.
+    expect(evaluateCandidate(ctx({ crew: off }), CAPTAIN, "2026-07-01").eligible).toBe(true);
+  });
+});
+
+describe("evaluateTraineeCandidate (#411 — trainees don't work their days off either)", () => {
+  const trainee = crew({ ratings: [], weekdaysOff: [6] }); // unrated + never Sundays
+  const base = {
+    crew: trainee,
+    credentials: [cred("MMC", "2026-12-31")],
+    ptoWindows: [] as PtoWindow[],
+    committedDates: new Set<string>(),
+  };
+  it("fails not_recurring_off on the blackout weekday", () => {
+    const v = evaluateTraineeCandidate(base, "2026-07-05"); // Sunday
+    expect(v.eligible).toBe(false);
+    expect(v.failures.map((f) => f.ruleId)).toContain("not_recurring_off");
+  });
+  it("is eligible on other weekdays (no rating gate for trainees)", () => {
+    expect(evaluateTraineeCandidate(base, "2026-07-01").eligible).toBe(true); // Wednesday
   });
 });

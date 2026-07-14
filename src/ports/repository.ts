@@ -93,6 +93,13 @@ export interface Repository {
   /** Flip active↔inactive (enable/disable) — a targeted status UPDATE, same
    *  lost-update safety as {@link updateCrewContact}. Null if id is unknown. */
   setCrewStatus(id: CrewMemberId, status: CrewStatus): Promise<CrewMember | null>;
+  /** Replace the recurring weekday-off set (#411, DEC-119) — a targeted UPDATE of
+   *  `weekdays_off` only, same lost-update safety as {@link updateCrewContact}.
+   *  Mon=0…Sun=6; `[]` clears. Null if id is unknown. */
+  updateCrewWeekdaysOff(
+    id: CrewMemberId,
+    weekdaysOff: number[],
+  ): Promise<CrewMember | null>;
   /** Onboard a crew member + their gating credential ATOMICALLY (DEC-094/044).
    *  A half-write (member saved, credential lost) would strand an active crew
    *  record with no MMC — eligible for nothing, and blocked from re-adding by

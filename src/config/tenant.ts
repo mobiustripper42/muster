@@ -130,6 +130,20 @@ export function addDays(date: string, n: number): string {
 }
 
 /**
+ * Weekday of a "YYYY-MM-DD" string as **Mon=0…Sun=6** (matches `envDayOfWeek` /
+ * `envDaySet`). Pure, UTC-anchored — same reasoning as `addDays`: a date-only
+ * string has no time-of-day, so UTC is exact (and `shift.date` is already the
+ * vessel-local date, so this is timezone-invariant by construction — no live tz
+ * read). The Mon-zero index doubles as the day-count back to that week's Monday,
+ * so `addDays(date, -mondayZeroWeekday(date))` lands on the anchor Monday.
+ */
+export function mondayZeroWeekday(date: string): number {
+  const [y, m, d] = date.split("-").map(Number);
+  const dow = new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, d ?? 1)).getUTCDay(); // Sun=0…Sat=6
+  return (dow + 6) % 7;
+}
+
+/**
  * Role precedence (#148, DEC-066), **most-senior first** — tenant data, tune-later
  * like the timezone (DEC-001). The pilot fleet's two roles: a captain outranks a
  * mate. Used **only to decide who gets _asked_**: a crew member is never auto-asked

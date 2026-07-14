@@ -47,3 +47,25 @@ export function chargeNowCents(
   // the balance row carries zero tax (keeps Σ tax == total tax per reservation).
   return Math.round((priceCents * config.depositPercent) / 100) + taxCents;
 }
+
+/**
+ * The balance still OWED on a reservation, derived (11.2b, DEC-107) — never a
+ * recompute of the deposit share. `total = price + tax`, minus the sum of every
+ * SUCCEEDED payment already collected (the deposit carried all the tax, so the
+ * residual is pure principal). The `Payment` entity mandates balance be derived,
+ * not stored, so this is the ONE authority: immune to a `depositPercent`/price
+ * change between deposit and balance, and the single seam a future refund reopens
+ * (a refund drops a payment out of the succeeded sum → balance re-opens). `<= 0`
+ * means nothing owed (paid in full, or full-mode).
+ */
+export function balanceOwedCents(
+  priceCents: number,
+  taxRateBps: number,
+  payments: readonly { status: string; amountCents: number }[],
+): number {
+  const total = priceCents + taxCentsFor(priceCents, taxRateBps);
+  const paid = payments
+    .filter((p) => p.status === "succeeded")
+    .reduce((sum, p) => sum + p.amountCents, 0);
+  return total - paid;
+}

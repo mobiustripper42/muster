@@ -71,7 +71,7 @@ export function Filter({
   ) : null;
   // Open the More panel by default when a custom range or crew filter is actually
   // in effect, so an active advanced filter is never hidden behind the toggle.
-  const moreOpen = kind === "range" || !!crew;
+  const moreOpen = kind === "range" || !!crew || showCancelled;
   return (
     <div className="flex flex-col gap-2 rounded-card border border-line bg-card px-4 py-3">
       <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -89,20 +89,6 @@ export function Filter({
         </AppLink>
         <AppLink href={href("days30")} className={chip(kind === "days30")}>
           30 Days
-        </AppLink>
-      </div>
-
-      {/* Show-cancelled toggle (#416) — a separate axis from the window presets:
-          off by default (DEC-042 current-only), on folds Cancelled shifts into the
-          list greyed. A no-JS toggle link (DEC-026), not a real checkbox — same
-          idiom as the preset chips. */}
-      <div className="flex items-center text-sm">
-        <AppLink
-          href={cancelledHref}
-          aria-pressed={showCancelled}
-          className={chip(showCancelled)}
-        >
-          <span aria-hidden="true">{showCancelled ? "☑" : "☐"}</span> Show cancelled
         </AppLink>
       </div>
 
@@ -174,6 +160,21 @@ export function Filter({
             Filter
           </GetFormSubmit>
         </form>
+
+        {/* Show-cancelled toggle (#416) — a rare diagnostic axis, so it lives
+            below the fold inside More filters (not up with the window presets):
+            off by default (DEC-042 current-only), on folds Cancelled shifts into
+            the list greyed. No-JS toggle link (DEC-026); when on, `moreOpen` keeps
+            this panel open so the active toggle is never hidden. */}
+        <div className="flex items-center border-t border-line pt-2 text-sm">
+          <AppLink
+            href={cancelledHref}
+            aria-pressed={showCancelled}
+            className={chip(showCancelled)}
+          >
+            <span aria-hidden="true">{showCancelled ? "☑" : "☐"}</span> Show cancelled
+          </AppLink>
+        </div>
       </details>
     </div>
   );

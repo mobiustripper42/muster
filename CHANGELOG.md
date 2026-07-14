@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.9] - 2026-07-14
+- PR #417: Hide cancelled/completed shifts on crew My-shifts + asks (#415)
+- PR #418: Admin Shifts "Show cancelled" toggle — additive, below the fold (#416)
+- PR #420: Crew My-shifts + ask card show call→end window, not departure→end (#419)
+- PR #421: admin/shifts filter — crew select auto-submits, drop 1px lines, keep ?cancelled
+
 ## [1.0.8] - 2026-07-13
 - PR #409: db:crew rank — crew by reliability score, best first (#404)
 - PR #410: Fix stale audit e2e (repointed from ask-trail to the audit list)

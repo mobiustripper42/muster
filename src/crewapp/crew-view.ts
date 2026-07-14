@@ -33,13 +33,14 @@ export interface OpenAskView {
   roleName: string;
   /** ISO-8601 date of the shift (vessel-local day). */
   date: string;
-  /** Earliest scheduled departure, "HH:mm" vessel-local — so the card shows WHEN
-   * the shift is (can't answer In/Out without it). Undefined when no event
-   * anchors the ask. */
-  departureTime?: string;
+  /** Call time (show-up), "HH:mm" vessel-local (DEC-041) — earliest departure −
+   * the call lead. The "when do I need to be there" half of the In/Out decision
+   * (#419: was the raw departure; now the same call→back window as the shift card).
+   * Undefined when no event anchors the ask. */
+  callTime?: string;
   /** Shift end, "HH:mm" vessel-local (DEC-041) — latest departure + trip length
    * + teardown (#275), the "how long am I committed" half of the In/Out decision
-   * (#92). Undefined when no event anchors the ask, same as `departureTime`. */
+   * (#92). Undefined when no event anchors the ask, same as `callTime`. */
   shiftEndTime?: string;
   /** ISO-8601 UTC when the ask went out (for "answered fast" / ordering). */
   sentAt: string;
@@ -57,10 +58,11 @@ export interface MyShiftView {
   roleName: string;
   /** ISO-8601 date (vessel-local day). */
   date: string;
-  /** The shift's working window — earliest departure / shift end, vessel-local
-   * "HH:mm" (#216, DEC-041), so the card shows WHEN without opening it. Omitted
-   * when no scheduled event anchors the shift. */
-  departureTime?: string;
+  /** The shift's committed working window — call time (show-up) / shift end,
+   * vessel-local "HH:mm" (#216, DEC-041), so the card shows WHEN without opening
+   * it. #419: call → back (matches the shift card), not the raw departure.
+   * Omitted when no scheduled event anchors the shift. */
+  callTime?: string;
   shiftEndTime?: string;
   /**
    * True when the seat is `Claimed` (the crew said "In" but the operator hasn't
@@ -106,25 +108,28 @@ async function vesselName(repo: Repository, vesselId: string): Promise<string> {
 }
 
 /**
- * The committed working window for a shift — earliest scheduled departure and the
- * DEC-041 shift end. Shared by the ask card (§2.6.1) and My shifts (§2.6.2, #216)
- * so both show WHEN. Vessel-local "HH:mm"; a field is omitted when no scheduled
- * event anchors the shift.
+ * The DEC-041 committed window for a shift — call time (show-up) → shift end
+ * (back), the crew member's real commitment. Shared by the ask card (§2.6.1) and
+ * My shifts (§2.6.2, #216) so both agree with the detailed shift card
+ * (`buildShiftCard`), which shows the same call→back window. #419: this used to
+ * return the raw earliest DEPARTURE as the start while pairing it with the
+ * teardown-inclusive end — a mismatched window; `committedWindow` already yields
+ * `callTime`, so use it. Vessel-local "HH:mm"; empty when no scheduled event
+ * anchors the shift (both fields omitted).
  */
-async function departureWindow(
+async function committedWindowFor(
   repo: Repository,
   shift: Shift,
-): Promise<{ departureTime?: string; shiftEndTime?: string }> {
+): Promise<{ callTime?: string; shiftEndTime?: string }> {
   const evs = [];
   for (const id of shift.eventIds) {
     const e = await repo.getEvent(id);
     if (e && e.status === "scheduled") evs.push(e);
   }
-  evs.sort((a, b) => a.time.localeCompare(b.time));
-  const departureTime = evs[0]?.time;
-  const { shiftEndTime } = committedWindow(evs.map((e) => e.time));
+  // committedWindow sorts internally; no need to pre-sort for the boundaries.
+  const { callTime, shiftEndTime } = committedWindow(evs.map((e) => e.time));
   return {
-    ...(departureTime ? { departureTime } : {}),
+    ...(callTime ? { callTime } : {}),
     ...(shiftEndTime ? { shiftEndTime } : {}),
   };
 }
@@ -161,8 +166,8 @@ export async function buildCrewAppView(
     if (!seat || seat.state !== "Asked") continue; // resolved/contested — drop it
     const shift = await repo.getShift(seat.shiftId);
     if (!shift) continue;
-    // Earliest departure + shift end (vessel-local "HH:mm") so the card shows when.
-    const window = await departureWindow(repo, shift);
+    // Call → shift end (vessel-local "HH:mm") so the card shows the real window.
+    const window = await committedWindowFor(repo, shift);
     asks.push({
       askId: ask.id,
       seatId: seat.id,
@@ -201,7 +206,7 @@ export async function buildCrewAppView(
       seat.state === "Confirmed" &&
       (seat.acquiredVia === "operator" ||
         (seat.acquiredVia === undefined && !iAccepted));
-    const window = await departureWindow(repo, shift);
+    const window = await committedWindowFor(repo, shift);
     // Co-crew (#216): others holding a Confirmed/Claimed seat on this shift — who
     // you're running the day with. BrewBoat is 2 crew, so usually one name; dedupe
     // in case anyone holds two seats.

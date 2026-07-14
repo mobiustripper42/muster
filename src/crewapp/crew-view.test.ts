@@ -127,7 +127,7 @@ describe("buildCrewAppView", () => {
     expect(view!.shifts.find((s) => s.shiftId === "shift-op")!.addedByOperator).toBe(true);
   });
 
-  it("ask card carries the earliest scheduled departure (so the crew knows when)", async () => {
+  it("ask card carries the call→end window (call time, not raw departure — #419)", async () => {
     const repo = await seed();
     await repo.saveShift({ id: asId<"ShiftId">("shift-ev"), vesselId: VESSEL, date: "2026-07-07", state: "Filling", eventIds: [asId<"EventId">("e-5pm"), asId<"EventId">("e-3pm")] });
     await repo.saveEvent({ id: asId<"EventId">("e-3pm"), vesselId: VESSEL, date: "2026-07-07", time: "15:00", capacity: 12, source: "xola", status: "scheduled" });
@@ -137,7 +137,7 @@ describe("buildCrewAppView", () => {
 
     const view = await buildCrewAppView(repo, ME, NOW);
     const ask = view!.asks.find((a) => a.askId === "ask-ev");
-    expect(ask?.departureTime).toBe("15:00"); // earliest of 15:00/17:00
+    expect(ask?.callTime).toBe("14:15"); // earliest departure 15:00 − 45 call lead
     expect(ask?.shiftEndTime).toBe("19:05"); // latest 17:00 + 100 trip + 25 teardown (DEC-041, #275)
   });
 
@@ -171,14 +171,14 @@ describe("buildCrewAppView", () => {
 
     const view = await buildCrewAppView(repo, ME, NOW);
     const row = view!.shifts.find((s) => s.shiftId === "shift-w")!;
-    expect(row.departureTime).toBe("11:00"); // earliest of 11:00/17:00
+    expect(row.callTime).toBe("10:15"); // earliest departure 11:00 − 45 call lead (#419)
     expect(row.shiftEndTime).toBe("19:05"); // latest 17:00 + 100 trip + 25 teardown (DEC-041, #275)
     expect(row.coCrew).toEqual([{ name: "Jamie", roleName: "captain" }]); // the OTHER crew, not me
 
     // A solo/no-events shift: empty co-crew, no window.
     const up = view!.shifts.find((s) => s.shiftId === "shift-up")!;
     expect(up.coCrew).toEqual([]);
-    expect(up.departureTime).toBeUndefined();
+    expect(up.callTime).toBeUndefined();
   });
 
   it("standing reads neutral with no logged history", async () => {

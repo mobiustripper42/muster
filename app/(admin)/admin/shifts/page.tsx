@@ -347,6 +347,7 @@ export default async function AllShifts({
     rows.filter((r) => r.split?.side === "A").map((r) => r.shiftId),
   );
   const canMergeRow = (r: AllShiftsRow): boolean =>
+    !r.cancelled && // a dead shift is never merged back (#416); mergeShift doesn't guard state
     r.split != null &&
     (r.split.side === "A" || !sideAVisible.has(canonicalIdOf(r)));
 

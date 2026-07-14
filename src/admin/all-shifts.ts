@@ -149,8 +149,15 @@ export async function deriveAllShifts(
       if (!seated) continue;
     }
 
+    // A Cancelled shift keeps its persisted state verbatim (#416): the resolver
+    // folds SEAT states and never yields "Cancelled" (derive.ts:637's Cancelled
+    // branch is only reached with a Cancelled base, which seat-folding can't
+    // produce), so resolving here would relabel a dead shift Pending/Filling/…/
+    // AtRisk — and the row would then sprout a live "needs attention" At-Risk link.
     const state =
-      (await resolveShiftStateOnRead(repo, shift.id, now, opts)) ?? shift.state;
+      shift.state === "Cancelled"
+        ? "Cancelled"
+        : (await resolveShiftStateOnRead(repo, shift.id, now, opts)) ?? shift.state;
 
     const trips: AllShiftsTrip[] = [];
     const scheduledEvents: Event[] = [];

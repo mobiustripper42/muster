@@ -207,7 +207,11 @@ describe("deriveAllShifts", () => {
     );
     // Cancelled now present + flagged; Completed still excluded.
     expect(rows.map((r) => r.vesselName).sort()).toEqual(["Hops", "Kettle"]);
-    expect(rows.find((r) => r.vesselName === "Kettle")!.cancelled).toBe(true);
+    const dead = rows.find((r) => r.vesselName === "Kettle")!;
+    expect(dead.cancelled).toBe(true);
+    // State stays "Cancelled" — NOT relabelled by the seat-folding resolver, which
+    // would sprout a live At-Risk link on a dead shift (code review).
+    expect(dead.state).toBe("Cancelled");
     expect(rows.find((r) => r.vesselName === "Hops")!.cancelled).toBe(false);
   });
 

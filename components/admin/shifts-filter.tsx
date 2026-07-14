@@ -1,4 +1,5 @@
 import { AppLink } from "../ui/app-link";
+import { CrewSelect } from "./crew-select";
 import { GetFormSubmit } from "../ui/get-form-submit";
 import type { Mode, Scope } from "./shifts-view-types";
 
@@ -134,31 +135,20 @@ export function Filter({
             looking at ("what you see is what you filter" — the crew filter never
             changes the window). No per-crew count/scoreboard — that's the
             monitor-bait failure mode this surface is guarded against (DEC-042). */}
-        <form
-          method="get"
-          className="flex flex-wrap items-end gap-2 border-t border-line pt-2 text-sm"
-        >
+        {/* Crew filter auto-submits on change — no button (requested). CrewSelect
+            is the client island that soft-pushes, reading these hidden inputs. */}
+        <form method="get" className="flex flex-wrap items-end gap-2 pt-2 text-sm">
           {edit && <input type="hidden" name="mode" value="edit" />}
           {sel && <input type="hidden" name="sel" value={sel} />}
           {windowHidden}
           <label className="flex flex-col gap-0.5 text-xs text-muted">
             Crew
-            <select
-              name="crew"
-              defaultValue={crew ?? ""}
+            <CrewSelect
+              crew={crew}
+              crewList={crewList}
               className="rounded-lg border border-line bg-bg px-2 py-1 text-ink"
-            >
-              <option value="">All crew</option>
-              {crewList.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+            />
           </label>
-          <GetFormSubmit className="rounded-lg border border-line bg-bg px-3 py-1 font-semibold text-accent">
-            Filter
-          </GetFormSubmit>
         </form>
 
         {/* Show-cancelled toggle (#416) — a rare diagnostic axis, so it lives
@@ -166,7 +156,7 @@ export function Filter({
             off by default (DEC-042 current-only), on folds Cancelled shifts into
             the list greyed. No-JS toggle link (DEC-026); when on, `moreOpen` keeps
             this panel open so the active toggle is never hidden. */}
-        <div className="flex items-center border-t border-line pt-2 text-sm">
+        <div className="flex items-center pt-2 text-sm">
           <AppLink
             href={cancelledHref}
             aria-pressed={showCancelled}

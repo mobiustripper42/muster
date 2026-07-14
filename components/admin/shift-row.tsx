@@ -84,7 +84,7 @@ export function ShiftRow({
       // `after:inset-0` overlay (that would establish a containing block).
       className={`relative flex flex-col gap-2 rounded-card border bg-card px-4 py-3 shadow-sm active:bg-accent/10 ${
         selected ? "border-accent" : "border-line"
-      }`}
+      } ${row.cancelled ? "opacity-60" : ""}`}
     >
       <div className="flex items-start justify-between gap-4">
         {/* Stretched link (9.8): the whole card opens the cockpit; the split/

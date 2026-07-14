@@ -16,6 +16,8 @@ export function Filter({
   sel,
   crew,
   crewList,
+  showCancelled,
+  cancelledHref,
 }: {
   from: string;
   to: string;
@@ -27,6 +29,10 @@ export function Filter({
   sel: string | null;
   crew: string | null;
   crewList: { id: string; name: string }[];
+  /** #416: is the Cancelled fold-in currently on? */
+  showCancelled: boolean;
+  /** #416: href that flips the show-cancelled toggle, preserving the rest of state. */
+  cancelledHref: string;
 }) {
   const chip = (active: boolean) =>
     `pressable rounded-full border px-3 py-1 ${active ? "border-accent text-accent" : "border-line text-muted"}`;
@@ -83,6 +89,20 @@ export function Filter({
         </AppLink>
         <AppLink href={href("days30")} className={chip(kind === "days30")}>
           30 Days
+        </AppLink>
+      </div>
+
+      {/* Show-cancelled toggle (#416) — a separate axis from the window presets:
+          off by default (DEC-042 current-only), on folds Cancelled shifts into the
+          list greyed. A no-JS toggle link (DEC-026), not a real checkbox — same
+          idiom as the preset chips. */}
+      <div className="flex items-center text-sm">
+        <AppLink
+          href={cancelledHref}
+          aria-pressed={showCancelled}
+          className={chip(showCancelled)}
+        >
+          <span aria-hidden="true">{showCancelled ? "☑" : "☐"}</span> Show cancelled
         </AppLink>
       </div>
 

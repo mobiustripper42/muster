@@ -74,6 +74,9 @@ type Search = CockpitSearch & {
   crew?: string;
   /** Open cockpit pane (DEC-085). */
   sel?: string;
+  /** Show-cancelled toggle (#416) — `"1"` folds Cancelled shifts into the list,
+   *  greyed. Default off keeps DEC-042's current-only calm. */
+  cancelled?: string;
 };
 
 const isDate = (s?: string): s is string => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
@@ -240,6 +243,8 @@ function filterParams(sp: Search): URLSearchParams {
   // Crew filter (#330) rides the preserved param set so mode/preset/split
   // navigation and the open cockpit pane never drop the selected crew member.
   if (sp.crew) p.set("crew", sp.crew);
+  // Show-cancelled toggle (#416) likewise persists across preset/mode/crew nav.
+  if (sp.cancelled === "1") p.set("cancelled", "1");
   return p;
 }
 
@@ -287,14 +292,15 @@ export default async function AllShifts({
     ? crewList.find((c) => c.id === sp.crew)?.name
     : undefined;
 
+  const showCancelled = sp.cancelled === "1";
+  // Conditional-include the optional opts (exactOptionalPropertyTypes).
+  const deriveOpts: { crewMemberId?: string; includeCancelled?: boolean } = {
+    ...(sp.crew ? { crewMemberId: sp.crew } : {}),
+    ...(showCancelled ? { includeCancelled: true } : {}),
+  };
   let rows: AllShiftsRow[];
   try {
-    rows = await deriveAllShifts(
-      repo,
-      { from, to },
-      now,
-      sp.crew ? { crewMemberId: sp.crew } : undefined,
-    );
+    rows = await deriveAllShifts(repo, { from, to }, now, deriveOpts);
   } catch {
     return (
       <Shell width="3xl">
@@ -344,6 +350,19 @@ export default async function AllShifts({
     r.split != null &&
     (r.split.side === "A" || !sideAVisible.has(canonicalIdOf(r)));
 
+  // Show-cancelled toggle (#416): flip `?cancelled`, preserving window/crew/mode/sel
+  // so turning it on doesn't kick the operator out of their view. filterParams
+  // already re-emits cancelled when it's on, so delete-or-set toggles cleanly.
+  const cancelledParams = filterParams(sp);
+  if (mode === "edit") cancelledParams.set("mode", "edit");
+  if (sel) cancelledParams.set("sel", sel);
+  if (showCancelled) cancelledParams.delete("cancelled");
+  else cancelledParams.set("cancelled", "1");
+  const cancelledQs = cancelledParams.toString();
+  const cancelledHref = cancelledQs
+    ? `/admin/shifts?${cancelledQs}`
+    : "/admin/shifts";
+
   const board = (
     <>
       <header className="flex items-center justify-between gap-4">
@@ -384,6 +403,8 @@ export default async function AllShifts({
         sel={sel}
         crew={sp.crew ?? null}
         crewList={crewList}
+        showCancelled={showCancelled}
+        cancelledHref={cancelledHref}
       />
 
       {rows.length === 0 ? (

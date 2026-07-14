@@ -62,6 +62,10 @@ export interface AllShiftsRow {
    * Builder (8.2) renders it; `formShifts` never auto-splits (idempotency contract).
    */
   splitSuggestion: SplitSuggestion | null;
+  /** The shift's persisted state is `Cancelled` (surfaced only when the caller
+   *  opts in via `includeCancelled`, #416). The surface greys the row + labels it;
+   *  the default board never sets this because cancelled rows are excluded there. */
+  cancelled: boolean;
   /**
    * When this row is one HALF of a manually-split vessel-day (DEC-083): `side` is
    * `A` (the canonical row carrying `splitCutTime`, trips `< cut`) or `B` (the
@@ -74,8 +78,11 @@ export interface AllShiftsRow {
 
 /**
  * Every current shift whose date falls in `[from, to]` (inclusive ISO date
- * strings), sorted by date then earliest departure. Cancelled + Completed shifts
- * are excluded — "current" means on the books, not killed or historical.
+ * strings), sorted by date then earliest departure. Completed shifts are always
+ * excluded (historical). Cancelled shifts are excluded by default — "current"
+ * means on the books, not killed — but the operator can opt them in via
+ * `includeCancelled` (#416) to see what got killed; they come back flagged
+ * `cancelled: true` for the surface to grey.
  *
  * Per-shift `resolveShiftStateOnRead` re-reads events each call (pilot scale —
  * a handful of shifts per day window; revisit with an index if it ever grows).
@@ -84,7 +91,14 @@ export async function deriveAllShifts(
   repo: Repository,
   window: { from: string; to: string },
   now: Date,
-  opts?: { leadDays?: number; tz?: string; crewMemberId?: string },
+  opts?: {
+    leadDays?: number;
+    tz?: string;
+    crewMemberId?: string;
+    /** #416: keep Cancelled shifts in the result (flagged), instead of dropping
+     *  them. Completed stays excluded regardless. Default off (DEC-042). */
+    includeCancelled?: boolean;
+  },
 ): Promise<AllShiftsRow[]> {
   const vesselName = new Map(
     (await repo.listVessels()).map((v) => [v.id, v.name]),
@@ -112,7 +126,9 @@ export async function deriveAllShifts(
   }
 
   for (const shift of allShifts) {
-    if (shift.state === "Cancelled" || shift.state === "Completed") continue;
+    if (shift.state === "Completed") continue; // historical — never on the board
+    // Cancelled: dropped by default (DEC-042 "current only"); opt-in via #416.
+    if (shift.state === "Cancelled" && !opts?.includeCancelled) continue;
     if (shift.date < window.from || shift.date > window.to) continue;
 
     // Seats are read first so the crew filter (#330, DEC-042 amendment) can
@@ -198,6 +214,7 @@ export async function deriveAllShifts(
       requiredSeats: required.length,
       confirmedSeats: required.filter((s) => s.state === "Confirmed").length,
       seats,
+      cancelled: shift.state === "Cancelled",
       splitSuggestion: suggestSplit(scheduledEvents, opts?.tz),
       split,
     });

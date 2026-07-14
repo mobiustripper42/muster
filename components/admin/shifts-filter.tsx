@@ -16,6 +16,8 @@ export function Filter({
   sel,
   crew,
   crewList,
+  showCancelled,
+  cancelledHref,
 }: {
   from: string;
   to: string;
@@ -27,6 +29,10 @@ export function Filter({
   sel: string | null;
   crew: string | null;
   crewList: { id: string; name: string }[];
+  /** #416: is the Cancelled fold-in currently on? */
+  showCancelled: boolean;
+  /** #416: href that flips the show-cancelled toggle, preserving the rest of state. */
+  cancelledHref: string;
 }) {
   const chip = (active: boolean) =>
     `pressable rounded-full border px-3 py-1 ${active ? "border-accent text-accent" : "border-line text-muted"}`;
@@ -65,7 +71,7 @@ export function Filter({
   ) : null;
   // Open the More panel by default when a custom range or crew filter is actually
   // in effect, so an active advanced filter is never hidden behind the toggle.
-  const moreOpen = kind === "range" || !!crew;
+  const moreOpen = kind === "range" || !!crew || showCancelled;
   return (
     <div className="flex flex-col gap-2 rounded-card border border-line bg-card px-4 py-3">
       <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -154,6 +160,21 @@ export function Filter({
             Filter
           </GetFormSubmit>
         </form>
+
+        {/* Show-cancelled toggle (#416) — a rare diagnostic axis, so it lives
+            below the fold inside More filters (not up with the window presets):
+            off by default (DEC-042 current-only), on folds Cancelled shifts into
+            the list greyed. No-JS toggle link (DEC-026); when on, `moreOpen` keeps
+            this panel open so the active toggle is never hidden. */}
+        <div className="flex items-center border-t border-line pt-2 text-sm">
+          <AppLink
+            href={cancelledHref}
+            aria-pressed={showCancelled}
+            className={chip(showCancelled)}
+          >
+            <span aria-hidden="true">{showCancelled ? "☑" : "☐"}</span> Show cancelled
+          </AppLink>
+        </div>
       </details>
     </div>
   );

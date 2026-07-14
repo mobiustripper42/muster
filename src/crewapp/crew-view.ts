@@ -160,7 +160,10 @@ export async function buildCrewAppView(
     const seat = await repo.getSeat(ask.seatId);
     if (!seat || seat.state !== "Asked") continue; // resolved/contested — drop it
     const shift = await repo.getShift(seat.shiftId);
-    if (!shift) continue;
+    // #415: a live ask whose shift was cancelled/completed since it went out (a
+    // Xola re-import can Cancel the shift without vacating the seat, DEC-084) must
+    // not phantom here — every other surface (board, calendar feed, lean) skips it.
+    if (!shift || shift.state === "Cancelled" || shift.state === "Completed") continue;
     // Earliest departure + shift end (vessel-local "HH:mm") so the card shows when.
     const window = await departureWindow(repo, shift);
     asks.push({
@@ -187,6 +190,10 @@ export async function buildCrewAppView(
   for (const seat of held) {
     const shift = await repo.getShift(seat.shiftId);
     if (!shift || shift.date < today) continue; // past shifts drop off
+    // #415: a Confirmed/Claimed seat orphaned on a Cancelled/Completed shift (a
+    // Xola re-import Cancels the shift but DEC-084 leaves the seat) is a phantom —
+    // My shifts is the only read surface that was missing this guard.
+    if (shift.state === "Cancelled" || shift.state === "Completed") continue;
     // #196: seat provenance decides the "Added for you" badge. An operator
     // override is a force-place → badge; a self-claim or an accepted ask is an
     // opt-in → no badge (the bug #196 fixes: a self-claim has no accepted ask, so

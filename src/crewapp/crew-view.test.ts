@@ -147,6 +147,26 @@ describe("buildCrewAppView", () => {
     expect(view!.shifts[0]).toMatchObject({ vesselName: "Hops", vesselId: "vessel-1", roleName: "captain", date: "2026-07-04", pending: false });
   });
 
+  it("drops a Confirmed seat orphaned on a Cancelled/Completed shift — the phantom (#415)", async () => {
+    const repo = await seed();
+    // A future Cancelled shift I still hold a Confirmed seat on (Xola re-import
+    // Cancels the shift; DEC-084 leaves the seat) — the prod phantom. Must NOT
+    // appear in my-shifts even though it's future-dated and I'm Confirmed on it.
+    await repo.saveShift({ id: asId<"ShiftId">("shift-cxl"), vesselId: VESSEL, date: "2026-07-18", state: "Cancelled", eventIds: [] });
+    await repo.saveSeat({ id: asId<"SeatId">("seat-cxl"), shiftId: asId<"ShiftId">("shift-cxl"), role: CAPTAIN, kind: "required", state: "Confirmed", assignedCrewMemberId: ME });
+    // A live ask on a since-Cancelled shift — the same phantom on the asks list.
+    await repo.saveShift({ id: asId<"ShiftId">("shift-cxl-ask"), vesselId: VESSEL, date: "2026-07-19", state: "Cancelled", eventIds: [] });
+    await repo.saveSeat({ id: asId<"SeatId">("seat-cxl-ask"), shiftId: asId<"ShiftId">("shift-cxl-ask"), role: CAPTAIN, kind: "required", state: "Asked" });
+    await repo.saveAsk({ id: asId<"AskId">("ask-cxl"), seatId: asId<"SeatId">("seat-cxl-ask"), crewMemberId: ME, channel: "push", sentAt: "2026-07-01T09:00:00.000Z" });
+
+    const view = await buildCrewAppView(repo, ME, NOW);
+    expect(view!.shifts.map((s) => s.shiftId)).not.toContain("shift-cxl");
+    expect(view!.asks.map((a) => a.askId)).not.toContain("ask-cxl");
+    // The live ones are untouched.
+    expect(view!.shifts.map((s) => s.shiftId)).toContain("shift-up");
+    expect(view!.asks.map((a) => a.askId)).toContain("ask-open");
+  });
+
   it("includes a Claimed (not-yet-confirmed) seat in my-shifts, marked pending (#4)", async () => {
     const repo = await seed();
     // A claimed-but-unconfirmed seat to me on a new, sooner upcoming shift.

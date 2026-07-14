@@ -337,6 +337,10 @@ describe("db:crew CLI (Phase 10.5)", () => {
       await expect(runCrewCommand(repo, ["days-off", "crew-eric", "--day=sun"])).rejects.toThrow(
         /unrecognized flag/i,
       );
+      // Space instead of comma (`--days=sun mon`) → "mon" is a stray token, rejected.
+      await expect(runCrewCommand(repo, ["days-off", "crew-eric", "--days=sun", "mon"])).rejects.toThrow(
+        /unexpected argument "mon".*comma-separated/i,
+      );
       await expect(runCrewCommand(repo, ["days-off", "--days=sun"])).rejects.toThrow(
         /a crew id is required/i,
       );

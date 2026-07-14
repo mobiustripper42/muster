@@ -93,7 +93,7 @@ const USAGE =
   '  db:crew add --name="<name>" --phone=<+E164> --ratings=<r1,r2> [--email=<addr>] [--id=<crewId>] [--mmc=<YYYY-MM-DD>]\n' +
   '  db:crew set <crewId> [--email=<addr>] [--phone=<+E164>] [--name="<name>"]\n' +
   "  db:crew days-off                              — roster of everyone with recurring days off (#411)\n" +
-  "  db:crew days-off <crewId> [--days=<mon..sun,…> | --clear]   — show/set/clear one crew member\n" +
+  "  db:crew days-off <crewId> [--days=sun,mon,… (COMMA-separated) | --clear]   — show/set/clear one crew member\n" +
   "  db:crew disable <crewId>   |   db:crew enable <crewId>\n" +
   "  db:crew archive <crewId>   |   db:crew unarchive <crewId>\n" +
   "  (disable = benched but still manually placeable; archive = off every list)\n" +
@@ -396,12 +396,19 @@ export async function runCrewCommand(
       if (!id)
         throw new CrewCliError(`days-off: a crew id is required to set or clear.\n${USAGE}`);
 
+      // A bare token after the id (e.g. `--days=sun mon` → "mon") is almost always a
+      // space where a comma belongs — reject it loudly rather than silently drop it.
+      const stray = args.slice(2).find((a) => !a.startsWith("--"));
+      if (stray)
+        throw new CrewCliError(
+          `days-off: unexpected argument "${stray}" — weekdays go in ONE comma-separated flag: --days=sun,mon.\n${USAGE}`,
+        );
       const bad = args
         .slice(2)
         .find((a) => a.startsWith("--") && a !== "--clear" && !a.startsWith("--days="));
       if (bad)
         throw new CrewCliError(
-          `days-off: unrecognized flag "${bad}". Known: --days=<mon..sun,…>, --clear.\n${USAGE}`,
+          `days-off: unrecognized flag "${bad}". Known: --days=sun,mon,…, --clear.\n${USAGE}`,
         );
 
       // Id + no set/clear ⇒ show that one crew member's set (read-only).

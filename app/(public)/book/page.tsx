@@ -9,6 +9,7 @@
  * `RESERVATIONS` flag (DEC-111).
  */
 import { deriveAvailability } from "@core/reservations/availability.js";
+import { WAIVER_TERMS_URL } from "@core/config/tenant.js";
 import { SubmitButton } from "../../../components/ui/submit-button";
 import { getRepo } from "../../lib/repo";
 import { startBooking } from "./actions";
@@ -80,6 +81,16 @@ export default async function BookHarnessPage({
           <p>
             <label>
               Phone <input name="phone" />
+            </label>
+          </p>
+          <p>
+            <label>
+              <input type="checkbox" name="waiverConsent" value="yes" required />{" "}
+              I agree to the{" "}
+              <a href={WAIVER_TERMS_URL} target="_blank" rel="noopener noreferrer">
+                liability waiver
+              </a>
+              .
             </label>
           </p>
           <SubmitButton>Book &amp; pay &rarr;</SubmitButton>

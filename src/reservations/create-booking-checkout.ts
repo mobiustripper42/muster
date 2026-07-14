@@ -18,13 +18,27 @@ export interface BookingCheckoutRequest {
   partySize: number;
   email?: string;
   phone?: string;
+  /**
+   * Liability-waiver consent (11.5, DEC-110) — REQUIRED to check out: no consent,
+   * no charge, so a paid reservation can never exist without a recorded waiver.
+   * `waiverConsentAt` is the agreement instant (ISO-8601 UTC), `waiverVersion` the
+   * terms version — both stamped server-side at the edge (not trusted from the form).
+   */
+  waiverConsentAt?: string;
+  waiverVersion?: string;
 }
 
 export type CheckoutStart =
   | { ok: true; url: string; sessionId: string }
   | {
       ok: false;
-      reason: "event_missing" | "not_sellable" | "unpriced" | "invalid_party" | "already_claimed";
+      reason:
+        | "event_missing"
+        | "not_sellable"
+        | "unpriced"
+        | "invalid_party"
+        | "already_claimed"
+        | "waiver_required";
     };
 
 export async function createBookingCheckout(
@@ -41,6 +55,11 @@ export async function createBookingCheckout(
   if (event.price === undefined) return { ok: false, reason: "unpriced" };
   if (!Number.isInteger(req.partySize) || req.partySize < 1 || req.partySize > event.capacity) {
     return { ok: false, reason: "invalid_party" };
+  }
+  // Waiver consent is a hard gate (DEC-110): no consent → no checkout → no charge,
+  // so no paid reservation can exist without a recorded waiver. Both fields required.
+  if (!req.waiverConsentAt || !req.waiverVersion) {
+    return { ok: false, reason: "waiver_required" };
   }
   if (!canBook(event, await repo.listReservationsForEvent(req.eventId), req.partySize)) {
     return { ok: false, reason: "already_claimed" };
@@ -66,6 +85,8 @@ export async function createBookingCheckout(
       customerName: req.customerName,
       ...(req.email !== undefined ? { email: req.email } : {}),
       ...(req.phone !== undefined ? { phone: req.phone } : {}),
+      waiverConsentAt: req.waiverConsentAt,
+      waiverVersion: req.waiverVersion,
     },
   });
   return { ok: true, url: session.url, sessionId: session.id };

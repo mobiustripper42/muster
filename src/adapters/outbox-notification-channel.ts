@@ -25,7 +25,7 @@ import type {
   NotificationMessage,
   NotificationPort,
 } from "../ports/notification.js";
-import type { SendResult } from "../ports/channel.js";
+import { requireCrewId, type SendResult } from "../ports/channel.js";
 import type { Repository } from "../ports/repository.js";
 import { issueMagicLink, randomSecret } from "../auth/magic-link.js";
 // Reuse the ask relay's 24h TTL. For a ring it isn't an "answer window" — just a
@@ -55,7 +55,7 @@ export class OutboxNotificationChannel implements NotificationPort {
 
   async send(message: NotificationMessage): Promise<SendResult> {
     const now = this.#now();
-    const crewId = message.to.crewMemberId;
+    const crewId = requireCrewId(message.to);
     // Minted at enqueue, frozen onto the entry (DEC-030) — a fresh one-time secret
     // per cycle. The link lands on /crew/auth then deep-links into the thread.
     const { secret } = await issueMagicLink(

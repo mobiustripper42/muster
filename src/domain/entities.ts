@@ -211,6 +211,17 @@ export interface Reservation {
   phone?: string;
   status: ReservationStatus;
   /**
+   * Liability-waiver consent (11.5, DEC-110) — Muster-SOLD side only. `waiverConsentAt`
+   * is the ISO-8601 UTC instant the customer agreed (stamped at checkout-start, the
+   * agreement moment); `waiverVersion` is the terms version they agreed to (server-
+   * authoritative, from config — proves WHICH terms). Both absent on `source='xola'`
+   * reservations (Xola owns its own waiver) and on any pre-11.5 Muster booking. A real
+   * waiver-provider integration is P12; this is the minimal consent record, not a
+   * subsystem.
+   */
+  waiverConsentAt?: string;
+  waiverVersion?: string;
+  /**
    * When this reservation was created or last *materially* changed (ISO-8601 UTC).
    * Stamped by the import on create + material change only (DEC-029). Optional:
    * absent = predates tracking. Retained as the raw change signal; a future

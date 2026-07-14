@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { StripePaymentPort } from "@core/adapters/stripe-payment.js";
 import { PaymentSignatureError } from "@core/ports/payment.js";
 import { processBookingWebhook } from "@core/reservations/booking-webhook.js";
+import { sendReservationConfirmation } from "../../../lib/booking-confirmation";
 import { getRepo } from "../../../lib/repo";
 
 /**
@@ -42,6 +43,8 @@ export async function POST(req: Request): Promise<Response> {
           // DEC-095 all-admins path, app/lib/alert.ts) — the refund itself stays manual.
           console.error(`[reservations] ${message}`);
         },
+        // Best-effort email + SMS of the manage link on a fresh booking (11.4, DEC-119).
+        sendConfirmation: sendReservationConfirmation,
       },
       rawBody,
       signature,

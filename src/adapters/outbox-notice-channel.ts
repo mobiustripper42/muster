@@ -1,7 +1,7 @@
 import type { NoticeOutboxEntry } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import type { AssignmentNotice, NoticePort } from "../ports/notice.js";
-import type { SendResult } from "../ports/channel.js";
+import { requireCrewId, type SendResult } from "../ports/channel.js";
 import type { Repository } from "../ports/repository.js";
 import { issueMagicLink, randomSecret } from "../auth/magic-link.js";
 // Reuse the ask relay's 24h TTL — same reasonable tap window, one const avoids drift.
@@ -39,7 +39,7 @@ export class OutboxNoticeChannel implements NoticePort {
 
   async send(notice: AssignmentNotice): Promise<SendResult> {
     const now = this.#now();
-    const crewId = notice.to.crewMemberId;
+    const crewId = requireCrewId(notice.to);
     // Deterministic — one slot per (shift, member, action); a re-issued change
     // upserts it rather than piling duplicates on the operator's worklist (DEC-084).
     const id = asId<"NoticeOutboxEntryId">(

@@ -93,6 +93,15 @@ export default async function CrewTimeOff({
 
       <AddForm action={addMyTimeOff} />
 
+      {/* Sibling axis (#426, DEC-119): recurring weekdays ("never Sundays"), as
+          opposed to the specific dated windows above. Kept as its own surface. */}
+      <a
+        href="/crew/days-off"
+        className="text-sm text-muted underline underline-offset-2"
+      >
+        Never work certain weekdays? Set recurring days off →
+      </a>
+
       <VersionTag />
     </Shell>
   );

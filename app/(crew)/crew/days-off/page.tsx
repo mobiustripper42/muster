@@ -77,15 +77,12 @@ export default async function CrewDaysOff({
         action={setMyDaysOff}
         className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-4 shadow-sm"
       >
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">
-          Days I never work
-        </h2>
         <ul className="flex flex-col">
           {WEEKDAYS.map((d) => (
-            <li key={d.value}>
+            <li key={d.value} className="border-b border-line last:border-b-0">
               <label
                 htmlFor={`day-${d.value}`}
-                className="flex min-h-[52px] cursor-pointer items-center gap-3 border-b border-line last:border-b-0"
+                className="flex min-h-[52px] cursor-pointer items-center gap-3"
               >
                 <input
                   id={`day-${d.value}`}
@@ -93,7 +90,7 @@ export default async function CrewDaysOff({
                   name="days"
                   value={d.value}
                   defaultChecked={offSet.has(d.value)}
-                  className="h-5 w-5 rounded border-line accent-accent"
+                  className="h-5 w-5 accent-accent"
                 />
                 <span className="font-medium text-ink">{d.label}</span>
               </label>

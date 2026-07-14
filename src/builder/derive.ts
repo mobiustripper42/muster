@@ -18,6 +18,7 @@ import type { ShiftState } from "../domain/states.js";
 import {
   addDays,
   envWallClock,
+  mondayZeroWeekday,
   TENANT_TIMEZONE,
   vesselDateOf,
   zonedWallClockToInstant,
@@ -271,18 +272,6 @@ export function scheduledStarts(
     .filter((e) => e.status === "scheduled")
     .map((e) => eventStart(e, tz))
     .sort((a, b) => a.getTime() - b.getTime());
-}
-
-/**
- * Mon-zero weekday (Mon=0 … Sun=6) of a vessel-local `"YYYY-MM-DD"`. Pure day math
- * on a date-only string, so UTC-anchored is exact (no time-of-day — same reasoning
- * as `addDays`). The Mon-zero index doubles as the day-count back to that week's
- * Monday, so `addDays(date, -weekday)` lands on the anchor Monday.
- */
-function mondayZeroWeekday(date: string): number {
-  const [y, m, d] = date.split("-").map(Number);
-  const dow = new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, d ?? 1)).getUTCDay(); // Sun=0…Sat=6
-  return (dow + 6) % 7;
 }
 
 /**

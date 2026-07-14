@@ -128,6 +128,11 @@ const toCrew = (r: any): CrewMember => ({
   ...opt("manualBoost", r.manual_boost),
   ...opt("manualFloor", r.manual_floor),
   ...opt("protocolOverride", r.protocol_override),
+  // Optional like the fields above — omitted (not []) when the crew member has no
+  // recurring days off, so absence round-trips (the DB column defaults to []).
+  ...((r.weekdays_off as number[] | null)?.length
+    ? { weekdaysOff: r.weekdays_off as number[] }
+    : {}),
 });
 
 const toCredential = (r: any): Credential => ({
@@ -421,12 +426,13 @@ export class PostgresRepository implements Repository {
   async saveCrewMember(c: CrewMember): Promise<void> {
     await this.#pool.query(
       `insert into crew_members
-         (id, name, phone, email, ratings, status, manual_boost, manual_floor, protocol_override, reliability_score)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         (id, name, phone, email, ratings, status, manual_boost, manual_floor, protocol_override, reliability_score, weekdays_off)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        on conflict (id) do update set
          name=excluded.name, phone=excluded.phone, email=excluded.email, ratings=excluded.ratings,
          status=excluded.status, manual_boost=excluded.manual_boost, manual_floor=excluded.manual_floor,
-         protocol_override=excluded.protocol_override, reliability_score=excluded.reliability_score`,
+         protocol_override=excluded.protocol_override, reliability_score=excluded.reliability_score,
+         weekdays_off=excluded.weekdays_off`,
       [
         c.id,
         c.name,
@@ -438,6 +444,7 @@ export class PostgresRepository implements Repository {
         c.manualFloor ?? null,
         c.protocolOverride ?? null,
         c.reliabilityScore,
+        JSON.stringify(c.weekdaysOff ?? []),
       ],
     );
   }
@@ -473,6 +480,18 @@ export class PostgresRepository implements Repository {
     );
     return rows[0] ? toCrew(rows[0]) : null;
   }
+  async updateCrewWeekdaysOff(
+    id: CrewMemberId,
+    weekdaysOff: number[],
+  ): Promise<CrewMember | null> {
+    // Targeted UPDATE (DEC-094) — touches only weekdays_off, so a concurrent engine
+    // write to reliability/status/ratings isn't clobbered.
+    const { rows } = await this.#pool.query(
+      "update crew_members set weekdays_off=$1 where id=$2 returning *",
+      [JSON.stringify(weekdaysOff), id],
+    );
+    return rows[0] ? toCrew(rows[0]) : null;
+  }
   async addCrewMemberWithCredential(m: CrewMember, cred: Credential): Promise<void> {
     // One unit — a new hire is useless without their gating credential, so a
     // mid-write failure must leave NEITHER (mirrors saveImportRun).
@@ -481,8 +500,8 @@ export class PostgresRepository implements Repository {
       await client.query("begin");
       await client.query(
         `insert into crew_members
-           (id, name, phone, email, ratings, status, manual_boost, manual_floor, protocol_override, reliability_score)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+           (id, name, phone, email, ratings, status, manual_boost, manual_floor, protocol_override, reliability_score, weekdays_off)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
         [
           m.id,
           m.name,
@@ -494,6 +513,7 @@ export class PostgresRepository implements Repository {
           m.manualFloor ?? null,
           m.protocolOverride ?? null,
           m.reliabilityScore,
+          JSON.stringify(m.weekdaysOff ?? []),
         ],
       );
       await client.query(

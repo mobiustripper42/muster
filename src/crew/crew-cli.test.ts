@@ -278,4 +278,78 @@ describe("db:crew CLI (Phase 10.5)", () => {
     await expect(runCrewCommand(repo, ["frobnicate"])).rejects.toBeInstanceOf(CrewCliError);
     await expect(runCrewCommand(repo, [])).rejects.toThrow(/Usage/);
   });
+
+  describe("days-off (#411, DEC-119)", () => {
+    it("sets, shows, and clears the recurring weekday-off set (deduped, sorted)", async () => {
+      const set = await runCrewCommand(repo, ["days-off", "crew-eric", "--days=sun,sat,sun"]);
+      expect(set).toMatch(/is now off: sat, sun/);
+      expect((await repo.getCrewMember(asId<"CrewMemberId">("crew-eric")))!.weekdaysOff).toEqual([5, 6]);
+
+      expect(await runCrewCommand(repo, ["days-off", "crew-eric"])).toMatch(/is off: sat, sun/);
+
+      const cleared = await runCrewCommand(repo, ["days-off", "crew-eric", "--clear"]);
+      expect(cleared).toMatch(/Cleared recurring days off/);
+      const after = (await repo.getCrewMember(asId<"CrewMemberId">("crew-eric")))!;
+      expect(after.weekdaysOff ?? []).toEqual([]); // cleared ⇒ omitted (never off)
+    });
+
+    it("shows 'no recurring days off' before any are set", async () => {
+      expect(await runCrewCommand(repo, ["days-off", "crew-eric"])).toMatch(/no recurring days off/);
+    });
+
+    it("no-id lists only crew who have days off, sorted by name", async () => {
+      await repo.saveCrewMember(crew({ id: asId<"CrewMemberId">("crew-abe"), name: "Abe" }));
+      // Nobody off yet.
+      expect(await runCrewCommand(repo, ["days-off"])).toMatch(/No crew have recurring days off/);
+      // Give two of them days off.
+      await runCrewCommand(repo, ["days-off", "crew-eric", "--days=sun"]);
+      await runCrewCommand(repo, ["days-off", "crew-abe", "--days=mon,fri"]);
+      const out = await runCrewCommand(repo, ["days-off"]);
+      expect(out).toMatch(/crew-abe.*Abe.*mon, fri/);
+      expect(out).toMatch(/crew-eric.*Eric Stoffer.*sun/);
+      expect(out.indexOf("Abe")).toBeLessThan(out.indexOf("Eric")); // sorted by name
+    });
+
+    it("warns when off all seven days (soft bench, not archived)", async () => {
+      const out = await runCrewCommand(repo, [
+        "days-off",
+        "crew-eric",
+        "--days=mon,tue,wed,thu,fri,sat,sun",
+      ]);
+      expect(out).toMatch(/off every weekday/i);
+    });
+
+    it("does NOT touch reliability/status (targeted update, DEC-094)", async () => {
+      await repo.saveCrewMember(
+        crew({ id: asId<"CrewMemberId">("crew-x"), reliabilityScore: 7, status: "inactive" }),
+      );
+      await runCrewCommand(repo, ["days-off", "crew-x", "--days=sun"]);
+      const c = (await repo.getCrewMember(asId<"CrewMemberId">("crew-x")))!;
+      expect(c.weekdaysOff).toEqual([6]);
+      expect(c.reliabilityScore).toBe(7);
+      expect(c.status).toBe("inactive");
+    });
+
+    it("rejects an unknown weekday, an unknown flag, a missing id, both flags, and a ghost", async () => {
+      await expect(runCrewCommand(repo, ["days-off", "crew-eric", "--days=funday"])).rejects.toThrow(
+        /isn't a weekday/i,
+      );
+      await expect(runCrewCommand(repo, ["days-off", "crew-eric", "--day=sun"])).rejects.toThrow(
+        /unrecognized flag/i,
+      );
+      // Space instead of comma (`--days=sun mon`) → "mon" is a stray token, rejected.
+      await expect(runCrewCommand(repo, ["days-off", "crew-eric", "--days=sun", "mon"])).rejects.toThrow(
+        /unexpected argument "mon".*comma-separated/i,
+      );
+      await expect(runCrewCommand(repo, ["days-off", "--days=sun"])).rejects.toThrow(
+        /a crew id is required/i,
+      );
+      await expect(
+        runCrewCommand(repo, ["days-off", "crew-eric", "--days=sun", "--clear"]),
+      ).rejects.toThrow(/not both/i);
+      await expect(runCrewCommand(repo, ["days-off", "crew-ghost", "--days=sun"])).rejects.toThrow(
+        /no crew member/i,
+      );
+    });
+  });
 });

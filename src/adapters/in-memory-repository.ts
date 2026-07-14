@@ -180,6 +180,19 @@ export class InMemoryRepository implements Repository {
     c.status = status;
     return clone(c);
   }
+  async updateCrewWeekdaysOff(
+    id: CrewMemberId,
+    weekdaysOff: number[],
+  ): Promise<CrewMember | null> {
+    const c = this.#crew.get(id);
+    if (!c) return null;
+    // Targeted mutation (DEC-094): only weekdaysOff, so a concurrent engine write
+    // to reliability/status isn't clobbered. Empty ⇒ omit (parity with postgres,
+    // which reads the []-default column back as absent).
+    if (weekdaysOff.length === 0) delete c.weekdaysOff;
+    else c.weekdaysOff = [...weekdaysOff];
+    return clone(c);
+  }
   async addCrewMemberWithCredential(m: CrewMember, cred: Credential): Promise<void> {
     // In-memory can't partially fail, but keep the both-or-neither contract.
     this.#crew.set(m.id, clone(m));

@@ -45,6 +45,8 @@ export function Filter({
     if (sel) p.set("sel", sel);
     // Preset chips keep the active crew filter selected as you switch windows (#330).
     if (crew) p.set("crew", crew);
+    // ...and keep Show-cancelled on across a window change (#416 persistence).
+    if (showCancelled) p.set("cancelled", "1");
     const qs = p.toString();
     return qs ? `/admin/shifts?${qs}` : "/admin/shifts";
   };
@@ -104,8 +106,9 @@ export function Filter({
         <form method="get" className="flex flex-wrap items-end gap-2 text-sm">
           {edit && <input type="hidden" name="mode" value="edit" />}
           {sel && <input type="hidden" name="sel" value={sel} />}
-          {/* Keep the crew filter across an explicit date-range submit. */}
+          {/* Keep the crew filter + Show-cancelled across an explicit date submit. */}
           {crew && <input type="hidden" name="crew" value={crew} />}
+          {showCancelled && <input type="hidden" name="cancelled" value="1" />}
           <label className="flex flex-col gap-0.5 text-xs text-muted">
             From
             <input
@@ -141,6 +144,8 @@ export function Filter({
           {edit && <input type="hidden" name="mode" value="edit" />}
           {sel && <input type="hidden" name="sel" value={sel} />}
           {windowHidden}
+          {/* Keep Show-cancelled on when the crew select auto-submits (#416). */}
+          {showCancelled && <input type="hidden" name="cancelled" value="1" />}
           <label className="flex flex-col gap-0.5 text-xs text-muted">
             Crew
             <CrewSelect

@@ -101,6 +101,8 @@ Overrides to the shell's `## Micro Workflow`. Muster's stack is Next.js over a f
 
 Persistence is **Postgres behind the `Repository` port**: **local Postgres in dev**, **Neon in production** (Vercel + Neon, DEC-033 — `docs/DEPLOY.md`), schema as **plain Postgres DDL** (DEC-DATA-1). The in-memory adapter is the test substrate and never goes away. The shell's universal migration *discipline* still holds: schema changes go through migration files (plain DDL here), migrations are the source of truth, never hand-patch an applied migration, and check for open PRs touching the same tables before adding one.
 
+**Migration filenames are timestamped (DEC-121).** New migrations are `YYYYMMDDHHMMSS_name.sql` (UTC) — **never** a new `00NN_` number. Generate with `npm run db:new-migration <name>` (never hand-name one). The runner (`db/migrate.ts`) orders by filename sort and keys on the filename, so timestamps sort chronologically after every legacy `00NN_` and can't collide across branches (the fix for the long-lived `feature/reservations` vs `main` clash). One-time trap: renaming an already-applied migration re-runs its DDL — reconcile that dev DB's `_migrations` before the next `db:migrate`.
+
 **Prod migrations are applied by hand, out-of-band** — they are *not* part of the Vercel deploy. So code on `production` can outrun the prod schema. Apply the migration to prod *before* promoting the code that needs it.
 
 **Pre-promote checks** (run by `/promote-production` before the ff-merge — the generic skill's project-checks hook honors whatever's listed here; #282):

@@ -1,0 +1,30 @@
+# systemd user-service template for the residential probe.
+#
+# Install (on the always-on residential box, as the normal user — NOT root):
+#   mkdir -p ~/.config/systemd/user
+#   cp muster-probe.service ~/.config/systemd/user/
+#   # edit the two paths below + your secret ntfy topic, then:
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now muster-probe
+#   sudo loginctl enable-linger "$USER"   # keeps it running when logged out / across reboots
+#
+# The secret ntfy topic lives HERE (on the box), never in the repo.
+
+[Unit]
+Description=Muster residential uptime probe
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Absolute paths — systemd does not expand ~ or $HOME. Replace <USER> and, if
+# node came from nvm, use the full nvm node path (run `which node` to find it,
+# e.g. /home/<USER>/.nvm/versions/node/vXX/bin/node).
+WorkingDirectory=/home/<USER>/muster-probe
+ExecStart=/usr/bin/node /home/<USER>/muster-probe/probe.mjs
+Environment=PROBE_NTFY_TOPIC=replace-with-your-secret-topic
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

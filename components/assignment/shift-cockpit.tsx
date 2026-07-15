@@ -6,19 +6,15 @@ import {
 import { deriveWarming } from "@core/admin/warming.js";
 import { asId } from "@core/domain/ids.js";
 import { resolveShiftStateOnRead } from "@core/builder/tick.js";
-import { evaluateTraineeCandidate } from "@core/oracle/eligibility.js";
-import { committedDatesByCrew } from "@core/oracle/oracle.js";
 import { TENANT_TIMEZONE, vesselDateOf } from "@core/config/tenant.js";
 import { cockpitHref } from "../../app/lib/cockpit-href";
 import { fmtDeadline, fmt12 } from "../../app/lib/format";
-import { OPERATOR_CREW_MEMBER_ID } from "../../app/lib/operator";
 import { getRepo } from "../../app/lib/repo";
 import { TENANT_ID } from "../../app/lib/tenant";
 import { Notice } from "../ui/notice";
 import { Badge, fmtDate, toSeatVM, ttLabel } from "./cockpit-bits";
 import { buildShiftManifest, type ShiftManifestView } from "@core/crewapp/shift-card.js";
 import { standingThreadId } from "@core/messaging/entities.js";
-import { ManningSection, type OverrideSeatVM } from "./manning-section";
 import { SeatCard } from "./seat-card";
 import { ShiftManifest } from "./shift-manifest";
 import { WarmingPanel, type WarmingRowVM } from "./warming-panel";
@@ -79,8 +75,6 @@ export type CockpitSearch = {
   removed?: string;
   bail_logged?: string;
   act_error?: string;
-  manning_added?: string;
-  manning_removed?: string;
   trainee_on?: string;
   trainee_off?: string;
 };
@@ -112,9 +106,6 @@ export async function ShiftCockpit({
   let ratingsById: Map<string, string[]>;
   let seatOccupant: Map<string, string>;
   let warmingRows: WarmingRowVM[] = [];
-  let overrideSeats: OverrideSeatVM[] = [];
-  let roleOptions: { id: string; name: string }[] = [];
-  let traineeOptions: { id: string; name: string }[] = [];
   let manifest: ShiftManifestView | null = null;
   const warmingOpen = sp.warming === "1";
   try {
@@ -150,59 +141,6 @@ export async function ShiftCockpit({
         .filter((s) => s.assignedCrewMemberId)
         .map((s) => [String(s.id), String(s.assignedCrewMemberId)]),
     );
-    // Manning override (8.5): the tenant's roles for the add picker, and the current
-    // override seats (each removable when Open).
-    const roleTypes = await repo.listRoleTypes(TENANT_ID);
-    const roleName = new Map(roleTypes.map((r) => [String(r.id), r.name]));
-    roleOptions = roleTypes.map((r) => ({ id: String(r.id), name: r.name }));
-    overrideSeats = allSeats
-      .filter((s) => s.override)
-      .map((s) => {
-        const occupantId = s.assignedCrewMemberId
-          ? String(s.assignedCrewMemberId)
-          : null;
-        return {
-          seatId: String(s.id),
-          roleName: roleName.get(String(s.role)) ?? String(s.role),
-          kind: s.kind,
-          occupied: s.state !== "Open",
-          occupantId,
-          occupantName: occupantId ? crew.get(occupantId)?.name ?? null : null,
-        };
-      });
-    // Trainee picker scope (9.3, DEC-087): the trainee rule set — active +
-    // valid MMC + not on PTO + not double-booked (which also excludes this
-    // shift's own confirmed crew) — with NO rating requirement. Computed only
-    // when an unstaffed trainee seat is actually on screen; the action
-    // re-checks server-side, so this scope is convenience, not the guard.
-    // The operator is UI noise, not an eligibility rule — excluded here only.
-    if (overrideSeats.some((s) => s.kind === "supernumerary" && !s.occupied)) {
-      const shiftDate = view.date; // narrowed here; the closure below can't re-narrow the `let`
-      const committed = await committedDatesByCrew(repo);
-      const candidates = await Promise.all(
-        crewMembers
-          .filter((c) => String(c.id) !== String(OPERATOR_CREW_MEMBER_ID))
-          .map(async (c) => {
-            const [credentials, ptoWindows] = await Promise.all([
-              repo.listCredentialsForCrew(c.id),
-              repo.listPtoWindowsForCrew(c.id),
-            ]);
-            const v = evaluateTraineeCandidate(
-              {
-                crew: c,
-                credentials,
-                ptoWindows,
-                committedDates: committed.get(c.id) ?? new Set<string>(),
-              },
-              shiftDate,
-            );
-            return v.eligible ? { id: String(c.id), name: c.name } : null;
-          }),
-      );
-      traineeOptions = candidates.filter(
-        (c): c is { id: string; name: string } => c !== null,
-      );
-    }
     if (warmingOpen) {
       const vessels = new Map(
         (await repo.listVessels()).map((v) => [v.id, v.name]),
@@ -391,15 +329,6 @@ export async function ShiftCockpit({
           re-asking (or it rests here if nobody’s left).
         </Notice>
       )}
-      {sp.manning_added === "required" && (
-        <Notice tone="ok">Added a required hand — the shift needs one more to crew.</Notice>
-      )}
-      {sp.manning_added === "supernumerary" && (
-        <Notice tone="ok">
-          Added a trainee seat — rides along (takes a pax slot), doesn’t gate crewing.
-        </Notice>
-      )}
-      {sp.manning_removed === "1" && <Notice tone="ok">Removed the added seat.</Notice>}
       {traineeOn && (
         <Notice tone="ok">
           {traineeOn} is riding this shift as a trainee — they’ve been told.
@@ -440,14 +369,6 @@ export async function ShiftCockpit({
       {manifest && manifest.events.length > 0 && (
         <ShiftManifest events={manifest.events} sharedDock={manifest.sharedDock} senderName={senderName} shiftId={String(shiftId)} />
       )}
-
-      <ManningSection
-        shiftId={String(shiftId)}
-        ctx={ctx}
-        overrideSeats={overrideSeats}
-        roleOptions={roleOptions}
-        traineeOptions={traineeOptions}
-      />
 
       <WarmingPanel
         rows={warmingRows}

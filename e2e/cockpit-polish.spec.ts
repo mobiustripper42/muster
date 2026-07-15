@@ -1,9 +1,11 @@
 /**
  * 9.7 + 9.8 (#233/#234) — the cockpit/a11y bundle and the low-polish tier.
  * Asserts the accessibility-shaped changes an eyeball pass would miss: the
- * manning selects' accessible names (WCAG 4.1.2), the Crewed-gate summary, the
- * whole-card stretched link (a click on card whitespace opens the pane), and
- * the tenant + vessel-local date in the AdminNav.
+ * Crewed-gate summary, the whole-card stretched link (a click on card whitespace
+ * opens the pane), and the tenant + vessel-local date in the AdminNav.
+ *
+ * The manning-select accessible-name assertions (9.7) went with the Manning UI
+ * when it was withdrawn; the seat override picker carries the surviving one.
  */
 import { test, expect, resetAndSeed, signInAsAdmin } from "./fixtures.js";
 
@@ -12,17 +14,26 @@ test.describe("cockpit polish (9.7/9.8)", () => {
     await resetAndSeed("atrisk");
   });
 
-  test("manning role selects carry accessible names; the Crewed-gate summary reads the seat math", async ({
+  test("the seat override select carries an accessible name; the Crewed-gate summary reads the seat math", async ({
     page,
   }) => {
     await signInAsAdmin(page, "spink");
     await page.goto("/admin/shift/shift-ar-regress");
 
-    // Two same-shaped selects, two distinct accessible names (9.7).
+    // The surviving cockpit select carries a real accessible name (9.7). It
+    // lives inside the collapsed "Manual override" <details> — expand first.
+    await page.getByText("Manual override").first().click();
     await expect(
-      page.getByLabel("Role for the required hand"),
+      page.getByLabel("Crew to place on this seat").first(),
     ).toBeVisible();
-    await expect(page.getByLabel("Role for the trainee seat")).toBeVisible();
+
+    // The withdrawn Manning UI offers nothing to click (#440-adjacent, S55).
+    await expect(
+      page.getByRole("heading", { name: "Manning" }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "+ Required hand" }),
+    ).toHaveCount(0);
 
     // Crewed-gate summary (9.8): Firkin's one required captain seat is Bailed.
     await expect(

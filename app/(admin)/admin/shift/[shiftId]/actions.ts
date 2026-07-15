@@ -330,62 +330,29 @@ export async function reportBail(formData: FormData): Promise<void> {
 }
 
 /**
- * Add a manning-override seat (#208, 8.5) — a required hand (gates `Crewed`) or a
- * supernumerary/trainee (non-gating). Additive over the COI minimum; the seat is
- * marked `override` so `formShifts` won't prune it (survives Xola re-import). Not the
- * person-override (`overrideTo`) — this adds the SEAT.
+ * Manning override (#208, 8.5) is WITHDRAWN from the UI. `ManningSection` no longer
+ * renders, so nothing posts here — but a server action stays POST-reachable once its
+ * id is known, so both entry points hard-reject rather than relying on the missing UI.
+ *
+ * Why it's gone: an added REQUIRED seat is born `Open`, and the tick asks on any
+ * `required` seat regardless of `override` — so it fires real asks at real crew for a
+ * seat the operator never meant to create (one stray click, no confirm step, no undo).
+ * Once asked, the seat is unremovable: `removeOverrideSeat` demands `Open`, the vacate
+ * path demands `Confirmed` + an occupant, and an `Asked` seat is neither. It then
+ * accrues `ask_ignored` (−3) against innocent crew and reopens to be asked again.
+ * Hit in prod on 2026-07-15 (Brew 4 / Jul 19); the seat needed a hand-written DELETE.
+ *
+ * The domain rails (`src/builder/manning.ts`) and their tests are intentionally kept —
+ * this is a UI withdrawal, not a teardown. Anything reviving it must first make the
+ * tick skip `override` seats, or add a confirm step, or both.
  */
-export async function addManningSeat(formData: FormData): Promise<void> {
-  const subject = await readSubject();
-  const shiftId = String(formData.get("shiftId") ?? "");
-  const kind = String(formData.get("kind") ?? "");
-  const role = String(formData.get("role") ?? "");
-  const ctx = hostCtx(formData);
-  const back = cockpitHref(shiftId, ctx);
-  if (!subject || subject.kind !== "admin" || !shiftId) redirect("/admin/at-risk");
-  if ((kind !== "required" && kind !== "supernumerary") || !role) redirect(back);
-  let param: string;
-  try {
-    const repo = getRepo();
-    // Validate the role against the tenant's roles — a crafted POST must not create
-    // a REQUIRED seat for an unknown role (it would gate Crewed with an empty
-    // eligible pool → permanently unfillable, silently un-crewing the shift).
-    const roles = await repo.listRoleTypes(TENANT_ID);
-    if (!roles.some((r) => String(r.id) === role)) {
-      param = "act_error=unavailable";
-    } else {
-      await addOverrideSeat(repo, asId<"ShiftId">(shiftId), kind, asId<"RoleTypeId">(role));
-      param = `manning_added=${kind}`;
-    }
-  } catch {
-    param = "act_error=unavailable";
-  }
-  finish(shiftId, ctx, param);
+export async function addManningSeat(_formData: FormData): Promise<void> {
+  redirect("/admin/at-risk");
 }
 
-/**
- * Remove a manning-override seat (#208, 8.5). Guarded in `removeOverrideSeat`: only an
- * `Open` override seat — an occupied one must be vacated first (the Remove-from-shift
- * action above), so this never strands crew. The UI only offers Remove on Open
- * override seats, so a reachable failure is a race → generic `seat_gone`.
- */
-export async function removeManningSeat(formData: FormData): Promise<void> {
-  const subject = await readSubject();
-  const shiftId = String(formData.get("shiftId") ?? "");
-  const seatId = String(formData.get("seatId") ?? "");
-  const ctx = hostCtx(formData);
-  const back = cockpitHref(shiftId, ctx);
-  if (!subject || subject.kind !== "admin" || !shiftId || !seatId) {
-    redirect("/admin/at-risk");
-  }
-  let param: string;
-  try {
-    await removeOverrideSeat(getRepo(), asId<"SeatId">(seatId));
-    param = "manning_removed=1";
-  } catch {
-    param = "act_error=seat_gone";
-  }
-  finish(shiftId, ctx, param);
+/** Withdrawn alongside `addManningSeat` — see above. */
+export async function removeManningSeat(_formData: FormData): Promise<void> {
+  redirect("/admin/at-risk");
 }
 
 /**

@@ -3102,36 +3102,56 @@ other than filename sort.
 
 ---
 
-## DEC-123: Reservations admin is three things — a net-new catalog, a net-new purchases/customers area, and reservation actions grafted onto the existing event surface
+## DEC-123: Reservations gets its own calendar — customer-centric, beside the crew-centric shift view; plus a net-new catalog and purchases/customers area
 
-**Status:** Proposed (Phase 12 planning, S54 2026-07-15) — enumerated from the Xola seller UI with the
-operator; **pending @architect**. Numbered **123, not 122** — `feature/reservations` already holds
-DEC-122 (the booking link, renumbered there at the S53 merge). See `docs/design/reservations-admin.md`.
+**Status:** Accepted (operator, 2026-07-15, S54) — the two-surface call is the operator's; the rest is
+**pending @architect**. Numbered **123, not 122** — `feature/reservations` already holds DEC-122 (the
+booking link, renumbered there at the S53 merge). See `docs/design/reservations-admin.md` and the mockup
+`docs/design/mockups/reservation-calendar.html`.
 
-**Decision (proposed):** The Phase 12 plan's open question — *"how much rides the existing crew-admin
-cockpit vs. a distinct reservations-admin area — settle before P12 poker"* — is a **false binary**.
-Neither. The reservations admin is **three things**:
+**Decision:** Phase 12's open question — *"how much rides the existing crew-admin cockpit vs. a distinct
+reservations-admin area — settle before P12 poker"* — is answered: **a distinct reservation calendar.**
+Muster needs **both**, and they are **two different things**:
 
-1. **Catalog & pricing** — *net-new area.* `Offering` create/edit: descriptive content, photos, schedules
-   + price variations, blackout dates, add-ons, per-event price (DEC-112), tipping config (DEC-124).
-   The largest single build in P12.
-2. **Purchases & customers** — *net-new area.* Order list + detail (refund, resends, Switch Experience,
-   purchase/payment summary, attendee roster), plus the customer contact record. **Cards-on-file are
-   Stripe's and are not rebuilt.**
-3. **Reservation actions on the event surface that already exists** — *graft, not build.* Roster
-   actions (email/export/print), Change Arrival, Cancel Reservations, Event Notes, and the guest table
-   attach to `/admin/shifts`' event surface.
+- **Reservation calendar — customer-centric.** What's for sale, what's sold, what's open, what it costs,
+  who bought it.
+- **Shift view (`/admin/shifts`) — crew-centric.** Who works the vessel-day.
 
-**Why (the load-bearing asymmetry):** Xola needs its own event calendar because **Xola has no crew
-concept** — assigning a "guide" to an event is a manual operator act there. Muster's crew engine already
-does that autonomously per vessel-day. So Xola's Dashboard + event-detail pane and Muster's
-`/admin/shifts` are **the same surface viewed differently**: Xola's *Guide* is Muster's crew engine, its
-*Equipment* is Muster's vessel, its *Capacity* is `Event.capacity`. A straight port would rebuild all
-three.
+They meet at the vessel-day and nowhere else; each cross-links to the other. So the reservations admin is:
 
-**Not this — the trap:** a **second event calendar** beside `/admin/shifts`. Two calendars over one
-vessel-day = two places to look, two things to sync, and an operator asking which is right. The crew
-engine owns the vessel-day; reservations rent space on it.
+1. **The reservation calendar** — *net-new.* Departures by day/boat, Open-or-Sold, price, buyer; the
+   per-reservation detail pane (roster, change arrival, cancel, refund, resend link, message).
+2. **Catalog & pricing** — *net-new.* `Offering` create/edit: descriptive content, photos, schedules +
+   price variations, blackout dates, add-ons, per-event price (DEC-112), tipping config (DEC-124).
+3. **Purchases & customers** — *net-new.* Order list + detail (refund, resends, purchase/payment summary,
+   attendee roster) and the customer contact record. **Cards-on-file are Stripe's; not rebuilt.**
+
+**Why two surfaces, not one:** a reservation calendar and a crew roster answer different questions for
+different readers. Folding customer and money surfaces into the crew board to reuse what exists would
+overload a surface built for a different job — and the reuse argument decays the moment reservations need
+a view the shift board structurally cannot give (an Offering-major view, payment-state filters).
+**Superseded reasoning:** an earlier draft of this DEC claimed a second calendar was "the trap," on the
+theory that Xola only needs its own dashboard because Xola has no crew concept, and that "the crew engine
+owns the vessel-day; reservations rent space on it." **Both are wrong and are recorded here as errors.**
+Reservations are upstream — events generate the vessel-day that `formShifts` derives (`src/builder/
+form-shifts.ts`) — and after the DEC-105 flip, reservations are the primary business.
+
+**Availability is the product, not an edge case.** Unsold departures are first-class rows on the
+calendar: showing what is **not** booked *is* the ordering system. This forces **eager event generation**
+from an `Offering`'s schedule — an event must exist before it is sold — which **reverses task 11.3's lazy
+`Event(if new)`** for the native path. Named here rather than discovered at build.
+
+**Whole-boat is a rule, not a shape — do not foreclose multi-party (operator, 2026-07-15).** BrewBoat
+sells one boat to one party; multi-party selling is **explicitly not wanted** and **not built**. But the
+model must not **weld it shut**. It currently doesn't, and that is not an accident to be tidied away: the
+one-party rule is a **service-layer predicate** (11.3's CAS claim — *"claim iff the event is unclaimed by
+any active `source='muster'` reservation"*) with **no DB unique constraint**, so the schema is already
+`Event 1‥N Reservation`. Adding multi-party later = change the availability predicate (step function →
+`capacity − Σ party sizes`) + an additive per-seat price column. No relationship migration.
+
+> **Guardrail — do not add a unique constraint on `Reservation.eventId`.** It reads like an obvious
+> correctness win and would enforce *today's business rule* as a *structural fact forever*. The one-party
+> rule lives in the predicate. Consistent with DEC-020's service-layer-integrity posture.
 
 **Cut from P12 (operator, 2026-07-15):** Reports, Marketing, Distribution, App Store, store credit,
 questionnaire. *(Gratuity was on this list and came back — DEC-124.)*
@@ -3139,14 +3159,15 @@ questionnaire. *(Gratuity was on this list and came back — DEC-124.)*
 **Naming:** **`Offering`**, not Xola's "Experience" (operator-confirmed 2026-07-15; already the
 @architect-verified term in `reservations-model.md`).
 
-**Consequence:** the plan's ⚠️ ("the admin surfaces are likely the larger half of P12") is **confirmed**.
-Two net-new areas + a graft is larger than the six customer-facing bullets.
+**Not this:** seat counts. Xola's dashboard is "12/12 reserved" because Xola sells seats. Muster sells the
+boat: an event is **Open or Sold**. Party size is a fact about the booking, never inventory to subtract.
 
-**Open at build:** how an `Offering`'s schedule generates DEC-106 Muster-owned vessel-days (vs. an
-operator marking them by hand); whether the §3 graft is one page with two action groups or an
-admin-opened per-event pane (mockup-first per the P12 method). **Touches** DEC-105/106/112. **Revise if:**
-the reservations admin outgrows the crew cockpit's information architecture — the graft is the bet that
-it won't.
+**Consequence:** the plan's ⚠️ ("the admin surfaces are likely the larger half of P12") is **confirmed** —
+three net-new surfaces against six customer-facing bullets.
+
+**Open at build:** whether Week or Day-with-boat-columns is the calendar's default; where add-ons surface;
+whether the operator ever books from the calendar or only from a customer record. **Touches**
+DEC-105/106/112 and task 11.3 (see eager generation, above).
 
 ---
 

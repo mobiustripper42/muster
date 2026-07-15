@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Muster — Reservation Calendar (mockup v2)</title>
+<style>
+  :root{
+    --bg:#eef2f6; --card:#ffffff; --ink:#101826; --muted:#5b6675; --faint:#93a0b0; --line:#e7ebf1;
+    --accent:#2f5d86;
+    --v1:#5b64a8; --v2:#8a5f93; --v3:#6e7f46; --v4:#9c6b4e;
+    --radius:14px;
+    --sans:"IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    --mono:"IBM Plex Mono", ui-monospace, monospace;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{background:var(--bg); color:var(--ink); font-family:var(--sans); font-size:14px; line-height:1.45;
+       -webkit-font-smoothing:antialiased}
+  .mockbar{background:#101826; color:#93a0b0; font-family:var(--mono); font-size:11px; padding:6px 16px}
+  .mockbar b{color:#eef2f6; font-weight:500}
+  .wrap{max-width:1460px; margin:0 auto; padding:18px 16px 56px}
+
+  header.top{display:flex; align-items:baseline; gap:14px; flex-wrap:wrap}
+  h1{font-size:22px; font-weight:600; letter-spacing:-.01em}
+  .sub{color:var(--muted); font-size:13px}
+
+  .controls{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:14px 0 12px}
+  .seg{display:inline-flex; background:var(--card); border:1px solid var(--line); border-radius:9px; overflow:hidden}
+  .seg button{font:inherit; font-size:13px; padding:6px 13px; background:transparent; border:0;
+              color:var(--muted); cursor:pointer; border-right:1px solid var(--line)}
+  .seg button:last-child{border-right:0}
+  .seg button[aria-pressed="true"]{background:var(--accent); color:#fff}
+  .seg.filter button[aria-pressed="true"]{background:var(--ink)}
+  .navbtn{font:inherit; font-size:13px; padding:6px 11px; background:var(--card); border:1px solid var(--line);
+          border-radius:9px; color:var(--ink); cursor:pointer}
+  .datelabel{font-size:13px; color:var(--muted); padding:0 4px; min-width:150px}
+  .spacer{flex:1}
+  .tally{font-size:13px; color:var(--muted)}
+  .tally b{color:var(--ink); font-weight:600}
+  .tally .money{font-family:var(--mono); font-size:12px}
+  .flabel{font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:var(--faint); font-weight:600;
+          margin-right:2px}
+
+  .panes{display:grid; grid-template-columns:1fr 348px; gap:14px; align-items:start}
+  @media (max-width:1180px){ .panes{grid-template-columns:1fr} .detail{position:static !important} }
+
+  /* ---- day grid: boat columns x time rows ---- */
+  .grid{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden}
+  .grid .ghead{display:grid; grid-template-columns:76px repeat(4,1fr); border-bottom:1px solid var(--line)}
+  .grid .ghead > div{padding:9px 10px; font-size:12px; font-weight:600; display:flex; align-items:center; gap:6px}
+  .grid .ghead > div + div{border-left:1px solid var(--line)}
+  .grid .ghead .corner{color:var(--faint); font-size:10px; text-transform:uppercase; letter-spacing:.07em; font-weight:600}
+  .hue{width:7px; height:7px; border-radius:50%; flex:none}
+  .hue.v1{background:var(--v1)} .hue.v2{background:var(--v2)} .hue.v3{background:var(--v3)} .hue.v4{background:var(--v4)}
+  .grow{display:grid; grid-template-columns:76px repeat(4,1fr); border-top:1px solid #f2f5f8}
+  .grow:first-of-type{border-top:0}
+  .tcell{padding:10px; font-family:var(--mono); font-size:12px; color:var(--muted); display:flex; align-items:center}
+  .cell{border-left:1px solid var(--line); padding:5px}
+  .ev{width:100%; text-align:left; font:inherit; background:transparent; border:0; cursor:pointer;
+      padding:7px 8px; border-radius:9px; position:relative; display:block; min-height:52px}
+  .ev:hover{background:#f5f8fb}
+  .ev[aria-selected="true"]{background:#eaf0f6; box-shadow:inset 0 0 0 1px #c5d3e2}
+  .ev .who{font-size:12.5px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .ev .meta{font-size:11px; color:var(--faint); margin-top:2px; font-family:var(--mono)}
+  .ev .price{font-family:var(--mono); font-size:12px; color:var(--accent); font-weight:500}
+  .ev .openlbl{font-size:11px; color:var(--faint); margin-top:2px}
+  .ev.open::before{content:""; position:absolute; left:0; top:7px; bottom:7px; width:2px;
+                   border-left:2px dashed #d7dfe8; border-radius:2px}
+  .ev.booked::before{content:""; position:absolute; left:0; top:7px; bottom:7px; width:2px;
+                     background:#dfe6ee; border-radius:2px}
+  .ev.blackout{opacity:.5}
+  .ev.blackout::before{content:""; position:absolute; left:0; top:7px; bottom:7px; width:2px;
+                       background:repeating-linear-gradient(180deg,#c3ccd6 0 3px,transparent 3px 6px)}
+  .ev.blackout .who{color:var(--faint); text-decoration:line-through; text-decoration-thickness:1px}
+  .ev .sell{position:absolute; right:6px; top:50%; transform:translateY(-50%); font-size:11px;
+            padding:3px 9px; border-radius:7px; border:1px solid var(--accent); color:var(--accent);
+            background:#fff; opacity:0; transition:opacity .1s}
+  .ev.open:hover .sell{opacity:1}
+  .dim{opacity:.28; pointer-events:none}
+
+  /* ---- detail ---- */
+  .detail{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); position:sticky; top:16px}
+  .dhd{padding:13px 15px; border-bottom:1px solid var(--line)}
+  .dhd .k{font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:var(--faint); font-weight:600}
+  .dhd h2{font-size:17px; font-weight:600; margin-top:3px}
+  .dhd .when{font-size:13px; color:var(--muted); margin-top:3px; font-family:var(--mono);
+             display:flex; align-items:center; gap:7px; flex-wrap:wrap}
+  .crewed{display:inline-flex; align-items:center; gap:5px; font-family:var(--sans); font-size:12px;
+          background:#eef2f6; border:1px solid #dfe6ee; border-radius:99px; padding:2px 9px; color:var(--ink);
+          text-decoration:none}
+  .crewed:hover{border-color:#c5d3e2}
+  .crewed b{font-weight:600}
+  .crewed.none{color:var(--muted); background:#fff; border-style:dashed}
+  .body{padding:12px 15px}
+  .sect{font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:var(--faint); font-weight:600;
+        margin:12px 0 5px}
+  .sect:first-child{margin-top:0}
+  .row{display:flex; justify-content:space-between; gap:12px; padding:5px 0; font-size:13px}
+  .row + .row{border-top:1px solid #f2f5f8}
+  .row .lbl{color:var(--muted)}
+  .row .val{font-weight:500; text-align:right}
+  .row .val.mono{font-family:var(--mono); font-weight:400}
+  .row .val.cfg{color:var(--muted); font-weight:400}
+  .cfg-tag{font-size:9px; letter-spacing:.06em; text-transform:uppercase; color:var(--faint);
+           border:1px solid var(--line); border-radius:4px; padding:1px 4px; margin-left:5px}
+  .row.total{border-top:1px solid var(--line); margin-top:3px; padding-top:8px; font-weight:600}
+  .row.total .val{font-family:var(--mono)}
+  .addbtn{width:100%; margin-top:6px; font:inherit; font-size:12px; padding:6px; border-radius:8px;
+          border:1px dashed #ccd6e0; background:#fff; color:var(--accent); cursor:pointer}
+  .addbtn:hover{border-color:var(--accent)}
+  .acts{padding:11px 15px 14px; border-top:1px solid var(--line); display:flex; flex-wrap:wrap; gap:7px}
+  .btn{font:inherit; font-size:12.5px; padding:6px 12px; border-radius:8px; border:1px solid var(--line);
+       background:#fff; color:var(--ink); cursor:pointer}
+  .btn.primary{background:var(--accent); border-color:var(--accent); color:#fff}
+  .btn:active{transform:scale(.985)}
+
+  .note{margin-top:22px; background:#fff; border:1px solid var(--line); border-radius:var(--radius); padding:15px 17px}
+  .note h3{font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--faint); margin-bottom:9px}
+  .note ul{margin:0 0 0 17px; font-size:13px; color:var(--muted)}
+  .note li{margin-bottom:5px}
+  .note b{color:var(--ink)}
+  .note .q{color:#8a5f2f}
+</style>
+</head>
+<body>
+
+<div class="mockbar"><b>MOCKUP v2</b> — reservation calendar · static, nothing is wired · 20 events/day · <b>Offering</b> ≠ Xola "Experience"</div>
+
+<div class="wrap">
+
+  <header class="top">
+    <h1>Reservations</h1>
+    <span class="sub">Brew Boat Party Boats · whole boat, one party</span>
+  </header>
+
+  <div class="controls">
+    <div class="seg" role="group" aria-label="View">
+      <button aria-pressed="true">Day</button>
+      <button aria-pressed="false">Week</button>
+      <button aria-pressed="false">List</button>
+    </div>
+    <button class="navbtn" aria-label="Previous day">←</button>
+    <span class="datelabel">Sat, Jul 18 2026</span>
+    <button class="navbtn" aria-label="Next day">→</button>
+    <button class="navbtn">Today</button>
+
+    <span style="width:10px"></span>
+    <span class="flabel">Show</span>
+    <div class="seg filter" role="group" aria-label="Filter">
+      <button aria-pressed="true">All 20</button>
+      <button aria-pressed="false">Open 8</button>
+      <button aria-pressed="false">Booked 11</button>
+      <button aria-pressed="false">Blacked out 1</button>
+    </div>
+
+    <div class="spacer"></div>
+    <div class="tally"><b>11</b> booked · <span class="money">$6,489 booked</span></div>
+  </div>
+
+  <div class="panes">
+    <div class="grid">
+      <div class="ghead">
+        <div class="corner">Time</div>
+        <div><span class="hue v1"></span> Brew 1</div>
+        <div><span class="hue v2"></span> Brew 2</div>
+        <div><span class="hue v3"></span> Brew 3</div>
+        <div><span class="hue v4"></span> Brew 4</div>
+      </div>
+
+      <!-- 11:30 -->
+      <div class="grow">
+        <div class="tcell">11:30 AM</div>
+        <div class="cell"><button class="ev booked"><div class="who">Alexis Bowen</div><div class="meta">12 · $499</div></button></div>
+        <div class="cell"><button class="ev open"><div class="price">$499</div><div class="openlbl">Open</div><span class="sell">Sell</span></button></div>
+        <div class="cell"><button class="ev booked"><div class="who">Erin Becker</div><div class="meta">10 · $499</div></button></div>
+        <div class="cell"><button class="ev booked" aria-selected="true"><div class="who">Munish Bangia</div><div class="meta">7 · $499</div></button></div>
+      </div>
+
+      <!-- 1:30 -->
+      <div class="grow">
+        <div class="tcell">1:30 PM</div>
+        <div class="cell"><button class="ev booked"><div class="who">Shaye Parker</div><div class="meta">12 · $549</div></button></div>
+        <div class="cell"><button class="ev booked"><div class="who">Healey Zamora</div><div class="meta">10 · $549</div></button></div>
+        <div class="cell"><button class="ev open"><div class="price">$549</div><div class="openlbl">Open</div><span class="sell">Sell</span></button></div>
+        <div class="cell"><button class="ev booked"><div class="who">David Wixted</div><div class="meta">13 · $549</div></button></div>
+      </div>
+
+      <!-- 3:30 -->
+      <div class="grow">
+        <div class="tcell">3:30 PM</div>
+        <div class="cell"><button class="ev booked"><div class="who">Lisa Braun</div><div class="meta">12 · $549</div></button></div>
+        <div class="cell"><button class="ev open"><div class="price">$549</div><div class="openlbl">Open</div><span class="sell">Sell</span></button></div>
+        <div class="cell"><button class="ev blackout"><div class="who">Blacked out</div><div class="meta">maintenance</div></button></div>
+        <div class="cell"><button class="ev open"><div class="price">$549</div><div class="openlbl">Open</div><span class="sell">Sell</span></button></div>
+      </div>
+
+      <!-- 5:30 -->
+      <div class="grow">
+        <div class="tcell">5:30 PM</div>
+        <div class="cell"><button class="ev booked"><div class="who">Carol Reid</div><div class="meta">8 · $549</div></button></div>
+        <div class="cell"><button class="ev booked"><div class="who">Wes Boland</div><div class="meta">11 · $549</div></button></div>
+        <div class="cell"><button class="ev open"><div class="price">$549</div><div class="openlbl">Open</div><span class="sell">Sell</span></button></div>
+        <div class="cell"><button class="ev open"><div class="price">$549</div><div class="openlbl">Open</div><span class="sell">Sell</span></button></div>
+      </div>
+
+      <!-- 7:30 -->
+      <div class="grow">
+        <div class="tcell">7:30 PM</div>
+        <div class="cell"><button class="ev booked"><div class="who">Taylor Raney</div><div class="meta">12 · $549</div></button></div>
+        <div class="cell"><button class="ev booked"><div class="who">Kailee Khalife</div><div class="meta">9 · $549</div></button></div>
+        <div class="cell"><button class="ev open"><div class="price">$549</div><div class="openlbl">Open</div><span class="sell">Sell</span></button></div>
+        <div class="cell"><button class="ev open"><div class="price">$549</div><div class="openlbl">Open</div><span class="sell">Sell</span></button></div>
+      </div>
+    </div>
+
+    <!-- DETAIL -->
+    <aside class="detail">
+      <div class="dhd">
+        <div class="k">Reservation</div>
+        <h2>Munish Bangia</h2>
+        <div class="when">
+          <span>Sat Jul 18 · 11:30 AM</span>
+          <span><span class="hue v4" style="display:inline-block"></span> Brew 4</span>
+          <a class="crewed" href="#">Crewed <b>2/2</b> ↗</a>
+        </div>
+      </div>
+
+      <div class="body">
+        <div class="sect">Booking guest</div>
+        <div class="row"><span class="lbl">Name</span><span class="val">Munish Bangia</span></div>
+        <div class="row"><span class="lbl">Phone</span><span class="val mono">(614) 657-5340</span></div>
+        <div class="row"><span class="lbl">Email</span><span class="val mono" style="font-size:11px">munishbangia.mb@gmail.com</span></div>
+        <div class="row"><span class="lbl">Booked</span><span class="val mono">Jun 14</span></div>
+
+        <div class="sect">Trip</div>
+        <div class="row"><span class="lbl">Guests</span><span class="val">7 <span style="color:var(--faint);font-weight:400">of 12</span></span></div>
+        <div class="row"><span class="lbl">Waivers</span><span class="val">7 of 7</span></div>
+
+        <div class="sect">Add-ons</div>
+        <div class="row"><span class="lbl">Tip your crew · 15%</span><span class="val mono">$74.85</span></div>
+        <div class="row"><span class="lbl">Flex insurance</span><span class="val cfg">No</span></div>
+        <button class="addbtn">+ Add add-on</button>
+
+        <div class="sect">Money</div>
+        <div class="row"><span class="lbl">Fare</span><span class="val mono">$499.00</span></div>
+        <div class="row"><span class="lbl">Add-ons</span><span class="val mono">$74.85</span></div>
+        <div class="row"><span class="lbl">Tax <span class="cfg-tag">5.2%</span></span><span class="val mono">$29.94</span></div>
+        <div class="row"><span class="lbl">Service fee <span class="cfg-tag">3%</span></span><span class="val mono">$17.22</span></div>
+        <div class="row total"><span class="lbl">Paid</span><span class="val">$621.01</span></div>
+      </div>
+
+      <div class="acts">
+        <button class="btn primary">Message</button>
+        <button class="btn">Guests</button>
+        <button class="btn">Change time</button>
+        <button class="btn">Resend link</button>
+        <button class="btn">Refund</button>
+        <button class="btn">Cancel</button>
+      </div>
+    </aside>
+  </div>
+
+  <div class="note">
+    <h3>Changed from v1 — your notes</h3>
+    <ul>
+      <li><b>Density is real now.</b> 4 boats × 5 slots = 20/day. Day is the default view and the grid is boat-columns × time-rows. A week is 140 events — that's what the filter is for, and why Week can't be the default.</li>
+      <li><b>Open / Booked / Blacked-out filter</b>, with counts, next to the view toggle.</li>
+      <li><b>Blackout</b> shows as a first-class state on the grid (3:30 Brew 3). Blacking out <i>one</i> event happens here. <b>Blacking out future events in bulk is a separate admin screen</b> — not this one.</li>
+      <li><b>Sell from here.</b> Open slots carry a Sell button — admin sells from this screen, so it's one click from the grid.</li>
+      <li><b>Crewed moved to the top</b>, next to the boat, as a link to the shift. Shows <b>2/2</b> so a short-crewed trip is visible without leaving.</li>
+      <li><b>"Roster" is gone.</b> The guest list is <b>Guests</b>. The person who made the reservation is <b>Booking guest</b>.</li>
+      <li><b>Add-ons are their own section</b> with an <b>+ Add add-on</b> button. Tip renders as what it is — an add-on.</li>
+      <li><b>Tax and service fee show their configured rate</b> (5.2%, 3%) so it's obvious they're settings, not hardcoded.</li>
+      <li><b>Catalog vs. this screen:</b> the catalog creates event times that apply globally; <b>this screen changes an individual event</b>. Same split Xola has, minus the seat counting.</li>
+      <li class="q"><b>Still open:</b> is "Booking guest" the right name? Where do tax + service fee get configured — catalog per-Offering, or one global setting? Does Sell open a form here or jump to the booking flow? What does Week look like at 140 events?</li>
+    </ul>
+  </div>
+
+</div>
+</body>
+</html>

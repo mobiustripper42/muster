@@ -3102,6 +3102,108 @@ other than filename sort.
 
 ---
 
+## DEC-123: Reservations admin is three things — a net-new catalog, a net-new purchases/customers area, and reservation actions grafted onto the existing event surface
+
+**Status:** Proposed (Phase 12 planning, S54 2026-07-15) — enumerated from the Xola seller UI with the
+operator; **pending @architect**. Numbered **123, not 122** — `feature/reservations` already holds
+DEC-122 (the booking link, renumbered there at the S53 merge). See `docs/design/reservations-admin.md`.
+
+**Decision (proposed):** The Phase 12 plan's open question — *"how much rides the existing crew-admin
+cockpit vs. a distinct reservations-admin area — settle before P12 poker"* — is a **false binary**.
+Neither. The reservations admin is **three things**:
+
+1. **Catalog & pricing** — *net-new area.* `Offering` create/edit: descriptive content, photos, schedules
+   + price variations, blackout dates, add-ons, per-event price (DEC-112), tipping config (DEC-124).
+   The largest single build in P12.
+2. **Purchases & customers** — *net-new area.* Order list + detail (refund, resends, Switch Experience,
+   purchase/payment summary, attendee roster), plus the customer contact record. **Cards-on-file are
+   Stripe's and are not rebuilt.**
+3. **Reservation actions on the event surface that already exists** — *graft, not build.* Roster
+   actions (email/export/print), Change Arrival, Cancel Reservations, Event Notes, and the guest table
+   attach to `/admin/shifts`' event surface.
+
+**Why (the load-bearing asymmetry):** Xola needs its own event calendar because **Xola has no crew
+concept** — assigning a "guide" to an event is a manual operator act there. Muster's crew engine already
+does that autonomously per vessel-day. So Xola's Dashboard + event-detail pane and Muster's
+`/admin/shifts` are **the same surface viewed differently**: Xola's *Guide* is Muster's crew engine, its
+*Equipment* is Muster's vessel, its *Capacity* is `Event.capacity`. A straight port would rebuild all
+three.
+
+**Not this — the trap:** a **second event calendar** beside `/admin/shifts`. Two calendars over one
+vessel-day = two places to look, two things to sync, and an operator asking which is right. The crew
+engine owns the vessel-day; reservations rent space on it.
+
+**Cut from P12 (operator, 2026-07-15):** Reports, Marketing, Distribution, App Store, store credit,
+questionnaire. *(Gratuity was on this list and came back — DEC-124.)*
+
+**Naming:** **`Offering`**, not Xola's "Experience" (operator-confirmed 2026-07-15; already the
+@architect-verified term in `reservations-model.md`).
+
+**Consequence:** the plan's ⚠️ ("the admin surfaces are likely the larger half of P12") is **confirmed**.
+Two net-new areas + a graft is larger than the six customer-facing bullets.
+
+**Open at build:** how an `Offering`'s schedule generates DEC-106 Muster-owned vessel-days (vs. an
+operator marking them by hand); whether the §3 graft is one page with two action groups or an
+admin-opened per-event pane (mockup-first per the P12 method). **Touches** DEC-105/106/112. **Revise if:**
+the reservations admin outgrows the crew cockpit's information architecture — the graft is the bet that
+it won't.
+
+---
+
+## DEC-124: Tips come into Muster as collect-and-expose; `xola-tip-extractor` owns the split and the Xola+Muster union until Xola dies (reverses DEC-036's tip parking)
+
+**Status:** Accepted (operator, 2026-07-15, S54) — the reversal is the operator's call; the shape is
+**pending @architect**. Amends **DEC-036**.
+
+**Decision:** Muster **collects and reports tips**. DEC-036 said the Xola client port leaves behind "the
+gratuity / tip-split / guide machinery (**not Muster's job** — payments parked, SPEC §4)." **That is
+reversed.** But the reversal is *not* an instruction to build a payroll subsystem:
+
+**Muster's Phase 12 scope — collect + expose, nothing more:**
+- **Pre-tip at checkout, required.** Tiers (15/20/25%), mirroring the live Xola config — which offers
+  three positive choices and **no decline option**.
+- **Post-trip tipping** — supported.
+- **Tipping is an optional per-`Offering` setting** (on/off + tiers), configured in the catalog
+  (DEC-123 §1) — **not** a global. Mirrors Xola, where the tip is an add-on configured per experience.
+- **Expose tips to be read**: per-event tip pool + assigned crew.
+
+**Muster does NOT build** the split, the Gusto CSV, a tip report, or a crew "my tips" view in P12.
+
+**`xola-tip-extractor` is a finished app** (the operator's). It keeps the per-event-pool ÷ assigned-guides
+split, the Gusto timesheet CSV + guide→Gusto identity map, and its operator/guide auth. **The only change
+it needs is a second reader**, so it pulls tips from **Muster** as well as Xola during the coexistence
+drain. **The Xola + Muster union lives there, not in Muster.**
+
+**Lifecycle:** it **lives until Xola is gone and dies with it** (DEC-105's drain: Xola's forward book
+empties naturally, then the subscription is cancelled). Its function moves into Muster only **after**
+Xola retires — a later phase, **not P12**.
+
+**Why the union lives there, not here:** for the whole overlap, tips exist in **both** systems. The tool
+that already does splits and emits the Gusto CSV is the cheapest place to union two readers. Building a
+parallel tip report in Muster during the drain duplicates a working tool and risks the worst bug in the
+phase — **Spink hands Gusto a half-empty payroll CSV**. A first pass sized this at 15–20 pts by assuming
+Muster absorbs the extractor; that was wrong, and the correct scope is **single digits**.
+
+**Why it belongs in Muster eventually:** tips are the **one surface spanning both halves of the app** —
+reservation money → crew people. Nothing else does. Three of the extractor's load-bearing parts are
+things Muster already has natively: *guides assigned to an event* (the crew engine knows), the
+*Xola-name → Gusto identity map* (crew records could carry it), and the *per-guide self-serve view* (the
+crew app, DEC-081). None of that is licensed until Xola is gone.
+
+**Booking-link consequence:** post-trip tipping means the **DEC-122 capability URL outlives the trip** —
+"manage your booking" becomes "tip your crew." A lifecycle change to the link, not just a new form.
+*(DEC-122 itself lives on `feature/reservations` until the P12 merge — a forward reference from `main`,
+expected under the spec-on-`main` / code-on-`feature` split, not drift.)*
+
+**Amends DEC-036** (its tip/gratuity/guide-machinery parking only — the `fetchOrders`/`fetchEvents` Land
+adapter, the seam, and every other leg stand). **Touches** DEC-107 (Stripe), DEC-122 (booking link),
+DEC-123 (the per-`Offering` setting lives in the catalog). **Open at build:** the read's shape and auth;
+whether Muster crew names resolve against the extractor's (done, Xola-correct) Gusto map at the new seam —
+it warns loudly rather than failing silently. **Revise if:** Xola's drain stalls long enough that the
+overlap outlives the tool's usefulness.
+
+---
+
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)
 
 These are deferred by design. Each names an owner and a trigger. **Consult @architect (and the named

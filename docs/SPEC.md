@@ -471,11 +471,25 @@ view of their standing and credential nudges lives in the crew app, §2.6, readi
 > the thing both the shift builder and the crew manifest read from. A **data-management** surface,
 > not a second booking system.
 
+> **⚠️ Reconciled 2026-07-15 (S54).** This section was written for a world that no longer exists: the
+> **CSV bridge** (retired — DEC-043 killed the `.xlsx` path; ingest is a manual Xola **API pull** at
+> `/admin/import`, DEC-036/037), a **2027** customer portal (reservations went live in **2026** —
+> DEC-105, Phases 11/12), and **shift locking** (cut — Xola is source of truth, so a "reviewed/locked"
+> stamp is meaningless). The paragraphs below are corrected in place; where a claim was load-bearing and
+> is now wrong, it says so rather than being quietly deleted. **"Reservation" here means the imported,
+> Xola-sourced kind.** Muster-native reservations are a different animal — see
+> `docs/design/reservations-model.md`, `reservations-admin.md`, and DEC-105–113 / DEC-123 / DEC-124.
+
 ### Purpose
-Hold the **imported** events and reservations (from the 2026 Xola CSV bridge) and be the single
-data layer the rest of Muster reads — shift builder reads **events**, crew manifest reads
-**reservations**. Allow light manual maintenance between CSV syncs. In 2027 the customer portal
-becomes the thing that writes reservations here directly; the CSV path retires, this layer stays.
+Hold the **imported** events and reservations and be the single data layer the rest of Muster reads —
+shift builder reads **events**, crew manifest reads **reservations**. Allow light manual maintenance
+between syncs.
+
+**Corrected:** ingest is the **live Xola API pull** (DEC-036/037), not a CSV bridge; the `.xlsx` reader
+survives only as the Xola-downtime fallback. And the customer portal that writes reservations here
+directly is **not a 2027 event** — it is **Phase 11/12, now** (DEC-105). Both source-of-write paths
+coexist permanently: Xola-sourced imports drain as Xola drains, Muster-native reservations arrive
+alongside them, discriminated by `source` (DEC-106). This layer stays either way — that part held.
 
 ### States to render
 - **Event list** — events grouped by date (and filterable by boat), each showing boat · day · time ·
@@ -483,20 +497,25 @@ becomes the thing that writes reservations here directly; the CSV path retires, 
 - **Event detail** — one event with its reservations: each reservation's customer **name, party
   size, phone**. This is the per-event manifest source (name + phone; **waivers not needed for
   crew** — §0.4).
-- **Import result** — after a CSV import, what was added / updated / skipped, and any rows that
-  couldn't be parsed (so a dirty export is visible, not silently dropped).
+- **Import result** — after an import, what was added / updated / skipped, and any records that
+  couldn't be parsed (so a dirty source is visible, not silently dropped).
 
 ### Actions
-- **Import** events + reservations from CSV (bulk, ~1–2×/week) — with reconciliation against what's
-  already there (see edge cases).
+- **Import** events + reservations — the operator-triggered Xola **API pull** at `/admin/import`
+  (DEC-036/037), with reconciliation against what's already there (see edge cases). *(Was: CSV upload,
+  ~1–2×/week. The pull window is `[today−1, today+lead+1]`; the `.xlsx` reader remains the downtime
+  fallback.)*
 - **Manually add / cancel a single reservation** — the odd phone booking or cancellation between
   syncs.
 - **Manually add / edit an event** — the odd schedule change (extra sailing, cancelled slot).
 - **Browse** events with their reservations — also how Spink eyeballs the weekend before building
   shifts.
 
-Deliberately **out of scope here:** pricing, payment capture, marketing, customer comms. Those are
-Xola's job in 2026 or the portal/payments work later.
+Deliberately **out of scope here:** marketing. **Corrected:** pricing, payment capture, and customer
+comms were parked as "Xola's job in 2026 or the portal/payments work later" — that expired with
+DEC-105. They are now **Muster's**, but they live in the **reservations** surfaces (per-event price
+DEC-112, Stripe DEC-107, the `Offering` catalog DEC-123, tips DEC-124), **not here**. This section stays
+what it always was: the **data layer under the crew engine**, not a booking system.
 
 ### Data read
 - Written by the **CSV bridge** (coexistence §2) and, in 2027, by the **customer portal**.
@@ -505,34 +524,39 @@ Xola's job in 2026 or the portal/payments work later.
 
 ### Edge cases
 - **Re-import reconciliation.** A reservation already imported, now changed or cancelled in Xola,
-  must update/cancel in place — not duplicate. (Mirrors the "late booking joins a locked shift"
-  nudge, §2.3.)
+  must update/cancel in place — not duplicate. (Identity on `Reservation ID`, `updatedAt` materiality
+  per DEC-029.)
 - **Manual entry clobbered by re-import.** A reservation Spink hand-added between syncs must **not**
-  be wiped by the next CSV import. Needs an explicit **merge rule** — manual entries are preserved
+  be wiped by the next import. Needs an explicit **merge rule** — manual entries are preserved
   or reconciled, never silently overwritten. *(Merge rule shape is an open question, §2.2 below /
   carried from event-admin §5.)*
-- **Dirty / partial CSV.** Unparseable rows surface in the import result for Spink to fix by hand,
-  rather than failing the whole import or dropping rows silently.
+- **Dirty / partial source.** Unparseable records surface in the import result for Spink to fix by
+  hand, rather than failing the whole import or dropping records silently.
 - **Event edited after shifts formed.** Changing an event's time/capacity after its shift was built
-  must propagate to the shift (and raise the shift-builder "changed since you reviewed it" nudge if
-  locked — §2.3).
+  must propagate to the shift. *(Corrected: the original said this raises a shift-builder "changed
+  since you reviewed it" nudge **if locked**. **Locking was cut** — Xola is the source of truth, so a
+  reviewed/locked stamp is meaningless. Propagation is unconditional; there is no locked state to
+  gate it.)*
+- **Muster-owned vessel-days.** The importer **skips and itemizes** a Xola event landing on a
+  vessel-day Muster owns (DEC-106) — the coexistence guard. Inert until a vessel-day is marked owned.
 
 ### Acceptance criteria
-- [ ] Importing a CSV creates events and their reservations, grouped correctly (reservations →
+- [ ] Importing creates events and their reservations, grouped correctly (reservations →
       events by occurrence; events available to roll up → shifts by boat+day).
-- [ ] Re-importing a CSV with a changed reservation updates it in place; a cancelled one is marked
+- [ ] Re-importing with a changed reservation updates it in place; a cancelled one is marked
       cancelled — neither duplicates.
-- [ ] A manually-added reservation survives the next CSV import per the merge rule.
+- [ ] A manually-added reservation survives the next import per the merge rule.
 - [ ] Event detail shows each reservation's name, party size, and phone; no waiver field is required.
-- [ ] Unparseable CSV rows appear in the import result rather than being silently dropped.
+- [ ] Unparseable records appear in the import result rather than being silently dropped.
 - [ ] Editing an event's time propagates to any shift already formed from it.
 
 ### Open questions (Event Admin)
 - **Merge rule** for manual entries vs re-import — the precise reconciliation policy. *(Owner:
-  Spink/Drew, against a real export. Non-blocking — can default to "manual wins, flag conflicts"
+  Spink/Drew, against real data. Non-blocking — can default to "manual wins, flag conflicts"
   and refine.)*
-- Exact Xola **export columns** — determines how complete imported events/reservations are, and
-  how much pax/trip detail is available for crew sizing. *(Check at the desk against a real export.)*
+- ~~Exact Xola **export columns**~~ — **RESOLVED.** The CSV export is retired (DEC-043); the API
+  response shape is settled in DEC-036 (`expand[]=organizer&items&travelers`) and DEC-040 (status
+  codes 200–203 booked / 700 cancelled). Field completeness is no longer an open question.
 
 ---
 

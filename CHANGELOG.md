@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.14] - 2026-07-15
+- PR #443: #440 self-claim — an uncrewed seat always lists (Asked seats + AtRisk shifts)
+- PR #441: Withdraw the Manning override UI (S55 prod incident)
+- PR #439: sync-config — pull propagate from seeds
+- PR #436: Add residential uptime probe for crew.brewcle.com
+- PR #437: DEC-121 — timestamp-prefixed migration filenames + db:new-migration helper
+
 ## [1.0.13] - 2026-07-15
 - PR #435: admin/shifts "Split candidates" filter — narrow the board to long-gap vessel-days worth a split (#434)
 

@@ -1,4 +1,7 @@
--- 0024_payments — money movements against Muster-native reservations (DEC-107).
+-- payments — money movements against Muster-native reservations (DEC-107).
+-- Timestamp-named (not 00NN) so the long-lived feature/reservations branch can't collide
+-- with main's sequential migrations (main's 0024/0025 are audit_events #400 +
+-- crew_weekdays_off #427). Timestamped files sort after every 00NN_.
 --
 -- A separate 1:n log, NOT columns on `reservations` (which is shared with Xola, whose
 -- money lives in Xola permanently — DEC-105/106; payment columns would sit null on every

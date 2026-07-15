@@ -8,7 +8,7 @@
  *   npm run db:checkout -- --dry-run   # FakePaymentPort — proves the seed + checkout path, no Stripe
  *
  * Full loop (real):
- *   1. npm run db:migrate                                             # apply 0024_payments
+ *   1. npm run db:migrate                                             # apply the reservations migrations
  *   2. put STRIPE_SECRET_KEY + STRIPE_WEBHOOK_SECRET (test) in .env.local
  *   3. npm run dev                                                    # the webhook route must be up
  *   4. stripe listen --forward-to localhost:3000/api/webhooks/stripe  # in another terminal

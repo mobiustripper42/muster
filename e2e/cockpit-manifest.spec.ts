@@ -1,9 +1,13 @@
 /**
  * #319 — the operator cockpit (`/admin/shift/[id]`) surfaces the same per-event
  * guest manifest the crew card shows (`buildShiftManifest`, shared component),
- * ABOVE the Manning section. The `crewapp` seed's `shift-soon` has two trips with
+ * BELOW the seat cards. The `crewapp` seed's `shift-soon` has two trips with
  * real bookings: 3pm = Brody(4) + Vaughn(6) = 10 pax, 5pm = Ellen(2). Proves the
  * wiring + RSC render (unit tests cover the assembly rules).
+ *
+ * The placement assertion used to pin the manifest ABOVE the Manning section; the
+ * Manning UI is withdrawn, so it now pins against the Crewed-gate summary that
+ * closes the seat list.
  */
 import { test, expect, resetAndSeed, signInAsAdmin } from "./fixtures.js";
 
@@ -12,7 +16,7 @@ test.describe("cockpit guest manifest (#319)", () => {
     await resetAndSeed("crew");
   });
 
-  test("shows the per-event manifest above Manning; guests expand", async ({
+  test("shows the per-event manifest below the seat list; guests expand", async ({
     page,
   }) => {
     await signInAsAdmin(page, "spink");
@@ -25,12 +29,13 @@ test.describe("cockpit guest manifest (#319)", () => {
     await expect(page.getByText("10 guests")).toBeVisible(); // 3pm: Brody 4 + Vaughn 6
     await expect(page.getByText("2 guests")).toBeVisible(); //  5pm: Ellen 2
 
-    // It sits ABOVE the Manning override section (the #319 placement).
+    // It sits BELOW the seat list (the #319 placement, re-anchored on the
+    // Crewed-gate summary now that Manning is gone).
     const manifestY = (await manifestHeading.boundingBox())!.y;
-    const manningY = (await page
-      .getByRole("heading", { name: "Manning" })
+    const gateY = (await page
+      .getByText(/required seats confirmed/)
       .boundingBox())!.y;
-    expect(manifestY).toBeLessThan(manningY);
+    expect(manifestY).toBeGreaterThan(gateY);
 
     // Expand the 3pm trip → a real booked guest, party size shown, cancelled ones absent.
     await page.getByText("10 guests").click();

@@ -31,14 +31,14 @@ test.describe("two-pane builder (9.5, DEC-085)", () => {
     await page.waitForURL(/sel=shift-ar-regress/);
 
     // Both panes: the board's h1 AND the cockpit body (demoted to h2 in-pane —
-    // one h1 per page) with its Manning section.
+    // one h1 per page) with its seat list.
     await expect(
       page.getByRole("heading", { level: 1, name: "All shifts" }),
     ).toBeVisible();
     await expect(
       page.getByRole("heading", { level: 2, name: /^Firkin/ }),
     ).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Manning" })).toBeVisible();
+    await expect(page.getByText(/required seats confirmed/)).toBeVisible();
 
     // Close (desktop-only; the ✕ glyph is aria-hidden) collapses back to the
     // single-column board.
@@ -53,15 +53,19 @@ test.describe("two-pane builder (9.5, DEC-085)", () => {
     await signInAsAdmin(page, "spink");
     await page.goto(`${board()}&sel=shift-ar-regress`);
 
-    // The Manning add rides the hidden ctx → finish() lands on /admin/shifts
-    // with sel + the feedback code, not on the standalone cockpit route.
-    await page.getByRole("button", { name: "+ Required hand" }).first().click();
-    await page.waitForURL(/\/admin\/shifts\?.*manning_added=required/);
+    // The seat override ("Place") rides the hidden ctx → finish() lands on
+    // /admin/shifts with sel + the feedback code, not on the standalone cockpit
+    // route. (Was the Manning add before that UI was withdrawn — any cockpit
+    // action exercises the same ctx round-trip.)
+    await page.getByText("Manual override").first().click();
+    const picker = page.getByLabel("Crew to place on this seat").first();
+    const who = await picker.locator("option").nth(1).getAttribute("value");
+    await picker.selectOption(who!);
+    await page.getByRole("button", { name: "Place" }).first().click();
+    await page.waitForURL(/\/admin\/shifts\?.*overrode=/);
     expect(page.url()).toContain("sel=shift-ar-regress");
 
-    await expect(
-      page.getByText(/Added a required hand — the shift needs one more to crew\./),
-    ).toBeVisible();
+    await expect(page.getByText(/placed by override — confirmed\./)).toBeVisible();
     // Still two-pane: the board list survived the round-trip.
     await expect(
       page.getByRole("heading", { level: 1, name: "All shifts" }),

@@ -1,5 +1,8 @@
 # Changelog
 
+## [1.0.12] - 2026-07-15
+- PR #433: /crew/open filter — default 7 Days, presets 2 Weeks / 30 Days (drop "This weekend") (#414)
+
 ## [1.0.11] - 2026-07-14
 - PR #427: Recurring weekday time-off — backend + `db:crew days-off` CLI (#411, DEC-119)
 - PR #429: Reliability retune — reward responsiveness (In+2/Out+1), bail floor/ramp recalibrated (#425, DEC-120)

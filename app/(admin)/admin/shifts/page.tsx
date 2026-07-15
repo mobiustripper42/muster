@@ -77,6 +77,9 @@ type Search = CockpitSearch & {
   /** Show-cancelled toggle (#416) — `"1"` folds Cancelled shifts into the list,
    *  greyed. Default off keeps DEC-042's current-only calm. */
   cancelled?: string;
+  /** Split-candidates toggle — `"1"` narrows the list to vessel-days with an
+   *  unactioned split suggestion (a long mid-day gap Muster flagged). Default off. */
+  split?: string;
 };
 
 const isDate = (s?: string): s is string => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
@@ -245,6 +248,8 @@ function filterParams(sp: Search): URLSearchParams {
   if (sp.crew) p.set("crew", sp.crew);
   // Show-cancelled toggle (#416) likewise persists across preset/mode/crew nav.
   if (sp.cancelled === "1") p.set("cancelled", "1");
+  // Split-candidates toggle persists the same way.
+  if (sp.split === "1") p.set("split", "1");
   return p;
 }
 
@@ -309,6 +314,18 @@ export default async function AllShifts({
     );
   }
 
+  // Split-candidates filter: narrow the (already window-scoped) rows to vessel-days
+  // Muster flagged as a possible two-shift split and that the operator hasn't acted
+  // on yet — same condition the row's advisory renders on (splitSuggestion present,
+  // not already split, not cancelled). A narrowing view, so the operator can scan
+  // just the days worth a Split.
+  const showSplitOnly = sp.split === "1";
+  if (showSplitOnly) {
+    rows = rows.filter(
+      (r) => r.splitSuggestion != null && r.split == null && !r.cancelled,
+    );
+  }
+
   // Import-diff cues (DEC-083 + its 9.10 amendment): from the LATEST pull's
   // summary, the canonical ids of split days it reshaped AND the raw ids of
   // shifts it freshly minted (`createdShiftIds` absent on pre-9.10 runs → []).
@@ -364,6 +381,16 @@ export default async function AllShifts({
     ? `/admin/shifts?${cancelledQs}`
     : "/admin/shifts";
 
+  // Split-candidates toggle: flip `?split`, preserving window/crew/mode/sel (and
+  // cancelled, via filterParams) so turning it on keeps the operator in their view.
+  const splitParams = filterParams(sp);
+  if (mode === "edit") splitParams.set("mode", "edit");
+  if (sel) splitParams.set("sel", sel);
+  if (showSplitOnly) splitParams.delete("split");
+  else splitParams.set("split", "1");
+  const splitQs = splitParams.toString();
+  const splitHref = splitQs ? `/admin/shifts?${splitQs}` : "/admin/shifts";
+
   const board = (
     <>
       <header className="flex items-center justify-between gap-4">
@@ -406,16 +433,22 @@ export default async function AllShifts({
         crewList={crewList}
         showCancelled={showCancelled}
         cancelledHref={cancelledHref}
+        showSplitOnly={showSplitOnly}
+        splitHref={splitHref}
       />
 
       {rows.length === 0 ? (
         // NOT the board's ✓ success state — a quiet day is just a quiet day.
         <Notice>
-          {selectedCrewName
-            ? `${selectedCrewName} has no shifts ${
-                scope === "today" ? "today" : `for ${scope}`
-              }.`
-            : `No shifts ${scope === "today" ? "today" : `for ${scope}`}.`}
+          {showSplitOnly
+            ? `No split candidates ${scope === "today" ? "today" : `for ${scope}`}${
+                selectedCrewName ? ` for ${selectedCrewName}` : ""
+              } — nothing has a long-gap suggestion right now.`
+            : selectedCrewName
+              ? `${selectedCrewName} has no shifts ${
+                  scope === "today" ? "today" : `for ${scope}`
+                }.`
+              : `No shifts ${scope === "today" ? "today" : `for ${scope}`}.`}
         </Notice>
       ) : (
         // Day sections (gap-5) with tighter rows inside (gap-2) give the weekend
@@ -424,7 +457,9 @@ export default async function AllShifts({
           {/* The summary caption hugs the sections; day-sections (gap-5) carry
               the rhythm between them, not around this line (@ui-reviewer). */}
           <p className="text-xs text-faint">
-            {rows.length} shift{rows.length === 1 ? "" : "s"} · {scope}
+            {rows.length}
+            {showSplitOnly ? " split candidate" : " shift"}
+            {rows.length === 1 ? "" : "s"} · {scope}
           </p>
           <div className="flex flex-col gap-5">
             {groupByDay(rows).map((day) => (

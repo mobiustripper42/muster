@@ -19,6 +19,8 @@ export function Filter({
   crewList,
   showCancelled,
   cancelledHref,
+  showSplitOnly,
+  splitHref,
 }: {
   from: string;
   to: string;
@@ -34,6 +36,10 @@ export function Filter({
   showCancelled: boolean;
   /** #416: href that flips the show-cancelled toggle, preserving the rest of state. */
   cancelledHref: string;
+  /** Is the split-candidates filter currently on? */
+  showSplitOnly: boolean;
+  /** href that flips the split-candidates toggle, preserving the rest of state. */
+  splitHref: string;
 }) {
   const chip = (active: boolean) =>
     `pressable rounded-full border px-3 py-1 ${active ? "border-accent text-accent" : "border-line text-muted"}`;
@@ -47,6 +53,8 @@ export function Filter({
     if (crew) p.set("crew", crew);
     // ...and keep Show-cancelled on across a window change (#416 persistence).
     if (showCancelled) p.set("cancelled", "1");
+    // ...and keep the split-candidates filter on across a window change.
+    if (showSplitOnly) p.set("split", "1");
     const qs = p.toString();
     return qs ? `/admin/shifts?${qs}` : "/admin/shifts";
   };
@@ -74,7 +82,7 @@ export function Filter({
   ) : null;
   // Open the More panel by default when a custom range or crew filter is actually
   // in effect, so an active advanced filter is never hidden behind the toggle.
-  const moreOpen = kind === "range" || !!crew || showCancelled;
+  const moreOpen = kind === "range" || !!crew || showCancelled || showSplitOnly;
   return (
     <div className="flex flex-col gap-2 rounded-card border border-line bg-card px-4 py-3">
       <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -109,6 +117,7 @@ export function Filter({
           {/* Keep the crew filter + Show-cancelled across an explicit date submit. */}
           {crew && <input type="hidden" name="crew" value={crew} />}
           {showCancelled && <input type="hidden" name="cancelled" value="1" />}
+          {showSplitOnly && <input type="hidden" name="split" value="1" />}
           <label className="flex flex-col gap-0.5 text-xs text-muted">
             From
             <input
@@ -146,6 +155,7 @@ export function Filter({
           {windowHidden}
           {/* Keep Show-cancelled on when the crew select auto-submits (#416). */}
           {showCancelled && <input type="hidden" name="cancelled" value="1" />}
+          {showSplitOnly && <input type="hidden" name="split" value="1" />}
           <label className="flex flex-col gap-0.5 text-xs text-muted">
             Crew
             <CrewSelect
@@ -161,13 +171,23 @@ export function Filter({
             off by default (DEC-042 current-only), on folds Cancelled shifts into
             the list greyed. No-JS toggle link (DEC-026); when on, `moreOpen` keeps
             this panel open so the active toggle is never hidden. */}
-        <div className="flex items-center pt-2 text-sm">
+        <div className="flex flex-wrap items-center gap-2 pt-2 text-sm">
           <AppLink
             href={cancelledHref}
             aria-pressed={showCancelled}
             className={chip(showCancelled)}
           >
             <span aria-hidden="true">{showCancelled ? "☑" : "☐"}</span> Show cancelled
+          </AppLink>
+          {/* Split-candidates filter — narrows the list to vessel-days Muster flagged
+              as a possible two-shift split (a long mid-day gap) that haven't been
+              split yet. No-JS toggle link (DEC-026), same shape as Show cancelled. */}
+          <AppLink
+            href={splitHref}
+            aria-pressed={showSplitOnly}
+            className={chip(showSplitOnly)}
+          >
+            <span aria-hidden="true">{showSplitOnly ? "☑" : "☐"}</span> Split candidates
           </AppLink>
         </div>
       </details>

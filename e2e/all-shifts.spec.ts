@@ -45,6 +45,28 @@ test.describe("all shifts (#100)", () => {
     await expect(page.getByText(/Nothing needs you/)).toHaveCount(0);
   });
 
+  test("Split candidates filter narrows the list to long-gap shifts", async ({
+    page,
+  }) => {
+    await signInAsAdmin(page, "spink");
+    await page.goto(`/admin/shifts?from=${today()}&to=${plusDays(10)}`);
+
+    // Default: everything shows; the gappy day (Barrel, 11:00 + 18:00) carries the
+    // "could be two shifts" advisory, a normal shift (Firkin) does not.
+    await expect(page.getByText("Barrel")).toBeVisible();
+    await expect(page.getByText("Firkin")).toBeVisible();
+    await expect(page.getByText(/could be two shifts/i)).toBeVisible();
+
+    // Toggle Split candidates (next to Show cancelled) → only the candidate remains.
+    await page.getByRole("link", { name: /Split candidates/i }).click();
+    await expect(page).toHaveURL(/split=1/);
+    await expect(page.getByText("Barrel")).toBeVisible();
+    await expect(page.getByText(/could be two shifts/i)).toBeVisible();
+    await expect(page.getByText("Firkin")).toHaveCount(0);
+    // The count caption (the "·" separator disambiguates it from the toggle label).
+    await expect(page.getByText(/split candidates? ·/i)).toBeVisible();
+  });
+
   test("the /admin hub links the all-shifts view (Part B)", async ({ page }) => {
     await signInAsAdmin(page, "spink");
     await page.goto("/admin");

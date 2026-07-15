@@ -64,7 +64,7 @@ async function seat(
   opts: {
     role?: typeof CAPTAIN;
     kind?: "required" | "supernumerary";
-    state?: "Open" | "Asked" | "Confirmed";
+    state?: "Open" | "Asked" | "Claimed" | "Confirmed" | "Bailed";
     assigned?: CrewMemberId;
   } = {},
 ): Promise<SeatId> {
@@ -131,13 +131,27 @@ describe("claimableSeatsFor (DEC-076)", () => {
     expect(await claimedIds(c)).toEqual([fillSeat]);
   });
 
-  it("only Open + required seats — not Asked/Confirmed/supernumerary", async () => {
+  it("uncommitted + required seats — Open/Asked/Bailed in, Claimed/Confirmed/supernumerary out (#440)", async () => {
     const c = await crew("c", [CAPTAIN]);
+    const other = await crew("other", [CAPTAIN]);
     const s = await shift("sh");
     const open = await seat(s, "seat-open");
-    await seat(s, "seat-asked", { state: "Asked" });
+    // An outstanding ask is not a reservation — the seat stays claimable, else
+    // the engine texting a seat would make it vanish from the browse surface.
+    const asked = await seat(s, "seat-asked", { state: "Asked" });
+    const bailed = await seat(s, "seat-bailed", { state: "Bailed" });
+    // Committed seats hold a person — out.
+    await seat(s, "seat-claimed", { state: "Claimed", assigned: other });
+    await seat(s, "seat-confirmed", { state: "Confirmed", assigned: other });
     await seat(s, "seat-sup", { kind: "supernumerary" });
-    expect(await claimedIds(c)).toEqual([open]);
+    expect((await claimedIds(c)).sort()).toEqual([asked, bailed, open].sort());
+  });
+
+  it("an AtRisk shift is claimable — the shift that most needs a body (#440)", async () => {
+    const c = await crew("c", [CAPTAIN]);
+    const s = await shift("sh", { state: "AtRisk" });
+    const bailed = await seat(s, "seat-bailed", { state: "Bailed" });
+    expect(await claimedIds(c)).toEqual([bailed]);
   });
 
   it("applies the §1.3 eligible-pool gate: lapsed MMC, PTO, double-booked all drop", async () => {

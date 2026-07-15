@@ -33,8 +33,13 @@ import { rankEligibleIds } from "./reliability-score.js";
 
 /** Seat states that mean a person is already committed for double-booking (§1.3).
  * `Asked` is excluded — an outstanding ask isn't a commitment (they may decline);
- * `Open`/`Bailed` hold nobody. */
-const COMMITTED_SEAT_STATES = new Set(["Claimed", "Confirmed"]);
+ * `Open`/`Bailed` hold nobody.
+ *
+ * Exported because it is also the definition self-claim reads *inverted*:
+ * `CLAIMABLE_SEAT_STATES` (claimable.ts) is literally the complement — a seat is
+ * claimable exactly when nobody is committed to it (#440). One definition, so the
+ * two can't drift. */
+export const COMMITTED_SEAT_STATES = new Set(["Claimed", "Confirmed"]);
 
 /** The eligible pool for one required seat: who passes, and why the rest failed. */
 export interface SeatPool {

@@ -42,7 +42,7 @@
           margin-right:2px}
 
   .panes{display:grid; grid-template-columns:1fr 348px; gap:14px; align-items:start}
-  @media (max-width:1180px){ .panes{grid-template-columns:1fr} .detail{position:static !important} }
+  @media (max-width:1180px){ .panes{grid-template-columns:1fr} .detail{position:static !important; max-width:420px} }
 
   /* ---- day grid: boat columns x time rows ---- */
   .grid{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden}
@@ -95,7 +95,10 @@
   .sect{font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:var(--faint); font-weight:600;
         margin:12px 0 5px}
   .sect:first-child{margin-top:0}
-  .row{display:flex; justify-content:space-between; gap:12px; padding:5px 0; font-size:13px}
+  /* Values right-align into a shared column. The pane is width-capped, so the
+     label/value pair never drifts to opposite edges of a wide screen. */
+  .row{display:grid; grid-template-columns:1fr auto; gap:10px; padding:5px 0; font-size:13px;
+       align-items:baseline}
   .row + .row{border-top:1px solid #f2f5f8}
   .row .lbl{color:var(--muted)}
   .row .val{font-weight:500; text-align:right}
@@ -105,6 +108,9 @@
            border:1px solid var(--line); border-radius:4px; padding:1px 4px; margin-left:5px}
   .row.total{border-top:1px solid var(--line); margin-top:3px; padding-top:8px; font-weight:600}
   .row.total .val{font-family:var(--mono)}
+  /* No header here (operator's call) — a rule carries the break from add-ons. */
+  .money-block{margin-top:12px; border-top:1px solid var(--line); padding-top:7px}
+  .money-block .row:first-child{border-top:0}
   .addbtn{width:100%; margin-top:6px; font:inherit; font-size:12px; padding:6px; border-radius:8px;
           border:1px dashed #ccd6e0; background:#fff; color:var(--accent); cursor:pointer}
   .addbtn:hover{border-color:var(--accent)}
@@ -216,7 +222,6 @@
     <!-- DETAIL -->
     <aside class="detail">
       <div class="dhd">
-        <div class="k">Reservation</div>
         <h2>Munish Bangia</h2>
         <div class="when">
           <span>Sat Jul 18 · 11:30 AM</span>
@@ -226,8 +231,6 @@
       </div>
 
       <div class="body">
-        <div class="sect">Booking guest</div>
-        <div class="row"><span class="lbl">Name</span><span class="val">Munish Bangia</span></div>
         <div class="row"><span class="lbl">Phone</span><span class="val mono">(614) 657-5340</span></div>
         <div class="row"><span class="lbl">Email</span><span class="val mono" style="font-size:11px">munishbangia.mb@gmail.com</span></div>
         <div class="row"><span class="lbl">Booked</span><span class="val mono">Jun 14</span></div>
@@ -241,12 +244,13 @@
         <div class="row"><span class="lbl">Flex insurance</span><span class="val cfg">No</span></div>
         <button class="addbtn">+ Add add-on</button>
 
-        <div class="sect">Money</div>
-        <div class="row"><span class="lbl">Fare</span><span class="val mono">$499.00</span></div>
-        <div class="row"><span class="lbl">Add-ons</span><span class="val mono">$74.85</span></div>
-        <div class="row"><span class="lbl">Tax <span class="cfg-tag">5.2%</span></span><span class="val mono">$29.94</span></div>
-        <div class="row"><span class="lbl">Service fee <span class="cfg-tag">3%</span></span><span class="val mono">$17.22</span></div>
-        <div class="row total"><span class="lbl">Paid</span><span class="val">$621.01</span></div>
+        <div class="money-block">
+          <div class="row"><span class="lbl">Fare</span><span class="val mono">$499.00</span></div>
+          <div class="row"><span class="lbl">Add-ons</span><span class="val mono">$74.85</span></div>
+          <div class="row"><span class="lbl">Tax <span class="cfg-tag">5.2%</span></span><span class="val mono">$29.94</span></div>
+          <div class="row"><span class="lbl">Service fee <span class="cfg-tag">3%</span></span><span class="val mono">$17.22</span></div>
+          <div class="row total"><span class="lbl">Paid</span><span class="val">$621.01</span></div>
+        </div>
       </div>
 
       <div class="acts">

@@ -16,15 +16,30 @@
 import { addDays, vesselDateOf } from "../config/tenant.js";
 import type { CrewMember } from "../domain/entities.js";
 import type { CrewMemberId, RoleTypeId, SeatId, ShiftId, VesselId } from "../domain/ids.js";
-import type { ShiftState } from "../domain/states.js";
+import { SEAT_STATES, type SeatState, type ShiftState } from "../domain/states.js";
 import type { Repository } from "../ports/repository.js";
 import { evaluateCandidate, nativeRole } from "./eligibility.js";
-import { committedDatesByCrew } from "./oracle.js";
+import { COMMITTED_SEAT_STATES, committedDatesByCrew } from "./oracle.js";
 
-/** Self-claim only browses shifts the system is (or will be) working — never a
- *  Crewed/AtRisk/Completed/Cancelled one. Mirrors §2.7.1. */
+/** A shift belongs on the browse surface whenever it is **not crewed** and not
+ *  terminal (#440). `AtRisk` is deliberately IN: it means escalation is exhausted
+ *  and the trip is closing in short-handed — the shift that most needs a body is
+ *  the last one that should be hidden. `Crewed`/`Completed`/`Cancelled` stay out. */
 export const CLAIMABLE_SHIFT_STATES: ReadonlySet<ShiftState> =
-  new Set<ShiftState>(["Pending", "Filling"]);
+  new Set<ShiftState>(["Pending", "Filling", "AtRisk"]);
+
+/** **Claimable = not committed** (#440) — the exact complement of
+ *  `COMMITTED_SEAT_STATES`, derived rather than restated so the two can't drift.
+ *  Resolves to `{Open, Asked, Bailed}`.
+ *
+ *  `Asked` is in: an outstanding ask is not a reservation. Excluding it meant the
+ *  engine texting a seat made that seat vanish from the browse surface, so a shift
+ *  whose every seat had been asked was uncrewed and invisible to everyone. First
+ *  response wins now, by ask-link or self-claim — and the out-raced member's
+ *  In/Out still scores (`recordResponse` logs before it reads seat state). */
+export const CLAIMABLE_SEAT_STATES: ReadonlySet<SeatState> = new Set<SeatState>(
+  SEAT_STATES.filter((s) => !COMMITTED_SEAT_STATES.has(s)),
+);
 
 /** How far ahead the browse window reaches (DEC-074/042 guardrail: today+45d). */
 export const CLAIMABLE_WINDOW_DAYS = 45;
@@ -41,10 +56,11 @@ export interface ClaimableSeat {
 }
 
 /**
- * Every Open+required seat this crew member could self-claim, applying — layered:
+ * Every uncommitted required seat this crew member could self-claim, applying —
+ * layered:
  *  1. **native role only** (DEC-076) — `seat.role === nativeRole(crew)`,
- *  2. shift state in `Pending`/`Filling`,
- *  3. seat `Open` + `required` (supernumerary out of scope),
+ *  2. shift state in `Pending`/`Filling`/`AtRisk` — i.e. not crewed, not terminal,
+ *  3. seat uncommitted (`Open`/`Asked`/`Bailed`) + `required` (supernumerary out),
  *  4. the date within `[today, today+windowDays]`,
  *  5. the existing §1.3 eligible-pool gate (`evaluateCandidate`: active, rating,
  *     MMC valid on the date, not double-booked, not on PTO).
@@ -84,7 +100,8 @@ export async function claimableSeatsFor(
   for (const shift of shifts) {
     const seats = await repo.listSeatsForShift(shift.id);
     for (const seat of seats) {
-      if (seat.state !== "Open" || seat.kind !== "required") continue;
+      if (!CLAIMABLE_SEAT_STATES.has(seat.state) || seat.kind !== "required")
+        continue;
       if (seat.role !== role) continue; // native-role-only door (DEC-076)
       const verdict = evaluateCandidate(
         { crew, credentials, ptoWindows, committedDates },

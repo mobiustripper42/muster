@@ -12,6 +12,7 @@
     "db:up": "docker compose up -d --wait",
     "db:down": "docker compose down",
     "db:migrate": "tsx db/migrate.ts",
+    "db:new-migration": "tsx db/new-migration.ts",
     "db:mint": "tsx db/mint-link.ts",
     "db:admin": "tsx db/admin.ts",
     "db:crew": "tsx db/crew.ts",

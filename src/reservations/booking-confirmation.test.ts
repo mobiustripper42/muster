@@ -1,5 +1,5 @@
 /**
- * Booking confirmation emit (11.4, DEC-119) — best-effort email + SMS.
+ * Booking confirmation emit (11.4, DEC-122) — best-effort email + SMS.
  */
 import { describe, expect, it, vi } from "vitest";
 import type { Reservation } from "../domain/entities.js";

@@ -300,13 +300,38 @@ export function runRepositoryContract(
       expect(got).toEqual(crew());
       expect(got!.reliabilityScore).toBeNull();
       expect("email" in got!).toBe(false); // omitted, not undefined
-      // Now with the optionals set.
+      expect("weekdaysOff" in got!).toBe(false); // #411: absent = never off, omitted not []
+      // Now with the optionals set (incl. a recurring weekday-off set, #411).
       await repo.saveCrewMember(
-        crew({ email: "q@x.io", manualBoost: 3, protocolOverride: "assign_then_confirm", reliabilityScore: 7 }),
+        crew({
+          email: "q@x.io",
+          manualBoost: 3,
+          protocolOverride: "assign_then_confirm",
+          reliabilityScore: 7,
+          weekdaysOff: [5, 6],
+        }),
       );
       expect(await repo.getCrewMember(CREW)).toEqual(
-        crew({ email: "q@x.io", manualBoost: 3, protocolOverride: "assign_then_confirm", reliabilityScore: 7 }),
+        crew({
+          email: "q@x.io",
+          manualBoost: 3,
+          protocolOverride: "assign_then_confirm",
+          reliabilityScore: 7,
+          weekdaysOff: [5, 6],
+        }),
       );
+    });
+
+    it("updateCrewWeekdaysOff: replaces the set, clears to omitted, leaves score/status (DEC-094/119)", async () => {
+      await repo.saveCrewMember(crew({ reliabilityScore: 7, status: "inactive" }));
+      const set = await repo.updateCrewWeekdaysOff(CREW, [6]);
+      expect(set).toMatchObject({ weekdaysOff: [6], reliabilityScore: 7, status: "inactive" });
+      // Clearing to [] round-trips as omitted (never off), engine fields untouched.
+      await repo.updateCrewWeekdaysOff(CREW, []);
+      const got = await repo.getCrewMember(CREW);
+      expect("weekdaysOff" in got!).toBe(false);
+      expect(got).toMatchObject({ reliabilityScore: 7, status: "inactive" });
+      expect(await repo.updateCrewWeekdaysOff(CREW_B, [1])).toBeNull();
     });
 
     it("updateCrewContact: touches only passed columns; leaves score/status/ratings (DEC-094)", async () => {

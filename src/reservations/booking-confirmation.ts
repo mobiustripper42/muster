@@ -1,5 +1,5 @@
 /**
- * Booking confirmation emit (11.4, DEC-119) — email + SMS to the customer, each
+ * Booking confirmation emit (11.4, DEC-122) — email + SMS to the customer, each
  * carrying the "manage my booking" capability URL, on a fresh booking.
  *
  * Two properties the webhook depends on:
@@ -30,7 +30,7 @@ export interface ConfirmationDeps {
   sms?: ChannelPort;
   /** Trusted public origin for the link (APP_BASE_URL at the edge). */
   linkBase: string;
-  /** The dedicated RESERVATION_LINK_SECRET (DEC-119). */
+  /** The dedicated RESERVATION_LINK_SECRET (DEC-122). */
   linkSecret: string;
   /**
    * Low-severity observer for a failed send — a durable log / admin notice so the
@@ -59,7 +59,7 @@ export function bookingConfirmationBody(
  * Email + SMS the customer their confirmation. Best-effort per channel; never
  * throws. Call ONLY on a fresh `booked` outcome (never on an idempotent `already`
  * — Stripe redeliveries resolve to `already`, and re-sending would re-text the
- * customer on every retry; DEC-119).
+ * customer on every retry; DEC-122).
  */
 export async function sendBookingConfirmation(
   deps: ConfirmationDeps,

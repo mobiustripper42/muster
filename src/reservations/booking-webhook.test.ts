@@ -64,7 +64,7 @@ describe("processBookingWebhook", () => {
     expect(r).toEqual({ handled: true, outcome: "booked" });
 
     const resId = reservationIdFor("cs_test_1");
-    // Confirmation fires once, with the freshly-booked reservation (11.4, DEC-119).
+    // Confirmation fires once, with the freshly-booked reservation (11.4, DEC-122).
     expect(confirm).toHaveBeenCalledOnce();
     expect(confirm.mock.calls[0]![0]).toMatchObject({ id: resId, status: "booked" });
     expect(await repo.getReservation(resId)).not.toBeNull();
@@ -94,7 +94,7 @@ describe("processBookingWebhook", () => {
     expect(
       await repo.listPaymentsForReservation(reservationIdFor("cs_test_1")),
     ).toHaveLength(1);
-    // The re-delivery resolves to `already` → NO second confirmation (DEC-119):
+    // The re-delivery resolves to `already` → NO second confirmation (DEC-122):
     // one send across both calls, or the customer is re-texted on every retry.
     expect(confirm).toHaveBeenCalledOnce();
   });
@@ -137,7 +137,7 @@ describe("processBookingWebhook", () => {
     ).toHaveLength(1);
   });
 
-  it("a throwing sendConfirmation never breaks the committed booking (best-effort, DEC-119)", async () => {
+  it("a throwing sendConfirmation never breaks the committed booking (best-effort, DEC-122)", async () => {
     const repo = new InMemoryRepository();
     await repo.saveEvent(musterEvent());
     const { deps } = makeDeps(repo);

@@ -7,7 +7,7 @@ import { getRepo } from "./repo";
 import { makeTwilioChannel } from "./sms";
 
 /**
- * Booking-confirmation wiring (11.4, DEC-119) — the edge that builds the email +
+ * Booking-confirmation wiring (11.4, DEC-122) — the edge that builds the email +
  * SMS channels and hands `processBookingWebhook` a best-effort `sendConfirmation`.
  * Mirrors `auth-delivery.ts`: dark until configured (a missing channel/secret is a
  * loud no-op in prod, never a throw — the booking already succeeded).
@@ -18,7 +18,7 @@ import { makeTwilioChannel } from "./sms";
 export async function sendReservationConfirmation(
   reservation: Reservation,
 ): Promise<void> {
-  // Structural best-effort (DEC-119): the booking is already committed, so NOTHING
+  // Structural best-effort (DEC-122): the booking is already committed, so NOTHING
   // in here — a channel send, a misconfigured env, a repo/pool hiccup — may throw
   // back to the webhook (a 500 → Stripe retries the whole event). The whole body
   // is wrapped; the core webhook also guards its call, so the promise holds at both

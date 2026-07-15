@@ -166,11 +166,11 @@ function fmtDate(iso: string): string {
 
 /** The shift's working window "11:00 AM–5:45 PM" (or just the departure) for a
  *  My-shifts card (#216) — Mono, so crew see WHEN at a glance. Null = no time. */
-function timeWindow(s: { departureTime?: string; shiftEndTime?: string }): string | null {
-  if (!s.departureTime) return null;
+function timeWindow(s: { callTime?: string; shiftEndTime?: string }): string | null {
+  if (!s.callTime) return null;
   return s.shiftEndTime
-    ? `${fmt12(s.departureTime)}–${fmt12(s.shiftEndTime)}`
-    : fmt12(s.departureTime);
+    ? `${fmt12(s.callTime)}–${fmt12(s.shiftEndTime)}`
+    : fmt12(s.callTime);
 }
 
 /** "with Jamie" / "with Jamie & Sam" / "with Jamie +2" (#216). Null when solo. */
@@ -589,8 +589,8 @@ function AskCard({ ask }: { ask: CrewAppView["asks"][number] }) {
       <div className="border-b border-line px-4 py-3">
         <div className="text-ink">
           {fmtDate(ask.date)}
-          {ask.departureTime
-            ? ` · ${fmt12(ask.departureTime)}${ask.shiftEndTime ? `–${fmt12(ask.shiftEndTime)}` : ""}`
+          {ask.callTime
+            ? ` · ${fmt12(ask.callTime)}${ask.shiftEndTime ? `–${fmt12(ask.shiftEndTime)}` : ""}`
             : ""}{" "}
           · {ask.vesselName} · {ask.roleName}.{" "}
           <b>In or out?</b>

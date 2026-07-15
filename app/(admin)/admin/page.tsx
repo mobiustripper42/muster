@@ -105,7 +105,7 @@ export default async function AdminHome({
         href="/admin/asks"
         className="rounded-card border border-line bg-card px-4 py-3 font-semibold text-accent shadow-sm"
       >
-        Ask history — every ask sent, who answered what →
+        Audit — every crew add, drop, and change →
       </AppLink>
       <AppLink
         href="/admin/payroll"

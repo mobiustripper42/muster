@@ -55,6 +55,7 @@ import type {
   VesselId,
 } from "../domain/ids.js";
 import type { ReliabilityEvent } from "../domain/reliability.js";
+import type { AuditEvent } from "../domain/audit.js";
 import type { SeatState } from "../domain/states.js";
 import type { ImportRun, ImportRunItem } from "../import/import-audit.js";
 import type { ImportRunId } from "../domain/ids.js";
@@ -95,6 +96,13 @@ export interface Repository {
   /** Flip active↔inactive (enable/disable) — a targeted status UPDATE, same
    *  lost-update safety as {@link updateCrewContact}. Null if id is unknown. */
   setCrewStatus(id: CrewMemberId, status: CrewStatus): Promise<CrewMember | null>;
+  /** Replace the recurring weekday-off set (#411, DEC-119) — a targeted UPDATE of
+   *  `weekdays_off` only, same lost-update safety as {@link updateCrewContact}.
+   *  Mon=0…Sun=6; `[]` clears. Null if id is unknown. */
+  updateCrewWeekdaysOff(
+    id: CrewMemberId,
+    weekdaysOff: number[],
+  ): Promise<CrewMember | null>;
   /** Onboard a crew member + their gating credential ATOMICALLY (DEC-094/044).
    *  A half-write (member saved, credential lost) would strand an active crew
    *  record with no MMC — eligible for nothing, and blocked from re-adding by
@@ -356,6 +364,19 @@ export interface Repository {
   logReliabilityEvent(event: ReliabilityEvent): Promise<void>;
   /** Read one crew member's events, in insertion order. */
   reliabilityEventsFor(crewMemberId: CrewMemberId): Promise<ReliabilityEvent[]>;
+  /** All reliability events across every crew, newest first — the source the
+   *  audit trail projects add/drop rows from (#400 Slice B). Mirrors listAllAsks;
+   *  the scorer still reads per-crew via reliabilityEventsFor. */
+  listAllReliabilityEvents(): Promise<ReliabilityEvent[]>;
+
+  // ── Crew audit log (append-only — #400, DEC-118) ──────────────────────────
+  /** Append a crew audit event (add/drop/change + actor). Never mutated, only
+   *  grown; separate from the reliability log and never feeds the scorer. */
+  appendAuditEvent(event: AuditEvent): Promise<void>;
+  /** All crew audit events, newest first (#400 Slice B). The /admin/audit read
+   *  unions these with the reliability projection; filtering (crew / kind) is the
+   *  read-model's job, like buildAskTrail over listAllAsks. */
+  listAuditEvents(): Promise<AuditEvent[]>;
 
   // ── SMS consent log (Twilio 10DLC opt-in — append-only audit) ──────────────
   // Written best-effort from the crew-login action when a crew member checks the

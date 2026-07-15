@@ -1,5 +1,5 @@
 /**
- * The customer "manage my booking" capability URL (11.4, DEC-119).
+ * The customer "manage my booking" capability URL (11.4, DEC-122).
  *
  * A STATELESS HMAC capability, not a stored token and not a magic link:
  *   token = base64url(HMAC-SHA256(secret, "reservation-link:v1:" + reservationId))
@@ -12,7 +12,7 @@
  * verifier (the P12 manage page) re-derives and constant-time-compares; nothing
  * is written, no migration.
  *
- * Tradeoff on the record (DEC-119): no per-single-link revocation — a leaked link
+ * Tradeoff on the record (DEC-122): no per-single-link revocation — a leaked link
  * dies only by rotating the secret (which invalidates every booking link, but NOT
  * sessions: the secret is dedicated, not `SESSION_SECRET`). Accepted because the
  * protected asset is view + request-cancel-out-of-band; money already moved

@@ -129,7 +129,8 @@ export default function CrewHelpPage() {
           </li>
           <li>
             <b className="text-ink">Android (Chrome):</b> tap the ⋮ menu, then
-            “Add to Home screen” / “Install app.”
+            “Install app” (some phones say “Add to Home screen”). If you opened
+            Muster from a text, do this in Chrome, not the in-app browser.
           </li>
         </ul>
         <span className="mt-1 block">

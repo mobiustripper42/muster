@@ -128,6 +128,14 @@ export interface CrewMember {
    * an enum. Trainee = unrated, rides a supernumerary seat to build hours.
    */
   ratings: RoleTypeId[];
+  /**
+   * Recurring weekday blackout (#411, DEC-119) — Mon=0…Sun=6 weekday indices this
+   * crew member is permanently off, subtractive like PtoWindow (DEC-009). Read by
+   * the `not_recurring_off` eligibility rule against the shift's vessel-local
+   * weekday. Optional/absent ⇒ never off (treated as `[]`); the DB column defaults
+   * to `[]`, so a persisted crew member always carries the field.
+   */
+  weekdaysOff?: number[];
   status: CrewStatus;
   /** Spink's manual thumb (§1.4): boost or floor. The score itself is not hand-edited. */
   manualBoost?: number;

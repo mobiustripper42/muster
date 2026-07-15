@@ -54,6 +54,7 @@ import type {
   VesselId,
 } from "../domain/ids.js";
 import type { ReliabilityEvent } from "../domain/reliability.js";
+import type { AuditEvent } from "../domain/audit.js";
 import type { SeatState } from "../domain/states.js";
 import type { ImportRun, ImportRunItem } from "../import/import-audit.js";
 import type { ImportRunId } from "../domain/ids.js";
@@ -104,6 +105,7 @@ export class InMemoryRepository implements Repository {
   readonly #ringOutbox = new Map<RingOutboxEntryId, RingOutboxEntry>();
   readonly #noticeOutbox = new Map<NoticeOutboxEntryId, NoticeOutboxEntry>();
   readonly #reliability: ReliabilityEvent[] = [];
+  readonly #auditEvents: AuditEvent[] = [];
   readonly #smsConsent: SmsConsent[] = [];
   // Guest contacts (#345 Part B) — keyed by reservationId, upsert-latest.
   readonly #guestContacts = new Map<string, GuestContact>();
@@ -185,6 +187,19 @@ export class InMemoryRepository implements Repository {
     const c = this.#crew.get(id);
     if (!c) return null;
     c.status = status;
+    return clone(c);
+  }
+  async updateCrewWeekdaysOff(
+    id: CrewMemberId,
+    weekdaysOff: number[],
+  ): Promise<CrewMember | null> {
+    const c = this.#crew.get(id);
+    if (!c) return null;
+    // Targeted mutation (DEC-094): only weekdaysOff, so a concurrent engine write
+    // to reliability/status isn't clobbered. Empty ⇒ omit (parity with postgres,
+    // which reads the []-default column back as absent).
+    if (weekdaysOff.length === 0) delete c.weekdaysOff;
+    else c.weekdaysOff = [...weekdaysOff];
     return clone(c);
   }
   async addCrewMemberWithCredential(m: CrewMember, cred: Credential): Promise<void> {
@@ -557,6 +572,29 @@ export class InMemoryRepository implements Repository {
     return this.#reliability
       .filter((e) => e.crewMemberId === crewMemberId)
       .map(clone);
+  }
+  async listAllReliabilityEvents(): Promise<ReliabilityEvent[]> {
+    // Match pg's `order by timestamp desc, seq desc` exactly: reverse gives
+    // insertion-desc (the seq-desc tiebreak), then a STABLE sort by timestamp
+    // desc keeps that order within equal timestamps. Same shape on both adapters
+    // so a direct caller isn't at the mercy of which repo it holds.
+    return this.#reliability
+      .map(clone)
+      .reverse()
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  }
+
+  // ── Crew audit log (append-only — #400, DEC-118) ──────────────────────────
+  async appendAuditEvent(event: AuditEvent): Promise<void> {
+    this.#auditEvents.push(clone(event));
+  }
+  async listAuditEvents(): Promise<AuditEvent[]> {
+    // Same ordering contract as listAllReliabilityEvents / pg: timestamp desc,
+    // insertion-desc tiebreak (stable sort over the reversed array).
+    return this.#auditEvents
+      .map(clone)
+      .reverse()
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
   }
 
   async recordSmsConsent(consent: SmsConsent): Promise<void> {

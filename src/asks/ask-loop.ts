@@ -51,6 +51,13 @@ export async function refreshShiftState(
 ): Promise<void> {
   const shift = await repo.getShift(shiftId);
   if (!shift) return;
+  // Lifecycle states are terminal — a seat mutation never resurrects a cancelled
+  // or completed shift. `deriveShiftState` is a pure seat-fold that can only yield
+  // Crewed/AtRisk/Filling/Pending, so without this guard a bail/decline/claim on a
+  // leftover seat (DEC-084 keeps seats on cancel) would overwrite `Cancelled` with a
+  // live state, un-hiding the shift and re-arming the tick's ask loop. Mirrors the
+  // tick's own terminal guard and #20's Completed guard in formShifts.
+  if (shift.state === "Cancelled" || shift.state === "Completed") return;
   const seats = await repo.listSeatsForShift(shiftId);
   await repo.saveShift({ ...shift, state: deriveShiftState(seats) });
 }
@@ -193,17 +200,24 @@ export async function assignPerson(
  * *when* this fires (`ASK_DRIP_INTERVAL_MINUTES`); keeping the fan-out primitive
  * here means the seed and every widen are the same one tested call. Looping it
  * until `null` blasts the remaining pool (the tick's urgent / interval-0 path).
+ *
+ * `exclude` is unioned onto the seat's own already-asked set — the tick passes it
+ * to enforce one-boat-per-day (#393): a candidate holding a live ask on another
+ * boat the same vessel-local day is skipped so same-day boats spread across
+ * people. Defaults to empty, so every non-tick caller is unchanged.
  */
 export async function widenAsk(
   repo: Repository,
   seatId: SeatId,
   now: Date,
+  exclude: ReadonlySet<CrewMemberId> = new Set(),
 ): Promise<Ask | null> {
   const seat = await repo.getSeat(seatId);
   if (!seat || (seat.state !== "Open" && seat.state !== "Asked")) return null;
   const asked = new Set(
     (await repo.listAsksForSeat(seatId)).map((a) => a.crewMemberId),
   );
+  for (const id of exclude) asked.add(id);
   const [pick] = await rankedEligible(repo, seat, now, asked);
   if (!pick) return null; // pool walked — nothing un-asked left
   if (seat.state === "Open") {
@@ -589,6 +603,8 @@ export interface VacateOutcome {
   reAsks: Ask[];
   /** The seat's state after the vacate: `Asked` if re-asked, else `Open`. */
   seatState: Seat["state"];
+  /** The occupant cleared — the audit `crew_removed` subject (#400, DEC-118). */
+  removed: CrewMemberId;
 }
 
 /**
@@ -654,7 +670,7 @@ export async function vacateSeat(
     delete opened.acquiredVia; // provenance is the occupant's — clear on re-open (#196)
     await repo.saveSeat(opened);
     await refreshShiftState(repo, seat.shiftId);
-    return { reAsks: [], seatState: "Open" };
+    return { reAsks: [], seatState: "Open", removed };
   }
 
   const reopened: Seat = { ...seat, state: "Asked" };
@@ -665,7 +681,7 @@ export async function vacateSeat(
     pool.map((c) => fireAsk(repo, reopened, c.id, now)),
   );
   await refreshShiftState(repo, seat.shiftId);
-  return { reAsks, seatState: "Asked" };
+  return { reAsks, seatState: "Asked", removed };
 }
 
 /**
@@ -676,16 +692,32 @@ export async function vacateSeat(
  * silently displaces them with no `shift_bailed` trace — intentional: an override
  * is Spink's hammer, not a bail by the displaced person. (A "notify the displaced
  * crew" concern, if it ever matters, is a UI/notification job, not domain state.)
+ *
+ * Returns the placed seat plus, when the override bumped a *different* prior
+ * occupant, that displaced crew id — the edge logs it as a `crew_removed` audit
+ * event (#400, DEC-118). `displaced` is captured before the seat overwrite.
  */
+export interface OverridePlacement {
+  seat: Seat;
+  /** The prior occupant this override bumped, if any (a different person). */
+  displaced?: CrewMemberId;
+}
+
 export async function manualOverride(
   repo: Repository,
   seatId: SeatId,
   crewMemberId: CrewMemberId,
   now: Date,
-): Promise<Seat | null> {
+): Promise<OverridePlacement | null> {
   void now;
   const seat = await repo.getSeat(seatId);
   if (!seat) return null;
+  // Capture the bumped occupant BEFORE the overwrite below (#400, DEC-118) — this
+  // is the audit `crew_removed` subject for the displacement. Only a *different*
+  // prior occupant is a displacement; re-placing the same person displaces no one.
+  const priorOccupant = seat.assignedCrewMemberId;
+  const displaced =
+    priorOccupant && priorOccupant !== crewMemberId ? priorOccupant : undefined;
   const confirmed: Seat = {
     ...seat,
     state: "Confirmed",
@@ -697,7 +729,7 @@ export async function manualOverride(
   };
   await repo.saveSeat(confirmed);
   await refreshShiftState(repo, seat.shiftId);
-  return confirmed;
+  return { seat: confirmed, ...(displaced !== undefined ? { displaced } : {}) };
 }
 
 export interface OverrideResult {
@@ -710,6 +742,8 @@ export interface OverrideResult {
    */
   code: "not_rated" | "archived" | "gone" | null;
   seat?: Seat;
+  /** The crew this override displaced, if any (#400, DEC-118) — a `crew_removed`. */
+  displaced?: CrewMemberId;
 }
 
 /**
@@ -738,7 +772,13 @@ export async function overrideSeat(
   // still honor `archived`, or a crafted post could re-seat someone removed.
   if (crew.status === "archived") return { code: "archived" };
   const placed = await manualOverride(repo, seatId, crewMemberId, now);
-  return placed ? { code: null, seat: placed } : { code: "gone" };
+  return placed
+    ? {
+        code: null,
+        seat: placed.seat,
+        ...(placed.displaced !== undefined ? { displaced: placed.displaced } : {}),
+      }
+    : { code: "gone" };
 }
 
 /**

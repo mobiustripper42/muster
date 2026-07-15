@@ -35,12 +35,12 @@ export type MessageKind = "ask" | "magic_link" | "receipt" | "admin_alert";
  * reads `phone`; an email/dev-stub reads `email`; a web-link adapter keys off
  * `crewMemberId` to mint a sign-in link).
  *
- * A discriminated union, NOT one shape with an optional `crewMemberId` (DEC-119):
+ * A discriminated union, NOT one shape with an optional `crewMemberId` (DEC-122):
  *  - `CrewRecipient` — the engine ALWAYS knows the crew member (records are
  *    operator-created, DEC-010), so a crew relay carries a required `crewMemberId`.
  *    The crew-link adapters feed it straight into `issueMagicLink`; keeping it
  *    required is what stops a builder silently emitting a link with no subject.
- *  - `GuestRecipient` — a booking customer (DEC-119) is not a crew member: email
+ *  - `GuestRecipient` — a booking customer (DEC-122) is not a crew member: email
  *    and/or phone, no `crewMemberId`. Only the guest-safe `receipt` send path
  *    (composed body, no minted crew link) ever addresses one.
  */
@@ -60,12 +60,12 @@ export type Recipient = CrewRecipient | GuestRecipient;
  * Narrow a recipient to its crew `crewMemberId` for a crew-relay send (the ask,
  * a magic link, a notice/ring). Throws — LOUD, never a silent `undefined` into a
  * minted link — if handed a guest recipient, which by construction never reaches
- * a crew branch (DEC-119). Turns the union's `CrewMemberId | undefined` back into
+ * a crew branch (DEC-122). Turns the union's `CrewMemberId | undefined` back into
  * the `CrewMemberId` the crew adapters require.
  */
 export function requireCrewId(to: Recipient): CrewMemberId {
   if (to.crewMemberId === undefined) {
-    throw new Error("crew relay requires a crewMemberId recipient (DEC-119)");
+    throw new Error("crew relay requires a crewMemberId recipient (DEC-122)");
   }
   return to.crewMemberId;
 }

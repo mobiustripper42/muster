@@ -68,7 +68,7 @@ describe("doorbell-ring relay loop (#118, DEC-073)", () => {
     // Two ring entries, each a deep-link into the thread (the §7.5 inlined content).
     let view = await buildRingOutboxView(repo);
     expect(view.pending.map((c) => c.crewName).sort()).toEqual(["Alice", "Bob"]);
-    expect(view.pending[0]!.body).toBe("dock moved to slip C"); // single short note → content
+    expect(view.pending[0]!.body).toBe("You have a new Muster message"); // bare notification, not the note text (#387)
     expect(view.pending[0]!.link).toContain(`thread=${encodeURIComponent(String(THREAD))}`);
     expect(view.sent).toHaveLength(0);
 

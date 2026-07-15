@@ -29,7 +29,7 @@ export interface WebhookDeps {
    */
   alertPaidButUnbooked: (message: string) => Promise<void>;
   /**
-   * Email + SMS the customer their booking-management link (11.4, DEC-119). Fires ONLY on a
+   * Email + SMS the customer their booking-management link (11.4, DEC-122). Fires ONLY on a
    * fresh `booked` outcome — never on the idempotent `already` (Stripe redelivers
    * `checkout.session.completed`; each redelivery resolves to `already`, and re-sending would
    * re-notify the customer every retry). MUST be best-effort — a confirmation failure never
@@ -91,12 +91,12 @@ export async function processBookingWebhook(
 
   if (result.outcome === "booked" || result.outcome === "already") {
     // Confirm ONLY the fresh booking — never the idempotent `already` (a Stripe
-    // redelivery), or the customer gets re-texted on every retry (DEC-119).
+    // redelivery), or the customer gets re-texted on every retry (DEC-122).
     if (result.outcome === "booked") {
       // Structurally best-effort: the booking is committed, so a confirmation
       // failure — from a channel OR from anything upstream in the injected dep —
       // must never bubble to a 500 (Stripe would retry the whole webhook). The
-      // dep owns surfacing its own failure detail (DEC-119); here we only ensure
+      // dep owns surfacing its own failure detail (DEC-122); here we only ensure
       // it can't break the booking, whatever dep is wired in.
       try {
         await deps.sendConfirmation(result.reservation);

@@ -16,6 +16,7 @@ import {
   unstaffTraineeSeat,
 } from "@core/builder/manning.js";
 import { asId } from "@core/domain/ids.js";
+import { logCrewAdded, logCrewRemoved } from "@core/oracle/audit-log.js";
 import { readSubject } from "../../../../lib/auth";
 import { cockpitHref } from "../../../../lib/cockpit-href";
 import { forwardToOutbox, forwardNoticesToOutbox } from "../../../../lib/channel";
@@ -63,6 +64,8 @@ async function gate(formData: FormData): Promise<{
   seatId: string;
   ctx: string | null;
   back: string;
+  /** The acting admin's crew id (DEC-092) — the audit actor (#400, DEC-118). */
+  actorId: string;
 }> {
   const subject = await readSubject();
   const shiftId = String(formData.get("shiftId") ?? "");
@@ -74,7 +77,22 @@ async function gate(formData: FormData): Promise<{
     seatId: String(formData.get("seatId") ?? ""),
     ctx,
     back: cockpitHref(shiftId, ctx),
+    actorId: subject.id,
   };
+}
+
+/**
+ * Best-effort crew audit append (#400, DEC-118) — post-mutation and NOT
+ * transactional with the seat write: the domain action already committed, so an
+ * audit hiccup must never fail it (same posture as `notify` above and the ask
+ * loop's reliability appends). A crash in the gap drops one audit row.
+ */
+async function audit(fn: () => Promise<unknown>): Promise<void> {
+  try {
+    await fn();
+  } catch {
+    // best-effort — the seat write stands regardless
+  }
 }
 
 function finish(shiftId: string, ctx: string | null, param: string): never {
@@ -170,18 +188,20 @@ export async function confirmInto(formData: FormData): Promise<void> {
 }
 
 export async function overrideTo(formData: FormData): Promise<void> {
-  const { shiftId, crewMemberId, seatId, ctx, back } = await gate(formData);
+  const { shiftId, crewMemberId, seatId, ctx, back, actorId } = await gate(formData);
   if (!seatId || !crewMemberId) redirect(back);
+  const now = new Date();
   let param: string;
   try {
+    const repo = getRepo();
     // Role-guarded (DEC-064): the override bypasses pool/rank/state but NOT the
     // role-competency floor — a mate can't be placed as captain even by a crafted
     // form post. Captains still place into mate seats (rated for both).
     const out = await overrideSeat(
-      getRepo(),
+      repo,
       asId<"SeatId">(seatId),
       asId<"CrewMemberId">(crewMemberId),
-      new Date(),
+      now,
     );
     if (out.code === "not_rated") {
       param = "act_error=not_rated";
@@ -193,6 +213,25 @@ export async function overrideTo(formData: FormData): Promise<void> {
       param = `overrode=${encodeURIComponent(crewMemberId)}`;
       // DEC-084: the placed crew get a "you're on this shift" notice.
       await notify(crewMemberId, "added", shiftId);
+      // Audit (#400, DEC-118): the operator force-placed this crew; if the override
+      // bumped a different prior occupant, that's a distinct `crew_removed`.
+      await audit(() =>
+        logCrewAdded(repo, asId<"CrewMemberId">(crewMemberId), { kind: "admin", id: actorId }, now, {
+          seatId: asId<"SeatId">(seatId),
+          shiftId: asId<"ShiftId">(shiftId),
+          via: "operator",
+          ...(out.displaced !== undefined ? { displaced: out.displaced } : {}),
+        }),
+      );
+      if (out.displaced !== undefined) {
+        await audit(() =>
+          logCrewRemoved(repo, out.displaced!, { kind: "admin", id: actorId }, now, {
+            seatId: asId<"SeatId">(seatId),
+            shiftId: asId<"ShiftId">(shiftId),
+            reason: "displaced",
+          }),
+        );
+      }
     }
   } catch {
     param = "act_error=unavailable";
@@ -207,8 +246,9 @@ export async function overrideTo(formData: FormData): Promise<void> {
  * correction never dings the removed crew's record.
  */
 export async function removeSeat(formData: FormData): Promise<void> {
-  const { shiftId, seatId, ctx, back } = await gate(formData);
+  const { shiftId, seatId, ctx, back, actorId } = await gate(formData);
   if (!seatId) redirect(back);
+  const now = new Date();
   let param: string;
   try {
     const repo = getRepo();
@@ -222,12 +262,20 @@ export async function removeSeat(formData: FormData): Promise<void> {
     } else {
       const occupant = seat.assignedCrewMemberId;
       try {
-        const out = await vacateSeat(repo, seat.id, new Date(), occupant);
+        const out = await vacateSeat(repo, seat.id, now, occupant);
         param = `removed=${encodeURIComponent(String(occupant))}`;
         // Edge channel wiring (DEC-030): the re-asks → the pilot outbox.
         await forwardToOutbox(out.reAsks);
         // DEC-084: the removed crew get a "you're off this shift" notice.
         await notify(String(occupant), "removed", shiftId);
+        // Audit (#400, DEC-118): a no-penalty misassignment removal by the operator.
+        await audit(() =>
+          logCrewRemoved(repo, out.removed, { kind: "admin", id: actorId }, now, {
+            seatId: seat.id,
+            shiftId: asId<"ShiftId">(shiftId),
+            reason: "misassignment",
+          }),
+        );
       } catch {
         // Occupant swapped between reads (or a write raced) — reload, don't
         // clear a different person than Spink saw.
@@ -348,21 +396,33 @@ export async function removeManningSeat(formData: FormData): Promise<void> {
  * finally reach the trainee.
  */
 export async function staffTrainee(formData: FormData): Promise<void> {
-  const { shiftId, crewMemberId, seatId, ctx, back } = await gate(formData);
+  const { shiftId, crewMemberId, seatId, ctx, back, actorId } = await gate(formData);
   if (!seatId || !crewMemberId) redirect(back);
+  const now = new Date();
   let param: string;
   try {
+    const repo = getRepo();
     const out = await staffTraineeSeat(
-      getRepo(),
+      repo,
       asId<"SeatId">(seatId),
       asId<"CrewMemberId">(crewMemberId),
-      new Date(),
+      now,
     );
     if (out.code === null) {
       param = `trainee_on=${encodeURIComponent(crewMemberId)}`;
       // DEC-084: the rider gets a "you're on this shift" notice (best-effort,
       // operator excluded inside notify).
       await notify(crewMemberId, "added", shiftId);
+      // Audit (#400, DEC-118): operator force-placed a trainee — same
+      // operator-authority add DEC-118 tracks; deferred from Slice A, closed here.
+      await audit(() =>
+        logCrewAdded(repo, asId<"CrewMemberId">(crewMemberId), { kind: "admin", id: actorId }, now, {
+          seatId: asId<"SeatId">(seatId),
+          shiftId: asId<"ShiftId">(shiftId),
+          via: "operator",
+          reason: "trainee",
+        }),
+      );
     } else if (out.code === "ineligible") {
       param = "act_error=trainee_ineligible";
     } else if (out.code === "occupied") {
@@ -383,12 +443,14 @@ export async function staffTrainee(formData: FormData): Promise<void> {
  * The removed rider gets the DEC-084 "you're off" notice.
  */
 export async function unstaffTrainee(formData: FormData): Promise<void> {
-  const { shiftId, crewMemberId, seatId, ctx, back } = await gate(formData);
+  const { shiftId, crewMemberId, seatId, ctx, back, actorId } = await gate(formData);
   if (!seatId || !crewMemberId) redirect(back);
+  const now = new Date();
   let param: string;
   try {
+    const repo = getRepo();
     const out = await unstaffTraineeSeat(
-      getRepo(),
+      repo,
       asId<"SeatId">(seatId),
       asId<"CrewMemberId">(crewMemberId),
     );
@@ -396,6 +458,15 @@ export async function unstaffTrainee(formData: FormData): Promise<void> {
       param = `trainee_off=${encodeURIComponent(crewMemberId)}`;
       // DEC-084: the removed rider gets a "you're off" notice.
       await notify(crewMemberId, "removed", shiftId);
+      // Audit (#400, DEC-118): operator pulled a trainee — the drop half, closed
+      // here (deferred from Slice A).
+      await audit(() =>
+        logCrewRemoved(repo, asId<"CrewMemberId">(crewMemberId), { kind: "admin", id: actorId }, now, {
+          seatId: asId<"SeatId">(seatId),
+          shiftId: asId<"ShiftId">(shiftId),
+          reason: "trainee",
+        }),
+      );
     } else if (out.code === "raced") {
       param = "act_error=raced";
     } else {

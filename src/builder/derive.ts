@@ -15,7 +15,14 @@ import type { Event, Seat, Shift, Vessel } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import type { ShiftId } from "../domain/ids.js";
 import type { ShiftState } from "../domain/states.js";
-import { TENANT_TIMEZONE, zonedWallClockToInstant } from "../config/tenant.js";
+import {
+  addDays,
+  envWallClock,
+  mondayZeroWeekday,
+  TENANT_TIMEZONE,
+  vesselDateOf,
+  zonedWallClockToInstant,
+} from "../config/tenant.js";
 
 /**
  * Required seats for a shift, derived by iterating the vessel's manning list.
@@ -100,6 +107,36 @@ function envPositiveNumber(name: string, fallback: number): number {
 }
 
 /**
+ * A day-of-week env knob, **Mon=0 … Sun=6**, bounded `[0,6]`. `envPositiveInt`
+ * won't do — it rejects the valid `0` (Monday) and has no upper bound. Garbage or
+ * out-of-range degrades to `fallback` (poison-resistant, same as the other knobs).
+ */
+function envDayOfWeek(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 0 && n <= 6 ? n : fallback;
+}
+
+/**
+ * A **space-separated set** of weekdays (Mon=0 … Sun=6) — e.g. `"4 5 6"` = Fri Sat
+ * Sun. Empty/unset → **empty set = weekend batching OFF** (flat behaviour, the
+ * backward-compat / other-tenant default). Non-integer or out-of-range tokens are
+ * dropped individually, so a fully-garbage value degrades to off rather than
+ * throwing (a config throw kills the cron).
+ */
+function envDaySet(name: string): Set<number> {
+  const out = new Set<number>();
+  const raw = process.env[name];
+  if (!raw) return out;
+  for (const tok of raw.trim().split(/\s+/)) {
+    const n = Number(tok);
+    if (Number.isInteger(n) && n >= 0 && n <= 6) out.add(n);
+  }
+  return out;
+}
+
+/**
  * Staffing-horizon lead, in **days** — how far ahead of the trip the system
  * starts working a shift (Pending→Filling). The tune-later knob (DEC-062):
  * **env-overridable** via `STAFFING_HORIZON_LEAD_DAYS`, a **positive number**
@@ -111,6 +148,35 @@ export const STAFFING_HORIZON_LEAD_DAYS = envPositiveNumber(
   "STAFFING_HORIZON_LEAD_DAYS",
   7,
 );
+
+/**
+ * Weekend-batch trigger policy (DEC-116) — extends DEC-088's "decouple ask
+ * send-time from the trip's clock" from the hour axis to the day. A trip whose
+ * vessel-local weekday ∈ `weekendDays` fires its asks on ONE shared instant —
+ * that week's `triggerDay` at `askTime` — so all of Fri/Sat/Sun collapse onto a
+ * single (e.g. Monday 09:00) send instead of each tripping its own flat lead.
+ *
+ * `STAFFING_HORIZON_WEEKEND_DAYS` empty/unset ⇒ **off** (flat behaviour,
+ * unchanged). `STAFFING_HORIZON_LEAD_DAYS` keeps its name and is now "the
+ * non-cohort lead" — every non-weekend trip-day still uses it. All three knobs are
+ * env-overridable + poison-resistant. `triggerDay` values 1–5 walk into the prior
+ * week (`(7−triggerDay)%7` days before that Monday) — only `0` (Mon) and `6` (the
+ * Sun before) are sensible; documented, not enforced.
+ */
+export interface WeekendCohortPolicy {
+  /** Mon=0 … Sun=6 trip-days that use the shared trigger. Empty ⇒ off. */
+  weekendDays: ReadonlySet<number>;
+  /** Mon=0 … Sun=6 — the weekday the batch fires on (0 = that week's Monday). */
+  triggerDay: number;
+  /** "HH:MM" vessel-local send time. */
+  askTime: string;
+}
+
+export const WEEKEND_COHORT_POLICY: WeekendCohortPolicy = {
+  weekendDays: envDaySet("STAFFING_HORIZON_WEEKEND_DAYS"),
+  triggerDay: envDayOfWeek("STAFFING_HORIZON_TRIGGER_DAY", 0),
+  askTime: envWallClock("STAFFING_HORIZON_WEEKEND_ASK_TIME", "09:00"),
+};
 
 /**
  * Xola **pull-window** lead, in **days** — how far ahead the importer fetches
@@ -209,17 +275,34 @@ export function scheduledStarts(
 }
 
 /**
- * Staffing-horizon instant for a set of events — the earliest scheduled event
- * minus `leadDays`. Pure; derived, never stored (DEC-022). `null` when there's
- * no scheduled event to anchor to (a cancelled-out or empty group).
+ * Staffing-horizon instant for a set of events. Pure; derived, never stored
+ * (DEC-022). `null` when there's no scheduled event to anchor to.
+ *
+ * Default (`cohort.weekendDays` empty) is the flat DEC-022/062 lead: earliest
+ * scheduled event minus `leadDays`. When weekend batching is on (DEC-116) and the
+ * trip's **vessel-local** weekday is a configured weekend day, the horizon is
+ * instead that week's shared trigger — `triggerDay` at `askTime` — so all of
+ * Fri/Sat/Sun collapse onto one send. Weekday derives from `vesselDateOf`, never
+ * `getUTCDay` on the raw instant, or an evening-Eastern trip lands in the wrong
+ * day (DEC-032-class).
  */
 export function staffingHorizonFromEvents(
   events: Event[],
   leadDays: number = STAFFING_HORIZON_LEAD_DAYS,
   tz: string = TENANT_TIMEZONE,
+  cohort: WeekendCohortPolicy = WEEKEND_COHORT_POLICY,
 ): Date | null {
   const start = earliestScheduledStart(events, tz);
   if (start === null) return null;
+  if (cohort.weekendDays.size > 0) {
+    const tripDate = vesselDateOf(start, tz);
+    const weekday = mondayZeroWeekday(tripDate);
+    if (cohort.weekendDays.has(weekday)) {
+      const anchorMonday = addDays(tripDate, -weekday);
+      const triggerDate = addDays(anchorMonday, -((7 - cohort.triggerDay) % 7));
+      return zonedWallClockToInstant(triggerDate, cohort.askTime, tz);
+    }
+  }
   return new Date(start.getTime() - leadDays * DAY_MS);
 }
 
@@ -229,12 +312,14 @@ export function staffingHorizonFor(
   allEvents: Event[],
   leadDays: number = STAFFING_HORIZON_LEAD_DAYS,
   tz: string = TENANT_TIMEZONE,
+  cohort: WeekendCohortPolicy = WEEKEND_COHORT_POLICY,
 ): Date | null {
   const ids = new Set(shift.eventIds);
   return staffingHorizonFromEvents(
     allEvents.filter((e) => ids.has(e.id)),
     leadDays,
     tz,
+    cohort,
   );
 }
 
@@ -248,10 +333,17 @@ export function staffingHorizonFor(
  * `EXHAUSTED_THRESHOLD_HOURS`), by design (DEC-031): the displayed deadline IS
  * the escalation instant, so the two can't drift. Distinct from — and the
  * *closing* counterpart to — the staffing horizon, which is the window's
- * *opening* (Pending→Filling, DEC-022). Tune-later code constant; tenant-config
- * later, like `STAFFING_HORIZON_LEAD_DAYS`.
+ * *opening* (Pending→Filling, DEC-022).
+ *
+ * **Env-overridable** via `FILL_DEADLINE_HOURS` (DEC-115, mirroring DEC-062's
+ * `STAFFING_HORIZON_LEAD_DAYS`), a **positive number** (fractional hours allowed;
+ * garbage falls back), default **48** (2 days). The operator tunes it per deploy
+ * — e.g. a Vercel env `FILL_DEADLINE_HOURS=72` for a 3-day At-Risk window — with
+ * no code change. **Double-duty (DEC-031):** this same instant is the shown "fills
+ * by" deadline AND the route-(b) At-Risk boarding instant, so a bump moves both by
+ * design. The code default stays 48; #322 shipped the knob, not a value change.
  */
-export const FILL_DEADLINE_HOURS = 48;
+export const FILL_DEADLINE_HOURS = envPositiveNumber("FILL_DEADLINE_HOURS", 48);
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -306,6 +398,18 @@ const MINUTE_MS = 60 * 1000;
 export const CALL_LEAD_MINUTES = 45;
 
 /**
+ * Minutes a crew member stays AFTER the last trip returns to secure the boat —
+ * the post-trip teardown buffer (#275, amends DEC-041). Distinct from, and
+ * genuinely SHORTER than, the pre-trip `CALL_LEAD_MINUTES`: getting ready to sail
+ * (fuel, safety brief, cast off) is more than tying up at the end. Was previously
+ * the call lead reused symmetrically (a simplification that ran "back" long — a
+ * 4pm last trip read as "back ~6pm"); split out so the shift-end reflects reality.
+ * Flat, fleet-wide, plain constant — same posture as its siblings until a per-
+ * vessel resolver lands.
+ */
+export const TEARDOWN_MINUTES = 25;
+
+/**
  * Flat trip length in minutes — the (c) stopgap source for a trip's duration
  * (DEC-041), sibling to `CALL_LEAD_MINUTES`. There is no per-event duration in
  * the model yet (Xola exposes no length; no operator-config surface): until a
@@ -334,11 +438,11 @@ export function latestScheduledStart(
 
 /**
  * The instant a shift "ends" (DEC-041): the latest scheduled departure + the
- * trip length + the call lead reused as a post-trip teardown buffer ("report
- * time" is the same lead, applied symmetrically at both ends — not a new
- * constant). Pure; derived, never stored. `null` when no scheduled event
- * anchors the shift. With a flat trip length the latest *departure* yields the
- * latest *end*; when per-event durations land this becomes max(start+duration).
+ * trip length + the post-trip `TEARDOWN_MINUTES` (#275 — a shorter, distinct
+ * buffer than the pre-trip call lead; teardown < prep). Pure; derived, never
+ * stored. `null` when no scheduled event anchors the shift. With a flat trip
+ * length the latest *departure* yields the latest *end*; when per-event durations
+ * land this becomes max(start+duration).
  */
 export function shiftEndFromEvents(
   events: Event[],
@@ -347,7 +451,7 @@ export function shiftEndFromEvents(
   const last = latestScheduledStart(events, tz);
   if (last === null) return null;
   return new Date(
-    last.getTime() + (TRIP_DURATION_MINUTES + CALL_LEAD_MINUTES) * MINUTE_MS,
+    last.getTime() + (TRIP_DURATION_MINUTES + TEARDOWN_MINUTES) * MINUTE_MS,
   );
 }
 
@@ -394,12 +498,14 @@ export interface SplitSuggestion {
  *
  *  - **large-gap** — the dead time between one trip's teardown and the next's prep
  *    exceeds `gapMinutes`. Each trip occupies `[dep − CALL_LEAD, dep +
- *    TRIP_DURATION + CALL_LEAD]`, so the dead gap between consecutive departures is
- *    `Δdep − (TRIP_DURATION + 2·CALL_LEAD)`. The largest qualifying gap is reported
- *    (it names the split point) — gap wins over span.
+ *    TRIP_DURATION + TEARDOWN]` (#275 — the trailing buffer is the shorter
+ *    teardown, not the call lead), so the dead gap between consecutive departures
+ *    is `Δdep − (TRIP_DURATION + TEARDOWN + CALL_LEAD)`. The largest qualifying gap
+ *    is reported (it names the split point) — gap wins over span.
  *  - **long-span** — no single big gap, but the whole day (first prep → last
- *    teardown = `Δ(first→last) + TRIP_DURATION + 2·CALL_LEAD`) exceeds `spanMinutes`;
- *    one crew across it is a judgment call, hence a *suggestion*, not an auto-rule.
+ *    teardown = `Δ(first→last) + TRIP_DURATION + CALL_LEAD + TEARDOWN`) exceeds
+ *    `spanMinutes`; one crew across it is a judgment call, hence a *suggestion*,
+ *    not an auto-rule.
  *
  * `null` = no suggestion (fewer than two scheduled trips, or everything contiguous).
  * Cancelled events are ignored — a cancelled mid-day trip does not bridge the gap
@@ -421,9 +527,11 @@ export function suggestSplit(
   const last = trips[trips.length - 1];
   if (!first || !last) return null; // unreachable (length ≥ 2) — narrows for noUncheckedIndexedAccess
 
-  // Consecutive trips leave `Δdep − (TRIP_DURATION + 2·CALL_LEAD)` of dead time
-  // between one's teardown and the next's prep.
-  const occupiedMin = TRIP_DURATION_MINUTES + 2 * CALL_LEAD_MINUTES;
+  // Consecutive trips leave `Δdep − (TRIP_DURATION + TEARDOWN + CALL_LEAD)` of dead
+  // time between one trip's teardown and the next's prep (#275 — teardown ≠ call
+  // lead; same buffer split the shift-end got).
+  const occupiedMin =
+    TRIP_DURATION_MINUTES + TEARDOWN_MINUTES + CALL_LEAD_MINUTES;
 
   let worst: { minutes: number; before: string; after: string } | null = null;
   let prev = first;

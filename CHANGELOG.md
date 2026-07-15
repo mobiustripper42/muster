@@ -1,5 +1,55 @@
 # Changelog
 
+## [1.0.13] - 2026-07-15
+- PR #435: admin/shifts "Split candidates" filter — narrow the board to long-gap vessel-days worth a split (#434)
+
+## [1.0.12] - 2026-07-15
+- PR #433: /crew/open filter — default 7 Days, presets 2 Weeks / 30 Days (drop "This weekend") (#414)
+
+## [1.0.11] - 2026-07-14
+- PR #427: Recurring weekday time-off — backend + `db:crew days-off` CLI (#411, DEC-119)
+- PR #429: Reliability retune — reward responsiveness (In+2/Out+1), bail floor/ramp recalibrated (#425, DEC-120)
+- PR #430: Crew UI for recurring weekday time-off, folded into /crew/time-off (#426)
+
+## [1.0.10] - 2026-07-14
+- PR #423: Guard refreshShiftState against Cancelled/Completed shifts — a seat mutation (bail/decline/claim) no longer resurrects a cancelled shift and re-fires asks (#422)
+
+## [1.0.9] - 2026-07-14
+- PR #417: Hide cancelled/completed shifts on crew My-shifts + asks (#415)
+- PR #418: Admin Shifts "Show cancelled" toggle — additive, below the fold (#416)
+- PR #420: Crew My-shifts + ask card show call→end window, not departure→end (#419)
+- PR #421: admin/shifts filter — crew select auto-submits, drop 1px lines, keep ?cancelled
+
+## [1.0.8] - 2026-07-13
+- PR #409: db:crew rank — crew by reliability score, best first (#404)
+- PR #410: Fix stale audit e2e (repointed from ask-trail to the audit list)
+
+## [1.0.7] - 2026-07-13
+- PR #407: Audit trail shows all 14 crew events, one list on /admin/asks (#400)
+
+## [1.0.6] - 2026-07-13
+- PR #402: Crew audit log — audit_events store + edge emitters (#400 Slice A, DEC-118)
+- PR #406: Crew audit trail — one list on /admin/asks, crew + kind filters (#400 Slice B)
+
+## [1.0.5] - 2026-07-13
+- PR #356: Admin-gate fallback — switch-up / sign-in instead of a dead end (#352)
+- PR #358: Shifts filters — "2 weeks out" + "30 days" presets, filter-by-crew (#321, #330)
+- PR #359: Crew iCal calendar feed — subscribable per-crew shift feed (#355)
+- PR #362: Reservations go-live docs — DEC-105–111 + Phase 11/12 plan
+- PR #363: Drop the inert shifts.locked_at column (#256)
+- PR #364: Reserve the scrollbar gutter on the two-pane scroll columns (#268)
+- PR #375: Extract Filter + ShiftRow from admin/shifts/page.tsx (#357)
+- PR #377: Keep the selected row in view on the two-pane board (#365)
+- PR #378: Make FILL_DEADLINE_HOURS env-tunable (#322)
+- PR #379: Split teardown from the call lead in the shift-end (#275)
+- PR #380: Crew "other shifts today" on the shift card (#315)
+- PR #385: Import — don't flag yesterday's un-boated trips as "assign a boat" (#384)
+- PR #388: Doorbell SMS — bare "You have a new Muster message [link]" (#387)
+- PR #394: PWA — service worker + manifest screenshots so Android/desktop offer install (#391)
+- PR #395: Component size guideline — 200 → ~300 LOC (guideline, not a rule)
+- PR #398: Weekend-batch staffing trigger — Fri/Sat/Sun go live together, ships inert (#392, DEC-116)
+- PR #399: Weekend-batch ask distribution — one text/person, one boat/day, ships inert (#393, DEC-117)
+
 ## [1.0.4] - 2026-07-10
 - PR #334: Time-off surfaces — crew add/remove their own blackout dates + admin view-and-set for anyone (#332)
 - PR #337: Ask-history browse surface — every ask fired, per crew/day/shift (#331 half 1)

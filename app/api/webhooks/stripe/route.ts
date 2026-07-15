@@ -43,7 +43,7 @@ export async function POST(req: Request): Promise<Response> {
           // DEC-095 all-admins path, app/lib/alert.ts) — the refund itself stays manual.
           console.error(`[reservations] ${message}`);
         },
-        // Best-effort email + SMS of the manage link on a fresh booking (11.4, DEC-119).
+        // Best-effort email + SMS of the manage link on a fresh booking (11.4, DEC-122).
         sendConfirmation: sendReservationConfirmation,
       },
       rawBody,

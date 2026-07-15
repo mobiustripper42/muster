@@ -1,5 +1,5 @@
 /**
- * The stateless-HMAC booking capability URL (11.4, DEC-119).
+ * The stateless-HMAC booking capability URL (11.4, DEC-122).
  */
 import { describe, expect, it } from "vitest";
 import { asId } from "../domain/ids.js";

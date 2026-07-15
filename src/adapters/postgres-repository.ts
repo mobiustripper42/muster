@@ -61,6 +61,7 @@ import type {
   VesselId,
 } from "../domain/ids.js";
 import type { ReliabilityEvent } from "../domain/reliability.js";
+import type { AuditEvent } from "../domain/audit.js";
 import type { SeatState } from "../domain/states.js";
 import type { ImportRunId } from "../domain/ids.js";
 import type {
@@ -133,6 +134,11 @@ const toCrew = (r: any): CrewMember => ({
   ...opt("manualBoost", r.manual_boost),
   ...opt("manualFloor", r.manual_floor),
   ...opt("protocolOverride", r.protocol_override),
+  // Optional like the fields above — omitted (not []) when the crew member has no
+  // recurring days off, so absence round-trips (the DB column defaults to []).
+  ...((r.weekdays_off as number[] | null)?.length
+    ? { weekdaysOff: r.weekdays_off as number[] }
+    : {}),
 });
 
 const toCredential = (r: any): Credential => ({
@@ -298,6 +304,16 @@ const toReliability = (r: any): ReliabilityEvent => ({
   metadata: r.metadata,
 });
 
+const toAudit = (r: any): AuditEvent => ({
+  id: asId<"AuditEventId">(r.id),
+  crewMemberId: asId<"CrewMemberId">(r.crew_member_id),
+  actorKind: r.actor_kind,
+  ...(r.actor_id != null ? { actorId: r.actor_id } : {}),
+  type: r.type,
+  timestamp: r.timestamp,
+  metadata: r.metadata,
+});
+
 const toSmsConsent = (r: any): SmsConsent => ({
   id: asId<"SmsConsentId">(r.id),
   crewMemberId: asId<"CrewMemberId">(r.crew_member_id),
@@ -433,12 +449,13 @@ export class PostgresRepository implements Repository {
   async saveCrewMember(c: CrewMember): Promise<void> {
     await this.#pool.query(
       `insert into crew_members
-         (id, name, phone, email, ratings, status, manual_boost, manual_floor, protocol_override, reliability_score)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         (id, name, phone, email, ratings, status, manual_boost, manual_floor, protocol_override, reliability_score, weekdays_off)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        on conflict (id) do update set
          name=excluded.name, phone=excluded.phone, email=excluded.email, ratings=excluded.ratings,
          status=excluded.status, manual_boost=excluded.manual_boost, manual_floor=excluded.manual_floor,
-         protocol_override=excluded.protocol_override, reliability_score=excluded.reliability_score`,
+         protocol_override=excluded.protocol_override, reliability_score=excluded.reliability_score,
+         weekdays_off=excluded.weekdays_off`,
       [
         c.id,
         c.name,
@@ -450,6 +467,7 @@ export class PostgresRepository implements Repository {
         c.manualFloor ?? null,
         c.protocolOverride ?? null,
         c.reliabilityScore,
+        JSON.stringify(c.weekdaysOff ?? []),
       ],
     );
   }
@@ -485,6 +503,18 @@ export class PostgresRepository implements Repository {
     );
     return rows[0] ? toCrew(rows[0]) : null;
   }
+  async updateCrewWeekdaysOff(
+    id: CrewMemberId,
+    weekdaysOff: number[],
+  ): Promise<CrewMember | null> {
+    // Targeted UPDATE (DEC-094) — touches only weekdays_off, so a concurrent engine
+    // write to reliability/status/ratings isn't clobbered.
+    const { rows } = await this.#pool.query(
+      "update crew_members set weekdays_off=$1 where id=$2 returning *",
+      [JSON.stringify(weekdaysOff), id],
+    );
+    return rows[0] ? toCrew(rows[0]) : null;
+  }
   async addCrewMemberWithCredential(m: CrewMember, cred: Credential): Promise<void> {
     // One unit — a new hire is useless without their gating credential, so a
     // mid-write failure must leave NEITHER (mirrors saveImportRun).
@@ -493,8 +523,8 @@ export class PostgresRepository implements Repository {
       await client.query("begin");
       await client.query(
         `insert into crew_members
-           (id, name, phone, email, ratings, status, manual_boost, manual_floor, protocol_override, reliability_score)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+           (id, name, phone, email, ratings, status, manual_boost, manual_floor, protocol_override, reliability_score, weekdays_off)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
         [
           m.id,
           m.name,
@@ -506,6 +536,7 @@ export class PostgresRepository implements Repository {
           m.manualFloor ?? null,
           m.protocolOverride ?? null,
           m.reliabilityScore,
+          JSON.stringify(m.weekdaysOff ?? []),
         ],
       );
       await client.query(
@@ -1195,6 +1226,34 @@ export class PostgresRepository implements Repository {
       [crewMemberId],
     );
     return rows.map(toReliability);
+  }
+  async listAllReliabilityEvents(): Promise<ReliabilityEvent[]> {
+    const { rows } = await this.#pool.query(
+      "select * from reliability_events order by timestamp desc, seq desc",
+    );
+    return rows.map(toReliability);
+  }
+
+  async appendAuditEvent(e: AuditEvent): Promise<void> {
+    await this.#pool.query(
+      `insert into audit_events(id, crew_member_id, actor_kind, actor_id, type, timestamp, metadata)
+       values ($1,$2,$3,$4,$5,$6,$7)`,
+      [
+        e.id,
+        e.crewMemberId,
+        e.actorKind,
+        e.actorId ?? null,
+        e.type,
+        e.timestamp,
+        JSON.stringify(e.metadata),
+      ],
+    );
+  }
+  async listAuditEvents(): Promise<AuditEvent[]> {
+    const { rows } = await this.#pool.query(
+      "select * from audit_events order by timestamp desc, seq desc",
+    );
+    return rows.map(toAudit);
   }
 
   async recordSmsConsent(c: SmsConsent): Promise<void> {

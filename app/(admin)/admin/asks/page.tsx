@@ -1,4 +1,10 @@
-import { buildAskTrail, type AskTrailRow, type AskOutcome } from "@core/admin/ask-trail.js";
+import {
+  buildAuditTrail,
+  type AuditTrailRow,
+  type AuditKind,
+  AUDIT_KIND_LABEL,
+  AUDIT_KINDS,
+} from "@core/admin/audit-trail.js";
 import { asId } from "@core/domain/ids.js";
 import { AppLink } from "../../../../components/ui/app-link";
 import { BackLink } from "../../../../components/ui/back-link";
@@ -11,26 +17,20 @@ import { getRepo } from "../../../lib/repo";
 import { fmtRunWhen } from "../../../lib/format";
 
 /**
- * /admin/asks (#331) — the ask trail: every ask the engine fired, newest first,
- * filterable per crew / per day / per shift. A deliberate PULL surface (the
- * all-shifts idiom, DEC-042) — the operator opens it to answer "what actually got
- * sent to <crew>, and when?" without a raw DB query (the 2026-07-09 case). Read
- * over `buildAskTrail`; a re-ask/nudge is its own row, so a double-nudge shows as
- * two rows here. Calm/neutral like all-shifts — outcome is a word, not an alarm.
+ * /admin/asks — the crew audit trail (#400, DEC-118). ONE list of every event
+ * that happens to a crew member (asked, in, out, added, removed, bailed, …),
+ * newest first, filterable by crew and by kind. `buildAuditTrail` is the source
+ * of truth for what belongs. Calm/neutral — the kind is a word, not an alarm.
  */
 
 export const dynamic = "force-dynamic";
 
-type Search = { crew?: string; day?: string; shift?: string };
+type Search = { crew?: string; kind?: string };
 
-const OUTCOME_LABEL: Record<AskOutcome, string> = {
-  accepted: "In",
-  declined: "Out",
-  timed_out: "Timed out",
-  waiting: "No reply yet",
-};
+const asKind = (v?: string): AuditKind | undefined =>
+  v && (AUDIT_KINDS as readonly string[]).includes(v) ? (v as AuditKind) : undefined;
 
-export default async function AdminAsks({
+export default async function AdminAudit({
   searchParams,
 }: {
   searchParams: Promise<Search>;
@@ -40,15 +40,16 @@ export default async function AdminAsks({
   if (!subject || subject.kind !== "admin")
     return <AdminSignedOut subject={subject} />;
 
-  let rows: AskTrailRow[];
+  const kind = asKind(sp.kind);
+
+  let rows: AuditTrailRow[];
   let crew: { id: string; name: string }[];
   try {
     const repo = getRepo();
     const [trail, members] = await Promise.all([
-      buildAskTrail(repo, {
+      buildAuditTrail(repo, {
         ...(sp.crew ? { crewMemberId: asId<"CrewMemberId">(sp.crew) } : {}),
-        ...(sp.shift ? { shiftId: asId<"ShiftId">(sp.shift) } : {}),
-        ...(sp.day ? { day: sp.day } : {}),
+        ...(kind ? { kind } : {}),
       }),
       repo.listCrewMembers(),
     ]);
@@ -59,87 +60,75 @@ export default async function AdminAsks({
   } catch {
     return (
       <Shell width="3xl">
-        <Notice>Couldn’t reach the ask history right now. Try again in a moment.</Notice>
+        <Notice>Couldn’t reach the audit trail right now. Try again in a moment.</Notice>
       </Shell>
     );
   }
 
-  const filtered = !!(sp.crew || sp.day || sp.shift);
+  const filtered = !!(sp.crew || kind);
 
   return (
     <Shell width="3xl">
       <BackLink href="/admin">Back</BackLink>
-      <h1 className="text-xl font-semibold text-ink">Ask history</h1>
+      <h1 className="text-xl font-semibold text-ink">Audit</h1>
       <p className="text-sm text-muted">
-        Every ask the engine sent — who, which trip, when, and what they answered. A
-        re-ask or nudge is its own line.
+        Every event on a crew member — asked, in, out, added, removed, bailed, and
+        the rest — one list, newest first.
       </p>
-
-      {sp.shift && (
-        <Notice>
-          Showing one shift.{" "}
-          <AppLink href="/admin/asks" className="text-accent underline">
-            Show all
-          </AppLink>
-        </Notice>
-      )}
 
       <FilterForm crew={crew} sp={sp} />
 
-      <section aria-label="Ask history" className="flex flex-col gap-2">
+      <section aria-label="Audit trail" className="flex flex-col gap-2">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">
-          {rows.length} {rows.length === 1 ? "ask" : "asks"}
+          {rows.length} {rows.length === 1 ? "entry" : "entries"}
           {filtered ? " (filtered)" : ""}
         </h2>
         {rows.length === 0 ? (
-          <Notice>No asks match — try a wider filter.</Notice>
+          <Notice>Nothing to show — try a wider filter.</Notice>
         ) : (
-          rows.map((r) => <AskRow key={r.askId} row={r} />)
+          rows.map((r, i) => (
+            <AuditRow key={`${r.timestamp}-${r.crewMemberId}-${r.kind}-${i}`} row={r} />
+          ))
         )}
       </section>
     </Shell>
   );
 }
 
-function AskRow({ row }: { row: AskTrailRow }) {
+function AuditRow({ row }: { row: AuditTrailRow }) {
   const trip =
     row.date && row.vesselName
-      ? `${fmtDate(row.date)} · ${row.vesselName}${row.roleName ? ` · ${row.roleName}` : ""}`
-      : "(seat no longer on the books)";
+      ? `${fmtDate(row.date)} · ${row.vesselName}`
+      : row.date
+        ? fmtDate(row.date)
+        : null;
+  const secondary = [row.actorLabel, row.detail, trip].filter(Boolean).join(" · ");
   return (
     <div className="flex flex-col gap-1 rounded-card border border-line bg-card px-4 py-3 shadow-sm">
       <div className="flex items-start justify-between gap-3">
-        <span className="font-medium text-ink">{trip}</span>
-        <OutcomeTag outcome={row.outcome} />
+        <span className="font-medium text-ink">{row.crewName}</span>
+        <KindTag kind={row.kind} />
       </div>
-      <span className="text-sm text-muted">
-        {row.crewName} · {row.channel === "sms" ? "SMS" : "Push"}
-      </span>
-      <span className="text-xs text-faint">
-        Sent {fmtRunWhen(row.sentAt)}
-        {row.respondedAt ? ` · answered ${fmtRunWhen(row.respondedAt)}` : ""}
-      </span>
+      {secondary && <span className="text-sm text-muted">{secondary}</span>}
+      <span className="text-xs text-faint">{fmtRunWhen(row.timestamp)}</span>
     </div>
   );
 }
 
-/** Outcome as a calm neutral pill — the word carries it (all-shifts neutrality;
- *  no alarm colour on a pull surface, BRAND). */
-function OutcomeTag({ outcome }: { outcome: AskOutcome }) {
+/** The kind as a calm neutral pill — the word carries it (BRAND, no alarm colour). */
+function KindTag({ kind }: { kind: AuditKind }) {
   return (
     <span className="shrink-0 rounded-full border border-line bg-bg px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted">
-      {OUTCOME_LABEL[outcome]}
+      {AUDIT_KIND_LABEL[kind]}
     </span>
   );
 }
 
-/** Crew + day filter — a native GET form (no JS, DEC-026); `shift` (a deep-link
- *  param) rides as a hidden field so filtering within a shift keeps the scope. */
+/** Crew + kind filter — a native GET form (no JS, DEC-026). */
 function FilterForm({ crew, sp }: { crew: { id: string; name: string }[]; sp: Search }) {
   const inputClass = "min-h-[44px] rounded-card border border-line bg-card px-3 text-ink";
   return (
     <form method="get" className="flex flex-wrap items-end gap-3 rounded-card border border-line bg-card px-4 py-3 shadow-sm">
-      {sp.shift && <input type="hidden" name="shift" value={sp.shift} />}
       <div className="flex flex-col gap-1">
         <label htmlFor="crew" className="text-xs text-muted">
           Crew
@@ -154,17 +143,24 @@ function FilterForm({ crew, sp }: { crew: { id: string; name: string }[]; sp: Se
         </select>
       </div>
       <div className="flex flex-col gap-1">
-        <label htmlFor="day" className="text-xs text-muted">
-          Trip date
+        <label htmlFor="kind" className="text-xs text-muted">
+          Kind
         </label>
-        <input id="day" name="day" type="date" defaultValue={sp.day ?? ""} className={inputClass} />
+        <select id="kind" name="kind" defaultValue={sp.kind ?? ""} className={inputClass}>
+          <option value="">All</option>
+          {AUDIT_KINDS.map((k) => (
+            <option key={k} value={k}>
+              {AUDIT_KIND_LABEL[k]}
+            </option>
+          ))}
+        </select>
       </div>
       <GetFormSubmit className="min-h-[44px] rounded-card bg-accent px-4 font-semibold text-white">
         Filter
       </GetFormSubmit>
-      {(sp.crew || sp.day) && (
+      {(sp.crew || sp.kind) && (
         <AppLink
-          href={sp.shift ? `/admin/asks?shift=${sp.shift}` : "/admin/asks"}
+          href="/admin/asks"
           className="min-h-[44px] self-end px-2 py-2 text-sm text-muted underline"
         >
           Clear

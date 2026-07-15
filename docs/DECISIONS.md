@@ -1118,7 +1118,9 @@ Both share the **occupant-pin race guard** (a swap between reads → `raced`, re
 
 **No migration / no `Event.durationMinutes` column — yet.** The issue floated landing the field now as forward-provisioning. Rejected on YAGNI: with a flat constant the column would store no information, and the migration is additive and cheap to add *whenever* a real per-event source (a/b) lands. So the column is a **deliberate omission**, not an oversight — add it together with its source, not before.
 
-**Shift-end formula:** `shiftEnd = latestScheduledStart + TRIP_DURATION_MINUTES + CALL_LEAD_MINUTES`. The operator's "report time" at the end is the **same call lead reused symmetrically** (report 45m before the first departure; off 45m after the last trip ends) — not a new teardown constant. With a flat length the latest *departure* yields the latest *end*; when per-event durations land this generalizes to `max(start + duration)`.
+**Shift-end formula:** `shiftEnd = latestScheduledStart + TRIP_DURATION_MINUTES + TEARDOWN_MINUTES`. With a flat length the latest *departure* yields the latest *end*; when per-event durations land this generalizes to `max(start + duration)`.
+
+> **Amendment (#275, 2026-07-11):** the end buffer is no longer the call lead reused symmetrically. It was — report 45m before the first departure, off 45m after the last trip — but that ran the "back" time long (a 4pm last trip read as "back ~6pm"). Split out a distinct **`TEARDOWN_MINUTES = 25`** (securing the boat is shorter than getting ready to sail) and use it for the tail; the front call time still uses `CALL_LEAD_MINUTES = 45`. Applied everywhere the post-trip buffer appears: `shiftEndFromEvents`, `committedWindow`/`committedMinutes` (payroll), and the split-suggestion gap/span math (`occupiedMin = TRIP_DURATION + TEARDOWN + CALL_LEAD`, the same buffer between consecutive trips). Both remain flat, fleet-wide, plain constants until a per-vessel resolver lands.
 
 **Where the math lives (DEC-020):** `CALL_LEAD_MINUTES` moved from `crewapp/shift-card.ts` down to `builder/derive.ts` (re-exported from the card for back-compat), joining the other scheduling leads — because the shift *end* is cross-cutting: the crew card, the crew-app ask card, **and** the outbox all need it, and the outbox reads it as an instant. `derive.ts` gains `latestScheduledStart` + `shiftEndFromEvents` (instant-returning, DST-correct per DEC-032). The two clock-string surfaces (crew card, ask card) compute the end with the shared `plusMinutes` + the same constants, so no surface can disagree on the window — the same naive-clock vs instant split `callTime`/`tripStart` already live with.
 
@@ -1146,6 +1148,10 @@ Both share the **occupant-pin race guard** (a swap between reads → `raced`, re
 **Amendment (#321, quick date presets, 2026-07-11):** Two preset chips added to the filter — **"2 weeks out"** (days 8–15, `today+7..today+14` — the non-overlapping bucket after "next 7") and **"30 days"** (`today..today+29`). Both strictly inside the `[today−30d, today+45d]` clamp; same preset mechanics as Today/Weekend, no shape change.
 
 **Amendment (#330, crew filter, @architect-gated 2026-07-11):** Adds a **crew filter** axis — an opt-in dropdown (`listCrewMembers`, no-JS GET param `?crew=<id>`) narrowing rows to shifts a selected crew member is seated on. **Match by id, not name:** the predicate lives in `deriveAllShifts` (`opts.crewMemberId`), matching the **raw seat's `assignedCrewMemberId`** — name-matching is barred by the no-FK/service-layer-integrity posture (duplicate names cross-match with no FK to catch it). Because the match runs in-core against the real seat id, the `AllShiftsSeat` DTO gains **no** field (a smaller surface than first scoped). The seat read is hoisted **before** the per-shift state/trip/reservation derivation so a non-match short-circuits without the expensive work. **Match set:** seats where `assignedCrewMemberId` = selection and state ∈ **{Claimed, Confirmed}**, required *and* supernumerary (a trainee on a super seat is working); Asked/Open/Bailed excluded (they don't bind a person). *(Operator judgment call flagged in the PR: include tentative Claimed matches vs Confirmed-only — shipped as Claimed+Confirmed, revertible.)* **Window: the crew filter does NOT change the window** — it respects whatever preset/range is shown ("what you see is what you filter"). *(This REVERSES the architect's original recommendation to auto-widen a bare crew pick to `today..+45`. The auto-widen shipped first, but in the built UI the default screen shows the "Week" chip highlighted while carrying no explicit `preset` param — so a crew pick from a fresh load jumped to 45 days while an identical-looking screen after tapping "Week" stayed at 7: two same-looking starts, two results — an invisible-state trap. Operator chose predictability 2026-07-11: crew filtering never moves the window; to see all of someone's upcoming, pick a wider preset (30 Days) or a From/To range.)* Presets narrow/widen as always; clamp unchanged. **UI:** preset chips are **Today · Weekend · Week · 2 Weeks out · 30 Days**; the custom date range + crew dropdown sit behind a no-JS `<details>` "More filters" disclosure (open by default when either is active). **Guardrails 2–5 stand verbatim:** no per-crew scoreboard/count badge (bare "N shifts · scope" caption is the ceiling), neutral ink, no auto-refresh, empty≠success (empty reads *"[name] has no shifts for …"*). **Watch:** the crew control must not grow per-crew counts — the monitor-bait failure mode this DEC exists to prevent.
+
+**Amendment (#416, show-cancelled toggle, 2026-07-14):** Adds an opt-in **"Show cancelled"** toggle (no-JS GET param `?cancelled=1`, same chip idiom as the presets). The board stays **current-only by default** — cancelled shifts remain excluded unless the operator asks. When on, `deriveAllShifts(opts.includeCancelled)` **folds Cancelled shifts into the same date-windowed list** (additive — chosen over a cancelled-only mode so the common case stays calm), flagged `cancelled: true`; the row renders greyed (`opacity-60`) with its neutral "Cancelled" state label. **Completed stays excluded regardless** (historical). Prompted by a crew-side phantom (#415): a Xola re-import Cancels a shift but DEC-084 leaves the seat, so an orphaned Confirmed seat showed on the crew's My-shifts; the operator needs to *see* what got cancelled to diagnose. **Guardrails 2–5 stand verbatim:** no per-state scoreboard, neutral ink (grey is de-emphasis, not a state colour), no auto-refresh, empty≠success. **Watch:** the toggle must not become a default-on wall of dead shifts — off is the resting state.
+
+**Amendment (crew filter auto-submits, 2026-07-14):** The crew dropdown lost its "Filter" button — it now navigates on `change` via a small client island (`CrewSelect`), mirroring `GetFormSubmit`'s soft `router.push`. This narrows the earlier "no-JS `<details>`" claim: the crew filter now needs JS to apply (the preset chips stay plain links; the date range keeps its no-JS `GetFormSubmit` button, itself already a client island). Accepted on this desktop-first, JS-assumed admin surface for the one-fewer-click win. Picking "All crew" drops the `crew` param. Guardrails 2–5 unchanged.
 
 **Deprecation:** a trust-building crutch, expected to be deprecated once the operator trusts the engine. Nothing routes *to* it (no ping; no root redirect — #97 lands on the board), so removal is a single-route, no-migration delete. **Sunset trigger:** operator reports he's stopped opening it.
 
@@ -2795,6 +2801,307 @@ ever wants true multi-add-on selling (then reopen as `item.addOns[]`, a consciou
 
 ---
 
+## DEC-114: `<RevealSelectedRow>` — scroll-position keeping on the two-pane board, an imperative island scoped to `board-col`
+
+**Status:** Decided 2026-07-11 (@architect gate, Phase 10.5). Fixes #365. (Renumbered 112→114 at merge — the concurrent reservations work took DEC-112/113.)
+
+**Decision.** A contained `'use client'` island `<RevealSelectedRow sel={sel}>`, rendered only in the two-pane
+host, adjusts **`board-col`'s `scrollTop` only** in a `useEffect([sel])` (`col.scrollTop += rowRect.top −
+colRect.top − 16`, guarded to no-op when the row is already in view) so selecting a row in a long list keeps
+the operator's place. **No URL fragment** — the `#shiftrow-<id>` + `scroll-mt` path is rejected because native
+anchor `scrollIntoView` bubbles through every scrollable ancestor and drags the *window* ~50px on desktop
+windows shorter than ~750px, violating DEC-085's "window never scrolls on lg." Inert on mobile: below `lg` the
+board list is `display:none` → `offsetParent === null` → the effect skips, and Next's default scroll-to-top
+already opens the drill-in at the top.
+
+**Why an island (DEC-026 enhancement, not a break).** No-JS still fully works — the row selects, the cockpit
+renders, the operator scrolls by hand; only auto-place-keeping needs JS. Joins the existing DEC-026 island
+family (DEC-097 redirect-feedback, DEC-100 submit spinner, DEC-030 CopyButton/RelaySend, the GuestText button)
+— a bounded, progressively-enhanced enhancement, not drift toward client-rendered surfaces. Scoping the scroll
+imperatively to the one named scroller (vs a CSS fragment) is deliberately **decoupled from the pre-existing
+~100px `lg` document overflow** (#376) so this fix can't be silently reintroduced by a future 1px layout change.
+
+**Invariants.** Upholds DEC-085 "window never scrolls" (strictly better than the rejected fragment path).
+`sel`-keyed, consistent with DEC-085's `sel`-as-preserved-filter-param. DEC-042 calm posture untouched (a
+scroll adjust carries no ink/scoreboard). **Fragility recorded:** the mobile-inert guard keys off
+`display:none` (offsetParent null); if the board-hide ever becomes `visibility:hidden` the island would fire on
+mobile and fight the drill-in — revisit here.
+
+**Rejected alternatives.** (a) CSS `#shiftrow-<id>` fragment + `scroll-mt` — bubbles to the window, breaks
+DEC-085 on short desktops. (b) `scroll={false}` on the row link — fixes desktop but reopens the mobile
+"drill-in opens mid-scroll" bug. (c) Root-causing the ~100px document overflow (#376) so a pure-CSS anchor
+"just works" — unbounded (source not found in a timebox) and leaves a fragile forever-invariant where any 1px
+of future overflow silently reintroduces the window-drag. **Relationship:** extends DEC-026, protects DEC-085,
+decoupled from #376. Adds no schema, no domain state.
+
+---
+
+## DEC-115: `FILL_DEADLINE_HOURS` is env-tunable (plumbing only — value stays 48h)
+
+**Status:** Decided 2026-07-11 (Phase 10.5). Fixes #322. (Renumbered 113→115 at merge — the concurrent reservations work took DEC-112/113; the #365 island is DEC-114.)
+
+**Decision.** `FILL_DEADLINE_HOURS` (`src/builder/derive.ts`) becomes `envPositiveNumber("FILL_DEADLINE_HOURS",
+48)`, mirroring DEC-062's `STAFFING_HORIZON_LEAD_DAYS`: a positive number (fractional hours allowed, garbage
+falls back), **code default unchanged at 48h (2 days)**. The operator can move the At-Risk window per deploy
+via a Vercel env (`FILL_DEADLINE_HOURS=72` for 3 days) with no code change. **This ships the knob, NOT a value
+change** — the 2-vs-3-day product call (#322) stays the operator's, made later by setting the env.
+
+**Double-duty (DEC-031), unchanged.** The same instant is both the shown "fills by" deadline AND the route-(b)
+At-Risk boarding instant (`at-risk-board` re-exports it as `EXHAUSTED_THRESHOLD_HOURS`). Bumping the env moves
+both together, by design — the displayed deadline IS the escalation instant, so they can't drift.
+
+**Relationship:** sibling to DEC-062 (same `envPositiveNumber` knob shape) and DEC-031 (the coupling it
+preserves). Adds no schema, no domain state; pure config surface.
+
+---
+
+## DEC-116: Weekend-batch staffing trigger — Fri/Sat/Sun shifts go live together on one weekday + time (#392)
+
+**Status:** Decided 2026-07-13 (Eric + @architect). Extends the horizon family DEC-022/062; same gating posture
+as DEC-088 (decouple ask send-time from the trip's clock) — now on the **day** axis, not just the hour.
+
+**Context.** The flat per-shift horizon (`start − STAFFING_HORIZON_LEAD_DAYS`, DEC-022/062) brings each weekend
+shift live as its own lead passes — Fri, Sat, Sun trickle in on three different days. The operator wants the
+whole weekend's shifts to go live **together** on one trigger (Monday 09:00 the week prior), so crewing the
+weekend is a single event, not three.
+
+**Decision.** A trip whose **vessel-local weekday** ∈ `STAFFING_HORIZON_WEEKEND_DAYS` computes a **shared
+trigger instant** — that week's `STAFFING_HORIZON_TRIGGER_DAY` at `STAFFING_HORIZON_WEEKEND_ASK_TIME` — instead
+of `start − leadDays`, so all of Fri/Sat/Sun collapse onto one send. Every non-weekend trip-day keeps the flat
+lead. Folded into `staffingHorizonFromEvents` (`src/builder/derive.ts`) — the single seam all six horizon call
+sites funnel through — as an optional `cohort` param defaulting to the env-built `WEEKEND_COHORT_POLICY`;
+consumers take a resolved `Date | null` and are unchanged. `bailLatenessMs` reads the raw lead directly and is
+**not** cohort-ified (its `leadMs` is a penalty clamp, not the horizon).
+
+- **Weekday from `vesselDateOf`**, never `getUTCDay` on the raw departure instant — an 8pm-Eastern Sunday trip
+  is Monday 00:00 UTC and would misclassify (DEC-032-class). The Mon-zero weekday `(getUTCDay+6)%7` doubles as
+  the day-offset back to that week's Monday.
+- **Three env knobs**, poison-resistant (bad value → default/off, never throws — a config throw kills the
+  cron): `STAFFING_HORIZON_WEEKEND_DAYS` (space-list of Mon=0…Sun=6 → validated set; **empty/unset = off =
+  flat**, the backward-compat / other-tenant default), `STAFFING_HORIZON_TRIGGER_DAY` (bounded int 0–6, default
+  0 = Monday; only 0 and 6 are sensible), `STAFFING_HORIZON_WEEKEND_ASK_TIME` (HH:MM, reuses `envWallClock`,
+  default 09:00). `STAFFING_HORIZON_LEAD_DAYS` keeps its name; its meaning is now "the non-cohort lead."
+
+**Ships inert.** With `STAFFING_HORIZON_WEEKEND_DAYS` unset in prod, no trip is a weekend trip ⇒ behaviour is
+byte-identical to today. The env flip is **deferred until the ask-distribution fix (#393, DEC-117) lands** —
+otherwise the first weekend after go-live batches all its shifts to one instant and blasts the top captain N
+simultaneous asks. The env var is the single go-live lever for both.
+
+**Relationship:** extends DEC-022/062; sibling gating posture to DEC-088. The batched weekend is the unit
+#393/DEC-117 pushes over. **Revisit if:** a non-weekend batch trigger (holidays) is wanted — the
+`WEEKEND_DAYS`/`TRIGGER_DAY` shape generalizes to any set-of-days.
+
+---
+
+## DEC-117: Weekend-batch ask distribution — one text per person, one boat per day (#393)
+
+**Status:** Decided 2026-07-13 (Eric + @architect, rescoped). The ask-distribution fix DEC-116's env flip
+waits on. Supersedes #393's original "turn-based push / round-robin matcher" framing — Muster's existing In/Out
+asks + reliability drip + the always-open `/crew` board already ARE the mechanism; only two gaps needed closing.
+
+**Context.** When DEC-116 batches a weekend's shifts live at one instant, the per-seat drip (DEC-063) would
+(a) fire the top captain one ask PER open seat — up to N simultaneous texts — and (b) seed that same captain
+for every same-day boat, since each seat picks its #1 independently. Both are the "hammer your best person"
+failure the batch would otherwise create.
+
+**Decision — two targeted fixes to the existing ask path, no new primitive:**
+
+1. **One text, not N (per-recipient batching).** `forwardAsks` (`src/adapters/forward-asks.ts`) groups a tick's
+   fired asks by recipient: a crew member who drew several gets ONE message ("Muster: N shifts need you. Tap to
+   answer.") whose crew-scoped magic link lands on `/crew`, which already renders all their live asks as In/Out.
+   Only *delivery* is coalesced — the per-ask domain records are untouched and all show on `/crew`. This is the
+   module's missing idempotency net: one send per (recipient, tick), the tick fires each ask once. Applies to
+   ALL asks, not just the batch — nobody should ever get a pile of simultaneous ask-texts.
+
+2. **One boat per day (drip seed dedup).** A crew member works at most one boat per vessel-local day (the
+   existing `/crew/open` rule), so the drip must not seed them for a second same-day boat. `widenAsk` gains an
+   optional `exclude` set; `tick` builds a per-day map of who holds a live ask that day (pre-seeded from
+   existing live asks so cross-tick widens respect it too) and passes it, marking each fired crew. Same-day
+   boats spread across people — boat-A→best, boat-B→next, boat-C→next — instead of all seeding the top captain.
+   **Drip only:** the urgent blast (inside the fill deadline, DEC-031) fills at all costs and does NOT exclude —
+   urgency overrides spreading, mirroring how it already overrides drip pacing. Crew choice is preserved by the
+   always-open `/crew/open` board (they can grab a different same-day boat themselves).
+
+**Relationship:** the distribution fix DEC-116's rollout waits on; reuses `/crew`, the drip (DEC-063),
+first-acceptable-yes-wins (DEC-007), `rankedEligible`. **Revisit if:** the round-robin/turn-queue idea returns
+(rejected here as over-built — the drip + board already spread and give choice).
+
+---
+
+## DEC-118: Crew audit log — dedicated append-only `audit_events`, edge-emitted actor, unioned read, out of the scoring path (#400)
+
+**Status:** Decided 2026-07-13 (Eric + @architect).
+
+**Decision.** An operator-facing audit trail of every crew add/drop/change lands in a NEW append-only
+`audit_events` table — **not** by extending `reliability_events`.
+
+- **Separate table** because `reliability_events` is scoring substrate (DEC-008: "whose behavior is this"),
+  and an admin removal / operator force-place / self-claim is explicitly NOT the subject's behavior
+  (`vacateSeat`/`manualOverride`/`claimSeat` deliberately emit no reliability event). `audit_events` carries
+  an orthogonal actor dimension `{actor_kind: crew|admin|importer|engine, actor_id}` the reliability row has
+  no room for (it keys to the behaving crew, with `SYSTEM_ACTOR_ID` as its one escape hatch).
+- **A genuine store, not a derived read-model** — unlike ask-trail / escalation-trail (DEC-024), which
+  project from persisted facts. The add/drop transitions persist NOTHING today, so there is nothing to
+  derive; that is what clears DEC-024's "no second parallel log" bar.
+- **Read = UNION, not dual-write.** The `/admin/audit` view unions `audit_events` (the new facts) with a
+  projection over `reliability_events` (accepted→add, bailed/no_show→drop, plus decline/ignored/nudged
+  context). One source per fact; no drift-consistency burden.
+- **Actor captured at the EDGE, never threaded through the core** (DEC-030 posture). Server actions emit the
+  audit event after the domain call returns, using the session's actor. Domain return-shape deltas:
+  `vacateSeat` +`removed`; `manualOverride`→`{seat, displaced?}`, `overrideSeat` +`displaced?`; `claimSeat`
+  unchanged; import already exposes `changedCrew`.
+- **Audit never feeds scoring.** `reliability-score.ts` reads `reliability_events` only, never `audit_events`.
+  Absolute — it is the reason for the second table.
+
+**Tradeoff:** the audit read touches two tables; the audit append is post-mutation and **not** transactional
+with the seat write — a crash in the gap drops one audit row (accepted at pilot scale; same posture as the
+ask loop's reliability appends). **No backfill** — the unlogged history was never persisted, so capture
+starts at ship; the UI says so.
+
+**Slicing:** A (~5) migration + table + port + edge emitters + return-shape changes + tests ships FIRST (risk
+seam + no-backfill clock); B (~3) read port + union projection + `/admin/audit` UI trails. `/admin/audit`
+stays a **sibling** of `/admin/asks` — no fold-in. **Revisit if:** audit volume outgrows the union read
+(materialize), or a compliance need makes the post-mutation append gap unacceptable (transactional outbox).
+
+**Trainee staffing emitter — CLOSED in Slice B.** Slice A emitted at four edges (override, vacate,
+self-claim, import `changedCrew`) and deferred `staffTrainee`/`unstaffTrainee` (operator force-place/pull of a
+trainee onto a supernumerary seat) — the *same* operator-authority add/drop shape, inside this DEC's "every
+crew add/drop/change" bar. Slice B closed it: a `logCrewAdded` on staff success + a `logCrewRemoved` on
+unstaff success (`app/(admin)/admin/shift/[shiftId]/actions.ts`, admin actor, `reason:"trainee"`), so the
+union view is complete on day one. (Split/merge `changedCrew` — a shared `forwardFormNotices` path with an
+`admin` actor — remains a lower-priority follow-up in the same spirit.)
+
+**Slice B read shape.** `/admin/audit` is ONE list (not a sibling of `/admin/asks`, not two lists) — the
+union folds the reliability add/drop projection into the same rows, filterable by **crew** and by **kind**
+(added / removed / changed). The `ask_declined`/`ask_ignored`/`nudged` "context" rows floated above are
+**excluded**: they aren't an add/drop/change of a seat and belong on `/admin/asks` — including them would
+smuggle the asks list back in. Projection kept minimal: `ask_accepted`→added, `shift_bailed`/`no_show`→
+removed; the audit facts carry the rest.
+
+---
+
+## DEC-119: Recurring weekday-off is a suppression column on the crew record (#411)
+
+**Status:** Decided 2026-07-14 (Eric + @architect).
+
+**Decision.** A per-crew recurring weekday blackout ("never works Sundays") is stored as
+`weekdaysOff: number[]` (Mon=0…Sun=6) — a bounded array **column** on the `CrewMember` record
+(`weekdays_off jsonb`), mirroring the existing `ratings` array-column. **NOT** a separate table,
+**NOT** modeled as recurring `PtoWindow`s.
+
+- **Column, not table**, because it's a standing *attribute* of the crew member, not a 1:n
+  collection with per-row identity (which is exactly why `PtoWindow` — individually removable dated
+  spans — *is* a table). The column rides on the already-loaded `crew` object, so all three
+  eligibility doors (auto-ask via `oracle`, self-claim via `claim`, browse via `claimable`) are
+  covered by ONE new rule reading `ctx.crew.weekdaysOff` — zero new repo fetch, zero
+  `CandidateContext` change. A table would triple the `ptoWindows` plumbing for no gain.
+- **Eligibility:** one new hard rule `not_recurring_off`, a **sibling** to `not_on_pto` (its own
+  `ruleId` + `{weekday}` detail — a categorically different reason, not folded into PTO), added to
+  **both** `evaluateCandidate` and `evaluateTraineeCandidate` (trainees don't work their days off
+  either). The weekday is pure string math on the already-vessel-local `shift.date` via
+  `mondayZeroWeekday` (promoted to `config/tenant.ts`) — timezone-invariant by construction, no
+  live tz read.
+- **Operator-set** via `db:crew days-off <id> --days=… | --clear` (a targeted `updateCrewWeekdaysOff`
+  UPDATE, DEC-094-safe). UI is a later slice (crew self-service #426; admin still under #411).
+
+**Why this clears DEC-009.** DEC-009 forbids a *crew-maintained positive-availability calendar* (the
+Xola trap — declaring when you're free, which rots). This is **subtractive** (DEC-009's own permitted
+suppression shape), **operator-set**, and a **stable standing fact**, not a per-week calendar. It
+extends PtoWindow's suppression onto a recurring axis; it is **not** a precedent for positive
+availability.
+
+**Does NOT:** add time-of-day granularity (#333 stays parked); add positive/recurring availability;
+date-bound the recurrence (a weekday is simply off or not); or retroactively bail an
+already-Confirmed seat on that weekday (candidate gate, not a sweep — same as adding a PtoWindow). Is
+**bypassed by the operator override for free** (`overrideSeat` honors only the rating floor, DEC-064)
+— consistent with PTO/double-booking. An **all-7-days-off** member is permitted (an emergent soft
+bench, not archived), with a CLI warning. **Revisit if** genuine per-shift/intra-day availability is
+ever required — that's a different model, not more flags on this one.
+
+---
+
+## DEC-120: Reliability retune — reward responsiveness; bail floor lowered, ramp rescaled (#425)
+
+**Status:** Decided 2026-07-14 (Eric + @architect).
+
+**Decision.** Shift the reliability score from commitment-only toward responsiveness.
+- `ask_accepted` +1 → **+2**, `ask_declined` 0 → **+1**. Reverses the decline-neutral principle
+  (DEC-008/DEC-025): answering either way is a positive; only silence (`ask_ignored`, unchanged at
+  −3) is penalized at the ask level. New ask gradient: **In(+2) > Out(+1) > silence(−3)**.
+  `shift_completed (+5)` still dominates — actually working a shift is worth far more than any single
+  answer.
+- `shift_bailed` flat −5 → **−3**; `bailLatenessPerHour` −0.5 → **−0.05**. A full-notice bail now
+  costs −3 (= `ask_ignored`, never *softer* — so "confirm-then-cancel-early" never scores better than
+  a ghost, and `ask_declined (+1)` beats both); lateness ramps to ≈ **−11.4** at zero notice under
+  the **default 7-day (168h)** horizon — reserving the pain for late bails while keeping
+  `no_show (−15)` as the true floor. Math (max lateness = `leadMs` = 168h): `−3 + 168·(−0.05) = −11.4`.
+  The prior weights (flat −5, ramp −0.5) put a zero-notice bail at `−5 + 168·(−0.5) = −89` — absurdly
+  below `no_show`, contradicting DEC-028's "no_show is the worst case." (The @architect draft
+  mis-assumed a 48h horizon; the real default is 7 days, so the coefficient was recalibrated to
+  −0.05 to hold the floor invariant at the **shipped** config. Note the ramp is horizon-coupled: the
+  margin shrinks if `STAFFING_HORIZON_LEAD_DAYS` is raised past ~10 days — the horizon-independent
+  shape is parked in FUTURE_IDEAS.)
+
+**Why.** Reward crew who are always reachable even when they say no ("always reachable, always says
+no — god bless them"); a well-noticed bail is a communicative act (SPEC §1.4 "a cancel a week out is
+cheap") and shouldn't carry the same hit as a same-day bail. The score remains **ranking-only**
+(DEC-008) — never a gate; this changes *who the engine asks first*, not who is eligible.
+
+**Amends** DEC-008 (decline-neutral) and DEC-028 (bail lateness floor). **Weights only** — scorer
+mechanics, the count-based window, and the state machines are untouched. **Parked** (FUTURE_IDEAS):
+the ramp coefficient is per-hour and coupled to the env-tunable `STAFFING_HORIZON_LEAD_DAYS`, so a
+raised horizon deepens the worst case proportionally; a horizon-independent (fraction-of-`leadMs`)
+shape is a scorer refactor, not a weights change. **Note:** `no_show (−15)` has no emitter yet
+(#428) — the floor is theoretical until a no-show can be recorded.
+
+---
+
+## DEC-121: Timestamp-prefixed migration filenames — cross-branch collision made structurally impossible (refines DEC-020)
+
+**Status:** Decided 2026-07-15 (Eric + @architect).
+
+**Decision.** New migrations use **`YYYYMMDDHHMMSS_name.sql`** (UTC, 14 digits, no separators).
+Existing `00NN_` files (`0001`–`0025`) stay as-is. Project-wide, effective immediately: **no new
+numbered migration is ever authored again, on any branch.** Generate only via
+`npm run db:new-migration <name>` (`db/new-migration.ts`) — UTC stamp, slugified name, +1s bump on a
+same-second collision, writes a stub, prints the path.
+
+**Why.** `db/migrate.ts` orders migrations by lexicographic **filename** sort and keys idempotency on
+the filename PK in `_migrations` — it never parses the sequence number (nothing in the repo does). So
+the `00NN` integer was never load-bearing, only its sort position. Sequential numbers collide across
+divergent branches with no cross-branch reservation: the long-lived `feature/reservations` branch
+(DEC-059; Phase 11+12) and occasional parallel task branches on `main` both re-collide by design —
+we hit it when `feature`'s `0024_payments`/`0025_reservation_waiver` landed on the same numbers as
+`main`'s `0024_audit_events` (#400) + `0025_crew_weekdays_off` (#427), and renumbering only pushed the
+clash one step forward. Timestamps give unique names with zero coordination. Every `00NN_` (`'0'`)
+sorts before every timestamp (`'2'`) — `main` will never reach a 4-digit number ≥ 2000 — so numbered
+files always apply first, in order, then timestamped files in chronological order. Valid apply order
+because `main` migrations never depend on `feature` ones, and `feature` absorbs `main` via periodic
+merges so its migrations always sit atop `main`'s schema.
+
+**Holds:** the `/promote-production` migration-ledger drift gate (#282) diffs `_migrations` filenames
+against repo basenames **as a set** — the naming scheme is irrelevant to set membership, and the
+`order by filename` there is display-only. `feature` migrations stay off `main` until the single P12
+merge (DEC-059), so they can't trip the gate early. The runner is **forward-only** (no
+down-migrations); timestamps don't change that.
+
+**Transition gotcha (one-time):** renaming an **already-applied** file mints a new filename → the
+runner sees the old name in `_migrations` and **re-runs the DDL**. The already-renamed reservations
+pair (`payments`, `reservation_waiver`) must be reconciled on each `feature` dev DB — reset, or
+`update _migrations set filename=…` to the final name — before the next `db:migrate`. Prod never saw
+them (feature branch, DEC-059), so prod is clean.
+
+**Rejected:** feature-branch-only scope (leaves the `main` parallel-task collision unsolved — same
+root cause); renumbering the reservations pair again (stopgap — `main`'s next number re-collides);
+hand-typed timestamps (the helper removes the only failure mode); local-time stamps (cross-dev/DST
+inversion vs. real authoring order).
+
+**Refines** DEC-020 (the runner). **Touches** DEC-059 (long-lived feature branches) and the #282
+drift gate. **Revise if:** a migration framework is adopted, or the runner ever orders by anything
+other than filename sort.
+
+---
+
 ## DEC-107 amendment (11.2b) — on-demand balance collection
 
 **Status:** Decided 2026-07-13 (@architect, under DEC-107).
@@ -2820,7 +3127,7 @@ already exist). Trigger for now is the `db:balance` CLI; the customer-facing ema
 
 ---
 
-## DEC-119: Customer booking link — stateless HMAC capability-URL + guest confirmation emit (11.4, #370; extends DEC-020/098/108)
+## DEC-122: Customer booking link — stateless HMAC capability-URL + guest confirmation emit (renumbered from DEC-119 at the feature→main merge — main's DEC-119 is recurring weekday-off #411; 11.4, #370; extends DEC-020/098/108)
 
 **Status:** Decided 2026-07-13 (@architect, under DEC-105/108).
 

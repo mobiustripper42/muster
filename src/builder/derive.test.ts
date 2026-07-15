@@ -23,6 +23,7 @@ import {
   STAFFING_HORIZON_LEAD_DAYS,
   TRIP_DURATION_MINUTES,
   CALL_LEAD_MINUTES,
+  TEARDOWN_MINUTES,
 } from "./derive.js";
 
 const CAPTAIN = asId<"RoleTypeId">("role-captain");
@@ -145,6 +146,64 @@ describe("staffingHorizonFromEvents", () => {
   });
 });
 
+// ── Weekend batch trigger (DEC-116) ──────────────────────────────────────────
+// A trip whose VESSEL-LOCAL weekday is a configured weekend day fires on ONE
+// shared instant — that week's TRIGGER_DAY at ASK_TIME — instead of its own flat
+// lead, so all of Fri/Sat/Sun collapse onto a single Monday-9am send. Policy is
+// passed explicitly here (the module default reads env; unset = off = flat).
+// Mon=0..Sun=6. 2026-05-16 is a Saturday (weekday 5); that week's Monday is 05-11.
+describe("staffingHorizonFromEvents — weekend batch trigger (DEC-116)", () => {
+  const weekend = { weekendDays: new Set([4, 5, 6]), triggerDay: 0, askTime: "09:00" };
+
+  it("off (empty weekendDays) → flat lead, unchanged", () => {
+    const h = staffingHorizonFromEvents(
+      [ev("e1", "2026-05-16", "15:30")], undefined, "UTC",
+      { weekendDays: new Set<number>(), triggerDay: 0, askTime: "09:00" },
+    );
+    expect(h?.toISOString()).toBe("2026-05-09T15:30:00.000Z"); // 05-16 − 7d
+  });
+
+  it("a Saturday trip fires that week's Monday at ASK_TIME, not start−lead", () => {
+    const h = staffingHorizonFromEvents(
+      [ev("e1", "2026-05-16", "15:30")], undefined, "UTC", weekend,
+    );
+    expect(h?.toISOString()).toBe("2026-05-11T09:00:00.000Z");
+  });
+
+  it("collapses Fri, Sat, Sun of one weekend onto the same instant", () => {
+    const iso = (date: string) =>
+      staffingHorizonFromEvents([ev("e1", date, "15:30")], undefined, "UTC", weekend)?.toISOString();
+    expect(iso("2026-05-15")).toBe("2026-05-11T09:00:00.000Z"); // Fri
+    expect(iso("2026-05-16")).toBe("2026-05-11T09:00:00.000Z"); // Sat
+    expect(iso("2026-05-17")).toBe("2026-05-11T09:00:00.000Z"); // Sun
+  });
+
+  it("TRIGGER_DAY=6 fires the Sunday before that Monday", () => {
+    const h = staffingHorizonFromEvents(
+      [ev("e1", "2026-05-16", "15:30")], undefined, "UTC",
+      { ...weekend, triggerDay: 6 },
+    );
+    expect(h?.toISOString()).toBe("2026-05-10T09:00:00.000Z"); // Sun before Mon 05-11
+  });
+
+  it("a non-weekend trip keeps the flat lead even with cohort on", () => {
+    const h = staffingHorizonFromEvents(
+      [ev("e1", "2026-05-13", "15:30")], undefined, "UTC", weekend, // Wed (weekday 2)
+    );
+    expect(h?.toISOString()).toBe("2026-05-06T15:30:00.000Z"); // 05-13 − 7d, flat
+  });
+
+  it("classifies the weekday from the VESSEL-LOCAL date, not the UTC instant", () => {
+    // 8pm Sun ET = Mon 00:00 UTC. getUTCDay on the instant would read Monday (0,
+    // non-weekend → flat, wrong). vesselDateOf pins it to Sun (weekday 6) → cohort.
+    const h = staffingHorizonFromEvents(
+      [ev("e1", "2026-05-17", "20:00")], undefined, "America/New_York", weekend,
+    );
+    // Sun 05-17 → that week's Mon 05-11, 09:00 EDT (UTC−4) = 13:00Z.
+    expect(h?.toISOString()).toBe("2026-05-11T13:00:00.000Z");
+  });
+});
+
 describe("staffingHorizonFor", () => {
   it("resolves a shift's eventIds against the full event list", () => {
     const all = [ev("e1", "2026-05-16", "15:30"), ev("e9", "2026-05-01", "09:00")];
@@ -190,15 +249,17 @@ describe("latestScheduledStart", () => {
 });
 
 describe("shiftEndFromEvents", () => {
-  it("is the latest departure + trip length + call lead (DEC-041)", () => {
+  it("is the latest departure + trip length + teardown (DEC-041, #275)", () => {
     const end = shiftEndFromEvents([
       ev("e1", "2026-05-16", "15:30"),
       ev("e2", "2026-05-16", "19:30"), // last trip anchors the end
     ], "UTC");
-    // 19:30Z + (100 + 45)m = 19:30 + 2h25m = 21:55Z
-    expect(end?.toISOString()).toBe("2026-05-16T21:55:00.000Z");
+    // 19:30Z + (100 trip + 25 teardown)m = 19:30 + 2h5m = 21:35Z
+    expect(end?.toISOString()).toBe("2026-05-16T21:35:00.000Z");
     expect(TRIP_DURATION_MINUTES).toBe(100);
-    expect(CALL_LEAD_MINUTES).toBe(45);
+    expect(TEARDOWN_MINUTES).toBe(25);
+    // Teardown is genuinely shorter than the pre-trip call lead (#275).
+    expect(TEARDOWN_MINUTES).toBeLessThan(CALL_LEAD_MINUTES);
   });
 
   it("ignores cancelled trips and is null with nothing scheduled", () => {
@@ -206,7 +267,7 @@ describe("shiftEndFromEvents", () => {
       ev("e1", "2026-05-16", "19:30"),
       ev("e2", "2026-05-20", "12:00", "cancelled"), // later but cancelled — skipped
     ], "UTC");
-    expect(end?.toISOString()).toBe("2026-05-16T21:55:00.000Z");
+    expect(end?.toISOString()).toBe("2026-05-16T21:35:00.000Z");
     expect(shiftEndFromEvents([])).toBeNull();
   });
 });
@@ -401,6 +462,40 @@ describe("STAFFING_HORIZON_LEAD_DAYS env override (DEC-062)", () => {
       vi.resetModules();
       const m = await import("./derive.js");
       expect(m.STAFFING_HORIZON_LEAD_DAYS).toBe(7);
+    }
+  });
+});
+
+describe("FILL_DEADLINE_HOURS env override (DEC-115 / #322)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  it("defaults to 48 hours (2 days) — value unchanged by #322", () => {
+    expect(FILL_DEADLINE_HOURS).toBe(48);
+  });
+
+  it("a positive-integer env override replaces the default (e.g. 72 = 3 days)", async () => {
+    vi.stubEnv("FILL_DEADLINE_HOURS", "72");
+    vi.resetModules();
+    const m = await import("./derive.js");
+    expect(m.FILL_DEADLINE_HOURS).toBe(72);
+  });
+
+  it("accepts a positive FRACTION (sub-hour tuning)", async () => {
+    vi.stubEnv("FILL_DEADLINE_HOURS", "60.5");
+    vi.resetModules();
+    const m = await import("./derive.js");
+    expect(m.FILL_DEADLINE_HOURS).toBe(60.5);
+  });
+
+  it("a non-positive or garbage override falls back to 48", async () => {
+    for (const bad of ["0", "-12", "soon", "", " ", "NaN"]) {
+      vi.stubEnv("FILL_DEADLINE_HOURS", bad);
+      vi.resetModules();
+      const m = await import("./derive.js");
+      expect(m.FILL_DEADLINE_HOURS).toBe(48);
     }
   });
 });

@@ -137,8 +137,10 @@ export async function staffTraineeSeat(
   );
   if (!verdict.eligible) return { code: "ineligible" };
 
+  // Trainee seats are always Open here (guarded above), so a placement never
+  // displaces anyone — `placed.displaced` is unused (#400, DEC-118).
   const placed = await manualOverride(repo, seatId, crewMemberId, now);
-  return placed ? { code: null, seat: placed } : { code: "gone" };
+  return placed ? { code: null, seat: placed.seat } : { code: "gone" };
 }
 
 export interface UnstaffTraineeResult {

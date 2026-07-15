@@ -127,7 +127,7 @@ describe("buildCrewAppView", () => {
     expect(view!.shifts.find((s) => s.shiftId === "shift-op")!.addedByOperator).toBe(true);
   });
 
-  it("ask card carries the earliest scheduled departure (so the crew knows when)", async () => {
+  it("ask card carries the call→end window (call time, not raw departure — #419)", async () => {
     const repo = await seed();
     await repo.saveShift({ id: asId<"ShiftId">("shift-ev"), vesselId: VESSEL, date: "2026-07-07", state: "Filling", eventIds: [asId<"EventId">("e-5pm"), asId<"EventId">("e-3pm")] });
     await repo.saveEvent({ id: asId<"EventId">("e-3pm"), vesselId: VESSEL, date: "2026-07-07", time: "15:00", capacity: 12, source: "xola", status: "scheduled" });
@@ -137,14 +137,39 @@ describe("buildCrewAppView", () => {
 
     const view = await buildCrewAppView(repo, ME, NOW);
     const ask = view!.asks.find((a) => a.askId === "ask-ev");
-    expect(ask?.departureTime).toBe("15:00"); // earliest of 15:00/17:00
-    expect(ask?.shiftEndTime).toBe("19:25"); // latest 17:00 + 100 trip + 45 lead (DEC-041)
+    expect(ask?.callTime).toBe("14:15"); // earliest departure 15:00 − 45 call lead
+    expect(ask?.shiftEndTime).toBe("19:05"); // latest 17:00 + 100 trip + 25 teardown (DEC-041, #275)
   });
 
   it("lists confirmed upcoming shifts soonest-first, drops past ones", async () => {
     const view = await buildCrewAppView(await seed(), ME, NOW);
     expect(view!.shifts.map((s) => s.shiftId)).toEqual(["shift-up", "shift-ask"]);
     expect(view!.shifts[0]).toMatchObject({ vesselName: "Hops", vesselId: "vessel-1", roleName: "captain", date: "2026-07-04", pending: false });
+  });
+
+  it("drops a Confirmed seat orphaned on a Cancelled/Completed shift — the phantom (#415)", async () => {
+    const repo = await seed();
+    // A future Cancelled shift I still hold a Confirmed seat on (Xola re-import
+    // Cancels the shift; DEC-084 leaves the seat) — the prod phantom. Must NOT
+    // appear in my-shifts even though it's future-dated and I'm Confirmed on it.
+    await repo.saveShift({ id: asId<"ShiftId">("shift-cxl"), vesselId: VESSEL, date: "2026-07-18", state: "Cancelled", eventIds: [] });
+    await repo.saveSeat({ id: asId<"SeatId">("seat-cxl"), shiftId: asId<"ShiftId">("shift-cxl"), role: CAPTAIN, kind: "required", state: "Confirmed", assignedCrewMemberId: ME });
+    // Same for a Claimed (pending) seat on a Cancelled shift — the guard is
+    // state-agnostic on the SEAT, so a pending claim on a killed shift drops too.
+    await repo.saveShift({ id: asId<"ShiftId">("shift-cxl-cl"), vesselId: VESSEL, date: "2026-07-20", state: "Cancelled", eventIds: [] });
+    await repo.saveSeat({ id: asId<"SeatId">("seat-cxl-cl"), shiftId: asId<"ShiftId">("shift-cxl-cl"), role: CAPTAIN, kind: "required", state: "Claimed", assignedCrewMemberId: ME });
+    // A live ask on a since-Cancelled shift — the same phantom on the asks list.
+    await repo.saveShift({ id: asId<"ShiftId">("shift-cxl-ask"), vesselId: VESSEL, date: "2026-07-19", state: "Cancelled", eventIds: [] });
+    await repo.saveSeat({ id: asId<"SeatId">("seat-cxl-ask"), shiftId: asId<"ShiftId">("shift-cxl-ask"), role: CAPTAIN, kind: "required", state: "Asked" });
+    await repo.saveAsk({ id: asId<"AskId">("ask-cxl"), seatId: asId<"SeatId">("seat-cxl-ask"), crewMemberId: ME, channel: "push", sentAt: "2026-07-01T09:00:00.000Z" });
+
+    const view = await buildCrewAppView(repo, ME, NOW);
+    expect(view!.shifts.map((s) => s.shiftId)).not.toContain("shift-cxl");
+    expect(view!.shifts.map((s) => s.shiftId)).not.toContain("shift-cxl-cl");
+    expect(view!.asks.map((a) => a.askId)).not.toContain("ask-cxl");
+    // The live ones are untouched.
+    expect(view!.shifts.map((s) => s.shiftId)).toContain("shift-up");
+    expect(view!.asks.map((a) => a.askId)).toContain("ask-open");
   });
 
   it("includes a Claimed (not-yet-confirmed) seat in my-shifts, marked pending (#4)", async () => {
@@ -171,14 +196,14 @@ describe("buildCrewAppView", () => {
 
     const view = await buildCrewAppView(repo, ME, NOW);
     const row = view!.shifts.find((s) => s.shiftId === "shift-w")!;
-    expect(row.departureTime).toBe("11:00"); // earliest of 11:00/17:00
-    expect(row.shiftEndTime).toBe("19:25"); // latest 17:00 + 100 trip + 45 lead (DEC-041)
+    expect(row.callTime).toBe("10:15"); // earliest departure 11:00 − 45 call lead (#419)
+    expect(row.shiftEndTime).toBe("19:05"); // latest 17:00 + 100 trip + 25 teardown (DEC-041, #275)
     expect(row.coCrew).toEqual([{ name: "Jamie", roleName: "captain" }]); // the OTHER crew, not me
 
     // A solo/no-events shift: empty co-crew, no window.
     const up = view!.shifts.find((s) => s.shiftId === "shift-up")!;
     expect(up.coCrew).toEqual([]);
-    expect(up.departureTime).toBeUndefined();
+    expect(up.callTime).toBeUndefined();
   });
 
   it("standing reads neutral with no logged history", async () => {

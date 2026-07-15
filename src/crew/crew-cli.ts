@@ -21,6 +21,7 @@
 import type { CrewMember, RoleType } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import { normalizeEmail } from "../auth/login-code.js";
+import { scoreCrewMember, effectiveRankScore } from "../oracle/reliability-score.js";
 import type { Repository } from "../ports/repository.js";
 
 /** A user-facing CLI error (bad args / not found) — the entrypoint prints its
@@ -39,6 +40,29 @@ const looksLikeEmail = (s: string): boolean => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const KNOWN_SET_FLAGS = ["email", "phone", "name"] as const;
 const KNOWN_ADD_FLAGS = ["name", "phone", "ratings", "email", "id", "mmc"] as const;
+
+/** Weekday tokens, index = the Mon=0…Sun=6 value stored in `weekdaysOff` (DEC-119). */
+const WEEKDAY_NAMES = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
+
+/** Parse a `--days=sun,sat` token to a sorted, de-duped Mon=0…Sun=6 set. Throws on
+ *  an empty list or an unknown token (a silent drop would be a false "done"). */
+const parseDays = (raw: string): number[] => {
+  const toks = raw.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean);
+  if (toks.length === 0)
+    throw new CrewCliError("days-off: --days= is empty. Pass e.g. --days=sun,sat, or --clear.");
+  const set = new Set<number>();
+  for (const t of toks) {
+    const i = (WEEKDAY_NAMES as readonly string[]).indexOf(t);
+    if (i === -1)
+      throw new CrewCliError(`days-off: "${t}" isn't a weekday. Use: ${WEEKDAY_NAMES.join(", ")}.`);
+    set.add(i);
+  }
+  return [...set].sort((a, b) => a - b);
+};
+
+/** "sun, sat" from `[5,6]` — sorted, for display. */
+const formatDays = (days: number[]): string =>
+  [...days].sort((a, b) => a - b).map((d) => WEEKDAY_NAMES[d] ?? String(d)).join(", ");
 
 /** DEC-044 far-future sentinel MMC — keeps the universal MMC gate open until real
  *  credential tracking lands. Same value as `db/seed-pilot-crew.ts`. */
@@ -65,8 +89,11 @@ const resolveRating = (roleTypes: RoleType[], token: string) => {
 const USAGE =
   "Usage:\n" +
   "  db:crew list\n" +
+  "  db:crew rank                — crew by reliability score, best first (#404)\n" +
   '  db:crew add --name="<name>" --phone=<+E164> --ratings=<r1,r2> [--email=<addr>] [--id=<crewId>] [--mmc=<YYYY-MM-DD>]\n' +
   '  db:crew set <crewId> [--email=<addr>] [--phone=<+E164>] [--name="<name>"]\n' +
+  "  db:crew days-off                              — roster of everyone with recurring days off (#411)\n" +
+  "  db:crew days-off <crewId> [--days=sun,mon,… (COMMA-separated) | --clear]   — show/set/clear one crew member\n" +
   "  db:crew disable <crewId>   |   db:crew enable <crewId>\n" +
   "  db:crew archive <crewId>   |   db:crew unarchive <crewId>\n" +
   "  (disable = benched but still manually placeable; archive = off every list)\n" +
@@ -74,7 +101,11 @@ const USAGE =
 
 /** Execute one crew command. Returns the human-readable result line(s);
  *  throws {@link CrewCliError} on bad input or a missing target. */
-export async function runCrewCommand(repo: Repository, args: string[]): Promise<string> {
+export async function runCrewCommand(
+  repo: Repository,
+  args: string[],
+  now: Date = new Date(),
+): Promise<string> {
   const cmd = args[0];
 
   switch (cmd) {
@@ -91,6 +122,34 @@ export async function runCrewCommand(repo: Repository, args: string[]): Promise<
             `${c.phone.padEnd(15)} ${c.email ?? "(no email)"}`,
         )
         .join("\n");
+    }
+
+    // Crew ranked by reliability, best first (#404). Uses the SAME score + manual
+    // thumb the ask loop ranks on (`scoreCrewMember` + `effectiveRankScore`), so
+    // this is the true ask order — not a parallel metric. Empty log ⇒ neutral 0
+    // (`events` shows why a name sits at 0); a `*` marks a manual floor/boost.
+    case "rank": {
+      const crew = await repo.listCrewMembers();
+      if (crew.length === 0) return "No crew members.";
+      const keyed = await Promise.all(
+        crew.map(async (c) => {
+          const s = await scoreCrewMember(repo, c.id, now);
+          return { c, key: effectiveRankScore(s.score, c), events: s.eventCount };
+        }),
+      );
+      keyed.sort((a, b) =>
+        a.key !== b.key ? b.key - a.key : a.c.id < b.c.id ? -1 : a.c.id > b.c.id ? 1 : 0,
+      );
+      const header = " #   score  events  crew";
+      const rows = keyed.map(({ c, key, events }, i) => {
+        const thumb = c.manualFloor !== undefined || c.manualBoost !== undefined ? "*" : " ";
+        const mark = c.status === "active" ? "●" : c.status === "archived" ? "✗" : "○";
+        return (
+          `${String(i + 1).padStart(2)}  ${key.toFixed(1).padStart(6)}${thumb} ` +
+          `${String(events).padStart(5)}   ${mark} ${c.name} (${c.id})`
+        );
+      });
+      return [header, ...rows, "", "* = manual floor/boost applied · ● active ○ benched ✗ archived"].join("\n");
     }
 
     case "add": {
@@ -314,6 +373,73 @@ export async function runCrewCommand(repo: Repository, args: string[]): Promise<
           `set: no crew member with id "${id}". Run \`db:crew list\` to find the id.`,
         );
       return `Updated ${updated.name} (${updated.id}):\n  ${changes.join("\n  ")}`;
+    }
+
+    // Recurring weekday time-off (#411, DEC-119): read `weekdaysOff`, or set/clear
+    // it via a targeted UPDATE (DEC-094-safe). Mon=0…Sun=6; subtractive, whole-day,
+    // vessel-local — the eligibility gate's `not_recurring_off` rule reads it.
+    case "days-off": {
+      const id = args[1] && !args[1].startsWith("--") ? args[1] : undefined;
+      const clear = args.includes("--clear");
+      const daysFlag = flag(args, "days");
+
+      // No id + no set/clear ⇒ roster of everyone WITH recurring days off.
+      if (!id && !clear && daysFlag === undefined) {
+        const off = (await repo.listCrewMembers())
+          .filter((c) => (c.weekdaysOff ?? []).length > 0)
+          .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+        if (off.length === 0) return "No crew have recurring days off.";
+        return off
+          .map((c) => `${c.id.padEnd(20)} ${c.name.padEnd(22)} ${formatDays(c.weekdaysOff!)}`)
+          .join("\n");
+      }
+      if (!id)
+        throw new CrewCliError(`days-off: a crew id is required to set or clear.\n${USAGE}`);
+
+      // A bare token after the id (e.g. `--days=sun mon` → "mon") is almost always a
+      // space where a comma belongs — reject it loudly rather than silently drop it.
+      const stray = args.slice(2).find((a) => !a.startsWith("--"));
+      if (stray)
+        throw new CrewCliError(
+          `days-off: unexpected argument "${stray}" — weekdays go in ONE comma-separated flag: --days=sun,mon.\n${USAGE}`,
+        );
+      const bad = args
+        .slice(2)
+        .find((a) => a.startsWith("--") && a !== "--clear" && !a.startsWith("--days="));
+      if (bad)
+        throw new CrewCliError(
+          `days-off: unrecognized flag "${bad}". Known: --days=sun,mon,…, --clear.\n${USAGE}`,
+        );
+
+      // Id + no set/clear ⇒ show that one crew member's set (read-only).
+      if (!clear && daysFlag === undefined) {
+        const c = await repo.getCrewMember(asId<"CrewMemberId">(id));
+        if (!c)
+          throw new CrewCliError(`days-off: no crew member with id "${id}". Run \`db:crew list\`.`);
+        const off = c.weekdaysOff ?? [];
+        return off.length === 0
+          ? `${c.name} (${c.id}) has no recurring days off.`
+          : `${c.name} (${c.id}) is off: ${formatDays(off)}.`;
+      }
+      if (clear && daysFlag !== undefined)
+        throw new CrewCliError("days-off: pass either --days=… or --clear, not both.");
+
+      const weekdaysOff = clear ? [] : parseDays(daysFlag!);
+      const updated = await repo.updateCrewWeekdaysOff(
+        asId<"CrewMemberId">(id),
+        weekdaysOff,
+      );
+      if (!updated)
+        throw new CrewCliError(`days-off: no crew member with id "${id}". Run \`db:crew list\`.`);
+      if (weekdaysOff.length === 0)
+        return `Cleared recurring days off for ${updated.name} (${updated.id}).`;
+      // Off all 7 is allowed (an emergent soft bench, DEC-119) but worth flagging —
+      // it's not archived, just never eligible.
+      const warn =
+        weekdaysOff.length === 7
+          ? "\n  ⚠ off every weekday — never asked or claimable (not archived; enable a day to undo)."
+          : "";
+      return `${updated.name} (${updated.id}) is now off: ${formatDays(weekdaysOff)}.${warn}`;
     }
 
     default:

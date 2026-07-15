@@ -16,14 +16,15 @@ import {
   bailLatenessMs,
   earliestScheduledStart,
   CALL_LEAD_MINUTES,
+  TEARDOWN_MINUTES,
   TRIP_DURATION_MINUTES,
 } from "../builder/derive.js";
 import { TENANT_TIMEZONE } from "../config/tenant.js";
 
-// The call lead + trip length live in `builder/derive` (the shift *end* needs
-// them too, and the outbox reads that end — DEC-041). Re-exported here so the
-// card's contract and its test keep importing them from the card.
-export { CALL_LEAD_MINUTES };
+// The call lead + teardown + trip length live in `builder/derive` (the shift
+// *end* needs them too, and the outbox reads that end — DEC-041). Re-exported
+// here so the card's contract and its test keep importing them from the card.
+export { CALL_LEAD_MINUTES, TEARDOWN_MINUTES };
 
 /** One guest on an event's manifest. Name + party + phone; no waiver (DEC-012). */
 export interface ManifestGuest {
@@ -144,7 +145,7 @@ export function committedWindow(
     callTime: minusMinutes(sorted[0]!, CALL_LEAD_MINUTES),
     shiftEndTime: plusMinutes(
       sorted[sorted.length - 1]!,
-      TRIP_DURATION_MINUTES + CALL_LEAD_MINUTES,
+      TRIP_DURATION_MINUTES + TEARDOWN_MINUTES,
     ),
   };
 }
@@ -152,8 +153,9 @@ export function committedWindow(
 /**
  * The on-clock DURATION of the committed window, in minutes (DEC-041) — the payroll
  * report's per-shift hours (#347). Same boundaries as {@link committedWindow}
- * (call = first departure − lead; end = last departure + trip + lead), so
- * `end − call = (last − first) + trip + 2×lead`. Computed as a true minute span
+ * (call = first departure − call lead; end = last departure + trip + teardown), so
+ * `end − call = (last − first) + trip + call lead + teardown` (#275 — the tail is
+ * the shorter teardown, not a second call lead). Computed as a true minute span
  * (not by subtracting the wrapped "HH:mm" clock strings, which lose the day when the
  * end rolls past midnight). Both departures are same-day wall clocks, sorted, so
  * `last − first` is a safe within-day difference. Empty in → 0.
@@ -166,7 +168,7 @@ export function committedMinutes(scheduledTimes: readonly string[]): number {
   };
   const sorted = [...scheduledTimes].sort((a, b) => a.localeCompare(b));
   const span = toMin(sorted[sorted.length - 1]!) - toMin(sorted[0]!);
-  return span + TRIP_DURATION_MINUTES + 2 * CALL_LEAD_MINUTES;
+  return span + TRIP_DURATION_MINUTES + CALL_LEAD_MINUTES + TEARDOWN_MINUTES;
 }
 
 async function roleName(repo: Repository, roleId: string): Promise<string> {

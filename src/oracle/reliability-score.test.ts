@@ -22,6 +22,7 @@ import {
   rankByReliability,
   scoreCrewMember,
 } from "./reliability-score.js";
+import { bailLatenessMs } from "../builder/derive.js";
 
 const CREW = asId<"CrewMemberId">("crew-quint");
 const NOW = new Date("2026-07-01T12:00:00.000Z");
@@ -56,24 +57,38 @@ describe("computeReliabilityScore — baselines", () => {
   });
 
   it("a log that nets to zero sorts at neutral, same as cold start", () => {
-    // +5 completed and -5 flat bail cancel: a real history (eventCount 2) that
-    // nonetheless sits at the cold-start neutral 0 — the docstring invariant.
+    // -3 bail, +2 accept, +1 decline cancel (DEC-120 weights): a real history
+    // (eventCount 3) that nonetheless sits at the cold-start neutral 0 — the
+    // docstring invariant.
     const r = computeReliabilityScore(
-      [evt("shift_completed", daysAgo(1)), evt("shift_bailed", daysAgo(2))],
+      [
+        evt("shift_bailed", daysAgo(1)),
+        evt("ask_accepted", daysAgo(2)),
+        evt("ask_declined", daysAgo(3)),
+      ],
       NOW,
     );
     expect(r.score).toBe(0);
-    expect(r.eventCount).toBe(2);
+    expect(r.eventCount).toBe(3);
   });
 });
 
 describe("computeReliabilityScore — the load-bearing distinctions", () => {
-  it("decline is neutral — declining does not hurt the score", () => {
+  it("decline is rewarded a little — answering 'no' lifts the score (DEC-120)", () => {
+    // Reverses the old decline-neutral rule: Out is now +1 (responsiveness), so
+    // two declines net +2 — still far below a completed shift, but not free.
     const declined = scoreOf([
       evt("ask_declined", daysAgo(1)),
       evt("ask_declined", daysAgo(2)),
     ]);
-    expect(declined).toBe(0);
+    expect(declined).toBe(2 * DEFAULT_WEIGHTS.perEvent.ask_declined);
+    // In (+2) still beats Out (+1) beats silence (-3).
+    expect(scoreOf([evt("ask_accepted", daysAgo(1))])).toBeGreaterThan(
+      scoreOf([evt("ask_declined", daysAgo(1))]),
+    );
+    expect(scoreOf([evt("ask_declined", daysAgo(1))])).toBeGreaterThan(
+      scoreOf([evt("ask_ignored", daysAgo(1))]),
+    );
   });
 
   it("ask_ignored is penalized (the lone ask-level sin)", () => {
@@ -116,6 +131,19 @@ describe("computeReliabilityScore — bail lateness is the signal", () => {
   it("a bail with no lateness recorded takes only the flat penalty", () => {
     const flat = scoreOf([evt("shift_bailed", daysAgo(1))]);
     expect(flat).toBe(DEFAULT_WEIGHTS.perEvent.shift_bailed);
+  });
+
+  it("a zero-notice bail stays ABOVE the no_show floor at the DEFAULT horizon (DEC-120)", () => {
+    // The floor invariant that matters — composed against the REAL `bailLatenessMs`
+    // at the shipped 7-day (168h) horizon, not a hardcoded stand-in. A prior draft
+    // calibrated the ramp for 48h and silently drove this below no_show (-89 at 7d);
+    // this test is the guard that would have caught it.
+    const maxLateness = bailLatenessMs(NOW, NOW); // zero notice → full horizon window
+    const worstBail = scoreOf([
+      evt("shift_bailed", daysAgo(1), { latenessMs: maxLateness }),
+    ]);
+    expect(worstBail).toBeGreaterThan(DEFAULT_WEIGHTS.perEvent.no_show); // above -15
+    expect(worstBail).toBeLessThan(DEFAULT_WEIGHTS.perEvent.shift_bailed); // worse than full-notice -3
   });
 
   it("non-positive lateness does not turn the penalty into a reward", () => {

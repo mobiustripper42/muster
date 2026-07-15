@@ -125,7 +125,7 @@ export default async function CrewOpenPage({
   );
 }
 
-/** Today / This weekend presets (links) + a from–to GET form. Active = filled. */
+/** 7 Days / 2 Weeks / 30 Days presets (links) + a from–to GET form. Active = filled. */
 function Filters({
   label,
   today,

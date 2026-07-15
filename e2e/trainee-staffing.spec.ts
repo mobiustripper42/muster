@@ -5,10 +5,19 @@
  * is covered by the core suite) → Assign → occupant named on the line + the
  * DEC-084 "you're on" notice lands in the outbox → my-shifts shows the ride →
  * Take off seat → picker returns.
+ *
+ * **SKIPPED — the Manning override UI was withdrawn (S55 prod incident).** This
+ * spec drives that UI end-to-end: `+ Trainee seat` and the "Trainee for this
+ * seat" picker both lived in `<ManningSection>`, which no longer renders, so
+ * there is no door left to drive. Skipped rather than deleted, mirroring the
+ * withdrawal's own posture — `src/builder/manning.ts` and its unit tests are
+ * kept intact, so trainee staffing is dormant, not gone. **Un-skip when the
+ * Manning UI is revived** (which needs the tick to skip `override` seats, a
+ * confirm step, or both); the assertions below still describe the intended loop.
  */
 import { test, expect, resetAndSeed, signInAsAdmin, signInAsCrew } from "./fixtures.js";
 
-test.describe("trainee staffing (9.3, DEC-087)", () => {
+test.describe.skip("trainee staffing (9.3, DEC-087)", () => {
   test.beforeEach(async () => {
     await resetAndSeed("atrisk");
   });

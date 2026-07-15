@@ -1,5 +1,8 @@
 # Changelog
 
+## [1.0.13] - 2026-07-15
+- PR #435: admin/shifts "Split candidates" filter — narrow the board to long-gap vessel-days worth a split (#434)
+
 ## [1.0.12] - 2026-07-15
 - PR #433: /crew/open filter — default 7 Days, presets 2 Weeks / 30 Days (drop "This weekend") (#414)
 

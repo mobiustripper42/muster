@@ -27,9 +27,9 @@ import { claimSeat } from "./actions";
  * anti-anxiety guardrails: [today, today+45d] clamp (owned by `claimableSeatsFor`),
  * NO auto-refresh / NO polling / NO live per-state counts (a bare row count for
  * orientation is fine), neutral ink (warm/bad tokens stay reserved for the At-Risk
- * board). The default filter is **This weekend** (not today, per DEC-042's board
- * echo) — this is a pull surface, so crew browse ahead: presets step out to Next 2
- * weeks / Next 4 weeks, plus a from–to form defaulting to the next 30 days.
+ * board). The default filter is **7 Days** (#414 — not today, not just the weekend;
+ * this is a pull surface, so crew browse a week ahead). Presets step out to 2 Weeks /
+ * 30 Days, plus a from–to form defaulting to the next 30 days.
  *
  * Server-rendered, no client JS: presets are GET links, the confirm "sheet" is a
  * native <details> disclosure (the bail pattern), Claim is a <form action>.
@@ -144,14 +144,14 @@ function Filters({
   return (
     <div className="flex flex-col gap-2 rounded-card border border-line bg-card px-4 py-3">
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        <AppLink href="/crew/open" className={chip(label === "weekend")}>
-          This weekend
+        <AppLink href="/crew/open" className={chip(label === "7d")}>
+          7 Days
         </AppLink>
         <AppLink href="/crew/open?range=2w" className={chip(label === "2w")}>
-          Next 2 weeks
+          2 Weeks
         </AppLink>
-        <AppLink href="/crew/open?range=4w" className={chip(label === "4w")}>
-          Next 4 weeks
+        <AppLink href="/crew/open?range=30d" className={chip(label === "30d")}>
+          30 Days
         </AppLink>
       </div>
       {/* No-JS date range: a GET form submits ?from&to back to this page. Defaults
@@ -313,10 +313,10 @@ function backAt(hhmm: string): string {
   return approxBack(hhmm).replace(/(am|pm)$/i, " $1").toUpperCase();
 }
 
-type RangeLabel = "weekend" | "2w" | "4w" | "range";
+type RangeLabel = "7d" | "2w" | "30d" | "range";
 
-/** Resolve the active date range from search params. Default = This weekend (a
- *  pull surface — crew browse ahead, so "today" is the wrong landing). */
+/** Resolve the active date range from search params. Default = next 7 days (#414):
+ *  a pull surface — crew browse a week ahead, not just today, not just the weekend. */
 function resolveRange(sp: Search, today: string): { range: DateRange; label: RangeLabel } {
   if (sp.from && sp.to) {
     // Tolerate a backwards range (from > to) — swap rather than render a confusing
@@ -325,28 +325,18 @@ function resolveRange(sp: Search, today: string): { range: DateRange; label: Ran
     return { range: { from, to }, label: "range" };
   }
   if (sp.range === "2w") return { range: { from: today, to: addDays(today, 14) }, label: "2w" };
-  if (sp.range === "4w") return { range: { from: today, to: addDays(today, 28) }, label: "4w" };
-  return { range: weekendRange(today), label: "weekend" };
+  if (sp.range === "30d") return { range: { from: today, to: addDays(today, 30) }, label: "30d" };
+  return { range: { from: today, to: addDays(today, 7) }, label: "7d" };
 }
 
 /** The relative path (with the active filter) the claim action returns to on error. */
 function backHref(label: RangeLabel, sp: Search): string {
   if (label === "2w") return "/crew/open?range=2w";
-  if (label === "4w") return "/crew/open?range=4w";
+  if (label === "30d") return "/crew/open?range=30d";
   if (label === "range" && sp.from && sp.to) {
     return `/crew/open?from=${encodeURIComponent(sp.from)}&to=${encodeURIComponent(sp.to)}`;
   }
   return "/crew/open";
-}
-
-/** The upcoming Sat–Sun (vessel-local). On Sunday that's today; on Saturday, today+tomorrow. */
-function weekendRange(today: string): DateRange {
-  const dow = new Date(today + "T00:00:00Z").getUTCDay(); // 0 Sun … 6 Sat
-  const satOffset = dow === 0 ? 0 : 6 - dow;
-  return {
-    from: addDays(today, satOffset),
-    to: dow === 0 ? today : addDays(today, satOffset + 1),
-  };
 }
 
 function fmtDate(iso: string): string {

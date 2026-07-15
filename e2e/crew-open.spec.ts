@@ -19,16 +19,20 @@ test.describe("crew /crew/open — pick up a shift", () => {
     await resetAndSeed("crew");
   });
 
-  test("default is This weekend; widening to Next 2 weeks reveals the ~7d-out shift", async ({
+  test("presets are 7 Days / 2 Weeks / 30 Days (#414); the ~7d-out shift shows within them", async ({
     page,
   }) => {
     await signInAsCrew(page, "crew-quint");
     await page.goto("/crew/open");
-    // Pull surface → default is This weekend (crew browse ahead, not "today"). The
-    // seeded open shift is ~7d out, beyond this weekend → empty reads as normal.
-    await expect(page.getByText(/nothing open in this window/i)).toBeVisible();
-    // Stepping out to Next 2 weeks includes it.
-    await page.getByRole("link", { name: "Next 2 weeks" }).click();
+    // #414: default is now 7 Days (a pull surface — crew browse a week ahead). The
+    // old "This weekend" / "Next 4 weeks" presets are gone.
+    await expect(page.getByRole("link", { name: "7 Days" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "2 Weeks" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "30 Days" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "This weekend" })).toHaveCount(0);
+    // The seeded open shift is ~7d out (the boundary of the default window); 2 Weeks
+    // includes it unambiguously.
+    await page.getByRole("link", { name: "2 Weeks" }).click();
     await expect(page.locator("details", { hasText: "Hops" })).toBeVisible();
   });
 

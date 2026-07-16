@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Muster — Offering Catalog (mockup)</title>
+<title>Muster — Offering Catalog (mockup v3)</title>
 <style>
   :root{
     --bg:#eef2f6; --card:#ffffff; --ink:#101826; --muted:#5b6675; --faint:#93a0b0; --line:#e7ebf1;
@@ -27,6 +27,7 @@
   .pill{font-size:11px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; padding:3px 9px;
         border-radius:99px; border:1px solid #cbe6d5; background:#e7f4ec; color:#157a3a}
   .pill.draft{border-color:var(--line); background:#f6f8fa; color:var(--muted)}
+  .pill.hidden{border-color:#e2d6c2; background:#f6efe2; color:#8a5f2f}
   .spacer{flex:1}
   .btn{font:inherit; font-size:12.5px; padding:6px 12px; border-radius:8px; border:1px solid var(--line);
        background:#fff; color:var(--ink); cursor:pointer}
@@ -48,7 +49,7 @@
   .sec{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); margin-bottom:14px}
   .sh{padding:12px 15px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:9px}
   .sh h2{font-size:15px; font-weight:600}
-  .sh .hint{font-size:12px; color:var(--faint)}
+  .sh .hint{font-size:12px; color:var(--faint); margin-left:auto; text-align:right}
   .sb{padding:13px 15px}
 
   .f{display:grid; grid-template-columns:150px 1fr; gap:12px; padding:7px 0; align-items:baseline}
@@ -62,6 +63,9 @@
   textarea.inp{max-width:100%; min-height:64px; resize:vertical}
   .unit{font-size:12px; color:var(--faint); margin-left:6px}
   .inline{display:flex; align-items:center; gap:6px; flex-wrap:wrap}
+  .ro{color:var(--muted); font-size:13px}
+  .ro .from{font-size:11px; color:var(--faint); font-style:italic}
+  .lk{color:var(--accent); text-decoration:none; font-size:12px}
 
   .chip{font-size:12px; padding:4px 10px; border-radius:99px; border:1px solid var(--line);
         background:#fff; color:var(--muted); cursor:pointer}
@@ -79,11 +83,15 @@
   .rowact{font-size:12px; color:var(--accent); text-decoration:none; margin-left:9px}
   .addrow{margin-top:8px; font:inherit; font-size:12.5px; padding:6px 11px; border-radius:8px;
           border:1px dashed #ccd6e0; background:#fff; color:var(--accent); cursor:pointer}
+  .tag{font-size:9px; letter-spacing:.06em; text-transform:uppercase; color:var(--faint);
+       border:1px solid var(--line); border-radius:4px; padding:1px 4px; margin-left:5px}
+  .tag.crew{color:#2f7d70; border-color:#bfe0d8}
 
   .gen{margin-top:11px; background:#f5f8fb; border:1px solid #dfe6ee; border-radius:10px; padding:10px 12px;
        font-size:13px; color:var(--muted)}
+  .gen.crew{background:#f2f9f5; border-color:#cbe6d5}
   .gen b{color:var(--ink)}
-  .gen .big{font-family:var(--mono); font-size:15px; color:var(--ink); font-weight:600}
+  .gen .big{font-family:var(--mono); font-size:14px; color:var(--ink); font-weight:600}
 
   .note{margin-top:22px; background:#fff; border:1px solid var(--line); border-radius:var(--radius); padding:15px 17px}
   .note h3{font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--faint); margin-bottom:9px}
@@ -96,7 +104,7 @@
 </head>
 <body>
 
-<div class="mockbar"><b>MOCKUP</b> — Offering catalog · static · the <b>global</b> definition; per-event changes live on the reservation calendar</div>
+<div class="mockbar"><b>MOCKUP v3</b> — Offering catalog · static · the <b>global rule</b>; per-departure changes + blocks live elsewhere · “guest” ≠ crew “seat”</div>
 
 <div class="wrap">
 
@@ -108,6 +116,7 @@
     <span class="pill">Live</span>
     <div class="spacer"></div>
     <button class="btn">View on calendar</button>
+    <button class="btn">Hide</button>
     <button class="btn primary">Save</button>
   </header>
 
@@ -117,6 +126,7 @@
       <a href="#details" class="on">Details</a>
       <a href="#schedule">Schedule</a>
       <a href="#pricing">Pricing</a>
+      <a href="#gratuity">Gratuity</a>
       <a href="#addons">Add-ons</a>
       <a href="#photos">Photos</a>
     </nav>
@@ -127,53 +137,50 @@
       <section class="sec" id="details">
         <div class="sh"><h2>Details</h2><span class="hint">what the customer reads</span></div>
         <div class="sb">
+          <div class="f"><span class="lbl">Status</span>
+            <span class="inline">
+              <button class="chip" aria-pressed="true">Draft</button>
+              <button class="chip" aria-pressed="false">Live</button>
+              <button class="chip" aria-pressed="false">Hidden</button>
+              <span class="unit">Draft = not sellable, generates no slots · Live = on sale · Hidden = pulled from browse + default list, bookings kept (lifted from bushel)</span>
+            </span></div>
           <div class="f"><span class="lbl">Name</span>
             <input class="inp" value="Brew Boat Party Boats with Captain"></div>
           <div class="f"><span class="lbl">Description</span>
-            <textarea class="inp">**NO Pedaling Required on any of our Brew Boats** Come aboard our party pontoon boats for the ultimate celebration on the water! With four boats available, each holding 12-16 guests, we've got the perfect spot for you and your friends.</textarea></div>
+            <textarea class="inp">**NO Pedaling Required on any of our Brew Boats** Come aboard our party pontoon boats for the ultimate celebration on the water! With four boats available, we've got the perfect spot for you and your friends.</textarea></div>
+          <div class="f"><span class="lbl">Location<span class="sub">launch point</span></span>
+            <div style="width:100%">
+              <span class="inline">
+                <select class="inp short" style="max-width:220px"><option>Cleveland — East Bank</option><option>Cleveland — Rivergate</option></select>
+                <a class="lk" href="#">Manage locations →</a>
+              </span>
+              <div class="src">Just a picker here. The <b>Location entity</b> (its own screen) carries the
+                <b>pickup</b> [description + link], a <b>route description</b>, and is what a location block
+                targets (river closed → every offering here goes dark for that window).</div>
+            </div></div>
           <div class="f"><span class="lbl">Trip length<span class="sub">on the water</span></span>
-            <span class="inline"><input class="inp short mono" value="100"><span class="unit">minutes</span>
-            <span class="unit">· customer sees “1h 40min”</span></span></div>
+            <span class="inline"><input class="inp short mono" value="100"><span class="unit">minutes · customer sees “1h 40min”</span></span></div>
           <div class="f"><span class="lbl">Boat held for<span class="sub">turnaround included</span></span>
             <span class="inline"><input class="inp short mono" value="100"><span class="unit">minutes</span></span></div>
-          <div class="f"><span class="lbl">Arrive before<span class="sub">call time for the guest</span></span>
+          <div class="f"><span class="lbl">Arrive before<span class="sub">guest call time</span></span>
             <span class="inline"><input class="inp short mono" value="15"><span class="unit">minutes</span></span></div>
-          <div class="f"><span class="lbl">Runs on<span class="sub">each boat its own size</span></span>
+          <div class="f"><span class="lbl">Vessels<span class="sub">which boats run it</span></span>
             <div style="width:100%">
-              <table style="max-width:420px">
-                <thead><tr><th>Boat</th><th class="r">Included</th><th class="r">Max</th><th></th></tr></thead>
-                <tbody>
-                  <tr><td><span class="hue v1"></span>Brew 1</td><td class="r mono">12</td><td class="r mono">12</td>
-                      <td class="r"><a class="rowact" href="#">Edit</a></td></tr>
-                  <tr><td><span class="hue v2"></span>Brew 2</td><td class="r mono">12</td><td class="r mono">14</td>
-                      <td class="r"><a class="rowact" href="#">Edit</a></td></tr>
-                  <tr><td><span class="hue v3"></span>Brew 3</td><td class="r mono">12</td><td class="r mono">14</td>
-                      <td class="r"><a class="rowact" href="#">Edit</a></td></tr>
-                  <tr><td><span class="hue v4"></span>Brew 4</td><td class="r mono">12</td><td class="r mono">16</td>
-                      <td class="r"><a class="rowact" href="#">Edit</a></td></tr>
-                </tbody>
-              </table>
-              <div class="src">Real numbers need confirming — the widget says "each holding 12-16 guests,
-                16 on the largest". <b>Per-boat max is the whole point:</b> see below.</div>
+              <span class="inline">
+                <button class="chip boat" aria-pressed="true"><span class="hue v1"></span>Brew 1</button>
+                <button class="chip boat" aria-pressed="true"><span class="hue v2"></span>Brew 2</button>
+                <button class="chip boat" aria-pressed="true"><span class="hue v3"></span>Brew 3</button>
+                <button class="chip boat" aria-pressed="true"><span class="hue v4"></span>Brew 4</button>
+                <button class="chip">+ vessel</button>
+              </span>
+              <div class="src">Picked from the Vessel (equipment) list. <b>Capacity is a fact of each Vessel</b> (Brew 1 = 12, Brew 4 = 16), set on the Vessel screen — never here. Different boats need a different schedule? That's a different Offering.</div>
             </div></div>
-
-          <div class="gen" style="border-color:#cbe6d5; background:#f2f9f5">
-            <b>This is the thing Xola can't do — and it kills two workarounds.</b><br>
-            Xola carries <b>one capacity per experience</b>, but your four boats are 12–16. So a party of
-            14 can't self-serve: the widget shows <b>“CALL TO”</b> on some days and tells the customer
-            <b>“to add extra tickets, contact BrewBoat directly”</b>. Both are the same limitation
-            wearing two hats — a human has to work out which hull fits.
-            <div style="margin-top:6px">Muster holds capacity <b>per event</b>, and events are
-            <b>per boat</b>. Availability is already <b>party ≤ that boat's max</b>. So a 14-person party
-            is simply shown the boats that fit and books itself. <b>No “CALL TO” state, no phone-in for
-            extra guests</b> — neither is modelled, because neither is a real thing about the business.</div>
-          </div>
         </div>
       </section>
 
       <!-- SCHEDULE -->
       <section class="sec" id="schedule">
-        <div class="sh"><h2>Schedule</h2><span class="hint">departure times, applied to every boat above</span></div>
+        <div class="sh"><h2>Schedule</h2><span class="hint">a rule, not rows</span></div>
         <div class="sb">
           <div class="f"><span class="lbl">Season</span>
             <span class="inline"><input class="inp short mono" value="2026-05-01"><span class="unit">to</span>
@@ -196,31 +203,39 @@
             </span></div>
 
           <div class="gen">
-            <span class="big">4 boats × 5 departures × 153 days = 3,060 events</span><br>
-            <b>These get created ahead of the sale, not when someone books.</b> An unsold departure has to
-            exist to be listed as available — that's the whole ordering system. They land on the
-            reservation calendar as <b>Open</b> and become <b>Sold</b> when claimed.
-            <div style="margin-top:6px">Blacking out <b>one</b> event happens on the calendar. Blacking out a
-            <b>run of future events</b> is its own screen (not this one).</div>
+            <b>Availability is computed from this rule — no rows are written up front.</b><br>
+            Open slots = <span class="big">schedule × vessels × dates − blocks − bookings</span>, computed on
+            the fly. A row is <b>materialized only when a slot gets state</b>: booked, given a per-departure
+            override, or held. So a season is a few dozen rows, not thousands — and editing this schedule
+            just <b>recomputes the open slots</b>, nothing to rewrite.
+            <div style="margin-top:6px"><b>Draft</b> generates no slots. Flip to <b>Live</b> and the slots
+            appear on the reservation calendar.</div>
+          </div>
+
+          <div class="gen" style="margin-top:8px">
+            <b>Blocks / blackout are NOT here</b> (and nothing like Xola's). They live on their own surface as
+            scoped, availability-subtracting blocks: <b>location block</b> (river closed → everything at that
+            location, a date+time window), <b>vessel block</b> (boat out of service → all its slots, a date
+            range), <b>vessel hold</b> (reserve a boat for a private thing, no customer event). A single
+            departure change is a per-departure override on the calendar.
           </div>
         </div>
       </section>
 
       <!-- PRICING -->
       <section class="sec" id="pricing">
-        <div class="sh"><h2>Pricing</h2><span class="hint">the boat, not the seat</span></div>
+        <div class="sh"><h2>Pricing</h2><span class="hint">the boat, by the guest</span></div>
         <div class="sb">
           <div class="f"><span class="lbl">Base fare<span class="sub">buys the whole boat</span></span>
             <span class="inline"><span class="unit">$</span><input class="inp short mono" value="499.00">
-            <span class="unit">for up to</span><input class="inp short mono" value="12" style="max-width:60px">
-            <span class="unit">guests</span></span></div>
-          <div class="f"><span class="lbl">Extra guest<span class="sub">above the 12 included</span></span>
+            <span class="unit">for up to <b>this boat's included count</b> (from the Vessel — e.g. 12)</span></span></div>
+          <div class="f"><span class="lbl">Extra guest<span class="sub">above the included count</span></span>
             <span class="inline"><span class="unit">$</span><input class="inp short mono" value="40.00">
-            <span class="unit">each, up to <b>that boat’s</b> max — sold at checkout, not by phone</span></span></div>
+            <span class="unit">each, up to <b>that boat's max</b> (Vessel capacity) — sold at checkout, never by phone</span></span></div>
           <div class="f"><span class="lbl">Tax</span>
-            <span class="inline"><input class="inp short mono" value="5.2" style="max-width:70px"><span class="unit">%</span></span></div>
+            <span class="ro">5.2% &nbsp;<span class="from">inherited from system settings</span> &nbsp;·&nbsp; <a class="lk" href="#">Override for this offering</a></span></div>
           <div class="f"><span class="lbl">Service fee</span>
-            <span class="inline"><input class="inp short mono" value="3.0" style="max-width:70px"><span class="unit">%</span></span></div>
+            <span class="ro">3.0% &nbsp;<span class="from">inherited from system settings</span> &nbsp;·&nbsp; <a class="lk" href="#">Override</a></span></div>
 
           <div style="margin-top:14px">
             <table>
@@ -235,35 +250,59 @@
               </tbody>
             </table>
             <button class="addrow">+ Price variation</button>
-            <div class="src">Cross-checked against the live brewcle.com widget: June 21 and 28 (Sundays) show
-              $399.20 against $499 elsewhere — Base −20%. The math holds.</div>
+            <div class="src">Verified against brewcle.com: Sundays render $399.20 = $499 × 0.8. Whether two
+              variations ever <b>stack</b> (a Sunday holiday) is still open — operator thinking on it.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- GRATUITY -->
+      <section class="sec" id="gratuity">
+        <div class="sh"><h2>Gratuity</h2><span class="hint">crew money — not an add-on, not revenue</span></div>
+        <div class="sb">
+          <table>
+            <thead><tr><th>Kind</th><th>When</th><th class="r">Tiers</th><th class="r">Required</th><th></th></tr></thead>
+            <tbody>
+              <tr><td>Pre <span class="tag crew">crew</span></td><td class="mono">at checkout</td>
+                  <td class="r mono">15 / 20 / 25%</td><td class="r">Yes</td><td class="r"><a class="rowact" href="#">Edit</a></td></tr>
+              <tr><td>Post <span class="tag crew">crew</span></td><td class="mono">after the trip, via booking link</td>
+                  <td class="r mono">15 / 20 / 25%</td><td class="r">No</td><td class="r"><a class="rowact" href="#">Edit</a></td></tr>
+            </tbody>
+          </table>
+          <button class="addrow">+ Gratuity kind</button>
+          <div class="gen crew" style="margin-top:11px">
+            <b>Gratuity is first-class, one table keyed by <span class="big">kind</span> (pre / post) — deliberately NOT an add-on.</b><br>
+            Xola's add-on tips have been terrible precisely because an add-on gets <b>taxed and fee'd like
+            revenue</b>. Gratuity isn't revenue — it <b>routes to crew</b> (the xola-tip-extractor union until
+            Xola retires), is <b>exempt from tax + the service fee</b>, and is reported as crew pay, not sales.
+            The <b>kind</b> column is the one honest discriminator; new kinds are a row, not a code change.
           </div>
         </div>
       </section>
 
       <!-- ADD-ONS -->
       <section class="sec" id="addons">
-        <div class="sh"><h2>Add-ons</h2><span class="hint">per Offering, not global</span></div>
+        <div class="sh"><h2>Add-ons</h2><span class="hint">real upsells only — revenue</span></div>
         <div class="sb">
           <table>
             <thead><tr><th>Add-on</th><th>Type</th><th class="r">Amount</th><th class="r">Required</th><th></th></tr></thead>
             <tbody>
-              <tr><td>Tip your crew</td><td class="mono">% of fare</td><td class="r mono">15 / 20 / 25</td>
-                  <td class="r">Yes</td><td class="r"><a class="rowact" href="#">Edit</a></td></tr>
               <tr><td>Flex insurance</td><td class="mono">flat</td><td class="r mono">$29.00</td>
+                  <td class="r">No</td><td class="r"><a class="rowact" href="#">Edit</a></td></tr>
+              <tr><td>Extra hour</td><td class="mono">flat</td><td class="r mono">$150.00</td>
                   <td class="r">No</td><td class="r"><a class="rowact" href="#">Edit</a></td></tr>
             </tbody>
           </table>
           <button class="addrow">+ Add-on</button>
-          <div class="src">Tipping is per-Offering (on/off + tiers), not a global setting — mirrors Xola,
-            where the tip is an add-on configured per experience. Required-at-checkout matches the live
-            widget: three positive tiers, no decline.</div>
+          <div class="src">A generic list = add extra sellable stuff to an offering with no code change (the one
+            good thing about Xola's add-ons). <b>Gratuity is NOT here</b> — it's crew money, its own section.
+            Add-ons are taxed + fee'd as revenue; gratuity isn't.</div>
         </div>
       </section>
 
       <!-- PHOTOS -->
       <section class="sec" id="photos">
-        <div class="sh"><h2>Photos</h2><span class="hint">shown in browse + checkout</span></div>
+        <div class="sh"><h2>Photos</h2><span class="hint">browse + checkout</span></div>
         <div class="sb">
           <div style="display:flex; gap:8px; flex-wrap:wrap">
             <div style="width:132px; height:84px; border-radius:9px; background:linear-gradient(160deg,#b8c4d2,#8fa2b5); border:1px solid var(--line)"></div>
@@ -277,18 +316,22 @@
   </div>
 
   <div class="note">
-    <h3>What this asserts — argue with it</h3>
+    <h3>Settled this pass (operator, 2026-07-16)</h3>
     <ul>
-      <li><b>The catalog is global; the calendar is per-event.</b> Departure times, season, days and pricing are set once here and generate every event. Changing <i>one</i> Wednesday's 3:30 happens on the reservation calendar, not here. That's the split you named.</li>
-      <li><b>Events are generated ahead of the sale.</b> 4 boats × 5 departures × 153 days ≈ 3,060 events for the season. They must exist unsold to be listable as available — which is why 11.3's "create the Event when the webhook lands" has to reverse for Muster-native.</li>
-      <li><b>Pricing is base + extra guest, not flat.</b> From the live widget: $499 buys the boat for up to 12; extra guests are $40/head to <i>that boat's</i> max. A single flat number can't express it.</li>
-      <li><b>Capacity is per boat, and that's the point.</b> Xola holds one capacity per experience against your 12–16 hulls, so it falls back on <b>“CALL TO”</b> days and <b>“contact BrewBoat directly”</b> for extra tickets — one limitation wearing two hats. Muster's capacity is per-event and events are per-boat, and availability is already <code>party ≤ Event.capacity</code>, so a party of 14 sees the boats that fit and books itself. <b>Neither workaround is modelled.</b></li>
-      <li><b>Price variations are rules, not per-day numbers.</b> Sunday −20% and Prime Saturday +$50 sit on top of Base. Verified against brewcle.com: Sundays render $399.20 = $499 × 0.8.</li>
-      <li><b>Tax and service fee live here</b>, per Offering, showing their rate — so they read as settings, which is what the reservation calendar's <code>5.2%</code> / <code>3%</code> tags point back to.</li>
-      <li><b>"Runs on" is the boat set</b>, not a per-boat schedule. Four boats × one schedule is what BrewBoat actually does, and it's what makes the calendar a clean 4-column grid.</li>
-      <li><b>Questionnaire is cut</b> (your call). So is store credit, and the Reports/Marketing/Distribution/App Store nav.</li>
-      <li><b>“CALL TO” is resolved — it's a Xola limitation, not a state</b> (operator, 2026-07-16). Not modelled. Same for phone-in extra tickets.</li>
-      <li class="q"><b>Still open:</b> the per-boat max numbers above are placeholders — need the real ones. Does an Offering ever run a different schedule per boat? Where does the Muster-owned-vessel-day marking (DEC-106) get set — here, implicitly from "Runs on" + Season, or on its own screen? Do price variations ever stack (Sunday <i>and</i> a holiday)?</li>
+      <li><b>Vessels, not a per-boat table.</b> "Runs on" picks boats from the Vessel/equipment list; capacity is a Vessel fact (set once, on the Vessel screen), never overridden here.</li>
+      <li><b>Virtual slots, not 3,060 rows.</b> The schedule is a rule; availability is computed (schedule × vessels × dates − blocks − bookings). A row exists only once a slot is booked, overridden, or held. Editing the offering recomputes open slots — nothing to rewrite. <i>(This corrects the earlier "generate all events ahead" framing; DEC-123's eager-generation leg gets amended to match.)</i></li>
+      <li><b>Mid-season edits:</b> offering edits apply forward to unbooked, unmodified slots (which are virtual → just recompute). A per-departure override wins and is sticky. A booked trip is frozen — price is a contract; a time/capacity change to a booked trip flows through the customer-notify path, never a silent bulk rewrite. Retroactive re-pricing of booked trips is out of P12.</li>
+      <li><b>“guest,” never “seat.”</b> Seat = a crew position (the crew engine owns it). The reservation side counts guests against Vessel capacity.</li>
+      <li><b>Gratuity ≠ tips ≠ add-on.</b> Own table, keyed by kind (pre / post). Routes to crew, exempt from tax + fee. Add-ons stay generic for real upsells.</li>
+      <li><b>Tax + service fee are system settings</b> with a per-offering override (the two-municipalities escape hatch), not primary fields on every offering.</li>
+      <li><b>Draft / Live / Hidden</b> lifted from bushel: Draft generates no slots; Hidden is a reversible soft-delete (out of browse + default admin list, bookings kept, "Show hidden" toggle) — the only safe way to retire an offering people booked. Same flag will serve customer records.</li>
+      <li><b>Location is now a field</b> (and its own entity) — surfaced by the "block a location for a date+time" use case. Offering references it; a location block subtracts every slot there.</li>
+    </ul>
+    <h3 style="margin-top:14px">Still open</h3>
+    <ul>
+      <li class="q">Price-variation <b>stacking</b> (Sunday AND a holiday) — operator thinking on it.</li>
+      <li class="q">Gratuity kinds beyond pre / post — the table's `kind` is built to take more if they show up.</li>
+      <li class="q">The <b>Blocks</b> surface itself (location / vessel / hold) — its own mockup, not this page.</li>
     </ul>
   </div>
 

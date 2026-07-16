@@ -3121,8 +3121,9 @@ They meet at the vessel-day and nowhere else; each cross-links to the other. So 
 
 1. **The reservation calendar** — *net-new.* Departures by day/boat, Open-or-Sold, price, buyer; the
    per-reservation detail pane (roster, change arrival, cancel, refund, resend link, message).
-2. **Catalog & pricing** — *net-new.* `Offering` create/edit: descriptive content, photos, schedules +
-   price variations, blackout dates, add-ons, per-event price (DEC-112), tipping config (DEC-124).
+2. **Catalog & pricing** — *net-new.* `Offering` create/edit: descriptive content, photos, `Location`,
+   vessels, schedule + price variations, add-ons, per-event price (DEC-112), gratuity (DEC-124). Blocks
+   (blackout) are **not** here — they're their own scoped surface (DEC-125). Refined 2026-07-16, below.
 3. **Purchases & customers** — *net-new.* Order list + detail (refund, resends, purchase/payment summary,
    attendee roster) and the customer contact record. **Cards-on-file are Stripe's; not rebuilt.**
 
@@ -3137,9 +3138,16 @@ Reservations are upstream — events generate the vessel-day that `formShifts` d
 form-shifts.ts`) — and after the DEC-105 flip, reservations are the primary business.
 
 **Availability is the product, not an edge case.** Unsold departures are first-class rows on the
-calendar: showing what is **not** booked *is* the ordering system. This forces **eager event generation**
-from an `Offering`'s schedule — an event must exist before it is sold — which **reverses task 11.3's lazy
-`Event(if new)`** for the native path. Named here rather than discovered at build.
+calendar: showing what is **not** booked *is* the ordering system.
+
+> **Corrected 2026-07-16 (operator).** An earlier version of this paragraph concluded availability
+> "forces **eager event generation** — an event must exist before it is sold — which reverses task 11.3's
+> lazy `Event(if new)`." **That was wrong.** Unsold inventory must be *representable*, not *materialized*.
+> The model is **virtual availability** (DEC-125): the schedule is a rule, open slots are computed
+> (`schedule × vessels × dates − blocks − bookings`), and an `Event` row materializes only when a slot
+> gets state — booked, per-departure override, or held. So **11.3's lazy materialization stands**, a
+> season is a few dozen rows not thousands, and editing an `Offering` recomputes open slots with nothing
+> to rewrite. See **DEC-125** for the model and the mid-season propagation policy.
 
 **Whole-boat is a rule, not a shape — do not foreclose multi-party (operator, 2026-07-15).** BrewBoat
 sells one boat to one party; multi-party selling is **explicitly not wanted** and **not built**. But the
@@ -3147,7 +3155,7 @@ model must not **weld it shut**. It currently doesn't, and that is not an accide
 one-party rule is a **service-layer predicate** (11.3's CAS claim — *"claim iff the event is unclaimed by
 any active `source='muster'` reservation"*) with **no DB unique constraint**, so the schema is already
 `Event 1‥N Reservation`. Adding multi-party later = change the availability predicate (step function →
-`capacity − Σ party sizes`) + an additive per-seat price column. No relationship migration.
+`capacity − Σ party sizes`) + an additive per-**guest** price column. No relationship migration.
 
 > **Guardrail — do not add a unique constraint on `Reservation.eventId`.** It reads like an obvious
 > correctness win and would enforce *today's business rule* as a *structural fact forever*. The one-party
@@ -3161,6 +3169,32 @@ questionnaire. *(Gratuity was on this list and came back — DEC-124.)*
 
 **Not this:** seat counts. Xola's dashboard is "12/12 reserved" because Xola sells seats. Muster sells the
 boat: an event is **Open or Sold**. Party size is a fact about the booking, never inventory to subtract.
+
+### Catalog model — refined 2026-07-16 (operator, against the v3 catalog mockup)
+
+The `Offering` catalog is the **global rule**; per-departure changes and blocks live off it. Settled:
+
+- **`"seat"` is a crew word, full stop.** The reservation side never says "seat" — it counts **guests**
+  against vessel capacity. `Seat` stays the crew-engine entity; overloading it was rejected.
+- **Vessels, not a per-boat capacity table.** "Runs on" picks boats from the **Vessel** (equipment) list.
+  **Capacity is a fact of the `Vessel`** (Brew 1 = 12, Brew 4 = 16), set on the Vessel screen — never
+  overridden on the `Offering` (no use case). Pricing's "extra guest to that boat's max" reads the Vessel.
+- **One schedule per Offering.** Boats sharing an Offering share its schedule. Boats needing a *different*
+  schedule are a *different* Offering — this is what keeps the calendar a clean per-boat grid.
+- **`Location` is a first-class entity** (new — surfaced by the "block a location" case). The `Offering`
+  references one via a picker; the `Location` carries **pickup [description + link]** and a **route
+  description**, and is what a location block targets (DEC-125). Managed on its own screen.
+- **Tax + service fee are system-wide settings** with an **optional per-`Offering` override** (the
+  two-municipalities escape hatch) — not primary fields re-entered on every Offering.
+- **Publish + hidden, lifted from `bushel`** (its `is_active` soft-delete + "Show hidden" toggle):
+  - **Draft** — unpublished, not sellable, **generates no slots**.
+  - **Live** — on sale; the schedule publishes availability.
+  - **Hidden** — a **reversible soft-delete**: out of customer browse **and** the default admin list,
+    every existing `Event`/`Reservation` reference kept, recoverable via "Show hidden." The **only safe
+    way to retire an Offering people have booked** — never a hard delete. The same flag will serve the
+    customer contact records (DEC-123 §3), exactly as `bushel` reuses it for products and customers.
+    *(bushel's second axis, `is_available` per-week sold-out, maps here to per-departure blocks — DEC-125,
+    not an Offering flag.)*
 
 **Consequence:** the plan's ⚠️ ("the admin surfaces are likely the larger half of P12") is **confirmed** —
 three net-new surfaces against six customer-facing bullets.
@@ -3181,12 +3215,23 @@ gratuity / tip-split / guide machinery (**not Muster's job** — payments parked
 reversed.** But the reversal is *not* an instruction to build a payroll subsystem:
 
 **Muster's Phase 12 scope — collect + expose, nothing more:**
-- **Pre-tip at checkout, required.** Tiers (15/20/25%), mirroring the live Xola config — which offers
-  three positive choices and **no decline option**.
-- **Post-trip tipping** — supported.
-- **Tipping is an optional per-`Offering` setting** (on/off + tiers), configured in the catalog
-  (DEC-123 §1) — **not** a global. Mirrors Xola, where the tip is an add-on configured per experience.
-- **Expose tips to be read**: per-event tip pool + assigned crew.
+- **Pre-gratuity at checkout, required.** Tiers (15/20/25%), mirroring the live Xola config — which
+  offers three positive choices and **no decline option**.
+- **Post-trip gratuity** — supported, via the booking link.
+- Configured per-`Offering`, in the catalog (DEC-123 §2).
+- **Expose to be read**: per-event gratuity pool + assigned crew.
+
+> **Refined 2026-07-16 (operator): "gratuity," first-class, NOT an add-on.**
+> - **Call it `gratuity`, not "tips."** One table, keyed by **`kind`** (`pre` | `post` — the two known
+>   now; the column takes more if they appear). Pre = at checkout; post = via the booking link.
+> - **Gratuity is NOT an add-on** — the operator's explicit reversal of "Tipping is an optional add-on
+>   setting... mirrors Xola." *Xola's add-on tips have been terrible precisely because an add-on gets
+>   **taxed and fee'd like revenue**.* Gratuity is **crew money, not revenue**: it **routes to crew** (the
+>   `xola-tip-extractor` union below), is **exempt from tax and the service fee**, and reports as crew pay,
+>   not sales. Modeling it as a flagged add-on was considered and rejected — a first-class typed table with
+>   `kind` is the honest shape and avoids the name-matching fragility that already bit the Gusto map.
+> - **Add-ons stay a separate generic mechanism** for real upsells (extra hour, catering, photos) — the
+>   one good thing about Xola's add-ons (no-code extensibility), kept, but with gratuity pulled out of it.
 
 **Muster does NOT build** the split, the Gusto CSV, a tip report, or a crew "my tips" view in P12.
 
@@ -3222,6 +3267,53 @@ DEC-123 (the per-`Offering` setting lives in the catalog). **Open at build:** th
 whether Muster crew names resolve against the extractor's (done, Xola-correct) Gusto map at the new seam —
 it warns loudly rather than failing silently. **Revise if:** Xola's drain stalls long enough that the
 overlap outlives the tool's usefulness.
+
+---
+
+## DEC-125: Virtual availability — the schedule is a rule, `Event` rows materialize on state; blackout is scoped blocks, not per-event toggles
+
+**Status:** Accepted (operator, 2026-07-16) — data-model shape; **pending @architect**. Corrects DEC-123's
+withdrawn "eager event generation" leg. See the v3 catalog mockup (`docs/design/mockups/offering-catalog.html`).
+
+**Decision:** Muster does **not** materialize an `Event` row per potential departure. The `Offering` +
+schedule is a **rule**; open availability is **computed**, and a row is written only when a slot acquires
+real state.
+
+**Open slots = `schedule × vessels × dates − blocks − bookings`**, derived on read. A `Event` (and any
+`Reservation`) row **materializes only when a slot gets state**:
+- **booked** — the DEC-109 whole-boat CAS claim writes the `Event` + `Reservation` on first booking (11.3's
+  lazy `Event(if new)` — **which therefore STANDS**; DEC-123's claim that availability reverses it was wrong);
+- **per-departure override** — an operator edits one departure's time/price/capacity on the calendar;
+- **held / blocked** — see blocks below.
+
+So a season is a **few dozen rows, not thousands** (the ~3,060-row materialization the operator flagged is
+avoided), and editing an `Offering`'s schedule just **recomputes** the virtual slots — no row rewrite. A
+**Draft** `Offering` publishes no rule, so it generates no slots (DEC-123 catalog model).
+
+**Mid-season propagation (the "I edit the offering after editing a trip" case):**
+- An `Offering` edit changes the **rule** → applies **forward** to unbooked, unmodified slots (virtual →
+  they just recompute). Nothing to rewrite.
+- A **per-departure override** is a materialized row and **wins** — an `Offering` edit never silently
+  overwrites it (same "manual entry survives re-import" discipline as DEC-043).
+- A **booked** slot is **frozen**: a price change never retroactively alters what a customer paid (a
+  contract); a time/capacity change to a booked trip flows through the **customer-notify** path (the
+  cancellation/relocation family), never a silent bulk update. **Retroactive re-pricing of booked trips is
+  out of P12** (Stripe re-charge/refund territory).
+
+**Blackout is scoped *blocks*, not Xola's per-event toggle** (operator: "Xola blackout sucks"). A block is
+just another **availability subtraction** in the formula above — which is why the virtual model absorbs it
+for free. Three kinds, from the operator's use cases:
+- **Location block** — a date **+ time window**; the river's closed → **every** slot at that `Location`
+  (across offerings/vessels) goes dark. *(This is what surfaced `Location` as a first-class entity — DEC-123.)*
+- **Vessel block** — a **date range**; a boat's out of service → all its slots gone.
+- **Vessel hold** — a **single slot**; reserve a boat for a private thing with **no customer `Event`** — an
+  operator hold, not a reservation.
+
+Blocks are their **own admin surface** (the "bulk blackout" screen the catalog kept pointing at), **not**
+on the `Offering`. **Touches** DEC-108/109 (the claim still writes the row on booking), DEC-106 (a
+Muster-owned vessel-day is where the rule applies), DEC-112 (`Event.price` is the per-departure override's
+home), DEC-123. **Open:** whether price variations stack (DEC-123, operator thinking); the Blocks surface's
+own design (its own mockup).
 
 ---
 

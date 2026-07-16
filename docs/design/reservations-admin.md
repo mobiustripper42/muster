@@ -55,9 +55,19 @@ concept — assigning a "guide" to an event is a thing its operator does by hand
 engine already does that autonomously, per vessel-day. So the reservations admin is not one area, and
 not two areas. It is **three things**:
 
+> **⚠️ Superseded framing (refined 2026-07-16).** This section's "**graft, not build**" (item 3) and the
+> "**reservations rent space on the vessel-day**" callout below were an early draft; **DEC-123 records both
+> as errors** — the reservation calendar and the shift view are **two co-equal surfaces**, and reservations
+> are *upstream* of the vessel-day, not renting it. And item 1's catalog contents are refined by the
+> **DEC-123 catalog model** + **DEC-125** (virtual availability). Read **DEC-123 / DEC-124 / DEC-125** as
+> authoritative where they and this doc disagree; the corrected inline bits below track them.
+
 1. **Catalog & pricing** *(net-new area)* — `Offering` create/edit: descriptive content, photos,
-   schedules + price variations, blackout dates, add-ons, per-event price (DEC-112), tipping config
-   (DEC-124).
+   **`Location`** (its own entity — pickup + route; DEC-123), **vessels** (capacity is a `Vessel` fact,
+   not set here), schedule + price variations, add-ons, per-departure price (DEC-112), **gratuity**
+   (DEC-124 — its own concept, *not* an add-on), and Draft/Live/Hidden publish state. Availability is
+   **virtual** (DEC-125 — a computed rule, not materialized rows); **blocks/blackout are a separate scoped
+   surface**, not on the `Offering`.
 2. **Purchases & customers** *(net-new area)* — the order list + detail, refunds, resends, the customer
    contact record.
 3. **Reservation actions on the event surface you already have** *(graft, not build)* — the roster
@@ -83,12 +93,14 @@ in Muster yet.
 
 **Muster's P12 scope is collect + expose, nothing more:**
 
-- **Pre-tip at checkout — required.** Tiers (15/20/25%) mirroring the existing Xola config, which has
-  three positive choices and no decline option.
-- **Post-trip tipping** — supported. See the lifecycle note below.
-- **Tipping is an optional per-`Offering` setting** — on/off plus the tiers, configured in the catalog
-  (§2.1), not a global. Mirrors Xola, where the tip is an add-on configured per experience.
-- **Expose the tips to be read** — per-event tip pool + assigned crew.
+- **Pre-gratuity at checkout — required.** Tiers (15/20/25%) mirroring the existing Xola config, which
+  has three positive choices and no decline option.
+- **Post-trip gratuity** — supported, via the booking link. See the lifecycle note below.
+- **Gratuity is first-class, keyed by `kind` (pre/post) — NOT an add-on** (refined 2026-07-16, DEC-124):
+  Xola's add-on tips were terrible because an add-on gets taxed/fee'd like revenue. Gratuity is crew
+  money — routes to crew, exempt from tax + service fee. Configured per-`Offering`; add-ons stay a
+  separate generic mechanism for real upsells.
+- **Expose to be read** — per-event gratuity pool + assigned crew.
 
 **Muster does NOT build** the split, the Gusto CSV, a tip report, or a crew "my tips" view in P12.
 `xola-tip-extractor` owns all of that. It is a **finished app**; the only change it needs is a second

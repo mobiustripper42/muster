@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Muster — Offering Catalog (mockup v3)</title>
+<style>
+  :root{
+    --bg:#eef2f6; --card:#ffffff; --ink:#101826; --muted:#5b6675; --faint:#93a0b0; --line:#e7ebf1;
+    --accent:#2f5d86;
+    --v1:#5b64a8; --v2:#8a5f93; --v3:#6e7f46; --v4:#9c6b4e;
+    --radius:14px;
+    --sans:"IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    --mono:"IBM Plex Mono", ui-monospace, monospace;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{background:var(--bg); color:var(--ink); font-family:var(--sans); font-size:14px; line-height:1.45;
+       -webkit-font-smoothing:antialiased}
+  .mockbar{background:#101826; color:#93a0b0; font-family:var(--mono); font-size:11px; padding:6px 16px}
+  .mockbar b{color:#eef2f6; font-weight:500}
+  .wrap{max-width:1300px; margin:0 auto; padding:18px 16px 60px}
+
+  header.top{display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:4px}
+  .crumb{font-size:13px; color:var(--faint)}
+  .crumb a{color:var(--accent); text-decoration:none}
+  h1{font-size:22px; font-weight:600; letter-spacing:-.01em}
+  .pill{font-size:11px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; padding:3px 9px;
+        border-radius:99px; border:1px solid #cbe6d5; background:#e7f4ec; color:#157a3a}
+  .pill.draft{border-color:var(--line); background:#f6f8fa; color:var(--muted)}
+  .pill.hidden{border-color:#e2d6c2; background:#f6efe2; color:#8a5f2f}
+  .spacer{flex:1}
+  .btn{font:inherit; font-size:12.5px; padding:6px 12px; border-radius:8px; border:1px solid var(--line);
+       background:#fff; color:var(--ink); cursor:pointer}
+  .btn.primary{background:var(--accent); border-color:var(--accent); color:#fff}
+  .btn:active{transform:scale(.985)}
+
+  .layout{display:grid; grid-template-columns:196px 1fr; gap:16px; align-items:start; margin-top:16px}
+  @media (max-width:900px){ .layout{grid-template-columns:1fr} .sidenav{position:static !important} }
+
+  .sidenav{position:sticky; top:16px; background:var(--card); border:1px solid var(--line);
+           border-radius:var(--radius); padding:6px}
+  .sidenav a{display:block; padding:8px 10px; border-radius:9px; font-size:13px; color:var(--muted);
+             text-decoration:none}
+  .sidenav a:hover{background:#f5f8fb}
+  .sidenav a.on{background:#eaf0f6; color:var(--ink); font-weight:500}
+  .sidenav .k{font-size:10px; text-transform:uppercase; letter-spacing:.07em; color:var(--faint);
+              font-weight:600; padding:8px 10px 4px}
+
+  .sec{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); margin-bottom:14px}
+  .sh{padding:12px 15px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:9px}
+  .sh h2{font-size:15px; font-weight:600}
+  .sh .hint{font-size:12px; color:var(--faint); margin-left:auto; text-align:right}
+  .sb{padding:13px 15px}
+
+  .f{display:grid; grid-template-columns:150px 1fr; gap:12px; padding:7px 0; align-items:baseline}
+  .f + .f{border-top:1px solid #f2f5f8}
+  .f .lbl{color:var(--muted); font-size:13px}
+  .f .lbl .sub{display:block; font-size:11px; color:var(--faint); margin-top:1px}
+  .inp{border:1px solid var(--line); border-radius:8px; padding:6px 9px; font:inherit; font-size:13px;
+       background:#fff; width:100%; max-width:380px; color:var(--ink)}
+  .inp.short{max-width:130px}
+  .inp.mono{font-family:var(--mono)}
+  textarea.inp{max-width:100%; min-height:64px; resize:vertical}
+  .unit{font-size:12px; color:var(--faint); margin-left:6px}
+  .inline{display:flex; align-items:center; gap:6px; flex-wrap:wrap}
+  .ro{color:var(--muted); font-size:13px}
+  .ro .from{font-size:11px; color:var(--faint); font-style:italic}
+  .lk{color:var(--accent); text-decoration:none; font-size:12px}
+
+  .chip{font-size:12px; padding:4px 10px; border-radius:99px; border:1px solid var(--line);
+        background:#fff; color:var(--muted); cursor:pointer}
+  .chip[aria-pressed="true"]{background:var(--ink); border-color:var(--ink); color:#fff}
+  .hue{width:7px; height:7px; border-radius:50%; display:inline-block; margin-right:5px}
+  .hue.v1{background:var(--v1)} .hue.v2{background:var(--v2)} .hue.v3{background:var(--v3)} .hue.v4{background:var(--v4)}
+  .chip.boat[aria-pressed="true"]{background:#eef2f6; border-color:#c5d3e2; color:var(--ink); font-weight:500}
+
+  table{width:100%; border-collapse:collapse; font-size:13px}
+  th{text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:.07em; color:var(--faint);
+     font-weight:600; padding:0 8px 6px}
+  th.r, td.r{text-align:right}
+  td{padding:7px 8px; border-top:1px solid #f2f5f8}
+  td.mono{font-family:var(--mono)}
+  .rowact{font-size:12px; color:var(--accent); text-decoration:none; margin-left:9px}
+  .addrow{margin-top:8px; font:inherit; font-size:12.5px; padding:6px 11px; border-radius:8px;
+          border:1px dashed #ccd6e0; background:#fff; color:var(--accent); cursor:pointer}
+  .tag{font-size:9px; letter-spacing:.06em; text-transform:uppercase; color:var(--faint);
+       border:1px solid var(--line); border-radius:4px; padding:1px 4px; margin-left:5px}
+  .tag.crew{color:#2f7d70; border-color:#bfe0d8}
+
+  .gen{margin-top:11px; background:#f5f8fb; border:1px solid #dfe6ee; border-radius:10px; padding:10px 12px;
+       font-size:13px; color:var(--muted)}
+  .gen.crew{background:#f2f9f5; border-color:#cbe6d5}
+  .gen b{color:var(--ink)}
+  .gen .big{font-family:var(--mono); font-size:14px; color:var(--ink); font-weight:600}
+
+  .note{margin-top:22px; background:#fff; border:1px solid var(--line); border-radius:var(--radius); padding:15px 17px}
+  .note h3{font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--faint); margin-bottom:9px}
+  .note ul{margin:0 0 0 17px; font-size:13px; color:var(--muted)}
+  .note li{margin-bottom:5px}
+  .note b{color:var(--ink)}
+  .note .q{color:#8a5f2f}
+  .src{font-size:12px; color:var(--faint); font-style:italic; margin-top:3px}
+</style>
+</head>
+<body>
+
+<div class="mockbar"><b>MOCKUP v3</b> — Offering catalog · static · the <b>global rule</b>; per-departure changes + blocks live elsewhere · “guest” ≠ crew “seat”</div>
+
+<div class="wrap">
+
+  <header class="top">
+    <div>
+      <div class="crumb"><a href="#">Offerings</a> / Brew Boat Party Boats with Captain</div>
+      <h1 style="margin-top:2px">Brew Boat Party Boats with Captain</h1>
+    </div>
+    <span class="pill">Live</span>
+    <div class="spacer"></div>
+    <button class="btn">View on calendar</button>
+    <button class="btn">Hide</button>
+    <button class="btn primary">Save</button>
+  </header>
+
+  <div class="layout">
+    <nav class="sidenav">
+      <div class="k">Offering</div>
+      <a href="#details" class="on">Details</a>
+      <a href="#schedule">Schedule</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#gratuity">Gratuity</a>
+      <a href="#addons">Add-ons</a>
+      <a href="#photos">Photos</a>
+    </nav>
+
+    <div>
+
+      <!-- DETAILS -->
+      <section class="sec" id="details">
+        <div class="sh"><h2>Details</h2><span class="hint">what the customer reads</span></div>
+        <div class="sb">
+          <div class="f"><span class="lbl">Status</span>
+            <span class="inline">
+              <button class="chip" aria-pressed="true">Draft</button>
+              <button class="chip" aria-pressed="false">Live</button>
+              <button class="chip" aria-pressed="false">Hidden</button>
+              <span class="unit">Draft = not sellable, generates no slots · Live = on sale · Hidden = pulled from browse + default list, bookings kept (lifted from bushel)</span>
+            </span></div>
+          <div class="f"><span class="lbl">Name</span>
+            <input class="inp" value="Brew Boat Party Boats with Captain"></div>
+          <div class="f"><span class="lbl">Description</span>
+            <textarea class="inp">**NO Pedaling Required on any of our Brew Boats** Come aboard our party pontoon boats for the ultimate celebration on the water! With four boats available, we've got the perfect spot for you and your friends.</textarea></div>
+          <div class="f"><span class="lbl">Location<span class="sub">launch point</span></span>
+            <div style="width:100%">
+              <span class="inline">
+                <select class="inp short" style="max-width:220px"><option>Cleveland — East Bank</option><option>Cleveland — Rivergate</option></select>
+                <a class="lk" href="#">Manage locations →</a>
+              </span>
+              <div class="src">Just a picker here. The <b>Location entity</b> (its own screen) carries the
+                <b>pickup</b> [description + link], a <b>route description</b>, and is what a location block
+                targets (river closed → every offering here goes dark for that window).</div>
+            </div></div>
+          <div class="f"><span class="lbl">Trip length<span class="sub">on the water</span></span>
+            <span class="inline"><input class="inp short mono" value="100"><span class="unit">minutes · customer sees “1h 40min”</span></span></div>
+          <div class="f"><span class="lbl">Boat held for<span class="sub">turnaround included</span></span>
+            <span class="inline"><input class="inp short mono" value="100"><span class="unit">minutes</span></span></div>
+          <div class="f"><span class="lbl">Arrive before<span class="sub">guest call time</span></span>
+            <span class="inline"><input class="inp short mono" value="15"><span class="unit">minutes</span></span></div>
+          <div class="f"><span class="lbl">Vessels<span class="sub">which boats run it</span></span>
+            <div style="width:100%">
+              <span class="inline">
+                <button class="chip boat" aria-pressed="true"><span class="hue v1"></span>Brew 1</button>
+                <button class="chip boat" aria-pressed="true"><span class="hue v2"></span>Brew 2</button>
+                <button class="chip boat" aria-pressed="true"><span class="hue v3"></span>Brew 3</button>
+                <button class="chip boat" aria-pressed="true"><span class="hue v4"></span>Brew 4</button>
+                <button class="chip">+ vessel</button>
+              </span>
+              <div class="src">Picked from the Vessel (equipment) list. <b>Capacity is a fact of each Vessel</b> (Brew 1 = 12, Brew 4 = 16), set on the Vessel screen — never here. Different boats need a different schedule? That's a different Offering.</div>
+            </div></div>
+        </div>
+      </section>
+
+      <!-- SCHEDULE -->
+      <section class="sec" id="schedule">
+        <div class="sh"><h2>Schedule</h2><span class="hint">a rule, not rows</span></div>
+        <div class="sb">
+          <div class="f"><span class="lbl">Season</span>
+            <span class="inline"><input class="inp short mono" value="2026-05-01"><span class="unit">to</span>
+            <input class="inp short mono" value="2026-09-30"></span></div>
+          <div class="f"><span class="lbl">Days</span>
+            <span class="inline">
+              <button class="chip" aria-pressed="true">Mon</button><button class="chip" aria-pressed="true">Tue</button>
+              <button class="chip" aria-pressed="true">Wed</button><button class="chip" aria-pressed="true">Thu</button>
+              <button class="chip" aria-pressed="true">Fri</button><button class="chip" aria-pressed="true">Sat</button>
+              <button class="chip" aria-pressed="true">Sun</button>
+            </span></div>
+          <div class="f"><span class="lbl">Departures</span>
+            <span class="inline">
+              <button class="chip" aria-pressed="true">11:30 AM</button>
+              <button class="chip" aria-pressed="true">1:30 PM</button>
+              <button class="chip" aria-pressed="true">3:30 PM</button>
+              <button class="chip" aria-pressed="true">5:30 PM</button>
+              <button class="chip" aria-pressed="true">7:30 PM</button>
+              <button class="chip">+ time</button>
+            </span></div>
+
+          <div class="gen">
+            <b>Availability is computed from this rule — no rows are written up front.</b><br>
+            Open slots = <span class="big">schedule × vessels × dates − blocks − bookings</span>, computed on
+            the fly. A row is <b>materialized only when a slot gets state</b>: booked, given a per-departure
+            override, or held. So a season is a few dozen rows, not thousands — and editing this schedule
+            just <b>recomputes the open slots</b>, nothing to rewrite.
+            <div style="margin-top:6px"><b>Draft</b> generates no slots. Flip to <b>Live</b> and the slots
+            appear on the reservation calendar.</div>
+          </div>
+
+          <div class="gen" style="margin-top:8px">
+            <b>Blocks / blackout are NOT here</b> (and nothing like Xola's). They live on their own surface as
+            scoped, availability-subtracting blocks: <b>location block</b> (river closed → everything at that
+            location, a date+time window), <b>vessel block</b> (boat out of service → all its slots, a date
+            range), <b>vessel hold</b> (reserve a boat for a private thing, no customer event). A single
+            departure change is a per-departure override on the calendar.
+          </div>
+        </div>
+      </section>
+
+      <!-- PRICING -->
+      <section class="sec" id="pricing">
+        <div class="sh"><h2>Pricing</h2><span class="hint">the boat, by the guest</span></div>
+        <div class="sb">
+          <div class="f"><span class="lbl">Base fare<span class="sub">buys the whole boat</span></span>
+            <span class="inline"><span class="unit">$</span><input class="inp short mono" value="499.00">
+            <span class="unit">for up to <b>this boat's included count</b> (from the Vessel — e.g. 12)</span></span></div>
+          <div class="f"><span class="lbl">Extra guest<span class="sub">above the included count</span></span>
+            <span class="inline"><span class="unit">$</span><input class="inp short mono" value="40.00">
+            <span class="unit">each, up to <b>that boat's max</b> (Vessel capacity) — sold at checkout, never by phone</span></span></div>
+          <div class="f"><span class="lbl">Tax</span>
+            <span class="ro">5.2% &nbsp;<span class="from">inherited from system settings</span> &nbsp;·&nbsp; <a class="lk" href="#">Override for this offering</a></span></div>
+          <div class="f"><span class="lbl">Service fee</span>
+            <span class="ro">3.0% &nbsp;<span class="from">inherited from system settings</span> &nbsp;·&nbsp; <a class="lk" href="#">Override</a></span></div>
+
+          <div style="margin-top:14px">
+            <table>
+              <thead><tr><th>Price variation</th><th>Applies</th><th class="r">Adjustment</th><th class="r">Fare</th><th></th></tr></thead>
+              <tbody>
+                <tr><td>2026 Base</td><td class="mono">all days</td><td class="r">—</td><td class="r mono">$499.00</td>
+                    <td class="r"><a class="rowact" href="#">Edit</a></td></tr>
+                <tr><td>Sunday</td><td class="mono">Sun</td><td class="r mono">−20%</td><td class="r mono">$399.20</td>
+                    <td class="r"><a class="rowact" href="#">Edit</a></td></tr>
+                <tr><td>Prime Saturday</td><td class="mono">Sat</td><td class="r mono">+$50.00</td><td class="r mono">$549.00</td>
+                    <td class="r"><a class="rowact" href="#">Edit</a></td></tr>
+              </tbody>
+            </table>
+            <button class="addrow">+ Price variation</button>
+            <div class="src">Verified against brewcle.com: Sundays render $399.20 = $499 × 0.8. Whether two
+              variations ever <b>stack</b> (a Sunday holiday) is still open — operator thinking on it.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- GRATUITY -->
+      <section class="sec" id="gratuity">
+        <div class="sh"><h2>Gratuity</h2><span class="hint">crew money — not an add-on, not revenue</span></div>
+        <div class="sb">
+          <table>
+            <thead><tr><th>Kind</th><th>When</th><th class="r">Tiers</th><th class="r">Required</th><th></th></tr></thead>
+            <tbody>
+              <tr><td>Pre <span class="tag crew">crew</span></td><td class="mono">at checkout</td>
+                  <td class="r mono">15 / 20 / 25%</td><td class="r">Yes</td><td class="r"><a class="rowact" href="#">Edit</a></td></tr>
+              <tr><td>Post <span class="tag crew">crew</span></td><td class="mono">after the trip, via booking link</td>
+                  <td class="r mono">15 / 20 / 25%</td><td class="r">No</td><td class="r"><a class="rowact" href="#">Edit</a></td></tr>
+            </tbody>
+          </table>
+          <button class="addrow">+ Gratuity kind</button>
+          <div class="gen crew" style="margin-top:11px">
+            <b>Gratuity is first-class, one table keyed by <span class="big">kind</span> (pre / post) — deliberately NOT an add-on.</b><br>
+            Xola's add-on tips have been terrible precisely because an add-on gets <b>taxed and fee'd like
+            revenue</b>. Gratuity isn't revenue — it <b>routes to crew</b> (the xola-tip-extractor union until
+            Xola retires), is <b>exempt from tax + the service fee</b>, and is reported as crew pay, not sales.
+            The <b>kind</b> column is the one honest discriminator; new kinds are a row, not a code change.
+          </div>
+        </div>
+      </section>
+
+      <!-- ADD-ONS -->
+      <section class="sec" id="addons">
+        <div class="sh"><h2>Add-ons</h2><span class="hint">real upsells only — revenue</span></div>
+        <div class="sb">
+          <table>
+            <thead><tr><th>Add-on</th><th>Type</th><th class="r">Amount</th><th class="r">Required</th><th></th></tr></thead>
+            <tbody>
+              <tr><td>Flex insurance</td><td class="mono">flat</td><td class="r mono">$29.00</td>
+                  <td class="r">No</td><td class="r"><a class="rowact" href="#">Edit</a></td></tr>
+              <tr><td>Extra hour</td><td class="mono">flat</td><td class="r mono">$150.00</td>
+                  <td class="r">No</td><td class="r"><a class="rowact" href="#">Edit</a></td></tr>
+            </tbody>
+          </table>
+          <button class="addrow">+ Add-on</button>
+          <div class="src">A generic list = add extra sellable stuff to an offering with no code change (the one
+            good thing about Xola's add-ons). <b>Gratuity is NOT here</b> — it's crew money, its own section.
+            Add-ons are taxed + fee'd as revenue; gratuity isn't.</div>
+        </div>
+      </section>
+
+      <!-- PHOTOS -->
+      <section class="sec" id="photos">
+        <div class="sh"><h2>Photos</h2><span class="hint">browse + checkout</span></div>
+        <div class="sb">
+          <div style="display:flex; gap:8px; flex-wrap:wrap">
+            <div style="width:132px; height:84px; border-radius:9px; background:linear-gradient(160deg,#b8c4d2,#8fa2b5); border:1px solid var(--line)"></div>
+            <div style="width:132px; height:84px; border-radius:9px; background:linear-gradient(160deg,#c9cfa8,#9aa87a); border:1px solid var(--line)"></div>
+            <button class="addrow" style="margin:0; width:132px; height:84px">+ Photo</button>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  <div class="note">
+    <h3>Settled this pass (operator, 2026-07-16)</h3>
+    <ul>
+      <li><b>Vessels, not a per-boat table.</b> "Runs on" picks boats from the Vessel/equipment list; capacity is a Vessel fact (set once, on the Vessel screen), never overridden here.</li>
+      <li><b>Virtual slots, not 3,060 rows.</b> The schedule is a rule; availability is computed (schedule × vessels × dates − blocks − bookings). A row exists only once a slot is booked, overridden, or held. Editing the offering recomputes open slots — nothing to rewrite. <i>(This corrects the earlier "generate all events ahead" framing; DEC-123's eager-generation leg gets amended to match.)</i></li>
+      <li><b>Mid-season edits:</b> offering edits apply forward to unbooked, unmodified slots (which are virtual → just recompute). A per-departure override wins and is sticky. A booked trip is frozen — price is a contract; a time/capacity change to a booked trip flows through the customer-notify path, never a silent bulk rewrite. Retroactive re-pricing of booked trips is out of P12.</li>
+      <li><b>“guest,” never “seat.”</b> Seat = a crew position (the crew engine owns it). The reservation side counts guests against Vessel capacity.</li>
+      <li><b>Gratuity ≠ tips ≠ add-on.</b> Own table, keyed by kind (pre / post). Routes to crew, exempt from tax + fee. Add-ons stay generic for real upsells.</li>
+      <li><b>Tax + service fee are system settings</b> with a per-offering override (the two-municipalities escape hatch), not primary fields on every offering.</li>
+      <li><b>Draft / Live / Hidden</b> lifted from bushel: Draft generates no slots; Hidden is a reversible soft-delete (out of browse + default admin list, bookings kept, "Show hidden" toggle) — the only safe way to retire an offering people booked. Same flag will serve customer records.</li>
+      <li><b>Location is now a field</b> (and its own entity) — surfaced by the "block a location for a date+time" use case. Offering references it; a location block subtracts every slot there.</li>
+    </ul>
+    <h3 style="margin-top:14px">Still open</h3>
+    <ul>
+      <li class="q">Price-variation <b>stacking</b> (Sunday AND a holiday) — operator thinking on it.</li>
+      <li class="q">Gratuity kinds beyond pre / post — the table's `kind` is built to take more if they show up.</li>
+      <li class="q">The <b>Blocks</b> surface itself (location / vessel / hold) — its own mockup, not this page.</li>
+    </ul>
+  </div>
+
+</div>
+</body>
+</html>

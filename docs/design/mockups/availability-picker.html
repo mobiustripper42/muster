@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Muster — Availability picker (mockup)</title>
+<style>
+  :root{
+    --bg:#eef2f6; --card:#ffffff; --ink:#101826; --muted:#5b6675; --faint:#93a0b0; --line:#e7ebf1;
+    --accent:#2f5d86; --ok:#157a3a; --ok-bg:#e7f4ec; --ok-line:#cbe6d5;
+    --v1:#5b64a8;
+    --sans:"IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    --mono:"IBM Plex Mono", ui-monospace, monospace;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{background:#dde4ec; color:var(--ink); font-family:var(--sans); font-size:14px; line-height:1.45; -webkit-font-smoothing:antialiased}
+  .mockbar{background:#101826; color:#93a0b0; font-family:var(--mono); font-size:11px; padding:6px 16px}
+  .mockbar b{color:#eef2f6; font-weight:500}
+  .page{max-width:1180px; margin:0 auto; padding:22px 16px 56px}
+  h1.pt{font-size:19px; font-weight:600; margin-bottom:2px}
+  .psub{font-size:13px; color:var(--muted); margin-bottom:20px}
+  .frames{display:flex; gap:28px; flex-wrap:wrap; align-items:flex-start}
+  .flabel{font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:#6b7684; font-weight:600; margin-bottom:8px}
+  .phone{width:390px; background:var(--card); border:1px solid #c3ccd6; border-radius:26px; overflow:hidden;
+         box-shadow:0 6px 22px rgba(16,24,38,.10); display:flex; flex-direction:column; max-height:900px}
+  .scroll{overflow-y:auto}
+
+  .hero{height:132px; background:linear-gradient(160deg,#7d94ac,#4d6580); position:relative; color:#fff}
+  .hero .brand{position:absolute; top:12px; left:14px; font-weight:700; font-size:15px; text-shadow:0 1px 3px rgba(0,0,0,.3)}
+  .hero .cap{position:absolute; left:14px; bottom:12px; right:14px}
+  .hero .cap h2{font-size:18px; font-weight:700; text-shadow:0 1px 4px rgba(0,0,0,.35)}
+  .hero .cap .meta{font-size:12px; opacity:.95; margin-top:2px; text-shadow:0 1px 3px rgba(0,0,0,.35)}
+
+  .body{padding:14px 15px 4px}
+  .sec{margin-bottom:16px}
+  .sec > .lab{font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--faint); font-weight:600; margin-bottom:8px}
+
+  /* guests */
+  .guests{display:flex; align-items:center; gap:14px}
+  .guests button{width:36px;height:36px;border-radius:9px;border:1px solid var(--line);background:#fff;font-size:19px;color:var(--ink);cursor:pointer;line-height:1}
+  .guests .n{font-size:20px; font-weight:600; font-variant-numeric:tabular-nums; min-width:28px; text-align:center}
+  .guests .cap{font-size:12px; color:var(--faint); margin-left:auto}
+
+  /* month */
+  .mhead{display:flex; align-items:center; gap:10px; margin-bottom:8px}
+  .mhead .m{font-size:14px; font-weight:600; flex:1}
+  .mnav{width:32px;height:32px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--ink);cursor:pointer;font-size:14px}
+  .dow{display:grid; grid-template-columns:repeat(7,1fr); gap:4px; margin-bottom:4px}
+  .dow span{text-align:center; font-size:10px; color:var(--faint); font-weight:600}
+  .grid{display:grid; grid-template-columns:repeat(7,1fr); gap:4px}
+  .day{aspect-ratio:1/1.05; border-radius:9px; border:1px solid transparent; background:#f5f8fb; cursor:pointer;
+       display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; padding:2px}
+  .day .dn{font-size:13px; font-weight:500}
+  .day .dp{font-size:9px; color:var(--accent); font-family:var(--mono)}
+  .day.blank{background:transparent; cursor:default}
+  .day.off{background:transparent; color:#c3ccd6; cursor:default}
+  .day.off .dn{color:#c3ccd6}
+  .day.soldout{background:#fff; border-color:var(--line); cursor:default}
+  .day.soldout .dn{color:var(--faint)} .day.soldout .dp{color:var(--faint); font-family:var(--sans); font-size:8px}
+  .day.avail:hover{background:#eaf0f6}
+  .day.sel{background:var(--accent); border-color:var(--accent)}
+  .day.sel .dn{color:#fff} .day.sel .dp{color:#dce8f2}
+  .day .lo{font-size:8px; color:#8a5f2f; font-family:var(--sans)}
+
+  /* times */
+  .tlab{display:flex; align-items:baseline; gap:8px; margin:2px 0 8px}
+  .tlab b{font-size:14px; font-weight:600} .tlab .m{font-size:12px; color:var(--faint)}
+  .time{width:100%; text-align:left; font:inherit; background:#fff; border:1px solid var(--line); border-radius:11px;
+        padding:11px 13px; cursor:pointer; display:flex; align-items:center; gap:12px}
+  .time + .time{margin-top:7px}
+  .time:hover{background:#f7fafc; border-color:#c5d3e2}
+  .time .t{font-size:15px; font-weight:600; font-variant-numeric:tabular-nums}
+  .time .av{font-size:12px; color:var(--ok); margin-top:1px}
+  .time .av.tight{color:#8a5f2f}
+  .time .mid{flex:1}
+  .time .pr{font-family:var(--mono); font-size:14px; font-weight:600}
+  .time .chev{color:#c3ccd6; font-size:16px}
+  .time.sold{opacity:.5; cursor:default; background:#f5f8fb}
+  .time.sold:hover{border-color:var(--line)}
+  .time.sold .av{color:var(--faint)}
+
+  .note{margin-top:26px; background:#fff; border:1px solid var(--line); border-radius:14px; padding:15px 17px; max-width:760px}
+  .note h3{font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--faint); margin-bottom:9px}
+  .note ul{margin:0 0 0 17px; font-size:13px; color:var(--muted)}
+  .note li{margin-bottom:5px}
+  .note b{color:var(--ink)}
+  .note .q{color:#8a5f2f}
+</style>
+</head>
+<body>
+
+<div class="mockbar"><b>MOCKUP</b> — customer availability picker · static · 390px · pick offering → date → time → booking</div>
+
+<div class="page">
+  <h1 class="pt">Pick a cruise — customer</h1>
+  <div class="psub">The entry point before the booking form: how many, what day, what time. Availability is the virtual model (DEC-125) — computed, boat assigned behind the scenes.</div>
+
+  <div class="frames">
+    <div>
+      <div class="flabel">Availability</div>
+      <div class="phone">
+        <div class="scroll">
+          <div class="hero">
+            <div class="brand">BREW BOAT</div>
+            <div class="cap">
+              <h2>Brew Boat Party Boats with Captain</h2>
+              <div class="meta">Cleveland — East Bank · 1h 40min · from $399</div>
+            </div>
+          </div>
+
+          <div class="body">
+            <!-- GUESTS first: it filters what's available -->
+            <div class="sec">
+              <div class="lab">How many guests?</div>
+              <div class="guests">
+                <button aria-label="fewer">−</button>
+                <span class="n">10</span>
+                <button aria-label="more">+</button>
+                <span class="cap">we fit you to a boat — up to 16</span>
+              </div>
+            </div>
+
+            <!-- MONTH -->
+            <div class="sec">
+              <div class="mhead">
+                <button class="mnav" aria-label="Previous month">‹</button>
+                <span class="m">July 2026</span>
+                <button class="mnav" aria-label="Next month">›</button>
+              </div>
+              <div class="dow"><span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span></div>
+              <div class="grid">
+                <!-- Jul 1 2026 = Wed → 3 blanks (Su Mo Tu) -->
+                <div class="day blank"></div><div class="day blank"></div><div class="day blank"></div>
+                <div class="day off"><span class="dn">1</span></div>
+                <div class="day off"><span class="dn">2</span></div>
+                <div class="day off"><span class="dn">3</span></div>
+                <div class="day off"><span class="dn">4</span></div>
+                <!-- week 2 -->
+                <div class="day off"><span class="dn">5</span></div>
+                <div class="day off"><span class="dn">6</span></div>
+                <div class="day off"><span class="dn">7</span></div>
+                <div class="day off"><span class="dn">8</span></div>
+                <div class="day off"><span class="dn">9</span></div>
+                <div class="day off"><span class="dn">10</span></div>
+                <div class="day off"><span class="dn">11</span></div>
+                <!-- week 3 (today = 16) -->
+                <div class="day off"><span class="dn">12</span></div>
+                <div class="day off"><span class="dn">13</span></div>
+                <div class="day off"><span class="dn">14</span></div>
+                <div class="day off"><span class="dn">15</span></div>
+                <div class="day avail"><span class="dn">16</span><span class="dp">$499</span></div>
+                <div class="day avail"><span class="dn">17</span><span class="dp">$499</span></div>
+                <div class="day avail sel"><span class="dn">18</span><span class="dp">$549</span></div>
+                <!-- week 4 -->
+                <div class="day avail"><span class="dn">19</span><span class="dp">$399</span></div>
+                <div class="day soldout"><span class="dn">20</span><span class="dp">out</span></div>
+                <div class="day soldout"><span class="dn">21</span><span class="dp">out</span></div>
+                <div class="day soldout"><span class="dn">22</span><span class="dp">out</span></div>
+                <div class="day soldout"><span class="dn">23</span><span class="dp">out</span></div>
+                <div class="day avail"><span class="dn">24</span><span class="dp">$499</span></div>
+                <div class="day avail"><span class="dn">25</span><span class="dp">$549</span></div>
+                <!-- week 5 -->
+                <div class="day avail"><span class="dn">26</span><span class="dp">$399</span></div>
+                <div class="day avail"><span class="dn">27</span><span class="dp">$499</span></div>
+                <div class="day avail"><span class="dn">28</span><span class="dp">$499</span></div>
+                <div class="day avail"><span class="dn">29</span><span class="dp">$499</span></div>
+                <div class="day avail"><span class="dn">30</span><span class="dp">$499</span></div>
+                <div class="day avail"><span class="dn">31</span><span class="dp">$499</span></div>
+              </div>
+              <div style="font-size:11px; color:var(--faint); margin-top:8px">Jul 20–24 greyed: Brew 3 out of service and the others booked — nothing free (a block + full bookings, computed).</div>
+            </div>
+
+            <!-- TIMES for the selected day -->
+            <div class="sec">
+              <div class="tlab"><b>Sat, Jul 18</b><span class="m">· tap a time to book</span></div>
+
+              <button class="time">
+                <span class="mid"><span class="t">11:30 AM</span><div class="av">2 boats free · up to 16</div></span>
+                <span class="pr">$549</span><span class="chev">›</span>
+              </button>
+              <button class="time">
+                <span class="mid"><span class="t">1:30 PM</span><div class="av tight">1 boat left · up to 12</div></span>
+                <span class="pr">$549</span><span class="chev">›</span>
+              </button>
+              <button class="time">
+                <span class="mid"><span class="t">3:30 PM</span><div class="av">3 boats free · up to 16</div></span>
+                <span class="pr">$549</span><span class="chev">›</span>
+              </button>
+              <button class="time sold">
+                <span class="mid"><span class="t">5:30 PM</span><div class="av">sold out</div></span>
+                <span class="pr">$549</span>
+              </button>
+              <button class="time">
+                <span class="mid"><span class="t">7:30 PM</span><div class="av tight">1 boat left · up to 14</div></span>
+                <span class="pr">$549</span><span class="chev">›</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      <h3>What this asserts — argue with it</h3>
+      <ul>
+        <li><b>Guests → date → time, in that order.</b> Party size comes first because it <b>filters</b> availability: a 15-person party only sees days/times where a boat that big is free. "We fit you to a boat — up to 16" sets the expectation that the customer picks a size, not a hull.</li>
+        <li><b>The calendar is the virtual model made visible</b> (DEC-125). Each day shows its <b>lowest price</b> ($399 Sun, $549 Sat, $499 weekday — schedule-driven); a day with nothing free is greyed. No rows underlie this — it's <code>schedule × vessels × dates − blocks − bookings</code>, computed. Jul 20–24 greyed = the Brew 3 block plus the rest booked.</li>
+        <li><b>Times show availability as "N boats free · up to M,"</b> not seat counts. M is the biggest boat still open at that time — the customer's real ceiling. "1 boat left · up to 12" nudges without inventing scarcity.</li>
+        <li><b>Boat is never named or chosen.</b> The customer taps a time; the claim assigns a boat that fits their party at booking. This screen and the booking form agree: offering + party, boat behind the scenes.</li>
+        <li><b>Price shown up front, per day and per time</b> — no surprise at checkout. Matches the live brewcle.com widget's month-with-prices, trimmed to the whole-boat case.</li>
+        <li><b>Tapping a time → the booking form</b>, carrying the slot (Sat Jul 18 · 1:30 PM). "Change" on the booking form comes back here.</li>
+        <li class="q"><b>Open:</b> if BrewBoat ever runs more than one offering, does this open on an offering list first? Waitlist on a sold-out time? Show "only 1 left" as urgency or is that too Xola-salesy for the brand?</li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Muster — Blocks (mockup)</title>
+<style>
+  :root{
+    --bg:#eef2f6; --card:#ffffff; --ink:#101826; --muted:#5b6675; --faint:#93a0b0; --line:#e7ebf1;
+    --accent:#2f5d86;
+    --v1:#5b64a8; --v2:#8a5f93; --v3:#6e7f46; --v4:#9c6b4e;
+    --radius:14px;
+    --sans:"IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    --mono:"IBM Plex Mono", ui-monospace, monospace;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{background:var(--bg); color:var(--ink); font-family:var(--sans); font-size:14px; line-height:1.45;
+       -webkit-font-smoothing:antialiased}
+  .mockbar{background:#101826; color:#93a0b0; font-family:var(--mono); font-size:11px; padding:6px 16px}
+  .mockbar b{color:#eef2f6; font-weight:500}
+  .wrap{max-width:1340px; margin:0 auto; padding:18px 16px 60px}
+
+  header.top{display:flex; align-items:baseline; gap:14px; flex-wrap:wrap}
+  h1{font-size:22px; font-weight:600; letter-spacing:-.01em}
+  .sub{color:var(--muted); font-size:13px}
+
+  .controls{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:16px 0 12px}
+  .seg{display:inline-flex; background:var(--card); border:1px solid var(--line); border-radius:9px; overflow:hidden}
+  .seg button{font:inherit; font-size:13px; padding:6px 13px; background:transparent; border:0;
+              color:var(--muted); cursor:pointer; border-right:1px solid var(--line)}
+  .seg button:last-child{border-right:0}
+  .seg button[aria-pressed="true"]{background:var(--ink); color:#fff}
+  .spacer{flex:1}
+  .btn{font:inherit; font-size:12.5px; padding:6px 12px; border-radius:8px; border:1px solid var(--line);
+       background:#fff; color:var(--ink); cursor:pointer}
+  .btn.primary{background:var(--accent); border-color:var(--accent); color:#fff}
+  .btn:active{transform:scale(.985)}
+
+  .panes{display:grid; grid-template-columns:1fr 340px; gap:14px; align-items:start}
+  @media (max-width:1080px){ .panes{grid-template-columns:1fr} .make{position:static !important} }
+
+  /* ---- block list ---- */
+  .list{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden}
+  .list .lh, .list .row{display:grid; grid-template-columns:104px 1.4fr 1.3fr 96px 40px; gap:10px;
+                        align-items:center; padding:10px 14px}
+  .list .lh{border-bottom:1px solid var(--line); font-size:10px; text-transform:uppercase;
+            letter-spacing:.07em; color:var(--faint); font-weight:600}
+  .list .row{border-top:1px solid #f2f5f8; font-size:13px}
+  .list .row:hover{background:#f7fafc}
+  .list .row.past{opacity:.5}
+
+  .kind{display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:600;
+        letter-spacing:.03em; padding:3px 9px; border-radius:99px; border:1px solid var(--line)}
+  .kind .dot{width:7px; height:7px; border-radius:2px; flex:none}
+  .kind.loc{background:#f3eef8; border-color:#e3d5ef; color:#6b4a8a} .kind.loc .dot{background:#8a5f93}
+  .kind.ves{background:#fbe6e4; border-color:#f2cdc9; color:#a33; } .kind.ves .dot{background:#be2f2a}
+  .kind.hold{background:#eef2f6; border-color:#d3dce6; color:var(--ink)} .kind.hold .dot{background:var(--accent); border-radius:50%}
+
+  .what b{font-weight:600}
+  .what .m{font-size:12px; color:var(--faint); font-family:var(--mono)}
+  .when{font-family:var(--mono); font-size:12px}
+  .when .d2{color:var(--faint)}
+  .impact{font-family:var(--mono); font-size:13px; font-weight:600}
+  .impact .u{font-size:11px; color:var(--faint); font-weight:400; display:block}
+  .hue{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle}
+  .hue.v1{background:var(--v1)} .hue.v3{background:var(--v3)} .hue.v4{background:var(--v4)}
+  .lift{font-size:12px; color:var(--accent); text-decoration:none}
+  .exp{background:none; border:0; font:inherit; cursor:pointer; color:var(--muted); padding:0;
+       display:inline-flex; align-items:center; gap:5px}
+  .exp .chev{transition:transform .1s} .exp[aria-expanded="true"] .chev{transform:rotate(90deg)}
+  .triage-badge{display:inline-block; font-size:10px; font-weight:600; letter-spacing:.03em;
+                padding:2px 7px; border-radius:99px; background:#fbf0db; border:1px solid #f0ddb4;
+                color:#92400e; margin-top:3px}
+  .triage-badge.done{background:#e7f4ec; border-color:#cbe6d5; color:#157a3a}
+
+  /* affected-reservations sub-panel */
+  .affected{background:#f7fafc; border-top:1px solid var(--line); padding:4px 14px 12px 118px}
+  .affected .ah{font-size:10px; text-transform:uppercase; letter-spacing:.07em; color:var(--faint);
+                font-weight:600; padding:9px 0 6px}
+  .ares{display:grid; grid-template-columns:1.5fr 1fr auto; gap:12px; align-items:center;
+        padding:7px 0; border-top:1px solid #eaeff4; font-size:13px}
+  .ares .who b{font-weight:600} .ares .who .m{font-size:12px; color:var(--faint); font-family:var(--mono)}
+  .ares .slot{font-family:var(--mono); font-size:12px; color:var(--muted)}
+  .ares .acts{display:flex; gap:6px}
+  .ares .a{font:inherit; font-size:12px; padding:4px 10px; border-radius:7px; border:1px solid var(--line);
+           background:#fff; color:var(--ink); cursor:pointer}
+  .ares .a.warn{color:#be2f2a; border-color:#f2cdc9}
+  .ares.resolved{opacity:.55}
+  .ares.resolved .who b{text-decoration:line-through}
+  .ares .tag{font-size:10px; color:#157a3a; font-weight:600}
+
+  /* ---- create panel ---- */
+  .make{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); position:sticky; top:16px}
+  .make .mh{padding:12px 15px; border-bottom:1px solid var(--line); font-size:15px; font-weight:600}
+  .make .mb{padding:13px 15px}
+  .kseg{display:flex; gap:6px; margin-bottom:12px}
+  .kseg button{flex:1; font:inherit; font-size:12px; padding:8px 4px; border-radius:9px; border:1px solid var(--line);
+               background:#fff; color:var(--muted); cursor:pointer; line-height:1.25}
+  .kseg button b{display:block; color:var(--ink); font-size:12.5px}
+  .kseg button[aria-pressed="true"]{border-color:var(--accent); background:#eef4f9}
+  .fld{margin-bottom:10px}
+  .fld label{display:block; font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--faint);
+             font-weight:600; margin-bottom:4px}
+  .inp{border:1px solid var(--line); border-radius:8px; padding:7px 9px; font:inherit; font-size:13px;
+       background:#fff; width:100%; color:var(--ink)}
+  .inp.mono{font-family:var(--mono)}
+  .two{display:flex; gap:8px}
+  .two > *{flex:1}
+  .impactbox{margin:12px 0 4px; background:#f5f8fb; border:1px solid #dfe6ee; border-radius:10px;
+             padding:10px 12px; font-size:13px; color:var(--muted)}
+  .impactbox b{color:var(--ink)}
+  .impactbox .big{font-family:var(--mono); font-size:18px; color:var(--ink); font-weight:600}
+  .make .go{width:100%; margin-top:8px; font:inherit; font-size:13px; padding:9px; border-radius:9px;
+            background:var(--accent); border:1px solid var(--accent); color:#fff; cursor:pointer}
+
+  .note{margin-top:22px; background:#fff; border:1px solid var(--line); border-radius:var(--radius); padding:15px 17px}
+  .note h3{font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--faint); margin-bottom:9px}
+  .note ul{margin:0 0 0 17px; font-size:13px; color:var(--muted)}
+  .note li{margin-bottom:5px}
+  .note b{color:var(--ink)}
+  .note .q{color:#8a5f2f}
+</style>
+</head>
+<body>
+
+<div class="mockbar"><b>MOCKUP</b> — Blocks · static · availability subtractions (DEC-125) · <b>not</b> Xola's per-event blackout</div>
+
+<div class="wrap">
+
+  <header class="top">
+    <h1>Blocks</h1>
+    <span class="sub"><b>Every block, wherever it was made</b> — the one place Xola never gave you. Scoped blocks (a location window, a vessel range) are created here; single-slot ones (a hold, a one-off blackout) are made on the calendar — but <b>all of them show here</b>. Each subtracts slots; lifting puts them back.</span>
+  </header>
+
+  <div class="controls">
+    <div class="seg" role="group" aria-label="Filter">
+      <button aria-pressed="true">All</button>
+      <button aria-pressed="false">Location</button>
+      <button aria-pressed="false">Vessel</button>
+      <button aria-pressed="false">Hold</button>
+      <button aria-pressed="false">Slot</button>
+    </div>
+    <span class="sub" style="margin-left:4px">Upcoming</span>
+    <div class="spacer"></div>
+    <button class="btn primary">+ New block</button>
+  </header>
+
+  <div class="panes">
+    <div class="list">
+      <div class="lh">
+        <div>Kind</div><div>What it blocks</div><div>When</div><div>Removes</div><div></div>
+      </div>
+
+      <!-- LOCATION -->
+      <div class="row">
+        <div><span class="kind loc"><span class="dot"></span>Location</span></div>
+        <div class="what"><b>Cleveland — East Bank</b><div class="m">all vessels · all offerings here</div></div>
+        <div class="when">Sat Jul 25 <span class="d2">· 12:00–4:00 PM</span></div>
+        <div class="impact">8<span class="u">slots</span></div>
+        <div><a class="lift" href="#">Lift</a></div>
+      </div>
+
+      <!-- VESSEL — with booked-trip conflicts to triage -->
+      <div class="row">
+        <div><span class="kind ves"><span class="dot"></span>Vessel</span></div>
+        <div class="what"><b><span class="hue v3"></span>Brew 3</b> out of service<div class="m">engine service</div>
+          <button class="exp" aria-expanded="true"><span class="chev">›</span><span class="triage-badge">3 to triage · $1,847</span></button></div>
+        <div class="when">Jul 20 – Jul 24 <span class="d2">· all day</span></div>
+        <div class="impact">25<span class="u">open slots</span></div>
+        <div><a class="lift" href="#">Lift</a></div>
+      </div>
+      <!-- expanded: just the list of booked trips this block hits — resolve them on the reservation side -->
+      <div class="affected">
+        <div class="ah">Booked trips in this block — 3 to resolve</div>
+        <div class="ares">
+          <div class="who"><b>Marcus Webb</b> · 11 guests<div class="m">$549 paid</div></div>
+          <div class="slot">Tue Jul 21 · 1:30 PM</div>
+          <div class="acts"><a class="a" href="#">View →</a></div>
+        </div>
+        <div class="ares">
+          <div class="who"><b>Dana Cho</b> · 8 guests<div class="m">$439 paid</div></div>
+          <div class="slot">Wed Jul 22 · 3:30 PM</div>
+          <div class="acts"><a class="a" href="#">View →</a></div>
+        </div>
+        <div class="ares">
+          <div class="who"><b>Priya Nair</b> · 12 guests<div class="m">$549 paid</div></div>
+          <div class="slot">Thu Jul 23 · 7:30 PM</div>
+          <div class="acts"><a class="a" href="#">View →</a></div>
+        </div>
+        <div style="font-size:12px; color:var(--faint); padding-top:8px">
+          Just the list — resolve each on its reservation (move or cancel there). Crew fall out
+          automatically: re-forming the shifts cancels Brew 3, crews the new boat, and notifies the crew.
+        </div>
+      </div>
+
+      <!-- HOLD — single-slot, made on the calendar; shown here read-only -->
+      <div class="row">
+        <div><span class="kind hold"><span class="dot"></span>Hold</span></div>
+        <div class="what"><b><span class="hue v4"></span>Brew 4</b> reserved<div class="m">private — Cavs watch party (comped) · no customer event · <i>made on calendar</i></div></div>
+        <div class="when">Fri Jul 18 <span class="d2">· 7:30 PM</span></div>
+        <div class="impact">1<span class="u">slot</span></div>
+        <div><a class="lift" href="#">On calendar →</a></div>
+      </div>
+
+      <!-- SLOT — a one-off blackout made on the calendar; visible here, acted on there -->
+      <div class="row">
+        <div><span class="kind hold" style="background:#f6f8fa;border-color:var(--line);color:var(--muted)"><span class="dot" style="background:var(--faint)"></span>Slot</span></div>
+        <div class="what"><b><span class="hue v3"></span>Brew 3</b> blacked out<div class="m">deep clean · <i>made on calendar</i></div></div>
+        <div class="when">Wed Jul 15 <span class="d2">· 3:30 PM</span></div>
+        <div class="impact">1<span class="u">slot</span></div>
+        <div><a class="lift" href="#">On calendar →</a></div>
+      </div>
+
+      <!-- a lifted/past one, greyed -->
+      <div class="row past">
+        <div><span class="kind ves"><span class="dot"></span>Vessel</span></div>
+        <div class="what"><b><span class="hue v4"></span>Brew 4</b> out of service<div class="m">hull inspection · lifted</div></div>
+        <div class="when">Jul 6 – Jul 7 <span class="d2">· all day</span></div>
+        <div class="impact">—</div>
+        <div></div>
+      </div>
+    </div>
+
+    <!-- CREATE -->
+    <aside class="make">
+      <div class="mh">New block</div>
+      <div class="mb">
+        <div class="kseg" role="group" aria-label="Kind">
+          <button aria-pressed="true"><b>Location</b>a place closes</button>
+          <button aria-pressed="false"><b>Vessel</b>boat out</button>
+        </div>
+        <div style="font-size:11px; color:var(--faint); margin:-4px 0 12px">
+          Scoped blocks only. A <b>hold</b> or a one-off <b>slot blackout</b> is made on the calendar
+          (click the slot) — it'll appear in the list here.
+        </div>
+
+        <!-- Location fields shown (the pressed kind) -->
+        <div class="fld"><label>Location</label>
+          <select class="inp"><option>Cleveland — East Bank</option><option>Cleveland — Rivergate</option></select></div>
+        <div class="fld"><label>Date</label>
+          <input class="inp mono" value="2026-07-25"></div>
+        <div class="fld"><label>Time window</label>
+          <div class="two"><input class="inp mono" value="12:00 PM"><input class="inp mono" value="4:00 PM"></div></div>
+        <div class="fld"><label>Reason</label>
+          <input class="inp" value="Head of the Cuyahoga — river closed"></div>
+
+        <div class="impactbox">
+          <b>This removes</b> <span class="big">8</span> open slots — all vessels from East Bank,
+          Sat Jul 25 12:00–4:00 PM.<br>
+          <span style="color:#92400e">⚠ <b>2 booked trips ($1,098) conflict.</b></span> Create the block now
+          (the closure is real); they drop into a <b>list</b> to resolve on the reservation side — never
+          silently cancelled.
+        </div>
+        <button class="go">Create block · triage 2 after</button>
+      </div>
+    </aside>
+  </div>
+
+  <div class="note">
+    <h3>What this asserts — argue with it</h3>
+    <ul>
+      <li><b>A block is an availability subtraction</b> (DEC-125), not a per-event flag. That's the whole difference from Xola: you don't hunt down and toggle each departure — you state the closure once at its natural scope and the calendar removes what it should.</li>
+      <li><b>Three scopes, three real use cases:</b> <b>Location</b> (river closed → everything launching there, a date + time window) · <b>Vessel</b> (boat out of service → all its slots, a date range) · <b>Hold</b> (reserve a boat for a private thing → one slot, <i>no customer event</i>).</li>
+      <li><b>This is the single registry — the anti-Xola.</b> Xola had ~3 places to create blocks with zero visibility between them; you'd get blindsided by a block you forgot in another screen. Here, <b>every block is visible in one list regardless of where it was made.</b> Creation stays split by what's natural — <b>scoped</b> blocks (location window, vessel range) created here; <b>single-slot</b> ones (hold, one-off blackout) made on the calendar where you're looking at the slot — but a single-slot block still <b>shows here read-only</b>, with "On calendar →" to act on it. Visibility is unified even though creation isn't.</li>
+      <li><b>Every block shows its impact</b> — "removes N slots" — before you commit and in the list after. You see what you're taking off the calendar, which Xola never told you.</li>
+      <li><b>Blocks are reversible.</b> "Lift" puts the slots back. Nothing is destroyed; a block is a layer over the schedule rule, not an edit to it.</li>
+      <li><b>A Hold is not a reservation.</b> It reserves the boat with no customer `Event` — the slot renders <b>Held</b> on the calendar (distinct from Open / Sold). This is the "reserve a boat for a special event but don't make an actual event" case.</li>
+      <li><b>Booked trips inside a block are a list, not a workflow.</b> The block is authoritative (the boat IS out), so you create it without pre-resolving. The conflicting trips hang off the block row (expand) as a plain list, each linking to its reservation — <b>resolution happens there, not here</b> (operator's call: this doesn't happen often; just show which ones and let me deal with them). The block is <i>Clean</i> / <i>N to resolve</i> / <i>Resolved</i>.</li>
+      <li><b>Crew fall out automatically.</b> You only work the customer side. Moving or cancelling a trip mutates its <code>Event</code> → <code>formShifts</code> re-derives → the blocked boat's shift cancels, the new boat's shift crews itself, and affected crew are notified. That's the reconciliation path hardened in v1.0.15 — solid downstream of this screen.</li>
+      <li><b>Creating a conflicting block warns first</b> — "removes N open slots · M booked trips ($X) conflict" — so you see the money before you commit, then work the list on your own clock.</li>
+      <li class="q"><b>Open:</b> does a Location block need per-offering granularity (block one offering there, not all)? Recurring blocks (every Monday in a range) — worth it, or just make N?</li>
+    </ul>
+  </div>
+
+</div>
+</body>
+</html>

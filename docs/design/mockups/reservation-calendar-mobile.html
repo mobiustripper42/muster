@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Muster — Reservation Calendar, mobile (mockup)</title>
+<style>
+  :root{
+    --bg:#eef2f6; --card:#ffffff; --ink:#101826; --muted:#5b6675; --faint:#93a0b0; --line:#e7ebf1;
+    --accent:#2f5d86;
+    --v1:#5b64a8; --v2:#8a5f93; --v3:#6e7f46; --v4:#9c6b4e;
+    --sans:"IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    --mono:"IBM Plex Mono", ui-monospace, monospace;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{background:#dde4ec; color:var(--ink); font-family:var(--sans); font-size:14px; line-height:1.45;
+       -webkit-font-smoothing:antialiased}
+  .mockbar{background:#101826; color:#93a0b0; font-family:var(--mono); font-size:11px; padding:6px 16px}
+  .mockbar b{color:#eef2f6; font-weight:500}
+  .page{max-width:1180px; margin:0 auto; padding:22px 16px 56px}
+  h1.pt{font-size:19px; font-weight:600; margin-bottom:2px}
+  .psub{font-size:13px; color:var(--muted); margin-bottom:20px}
+
+  .frames{display:flex; gap:28px; flex-wrap:wrap; align-items:flex-start}
+  .framewrap{flex:none}
+  .flabel{font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:#6b7684; font-weight:600;
+          margin-bottom:8px}
+  .phone{width:375px; height:760px; background:var(--bg); border:1px solid #c3ccd6; border-radius:26px;
+         overflow:hidden; display:flex; flex-direction:column; box-shadow:0 6px 22px rgba(16,24,38,.10)}
+
+  /* ---- sticky top ---- */
+  .top{background:var(--card); border-bottom:1px solid var(--line); flex:none}
+  .trow{display:flex; align-items:center; gap:8px; padding:11px 13px 9px}
+  .trow h2{font-size:16px; font-weight:600; flex:1}
+  .icb{font:inherit; font-size:15px; width:32px; height:32px; border-radius:9px; border:1px solid var(--line);
+       background:#fff; color:var(--ink); cursor:pointer; flex:none}
+  .datenav{display:flex; align-items:center; gap:8px; padding:0 13px 9px}
+  .datenav .d{font-size:14px; font-weight:500; flex:1}
+  .datenav .cnt{font-size:12px; color:var(--faint); font-family:var(--mono)}
+
+  .chips{display:flex; gap:6px; padding:0 13px 10px; overflow-x:auto}
+  .chip{font:inherit; font-size:12.5px; padding:5px 11px; border-radius:99px; border:1px solid var(--line);
+        background:#fff; color:var(--muted); cursor:pointer; white-space:nowrap; flex:none}
+  .chip[aria-pressed="true"]{background:var(--ink); border-color:var(--ink); color:#fff}
+
+  /* ---- list ---- */
+  .scroll{flex:1; overflow-y:auto; padding:9px 10px 20px}
+  .tgroup{margin-bottom:12px}
+  .tg{font-family:var(--mono); font-size:11.5px; color:var(--faint); font-weight:500; padding:0 4px 5px;
+      letter-spacing:.02em}
+  .ev{width:100%; text-align:left; font:inherit; background:var(--card); border:1px solid var(--line);
+      border-radius:11px; padding:10px 11px; cursor:pointer; display:flex; align-items:center; gap:10px;
+      position:relative; min-height:56px}
+  .ev + .ev{margin-top:5px}
+  .ev:active{transform:scale(.99)}
+  .hue{width:8px; height:8px; border-radius:50%; flex:none}
+  .hue.v1{background:var(--v1)} .hue.v2{background:var(--v2)} .hue.v3{background:var(--v3)} .hue.v4{background:var(--v4)}
+  /* No fixed boat column: the name flows in the sub-line, so it can be any
+     length without truncating. The hue dot carries identity at a glance. */
+  .ev .mid{flex:1; min-width:0}
+  .ev .who{font-size:14px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .ev .sub{font-size:12px; color:var(--muted); margin-top:1px; overflow:hidden; text-overflow:ellipsis;
+           white-space:nowrap}
+  .ev .sub .bt{color:var(--ink)}
+  .ev .openp{font-size:14px; font-family:var(--mono); color:var(--accent); font-weight:500}
+  .ev .opensub{font-size:12px; color:var(--faint); margin-top:1px; overflow:hidden; text-overflow:ellipsis;
+               white-space:nowrap}
+  .ev .opensub .bt{color:var(--muted)}
+  .ev .chev{color:#c3ccd6; font-size:15px; flex:none}
+  .ev.open{border-style:dashed; border-color:#d7dfe8}
+  .ev.blackout{opacity:.55}
+  .ev.blackout .who{text-decoration:line-through; color:var(--faint)}
+  .sellb{font:inherit; font-size:12px; padding:4px 10px; border-radius:7px; border:1px solid var(--accent);
+         color:var(--accent); background:#fff; flex:none}
+
+  /* ---- detail ---- */
+  .dtop{background:var(--card); border-bottom:1px solid var(--line); flex:none; padding:10px 13px 12px}
+  .back{font-size:13px; color:var(--accent); text-decoration:none; font-weight:500; display:inline-block;
+        margin-bottom:8px}
+  .dtop h2{font-size:19px; font-weight:600}
+  .when{font-size:13px; color:var(--muted); margin-top:4px; font-family:var(--mono);
+        display:flex; align-items:center; gap:7px; flex-wrap:wrap}
+  .crewed{display:inline-flex; align-items:center; gap:4px; font-family:var(--sans); font-size:12px;
+          background:#eef2f6; border:1px solid #dfe6ee; border-radius:99px; padding:2px 9px; color:var(--ink);
+          text-decoration:none}
+  .crewed b{font-weight:600}
+  .dbody{padding:12px 13px}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px 12px}
+  .card + .card{margin-top:10px}
+  .sect{font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:var(--faint); font-weight:600;
+        margin-bottom:5px}
+  .row{display:grid; grid-template-columns:1fr auto; gap:10px; padding:5px 0; font-size:13.5px;
+       align-items:baseline}
+  .row + .row{border-top:1px solid #f2f5f8}
+  .row .lbl{color:var(--muted)}
+  .row .val{font-weight:500; text-align:right}
+  .row .val.mono{font-family:var(--mono); font-weight:400}
+  .row.total{border-top:1px solid var(--line); margin-top:3px; padding-top:7px; font-weight:600}
+  .row.total .val{font-family:var(--mono)}
+  .money{margin-top:10px; border-top:1px solid var(--line); padding-top:6px}
+  .money .row:first-child{border-top:0}
+  .cfg-tag{font-size:9px; letter-spacing:.06em; text-transform:uppercase; color:var(--faint);
+           border:1px solid var(--line); border-radius:4px; padding:1px 4px; margin-left:5px}
+  .addbtn{width:100%; margin-top:6px; font:inherit; font-size:12.5px; padding:7px; border-radius:8px;
+          border:1px dashed #ccd6e0; background:#fff; color:var(--accent)}
+
+  /* action bar pinned to the thumb, not buried under a scroll */
+  .abar{flex:none; background:var(--card); border-top:1px solid var(--line); padding:9px 11px;
+        display:flex; gap:7px}
+  .abar .btn{flex:1; font:inherit; font-size:13px; padding:9px 0; border-radius:9px; border:1px solid var(--line);
+             background:#fff; color:var(--ink); text-align:center}
+  .abar .btn.primary{background:var(--accent); border-color:var(--accent); color:#fff}
+  .abar .more{flex:none; width:42px}
+
+  .note{margin-top:26px; background:#fff; border:1px solid var(--line); border-radius:14px; padding:15px 17px}
+  .note h3{font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--faint); margin-bottom:9px}
+  .note ul{margin:0 0 0 17px; font-size:13px; color:var(--muted)}
+  .note li{margin-bottom:5px}
+  .note b{color:var(--ink)}
+  .note .q{color:#8a5f2f}
+</style>
+</head>
+<body>
+
+<div class="mockbar"><b>MOCKUP</b> — reservation calendar, mobile · static · 375px · not the desktop grid squished</div>
+
+<div class="page">
+  <h1 class="pt">Reservations — mobile</h1>
+  <div class="psub">Two screens: the day list, and a booking. 375px.</div>
+
+  <div class="frames">
+
+    <!-- ============ LIST ============ -->
+    <div class="framewrap">
+      <div class="flabel">Day list</div>
+      <div class="phone">
+        <div class="top">
+          <div class="trow">
+            <h2>Reservations</h2>
+            <button class="icb">⌕</button>
+            <button class="icb">＋</button>
+          </div>
+          <div class="datenav">
+            <button class="icb">←</button>
+            <span class="d">Sat, Jul 18</span>
+            <span class="cnt">8 open</span>
+            <button class="icb">→</button>
+          </div>
+          <div class="chips">
+            <button class="chip" aria-pressed="true">All 20</button>
+            <button class="chip">Open 8</button>
+            <button class="chip">Booked 11</button>
+            <button class="chip">Blacked out 1</button>
+          </div>
+        </div>
+
+        <div class="scroll">
+          <div class="tgroup">
+            <div class="tg">11:30 AM</div>
+            <button class="ev"><span class="hue v1"></span>
+              <span class="mid"><span class="who">Alexis Bowen</span><div class="sub"><span class="bt">Brew 1</span> · 12 guests · $499</div></span>
+              <span class="chev">›</span></button>
+            <button class="ev open"><span class="hue v2"></span>
+              <span class="mid"><span class="openp">$499</span><div class="opensub"><span class="bt">Brew 2</span> · Open</div></span>
+              <span class="sellb">Sell</span></button>
+            <button class="ev"><span class="hue v3"></span>
+              <span class="mid"><span class="who">Erin Becker</span><div class="sub"><span class="bt">Brew 3</span> · 10 guests · $499</div></span>
+              <span class="chev">›</span></button>
+            <button class="ev"><span class="hue v4"></span>
+              <span class="mid"><span class="who">Munish Bangia</span><div class="sub"><span class="bt">Brew 4</span> · 7 guests · $499</div></span>
+              <span class="chev">›</span></button>
+          </div>
+
+          <div class="tgroup">
+            <div class="tg">1:30 PM</div>
+            <button class="ev"><span class="hue v1"></span>
+              <span class="mid"><span class="who">Shaye Parker</span><div class="sub"><span class="bt">Brew 1</span> · 12 guests · $549</div></span>
+              <span class="chev">›</span></button>
+            <button class="ev"><span class="hue v2"></span>
+              <span class="mid"><span class="who">Healey Zamora</span><div class="sub"><span class="bt">Brew 2</span> · 10 guests · $549</div></span>
+              <span class="chev">›</span></button>
+            <button class="ev open"><span class="hue v3"></span>
+              <span class="mid"><span class="openp">$549</span><div class="opensub"><span class="bt">Brew 3</span> · Open</div></span>
+              <span class="sellb">Sell</span></button>
+            <button class="ev"><span class="hue v4"></span>
+              <span class="mid"><span class="who">David Wixted</span><div class="sub"><span class="bt">Brew 4</span> · 13 guests · $549</div></span>
+              <span class="chev">›</span></button>
+          </div>
+
+          <div class="tgroup">
+            <div class="tg">3:30 PM</div>
+            <button class="ev"><span class="hue v1"></span>
+              <span class="mid"><span class="who">Lisa Braun</span><div class="sub"><span class="bt">Brew 1</span> · 12 guests · $549</div></span>
+              <span class="chev">›</span></button>
+            <button class="ev open"><span class="hue v2"></span>
+              <span class="mid"><span class="openp">$549</span><div class="opensub"><span class="bt">Brew 2</span> · Open</div></span>
+              <span class="sellb">Sell</span></button>
+            <button class="ev blackout"><span class="hue v3"></span>
+              <span class="mid"><span class="who">Blacked out</span><div class="sub"><span class="bt">Brew 3</span> · maintenance</div></span>
+              <span class="chev">›</span></button>
+            <button class="ev open"><span class="hue v4"></span>
+              <span class="mid"><span class="openp">$549</span><div class="opensub"><span class="bt">Brew 4</span> · Open</div></span>
+              <span class="sellb">Sell</span></button>
+          </div>
+
+          <div class="tgroup">
+            <div class="tg">5:30 PM</div>
+            <button class="ev"><span class="hue v1"></span>
+              <span class="mid"><span class="who">Carol Reid</span><div class="sub"><span class="bt">Brew 1</span> · 8 guests · $549</div></span>
+              <span class="chev">›</span></button>
+            <button class="ev"><span class="hue v2"></span>
+              <span class="mid"><span class="who">Wes Boland</span><div class="sub"><span class="bt">Brew 2</span> · 11 guests · $549</div></span>
+              <span class="chev">›</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ DETAIL ============ -->
+    <div class="framewrap">
+      <div class="flabel">Booking</div>
+      <div class="phone">
+        <div class="dtop">
+          <a class="back" href="#">‹ Sat, Jul 18</a>
+          <h2>Munish Bangia</h2>
+          <div class="when">
+            <span>11:30 AM</span>
+            <span><span class="hue v4" style="display:inline-block"></span> Brew 4</span>
+            <a class="crewed" href="#">Crewed <b>2/2</b> ↗</a>
+          </div>
+        </div>
+
+        <div class="scroll" style="padding:0">
+          <div class="dbody">
+            <div class="card">
+              <div class="row"><span class="lbl">Phone</span><span class="val mono">(614) 657-5340</span></div>
+              <div class="row"><span class="lbl">Email</span><span class="val mono" style="font-size:11px">munishbangia.mb@gmail.com</span></div>
+              <div class="row"><span class="lbl">Booked</span><span class="val mono">Jun 14</span></div>
+            </div>
+
+            <div class="card">
+              <div class="sect">Trip</div>
+              <div class="row"><span class="lbl">Guests</span><span class="val">7 <span style="color:var(--faint);font-weight:400">of 12</span></span></div>
+              <div class="row"><span class="lbl">Waivers</span><span class="val">7 of 7</span></div>
+            </div>
+
+            <div class="card">
+              <div class="sect">Add-ons</div>
+              <div class="row"><span class="lbl">Tip your crew · 15%</span><span class="val mono">$74.85</span></div>
+              <div class="row"><span class="lbl">Flex insurance</span><span class="val">No</span></div>
+              <button class="addbtn">+ Add add-on</button>
+
+              <div class="money">
+                <div class="row"><span class="lbl">Fare</span><span class="val mono">$499.00</span></div>
+                <div class="row"><span class="lbl">Add-ons</span><span class="val mono">$74.85</span></div>
+                <div class="row"><span class="lbl">Tax <span class="cfg-tag">5.2%</span></span><span class="val mono">$29.94</span></div>
+                <div class="row"><span class="lbl">Service fee <span class="cfg-tag">3%</span></span><span class="val mono">$17.22</span></div>
+                <div class="row total"><span class="lbl">Paid</span><span class="val">$621.01</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="abar">
+          <span class="btn primary">Message</span>
+          <span class="btn">Guests</span>
+          <span class="btn more">···</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="note">
+    <h3>What mobile does differently — argue with it</h3>
+    <ul>
+      <li><b>Not the grid.</b> 4 boat columns × 5 times is unreadable at 375px. Mobile is a <b>list grouped by departure time</b>, boat named on each row. Same 20 events, scannable with a thumb.</li>
+      <li><b>Boat name takes any length.</b> It's out of the fixed 52px column and into the flow line ("<i>Brew 1</i> · 12 guests · $499"), so a long name pushes off the price — the least important thing on the row — instead of truncating the name. The <b>hue dot</b> does the at-a-glance identification, which is why the name can afford to be secondary. On desktop the name is a <b>column header — 4 times, not 20</b>, so the repetition problem is mobile-only and the header flexes to fit.</li>
+      <li><b>Filter chips move up top</b> and stay stuck while the list scrolls — at 20/day the filter is how you use the screen, so it can't scroll away.</li>
+      <li><b>Sell is on the row.</b> No hover on a phone, so the button is always visible on open slots rather than revealed.</li>
+      <li><b>Actions pin to the bottom bar</b>, in the thumb's reach — Message and Guests get the room, everything else is behind ···. On desktop those six buttons sit in a row; here that would be a wall.</li>
+      <li><b>Detail is a screen, not a pane.</b> Back link returns to the day. Same content, sectioned into cards so it reads while scrolling.</li>
+      <li><b>Open slots keep the dashed border</b> — the one visual carried straight over from desktop, so the two form factors agree on what Open looks like.</li>
+      <li><b>Opens on All</b> — settled (operator, 2026-07-15). Not "Open only", for now.</li>
+      <li class="q"><b>Still open:</b> does mobile need Week at all? Is ＋ (new booking) worth a permanent slot in the header?</li>
+    </ul>
+  </div>
+
+</div>
+</body>
+</html>

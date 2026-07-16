@@ -129,15 +129,16 @@
 
   <header class="top">
     <h1>Blocks</h1>
-    <span class="sub">Take availability off the calendar — closures, out-of-service, private holds. Each one <b>subtracts slots</b>; lifting it puts them back.</span>
+    <span class="sub"><b>Every block, wherever it was made</b> — the one place Xola never gave you. Scoped blocks (a location window, a vessel range) are created here; single-slot ones (a hold, a one-off blackout) are made on the calendar — but <b>all of them show here</b>. Each subtracts slots; lifting puts them back.</span>
   </header>
 
   <div class="controls">
     <div class="seg" role="group" aria-label="Filter">
-      <button aria-pressed="true">All 3</button>
+      <button aria-pressed="true">All</button>
       <button aria-pressed="false">Location</button>
       <button aria-pressed="false">Vessel</button>
       <button aria-pressed="false">Hold</button>
+      <button aria-pressed="false">Slot</button>
     </div>
     <span class="sub" style="margin-left:4px">Upcoming</span>
     <div class="spacer"></div>
@@ -192,13 +193,22 @@
         </div>
       </div>
 
-      <!-- HOLD -->
+      <!-- HOLD — single-slot, made on the calendar; shown here read-only -->
       <div class="row">
         <div><span class="kind hold"><span class="dot"></span>Hold</span></div>
-        <div class="what"><b><span class="hue v4"></span>Brew 4</b> reserved<div class="m">private — Cavs watch party (comped) · no customer event</div></div>
+        <div class="what"><b><span class="hue v4"></span>Brew 4</b> reserved<div class="m">private — Cavs watch party (comped) · no customer event · <i>made on calendar</i></div></div>
         <div class="when">Fri Jul 18 <span class="d2">· 7:30 PM</span></div>
         <div class="impact">1<span class="u">slot</span></div>
-        <div><a class="lift" href="#">Lift</a></div>
+        <div><a class="lift" href="#">On calendar →</a></div>
+      </div>
+
+      <!-- SLOT — a one-off blackout made on the calendar; visible here, acted on there -->
+      <div class="row">
+        <div><span class="kind hold" style="background:#f6f8fa;border-color:var(--line);color:var(--muted)"><span class="dot" style="background:var(--faint)"></span>Slot</span></div>
+        <div class="what"><b><span class="hue v3"></span>Brew 3</b> blacked out<div class="m">deep clean · <i>made on calendar</i></div></div>
+        <div class="when">Wed Jul 15 <span class="d2">· 3:30 PM</span></div>
+        <div class="impact">1<span class="u">slot</span></div>
+        <div><a class="lift" href="#">On calendar →</a></div>
       </div>
 
       <!-- a lifted/past one, greyed -->
@@ -218,7 +228,10 @@
         <div class="kseg" role="group" aria-label="Kind">
           <button aria-pressed="true"><b>Location</b>a place closes</button>
           <button aria-pressed="false"><b>Vessel</b>boat out</button>
-          <button aria-pressed="false"><b>Hold</b>reserve a boat</button>
+        </div>
+        <div style="font-size:11px; color:var(--faint); margin:-4px 0 12px">
+          Scoped blocks only. A <b>hold</b> or a one-off <b>slot blackout</b> is made on the calendar
+          (click the slot) — it'll appear in the list here.
         </div>
 
         <!-- Location fields shown (the pressed kind) -->
@@ -248,7 +261,7 @@
     <ul>
       <li><b>A block is an availability subtraction</b> (DEC-125), not a per-event flag. That's the whole difference from Xola: you don't hunt down and toggle each departure — you state the closure once at its natural scope and the calendar removes what it should.</li>
       <li><b>Three scopes, three real use cases:</b> <b>Location</b> (river closed → everything launching there, a date + time window) · <b>Vessel</b> (boat out of service → all its slots, a date range) · <b>Hold</b> (reserve a boat for a private thing → one slot, <i>no customer event</i>).</li>
-      <li><b>A single slot doesn't come here — it's the calendar.</b> Blocking one departure is a per-departure override (the "Blacked out" state on the reservation calendar); the Blocks screen is only the many-slot scoped ones (a location window, a vessel's date range) that actually need a list.</li>
+      <li><b>This is the single registry — the anti-Xola.</b> Xola had ~3 places to create blocks with zero visibility between them; you'd get blindsided by a block you forgot in another screen. Here, <b>every block is visible in one list regardless of where it was made.</b> Creation stays split by what's natural — <b>scoped</b> blocks (location window, vessel range) created here; <b>single-slot</b> ones (hold, one-off blackout) made on the calendar where you're looking at the slot — but a single-slot block still <b>shows here read-only</b>, with "On calendar →" to act on it. Visibility is unified even though creation isn't.</li>
       <li><b>Every block shows its impact</b> — "removes N slots" — before you commit and in the list after. You see what you're taking off the calendar, which Xola never told you.</li>
       <li><b>Blocks are reversible.</b> "Lift" puts the slots back. Nothing is destroyed; a block is a layer over the schedule rule, not an edit to it.</li>
       <li><b>A Hold is not a reservation.</b> It reserves the boat with no customer `Event` — the slot renders <b>Held</b> on the calendar (distinct from Open / Sold). This is the "reserve a boat for a special event but don't make an actual event" case.</li>

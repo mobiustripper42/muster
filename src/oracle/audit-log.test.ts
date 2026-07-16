@@ -12,7 +12,8 @@ import { describe, expect, it } from "vitest";
 import { asId } from "../domain/ids.js";
 import type { AuditEvent } from "../domain/audit.js";
 import type { Repository } from "../ports/repository.js";
-import { logCrewAdded, logCrewRemoved, logShiftChanged } from "./audit-log.js";
+import { logCrewAdded, logCrewRemoved, logFormAudit, logShiftChanged } from "./audit-log.js";
+import type { FormResult } from "../builder/form-shifts.js";
 
 /** Minimal repo that records every appended audit event. */
 function spyRepo(): { repo: Repository; appended: AuditEvent[] } {
@@ -133,5 +134,83 @@ describe("deterministic id", () => {
       reason: "displaced",
     });
     expect(added.id).not.toBe(removed.id);
+  });
+});
+
+describe("logFormAudit — every form transition reaches the audit (DEC-118)", () => {
+  const S = (n: string) => asId<"ShiftId">(n);
+  const C = (n: string) => asId<"CrewMemberId">(n);
+
+  /** A zeroed FormResult with only the transition lists filled in. */
+  function form(over: Partial<FormResult>): FormResult {
+    return {
+      shiftsCreated: 0,
+      shiftsUpdated: 0,
+      seatsCreated: 0,
+      seatsPruned: 0,
+      seatsStranded: 0,
+      shiftsCancelled: 0,
+      createdShiftIds: [],
+      cancelledShiftIds: [],
+      splitDaysChanged: [],
+      cancelledCrew: [],
+      restoredCrew: [],
+      changedCrew: [],
+      ...over,
+    };
+  }
+
+  it("maps each transition to its audit type, carries the actor + extra metadata", async () => {
+    const { repo, appended } = spyRepo();
+    await logFormAudit(
+      repo,
+      form({
+        cancelledCrew: [{ shiftId: S("s1"), crewMemberId: C("crew-a") }],
+        restoredCrew: [{ shiftId: S("s2"), crewMemberId: C("crew-b") }],
+        changedCrew: [{ shiftId: S("s3"), crewMemberId: C("crew-c") }],
+      }),
+      { kind: "importer", id: "xola" },
+      NOW,
+      { runId: "run-9" },
+    );
+    expect(appended).toHaveLength(3);
+    expect(appended.map((e) => [e.crewMemberId, e.type])).toEqual(
+      expect.arrayContaining([
+        ["crew-a", "crew_removed"],
+        ["crew-b", "crew_added"],
+        ["crew-c", "shift_changed"],
+      ]),
+    );
+    for (const e of appended) {
+      expect(e.actorKind).toBe("importer");
+      expect(e.metadata).toMatchObject({ runId: "run-9" });
+    }
+  });
+
+  it("one failed append doesn't drop the others (best-effort per row)", async () => {
+    const appended: AuditEvent[] = [];
+    let calls = 0;
+    const repo = {
+      appendAuditEvent: async (e: AuditEvent) => {
+        if (++calls === 1) throw new Error("boom"); // first row fails
+        appended.push(e);
+      },
+    } as unknown as Repository;
+    await logFormAudit(
+      repo,
+      form({
+        cancelledCrew: [{ shiftId: S("s1"), crewMemberId: C("crew-a") }],
+        restoredCrew: [{ shiftId: S("s2"), crewMemberId: C("crew-b") }],
+      }),
+      { kind: "admin", id: "spink" },
+      NOW,
+    );
+    expect(appended).toHaveLength(1); // the second still landed
+  });
+
+  it("no transitions → no audit rows", async () => {
+    const { repo, appended } = spyRepo();
+    await logFormAudit(repo, form({}), { kind: "importer", id: "xola" }, NOW);
+    expect(appended).toEqual([]);
   });
 });

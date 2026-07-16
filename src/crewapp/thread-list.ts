@@ -143,6 +143,11 @@ export async function myThreads(
   for (const seat of held) {
     const shift = await repo.getShift(seat.shiftId);
     if (!shift || shift.date < today) continue;
+    // #415 family: a Confirmed/Claimed seat is deliberately KEPT on a Cancelled
+    // (or Completed) shift, so it lingers as a phantom here — guard it, or a crew
+    // member gets a shift thread (and today-cohort) for a shift that was cancelled
+    // out from under them. Same guard My-shifts + the calendar feed already carry.
+    if (shift.state === "Cancelled" || shift.state === "Completed") continue;
     myShifts.push(shift);
   }
   myShifts.sort((a, b) => a.date.localeCompare(b.date) || String(a.id).localeCompare(String(b.id)));

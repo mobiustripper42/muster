@@ -1,5 +1,8 @@
 # Changelog
 
+## [1.0.15] - 2026-07-16
+- PR #448: Import cancel + its siblings — audit the crew removal (import + split/merge), free the dropped crew's date, hide a cancelled shift's threads
+
 ## [1.0.14] - 2026-07-15
 - PR #443: #440 self-claim — an uncrewed seat always lists (Asked seats + AtRisk shifts)
 - PR #441: Withdraw the Manning override UI (S55 prod incident)

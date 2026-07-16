@@ -168,26 +168,27 @@
         <div class="impact">25<span class="u">open slots</span></div>
         <div><a class="lift" href="#">Lift</a></div>
       </div>
-      <!-- expanded: the booked trips this block collides with -->
+      <!-- expanded: just the list of booked trips this block hits — resolve them on the reservation side -->
       <div class="affected">
-        <div class="ah">Booked trips in this block — move or cancel each</div>
+        <div class="ah">Booked trips in this block — 3 to resolve</div>
         <div class="ares">
           <div class="who"><b>Marcus Webb</b> · 11 guests<div class="m">$549 paid</div></div>
           <div class="slot">Tue Jul 21 · 1:30 PM</div>
-          <div class="acts"><button class="a">Move</button><button class="a warn">Cancel + refund</button><button class="a">Message</button></div>
+          <div class="acts"><a class="a" href="#">View →</a></div>
         </div>
-        <div class="ares resolved">
-          <div class="who"><b>Dana Cho</b> · 8 guests <span class="tag">→ moved to Brew 1</span></div>
+        <div class="ares">
+          <div class="who"><b>Dana Cho</b> · 8 guests<div class="m">$439 paid</div></div>
           <div class="slot">Wed Jul 22 · 3:30 PM</div>
-          <div class="acts"><button class="a">Undo</button></div>
+          <div class="acts"><a class="a" href="#">View →</a></div>
         </div>
         <div class="ares">
           <div class="who"><b>Priya Nair</b> · 12 guests<div class="m">$549 paid</div></div>
           <div class="slot">Thu Jul 23 · 7:30 PM</div>
-          <div class="acts"><button class="a">Move</button><button class="a warn">Cancel + refund</button><button class="a">Message</button></div>
+          <div class="acts"><a class="a" href="#">View →</a></div>
         </div>
         <div style="font-size:12px; color:var(--faint); padding-top:8px">
-          Crew fall out automatically — moving or cancelling a trip re-forms the shifts (Brew 3 cancels, the new boat's shift crews itself), and the affected crew are notified. You only work the customer side here.
+          Just the list — resolve each on its reservation (move or cancel there). Crew fall out
+          automatically: re-forming the shifts cancels Brew 3, crews the new boat, and notifies the crew.
         </div>
       </div>
 
@@ -234,8 +235,8 @@
           <b>This removes</b> <span class="big">8</span> open slots — all vessels from East Bank,
           Sat Jul 25 12:00–4:00 PM.<br>
           <span style="color:#92400e">⚠ <b>2 booked trips ($1,098) conflict.</b></span> Create the block now
-          (the closure is real); they drop into <b>“to triage”</b> to move or cancel — never silently
-          cancelled.
+          (the closure is real); they drop into a <b>list</b> to resolve on the reservation side — never
+          silently cancelled.
         </div>
         <button class="go">Create block · triage 2 after</button>
       </div>
@@ -247,13 +248,14 @@
     <ul>
       <li><b>A block is an availability subtraction</b> (DEC-125), not a per-event flag. That's the whole difference from Xola: you don't hunt down and toggle each departure — you state the closure once at its natural scope and the calendar removes what it should.</li>
       <li><b>Three scopes, three real use cases:</b> <b>Location</b> (river closed → everything launching there, a date + time window) · <b>Vessel</b> (boat out of service → all its slots, a date range) · <b>Hold</b> (reserve a boat for a private thing → one slot, <i>no customer event</i>).</li>
+      <li><b>A single slot doesn't come here — it's the calendar.</b> Blocking one departure is a per-departure override (the "Blacked out" state on the reservation calendar); the Blocks screen is only the many-slot scoped ones (a location window, a vessel's date range) that actually need a list.</li>
       <li><b>Every block shows its impact</b> — "removes N slots" — before you commit and in the list after. You see what you're taking off the calendar, which Xola never told you.</li>
       <li><b>Blocks are reversible.</b> "Lift" puts the slots back. Nothing is destroyed; a block is a layer over the schedule rule, not an edit to it.</li>
       <li><b>A Hold is not a reservation.</b> It reserves the boat with no customer `Event` — the slot renders <b>Held</b> on the calendar (distinct from Open / Sold). This is the "reserve a boat for a special event but don't make an actual event" case.</li>
-      <li><b>Booked trips inside a block become a triage worklist — never silently cancelled.</b> The block is authoritative (the boat IS out), so you create it without pre-resolving; the conflicting trips hang off the block row (expand to see them) in a <b>“to triage”</b> state with a $ total. Each is resolved manually — <b>Move</b> (to another boat/slot) or <b>Cancel + refund</b> — because a big party rebooks while a small one might just refund. The block is <i>Clean</i> / <i>Needs triage (N)</i> / <i>Resolved</i>.</li>
+      <li><b>Booked trips inside a block are a list, not a workflow.</b> The block is authoritative (the boat IS out), so you create it without pre-resolving. The conflicting trips hang off the block row (expand) as a plain list, each linking to its reservation — <b>resolution happens there, not here</b> (operator's call: this doesn't happen often; just show which ones and let me deal with them). The block is <i>Clean</i> / <i>N to resolve</i> / <i>Resolved</i>.</li>
       <li><b>Crew fall out automatically.</b> You only work the customer side. Moving or cancelling a trip mutates its <code>Event</code> → <code>formShifts</code> re-derives → the blocked boat's shift cancels, the new boat's shift crews itself, and affected crew are notified. That's the reconciliation path hardened in v1.0.15 — solid downstream of this screen.</li>
-      <li><b>Creating a conflicting block warns first</b> — "removes N open slots · M booked trips ($X) conflict" — so you see the money before you commit, then work the list async.</li>
-      <li class="q"><b>Open:</b> is triage resolution inline here (as mocked) or a hand-off to the reservation calendar? Does a Location block need per-offering granularity (block one offering there, not all)? Recurring blocks (every Monday in a range) — worth it, or just make N?</li>
+      <li><b>Creating a conflicting block warns first</b> — "removes N open slots · M booked trips ($X) conflict" — so you see the money before you commit, then work the list on your own clock.</li>
+      <li class="q"><b>Open:</b> does a Location block need per-offering granularity (block one offering there, not all)? Recurring blocks (every Monday in a range) — worth it, or just make N?</li>
     </ul>
   </div>
 

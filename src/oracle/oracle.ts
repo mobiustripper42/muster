@@ -65,6 +65,14 @@ export async function committedDatesByCrew(
   const shifts = await repo.listShifts();
   for (const shift of shifts) {
     if (shift.id === excludeShiftId) continue;
+    // A Cancelled shift is not a commitment. Its seats are deliberately KEPT
+    // (for resurrection — form-shifts `restoredCrew`), so a crew member the cancel
+    // dropped still carries a Confirmed seat here; counting it would read them as
+    // double-booked on that date and bar them from the very shift they were moved
+    // to (a boat reassignment cancels the old vessel-day and forms a new one). The
+    // claimable-list scan already excludes Cancelled shifts — this makes the
+    // availability scan agree. (Completed stays a real same-day commitment.)
+    if (shift.state === "Cancelled") continue;
     const seats = await repo.listSeatsForShift(shift.id);
     for (const seat of seats) {
       if (!seat.assignedCrewMemberId) continue;

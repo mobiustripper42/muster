@@ -155,6 +155,19 @@ describe("buildThreadList — assembly (#117, DEC-071)", () => {
     expect(view.totalUnread).toBe(0);
   });
 
+  it("hides a Cancelled shift's thread even though the kept seat lingers (#415 family)", async () => {
+    const repo = await seed();
+    // A future shift ME is Confirmed on, then Cancelled (a Xola re-import cancels
+    // the shift but DEC-084 KEEPS the seat). The kept seat must not resurrect the
+    // thread — the crew member was cancelled off it.
+    const killed = asId<"ShiftId">("shift-killed");
+    await repo.saveShift({ ...shift(SHIFT_TODAY, TOMORROW), id: killed, state: "Cancelled" });
+    await repo.saveSeat(seatFor("s-killed", killed, ME));
+
+    const view = await buildThreadList(repo, ME, TENANT, NOW, TZ);
+    expect(view.threads.map((t) => t.threadId)).not.toContain(String(shiftThread(killed)));
+  });
+
   it("hides an empty DM (no message) but lists one that carries a message", async () => {
     const repo = await seed();
     // Empty DM ME↔DEE — participants exist, no message.

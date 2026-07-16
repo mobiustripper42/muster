@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Muster — Booking form (mockup)</title>
+<style>
+  :root{
+    --bg:#eef2f6; --card:#ffffff; --ink:#101826; --muted:#5b6675; --faint:#93a0b0; --line:#e7ebf1;
+    --accent:#2f5d86; --ok:#157a3a; --ok-bg:#e7f4ec; --ok-line:#cbe6d5;
+    --v1:#5b64a8;
+    --sans:"IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    --mono:"IBM Plex Mono", ui-monospace, monospace;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{background:#dde4ec; color:var(--ink); font-family:var(--sans); font-size:14px; line-height:1.45;
+       -webkit-font-smoothing:antialiased}
+  .mockbar{background:#101826; color:#93a0b0; font-family:var(--mono); font-size:11px; padding:6px 16px}
+  .mockbar b{color:#eef2f6; font-weight:500}
+  .page{max-width:1180px; margin:0 auto; padding:22px 16px 56px}
+  h1.pt{font-size:19px; font-weight:600; margin-bottom:2px}
+  .psub{font-size:13px; color:var(--muted); margin-bottom:20px}
+
+  .frames{display:flex; gap:28px; flex-wrap:wrap; align-items:flex-start}
+  .flabel{font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:#6b7684; font-weight:600; margin-bottom:8px}
+  .phone{width:390px; background:var(--card); border:1px solid #c3ccd6; border-radius:26px; overflow:hidden;
+         box-shadow:0 6px 22px rgba(16,24,38,.10); display:flex; flex-direction:column; max-height:900px}
+  .scroll{overflow-y:auto}
+
+  /* hero */
+  .hero{height:150px; background:linear-gradient(160deg,#7d94ac,#4d6580); position:relative; color:#fff}
+  .hero .brand{position:absolute; top:12px; left:14px; font-weight:700; letter-spacing:.02em; font-size:15px;
+               text-shadow:0 1px 3px rgba(0,0,0,.3)}
+  .hero .cap{position:absolute; left:14px; bottom:12px; right:14px}
+  .hero .cap h2{font-size:19px; font-weight:700; text-shadow:0 1px 4px rgba(0,0,0,.35)}
+  .hero .cap .meta{font-size:12px; opacity:.95; margin-top:3px; text-shadow:0 1px 3px rgba(0,0,0,.35)}
+  .private{display:inline-block; font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
+           background:rgba(255,255,255,.92); color:var(--ink); padding:2px 8px; border-radius:99px}
+
+  .body{padding:15px 15px 4px}
+  .sec{margin-bottom:18px}
+  .sec > .lab{font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--faint); font-weight:600; margin-bottom:8px}
+  .sec > .lab .req{color:var(--muted); font-weight:400}
+
+  .slotpick{display:flex; align-items:center; gap:10px; border:1px solid var(--line); border-radius:11px; padding:11px 12px}
+  .slotpick .hue{width:9px;height:9px;border-radius:50%;background:var(--v1);flex:none}
+  .slotpick .st{flex:1} .slotpick .st b{font-weight:600} .slotpick .st .m{font-size:12px;color:var(--faint);font-family:var(--mono)}
+  .slotpick .ch{font-size:12px; color:var(--accent); text-decoration:none}
+
+  .whole{background:var(--ok-bg); border:1px solid var(--ok-line); border-radius:11px; padding:10px 12px;
+          font-size:13px; color:#20603a; margin-bottom:12px}
+  .whole b{color:#12492b}
+
+  .stepper{display:flex; align-items:center; gap:14px}
+  .stepper button{width:40px;height:40px;border-radius:10px;border:1px solid var(--line);background:#fff;
+                  font-size:20px;color:var(--ink);cursor:pointer;line-height:1}
+  .stepper .n{font-size:24px; font-weight:600; font-variant-numeric:tabular-nums; min-width:34px; text-align:center}
+  .stepper .cap{font-size:12px; color:var(--faint); margin-left:auto; text-align:right}
+  .xg{font-size:12px; color:var(--muted); margin-top:8px}
+  .xg b{color:var(--ink)}
+
+  .inp{width:100%; border:1px solid var(--line); border-radius:10px; padding:11px 12px; font:inherit; font-size:15px;
+       background:#fff; color:var(--ink); margin-bottom:9px}
+  .inp:last-child{margin-bottom:0}
+
+  .tiles{display:grid; grid-template-columns:repeat(3,1fr); gap:8px}
+  .tile{border:1px solid var(--line); border-radius:11px; padding:11px 4px; text-align:center; cursor:pointer; background:#fff}
+  .tile[aria-pressed="true"]{border-color:var(--accent); background:#eef4f9}
+  .tile .pct{font-size:17px; font-weight:700}
+  .tile .amt{font-size:12px; color:var(--faint); font-family:var(--mono); margin-top:1px}
+  .grat-note{font-size:12px; color:var(--muted); margin-top:8px}
+  .grat-note b{color:#2f7d70}
+
+  .addon{display:flex; align-items:center; gap:10px; border:1px solid var(--line); border-radius:11px; padding:11px 12px; margin-bottom:8px}
+  .addon .tx{flex:1} .addon .tx b{font-weight:600} .addon .tx .m{font-size:12px;color:var(--faint)}
+  .addon .pr{font-family:var(--mono); font-size:13px; color:var(--muted)}
+  .sw{width:40px;height:24px;border-radius:99px;background:#d6dee7;position:relative;flex:none;cursor:pointer}
+  .sw.on{background:var(--accent)} .sw::after{content:"";position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:#fff;transition:left .1s}
+  .sw.on::after{left:18px}
+
+  .waiver{display:flex; gap:10px; align-items:flex-start; font-size:13px; color:var(--muted)}
+  .waiver input{margin-top:2px; width:18px; height:18px; flex:none}
+  .waiver a{color:var(--accent)}
+
+  .sum{border-top:1px solid var(--line); padding-top:11px}
+  .sum .r{display:flex; justify-content:space-between; padding:4px 0; font-size:13.5px}
+  .sum .r .l{color:var(--muted)} .sum .r .v{font-family:var(--mono)}
+  .sum .r.grat .l{color:#2f7d70}
+  .sum .r.tot{border-top:1px solid var(--line); margin-top:4px; padding-top:9px; font-weight:700; font-size:15px}
+  .sum .r.tot .v{font-family:var(--mono)}
+
+  /* sticky pay */
+  .pay{border-top:1px solid var(--line); background:var(--card); padding:11px 14px; display:flex; align-items:center; gap:12px}
+  .pay .tt{font-size:12px; color:var(--faint)} .pay .tt b{display:block; font-size:18px; color:var(--ink); font-family:var(--mono)}
+  .pay .tt .sub2{display:block; font-size:11px; color:var(--faint); font-family:var(--sans)}
+  .pay button{flex:1; font:inherit; font-size:15px; font-weight:600; padding:13px; border-radius:12px;
+              background:var(--accent); border:0; color:#fff; cursor:pointer; line-height:1.2}
+  .pay button:active{transform:scale(.99)}
+  .sum .r.dep{border-top:1px solid var(--line); margin-top:4px; padding-top:9px}
+  .sum .r.dep .l{color:var(--ink); font-weight:600} .sum .r.dep .v{font-weight:600}
+  .sum .r.bal .l, .sum .r.bal .v{color:var(--faint)}
+
+  .note{margin-top:26px; background:#fff; border:1px solid var(--line); border-radius:14px; padding:15px 17px; max-width:760px}
+  .note h3{font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--faint); margin-bottom:9px}
+  .note ul{margin:0 0 0 17px; font-size:13px; color:var(--muted)}
+  .note li{margin-bottom:5px}
+  .note b{color:var(--ink)}
+  .note .q{color:#8a5f2f}
+</style>
+</head>
+<body>
+
+<div class="mockbar"><b>MOCKUP</b> — customer booking form · static · 390px, mobile-first · whole-boat-private · pre-gratuity required</div>
+
+<div class="page">
+  <h1 class="pt">Book a cruise — customer</h1>
+  <div class="psub">One scrollable page, sticky pay bar. The exit-gate flow: one real paid booking, end to end.</div>
+
+  <div class="frames">
+    <div>
+      <div class="flabel">Booking</div>
+      <div class="phone">
+        <div class="scroll">
+          <div class="hero">
+            <div class="brand">BREW BOAT</div>
+            <div class="cap">
+              <h2>Brew Boat Party Boats with Captain</h2>
+              <div class="meta">Cleveland — East Bank · 1h 40min on the water</div>
+            </div>
+          </div>
+
+          <div class="body">
+            <!-- SLOT (chosen on the availability page; changeable) -->
+            <div class="sec">
+              <div class="lab">Your trip</div>
+              <div class="slotpick">
+                <span class="hue"></span>
+                <span class="st"><b>Sat, Jul 18 · 1:30 PM</b><div class="m">we'll assign your boat</div></span>
+                <a class="ch" href="#">Change</a>
+              </div>
+            </div>
+
+            <!-- GUESTS -->
+            <div class="sec">
+              <div class="lab">How many guests?</div>
+              <div class="whole"><b>You've got the whole boat.</b> The price is the boat, not the seat.</div>
+              <div class="stepper">
+                <button aria-label="fewer">−</button>
+                <span class="n">10</span>
+                <button aria-label="more">+</button>
+                <span class="cap">up to 16 for this time</span>
+              </div>
+              <div class="xg"><b>12 guests included.</b> Each extra is $40 per guest — up to 16 for this time.</div>
+            </div>
+
+            <!-- CONTACT -->
+            <div class="sec">
+              <div class="lab">Who's booking?</div>
+              <input class="inp" placeholder="Full name" value="Jordan Ellis">
+              <input class="inp" placeholder="Email" value="jordan.ellis@gmail.com">
+              <input class="inp" placeholder="Mobile — for your booking link + crew updates" value="(216) 555-0148">
+            </div>
+
+            <!-- GRATUITY (required, no decline) -->
+            <div class="sec">
+              <div class="lab">Tip your crew <span class="req">· required</span></div>
+              <div class="tiles">
+                <button class="tile"><div class="pct">15%</div><div class="amt">$74.85</div></button>
+                <button class="tile" aria-pressed="true"><div class="pct">20%</div><div class="amt">$99.80</div></button>
+                <button class="tile"><div class="pct">25%</div><div class="amt">$124.75</div></button>
+              </div>
+              <div class="grat-note"><b>100% goes to the crew running your boat.</b> Add more after the trip from your booking link, too.</div>
+            </div>
+
+            <!-- ADD-ONS (optional) -->
+            <div class="sec">
+              <div class="lab">Add to your trip</div>
+              <div class="addon">
+                <div class="tx"><b>Flex insurance</b><div class="m">cancel up to 24h before, full refund</div></div>
+                <span class="pr">$29</span><span class="sw on"></span>
+              </div>
+              <div class="addon">
+                <div class="tx"><b>Extra hour on the water</b><div class="m">subject to availability</div></div>
+                <span class="pr">$150</span><span class="sw"></span>
+              </div>
+            </div>
+
+            <!-- WAIVER -->
+            <div class="sec">
+              <div class="waiver">
+                <input type="checkbox" checked>
+                <span>I've read and agree to the <a href="#">liability waiver</a> and <a href="#">terms</a>. Each guest signs at the dock.</span>
+              </div>
+            </div>
+
+            <!-- SUMMARY -->
+            <div class="sec">
+              <div class="lab">Summary</div>
+              <div class="sum">
+                <div class="r"><span class="l">Fare — whole boat, up to 12</span><span class="v">$499.00</span></div>
+                <div class="r"><span class="l">Flex insurance</span><span class="v">$29.00</span></div>
+                <div class="r grat"><span class="l">Tip your crew · 20%</span><span class="v">$99.80</span></div>
+                <div class="r"><span class="l">Tax · 5.2%</span><span class="v">$27.46</span></div>
+                <div class="r"><span class="l">Service fee · 3%</span><span class="v">$15.84</span></div>
+                <div class="r tot"><span class="l">Total</span><span class="v">$671.10</span></div>
+                <div class="r dep"><span class="l">Deposit due now · 50%</span><span class="v">$335.55</span></div>
+                <div class="r bal"><span class="l">Balance · charged 3 days before</span><span class="v">$335.55</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="pay">
+          <div class="tt">Due now<b>$335.55</b><span class="sub2">50% deposit · $671.10 total</span></div>
+          <button>Pay deposit &amp; book</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      <h3>What this asserts — argue with it</h3>
+      <ul>
+        <li><b>One scrollable page, sticky "Pay &amp; book."</b> The-booking-1's ~6-tap funnel as a single low-friction screen — no wizard, the running total always visible. Xola's booking widget is the pattern; this trims it to what a whole-boat sale needs.</li>
+        <li><b>Whole boat, one party — and the customer never picks a boat.</b> They pick the offering + a time + party size; the system assigns an available boat ("we'll assign your boat"). No seat-map, no hull to choose.</li>
+        <li><b>Max = the best available boat for that slot</b> (operator, 2026-07-16). "Up to 16 for this time" = the largest boat still free at 1:30, not a fixed number. If only a 12 is left, the max is 12. The party they enter is what the claim then fits a boat to.</li>
+        <li><b>12 guests included, each extra $40.</b> The included count + extra-guest price are the offering's; the boat only sets the ceiling. Extra guests are sold here — the fix for Xola's "call us for extra tickets."</li>
+        <li><b>Gratuity is required, three positive tiers, no decline</b> — matching the live Xola config, but framed honestly: <b>"100% goes to the crew,"</b> and "add more after the trip from your booking link" (the post-gratuity path). It's the pre-gratuity of DEC-124, first-class, not an add-on buried in the list.</li>
+        <li><b>The phone number earns its place:</b> "for your booking link + crew updates." The booking link (DEC-122 living link) is how they manage + tip post-trip; it's the durable handle, so we say why we want the number.</li>
+        <li><b>Waiver is consent + linked terms now</b> (DEC-110 pilot); per-guest signing is at the dock. The real e-waiver provider is a later wire-up.</li>
+        <li><b>Summary is honest about where money goes:</b> fare, add-ons, gratuity (tinted as crew money), tax, service fee. Gratuity is exempt from tax + fee (DEC-124) — the line items reflect that, not a blended number.</li>
+        <li><b>Deposit at the bottom (answering the operator's question):</b> the pay bar leads with <b>"Due now $335.55"</b> and a "50% deposit · $671.10 total" sub-line; the summary breaks out <b>Deposit due now</b> and a greyed <b>Balance · charged 3 days before</b>. The <b>50% / 3-days-before are placeholders</b> — deposit-vs-full and the numbers are Drew's call (DEC-107). Pay-in-full is the same bar with no split: "Total $671.10 / Pay & book".</li>
+        <li class="q"><b>Open:</b> deposit % + timing (Drew, DEC-107); "Change" reopens the availability picker (next surface); per-guest roster now vs dock check-in; Flex insurance default-on (mocked) or off?</li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

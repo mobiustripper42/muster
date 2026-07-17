@@ -1,0 +1,28 @@
+# systemd user-service for the brewcle.com layered monitor.
+#
+# Install on the always-on box (as your normal user, NOT root):
+#   mkdir -p ~/.config/systemd/user
+#   cp brewcle-monitor.service ~/.config/systemd/user/
+#   # edit PROBE_NTFY_TOPIC below, then:
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now brewcle-monitor
+#   sudo loginctl enable-linger "$USER"   # survive logout/reboot
+#
+# The secret ntfy topic lives HERE (on the box), never in the repo.
+# Assumes the script is at ~/brewcle-monitor/brewcle-probe.sh (chmod +x).
+
+[Unit]
+Description=brewcle.com layered downtime monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/brewcle-monitor
+ExecStart=%h/brewcle-monitor/brewcle-probe.sh loop
+Environment=PROBE_NTFY_TOPIC=replace-with-your-secret-topic
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

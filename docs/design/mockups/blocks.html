@@ -268,7 +268,8 @@
       <li><b>Booked trips inside a block are a list, not a workflow.</b> The block is authoritative (the boat IS out), so you create it without pre-resolving. The conflicting trips hang off the block row (expand) as a plain list, each linking to its reservation — <b>resolution happens there, not here</b> (operator's call: this doesn't happen often; just show which ones and let me deal with them). The block is <i>Clean</i> / <i>N to resolve</i> / <i>Resolved</i>.</li>
       <li><b>Crew fall out automatically.</b> You only work the customer side. Moving or cancelling a trip mutates its <code>Event</code> → <code>formShifts</code> re-derives → the blocked boat's shift cancels, the new boat's shift crews itself, and affected crew are notified. That's the reconciliation path hardened in v1.0.15 — solid downstream of this screen.</li>
       <li><b>Creating a conflicting block warns first</b> — "removes N open slots · M booked trips ($X) conflict" — so you see the money before you commit, then work the list on your own clock.</li>
-      <li class="q"><b>Open:</b> does a Location block need per-offering granularity (block one offering there, not all)? Recurring blocks (every Monday in a range) — worth it, or just make N?</li>
+      <li><b>A Location block blocks everything there</b> <i>(operator, 2026-07-17)</i> — no per-offering carve-out. Block the location, nothing sails from it for that range; there's no "block one offering at this dock but not another." Keeps a block a single, legible date-range subtraction instead of a matrix.</li>
+      <li><b>No recurring blocks — make N</b> <i>(operator, 2026-07-17)</i>. "Every Monday for two months" is a reach; the operator creates the handful of blocks they actually need. Revisit only if the manual count ever gets painful, which at BrewBoat's cadence it won't.</li>
     </ul>
   </div>
 

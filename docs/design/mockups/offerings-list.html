@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Muster — Offerings list (mockup)</title>
+<style>
+  :root{
+    --bg:#eef2f6; --card:#ffffff; --ink:#101826; --muted:#5b6675; --faint:#93a0b0; --line:#e7ebf1;
+    --accent:#2f5d86; --ok:#157a3a;
+    --v1:#5b64a8;
+    --sans:"IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    --mono:"IBM Plex Mono", ui-monospace, monospace;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{background:#dde4ec; color:var(--ink); font-family:var(--sans); font-size:14px; line-height:1.45; -webkit-font-smoothing:antialiased}
+  .mockbar{background:#101826; color:#93a0b0; font-family:var(--mono); font-size:11px; padding:6px 16px}
+  .mockbar b{color:#eef2f6; font-weight:500}
+  .page{max-width:1180px; margin:0 auto; padding:22px 16px 56px}
+  h1.pt{font-size:19px; font-weight:600; margin-bottom:2px}
+  .psub{font-size:13px; color:var(--muted); margin-bottom:20px}
+  .frames{display:flex; gap:28px; flex-wrap:wrap; align-items:flex-start}
+  .flabel{font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:#6b7684; font-weight:600; margin-bottom:8px}
+  .phone{width:390px; background:var(--card); border:1px solid #c3ccd6; border-radius:26px; overflow:hidden;
+         box-shadow:0 6px 22px rgba(16,24,38,.10); display:flex; flex-direction:column; max-height:900px}
+  .scroll{overflow-y:auto}
+
+  /* brand hero */
+  .hero{height:170px; background:linear-gradient(160deg,#7d94ac,#4d6580); position:relative; color:#fff}
+  .hero .brand{position:absolute; top:14px; left:16px; font-weight:700; letter-spacing:.02em; font-size:16px;
+               text-shadow:0 1px 3px rgba(0,0,0,.3)}
+  .hero .cap{position:absolute; left:16px; bottom:14px; right:16px}
+  .hero .cap h2{font-size:20px; font-weight:700; text-shadow:0 1px 4px rgba(0,0,0,.35)}
+  .hero .cap .meta{font-size:12.5px; opacity:.95; margin-top:3px; text-shadow:0 1px 3px rgba(0,0,0,.35)}
+
+  .body{padding:15px 15px 6px}
+  .lab{font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--faint); font-weight:600; margin-bottom:10px}
+
+  /* offering card */
+  .card{border:1px solid var(--line); border-radius:14px; overflow:hidden; background:#fff; cursor:pointer;
+        margin-bottom:12px; box-shadow:0 1px 3px rgba(16,24,38,.04)}
+  .card:hover{border-color:#c5d3e2}
+  .card:active{transform:scale(.995)}
+  .card .pho{height:132px; position:relative; background:linear-gradient(160deg,#8fa6bd,#5f7690)}
+  .card .pho .badge{position:absolute; top:10px; left:10px; font-size:10px; font-weight:700; letter-spacing:.05em;
+        text-transform:uppercase; background:rgba(255,255,255,.92); color:var(--ink); padding:3px 9px; border-radius:99px}
+  .card .info{padding:12px 13px}
+  .card .info h3{font-size:15.5px; font-weight:700; line-height:1.25}
+  .card .info .meta{font-size:12.5px; color:var(--muted); margin-top:3px}
+  .card .foot{display:flex; align-items:center; gap:10px; margin-top:11px}
+  .card .price{font-size:12px; color:var(--faint)}
+  .card .price b{display:block; font-size:16px; color:var(--ink); font-family:var(--mono); font-weight:600}
+  .card .cta{margin-left:auto; font:inherit; font-size:13.5px; font-weight:600; padding:9px 15px; border-radius:10px;
+             background:var(--accent); border:0; color:#fff; cursor:pointer}
+
+  /* ghost — the grid scales to more offerings */
+  .ghost{border:1px dashed #c7d1dc; border-radius:14px; padding:22px 14px; text-align:center; color:var(--faint);
+         font-size:12.5px; background:#fbfcfd}
+
+  .note{margin-top:26px; background:#fff; border:1px solid var(--line); border-radius:14px; padding:15px 17px; max-width:760px}
+  .note h3{font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--faint); margin-bottom:9px}
+  .note ul{margin:0 0 0 17px; font-size:13px; color:var(--muted)}
+  .note li{margin-bottom:5px}
+  .note b{color:var(--ink)}
+  .note .q{color:#8a5f2f}
+</style>
+</head>
+<body>
+
+<div class="mockbar"><b>MOCKUP</b> — customer offerings list · static · 390px, mobile-first · the front page: browse → pick an offering → availability</div>
+
+<div class="page">
+  <h1 class="pt">Choose a cruise — customer</h1>
+  <div class="psub">The front page of the funnel: every live offering as a card. Tap one → the availability picker (date + time) → the booking form. Only <b>Live</b> offerings show; Draft/Hidden don't.</div>
+
+  <div class="frames">
+    <div>
+      <div class="flabel">Offerings</div>
+      <div class="phone">
+        <div class="scroll">
+          <div class="hero">
+            <div class="brand">BREW BOAT</div>
+            <div class="cap">
+              <h2>Cleveland's party pontoons</h2>
+              <div class="meta">Book your boat on the Cuyahoga — East Bank &amp; Rivergate</div>
+            </div>
+          </div>
+
+          <div class="body">
+            <div class="lab">Our cruises</div>
+
+            <!-- OFFERING CARD (the one live offering today) -->
+            <div class="card">
+              <div class="pho"></div>
+              <div class="info">
+                <h3>Brew Boat Party Boats with Captain</h3>
+                <div class="meta">Cleveland — East Bank · 1h 40min on the water · up to 16</div>
+                <div class="foot">
+                  <div class="price">from<b>$399</b></div>
+                  <button class="cta">See times ›</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- the layout is a list/grid: more Live offerings stack here -->
+            <div class="ghost">More offerings appear here as they go Live — same card, one per offering.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      <h3>What this asserts — argue with it</h3>
+      <ul>
+        <li><b>The front door of the customer funnel.</b> Offerings list → availability picker → booking form. This page answers "what can I book?"; the next two answer "when?" and "who + pay."</li>
+        <li><b>One card per Live offering.</b> BrewBoat runs a single offering today, so it's one card — but the page is a list that scales: add an offering, flip it Live, it shows up here. No layout change for one vs. five. <b>Draft and Hidden offerings never appear</b> (the same Draft/Live/Hidden flag from the admin offering screen).</li>
+        <li><b>The card is a teaser, not the detail.</b> Photo, name, location + duration, "up to 16" as capacity, and <b>"from $399"</b> — the offering's lowest schedule price (Sunday). Tapping <b>"See times"</b> carries the offering into the availability picker; nothing is chosen or priced here.</li>
+        <li><b>"from $399" is honest and low.</b> It's the cheapest real slot (schedule-driven), not a bait number — the calendar on the next page shows the actual per-day/per-time price. Whole-boat framing ("up to 16," no headcount) matches the rest of the funnel.</li>
+        <li><b>Brand hero, not a hero image of one boat.</b> This is the operator's storefront, so it leads with BrewBoat, not a single vessel — the customer picks an experience, the system picks the hull later.</li>
+        <li><b>One Live offering skips this page</b> (operator, 2026-07-17). With a single offering the customer goes straight to its availability picker; this catalog only appears once there are 2+ offerings. So today the screen is dormant — it earns its place when BrewBoat adds a second offering.</li>
+        <li><b>No filter, no sort, no sold-out state — just the list</b> <i>(operator, 2026-07-17)</i>. Nothing to filter at one offering, and a card that says "sold out this week" would be answering a question the customer hasn't asked yet: availability is the <b>picker's</b> job, one tap away. The card stays a teaser. Revisit filtering if the catalog ever gets long enough to need it — which is a problem BrewBoat doesn't have.</li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

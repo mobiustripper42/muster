@@ -120,6 +120,29 @@
   .btn.primary{background:var(--accent); border-color:var(--accent); color:#fff}
   .btn:active{transform:scale(.985)}
 
+  /* ---- week view: days x time-slots, each cell summarizes the 4 boats ---- */
+  .wkwrap{margin-top:22px}
+  .wktitle{font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:var(--faint); font-weight:600; margin-bottom:8px}
+  .wk{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden}
+  .wk .wkhead, .wk .wkrow{display:grid; grid-template-columns:60px repeat(7,1fr)}
+  .wk .wkhead > div{padding:9px 6px; font-size:11px; font-weight:600; text-align:center; color:var(--muted)}
+  .wk .wkhead > div + div{border-left:1px solid var(--line)}
+  .wk .wkhead .today{color:var(--accent)}
+  .wk .wkrow{border-top:1px solid var(--line)}
+  .wk .wktime{padding:8px 6px; font-family:var(--mono); font-size:11px; color:var(--muted); display:flex; align-items:center}
+  .wk .wkcell{border-left:1px solid var(--line); padding:7px 6px; cursor:pointer; min-height:50px}
+  .wk .wkcell:hover{background:#f5f8fb}
+  .wk .wkcell.here{background:#eef4f9}
+  .wk .dots{display:flex; gap:3px; margin-bottom:5px}
+  .wk .dot{width:11px; height:11px; border-radius:3px}
+  .wk .dot.b{background:#c3d0dd}
+  .wk .dot.o{background:#fff; border:1px dashed #c3ccd6}
+  .wk .dot.x{background:repeating-linear-gradient(45deg,#c3ccd6 0 2px,transparent 2px 4px); border:1px solid #dfe6ee}
+  .wk .wkcell .n{font-size:10.5px; color:var(--faint); font-family:var(--mono)}
+  .wk .wkcell .n b{color:var(--ink); font-weight:600}
+  .wklegend{display:flex; gap:14px; margin-top:9px; font-size:11.5px; color:var(--muted); align-items:center; flex-wrap:wrap}
+  .wklegend span{display:inline-flex; align-items:center; gap:6px}
+
   .note{margin-top:22px; background:#fff; border:1px solid var(--line); border-radius:var(--radius); padding:15px 17px}
   .note h3{font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--faint); margin-bottom:9px}
   .note ul{margin:0 0 0 17px; font-size:13px; color:var(--muted)}
@@ -239,17 +262,19 @@
         <div class="row"><span class="lbl">Guests</span><span class="val">7 <span style="color:var(--faint);font-weight:400">of 12</span></span></div>
         <div class="row"><span class="lbl">Waivers</span><span class="val">7 of 7</span></div>
 
-        <div class="sect">Add-ons</div>
+        <div class="sect">Gratuity <span class="cfg-tag">crew · tax-exempt</span></div>
         <div class="row"><span class="lbl">Tip your crew · 15%</span><span class="val mono">$74.85</span></div>
+
+        <div class="sect">Add-ons</div>
         <div class="row"><span class="lbl">Flex insurance</span><span class="val cfg">No</span></div>
         <button class="addbtn">+ Add add-on</button>
 
         <div class="money-block">
           <div class="row"><span class="lbl">Fare</span><span class="val mono">$499.00</span></div>
-          <div class="row"><span class="lbl">Add-ons</span><span class="val mono">$74.85</span></div>
-          <div class="row"><span class="lbl">Tax <span class="cfg-tag">5.2%</span></span><span class="val mono">$29.94</span></div>
-          <div class="row"><span class="lbl">Service fee <span class="cfg-tag">3%</span></span><span class="val mono">$17.22</span></div>
-          <div class="row total"><span class="lbl">Paid</span><span class="val">$621.01</span></div>
+          <div class="row"><span class="lbl">Tip · 15% <span class="cfg-tag">to crew</span></span><span class="val mono">$74.85</span></div>
+          <div class="row"><span class="lbl">Tax <span class="cfg-tag">5.2%</span></span><span class="val mono">$25.95</span></div>
+          <div class="row"><span class="lbl">Service fee <span class="cfg-tag">3%</span></span><span class="val mono">$14.97</span></div>
+          <div class="row total"><span class="lbl">Paid</span><span class="val">$614.77</span></div>
         </div>
       </div>
 
@@ -264,6 +289,79 @@
     </aside>
   </div>
 
+  <!-- WEEK VIEW: same data, zoomed out. Each cell = 4 boats at that day+time. -->
+  <div class="wkwrap">
+    <div class="wktitle">Week view — Jul 12–18 · click any cell to open that day</div>
+    <div class="wk">
+      <div class="wkhead">
+        <div>Time</div>
+        <div>Sun 12</div><div>Mon 13</div><div>Tue 14</div><div>Wed 15</div>
+        <div class="today">Thu 16</div><div>Fri 17</div><div>Sat 18</div>
+      </div>
+
+      <div class="wkrow">
+        <div class="wktime">11:30</div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot b"></span><span class="dot b"></span><span class="dot o"></span></div><div class="n"><b>3</b> booked</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n">open</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>1</b> booked</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n">open</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot b"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>2</b> booked</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot b"></span><span class="dot b"></span><span class="dot o"></span></div><div class="n"><b>3</b> booked</div></div>
+        <div class="wkcell here"><div class="dots"><span class="dot b"></span><span class="dot o"></span><span class="dot b"></span><span class="dot b"></span></div><div class="n"><b>3</b> booked</div></div>
+      </div>
+
+      <div class="wkrow">
+        <div class="wktime">1:30</div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot b"></span><span class="dot b"></span><span class="dot b"></span></div><div class="n"><b>4</b> · full</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>1</b> booked</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n">open</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>1</b> booked</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>1</b> booked</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot b"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>2</b> booked</div></div>
+        <div class="wkcell here"><div class="dots"><span class="dot b"></span><span class="dot b"></span><span class="dot o"></span><span class="dot b"></span></div><div class="n"><b>3</b> booked</div></div>
+      </div>
+
+      <div class="wkrow">
+        <div class="wktime">3:30</div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot b"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>2</b> booked</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n">open</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot b"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>2</b> booked</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot b"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>2</b> booked</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot b"></span><span class="dot b"></span><span class="dot o"></span></div><div class="n"><b>3</b> booked</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot b"></span><span class="dot b"></span><span class="dot b"></span></div><div class="n"><b>4</b> · full</div></div>
+        <div class="wkcell here"><div class="dots"><span class="dot b"></span><span class="dot o"></span><span class="dot x"></span><span class="dot o"></span></div><div class="n"><b>1</b> · 1 blk</div></div>
+      </div>
+
+      <div class="wkrow">
+        <div class="wktime">5:30</div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot b"></span><span class="dot b"></span><span class="dot o"></span></div><div class="n"><b>3</b> booked</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot b"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>2</b> booked</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>1</b> booked</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n">open</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot b"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>2</b> booked</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot b"></span><span class="dot b"></span><span class="dot o"></span></div><div class="n"><b>3</b> booked</div></div>
+        <div class="wkcell here"><div class="dots"><span class="dot b"></span><span class="dot b"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>2</b> booked</div></div>
+      </div>
+
+      <div class="wkrow">
+        <div class="wktime">7:30</div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>1</b> booked</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n">open</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n">open</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>1</b> booked</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>1</b> booked</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot b"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>2</b> booked</div></div>
+        <div class="wkcell here"><div class="dots"><span class="dot b"></span><span class="dot b"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>2</b> booked</div></div>
+      </div>
+    </div>
+    <div class="wklegend">
+      <span><span class="dot b" style="width:11px;height:11px;border-radius:3px;display:inline-block"></span> booked</span>
+      <span><span class="dot o" style="width:11px;height:11px;border-radius:3px;display:inline-block"></span> open</span>
+      <span><span class="dot x" style="width:11px;height:11px;border-radius:3px;display:inline-block"></span> blacked out</span>
+      <span style="color:var(--faint)">4 dots = the 4 boats · Sat 18 matches the day grid above (11 booked)</span>
+    </div>
+  </div>
+
   <div class="note">
     <h3>Changed from v1 — your notes</h3>
     <ul>
@@ -273,10 +371,11 @@
       <li><b>Sell from here.</b> Open slots carry a Sell button — admin sells from this screen, so it's one click from the grid.</li>
       <li><b>Crewed moved to the top</b>, next to the boat, as a link to the shift. Shows <b>2/2</b> so a short-crewed trip is visible without leaving.</li>
       <li><b>"Roster" is gone.</b> The guest list is <b>Guests</b>. The person who made the reservation is <b>Booking guest</b>.</li>
-      <li><b>Add-ons are their own section</b> with an <b>+ Add add-on</b> button. Tip renders as what it is — an add-on.</li>
+      <li><b>Gratuity is its own tax-exempt line, not an add-on</b> (DEC-124, fixed 2026-07-17) — crew money, never taxed or fee'd, matching the catalog + booking form. Add-ons (Flex, etc.) stay their own section with <b>+ Add add-on</b>.</li>
       <li><b>Tax and service fee show their configured rate</b> (5.2%, 3%) so it's obvious they're settings, not hardcoded.</li>
       <li><b>Catalog vs. this screen:</b> the catalog creates event times that apply globally; <b>this screen changes an individual event</b>. Same split Xola has, minus the seat counting.</li>
-      <li class="q"><b>Still open:</b> is "Booking guest" the right name? Where do tax + service fee get configured — catalog per-Offering, or one global setting? Does Sell open a form here or jump to the booking flow? What does Week look like at 140 events?</li>
+      <li><b>Settled 2026-07-17:</b> <b>"Booking guest"</b> is the term (the person who reserved); tax + service fee are a <b>system setting with a per-Offering override</b> (matching the catalog); gratuity is tax-exempt crew money, not an add-on.</li>
+      <li><b>Settled 2026-07-17:</b> <b>Sell opens an inline modal booking form</b> on the calendar (fast phone-booking; operator flagged modals can be fiddly — revisit if it annoys in practice). <b>Week view approved</b> (days × time-slots, 4-boat dots).</li>
     </ul>
   </div>
 

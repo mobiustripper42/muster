@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Muster — Purchases & customers (mockup)</title>
+<style>
+  :root{
+    --bg:#eef2f6; --card:#ffffff; --ink:#101826; --muted:#5b6675; --faint:#93a0b0; --line:#e7ebf1;
+    --accent:#2f5d86; --ok:#157a3a; --ok-bg:#e7f4ec; --warn:#8a5f2f; --radius:14px;
+    --v1:#5b64a8;
+    --sans:"IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    --mono:"IBM Plex Mono", ui-monospace, monospace;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{background:var(--bg); color:var(--ink); font-family:var(--sans); font-size:14px; line-height:1.45; -webkit-font-smoothing:antialiased}
+  .mockbar{background:#101826; color:#93a0b0; font-family:var(--mono); font-size:11px; padding:6px 16px}
+  .mockbar b{color:#eef2f6; font-weight:500}
+  .wrap{max-width:1260px; margin:0 auto; padding:18px 16px 60px}
+  h1{font-size:22px; font-weight:600; letter-spacing:-.01em; margin-bottom:2px}
+  .sub{font-size:13px; color:var(--muted); margin-bottom:14px}
+
+  .tabs{display:flex; gap:4px; border-bottom:1px solid var(--line); margin-bottom:16px}
+  .tabs a{font-size:14px; padding:9px 14px; color:var(--muted); text-decoration:none; border-bottom:2px solid transparent; margin-bottom:-1px}
+  .tabs a.on{color:var(--ink); font-weight:600; border-bottom-color:var(--accent)}
+
+  .scrname{font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:#6b7684; font-weight:600; margin:8px 0}
+
+  .panes{display:grid; grid-template-columns:1fr 360px; gap:14px; align-items:start}
+  @media (max-width:1080px){ .panes{grid-template-columns:1fr} }
+
+  .sec{background:var(--card); border:1px solid var(--line); border-radius:var(--radius)}
+  .sh{padding:11px 15px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:9px}
+  .sh h2{font-size:14px; font-weight:600}
+  .sh .tools{margin-left:auto; display:flex; gap:7px}
+  .search{border:1px solid var(--line); border-radius:8px; padding:5px 9px; font:inherit; font-size:12.5px; width:170px}
+  .filt{font-size:12px; padding:5px 9px; border-radius:99px; border:1px solid var(--line); background:#fff; color:var(--muted); cursor:pointer}
+  .filt[aria-pressed="true"]{background:var(--ink); border-color:var(--ink); color:#fff}
+
+  table{width:100%; border-collapse:collapse; font-size:13px}
+  th{text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--faint); font-weight:600; padding:9px 12px}
+  th.r, td.r{text-align:right}
+  td{padding:10px 12px; border-top:1px solid #f2f5f8}
+  tr.row{cursor:pointer} tr.row:hover td{background:#f7fafc}
+  tr.row.on td{background:#eef4f9}
+  td.mono{font-family:var(--mono)}
+  .who b{font-weight:600} .who .m{font-size:11.5px; color:var(--faint)}
+  .st{font-size:11px; font-weight:600; padding:2px 8px; border-radius:99px; display:inline-block}
+  .st.paid{background:var(--ok-bg); color:var(--ok)}
+  .st.dep{background:#eef2f6; color:var(--muted)}
+  .st.ref{background:#f6efe2; color:var(--warn)}
+
+  /* detail pane */
+  .detail{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); position:sticky; top:16px}
+  .dh{padding:13px 15px; border-bottom:1px solid var(--line)}
+  .dh .o{font-family:var(--mono); font-size:12px; color:var(--faint)}
+  .dh h3{font-size:16px; font-weight:700; margin-top:2px}
+  .dh .m{font-size:12.5px; color:var(--muted); margin-top:2px}
+  .db{padding:13px 15px}
+  .grp{margin-bottom:14px}
+  .grp .k{font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--faint); font-weight:600; margin-bottom:7px}
+  .kv{font-size:13px}
+  .kv .r{display:flex; justify-content:space-between; padding:4px 0}
+  .kv .r .l{color:var(--muted)} .kv .r .v{color:var(--ink); font-family:var(--mono)}
+  .kv .r.grat .l{color:#2f7d70}
+  .kv .r.paid .l,.kv .r.paid .v{color:var(--ok)}
+  .kv .r.tot{border-top:1px solid var(--line); margin-top:5px; padding-top:8px; font-weight:700}
+  .line{border-top:1px solid #f2f5f8; margin:4px 0}
+  .acts{display:flex; flex-wrap:wrap; gap:7px}
+  .btn{font:inherit; font-size:12.5px; padding:7px 12px; border-radius:8px; border:1px solid var(--line); background:#fff; color:var(--ink); cursor:pointer}
+  .btn.primary{background:var(--accent); border-color:var(--accent); color:#fff}
+  .btn.warn{border-color:#e2d6c2; background:#f6efe2; color:var(--warn)}
+  .muted-src{font-size:11.5px; color:var(--faint); font-style:italic; margin-top:8px}
+
+  .note{margin-top:22px; background:#fff; border:1px solid var(--line); border-radius:var(--radius); padding:15px 17px}
+  .note h3{font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--faint); margin-bottom:9px}
+  .note ul{margin:0 0 0 17px; font-size:13px; color:var(--muted)}
+  .note li{margin-bottom:5px} .note b{color:var(--ink)} .note .q{color:#8a5f2f}
+</style>
+</head>
+<body>
+
+<div class="mockbar"><b>MOCKUP</b> — Purchases &amp; customers · static · DEC-123 §3 · order list + detail + customer record · cards-on-file are Stripe's, not rebuilt</div>
+
+<div class="wrap">
+  <h1>Purchases &amp; customers</h1>
+  <div class="sub">The money + people surface, beside the reservation calendar (what's sold, when) and the crew shift board (who works it). Answers "who bought, what did they pay, refund/resend."</div>
+
+  <div class="tabs">
+    <a href="#" class="on">Purchases</a>
+    <a href="#">Customers</a>
+  </div>
+
+  <!-- ============ PURCHASES ============ -->
+  <div class="scrname">Tab · Purchases</div>
+  <div class="panes">
+    <section class="sec">
+      <div class="sh"><h2>Orders</h2>
+        <div class="tools">
+          <button class="filt" aria-pressed="true">All</button>
+          <button class="filt">Deposit</button>
+          <button class="filt">Refunded</button>
+          <input class="search" placeholder="Search name, order #…">
+        </div>
+      </div>
+      <table>
+        <thead><tr><th>Order</th><th>Customer</th><th>Trip</th><th class="r">Total</th><th>Payment</th></tr></thead>
+        <tbody>
+          <tr class="row on"><td class="mono">BRW-4821</td>
+            <td class="who"><b>Jordan Ellis</b><div class="m">(216) 555-0148</div></td>
+            <td>Brew Boat Party<div class="m" style="font-size:11.5px;color:var(--faint)">Sat Jul 18 · 1:30 PM</div></td>
+            <td class="r mono">$735.52</td><td><span class="st dep">Deposit</span></td></tr>
+          <tr class="row"><td class="mono">BRW-4820</td>
+            <td class="who"><b>Marcus Lee</b><div class="m">marcus@…</div></td>
+            <td>Brew Boat Party<div class="m" style="font-size:11.5px;color:var(--faint)">Sat Jul 18 · 11:30 AM</div></td>
+            <td class="r mono">$602.30</td><td><span class="st paid">Paid</span></td></tr>
+          <tr class="row"><td class="mono">BRW-4816</td>
+            <td class="who"><b>Dana Whit</b><div class="m">(440) 555-0102</div></td>
+            <td>Sunset BYOB<div class="m" style="font-size:11.5px;color:var(--faint)">Fri Jul 17 · 7:30 PM</div></td>
+            <td class="r mono">$418.00</td><td><span class="st paid">Paid</span></td></tr>
+          <tr class="row"><td class="mono">BRW-4809</td>
+            <td class="who"><b>Priya N.</b><div class="m">priya@…</div></td>
+            <td>Brew Boat Party<div class="m" style="font-size:11.5px;color:var(--faint)">Sun Jul 12 · 3:30 PM</div></td>
+            <td class="r mono">$399.20</td><td><span class="st ref">Refunded</span></td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- order detail -->
+    <aside class="detail">
+      <div class="dh">
+        <div class="o">Order BRW-4821 · booked Jul 16</div>
+        <h3>Jordan Ellis</h3>
+        <div class="m">Brew Boat Party · Sat Jul 18 · 1:30 PM · we assign the boat</div>
+      </div>
+      <div class="db">
+        <div class="grp">
+          <div class="k">Payment</div>
+          <div class="kv">
+            <div class="r"><span class="l">Fare — whole boat</span><span class="v">$549.00</span></div>
+            <div class="r"><span class="l">Flex insurance</span><span class="v">$29.00</span></div>
+            <div class="r grat"><span class="l">Tip · 20% → crew</span><span class="v">$109.80</span></div>
+            <div class="r"><span class="l">Tax + service fee</span><span class="v">$47.72</span></div>
+            <div class="r tot"><span class="l">Total</span><span class="v">$735.52</span></div>
+            <div class="line"></div>
+            <div class="r paid"><span class="l">✓ Deposit Jul 16</span><span class="v">$367.76</span></div>
+            <div class="r"><span class="l">Balance · auto Jul 15</span><span class="v">$367.76</span></div>
+          </div>
+          <div class="muted-src">Gratuity routes to crew, exempt from tax + fee (DEC-124) — shown as its own line, not blended into revenue.</div>
+        </div>
+
+        <div class="grp">
+          <div class="k">Guests</div>
+          <div class="kv">
+            <div class="r"><span class="l">Booking guest</span><span class="v" style="font-family:var(--sans)">Jordan Ellis</span></div>
+            <div class="r"><span class="l">Party</span><span class="v" style="font-family:var(--sans)">Whole boat · up to 16</span></div>
+            <div class="r"><span class="l">Waiver</span><span class="v" style="font-family:var(--sans)">Booker signed · guests at dock</span></div>
+          </div>
+        </div>
+
+        <div class="grp">
+          <div class="k">Actions</div>
+          <div class="acts">
+            <button class="btn primary">Message</button>
+            <button class="btn">Resend confirmation</button>
+            <button class="btn">Resend link</button>
+            <button class="btn">Print roster</button>
+            <button class="btn warn">Refund…</button>
+          </div>
+          <div class="muted-src">Cards-on-file live in Stripe — "Refund" hands off to the Stripe charge, we don't rebuild card storage. Same detail the reservation-calendar pane shows, here keyed by order instead of departure.</div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ============ CUSTOMERS ============ -->
+  <div class="scrname" style="margin-top:26px">Tab · Customers</div>
+  <div class="panes">
+    <section class="sec">
+      <div class="sh"><h2>Customers</h2>
+        <div class="tools"><input class="search" placeholder="Search name, email, phone…"></div>
+      </div>
+      <table>
+        <thead><tr><th>Name</th><th>Contact</th><th class="r">Bookings</th><th class="r">Lifetime</th></tr></thead>
+        <tbody>
+          <tr class="row on"><td><b>Jordan Ellis</b></td><td class="who"><div class="m">jordan.ellis@gmail.com · (216) 555-0148</div></td><td class="r mono">3</td><td class="r mono">$2,104</td></tr>
+          <tr class="row"><td><b>Marcus Lee</b></td><td class="who"><div class="m">marcus@… · (216) 555-0193</div></td><td class="r mono">1</td><td class="r mono">$602</td></tr>
+          <tr class="row"><td><b>Dana Whit</b></td><td class="who"><div class="m">(440) 555-0102</div></td><td class="r mono">2</td><td class="r mono">$836</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <aside class="detail">
+      <div class="dh">
+        <h3>Jordan Ellis</h3>
+        <div class="m">jordan.ellis@gmail.com · (216) 555-0148</div>
+      </div>
+      <div class="db">
+        <div class="grp">
+          <div class="k">History</div>
+          <div class="kv">
+            <div class="r"><span class="l" style="font-family:var(--sans)">Jul 18 · Brew Boat Party</span><span class="v">$735.52</span></div>
+            <div class="r"><span class="l" style="font-family:var(--sans)">Jun 21 · Brew Boat Party</span><span class="v">$549.00</span></div>
+            <div class="r"><span class="l" style="font-family:var(--sans)">May 30 · Sunset BYOB</span><span class="v">$819.48</span></div>
+          </div>
+        </div>
+        <div class="grp">
+          <div class="k">Actions</div>
+          <div class="acts">
+            <button class="btn primary">Message</button>
+            <button class="btn">Edit contact</button>
+          </div>
+          <div class="muted-src">A contact record, not an account — no password, no login. Same Draft/Hidden soft-delete idea for GDPR-style removal (DEC-123). Cards are Stripe's.</div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <div class="note">
+    <h3>What this asserts — argue with it</h3>
+    <ul>
+      <li><b>Third admin surface, beside calendar + shift board</b> (DEC-123 §3). Calendar answers "what's sold, when"; this answers "who paid, how much, refund/resend." Two tabs: <b>Purchases</b> (orders) and <b>Customers</b> (contacts).</li>
+      <li><b>An order is the money view of a reservation.</b> The detail pane here (payment, actions) is the same content the reservation-calendar's detail pane shows — keyed by <b>order</b> instead of by <b>departure</b>. One reservation, two ways in.</li>
+      <li><b>Gratuity is a separate line that routes to crew</b> (DEC-124), never blended into revenue totals — the operator sees crew money as crew money.</li>
+      <li><b>Refund hands off to Stripe.</b> Cards-on-file are Stripe's; we don't rebuild card storage. Operator-initiated refund here; customer self-refund (Flex) happens from their booking link (DEC-107, amended).</li>
+      <li><b>"Party" is the whole boat, not a per-guest charge.</b> You buy the boat, not a count of guests. Booking guest + "up to 16"; individual guest names collected at the dock; "Print roster" produces the dock check-in sheet. <i>(Reservation-side people are <b>guests</b> or <b>passengers</b> — never "seat" (crew-only), never "head".)</i></li>
+      <li><b>Customer is a contact record, not an account</b> — no login, reused Draft/Hidden soft-delete. Lifetime + history give the operator a repeat-guest view Xola buried.</li>
+      <li><b>One order = one boat = one reservation</b> <i>(operator, 2026-07-17)</i>. Want two boats? That's two orders. No multi-reservation order object to build — the "order" and the "reservation" are the same row for now. (The schema still allows an Event to carry more later, but nothing here assumes it.)</li>
+      <li><b>A customer is keyed by phone</b> <i>(operator, 2026-07-17)</i> — but keep phone as a <b>unique lookup key, not the literal primary key</b>. The customer row gets a stable surrogate id; <b>normalized phone (E.164) carries a UNIQUE constraint</b> for dedup + the recovery-flow lookup. Why not phone-as-PK: a number changes or gets recycled by the carrier, and if it's the PK you'd have to migrate the row and every reservation FK — and a recycled number would inherit the old customer's history. Surrogate-PK-plus-unique-phone gives you phone-as-identity (same phone = same customer, so "merge duplicate contacts" mostly dissolves) without welding a mutable value into the key. Same instinct as the <code>Reservation.eventId</code> guardrail: don't make a business fact load-bearing structure.</li>
+      <li><b>"Message" routes through the customer sender, never the crew line</b> <i>(operator, 2026-07-17)</i>. A customer never texts the crew number — separate sender number + 10DLC campaign, so a customer spam-report can't take down the crew channel. Tracked in <b>#119</b> (second sender number — crew vs customer isolation). Muster sends informational messages only; the second number protects the crew channel, it doesn't enable marketing.</li>
+    </ul>
+  </div>
+</div>
+</body>
+</html>

@@ -93,7 +93,7 @@
 
 <div class="page">
   <h1 class="pt">Pick a cruise — customer</h1>
-  <div class="psub">The entry point before the booking form: how many, what day, what time. Availability is the virtual model (DEC-125) — computed, boat assigned behind the scenes.</div>
+  <div class="psub">The entry point before the booking form: what day, what time. Availability is the virtual model (DEC-125) — computed, boat assigned behind the scenes.</div>
 
   <div class="frames">
     <div>
@@ -109,17 +109,6 @@
           </div>
 
           <div class="body">
-            <!-- GUESTS first: it filters what's available -->
-            <div class="sec">
-              <div class="lab">How many guests?</div>
-              <div class="guests">
-                <button aria-label="fewer">−</button>
-                <span class="n">10</span>
-                <button aria-label="more">+</button>
-                <span class="cap">we fit you to a boat — up to 16</span>
-              </div>
-            </div>
-
             <!-- MONTH -->
             <div class="sec">
               <div class="mhead">
@@ -203,13 +192,14 @@
     <div class="note">
       <h3>What this asserts — argue with it</h3>
       <ul>
-        <li><b>Guests → date → time, in that order.</b> Party size comes first because it <b>filters</b> availability: a 15-person party only sees days/times where a boat that big is free. "We fit you to a boat — up to 16" sets the expectation that the customer picks a size, not a hull.</li>
+        <li><b>Date → time — party size is not entered here</b> (operator, 2026-07-17). Guest count belongs on the <b>booking form</b>, where they pick a size and pay for any extras. Asking it here would be a gate, not a help: enter 16, find everything that big is booked, and the customer dead-ends before they ever pick a time. This page's only job is to get them to a time.</li>
         <li><b>The calendar is the virtual model made visible</b> (DEC-125). Each day shows its <b>lowest price</b> ($399 Sun, $549 Sat, $499 weekday — schedule-driven); a day with nothing free is greyed. No rows underlie this — it's <code>schedule × vessels × dates − blocks − bookings</code>, computed. Jul 20–24 greyed = the Brew 3 block plus the rest booked.</li>
-        <li><b>Times show availability as "N boats free · up to M,"</b> not seat counts. M is the biggest boat still open at that time — the customer's real ceiling. "1 boat left · up to 12" nudges without inventing scarcity.</li>
+        <li><b>Times show availability as "N boats free · up to M."</b> Muster sells the whole boat, so open inventory is counted in <b>boats</b>, not per-passenger. M is the biggest boat still open at that time — informational (which times can even fit a big group); the actual fit-to-boat is resolved at booking. "1 boat left · up to 12" nudges without inventing scarcity.</li>
         <li><b>Boat is never named or chosen.</b> The customer taps a time; the claim assigns a boat that fits their party at booking. This screen and the booking form agree: offering + party, boat behind the scenes.</li>
         <li><b>Price shown up front, per day and per time</b> — no surprise at checkout. Matches the live brewcle.com widget's month-with-prices, trimmed to the whole-boat case.</li>
         <li><b>Tapping a time → the booking form</b>, carrying the slot (Sat Jul 18 · 1:30 PM). "Change" on the booking form comes back here.</li>
-        <li class="q"><b>Open:</b> if BrewBoat ever runs more than one offering, does this open on an offering list first? Waitlist on a sold-out time? Show "only 1 left" as urgency or is that too Xola-salesy for the brand?</li>
+        <li><b>Scarcity nudge kept</b> (operator, 2026-07-17): "1 boat left · up to 12" stays. Front page is <code>offerings-list.html</code>; this picker is its own funnel page (a lone offering skips the front page straight to here).</li>
+        <li><b>Sold-out = disabled for now; waitlist parked</b> (operator, 2026-07-17). A sold-out time shows disabled — a "notify me / waitlist" is a good idea but out of P12 scope, parked in FUTURE_IDEAS.</li>
       </ul>
     </div>
   </div>

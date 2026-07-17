@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Muster — Vessel / equipment (mockup)</title>
+<style>
+  :root{
+    --bg:#eef2f6; --card:#ffffff; --ink:#101826; --muted:#5b6675; --faint:#93a0b0; --line:#e7ebf1;
+    --accent:#2f5d86; --warn:#8a5f2f; --radius:14px;
+    --v1:#5b64a8; --v2:#8a5f93; --v3:#6e7f46; --v4:#9c6b4e;
+    --sans:"IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    --mono:"IBM Plex Mono", ui-monospace, monospace;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{background:var(--bg); color:var(--ink); font-family:var(--sans); font-size:14px; line-height:1.45; -webkit-font-smoothing:antialiased}
+  .mockbar{background:#101826; color:#93a0b0; font-family:var(--mono); font-size:11px; padding:6px 16px}
+  .mockbar b{color:#eef2f6; font-weight:500}
+  .wrap{max-width:1120px; margin:0 auto; padding:18px 16px 60px}
+  header.top{display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:4px}
+  .crumb{font-size:13px; color:var(--faint)} .crumb a{color:var(--accent); text-decoration:none}
+  h1{font-size:22px; font-weight:600; letter-spacing:-.01em; display:flex; align-items:center; gap:9px}
+  .spacer{flex:1}
+  .btn{font:inherit; font-size:12.5px; padding:6px 12px; border-radius:8px; border:1px solid var(--line); background:#fff; color:var(--ink); cursor:pointer}
+  .btn.primary{background:var(--accent); border-color:var(--accent); color:#fff}
+  .btn.warn{border-color:#e2d6c2; background:#f6efe2; color:var(--warn)}
+  .pill{font-size:11px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; padding:3px 9px; border-radius:99px; border:1px solid #cbe6d5; background:#e7f4ec; color:#157a3a}
+
+  .layout{display:grid; grid-template-columns:230px 1fr; gap:16px; align-items:start; margin-top:16px}
+  @media (max-width:900px){ .layout{grid-template-columns:1fr} }
+
+  .list{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:6px}
+  .list .k{font-size:10px; text-transform:uppercase; letter-spacing:.07em; color:var(--faint); font-weight:600; padding:8px 10px 4px}
+  .list a{display:flex; align-items:center; gap:8px; padding:9px 10px; border-radius:9px; font-size:13.5px; color:var(--muted); text-decoration:none}
+  .list a .cap{margin-left:auto; font-family:var(--mono); font-size:12px; color:var(--faint)}
+  .list a:hover{background:#f5f8fb}
+  .list a.on{background:#eaf0f6; color:var(--ink); font-weight:500}
+  .list .add{margin:6px 4px 2px; width:calc(100% - 8px); font:inherit; font-size:12.5px; padding:8px; border-radius:8px; border:1px dashed #ccd6e0; background:#fff; color:var(--accent); cursor:pointer}
+  .hue{width:9px; height:9px; border-radius:50%; display:inline-block; flex:none}
+  .hue.v1{background:var(--v1)} .hue.v2{background:var(--v2)} .hue.v3{background:var(--v3)} .hue.v4{background:var(--v4)}
+
+  .sec{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); margin-bottom:14px}
+  .sh{padding:12px 15px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:9px}
+  .sh h2{font-size:15px; font-weight:600}
+  .sh .hint{font-size:12px; color:var(--faint); margin-left:auto}
+  .sb{padding:13px 15px}
+  .f{display:grid; grid-template-columns:160px 1fr; gap:12px; padding:8px 0; align-items:baseline}
+  .f + .f{border-top:1px solid #f2f5f8}
+  .f .lbl{color:var(--muted); font-size:13px}
+  .f .lbl .sub{display:block; font-size:11px; color:var(--faint); margin-top:1px}
+  .inp{border:1px solid var(--line); border-radius:8px; padding:7px 9px; font:inherit; font-size:13px; background:#fff; width:100%; max-width:420px; color:var(--ink)}
+  .inp.short{max-width:120px} .inp.mono{font-family:var(--mono)}
+  textarea.inp{max-width:100%; min-height:52px; resize:vertical}
+  .inline{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+  .unit{font-size:12px; color:var(--faint)}
+  .sw{display:inline-flex; gap:6px}
+  .chip{font-size:12px; padding:4px 10px; border-radius:99px; border:1px solid var(--line); background:#fff; color:var(--muted); cursor:pointer}
+  .chip[aria-pressed="true"]{background:var(--ink); border-color:var(--ink); color:#fff}
+  .swatch{width:22px; height:22px; border-radius:6px; border:1px solid rgba(0,0,0,.12); cursor:pointer}
+  .swatch[aria-pressed="true"]{outline:2px solid var(--accent); outline-offset:2px}
+  .src{font-size:12px; color:var(--faint); font-style:italic; margin-top:6px} .src b{color:var(--muted)}
+
+  .note{margin-top:22px; background:#fff; border:1px solid var(--line); border-radius:var(--radius); padding:15px 17px}
+  .note h3{font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--faint); margin-bottom:9px}
+  .note ul{margin:0 0 0 17px; font-size:13px; color:var(--muted)}
+  .note li{margin-bottom:5px} .note b{color:var(--ink)} .note .q{color:#8a5f2f}
+</style>
+</head>
+<body>
+
+<div class="mockbar"><b>MOCKUP</b> — Vessel / equipment · static · capacity is a Vessel fact (DEC-123) · out-of-service is a block (DEC-125), not a field here</div>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="crumb"><a href="#">Settings</a> / Vessels / Brew 4</div>
+      <h1 style="margin-top:2px"><span class="hue v4" style="width:12px;height:12px"></span>Brew 4</h1>
+    </div>
+    <span class="pill">In service</span>
+    <div class="spacer"></div>
+    <button class="btn warn">Take out of service…</button>
+    <button class="btn primary">Save</button>
+  </header>
+
+  <div class="layout">
+    <nav class="list">
+      <div class="k">Vessels</div>
+      <a href="#"><span class="hue v1"></span>Brew 1<span class="cap">12</span></a>
+      <a href="#"><span class="hue v2"></span>Brew 2<span class="cap">12</span></a>
+      <a href="#"><span class="hue v3"></span>Brew 3<span class="cap">14</span></a>
+      <a href="#" class="on"><span class="hue v4"></span>Brew 4<span class="cap">16</span></a>
+      <button class="add">+ New vessel</button>
+    </nav>
+
+    <div>
+      <section class="sec">
+        <div class="sh"><h2>Vessel</h2><span class="hint">the boat's own facts</span></div>
+        <div class="sb">
+          <div class="f"><span class="lbl">Name</span>
+            <input class="inp" value="Brew 4"></div>
+          <div class="f"><span class="lbl">Capacity<span class="sub">the hard ceiling</span></span>
+            <span class="inline"><input class="inp short mono" value="16"><span class="unit">guests — the "up to 16" the customer sees; pricing reads this for the boat's max</span></span></div>
+          <div class="f"><span class="lbl">Color</span>
+            <span class="inline sw">
+              <button class="swatch" style="background:var(--v1)"></button>
+              <button class="swatch" style="background:var(--v2)"></button>
+              <button class="swatch" style="background:var(--v3)"></button>
+              <button class="swatch" aria-pressed="true" style="background:var(--v4)"></button>
+              <span class="unit">carries the boat across the reservation calendar + crew shift board — a fact, not decoration</span></span></div>
+          <div class="f"><span class="lbl">Home location<span class="sub">default launch</span></span>
+            <select class="inp" style="max-width:240px"><option>Cleveland — East Bank</option><option>Cleveland — Rivergate</option></select></div>
+          <div class="f"><span class="lbl">Notes<span class="sub">internal</span></span>
+            <textarea class="inp">Newest hull, biggest deck. Bimini top. Keep for larger parties.</textarea></div>
+        </div>
+      </section>
+
+      <section class="sec">
+        <div class="sh"><h2>Runs</h2><span class="hint">offerings this vessel is on</span></div>
+        <div class="sb">
+          <div class="inline">
+            <span class="chip">Brew Boat Party Boats with Captain</span>
+            <span class="chip">Sunset BYOB Cruise</span>
+          </div>
+          <div class="src">Read-only — a vessel is added to an <b>Offering</b> on the Offering screen (its "Vessels" picker). Capacity is never overridden there; it's read from here.</div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div class="note">
+    <h3>What this asserts — argue with it</h3>
+    <ul>
+      <li><b>Capacity is a Vessel fact, set once, here</b> (DEC-123). Brew 1 = 12, Brew 4 = 16. Offerings and pricing <b>read</b> it — never override it. This is the single source for the customer's "up to N" ceiling and the whole-boat max.</li>
+      <li><b>Color is information, not decoration</b> (DEC-021/042 palette lock). The vessel's hue identifies it on the reservation calendar and the crew shift board — so it's a Vessel fact too, chosen from the locked palette.</li>
+      <li><b>Out-of-service is NOT a field on this screen</b> — it's a <b>vessel block</b> (a date range) on the Blocks surface (DEC-125). The "Take out of service" button is a shortcut into that flow. A boat down for a week is a block, not a status flip, so availability recomputes and the dates are audited.</li>
+      <li><b>Retire = a soft archive</b> (the "In service" pill's other state), same reversible-soft-delete idea as an Offering's Hidden — a sold hull is never hard-deleted. <i>(Distinct from a temporary block.)</i></li>
+      <li><b>"Runs" is read-only.</b> The Offering owns which vessels it uses; showing it here is just the reverse lookup.</li>
+      <li><b>One Vessel. Not a twin.</b> <i>(Settled — operator, 2026-07-17.)</i> This IS the vessel the crew engine already knows. There is no reservation-side copy and no sync between two tables — the earlier "twin that maps to it" framing is <b>rejected</b>. They don't "meet at the vessel-day" because they were never two things.
+        <div style="margin-top:5px"><b>Nothing inverts here.</b> Vessel identity was <i>always</i> upstream of the crew engine — today it arrives from <b>Xola</b> (the <code>resource-map</code>, DEC-043's <code>event.resourceUsages[].resource.id</code>). This table simply takes over that seat when Xola dies: a source swap, not a new dependency. The crew engine reads the vessel list either way.</div>
+        <div style="margin-top:5px"><b>Build consequence:</b> capacity, hue and identity live once, here. Anything that reads a boat — shift board, manifest, availability, the Offering's "Runs on" — reads this row.</div>
+      </li>
+      <li><b>No vessel photos</b> <i>(operator, 2026-07-17)</i> — offering-level imagery only, for now. The customer picks an offering and never picks a boat (DEC-125), so a per-hull photo has nowhere to land in the funnel.</li>
+    </ul>
+  </div>
+</div>
+</body>
+</html>

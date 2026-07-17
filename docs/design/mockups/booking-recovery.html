@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Muster — Lost your link (mockup)</title>
+<style>
+  :root{
+    --bg:#eef2f6; --card:#ffffff; --ink:#101826; --muted:#5b6675; --faint:#93a0b0; --line:#e7ebf1;
+    --accent:#2f5d86; --ok:#157a3a; --ok-bg:#e7f4ec; --ok-line:#cbe6d5;
+    --sans:"IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    --mono:"IBM Plex Mono", ui-monospace, monospace;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{background:#dde4ec; color:var(--ink); font-family:var(--sans); font-size:14px; line-height:1.45; -webkit-font-smoothing:antialiased}
+  .mockbar{background:#101826; color:#93a0b0; font-family:var(--mono); font-size:11px; padding:6px 16px}
+  .mockbar b{color:#eef2f6; font-weight:500}
+  .page{max-width:1180px; margin:0 auto; padding:22px 16px 56px}
+  h1.pt{font-size:19px; font-weight:600; margin-bottom:2px}
+  .psub{font-size:13px; color:var(--muted); margin-bottom:20px}
+  .frames{display:flex; gap:28px; flex-wrap:wrap; align-items:flex-start}
+  .flabel{font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:#6b7684; font-weight:600; margin-bottom:8px}
+  .phone{width:390px; background:var(--card); border:1px solid #c3ccd6; border-radius:26px; overflow:hidden;
+         box-shadow:0 6px 22px rgba(16,24,38,.10); display:flex; flex-direction:column; max-height:900px}
+  .scroll{overflow-y:auto}
+
+  .hero{height:120px; background:linear-gradient(160deg,#7d94ac,#4d6580); position:relative; color:#fff}
+  .hero .brand{position:absolute; top:12px; left:14px; font-weight:700; font-size:15px; text-shadow:0 1px 3px rgba(0,0,0,.3)}
+  .hero .cap{position:absolute; left:14px; bottom:12px; right:14px}
+  .hero .cap h2{font-size:18px; font-weight:700; text-shadow:0 1px 4px rgba(0,0,0,.35)}
+
+  .body{padding:18px 16px 8px}
+  .intro{font-size:13.5px; color:var(--muted); margin-bottom:16px}
+  .intro b{color:var(--ink)}
+  .lab{font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--faint); font-weight:600; margin-bottom:7px}
+  .inp{width:100%; border:1px solid var(--line); border-radius:10px; padding:11px 12px; font:inherit; font-size:15px;
+       background:#fff; color:var(--ink); margin-bottom:10px}
+  .hint{font-size:12px; color:var(--faint); margin:-4px 0 14px}
+  .bigbtn{width:100%; font:inherit; font-size:15px; font-weight:600; padding:13px; border-radius:12px;
+          background:var(--accent); border:0; color:#fff; cursor:pointer}
+
+  .ok{background:var(--ok-bg); border:1px solid var(--ok-line); border-radius:12px; padding:14px 14px; color:#20603a; font-size:13.5px}
+  .ok b{color:#12492b; display:block; margin-bottom:4px; font-size:14px}
+  .ok .sm{color:#3a6a4c; font-size:12px; margin-top:7px}
+
+  .note{margin-top:26px; background:#fff; border:1px solid var(--line); border-radius:14px; padding:15px 17px; max-width:760px}
+  .note h3{font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--faint); margin-bottom:9px}
+  .note ul{margin:0 0 0 17px; font-size:13px; color:var(--muted)}
+  .note li{margin-bottom:5px}
+  .note b{color:var(--ink)}
+  .note .q{color:#8a5f2f}
+</style>
+</head>
+<body>
+
+<div class="mockbar"><b>MOCKUP</b> — lost your link · static · 390px · re-sends the existing booking link, never shows it from typed input (bearer-token safe)</div>
+
+<div class="page">
+  <h1 class="pt">Lost your link — customer</h1>
+  <div class="psub">The recovery for a mislaid booking link (DEC-122). Same magic-link-resend primitive as crew auth: we re-send the existing link to the contact on file — we never display a booking from typed input.</div>
+
+  <div class="frames">
+
+    <!-- FORM -->
+    <div>
+      <div class="flabel">Request</div>
+      <div class="phone">
+        <div class="scroll">
+          <div class="hero">
+            <div class="brand">BREW BOAT</div>
+            <div class="cap"><h2>Find your booking</h2></div>
+          </div>
+          <div class="body">
+            <div class="intro">Lost the link we texted you? Enter the <b>email or mobile</b> you booked with and your <b>last name</b> — we'll re-send it.</div>
+
+            <div class="lab">Email or mobile</div>
+            <input class="inp" placeholder="you@email.com or (216) 555-0148">
+
+            <div class="lab">Last name</div>
+            <input class="inp" placeholder="Ellis">
+            <div class="hint">Must match what you booked with.</div>
+
+            <button class="bigbtn">Send me my link</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONFIRMATION (same for match / no-match — never leaks) -->
+    <div>
+      <div class="flabel">After submit</div>
+      <div class="phone">
+        <div class="scroll">
+          <div class="hero">
+            <div class="brand">BREW BOAT</div>
+            <div class="cap"><h2>Check your messages</h2></div>
+          </div>
+          <div class="body">
+            <div class="ok">
+              <b>If we found a booking, your link is on its way.</b>
+              We've sent it to the email and mobile on file. It can take a minute — check your texts and inbox (and spam).
+              <div class="sm">Didn't get it? The email or last name may not match what you booked with. Try again, or reach us at (216) 555-0100.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      <h3>What this asserts — argue with it</h3>
+      <ul>
+        <li><b>Re-send, never reveal.</b> The link is a bearer token (DEC-122) — anyone holding it can manage the booking. So the form <b>never shows the booking or the link from typed input</b>; it re-sends the existing link to the contact already on file. Typing someone's email + last name can't hand you their booking.</li>
+        <li><b>Same primitive as crew auth.</b> This is the magic-link-resend we already have for crew login, pointed at reservations. No new mechanism.</li>
+        <li><b>Neutral confirmation — "if we found a booking."</b> The after-submit screen is <b>identical whether or not there was a match</b>, so it never confirms who booked. No "no booking found for that email" (that leaks existence).</li>
+        <li><b>Match fields: email-or-phone + last name</b> (operator-confirmed 2026-07-17) — enough friction to be non-trivial, low enough that a real customer clears it.</li>
+        <li><b>Sends to both channels on file</b> (email + SMS), since we don't know which the customer still has — matches the confirmation's dual-channel send.</li>
+        <li><b>Repeat customers, one link.</b> We have repeat guests, so one contact holds several reservations. The re-sent link lands on the <b>current / next</b> reservation; <b>past trips</b> are reachable from there (the manage page lists them). The link resolves to the active booking, history is a click away.</li>
+        <li><b>Settled 2026-07-17:</b> recovery is <b>rate-limited (~6/hour)</b> to stop link-fishing (a system setting). Bearer-token reach — one link surfacing a contact's full history — is accepted (same person), a conscious DEC-122 loosening to record.</li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

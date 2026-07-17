@@ -135,7 +135,7 @@
               <div class="lab">Your trip</div>
               <div class="slotpick">
                 <span class="hue"></span>
-                <span class="st"><b>Sat, Jul 18 · 1:30 PM</b><div class="m">we'll assign your boat</div></span>
+                <span class="st"><b>Sat, Jul 18 · 1:30 – 3:10 PM</b></span>
                 <a class="ch" href="#">Change</a>
               </div>
             </div>
@@ -143,10 +143,9 @@
             <!-- GUESTS -->
             <div class="sec">
               <div class="lab">How many guests?</div>
-              <div class="whole"><b>You've got the whole boat.</b> The price is the boat, not the seat.</div>
               <div class="stepper">
                 <button aria-label="fewer">−</button>
-                <span class="n">10</span>
+                <span class="n">14</span>
                 <button aria-label="more">+</button>
                 <span class="cap">up to 16 for this time</span>
               </div>
@@ -165,11 +164,10 @@
             <div class="sec">
               <div class="lab">Tip your crew <span class="req">· required</span></div>
               <div class="tiles">
-                <button class="tile"><div class="pct">15%</div><div class="amt">$74.85</div></button>
-                <button class="tile" aria-pressed="true"><div class="pct">20%</div><div class="amt">$99.80</div></button>
-                <button class="tile"><div class="pct">25%</div><div class="amt">$124.75</div></button>
+                <button class="tile"><div class="pct">15%</div><div class="amt">$86.85</div></button>
+                <button class="tile" aria-pressed="true"><div class="pct">20%</div><div class="amt">$115.80</div></button>
+                <button class="tile"><div class="pct">25%</div><div class="amt">$144.75</div></button>
               </div>
-              <div class="grat-note"><b>100% goes to the crew running your boat.</b> Add more after the trip from your booking link, too.</div>
             </div>
 
             <!-- ADD-ONS (optional) -->
@@ -177,7 +175,7 @@
               <div class="lab">Add to your trip</div>
               <div class="addon">
                 <div class="tx"><b>Flex insurance</b><div class="m">cancel up to 24h before, full refund</div></div>
-                <span class="pr">$29</span><span class="sw on"></span>
+                <span class="pr">$29</span><span class="sw"></span>
               </div>
               <div class="addon">
                 <div class="tx"><b>Extra hour on the water</b><div class="m">subject to availability</div></div>
@@ -189,7 +187,7 @@
             <div class="sec">
               <div class="waiver">
                 <input type="checkbox" checked>
-                <span>I've read and agree to the <a href="#">liability waiver</a> and <a href="#">terms</a>. Each guest signs at the dock.</span>
+                <span>I've read and agree to the <a href="#">liability waiver</a> and <a href="#">terms</a>. Your other guests sign their own before the trip — you'll get a link to share.</span>
               </div>
             </div>
 
@@ -197,21 +195,21 @@
             <div class="sec">
               <div class="lab">Summary</div>
               <div class="sum">
-                <div class="r"><span class="l">Fare — whole boat, up to 12</span><span class="v">$499.00</span></div>
-                <div class="r"><span class="l">Flex insurance</span><span class="v">$29.00</span></div>
-                <div class="r grat"><span class="l">Tip your crew · 20%</span><span class="v">$99.80</span></div>
-                <div class="r"><span class="l">Tax · 5.2%</span><span class="v">$27.46</span></div>
-                <div class="r"><span class="l">Service fee · 3%</span><span class="v">$15.84</span></div>
-                <div class="r tot"><span class="l">Total</span><span class="v">$671.10</span></div>
-                <div class="r dep"><span class="l">Deposit due now · 50%</span><span class="v">$335.55</span></div>
-                <div class="r bal"><span class="l">Balance · charged 3 days before</span><span class="v">$335.55</span></div>
+                <div class="r"><span class="l">Fare — up to 12 passengers</span><span class="v">$499.00</span></div>
+                <div class="r"><span class="l">2 extra guests · $40</span><span class="v">$80.00</span></div>
+                <div class="r grat"><span class="l">Tip your crew · 20%</span><span class="v">$115.80</span></div>
+                <div class="r"><span class="l">Tax · 5.2%</span><span class="v">$30.11</span></div>
+                <div class="r"><span class="l">Service fee · 3%</span><span class="v">$17.37</span></div>
+                <div class="r tot"><span class="l">Total</span><span class="v">$742.28</span></div>
+                <div class="r dep"><span class="l">Deposit due now</span><span class="v">$100.00</span></div>
+                <div class="r bal"><span class="l">Balance · charged 3 days before</span><span class="v">$642.28</span></div>
               </div>
             </div>
           </div>
         </div>
 
         <div class="pay">
-          <div class="tt">Due now<b>$335.55</b><span class="sub2">50% deposit · $671.10 total</span></div>
+          <div class="tt">Due now<b>$100.00</b><span class="sub2">$100 deposit · $742.28 total</span></div>
           <button>Pay deposit &amp; book</button>
         </div>
       </div>
@@ -221,16 +219,16 @@
       <h3>What this asserts — argue with it</h3>
       <ul>
         <li><b>One scrollable page, sticky "Pay &amp; book."</b> The-booking-1's ~6-tap funnel as a single low-friction screen — no wizard, the running total always visible. Xola's booking widget is the pattern; this trims it to what a whole-boat sale needs.</li>
-        <li><b>Whole boat, one party — and the customer never picks a boat.</b> They pick the offering + a time + party size; the system assigns an available boat ("we'll assign your boat"). No seat-map, no hull to choose.</li>
+        <li><b>Whole boat, one party — and the customer never picks a boat.</b> They pick the offering + a time + party size; the system assigns an available boat behind the scenes. No deck plan, no hull to choose.</li>
         <li><b>Max = the best available boat for that slot</b> (operator, 2026-07-16). "Up to 16 for this time" = the largest boat still free at 1:30, not a fixed number. If only a 12 is left, the max is 12. The party they enter is what the claim then fits a boat to.</li>
         <li><b>12 guests included, each extra $40.</b> The included count + extra-guest price are the offering's; the boat only sets the ceiling. Extra guests are sold here — the fix for Xola's "call us for extra tickets." <b>Party size lives here, not on the availability picker</b> — asking it earlier would gate the customer out of even seeing times.</li>
-        <li><b>Gratuity is required, three positive tiers, no decline</b> — matching the live Xola config, but framed honestly: <b>"100% goes to the crew,"</b> and "add more after the trip from your booking link" (the post-gratuity path). It's the pre-gratuity of DEC-124, first-class, not an add-on buried in the list.</li>
+        <li><b>Gratuity is required, three positive tiers, no decline</b> — matching the live Xola config. It's the pre-gratuity of DEC-124, first-class, not an add-on buried in the list; the post-trip "add more" path lives on the booking-link manage page.</li>
         <li><b>How you get here:</b> a public offerings page (all experiences) sits in front of this; the customer clicks an offering to launch this form. Leaning toward a <b>virtual modal over that page</b> (Xola-over-our-site style) — good enough for now, but an implementation detail to settle later, not a spec commitment.</li>
         <li><b>The phone number earns its place:</b> "for your booking link + crew updates." The booking link (DEC-122 living link) is how they manage + tip post-trip; it's the durable handle, so we say why we want the number.</li>
-        <li><b>Waiver is consent + linked terms now</b> (DEC-110 pilot); per-guest signing is at the dock. The real e-waiver provider is a later wire-up.</li>
+        <li><b>Waiver is the booking guest's consent + linked terms now</b> (DEC-110). Other guests sign their own <b>ahead of the trip</b> via a link the booker shares (from the manage page) — not at the dock. The real e-waiver provider is a later wire-up.</li>
         <li><b>Summary is honest about where money goes:</b> fare, add-ons, gratuity (tinted as crew money), tax, service fee. Gratuity is exempt from tax + fee (DEC-124) — the line items reflect that, not a blended number.</li>
-        <li><b>Deposit at the bottom (answering the operator's question):</b> the pay bar leads with <b>"Due now $335.55"</b> and a "50% deposit · $671.10 total" sub-line; the summary breaks out <b>Deposit due now</b> and a greyed <b>Balance · charged 3 days before</b>. The <b>50% / 3-days-before are placeholders</b> — deposit-vs-full and the numbers are Drew's call (DEC-107). Pay-in-full is the same bar with no split: "Total $671.10 / Pay & book".</li>
-        <li class="q"><b>Open:</b> deposit % + timing (Drew, DEC-107); "Change" reopens the availability picker (next surface); per-guest roster now vs dock check-in; Flex insurance default-on (mocked) or off?</li>
+        <li><b>Deposit at the bottom:</b> the pay bar leads with <b>"Due now $100.00"</b> and a "$100 deposit · $742.28 total" sub-line; the summary breaks out <b>Deposit due now</b> ($100) and a greyed <b>Balance · charged 3 days before</b> ($642.28). Deposit (flat or %) and the balance-charge timing are <b>system admin settings</b> — a flat $100 today, balance is total − deposit. Pay-in-full would be the same bar with no split.</li>
+        <li><b>Settled 2026-07-17:</b> the <b>deposit (flat or %)</b> and the <b>balance-charge timing</b> are both <b>system admin settings</b> (flat $100, charged 3 days before, today); Flex insurance <b>defaults off</b> (no pre-checked upsell); guests sign the waiver <b>ahead of the trip</b>; the tip block drops its explainer line. "Change" reopens the availability picker.</li>
       </ul>
     </div>
   </div>

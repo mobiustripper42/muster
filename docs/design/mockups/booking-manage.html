@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Muster — Your booking / manage (mockup)</title>
+<style>
+  :root{
+    --bg:#eef2f6; --card:#ffffff; --ink:#101826; --muted:#5b6675; --faint:#93a0b0; --line:#e7ebf1;
+    --accent:#2f5d86; --ok:#157a3a; --ok-bg:#e7f4ec; --ok-line:#cbe6d5;
+    --warn:#8a5f2f; --warn-bg:#f6efe2; --warn-line:#e2d6c2;
+    --v1:#5b64a8;
+    --sans:"IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    --mono:"IBM Plex Mono", ui-monospace, monospace;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{background:#dde4ec; color:var(--ink); font-family:var(--sans); font-size:14px; line-height:1.45; -webkit-font-smoothing:antialiased}
+  .mockbar{background:#101826; color:#93a0b0; font-family:var(--mono); font-size:11px; padding:6px 16px}
+  .mockbar b{color:#eef2f6; font-weight:500}
+  .page{max-width:1180px; margin:0 auto; padding:22px 16px 56px}
+  h1.pt{font-size:19px; font-weight:600; margin-bottom:2px}
+  .psub{font-size:13px; color:var(--muted); margin-bottom:20px}
+  .frames{display:flex; gap:28px; flex-wrap:wrap; align-items:flex-start}
+  .flabel{font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:#6b7684; font-weight:600; margin-bottom:8px}
+  .phone{width:390px; background:var(--card); border:1px solid #c3ccd6; border-radius:26px; overflow:hidden;
+         box-shadow:0 6px 22px rgba(16,24,38,.10); display:flex; flex-direction:column; max-height:900px}
+  .scroll{overflow-y:auto}
+
+  .hero{height:140px; position:relative; color:#fff; background:linear-gradient(160deg,#5f8468,#3c5a45)}
+  .hero.done{background:linear-gradient(160deg,#7d94ac,#4d6580)}
+  .hero .brand{position:absolute; top:12px; left:14px; font-weight:700; font-size:15px; text-shadow:0 1px 3px rgba(0,0,0,.3)}
+  .hero .st{position:absolute; top:12px; right:14px; font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
+            background:rgba(255,255,255,.92); color:var(--ink); padding:3px 9px; border-radius:99px}
+  .hero .cap{position:absolute; left:14px; bottom:12px; right:14px}
+  .hero .cap h2{font-size:18px; font-weight:700; text-shadow:0 1px 4px rgba(0,0,0,.35)}
+  .hero .cap .meta{font-size:12px; opacity:.95; margin-top:2px; text-shadow:0 1px 3px rgba(0,0,0,.35)}
+
+  .body{padding:15px 15px 4px}
+  .sec{margin-bottom:16px}
+  .sec > .lab{font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--faint); font-weight:600; margin-bottom:8px}
+
+  .save{background:var(--warn-bg); border:1px solid var(--warn-line); border-radius:11px; padding:10px 12px; font-size:12.5px; color:var(--warn)}
+  .save b{color:#6f4a20}
+
+  .trip{border:1px solid var(--line); border-radius:11px; padding:12px 13px}
+  .trip .when{font-size:16px; font-weight:700}
+  .trip .rows{margin-top:8px; font-size:13px; color:var(--muted)}
+  .trip .rows div{display:flex; gap:8px; padding:2px 0}
+  .trip .rows .k{color:var(--faint); min-width:74px}
+  .trip .rows .v{color:var(--ink)}
+
+  .kv{border:1px solid var(--line); border-radius:11px; padding:4px 13px}
+  .kv .r{display:flex; justify-content:space-between; padding:8px 0; font-size:13.5px}
+  .kv .r + .r{border-top:1px solid #f2f5f8}
+  .kv .r .k{color:var(--muted)} .kv .r .v{color:var(--ink); text-align:right}
+  .kv .r .v.mono{font-family:var(--mono)}
+
+  .sum{border:1px solid var(--line); border-radius:11px; padding:4px 13px}
+  .sum .r{display:flex; justify-content:space-between; padding:7px 0; font-size:13.5px}
+  .sum .r + .r{border-top:1px solid #f2f5f8}
+  .sum .r .l{color:var(--muted)} .sum .r .v{font-family:var(--mono)}
+  .sum .r.grat .l{color:#2f7d70}
+  .sum .r.paid .l{color:var(--ok)} .sum .r.paid .v{color:var(--ok)}
+  .sum .r.due{font-weight:700}
+  .sum .r.due .v{color:var(--warn)}
+
+  .addon{display:flex; align-items:center; gap:10px; border:1px solid var(--line); border-radius:11px; padding:11px 12px}
+  .addon .tx{flex:1} .addon .tx b{font-weight:600} .addon .tx .m{font-size:12px;color:var(--faint)}
+  .addon .on{font-size:12px; color:var(--ok); font-weight:600}
+
+  .acts{display:flex; flex-direction:column; gap:8px}
+  .act{display:flex; align-items:center; gap:10px; width:100%; text-align:left; font:inherit; font-size:14px;
+       background:#fff; border:1px solid var(--line); border-radius:11px; padding:12px 13px; cursor:pointer; color:var(--ink)}
+  .act:hover{background:#f7fafc; border-color:#c5d3e2}
+  .act .ic{width:18px; text-align:center; color:var(--faint)}
+  .act .chev{margin-left:auto; color:#c3ccd6}
+  .act.danger{color:#a5341f} .act.danger .ic{color:#a5341f}
+  .act .sub{display:block; font-size:11.5px; color:var(--faint); font-weight:400}
+
+  /* tip tiles (post-trip) */
+  .tiles{display:grid; grid-template-columns:repeat(3,1fr); gap:8px}
+  .tile{border:1px solid var(--line); border-radius:11px; padding:11px 4px; text-align:center; cursor:pointer; background:#fff}
+  .tile[aria-pressed="true"]{border-color:var(--accent); background:#eef4f9}
+  .tile .pct{font-size:17px; font-weight:700}
+  .tile .amt{font-size:12px; color:var(--faint); font-family:var(--mono); margin-top:1px}
+  .grat-note{font-size:12px; color:var(--muted); margin-top:8px}
+  .grat-note b{color:#2f7d70}
+  .bigbtn{width:100%; font:inherit; font-size:15px; font-weight:600; padding:13px; border-radius:12px;
+          background:var(--accent); border:0; color:#fff; cursor:pointer; margin-top:10px}
+
+  .note{margin-top:26px; background:#fff; border:1px solid var(--line); border-radius:14px; padding:15px 17px; max-width:760px}
+  .note h3{font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--faint); margin-bottom:9px}
+  .note ul{margin:0 0 0 17px; font-size:13px; color:var(--muted)}
+  .note li{margin-bottom:5px}
+  .note b{color:var(--ink)}
+  .note .q{color:#8a5f2f}
+</style>
+</head>
+<body>
+
+<div class="mockbar"><b>MOCKUP</b> — your booking / manage · static · 390px · the booking-link landing (DEC-122) · two states: before + after the trip</div>
+
+<div class="page">
+  <h1 class="pt">Your booking — customer</h1>
+  <div class="psub">Behind the capability-URL — the durable "booking link" (DEC-122). Bearer token, no login: whoever has the link manages the booking. Same page, two states — upcoming vs. after the trip.</div>
+
+  <div class="frames">
+
+    <!-- ================= BEFORE THE TRIP ================= -->
+    <div>
+      <div class="flabel">Before the trip</div>
+      <div class="phone">
+        <div class="scroll">
+          <div class="hero">
+            <div class="brand">BREW BOAT</div>
+            <div class="st">Confirmed</div>
+            <div class="cap">
+              <h2>Brew Boat Party Boats with Captain</h2>
+              <div class="meta">Booking #BRW-4821 · Jordan Ellis</div>
+            </div>
+          </div>
+
+          <div class="body">
+            <div class="sec">
+              <div class="save"><b>Save this link — it's how you manage your booking.</b> We texted + emailed it to you too.</div>
+            </div>
+
+            <!-- TRIP -->
+            <div class="sec">
+              <div class="lab">Your trip</div>
+              <div class="trip">
+                <div class="when">Sat, Jul 18 · 1:30 PM</div>
+                <div class="rows">
+                  <div><span class="k">On the water</span><span class="v">1h 40min · back by 3:10 PM</span></div>
+                  <div><span class="k">Location</span><span class="v">Cleveland — East Bank <a href="#" style="color:var(--accent)">directions</a></span></div>
+                  <div><span class="k">Arrive by</span><span class="v">1:15 PM (15 min early)</span></div>
+                  <div><span class="k">Your crew</span><span class="v">Your captain + mate show here once assigned</span></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- GUESTS — built from waivers signed ahead of time -->
+            <div class="sec">
+              <div class="lab">Your guests <span style="color:var(--faint); font-weight:400; text-transform:none; letter-spacing:0">· 3 of 10 signed</span></div>
+              <div class="kv">
+                <div class="r"><span class="k">Jordan Ellis</span><span class="v">(216) 555-0148 · you</span></div>
+                <div class="r"><span class="k">Sam Ortiz</span><span class="v">(216) 555-0177 · signed</span></div>
+                <div class="r"><span class="k">Ava Reyes</span><span class="v">(440) 555-0133 · signed</span></div>
+              </div>
+              <button class="act" style="margin-top:9px"><span class="ic">✉</span><span>Send the waiver to your guests<span class="sub">They sign ahead and leave a phone — so everyone gets the trip texts</span></span><span class="chev">›</span></button>
+            </div>
+
+            <!-- PAYMENT -->
+            <div class="sec">
+              <div class="lab">Payment</div>
+              <div class="sum">
+                <div class="r"><span class="l">Fare — Brew Boat Party</span><span class="v">$549.00</span></div>
+                <div class="r"><span class="l">Flex insurance</span><span class="v">$29.00</span></div>
+                <div class="r grat"><span class="l">Tip · 20% (100% to crew)</span><span class="v">$109.80</span></div>
+                <div class="r"><span class="l">Tax + service fee</span><span class="v">$47.72</span></div>
+                <div class="r paid"><span class="l">✓ Deposit paid Jul 16</span><span class="v">−$100.00</span></div>
+                <div class="r due"><span class="l">Balance · auto-charged Jul 15</span><span class="v">$635.52</span></div>
+              </div>
+            </div>
+
+            <!-- MANAGE -->
+            <div class="sec">
+              <div class="lab">Manage</div>
+              <div class="acts">
+                <button class="act"><span class="ic">↻</span><span>Change date or time<span class="sub">Pick a new slot — subject to availability</span></span><span class="chev">›</span></button>
+                <button class="act"><span class="ic">＋</span><span>Add a tip for your crew<span class="sub">100% goes to the crew running your boat</span></span><span class="chev">›</span></button>
+                <button class="act"><span class="ic">✉</span><span>Message us<span class="sub">Questions about your booking</span></span><span class="chev">›</span></button>
+                <button class="act"><span class="ic">📅</span><span>Add to calendar</span><span class="chev">›</span></button>
+                <button class="act danger"><span class="ic">✕</span><span>Cancel booking<span class="sub">Flex: full refund up to 24h before (by Fri 1:30 PM)</span></span><span class="chev">›</span></button>
+              </div>
+            </div>
+
+            <!-- PAST TRIPS (repeat customers) -->
+            <div class="sec">
+              <div class="lab">Your past trips</div>
+              <div class="acts">
+                <button class="act"><span class="ic">✓</span><span>Jun 21 · Brew Boat Party<span class="sub">Completed · $549</span></span><span class="chev">›</span></button>
+                <button class="act"><span class="ic">✓</span><span>May 30 · Sunset BYOB<span class="sub">Completed · $819</span></span><span class="chev">›</span></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= AFTER THE TRIP ================= -->
+    <div>
+      <div class="flabel">After the trip</div>
+      <div class="phone">
+        <div class="scroll">
+          <div class="hero done">
+            <div class="brand">BREW BOAT</div>
+            <div class="st">Completed</div>
+            <div class="cap">
+              <h2>Your trip</h2>
+              <div class="meta">Sat, Jul 18 · Brew Boat Party · Booking #BRW-4821</div>
+            </div>
+          </div>
+
+          <div class="body">
+            <!-- POST-TRIP TIP (DEC-124 post gratuity, optional) -->
+            <div class="sec">
+              <div class="lab">Add a little more for your crew?</div>
+              <div class="tiles">
+                <button class="tile"><div class="pct">+5%</div><div class="amt">$27.45</div></button>
+                <button class="tile" aria-pressed="true"><div class="pct">+10%</div><div class="amt">$54.90</div></button>
+                <button class="tile"><div class="pct">+15%</div><div class="amt">$82.35</div></button>
+              </div>
+              <button class="bigbtn">Add tip</button>
+            </div>
+
+            <!-- RECEIPT -->
+            <div class="sec">
+              <div class="lab">Receipt</div>
+              <div class="sum">
+                <div class="r"><span class="l">Fare — Brew Boat Party</span><span class="v">$549.00</span></div>
+                <div class="r"><span class="l">Flex insurance</span><span class="v">$29.00</span></div>
+                <div class="r grat"><span class="l">Tip · 20%</span><span class="v">$109.80</span></div>
+                <div class="r"><span class="l">Tax + service fee</span><span class="v">$47.72</span></div>
+                <div class="r paid"><span class="l">✓ Paid in full</span><span class="v">$735.52</span></div>
+              </div>
+            </div>
+
+            <!-- REBOOK -->
+            <div class="sec">
+              <div class="acts">
+                <button class="act"><span class="ic">★</span><span>Leave a review<span class="sub">Share it on Google</span></span><span class="chev">›</span></button>
+                <button class="act"><span class="ic">⟲</span><span>Book again<span class="sub">Same offering, pick a new date</span></span><span class="chev">›</span></button>
+                <button class="act"><span class="ic">✉</span><span>Email me the receipt</span><span class="chev">›</span></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      <h3>What this asserts — argue with it</h3>
+      <ul>
+        <li><b>One page, capability-URL, no login</b> (DEC-122). The booking link is a bearer token — whoever holds it can manage the booking. That's why the confirmation email/SMS says <b>"save this link"</b>, and why the recovery flow re-sends the existing link rather than showing it from typed input.</li>
+        <li><b>The link is the durable handle for the whole lifecycle:</b> before the trip it shows details + balance + cancel; after, it flips to the post-trip tip + receipt + rebook. Same URL, state driven by trip time — the customer bookmarks one thing.</li>
+        <li><b>Repeat customers see their past trips here.</b> We have repeat guests, so the manage page lists the contact's other reservations (past + upcoming), each a click away. <b>DEC-122 implication:</b> surfacing history from one link means holding any one link exposes all that contact's trips — acceptable (same person), a conscious bearer-token loosening to record.</li>
+        <li><b>Boat never named to the customer; crew are.</b> The hull is assigned behind the scenes and never shown — but once the <b>captain + mate</b> are assigned, their names appear on the trip (operator liked this). Boat = logistics, hidden; crew = the people you're trusting, shown.</li>
+        <li><b>Balance is shown, not hidden.</b> Deposit paid + balance auto-charged 3 days before (Jul 15 for a Jul 18 trip) — deposit is a flat <b>$100</b> (a system admin setting; flat-or-% and timing are configurable). Pay-in-full bookings show a single "Paid in full" and no balance row.</li>
+        <li><b>Cancel is self-service for Flex holders</b> (DEC-107, amended — customers self-refund; refunds aren't manual-only). "Full refund up to 24h before" with the concrete deadline. Non-Flex bookings show a different cancel state (fee or no-refund) — that copy is Drew's call, not mocked here.</li>
+        <li><b>Post-trip tip is the DEC-124 post gratuity, first-class.</b> Framed as "+% on top" of the pre-tip already paid, optional, three positive tiers, <b>100% to crew</b>. This is the reason the phone number earns its place on the booking form — it's how we reach them to tip after.</li>
+        <li><b>Guests sign the waiver ahead of time</b> (DEC-110). The booking guest sends the waiver link to everyone; each guest signs and leaves a <b>name + phone</b>, which builds the guest list <b>and</b> is how we text every passenger on the reservation (trip reminders, crew updates). Not a dock-signed roster.</li>
+        <li><b>Settled 2026-07-17:</b> the customer <b>can change date/time</b> from here (reopens the picker); the message action reaches the <b>operator ("Message us"), never the crew</b>; the <b>boat name is never shown</b> — the <b>captain + mate names appear once assigned</b> instead; non-Flex cancel terms come from <b>admin settings</b>, not this mockup.</li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

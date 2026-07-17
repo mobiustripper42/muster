@@ -516,46 +516,56 @@ and multi-boat / full-catalog selling.
 
 ## Phase 12: Reservations — the real customer UI + flip new sales (Sept/Oct)
 
-*Trigger: Phase 11's service layer proved out — a real paid booking ran end-to-end and is trusted.*
-Phase 12 is where the **design investment** lives: the actual customer-facing reservation system, then the
-sales-channel flip. The flip itself is a **channel switch, not a data event** (DEC-105) — new bookings move
-to Muster, Xola stops taking new inventory and its forward-book drains naturally; when the last Xola-sold
-trip has sailed, Xola is empty and the subscription is cancelled. No migration, no de-listing sweep.
+*Trigger: Phase 11's service layer proved out. Design is **DONE** (S54–S56): every surface mocked + approved
+(`docs/design/mockups/`, `index.html`), and the model settled across **DEC-123** (two surfaces — a
+customer-centric reservation calendar beside the crew shift view — plus a net-new catalog and
+purchases/customers area), **DEC-124** (gratuity collect-and-expose), **DEC-125** (virtual availability),
+**DEC-126** (the cutover), and **DEC-109 amended** (guest-count claim + 15-min hold + permanent pessimistic
+backstop). @architect + @ui-reviewer passes are folded in.*
 
-**Design method for every UI task below — mockup-first on mildev, no Claude Design:** spec the surface →
-build an HTML mockup → serve it on `mill-dev:3000` for review → then build for real. Xola's booking screens
-are the pattern reference; `BRAND.md` is the styling authority.
+**Build state.** The P11 service layer **is built** on `feature/reservations` (`src/reservations/*`,
+Stripe adapter, webhook) — but to the **pre-DEC-125/109 model** (eager events, simple CAS). So P12 is a mix:
+some tasks **revise** the service layer to the settled design, the rest **build the real UI** (customer
+funnel + admin) and the **cutover**. All code rides `feature/reservations`; it merges to `main` **once**, at
+the customer-ready flip.
 
-Outline (poker at the boundary; each UI surface carries its own mockup step):
-- **Availability page (real)** — designed public browse-and-pick surface, replacing the P11 harness.
-- **Booking form (real)** — the customer detail-entry surface (name, party size, contact, waiver consent).
-- **Confirmation + manage page (real)** — the "your booking" surface behind the capability-URL. Customer
-  copy calls it **"your booking link" — never "living link"** (internal name only). Confirmation email + SMS
-  emphasize **"save this link — it's how you manage your booking."**
-- **Link recovery flow** — a public "lost your link?" form: customer enters **email-or-phone + last name**,
-  we **re-send the existing link to the contact on file** (never display the booking/link from typed input —
-  preserves the bearer-token model; the same magic-link-resend primitive as crew auth). *(Exact match fields
-  to confirm with the operator.)*
-- **Waiver provider integration** (DEC-110) — the real e-waiver wiring, replacing P11's minimal consent.
-  Which provider is a last-minute Drew/Spink call.
-- **Flip + broaden** — move new sales to Muster; broaden Muster-owned inventory from the pilot boat/slot to
-  the full catalog (de-list those vessel-days in Xola per the DEC-106 discipline).
-- **Overlap accounting** — revenue split across Xola + Stripe until Xola drains (an operator/Drew reality,
-  not a build item; reinforces the "which Stripe account" decision).
+**Cutover, not drain (DEC-126 — corrects the old "drains naturally" framing).** The flip is pilot
+coexistence → a **one-time full Xola import** → Muster owns reservations (money stays in Xola for imported
+bookings) → **reversible**. Not the historical-migration bogeyman — a controlled, rollback-able cutover.
 
-> **⚠️ Unspecced — the reservation ADMIN surfaces (likely the larger half of P12).** The outline above is
-> **customer-facing** only. The operator/back-office side is **not yet specced**, and from the Xola seller UI
-> (`docs/design/xola *.png`) it looks **more extensive than the customer funnel** — the customer books in ~6
-> taps; the admin runs a whole back-office. Surfaces to spec at the P12 boundary (own pass, own poker):
-> **`Offering`/experience catalog** (create/edit, descriptive content, photos), **schedules + per-event
-> pricing** (DEC-112), **boat/equipment assignment**, **reservation list + management** (change arrival,
-> cancel, refund, message guests, resend confirmation/waiver, email/print roster), **event admin/detail**
-> (guides, capacity, notes), and **add-on config** (parked, DEC-113). Open question: how much rides the
-> existing crew-admin cockpit vs. a distinct reservations-admin area — settle before P12 poker.
+**Two mechanism tasks are `@architect`-gated at build** — the **claim + hold** (DEC-109) and the **cutover
+import + rollback** (DEC-126). Both want a pass reading **sailbook**'s real payment/hold code, not an inline
+design. Design method (mockup-first) is already **complete** for P12; what remains is build.
 
-**Watch for** the point where Muster's own-booking volume makes an **in-app refund/cancel surface** (§3.3)
-worth pulling out of the Stripe dashboard — a candidate Phase 13, not a Phase 12 commitment. **Not a phase:**
-a hard cutover / historical Xola migration. It does not happen (DEC-105).
+**Poker one at a time** — `Effort` is `?` until each is pokered. `@architect`-gated tasks get the design pass
+at build, not before poker.
+
+| # | Task | Effort | Notes |
+|---|------|--------|-------|
+| 12.0 | **Virtual availability read model (DEC-125)** — replace 11.1's eager deriver with computed open slots `schedule × vessels × dates × muster-owned-days − blocks − bookings`; lazy materialization; the owned-days mask (pilot-only, moot post-cutover) | ? | **`@architect`** · revises `src/reservations/availability.ts` |
+| 12.1 | **Claim + 15-min hold + boat-assignment (DEC-109 amended)** — revise write-booking/webhook: hold-acquire → Stripe → **pessimistic atomic write-claim** on the slot identity `(vessel,date,time,source='muster')`; fit-and-fallback over the departure's boats; **refund-and-notify the loser**. Hold lifted from sailbook | ? | **`@architect`** · **the correctness hinge** · needs `sailbook` in scope |
+| 12.2 | **Pricing composition** — extra-guest price (`Offering`-level) + **ordered** price-variations (first-match, no stacking) over `Event.price`; fare = base + extras + gratuity | ? | DEC-112 · additive |
+| 12.3 | **Gratuity collect + expose (DEC-124)** — first-class gratuity table (pre/post kind, tax/fee-exempt, routes to crew); **pre-tip required at checkout** + post-trip on the manage link; the read contract `xola-tip-extractor` consumes | ? | spans checkout + manage + a cross-half read |
+| 12.4 | **Offerings list + availability picker** — the customer browse-and-pick (offering → date → time) reading 12.0; offerings-list dormant at one offering | ? | replaces the P11 throwaway harness |
+| 12.5 | **Booking form + checkout kickoff** — guest count + extras + waiver consent + pre-gratuity → Stripe create-checkout; **customer never picks a boat** | ? | drives 12.1 |
+| 12.6 | **Confirmation + manage page (the booking link, DEC-122)** — "your booking" behind the capability-URL; post-trip gratuity; change-arrival / cancel / refund. Copy: **"your booking link", never "living link"** | ? | DEC-122 (feature-side) |
+| 12.7 | **Link recovery** — public "lost your link?" → email-or-phone + last name → re-send the existing link to the contact on file (never shown from typed input; bearer-token safe) | ? | exact-match fields to confirm w/ operator |
+| 12.8 | **Offering catalog** — create/edit: content, photos, `Location`, vessels, schedule, ordered price-variations, add-ons, gratuity config, extra-guest price; Draft/Live/Hidden | ? | the largest single build (DEC-123 §catalog) |
+| 12.9 | **Vessel + Location admin** — Vessel (capacity/hue/home; take-out-of-service → block) + Location (pickup + route + map link; block entry point). Small CRUD twins | ? | Vessel = the crew engine's boat, Xola-sourced today |
+| 12.10 | **Blocks surface** — the **single** availability-subtraction registry: location / vessel / hold blocks + calendar-made single-slot blocks, all listed here | ? | DEC-125 |
+| 12.11 | **Reservation calendar (admin, customer-centric)** — day grid, Open/Sold, **sell-from-calendar**, per-reservation detail pane (roster, change arrival, cancel, refund, resend link, message) | ? | DEC-123 · sell-from-calendar shares the 12.1 claim |
+| 12.12 | **Purchases & customers** — order list + detail (refund, resends, payment summary, guest roster); customer contact record; **"Message" via the customer sender (#119)**, never the crew line | ? | DEC-123 |
+| 12.13 | **Waiver provider integration (DEC-110)** — real e-waiver wiring, replaces P11's minimal consent. Provider = last-minute Drew/Spink | ? | owner-gated |
+| 12.14 | **One-time Xola import + cancel-into-Xola (DEC-126)** — map Xola reservations → Muster `Event`/`Reservation` (reuse DEC-036/040 field work, **one-time not recurring**); money-home flag; cancel routes into Xola for imported rows | ? | **`@architect`** |
+| 12.15 | **Rollback export + flip/broaden (DEC-126)** — the reversible-cutover export (Muster forward-book → Xola re-key) + its credibility window; move new sales to Muster; broaden owned inventory pilot → full catalog | ? | **`@architect`** · feature → `main` merge gate |
+
+**Phase 12 total: ~16 tasks, points TBD (poker one at a time).** The admin half (12.8–12.12) is confirmed the
+larger half, as the plan's earlier ⚠️ predicted.
+
+**Watch for** the point where own-booking volume makes an **in-app refund/cancel surface** (§3.3) worth
+pulling out of the Stripe dashboard — a candidate Phase 13, not a P12 commitment. **The cutover IS now a
+phase** (DEC-126, 12.14–12.15) — a controlled, reversible one; the thing that stays out of scope is a *hard*
+historical migration with no rollback.
 
 ---
 

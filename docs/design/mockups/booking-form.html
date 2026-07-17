@@ -140,9 +140,17 @@
               </div>
             </div>
 
-            <!-- WHOLE BOAT (no headcount — price is the boat) -->
+            <!-- GUESTS -->
             <div class="sec">
-              <div class="whole"><b>You've got the whole boat.</b> One flat price — the boat, not the seat. Bring your group, up to 16 for this time.</div>
+              <div class="lab">How many guests?</div>
+              <div class="whole"><b>You've got the whole boat.</b> The price is the boat, not the seat.</div>
+              <div class="stepper">
+                <button aria-label="fewer">−</button>
+                <span class="n">10</span>
+                <button aria-label="more">+</button>
+                <span class="cap">up to 16 for this time</span>
+              </div>
+              <div class="xg"><b>12 guests included.</b> Each extra is $40 per guest — up to 16 for this time.</div>
             </div>
 
             <!-- CONTACT -->
@@ -189,7 +197,7 @@
             <div class="sec">
               <div class="lab">Summary</div>
               <div class="sum">
-                <div class="r"><span class="l">Fare — whole boat</span><span class="v">$499.00</span></div>
+                <div class="r"><span class="l">Fare — whole boat, up to 12</span><span class="v">$499.00</span></div>
                 <div class="r"><span class="l">Flex insurance</span><span class="v">$29.00</span></div>
                 <div class="r grat"><span class="l">Tip your crew · 20%</span><span class="v">$99.80</span></div>
                 <div class="r"><span class="l">Tax · 5.2%</span><span class="v">$27.46</span></div>
@@ -213,8 +221,9 @@
       <h3>What this asserts — argue with it</h3>
       <ul>
         <li><b>One scrollable page, sticky "Pay &amp; book."</b> The-booking-1's ~6-tap funnel as a single low-friction screen — no wizard, the running total always visible. Xola's booking widget is the pattern; this trims it to what a whole-boat sale needs.</li>
-        <li><b>Whole boat, one party — and the customer never picks a boat.</b> They pick the offering + a time; the system assigns an available boat ("we'll assign your boat"). No seat-map, no hull to choose.</li>
-        <li><b>No headcount — flat whole-boat price</b> (operator, 2026-07-17). The customer doesn't specify a passenger count; the fare is the boat. "Up to 16 for this time" is <b>informational capacity</b> (the largest boat still free at 1:30 — if only a 12 is left, it says 12), not a paid count. Removing the count also removes the per-extra-guest upcharge that was collected here — if extra-guest revenue is still wanted, it needs its own mechanic (parked, not in this mockup).</li>
+        <li><b>Whole boat, one party — and the customer never picks a boat.</b> They pick the offering + a time + party size; the system assigns an available boat ("we'll assign your boat"). No seat-map, no hull to choose.</li>
+        <li><b>Max = the best available boat for that slot</b> (operator, 2026-07-16). "Up to 16 for this time" = the largest boat still free at 1:30, not a fixed number. If only a 12 is left, the max is 12. The party they enter is what the claim then fits a boat to.</li>
+        <li><b>12 guests included, each extra $40.</b> The included count + extra-guest price are the offering's; the boat only sets the ceiling. Extra guests are sold here — the fix for Xola's "call us for extra tickets." <b>Party size lives here, not on the availability picker</b> — asking it earlier would gate the customer out of even seeing times.</li>
         <li><b>Gratuity is required, three positive tiers, no decline</b> — matching the live Xola config, but framed honestly: <b>"100% goes to the crew,"</b> and "add more after the trip from your booking link" (the post-gratuity path). It's the pre-gratuity of DEC-124, first-class, not an add-on buried in the list.</li>
         <li><b>How you get here:</b> a public offerings page (all experiences) sits in front of this; the customer clicks an offering to launch this form. Leaning toward a <b>virtual modal over that page</b> (Xola-over-our-site style) — good enough for now, but an implementation detail to settle later, not a spec commitment.</li>
         <li><b>The phone number earns its place:</b> "for your booking link + crew updates." The booking link (DEC-122 living link) is how they manage + tip post-trip; it's the durable handle, so we say why we want the number.</li>

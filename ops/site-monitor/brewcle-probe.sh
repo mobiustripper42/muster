@@ -81,7 +81,7 @@ classify() {
   # 2) fetch via Cloudflare, cache-busted so we see live origin state not a cached ghost
   local body hdrs out code tt rip cxit
   body="$(mktemp)"; hdrs="$(mktemp)"
-  out="$(curl -sS -o "$body" -D "$hdrs" -w '%{http_code} %{time_total} %{remote_ip}' \
+  out="$(curl -sSL --max-redirs 5 -o "$body" -D "$hdrs" -w '%{http_code} %{time_total} %{remote_ip}' \
         --max-time 15 "https://$HOST/?$cb" 2>/dev/null)"; cxit=$?
   code="$(awk '{print $1}' <<<"$out")"; tt="$(awk '{print $2}' <<<"$out")"; rip="$(awk '{print $3}' <<<"$out")"
   RESP_MS="$(awk -v t="${tt:-0}" 'BEGIN{printf "%d", t*1000}')"
@@ -109,7 +109,9 @@ classify() {
       LABEL="HOST_RESOURCE_LIMIT"; DETAIL="508 — HostGator shared-hosting CPU/RAM cap hit";;
     5??)
       LABEL="HTTP_5XX"; DETAIL="origin returned $code";;
-    2??|3??)
+    3??)
+      LABEL="REDIRECT_LOOP"; DETAIL="still redirecting after 5 hops (final $code)";;
+    2??)
       if grep -qi "error establishing a database connection" "$body"; then
         LABEL="WP_DB_DOWN"; DETAIL="WordPress: database connection error (served as HTTP $code)"
       elif grep -qi "there has been a critical error\|critical error on this website" "$body"; then

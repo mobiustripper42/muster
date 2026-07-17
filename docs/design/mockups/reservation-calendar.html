@@ -72,10 +72,12 @@
   .ev.blackout::before{content:""; position:absolute; left:0; top:7px; bottom:7px; width:2px;
                        background:repeating-linear-gradient(180deg,#c3ccd6 0 3px,transparent 3px 6px)}
   .ev.blackout .who{color:var(--faint); text-decoration:line-through; text-decoration-thickness:1px}
+  /* Always visible — a real button, not a hover reveal (keyboard + touch can't hover). */
   .ev .sell{position:absolute; right:6px; top:50%; transform:translateY(-50%); font-size:11px;
             padding:3px 9px; border-radius:7px; border:1px solid var(--accent); color:var(--accent);
-            background:#fff; opacity:0; transition:opacity .1s}
-  .ev.open:hover .sell{opacity:1}
+            background:#fff; cursor:pointer}
+  .ev .sell:hover{background:var(--accent); color:#fff}
+  .ev .sell:focus-visible{outline:2px solid var(--accent); outline-offset:1px}
   .dim{opacity:.28; pointer-events:none}
 
   /* ---- detail ---- */

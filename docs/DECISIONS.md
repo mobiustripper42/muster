@@ -2720,6 +2720,43 @@ service-layer conditional/transactional CAS, contract-tested on both adapters, *
 precluded** (a future policy change in this predicate, not a migration) and **not designed for** (operator
 directive, 2026-07-11). Only the capacity *function* changed (DEC-108 amendment), not this claim's design.
 
+**Amendment (2026-07-17, operator + S56 — the P12 claim shape; mechanism `@architect`-gated at build):**
+Two design changes the mockups forced, plus the answer to the Stripe-timing race.
+
+1. **The customer never picks a boat.** They pick **offering + time + guest count** (never "party" — a
+   guest/passenger count). A departure fans out to a *set* of same-time boat-`Event`s; **boat assignment
+   happens inside the claim**: enumerate the departure's vessels that fit the guest count → pick one →
+   claim it → on loss, fall back to the next fitting vessel → else sold-out. The claim predicate and the
+   `(vessel, date, time, source='muster')` identity are unchanged; the new part is the fit-and-fallback
+   loop over the departure's boats. **Boat-selection policy** (smallest-that-fits, to keep big hulls for
+   big groups, vs largest-free) is an open question for the build pass.
+
+2. **Optimistic 15-min hold + a permanent pessimistic backstop.** Lifted from **sailbook** (proven there).
+   On checkout start, place a **15-minute soft hold** on the slot; others see it unavailable, so the common
+   case is **collision-free** — the second customer never starts paying. The hold makes the refund-the-loser
+   path the *rare* case, not the normal one.
+   - **The pessimistic write-time claim NEVER leaves — this is load-bearing.** We cannot enforce the
+     timeout *inside* Stripe (no server-side payment deadline), so a hold can expire while a payment is
+     still in flight. Only the atomic write-time claim is defeat-proof by timing. The hold is an
+     optimization on top of the CAS, never a replacement for it. Do not "optimize away" the backstop.
+   - **The residual race** (a hold expires mid-payment, another buyer grabs the freed slot and pays, the
+     first payment then completes): both captured money, one wins the atomic claim, the **loser is
+     auto-refunded and told the slot sold out while they were paying** — an explicit customer-facing
+     message, never a silent oversell. (This makes DEC-107's refund path customer-triggerable here, per
+     [[customer-self-refund-reverses-manual]].)
+   - **The identity guard applies at BOTH hold-acquire and write** — two buyers can't both acquire the
+     same slot's hold, and the write is the final authority.
+   - A **customer checkout-hold** (transient soft-reservation, 15 min, lazy-expiry) is a **distinct state**
+     from the **admin/vessel hold** (a block-family row, no `Event` — DEC-125). Both subtract from
+     availability; they are different rows with different lifetimes. Keep them separate.
+
+**`@architect`-gated at build (NOT solved now):** the hold table shape, expiry handling (lazy-on-read
+preferred — a >15-min hold reads as free, no cron), the pg lock strategy (row lock vs partial unique index),
+the both-adapters contract, and the refund-on-loss webhook flow. This wants a dedicated pass reading
+sailbook's real implementation, not an inline design — it's the highest-risk piece. **Supersedes** the
+"Revisit if overbooking-with-waitlist" note only insofar as the waitlist itself stays parked (FUTURE_IDEAS,
+DEC-109's own trigger); the hold is not a waitlist.
+
 ---
 
 ## DEC-110: Waiver — Muster-sold side only; integrate a provider (deferred pre-flip); pilot uses minimal consent
@@ -3117,7 +3154,9 @@ Muster needs **both**, and they are **two different things**:
   who bought it.
 - **Shift view (`/admin/shifts`) — crew-centric.** Who works the vessel-day.
 
-They meet at the vessel-day and nowhere else; each cross-links to the other. So the reservations admin is:
+They **share the Vessel and the vessel-day** (one entity, not a twin — DEC-125 / `vessel.html`), and each
+cross-links to the other. *(An earlier draft said they "meet at the vessel-day and nowhere else" — reworded:
+the Vessel is a single shared entity, so "share" is right, not "meet.")* So the reservations admin is:
 
 1. **The reservation calendar** — *net-new.* Departures by day/boat, Open-or-Sold, price, buyer; the
    per-reservation detail pane (roster, change arrival, cancel, refund, resend link, message).
@@ -3137,8 +3176,9 @@ owns the vessel-day; reservations rent space on it." **Both are wrong and are re
 Reservations are upstream — events generate the vessel-day that `formShifts` derives (`src/builder/
 form-shifts.ts`) — and after the DEC-105 flip, reservations are the primary business.
 
-**Availability is the product, not an edge case.** Unsold departures are first-class rows on the
-calendar: showing what is **not** booked *is* the ordering system.
+**Availability is the product, not an edge case.** Unsold departures are first-class **display rows** on the
+calendar: showing what is **not** booked *is* the ordering system. *(Display rows over **computed** slots —
+they are **not** materialized `Event` rows; DEC-125. Don't let "first-class rows" read as "write a row.")*
 
 > **Corrected 2026-07-16 (operator).** An earlier version of this paragraph concluded availability
 > "forces **eager event generation** — an event must exist before it is sold — which reverses task 11.3's
@@ -3279,12 +3319,23 @@ withdrawn "eager event generation" leg. See the v3 catalog mockup (`docs/design/
 schedule is a **rule**; open availability is **computed**, and a row is written only when a slot acquires
 real state.
 
-**Open slots = `schedule × vessels × dates − blocks − bookings`**, derived on read. A `Event` (and any
-`Reservation`) row **materializes only when a slot gets state**:
-- **booked** — the DEC-109 whole-boat CAS claim writes the `Event` + `Reservation` on first booking (11.3's
-  lazy `Event(if new)` — **which therefore STANDS**; DEC-123's claim that availability reverses it was wrong);
+**Open slots = `schedule × vessels × dates × muster-owned-days − blocks − bookings`**, derived on read. The
+**`× muster-owned-days`** term is load-bearing and was missing from the first draft (@architect, 2026-07-17):
+DEC-106 partitions a boat-day to exactly one system, and Muster must **never** generate a virtual slot on a
+**Xola-owned** vessel-day — it would re-list a boat Xola is selling. *(This term is a **pilot-coexistence**
+concern only; after the DEC-126 cutover Muster owns every reservation, so the mask is the whole calendar and
+the term is moot — see DEC-126.)* A `Event` (and any `Reservation`) row **materializes only when a slot gets
+state**:
+- **booked** — the DEC-109 claim writes the `Event` + `Reservation` on first booking (11.3's lazy
+  `Event(if new)` — **which therefore STANDS**; DEC-123's claim that availability reverses it was wrong).
+  **First-booking atomicity (@architect, 2026-07-17):** a single-row CAS protects an *existing* row; the
+  first booking of a virtual slot has **no row**, so the atomicity is a **conditional insert on the slot
+  identity `(vessel, date, time, source='muster')`** — see the new guardrail below.
 - **per-departure override** — an operator edits one departure's time/price/capacity on the calendar;
-- **held / blocked** — see blocks below.
+- **customer checkout-hold** — a transient soft-reservation (DEC-109, 15 min); materializes a short-lived
+  **hold** row (not necessarily a full `Event`), distinct from the admin/vessel hold below;
+- **blocked** — see blocks below. *(An admin **vessel hold** materializes a **block-family** row, **not** an
+  `Event` — corrected from the first draft, which wrongly listed "held" among Event-materializing states.)*
 
 So a season is a **few dozen rows, not thousands** (the ~3,060-row materialization the operator flagged is
 avoided), and editing an `Offering`'s schedule just **recomputes** the virtual slots — no row rewrite. A
@@ -3310,10 +3361,75 @@ for free. Three kinds, from the operator's use cases:
   operator hold, not a reservation.
 
 Blocks are their **own admin surface** (the "bulk blackout" screen the catalog kept pointing at), **not**
-on the `Offering`. **Touches** DEC-108/109 (the claim still writes the row on booking), DEC-106 (a
-Muster-owned vessel-day is where the rule applies), DEC-112 (`Event.price` is the per-departure override's
-home), DEC-123. **Open:** whether price variations stack (DEC-123, operator thinking); the Blocks surface's
-own design (its own mockup).
+on the `Offering`.
+
+> **Guardrail (@architect, 2026-07-17) — the complement of DEC-123's `Reservation.eventId` rule.** Lazy
+> materialization is only safe if the slot can't be materialized twice. Add a **uniqueness/identity on the
+> `Event` slot `(vessel, date, time)` for `source='muster'`** — enforced as a **both-adapters contract**
+> (pg: partial unique index or row lock; in-memory: the critical section). This is **not** the constraint
+> DEC-123 forbids: that one ("one reservation per event") is a *policy* and stays out; this one ("one
+> materialized event per physical boat-slot") is a *physical fact* — there is exactly one Brew 3. Different
+> key, opposite purpose. Without it, two first-bookings of the same virtual slot each insert-and-claim their
+> own row → a double-sold boat.
+
+> **Price composition (@architect, 2026-07-17).** DEC-112 said "resolution order is `Event.price` only,"
+> but the catalog + booking form sell **base fare (up to N guests) + `extraGuestPrice` per guest over N, to
+> the boat max**. `extraGuestPrice` is an **`Offering`-level** field; a booking's fare composes as
+> `Event.price` (the per-departure/variation base) **+** `extras × Offering.extraGuestPrice` **+** gratuity
+> (DEC-124). Name it in the price model before poker.
+
+**Touches** DEC-108/109 (the claim writes the row on booking; hold + backstop live in DEC-109), DEC-106 (the
+`× muster-owned-days` mask — pilot-only, moot post-DEC-126), DEC-112 (`Event.price` is the per-departure
+override's home; extra-guest price is `Offering`-level), DEC-123, **DEC-126** (the cutover that retires the
+ownership mask). **Open:** whether price variations stack (DEC-123 — operator: **no, ordered list, first
+match wins**, now settled in the catalog mockup); boat-selection policy (DEC-109).
+
+---
+
+## DEC-126: The flip is a cutover with a one-time full Xola import — Muster becomes the reservation source of truth, and the cutover is reversible
+
+**Status:** Accepted (operator, 2026-07-17, S56) — the cutover model; mechanism **`@architect`-gated at
+build**. Evolves DEC-105 (see the reconciliation below).
+
+**Decision.** The flip from Xola to Muster is a **cutover**, not the "Xola drains naturally, no migration"
+picture DEC-105 first painted. At cutover:
+
+1. **One-time full import of ALL Xola reservations into Muster.** After it, **Muster is the single source
+   of truth for reservations** — availability (DEC-125) sees *every* booking (imported + Muster-native), so
+   nothing double-books. This is the whole reason the import exists: a reservation only avoids collision if
+   it lives where the availability check looks, and post-cutover that's Muster.
+2. **Money stays in Xola for the imported bookings.** Muster manages the *reservation* (arrival, cancel,
+   roster, message); Xola keeps the *money* for anything it sold. New Muster-native bookings run through
+   Stripe (DEC-107). So a Muster reservation may point at money held in either system.
+3. **The ongoing Xola API pull STOPS.** Coexistence had a continuous pull (DEC-036/040); the cutover import
+   is **one-time**, and after it there is no recurring import. Xola is no longer an input.
+4. **Muster can cancel a Xola-originated reservation.** Because an imported reservation's money lives in
+   Xola, cancelling it must reach into Xola (an API cancel/refund, or a flagged manual step) — Muster's
+   cancel path can't assume Stripe for imported rows. **`@architect`-gated:** how the cancel routes by the
+   reservation's money-home.
+5. **The cutover is REVERSIBLE — a hard rollback requirement.** If Muster-reservations is a total failure at
+   go-live, we must be able to **cut back to Xola**. So the cutover must not destroy or mutate Xola's own
+   records, and Muster's forward-book must be exportable/re-keyable back into Xola for the window where
+   rollback is credible. This is a first-class requirement, not a nicety — it's the stop-gap that makes the
+   cutover safe to attempt.
+
+**Reconciliation with DEC-105.** DEC-105 said "permanent coexistence, **no cutover, no migration**, Xola
+drains." That was the **pilot** model — Muster sells a *subset* alongside Xola. DEC-126 is the **flip**: once
+Muster-reservations is trusted, it takes over *fully*, and the clean way to do that without double-booking is
+to bring Xola's whole forward-book into Muster in one import. So the two live **in sequence** — coexistence
+(pilot) → cutover (flip) — but DEC-126 **does reverse DEC-105's "no migration" leg**: there *is* a one-time
+migration, by design. SPEC §0.3/§4 are re-reconciled for this (they had been written to "no cutover").
+
+**Consequence for DEC-125.** The `× muster-owned-days` mask on the availability formula is a
+**pilot-coexistence** term only. Post-cutover Muster owns every reservation, so the mask is the entire
+calendar and the term drops out.
+
+**`@architect`-gated at build (NOT solved now):** the import mapping (Xola reservation → Muster
+`Event`/`Reservation`, reusing the DEC-036/040 field work), the money-home flag and how cancel/refund routes
+on it, the cancel-into-Xola mechanism, and the **rollback export** (Muster forward-book → Xola re-key) with
+its credibility window. **Touches** DEC-105 (evolves the flip model), DEC-036/040 (reuses the import field
+work, one-time not recurring), DEC-107 (Stripe for native; Xola money for imported), DEC-108/109 (the claim
+now sees imported rows too), DEC-125 (retires the ownership mask).
 
 ---
 

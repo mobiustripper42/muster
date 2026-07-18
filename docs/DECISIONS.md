@@ -3332,8 +3332,9 @@ overlap outlives the tool's usefulness.
 
 ## DEC-125: Virtual availability — the schedule is a rule, `Event` rows materialize on state; blackout is scoped blocks, not per-event toggles
 
-**Status:** Accepted (operator, 2026-07-16) — data-model shape; **pending @architect**. Corrects DEC-123's
-withdrawn "eager event generation" leg. See the v3 catalog mockup (`docs/design/mockups/offering-catalog.html`).
+**Status:** Accepted (operator, 2026-07-16) — data-model shape; **build resolved** (@architect, 2026-07-18,
+task 12.0 / PR #470 — see the build-resolution block at the end). Corrects DEC-123's withdrawn "eager event
+generation" leg. See the v3 catalog mockup (`docs/design/mockups/offering-catalog.html`).
 
 **Decision:** Muster does **not** materialize an `Event` row per potential departure. The `Offering` +
 schedule is a **rule**; open availability is **computed**, and a row is written only when a slot acquires
@@ -3403,6 +3404,30 @@ on the `Offering`.
 override's home; extra-guest price is `Offering`-level), DEC-123, **DEC-126** (the cutover that retires the
 ownership mask). **Open:** whether price variations stack (DEC-123 — operator: **no, ordered list, first
 match wins**, now settled in the catalog mockup); boat-selection policy (DEC-109).
+
+> **Build resolution (@architect, 2026-07-18, task 12.0 — PR #470).** 12.0 fixes the read model, reads-only:
+> - **Entities** (`src/domain/entities.ts` + `ids.ts`): id types `OfferingId`/`LocationId`/`BlockId`; `Offering`
+>   (`status` draft|live|hidden · `vesselIds` · `locationId` · `OfferingSchedule` {seasonStart, seasonEnd,
+>   weekdays[], departureTimes[]} · `basePriceCents` · ordered `PriceVariation[]` · `extraGuestPriceCents`);
+>   `Location`; and the **three-kind `Block` union** (`location` = date + time window · `vessel` = date range ·
+>   `vesselHold` = single slot, distinct from the DEC-109 checkout-hold).
+> - **Read ports** on both adapters: `listOfferings`/`getOffering`, `listLocations`/`getLocation`, `listBlocks`.
+>   **Writes + admin UI are deferred** — offerings → 12.8, locations → 12.9, blocks → 12.10, which **append**
+>   inert display/config fields (photos, add-ons, tax override, gratuity config; `Vessel.includedGuestCount`)
+>   **without redefining** these entities. Migration `20260718045012_reservation_catalog_tables.sql` lands the
+>   three tables additive + inert (DEC-111 posture; empty ⇒ zero behavior change).
+> - **Deriver** `deriveVirtualAvailability(input) → VirtualSlot[]` over `offerings × vessels × dateRange ×
+>   ownedDays − blocks − events − reservations`. Precedence: draft/hidden emit nothing → **owned-day mask** →
+>   **materialized `Event` wins its slot** (override recomputes price/capacity, booked is frozen; committed
+>   state beats blocks) → blocks subtract virtual-only → remainder `available`. Resolves the **display base**
+>   only (first-match variation, or an override `Event.price`); the **party fare** (base + extras ×
+>   `extraGuestPrice` + gratuity, DEC-124) is **booking-time, out of 12.0**.
+> - **Guardrail split:** 12.0 ships `slotIdentity(vessel,date,time)` + the deterministic `eventIdForSlot`
+>   helpers and documents the both-adapters uniqueness *contract*; **enforcement** (conditional insert on the
+>   slot identity, pg partial unique index, in-memory critical section) is **12.1**.
+> - `deriveAvailability` / `canBook` (the P11 seeded-`Event` path) are **untouched**; the old browse path is
+>   superseded when 12.8 repoints the calendar at the virtual deriver. Tests: **vitest unit only** (pure
+>   service-layer, no RLS/UI); 12.1's conditional-insert is where the DB-level (pgTAP/parity) test lands.
 
 ---
 

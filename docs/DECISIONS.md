@@ -3284,6 +3284,26 @@ drain. **The Xola + Muster union lives there, not in Muster.**
 empties naturally, then the subscription is cancelled). Its function moves into Muster only **after**
 Xola retires — a later phase, **not P12**.
 
+**Amendment (2026-07-18, operator + S56 poker — re-scopes the collect-and-expose leg).** The "collect +
+expose only; Muster builds no split/Gusto/report; the union lives in the extractor" model is narrowed:
+- **P12 (task 12.3): Muster generates its OWN Gusto report** — the even-split-per-crew + the Gusto CSV,
+  **lifted from `xola-tip-extractor`** (the code is done; getting it is the work) — for **Muster-side**
+  tips. So Muster **does** build the split + Gusto CSV in P12, **for its own tips** (this reverses "Muster
+  does NOT build the split/Gusto/report," on the Muster side). There is **no read contract** exposed to the
+  extractor and **no `muster-tip-extractor`** — "collect + expose" becomes "collect + Muster reports its
+  own."
+- **Deferred: the Xola tip reader / union.** During the transition the operator gets **two lists** —
+  Muster's Gusto report and the extractor's — and **adds them by hand** (as they did for ~2 years). The
+  in-Muster Muster+Xola union is **not** built for P12.
+- **End state (post-P12, at Xola sunset): the whole apparatus lives in Muster** — split, Gusto CSV, the
+  Muster+Xola **union**, and a single final Gusto export; the extractor's machinery moves in and it retires.
+  The **transition mechanism** (one combined export while both systems run) is **TBD**, deferred to the
+  Xola-sunset phase — not forced now.
+
+The DEC-124 core is unchanged (gratuity is first-class crew money, tax/fee-exempt, routes to crew). What
+changed is **who computes the payroll report and when**: Muster owns its own from P12; the union arrives at
+sunset.
+
 **Why the union lives there, not here:** for the whole overlap, tips exist in **both** systems. The tool
 that already does splits and emits the Gusto CSV is the cheapest place to union two readers. Building a
 parallel tip report in Muster during the drain duplicates a working tool and risks the worst bug in the
@@ -3403,10 +3423,14 @@ picture DEC-105 first painted. At cutover:
    Stripe (DEC-107). So a Muster reservation may point at money held in either system.
 3. **The ongoing Xola API pull STOPS.** Coexistence had a continuous pull (DEC-036/040); the cutover import
    is **one-time**, and after it there is no recurring import. Xola is no longer an input.
-4. **Muster can cancel a Xola-originated reservation.** Because an imported reservation's money lives in
-   Xola, cancelling it must reach into Xola (an API cancel/refund, or a flagged manual step) — Muster's
-   cancel path can't assume Stripe for imported rows. **`@architect`-gated:** how the cancel routes by the
-   reservation's money-home.
+4. **Muster can cancel a Xola-originated reservation — IN MUSTER, with no write to Xola** (operator,
+   2026-07-18). Today the operator can't cancel an imported reservation from Muster at all; after the import
+   they need a Muster-side cancel action (marks it cancelled, **frees the slot**). **Muster does NOT write
+   to Xola** — no API cancel/refund. The **money** side is the operator's **manual click in Xola** (they'll
+   already be in Xola for imported bookings). Which path a cancel takes is read off the existing **`source`
+   discriminator** (DEC-106): `source='muster'` → Stripe refund automated (DEC-107); `source='xola'` → the
+   UI says "refund this in Xola" and only frees the slot here. No new "money-home" flag — `source` already
+   carries it.
 5. **The cutover is REVERSIBLE — a hard rollback requirement.** If Muster-reservations is a total failure at
    go-live, we must be able to **cut back to Xola**. So the cutover must not destroy or mutate Xola's own
    records, and Muster's forward-book must be exportable/re-keyable back into Xola for the window where

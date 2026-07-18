@@ -12,13 +12,16 @@ import type {
   Admin,
   Ask,
   AuthSubjectKind,
+  Block,
   Credential,
   CrewMember,
   CrewStatus,
   Event,
+  Location,
   LoginCode,
   CalendarFeed,
   MusterOwnedVesselDay,
+  Offering,
   Payment,
   MagicToken,
   OutboxEntry,
@@ -37,10 +40,13 @@ import type {
 import { subjectKey } from "../domain/subject.js";
 import type {
   AskId,
+  BlockId,
   CredentialId,
   CrewMemberId,
   EventId,
+  LocationId,
   MagicTokenId,
+  OfferingId,
   OutboxEntryId,
   RingOutboxEntryId,
   NoticeOutboxEntryId,
@@ -89,6 +95,10 @@ export class InMemoryRepository implements Repository {
   readonly #ptoWindows = new Map<PtoWindowId, PtoWindow>();
   readonly #events = new Map<EventId, Event>();
   readonly #reservations = new Map<ReservationId, Reservation>();
+  /** Reservation catalog (DEC-123/125) — read-only surface in 12.0; writes 12.8–12.10. */
+  readonly #offerings = new Map<OfferingId, Offering>();
+  readonly #locations = new Map<LocationId, Location>();
+  readonly #blocks = new Map<BlockId, Block>();
   /** Muster-owned vessel-days (DEC-106), keyed `${vesselId}|${date}`. */
   readonly #musterOwnedVesselDays = new Map<string, MusterOwnedVesselDay>();
   readonly #payments = new Map<PaymentId, Payment>();
@@ -261,6 +271,25 @@ export class InMemoryRepository implements Repository {
   }
   async listEvents(): Promise<Event[]> {
     return [...this.#events.values()].map(clone);
+  }
+
+  // ── Reservation catalog (DEC-123/125) — read-only in 12.0 ───────────────────
+  async listOfferings(): Promise<Offering[]> {
+    return [...this.#offerings.values()].map(clone);
+  }
+  async getOffering(id: OfferingId): Promise<Offering | null> {
+    const o = this.#offerings.get(id);
+    return o ? clone(o) : null;
+  }
+  async listLocations(): Promise<Location[]> {
+    return [...this.#locations.values()].map(clone);
+  }
+  async getLocation(id: LocationId): Promise<Location | null> {
+    const l = this.#locations.get(id);
+    return l ? clone(l) : null;
+  }
+  async listBlocks(): Promise<Block[]> {
+    return [...this.#blocks.values()].map(clone);
   }
 
   // ── Coexistence partition — Muster-owned vessel-days (DEC-106) ───────────────

@@ -14,8 +14,11 @@ import type {
   Admin,
   Ask,
   AuthSubjectKind,
+  Block,
   CalendarFeed,
+  Location,
   MusterOwnedVesselDay,
+  Offering,
   Payment,
   Credential,
   CrewMember,
@@ -38,6 +41,8 @@ import type {
 } from "../domain/entities.js";
 import type {
   AskId,
+  LocationId,
+  OfferingId,
   CredentialId,
   CrewMemberId,
   EventId,
@@ -130,6 +135,18 @@ export interface Repository {
   /** Delete one PTO window — the add/remove surfaces (#332). Mirrors
    *  {@link removeCredential}: idempotent, no-op if the id is already gone. */
   removePtoWindow(id: PtoWindowId): Promise<void>;
+
+  // ── Reservation catalog — read-only in 12.0 (DEC-123/125) ──────────────────
+  // The virtual-availability read model (`deriveVirtualAvailability`) reads these.
+  // WRITES + admin UI land with the entity's own task: offerings 12.8, locations 12.9,
+  // blocks 12.10. Empty until then — like `muster_owned_vessel_days` was born empty.
+  listOfferings(): Promise<Offering[]>;
+  getOffering(id: OfferingId): Promise<Offering | null>;
+  listLocations(): Promise<Location[]>;
+  getLocation(id: LocationId): Promise<Location | null>;
+  /** Every availability block (location / vessel / vessel-hold) — the deriver's
+   *  subtraction set. */
+  listBlocks(): Promise<Block[]>;
 
   // ── Events ─────────────────────────────────────────────────────────────────
   saveEvent(event: Event): Promise<void>;

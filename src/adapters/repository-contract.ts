@@ -559,6 +559,16 @@ export function runRepositoryContract(
       expect(await repo.listMusterOwnedVesselDays()).toHaveLength(2);
     });
 
+    it("reservation catalog: reads are empty until 12.8–12.10 add writes (DEC-125)", async () => {
+      // Read-only surface in 12.0 — no write ports yet, so a fresh repo returns []/null
+      // on both adapters. Round-trip coverage lands with the entities' own write tasks.
+      expect(await repo.listOfferings()).toEqual([]);
+      expect(await repo.getOffering(asId<"OfferingId">("off-none"))).toBeNull();
+      expect(await repo.listLocations()).toEqual([]);
+      expect(await repo.getLocation(asId<"LocationId">("loc-none"))).toBeNull();
+      expect(await repo.listBlocks()).toEqual([]);
+    });
+
     it("reservations: nullable phone present and absent; listForEvent", async () => {
       await repo.saveReservation(reservation()); // no phone/email
       const got = await repo.getReservation(asId<"ReservationId">("resv-1"));

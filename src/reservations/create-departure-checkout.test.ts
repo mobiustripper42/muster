@@ -62,10 +62,12 @@ function slotCompleted(sessionId: string, vesselId: string, over: Partial<Checko
   };
 }
 
-function makeDeps(repo: InMemoryRepository): WebhookDeps & { alert: ReturnType<typeof vi.fn>; confirm: ReturnType<typeof vi.fn> } {
+function makeDeps(repo: InMemoryRepository, payments: FakePaymentPort = new FakePaymentPort()) {
   const alert = vi.fn(async (_m: string) => {});
   const confirm = vi.fn(async (_r: unknown) => {});
-  return { repo, payments: new FakePaymentPort(), now, alertPaidButUnbooked: alert, sendConfirmation: confirm, alert, confirm };
+  const soldOut = vi.fn(async (_c: unknown) => {});
+  const deps: WebhookDeps = { repo, payments, now, alertPaidButUnbooked: alert, sendConfirmation: confirm, notifyCustomerSoldOut: soldOut };
+  return { deps, alert, confirm, soldOut, payments };
 }
 
 describe("createDepartureCheckout — hold + slot metadata (12.1a)", () => {
@@ -114,7 +116,7 @@ describe("slot webhook path (12.1a) — materialize + claim under the backstop",
   it("booked: materializes the Event at its slot identity, claims, releases the hold, confirms once", async () => {
     const repo = await seededRepo();
     await createDepartureCheckout(repo, new FakePaymentPort(), req, URLS, now); // hold on small
-    const deps = makeDeps(repo);
+    const { deps, confirm, alert } = makeDeps(repo);
 
     const r = await processBookingWebhook(deps, JSON.stringify(slotCompleted("cs_1", "v-small")), FAKE_SIGNATURE);
     expect(r).toEqual({ handled: true, outcome: "booked" });
@@ -123,22 +125,22 @@ describe("slot webhook path (12.1a) — materialize + claim under the backstop",
     expect(await repo.getEvent(evId)).not.toBeNull(); // materialized
     expect((await repo.listReservationsForEvent(evId)).filter((x) => x.status === "booked")).toHaveLength(1);
     expect(await repo.listCheckoutHolds()).toHaveLength(0); // hold released
-    expect(deps.confirm).toHaveBeenCalledOnce();
-    expect(deps.alert).not.toHaveBeenCalled();
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(alert).not.toHaveBeenCalled();
   });
 
   it("redelivered webhook is idempotent — already, no second confirmation", async () => {
     const repo = await seededRepo();
-    const deps = makeDeps(repo);
+    const { deps, confirm } = makeDeps(repo);
     await processBookingWebhook(deps, JSON.stringify(slotCompleted("cs_1", "v-small")), FAKE_SIGNATURE);
     const again = await processBookingWebhook(deps, JSON.stringify(slotCompleted("cs_1", "v-small")), FAKE_SIGNATURE);
     expect(again).toEqual({ handled: true, outcome: "already" });
-    expect(deps.confirm).toHaveBeenCalledOnce(); // not re-notified
+    expect(confirm).toHaveBeenCalledOnce(); // not re-notified
   });
 
-  it("residual race: two paid sessions on the SAME boat-slot — one booked, one lost + alerted (12.1b refund seam)", async () => {
+  it("residual race: two paid sessions on the SAME boat-slot — one booked, one auto-refunded + notified (12.1b)", async () => {
     const repo = await seededRepo();
-    const deps = makeDeps(repo);
+    const { deps, alert, soldOut, payments } = makeDeps(repo);
     // Two customers both paid on the small boat (the hold expired for one mid-payment).
     const first = await processBookingWebhook(deps, JSON.stringify(slotCompleted("cs_1", "v-small")), FAKE_SIGNATURE);
     const second = await processBookingWebhook(deps, JSON.stringify(slotCompleted("cs_2", "v-small")), FAKE_SIGNATURE);
@@ -147,15 +149,55 @@ describe("slot webhook path (12.1a) — materialize + claim under the backstop",
     // exactly one booking on that boat — no oversell
     const evId = eventIdForSlot(SMALL, DATE, TIME);
     expect((await repo.listReservationsForEvent(evId)).filter((x) => x.status === "booked")).toHaveLength(1);
-    // the loser is flagged for a manual refund (12.1a tail; 12.1b auto-refunds)
-    expect(deps.alert).toHaveBeenCalledOnce();
+    // the loser (cs_2) is AUTO-refunded + told sold-out; the manual alert does NOT fire (12.1b)
+    expect(payments.refunds).toHaveLength(1);
+    expect(payments.refunds[0]!.idempotencyKey).toBe("refund_cs_2");
+    expect(soldOut).toHaveBeenCalledOnce();
+    expect(alert).not.toHaveBeenCalled();
     // both payments recorded (money moved on both)
     expect(await repo.listCheckoutHolds()).toHaveLength(0);
   });
 
+  it("redelivered losing webhook does NOT double-refund (keyed idempotency)", async () => {
+    const repo = await seededRepo();
+    const { deps, soldOut, payments } = makeDeps(repo);
+    await processBookingWebhook(deps, JSON.stringify(slotCompleted("cs_1", "v-small")), FAKE_SIGNATURE); // booked
+    await processBookingWebhook(deps, JSON.stringify(slotCompleted("cs_2", "v-small")), FAKE_SIGNATURE); // lost → refund
+    await processBookingWebhook(deps, JSON.stringify(slotCompleted("cs_2", "v-small")), FAKE_SIGNATURE); // redelivery
+    expect(payments.refunds).toHaveLength(1); // keyed on refund_cs_2 — no second refund
+    expect(soldOut).toHaveBeenCalledTimes(2); // notify re-fires (best-effort), refund does not
+  });
+
+  it("residual-race loss with NO payment_intent → manual alert, no auto-refund/notify", async () => {
+    const repo = await seededRepo();
+    const { deps, alert, soldOut, payments } = makeDeps(repo);
+    await processBookingWebhook(deps, JSON.stringify(slotCompleted("cs_1", "v-small")), FAKE_SIGNATURE); // booked
+    // cs_2 loses but carries no PaymentIntent → nothing to auto-refund against.
+    const noPi = { sessionId: "cs_2", amountTotalCents: 49900, currency: "usd", metadata: slotCompleted("cs_2", "v-small").metadata };
+    const lost = await processBookingWebhook(deps, JSON.stringify(noPi), FAKE_SIGNATURE);
+    expect(lost).toEqual({ handled: true, outcome: "lost" });
+    expect(alert).toHaveBeenCalledOnce();
+    expect(alert.mock.calls[0]![0]).toContain("REFUND MANUALLY");
+    expect(payments.refunds).toHaveLength(0);
+    expect(soldOut).not.toHaveBeenCalled();
+  });
+
+  it("residual race + auto-refund THROWS → falls back to the manual-refund alert", async () => {
+    const repo = await seededRepo();
+    const payments = new FakePaymentPort();
+    payments.refundError = new Error("stripe down");
+    const { deps, alert, soldOut } = makeDeps(repo, payments);
+    await processBookingWebhook(deps, JSON.stringify(slotCompleted("cs_1", "v-small")), FAKE_SIGNATURE); // booked
+    const lost = await processBookingWebhook(deps, JSON.stringify(slotCompleted("cs_2", "v-small")), FAKE_SIGNATURE);
+    expect(lost).toEqual({ handled: true, outcome: "lost" });
+    expect(alert).toHaveBeenCalledOnce();
+    expect(alert.mock.calls[0]![0]).toContain("REFUND MANUALLY");
+    expect(soldOut).not.toHaveBeenCalled(); // refund failed → no "you've been refunded" claim
+  });
+
   it("both boats sell independently — no cross-slot interference", async () => {
     const repo = await seededRepo();
-    const deps = makeDeps(repo);
+    const { deps } = makeDeps(repo);
     await processBookingWebhook(deps, JSON.stringify(slotCompleted("cs_1", "v-small")), FAKE_SIGNATURE);
     await processBookingWebhook(deps, JSON.stringify(slotCompleted("cs_2", "v-big")), FAKE_SIGNATURE);
     expect(await repo.getEvent(eventIdForSlot(SMALL, DATE, TIME))).not.toBeNull();

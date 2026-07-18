@@ -3,14 +3,16 @@ import { StripePaymentPort } from "@core/adapters/stripe-payment.js";
 import { PaymentSignatureError } from "@core/ports/payment.js";
 import { processBookingWebhook } from "@core/reservations/booking-webhook.js";
 import { sendReservationConfirmation } from "../../../lib/booking-confirmation";
+import { sendReservationSoldOutNotice } from "../../../lib/sold-out-notice";
 import { getRepo } from "../../../lib/repo";
 
 /**
  * Stripe `checkout.session.completed` webhook (DEC-107, 11.2) — the charge→booking spine.
  * Verifies the signature, writes the reservation under the atomic whole-boat claim
- * (11.3 `writeBooking`, keyed on the session id), and records the `Payment`. On a
- * paid-but-unbooked outcome it logs LOUDLY for a MANUAL refund — refunds are always
- * manual (Stripe dashboard); nothing here refunds automatically.
+ * (12.1a `writeSlotBooking`, keyed on the session id), and records the `Payment`. On a
+ * DEC-109 residual-race loss it AUTO-refunds (keyed-idempotent) + notifies the customer
+ * (12.1b, DEC-107 amended); the loud manual-refund alert is the fallback only when the
+ * auto-refund can't run.
  *
  * Rides `feature/reservations`; the public "Book Now" entry that produces these events is
  * gated behind the `RESERVATIONS` flag (DEC-111), so this route is inert until a checkout
@@ -40,11 +42,14 @@ export async function POST(req: Request): Promise<Response> {
         now: () => new Date().toISOString(),
         alertPaidButUnbooked: async (message) => {
           // Loud in the function logs. TODO: fan out to all active admins over SMS (the
-          // DEC-095 all-admins path, app/lib/alert.ts) — the refund itself stays manual.
+          // DEC-095 all-admins path, app/lib/alert.ts). Now the FALLBACK — only fires when
+          // the residual-race auto-refund can't run (no payment_intent / refund threw).
           console.error(`[reservations] ${message}`);
         },
         // Best-effort email + SMS of the manage link on a fresh booking (11.4, DEC-122).
         sendConfirmation: sendReservationConfirmation,
+        // Best-effort "sold out while you paid — fully refunded" on a residual-race loss (12.1b).
+        notifyCustomerSoldOut: sendReservationSoldOutNotice,
       },
       rawBody,
       signature,

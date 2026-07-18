@@ -4,9 +4,11 @@
  * `StripePaymentPort` and a `FakePaymentPort`. That's what makes the charge→booking spine
  * testable without hitting Stripe.
  *
- * **No `refund` method** — refunds are ALWAYS manual in the Stripe dashboard (operator
- * decision); nothing in Muster issues a programmatic refund. The port only takes money in
- * and parses the resulting webhook.
+ * **Refunds (DEC-107 amended, 12.1b):** the port issues a programmatic `refund` for the
+ * ONE unavoidable automatic case — the DEC-109 residual-race loser (both paid, one won the
+ * atomic claim; the loser is auto-refunded + told "sold out while you were paying"). All
+ * OTHER refunds remain operator-discretion, done manually in the Stripe dashboard. The
+ * refund is keyed-idempotent so a re-delivered webhook can't double-refund.
  */
 
 /**
@@ -52,9 +54,27 @@ export interface CheckoutCompleted {
   metadata: Record<string, string>;
 }
 
+export interface RefundInput {
+  /** The PaymentIntent to refund (from `CheckoutCompleted.paymentIntentId`). */
+  paymentIntentId: string;
+  /** Partial amount in cents; omit for a FULL refund. */
+  amountCents?: number;
+  /** Idempotency key — the same key returns the same refund, never a second one. The
+   *  webhook passes `refund_${sessionId}` so a Stripe redelivery of the losing session is a
+   *  no-op refund. */
+  idempotencyKey: string;
+}
+
 export interface PaymentPort {
   /** Create a hosted-Checkout session for one charge; returns the redirect URL. */
   createCheckoutSession(input: CreateCheckoutInput): Promise<CheckoutSession>;
+  /**
+   * Refund a captured payment (DEC-107 amended, 12.1b) — the residual-race auto-refund.
+   * Keyed-idempotent: a re-delivered webhook re-calls with the same `idempotencyKey` and
+   * gets the same refund back, never a double refund. Throws on a provider/network failure
+   * (the caller falls back to a loud manual-refund alert — never a silent unrefunded loss).
+   */
+  refund(input: RefundInput): Promise<{ refundId: string }>;
   /**
    * Verify the webhook signature and normalize the event. Returns the completed checkout
    * for a `checkout.session.completed` event, or **`null`** for any other (verified) event

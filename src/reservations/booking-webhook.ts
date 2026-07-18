@@ -35,11 +35,18 @@ export interface WebhookDeps {
   payments: PaymentPort;
   now: () => string;
   /**
-   * Loudly notify all active admins that a PAID customer has no booking and needs a manual
-   * refund (lost the boat, or a post-payment un-bookable). This is the alert, NOT the
-   * refund — refunds are always manual in the Stripe dashboard.
+   * Loudly notify all active admins that a PAID customer needs a MANUAL refund. Post-12.1b
+   * this is the FALLBACK, not the default: a residual-race loss is auto-refunded (below); this
+   * fires only when the auto-refund itself fails or there's no `paymentIntentId` to refund
+   * against, and for other unreconcilable money (e.g. an overpaid balance).
    */
   alertPaidButUnbooked: (message: string) => Promise<void>;
+  /**
+   * Tell the customer their departure sold out while they were paying and they've been fully
+   * refunded (DEC-109 residual race). Best-effort — a notify failure must never 500 the
+   * webhook (the refund already succeeded; a 500 would make Stripe retry the whole event).
+   */
+  notifyCustomerSoldOut: (completed: CheckoutCompleted) => Promise<void>;
   /**
    * Email + SMS the customer their booking-management link (11.4, DEC-122). Fires ONLY on a
    * fresh `booked` outcome — never on the idempotent `already` (Stripe redelivers
@@ -141,11 +148,52 @@ export async function processBookingWebhook(
     return { handled: true, outcome: result.outcome };
   }
 
-  // Paid but no booking (lost the race, or the event changed post-payment) → manual-refund alert.
-  const detail = result.outcome === "unbookable" ? `${result.outcome}/${result.reason}` : result.outcome;
+  const who = `${m.customerName || "customer"} party of ${partySize}`;
+
+  // The DEC-109 RESIDUAL RACE (`lost`): a hold expired mid-payment, another buyer took the
+  // freed slot and paid first, and this payment then completed. Both captured money, one won
+  // the atomic claim. The money moved (recorded above). AUTO-REFUND the loser + tell them
+  // "sold out while you were paying" (DEC-107 amended, 12.1b). The loud manual-refund alert
+  // is the FALLBACK, only when the refund can't run programmatically.
+  if (result.outcome === "lost") {
+    if (!completed.paymentIntentId) {
+      await deps.alertPaidButUnbooked(
+        `⚠️ Residual-race loss with NO payment_intent to auto-refund — Stripe session ` +
+          `${completed.sessionId}, ${who}. REFUND MANUALLY in Stripe.`,
+      );
+      return { handled: true, outcome: result.outcome };
+    }
+    try {
+      // Keyed on the session id ⇒ a redelivered losing-session webhook re-calls with the
+      // same key and Stripe returns the same refund (no double refund, DEC-107 amended).
+      await deps.payments.refund({
+        paymentIntentId: completed.paymentIntentId,
+        idempotencyKey: `refund_${completed.sessionId}`,
+      });
+    } catch (e) {
+      await deps.alertPaidButUnbooked(
+        `⚠️ Residual-race loss AND the auto-refund FAILED (${e instanceof Error ? e.message : "unknown error"}) — ` +
+          `Stripe session ${completed.sessionId}, ${who}. REFUND MANUALLY in Stripe.`,
+      );
+      return { handled: true, outcome: result.outcome };
+    }
+    // Refunded — tell the customer. Best-effort: a notify failure must not 500 (a retry would
+    // re-run this path, and the keyed refund would no-op, but re-notify needlessly).
+    try {
+      await deps.notifyCustomerSoldOut(completed);
+    } catch {
+      // swallowed by contract — the refund succeeded; a missing notice is not a 500
+    }
+    return { handled: true, outcome: result.outcome };
+  }
+
+  // Anomalous `unbookable` (event_missing / not_sellable / … — only reachable via the legacy
+  // seeded-Event path or a genuinely broken session). NOT auto-refunded — a human investigates
+  // (money may or may not have moved as expected). Loud manual-refund alert (architect ruling).
+  const detail = `${result.outcome}/${result.reason}`;
   await deps.alertPaidButUnbooked(
     `⚠️ Paid booking could NOT be placed (${detail}) — Stripe session ${completed.sessionId}, ` +
-      `${m.customerName || "customer"} party of ${partySize}. REFUND MANUALLY in Stripe.`,
+      `${who}. REFUND MANUALLY in Stripe.`,
   );
   return { handled: true, outcome: result.outcome };
 }

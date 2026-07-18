@@ -14,6 +14,7 @@ import {
   type CheckoutSession,
   type CreateCheckoutInput,
   type PaymentPort,
+  type RefundInput,
 } from "../ports/payment.js";
 
 export class StripePaymentPort implements PaymentPort {
@@ -46,6 +47,20 @@ export class StripePaymentPort implements PaymentPort {
     });
     if (!session.url) throw new Error("Stripe checkout session returned no url");
     return { id: session.id, url: session.url };
+  }
+
+  async refund(input: RefundInput): Promise<{ refundId: string }> {
+    // Keyed-idempotent (DEC-107 amended): Stripe dedupes on `idempotencyKey`, so a
+    // re-delivered losing-session webhook re-calls with `refund_${sessionId}` and gets the
+    // SAME refund back — never a second one. Omit `amount` for a full refund.
+    const refund = await this.#stripe.refunds.create(
+      {
+        payment_intent: input.paymentIntentId,
+        ...(input.amountCents !== undefined ? { amount: input.amountCents } : {}),
+      },
+      { idempotencyKey: input.idempotencyKey },
+    );
+    return { refundId: refund.id };
   }
 
   parseCheckoutCompleted(rawBody: string, signature: string): CheckoutCompleted | null {

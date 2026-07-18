@@ -41,17 +41,19 @@ const completed = (over: Partial<CheckoutCompleted> = {}): CheckoutCompleted => 
   ...over,
 });
 
-function makeDeps(repo: InMemoryRepository) {
+function makeDeps(repo: InMemoryRepository, payments: FakePaymentPort = new FakePaymentPort()) {
   const alert = vi.fn(async (_message: string) => {});
   const confirm = vi.fn(async (_reservation: unknown) => {});
+  const soldOut = vi.fn(async (_c: unknown) => {});
   const deps: WebhookDeps = {
     repo,
-    payments: new FakePaymentPort(),
+    payments,
     now: NOW,
     alertPaidButUnbooked: alert,
     sendConfirmation: confirm,
+    notifyCustomerSoldOut: soldOut,
   };
-  return { deps, alert, confirm };
+  return { deps, alert, confirm, soldOut, payments };
 }
 
 describe("processBookingWebhook", () => {

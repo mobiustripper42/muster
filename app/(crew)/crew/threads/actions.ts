@@ -13,6 +13,7 @@ import { threadMembership } from "@core/crewapp/thread-list.js";
 import { readSubject } from "../../../lib/auth";
 import { getRepo, getPresence } from "../../../lib/repo";
 import { TENANT_ID } from "../../../lib/tenant";
+import { messagingEnabled } from "../../../lib/flags";
 
 /**
  * Post a message into a thread (#117, §10). Driven by a <form action> — no client
@@ -24,6 +25,7 @@ import { TENANT_ID } from "../../../lib/tenant";
  * post marks the thread read (cancel-on-read, §7.2) and records presence (DEC-047).
  */
 export async function postMessage(formData: FormData): Promise<void> {
+  if (!messagingEnabled()) return; // messaging disabled (#389) — inert
   const subject = await readSubject();
   if (!subject || subject.kind !== "crew") return;
 
@@ -73,6 +75,7 @@ export async function postMessage(formData: FormData): Promise<void> {
  * Lands you in the (possibly empty) thread to compose.
  */
 export async function startDm(formData: FormData): Promise<void> {
+  if (!messagingEnabled()) return; // messaging disabled (#389) — inert
   const subject = await readSubject();
   if (!subject || subject.kind !== "crew") return;
 

@@ -7,7 +7,7 @@ import { Notice } from "../../../components/ui/notice";
 import { Shell } from "../../../components/ui/shell";
 import { VersionTag } from "../../../components/ui/version-tag";
 import { readSubject } from "../../lib/auth";
-import { selfServeEnabled } from "../../lib/flags";
+import { selfServeEnabled, messagingEnabled } from "../../lib/flags";
 import { LOGIN_EMAIL_COOKIE } from "../../lib/login-cookie";
 import {
   SMS_CONSENT_FIELD,
@@ -96,11 +96,15 @@ export default async function CrewHome({
       new Date(),
     );
     // In-app unread badge (§7.6) — best-effort: a messaging hiccup must never
-    // break the crew member's home (asks/shifts are the priority surface).
+    // break the crew member's home (asks/shifts are the priority surface). Skipped
+    // entirely when messaging is disabled (#389) — the badge is hidden anyway, so
+    // the thread-list query is pure waste.
     try {
-      unreadTotal = (
-        await buildThreadList(repo, asId<"CrewMemberId">(subject.id), TENANT_ID, new Date())
-      ).totalUnread;
+      unreadTotal = messagingEnabled()
+        ? (
+            await buildThreadList(repo, asId<"CrewMemberId">(subject.id), TENANT_ID, new Date())
+          ).totalUnread
+        : 0;
     } catch {
       unreadTotal = 0;
     }
@@ -424,27 +428,30 @@ function CrewApp({
       </header>
 
       {/* Messages (§7.6 in-app): a calm entry point with the unread count — an
-          accent pill, never an alarm color (the anxiety-dashboard guard). */}
-      <AppLink
-        href="/crew/threads"
-        prefetch={false}
-        spinner="overlay"
-        className="relative flex items-center justify-between rounded-card border border-line bg-card px-4 py-3 shadow-sm"
-      >
-        <span className="font-semibold text-ink">Messages</span>
-        {unreadTotal > 0 ? (
-          <span
-            className="rounded-full bg-accent px-2 py-0.5 text-xs font-bold text-white"
-            aria-label={`${unreadTotal} unread`}
-          >
-            {unreadTotal}
-          </span>
-        ) : (
-          <span className="text-faint" aria-hidden>
-            ›
-          </span>
-        )}
-      </AppLink>
+          accent pill, never an alarm color (the anxiety-dashboard guard). Hidden
+          when messaging is disabled (#389). */}
+      {messagingEnabled() && (
+        <AppLink
+          href="/crew/threads"
+          prefetch={false}
+          spinner="overlay"
+          className="relative flex items-center justify-between rounded-card border border-line bg-card px-4 py-3 shadow-sm"
+        >
+          <span className="font-semibold text-ink">Messages</span>
+          {unreadTotal > 0 ? (
+            <span
+              className="rounded-full bg-accent px-2 py-0.5 text-xs font-bold text-white"
+              aria-label={`${unreadTotal} unread`}
+            >
+              {unreadTotal}
+            </span>
+          ) : (
+            <span className="text-faint" aria-hidden>
+              ›
+            </span>
+          )}
+        </AppLink>
+      )}
 
       {/* Time off (#332, DEC-009): a quiet self-serve entry — set the dates you're
           off. Neutral, never accent — it's a utility, not a summons, and

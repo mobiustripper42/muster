@@ -13,6 +13,19 @@ export function selfServeEnabled(): boolean {
 }
 
 /**
+ * `MESSAGING` (#389): the in-app messaging feature (crew↔crew DMs, the operator
+ * "from the office" broadcast, threads, and the doorbell that rings about them).
+ * **OFF by default** — a deliberate kill switch (operator's call 2026-07-12): the
+ * entry points don't render, the `/crew/threads` + `/admin/messages` routes 404,
+ * and the doorbell sweep no-ops (so it can't ring about pre-existing unread
+ * threads once the buttons are gone). The code is all left in place — flip
+ * `MESSAGING=1` to restore the whole feature. e2e sets it on to keep exercising it.
+ */
+export function messagingEnabled(): boolean {
+  return process.env.MESSAGING === "1";
+}
+
+/**
  * True on any PRODUCTION deploy — Vercel prod (`VERCEL_ENV`) or a self-hosted
  * prod (`next start` with no `VERCEL_ENV`, `NODE_ENV=production`). The single
  * predicate the dev-only affordances gate on (dev-link's inline copy, the

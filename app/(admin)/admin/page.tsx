@@ -6,6 +6,7 @@ import { AdminSignedOut } from "../../../components/admin/admin-signed-out";
 import { VersionTag } from "../../../components/ui/version-tag";
 import { readSubject } from "../../lib/auth";
 import { getRepo } from "../../lib/repo";
+import { messagingEnabled } from "../../lib/flags";
 import { setEnginePaused } from "./actions";
 
 /**
@@ -77,12 +78,14 @@ export default async function AdminHome({
       >
         Outbox — asks waiting on your text →
       </AppLink>
-      <AppLink
-        href="/admin/messages"
-        className="rounded-card border border-line bg-card px-4 py-3 font-semibold text-accent shadow-sm"
-      >
-        Messages — post to crew &amp; read every thread →
-      </AppLink>
+      {messagingEnabled() && (
+        <AppLink
+          href="/admin/messages"
+          className="rounded-card border border-line bg-card px-4 py-3 font-semibold text-accent shadow-sm"
+        >
+          Messages — post to crew &amp; read every thread →
+        </AppLink>
+      )}
       <AppLink
         href="/admin/import"
         className="rounded-card border border-line bg-card px-4 py-3 font-semibold text-accent shadow-sm"

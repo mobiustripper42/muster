@@ -115,6 +115,9 @@ export default defineConfig({
       // Crew self-serve code login (DEC-081) is flag-gated OFF in prod until 7.0b
       // wires real email; the e2e env is where we exercise it, so turn it on.
       CREW_SELF_SERVE: "1",
+      // Messaging (#389) is disabled in prod (kill switch, off by default), but the
+      // code stays and its e2e specs must keep exercising it — turn it on here.
+      MESSAGING: "1",
       // Blank Twilio so notice/SMS e2e uses the OUTBOX channel, not live Twilio.
       // `.env.local` (auto-loaded by next dev/start) holds real Twilio creds for
       // the live-SMS smoke (#242/#252); without this override the notice path

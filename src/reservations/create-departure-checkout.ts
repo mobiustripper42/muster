@@ -95,14 +95,17 @@ export async function createDepartureCheckout(
   );
   const priceCents = slotEvent?.price ?? resolveBasePrice(offering!, hold.date);
 
-  // Compose the party fare (DEC-112, 12.2): base + extra-guests × extraGuestPrice. `priceCents`
-  // is the per-departure BASE (→ Event.price, frozen); the FARE is what we charge. Tax is on
-  // the fare, not the base. Vessel is non-null (the hold assigned a real, fitting boat).
+  // Compose the party fare (DEC-112 / DEC-125 build note, 12.2): base + extra-guests ×
+  // extraGuestPrice. `priceCents` is the per-departure BASE (→ Event.price, frozen); the FARE
+  // is what we charge. Tax is on the fare, not the base. The vessel is guaranteed non-null —
+  // the hold assigned a real, fitting boat (`candidateVessels` filters to existing vessels) —
+  // so assert it (a null must THROW, never silently zero extras and undercharge).
   const vessel = await repo.getVessel(hold.vesselId);
+  if (!vessel) throw new Error(`held vessel ${String(hold.vesselId)} not found — cannot price fare`);
   const fare = composeFare({
     baseCents: priceCents,
     guestCount: req.guestCount,
-    includedGuestCount: vessel ? effectiveIncludedGuests(vessel) : req.guestCount,
+    includedGuestCount: effectiveIncludedGuests(vessel),
     extraGuestPriceCents: offering!.extraGuestPriceCents,
   });
 

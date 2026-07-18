@@ -72,7 +72,8 @@ export interface Vessel {
   /** Certificate-of-Inspection max passengers. BrewBoat = 6. */
   coiMaxPax: number;
   /**
-   * Base-fare included guest count (DEC-112 pricing composition, 12.2) — the whole-boat
+   * Base-fare included guest count (DEC-125 build note pricing composition, over DEC-112's
+   * per-Event price; 12.2) — the whole-boat
    * base fare covers up to this many guests; each guest ABOVE it adds
    * `Offering.extraGuestPriceCents`, up to `coiMaxPax`. Optional/nullable: absent ⇒ treated
    * as `coiMaxPax` (the whole boat is included, no per-guest extras) — the safe default for

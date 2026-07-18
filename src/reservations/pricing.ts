@@ -1,7 +1,9 @@
 /**
- * Party-fare composition (Phase 12.2, DEC-112 / DEC-125 build note) — the BOOKING-TIME
- * price the customer actually pays, deliberately kept OUT of the availability deriver (which
- * resolves only the display base per slot, DEC-125). A departure sells the whole boat at a
+ * Party-fare composition (Phase 12.2) — the BOOKING-TIME price the customer actually pays.
+ * The formula is fixed by the **DEC-125 build note** ("base fare + `extraGuestPrice` per guest
+ * over N"); DEC-112 established the per-`Event` base price it composes over. Deliberately kept
+ * OUT of the availability deriver (which resolves only the display base per slot, DEC-125). A
+ * departure sells the whole boat at a
  * **base fare up to the vessel's included guest count**, plus a per-guest surcharge for each
  * guest above it, to the boat's COI cap:
  *

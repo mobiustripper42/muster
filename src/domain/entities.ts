@@ -71,6 +71,16 @@ export interface Vessel {
   name: string;
   /** Certificate-of-Inspection max passengers. BrewBoat = 6. */
   coiMaxPax: number;
+  /**
+   * Base-fare included guest count (DEC-125 build note pricing composition, over DEC-112's
+   * per-Event price; 12.2) — the whole-boat
+   * base fare covers up to this many guests; each guest ABOVE it adds
+   * `Offering.extraGuestPriceCents`, up to `coiMaxPax`. Optional/nullable: absent ⇒ treated
+   * as `coiMaxPax` (the whole boat is included, no per-guest extras) — the safe default for
+   * vessels seeded before pricing composition. Booking-time only; the availability deriver
+   * never reads it (it prices the display base only, DEC-125).
+   */
+  includedGuestCount?: number;
   /** The manning rule as a list; the seat builder loops it (DEC-ROLE-1). */
   manning: ManningRequirement[];
 }

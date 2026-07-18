@@ -127,6 +127,7 @@ const toVessel = (r: any): Vessel => ({
   id: asId<"VesselId">(r.id),
   name: r.name,
   coiMaxPax: r.coi_max_pax,
+  ...opt("includedGuestCount", r.included_guest_count),
   manning: (r.manning as { roleTypeId: string; count: number }[]).map((m) => ({
     roleTypeId: asId<"RoleTypeId">(m.roleTypeId),
     count: m.count,
@@ -507,9 +508,10 @@ export class PostgresRepository implements Repository {
   // ── Vessels ────────────────────────────────────────────────────────────────
   async saveVessel(v: Vessel): Promise<void> {
     await this.#pool.query(
-      `insert into vessels(id, name, coi_max_pax, manning) values ($1,$2,$3,$4)
-       on conflict (id) do update set name=excluded.name, coi_max_pax=excluded.coi_max_pax, manning=excluded.manning`,
-      [v.id, v.name, v.coiMaxPax, JSON.stringify(v.manning)],
+      `insert into vessels(id, name, coi_max_pax, included_guest_count, manning) values ($1,$2,$3,$4,$5)
+       on conflict (id) do update set name=excluded.name, coi_max_pax=excluded.coi_max_pax,
+         included_guest_count=excluded.included_guest_count, manning=excluded.manning`,
+      [v.id, v.name, v.coiMaxPax, v.includedGuestCount ?? null, JSON.stringify(v.manning)],
     );
   }
   async getVessel(id: VesselId): Promise<Vessel | null> {

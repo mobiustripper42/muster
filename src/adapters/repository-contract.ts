@@ -299,6 +299,16 @@ export function runRepositoryContract(
       expect((await repo.listVessels())).toHaveLength(1); // upsert, not insert
     });
 
+    it("vessel: includedGuestCount round-trips present and absent (DEC-112, 12.2)", async () => {
+      await repo.saveVessel(vessel()); // no includedGuestCount
+      expect("includedGuestCount" in (await repo.getVessel(VESSEL))!).toBe(false); // omitted, not null
+      await repo.saveVessel({ ...vessel(), includedGuestCount: 8 });
+      expect((await repo.getVessel(VESSEL))!.includedGuestCount).toBe(8);
+      // clearing it back to unset round-trips as absent again
+      await repo.saveVessel(vessel());
+      expect("includedGuestCount" in (await repo.getVessel(VESSEL))!).toBe(false);
+    });
+
     it("crew: optional fields present and absent round-trip; null score preserved", async () => {
       await repo.saveCrewMember(crew()); // minimal — no email/boost/override
       const got = await repo.getCrewMember(CREW);

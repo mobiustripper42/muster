@@ -16,6 +16,7 @@ import type { Repository } from "../ports/repository.js";
 import { resolveBasePrice, slotIdentity } from "./availability.js";
 import { acquireDepartureHold } from "./claim.js";
 import { chargeNowCents, taxCentsFor } from "./payment-config.js";
+import { composeFare, effectiveIncludedGuests } from "./pricing.js";
 
 export interface DepartureCheckoutRequest {
   offeringId: OfferingId;
@@ -94,9 +95,23 @@ export async function createDepartureCheckout(
   );
   const priceCents = slotEvent?.price ?? resolveBasePrice(offering!, hold.date);
 
+  // Compose the party fare (DEC-112 / DEC-125 build note, 12.2): base + extra-guests ×
+  // extraGuestPrice. `priceCents` is the per-departure BASE (→ Event.price, frozen); the FARE
+  // is what we charge. Tax is on the fare, not the base. The vessel is guaranteed non-null —
+  // the hold assigned a real, fitting boat (`candidateVessels` filters to existing vessels) —
+  // so assert it (a null must THROW, never silently zero extras and undercharge).
+  const vessel = await repo.getVessel(hold.vesselId);
+  if (!vessel) throw new Error(`held vessel ${String(hold.vesselId)} not found — cannot price fare`);
+  const fare = composeFare({
+    baseCents: priceCents,
+    guestCount: req.guestCount,
+    includedGuestCount: effectiveIncludedGuests(vessel),
+    extraGuestPriceCents: offering!.extraGuestPriceCents,
+  });
+
   const config = await repo.getPaymentConfig();
-  const taxCents = taxCentsFor(priceCents, config.taxRateBps);
-  const amountCents = chargeNowCents(priceCents, taxCents, config);
+  const taxCents = taxCentsFor(fare.fareCents, config.taxRateBps);
+  const amountCents = chargeNowCents(fare.fareCents, taxCents, config);
   const kind = config.depositMode === "deposit" ? "deposit" : "full";
 
   const session = await payments.createCheckoutSession({
@@ -114,7 +129,9 @@ export async function createDepartureCheckout(
       date: hold.date,
       time: hold.time,
       guestCount: String(req.guestCount),
+      // The per-departure BASE (→ frozen `Event.price`); extras are billed on top (12.2).
       priceCents: String(priceCents),
+      extrasCents: String(fare.extrasCents),
       kind,
       taxCents: String(taxCents),
       customerName: req.customerName,

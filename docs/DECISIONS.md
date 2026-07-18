@@ -2647,6 +2647,22 @@ Stripe account or a separate one** (payout/tax/reconciliation-against-Xola impli
 tax/fees; cancellation / no-show terms. **Revisit if:** deposit auto-charge (saved card) becomes worth the
 off-session-decline handling, or refund volume justifies pulling §3.3 in-house.
 
+**Amendment (2026-07-18, @architect + operator — task 12.1b, under DEC-109):** the "refunds are ALWAYS
+manual" posture is **narrowed** — Muster now issues **one** programmatic refund automatically. The DEC-109
+**residual-race loser** (two customers both paid, one won the atomic whole-boat claim; the loser cannot be
+booked) is **auto-refunded + told "sold out while you were paying — fully refunded."** This is the reversal
+already directed by the operator ([[customer-self-refund-reverses-manual]]) plus the DEC-109 amendment; a
+silent unrefunded loss was never acceptable, and a human-in-the-loop manual refund for a race the engine
+caused is the wrong default. **Mechanism:** `PaymentPort.refund({paymentIntentId, amountCents?,
+idempotencyKey})` (Stripe `refunds.create` + Fake), **keyed-idempotent** (`refund_${sessionId}`) so a
+re-delivered webhook can't double-refund; the webhook `lost` branch refunds → notifies, and the loud
+**manual-refund alert becomes the FALLBACK** (fires only when there's no PaymentIntent or the refund call
+throws). **Still manual (unchanged):** every OTHER refund — operator-discretion cancels, the §3.3 refund
+**cascade** (still parked), disputes/chargebacks (§3.4), and anomalous `unbookable` outcomes
+(event_missing, unknown purpose) which stay on the loud manual-alert path. This lifts the refund
+*mechanism* DEC-107 always anticipated ("charge **+ refund** are a port … lift from sailbook"); it does
+**not** un-park the cascade.
+
 ---
 
 ## DEC-108: Public surface `app/(public)` + single-flip "Book Now" entry (instant Xola rollback)

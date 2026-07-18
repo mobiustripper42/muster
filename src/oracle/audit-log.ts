@@ -24,6 +24,8 @@ import type {
   AuditEventType,
 } from "../domain/audit.js";
 import type { Repository } from "../ports/repository.js";
+import type { FormResult } from "../builder/form-shifts.js";
+import { formAuditChanges, type CrewAuditType } from "../builder/form-audit.js";
 
 /**
  * Deterministic id from the event's natural key (subject · actor · type · time ·
@@ -109,4 +111,38 @@ export function logShiftChanged(
   metadata: AuditEventMetadata = {},
 ): Promise<AuditEvent> {
   return recordAuditEvent(repo, crewMemberId, actor, "shift_changed", now, metadata);
+}
+
+/**
+ * Audit every crew transition a `formShifts` run observed (DEC-118) — the audit
+ * counterpart of `forwardFormNotices`. Consumes the pure `formAuditChanges`
+ * mapping and dispatches each to its logger, best-effort per row (a failed append
+ * drops that row, never the others, and never the caller's already-committed
+ * mutation). Shared by every edge that reshapes shifts — the Xola pull and the
+ * manual split/merge — so a new such edge audits by calling this, not by
+ * re-deriving the mapping and (as history shows) missing a transition.
+ *
+ * The operator is NOT excluded (unlike the notice path): the audit records
+ * who-did-what-to-whom regardless of who drove it. `extraMeta` rides every row
+ * (e.g. the import `runId`).
+ */
+export async function logFormAudit(
+  repo: Repository,
+  form: FormResult,
+  actor: AuditActor,
+  now: Date,
+  extraMeta: AuditEventMetadata = {},
+): Promise<void> {
+  const loggers: Record<CrewAuditType, typeof logShiftChanged> = {
+    shift_changed: logShiftChanged,
+    crew_removed: logCrewRemoved,
+    crew_added: logCrewAdded,
+  };
+  for (const { crewMemberId, shiftId, type } of formAuditChanges(form)) {
+    try {
+      await loggers[type](repo, crewMemberId, actor, now, { shiftId, ...extraMeta });
+    } catch (e) {
+      console.error("[audit] form-audit append failed (mutation stands):", e);
+    }
+  }
 }

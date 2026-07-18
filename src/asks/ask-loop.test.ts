@@ -806,3 +806,53 @@ describe("refreshShiftState — terminal shifts never resurrect (cancel/complete
     expect(await shiftState(SHIFT)).toBe("Completed");
   });
 });
+
+describe("out-raced by a self-claim (#440)", () => {
+  // #440 lets a crew member self-claim a seat that already has an outstanding
+  // ask, so an asked member can answer a seat that's already gone. The operator
+  // rule: ANY In or Out scores a + — the response is credited on its own terms,
+  // regardless of whether the seat survived. Silence is the only sin.
+  it("an 'In' to a seat someone else already took still credits ask_accepted", async () => {
+    const asked = await addCrew("crew-asked");
+    const claimer = await addCrew("crew-claimer");
+    const [seatId] = await addShift(1);
+
+    const asks = await broadcastAsk(repo, seatId!, T0);
+    const theirAsk = asks.find((a) => a.crewMemberId === asked)!;
+
+    // Somebody else takes the seat out from under the ask (what claimSeat does).
+    await repo.saveSeat({
+      ...(await repo.getSeat(seatId!))!,
+      state: "Confirmed",
+      assignedCrewMemberId: claimer,
+      acquiredVia: "self_claim",
+    });
+
+    const out = await recordResponse(repo, theirAsk.id, "accepted", later(3000));
+    expect(out).toMatchObject({ claimed: false, reason: "already_filled" });
+    // The seat didn't move — but the willingness was still scored.
+    expect(await types(asked)).toEqual(["ask_sent", "ask_accepted"]);
+    expect((await repo.getSeat(seatId!))!.assignedCrewMemberId).toBe(claimer);
+  });
+
+  it("an 'Out' to a seat someone else already took still credits ask_declined", async () => {
+    const asked = await addCrew("crew-asked");
+    const claimer = await addCrew("crew-claimer");
+    const [seatId] = await addShift(1);
+
+    const asks = await broadcastAsk(repo, seatId!, T0);
+    const theirAsk = asks.find((a) => a.crewMemberId === asked)!;
+
+    await repo.saveSeat({
+      ...(await repo.getSeat(seatId!))!,
+      state: "Confirmed",
+      assignedCrewMemberId: claimer,
+      acquiredVia: "self_claim",
+    });
+
+    await recordResponse(repo, theirAsk.id, "declined", later(3000));
+    expect(await types(asked)).toEqual(["ask_sent", "ask_declined"]);
+    // The claimer keeps the seat — a decline never reopens a held seat.
+    expect(await seatState(seatId!)).toBe("Confirmed");
+  });
+});

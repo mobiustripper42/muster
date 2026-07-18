@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Muster — Mockups</title>
+<style>
+  :root{
+    --bg:#eef2f6; --card:#ffffff; --ink:#101826; --muted:#5b6675; --faint:#93a0b0; --line:#e7ebf1;
+    --accent:#2f5d86; --ok:#157a3a; --ok-bg:#e7f4ec; --ok-line:#cbe6d5;
+    --warn:#92400e; --warn-bg:#fbf0db; --warn-line:#f0ddb4;
+    --radius:14px;
+    --sans:"IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    --mono:"IBM Plex Mono", ui-monospace, monospace;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{background:var(--bg); color:var(--ink); font-family:var(--sans); font-size:14px; line-height:1.45;
+       -webkit-font-smoothing:antialiased}
+  .wrap{max-width:900px; margin:0 auto; padding:26px 16px 60px}
+  h1{font-size:22px; font-weight:600; letter-spacing:-.01em}
+  .sub{color:var(--muted); font-size:13px; margin-top:2px}
+
+  h2{font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:var(--faint);
+     font-weight:600; margin:26px 0 8px}
+  .list{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden}
+  a.row{display:flex; align-items:flex-start; gap:12px; padding:11px 14px; text-decoration:none;
+        color:var(--ink); border-top:1px solid #f2f5f8}
+  a.row:first-child{border-top:0}
+  a.row:hover{background:#f5f8fb}
+  .nm{font-size:14px; font-weight:500}
+  .nm .file{font-family:var(--mono); font-size:11px; color:var(--faint); margin-left:7px}
+  .mid{flex:1; min-width:0}
+  .why{font-size:12px; color:var(--muted); margin-top:2px}
+  .pill{font-size:10px; font-weight:600; letter-spacing:.05em; text-transform:uppercase;
+        padding:3px 8px; border-radius:99px; border:1px solid var(--line); background:#f6f8fa;
+        color:var(--muted); flex:none; white-space:nowrap; margin-top:1px}
+  .pill.ok{background:var(--ok-bg); border-color:var(--ok-line); color:var(--ok)}
+  .pill.open{background:var(--warn-bg); border-color:var(--warn-line); color:var(--warn)}
+  .chev{color:#c3ccd6; flex:none}
+  .note{margin-top:22px; font-size:12px; color:var(--faint)}
+  .note code{font-family:var(--mono)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Muster — Mockups</h1>
+  <div class="sub">Static. Nothing is wired. Served from <code>docs/design/mockups/</code>.</div>
+
+  <h2>Reservations (P12) — approved</h2>
+  <div class="list">
+    <a class="row" href="vessel.html">
+      <span class="mid"><span class="nm">Vessel<span class="file">vessel.html</span></span>
+      <div class="why">One Vessel — the crew engine's own, sourced from Xola today, from this table when Xola dies. No vessel photos.</div></span>
+      <span class="pill ok">approved</span><span class="chev">›</span></a>
+    <a class="row" href="offerings-list.html">
+      <span class="mid"><span class="nm">Offerings list<span class="file">offerings-list.html</span></span>
+      <div class="why">Just a list — no filter, no sort, no sold-out. Dormant at one offering (customer skips straight to the picker).</div></span>
+      <span class="pill ok">approved</span><span class="chev">›</span></a>
+    <a class="row" href="location.html">
+      <span class="mid"><span class="nm">Location<span class="file">location.html</span></span>
+      <div class="why">Pickup + route. Map link only — no photo, no lat-long. One tenant time zone.</div></span>
+      <span class="pill ok">approved</span><span class="chev">›</span></a>
+    <a class="row" href="offering-catalog.html">
+      <span class="mid"><span class="nm">Offering catalog<span class="file">offering-catalog.html</span></span>
+      <div class="why">The global definition. Price variations don’t stack — ordered list, first match wins. Two gratuity kinds.</div></span>
+      <span class="pill ok">approved</span><span class="chev">›</span></a>
+    <a class="row" href="blocks.html">
+      <span class="mid"><span class="nm">Blocks<span class="file">blocks.html</span></span>
+      <div class="why">Scoped availability subtractions + the single registry for all blocks. Location = everything there; no recurring, make N.</div></span>
+      <span class="pill ok">approved</span><span class="chev">›</span></a>
+    <a class="row" href="purchases-customers.html">
+      <span class="mid"><span class="nm">Purchases &amp; customers<span class="file">purchases-customers.html</span></span>
+      <div class="why">Order = one boat = one reservation. Customer keyed by phone (unique key, surrogate PK). "Message" via the customer sender (#119).</div></span>
+      <span class="pill ok">approved</span><span class="chev">›</span></a>
+    <a class="row" href="reservation-calendar.html">
+      <span class="mid"><span class="nm">Reservation calendar — desktop<span class="file">reservation-calendar.html</span></span>
+      <div class="why">Day grid, boat columns × times. Open / Booked / Blacked-out filter.</div></span>
+      <span class="pill ok">approved</span><span class="chev">›</span></a>
+    <a class="row" href="reservation-calendar-mobile.html">
+      <span class="mid"><span class="nm">Reservation calendar — mobile<span class="file">reservation-calendar-mobile.html</span></span>
+      <div class="why">375px. Time-grouped list + booking screen. Not the grid squished.</div></span>
+      <span class="pill ok">approved</span><span class="chev">›</span></a>
+    <a class="row" href="availability-picker.html">
+      <span class="mid"><span class="nm">Availability picker<span class="file">availability-picker.html</span></span>
+      <div class="why">Customer browse-and-pick. Published to Drew.</div></span>
+      <span class="pill ok">approved</span><span class="chev">›</span></a>
+    <a class="row" href="booking-form.html">
+      <span class="mid"><span class="nm">Booking form<span class="file">booking-form.html</span></span>
+      <div class="why">Customer detail entry. Published to Drew.</div></span>
+      <span class="pill ok">approved</span><span class="chev">›</span></a>
+    <a class="row" href="booking-manage.html">
+      <span class="mid"><span class="nm">Booking — manage<span class="file">booking-manage.html</span></span>
+      <div class="why">The living link (DEC-122) — where post-trip gratuity lives.</div></span>
+      <span class="pill ok">approved</span><span class="chev">›</span></a>
+    <a class="row" href="booking-recovery.html">
+      <span class="mid"><span class="nm">Booking — link recovery<span class="file">booking-recovery.html</span></span>
+      <div class="why">“Lost your link?” → re-send to the contact on file (bearer-token model).</div></span>
+      <span class="pill ok">approved</span><span class="chev">›</span></a>
+  </div>
+
+  <h2>Crew engine (built — reference)</h2>
+  <div class="list">
+    <a class="row" href="At-Risk%20Board.html"><span class="mid"><span class="nm">At-Risk board<span class="file">At-Risk Board.html</span></span></span><span class="chev">›</span></a>
+    <a class="row" href="At-Risk%20Board%20Mobile.html"><span class="mid"><span class="nm">At-Risk board — mobile<span class="file">At-Risk Board Mobile.html</span></span></span><span class="chev">›</span></a>
+    <a class="row" href="Assignment%20View.html"><span class="mid"><span class="nm">Assignment view<span class="file">Assignment View.html</span></span></span><span class="chev">›</span></a>
+    <a class="row" href="Assignment%20View%20Mobile.html"><span class="mid"><span class="nm">Assignment view — mobile<span class="file">Assignment View Mobile.html</span></span></span><span class="chev">›</span></a>
+    <a class="row" href="Assignment%20View-print.html"><span class="mid"><span class="nm">Assignment view — print<span class="file">Assignment View-print.html</span></span></span><span class="chev">›</span></a>
+    <a class="row" href="Shift%20Builder.html"><span class="mid"><span class="nm">Shift builder<span class="file">Shift Builder.html</span></span></span><span class="chev">›</span></a>
+    <a class="row" href="Crew%20App.html"><span class="mid"><span class="nm">Crew app<span class="file">Crew App.html</span></span></span><span class="chev">›</span></a>
+    <a class="row" href="Crew%20Roster.html"><span class="mid"><span class="nm">Crew roster<span class="file">Crew Roster.html</span></span></span><span class="chev">›</span></a>
+    <a class="row" href="Crew%20Roster%20Mobile.html"><span class="mid"><span class="nm">Crew roster — mobile<span class="file">Crew Roster Mobile.html</span></span></span><span class="chev">›</span></a>
+    <a class="row" href="Event%20Admin.html"><span class="mid"><span class="nm">Event admin<span class="file">Event Admin.html</span></span></span><span class="chev">›</span></a>
+  </div>
+
+  <div class="note">
+    “Approved” = no open questions left in the mockup’s own notes. <code>booking-manage</code> and
+    <code>booking-recovery</code> have no opens but were never committed — worth confirming they were
+    actually reviewed, not just never questioned.
+  </div>
+
+</div>
+</body>
+</html>

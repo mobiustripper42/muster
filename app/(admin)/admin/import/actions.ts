@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { XolaError } from "@core/import/xola-client.js";
 import type { XolaPullResult } from "@core/import/xola-pull.js";
-import { logShiftChanged } from "@core/oracle/audit-log.js";
+import { logFormAudit } from "@core/oracle/audit-log.js";
 import { readSubject } from "../../../lib/auth";
 import { persistImportRun } from "../../../lib/import-audit";
 import { getRepo } from "../../../lib/repo";
@@ -70,20 +70,14 @@ export async function pullFromXola(): Promise<void> {
     console.error("[xola-pull] audit persist failed (import succeeded):", e);
   }
 
-  // Crew audit (#400, DEC-118): each crew whose shift's trips an import CHANGED
-  // gets a `shift_changed` row, actor `importer:xola`. Best-effort, post-commit —
-  // the import already stands; a failed audit append drops rows, never the pull.
-  // Emitted here (not in runXolaPull) so the reviewable `runId` rides the metadata.
-  for (const { crewMemberId, shiftId } of result.form.changedCrew) {
-    try {
-      await logShiftChanged(repo, crewMemberId, { kind: "importer", id: "xola" }, now, {
-        shiftId,
-        ...(runId ? { runId } : {}),
-      });
-    } catch (e) {
-      console.error("[xola-pull] crew audit append failed (import succeeded):", e);
-    }
-  }
+  // Crew audit (#400, DEC-118): every crew transition an import drove gets an audit
+  // row, actor `importer:xola` (shift_changed / crew_removed / crew_added). Best-
+  // effort, post-commit — the import already stands. Emitted here (not in
+  // runXolaPull) so the reviewable `runId` rides the metadata. Previously only
+  // `changedCrew` was logged, so an import that CANCELLED a shift removed its crew
+  // with no `crew_removed` row — the "you're off" SMS fired but left no audit trail,
+  // unlike an admin vacate.
+  await logFormAudit(repo, result.form, { kind: "importer", id: "xola" }, now, runId ? { runId } : {});
 
   revalidatePath("/admin/at-risk");
   redirect(runId ? `/admin/import/run/${runId}` : "/admin/import?ximported=1");

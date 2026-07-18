@@ -23,6 +23,7 @@ import { addDays, vesselDateOf } from "../config/tenant.js";
 import type { Seat } from "../domain/entities.js";
 import type { CrewMemberId, SeatId } from "../domain/ids.js";
 import {
+  CLAIMABLE_SEAT_STATES,
   CLAIMABLE_SHIFT_STATES,
   CLAIMABLE_WINDOW_DAYS,
 } from "../oracle/claimable.js";
@@ -93,7 +94,7 @@ export async function claimSeat(
     !CLAIMABLE_SHIFT_STATES.has(shift.state) ||
     shift.date < today ||
     shift.date > until ||
-    seat.state !== "Open" ||
+    !CLAIMABLE_SEAT_STATES.has(seat.state) || // uncommitted: Open/Asked/Bailed (#440)
     seat.kind !== "required" ||
     seat.role !== nativeRole(crew) // native-role-only door (DEC-076)
   ) {
@@ -145,7 +146,14 @@ export async function claimSeat(
   }
 
   // Guarded first-come transition (DEC-078 / REQ-CLAIM-1): write Confirmed ONLY
-  // if the seat is still Open. Loser of a race gets a clean "just taken".
+  // if the seat is still in the state we validated. Loser of a race gets a clean
+  // "just taken".
+  //
+  // Pinned to `seat.state`, not the literal `"Open"` (#440): a claimable seat can
+  // now be Open, Asked or Bailed, and the CAS must guard whichever one we actually
+  // read. Pinning the read state keeps first-come atomic across all three — if the
+  // engine asks an Open seat, or anyone commits it, between our read and this
+  // write, the swap fails rather than clobbering the newer state.
   const confirmed: Seat = {
     ...seat,
     state: "Confirmed",
@@ -154,7 +162,7 @@ export async function claimSeat(
     // "Added for you" — that badge fires only on `acquiredVia === "operator"`.
     acquiredVia: "self_claim",
   };
-  const won = await repo.saveSeatIfState(confirmed, "Open");
+  const won = await repo.saveSeatIfState(confirmed, seat.state);
   if (!won) return { code: "just_taken" };
   await refreshShiftState(repo, seat.shiftId);
   return { code: null, seat: confirmed };

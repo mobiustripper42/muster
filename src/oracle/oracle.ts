@@ -33,8 +33,13 @@ import { rankEligibleIds } from "./reliability-score.js";
 
 /** Seat states that mean a person is already committed for double-booking (§1.3).
  * `Asked` is excluded — an outstanding ask isn't a commitment (they may decline);
- * `Open`/`Bailed` hold nobody. */
-const COMMITTED_SEAT_STATES = new Set(["Claimed", "Confirmed"]);
+ * `Open`/`Bailed` hold nobody.
+ *
+ * Exported because it is also the definition self-claim reads *inverted*:
+ * `CLAIMABLE_SEAT_STATES` (claimable.ts) is literally the complement — a seat is
+ * claimable exactly when nobody is committed to it (#440). One definition, so the
+ * two can't drift. */
+export const COMMITTED_SEAT_STATES = new Set(["Claimed", "Confirmed"]);
 
 /** The eligible pool for one required seat: who passes, and why the rest failed. */
 export interface SeatPool {
@@ -60,6 +65,14 @@ export async function committedDatesByCrew(
   const shifts = await repo.listShifts();
   for (const shift of shifts) {
     if (shift.id === excludeShiftId) continue;
+    // A Cancelled shift is not a commitment. Its seats are deliberately KEPT
+    // (for resurrection — form-shifts `restoredCrew`), so a crew member the cancel
+    // dropped still carries a Confirmed seat here; counting it would read them as
+    // double-booked on that date and bar them from the very shift they were moved
+    // to (a boat reassignment cancels the old vessel-day and forms a new one). The
+    // claimable-list scan already excludes Cancelled shifts — this makes the
+    // availability scan agree. (Completed stays a real same-day commitment.)
+    if (shift.state === "Cancelled") continue;
     const seats = await repo.listSeatsForShift(shift.id);
     for (const seat of seats) {
       if (!seat.assignedCrewMemberId) continue;

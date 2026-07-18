@@ -43,17 +43,22 @@ test.describe("crew /crew/open — pick up a shift", () => {
     await page.goto(ALL);
 
     // The Claim button lives inside a CLOSED <details> (out of the a11y tree until
-    // opened), so open the row by its summary first, then claim.
-    const summary = page.locator("summary", { hasText: "Hops" });
-    await expect(summary).toBeVisible();
-    await summary.click();
+    // opened), so open the row by its summary first, then claim. Scoped by the
+    // 1:00 departure: since #440 the Asked seat on `shift-ask` lists too, so
+    // "Hops" alone matches two rows.
+    const row = page.locator("details", { hasText: "1:00" });
+    await expect(row.locator("summary")).toBeVisible();
+    await row.locator("summary").click();
 
     // The confirm sheet states the DEC-077 scope (whole-day + live trip count).
-    await expect(page.getByText(/including any trips added or cancelled later/i)).toBeVisible();
+    // Scoped to the row — every listed row carries this copy.
+    await expect(
+      row.getByText(/including any trips added or cancelled later/i),
+    ).toBeVisible();
     // The facts line specifically (the "(" disambiguates from the collapsed count).
-    await expect(page.getByText(/2 trips \(/i)).toBeVisible();
+    await expect(row.getByText(/2 trips \(/i)).toBeVisible();
 
-    await page.getByRole("button", { name: /claim this shift/i }).click();
+    await row.getByRole("button", { name: /claim this shift/i }).click();
 
     // Lands on /crew, the seat now a confirmed row in My shifts (§2.6.2).
     await page.waitForURL((u) => u.pathname === "/crew");
@@ -71,7 +76,8 @@ test.describe("crew /crew/open — pick up a shift", () => {
     await signInAsCrew(page, "crew-quint");
     await page.goto(ALL);
 
-    const row = page.locator("details", { hasText: "Hops" });
+    // Scoped by the 1:00 departure — #440 lists the Asked seat's row too.
+    const row = page.locator("details", { hasText: "1:00" });
     // The DEC-086 vessel identity dot the row was missing before 9.11b.
     await expect(row.locator('span[class*="bg-vessel-"]')).toBeVisible();
     // First-departure time is the collapsed row's hero (seed shift-open: 1pm & 4pm),
@@ -96,13 +102,15 @@ test.describe("crew /crew/open — pick up a shift", () => {
     // The claimable seat now sits under a day-section header (not a flat stack).
     // Date-agnostic: the seed shift is ~7d out, so assert the header SHAPE — a
     // full weekday + the per-day open count — and that the Hops row is under it.
-    const dayHeader = page.getByRole("heading", { level: 2 });
+    // #440 lists a second row (the Asked seat, a different day) → one header per
+    // day, so scope to the first.
+    const dayHeader = page.getByRole("heading", { level: 2 }).first();
     await expect(dayHeader).toBeVisible();
     await expect(dayHeader).toContainText(
       /^(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday),/,
     );
     await expect(dayHeader).toContainText("open");
-    await expect(page.locator("details", { hasText: "Hops" })).toBeVisible();
+    await expect(page.locator("details", { hasText: "1:00" })).toBeVisible();
   });
 
   test("a since-taken claim shows the clean 'just taken' message", async ({
@@ -119,5 +127,49 @@ test.describe("crew /crew/open — pick up a shift", () => {
     await signInAsCrew(page, "crew-quint");
     await page.goto("/crew/open?claim_error=conflict");
     await expect(page.getByText(/already have a shift that day/i)).toBeVisible();
+  });
+});
+
+test.describe("crew /crew/open — uncrewed seats stay visible (#440)", () => {
+  test.beforeEach(async () => {
+    await resetAndSeed("crew");
+  });
+
+  test("a seat the engine has already asked on still lists — an ask is not a reservation", async ({
+    page,
+  }) => {
+    await signInAsCrew(page, "crew-quint");
+    await page.goto(ALL);
+
+    // The seed's `shift-ask` (~16d out, Filling) carries an ASKED required captain
+    // seat — Quint's own outstanding ask. Before #440 the Asked state hid it from
+    // the browse surface entirely: uncrewed, but invisible. It lists now: two rows,
+    // the Asked one identified by its trip-less "TBD" departure (it has no events).
+    await expect(page.locator("details")).toHaveCount(2);
+    await expect(
+      page.locator("summary", { hasText: "1:00" }), // shift-open, the Open seat
+    ).toBeVisible();
+    await expect(
+      page.locator("summary", { hasText: "TBD" }), // shift-ask, the Asked seat
+    ).toBeVisible();
+  });
+
+  test("claiming a seat that has an outstanding ask confirms the claimer", async ({
+    page,
+  }) => {
+    await signInAsCrew(page, "crew-quint");
+    await page.goto(ALL);
+
+    // Open the trip-less row (the Asked seat) and claim it. The confirm sheet
+    // names the whole-day scope and says the trips aren't scheduled yet.
+    const askedRow = page.locator("details", { hasText: "TBD" });
+    await askedRow.locator("summary").click();
+    await expect(askedRow.getByText(/No trips are scheduled yet\./)).toBeVisible();
+    await askedRow.getByRole("button", { name: /claim this shift/i }).click();
+
+    // It lands in My shifts like any other claim — the outstanding ask never
+    // reserved the seat against him.
+    await page.waitForURL((u) => u.pathname === "/crew");
+    await expect(page.locator('a[href="/crew/shift/shift-ask"]')).toBeVisible();
   });
 });

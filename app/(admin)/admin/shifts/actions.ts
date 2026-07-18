@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { splitShift } from "@core/builder/split.js";
 import { mergeShift } from "@core/builder/merge.js";
 import { asId } from "@core/domain/ids.js";
+import { logCrewRemoved, logFormAudit } from "@core/oracle/audit-log.js";
 import { readSubject } from "../../../lib/auth";
 import { forwardFormNotices, forwardNoticesToOutbox } from "../../../lib/channel";
 import { OPERATOR_CREW_MEMBER_ID } from "../../../lib/operator";
@@ -39,6 +40,14 @@ export async function splitAction(formData: FormData): Promise<void> {
       await forwardFormNotices(form);
     } catch {
       // relay is best-effort; the split stands regardless (DEC-084)
+    }
+    // Audit (DEC-118): a split re-partitions a day's trips, so its surviving crew's
+    // committed day may move (`changedCrew` → `shift_changed`), actor `admin`. Same
+    // best-effort, post-commit posture as the relay and the import audit.
+    try {
+      await logFormAudit(getRepo(), form, { kind: "admin", id: subject!.id }, new Date());
+    } catch {
+      // audit is best-effort; the split stands regardless
     }
     param = "split_ok=1";
   } catch {
@@ -101,6 +110,24 @@ export async function mergeAction(formData: FormData): Promise<void> {
       await forwardFormNotices(form);
     } catch {
       // best-effort; the merge stands regardless (DEC-084)
+    }
+    // Audit (DEC-118), mirroring the two relays above so no removal is unlogged:
+    //  - `form` covers side A's "shift changed" (changedCrew → shift_changed);
+    //  - `freedCrew` are the dropped side-B crew — they live in freedCrew, NOT
+    //    form.cancelledCrew (side A survives the re-form), so they'd be missed by
+    //    the form audit alone. Log each a `crew_removed`, actor `admin`. Unlike the
+    //    notice, the operator is NOT excluded (audit records who-did-what-to-whom).
+    const now = new Date();
+    const actor = { kind: "admin" as const, id: subject!.id };
+    try {
+      await logFormAudit(getRepo(), form, actor, now);
+      for (const crewMemberId of freedCrew) {
+        await logCrewRemoved(getRepo(), crewMemberId, actor, now, {
+          shiftId: asId<"ShiftId">(shiftId),
+        });
+      }
+    } catch {
+      // audit is best-effort; the merge stands regardless
     }
     // Surface the count so the page can confirm who got told (button feedback, #202).
     param = `merge_ok=${toNotify.length}`;

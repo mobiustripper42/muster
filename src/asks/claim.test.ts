@@ -164,10 +164,52 @@ describe("claimSeat (DEC-075/078)", () => {
     expect((await claimSeat(repo, c, seatId, NOW)).code).toBe("not_claimable");
   });
 
-  it("a seat on a non-Pending/Filling shift is not claimable", async () => {
+  it("a seat on a Crewed shift is not claimable", async () => {
+    const c = await crew("c", [MATE]);
+    const sh = await shift("sh", { state: "Crewed" });
+    const seatId = await seat(sh, "seat-1", { role: MATE });
+
+    expect((await claimSeat(repo, c, seatId, NOW)).code).toBe("not_claimable");
+  });
+
+  it("a seat on an AtRisk shift IS claimable — short-handed and closing in (#440)", async () => {
     const c = await crew("c", [MATE]);
     const sh = await shift("sh", { state: "AtRisk" });
     const seatId = await seat(sh, "seat-1", { role: MATE });
+
+    expect((await claimSeat(repo, c, seatId, NOW)).code).toBeNull();
+    expect((await repo.getSeat(seatId))?.state).toBe("Confirmed");
+  });
+
+  it("an Asked seat IS claimable — an outstanding ask is not a reservation (#440)", async () => {
+    const c = await crew("c", [MATE]);
+    const sh = await shift("sh");
+    const seatId = await seat(sh, "seat-1", { role: MATE, state: "Asked" });
+
+    expect((await claimSeat(repo, c, seatId, NOW)).code).toBeNull();
+    const fresh = await repo.getSeat(seatId);
+    expect(fresh?.state).toBe("Confirmed");
+    expect(String(fresh?.assignedCrewMemberId)).toBe(String(c));
+  });
+
+  it("a Bailed seat IS claimable (#440)", async () => {
+    const c = await crew("c", [MATE]);
+    const sh = await shift("sh");
+    const seatId = await seat(sh, "seat-1", { role: MATE, state: "Bailed" });
+
+    expect((await claimSeat(repo, c, seatId, NOW)).code).toBeNull();
+    expect((await repo.getSeat(seatId))?.state).toBe("Confirmed");
+  });
+
+  it("a Confirmed seat is not claimable — somebody holds it (#440)", async () => {
+    const c = await crew("c", [MATE]);
+    const held = await crew("held", [MATE]);
+    const sh = await shift("sh");
+    const seatId = await seat(sh, "seat-1", {
+      role: MATE,
+      state: "Confirmed",
+      assigned: held,
+    });
 
     expect((await claimSeat(repo, c, seatId, NOW)).code).toBe("not_claimable");
   });

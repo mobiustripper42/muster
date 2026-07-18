@@ -21,7 +21,7 @@ import type {
   Shift,
 } from "../domain/entities.js";
 import type { SeatState } from "../domain/states.js";
-import { eligiblePool, solveShift } from "./oracle.js";
+import { committedDatesByCrew, eligiblePool, solveShift } from "./oracle.js";
 import { logShiftCompleted } from "./reliability-log.js";
 
 const CAPTAIN = asId<"RoleTypeId">("role-captain");
@@ -206,5 +206,47 @@ describe("solveShift — the composite shared-pool rule (DEC-003)", () => {
     const sol = await solveShift(repo, shiftId, NOW);
     expect(sol.satisfiable).toBe(true);
     expect(sol.assignment!.get(seatIds[0]!)).toBe(b);
+  });
+});
+
+describe("committedDatesByCrew — a Cancelled shift is not a commitment", () => {
+  it("skips a Confirmed seat on a Cancelled shift, so its dropped crew stay free", async () => {
+    // The bug: a boat reassignment cancels the old vessel-day but KEEPS its seats
+    // (for resurrection). The crew member the cancel dropped still carries a
+    // Confirmed seat on the dead shift — counting it read them as double-booked on
+    // that date and barred them from the replacement shift they were moved to.
+    const eric = await addCrew("crew-eric");
+    const { shiftId, seatIds } = await addShift("shift-brew-4", 1, DATE);
+    await assign(seatIds[0]!, eric, "Confirmed");
+    const shift = await repo.getShift(shiftId);
+    await repo.saveShift({ ...shift!, state: "Cancelled" });
+
+    const committed = await committedDatesByCrew(repo);
+    expect(committed.get(eric)?.has(DATE) ?? false).toBe(false);
+  });
+
+  it("still counts a Confirmed seat on a live (non-cancelled) shift", async () => {
+    const eric = await addCrew("crew-eric");
+    const { seatIds } = await addShift("shift-brew-1", 1, DATE); // born Pending
+    await assign(seatIds[0]!, eric, "Confirmed");
+
+    const committed = await committedDatesByCrew(repo);
+    expect(committed.get(eric)?.has(DATE)).toBe(true);
+  });
+
+  it("end to end: the only captain, cancelled off one boat, can still crew the replacement", async () => {
+    // The user's exact case: both trips move Brew 4 → Brew 1; the Brew 4 shift
+    // cancels (keeping Eric's Confirmed seat), a Brew 1 shift forms. Eric is the
+    // lone captain — before the fix his stale Brew 4 seat double-booked him out of
+    // Brew 1, leaving it unsolvable.
+    const eric = await addCrew("crew-eric");
+    const brew4 = await addShift("shift-brew-4", 1, DATE);
+    await assign(brew4.seatIds[0]!, eric, "Confirmed");
+    await repo.saveShift({ ...(await repo.getShift(brew4.shiftId))!, state: "Cancelled" });
+
+    const brew1 = await addShift("shift-brew-1", 1, DATE);
+    const sol = await solveShift(repo, brew1.shiftId, NOW);
+    expect(sol.satisfiable).toBe(true);
+    expect(sol.assignment!.get(brew1.seatIds[0]!)).toBe(eric);
   });
 });

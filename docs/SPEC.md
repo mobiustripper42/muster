@@ -45,7 +45,7 @@ Muster be built perfect for one niche (BrewBoat) and still be sellable later wit
 - The **behavioral substrate** — shift/seat state machine, availability oracle, reliability score
   (§1), written as the canonical reference the surfaces cite.
 - **Event Admin** — the imported events + reservations data layer everything reads from.
-- **Shift Builder** — reservations/events → reviewable, lockable shifts.
+- **Shift Builder** — reservations/events → reviewable ~~, lockable~~ shifts. *(Lock cut — DEC-082.)*
 - **Assignment View** — the per-shift crewing cockpit.
 - **At-Risk Board** — the cross-shift triage worklist.
 - **Crew App** — the three crew-facing surfaces (the ask, my shifts, the shift card).
@@ -56,26 +56,51 @@ Muster be built perfect for one niche (BrewBoat) and still be sellable later wit
 
 **Parked — inherited deferrals, not reopened here (full list in §4):**
 
-- The **customer portal** — sketch only, Tier 4, off-season 26/27. Builds last; not on the
-  critical path because 2026 reservations arrive via CSV.
+- ~~The **customer portal** — sketch only, Tier 4, off-season 26/27. Builds last; not on the
+  critical path because 2026 reservations arrive via CSV.~~ — **REOPENED by DEC-105 (2026-07-11).**
+  Muster takes real paid reservations **in 2026**, alongside Xola: **Phase 11** service layer, **Phase 12**
+  the real customer UI. Two phases (**DEC-126, 2026-07-17**): a **pilot coexistence** (Muster sells a subset
+  alongside Xola), then a **cutover** — a one-time full import of Xola's reservations into Muster, after
+  which Muster is the reservation source of truth (the cutover is reversible). 2026 reservations do **not**
+  arrive via CSV — that's the live Xola **API pull** (DEC-036/037/043), which stops at the cutover.
 - **Payments topology internals** — deposit-vs-full, refund-schedule numbers, Stripe integration
   detail. Only the admin-facing *surfaces* of payments are in scope.
 - **Native vs PWA** for the crew app — decided at the infrastructure stage.
 - **Historical Xola data migration** — leaning read-only archive.
-- The **Xola API bolt-on** — killed; write-back to Xola is manual in 2026 (the "enter these in
-  Xola" sheet).
+- ~~The **Xola API bolt-on** — killed~~ — **UN-KILLED by DEC-036 (2026-06-15)**, which explicitly
+  flags this line as needing correction: the kill rested on DEC-011's belief that the API was
+  unreliable and hard to extract from (traced to faulty "crewbook" info), **falsified by a working,
+  tested client proven live**. The read-only API pull is now the primary ingest. *(Write-back to Xola
+  stays manual — the "enter these in Xola" sheet — since the pull is read-only.)*
 
 A "full spec" session tempts re-speccing the deferred work. The discipline is that this document
 *inherits* those deferrals; it does not relitigate them.
 
 ## 0.3 The 2026/2027 arc (context the surfaces assume)
 
-- **2026 — coexistence.** Xola owns bookings/money/waivers. A CSV export from Xola is imported
-  into Event Admin and **auto-formed into shifts** by the same grouping logic that runs live in
-  2027. Muster crews those shifts for real. Crew are also assigned as **guides in Xola** (manual
-  write-back from a Muster-emitted sheet) because the guest manifest still lives in Xola.
-- **2027 — Muster takes bookings.** Shifts auto-form from Muster's own live feed; the CSV step
-  evaporates. Same shift-builder surface, different input source.
+> **⚠️ Reconciled 2026-07-15 (S54), revised 2026-07-17 (S56, DEC-126).** The 2026/2027 arc below is
+> **superseded by DEC-105 + DEC-126**: Muster takes real paid reservations **in 2026**. The shape is
+> **coexistence → cutover**, not the old "2027 switch": first a **pilot coexistence** (Muster sells a
+> subset alongside Xola, `source`-discriminated — DEC-106); then a **cutover** (DEC-126) — a **one-time
+> full import** of Xola's reservations into Muster, after which **Muster is the reservation source of
+> truth**, the ongoing Xola pull stops, and money stays in Xola only for imported bookings. The cutover is
+> **reversible** (rollback to Xola if it fails). *(This revises the S54 "permanent coexistence, no cutover,
+> drains naturally" wording — that was the pilot half; DEC-126 adds the flip, which does include a one-time
+> migration.)* The ingest is the API pull, not a CSV (DEC-036/037/043).
+
+- **2026 — coexistence.** Xola owns bookings/money/waivers ~~. A CSV export from Xola is imported~~
+  — **corrected:** a **live Xola API pull** (DEC-036/037; CSV retired, DEC-043) imports into Event
+  Admin and **auto-forms shifts**. Muster crews those shifts for real. Crew are also assigned as
+  **guides in Xola** (manual write-back from a Muster-emitted sheet) because the guest manifest still
+  lives in Xola. **Added (DEC-105):** from Phase 11, Muster *also* sells its own reservations on
+  Muster-owned vessel-days, alongside the imports, discriminated by `source` (DEC-106).
+- ~~**2027 — Muster takes bookings.** Shifts auto-form from Muster's own live feed; the CSV step
+  evaporates. Same shift-builder surface, different input source.~~ — **corrected (DEC-105/126): this is
+  2026, via coexistence → cutover, not a dated switch.** During the pilot, Muster-native and Xola-sourced
+  events coexist. At the **cutover** (DEC-126) Xola's reservations are imported once, the pull stops, and
+  Muster owns reservations; the import path dies at the cutover, not on a calendar date. The shift builder
+  was always source-agnostic,
+  which is what makes the drain a non-event for it.
 - **The hinge** that ends the Xola split: the day the crew-facing **manifest** (guest name +
   count per event) lives on Muster's shift card, crew stop needing Xola. Pull the manifest early.
 
@@ -471,11 +496,27 @@ view of their standing and credential nudges lives in the crew app, §2.6, readi
 > the thing both the shift builder and the crew manifest read from. A **data-management** surface,
 > not a second booking system.
 
+> **⚠️ Reconciled 2026-07-15 (S54).** This section was written for a world that no longer exists: the
+> **CSV bridge** (retired — DEC-043 killed the `.xlsx` path; ingest is a manual Xola **API pull** at
+> `/admin/import`, DEC-036/037), a **2027** customer portal (reservations went live in **2026** —
+> DEC-105, Phases 11/12), and **shift locking** (cut — Xola is source of truth, so a "reviewed/locked"
+> stamp is meaningless). The paragraphs below are corrected in place; where a claim was load-bearing and
+> is now wrong, it says so rather than being quietly deleted. **"Reservation" here means the imported,
+> Xola-sourced kind.** Muster-native reservations are a different animal — see
+> `docs/design/reservations-model.md`, `reservations-admin.md`, and DEC-105–113 / DEC-123 / DEC-124.
+
 ### Purpose
-Hold the **imported** events and reservations (from the 2026 Xola CSV bridge) and be the single
-data layer the rest of Muster reads — shift builder reads **events**, crew manifest reads
-**reservations**. Allow light manual maintenance between CSV syncs. In 2027 the customer portal
-becomes the thing that writes reservations here directly; the CSV path retires, this layer stays.
+Hold the **imported** events and reservations and be the single data layer the rest of Muster reads —
+shift builder reads **events**, crew manifest reads **reservations**. Allow light manual maintenance
+between syncs.
+
+**Corrected:** ingest is the **live Xola API pull** (DEC-036/037), not a CSV bridge. **There is no
+spreadsheet path at all** — DEC-036/037 kept the `.xlsx` reader as a Xola-downtime fallback, but
+**DEC-043 retired it outright** (it can't resolve a boat, and a fallback that collapses four boats into
+one event is worse than no fallback). And the customer portal that writes reservations here directly is
+**not a 2027 event** — it is **Phase 11/12, now** (DEC-105). Both source-of-write paths coexist
+permanently: Xola-sourced imports drain as Xola drains, Muster-native reservations arrive alongside
+them, discriminated by `source` (DEC-106). This layer stays either way — that part held.
 
 ### States to render
 - **Event list** — events grouped by date (and filterable by boat), each showing boat · day · time ·
@@ -483,56 +524,80 @@ becomes the thing that writes reservations here directly; the CSV path retires, 
 - **Event detail** — one event with its reservations: each reservation's customer **name, party
   size, phone**. This is the per-event manifest source (name + phone; **waivers not needed for
   crew** — §0.4).
-- **Import result** — after a CSV import, what was added / updated / skipped, and any rows that
-  couldn't be parsed (so a dirty export is visible, not silently dropped).
+- **Import result** — after an import, what was added / updated / skipped, and any records that
+  couldn't be parsed (so a dirty source is visible, not silently dropped).
 
 ### Actions
-- **Import** events + reservations from CSV (bulk, ~1–2×/week) — with reconciliation against what's
-  already there (see edge cases).
-- **Manually add / cancel a single reservation** — the odd phone booking or cancellation between
-  syncs.
-- **Manually add / edit an event** — the odd schedule change (extra sailing, cancelled slot).
+- **Import** events + reservations — the operator-triggered Xola **API pull** at `/admin/import`
+  (DEC-036/037), with reconciliation against what's already there (see edge cases). *(Was: CSV upload,
+  ~1–2×/week. The pull window is `[today−1, today+lead+1]`. No `.xlsx` fallback — DEC-043 retired it.)*
+- ~~**Manually add / cancel a single reservation**~~ · ~~**Manually add / edit an event**~~ —
+  **STRUCK by DEC-043.** Its operator trust model is explicit: *"auto-import stays, Xola is the single
+  source of truth; a bad boat assignment is fixed **in Xola + 'Pull now'** — no Muster-side
+  staging/override."* There is **no Muster-side manual write** to a Xola-sourced event or reservation;
+  the odd phone booking is fixed in Xola and re-pulled. *(This is the same reasoning that cut locking —
+  you don't hand-edit a projection of someone else's source of truth.)* A **Muster-native** reservation
+  is not this section's business at all — it belongs to the reservations purchases surface (DEC-123).
 - **Browse** events with their reservations — also how Spink eyeballs the weekend before building
   shifts.
 
-Deliberately **out of scope here:** pricing, payment capture, marketing, customer comms. Those are
-Xola's job in 2026 or the portal/payments work later.
+Deliberately **out of scope here:** marketing. **Corrected:** pricing, payment capture, and customer
+comms were parked as "Xola's job in 2026 or the portal/payments work later" — that expired with
+DEC-105. They are now **Muster's**, but they live in the **reservations** surfaces (per-event price
+DEC-112, Stripe DEC-107, the `Offering` catalog DEC-123, tips DEC-124), **not here**. This section stays
+what it always was: the **data layer under the crew engine**, not a booking system.
 
 ### Data read
-- Written by the **CSV bridge** (coexistence §2) and, in 2027, by the **customer portal**.
+- Written by the **Xola API pull** (DEC-036/037/043 — *was: the CSV bridge*) and, for
+  `source='muster'` rows, by the **reservations service** (**Phase 11/12, now** — *was: "in 2027, by
+  the customer portal"*; DEC-105/106).
 - Read by the **shift builder** (§2.3, reads events) and the **crew manifest** on the shift card
   (§2.6, reads reservations grouped per event).
 
 ### Edge cases
 - **Re-import reconciliation.** A reservation already imported, now changed or cancelled in Xola,
-  must update/cancel in place — not duplicate. (Mirrors the "late booking joins a locked shift"
-  nudge, §2.3.)
-- **Manual entry clobbered by re-import.** A reservation Spink hand-added between syncs must **not**
-  be wiped by the next CSV import. Needs an explicit **merge rule** — manual entries are preserved
-  or reconciled, never silently overwritten. *(Merge rule shape is an open question, §2.2 below /
-  carried from event-admin §5.)*
-- **Dirty / partial CSV.** Unparseable rows surface in the import result for Spink to fix by hand,
-  rather than failing the whole import or dropping rows silently.
+  must update/cancel in place — not duplicate. (Identity on `Reservation ID`, `updatedAt` materiality
+  per DEC-029.)
+- ~~**Manual entry clobbered by re-import.**~~ — **MOOT (DEC-043).** There are no Muster-side manual
+  entries to clobber (see Actions), so there is nothing to merge and no merge rule to write. A
+  Muster-native reservation can't collide either: the importer **skips** a Muster-owned vessel-day
+  (DEC-106), so the two sources never write the same event.
+- **Dirty / partial source.** Unparseable records surface in the import result for Spink to fix by
+  hand, rather than failing the whole import or dropping records silently.
 - **Event edited after shifts formed.** Changing an event's time/capacity after its shift was built
-  must propagate to the shift (and raise the shift-builder "changed since you reviewed it" nudge if
-  locked — §2.3).
+  must propagate to the shift. *(Corrected: the original said this raises a shift-builder "changed
+  since you reviewed it" nudge **if locked**. **Locking was cut — DEC-082** ("Locking cut — Xola is
+  the source of truth; supersedes SPEC §2.3 Lock, reframes DEC-029"): a reviewed/locked stamp over a
+  projection of someone else's source of truth is meaningless. Propagation is unconditional; there is
+  no locked state to gate it. **§2.3 below still specs Lock as a live feature — it is superseded by
+  DEC-082 wherever it does.**)*
+- **Muster-owned vessel-days.** The importer **skips and itemizes** a Xola event landing on a
+  vessel-day Muster owns (DEC-106) — the coexistence guard. Inert until a vessel-day is marked owned.
 
 ### Acceptance criteria
-- [ ] Importing a CSV creates events and their reservations, grouped correctly (reservations →
+- [ ] Importing creates events and their reservations, grouped correctly (reservations →
       events by occurrence; events available to roll up → shifts by boat+day).
-- [ ] Re-importing a CSV with a changed reservation updates it in place; a cancelled one is marked
+- [ ] Re-importing with a changed reservation updates it in place; a cancelled one is marked
       cancelled — neither duplicates.
-- [ ] A manually-added reservation survives the next CSV import per the merge rule.
+- [ ] ~~A manually-added reservation survives the next import per the merge rule.~~ — **struck**, no
+      manual entries (DEC-043).
 - [ ] Event detail shows each reservation's name, party size, and phone; no waiver field is required.
-- [ ] Unparseable CSV rows appear in the import result rather than being silently dropped.
+- [ ] Unparseable records appear in the import result rather than being silently dropped.
 - [ ] Editing an event's time propagates to any shift already formed from it.
+- [ ] A Xola event landing on a Muster-owned vessel-day is skipped and itemized, not imported
+      (DEC-106).
 
 ### Open questions (Event Admin)
-- **Merge rule** for manual entries vs re-import — the precise reconciliation policy. *(Owner:
-  Spink/Drew, against a real export. Non-blocking — can default to "manual wins, flag conflicts"
-  and refine.)*
-- Exact Xola **export columns** — determines how complete imported events/reservations are, and
-  how much pax/trip detail is available for crew sizing. *(Check at the desk against a real export.)*
+- ~~**Merge rule** for manual entries vs re-import~~ — **RESOLVED by DEC-043**, not by Spink/Drew.
+  Its trust model removes Muster-side manual writes entirely, so there are no manual entries to
+  reconcile. *(Was carried as an open question with a human owner; leaving it open would send someone
+  to ask Drew a dead question.)*
+- ~~Exact Xola **export columns**~~ — **RESOLVED.** The CSV export is retired (DEC-043). The API
+  response shape is settled by **DEC-040**, which supersedes DEC-036's pre-live spike: **no `expand`
+  is needed** (`items[]`, item `name`, `arrival*` and `quantity` are inline), **contact is order-level
+  and inline — `order.phone`, NOT `organizer.phone`**, and status codes are 200–203 booked / 700
+  cancelled. Boat resolution is **DEC-043** (`event.resourceUsages[].resource.id`, events-driven join).
+  Field completeness is no longer an open question.
 
 ---
 
@@ -542,10 +607,20 @@ Xola's job in 2026 or the portal/payments work later.
 > become discrete crewable shifts. Net-new (Xola has no crewing-unit concept). The 2026 import-mode
 > and the 2027 live-mode are the **same surface** — only the input source differs (coexistence §4).
 
+> **⚠️ Reconciled 2026-07-15 (S54). LOCK IS CUT — DEC-082** ("Locking cut — Xola is the source of
+> truth; **supersedes SPEC §2.3 Lock**, reframes DEC-029"). Everything below that specs a lock state,
+> a lock action, a "changed since you reviewed it" nudge, or a bulk "lock the weekend" is **superseded
+> and not built**. A reviewed/locked stamp over a projection of someone else's source of truth is
+> meaningless: Xola keeps changing the bookings, so there is nothing to freeze. The **build → review**
+> reframe survives — shifts still form continuously and Spink still adjusts them — only the *commit*
+> step is gone. Asks fire on the **staffing horizon** (DEC-022/062), never on a lock. Split/merge is
+> live and is the judgment override (DEC-083/114). The lock text is struck in place rather than
+> deleted, so the reasoning stays legible.
+
 ### Purpose
-Turn the week's events into reviewable, lockable **shifts**. The core reframe is **build → review**:
-shifts form **continuously and automatically** as bookings land; the Monday ritual becomes a
-**review pass** (adjust + lock), not a build-from-blank-slate. The machine does the grouping; Spink
+Turn the week's events into reviewable ~~, lockable~~ **shifts**. The core reframe is **build →
+review**: shifts form **continuously and automatically** as bookings land; the Monday ritual becomes a
+**review pass** (adjust ~~+ lock~~), not a build-from-blank-slate. The machine does the grouping; Spink
 applies judgment.
 
 > **Fork resolved (builder §1): continuous auto-grouping, not manual build.** There is **no
@@ -572,10 +647,12 @@ rule, **consumes a passenger slot** vs COI max-pax). Derived default is the COI 
 - **Date-range / weekend view, grouped by boat then day.** Each proposed shift is a block showing:
   boat · date · the trips inside (1/3/5pm) with pax totals · required seats (derived) · current
   **crewing-state badge** (Pending / Filling / Crewed / At-Risk).
-- **Lock state** per shift — unlocked (system still assembling) vs locked (reviewed, crewing may
-  proceed).
-- **"Changed since you reviewed it" nudge** — a locked shift that has absorbed a new/changed booking
-  shows this; it is never silently altered.
+- ~~**Lock state** per shift — unlocked (system still assembling) vs locked (reviewed, crewing may
+  proceed).~~ — **CUT (DEC-082).** There is no lock state. Crewing proceeds on the staffing horizon.
+- ~~**"Changed since you reviewed it" nudge** — a locked shift that has absorbed a new/changed booking
+  shows this; it is never silently altered.~~ — **CUT (DEC-082):** nothing is "reviewed" in a way a
+  change can invalidate. *(The change-cue mechanism that survives is the split/merge re-derivation cue
+  — DEC-083/114, not this.)*
 - **A freshly spawned proposed shift** — a late booking for a boat/day with no existing shift
   creates one; it appears as a new block needing review.
 
@@ -583,8 +660,10 @@ rule, **consumes a passenger slot** vs COI max-pax). Derived default is the COI 
 - **Split** a shift (e.g. morning private charter wants different crew than the afternoon public trips).
 - **Merge** two proposed shifts.
 - **Override seat requirements** — the two cases above (required working hand vs supernumerary).
-- **Lock** — commit the shift. Locking is the deliberate hand-off; **inside the staffing horizon it
-  fires the asks** (Tier 1). Per-shift, plus a likely **bulk "lock the weekend"** action.
+- ~~**Lock** — commit the shift. Locking is the deliberate hand-off; **inside the staffing horizon it
+  fires the asks** (Tier 1). Per-shift, plus a likely **bulk "lock the weekend"** action.~~ — **CUT
+  (DEC-082).** No lock, no bulk lock. **Asks fire on the staffing horizon itself** (DEC-022/062), which
+  is what removed the need for a hand-off in the first place.
 
 (The CSV **import** action itself lives in Event Admin §2.2; the builder reads the resulting events.
 In 2026 the builder simply shows shifts auto-formed from imported events — same as it will from the
@@ -603,11 +682,13 @@ live feed in 2027.)
   `Pending`, or straight into `Filling` if already inside the staffing horizon.
 
 ### Edge cases
-- **Late booking, shift exists, unlocked** → slots in automatically, silently.
-- **Late booking, shift exists, locked** → joins, raises the "changed since you reviewed it" nudge.
+- **Late booking, shift exists** → slots in automatically, silently. *(DEC-082: the old
+  unlocked-vs-locked fork is gone — there was never a second behaviour to pick.)*
 - **Late booking, no shift for that boat/day** → spawns a new proposed shift.
-- **Event edited upstream** (Event Admin) after a shift formed → propagates; nudge if locked.
-- **Unlocked shift already inside the staffing horizon** → see open question below.
+- **Event edited upstream** (Event Admin) after a shift formed → propagates unconditionally. *(Was:
+  "nudge if locked" — cut, DEC-082.)*
+- ~~**Unlocked shift already inside the staffing horizon**~~ → **moot (DEC-082):** every shift inside
+  the horizon is worked by the engine; there is no lock to wait on.
 
 ### Acceptance criteria
 - [ ] Importing/refreshing events produces proposed shifts grouped one-boat-one-day, with required
@@ -616,14 +697,18 @@ live feed in 2027.)
       inverse.
 - [ ] Overriding to add a required hand changes the gate for `Crewed`; adding a supernumerary seat
       does **not** gate `Crewed` and **decrements** available pax against COI max.
-- [ ] Locking a shift inside the staffing horizon fires Tier-1 asks; locking one outside does not.
-- [ ] A booking landing on a locked shift joins it and raises a review nudge; a booking for a
-      boat/day with no shift spawns a new proposed shift.
+- [ ] ~~Locking a shift inside the staffing horizon fires Tier-1 asks; locking one outside does not.~~
+      — **struck (DEC-082).** Replaced by: a shift crossing the **staffing horizon** moves
+      `Pending → Filling` and fires Tier-1 asks (DEC-022/062).
+- [ ] A booking landing on an existing shift joins it silently; a booking for a boat/day with no
+      shift spawns a new proposed shift. *(Was: "…raises a review nudge" — cut, DEC-082.)*
 
 ### Open questions (Shift Builder)
-- **Unlocked shift inside the staffing horizon** — does crewing wait for lock, or start
-  provisionally? **Leaning: crewing waits for lock** during rollout so Spink stays in control;
-  revisit once the autonomous path is trusted. *(Non-blocking; default = wait-for-lock.)*
+- ~~**Unlocked shift inside the staffing horizon** — does crewing wait for lock, or start
+  provisionally?~~ — **RESOLVED by DEC-082.** The question presumed a lock. There isn't one: crewing
+  starts at the horizon, autonomously. The "leaning: crewing waits for lock during rollout so Spink
+  stays in control" is the exact posture DEC-082 rejected — Xola keeps changing the bookings, so
+  waiting for a human stamp buys nothing and costs the autonomous path.
 - Lock granularity — per-shift confirmed; **bulk weekend-lock** likely also. *(Build per-shift
   first.)*
 - The "suggest a split" gap threshold — tune later, don't agonize.
@@ -1026,7 +1111,8 @@ not an API** (the API bolt-on is killed, §4). To make it painless, **Muster emi
 these in Xola" sheet**: boat · trip · time · captain · mate, so Spink keys from one list instead of
 cross-referencing two screens (~10 min/week at BrewBoat volume).
 
-- **In scope for 2026:** Muster generating that sheet from the locked shifts.
+- **In scope for 2026:** Muster generating that sheet from the ~~locked~~ **crewed** shifts. *(Lock
+  cut — DEC-082; the sheet reads a shift's confirmed crew, which never depended on a lock.)*
 - **This is explicitly temporary.** The day the crew-facing **manifest on the shift card** (§2.6.3)
   is live, crew stop needing Xola and this sheet retires. That manifest is the **hinge** that ends
   the split — which is why §2.6.3 says pull it early.
@@ -1039,9 +1125,14 @@ These are inherited deferrals (§0.2). Listed so they're visible and owned — *
 now. Building any of these is out of scope until its trigger condition is met.
 
 ### Deferred features (build later, by plan)
-- **Customer portal** — Tier 4, off-season 26/27 → 2027 launch. Sketch only (customer-portal-sketch);
-  Xola's screens are the pattern source when the time comes. Not on the 2026 critical path because
-  reservations arrive via CSV.
+- ~~**Customer portal** — Tier 4, off-season 26/27 → 2027 launch. Sketch only
+  (customer-portal-sketch); Not on the 2026 critical path because reservations arrive via CSV.~~ —
+  **NO LONGER DEFERRED. Reopened by DEC-105 (2026-07-11)** and **in build now**: Phase 11 (service
+  layer + one real paid booking) and Phase 12 (the real customer UI + flipping new sales). Not a 2027
+  launch, not a cutover — Muster sells **alongside** Xola and Xola's forward book drains. *(The one
+  part that held: "Xola's screens are the pattern source" — they are, and were enumerated for the
+  admin side in `docs/design/reservations-admin.md`. See also `reservations-model.md` and
+  DEC-105–113 / DEC-123 / DEC-124.)*
 - **Day-cohort messaging** — future; same messaging substrate as the crew ask, different audience
   selector + timing.
 - **AI captain-phone-call agent** ★ — real and useful for won't-text captains, but phase-B garnish.
@@ -1096,7 +1187,9 @@ now. Building any of these is out of scope until its trigger condition is met.
 - **Two-axis reliability split** (separate responsiveness vs dependability) — blend for v1.
 - **"Exhausted" threshold** for landing on the At-Risk board; **split-suggestion** gap threshold.
 - **Matching algorithm** inside the crew composite rule — greedy-by-score to start.
-- **Event Admin merge rule** — precise reconciliation of manual entries vs re-import.
+- ~~**Event Admin merge rule** — precise reconciliation of manual entries vs re-import.~~ —
+  **RESOLVED by DEC-043**: no Muster-side manual writes, so there are no manual entries to reconcile
+  (§2.2).
 
 ### Infrastructure-stage decisions
 - **Native app vs PWA** for the crew app — decided once all requirements are in; the real question is
@@ -1112,8 +1205,15 @@ now. Building any of these is out of scope until its trigger condition is met.
   > tested Xola client (`xola-tip-extractor`) falsifies "hard to extract from" (that pessimism
   > traced to faulty crewbook info). The API is **revived as a read-only import Land adapter** behind
   > the existing Map/Reconcile, replacing the manual export+upload. The kill-date / disposability
-  > point stands and now *licenses* the swap (the adapter dies in 2027 like the rest of the import
-  > path). The manual guide write-back sheet (§3.5) is unaffected. See DEC-036.
+  > point stands and now *licenses* the swap. The manual guide write-back sheet (§3.5) is unaffected.
+  > See DEC-036.
+  > **Further corrected (S54 2026-07-15, revised S56 2026-07-17):** the CSV import this entry calls the
+  > replacement is itself **retired** (DEC-043 — it can't resolve a boat), so the API pull is not an
+  > alternative to the CSV path, it *is* the path. And the adapter does **not** die "in 2027": the pull runs
+  > through the pilot coexistence and **stops at the DEC-126 cutover** (a one-time full import of Xola's
+  > reservations into Muster), after which Muster owns reservations and there is no recurring pull. *(This
+  > revises the S54 "coexistence is permanent, not a dated cutover" note — DEC-126 adds the cutover; it's
+  > event-driven, not calendar-dated.)*
 
 ---
 

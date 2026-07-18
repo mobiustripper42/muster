@@ -15,6 +15,7 @@
 import type {
   AskId,
   BlockId,
+  CheckoutHoldId,
   CredentialId,
   CrewMemberId,
   EventId,
@@ -378,6 +379,49 @@ export interface Reservation {
    */
   updatedAt?: string;
   // No waiver field — DEC-012.
+}
+
+// ── CheckoutHold — the transient 15-min soft reservation (12.1, DEC-109) ──────
+
+/**
+ * A customer checkout-hold (DEC-109): the **optimistic** front-door that makes the
+ * common case collision-free — while a buyer is paying, the slot reads unavailable, so
+ * the second buyer never starts. **Distinct** from the DEC-125 admin/vessel-hold
+ * *block* (a `Block{kind:"vesselHold"}` row, no lifetime) — this one is transient,
+ * lazily-expired, and tied to a Stripe session.
+ *
+ * Load-bearing rules (DEC-109), enforced by 12.1's data layer:
+ *  - The hold is an **optimization**, never the authority — the whole-boat mutex
+ *    (`saveBookingIfSlotFree`) is the defeat-proof backstop; a booking whose hold
+ *    expired mid-payment still runs the CAS. Never gate the write on a hold.
+ *  - **Lazy-on-read expiry, no cron:** a hold with `expiresAt <= asOf` reads as free
+ *    everywhere (the deriver filters on it). The physical-slot unique index means a
+ *    stale row would *block* re-acquire, so `acquireCheckoutHold` deletes the expired
+ *    row for the identity first, in the same critical section.
+ *  - **Holds are only ever read through the `expiresAt > asOf` filter** — never
+ *    raw-counted. A raw `SELECT … WHERE slot=…` that treats a hit as "held" would
+ *    resurrect an expired hold; the deriver + `acquireCheckoutHold` are the only
+ *    sanctioned readers.
+ */
+export interface CheckoutHold {
+  id: CheckoutHoldId;
+  /** The boat this hold is on — assignment is resolved at acquire (fit-and-fallback). */
+  vesselId: VesselId;
+  /** ISO-8601 vessel-local day. */
+  date: string;
+  /** Departure clock "HH:MM". */
+  time: string;
+  /** Constant `'muster'` — keeps the slot-identity key parallel to `Event`'s (DEC-125). */
+  source: "muster";
+  offeringId: OfferingId;
+  /** Guest/passenger count (never "party") — validated ≤ boat COI cap at acquire. */
+  guestCount: number;
+  /** ISO-8601 UTC — acquire instant + 15 min. Lazily compared to `asOf`; no cron. */
+  expiresAt: string;
+  /** ISO-8601 UTC of acquire. */
+  createdAt: string;
+  /** Bound once the Checkout session is created — links the hold to its payment. */
+  stripeCheckoutSessionId?: string;
 }
 
 // ── Payment (Muster-native reservations only — DEC-107) ──────────────────────

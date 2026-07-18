@@ -20,6 +20,7 @@ export type ReservationId = Brand<string, "ReservationId">;
 export type OfferingId = Brand<string, "OfferingId">;
 export type LocationId = Brand<string, "LocationId">;
 export type BlockId = Brand<string, "BlockId">;
+export type CheckoutHoldId = Brand<string, "CheckoutHoldId">;
 export type PaymentId = Brand<string, "PaymentId">;
 export type ShiftId = Brand<string, "ShiftId">;
 export type SeatId = Brand<string, "SeatId">;

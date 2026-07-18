@@ -26,6 +26,7 @@ const TABLES = [
   "offerings",
   "locations",
   "blocks",
+  "checkout_holds",
   "muster_owned_vessel_days",
   "payments",
   "shifts",

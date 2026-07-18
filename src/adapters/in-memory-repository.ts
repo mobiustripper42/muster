@@ -13,6 +13,7 @@ import type {
   Ask,
   AuthSubjectKind,
   Block,
+  CheckoutHold,
   Credential,
   CrewMember,
   CrewStatus,
@@ -41,6 +42,7 @@ import { subjectKey } from "../domain/subject.js";
 import type {
   AskId,
   BlockId,
+  CheckoutHoldId,
   CredentialId,
   CrewMemberId,
   EventId,
@@ -70,6 +72,7 @@ import {
   PAYMENT_CONFIG_DEFAULTS,
   type PaymentConfig,
 } from "../reservations/payment-config.js";
+import { slotIdentity } from "../reservations/availability.js";
 import type { Repository } from "../ports/repository.js";
 
 const clone = <T>(value: T): T => structuredClone(value);
@@ -99,6 +102,8 @@ export class InMemoryRepository implements Repository {
   readonly #offerings = new Map<OfferingId, Offering>();
   readonly #locations = new Map<LocationId, Location>();
   readonly #blocks = new Map<BlockId, Block>();
+  /** Transient checkout-holds (12.1, DEC-109), keyed by id. */
+  readonly #checkoutHolds = new Map<CheckoutHoldId, CheckoutHold>();
   /** Muster-owned vessel-days (DEC-106), keyed `${vesselId}|${date}`. */
   readonly #musterOwnedVesselDays = new Map<string, MusterOwnedVesselDay>();
   readonly #payments = new Map<PaymentId, Payment>();
@@ -273,13 +278,16 @@ export class InMemoryRepository implements Repository {
     return [...this.#events.values()].map(clone);
   }
 
-  // ── Reservation catalog (DEC-123/125) — read-only in 12.0 ───────────────────
+  // ── Reservation catalog (DEC-123/125) ───────────────────────────────────────
   async listOfferings(): Promise<Offering[]> {
     return [...this.#offerings.values()].map(clone);
   }
   async getOffering(id: OfferingId): Promise<Offering | null> {
     const o = this.#offerings.get(id);
     return o ? clone(o) : null;
+  }
+  async saveOffering(offering: Offering): Promise<void> {
+    this.#offerings.set(offering.id, clone(offering));
   }
   async listLocations(): Promise<Location[]> {
     return [...this.#locations.values()].map(clone);
@@ -288,8 +296,17 @@ export class InMemoryRepository implements Repository {
     const l = this.#locations.get(id);
     return l ? clone(l) : null;
   }
+  async saveLocation(location: Location): Promise<void> {
+    this.#locations.set(location.id, clone(location));
+  }
   async listBlocks(): Promise<Block[]> {
     return [...this.#blocks.values()].map(clone);
+  }
+  async saveBlock(block: Block): Promise<void> {
+    this.#blocks.set(block.id, clone(block));
+  }
+  async removeBlock(id: BlockId): Promise<void> {
+    this.#blocks.delete(id);
   }
 
   // ── Coexistence partition — Muster-owned vessel-days (DEC-106) ───────────────
@@ -362,6 +379,89 @@ export class InMemoryRepository implements Repository {
     if (blocked) return false;
     this.#reservations.set(reservation.id, clone(reservation));
     return true;
+  }
+
+  async saveBookingIfSlotFree(
+    event: Event,
+    reservation: Reservation,
+  ): Promise<{ result: "won"; eventId: EventId } | { result: "lost" }> {
+    // Single-threaded JS ⇒ trivially atomic; the Postgres adapter enforces the same under
+    // real concurrency (partial-unique index + row lock). (1) find-or-materialize the Muster
+    // Event at this slot identity — one row per physical boat-slot (DEC-125 guardrail).
+    const key = slotIdentity(event.vesselId, event.date, event.time);
+    let existing = [...this.#events.values()].find(
+      (e) =>
+        e.source === "muster" &&
+        e.status === "scheduled" &&
+        slotIdentity(e.vesselId, e.date, e.time) === key,
+    );
+    if (!existing) {
+      this.#events.set(event.id, clone(event));
+      existing = event;
+    }
+    const eventId = existing.id;
+    // (2) whole-boat mutex against the actual event id — source-scoped, idempotent on id.
+    const blocked = [...this.#reservations.values()].some(
+      (r) =>
+        r.eventId === eventId &&
+        r.source === "muster" &&
+        r.status === "booked" &&
+        r.id !== reservation.id,
+    );
+    if (blocked) return { result: "lost" };
+    this.#reservations.set(reservation.id, clone({ ...reservation, eventId }));
+    return { result: "won", eventId };
+  }
+
+  // ── Checkout holds (12.1, DEC-109) ──────────────────────────────────────────
+  async acquireCheckoutHold(
+    hold: CheckoutHold,
+  ): Promise<{ acquired: true; hold: CheckoutHold } | { acquired: false }> {
+    const key = slotIdentity(hold.vesselId, hold.date, hold.time);
+    // Delete any EXPIRED hold for this identity first (so a stale row can't block a fresh
+    // acquire); "now" = the incoming hold's createdAt — same reference the pg adapter uses,
+    // keeping the two behaviorally identical under the contract.
+    for (const [id, h] of this.#checkoutHolds) {
+      if (
+        h.source === "muster" &&
+        slotIdentity(h.vesselId, h.date, h.time) === key &&
+        h.expiresAt <= hold.createdAt
+      ) {
+        this.#checkoutHolds.delete(id);
+      }
+    }
+    const live = [...this.#checkoutHolds.values()].find(
+      (h) =>
+        h.source === "muster" &&
+        slotIdentity(h.vesselId, h.date, h.time) === key &&
+        h.expiresAt > hold.createdAt,
+    );
+    if (live) {
+      // A live hold holds the slot. Idempotent iff it's our own id; else the rival won.
+      return live.id === hold.id
+        ? { acquired: true, hold: clone(live) }
+        : { acquired: false };
+    }
+    this.#checkoutHolds.set(hold.id, clone(hold));
+    return { acquired: true, hold: clone(hold) };
+  }
+  async listCheckoutHolds(): Promise<CheckoutHold[]> {
+    return [...this.#checkoutHolds.values()].map(clone);
+  }
+  async removeCheckoutHold(id: CheckoutHoldId): Promise<void> {
+    this.#checkoutHolds.delete(id);
+  }
+  async removeCheckoutHoldForSlot(
+    vesselId: VesselId,
+    date: string,
+    time: string,
+  ): Promise<void> {
+    const key = slotIdentity(vesselId, date, time);
+    for (const [id, h] of this.#checkoutHolds) {
+      if (h.source === "muster" && slotIdentity(h.vesselId, h.date, h.time) === key) {
+        this.#checkoutHolds.delete(id);
+      }
+    }
   }
 
   // ── Shifts ─────────────────────────────────────────────────────────────────

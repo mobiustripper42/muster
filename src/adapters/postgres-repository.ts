@@ -18,14 +18,19 @@ import type {
   Admin,
   Ask,
   AuthSubjectKind,
+  Block,
   Credential,
   CrewMember,
   CrewStatus,
   Event,
+  Location,
   LoginCode,
   CalendarFeed,
   MusterOwnedVesselDay,
+  Offering,
+  OfferingSchedule,
   Payment,
+  PriceVariation,
   MagicToken,
   NoticeOutboxEntry,
   SmsConsent,
@@ -44,11 +49,14 @@ import { asId } from "../domain/ids.js";
 import { subjectKey } from "../domain/subject.js";
 import type {
   AskId,
+  BlockId,
   CredentialId,
   CrewMemberId,
   EventId,
+  LocationId,
   MagicTokenId,
   NoticeOutboxEntryId,
+  OfferingId,
   OutboxEntryId,
   PaymentId,
   PtoWindowId,
@@ -167,6 +175,62 @@ const toEvent = (r: any): Event => ({
   ...opt("dock", r.dock),
   ...opt("price", r.price),
 });
+
+const toOffering = (r: any): Offering => ({
+  id: asId<"OfferingId">(r.id),
+  tenantId: asId<"TenantId">(r.tenant_id),
+  name: r.name,
+  status: r.status,
+  vesselIds: (r.vessel_ids as string[]).map((x) => asId<"VesselId">(x)),
+  locationId: asId<"LocationId">(r.location_id),
+  schedule: r.schedule as OfferingSchedule, // jsonb → object (node-pg parses)
+  basePriceCents: r.base_price_cents,
+  priceVariations: r.price_variations as PriceVariation[], // jsonb
+  extraGuestPriceCents: r.extra_guest_price_cents,
+});
+
+const toLocation = (r: any): Location => ({
+  id: asId<"LocationId">(r.id),
+  name: r.name,
+  pickupDescription: r.pickup_description,
+  routeDescription: r.route_description,
+  ...opt("pickupLink", r.pickup_link),
+});
+
+const toBlock = (r: any): Block => {
+  switch (r.kind) {
+    case "location":
+      return {
+        id: asId<"BlockId">(r.id),
+        kind: "location",
+        locationId: asId<"LocationId">(r.location_id),
+        date: r.date,
+        startTime: r.start_time,
+        endTime: r.end_time,
+        ...opt("note", r.note),
+      };
+    case "vessel":
+      return {
+        id: asId<"BlockId">(r.id),
+        kind: "vessel",
+        vesselId: asId<"VesselId">(r.vessel_id),
+        startDate: r.start_date,
+        endDate: r.end_date,
+        ...opt("note", r.note),
+      };
+    case "vesselHold":
+      return {
+        id: asId<"BlockId">(r.id),
+        kind: "vesselHold",
+        vesselId: asId<"VesselId">(r.vessel_id),
+        date: r.date,
+        time: r.time,
+        ...opt("note", r.note),
+      };
+    default:
+      throw new Error(`unknown block kind: ${String(r.kind)}`);
+  }
+};
 
 const toReservation = (r: any): Reservation => ({
   id: asId<"ReservationId">(r.id),
@@ -632,6 +696,34 @@ export class PostgresRepository implements Repository {
   async listEvents(): Promise<Event[]> {
     const { rows } = await this.#pool.query("select * from events");
     return rows.map(toEvent);
+  }
+
+  // ── Reservation catalog (DEC-123/125) — read-only in 12.0 ───────────────────
+  async listOfferings(): Promise<Offering[]> {
+    const { rows } = await this.#pool.query("select * from offerings");
+    return rows.map(toOffering);
+  }
+  async getOffering(id: OfferingId): Promise<Offering | null> {
+    const { rows } = await this.#pool.query(
+      "select * from offerings where id = $1",
+      [id],
+    );
+    return rows[0] ? toOffering(rows[0]) : null;
+  }
+  async listLocations(): Promise<Location[]> {
+    const { rows } = await this.#pool.query("select * from locations");
+    return rows.map(toLocation);
+  }
+  async getLocation(id: LocationId): Promise<Location | null> {
+    const { rows } = await this.#pool.query(
+      "select * from locations where id = $1",
+      [id],
+    );
+    return rows[0] ? toLocation(rows[0]) : null;
+  }
+  async listBlocks(): Promise<Block[]> {
+    const { rows } = await this.#pool.query("select * from blocks");
+    return rows.map(toBlock);
   }
 
   // ── Coexistence partition — Muster-owned vessel-days (DEC-106) ───────────────

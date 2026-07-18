@@ -14,10 +14,13 @@
 
 import type {
   AskId,
+  BlockId,
   CredentialId,
   CrewMemberId,
   EventId,
+  LocationId,
   MagicTokenId,
+  OfferingId,
   OutboxEntryId,
   PaymentId,
   PtoWindowId,
@@ -155,6 +158,143 @@ export interface CrewMember {
 }
 
 // ── Event + Reservation ─────────────────────────────────────────────────────
+
+// ── Reservation catalog — Offering / Location / Block (Phase 12, DEC-123/125) ─
+//
+// The virtual-availability read model (12.0). `Offering` + its `schedule` is the
+// DEC-125 **rule**; open departures are COMPUTED (`deriveVirtualAvailability`), not
+// materialized — an `Event` row exists only once a slot acquires state (booked /
+// override). These interfaces carry exactly the fields the deriver reads, plus the
+// price-composition inputs, so the shape is coherent end-to-end. Later tasks APPEND
+// inert display/config fields (12.8 catalog: photos, add-ons, gratuity config; 12.9
+// location admin) and the WRITE ports + admin UI — they never redefine these.
+
+/**
+ * A pickup place — first-class so a **location block** (DEC-125) can dark every
+ * offering leaving from it at once, and so the confirmation/manage surfaces can show
+ * pickup + route copy. The deriver reads NO `Location` field; it only matches an
+ * `Offering.locationId` against a location-kind `Block`. Rows exist for coexistence
+ * coherence + the 12.9 admin surface.
+ */
+export interface Location {
+  id: LocationId;
+  name: string;
+  /** Where to meet — the customer-facing pickup description. */
+  pickupDescription: string;
+  /** Optional tappable map link for the pickup point. */
+  pickupLink?: string;
+  /** What the trip does — route/experience blurb. */
+  routeDescription: string;
+}
+
+/**
+ * Publish state (DEC-123 catalog model). Only `live` offerings publish their rule and
+ * therefore generate virtual slots — a `draft` or `hidden` offering emits nothing.
+ */
+export type OfferingStatus = "draft" | "live" | "hidden";
+
+/**
+ * One rule in an offering's ordered price list (DEC-123/125). Evaluated **first match
+ * wins — never stacked** (operator, settled in the catalog mockup): the deriver walks
+ * `priceVariations` in order and stops at the first `applies` that matches the date.
+ */
+export interface PriceVariation {
+  /** Operator label, e.g. "July 4th", "Prime Saturday". Display only. */
+  label: string;
+  /** When this variation applies. Weekdays are Mon=0…Sun=6 (vessel-local). */
+  applies:
+    | { kind: "weekdays"; weekdays: number[] }
+    | { kind: "date"; date: string }
+    | { kind: "dateRange"; start: string; end: string };
+  /** How it moves the base fare. `flatCents` adds/subtracts cents; `percent` is ±%. */
+  adjustment:
+    | { kind: "flatCents"; deltaCents: number }
+    | { kind: "percent"; percent: number };
+}
+
+/**
+ * The DEC-125 schedule **rule** — a season window + weekday mask + departure clock
+ * times. `deriveVirtualAvailability` expands this across vessels × dates into virtual
+ * slots; no row is written. Editing it just recomputes (nothing to rewrite).
+ */
+export interface OfferingSchedule {
+  /** ISO-8601 inclusive season start (vessel-local day). */
+  seasonStart: string;
+  /** ISO-8601 inclusive season end. */
+  seasonEnd: string;
+  /** Weekdays the trip runs — Mon=0…Sun=6. */
+  weekdays: number[];
+  /** Departure clock times, e.g. ["11:30","13:30","15:30"]. */
+  departureTimes: string[];
+}
+
+/**
+ * A sellable experience (= Xola Experience). The `schedule` + `basePriceCents` +
+ * `priceVariations` are the DEC-125 rule the deriver expands. Capacity is NOT here —
+ * it's the running vessel's `coiMaxPax` (whole-boat, DEC-108/109). `extraGuestPriceCents`
+ * is read at BOOKING time (base + extras × extraGuestPrice + gratuity, DEC-124), never
+ * by the availability deriver.
+ */
+export interface Offering {
+  id: OfferingId;
+  tenantId: TenantId;
+  name: string;
+  status: OfferingStatus;
+  /** The boats this offering can run on; each expands into its own per-vessel slot. */
+  vesselIds: VesselId[];
+  /** Pickup place — the location-block target. */
+  locationId: LocationId;
+  schedule: OfferingSchedule;
+  /** Whole-boat base fare in integer CENTS (DEC-112), before variations. */
+  basePriceCents: number;
+  /** Ordered price rules; first match wins (see {@link PriceVariation}). */
+  priceVariations: PriceVariation[];
+  /** Per-guest surcharge over the base-fare included count — booking-time only (DEC-124). */
+  extraGuestPriceCents: number;
+}
+
+/**
+ * An availability **subtraction** (DEC-125) — blackout as scoped blocks, not Xola's
+ * per-event toggle. Three kinds, discriminated on `kind`:
+ *  - `location`   — a date + time WINDOW; the river's closed → every slot at that
+ *                   `Location` (across offerings/vessels) in the window goes dark.
+ *  - `vessel`     — a date RANGE; a boat's out of service → all its slots gone.
+ *  - `vesselHold` — a SINGLE slot reserved for a private thing, with no customer
+ *                   `Event`. NB: distinct from the DEC-109 transient checkout-hold
+ *                   (a claim-path row — 12.1's concern, not modeled here).
+ * No FK / no CHECK on `kind` — house style (DEC-DATA-1).
+ */
+export type Block =
+  | {
+      id: BlockId;
+      kind: "location";
+      locationId: LocationId;
+      /** ISO-8601 day. */
+      date: string;
+      /** Inclusive "HH:MM" window the closure covers. */
+      startTime: string;
+      endTime: string;
+      note?: string;
+    }
+  | {
+      id: BlockId;
+      kind: "vessel";
+      vesselId: VesselId;
+      /** Inclusive ISO-8601 out-of-service range. */
+      startDate: string;
+      endDate: string;
+      note?: string;
+    }
+  | {
+      id: BlockId;
+      kind: "vesselHold";
+      vesselId: VesselId;
+      /** ISO-8601 day. */
+      date: string;
+      /** The single departure "HH:MM" held. */
+      time: string;
+      note?: string;
+    };
 
 export type EventStatus = "scheduled" | "cancelled";
 

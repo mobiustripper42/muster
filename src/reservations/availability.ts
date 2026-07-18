@@ -18,6 +18,7 @@
  */
 import type {
   Block,
+  CheckoutHold,
   Event,
   Offering,
   PriceVariation,
@@ -43,7 +44,7 @@ export interface EventAvailability {
 }
 
 /** Is `r` a live claim on a Muster boat-event? (booked + Muster-owned). */
-function isActiveMusterClaim(r: Reservation): boolean {
+export function isActiveMusterClaim(r: Reservation): boolean {
   return r.source === "muster" && r.status === "booked";
 }
 
@@ -149,7 +150,9 @@ export interface VirtualSlot {
    *  The party fare (base + extras × extraGuestPrice + gratuity, DEC-124) is booking-time,
    *  NOT computed here. */
   priceCents: number;
-  status: "available" | "booked" | "blocked";
+  /** `held` = a live customer checkout-hold occupies the slot (DEC-109, 12.1) — transient,
+   *  distinct from `blocked` (an operator block). */
+  status: "available" | "held" | "booked" | "blocked";
   /** Set when a materialized `Event` backs this slot (an override or a booking). */
   eventId?: EventId;
 }
@@ -164,6 +167,13 @@ export interface DeriveVirtualAvailabilityInput {
   /** Already-materialized events — overrides + bookings overlay their virtual slots. */
   events: readonly Event[];
   reservations: readonly Reservation[];
+  /** Live customer checkout-holds (12.1, DEC-109). A hold hides its virtual slot only
+   *  while `expiresAt > asOf`; expired holds contribute nothing (lazy-on-read, no cron).
+   *  Optional — absent/empty means no holds (the 12.0 call shape). */
+  holds?: readonly CheckoutHold[];
+  /** ISO-8601 UTC "now" for hold liveness. Required for holds to be evaluated; if absent,
+   *  no hold is treated as live (conservative — the write CAS still prevents oversell). */
+  asOf?: string;
 }
 
 /** Mon=0…Sun=6 for an ISO `yyyy-mm-dd`, read at UTC midnight (DST-safe). */
@@ -196,9 +206,44 @@ function variationMatches(v: PriceVariation, date: string): boolean {
   }
 }
 
+/** Is the physical slot `(vesselId, date, time)` blocked (DEC-125)? Covers all three block
+ *  kinds: a `vesselHold` on the exact slot, a `vessel` block whose date range contains
+ *  `date`, or a `location` block at `locationId` on `date` whose time window contains
+ *  `time`. Shared by the deriver and `candidateVessels` so both agree. */
+export function isSlotBlocked(
+  blocks: readonly Block[],
+  locationId: string,
+  vesselId: VesselId,
+  date: string,
+  time: string,
+): boolean {
+  return blocks.some((b) => {
+    switch (b.kind) {
+      case "vesselHold":
+        return (
+          String(b.vesselId) === String(vesselId) && b.date === date && b.time === time
+        );
+      case "vessel":
+        return (
+          String(b.vesselId) === String(vesselId) &&
+          b.startDate <= date &&
+          date <= b.endDate
+        );
+      case "location":
+        return (
+          String(b.locationId) === locationId &&
+          b.date === date &&
+          b.startTime <= time &&
+          time <= b.endTime
+        );
+    }
+  });
+}
+
 /** First-match price resolution (DEC-125): walk the ordered variations, stop at the
- *  first that matches, apply its adjustment to the base; no match ⇒ the base. */
-function resolveBasePrice(offering: Offering, date: string): number {
+ *  first that matches, apply its adjustment to the base; no match ⇒ the base. Exported so
+ *  the checkout path prices the held slot exactly as the deriver displayed it. */
+export function resolveBasePrice(offering: Offering, date: string): number {
   const hit = offering.priceVariations.find((v) => variationMatches(v, date));
   if (!hit) return offering.basePriceCents;
   return hit.adjustment.kind === "flatCents"
@@ -217,7 +262,8 @@ function resolveBasePrice(offering: Offering, date: string): number {
  *     capacity from the Event; a booked slot is frozen `booked`. Committed state beats
  *     blocks (you can't block away a booking).
  *  4. **Blocks subtract virtual (unmaterialized) slots** → `blocked`.
- *  5. Everything surviving is `available`.
+ *  5. A **live checkout-hold** (`expiresAt > asOf`) on a surviving slot → `held` (12.1).
+ *  6. Everything surviving is `available`.
  *
  * Grid-driven: slots are enumerated from the schedule and materialized events overlay
  * matching identities. A materialized event that has been moved OFF the schedule grid
@@ -233,6 +279,17 @@ export function deriveVirtualAvailability(
   const vesselById = new Map(vessels.map((v) => [String(v.id), v]));
   const owned = new Set(ownedDays.map((o) => `${String(o.vesselId)}|${o.date}`));
 
+  // Live checkout-holds by slot identity — ONLY those with expiresAt > asOf (lazy-on-read;
+  // an expired-but-undeleted hold is inert here, exactly as it is at the write CAS).
+  const heldSlots = new Set<string>();
+  if (input.asOf !== undefined) {
+    for (const h of input.holds ?? []) {
+      if (h.source === "muster" && h.expiresAt > input.asOf) {
+        heldSlots.add(slotIdentity(h.vesselId, h.date, h.time));
+      }
+    }
+  }
+
   // Materialized Muster events, indexed by physical slot identity, + which are booked.
   const bookedEventIds = new Set<string>();
   for (const r of reservations) {
@@ -244,45 +301,6 @@ export function deriveVirtualAvailability(
       eventBySlot.set(slotIdentity(e.vesselId, e.date, e.time), e);
     }
   }
-
-  // Block indexes.
-  const locationBlocks = blocks.filter((b) => b.kind === "location");
-  const vesselBlocks = blocks.filter((b) => b.kind === "vessel");
-  const vesselHolds = new Set(
-    blocks
-      .filter((b) => b.kind === "vesselHold")
-      .map((b) =>
-        b.kind === "vesselHold" ? slotIdentity(b.vesselId, b.date, b.time) : "",
-      ),
-  );
-
-  const isBlocked = (
-    locationId: string,
-    vesselId: VesselId,
-    date: string,
-    time: string,
-  ): boolean => {
-    if (vesselHolds.has(slotIdentity(vesselId, date, time))) return true;
-    if (
-      vesselBlocks.some(
-        (b) =>
-          b.kind === "vessel" &&
-          String(b.vesselId) === String(vesselId) &&
-          b.startDate <= date &&
-          date <= b.endDate,
-      )
-    ) {
-      return true;
-    }
-    return locationBlocks.some(
-      (b) =>
-        b.kind === "location" &&
-        String(b.locationId) === locationId &&
-        b.date === date &&
-        b.startTime <= time &&
-        time <= b.endTime,
-    );
-  };
 
   // NB: slots carry `offeringId`, so two live offerings that schedule the SAME
   // physical (vessel, date, time) each emit their own slot — a scheduling error the
@@ -319,7 +337,9 @@ export function deriveVirtualAvailability(
             });
             continue;
           }
-          const blocked = isBlocked(String(offering.locationId), vesselId, date, time);
+          // Precedence on a virtual slot: block (operator) beats hold (transient) beats free.
+          const blocked = isSlotBlocked(blocks, String(offering.locationId), vesselId, date, time);
+          const held = !blocked && heldSlots.has(slotIdentity(vesselId, date, time));
           slots.push({
             offeringId: offering.id,
             vesselId,
@@ -327,7 +347,7 @@ export function deriveVirtualAvailability(
             time,
             capacity: vessel.coiMaxPax,
             priceCents: basePrice,
-            status: blocked ? "blocked" : "available",
+            status: blocked ? "blocked" : held ? "held" : "available",
           });
         }
       }

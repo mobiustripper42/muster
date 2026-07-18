@@ -11,10 +11,16 @@
  * a `BookingRequest` and passes `checkout.session.id` as the `idempotencyKey`.
  */
 import { createHash } from "node:crypto";
-import type { Reservation } from "../domain/entities.js";
-import { asId, type EventId, type ReservationId } from "../domain/ids.js";
+import type { Event, Reservation } from "../domain/entities.js";
+import {
+  asId,
+  type EventId,
+  type OfferingId,
+  type ReservationId,
+  type VesselId,
+} from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
-import { canBook } from "./availability.js";
+import { canBook, eventIdForSlot } from "./availability.js";
 
 export interface BookingRequest {
   eventId: EventId;
@@ -105,6 +111,95 @@ export async function writeBooking(
   }
   // Lost the CAS — either a rival won the boat, or a concurrent identical retry wrote
   // first. Disambiguate: our id present ⇒ idempotent `already`; else a rival ⇒ `lost`.
+  const after = await repo.getReservation(id);
+  return after ? { outcome: "already", reservation: after } : { outcome: "lost" };
+}
+
+// ── Slot-first booking (12.1a, DEC-109/125) ──────────────────────────────────
+// The virtual-model write: the customer picked offering+time+guestCount, a hold assigned a
+// boat, and the webhook now materializes the Event at its slot identity + claims the mutex
+// atomically (`saveBookingIfSlotFree`). Supersedes the seeded-`Event` `writeBooking` above;
+// the old path stays until 12.8 retires the seeded model.
+
+export interface SlotBookingRequest {
+  offeringId: OfferingId;
+  vesselId: VesselId;
+  /** ISO-8601 vessel-local day. */
+  date: string;
+  /** Departure clock "HH:MM". */
+  time: string;
+  guestCount: number;
+  /** Display base resolved at checkout-start (DEC-125), frozen onto the materialized Event
+   *  so a later schedule/price edit never alters what this customer paid (DEC-125). */
+  priceCents: number;
+  customerName: string;
+  email?: string;
+  phone?: string;
+  waiverConsentAt?: string;
+  waiverVersion?: string;
+  /** Stripe session id — keys the deterministic reservation id (idempotent redelivery). */
+  idempotencyKey: string;
+}
+
+export type SlotBookingResult =
+  | { outcome: "booked"; reservation: Reservation; eventId: EventId }
+  | { outcome: "already"; reservation: Reservation }
+  | { outcome: "lost" };
+
+/**
+ * Materialize + claim a virtual slot under the pessimistic backstop. `now` injected for a
+ * deterministic `updatedAt`. On a win, releases the checkout-hold (the booking now holds the
+ * slot authoritatively). On loss, disambiguates idempotent retry (`already`) from a genuine
+ * residual-race loss (`lost` — the 12.1b refund seam).
+ */
+export async function writeSlotBooking(
+  repo: Repository,
+  req: SlotBookingRequest,
+  now: () => string,
+): Promise<SlotBookingResult> {
+  const id = reservationIdFor(req.idempotencyKey);
+  const prior = await repo.getReservation(id);
+  if (prior) return { outcome: "already", reservation: prior };
+
+  const eventId = eventIdForSlot(req.vesselId, req.date, req.time);
+  const vessel = await repo.getVessel(req.vesselId);
+  const candidateEvent: Event = {
+    id: eventId,
+    vesselId: req.vesselId,
+    date: req.date,
+    time: req.time,
+    // The whole-boat COI cap is the party ceiling (DEC-108/109). Fall back to the guest
+    // count only if the vessel row is somehow missing (config error, not a race).
+    capacity: vessel?.coiMaxPax ?? req.guestCount,
+    status: "scheduled",
+    source: "muster",
+    price: req.priceCents,
+  };
+  const reservation: Reservation = {
+    id,
+    eventId,
+    source: "muster",
+    customerName: req.customerName,
+    partySize: req.guestCount,
+    ...(req.email !== undefined ? { email: req.email } : {}),
+    ...(req.phone !== undefined ? { phone: req.phone } : {}),
+    ...(req.waiverConsentAt !== undefined ? { waiverConsentAt: req.waiverConsentAt } : {}),
+    ...(req.waiverVersion !== undefined ? { waiverVersion: req.waiverVersion } : {}),
+    status: "booked",
+    updatedAt: now(),
+  };
+
+  const res = await repo.saveBookingIfSlotFree(candidateEvent, reservation);
+  if (res.result === "won") {
+    // The booking now holds the slot authoritatively — release the transient hold (by slot,
+    // since its id was a per-attempt mint we don't carry through the webhook).
+    await repo.removeCheckoutHoldForSlot(req.vesselId, req.date, req.time);
+    return {
+      outcome: "booked",
+      reservation: { ...reservation, eventId: res.eventId },
+      eventId: res.eventId,
+    };
+  }
   const after = await repo.getReservation(id);
   return after ? { outcome: "already", reservation: after } : { outcome: "lost" };
 }

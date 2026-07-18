@@ -12,11 +12,23 @@
  * dashboard); nothing here refunds automatically. Provider-agnostic + `FakePaymentPort`-testable.
  */
 import type { Payment, Reservation } from "../domain/entities.js";
-import { asId, type EventId, type ReservationId } from "../domain/ids.js";
+import {
+  asId,
+  type EventId,
+  type OfferingId,
+  type ReservationId,
+  type VesselId,
+} from "../domain/ids.js";
 import type { CheckoutCompleted, PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
 import { balanceOwedCents } from "./payment-config.js";
-import { reservationIdFor, writeBooking } from "./write-booking.js";
+import {
+  reservationIdFor,
+  writeBooking,
+  writeSlotBooking,
+  type BookingResult,
+  type SlotBookingResult,
+} from "./write-booking.js";
 
 export interface WebhookDeps {
   repo: Repository;
@@ -68,23 +80,45 @@ export async function processBookingWebhook(
   const m = completed.metadata;
   const idempotencyKey = completed.sessionId; // Stripe's session id keys the booking
   const kind = m.kind === "deposit" ? "deposit" : "full";
-  const partySize = Number(m.partySize);
+  // Slot-first (12.1) sessions carry the SLOT (no eventId); legacy 11.2 sessions carry an
+  // eventId. Guest count is `guestCount` on the new path, `partySize` on the old.
+  const isSlotBooking = Boolean(m.vesselId && m.date && m.time && m.offeringId);
+  const partySize = Number(m.guestCount ?? m.partySize);
   const reservationId = reservationIdFor(idempotencyKey);
 
-  const result = await writeBooking(
-    deps.repo,
-    {
-      eventId: asId<"EventId">(m.eventId ?? ""),
-      customerName: m.customerName ?? "",
-      partySize,
-      ...(m.email ? { email: m.email } : {}),
-      ...(m.phone ? { phone: m.phone } : {}),
-      ...(m.waiverConsentAt ? { waiverConsentAt: m.waiverConsentAt } : {}),
-      ...(m.waiverVersion ? { waiverVersion: m.waiverVersion } : {}),
-      idempotencyKey,
-    },
-    deps.now,
-  );
+  const result: BookingResult | SlotBookingResult = isSlotBooking
+    ? await writeSlotBooking(
+        deps.repo,
+        {
+          offeringId: asId<"OfferingId">(m.offeringId ?? ""),
+          vesselId: asId<"VesselId">(m.vesselId ?? ""),
+          date: m.date ?? "",
+          time: m.time ?? "",
+          guestCount: partySize,
+          priceCents: Number(m.priceCents ?? 0),
+          customerName: m.customerName ?? "",
+          ...(m.email ? { email: m.email } : {}),
+          ...(m.phone ? { phone: m.phone } : {}),
+          ...(m.waiverConsentAt ? { waiverConsentAt: m.waiverConsentAt } : {}),
+          ...(m.waiverVersion ? { waiverVersion: m.waiverVersion } : {}),
+          idempotencyKey,
+        },
+        deps.now,
+      )
+    : await writeBooking(
+        deps.repo,
+        {
+          eventId: asId<"EventId">(m.eventId ?? ""),
+          customerName: m.customerName ?? "",
+          partySize,
+          ...(m.email ? { email: m.email } : {}),
+          ...(m.phone ? { phone: m.phone } : {}),
+          ...(m.waiverConsentAt ? { waiverConsentAt: m.waiverConsentAt } : {}),
+          ...(m.waiverVersion ? { waiverVersion: m.waiverVersion } : {}),
+          idempotencyKey,
+        },
+        deps.now,
+      );
 
   // The money moved — record the Payment against the (would-be) reservation either way.
   await recordPayment(deps, completed, kind, reservationId);

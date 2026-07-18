@@ -14,11 +14,15 @@ import { asId } from "../domain/ids.js";
 import type {
   Admin,
   Ask,
+  Block,
+  CheckoutHold,
   Credential,
   CrewMember,
   Event,
+  Location,
   LoginCode,
   MagicToken,
+  Offering,
   OutboxEntry,
   RingOutboxEntry,
   NoticeOutboxEntry,
@@ -32,6 +36,7 @@ import type {
   Shift,
   Vessel,
 } from "../domain/entities.js";
+import { eventIdForSlot } from "../reservations/availability.js";
 import type { ReliabilityEvent } from "../domain/reliability.js";
 import type { ImportRun, ImportRunItem } from "../import/import-audit.js";
 import type { Message, Participant, Thread } from "../messaging/entities.js";
@@ -488,6 +493,155 @@ export function runRepositoryContract(
       expect(active).toHaveLength(1);
     });
 
+    // ── saveBookingIfSlotFree — materialize + claim a virtual slot (12.1, DEC-109/125) ──
+    const SLOT_ID = eventIdForSlot(VESSEL, "2026-07-01", "14:00");
+    const slotEvent = (over: Partial<Event> = {}): Event =>
+      event({ id: SLOT_ID, source: "muster", ...over });
+
+    it("saveBookingIfSlotFree: materializes the Event and claims on an empty slot", async () => {
+      const ev = slotEvent();
+      const res = await repo.saveBookingIfSlotFree(
+        ev,
+        reservation({ id: rid("resv-a"), source: "muster", eventId: SLOT_ID }),
+      );
+      expect(res.result).toBe("won");
+      expect(await repo.getEvent(SLOT_ID)).not.toBeNull(); // materialized
+      expect(await repo.listReservationsForEvent(SLOT_ID)).toHaveLength(1);
+    });
+
+    it("saveBookingIfSlotFree: idempotent on reservation id (redelivered webhook)", async () => {
+      const ev = slotEvent();
+      const r = reservation({ id: rid("resv-a"), source: "muster", eventId: SLOT_ID });
+      expect((await repo.saveBookingIfSlotFree(ev, r)).result).toBe("won");
+      expect((await repo.saveBookingIfSlotFree(ev, r)).result).toBe("won"); // idempotent
+      expect(await repo.listReservationsForEvent(SLOT_ID)).toHaveLength(1);
+    });
+
+    it("saveBookingIfSlotFree: a DIFFERENT reservation loses on an already-claimed slot", async () => {
+      const ev = slotEvent();
+      expect(
+        (await repo.saveBookingIfSlotFree(ev, reservation({ id: rid("resv-a"), source: "muster", eventId: SLOT_ID }))).result,
+      ).toBe("won");
+      expect(
+        (await repo.saveBookingIfSlotFree(ev, reservation({ id: rid("resv-b"), source: "muster", eventId: SLOT_ID }))).result,
+      ).toBe("lost");
+      const active = (await repo.listReservationsForEvent(SLOT_ID)).filter((r) => r.status === "booked");
+      expect(active).toHaveLength(1);
+    });
+
+    it("saveBookingIfSlotFree: exactly one of two concurrent first-bookings wins (one Event, one claim)", async () => {
+      const ev = slotEvent();
+      const [a, b] = await Promise.all([
+        repo.saveBookingIfSlotFree(ev, reservation({ id: rid("resv-a"), source: "muster", eventId: SLOT_ID, customerName: "A" })),
+        repo.saveBookingIfSlotFree(ev, reservation({ id: rid("resv-b"), source: "muster", eventId: SLOT_ID, customerName: "B" })),
+      ]);
+      expect([a.result, b.result].filter((x) => x === "won")).toHaveLength(1);
+      expect(await repo.getEvent(SLOT_ID)).not.toBeNull();
+      const active = (await repo.listReservationsForEvent(SLOT_ID)).filter((r) => r.status === "booked");
+      expect(active).toHaveLength(1); // the guardrail held — no double-sold boat
+    });
+
+    it("saveBookingIfSlotFree: claims a PRE-EXISTING override event at the slot, reconciling eventId", async () => {
+      // an override event with a NON-deterministic id already occupies the physical slot
+      await repo.saveEvent(
+        event({ id: asId<"EventId">("override-1"), source: "muster", vesselId: VESSEL, date: "2026-07-01", time: "14:00", price: 55500 }),
+      );
+      const res = await repo.saveBookingIfSlotFree(
+        slotEvent(), // deterministic-id candidate
+        reservation({ id: rid("resv-a"), source: "muster", eventId: SLOT_ID }),
+      );
+      expect(res.result).toBe("won");
+      if (res.result === "won") expect(String(res.eventId)).toBe("override-1"); // claimed the existing row
+      expect(await repo.getEvent(SLOT_ID)).toBeNull(); // no duplicate materialized (slot guardrail)
+      expect(await repo.listReservationsForEvent(asId<"EventId">("override-1"))).toHaveLength(1);
+    });
+
+    // ── Checkout holds — acquire / lifecycle (12.1, DEC-109) ───────────────────
+    const hold = (over: Partial<CheckoutHold> = {}): CheckoutHold => ({
+      id: asId<"CheckoutHoldId">("hold-1"),
+      vesselId: VESSEL,
+      date: "2026-07-01",
+      time: "14:00",
+      source: "muster",
+      offeringId: asId<"OfferingId">("off-1"),
+      guestCount: 4,
+      expiresAt: "2026-07-01T12:15:00.000Z",
+      createdAt: "2026-07-01T12:00:00.000Z",
+      ...over,
+    });
+
+    it("acquireCheckoutHold: fresh acquire succeeds and is listable", async () => {
+      expect((await repo.acquireCheckoutHold(hold())).acquired).toBe(true);
+      expect(await repo.listCheckoutHolds()).toHaveLength(1);
+    });
+
+    it("acquireCheckoutHold: two live acquires on one slot — exactly one wins", async () => {
+      const a = await repo.acquireCheckoutHold(hold({ id: asId<"CheckoutHoldId">("h-a") }));
+      const b = await repo.acquireCheckoutHold(hold({ id: asId<"CheckoutHoldId">("h-b") }));
+      expect([a.acquired, b.acquired].filter(Boolean)).toHaveLength(1);
+      expect(await repo.listCheckoutHolds()).toHaveLength(1);
+    });
+
+    it("acquireCheckoutHold: idempotent re-acquire of one's OWN live hold", async () => {
+      expect((await repo.acquireCheckoutHold(hold())).acquired).toBe(true);
+      expect((await repo.acquireCheckoutHold(hold())).acquired).toBe(true);
+      expect(await repo.listCheckoutHolds()).toHaveLength(1);
+    });
+
+    it("acquireCheckoutHold: an EXPIRED hold is inert — re-acquire succeeds (delete-expired-first)", async () => {
+      // seed a hold that is live at its own createdAt but expired by the new acquire's clock
+      await repo.acquireCheckoutHold(
+        hold({ id: asId<"CheckoutHoldId">("h-old"), createdAt: "2026-07-01T10:45:00.000Z", expiresAt: "2026-07-01T11:00:00.000Z" }),
+      );
+      const res = await repo.acquireCheckoutHold(hold({ id: asId<"CheckoutHoldId">("h-new") }));
+      expect(res.acquired).toBe(true);
+      const holds = await repo.listCheckoutHolds();
+      expect(holds).toHaveLength(1);
+      expect(String(holds[0]!.id)).toBe("h-new"); // the stale row was deleted, not left to block
+    });
+
+    it("checkout holds: remove is idempotent", async () => {
+      await repo.acquireCheckoutHold(hold());
+      await repo.removeCheckoutHold(asId<"CheckoutHoldId">("hold-1"));
+      expect(await repo.listCheckoutHolds()).toHaveLength(0);
+      await repo.removeCheckoutHold(asId<"CheckoutHoldId">("hold-1")); // no-op, no throw
+      expect(await repo.listCheckoutHolds()).toHaveLength(0);
+    });
+
+    // ── Reservation catalog — write + read round-trip (12.1a) ──────────────────
+    it("catalog: offering / location / block write + read round-trip", async () => {
+      const loc: Location = {
+        id: asId<"LocationId">("loc-1"),
+        name: "Dock",
+        pickupDescription: "Meet at the dock",
+        routeDescription: "Up the river",
+      };
+      await repo.saveLocation(loc);
+      expect(await repo.getLocation(loc.id)).toEqual(loc);
+
+      const off: Offering = {
+        id: asId<"OfferingId">("off-1"),
+        tenantId: TENANT,
+        name: "Sunset Cruise",
+        status: "live",
+        vesselIds: [VESSEL],
+        locationId: loc.id,
+        schedule: { seasonStart: "2026-06-01", seasonEnd: "2026-08-31", weekdays: [5], departureTimes: ["14:00"] },
+        basePriceCents: 49900,
+        priceVariations: [{ label: "Sat", applies: { kind: "weekdays", weekdays: [5] }, adjustment: { kind: "percent", percent: 10 } }],
+        extraGuestPriceCents: 5000,
+      };
+      await repo.saveOffering(off);
+      expect(await repo.getOffering(off.id)).toEqual(off);
+      expect(await repo.listOfferings()).toHaveLength(1);
+
+      const blk: Block = { id: asId<"BlockId">("blk-1"), kind: "vessel", vesselId: VESSEL, startDate: "2026-07-04", endDate: "2026-07-05" };
+      await repo.saveBlock(blk);
+      expect(await repo.listBlocks()).toEqual([blk]);
+      await repo.removeBlock(blk.id);
+      expect(await repo.listBlocks()).toEqual([]);
+    });
+
     // ── Payments (DEC-107) ────────────────────────────────────────────────────
     const payment = (over: Partial<Payment> = {}): Payment => ({
       id: asId<"PaymentId">("pay-1"),
@@ -559,9 +713,9 @@ export function runRepositoryContract(
       expect(await repo.listMusterOwnedVesselDays()).toHaveLength(2);
     });
 
-    it("reservation catalog: reads are empty until 12.8–12.10 add writes (DEC-125)", async () => {
-      // Read-only surface in 12.0 — no write ports yet, so a fresh repo returns []/null
-      // on both adapters. Round-trip coverage lands with the entities' own write tasks.
+    it("reservation catalog: a fresh repo reads empty (DEC-125)", async () => {
+      // Empty on both adapters before anything is written (write round-trip is covered by
+      // "catalog: offering / location / block write + read round-trip" above, added in 12.1a).
       expect(await repo.listOfferings()).toEqual([]);
       expect(await repo.getOffering(asId<"OfferingId">("off-none"))).toBeNull();
       expect(await repo.listLocations()).toEqual([]);

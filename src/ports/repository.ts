@@ -16,6 +16,7 @@ import type {
   AuthSubjectKind,
   Block,
   CalendarFeed,
+  CheckoutHold,
   Location,
   MusterOwnedVesselDay,
   Offering,
@@ -41,6 +42,8 @@ import type {
 } from "../domain/entities.js";
 import type {
   AskId,
+  BlockId,
+  CheckoutHoldId,
   LocationId,
   OfferingId,
   CredentialId,
@@ -136,17 +139,23 @@ export interface Repository {
    *  {@link removeCredential}: idempotent, no-op if the id is already gone. */
   removePtoWindow(id: PtoWindowId): Promise<void>;
 
-  // ── Reservation catalog — read-only in 12.0 (DEC-123/125) ──────────────────
-  // The virtual-availability read model (`deriveVirtualAvailability`) reads these.
-  // WRITES + admin UI land with the entity's own task: offerings 12.8, locations 12.9,
-  // blocks 12.10. Empty until then — like `muster_owned_vessel_days` was born empty.
+  // ── Reservation catalog (DEC-123/125) ──────────────────────────────────────
+  // Read by the virtual-availability model (`deriveVirtualAvailability`). The bare
+  // persistence WRITES (save*/remove*) landed in 12.1a because the booking path can't
+  // run or be tested without seedable offerings/blocks; the admin UI + validation still
+  // land with each entity's own task (offerings 12.8, locations 12.9, blocks 12.10).
   listOfferings(): Promise<Offering[]>;
   getOffering(id: OfferingId): Promise<Offering | null>;
+  saveOffering(offering: Offering): Promise<void>;
   listLocations(): Promise<Location[]>;
   getLocation(id: LocationId): Promise<Location | null>;
+  saveLocation(location: Location): Promise<void>;
   /** Every availability block (location / vessel / vessel-hold) — the deriver's
    *  subtraction set. */
   listBlocks(): Promise<Block[]>;
+  saveBlock(block: Block): Promise<void>;
+  /** Remove a block — idempotent no-op if the id is already gone. */
+  removeBlock(id: BlockId): Promise<void>;
 
   // ── Events ─────────────────────────────────────────────────────────────────
   saveEvent(event: Event): Promise<void>;
@@ -171,6 +180,47 @@ export interface Repository {
    * blocks. Capacity is NOT checked here (it can't race) — that's `canBook`'s job.
    */
   saveReservationIfUnclaimed(reservation: Reservation): Promise<boolean>;
+
+  /**
+   * Atomic first-booking-of-a-virtual-slot (12.1, DEC-109/125) — the pessimistic write-time
+   * backstop that no hold can defeat by timing. In ONE critical section: (1) materialize the
+   * `Event` at its slot identity `(vessel,date,time,source='muster')` if none exists — the
+   * `events_muster_slot_identity` partial-unique guardrail makes concurrent first-bookings
+   * collide, so exactly one row is ever created per physical boat-slot (the DEC-125 guardrail
+   * enforcement, deferred from 12.0); (2) claim IFF no OTHER active Muster reservation holds
+   * that slot (the whole-boat mutex). `reservation.eventId` is reconciled to the actual
+   * materialized event id (`won.eventId`). Idempotent on `reservation.id`: a re-delivered
+   * webhook returns `{result:"won"}`. `event.id` MUST be the deterministic `eventIdForSlot`.
+   */
+  saveBookingIfSlotFree(
+    event: Event,
+    reservation: Reservation,
+  ): Promise<{ result: "won"; eventId: EventId } | { result: "lost" }>;
+
+  // ── Checkout holds — the transient 15-min soft reservation (12.1, DEC-109) ──
+  /**
+   * Acquire a checkout-hold on a physical slot. Atomic: deletes any EXPIRED hold for the
+   * slot identity first (so a stale row can't block a fresh acquire — the identity is
+   * unique), then inserts. Two live buyers collide on the `checkout_holds_slot_identity`
+   * unique → exactly one `{acquired:true}`; the other gets `{acquired:false}`. Idempotent on
+   * id: re-acquiring one's own live hold returns `{acquired:true}` with the existing row.
+   */
+  acquireCheckoutHold(
+    hold: CheckoutHold,
+  ): Promise<{ acquired: true; hold: CheckoutHold } | { acquired: false }>;
+  /** Every checkout-hold row (including expired-but-undeleted). The deriver filters these
+   *  to live (`expiresAt > asOf`) — the ONLY sanctioned raw read; never raw-count for "held". */
+  listCheckoutHolds(): Promise<CheckoutHold[]>;
+  /** Release a hold by id — idempotent no-op if already gone. Called when a checkout is
+   *  abandoned. */
+  removeCheckoutHold(id: CheckoutHoldId): Promise<void>;
+  /** Release the hold on a physical slot — how a won booking clears its own hold (the id was
+   *  a per-attempt mint the webhook doesn't have). Idempotent; there's ≤1 hold per slot. */
+  removeCheckoutHoldForSlot(
+    vesselId: VesselId,
+    date: string,
+    time: string,
+  ): Promise<void>;
 
   // ── Coexistence partition — Muster-owned vessel-days (DEC-106) ───────────────
   /** Every vessel-day marked Muster-owned. The importer hoists this to a Set once

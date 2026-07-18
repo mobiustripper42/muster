@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import type {
   Block,
+  CheckoutHold,
   Event,
   Offering,
   Reservation,
@@ -15,6 +16,7 @@ import {
   deriveAvailability,
   deriveVirtualAvailability,
   eventIdForSlot,
+  isSlotBlocked,
   slotIdentity,
 } from "./availability.js";
 
@@ -411,6 +413,96 @@ describe("deriveVirtualAvailability — materialized events overlay (DEC-125 pre
     })[0]!;
     expect(slot.eventId).toBeUndefined(); // stays purely virtual
     expect(slot.status).toBe("available");
+  });
+});
+
+describe("deriveVirtualAvailability — checkout holds (12.1, DEC-109)", () => {
+  const hold = (over: Partial<CheckoutHold> = {}): CheckoutHold => ({
+    id: asId<"CheckoutHoldId">("hold-1"),
+    vesselId: V,
+    date: "2026-07-04",
+    time: "13:30",
+    source: "muster",
+    offeringId: asId<"OfferingId">("off-1"),
+    guestCount: 4,
+    expiresAt: "2026-07-04T12:15:00.000Z",
+    createdAt: "2026-07-04T12:00:00.000Z",
+    ...over,
+  });
+  const owned0704 = { ...base, ownedDays: [owned("2026-07-04")] };
+
+  it("a live hold (expiresAt > asOf) marks the slot 'held'", () => {
+    const out = deriveVirtualAvailability({
+      ...owned0704,
+      holds: [hold()],
+      asOf: "2026-07-04T12:10:00.000Z", // before 12:15 expiry
+    });
+    expect(out[0]!.status).toBe("held");
+  });
+
+  it("an EXPIRED hold contributes nothing — slot reads available (lazy-on-read, no cron)", () => {
+    const out = deriveVirtualAvailability({
+      ...owned0704,
+      holds: [hold()],
+      asOf: "2026-07-04T12:20:00.000Z", // after 12:15 expiry
+    });
+    expect(out[0]!.status).toBe("available");
+  });
+
+  it("no asOf ⇒ holds are ignored (conservative; the write CAS still guards)", () => {
+    const out = deriveVirtualAvailability({ ...owned0704, holds: [hold()] });
+    expect(out[0]!.status).toBe("available");
+  });
+
+  it("a booked Event outranks a live hold on the same slot", () => {
+    const out = deriveVirtualAvailability({
+      ...owned0704,
+      events: [ev("evt-b", { time: "13:30" })],
+      reservations: [res("r1", "evt-b")],
+      holds: [hold()],
+      asOf: "2026-07-04T12:10:00.000Z",
+    });
+    expect(out[0]!.status).toBe("booked");
+  });
+
+  it("a block outranks a live hold on the same slot", () => {
+    const out = deriveVirtualAvailability({
+      ...owned0704,
+      blocks: [{ id: asId<"BlockId">("blk"), kind: "vesselHold", vesselId: V, date: "2026-07-04", time: "13:30" }],
+      holds: [hold()],
+      asOf: "2026-07-04T12:10:00.000Z",
+    });
+    expect(out[0]!.status).toBe("blocked");
+  });
+
+  it("a hold on a DIFFERENT slot doesn't touch this one", () => {
+    const out = deriveVirtualAvailability({
+      ...base,
+      holds: [hold({ date: "2026-07-11" })],
+      asOf: "2026-07-04T12:10:00.000Z",
+    });
+    expect(out.find((s) => s.date === "2026-07-04")!.status).toBe("available");
+    expect(out.find((s) => s.date === "2026-07-11")!.status).toBe("held");
+  });
+});
+
+describe("isSlotBlocked — shared block predicate", () => {
+  const L = "loc-dock";
+  it("vesselHold matches exact slot only", () => {
+    const blocks: Block[] = [{ id: asId<"BlockId">("b"), kind: "vesselHold", vesselId: V, date: "2026-07-04", time: "13:30" }];
+    expect(isSlotBlocked(blocks, L, V, "2026-07-04", "13:30")).toBe(true);
+    expect(isSlotBlocked(blocks, L, V, "2026-07-04", "17:00")).toBe(false);
+  });
+  it("vessel block covers its inclusive date range", () => {
+    const blocks: Block[] = [{ id: asId<"BlockId">("b"), kind: "vessel", vesselId: V, startDate: "2026-07-04", endDate: "2026-07-06" }];
+    expect(isSlotBlocked(blocks, L, V, "2026-07-05", "13:30")).toBe(true);
+    expect(isSlotBlocked(blocks, L, V, "2026-07-07", "13:30")).toBe(false);
+  });
+  it("location block covers its time window at its location", () => {
+    const blocks: Block[] = [{ id: asId<"BlockId">("b"), kind: "location", locationId: asId<"LocationId">("loc-dock"), date: "2026-07-04", startTime: "13:00", endTime: "14:00" }];
+    expect(isSlotBlocked(blocks, "loc-dock", V, "2026-07-04", "13:30")).toBe(true);
+    expect(isSlotBlocked(blocks, "loc-dock", V, "2026-07-04", "15:00")).toBe(false);
+    expect(isSlotBlocked(blocks, "loc-other", V, "2026-07-04", "13:30")).toBe(false);
   });
 });
 

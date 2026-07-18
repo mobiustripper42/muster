@@ -168,6 +168,20 @@ describe("slot webhook path (12.1a) — materialize + claim under the backstop",
     expect(soldOut).toHaveBeenCalledTimes(2); // notify re-fires (best-effort), refund does not
   });
 
+  it("residual-race loss with NO payment_intent → manual alert, no auto-refund/notify", async () => {
+    const repo = await seededRepo();
+    const { deps, alert, soldOut, payments } = makeDeps(repo);
+    await processBookingWebhook(deps, JSON.stringify(slotCompleted("cs_1", "v-small")), FAKE_SIGNATURE); // booked
+    // cs_2 loses but carries no PaymentIntent → nothing to auto-refund against.
+    const noPi = { sessionId: "cs_2", amountTotalCents: 49900, currency: "usd", metadata: slotCompleted("cs_2", "v-small").metadata };
+    const lost = await processBookingWebhook(deps, JSON.stringify(noPi), FAKE_SIGNATURE);
+    expect(lost).toEqual({ handled: true, outcome: "lost" });
+    expect(alert).toHaveBeenCalledOnce();
+    expect(alert.mock.calls[0]![0]).toContain("REFUND MANUALLY");
+    expect(payments.refunds).toHaveLength(0);
+    expect(soldOut).not.toHaveBeenCalled();
+  });
+
   it("residual race + auto-refund THROWS → falls back to the manual-refund alert", async () => {
     const repo = await seededRepo();
     const payments = new FakePaymentPort();

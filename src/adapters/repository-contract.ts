@@ -713,9 +713,9 @@ export function runRepositoryContract(
       expect(await repo.listMusterOwnedVesselDays()).toHaveLength(2);
     });
 
-    it("reservation catalog: reads are empty until 12.8–12.10 add writes (DEC-125)", async () => {
-      // Read-only surface in 12.0 — no write ports yet, so a fresh repo returns []/null
-      // on both adapters. Round-trip coverage lands with the entities' own write tasks.
+    it("reservation catalog: a fresh repo reads empty (DEC-125)", async () => {
+      // Empty on both adapters before anything is written (write round-trip is covered by
+      // "catalog: offering / location / block write + read round-trip" above, added in 12.1a).
       expect(await repo.listOfferings()).toEqual([]);
       expect(await repo.getOffering(asId<"OfferingId">("off-none"))).toBeNull();
       expect(await repo.listLocations()).toEqual([]);

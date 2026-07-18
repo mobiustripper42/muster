@@ -284,6 +284,11 @@ export function deriveVirtualAvailability(
     );
   };
 
+  // NB: slots carry `offeringId`, so two live offerings that schedule the SAME
+  // physical (vessel, date, time) each emit their own slot — a scheduling error the
+  // deriver does not resolve. 12.1's slot-identity uniqueness (the conditional insert /
+  // partial unique index) is what stops both from materializing-and-selling that one
+  // boat; catching the overlap at authoring time is a 12.8 catalog concern.
   const slots: VirtualSlot[] = [];
   for (const offering of offerings) {
     if (offering.status !== "live") continue;

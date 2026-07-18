@@ -227,6 +227,32 @@ describe("deriveVirtualAvailability — the DEC-125 grid", () => {
     expect(out.map((s) => s.date)).toEqual(["2026-07-04", "2026-07-05"]); // Mon dropped
   });
 
+  it("an Offering.vesselId with no matching vessel row is silently skipped", () => {
+    const out = deriveVirtualAvailability({
+      ...base,
+      offerings: [offering({ vesselIds: [V, asId<"VesselId">("ghost-boat")] })],
+      ownedDays: [owned("2026-07-04"), owned("2026-07-04", asId<"VesselId">("ghost-boat"))],
+    });
+    // Only the real vessel yields slots; the unknown id can't be priced/capped → dropped.
+    expect(out.every((s) => String(s.vesselId) === "vessel-brew-2")).toBe(true);
+    expect(out.map((s) => s.date)).toEqual(["2026-07-04"]);
+  });
+
+  it("two live offerings on the same physical slot each emit a slot (no dedup; 12.1 guards materialization)", () => {
+    const out = deriveVirtualAvailability({
+      ...base,
+      offerings: [
+        offering({ id: asId<"OfferingId">("off-a"), basePriceCents: 49900 }),
+        offering({ id: asId<"OfferingId">("off-b"), basePriceCents: 59900 }),
+      ],
+      ownedDays: [owned("2026-07-04")],
+    });
+    // Same (vessel, 2026-07-04, 13:30) from both offerings → two slots, distinct offeringId.
+    expect(out).toHaveLength(2);
+    expect(out.map((s) => String(s.offeringId)).sort()).toEqual(["off-a", "off-b"]);
+    expect(out.map((s) => s.priceCents).sort()).toEqual([49900, 59900]);
+  });
+
   it("one slot per departure time × vessel", () => {
     const V2 = asId<"VesselId">("vessel-brew-3");
     const out = deriveVirtualAvailability({

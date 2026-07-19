@@ -39,7 +39,12 @@ export async function createBalanceCheckout(
 
   const config = await repo.getPaymentConfig();
   const payments_ = await repo.listPaymentsForReservation(reservationId);
-  const owed = balanceOwedCents(event.price, config.taxRateBps, payments_);
+  // The composed fare (base + frozen extras, #474) — the bare base undercollects the balance.
+  const owed = balanceOwedCents(
+    event.price + (reservation.extrasCents ?? 0),
+    config.taxRateBps,
+    payments_,
+  );
   // `<= 0` folds no_balance, already-paid, and full-mode into one predicate.
   if (owed <= 0) return { ok: false, reason: "no_balance" };
 

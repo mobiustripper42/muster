@@ -412,6 +412,17 @@ export interface Reservation {
   customerName: string;
   partySize: number;
   /**
+   * The extra-guest surcharge portion of the booked fare, in integer CENTS, FROZEN at
+   * booking (12.2, DEC-107 amend / #474). `Event.price` is the per-departure BASE only
+   * (DEC-125); the fare the customer was charged is `base + extrasCents` (`composeFare`,
+   * `extraGuests × extraGuestPriceCents`). The balance deriver reads this so a deposit-mode
+   * balance collects the extras too — it is deliberately a booking property (a function of
+   * `guestCount`), NOT on `Event`, and NOT recomputed from the live Offering (that would
+   * reintroduce config drift `balanceOwedCents` forbids). Absent ⇒ 0: `'xola'` reservations,
+   * the legacy seeded `writeBooking` path (base carried the whole price), and any pre-12.2 row.
+   */
+  extrasCents?: number;
+  /**
    * Email is the manifest spine and the customers-export join key (DEC-017) —
    * inline on every Xola reservation. Optional because manual/legacy entries may
    * lack it.

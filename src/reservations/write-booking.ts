@@ -132,6 +132,10 @@ export interface SlotBookingRequest {
   /** Display base resolved at checkout-start (DEC-125), frozen onto the materialized Event
    *  so a later schedule/price edit never alters what this customer paid (DEC-125). */
   priceCents: number;
+  /** Extra-guest surcharge portion of the fare, in cents (`composeFare`), FROZEN onto the
+   *  reservation (#474) so the deposit-mode balance deriver collects the extras too. Absent
+   *  ⇒ 0 (guests within the included count, or a pre-composition caller). */
+  extrasCents?: number;
   customerName: string;
   email?: string;
   phone?: string;
@@ -181,6 +185,7 @@ export async function writeSlotBooking(
     source: "muster",
     customerName: req.customerName,
     partySize: req.guestCount,
+    ...(req.extrasCents !== undefined ? { extrasCents: req.extrasCents } : {}),
     ...(req.email !== undefined ? { email: req.email } : {}),
     ...(req.phone !== undefined ? { phone: req.phone } : {}),
     ...(req.waiverConsentAt !== undefined ? { waiverConsentAt: req.waiverConsentAt } : {}),

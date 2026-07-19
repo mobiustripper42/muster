@@ -17,6 +17,7 @@ import type {
   Block,
   CalendarFeed,
   CheckoutHold,
+  Gratuity,
   Location,
   MusterOwnedVesselDay,
   Offering,
@@ -221,6 +222,15 @@ export interface Repository {
     date: string,
     time: string,
   ): Promise<void>;
+
+  // ── Gratuity — first-class crew money (12.3, DEC-124) ───────────────────────
+  /** Record a collected gratuity. Deterministic id (`grat_${kind}_${sessionId}`) ⇒ idempotent
+   *  upsert, so a re-delivered webhook never double-counts. */
+  saveGratuity(gratuity: Gratuity): Promise<void>;
+  /** Every gratuity on an event — the per-event pool the payroll split (12.3b) sums. */
+  listGratuitiesForEvent(eventId: EventId): Promise<Gratuity[]>;
+  /** Every gratuity — the payroll report's source set (12.3b). */
+  listAllGratuities(): Promise<Gratuity[]>;
 
   // ── Coexistence partition — Muster-owned vessel-days (DEC-106) ───────────────
   /** Every vessel-day marked Muster-owned. The importer hoists this to a Set once

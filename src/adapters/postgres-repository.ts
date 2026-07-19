@@ -24,6 +24,7 @@ import type {
   CrewMember,
   CrewStatus,
   Event,
+  Gratuity,
   Location,
   LoginCode,
   CalendarFeed,
@@ -52,6 +53,7 @@ import type {
   AskId,
   BlockId,
   CheckoutHoldId,
+  GratuityId,
   CredentialId,
   CrewMemberId,
   EventId,
@@ -190,6 +192,8 @@ const toOffering = (r: any): Offering => ({
   basePriceCents: r.base_price_cents,
   priceVariations: r.price_variations as PriceVariation[], // jsonb
   extraGuestPriceCents: r.extra_guest_price_cents,
+  ...(r.gratuity_tiers_bps != null ? { gratuityTiersBps: r.gratuity_tiers_bps as number[] } : {}),
+  ...opt("gratuityDefaultBps", r.gratuity_default_bps),
 });
 
 const toLocation = (r: any): Location => ({
@@ -278,9 +282,21 @@ const toPayment = (r: any): Payment => ({
   currency: r.currency,
   status: r.status,
   createdAt: r.created_at,
+  ...opt("gratuityCents", r.gratuity_cents),
   ...opt("stripeCheckoutSessionId", r.stripe_checkout_session_id),
   ...opt("stripePaymentIntentId", r.stripe_payment_intent_id),
   ...opt("refundedCents", r.refunded_cents),
+});
+
+const toGratuity = (r: any): Gratuity => ({
+  id: asId<"GratuityId">(r.id),
+  eventId: asId<"EventId">(r.event_id),
+  reservationId: asId<"ReservationId">(r.reservation_id),
+  kind: r.kind,
+  amountCents: r.amount_cents,
+  createdAt: r.created_at,
+  ...opt("bps", r.bps),
+  ...opt("stripeCheckoutSessionId", r.stripe_checkout_session_id),
 });
 
 const toShift = (r: any): Shift => ({
@@ -730,13 +746,14 @@ export class PostgresRepository implements Repository {
   async saveOffering(o: Offering): Promise<void> {
     await this.#pool.query(
       `insert into offerings
-         (id, tenant_id, name, status, vessel_ids, location_id, schedule, base_price_cents, price_variations, extra_guest_price_cents)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         (id, tenant_id, name, status, vessel_ids, location_id, schedule, base_price_cents, price_variations, extra_guest_price_cents, gratuity_tiers_bps, gratuity_default_bps)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
        on conflict (id) do update set
          tenant_id=excluded.tenant_id, name=excluded.name, status=excluded.status,
          vessel_ids=excluded.vessel_ids, location_id=excluded.location_id,
          schedule=excluded.schedule, base_price_cents=excluded.base_price_cents,
-         price_variations=excluded.price_variations, extra_guest_price_cents=excluded.extra_guest_price_cents`,
+         price_variations=excluded.price_variations, extra_guest_price_cents=excluded.extra_guest_price_cents,
+         gratuity_tiers_bps=excluded.gratuity_tiers_bps, gratuity_default_bps=excluded.gratuity_default_bps`,
       [
         o.id,
         o.tenantId,
@@ -748,6 +765,8 @@ export class PostgresRepository implements Repository {
         o.basePriceCents,
         JSON.stringify(o.priceVariations),
         o.extraGuestPriceCents,
+        o.gratuityTiersBps ? JSON.stringify(o.gratuityTiersBps) : null,
+        o.gratuityDefaultBps ?? null,
       ],
     );
   }
@@ -877,9 +896,9 @@ export class PostgresRepository implements Repository {
       // Insert-only: a payment row is immutable once written. A re-delivered webhook must
       // NOT rewrite created_at (or, once refund reconciliation lands, reset status) — so
       // do nothing on a duplicate id rather than overwrite. Idempotent by construction.
-      `insert into payments(id, reservation_id, method, kind, amount_cents, tax_cents, currency,
+      `insert into payments(id, reservation_id, method, kind, amount_cents, tax_cents, gratuity_cents, currency,
          stripe_checkout_session_id, stripe_payment_intent_id, status, refunded_cents, created_at)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
        on conflict (id) do nothing`,
       [
         p.id,
@@ -888,6 +907,7 @@ export class PostgresRepository implements Repository {
         p.kind,
         p.amountCents,
         p.taxCents,
+        p.gratuityCents ?? null,
         p.currency,
         p.stripeCheckoutSessionId ?? null,
         p.stripePaymentIntentId ?? null,
@@ -1150,6 +1170,37 @@ export class PostgresRepository implements Repository {
       "delete from checkout_holds where vessel_id=$1 and date=$2 and time=$3 and source='muster'",
       [vesselId, date, time],
     );
+  }
+
+  // ── Gratuity (12.3, DEC-124) ────────────────────────────────────────────────
+  async saveGratuity(g: Gratuity): Promise<void> {
+    await this.#pool.query(
+      // Deterministic id ⇒ idempotent; a re-delivered webhook must not double-count.
+      `insert into gratuity(id, event_id, reservation_id, kind, amount_cents, bps, stripe_checkout_session_id, created_at)
+       values ($1,$2,$3,$4,$5,$6,$7,$8)
+       on conflict (id) do nothing`,
+      [
+        g.id,
+        g.eventId,
+        g.reservationId,
+        g.kind,
+        g.amountCents,
+        g.bps ?? null,
+        g.stripeCheckoutSessionId ?? null,
+        g.createdAt,
+      ],
+    );
+  }
+  async listGratuitiesForEvent(eventId: EventId): Promise<Gratuity[]> {
+    const { rows } = await this.#pool.query(
+      "select * from gratuity where event_id=$1",
+      [eventId],
+    );
+    return rows.map(toGratuity);
+  }
+  async listAllGratuities(): Promise<Gratuity[]> {
+    const { rows } = await this.#pool.query("select * from gratuity");
+    return rows.map(toGratuity);
   }
 
   // ── Shifts ─────────────────────────────────────────────────────────────────

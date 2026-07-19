@@ -15,6 +15,7 @@ import type { Payment, Reservation } from "../domain/entities.js";
 import {
   asId,
   type EventId,
+  type GratuityId,
   type OfferingId,
   type ReservationId,
   type VesselId,
@@ -61,7 +62,7 @@ export type WebhookResult =
   | { handled: false } // verified but not a checkout.session.completed event → ack + ignore
   | {
       handled: true;
-      outcome: "booked" | "already" | "lost" | "unbookable" | "balance_paid" | "ignored";
+      outcome: "booked" | "already" | "lost" | "unbookable" | "balance_paid" | "gratuity_paid" | "ignored";
     };
 
 export async function processBookingWebhook(
@@ -76,6 +77,7 @@ export async function processBookingWebhook(
   // it must NEVER reach the booking path (no eventId → an orphan reservation).
   const purpose = completed.metadata.purpose;
   if (purpose === "balance") return recordBalancePayment(deps, completed);
+  if (purpose === "gratuity") return recordPostGratuity(deps, completed);
   if (purpose !== undefined && purpose !== "booking") {
     await deps.alertPaidButUnbooked(
       `⚠️ Stripe checkout with unknown purpose="${purpose}" — session ${completed.sessionId}. ` +
@@ -144,6 +146,22 @@ export async function processBookingWebhook(
       } catch {
         // swallowed by contract — see above
       }
+      // Record the PRE-gratuity (DEC-124) — crew money, keyed to the event pool. Slot bookings
+      // only carry a tip; deterministic id ⇒ idempotent (gated to the fresh `booked`, like the
+      // confirmation, so a redelivery — which resolves `already` — never re-records).
+      const gratuityCents = Number(m.gratuityCents ?? 0);
+      if (isSlotBooking && gratuityCents > 0) {
+        await deps.repo.saveGratuity({
+          id: asId<"GratuityId">(`grat_pre_${completed.sessionId}`),
+          eventId: result.reservation.eventId,
+          reservationId: result.reservation.id,
+          kind: "pre",
+          amountCents: gratuityCents,
+          ...(m.gratuityBps ? { bps: Number(m.gratuityBps) } : {}),
+          stripeCheckoutSessionId: completed.sessionId,
+          createdAt: deps.now(),
+        });
+      }
     }
     return { handled: true, outcome: result.outcome };
   }
@@ -211,6 +229,10 @@ async function recordPayment(
     kind,
     amountCents: completed.amountTotalCents,
     taxCents: Number(completed.metadata.taxCents ?? 0),
+    // The gratuity bundled into amountCents (DEC-124) — carved out so balanceOwedCents nets it.
+    ...(Number(completed.metadata.gratuityCents ?? 0) > 0
+      ? { gratuityCents: Number(completed.metadata.gratuityCents) }
+      : {}),
     currency: completed.currency,
     stripeCheckoutSessionId: completed.sessionId,
     ...(completed.paymentIntentId ? { stripePaymentIntentId: completed.paymentIntentId } : {}),
@@ -218,6 +240,37 @@ async function recordPayment(
     createdAt: deps.now(),
   };
   await deps.repo.savePayment(payment);
+}
+
+/**
+ * Record a POST-trip gratuity (12.3, DEC-124) against an already-booked reservation — its own
+ * `purpose:"gratuity"` Stripe session (mirrors the balance flow). **Writes NO `Payment`** — a
+ * Payment would inflate the "paid" sum and drive `balanceOwedCents` negative → a false overpay
+ * alert. Gratuity-only, keyed to the reservation's event pool. Idempotent on the session.
+ */
+async function recordPostGratuity(
+  deps: WebhookDeps,
+  completed: CheckoutCompleted,
+): Promise<WebhookResult> {
+  const reservationId = asId<"ReservationId">(completed.metadata.reservationId ?? "");
+  const reservation = await deps.repo.getReservation(reservationId);
+  if (!reservation || reservation.source !== "muster" || reservation.status !== "booked") {
+    await deps.alertPaidButUnbooked(
+      `⚠️ Post-trip gratuity paid for reservation ${reservationId}, but it is missing/cancelled — ` +
+        `Stripe session ${completed.sessionId}. RECONCILE MANUALLY (gratuity received, not attached).`,
+    );
+    return { handled: true, outcome: "gratuity_paid" };
+  }
+  await deps.repo.saveGratuity({
+    id: asId<"GratuityId">(`grat_post_${completed.sessionId}`),
+    eventId: reservation.eventId,
+    reservationId,
+    kind: "post",
+    amountCents: completed.amountTotalCents,
+    stripeCheckoutSessionId: completed.sessionId,
+    createdAt: deps.now(),
+  });
+  return { handled: true, outcome: "gratuity_paid" };
 }
 
 /**

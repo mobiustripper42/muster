@@ -19,6 +19,7 @@ import type {
   CredentialId,
   CrewMemberId,
   EventId,
+  GratuityId,
   LocationId,
   MagicTokenId,
   OfferingId,
@@ -262,6 +263,44 @@ export interface Offering {
   priceVariations: PriceVariation[];
   /** Per-guest surcharge over the base-fare included count — booking-time only (DEC-124). */
   extraGuestPriceCents: number;
+  /**
+   * Gratuity tiers in basis points (DEC-124, 12.3) — the required-at-checkout tip choices
+   * (default 15/20/25%). Optional/absent ⇒ `GRATUITY_TIERS_DEFAULT`. Gratuity is first-class
+   * crew money (tax/fee-exempt, routes to crew), NOT an add-on.
+   */
+  gratuityTiersBps?: number[];
+  /** The pre-selected tier in bps (default 2000 = 20%). Absent ⇒ `GRATUITY_DEFAULT_BPS`. */
+  gratuityDefaultBps?: number;
+}
+
+// ── Gratuity — first-class crew money (DEC-124, 12.3) ─────────────────────────
+
+/** Which leg collected the gratuity: `pre` = required at checkout; `post` = added later via
+ *  the booking-link manage page. Text, not an enum — the column takes more kinds if they
+ *  appear (DEC-DATA-1). */
+export type GratuityKind = "pre" | "post";
+
+/**
+ * One collected gratuity (DEC-124). **Crew money, NOT revenue** — tax- and service-fee-exempt,
+ * charged in full (never deposit-split), and it routes to crew via the per-event pool that the
+ * 12.3b payroll report splits across the event's assigned crew. Linked to BOTH the `event`
+ * (the split grain) and the `reservation` (post-trip attach + cancel exclusion). The `id` is
+ * deterministic from the Stripe session (`grat_${kind}_${sessionId}`) so a re-delivered webhook
+ * upserts, never double-counts.
+ */
+export interface Gratuity {
+  id: GratuityId;
+  eventId: EventId;
+  reservationId: ReservationId;
+  kind: GratuityKind;
+  /** Integer CENTS (DEC-112). Never taxed, never fee'd (DEC-124). */
+  amountCents: number;
+  /** Tier chosen, basis points — pre only (post is a free amount); provenance for the summary. */
+  bps?: number;
+  /** The Stripe session that collected it — reconciliation handle. */
+  stripeCheckoutSessionId?: string;
+  /** ISO-8601 UTC. */
+  createdAt: string;
 }
 
 /**
@@ -468,6 +507,13 @@ export interface Payment {
   amountCents: number;
   /** Tax portion of `amountCents`, cents — recorded for the (parked) sales-tax report. */
   taxCents: number;
+  /**
+   * Gratuity portion of `amountCents`, cents (DEC-124, 12.3) — crew money, NOT price+tax. The
+   * booking charge bundles the tip into `amountCents`, so `balanceOwedCents` MUST net this out
+   * or a deposit booking's balance under-charges. Optional/absent ⇒ 0 (no gratuity, or a
+   * balance/pre-12.3 payment).
+   */
+  gratuityCents?: number;
   /** ISO-4217 lowercase, e.g. "usd". */
   currency: string;
   /** Stripe Checkout session id (present when `method="stripe"`). */

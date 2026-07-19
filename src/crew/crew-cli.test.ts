@@ -204,6 +204,27 @@ describe("db:crew CLI (Phase 10.5)", () => {
     ).rejects.toThrow(/cannot be blank/i);
   });
 
+  it("set --gusto-* seeds the Gusto identity (all four together)", async () => {
+    const out = await runCrewCommand(repo, [
+      "set",
+      "crew-eric",
+      "--gusto-first=Eric",
+      "--gusto-last=Stoffer",
+      "--gusto-title=Captain",
+      "--gusto-employee-id=E42",
+    ]);
+    expect(out).toMatch(/gusto/i);
+    expect((await repo.getCrewMember(asId<"CrewMemberId">("crew-eric")))!.gusto).toEqual({
+      firstName: "Eric", lastName: "Stoffer", title: "Captain", employeeId: "E42",
+    });
+  });
+
+  it("set rejects a partial --gusto-* (all-or-nothing)", async () => {
+    await expect(
+      runCrewCommand(repo, ["set", "crew-eric", "--gusto-first=Eric", "--gusto-last=Stoffer"]),
+    ).rejects.toThrow(/all-or-nothing/i);
+  });
+
   it("set can change several fields at once", async () => {
     const out = await runCrewCommand(repo, [
       "set",

@@ -18,6 +18,7 @@ import type {
   CalendarFeed,
   CheckoutHold,
   Gratuity,
+  GustoIdentity,
   Location,
   MusterOwnedVesselDay,
   Offering,
@@ -111,6 +112,12 @@ export interface Repository {
   updateCrewWeekdaysOff(
     id: CrewMemberId,
     weekdaysOff: number[],
+  ): Promise<CrewMember | null>;
+  /** Set the crew member's Gusto payroll identity (DEC-124, 12.3b) — a targeted UPDATE of
+   *  `gusto` only, same lost-update safety as {@link updateCrewContact}. Null if id unknown. */
+  updateCrewGusto(
+    id: CrewMemberId,
+    gusto: GustoIdentity,
   ): Promise<CrewMember | null>;
   /** Onboard a crew member + their gating credential ATOMICALLY (DEC-094/044).
    *  A half-write (member saved, credential lost) would strand an active crew

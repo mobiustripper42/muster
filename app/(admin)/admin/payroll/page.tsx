@@ -4,6 +4,7 @@ import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { buildPayrollReport, type PayrollRow } from "@core/admin/payroll.js";
+import { buildGratuityPayroll, type GratuityPayroll } from "@core/admin/gratuity-payroll.js";
 import { currentPeriod, periodsForYear, periodLabel } from "@core/admin/pay-periods.js";
 import { PAY_PERIOD_ANCHOR, vesselDateOf } from "@core/config/tenant.js";
 import { readSubject } from "../../../lib/auth";
@@ -22,6 +23,8 @@ type Search = { period?: string };
 
 /** minutes → "12h 30m". */
 const hoursLabel = (min: number) => `${Math.floor(min / 60)}h ${min % 60}m`;
+/** cents → "$124.75". */
+const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 export default async function AdminPayroll({
   searchParams,
@@ -46,8 +49,12 @@ export default async function AdminPayroll({
   const selValue = `${sel.start}|${sel.end}`;
 
   let rows: PayrollRow[];
+  let tips: GratuityPayroll;
   try {
-    rows = await buildPayrollReport(getRepo(), { from: sel.start, to: sel.end });
+    [rows, tips] = await Promise.all([
+      buildPayrollReport(getRepo(), { from: sel.start, to: sel.end }),
+      buildGratuityPayroll(getRepo(), { from: sel.start, to: sel.end }),
+    ]);
   } catch {
     return (
       <Shell width="3xl">
@@ -129,6 +136,69 @@ export default async function AdminPayroll({
                   <td className="px-4 py-2 text-ink">Total</td>
                   <td className="px-4 py-2 text-right font-mono text-muted">{totalShifts}</td>
                   <td className="px-4 py-2 text-right font-mono text-ink">{hoursLabel(totalMin)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">
+            Tips (Gusto) · {money(tips.totalCents)}
+          </h2>
+          {tips.rows.length > 0 && (
+            <a
+              href={`/admin/payroll/tips.csv?period=${encodeURIComponent(selValue)}`}
+              className="min-h-[36px] rounded-card border border-line bg-card px-3 py-1.5 text-sm font-semibold text-ink"
+            >
+              Download Gusto CSV
+            </a>
+          )}
+        </div>
+        <p className="text-xs text-muted">
+          Muster-side gratuity, split evenly per trip among the crew who worked it (DEC-124).
+          Combine with the Xola tip-extractor’s report by hand during the Xola drain.
+        </p>
+        {tips.warnings.length > 0 && (
+          <Notice>
+            <ul className="list-disc pl-4">
+              {tips.warnings.map((w, i) => (
+                <li key={i}>{w}</li>
+              ))}
+            </ul>
+          </Notice>
+        )}
+        {tips.rows.length === 0 ? (
+          <Notice>No Muster-side tips in this period.</Notice>
+        ) : (
+          <div className="overflow-x-auto rounded-card border border-line">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-line bg-card text-left text-xs uppercase tracking-wide text-muted">
+                  <th className="px-4 py-2 font-semibold">Crew</th>
+                  <th className="px-4 py-2 font-semibold">Gusto</th>
+                  <th className="px-4 py-2 text-right font-semibold">Tips</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tips.rows.map((r) => (
+                  <tr key={r.crewMemberId} className="border-b border-line last:border-0">
+                    <td className="px-4 py-2 text-ink">{r.name}</td>
+                    <td className="px-4 py-2 text-xs text-muted">
+                      {r.gusto ? r.gusto.employeeId : "— not mapped —"}
+                    </td>
+                    <td className="px-4 py-2 text-right font-mono text-ink">{money(r.tipCents)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="bg-card font-semibold">
+                  <td className="px-4 py-2 text-ink" colSpan={2}>
+                    Total
+                  </td>
+                  <td className="px-4 py-2 text-right font-mono text-ink">{money(tips.totalCents)}</td>
                 </tr>
               </tfoot>
             </table>

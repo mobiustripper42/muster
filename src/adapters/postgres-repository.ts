@@ -25,6 +25,7 @@ import type {
   CrewStatus,
   Event,
   Gratuity,
+  GustoIdentity,
   Location,
   LoginCode,
   CalendarFeed,
@@ -147,6 +148,7 @@ const toCrew = (r: any): CrewMember => ({
   ...opt("manualBoost", r.manual_boost),
   ...opt("manualFloor", r.manual_floor),
   ...opt("protocolOverride", r.protocol_override),
+  ...(r.gusto != null ? { gusto: r.gusto as GustoIdentity } : {}),
   // Optional like the fields above — omitted (not []) when the crew member has no
   // recurring days off, so absence round-trips (the DB column defaults to []).
   ...((r.weekdays_off as number[] | null)?.length
@@ -546,13 +548,13 @@ export class PostgresRepository implements Repository {
   async saveCrewMember(c: CrewMember): Promise<void> {
     await this.#pool.query(
       `insert into crew_members
-         (id, name, phone, email, ratings, status, manual_boost, manual_floor, protocol_override, reliability_score, weekdays_off)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+         (id, name, phone, email, ratings, status, manual_boost, manual_floor, protocol_override, reliability_score, weekdays_off, gusto)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
        on conflict (id) do update set
          name=excluded.name, phone=excluded.phone, email=excluded.email, ratings=excluded.ratings,
          status=excluded.status, manual_boost=excluded.manual_boost, manual_floor=excluded.manual_floor,
          protocol_override=excluded.protocol_override, reliability_score=excluded.reliability_score,
-         weekdays_off=excluded.weekdays_off`,
+         weekdays_off=excluded.weekdays_off, gusto=excluded.gusto`,
       [
         c.id,
         c.name,
@@ -565,6 +567,7 @@ export class PostgresRepository implements Repository {
         c.protocolOverride ?? null,
         c.reliabilityScore,
         JSON.stringify(c.weekdaysOff ?? []),
+        c.gusto ? JSON.stringify(c.gusto) : null,
       ],
     );
   }
@@ -609,6 +612,17 @@ export class PostgresRepository implements Repository {
     const { rows } = await this.#pool.query(
       "update crew_members set weekdays_off=$1 where id=$2 returning *",
       [JSON.stringify(weekdaysOff), id],
+    );
+    return rows[0] ? toCrew(rows[0]) : null;
+  }
+  async updateCrewGusto(
+    id: CrewMemberId,
+    gusto: GustoIdentity,
+  ): Promise<CrewMember | null> {
+    // Targeted UPDATE (DEC-094) — touches only gusto (DEC-124, 12.3b).
+    const { rows } = await this.#pool.query(
+      "update crew_members set gusto=$1 where id=$2 returning *",
+      [JSON.stringify(gusto), id],
     );
     return rows[0] ? toCrew(rows[0]) : null;
   }

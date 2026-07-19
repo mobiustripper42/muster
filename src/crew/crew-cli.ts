@@ -38,7 +38,16 @@ const flag = (args: string[], name: string): string | undefined =>
 const E164 = /^\+[1-9]\d{6,14}$/;
 const looksLikeEmail = (s: string): boolean => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s);
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-const KNOWN_SET_FLAGS = ["email", "phone", "name"] as const;
+const KNOWN_SET_FLAGS = [
+  "email",
+  "phone",
+  "name",
+  // Gusto payroll identity (DEC-124, 12.3b) — all four together, or none.
+  "gusto-first",
+  "gusto-last",
+  "gusto-title",
+  "gusto-employee-id",
+] as const;
 const KNOWN_ADD_FLAGS = ["name", "phone", "ratings", "email", "id", "mmc"] as const;
 
 /** Weekday tokens, index = the Mon=0…Sun=6 value stored in `weekdaysOff` (DEC-119). */
@@ -310,15 +319,29 @@ export async function runCrewCommand(
         .find((a) => a.startsWith("--") && !KNOWN_SET_FLAGS.some((k) => a.startsWith(`--${k}=`)));
       if (bad)
         throw new CrewCliError(
-          `set: unrecognized flag "${bad}". Known: --email, --phone, --name.\n${USAGE}`,
+          `set: unrecognized flag "${bad}". Known: --email, --phone, --name, ` +
+            `--gusto-first, --gusto-last, --gusto-title, --gusto-employee-id.\n${USAGE}`,
         );
 
       const email = flag(args, "email");
       const phone = flag(args, "phone");
       const name = flag(args, "name");
-      if (email === undefined && phone === undefined && name === undefined)
+      // Gusto payroll identity (DEC-124, 12.3b) — all four together, or none.
+      const gFirst = flag(args, "gusto-first");
+      const gLast = flag(args, "gusto-last");
+      const gTitle = flag(args, "gusto-title");
+      const gEmp = flag(args, "gusto-employee-id");
+      const gParts = [gFirst, gLast, gTitle, gEmp];
+      const gustoCount = gParts.filter((g) => g !== undefined).length;
+      if (gustoCount > 0 && gustoCount < 4)
         throw new CrewCliError(
-          `set: pass at least one of --email, --phone, or --name.\n${USAGE}`,
+          "set: --gusto-* is all-or-nothing — pass --gusto-first, --gusto-last, " +
+            "--gusto-title, AND --gusto-employee-id together.",
+        );
+      const hasGusto = gustoCount === 4;
+      if (email === undefined && phone === undefined && name === undefined && !hasGusto)
+        throw new CrewCliError(
+          `set: pass at least one of --email, --phone, --name, or --gusto-*.\n${USAGE}`,
         );
 
       const fields: { name?: string; phone?: string; email?: string | null } = {};
@@ -365,9 +388,23 @@ export async function runCrewCommand(
         changes.push(`name → ${n}`);
       }
 
-      // Targeted UPDATE (DEC-094) — touches only the contact columns, so a
-      // concurrent engine write to reliability/status/ratings isn't clobbered.
-      const updated = await repo.updateCrewContact(asId<"CrewMemberId">(id), fields);
+      // Targeted UPDATEs (DEC-094) — each touches only its columns, so a concurrent
+      // engine write to reliability/status/ratings isn't clobbered. Contact first
+      // (if any contact field changed), then the Gusto identity (if given).
+      const crewId = asId<"CrewMemberId">(id);
+      let updated =
+        email !== undefined || phone !== undefined || name !== undefined
+          ? await repo.updateCrewContact(crewId, fields)
+          : await repo.getCrewMember(crewId);
+      if (updated && hasGusto) {
+        updated = await repo.updateCrewGusto(crewId, {
+          firstName: gFirst!.trim(),
+          lastName: gLast!.trim(),
+          title: gTitle!.trim(),
+          employeeId: gEmp!.trim(),
+        });
+        changes.push(`gusto → ${gFirst!.trim()} ${gLast!.trim()} (${gEmp!.trim()})`);
+      }
       if (!updated)
         throw new CrewCliError(
           `set: no crew member with id "${id}". Run \`db:crew list\` to find the id.`,

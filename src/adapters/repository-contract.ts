@@ -338,6 +338,19 @@ export function runRepositoryContract(
       );
     });
 
+    it("crew: Gusto identity round-trips + updateCrewGusto is targeted (DEC-124, 12.3b)", async () => {
+      await repo.saveCrewMember(crew({ reliabilityScore: 7 })); // no gusto
+      expect("gusto" in (await repo.getCrewMember(CREW))!).toBe(false); // omitted, not null
+      const gusto = { firstName: "Ann", lastName: "Alpha", title: "Captain", employeeId: "E1" };
+      await repo.saveCrewMember(crew({ gusto, reliabilityScore: 7 }));
+      expect((await repo.getCrewMember(CREW))!.gusto).toEqual(gusto);
+      // targeted update: sets gusto only, leaves reliabilityScore untouched (DEC-094)
+      const g2 = { firstName: "Ann", lastName: "Beta", title: "Mate", employeeId: "E2" };
+      const updated = await repo.updateCrewGusto(CREW, g2);
+      expect(updated).toMatchObject({ gusto: g2, reliabilityScore: 7 });
+      expect(await repo.updateCrewGusto(CREW_B, g2)).toBeNull(); // unknown id
+    });
+
     it("updateCrewWeekdaysOff: replaces the set, clears to omitted, leaves score/status (DEC-094/119)", async () => {
       await repo.saveCrewMember(crew({ reliabilityScore: 7, status: "inactive" }));
       const set = await repo.updateCrewWeekdaysOff(CREW, [6]);

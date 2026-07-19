@@ -167,6 +167,22 @@ export interface CrewMember {
    * stays null/flat (DEC-008) and the two don't diverge in practice.
    */
   reliabilityScore: number | null;
+  /**
+   * Gusto payroll identity (DEC-124, 12.3b) — the crew→Gusto map the gratuity report emits as
+   * the timesheet CSV. Lives on the crew row (Muster owns crew natively; no separate map file,
+   * unlike `xola-tip-extractor`'s `guide-gusto-map.json`). Optional: absent ⇒ the crew member's
+   * tips warn loudly and their CSV row won't import (no `employeeId`). Seeded from the roster.
+   */
+  gusto?: GustoIdentity;
+}
+
+/** A crew member's Gusto timesheet identity (DEC-124, 12.3b) — the four fields the Gusto CSV
+ *  keys on. `employeeId` is the import key; a row without it won't import. */
+export interface GustoIdentity {
+  firstName: string;
+  lastName: string;
+  title: string;
+  employeeId: string;
 }
 
 // ── Event + Reservation ─────────────────────────────────────────────────────

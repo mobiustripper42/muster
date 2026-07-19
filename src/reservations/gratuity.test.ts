@@ -88,6 +88,16 @@ describe("gratuity is required, no decline (DEC-124)", () => {
     // 25% of the 49900 fare = 12475
     expect(pay.created[0]!.metadata).toMatchObject({ gratuityCents: "12475", gratuityBps: "2500" });
   });
+
+  it("deposit mode: the tip is charged in FULL; only the fare is deposit-split", async () => {
+    const repo = await seededRepo();
+    await repo.setPaymentConfig({ depositMode: "deposit", depositPercent: 25, taxRateBps: 0 }, NOW);
+    const pay = new FakePaymentPort();
+    await createDepartureCheckout(repo, pay, req(2000), URLS, now); // fare 49900, 20% tip
+    // deposit 25% of 49900 = 12475 (fare only); gratuity 9980 charged in full, NOT split
+    expect(pay.created[0]!.amountCents).toBe(22455); // 12475 + 9980
+    expect(pay.created[0]!.metadata).toMatchObject({ gratuityCents: "9980", kind: "deposit" });
+  });
 });
 
 describe("pre-gratuity is recorded on booking (DEC-124)", () => {

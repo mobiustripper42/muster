@@ -157,10 +157,6 @@ export default async function AdminPayroll({
             </a>
           )}
         </div>
-        <p className="text-xs text-muted">
-          Muster-side gratuity, split evenly per trip among the crew who worked it (DEC-124).
-          Combine with the Xola tip-extractor’s report by hand during the Xola drain.
-        </p>
         {tips.warnings.length > 0 && (
           <Notice>
             <ul className="list-disc pl-4">

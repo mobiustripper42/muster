@@ -67,6 +67,7 @@ async function crew(
   await repo.saveCrewMember({
     id: crewId,
     name,
+    email: `${name.split(/\s+/)[0]!.toLowerCase().replace(/[^a-z0-9]/g, "")}@bb.test`,
     phone,
     ratings: [role],
     status: "active",
@@ -123,9 +124,9 @@ try {
   await repo.saveVessel({ id: VESSEL, name: "Split Demo", coiMaxPax: 12, manning });
   await repo.saveVessel({ id: VESSEL2, name: "Steady", coiMaxPax: 12, manning });
 
-  const cap = await crew("crew-split-cap", "Quill", CAPTAIN, "+15555550201");
+  const cap = await crew("crew-split-cap", "Onion", CAPTAIN, "+15555550201");
   const mate = await crew("crew-split-mate", "Reef", MATE, "+15555550202");
-  await crew("crew-split-cap2", "Dale", CAPTAIN, "+15555550203"); // spare, far side
+  await crew("crew-split-cap2", "Gil", CAPTAIN, "+15555550203"); // spare, far side
   await crew("crew-split-mate2", "Wren", MATE, "+15555550204"); // spare, far side
 
   // Day 1 (Split Demo, ~3d out): a morning + evening cluster with a ~7h afternoon
@@ -172,7 +173,7 @@ try {
   console.log(`     ${tightShift}`);
   console.log("");
   console.log("Test:  /crew/dev-link?admin=spink → /admin/shifts?mode=edit");
-  console.log("  • Split Demo — Split at 7:00 PM (suggested) or pick another → side A (morning, keeps Quill+Reef) + side B (evening).");
+  console.log("  • Split Demo — Split at 7:00 PM (suggested) or pick another → side A (morning, keeps Onion+Reef) + side B (evening).");
   console.log("  • Steady — no 'could be two shifts' hint, but the Split control is still there. Split at 3:00 or 5:00.");
   console.log("  • Crew a far side, then Merge (8.4) → the far crew get a release notice.");
   console.log("");

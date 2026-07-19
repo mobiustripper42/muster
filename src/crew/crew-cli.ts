@@ -23,10 +23,21 @@ import { asId } from "../domain/ids.js";
 import { normalizeEmail } from "../auth/login-code.js";
 import { scoreCrewMember, effectiveRankScore } from "../oracle/reliability-score.js";
 import type { Repository } from "../ports/repository.js";
+import { planGustoImport, type GustoMapEntry } from "./gusto-import.js";
 
 /** A user-facing CLI error (bad args / not found) — the entrypoint prints its
  *  message and exits non-zero, no stack trace. */
 export class CrewCliError extends Error {}
+
+/** Side-effect deps the pure CLI can't own (fs, network). The Postgres shell
+ *  (`db/crew.ts`) supplies them; tests inject fakes. */
+export interface CrewCliDeps {
+  /** Read + parse the extractor's gusto map at `path` into Muster-shaped entries. */
+  loadGustoMap?: (path: string) => GustoMapEntry[];
+}
+
+/** Where the extractor's map lives relative to the repo root, by default (sibling checkout). */
+export const DEFAULT_GUSTO_MAP_PATH = "../xola-tip-extractor/api/lib/guide-gusto-map.json";
 
 /** Returns the flag's value, `""` if passed empty (`--email=`), or `undefined`
  *  if the flag is absent — so callers can tell "clear it" from "leave it". */
@@ -100,7 +111,8 @@ const USAGE =
   "  db:crew list\n" +
   "  db:crew rank                — crew by reliability score, best first (#404)\n" +
   '  db:crew add --name="<name>" --phone=<+E164> --ratings=<r1,r2> [--email=<addr>] [--id=<crewId>] [--mmc=<YYYY-MM-DD>]\n' +
-  '  db:crew set <crewId> [--email=<addr>] [--phone=<+E164>] [--name="<name>"]\n' +
+  '  db:crew set <crewId> [--email=<addr>] [--phone=<+E164>] [--name="<name>"] [--gusto-first=… --gusto-last=… --gusto-title=… --gusto-employee-id=…]\n' +
+  "  db:crew import-gusto [--map=<path>] [--apply]   — bulk Gusto identities from xola-tip-extractor (dry-run without --apply)\n" +
   "  db:crew days-off                              — roster of everyone with recurring days off (#411)\n" +
   "  db:crew days-off <crewId> [--days=sun,mon,… (COMMA-separated) | --clear]   — show/set/clear one crew member\n" +
   "  db:crew disable <crewId>   |   db:crew enable <crewId>\n" +
@@ -114,6 +126,7 @@ export async function runCrewCommand(
   repo: Repository,
   args: string[],
   now: Date = new Date(),
+  deps: CrewCliDeps = {},
 ): Promise<string> {
   const cmd = args[0];
 
@@ -410,6 +423,55 @@ export async function runCrewCommand(
           `set: no crew member with id "${id}". Run \`db:crew list\` to find the id.`,
         );
       return `Updated ${updated.name} (${updated.id}):\n  ${changes.join("\n  ")}`;
+    }
+
+    // Bulk-seed Gusto identities from xola-tip-extractor's map (DEC-124, 12.3b). Dry-run
+    // by default (prints the plan); --apply writes via updateCrewGusto. Join is by name;
+    // ambiguous names are surfaced, never applied. See src/crew/gusto-import.ts.
+    case "import-gusto": {
+      if (!deps.loadGustoMap)
+        throw new CrewCliError("import-gusto isn't available here (no map loader wired).");
+      const bad = args.slice(1).find(
+        (a) => a.startsWith("--") && !/^--(map|apply)(=|$)/.test(a),
+      );
+      if (bad) throw new CrewCliError(`import-gusto: unrecognized flag "${bad}".\n${USAGE}`);
+      const mapFlag = args.find((a) => a.startsWith("--map="));
+      const mapPath = mapFlag ? mapFlag.slice("--map=".length) : DEFAULT_GUSTO_MAP_PATH;
+      const apply = args.includes("--apply");
+
+      let entries: GustoMapEntry[];
+      try {
+        entries = deps.loadGustoMap(mapPath);
+      } catch (e) {
+        throw new CrewCliError(
+          `import-gusto: couldn't read the map at "${mapPath}" — ${(e as Error).message}. ` +
+            `Pass --map=<path> to the extractor's api/lib/guide-gusto-map.json.`,
+        );
+      }
+
+      const crew = await repo.listCrewMembers();
+      const plan = planGustoImport(
+        crew.map((c) => ({ id: String(c.id), name: c.name })),
+        entries,
+      );
+
+      const lines: string[] = [];
+      if (apply) {
+        for (const m of plan.matched) {
+          await repo.updateCrewGusto(asId<"CrewMemberId">(m.crewId), m.gusto);
+        }
+        lines.push(`Applied ${plan.matched.length} Gusto ${plan.matched.length === 1 ? "identity" : "identities"}:`);
+      } else {
+        lines.push(`Dry run — ${plan.matched.length} to apply (re-run with --apply):`);
+      }
+      for (const m of plan.matched) lines.push(`  ✓ ${m.crewName} → ${m.gusto.employeeId}`);
+      if (plan.crewWithoutEntry.length)
+        lines.push(`  ${plan.crewWithoutEntry.length} crew with no map entry (stay unmapped): ${plan.crewWithoutEntry.join(", ")}`);
+      if (plan.entriesWithoutCrew.length)
+        lines.push(`  ${plan.entriesWithoutCrew.length} map entries with no crew (roster drift): ${plan.entriesWithoutCrew.join(", ")}`);
+      if (plan.ambiguous.length)
+        lines.push(`  ⚠ ${plan.ambiguous.length} ambiguous, NOT applied (resolve by hand via db:crew set): ${plan.ambiguous.join("; ")}`);
+      return lines.join("\n");
     }
 
     // Recurring weekday time-off (#411, DEC-119): read `weekdaysOff`, or set/clear

@@ -2,8 +2,8 @@
  * Dev seed for the operator outbox (DEC-030, #53). Three cards, eyeball-able
  * at /admin/outbox:
  *
- *   1. RELAY, tight (~20h) — Bo's ask on "Tideline", with a prior round (Lance
- *      declined) so the why-line reads "2nd ask · Lance declined". Top of the
+ *   1. RELAY, tight (~20h) — Bo's ask on "Tideline", with a prior round (Fred
+ *      declined) so the why-line reads "2nd ask · Fred declined". Top of the
  *      list (tightest trip), red countdown.
  *   2. RELAY, far (~4d) — Mira's ask on "Maibock", "1st ask". Sorts below Bo.
  *   3. SELF (~30h) — an ask addressed to OPERATOR_CREW_MEMBER_ID (crew-spink),
@@ -65,6 +65,7 @@ async function captain(id: string, name: string, phone: string) {
   await repo.saveCrewMember({
     id: crewId,
     name,
+    email: `${name.split(/\s+/)[0]!.toLowerCase().replace(/[^a-z0-9]/g, "")}@bb.test`,
     phone,
     ratings: [CAPTAIN],
     status: "active",
@@ -132,7 +133,7 @@ try {
   //   OUTBOX_TEST_PHONE=+14155550123 npm run db:seed:outbox
   const bo = await captain("crew-obx-bo", "Bo", process.env.OUTBOX_TEST_PHONE ?? "+15555550101");
   const mira = await captain("crew-obx-mira", "Mira", "+15555550102");
-  const lance = await captain("crew-obx-lance", "Lance", "+15555550103");
+  const lance = await captain("crew-obx-lance", "Fred", "+15555550103");
   // The operator's own crew identity — must match OPERATOR_CREW_MEMBER_ID
   // (app/lib/operator.ts; default "crew-spink").
   const spink = await captain("crew-spink", "Spink", "+15555550100");
@@ -189,7 +190,7 @@ try {
   });
 
   console.log("Seeded 3 outbox cards (trips anchored to now — re-run to re-anchor):");
-  console.log("  1 Tideline  ~20h  RELAY — Bo · '2nd ask · Lance declined' · red countdown");
+  console.log("  1 Tideline  ~20h  RELAY — Bo · '2nd ask · Fred declined' · red countdown");
   console.log("  2 Keelhaul  ~30h  SELF  — Spink ('you' pill) · inline In/Out, no Send link");
   console.log("  3 Maibock   ~4d   RELAY — Mira · '1st ask'");
   console.log("  + New messages: Nora No-Phone — a no-phone ring (Web Share relay, #186)");

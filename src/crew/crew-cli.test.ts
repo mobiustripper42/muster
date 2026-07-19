@@ -373,4 +373,31 @@ describe("db:crew CLI (Phase 10.5)", () => {
       );
     });
   });
+
+  describe("import-gusto", () => {
+    const loadGustoMap = () => [
+      { name: "Eric Stoffer", firstName: "Eric", lastName: "Stoffer", title: "Captain", employeeId: "abc123" },
+      { name: "Ghost Guide", firstName: "Ghost", lastName: "Guide", title: "First Mate", employeeId: "zzz999" },
+    ];
+
+    it("dry-run reports the plan and writes NOTHING", async () => {
+      const out = await runCrewCommand(repo, ["import-gusto"], new Date(), { loadGustoMap });
+      expect(out).toMatch(/Dry run/i);
+      expect(out).toContain("Eric Stoffer → abc123");
+      expect(out).toContain("Ghost Guide"); // entry with no crew, surfaced
+      const c = await repo.getCrewMember(asId<"CrewMemberId">("crew-eric"));
+      expect(c?.gusto).toBeUndefined();
+    });
+
+    it("--apply writes the matched Gusto identity via updateCrewGusto", async () => {
+      const out = await runCrewCommand(repo, ["import-gusto", "--apply"], new Date(), { loadGustoMap });
+      expect(out).toMatch(/Applied 1 Gusto identity/i);
+      const c = await repo.getCrewMember(asId<"CrewMemberId">("crew-eric"));
+      expect(c?.gusto).toEqual({ firstName: "Eric", lastName: "Stoffer", title: "Captain", employeeId: "abc123" });
+    });
+
+    it("errors clearly when no loader is wired", async () => {
+      await expect(runCrewCommand(repo, ["import-gusto"])).rejects.toThrow(/no map loader/i);
+    });
+  });
 });

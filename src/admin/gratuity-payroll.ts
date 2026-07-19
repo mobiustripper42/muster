@@ -63,7 +63,7 @@ export function splitGratuity(input: GratuitySplitInput): GratuitySplit {
     byEvent.push({ eventId, poolCents, crewCount: crew.length });
     if (poolCents <= 0) continue;
     if (crew.length === 0) {
-      warnings.push(`event ${eventId} has ${poolCents}¢ in gratuity but no confirmed crew — unsplit`);
+      warnings.push(`event ${eventId} has $${(poolCents / 100).toFixed(2)} in gratuity but no confirmed crew — unsplit`);
       continue;
     }
     const per = Math.floor(poolCents / crew.length);
@@ -141,7 +141,7 @@ export async function buildGratuityPayroll(
     const c = crewById.get(pc.crewMemberId);
     const name = c?.name ?? "(unknown)";
     if (!c?.gusto?.employeeId) {
-      warnings.push(`${name} has ${pc.cents}¢ in tips but no Gusto mapping — row won't import`);
+      warnings.push(`${name} has $${(pc.cents / 100).toFixed(2)} in tips but no Gusto mapping — row won't import`);
     }
     return { crewMemberId: pc.crewMemberId, name, tipCents: pc.cents, ...(c?.gusto ? { gusto: c.gusto } : {}) };
   });

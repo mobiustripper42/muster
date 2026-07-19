@@ -69,6 +69,7 @@ async function captain(id: string, name: string, mmcExpiry = MMC_GOOD) {
   await repo.saveCrewMember({
     id: crewId,
     name,
+    email: `${name.split(/\s+/)[0]!.toLowerCase().replace(/[^a-z0-9]/g, "")}@bb.test`,
     phone: "+15555550100",
     ratings: [CAPTAIN],
     status: "active",

@@ -23,10 +23,21 @@ import { asId } from "../domain/ids.js";
 import { normalizeEmail } from "../auth/login-code.js";
 import { scoreCrewMember, effectiveRankScore } from "../oracle/reliability-score.js";
 import type { Repository } from "../ports/repository.js";
+import { planGustoImport, type GustoMapEntry } from "./gusto-import.js";
 
 /** A user-facing CLI error (bad args / not found) — the entrypoint prints its
  *  message and exits non-zero, no stack trace. */
 export class CrewCliError extends Error {}
+
+/** Side-effect deps the pure CLI can't own (fs, network). The Postgres shell
+ *  (`db/crew.ts`) supplies them; tests inject fakes. */
+export interface CrewCliDeps {
+  /** Read + parse the extractor's gusto map at `path` into Muster-shaped entries. */
+  loadGustoMap?: (path: string) => GustoMapEntry[];
+}
+
+/** Where the extractor's map lives relative to the repo root, by default (sibling checkout). */
+export const DEFAULT_GUSTO_MAP_PATH = "../xola-tip-extractor/api/lib/guide-gusto-map.json";
 
 /** Returns the flag's value, `""` if passed empty (`--email=`), or `undefined`
  *  if the flag is absent — so callers can tell "clear it" from "leave it". */
@@ -38,7 +49,16 @@ const flag = (args: string[], name: string): string | undefined =>
 const E164 = /^\+[1-9]\d{6,14}$/;
 const looksLikeEmail = (s: string): boolean => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s);
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-const KNOWN_SET_FLAGS = ["email", "phone", "name"] as const;
+const KNOWN_SET_FLAGS = [
+  "email",
+  "phone",
+  "name",
+  // Gusto payroll identity (DEC-124, 12.3b) — all four together, or none.
+  "gusto-first",
+  "gusto-last",
+  "gusto-title",
+  "gusto-employee-id",
+] as const;
 const KNOWN_ADD_FLAGS = ["name", "phone", "ratings", "email", "id", "mmc"] as const;
 
 /** Weekday tokens, index = the Mon=0…Sun=6 value stored in `weekdaysOff` (DEC-119). */
@@ -91,7 +111,8 @@ const USAGE =
   "  db:crew list\n" +
   "  db:crew rank                — crew by reliability score, best first (#404)\n" +
   '  db:crew add --name="<name>" --phone=<+E164> --ratings=<r1,r2> [--email=<addr>] [--id=<crewId>] [--mmc=<YYYY-MM-DD>]\n' +
-  '  db:crew set <crewId> [--email=<addr>] [--phone=<+E164>] [--name="<name>"]\n' +
+  '  db:crew set <crewId> [--email=<addr>] [--phone=<+E164>] [--name="<name>"] [--gusto-first=… --gusto-last=… --gusto-title=… --gusto-employee-id=…]\n' +
+  "  db:crew import-gusto [--map=<path>] [--apply]   — bulk Gusto identities from xola-tip-extractor (dry-run without --apply)\n" +
   "  db:crew days-off                              — roster of everyone with recurring days off (#411)\n" +
   "  db:crew days-off <crewId> [--days=sun,mon,… (COMMA-separated) | --clear]   — show/set/clear one crew member\n" +
   "  db:crew disable <crewId>   |   db:crew enable <crewId>\n" +
@@ -105,6 +126,7 @@ export async function runCrewCommand(
   repo: Repository,
   args: string[],
   now: Date = new Date(),
+  deps: CrewCliDeps = {},
 ): Promise<string> {
   const cmd = args[0];
 
@@ -310,15 +332,29 @@ export async function runCrewCommand(
         .find((a) => a.startsWith("--") && !KNOWN_SET_FLAGS.some((k) => a.startsWith(`--${k}=`)));
       if (bad)
         throw new CrewCliError(
-          `set: unrecognized flag "${bad}". Known: --email, --phone, --name.\n${USAGE}`,
+          `set: unrecognized flag "${bad}". Known: --email, --phone, --name, ` +
+            `--gusto-first, --gusto-last, --gusto-title, --gusto-employee-id.\n${USAGE}`,
         );
 
       const email = flag(args, "email");
       const phone = flag(args, "phone");
       const name = flag(args, "name");
-      if (email === undefined && phone === undefined && name === undefined)
+      // Gusto payroll identity (DEC-124, 12.3b) — all four together, or none.
+      const gFirst = flag(args, "gusto-first");
+      const gLast = flag(args, "gusto-last");
+      const gTitle = flag(args, "gusto-title");
+      const gEmp = flag(args, "gusto-employee-id");
+      const gParts = [gFirst, gLast, gTitle, gEmp];
+      const gustoCount = gParts.filter((g) => g !== undefined).length;
+      if (gustoCount > 0 && gustoCount < 4)
         throw new CrewCliError(
-          `set: pass at least one of --email, --phone, or --name.\n${USAGE}`,
+          "set: --gusto-* is all-or-nothing — pass --gusto-first, --gusto-last, " +
+            "--gusto-title, AND --gusto-employee-id together.",
+        );
+      const hasGusto = gustoCount === 4;
+      if (email === undefined && phone === undefined && name === undefined && !hasGusto)
+        throw new CrewCliError(
+          `set: pass at least one of --email, --phone, --name, or --gusto-*.\n${USAGE}`,
         );
 
       const fields: { name?: string; phone?: string; email?: string | null } = {};
@@ -365,14 +401,78 @@ export async function runCrewCommand(
         changes.push(`name → ${n}`);
       }
 
-      // Targeted UPDATE (DEC-094) — touches only the contact columns, so a
-      // concurrent engine write to reliability/status/ratings isn't clobbered.
-      const updated = await repo.updateCrewContact(asId<"CrewMemberId">(id), fields);
+      // Targeted UPDATEs (DEC-094) — each touches only its columns, so a concurrent
+      // engine write to reliability/status/ratings isn't clobbered. Contact first
+      // (if any contact field changed), then the Gusto identity (if given).
+      const crewId = asId<"CrewMemberId">(id);
+      let updated =
+        email !== undefined || phone !== undefined || name !== undefined
+          ? await repo.updateCrewContact(crewId, fields)
+          : await repo.getCrewMember(crewId);
+      if (updated && hasGusto) {
+        updated = await repo.updateCrewGusto(crewId, {
+          firstName: gFirst!.trim(),
+          lastName: gLast!.trim(),
+          title: gTitle!.trim(),
+          employeeId: gEmp!.trim(),
+        });
+        changes.push(`gusto → ${gFirst!.trim()} ${gLast!.trim()} (${gEmp!.trim()})`);
+      }
       if (!updated)
         throw new CrewCliError(
           `set: no crew member with id "${id}". Run \`db:crew list\` to find the id.`,
         );
       return `Updated ${updated.name} (${updated.id}):\n  ${changes.join("\n  ")}`;
+    }
+
+    // Bulk-seed Gusto identities from xola-tip-extractor's map (DEC-124, 12.3b). Dry-run
+    // by default (prints the plan); --apply writes via updateCrewGusto. Join is by name;
+    // ambiguous names are surfaced, never applied. See src/crew/gusto-import.ts.
+    case "import-gusto": {
+      if (!deps.loadGustoMap)
+        throw new CrewCliError("import-gusto isn't available here (no map loader wired).");
+      // `--apply` is a bare boolean — reject `--apply=…` loudly rather than silently dry-run.
+      const bad = args.slice(1).find(
+        (a) => a.startsWith("--") && !/^--map(=|$)/.test(a) && a !== "--apply",
+      );
+      if (bad) throw new CrewCliError(`import-gusto: unrecognized flag "${bad}".\n${USAGE}`);
+      const mapFlag = args.find((a) => a.startsWith("--map="));
+      const mapPath = mapFlag ? mapFlag.slice("--map=".length) : DEFAULT_GUSTO_MAP_PATH;
+      const apply = args.includes("--apply");
+
+      let entries: GustoMapEntry[];
+      try {
+        entries = deps.loadGustoMap(mapPath);
+      } catch (e) {
+        throw new CrewCliError(
+          `import-gusto: couldn't read the map at "${mapPath}" — ${(e as Error).message}. ` +
+            `Pass --map=<path> to the extractor's api/lib/guide-gusto-map.json.`,
+        );
+      }
+
+      const crew = await repo.listCrewMembers();
+      const plan = planGustoImport(
+        crew.map((c) => ({ id: String(c.id), name: c.name })),
+        entries,
+      );
+
+      const lines: string[] = [];
+      if (apply) {
+        for (const m of plan.matched) {
+          await repo.updateCrewGusto(asId<"CrewMemberId">(m.crewId), m.gusto);
+        }
+        lines.push(`Applied ${plan.matched.length} Gusto ${plan.matched.length === 1 ? "identity" : "identities"}:`);
+      } else {
+        lines.push(`Dry run — ${plan.matched.length} to apply (re-run with --apply):`);
+      }
+      for (const m of plan.matched) lines.push(`  ✓ ${m.crewName} → ${m.gusto.employeeId}`);
+      if (plan.crewWithoutEntry.length)
+        lines.push(`  ${plan.crewWithoutEntry.length} crew with no map entry (stay unmapped): ${plan.crewWithoutEntry.join(", ")}`);
+      if (plan.entriesWithoutCrew.length)
+        lines.push(`  ${plan.entriesWithoutCrew.length} map entries with no crew (roster drift): ${plan.entriesWithoutCrew.join(", ")}`);
+      if (plan.ambiguous.length)
+        lines.push(`  ⚠ ${plan.ambiguous.length} ambiguous, NOT applied (resolve by hand via db:crew set): ${plan.ambiguous.join("; ")}`);
+      return lines.join("\n");
     }
 
     // Recurring weekday time-off (#411, DEC-119): read `weekdaysOff`, or set/clear

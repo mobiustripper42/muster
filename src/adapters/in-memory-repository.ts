@@ -19,6 +19,7 @@ import type {
   CrewStatus,
   Event,
   Gratuity,
+  GustoIdentity,
   Location,
   LoginCode,
   CalendarFeed,
@@ -219,6 +220,15 @@ export class InMemoryRepository implements Repository {
     // which reads the []-default column back as absent).
     if (weekdaysOff.length === 0) delete c.weekdaysOff;
     else c.weekdaysOff = [...weekdaysOff];
+    return clone(c);
+  }
+  async updateCrewGusto(
+    id: CrewMemberId,
+    gusto: GustoIdentity,
+  ): Promise<CrewMember | null> {
+    const c = this.#crew.get(id);
+    if (!c) return null;
+    c.gusto = { ...gusto }; // targeted mutation (DEC-094) — only the gusto field
     return clone(c);
   }
   async addCrewMemberWithCredential(m: CrewMember, cred: Credential): Promise<void> {

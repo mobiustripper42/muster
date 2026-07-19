@@ -57,8 +57,8 @@ try {
     coiMaxPax: 12,
     manning: [{ roleTypeId: CAPTAIN, count: 1 }, { roleTypeId: MATE, count: 1 }],
   });
-  await repo.saveCrewMember({ id: QUINT, name: "Quint", phone: "+15555550101", email: "quint@brewboat.test", ratings: [CAPTAIN], status: "active", reliabilityScore: null });
-  await repo.saveCrewMember({ id: HOOPER, name: "Hooper", phone: "+15555550102", ratings: [MATE], status: "active", reliabilityScore: null });
+  await repo.saveCrewMember({ id: QUINT, name: "Quint", email: "quint@bb.test", phone: "+15555550101", ratings: [CAPTAIN], status: "active", reliabilityScore: null });
+  await repo.saveCrewMember({ id: HOOPER, name: "Hooper", email: "hooper@bb.test", phone: "+15555550102", ratings: [MATE], status: "active", reliabilityScore: null });
   // Quint's MMC expires ~30d from seed time (anchored to now so the #57 nudge
   // line always shows inside the 60d window); Hooper's is comfortably valid.
   const in30d = new Date(Date.now() + 30 * 24 * 3600_000).toISOString().slice(0, 10);
@@ -71,7 +71,7 @@ try {
   // fill" on shift-open's mate seat texts his actual phone once the three
   // TWILIO_* vars are set. Dev seed only.
   const ERIC = asId<"CrewMemberId">("crew-eric");
-  await repo.saveCrewMember({ id: ERIC, name: "Eric Stoffer", phone: "+14403631599", ratings: [MATE], status: "active", reliabilityScore: null });
+  await repo.saveCrewMember({ id: ERIC, name: "Eric Stoffer", email: "eric@bb.test", phone: "+14403631599", ratings: [MATE], status: "active", reliabilityScore: null });
   await repo.saveCredential({ id: asId<"CredentialId">("cred-eric-mmc"), crewMemberId: ERIC, type: "MMC", expiry: "2030-12-31" });
 
   // A confirmed upcoming shift with two events (3pm + 5pm, different docks) →
@@ -100,7 +100,7 @@ try {
   const GROWLER = asId<"VesselId">("vessel-growler");
   const GILLY = asId<"CrewMemberId">("crew-gilly");
   await repo.saveVessel({ id: GROWLER, name: "Growler", coiMaxPax: 12, manning: [{ roleTypeId: CAPTAIN, count: 1 }] });
-  await repo.saveCrewMember({ id: GILLY, name: "Gilly", phone: "+15555550109", ratings: [], status: "active", reliabilityScore: null });
+  await repo.saveCrewMember({ id: GILLY, name: "Gilly", email: "gilly@bb.test", phone: "+15555550109", ratings: [], status: "active", reliabilityScore: null });
   const SHIFT_SOON_B = asId<"ShiftId">("shift-soon-growler");
   const EGB = asId<"EventId">("evt-soon-growler-1pm");
   const EGB2 = asId<"EventId">("evt-soon-growler-4pm");
@@ -145,7 +145,7 @@ try {
   // standing line (every reason kind at once — #32). No shifts/asks of his own;
   // this seed is purely to eyeball the standing subline wrapping + neutral tone.
   const DOOLEY = asId<"CrewMemberId">("crew-dooley");
-  await repo.saveCrewMember({ id: DOOLEY, name: "Dooley", phone: "+15555550103", ratings: [CAPTAIN], status: "active", reliabilityScore: null });
+  await repo.saveCrewMember({ id: DOOLEY, name: "Dooley", email: "dooley@bb.test", phone: "+15555550103", ratings: [CAPTAIN], status: "active", reliabilityScore: null });
 
   // The reliability log is append-only (no upsert), so only seed it once — re-runs
   // would otherwise duplicate. Past timestamps (all before any plausible `now`) so

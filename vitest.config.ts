@@ -3,7 +3,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts"],
+    include: ["src/**/*.test.ts", "app/**/*.test.ts"],
     env: {
       // Civil send window (DEC-088) held WIDE OPEN for the suite: the tests'
       // clocks are arbitrary UTC instants, and the gate is orthogonal to what

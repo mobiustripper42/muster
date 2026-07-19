@@ -55,6 +55,9 @@ export interface MyShiftView {
    *  mixed-vessel list is legible at a glance. Identity only, `aria-hidden` in
    *  the UI; `vesselName` stays the accessible answer. */
   vesselId: string;
+  /** Operator-chosen vessel hue (DEC-086 palette index, 12.9) — authoritative for the
+   *  identity dot when set; absent ⇒ the id-derived hue stands. */
+  vesselHue?: number;
   roleName: string;
   /** ISO-8601 date (vessel-local day). */
   date: string;
@@ -238,11 +241,16 @@ export async function buildCrewAppView(
     // — otherwise the truncated "+N" / "& " display could flicker across loads
     // once a shift carries 3+ crew (a no-op at BrewBoat's 2-crew scale).
     coCrew.sort((a, b) => a.name.localeCompare(b.name));
+    // Fetch the vessel once for both its name and its identity hue (12.9).
+    const vessel = await repo.getVessel(
+      shift.vesselId as Parameters<Repository["getVessel"]>[0],
+    );
     shifts.push({
       shiftId: shift.id,
       seatId: seat.id,
-      vesselName: await vesselName(repo, shift.vesselId),
+      vesselName: vessel?.name ?? shift.vesselId,
       vesselId: shift.vesselId,
+      ...(vessel?.hue !== undefined ? { vesselHue: vessel.hue } : {}),
       roleName: await roleName(repo, seat.role),
       date: shift.date,
       ...window,

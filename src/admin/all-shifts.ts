@@ -44,6 +44,9 @@ export interface AllShiftsRow {
   /** The vessel's id — the edge keys the DEC-086 identity hue off this. */
   vesselId: string;
   vesselName: string;
+  /** Operator-chosen vessel hue (DEC-086 palette index, 12.9) — authoritative for the
+   *  identity dot when set; absent ⇒ the id-derived hue stands. */
+  vesselHue?: number;
   /** ISO-8601 vessel-local date. */
   date: string;
   /** Live state resolved on read — one of Pending/Filling/Crewed/AtRisk. */
@@ -100,9 +103,9 @@ export async function deriveAllShifts(
     includeCancelled?: boolean;
   },
 ): Promise<AllShiftsRow[]> {
-  const vesselName = new Map(
-    (await repo.listVessels()).map((v) => [v.id, v.name]),
-  );
+  const vesselList = await repo.listVessels();
+  const vesselName = new Map(vesselList.map((v) => [v.id, v.name]));
+  const vesselHue = new Map(vesselList.map((v) => [v.id, v.hue]));
   // Role display names for the seat pips — resolved once here so the surface
   // needn't re-join (the assignment-view idiom).
   const roleNames = new Map(
@@ -210,10 +213,12 @@ export async function deriveAllShifts(
       if (cut != null) split = { side: "B", cutTime: cut };
     }
 
+    const hue = vesselHue.get(shift.vesselId);
     rows.push({
       shiftId: idStr,
       vesselId: String(shift.vesselId),
       vesselName: vesselName.get(shift.vesselId) ?? String(shift.vesselId),
+      ...(hue !== undefined ? { vesselHue: hue } : {}),
       date: shift.date,
       state,
       trips,

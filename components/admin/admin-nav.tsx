@@ -25,6 +25,8 @@ const LINKS = [
   { href: "/admin/messages", label: "Messages" },
   { href: "/admin/import", label: "Import" },
   { href: "/admin/shifts", label: "Shifts" },
+  { href: "/admin/vessels", label: "Vessels" },
+  { href: "/admin/locations", label: "Locations" },
 ] as const;
 
 export function AdminNav({

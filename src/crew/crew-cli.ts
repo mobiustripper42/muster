@@ -431,8 +431,9 @@ export async function runCrewCommand(
     case "import-gusto": {
       if (!deps.loadGustoMap)
         throw new CrewCliError("import-gusto isn't available here (no map loader wired).");
+      // `--apply` is a bare boolean — reject `--apply=…` loudly rather than silently dry-run.
       const bad = args.slice(1).find(
-        (a) => a.startsWith("--") && !/^--(map|apply)(=|$)/.test(a),
+        (a) => a.startsWith("--") && !/^--map(=|$)/.test(a) && a !== "--apply",
       );
       if (bad) throw new CrewCliError(`import-gusto: unrecognized flag "${bad}".\n${USAGE}`);
       const mapFlag = args.find((a) => a.startsWith("--map="));

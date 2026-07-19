@@ -61,11 +61,14 @@ export function chargeNowCents(
 export function balanceOwedCents(
   priceCents: number,
   taxRateBps: number,
-  payments: readonly { status: string; amountCents: number }[],
+  payments: readonly { status: string; amountCents: number; gratuityCents?: number }[],
 ): number {
   const total = priceCents + taxCentsFor(priceCents, taxRateBps);
+  // Net the GRATUITY out of each paid amount (DEC-124, 12.3): the tip is crew money bundled
+  // into the charge, never part of price+tax, so counting it as "paid toward balance" would
+  // under-charge the balance on a deposit booking.
   const paid = payments
     .filter((p) => p.status === "succeeded")
-    .reduce((sum, p) => sum + p.amountCents, 0);
+    .reduce((sum, p) => sum + p.amountCents - (p.gratuityCents ?? 0), 0);
   return total - paid;
 }

@@ -18,6 +18,7 @@ import type {
   CrewMember,
   CrewStatus,
   Event,
+  Gratuity,
   Location,
   LoginCode,
   CalendarFeed,
@@ -43,6 +44,7 @@ import type {
   AskId,
   BlockId,
   CheckoutHoldId,
+  GratuityId,
   CredentialId,
   CrewMemberId,
   EventId,
@@ -104,6 +106,8 @@ export class InMemoryRepository implements Repository {
   readonly #blocks = new Map<BlockId, Block>();
   /** Transient checkout-holds (12.1, DEC-109), keyed by id. */
   readonly #checkoutHolds = new Map<CheckoutHoldId, CheckoutHold>();
+  /** Collected gratuities (12.3, DEC-124), keyed by id. */
+  readonly #gratuities = new Map<GratuityId, Gratuity>();
   /** Muster-owned vessel-days (DEC-106), keyed `${vesselId}|${date}`. */
   readonly #musterOwnedVesselDays = new Map<string, MusterOwnedVesselDay>();
   readonly #payments = new Map<PaymentId, Payment>();
@@ -462,6 +466,17 @@ export class InMemoryRepository implements Repository {
         this.#checkoutHolds.delete(id);
       }
     }
+  }
+
+  // ── Gratuity (12.3, DEC-124) ────────────────────────────────────────────────
+  async saveGratuity(gratuity: Gratuity): Promise<void> {
+    this.#gratuities.set(gratuity.id, clone(gratuity)); // deterministic id ⇒ idempotent
+  }
+  async listGratuitiesForEvent(eventId: EventId): Promise<Gratuity[]> {
+    return [...this.#gratuities.values()].filter((g) => g.eventId === eventId).map(clone);
+  }
+  async listAllGratuities(): Promise<Gratuity[]> {
+    return [...this.#gratuities.values()].map(clone);
   }
 
   // ── Shifts ─────────────────────────────────────────────────────────────────

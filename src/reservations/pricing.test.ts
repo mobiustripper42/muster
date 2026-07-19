@@ -8,7 +8,14 @@ import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import type { Offering, Vessel } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import { createDepartureCheckout } from "./create-departure-checkout.js";
-import { composeFare, effectiveIncludedGuests } from "./pricing.js";
+import {
+  GRATUITY_DEFAULT_BPS,
+  GRATUITY_TIERS_DEFAULT,
+  composeFare,
+  effectiveIncludedGuests,
+  gratuityCentsFor,
+  gratuityTiersFor,
+} from "./pricing.js";
 
 describe("composeFare — base + extra-guests × extraGuestPrice (DEC-112)", () => {
   const inp = (over: Partial<Parameters<typeof composeFare>[0]> = {}) =>
@@ -27,12 +34,26 @@ describe("composeFare — base + extra-guests × extraGuestPrice (DEC-112)", () 
     expect(inp({ guestCount: 1 })).toEqual({ extraGuests: 0, extrasCents: 0, fareCents: 49900 });
   });
 
-  it("folds gratuity in when provided (DEC-124 seam, 12.3)", () => {
-    expect(inp({ guestCount: 14, gratuityCents: 10000 }).fareCents).toBe(67900); // 49900 + 8000 + 10000
+  it("does NOT include gratuity — fareCents is the tip-free taxable base (DEC-124)", () => {
+    // composeFare has no gratuity param; the tip is added by the checkout after tax.
+    expect(inp({ guestCount: 14 }).fareCents).toBe(57900); // 49900 + 8000, no tip
   });
 
   it("base resolves from the caller (Event.price / variation), passed straight through", () => {
     expect(inp({ baseCents: 60000, guestCount: 13 }).fareCents).toBe(64000); // 60000 + 1×4000
+  });
+});
+
+describe("gratuity tiers (DEC-124)", () => {
+  it("gratuityCentsFor is bps of the fare, rounded half-up", () => {
+    expect(gratuityCentsFor(57900, 2000)).toBe(11580); // 20% of $579
+    expect(gratuityCentsFor(49900, 1500)).toBe(7485); // 15%
+    expect(gratuityCentsFor(49900, 2500)).toBe(12475); // 25%
+  });
+  it("gratuityTiersFor uses the offering override, else the default", () => {
+    expect(gratuityTiersFor({})).toEqual(GRATUITY_TIERS_DEFAULT);
+    expect(gratuityTiersFor({ gratuityTiersBps: [1000, 1800] })).toEqual([1000, 1800]);
+    expect(GRATUITY_DEFAULT_BPS).toBe(2000);
   });
 });
 
@@ -71,29 +92,31 @@ async function seededRepo(v: Vessel): Promise<InMemoryRepository> {
   return repo;
 }
 
+// gratuityBps 2000 (20%) is required at checkout (DEC-124); the tip rides on top, untaxed.
 const req = (guestCount: number) => ({
-  offeringId: OFF, date: DATE, time: TIME, guestCount,
+  offeringId: OFF, date: DATE, time: TIME, guestCount, gratuityBps: 2000,
   customerName: "Mary", email: "m@x.io",
   waiverConsentAt: "2026-07-13T12:00:00.000Z", waiverVersion: "v1",
 });
 
-describe("createDepartureCheckout — charges the composed fare (12.2)", () => {
-  it("charges base only when guests ≤ includedGuestCount", async () => {
+describe("createDepartureCheckout — charges composed fare + gratuity (12.2/12.3)", () => {
+  it("charges base only (+ tip) when guests ≤ includedGuestCount", async () => {
     const repo = await seededRepo(vessel({ includedGuestCount: 12 }));
     const pay = new FakePaymentPort();
     const r = await createDepartureCheckout(repo, pay, req(12), URLS, now);
     expect(r.ok).toBe(true);
-    expect(pay.created[0]!.amountCents).toBe(49900); // no extras, tax 0
-    expect(pay.created[0]!.metadata).toMatchObject({ priceCents: "49900", extrasCents: "0" });
+    // fare 49900, tax 0, gratuity 20% of 49900 = 9980
+    expect(pay.created[0]!.amountCents).toBe(59880);
+    expect(pay.created[0]!.metadata).toMatchObject({ priceCents: "49900", extrasCents: "0", gratuityCents: "9980" });
   });
 
-  it("charges base + extras above the included count, freezing base as Event.price", async () => {
+  it("charges base + extras (+ tip), freezing base as Event.price", async () => {
     const repo = await seededRepo(vessel({ includedGuestCount: 12 }));
     const pay = new FakePaymentPort();
     const r = await createDepartureCheckout(repo, pay, req(14), URLS, now); // 2 extra × $40
     expect(r.ok).toBe(true);
-    expect(pay.created[0]!.amountCents).toBe(57900); // 49900 + 8000
-    // base stays the frozen per-departure price; extras carried separately
+    // fare 57900 (49900+8000), tax 0, gratuity 20% of 57900 = 11580
+    expect(pay.created[0]!.amountCents).toBe(69480);
     expect(pay.created[0]!.metadata).toMatchObject({ priceCents: "49900", extrasCents: "8000", guestCount: "14" });
   });
 
@@ -102,16 +125,17 @@ describe("createDepartureCheckout — charges the composed fare (12.2)", () => {
     const pay = new FakePaymentPort();
     const r = await createDepartureCheckout(repo, pay, req(14), URLS, now);
     expect(r.ok).toBe(true);
-    expect(pay.created[0]!.amountCents).toBe(49900); // 14 ≤ 16 included → no extras
+    expect(pay.created[0]!.amountCents).toBe(59880); // 14 ≤ 16 → no extras; 49900 + 9980 tip
     expect(pay.created[0]!.metadata.extrasCents).toBe("0");
   });
 
-  it("tax is applied to the composed fare (base + extras), not the base alone", async () => {
+  it("tax is applied to the composed fare (base + extras) but NOT the gratuity", async () => {
     const repo = await seededRepo(vessel({ includedGuestCount: 12 }));
     await repo.setPaymentConfig({ depositMode: "full", taxRateBps: 1000 }, NOW); // 10%
     const pay = new FakePaymentPort();
     await createDepartureCheckout(repo, pay, req(14), URLS, now); // fare 57900
-    expect(pay.created[0]!.taxCents).toBe(5790); // 10% of 57900, not of 49900
-    expect(pay.created[0]!.amountCents).toBe(63690); // 57900 + 5790
+    expect(pay.created[0]!.taxCents).toBe(5790); // 10% of 57900, not of the base or the tip
+    // amount = fare 57900 + tax 5790 + gratuity 11580 (untaxed)
+    expect(pay.created[0]!.amountCents).toBe(75270);
   });
 });

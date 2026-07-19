@@ -16,7 +16,12 @@ import type { Repository } from "../ports/repository.js";
 import { resolveBasePrice, slotIdentity } from "./availability.js";
 import { acquireDepartureHold } from "./claim.js";
 import { chargeNowCents, taxCentsFor } from "./payment-config.js";
-import { composeFare, effectiveIncludedGuests } from "./pricing.js";
+import {
+  composeFare,
+  effectiveIncludedGuests,
+  gratuityCentsFor,
+  gratuityTiersFor,
+} from "./pricing.js";
 
 export interface DepartureCheckoutRequest {
   offeringId: OfferingId;
@@ -25,6 +30,9 @@ export interface DepartureCheckoutRequest {
   /** Departure clock "HH:MM". */
   time: string;
   guestCount: number;
+  /** Chosen gratuity tier in basis points (DEC-124) — REQUIRED, must be one of the offering's
+   *  tiers (no decline). The tip is a % of the fare, charged in full on top, untaxed. */
+  gratuityBps: number;
   customerName: string;
   email?: string;
   phone?: string;
@@ -42,7 +50,8 @@ export type DepartureCheckoutStart =
         | "not_live"
         | "invalid_guest_count"
         | "sold_out"
-        | "waiver_required";
+        | "waiver_required"
+        | "gratuity_required";
     };
 
 export async function createDepartureCheckout(
@@ -56,6 +65,14 @@ export async function createDepartureCheckout(
   // attempt never parks a hold on a boat.
   if (!req.waiverConsentAt || !req.waiverVersion) {
     return { ok: false, reason: "waiver_required" };
+  }
+
+  // Gratuity is REQUIRED, no decline (DEC-124) — the chosen tier must be one the offering
+  // offers. Check before the hold (a bad tip never parks a boat). An absent offering falls
+  // through to acquire's `offering_missing`.
+  const offeringForTiers = await repo.getOffering(req.offeringId);
+  if (offeringForTiers && !gratuityTiersFor(offeringForTiers).includes(req.gratuityBps)) {
+    return { ok: false, reason: "gratuity_required" };
   }
 
   const held = await acquireDepartureHold(
@@ -111,7 +128,10 @@ export async function createDepartureCheckout(
 
   const config = await repo.getPaymentConfig();
   const taxCents = taxCentsFor(fare.fareCents, config.taxRateBps);
-  const amountCents = chargeNowCents(fare.fareCents, taxCents, config);
+  // Gratuity (DEC-124): a % of the tip-free fare, added to the charge IN FULL and UNTAXED —
+  // never through `chargeNowCents` (no deposit-split) or `taxCentsFor` (no tax). Crew money.
+  const gratuityCents = gratuityCentsFor(fare.fareCents, req.gratuityBps);
+  const amountCents = chargeNowCents(fare.fareCents, taxCents, config) + gratuityCents;
   const kind = config.depositMode === "deposit" ? "deposit" : "full";
 
   const session = await payments.createCheckoutSession({
@@ -132,6 +152,9 @@ export async function createDepartureCheckout(
       // The per-departure BASE (→ frozen `Event.price`); extras are billed on top (12.2).
       priceCents: String(priceCents),
       extrasCents: String(fare.extrasCents),
+      // Gratuity portion of amountCents (crew money; netted out of balance) + tier provenance.
+      gratuityCents: String(gratuityCents),
+      gratuityBps: String(req.gratuityBps),
       kind,
       taxCents: String(taxCents),
       customerName: req.customerName,

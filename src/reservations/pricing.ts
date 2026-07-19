@@ -14,8 +14,11 @@
  * by the caller). Tax + deposit split are computed AFTER this, from `PaymentConfig` (DEC-107),
  * over the fare. Pure + integer-cents throughout (float-safe, Stripe-aligned).
  *
- * `gratuityCents` is a parameter here so 12.3 (DEC-124) slots the tip in without reshaping the
- * composition; it defaults to 0 (12.2 composes base + extras only).
+ * **Gratuity is deliberately NOT part of `fareCents`** (@architect, 12.3). It is crew money,
+ * tax- and fee-EXEMPT and charged in FULL regardless of deposit mode (DEC-124) — folding it in
+ * here would (i) tax the tip via `taxCentsFor(fareCents)` and (ii) deposit-split it via
+ * `chargeNowCents`. The checkout computes gratuity separately (% of `fareCents`) and adds it on
+ * top, after tax. `fareCents` is the TAXABLE base — keep it tip-free.
  */
 
 export interface FareInput {
@@ -27,8 +30,6 @@ export interface FareInput {
   includedGuestCount: number;
   /** Per-guest surcharge above the included count (Offering.extraGuestPriceCents). */
   extraGuestPriceCents: number;
-  /** Gratuity in cents (DEC-124, 12.3) — 0 in 12.2. */
-  gratuityCents?: number;
 }
 
 export interface Fare {
@@ -36,17 +37,35 @@ export interface Fare {
   extraGuests: number;
   /** `extraGuests × extraGuestPriceCents`. */
   extrasCents: number;
-  /** `baseCents + extrasCents + gratuityCents` — the pre-tax fare. */
+  /** `baseCents + extrasCents` — the pre-tax, tip-free taxable fare. */
   fareCents: number;
 }
 
-/** Compose the pre-tax party fare. Never negative extras: fewer guests than included still
- *  pays the whole-boat base (you don't get a discount for a small party — DEC-105). */
+/** Compose the pre-tax party fare (base + extras). Never negative extras: fewer guests than
+ *  included still pays the whole-boat base (no small-party discount — DEC-105). Gratuity is
+ *  added by the checkout AFTER tax, never here (see the module note). */
 export function composeFare(input: FareInput): Fare {
   const extraGuests = Math.max(0, input.guestCount - input.includedGuestCount);
   const extrasCents = extraGuests * input.extraGuestPriceCents;
-  const fareCents = input.baseCents + extrasCents + (input.gratuityCents ?? 0);
+  const fareCents = input.baseCents + extrasCents;
   return { extraGuests, extrasCents, fareCents };
+}
+
+// ── Gratuity tiers (DEC-124, 12.3) ───────────────────────────────────────────
+/** Default gratuity tiers in basis points (15/20/25%) — mirrors the live Xola config. Per
+ *  `Offering` override via `gratuityTiersBps`; required at checkout, no decline. */
+export const GRATUITY_TIERS_DEFAULT = [1500, 2000, 2500];
+/** Default pre-selected tier (20%). */
+export const GRATUITY_DEFAULT_BPS = 2000;
+
+/** Gratuity in cents = `bps` of the (tip-free) fare, rounded half-up. Pure. */
+export function gratuityCentsFor(fareCents: number, bps: number): number {
+  return Math.round((fareCents * bps) / 10000);
+}
+
+/** The gratuity tiers for an offering: its `gratuityTiersBps`, or the default. */
+export function gratuityTiersFor(offering: { gratuityTiersBps?: number[] }): number[] {
+  return offering.gratuityTiersBps ?? GRATUITY_TIERS_DEFAULT;
 }
 
 /** The effective included-guest count for a vessel: its `includedGuestCount`, or `coiMaxPax`

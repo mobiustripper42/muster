@@ -19,6 +19,7 @@ import type {
   Credential,
   CrewMember,
   Event,
+  Gratuity,
   Location,
   LoginCode,
   MagicToken,
@@ -652,6 +653,59 @@ export function runRepositoryContract(
       expect(await repo.listBlocks()).toEqual([]);
     });
 
+    it("catalog: Offering gratuity tiers round-trip present and absent (DEC-124, 12.3)", async () => {
+      const base: Offering = {
+        id: asId<"OfferingId">("off-g"), tenantId: TENANT, name: "Tipped", status: "live",
+        vesselIds: [VESSEL], locationId: asId<"LocationId">("loc-1"),
+        schedule: { seasonStart: "2026-06-01", seasonEnd: "2026-08-31", weekdays: [5], departureTimes: ["14:00"] },
+        basePriceCents: 49900, priceVariations: [], extraGuestPriceCents: 5000,
+      };
+      await repo.saveOffering(base); // no tiers
+      const got = (await repo.getOffering(base.id))!;
+      expect("gratuityTiersBps" in got).toBe(false);
+      expect("gratuityDefaultBps" in got).toBe(false);
+      await repo.saveOffering({ ...base, gratuityTiersBps: [1500, 2000, 2500], gratuityDefaultBps: 2000 });
+      const withTiers = (await repo.getOffering(base.id))!;
+      expect(withTiers.gratuityTiersBps).toEqual([1500, 2000, 2500]);
+      expect(withTiers.gratuityDefaultBps).toBe(2000);
+    });
+
+    // ── Gratuity (DEC-124, 12.3) ──────────────────────────────────────────────
+    const gratuity = (over: Partial<Gratuity> = {}): Gratuity => ({
+      id: asId<"GratuityId">("grat_pre_cs1"),
+      eventId: EVENT,
+      reservationId: asId<"ReservationId">("resv-1"),
+      kind: "pre",
+      amountCents: 9980,
+      bps: 2000,
+      stripeCheckoutSessionId: "cs1",
+      createdAt: "2026-07-04T12:00:00.000Z",
+      ...over,
+    });
+
+    it("gratuity: save + list by event + list all; deterministic id is idempotent", async () => {
+      expect(await repo.listAllGratuities()).toEqual([]);
+      await repo.saveGratuity(gratuity());
+      await repo.saveGratuity(gratuity()); // same id ⇒ no duplicate
+      expect(await repo.listGratuitiesForEvent(EVENT)).toEqual([gratuity()]);
+      expect(await repo.listAllGratuities()).toHaveLength(1);
+      // a post gratuity on the same event is a distinct row (no bps — free amount)
+      const postGrat: Gratuity = {
+        id: asId<"GratuityId">("grat_post_cs2"), eventId: EVENT,
+        reservationId: asId<"ReservationId">("resv-1"), kind: "post",
+        amountCents: 5000, stripeCheckoutSessionId: "cs2", createdAt: "2026-07-04T13:00:00.000Z",
+      };
+      await repo.saveGratuity(postGrat);
+      expect(await repo.listGratuitiesForEvent(EVENT)).toHaveLength(2);
+      // bps omitted (post) stays omitted, not null
+      const post = (await repo.listGratuitiesForEvent(EVENT)).find((g) => g.kind === "post")!;
+      expect("bps" in post).toBe(false);
+      // a gratuity on a different event isn't returned
+      await repo.saveGratuity(gratuity({ id: asId<"GratuityId">("grat_pre_cs3"), eventId: asId<"EventId">("evt-other") }));
+      expect(await repo.listGratuitiesForEvent(EVENT)).toHaveLength(2);
+      expect(await repo.listAllGratuities()).toHaveLength(3);
+    });
+
     // ── Payments (DEC-107) ────────────────────────────────────────────────────
     const payment = (over: Partial<Payment> = {}): Payment => ({
       id: asId<"PaymentId">("pay-1"),
@@ -693,6 +747,10 @@ export function runRepositoryContract(
       expect(await repo.listPaymentsForReservation(asId<"ReservationId">("resv-1"))).toHaveLength(2);
       // optional stripePaymentIntentId omitted stays omitted (not undefined)
       expect("stripePaymentIntentId" in got!).toBe(false);
+      // gratuityCents (DEC-124, 12.3): absent stays omitted; present round-trips
+      expect("gratuityCents" in got!).toBe(false);
+      await repo.savePayment(payment({ id: asId<"PaymentId">("pay-3"), gratuityCents: 9980, stripeCheckoutSessionId: "cs_test_3" }));
+      expect((await repo.getPayment(asId<"PaymentId">("pay-3")))!.gratuityCents).toBe(9980);
     });
 
     it("muster-owned vessel-days: mark + list; upsert on (vessel,date) (DEC-106)", async () => {

@@ -43,7 +43,7 @@ async function seededRepo(): Promise<InMemoryRepository> {
 }
 
 const req = {
-  offeringId: OFF, date: DATE, time: TIME, guestCount: 4,
+  offeringId: OFF, date: DATE, time: TIME, guestCount: 4, gratuityBps: 2000,
   customerName: "Mary", email: "m@x.io",
   waiverConsentAt: "2026-07-13T12:00:00.000Z", waiverVersion: "v1",
 };
@@ -87,7 +87,7 @@ describe("createDepartureCheckout — hold + slot metadata (12.1a)", () => {
 
   it("waiver consent is a hard gate — no hold parked without it", async () => {
     const repo = await seededRepo();
-    const noWaiver = { offeringId: OFF, date: DATE, time: TIME, guestCount: 4, customerName: "Mary", email: "m@x.io" };
+    const noWaiver = { offeringId: OFF, date: DATE, time: TIME, guestCount: 4, gratuityBps: 2000, customerName: "Mary", email: "m@x.io" };
     const r = await createDepartureCheckout(repo, new FakePaymentPort(), noWaiver, URLS, now);
     expect(r).toEqual({ ok: false, reason: "waiver_required" });
     expect(await repo.listCheckoutHolds()).toHaveLength(0);

@@ -2663,6 +2663,22 @@ throws). **Still manual (unchanged):** every OTHER refund — operator-discretio
 *mechanism* DEC-107 always anticipated ("charge **+ refund** are a port … lift from sailbook"); it does
 **not** un-park the cascade.
 
+**Amendment (2026-07-19, @architect + operator — #474, under DEC-112/DEC-124/DEC-125):** the balance
+deriver now composes the **party fare**, not the bare base. `balanceOwedCents` was called with
+`Event.price` — the frozen per-departure **base** (DEC-125/DEC-112) — but since 12.2 the customer is
+charged **base + extra-guest** charges (`composeFare`), so a `depositMode:"deposit"` booking with guests
+above the vessel's `includedGuestCount` **undercollected the balance** by `extrasCents + tax(extrasCents)`.
+Latent only (RESERVATIONS flag off; `"full"` mode charges the whole composed fare upfront and was already
+correct). **Fix:** the extras are **frozen at booking time on `Reservation.extrasCents`** (new nullable
+`reservations.extras_cents`, DEC-121 timestamped migration; absent ⇒ 0 for seeded/Xola/pre-12.2 rows) — a
+**booking property** (a function of `guestCount`), deliberately **not** on `Event` (keeps the DEC-125
+`Event.price = base` invariant clean) and deliberately **not** recomputed from the live `Offering` link
+(would reintroduce the config-drift `balanceOwedCents`'s "never a config recompute" contract exists to
+prevent). Both callers — `create-balance-checkout` and the webhook's `recordBalancePayment` overpay guard —
+pass `event.price + (reservation.extrasCents ?? 0)`. **Tax still collected in full at deposit; the balance
+carries zero tax; gratuity still netted per DEC-124** (walked the deposit→balance arithmetic: balance =
+remaining share of the *full* fare, tax and tip both net out, nothing double-counted). Fixes #474.
+
 ---
 
 ## DEC-108: Public surface `app/(public)` + single-flip "Book Now" entry (instant Xola rollback)

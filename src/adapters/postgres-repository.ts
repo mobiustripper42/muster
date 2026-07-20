@@ -130,7 +130,6 @@ const toVessel = (r: any): Vessel => ({
   id: asId<"VesselId">(r.id),
   name: r.name,
   coiMaxPax: r.coi_max_pax,
-  ...opt("includedGuestCount", r.included_guest_count),
   ...opt("hue", r.hue),
   ...opt("homeLocationId", r.home_location_id ? asId<"LocationId">(r.home_location_id) : null),
   ...opt("notes", r.notes),
@@ -196,6 +195,7 @@ const toOffering = (r: any): Offering => ({
   schedule: r.schedule as OfferingSchedule, // jsonb → object (node-pg parses)
   basePriceCents: r.base_price_cents,
   priceVariations: r.price_variations as PriceVariation[], // jsonb
+  ...opt("includedGuestCount", r.included_guest_count),
   extraGuestPriceCents: r.extra_guest_price_cents,
   ...(r.gratuity_tiers_bps != null ? { gratuityTiersBps: r.gratuity_tiers_bps as number[] } : {}),
   ...opt("gratuityDefaultBps", r.gratuity_default_bps),
@@ -530,16 +530,15 @@ export class PostgresRepository implements Repository {
   // ── Vessels ────────────────────────────────────────────────────────────────
   async saveVessel(v: Vessel): Promise<void> {
     await this.#pool.query(
-      `insert into vessels(id, name, coi_max_pax, included_guest_count, hue, home_location_id, notes, manning)
-       values ($1,$2,$3,$4,$5,$6,$7,$8)
+      `insert into vessels(id, name, coi_max_pax, hue, home_location_id, notes, manning)
+       values ($1,$2,$3,$4,$5,$6,$7)
        on conflict (id) do update set name=excluded.name, coi_max_pax=excluded.coi_max_pax,
-         included_guest_count=excluded.included_guest_count, hue=excluded.hue,
+         hue=excluded.hue,
          home_location_id=excluded.home_location_id, notes=excluded.notes, manning=excluded.manning`,
       [
         v.id,
         v.name,
         v.coiMaxPax,
-        v.includedGuestCount ?? null,
         v.hue ?? null,
         v.homeLocationId ?? null,
         v.notes ?? null,
@@ -775,13 +774,14 @@ export class PostgresRepository implements Repository {
   async saveOffering(o: Offering): Promise<void> {
     await this.#pool.query(
       `insert into offerings
-         (id, tenant_id, name, status, vessel_ids, location_id, schedule, base_price_cents, price_variations, extra_guest_price_cents, gratuity_tiers_bps, gratuity_default_bps)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+         (id, tenant_id, name, status, vessel_ids, location_id, schedule, base_price_cents, price_variations, included_guest_count, extra_guest_price_cents, gratuity_tiers_bps, gratuity_default_bps)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
        on conflict (id) do update set
          tenant_id=excluded.tenant_id, name=excluded.name, status=excluded.status,
          vessel_ids=excluded.vessel_ids, location_id=excluded.location_id,
          schedule=excluded.schedule, base_price_cents=excluded.base_price_cents,
-         price_variations=excluded.price_variations, extra_guest_price_cents=excluded.extra_guest_price_cents,
+         price_variations=excluded.price_variations, included_guest_count=excluded.included_guest_count,
+         extra_guest_price_cents=excluded.extra_guest_price_cents,
          gratuity_tiers_bps=excluded.gratuity_tiers_bps, gratuity_default_bps=excluded.gratuity_default_bps`,
       [
         o.id,
@@ -793,6 +793,7 @@ export class PostgresRepository implements Repository {
         JSON.stringify(o.schedule),
         o.basePriceCents,
         JSON.stringify(o.priceVariations),
+        o.includedGuestCount ?? null,
         o.extraGuestPriceCents,
         o.gratuityTiersBps ? JSON.stringify(o.gratuityTiersBps) : null,
         o.gratuityDefaultBps ?? null,

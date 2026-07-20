@@ -5,10 +5,11 @@
  *
  * Scope is the boat's own facts the operator sets here: name, capacity (`coiMaxPax`), identity
  * hue (DEC-086), home Location, and internal notes. Crew-engine config NOT on this screen —
- * `manning` (the seat rule) and `includedGuestCount` (a pricing input, an Offering concern per
- * the 12.9 decision) — is **preserved** across an edit, never clobbered: the form doesn't carry
- * it, so we read the existing row and keep it. A brand-new vessel starts with empty manning
- * (its seat rule is set by the crew-engine tooling, not this catalog screen).
+ * `manning` (the seat rule) — is **preserved** across an edit, never clobbered: the form
+ * doesn't carry it, so we read the existing row and keep it. (The included-guest count moved
+ * to the Offering in 12.8 — pricing is a product fact, not a boat fact.) A brand-new vessel
+ * starts with empty manning (its seat rule is set by the crew-engine tooling, not this
+ * catalog screen).
  */
 import type { Vessel } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
@@ -56,8 +57,8 @@ export async function saveVesselAdmin(
   }
 
   const id = asId<"VesselId">(input.id);
-  // Preserve crew-engine fields this screen doesn't own (manning seat rule, the pricing
-  // included-guest count) — read the existing row and carry them; a new vessel gets defaults.
+  // Preserve the crew-engine field this screen doesn't own (the manning seat rule) — read
+  // the existing row and carry it; a new vessel gets the empty default.
   const existing = await repo.getVessel(id);
   const notes = input.notes?.trim();
 
@@ -70,9 +71,6 @@ export async function saveVesselAdmin(
       ? { homeLocationId: asId<"LocationId">(input.homeLocationId) }
       : {}),
     ...(notes ? { notes } : {}),
-    ...(existing?.includedGuestCount !== undefined
-      ? { includedGuestCount: existing.includedGuestCount }
-      : {}),
     manning: existing?.manning ?? [],
   };
   await repo.saveVessel(vessel);

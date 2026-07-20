@@ -24,12 +24,12 @@ const NOW = "2026-07-04T12:00:00.000Z";
 const now = () => NOW;
 const URLS = { successUrl: "https://x/s", cancelUrl: "https://x/c" };
 
-const vessel = (): Vessel => ({ id: BOAT, name: "Brew", coiMaxPax: 16, includedGuestCount: 12, manning: [] });
+const vessel = (): Vessel => ({ id: BOAT, name: "Brew", coiMaxPax: 16, manning: [] });
 const offering = (over: Partial<Offering> = {}): Offering => ({
   id: OFF, tenantId: asId<"TenantId">("t"), name: "Cruise", status: "live",
   vesselIds: [BOAT], locationId: asId<"LocationId">("loc-1"),
   schedule: { seasonStart: "2026-06-01", seasonEnd: "2026-08-31", weekdays: [5], departureTimes: [TIME] },
-  basePriceCents: 49900, priceVariations: [], extraGuestPriceCents: 4000, ...over,
+  basePriceCents: 49900, priceVariations: [], includedGuestCount: 12, extraGuestPriceCents: 4000, ...over,
 });
 
 async function seededRepo(): Promise<InMemoryRepository> {

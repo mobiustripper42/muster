@@ -300,16 +300,6 @@ export function runRepositoryContract(
       expect((await repo.listVessels())).toHaveLength(1); // upsert, not insert
     });
 
-    it("vessel: includedGuestCount round-trips present and absent (DEC-112, 12.2)", async () => {
-      await repo.saveVessel(vessel()); // no includedGuestCount
-      expect("includedGuestCount" in (await repo.getVessel(VESSEL))!).toBe(false); // omitted, not null
-      await repo.saveVessel({ ...vessel(), includedGuestCount: 8 });
-      expect((await repo.getVessel(VESSEL))!.includedGuestCount).toBe(8);
-      // clearing it back to unset round-trips as absent again
-      await repo.saveVessel(vessel());
-      expect("includedGuestCount" in (await repo.getVessel(VESSEL))!).toBe(false);
-    });
-
     it("crew: optional fields present and absent round-trip; null score preserved", async () => {
       await repo.saveCrewMember(crew()); // minimal — no email/boost/override
       const got = await repo.getCrewMember(CREW);
@@ -681,6 +671,22 @@ export function runRepositoryContract(
       const withTiers = (await repo.getOffering(base.id))!;
       expect(withTiers.gratuityTiersBps).toEqual([1500, 2000, 2500]);
       expect(withTiers.gratuityDefaultBps).toBe(2000);
+    });
+
+    it("catalog: Offering includedGuestCount round-trips present and absent (12.8)", async () => {
+      const base: Offering = {
+        id: asId<"OfferingId">("off-inc"), tenantId: TENANT, name: "Counted", status: "live",
+        vesselIds: [VESSEL], locationId: asId<"LocationId">("loc-1"),
+        schedule: { seasonStart: "2026-06-01", seasonEnd: "2026-08-31", weekdays: [5], departureTimes: ["14:00"] },
+        basePriceCents: 49900, priceVariations: [], extraGuestPriceCents: 5000,
+      };
+      await repo.saveOffering(base); // no includedGuestCount
+      expect("includedGuestCount" in (await repo.getOffering(base.id))!).toBe(false); // omitted, not null
+      await repo.saveOffering({ ...base, includedGuestCount: 8 });
+      expect((await repo.getOffering(base.id))!.includedGuestCount).toBe(8);
+      // clearing it back to unset round-trips as absent again
+      await repo.saveOffering(base);
+      expect("includedGuestCount" in (await repo.getOffering(base.id))!).toBe(false);
     });
 
     // ── Gratuity (DEC-124, 12.3) ──────────────────────────────────────────────

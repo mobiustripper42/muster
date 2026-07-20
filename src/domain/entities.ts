@@ -73,16 +73,6 @@ export interface Vessel {
   /** Certificate-of-Inspection max passengers. BrewBoat = 6. */
   coiMaxPax: number;
   /**
-   * Base-fare included guest count (DEC-125 build note pricing composition, over DEC-112's
-   * per-Event price; 12.2) — the whole-boat
-   * base fare covers up to this many guests; each guest ABOVE it adds
-   * `Offering.extraGuestPriceCents`, up to `coiMaxPax`. Optional/nullable: absent ⇒ treated
-   * as `coiMaxPax` (the whole boat is included, no per-guest extras) — the safe default for
-   * vessels seeded before pricing composition. Booking-time only; the availability deriver
-   * never reads it (it prices the display base only, DEC-125).
-   */
-  includedGuestCount?: number;
-  /**
    * Vessel identity hue (DEC-086 palette, 12.9) — the index (1–6) of the locked
    * `--color-vessel-N` token this boat renders in across the crew shift board and the
    * reservation calendar. Operator-chosen on the Vessel admin (color is information, not
@@ -292,6 +282,15 @@ export interface Offering {
   basePriceCents: number;
   /** Ordered price rules; first match wins (see {@link PriceVariation}). */
   priceVariations: PriceVariation[];
+  /**
+   * Base-fare included guest count (DEC-125 build note pricing composition; moved
+   * Vessel → Offering in 12.8 — the included count prices the PRODUCT, not the boat) — the
+   * whole-boat base fare covers up to this many guests; each guest ABOVE it adds
+   * `extraGuestPriceCents`, up to the running vessel's `coiMaxPax` (the cap stays a Vessel
+   * fact). Optional/nullable: absent ⇒ treated as `coiMaxPax` (whole boat included, no
+   * per-guest extras). Booking-time only; the availability deriver never reads it (DEC-125).
+   */
+  includedGuestCount?: number;
   /** Per-guest surcharge over the base-fare included count — booking-time only (DEC-124). */
   extraGuestPriceCents: number;
   /**

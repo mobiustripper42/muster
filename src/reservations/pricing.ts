@@ -4,7 +4,8 @@
  * over N"); DEC-112 established the per-`Event` base price it composes over. Deliberately kept
  * OUT of the availability deriver (which resolves only the display base per slot, DEC-125). A
  * departure sells the whole boat at a
- * **base fare up to the vessel's included guest count**, plus a per-guest surcharge for each
+ * **base fare up to the offering's included guest count** (12.8; vessel `coiMaxPax` fallback),
+ * plus a per-guest surcharge for each
  * guest above it, to the boat's COI cap:
  *
  *   fare = base + max(0, guestCount − includedGuestCount) × extraGuestPriceCents + gratuity
@@ -26,7 +27,7 @@ export interface FareInput {
   baseCents: number;
   /** Guests on the booking (never "party") — 1..coiMaxPax, validated upstream. */
   guestCount: number;
-  /** Guests the base fare covers (Vessel.includedGuestCount, or coiMaxPax when unset). */
+  /** Guests the base fare covers (Offering.includedGuestCount, or the vessel's coiMaxPax when unset). */
   includedGuestCount: number;
   /** Per-guest surcharge above the included count (Offering.extraGuestPriceCents). */
   extraGuestPriceCents: number;
@@ -68,11 +69,13 @@ export function gratuityTiersFor(offering: { gratuityTiersBps?: number[] }): num
   return offering.gratuityTiersBps ?? GRATUITY_TIERS_DEFAULT;
 }
 
-/** The effective included-guest count for a vessel: its `includedGuestCount`, or `coiMaxPax`
- *  when unset (whole boat included, no extras). Centralizes the DEC-112 default. */
-export function effectiveIncludedGuests(vessel: {
-  includedGuestCount?: number;
-  coiMaxPax: number;
-}): number {
-  return vessel.includedGuestCount ?? vessel.coiMaxPax;
+/** The effective included-guest count for a departure: the OFFERING's `includedGuestCount`
+ *  (12.8 — the included count prices the product, not the boat), or the running vessel's
+ *  `coiMaxPax` when unset (whole boat included, no extras). Deliberately a two-entity read:
+ *  the cap stays a Vessel fact. Centralizes the DEC-112 default. */
+export function effectiveIncludedGuests(
+  offering: { includedGuestCount?: number },
+  vessel: { coiMaxPax: number },
+): number {
+  return offering.includedGuestCount ?? vessel.coiMaxPax;
 }

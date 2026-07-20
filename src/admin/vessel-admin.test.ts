@@ -84,9 +84,9 @@ describe("saveVesselAdmin — validation", () => {
 });
 
 describe("saveVesselAdmin — preserves crew-engine fields on edit", () => {
-  it("keeps manning + includedGuestCount the form never carries", async () => {
+  it("keeps the manning the form never carries", async () => {
     const repo = await repoWithLocation();
-    await repo.saveVessel(existingVessel({ includedGuestCount: 8 }));
+    await repo.saveVessel(existingVessel());
 
     const r = await saveVesselAdmin(repo, {
       id: "vessel-1",
@@ -101,7 +101,6 @@ describe("saveVesselAdmin — preserves crew-engine fields on edit", () => {
       name: "Brew 1 renamed",
       coiMaxPax: 14,
       hue: 2,
-      includedGuestCount: 8, // preserved — not on the form
       manning: [{ roleTypeId: captain, count: 1 }], // preserved
     });
   });

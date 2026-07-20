@@ -122,7 +122,7 @@ export async function createDepartureCheckout(
   const fare = composeFare({
     baseCents: priceCents,
     guestCount: req.guestCount,
-    includedGuestCount: effectiveIncludedGuests(vessel),
+    includedGuestCount: effectiveIncludedGuests(offering!, vessel),
     extraGuestPriceCents: offering!.extraGuestPriceCents,
   });
 

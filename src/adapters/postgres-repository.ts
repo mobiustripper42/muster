@@ -16,6 +16,7 @@
 import pg from "pg";
 import type {
   Admin,
+  AddOn,
   Ask,
   AuthSubjectKind,
   Block,
@@ -25,6 +26,7 @@ import type {
   CrewStatus,
   Event,
   Gratuity,
+  GratuityKindConfig,
   GustoIdentity,
   Location,
   LoginCode,
@@ -197,8 +199,12 @@ const toOffering = (r: any): Offering => ({
   priceVariations: r.price_variations as PriceVariation[], // jsonb
   ...opt("includedGuestCount", r.included_guest_count),
   extraGuestPriceCents: r.extra_guest_price_cents,
-  ...(r.gratuity_tiers_bps != null ? { gratuityTiersBps: r.gratuity_tiers_bps as number[] } : {}),
-  ...opt("gratuityDefaultBps", r.gratuity_default_bps),
+  ...opt("description", r.description),
+  ...opt("tripLengthMinutes", r.trip_length_minutes),
+  ...opt("holdMinutes", r.hold_minutes),
+  ...opt("arriveBeforeMinutes", r.arrive_before_minutes),
+  ...(r.gratuity_kinds != null ? { gratuityKinds: r.gratuity_kinds as GratuityKindConfig[] } : {}),
+  ...(r.add_ons != null ? { addOns: r.add_ons as AddOn[] } : {}),
 });
 
 const toLocation = (r: any): Location => ({
@@ -774,15 +780,17 @@ export class PostgresRepository implements Repository {
   async saveOffering(o: Offering): Promise<void> {
     await this.#pool.query(
       `insert into offerings
-         (id, tenant_id, name, status, vessel_ids, location_id, schedule, base_price_cents, price_variations, included_guest_count, extra_guest_price_cents, gratuity_tiers_bps, gratuity_default_bps)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+         (id, tenant_id, name, status, vessel_ids, location_id, schedule, base_price_cents, price_variations, included_guest_count, extra_guest_price_cents, description, trip_length_minutes, hold_minutes, arrive_before_minutes, gratuity_kinds, add_ons)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
        on conflict (id) do update set
          tenant_id=excluded.tenant_id, name=excluded.name, status=excluded.status,
          vessel_ids=excluded.vessel_ids, location_id=excluded.location_id,
          schedule=excluded.schedule, base_price_cents=excluded.base_price_cents,
          price_variations=excluded.price_variations, included_guest_count=excluded.included_guest_count,
          extra_guest_price_cents=excluded.extra_guest_price_cents,
-         gratuity_tiers_bps=excluded.gratuity_tiers_bps, gratuity_default_bps=excluded.gratuity_default_bps`,
+         description=excluded.description, trip_length_minutes=excluded.trip_length_minutes,
+         hold_minutes=excluded.hold_minutes, arrive_before_minutes=excluded.arrive_before_minutes,
+         gratuity_kinds=excluded.gratuity_kinds, add_ons=excluded.add_ons`,
       [
         o.id,
         o.tenantId,
@@ -795,8 +803,12 @@ export class PostgresRepository implements Repository {
         JSON.stringify(o.priceVariations),
         o.includedGuestCount ?? null,
         o.extraGuestPriceCents,
-        o.gratuityTiersBps ? JSON.stringify(o.gratuityTiersBps) : null,
-        o.gratuityDefaultBps ?? null,
+        o.description ?? null,
+        o.tripLengthMinutes ?? null,
+        o.holdMinutes ?? null,
+        o.arriveBeforeMinutes ?? null,
+        o.gratuityKinds ? JSON.stringify(o.gratuityKinds) : null,
+        o.addOns ? JSON.stringify(o.addOns) : null,
       ],
     );
   }

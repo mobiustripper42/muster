@@ -14,6 +14,7 @@ import {
   composeFare,
   effectiveIncludedGuests,
   gratuityCentsFor,
+  gratuityKindsFor,
   gratuityTiersFor,
 } from "./pricing.js";
 
@@ -50,10 +51,32 @@ describe("gratuity tiers (DEC-124)", () => {
     expect(gratuityCentsFor(49900, 1500)).toBe(7485); // 15%
     expect(gratuityCentsFor(49900, 2500)).toBe(12475); // 25%
   });
-  it("gratuityTiersFor uses the offering override, else the default", () => {
+  it("gratuityTiersFor reads the offering's pre kind, else the default (12.8)", () => {
     expect(gratuityTiersFor({})).toEqual(GRATUITY_TIERS_DEFAULT);
-    expect(gratuityTiersFor({ gratuityTiersBps: [1000, 1800] })).toEqual([1000, 1800]);
+    expect(
+      gratuityTiersFor({
+        gratuityKinds: [
+          { kind: "pre", tiersBps: [1000, 1800], defaultBps: 1800, required: true },
+          { kind: "post", tiersBps: [1500, 2000], defaultBps: 2000, required: false },
+        ],
+      }),
+    ).toEqual([1000, 1800]);
+    // A per-kind config WITHOUT a pre entry still offers the default tiers (no dead-end).
+    expect(
+      gratuityTiersFor({
+        gratuityKinds: [{ kind: "post", tiersBps: [1000], defaultBps: 1000, required: false }],
+      }),
+    ).toEqual(GRATUITY_TIERS_DEFAULT);
     expect(GRATUITY_DEFAULT_BPS).toBe(2000);
+  });
+
+  it("gratuityKindsFor defaults to pre-required + post-optional on the standard tiers", () => {
+    expect(gratuityKindsFor({})).toEqual([
+      { kind: "pre", tiersBps: [1500, 2000, 2500], defaultBps: 2000, required: true },
+      { kind: "post", tiersBps: [1500, 2000, 2500], defaultBps: 2000, required: false },
+    ]);
+    const custom = [{ kind: "pre" as const, tiersBps: [1000], defaultBps: 1000, required: true }];
+    expect(gratuityKindsFor({ gratuityKinds: custom })).toEqual(custom);
   });
 });
 

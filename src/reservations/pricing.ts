@@ -22,6 +22,8 @@
  * top, after tax. `fareCents` is the TAXABLE base — keep it tip-free.
  */
 
+import type { GratuityKindConfig } from "../domain/entities.js";
+
 export interface FareInput {
   /** Resolved per-departure base fare in cents (Event.price or variation-resolved base). */
   baseCents: number;
@@ -52,21 +54,37 @@ export function composeFare(input: FareInput): Fare {
   return { extraGuests, extrasCents, fareCents };
 }
 
-// ── Gratuity tiers (DEC-124, 12.3) ───────────────────────────────────────────
+// ── Gratuity tiers (DEC-124, 12.3; per-kind config 12.8) ─────────────────────
 /** Default gratuity tiers in basis points (15/20/25%) — mirrors the live Xola config. Per
- *  `Offering` override via `gratuityTiersBps`; required at checkout, no decline. */
+ *  `Offering` override via `gratuityKinds`; pre is required at checkout, no decline. */
 export const GRATUITY_TIERS_DEFAULT = [1500, 2000, 2500];
 /** Default pre-selected tier (20%). */
 export const GRATUITY_DEFAULT_BPS = 2000;
+
+/** The per-kind defaults an offering with no `gratuityKinds` rides (12.8, DEC-124): pre
+ *  required at checkout, post optional via the booking link, both on the standard tiers. */
+export const GRATUITY_KINDS_DEFAULT: readonly GratuityKindConfig[] = [
+  { kind: "pre", tiersBps: GRATUITY_TIERS_DEFAULT, defaultBps: GRATUITY_DEFAULT_BPS, required: true },
+  { kind: "post", tiersBps: GRATUITY_TIERS_DEFAULT, defaultBps: GRATUITY_DEFAULT_BPS, required: false },
+];
 
 /** Gratuity in cents = `bps` of the (tip-free) fare, rounded half-up. Pure. */
 export function gratuityCentsFor(fareCents: number, bps: number): number {
   return Math.round((fareCents * bps) / 10000);
 }
 
-/** The gratuity tiers for an offering: its `gratuityTiersBps`, or the default. */
-export function gratuityTiersFor(offering: { gratuityTiersBps?: number[] }): number[] {
-  return offering.gratuityTiersBps ?? GRATUITY_TIERS_DEFAULT;
+/** The per-kind gratuity config for an offering: its `gratuityKinds`, or the default set. */
+export function gratuityKindsFor(offering: {
+  gratuityKinds?: GratuityKindConfig[];
+}): readonly GratuityKindConfig[] {
+  return offering.gratuityKinds ?? GRATUITY_KINDS_DEFAULT;
+}
+
+/** The PRE (at-checkout) gratuity tiers for an offering — the 12.3 checkout contract,
+ *  re-sourced from the per-kind config (12.8). An offering without a `pre` entry falls back
+ *  to the default tiers, so the required-at-checkout posture never dead-ends. */
+export function gratuityTiersFor(offering: { gratuityKinds?: GratuityKindConfig[] }): number[] {
+  return gratuityKindsFor(offering).find((k) => k.kind === "pre")?.tiersBps ?? GRATUITY_TIERS_DEFAULT;
 }
 
 /** The effective included-guest count for a departure: the OFFERING's `includedGuestCount`

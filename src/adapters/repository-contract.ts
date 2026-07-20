@@ -656,21 +656,52 @@ export function runRepositoryContract(
       expect(await repo.listBlocks()).toEqual([]);
     });
 
-    it("catalog: Offering gratuity tiers round-trip present and absent (DEC-124, 12.3)", async () => {
+    it("catalog: Offering gratuityKinds round-trip present and absent (DEC-124, 12.8)", async () => {
       const base: Offering = {
         id: asId<"OfferingId">("off-g"), tenantId: TENANT, name: "Tipped", status: "live",
         vesselIds: [VESSEL], locationId: asId<"LocationId">("loc-1"),
         schedule: { seasonStart: "2026-06-01", seasonEnd: "2026-08-31", weekdays: [5], departureTimes: ["14:00"] },
         basePriceCents: 49900, priceVariations: [], extraGuestPriceCents: 5000,
       };
-      await repo.saveOffering(base); // no tiers
+      await repo.saveOffering(base); // no per-kind config → code defaults apply
       const got = (await repo.getOffering(base.id))!;
-      expect("gratuityTiersBps" in got).toBe(false);
-      expect("gratuityDefaultBps" in got).toBe(false);
-      await repo.saveOffering({ ...base, gratuityTiersBps: [1500, 2000, 2500], gratuityDefaultBps: 2000 });
-      const withTiers = (await repo.getOffering(base.id))!;
-      expect(withTiers.gratuityTiersBps).toEqual([1500, 2000, 2500]);
-      expect(withTiers.gratuityDefaultBps).toBe(2000);
+      expect("gratuityKinds" in got).toBe(false); // omitted, not null
+      const kinds = [
+        { kind: "pre" as const, tiersBps: [1500, 2000, 2500], defaultBps: 2000, required: true },
+        { kind: "post" as const, tiersBps: [1500, 2000, 2500], defaultBps: 2000, required: false },
+      ];
+      await repo.saveOffering({ ...base, gratuityKinds: kinds });
+      expect((await repo.getOffering(base.id))!.gratuityKinds).toEqual(kinds);
+    });
+
+    it("catalog: Offering 12.8 display/config fields round-trip present and absent", async () => {
+      const base: Offering = {
+        id: asId<"OfferingId">("off-cfg"), tenantId: TENANT, name: "Configured", status: "draft",
+        vesselIds: [VESSEL], locationId: asId<"LocationId">("loc-1"),
+        schedule: { seasonStart: "2026-06-01", seasonEnd: "2026-08-31", weekdays: [5], departureTimes: ["14:00"] },
+        basePriceCents: 49900, priceVariations: [], extraGuestPriceCents: 5000,
+      };
+      await repo.saveOffering(base); // none of the optionals set
+      const bare = (await repo.getOffering(base.id))!;
+      for (const k of ["description", "tripLengthMinutes", "holdMinutes", "arriveBeforeMinutes", "addOns"]) {
+        expect(k in bare).toBe(false); // omitted, not null
+      }
+      const full: Offering = {
+        ...base,
+        description: "**NO Pedaling Required** — party pontoons.",
+        tripLengthMinutes: 100,
+        holdMinutes: 100,
+        arriveBeforeMinutes: 15,
+        addOns: [
+          { label: "Flex insurance", type: "flat", amountCents: 2900, required: false },
+          { label: "Extra hour", type: "flat", amountCents: 15000, required: false },
+        ],
+      };
+      await repo.saveOffering(full);
+      expect(await repo.getOffering(base.id)).toEqual(full);
+      // clearing back to unset round-trips as absent again (upsert writes null)
+      await repo.saveOffering(base);
+      expect("addOns" in (await repo.getOffering(base.id))!).toBe(false);
     });
 
     it("catalog: Offering includedGuestCount round-trips present and absent (12.8)", async () => {

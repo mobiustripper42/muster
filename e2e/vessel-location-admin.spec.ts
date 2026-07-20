@@ -53,7 +53,7 @@ test.describe("admin /admin/locations + /admin/vessels", () => {
     await page.fill('input[name="name"]', "Sunset");
     await page.fill('input[name="coiMaxPax"]', "12");
     await page.locator('input[name="hue"][value="2"]').check({ force: true });
-    await page.getByRole("button", { name: "Create vessel" }).click();
+    await page.getByRole("button", { name: "Create" }).click();
     await page.waitForURL(/saved=1/);
     await expect(page.getByText("Saved.")).toBeVisible();
     // The new boat is now a row in the vessel list.

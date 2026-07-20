@@ -101,6 +101,33 @@ describe("processBookingWebhook", () => {
     expect(confirm).toHaveBeenCalledOnce();
   });
 
+  it("freezes the party-fare extras from slot metadata onto the reservation (#474)", async () => {
+    const repo = new InMemoryRepository();
+    const { deps } = makeDeps(repo);
+    // A slot-first booking (vesselId+date+time+offeringId, no eventId → the webhook
+    // materializes the Event) carrying extrasCents in metadata — must land on the reservation
+    // so the deposit-mode balance deriver bills base + extras (DEC-107 amend).
+    const slot = completed({
+      metadata: {
+        offeringId: "off-1",
+        vesselId: "v",
+        date: "2026-07-04",
+        time: "17:00",
+        guestCount: "6",
+        priceCents: "50000",
+        extrasCents: "6000",
+        kind: "deposit",
+        taxCents: "4060",
+        customerName: "Mary",
+      },
+    });
+
+    const r = await processBookingWebhook(deps, JSON.stringify(slot), FAKE_SIGNATURE);
+    expect(r).toEqual({ handled: true, outcome: "booked" });
+    const res = (await repo.getReservation(reservationIdFor("cs_test_1")))!;
+    expect(res.extrasCents).toBe(6000);
+  });
+
   it("carries waiver consent from checkout metadata onto the reservation (11.5, DEC-110)", async () => {
     const repo = new InMemoryRepository();
     await repo.saveEvent(musterEvent());

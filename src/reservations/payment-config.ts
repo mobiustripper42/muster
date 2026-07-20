@@ -50,22 +50,28 @@ export function chargeNowCents(
 
 /**
  * The balance still OWED on a reservation, derived (11.2b, DEC-107) — never a
- * recompute of the deposit share. `total = price + tax`, minus the sum of every
+ * recompute of the deposit share. `total = fare + tax`, minus the sum of every
  * SUCCEEDED payment already collected (the deposit carried all the tax, so the
  * residual is pure principal). The `Payment` entity mandates balance be derived,
  * not stored, so this is the ONE authority: immune to a `depositPercent`/price
  * change between deposit and balance, and the single seam a future refund reopens
  * (a refund drops a payment out of the succeeded sum → balance re-opens). `<= 0`
  * means nothing owed (paid in full, or full-mode).
+ *
+ * **`fareCents` is the composed party fare** — `Event.price` base **+** the frozen
+ * `Reservation.extrasCents` (#474, DEC-107 amend), NOT the bare base. The base alone
+ * undercollects a deposit-mode balance by `extras + tax(extras)`; callers must pass
+ * `event.price + (reservation.extrasCents ?? 0)`. Extras are frozen at booking, never
+ * recomputed from a live Offering — that would break the "never a config recompute" rule.
  */
 export function balanceOwedCents(
-  priceCents: number,
+  fareCents: number,
   taxRateBps: number,
   payments: readonly { status: string; amountCents: number; gratuityCents?: number }[],
 ): number {
-  const total = priceCents + taxCentsFor(priceCents, taxRateBps);
+  const total = fareCents + taxCentsFor(fareCents, taxRateBps);
   // Net the GRATUITY out of each paid amount (DEC-124, 12.3): the tip is crew money bundled
-  // into the charge, never part of price+tax, so counting it as "paid toward balance" would
+  // into the charge, never part of fare+tax, so counting it as "paid toward balance" would
   // under-charge the balance on a deposit booking.
   const paid = payments
     .filter((p) => p.status === "succeeded")

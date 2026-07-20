@@ -105,6 +105,9 @@ export async function processBookingWebhook(
           time: m.time ?? "",
           guestCount: partySize,
           priceCents: Number(m.priceCents ?? 0),
+          // Extras frozen at checkout (composeFare, #474) — carried so the deposit-mode
+          // balance deriver bills base + extras, not the bare base (DEC-107 amend).
+          extrasCents: Number(m.extrasCents ?? 0),
           customerName: m.customerName ?? "",
           ...(m.email ? { email: m.email } : {}),
           ...(m.phone ? { phone: m.phone } : {}),
@@ -319,7 +322,13 @@ async function recordBalancePayment(
   // moved; if the derived balance has gone NEGATIVE, flag the excess for a manual refund.
   const config = await deps.repo.getPaymentConfig();
   const payments = await deps.repo.listPaymentsForReservation(reservationId);
-  const owed = balanceOwedCents(event.price, config.taxRateBps, payments);
+  // Fare = base + frozen extras (#474): the bare base would trip a false overpay alert on a
+  // genuine extras balance (or mask a real overpay).
+  const owed = balanceOwedCents(
+    event.price + (reservation.extrasCents ?? 0),
+    config.taxRateBps,
+    payments,
+  );
   if (owed < 0) {
     await deps.alertPaidButUnbooked(
       `⚠️ Reservation ${reservationId} OVERPAID by ${-owed} cents — a balance was likely paid ` +

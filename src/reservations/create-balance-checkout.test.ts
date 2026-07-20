@@ -125,3 +125,49 @@ describe("createBalanceCheckout", () => {
     expect(await createBalanceCheckout(repo, new FakePaymentPort(), RES, URLS)).toMatchObject({ reason: "unpriced" });
   });
 });
+
+// #474 (DEC-107 amend) — the balance must bill the composed party fare (base + frozen extras),
+// not the bare Event.price base. Scenario: base 50000 + extras 6000 (2 guests over the included
+// count) = fare 56000; 7.25% tax on the FULL fare = 4060; a 20% tip = 11200. Deposit at 25% =
+// round(0.25·56000) + tax + tip = 14000 + 4060 + 11200 = 29260 (gratuity 11200 bundled in).
+// total = 56000 + 4060 = 60060; paid (tip netted, DEC-124) = 29260 − 11200 = 18060;
+// balance = 42000 = the remaining 75% of the FULL fare (tax + tip both net out).
+describe("balance composes the party fare — includes frozen extras (#474)", () => {
+  const depositWithExtras = (over: Partial<Payment> = {}): Payment => ({
+    id: asId<"PaymentId">("pay_dep_x"),
+    reservationId: RES,
+    method: "stripe",
+    kind: "deposit",
+    amountCents: 29260,
+    taxCents: 4060,
+    gratuityCents: 11200,
+    currency: "usd",
+    status: "succeeded",
+    createdAt: "2026-07-01T00:00:00.000Z",
+    ...over,
+  });
+
+  it("balanceOwedCents on the fare returns the remaining 75%, tax and tip netted", () => {
+    // fare = base 50000 + extras 6000; base ALONE would undercollect by extras + tax(extras) = 6435.
+    expect(balanceOwedCents(56000, 725, [depositWithExtras()])).toBe(42000);
+    expect(balanceOwedCents(50000, 725, [depositWithExtras()])).toBe(35565); // the #474 bug value
+  });
+
+  it("createBalanceCheckout adds the reservation's frozen extras to the base", async () => {
+    const repo = new InMemoryRepository();
+    await repo.saveEvent(musterEvent()); // price 50000 base
+    await repo.saveReservation(reservation({ extrasCents: 6000 }));
+    await repo.setPaymentConfig({ depositMode: "deposit", depositPercent: 25, taxRateBps: 725 }, "now");
+    await repo.savePayment(depositWithExtras());
+
+    const r = await createBalanceCheckout(repo, new FakePaymentPort(), RES, URLS);
+    expect(r.ok && r.amountCents).toBe(42000); // NOT 35565 — the extras are billed
+  });
+
+  it("a reservation with no extras (Xola/legacy/pre-12.2) reads extrasCents as 0 — bare base", async () => {
+    const repo = await seed();
+    await repo.savePayment(depositPayment()); // the base-only deposit
+    const r = await createBalanceCheckout(repo, new FakePaymentPort(), RES, URLS);
+    expect(r.ok && r.amountCents).toBe(37500); // unchanged from the base-only path
+  });
+});

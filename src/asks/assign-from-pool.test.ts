@@ -145,12 +145,13 @@ describe("assignFromPool — guards (lean's accept set, per seat)", () => {
   });
 
   it("rejects someone who bailed on this shift", async () => {
-    const ann = await addCrew("ann"); // the only crew → bail rests the seat
+    const ann = await addCrew("ann"); // the bailer — rejected from the re-crew
     const [seatId] = await addShift(["Open"]);
     const [ask] = await broadcastAsk(repo, seatId!, T0);
     await recordResponse(repo, ask!.id, "accepted", T0);
     await confirmSeat(repo, seatId!, T0);
-    await bail(repo, seatId!, T0, 0); // empty pool → seat rests Bailed
+    await bail(repo, seatId!, T0, 0); // DEC-128: rests Open; the "bailed" rejection
+    // below is event-driven (shift_bailed), not seat-state driven.
 
     const out = await assignFromPool(repo, seatId!, ann, T0);
     expect(out.code).toBe("bailed");

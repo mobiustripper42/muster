@@ -108,7 +108,7 @@ export function ShiftRow({
           <span className="flex items-center gap-1.5 font-medium text-ink">
             <span
               aria-hidden="true"
-              className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${vesselHueClass(row.vesselId)}`}
+              className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${vesselHueClass(row.vesselId, row.vesselHue)}`}
             />
             {row.vesselName}
             {splitTag && (

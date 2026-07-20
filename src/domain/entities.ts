@@ -82,6 +82,21 @@ export interface Vessel {
    * never reads it (it prices the display base only, DEC-125).
    */
   includedGuestCount?: number;
+  /**
+   * Vessel identity hue (DEC-086 palette, 12.9) — the index (1–6) of the locked
+   * `--color-vessel-N` token this boat renders in across the crew shift board and the
+   * reservation calendar. Operator-chosen on the Vessel admin (color is information, not
+   * decoration — DEC-021/042). Optional: absent ⇒ the derived hue stands (pinned map, then a
+   * stable id-hash), so an un-coloured vessel looks exactly as it did pre-12.9.
+   */
+  hue?: number;
+  /**
+   * Default launch Location (12.9) — the boat's home dock. Optional; a reference by id (no
+   * FK, house style DEC-DATA-1). Display/config only; the availability deriver doesn't read it.
+   */
+  homeLocationId?: LocationId;
+  /** Internal operator notes (12.9) — never customer-facing. */
+  notes?: string;
   /** The manning rule as a list; the seat builder loops it (DEC-ROLE-1). */
   manning: ManningRequirement[];
 }

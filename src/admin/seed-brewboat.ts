@@ -64,6 +64,7 @@ export async function seedBrewBoat(
     id: asId<"VesselId">("vessel-brewboat"),
     name: "BrewBoat",
     coiMaxPax: 6,
+    hue: 1, // operator-chosen identity hue (DEC-086, 12.9) — representative in dev
     manning: [
       { roleTypeId: captainRoleId, count: 1 },
       { roleTypeId: mateRoleId, count: 1 },

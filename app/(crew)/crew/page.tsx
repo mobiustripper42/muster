@@ -196,7 +196,7 @@ function ShiftWhenWhat({ s }: { s: CrewAppView["shifts"][number] }) {
         {/* DEC-086 vessel identity dot — which boat, at a glance across a
             mixed-vessel list. aria-hidden; the vessel name is the accessible answer. */}
         <span
-          className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${vesselHueClass(s.vesselId)}`}
+          className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${vesselHueClass(s.vesselId, s.vesselHue)}`}
           aria-hidden
         />
         <span>

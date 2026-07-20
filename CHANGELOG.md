@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.17] - 2026-07-20
+- PR #488: Fix #483 — `bail()`/`vacateSeat()` fire no asks; re-crewing deferred to the tick (DEC-128). Kills the pre-horizon pool-blast that texted the whole role pool weeks out.
+- PR #480 (#474): DEC-107 amend — balance deriver composes party fare (extras frozen on Reservation).
+- PR #486: `/its-alive` memory loading.
+- PR #485: park idea — hide/retire a Vessel or Location (soft-archive).
+- Housekeeping: DECISIONS topic index + DEC-127 maintenance convention; seeds CLAUDE.md shell + DEV_REFERENCE sync (DEC-S030/S031); trial hooks; versioning note aligned to DEC-S022 promote-time patch bump.
+
 ## [1.0.16] - 2026-07-19
 - DEC-107 amendment: auto-refund the DEC-109 residual-race loser (task 12.1b)
 - PR #390: MESSAGING flag — disable all messaging, code retained (closes #389)

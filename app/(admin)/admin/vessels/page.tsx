@@ -1,5 +1,4 @@
 import type { Location, Offering, Vessel } from "@core/domain/entities.js";
-import type { ReactNode } from "react";
 import { BackLink } from "../../../../components/ui/back-link";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
@@ -7,6 +6,7 @@ import { AppLink } from "../../../../components/ui/app-link";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
+import { Field, settingsInputClass } from "../../../../components/admin/settings-field";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
 import { HUE_COUNT, vesselHueClass, vesselHueIndex } from "../../../lib/vessel-hue";
@@ -152,37 +152,7 @@ export default async function AdminVessels({
   );
 }
 
-const inputClass = "rounded-card border border-line bg-card px-3 py-2 text-ink";
-
-/** One label-left field row (the mockup's `.f` grid): label (+ optional sublabel) on the
- *  left, control on the right, first-baseline aligned. */
-function Field({
-  label,
-  sub,
-  align = "baseline",
-  children,
-}: {
-  label: string;
-  sub?: string;
-  /** "start" top-aligns the label — use for a textarea (an empty one has no first-line
-   *  baseline, so baseline alignment would drop the label to its middle). */
-  align?: "baseline" | "start";
-  children: ReactNode;
-}) {
-  return (
-    <div
-      className={`grid grid-cols-1 gap-1 border-t border-line py-3 first:border-t-0 sm:grid-cols-[160px_1fr] sm:gap-3 ${
-        align === "start" ? "sm:items-start" : "sm:items-baseline"
-      }`}
-    >
-      <span className={`text-sm text-muted ${align === "start" ? "sm:pt-2" : ""}`}>
-        {label}
-        {sub && <span className="block text-xs text-faint">{sub}</span>}
-      </span>
-      <div>{children}</div>
-    </div>
-  );
-}
+const inputClass = settingsInputClass;
 
 /** The "Vessel" facts card. The Save button lives in the page header (shared form). */
 function VesselCard({

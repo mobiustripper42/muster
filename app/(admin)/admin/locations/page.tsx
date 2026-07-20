@@ -6,16 +6,18 @@ import { AppLink } from "../../../../components/ui/app-link";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
+import { Field, settingsInputClass } from "../../../../components/admin/settings-field";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
 import { saveLocation } from "./actions";
 
 /**
- * /admin/locations (task 12.9, DEC-123) — the Location settings twin. A first-class entity:
- * the customer-facing pickup (description + map link) and route blurb, edited once and read by
- * every Offering that launches here (DEC-125 — a location block subtracts from all of them at
- * once). Master–detail via `?sel=<id|new>`, native forms, no JS (DEC-026). "Block this
- * location" is deferred to the Blocks surface task.
+ * /admin/locations (task 12.9, DEC-123) — the Location settings twin, laid out to
+ * `docs/design/mockups/location.html` and matching the Vessel screen: a full-width header
+ * (breadcrumb + name + Save), a location list on the left, the customer-facing pickup + route
+ * on the right, plus a read-only Offerings reverse lookup. Master–detail via `?sel=<id|new>`,
+ * native forms, no JS (DEC-026). The whole surface is one `<form>` so Save can sit in the header
+ * while the fields sit in the card. "Block this location" is deferred to the Blocks surface task.
  */
 
 export const dynamic = "force-dynamic";
@@ -46,7 +48,7 @@ export default async function AdminLocations({
     [locations, offerings] = await Promise.all([repo.listLocations(), repo.listOfferings()]);
   } catch {
     return (
-      <Shell width="3xl">
+      <Shell width="6xl">
         <Notice>Couldn’t reach the locations right now. Try again in a moment.</Notice>
       </Shell>
     );
@@ -58,138 +60,152 @@ export default async function AdminLocations({
     ? null
     : locations.find((l) => l.id === sp.sel) ?? locations[0] ?? null;
   const errCopy = sp.err ? ERR_COPY[sp.err] ?? ERR_COPY.error : null;
+  const title = creating ? "New location" : selected?.name ?? "Locations";
 
   return (
-    <Shell width="3xl">
+    <Shell width="6xl">
       <BackLink href="/admin">Back</BackLink>
-      <h1 className="text-xl font-semibold text-ink">Locations</h1>
-      <p className="text-sm text-muted">
-        Where trips launch. The customer reads the pickup + route; every offering here references
-        it, so one edit updates them all.
-      </p>
+      <form
+        key={creating ? "new" : selected?.id ?? "none"}
+        action={saveLocation}
+        className="flex flex-col gap-4"
+      >
+        <input type="hidden" name="id" value={creating || !selected ? "" : selected.id} />
 
-      {sp.saved && <Notice tone="ok">Saved.</Notice>}
-      {errCopy && <Notice tone="bad">{errCopy}</Notice>}
+        <header className="flex items-center gap-3">
+          <div className="min-w-0">
+            <p className="text-xs text-faint">
+              Settings / Locations{selected || creating ? ` / ${title}` : ""}
+            </p>
+            <h1 className="truncate text-[22px] font-semibold leading-tight text-ink">{title}</h1>
+          </div>
+          {(selected || creating) && (
+            <SubmitButton className="ml-auto min-h-[40px] shrink-0 rounded-card bg-accent px-4 text-sm font-semibold text-white">
+              {creating || !selected ? "Create" : "Save"}
+            </SubmitButton>
+          )}
+        </header>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-[220px_1fr]">
-        <nav className="flex flex-col gap-1 rounded-card border border-line bg-card p-2">
-          {locations.map((l) => {
-            const used = offerings.filter((o) => o.locationId === l.id).length;
-            return (
-              <AppLink
-                key={l.id}
-                href={`/admin/locations?sel=${l.id}`}
-                aria-current={selected?.id === l.id ? "page" : undefined}
-                className={`flex flex-col rounded-lg px-3 py-2 text-sm ${
-                  selected?.id === l.id ? "bg-bg font-semibold text-ink" : "text-muted"
-                }`}
-              >
-                <span className="truncate">{l.name}</span>
-                <span className="text-xs text-faint">
-                  {used} {used === 1 ? "offering" : "offerings"}
-                </span>
-              </AppLink>
-            );
-          })}
-          <AppLink
-            href="/admin/locations?sel=new"
-            className={`mt-1 rounded-lg border border-dashed border-line px-3 py-2 text-sm ${
-              creating ? "font-semibold text-accent" : "text-accent"
-            }`}
-          >
-            + New location
-          </AppLink>
-        </nav>
+        {errCopy && <Notice tone="bad">{errCopy}</Notice>}
 
-        <div className="flex flex-col gap-4">
-          <LocationForm location={selected} creating={creating} />
-          {selected && <UsedBySection location={selected} offerings={offerings} />}
+        <div className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-[230px_1fr]">
+          <nav className="flex flex-col gap-0.5 self-start rounded-card border border-line bg-card p-1.5">
+            <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-faint">
+              Locations
+            </p>
+            {locations.map((l) => {
+              const used = offerings.filter((o) => o.locationId === l.id).length;
+              return (
+                <AppLink
+                  key={l.id}
+                  href={`/admin/locations?sel=${l.id}`}
+                  aria-current={selected?.id === l.id ? "page" : undefined}
+                  className={`block rounded-[9px] px-2.5 py-2 text-sm ${
+                    selected?.id === l.id ? "bg-bg font-medium text-ink" : "text-muted"
+                  }`}
+                >
+                  <span className="flex flex-col">
+                    <span className="truncate">{l.name}</span>
+                    <span className="text-xs text-faint">
+                      {used} {used === 1 ? "offering" : "offerings"}
+                    </span>
+                  </span>
+                </AppLink>
+              );
+            })}
+            <AppLink
+              href="/admin/locations?sel=new"
+              className={`mx-0.5 mt-1.5 rounded-lg border border-dashed border-line px-2.5 py-2 text-sm text-accent ${
+                creating ? "font-medium" : ""
+              }`}
+            >
+              + New location
+            </AppLink>
+          </nav>
+
+          <div className="flex flex-col gap-4">
+            <LocationCard location={selected} />
+            {selected && <OfferingsSection location={selected} offerings={offerings} />}
+          </div>
         </div>
-      </div>
+      </form>
 
       <VersionTag />
     </Shell>
   );
 }
 
-const inputClass = "min-h-[44px] rounded-card border border-line bg-card px-3 text-ink";
-
-function LocationForm({ location, creating }: { location: Location | null; creating: boolean }) {
-  const isNew = creating || !location;
+/** The "Location" facts card. The Save button lives in the page header (shared form). */
+function LocationCard({ location }: { location: Location | null }) {
   return (
-    <form
-      action={saveLocation}
-      className="flex flex-col gap-4 rounded-card border border-line bg-card px-4 py-4 shadow-sm"
-    >
-      <h2 className="text-sm font-semibold text-ink">
-        {isNew ? "New location" : location!.name}
-      </h2>
-      <input type="hidden" name="id" value={isNew ? "" : location!.id} />
+    <section className="rounded-card border border-line bg-card shadow-sm">
+      <div className="flex items-center gap-3 border-b border-line px-4 py-3">
+        <h2 className="text-sm font-semibold text-ink">Location</h2>
+      </div>
 
-      <label className="flex flex-col gap-1 text-sm text-muted">
-        Name
-        <input name="name" required defaultValue={location?.name ?? ""} className={inputClass} />
-      </label>
+      <div className="px-4 py-1">
+        <Field label="Name">
+          <input
+            name="name"
+            required
+            defaultValue={location?.name ?? ""}
+            className={`${settingsInputClass} w-full max-w-[420px]`}
+          />
+        </Field>
 
-      <label className="flex flex-col gap-1 text-sm text-muted">
-        Pickup <span className="text-xs text-faint">where guests meet the boat</span>
-        <textarea
-          name="pickupDescription"
-          required
-          defaultValue={location?.pickupDescription ?? ""}
-          className={`${inputClass} min-h-[64px] py-2`}
-        />
-      </label>
+        <Field label="Pickup" sub="where guests meet the boat" align="start">
+          <textarea
+            name="pickupDescription"
+            required
+            defaultValue={location?.pickupDescription ?? ""}
+            className={`${settingsInputClass} min-h-[64px] w-full`}
+          />
+        </Field>
 
-      <label className="flex flex-col gap-1 text-sm text-muted">
-        Pickup link <span className="text-xs text-faint">map / directions (optional)</span>
-        <input
-          name="pickupLink"
-          type="url"
-          defaultValue={location?.pickupLink ?? ""}
-          placeholder="https://maps.google.com/…"
-          className={inputClass}
-        />
-      </label>
+        <Field label="Pickup link" sub="map / directions">
+          <input
+            name="pickupLink"
+            type="url"
+            defaultValue={location?.pickupLink ?? ""}
+            placeholder="https://maps.google.com/…"
+            className={`${settingsInputClass} w-full max-w-[420px]`}
+          />
+        </Field>
 
-      <label className="flex flex-col gap-1 text-sm text-muted">
-        Route <span className="text-xs text-faint">where the trip goes</span>
-        <textarea
-          name="routeDescription"
-          required
-          defaultValue={location?.routeDescription ?? ""}
-          className={`${inputClass} min-h-[64px] py-2`}
-        />
-      </label>
-
-      <SubmitButton className="min-h-[44px] max-w-[180px] rounded-card bg-accent px-4 font-semibold text-white">
-        {isNew ? "Create location" : "Save"}
-      </SubmitButton>
-    </form>
+        <Field label="Route" sub="where the trip goes" align="start">
+          <textarea
+            name="routeDescription"
+            required
+            defaultValue={location?.routeDescription ?? ""}
+            className={`${settingsInputClass} min-h-[64px] w-full`}
+          />
+        </Field>
+      </div>
+    </section>
   );
 }
 
 /** Read-only reverse lookup — the offerings that launch here. The Offering owns the link. */
-function UsedBySection({ location, offerings }: { location: Location; offerings: Offering[] }) {
+function OfferingsSection({ location, offerings }: { location: Location; offerings: Offering[] }) {
   const used = offerings.filter((o) => o.locationId === location.id);
   return (
-    <section className="flex flex-col gap-2 rounded-card border border-line bg-card px-4 py-4 shadow-sm">
-      <h2 className="text-sm font-semibold text-ink">Used by</h2>
-      {used.length === 0 ? (
-        <p className="text-sm text-muted">No offerings launch here yet.</p>
-      ) : (
-        <div className="flex flex-wrap gap-2">
-          {used.map((o) => (
-            <span key={o.id} className="rounded-full border border-line px-3 py-1 text-xs text-muted">
-              {o.name}
-            </span>
-          ))}
-        </div>
-      )}
-      <p className="text-xs text-faint">
-        Read-only — set on each Offering. Blocking this location subtracts availability from every
-        offering here at once.
-      </p>
+    <section className="rounded-card border border-line bg-card shadow-sm">
+      <div className="border-b border-line px-4 py-3">
+        <h2 className="text-sm font-semibold text-ink">Offerings</h2>
+      </div>
+      <div className="px-4 py-3">
+        {used.length === 0 ? (
+          <p className="text-sm text-muted">No offerings use this location yet.</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {used.map((o) => (
+              <span key={o.id} className="rounded-full border border-line px-3 py-1 text-xs text-muted">
+                {o.name}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
     </section>
   );
 }

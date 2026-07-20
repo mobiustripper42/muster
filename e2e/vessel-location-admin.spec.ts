@@ -25,9 +25,8 @@ test.describe("admin /admin/locations + /admin/vessels", () => {
     await page.fill('textarea[name="pickupDescription"]', "Flats East Bank, dock 3");
     await page.fill('input[name="pickupLink"]', "https://maps.google.com/?q=dock3");
     await page.fill('textarea[name="routeDescription"]', "Up the river and back");
-    await page.getByRole("button", { name: "Create location" }).click();
+    await page.getByRole("button", { name: "Create" }).click();
     await page.waitForURL(/saved=1/);
-    await expect(page.getByText("Saved.")).toBeVisible();
     await expect(page.getByRole("link", { name: /East Bank/ })).toBeVisible();
 
     // ── Edit the seeded vessel: capacity, colour, home location ───────────────

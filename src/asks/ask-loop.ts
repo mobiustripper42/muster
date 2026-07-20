@@ -26,10 +26,13 @@ import {
   bailLatenessMs,
   deriveShiftState,
   earliestScheduledStart,
+  resolveShiftState,
+  staffingHorizonFromEvents,
+  STAFFING_HORIZON_LEAD_DAYS,
 } from "../builder/derive.js";
-import { TENANT_TIMEZONE, withinCivilWindow } from "../config/tenant.js";
+import { TENANT_TIMEZONE } from "../config/tenant.js";
 import { isAskableFor, isRatedFor } from "../oracle/eligibility.js";
-import { eligiblePool } from "../oracle/oracle.js";
+import { eligiblePool, poolExhaustedFor } from "../oracle/oracle.js";
 import { rankEligibleIds } from "../oracle/reliability-score.js";
 import {
   logAskAccepted,
@@ -60,6 +63,52 @@ export async function refreshShiftState(
   if (shift.state === "Cancelled" || shift.state === "Completed") return;
   const seats = await repo.listSeatsForShift(shiftId);
   await repo.saveShift({ ...shift, state: deriveShiftState(seats) });
+}
+
+/**
+ * Horizon-aware sibling of `refreshShiftState` (DEC-128, #483) — persists the
+ * **composed** `resolveShiftState` (seat-fold + staffing-horizon clock, DEC-022)
+ * rather than the raw seat-fold, under the same terminal guard. `bail()` and
+ * `vacateSeat()` call this so a re-opened seat lands in its horizon-correct status
+ * **synchronously**: pre-horizon → `Pending` (silent — the #483 fix), in-horizon
+ * with a live pool → `Filling` (the next tick drips), past-horizon exhausted →
+ * `AtRisk` via `resolveShiftState(poolExhausted)` — no longer via a resting
+ * `Bailed` seat. Without this, a pre-horizon bail would momentarily write the
+ * raw fold's `Filling`/`Pending` and (for an exhausted pool) never the right state.
+ *
+ * **Scoped to bail+vacate on purpose** (not globalized): the drip hot path and the
+ * claim/override paths only ever move a shift *toward* crewed, which
+ * `resolveShiftState` passes through unchanged and the next tick self-heals — so
+ * they keep the cheaper `refreshShiftState`. Composes `resolveShiftState` +
+ * `staffingHorizonFromEvents` + `poolExhaustedFor` (the last relocated to
+ * `oracle.ts` to keep this import cycle-free — `tick.ts` imports this module).
+ */
+export async function refreshShiftStateHorizon(
+  repo: Repository,
+  shiftId: Seat["shiftId"],
+  now: Date,
+): Promise<void> {
+  const shift = await repo.getShift(shiftId);
+  if (!shift) return;
+  // Same terminal guard as `refreshShiftState`: never resurrect a Cancelled/
+  // Completed shift off a leftover seat (DEC-084).
+  if (shift.state === "Cancelled" || shift.state === "Completed") return;
+  const seats = await repo.listSeatsForShift(shiftId);
+  const events: Event[] = [];
+  for (const eventId of shift.eventIds) {
+    const event = await repo.getEvent(eventId);
+    if (event) events.push(event);
+  }
+  const horizon = staffingHorizonFromEvents(
+    events,
+    STAFFING_HORIZON_LEAD_DAYS,
+    TENANT_TIMEZONE,
+  );
+  const poolExhausted = await poolExhaustedFor(repo, shift, seats, now);
+  await repo.saveShift({
+    ...shift,
+    state: resolveShiftState(seats, { now, horizon, poolExhausted }),
+  });
 }
 
 /** Mint an ask for one candidate, set the seat Asked, log `ask_sent`. */
@@ -435,23 +484,16 @@ export async function expireAsks(
   return expired;
 }
 
-export interface BailOutcome {
-  /** Asks fired to re-crew the seat (empty → pool exhausted → seat rests Bailed). */
-  reAsks: Ask[];
-  /** The seat's state after the bail: `Asked` if re-asked; `Bailed` when the
-   * pool is exhausted; `Open` when the re-ask deferred past civil hours
-   * (DEC-088 — the next in-window tick re-crews it). */
-  seatState: Seat["state"];
-}
-
 /**
- * A confirmed crew backs out (DEC-019): one atomic operation — log `shift_bailed`
- * (+`latenessMs`), drop the occupant, and re-ask the next candidates (excluding
- * the bailer). **If candidates exist the seat advances to `Asked`** and `Bailed`
- * is never a resting state (the happy path). **If the pool is exhausted the seat
- * rests at `Bailed`**, and `deriveShiftState` takes the shift to `AtRisk` — the
- * legitimate Tier-3 condition and the only AtRisk this clockless loop produces,
- * not a horizon artifact.
+ * A confirmed crew backs out (DEC-019, amended by DEC-128 / #483): log
+ * `shift_bailed` (+`latenessMs`), drop the occupant, clear provenance, rest the
+ * seat **`Open`**, and refresh the shift's state horizon-aware — then return.
+ * **The bail fires no asks.** Re-crewing is left entirely to the tick, the sole
+ * ask-writer: pre-horizon the shift resolves `Pending` (silent — the #483 fix,
+ * no more pool-blast weeks out), in-horizon the next tick drips (DEC-063), inside
+ * `fillsBy` the tick's urgent path re-crews within one cadence. `Bailed` is
+ * retired as a resting state; a past-horizon exhausted pool now surfaces `AtRisk`
+ * via `resolveShiftState(poolExhausted)` (the horizon refresh), not via the seat.
  */
 export async function bail(
   repo: Repository,
@@ -460,8 +502,7 @@ export async function bail(
   latenessMs: number,
   noticeMs?: number,
   expectedBailer?: CrewMemberId,
-  opts?: { tz?: string; civilWindow?: { start: string; end: string } },
-): Promise<BailOutcome> {
+): Promise<void> {
   const seat = await repo.getSeat(seatId);
   if (
     !seat ||
@@ -486,46 +527,15 @@ export async function bail(
     noticeMs,
   );
 
-  // Whether the seat lands at Asked or rests at Bailed depends on the re-ask
-  // below — the bailer is excluded from it either way. (rankedEligible reads only
-  // the seat's shift + id; its current state/occupant don't affect the pool.)
-  const pool = await rankedEligible(repo, seat, now, new Set([bailer]));
-
-  if (pool.length === 0) {
-    // Exhausted: rest at Bailed (occupant cleared) → shift derives AtRisk.
-    const bailed: Seat = { ...seat, state: "Bailed" };
-    delete bailed.assignedCrewMemberId;
-    delete bailed.acquiredVia; // provenance is the occupant's — clear on re-open (#196)
-    await repo.saveSeat(bailed);
-    await refreshShiftState(repo, seat.shiftId);
-    return { reAsks: [], seatState: "Bailed" };
-  }
-
-  // Civil send window (DEC-088): candidates exist, but outside civil hours the
-  // engine defers its own re-ask — rest at **Open** (occupant cleared; the
-  // `shift_bailed` log above already happened at bail time). The next in-window
-  // tick's drip re-crews it immediately (`widenDue` is true for an Open seat) —
-  // and rides the DEC-063 drip rather than this inline pool-wide blast. NOT
-  // `Bailed`: nobody's exhausted; resting Bailed would fake an AtRisk.
-  if (!withinCivilWindow(now, opts?.tz, opts?.civilWindow)) {
-    const deferred: Seat = { ...seat, state: "Open" };
-    delete deferred.assignedCrewMemberId;
-    delete deferred.acquiredVia; // provenance is the occupant's — clear on re-open (#196)
-    await repo.saveSeat(deferred);
-    await refreshShiftState(repo, seat.shiftId);
-    return { reAsks: [], seatState: "Open" };
-  }
-
-  // Candidates exist: clear Bailed, re-ask, seat → Asked.
-  const reopened: Seat = { ...seat, state: "Asked" };
+  // Drop the occupant, clear provenance (it's the occupant's — #196), rest Open.
+  // No re-ask: the tick re-crews (DEC-128). The horizon-aware refresh lands the
+  // shift in its correct status synchronously — Pending pre-horizon (silent),
+  // Filling in-horizon, AtRisk only for a past-horizon exhausted pool.
+  const reopened: Seat = { ...seat, state: "Open" };
   delete reopened.assignedCrewMemberId;
-  delete reopened.acquiredVia; // provenance is the occupant's — clear on re-open (#196)
+  delete reopened.acquiredVia;
   await repo.saveSeat(reopened);
-  const reAsks = await Promise.all(
-    pool.map((c) => fireAsk(repo, reopened, c.id, now)),
-  );
-  await refreshShiftState(repo, seat.shiftId);
-  return { reAsks, seatState: "Asked" };
+  await refreshShiftStateHorizon(repo, seat.shiftId, now);
 }
 
 export interface DerivedBailResult {
@@ -537,7 +547,6 @@ export interface DerivedBailResult {
    * path (the caller maps this to "tell the office" copy).
    */
   code: "raced" | "trainee_seat" | null;
-  outcome?: BailOutcome;
 }
 
 /**
@@ -583,26 +592,21 @@ export async function bailWithDerivedLateness(
   }
   const tripStart = earliestScheduledStart(events, tz);
   try {
-    const outcome = await bail(
+    await bail(
       repo,
       seatId,
       now,
       bailLatenessMs(tripStart, now),
       tripStart ? tripStart.getTime() - now.getTime() : undefined,
       seat.assignedCrewMemberId,
-      { tz },
     );
-    return { code: null, outcome };
+    return { code: null };
   } catch {
     return { code: "raced" };
   }
 }
 
 export interface VacateOutcome {
-  /** Asks fired to re-crew the seat (empty → pool exhausted → seat rests Open). */
-  reAsks: Ask[];
-  /** The seat's state after the vacate: `Asked` if re-asked, else `Open`. */
-  seatState: Seat["state"];
   /** The occupant cleared — the audit `crew_removed` subject (#400, DEC-118). */
   removed: CrewMemberId;
 }
@@ -610,22 +614,21 @@ export interface VacateOutcome {
 /**
  * No-penalty vacate of a confirmed seat (#87) — the operator corrects a
  * *misassignment* (wrong person placed), not a bail. The `bail()` body **minus
- * `logShiftBailed`**: drop the occupant, re-ask the next candidates, but write
- * **no** reliability event — nobody actually backed out, so nothing should count
- * against the removed person's record.
+ * `logShiftBailed`**: drop the occupant, rest the seat `Open`, refresh
+ * horizon-aware, but write **no** reliability event — nobody actually backed out,
+ * so nothing should count against the removed person's record.
  *
  * The split from `bail()` is deliberate per #87: an explicit operator choice
  * (correction vs bail), never a default checkbox — a wrong default either starves
  * the reliability log or wrongly penalizes. `bail()`/`bailWithDerivedLateness`
  * stay the home of the *did-bail* path.
  *
- * Two differences from `bail()` beyond the missing log:
- * - **Exhausted pool rests at `Open`, not `Bailed`.** No one bailed, so the seat
- *   is honestly just open again; `resolveShiftState`'s horizon clock decides when
- *   that becomes AtRisk, rather than `deriveShiftState` flagging an immediate
- *   bail-driven AtRisk with "crew bailed" copy.
- * - The removed occupant is excluded from the immediate re-ask (you just decided
- *   they shouldn't hold this seat); the operator can still override them back.
+ * Like `bail()` post-DEC-128 (#483), vacate **fires no asks** — it rests the seat
+ * `Open` and leaves re-crewing to the tick. It never rested `Bailed` even before
+ * (no one bailed), so nothing there changes; the horizon-aware refresh keeps the
+ * shift's badge correct (`Pending` pre-horizon, `Filling` in-horizon), and a
+ * past-horizon exhausted pool surfaces `AtRisk` via `resolveShiftState`, not the
+ * seat. The operator can still override the removed person back.
  *
  * `expectedOccupant` is the occupant the caller validated; an occupant swap
  * between reads throws (mapped to `raced` by the action), so a correction can't
@@ -636,12 +639,10 @@ export async function vacateSeat(
   seatId: SeatId,
   now: Date,
   expectedOccupant?: CrewMemberId,
-  opts?: { tz?: string; civilWindow?: { start: string; end: string } },
 ): Promise<VacateOutcome> {
   const seat = await repo.getSeat(seatId);
-  // DEC-087 rail guard: vacating re-asks via the kind-blind rankedEligible,
-  // which must never fire for a trainee seat — `unstaffTraineeSeat` is the
-  // no-re-ask path. Edges guard first; this is the backstop.
+  // DEC-087 rail guard: a trainee seat is the engine's blind spot —
+  // `unstaffTraineeSeat` is the no-re-ask path. Edges guard first; this is the backstop.
   if (seat && seat.kind === "supernumerary") {
     throw new Error(`seat ${seatId} is a trainee seat — unstaff it, don't vacate`);
   }
@@ -654,34 +655,15 @@ export async function vacateSeat(
     throw new Error(`seat ${seatId} is not a confirmed seat to vacate`);
   }
   const removed = seat.assignedCrewMemberId;
-  const pool = await rankedEligible(repo, seat, now, new Set([removed]));
 
-  // Civil send window (DEC-088): a vacate's re-ask is engine initiative (the
-  // operator's intent was "remove this person", not "text the pool at 23:00")
-  // — outside civil hours it takes the exhausted branch below: rest Open, no
-  // sends; the next in-window tick's drip re-crews it.
-  const deferSends = !withinCivilWindow(now, opts?.tz, opts?.civilWindow);
-
-  if (pool.length === 0 || deferSends) {
-    // Exhausted: rest at Open (occupant cleared) — no bail, so no AtRisk yet;
-    // the horizon clock governs urgency via resolveShiftState.
-    const opened: Seat = { ...seat, state: "Open" };
-    delete opened.assignedCrewMemberId;
-    delete opened.acquiredVia; // provenance is the occupant's — clear on re-open (#196)
-    await repo.saveSeat(opened);
-    await refreshShiftState(repo, seat.shiftId);
-    return { reAsks: [], seatState: "Open", removed };
-  }
-
-  const reopened: Seat = { ...seat, state: "Asked" };
+  // Drop the occupant, clear provenance (#196), rest Open — no re-ask (DEC-128).
+  // The tick re-crews; the horizon-aware refresh keeps the badge honest.
+  const reopened: Seat = { ...seat, state: "Open" };
   delete reopened.assignedCrewMemberId;
-  delete reopened.acquiredVia; // provenance is the occupant's — clear on re-open (#196)
+  delete reopened.acquiredVia;
   await repo.saveSeat(reopened);
-  const reAsks = await Promise.all(
-    pool.map((c) => fireAsk(repo, reopened, c.id, now)),
-  );
-  await refreshShiftState(repo, seat.shiftId);
-  return { reAsks, seatState: "Asked", removed };
+  await refreshShiftStateHorizon(repo, seat.shiftId, now);
+  return { removed };
 }
 
 /**

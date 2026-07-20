@@ -690,7 +690,7 @@ describe("tick — civil send window (DEC-088)", () => {
     expect((await tick(repo, MORNING, civil)).asksFired).toBe(1);
   });
 
-  it("a night-deferred bail is re-crewed by the first in-window tick via the drip", async () => {
+  it("a bail fires no asks and is re-crewed by the next in-window tick via the drip", async () => {
     await seedVesselEvent();
     const a = await addCaptain("cpt-a");
     await addCaptain("cpt-b");
@@ -698,12 +698,12 @@ describe("tick — civil send window (DEC-088)", () => {
     const seat = (await repo.listSeatsForShift(SHIFT))[0]!;
     await manualOverride(repo, seat.id, a, AFTER); // Confirmed
 
-    // 23:00 bail (days before the fills-by deadline — drip, not urgent-blast):
-    // logs + clears, re-ask deferred → seat rests Open (DEC-088).
+    // 23:00 bail (days before the fills-by deadline): logs + clears, fires NO
+    // re-ask → seat rests Open, re-crewing left to the tick (DEC-128 #483).
     const night = new Date("2026-06-25T23:00:00.000Z");
-    const out = await bail(repo, seat.id, night, 60_000, undefined, undefined, civil);
-    expect(out.seatState).toBe("Open");
-    expect(out.reAsks).toEqual([]);
+    await bail(repo, seat.id, night, 60_000);
+    expect((await repo.getSeat(seat.id))!.state).toBe("Open");
+    expect(await repo.listAsksForSeat(seat.id)).toEqual([]);
 
     const r = await tick(repo, new Date("2026-06-26T08:30:00.000Z"), civil);
     expect(r.asksFired).toBe(1); // one widen — the deferred re-crew rides DEC-063

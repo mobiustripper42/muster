@@ -96,14 +96,12 @@ describe("assignFromPool — happy path", () => {
     expect(await nudgesFor(bob)).toHaveLength(0); // assign ≠ escalation
   });
 
-  it("reopens a resting-Bailed seat on the way in (lean's own move)", async () => {
-    const ann = await addCrew("ann");
+  it("reopens a legacy resting-Bailed seat on the way in (lean's own move)", async () => {
     const [seatId] = await addShift(["Open"]);
-    // ann confirms, then bails with nobody left → seat rests Bailed.
-    const [ask] = await broadcastAsk(repo, seatId!, T0);
-    await recordResponse(repo, ask!.id, "accepted", T0);
-    await confirmSeat(repo, seatId!, T0);
-    await bail(repo, seatId!, T0, 0);
+    // DEC-128 (#483) retired `Bailed` as a live outcome (bail() now rests Open);
+    // seed a legacy resting-Bailed seat directly — assignFromPool must still reopen it.
+    const seat = (await repo.getSeat(seatId!))!;
+    await repo.saveSeat({ ...seat, state: "Bailed" });
     expect((await repo.getSeat(seatId!))!.state).toBe("Bailed");
 
     const bob = await addCrew("bob"); // a target now exists
@@ -147,12 +145,13 @@ describe("assignFromPool — guards (lean's accept set, per seat)", () => {
   });
 
   it("rejects someone who bailed on this shift", async () => {
-    const ann = await addCrew("ann"); // the only crew → bail rests the seat
+    const ann = await addCrew("ann"); // the bailer — rejected from the re-crew
     const [seatId] = await addShift(["Open"]);
     const [ask] = await broadcastAsk(repo, seatId!, T0);
     await recordResponse(repo, ask!.id, "accepted", T0);
     await confirmSeat(repo, seatId!, T0);
-    await bail(repo, seatId!, T0, 0); // empty pool → seat rests Bailed
+    await bail(repo, seatId!, T0, 0); // DEC-128: rests Open; the "bailed" rejection
+    // below is event-driven (shift_bailed), not seat-state driven.
 
     const out = await assignFromPool(repo, seatId!, ann, T0);
     expect(out.code).toBe("bailed");

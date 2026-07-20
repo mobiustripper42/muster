@@ -14,16 +14,25 @@ alter table offerings add column if not exists arrive_before_minutes integer;
 alter table offerings add column if not exists add_ons jsonb;          -- AddOn[]
 alter table offerings add column if not exists gratuity_kinds jsonb;   -- GratuityKindConfig[]
 
--- Migrate the flat 12.3 gratuity config (gratuity_tiers_bps / gratuity_default_bps) into a
--- single "pre" kind, preserving each offering's tiers exactly (required at checkout, no
--- decline — DEC-124). Offerings that never set the flat fields stay null and keep riding
--- the code defaults. The old columns are DEPRECATED: left in place, no longer read/written
--- (additive/reversible house style).
+-- Migrate the flat 12.3 gratuity config (gratuity_tiers_bps / gratuity_default_bps) into the
+-- per-kind set, preserving each offering's tiers exactly on BOTH kinds so a migrated offering
+-- matches GRATUITY_KINDS_DEFAULT: "pre" required at checkout (no decline — DEC-124) + "post"
+-- optional via the booking link. Folding only "pre" would leave migrated offerings without a
+-- post kind, and gratuityKindsFor's all-or-nothing fallback would then diverge them from
+-- uncustomized offerings (which ride the pre+post default). Offerings that never set the flat
+-- fields stay null and keep riding the code defaults. Old columns DEPRECATED: left in place,
+-- no longer read/written (additive/reversible house style).
 update offerings
-   set gratuity_kinds = jsonb_build_array(jsonb_build_object(
-         'kind', 'pre',
-         'tiersBps', coalesce(gratuity_tiers_bps, '[1500,2000,2500]'::jsonb),
-         'defaultBps', coalesce(gratuity_default_bps, 2000),
-         'required', true))
+   set gratuity_kinds = jsonb_build_array(
+         jsonb_build_object(
+           'kind', 'pre',
+           'tiersBps', coalesce(gratuity_tiers_bps, '[1500,2000,2500]'::jsonb),
+           'defaultBps', coalesce(gratuity_default_bps, 2000),
+           'required', true),
+         jsonb_build_object(
+           'kind', 'post',
+           'tiersBps', coalesce(gratuity_tiers_bps, '[1500,2000,2500]'::jsonb),
+           'defaultBps', coalesce(gratuity_default_bps, 2000),
+           'required', false))
  where gratuity_kinds is null
    and (gratuity_tiers_bps is not null or gratuity_default_bps is not null);

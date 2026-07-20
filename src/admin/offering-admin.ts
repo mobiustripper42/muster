@@ -59,6 +59,7 @@ export type OfferingSaveError =
   | "bad_schedule"
   | "bad_price"
   | "bad_included_guests"
+  | "included_over_capacity"
   | "bad_minutes"
   | "bad_variations"
   | "bad_gratuity"
@@ -130,10 +131,11 @@ export async function saveOfferingAdmin(
     return { ok: false, code: "bad_location" };
   }
   if (input.vesselIds.length === 0) return { ok: false, code: "bad_vessels" };
+  const vessels = [];
   for (const vid of input.vesselIds) {
-    if (!(await repo.getVessel(asId<"VesselId">(vid)))) {
-      return { ok: false, code: "bad_vessels" };
-    }
+    const vessel = await repo.getVessel(asId<"VesselId">(vid));
+    if (!vessel) return { ok: false, code: "bad_vessels" };
+    vessels.push(vessel);
   }
 
   // The DEC-125 schedule rule. Empty weekdays/times are allowed (a draft-in-progress just
@@ -159,6 +161,14 @@ export async function saveOfferingAdmin(
     (!Number.isInteger(input.includedGuestCount) || input.includedGuestCount < 1)
   ) {
     return { ok: false, code: "bad_included_guests" };
+  }
+  // The base-fare included count can't exceed the smallest picked vessel's capacity —
+  // otherwise composeFare clamps that boat's extra-guest charge to 0 (a silent discount).
+  if (
+    input.includedGuestCount !== undefined &&
+    input.includedGuestCount > Math.min(...vessels.map((v) => v.coiMaxPax))
+  ) {
+    return { ok: false, code: "included_over_capacity" };
   }
   for (const m of [input.tripLengthMinutes, input.holdMinutes, input.arriveBeforeMinutes]) {
     if (m !== undefined && (!Number.isInteger(m) || m < 0)) {

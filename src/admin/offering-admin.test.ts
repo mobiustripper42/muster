@@ -126,6 +126,16 @@ describe("saveOfferingAdmin — validation", () => {
     });
   });
 
+  it("rejects an included-guest count above the smallest picked vessel's capacity", async () => {
+    const repo = await seededRepo(); // BOAT = coiMaxPax 12
+    expect(await saveOfferingAdmin(repo, { ...base(), includedGuestCount: 13 })).toEqual({
+      ok: false,
+      code: "included_over_capacity",
+    });
+    // At capacity is fine (whole boat included, no extras).
+    expect((await saveOfferingAdmin(repo, { ...base(), includedGuestCount: 12 })).ok).toBe(true);
+  });
+
   it("rejects malformed price variations", async () => {
     const repo = await seededRepo();
     const bad = [

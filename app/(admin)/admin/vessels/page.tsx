@@ -58,7 +58,7 @@ export default async function AdminVessels({
     ]);
   } catch {
     return (
-      <Shell width="3xl">
+      <Shell width="6xl">
         <Notice>Couldn’t reach the fleet right now. Try again in a moment.</Notice>
       </Shell>
     );
@@ -71,7 +71,7 @@ export default async function AdminVessels({
   const title = creating ? "New vessel" : selected?.name ?? "Vessels";
 
   return (
-    <Shell width="3xl">
+    <Shell width="6xl">
       <BackLink href="/admin">Back</BackLink>
       {/* One form spans the header + both columns; `key` remounts the uncontrolled inputs when
           the selected vessel changes, so switching rows always shows that vessel's values. */}
@@ -85,7 +85,7 @@ export default async function AdminVessels({
         {/* Header — breadcrumb, boat name, Save (mockup header.top). */}
         <header className="flex items-center gap-3">
           <div className="min-w-0">
-            <p className="text-xs text-faint">Vessels{selected || creating ? ` / ${title}` : ""}</p>
+            <p className="text-xs text-faint">Settings / Vessels{selected || creating ? ` / ${title}` : ""}</p>
             <h1 className="flex items-center gap-2 text-[22px] font-semibold leading-tight text-ink">
               {selected && (
                 <span
@@ -106,7 +106,7 @@ export default async function AdminVessels({
         {sp.saved && <Notice tone="ok">Saved.</Notice>}
         {errCopy && <Notice tone="bad">{errCopy}</Notice>}
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-[220px_1fr]">
+        <div className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-[230px_1fr]">
           <nav className="flex flex-col gap-0.5 self-start rounded-card border border-line bg-card p-1.5">
             <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-faint">
               Vessels
@@ -116,12 +116,12 @@ export default async function AdminVessels({
                 key={v.id}
                 href={`/admin/vessels?sel=${v.id}`}
                 aria-current={selected?.id === v.id ? "page" : undefined}
-                className={`flex items-center gap-2 rounded-[9px] px-2.5 py-2 text-sm ${
+                className={`flex items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-sm ${
                   selected?.id === v.id ? "bg-bg font-medium text-ink" : "text-muted"
                 }`}
               >
                 <span
-                  className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${vesselHueClass(v.id, v.hue)}`}
+                  className={`inline-block h-2 w-2 shrink-0 rounded-full ${vesselHueClass(v.id, v.hue)}`}
                   aria-hidden
                 />
                 <span className="min-w-0 flex-1 truncate">{v.name}</span>
@@ -149,14 +149,33 @@ export default async function AdminVessels({
   );
 }
 
-const inputClass = "min-h-[44px] rounded-card border border-line bg-card px-3 text-ink";
+const inputClass = "rounded-card border border-line bg-card px-3 py-2 text-ink";
 
-/** One label-left field row (the mockup's `.f` grid). Top-aligned so a textarea's label
- *  sits with the first line, not dropped to a baseline. */
-function Field({ label, children }: { label: string; children: ReactNode }) {
+/** One label-left field row (the mockup's `.f` grid): label (+ optional sublabel) on the
+ *  left, control on the right, first-baseline aligned. */
+function Field({
+  label,
+  sub,
+  align = "baseline",
+  children,
+}: {
+  label: string;
+  sub?: string;
+  /** "start" top-aligns the label — use for a textarea (an empty one has no first-line
+   *  baseline, so baseline alignment would drop the label to its middle). */
+  align?: "baseline" | "start";
+  children: ReactNode;
+}) {
   return (
-    <div className="grid grid-cols-1 gap-1 border-t border-line py-3 first:border-t-0 sm:grid-cols-[160px_1fr] sm:items-start sm:gap-3">
-      <span className="text-sm text-muted sm:pt-2.5">{label}</span>
+    <div
+      className={`grid grid-cols-1 gap-1 border-t border-line py-3 first:border-t-0 sm:grid-cols-[160px_1fr] sm:gap-3 ${
+        align === "start" ? "sm:items-start" : "sm:items-baseline"
+      }`}
+    >
+      <span className={`text-sm text-muted ${align === "start" ? "sm:pt-2" : ""}`}>
+        {label}
+        {sub && <span className="block text-xs text-faint">{sub}</span>}
+      </span>
       <div>{children}</div>
     </div>
   );
@@ -177,7 +196,6 @@ function VesselCard({
     <section className="rounded-card border border-line bg-card shadow-sm">
       <div className="flex items-center gap-3 border-b border-line px-4 py-3">
         <h2 className="text-sm font-semibold text-ink">Vessel</h2>
-        <span className="text-xs text-faint">the boat’s own facts</span>
       </div>
 
       <div className="px-4 py-1">
@@ -190,19 +208,16 @@ function VesselCard({
           />
         </Field>
 
-        <Field label="Capacity">
-          <div className="flex items-center gap-2">
-            <input
-              name="coiMaxPax"
-              type="number"
-              min={1}
-              max={99}
-              required
-              defaultValue={vessel?.coiMaxPax ?? 6}
-              className={`${inputClass} max-w-[110px] font-mono`}
-            />
-            <span className="text-xs text-faint">The maximum number of passengers</span>
-          </div>
+        <Field label="Capacity" sub="The maximum number of passengers">
+          <input
+            name="coiMaxPax"
+            type="number"
+            min={1}
+            max={99}
+            required
+            defaultValue={vessel?.coiMaxPax ?? 6}
+            className={`${inputClass} max-w-[110px] font-mono`}
+          />
         </Field>
 
         <Field label="Color">
@@ -226,7 +241,7 @@ function VesselCard({
           </fieldset>
         </Field>
 
-        <Field label="Home location">
+        <Field label="Home location" sub="default launch">
           <select
             name="homeLocationId"
             defaultValue={vessel?.homeLocationId ?? ""}
@@ -241,7 +256,7 @@ function VesselCard({
           </select>
         </Field>
 
-        <Field label="Notes">
+        <Field label="Notes" align="start">
           <textarea
             name="notes"
             defaultValue={vessel?.notes ?? ""}

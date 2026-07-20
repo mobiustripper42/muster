@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.16] - 2026-07-19
+- DEC-107 amendment: auto-refund the DEC-109 residual-race loser (task 12.1b)
+- PR #390: MESSAGING flag — disable all messaging, code retained (closes #389)
+- PR #470: DEC-125 build-resolution note for task 12.0
+- PR #452: brewcle.com layered downtime monitor
+- Phase 12 planning: 16 issues materialized (#453–#468), poker/plan, DEC-123/124/126 amendments, DEC-105 SPEC reconcile (#446)
+- P12 reservations mockups: customer booking form + full operator-approved mockup set (#451)
+
 ## [1.0.15] - 2026-07-16
 - PR #448: Import cancel + its siblings — audit the crew removal (import + split/merge), free the dropped crew's date, hide a cancelled shift's threads
 

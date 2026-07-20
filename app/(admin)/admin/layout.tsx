@@ -3,6 +3,7 @@ import { TENANT_TIMEZONE } from "@core/config/tenant.js";
 import { AdminNav } from "../../../components/admin/admin-nav";
 import { readSubject } from "../../lib/auth";
 import { TENANT_NAME } from "../../lib/tenant";
+import { messagingEnabled } from "../../lib/flags";
 
 /**
  * Admin route-group layout (#174) — renders the persistent {@link AdminNav} above
@@ -25,7 +26,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   return (
     <>
       {subject?.kind === "admin" && (
-        <AdminNav tenant={TENANT_NAME} dateLabel={dateLabel} />
+        <AdminNav tenant={TENANT_NAME} dateLabel={dateLabel} messaging={messagingEnabled()} />
       )}
       {children}
     </>

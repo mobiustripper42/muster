@@ -9,6 +9,8 @@ import { getRepo } from "../../../../lib/repo";
 import { TENANT_ID } from "../../../../lib/tenant";
 import { fmtRunWhen } from "../../../../lib/format";
 import { postMessage } from "../actions";
+import { messagingEnabled } from "../../../../lib/flags";
+import { notFound } from "next/navigation";
 
 /**
  * Crew messaging — one thread: messages + a compose box, nothing else (artifact
@@ -22,6 +24,7 @@ export default async function ThreadPage({
 }: {
   params: Promise<{ threadId: string }>;
 }) {
+  if (!messagingEnabled()) notFound(); // messaging disabled (#389) — route is dark
   const { threadId } = await params;
   const subject = await readSubject();
   if (!subject || subject.kind !== "crew") {

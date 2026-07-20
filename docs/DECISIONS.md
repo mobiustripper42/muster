@@ -10,6 +10,166 @@ questions live at the bottom as DEC-TBD.
 
 ---
 
+## Index
+
+_Current decision per topic. Superseded DECs struck through with their replacement. Keep current: every new DEC adds a row here (DEC-127)._
+
+### Core architecture & engine mechanics
+- DEC-001 — policy/mechanism split
+- DEC-002 — availability oracle is a synchronous rule engine
+- DEC-003 — crew rules collapse to one composite satisfiability rule
+- DEC-014 — locked-spec + future-ideas discipline
+- DEC-023 — engine advances via explicit `tick()`; no scheduler
+- DEC-054 — operator engine pause/resume (edge-gated)
+- DEC-118 — crew audit log = append-only `audit_events`
+- DEC-DATA-1 — service layer; Supabase is managed Postgres, not the architecture
+
+### Availability & commitment rules
+- DEC-009 — availability is suppression-only (never a positive calendar)
+- DEC-077 — day-granularity commitment; sub-day watches deferred
+- DEC-119 — recurring weekday-off = suppression column on the crew record
+
+### Seats, shifts & state machine
+- DEC-005 — shift state derived from seat state; reserve a `Held` tier
+- DEC-019 — `Bailed` is a seat transition, not a resting state
+- DEC-028 — bail `latenessMs` = notice shortfall vs the staffing horizon
+- DEC-039 — vacate splits into Remove (no penalty) vs Bailed
+- DEC-041 — trip length → shift end, from a flat constant
+- DEC-061 — a winning "in" auto-confirms; `Claimed` is momentary
+- DEC-078 — concurrency, conflict & crew self-release
+
+### Staffing engine — asks, escalation, At-Risk board & cockpit
+- DEC-006 — escalation Tiers 1–3 = degrees of automation, not states
+- DEC-007 — per-role assignment; first-acceptable-yes-wins
+- DEC-024 — Tier-2 escalation = a nudge over a derived trail
+- DEC-025 — At-Risk urgency = pool-thinness, not a role-name check
+- DEC-026 — board ping = detect-now / deliver-later
+- DEC-027 — cockpit v1 = four manual actions over existing rails
+- DEC-031 — "fills by" = the fill deadline, derived
+- DEC-042 — "all shifts" full-visibility opt-in view
+- DEC-063 — Tier-1 ask fan-out = a staged, ranked drip
+- DEC-064 — manual override honors the role-competency floor
+- DEC-065 — At-Risk board shows every uncrewed shift within the fill deadline
+- DEC-066 — captains are never asked for mate seats
+- DEC-067 — silent-ask sweep wired into the tick; ghosted asks time out
+- DEC-087 — trainee seats are staffable (floor scoped to required manning)
+- DEC-088 — civil send window (vessel-local wall-clock gate on auto-sends)
+- DEC-116 — weekend-batch staffing trigger (Fri/Sat/Sun go live together)
+- DEC-117 — weekend-batch ask distribution (one text/person, one boat/day)
+
+### Reliability scoring
+- DEC-008 — reliability score is a ranking, not a grade or gate
+- DEC-120 — reliability retune — reward responsiveness; bail floor lowered
+
+### Timing — horizons, deadlines & vessel clock
+- DEC-004 — two horizons; `deferred` is first-class
+- DEC-022 — staffing horizon is derived config, not a stored field
+- DEC-032 — vessel-local time (wall-clock storage + one tenant timezone)
+- DEC-062 — engine never works a departed shift; horizon env-tunable
+- DEC-080 — Xola pull window decoupled from the staffing horizon
+- DEC-115 — `FILL_DEADLINE_HOURS` env-tunable (plumbing only; value stays 48h)
+
+### Crew, vessels & manning model
+- DEC-012 — manifest grouped per event on the shift card; no crew waivers
+- DEC-018 — product string → vessel + manning map (operator confirms)
+- DEC-044 — crew seed carries a placeholder MMC until real credentials
+- DEC-096 — `archived` crew status (off every list; honored by override)
+- DEC-ROLE-1 — crew roles & vessel manning are tenant data, not a hardcoded enum
+
+### Xola ingest, import & lock
+- ~~DEC-011~~ → superseded by DEC-036 — 2026 coexistence; Xola API bolt-on killed
+- DEC-015 — Xola import architecture — Land → Map → Reconcile
+- ~~DEC-016~~ → superseded by DEC-043 — BrewBoat worked example / vessel-from-product collapse
+- ~~DEC-017~~ → superseded by DEC-040 — manifest contact via email-join
+- ~~DEC-029~~ → superseded by DEC-082 — "changed since you reviewed it" derivation
+- DEC-035 — Xola import surface — import → formShifts chaining
+- DEC-036 — live Xola API import — Land adapter behind Map/Reconcile  (current)
+- DEC-037 — task #73 split — xlsx surface first, API Land adapter fast-follow
+- DEC-040 — Xola live-API import — build resolution + sync strategy  (current)
+- DEC-043 — ingest is events-driven; boat = the event's assigned Resource  (current)
+- DEC-056 — import runs audited to the DB (edge-assembled, two-table)
+- DEC-082 — locking cut — Xola is the source of truth  (current)
+- DEC-083 — manual split — cut-time partition on the canonical row, re-derived
+
+### Messaging, presence & doorbell
+- DEC-MSG-1 — SMS is the eventual production channel, via the port
+- DEC-MSG-2 — native iOS + Android (Capacitor), de-prioritized
+- DEC-MSG-3 — channel adapters — one port, staged build order
+- DEC-045 — messaging & the Smart Doorbell = a SPEC v1.1 unlock
+- DEC-046 — presence is observed-only, never crew-curated
+- DEC-047 — no realtime vendor for v1; presence via a `PresencePort`
+- DEC-048 — doorbell = pure core decider; presence/IO at the edge
+- DEC-049 — doorbell tick = clock-driven sweep on a separate cron
+- DEC-050 — channel port widens with a `sendNotification` sibling
+- DEC-051 — messaging membership is derived, not snapshotted
+- DEC-052 — crew-to-crew DMs are operator-visible for v1
+- DEC-053 — two sender numbers — scheduling vs doorbell
+- DEC-058 — canonical messaging subject = `AuthSubject` widened
+- DEC-060 — doorbell window defaults (batch/cancel 90s, presence 5min)
+- DEC-068 — presence = per-(subject,thread) three-state verdict
+- DEC-069 — doorbell read/notify = two single-writer tables
+- DEC-070 — doorbell tick = separate cron sweeping threads-with-messages
+- DEC-071 — crew messaging UI — read + presence as one edge signal
+- DEC-072 — operator messaging surface — cross-visibility predicate
+- DEC-073 — real doorbell-ring relay — operator-outbox `NotificationPort`
+
+### Outbound notifications & operator relay
+- DEC-030 — pilot channel = operator-relayed web link; outbox = adapter state
+- DEC-084 — crew assignment-change notice (third operator-relay sibling)
+- DEC-095 — operator At-Risk alert (the deferred-delivery half of DEC-026)
+
+### Crew self-serve, auth & admin identity
+- DEC-010 — crew auth = magic-link passwordless; crew don't self-register
+- DEC-034 — production auth path — operator link mint (dev-link stays 404)
+- DEC-057 — dev-link minter gated by `VERCEL_ENV`, not `NODE_ENV`
+- DEC-074 — crew self-serve = a fourth crew surface
+- DEC-075 — self-claim is auto-lock (Open → Confirmed), bypassing `Asked`
+- DEC-076 — two eligibility doors (self-claim native-role-only)
+- DEC-079 — crew-initiated sign-in + sign-out (self-serve front door)
+- DEC-081 — crew sign-in = 6-digit email code (refines DEC-079)
+- DEC-092 — admin becomes a first-class auth identity (revises DEC-020)
+- DEC-093 — crew ↔ admin view switcher (same-identity session re-mint)
+- DEC-094 — operator break-glass = CLI + runbook, not an admin UI
+- DEC-098 — crew calendar feed — first persistent bearer capability URL
+
+### Reservations & payments
+- DEC-097 — guest-contact tracking = progressive-enhancement client island
+- DEC-105 — reservations go live 2026 as a Muster-native parallel-run (pilot)
+- DEC-106 — coexistence partition = whole vessel-day (one system owns each)
+- DEC-107 — payments = Stripe hosted Checkout (deposit + balance, webhook-driven)
+- DEC-108 — public surface `app/(public)` + single-flip "Book Now"
+- DEC-109 — atomic capacity claim on public booking
+- DEC-110 — waiver = Muster-sold side only; provider deferred
+- DEC-111 — `feature/reservations` dark behind a `RESERVATIONS` flag
+- DEC-112 — reservation price resolves per-`Event` (nullable `Event.price`)
+- DEC-113 — flex-insurance = a boolean selector, not a priced add-on
+- DEC-123 — reservations gets its own calendar + catalog + purchases area
+- DEC-124 — tips = collect-and-expose via `xola-tip-extractor`
+- DEC-125 — virtual availability — schedule is a rule; `Event` materializes on state
+- DEC-126 — the flip = a cutover with a one-time full Xola import (reversible)
+
+### UI, brand & frontend patterns
+- DEC-021 — frontend styling = Tailwind v4; component library deferred
+- DEC-038 — pilot-walkthrough UX/copy revisions
+- DEC-055 — transient feedback params stripped post-render by a client island
+- DEC-085 — Shift Builder = responsive dual-form-factor over one no-JS core
+- DEC-086 — vessel + role identity color palette (color encodes information)
+- DEC-089 — `<SubmitButton>` standing pending-state client island
+- DEC-090 — click & loading feedback — the standing rule (lint-enforced)
+- DEC-091 — crew navigation = hub-and-spoke (no persistent nav chrome)
+- DEC-114 — `<RevealSelectedRow>` scroll-position-keeping island
+
+### Deployment, infra & versioning
+- ~~DEC-013~~ → superseded by DEC-020 — stack & infrastructure deferred to ~M4
+- DEC-020 — M4 stack = Next.js/Vercel; Postgres-behind-the-port; self-rolled magic-link  (current)
+- DEC-033 — hosted deploy — Vercel topology, `tick` cron, `production` branch
+- DEC-059 — `main` stays promotable; multi-PR features land on a feature branch
+- DEC-121 — timestamp-prefixed migration filenames (cross-branch collision-proof)
+
+_Indexed 124 of 124 DECs. Feature-branch DECs (099–104, 122) fold in when they merge._
+
+---
+
 ## DEC-001: Policy/mechanism split
 **Decision:** The rules (USCG manning, credentials, turnaround, seasons) are **tenant-owned data**;
 the engine that evaluates them is **generic**. Muster is built perfect for one niche (BrewBoat) on
@@ -2647,6 +2807,38 @@ Stripe account or a separate one** (payout/tax/reconciliation-against-Xola impli
 tax/fees; cancellation / no-show terms. **Revisit if:** deposit auto-charge (saved card) becomes worth the
 off-session-decline handling, or refund volume justifies pulling §3.3 in-house.
 
+**Amendment (2026-07-18, @architect + operator — task 12.1b, under DEC-109):** the "refunds are ALWAYS
+manual" posture is **narrowed** — Muster now issues **one** programmatic refund automatically. The DEC-109
+**residual-race loser** (two customers both paid, one won the atomic whole-boat claim; the loser cannot be
+booked) is **auto-refunded + told "sold out while you were paying — fully refunded."** This is the reversal
+already directed by the operator ([[customer-self-refund-reverses-manual]]) plus the DEC-109 amendment; a
+silent unrefunded loss was never acceptable, and a human-in-the-loop manual refund for a race the engine
+caused is the wrong default. **Mechanism:** `PaymentPort.refund({paymentIntentId, amountCents?,
+idempotencyKey})` (Stripe `refunds.create` + Fake), **keyed-idempotent** (`refund_${sessionId}`) so a
+re-delivered webhook can't double-refund; the webhook `lost` branch refunds → notifies, and the loud
+**manual-refund alert becomes the FALLBACK** (fires only when there's no PaymentIntent or the refund call
+throws). **Still manual (unchanged):** every OTHER refund — operator-discretion cancels, the §3.3 refund
+**cascade** (still parked), disputes/chargebacks (§3.4), and anomalous `unbookable` outcomes
+(event_missing, unknown purpose) which stay on the loud manual-alert path. This lifts the refund
+*mechanism* DEC-107 always anticipated ("charge **+ refund** are a port … lift from sailbook"); it does
+**not** un-park the cascade.
+
+**Amendment (2026-07-19, @architect + operator — #474, under DEC-112/DEC-124/DEC-125):** the balance
+deriver now composes the **party fare**, not the bare base. `balanceOwedCents` was called with
+`Event.price` — the frozen per-departure **base** (DEC-125/DEC-112) — but since 12.2 the customer is
+charged **base + extra-guest** charges (`composeFare`), so a `depositMode:"deposit"` booking with guests
+above the vessel's `includedGuestCount` **undercollected the balance** by `extrasCents + tax(extrasCents)`.
+Latent only (RESERVATIONS flag off; `"full"` mode charges the whole composed fare upfront and was already
+correct). **Fix:** the extras are **frozen at booking time on `Reservation.extrasCents`** (new nullable
+`reservations.extras_cents`, DEC-121 timestamped migration; absent ⇒ 0 for seeded/Xola/pre-12.2 rows) — a
+**booking property** (a function of `guestCount`), deliberately **not** on `Event` (keeps the DEC-125
+`Event.price = base` invariant clean) and deliberately **not** recomputed from the live `Offering` link
+(would reintroduce the config-drift `balanceOwedCents`'s "never a config recompute" contract exists to
+prevent). Both callers — `create-balance-checkout` and the webhook's `recordBalancePayment` overpay guard —
+pass `event.price + (reservation.extrasCents ?? 0)`. **Tax still collected in full at deposit; the balance
+carries zero tax; gratuity still netted per DEC-124** (walked the deposit→balance arithmetic: balance =
+remaining share of the *full* fare, tax and tip both net out, nothing double-counted). Fixes #474.
+
 ---
 
 ## DEC-108: Public surface `app/(public)` + single-flip "Book Now" entry (instant Xola rollback)
@@ -3400,8 +3592,9 @@ overlap outlives the tool's usefulness.
 
 ## DEC-125: Virtual availability — the schedule is a rule, `Event` rows materialize on state; blackout is scoped blocks, not per-event toggles
 
-**Status:** Accepted (operator, 2026-07-16) — data-model shape; **pending @architect**. Corrects DEC-123's
-withdrawn "eager event generation" leg. See the v3 catalog mockup (`docs/design/mockups/offering-catalog.html`).
+**Status:** Accepted (operator, 2026-07-16) — data-model shape; **build resolved** (@architect, 2026-07-18,
+task 12.0 / PR #470 — see the build-resolution block at the end). Corrects DEC-123's withdrawn "eager event
+generation" leg. See the v3 catalog mockup (`docs/design/mockups/offering-catalog.html`).
 
 **Decision:** Muster does **not** materialize an `Event` row per potential departure. The `Offering` +
 schedule is a **rule**; open availability is **computed**, and a row is written only when a slot acquires
@@ -3472,6 +3665,30 @@ override's home; extra-guest price is `Offering`-level), DEC-123, **DEC-126** (t
 ownership mask). **Open:** whether price variations stack (DEC-123 — operator: **no, ordered list, first
 match wins**, now settled in the catalog mockup); boat-selection policy (DEC-109).
 
+> **Build resolution (@architect, 2026-07-18, task 12.0 — PR #470).** 12.0 fixes the read model, reads-only:
+> - **Entities** (`src/domain/entities.ts` + `ids.ts`): id types `OfferingId`/`LocationId`/`BlockId`; `Offering`
+>   (`status` draft|live|hidden · `vesselIds` · `locationId` · `OfferingSchedule` {seasonStart, seasonEnd,
+>   weekdays[], departureTimes[]} · `basePriceCents` · ordered `PriceVariation[]` · `extraGuestPriceCents`);
+>   `Location`; and the **three-kind `Block` union** (`location` = date + time window · `vessel` = date range ·
+>   `vesselHold` = single slot, distinct from the DEC-109 checkout-hold).
+> - **Read ports** on both adapters: `listOfferings`/`getOffering`, `listLocations`/`getLocation`, `listBlocks`.
+>   **Writes + admin UI are deferred** — offerings → 12.8, locations → 12.9, blocks → 12.10, which **append**
+>   inert display/config fields (photos, add-ons, tax override, gratuity config; `Vessel.includedGuestCount`)
+>   **without redefining** these entities. Migration `20260718045012_reservation_catalog_tables.sql` lands the
+>   three tables additive + inert (DEC-111 posture; empty ⇒ zero behavior change).
+> - **Deriver** `deriveVirtualAvailability(input) → VirtualSlot[]` over `offerings × vessels × dateRange ×
+>   ownedDays − blocks − events − reservations`. Precedence: draft/hidden emit nothing → **owned-day mask** →
+>   **materialized `Event` wins its slot** (override recomputes price/capacity, booked is frozen; committed
+>   state beats blocks) → blocks subtract virtual-only → remainder `available`. Resolves the **display base**
+>   only (first-match variation, or an override `Event.price`); the **party fare** (base + extras ×
+>   `extraGuestPrice` + gratuity, DEC-124) is **booking-time, out of 12.0**.
+> - **Guardrail split:** 12.0 ships `slotIdentity(vessel,date,time)` + the deterministic `eventIdForSlot`
+>   helpers and documents the both-adapters uniqueness *contract*; **enforcement** (conditional insert on the
+>   slot identity, pg partial unique index, in-memory critical section) is **12.1**.
+> - `deriveAvailability` / `canBook` (the P11 seeded-`Event` path) are **untouched**; the old browse path is
+>   superseded when 12.8 repoints the calendar at the virtual deriver. Tests: **vitest unit only** (pure
+>   service-layer, no RLS/UI); 12.1's conditional-insert is where the DB-level (pgTAP/parity) test lands.
+
 ---
 
 ## DEC-126: The flip is a cutover with a one-time full Xola import — Muster becomes the reservation source of truth, and the cutover is reversible
@@ -3524,6 +3741,14 @@ work, one-time not recurring), DEC-107 (Stripe for native; Xola money for import
 now sees imported rows too), DEC-125 (retires the ownership mask).
 
 ---
+
+## DEC-127: DECISIONS.md carries a topic index at the top; every new DEC updates it
+
+**Decision:** The file opens with an `## Index` — decisions grouped by topic, each pointing to the current DEC, superseded ones struck through and pointed at their replacement. Past ~120 DECs, "what's our current call on X" was a grep; the index makes it a lookup.
+
+**Maintenance rule (the load-bearing part):** every new DEC adds its row to the index under a topic, and any DEC it supersedes gets struck through there and pointed at the new one. An index nobody maintains is worse than none — so this is part of writing a DEC, not a separate chore. Treat a missing index row as a defect in review.
+
+**Why this is a DEC at all:** an index is doc hygiene, not architecture — but the *maintenance convention* is durable and worth recording, which is the only thing this DEC pins.
 
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)
 

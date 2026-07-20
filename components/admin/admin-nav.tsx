@@ -32,12 +32,19 @@ const LINKS = [
 export function AdminNav({
   tenant,
   dateLabel,
+  messaging,
 }: {
   /** Tenant display name + today's VESSEL-LOCAL date (9.8) — computed by the
    *  server layout (DEC-032: never the viewer's clock) and passed down. */
   tenant: string;
   dateLabel: string;
+  /** Messaging feature on? (#389) — resolved server-side (this is a client
+   *  component, so the env flag can't be read here) and passed down. Drops the
+   *  Messages nav item when off. */
+  messaging: boolean;
 }) {
+  // Filter server-side flag → hide the Messages item when messaging is off (#389).
+  const links = messaging ? LINKS : LINKS.filter((l) => l.href !== "/admin/messages");
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -80,7 +87,7 @@ export function AdminNav({
 
         {/* Desktop: inline links. */}
         <div className="hidden items-center gap-5 text-sm sm:flex">
-          {LINKS.map((l) => (
+          {links.map((l) => (
             <AppLink
               key={l.href}
               href={l.href}              aria-current={isActive(l.href) ? "page" : undefined}
@@ -140,7 +147,7 @@ export function AdminNav({
               </svg>
             </button>
           </div>
-          {LINKS.map((l) => (
+          {links.map((l) => (
             <AppLink
               key={l.href}
               href={l.href}              aria-current={isActive(l.href) ? "page" : undefined}

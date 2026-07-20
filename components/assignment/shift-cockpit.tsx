@@ -8,6 +8,7 @@ import { asId } from "@core/domain/ids.js";
 import { resolveShiftStateOnRead } from "@core/builder/tick.js";
 import { TENANT_TIMEZONE, vesselDateOf } from "@core/config/tenant.js";
 import { cockpitHref } from "../../app/lib/cockpit-href";
+import { messagingEnabled } from "../../app/lib/flags";
 import { fmtDeadline, fmt12 } from "../../app/lib/format";
 import { getRepo } from "../../app/lib/repo";
 import { TENANT_ID } from "../../app/lib/tenant";
@@ -304,7 +305,7 @@ export async function ShiftCockpit({
           composes (the post auto-leads with "Cohort"). Today or future only: a
           future-day post is advance notice; a PAST day is hidden (posting would ring
           crew about a day that already ran — and the post target refuses it anyway). */}
-      {view.date >= vesselDateOf(now) && (
+      {messagingEnabled() && view.date >= vesselDateOf(now) && (
         <AppLink
           href={`/admin/messages/${standingThreadId("cohort", TENANT_ID, view.date)}`}
           className="inline-flex min-h-9 items-center self-start rounded-card border border-line bg-card px-3 text-sm font-semibold text-accent shadow-sm"

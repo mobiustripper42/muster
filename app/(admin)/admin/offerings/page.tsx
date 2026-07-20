@@ -130,7 +130,9 @@ export default async function AdminOfferings({
         {errCopy && <Notice tone="bad">{errCopy}</Notice>}
 
         <div className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-[230px_1fr]">
-          <div className="flex flex-col gap-3 self-start">
+          {/* Left column pins while the detail scrolls (desktop only — the mockup's sticky
+              sidenav); overflow guard keeps a long offerings list from running off-screen. */}
+          <div className="flex flex-col gap-3 self-start min-[900px]:sticky min-[900px]:top-4 min-[900px]:max-h-[calc(100vh-1.5rem)] min-[900px]:overflow-y-auto">
             <nav className="flex flex-col gap-0.5 rounded-card border border-line bg-card p-1.5">
               <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-faint">
                 Offerings

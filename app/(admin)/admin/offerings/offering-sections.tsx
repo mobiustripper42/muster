@@ -5,6 +5,7 @@ import { AppLink } from "../../../../components/ui/app-link";
 import { Field, settingsInputClass } from "../../../../components/admin/settings-field";
 import { vesselHueClass } from "../../../lib/vessel-hue";
 import { PriceVariationsEditor } from "./price-variations-editor";
+import { DepartureTimesEditor } from "./departure-times-editor";
 
 /**
  * The /admin/offerings editor sections (task 12.8, DEC-123), split out of `page.tsx` to keep
@@ -16,7 +17,7 @@ import { PriceVariationsEditor } from "./price-variations-editor";
 
 const inputClass = settingsInputClass;
 const chipClass =
-  "cursor-pointer rounded-full border border-line bg-card px-3 py-1 text-sm text-muted peer-checked:border-ink peer-checked:bg-ink peer-checked:font-medium peer-checked:text-white";
+  "cursor-pointer select-none rounded-full border border-line bg-card px-3 py-1 text-sm text-muted peer-checked:border-ink peer-checked:bg-ink peer-checked:font-medium peer-checked:text-white";
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]; // Mon=0…Sun=6
 
@@ -171,7 +172,7 @@ export function DetailsSection({
                 defaultChecked={offering?.vesselIds.includes(v.id) ?? false}
                 className="peer sr-only"
               />
-              <span className="flex cursor-pointer items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1 text-sm text-muted peer-checked:border-accent/40 peer-checked:bg-bg peer-checked:font-medium peer-checked:text-ink">
+              <span className="flex cursor-pointer select-none items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1 text-sm text-muted peer-checked:border-accent/40 peer-checked:bg-bg peer-checked:font-medium peer-checked:text-ink">
                 <span
                   className={`inline-block h-2 w-2 rounded-full ${vesselHueClass(v.id, v.hue)}`}
                   aria-hidden
@@ -232,29 +233,9 @@ export function ScheduleSection({ offering }: { offering: Offering | null }) {
         </div>
       </Field>
 
-      <Field label="Departures" sub="uncheck to drop">
-        <div className="flex flex-wrap items-center gap-2 pt-1">
-          {(schedule?.departureTimes ?? []).map((t) => (
-            <label key={t}>
-              <input
-                type="checkbox"
-                name="departureTime"
-                value={t}
-                defaultChecked
-                className="peer sr-only"
-              />
-              <span className={`${chipClass} font-mono`}>{t}</span>
-            </label>
-          ))}
-          <span className="flex items-center gap-1.5">
-            <span className="text-xs text-faint">+ time</span>
-            <input
-              name="newDepartureTime"
-              type="time"
-              className={`${inputClass} font-mono`}
-              aria-label="Add departure time"
-            />
-          </span>
+      <Field label="Departures" sub="add or remove times" align="start">
+        <div className="pt-1">
+          <DepartureTimesEditor initial={schedule?.departureTimes ?? []} />
         </div>
         <p className="pt-1.5 text-xs text-faint">
           Availability is computed from this rule — schedule × vessels × dates − blocks −

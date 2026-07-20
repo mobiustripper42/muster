@@ -70,10 +70,9 @@ export async function saveOffering(formData: FormData): Promise<void> {
   const holdMinutes = optionalInt(String(formData.get("holdMinutes") ?? ""));
   const arriveBeforeMinutes = optionalInt(String(formData.get("arriveBeforeMinutes") ?? ""));
 
-  // ── Schedule — kept times are the still-checked chips; "+ time" appends one ──
+  // ── Schedule — the DepartureTimesEditor island owns the full list; it serializes each
+  // time to a hidden `departureTime` input, so getAll() is the whole set (add + remove) ──
   const departureTimes = formData.getAll("departureTime").map(String);
-  const newTime = String(formData.get("newDepartureTime") ?? "").trim();
-  if (newTime && !departureTimes.includes(newTime)) departureTimes.push(newTime);
   departureTimes.sort();
   const schedule = {
     seasonStart: String(formData.get("seasonStart") ?? ""),

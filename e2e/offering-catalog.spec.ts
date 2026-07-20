@@ -42,12 +42,15 @@ test.describe("admin /admin/offerings", () => {
     await page.fill('input[name="arriveBeforeMinutes"]', "15");
     await page.locator('input[name="vesselIds"][value="vessel-hops"]').check({ force: true });
 
-    // Schedule: season, days, one departure time via "+ time".
+    // Schedule: season, days, two departure times via the island (add-multiple-in-one-pass).
     await page.fill('input[name="seasonStart"]', "2026-05-01");
     await page.fill('input[name="seasonEnd"]', "2026-09-30");
     await page.locator('input[name="weekday"][value="4"]').check({ force: true }); // Fri
     await page.locator('input[name="weekday"][value="5"]').check({ force: true }); // Sat
-    await page.getByLabel("Add departure time").fill("11:30");
+    await page.getByLabel("New departure time").fill("11:30");
+    await page.getByRole("button", { name: "+ Add time" }).click();
+    await page.getByLabel("New departure time").fill("15:00");
+    await page.getByRole("button", { name: "+ Add time" }).click();
 
     // Pricing: base + included + extra guest + one ordered variation (the client island).
     await page.fill('input[name="basePrice"]', "499.00");
@@ -82,7 +85,8 @@ test.describe("admin /admin/offerings", () => {
     await expect(page.locator('input[name="vesselIds"][value="vessel-hops"]')).toBeChecked();
     await expect(page.locator('input[name="weekday"][value="4"]')).toBeChecked();
     await expect(page.locator('input[name="weekday"][value="5"]')).toBeChecked();
-    await expect(page.locator('input[name="departureTime"][value="11:30"]')).toBeChecked();
+    await expect(page.locator('input[name="departureTime"][value="11:30"]')).toHaveCount(1);
+    await expect(page.locator('input[name="departureTime"][value="15:00"]')).toHaveCount(1);
     await expect(page.locator('input[name="basePrice"]')).toHaveValue("499.00");
     await expect(page.locator('input[name="includedGuestCount"]')).toHaveValue("10");
     await expect(page.getByLabel("Variation 1 label")).toHaveValue("July 4th");

@@ -25,6 +25,7 @@ const LINKS = [
   { href: "/admin/messages", label: "Messages" },
   { href: "/admin/import", label: "Import" },
   { href: "/admin/shifts", label: "Shifts" },
+  { href: "/admin/offerings", label: "Offerings" },
   { href: "/admin/vessels", label: "Vessels" },
   { href: "/admin/locations", label: "Locations" },
 ] as const;
@@ -79,19 +80,21 @@ export function AdminNav({
           {/* Switch down to the crew app (DEC-093) — the admin is also crew.
               Always safe (de-escalation); gated server-side. */}
           <form action={switchToCrew} className="shrink-0">
-            <SubmitButton className="text-xs text-muted underline hover:text-ink">
+            <SubmitButton className="whitespace-nowrap text-xs text-muted underline hover:text-ink">
               Crew view
             </SubmitButton>
           </form>
         </div>
 
-        {/* Desktop: inline links. */}
-        <div className="hidden items-center gap-5 text-sm sm:flex">
+        {/* Desktop: inline links. `gap-4` + nowrap — 12.8 added a ninth link (Offerings)
+            and gap-5 let "Crew view"/a hyphenated label wrap, busting the 52px height
+            budget the two-pane shell subtracts (#253, pinned by admin-nav.spec). */}
+        <div className="hidden shrink-0 items-center gap-4 text-sm sm:flex">
           {links.map((l) => (
             <AppLink
               key={l.href}
               href={l.href}              aria-current={isActive(l.href) ? "page" : undefined}
-              className={`inline-flex items-center gap-1.5 ${isActive(l.href) ? "font-semibold text-accent" : "text-muted"}`}
+              className={`inline-flex items-center gap-1.5 whitespace-nowrap ${isActive(l.href) ? "font-semibold text-accent" : "text-muted"}`}
             >
               {l.label}
             </AppLink>

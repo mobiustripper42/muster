@@ -103,7 +103,6 @@ export default async function AdminVessels({
           )}
         </header>
 
-        {sp.saved && <Notice tone="ok">Saved.</Notice>}
         {errCopy && <Notice tone="bad">{errCopy}</Notice>}
 
         <div className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-[230px_1fr]">
@@ -116,15 +115,19 @@ export default async function AdminVessels({
                 key={v.id}
                 href={`/admin/vessels?sel=${v.id}`}
                 aria-current={selected?.id === v.id ? "page" : undefined}
-                className={`flex items-center gap-2.5 rounded-[9px] px-2.5 py-2 text-sm ${
+                className={`block rounded-[9px] px-2.5 py-2 text-sm ${
                   selected?.id === v.id ? "bg-bg font-medium text-ink" : "text-muted"
                 }`}
               >
-                <span
-                  className={`inline-block h-2 w-2 shrink-0 rounded-full ${vesselHueClass(v.id, v.hue)}`}
-                  aria-hidden
-                />
-                <span className="min-w-0 flex-1 truncate">{v.name}</span>
+                {/* Flex lives INSIDE the link: AppLink wraps its children in a label
+                    node, so a `gap` on the link itself never reaches the dot + name. */}
+                <span className="flex items-center gap-2.5">
+                  <span
+                    className={`inline-block h-2 w-2 shrink-0 rounded-full ${vesselHueClass(v.id, v.hue)}`}
+                    aria-hidden
+                  />
+                  <span className="min-w-0 flex-1 truncate">{v.name}</span>
+                </span>
               </AppLink>
             ))}
             <AppLink

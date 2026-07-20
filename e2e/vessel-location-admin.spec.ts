@@ -38,7 +38,6 @@ test.describe("admin /admin/locations + /admin/vessels", () => {
     await page.selectOption('select[name="homeLocationId"]', { label: "East Bank" });
     await page.getByRole("button", { name: "Save" }).click();
     await page.waitForURL(/saved=1/);
-    await expect(page.getByText("Saved.")).toBeVisible();
 
     // Persisted: capacity + chosen hue + a home location survive a reload.
     await page.reload();
@@ -55,7 +54,6 @@ test.describe("admin /admin/locations + /admin/vessels", () => {
     await page.locator('input[name="hue"][value="2"]').check({ force: true });
     await page.getByRole("button", { name: "Create" }).click();
     await page.waitForURL(/saved=1/);
-    await expect(page.getByText("Saved.")).toBeVisible();
     // The new boat is now a row in the vessel list.
     await expect(page.getByRole("link", { name: /Sunset/ })).toBeVisible();
   });

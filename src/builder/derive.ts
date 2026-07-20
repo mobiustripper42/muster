@@ -53,11 +53,12 @@ export function deriveSeats(vessel: Vessel, shiftId: ShiftId): Seat[] {
  * This function stays **seat-only and pure** (DEC-005). The time dimension —
  * horizon-based `Pending`→`Filling` birth and the time-driven `AtRisk` — is the
  * job of `resolveShiftState` below (the composition layer, DEC-022), never of
- * this fold. Per DEC-019 the 1.4b ask loop already makes `Bailed` transient:
- * `bail()` re-asks and advances the seat to `Asked` when candidates exist,
- * resting at `Bailed` (→ this `AtRisk` branch) only when the pool is exhausted —
- * so the pool half of the early-vs-late split is already encoded in the seat
- * states this fold reads. The remaining *time* half lands in `resolveShiftState`.
+ * this fold. Since DEC-128 (#483) `bail()`/`vacateSeat()` fire no asks and rest
+ * the seat **`Open`** — they never persist `Bailed` — so past-horizon At-Risk for
+ * an exhausted pool now comes from `resolveShiftState(poolExhausted)`, not this
+ * `Bailed` branch. The branch is **retained** for legacy seats that may still rest
+ * `Bailed` in an existing store (they keep today's board/lean-rescue behavior);
+ * no new writer produces one.
  */
 export function deriveShiftState(seats: Seat[]): ShiftState {
   const required = seats.filter((s) => s.kind === "required");

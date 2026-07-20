@@ -27,7 +27,7 @@ import type { Repository } from "../ports/repository.js";
 import { deriveAtRiskBoard } from "../admin/at-risk-board.js";
 import { expireAsks, rankedEligible, widenAsk } from "../asks/ask-loop.js";
 import { escalate } from "../asks/escalate.js";
-import { solveShift } from "../oracle/oracle.js";
+import { poolExhaustedFor } from "../oracle/oracle.js";
 import {
   logBoardLanded,
   SYSTEM_ACTOR_ID,
@@ -98,29 +98,6 @@ function widenDue(seat: Seat, asks: Ask[], dripMs: number, now: Date): boolean {
   if (seat.state === "Open") return true;
   const lastMs = Math.max(...asks.map((a) => Date.parse(a.sentAt)));
   return now.getTime() - lastMs >= dripMs;
-}
-
-/**
- * Can this shift's remaining seats NOT be crewed from the pool? The "no one left
- * to ask" half of the At-Risk condition (the other half is time vs horizon). Uses
- * `solveShift`'s **distinct-assignment** composite (DEC-003), not per-seat pools:
- * a person already needed by one seat can't also rescue another. (A bare per-seat
- * pool would call a shift fillable when its last candidate is already committed to
- * a sibling seat — the common case on BrewBoat's 2-crew vessels.) A shift with
- * every required seat `Confirmed` is never exhausted (short-circuit, no solve).
- */
-async function poolExhaustedFor(
-  repo: Repository,
-  shift: Shift,
-  seats: Seat[],
-  now: Date,
-): Promise<boolean> {
-  const unfilled = seats.filter(
-    (s) => s.kind === "required" && s.state !== "Confirmed",
-  );
-  if (unfilled.length === 0) return false;
-  const solution = await solveShift(repo, shift.id, now);
-  return !solution.satisfiable;
 }
 
 /**

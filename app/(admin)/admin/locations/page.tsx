@@ -55,7 +55,9 @@ export default async function AdminLocations({
   }
   locations.sort((a, b) => a.name.localeCompare(b.name));
 
-  const creating = sp.sel === "new";
+  // Empty list ⇒ there's nothing to select, so open straight into the create form (with its
+  // Create button) rather than a blank form with no way to save.
+  const creating = sp.sel === "new" || locations.length === 0;
   const selected = creating
     ? null
     : locations.find((l) => l.id === sp.sel) ?? locations[0] ?? null;

@@ -65,7 +65,9 @@ export default async function AdminVessels({
   }
   vessels.sort((a, b) => a.name.localeCompare(b.name));
 
-  const creating = sp.sel === "new";
+  // Empty fleet ⇒ open straight into the create form (with its Create button) rather than a
+  // blank form with no way to save.
+  const creating = sp.sel === "new" || vessels.length === 0;
   const selected = creating ? null : vessels.find((v) => v.id === sp.sel) ?? vessels[0] ?? null;
   const errCopy = sp.err ? ERR_COPY[sp.err] ?? ERR_COPY.error : null;
   const title = creating ? "New vessel" : selected?.name ?? "Vessels";

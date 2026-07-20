@@ -9,16 +9,20 @@ import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
-import { HUE_COUNT, vesselHueClass } from "../../../lib/vessel-hue";
+import { HUE_COUNT, vesselHueClass, vesselHueIndex } from "../../../lib/vessel-hue";
 import { saveVessel } from "./actions";
 
 /**
  * /admin/vessels (task 12.9, DEC-123) — the Vessel settings twin, laid out to
- * `docs/design/mockups/vessel.html`: a vessel list on the left, the boat's own facts on the
- * right (name, capacity, identity colour, home location, notes) plus a read-only Offerings
- * reverse lookup. One vessel, not a twin — this IS the boat the crew engine already knows.
- * Master–detail via `?sel=<id|new>`, native forms, no JS (DEC-026). Out-of-service (a block)
- * and Retire (soft archive) are deferred to a later task.
+ * `docs/design/mockups/vessel.html`: a full-width header (breadcrumb + boat name + Save),
+ * then a vessel list on the left and the boat's own facts on the right (name, capacity,
+ * identity color, home location, notes) plus a read-only Offerings reverse lookup. One vessel,
+ * not a twin — this IS the boat the crew engine already knows. Master–detail via `?sel=<id|new>`,
+ * native forms, no JS (DEC-026). Out-of-service (a block) and Retire (soft archive) are deferred.
+ *
+ * The whole surface is ONE `<form>` so the Save button can sit in the header (mockup) while the
+ * fields sit in the detail card — `SubmitButton`'s pending state needs the button inside the
+ * form. The sidebar links are `<a>` (navigation, not submit), so they live inside it harmlessly.
  */
 
 export const dynamic = "force-dynamic";
@@ -69,63 +73,76 @@ export default async function AdminVessels({
   return (
     <Shell width="3xl">
       <BackLink href="/admin">Back</BackLink>
-      <p className="text-xs text-faint">Vessels{selected || creating ? ` / ${title}` : ""}</p>
-      <h1 className="flex items-center gap-2 text-xl font-semibold text-ink">
-        {selected && (
-          <span
-            className={`inline-block h-3 w-3 shrink-0 rounded-full ${vesselHueClass(selected.id, selected.hue)}`}
-            aria-hidden
-          />
-        )}
-        {title}
-      </h1>
+      {/* One form spans the header + both columns; `key` remounts the uncontrolled inputs when
+          the selected vessel changes, so switching rows always shows that vessel's values. */}
+      <form
+        key={creating ? "new" : selected?.id ?? "none"}
+        action={saveVessel}
+        className="flex flex-col gap-4"
+      >
+        <input type="hidden" name="id" value={creating || !selected ? "" : selected.id} />
 
-      {sp.saved && <Notice tone="ok">Saved.</Notice>}
-      {errCopy && <Notice tone="bad">{errCopy}</Notice>}
+        {/* Header — breadcrumb, boat name, Save (mockup header.top). */}
+        <header className="flex items-center gap-3">
+          <div className="min-w-0">
+            <p className="text-xs text-faint">Vessels{selected || creating ? ` / ${title}` : ""}</p>
+            <h1 className="flex items-center gap-2 text-[22px] font-semibold leading-tight text-ink">
+              {selected && (
+                <span
+                  className={`inline-block h-3 w-3 shrink-0 rounded-full ${vesselHueClass(selected.id, selected.hue)}`}
+                  aria-hidden
+                />
+              )}
+              <span className="truncate">{title}</span>
+            </h1>
+          </div>
+          {(selected || creating) && (
+            <SubmitButton className="ml-auto min-h-[40px] shrink-0 rounded-card bg-accent px-4 text-sm font-semibold text-white">
+              {creating || !selected ? "Create" : "Save"}
+            </SubmitButton>
+          )}
+        </header>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-[220px_1fr]">
-        <nav className="flex flex-col gap-1 self-start rounded-card border border-line bg-card p-2">
-          <p className="px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wide text-faint">
-            Vessels
-          </p>
-          {vessels.map((v) => (
+        {sp.saved && <Notice tone="ok">Saved.</Notice>}
+        {errCopy && <Notice tone="bad">{errCopy}</Notice>}
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-[220px_1fr]">
+          <nav className="flex flex-col gap-0.5 self-start rounded-card border border-line bg-card p-1.5">
+            <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-faint">
+              Vessels
+            </p>
+            {vessels.map((v) => (
+              <AppLink
+                key={v.id}
+                href={`/admin/vessels?sel=${v.id}`}
+                aria-current={selected?.id === v.id ? "page" : undefined}
+                className={`flex items-center gap-2 rounded-[9px] px-2.5 py-2 text-sm ${
+                  selected?.id === v.id ? "bg-bg font-medium text-ink" : "text-muted"
+                }`}
+              >
+                <span
+                  className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${vesselHueClass(v.id, v.hue)}`}
+                  aria-hidden
+                />
+                <span className="min-w-0 flex-1 truncate">{v.name}</span>
+              </AppLink>
+            ))}
             <AppLink
-              key={v.id}
-              href={`/admin/vessels?sel=${v.id}`}
-              aria-current={selected?.id === v.id ? "page" : undefined}
-              className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${
-                selected?.id === v.id ? "bg-bg font-semibold text-ink" : "text-muted"
+              href="/admin/vessels?sel=new"
+              className={`mx-0.5 mt-1.5 rounded-lg border border-dashed border-line px-2.5 py-2 text-sm text-accent ${
+                creating ? "font-medium" : ""
               }`}
             >
-              <span
-                className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${vesselHueClass(v.id, v.hue)}`}
-                aria-hidden
-              />
-              <span className="min-w-0 flex-1 truncate">{v.name}</span>
+              + New vessel
             </AppLink>
-          ))}
-          <AppLink
-            href="/admin/vessels?sel=new"
-            className={`mt-1 rounded-lg border border-dashed border-line px-3 py-2 text-sm text-accent ${
-              creating ? "font-semibold" : ""
-            }`}
-          >
-            + New vessel
-          </AppLink>
-        </nav>
+          </nav>
 
-        <div className="flex flex-col gap-4">
-          {/* key remounts the uncontrolled inputs when the selected vessel changes,
-              so switching rows (or a fresh create) always shows that vessel's values. */}
-          <VesselForm
-            key={creating ? "new" : selected?.id ?? "none"}
-            vessel={selected}
-            creating={creating}
-            locations={locations}
-          />
-          {selected && <OfferingsSection vessel={selected} offerings={offerings} />}
+          <div className="flex flex-col gap-4">
+            <VesselCard vessel={selected} creating={creating} locations={locations} />
+            {selected && <OfferingsSection vessel={selected} offerings={offerings} />}
+          </div>
         </div>
-      </div>
+      </form>
 
       <VersionTag />
     </Shell>
@@ -134,29 +151,19 @@ export default async function AdminVessels({
 
 const inputClass = "min-h-[44px] rounded-card border border-line bg-card px-3 text-ink";
 
-/** One label-left field row (the mockup's `.f` grid). */
-function Field({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  children: ReactNode;
-}) {
+/** One label-left field row (the mockup's `.f` grid). Top-aligned so a textarea's label
+ *  sits with the first line, not dropped to a baseline. */
+function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="grid grid-cols-1 gap-1 border-t border-line py-3 first:border-t-0 sm:grid-cols-[150px_1fr] sm:items-baseline sm:gap-3">
-      <span className="text-sm text-muted">
-        {label}
-        {hint && <span className="block text-xs text-faint">{hint}</span>}
-      </span>
+    <div className="grid grid-cols-1 gap-1 border-t border-line py-3 first:border-t-0 sm:grid-cols-[160px_1fr] sm:items-start sm:gap-3">
+      <span className="text-sm text-muted sm:pt-2.5">{label}</span>
       <div>{children}</div>
     </div>
   );
 }
 
-/** Create/edit form. A blank `id` (create) makes the action mint a fresh vessel id. */
-function VesselForm({
+/** The "Vessel" facts card. The Save button lives in the page header (shared form). */
+function VesselCard({
   vessel,
   creating,
   locations,
@@ -167,35 +174,39 @@ function VesselForm({
 }) {
   const isNew = creating || !vessel;
   return (
-    <form action={saveVessel} className="rounded-card border border-line bg-card shadow-sm">
-      <input type="hidden" name="id" value={isNew ? "" : vessel!.id} />
+    <section className="rounded-card border border-line bg-card shadow-sm">
       <div className="flex items-center gap-3 border-b border-line px-4 py-3">
         <h2 className="text-sm font-semibold text-ink">Vessel</h2>
         <span className="text-xs text-faint">the boat’s own facts</span>
-        <SubmitButton className="ml-auto min-h-[36px] rounded-card bg-accent px-4 text-sm font-semibold text-white">
-          {isNew ? "Create" : "Save"}
-        </SubmitButton>
       </div>
 
       <div className="px-4 py-1">
         <Field label="Name">
-          <input name="name" required defaultValue={vessel?.name ?? ""} className={`${inputClass} w-full max-w-[420px]`} />
-        </Field>
-
-        <Field label="Capacity" hint="The maximum number of passengers">
           <input
-            name="coiMaxPax"
-            type="number"
-            min={1}
-            max={99}
+            name="name"
             required
-            defaultValue={vessel?.coiMaxPax ?? 6}
-            className={`${inputClass} max-w-[110px] font-mono`}
+            defaultValue={vessel?.name ?? ""}
+            className={`${inputClass} w-full max-w-[420px]`}
           />
         </Field>
 
+        <Field label="Capacity">
+          <div className="flex items-center gap-2">
+            <input
+              name="coiMaxPax"
+              type="number"
+              min={1}
+              max={99}
+              required
+              defaultValue={vessel?.coiMaxPax ?? 6}
+              className={`${inputClass} max-w-[110px] font-mono`}
+            />
+            <span className="text-xs text-faint">The maximum number of passengers</span>
+          </div>
+        </Field>
+
         <Field label="Color">
-          <fieldset className="flex flex-wrap gap-2">
+          <fieldset className="flex flex-wrap gap-2 pt-1.5">
             <legend className="sr-only">Color</legend>
             {Array.from({ length: HUE_COUNT }, (_, i) => i + 1).map((h) => (
               <label key={h} className="cursor-pointer">
@@ -203,7 +214,7 @@ function VesselForm({
                   type="radio"
                   name="hue"
                   value={h}
-                  defaultChecked={vessel?.hue === h}
+                  defaultChecked={!isNew && vesselHueIndex(vessel!.id, vessel!.hue) === h}
                   className="peer sr-only"
                 />
                 <span
@@ -215,7 +226,7 @@ function VesselForm({
           </fieldset>
         </Field>
 
-        <Field label="Home location" hint="default launch">
+        <Field label="Home location">
           <select
             name="homeLocationId"
             defaultValue={vessel?.homeLocationId ?? ""}
@@ -230,7 +241,7 @@ function VesselForm({
           </select>
         </Field>
 
-        <Field label="Notes" hint="internal">
+        <Field label="Notes">
           <textarea
             name="notes"
             defaultValue={vessel?.notes ?? ""}
@@ -238,7 +249,7 @@ function VesselForm({
           />
         </Field>
       </div>
-    </form>
+    </section>
   );
 }
 
@@ -247,11 +258,10 @@ function OfferingsSection({ vessel, offerings }: { vessel: Vessel; offerings: Of
   const runs = offerings.filter((o) => o.vesselIds.includes(vessel.id));
   return (
     <section className="rounded-card border border-line bg-card shadow-sm">
-      <div className="flex items-center gap-3 border-b border-line px-4 py-3">
+      <div className="border-b border-line px-4 py-3">
         <h2 className="text-sm font-semibold text-ink">Offerings</h2>
-        <span className="text-xs text-faint">offerings this vessel runs on</span>
       </div>
-      <div className="flex flex-col gap-2 px-4 py-3">
+      <div className="px-4 py-3">
         {runs.length === 0 ? (
           <p className="text-sm text-muted">Not assigned to any offerings yet.</p>
         ) : (
@@ -263,9 +273,6 @@ function OfferingsSection({ vessel, offerings }: { vessel: Vessel; offerings: Of
             ))}
           </div>
         )}
-        <p className="text-xs text-faint">
-          Read-only — a vessel is added on the Offering screen. Capacity is read from here, never overridden.
-        </p>
       </div>
     </section>
   );

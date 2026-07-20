@@ -34,17 +34,26 @@ const PINNED: Record<string, (typeof HUES)[number]> = {
 };
 
 /**
+ * The 1-based palette index (1…HUE_COUNT) a vessel renders in — the operator-chosen
+ * `Vessel.hue` when it's a valid index, else the derivation (PINNED, then a stable id-hash).
+ * The admin color picker uses this so the *selected* swatch matches the dot the rest of the app
+ * shows, even for a vessel that has no stored hue yet.
+ *
  * @param vesselId  the boat's id — keys the PINNED map + the hash fallback.
- * @param storedHue the operator-chosen `Vessel.hue` (1–6). When a valid index, it WINS over
- *                  the derivation; anything out of range or null falls through to PINNED/hash.
+ * @param storedHue the operator-chosen `Vessel.hue` (1–6); out of range or null → derivation.
  */
-export function vesselHueClass(vesselId: string, storedHue?: number | null): string {
+export function vesselHueIndex(vesselId: string, storedHue?: number | null): number {
   if (typeof storedHue === "number" && storedHue >= 1 && storedHue <= HUES.length) {
-    return HUES[storedHue - 1]!;
+    return storedHue;
   }
   const pinned = PINNED[vesselId];
-  if (pinned) return pinned;
+  if (pinned) return HUES.indexOf(pinned) + 1;
   let h = 7;
   for (const ch of vesselId) h = (h * 31 + ch.charCodeAt(0)) | 0;
-  return HUES[Math.abs(h) % HUES.length]!;
+  return (Math.abs(h) % HUES.length) + 1;
+}
+
+/** The `--color-vessel-N` class for a vessel's dot — `vesselHueIndex` mapped to its token. */
+export function vesselHueClass(vesselId: string, storedHue?: number | null): string {
+  return HUES[vesselHueIndex(vesselId, storedHue) - 1]!;
 }

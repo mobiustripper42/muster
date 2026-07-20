@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { PriceVariation } from "@core/domain/entities.js";
 
 /**
@@ -12,13 +12,16 @@ import type { PriceVariation } from "@core/domain/entities.js";
  * interaction only; persistence stays on the server form (DEC-026 posture).
  *
  * Reorder = drag (HTML5, desktop) or the ▲/▼ buttons (keyboard + touch — 375px has no drag).
- * Props are plain data (no functions server→client — RSC rule).
+ * Rows carry a stable `key` (not the array index) so a reordered row keeps its inputs' local
+ * edit state. Amounts use {@link NumericInput} (string-buffered) so the field can be empty and
+ * accept a leading minus — a discount is a negative adjustment (−$50, −20%). Props are plain
+ * data (no functions server→client — RSC rule).
  */
-
-const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]; // Mon=0…Sun=6
 
 const inputClass =
   "rounded-lg border border-line bg-bg px-2 py-1.5 text-sm text-ink";
+
+const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]; // Mon=0…Sun=6
 
 function newRow(): PriceVariation {
   return {
@@ -28,34 +31,77 @@ function newRow(): PriceVariation {
   };
 }
 
+/**
+ * A numeric text input that buffers what the operator types as a string, so the field can be
+ * emptied (no un-removable leading 0) and can hold a lone "-" mid-entry (to type a discount).
+ * Reports the parsed number to the parent; "" and "-" report 0. type=text + inputMode=decimal
+ * (not type=number) is deliberate — a controlled number input fights an empty/negative value.
+ */
+function NumericInput({
+  value,
+  onValue,
+  className,
+  placeholder,
+  ariaLabel,
+}: {
+  value: number;
+  onValue: (n: number) => void;
+  className?: string;
+  placeholder?: string;
+  ariaLabel: string;
+}) {
+  const [text, setText] = useState(value === 0 ? "" : String(value));
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={text}
+      placeholder={placeholder}
+      aria-label={ariaLabel}
+      onChange={(e) => {
+        const t = e.target.value;
+        setText(t);
+        const trimmed = t.trim();
+        const n = trimmed === "" || trimmed === "-" ? 0 : Number(trimmed);
+        onValue(Number.isFinite(n) ? n : 0);
+      }}
+      className={className}
+    />
+  );
+}
+
 export function PriceVariationsEditor({ initial }: { initial: PriceVariation[] }) {
-  const [rows, setRows] = useState<PriceVariation[]>(initial);
+  const nextKey = useRef(0);
+  const [rows, setRows] = useState<{ key: number; row: PriceVariation }[]>(() =>
+    initial.map((row) => ({ key: nextKey.current++, row })),
+  );
   const [dragIndex, setDragIndex] = useState<number | null>(null);
 
   const update = (i: number, row: PriceVariation) =>
-    setRows(rows.map((r, j) => (j === i ? row : r)));
+    setRows(rows.map((r, j) => (j === i ? { ...r, row } : r)));
   const move = (i: number, to: number) => {
     if (to < 0 || to >= rows.length) return;
     const next = [...rows];
-    const [row] = next.splice(i, 1);
-    next.splice(to, 0, row!);
+    const [r] = next.splice(i, 1);
+    next.splice(to, 0, r!);
     setRows(next);
   };
 
   return (
     <div className="flex flex-col gap-2">
       {/* The serialized rule — what the form actually submits. */}
-      <input type="hidden" name="priceVariations" value={JSON.stringify(rows)} />
+      <input type="hidden" name="priceVariations" value={JSON.stringify(rows.map((r) => r.row))} />
 
       {rows.length > 0 && (
         <p className="text-xs text-faint">
-          First match wins, top to bottom — variations never stack. The order is the rule.
+          First match wins, top to bottom — variations never stack. The order is the rule. Use a
+          minus for a discount (−50 or −20%).
         </p>
       )}
       <ol className="flex flex-col gap-2">
-        {rows.map((row, i) => (
+        {rows.map(({ key, row }, i) => (
           <li
-            key={i}
+            key={key}
             draggable
             onDragStart={() => setDragIndex(i)}
             onDragOver={(e) => e.preventDefault()}
@@ -119,7 +165,7 @@ export function PriceVariationsEditor({ initial }: { initial: PriceVariation[] }
                           },
                         })
                       }
-                      className={`rounded-full border px-2 py-0.5 text-xs ${
+                      className={`select-none rounded-full border px-2 py-0.5 text-xs ${
                         on ? "border-ink bg-ink text-white" : "border-line bg-card text-muted"
                       }`}
                     >
@@ -168,7 +214,7 @@ export function PriceVariationsEditor({ initial }: { initial: PriceVariation[] }
               </span>
             )}
 
-            {/* Adjustment */}
+            {/* Adjustment — a minus makes it a discount. */}
             <select
               aria-label={`Variation ${i + 1} adjustment kind`}
               value={row.adjustment.kind}
@@ -187,31 +233,21 @@ export function PriceVariationsEditor({ initial }: { initial: PriceVariation[] }
               <option value="percent">± %</option>
             </select>
             {row.adjustment.kind === "flatCents" ? (
-              <input
-                type="number"
-                step="0.01"
-                aria-label={`Variation ${i + 1} dollars`}
+              <NumericInput
+                ariaLabel={`Variation ${i + 1} dollars`}
+                placeholder="± e.g. -50"
                 value={row.adjustment.deltaCents / 100}
-                onChange={(e) =>
-                  update(i, {
-                    ...row,
-                    adjustment: { kind: "flatCents", deltaCents: Math.round(Number(e.target.value || 0) * 100) },
-                  })
+                onValue={(dollars) =>
+                  update(i, { ...row, adjustment: { kind: "flatCents", deltaCents: Math.round(dollars * 100) } })
                 }
                 className={`${inputClass} w-24 font-mono`}
               />
             ) : (
-              <input
-                type="number"
-                step="0.1"
-                aria-label={`Variation ${i + 1} percent`}
+              <NumericInput
+                ariaLabel={`Variation ${i + 1} percent`}
+                placeholder="± e.g. -20"
                 value={row.adjustment.percent}
-                onChange={(e) =>
-                  update(i, {
-                    ...row,
-                    adjustment: { kind: "percent", percent: Number(e.target.value || 0) },
-                  })
-                }
+                onValue={(percent) => update(i, { ...row, adjustment: { kind: "percent", percent } })}
                 className={`${inputClass} w-20 font-mono`}
               />
             )}
@@ -249,7 +285,7 @@ export function PriceVariationsEditor({ initial }: { initial: PriceVariation[] }
       </ol>
       <button
         type="button"
-        onClick={() => setRows([...rows, newRow()])}
+        onClick={() => setRows([...rows, { key: nextKey.current++, row: newRow() }])}
         className="self-start rounded-lg border border-dashed border-line bg-card px-3 py-1.5 text-sm text-accent"
       >
         + Price variation

@@ -139,7 +139,10 @@ export async function saveOffering(formData: FormData): Promise<void> {
         ...(includedGuestCount !== undefined ? { includedGuestCount } : {}),
       });
       code = result.ok ? null : result.code;
-    } catch {
+    } catch (e) {
+      // Never swallow the real cause — the generic "error" copy hides which is which.
+      // A common one: the catalog migration isn't applied to this DB (missing column).
+      console.error("saveOffering: saveOfferingAdmin threw", e);
       code = "error";
     }
   }

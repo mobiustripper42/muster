@@ -11,13 +11,25 @@ import { useState } from "react";
  * server→client — RSC rule).
  */
 
+/** Snap a "HH:MM" to the nearest quarter hour (:00/:15/:30/:45) — the picker's `step` covers
+ *  the spinner, this covers a typed value. */
+function snapTo15(t: string): string {
+  const m = /^(\d{2}):(\d{2})$/.exec(t);
+  if (!m) return t;
+  const h = Number(m[1]);
+  const q = Math.round(Number(m[2]) / 15) * 15;
+  const carry = q === 60;
+  return `${String((h + (carry ? 1 : 0)) % 24).padStart(2, "0")}:${String(carry ? 0 : q).padStart(2, "0")}`;
+}
+
 export function DepartureTimesEditor({ initial }: { initial: string[] }) {
   const [times, setTimes] = useState<string[]>(initial);
   const [draft, setDraft] = useState("");
 
   const add = () => {
-    if (!draft || times.includes(draft)) return;
-    setTimes([...times, draft].sort());
+    const t = snapTo15(draft);
+    if (!t || times.includes(t)) return;
+    setTimes([...times, t].sort());
     setDraft("");
   };
 
@@ -51,6 +63,7 @@ export function DepartureTimesEditor({ initial }: { initial: string[] }) {
       <div className="flex items-center gap-2">
         <input
           type="time"
+          step={900}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {

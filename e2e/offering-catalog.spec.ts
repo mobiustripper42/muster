@@ -60,7 +60,9 @@ test.describe("admin /admin/offerings", () => {
     await page.getByLabel("Variation 1 label").fill("July 4th");
     await page.getByLabel("Variation 1 applies").selectOption("date");
     await page.getByLabel("Variation 1 date").fill("2026-07-04");
-    await page.getByLabel("Variation 1 dollars").fill("100");
+    // A discount — a negative adjustment. Exercises the string-buffered numeric input
+    // (leading minus, no un-removable leading 0).
+    await page.getByLabel("Variation 1 dollars").fill("-50");
 
     // Gratuity: the rendered defaults (pre required + post optional, 15/20/25) stand.
     await expect(page.locator('input[name="gratPre"]')).toBeChecked();
@@ -90,6 +92,7 @@ test.describe("admin /admin/offerings", () => {
     await expect(page.locator('input[name="basePrice"]')).toHaveValue("499.00");
     await expect(page.locator('input[name="includedGuestCount"]')).toHaveValue("10");
     await expect(page.getByLabel("Variation 1 label")).toHaveValue("July 4th");
+    await expect(page.getByLabel("Variation 1 dollars")).toHaveValue("-50"); // discount round-trips
     await expect(page.locator('input[name="addOnLabel"]').first()).toHaveValue("Extra hour");
 
     // ── Hide it: DEC-123 reversible soft-delete ──────────────────────────────

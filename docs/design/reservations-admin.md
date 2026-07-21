@@ -11,8 +11,14 @@ this doc is the **operator/back-office surface set**.
 > row/column).** The general form is a **resource timeline** (boats as lanes, real time across); the grid
 > is its special case when times align. This keeps density bounded by *boats × real departures*, so we
 > structurally can't become FareHarbor's month wall. Study: `mockups/reservation-calendar-scale.html`
-> (grid vs timeline, 6 boats · 3 offerings · ragged times). See BRAND anti-patterns ("wall-of-pills").
-> Open call for `@architect`: timeline as the default day view, or grid-with-timeline-toggle.
+> (day timeline + day grid, week, month; 6 boats · 3 offerings · ragged times; blocks span real
+> durations; all opens shown, filterable). See BRAND anti-patterns ("wall-of-pills").
+>
+> **Operator lean (2026-07-20, parked to stew):** build **one** Day view, not both — timeline and grid
+> are the same data rotated; **leaning Grid**. **Week** is low-priority / possibly cut (may never be
+> used). **Month** is the right shape (per-day utilization, clean BrewCLE style) but each day-cell needs
+> **more information** before build. Week + Month are real improvements but not being iterated yet. The
+> one near-decision for `@architect`: Day = **Grid** (vertical duration blocks, boats as columns).
 
 > **Why this doc exists.** The Phase 12 plan carried a ⚠️ admitting the reservation **admin** surfaces
 > were unspecced and "likely the larger half of P12," with one question to settle before poker: *how much

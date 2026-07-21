@@ -328,9 +328,11 @@ export async function tick(
             // one rather than let a fillable seat exhaust (DEC-130). Never a worker.
             excl = unionSets(dayExcl, suppression.working);
           } else {
-            // Defer (DEC-129/130): the only un-asked candidates are working — skip
-            // this tick. No stall flag (that stays keyed on the suppression-free
-            // pre-check above → no false Tier-2), no AtRisk. `widenDue` re-arms next tick.
+            // Nothing to ask this tick — the un-asked pool is either all working
+            // (DEC-129 defer) or fully held out by the #393 day-spread (the
+            // pre-existing no-op); this branch is shared by both. Skip: no stall
+            // flag (that stays keyed on the suppression-free pre-check above → no
+            // false Tier-2), no AtRisk. `widenDue` re-arms next tick.
             excl = null;
           }
           if (excl !== null) {

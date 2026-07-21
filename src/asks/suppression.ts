@@ -28,7 +28,7 @@ import {
   CALL_LEAD_MINUTES,
   earliestScheduledStart,
   shiftEndFromEvents,
-} from "./../builder/derive.js";
+} from "../builder/derive.js";
 import { TENANT_TIMEZONE } from "../config/tenant.js";
 
 const MINUTE_MS = 60 * 1000;

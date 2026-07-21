@@ -30,6 +30,10 @@ import type { CrewMemberId, ShiftId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 import { logNudged, logPoolWidened } from "../oracle/reliability-log.js";
 import { assignPerson, rankedEligible } from "./ask-loop.js";
+import { buildAskSuppression } from "./suppression.js";
+import type { AskSuppression } from "./suppression.js";
+
+const NO_DECLINE: ReadonlySet<CrewMemberId> = new Set();
 
 export interface EscalateResult {
   /** Whether the widen-stub fired (false only if the shift wasn't escalable). */
@@ -53,6 +57,9 @@ export async function escalate(
   repo: Repository,
   shiftId: ShiftId,
   now: Date,
+  // Send-time suppression (DEC-129/130). The tick passes its once-per-tick build;
+  // a direct/test caller omits it and escalate builds its own (correct-by-default).
+  suppress?: AskSuppression,
 ): Promise<EscalateResult> {
   const shift = await repo.getShift(shiftId);
   if (!shift || shift.state !== "Filling") {
@@ -64,6 +71,8 @@ export async function escalate(
   );
   const openSeats = required.filter((s) => s.state === "Open");
   if (openSeats.length === 0) return { widened: false, nudged: [], asks: [] };
+
+  const suppression = suppress ?? (await buildAskSuppression(repo, now));
 
   // Widen-stub: the engine re-confirmed full-pool exhaustion (DEC-024). Logged
   // even when no one is nudgeable — "pool widened · exhausted" is a real trail rung.
@@ -95,12 +104,21 @@ export async function escalate(
     }
   }
 
+  // #341 (DEC-129, HARD): never nudge a crew member who's currently working a
+  // shift — unioned into `excluded` so there's no valve for them, even here.
+  for (const id of suppression.working) excluded.add(id);
+
   // ── Nudge the top-ranked survivor per open seat ─────────────────────────────
   const nudged: CrewMemberId[] = [];
   const asks: Ask[] = [];
+  // #342 (DEC-130, SOFT): crew who declined a shift on THIS date are skipped with a
+  // last-resort valve — prefer a non-decliner, but nudge the top decliner rather
+  // than leave the seat unnudged when they're all that's left.
+  const declinedToday = suppression.declinedOnDay.get(shift.date) ?? NO_DECLINE;
   for (const seat of openSeats) {
-    const [pick] = await rankedEligible(repo, seat, now, excluded);
-    if (!pick) continue;
+    const ranked = await rankedEligible(repo, seat, now, excluded);
+    if (ranked.length === 0) continue;
+    const pick = ranked.find((c) => !declinedToday.has(c.id)) ?? ranked[0]!;
     const ask = await assignPerson(repo, seat.id, pick.id, now);
     if (!ask) continue; // seat wasn't Open after all — skip defensively
     await logNudged(repo, pick.id, seat.id, shiftId, now);

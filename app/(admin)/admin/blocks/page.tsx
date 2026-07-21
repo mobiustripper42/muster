@@ -7,13 +7,10 @@ import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { AppLink } from "../../../../components/ui/app-link";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
-import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
-import { liftBlock } from "./actions";
 import {
-  CreateBlockAside,
   KindPill,
   VesselHueDot,
   formatDay,
@@ -21,6 +18,7 @@ import {
   formatTime,
   type BlockKind,
 } from "./block-sections";
+import { BlockEditor } from "./block-editor";
 
 /**
  * /admin/blocks (task 12.10, DEC-125) — the single block registry, laid out to
@@ -40,9 +38,7 @@ export const dynamic = "force-dynamic";
 type Search = {
   kind?: string;
   upcoming?: string;
-  lift?: string;
-  saved?: string;
-  lifted?: string;
+  sel?: string;
   err?: string;
 };
 
@@ -114,14 +110,14 @@ export default async function AdminBlocks({
   const today = vesselDateOf(new Date());
   const filter = sp.kind && FILTERS.some((f) => f.key === sp.kind) ? sp.kind : "all";
   const upcomingOnly = sp.upcoming === "1";
-  const liftingId = sp.lift ?? null;
-  const qs = (extra: Record<string, string>) => {
+  // The selected block loads into the edit panel (master-detail); absent ⇒ a fresh "New block".
+  const selected = sp.sel ? blocks.find((b) => String(b.id) === sp.sel) ?? null : null;
+  const selHref = (id: string) => {
     const params = new URLSearchParams();
     if (filter !== "all") params.set("kind", filter);
     if (upcomingOnly) params.set("upcoming", "1");
-    for (const [k, v] of Object.entries(extra)) params.set(k, v);
-    const s = params.toString();
-    return s ? `/admin/blocks?${s}` : "/admin/blocks";
+    params.set("sel", id);
+    return `/admin/blocks?${params}`;
   };
 
   // Build a view model per block: identity, when, past-ness, and the server-computed impact.
@@ -168,8 +164,6 @@ export default async function AdminBlocks({
         </p>
       </header>
 
-      {sp.saved && <Notice tone="ok">Block created.</Notice>}
-      {sp.lifted && <Notice tone="ok">Block lifted — those slots are back on the calendar.</Notice>}
       {errCopy && <Notice tone="bad">{errCopy}</Notice>}
 
       {/* Filters */}
@@ -203,12 +197,11 @@ export default async function AdminBlocks({
       <div className="mt-3 grid grid-cols-1 gap-4 min-[1080px]:grid-cols-[1fr_340px]">
         {/* Registry (master) */}
         <div className="overflow-hidden rounded-card border border-line bg-card shadow-sm">
-          <div className="hidden border-b border-line px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-faint min-[720px]:grid min-[720px]:grid-cols-[110px_1.4fr_1.2fr_100px_90px] min-[720px]:gap-3">
+          <div className="hidden border-b border-line px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-faint min-[720px]:grid min-[720px]:grid-cols-[110px_1.4fr_1.2fr_100px] min-[720px]:gap-3">
             <div>Kind</div>
             <div>What it blocks</div>
             <div>When</div>
             <div>Removes</div>
-            <div />
           </div>
 
           {visible.length === 0 ? (
@@ -219,7 +212,6 @@ export default async function AdminBlocks({
           ) : (
             visible.map(({ block, span, past, impact, vessel, location }) => {
               const kind = block.kind as BlockKind;
-              const calendarMade = kind === "vesselHold";
               const when =
                 block.kind === "location"
                   ? `${formatDay(block.date)} · ${formatTime(block.startTime)}–${formatTime(block.endTime)}`
@@ -229,14 +221,18 @@ export default async function AdminBlocks({
               const vesselName = vessel?.name ?? (("vesselId" in block) ? String(block.vesselId) : "");
               const locationName = location?.name ?? (block.kind === "location" ? String(block.locationId) : "");
 
+              const isSel = selected !== null && String(selected.id) === String(block.id);
               return (
-                <div
+                <AppLink
                   key={block.id}
+                  href={selHref(String(block.id))}
                   data-testid="block-row"
-                  className={`grid grid-cols-1 gap-1 border-t border-line px-4 py-3 text-sm min-[720px]:grid-cols-[110px_1.4fr_1.2fr_100px_90px] min-[720px]:items-center min-[720px]:gap-3 ${
+                  aria-current={isSel ? "page" : undefined}
+                  className={`block border-t border-line hover:bg-bg ${isSel ? "bg-bg" : ""} ${
                     past ? "opacity-50" : ""
                   }`}
                 >
+                  <div className="grid grid-cols-1 gap-1 px-4 py-3 text-sm min-[720px]:grid-cols-[110px_1.4fr_1.2fr_100px] min-[720px]:items-center min-[720px]:gap-3">
                   <div>
                     <KindPill kind={kind} />
                   </div>
@@ -282,35 +278,20 @@ export default async function AdminBlocks({
                     )}
                   </div>
 
-                  <div className="text-xs">
-                    {calendarMade ? (
-                      <AppLink href="/admin/calendar" className="text-accent">
-                        On calendar →
-                      </AppLink>
-                    ) : liftingId === block.id ? (
-                      <form action={liftBlock} className="flex items-center gap-2">
-                        <input type="hidden" name="id" value={block.id} />
-                        <SubmitButton className="rounded-md border border-bad-line bg-bad-bg px-2 py-1 text-[11px] font-semibold text-bad">
-                          Confirm
-                        </SubmitButton>
-                        <AppLink href={qs({})} className="text-muted">
-                          Cancel
-                        </AppLink>
-                      </form>
-                    ) : (
-                      <AppLink href={qs({ lift: block.id })} className="text-accent">
-                        Lift
-                      </AppLink>
-                    )}
                   </div>
-                </div>
+                </AppLink>
               );
             })
           )}
         </div>
 
         {/* Create (aside) */}
-        <CreateBlockAside locations={locations} vessels={vessels} />
+        <BlockEditor
+          key={selected ? String(selected.id) : "new"}
+          selected={selected}
+          locations={locations}
+          vessels={vessels}
+        />
       </div>
 
       <VersionTag />

@@ -44,7 +44,8 @@ export async function saveBlock(formData: FormData): Promise<void> {
   }
 
   revalidatePath("/admin/blocks");
-  redirect(code ? `/admin/blocks?err=${code}` : `/admin/blocks?saved=1`);
+  // On success, select the saved block so it loads back into the edit panel; no success banner.
+  redirect(code ? `/admin/blocks?err=${code}` : `/admin/blocks?sel=${id}`);
 }
 
 /**
@@ -67,5 +68,6 @@ export async function liftBlock(formData: FormData): Promise<void> {
   }
 
   revalidatePath("/admin/blocks");
-  redirect(code ? `/admin/blocks?err=${code}` : `/admin/blocks?lifted=1`);
+  // Deselect after a lift (the block is gone); no success banner.
+  redirect(code ? `/admin/blocks?err=${code}` : `/admin/blocks`);
 }

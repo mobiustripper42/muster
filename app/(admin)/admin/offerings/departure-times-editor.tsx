@@ -7,31 +7,31 @@ import { useState } from "react";
  * several departure times in one pass, instead of the one-time-per-save round trip a native
  * form forces. Times live in React state and each serializes to a hidden `departureTime`
  * input, which the server action reads via `getAll("departureTime")` — the island owns
- * interaction only; persistence stays on the server form. Plain-data props (no functions
- * server→client — RSC rule).
+ * interaction only; persistence stays on the server form. Plain-data props (RSC rule).
+ *
+ * Time entry is an hour + quarter-hour pair of selects, NOT a free `type="time"` field: it
+ * constrains choices to :00/:15/:30/:45 visibly and reliably (a native time input's `step`
+ * doesn't restrict the picker UI). A richer picker can come later; this guarantees the grid.
  */
 
-/** Snap a "HH:MM" to the nearest quarter hour (:00/:15/:30/:45) — the picker's `step` covers
- *  the spinner, this covers a typed value. */
-function snapTo15(t: string): string {
-  const m = /^(\d{2}):(\d{2})$/.exec(t);
-  if (!m) return t;
-  const h = Number(m[1]);
-  const q = Math.round(Number(m[2]) / 15) * 15;
-  const carry = q === 60;
-  return `${String((h + (carry ? 1 : 0)) % 24).padStart(2, "0")}:${String(carry ? 0 : q).padStart(2, "0")}`;
-}
+const HOURS = Array.from({ length: 24 }, (_, h) => String(h).padStart(2, "0"));
+const MINUTES = ["00", "15", "30", "45"];
 
 export function DepartureTimesEditor({ initial }: { initial: string[] }) {
   const [times, setTimes] = useState<string[]>(initial);
-  const [draft, setDraft] = useState("");
+  const [hh, setHh] = useState("");
+  const [mm, setMm] = useState("");
 
   const add = () => {
-    const t = snapTo15(draft);
-    if (!t || times.includes(t)) return;
+    if (hh === "" || mm === "") return;
+    const t = `${hh}:${mm}`;
+    if (times.includes(t)) return;
     setTimes([...times, t].sort());
-    setDraft("");
+    setHh("");
+    setMm("");
   };
+
+  const selectClass = "rounded-lg border border-line bg-bg px-2 py-1.5 font-mono text-sm text-ink";
 
   return (
     <div className="flex flex-col gap-2">
@@ -61,25 +61,37 @@ export function DepartureTimesEditor({ initial }: { initial: string[] }) {
       </div>
 
       <div className="flex items-center gap-2">
-        <input
-          type="time"
-          step={900}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            // Enter adds the time instead of submitting the whole offering form.
-            if (e.key === "Enter") {
-              e.preventDefault();
-              add();
-            }
-          }}
-          aria-label="New departure time"
-          className="rounded-lg border border-line bg-bg px-2 py-1.5 font-mono text-sm text-ink"
-        />
+        <select
+          value={hh}
+          onChange={(e) => setHh(e.target.value)}
+          aria-label="New departure hour"
+          className={selectClass}
+        >
+          <option value="">HH</option>
+          {HOURS.map((h) => (
+            <option key={h} value={h}>
+              {h}
+            </option>
+          ))}
+        </select>
+        <span className="font-mono text-sm text-faint">:</span>
+        <select
+          value={mm}
+          onChange={(e) => setMm(e.target.value)}
+          aria-label="New departure minute"
+          className={selectClass}
+        >
+          <option value="">MM</option>
+          {MINUTES.map((m) => (
+            <option key={m} value={m}>
+              {m}
+            </option>
+          ))}
+        </select>
         <button
           type="button"
           onClick={add}
-          className="self-start rounded-lg border border-dashed border-line bg-card px-3 py-1.5 text-sm text-accent"
+          className="rounded-lg border border-dashed border-line bg-card px-3 py-1.5 text-sm text-accent"
         >
           + Add time
         </button>

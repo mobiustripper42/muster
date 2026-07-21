@@ -47,9 +47,11 @@ test.describe("admin /admin/offerings", () => {
     await page.fill('input[name="seasonEnd"]', "2026-09-30");
     await page.locator('input[name="weekday"][value="4"]').check({ force: true }); // Fri
     await page.locator('input[name="weekday"][value="5"]').check({ force: true }); // Sat
-    await page.getByLabel("New departure time").fill("11:30");
+    await page.getByLabel("New departure hour").selectOption("11");
+    await page.getByLabel("New departure minute").selectOption("30");
     await page.getByRole("button", { name: "+ Add time" }).click();
-    await page.getByLabel("New departure time").fill("15:00");
+    await page.getByLabel("New departure hour").selectOption("15");
+    await page.getByLabel("New departure minute").selectOption("00");
     await page.getByRole("button", { name: "+ Add time" }).click();
 
     // Pricing: base + included + extra guest + one ordered variation (the client island).

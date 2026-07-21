@@ -53,6 +53,7 @@ import type {
 import { asId } from "../domain/ids.js";
 import { subjectKey } from "../domain/subject.js";
 import type {
+  AddOnId,
   AskId,
   BlockId,
   CheckoutHoldId,
@@ -126,6 +127,16 @@ const toAdmin = (r: any): Admin => ({
   active: r.active,
   createdAt: r.created_at,
   deactivatedAt: r.deactivated_at ?? null,
+});
+
+const toAddOn = (r: any): AddOn => ({
+  id: asId<"AddOnId">(r.id),
+  tenantId: asId<"TenantId">(r.tenant_id),
+  label: r.label,
+  type: r.type,
+  amountCents: r.amount_cents,
+  required: r.required,
+  active: r.active,
 });
 
 const toVessel = (r: any): Vessel => ({
@@ -204,7 +215,9 @@ const toOffering = (r: any): Offering => ({
   ...opt("holdMinutes", r.hold_minutes),
   ...opt("arriveBeforeMinutes", r.arrive_before_minutes),
   ...(r.gratuity_kinds != null ? { gratuityKinds: r.gratuity_kinds as GratuityKindConfig[] } : {}),
-  ...(r.add_ons != null ? { addOns: r.add_ons as AddOn[] } : {}),
+  ...(r.add_on_ids != null
+    ? { addOnIds: (r.add_on_ids as string[]).map((x) => asId<"AddOnId">(x)) }
+    : {}),
 });
 
 const toLocation = (r: any): Location => ({
@@ -533,6 +546,26 @@ export class PostgresRepository implements Repository {
     return rows.map(toRoleType);
   }
 
+  // ── Add-ons (first-class sellable extras — #491) ───────────────────────────
+  async saveAddOn(a: AddOn): Promise<void> {
+    await this.#pool.query(
+      `insert into add_ons(id, tenant_id, label, type, amount_cents, required, active)
+       values ($1,$2,$3,$4,$5,$6,$7)
+       on conflict (id) do update set
+         tenant_id=excluded.tenant_id, label=excluded.label, type=excluded.type,
+         amount_cents=excluded.amount_cents, required=excluded.required, active=excluded.active`,
+      [a.id, a.tenantId, a.label, a.type, a.amountCents, a.required, a.active],
+    );
+  }
+  async getAddOn(id: AddOnId): Promise<AddOn | null> {
+    const { rows } = await this.#pool.query("select * from add_ons where id=$1", [id]);
+    return rows[0] ? toAddOn(rows[0]) : null;
+  }
+  async listAddOns(): Promise<AddOn[]> {
+    const { rows } = await this.#pool.query("select * from add_ons");
+    return rows.map(toAddOn);
+  }
+
   // ── Vessels ────────────────────────────────────────────────────────────────
   async saveVessel(v: Vessel): Promise<void> {
     await this.#pool.query(
@@ -780,7 +813,7 @@ export class PostgresRepository implements Repository {
   async saveOffering(o: Offering): Promise<void> {
     await this.#pool.query(
       `insert into offerings
-         (id, tenant_id, name, status, vessel_ids, location_id, schedule, base_price_cents, price_variations, included_guest_count, extra_guest_price_cents, description, trip_length_minutes, hold_minutes, arrive_before_minutes, gratuity_kinds, add_ons)
+         (id, tenant_id, name, status, vessel_ids, location_id, schedule, base_price_cents, price_variations, included_guest_count, extra_guest_price_cents, description, trip_length_minutes, hold_minutes, arrive_before_minutes, gratuity_kinds, add_on_ids)
        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
        on conflict (id) do update set
          tenant_id=excluded.tenant_id, name=excluded.name, status=excluded.status,
@@ -790,7 +823,7 @@ export class PostgresRepository implements Repository {
          extra_guest_price_cents=excluded.extra_guest_price_cents,
          description=excluded.description, trip_length_minutes=excluded.trip_length_minutes,
          hold_minutes=excluded.hold_minutes, arrive_before_minutes=excluded.arrive_before_minutes,
-         gratuity_kinds=excluded.gratuity_kinds, add_ons=excluded.add_ons`,
+         gratuity_kinds=excluded.gratuity_kinds, add_on_ids=excluded.add_on_ids`,
       [
         o.id,
         o.tenantId,
@@ -808,7 +841,7 @@ export class PostgresRepository implements Repository {
         o.holdMinutes ?? null,
         o.arriveBeforeMinutes ?? null,
         o.gratuityKinds ? JSON.stringify(o.gratuityKinds) : null,
-        o.addOns ? JSON.stringify(o.addOns) : null,
+        o.addOnIds ? JSON.stringify(o.addOnIds) : null,
       ],
     );
   }

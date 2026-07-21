@@ -4,12 +4,13 @@
  */
 import { describe, expect, it } from "vitest";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
-import type { Location, Offering, Vessel } from "../domain/entities.js";
+import type { AddOn, Location, Offering, Vessel } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import { saveOfferingAdmin, type OfferingAdminInput } from "./offering-admin.js";
 
 const LOC = asId<"LocationId">("loc-1");
 const BOAT = asId<"VesselId">("vessel-1");
+const ADDON = asId<"AddOnId">("addon-1");
 const TENANT = asId<"TenantId">("tenant-brewboat");
 
 const location = (): Location => ({
@@ -19,11 +20,21 @@ const location = (): Location => ({
   routeDescription: "Up the river",
 });
 const vessel = (): Vessel => ({ id: BOAT, name: "Brew 1", coiMaxPax: 12, manning: [] });
+const addOn = (): AddOn => ({
+  id: ADDON,
+  tenantId: TENANT,
+  label: "Extra hour",
+  type: "flat",
+  amountCents: 15000,
+  required: false,
+  active: true,
+});
 
 async function seededRepo(): Promise<InMemoryRepository> {
   const repo = new InMemoryRepository();
   await repo.saveLocation(location());
   await repo.saveVessel(vessel());
+  await repo.saveAddOn(addOn());
   return repo;
 }
 
@@ -169,17 +180,12 @@ describe("saveOfferingAdmin — validation", () => {
     }
   });
 
-  it("rejects malformed add-ons", async () => {
+  it("rejects an unknown add-on id (#491)", async () => {
     const repo = await seededRepo();
-    const cases = [
-      [{ label: " ", type: "flat" as const, amountCents: 2900, required: false }],
-      [{ label: "Extra hour", type: "flat" as const, amountCents: 150.5, required: false }],
-      [{ label: "Extra hour", type: "hourly" as never, amountCents: 15000, required: false }],
-    ];
-    for (const addOns of cases) {
-      const r = await saveOfferingAdmin(repo, { ...base(), addOns });
-      expect(r).toEqual({ ok: false, code: "bad_add_ons" });
-    }
+    expect(await saveOfferingAdmin(repo, { ...base(), addOnIds: ["addon-1", "addon-nope"] })).toEqual({
+      ok: false,
+      code: "bad_add_ons",
+    });
   });
 });
 
@@ -203,7 +209,7 @@ describe("saveOfferingAdmin — persistence", () => {
         { kind: "pre", tiersBps: [1500, 2000, 2500], defaultBps: 2000, required: true },
         { kind: "post", tiersBps: [1500, 2000, 2500], defaultBps: 2000, required: false },
       ],
-      addOns: [{ label: "Extra hour", type: "flat", amountCents: 15000, required: false }],
+      addOnIds: ["addon-1"],
     });
     expect(r).toEqual({ ok: true, id: "offering-new" });
 
@@ -225,16 +231,14 @@ describe("saveOfferingAdmin — persistence", () => {
     // Order IS the rule (first match wins) — July 4th stays above Sunday.
     expect(saved.priceVariations.map((v) => v.label)).toEqual(["July 4th", "Sunday"]);
     expect(saved.gratuityKinds).toHaveLength(2);
-    expect(saved.addOns).toEqual([
-      { label: "Extra hour", type: "flat", amountCents: 15000, required: false },
-    ]);
+    expect(saved.addOnIds).toEqual([ADDON]);
   });
 
-  it("omits unset optionals (no undefined assignments, no empty add-on list)", async () => {
+  it("omits unset optionals (no undefined assignments, no empty add-on-id list)", async () => {
     const repo = await seededRepo();
-    await saveOfferingAdmin(repo, { ...base(), addOns: [] });
+    await saveOfferingAdmin(repo, { ...base(), addOnIds: [] });
     const saved = (await repo.getOffering(asId<"OfferingId">("offering-new")))!;
-    for (const k of ["description", "tripLengthMinutes", "holdMinutes", "arriveBeforeMinutes", "includedGuestCount", "gratuityKinds", "addOns"]) {
+    for (const k of ["description", "tripLengthMinutes", "holdMinutes", "arriveBeforeMinutes", "includedGuestCount", "gratuityKinds", "addOnIds"]) {
       expect(k in saved).toBe(false);
     }
   });

@@ -29,6 +29,13 @@ test.describe("admin /admin/offerings", () => {
     await page.getByRole("button", { name: "Create" }).click();
     await page.waitForURL(/saved=1/);
 
+    // ── Add-ons are first-class now (#491): create one so it can be attached below ─
+    await page.goto("/admin/add-ons?sel=new");
+    await page.fill('input[name="label"]', "Extra hour");
+    await page.fill('input[name="amount"]', "150.00");
+    await page.getByRole("button", { name: "Create" }).click();
+    await page.waitForURL(/saved=1/);
+
     // ── Create the offering — every section ──────────────────────────────────
     await page.goto("/admin/offerings?sel=new");
 
@@ -71,9 +78,9 @@ test.describe("admin /admin/offerings", () => {
     await expect(page.locator('input[name="gratPreRequired"]')).toBeChecked();
     await expect(page.locator('input[name="gratPostRequired"]')).not.toBeChecked();
 
-    // Add-ons: fill the blank "+ Add-on" row.
-    await page.getByLabel("New add-on label").fill("Extra hour");
-    await page.getByLabel("New add-on amount").fill("150.00");
+    // Add-ons: attach the shared "Extra hour" add-on via its checkbox (id is minted, so
+    // target it through its label text).
+    await page.locator('label:has-text("Extra hour") input[name="addOnIds"]').check({ force: true });
 
     await page.getByRole("button", { name: "Create" }).click();
     await page.waitForURL(/saved=1/);
@@ -95,7 +102,9 @@ test.describe("admin /admin/offerings", () => {
     await expect(page.locator('input[name="includedGuestCount"]')).toHaveValue("10");
     await expect(page.getByLabel("Variation 1 label")).toHaveValue("July 4th");
     await expect(page.getByLabel("Variation 1 dollars")).toHaveValue("-50"); // discount round-trips
-    await expect(page.locator('input[name="addOnLabel"]').first()).toHaveValue("Extra hour");
+    await expect(
+      page.locator('label:has-text("Extra hour") input[name="addOnIds"]'),
+    ).toBeChecked(); // the attached add-on survives a reload
 
     // ── Hide it: DEC-123 reversible soft-delete ──────────────────────────────
     await page.locator('input[name="status"][value="hidden"]').check({ force: true });

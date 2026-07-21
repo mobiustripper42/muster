@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { checkIntegrity } from "../admin/integrity.js";
 import { asId } from "../domain/ids.js";
 import type {
+  AddOn,
   Admin,
   Ask,
   Block,
@@ -683,7 +684,7 @@ export function runRepositoryContract(
       };
       await repo.saveOffering(base); // none of the optionals set
       const bare = (await repo.getOffering(base.id))!;
-      for (const k of ["description", "tripLengthMinutes", "holdMinutes", "arriveBeforeMinutes", "addOns"]) {
+      for (const k of ["description", "tripLengthMinutes", "holdMinutes", "arriveBeforeMinutes", "addOnIds"]) {
         expect(k in bare).toBe(false); // omitted, not null
       }
       const full: Offering = {
@@ -692,16 +693,33 @@ export function runRepositoryContract(
         tripLengthMinutes: 100,
         holdMinutes: 100,
         arriveBeforeMinutes: 15,
-        addOns: [
-          { label: "Flex insurance", type: "flat", amountCents: 2900, required: false },
-          { label: "Extra hour", type: "flat", amountCents: 15000, required: false },
-        ],
+        addOnIds: [asId<"AddOnId">("addon-flex"), asId<"AddOnId">("addon-hour")],
       };
       await repo.saveOffering(full);
       expect(await repo.getOffering(base.id)).toEqual(full);
       // clearing back to unset round-trips as absent again (upsert writes null)
       await repo.saveOffering(base);
-      expect("addOns" in (await repo.getOffering(base.id))!).toBe(false);
+      expect("addOnIds" in (await repo.getOffering(base.id))!).toBe(false);
+    });
+
+    it("add-on: round-trip incl. global required/active; upsert updates (#491)", async () => {
+      const addOn: AddOn = {
+        id: asId<"AddOnId">("addon-1"),
+        tenantId: TENANT,
+        label: "Extra hour",
+        type: "flat",
+        amountCents: 15000,
+        required: false,
+        active: true,
+      };
+      await repo.saveAddOn(addOn);
+      expect(await repo.getAddOn(addOn.id)).toEqual(addOn);
+      // Soft-retire + relabel is an upsert, not an insert.
+      await repo.saveAddOn({ ...addOn, label: "Bonus hour", active: false });
+      const updated = await repo.getAddOn(addOn.id);
+      expect(updated).toMatchObject({ label: "Bonus hour", active: false });
+      expect(await repo.listAddOns()).toHaveLength(1);
+      expect(await repo.getAddOn(asId<"AddOnId">("addon-none"))).toBeNull();
     });
 
     it("catalog: Offering includedGuestCount round-trips present and absent (12.8)", async () => {

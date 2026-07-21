@@ -13,6 +13,7 @@
  */
 
 import type {
+  AddOnId,
   AskId,
   BlockId,
   CheckoutHoldId,
@@ -311,10 +312,12 @@ export interface Offering {
    */
   gratuityKinds?: GratuityKindConfig[];
   /**
-   * Generic sellable add-ons (12.8, DEC-124) — real upsells (extra hour, catering, photos).
-   * Taxed + fee'd as REVENUE, unlike gratuity. Optional/absent ⇒ none.
+   * Attached add-ons (#491) — references to first-class {@link AddOn} entities the offering
+   * sells, picked by id from the shared catalog (`/admin/add-ons`), NOT defined inline. Mirrors
+   * `vesselIds`. `required` is a GLOBAL property of the AddOn, not of this attachment. Taxed +
+   * fee'd as REVENUE, unlike gratuity. Optional/absent ⇒ none.
    */
-  addOns?: AddOn[];
+  addOnIds?: AddOnId[];
 }
 
 /**
@@ -330,15 +333,21 @@ export interface GratuityKindConfig {
 }
 
 /**
- * One generic sellable add-on (12.8, DEC-124) — revenue, taxed + fee'd (the opposite of
- * gratuity). `type` is `"flat"` only for now; a text discriminator so new pricing shapes
- * are a value, not a migration (DEC-DATA-1 posture).
+ * A first-class sellable add-on (#491) — revenue, taxed + fee'd (the opposite of gratuity).
+ * Its own entity (like {@link Vessel}/{@link Location}), edited once at `/admin/add-ons` and
+ * ATTACHED to offerings by id (`Offering.addOnIds`). `type` is `"flat"` only for now; a text
+ * discriminator so new pricing shapes are a value, not a migration (DEC-DATA-1 posture).
  */
 export interface AddOn {
+  id: AddOnId;
+  tenantId: TenantId;
   label: string;
   type: "flat";
   amountCents: number;
+  /** GLOBAL — a property of the add-on itself, not of any offering attachment (#491). */
   required: boolean;
+  /** Soft-retire (DEC-123 posture): `false` ⇒ out of the offering picker + browse, refs kept. */
+  active: boolean;
 }
 
 // ── Gratuity — first-class crew money (DEC-124, 12.3) ─────────────────────────

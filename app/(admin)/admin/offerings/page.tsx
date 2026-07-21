@@ -1,4 +1,4 @@
-import type { Location, Offering, Vessel } from "@core/domain/entities.js";
+import type { AddOn, Location, Offering, Vessel } from "@core/domain/entities.js";
 import { BackLink } from "../../../../components/ui/back-link";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
@@ -64,12 +64,14 @@ export default async function AdminOfferings({
   let offerings: Offering[];
   let vessels: Vessel[];
   let locations: Location[];
+  let addOns: AddOn[];
   try {
     const repo = getRepo();
-    [offerings, vessels, locations] = await Promise.all([
+    [offerings, vessels, locations, addOns] = await Promise.all([
       repo.listOfferings(),
       repo.listVessels(),
       repo.listLocations(),
+      repo.listAddOns(),
     ]);
   } catch {
     return (
@@ -80,6 +82,10 @@ export default async function AdminOfferings({
   }
   offerings.sort((a, b) => a.name.localeCompare(b.name));
   vessels.sort((a, b) => a.name.localeCompare(b.name));
+  // The offering picker attaches ACTIVE add-ons only (#491); retired ones stay out of the list.
+  const activeAddOns = addOns
+    .filter((a) => a.active)
+    .sort((a, b) => a.label.localeCompare(b.label));
 
   // Hidden is a reversible soft-delete (DEC-123): out of the default list, back via the
   // toggle. Draft + Live always show in admin.
@@ -205,7 +211,7 @@ export default async function AdminOfferings({
               <ScheduleSection offering={selected} />
               <PricingSection offering={selected} />
               <GratuitySection offering={selected} />
-              <AddOnsSection offering={selected} />
+              <AddOnsSection offering={selected} addOns={activeAddOns} />
             </div>
           )}
         </div>

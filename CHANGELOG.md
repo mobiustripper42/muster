@@ -1,5 +1,8 @@
 # Changelog
 
+## [1.0.18] - 2026-07-21
+- PR #490: on-shift + same-day-decline ask suppression (closes #341, #342). DEC-129 — the engine never auto-asks crew mid-shift (hard defer). DEC-130 — a decline quiets that date's cross-shift auto-asks (soft, last-resort valve). Send-time filter, outside eligibility, so an all-suppressed pool stays Filling (no false AtRisk/Tier-2).
+
 ## [1.0.17] - 2026-07-20
 - PR #488: Fix #483 — `bail()`/`vacateSeat()` fire no asks; re-crewing deferred to the tick (DEC-128). Kills the pre-horizon pool-blast that texted the whole role pool weeks out.
 - PR #480 (#474): DEC-107 amend — balance deriver composes party fare (extras frozen on Reservation).

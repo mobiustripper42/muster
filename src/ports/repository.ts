@@ -11,6 +11,7 @@
  */
 
 import type {
+  AddOn,
   Admin,
   Ask,
   AuthSubjectKind,
@@ -43,6 +44,7 @@ import type {
   Vessel,
 } from "../domain/entities.js";
 import type {
+  AddOnId,
   AskId,
   BlockId,
   CheckoutHoldId,
@@ -86,6 +88,13 @@ export interface Repository {
   saveVessel(vessel: Vessel): Promise<void>;
   getVessel(id: VesselId): Promise<Vessel | null>;
   listVessels(): Promise<Vessel[]>;
+
+  // ── Add-ons (first-class sellable extras — #491) ───────────────────────────
+  // A twin to Vessels/Locations: edited once at /admin/add-ons, attached to offerings
+  // by id (`Offering.addOnIds`). `required` + `active` are the add-on's own globals.
+  saveAddOn(addOn: AddOn): Promise<void>;
+  getAddOn(id: AddOnId): Promise<AddOn | null>;
+  listAddOns(): Promise<AddOn[]>;
 
   // ── Crew ───────────────────────────────────────────────────────────────────
   saveCrewMember(crew: CrewMember): Promise<void>;

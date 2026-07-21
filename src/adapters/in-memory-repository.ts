@@ -9,6 +9,7 @@
  */
 
 import type {
+  AddOn,
   Admin,
   Ask,
   AuthSubjectKind,
@@ -42,6 +43,7 @@ import type {
 } from "../domain/entities.js";
 import { subjectKey } from "../domain/subject.js";
 import type {
+  AddOnId,
   AskId,
   BlockId,
   CheckoutHoldId,
@@ -95,6 +97,7 @@ const upsertThreadState = (
 
 export class InMemoryRepository implements Repository {
   readonly #roleTypes = new Map<RoleTypeId, RoleType>();
+  readonly #addOns = new Map<AddOnId, AddOn>();
   readonly #vessels = new Map<VesselId, Vessel>();
   readonly #crew = new Map<CrewMemberId, CrewMember>();
   readonly #credentials = new Map<CredentialId, Credential>();
@@ -165,6 +168,18 @@ export class InMemoryRepository implements Repository {
   }
   async listAllRoleTypes(): Promise<RoleType[]> {
     return [...this.#roleTypes.values()].map(clone);
+  }
+
+  // ── Add-ons (first-class sellable extras — #491) ───────────────────────────
+  async saveAddOn(addOn: AddOn): Promise<void> {
+    this.#addOns.set(addOn.id, clone(addOn));
+  }
+  async getAddOn(id: AddOnId): Promise<AddOn | null> {
+    const a = this.#addOns.get(id);
+    return a ? clone(a) : null;
+  }
+  async listAddOns(): Promise<AddOn[]> {
+    return [...this.#addOns.values()].map(clone);
   }
 
   // ── Vessels ──────────────────────────────────────────────────────────────

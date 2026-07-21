@@ -57,8 +57,8 @@ test.describe("admin /admin/blocks", () => {
     await expect(page.locator('input[name="date"]')).toHaveValue("2026-08-12");
     await expect(page.locator('input[name="endTime"]')).toHaveValue("16:00");
 
-    // ── Delete it from the panel (Lift) → gone from the registry ──
-    await page.getByRole("button", { name: /Lift block \(delete\)/ }).click();
+    // ── Delete it from the panel → gone from the registry ──
+    await page.getByRole("button", { name: "Delete", exact: true }).click();
     await page.waitForURL((url) => !url.searchParams.has("sel"));
     await expect(page.getByTestId("block-row").filter({ hasText: "Reservation Demo Dock" })).toHaveCount(0);
 

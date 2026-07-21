@@ -11,9 +11,14 @@ import { saveBlock, liftBlock } from "./actions";
 /**
  * The /admin/blocks create/edit panel (task 12.10, DEC-125) — a client island because the kind
  * toggle SWAPS the field sets (Location vs Vessel), a real interaction a no-JS form can't
- * express cleanly. `selected` null ⇒ a fresh "New block"; a scoped block ⇒ edit it (pre-filled,
- * Save upserts, a Lift/delete button). A `vesselHold` is calendar-managed, so it's read-only
- * here. Submits through the server actions (`saveBlock`/`liftBlock`); only interaction is client.
+ * express cleanly. `selected` null ⇒ a fresh create (kind toggle + editable target); a scoped
+ * block ⇒ edit it (kind fixed, target read-only — you don't re-point a block, you delete and
+ * remake — only the dates/times/reason are editable). A `vesselHold` is calendar-managed, so
+ * it's read-only here. Submits through the server actions (`saveBlock`/`liftBlock`).
+ *
+ * NOTE: the date/time inputs are the plain native pickers for now — a proper 15-min-enforcing,
+ * consistent date/time picker (and unifying the location-vs-vessel date/time shape) is a
+ * separate design pass across every surface, tracked as a follow-up.
  */
 
 const inputClass = settingsInputClass;
@@ -45,9 +50,6 @@ export function BlockEditor({
     const v = vessels.find((x) => String(x.id) === String(selected.vesselId));
     return (
       <aside className="self-start rounded-card border border-line bg-card shadow-sm min-[1080px]:sticky min-[1080px]:top-4">
-        <div className="border-b border-line px-4 py-3">
-          <h2 className="text-sm font-semibold text-ink">Hold</h2>
-        </div>
         <div className="px-4 py-3 text-sm text-muted">
           <p className="font-medium text-ink">{v?.name ?? String(selected.vesselId)}</p>
           <p className="mt-1 font-mono text-xs">
@@ -73,68 +75,82 @@ export function BlockEditor({
   const editing = selected !== null;
   const loc = selected?.kind === "location" ? selected : null;
   const ves = selected?.kind === "vessel" ? selected : null;
-  const [kind, setKind] = useState<"location" | "vessel">(
+  const [kindState, setKind] = useState<"location" | "vessel">(
     selected?.kind === "vessel" ? "vessel" : "location",
   );
+  // In edit mode the kind is fixed (you don't turn a location block into a vessel block).
+  const kind: "location" | "vessel" = editing ? (ves ? "vessel" : "location") : kindState;
+
+  const locName = loc
+    ? locations.find((l) => String(l.id) === String(loc.locationId))?.name ?? String(loc.locationId)
+    : "";
+  const vesName = ves
+    ? vessels.find((v) => String(v.id) === String(ves.vesselId))?.name ?? String(ves.vesselId)
+    : "";
 
   return (
     <aside className="self-start rounded-card border border-line bg-card shadow-sm min-[1080px]:sticky min-[1080px]:top-4">
-      <div className="flex items-center justify-between border-b border-line px-4 py-3">
-        <h2 className="text-sm font-semibold text-ink">{editing ? "Edit block" : "New block"}</h2>
-        {editing && (
-          <AppLink href="/admin/blocks" className="text-xs text-muted">
-            + New
+      {editing && (
+        <div className="flex justify-end border-b border-line px-4 py-2">
+          <AppLink href="/admin/blocks" className="text-xs text-accent">
+            + New block
           </AppLink>
-        )}
-      </div>
+        </div>
+      )}
 
       <form action={saveBlock} className="px-4 py-1">
         <input type="hidden" name="id" value={selected ? String(selected.id) : ""} />
         <input type="hidden" name="kind" value={kind} />
 
-        <Fld label="Kind">
-          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Kind">
-            {(["location", "vessel"] as const).map((k) => (
-              <button
-                key={k}
-                type="button"
-                aria-pressed={kind === k}
-                onClick={() => setKind(k)}
-                className={`flex cursor-pointer select-none flex-col rounded-lg border px-3 py-1.5 text-left text-sm ${
-                  kind === k
-                    ? "border-accent bg-bg font-medium text-ink"
-                    : "border-line bg-card text-muted"
-                }`}
-              >
-                {k === "location" ? "Location" : "Vessel"}
-                <span className="text-[10px] font-normal text-faint">
-                  {k === "location" ? "a place closes" : "boat out"}
-                </span>
-              </button>
-            ))}
-          </div>
-          <p className="pt-1.5 text-xs text-faint">
-            Scoped blocks only. A hold or one-off slot blackout is made on the calendar — it still
-            appears in the list here.
-          </p>
-        </Fld>
+        {/* Kind toggle — create only; in edit the kind is fixed. Buttons are equal width. */}
+        {!editing && (
+          <Fld label="Kind">
+            <div className="flex gap-2" role="group" aria-label="Kind">
+              {(["location", "vessel"] as const).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  aria-pressed={kind === k}
+                  onClick={() => setKind(k)}
+                  className={`flex flex-1 basis-0 cursor-pointer select-none flex-col rounded-lg border px-3 py-1.5 text-left text-sm ${
+                    kind === k
+                      ? "border-accent bg-bg font-medium text-ink"
+                      : "border-line bg-card text-muted"
+                  }`}
+                >
+                  {k === "location" ? "Location" : "Vessel"}
+                  <span className="text-[10px] font-normal text-faint">
+                    {k === "location" ? "a place closes" : "boat out"}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </Fld>
+        )}
 
         {kind === "location" ? (
-          <div className="border-t border-line pt-1">
+          <div className={editing ? "" : "border-t border-line pt-1"}>
             <Fld label="Location">
-              <select
-                name="locationId"
-                defaultValue={loc ? String(loc.locationId) : ""}
-                className={`${inputClass} w-full`}
-                aria-label="Block location"
-              >
-                <option value="">— pick a location —</option>
-                {locations.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name}
-                  </option>
-                ))}
-              </select>
+              {editing ? (
+                <>
+                  <input type="hidden" name="locationId" value={loc ? String(loc.locationId) : ""} />
+                  <p className="text-sm text-ink">{locName}</p>
+                </>
+              ) : (
+                <select
+                  name="locationId"
+                  defaultValue=""
+                  className={`${inputClass} w-full`}
+                  aria-label="Block location"
+                >
+                  <option value="">— pick a location —</option>
+                  {locations.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </select>
+              )}
             </Fld>
             <Fld label="Date">
               <input
@@ -150,7 +166,6 @@ export function BlockEditor({
                 <input
                   name="startTime"
                   type="time"
-                  step={900}
                   defaultValue={loc?.startTime ?? ""}
                   className={`${inputClass} font-mono`}
                   aria-label="Block start time"
@@ -159,7 +174,6 @@ export function BlockEditor({
                 <input
                   name="endTime"
                   type="time"
-                  step={900}
                   defaultValue={loc?.endTime ?? ""}
                   className={`${inputClass} font-mono`}
                   aria-label="Block end time"
@@ -168,21 +182,28 @@ export function BlockEditor({
             </Fld>
           </div>
         ) : (
-          <div className="border-t border-line pt-1">
+          <div className={editing ? "" : "border-t border-line pt-1"}>
             <Fld label="Vessel">
-              <select
-                name="vesselId"
-                defaultValue={ves ? String(ves.vesselId) : ""}
-                className={`${inputClass} w-full`}
-                aria-label="Block vessel"
-              >
-                <option value="">— pick a vessel —</option>
-                {vessels.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.name}
-                  </option>
-                ))}
-              </select>
+              {editing ? (
+                <>
+                  <input type="hidden" name="vesselId" value={ves ? String(ves.vesselId) : ""} />
+                  <p className="text-sm text-ink">{vesName}</p>
+                </>
+              ) : (
+                <select
+                  name="vesselId"
+                  defaultValue=""
+                  className={`${inputClass} w-full`}
+                  aria-label="Block vessel"
+                >
+                  <option value="">— pick a vessel —</option>
+                  {vessels.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.name}
+                    </option>
+                  ))}
+                </select>
+              )}
             </Fld>
             <Fld label="Out of service">
               <span className="flex flex-wrap items-center gap-2">
@@ -222,10 +243,6 @@ export function BlockEditor({
           <SubmitButton className="w-full rounded-card bg-accent px-4 py-2.5 text-sm font-semibold text-white">
             {editing ? "Save block" : "Create block"}
           </SubmitButton>
-          <p className="pt-2 text-xs text-faint">
-            A booked trip inside a block isn’t cancelled — the closure is real, so it’s created, and
-            any conflicting trips surface on its row to resolve on the reservation side.
-          </p>
         </div>
       </form>
 
@@ -233,7 +250,7 @@ export function BlockEditor({
         <form action={liftBlock} className="border-t border-line px-4 py-3">
           <input type="hidden" name="id" value={String(selected.id)} />
           <SubmitButton className="text-xs font-semibold text-bad hover:underline">
-            Lift block (delete) — puts the slots back
+            Delete
           </SubmitButton>
         </form>
       )}

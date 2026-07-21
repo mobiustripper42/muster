@@ -44,6 +44,12 @@ constraints already fixed by the spec:
 ## Anti-patterns
 - **No anxiety dashboard.** Nothing that invites the operator to sit and watch. Warming/trending
   shifts live behind a deliberate click, never on the At-Risk board.
+- **No wall-of-pills calendar.** The reservation calendar shows *state and counts*, not one pill per
+  open availability per product (FareHarbor's month view — a legibility failure). Day-first, filterable,
+  and the axes are **boats + real time**, never the catalog; a new offering is color, not a row/column.
+- **No config maze.** Purpose-built for one operator beats generic settings. The offering-catalog is the
+  only real setup surface — no Customer Types / Price Sheets / Custom Fields sprawl (FareHarbor's admin).
+  If the operator has to *learn* the setup screen, we've failed the single-tenant dividend.
 - **No leaderboards / gamification** of reliability. The score is a ranking that orders asks, not a
   grade or a public ranking (DEC-008).
 - **No positive-availability calendar** for crew. Suppression-only. If a "set your availability"

@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Muster — Reservation calendar · scale study</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+:root{
+  --bg:#eef2f6; --card:#ffffff; --ink:#101826; --muted:#5b6675; --faint:#93a0b0; --line:#e7ebf1; --line-soft:#f2f5f8;
+  --accent:#2f5d86; --sink:#f5f8fb;
+  --cruise:#2f5d86; --cruise-bg:#e7eef6; --cruise-line:#c9d9e8;
+  --lite:#8a5f93; --lite-bg:#f1e9f3; --lite-line:#e0cde4;
+  --duffy:#9c6b4e; --duffy-bg:#f4ebe4; --duffy-line:#e6d3c5;
+  --b1:#5b64a8;--b2:#8a5f93;--b3:#6e7f46;--b4:#9c6b4e;--b5:#2f7d70;--b6:#a8683f;
+  --radius:13px;
+  --sans:"IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --mono:"IBM Plex Mono", ui-monospace, monospace;
+}
+:root[data-theme="dark"]{
+  --bg:#0f1620; --card:#172230; --ink:#e8eef5; --muted:#9fb0c2; --faint:#6b7c8f; --line:#26333f; --line-soft:#1c2734;
+  --accent:#6ba3d6; --sink:#131c28;
+  --cruise:#6ba3d6; --cruise-bg:#16273a; --cruise-line:#2a4763;
+  --lite:#b58cc0; --lite-bg:#271b2c; --lite-line:#453252;
+  --duffy:#c2926f; --duffy-bg:#271e17; --duffy-line:#4a382a;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f1620; --card:#172230; --ink:#e8eef5; --muted:#9fb0c2; --faint:#6b7c8f; --line:#26333f; --line-soft:#1c2734;
+  --accent:#6ba3d6; --sink:#131c28;
+  --cruise:#6ba3d6; --cruise-bg:#16273a; --cruise-line:#2a4763;
+  --lite:#b58cc0; --lite-bg:#271b2c; --lite-line:#453252;
+  --duffy:#c2926f; --duffy-bg:#271e17; --duffy-line:#4a382a;
+}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.mockbar{background:#101826;color:#93a0b0;font-family:var(--mono);font-size:11px;padding:6px 16px}
+.mockbar b{color:#eef2f6;font-weight:500}
+.wrap{max-width:1360px;margin:0 auto;padding:20px 18px 70px}
+h1{font-size:22px;font-weight:600;letter-spacing:-.01em}
+.lede{color:var(--muted);font-size:13.5px;margin-top:6px;max-width:70ch;line-height:1.55}
+.lede b{color:var(--ink)}
+.themebtn{float:right;font:inherit;font-size:12px;border:1px solid var(--line);background:var(--card);color:var(--muted);border-radius:8px;padding:5px 11px;cursor:pointer}
+
+.layout{margin-top:30px}
+.lhead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:4px}
+.tag{font-family:var(--mono);font-size:11px;font-weight:600;padding:2px 8px;border-radius:6px}
+.tag.a{background:var(--lite-bg);color:var(--lite);border:1px solid var(--lite-line)}
+.tag.b{background:var(--cruise-bg);color:var(--cruise);border:1px solid var(--cruise-line)}
+.lhead h2{font-size:17px;font-weight:600}
+.verdict{font-size:12.5px;color:var(--muted);margin:6px 0 14px;max-width:76ch;line-height:1.5}
+.verdict b{color:var(--ink)}
+.bad{color:#b4451f}.good{color:#157a3a}
+:root[data-theme="dark"] .bad{color:#e59178}:root[data-theme="dark"] .good{color:#5cc98d}
+
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:10px 0 12px;align-items:center}
+.legend .sw{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:12px;height:12px;border-radius:4px;display:inline-block;border:1px solid transparent}
+.i-cruise{background:var(--cruise-bg);border-color:var(--cruise-line)!important}
+.i-lite{background:var(--lite-bg);border-color:var(--lite-line)!important}
+.i-duffy{background:var(--duffy-bg);border-color:var(--duffy-line)!important}
+.i-open{background:repeating-linear-gradient(45deg,transparent 0 3px,var(--line) 3px 4px);border:1px dashed var(--faint)!important}
+.i-blk{background:repeating-linear-gradient(45deg,#c3ccd6 0 3px,transparent 3px 6px)}
+
+/* ---------- LAYOUT A: boat × time grid ---------- */
+.gridwrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius);background:var(--card)}
+.grid{min-width:840px;display:grid;grid-template-columns:66px repeat(6,1fr)}
+.grid .gh{padding:9px 8px;font-size:11.5px;font-weight:600;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:6px}
+.grid .gh + .gh{border-left:1px solid var(--line)}
+.grid .gh.corner{color:var(--faint);font-size:10px;text-transform:uppercase;letter-spacing:.06em}
+.hue{width:8px;height:8px;border-radius:50%;flex:none}
+.hue.b1{background:var(--b1)}.hue.b2{background:var(--b2)}.hue.b3{background:var(--b3)}.hue.b4{background:var(--b4)}.hue.b5{background:var(--b5)}.hue.b6{background:var(--b6)}
+.grid .tc{font-family:var(--mono);font-size:11px;color:var(--muted);padding:7px 8px;border-top:1px solid var(--line-soft);display:flex;align-items:center}
+.grid .cell{border-left:1px solid var(--line-soft);border-top:1px solid var(--line-soft);padding:4px;min-height:38px}
+.pill{font-size:10.5px;line-height:1.2;padding:4px 6px;border-radius:7px;border:1px solid var(--line)}
+.pill .nm{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pill .mt{font-family:var(--mono);color:var(--faint);font-size:9.5px}
+.pill.cruise{background:var(--cruise-bg);border-color:var(--cruise-line)}
+.pill.lite{background:var(--lite-bg);border-color:var(--lite-line)}
+.pill.duffy{background:var(--duffy-bg);border-color:var(--duffy-line)}
+.pill.open{background:transparent;border:1px dashed var(--faint);color:var(--faint);text-align:center}
+.pill.blk{background:repeating-linear-gradient(45deg,color-mix(in srgb,var(--faint) 30%,transparent) 0 3px,transparent 3px 6px);border:1px solid var(--line);color:var(--muted)}
+.empty{}
+
+/* ---------- LAYOUT B: resource timeline ---------- */
+.tl{border:1px solid var(--line);border-radius:var(--radius);background:var(--card);overflow:hidden}
+.tlwrap{overflow-x:auto}
+.tlinner{min-width:900px}
+.ruler{display:grid;grid-template-columns:96px 1fr;border-bottom:1px solid var(--line)}
+.ruler .rl{position:relative;height:30px}
+.ruler .tick{position:absolute;top:0;bottom:0;border-left:1px solid var(--line-soft);padding-left:5px;font-family:var(--mono);font-size:10px;color:var(--faint);display:flex;align-items:center}
+.lane{display:grid;grid-template-columns:96px 1fr;border-top:1px solid var(--line-soft)}
+.lane .lname{padding:0 10px;display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;border-right:1px solid var(--line)}
+.track{position:relative;height:46px;background:
+  repeating-linear-gradient(90deg,transparent 0,transparent calc(100%/7 - 1px),var(--line-soft) calc(100%/7 - 1px),var(--line-soft) calc(100%/7))}
+.blk{position:absolute;top:6px;bottom:6px;border-radius:8px;padding:5px 8px;font-size:11px;overflow:hidden;border:1px solid;display:flex;flex-direction:column;justify-content:center}
+.blk .nm{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.blk .mt{font-family:var(--mono);font-size:9.5px;opacity:.8}
+.blk.cruise{background:var(--cruise-bg);border-color:var(--cruise-line);color:var(--cruise)}
+.blk.lite{background:var(--lite-bg);border-color:var(--lite-line);color:var(--lite)}
+.blk.duffy{background:var(--duffy-bg);border-color:var(--duffy-line);color:var(--duffy)}
+.blk.open{background:transparent;border:1px dashed var(--faint);color:var(--faint);align-items:center;flex-direction:row;justify-content:center}
+.blk.blk-out{background:repeating-linear-gradient(45deg,color-mix(in srgb,var(--faint) 26%,transparent) 0 4px,transparent 4px 8px);border-color:var(--line);color:var(--muted)}
+.blk .who{color:var(--ink)}
+.blk.cruise .who,.blk.lite .who,.blk.duffy .who{color:var(--ink)}
+
+.foot-note{margin-top:34px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px}
+.foot-note h3{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);margin-bottom:10px}
+.foot-note ul{margin:0 0 0 18px;font-size:13px;color:var(--muted);line-height:1.6}
+.foot-note b{color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="mockbar"><b>MOCKUP</b> — reservation calendar · scale study · one day · <b>6 boats · 3 offerings (Cruise / Lite / Duffy) · ragged times · 1 blackout</b> · static</div>
+<div class="wrap">
+  <button class="themebtn" onclick="var r=document.documentElement,c=r.getAttribute('data-theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');r.setAttribute('data-theme',c==='dark'?'light':'dark')">◐ Theme</button>
+  <h1>Reservation calendar — does it scale?</h1>
+  <p class="lede">The v2 grid is clean because it assumes <b>one offering, 4 boats, one shared set of times</b>. Here's the same day stress-tested: <b>6 boats</b>, <b>three offerings with different times</b> (Cruise 11:30/1:30/3:30/5:30/7:30 · Lite 12:00/2:00/4:00/6:00 · Duffy rental 8:30/11:00), and a blackout. Below: the current <b>boat × time grid</b> vs. a <b>resource timeline</b>. Same data, both.</p>
+
+  <!-- LAYOUT A -->
+  <div class="layout">
+    <div class="lhead"><span class="tag a">Layout A</span><h2>Boat × time grid — the current v2 model, stressed</h2></div>
+    <p class="verdict">Once times stop lining up, the shared time-rows become a <b>union of every offering's times</b> — 11 ragged rows, and most cells are blank because a boat only runs some of them. Six columns already feel tight; an 8th boat wraps or shrinks the pills to nothing. <span class="bad">The grid encodes offering-times as structure, so complexity multiplies the axes.</span></p>
+    <div class="legend">
+      <span class="sw"><i class="i-cruise"></i>Cruise</span><span class="sw"><i class="i-lite"></i>Lite</span><span class="sw"><i class="i-duffy"></i>Duffy rental</span><span class="sw"><i class="i-open"></i>Open</span><span class="sw"><i class="i-blk"></i>Blackout</span>
+    </div>
+    <div class="gridwrap"><div class="grid">
+      <div class="gh corner">Time</div>
+      <div class="gh"><span class="hue b1"></span>Brew 1</div><div class="gh"><span class="hue b2"></span>Brew 2</div><div class="gh"><span class="hue b3"></span>Brew 3</div><div class="gh"><span class="hue b4"></span>Brew 4</div><div class="gh"><span class="hue b5"></span>Brew 5</div><div class="gh"><span class="hue b6"></span>Brew 6</div>
+
+      <div class="tc">8:30a</div>
+      <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"><div class="pill duffy"><div class="nm">Rojas</div><div class="mt">Duffy · 6</div></div></div><div class="cell"></div>
+
+      <div class="tc">11:00a</div>
+      <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"><div class="pill open">open · Duffy</div></div>
+
+      <div class="tc">11:30a</div>
+      <div class="cell"><div class="pill cruise"><div class="nm">Alexis Bowen</div><div class="mt">Cruise · 12</div></div></div><div class="cell"></div><div class="cell"><div class="pill cruise"><div class="nm">Erin Becker</div><div class="mt">Cruise · 10</div></div></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+
+      <div class="tc">12:00p</div>
+      <div class="cell"></div><div class="cell"><div class="pill lite"><div class="nm">Shaye P.</div><div class="mt">Lite · 8</div></div></div><div class="cell"></div><div class="cell"></div><div class="cell"><div class="pill open">open · Lite</div></div><div class="cell"></div>
+
+      <div class="tc">1:30p</div>
+      <div class="cell"></div><div class="cell"></div><div class="cell"><div class="pill open">open</div></div><div class="cell"><div class="pill blk"><div class="nm">Blacked out</div><div class="mt">maint.</div></div></div><div class="cell"></div><div class="cell"></div>
+
+      <div class="tc">2:00p</div>
+      <div class="cell"></div><div class="cell"><div class="pill lite"><div class="nm">Healey Z.</div><div class="mt">Lite · 6</div></div></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"><div class="pill lite"><div class="nm">Wes B.</div><div class="mt">Lite · 9</div></div></div>
+
+      <div class="tc">3:30p</div>
+      <div class="cell"><div class="pill cruise"><div class="nm">Lisa Braun</div><div class="mt">Cruise · 12</div></div></div><div class="cell"></div><div class="cell"></div><div class="cell"><div class="pill cruise"><div class="nm">Munish B.</div><div class="mt">Cruise · 7</div></div></div><div class="cell"></div><div class="cell"></div>
+
+      <div class="tc">4:00p</div>
+      <div class="cell"></div><div class="cell"><div class="pill open">open</div></div><div class="cell"></div><div class="cell"></div><div class="cell"><div class="pill lite"><div class="nm">Carol Reid</div><div class="mt">Lite · 8</div></div></div><div class="cell"></div>
+
+      <div class="tc">5:30p</div>
+      <div class="cell"></div><div class="cell"></div><div class="cell"><div class="pill cruise"><div class="nm">Taylor R.</div><div class="mt">Cruise · 12</div></div></div><div class="cell"><div class="pill open">open</div></div><div class="cell"></div><div class="cell"></div>
+
+      <div class="tc">6:00p</div>
+      <div class="cell"></div><div class="cell"><div class="pill lite"><div class="nm">Kailee K.</div><div class="mt">Lite · 9</div></div></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"><div class="pill open">open · Lite</div></div>
+
+      <div class="tc">7:30p</div>
+      <div class="cell"><div class="pill open">open</div></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+    </div></div>
+  </div>
+
+  <!-- LAYOUT B -->
+  <div class="layout">
+    <div class="lhead"><span class="tag b">Layout B</span><h2>Resource timeline — boats as lanes, real time across</h2></div>
+    <p class="verdict"><span class="good">Boats are the only fixed axis; time is continuous, and the offering is just color.</span> Ragged times sit where they actually fall, turnaround gaps become <b>visible</b> (you can see the empty water on Brew 3 between 1:30 and 5:30), a 7th boat is one more lane, and a new offering adds a color — <b>never a row or column</b>. Density stays proportional to <b>boats × real departures</b>, not to the catalog.</p>
+    <div class="legend">
+      <span class="sw"><i class="i-cruise"></i>Cruise</span><span class="sw"><i class="i-lite"></i>Lite</span><span class="sw"><i class="i-duffy"></i>Duffy rental</span><span class="sw"><i class="i-open"></i>Open water</span><span class="sw"><i class="i-blk"></i>Blackout</span>
+    </div>
+    <div class="tl"><div class="tlwrap"><div class="tlinner">
+      <div class="ruler"><div></div><div class="rl">
+        <span class="tick" style="left:0%">8a</span><span class="tick" style="left:14.3%">10a</span><span class="tick" style="left:28.6%">12p</span><span class="tick" style="left:42.9%">2p</span><span class="tick" style="left:57.1%">4p</span><span class="tick" style="left:71.4%">6p</span><span class="tick" style="left:85.7%">8p</span>
+      </div></div>
+
+      <!-- Brew 1: 11:30 Cruise, 3:30 Cruise, 7:30 open -->
+      <div class="lane"><div class="lname"><span class="hue b1"></span>Brew 1</div><div class="track">
+        <div class="blk cruise" style="left:25%;width:11.9%"><span class="nm who">Alexis Bowen</span><span class="mt">11:30 · Cruise · 12</span></div>
+        <div class="blk cruise" style="left:53.6%;width:11.9%"><span class="nm who">Lisa Braun</span><span class="mt">3:30 · Cruise · 12</span></div>
+        <div class="blk open" style="left:82.1%;width:11.9%">open · 7:30</div>
+      </div></div>
+
+      <!-- Brew 2: 12 Lite, 2 Lite, 4 open, 6 Lite -->
+      <div class="lane"><div class="lname"><span class="hue b2"></span>Brew 2</div><div class="track">
+        <div class="blk lite" style="left:28.6%;width:10.7%"><span class="nm who">Shaye P.</span><span class="mt">12:00 · Lite · 8</span></div>
+        <div class="blk lite" style="left:42.9%;width:10.7%"><span class="nm who">Healey Z.</span><span class="mt">2:00 · Lite · 6</span></div>
+        <div class="blk open" style="left:57.1%;width:10.7%">open · 4:00</div>
+        <div class="blk lite" style="left:71.4%;width:10.7%"><span class="nm who">Kailee K.</span><span class="mt">6:00 · Lite · 9</span></div>
+      </div></div>
+
+      <!-- Brew 3: 11:30 Cruise, 1:30 open, 5:30 Cruise -->
+      <div class="lane"><div class="lname"><span class="hue b3"></span>Brew 3</div><div class="track">
+        <div class="blk cruise" style="left:25%;width:11.9%"><span class="nm who">Erin Becker</span><span class="mt">11:30 · Cruise · 10</span></div>
+        <div class="blk open" style="left:39.3%;width:11.9%">open · 1:30</div>
+        <div class="blk cruise" style="left:67.9%;width:11.9%"><span class="nm who">Taylor R.</span><span class="mt">5:30 · Cruise · 12</span></div>
+      </div></div>
+
+      <!-- Brew 4: 1:30 blackout, 3:30 Cruise, 5:30 open -->
+      <div class="lane"><div class="lname"><span class="hue b4"></span>Brew 4</div><div class="track">
+        <div class="blk blk-out" style="left:39.3%;width:11.9%">Blacked out · maint.</div>
+        <div class="blk cruise" style="left:53.6%;width:11.9%"><span class="nm who">Munish B.</span><span class="mt">3:30 · Cruise · 7</span></div>
+        <div class="blk open" style="left:67.9%;width:11.9%">open · 5:30</div>
+      </div></div>
+
+      <!-- Brew 5: 8:30 Duffy, 12 open Lite, 4 Lite -->
+      <div class="lane"><div class="lname"><span class="hue b5"></span>Brew 5</div><div class="track">
+        <div class="blk duffy" style="left:3.6%;width:17.9%"><span class="nm who">Rojas</span><span class="mt">8:30 · Duffy rental · 6</span></div>
+        <div class="blk open" style="left:28.6%;width:10.7%">open · 12:00</div>
+        <div class="blk lite" style="left:57.1%;width:10.7%"><span class="nm who">Carol Reid</span><span class="mt">4:00 · Lite · 8</span></div>
+      </div></div>
+
+      <!-- Brew 6: 11 open Duffy, 2 Lite, 6 open -->
+      <div class="lane"><div class="lname"><span class="hue b6"></span>Brew 6</div><div class="track">
+        <div class="blk open" style="left:21.4%;width:17.9%">open · 11:00 Duffy</div>
+        <div class="blk lite" style="left:42.9%;width:10.7%"><span class="nm who">Wes B.</span><span class="mt">2:00 · Lite · 9</span></div>
+        <div class="blk open" style="left:71.4%;width:10.7%">open · 6:00</div>
+      </div></div>
+    </div></div></div>
+  </div>
+
+  <div class="foot-note">
+    <h3>The takeaway</h3>
+    <ul>
+      <li><b>Make the axes match reality:</b> boats are the one fixed, scarce thing → the stable axis. Time is continuous. <b>Offering is color + a filter, never a row or column.</b></li>
+      <li><b>Timeline generalizes; the grid is its special case</b> (when every offering shares the same times, the timeline just looks like the tidy grid you already have). So you lose nothing today and gain the growth path.</li>
+      <li><b>You still can't become the FareHarbor wall</b> — you render boat-lanes, not one pill per open availability per product. Your ceiling is boats × real departures.</li>
+      <li><b>Mobile</b> stays the time-grouped list (reservation-calendar-mobile) — a list scales past any grid; the timeline is a desktop affordance.</li>
+      <li><b>Open call:</b> default the day view to the <b>timeline</b>, or keep the grid as the "consistent-times" fast view and offer timeline as a toggle when offerings diverge? Both are cheap once the data model is boats-and-time.</li>
+    </ul>
+  </div>
+</div>
+</body>
+</html>

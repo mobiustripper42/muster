@@ -27,7 +27,7 @@ test.describe("admin /admin/blocks", () => {
     await page.fill('input[name="date"]', "2026-08-12");
     await page.fill('input[name="startTime"]', "13:00");
     await page.fill('input[name="endTime"]', "16:00");
-    await page.getByRole("button", { name: "Create block" }).click();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
     await page.waitForURL(/sel=/); // saved → the new block is selected into the edit panel
 
     // Its row shows impact ("… slot") + the booked conflict (13:30 booked; 15:30 open = removed).
@@ -41,7 +41,7 @@ test.describe("admin /admin/blocks", () => {
     await page.selectOption('select[name="vesselId"]', { label: RESERVATION_DEMO.vesselName });
     await page.fill('input[name="startDate"]', RESERVATION_DEMO.vesselBlockWindow.start);
     await page.fill('input[name="endDate"]', RESERVATION_DEMO.vesselBlockWindow.end);
-    await page.getByRole("button", { name: "Create block" }).click();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
     await page.waitForURL(/sel=/);
     // Conflicts with BOTH seeded bookings ($549 + $439 = $988).
     await expect(page.getByText(/2 booked \(\$988\) conflict/)).toBeVisible();

@@ -37,7 +37,7 @@ export const dynamic = "force-dynamic";
 
 type Search = {
   kind?: string;
-  upcoming?: string;
+  past?: string;
   sel?: string;
   err?: string;
 };
@@ -109,15 +109,22 @@ export default async function AdminBlocks({
 
   const today = vesselDateOf(new Date());
   const filter = sp.kind && FILTERS.some((f) => f.key === sp.kind) ? sp.kind : "all";
-  const upcomingOnly = sp.upcoming === "1";
+  // Time scope: Upcoming (default) or Past — a two-way segment, never both.
+  const showPast = sp.past === "1";
   // The selected block loads into the edit panel (master-detail); absent ⇒ a fresh "New block".
   const selected = sp.sel ? blocks.find((b) => String(b.id) === sp.sel) ?? null : null;
-  const selHref = (id: string) => {
+  // Every nav link preserves the OTHER axes (kind + time scope + selection), so filtering never
+  // drops your selection or empties the panel.
+  const hrefWith = (o: { kind?: string; past?: boolean; sel?: string | null }) => {
+    const k = o.kind ?? filter;
+    const p = o.past ?? showPast;
+    const s = o.sel !== undefined ? o.sel : sp.sel ?? null;
     const params = new URLSearchParams();
-    if (filter !== "all") params.set("kind", filter);
-    if (upcomingOnly) params.set("upcoming", "1");
-    params.set("sel", id);
-    return `/admin/blocks?${params}`;
+    if (k !== "all") params.set("kind", k);
+    if (p) params.set("past", "1");
+    if (s) params.set("sel", s);
+    const q = params.toString();
+    return q ? `/admin/blocks?${q}` : "/admin/blocks";
   };
 
   // Build a view model per block: identity, when, past-ness, and the server-computed impact.
@@ -132,20 +139,11 @@ export default async function AdminBlocks({
       const location = b.kind === "location" ? locationById.get(String(b.locationId)) : undefined;
       return { block: b, span, past, impact, vessel, location };
     })
-    // Upcoming first, then by start date; a lifted block is simply gone (real delete).
-    .sort((a, b) => Number(a.past) - Number(b.past) || a.span.start.localeCompare(b.span.start));
+    .sort((a, b) => a.span.start.localeCompare(b.span.start));
 
   const visible = rows.filter(
-    (r) => (filter === "all" || filterKeyOf(r.block.kind) === filter) && (!upcomingOnly || !r.past),
+    (r) => (filter === "all" || filterKeyOf(r.block.kind) === filter) && (showPast ? r.past : !r.past),
   );
-
-  // The upcoming toggle preserves the active kind filter, flips only `upcoming`.
-  const upcomingParams = new URLSearchParams();
-  if (filter !== "all") upcomingParams.set("kind", filter);
-  if (!upcomingOnly) upcomingParams.set("upcoming", "1");
-  const upcomingHref = upcomingParams.toString()
-    ? `/admin/blocks?${upcomingParams}`
-    : "/admin/blocks";
 
   const errCopy = sp.err ? ERR_COPY[sp.err] ?? ERR_COPY.error : null;
 
@@ -156,29 +154,19 @@ export default async function AdminBlocks({
       <header className="flex flex-col gap-1">
         <p className="text-xs text-faint">Settings / Blocks</p>
         <h1 className="text-[22px] font-semibold leading-tight text-ink">Blocks</h1>
-        <p className="max-w-3xl text-sm text-muted">
-          Every block, wherever it was made — the one registry Xola never gave you. Scoped blocks
-          (a location window, a vessel range) are created here; single-slot ones (a hold, a one-off
-          blackout) are made on the calendar, but all of them show here. Each subtracts slots;
-          lifting puts them back.
-        </p>
       </header>
 
       {errCopy && <Notice tone="bad">{errCopy}</Notice>}
 
-      {/* Filters */}
+      {/* Filters — kind + time scope, both segmented chips. */}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <div className="inline-flex overflow-hidden rounded-lg border border-line bg-card">
           {FILTERS.map((f) => {
             const active = filter === f.key;
-            const params = new URLSearchParams();
-            if (f.key !== "all") params.set("kind", f.key);
-            if (upcomingOnly) params.set("upcoming", "1");
-            const href = params.toString() ? `/admin/blocks?${params}` : "/admin/blocks";
             return (
               <AppLink
                 key={f.key}
-                href={href}
+                href={hrefWith({ kind: f.key })}
                 aria-current={active ? "page" : undefined}
                 className={`border-r border-line px-3 py-1.5 text-sm last:border-r-0 ${
                   active ? "bg-ink font-medium text-white" : "text-muted"
@@ -189,9 +177,23 @@ export default async function AdminBlocks({
             );
           })}
         </div>
-        <AppLink href={upcomingHref} className="px-1 text-xs text-muted underline">
-          {upcomingOnly ? "Show past too" : "Upcoming only"}
-        </AppLink>
+        <div className="inline-flex overflow-hidden rounded-lg border border-line bg-card">
+          {([["Upcoming", false], ["Past", true]] as const).map(([label, past]) => {
+            const active = showPast === past;
+            return (
+              <AppLink
+                key={label}
+                href={hrefWith({ past })}
+                aria-current={active ? "page" : undefined}
+                className={`border-r border-line px-3 py-1.5 text-sm last:border-r-0 ${
+                  active ? "bg-ink font-medium text-white" : "text-muted"
+                }`}
+              >
+                {label}
+              </AppLink>
+            );
+          })}
+        </div>
       </div>
 
       <div className="mt-3 grid grid-cols-1 gap-4 min-[1080px]:grid-cols-[1fr_340px]">
@@ -225,7 +227,7 @@ export default async function AdminBlocks({
               return (
                 <AppLink
                   key={block.id}
-                  href={selHref(String(block.id))}
+                  href={hrefWith({ sel: String(block.id) })}
                   data-testid="block-row"
                   aria-current={isSel ? "page" : undefined}
                   className={`block border-t border-line hover:bg-bg ${isSel ? "bg-bg" : ""} ${

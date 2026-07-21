@@ -241,7 +241,7 @@ export function BlockEditor({
 
         <div className="py-3">
           <SubmitButton className="w-full rounded-card bg-accent px-4 py-2.5 text-sm font-semibold text-white">
-            {editing ? "Save block" : "Create block"}
+            Save
           </SubmitButton>
         </div>
       </form>

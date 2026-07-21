@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { GratuityKindConfig, Location, Offering, Vessel } from "@core/domain/entities.js";
+import type { AddOn, GratuityKindConfig, Location, Offering, Vessel } from "@core/domain/entities.js";
 import { gratuityKindsFor } from "@core/reservations/pricing.js";
 import { AppLink } from "../../../../components/ui/app-link";
 import { Field, settingsInputClass } from "../../../../components/admin/settings-field";
@@ -375,68 +375,64 @@ function GratuityKindRow({
 }
 
 // ── 5 · Add-ons ──────────────────────────────────────────────────────────────
-export function AddOnsSection({ offering }: { offering: Offering | null }) {
-  const rows = offering?.addOns ?? [];
-  return (
-    <Section id="addons" title="Add-ons" hint="real upsells only — revenue">
-      <div className="flex flex-col gap-2 py-3">
-        {rows.map((a, i) => (
-          <AddOnRow
-            key={`${a.label}-${i}`}
-            label={a.label}
-            amount={(a.amountCents / 100).toFixed(2)}
-            required={a.required}
-          />
-        ))}
-        {/* The "+ Add-on" row — native-form add: fill it and Save. Clearing a row's label
-            removes it. */}
-        <AddOnRow label="" amount="" required={false} isNew />
-        <p className="text-xs text-faint">
-          Add-ons are taxed + fee’d as revenue. Gratuity is NOT here — it’s crew money, its
-          own section. Clear a label to remove a row; fill the empty row to add one.
-        </p>
-      </div>
-    </Section>
-  );
-}
-
-function AddOnRow({
-  label,
-  amount,
-  required,
-  isNew,
+export function AddOnsSection({
+  offering,
+  addOns,
 }: {
-  label: string;
-  amount: string;
-  required: boolean;
-  isNew?: boolean;
+  offering: Offering | null;
+  /** ACTIVE add-ons only (#491) — the offering ATTACHES existing add-ons by id; it no longer
+   *  defines them inline. The set is edited at /admin/add-ons. */
+  addOns: AddOn[];
 }) {
+  const attached = new Set(offering?.addOnIds ?? []);
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <input
-        name="addOnLabel"
-        defaultValue={label}
-        placeholder={isNew ? "+ Add-on (e.g. Extra hour)" : ""}
-        aria-label={isNew ? "New add-on label" : `Add-on ${label} label`}
-        className={`${inputClass} w-full max-w-[260px]`}
-      />
-      <span className="text-xs text-faint">$</span>
-      <input
-        name="addOnAmount"
-        inputMode="decimal"
-        defaultValue={amount}
-        aria-label={isNew ? "New add-on amount" : `Add-on ${label} amount`}
-        className={`${inputClass} max-w-[110px] font-mono`}
-      />
-      <select
-        name="addOnRequired"
-        defaultValue={required ? "yes" : "no"}
-        aria-label={isNew ? "New add-on required" : `Add-on ${label} required`}
-        className={`${inputClass} max-w-[120px]`}
-      >
-        <option value="no">Optional</option>
-        <option value="yes">Required</option>
-      </select>
-    </div>
+    <Section id="addons" title="Add-ons" hint="attach shared add-ons — revenue">
+      {addOns.length === 0 ? (
+        <p className="py-3 text-sm text-muted">
+          No add-ons defined yet.{" "}
+          <AppLink href="/admin/add-ons" className="text-accent">
+            Create one on the Add-ons screen
+          </AppLink>{" "}
+          — then attach it here.
+        </p>
+      ) : (
+        <div className="flex flex-col gap-2 py-3">
+          {/* Structurally the vessels checkbox group: pick which shared add-ons this offering
+              sells. `required` is the add-on's own global, shown as a tag, not set here. Only
+              ACTIVE add-ons appear — a previously-attached add-on that's since been retired
+              won't be in this list and so drops from `addOnIds` on the next save (acceptable
+              first cut, #491). */}
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            {addOns.map((a) => (
+              <label key={a.id}>
+                <input
+                  type="checkbox"
+                  name="addOnIds"
+                  value={a.id}
+                  defaultChecked={attached.has(a.id)}
+                  className="peer sr-only"
+                />
+                <span className="flex cursor-pointer select-none items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1 text-sm text-muted peer-checked:border-accent/40 peer-checked:bg-bg peer-checked:font-medium peer-checked:text-ink">
+                  {a.label}
+                  <span className="text-xs text-faint">${(a.amountCents / 100).toFixed(2)}</span>
+                  {a.required && (
+                    <span className="rounded-full bg-warn-bg px-1.5 text-[10px] uppercase tracking-wide text-warn">
+                      Required
+                    </span>
+                  )}
+                </span>
+              </label>
+            ))}
+          </div>
+          <p className="text-xs text-faint">
+            Add-ons are taxed + fee’d as revenue, and shared across offerings —{" "}
+            <AppLink href="/admin/add-ons" className="text-accent">
+              manage them here
+            </AppLink>
+            . Gratuity is NOT an add-on — it’s crew money, its own section.
+          </p>
+        </div>
+      )}
+    </Section>
   );
 }

@@ -12,7 +12,6 @@
  * there is deliberately no remove method.
  */
 import type {
-  AddOn,
   GratuityKindConfig,
   Offering,
   OfferingStatus,
@@ -45,7 +44,8 @@ export interface OfferingAdminInput {
   extraGuestPriceCents: number;
   priceVariations: PriceVariation[];
   gratuityKinds?: GratuityKindConfig[];
-  addOns?: AddOn[];
+  /** Attached add-on ids (#491) — references to first-class AddOn entities, like `vesselIds`. */
+  addOnIds?: string[];
 }
 
 export type OfferingSaveResult =
@@ -113,9 +113,6 @@ function validGratuityKinds(kinds: GratuityKindConfig[]): boolean {
   return true;
 }
 
-const validAddOn = (a: AddOn): boolean =>
-  a.label.trim().length > 0 && a.type === "flat" && Number.isInteger(a.amountCents) && a.amountCents >= 0;
-
 export async function saveOfferingAdmin(
   repo: Repository,
   input: OfferingAdminInput,
@@ -181,8 +178,12 @@ export async function saveOfferingAdmin(
   if (input.gratuityKinds !== undefined && !validGratuityKinds(input.gratuityKinds)) {
     return { ok: false, code: "bad_gratuity" };
   }
-  if (input.addOns !== undefined && !input.addOns.every(validAddOn)) {
-    return { ok: false, code: "bad_add_ons" };
+  // Add-ons are attached by id (#491) — every referenced add-on must exist (mirrors the vessel
+  // existence check). `required`/pricing are the add-on's own facts, validated on its screen.
+  if (input.addOnIds !== undefined) {
+    for (const aid of input.addOnIds) {
+      if (!(await repo.getAddOn(asId<"AddOnId">(aid)))) return { ok: false, code: "bad_add_ons" };
+    }
   }
 
   const id = asId<"OfferingId">(input.id);
@@ -219,7 +220,9 @@ export async function saveOfferingAdmin(
       ? { includedGuestCount: input.includedGuestCount }
       : {}),
     ...(input.gratuityKinds !== undefined ? { gratuityKinds: input.gratuityKinds } : {}),
-    ...(input.addOns !== undefined && input.addOns.length > 0 ? { addOns: input.addOns } : {}),
+    ...(input.addOnIds !== undefined && input.addOnIds.length > 0
+      ? { addOnIds: input.addOnIds.map((a) => asId<"AddOnId">(a)) }
+      : {}),
   };
   await repo.saveOffering(offering);
   return { ok: true, id: input.id };

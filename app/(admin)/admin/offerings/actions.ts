@@ -3,7 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import type { AddOn, GratuityKindConfig, PriceVariation } from "@core/domain/entities.js";
+import type { GratuityKindConfig, PriceVariation } from "@core/domain/entities.js";
 import { saveOfferingAdmin } from "@core/admin/offering-admin.js";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
@@ -101,19 +101,9 @@ export async function saveOffering(formData: FormData): Promise<void> {
     gratuityKindFromForm(formData, "post"),
   ].filter((k): k is GratuityKindConfig => k !== null);
 
-  const labels = formData.getAll("addOnLabel").map(String);
-  const amounts = formData.getAll("addOnAmount").map(String);
-  const requireds = formData.getAll("addOnRequired").map(String);
-  const addOns: AddOn[] = [];
-  labels.forEach((label, i) => {
-    if (!label.trim()) return; // blank label = removed / untouched "new" row
-    addOns.push({
-      label,
-      type: "flat",
-      amountCents: dollarsToCents(amounts[i] ?? ""),
-      required: requireds[i] === "yes",
-    });
-  });
+  // Add-ons are first-class now (#491) — the offering attaches existing ones by id, exactly
+  // like vesselIds. The checkbox group posts each checked add-on's id.
+  const addOnIds = formData.getAll("addOnIds").map(String);
 
   let code: string | null = null;
   if (!variationsParse) code = "bad_variations";
@@ -132,7 +122,7 @@ export async function saveOffering(formData: FormData): Promise<void> {
         extraGuestPriceCents,
         priceVariations,
         gratuityKinds,
-        addOns,
+        addOnIds,
         ...(tripLengthMinutes !== undefined ? { tripLengthMinutes } : {}),
         ...(holdMinutes !== undefined ? { holdMinutes } : {}),
         ...(arriveBeforeMinutes !== undefined ? { arriveBeforeMinutes } : {}),

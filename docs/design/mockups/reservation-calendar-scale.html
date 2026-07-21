@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Muster — Reservation calendar · scale study</title>
+<title>Muster — Reservation calendar · views</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 :root{
@@ -12,6 +12,7 @@
   --cruise:#2f5d86; --cruise-bg:#e7eef6; --cruise-line:#c9d9e8;
   --lite:#8a5f93; --lite-bg:#f1e9f3; --lite-line:#e0cde4;
   --duffy:#9c6b4e; --duffy-bg:#f4ebe4; --duffy-line:#e6d3c5;
+  --ok:#157a3a; --warn:#b4451f;
   --b1:#5b64a8;--b2:#8a5f93;--b3:#6e7f46;--b4:#9c6b4e;--b5:#2f7d70;--b6:#a8683f;
   --radius:13px;
   --sans:"IBM Plex Sans", system-ui, -apple-system, sans-serif;
@@ -22,14 +23,14 @@
   --accent:#6ba3d6; --sink:#131c28;
   --cruise:#6ba3d6; --cruise-bg:#16273a; --cruise-line:#2a4763;
   --lite:#b58cc0; --lite-bg:#271b2c; --lite-line:#453252;
-  --duffy:#c2926f; --duffy-bg:#271e17; --duffy-line:#4a382a;
+  --duffy:#c2926f; --duffy-bg:#271e17; --duffy-line:#4a382a; --ok:#5cc98d; --warn:#e59178;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#0f1620; --card:#172230; --ink:#e8eef5; --muted:#9fb0c2; --faint:#6b7c8f; --line:#26333f; --line-soft:#1c2734;
   --accent:#6ba3d6; --sink:#131c28;
   --cruise:#6ba3d6; --cruise-bg:#16273a; --cruise-line:#2a4763;
   --lite:#b58cc0; --lite-bg:#271b2c; --lite-line:#453252;
-  --duffy:#c2926f; --duffy-bg:#271e17; --duffy-line:#4a382a;
+  --duffy:#c2926f; --duffy-bg:#271e17; --duffy-line:#4a382a; --ok:#5cc98d; --warn:#e59178;
 }}
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
@@ -38,198 +39,368 @@ body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14p
 .mockbar b{color:#eef2f6;font-weight:500}
 .wrap{max-width:1360px;margin:0 auto;padding:20px 18px 70px}
 h1{font-size:22px;font-weight:600;letter-spacing:-.01em}
-.lede{color:var(--muted);font-size:13.5px;margin-top:6px;max-width:70ch;line-height:1.55}
+.lede{color:var(--muted);font-size:13.5px;margin-top:6px;max-width:74ch;line-height:1.55}
 .lede b{color:var(--ink)}
 .themebtn{float:right;font:inherit;font-size:12px;border:1px solid var(--line);background:var(--card);color:var(--muted);border-radius:8px;padding:5px 11px;cursor:pointer}
 
-.layout{margin-top:30px}
+.layout{margin-top:34px}
 .lhead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:4px}
-.tag{font-family:var(--mono);font-size:11px;font-weight:600;padding:2px 8px;border-radius:6px}
-.tag.a{background:var(--lite-bg);color:var(--lite);border:1px solid var(--lite-line)}
-.tag.b{background:var(--cruise-bg);color:var(--cruise);border:1px solid var(--cruise-line)}
+.tag{font-family:var(--mono);font-size:11px;font-weight:600;padding:2px 8px;border-radius:6px;border:1px solid var(--line);color:var(--muted)}
+.tag.star{background:var(--cruise-bg);color:var(--cruise);border-color:var(--cruise-line)}
 .lhead h2{font-size:17px;font-weight:600}
-.verdict{font-size:12.5px;color:var(--muted);margin:6px 0 14px;max-width:76ch;line-height:1.5}
+.verdict{font-size:12.5px;color:var(--muted);margin:6px 0 14px;max-width:80ch;line-height:1.5}
 .verdict b{color:var(--ink)}
-.bad{color:#b4451f}.good{color:#157a3a}
-:root[data-theme="dark"] .bad{color:#e59178}:root[data-theme="dark"] .good{color:#5cc98d}
+.bad{color:var(--warn)}.good{color:var(--ok)}
 
-.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:10px 0 12px;align-items:center}
+/* toolbar / filter */
+.tbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--card)}
+.seg button{font:inherit;font-size:12px;padding:5px 11px;background:transparent;border:0;border-right:1px solid var(--line);color:var(--muted);cursor:pointer}
+.seg button:last-child{border-right:0}
+.seg button.on{background:var(--accent);color:#fff}
+.seg.filter button.on{background:var(--ink);color:#fff}
+.tbar .nav{width:30px;height:30px;border:1px solid var(--line);background:var(--card);border-radius:8px;color:var(--muted);cursor:pointer}
+.tbar .lbl{font-size:13px;color:var(--muted);min-width:130px}
+.tbar .sp{flex:1}
+.tbar .tally{font-size:12.5px;color:var(--muted)}
+.tbar .tally b{color:var(--ink)}
+.legend{display:flex;gap:15px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);margin:10px 2px 12px;align-items:center}
 .legend .sw{display:inline-flex;align-items:center;gap:6px}
 .legend i{width:12px;height:12px;border-radius:4px;display:inline-block;border:1px solid transparent}
 .i-cruise{background:var(--cruise-bg);border-color:var(--cruise-line)!important}
 .i-lite{background:var(--lite-bg);border-color:var(--lite-line)!important}
 .i-duffy{background:var(--duffy-bg);border-color:var(--duffy-line)!important}
-.i-open{background:repeating-linear-gradient(45deg,transparent 0 3px,var(--line) 3px 4px);border:1px dashed var(--faint)!important}
-.i-blk{background:repeating-linear-gradient(45deg,#c3ccd6 0 3px,transparent 3px 6px)}
+.i-open{border:1px dashed var(--faint)!important}
+.i-blk{background:repeating-linear-gradient(45deg,var(--faint) 0 3px,transparent 3px 6px)}
 
-/* ---------- LAYOUT A: boat × time grid ---------- */
-.gridwrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius);background:var(--card)}
-.grid{min-width:840px;display:grid;grid-template-columns:66px repeat(6,1fr)}
-.grid .gh{padding:9px 8px;font-size:11.5px;font-weight:600;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:6px}
-.grid .gh + .gh{border-left:1px solid var(--line)}
-.grid .gh.corner{color:var(--faint);font-size:10px;text-transform:uppercase;letter-spacing:.06em}
-.hue{width:8px;height:8px;border-radius:50%;flex:none}
-.hue.b1{background:var(--b1)}.hue.b2{background:var(--b2)}.hue.b3{background:var(--b3)}.hue.b4{background:var(--b4)}.hue.b5{background:var(--b5)}.hue.b6{background:var(--b6)}
-.grid .tc{font-family:var(--mono);font-size:11px;color:var(--muted);padding:7px 8px;border-top:1px solid var(--line-soft);display:flex;align-items:center}
-.grid .cell{border-left:1px solid var(--line-soft);border-top:1px solid var(--line-soft);padding:4px;min-height:38px}
-.pill{font-size:10.5px;line-height:1.2;padding:4px 6px;border-radius:7px;border:1px solid var(--line)}
-.pill .nm{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pill .mt{font-family:var(--mono);color:var(--faint);font-size:9.5px}
-.pill.cruise{background:var(--cruise-bg);border-color:var(--cruise-line)}
-.pill.lite{background:var(--lite-bg);border-color:var(--lite-line)}
-.pill.duffy{background:var(--duffy-bg);border-color:var(--duffy-line)}
-.pill.open{background:transparent;border:1px dashed var(--faint);color:var(--faint);text-align:center}
-.pill.blk{background:repeating-linear-gradient(45deg,color-mix(in srgb,var(--faint) 30%,transparent) 0 3px,transparent 3px 6px);border:1px solid var(--line);color:var(--muted)}
-.empty{}
+/* ---- shared block styling ---- */
+.blk{border-radius:8px;padding:5px 8px;font-size:11px;overflow:hidden;border:1px solid;display:flex;flex-direction:column;justify-content:center}
+.blk .nm{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink)}
+.blk .mt{font-family:var(--mono);font-size:9.5px;color:var(--muted)}
+.blk.cruise{background:var(--cruise-bg);border-color:var(--cruise-line)}
+.blk.lite{background:var(--lite-bg);border-color:var(--lite-line)}
+.blk.duffy{background:var(--duffy-bg);border-color:var(--duffy-line)}
+.blk.open{background:transparent;border:1px dashed var(--faint);color:var(--faint);align-items:center;justify-content:center}
+.blk.open .nm{color:var(--faint);font-weight:500}
+.blk.blk-out{background:repeating-linear-gradient(45deg,color-mix(in srgb,var(--faint) 24%,transparent) 0 4px,transparent 4px 8px);border-color:var(--line);color:var(--muted)}
 
-/* ---------- LAYOUT B: resource timeline ---------- */
+/* ---------- DAY · TIMELINE (B) ---------- */
 .tl{border:1px solid var(--line);border-radius:var(--radius);background:var(--card);overflow:hidden}
 .tlwrap{overflow-x:auto}
-.tlinner{min-width:900px}
+.tlinner{min-width:940px}
 .ruler{display:grid;grid-template-columns:96px 1fr;border-bottom:1px solid var(--line)}
-.ruler .rl{position:relative;height:30px}
+.ruler .rl{position:relative;height:28px}
 .ruler .tick{position:absolute;top:0;bottom:0;border-left:1px solid var(--line-soft);padding-left:5px;font-family:var(--mono);font-size:10px;color:var(--faint);display:flex;align-items:center}
 .lane{display:grid;grid-template-columns:96px 1fr;border-top:1px solid var(--line-soft)}
 .lane .lname{padding:0 10px;display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;border-right:1px solid var(--line)}
-.track{position:relative;height:46px;background:
-  repeating-linear-gradient(90deg,transparent 0,transparent calc(100%/7 - 1px),var(--line-soft) calc(100%/7 - 1px),var(--line-soft) calc(100%/7))}
-.blk{position:absolute;top:6px;bottom:6px;border-radius:8px;padding:5px 8px;font-size:11px;overflow:hidden;border:1px solid;display:flex;flex-direction:column;justify-content:center}
-.blk .nm{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.blk .mt{font-family:var(--mono);font-size:9.5px;opacity:.8}
-.blk.cruise{background:var(--cruise-bg);border-color:var(--cruise-line);color:var(--cruise)}
-.blk.lite{background:var(--lite-bg);border-color:var(--lite-line);color:var(--lite)}
-.blk.duffy{background:var(--duffy-bg);border-color:var(--duffy-line);color:var(--duffy)}
-.blk.open{background:transparent;border:1px dashed var(--faint);color:var(--faint);align-items:center;flex-direction:row;justify-content:center}
-.blk.blk-out{background:repeating-linear-gradient(45deg,color-mix(in srgb,var(--faint) 26%,transparent) 0 4px,transparent 4px 8px);border-color:var(--line);color:var(--muted)}
-.blk .who{color:var(--ink)}
-.blk.cruise .who,.blk.lite .who,.blk.duffy .who{color:var(--ink)}
+.track{position:relative;height:46px;background:repeating-linear-gradient(90deg,transparent 0,transparent calc(100%/13 - 1px),var(--line-soft) calc(100%/13 - 1px),var(--line-soft) calc(100%/13))}
+.track .blk{position:absolute;top:6px;bottom:6px}
+.hue{width:8px;height:8px;border-radius:50%;flex:none}
+.hue.b1{background:var(--b1)}.hue.b2{background:var(--b2)}.hue.b3{background:var(--b3)}.hue.b4{background:var(--b4)}.hue.b5{background:var(--b5)}.hue.b6{background:var(--b6)}
 
-.foot-note{margin-top:34px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px}
+/* ---------- DAY · GRID (A, vertical duration) ---------- */
+.vgrid{border:1px solid var(--line);border-radius:var(--radius);background:var(--card);overflow:hidden}
+.vgwrap{overflow-x:auto}
+.vghead{display:grid;grid-template-columns:52px repeat(6,1fr);border-bottom:1px solid var(--line);min-width:820px}
+.vghead > div{padding:8px;font-size:11.5px;font-weight:600;display:flex;align-items:center;gap:6px}
+.vghead > div + div{border-left:1px solid var(--line)}
+.vghead .corner{color:var(--faint);font-size:10px;text-transform:uppercase;letter-spacing:.06em}
+.vgbody{display:grid;grid-template-columns:52px repeat(6,1fr);min-width:820px;height:560px}
+.vgutter{position:relative}
+.vgutter .h{position:absolute;left:0;right:4px;text-align:right;font-family:var(--mono);font-size:10px;color:var(--faint);transform:translateY(-6px)}
+.vcol{position:relative;border-left:1px solid var(--line-soft);
+  background:repeating-linear-gradient(180deg,transparent 0,transparent calc(100%/13.5 - 1px),var(--line-soft) calc(100%/13.5 - 1px),var(--line-soft) calc(100%/13.5))}
+.vcol .blk{position:absolute;left:3px;right:3px}
+
+/* ---------- WEEK ---------- */
+.wk{border:1px solid var(--line);border-radius:var(--radius);background:var(--card);overflow:hidden}
+.wkwrap{overflow-x:auto}
+.wkhead,.wkrow{display:grid;grid-template-columns:56px repeat(7,1fr);min-width:820px}
+.wkhead > div{padding:9px 6px;font-size:11px;font-weight:600;text-align:center;color:var(--muted)}
+.wkhead > div + div{border-left:1px solid var(--line)}
+.wkhead .today{color:var(--accent)}
+.wkrow{border-top:1px solid var(--line)}
+.wktime{padding:8px 6px;font-family:var(--mono);font-size:11px;color:var(--muted);display:flex;align-items:center}
+.wkcell{border-left:1px solid var(--line);padding:7px 6px;cursor:pointer;min-height:52px}
+.wkcell:hover{background:var(--sink)}
+.wkcell.here{background:color-mix(in srgb,var(--accent) 7%,transparent)}
+.dots{display:flex;gap:3px;margin-bottom:5px;flex-wrap:wrap}
+.dot{width:12px;height:12px;border-radius:3px}
+.dot.b{background:var(--cruise-line)}
+.dot.l{background:var(--lite-line)}
+.dot.o{background:transparent;border:1px dashed var(--faint)}
+.dot.x{background:repeating-linear-gradient(45deg,var(--faint) 0 2px,transparent 2px 4px);border:1px solid var(--line)}
+.wkcell .n{font-size:10.5px;color:var(--faint);font-family:var(--mono)}
+.wkcell .n b{color:var(--ink);font-weight:600}
+.wkcell.full .n b{color:var(--warn)}
+
+/* ---------- MONTH ---------- */
+.mo{border:1px solid var(--line);border-radius:var(--radius);background:var(--card);overflow:hidden}
+.modow{display:grid;grid-template-columns:repeat(7,1fr);background:var(--sink);border-bottom:1px solid var(--line)}
+.modow div{padding:7px 10px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);font-weight:700}
+.mogrid{display:grid;grid-template-columns:repeat(7,1fr)}
+.mcell{min-height:96px;border-right:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft);padding:7px 8px}
+.mcell:nth-child(7n){border-right:0}
+.mcell.dim{background:var(--sink)}
+.mcell .dn{font-family:var(--mono);font-size:12px;color:var(--muted);font-weight:600}
+.mcell.today .dn{background:var(--accent);color:#fff;width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center}
+.mcell .msum{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5}
+.mcell .msum b{color:var(--ink);font-weight:600}
+.mbar{height:6px;border-radius:99px;background:var(--sink);overflow:hidden;margin-top:7px;display:flex}
+.mbar i{height:100%}
+.mbar i.b{background:var(--cruise)}
+.mbar i.l{background:var(--lite)}
+.mchip{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:1px 6px;border-radius:5px;margin-top:8px;display:inline-block}
+.mchip.full{background:var(--cruise-bg);color:var(--cruise)}
+.mchip.blk{background:repeating-linear-gradient(45deg,var(--faint) 0 3px,transparent 3px 6px);color:var(--muted);border:1px solid var(--line)}
+.mcell .quiet{font-size:11px;color:var(--faint);margin-top:8px}
+
+.foot-note{margin-top:36px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px}
 .foot-note h3{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);margin-bottom:10px}
-.foot-note ul{margin:0 0 0 18px;font-size:13px;color:var(--muted);line-height:1.6}
+.foot-note ul{margin:0 0 0 18px;font-size:13px;color:var(--muted);line-height:1.65}
 .foot-note b{color:var(--ink)}
 </style>
 </head>
 <body>
-<div class="mockbar"><b>MOCKUP</b> — reservation calendar · scale study · one day · <b>6 boats · 3 offerings (Cruise / Lite / Duffy) · ragged times · 1 blackout</b> · static</div>
+<div class="mockbar"><b>MOCKUP</b> — reservation calendar · views · <b>Sat Jul 18 · 6 boats · Cruise / Lite / Duffy · all opens shown</b> · static</div>
 <div class="wrap">
   <button class="themebtn" onclick="var r=document.documentElement,c=r.getAttribute('data-theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');r.setAttribute('data-theme',c==='dark'?'light':'dark')">◐ Theme</button>
-  <h1>Reservation calendar — does it scale?</h1>
-  <p class="lede">The v2 grid is clean because it assumes <b>one offering, 4 boats, one shared set of times</b>. Here's the same day stress-tested: <b>6 boats</b>, <b>three offerings with different times</b> (Cruise 11:30/1:30/3:30/5:30/7:30 · Lite 12:00/2:00/4:00/6:00 · Duffy rental 8:30/11:00), and a blackout. Below: the current <b>boat × time grid</b> vs. a <b>resource timeline</b>. Same data, both.</p>
+  <h1>Reservation calendar — the views</h1>
+  <p class="lede">Updated per your notes: blocks span <b>start→end</b> (real durations — Cruise ~1h40, Lite ~1h30, Duffy ~2h30), and <b>every open slot is shown</b> — honesty rule: if one "open" shows, they all do (a filter quiets them, but we never show a partial truth). Day gets two forms; then Week + Month as <b>summaries</b>, never pill-walls.</p>
 
-  <!-- LAYOUT A -->
+  <!-- ============ DAY · TIMELINE (B) ============ -->
   <div class="layout">
-    <div class="lhead"><span class="tag a">Layout A</span><h2>Boat × time grid — the current v2 model, stressed</h2></div>
-    <p class="verdict">Once times stop lining up, the shared time-rows become a <b>union of every offering's times</b> — 11 ragged rows, and most cells are blank because a boat only runs some of them. Six columns already feel tight; an 8th boat wraps or shrinks the pills to nothing. <span class="bad">The grid encodes offering-times as structure, so complexity multiplies the axes.</span></p>
-    <div class="legend">
-      <span class="sw"><i class="i-cruise"></i>Cruise</span><span class="sw"><i class="i-lite"></i>Lite</span><span class="sw"><i class="i-duffy"></i>Duffy rental</span><span class="sw"><i class="i-open"></i>Open</span><span class="sw"><i class="i-blk"></i>Blackout</span>
+    <div class="lhead"><span class="tag star">Day · Timeline</span><h2>The one you'd probably live in</h2></div>
+    <p class="verdict">Boats are lanes, real time runs across, blocks are their true length. <b>Turnaround gaps are the empty water between blocks</b> — you can read a boat's whole day in one line. All opens shown; a 7th boat is one more lane.</p>
+    <div class="tbar">
+      <div class="seg"><button class="on">Day</button><button onclick="jump('week')">Week</button><button onclick="jump('month')">Month</button></div>
+      <button class="nav" aria-label="Prev">‹</button><span class="lbl">Sat, Jul 18 2026</span><button class="nav" aria-label="Next">›</button>
+      <span class="sp"></span>
+      <span style="font-size:11px;color:var(--faint)">Show</span>
+      <div class="seg filter"><button class="on">All 32</button><button>Booked 13</button><button>Open 18</button><button>Blackout 1</button></div>
+      <span class="tally" style="margin-left:10px"><b>13</b> booked · <span class="mono">$7,140</span></span>
     </div>
-    <div class="gridwrap"><div class="grid">
-      <div class="gh corner">Time</div>
-      <div class="gh"><span class="hue b1"></span>Brew 1</div><div class="gh"><span class="hue b2"></span>Brew 2</div><div class="gh"><span class="hue b3"></span>Brew 3</div><div class="gh"><span class="hue b4"></span>Brew 4</div><div class="gh"><span class="hue b5"></span>Brew 5</div><div class="gh"><span class="hue b6"></span>Brew 6</div>
-
-      <div class="tc">8:30a</div>
-      <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"><div class="pill duffy"><div class="nm">Rojas</div><div class="mt">Duffy · 6</div></div></div><div class="cell"></div>
-
-      <div class="tc">11:00a</div>
-      <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"><div class="pill open">open · Duffy</div></div>
-
-      <div class="tc">11:30a</div>
-      <div class="cell"><div class="pill cruise"><div class="nm">Alexis Bowen</div><div class="mt">Cruise · 12</div></div></div><div class="cell"></div><div class="cell"><div class="pill cruise"><div class="nm">Erin Becker</div><div class="mt">Cruise · 10</div></div></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
-
-      <div class="tc">12:00p</div>
-      <div class="cell"></div><div class="cell"><div class="pill lite"><div class="nm">Shaye P.</div><div class="mt">Lite · 8</div></div></div><div class="cell"></div><div class="cell"></div><div class="cell"><div class="pill open">open · Lite</div></div><div class="cell"></div>
-
-      <div class="tc">1:30p</div>
-      <div class="cell"></div><div class="cell"></div><div class="cell"><div class="pill open">open</div></div><div class="cell"><div class="pill blk"><div class="nm">Blacked out</div><div class="mt">maint.</div></div></div><div class="cell"></div><div class="cell"></div>
-
-      <div class="tc">2:00p</div>
-      <div class="cell"></div><div class="cell"><div class="pill lite"><div class="nm">Healey Z.</div><div class="mt">Lite · 6</div></div></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"><div class="pill lite"><div class="nm">Wes B.</div><div class="mt">Lite · 9</div></div></div>
-
-      <div class="tc">3:30p</div>
-      <div class="cell"><div class="pill cruise"><div class="nm">Lisa Braun</div><div class="mt">Cruise · 12</div></div></div><div class="cell"></div><div class="cell"></div><div class="cell"><div class="pill cruise"><div class="nm">Munish B.</div><div class="mt">Cruise · 7</div></div></div><div class="cell"></div><div class="cell"></div>
-
-      <div class="tc">4:00p</div>
-      <div class="cell"></div><div class="cell"><div class="pill open">open</div></div><div class="cell"></div><div class="cell"></div><div class="cell"><div class="pill lite"><div class="nm">Carol Reid</div><div class="mt">Lite · 8</div></div></div><div class="cell"></div>
-
-      <div class="tc">5:30p</div>
-      <div class="cell"></div><div class="cell"></div><div class="cell"><div class="pill cruise"><div class="nm">Taylor R.</div><div class="mt">Cruise · 12</div></div></div><div class="cell"><div class="pill open">open</div></div><div class="cell"></div><div class="cell"></div>
-
-      <div class="tc">6:00p</div>
-      <div class="cell"></div><div class="cell"><div class="pill lite"><div class="nm">Kailee K.</div><div class="mt">Lite · 9</div></div></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"><div class="pill open">open · Lite</div></div>
-
-      <div class="tc">7:30p</div>
-      <div class="cell"><div class="pill open">open</div></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
-    </div></div>
-  </div>
-
-  <!-- LAYOUT B -->
-  <div class="layout">
-    <div class="lhead"><span class="tag b">Layout B</span><h2>Resource timeline — boats as lanes, real time across</h2></div>
-    <p class="verdict"><span class="good">Boats are the only fixed axis; time is continuous, and the offering is just color.</span> Ragged times sit where they actually fall, turnaround gaps become <b>visible</b> (you can see the empty water on Brew 3 between 1:30 and 5:30), a 7th boat is one more lane, and a new offering adds a color — <b>never a row or column</b>. Density stays proportional to <b>boats × real departures</b>, not to the catalog.</p>
-    <div class="legend">
-      <span class="sw"><i class="i-cruise"></i>Cruise</span><span class="sw"><i class="i-lite"></i>Lite</span><span class="sw"><i class="i-duffy"></i>Duffy rental</span><span class="sw"><i class="i-open"></i>Open water</span><span class="sw"><i class="i-blk"></i>Blackout</span>
-    </div>
+    <div class="legend"><span class="sw"><i class="i-cruise"></i>Cruise 1h40</span><span class="sw"><i class="i-lite"></i>Lite 1h30</span><span class="sw"><i class="i-duffy"></i>Duffy 2h30</span><span class="sw"><i class="i-open"></i>Open water</span><span class="sw"><i class="i-blk"></i>Blackout</span></div>
     <div class="tl"><div class="tlwrap"><div class="tlinner">
       <div class="ruler"><div></div><div class="rl">
-        <span class="tick" style="left:0%">8a</span><span class="tick" style="left:14.3%">10a</span><span class="tick" style="left:28.6%">12p</span><span class="tick" style="left:42.9%">2p</span><span class="tick" style="left:57.1%">4p</span><span class="tick" style="left:71.4%">6p</span><span class="tick" style="left:85.7%">8p</span>
+        <span class="tick" style="left:0%">8a</span><span class="tick" style="left:14.8%">10a</span><span class="tick" style="left:29.6%">12p</span><span class="tick" style="left:44.4%">2p</span><span class="tick" style="left:59.3%">4p</span><span class="tick" style="left:74.1%">6p</span><span class="tick" style="left:88.9%">8p</span>
       </div></div>
-
-      <!-- Brew 1: 11:30 Cruise, 3:30 Cruise, 7:30 open -->
+      <!-- window 8:00-21:30 = 810min; left=(min-480)/810; cruise w=12.3, lite=11.1, duffy=18.5 -->
       <div class="lane"><div class="lname"><span class="hue b1"></span>Brew 1</div><div class="track">
-        <div class="blk cruise" style="left:25%;width:11.9%"><span class="nm who">Alexis Bowen</span><span class="mt">11:30 · Cruise · 12</span></div>
-        <div class="blk cruise" style="left:53.6%;width:11.9%"><span class="nm who">Lisa Braun</span><span class="mt">3:30 · Cruise · 12</span></div>
-        <div class="blk open" style="left:82.1%;width:11.9%">open · 7:30</div>
+        <div class="blk cruise" style="left:25.9%;width:12.3%"><span class="nm">Bowen · 12</span></div>
+        <div class="blk open" style="left:40.7%;width:12.3%">open</div>
+        <div class="blk cruise" style="left:55.6%;width:12.3%"><span class="nm">Braun · 12</span></div>
+        <div class="blk open" style="left:77.8%;width:12.3%">open</div>
+        <div class="blk open" style="left:85.2%;width:12.3%">open</div>
       </div></div>
-
-      <!-- Brew 2: 12 Lite, 2 Lite, 4 open, 6 Lite -->
-      <div class="lane"><div class="lname"><span class="hue b2"></span>Brew 2</div><div class="track">
-        <div class="blk lite" style="left:28.6%;width:10.7%"><span class="nm who">Shaye P.</span><span class="mt">12:00 · Lite · 8</span></div>
-        <div class="blk lite" style="left:42.9%;width:10.7%"><span class="nm who">Healey Z.</span><span class="mt">2:00 · Lite · 6</span></div>
-        <div class="blk open" style="left:57.1%;width:10.7%">open · 4:00</div>
-        <div class="blk lite" style="left:71.4%;width:10.7%"><span class="nm who">Kailee K.</span><span class="mt">6:00 · Lite · 9</span></div>
+      <div class="lane"><div class="lname"><span class="hue b2"></span>Brew 2 <span style="color:var(--faint);font-weight:400;font-size:10px">Lite</span></div><div class="track">
+        <div class="blk lite" style="left:29.6%;width:11.1%"><span class="nm">Shaye · 8</span></div>
+        <div class="blk lite" style="left:44.4%;width:11.1%"><span class="nm">Healey · 6</span></div>
+        <div class="blk open" style="left:59.3%;width:11.1%">open</div>
+        <div class="blk lite" style="left:74.1%;width:11.1%"><span class="nm">Kailee · 9</span></div>
       </div></div>
-
-      <!-- Brew 3: 11:30 Cruise, 1:30 open, 5:30 Cruise -->
       <div class="lane"><div class="lname"><span class="hue b3"></span>Brew 3</div><div class="track">
-        <div class="blk cruise" style="left:25%;width:11.9%"><span class="nm who">Erin Becker</span><span class="mt">11:30 · Cruise · 10</span></div>
-        <div class="blk open" style="left:39.3%;width:11.9%">open · 1:30</div>
-        <div class="blk cruise" style="left:67.9%;width:11.9%"><span class="nm who">Taylor R.</span><span class="mt">5:30 · Cruise · 12</span></div>
+        <div class="blk cruise" style="left:25.9%;width:12.3%"><span class="nm">Becker · 10</span></div>
+        <div class="blk open" style="left:40.7%;width:12.3%">open</div>
+        <div class="blk open" style="left:55.6%;width:12.3%">open</div>
+        <div class="blk cruise" style="left:77.8%;width:12.3%"><span class="nm">Taylor · 12</span></div>
+        <div class="blk open" style="left:85.2%;width:12.3%">open</div>
       </div></div>
-
-      <!-- Brew 4: 1:30 blackout, 3:30 Cruise, 5:30 open -->
       <div class="lane"><div class="lname"><span class="hue b4"></span>Brew 4</div><div class="track">
-        <div class="blk blk-out" style="left:39.3%;width:11.9%">Blacked out · maint.</div>
-        <div class="blk cruise" style="left:53.6%;width:11.9%"><span class="nm who">Munish B.</span><span class="mt">3:30 · Cruise · 7</span></div>
-        <div class="blk open" style="left:67.9%;width:11.9%">open · 5:30</div>
+        <div class="blk open" style="left:25.9%;width:12.3%">open</div>
+        <div class="blk blk-out" style="left:40.7%;width:12.3%">blackout</div>
+        <div class="blk cruise" style="left:55.6%;width:12.3%"><span class="nm">Munish · 7</span></div>
+        <div class="blk open" style="left:77.8%;width:12.3%">open</div>
+        <div class="blk open" style="left:85.2%;width:12.3%">open</div>
       </div></div>
-
-      <!-- Brew 5: 8:30 Duffy, 12 open Lite, 4 Lite -->
       <div class="lane"><div class="lname"><span class="hue b5"></span>Brew 5</div><div class="track">
-        <div class="blk duffy" style="left:3.6%;width:17.9%"><span class="nm who">Rojas</span><span class="mt">8:30 · Duffy rental · 6</span></div>
-        <div class="blk open" style="left:28.6%;width:10.7%">open · 12:00</div>
-        <div class="blk lite" style="left:57.1%;width:10.7%"><span class="nm who">Carol Reid</span><span class="mt">4:00 · Lite · 8</span></div>
+        <div class="blk duffy" style="left:3.7%;width:18.5%"><span class="nm">Rojas · Duffy · 6</span></div>
+        <div class="blk open" style="left:40.7%;width:12.3%">open</div>
+        <div class="blk cruise" style="left:55.6%;width:12.3%"><span class="nm">Reid · 8</span></div>
+        <div class="blk open" style="left:77.8%;width:12.3%">open</div>
+        <div class="blk open" style="left:85.2%;width:12.3%">open</div>
       </div></div>
-
-      <!-- Brew 6: 11 open Duffy, 2 Lite, 6 open -->
-      <div class="lane"><div class="lname"><span class="hue b6"></span>Brew 6</div><div class="track">
-        <div class="blk open" style="left:21.4%;width:17.9%">open · 11:00 Duffy</div>
-        <div class="blk lite" style="left:42.9%;width:10.7%"><span class="nm who">Wes B.</span><span class="mt">2:00 · Lite · 9</span></div>
-        <div class="blk open" style="left:71.4%;width:10.7%">open · 6:00</div>
+      <div class="lane"><div class="lname"><span class="hue b6"></span>Brew 6 <span style="color:var(--faint);font-weight:400;font-size:10px">Duffy+Lite</span></div><div class="track">
+        <div class="blk open" style="left:22.2%;width:18.5%">open · Duffy</div>
+        <div class="blk lite" style="left:44.4%;width:11.1%"><span class="nm">Wes · 9</span></div>
+        <div class="blk open" style="left:59.3%;width:11.1%">open</div>
+        <div class="blk open" style="left:74.1%;width:11.1%">open</div>
       </div></div>
     </div></div></div>
   </div>
 
+  <!-- ============ DAY · GRID (A revised) ============ -->
+  <div class="layout">
+    <div class="lhead"><span class="tag">Day · Grid</span><h2>Boat columns, vertical time — blocks span their duration</h2></div>
+    <p class="verdict">Your ask: pills run <b>start→end</b>, so a 1h40 cruise is visibly longer than a 1h30 Lite, and overlap/turnaround is obvious. It's the timeline rotated — same honesty (all opens), same data. Busier than the old row-grid, but it reads like a real day. Same <b>filter</b> quiets opens when you just want the booked picture.</p>
+    <div class="legend"><span class="sw"><i class="i-cruise"></i>Cruise</span><span class="sw"><i class="i-lite"></i>Lite</span><span class="sw"><i class="i-duffy"></i>Duffy</span><span class="sw"><i class="i-open"></i>Open</span><span class="sw"><i class="i-blk"></i>Blackout</span></div>
+    <div class="vgrid"><div class="vgwrap">
+      <div class="vghead"><div class="corner">Time</div>
+        <div><span class="hue b1"></span>Brew 1</div><div><span class="hue b2"></span>Brew 2</div><div><span class="hue b3"></span>Brew 3</div><div><span class="hue b4"></span>Brew 4</div><div><span class="hue b5"></span>Brew 5</div><div><span class="hue b6"></span>Brew 6</div>
+      </div>
+      <!-- window 8:00-21:30=810; top=(min-480)/810; cruise h=12.3 lite=11.1 duffy=18.5 -->
+      <div class="vgbody">
+        <div class="vgutter">
+          <span class="h" style="top:0%">8a</span><span class="h" style="top:14.8%">10a</span><span class="h" style="top:29.6%">12p</span><span class="h" style="top:44.4%">2p</span><span class="h" style="top:59.3%">4p</span><span class="h" style="top:74.1%">6p</span><span class="h" style="top:88.9%">8p</span>
+        </div>
+        <div class="vcol">
+          <div class="blk cruise" style="top:25.9%;height:12.3%"><span class="nm">Bowen</span><span class="mt">11:30 · 12</span></div>
+          <div class="blk open" style="top:40.7%;height:12.3%">open</div>
+          <div class="blk cruise" style="top:55.6%;height:12.3%"><span class="nm">Braun</span><span class="mt">3:30 · 12</span></div>
+          <div class="blk open" style="top:77.8%;height:12.3%">open</div>
+          <div class="blk open" style="top:85.2%;height:12.3%">open</div>
+        </div>
+        <div class="vcol">
+          <div class="blk lite" style="top:29.6%;height:11.1%"><span class="nm">Shaye</span><span class="mt">12:00 · 8</span></div>
+          <div class="blk lite" style="top:44.4%;height:11.1%"><span class="nm">Healey</span><span class="mt">2:00 · 6</span></div>
+          <div class="blk open" style="top:59.3%;height:11.1%">open</div>
+          <div class="blk lite" style="top:74.1%;height:11.1%"><span class="nm">Kailee</span><span class="mt">6:00 · 9</span></div>
+        </div>
+        <div class="vcol">
+          <div class="blk cruise" style="top:25.9%;height:12.3%"><span class="nm">Becker</span><span class="mt">11:30 · 10</span></div>
+          <div class="blk open" style="top:40.7%;height:12.3%">open</div>
+          <div class="blk open" style="top:55.6%;height:12.3%">open</div>
+          <div class="blk cruise" style="top:77.8%;height:12.3%"><span class="nm">Taylor</span><span class="mt">5:30 · 12</span></div>
+        </div>
+        <div class="vcol">
+          <div class="blk open" style="top:25.9%;height:12.3%">open</div>
+          <div class="blk blk-out" style="top:40.7%;height:12.3%">blackout</div>
+          <div class="blk cruise" style="top:55.6%;height:12.3%"><span class="nm">Munish</span><span class="mt">3:30 · 7</span></div>
+          <div class="blk open" style="top:77.8%;height:12.3%">open</div>
+        </div>
+        <div class="vcol">
+          <div class="blk duffy" style="top:3.7%;height:18.5%"><span class="nm">Rojas</span><span class="mt">8:30 Duffy · 6</span></div>
+          <div class="blk open" style="top:40.7%;height:12.3%">open</div>
+          <div class="blk cruise" style="top:55.6%;height:12.3%"><span class="nm">Reid</span><span class="mt">3:30 · 8</span></div>
+          <div class="blk open" style="top:77.8%;height:12.3%">open</div>
+        </div>
+        <div class="vcol">
+          <div class="blk open duffy" style="top:22.2%;height:18.5%;background:transparent;border:1px dashed var(--duffy-line);color:var(--duffy)">open Duffy</div>
+          <div class="blk lite" style="top:44.4%;height:11.1%"><span class="nm">Wes</span><span class="mt">2:00 · 9</span></div>
+          <div class="blk open" style="top:59.3%;height:11.1%">open</div>
+          <div class="blk open" style="top:74.1%;height:11.1%">open</div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- ============ WEEK ============ -->
+  <div class="layout" id="week">
+    <div class="lhead"><span class="tag">Week</span><h2>Summary, not events — where's the water still open</h2></div>
+    <p class="verdict">A week is ~200 boat-slots; you can't render them, and you shouldn't. Each cell is the <b>6 boats at that day+time</b> as fill: colored dots + a booked count. Scan for the <b>gaps</b> (open water to sell) and the <b>Full</b> rows. Click any cell → that day's timeline.</p>
+    <div class="wk"><div class="wkwrap">
+      <div class="wkhead"><div>Time</div><div>Sun 12</div><div>Mon 13</div><div>Tue 14</div><div>Wed 15</div><div>Thu 16</div><div>Fri 17</div><div class="today">Sat 18</div></div>
+      <div class="wkrow"><div class="wktime">11:30</div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot b"></span><span class="dot b"></span><span class="dot o"></span><span class="dot b"></span><span class="dot o"></span></div><div class="n"><b>4</b>/6</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot o"></span><span class="dot l"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>1</b>/6</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>1</b>/6</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot b"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>2</b>/6</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot b"></span><span class="dot b"></span><span class="dot o"></span><span class="dot b"></span><span class="dot o"></span></div><div class="n"><b>4</b>/6</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot b"></span><span class="dot b"></span><span class="dot b"></span><span class="dot b"></span><span class="dot o"></span></div><div class="n"><b>5</b>/6</div></div>
+        <div class="wkcell here"><div class="dots"><span class="dot b"></span><span class="dot o"></span><span class="dot b"></span><span class="dot o"></span><span class="dot b"></span><span class="dot o"></span></div><div class="n"><b>3</b>/6</div></div>
+      </div>
+      <div class="wkrow"><div class="wktime">1:30</div>
+        <div class="wkcell full"><div class="dots"><span class="dot b"></span><span class="dot b"></span><span class="dot b"></span><span class="dot b"></span><span class="dot b"></span><span class="dot b"></span></div><div class="n"><b>Full</b></div></div>
+        <div class="wkcell"><div class="dots"><span class="dot l"></span><span class="dot l"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>2</b>/6</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n">open</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>1</b>/6</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot l"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>2</b>/6</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot b"></span><span class="dot l"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>3</b>/6</div></div>
+        <div class="wkcell here"><div class="dots"><span class="dot b"></span><span class="dot l"></span><span class="dot o"></span><span class="dot x"></span><span class="dot o"></span><span class="dot l"></span></div><div class="n"><b>3</b>/6 · 1 blk</div></div>
+      </div>
+      <div class="wkrow"><div class="wktime">3:30</div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot b"></span><span class="dot o"></span><span class="dot o"></span><span class="dot b"></span><span class="dot o"></span></div><div class="n"><b>3</b>/6</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n">open</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot b"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>2</b>/6</div></div>
+        <div class="wkcell full"><div class="dots"><span class="dot b"></span><span class="dot b"></span><span class="dot b"></span><span class="dot b"></span><span class="dot b"></span><span class="dot b"></span></div><div class="n"><b>Full</b></div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot b"></span><span class="dot b"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>3</b>/6</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot b"></span><span class="dot b"></span><span class="dot b"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>4</b>/6</div></div>
+        <div class="wkcell here"><div class="dots"><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot b"></span><span class="dot b"></span><span class="dot o"></span></div><div class="n"><b>2</b>/6</div></div>
+      </div>
+      <div class="wkrow"><div class="wktime">5:30</div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot b"></span><span class="dot b"></span><span class="dot o"></span><span class="dot b"></span><span class="dot o"></span></div><div class="n"><b>4</b>/6</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot l"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>2</b>/6</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>1</b>/6</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n">open</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot b"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>2</b>/6</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot b"></span><span class="dot b"></span><span class="dot l"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>4</b>/6</div></div>
+        <div class="wkcell here"><div class="dots"><span class="dot o"></span><span class="dot l"></span><span class="dot b"></span><span class="dot o"></span><span class="dot b"></span><span class="dot o"></span></div><div class="n"><b>3</b>/6</div></div>
+      </div>
+      <div class="wkrow"><div class="wktime">7:30</div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>1</b>/6</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot o"></span><span class="dot l"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>1</b>/6</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n">open</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>1</b>/6</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>1</b>/6</div></div>
+        <div class="wkcell"><div class="dots"><span class="dot b"></span><span class="dot b"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>2</b>/6</div></div>
+        <div class="wkcell here"><div class="dots"><span class="dot o"></span><span class="dot l"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span><span class="dot o"></span></div><div class="n"><b>1</b>/6</div></div>
+      </div>
+    </div></div>
+    <div class="legend" style="margin-top:10px"><span class="sw"><i class="i-cruise"></i>Cruise booked</span><span class="sw"><i class="i-lite"></i>Lite booked</span><span class="sw"><i class="i-open"></i>Open</span><span class="sw"><i class="i-blk"></i>Blackout</span><span style="color:var(--faint)">6 dots = the 6 boats</span></div>
+  </div>
+
+  <!-- ============ MONTH ============ -->
+  <div class="layout" id="month">
+    <div class="lhead"><span class="tag">Month</span><h2>The bird's eye — utilization, not a wall of pills</h2></div>
+    <p class="verdict">This is the screenshot you liked (clean BrewCLE), made the default: each day shows <b>booked / total departures</b> + a fill bar, <b>Full</b> when sold out, a quiet dash when nothing's scheduled. No event ever renders as a pill here — the month answers "how's the month selling," not "list every trip." Click a day → its timeline.</p>
+    <div class="tbar"><div class="seg"><button onclick="jump('week')">Day</button><button onclick="jump('week')">Week</button><button class="on">Month</button></div><button class="nav">‹</button><span class="lbl">July 2026</span><button class="nav">›</button><span class="sp"></span><span class="tally"><b>312</b> booked · <span class="mono">$168k</span> · 58% sold</span></div>
+    <div class="mo">
+      <div class="modow"><div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div></div>
+      <div class="mogrid">
+        <div class="mcell dim"><div class="dn">29</div></div><div class="mcell dim"><div class="dn">30</div></div>
+        <div class="mcell"><div class="dn">1</div><div class="msum"><b>8</b>/24</div><div class="mbar"><i class="b" style="width:33%"></i></div></div>
+        <div class="mcell"><div class="dn">2</div><div class="msum"><b>11</b>/24</div><div class="mbar"><i class="b" style="width:38%"></i><i class="l" style="width:8%"></i></div></div>
+        <div class="mcell"><div class="dn">3</div><div class="msum"><b>14</b>/24</div><div class="mbar"><i class="b" style="width:50%"></i><i class="l" style="width:8%"></i></div></div>
+        <div class="mcell"><div class="dn">4</div><div class="msum"><b>22</b>/26</div><div class="mbar"><i class="b" style="width:73%"></i><i class="l" style="width:12%"></i></div></div>
+        <div class="mcell"><div class="dn">5</div><div class="msum"><b>24</b>/26</div><div class="mbar"><i class="b" style="width:80%"></i><i class="l" style="width:12%"></i></div></div>
+
+        <div class="mcell"><div class="dn">6</div><div class="msum"><b>7</b>/24</div><div class="mbar"><i class="b" style="width:29%"></i></div></div>
+        <div class="mcell"><div class="dn">7</div><div class="quiet">— no departures</div></div>
+        <div class="mcell"><div class="dn">8</div><div class="msum"><b>9</b>/24</div><div class="mbar"><i class="b" style="width:33%"></i><i class="l" style="width:4%"></i></div></div>
+        <div class="mcell"><div class="dn">9</div><div class="msum"><b>12</b>/24</div><div class="mbar"><i class="b" style="width:42%"></i><i class="l" style="width:8%"></i></div></div>
+        <div class="mcell"><div class="dn">10</div><div class="msum"><b>18</b>/26</div><div class="mbar"><i class="b" style="width:58%"></i><i class="l" style="width:12%"></i></div></div>
+        <div class="mcell"><div class="dn">11</div><div class="msum"><b>21</b>/26</div><div class="mbar"><i class="b" style="width:69%"></i><i class="l" style="width:12%"></i></div></div>
+        <div class="mcell"><div class="dn">12</div><div class="msum"><b>15</b>/26</div><div class="mbar"><i class="b" style="width:50%"></i><i class="l" style="width:8%"></i></div></div>
+
+        <div class="mcell"><div class="dn">13</div><div class="msum"><b>10</b>/24</div><div class="mbar"><i class="b" style="width:38%"></i><i class="l" style="width:4%"></i></div></div>
+        <div class="mcell"><div class="dn">14</div><div class="msum"><b>6</b>/22</div><div class="mbar"><i class="b" style="width:27%"></i></div><span class="mchip blk">1 blackout</span></div>
+        <div class="mcell"><div class="dn">15</div><div class="msum"><b>13</b>/24</div><div class="mbar"><i class="b" style="width:46%"></i><i class="l" style="width:8%"></i></div></div>
+        <div class="mcell"><div class="dn">16</div><div class="msum"><b>16</b>/24</div><div class="mbar"><i class="b" style="width:58%"></i><i class="l" style="width:8%"></i></div></div>
+        <div class="mcell"><div class="dn">17</div><div class="msum"><b>20</b>/26</div><div class="mbar"><i class="b" style="width:65%"></i><i class="l" style="width:12%"></i></div></div>
+        <div class="mcell today"><div class="dn">18</div><div class="msum"><b>13</b>/32</div><div class="mbar"><i class="b" style="width:34%"></i><i class="l" style="width:9%"></i></div></div>
+        <div class="mcell"><div class="dn">19</div><div class="msum"><b>26</b>/26</div><span class="mchip full">Full</span></div>
+
+        <div class="mcell"><div class="dn">20</div><div class="msum"><b>9</b>/24</div><div class="mbar"><i class="b" style="width:33%"></i></div></div>
+        <div class="mcell"><div class="dn">21</div><div class="quiet">— no departures</div></div>
+        <div class="mcell"><div class="dn">22</div><div class="msum"><b>11</b>/24</div><div class="mbar"><i class="b" style="width:38%"></i><i class="l" style="width:8%"></i></div></div>
+        <div class="mcell"><div class="dn">23</div><div class="msum"><b>14</b>/24</div><div class="mbar"><i class="b" style="width:50%"></i><i class="l" style="width:8%"></i></div></div>
+        <div class="mcell"><div class="dn">24</div><div class="msum"><b>19</b>/26</div><div class="mbar"><i class="b" style="width:62%"></i><i class="l" style="width:12%"></i></div></div>
+        <div class="mcell"><div class="dn">25</div><div class="msum"><b>23</b>/26</div><div class="mbar"><i class="b" style="width:77%"></i><i class="l" style="width:12%"></i></div></div>
+        <div class="mcell"><div class="dn">26</div><div class="msum"><b>25</b>/26</div><div class="mbar"><i class="b" style="width:81%"></i><i class="l" style="width:12%"></i></div></div>
+
+        <div class="mcell"><div class="dn">27</div><div class="msum"><b>8</b>/24</div><div class="mbar"><i class="b" style="width:33%"></i></div></div>
+        <div class="mcell"><div class="dn">28</div><div class="quiet">— no departures</div></div>
+        <div class="mcell"><div class="dn">29</div><div class="msum"><b>12</b>/24</div><div class="mbar"><i class="b" style="width:46%"></i></div></div>
+        <div class="mcell"><div class="dn">30</div><div class="msum"><b>15</b>/24</div><div class="mbar"><i class="b" style="width:54%"></i><i class="l" style="width:8%"></i></div></div>
+        <div class="mcell"><div class="dn">31</div><div class="msum"><b>21</b>/26</div><div class="mbar"><i class="b" style="width:69%"></i><i class="l" style="width:12%"></i></div></div>
+        <div class="mcell dim"><div class="dn">1</div></div><div class="mcell dim"><div class="dn">2</div></div>
+      </div>
+    </div>
+  </div>
+
   <div class="foot-note">
-    <h3>The takeaway</h3>
+    <h3>Where this leaves us</h3>
     <ul>
-      <li><b>Make the axes match reality:</b> boats are the one fixed, scarce thing → the stable axis. Time is continuous. <b>Offering is color + a filter, never a row or column.</b></li>
-      <li><b>Timeline generalizes; the grid is its special case</b> (when every offering shares the same times, the timeline just looks like the tidy grid you already have). So you lose nothing today and gain the growth path.</li>
-      <li><b>You still can't become the FareHarbor wall</b> — you render boat-lanes, not one pill per open availability per product. Your ceiling is boats × real departures.</li>
-      <li><b>Mobile</b> stays the time-grouped list (reservation-calendar-mobile) — a list scales past any grid; the timeline is a desktop affordance.</li>
-      <li><b>Open call:</b> default the day view to the <b>timeline</b>, or keep the grid as the "consistent-times" fast view and offer timeline as a toggle when offerings diverge? Both are cheap once the data model is boats-and-time.</li>
+      <li><b>Day</b> = timeline (or the grid, same data rotated) — real durations, all opens, filterable. This is the operate-the-day surface.</li>
+      <li><b>Week</b> = day×time cells summarizing the 6 boats as dots + a booked count. Find open water and Full rows; click into a day. Never individual events.</li>
+      <li><b>Month</b> = per-day <b>booked/total + fill bar</b>, "Full" and blackout flags, quiet dash for dark days. Answers "how's the month selling," not "list every trip" — the clean BrewCLE view as the default.</li>
+      <li><b>The honesty rule holds everywhere:</b> opens are all-or-none via filter; a blank never secretly means "open."</li>
+      <li><b>Open call for @architect:</b> is Day's default the timeline or the grid? (I lean timeline — you said the same.) Week/Month are summary-only by design — that's the anti-wall guarantee.</li>
     </ul>
   </div>
 </div>
+<script>
+function jump(id){var e=document.getElementById(id);if(e)e.scrollIntoView({behavior:'smooth',block:'start'});}
+</script>
 </body>
 </html>

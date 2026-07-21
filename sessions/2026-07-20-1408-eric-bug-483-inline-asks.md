@@ -4,10 +4,10 @@ dev: eric
 slug: bug-483-inline-asks
 branch: main
 started: 2026-07-20T14:08:56Z
-ended:
-points:
+ended: 2026-07-21T02:58:05Z
+points: 13
 pr_numbers: [488, 490]
-status: open
+status: closed
 transcript: /home/eric/.claude/projects/-home-eric-muster/4859b349-a5b4-4de2-854f-50694af67381.jsonl
 ---
 

@@ -26,6 +26,7 @@
     "db:seed:outbox": "tsx db/seed-outbox-dev.ts",
     "db:seed:split": "tsx db/seed-split-dev.ts",
     "db:seed:gratuity": "tsx db/seed-gratuity-dev.ts",
+    "db:seed:reservation": "tsx db/seed-reservation-dev.ts",
     "db:tick": "tsx db/tick-dev.ts",
     "db:doorbell": "tsx db/doorbell-dev.ts",
     "db:reset:test": "tsx db/reset-test.ts",

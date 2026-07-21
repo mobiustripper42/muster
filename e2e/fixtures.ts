@@ -20,6 +20,7 @@ const SEED_SCRIPTS = {
   crew: "db/seed-crewapp-dev.ts",
   atrisk: "db/seed-atrisk-dev.ts",
   outbox: "db/seed-outbox-dev.ts",
+  reservation: "db/seed-reservation-dev.ts",
 } as const;
 
 type SeedName = keyof typeof SEED_SCRIPTS;

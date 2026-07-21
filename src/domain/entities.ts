@@ -73,16 +73,6 @@ export interface Vessel {
   /** Certificate-of-Inspection max passengers. BrewBoat = 6. */
   coiMaxPax: number;
   /**
-   * Base-fare included guest count (DEC-125 build note pricing composition, over DEC-112's
-   * per-Event price; 12.2) — the whole-boat
-   * base fare covers up to this many guests; each guest ABOVE it adds
-   * `Offering.extraGuestPriceCents`, up to `coiMaxPax`. Optional/nullable: absent ⇒ treated
-   * as `coiMaxPax` (the whole boat is included, no per-guest extras) — the safe default for
-   * vessels seeded before pricing composition. Booking-time only; the availability deriver
-   * never reads it (it prices the display base only, DEC-125).
-   */
-  includedGuestCount?: number;
-  /**
    * Vessel identity hue (DEC-086 palette, 12.9) — the index (1–6) of the locked
    * `--color-vessel-N` token this boat renders in across the crew shift board and the
    * reservation calendar. Operator-chosen on the Vessel admin (color is information, not
@@ -283,6 +273,14 @@ export interface Offering {
   tenantId: TenantId;
   name: string;
   status: OfferingStatus;
+  /** Customer-facing description (12.8 catalog) — markdown, rendered on browse/checkout. */
+  description?: string;
+  /** Minutes on the water (12.8) — display config; the customer sees "1h 40min". */
+  tripLengthMinutes?: number;
+  /** Minutes the boat is held per departure, turnaround included (12.8). Display/config. */
+  holdMinutes?: number;
+  /** Minutes before departure the guests are told to arrive (12.8). Display/config. */
+  arriveBeforeMinutes?: number;
   /** The boats this offering can run on; each expands into its own per-vessel slot. */
   vesselIds: VesselId[];
   /** Pickup place — the location-block target. */
@@ -292,16 +290,55 @@ export interface Offering {
   basePriceCents: number;
   /** Ordered price rules; first match wins (see {@link PriceVariation}). */
   priceVariations: PriceVariation[];
+  /**
+   * Base-fare included guest count (DEC-125 build note pricing composition; moved
+   * Vessel → Offering in 12.8 — the included count prices the PRODUCT, not the boat) — the
+   * whole-boat base fare covers up to this many guests; each guest ABOVE it adds
+   * `extraGuestPriceCents`, up to the running vessel's `coiMaxPax` (the cap stays a Vessel
+   * fact). Optional/nullable: absent ⇒ treated as `coiMaxPax` (whole boat included, no
+   * per-guest extras). Booking-time only; the availability deriver never reads it (DEC-125).
+   */
+  includedGuestCount?: number;
   /** Per-guest surcharge over the base-fare included count — booking-time only (DEC-124). */
   extraGuestPriceCents: number;
   /**
-   * Gratuity tiers in basis points (DEC-124, 12.3) — the required-at-checkout tip choices
-   * (default 15/20/25%). Optional/absent ⇒ `GRATUITY_TIERS_DEFAULT`. Gratuity is first-class
-   * crew money (tax/fee-exempt, routes to crew), NOT an add-on.
+   * Per-kind gratuity config (12.8, DEC-124) — one entry per collected kind (`pre` at
+   * checkout, typically required; `post` via the booking link, not required). Replaces the
+   * flat `gratuityTiersBps`/`gratuityDefaultBps` pair (migrated into a `pre` entry).
+   * Optional/absent ⇒ the code defaults (`GRATUITY_KINDS_DEFAULT`: pre required + post
+   * optional, tiers 15/20/25%). Gratuity is first-class crew money — tax/fee-EXEMPT, keyed
+   * by kind, deliberately NOT an add-on.
    */
-  gratuityTiersBps?: number[];
-  /** The pre-selected tier in bps (default 2000 = 20%). Absent ⇒ `GRATUITY_DEFAULT_BPS`. */
-  gratuityDefaultBps?: number;
+  gratuityKinds?: GratuityKindConfig[];
+  /**
+   * Generic sellable add-ons (12.8, DEC-124) — real upsells (extra hour, catering, photos).
+   * Taxed + fee'd as REVENUE, unlike gratuity. Optional/absent ⇒ none.
+   */
+  addOns?: AddOn[];
+}
+
+/**
+ * One gratuity kind's collection config (12.8, DEC-124). `tiersBps` are the offered tip
+ * choices in basis points; `defaultBps` is the pre-selected one (∈ `tiersBps`); `required`
+ * means the customer must pick a tier (pre's posture — no decline), vs. optional (post).
+ */
+export interface GratuityKindConfig {
+  kind: GratuityKind;
+  tiersBps: number[];
+  defaultBps: number;
+  required: boolean;
+}
+
+/**
+ * One generic sellable add-on (12.8, DEC-124) — revenue, taxed + fee'd (the opposite of
+ * gratuity). `type` is `"flat"` only for now; a text discriminator so new pricing shapes
+ * are a value, not a migration (DEC-DATA-1 posture).
+ */
+export interface AddOn {
+  label: string;
+  type: "flat";
+  amountCents: number;
+  required: boolean;
 }
 
 // ── Gratuity — first-class crew money (DEC-124, 12.3) ─────────────────────────

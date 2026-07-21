@@ -14,6 +14,7 @@ import {
   composeFare,
   effectiveIncludedGuests,
   gratuityCentsFor,
+  gratuityKindsFor,
   gratuityTiersFor,
 } from "./pricing.js";
 
@@ -50,19 +51,41 @@ describe("gratuity tiers (DEC-124)", () => {
     expect(gratuityCentsFor(49900, 1500)).toBe(7485); // 15%
     expect(gratuityCentsFor(49900, 2500)).toBe(12475); // 25%
   });
-  it("gratuityTiersFor uses the offering override, else the default", () => {
+  it("gratuityTiersFor reads the offering's pre kind, else the default (12.8)", () => {
     expect(gratuityTiersFor({})).toEqual(GRATUITY_TIERS_DEFAULT);
-    expect(gratuityTiersFor({ gratuityTiersBps: [1000, 1800] })).toEqual([1000, 1800]);
+    expect(
+      gratuityTiersFor({
+        gratuityKinds: [
+          { kind: "pre", tiersBps: [1000, 1800], defaultBps: 1800, required: true },
+          { kind: "post", tiersBps: [1500, 2000], defaultBps: 2000, required: false },
+        ],
+      }),
+    ).toEqual([1000, 1800]);
+    // A per-kind config WITHOUT a pre entry still offers the default tiers (no dead-end).
+    expect(
+      gratuityTiersFor({
+        gratuityKinds: [{ kind: "post", tiersBps: [1000], defaultBps: 1000, required: false }],
+      }),
+    ).toEqual(GRATUITY_TIERS_DEFAULT);
     expect(GRATUITY_DEFAULT_BPS).toBe(2000);
+  });
+
+  it("gratuityKindsFor defaults to pre-required + post-optional on the standard tiers", () => {
+    expect(gratuityKindsFor({})).toEqual([
+      { kind: "pre", tiersBps: [1500, 2000, 2500], defaultBps: 2000, required: true },
+      { kind: "post", tiersBps: [1500, 2000, 2500], defaultBps: 2000, required: false },
+    ]);
+    const custom = [{ kind: "pre" as const, tiersBps: [1000], defaultBps: 1000, required: true }];
+    expect(gratuityKindsFor({ gratuityKinds: custom })).toEqual(custom);
   });
 });
 
-describe("effectiveIncludedGuests — default to coiMaxPax", () => {
-  it("uses includedGuestCount when set", () => {
-    expect(effectiveIncludedGuests({ includedGuestCount: 8, coiMaxPax: 16 })).toBe(8);
+describe("effectiveIncludedGuests — offering count, vessel-cap fallback (12.8)", () => {
+  it("uses the OFFERING's includedGuestCount when set", () => {
+    expect(effectiveIncludedGuests({ includedGuestCount: 8 }, { coiMaxPax: 16 })).toBe(8);
   });
-  it("falls back to coiMaxPax when unset (whole boat included, no extras)", () => {
-    expect(effectiveIncludedGuests({ coiMaxPax: 6 })).toBe(6);
+  it("falls back to the vessel's coiMaxPax when unset (whole boat included, no extras)", () => {
+    expect(effectiveIncludedGuests({}, { coiMaxPax: 6 })).toBe(6);
   });
 });
 
@@ -83,10 +106,10 @@ const offering = (over: Partial<Offering> = {}): Offering => ({
   basePriceCents: 49900, priceVariations: [], extraGuestPriceCents: 4000, ...over,
 });
 
-async function seededRepo(v: Vessel): Promise<InMemoryRepository> {
+async function seededRepo(o: Offering): Promise<InMemoryRepository> {
   const repo = new InMemoryRepository();
-  await repo.saveOffering(offering());
-  await repo.saveVessel(v);
+  await repo.saveOffering(o);
+  await repo.saveVessel(vessel());
   await repo.markVesselDayMusterOwned(BOAT, DATE, NOW);
   await repo.setPaymentConfig({ depositMode: "full", taxRateBps: 0 }, NOW);
   return repo;
@@ -101,7 +124,7 @@ const req = (guestCount: number) => ({
 
 describe("createDepartureCheckout — charges composed fare + gratuity (12.2/12.3)", () => {
   it("charges base only (+ tip) when guests ≤ includedGuestCount", async () => {
-    const repo = await seededRepo(vessel({ includedGuestCount: 12 }));
+    const repo = await seededRepo(offering({ includedGuestCount: 12 }));
     const pay = new FakePaymentPort();
     const r = await createDepartureCheckout(repo, pay, req(12), URLS, now);
     expect(r.ok).toBe(true);
@@ -111,7 +134,7 @@ describe("createDepartureCheckout — charges composed fare + gratuity (12.2/12.
   });
 
   it("charges base + extras (+ tip), freezing base as Event.price", async () => {
-    const repo = await seededRepo(vessel({ includedGuestCount: 12 }));
+    const repo = await seededRepo(offering({ includedGuestCount: 12 }));
     const pay = new FakePaymentPort();
     const r = await createDepartureCheckout(repo, pay, req(14), URLS, now); // 2 extra × $40
     expect(r.ok).toBe(true);
@@ -120,8 +143,8 @@ describe("createDepartureCheckout — charges composed fare + gratuity (12.2/12.
     expect(pay.created[0]!.metadata).toMatchObject({ priceCents: "49900", extrasCents: "8000", guestCount: "14" });
   });
 
-  it("a vessel with no includedGuestCount charges base only (default = coiMaxPax)", async () => {
-    const repo = await seededRepo(vessel()); // no includedGuestCount, coiMaxPax 16
+  it("an offering with no includedGuestCount charges base only (default = vessel coiMaxPax)", async () => {
+    const repo = await seededRepo(offering()); // no includedGuestCount, coiMaxPax 16
     const pay = new FakePaymentPort();
     const r = await createDepartureCheckout(repo, pay, req(14), URLS, now);
     expect(r.ok).toBe(true);
@@ -130,7 +153,7 @@ describe("createDepartureCheckout — charges composed fare + gratuity (12.2/12.
   });
 
   it("tax is applied to the composed fare (base + extras) but NOT the gratuity", async () => {
-    const repo = await seededRepo(vessel({ includedGuestCount: 12 }));
+    const repo = await seededRepo(offering({ includedGuestCount: 12 }));
     await repo.setPaymentConfig({ depositMode: "full", taxRateBps: 1000 }, NOW); // 10%
     const pay = new FakePaymentPort();
     await createDepartureCheckout(repo, pay, req(14), URLS, now); // fare 57900

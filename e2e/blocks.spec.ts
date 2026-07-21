@@ -33,8 +33,9 @@ test.describe("admin /admin/blocks", () => {
     await page.getByRole("button", { name: "Create block" }).click();
     await page.waitForURL(/saved=1/);
 
-    // The location block row shows its impact ("… slots"), no conflict.
-    const locRow = page.locator("div").filter({ hasText: "Reservation Demo Dock" }).last();
+    // The location block row shows its impact ("… slots"). Scope to a registry row —
+    // "Reservation Demo Dock" also appears as the create-form <select> option.
+    const locRow = page.getByTestId("block-row").filter({ hasText: "Reservation Demo Dock" });
     await expect(locRow).toContainText("slots");
 
     // ── A Vessel block over Aug 11–14 → conflicts with BOTH seeded bookings ──
@@ -49,11 +50,12 @@ test.describe("admin /admin/blocks", () => {
     await expect(page.getByText(/2 booked \(\$988\) conflict/)).toBeVisible();
 
     // ── Lift the location block: two-step confirm, then it's gone ──
-    const liftRow = page.locator("div").filter({ hasText: "Reservation Demo Dock" }).last();
+    const liftRow = page.getByTestId("block-row").filter({ hasText: "Reservation Demo Dock" });
     await liftRow.getByRole("link", { name: "Lift" }).click();
     await page.getByRole("button", { name: "Confirm" }).click();
     await page.waitForURL(/lifted=1/);
-    await expect(page.getByText("Reservation Demo Dock")).toHaveCount(0);
+    // No registry row for it any more (the create-form <select> option still says the name).
+    await expect(page.getByTestId("block-row").filter({ hasText: "Reservation Demo Dock" })).toHaveCount(0);
 
     // The vessel block (and its conflict) survives the lift.
     await expect(page.getByText(/2 booked \(\$988\) conflict/)).toBeVisible();

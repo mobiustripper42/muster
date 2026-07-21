@@ -232,6 +232,7 @@ export default async function AdminBlocks({
               return (
                 <div
                   key={block.id}
+                  data-testid="block-row"
                   className={`grid grid-cols-1 gap-1 border-t border-line px-4 py-3 text-sm min-[720px]:grid-cols-[110px_1.4fr_1.2fr_100px_90px] min-[720px]:items-center min-[720px]:gap-3 ${
                     past ? "opacity-50" : ""
                   }`}

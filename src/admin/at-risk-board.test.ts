@@ -499,8 +499,8 @@ describe("the available list (the lean's targets)", () => {
 });
 
 describe("crew bail → board regression, end-to-end (#56, DEC-028)", () => {
-  it("a 'can't make it' through the real rails lands as a regression with honest lateness", async () => {
-    const ann = await addCrew("ann"); // the only captain → the bail rests the seat
+  it("a 'can't make it' through the real rails still boards the shift (as uncrewed) with honest lateness", async () => {
+    const ann = await addCrew("ann"); // the only captain
     const tripAt = hoursAfterT0(36);
     const { shiftId, seatIds } = await addShift("e2e", tripAt, [{}]);
 
@@ -511,12 +511,17 @@ describe("crew bail → board regression, end-to-end (#56, DEC-028)", () => {
     const noticeMs = tripAt.getTime() - T0.getTime();
     await bail(repo, seatIds[0]!, T0, bailLatenessMs(tripAt, T0), noticeMs);
 
-    // Board: regression row (rested Bailed = pool-exhaustion by construction).
+    // Board: the bail now rests the seat Open (DEC-128 #483 — `Bailed` retired),
+    // so the near-trip uncrewed shift boards via the fill-deadline route as `core`,
+    // NOT as a `regression` (that tag required a resting-Bailed seat; the re-ping is
+    // an accepted loss). The operator still sees the shift needs crew.
     const rows = await deriveAtRiskBoard(repo, T0);
     expect(rows.map((r) => r.shiftId)).toEqual([shiftId]);
-    expect(rows[0]!.reasons).toContain("regression");
+    expect(rows[0]!.reasons).toContain("core");
+    expect(rows[0]!.reasons).not.toContain("regression");
 
-    // Log: derived lateness = lead shortfall (7d − 36h), raw notice alongside.
+    // Log: the bail is still recorded with honest lateness — derived lead shortfall
+    // (7d − 36h), raw notice alongside. DEC-028 unchanged.
     const event = (await repo.reliabilityEventsFor(ann)).find(
       (e) => e.type === "shift_bailed",
     )!;

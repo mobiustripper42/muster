@@ -19,7 +19,7 @@
  * `deferred` machinery (§1.3). This computes the in-horizon pool when asked.
  */
 
-import type { CrewMember } from "../domain/entities.js";
+import type { CrewMember, Seat, Shift } from "../domain/entities.js";
 import type {
   CrewMemberId,
   RoleTypeId,
@@ -207,4 +207,31 @@ export async function solveShift(
     assignment: satisfiable ? assignment : null,
     pools,
   };
+}
+
+/**
+ * Can this shift's remaining seats NOT be crewed from the pool? The "no one left
+ * to ask" half of the At-Risk condition (the other half is time vs horizon). Uses
+ * `solveShift`'s **distinct-assignment** composite (DEC-003), not per-seat pools:
+ * a person already needed by one seat can't also rescue another. (A bare per-seat
+ * pool would call a shift fillable when its last candidate is already committed to
+ * a sibling seat — the common case on BrewBoat's 2-crew vessels.) A shift with
+ * every required seat `Confirmed` is never exhausted (short-circuit, no solve).
+ *
+ * Lives here (not in `tick.ts`) so both the tick and `ask-loop`'s horizon-aware
+ * refresh (DEC-128) can compose it without an import cycle: `oracle.ts` imports
+ * neither, while `tick.ts` imports `ask-loop.ts` (#483).
+ */
+export async function poolExhaustedFor(
+  repo: Repository,
+  shift: Shift,
+  seats: Seat[],
+  now: Date,
+): Promise<boolean> {
+  const unfilled = seats.filter(
+    (s) => s.kind === "required" && s.state !== "Confirmed",
+  );
+  if (unfilled.length === 0) return false;
+  const solution = await solveShift(repo, shift.id, now);
+  return !solution.satisfiable;
 }

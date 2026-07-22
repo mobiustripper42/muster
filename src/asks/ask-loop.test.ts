@@ -7,7 +7,7 @@ import { describe, expect, it, beforeEach } from "vitest";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import { asId } from "../domain/ids.js";
 import type { CrewMemberId, SeatId, ShiftId } from "../domain/ids.js";
-import type { Credential, CrewMember, Seat, Shift } from "../domain/entities.js";
+import type { Credential, CrewMember, Event, Seat, Shift } from "../domain/entities.js";
 import { logShiftCompleted } from "../oracle/reliability-log.js";
 import {
   assignPerson,
@@ -83,6 +83,53 @@ async function addShift(seatCount: number): Promise<SeatId[]> {
   }
   return ids;
 }
+
+/**
+ * A shift anchored to a real scheduled trip on `tripDate` — so the horizon-aware
+ * refresh (DEC-128) has an event to compute a staffing horizon from. `addShift`'s
+ * `eventIds: []` yields a `null` horizon (seat-fold fallback); this yields a live
+ * one. With the default 7-day lead (America/New_York): a trip far out sits
+ * pre-horizon (→ Pending); a trip a few days out sits past-horizon (→ Filling /
+ * AtRisk). `now` in these tests is T0 = 2026-07-01T12:00Z.
+ */
+async function addShiftWithTrip(tripDate: string, seatCount = 1): Promise<SeatId[]> {
+  const eventId = asId<"EventId">(`ev-${tripDate}`);
+  const event: Event = {
+    id: eventId,
+    vesselId: VESSEL,
+    date: tripDate,
+    time: "15:00",
+    capacity: 16,
+    source: "xola",
+    status: "scheduled",
+  };
+  await repo.saveEvent(event);
+  const shift: Shift = {
+    id: SHIFT,
+    vesselId: VESSEL,
+    date: tripDate,
+    state: "Pending",
+    eventIds: [eventId],
+  };
+  await repo.saveShift(shift);
+  const ids: SeatId[] = [];
+  for (let i = 1; i <= seatCount; i++) {
+    const seatId = asId<"SeatId">(`seat-${i}`);
+    await repo.saveSeat({
+      id: seatId,
+      shiftId: SHIFT,
+      role: CAPTAIN,
+      kind: "required",
+      state: "Open",
+    });
+    ids.push(seatId);
+  }
+  return ids;
+}
+
+/** Trip dates relative to T0 (2026-07-01) under the default 7-day horizon lead. */
+const PRE_HORIZON_TRIP = "2026-09-01"; // ~2 months out → horizon not yet reached
+const PAST_HORIZON_TRIP = "2026-07-05"; // 4 days out → horizon (Jun 28) already passed
 
 const seatState = (id: SeatId) => repo.getSeat(id).then((s) => s!.state);
 const shiftState = (id: ShiftId) => repo.getShift(id).then((s) => s!.state);
@@ -338,30 +385,30 @@ describe("expireAsks — the clockless ask_ignored sweep", () => {
   });
 });
 
-describe("bail (DEC-019)", () => {
+describe("bail (DEC-019, DEC-128 #483 — fires no asks, defers to the tick)", () => {
   async function confirmFirst(seatId: SeatId, crewId: CrewMemberId) {
     const ask = await assignPerson(repo, seatId, crewId, T0);
     await recordResponse(repo, ask!.id, "accepted", later(1000));
     await confirmSeat(repo, seatId, later(2000));
   }
 
-  it("re-asks the next candidate and lands the seat at Asked (happy path)", async () => {
+  it("logs the bail, clears the occupant, rests the seat Open — and fires NO asks", async () => {
     const a = await addCrew("crew-a");
-    await addCrew("crew-b"); // a second eligible captain to re-ask
+    await addCrew("crew-b"); // a live pool — proof the deferral, not exhaustion, is why nothing fires
     const [seatId] = await addShift(1);
-    await confirmFirst(seatId!, a);
+    await manualOverride(repo, seatId!, a, T0); // Confirmed, no ask minted
 
-    const out = await bail(repo, seatId!, later(3000), 90 * 60_000);
-    expect(out.seatState).toBe("Asked");
-    // Re-ask excludes the bailer.
-    expect(out.reAsks.map((x) => x.crewMemberId)).toEqual([asId<"CrewMemberId">("crew-b")]);
+    await bail(repo, seatId!, later(3000), 90 * 60_000);
+
+    expect(await seatState(seatId!)).toBe("Open"); // NOT Asked (no re-ask), NOT Bailed
     expect((await repo.getSeat(seatId!))!.assignedCrewMemberId).toBeUndefined();
-    expect(await types(a)).toContain("shift_bailed");
+    expect(await repo.listAsksForSeat(seatId!)).toEqual([]); // the crux: zero re-asks
+    expect(await types(a)).toContain("shift_bailed"); // the log still happens
   });
 
   it("clears seat provenance on re-open (#196)", async () => {
     const a = await addCrew("crew-a");
-    await addCrew("crew-b"); // a re-ask pool so the seat lands Asked, not Bailed
+    await addCrew("crew-b");
     const [seatId] = await addShift(1);
     await manualOverride(repo, seatId!, a, T0); // Confirmed, acquiredVia "operator"
     expect((await repo.getSeat(seatId!))!.acquiredVia).toBe("operator");
@@ -370,25 +417,6 @@ describe("bail (DEC-019)", () => {
     // The provenance is the occupant's; a re-opened seat carries none, so the next
     // occupant's path sets it fresh (no stale "operator" badging an ask-accepter).
     expect((await repo.getSeat(seatId!))!.acquiredVia).toBeUndefined();
-  });
-
-  it("clears provenance even when resting Bailed — exhausted pool (#196)", async () => {
-    const a = await addCrew("crew-a"); // the only eligible captain → pool exhausts on bail
-    const [seatId] = await addShift(1);
-    await manualOverride(repo, seatId!, a, T0); // Confirmed, acquiredVia "operator"
-    const out = await bail(repo, seatId!, later(3000), 30 * 60_000);
-    expect(out.seatState).toBe("Bailed");
-    expect((await repo.getSeat(seatId!))!.acquiredVia).toBeUndefined();
-  });
-
-  it("rests at Bailed → AtRisk when the pool is exhausted", async () => {
-    const a = await addCrew("crew-a"); // the only eligible captain
-    const [seatId] = await addShift(1);
-    await confirmFirst(seatId!, a);
-
-    const out = await bail(repo, seatId!, later(3000), 30 * 60_000);
-    expect(out).toMatchObject({ seatState: "Bailed", reAsks: [] });
-    expect(await shiftState(SHIFT)).toBe("AtRisk");
   });
 
   it("logs the raw notice alongside the derived lateness (DEC-028)", async () => {
@@ -417,6 +445,87 @@ describe("bail (DEC-019)", () => {
   });
 });
 
+/**
+ * The #483 fix, end to end: bail/vacate rest the seat Open and the horizon-aware
+ * refresh (DEC-128) lands the shift in its correct badge synchronously — Pending
+ * pre-horizon (the silent fix), Filling in-horizon with a live pool, AtRisk only
+ * for a past-horizon exhausted pool (via `resolveShiftState`, never a resting
+ * `Bailed` seat). No asks are minted on any path — the tick re-crews.
+ */
+describe("bail/vacate — horizon-aware refresh, no inline asks (DEC-128 #483)", () => {
+  it("PRE-HORIZON bail rests Open + resolves Pending + fires nothing (the prod repro)", async () => {
+    const a = await addCrew("crew-a");
+    await addCrew("crew-b"); // pool is live; being pre-horizon (not empty) is why it's silent
+    const [seatId] = await addShiftWithTrip(PRE_HORIZON_TRIP);
+    await manualOverride(repo, seatId!, a, T0); // Confirmed, no ask
+
+    await bail(repo, seatId!, later(3000), 90 * 60_000);
+
+    expect(await seatState(seatId!)).toBe("Open");
+    expect(await repo.listAsksForSeat(seatId!)).toEqual([]); // no pool blast weeks out
+    expect(await shiftState(SHIFT)).toBe("Pending"); // silent — engine abstains pre-horizon
+  });
+
+  it("PAST-HORIZON bail with a live pool rests Open + resolves Filling (tick will drip)", async () => {
+    const a = await addCrew("crew-a");
+    await addCrew("crew-b");
+    const [seatId] = await addShiftWithTrip(PAST_HORIZON_TRIP);
+    await manualOverride(repo, seatId!, a, T0);
+
+    await bail(repo, seatId!, later(3000), 90 * 60_000);
+
+    expect(await seatState(seatId!)).toBe("Open");
+    expect(await repo.listAsksForSeat(seatId!)).toEqual([]); // still no inline re-ask
+    expect(await shiftState(SHIFT)).toBe("Filling"); // in-horizon: worked, next tick drips
+  });
+
+  it("PAST-HORIZON bail with an exhausted pool resolves AtRisk via resolveShiftState (not a Bailed seat)", async () => {
+    const a = await addCrew("crew-a"); // eligible, but committed elsewhere the same day →
+    // once they bail this seat they're the only captain AND already booked → pool empty.
+    // Second shift, same date, holds crew-a Confirmed (fixtured) so the target shift's
+    // pool excludes them (committed-dates gate, oracle.ts).
+    const otherShift = asId<"ShiftId">("shift-other");
+    await repo.saveShift({
+      id: otherShift,
+      vesselId: VESSEL,
+      date: PAST_HORIZON_TRIP,
+      state: "Crewed",
+      eventIds: [],
+    });
+    await repo.saveSeat({
+      id: asId<"SeatId">("seat-other"),
+      shiftId: otherShift,
+      role: CAPTAIN,
+      kind: "required",
+      state: "Confirmed",
+      assignedCrewMemberId: a,
+    });
+    const [seatId] = await addShiftWithTrip(PAST_HORIZON_TRIP);
+    await manualOverride(repo, seatId!, a, T0); // Confirmed on the target seat too
+
+    await bail(repo, seatId!, later(3000), 90 * 60_000);
+
+    expect(await seatState(seatId!)).toBe("Open"); // NOT Bailed — retired as a resting state
+    expect(await repo.listAsksForSeat(seatId!)).toEqual([]);
+    expect(await shiftState(SHIFT)).toBe("AtRisk"); // past horizon + exhausted pool
+  });
+
+  it("PRE-HORIZON vacate rests Open + resolves Pending + fires nothing, no penalty", async () => {
+    const a = await addCrew("crew-a");
+    await addCrew("crew-b");
+    const [seatId] = await addShiftWithTrip(PRE_HORIZON_TRIP);
+    await manualOverride(repo, seatId!, a, T0);
+
+    const out = await vacateSeat(repo, seatId!, later(3000), a);
+
+    expect(out.removed).toBe(a);
+    expect(await seatState(seatId!)).toBe("Open");
+    expect(await repo.listAsksForSeat(seatId!)).toEqual([]);
+    expect(await shiftState(SHIFT)).toBe("Pending");
+    expect(await types(a)).not.toContain("shift_bailed"); // vacate stays penalty-free
+  });
+});
+
 describe("vacateSeat — no-penalty remove (#87)", () => {
   async function confirmFirst(seatId: SeatId, crewId: CrewMemberId) {
     const ask = await assignPerson(repo, seatId, crewId, T0);
@@ -424,31 +533,30 @@ describe("vacateSeat — no-penalty remove (#87)", () => {
     await confirmSeat(repo, seatId, later(2000));
   }
 
-  it("clears + re-asks the next candidate and logs NO reliability bail", async () => {
+  it("clears the occupant, rests Open, fires NO asks, logs NO reliability bail", async () => {
     const a = await addCrew("crew-a");
-    await addCrew("crew-b"); // a second eligible captain to re-ask
+    await addCrew("crew-b"); // a live pool — nothing fires because vacate defers, not exhausts
     const [seatId] = await addShift(1);
-    await confirmFirst(seatId!, a);
+    await manualOverride(repo, seatId!, a, T0); // Confirmed, no ask minted
 
     const out = await vacateSeat(repo, seatId!, later(3000), a);
-    expect(out.seatState).toBe("Asked");
     expect(out.removed).toBe(a); // the audit `crew_removed` subject (#400, DEC-118)
-    // Re-ask excludes the removed occupant, just like bail.
-    expect(out.reAsks.map((x) => x.crewMemberId)).toEqual([asId<"CrewMemberId">("crew-b")]);
+    expect(await seatState(seatId!)).toBe("Open"); // rests Open — never re-asked
+    expect(await repo.listAsksForSeat(seatId!)).toEqual([]); // re-crewing left to the tick
     expect((await repo.getSeat(seatId!))!.assignedCrewMemberId).toBeUndefined();
     // The whole point: no bail logged against the removed person.
     expect(await types(a)).not.toContain("shift_bailed");
   });
 
-  it("rests at Open (not Bailed) when the pool is exhausted — no AtRisk", async () => {
+  it("rests at Open (never Bailed) — no bail-driven AtRisk (horizon clock governs)", async () => {
     const a = await addCrew("crew-a"); // the only eligible captain
-    const [seatId] = await addShift(1);
-    await confirmFirst(seatId!, a);
+    const [seatId] = await addShift(1); // no events → null horizon → seat-fold fallback
 
+    await manualOverride(repo, seatId!, a, T0);
     const out = await vacateSeat(repo, seatId!, later(3000), a);
-    expect(out).toMatchObject({ seatState: "Open", reAsks: [], removed: a });
+    expect(out.removed).toBe(a);
     expect(await seatState(seatId!)).toBe("Open");
-    // No bail → no immediate bail-driven AtRisk (Pending, horizon clock governs).
+    // No bail, no events → seat-fold on an Open seat = Pending, never AtRisk.
     expect(await shiftState(SHIFT)).not.toBe("AtRisk");
     expect(await types(a)).not.toContain("shift_bailed");
   });
@@ -699,63 +807,6 @@ describe("resolveProtocol", () => {
     expect(
       resolveProtocol({ ...base, protocolOverride: "assign_then_confirm" }, "ask_then_assign"),
     ).toBe("assign_then_confirm");
-  });
-});
-
-/**
- * Civil send window on the inline re-ask paths (9.9/#235, DEC-088) — outside
- * civil hours a bail/vacate still commits (log, occupant cleared) but the
- * engine's re-ask defers: the seat rests **Open** (never a fake `Bailed` →
- * AtRisk), and the next in-window tick's drip re-crews it. Windows injected
- * (the suite env holds the default wide open); tz UTC so wall-clock = instant.
- */
-describe("bail/vacate — civil send window deferral (DEC-088)", () => {
-  const NIGHT_OPTS = {
-    tz: "UTC",
-    civilWindow: { start: "08:00", end: "20:00" },
-  };
-  // T0 is 2026-06-25T12:00Z in this suite; 12:00 is inside — build a night clock.
-  const NIGHT = new Date("2026-06-25T23:00:00.000Z");
-
-  async function confirmFirst(seatId: SeatId, crewId: CrewMemberId) {
-    const ask = await assignPerson(repo, seatId, crewId, T0);
-    await recordResponse(repo, ask!.id, "accepted", later(1000));
-    await confirmSeat(repo, seatId, later(2000));
-  }
-
-  it("a night bail logs + clears but DEFERS the re-ask: seat rests Open, zero sends", async () => {
-    const a = await addCrew("crew-a");
-    await addCrew("crew-b"); // a live pool — the deferral, not exhaustion, is why nothing fires
-    const [seatId] = await addShift(1);
-    await confirmFirst(seatId!, a);
-
-    const out = await bail(repo, seatId!, NIGHT, 90 * 60_000, undefined, undefined, NIGHT_OPTS);
-    expect(out.seatState).toBe("Open"); // NOT Bailed (nobody's exhausted), NOT Asked (no sends)
-    expect(out.reAsks).toEqual([]);
-    const seat = (await repo.getSeat(seatId!))!;
-    expect(seat.assignedCrewMemberId).toBeUndefined();
-    expect(seat.acquiredVia).toBeUndefined();
-    expect(await types(a)).toContain("shift_bailed"); // the log is NOT deferred
-  });
-
-  it("an exhausted-pool night bail still rests Bailed → the honest AtRisk (no sends involved)", async () => {
-    const a = await addCrew("crew-a"); // only captain — pool exhausts
-    const [seatId] = await addShift(1);
-    await confirmFirst(seatId!, a);
-    const out = await bail(repo, seatId!, NIGHT, 90 * 60_000, undefined, undefined, NIGHT_OPTS);
-    expect(out.seatState).toBe("Bailed");
-  });
-
-  it("a night vacate takes the rest-Open branch: no re-asks fired", async () => {
-    const a = await addCrew("crew-a");
-    await addCrew("crew-b");
-    const [seatId] = await addShift(1);
-    await confirmFirst(seatId!, a);
-
-    const out = await vacateSeat(repo, seatId!, NIGHT, a, NIGHT_OPTS);
-    expect(out.seatState).toBe("Open");
-    expect(out.reAsks).toEqual([]);
-    expect(await types(a)).not.toContain("shift_bailed"); // vacate stays penalty-free
   });
 });
 

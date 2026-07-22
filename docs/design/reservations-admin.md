@@ -4,6 +4,22 @@ Status: **DRAFT 2026-07-15 (S54)** — enumerated from the Xola seller UI + oper
 `@architect`. Owner: reservations (Phase 12). Companion to `reservations-model.md` (the data model);
 this doc is the **operator/back-office surface set**.
 
+> **Calendar scale guardrail (2026-07-20).** The v2 reservation-calendar grid (boat-columns × time-rows)
+> is clean only because it assumes *one offering, 4 boats, shared times*. Add offerings with different
+> times or more boats and the shared time-rows become a ragged union and columns cramp. **Fix: make the
+> axes match reality — boats are the fixed axis, time is continuous, offering is color + filter (never a
+> row/column).** The general form is a **resource timeline** (boats as lanes, real time across); the grid
+> is its special case when times align. This keeps density bounded by *boats × real departures*, so we
+> structurally can't become FareHarbor's month wall. Study: `mockups/reservation-calendar-scale.html`
+> (day timeline + day grid, week, month; 6 boats · 3 offerings · ragged times; blocks span real
+> durations; all opens shown, filterable). See BRAND anti-patterns ("wall-of-pills").
+>
+> **Operator lean (2026-07-20, parked to stew):** build **one** Day view, not both — timeline and grid
+> are the same data rotated; **leaning Grid**. **Week** is low-priority / possibly cut (may never be
+> used). **Month** is the right shape (per-day utilization, clean BrewCLE style) but each day-cell needs
+> **more information** before build. Week + Month are real improvements but not being iterated yet. The
+> one near-decision for `@architect`: Day = **Grid** (vertical duration blocks, boats as columns).
+
 > **Why this doc exists.** The Phase 12 plan carried a ⚠️ admitting the reservation **admin** surfaces
 > were unspecced and "likely the larger half of P12," with one question to settle before poker: *how much
 > rides the existing crew-admin cockpit vs. a distinct reservations-admin area?* This enumerates the

@@ -313,23 +313,20 @@ describe("releaseSelfClaim (DEC-078)", () => {
     });
   }
 
-  it("re-opens and re-asks the next candidate when a pool exists", async () => {
+  it("re-opens the seat and fires NO asks — re-crewing deferred to the tick (DEC-128 #483)", async () => {
     const holder = await crew("holder", [MATE]);
-    const next = await crew("next", [MATE]); // an eligible re-ask candidate
+    await crew("next", [MATE]); // an eligible pool exists, but the release doesn't ask it
     const sh = await shift("sh");
     const seatId = await heldSeat(holder, sh, "seat-1");
 
     const res = await releaseSelfClaim(repo, holder, seatId, NOW);
 
     expect(res.code).toBeNull();
-    expect(res.outcome?.seatState).toBe("Asked");
-    expect(res.outcome?.reAsks.length).toBeGreaterThan(0);
-    // The released seat is no longer the holder's.
+    // The released seat rests Open, no longer the holder's.
+    expect((await repo.getSeat(seatId))?.state).toBe("Open");
     expect((await repo.getSeat(seatId))?.assignedCrewMemberId).toBeUndefined();
-    // The re-ask went to the next eligible candidate, not the releaser.
-    const asks = await repo.listAsksForSeat(seatId);
-    expect(asks.map((a) => a.crewMemberId)).toContain(next);
-    expect(asks.map((a) => a.crewMemberId)).not.toContain(holder);
+    // No inline re-ask — the tick re-crews (bail no longer blasts the pool).
+    expect(await repo.listAsksForSeat(seatId)).toEqual([]);
   });
 
   it("emits exactly one shift_bailed reliability event for the releaser", async () => {

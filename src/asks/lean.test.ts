@@ -110,16 +110,16 @@ describe("lean — the happy path", () => {
     expect((await repo.getSeat(seatId!))!.state).toBe("Asked");
   });
 
-  it("reopens a resting-Bailed seat — its empty-pool precondition no longer holds", async () => {
-    const walker = await addCrew("walker");
+  it("reopens a legacy resting-Bailed seat", async () => {
     const [seatId] = await addShift(["Open"]);
-    const [ask] = await broadcastAsk(repo, seatId!, T0);
-    await recordResponse(repo, ask!.id, "accepted", T0);
-    await confirmSeat(repo, seatId!, T0);
-    await bail(repo, seatId!, T0, 1000); // pool empty (only walker) → rests Bailed
+    // DEC-128 (#483) retired `Bailed` as a live outcome (bail() now rests Open),
+    // but older stores may still hold a resting-Bailed seat — lean must still
+    // reopen one. Seed it directly rather than mint it through bail().
+    const seat = (await repo.getSeat(seatId!))!;
+    await repo.saveSeat({ ...seat, state: "Bailed" });
     expect((await repo.getSeat(seatId!))!.state).toBe("Bailed");
 
-    const sub = await addCrew("sub"); // the pool changed since the bail
+    const sub = await addCrew("sub"); // a target to lean in
     const out = await lean(repo, SHIFT, sub, T0);
 
     expect(out.error).toBeNull();

@@ -153,7 +153,7 @@ The shell's `## PR Workflow` is the baseline. Muster adds:
 
 ## Versioning (project)
 
-Follows the shell. SemVer in `package.json` (created at task 0.3), tag on `main`, bumps only at `/retro`. The `<VersionTag />` component is **available but not yet wired** — pull `templates/VersionTag.tsx` from seeds into a layout when a deployed build needs the stamp; until then the version lives in `package.json` + git tags.
+Follows the shell (DEC-S022). SemVer in `package.json` (created at task 0.3), tag on `main`. This project has a `production` branch, so **`/promote-production` patch-bumps + tags on each ship** (one release = one patch); **`/retro` minor-bumps at phase close**; `/bump-major` for breaking changes. (The earlier "bumps only at `/retro`" note predated adopting the `production` branch.) The `<VersionTag />` component is **available but not yet wired** — pull `templates/VersionTag.tsx` from seeds into a layout when a deployed build needs the stamp; until then the version lives in `package.json` + git tags.
 
 ## MCP fast-fix loop (9.0/#230)
 

@@ -22,6 +22,8 @@ _Current decision per topic. Superseded DECs struck through with their replaceme
 - DEC-023 — engine advances via explicit `tick()`; no scheduler
 - DEC-054 — operator engine pause/resume (edge-gated)
 - DEC-118 — crew audit log = append-only `audit_events`
+- DEC-131 — constraint posture: DEC-DATA-1 governs logic placement, not FK/UNIQUE
+  (⚠️ ~19 migration headers miscite DEC-DATA-1 for a no-FK rule it never contained)
 - DEC-DATA-1 — service layer; Supabase is managed Postgres, not the architecture
 
 ### Availability & commitment rules
@@ -31,7 +33,10 @@ _Current decision per topic. Superseded DECs struck through with their replaceme
 
 ### Seats, shifts & state machine
 - DEC-005 — shift state derived from seat state; reserve a `Held` tier
-- DEC-019 — `Bailed` is a seat transition, not a resting state
+- DEC-019 — `Bailed` is a seat transition, not a resting state _(bail/vacate re-crewing now deferred to the tick — DEC-128)_
+- DEC-128 — `bail()`/`vacateSeat()` fire no asks; re-crewing deferred to the tick
+- DEC-129 — on-shift ask suppression — engine never auto-asks mid-shift (hard defer, send-time filter)
+- DEC-130 — same-day decline cooldown — a "no" quiets that date's auto-asks (soft, last-resort valve)
 - DEC-028 — bail `latenessMs` = notice shortfall vs the staffing horizon
 - DEC-039 — vacate splits into Remove (no penalty) vs Bailed
 - DEC-041 — trip length → shift end, from a flat constant
@@ -147,6 +152,7 @@ _Current decision per topic. Superseded DECs struck through with their replaceme
 - DEC-124 — tips = collect-and-expose via `xola-tip-extractor`
 - DEC-125 — virtual availability — schedule is a rule; `Event` materializes on state
 - DEC-126 — the flip = a cutover with a one-time full Xola import (reversible)
+- DEC-132 — `Customer` = contact record keyed by phone (surrogate PK + unique E.164)
 
 ### UI, brand & frontend patterns
 - DEC-021 — frontend styling = Tailwind v4; component library deferred
@@ -436,6 +442,17 @@ at multi-tenant. **Phase:** applies from M0 (the data model) onward — no new m
 2026-06-04.)
 
 ## DEC-DATA-1: Muster keeps a service layer; Supabase (if used) is managed Postgres, not the architecture
+
+> ⚠️ **This DEC has never said anything about foreign keys. See DEC-131.**
+> Roughly nineteen migration headers (from `db/migrations/0001_init.sql` onward) cite *"no foreign
+> keys — DEC-DATA-1"* as though the rule were decided here. **It is not, and never was.** The text
+> below is about *logic placement* — domain decisions live in the service layer, not in RLS policies,
+> triggers, or procs. It draws no conclusion about referential constraints. The no-FK convention was
+> minted independently in `0001_init.sql`'s own header and then propagated by copy, acquiring this
+> DEC's number as a credential it was never granted. **DEC-131** decides the constraint posture:
+> the DB never holds business rules, but may hold structural invariants (`NOT NULL`/`UNIQUE`/`FK`).
+> Cite **DEC-131**, not this DEC, for anything about constraints.
+
 **Nature:** An architecture-boundary decision, made **before** adopting Supabase so the boundary is on
 paper, not improvised against a tempting RLS policy later. No slice work changes; this is a standing
 boundary that composes with DEC-013 (stack deferred to M4) — it pre-commits *how* a datastore is used,
@@ -1678,7 +1695,7 @@ remove). **Revisit if:** previews ever stop being isolated branches, or carry se
 ---
 
 ## DEC-063: Tier-1 ask fan-out is a staged "drip" — ranked, one candidate per interval, accumulating
-**Decision:** Tier-1's birth fan-out stages over time instead of blasting the whole ranked pool at once. On a `Filling` shift, `tick` seeds **one** ask to the top-ranked eligible candidate per required seat (`widenAsk`, `src/asks/ask-loop.ts`); each tick thereafter a seat with un-asked ranked candidates is **widened by one** when `now − max(sentAt) ≥ ASK_DRIP_INTERVAL_MINUTES` (or **immediately** when the outstanding set empties via decline/timeout and the seat reopens). Earlier asks **stay open and accumulate** — first-acceptable-yes-wins among them is unchanged (CAS, REQ-CLAIM-1 / DEC-007). Per-seat "last ask time" is derived as `max(sentAt)` over `listAsksForSeat` — **no new field, table, port method, entity, DDL, or dependency.** The interval is an **env knob** (`ASK_DRIP_INTERVAL_MINUTES`, `src/builder/derive.ts`, `envNonNegativeInt` sibling of DEC-062's helper), default **15 min** (aligned to the `*/15` tick — the floor on widen granularity); **`0` ⇒ blast-all** (the prior behavior, the pilot rollback). **Urgent override:** once `now ≥ fillsBy` (DEC-031) the remaining pool is blasted — drip must not pace an emergent same-day booking. **Escalate (DEC-024) is orthogonal and unchanged** — it fires only after drip has walked the entire ranked list and the seat sits `Open` again; it touches only `Open` seats, so a sibling mid-drip `Asked` seat is undisturbed. **Bail/vacate re-asks stay blast-all** (urgency-justified); drip governs the Tier-1 birth only.
+**Decision:** Tier-1's birth fan-out stages over time instead of blasting the whole ranked pool at once. On a `Filling` shift, `tick` seeds **one** ask to the top-ranked eligible candidate per required seat (`widenAsk`, `src/asks/ask-loop.ts`); each tick thereafter a seat with un-asked ranked candidates is **widened by one** when `now − max(sentAt) ≥ ASK_DRIP_INTERVAL_MINUTES` (or **immediately** when the outstanding set empties via decline/timeout and the seat reopens). Earlier asks **stay open and accumulate** — first-acceptable-yes-wins among them is unchanged (CAS, REQ-CLAIM-1 / DEC-007). Per-seat "last ask time" is derived as `max(sentAt)` over `listAsksForSeat` — **no new field, table, port method, entity, DDL, or dependency.** The interval is an **env knob** (`ASK_DRIP_INTERVAL_MINUTES`, `src/builder/derive.ts`, `envNonNegativeInt` sibling of DEC-062's helper), default **15 min** (aligned to the `*/15` tick — the floor on widen granularity); **`0` ⇒ blast-all** (the prior behavior, the pilot rollback). **Urgent override:** once `now ≥ fillsBy` (DEC-031) the remaining pool is blasted — drip must not pace an emergent same-day booking. **Escalate (DEC-024) is orthogonal and unchanged** — it fires only after drip has walked the entire ranked list and the seat sits `Open` again; it touches only `Open` seats, so a sibling mid-drip `Asked` seat is undisturbed. ~~**Bail/vacate re-asks stay blast-all** (urgency-justified); drip governs the Tier-1 birth only.~~ **Amended by DEC-128 (#483):** `bail()`/`vacateSeat()` no longer re-ask inline at all — they rest the seat `Open` and defer re-crewing to the tick, so the drip (paced) or the tick's urgent `fillsBy` blast governs bail/vacate re-crewing too, not just the Tier-1 birth.
 **Why:** Gives the most-reliable crew first dibs and stops every eligible phone lighting up at once — finally making the reliability ranking matter in *time*, the literal intent of DEC-008 (operator-reported: the blast felt like spam, and the rating "did nothing" he could see). Reuses every existing primitive; the seat machine, CAS, auto-confirm (DEC-061), and escalate are untouched. `interval=0` keeps the old blast one keystroke away.
 **Tradeoff:** Slower fills (a reliable-but-slow top candidate delays the next by one interval) vs gentler, ranked asking — bounded by the urgent-blast guard, and it yields cleaner reliability signal (you learn whether #1 answers before #2 is in the mix). The `*/15` cron is the effective granularity floor: a sub-15-min interval collapses to "every tick," a 20-min interval rounds up to 30. Escalation is now triggered **per seat** (a walked-`Open` seat escalates even while a sibling seat still drips — old `isStalled` gated on the whole shift); safe because `escalate` only touches `Open` seats, but it logs the widen-stub more often on a 2-seat vessel. `rankedEligible` is computed twice per seat per widening tick (once for the un-asked count, once inside `widenAsk`) — accepted at BrewBoat scale.
 **Known gap (pre-existing, surfaced by this):** `expireAsks` (the silent-timeout sweep) has **no production caller** — the cron `tick` never sweeps timeouts — so a *ghosted* (never-answered) ask never closes, the seat never reopens to `Open`, and the `seatStalled → escalate` path is unreachable for silent crew in prod. Blast-all had the identical dependency; drip does **not** worsen it (it improves the *decline*-driven reopen — fewer simultaneous asks reach `allAsksClosed` sooner). Filed separately; wiring `expireAsks` into the tick needs an operator call on the silent-timeout duration.
@@ -3749,6 +3766,142 @@ now sees imported rows too), DEC-125 (retires the ownership mask).
 **Maintenance rule (the load-bearing part):** every new DEC adds its row to the index under a topic, and any DEC it supersedes gets struck through there and pointed at the new one. An index nobody maintains is worse than none — so this is part of writing a DEC, not a separate chore. Treat a missing index row as a defect in review.
 
 **Why this is a DEC at all:** an index is doc hygiene, not architecture — but the *maintenance convention* is durable and worth recording, which is the only thing this DEC pins.
+
+## DEC-128: `bail()` and `vacateSeat()` fire no asks — re-crewing is deferred to the tick (#483)
+
+**Decision:** `bail()` and `vacateSeat()` (`src/asks/ask-loop.ts`) stop minting asks. Both now: validate (occupant-pin guard, unchanged) → (`bail()` only) `logShiftBailed` (+`latenessMs`/`noticeMs`, unchanged — DEC-028) → drop the occupant + clear provenance (#196) → rest the seat **`Open`** → **horizon-aware state refresh** → return. Deleted from both: the `rankedEligible` fetch, the inline `Promise.all(pool.map(fireAsk))` pool blast, the exhausted-vs-not branching, and the DEC-088 civil-window branch. The **tick is the sole ask-writer** again (SPEC §1.2, DEC-063): a `bail`/`vacate` previously fired its own re-ask **inline and horizon-blind**, blasting the whole ranked-eligible pool at once regardless of the staffing horizon (DEC-022) or the drip (DEC-063) — so releasing a seat weeks out immediately texted the entire role pool. Verified in prod 2026-07-19 (Brew 4 / Aug 8 shift, ~13 days pre-horizon: a captain bail stamped 6 identical-millisecond `push` asks). Re-crewing is now entirely the tick's: pre-horizon → `Pending` (silent — **the fix**); in-horizon → next tick drips one (DEC-063); inside `fillsBy` (DEC-031) → the tick's urgent path blasts the remaining pool within one cadence (~15 min). The re-crew latency is operator-accepted.
+
+**New helper `refreshShiftStateHorizon(repo, shiftId, now)`** (`src/asks/ask-loop.ts`): persists the composed `resolveShiftState(seats, {now, horizon, poolExhausted})` under the same terminal guard as `refreshShiftState`, so a re-opened seat lands in its horizon-correct badge **synchronously** rather than momentarily writing the raw seat-fold's `Filling`/`Pending`. **Scoped to bail+vacate only** (not globalized): the drip hot path and the claim/override paths only move *toward* crewed, which `resolveShiftState` passes through and the next tick self-heals — they keep the cheaper `refreshShiftState`. Composed from `resolveShiftState` + `staffingHorizonFromEvents` (`derive.ts`) + `poolExhaustedFor`, the last **relocated `tick.ts` → `oracle.ts`** so the new refresh composes it without an import cycle (`resolveShiftStateOnRead` lives in `tick.ts`, which imports `ask-loop.ts`).
+
+**`Bailed` retired as a resting state.** No writer produces a resting `Bailed` seat anymore; past-horizon At-Risk for an exhausted pool comes from `resolveShiftState(poolExhausted)`, not from a `Bailed` seat driving `deriveShiftState → AtRisk`. The `deriveShiftState` `Bailed` branch and its readers (`lean.ts`, `assignment-view.ts`, `at-risk-board.ts`) are **retained** for legacy seats that may still rest `Bailed` in an existing store — they keep today's board/lean-rescue behavior; no migration.
+
+**Accepted behavior changes (operator sign-off given):**
+- **Board `regression` re-ping lost for new bails.** A rescued-then-re-bailed shift that already showed AtRisk won't re-ping the operator (`at-risk-board.ts` board-landing dedup keys on `(shiftId, reason)`; `regression` derives from a resting-`Bailed` seat, which no longer occurs). This also blanks the At-Risk page's "N late bails" count + row flag (`app/(admin)/admin/at-risk/page.tsx`) and the alert copy (`forward-board-alerts.ts`) for new bails. The `shift_bailed` event, crew score, audit trail, and bail notices are all unchanged. Accepted for V1; if wanted back, derive `regression` from a recent `shift_bailed` event (separate follow-up).
+- **Engine pause (DEC-054):** a bail during a pause won't re-crew until resume (the inline re-ask previously fired regardless). Accepted.
+- **Out-of-hours bail before a morning trip:** never auto-re-crewed — but this **predates** DEC-128 (DEC-088 already routed the out-of-hours bail to the tick, and the tick's past-trip + civil guards apply). Not a regression.
+
+**Amends:** DEC-019 (`Bailed` no longer the AtRisk source — the seat-fold branch is legacy-only), DEC-039/#87 (vacate rests `Open` and fires no asks), **DEC-063** (reverses its "Bail/vacate re-asks stay blast-all" clause — that inline blast is exactly the bug; the drip/tick now governs re-crewing too). **Refines:** DEC-088/022/024/031. **Untouched:** `logShiftBailed`/DEC-028, the occupant-pin race guard, `lean`/override.
+
+## DEC-129: On-shift ask suppression — the engine never auto-asks crew mid-shift (hard, no valve) (#341)
+
+**Decision:** The engine's autonomous ask paths — tick drip, tick urgent blast, Tier-2 `escalate` nudge — never target a crew member while `now ∈ [call, end)` of any shift where they hold a Claimed/Confirmed seat: `call = earliestScheduledStart − CALL_LEAD_MINUTES`, `end = shiftEndFromEvents` (latest departure + `TRIP_DURATION_MINUTES` + `TEARDOWN_MINUTES`, #275) — the DEC-041 committed window, computed **Date-based** in a new send-time module `src/asks/suppression.ts` (`buildAskSuppression`, built once per tick). The crewapp `committedWindow` (`src/crewapp/shift-card.ts`) is an `"HH:mm"` display helper that wraps within a day and loses the date — deliberately **not** reused. **Defer, don't drop:** a working candidate is skipped this tick and re-enters when their shift ends — no reliability event, no penalty (the per-recipient sibling of DEC-088's civil-window defer; DEC-088 gates the global vessel clock, this gates the specific recipient, which the global window structurally can't see — e.g. a Thu horizon-ask that fires while the recipient is mid-cruise Saturday, inside civil hours). **Hard — no valve:** a sole-working-candidate seat defers; inside `fillsBy` it lands on Spink's board via imminence (DEC-065), never via a suppression-blasted ask.
+
+**Why it stays out of eligibility (the load-bearing layering):** suppression is a **send-time filter**, deliberately in `asks/` not `oracle/`. `eligiblePool`/`poolExhaustedFor` still count a working candidate, so an all-suppressed pool resolves **`Filling`**, never `AtRisk` — **defer is not exhaustion**. The tick's `seatStalled` flag stays keyed on the suppression-free `rankedEligible` pre-check, so a defer sets no stall → **no false Tier-2**; `widenDue` re-arms next tick with zero queued state. `rankedEligible` is untouched wholesale (it feeds the operator's manual-lean list); self-claim, manual lean, and `overrideSeat` never read the suppression. **Bail/vacate need no filter** — post-DEC-128 they fire no asks; the tick, the sole autonomous ask-writer, carries the policy. No new data, no migration.
+
+**Plumbing:** `widenAsk` gains no new param — its existing `exclude` set (from #393) carries `working`; the tick resolves the pick before calling. `escalate` takes an optional `suppress?: AskSuppression` (tick passes its per-tick build; a direct/test caller omits it and escalate builds its own). Edits: `src/asks/suppression.ts` (new), `src/builder/tick.ts` (build once + drip/blast filter + defer branch), `src/asks/escalate.ts` (union `working` into `excluded`). **Refines:** DEC-088 (per-recipient sibling), DEC-063/024/065; composes with DEC-130 (hard-first).
+
+## DEC-130: Same-day decline cooldown — a "no" quiets that date's cross-shift auto-asks (soft, valved) (#341→#342)
+
+**Decision:** After crew C declines an ask for a shift on vessel-day D, the tick's drip and Tier-2's nudge skip C for **other** shifts on D. Keyed by the **declined shift's `shift.date`** (expires with the date; the next day is clean). The signal is derived at send time from declined `Ask` rows (`response === "declined"`, seat → `shift.date`) in `buildAskSuppression` — the rows the tick already loads for #393; declined asks are never deleted (`expireAsks` only stamps). `ask_declined` reliability events (DEC-008) remain an equivalent re-derivable record. **No new data, no migration; a decline stays reliability-neutral** (DEC-124 — the signal changes *who the engine re-asks*, not the score). `escalate`'s existing **same-shift** decliner exclusion (DEC-024) is unaffected — they said no to *this* shift, a hard exclusion.
+
+**Soft — last-resort valve.** Composition with DEC-129 is **hard-first**: remove `working` crew, then, if the un-asked remainder is entirely same-day decliners, re-ask the top decliner rather than let a fillable seat exhaust. Never valve *to* a worker; a worker-only remainder defers (DEC-129). The **urgent blast (past `fillsBy`, DEC-031/063) runs with the valve open** — the seat is board-imminent by definition, so cooldown yields to urgency; the hard `working` filter never yields. Manual lean, `overrideSeat`, and self-claim never read the cooldown. **Defer ≠ exhausted:** same layering as DEC-129 — a cooled-down candidate is still eligible to `poolExhaustedFor`, so the shift stays `Filling`, not `AtRisk`. Revisit dials per #342: loosen if board landings rise, tighten (adjacent-day carry) if spam persists. Shares `src/asks/suppression.ts` + the `tick.ts`/`escalate.ts` seam with DEC-129 — shipped as one task.
+
+## DEC-131: Constraint posture — DEC-DATA-1 governs *logic placement*, not structural constraints; FK/UNIQUE/NOT NULL are storage and are allowed
+
+**Nature:** A correction of the record plus a standing boundary. Prompted by the operator (2026-07-22):
+*"I'm not sure when we decided there was no foreign key on reservations. But it seems arbitrary and
+actually unhelpful. Please reevaluate."* They were right, and the record was wrong.
+
+**The misattribution (stop propagating it).** `DEC-DATA-1` decides one thing: Muster keeps its own
+service/domain layer, and **RLS/triggers/procs are never where domain logic lives** — the seat state
+machine, REQ-CLAIM-1, escalation, reliability scoring. It **never mentions foreign keys or referential
+integrity.** The no-FK rule was actually minted in the header of `db/migrations/0001_init.sql`, which
+extended DEC-DATA-1's "the DB is storage, not architecture" into "no referential enforcement" and added
+its own second rationale (in-memory-adapter parity). Roughly **nineteen** later migration headers then
+cited *"DEC-DATA-1"* as the authority for `NO foreign keys`. A house style back-attributed itself to a
+decision that never made it. New migration headers **must not** cite DEC-DATA-1 for constraint choices;
+cite this DEC.
+
+**Decision — the line, and it is not "no constraints":**
+- The database **never holds business rules or decisions.** That is DEC-DATA-1's real content and it is
+  unchanged. One-party-per-boat, satisfiability, escalation policy, the claim — service layer, always.
+- The database **may hold structural invariants**: `NOT NULL`, `UNIQUE`, `FOREIGN KEY`. These are not
+  logic; they are the same species as the `NOT NULL`s the schema already uses everywhere. The schema had
+  already broken its own "no constraints" story where it counted — the checkout-hold mutex is a
+  **unique index** (`20260718142705_claim_hold_mutex.sql`), because concurrent writers need an arbiter
+  and only the DB can be one.
+- **DEC-123's guardrail survives intact**: still no unique constraint on `Reservation.eventId`. One
+  reservation per boat is a *business rule*, and the line above puts it in the service predicate. That
+  it and the customer FK land on opposite sides is the line working, not an inconsistency.
+
+**New tables take real constraints; the existing graph is ratified as-built — no retrofit.** Retrofitting
+FKs across ~30 tables mid-P12 buys nothing and costs real risk: cascade semantics would have to be
+designed per edge, the manual referential cleanup that exists *because* there are no FKs (e.g.
+`removeShift` tearing down seats, `postgres-repository.ts`) would need re-reasoning, and the contract
+suite **deliberately writes dangling references** — `src/adapters/repository-contract.ts:441-455` saves a
+reservation whose `eventId` names an event that was never created, and both adapters accept it. That
+parity semantics is load-bearing for the in-memory double and is not worth rewriting for tables that
+work today.
+
+**Adapter parity under a constraint — asymmetric strictness is accepted.** The in-memory double stays
+dumb: it does **not** reimplement FK checking in TypeScript (that would put integrity in two places, the
+exact smear this project avoids). Postgres rejects a dangling `customer_id`; in-memory accepts it. The
+two only diverge on *invalid* writes; the parity the contract suite proves is over **valid** operations,
+and `postgres-repository.test.ts` runs against real Postgres so the constraint is genuinely exercised.
+Where a constraint is *semantically* load-bearing (uniqueness the caller must react to), it is exposed
+through the **port as a typed result** — the `saveReservationIfUnclaimed` precedent — so both adapters
+implement one contract and no raw driver error escapes.
+
+**Why this is worth a constraint at all:** the service layer can only guarantee integrity for writes that
+go *through* it. Backfill scripts, `db/reset-pilot.ts`, data migrations, and manual prod `psql` do not.
+The orphan-check tripwire (`src/admin/integrity.ts`) is the *detective* control and stays; a foreign key
+is the *preventive* one, at no meaningful runtime cost.
+
+**Operational note:** `db/reset-pilot.ts` truncates a classified subset with `cascade`, and truncating a
+parent cascades into unlisted children. Any new table must be classified into `KEEP`/`CLEAR` in the same
+class as its parent — the script's unclassified-table tripwire refuses to guess, which is the behavior we
+want.
+
+**Composes with:** DEC-DATA-1 (clarified, not amended — its text was always about logic placement),
+DEC-123 (`eventId` guardrail reaffirmed), DEC-132 (first table built under this posture).
+
+## DEC-132: `Customer` is a contact record keyed by phone — surrogate PK, UNIQUE canonical E.164, readable short code
+
+**Decision:** Reservations gain a first-class `Customer` (DEC-123 §3), built under the DEC-131 posture.
+
+**Identity.** A **surrogate `CustomerId` PK** plus a **UNIQUE canonical E.164 phone**. Phone is identity —
+same phone means same customer, so "merge duplicate contacts" mostly dissolves — but it is deliberately
+**not the primary key**: numbers get changed and recycled by carriers, and a mutable business fact welded
+into the key means migrating the row and every reference, with a recycled number inheriting the previous
+customer's history. Same instinct as the `Reservation.eventId` guardrail: don't make a business fact
+load-bearing structure.
+
+**Phone is REQUIRED, as of now** (operator, 2026-07-22). Whether identity should ultimately be
+*phone-or-email* is **deliberately deferred** — it is not a today decision, and the cost of deferring is
+bounded on purpose: relaxing is `DROP NOT NULL` (Postgres `UNIQUE` already admits multiple `NULL`s, so the
+constraint shape survives), and **all identity resolution is concentrated in one pure module**, so the
+policy swap is one file rather than a hunt through call sites. **The Xola importer will force this
+decision at cutover** — Xola rows reliably carry email and not always phone (per DEC-040 phone threads
+inline as `order.phoneCanonical`; the customers-export join was retired). Recording it here converts a
+trap into a scheduled decision.
+
+**Readable code.** Every customer carries a `displayCode` — `C-` + 6 **Crockford base32** characters
+(alphabet excludes I/L/O/U, so nothing is ambiguous read aloud), UNIQUE, minted with retry. Deliberately
+**not** a sequence: no DB sequence to maintain, dev/preview/prod seeds never collide, and it leaks no
+volume. Not a checksum — ceremony at this scale. It is an operator convenience (something short to say on
+the phone), **not** a customer-facing account number.
+
+**Linkage.** `Reservation.customerId` is nullable with a **real FK** (`ON DELETE RESTRICT`) — the first
+table built under DEC-131. Nullable because historical reservations that never captured a canonical phone
+stay unlinked, permanently and acceptably; `NULL` passes the FK.
+
+**Booking-path linking is in scope, not a follow-up.** `writeBooking` **get-or-creates** the customer by
+canonical phone, with the UNIQUE constraint arbitrating the concurrent-first-booking race. Without it,
+every new booking recreates the unlinked state and the backfill becomes a one-time museum. `/book`
+therefore requires phone, validated **server-side** with the standing no-JS re-render error path (the HTML
+`required` attribute is courtesy, not the gate).
+
+**Not an account.** No password, no login, no customer-facing auth — a contact record. Soft-delete
+(`active`) per the DEC-123 posture; note that soft-delete **retains** PII, so true erasure would be a
+scrub-in-place and is explicitly out of scope. Cards-on-file remain **Stripe's** and are not rebuilt.
+
+**Lifetime value** sums **booked (non-cancelled)** reservations at base + frozen `extrasCents`, with
+**gratuity excluded** — DEC-124 makes tips crew money, never blended into revenue.
+
+**Deferred with it:** the Purchases/orders list and any human order-number scheme (an order is the money
+view of a reservation; one order = one boat = one reservation, so the two are the same row today);
+importer-created customers (not needed until cutover); "Edit contact"; and "Message", which is blocked on
+**#119** — a customer must never text the crew line, so it needs the second sender number.
 
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)
 

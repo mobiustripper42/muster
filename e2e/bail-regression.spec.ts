@@ -1,9 +1,12 @@
 /**
- * Flow 3 (#65) — THE #64 false-alarm. Crew-only seed: Quint is the only captain,
- * so dropping his confirmed seat leaves nobody to re-ask → the seat rests Bailed
- * and the Hops shift lands on the at-risk board as a regression ("Lacking crew ·
- * late bail"). This is the state manual eyeballing got wrong (a contaminated DB
- * silently re-asks instead), so the harness pins it.
+ * Flow 3 (#65) — reframed by DEC-128 (#483). Crew-only seed: Quint is the only
+ * captain, so dropping his confirmed seat leaves nobody eligible. `shift-soon` is
+ * **>2wk out — before its staffing horizon** (see the sibling reask spec), so the
+ * old inline pool-blast that would have rested the seat `Bailed` and boarded Hops
+ * as a "late bail" was exactly the #483 bug: staffing a shift weeks early. Post
+ * DEC-128 the bail rests the seat **Open** and defers to the tick, which abstains
+ * pre-horizon → the shift resolves **Pending, silent, off the board**. This spec
+ * now pins that fix: a far-out only-captain bail must NOT alarm the operator.
  *
  * Navigates straight to the shift-card URL rather than clicking through My shifts
  * — the bail only needs the seat Confirmed, so this stays robust if the seed's
@@ -17,12 +20,12 @@ import {
   signInAsAdmin,
 } from "./fixtures.js";
 
-test.describe("bail → board regression (crew-only seed)", () => {
+test.describe("bail → pre-horizon deferral, stays off the board (crew-only seed)", () => {
   test.beforeEach(async () => {
     await resetAndSeed("crew");
   });
 
-  test("only-captain bail rests Bailed and lands Hops on the board as a late bail", async ({
+  test("far-out only-captain bail rests Open and leaves the board quiet — no late-bail alarm (#483)", async ({
     page,
   }) => {
     await signInAsCrew(page, "crew-quint");
@@ -40,12 +43,17 @@ test.describe("bail → board regression (crew-only seed)", () => {
     await expect(page).toHaveURL(/\/crew\?bailed=/);
     await expect(page.getByText(/off the/i)).toBeVisible();
 
-    // Operator board: Hops is now a regression.
+    // Operator board: the fix — Hops does NOT land, and no late-bail alarm fires.
+    // Pre-horizon the engine abstains, so a bail weeks out is silent (#483).
     await signInAsAdmin(page, "spink");
-    const hopsRow = page.locator("article", { hasText: "Hops" });
-    await expect(hopsRow).toBeVisible();
-    await expect(hopsRow.getByText(/Lacking crew.+late bail/)).toBeVisible();
-    // Header tally corroborates it.
-    await expect(page.getByText(/1 late bail/)).toBeVisible();
+    await expect(page.locator("article", { hasText: "Hops" })).toHaveCount(0);
+    await expect(page.getByText(/late bail/)).toHaveCount(0);
+
+    // The cockpit carries the honest state: the seat reopened to Open (never a
+    // resting Bailed), awaiting the tick once the horizon opens.
+    await page.goto("/admin/shift/shift-soon");
+    const captainSeat = page.locator("article", { hasText: "captain" });
+    await expect(captainSeat).toContainText("Open");
+    await expect(captainSeat).not.toContainText("Bailed");
   });
 });

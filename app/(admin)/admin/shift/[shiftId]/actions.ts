@@ -264,8 +264,8 @@ export async function removeSeat(formData: FormData): Promise<void> {
       try {
         const out = await vacateSeat(repo, seat.id, now, occupant);
         param = `removed=${encodeURIComponent(String(occupant))}`;
-        // Edge channel wiring (DEC-030): the re-asks → the pilot outbox.
-        await forwardToOutbox(out.reAsks);
+        // No re-asks to forward: vacate rests the seat Open and leaves re-crewing
+        // to the tick (DEC-128, #483).
         // DEC-084: the removed crew get a "you're off this shift" notice.
         await notify(String(occupant), "removed", shiftId);
         // Audit (#400, DEC-118): a no-penalty misassignment removal by the operator.
@@ -316,8 +316,8 @@ export async function reportBail(formData: FormData): Promise<void> {
         param = "act_error=raced";
       } else {
         param = `bail_logged=${encodeURIComponent(String(bailer))}`;
-        // Edge channel wiring (DEC-030): the bail's re-asks → the pilot outbox.
-        await forwardToOutbox(out.outcome?.reAsks);
+        // No re-asks to forward: the bail rests the seat Open and leaves
+        // re-crewing to the tick (DEC-128, #483).
         // DEC-084: an operator-reported bail tells the bailer they're off (a crew
         // self-bail doesn't — they initiated it). Only fires on a real log, not a race.
         await notify(String(bailer), "removed", shiftId);

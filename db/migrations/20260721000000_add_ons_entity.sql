@@ -6,7 +6,9 @@
 -- their own table — a twin to `vessels`/`locations` — that offerings ATTACH by id. `required`
 -- is a GLOBAL property of the add-on; `active` is the soft-retire flag (DEC-123 posture).
 --
--- House style (DEC-DATA-1): text PK, NO foreign keys, NO CHECK on the `type` discriminator —
+-- House style: text PK, no foreign keys (add_ons has no FK-able column — `tenant_id` has no
+-- `tenants` table to point at; posture per DEC-131, not DEC-DATA-1), NO CHECK on the `type`
+-- discriminator —
 -- validation is the service layer's (src/admin/add-on-admin.ts), keeping the pg + in-memory
 -- adapters behaviorally identical under the contract suite. Money is integer CENTS (DEC-112).
 -- `if not exists` for idempotent re-runs.

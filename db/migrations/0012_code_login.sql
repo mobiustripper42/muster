@@ -1,7 +1,7 @@
 -- 0012_code_login — crew self-serve sign-in via numeric login codes (DEC-081).
 --
 -- Same design rules as 0001/0002: text columns, ISO dates as `text` (verbatim
--- round-trip, parity with the in-memory double), no foreign keys (integrity is
+-- round-trip, parity with the in-memory double), no foreign keys (posture: DEC-131; integrity is
 -- the service layer's — DEC-DATA-1).
 --
 -- A SIBLING to magic_tokens, not a reuse: a 6-digit code is NOT globally unique,

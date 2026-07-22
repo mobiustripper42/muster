@@ -585,12 +585,42 @@ export function runRepositoryContract(
       ...over,
     });
 
+    /**
+     * Save the parent rows the reservations-era foreign keys require (DEC-131). Postgres now
+     * enforces `checkout_holds.{vessel_id,offering_id}` and `offerings.location_id`; the
+     * in-memory double enforces nothing, so these saves are inert there. Pure fixture setup —
+     * no test's assertions change, they just stop writing children into thin air.
+     */
+    const saveCatalogParents = async (): Promise<void> => {
+      await repo.saveVessel(vessel());
+      await repo.saveLocation({
+        id: asId<"LocationId">("loc-1"),
+        name: "Dock",
+        pickupDescription: "Meet at the dock",
+        routeDescription: "Up the river",
+      });
+      await repo.saveOffering({
+        id: asId<"OfferingId">("off-1"),
+        tenantId: TENANT,
+        name: "Sunset Cruise",
+        status: "live",
+        vesselIds: [VESSEL],
+        locationId: asId<"LocationId">("loc-1"),
+        schedule: { seasonStart: "2026-06-01", seasonEnd: "2026-08-31", weekdays: [5], departureTimes: ["14:00"] },
+        basePriceCents: 49900,
+        priceVariations: [],
+        extraGuestPriceCents: 5000,
+      });
+    };
+
     it("acquireCheckoutHold: fresh acquire succeeds and is listable", async () => {
+      await saveCatalogParents();
       expect((await repo.acquireCheckoutHold(hold())).acquired).toBe(true);
       expect(await repo.listCheckoutHolds()).toHaveLength(1);
     });
 
     it("acquireCheckoutHold: two live acquires on one slot — exactly one wins", async () => {
+      await saveCatalogParents();
       const a = await repo.acquireCheckoutHold(hold({ id: asId<"CheckoutHoldId">("h-a") }));
       const b = await repo.acquireCheckoutHold(hold({ id: asId<"CheckoutHoldId">("h-b") }));
       expect([a.acquired, b.acquired].filter(Boolean)).toHaveLength(1);
@@ -598,12 +628,14 @@ export function runRepositoryContract(
     });
 
     it("acquireCheckoutHold: idempotent re-acquire of one's OWN live hold", async () => {
+      await saveCatalogParents();
       expect((await repo.acquireCheckoutHold(hold())).acquired).toBe(true);
       expect((await repo.acquireCheckoutHold(hold())).acquired).toBe(true);
       expect(await repo.listCheckoutHolds()).toHaveLength(1);
     });
 
     it("acquireCheckoutHold: an EXPIRED hold is inert — re-acquire succeeds (delete-expired-first)", async () => {
+      await saveCatalogParents();
       // seed a hold that is live at its own createdAt but expired by the new acquire's clock
       await repo.acquireCheckoutHold(
         hold({ id: asId<"CheckoutHoldId">("h-old"), createdAt: "2026-07-01T10:45:00.000Z", expiresAt: "2026-07-01T11:00:00.000Z" }),
@@ -616,6 +648,7 @@ export function runRepositoryContract(
     });
 
     it("checkout holds: remove is idempotent", async () => {
+      await saveCatalogParents();
       await repo.acquireCheckoutHold(hold());
       await repo.removeCheckoutHold(asId<"CheckoutHoldId">("hold-1"));
       expect(await repo.listCheckoutHolds()).toHaveLength(0);
@@ -625,6 +658,7 @@ export function runRepositoryContract(
 
     // ── Reservation catalog — write + read round-trip (12.1a) ──────────────────
     it("catalog: offering / location / block write + read round-trip", async () => {
+      await repo.saveVessel(vessel()); // parent for blocks.vessel_id (DEC-131)
       const loc: Location = {
         id: asId<"LocationId">("loc-1"),
         name: "Dock",
@@ -658,6 +692,7 @@ export function runRepositoryContract(
     });
 
     it("catalog: Offering gratuityKinds round-trip present and absent (DEC-124, 12.8)", async () => {
+      await saveCatalogParents();
       const base: Offering = {
         id: asId<"OfferingId">("off-g"), tenantId: TENANT, name: "Tipped", status: "live",
         vesselIds: [VESSEL], locationId: asId<"LocationId">("loc-1"),
@@ -676,6 +711,7 @@ export function runRepositoryContract(
     });
 
     it("catalog: Offering 12.8 display/config fields round-trip present and absent", async () => {
+      await saveCatalogParents();
       const base: Offering = {
         id: asId<"OfferingId">("off-cfg"), tenantId: TENANT, name: "Configured", status: "draft",
         vesselIds: [VESSEL], locationId: asId<"LocationId">("loc-1"),
@@ -723,6 +759,7 @@ export function runRepositoryContract(
     });
 
     it("catalog: Offering includedGuestCount round-trips present and absent (12.8)", async () => {
+      await saveCatalogParents();
       const base: Offering = {
         id: asId<"OfferingId">("off-inc"), tenantId: TENANT, name: "Counted", status: "live",
         vesselIds: [VESSEL], locationId: asId<"LocationId">("loc-1"),
@@ -752,6 +789,9 @@ export function runRepositoryContract(
     });
 
     it("gratuity: save + list by event + list all; deterministic id is idempotent", async () => {
+      // Parents for gratuity's FKs on event_id + reservation_id (DEC-131).
+      await repo.saveEvent(event());
+      await repo.saveReservation(reservation());
       expect(await repo.listAllGratuities()).toEqual([]);
       await repo.saveGratuity(gratuity());
       await repo.saveGratuity(gratuity()); // same id ⇒ no duplicate
@@ -768,7 +808,8 @@ export function runRepositoryContract(
       // bps omitted (post) stays omitted, not null
       const post = (await repo.listGratuitiesForEvent(EVENT)).find((g) => g.kind === "post")!;
       expect("bps" in post).toBe(false);
-      // a gratuity on a different event isn't returned
+      // a gratuity on a different event isn't returned (the other event must exist — DEC-131)
+      await repo.saveEvent(event({ id: asId<"EventId">("evt-other"), time: "16:00" }));
       await repo.saveGratuity(gratuity({ id: asId<"GratuityId">("grat_pre_cs3"), eventId: asId<"EventId">("evt-other") }));
       expect(await repo.listGratuitiesForEvent(EVENT)).toHaveLength(2);
       expect(await repo.listAllGratuities()).toHaveLength(3);
@@ -804,6 +845,8 @@ export function runRepositoryContract(
     });
 
     it("payments: save/get/listForReservation; idempotent upsert on id; optional stripe ids", async () => {
+      // Parent for payments' FK on reservation_id (DEC-131).
+      await repo.saveReservation(reservation());
       await repo.savePayment(payment());
       const got = await repo.getPayment(asId<"PaymentId">("pay-1"));
       expect(got).toEqual(payment());

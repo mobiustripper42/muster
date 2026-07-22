@@ -9,7 +9,8 @@
 -- Same house rules as 0005: text PK (deterministic `ring-<threadId>-<crewMemberId>` —
 -- ONE slot per (thread, member), upserted per ring-cycle, never piling duplicates),
 -- ISO dates as `text` (verbatim round-trip, parity with the in-memory double), no
--- foreign keys (integrity is the service layer's — DEC-DATA-1). ADAPTER-SIDE state:
+-- foreign keys (integrity is the service layer's — posture per DEC-131, not DEC-DATA-1).
+-- ADAPTER-SIDE state:
 -- only the channel adapter writes it, only the ring-outbox view reads it.
 --
 -- `body` + `link` are frozen at enqueue (DEC-030) — but each ring-cycle mints a FRESH

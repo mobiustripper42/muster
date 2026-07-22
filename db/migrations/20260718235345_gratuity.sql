@@ -5,7 +5,13 @@
 -- routes to crew via the per-event pool the 12.3b payroll report splits. One row per collected
 -- gratuity, keyed by `kind` ('pre' at checkout | 'post' via the manage link). Linked to the
 -- event (the split grain) AND the reservation (post-trip attach + cancel exclusion). House
--- style (DEC-DATA-1): text PK/ids, NO foreign keys, NO CHECK on `kind`, integer cents.
+-- ⚠️ SUPERSEDED (DEC-131): the no-FK claim below was both miscited (DEC-DATA-1 governs
+-- logic placement, never foreign keys) and is now FACTUALLY STALE — this table's tables
+-- had not reached production, so 20260722170000_fk_reservations_era.sql added REAL
+-- foreign keys to them while they were still empty in prod. Read that migration for the
+-- current constraint state.
+-- style: text PK/ids, ~~NO foreign keys~~ (added later, see above), NO CHECK on `kind`
+-- (a vocabulary CHECK is a business rule — that part IS DEC-DATA-1), integer cents.
 --
 -- Plus two additive columns: Offering gratuity tiers (the required-at-checkout choices), and a
 -- `gratuity_cents` carve-out on payments so `balanceOwedCents` can net the tip out of "paid".

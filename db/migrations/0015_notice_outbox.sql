@@ -10,7 +10,7 @@
 -- Same house rules as 0005/0011: text PK (deterministic
 -- `notice-<shiftId>-<crewMemberId>-<action>` — ONE slot per shift+member+action,
 -- upserted per re-issue, never piling duplicates), ISO dates as `text` (verbatim
--- round-trip, parity with the in-memory double), no foreign keys (integrity is the
+-- round-trip, parity with the in-memory double), no foreign keys (posture: DEC-131; integrity is the
 -- service layer's — DEC-DATA-1). ADAPTER-SIDE state: only OutboxNoticeChannel writes
 -- it, only the notice-outbox view reads it; the domain never does.
 --

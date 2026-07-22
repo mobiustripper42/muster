@@ -8,7 +8,7 @@
 --
 -- A standing ATTRIBUTE of the crew member, not a 1:n collection — so it's a column
 -- on crew_members, mirroring the `ratings` jsonb array (DEC-119), not a table.
--- jsonb + no FK/CHECK per the DEC-DATA-1 house convention; the db:crew setter
+-- jsonb + no CHECK (DEC-DATA-1: vocabularies aren't the DB's) + no FK (DEC-131); the db:crew setter
 -- validates the 0–6 range in the service layer.
 
 alter table crew_members

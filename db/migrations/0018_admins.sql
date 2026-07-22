@@ -11,7 +11,7 @@
 -- revoke: `readSubject` fails an admin whose row is missing or inactive on its next
 -- request (immediate, admins-only — the stateless crew hot path is untouched).
 --
--- House rules: text PK, ISO-8601 dates as `text`, no foreign keys (the `id`↔crew link is
+-- House rules: text PK, ISO-8601 dates as `text`, no foreign keys (posture: DEC-131; the `id`↔crew link is
 -- semantic, not enforced — integrity is the service layer's, DEC-DATA-1). NO `role` column
 -- — all admins are equal at launch; roles are deferred (the column is the clean seam).
 --

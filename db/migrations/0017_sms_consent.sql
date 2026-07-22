@@ -10,7 +10,7 @@
 -- NEW row, not an upsert (the full consent history is the point). Adapter/edge-side —
 -- only the crew-login action writes it (best-effort), never the domain. House rules:
 -- text PK (a random id minted at the write), ISO-8601 dates as `text` (verbatim
--- round-trip, parity with the in-memory double), no foreign keys (integrity is the
+-- round-trip, parity with the in-memory double), no foreign keys (posture: DEC-131; integrity is the
 -- service layer's — DEC-DATA-1). `seq bigserial` carries insertion order for a stable
 -- read (the reliability_events precedent), the one surrogate sequence this table keeps.
 

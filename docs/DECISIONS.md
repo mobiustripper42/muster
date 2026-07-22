@@ -23,6 +23,7 @@ _Current decision per topic. Superseded DECs struck through with their replaceme
 - DEC-054 — operator engine pause/resume (edge-gated)
 - DEC-118 — crew audit log = append-only `audit_events`
 - DEC-131 — constraint posture: DEC-DATA-1 governs logic placement, not FK/UNIQUE
+  (⚠️ ~19 migration headers miscite DEC-DATA-1 for a no-FK rule it never contained)
 - DEC-DATA-1 — service layer; Supabase is managed Postgres, not the architecture
 
 ### Availability & commitment rules
@@ -441,6 +442,17 @@ at multi-tenant. **Phase:** applies from M0 (the data model) onward — no new m
 2026-06-04.)
 
 ## DEC-DATA-1: Muster keeps a service layer; Supabase (if used) is managed Postgres, not the architecture
+
+> ⚠️ **This DEC has never said anything about foreign keys. See DEC-131.**
+> Roughly nineteen migration headers (from `db/migrations/0001_init.sql` onward) cite *"no foreign
+> keys — DEC-DATA-1"* as though the rule were decided here. **It is not, and never was.** The text
+> below is about *logic placement* — domain decisions live in the service layer, not in RLS policies,
+> triggers, or procs. It draws no conclusion about referential constraints. The no-FK convention was
+> minted independently in `0001_init.sql`'s own header and then propagated by copy, acquiring this
+> DEC's number as a credential it was never granted. **DEC-131** decides the constraint posture:
+> the DB never holds business rules, but may hold structural invariants (`NOT NULL`/`UNIQUE`/`FK`).
+> Cite **DEC-131**, not this DEC, for anything about constraints.
+
 **Nature:** An architecture-boundary decision, made **before** adopting Supabase so the boundary is on
 paper, not improvised against a tempting RLS policy later. No slice work changes; this is a standing
 boundary that composes with DEC-013 (stack deferred to M4) — it pre-commits *how* a datastore is used,

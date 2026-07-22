@@ -9,6 +9,7 @@
  * `RESERVATIONS` flag (DEC-111).
  */
 import { deriveAvailability } from "@core/reservations/availability.js";
+import { isPhoneRejection, phoneRejectionMessage } from "@core/customers/identity.js";
 import { WAIVER_TERMS_URL } from "@core/config/tenant.js";
 import { SubmitButton } from "../../../components/ui/submit-button";
 import { getRepo } from "../../lib/repo";
@@ -45,7 +46,20 @@ export default async function BookHarnessPage({
   return (
     <main style={{ maxWidth: "40rem", margin: "2rem auto", padding: "0 1rem", fontFamily: "system-ui" }}>
       <h1>Book a boat (harness)</h1>
-      {err && <p style={{ color: "crimson" }}>Couldn&rsquo;t start checkout: {err}</p>}
+      {err && (
+        <p style={{ color: "crimson" }}>
+          {/* Phone rejections get the operator-facing sentence; everything else keeps the
+              harness's raw reason code (11.6 — this page is a throwaway until 12.4/12.5). */}
+          {(() => {
+            const reason = err.startsWith("phone_") ? err.slice("phone_".length) : "";
+            // `err` is URL-carried and untrusted — validate against the vocabulary rather
+            // than casting, or a hand-typed ?err=phone_bogus renders an empty message.
+            return isPhoneRejection(reason)
+              ? phoneRejectionMessage(reason)
+              : `Couldn't start checkout: ${err}`;
+          })()}
+        </p>
+      )}
       {bookable.length === 0 && (
         <p>
           No bookable Muster events. Seed one with <code>npm run db:checkout -- --dry-run</code>, or
@@ -80,7 +94,8 @@ export default async function BookHarnessPage({
           </p>
           <p>
             <label>
-              Phone <input name="phone" />
+              Phone{" "}
+              <input name="phone" type="tel" autoComplete="tel" required placeholder="(216) 555-0148" />
             </label>
           </p>
           <p>

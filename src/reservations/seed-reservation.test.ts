@@ -39,7 +39,7 @@ describe("db:seed:reservation fixture", () => {
     expect(booked.length).toBe(RESERVATION_DEMO.bookings.length);
   });
 
-  it("a vessel block over the demo window conflicts with both bookings", () => {
+  it("a vessel block over the demo window conflicts with the two bookings inside it", () => {
     const block: Block = {
       id: asId<"BlockId">("blk-drift"),
       kind: "vessel",
@@ -54,6 +54,7 @@ describe("db:seed:reservation fixture", () => {
       events: world.events,
       reservations: world.reservations,
     });
+    // Aug 11–14 covers the Aug 12 + Aug 13 bookings; the Aug 16 repeat sits outside it.
     expect(impact.conflictCount).toBe(2);
     expect(impact.conflictCents).toBe(54900 + 43900);
     expect(impact.removedSlots).toBeGreaterThan(0);

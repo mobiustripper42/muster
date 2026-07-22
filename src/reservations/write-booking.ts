@@ -21,6 +21,7 @@ import {
 } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 import { canBook, eventIdForSlot } from "./availability.js";
+import { resolveCustomerId } from "../customers/resolve.js";
 
 export interface BookingRequest {
   eventId: EventId;
@@ -92,12 +93,17 @@ export async function writeBooking(
     return { outcome: "unbookable", reason: "already_claimed" };
   }
 
+  // Get-or-create the customer (12.12b, DEC-132). Never fails the booking: an unusable phone
+  // leaves the reservation unlinked rather than dropping a paid booking (see resolveCustomerId).
+  const customerId = await resolveCustomerId(repo, req, now);
+
   const reservation: Reservation = {
     id,
     eventId: req.eventId,
     source: "muster",
     customerName: req.customerName,
     partySize: req.partySize,
+    ...(customerId !== undefined ? { customerId } : {}),
     ...(req.email !== undefined ? { email: req.email } : {}),
     ...(req.phone !== undefined ? { phone: req.phone } : {}),
     ...(req.waiverConsentAt !== undefined ? { waiverConsentAt: req.waiverConsentAt } : {}),
@@ -179,12 +185,16 @@ export async function writeSlotBooking(
     source: "muster",
     price: req.priceCents,
   };
+  // Same get-or-create as the seeded path (12.12b, DEC-132) — this is the LIVE booking path.
+  const customerId = await resolveCustomerId(repo, req, now);
+
   const reservation: Reservation = {
     id,
     eventId,
     source: "muster",
     customerName: req.customerName,
     partySize: req.guestCount,
+    ...(customerId !== undefined ? { customerId } : {}),
     ...(req.extrasCents !== undefined ? { extrasCents: req.extrasCents } : {}),
     ...(req.email !== undefined ? { email: req.email } : {}),
     ...(req.phone !== undefined ? { phone: req.phone } : {}),

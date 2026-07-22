@@ -14,6 +14,7 @@
  * Idempotent: deterministic ids ⇒ re-running upserts, never double-writes.
  */
 import { existsSync } from "node:fs";
+import { resolveCustomerId } from "../src/customers/resolve.js";
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
 import { seedFleet } from "../src/import/resource-map.js";
 import { RESERVATION_DEMO, buildSeededReservationWorld } from "../src/reservations/seed-reservation.js";
@@ -50,9 +51,22 @@ try {
     await repo.markVesselDayMusterOwned(o.vesselId, o.date, new Date().toISOString());
   }
   for (const e of world.events) await repo.saveEvent(e);
-  for (const r of world.reservations) await repo.saveReservation(r);
+  // Resolve each booking's customer the same way a real booking would (12.12b, DEC-132) —
+  // get-or-create by canonical phone, so the two Marcus bookings collapse to ONE customer and
+  // the tab has a repeat guest to show. Seeds are first-class fixtures; they must exercise the
+  // real path, not hand-write customer rows the app would never produce.
+  for (const r of world.reservations) {
+    const customerId = await resolveCustomerId(
+      repo,
+      { customerName: r.customerName, ...(r.phone !== undefined ? { phone: r.phone } : {}) },
+      () => r.updatedAt ?? new Date().toISOString(),
+    );
+    await repo.saveReservation({ ...r, ...(customerId !== undefined ? { customerId } : {}) });
+  }
 
+  const customers = await repo.listCustomers();
   console.log(`✓ Seeded reservation demo world (db: ${new URL(url).host}).`);
+  console.log(`  customers ${customers.length} (${customers.map((c) => `${c.name} ${c.displayCode}`).join(", ")})`);
   console.log(`  offering  ${world.offering.id}  (LIVE, ${RESERVATION_DEMO.departureTimes.join("/")}, ${RESERVATION_DEMO.vesselName})`);
   console.log(`  owned     ${RESERVATION_DEMO.vesselName}  ${RESERVATION_DEMO.ownedRange.start} … ${RESERVATION_DEMO.ownedRange.end}`);
   for (const b of RESERVATION_DEMO.bookings) {

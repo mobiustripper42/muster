@@ -14,6 +14,7 @@
 
 import type {
   AddOnId,
+  CustomerId,
   AskId,
   BlockId,
   CheckoutHoldId,
@@ -333,6 +334,36 @@ export interface GratuityKindConfig {
 }
 
 /**
+ * A customer CONTACT RECORD (12.12b, DEC-132) — not an account. No password, no login; the
+ * customer never authenticates. It exists so two bookings by the same person hang together.
+ *
+ * **Identity is the phone, but the PK is not.** `phoneE164` carries a UNIQUE constraint (same
+ * phone ⇒ same customer, so "merge duplicate contacts" mostly dissolves), while `id` is an
+ * immutable surrogate. Welding a mutable business fact into the key means migrating the row and
+ * every reference when a number changes, and a carrier-recycled number would inherit the previous
+ * customer's history — the same instinct as the `Reservation.eventId` guardrail.
+ *
+ * Phone is REQUIRED as of 12.12b; whether identity should ultimately be phone-OR-email is
+ * deliberately deferred (DEC-132) and will be forced by the Xola importer at cutover. All
+ * resolution lives in `src/customers/identity.ts` so that stays a one-file policy change.
+ */
+export interface Customer {
+  id: CustomerId;
+  /** Readable short code, `C-` + 6 Crockford base32 chars — UNIQUE. Operator convenience
+   *  (something short to say on the phone), NOT a customer-facing account number. */
+  displayCode: string;
+  name: string;
+  /** Canonical E.164 — the identity key, UNIQUE. Produced ONLY by `canonicalizePhone`. */
+  phoneE164: string;
+  email?: string;
+  /** ISO-8601 UTC. */
+  createdAt: string;
+  notes?: string;
+  /** Soft-retire (DEC-123 posture). Note soft-delete RETAINS PII — true erasure is out of scope. */
+  active: boolean;
+}
+
+/**
  * A first-class sellable add-on (#491) — revenue, taxed + fee'd (the opposite of gratuity).
  * Its own entity (like {@link Vessel}/{@link Location}), edited once at `/admin/add-ons` and
  * ATTACHED to offerings by id (`Offering.addOnIds`). `type` is `"flat"` only for now; a text
@@ -515,6 +546,16 @@ export interface Reservation {
    * diffs (the lock-anchored nudge was retired with locking, DEC-082/#215).
    */
   updatedAt?: string;
+  /**
+   * The {@link Customer} this booking belongs to (12.12b, DEC-132) — the FIRST real foreign key
+   * in this schema, per DEC-131 (the DB may hold structural invariants; it still holds no
+   * business rules). Nullable on purpose: historical reservations that never captured a
+   * canonicalizable phone stay unlinked permanently, and `NULL` passes the FK.
+   *
+   * Set by `writeBooking`'s get-or-create at booking time and by the one-time backfill. NOT set
+   * by the Xola importer — importer-created customers are deferred to the cutover (DEC-132).
+   */
+  customerId?: CustomerId;
   // No waiver field — DEC-012.
 }
 

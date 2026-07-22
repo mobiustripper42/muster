@@ -10,6 +10,7 @@
 
 import type {
   AddOn,
+  Customer,
   Admin,
   Ask,
   AuthSubjectKind,
@@ -44,6 +45,7 @@ import type {
 import { subjectKey } from "../domain/subject.js";
 import type {
   AddOnId,
+  CustomerId,
   AskId,
   BlockId,
   CheckoutHoldId,
@@ -98,6 +100,7 @@ const upsertThreadState = (
 export class InMemoryRepository implements Repository {
   readonly #roleTypes = new Map<RoleTypeId, RoleType>();
   readonly #addOns = new Map<AddOnId, AddOn>();
+  readonly #customers = new Map<CustomerId, Customer>();
   readonly #vessels = new Map<VesselId, Vessel>();
   readonly #crew = new Map<CrewMemberId, CrewMember>();
   readonly #credentials = new Map<CredentialId, Credential>();
@@ -180,6 +183,49 @@ export class InMemoryRepository implements Repository {
   }
   async listAddOns(): Promise<AddOn[]> {
     return [...this.#addOns.values()].map(clone);
+  }
+
+  // ── Customers (contact records — 12.12b, DEC-132) ──────────────────────────
+  // The double stays DUMB: it does NOT enforce the phone/display-code UNIQUE indexes the
+  // Postgres schema carries, and it holds no FK on `reservation.customerId`. That asymmetry is
+  // deliberate (DEC-131) — reimplementing constraint checking here would put integrity in two
+  // places, which is the exact smear the service-layer boundary exists to avoid. The adapters
+  // diverge only on INVALID writes; the contract suite proves parity over valid operations.
+  // The one exception is `getOrCreateCustomerByPhone`, whose RESULT is semantic: callers branch
+  // on `created`, so both adapters must agree on which branch wins. Here a phone scan settles
+  // it; in Postgres the unique index does.
+  async saveCustomer(customer: Customer): Promise<void> {
+    this.#customers.set(customer.id, clone(customer));
+  }
+  async getCustomer(id: CustomerId): Promise<Customer | null> {
+    const c = this.#customers.get(id);
+    return c ? clone(c) : null;
+  }
+  async getCustomerByPhone(phoneE164: string): Promise<Customer | null> {
+    const c = [...this.#customers.values()].find((x) => x.phoneE164 === phoneE164);
+    return c ? clone(c) : null;
+  }
+  async getCustomerByCode(displayCode: string): Promise<Customer | null> {
+    const c = [...this.#customers.values()].find((x) => x.displayCode === displayCode);
+    return c ? clone(c) : null;
+  }
+  async listCustomers(): Promise<Customer[]> {
+    return [...this.#customers.values()].map(clone);
+  }
+  async getOrCreateCustomerByPhone(
+    candidate: Customer,
+  ): Promise<{ customer: Customer; created: boolean }> {
+    const existing = [...this.#customers.values()].find(
+      (x) => x.phoneE164 === candidate.phoneE164,
+    );
+    if (existing) return { customer: clone(existing), created: false };
+    this.#customers.set(candidate.id, clone(candidate));
+    return { customer: clone(candidate), created: true };
+  }
+  async listReservationsForCustomer(id: CustomerId): Promise<Reservation[]> {
+    return [...this.#reservations.values()]
+      .filter((r) => r.customerId === id)
+      .map(clone);
   }
 
   // ── Vessels ──────────────────────────────────────────────────────────────

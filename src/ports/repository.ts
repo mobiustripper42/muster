@@ -27,6 +27,7 @@ import type {
   Credential,
   CrewMember,
   CrewStatus,
+  Customer,
   Event,
   LoginCode,
   MagicToken,
@@ -48,6 +49,7 @@ import type {
   AskId,
   BlockId,
   CheckoutHoldId,
+  CustomerId,
   LocationId,
   OfferingId,
   CredentialId,
@@ -95,6 +97,30 @@ export interface Repository {
   saveAddOn(addOn: AddOn): Promise<void>;
   getAddOn(id: AddOnId): Promise<AddOn | null>;
   listAddOns(): Promise<AddOn[]>;
+
+  // ── Customers (contact records — 12.12b, DEC-132) ──────────────────────────
+  // Identity is the canonical E.164 phone (UNIQUE in Postgres); the PK is a surrogate.
+  saveCustomer(customer: Customer): Promise<void>;
+  getCustomer(id: CustomerId): Promise<Customer | null>;
+  getCustomerByPhone(phoneE164: string): Promise<Customer | null>;
+  getCustomerByCode(displayCode: string): Promise<Customer | null>;
+  listCustomers(): Promise<Customer[]>;
+  /**
+   * Get-or-create by canonical phone — the ONE sanctioned way a customer comes into being at
+   * booking time. Returns the existing customer when the phone is already known, otherwise
+   * inserts `candidate`. **The uniqueness race is settled by the database**, not by a
+   * read-then-write in the caller: two first-time bookings from the same phone in the same
+   * instant would both see "no customer" and both insert. Same shape as
+   * `saveReservationIfUnclaimed` — a constraint the caller must react to is exposed through the
+   * port as a typed result, never as a raw driver error (DEC-131).
+   *
+   * `created` tells the caller which branch won; the backfill and the contract tests assert it.
+   */
+  getOrCreateCustomerByPhone(
+    candidate: Customer,
+  ): Promise<{ customer: Customer; created: boolean }>;
+  /** A customer's bookings — the detail pane's history list. */
+  listReservationsForCustomer(id: CustomerId): Promise<Reservation[]>;
 
   // ── Crew ───────────────────────────────────────────────────────────────────
   saveCrewMember(crew: CrewMember): Promise<void>;

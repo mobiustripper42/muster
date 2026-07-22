@@ -5,6 +5,7 @@ import { StripePaymentPort } from "@core/adapters/stripe-payment.js";
 import { WAIVER_TERMS_VERSION } from "@core/config/tenant.js";
 import { asId } from "@core/domain/ids.js";
 import { createBookingCheckout } from "@core/reservations/create-booking-checkout.js";
+import { canonicalizePhone } from "@core/customers/identity.js";
 import { getRepo } from "../../lib/repo";
 
 /**
@@ -31,6 +32,14 @@ export async function startBooking(formData: FormData): Promise<void> {
   // the timestamp is the agreement instant (now — this submit).
   const waiverConsent = formData.get("waiverConsent") === "yes";
   if (!waiverConsent) redirect("/book?err=waiver_required");
+
+  // Phone is REQUIRED and must be canonicalizable (12.12b, DEC-132) — it's the customer
+  // identity key. Enforced HERE, server-side, not by the input's `required` attribute: the
+  // attribute is courtesy, and a raw POST bypasses it entirely. This is the last point where a
+  // human can still fix a typo; past checkout the money is captured and a bad phone can only
+  // leave the reservation unlinked (see resolveCustomerId).
+  const canonicalPhone = canonicalizePhone(phone);
+  if (!canonicalPhone.ok) redirect(`/book?err=phone_${canonicalPhone.reason}`);
   const base = (process.env.APP_BASE_URL || "http://localhost:3000").replace(/\/+$/, "");
 
   const result = await createBookingCheckout(
@@ -41,7 +50,9 @@ export async function startBooking(formData: FormData): Promise<void> {
       customerName,
       partySize,
       ...(email ? { email } : {}),
-      ...(phone ? { phone } : {}),
+      // Store the CANONICAL form so the reservation's phone and the customer's identity key
+      // are the same string — no second normalization downstream to drift from this one.
+      phone: canonicalPhone.ok ? canonicalPhone.phone : phone,
       waiverConsentAt: new Date().toISOString(),
       waiverVersion: WAIVER_TERMS_VERSION,
     },

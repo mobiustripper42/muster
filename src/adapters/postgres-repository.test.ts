@@ -26,6 +26,7 @@ const TABLES = [
   "offerings",
   "locations",
   "add_ons",
+  "customers",
   "blocks",
   "checkout_holds",
   "gratuity",

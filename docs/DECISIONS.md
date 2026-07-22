@@ -2537,7 +2537,7 @@ be tamper-checked per-shift (currently any signed-in subject can post), or an ap
 ## DEC-105: Reservations go live in 2026 as a Muster-native parallel-run — permanent coexistence, not a cutover
 
 **Status:** Decided 2026-07-11 (Eric + @architect). Reopens the parked customer-portal / 2027 scope
-(SPEC §0.2/§0.3/§2.2/§4). Umbrella DEC for Phase 11–12; the mechanism DECs (099–104, and DEC-126 — embed-first rollout) sit under it.
+(SPEC §0.2/§0.3/§2.2/§4). Umbrella DEC for Phase 11–12; the mechanism DECs (099–104, and DEC-131 — embed-first rollout) sit under it.
 
 **Context.** The crew engine shipped at v1.0.0 and, four days into real crew use, is exceeding
 expectations. The operator wants the *other* half of the eventual Xola replacement — taking bookings —
@@ -3317,7 +3317,7 @@ own design (its own mockup).
 
 ---
 
-## DEC-126: The customer booking flow ships as an embeddable widget — the BrewBoat rollout path and the multi-tenant seam
+## DEC-131: The customer booking flow ships as an embeddable widget — the BrewBoat rollout path and the multi-tenant seam
 
 **Status:** Decided 2026-07-20 (Eric + design). Extends DEC-105 (Phase 11–12 booking) as a mechanism DEC under it. Reflected in the booking mockups (`the-booking-1.md` §8, `availability-picker` + `booking-form`).
 
@@ -3330,19 +3330,19 @@ own design (its own mockup).
 **Constraints (build discipline).**
 - Keep the flow **iframe-shaped**: self-contained, works in a narrow/constrained viewport, no dependency on top-level browser navigation or Muster's app chrome; postMessage-ready for resize + launch.
 - Each step is **URL-addressable** and renders standalone at its own origin too (deep-linkable — coherent with "the confirmation IS the living link," DEC-122). `frame-ancestors` CSP allows the embedding operator's domain.
-- **Stripe wallet gotcha:** Apple Pay requires per-domain association. Keep **payment on Muster's own origin inside the frame** (as FareHarbor does), so wallet verification is against Muster's domain, not each operator's. **— Made moot by DEC-127 (no Apple Pay / no wallets): payment is plain Stripe card on Muster's origin, embeddable anywhere with no per-domain wallet setup.**
+- **Stripe wallet gotcha:** Apple Pay requires per-domain association. Keep **payment on Muster's own origin inside the frame** (as FareHarbor does), so wallet verification is against Muster's domain, not each operator's. **— Made moot by DEC-132 (no Apple Pay / no wallets): payment is plain Stripe card on Muster's origin, embeddable anywhere with no per-domain wallet setup.**
 
 **Revisit if:** a tenant needs the flow where per-domain Apple Pay verification isn't feasible (fall back to a hosted redirect link for that tenant), or a non-iframe distribution (hosted booking link) is preferred.
 
 ---
 
-## DEC-127: Payments — Stripe card checkout only; no Apple Pay / wallets (foreseeable future)
+## DEC-132: Payments — Stripe card checkout only; no Apple Pay / wallets (foreseeable future)
 
-**Status:** Decided 2026-07-20 (Eric). Refines the DEC-126 payment note; sits under DEC-105 (Phase 11–12 payments).
+**Status:** Decided 2026-07-20 (Eric). Refines the DEC-131 payment note; sits under DEC-105 (Phase 11–12 payments).
 
 **Decision.** The customer checkout takes **card payment via Stripe and nothing else** — **no Apple Pay, no Google Pay, no PayPal or other wallets** — for the foreseeable future. One checkout, Stripe only. (FareHarbor ships several checkout variants; that's multi-tenant tax we don't inherit — Muster ships a single checkout.)
 
-**Why.** Card-only is enough for BrewBoat; wallets add surface without a clear return, and Apple Pay specifically carries a **per-embedding-domain verification burden**. Dropping wallets **removes that headache from the DEC-126 iframe embed entirely** — payment is just Stripe card on Muster's origin, embeddable on any operator page with no per-domain wallet setup.
+**Why.** Card-only is enough for BrewBoat; wallets add surface without a clear return, and Apple Pay specifically carries a **per-embedding-domain verification burden**. Dropping wallets **removes that headache from the DEC-131 iframe embed entirely** — payment is just Stripe card on Muster's origin, embeddable on any operator page with no per-domain wallet setup.
 
 **Stripe Link is not excluded.** Link is Stripe-native (1-click card autofill, not a third-party wallet), so it's compatible with "Stripe only" and could be added later as a pure Stripe feature. The current booking mockup leaves it out for simplicity.
 

@@ -78,8 +78,13 @@ export default async function AdminIntegrity({
       {view && <Result view={view} />}
 
       <div>
+        {/* `prefetch={false}` is load-bearing, not hygiene: this route is
+            force-dynamic, so a prefetch on hover/viewport would fetch its RSC
+            payload — running the twelve-table scan without anyone clicking, which
+            is the exact thing the idle state exists to prevent. */}
         <AppLink
           href="/admin/integrity?run=1"
+          prefetch={false}
           className="inline-flex rounded-card border border-accent bg-card px-4 py-3 font-semibold text-accent shadow-sm"
         >
           {requested ? "Run again →" : "Run check →"}

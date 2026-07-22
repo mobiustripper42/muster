@@ -77,10 +77,13 @@ test.describe("admin /admin/calendar", () => {
     await expect(pane).toContainText("$588.80");
     await expect(pane).not.toContainText("Service fee");
 
-    // Read-only slice — none of the mockup's action buttons ship yet.
-    await expect(pane.getByRole("button")).toHaveCount(0);
-    await expect(pane).not.toContainText("Refund");
-    await expect(pane).not.toContainText("Cancel");
+    // The mockup's remaining actions are still deferred — refund waits on #472, message on
+    // #119 (a customer must never reach the crew line). Narrowed from "zero buttons" when the
+    // balance link shipped (11.2b): that assertion encoded a scope decision we changed on
+    // purpose, so it names the deferred actions now instead of counting.
+    for (const action of ["Refund", "Cancel", "Message", "Guests", "Change time"]) {
+      await expect(pane.getByRole("button", { name: action })).toHaveCount(0);
+    }
 
     // One route, two native layouts (no client JS): the grid sits BESIDE the pane on desktop
     // and is hidden on mobile, where the pane is the whole page. It's hidden rather than
@@ -108,6 +111,37 @@ test.describe("admin /admin/calendar", () => {
     // Dana's fare is 43900 → tax 3183 → 47083 due.
     await expect(pane).toContainText("$439.00");
     await expect(pane).toContainText("$470.83");
+  });
+
+  /**
+   * The balance link (11.2b, DEC-107) — the operator door for a service that shipped tested
+   * with no caller. The seeded booking has no payments, so the whole fare is outstanding and
+   * the action offers itself. The Stripe MINT itself isn't exercised here (it needs a live
+   * Stripe session); this drives the two states the action redirects back into, which is
+   * where the UI logic actually lives.
+   */
+  test("balance link: offered when money is owed, hidden once settled", async ({ page }) => {
+    await signInAsAdmin(page, "spink");
+    await page.goto("/admin/calendar/resv-demo-2026-08-12-13%3A30?date=2026-08-12");
+
+    const pane = page.getByTestId("reservation-detail");
+    await expect(pane).toContainText("$588.80"); // balance due
+    await expect(pane.getByRole("button", { name: "Create balance link" })).toBeVisible();
+
+    // The minted link renders with a copy affordance, and the button gives way to it.
+    await page.goto(
+      "/admin/calendar/resv-demo-2026-08-12-13%3A30?date=2026-08-12&balanceUrl=https%3A%2F%2Fcheckout.stripe.com%2Fc%2Fpay%2Ftest123",
+    );
+    await expect(pane.getByTestId("balance-link")).toContainText("checkout.stripe.com/c/pay/test123");
+    await expect(pane.getByRole("button", { name: "Copy link" })).toBeVisible();
+    await expect(pane.getByRole("button", { name: "Create balance link" })).toHaveCount(0);
+
+    // A refusal explains itself in operator language, not a reason code.
+    await page.goto(
+      "/admin/calendar/resv-demo-2026-08-12-13%3A30?date=2026-08-12&balanceErr=stripe_not_configured",
+    );
+    await expect(pane).toContainText("Stripe isn’t configured");
+    await expect(pane).not.toContainText("stripe_not_configured");
   });
 
   test("an unknown reservation 404s rather than rendering an empty pane", async ({ page }) => {

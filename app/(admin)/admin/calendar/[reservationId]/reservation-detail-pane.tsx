@@ -3,6 +3,29 @@ import { offeringDotClass } from "@core/reservations/calendar-grid.js";
 import { AppLink } from "../../../../../components/ui/app-link";
 import { vesselHueClass } from "../../../../lib/vessel-hue";
 import { clockTime, formatShortDay } from "../calendar-view";
+import { CopyButton } from "../../../../../components/ui/copy-button";
+import { SubmitButton } from "../../../../../components/ui/submit-button";
+import { createBalanceLink } from "./actions";
+
+/** Operator-facing copy for a refused balance link. Says what happened, not a reason code. */
+function balanceErrorMessage(reason: string): string {
+  switch (reason) {
+    case "no_balance":
+      return "Nothing is owed on this booking — the balance is already settled.";
+    case "not_active":
+      return "This booking is cancelled, so there’s no balance to collect.";
+    case "unpriced":
+      return "This departure has no recorded price, so a balance can’t be computed.";
+    case "reservation_missing":
+      return "Balances are Muster-side only — this reservation is owned by Xola.";
+    case "stripe_not_configured":
+      return "Stripe isn’t configured on this deployment, so no link can be minted.";
+    case "stripe_unreachable":
+      return "Couldn’t reach Stripe just now. Try again in a moment.";
+    default:
+      return "Couldn’t create a balance link.";
+  }
+}
 
 /**
  * The reservation detail pane (task 12.11 continued, #464) — read-only, per the approved
@@ -44,7 +67,14 @@ function waiverText(w: ReservationDetailView["waiver"]): string {
   return w.kind === "xola" ? "Held in Xola" : "Not on file";
 }
 
-export function ReservationDetailPane({ v }: { v: ReservationDetailView }) {
+export function ReservationDetailPane({
+  v,
+  balance,
+}: {
+  v: ReservationDetailView;
+  /** Balance-link state from the query string (11.2b) — the minted URL, or why not. */
+  balance?: { url?: string | undefined; err?: string | undefined; date: string; filter: string } | undefined;
+}) {
   const money = v.money;
 
   return (
@@ -173,6 +203,44 @@ export function ReservationDetailPane({ v }: { v: ReservationDetailView }) {
           <p className="text-xs text-muted">
             This departure has no recorded price, so the fare and balance can’t be derived.
           </p>
+        )}
+
+        {/* The ONE action in this pane (11.2b, DEC-107). Shown only when money is actually
+            owed — a "collect balance" button on a settled booking is a trap. The operator
+            sends the link; the customer pays; the webhook writes the payment. Nothing is
+            charged or written here, so re-minting is free and needs no confirmation. */}
+        {money.priceKnown && money.balanceCents > 0 && balance && (
+          <div className="mt-3 border-t border-line pt-3">
+            {balance.url ? (
+              <>
+                <p className="mb-1.5 text-xs text-muted">
+                  Balance link for {formatCents(money.balanceCents)} — send it to the customer.
+                  It expires with the Stripe session; mint a fresh one any time.
+                </p>
+                <div className="flex items-center gap-2">
+                  <span
+                    className="min-w-0 flex-1 select-all truncate rounded-lg border border-line bg-bg px-2 py-1.5 font-mono text-[11px] text-muted"
+                    data-testid="balance-link"
+                  >
+                    {balance.url}
+                  </span>
+                  <CopyButton value={balance.url} label="Copy link" />
+                </div>
+              </>
+            ) : (
+              <form action={createBalanceLink}>
+                <input type="hidden" name="reservationId" value={v.reservationId} />
+                <input type="hidden" name="date" value={balance.date} />
+                <input type="hidden" name="filter" value={balance.filter} />
+                <SubmitButton className="min-h-[44px] w-full rounded-lg border border-line bg-ink px-3 text-sm font-medium text-white">
+                  Create balance link
+                </SubmitButton>
+                {balance.err && (
+                  <p className="mt-1.5 text-xs text-bad">{balanceErrorMessage(balance.err)}</p>
+                )}
+              </form>
+            )}
+          </div>
         )}
       </div>
     </div>

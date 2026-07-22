@@ -67,6 +67,19 @@ export function isCanonicalizablePhone(raw: string | undefined | null): boolean 
   return canonicalizePhone(raw).ok;
 }
 
+/** The rejection vocabulary, as a runtime-checkable set — a URL-carried reason is untrusted. */
+const PHONE_REJECTIONS = new Set<string>([
+  "empty",
+  "too_short",
+  "too_long",
+  "not_dialable",
+  "unsupported_country",
+]);
+
+export function isPhoneRejection(value: string): value is PhoneRejection {
+  return PHONE_REJECTIONS.has(value);
+}
+
 /** Operator-facing copy for a rejected phone. One sentence, no jargon, says what to do. */
 export function phoneRejectionMessage(reason: PhoneRejection): string {
   switch (reason) {

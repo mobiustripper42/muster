@@ -649,8 +649,10 @@ export class PostgresRepository implements Repository {
       "select * from customers where phone_e164=$1",
       [candidate.phoneE164],
     );
-    // Defensive: a conflict on display_code (not phone) would also land here with no row to
-    // find. Surface it rather than returning a lie — the caller's retry mints a new code.
+    // Unreachable in practice: the arbiter is phone_e164, so a display_code collision throws
+    // synchronously from the INSERT above, not here. This fires only if the row that caused the
+    // conflict vanished between insert and select — impossible today (nothing deletes
+    // customers). Surface it rather than returning a lie; the caller's retry mints a new code.
     if (!rows[0]) {
       throw new Error(
         `getOrCreateCustomerByPhone: insert conflicted but no customer holds ${candidate.phoneE164} ` +

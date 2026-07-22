@@ -72,8 +72,10 @@ export async function resolveCustomerId(
       const { customer } = await repo.getOrCreateCustomerByPhone(candidate);
       return customer.id;
     } catch (e) {
-      // The only expected throw is a display-code collision (the phone conflict resolves
-      // internally). Retry with a fresh code; anything else re-throws on the last attempt.
+      // ONLY a display-code collision is retryable — the phone conflict resolves internally.
+      // Anything else (connection dropped, constraint we didn't anticipate) rethrows at once
+      // rather than burning the budget and reporting the last of three identical failures.
+      if (!(e instanceof Error && e.message.includes("display_code"))) throw e;
       lastError = e;
     }
   }

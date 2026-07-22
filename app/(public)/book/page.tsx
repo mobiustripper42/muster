@@ -9,7 +9,7 @@
  * `RESERVATIONS` flag (DEC-111).
  */
 import { deriveAvailability } from "@core/reservations/availability.js";
-import { phoneRejectionMessage, type PhoneRejection } from "@core/customers/identity.js";
+import { isPhoneRejection, phoneRejectionMessage } from "@core/customers/identity.js";
 import { WAIVER_TERMS_URL } from "@core/config/tenant.js";
 import { SubmitButton } from "../../../components/ui/submit-button";
 import { getRepo } from "../../lib/repo";
@@ -50,9 +50,14 @@ export default async function BookHarnessPage({
         <p style={{ color: "crimson" }}>
           {/* Phone rejections get the operator-facing sentence; everything else keeps the
               harness's raw reason code (11.6 — this page is a throwaway until 12.4/12.5). */}
-          {err.startsWith("phone_")
-            ? phoneRejectionMessage(err.slice("phone_".length) as PhoneRejection)
-            : `Couldn't start checkout: ${err}`}
+          {(() => {
+            const reason = err.startsWith("phone_") ? err.slice("phone_".length) : "";
+            // `err` is URL-carried and untrusted — validate against the vocabulary rather
+            // than casting, or a hand-typed ?err=phone_bogus renders an empty message.
+            return isPhoneRejection(reason)
+              ? phoneRejectionMessage(reason)
+              : `Couldn't start checkout: ${err}`;
+          })()}
         </p>
       )}
       {bookable.length === 0 && (

@@ -22,6 +22,8 @@ _Current decision per topic. Superseded DECs struck through with their replaceme
 - DEC-023 — engine advances via explicit `tick()`; no scheduler
 - DEC-054 — operator engine pause/resume (edge-gated)
 - DEC-118 — crew audit log = append-only `audit_events`
+- DEC-131 — constraint posture: DEC-DATA-1 governs logic placement, not FK/UNIQUE
+  (⚠️ ~19 migration headers miscite DEC-DATA-1 for a no-FK rule it never contained)
 - DEC-DATA-1 — service layer; Supabase is managed Postgres, not the architecture
 
 ### Availability & commitment rules
@@ -150,6 +152,7 @@ _Current decision per topic. Superseded DECs struck through with their replaceme
 - DEC-124 — tips = collect-and-expose via `xola-tip-extractor`
 - DEC-125 — virtual availability — schedule is a rule; `Event` materializes on state
 - DEC-126 — the flip = a cutover with a one-time full Xola import (reversible)
+- DEC-132 — `Customer` = contact record keyed by phone (surrogate PK + unique E.164)
 
 ### UI, brand & frontend patterns
 - DEC-021 — frontend styling = Tailwind v4; component library deferred
@@ -439,6 +442,17 @@ at multi-tenant. **Phase:** applies from M0 (the data model) onward — no new m
 2026-06-04.)
 
 ## DEC-DATA-1: Muster keeps a service layer; Supabase (if used) is managed Postgres, not the architecture
+
+> ⚠️ **This DEC has never said anything about foreign keys. See DEC-131.**
+> Roughly nineteen migration headers (from `db/migrations/0001_init.sql` onward) cite *"no foreign
+> keys — DEC-DATA-1"* as though the rule were decided here. **It is not, and never was.** The text
+> below is about *logic placement* — domain decisions live in the service layer, not in RLS policies,
+> triggers, or procs. It draws no conclusion about referential constraints. The no-FK convention was
+> minted independently in `0001_init.sql`'s own header and then propagated by copy, acquiring this
+> DEC's number as a credential it was never granted. **DEC-131** decides the constraint posture:
+> the DB never holds business rules, but may hold structural invariants (`NOT NULL`/`UNIQUE`/`FK`).
+> Cite **DEC-131**, not this DEC, for anything about constraints.
+
 **Nature:** An architecture-boundary decision, made **before** adopting Supabase so the boundary is on
 paper, not improvised against a tempting RLS policy later. No slice work changes; this is a standing
 boundary that composes with DEC-013 (stack deferred to M4) — it pre-commits *how* a datastore is used,
@@ -3713,6 +3727,113 @@ now sees imported rows too), DEC-125 (retires the ownership mask).
 **Decision:** After crew C declines an ask for a shift on vessel-day D, the tick's drip and Tier-2's nudge skip C for **other** shifts on D. Keyed by the **declined shift's `shift.date`** (expires with the date; the next day is clean). The signal is derived at send time from declined `Ask` rows (`response === "declined"`, seat → `shift.date`) in `buildAskSuppression` — the rows the tick already loads for #393; declined asks are never deleted (`expireAsks` only stamps). `ask_declined` reliability events (DEC-008) remain an equivalent re-derivable record. **No new data, no migration; a decline stays reliability-neutral** (DEC-124 — the signal changes *who the engine re-asks*, not the score). `escalate`'s existing **same-shift** decliner exclusion (DEC-024) is unaffected — they said no to *this* shift, a hard exclusion.
 
 **Soft — last-resort valve.** Composition with DEC-129 is **hard-first**: remove `working` crew, then, if the un-asked remainder is entirely same-day decliners, re-ask the top decliner rather than let a fillable seat exhaust. Never valve *to* a worker; a worker-only remainder defers (DEC-129). The **urgent blast (past `fillsBy`, DEC-031/063) runs with the valve open** — the seat is board-imminent by definition, so cooldown yields to urgency; the hard `working` filter never yields. Manual lean, `overrideSeat`, and self-claim never read the cooldown. **Defer ≠ exhausted:** same layering as DEC-129 — a cooled-down candidate is still eligible to `poolExhaustedFor`, so the shift stays `Filling`, not `AtRisk`. Revisit dials per #342: loosen if board landings rise, tighten (adjacent-day carry) if spam persists. Shares `src/asks/suppression.ts` + the `tick.ts`/`escalate.ts` seam with DEC-129 — shipped as one task.
+
+## DEC-131: Constraint posture — DEC-DATA-1 governs *logic placement*, not structural constraints; FK/UNIQUE/NOT NULL are storage and are allowed
+
+**Nature:** A correction of the record plus a standing boundary. Prompted by the operator (2026-07-22):
+*"I'm not sure when we decided there was no foreign key on reservations. But it seems arbitrary and
+actually unhelpful. Please reevaluate."* They were right, and the record was wrong.
+
+**The misattribution (stop propagating it).** `DEC-DATA-1` decides one thing: Muster keeps its own
+service/domain layer, and **RLS/triggers/procs are never where domain logic lives** — the seat state
+machine, REQ-CLAIM-1, escalation, reliability scoring. It **never mentions foreign keys or referential
+integrity.** The no-FK rule was actually minted in the header of `db/migrations/0001_init.sql`, which
+extended DEC-DATA-1's "the DB is storage, not architecture" into "no referential enforcement" and added
+its own second rationale (in-memory-adapter parity). Roughly **nineteen** later migration headers then
+cited *"DEC-DATA-1"* as the authority for `NO foreign keys`. A house style back-attributed itself to a
+decision that never made it. New migration headers **must not** cite DEC-DATA-1 for constraint choices;
+cite this DEC.
+
+**Decision — the line, and it is not "no constraints":**
+- The database **never holds business rules or decisions.** That is DEC-DATA-1's real content and it is
+  unchanged. One-party-per-boat, satisfiability, escalation policy, the claim — service layer, always.
+- The database **may hold structural invariants**: `NOT NULL`, `UNIQUE`, `FOREIGN KEY`. These are not
+  logic; they are the same species as the `NOT NULL`s the schema already uses everywhere. The schema had
+  already broken its own "no constraints" story where it counted — the checkout-hold mutex is a
+  **unique index** (`20260718142705_claim_hold_mutex.sql`), because concurrent writers need an arbiter
+  and only the DB can be one.
+- **DEC-123's guardrail survives intact**: still no unique constraint on `Reservation.eventId`. One
+  reservation per boat is a *business rule*, and the line above puts it in the service predicate. That
+  it and the customer FK land on opposite sides is the line working, not an inconsistency.
+
+**New tables take real constraints; the existing graph is ratified as-built — no retrofit.** Retrofitting
+FKs across ~30 tables mid-P12 buys nothing and costs real risk: cascade semantics would have to be
+designed per edge, the manual referential cleanup that exists *because* there are no FKs (e.g.
+`removeShift` tearing down seats, `postgres-repository.ts`) would need re-reasoning, and the contract
+suite **deliberately writes dangling references** — `src/adapters/repository-contract.ts:441-455` saves a
+reservation whose `eventId` names an event that was never created, and both adapters accept it. That
+parity semantics is load-bearing for the in-memory double and is not worth rewriting for tables that
+work today.
+
+**Adapter parity under a constraint — asymmetric strictness is accepted.** The in-memory double stays
+dumb: it does **not** reimplement FK checking in TypeScript (that would put integrity in two places, the
+exact smear this project avoids). Postgres rejects a dangling `customer_id`; in-memory accepts it. The
+two only diverge on *invalid* writes; the parity the contract suite proves is over **valid** operations,
+and `postgres-repository.test.ts` runs against real Postgres so the constraint is genuinely exercised.
+Where a constraint is *semantically* load-bearing (uniqueness the caller must react to), it is exposed
+through the **port as a typed result** — the `saveReservationIfUnclaimed` precedent — so both adapters
+implement one contract and no raw driver error escapes.
+
+**Why this is worth a constraint at all:** the service layer can only guarantee integrity for writes that
+go *through* it. Backfill scripts, `db/reset-pilot.ts`, data migrations, and manual prod `psql` do not.
+The orphan-check tripwire (`src/admin/integrity.ts`) is the *detective* control and stays; a foreign key
+is the *preventive* one, at no meaningful runtime cost.
+
+**Operational note:** `db/reset-pilot.ts` truncates a classified subset with `cascade`, and truncating a
+parent cascades into unlisted children. Any new table must be classified into `KEEP`/`CLEAR` in the same
+class as its parent — the script's unclassified-table tripwire refuses to guess, which is the behavior we
+want.
+
+**Composes with:** DEC-DATA-1 (clarified, not amended — its text was always about logic placement),
+DEC-123 (`eventId` guardrail reaffirmed), DEC-132 (first table built under this posture).
+
+## DEC-132: `Customer` is a contact record keyed by phone — surrogate PK, UNIQUE canonical E.164, readable short code
+
+**Decision:** Reservations gain a first-class `Customer` (DEC-123 §3), built under the DEC-131 posture.
+
+**Identity.** A **surrogate `CustomerId` PK** plus a **UNIQUE canonical E.164 phone**. Phone is identity —
+same phone means same customer, so "merge duplicate contacts" mostly dissolves — but it is deliberately
+**not the primary key**: numbers get changed and recycled by carriers, and a mutable business fact welded
+into the key means migrating the row and every reference, with a recycled number inheriting the previous
+customer's history. Same instinct as the `Reservation.eventId` guardrail: don't make a business fact
+load-bearing structure.
+
+**Phone is REQUIRED, as of now** (operator, 2026-07-22). Whether identity should ultimately be
+*phone-or-email* is **deliberately deferred** — it is not a today decision, and the cost of deferring is
+bounded on purpose: relaxing is `DROP NOT NULL` (Postgres `UNIQUE` already admits multiple `NULL`s, so the
+constraint shape survives), and **all identity resolution is concentrated in one pure module**, so the
+policy swap is one file rather than a hunt through call sites. **The Xola importer will force this
+decision at cutover** — Xola rows reliably carry email and not always phone (per DEC-040 phone threads
+inline as `order.phoneCanonical`; the customers-export join was retired). Recording it here converts a
+trap into a scheduled decision.
+
+**Readable code.** Every customer carries a `displayCode` — `C-` + 6 **Crockford base32** characters
+(alphabet excludes I/L/O/U, so nothing is ambiguous read aloud), UNIQUE, minted with retry. Deliberately
+**not** a sequence: no DB sequence to maintain, dev/preview/prod seeds never collide, and it leaks no
+volume. Not a checksum — ceremony at this scale. It is an operator convenience (something short to say on
+the phone), **not** a customer-facing account number.
+
+**Linkage.** `Reservation.customerId` is nullable with a **real FK** (`ON DELETE RESTRICT`) — the first
+table built under DEC-131. Nullable because historical reservations that never captured a canonical phone
+stay unlinked, permanently and acceptably; `NULL` passes the FK.
+
+**Booking-path linking is in scope, not a follow-up.** `writeBooking` **get-or-creates** the customer by
+canonical phone, with the UNIQUE constraint arbitrating the concurrent-first-booking race. Without it,
+every new booking recreates the unlinked state and the backfill becomes a one-time museum. `/book`
+therefore requires phone, validated **server-side** with the standing no-JS re-render error path (the HTML
+`required` attribute is courtesy, not the gate).
+
+**Not an account.** No password, no login, no customer-facing auth — a contact record. Soft-delete
+(`active`) per the DEC-123 posture; note that soft-delete **retains** PII, so true erasure would be a
+scrub-in-place and is explicitly out of scope. Cards-on-file remain **Stripe's** and are not rebuilt.
+
+**Lifetime value** sums **booked (non-cancelled)** reservations at base + frozen `extrasCents`, with
+**gratuity excluded** — DEC-124 makes tips crew money, never blended into revenue.
+
+**Deferred with it:** the Purchases/orders list and any human order-number scheme (an order is the money
+view of a reservation; one order = one boat = one reservation, so the two are the same row today);
+importer-created customers (not needed until cutover); "Edit contact"; and "Message", which is blocked on
+**#119** — a customer must never text the crew line, so it needs the second sender number.
 
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)
 

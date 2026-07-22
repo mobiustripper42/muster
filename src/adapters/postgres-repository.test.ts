@@ -25,6 +25,7 @@ const TABLES = [
   "reservations",
   "offerings",
   "locations",
+  "add_ons",
   "blocks",
   "checkout_holds",
   "gratuity",

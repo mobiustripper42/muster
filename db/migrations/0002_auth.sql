@@ -2,7 +2,8 @@
 --
 -- Same design rules as 0001: text PK (deterministic id from the core), ISO date
 -- fields as `text` (verbatim round-trip, parity with the in-memory double), no
--- foreign keys (integrity is the service layer's — DEC-DATA-1; subject_id points
+-- foreign keys (integrity is the service layer's — posture per DEC-131, not DEC-DATA-1;
+-- subject_id points
 -- at a crew member for crew links, an operator handle for admin links, and the
 -- integrity diagnostic checks the crew case).
 --

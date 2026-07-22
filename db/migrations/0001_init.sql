@@ -9,13 +9,22 @@
 --    round-trip matches the in-memory adapter EXACTLY (no date/timezone coercion
 --    divergence between the two substrates the contract suite proves equivalent).
 --  * Array/nested domain fields (manning, ratings, eventIds, metadata) → `jsonb`.
---  * No CHECK constraints on the state vocabularies, and **no foreign keys**: the
---    domain/service layer owns validation and referential integrity (DEC-DATA-1);
---    the DB is storage, not where logic lives. This also keeps the Postgres
---    adapter behaviorally identical to the in-memory double (a dumb per-aggregate
---    store with no referential enforcement) — the equivalence the contract suite
---    proves. Indexes stay (query performance, no behavior). RLS, when it lands, is
---    authorization-only — also per DEC-DATA-1.
+--  * No CHECK constraints on the state vocabularies: a vocabulary CHECK encodes a
+--    BUSINESS RULE, and the domain/service layer owns those (DEC-DATA-1) — the DB
+--    is storage, not where logic lives. RLS, when it lands, is authorization-only,
+--    also per DEC-DATA-1.
+--  * **No foreign keys.** ⚠️ NOTE (corrected 2026-07-22, DEC-131): this file is where
+--    the no-FK convention was MINTED, and later migrations copied it citing
+--    "DEC-DATA-1" as its authority. That attribution is wrong — DEC-DATA-1 is about
+--    logic placement and says nothing about foreign keys. The real reason is the one
+--    below: keeping the Postgres adapter behaviorally identical to the in-memory
+--    double (a dumb per-aggregate store with no referential enforcement), the
+--    equivalence the contract suite proves — see `repository-contract.ts`, which
+--    deliberately writes a dangling reference. DEC-131 now governs the posture: the
+--    DB never holds business rules but MAY hold structural invariants (FK/UNIQUE/
+--    NOT NULL). This existing graph is ratified as-built (no retrofit); NEW tables
+--    take real constraints. Cite DEC-131, not DEC-DATA-1, for constraint choices.
+--    Indexes stay (query performance, no behavior).
 
 create table role_types (
   id         text primary key,

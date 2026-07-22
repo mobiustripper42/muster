@@ -15,7 +15,9 @@
 -- (2) The transient customer CHECKOUT-HOLD (DEC-109) — distinct from the DEC-125
 --     admin/vessel-hold *block* (a `blocks` row, kind='vesselHold', no lifetime). This one
 --     is soft, 15-min, lazily-expired (no cron — the deriver + acquire filter on
---     `expires_at`), one row per physical slot. House style (DEC-DATA-1): text PK, NO FK,
+--     `expires_at`), one row per physical slot. House style: text PK, ~~NO FK~~ (added by
+--     20260722170000_fk_reservations_era per DEC-131 — the DEC-DATA-1 citation was wrong;
+--     it governs logic placement, not constraints),
 --     text date/time, integer guest_count, no CHECK on `source`.
 --
 -- `now()` is NOT immutable, so hold liveness can't live in an index predicate — the

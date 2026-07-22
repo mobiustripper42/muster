@@ -9,7 +9,12 @@
 -- payment, or a `deposit` then a `balance`. Modeled like every other Muster side-effect
 -- log (reliability_events, outbox, import_run_items).
 --
--- House style (DEC-DATA-1): text PK, NO foreign key to reservations, integer cents (never
+-- ⚠️ SUPERSEDED (DEC-131): the no-FK claim below was both miscited (DEC-DATA-1 governs
+-- logic placement, never foreign keys) and is now FACTUALLY STALE — this table's tables
+-- had not reached production, so 20260722170000_fk_reservations_era.sql added REAL
+-- foreign keys to them while they were still empty in prod. Read that migration for the
+-- current constraint state.
+-- House style: text PK, ~~NO foreign key to reservations~~ (added later, see above), integer cents (never
 -- float — DEC-112), ISO-8601 UTC text timestamps. `method` is a text discriminator
 -- ('stripe' only for now; 'cash'/'venmo' widen later with no schema change — the stripe_*
 -- columns just stay null). No CHECK on the vocabularies (adapter-equivalence, DEC-DATA-1).

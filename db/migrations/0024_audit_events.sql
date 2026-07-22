@@ -5,7 +5,7 @@
 -- DEC-008) on purpose: an admin removal / operator force-place / self-claim is
 -- not the subject's behavior, and this log never feeds the scorer. Mirrors the
 -- reliability_events column conventions (bigserial seq, deterministic text id,
--- ISO-text timestamp, jsonb metadata, no FKs per DEC-DATA-1).
+-- ISO-text timestamp, jsonb metadata, no FKs — posture per DEC-131, not DEC-DATA-1).
 --
 -- No backfill: the add/drop transitions were never persisted before this, so
 -- capture starts here — the /admin/audit UI says "audit begins <ship date>".

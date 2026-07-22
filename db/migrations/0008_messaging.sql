@@ -9,7 +9,7 @@
 -- spirit) — so the only membership rows here are `thread_participants`, written
 -- for DM threads alone.
 --
--- House style (0001/0005/0007): text PK, ISO dates as `text`, NO foreign keys
+-- House style (0001/0005/0007): text PK, ISO dates as `text`, NO foreign keys (posture: DEC-131)
 -- (integrity is the service layer's — DEC-DATA-1); `kind` is data, not a DB enum
 -- (DEC-ROLE-1 discipline applied to threads). ADDITIVE — no existing table changes.
 
@@ -24,14 +24,14 @@ create index threads_tenant_idx on threads(tenant_id);
 
 create table thread_participants (   -- DM membership ONLY (DEC-051); derived kinds persist nothing
   id              text primary key,
-  thread_id       text not null,     -- → threads.id (no FK — DEC-DATA-1)
+  thread_id       text not null,     -- → threads.id (no FK — DEC-131)
   crew_member_id  text not null
 );
 create index thread_participants_thread_idx on thread_participants(thread_id);
 
 create table messages (
   id          text primary key,
-  thread_id   text not null,        -- → threads.id (no FK — DEC-DATA-1)
+  thread_id   text not null,        -- → threads.id (no FK — DEC-131)
   sender_id   text not null,        -- subject ref: a crew member id (crew) or an operator subject id
   sender_kind text not null,        -- crew | operator
   body        text not null,

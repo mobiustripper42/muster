@@ -1,6 +1,6 @@
 -- 0006_app_settings — a tiny key/value store for operator-set engine controls
 -- (#124, DEC-054). Same house style as 0001/0005: text PK, ISO date as `text`,
--- no foreign keys (integrity is the service layer's — DEC-DATA-1).
+-- no foreign keys (integrity is the service layer's — DEC-131, not DEC-DATA-1).
 --
 -- First (and only) use: `engine_paused` — the autonomous-tick arm/disarm switch
 -- the operator flips from /admin WITHOUT a redeploy. The cron keeps firing every

@@ -8,7 +8,12 @@
 -- display/config fields (photos, add-ons, gratuity config …) without redefining these.
 -- Empty ⇒ zero behavior change, exactly like `muster_owned_vessel_days` (0023) landed.
 --
--- House style (DEC-DATA-1): text PKs, NO foreign keys, NO CHECK on the text
+-- ⚠️ SUPERSEDED (DEC-131): the no-FK claim below was both miscited (DEC-DATA-1 governs
+-- logic placement, never foreign keys) and is now FACTUALLY STALE — this table's tables
+-- had not reached production, so 20260722170000_fk_reservations_era.sql added REAL
+-- foreign keys to them while they were still empty in prod. Read that migration for the
+-- current constraint state.
+-- House style: text PKs, ~~NO foreign keys~~ (added later, see above), NO CHECK on the text
 -- discriminators (`status`, `kind`) — validation is the service layer's, so the pg and
 -- in-memory adapters stay behaviorally identical under the contract suite. Nested/array
 -- fields are `jsonb` (node-pg serializes on write, parses on read), matching vessels.manning

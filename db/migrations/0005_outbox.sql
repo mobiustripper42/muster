@@ -2,7 +2,7 @@
 --
 -- Same design rules as 0001/0002: text PK (deterministic id from the adapter —
 -- one entry per ask, `obx-<askId>`), ISO date fields as `text` (verbatim
--- round-trip, parity with the in-memory double), no foreign keys (integrity is
+-- round-trip, parity with the in-memory double), no foreign keys (posture: DEC-131, NOT DEC-DATA-1; integrity is
 -- the service layer's — DEC-DATA-1; the diagnostic checks ask/seat/crew refs).
 --
 -- ADAPTER-SIDE state, never domain state (DEC-030 guardrail): only the channel

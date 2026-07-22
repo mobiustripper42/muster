@@ -10,7 +10,7 @@
 -- Observed-only, never crew-curated (DEC-046): rows are written by observing
 -- activity, never by a crew "set my availability" surface (the DEC-009 trap).
 --
--- House style (0001/0005/0007/0008): ISO dates as `text`, NO foreign keys
+-- House style (0001/0005/0007/0008): ISO dates as `text`, NO foreign keys (posture: DEC-131)
 -- (integrity is the service layer's — DEC-DATA-1). Keyed by the canonical subject
 -- as a COMPOSITE `(subject_kind, subject_id)` (DEC-058): ids are only collision-
 -- free WITHIN a kind, so the kind is part of the key — never a flat `kind:id`
@@ -18,7 +18,7 @@
 
 create table presence (
   subject_kind   text not null,   -- canonical AuthSubjectKind: admin | crew (+ customer, portal-era — DEC-058)
-  subject_id     text not null,   -- namespace-local subject id (no FK — DEC-DATA-1)
+  subject_id     text not null,   -- namespace-local subject id (no FK — DEC-131)
   last_active_at text not null,   -- ISO-8601 UTC; observed activity, latest-wins (DEC-046)
   primary key (subject_kind, subject_id)
 );

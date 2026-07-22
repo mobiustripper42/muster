@@ -13,6 +13,7 @@ import { checkIntegrity } from "../admin/integrity.js";
 import { asId } from "../domain/ids.js";
 import type {
   AddOn,
+  Customer,
   Admin,
   Ask,
   Block,
@@ -720,6 +721,99 @@ export function runRepositoryContract(
       expect(updated).toMatchObject({ label: "Bonus hour", active: false });
       expect(await repo.listAddOns()).toHaveLength(1);
       expect(await repo.getAddOn(asId<"AddOnId">("addon-none"))).toBeNull();
+    });
+
+    // ── Customers (12.12b, DEC-132 / DEC-131) ─────────────────────────────────
+    const customer = (over: Partial<Customer> = {}): Customer => ({
+      id: asId<"CustomerId">("cust-1"),
+      displayCode: "C-K7X3P9",
+      name: "Jordan Ellis",
+      phoneE164: "+12165550148",
+      createdAt: "2026-07-22T12:00:00.000Z",
+      active: true,
+      ...over,
+    });
+
+    it("customer: round-trips incl. optional email/notes present and absent", async () => {
+      const bare = customer();
+      await repo.saveCustomer(bare);
+      expect(await repo.getCustomer(bare.id)).toEqual(bare);
+      // Optionals absent stay ABSENT, not null (exactOptionalPropertyTypes contract).
+      const got = (await repo.getCustomer(bare.id))!;
+      expect("email" in got).toBe(false);
+      expect("notes" in got).toBe(false);
+
+      const full = customer({ email: "jordan@example.com", notes: "Repeat guest" });
+      await repo.saveCustomer(full);
+      expect(await repo.getCustomer(full.id)).toEqual(full);
+      expect(await repo.getCustomer(asId<"CustomerId">("cust-none"))).toBeNull();
+    });
+
+    it("customer: soft-retire is an upsert, never a delete", async () => {
+      await repo.saveCustomer(customer());
+      await repo.saveCustomer(customer({ active: false, name: "Jordan E." }));
+      expect(await repo.getCustomer(asId<"CustomerId">("cust-1"))).toMatchObject({
+        active: false,
+        name: "Jordan E.",
+      });
+      expect(await repo.listCustomers()).toHaveLength(1);
+    });
+
+    it("customer: looked up by canonical phone and by display code", async () => {
+      await repo.saveCustomer(customer());
+      expect((await repo.getCustomerByPhone("+12165550148"))?.id).toBe("cust-1");
+      expect((await repo.getCustomerByCode("C-K7X3P9"))?.id).toBe("cust-1");
+      // Lookups are exact — canonicalization is the caller's job, not the adapter's.
+      expect(await repo.getCustomerByPhone("2165550148")).toBeNull();
+      expect(await repo.getCustomerByCode("c-k7x3p9")).toBeNull();
+      expect(await repo.getCustomerByPhone("+12165550000")).toBeNull();
+    });
+
+    it("getOrCreateCustomerByPhone: creates once, then returns the SAME customer", async () => {
+      const first = await repo.getOrCreateCustomerByPhone(customer());
+      expect(first.created).toBe(true);
+
+      // Same phone, different id/name/code — the phone wins; nothing is inserted or updated.
+      const second = await repo.getOrCreateCustomerByPhone(
+        customer({ id: asId<"CustomerId">("cust-2"), displayCode: "C-ZZZZZZ", name: "J. Ellis" }),
+      );
+      expect(second.created).toBe(false);
+      expect(second.customer.id).toBe("cust-1");
+      expect(second.customer.name).toBe("Jordan Ellis"); // NOT overwritten by the candidate
+      expect(await repo.listCustomers()).toHaveLength(1);
+    });
+
+    it("getOrCreateCustomerByPhone: a different phone creates a second customer", async () => {
+      await repo.getOrCreateCustomerByPhone(customer());
+      const other = await repo.getOrCreateCustomerByPhone(
+        customer({
+          id: asId<"CustomerId">("cust-2"),
+          displayCode: "C-AAAAAA",
+          phoneE164: "+14405550102",
+          name: "Dana Whit",
+        }),
+      );
+      expect(other.created).toBe(true);
+      expect(await repo.listCustomers()).toHaveLength(2);
+    });
+
+    it("reservation: customerId round-trips present and absent, and lists per customer", async () => {
+      await repo.saveCustomer(customer());
+      const linked = reservation({
+        id: asId<"ReservationId">("resv-linked"),
+        customerId: asId<"CustomerId">("cust-1"),
+      });
+      const unlinked = reservation({ id: asId<"ReservationId">("resv-unlinked") });
+      await repo.saveReservation(linked);
+      await repo.saveReservation(unlinked);
+
+      expect((await repo.getReservation(linked.id))!.customerId).toBe("cust-1");
+      // Unlinked is ABSENT, not null — historical rows stay unlinked forever (DEC-132).
+      expect("customerId" in (await repo.getReservation(unlinked.id))!).toBe(false);
+
+      const history = await repo.listReservationsForCustomer(asId<"CustomerId">("cust-1"));
+      expect(history.map((r) => String(r.id))).toEqual(["resv-linked"]);
+      expect(await repo.listReservationsForCustomer(asId<"CustomerId">("cust-none"))).toEqual([]);
     });
 
     it("catalog: Offering includedGuestCount round-trips present and absent (12.8)", async () => {

@@ -19,6 +19,7 @@
     "db:own": "tsx db/own-vessel-day.ts",
     "db:checkout": "tsx db/checkout-dev.ts",
     "db:balance": "tsx db/balance-dev.ts",
+    "db:backfill:customers": "tsx db/backfill-customers.ts",
     "db:seed:fleet": "tsx db/seed-fleet.ts",
     "db:seed:crew:pilot": "tsx db/seed-pilot-crew.ts",
     "db:seed:crew": "tsx db/seed-crewapp-dev.ts",

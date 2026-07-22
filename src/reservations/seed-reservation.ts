@@ -29,8 +29,13 @@ export const RESERVATION_DEMO = {
   ownedRange: { start: "2026-08-10", end: "2026-08-16" },
   /** The two materialized bookings, at known slots inside the owned range. */
   bookings: [
-    { date: "2026-08-12", time: "13:30", customerName: "Marcus Webb", partySize: 8, priceCents: 54900 },
-    { date: "2026-08-13", time: "15:30", customerName: "Dana Cho", partySize: 6, priceCents: 43900 },
+    { date: "2026-08-12", time: "13:30", customerName: "Marcus Webb", partySize: 8, priceCents: 54900, phone: "216-555-0148" },
+    { date: "2026-08-13", time: "15:30", customerName: "Dana Cho", partySize: 6, priceCents: 43900, phone: "(440) 555-0102" },
+    // Marcus again — same phone, different spelling of the number. Makes the customers tab
+    // demoable (a repeat guest with history + lifetime value) and exercises canonicalization.
+    // Deliberately OUTSIDE `vesselBlockWindow` (Aug 11–14) so the block-impact fixture, which
+    // asserts an exact conflict count and dollar total, keeps meaning what it says.
+    { date: "2026-08-16", time: "13:30", customerName: "Marcus Webb", partySize: 10, priceCents: 54900, phone: "+1 216 555 0148" },
   ],
   /** A convenient vessel-block window that overlaps BOTH bookings (Aug 11–14). */
   vesselBlockWindow: { start: "2026-08-11", end: "2026-08-14" },
@@ -108,6 +113,7 @@ export function buildSeededReservationWorld(createdAt: string): SeededReservatio
       source: "muster",
       customerName: b.customerName,
       partySize: b.partySize,
+      phone: b.phone,
       status: "booked",
       updatedAt: createdAt,
     });

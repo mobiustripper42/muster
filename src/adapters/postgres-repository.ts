@@ -17,6 +17,7 @@ import pg from "pg";
 import type {
   Admin,
   AddOn,
+  Customer,
   Ask,
   AuthSubjectKind,
   Block,
@@ -54,6 +55,7 @@ import { asId } from "../domain/ids.js";
 import { subjectKey } from "../domain/subject.js";
 import type {
   AddOnId,
+  CustomerId,
   AskId,
   BlockId,
   CheckoutHoldId,
@@ -137,6 +139,17 @@ const toAddOn = (r: any): AddOn => ({
   amountCents: r.amount_cents,
   required: r.required,
   active: r.active,
+});
+
+const toCustomer = (r: any): Customer => ({
+  id: asId<"CustomerId">(r.id),
+  displayCode: r.display_code,
+  name: r.name,
+  phoneE164: r.phone_e164,
+  createdAt: r.created_at,
+  active: r.active,
+  ...opt("email", r.email),
+  ...opt("notes", r.notes),
 });
 
 const toVessel = (r: any): Vessel => ({
@@ -289,6 +302,7 @@ const toReservation = (r: any): Reservation => ({
   ...opt("waiverConsentAt", r.waiver_consent_at),
   ...opt("waiverVersion", r.waiver_version),
   ...opt("updatedAt", r.updated_at),
+  ...opt<"customerId", CustomerId>("customerId", r.customer_id ?? null),
 });
 
 const toMusterOwnedVesselDay = (r: any): MusterOwnedVesselDay => ({
@@ -564,6 +578,93 @@ export class PostgresRepository implements Repository {
   async listAddOns(): Promise<AddOn[]> {
     const { rows } = await this.#pool.query("select * from add_ons");
     return rows.map(toAddOn);
+  }
+
+  // ── Customers (contact records — 12.12b, DEC-132) ──────────────────────────
+  // `customers` is the FIRST table in this schema with real constraints (DEC-131): UNIQUE on
+  // phone_e164 + display_code, and reservations.customer_id carries an FK. The in-memory double
+  // enforces none of that on purpose — see its note. Where the constraint is semantic, it is
+  // exposed through the port as a typed result rather than a leaked driver error.
+  async saveCustomer(c: Customer): Promise<void> {
+    await this.#pool.query(
+      `insert into customers(id, display_code, name, phone_e164, email, created_at, notes, active)
+       values ($1,$2,$3,$4,$5,$6,$7,$8)
+       on conflict (id) do update set
+         display_code=excluded.display_code, name=excluded.name, phone_e164=excluded.phone_e164,
+         email=excluded.email, created_at=excluded.created_at, notes=excluded.notes,
+         active=excluded.active`,
+      [c.id, c.displayCode, c.name, c.phoneE164, c.email ?? null, c.createdAt, c.notes ?? null, c.active],
+    );
+  }
+  async getCustomer(id: CustomerId): Promise<Customer | null> {
+    const { rows } = await this.#pool.query("select * from customers where id=$1", [id]);
+    return rows[0] ? toCustomer(rows[0]) : null;
+  }
+  async getCustomerByPhone(phoneE164: string): Promise<Customer | null> {
+    const { rows } = await this.#pool.query(
+      "select * from customers where phone_e164=$1",
+      [phoneE164],
+    );
+    return rows[0] ? toCustomer(rows[0]) : null;
+  }
+  async getCustomerByCode(displayCode: string): Promise<Customer | null> {
+    const { rows } = await this.#pool.query(
+      "select * from customers where display_code=$1",
+      [displayCode],
+    );
+    return rows[0] ? toCustomer(rows[0]) : null;
+  }
+  async listCustomers(): Promise<Customer[]> {
+    const { rows } = await this.#pool.query("select * from customers");
+    return rows.map(toCustomer);
+  }
+  /**
+   * Get-or-create, with the UNIQUE index as the arbiter. `on conflict (phone_e164) do nothing`
+   * returns zero rows when someone else won the race, so the follow-up select resolves the
+   * winner — no read-then-write window, no unique-violation error surfacing to the caller.
+   * `created` is true only for the insert that actually landed.
+   */
+  async getOrCreateCustomerByPhone(
+    candidate: Customer,
+  ): Promise<{ customer: Customer; created: boolean }> {
+    const inserted = await this.#pool.query(
+      `insert into customers(id, display_code, name, phone_e164, email, created_at, notes, active)
+       values ($1,$2,$3,$4,$5,$6,$7,$8)
+       on conflict (phone_e164) do nothing
+       returning *`,
+      [
+        candidate.id,
+        candidate.displayCode,
+        candidate.name,
+        candidate.phoneE164,
+        candidate.email ?? null,
+        candidate.createdAt,
+        candidate.notes ?? null,
+        candidate.active,
+      ],
+    );
+    if (inserted.rows[0]) return { customer: toCustomer(inserted.rows[0]), created: true };
+
+    const { rows } = await this.#pool.query(
+      "select * from customers where phone_e164=$1",
+      [candidate.phoneE164],
+    );
+    // Defensive: a conflict on display_code (not phone) would also land here with no row to
+    // find. Surface it rather than returning a lie — the caller's retry mints a new code.
+    if (!rows[0]) {
+      throw new Error(
+        `getOrCreateCustomerByPhone: insert conflicted but no customer holds ${candidate.phoneE164} ` +
+          `(display_code collision on ${candidate.displayCode}? retry with a fresh code)`,
+      );
+    }
+    return { customer: toCustomer(rows[0]), created: false };
+  }
+  async listReservationsForCustomer(id: CustomerId): Promise<Reservation[]> {
+    const { rows } = await this.#pool.query(
+      "select * from reservations where customer_id=$1",
+      [id],
+    );
+    return rows.map(toReservation);
   }
 
   // ── Vessels ────────────────────────────────────────────────────────────────
@@ -1007,13 +1108,13 @@ export class PostgresRepository implements Repository {
   // ── Reservations ───────────────────────────────────────────────────────────
   async saveReservation(r: Reservation): Promise<void> {
     await this.#pool.query(
-      `insert into reservations(id, event_id, customer_name, party_size, email, phone, status, updated_at, source, waiver_consent_at, waiver_version, extras_cents)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      `insert into reservations(id, event_id, customer_name, party_size, email, phone, status, updated_at, source, waiver_consent_at, waiver_version, extras_cents, customer_id)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
        on conflict (id) do update set event_id=excluded.event_id, customer_name=excluded.customer_name,
          party_size=excluded.party_size, email=excluded.email, phone=excluded.phone, status=excluded.status,
          updated_at=excluded.updated_at, source=excluded.source,
          waiver_consent_at=excluded.waiver_consent_at, waiver_version=excluded.waiver_version,
-         extras_cents=excluded.extras_cents`,
+         extras_cents=excluded.extras_cents, customer_id=excluded.customer_id`,
       [
         r.id,
         r.eventId,
@@ -1027,6 +1128,7 @@ export class PostgresRepository implements Repository {
         r.waiverConsentAt ?? null,
         r.waiverVersion ?? null,
         r.extrasCents ?? null,
+        r.customerId ?? null,
       ],
     );
   }
@@ -1069,8 +1171,8 @@ export class PostgresRepository implements Repository {
       }
       await client.query(
         `insert into reservations
-           (id, event_id, customer_name, party_size, email, phone, status, updated_at, source, waiver_consent_at, waiver_version, extras_cents)
-         select $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12
+           (id, event_id, customer_name, party_size, email, phone, status, updated_at, source, waiver_consent_at, waiver_version, extras_cents, customer_id)
+         select $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13
          where not exists (
            select 1 from reservations
            where event_id=$2 and source='muster' and status='booked' and id <> $1
@@ -1089,6 +1191,7 @@ export class PostgresRepository implements Repository {
           r.waiverConsentAt ?? null,
           r.waiverVersion ?? null,
           r.extrasCents ?? null,
+          r.customerId ?? null,
         ],
       );
       const won = await client.query(
@@ -1146,8 +1249,8 @@ export class PostgresRepository implements Repository {
       const eventId = asId<"EventId">(slot.rows[0].id);
       await client.query(
         `insert into reservations
-           (id, event_id, customer_name, party_size, email, phone, status, updated_at, source, waiver_consent_at, waiver_version, extras_cents)
-         select $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12
+           (id, event_id, customer_name, party_size, email, phone, status, updated_at, source, waiver_consent_at, waiver_version, extras_cents, customer_id)
+         select $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13
          where not exists (
            select 1 from reservations
            where event_id=$2 and source='muster' and status='booked' and id <> $1
@@ -1166,6 +1269,7 @@ export class PostgresRepository implements Repository {
           reservation.waiverConsentAt ?? null,
           reservation.waiverVersion ?? null,
           reservation.extrasCents ?? null,
+          reservation.customerId ?? null,
         ],
       );
       const won = await client.query("select 1 from reservations where id=$1", [

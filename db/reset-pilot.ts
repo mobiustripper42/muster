@@ -46,8 +46,14 @@ const KEEP = new Set<string>([
 
 /**
  * Operational state the reset wipes — shifts + assignments + everything that
- * hangs off a shift. Order is irrelevant (no-FK schema, DEC-DATA), but the list
- * is explicit so a review can see exactly what dies.
+ * hangs off a shift. The list is explicit so a review can see exactly what dies.
+ *
+ * **Order no longer means "nothing to think about" (DEC-131).** The schema now carries its
+ * first foreign key (`reservations.customer_id` → `customers.id`), and this script truncates
+ * with `cascade` — which follows FKs into tables that may NOT be listed here. So a parent must
+ * never be cleared while its child is kept: `customers` sits in CLEAR alongside `reservations`
+ * precisely because cascading from one into the other must be a decision, not a surprise. Any
+ * future FK'd table needs the same check before it lands in either list.
  */
 const CLEAR: readonly string[] = [
   "shifts",
@@ -58,6 +64,9 @@ const CLEAR: readonly string[] = [
                  // out (sessions are cookies, not these); harmless to wipe (DEC-081)
   "events", // the Xola trips shifts form from — wiped for a clean re-import
   "reservations",
+  "customers", // 12.12b — contact records hang off reservations; cleared WITH them so a
+               // reset can't strand customers whose entire booking history just died
+               // (and so the cascade above has nothing to surprise us with)
   "import_runs",
   "import_run_items",
   "reliability_events", // crew history references the deleted shifts → fresh scores

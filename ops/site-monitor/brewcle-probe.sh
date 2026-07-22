@@ -140,7 +140,7 @@ loop() {
       if [ "$down" -eq 1 ]; then
         local end dur; end="$(ts)"; dur=$(( $(date +%s) - down_epoch ))
         printf '%s\t%s\t%ss\tup\t%s\n' "$down_start" "$end" "$dur" "$down_label" >>"$EVENTS"
-        notify "brewcle.com recovered" "back up after ${dur}s (was: $down_label)"
+        notify "$HOST recovered" "back up after ${dur}s (was: $down_label)"
         down=0
       fi
       fails=0
@@ -150,7 +150,7 @@ loop() {
       if [ "$fails" -ge "$FAIL_THRESHOLD" ] && [ "$down" -eq 0 ]; then
         down=1; down_start="$(ts)"; down_epoch="$(date +%s)"; down_label="$LABEL"
         printf '%s\t\t\tdown\t%s\n' "$down_start" "$LABEL" >>"$EVENTS"
-        notify "brewcle.com DOWN — $LABEL" "$DETAIL
+        notify "$HOST DOWN — $LABEL" "$DETAIL
 ${ORIGIN_RESULT}
 pop=$POP cache=$CACHE resp=${RESP_MS}ms http=$HTTP"
       fi
@@ -179,7 +179,7 @@ summary() {
   local days="${1:-7}" since
   since="$(date -d "-${days} days" +%s 2>/dev/null || echo 0)"
   if [ ! -s "$EVENTS" ]; then echo "No incidents logged yet ($EVENTS)."; return; fi
-  echo "brewcle.com incidents — last ${days}d"
+  echo "$HOST incidents — last ${days}d"
   awk -F'\t' -v since="$since" '
     $4=="up" {
       cmd="date -d \"" $1 "\" +%s 2>/dev/null"; cmd | getline e; close(cmd)

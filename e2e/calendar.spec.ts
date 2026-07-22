@@ -40,4 +40,79 @@ test.describe("admin /admin/calendar", () => {
     await expect(page.getByText("open · 5:30")).toHaveCount(0);
     await expect(page.getByTestId("cal-block").filter({ hasText: "Marcus Webb" })).toBeVisible();
   });
+
+  /**
+   * The detail pane (12.11 continued) — read-only, NO actions in this slice. The seeded
+   * booking carries no payments and no gratuities, so the money block is the pure derivation:
+   * fare 54900 (the event's price; the seed freezes no extras) + 7.25% tax = 3980 ⇒ a 58880
+   * balance still due, nothing paid. No gratuity section renders at all.
+   */
+  test("a booked block opens its reservation detail; money derives from fare + tax", async ({
+    page,
+  }) => {
+    await signInAsAdmin(page, "spink");
+    await page.goto("/admin/calendar?date=2026-08-12");
+
+    await page.getByTestId("cal-block").filter({ hasText: "Marcus Webb" }).click();
+    await page.waitForURL(/\/admin\/calendar\/resv-demo/);
+
+    const pane = page.getByTestId("reservation-detail");
+    await expect(pane).toBeVisible();
+    // The page heading names the reservation; the pane deliberately doesn't repeat it.
+    await expect(page.getByRole("heading", { name: "Marcus Webb", level: 1 })).toBeVisible();
+
+    // Guests against the boat's COI cap — "8 of 12", never a seat count.
+    await expect(pane).toContainText("8");
+    await expect(pane).toContainText("of 12");
+
+    // The three rows the model can't source the mockup's way.
+    await expect(pane).toContainText("Waiver");
+    await expect(pane).toContainText("Not on file"); // one consent record, not "7 of 7"
+    await expect(pane).toContainText("Updated"); // updatedAt, never "Booked"
+    await expect(pane).not.toContainText("Add-on"); // no per-reservation add-ons exist
+
+    // Money: fare + tax, nothing paid, balance still due. No service fee (Xola's, unmodelled).
+    await expect(pane).toContainText("$549.00");
+    await expect(pane).toContainText("$39.80");
+    await expect(pane).toContainText("$588.80");
+    await expect(pane).not.toContainText("Service fee");
+
+    // Read-only slice — none of the mockup's action buttons ship yet.
+    await expect(pane.getByRole("button")).toHaveCount(0);
+    await expect(pane).not.toContainText("Refund");
+    await expect(pane).not.toContainText("Cancel");
+
+    // One route, two native layouts (no client JS): the grid sits BESIDE the pane on desktop
+    // and is hidden on mobile, where the pane is the whole page. It's hidden rather than
+    // omitted because a server render can't know the viewport — the markup ships either way.
+    const grid = page.getByTestId("cal-block").filter({ hasText: "Marcus Webb" });
+    const wide = (page.viewportSize()?.width ?? 0) >= 1024;
+    if (wide) await expect(grid).toBeVisible();
+    else await expect(grid).toBeHidden();
+
+    // Back returns to the day you came from.
+    await page.getByRole("link", { name: "Back to calendar" }).click();
+    await page.waitForURL(/\/admin\/calendar\?date=2026-08-12/);
+    await expect(page.getByTestId("cal-block").filter({ hasText: "Marcus Webb" })).toBeVisible();
+  });
+
+  /** A direct link with no ?date must land on the reservation's OWN day, not today's grid. */
+  test("deep link with no date resolves the reservation's own day", async ({ page }) => {
+    await signInAsAdmin(page, "spink");
+    await page.goto("/admin/calendar/resv-demo-2026-08-13-15:30");
+
+    const pane = page.getByTestId("reservation-detail");
+    await expect(page.getByRole("heading", { name: "Dana Cho", level: 1 })).toBeVisible();
+    await expect(pane).toContainText("Aug 13");
+    await expect(pane).toContainText("3:30 PM");
+    // Dana's fare is 43900 → tax 3183 → 47083 due.
+    await expect(pane).toContainText("$439.00");
+    await expect(pane).toContainText("$470.83");
+  });
+
+  test("an unknown reservation 404s rather than rendering an empty pane", async ({ page }) => {
+    await signInAsAdmin(page, "spink");
+    const res = await page.goto("/admin/calendar/resv-does-not-exist");
+    expect(res?.status()).toBe(404);
+  });
 });

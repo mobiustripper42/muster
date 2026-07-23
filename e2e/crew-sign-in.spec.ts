@@ -49,8 +49,9 @@ test.describe("crew self-serve sign-in (DEC-081)", () => {
   // globalThis Map wasn't shared. It doesn't: an instrumented probe showed the mint
   // and the read landing in ONE process (server log `[login-code] → …: 240431`, echo
   // returns the same six digits), and the test then passed fresh, multi-spec, and in
-  // the full suite. The likely culprit was a stale reused server on :3100 — see the
-  // stale-build note in auth-delivery.ts.
+  // the full suite. What DID cause the original empty reads was never pinned down —
+  // it was gone before it could be caught. If this goes red again, start from the
+  // unconfirmed candidate in auth-delivery.ts (a stale reused server on :3100).
   test("the full round-trip: email → real code → signed in", async ({ page }) => {
     await page.goto("/crew");
     await page.getByLabel(/sign in with your crew email/i).fill(QUINT_EMAIL);

@@ -1099,6 +1099,10 @@ export class PostgresRepository implements Repository {
     const { rows } = await this.#pool.query("select * from payments where id=$1", [id]);
     return rows[0] ? toPayment(rows[0]) : null;
   }
+  async listAllPayments(): Promise<Payment[]> {
+    const { rows } = await this.#pool.query("select * from payments");
+    return rows.map(toPayment);
+  }
   async listPaymentsForReservation(reservationId: ReservationId): Promise<Payment[]> {
     const { rows } = await this.#pool.query(
       "select * from payments where reservation_id=$1 order by created_at",

@@ -950,6 +950,8 @@ export function runRepositoryContract(
       // a balance payment for the same reservation is a second row
       await repo.savePayment(payment({ id: asId<"PaymentId">("pay-2"), kind: "balance", stripeCheckoutSessionId: "cs_test_2" }));
       expect(await repo.listPaymentsForReservation(asId<"ReservationId">("resv-1"))).toHaveLength(2);
+      // listAllPayments spans reservations — the purchases list's rollup read (12.12a).
+      expect(await repo.listAllPayments()).toHaveLength(2);
       // optional stripePaymentIntentId omitted stays omitted (not undefined)
       expect("stripePaymentIntentId" in got!).toBe(false);
       // gratuityCents (DEC-124, 12.3): absent stays omitted; present round-trips

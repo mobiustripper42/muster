@@ -50,7 +50,8 @@ export default async function ReservationDetailPage({
   searchParams,
 }: {
   params: Promise<{ reservationId: string }>;
-  searchParams: Promise<Search>;
+  /** `Search` plus the balance-link round-trip params the action redirects back with (11.2b). */
+  searchParams: Promise<Search & { balanceUrl?: string; balanceErr?: string }>;
 }) {
   const { reservationId: rawId } = await params;
   const sp = await searchParams;
@@ -163,7 +164,15 @@ export default async function ReservationDetailPage({
         </div>
 
         <aside className="mt-3 lg:sticky lg:top-4 lg:mt-0" data-testid="reservation-detail">
-          <ReservationDetailPane v={view} />
+          <ReservationDetailPane
+            v={view}
+            balance={{
+              ...(sp.balanceUrl !== undefined ? { url: sp.balanceUrl } : {}),
+              ...(sp.balanceErr !== undefined ? { err: sp.balanceErr } : {}),
+              date: sp.date ?? "",
+              filter: sp.filter ?? "",
+            }}
+          />
         </aside>
       </div>
 

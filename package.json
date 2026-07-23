@@ -30,6 +30,7 @@
     "db:seed:reservation": "tsx db/seed-reservation-dev.ts",
     "db:tick": "tsx db/tick-dev.ts",
     "db:doorbell": "tsx db/doorbell-dev.ts",
+    "db:reset:dev": "tsx db/reset-dev.ts",
     "db:reset:test": "tsx db/reset-test.ts",
     "test": "vitest run",
     "test:pg": "vitest run src/adapters/postgres-repository.test.ts src/adapters/postgres-presence.test.ts",

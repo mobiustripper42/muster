@@ -3,7 +3,9 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts", "app/**/*.test.ts"],
+    // `db/**` joined the include when db:reset:dev landed: its target guard decides whether a
+    // destructive script runs, which is exactly the kind of thing that must be tested.
+    include: ["src/**/*.test.ts", "app/**/*.test.ts", "db/**/*.test.ts"],
     env: {
       // Civil send window (DEC-088) held WIDE OPEN for the suite: the tests'
       // clocks are arbitrary UTC instants, and the gate is orthogonal to what

@@ -150,6 +150,10 @@ export interface SlotRow {
   boatsOpen: number;
   /** Lowest display base among this time's available boats (cents); the fare composes over it. */
   priceCents: number;
+  /** Largest COI cap among this time's bookable boats — the guest ceiling for THIS departure,
+   *  not the offering's fleet-wide max. A multi-vessel offering can have a big and a small boat
+   *  at the same time; once the big one is taken the ceiling drops to the small one's cap. */
+  capacity: number;
   soldOut: boolean;
 }
 
@@ -169,11 +173,14 @@ export function buildSlotRows(slotsForDate: readonly VirtualSlot[]): SlotRow[] {
   const rows: SlotRow[] = [];
   for (const [time, arr] of byTime) {
     const open = arr.filter((s) => s.status === "available");
-    const pricePool = open.length > 0 ? open : arr;
+    // Price + capacity come from the OPEN boats (what a customer can actually book); when
+    // none are open, fall back to all of the time's boats so a sold-out row still prices/caps.
+    const pool = open.length > 0 ? open : arr;
     rows.push({
       time,
       boatsOpen: open.length,
-      priceCents: Math.min(...pricePool.map((s) => s.priceCents)),
+      priceCents: Math.min(...pool.map((s) => s.priceCents)),
+      capacity: Math.max(...pool.map((s) => s.capacity)),
       soldOut: open.length === 0,
     });
   }

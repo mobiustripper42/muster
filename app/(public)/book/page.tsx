@@ -166,7 +166,11 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
     (sp.time && availRows.find((r) => r.time === sp.time)) || availRows[0] || undefined;
 
   const baseCents = selectedRow ? selectedRow.priceCents : null;
-  const fare = baseCents !== null ? guestPricing(chosen, cap, baseCents, DEFAULT_GUESTS) : null;
+  // The stepper ceiling is the SELECTED departure's open-boat cap (a multi-vessel offering can
+  // lose its big boat and drop to the small one), NOT the offering's fleet-wide max — so a
+  // customer can't pick a count the remaining boat can't seat and get rejected only at checkout.
+  const slotCap = selectedRow ? selectedRow.capacity : cap;
+  const fare = baseCents !== null ? guestPricing(chosen, slotCap, baseCents, DEFAULT_GUESTS) : null;
   const durationLabel = formatDuration(chosen.tripLengthMinutes);
   const dateTimeLabel = selectedDate && selectedRow ? `${formatShortDay(selectedDate)} · ${formatClock(selectedRow.time)}` : null;
   const continueBase =
@@ -200,9 +204,9 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
 
         <BookingProvider
           baseCents={baseCents}
-          included={fare?.included ?? cap}
+          included={fare?.included ?? slotCap}
           extraPriceCents={chosen.extraGuestPriceCents}
-          cap={cap}
+          cap={slotCap}
           initialGuests={DEFAULT_GUESTS}
         >
           <div className="flex flex-col overflow-y-auto">

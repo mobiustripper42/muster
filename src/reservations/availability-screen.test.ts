@@ -115,23 +115,24 @@ describe("buildMonthCalendar", () => {
 describe("buildSlotRows", () => {
   it("collapses per-vessel slots to one row per time with a boats-open count", () => {
     const rows = buildSlotRows([
-      slot({ time: "13:30", vesselId: V("a"), status: "available", priceCents: 54900 }),
-      slot({ time: "13:30", vesselId: V("b"), status: "available", priceCents: 52900 }),
-      slot({ time: "13:30", vesselId: V("c"), status: "booked", priceCents: 40000 }),
+      slot({ time: "13:30", vesselId: V("a"), status: "available", priceCents: 54900, capacity: 16 }),
+      slot({ time: "13:30", vesselId: V("b"), status: "available", priceCents: 52900, capacity: 12 }),
+      slot({ time: "13:30", vesselId: V("c"), status: "booked", priceCents: 40000, capacity: 40 }),
       slot({ time: "11:30", vesselId: V("a"), status: "available", priceCents: 49900 }),
     ]);
     expect(rows.map((r) => r.time)).toEqual(["11:30", "13:30"]); // time-sorted
     const midday = rows.find((r) => r.time === "13:30")!;
     expect(midday.boatsOpen).toBe(2);
     expect(midday.priceCents).toBe(52900); // lowest among AVAILABLE boats, not the booked $400
+    expect(midday.capacity).toBe(16); // largest among AVAILABLE boats, not the booked 40
     expect(midday.soldOut).toBe(false);
   });
   it("still lists a fully-taken time as sold out, priced from all its boats", () => {
     const rows = buildSlotRows([
-      slot({ time: "15:30", vesselId: V("a"), status: "booked", priceCents: 54900 }),
-      slot({ time: "15:30", vesselId: V("b"), status: "blocked", priceCents: 51900 }),
+      slot({ time: "15:30", vesselId: V("a"), status: "booked", priceCents: 54900, capacity: 16 }),
+      slot({ time: "15:30", vesselId: V("b"), status: "blocked", priceCents: 51900, capacity: 12 }),
     ]);
-    expect(rows[0]).toMatchObject({ time: "15:30", boatsOpen: 0, soldOut: true, priceCents: 51900 });
+    expect(rows[0]).toMatchObject({ time: "15:30", boatsOpen: 0, soldOut: true, priceCents: 51900, capacity: 16 });
   });
 });
 

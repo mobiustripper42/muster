@@ -14,6 +14,7 @@
  */
 
 import { createContext, useContext, useState, type ReactNode } from "react";
+import { AppLink } from "../../../components/ui/app-link";
 
 /** Local mirror of `formatCents` (calendar-detail) — inlined so the client bundle stays tiny. */
 function money(cents: number): string {
@@ -139,13 +140,13 @@ export function Footer({
         )}
       </div>
       {canContinue ? (
-        <a
+        <AppLink
           data-testid="continue"
           href={`${continueBase}&guests=${count}`}
           className="ml-auto flex items-center gap-2 rounded-[11px] bg-accent px-[22px] py-[13px] text-[14.5px] font-semibold text-white active:brightness-90"
         >
           Continue →
-        </a>
+        </AppLink>
       ) : (
         <span
           aria-disabled="true"

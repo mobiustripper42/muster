@@ -15,8 +15,9 @@ import { SEAT_STATES, SHIFT_STATES } from "@core/domain/states.js";
  * Unauthenticated, so it does **only** bounded work (10.3 security audit): a single
  * `select 1`, never a table scan. The referential-integrity diagnostic (`checkIntegrity`,
  * ~a dozen full-table `listAll*` reads) used to run here on every hit — an anonymous
- * compute-amplification/DoS vector — so it moved OFF this path. Run it from an
- * authenticated admin diagnostic or a scheduled job, never an open probe (issue filed).
+ * compute-amplification/DoS vector — so it moved OFF this path. It now lives at
+ * `/admin/integrity` (#501): admin-gated, and idle until explicitly asked to run.
+ * Never re-add it to an open probe.
  */
 const DATABASE_URL =
   process.env.DATABASE_URL ?? "postgres://muster:muster@localhost:5432/muster_dev";

@@ -116,6 +116,12 @@ export default async function AdminHome({
       >
         Payroll — estimated hours per crew, by pay period →
       </AppLink>
+      <AppLink
+        href="/admin/integrity"
+        className="rounded-card border border-line bg-card px-4 py-3 font-semibold text-accent shadow-sm"
+      >
+        Integrity check — find references pointing at nothing →
+      </AppLink>
 
       <VersionTag />
     </Shell>

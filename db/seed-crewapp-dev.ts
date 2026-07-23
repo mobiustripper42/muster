@@ -75,13 +75,17 @@ try {
   await repo.saveCredential({ id: asId<"CredentialId">("cred-eric-mmc"), crewMemberId: ERIC, type: "MMC", expiry: "2030-12-31" });
   // …and an ADMIN, so a reset dev DB has a way in.
   //
-  // NOTHING else creates one. Migration 0018 seeded a provisional roster and 0019 deliberately
-  // deleted it again ("admins are CLI-managed, not seeded") — correctly, because an admin id is
-  // a REAL crew id (DEC-092) and prod's real ids aren't knowable at migration-authoring time.
-  // So on prod, admins arrive via `db:admin add --email=… --handle=…` after the roster exists.
-  // In DEV that left a gap: the only admin was whatever the operator added by hand, and any
-  // reset wiped it with nothing to restore it. Seeding one here closes that — the dev roster is
-  // fixture data, so its crew ids ARE knowable, which is exactly what prod lacks.
+  // NOTHING else creates one: 0018 seeded a provisional roster and 0019 deleted it, so the
+  // migration ledger yields zero admins by design. That left dev with only whatever admin was
+  // added by hand — which any reset wipes, with nothing to restore it.
+  //
+  // 0019's header states "admins are CLI-managed (`db:admin`), not seeded" as though it were a
+  // project rule. It isn't: no DEC says it, and DEC-092 — the decision that actually governs
+  // admin identity — is silent on seeding. What 0019 genuinely justified is narrower: don't
+  // bake GUESSED PROD crew ids into a migration, since an admin id must be a real crew id
+  // (DEC-092) and prod's ids aren't knowable at authoring time. That reasoning doesn't reach
+  // dev, where the roster is fixture data and the ids are knowable — which is the whole
+  // difference. Prod still gets its admins from `db:admin` after the real roster exists.
   //
   // Sign in at /crew/dev-link?admin=eric, or via the crew code flow on eric@bb.test.
   await repo.saveAdmin({

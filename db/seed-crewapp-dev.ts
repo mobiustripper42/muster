@@ -73,6 +73,25 @@ try {
   const ERIC = asId<"CrewMemberId">("crew-eric");
   await repo.saveCrewMember({ id: ERIC, name: "Eric Stoffer", email: "eric@bb.test", phone: "+14403631599", ratings: [MATE], status: "active", reliabilityScore: null });
   await repo.saveCredential({ id: asId<"CredentialId">("cred-eric-mmc"), crewMemberId: ERIC, type: "MMC", expiry: "2030-12-31" });
+  // …and an ADMIN, so a reset dev DB has a way in.
+  //
+  // NOTHING else creates one. Migration 0018 seeded a provisional roster and 0019 deliberately
+  // deleted it again ("admins are CLI-managed, not seeded") — correctly, because an admin id is
+  // a REAL crew id (DEC-092) and prod's real ids aren't knowable at migration-authoring time.
+  // So on prod, admins arrive via `db:admin add --email=… --handle=…` after the roster exists.
+  // In DEV that left a gap: the only admin was whatever the operator added by hand, and any
+  // reset wiped it with nothing to restore it. Seeding one here closes that — the dev roster is
+  // fixture data, so its crew ids ARE knowable, which is exactly what prod lacks.
+  //
+  // Sign in at /crew/dev-link?admin=eric, or via the crew code flow on eric@bb.test.
+  await repo.saveAdmin({
+    id: ERIC,
+    handle: "eric",
+    name: "Eric Stoffer",
+    active: true,
+    createdAt: new Date().toISOString(),
+    deactivatedAt: null,
+  });
 
   // A confirmed upcoming shift with two events (3pm + 5pm, different docks) →
   // my-shifts row → the shift card (call/departure times, dock pins, per-event

@@ -27,6 +27,7 @@ const LINKS = [
   { href: "/admin/shifts", label: "Shifts" },
   { href: "/admin/offerings", label: "Offerings" },
   { href: "/admin/calendar", label: "Calendar" },
+  { href: "/admin/purchases", label: "Purchases" },
   { href: "/admin/customers", label: "Customers" },
   { href: "/admin/add-ons", label: "Add-ons" },
   { href: "/admin/vessels", label: "Vessels" },

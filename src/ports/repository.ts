@@ -295,6 +295,9 @@ export interface Repository {
   savePayment(payment: Payment): Promise<void>;
   getPayment(id: PaymentId): Promise<Payment | null>;
   listPaymentsForReservation(reservationId: ReservationId): Promise<Payment[]>;
+  /** Every payment row — the purchases list's rollup (12.12a). A per-row
+   *  `listPaymentsForReservation` would be an N+1 read across the whole order list. */
+  listAllPayments(): Promise<Payment[]>;
 
   // ── Shifts ─────────────────────────────────────────────────────────────────
   saveShift(shift: Shift): Promise<void>;

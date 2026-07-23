@@ -132,6 +132,12 @@ export function buildCustomerRows(
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** A phone match needs at least this many digits. Without a floor, a query like "r2" or a
+ *  name with a digit in it matches every phone containing that digit — the search silently
+ *  returns unrelated people. Three is the shortest fragment an operator would actually type
+ *  meaning "phone". */
+const MIN_PHONE_QUERY_DIGITS = 3;
+
 /**
  * Filter rows by an operator's free-text search: name, email, phone, or display code. Phone
  * matching is digits-only on both sides, so "(216) 555" finds "+12165550148" — the operator
@@ -145,9 +151,10 @@ export function filterCustomerRows(rows: readonly CustomerRow[], query: string):
     if (r.name.toLowerCase().includes(q)) return true;
     if (r.email?.toLowerCase().includes(q)) return true;
     if (r.displayCode.toLowerCase().includes(q)) return true;
-    // Only treat the query as a phone when it actually has digits — otherwise every row
-    // matches on the empty string.
-    return qDigits.length > 0 && r.phoneE164.replace(/\D/g, "").includes(qDigits);
+    return (
+      qDigits.length >= MIN_PHONE_QUERY_DIGITS &&
+      r.phoneE164.replace(/\D/g, "").includes(qDigits)
+    );
   });
 }
 

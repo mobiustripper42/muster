@@ -415,6 +415,9 @@ export class InMemoryRepository implements Repository {
     const p = this.#payments.get(id);
     return p ? clone(p) : null;
   }
+  async listAllPayments(): Promise<Payment[]> {
+    return [...this.#payments.values()].map(clone);
+  }
   async listPaymentsForReservation(reservationId: ReservationId): Promise<Payment[]> {
     return [...this.#payments.values()]
       .filter((p) => p.reservationId === reservationId)

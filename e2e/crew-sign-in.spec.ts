@@ -44,13 +44,14 @@ test.describe("crew self-serve sign-in (DEC-081)", () => {
     await expect(page.getByLabel(/enter your code/i)).toBeVisible();
   });
 
-  // SKIPPED — #504. The dev-only code echo at /crew/dev-code returns an empty body
-  // (a 204: the code was minted but `peekLastLoginCode` found nothing), so this
-  // reads back "" instead of six digits. Likely the echo's globalThis Map not being
-  // shared now that the e2e harness runs a prod build + `next start` rather than the
-  // single-process `next dev` its comment assumes — unconfirmed. The assertion is
-  // unchanged; un-skip when #504 lands.
-  test.fixme("the full round-trip: email → real code → signed in", async ({ page }) => {
+  // Un-skipped (#504). This read back "" for a while, and the suspicion was that
+  // `next start` served the action and the echo route from different workers so the
+  // globalThis Map wasn't shared. It doesn't: an instrumented probe showed the mint
+  // and the read landing in ONE process (server log `[login-code] → …: 240431`, echo
+  // returns the same six digits), and the test then passed fresh, multi-spec, and in
+  // the full suite. The likely culprit was a stale reused server on :3100 — see the
+  // stale-build note in auth-delivery.ts.
+  test("the full round-trip: email → real code → signed in", async ({ page }) => {
     await page.goto("/crew");
     await page.getByLabel(/sign in with your crew email/i).fill(QUINT_EMAIL);
     await page.getByRole("button", { name: /email me a code/i }).click();

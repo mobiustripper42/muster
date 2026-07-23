@@ -1,13 +1,18 @@
 /**
  * Referential-integrity diagnostic — the loud-failure the no-FK bet removed
- * (DEC-020, DEC-DATA-1), relocated to our schedule.
+ * (DEC-020; DEC-131 for the current posture), relocated to our schedule.
  *
- * Persistence has zero referential enforcement by design: no foreign keys, so the
- * DB will silently accept a seat whose `shiftId` points at nothing. That's only
- * safe if *something* periodically asserts the spine is intact — this is that
- * something. It walks every child aggregate and confirms each reference resolves
- * to a live parent. Run it in the contract suite (proving both adapters agree)
- * and from the healthcheck (catching real rot in dev/prod).
+ * The existing graph carries almost no referential enforcement, ratified as-built
+ * by DEC-131 with no retrofit: the DB will silently accept a seat whose `shiftId`
+ * points at nothing. That's only safe if *something* periodically asserts the spine
+ * is intact — this is that something. It walks every child aggregate and confirms
+ * each reference resolves to a live parent. Run it in the contract suite (proving
+ * both adapters agree) and from `/admin/integrity` (#501) against the real database.
+ *
+ * It can't be retired by adding foreign keys later, either: three spine references
+ * live inside jsonb arrays (`vessel.manning[].roleTypeId`, `crew.ratings[]`,
+ * `shift.eventIds[]`) and `magic_tokens.subject_id` is polymorphic. This is
+ * permanent infrastructure.
  *
  * Scope: the structural spine, NOT the append-only reliability log (DEC-008) — a
  * dangling crew ref in an immutable log is benign and the log is high-volume, so

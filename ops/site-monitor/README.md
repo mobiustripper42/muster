@@ -97,6 +97,22 @@ sudo loginctl enable-linger "$USER"
   by label over the last 7 days. After a week this settles the "is it WordPress?"
   question with counts — e.g. `9× WP_DB_DOWN, 2× SLOW, 0× DNS/TLS/CLOUDFLARE`.
 
+## Watching more than one host
+
+The script is host-agnostic — alerts, logs, and the incident ledger all key off
+`PROBE_HOST`. To watch a second host (e.g. `www.brewcle.com`, which is what Google
+Ads points at), run a second instance with its own `PROBE_DIR` so the logs don't
+collide, and its own systemd unit:
+
+```sh
+PROBE_HOST=www.brewcle.com PROBE_DIR=~/www-brewcle-monitor ./brewcle-probe.sh calibrate
+# then a brewcle-www-monitor.service with Environment=PROBE_HOST=www.brewcle.com,
+# PROBE_DIR=%h/www-brewcle-monitor, and the same (or a distinct) PROBE_NTFY_TOPIC.
+```
+
+Both instances can share one ntfy topic — alert titles carry the host
+(`www.brewcle.com DOWN — …`), so they're unambiguous.
+
 ## Config (env vars)
 
 | Var | Default | Meaning |

@@ -929,6 +929,7 @@ export function runRepositoryContract(
         depositMode: "deposit",
         depositPercent: 25,
         taxRateBps: 725,
+        serviceFeeBps: 300,
         balanceDueDaysBeforeEvent: 14,
       });
       await repo.setPaymentConfig({ depositMode: "full", taxRateBps: 800 }, "2026-07-12T00:00:00.000Z");
@@ -958,6 +959,10 @@ export function runRepositoryContract(
       expect("gratuityCents" in got!).toBe(false);
       await repo.savePayment(payment({ id: asId<"PaymentId">("pay-3"), gratuityCents: 9980, stripeCheckoutSessionId: "cs_test_3" }));
       expect((await repo.getPayment(asId<"PaymentId">("pay-3")))!.gratuityCents).toBe(9980);
+      // serviceFeeCents (DEC-134, 12.5): absent stays omitted; present round-trips
+      expect("serviceFeeCents" in got!).toBe(false);
+      await repo.savePayment(payment({ id: asId<"PaymentId">("pay-4"), serviceFeeCents: 1497, stripeCheckoutSessionId: "cs_test_4" }));
+      expect((await repo.getPayment(asId<"PaymentId">("pay-4")))!.serviceFeeCents).toBe(1497);
     });
 
     it("muster-owned vessel-days: mark + list; upsert on (vessel,date) (DEC-106)", async () => {

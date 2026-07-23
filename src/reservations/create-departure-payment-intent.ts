@@ -1,21 +1,22 @@
 /**
- * Start a departure checkout (Phase 12.1a, DEC-109 amended) — the virtual-model
- * replacement for `createBookingCheckout` (seeded-`Event`, 11.2). The customer picks
- * **offering + date + time + guest count**; this acquires a 15-min hold on a fitting boat
- * (fit-and-fallback), prices the held slot exactly as the deriver displayed it, and opens a
- * hosted Checkout carrying the SLOT in metadata (there is no `Event` row yet — the webhook
- * materializes it under the mutex, `writeSlotBooking`).
+ * Create a departure PaymentIntent (Phase 12.5, DEC-134) — the inline-Elements twin of
+ * `createDepartureCheckout` (12.1a, hosted). Called at "Book & pay" submit from the
+ * `/book/checkout` screen: waiver gate → gratuity-tier gate → 15-min hold on a fitting boat
+ * (fit-and-fallback) → price the held slot exactly as the deriver displayed it → compose the
+ * fare → tax + gratuity + SERVICE FEE (DEC-134) → mint a raw PaymentIntent carrying the SLOT
+ * + frozen money in metadata. The client confirms against the returned `clientSecret`; the
+ * `payment_intent.succeeded` webhook books via `writeSlotBooking`, keyed on the intent id.
  *
  * **Writes no reservation.** The hold is the only pre-payment write; the reservation +
- * Payment land in the webhook. The hold makes the common case collision-free — the second
- * buyer sees the slot held and never starts (DEC-109).
+ * Payment land in the webhook (DEC-107/109). All money is FROZEN into metadata here — the
+ * webhook never recomputes from live config (the DEC-107 freeze rule).
  */
 import type { OfferingId } from "../domain/ids.js";
 import type { PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
 import { resolveBasePrice, slotIdentity } from "./availability.js";
 import { acquireDepartureHold } from "./claim.js";
-import { chargeNowCents, taxCentsFor } from "./payment-config.js";
+import { chargeNowCents, feeCentsFor, taxCentsFor } from "./payment-config.js";
 import {
   composeFare,
   effectiveIncludedGuests,
@@ -23,7 +24,7 @@ import {
   gratuityTiersFor,
 } from "./pricing.js";
 
-export interface DepartureCheckoutRequest {
+export interface DeparturePaymentIntentRequest {
   offeringId: OfferingId;
   /** ISO-8601 vessel-local day. */
   date: string;
@@ -41,8 +42,8 @@ export interface DepartureCheckoutRequest {
   waiverVersion?: string;
 }
 
-export type DepartureCheckoutStart =
-  | { ok: true; url: string; sessionId: string }
+export type DeparturePaymentIntentStart =
+  | { ok: true; clientSecret: string; paymentIntentId: string }
   | {
       ok: false;
       reason:
@@ -54,13 +55,12 @@ export type DepartureCheckoutStart =
         | "gratuity_required";
     };
 
-export async function createDepartureCheckout(
+export async function createDeparturePaymentIntent(
   repo: Repository,
   payments: PaymentPort,
-  req: DepartureCheckoutRequest,
-  urls: { successUrl: string; cancelUrl: string },
+  req: DeparturePaymentIntentRequest,
   now: () => string,
-): Promise<DepartureCheckoutStart> {
+): Promise<DeparturePaymentIntentStart> {
   // Waiver is a hard gate (DEC-110) — check BEFORE acquiring a hold, so a consent-less
   // attempt never parks a hold on a boat.
   if (!req.waiverConsentAt || !req.waiverVersion) {
@@ -113,10 +113,8 @@ export async function createDepartureCheckout(
   const priceCents = slotEvent?.price ?? resolveBasePrice(offering!, hold.date);
 
   // Compose the party fare (DEC-112 / DEC-125 build note, 12.2): base + extra-guests ×
-  // extraGuestPrice. `priceCents` is the per-departure BASE (→ Event.price, frozen); the FARE
-  // is what we charge. Tax is on the fare, not the base. The vessel is guaranteed non-null —
-  // the hold assigned a real, fitting boat (`candidateVessels` filters to existing vessels) —
-  // so assert it (a null must THROW, never silently zero extras and undercharge).
+  // extraGuestPrice. The vessel is guaranteed non-null — the hold assigned a real, fitting
+  // boat — so assert it (a null must THROW, never silently zero extras and undercharge).
   const vessel = await repo.getVessel(hold.vesselId);
   if (!vessel) throw new Error(`held vessel ${String(hold.vesselId)} not found — cannot price fare`);
   const fare = composeFare({
@@ -128,23 +126,21 @@ export async function createDepartureCheckout(
 
   const config = await repo.getPaymentConfig();
   const taxCents = taxCentsFor(fare.fareCents, config.taxRateBps);
+  // Service fee (DEC-134): `serviceFeeBps` of the FARE only — independent of tax and tip,
+  // charged IN FULL with the now-charge (like tax), frozen here, netted out of the balance.
+  const serviceFeeCents = feeCentsFor(fare.fareCents, config.serviceFeeBps);
   // Gratuity (DEC-124): a % of the tip-free fare, added to the charge IN FULL and UNTAXED —
   // never through `chargeNowCents` (no deposit-split) or `taxCentsFor` (no tax). Crew money.
   const gratuityCents = gratuityCentsFor(fare.fareCents, req.gratuityBps);
-  // Fee-free by design: this hosted-session builder is superseded for bookings by the
-  // Elements PI builder (createDeparturePaymentIntent, 12.5/DEC-134), which charges the
-  // service fee. Kept intact — no live caller ships customers through it anymore.
-  const amountCents = chargeNowCents(fare.fareCents, taxCents, 0, config) + gratuityCents;
+  const amountCents =
+    chargeNowCents(fare.fareCents, taxCents, serviceFeeCents, config) + gratuityCents;
   const kind = config.depositMode === "deposit" ? "deposit" : "full";
 
-  const session = await payments.createCheckoutSession({
+  const intent = await payments.createPaymentIntent({
     amountCents,
-    taxCents,
     currency: "usd",
-    productName: `Whole-boat charter — ${hold.date} ${hold.time}`,
-    successUrl: urls.successUrl,
-    cancelUrl: urls.cancelUrl,
     metadata: {
+      // The double-write-guard discriminator (DEC-134): only purposed intents book.
       purpose: "booking",
       // The SLOT — no eventId (the Event doesn't exist yet; the webhook materializes it).
       offeringId: String(offering!.id),
@@ -158,6 +154,8 @@ export async function createDepartureCheckout(
       // Gratuity portion of amountCents (crew money; netted out of balance) + tier provenance.
       gratuityCents: String(gratuityCents),
       gratuityBps: String(req.gratuityBps),
+      // Service-fee portion of amountCents (DEC-134; netted out of balance like the tip).
+      serviceFeeCents: String(serviceFeeCents),
       kind,
       taxCents: String(taxCents),
       customerName: req.customerName,
@@ -167,5 +165,5 @@ export async function createDepartureCheckout(
       waiverVersion: req.waiverVersion,
     },
   });
-  return { ok: true, url: session.url, sessionId: session.id };
+  return { ok: true, clientSecret: intent.clientSecret, paymentIntentId: intent.paymentIntentId };
 }

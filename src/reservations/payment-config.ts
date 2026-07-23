@@ -18,6 +18,9 @@ export interface PaymentConfig {
   depositPercent: number;
   /** Sales-tax rate in BASIS POINTS (725 = 7.25%) — integer, float-free (DEC-112). Ohio. */
   taxRateBps: number;
+  /** Service fee in BASIS POINTS (300 = 3%) on the FARE only (base + extras) — independent of
+   *  tax and tip (DEC-134). Charged IN FULL with the deposit charge; the balance carries none. */
+  serviceFeeBps: number;
   /** How many days before the event the balance is due — a formalized default; the
    *  scheduler that reads it (auto-emit) is P12+. Balance is collected on demand for now. */
   balanceDueDaysBeforeEvent: number;
@@ -28,6 +31,7 @@ export const PAYMENT_CONFIG_DEFAULTS: PaymentConfig = {
   depositMode: "deposit",
   depositPercent: 25,
   taxRateBps: 725, // Ohio state sales tax 7.25% (operator-adjustable)
+  serviceFeeBps: 300, // 3% of the fare (operator-adjustable), untaxed + untipped (DEC-134)
   balanceDueDaysBeforeEvent: 14,
 };
 
@@ -36,16 +40,29 @@ export function taxCentsFor(taxableCents: number, taxRateBps: number): number {
   return Math.round((taxableCents * taxRateBps) / 10000);
 }
 
-/** The amount to charge NOW given the config: full price+tax, or the deposit share. */
+/** Service fee on the FARE (base + extras), integer cents (round half-up) — never on tax or
+ *  gratuity (DEC-134). Pure; the checkout builder computes it once and FREEZES it into the
+ *  charge metadata (the DEC-107 freeze rule — the webhook never recomputes from live config). */
+export function feeCentsFor(fareCents: number, serviceFeeBps: number): number {
+  return Math.round((fareCents * serviceFeeBps) / 10000);
+}
+
+/**
+ * The amount to charge NOW given the config: full price+tax+fee, or the deposit share.
+ * `feeCents` is the frozen service fee (DEC-134) — like tax, it is collected IN FULL with
+ * the now-charge so the balance carries none. Callers on the pre-fee hosted paths pass 0.
+ */
 export function chargeNowCents(
   priceCents: number,
   taxCents: number,
+  feeCents: number,
   config: PaymentConfig,
 ): number {
-  if (config.depositMode === "full") return priceCents + taxCents;
-  // Deposit is a share of the price; tax is collected in full with the deposit charge so
-  // the balance row carries zero tax (keeps Σ tax == total tax per reservation).
-  return Math.round((priceCents * config.depositPercent) / 100) + taxCents;
+  if (config.depositMode === "full") return priceCents + taxCents + feeCents;
+  // Deposit is a share of the price; tax + fee are collected in full with the deposit charge
+  // so the balance row carries zero of either (keeps Σ tax == total tax per reservation, and
+  // the fee one-shot — the later balance charge carries NO second fee).
+  return Math.round((priceCents * config.depositPercent) / 100) + taxCents + feeCents;
 }
 
 /**
@@ -67,14 +84,19 @@ export function chargeNowCents(
 export function balanceOwedCents(
   fareCents: number,
   taxRateBps: number,
-  payments: readonly { status: string; amountCents: number; gratuityCents?: number }[],
+  payments: readonly {
+    status: string;
+    amountCents: number;
+    gratuityCents?: number;
+    serviceFeeCents?: number;
+  }[],
 ): number {
   const total = fareCents + taxCentsFor(fareCents, taxRateBps);
-  // Net the GRATUITY out of each paid amount (DEC-124, 12.3): the tip is crew money bundled
-  // into the charge, never part of fare+tax, so counting it as "paid toward balance" would
-  // under-charge the balance on a deposit booking.
+  // Net the GRATUITY and the SERVICE FEE out of each paid amount (DEC-124 / DEC-134): the tip
+  // is crew money and the fee is a one-shot surcharge — neither is part of fare+tax, so
+  // counting either as "paid toward balance" would under-charge a deposit booking's balance.
   const paid = payments
     .filter((p) => p.status === "succeeded")
-    .reduce((sum, p) => sum + p.amountCents - (p.gratuityCents ?? 0), 0);
+    .reduce((sum, p) => sum + p.amountCents - (p.gratuityCents ?? 0) - (p.serviceFeeCents ?? 0), 0);
   return total - paid;
 }

@@ -1,15 +1,20 @@
 /**
- * Process a Stripe `checkout.session.completed` webhook (Phase 11.2, DEC-107).
+ * Process a Stripe payment webhook (Phase 11.2, DEC-107; event union 12.5, DEC-134).
  *
- * Dispatches on `metadata.purpose` (11.2b): `"balance"` → record a `Payment{kind:'balance'}`
- * against the already-claimed reservation (no re-booking); absent/`"booking"` → the
- * charge→booking spine (verify sig, `writeBooking` under the atomic whole-boat claim, record
- * the `Payment`). Any OTHER purpose is loudly flagged, never silently booked (a non-booking
- * session has no `eventId` and would orphan a reservation).
+ * Two event types drive it (`parseEvent`):
+ *  - **`checkout.session.completed`** (hosted Checkout) — dispatches on `metadata.purpose`
+ *    (11.2b): `"balance"` → record a `Payment{kind:'balance'}` against the already-claimed
+ *    reservation (no re-booking); `"gratuity"` → the post-trip tip; absent/`"booking"` → the
+ *    charge→booking spine. Any OTHER purpose is loudly flagged, never silently booked.
+ *  - **`payment_intent.succeeded`** (inline Elements, 12.5) — the SAME booking spine, keyed
+ *    on the PaymentIntent id. **Double-write guard (DEC-134):** processes ONLY intents whose
+ *    metadata carries `purpose` — the metadata-less PI underlying every hosted session is
+ *    acked-and-ignored, so one charge can never book twice.
  *
  * **On a paid-but-unbooked outcome (`lost`/`unbookable`) or an OVERPAID balance: record the
  * payment and LOUDLY ALERT ALL ADMINS to refund manually.** Refunds are always manual (Stripe
- * dashboard); nothing here refunds automatically. Provider-agnostic + `FakePaymentPort`-testable.
+ * dashboard) except the DEC-109 residual-race auto-refund. Provider-agnostic +
+ * `FakePaymentPort`-testable.
  */
 import type { Payment, Reservation } from "../domain/entities.js";
 import {
@@ -46,8 +51,10 @@ export interface WebhookDeps {
    * Tell the customer their departure sold out while they were paying and they've been fully
    * refunded (DEC-109 residual race). Best-effort — a notify failure must never 500 the
    * webhook (the refund already succeeded; a 500 would make Stripe retry the whole event).
+   * Receives the normalized charge (contact lives in `metadata`) — works for both the hosted
+   * session and the Elements PaymentIntent path (DEC-134).
    */
-  notifyCustomerSoldOut: (completed: CheckoutCompleted) => Promise<void>;
+  notifyCustomerSoldOut: (charge: SoldOutCharge) => Promise<void>;
   /**
    * Email + SMS the customer their booking-management link (11.4, DEC-122). Fires ONLY on a
    * fresh `booked` outcome — never on the idempotent `already` (Stripe redelivers
@@ -59,20 +66,68 @@ export interface WebhookDeps {
 }
 
 export type WebhookResult =
-  | { handled: false } // verified but not a checkout.session.completed event → ack + ignore
+  | { handled: false } // verified but ignorable (unknown type / a hosted session's bare PI) → ack + ignore
   | {
       handled: true;
       outcome: "booked" | "already" | "lost" | "unbookable" | "balance_paid" | "gratuity_paid" | "ignored";
     };
+
+/** The contact-bearing slice of a charge the sold-out notice needs (both event paths). */
+export interface SoldOutCharge {
+  /** Loggable handle: the session id (hosted) or PaymentIntent id (Elements). */
+  chargeRef: string;
+  metadata: Record<string, string>;
+}
+
+/**
+ * A charge that should BOOK, normalized off either event type. The booking spine below is
+ * identical for both; only the provenance fields differ (session id vs PaymentIntent id).
+ */
+interface BookingCharge {
+  /** Booking idempotency key: the session id (hosted) or the PaymentIntent id (Elements) —
+   *  also the seed for the Payment id (`pay_${key}`), gratuity id (`grat_pre_${key}`), and
+   *  refund key (`refund_${key}`). */
+  key: string;
+  sessionId?: string;
+  paymentIntentId?: string;
+  amountCents: number;
+  currency: string;
+  metadata: Record<string, string>;
+}
 
 export async function processBookingWebhook(
   deps: WebhookDeps,
   rawBody: string,
   signature: string,
 ): Promise<WebhookResult> {
-  const completed = deps.payments.parseCheckoutCompleted(rawBody, signature); // throws on bad sig
-  if (!completed) return { handled: false };
+  const event = deps.payments.parseEvent(rawBody, signature); // throws on bad sig
+  if (!event) return { handled: false };
 
+  if (event.type === "payment_succeeded") {
+    const pi = event.data;
+    const purpose = pi.metadata.purpose;
+    // DOUBLE-WRITE GUARD (DEC-134): every hosted Checkout session has an underlying
+    // PaymentIntent that ALSO emits `payment_intent.succeeded` — but carries NO metadata
+    // (the adapter never sets `payment_intent_data.metadata`). Only OUR minted intents
+    // carry `purpose`, so a metadata-less PI is acked-and-ignored, never booked twice.
+    if (purpose === undefined) return { handled: false };
+    if (purpose !== "booking") {
+      await deps.alertPaidButUnbooked(
+        `⚠️ Stripe payment intent with unknown purpose="${purpose}" — ${pi.paymentIntentId}. ` +
+          `NOT auto-processed; investigate (money may have moved).`,
+      );
+      return { handled: true, outcome: "ignored" };
+    }
+    return processBookingCharge(deps, {
+      key: pi.paymentIntentId,
+      paymentIntentId: pi.paymentIntentId,
+      amountCents: pi.amountReceivedCents,
+      currency: pi.currency,
+      metadata: pi.metadata,
+    });
+  }
+
+  const completed = event.data;
   // Dispatch on purpose (11.2b). A balance payment records against the existing reservation;
   // it must NEVER reach the booking path (no eventId → an orphan reservation).
   const purpose = completed.metadata.purpose;
@@ -85,9 +140,25 @@ export async function processBookingWebhook(
     );
     return { handled: true, outcome: "ignored" };
   }
+  return processBookingCharge(deps, {
+    key: completed.sessionId, // Stripe's session id keys the booking (11.2)
+    sessionId: completed.sessionId,
+    ...(completed.paymentIntentId !== undefined
+      ? { paymentIntentId: completed.paymentIntentId }
+      : {}),
+    amountCents: completed.amountTotalCents,
+    currency: completed.currency,
+    metadata: completed.metadata,
+  });
+}
 
-  const m = completed.metadata;
-  const idempotencyKey = completed.sessionId; // Stripe's session id keys the booking
+/** The charge→booking spine, shared by both event paths (11.2 / 12.5). */
+async function processBookingCharge(
+  deps: WebhookDeps,
+  charge: BookingCharge,
+): Promise<WebhookResult> {
+  const m = charge.metadata;
+  const idempotencyKey = charge.key;
   const kind = m.kind === "deposit" ? "deposit" : "full";
   // Slot-first (12.1) sessions carry the SLOT (no eventId); legacy 11.2 sessions carry an
   // eventId. Guest count is `guestCount` on the new path, `partySize` on the old.
@@ -133,7 +204,7 @@ export async function processBookingWebhook(
       );
 
   // The money moved — record the Payment against the (would-be) reservation either way.
-  await recordPayment(deps, completed, kind, reservationId);
+  await recordPayment(deps, charge, kind, reservationId);
 
   if (result.outcome === "booked" || result.outcome === "already") {
     // Confirm ONLY the fresh booking — never the idempotent `already` (a Stripe
@@ -155,13 +226,17 @@ export async function processBookingWebhook(
       const gratuityCents = Number(m.gratuityCents ?? 0);
       if (isSlotBooking && gratuityCents > 0) {
         await deps.repo.saveGratuity({
-          id: asId<"GratuityId">(`grat_pre_${completed.sessionId}`),
+          id: asId<"GratuityId">(`grat_pre_${charge.key}`),
           eventId: result.reservation.eventId,
           reservationId: result.reservation.id,
           kind: "pre",
           amountCents: gratuityCents,
           ...(m.gratuityBps ? { bps: Number(m.gratuityBps) } : {}),
-          stripeCheckoutSessionId: completed.sessionId,
+          // Reconciliation handle: the hosted path keeps the session id; an Elements
+          // gratuity's handle is the PI id baked into the deterministic row id.
+          ...(charge.sessionId !== undefined
+            ? { stripeCheckoutSessionId: charge.sessionId }
+            : {}),
           createdAt: deps.now(),
         });
       }
@@ -177,31 +252,32 @@ export async function processBookingWebhook(
   // "sold out while you were paying" (DEC-107 amended, 12.1b). The loud manual-refund alert
   // is the FALLBACK, only when the refund can't run programmatically.
   if (result.outcome === "lost") {
-    if (!completed.paymentIntentId) {
+    if (!charge.paymentIntentId) {
       await deps.alertPaidButUnbooked(
-        `⚠️ Residual-race loss with NO payment_intent to auto-refund — Stripe session ` +
-          `${completed.sessionId}, ${who}. REFUND MANUALLY in Stripe.`,
+        `⚠️ Residual-race loss with NO payment_intent to auto-refund — Stripe charge ` +
+          `${charge.key}, ${who}. REFUND MANUALLY in Stripe.`,
       );
       return { handled: true, outcome: result.outcome };
     }
     try {
-      // Keyed on the session id ⇒ a redelivered losing-session webhook re-calls with the
-      // same key and Stripe returns the same refund (no double refund, DEC-107 amended).
+      // Keyed on the charge key (session id / PI id — DEC-134) ⇒ a redelivered losing-charge
+      // webhook re-calls with the same key and Stripe returns the same refund (no double
+      // refund, DEC-107 amended).
       await deps.payments.refund({
-        paymentIntentId: completed.paymentIntentId,
-        idempotencyKey: `refund_${completed.sessionId}`,
+        paymentIntentId: charge.paymentIntentId,
+        idempotencyKey: `refund_${charge.key}`,
       });
     } catch (e) {
       await deps.alertPaidButUnbooked(
         `⚠️ Residual-race loss AND the auto-refund FAILED (${e instanceof Error ? e.message : "unknown error"}) — ` +
-          `Stripe session ${completed.sessionId}, ${who}. REFUND MANUALLY in Stripe.`,
+          `Stripe charge ${charge.key}, ${who}. REFUND MANUALLY in Stripe.`,
       );
       return { handled: true, outcome: result.outcome };
     }
     // Refunded — tell the customer. Best-effort: a notify failure must not 500 (a retry would
     // re-run this path, and the keyed refund would no-op, but re-notify needlessly).
     try {
-      await deps.notifyCustomerSoldOut(completed);
+      await deps.notifyCustomerSoldOut({ chargeRef: charge.key, metadata: charge.metadata });
     } catch {
       // swallowed by contract — the refund succeeded; a missing notice is not a 500
     }
@@ -213,7 +289,7 @@ export async function processBookingWebhook(
   // (money may or may not have moved as expected). Loud manual-refund alert (architect ruling).
   const detail = `${result.outcome}/${result.reason}`;
   await deps.alertPaidButUnbooked(
-    `⚠️ Paid booking could NOT be placed (${detail}) — Stripe session ${completed.sessionId}, ` +
+    `⚠️ Paid booking could NOT be placed (${detail}) — Stripe charge ${charge.key}, ` +
       `${who}. REFUND MANUALLY in Stripe.`,
   );
   return { handled: true, outcome: result.outcome };
@@ -221,24 +297,28 @@ export async function processBookingWebhook(
 
 async function recordPayment(
   deps: WebhookDeps,
-  completed: CheckoutCompleted,
+  charge: BookingCharge,
   kind: "full" | "deposit",
   reservationId: ReservationId,
 ): Promise<void> {
   const payment: Payment = {
-    id: asId<"PaymentId">(`pay_${completed.sessionId}`), // deterministic ⇒ idempotent upsert
+    id: asId<"PaymentId">(`pay_${charge.key}`), // deterministic ⇒ idempotent upsert
     reservationId,
     method: "stripe",
     kind,
-    amountCents: completed.amountTotalCents,
-    taxCents: Number(completed.metadata.taxCents ?? 0),
+    amountCents: charge.amountCents,
+    taxCents: Number(charge.metadata.taxCents ?? 0),
     // The gratuity bundled into amountCents (DEC-124) — carved out so balanceOwedCents nets it.
-    ...(Number(completed.metadata.gratuityCents ?? 0) > 0
-      ? { gratuityCents: Number(completed.metadata.gratuityCents) }
+    ...(Number(charge.metadata.gratuityCents ?? 0) > 0
+      ? { gratuityCents: Number(charge.metadata.gratuityCents) }
       : {}),
-    currency: completed.currency,
-    stripeCheckoutSessionId: completed.sessionId,
-    ...(completed.paymentIntentId ? { stripePaymentIntentId: completed.paymentIntentId } : {}),
+    // The service fee bundled into amountCents (DEC-134) — same carve-out, same reason.
+    ...(Number(charge.metadata.serviceFeeCents ?? 0) > 0
+      ? { serviceFeeCents: Number(charge.metadata.serviceFeeCents) }
+      : {}),
+    currency: charge.currency,
+    ...(charge.sessionId !== undefined ? { stripeCheckoutSessionId: charge.sessionId } : {}),
+    ...(charge.paymentIntentId ? { stripePaymentIntentId: charge.paymentIntentId } : {}),
     status: "succeeded",
     createdAt: deps.now(),
   };

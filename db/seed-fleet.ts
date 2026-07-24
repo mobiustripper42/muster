@@ -26,7 +26,9 @@ try {
     const manning = v.manning.map((m) => `${m.count}×${m.roleTypeId}`).join(", ") || "self-captained";
     console.log(`  - ${v.id}  (cap ${v.coiMaxPax}; ${manning})`);
   }
-  console.log("\nNext: edit + run db/seed-pilot-crew.ts (npm run db:seed:crew:pilot), then import at /admin/import.");
+  // Roster bootstrap is CLI-only (DEC-134) — no crew PII in the repo.
+  console.log('\nNext: add crew with `npm run db:crew -- add --name="Jane Roe" --phone=+1… --email=… --ratings=captain,mate`');
+  console.log("(seeds the DEC-044 placeholder MMC too), then import at /admin/import.");
   console.log("Fleet = the 4 real BrewBoats, capacities validated against live Xola Resources (DEC-043).");
 } finally {
   await repo.close();

@@ -6,7 +6,7 @@ branch: feature/reservations
 started: 2026-07-23T15:14:37Z
 ended:
 points:
-pr_numbers: [513, 514]
+pr_numbers: [513, 514, 515]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/6da407ca-dee6-4ee7-a82b-42ab340c4e3a.jsonl
 ---
@@ -59,8 +59,28 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/6da407ca-dee6-4ee7-a82
 
 **⚠️ Operator ship checklist (in the PR):** (1) Stripe dashboard must subscribe the webhook to **`payment_intent.succeeded`** (test + live) or a paid Elements booking never books, silently; (2) `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` set in every Vercel env (build-inlined); (3) apply migration `20260723150000`; (4) manual paid-booking exit gate with a 4242 test card (e2e can't cross `confirmPayment`).
 
+## Task 3: Phase 12.6 — the "Your booking" manage page, capability-URL landing (#459)
+
+**Completed** (built in the main loop, not Fable — a normal Opus task):
+- **Re-estimated 5 → 8+.** The mockup's "argue with it" notes (settled 2026-07-17) load it far past 5, and several pieces ride unbuilt infra. Surfaced the re-scope to the operator; he chose **(b) cancel/change as an out-of-band request now, self-service (c) later** ("(b) needed regardless of (c)").
+- `/reservations/manage?r=&t=` — the DEC-122 booking-link page (token scheme + verify already existed; this built the page). Two trip-time states (upcoming = trip + balance; completed = post-tip + receipt), driven by `buildManageView`. Money reuses `buildReservationDetail` (one source of truth with the admin pane).
+- `src/reservations/manage-view.ts` (+9 tests) — pure: phase flip, post-tip tiers (DEC-124 post kind), back-by/arrive-by timing. `booking-ics.ts` (+tests) — tz-aware `.ics`. `booking-change-request.ts` (+tests) — operator-email body.
+- `app/reservations/manage/{page,actions,load}.tsx` + `calendar/route.ts` — the page; post-tip (server-recomputed amount → hosted gratuity Checkout), add-to-calendar (token-gated .ics), book-again, the contact's other trips (bearer-token loosening), and **cancel/change = out-of-band operator email** (new `booking_request` MessageKind; best-effort to `OPERATOR_NOTIFY_EMAIL`). Shared `loadVerifiedBooking` guards page + every action + the .ics identically (fail closed, no existence leak).
+- `Event` has **no `offeringId`** (S62 finding held) — `load.ts` resolves the offering via `deriveVirtualAvailability`, matching by event id like the admin pane; degrades (no crash) when unresolvable.
+- `/book/success` rewritten as the real confirmation landing (retires the 11.6 stub) — leans on the booking link arriving by text/email (webhook writes the reservation async).
+- `npm run verify` green (1536 unit tests + build); `book-manage` e2e **8/8** desktop + 375px; both viewports screenshot-checked (caught + fixed a past-trip flex glitch from AppLink's spinner-label wrapper — `spinner="none"`). DEC-135.
+
+**Code review:** `@code-review` — token guard, server-side money recompute, offering-resolution fallback, RSC boundary, .ics correctness, best-effort-email posture all clean. **No real bugs.** One finding fixed: `addPostTip`'s Stripe call is now `.catch`-guarded (degrades to `error=tip`, not a raw error page).
+**PR:** [#515](https://github.com/mobiustripper42/muster/pull/515) — **stacked on `task/12.5-checkout`** (reads `Payment.serviceFeeCents` from DEC-134). Rebases onto feature once #514 merges. Stacked base ⇒ CI skipped; verify + e2e run locally.
+**Points:** 5
+**Branch:** task/12.6-manage-page
+**Opened at:** 2026-07-24T01:55:00Z
+
+**⚠️ Operator ship checklist (in the PR):** set `RESERVATION_LINK_SECRET` (manage links dead without it) + `OPERATOR_NOTIFY_EMAIL` + email env (Resend) for cancel/change requests to reach you; merge #514 before #515 (stacked).
+
 **Next Steps:**
-- **#459 (12.6) confirmation + manage page** — the booking link (DEC-122); `sendReservationConfirmation` already fires it. Then **#460 (12.7) link recovery**.
+- **#460 (12.7) link recovery** — re-send the existing booking link (never show it from typed input); copy is "your booking link," never "living link" (per #459 notes). Small (3).
+- **12.6 deferred follow-ups (DEC-135, infra not built):** crew NAMES (view model gives counts), the guest waiver roster (no per-attendee roster, DEC-110), leave-a-review, email-the-receipt, and the date/time **reschedule** (re-hold + re-price). Plus **self-service cancel (c)** — pulls in #472 refund policy + Flex-on-reservation wiring.
 - **Follow-ups from the 12.5 review (batched polish pass, not blocking):** split `checkout-form.tsx` `InnerForm` into sub-components; extract a guard helper in checkout `page.tsx`; add the two failure-state e2e cases; `serviceFeeBps` admin editor (a later settings screen); persist the marketing opt-in (needs a `Customer` field); the #484 app-wide input-contrast rollout + @ui-reviewer stays open.
 - **The parked idea** (direct-to-crew tip distribution via Stripe Connect) sits on top of this PaymentIntent spine — worth a priority re-look post-Xola.
 

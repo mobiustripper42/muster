@@ -28,15 +28,14 @@
  *
  * Idempotent: entity writes are upserts; `formShifts` preserves seat state on re-run.
  */
+import { fileURLToPath } from "node:url";
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
 import { asId } from "../src/domain/ids.js";
 import type { VesselId } from "../src/domain/ids.js";
 import { formShifts } from "../src/builder/form-shifts.js";
 import { TENANT_TIMEZONE } from "../src/config/tenant.js";
+import type { Repository } from "../src/ports/repository.js";
 import { DEFAULT_DATABASE_URL } from "./migrate.js";
-
-const url = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
-const repo = PostgresRepository.fromConnectionString(url);
 
 const TENANT = asId<"TenantId">("tenant-brewboat"); // match app TENANT_ID + canonical seeds
 const CAPTAIN = asId<"RoleTypeId">("role-captain");
@@ -55,63 +54,63 @@ const dateOf = (d: Date) =>
     day: "2-digit",
   }).format(d);
 
-const MMC_GOOD = "2027-12-31";
+export async function seedSplit(repo: Repository): Promise<void> {
+  const MMC_GOOD = "2027-12-31";
 
-async function crew(
-  id: string,
-  name: string,
-  role: typeof CAPTAIN | typeof MATE,
-  phone: string,
-) {
-  const crewId = asId<"CrewMemberId">(id);
-  await repo.saveCrewMember({
-    id: crewId,
-    name,
-    phone,
-    ratings: [role],
-    status: "active",
-    reliabilityScore: null,
-  });
-  await repo.saveCredential({
-    id: asId<"CredentialId">(`cred-${id}`),
-    crewMemberId: crewId,
-    type: "MMC",
-    expiry: MMC_GOOD,
-  });
-  return crewId;
-}
-
-/** Seed a vessel-day's scheduled trips + a booking each; `formShifts` (called once,
- * after all days) turns each into a canonical shift with engine-derived seats. */
-async function seedDay(
-  vesselId: VesselId,
-  keyPrefix: string,
-  date: string,
-  trips: Array<{ time: string; pax: number }>,
-) {
-  for (const [i, trip] of trips.entries()) {
-    const eventId = asId<"EventId">(`evt-${keyPrefix}-${i}`);
-    await repo.saveEvent({
-      id: eventId,
-      vesselId,
-      date,
-      time: trip.time,
-      capacity: 12,
-      source: "xola", status: "scheduled",
-      dock: DOCK,
+  async function crew(
+    id: string,
+    name: string,
+    role: typeof CAPTAIN | typeof MATE,
+    phone: string,
+  ) {
+    const crewId = asId<"CrewMemberId">(id);
+    await repo.saveCrewMember({
+      id: crewId,
+      name,
+      phone,
+      ratings: [role],
+      status: "active",
+      reliabilityScore: null,
     });
-    await repo.saveReservation({
-      id: asId<"ReservationId">(`resv-${keyPrefix}-${i}`),
-      eventId,
-      source: "xola",
-      customerName: `Party ${i + 1}`,
-      partySize: trip.pax,
-      status: "booked",
+    await repo.saveCredential({
+      id: asId<"CredentialId">(`cred-${id}`),
+      crewMemberId: crewId,
+      type: "MMC",
+      expiry: MMC_GOOD,
     });
+    return crewId;
   }
-}
 
-try {
+  /** Seed a vessel-day's scheduled trips + a booking each; `formShifts` (called once,
+   * after all days) turns each into a canonical shift with engine-derived seats. */
+  async function seedDay(
+    vesselId: VesselId,
+    keyPrefix: string,
+    date: string,
+    trips: Array<{ time: string; pax: number }>,
+  ) {
+    for (const [i, trip] of trips.entries()) {
+      const eventId = asId<"EventId">(`evt-${keyPrefix}-${i}`);
+      await repo.saveEvent({
+        id: eventId,
+        vesselId,
+        date,
+        time: trip.time,
+        capacity: 12,
+        source: "xola", status: "scheduled",
+        dock: DOCK,
+      });
+      await repo.saveReservation({
+        id: asId<"ReservationId">(`resv-${keyPrefix}-${i}`),
+        eventId,
+        source: "xola",
+        customerName: `Party ${i + 1}`,
+        partySize: trip.pax,
+        status: "booked",
+      });
+    }
+  }
+
   await repo.saveRoleType({ id: CAPTAIN, tenantId: TENANT, name: "captain" });
   await repo.saveRoleType({ id: MATE, tenantId: TENANT, name: "mate" });
 
@@ -178,6 +177,15 @@ try {
   console.log("");
   console.log("⚠  Run on a CLEAN DB — splitting fires formShifts globally; any non-canonical");
   console.log("   scenario-seed shift (atrisk/crewapp/outbox) would duplicate. Reset before seeding.");
-} finally {
-  await repo.close();
+}
+
+// CLI entry: `npm run db:seed:split`. Skipped when imported by db:all (--split).
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  const url = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
+  const repo = PostgresRepository.fromConnectionString(url);
+  try {
+    await seedSplit(repo);
+  } finally {
+    await repo.close();
+  }
 }

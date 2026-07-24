@@ -2,11 +2,16 @@
  * e2e harness fixtures (#65) — the three things every spec needs: a deterministic
  * DB state, a signed-in crew session, a signed-in operator session.
  *
- * Seed strategy (DEC at task #65): the dev seeds are CLI scripts, not exported
- * functions. Rather than refactor three working scripts, we spawn them with
- * DATABASE_URL pointed at the test DB. Heavier than an in-process call, but the
- * scripts stay untouched and the harness reuses the exact states the manual
- * walkthrough (RUNNING.md) already documents.
+ * Seed strategy (DEC at task #65): spawn each dev seed as a subprocess with
+ * DATABASE_URL pointed at the test DB, so the harness reuses the exact states
+ * the manual walkthrough (RUNNING.md) documents.
+ *
+ * The seeds DO export functions now (DEC-135 made them `seedX(repo)` so `db:all`
+ * could call them in-process), so the original "they're CLI-only" reason is
+ * gone. The spawn stays anyway, deliberately: it keeps each seed's DATABASE_URL
+ * scoped to one child process, so nothing in the harness can import a seed and
+ * have it touch `muster_dev` through an ambient default. Heavier than an
+ * in-process call; the isolation is worth it here.
  */
 import { execFileSync } from "node:child_process";
 import { test as base, expect, type Page } from "@playwright/test";
@@ -29,8 +34,9 @@ type SeedName = keyof typeof SEED_SCRIPTS;
  * `signInAsAdmin(page, "spink")` resolves through the dev-link handle→id lookup
  * (DEC-092). Its id is the operator crew id (`crew-spink`, = OPERATOR_CREW_MEMBER_ID).
  * `resetTestDb` truncates `admins` (dynamic all-tables wipe), so we re-seed it on
- * every reset; the prod roster (the 0018 migration's eric/brendan/drew) is wiped
- * too, which is fine — e2e drives its own synthetic operator.
+ * every reset. Nothing else seeds that table — migration 0019 dropped the
+ * provisional roster 0018 inserted, and admins have been CLI-managed since
+ * (DEC-092) — so this synthetic operator is the only admin e2e ever sees.
  */
 async function seedAdmin(a: {
   id: string;

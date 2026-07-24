@@ -42,3 +42,6 @@ __pycache__/
 
 # Editor swap files (a populated .env swap would otherwise leak secrets — 10.3)
 *.sw[a-p]
+
+# Per-box Claude Code overrides — accumulated allow-clicks, never shared (DEC-S023)
+.claude/settings.local.json

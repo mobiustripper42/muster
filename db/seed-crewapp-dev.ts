@@ -7,8 +7,13 @@
  *   docker compose up -d && npm run db:migrate && npx tsx db/seed-crewapp-dev.ts
  * Then: GET /crew/dev-link?crew=crew-quint → tap the link → /crew.
  *
+ * Also a step in the `db:all` registry (DEC-135) — hence the exported function
+ * plus CLI-entry guard: `db:all` calls it in-process on one connection, while
+ * `npm run db:seed:crew` still runs it standalone.
+ *
  * Dev tooling, not app code. Uses the same Postgres adapter the app runs on.
  */
+import { fileURLToPath } from "node:url";
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
 import { TENANT_TIMEZONE } from "../src/config/tenant.js";
 import { asId } from "../src/domain/ids.js";
@@ -21,10 +26,8 @@ import {
   logShiftBailed,
   logShiftCompleted,
 } from "../src/oracle/reliability-log.js";
+import type { Repository } from "../src/ports/repository.js";
 import { DEFAULT_DATABASE_URL } from "./migrate.js";
-
-const url = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
-const repo = PostgresRepository.fromConnectionString(url);
 
 const TENANT = asId<"TenantId">("tenant-brewboat"); // match app TENANT_ID + canonical seeds
 const CAPTAIN = asId<"RoleTypeId">("role-captain");
@@ -48,7 +51,29 @@ const dateOf = (d: Date) =>
 const SOON = dateOf(at(15 * 24));
 const LATER = dateOf(at(16 * 24));
 
-try {
+/**
+ * The operator's own dev record — the ONE real person any seed may carry
+ * (DEC-134): his phone, his call. Kept separate from the rest of the crew-app
+ * scenario because `db:all` needs it in EVERY mode — it's the crew id the admin
+ * row points at (DEC-092), so `--split` would otherwise leave you unable to sign
+ * in to the admin surfaces it exists to test. Defined once, called from both.
+ *
+ * REAL phone, for the Twilio live-SMS smoke (#242). MATE-rated (NOT captain —
+ * bail-regression.spec depends on Quint being the only valid captain) with a
+ * long MMC, so he lands in mate-seat ask pools; "Ask to fill" on shift-open's
+ * mate seat texts his actual phone once the three TWILIO_* vars are set.
+ *
+ * The EMAIL is the sign-in identity: login matches on email only
+ * (`matchCrewByEmail`, src/auth/login-code.ts), so a crew record without one can
+ * never receive a code. Requires `role-mate` to exist already.
+ */
+export async function seedOperator(repo: Repository): Promise<void> {
+  const ERIC = asId<"CrewMemberId">("crew-eric");
+  await repo.saveCrewMember({ id: ERIC, name: "Eric Stoffer", phone: "+14403631599", email: "eric@bb.test", ratings: [MATE], status: "active", reliabilityScore: null });
+  await repo.saveCredential({ id: asId<"CredentialId">("cred-eric-mmc"), crewMemberId: ERIC, type: "MMC", expiry: "2030-12-31" });
+}
+
+export async function seedCrewApp(repo: Repository): Promise<void> {
   await repo.saveRoleType({ id: CAPTAIN, tenantId: TENANT, name: "captain" });
   await repo.saveRoleType({ id: MATE, tenantId: TENANT, name: "mate" });
   await repo.saveVessel({
@@ -65,14 +90,7 @@ try {
   await repo.saveCredential({ id: asId<"CredentialId">("cred-quint-mmc"), crewMemberId: QUINT, type: "MMC", expiry: in30d });
   await repo.saveCredential({ id: asId<"CredentialId">("cred-hooper-mmc"), crewMemberId: HOOPER, type: "MMC", expiry: "2027-12-31" });
 
-  // Eric — REAL phone, for the Twilio live-SMS smoke (#242): MATE-rated (NOT
-  // captain — bail-regression.spec depends on Quint being the only valid
-  // captain) with a long MMC, so he lands in mate-seat ask pools; "Ask to
-  // fill" on shift-open's mate seat texts his actual phone once the three
-  // TWILIO_* vars are set. Dev seed only.
-  const ERIC = asId<"CrewMemberId">("crew-eric");
-  await repo.saveCrewMember({ id: ERIC, name: "Eric Stoffer", phone: "+14403631599", ratings: [MATE], status: "active", reliabilityScore: null });
-  await repo.saveCredential({ id: asId<"CredentialId">("cred-eric-mmc"), crewMemberId: ERIC, type: "MMC", expiry: "2030-12-31" });
+  await seedOperator(repo);
 
   // A confirmed upcoming shift with two events (3pm + 5pm, different docks) →
   // my-shifts row → the shift card (call/departure times, dock pins, per-event
@@ -171,6 +189,15 @@ try {
   console.log("  + Bail demo (#56): open the shift card → 'I can't make it…' — Quint is the only");
   console.log("    captain, so the seat rests Bailed and the shift lands on /admin/at-risk as a regression.");
   console.log("Seeded crew-dooley: full reliability log → worst-case standing line. View: /crew/dev-link?crew=crew-dooley");
-} finally {
-  await repo.close();
+}
+
+// CLI entry: `npm run db:seed:crew`. Skipped when imported by db:all.
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  const url = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
+  const repo = PostgresRepository.fromConnectionString(url);
+  try {
+    await seedCrewApp(repo);
+  } finally {
+    await repo.close();
+  }
 }

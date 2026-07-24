@@ -3853,6 +3853,20 @@ importer-created customers (not needed until cutover); "Edit contact"; and "Mess
 
 **Consequence:** fleet-seed's "next step" pointer (`db/seed-fleet.ts`) now points at `db:crew add`. `docs/PILOT_IMPORT_FINDINGS.md` keeps its pilot-era roster description as a historical finding, annotated. **Companions:** DEC-044 (placeholder MMC — sentinel ownership moved to the CLI), DEC-092/094 (admins and crew are CLI-managed identities, not seeded — this extends the same posture from `admins` to the crew roster; migration `0019_drop_provisional_admins.sql` made exactly this argument for admins).
 
+## DEC-135: `db:all` — one always-destructive command; the database resets, the seed *registry* grows
+
+**Decision:** `npm run db:all` (`db/all-dev.ts`) takes a dev database to a known-good state in one step: localhost guard → migrate + truncate every table → run the seed registry in order → promote `crew-eric` to admin → print how to sign in. **Every run resets.** There is no incremental mode, no skip-reset flag, and no `--force` past the localhost guard (a `DATABASE_URL` that isn't loopback is refused outright — the command truncates, and a remote wipe is not something a flag should buy).
+
+**The additive part** is the registry, not the data. New test data goes in as one line in `SEEDS`, pointing at an exported `seedX(repo)`. So the set of scenarios only ever grows, while the rows are thrown away every run. Those aren't in tension, and the combination is the point: because state can't survive a run, seeds never have to be idempotent or defensive, and nothing from the branch you were on an hour ago can leak into the one you're testing now. Restart per PR, keep everything you've built.
+
+**Enabling refactor:** the five dev seeds were top-level side-effect scripts (open a repo, run, close). Each is now an exported `seedX(repo)` plus a `fileURLToPath(import.meta.url) === process.argv[1]` CLI guard, so `npm run db:seed:crew` still works standalone while `db:all` calls them in-process on one connection. `resetTestDb`'s truncate is extracted to `resetDb(connectionString)` — **no default argument**, so every caller must name the database it is about to wipe.
+
+**`--split` is a separate mode, not an addition.** `seed-split-dev` builds its shift through `formShifts` with canonical ids; the scenario seeds hand-author non-canonical ones. `formShifts` is global, so splitting anything with both loaded duplicates every scenario shift. `npm run db:all -- --split` therefore runs fleet + split *instead of* the set. Both modes still create the admin — an admin-less `--split` couldn't reach the surfaces it exists to test.
+
+**The operator record** (`seedOperator`, in `seed-crewapp-dev.ts`) is defined once and called from both modes. Its **email is the sign-in identity** — login matches on email only (`matchCrewByEmail`), so a crew record without one can never receive a code, and DEC-081's no-enumeration design shows the identical "code is on its way" screen when it fails. That silent failure is what `e2e/db-all.spec.ts` reads the code back for.
+
+**Not this:** consolidating the seeds into one `formShifts`-shaped fixture, which would dissolve the split/scenario conflict entirely. Deliberately deferred — `db:all` is useful today without it, and the registry is the seam that consolidation would land behind. **Companions:** DEC-092 (admins are CLI-managed — `db:all` calls the same `runAdminCommand`, it does not insert rows), DEC-134 (no real crew in seeds; the operator's own record is the one exception).
+
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)
 
 These are deferred by design. Each names an owner and a trigger. **Consult @architect (and the named

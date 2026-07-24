@@ -67,7 +67,9 @@ export async function createBookingCheckout(
 
   const config = await repo.getPaymentConfig();
   const taxCents = taxCentsFor(event.price, config.taxRateBps);
-  const amountCents = chargeNowCents(event.price, taxCents, config);
+  // Fee-free by design: this legacy 11.2 harness path predates the DEC-134 service fee; the
+  // live customer checkout (createDeparturePaymentIntent, 12.5) is where the fee is charged.
+  const amountCents = chargeNowCents(event.price, taxCents, 0, config);
   const kind = config.depositMode === "deposit" ? "deposit" : "full";
 
   const session = await payments.createCheckoutSession({

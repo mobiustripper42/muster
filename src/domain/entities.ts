@@ -627,7 +627,8 @@ export type PaymentStatus = "succeeded" | "refunded" | "partially_refunded";
  * (DEC-DATA-1). Balance-due is DERIVED (`price + tax − Σ succeeded`), never stored.
  */
 export interface Payment {
-  /** Deterministic from the Stripe checkout-session id — idempotent write. */
+  /** Deterministic from the Stripe checkout-session id (hosted) or PaymentIntent id
+   *  (Elements, DEC-134) — idempotent write either way. */
   id: PaymentId;
   reservationId: ReservationId;
   method: PaymentMethod;
@@ -643,9 +644,17 @@ export interface Payment {
    * balance/pre-12.3 payment).
    */
   gratuityCents?: number;
+  /**
+   * Service-fee portion of `amountCents`, cents (DEC-134, 12.5) — a one-shot surcharge on the
+   * fare, frozen at checkout and charged in full with the deposit. `balanceOwedCents` MUST net
+   * this out like the gratuity, or a deposit booking's balance under-charges. Optional/absent
+   * ⇒ 0 (a balance payment, or a pre-12.5 hosted booking).
+   */
+  serviceFeeCents?: number;
   /** ISO-4217 lowercase, e.g. "usd". */
   currency: string;
-  /** Stripe Checkout session id (present when `method="stripe"`). */
+  /** Stripe Checkout session id (hosted-Checkout payments; absent on an Elements
+   *  PaymentIntent payment, which carries only `stripePaymentIntentId` — DEC-134). */
   stripeCheckoutSessionId?: string;
   /** Stripe PaymentIntent id (present once the charge settles). */
   stripePaymentIntentId?: string;

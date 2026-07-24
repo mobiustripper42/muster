@@ -76,7 +76,7 @@ export default defineConfig({
       // all-shifts filter bar (shifts-view — 5 preset chips + date + crew dropdown
       // that must wrap, not overflow, at 375px — #321/#330).
       name: "mobile",
-      testMatch: /(auth-crew|admin-nav|outbox-relay|crew-messaging|operator-messaging|version-tag|crew-sign-in|crew-open|crew-reconciliation|crew-help|cockpit-manifest|cockpit-override|ask-trail|time-off|payroll|shifts-view|calendar-feed|other-shifts-today|vessel-location-admin|offering-catalog|add-ons|blocks|calendar|customers|purchases|book-availability)\.spec\.ts/,
+      testMatch: /(auth-crew|admin-nav|outbox-relay|crew-messaging|operator-messaging|version-tag|crew-sign-in|crew-open|crew-reconciliation|crew-help|cockpit-manifest|cockpit-override|ask-trail|time-off|payroll|shifts-view|calendar-feed|other-shifts-today|vessel-location-admin|offering-catalog|add-ons|blocks|calendar|customers|purchases|book-availability|book-checkout)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 375, height: 812 } },
     },
   ],
@@ -122,6 +122,12 @@ export default defineConfig({
       // until the customer surface is customer-ready (the one P12 merge to main); on here
       // so the availability + checkout specs can drive it.
       RESERVATIONS: "true",
+      // The checkout screen (12.5, DEC-134) hard-gates on the BUILD-INLINED publishable key
+      // (missing ⇒ a loud config-error state instead of the form). A dummy test key lets the
+      // form render; the e2e never crosses stripe.confirmPayment (no Stripe network), so the
+      // value is never used against Stripe.
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:
+        process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? "pk_test_e2e_dummy",
       // Blank Twilio so notice/SMS e2e uses the OUTBOX channel, not live Twilio.
       // `.env.local` (auto-loaded by next dev/start) holds real Twilio creds for
       // the live-SMS smoke (#242/#252); without this override the notice path

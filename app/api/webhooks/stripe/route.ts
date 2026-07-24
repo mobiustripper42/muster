@@ -7,9 +7,12 @@ import { sendReservationSoldOutNotice } from "../../../lib/sold-out-notice";
 import { getRepo } from "../../../lib/repo";
 
 /**
- * Stripe `checkout.session.completed` webhook (DEC-107, 11.2) — the charge→booking spine.
- * Verifies the signature, writes the reservation under the atomic whole-boat claim
- * (12.1a `writeSlotBooking`, keyed on the session id), and records the `Payment`. On a
+ * Stripe payment webhook (DEC-107, 11.2; event union 12.5, DEC-134) — the charge→booking
+ * spine. Handles `checkout.session.completed` (hosted: balance + post-gratuity) AND
+ * `payment_intent.succeeded` (inline Elements bookings — the Stripe dashboard endpoint must
+ * subscribe to BOTH event types). Verifies the signature, writes the reservation under the
+ * atomic whole-boat claim (12.1a `writeSlotBooking`, keyed on the session/intent id), and
+ * records the `Payment`. On a
  * DEC-109 residual-race loss it AUTO-refunds (keyed-idempotent) + notifies the customer
  * (12.1b, DEC-107 amended); the loud manual-refund alert is the fallback only when the
  * auto-refund can't run.

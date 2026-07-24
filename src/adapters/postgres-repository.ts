@@ -322,6 +322,7 @@ const toPayment = (r: any): Payment => ({
   status: r.status,
   createdAt: r.created_at,
   ...opt("gratuityCents", r.gratuity_cents),
+  ...opt("serviceFeeCents", r.service_fee_cents),
   ...opt("stripeCheckoutSessionId", r.stripe_checkout_session_id),
   ...opt("stripePaymentIntentId", r.stripe_payment_intent_id),
   ...opt("refundedCents", r.refunded_cents),
@@ -1049,6 +1050,7 @@ export class PostgresRepository implements Repository {
           : PAYMENT_CONFIG_DEFAULTS.depositMode,
       depositPercent: num("payment.deposit_percent", PAYMENT_CONFIG_DEFAULTS.depositPercent),
       taxRateBps: num("payment.tax_rate_bps", PAYMENT_CONFIG_DEFAULTS.taxRateBps),
+      serviceFeeBps: num("payment.service_fee_bps", PAYMENT_CONFIG_DEFAULTS.serviceFeeBps),
       balanceDueDaysBeforeEvent: num(
         "payment.balance_due_days",
         PAYMENT_CONFIG_DEFAULTS.balanceDueDaysBeforeEvent,
@@ -1060,6 +1062,7 @@ export class PostgresRepository implements Repository {
     if (patch.depositMode !== undefined) entries.push(["payment.deposit_mode", patch.depositMode]);
     if (patch.depositPercent !== undefined) entries.push(["payment.deposit_percent", String(patch.depositPercent)]);
     if (patch.taxRateBps !== undefined) entries.push(["payment.tax_rate_bps", String(patch.taxRateBps)]);
+    if (patch.serviceFeeBps !== undefined) entries.push(["payment.service_fee_bps", String(patch.serviceFeeBps)]);
     if (patch.balanceDueDaysBeforeEvent !== undefined) entries.push(["payment.balance_due_days", String(patch.balanceDueDaysBeforeEvent)]);
     for (const [key, value] of entries) {
       await this.#pool.query(
@@ -1074,9 +1077,9 @@ export class PostgresRepository implements Repository {
       // Insert-only: a payment row is immutable once written. A re-delivered webhook must
       // NOT rewrite created_at (or, once refund reconciliation lands, reset status) — so
       // do nothing on a duplicate id rather than overwrite. Idempotent by construction.
-      `insert into payments(id, reservation_id, method, kind, amount_cents, tax_cents, gratuity_cents, currency,
+      `insert into payments(id, reservation_id, method, kind, amount_cents, tax_cents, gratuity_cents, service_fee_cents, currency,
          stripe_checkout_session_id, stripe_payment_intent_id, status, refunded_cents, created_at)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
        on conflict (id) do nothing`,
       [
         p.id,
@@ -1086,6 +1089,7 @@ export class PostgresRepository implements Repository {
         p.amountCents,
         p.taxCents,
         p.gratuityCents ?? null,
+        p.serviceFeeCents ?? null,
         p.currency,
         p.stripeCheckoutSessionId ?? null,
         p.stripePaymentIntentId ?? null,

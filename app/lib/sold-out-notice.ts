@@ -1,5 +1,5 @@
 import { EmailChannel } from "@core/adapters/email-channel.js";
-import type { CheckoutCompleted } from "@core/ports/payment.js";
+import type { SoldOutCharge } from "@core/reservations/booking-webhook.js";
 import { sendSoldOutNotice } from "@core/reservations/sold-out-notice.js";
 import { readEmailEnv } from "./auth-delivery";
 import { isProdDeploy } from "./flags";
@@ -14,7 +14,7 @@ import { makeTwilioChannel } from "./sms";
  * Stripe retries the whole event). No link/secret: there's no reservation to manage.
  */
 export async function sendReservationSoldOutNotice(
-  completed: CheckoutCompleted,
+  charge: SoldOutCharge,
 ): Promise<void> {
   try {
     if (process.env.MESSAGING === "false") return;
@@ -33,7 +33,7 @@ export async function sendReservationSoldOutNotice(
       return;
     }
 
-    const m = completed.metadata;
+    const m = charge.metadata;
     await sendSoldOutNotice(
       {
         ...(email ? { email } : {}),
@@ -49,7 +49,7 @@ export async function sendReservationSoldOutNotice(
     );
   } catch (e) {
     console.error(
-      `[reservations] sold-out notice errored for session ${completed.sessionId} — ${e instanceof Error ? e.message : e}`,
+      `[reservations] sold-out notice errored for charge ${charge.chargeRef} — ${e instanceof Error ? e.message : e}`,
     );
   }
 }

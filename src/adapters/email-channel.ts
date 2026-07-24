@@ -45,6 +45,9 @@ const SUBJECT_BY_KIND: Record<MessageKind, string> = {
   // admin_alert goes out over SMS (DEC-095), never email — here only so the
   // exhaustive Record can't fall through to blank if that ever changes.
   admin_alert: "Muster — At-Risk alert",
+  // Customer cancel/change request from the booking link (12.6) — the specifics
+  // (name, trip, kind, note) ride the body; the subject stays generic.
+  booking_request: "Muster — booking change request",
 };
 
 export interface EmailChannelOptions {

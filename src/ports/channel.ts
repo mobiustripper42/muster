@@ -27,8 +27,10 @@ import type { AskId, CrewMemberId, SeatId } from "../domain/ids.js";
 
 /** Why a message is going out — lets an adapter format per purpose if it wants.
  *  `admin_alert` (DEC-095) is engine→operator, not a crew relay: a plain body +
- *  static board link, no minted crew link — rides the adapter's generic branch. */
-export type MessageKind = "ask" | "magic_link" | "receipt" | "admin_alert";
+ *  static board link, no minted crew link — rides the adapter's generic branch.
+ *  `booking_request` (12.6) is customer→operator: a manage-page cancel/change request,
+ *  emailed to the operator inbox — also plain body, generic branch, never a crew relay. */
+export type MessageKind = "ask" | "magic_link" | "receipt" | "admin_alert" | "booking_request";
 
 /**
  * How to reach the recipient. The adapter chooses what it needs (an SMS adapter

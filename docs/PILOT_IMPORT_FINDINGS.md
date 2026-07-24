@@ -47,7 +47,9 @@ Prod seller id: `6564f488e56ba88c4f0ebdaa`. Seeded by `db/seed-fleet.ts` (`npm r
 
 ## Crew
 
-- Roster seeded by `db/seed-pilot-crew.ts` (`npm run db:seed:crew:pilot`): 21 real crew
+- Roster seeded by `db/seed-pilot-crew.ts` (`npm run db:seed:crew:pilot`) — **script removed by
+  DEC-136** (real crew PII no longer lives in the repo; the roster is bootstrapped one person at a
+  time with `db:crew add`). Recorded as it stood at pilot-import time: 21 real crew
   (name/email/phone), real captain/mate split (7 captains, 14 mates; captains can also
   mate). `PILOT_GUIDES` env scopes the active subset.
 - **MMC:** BrewBoat tracks none yet → a placeholder far-future expiry keeps the universal

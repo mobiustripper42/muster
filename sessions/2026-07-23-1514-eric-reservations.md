@@ -4,10 +4,10 @@ dev: eric
 slug: reservations
 branch: feature/reservations
 started: 2026-07-23T15:14:37Z
-ended:
-points:
+ended: 2026-07-24T02:14:25Z
+points: 18
 pr_numbers: [513, 514, 515]
-status: open
+status: closed
 transcript: /home/eric/.claude/projects/-home-eric-muster/6da407ca-dee6-4ee7-a82b-42ab340c4e3a.jsonl
 ---
 

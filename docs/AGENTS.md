@@ -28,9 +28,9 @@ Several agents and slash-command skills support the development workflow. All ru
 **Purpose:** Lightweight post-commit review. Catches issues, inconsistencies, and potential bugs.
 
 **When to invoke:**
-- After completing a task or set of related commits
-- Before merging a phase
-- Optional — skip if it's slowing you down
+- **Every task — wired into `/kill-this` Step 3, not optional.** It runs unconditionally on the task diff.
+- Ad-hoc on a set of related commits, or before merging a phase
+- For high-blast-radius PRs, `/code-review ultra` is the separate, user-triggered escalation — see `.claude/CLAUDE-context.md` § *When to run `/code-review ultra`*
 
 **Spec:** `.claude/agents/code-review.md`
 
@@ -65,7 +65,7 @@ Several agents and slash-command skills support the development workflow. All ru
 
 **Spec:** `.claude/agents/ui-reviewer.md`
 
-**Output:** Scored report (X/10) with prioritized issues and exact Tailwind class fixes.
+**Output:** Findings table with prioritized issues and exact Tailwind class fixes. **No score** — the agent deliberately emits no X/10 rating (`.claude/agents/ui-reviewer.md:178`).
 
 ---
 
@@ -154,7 +154,7 @@ Slash commands manage session lifecycle. Time tracking is automatic.
 **Purpose:** Safe pause point within a session. Use when you need to walk away but aren't done with the task.
 
 **What it does:**
-1. Runs the build check from `CLAUDE.md §Commands` (skips if none defined)
+1. Runs the task gate from `.claude/CLAUDE-context.md § Commands` — `npm run verify` (`build` alone is not the gate); skips if none defined
 2. Commits WIP with descriptive message
 3. Notes pause point in the session file (but doesn't close it)
 
@@ -180,10 +180,10 @@ Slash commands manage session lifecycle. Time tracking is automatic.
 **Purpose:** Ship one task. Build check, commit, push the task branch, run code review, open a PR, append a `## Task <N>` block to the session file. Runs **per task** (DEC-S013) — multiple times per Claude window.
 
 **What it does:**
-1. Runs the build check from `CLAUDE.md §Commands` (skips if none defined)
+1. Runs the task gate from `.claude/CLAUDE-context.md § Commands` — `npm run verify` (`build` alone is not the gate); skips if none defined
 2. Commits code on the task branch with task prefix + Co-Authored-By, pushes
 3. Runs @code-review against HEAD
-4. Opens a PR (base = `main`) with `closes #<issue>`
+4. Opens a PR with `closes #<issue>`. Base is `main`, except that a task belonging to a multi-PR feature targets that feature's long-lived `feature/<name>` branch (DEC-059)
 5. Appends a `## Task <N>` block to the session file (on the orphan `sessions` branch). No time math, no version bump (those moved to `/retro`).
 
 **Spec:** `.claude/skills/kill-this/SKILL.md`
@@ -211,7 +211,7 @@ Slash commands manage session lifecycle. Time tracking is automatic.
 2. Confirm what you're working on
 
 **During a work session:**
-3. Spec → Build → Test → Verify mobile screenshot
+3. Spec → **Plan + get approval** → **Cut the branch** → Build → Test → Verify mobile screenshot (the full nine steps are `CLAUDE.md § Micro Workflow` — steps 2 and 3 are mandatory, not optional)
 4. If hitting an architectural question → `@architect`
 5. Ship each task with `/kill-this` (opens its own PR); if pausing → `/pause-this` → break → `/restart-this`
 
@@ -219,11 +219,7 @@ Slash commands manage session lifecycle. Time tracking is automatic.
 6. `/its-dead` once at the end of the window → close the session file, push
 7. Merge PRs whenever convenient — order doesn't matter (DEC-S013)
 
-**End of a phase:**
-8. `@code-review` → review phase output
-9. `@ui-reviewer` → design review (if UI-heavy phase)
-10. `/retro` → close out the phase, write retro, version bumps (pgTAP, Playwright, external audits as the Phase Boundary Checklist demands)
-11. Return to primary planning chat → review docs against intent
+**End of a phase:** the canonical checklist is `docs/PROJECT_PLAN.md § Phase Boundary Checklist` — follow it there rather than a second copy here. `@code-review` and `@ui-reviewer` are steps in it.
 
 ---
 
@@ -231,7 +227,7 @@ Slash commands manage session lifecycle. Time tracking is automatic.
 
 | Agent/Skill | Model | When | Purpose |
 |-------------|-------|------|---------|
-| @architect | Opus 4.8 | Before design decisions | Keep architecture coherent |
+| @architect | Opus 5 | Before design decisions | Keep architecture coherent |
 | @code-review | Sonnet | After commits, optional | Catch issues early |
 | @pm | Sonnet | Start/end of sessions | Track progress, flag risks |
 | @ui-reviewer | Sonnet | After UI work, phase boundaries | Design quality |
@@ -247,12 +243,12 @@ Slash commands manage session lifecycle. Time tracking is automatic.
 | /start-phase | — | Phase boundary (start) | Materialize phase as Issues |
 | /retro | — | Phase boundary (end) | Close out phase, write retro, version bumps |
 | /bump-major | — | Breaking change | Manual major version bump |
-| /promote-production | — | Ship trunk to prod | ff-merge `main` → `production` (deploy-only), push |
+| /promote-production | — | Ship trunk to prod | Patch-bump + tag the trunk, then ff-merge `main` → `production` and push |
 | /doc-consistency-check | — | Ad-hoc, when docs feel drifted | Invokes @doc-consistency; cross-refs `docs/*.md` + root `CLAUDE.md` |
 | /push-seeds | — | After workflow improvements | Backport project-side improvements to seeds templates |
 | /pull-seeds | — | After seeds gets new improvements | Pull template changes into this project |
 | /read-the-tape | — | After a session worth learning from | Audit session JSONL for anti-patterns |
 
-**Per-session files:** the workflow uses `sessions/YYYY-MM-DD-HHMM-<dev>-<slug>.md` (one file per session) on the orphan `sessions` branch via `.sessions-worktree/` (DEC-S014). `<dev>` comes from `~/.claude/devname` (one-line file, falls back to `$USER`). The slug is derived from the branch name (`task/X-foo` → `X-foo`, `main` → `main`, etc.). The active JSONL transcript path is captured in the file's frontmatter for later `/read-the-tape` audits.
+**Per-session files:** the workflow uses `sessions/YYYY-MM-DD-HHMM-<dev>-<slug>.md` (one file per session) on the orphan `sessions` branch via `.sessions-worktree/` (DEC-S014). `<dev>` comes from `~/.claude/devname` (one-line file; if absent, `/its-alive` prompts and writes it — there is no `$USER` fallback). The slug is derived from the branch name (`task/X-foo` → `X-foo`, `main` → `main`, etc.). The active JSONL transcript path is captured in the file's frontmatter for later `/read-the-tape` audits.
 
 **Task model (post phase-rituals rollout):** `PROJECT_PLAN.md` is a phase-boundary document — read at planning, written at retro. Current-phase tasks materialize as GitHub Issues with `phase:N` + `points:X` labels. The plan stays untouched mid-phase, eliminating merge contention with multiple devs.

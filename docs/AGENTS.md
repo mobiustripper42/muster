@@ -154,7 +154,7 @@ Slash commands manage session lifecycle. Time tracking is automatic.
 **Purpose:** Safe pause point within a session. Use when you need to walk away but aren't done with the task.
 
 **What it does:**
-1. Runs the build check from `CLAUDE.md §Commands` (skips if none defined)
+1. Runs the build check from `.claude/CLAUDE-context.md §Commands` (skips if none defined)
 2. Commits WIP with descriptive message
 3. Notes pause point in the session file (but doesn't close it)
 
@@ -180,7 +180,7 @@ Slash commands manage session lifecycle. Time tracking is automatic.
 **Purpose:** Ship one task. Build check, commit, push the task branch, run code review, open a PR, append a `## Task <N>` block to the session file. Runs **per task** (DEC-S013) — multiple times per Claude window.
 
 **What it does:**
-1. Runs the build check from `CLAUDE.md §Commands` (skips if none defined)
+1. Runs the build check from `.claude/CLAUDE-context.md §Commands` (skips if none defined)
 2. Commits code on the task branch with task prefix + Co-Authored-By, pushes
 3. Runs @code-review against HEAD
 4. Opens a PR (base = `main`) with `closes #<issue>`
@@ -211,7 +211,7 @@ Slash commands manage session lifecycle. Time tracking is automatic.
 2. Confirm what you're working on
 
 **During a work session:**
-3. Spec → Build → Test → Verify mobile screenshot
+3. Spec → Plan (**wait for approval**) → Cut the branch → Build → Test → Verify mobile screenshot
 4. If hitting an architectural question → `@architect`
 5. Ship each task with `/kill-this` (opens its own PR); if pausing → `/pause-this` → break → `/restart-this`
 
@@ -231,7 +231,7 @@ Slash commands manage session lifecycle. Time tracking is automatic.
 
 | Agent/Skill | Model | When | Purpose |
 |-------------|-------|------|---------|
-| @architect | Opus 4.8 | Before design decisions | Keep architecture coherent |
+| @architect | Opus 5 | Before design decisions | Keep architecture coherent |
 | @code-review | Sonnet | After commits, optional | Catch issues early |
 | @pm | Sonnet | Start/end of sessions | Track progress, flag risks |
 | @ui-reviewer | Sonnet | After UI work, phase boundaries | Design quality |

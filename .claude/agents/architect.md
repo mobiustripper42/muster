@@ -10,7 +10,15 @@ This is a project-context file, not a template. Everything below is specific to 
 
 ## What Muster Is
 
-A **crew engine** for small-passenger-vessel operators. It turns a week's reservations into discrete **shifts** (one boat, one day), works out who is legally allowed to crew each shift (USCG manning, credentials, turnaround), asks them in **reliability order**, and surfaces only what the automation could not close. Xola knows a booking is paid; Muster knows whether anyone will be standing on the dock to run it.
+A **crew engine** for small-passenger-vessel operators. It takes imported reservations, groups them into **shifts**, works out who is legally allowed to crew each one (USCG manning, credentials, turnaround), asks them in **reliability order**, and surfaces only what the automation could not close. Xola knows a booking is paid; Muster knows whether anyone will be standing on the dock to run it.
+
+**A shift is the unit of crewing:** all of one vessel's trips on one vessel-local day, worked as a single assignment — so a captain who takes it takes the whole day, not a trip. That grouping is the *default*, not an invariant: a day with a long midday gap can be **split** into two shifts (8.3) and merged back (8.4), so never assume vessel+date uniquely identifies a shift.
+
+**Two windows, deliberately decoupled** (DEC-080) — conflating them is a recurring source of wrong reasoning:
+- `XOLA_PULL_LEAD_DAYS` — how far ahead the importer fetches reservations. Currently **30 days**.
+- `STAFFING_HORIZON_LEAD_DAYS` — how far ahead the engine starts *working* a shift (Pending→Filling, and therefore asks). Currently **6.5 days**; fractional values are supported so the ask can be timed off the trip's clock hour.
+
+The pull window defaults to the horizon, but the operator raises it to see a month of bookings without the engine asking crew that far out — and it's also the practical bound on how far ahead crew can pick up a shift. Both are **env-overridable, tuned per deploy without a code change** (DEC-062); treat the numbers above as current settings, not constants, and never hardcode either. A separate weekend-cohort policy (DEC-116) can collapse Fri/Sat/Sun asks onto one shared send instant.
 
 First tenant: **BrewBoat** — 4 inspected party boats, manning is **per-vessel data** the deriver loops over (0/1/2/N), never a hardcoded pair (DEC-016). Zero-crew rentals are in scope.
 

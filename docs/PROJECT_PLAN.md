@@ -572,22 +572,6 @@ historical migration with no rollback.
 
 ---
 
-## Velocity Table
-
-Updated at end of each phase. Used by @pm to project remaining time.
-
-| Phase | Sessions | Points | Wall (h) | Breaks (h) | Active (h) | h/pt (active) |
-|-------|----------|--------|----------|------------|------------|---------------|
-| 0 | 3 | 9 | 6.33 | 4.75 | 1.58 | 0.176 ⚠ (S1 heuristic artifact — don't forecast on it) |
-| 1 | 3 | 55 | 60.31 | 52.31 | 8.00 | 0.145 |
-| 2 | 2 | 16 | 31.59 | 29.52 | 2.08 | 0.130 |
-| 3 | 3 | 28 | 37.84 | 34.33 | 3.42 | 0.122 |
-
-**Lifetime velocity (active, Phases 1–3):** 13.50h / 99 pts = **0.136 h/pt**
-*(Same table as §Estimation Method above — keep both in sync at retro.)*
-
----
-
 ## Estimation Poker — Standing Disagreements
 
 Phase 0 + Phase 1 pokered 2026-06-03. Contested estimates resolved in session:

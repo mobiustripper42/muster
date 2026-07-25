@@ -176,7 +176,7 @@ It's billed and launches many agents in parallel, so it's worth it exactly where
 
 ## Versioning (project)
 
-Follows the shell (DEC-S022). SemVer in `package.json` (created at task 0.3), tag on `main`. This project has a `production` branch, so **`/promote-production` patch-bumps + tags on each ship** (one release = one patch); **`/retro` minor-bumps at phase close**; `/bump-major` for breaking changes. (The earlier "bumps only at `/retro`" note predated adopting the `production` branch.) The `<VersionTag />` component is **wired** — it lives at `components/ui/version-tag.tsx` and renders on the crew surfaces (`app/(crew)/crew/page.tsx`, `crew/open`, `crew/calendar`, `crew/time-off`).
+Follows the shell (DEC-S022). SemVer in `package.json` (created at task 0.3), tag on `main`. This project has a `production` branch, so **`/promote-production` patch-bumps + tags on each ship** (one release = one patch); **`/retro` minor-bumps at phase close**; `/bump-major` for breaking changes. (The earlier "bumps only at `/retro`" note predated adopting the `production` branch.) The `<VersionTag />` component is **wired** — it lives at `components/ui/version-tag.tsx` and renders on the signed-in menu surfaces — crew (`app/(crew)/crew/page.tsx`, `crew/open`, `crew/calendar`, `crew/time-off`) and admin (`app/(admin)/admin/page.tsx`, `admin/time-off`).
 
 ## MCP fast-fix loop (9.0/#230)
 

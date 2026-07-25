@@ -89,8 +89,11 @@ The spine end-to-end. Each task = one build-plan milestone with its own acceptan
 | 1.5b | **M4** Crew tap-in — the ask (push/SMS, two buttons, no login), my-shifts list, magic-link landing | 5 (~8 actual) | **[x]** SPEC §2.6.1–2.6.2, §3.1–3.2. Tailwind+session layer pushed it past 5 (DEC-021). [#12](https://github.com/mobiustripper42/muster/issues/12) · PR #28 |
 | 1.6 | **M5** Manifest on the card (the hinge) — call vs departure time, dock pin, per-event manifest | 5 | **[x]** SPEC §2.6.3, DEC-012. `Event.dock`; flat 45-min call lead (DEC-021 / FUTURE_IDEAS). [#13](https://github.com/mobiustripper42/muster/issues/13) · PR #29 |
 
-**Phase 1 total: 43 pts planned → 55 shipped** (1.5a re-estimated 5→13 mid-phase and split across 3
-PRs; 1.5b ran ~8 against a 5). The velocity table's Phase 1 row uses the shipped 55.
+**Phase 1 total: 43 pts planned → 54 shipped** (1.5a re-estimated 5→13 mid-phase and split across 3
+PRs; 1.5b ran ~8 against a 5). 54 is the Effort column summed at each task's final value:
+5+5+8+5+5+13+8+5. ⚠ **The velocity table records 55 for Phase 1 and no arithmetic path reaches it** —
+the extra point is unexplained and predates this audit. Left as-is rather than silently changed;
+resolve it at the next retro that touches Phase 1 history.
 
 **Ejection point / slice done-definition:** one real BrewBoat weekend runs import → auto-form →
 lock → asks → crew tap in → crew open a card showing call time + their per-event guest manifest. The
@@ -621,6 +624,7 @@ At the end of every phase:
    per-PR patch step.
 7. Review docs against intent. `/doc-consistency-check` is **ad-hoc, not a phase ritual** — reach
    for it when the docs feel drifted, not because a phase ended.
+8. Return to the primary planning chat for the next phase's poker.
 
 ---
 

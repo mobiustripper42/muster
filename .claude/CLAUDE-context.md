@@ -151,6 +151,25 @@ The shell's `## PR Workflow` is the baseline. Muster adds:
 - **`production` branch + `/promote-production` are live as of the Neon deploy** (DEC-033/DEC-S022). `main` is always the active trunk; `production` is only the downstream deploy pointer, never a PR base.
 - The shell's *PR Review on Mobile* notes apply, with muster's substitutions: the eyeball path is the Vercel preview URL once deployed (else `mill-dev:3000`); the PR checklist asks "schema/DDL change?" rather than "migration/RLS change?".
 
+### When to run `/code-review ultra`
+
+`@code-review` runs on every task (wired into `/kill-this`) and hunts Muster's known invariants. `/code-review ultra` is the other thing: multiple agents auditing the branch independently from different angles, filtered by confidence. It is **user-triggered and billed — Claude cannot launch it** and must not try.
+
+**Default: don't.** The trigger is **blast radius and reversibility**, not diff size or phase. Run it once, on the PR, before merge — it's branch-scoped, so per-commit runs pay repeatedly for the same answer.
+
+Run it when a PR meets **any one** of:
+
+1. **Touches money** — PaymentIntent creation, webhook handling, refunds, fee/tip/balance math. A defect is a real charge against a real card, discovered by a customer.
+2. **Touches auth or a capability URL** — `login-code.ts`, session/subject handling, token minting, the `/reservations/manage` bearer path. These fail *silently* and don't self-correct.
+3. **Contains a data-changing migration** — a rewrite or drop, not an additive column. In prod that's a restore, not a revert.
+4. **The diff is too big to review well yourself** — the same signal that triggers splitting, pointed at a different remedy. When a change is coherent enough not to split but too large to hold in your head, independent auditors are the point.
+
+**Never** for docs, seeds, agent/skill files, dev tooling, or single-surface UI — blast radius stops at the dev DB.
+
+It's billed and launches many agents in parallel, so it's worth it exactly where a missed defect costs more than the review — criteria 1–3, and nothing else.
+
+`/kill-this` Step 3.5 checks the diff against these triggers and prints a recommendation when one hits. It never runs it and never blocks. The check lives in the skill because the trigger is a property of the diff, and the moment you'd need to recall the rule is the moment you're least likely to.
+
 ## Versioning (project)
 
 Follows the shell (DEC-S022). SemVer in `package.json` (created at task 0.3), tag on `main`. This project has a `production` branch, so **`/promote-production` patch-bumps + tags on each ship** (one release = one patch); **`/retro` minor-bumps at phase close**; `/bump-major` for breaking changes. (The earlier "bumps only at `/retro`" note predated adopting the `production` branch.) The `<VersionTag />` component is **available but not yet wired** — pull `templates/VersionTag.tsx` from seeds into a layout when a deployed build needs the stamp; until then the version lives in `package.json` + git tags.

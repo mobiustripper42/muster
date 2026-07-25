@@ -14,8 +14,10 @@ Fibonacci scale (2, 3, 5, 8, 13). See `VELOCITY_AND_POKER_GUIDE.md` for definiti
 All estimates from planning poker between Eric and Claude. Tests are baked into every task estimate
 — no separate testing tasks. Disagreements logged at the bottom.
 
-**Velocity baseline:** three clean reads and a steady trend — **0.145 → 0.130 → 0.122 h/pt active**
-(active = wall − inferred breaks); lifetime (P1–P3) **0.136 h/pt** is the forecast number. Phase 0
+**Velocity baseline (retired metric, P0–P3 only — do not forecast on it).** Three clean reads and a
+steady trend — **0.145 → 0.130 → 0.122 h/pt active** (active = wall − inferred breaks); lifetime
+(P1–P3) was **0.136 h/pt**. DEC-S026 retired this model; the forecast number is now throughput
+(points per calendar week), see the paragraph below. Phase 0
 (0.176 ⚠) carries an S1 break-heuristic artifact + an unreadable S2 transcript — don't lean on it.
 **Wall-clock h/pt is not a velocity** (it's inflated by overnight gaps); forecast on active. The low
 active-per-point is the AI-assisted signature — human keyboard time is small relative to output.
@@ -38,6 +40,8 @@ phases are *burst-shaped* (clear inside a calendar week), so a per-week rate isn
 | 7     | 2        | 20     | — (DEC-S026) | — | — | **burst** — 20 pts in ~1.1d (06-29→06-30); re-est'd 1, drift 0 (7.0 split a/b); +2 follow-ups shipped (#186, #196) |
 | 8     | 2        | 19     | — (DEC-S026) | — | — | **burst** — 19 pts over ~2d (07-01→07-03); re-est'd 3, drift −2 (8.2b lock + 8.6 cut; 8.4 3→5) |
 | 9     | 5        | 55     | — (DEC-S026) | — | — | **burst** — 55 pts over ~4.3d (07-01→07-06); re-est'd 1, drift 0 (9.12 collapsed 5→~2 via @architect gate, label held); ~32 PRs, closed at v0.11.0; #247 → P10 |
+| 10    | 2        | 24     | — (DEC-S026) | — | — | **burst** — 24 pts over ~2d (07-06→07-08); re-est'd 0, drift 0; closed at v1.0.0 (first production ship) |
+| 11    | —        | —      | — (DEC-S026) | — | — | **never closed by `/retro`** — 8 of 9 `phase:11` issues closed and P12 already materialized, but no retro entry, no `[x]` marks, no minor bump. See the tracking issue. |
 
 **Build strategy — vertical, not horizontal** (build plan §1): build a thin sliver through every
 layer so one real thing works end-to-end, then fatten it. The spine doesn't change as it thickens;
@@ -58,8 +62,9 @@ without choosing a web stack (DEC-013). No user-facing value yet.
 | 0.4 | Domain skeleton — SPEC §2 entity types + **repository port** + **reliability-event log** + reserved `Held`/`Ask.type`/`Ask.decisionBy` fields | 5 | **[x]** Stack-agnostic spine, 11 tests. Reliability events logged day one (DEC-008). DEC-ROLE-1 (roles-as-config) folded into the same PR. [#2](https://github.com/mobiustripper42/muster/issues/2) · PR #5 |
 | — | Messaging REV 2 (channel port, DEC-MSG-1/2/3) + stage UI design reference | 2 | **[x]** `Added during P0 retro` — mid-phase docs work, no issue. PR #4 |
 
-**Phase 0 total: 15 pts planned** (0.1 + 0.2 = 8 pts completed as pre-ritual setup, untracked by
-issue/PR/session). **Tracked & shipped: 9 pts across PRs #3/#4/#5.**
+**Phase 0 total: 17 pts planned** (0.1 + 0.2 = 8 pts completed as pre-ritual setup, untracked by
+issue/PR/session). **Tracked & shipped: 9 pts across PRs #3/#4/#5** — 8 + 9 = 17, which is what the
+Effort column sums to. (The velocity table counts only the tracked 9.)
 
 **Ejection point:** the data model + repository port + reliability-event log exist and are tested,
 with no web framework or DB chosen. Every later milestone fattens this spine.
@@ -84,7 +89,8 @@ The spine end-to-end. Each task = one build-plan milestone with its own acceptan
 | 1.5b | **M4** Crew tap-in — the ask (push/SMS, two buttons, no login), my-shifts list, magic-link landing | 5 (~8 actual) | **[x]** SPEC §2.6.1–2.6.2, §3.1–3.2. Tailwind+session layer pushed it past 5 (DEC-021). [#12](https://github.com/mobiustripper42/muster/issues/12) · PR #28 |
 | 1.6 | **M5** Manifest on the card (the hinge) — call vs departure time, dock pin, per-event manifest | 5 | **[x]** SPEC §2.6.3, DEC-012. `Event.dock`; flat 45-min call lead (DEC-021 / FUTURE_IDEAS). [#13](https://github.com/mobiustripper42/muster/issues/13) · PR #29 |
 
-**Phase 1 total: 43 pts**
+**Phase 1 total: 43 pts planned → 55 shipped** (1.5a re-estimated 5→13 mid-phase and split across 3
+PRs; 1.5b ran ~8 against a 5). The velocity table's Phase 1 row uses the shipped 55.
 
 **Ejection point / slice done-definition:** one real BrewBoat weekend runs import → auto-form →
 lock → asks → crew tap in → crew open a card showing call time + their per-event guest manifest. The
@@ -161,7 +167,7 @@ one run · C=4.4+4.5 one run · D=4.7 alone (decision-bearing) · E=4.6 alone.
 | 4.7 | **Board polish: "fills by" deadline** — real fill-deadline concept on `AtRiskRow` + multi-trip times (P3 review follow-up) | 3 | **[x]** Decision-bearing (@architect → **DEC-031**, not 027 as guessed); solo PR. [#59](https://github.com/mobiustripper42/muster/issues/59) · PR #71 |
 | 4.8 | **UI chassis** — extract shared `components/ui` Shell/Notice (toned variant as superset) | 1 | **[x]** **Built first** — or 4.2 mints a fourth copy. [#60](https://github.com/mobiustripper42/muster/issues/60) · PR #61 |
 
-**Phase 4 total: 28 pts planned → 28 shipped, all 8 tasks `[x]`** (closed 2026-06-12; split/merge, bulk
+**Phase 4 total: 28 pts planned → 32 shipped, all 8 tasks `[x]`** (closed 2026-06-12; split/merge, bulk
 lock, live-card pings + hosted deploy still deferred — see above). Estimate calibration: 2 re-pointed
 (4.1 pilot 5→8; Unit C +1), net drift +4 pts under. Closed at **v0.6.0**.
 
@@ -246,7 +252,7 @@ stays off the critical path (DEC-MSG-1 posture).*
 | 6.8 | **Operator messaging surface** — post to cohort / all-staff, cross-thread visibility (§10) | 3 | **[x]** **DEC-072** — cross-visibility + operator ring-exclusion. [#118](https://github.com/mobiustripper42/muster/issues/118) · PR #172 |
 | 6.9 | **Second sender number / phone-thread separation** (§5) — scheduling vs doorbell number, both on the crew campaign; the real SMS doorbell adapter | 3 | **[~]** **deferred at P6 retro** — 10DLC-gated, indefinite (weeks+); cut off-phase, manual operator relay ships in its place. [#119](https://github.com/mobiustripper42/muster/issues/119) (open) |
 
-**Phase 6: planned 39 pts; shipped 43 pts** (6.1–6.8 + the 6.1b subject model added mid-phase + the
+**Phase 6: planned 36 pts; shipped 43 pts** (6.1–6.8 + the 6.1b subject model added mid-phase + the
 6.6 split into 6.6a/6.6b; net drift +7). **6.9 deferred** (#119, 10DLC-gated, cut off-phase at retro)
 and the #173 DM-visibility disclosure deferred — the messaging core shipped behind a **manual
 operator ring-relay**, with Twilio automation the parked final swap. The whole stack landed on `main`
@@ -452,7 +458,7 @@ gap, a **full security audit**, support, crew onboarding, and end-user docs. Out
 | 10.6 | **Crew onboarding / intro message** — first-contact when a crew member is added (magic link + a plain "what is Muster / how to answer an ask"), plus the **durable re-entry interim** (session-aware root redirect + add-to-home-screen so crew get back to My Shifts) | ~3 | [#287](https://github.com/mobiustripper42/muster/issues/287) · FUTURE_IDEAS "living link" interim |
 | 10.7 | **Operator cheatsheet + crew quick-start** — end-user docs (distinct from the dev `CHEATSHEET.md`); = **#68** operator manual | ~3 | [#288](https://github.com/mobiustripper42/muster/issues/288) · ties to the counterintuitive-behavior explainer |
 
-**Phase 10 total: ~25 pts (rough — poker at start).** **Required-before-launch:** 10.2 + 10.3 (+ 10.1
+**Phase 10 total: ~27 pts as pokered (rough — poker at start); closed at 24 pts.** **Required-before-launch:** 10.2 + 10.3 (+ 10.1
 if real crews touch preview links).
 
 > **Post-launch priority #1 (VERY HIGH, not a launch gate):** the **reliability loop** — a shift
@@ -497,7 +503,7 @@ a single live payment. Correctness and tests are the deliverable here — not lo
 | 11.7 | **Manifest hinge verification** — confirm Muster-native reservations surface on the shift card per-event manifest with no write-back sheet (§2.6.3 / DEC-012 already source-agnostic) | 2 | **test, don't rebuild** |
 | 11.8 | **Go-live hardening + rollback runbook** — one real paid reservation end-to-end on the live boat/slot; flag flip; runbook (refunds-manual-in-Stripe, dispute-watch-in-Stripe, single-flip revert, ~5-booking manual rollback incl. Stripe-held money) | 3 | feature → `main` merge gate |
 
-**Phase 11 total: ~31 pts (rough — poker at `/start-phase`).** **Owner-gated before 11.2/11.5** (not
+**Phase 11 total: ~34 pts (rough — poker at `/start-phase`).** **Owner-gated before 11.2/11.5** (not
 before the phase starts): deposit-%, balance timing, refund policy, **which Stripe account**, waiver
 provider + legal sufficiency — all Drew/Spink (DEC-107/103).
 
@@ -575,15 +581,12 @@ historical migration with no rollback.
 
 Updated at end of each phase. Used by @pm to project remaining time.
 
-| Phase | Sessions | Points | Wall (h) | Breaks (h) | Active (h) | h/pt (active) |
-|-------|----------|--------|----------|------------|------------|---------------|
-| 0 | 3 | 9 | 6.33 | 4.75 | 1.58 | 0.176 ⚠ (S1 heuristic artifact — don't forecast on it) |
-| 1 | 3 | 55 | 60.31 | 52.31 | 8.00 | 0.145 |
-| 2 | 2 | 16 | 31.59 | 29.52 | 2.08 | 0.130 |
-| 3 | 3 | 28 | 37.84 | 34.33 | 3.42 | 0.122 |
+**The table lives in §Estimation Method above — this section is a pointer, not a second copy.**
+It previously carried rows 0–3 while §Estimation Method carried 0–9, and the instruction to "keep
+both in sync at retro" was never honored. One owner per fact.
 
-**Lifetime velocity (active, Phases 1–3):** 13.50h / 99 pts = **0.136 h/pt**
-*(Same table as §Estimation Method above — keep both in sync at retro.)*
+**Lifetime velocity (active, Phases 1–3):** 13.50h / 99 pts = **0.136 h/pt** — the retired
+transcript-based metric (DEC-S026). Kept as history; do not forecast on it.
 
 ---
 
@@ -604,13 +607,20 @@ No unresolved disagreements.
 
 ## Phase Boundary Checklist
 
+**This list is canonical** — `docs/AGENTS.md` points here rather than carrying a second copy.
+
 At the end of every phase:
 1. All tests green (the runner chosen at 0.3; UI/integration tests join at M4).
-2. @pm phase retrospective — velocity check, timeline update.
-3. Write retrospective entry in `docs/RETROSPECTIVES.md` (velocity, scope changes, process notes,
+2. `@code-review` on the phase's output.
+3. `@ui-reviewer` design review, if the phase was UI-heavy.
+4. @pm phase retrospective — velocity check, timeline update.
+5. Write retrospective entry in `docs/RETROSPECTIVES.md` (throughput, scope changes, process notes,
    forecast update) — `/retro` does this.
-4. Version bumps via `/retro` (patch per merged PR + minor at close) once `package.json` exists.
-5. Review docs against intent; `/doc-consistency-check` if multiple docs moved.
+6. Version bump via `/retro` (minor at close) once `package.json` exists. Patches come from
+   `/promote-production` on this project — it has a `production` branch, so `/retro` skips its
+   per-PR patch step.
+7. Review docs against intent. `/doc-consistency-check` is **ad-hoc, not a phase ritual** — reach
+   for it when the docs feel drifted, not because a phase ended.
 
 ---
 

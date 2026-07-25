@@ -18,7 +18,7 @@ import { VersionTag } from "@/components/VersionTag";
 
 ## CHANGELOG.md
 
-Auto-maintained by `/retro` and `/bump-major` (DEC-S013 — `/its-dead` no longer touches it). Don't edit by hand mid-flow — the skills always prepend after the `# Changelog` header. The first bump creates the file if absent.
+Auto-maintained by `/promote-production`, `/retro`, and `/bump-major` (DEC-S013 — `/its-dead` no longer touches it). Don't edit by hand mid-flow — the skills always prepend after the `# Changelog` header. The first bump creates the file if absent.
 
 Format (Keep-a-Changelog inspired but simpler):
 ```

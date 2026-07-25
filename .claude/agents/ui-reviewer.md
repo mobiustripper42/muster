@@ -39,7 +39,7 @@ These are spec rendered as layout, not taste. A violation is always **High**:
 3. Take Playwright screenshots at **375px and 1440px** (the crew app is judged at 375 first).
 4. Work the binding constraints above, then token/type/layout adherence, then accessibility basics (WCAG AA contrast, focus visibility, `prefers-reduced-motion`).
 
-If `ui-context.md`'s "Surfaces built so far" doesn't list the surface you're reviewing, review it anyway and note that the list has drifted.
+`ui-context.md` describes postures and anchor surfaces, not every page — it has drifted twice when it tried. For a surface it doesn't name, read the file's own header comment: this codebase documents *why* at the top of each surface, and that's the current source. Review it on the posture for its route group.
 
 ## Output Format
 

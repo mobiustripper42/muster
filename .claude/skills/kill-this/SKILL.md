@@ -56,6 +56,30 @@ Run `@code-review` against `git diff HEAD~1`. Capture the findings — needed fo
 
 When addressing review findings before opening the PR: Read every file before editing it (parallel writes fail silently without a prior Read).
 
+### Step 3.5 — High-blast-radius check (does this PR want `/code-review ultra`?)
+
+`@code-review` hunts Muster's known invariants. `/code-review ultra` is a different tool — it launches multiple agents to audit the branch independently from different angles and filters by confidence. It is **user-triggered and billed; Claude cannot launch it.** Do not attempt to run it via Bash or otherwise.
+
+Run this check against the branch diff (`git diff $(git merge-base HEAD main)...HEAD --name-only`) and flag if **any** of these hit:
+
+| Trigger | What to match |
+|---|---|
+| **Money path** | `src/reservations/*payment*`, `src/reservations/booking-webhook.ts`, `src/adapters/stripe-payment.ts`, `app/api/webhooks/**`, `app/(public)/book/checkout/**` — PaymentIntent creation, webhook handling, refunds, fee/tip/balance math |
+| **Auth / capability URL** | `src/auth/**`, `app/lib/auth*.ts`, `app/(crew)/crew/auth/**`, token minting, the `/reservations/manage` bearer path |
+| **Data-changing migration** | a new `db/migrations/*.sql` containing `drop`, `alter … type`, `update`, or `delete` (an additive `add column` does **not** trigger) |
+| **Too big to review well** | the diff is large or sprawling enough that you would not confidently sign off on it yourself |
+
+If one or more hit, print exactly this and continue — never block, never run it:
+
+```
+⚠ This PR touches: <triggers>.
+  Consider `/code-review ultra` before merging — it's yours to run; I can't.
+```
+
+If none hit, print nothing. Docs, seeds, agent/skill files, dev tooling, and single-surface UI never trigger it — their blast radius stops at the dev DB.
+
+**Why this is a step and not a rule to remember:** the trigger is a property of the diff, and the moment you'd need to recall it is the moment you're least likely to (late, task finished, PR ready). Checking the diff is reliable; remembering is not.
+
 ## Step 4 — Open the PR
 
 Resolve base branch — always the project's active trunk (DEC-S022):
@@ -139,6 +163,7 @@ The user's main checkout never moves; the task branch stays clean (no session-fi
 Task <TASK_NUM> shipped.
 PR: <PR_URL>
 Code review: <one-line summary>
+<Step 3.5 ultra-review line, if it fired>
 
 Next: keep working in this session (cut another branch + `/kill-this` again), or run `/its-dead` to close the session.
 ```

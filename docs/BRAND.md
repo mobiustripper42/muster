@@ -33,9 +33,31 @@ What it should **not** sound like: gamified, congratulatory, anxious, or chatty.
 streaks, no "Great job!" Declining a shift is neutral — the copy never guilt-trips a "no."
 
 ## Visual Direction
-**Deferred to M4 with the stack (DEC-013).** No web UI exists until the crew app forces a framework.
-When chosen, fill in: style preset, light/dark default, font, border radius, color approach. Two
-constraints already fixed by the spec:
+**Settled at task 1.5b (DEC-021).** The canonical values live in `app/globals.css` as Tailwind v4
+`@theme` tokens — that file is the source of truth; this section describes the intent so a reader
+knows *why* a value is what it is. Tokens were harvested from the Claude Design mockups per
+`docs/design/DESIGN-REFERENCE.md` (read the CSS, re-express as tokens — never import the mockups).
+`.claude/ui-context.md` carries the same tokens for `@ui-reviewer`.
+
+- **Framework** — Tailwind v4, CSS-first `@theme`, no `tailwind.config.js`, no component library.
+  The surfaces are hand-built from utilities; a library gets adopted when hand-building actually hurts.
+- **Type** — IBM Plex Sans and IBM Plex Mono, self-hosted through `next/font` (no external request, no
+  layout shift). Mono is for times, counts, and ids — anything the eye scans in a column.
+- **Light only.** No dark mode and no theme toggle. This is a tool used on a bright dock and in a
+  bright office; a second theme is surface area with no demonstrated demand.
+- **Radius** — one card radius (`--radius-card`, 14px). One value, not a scale — a scale invites
+  fiddling and buys nothing at this size.
+- **Color is information, never decoration** (DEC-021/042). Three independent axes that must not bleed
+  into each other:
+  - **Role** — captain and mate each own a hue.
+  - **Status** — ok / warn / bad, each with a matching soft background and line, contrast-tuned to hold
+    AA at the 10px pill sizes the board actually renders.
+  - **Vessel identity** — a calm, desaturated hue per boat (DEC-086), deliberately distant from every
+    role and status hue so a vessel dot can never be misread as a badge. Identity only; a boat's colour
+    never encodes risk.
+- **Accent** is a single blue, shared with the captain hue and the PWA theme colour.
+
+Two constraints fixed by the spec, and they outrank anything above:
 - **Call time vs departure time** must be visually distinct and clearly labeled on the shift card —
   the #1 source of dock confusion (SPEC §2.6.3).
 - **Silent vs declined** candidates must be visually distinct in the assignment view — silence is

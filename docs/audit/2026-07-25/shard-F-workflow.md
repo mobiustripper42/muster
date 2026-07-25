@@ -68,6 +68,26 @@ Verified against `main` @ `12f6cb7`. `package.json` = `1.0.19`; latest tag `v1.0
 | 52 | `CLAUDE.md:112` | "Keep ≤3 open PRs. Prefer 1." | `gh pr list --state open` returns 0. Compliant | NOISE | — |
 | 53 | `.claude/CLAUDE-context.md:199` | "**`@ui-reviewer` is installed but inert until `.claude/ui-context.md` exists** — it hard-stops without it." | `.claude/ui-context.md` exists; `.claude/agents/ui-reviewer.md:22` confirms the hard-stop behavior. Conditional statement still true as written | NOISE | — |
 
+## Triage amendments — after re-checking seeds against `origin/main`
+
+The sweep (and the first triage pass) read the local `~/seeds` checkout, which was **11 commits
+behind `origin/main`**. Four rows change as a result. **Verify seeds-related findings against
+`origin/main`, not the local checkout** — `git show origin/main:docs/DECISIONS.md`.
+
+Seeds `origin/main` carries **32 `DEC-S` entries through DEC-S035**. All 9 of this project's
+distinct `DEC-S` citations resolve upstream. **Zero dangling references.**
+
+| row | amendment |
+|-----|-----------|
+| 4 | **Resolved.** Not `CODE-CONTRADICTS` — the DEC-S series is intentionally upstream-only, and no citation is broken. The real defect was that nothing in `DECISIONS.md` explained the `S` namespace while `:3` claimed every ID is `DEC-NNN`. Closed by the namespace paragraph added to `docs/DECISIONS.md` head. Re-bucket: `doc-wrong`, **fixed**. |
+| 5 | **Re-bucketed to `pull-seeds-debt`.** `docs/THROUGHPUT_QUICKREF.md` exists at seeds `origin/main` — it has never been pulled into this project. The link isn't wrong; the file is missing locally. |
+| 6 | **Re-bucketed to `pull-seeds-debt`.** `dev/claude/scripts/throughput.py` exists at seeds `origin/main`. The path is correct *from seeds*; `VELOCITY_AND_POKER_GUIDE.md` is a synced template stating a seeds-relative path, unresolvable inside a project checkout. Fix is a wording change upstream, not here. |
+| 18 | **Resolved — `CLAUDE.md` is the correct side.** DEC-S029 ("Fable disabled") was **deleted** upstream by seeds commit `e1c7bca` "Re-enable Fable". So `.claude/CLAUDE-context.md:207` cites a withdrawn decision. Re-bucket: `doc-wrong` against `CLAUDE-context.md` (not a `decision`), and the Opus-4.8 claim on the same line is stale for the same reason (DEC-S034 made Opus 5 standing). |
+| 43 | Unchanged — still `UNVERIFIABLE`, needs Vercel dashboard or authorized Vercel MCP. |
+
+**New bucket introduced:** `pull-seeds-debt` — the doc is right, this project's copy of the seeds
+material is behind. Fix is `/pull-seeds`, not an edit. Expect more of these in shard E.
+
 ## For shard Z
 
 - `docs/DECISIONS.md` contains **no `## DEC-S` headings at all** (0 matches), yet the DEC-S series is cited ~40 times across `CLAUDE.md`, `.claude/CLAUDE-context.md`, `docs/AGENTS.md`, `docs/CHEATSHEET.md`, `docs/VELOCITY_AND_POKER_GUIDE.md`, `docs/DEV_REFERENCE.md`, and `docs/PROJECT_PLAN.md` (S007, S009, S010, S011, S013, S014, S018, S019, S022, S024, S026, S029, S031). Only 4 in-body mentions exist, all DEC-S022 (`:1144`, `:1666`, `:1667`, `:1670`). Whether these should resolve locally is a DECISIONS-structure question, not filed here.

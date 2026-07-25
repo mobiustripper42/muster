@@ -5,6 +5,13 @@ the locked spec** (`docs/SPEC.md` v1.0) — the forks it already resolved, captu
 so the *why* survives. DEC-013 and DEC-014 were made during project setup (2026-06-03). Open
 questions live at the bottom as DEC-TBD.
 
+**`DEC-SNNN` is a seeds decision, not a Muster one.** The `S` marks the shared workflow template:
+those decisions govern *how we work* — sessions, branches, versioning, velocity, model selection —
+and live in the seeds repo's own `docs/DECISIONS.md`. They're cited from here and from `CLAUDE.md`
+but never restated locally, so each decision has exactly one owner. A `DEC-SNNN` that doesn't
+resolve upstream usually means this project's seeds checkout is behind, not that the citation is
+broken.
+
 > The spec is the contract. Where a decision below compresses spec reasoning, the spec section is
 > cited — read it for the full argument.
 

@@ -5,14 +5,13 @@ import { redirect } from "next/navigation";
 import { bailWithDerivedLateness } from "@core/asks/ask-loop.js";
 import { asId } from "@core/domain/ids.js";
 import { readSubject } from "../../../../lib/auth";
-import { forwardToOutbox } from "../../../../lib/channel";
 import { getRepo } from "../../../../lib/repo";
 
 /**
  * "I can't make it" (SPEC §2.6.3, #56) — a confirmed crew member drops
- * their own seat. Auth + glue over the existing `bail()` rails (DEC-019):
- * the domain logs `shift_bailed`, clears the seat, and re-asks or rests
- * `Bailed` — nothing new here.
+ * their own seat. Auth + glue over the existing `bail()` rails (DEC-019,
+ * DEC-128): the domain logs `shift_bailed`, clears the seat, and rests it
+ * `Open` — re-crewing is the tick's job now (#483), not an inline re-ask.
  *
  * Lateness is computed SERVER-SIDE at bail time from the shift's events
  * (DEC-028: notice shortfall vs the staffing horizon, clamped; raw signed
@@ -61,8 +60,8 @@ export async function bailFromSeat(formData: FormData): Promise<void> {
           : out.code === "trainee_seat"
             ? "trainee_seat" // DEC-087: a ride isn't a bail — the office unstaffs
             : null;
-      // Edge channel wiring (DEC-030): the bail's re-asks → the pilot outbox.
-      await forwardToOutbox(out.outcome?.reAsks);
+      // No re-asks to forward: the bail rests the seat Open and leaves re-crewing
+      // to the tick (DEC-128, #483).
     }
   } catch {
     errorCode = "unavailable";

@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.0.19] - 2026-07-23
+- PR #507 (#501): `/admin/integrity` — the referential-integrity diagnostic now runs against the live database from an authenticated admin surface, not just the contract suite's synthetic fixtures. Idle until `?run=1` (auth answers the DoS concern that pulled it off `/api/health`; it doesn't make twelve full-table reads cheap). Violations grouped by entity, scanned counts always shown so "clean" can't be confused with "didn't run".
+- PR #509 (#504): un-skipped the crew login-code round-trip e2e. Not a defect — the `next start` worker-split hypothesis was disproven by direct observation, and the sign-in path is byte-identical on the branch where it was reported. Full suite green: 162 passed, 6 skipped, 0 failed.
+- PR #505 (#447, #504): skipped five known-broken e2e tests behind issue links, assertions left intact, so the suite is actionable again.
+- PR #499: DEC-131 (constraint posture — the DB never holds business rules but may hold structural invariants; the existing graph ratified as-built, no retrofit) and DEC-132 (Customer entity). Corrects a long-standing misattribution of the no-FK rule to DEC-DATA-1, which never mentioned foreign keys.
+- PR #508: `brewcle-probe` uses `$HOST` in alert titles and the summary header — ready to watch a second host without editing the script.
+- PR #497: seeds sync — dropped trial hooks, added the cite-facts rule and the tape-reader cite-guard (DEC-S032).
+- Reservation-calendar design landed on `main` (scale guardrail + Day·Grid mockup).
+
+## [1.0.18] - 2026-07-21
+- PR #490: on-shift + same-day-decline ask suppression (closes #341, #342). DEC-129 — the engine never auto-asks crew mid-shift (hard defer). DEC-130 — a decline quiets that date's cross-shift auto-asks (soft, last-resort valve). Send-time filter, outside eligibility, so an all-suppressed pool stays Filling (no false AtRisk/Tier-2).
+
+## [1.0.17] - 2026-07-20
+- PR #488: Fix #483 — `bail()`/`vacateSeat()` fire no asks; re-crewing deferred to the tick (DEC-128). Kills the pre-horizon pool-blast that texted the whole role pool weeks out.
+- PR #480 (#474): DEC-107 amend — balance deriver composes party fare (extras frozen on Reservation).
+- PR #486: `/its-alive` memory loading.
+- PR #485: park idea — hide/retire a Vessel or Location (soft-archive).
+- Housekeeping: DECISIONS topic index + DEC-127 maintenance convention; seeds CLAUDE.md shell + DEV_REFERENCE sync (DEC-S030/S031); trial hooks; versioning note aligned to DEC-S022 promote-time patch bump.
+
+## [1.0.16] - 2026-07-19
+- DEC-107 amendment: auto-refund the DEC-109 residual-race loser (task 12.1b)
+- PR #390: MESSAGING flag — disable all messaging, code retained (closes #389)
+- PR #470: DEC-125 build-resolution note for task 12.0
+- PR #452: brewcle.com layered downtime monitor
+- Phase 12 planning: 16 issues materialized (#453–#468), poker/plan, DEC-123/124/126 amendments, DEC-105 SPEC reconcile (#446)
+- P12 reservations mockups: customer booking form + full operator-approved mockup set (#451)
+
 ## [1.0.15] - 2026-07-16
 - PR #448: Import cancel + its siblings — audit the crew removal (import + split/merge), free the dropped crew's date, hide a cancelled shift's threads
 

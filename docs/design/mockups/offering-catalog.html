@@ -27,7 +27,7 @@
   .pill{font-size:11px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; padding:3px 9px;
         border-radius:99px; border:1px solid #cbe6d5; background:#e7f4ec; color:#157a3a}
   .pill.draft{border-color:var(--line); background:#f6f8fa; color:var(--muted)}
-  .pill.hidden{border-color:#e2d6c2; background:#f6efe2; color:#8a5f2f}
+  .pill.hidden{border-color:#f0ddb4; background:#fbf0db; color:#92400e}
   .spacer{flex:1}
   .btn{font:inherit; font-size:12.5px; padding:6px 12px; border-radius:8px; border:1px solid var(--line);
        background:#fff; color:var(--ink); cursor:pointer}
@@ -239,17 +239,28 @@
 
           <div style="margin-top:14px">
             <table>
-              <thead><tr><th>Price variation</th><th>Applies</th><th class="r">Adjustment</th><th class="r">Fare</th><th></th></tr></thead>
+              <thead><tr><th style="width:26px"></th><th>Price variation</th><th>Applies</th><th class="r">Adjustment</th><th class="r">Fare</th><th></th></tr></thead>
               <tbody>
-                <tr><td>2026 Base</td><td class="mono">all days</td><td class="r">—</td><td class="r mono">$499.00</td>
+                <tr><td class="mono" style="color:var(--faint)">⠿ 1</td><td>July 4th</td><td class="mono">Jul 4</td><td class="r mono">+$100.00</td><td class="r mono">$599.00</td>
                     <td class="r"><a class="rowact" href="#">Edit</a></td></tr>
-                <tr><td>Sunday</td><td class="mono">Sun</td><td class="r mono">−20%</td><td class="r mono">$399.20</td>
+                <tr><td class="mono" style="color:var(--faint)">⠿ 2</td><td>Prime Saturday</td><td class="mono">Sat</td><td class="r mono">+$50.00</td><td class="r mono">$549.00</td>
                     <td class="r"><a class="rowact" href="#">Edit</a></td></tr>
-                <tr><td>Prime Saturday</td><td class="mono">Sat</td><td class="r mono">+$50.00</td><td class="r mono">$549.00</td>
+                <tr><td class="mono" style="color:var(--faint)">⠿ 3</td><td>Sunday</td><td class="mono">Sun</td><td class="r mono">−20%</td><td class="r mono">$399.20</td>
+                    <td class="r"><a class="rowact" href="#">Edit</a></td></tr>
+                <tr><td class="mono" style="color:var(--faint)">—</td><td>2026 Base <span class="unit">fallback</span></td><td class="mono">any day no rule matches</td><td class="r">—</td><td class="r mono">$499.00</td>
                     <td class="r"><a class="rowact" href="#">Edit</a></td></tr>
               </tbody>
             </table>
             <button class="addrow">+ Price variation</button>
+            <div class="gen" style="margin-top:10px">
+              <b>First match wins, top to bottom. Variations never stack.</b> Drag to reorder — the order
+              <i>is</i> the rule. Sunday July 5 hits rule 3 → <b>$399.20</b>. But <b>Sunday July 4</b> hits
+              rule 1 first → <b>$599</b>, not $599−20%, and not $399.20. Base is the fallback, not a rule:
+              a day no variation matches is $499.
+              <div style="margin-top:6px">Stacking was the alternative and it's worse: two rules that
+              silently compound give you a price nobody typed, and the operator can't read the list and
+              know what a date costs. Here you can — top-down, first hit.</div>
+            </div>
             <div class="src">Verified against brewcle.com: Sundays render $399.20 = $499 × 0.8. Whether two
               variations ever <b>stack</b> (a Sunday holiday) is still open — operator thinking on it.</div>
           </div>
@@ -329,9 +340,9 @@
     </ul>
     <h3 style="margin-top:14px">Still open</h3>
     <ul>
-      <li class="q">Price-variation <b>stacking</b> (Sunday AND a holiday) — operator thinking on it.</li>
-      <li class="q">Gratuity kinds beyond pre / post — the table's `kind` is built to take more if they show up.</li>
-      <li class="q">The <b>Blocks</b> surface itself (location / vessel / hold) — its own mockup, not this page.</li>
+      <li><b>Price variations do NOT stack — first match wins, top to bottom</b> <i>(operator, 2026-07-17)</i>. The list is ordered and the order <b>is</b> the resolution rule: drag July 4th above Sunday and July 4 costs $599 even when it falls on a Sunday. Base is the fallback, not a rule. Stacking was rejected because compounding rules produce a price nobody typed and can't be read off the screen; an ordered list can.</li>
+      <li><b>Two gratuity kinds — pre and post. That's it for now</b> <i>(operator, 2026-07-17)</i>. The table's <code>kind</code> column still takes more without a migration if a third ever shows up, but nothing is built for one.</li>
+      <li><b>Blocks is its own surface</b> — <a href="blocks.html">blocks.html</a>. (Was listed here as an open; it exists now.)</li>
     </ul>
   </div>
 

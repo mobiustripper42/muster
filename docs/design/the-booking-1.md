@@ -137,8 +137,8 @@ the funnel stays six taps:
 
 ---
 
-## 8. Delivery — embeddable widget (DEC-131)
+## 8. Delivery — embeddable widget (DEC-138)
 
 The funnel ships as an **embeddable iframe widget on its own origin** (paste-in `<script>` + postMessage for height/launch), not a page welded into a Muster app. This is the **BrewBoat rollout path**: brewcle.com stays on WordPress, and Muster takes over bookings by swapping the widget on the existing page — no site rebuild, decoupled from any later migration (DEC-105's "sales-channel flip, not a data event"). The same snippet on another operator's site is the multi-tenant sell-it seam.
 
-Presentation is responsive — **lightbox dialog on desktop, full-screen routed page on mobile** (mobile leads; both first-class). Build discipline: keep it iframe-shaped (self-contained, narrow-viewport, no top-level-nav dependency), each step URL-addressable, and keep **payment on Muster's own origin inside the frame** to satisfy Stripe's per-domain Apple Pay verification. Reference mockup: the availability picker + booking-form (desktop-dialog / mobile-full-screen). See **DEC-131**.
+Presentation is responsive — **lightbox dialog on desktop, full-screen routed page on mobile** (mobile leads; both first-class). Build discipline: keep it iframe-shaped (self-contained, narrow-viewport, no top-level-nav dependency), each step URL-addressable, and keep **payment on Muster's own origin inside the frame** to satisfy Stripe's per-domain Apple Pay verification. Reference mockup: the availability picker + booking-form (desktop-dialog / mobile-full-screen). See **DEC-138**.

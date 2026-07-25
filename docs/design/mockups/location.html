@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Muster — Location (mockup)</title>
+<style>
+  :root{
+    --bg:#eef2f6; --card:#ffffff; --ink:#101826; --muted:#5b6675; --faint:#93a0b0; --line:#e7ebf1;
+    --accent:#2f5d86; --warn:#92400e; --radius:14px;
+    --v1:#5b64a8; --v2:#8a5f93; --v3:#6e7f46; --v4:#9c6b4e;
+    --sans:"IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    --mono:"IBM Plex Mono", ui-monospace, monospace;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{background:var(--bg); color:var(--ink); font-family:var(--sans); font-size:14px; line-height:1.45; -webkit-font-smoothing:antialiased}
+  .mockbar{background:#101826; color:#93a0b0; font-family:var(--mono); font-size:11px; padding:6px 16px}
+  .mockbar b{color:#eef2f6; font-weight:500}
+  .wrap{max-width:1120px; margin:0 auto; padding:18px 16px 60px}
+  header.top{display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:4px}
+  .crumb{font-size:13px; color:var(--faint)} .crumb a{color:var(--accent); text-decoration:none}
+  h1{font-size:22px; font-weight:600; letter-spacing:-.01em}
+  .spacer{flex:1}
+  .btn{font:inherit; font-size:12.5px; padding:6px 12px; border-radius:8px; border:1px solid var(--line); background:#fff; color:var(--ink); cursor:pointer}
+  .btn.primary{background:var(--accent); border-color:var(--accent); color:#fff}
+  .btn.warn{border-color:#f0ddb4; background:#fbf0db; color:var(--warn)}
+
+  .layout{display:grid; grid-template-columns:230px 1fr; gap:16px; align-items:start; margin-top:16px}
+  @media (max-width:900px){ .layout{grid-template-columns:1fr} }
+
+  /* location list */
+  .list{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:6px}
+  .list .k{font-size:10px; text-transform:uppercase; letter-spacing:.07em; color:var(--faint); font-weight:600; padding:8px 10px 4px}
+  .list a{display:block; padding:9px 10px; border-radius:9px; font-size:13.5px; color:var(--muted); text-decoration:none}
+  .list a .m{font-size:11.5px; color:var(--faint)}
+  .list a:hover{background:#f5f8fb}
+  .list a.on{background:#eaf0f6; color:var(--ink); font-weight:500}
+  .list .add{margin:6px 4px 2px; width:calc(100% - 8px); font:inherit; font-size:12.5px; padding:8px; border-radius:8px;
+             border:1px dashed #ccd6e0; background:#fff; color:var(--accent); cursor:pointer}
+
+  .sec{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); margin-bottom:14px}
+  .sh{padding:12px 15px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:9px}
+  .sh h2{font-size:15px; font-weight:600}
+  .sh .hint{font-size:12px; color:var(--faint); margin-left:auto}
+  .sb{padding:13px 15px}
+  .f{display:grid; grid-template-columns:150px 1fr; gap:12px; padding:8px 0; align-items:baseline}
+  .f + .f{border-top:1px solid #f2f5f8}
+  .f .lbl{color:var(--muted); font-size:13px}
+  .f .lbl .sub{display:block; font-size:11px; color:var(--faint); margin-top:1px}
+  .inp{border:1px solid var(--line); border-radius:8px; padding:7px 9px; font:inherit; font-size:13px; background:#fff; width:100%; max-width:420px; color:var(--ink)}
+  textarea.inp{max-width:100%; min-height:58px; resize:vertical}
+  .unit{font-size:12px; color:var(--faint)}
+  .chip{font-size:12px; padding:4px 10px; border-radius:99px; border:1px solid var(--line); background:#fff; color:var(--muted)}
+  .hue{width:7px; height:7px; border-radius:50%; display:inline-block; margin-right:5px}
+  .hue.v1{background:var(--v1)} .hue.v2{background:var(--v2)} .hue.v3{background:var(--v3)} .hue.v4{background:var(--v4)}
+  .src{font-size:12px; color:var(--faint); font-style:italic; margin-top:6px}
+  .src b{color:var(--muted)}
+
+  .note{margin-top:22px; background:#fff; border:1px solid var(--line); border-radius:var(--radius); padding:15px 17px}
+  .note h3{font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--faint); margin-bottom:9px}
+  .note ul{margin:0 0 0 17px; font-size:13px; color:var(--muted)}
+  .note li{margin-bottom:5px} .note b{color:var(--ink)} .note .q{color:#8a5f2f}
+</style>
+</head>
+<body>
+
+<div class="mockbar"><b>MOCKUP</b> — Location · static · first-class entity (DEC-123) · what a location block targets (DEC-125)</div>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="crumb"><a href="#">Settings</a> / Locations / Cleveland — East Bank</div>
+      <h1 style="margin-top:2px">Cleveland — East Bank</h1>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn warn">Block this location…</button>
+    <button class="btn primary">Save</button>
+  </header>
+
+  <div class="layout">
+    <nav class="list">
+      <div class="k">Locations</div>
+      <a href="#" class="on">Cleveland — East Bank<div class="m">2 offerings</div></a>
+      <a href="#">Cleveland — Rivergate<div class="m">1 offering</div></a>
+      <button class="add">+ New location</button>
+    </nav>
+
+    <div>
+      <section class="sec">
+        <div class="sh"><h2>Location</h2><span class="hint">the customer reads pickup + route</span></div>
+        <div class="sb">
+          <div class="f"><span class="lbl">Name</span>
+            <input class="inp" value="Cleveland — East Bank"></div>
+          <div class="f"><span class="lbl">Pickup<span class="sub">where guests meet the boat</span></span>
+            <textarea class="inp">Flats East Bank boardwalk, dock 3 — below the Aloft hotel. Look for the Brew Boat flag. Metered lot on Front Ave; rideshare drop at the boardwalk entrance.</textarea></div>
+          <div class="f"><span class="lbl">Pickup link<span class="sub">map / directions</span></span>
+            <input class="inp" value="https://maps.google.com/?q=Flats+East+Bank+Dock+3"></div>
+          <div class="f"><span class="lbl">Route<span class="sub">where the trip goes</span></span>
+            <textarea class="inp">Up the Cuyahoga through the industrial flats to the lakefront turn, back past the bridges. Calm-water route; no open-lake legs.</textarea></div>
+        </div>
+      </section>
+
+      <section class="sec">
+        <div class="sh"><h2>Used by</h2><span class="hint">offerings that launch here</span></div>
+        <div class="sb">
+          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center">
+            <span class="chip">Brew Boat Party Boats with Captain</span>
+            <span class="chip">Sunset BYOB Cruise</span>
+          </div>
+          <div class="src">Read-only — set on each <b>Offering</b>. Blocking this location (a date+time window) subtracts availability from <b>every</b> offering here at once (DEC-125) — the "river closed" case.</div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div class="note">
+    <h3>What this asserts — argue with it</h3>
+    <ul>
+      <li><b>Location is its own entity, not a text field on the Offering</b> (DEC-123). One edit updates pickup + route everywhere it's used, and it gives location blocks something to target.</li>
+      <li><b>Carries pickup [description + link] and a route description</b> — the two things a customer needs and the operator would otherwise retype per offering. The Offering just references it via a picker.</li>
+      <li><b>"Block this location" lives here as an entry point</b>, but the block itself is created on the Blocks surface (DEC-125) — one place owns availability subtraction. This button is a shortcut, not a second block model.</li>
+      <li><b>"Used by" is read-only</b> — the Offering owns the reference. Prevents two screens both claiming to set the same link.</li>
+      <li><b>No location photo, and one time zone</b> <i>(operator, 2026-07-17)</i>. The map link is enough for the pilot — no lat-long, no map pin, no photo. Time zone stays the tenant's single vessel-local zone (Cleveland); a per-Location zone is a second-market problem, and inventing the column now would be modelling for a market that doesn't exist. Both are additive later — a photo is a column, a zone is a column, and neither reshapes anything that reads a Location.</li>
+    </ul>
+  </div>
+</div>
+</body>
+</html>

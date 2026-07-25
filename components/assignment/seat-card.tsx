@@ -118,7 +118,7 @@ function OccupantZone({ vm }: { vm: SeatCardVM }) {
           <p className="py-1 text-xs text-muted">
             Wrong person in the seat? <b>Remove</b> — no penalty. {vm.occupant.name}{" "}
             actually can&rsquo;t make it? <b>Bailed</b> — logs a late bail against
-            their record. Either way the seat reopens and re-asks.
+            their record. Either way the seat reopens and the engine re-crews it.
           </p>
           <div className="flex flex-wrap gap-2 py-1">
             <form action={removeSeat} className="inline-flex">

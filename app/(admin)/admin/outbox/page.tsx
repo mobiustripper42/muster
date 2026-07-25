@@ -12,6 +12,7 @@ import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { readSubject } from "../../../lib/auth";
 import { OPERATOR_CREW_MEMBER_ID } from "../../../lib/operator";
 import { getRepo } from "../../../lib/repo";
+import { messagingEnabled } from "../../../lib/flags";
 
 /**
  * The operator outbox (DEC-030) — the relay worklist for the web-link pilot
@@ -86,14 +87,18 @@ export default async function Outbox({
 
   // Doorbell-ring relays (DEC-073) — best-effort: a ring-view hiccup must never
   // 500 the ask worklist (the time-critical half).
+  // Only when messaging is enabled (#389) — off, there are no rings, and any
+  // pre-disable stragglers stay hidden (their thread routes 404 now anyway).
   let ringPending: RingOutboxCardVM[] = [];
   let ringSent: RingOutboxCardVM[] = [];
-  try {
-    const ringView = await buildRingOutboxView(repo);
-    ringPending = ringView.pending.map(toRingVM);
-    ringSent = ringView.sent.map(toRingVM);
-  } catch {
-    // leave rings empty
+  if (messagingEnabled()) {
+    try {
+      const ringView = await buildRingOutboxView(repo);
+      ringPending = ringView.pending.map(toRingVM);
+      ringSent = ringView.sent.map(toRingVM);
+    } catch {
+      // leave rings empty
+    }
   }
 
   // Assignment-change relays (DEC-084) — best-effort, same posture as rings.

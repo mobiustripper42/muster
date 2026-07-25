@@ -23,10 +23,13 @@ export const TEST_DATABASE_URL =
  * Ensure the schema exists (migrate is idempotent — a no-op once applied, and it
  * picks up any new migration automatically), then truncate every app table so
  * the next seed starts from nothing. `_migrations` is preserved.
+ *
+ * Takes the connection string explicitly and has NO default — every caller must
+ * name the database it is about to truncate. `resetTestDb` binds it to the test
+ * DB; `db:all` (DEC-135) binds it to dev behind a localhost guard. There is no
+ * ambient default to get wrong.
  */
-export async function resetTestDb(
-  connectionString: string = TEST_DATABASE_URL,
-): Promise<void> {
+export async function resetDb(connectionString: string): Promise<void> {
   await migrate(connectionString);
   const client = new pg.Client({ connectionString });
   await client.connect();
@@ -42,6 +45,13 @@ export async function resetTestDb(
   } finally {
     await client.end();
   }
+}
+
+/** `resetDb` bound to the throwaway test DB — the e2e harness's entry point. */
+export async function resetTestDb(
+  connectionString: string = TEST_DATABASE_URL,
+): Promise<void> {
+  await resetDb(connectionString);
 }
 
 // CLI entry: `tsx db/reset-test.ts`

@@ -4,14 +4,18 @@ Everything specific to **this** project. The seeds-managed `CLAUDE.md` shell rea
 
 ## What We're Building
 
-Muster is a **crew engine** for small-passenger-vessel operators. It turns a week's reservations into discrete **shifts** (one boat, one day), works out who is legally allowed to crew each shift (USCG manning, credentials, turnaround), asks them in **reliability order**, and surfaces only the shifts the automation could not close. It is the half of an eventual Xola replacement that Xola has no concept of: Xola knows a booking is paid; Muster knows whether anyone will be standing on the dock to run it. First tenant / worked example: **BrewBoat** — a real fleet of **4 inspected party boats** (two 12-pax, one 14, one 16), **each manned by 2 crew**; zero-crew rentals are also in scope (DEC-016). Manning is per-vessel data the deriver loops (0/1/2/N), never a fixed pair. *(The old "one boat, COI 6, 1 captain + 1 mate" example was a placeholder — corrected per DEC-016.)*
+Muster is a **crew engine** for small-passenger-vessel operators. It takes imported reservations, groups them into **shifts**, works out who is legally allowed to crew each shift (USCG manning, credentials, turnaround), asks them in **reliability order**, and surfaces only the shifts the automation could not close.
+
+**A shift is the unit of crewing:** all of one vessel's trips on one vessel-local day, worked as a single assignment — taking it means taking the whole day, not a trip. That grouping is the *default*, not an invariant: a day with a long midday gap can be **split** into two shifts (8.3) and merged back (8.4), so **vessel+date does not uniquely identify a shift**.
+
+**Two windows, deliberately decoupled (DEC-080)** — conflating them is a recurring source of wrong reasoning. `XOLA_PULL_LEAD_DAYS` is how far ahead the importer fetches reservations (**currently 30 days**); `STAFFING_HORIZON_LEAD_DAYS` is how far ahead the engine starts *working* a shift, and therefore asking (**currently 6.5**; fractional is supported so the ask can be timed off the trip's clock hour). The pull window defaults to the horizon and is raised so a month of bookings is visible without the engine asking crew that far out. Both are **env-overridable, tuned per deploy without a code change** (DEC-062) — these are current settings, not constants, and neither should ever be hardcoded. A separate weekend-cohort policy (DEC-116) can collapse Fri/Sat/Sun asks onto one shared send instant. It is the half of an eventual Xola replacement that Xola has no concept of: Xola knows a booking is paid; Muster knows whether anyone will be standing on the dock to run it. First tenant / worked example: **BrewBoat** — a real fleet of **4 inspected party boats** (two 12-pax, one 14, one 16), **each manned by 2 crew**; zero-crew rentals are also in scope (DEC-016). Manning is per-vessel data the deriver loops (0/1/2/N), never a fixed pair. *(The old "one boat, COI 6, 1 captain + 1 mate" example was a placeholder — corrected per DEC-016.)*
 
 The spine is a **policy/mechanism split** (DEC-001): the rules are tenant-owned data; the engine that runs them is generic.
 
 Roles:
 - **Spink** — the operator (BrewBoat's). Semi-retired; the design goal is **no babysitting**. Runs the admin app, leans on crew, makes the 11pm cancel/reschedule call.
 - **Drew** — the owner. Owns the money/policy decisions (refunds, deposit-vs-full). Mostly out of the 2026 build (payments are parked).
-- **Crew** — captains and mates. Their entire world is three crew-app surfaces (the ask, my shifts, the shift card). Magic-link auth, no passwords.
+- **Crew** — captains and mates. Magic-link auth, no passwords. The crew app is deliberately small but it is **not** three screens — as of this writing: the ask (the core In/Out card; everything else is secondary), my shifts, the shift card, pick up a shift, messages, calendar, time off, help. **Two are feature-flagged** (`/crew/open` behind `selfServeEnabled()`, `/crew/threads` behind `messagingEnabled()`), so "the crew app" means different things per deploy. Authoritative list: `ls app/\(crew\)/crew/`. The standing pressure isn't a screen count — it's whether a new thing earns a screen, because every extra screen is somewhere stale information can hide.
 
 ## Stack
 
@@ -151,9 +155,28 @@ The shell's `## PR Workflow` is the baseline. Muster adds:
 - **`production` branch + `/promote-production` are live as of the Neon deploy** (DEC-033/DEC-S022). `main` is always the active trunk; `production` is only the downstream deploy pointer, never a PR base.
 - The shell's *PR Review on Mobile* notes apply, with muster's substitutions: the eyeball path is the Vercel preview URL once deployed (else `mill-dev:3000`); the PR checklist asks "schema/DDL change?" rather than "migration/RLS change?".
 
+### When to run `/code-review ultra`
+
+`@code-review` runs on every task (wired into `/kill-this`) and hunts Muster's known invariants. `/code-review ultra` is the other thing: multiple agents auditing the branch independently from different angles, filtered by confidence. It is **user-triggered and billed — Claude cannot launch it** and must not try.
+
+**Default: don't.** The trigger is **blast radius and reversibility**, not diff size or phase. Run it once, on the PR, before merge — it's branch-scoped, so per-commit runs pay repeatedly for the same answer.
+
+Run it when a PR meets **any one** of:
+
+1. **Touches money** — PaymentIntent creation, webhook handling, refunds, fee/tip/balance math. A defect is a real charge against a real card, discovered by a customer.
+2. **Touches auth or a capability URL** — `login-code.ts`, session/subject handling, token minting, the `/reservations/manage` bearer path. These fail *silently* and don't self-correct.
+3. **Contains a data-changing migration** — a rewrite or drop, not an additive column. In prod that's a restore, not a revert.
+4. **The diff is too big to review well yourself** — the same signal that triggers splitting, pointed at a different remedy. When a change is coherent enough not to split but too large to hold in your head, independent auditors are the point.
+
+**Never** for docs, seeds, agent/skill files, dev tooling, or single-surface UI — blast radius stops at the dev DB.
+
+It's billed and launches many agents in parallel, so it's worth it exactly where a missed defect costs more than the review — criteria 1–3, and nothing else.
+
+`/kill-this` Step 3.5 checks the diff against these triggers and prints a recommendation when one hits. It never runs it and never blocks. The check lives in the skill because the trigger is a property of the diff, and the moment you'd need to recall the rule is the moment you're least likely to.
+
 ## Versioning (project)
 
-Follows the shell. SemVer in `package.json` (created at task 0.3), tag on `main`, bumps only at `/retro`. The `<VersionTag />` component is **available but not yet wired** — pull `templates/VersionTag.tsx` from seeds into a layout when a deployed build needs the stamp; until then the version lives in `package.json` + git tags.
+Follows the shell (DEC-S022). SemVer in `package.json` (created at task 0.3), tag on `main`. This project has a `production` branch, so **`/promote-production` patch-bumps + tags on each ship** (one release = one patch); **`/retro` minor-bumps at phase close**; `/bump-major` for breaking changes. (The earlier "bumps only at `/retro`" note predated adopting the `production` branch.) The `<VersionTag />` component is **available but not yet wired** — pull `templates/VersionTag.tsx` from seeds into a layout when a deployed build needs the stamp; until then the version lives in `package.json` + git tags.
 
 ## MCP fast-fix loop (9.0/#230)
 

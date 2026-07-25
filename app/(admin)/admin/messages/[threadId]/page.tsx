@@ -10,6 +10,8 @@ import { getRepo } from "../../../../lib/repo";
 import { TENANT_ID } from "../../../../lib/tenant";
 import { fmtRunWhen } from "../../../../lib/format";
 import { postOperatorMessage } from "../actions";
+import { messagingEnabled } from "../../../../lib/flags";
+import { notFound } from "next/navigation";
 
 /**
  * Operator thread view (#118, §10) — reuses `buildThreadView` with the admin viewer
@@ -26,6 +28,7 @@ export default async function AdminThread({
 }: {
   params: Promise<{ threadId: string }>;
 }) {
+  if (!messagingEnabled()) notFound(); // messaging disabled (#389) — route is dark
   const { threadId } = await params;
   const subject = await readSubject();
   if (!subject || subject.kind !== "admin") {

@@ -33,6 +33,17 @@ export interface LoginCodeDelivery {
 // /crew/dev-code route separately, so a plain module singleton would give each
 // its own Map and the echo would always read empty. globalThis is shared across
 // bundles in the one dev/preview process.
+//
+// Verified under the prod-build e2e harness (#504), not just `next dev`: `next start`
+// serves the action and the echo route from the SAME process, so the Map is shared
+// there too — an instrumented probe caught the mint and the read-back on one server.
+// What actually caused #504's empty reads was never established — the probe only
+// disproved the worker-split theory; the original failure was gone by the time it
+// was investigated. One UNCONFIRMED candidate worth checking first: a stale reused
+// server. Playwright's `reuseExistingServer` will serve a `.next-e2e` build from a
+// previous run, and a code minted under one build read back under another would
+// return an empty 204. If the echo reads empty, kill :3100 before suspecting the
+// store — cheap to rule out, and it's the only known way to get two builds in play.
 const lastCodeByEmail: Map<string, string> = ((
   globalThis as { __loginCodeEcho?: Map<string, string> }
 ).__loginCodeEcho ??= new Map());

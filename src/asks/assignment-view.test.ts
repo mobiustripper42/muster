@@ -231,13 +231,16 @@ describe("buildAssignmentView — cockpit additions (#54)", () => {
     void a;
   });
 
-  it("a Bailed seat lists its bailer as 'bailed' (context, not re-asked) before who can step in (#3.3)", async () => {
+  it("a legacy Bailed seat lists its bailer as 'bailed' (context, not re-asked) before who can step in (#3.3)", async () => {
     const a = await addCrew("crew-a");
     const seatId = await addSeat();
     const ask = await assignPerson(repo, seatId, a, T0);
     await recordResponse(repo, ask!.id, "accepted", later(1000));
     await confirmSeat(repo, seatId, later(2000));
-    await bail(repo, seatId, later(3000), 0); // alone in the pool → rests Bailed
+    await bail(repo, seatId, later(3000), 0); // logs shift_bailed; DEC-128 rests Open
+    // Simulate a legacy resting-Bailed seat (older store) to exercise the view's
+    // Bailed rendering — retired as a live outcome by DEC-128 (#483), still displayable.
+    await repo.saveSeat({ ...(await repo.getSeat(seatId))!, state: "Bailed" });
     const b = await addCrew("crew-b"); // a candidate exists now
 
     const view = (await buildAssignmentView(repo, SHIFT, later(4000)))!;
@@ -267,20 +270,25 @@ describe("buildAssignmentView — cockpit additions (#54)", () => {
     const ask = await assignPerson(repo, seat1, a, T0);
     await recordResponse(repo, ask!.id, "accepted", later(1000));
     await confirmSeat(repo, seat1, later(2000));
-    await bail(repo, seat1, later(3000), 0); // pool non-empty → seat-1 → Asked
+    await bail(repo, seat1, later(3000), 0); // DEC-128: seat-1 rests Open, no re-ask
 
     const view = (await buildAssignmentView(repo, SHIFT, later(4000)))!;
     const s1 = view.seats.find((s) => s.seatId === seat1)!;
     const s2 = view.seats.find((s) => s.seatId === seat2)!;
-    expect(s1.state).toBe("Asked");
-    // The bailer's stale 'accepted' must NOT surface as "in" — they're gone.
+    // The bail rests the seat Open and fires no ask (DEC-128 #483) — the tick
+    // re-crews. The pool is `available`, not `asked`.
+    expect(s1.state).toBe("Open");
+    // The invariant that survives: a bailer is excluded from EVERY pool on the
+    // shift — keyed off the `shift_bailed` event (bail still logs it), not the
+    // seat state — so their stale 'accepted' never resurfaces as "in".
     expect(s1.pool!.map((p) => p.crewMemberId)).not.toContain(a);
     expect(s2.pool!.map((p) => p.crewMemberId)).not.toContain(a);
-    // bail() re-asked the whole remaining pool (b AND c) — both visible as
-    // asked on seat-1, both held out of seat-2 while those asks are live.
-    expect(s1.pool!.map((p) => p.status)).toEqual(["asked", "asked"]);
-    expect(s1.pool!.map((p) => p.crewMemberId)).toEqual([b, c]);
-    expect(s2.pool).toEqual([]);
+    // seat-1's live pool is b and c, both `available` (no inline re-ask now).
+    expect(s1.pool!.map((p) => p.crewMemberId).sort()).toEqual([b, c].sort());
+    expect(s1.pool!.every((p) => p.status === "available")).toBe(true);
+    // seat-2 is no longer held out: with no live asks on seat-1, b and c are free
+    // for seat-2 too (only the bailer `a` is excluded).
+    expect(s2.pool!.map((p) => p.crewMemberId).sort()).toEqual([b, c].sort());
   });
 
   it("shows a live-ask holder only on the seat their ask is on", async () => {

@@ -1,11 +1,11 @@
 /**
- * Flow 4 (#65) — the suppression rule, the OTHER thing manual eyeballing kept
- * re-explaining. Both seeds loaded: the at-risk seed widens every captain pool,
- * so when Quint drops his seat there IS someone eligible → the engine re-asks and
- * the seat goes Asked. Hops stays OFF the board because the trip is **>2wk out,
- * before its staffing horizon** (resolves Pending — not yet worked) — NOT because
- * an ask is in flight: post-DEC-065 a live ask no longer suppresses a shift within
- * the 48h deadline. The cockpit is where the operator sees the true seat state.
+ * Flow 4 (#65) — board suppression + the DEC-128 (#483) deferral. Both seeds
+ * loaded: the at-risk seed widens every captain pool, so when Quint drops his
+ * seat there IS someone eligible — but post-DEC-128 the bail no longer re-asks
+ * inline: it rests the seat **Open** and leaves re-crewing to the tick. Hops
+ * stays OFF the board because the trip is **>2wk out, before its staffing
+ * horizon** (resolves Pending — not yet worked). The cockpit shows the reopened
+ * Open seat; the tick (not the bail) will drip an ask once the horizon opens.
  *
  * Same direct-to-card navigation as the regression spec, for the same reason.
  */
@@ -22,7 +22,7 @@ test.describe("bail → re-ask + board suppression (both seeds)", () => {
     await resetAndSeed("crew", "atrisk");
   });
 
-  test("bail with an eligible pool re-asks, suppresses Hops from the board, cockpit shows the seat awaiting reply", async ({
+  test("bail rests the seat Open (no inline re-ask), keeps Hops off the board, cockpit shows the reopened seat", async ({
     page,
   }) => {
     await signInAsCrew(page, "crew-quint");
@@ -35,18 +35,18 @@ test.describe("bail → re-ask + board suppression (both seeds)", () => {
 
     await signInAsAdmin(page, "spink");
 
-    // The suppression: a re-ask in flight keeps Hops OFF the board.
+    // Pre-horizon (>2wk out): the shift resolves Pending and stays OFF the board.
     await expect(page.locator("article", { hasText: "Hops" })).toHaveCount(0);
 
-    // The cockpit carries the honest state: the captain seat is re-asked and
-    // awaiting a reply (the shift badge itself stays Pending — the trip is >2wk
-    // out, before its staffing horizon — so we assert the SEAT, which is the
-    // thing the re-ask actually moved).
+    // The cockpit carries the honest state: the bail reopened the captain seat to
+    // **Open** and fired NO ask (DEC-128 #483) — the tick re-crews once the horizon
+    // opens. So the seat pill reads Open, not Asked, and nobody is "awaiting reply".
     await page.goto("/admin/shift/shift-soon");
     await expect(page.getByRole("heading", { name: /Hops/ })).toBeVisible();
     const captainSeat = page.locator("article", { hasText: "captain" });
-    await expect(captainSeat).toContainText("Asked");
-    await expect(captainSeat).toContainText("awaiting reply");
+    await expect(captainSeat).toContainText("Open");
+    await expect(captainSeat).not.toContainText("Asked");
+    await expect(captainSeat).not.toContainText("awaiting reply");
   });
 
   test("#271: 'Drop this shift' reveals a confirm — one tap does NOT bail", async ({

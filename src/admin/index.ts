@@ -4,6 +4,7 @@ export * from "./at-risk-board.js";
 export * from "./crew-admin.js";
 export * from "./credential-health.js";
 export * from "./integrity.js";
+export * from "./integrity-view.js";
 export * from "./operator-threads.js";
 export * from "./outbox-view.js";
 export * from "./ring-outbox-view.js";

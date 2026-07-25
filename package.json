@@ -1,6 +1,6 @@
 {
   "name": "muster",
-  "version": "1.0.15",
+  "version": "1.0.19",
   "description": "Crew engine for small-passenger-vessel operators",
   "type": "module",
   "private": true,
@@ -17,8 +17,8 @@
     "db:admin": "tsx db/admin.ts",
     "db:crew": "tsx db/crew.ts",
     "db:own": "tsx db/own-vessel-day.ts",
+    "db:all": "tsx db/all-dev.ts",
     "db:seed:fleet": "tsx db/seed-fleet.ts",
-    "db:seed:crew:pilot": "tsx db/seed-pilot-crew.ts",
     "db:seed:crew": "tsx db/seed-crewapp-dev.ts",
     "db:seed:atrisk": "tsx db/seed-atrisk-dev.ts",
     "db:seed:outbox": "tsx db/seed-outbox-dev.ts",

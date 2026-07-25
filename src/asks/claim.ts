@@ -178,10 +178,11 @@ export async function claimSeat(
  *
  * A thin authorization wrapper over the existing bail edge: it pins the occupant
  * to `crewId`, so a crew member can only release a seat **they** hold — never bail
- * someone else by passing their `seatId`. The bail edge re-opens, re-asks the next
- * candidates inline, and emits one `shift_bailed` reliability event **lead-time-
- * weighted** by the §1.4 / DEC-008 machinery (a release weeks out barely
- * registers; a near-departure release is weighted as a real bail). No new cutoff.
+ * someone else by passing their `seatId`. The bail edge re-opens the seat and
+ * emits one `shift_bailed` reliability event **lead-time-weighted** by the §1.4 /
+ * DEC-008 machinery (a release weeks out barely registers; a near-departure
+ * release is weighted as a real bail). Re-crewing is the tick's job now, not an
+ * inline re-ask (DEC-128, #483). No new cutoff.
  *
  * Returns the bail edge's result: `code: null` = released, `code: "raced"` = the
  * seat moved underfoot or isn't this member's (reload).

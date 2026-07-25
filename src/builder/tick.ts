@@ -27,7 +27,8 @@ import type { Repository } from "../ports/repository.js";
 import { deriveAtRiskBoard } from "../admin/at-risk-board.js";
 import { expireAsks, rankedEligible, widenAsk } from "../asks/ask-loop.js";
 import { escalate } from "../asks/escalate.js";
-import { solveShift } from "../oracle/oracle.js";
+import { buildAskSuppression } from "../asks/suppression.js";
+import { poolExhaustedFor } from "../oracle/oracle.js";
 import {
   logBoardLanded,
   SYSTEM_ACTOR_ID,
@@ -47,6 +48,15 @@ import {
 import { TENANT_TIMEZONE } from "../config/tenant.js";
 
 const NO_EXCLUDE: ReadonlySet<CrewMemberId> = new Set();
+
+/** Flatten several exclude sets into one — the drip's layered suppression union. */
+function unionSets(
+  ...sets: ReadonlySet<CrewMemberId>[]
+): Set<CrewMemberId> {
+  const out = new Set<CrewMemberId>();
+  for (const s of sets) for (const id of s) out.add(id);
+  return out;
+}
 
 export interface TickResult {
   /** Shifts whose persisted state changed this tick. */
@@ -101,29 +111,6 @@ function widenDue(seat: Seat, asks: Ask[], dripMs: number, now: Date): boolean {
 }
 
 /**
- * Can this shift's remaining seats NOT be crewed from the pool? The "no one left
- * to ask" half of the At-Risk condition (the other half is time vs horizon). Uses
- * `solveShift`'s **distinct-assignment** composite (DEC-003), not per-seat pools:
- * a person already needed by one seat can't also rescue another. (A bare per-seat
- * pool would call a shift fillable when its last candidate is already committed to
- * a sibling seat — the common case on BrewBoat's 2-crew vessels.) A shift with
- * every required seat `Confirmed` is never exhausted (short-circuit, no solve).
- */
-async function poolExhaustedFor(
-  repo: Repository,
-  shift: Shift,
-  seats: Seat[],
-  now: Date,
-): Promise<boolean> {
-  const unfilled = seats.filter(
-    (s) => s.kind === "required" && s.state !== "Confirmed",
-  );
-  if (unfilled.length === 0) return false;
-  const solution = await solveShift(repo, shift.id, now);
-  return !solution.satisfiable;
-}
-
-/**
  * Resolve ONE shift's state on read (the DEC-023 corollary) — for display
  * surfaces that must not trust the persisted, eventually-consistent badge
  * (e.g. the assignment page a board row links to). Single-shift, repo-backed
@@ -168,6 +155,12 @@ export async function tick(
   const silentTimeoutMs =
     (opts?.silentTimeoutMinutes ?? ASK_SILENT_TIMEOUT_MINUTES) * 60_000;
   const allEvents = await repo.listEvents();
+  // Send-time ask suppression (DEC-129 working, DEC-130 decline-cooldown), built
+  // once per tick — the autonomous ask paths filter candidates through it below.
+  // Kept out of eligibility on purpose: an all-suppressed pool still resolves
+  // `Filling` (defer ≠ exhaustion), so `poolExhaustedFor`/`resolveShiftState`
+  // above are unaffected.
+  const suppression = await buildAskSuppression(repo, now, tz);
   const result: TickResult = {
     shiftsAdvanced: 0,
     bornFilling: 0,
@@ -305,28 +298,50 @@ export async function tick(
         }
         if (urgent) {
           // Blast the remaining un-asked pool this tick (loop the widen primitive).
-          // Urgent doesn't EXCLUDE (fill at all costs), but its picks still count
-          // toward spreading (#393), so a same-day *drip* seat processed later this
-          // tick skips them rather than hammering one person across two boats.
+          // Urgent fills at all costs — EXCEPT a WORKING crew member is never asked
+          // (DEC-129 hard, no valve even under urgency). Decliners ARE blasted: past
+          // fills-by the seat is board-imminent, so the cooldown yields to urgency
+          // (DEC-130). Picks still count toward #393 spreading for later drip seats.
           let a: Ask | null;
-          while ((a = await widenAsk(repo, seat.id, now)) !== null) {
+          while ((a = await widenAsk(repo, seat.id, now, suppression.working)) !== null) {
             result.asksFired++;
             result.firedAsks.push(a);
             if (tripDay !== null) markAskedOnDay(tripDay, a.crewMemberId);
           }
         } else if (widenDue(seat, seatAsks, dripMs, now)) {
-          // One-boat-per-day (#393): skip anyone already holding a live ask on
-          // another boat this day, so same-day boats spread across people. Drip
-          // only — the urgent blast above fills at all costs, spreading yields.
-          const excl =
-            tripDay !== null
-              ? (askedOnDay.get(tripDay) ?? NO_EXCLUDE)
-              : NO_EXCLUDE;
-          const a = await widenAsk(repo, seat.id, now, excl);
-          if (a) {
-            result.asksFired++;
-            result.firedAsks.push(a);
-            if (tripDay !== null) markAskedOnDay(tripDay, a.crewMemberId);
+          // Drip candidate-filter precedence: HARD `working` (DEC-129) + the #393
+          // one-boat-per-day spread come off first; then the SOFT same-day decline
+          // cooldown (DEC-130), with a last-resort valve. `widenAsk` re-derives the
+          // pick from the same exclude union, so its choice equals the branch here.
+          const dayExcl =
+            tripDay !== null ? (askedOnDay.get(tripDay) ?? NO_EXCLUDE) : NO_EXCLUDE;
+          const declined = suppression.declinedOnDay.get(shift.date) ?? NO_EXCLUDE;
+          const base = unAsked.filter(
+            (c) => !dayExcl.has(c.id) && !suppression.working.has(c.id),
+          );
+          const fresh = base.filter((c) => !declined.has(c.id));
+          let excl: ReadonlySet<CrewMemberId> | null;
+          if (fresh.length > 0) {
+            excl = unionSets(dayExcl, suppression.working, declined);
+          } else if (base.length > 0) {
+            // Valve: everyone un-asked left is a same-day decliner — re-ask the top
+            // one rather than let a fillable seat exhaust (DEC-130). Never a worker.
+            excl = unionSets(dayExcl, suppression.working);
+          } else {
+            // Nothing to ask this tick — the un-asked pool is either all working
+            // (DEC-129 defer) or fully held out by the #393 day-spread (the
+            // pre-existing no-op); this branch is shared by both. Skip: no stall
+            // flag (that stays keyed on the suppression-free pre-check above → no
+            // false Tier-2), no AtRisk. `widenDue` re-arms next tick.
+            excl = null;
+          }
+          if (excl !== null) {
+            const a = await widenAsk(repo, seat.id, now, excl);
+            if (a) {
+              result.asksFired++;
+              result.firedAsks.push(a);
+              if (tripDay !== null) markAskedOnDay(tripDay, a.crewMemberId);
+            }
           }
         }
       }
@@ -337,7 +352,7 @@ export async function tick(
         // so an exhausted shift just re-logs the widen-stub and rides its horizon
         // to At-Risk. It only touches `Open` seats, so a sibling mid-drip `Asked`
         // seat is untouched.
-        const out = await escalate(repo, shift.id, now);
+        const out = await escalate(repo, shift.id, now, suppression);
         if (out.widened) {
           result.shiftsEscalated++;
           result.nudgesFired += out.nudged.length;

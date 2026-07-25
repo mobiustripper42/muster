@@ -7,6 +7,8 @@ import { Shell } from "../../../../components/ui/shell";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
 import { TENANT_ID } from "../../../lib/tenant";
+import { messagingEnabled } from "../../../lib/flags";
+import { notFound } from "next/navigation";
 
 /**
  * Crew messaging — the thread list (SPEC §2.6 / artifact §10, #117). Insultingly
@@ -15,6 +17,7 @@ import { TENANT_ID } from "../../../lib/tenant";
  * (DEC-045). The unread pill is a calm accent, never an alarm color (§2.5).
  */
 export default async function ThreadsPage() {
+  if (!messagingEnabled()) notFound(); // messaging disabled (#389) — route is dark
   const subject = await readSubject();
   if (!subject || subject.kind !== "crew") {
     return (

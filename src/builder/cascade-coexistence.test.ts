@@ -100,26 +100,28 @@ describe("cascade coexistence (DEC-078, §2.7.5)", () => {
     expect(result.firedAsks.some((a) => a.seatId === mateSeat && a.crewMemberId === mate)).toBe(true);
   });
 
-  it("a self-released seat re-enters the cascade: re-opens and re-asks the next candidate", async () => {
+  it("a self-released seat re-enters the cascade: re-opens Open, then the tick re-crews it (DEC-128 #483)", async () => {
     const cap = await crew("cap", CAPTAIN);
-    const cap2 = await crew("cap2", CAPTAIN); // the re-ask candidate
+    const cap2 = await crew("cap2", CAPTAIN); // the re-ask candidate the tick will pick
     await crew("mate", MATE);
     await formShifts(repo, { now: BEFORE });
     const capSeat = await seatFor(CAPTAIN);
     expect((await claimSeat(repo, cap, capSeat, BEFORE)).code).toBeNull();
 
-    // Crew releases — reuses the bail edge (DEC-078): re-opens + re-asks inline.
+    // Crew releases — reuses the bail edge (DEC-078, DEC-128): re-opens the seat
+    // to Open and fires NO ask; re-crewing is the tick's job now.
     expect((await releaseSelfClaim(repo, cap, capSeat, AFTER)).code).toBeNull();
 
     const seatAfter = (await repo.getSeat(capSeat))!;
-    expect(seatAfter.state).toBe("Asked"); // back in the cascade's worklist
+    expect(seatAfter.state).toBe("Open"); // reopened, not re-asked inline
     expect(seatAfter.assignedCrewMemberId).toBeUndefined();
-    const asks = await repo.listAsksForSeat(capSeat);
-    expect(asks.map((a) => a.crewMemberId)).toContain(cap2); // next candidate asked
-    expect(asks.map((a) => a.crewMemberId)).not.toContain(cap); // not the releaser
+    expect(await repo.listAsksForSeat(capSeat)).toEqual([]); // no inline re-ask
 
-    // The tick then works it as an ordinary live Filling seat — still Asked with
-    // the re-ask intact (not skipped like a Confirmed seat, not dropped to Open).
+    // The next tick works it as an ordinary Filling seat and re-crews it. AFTER is
+    // past the fills-by deadline, so the tick's URGENT path blasts the whole
+    // remaining pool (fill at all costs) — reaching cap2 AND the releaser cap, who
+    // is eligible again (DEC-128 no longer structurally excludes a bailer/releaser;
+    // the tick re-asks by ranking, and near the deadline asks everyone).
     await tick(repo, AFTER);
     const reworked = (await repo.getSeat(capSeat))!;
     expect(reworked.state).toBe("Asked");

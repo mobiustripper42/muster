@@ -9,6 +9,7 @@ import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
 import { OPERATOR_CREW_MEMBER_ID } from "../../../lib/operator";
 import { TENANT_ID } from "../../../lib/tenant";
+import { messagingEnabled } from "../../../lib/flags";
 
 /**
  * Post a message as the operator (#118, §10). Admin session only. The office posts
@@ -26,6 +27,7 @@ import { TENANT_ID } from "../../../lib/tenant";
  * reads for them. (Don't "fix" this by adding the calls.)
  */
 export async function postOperatorMessage(formData: FormData): Promise<void> {
+  if (!messagingEnabled()) return; // messaging disabled (#389) — inert
   const subject = await readSubject();
   if (!subject || subject.kind !== "admin") return;
 

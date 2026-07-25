@@ -153,6 +153,8 @@ _Current decision per topic. Superseded DECs struck through with their replaceme
 - DEC-125 — virtual availability — schedule is a rule; `Event` materializes on state
 - DEC-126 — the flip = a cutover with a one-time full Xola import (reversible)
 - DEC-132 — `Customer` = contact record keyed by phone (surrogate PK + unique E.164)
+- DEC-138 — the booking flow ships as an embeddable iframe widget (BrewBoat rollout + multi-tenant seam)
+- DEC-139 — payments = Stripe card checkout only; no Apple Pay / wallets
 
 ### UI, brand & frontend patterns
 - DEC-021 — frontend styling = Tailwind v4; component library deferred
@@ -2714,7 +2716,7 @@ be tamper-checked per-shift (currently any signed-in subject can post), or an ap
 ## DEC-105: Reservations go live in 2026 as a Muster-native parallel-run — permanent coexistence, not a cutover
 
 **Status:** Decided 2026-07-11 (Eric + @architect). Reopens the parked customer-portal / 2027 scope
-(SPEC §0.2/§0.3/§2.2/§4). Umbrella DEC for Phase 11–12; the mechanism DECs (099–104) sit under it.
+(SPEC §0.2/§0.3/§2.2/§4). Umbrella DEC for Phase 11–12; the mechanism DECs (099–104, and DEC-138 — embed-first rollout) sit under it.
 
 **Context.** The crew engine shipped at v1.0.0 and, four days into real crew use, is exceeding
 expectations. The operator wants the *other* half of the eventual Xola replacement — taking bookings —
@@ -3866,6 +3868,42 @@ importer-created customers (not needed until cutover); "Edit contact"; and "Mess
 **The operator record** (`seedOperator`, in `seed-crewapp-dev.ts`) is defined once and called from both modes. Its **email is the sign-in identity** — login matches on email only (`matchCrewByEmail`), so a crew record without one can never receive a code, and DEC-081's no-enumeration design shows the identical "code is on its way" screen when it fails. That silent failure is what `e2e/db-all.spec.ts` reads the code back for.
 
 **Not this:** consolidating the seeds into one `formShifts`-shaped fixture, which would dissolve the split/scenario conflict entirely. Deliberately deferred — `db:all` is useful today without it, and the registry is the seam that consolidation would land behind. **Companions:** DEC-092 (admins are CLI-managed — `db:all` calls the same `runAdminCommand`, it does not insert rows), DEC-134 (no real crew in seeds; the operator's own record is the one exception).
+---
+
+## DEC-138: The customer booking flow ships as an embeddable widget — the BrewBoat rollout path and the multi-tenant seam
+
+**Status:** Decided 2026-07-20 (Eric + design). Extends DEC-105 (Phase 11–12 booking) as a mechanism DEC under it. Reflected in the booking mockups (`the-booking-1.md` §8, `availability-picker` + `booking-form`).
+
+**Context.** DEC-105 established Muster sells its own reservations in 2026 as a permanent parallel-run — "the cutover is a sales-channel flip, not a data event." It left open *how the customer booking flow physically reaches customers.* **brewcle.com still runs on WordPress.** Rebuilding the marketing site just to launch bookings would couple two unrelated efforts and delay the money-making half of the Xola replacement.
+
+**Decision.** The customer booking flow ships as a **self-contained, URL-routed surface on its own origin** (`book.brewcle.com` or `/embed/book/…`), delivered as an **iframe embed via a paste-in `<script>` snippet**, with **postMessage** for height/resize and open/close. Presentation is responsive — a **lightbox dialog on desktop, a full-screen routed page on mobile** (both first-class; mobile leads). This is *how* DEC-105's sales-channel flip actually happens:
+- **BrewBoat rollout.** Muster takes over bookings on the existing WordPress brewcle.com by dropping the widget onto the page (replacing the current booking widget). No site rebuild; WordPress keeps doing marketing indefinitely; the site migration is decoupled and optional. This *is* the coexistence mechanism — same page, Muster owns the flow inside the frame.
+- **Multi-tenant seam.** The same snippet on another operator's site is the sell-it path. Built once for BrewBoat as a widget; sellable later without forking (the SPEC's standing policy/mechanism bet). Not built now — the shape just doesn't foreclose it.
+
+**Constraints (build discipline).**
+- Keep the flow **iframe-shaped**: self-contained, works in a narrow/constrained viewport, no dependency on top-level browser navigation or Muster's app chrome; postMessage-ready for resize + launch.
+- Each step is **URL-addressable** and renders standalone at its own origin too (deep-linkable — coherent with "the confirmation IS the living link," DEC-122). `frame-ancestors` CSP allows the embedding operator's domain.
+- **Stripe wallet gotcha:** Apple Pay requires per-domain association. Keep **payment on Muster's own origin inside the frame** (as FareHarbor does), so wallet verification is against Muster's domain, not each operator's. **— Made moot by DEC-139 (no Apple Pay / no wallets): payment is plain Stripe card on Muster's origin, embeddable anywhere with no per-domain wallet setup.**
+
+**Revisit if:** a tenant needs the flow where per-domain Apple Pay verification isn't feasible (fall back to a hosted redirect link for that tenant), or a non-iframe distribution (hosted booking link) is preferred.
+
+**Numbering note.** Authored as DEC-126, renumbered to DEC-131, and landed as DEC-138 — each earlier number was taken by an unrelated DEC on `main` while this branch sat unmerged. Numbers 136/137 are reserved for `feature/reservations`, which renumbered `main`'s DEC-134/135 into them.
+
+---
+
+## DEC-139: Payments — Stripe card checkout only; no Apple Pay / wallets (foreseeable future)
+
+**Status:** Decided 2026-07-20 (Eric). Refines the DEC-138 payment note; sits under DEC-105 (Phase 11–12 payments).
+
+**Decision.** The customer checkout takes **card payment via Stripe and nothing else** — **no Apple Pay, no Google Pay, no PayPal or other wallets** — for the foreseeable future. One checkout, Stripe only. (FareHarbor ships several checkout variants; that's multi-tenant tax we don't inherit — Muster ships a single checkout.)
+
+**Why.** Card-only is enough for BrewBoat; wallets add surface without a clear return, and Apple Pay specifically carries a **per-embedding-domain verification burden**. Dropping wallets **removes that headache from the DEC-138 iframe embed entirely** — payment is just Stripe card on Muster's origin, embeddable on any operator page with no per-domain wallet setup.
+
+**Stripe Link is not excluded.** Link is Stripe-native (1-click card autofill, not a third-party wallet), so it's compatible with "Stripe only" and could be added later as a pure Stripe feature. The current booking mockup leaves it out for simplicity.
+
+**Revisit if:** conversion data later shows wallets meaningfully lift completion, or a specific tenant's audience clearly expects Apple/Google Pay — then weigh the per-domain verification cost against the measured lift.
+
+---
 
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)
 

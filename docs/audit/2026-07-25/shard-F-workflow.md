@@ -88,6 +88,28 @@ distinct `DEC-S` citations resolve upstream. **Zero dangling references.**
 **New bucket introduced:** `pull-seeds-debt` — the doc is right, this project's copy of the seeds
 material is behind. Fix is `/pull-seeds`, not an edit. Expect more of these in shard E.
 
+## Dispositions — shard F CLOSED
+
+All 43 real findings resolved. 10 NOISE rows need no action (they exist so nobody re-derives them).
+
+| rows | disposition |
+|------|-------------|
+| 1, 2, 7, 8, 9, 15, 24 | **Fixed** in `CLAUDE.md`. All except row 1 are **upstream seeds defects** — the file was byte-identical to the template before these edits. Logged in `seeds-backport.md` for `/push-seeds`. |
+| 14, 17, 18, 19, 20 | **Fixed** in `.claude/CLAUDE-context.md` — VersionTag is wired (not "available but not yet wired"), model policy corrected to Opus 5 / DEC-S034, the dead DEC-S029 Fable claim removed, `@architect`'s pin stated as the `model: opus` alias it actually is. |
+| 11, 16, 22, 23, 29, 30, 31, 32, 33 | **Fixed** in `docs/AGENTS.md` — `@code-review` is not optional, `@ui-reviewer` emits no score, the build-gate pointer now names `npm run verify` in `CLAUDE-context.md`, PR base accounts for DEC-059 feature branches, the 4-step workflow restored Plan + Cut-branch, and the duplicate end-of-phase list was replaced by a pointer to `PROJECT_PLAN.md`. Also fixed the `$USER` fallback claim, which `/its-alive` removed. |
+| 10, 26, 27, 28, 45 | **Fixed** in `docs/CHEATSHEET.md` — per-task `/kill-this`, patch bumps attributed to `/promote-production` (never `/its-dead`), `/doc-consistency-check` added, the nonexistent `/session-start-hook` removed, date stamp refreshed, flow diagram corrected. |
+| 3, 13, 34–41 | **Fixed** in `docs/PROJECT_PLAN.md`. Arithmetic: P0 15→17, P1 43 planned→55 shipped, P4 28→32 shipped, P6 planned 39→36, P10 ~25→~27 pokered/24 closed, P11 ~31→~34. The duplicate velocity table (rows 0–3) is now a pointer to the §Estimation Method table (rows 0–11); Phase 10 and 11 rows added. |
+| 12 | **Fixed** in `docs/DEV_REFERENCE.md` — `/promote-production` added as the third CHANGELOG writer. |
+| 21 | **Fixed** in `.claude/agents/`. `model: sonnet` added to `pm`, `sync-config`, `tape-reader`, `doc-consistency` — all four were unpinned and inheriting the caller's model, so the docs' "Sonnet" claim was false and every invocation ran on Opus. |
+| 25 | **Resolved by decision.** `@doc-consistency` is ad-hoc only; the phase-boundary trigger was removed from `PROJECT_PLAN.md`'s checklist rather than added to AGENTS.md. |
+| 33 | **Resolved by decision.** `PROJECT_PLAN.md § Phase Boundary Checklist` is canonical and absorbed `@code-review` + `@ui-reviewer`; `AGENTS.md` points at it. |
+| 42 | **Filed as [#533](https://github.com/mobiustripper42/muster/issues/533)** — Phase 11 never closed. Not fixed here: closing it requires operator calls on the open issue and the retroactive minor bump. |
+| 43 | **Parked.** Still `UNVERIFIABLE` — needs the Vercel dashboard or authorized Vercel MCP. Re-check when shard E runs. |
+| 5, 6 | **No action.** `pull-seeds-debt` shrank to one file, `docs/THROUGHPUT_QUICKREF.md`, which the operator ranked lowest possible priority. Row 6's path is correct from seeds; the wording fix belongs upstream. |
+
+**Not fixed, noted for later:** `.claude/seeds-version` says `4`; seeds `origin/main` says `3`. This
+project claims a schema version its own template doesn't define. Out of shard F's subject.
+
 ## For shard Z
 
 - `docs/DECISIONS.md` contains **no `## DEC-S` headings at all** (0 matches), yet the DEC-S series is cited ~40 times across `CLAUDE.md`, `.claude/CLAUDE-context.md`, `docs/AGENTS.md`, `docs/CHEATSHEET.md`, `docs/VELOCITY_AND_POKER_GUIDE.md`, `docs/DEV_REFERENCE.md`, and `docs/PROJECT_PLAN.md` (S007, S009, S010, S011, S013, S014, S018, S019, S022, S024, S026, S029, S031). Only 4 in-body mentions exist, all DEC-S022 (`:1144`, `:1666`, `:1667`, `:1670`). Whether these should resolve locally is a DECISIONS-structure question, not filed here.

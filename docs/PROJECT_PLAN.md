@@ -41,7 +41,7 @@ phases are *burst-shaped* (clear inside a calendar week), so a per-week rate isn
 | 8     | 2        | 19     | — (DEC-S026) | — | — | **burst** — 19 pts over ~2d (07-01→07-03); re-est'd 3, drift −2 (8.2b lock + 8.6 cut; 8.4 3→5) |
 | 9     | 5        | 55     | — (DEC-S026) | — | — | **burst** — 55 pts over ~4.3d (07-01→07-06); re-est'd 1, drift 0 (9.12 collapsed 5→~2 via @architect gate, label held); ~32 PRs, closed at v0.11.0; #247 → P10 |
 | 10    | 2        | 24     | — (DEC-S026) | — | — | **burst** — 24 pts over ~2d (07-06→07-08); re-est'd 0, drift 0; closed at v1.0.0 (first production ship) |
-| 11    | —        | —      | — (DEC-S026) | — | — | **never closed by `/retro`** — 8 of 9 `phase:11` issues closed and P12 already materialized, but no retro entry, no `[x]` marks, no minor bump. See the tracking issue. |
+| 11    | —        | —      | — (DEC-S026) | — | — | **never closed by `/retro`** — 8 of 9 `phase:11` issues closed and P12 already materialized, but no retro entry, no `[x]` marks, no minor bump. Tracked as [#533](https://github.com/mobiustripper42/muster/issues/533). |
 
 **Build strategy — vertical, not horizontal** (build plan §1): build a thin sliver through every
 layer so one real thing works end-to-end, then fatten it. The spine doesn't change as it thickens;

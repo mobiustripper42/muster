@@ -32,7 +32,7 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
 
 | Shard | Subject | Primary docs | Status |
 |-------|---------|--------------|--------|
-| F | Workflow / skills / velocity | `CLAUDE.md`, `AGENTS.md`, `CHEATSHEET.md`, `VELOCITY_AND_POKER_GUIDE.md`, `PROJECT_PLAN.md`, `DEV_REFERENCE.md` | **swept — 53 rows, triaged** |
+| F | Workflow / skills / velocity | `CLAUDE.md`, `AGENTS.md`, `CHEATSHEET.md`, `VELOCITY_AND_POKER_GUIDE.md`, `PROJECT_PLAN.md`, `DEV_REFERENCE.md` | **✅ CLOSED — 53 rows, all resolved** |
 | B | Auth / RLS / login paths | `AUTH.md`, `SECURITY_AUDIT.md`, `RUNNING.md`, `SPEC.md` | not started |
 | A | Money / pricing / payments | `SPEC.md`, migrations | not started |
 | C | Asks / shifts / derived state | `SPEC.md`, `USER_STORIES.md` | not started |
@@ -59,7 +59,20 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
 
 ## Resume state
 
-- Ledgers complete: **F** (53 rows — 32 MISMATCH, 9 CODE-CONTRADICTS, 1 PLACEHOLDER, 1 UNVERIFIABLE, 10 NOISE)
-- Next shard: B (auth), then A (money)
-- Shard F cost one agent, 143k subagent tokens. Budget the remaining six shards accordingly —
-  the corpus slices for A/C/D are larger than F's.
+- **Shard F closed** — 53 rows, 43 real findings fixed/filed/parked, 10 noise. One issue filed
+  (#533, Phase 11 never closed). Six `CLAUDE.md` fixes queued for `/push-seeds`.
+- Next shard: B (auth), then A (money).
+- Shard F cost one agent, 143k subagent tokens, and produced 53 findings from the *smallest*
+  corpus slice. Budget A/C/D accordingly — and expect the triage pass, not the sweep, to be the
+  expensive half.
+
+### Lessons that change how later shards run
+
+1. **Verify seeds claims against `origin/main`, not the local checkout.** The local `~/seeds` was
+   11 commits behind, which produced four wrong or misfiled rows in shard F (4, 5, 6, 18) and one
+   fabricated "11 commits of pull-seeds debt" that turned out to be a single low-priority file.
+2. **A finding against `CLAUDE.md` is probably an upstream defect.** Muster's copy was
+   byte-identical to the seeds template, so shell findings are template findings — they affect
+   every project sharing it, and the fix routes through `/push-seeds`.
+3. **The ledger-on-disk pattern held.** The orchestrator read one 79-line file instead of taking
+   53 findings into context. Keep it for every remaining shard.

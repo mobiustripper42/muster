@@ -1,4 +1,4 @@
-# [Project Name] — Claude Code Project Context
+# Muster — Claude Code Project Context
 
 > **Read `.claude/CLAUDE-context.md` first.** It holds this project's name, stack, data model, commands, and any project-specific overrides to the workflow and conventions below. Treat it as authoritative for every project-specific fact. If the file does not exist, stop and tell the user to create it from the seeds template (`dev/claude/CLAUDE-context.md`) before continuing.
 >
@@ -61,9 +61,9 @@ Project coding conventions — typing, component structure, data fetching, auth/
 | `/kill-this` | **Per task** (DEC-S013) | Build check, commit code on task branch, open PR, append `## Task <N>` block to session file. Run N times per session — one per task. No time math. |
 | `/its-dead` | Session end (once per window) | Stamp `ended:`, tally points, display wall_clock to screen, close session file. No time math, no version bump (those moved to `/retro`). Merge PRs whenever — order doesn't matter. |
 | `/start-phase` | Phase boundary (start) | Materialize phase as Issues with `phase:N`, `points:X` labels |
-| `/retro` | Phase boundary (end) | Compute per-session active time (wall − breaks) from `started`/`ended` + transcript break inference. Aggregate one phase velocity (active h/pt). Mark `[x]`, write retro, patch-bump per merged PR + minor-bump at close. |
+| `/retro` | Phase boundary (end) | Compute phase throughput (points per calendar week) from issue `closedAt` dates + `points:N` labels, plus an estimate-calibration tally (DEC-S026 — no transcript is read). Mark `[x]`, write retro, minor-bump at close; patch-bump per merged PR only on projects with no `production` branch. |
 | `/bump-major` | Breaking change | Manually bump major version. CHANGELOG.md entry + tag on the trunk (`main`). Dev projects only |
-| `/promote-production` | Ship trunk to prod | ff-merge `main` → `production` (deploy-only; tag already on the commit), push. Projects with a `production` branch only |
+| `/promote-production` | Ship trunk to prod | Patch-bump + tag the trunk, then ff-merge `main` → `production` and push. Projects with a `production` branch only |
 | `/push-seeds` | After workflow improvements | Backport project-side improvements to the seeds templates via @sync-config |
 | `/pull-seeds` | After seeds gets new improvements | Pull template changes into this project — schema-version-gated, applied via @sync-config |
 | `/read-the-tape` | After a session worth learning from | Audit JSONL transcript, find anti-patterns, propose skill improvements |
@@ -81,7 +81,7 @@ Project coding conventions — typing, component structure, data fetching, auth/
 | @code-review | Sonnet | After every commit (wired into `/kill-this`) | Catch issues early |
 | @pm | Sonnet | Start/end of sessions via skills | Track progress, flag risks |
 | @ui-reviewer | Sonnet | After UI work, phase boundaries | Design quality |
-| @sync-config | Sonnet | `/push-seeds` and `/pull-seeds` | Classifies template-vs-project diffs, gates structural backports |
+| @sync-config | Sonnet | `/push-seeds`, `/pull-seeds`, and the nightly sync Routine (DEC-S010) | Classifies template-vs-project diffs, gates structural backports |
 | @tape-reader | Sonnet | `/read-the-tape` | Audits session JSONL for workflow anti-patterns |
 | @doc-consistency | Sonnet | Via `/doc-consistency-check` skill, or ad-hoc | Cross-reference factual claims across project docs; flag mismatches + unfilled placeholders. Report-only |
 | @ideas | Sonnet | Park an idea, re-rank, or audit the parking lot | Curate `docs/FUTURE_IDEAS.md` — capture, dedupe, cross-ref, keep the index. Edits only that file |
@@ -115,9 +115,9 @@ Default to the cheapest model that does the job. **Opus 5 is the standing model*
 
 ### Production branch (DEC-S022)
 
-`main` is the always-active trunk. Every task PRs into `main`; `/retro` patch-bumps per merged PR + minor-bumps at phase close, tagging on `main` immediately. This is the same workflow whether or not the project deploys.
+`main` is the always-active trunk. Every task PRs into `main`; `/retro` minor-bumps at phase close, tagging on `main` immediately. This is the same workflow whether or not the project deploys.
 
-Deployable projects add a `production` branch — a downstream deploy pointer the host (Vercel, etc.) watches. It is **never** a PR base and is never touched by the sync. Ship with `/promote-production`, which ff-merges `main` → `production` and pushes (the version tag is already on the commit from the bump — promotion does not tag).
+Deployable projects add a `production` branch — a downstream deploy pointer the host (Vercel, etc.) watches. It is **never** a PR base and is never touched by the sync. Ship with `/promote-production`, which patch-bumps + tags the trunk and then ff-merges `main` → `production`. On these projects `/retro` skips its per-PR patch bump — the ship is the release. Projects with no `production` branch get their patches from `/retro` instead.
 
 Adopting a production branch:
 ```
@@ -140,7 +140,7 @@ Every dev project carries a SemVer version in `package.json`, mirrored to a git 
 
 ### Deploy + review reference
 
-The `<VersionTag />` wiring (login + footer, and the `NEXT_PUBLIC_` gotcha that silently renders `v0.0.0`), the CHANGELOG format, and the phone PR-review notes are reference material, not standing rules — they live in `docs/DEV_REFERENCE.md`, out of the always-loaded shell. Component source: `dev/claude/templates/VersionTag.tsx`.
+The `<VersionTag />` wiring (login + footer, and the `NEXT_PUBLIC_` gotcha that silently renders `v0.0.0`), the CHANGELOG format, and the phone PR-review notes are reference material, not standing rules — they live in `docs/DEV_REFERENCE.md`, out of the always-loaded shell. Seeds ships the component at `dev/claude/templates/VersionTag.tsx`; each project's installed copy lives wherever its `## Conventions` put it (in Muster: `components/ui/version-tag.tsx`).
 
 ## Workflow Notes
 - **Diagnostic commands** (build, lint, type check, test): run directly — see errors, fix them, don't bother the user.

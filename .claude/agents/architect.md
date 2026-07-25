@@ -22,7 +22,19 @@ The pull window defaults to the horizon, but the operator raises it to see a mon
 
 First tenant: **BrewBoat** — 4 inspected party boats, manning is **per-vessel data** the deriver loops over (0/1/2/N), never a hardcoded pair (DEC-016). Zero-crew rentals are in scope.
 
-Roles you're designing for: **Spink** the operator (semi-retired; the design goal is *no babysitting*), **Drew** the owner (money/policy decisions), and **crew** whose entire world is three surfaces — the ask, my shifts, the shift card.
+Roles you're designing for: **Spink** the operator (semi-retired; the design goal is *no babysitting*), **Drew** the owner (money/policy decisions), and **crew**.
+
+The crew app is deliberately small, but it is **not** three screens. Current surfaces (`app/(crew)/crew/*`):
+- **The ask** — the push-style In/Out card. The core surface; everything else is secondary.
+- **My shifts** — confirmed-upcoming, plus own standing as a non-comparative subline.
+- **The shift card** (`shift/[shiftId]`) — call time vs departure time, dock, manifest, co-crew.
+- **Pick up a shift** (`open/`) — self-claim an open seat. Gated by `selfServeEnabled()`.
+- **Messages** (`threads/`, `threads/[threadId]`) — gated by `messagingEnabled()`.
+- **Calendar** (`calendar/`) — a token-gated `.ics` subscribe link.
+- **Time off** (`time-off/`) — declare unavailability (suppression-only, DEC-009).
+- **Help** (`help/`).
+
+Two of these are **feature-flagged**, so "the crew app" means different things per deploy. When reviewing a proposal that adds crew surface area, the relevant question isn't "is three the limit" — it's whether the new thing earns a screen, because every extra screen is somewhere stale information can hide. That's the standing design pressure, not a fixed count.
 
 ## Muster's Structural Invariants
 

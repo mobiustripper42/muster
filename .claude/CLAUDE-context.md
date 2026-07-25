@@ -176,7 +176,7 @@ It's billed and launches many agents in parallel, so it's worth it exactly where
 
 ## Versioning (project)
 
-Follows the shell (DEC-S022). SemVer in `package.json` (created at task 0.3), tag on `main`. This project has a `production` branch, so **`/promote-production` patch-bumps + tags on each ship** (one release = one patch); **`/retro` minor-bumps at phase close**; `/bump-major` for breaking changes. (The earlier "bumps only at `/retro`" note predated adopting the `production` branch.) The `<VersionTag />` component is **available but not yet wired** — pull `templates/VersionTag.tsx` from seeds into a layout when a deployed build needs the stamp; until then the version lives in `package.json` + git tags.
+Follows the shell (DEC-S022). SemVer in `package.json` (created at task 0.3), tag on `main`. This project has a `production` branch, so **`/promote-production` patch-bumps + tags on each ship** (one release = one patch); **`/retro` minor-bumps at phase close**; `/bump-major` for breaking changes. (The earlier "bumps only at `/retro`" note predated adopting the `production` branch.) The `<VersionTag />` component is **wired** — it lives at `components/ui/version-tag.tsx` and renders on the crew surfaces (`app/(crew)/crew/page.tsx`, `crew/open`, `crew/calendar`, `crew/time-off`).
 
 ## MCP fast-fix loop (9.0/#230)
 
@@ -204,9 +204,9 @@ Check `docs/SPEC.md` §4 *Parked* + the 2027 line before adding anything — tha
 
 ## Model Selection (project override)
 
-The shell's `## Model Selection` is the standing policy (Opus 4.8 default, Sonnet for cheap/scoped work). **Fable is disabled (seeds DEC-S029)**, so muster's prior "architect on the frontier tier" override collapses to:
-- **`@architect` runs `claude-opus-4-8`** (`.claude/agents/architect.md` frontmatter is authoritative) — architecture decisions (the oracle) are where being wrong compounds, so they get the standing top tier. Revisit pinning it back to the frontier if/when Fable is re-enabled.
-- **`@ui-reviewer` stays Sonnet** but is worth bumping to Opus 4.8 for vision-heavy mockup-vs-build review (`docs/design/mockups/*.jsx`).
+The shell's `## Model Selection` is the standing policy (Opus 5 default, Sonnet for cheap/scoped work, Fable a rare last resort per DEC-S034). Muster's prior "architect on the frontier tier" override collapses to:
+- **`@architect` runs Opus** via `model: opus` in `.claude/agents/architect.md` (that frontmatter is authoritative; the alias resolves forward on its own) — architecture decisions (the oracle) are where being wrong compounds, so they get the standing top tier.
+- **`@ui-reviewer` stays Sonnet** but is worth bumping to Opus for vision-heavy mockup-vs-build review (`docs/design/mockups/*.jsx`).
 
 Everything else follows the shell unchanged.
 

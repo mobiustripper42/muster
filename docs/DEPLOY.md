@@ -36,6 +36,30 @@ What's **yours** to do: provision the DB, set secrets, run migrations, deploy. T
 | `ASK_DRIP_INTERVAL_MINUTES` | optional — defaults `15` (DEC-063). Non-negative integer minutes; `0` = blast the whole pool at once | spacing between staged Tier-1 asks (the ripple). Inside the 48h fills-by deadline the engine blasts regardless |
 | `ASK_SILENT_TIMEOUT_MINUTES` | optional — defaults `120` (2h, DEC-067). Positive integer minutes | how long an unanswered ask waits before it counts as silent — past it the seat reopens and the engine moves to the next person |
 
+### Required for a *working* deploy — the table above is not sufficient
+
+Added 2026-07-25 (audit shard E). The list above covers the database, session, cron and engine-tuning
+vars, but a deploy built from it alone comes up with **crew unable to sign in and no reservations
+importing**. These are read by the code and were never backfilled here:
+
+| Var | Where it comes from | Used for |
+|-----|---------------------|----------|
+| `CREW_SELF_SERVE` | **you set it** — `"1"` to enable | **The crew code-login front door** (`app/lib/flags.ts`, DEC-081). **OFF by default** so `main` stays promotable — so production must set it explicitly or crew cannot sign in at all |
+| `XOLA_API_KEY`, `XOLA_SELLER_ID` | **you set them** — from Xola | **The reservation import** (DEC-036/043). Unset ⇒ `/admin/import` refuses with "Xola isn't configured on this server … nothing was pulled", and the hourly cron pull does nothing |
+| `XOLA_API_BASE`, `XOLA_API_VERSION` | optional — defaults in `src/import/xola-client.ts` | Xola endpoint pinning; leave unset unless Xola moves |
+| `RESEND_API_KEY`, `EMAIL_FROM` | **you set them** | Email delivery — the 6-digit login code has no way out without them (DEC-081) |
+| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM`, `TWILIO_MESSAGING_SERVICE_SID` | you set them, **if** using SMS | The Twilio channel adapter (DEC-MSG-1). Omit to stay on the operator-relay outbox |
+| `MESSAGING` | optional — off unless set | Gates `/admin/messages`, `/crew/threads` and the doorbell (`app/lib/flags.ts`) |
+| `TENANT_ID`, `TENANT_NAME` | optional — defaults in `app/lib/tenant.ts` | Tenant identity + admin-nav label |
+| `PICKUP_LOCATION`, `PICKUP_MAP_URL` | you set them | The dock pin on the crew shift card — a SPEC §2.6.3 binding constraint |
+| `PAY_PERIOD_ANCHOR` | optional — has a default | Pay-period boundary math |
+| `OUTBOX_TEST_PHONE` | optional — dev/staging only | Redirects outbox relay to one number for testing |
+| `TEST_DATABASE_URL` | optional — local/CI only | The `muster_test` database; never set in production |
+
+> **Why this section exists separately:** these were configured directly in Vercel as each feature
+> landed and never backfilled into this runbook. The running production deploy has them. The gap bites
+> the *next* one — a rebuild, a second environment, or a disaster-recovery restore.
+
 ---
 
 ## Steps

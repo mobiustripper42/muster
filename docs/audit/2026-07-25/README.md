@@ -39,8 +39,8 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
 | C2 | **§2.x surface acceptance criteria** — *spun out of shard C* | `SPEC.md` §2.1–§2.7 (~700 lines) | not started — **largest unswept area** |
 | D | Reservations & import | ~~`OPERATOR_MANUAL.md`, `E2E-PILOT-WALKTHROUGH.md`, `PILOT_*`~~ | **CLOSED — corpus DELETED 2026-07-25.** 7 rows found; the docs they indicted are gone |
 | ~~D2~~ | ~~`PILOT_RUNBOOK` + `PILOT_IMPORT_FINDINGS` + walkthrough Parts 0–7~~ | — | **CANCELLED — corpus deleted** |
-| E | Deploy / env / ops | `DEPLOY.md`, `RUNNING.md` *(`PILOT_RUNBOOK.md` deleted)* | not started |
-| G | Brand / UI | `BRAND.md`, `docs/design/DESIGN-REFERENCE.md` | not started |
+| E | Deploy / env / ops | `DEPLOY.md`, `RUNNING.md` *(`PILOT_RUNBOOK.md` deleted)* | **✅ CLOSED — 2 rows, 4 noise** (audited `main`; both fixed) |
+| G | Brand / UI | `BRAND.md`, `docs/design/DESIGN-REFERENCE.md` | **✅ CLOSED — 4 rows, 5 noise** (audited `main`; all fixed, index rebuild deferred to C2) |
 | Z | DECISIONS-internal | `DECISIONS.md` only | **deferred to its own task** |
 
 ## Standing rules for this run

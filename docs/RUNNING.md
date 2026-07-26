@@ -196,7 +196,9 @@ npm run db:seed:outbox   # 3 cards: 2 relays + 1 addressed to the operator (trip
   PRs call out exactly which surface to look at.
 
 ## Production notes (not needed for local dev)
-Two env vars are dev-defaulted locally but **must be set in production**:
+These are dev-defaulted locally but **must be set in production**. This is the short list that
+bites *local* assumptions — the full deploy set (Xola keys, `CREW_SELF_SERVE`, email/SMS) is in
+`DEPLOY.md §Environment variables`:
 - **`SESSION_SECRET`** — signs session cookies. Unset in prod = a repo-public signing key = session
   forgery; the app fails fast if it's missing in production.
 - **`APP_BASE_URL`** — the real external origin, used to build any **delivered** magic link. Without it

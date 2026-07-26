@@ -72,9 +72,10 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
   "code-login cannot make you an admin" — which `SECURITY_AUDIT.md` contradicts outright.
 - **Shard C closed** — 6 findings, 9 verified-consistent. **3 fixed here** (`USER_STORIES.md`
   SP-6/SP-7 described shift lock, cut by DEC-082; DR-1 said payments were parked to 2027).
-  **3 are one operator decision, deliberately unfixed** — SPEC §1.3 specifies a booking oracle
-  (property rules, `Verdict` object, soft severity, first-fail/collect-all) that does not exist and
-  that DEC-112 routes *around*. Editing the rule list would bury the question. See the shard file.
+  **3 were one operator decision — now RESOLVED by DEC-138** (PR #540): SPEC §1.3 rewritten to the
+  DEC-125 model (two mechanisms, not one rule engine). COI-expiry and lead-time-cutoff both
+  **rejected on operator input** and closed on the record. See the shard file's RESOLVED header for
+  two corrections to the original severity read.
 - **Spun out: shard C2** — SPEC §2.x per-surface acceptance criteria (~700 lines, untouched by any
   shard so far). This is the **largest unswept area in the doc set** and wants a sweep agent.
 - Next shard: **D** (reservations/import) or **C2**. Both need the which-tree check first.
@@ -97,6 +98,15 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
    Shards C and D (asks/shifts, reservations/import) need the same check first.
 5. **Not every shard needs a sweep agent.** Shard A's corpus was grep-reachable and small; running
    it in-context beat the ledger-on-disk indirection. Use the agent when the finding volume, not
-   the corpus, is what threatens the window — that was F, and will be C and D.
+   the corpus, is what threatens the window — that was F, and will be C2 and D.
+6. **Before reporting "this spec machinery doesn't exist," check whether its *function* moved.**
+   Shard C reported §1.3's property rules as absent. They were absent *as oracle rules* — but
+   DEC-125 implements most of them as set subtraction under different vocabulary (`Block`,
+   schedule terms, slot identity). Grep the shipped design's words, not only the spec's.
+7. **A "gap" the operator can close in one sentence was never a finding.** Both genuinely-absent
+   rules shard C surfaced (COI expiry, lead-time cutoff) were rejected on domain knowledge no
+   amount of code-reading would have produced — one because the risk is managed off-system, one
+   because the "gap" was a designed-for behavior. Escalate absences as **questions**, not defects,
+   and record the answer (DEC-138) so the next sweep doesn't re-derive them.
 3. **The ledger-on-disk pattern held.** The orchestrator read one 79-line file instead of taking
    53 findings into context. Keep it for every remaining shard.

@@ -25,6 +25,35 @@ oracle, the reliability score, and the user stories that ride them.
 | C5 | `SPEC.md:293-303` (§1.3) | The `Verdict` object sketch — `{ bookable, status, failures, deferred, recheckBy }` — and the two evaluation modes, `first-fail` / `collect-all` | No `Verdict` type anywhere in `src/`; no first-fail/collect-all mode parameter. `eligibility.ts` returns a per-candidate `RuleResult[]`, a different shape | MISMATCH | **decision** |
 | C6 | `SPEC.md:248` (§1.3 rule contract) | "`severity`: **hard** (blocks) or **soft** (warns; tenant can downgrade a rule to warn-only)." | `RuleResult.severity` is the **literal type `"hard"`** (`eligibility.ts:62`), not a union — soft is *unrepresentable*, not merely unused. The tenant downgrade mechanism does not exist | MISMATCH | **decision** |
 
+## RESOLVED 2026-07-25 — C4/C5/C6 closed by DEC-138
+
+The decision this shard escalated has been made. **SPEC §1.3 is rewritten to the DEC-125 model**
+(PR #540, into `feature/reservations`): two mechanisms, not one rule engine. C4–C6 are **no longer
+open** — they resolve to *superseded*, not *unbuilt*.
+
+Two corrections to what is written below, both mine:
+
+1. **C4's "None implemented as oracle rules" is literally true but overstated the gap.** It is
+   accurate that no *oracle* rule implements them — but DEC-125's virtual availability implements
+   most of the same **function** as set subtraction: season and daily hours in the schedule term,
+   haul-out and blackouts as `Block` variants, vessel-double-booking as the slot-identity guardrail,
+   pax-vs-COI in `canBook`. Actual coverage was **6 of 10 covered, 2 partial, 2 absent** — not zero.
+   The severity read below should be read with that correction in front of it.
+2. **Both "absent" rules were then rejected on operator input, and neither should be built:**
+   - **COI valid on date** — I proposed this as the one with teeth. Wrong. Inspection is scheduled
+     and passed; the failure mode it guards is one where a Muster banner is the least of the
+     operator's problems. The asymmetry with `mmc_valid_on_date` is correct, not an oversight.
+   - **Lead-time cutoff** — also wrong, and worse: it would have **blocked SPEC §1.2's emergent
+     last-minute booking**, which the spec treats as the payoff. The safer shape (hold the slot,
+     find crew, then confirm) was *already parked* as "Smart same-day booking" (2026-06-11, Drew) —
+     I missed it on first search because it isn't filed under "short-notice."
+
+Both rejections are recorded in DEC-138 so they are not re-raised.
+
+**Lesson for later shards:** when a spec section describes machinery that appears absent, check
+whether the *function* moved to a different mechanism before reporting a gap. Grep the vocabulary of
+the shipped design, not only the vocabulary of the spec.
+
 ## Severity read
 
 **C1/C2 are the clear-cut ones and the cheapest to fix.** Two of Spink's fourteen stories describe

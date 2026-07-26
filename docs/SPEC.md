@@ -1172,11 +1172,16 @@ now. Building any of these is out of scope until its trigger condition is met.
   > governs ask-order; the human awards the pay. The report **informs**; the operator **decides**.
 
 ### Owner decisions (Drew / Spink — not Claude's to set)
-- **Deposit vs full payment** at booking — Drew. (Recommendation: full upfront for v1.)
-- **Refund schedule numbers** (the partial-refund tiers) — Drew.
+- ~~**Deposit vs full payment** at booking — Drew. (Recommendation: full upfront for v1.)~~
+  **DECIDED: deposit + balance** (DEC-107, 2026-07-11) — the operator chose it over full-upfront as
+  the closer match to Xola. The recommendation above was not taken.
+- **Refund schedule numbers** (the partial-refund tiers) — Drew. *(Still open — #472; DEC-135 notes the
+  refund policy does not exist yet, which is what blocks self-service cancel.)*
 - **Credit-vs-cash default ordering** in the cancel flow — lean credit-first, cash always available;
-  confirm with Drew.
-- **Balance-capture timing** if deposits are used (tie to a horizon?).
+  confirm with Drew. *(Still open — §3.3 refund cascade is parked by DEC-107.)*
+- ~~**Balance-capture timing** if deposits are used (tie to a horizon?).~~
+  **DECIDED: on demand** (DEC-107 amendment, 11.2b) — a re-minted Stripe Checkout URL is the balance
+  link. The auto-emit scheduler that would read `balanceDueDaysBeforeEvent` is deferred to P12+.
 - **Which "M" rules** ship as soft/warn vs omitted for BrewBoat v1 (TWIC, medical, drug consortium,
   duty-hour, weather/tide) — Spink/Drew against real operations.
 

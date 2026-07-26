@@ -91,6 +91,24 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
   ledger survives as the record of *why* the deletion was justified. A fresh operator manual gets
   written after reservations lands.
 - **Shard D2 CANCELLED** — its entire corpus was the deleted PILOT docs.
+- **Shard E closed + FIXED** — 2 findings, 4 verified-consistent. **E1 is the highest-consequence
+  finding still live anywhere in this audit:** `DEPLOY.md`'s env table omitted **22 variables the code
+  reads**, derived mechanically by diffing every `process.env` read across `src/`/`app/`/`db/` against
+  the documented set. A deploy built from that runbook comes up with **crew unable to sign in**
+  (`CREW_SELF_SERVE` gates the login door and is OFF by default) and **no reservations importing**
+  (`XOLA_API_KEY`/`XOLA_SELLER_ID`). Production has them — set in Vercel as each feature landed, never
+  backfilled — so it bites a rebuild, a second environment, or a DR restore, not the running deploy.
+  Fixed as a separate clearly-marked table with the consequence spelled out per variable.
+- **Shard G closed + FIXED** — 4 findings, 5 verified-consistent. `DESIGN-REFERENCE.md`'s mockup index
+  — the section whose entire job is *filename → surface → spec section* — listed **8 files, none of
+  which exist**, and omitted ~50 that do, including the whole P12 reservations set. Its own footnote
+  had offered the out ("*or update this table to match your filenames*"); nobody took it. Replaced
+  with what is on disk; **the file→spec-section mapping is deferred to C2**, whose corpus is the
+  §2.x sections that mapping requires. Also: `CLAUDE-context` said `@ui-reviewer` was *inert* until
+  `.claude/ui-context.md` existed — it exists (83 lines), so the docs had been calling a working agent
+  broken. **`BRAND.md` is the healthiest document in the audit**; its neighbours were the problem.
+- **Next shard: C2** (SPEC §2.x, ~700 lines) — the last substantial unswept area, and the one that
+  should use a sweep agent (lesson 9). Then **Z** (`DECISIONS.md` internals). Muster-only, no seeds.
 - Shard F cost one agent, 143k subagent tokens, and produced 53 findings from the *smallest*
   corpus slice. A, B and C each ran in-context for far less — but all three had small, grep-reachable
   corpora. **C2 does not**; budget it closer to F.

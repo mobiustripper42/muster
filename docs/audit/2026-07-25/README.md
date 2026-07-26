@@ -33,7 +33,7 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
 | Shard | Subject | Primary docs | Status |
 |-------|---------|--------------|--------|
 | F | Workflow / skills / velocity | `CLAUDE.md`, `AGENTS.md`, `CHEATSHEET.md`, `VELOCITY_AND_POKER_GUIDE.md`, `PROJECT_PLAN.md`, `DEV_REFERENCE.md` | **✅ CLOSED — 53 rows, all resolved** |
-| B | Auth / RLS / login paths | `AUTH.md`, `SECURITY_AUDIT.md`, `RUNNING.md`, `SPEC.md` | not started |
+| B | Auth / RLS / login paths | `AUTH.md`, `SECURITY_AUDIT.md`, `RUNNING.md`, `SPEC.md` | **✅ CLOSED — 7 rows, 8 noise** (audited `main`) |
 | A | Money / pricing / payments | `SPEC.md`, migrations | **✅ CLOSED — 7 rows, 8 noise** (audited `feature/reservations`) |
 | C | Asks / shifts / derived state | `SPEC.md`, `USER_STORIES.md` | not started |
 | D | Reservations & import | `SPEC.md`, `OPERATOR_MANUAL.md`, `E2E-PILOT-WALKTHROUGH.md`, `PILOT_*` | not started |
@@ -66,7 +66,15 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
 - **Shard A closed** — 7 findings, 8 verified-consistent. All `doc-wrong`; **no code defects, no
   issues filed.** Audited `feature/reservations` @ `0ad83d6`, not `main` (see the shard file for
   why). Fixes not yet applied — the ledger is the deliverable.
-- Next shard: B (auth), then C/D.
+- **Shard B closed** — 7 findings, 8 verified-consistent. All `doc-wrong`; **no code defects, no
+  issues filed.** Audited `main` (corpus and auth source are byte-identical across both trees).
+  `AUTH.md` describes the pre-DEC-092/093 auth model: it omits the admin switcher entirely and
+  states "code-login cannot make you an admin," which `SECURITY_AUDIT.md` contradicts directly.
+  Fixes not yet applied.
+- Next shard: C (asks/shifts) or D (reservations/import) — both need the which-tree check first.
+- **Nothing from shard A or B has been fixed yet.** Two ledgers, 14 findings, all `doc-wrong`,
+  all still open. Shard A's fixes must land on `feature/reservations` (that's where its DECs live);
+  shard B's land on `main`. Neither is large — 7 doc edits each.
 - Shard F cost one agent, 143k subagent tokens, and produced 53 findings from the *smallest*
   corpus slice. Shard A ran in-context for far less. Budget C/D closer to F than to A — expect
   the triage pass, not the sweep, to be the expensive half.

@@ -183,7 +183,8 @@ real phone* → 5.4 (real data, needs 5.3) → 5.R last; 5.5 anywhere, first to 
 **deployed**. Remaining order, decided with operator:
 1. **5.2 (auth, #76)** — next; the live app has no front door until the operator can mint a prod
    sign-in link (`/crew/dev-link` 404s in prod).
-2. **Pre-crew shakedown on DEMO SEEDS** — run `docs/E2E-PILOT-WALKTHROUGH.md` (the **manual**
+2. **Pre-crew shakedown on DEMO SEEDS** — run `docs/E2E-PILOT-WALKTHROUGH.md` *(deleted 2026-07-25 —
+   pilot-era; the Playwright suite in `e2e/` is the live equivalent)* (the **manual**
    walkthrough, mostly local on `mill-dev`, some on the live deploy). This is the gate before crew —
    **NOT** task 5.5. *Seeds, not real import* (they deterministically hit every branch real data
    wouldn't). The walkthrough's sign-in steps need swapping to 5.2's mint-script for the prod run.

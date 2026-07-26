@@ -1,5 +1,20 @@
 # Shard D — Reservations & import
 
+> **CLOSED BY DELETION, 2026-07-25.** Every document this shard indicted — `OPERATOR_MANUAL.md`,
+> `E2E-PILOT-WALKTHROUGH.md`, `PILOT_RUNBOOK.md`, `PILOT_IMPORT_FINDINGS.md` — was **deleted** by the
+> operator rather than repaired, along with 14 duplicated Xola screenshots (7.4 MB). The pilot ran
+> for about a week and ended long ago; "this is only for the pilot" had become a standing tax on
+> every doc read since.
+>
+> **The fixes this shard made were discarded** — they repaired files removed hours later. That is
+> the cost of auditing before asking whether the corpus should exist. **Lesson 10 below.**
+>
+> This ledger is retained as the *evidence* for the deletion: it is the record of how far those
+> documents had drifted (a retired upload procedure, a readiness gate whose four blockers were all
+> resolved) and therefore why removing them beat maintaining them. Findings D2/D3 — the manual's
+> "no payments" on the branch where Stripe takes money — died with the file and need no fix.
+> A fresh operator manual gets written once reservations lands.
+
 **Subject:** how real data gets in (Xola import) and how the operator is told to run the system —
 the operator-facing procedural docs.
 

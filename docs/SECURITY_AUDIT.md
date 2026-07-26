@@ -2,6 +2,14 @@
 
 **Date:** 2026-07-06 · **Scope:** full pre-production review · **Status:** launch-gating review complete.
 
+> **Disposition (updated 2026-07-25).** Everything below is the audit **as written on 2026-07-06** and
+> stays that way — it's the record. What has changed since is the *status* of its outputs: **all three
+> "Decisions required" are decided, and 6 of the 7 filed issues are closed.** Decision 1 (the HIGH
+> login-code attempt-cap race) was **fixed in code** — `verifyLoginCode` now claims a guess through the
+> atomic `claimLoginAttempt` before evaluating it (`src/auth/login-code.ts`), which is the fix this audit
+> prescribed. **Only #301** (the low-severity hardening bundle) remains open. Per-item status is marked
+> inline below. Nothing here is an open ask on the operator.
+
 **Method.** Five dimensions reviewed in parallel (auth & session; crew data authorization; admin-gate
 coverage; input handling & endpoints; secrets/PII/rate-limits), then each finding **adversarially verified**
 against the code before landing here. Covers the whole app, with focus on the Phase-10 auth surface (DEC-092
@@ -20,9 +28,12 @@ dev-link (isolated-preview-only) can't reach prod. Downgraded to LOW.
 
 **Three items need the operator's decision** (not code bugs — policy / accepted-risk calls): the login-code
 attempt-cap concurrency race, and two privacy *disclosure* gaps (operator reads crew DMs; guest phones shown
-to crew). See **Decisions** below.
+to crew). See **Decisions** below. — *All three have since been decided; see Disposition above.*
 
 ## Decisions required before launch
+
+> **All three resolved.** #297 **fixed in code**, #298 and #299 closed. Retained verbatim as the record
+> of what was asked and why.
 
 1. **Login-code attempt cap is not concurrency-safe** *(HIGH — recommend fixing).* `verifyLoginCode`
    (`src/auth/login-code.ts:208-211`) checks a stale `attempts` then bumps in a separate UPDATE — so K
@@ -85,6 +96,9 @@ to crew). See **Decisions** below.
 `*.sw[a-p]` rule; `?claimed` note gated on the viewer's own shifts.
 
 ## Filed issues
+
+> **Status as of 2026-07-25:** #297, #298, #299, #300, #302 and #189 are **closed**; **#301 is the only
+> one still open.**
 
 - **#297** — login-code attempt-cap concurrency race (HIGH; Decision 1).
 - **#298** — operator-reads-crew-DMs disclosure (Decision 2).

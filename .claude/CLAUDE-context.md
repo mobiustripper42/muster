@@ -134,7 +134,7 @@ Persistence is **Postgres behind the `Repository` port**: **local Postgres in de
 - DB columns: `snake_case`
 
 ### UI / Brand
-- Tokens are harvested from the mockups into `@theme` in `app/globals.css` (DEC-021) — colors, radius scale (`--radius-card: 14px`). No color for color's sake. Binding constraints live in `.claude/ui-context.md`.
+- Tokens are harvested from the mockups into `@theme` in `app/globals.css` (DEC-021) — colors, one card radius (`--radius-card: 14px` — deliberately a single value, not a scale; see `BRAND.md`). No color for color's sake. Binding constraints live in `.claude/ui-context.md`.
 - Font: IBM Plex Sans/Mono, loaded via next/font in `app/layout.tsx`.
 - Layout padding in `layout.tsx` only.
 - Every page works at 375px — eyeball at `mill-dev:3000` per `docs/RUNNING.md` (Playwright screenshots when that tooling lands).
@@ -193,7 +193,7 @@ theirs to move.
 - **Webpack, not Turbopack** (DEC-020) — `next build --webpack` / `next dev --webpack`. The core's NodeNext `.js`→`.ts` `extensionAlias` is unsupported by Turbopack.
 - **Two TS profiles:** `tsconfig.core.json` (the framework-free core) vs root `tsconfig.json` (the Next app). `npm run verify` checks both.
 - **`git push` exception to the shell's "environment-changing commands":** the `/kill-this` ritual owns commit + push + PR — that's its job, no separate approval needed for the push inside it.
-- **`@ui-reviewer` is installed but inert until `.claude/ui-context.md` exists** — it hard-stops without it. That file (brand tokens, surfaces, viewports, checklist) is authored with the first crew/admin surface.
+- **`@ui-reviewer` is live** — `.claude/ui-context.md` exists and carries the brand tokens, surfaces, viewports and review checklist it hard-stops without. That file (brand tokens, surfaces, viewports, checklist) is authored with the first crew/admin surface.
 
 ## Scope Discipline (project)
 

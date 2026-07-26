@@ -35,7 +35,8 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
 | F | Workflow / skills / velocity | `CLAUDE.md`, `AGENTS.md`, `CHEATSHEET.md`, `VELOCITY_AND_POKER_GUIDE.md`, `PROJECT_PLAN.md`, `DEV_REFERENCE.md` | **✅ CLOSED — 53 rows, all resolved** |
 | B | Auth / RLS / login paths | `AUTH.md`, `SECURITY_AUDIT.md`, `RUNNING.md`, `SPEC.md` | **✅ CLOSED — 7 rows, 8 noise** (audited `main`) |
 | A | Money / pricing / payments | `SPEC.md`, migrations | **✅ CLOSED — 7 rows, 8 noise** (audited `feature/reservations`) |
-| C | Asks / shifts / derived state | `SPEC.md`, `USER_STORIES.md` | not started |
+| C | Asks / shifts / derived state | `SPEC.md`, `USER_STORIES.md` | **✅ CLOSED — 6 rows, 9 noise** (audited `main`; 3 fixed, 3 are one operator decision) |
+| C2 | **§2.x surface acceptance criteria** — *spun out of shard C* | `SPEC.md` §2.1–§2.7 (~700 lines) | not started — **largest unswept area** |
 | D | Reservations & import | `SPEC.md`, `OPERATOR_MANUAL.md`, `E2E-PILOT-WALKTHROUGH.md`, `PILOT_*` | not started |
 | E | Deploy / env / ops | `DEPLOY.md`, `RUNNING.md`, `PILOT_RUNBOOK.md` | not started |
 | G | Brand / UI | `BRAND.md`, `docs/design/DESIGN-REFERENCE.md` | not started |
@@ -63,21 +64,24 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
   (#533, Phase 11 never closed). The six `CLAUDE.md` fixes **shipped** — seeds PR #148 (merged),
   which also carried the agent `model:` pins and the `CLAUDE.md §Commands` build-gate repoint.
   Muster-side fixes shipped in PR #535 (merged).
-- **Shard A closed** — 7 findings, 8 verified-consistent. All `doc-wrong`; **no code defects, no
-  issues filed.** Audited `feature/reservations` @ `0ad83d6`, not `main` (see the shard file for
-  why). Fixes not yet applied — the ledger is the deliverable.
-- **Shard B closed** — 7 findings, 8 verified-consistent. All `doc-wrong`; **no code defects, no
-  issues filed.** Audited `main` (corpus and auth source are byte-identical across both trees).
-  `AUTH.md` describes the pre-DEC-092/093 auth model: it omits the admin switcher entirely and
-  states "code-login cannot make you an admin," which `SECURITY_AUDIT.md` contradicts directly.
-  Fixes not yet applied.
-- Next shard: C (asks/shifts) or D (reservations/import) — both need the which-tree check first.
-- **Nothing from shard A or B has been fixed yet.** Two ledgers, 14 findings, all `doc-wrong`,
-  all still open. Shard A's fixes must land on `feature/reservations` (that's where its DECs live);
-  shard B's land on `main`. Neither is large — 7 doc edits each.
+- **Shard A closed + FIXED** — 7 findings, 8 verified-consistent, all `doc-wrong`. Audited
+  `feature/reservations`, not `main`. **Fixes merged in PR #538** (into `feature/reservations`,
+  where those DECs live). Headline: DEC-107 had no forward pointer to the DEC-134 reversal.
+- **Shard B closed + FIXED** — 7 findings, 8 verified-consistent, all `doc-wrong`. Audited `main`.
+  **Fixes merged in PR #537.** `AUTH.md` had three doors and no switcher, and asserted
+  "code-login cannot make you an admin" — which `SECURITY_AUDIT.md` contradicts outright.
+- **Shard C closed** — 6 findings, 9 verified-consistent. **3 fixed here** (`USER_STORIES.md`
+  SP-6/SP-7 described shift lock, cut by DEC-082; DR-1 said payments were parked to 2027).
+  **3 were one operator decision — now RESOLVED by DEC-138** (PR #540): SPEC §1.3 rewritten to the
+  DEC-125 model (two mechanisms, not one rule engine). COI-expiry and lead-time-cutoff both
+  **rejected on operator input** and closed on the record. See the shard file's RESOLVED header for
+  two corrections to the original severity read.
+- **Spun out: shard C2** — SPEC §2.x per-surface acceptance criteria (~700 lines, untouched by any
+  shard so far). This is the **largest unswept area in the doc set** and wants a sweep agent.
+- Next shard: **D** (reservations/import) or **C2**. Both need the which-tree check first.
 - Shard F cost one agent, 143k subagent tokens, and produced 53 findings from the *smallest*
-  corpus slice. Shard A ran in-context for far less. Budget C/D closer to F than to A — expect
-  the triage pass, not the sweep, to be the expensive half.
+  corpus slice. A, B and C each ran in-context for far less — but all three had small, grep-reachable
+  corpora. **C2 and D do not**; budget those closer to F.
 
 ### Lessons that change how later shards run
 
@@ -94,6 +98,15 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
    Shards C and D (asks/shifts, reservations/import) need the same check first.
 5. **Not every shard needs a sweep agent.** Shard A's corpus was grep-reachable and small; running
    it in-context beat the ledger-on-disk indirection. Use the agent when the finding volume, not
-   the corpus, is what threatens the window — that was F, and will be C and D.
+   the corpus, is what threatens the window — that was F, and will be C2 and D.
+6. **Before reporting "this spec machinery doesn't exist," check whether its *function* moved.**
+   Shard C reported §1.3's property rules as absent. They were absent *as oracle rules* — but
+   DEC-125 implements most of them as set subtraction under different vocabulary (`Block`,
+   schedule terms, slot identity). Grep the shipped design's words, not only the spec's.
+7. **A "gap" the operator can close in one sentence was never a finding.** Both genuinely-absent
+   rules shard C surfaced (COI expiry, lead-time cutoff) were rejected on domain knowledge no
+   amount of code-reading would have produced — one because the risk is managed off-system, one
+   because the "gap" was a designed-for behavior. Escalate absences as **questions**, not defects,
+   and record the answer (DEC-138) so the next sweep doesn't re-derive them.
 3. **The ledger-on-disk pattern held.** The orchestrator read one 79-line file instead of taking
    53 findings into context. Keep it for every remaining shard.

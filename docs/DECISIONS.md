@@ -2792,6 +2792,11 @@ BrewBoat need — would require per-event capacity reconciliation).
 ## DEC-107: Payments — Stripe hosted Checkout, deposit + balance, webhook-driven booking write
 
 **Status:** Decided 2026-07-11 (Eric + @architect, under DEC-105). New dependency: the `stripe` Node SDK.
+**⚠️ The hosted-Checkout decision below was REVERSED for the customer booking charge by DEC-134 (12.5)** —
+that charge is now an **inline Stripe Payment Element** over a deferred PaymentIntent. Hosted Checkout
+survives only for **balance** and **post-trip gratuity**. Everything else here — deposit + balance as the
+model, webhook-driven write, the sailbook charge/refund lift, the parked refund cascade — still stands.
+Read DEC-134 before acting on the Decision paragraph.
 
 **Context.** Muster-native bookings need to take money. The operator chose **deposit + balance** over
 full-upfront (the closer match to how Xola works, which matters for a Xola replacement).
@@ -3009,6 +3014,13 @@ proves out and the flag becomes permanent-on (then retire the flag at the Phase 
 
 **Status:** Decided 2026-07-11 (@architect + Eric, under DEC-105/107 — verified reservations model,
 `docs/design/reservations-model.md`).
+**Its own "revisit if" has since fired.** The `Offering` catalog landed in P12 (DEC-123,
+`20260720100500_offering_catalog_fields.sql`), so the deferred **default cascade now exists**:
+`src/reservations/availability.ts` resolves `offering.priceVariations` against the date and falls back to
+`offering.basePriceCents`, applying either a `deltaCents` or a `percent` adjustment. The P11 statement
+below — "resolution order is `Event.price` only … no `Offering`/schedule default cascade" — describes the
+Phase 11 world and is retained as the record of why the column was added; it is no longer the whole
+resolution path.
 
 **Context.** The operator confirmed (2026-07-11) that **each individual event can carry its own price** —
 per-event pricing, not a flat experience rate. (Xola models a per-schedule price variation — Prime Sat +$50,
@@ -3038,12 +3050,23 @@ product (`docs/design/the-booking-1.md §4`, `the-living-link-1.md §5`; confirm
 
 **Decision.** Insurance is a **boolean on the reservation** that flips which tier the refund policy reads
 (BrewBoat: 14-day free-cancel → 72-hour) — **not** a general add-on / line-item and **not** a questionnaire
-field. It rides the existing `terms` argument of `refund_owed(who, when, paid, terms)`; **no new machinery**.
+field. It rides the `terms` argument of `refund_owed(who, when, paid, terms)`; **no new machinery**.
 **General add-ons stay parked** — model as Xola `item.addOns[]` only if ever built. The flag is **inert until
 refund-policy-as-code exists**, which is **Phase 12** and **owner-gated (Drew — refund tiers)**; it is **not
 required for the Phase 11 exit gate** (one paid booking) and adds **no** field to the throwaway P11 harness.
 Recording now fixes the *shape* so it isn't later built as a priced product. **Revisit if:** the operator
 ever wants true multi-add-on selling (then reopen as `item.addOns[]`, a conscious scope widen).
+
+> **Two corrections (2026-07-25).**
+> 1. **`refund_owed` does not exist.** It is a `SPEC.md` §3.3 formula, and §3.3 is **parked** by DEC-107.
+>    So "no new machinery" means *no new machinery beyond the refund policy itself*, which is still
+>    unbuilt — DEC-135 confirms the #472 refund policy does not exist. **Flex-insurance remains
+>    unimplemented**, consistent with everything above; nothing to reconcile in code.
+> 2. **The "general add-ons stay parked" revisit fired.** Add-ons shipped as a **first-class entity**
+>    (`20260721000000_add_ons_entity.sql`, #491), a twin to `vessels`/`locations` that offerings attach
+>    by id — a wider scope than the `item.addOns[]` reopen this DEC anticipated. That widen belongs to
+>    DEC-123's catalog, not here. **What survives, and is the reason this DEC exists:** flex-insurance
+>    is still a *policy boolean*, **not** one of those add-on rows. Do not model it as one.
 
 ---
 
@@ -3353,11 +3376,26 @@ other than filename sort.
 **Status:** Decided 2026-07-13 (@architect, under DEC-107).
 
 Balance is collected **on demand** (the auto-emit scheduler that reads `balanceDueDaysBeforeEvent`
-stays P12+). **Amount authority is the canonical deriver `balanceOwedCents = (event.price + tax) −
-Σ succeeded payments`, computed at click time** — never a config recompute of the deposit share, so it
-can't drift when `depositPercent`/price change between deposit and balance (the `Payment` entity already
-mandates balance be *derived, never stored*). It sums only `status==='succeeded'`, so a future refund
-re-opens the balance through the same one function.
+stays P12+). **Amount authority is the canonical deriver `balanceOwedCents`, computed at click time** —
+never a config recompute of the deposit share, so it can't drift when `depositPercent`/price change
+between deposit and balance (the `Payment` entity already mandates balance be *derived, never stored*).
+It sums only `status==='succeeded'`, so a future refund re-opens the balance through the same one
+function.
+
+> **Formula, as it stands after #474 and DEC-134** (this paragraph originally read
+> `(event.price + tax) − Σ succeeded payments`, which is now under-specified in two ways):
+> ```
+> balanceOwedCents = fareCents + tax(fareCents)
+>                  − Σ succeeded (amountCents − gratuityCents − serviceFeeCents)
+> ```
+> - **`fareCents` is the composed party fare** — `event.price` **+** the frozen
+>   `Reservation.extrasCents` (#474), not the bare base. The base alone undercollects a
+>   deposit-mode balance by `extras + tax(extras)`.
+> - **Gratuity and the service fee are netted out of each paid amount** (DEC-124 / DEC-134). The tip
+>   is crew money and the fee is a one-shot surcharge; counting either as "paid toward balance" would
+>   under-charge a deposit booking. The balance stays pure remaining principal + its tax.
+>
+> Implementation: `src/reservations/payment-config.ts`.
 
 The **Stripe Checkout URL, re-minted per request, is the balance link** — no durable/custom token (and no
 dependency on 11.4's `booking-link.ts`); a re-minted link always reflects the current outstanding balance.

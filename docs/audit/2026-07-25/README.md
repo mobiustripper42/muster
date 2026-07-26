@@ -37,9 +37,9 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
 | A | Money / pricing / payments | `SPEC.md`, migrations | **✅ CLOSED — 7 rows, 8 noise** (audited `feature/reservations`) |
 | C | Asks / shifts / derived state | `SPEC.md`, `USER_STORIES.md` | **✅ CLOSED — 6 rows, 9 noise** (audited `main`; 3 fixed, 3 are one operator decision) |
 | C2 | **§2.x surface acceptance criteria** — *spun out of shard C* | `SPEC.md` §2.1–§2.7 (~700 lines) | not started — **largest unswept area** |
-| D | Reservations & import | `SPEC.md`, `OPERATOR_MANUAL.md`, `E2E-PILOT-WALKTHROUGH.md`, `PILOT_*` | **⚠️ PARTIAL — 7 rows, 6 noise; ~480 of ~858 corpus lines UNREAD** |
-| D2 | **`PILOT_RUNBOOK` + `PILOT_IMPORT_FINDINGS` + walkthrough Parts 0–7** — *spun out of shard D* | `PILOT_RUNBOOK.md`, `PILOT_IMPORT_FINDINGS.md`, `E2E-PILOT-WALKTHROUGH.md:47-251` | not started |
-| E | Deploy / env / ops | `DEPLOY.md`, `RUNNING.md`, `PILOT_RUNBOOK.md` | not started |
+| D | Reservations & import | ~~`OPERATOR_MANUAL.md`, `E2E-PILOT-WALKTHROUGH.md`, `PILOT_*`~~ | **CLOSED — corpus DELETED 2026-07-25.** 7 rows found; the docs they indicted are gone |
+| ~~D2~~ | ~~`PILOT_RUNBOOK` + `PILOT_IMPORT_FINDINGS` + walkthrough Parts 0–7~~ | — | **CANCELLED — corpus deleted** |
+| E | Deploy / env / ops | `DEPLOY.md`, `RUNNING.md` *(`PILOT_RUNBOOK.md` deleted)* | not started |
 | G | Brand / UI | `BRAND.md`, `docs/design/DESIGN-REFERENCE.md` | not started |
 | Z | DECISIONS-internal | `DECISIONS.md` only | **deferred to its own task** |
 
@@ -79,20 +79,21 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
   two corrections to the original severity read.
 - **Spun out: shard C2** — SPEC §2.x per-surface acceptance criteria (~700 lines, untouched by any
   shard so far). This is the **largest unswept area in the doc set** and wants a sweep agent.
-- **Shard D PARTIAL** — 7 findings, 6 verified-consistent. **4 fixed here** (`main`-side);
-  **2 belong on `feature/reservations`** (the manual says "no payments" on the branch where Stripe
-  takes real money); **1 is a delete, not an edit** (7.4 MB of duplicated Xola screenshots).
-  Headline: both *procedural* docs are wrong about procedure — `OPERATOR_MANUAL` §Import describes a
-  retired spreadsheet upload, and the walkthrough's "must be resolved before crew test" list has all
-  four items resolved.
-  **This shard did not finish.** `PILOT_RUNBOOK.md` and `PILOT_IMPORT_FINDINGS.md` were never opened
-  and walkthrough Parts 0–7 went unread — ~480 of ~858 corpus lines. Both sections that *were* read
-  end-to-end turned out substantially stale, so assume the remainder holds more, not less.
-- Next shard: **D2** (finish D), then **C2** (SPEC §2.x). Both should use a sweep agent — see
-  lesson 8.
+- **Shard D CLOSED — by deletion, not by fixing.** 7 findings, 6 verified-consistent. Its headline
+  was that both *procedural* docs were wrong about procedure: `OPERATOR_MANUAL` §Import described a
+  retired spreadsheet upload, and the walkthrough's "must be resolved before crew test" list had all
+  four blockers resolved. **The operator's call was to delete the corpus rather than repair it** —
+  the pilot ran for a week and ended long ago, and "this is only for the pilot" had become a
+  standing tax. `OPERATOR_MANUAL.md`, `E2E-PILOT-WALKTHROUGH.md`, `PILOT_RUNBOOK.md`,
+  `PILOT_IMPORT_FINDINGS.md` and 14 duplicated Xola screenshots (7.4 MB) are gone; references
+  cleaned up across `CLAUDE-context`, `CREW_QUICKSTART`, `PROJECT_PLAN` and DEC-136.
+  **The shard-D doc edits were discarded work** — they repaired files deleted hours later. The
+  ledger survives as the record of *why* the deletion was justified. A fresh operator manual gets
+  written after reservations lands.
+- **Shard D2 CANCELLED** — its entire corpus was the deleted PILOT docs.
 - Shard F cost one agent, 143k subagent tokens, and produced 53 findings from the *smallest*
   corpus slice. A, B and C each ran in-context for far less — but all three had small, grep-reachable
-  corpora. **C2 and D do not**; budget those closer to F.
+  corpora. **C2 does not**; budget it closer to F.
 
 ### Lessons that change how later shards run
 
@@ -124,6 +125,10 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
    coverage came from searching. D's corpus is narrative, so coverage came from *reading* — and the
    shard ran out of room at ~44% of its corpus. That is exactly the condition the ledger-on-disk
    sweep-agent pattern exists for. **D2 and C2 both want an agent.**
+10. **Ask whether a document should exist before auditing it.** Shard D found real drift in the
+   pilot-era docs, fixed it, and watched the operator delete all four files the same day — the
+   repair work was spent on documents with no future. **Cheapest first question for any shard:
+   is this corpus still load-bearing?** A deletion closes more findings per minute than any fix.
 7. **A "gap" the operator can close in one sentence was never a finding.** Both genuinely-absent
    rules shard C surfaced (COI expiry, lead-time cutoff) were rejected on domain knowledge no
    amount of code-reading would have produced — one because the risk is managed off-system, one

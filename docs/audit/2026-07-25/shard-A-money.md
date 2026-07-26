@@ -71,7 +71,8 @@ active spec section.
 - **`docs/design/*`** — the mockup/design notes DEC-134 and DEC-113 both cite as evidence
   (`the-booking-1.md`, `the-living-link-1.md`). Out of this shard's primary-doc list; they'd be the
   natural corpus for shard G (brand/UI) or a design-doc shard.
-- **`OPERATOR_MANUAL.md` / `PILOT_*`** money passages — those are shard D's corpus.
+- ~~**`OPERATOR_MANUAL.md` / `PILOT_*`** money passages — those are shard D's corpus.~~ *(Those
+  files were deleted 2026-07-25; nothing left to check.)*
 - **Live Stripe config** (which account, webhook endpoint subscriptions) — UNVERIFIABLE without
   dashboard access. DEC-134 notes the endpoint must subscribe to `payment_intent.succeeded`
   alongside `checkout.session.completed`; worth an operator confirmation, not a doc fix.

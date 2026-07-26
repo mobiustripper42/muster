@@ -37,7 +37,8 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
 | A | Money / pricing / payments | `SPEC.md`, migrations | **✅ CLOSED — 7 rows, 8 noise** (audited `feature/reservations`) |
 | C | Asks / shifts / derived state | `SPEC.md`, `USER_STORIES.md` | **✅ CLOSED — 6 rows, 9 noise** (audited `main`; 3 fixed, 3 are one operator decision) |
 | C2 | **§2.x surface acceptance criteria** — *spun out of shard C* | `SPEC.md` §2.1–§2.7 (~700 lines) | not started — **largest unswept area** |
-| D | Reservations & import | `SPEC.md`, `OPERATOR_MANUAL.md`, `E2E-PILOT-WALKTHROUGH.md`, `PILOT_*` | not started |
+| D | Reservations & import | `SPEC.md`, `OPERATOR_MANUAL.md`, `E2E-PILOT-WALKTHROUGH.md`, `PILOT_*` | **⚠️ PARTIAL — 7 rows, 6 noise; ~480 of ~858 corpus lines UNREAD** |
+| D2 | **`PILOT_RUNBOOK` + `PILOT_IMPORT_FINDINGS` + walkthrough Parts 0–7** — *spun out of shard D* | `PILOT_RUNBOOK.md`, `PILOT_IMPORT_FINDINGS.md`, `E2E-PILOT-WALKTHROUGH.md:47-251` | not started |
 | E | Deploy / env / ops | `DEPLOY.md`, `RUNNING.md`, `PILOT_RUNBOOK.md` | not started |
 | G | Brand / UI | `BRAND.md`, `docs/design/DESIGN-REFERENCE.md` | not started |
 | Z | DECISIONS-internal | `DECISIONS.md` only | **deferred to its own task** |
@@ -78,7 +79,17 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
   two corrections to the original severity read.
 - **Spun out: shard C2** — SPEC §2.x per-surface acceptance criteria (~700 lines, untouched by any
   shard so far). This is the **largest unswept area in the doc set** and wants a sweep agent.
-- Next shard: **D** (reservations/import) or **C2**. Both need the which-tree check first.
+- **Shard D PARTIAL** — 7 findings, 6 verified-consistent. **4 fixed here** (`main`-side);
+  **2 belong on `feature/reservations`** (the manual says "no payments" on the branch where Stripe
+  takes real money); **1 is a delete, not an edit** (7.4 MB of duplicated Xola screenshots).
+  Headline: both *procedural* docs are wrong about procedure — `OPERATOR_MANUAL` §Import describes a
+  retired spreadsheet upload, and the walkthrough's "must be resolved before crew test" list has all
+  four items resolved.
+  **This shard did not finish.** `PILOT_RUNBOOK.md` and `PILOT_IMPORT_FINDINGS.md` were never opened
+  and walkthrough Parts 0–7 went unread — ~480 of ~858 corpus lines. Both sections that *were* read
+  end-to-end turned out substantially stale, so assume the remainder holds more, not less.
+- Next shard: **D2** (finish D), then **C2** (SPEC §2.x). Both should use a sweep agent — see
+  lesson 8.
 - Shard F cost one agent, 143k subagent tokens, and produced 53 findings from the *smallest*
   corpus slice. A, B and C each ran in-context for far less — but all three had small, grep-reachable
   corpora. **C2 and D do not**; budget those closer to F.
@@ -103,6 +114,16 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
    Shard C reported §1.3's property rules as absent. They were absent *as oracle rules* — but
    DEC-125 implements most of them as set subtraction under different vocabulary (`Block`,
    schedule terms, slot identity). Grep the shipped design's words, not only the spec's.
+8. **Procedural docs rot worse than reference docs, and cost more when they do.** Every shard
+   before D found reference docs describing the system wrongly. Shard D found the two docs a human
+   *follows step by step* — `OPERATOR_MANUAL` and `E2E-PILOT-WALKTHROUGH` — wrong about the actual
+   procedure: an upload control that no longer exists, and a readiness gate whose four blockers were
+   all resolved. **Audit procedural docs first, not last.** `PILOT_RUNBOOK.md` is the remaining one
+   and is still unread.
+9. **In-context sweeps work on structure, not on prose.** A, B and C had grep-reachable corpora, so
+   coverage came from searching. D's corpus is narrative, so coverage came from *reading* — and the
+   shard ran out of room at ~44% of its corpus. That is exactly the condition the ledger-on-disk
+   sweep-agent pattern exists for. **D2 and C2 both want an agent.**
 7. **A "gap" the operator can close in one sentence was never a finding.** Both genuinely-absent
    rules shard C surfaced (COI expiry, lead-time cutoff) were rejected on domain knowledge no
    amount of code-reading would have produced — one because the risk is managed off-system, one

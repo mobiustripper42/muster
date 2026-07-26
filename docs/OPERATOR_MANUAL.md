@@ -134,8 +134,15 @@ controls on demand."
 
 ### 3. Import — `/admin/import`
 
-Load the week's Xola reservations: upload the export, preview and validate it, import. That builds the
-events and shifts the engine then works. This is how real data gets in for the crew weekend.
+Muster **pulls** the week's reservations from Xola over the API — there is nothing to upload. The
+pull runs **hourly on its own**; this screen is the "do it now" button for when you don't want to
+wait. A successful pull lands you on its audit detail: the full breakdown of what changed. That
+builds the events and shifts the engine then works.
+
+If a pull fails you get a plain reason (Xola not configured, bad key, or Xola unreachable) and
+**nothing is imported** — it's safe to just press it again.
+
+*(The old spreadsheet upload is retired — an `.xlsx` export can't resolve which boat a trip is on.)*
 
 ---
 
@@ -314,6 +321,7 @@ stateDiagram-v2
   Crewed --> Completed: trip ran
   Pending --> Cancelled
   Filling --> Cancelled
+  Crewed --> Cancelled
 ```
 
 - **Pending** — booked, too early to staff. **Filling** — being worked (Tiers 1–2), whether zero or
@@ -329,17 +337,18 @@ stateDiagram-v2
 stateDiagram-v2
   [*] --> Open: needs a person
   Open --> Asked: ask is out
-  Asked --> Claimed: someone accepted
+  Asked --> Confirmed: someone answers "in" (via Claimed, same operation)
   Asked --> Open: timed out or all declined
-  Claimed --> Confirmed: held by a person
-  Claimed --> Open: claim rescinded
   Confirmed --> Bailed: confirmed person backs out
   Bailed --> Open: re-opens and re-asks
 ```
 
-- **Open** → eligible pool computed. **Asked** → ask is out, awaiting reply. **Claimed** → someone
-  accepted (tentative). **Confirmed** → held by a person. **Bailed** → a confirmed person backed
-  out; the seat reopens and re-asks.
+- **Open** → eligible pool computed. **Asked** → ask is out, awaiting reply. **Confirmed** → held by
+  a person. **Bailed** → a confirmed person backed out; the seat reopens and re-asks.
+- **There is no confirm step for you to press.** A winning "in" advances `Asked → Claimed →
+  Confirmed` in **one operation** (DEC-061) — `Claimed` exists in the model but is passed straight
+  through, never a resting state you'll see. "In" means committed; backing out afterwards is a bail
+  and is penalised as one.
 
 ---
 

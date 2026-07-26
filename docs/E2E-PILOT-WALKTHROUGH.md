@@ -249,27 +249,33 @@ any felt confusing in the moment, that's a **copy/UX bug worth logging**, not a 
 
 ---
 
-## What this walkthrough does **not** cover (known gaps → the crew-test gate)
+## What this walkthrough does **not** cover
 
-These are out of slice-1 scope and **must be resolved before real crew test from their own phones**:
+> **⚠️ Historical (slice-1, superseded 2026-07-25).** This section listed four blockers "that must be
+> resolved before real crew test." **All four have since been resolved.** It is kept because the
+> *scope* statement below — this walkthrough runs on synthetic seeds, not real Xola data — is still
+> true and still the reason to read it. The blocker list is struck through as a record, not a
+> to-do.
 
-- **No hosted deploy.** The app only runs on `mill-dev` over Tailscale. Real crew phones can't reach
-  it without a public URL (Vercel is the intended target). → deploy work + a `production` branch.
-- **No production auth path (#70).** `dev-link` is dev-only (404 in prod); the real magic-link
-  consume in a deployed build is unproven, and the operator relay must text *real* numbers.
-- **No automated e2e (#65).** This doc is the manual stand-in; the Playwright harness isn't built.
-- **No real reservation import.** This walkthrough runs entirely on the **synthetic seeds** — which
-  is *correct* for an engine shakedown, since the seeds deterministically exercise every branch
-  (regression, exhaustion, credential lapse, multi-trip) that real Xola data wouldn't reliably
-  produce. But it means the **Xola import is unexercised here.** Reality of that path today: it reads
-  a **Xola `.xlsx`** (the "Reservations" sheet) via `importXlsx` — **core-only, no upload UI and no
-  runner script**; you'd invoke it from a `tsx` script on the box. Putting **real BrewBoat data** in
-  front of the crew next week needs (a) an import path a human can actually run, (b) confirmation the
-  import → shift/seat derivation is wired end-to-end, and (c) the **timezone fix above** — real Xola
-  times are Pacific-local, and the UTC render would mangle them. Tracked separately from this doc.
+- ~~**No hosted deploy.** The app only runs on `mill-dev` over Tailscale.~~ → **Resolved.** Deployed
+  on Vercel with a `production` branch (`vercel.json`, `DEPLOY.md`, DEC-S022).
+- ~~**No production auth path (#70).** `dev-link` is dev-only (404 in prod); the real magic-link
+  consume in a deployed build is unproven.~~ → **Resolved.** Crew code-login (DEC-081) is live in
+  prod; see `SECURITY_AUDIT.md`. `dev-link` remains dev-only by design.
+- ~~**No automated e2e (#65).** This doc is the manual stand-in; the Playwright harness isn't
+  built.~~ → **Resolved.** `e2e/` holds a full Playwright suite. This doc is now a *complement* to
+  it — the human shakedown, not the stand-in.
+- ~~**No real reservation import** … it reads a Xola `.xlsx` via `importXlsx` — core-only, no upload
+  UI and no runner script.~~ → **Resolved, and the mechanism changed entirely.** `importXlsx` is
+  gone; the xlsx path was retired because an export can't resolve which boat a trip is on. Muster now
+  **pulls from the Xola API** (`/events` ⨝ `/orders`) hourly, with a "pull now" button at
+  `/admin/import` and a per-run audit trail (DEC-036/037/043).
 
-When this walkthrough passes clean on `mill-dev`, the slice is **shakedown-complete**. The crew test
-is the *next* milestone, gated on the deploy + #70 above.
+**Still true, and the reason this section exists:** this walkthrough runs entirely on the
+**synthetic seeds**, which is *correct* for an engine shakedown — they deterministically exercise
+every branch (regression, exhaustion, credential lapse, multi-trip) that real Xola data wouldn't
+reliably produce. **The Xola import is therefore still unexercised by this document.** Validating the
+real import path is a separate exercise against `/admin/import`.
 
 ---
 

@@ -9,16 +9,25 @@
  */
 
 import type {
+  AddOn,
+  Customer,
   Admin,
   Ask,
   AuthSubjectKind,
+  Block,
+  CheckoutHold,
   Credential,
   CrewMember,
   CrewStatus,
   Event,
+  Gratuity,
+  GustoIdentity,
+  Location,
   LoginCode,
   CalendarFeed,
   MusterOwnedVesselDay,
+  Offering,
+  Payment,
   MagicToken,
   OutboxEntry,
   RingOutboxEntry,
@@ -35,14 +44,22 @@ import type {
 } from "../domain/entities.js";
 import { subjectKey } from "../domain/subject.js";
 import type {
+  AddOnId,
+  CustomerId,
   AskId,
+  BlockId,
+  CheckoutHoldId,
+  GratuityId,
   CredentialId,
   CrewMemberId,
   EventId,
+  LocationId,
   MagicTokenId,
+  OfferingId,
   OutboxEntryId,
   RingOutboxEntryId,
   NoticeOutboxEntryId,
+  PaymentId,
   PtoWindowId,
   ReservationId,
   RoleTypeId,
@@ -58,6 +75,11 @@ import type { ImportRun, ImportRunItem } from "../import/import-audit.js";
 import type { ImportRunId } from "../domain/ids.js";
 import type { Message, Participant, Thread } from "../messaging/entities.js";
 import type { MessageId, ParticipantId, ThreadId } from "../domain/ids.js";
+import {
+  PAYMENT_CONFIG_DEFAULTS,
+  type PaymentConfig,
+} from "../reservations/payment-config.js";
+import { slotIdentity } from "../reservations/availability.js";
 import type { Repository } from "../ports/repository.js";
 
 const clone = <T>(value: T): T => structuredClone(value);
@@ -77,14 +99,27 @@ const upsertThreadState = (
 
 export class InMemoryRepository implements Repository {
   readonly #roleTypes = new Map<RoleTypeId, RoleType>();
+  readonly #addOns = new Map<AddOnId, AddOn>();
+  readonly #customers = new Map<CustomerId, Customer>();
   readonly #vessels = new Map<VesselId, Vessel>();
   readonly #crew = new Map<CrewMemberId, CrewMember>();
   readonly #credentials = new Map<CredentialId, Credential>();
   readonly #ptoWindows = new Map<PtoWindowId, PtoWindow>();
   readonly #events = new Map<EventId, Event>();
   readonly #reservations = new Map<ReservationId, Reservation>();
+  /** Reservation catalog (DEC-123/125) — read-only surface in 12.0; writes 12.8–12.10. */
+  readonly #offerings = new Map<OfferingId, Offering>();
+  readonly #locations = new Map<LocationId, Location>();
+  readonly #blocks = new Map<BlockId, Block>();
+  /** Transient checkout-holds (12.1, DEC-109), keyed by id. */
+  readonly #checkoutHolds = new Map<CheckoutHoldId, CheckoutHold>();
+  /** Collected gratuities (12.3, DEC-124), keyed by id. */
+  readonly #gratuities = new Map<GratuityId, Gratuity>();
   /** Muster-owned vessel-days (DEC-106), keyed `${vesselId}|${date}`. */
   readonly #musterOwnedVesselDays = new Map<string, MusterOwnedVesselDay>();
+  readonly #payments = new Map<PaymentId, Payment>();
+  /** Payment-config overrides (DEC-107); absent fields fall to PAYMENT_CONFIG_DEFAULTS. */
+  #paymentConfig: Partial<PaymentConfig> = {};
   readonly #shifts = new Map<ShiftId, Shift>();
   readonly #seats = new Map<SeatId, Seat>();
   readonly #asks = new Map<AskId, Ask>();
@@ -136,6 +171,61 @@ export class InMemoryRepository implements Repository {
   }
   async listAllRoleTypes(): Promise<RoleType[]> {
     return [...this.#roleTypes.values()].map(clone);
+  }
+
+  // ── Add-ons (first-class sellable extras — #491) ───────────────────────────
+  async saveAddOn(addOn: AddOn): Promise<void> {
+    this.#addOns.set(addOn.id, clone(addOn));
+  }
+  async getAddOn(id: AddOnId): Promise<AddOn | null> {
+    const a = this.#addOns.get(id);
+    return a ? clone(a) : null;
+  }
+  async listAddOns(): Promise<AddOn[]> {
+    return [...this.#addOns.values()].map(clone);
+  }
+
+  // ── Customers (contact records — 12.12b, DEC-132) ──────────────────────────
+  // The double stays DUMB: it does NOT enforce the phone/display-code UNIQUE indexes the
+  // Postgres schema carries, and it holds no FK on `reservation.customerId`. That asymmetry is
+  // deliberate (DEC-131) — reimplementing constraint checking here would put integrity in two
+  // places, which is the exact smear the service-layer boundary exists to avoid. The adapters
+  // diverge only on INVALID writes; the contract suite proves parity over valid operations.
+  // The one exception is `getOrCreateCustomerByPhone`, whose RESULT is semantic: callers branch
+  // on `created`, so both adapters must agree on which branch wins. Here a phone scan settles
+  // it; in Postgres the unique index does.
+  async saveCustomer(customer: Customer): Promise<void> {
+    this.#customers.set(customer.id, clone(customer));
+  }
+  async getCustomer(id: CustomerId): Promise<Customer | null> {
+    const c = this.#customers.get(id);
+    return c ? clone(c) : null;
+  }
+  async getCustomerByPhone(phoneE164: string): Promise<Customer | null> {
+    const c = [...this.#customers.values()].find((x) => x.phoneE164 === phoneE164);
+    return c ? clone(c) : null;
+  }
+  async getCustomerByCode(displayCode: string): Promise<Customer | null> {
+    const c = [...this.#customers.values()].find((x) => x.displayCode === displayCode);
+    return c ? clone(c) : null;
+  }
+  async listCustomers(): Promise<Customer[]> {
+    return [...this.#customers.values()].map(clone);
+  }
+  async getOrCreateCustomerByPhone(
+    candidate: Customer,
+  ): Promise<{ customer: Customer; created: boolean }> {
+    const existing = [...this.#customers.values()].find(
+      (x) => x.phoneE164 === candidate.phoneE164,
+    );
+    if (existing) return { customer: clone(existing), created: false };
+    this.#customers.set(candidate.id, clone(candidate));
+    return { customer: clone(candidate), created: true };
+  }
+  async listReservationsForCustomer(id: CustomerId): Promise<Reservation[]> {
+    return [...this.#reservations.values()]
+      .filter((r) => r.customerId === id)
+      .map(clone);
   }
 
   // ── Vessels ──────────────────────────────────────────────────────────────
@@ -191,6 +281,15 @@ export class InMemoryRepository implements Repository {
     // which reads the []-default column back as absent).
     if (weekdaysOff.length === 0) delete c.weekdaysOff;
     else c.weekdaysOff = [...weekdaysOff];
+    return clone(c);
+  }
+  async updateCrewGusto(
+    id: CrewMemberId,
+    gusto: GustoIdentity,
+  ): Promise<CrewMember | null> {
+    const c = this.#crew.get(id);
+    if (!c) return null;
+    c.gusto = { ...gusto }; // targeted mutation (DEC-094) — only the gusto field
     return clone(c);
   }
   async addCrewMemberWithCredential(m: CrewMember, cred: Credential): Promise<void> {
@@ -254,6 +353,37 @@ export class InMemoryRepository implements Repository {
     return [...this.#events.values()].map(clone);
   }
 
+  // ── Reservation catalog (DEC-123/125) ───────────────────────────────────────
+  async listOfferings(): Promise<Offering[]> {
+    return [...this.#offerings.values()].map(clone);
+  }
+  async getOffering(id: OfferingId): Promise<Offering | null> {
+    const o = this.#offerings.get(id);
+    return o ? clone(o) : null;
+  }
+  async saveOffering(offering: Offering): Promise<void> {
+    this.#offerings.set(offering.id, clone(offering));
+  }
+  async listLocations(): Promise<Location[]> {
+    return [...this.#locations.values()].map(clone);
+  }
+  async getLocation(id: LocationId): Promise<Location | null> {
+    const l = this.#locations.get(id);
+    return l ? clone(l) : null;
+  }
+  async saveLocation(location: Location): Promise<void> {
+    this.#locations.set(location.id, clone(location));
+  }
+  async listBlocks(): Promise<Block[]> {
+    return [...this.#blocks.values()].map(clone);
+  }
+  async saveBlock(block: Block): Promise<void> {
+    this.#blocks.set(block.id, clone(block));
+  }
+  async removeBlock(id: BlockId): Promise<void> {
+    this.#blocks.delete(id);
+  }
+
   // ── Coexistence partition — Muster-owned vessel-days (DEC-106) ───────────────
   async listMusterOwnedVesselDays(): Promise<MusterOwnedVesselDay[]> {
     return [...this.#musterOwnedVesselDays.values()].map(clone);
@@ -267,6 +397,31 @@ export class InMemoryRepository implements Repository {
       `${String(vesselId)}|${date}`,
       clone({ vesselId, date, markedAt }),
     );
+  }
+
+  // ── Payments (DEC-107) ──────────────────────────────────────────────────────
+  async getPaymentConfig(): Promise<PaymentConfig> {
+    return { ...PAYMENT_CONFIG_DEFAULTS, ...this.#paymentConfig };
+  }
+  async setPaymentConfig(patch: Partial<PaymentConfig>, _at: string): Promise<void> {
+    this.#paymentConfig = { ...this.#paymentConfig, ...patch };
+  }
+  async savePayment(payment: Payment): Promise<void> {
+    // Insert-only (mirrors the postgres `on conflict do nothing`): a payment row is
+    // immutable once written, so a re-delivered webhook is a no-op, not an overwrite.
+    if (!this.#payments.has(payment.id)) this.#payments.set(payment.id, clone(payment));
+  }
+  async getPayment(id: PaymentId): Promise<Payment | null> {
+    const p = this.#payments.get(id);
+    return p ? clone(p) : null;
+  }
+  async listAllPayments(): Promise<Payment[]> {
+    return [...this.#payments.values()].map(clone);
+  }
+  async listPaymentsForReservation(reservationId: ReservationId): Promise<Payment[]> {
+    return [...this.#payments.values()]
+      .filter((p) => p.reservationId === reservationId)
+      .map(clone);
   }
 
   // ── Reservations ───────────────────────────────────────────────────────────
@@ -284,6 +439,118 @@ export class InMemoryRepository implements Repository {
   }
   async listAllReservations(): Promise<Reservation[]> {
     return [...this.#reservations.values()].map(clone);
+  }
+  async saveReservationIfUnclaimed(reservation: Reservation): Promise<boolean> {
+    // Single-threaded JS makes this trivially atomic; the contract it upholds is what
+    // matters — the Postgres adapter enforces the same whole-boat mutex under real
+    // concurrency (DEC-109). Absent event ⇒ false (mirrors saveSeatIfState). The claim
+    // is source-scoped (only active `muster` reservations block) and idempotent on id
+    // (a re-put of the same reservation never blocks itself, never duplicates).
+    if (!this.#events.has(reservation.eventId)) return false;
+    const blocked = [...this.#reservations.values()].some(
+      (r) =>
+        r.eventId === reservation.eventId &&
+        r.source === "muster" &&
+        r.status === "booked" &&
+        r.id !== reservation.id,
+    );
+    if (blocked) return false;
+    this.#reservations.set(reservation.id, clone(reservation));
+    return true;
+  }
+
+  async saveBookingIfSlotFree(
+    event: Event,
+    reservation: Reservation,
+  ): Promise<{ result: "won"; eventId: EventId } | { result: "lost" }> {
+    // Single-threaded JS ⇒ trivially atomic; the Postgres adapter enforces the same under
+    // real concurrency (partial-unique index + row lock). (1) find-or-materialize the Muster
+    // Event at this slot identity — one row per physical boat-slot (DEC-125 guardrail).
+    const key = slotIdentity(event.vesselId, event.date, event.time);
+    let existing = [...this.#events.values()].find(
+      (e) =>
+        e.source === "muster" &&
+        e.status === "scheduled" &&
+        slotIdentity(e.vesselId, e.date, e.time) === key,
+    );
+    if (!existing) {
+      this.#events.set(event.id, clone(event));
+      existing = event;
+    }
+    const eventId = existing.id;
+    // (2) whole-boat mutex against the actual event id — source-scoped, idempotent on id.
+    const blocked = [...this.#reservations.values()].some(
+      (r) =>
+        r.eventId === eventId &&
+        r.source === "muster" &&
+        r.status === "booked" &&
+        r.id !== reservation.id,
+    );
+    if (blocked) return { result: "lost" };
+    this.#reservations.set(reservation.id, clone({ ...reservation, eventId }));
+    return { result: "won", eventId };
+  }
+
+  // ── Checkout holds (12.1, DEC-109) ──────────────────────────────────────────
+  async acquireCheckoutHold(
+    hold: CheckoutHold,
+  ): Promise<{ acquired: true; hold: CheckoutHold } | { acquired: false }> {
+    const key = slotIdentity(hold.vesselId, hold.date, hold.time);
+    // Delete any EXPIRED hold for this identity first (so a stale row can't block a fresh
+    // acquire); "now" = the incoming hold's createdAt — same reference the pg adapter uses,
+    // keeping the two behaviorally identical under the contract.
+    for (const [id, h] of this.#checkoutHolds) {
+      if (
+        h.source === "muster" &&
+        slotIdentity(h.vesselId, h.date, h.time) === key &&
+        h.expiresAt <= hold.createdAt
+      ) {
+        this.#checkoutHolds.delete(id);
+      }
+    }
+    const live = [...this.#checkoutHolds.values()].find(
+      (h) =>
+        h.source === "muster" &&
+        slotIdentity(h.vesselId, h.date, h.time) === key &&
+        h.expiresAt > hold.createdAt,
+    );
+    if (live) {
+      // A live hold holds the slot. Idempotent iff it's our own id; else the rival won.
+      return live.id === hold.id
+        ? { acquired: true, hold: clone(live) }
+        : { acquired: false };
+    }
+    this.#checkoutHolds.set(hold.id, clone(hold));
+    return { acquired: true, hold: clone(hold) };
+  }
+  async listCheckoutHolds(): Promise<CheckoutHold[]> {
+    return [...this.#checkoutHolds.values()].map(clone);
+  }
+  async removeCheckoutHold(id: CheckoutHoldId): Promise<void> {
+    this.#checkoutHolds.delete(id);
+  }
+  async removeCheckoutHoldForSlot(
+    vesselId: VesselId,
+    date: string,
+    time: string,
+  ): Promise<void> {
+    const key = slotIdentity(vesselId, date, time);
+    for (const [id, h] of this.#checkoutHolds) {
+      if (h.source === "muster" && slotIdentity(h.vesselId, h.date, h.time) === key) {
+        this.#checkoutHolds.delete(id);
+      }
+    }
+  }
+
+  // ── Gratuity (12.3, DEC-124) ────────────────────────────────────────────────
+  async saveGratuity(gratuity: Gratuity): Promise<void> {
+    this.#gratuities.set(gratuity.id, clone(gratuity)); // deterministic id ⇒ idempotent
+  }
+  async listGratuitiesForEvent(eventId: EventId): Promise<Gratuity[]> {
+    return [...this.#gratuities.values()].filter((g) => g.eventId === eventId).map(clone);
+  }
+  async listAllGratuities(): Promise<Gratuity[]> {
+    return [...this.#gratuities.values()].map(clone);
   }
 
   // ── Shifts ─────────────────────────────────────────────────────────────────

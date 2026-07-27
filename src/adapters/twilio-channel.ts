@@ -26,10 +26,12 @@
  */
 
 import { issueMagicLink, randomSecret } from "../auth/magic-link.js";
-import type {
-  ChannelPort,
-  OutboundMessage,
-  SendResult,
+import type { CrewMemberId } from "../domain/ids.js";
+import {
+  type ChannelPort,
+  type OutboundMessage,
+  requireCrewId,
+  type SendResult,
 } from "../ports/channel.js";
 import type { AssignmentNotice, NoticePort } from "../ports/notice.js";
 import type {
@@ -119,21 +121,21 @@ export class TwilioChannel implements ChannelPort, NoticePort, NotificationPort 
       // Doorbell ring (DEC-073): body is composed (summary/content) by
       // forwardNotifications; the link deep-links into the thread.
       const link = await this.#mintLink(
-        message.to.crewMemberId,
+        requireCrewId(message.to),
         `&thread=${encodeURIComponent(String(message.threadId))}`,
       );
       text = `${message.body}\n${link}`;
     } else if ("action" in message) {
       // Assignment notice (DEC-084): body composed + frozen by forwardNotices;
       // the link signs the crew member into their my-shifts view.
-      const link = await this.#mintLink(message.to.crewMemberId);
+      const link = await this.#mintLink(requireCrewId(message.to));
       text = `${message.body}\n${link}`;
     } else if (message.kind === "ask") {
       // The ask (DEC-030): same 24h answer-window link the web-link relay
       // mints — the crew member taps, lands authenticated on In/Out, and
       // answers through `recordResponseAndConfirm`. No inbound SMS parsing.
       const link =
-        message.link ?? (await this.#mintLink(message.to.crewMemberId));
+        message.link ?? (await this.#mintLink(requireCrewId(message.to)));
       text = `${message.body}\n${link}`;
     } else {
       // magic_link / receipt: the body (and optional link) arrive composed.
@@ -145,7 +147,7 @@ export class TwilioChannel implements ChannelPort, NoticePort, NotificationPort 
 
   /** Fresh one-time crew magic link (mint-at-send, DEC-030) — 24h TTL. */
   async #mintLink(
-    crewMemberId: OutboundMessage["to"]["crewMemberId"],
+    crewMemberId: CrewMemberId,
     extraQuery = "",
   ): Promise<string> {
     const { secret } = await issueMagicLink(

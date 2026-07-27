@@ -165,9 +165,13 @@ _• **row + "amended by DEC-N"** — the DEC still governs, but one leg was rep
 - DEC-123 — reservations gets its own calendar + catalog + purchases area
 - DEC-124 — tips = collect-and-expose via `xola-tip-extractor`
 - DEC-125 — virtual availability — schedule is a rule; `Event` materializes on state
+- DEC-140 — SPEC §1.3 rewritten to the DEC-125 model: availability is two mechanisms, not one rule engine
 - DEC-126 — the flip = a cutover with a one-time full Xola import (reversible)
 - DEC-132 — `Customer` = contact record keyed by phone (surrogate PK + unique E.164)
+- DEC-122 — customer booking link: stateless HMAC capability-URL + guest confirmation emit
 - DEC-133 — the customer availability screen is server-rendered; the guest stepper is the one client island
+- DEC-134 — customer checkout is inline Stripe Elements over a deferred PaymentIntent
+- DEC-135 — the "Your booking" manage page: view + post-tip + cancel/change-as-request (self-service cancel deferred)
 - DEC-138 — the booking flow ships as an embeddable iframe widget (BrewBoat rollout + multi-tenant seam)
   _(⚠️ **id collides across branches** — `feature/reservations` DEC-138 is the SPEC §1.3 rewrite. #562)_
 - DEC-139 — payments = Stripe card checkout only; no Apple Pay / wallets
@@ -2825,6 +2829,11 @@ BrewBoat need — would require per-event capacity reconciliation).
 ## DEC-107: Payments — Stripe hosted Checkout, deposit + balance, webhook-driven booking write
 
 **Status:** Decided 2026-07-11 (Eric + @architect, under DEC-105). New dependency: the `stripe` Node SDK.
+**⚠️ The hosted-Checkout decision below was REVERSED for the customer booking charge by DEC-134 (12.5)** —
+that charge is now an **inline Stripe Payment Element** over a deferred PaymentIntent. Hosted Checkout
+survives only for **balance** and **post-trip gratuity**. Everything else here — deposit + balance as the
+model, webhook-driven write, the sailbook charge/refund lift, the parked refund cascade — still stands.
+Read DEC-134 before acting on the Decision paragraph.
 
 **Context.** Muster-native bookings need to take money. The operator chose **deposit + balance** over
 full-upfront (the closer match to how Xola works, which matters for a Xola replacement).
@@ -3042,6 +3051,13 @@ proves out and the flag becomes permanent-on (then retire the flag at the Phase 
 
 **Status:** Decided 2026-07-11 (@architect + Eric, under DEC-105/107 — verified reservations model,
 `docs/design/reservations-model.md`).
+**Its own "revisit if" has since fired.** The `Offering` catalog landed in P12 (DEC-123,
+`20260720100500_offering_catalog_fields.sql`), so the deferred **default cascade now exists**:
+`src/reservations/availability.ts` resolves `offering.priceVariations` against the date and falls back to
+`offering.basePriceCents`, applying either a `deltaCents` or a `percent` adjustment. The P11 statement
+below — "resolution order is `Event.price` only … no `Offering`/schedule default cascade" — describes the
+Phase 11 world and is retained as the record of why the column was added; it is no longer the whole
+resolution path.
 
 **Context.** The operator confirmed (2026-07-11) that **each individual event can carry its own price** —
 per-event pricing, not a flat experience rate. (Xola models a per-schedule price variation — Prime Sat +$50,
@@ -3071,12 +3087,23 @@ product (`docs/design/the-booking-1.md §4`, `the-living-link-1.md §5`; confirm
 
 **Decision.** Insurance is a **boolean on the reservation** that flips which tier the refund policy reads
 (BrewBoat: 14-day free-cancel → 72-hour) — **not** a general add-on / line-item and **not** a questionnaire
-field. It rides the existing `terms` argument of `refund_owed(who, when, paid, terms)`; **no new machinery**.
+field. It rides the `terms` argument of `refund_owed(who, when, paid, terms)`; **no new machinery**.
 **General add-ons stay parked** — model as Xola `item.addOns[]` only if ever built. The flag is **inert until
 refund-policy-as-code exists**, which is **Phase 12** and **owner-gated (Drew — refund tiers)**; it is **not
 required for the Phase 11 exit gate** (one paid booking) and adds **no** field to the throwaway P11 harness.
 Recording now fixes the *shape* so it isn't later built as a priced product. **Revisit if:** the operator
 ever wants true multi-add-on selling (then reopen as `item.addOns[]`, a conscious scope widen).
+
+> **Two corrections (2026-07-25).**
+> 1. **`refund_owed` does not exist.** It is a `SPEC.md` §3.3 formula, and §3.3 is **parked** by DEC-107.
+>    So "no new machinery" means *no new machinery beyond the refund policy itself*, which is still
+>    unbuilt — DEC-135 confirms the #472 refund policy does not exist. **Flex-insurance remains
+>    unimplemented**, consistent with everything above; nothing to reconcile in code.
+> 2. **The "general add-ons stay parked" revisit fired.** Add-ons shipped as a **first-class entity**
+>    (`20260721000000_add_ons_entity.sql`, #491), a twin to `vessels`/`locations` that offerings attach
+>    by id — a wider scope than the `item.addOns[]` reopen this DEC anticipated. That widen belongs to
+>    DEC-123's catalog, not here. **What survives, and is the reason this DEC exists:** flex-insurance
+>    is still a *policy boolean*, **not** one of those add-on rows. Do not model it as one.
 
 ---
 
@@ -3381,6 +3408,89 @@ other than filename sort.
 
 ---
 
+## DEC-107 amendment (11.2b) — on-demand balance collection
+
+**Status:** Decided 2026-07-13 (@architect, under DEC-107).
+
+Balance is collected **on demand** (the auto-emit scheduler that reads `balanceDueDaysBeforeEvent`
+stays P12+). **Amount authority is the canonical deriver `balanceOwedCents`, computed at click time** —
+never a config recompute of the deposit share, so it can't drift when `depositPercent`/price change
+between deposit and balance (the `Payment` entity already mandates balance be *derived, never stored*).
+It sums only `status==='succeeded'`, so a future refund re-opens the balance through the same one
+function.
+
+> **Formula, as it stands after #474 and DEC-134** (this paragraph originally read
+> `(event.price + tax) − Σ succeeded payments`, which is now under-specified in two ways):
+> ```
+> balanceOwedCents = fareCents + tax(fareCents)
+>                  − Σ succeeded (amountCents − gratuityCents − serviceFeeCents)
+> ```
+> - **`fareCents` is the composed party fare** — `event.price` **+** the frozen
+>   `Reservation.extrasCents` (#474), not the bare base. The base alone undercollects a
+>   deposit-mode balance by `extras + tax(extras)`.
+> - **Gratuity and the service fee are netted out of each paid amount** (DEC-124 / DEC-134). The tip
+>   is crew money and the fee is a one-shot surcharge; counting either as "paid toward balance" would
+>   under-charge a deposit booking. The balance stays pure remaining principal + its tax.
+>
+> Implementation: `src/reservations/payment-config.ts`.
+
+The **Stripe Checkout URL, re-minted per request, is the balance link** — no durable/custom token (and no
+dependency on 11.4's `booking-link.ts`); a re-minted link always reflects the current outstanding balance.
+
+The webhook **routes on `metadata.purpose`**: `"balance"` records a `Payment{kind:'balance'}` against the
+existing reservation (**no `writeBooking`, no confirmation emit** — the boat was claimed at deposit,
+DEC-109); absent/`"booking"` keeps the existing spine; any **other** purpose is loudly flagged and NOT
+booked (a non-booking session has no `eventId` → would orphan a reservation). **Overpay** from a
+two-session race is recorded (the money moved) then loudly flagged for a **manual** refund — consistent
+with the DEC-107 paid-but-unbooked posture; nothing auto-refunds. Balance is never stored on `Reservation`
+(DEC-105/106); the payment log is the sole source of truth. No migration (`payments` table + `kind:'balance'`
+already exist). Trigger for now is the `db:balance` CLI; the customer-facing email/page is P12.
+
+---
+
+## DEC-122: Customer booking link — stateless HMAC capability-URL + guest confirmation emit (renumbered from DEC-119 at the feature→main merge — main's DEC-119 is recurring weekday-off #411; 11.4, #370; extends DEC-020/098/108)
+
+**Status:** Decided 2026-07-13 (@architect, under DEC-105/108).
+
+**Context.** 11.4 must give a Muster-native reservation a "manage my booking" link and email + SMS it to the
+customer on booking. The existing capability link (`src/auth/magic-link.ts`) is **single-use** (consumed on
+first verify) — wrong for a link the customer re-opens. And the send seam (`ChannelPort`) only addresses a
+crew member (`Recipient.crewMemberId` required); a booking customer has email/phone, no crew id.
+
+**Decision.** The manage link is a **stateless HMAC capability**:
+`token = base64url(HMAC-SHA256(RESERVATION_LINK_SECRET, "reservation-link:v1:" + reservationId))`,
+`URL = ${linkBase}/reservations/manage?r=<id>&t=<token>`. A **dedicated secret env
+`RESERVATION_LINK_SECRET`** (per-purpose-secret convention, DEC-020; separate from `SESSION_SECRET` so link
+rotation never logs anyone out). **No stored token row, no migration** — the verifier (the P12 manage page)
+re-derives and constant-time-compares. NOT reusing magic-link's single-use CAS (a manage link must be
+re-openable) and NOT touching `writeBooking`'s race-critical CAS.
+
+- **Departure from DEC-098 (recorded):** DEC-098's persistent bearer is stored hash-at-rest with
+  regenerate/turn-off; this one has **no stored row and no per-link revocation** — a leaked link dies only by
+  rotating the secret (invalidates all booking links, not sessions). **Accepted** because the protected asset
+  is view + request-cancel-out-of-band (money already moved through Stripe), not account/payment creds. A
+  stored-token upgrade is a P12 drop-in if a threat model demands revocation — `booking-link.ts` is the only
+  thing that changes.
+
+**Guest confirmation.** Confirmation (email + SMS, both carrying the link inline) emits on the webhook's
+**`booked` outcome ONLY** — never `already` (Stripe redeliveries resolve to `already`; sending there
+re-notifies the customer every retry). The recipient is modeled as a **discriminated `GuestRecipient`**
+(email/phone, no `crewMemberId`), **not** by widening `Recipient.crewMemberId` to optional — the crew
+"always has a crewMemberId" invariant stays compiler-enforced (crew adapters narrow via `requireCrewId`).
+Send is **structurally best-effort** — a confirmation failure (a channel send OR anything upstream: env, repo,
+wiring) can never 500 the webhook (a committed booking → a 500 → Stripe retries the whole event); the core
+webhook guards its `sendConfirmation` call AND the app wiring wraps its whole body, so the promise holds at
+both layers. It fires for **whichever channels exist** (a booking may be email-only or phone-only); a failure
+emits a **low-severity** observer (durable log / admin notice), distinct from the urgent `alertPaidButUnbooked`
+money path. The
+confirmation SMS is **transactional, not marketing** — it does not route through the crew `SmsConsent` gate.
+
+**Release gate.** 11.4 ships the token **generator**; the **verifier** (manage page) is **P12**. Between the two,
+an emitted link 404s — so the DEC-108 "Book Now" flag must **not** point real customers at Muster until P12
+lands. (The Phase 11 exit gate only requires the link *emitted*, so this doesn't block building 11.4.)
+
+**MESSAGING flag.** The #390 kill-flag isn't on `feature/reservations` yet; the wiring reads
+`process.env.MESSAGING !== "false"` defensively now, to reconcile at merge. **Copy + the manage page are P12.**
 ## DEC-123: Reservations gets its own calendar — customer-centric, beside the crew-centric shift view; plus a net-new catalog and purchases/customers area
 
 **Status:** Accepted (operator, 2026-07-15, S54) — the two-surface call is the operator's; the rest is
@@ -3876,6 +3986,26 @@ importer-created customers (not needed until cutover); "Edit contact"; and "Mess
 
 **Accepted wrinkle:** guest count is client state, NOT in the URL, so it resets to the default when the date or time changes (those are server navs that re-render from scratch). The natural order is date → time → guests → continue, so it rarely bites; revisit (carry `guests` in the URL, or make slot links client-aware) only if it does. **Refines:** DEC-021/042 (palette + no-JS posture), the server-rendering-default working rule. Companion: DEC-125 (whole-boat availability the screen reads), DEC-132 (the customer it books for).
 
+## DEC-134: Customer checkout is inline Stripe Elements over a deferred PaymentIntent; hosted Checkout remains for balance + post-gratuity (12.5, #458; revisits DEC-107/108 as DEC-108 anticipated)
+
+**Decision:** the customer booking charge moves off hosted Stripe Checkout onto an **inline Payment Element** at `/book/checkout` — the card widget lives in our page, styled with our tokens, no redirect. The Element mounts in **deferred mode** (amount + currency only; NO PaymentIntent exists at page load), so tip-tile changes just update the amount client-side (`elements.update`). "Book & pay" runs `createDeparturePaymentIntent`: waiver gate → gratuity gate → the 15-min hold (DEC-109) → price the held slot → freeze every money field into `stripe.paymentIntents.create` metadata → the client confirms against the returned `clientSecret`.
+
+**The webhook handles BOTH event types** (the port's `parseEvent` union): `payment_intent.succeeded` books through the same `writeSlotBooking` spine with **idempotency key = the PaymentIntent id** (Payment `pay_${pi}`, pre-gratuity `grat_pre_${pi}`, residual-race refund `refund_${pi}`); `checkout.session.completed` keeps driving the still-hosted balance + post-gratuity flows unchanged. **Double-write guard:** every hosted session's underlying PI *also* emits `payment_intent.succeeded` — so the handler processes ONLY intents whose metadata carries `purpose`, and `createCheckoutSession` never sets `payment_intent_data.metadata`. A hosted charge's bare PI is acked-and-ignored: one charge, one booking, structurally. *Ops:* the Stripe dashboard webhook endpoint must subscribe to `payment_intent.succeeded` alongside `checkout.session.completed`.
+
+**Service fee (operator-decided):** `serviceFeeBps` on `PaymentConfig` (default 300 = 3%) × the **fare** (base + extras) — independent of tax and tip. Charged **in full once, with the deposit charge** (same posture as tax); the later balance charge carries NO fee. Frozen as `serviceFeeCents` in PI metadata + recorded on the `Payment` (new `payments.service_fee_cents`), and **netted out of `balanceOwedCents`** exactly like `gratuityCents` — the balance stays pure remaining principal + its tax. Tax stays `taxRateBps` (725, not the mockup's 5.2%); tip stays DEC-124 (15/20/25 tiers, 20% preselected, required).
+
+**New deps:** `@stripe/stripe-js` + `@stripe/react-stripe-js`, loaded lazily inside the one checkout client island (the DEC-133 posture holds — everything else on the screen server-renders). `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` is **build-inlined** (the `<VersionTag/>` v0.0.0 trap): a missing key renders a loud configuration-error state, never a silently-broken Element. The 11.6 throwaway booking harness (`startBooking`) retires — `/book/checkout` is the real front door.
+
+## DEC-135: The "Your booking" manage page ships view + post-tip + cancel/change-as-request; self-service cancel is deferred (12.6, #459)
+
+**Decision:** the capability-URL manage page (`/reservations/manage`, DEC-122) ships its read surface (both trip-time states: **upcoming** = trip + balance; **completed** = post-trip tip + receipt), the DEC-124 **post gratuity** (hosted Checkout), **add-to-calendar** (a token-gated `.ics`), **book-again**, and the contact's **other trips**. The money reuses `buildReservationDetail` (one source of truth with the admin pane); the customer extras live in a pure `manage-view.ts` (phase flip, post-tip tiers, back-by/arrive-by).
+
+**Cancel & change are option (b): an out-of-band request emailed to the operator**, NOT self-service. Self-service cancel-with-refund is deferred — it needs the #472 refund policy (the DEC-107 amendment) *and* Flex-insurance-on-reservation wiring (add-ons aren't attached to reservations yet), neither of which exists. Rather than fake "self-service for Flex holders," the customer requests a cancel/change and the operator handles it manually (the model `booking-link.ts` already described). Option (c) — real self-service — layers on later; (b) is needed regardless. Delivery: a best-effort email to `OPERATOR_NOTIFY_EMAIL` via a new `booking_request` `MessageKind` (the app had no operator-email-alert path — the webhook's own admin alert is still a `console.error` TODO; this is the first, minimal one). "Message us reaches the operator, never the crew" (mockup, 2026-07-17).
+
+**Bearer-token loosening recorded (DEC-122):** the manage page lists the *contact's other reservations* (by `customerId`), each with its own minted link — so holding any one link surfaces that contact's trips. Accepted (same person), a conscious loosening.
+
+**Deferred to follow-ups (infra not built):** crew NAMES (the view model gives counts, not names); the guest waiver roster ("N of M signed" — there's no per-attendee roster, DEC-110 is one consent row); leave-a-review; email-the-receipt; and the date/time *reschedule* (re-hold + re-price is its own feature). The re-estimate: the full mockup is an 8+, not the issue's 5 — this ships the honest core and flags the rest. **Depends on DEC-134** (reads `Payment.serviceFeeCents` for the "Tax + service fee" line — 12.6 stacks on 12.5).
+
 ## DEC-138: The customer booking flow ships as an embeddable widget — the BrewBoat rollout path and the multi-tenant seam
 
 **Status:** Decided 2026-07-20 (Eric + design). Extends DEC-105 (Phase 11–12 booking) as a mechanism DEC under it. Reflected in the booking mockups (`the-booking-1.md` §8, `availability-picker` + `booking-form`).
@@ -3952,3 +4082,80 @@ human owner) before building past the trigger.**
   *content* (vs a bare "tap to open" ping) is a different TCPA / content posture than the
   strictly-transactional ask (DEC-MSG-1). *Owner: Drew + the 10DLC registration — confirm which
   message types / lengths qualify before the SMS doorbell adapter ships.*
+
+---
+
+## DEC-140: SPEC §1.3 rewritten to the DEC-125 model — availability is two mechanisms, not one rule engine; COI-expiry and lead-time cutoff closed as out of scope
+
+*(Authored on `feature/reservations` as DEC-138; **renumbered to DEC-140 at the 2026-07-27 merge** —
+`main` had independently taken 138 for the embeddable-booking-widget decision. Numbers are allocated on
+`main` from now on: a branch takes the next free number at merge time. See #562.)*
+
+**Status:** Decided 2026-07-25 (Eric + Claude, under DEC-105/125). Doc-only — **no code change**.
+Triggered by the 2026-07-25 doc-consistency audit, shard C
+(`docs/audit/2026-07-25/shard-C-asks-shifts.md`).
+
+**Context.** SPEC §1.3 specified a single **rule engine**: one merged list of property and crew
+rules, a `Verdict` object (`{ bookable, status, failures, deferred, recheckBy }`), per-rule
+`hard | soft` severity with tenant downgrade-to-warn, and `first-fail` / `collect-all` evaluation
+modes. The audit found none of that exists. What exists is **two** mechanisms with different shapes:
+booking availability as **set subtraction** (DEC-125) and crew eligibility as **six hard
+per-candidate rules** (`src/oracle`). §1.3 read as a description of the system; it was a description
+of a system that was never built, and it had accumulated enough authority to be cited as the plan.
+
+The audit deliberately did **not** propose an edit, because "why is this unimplemented" and "is this
+still the plan" are different questions and only the operator can answer the second.
+
+**Decision.** §1.3 is **rewritten to describe what shipped**, keeping the two insights that survive
+and explicitly parking the rest.
+
+1. **Two questions, two mechanisms — stated up front.** "Can a customer book this boat?" is answered
+   by the DEC-125 computed set (`open slots = schedule × vessels × dates × muster-owned-days −
+   blocks − bookings`). "Who may crew this seat?" is answered by `src/oracle`. Conflating them was
+   the original error; the rewrite leads with the distinction.
+2. **The old property rules are re-homed, not deleted.** §1.3 now carries a mapping table showing
+   where each landed — season/daily-hours into the schedule term, maintenance/haul-out and blackouts
+   into `Block` variants, vessel-double-booking into the slot-identity guardrail, pax-vs-COI into
+   `canBook`. Two are recorded as genuinely partial or absent: **no per-offering minimum party size**,
+   and **no booking turnaround buffer** (the `turnaround` in `src/builder/derive.ts` is the crew
+   fatigue call, a different concept sharing the word).
+3. **The satisfiability finding survives verbatim** — it is still the most important architectural
+   point, and its resolution is unchanged: the eligible pool is computed upstream of the ask (§1.1),
+   so the problem collapses into a filter on *who gets asked* rather than a solver.
+4. **The two horizons survive; `deferred` is resolved into the state machine.** A shift outside its
+   staffing horizon is `Pending` — crew rules abstain, they do not fail. The "N trips booked inside
+   the staffing window, no crew assigned" worklist §1.3 promised **exists**, by a different
+   mechanism: the Shift Builder derives shifts from vessel manning **source-agnostically**, so a
+   Muster-sold event staffs exactly like a Xola-imported one, and a shift that cannot be crewed
+   escalates to `At-Risk` (§1.2 Tier 3). The concept shipped; the `Verdict` wrapper did not.
+5. **Parked, with no current consumer** (Muster is single-tenant): `hard | soft` severity with tenant
+   downgrade, the `Verdict` object, `first-fail`/`collect-all` modes, and the tenant-configurable "M"
+   rules (TWIC, medical, drug consortium, duty-hour, daylight/tide, weather).
+
+**Two questions closed on the record**, so no future audit re-raises them as gaps:
+
+- **COI expiry is NOT a booking rule and will not become one (operator, 2026-07-25).** For BrewBoat
+  the inspection date is known well in advance and is not missed; the boat passes. The failure mode a
+  COI-expiry check would guard is one in which a Muster banner is the least of the operator's
+  problems. *The asymmetry with crew is deliberate and correct:* `mmc_valid_on_date` **is** enforced,
+  because a lapsed individual credential is a routine, silent, per-person event across a roster. A
+  vessel certificate on a single hull under direct operator attention is not the same class of risk.
+- **No lead-time cutoff.** It would block the flow §1.2 calls the payoff — the autonomous
+  last-minute booking ("customer books Sat-evening on Friday night → shift is born straight into
+  `Filling` → Tier 1 fires"). Refusing short-notice bookings would delete an emergent behavior the
+  spec treats as a feature. The *better* shape for short notice — hold the slot, find crew, then
+  confirm the booking, so you never sell what you cannot staff — is **parked** in
+  `docs/FUTURE_IDEAS.md` rather than built. `CheckoutHold` is the existing primitive it would extend.
+
+**Alternatives considered.** *Build §1.3 as specified* — rejected: a rule engine with soft severity
+and tenant downgrade is multi-tenant generality for a single-tenant product, and the set-subtraction
+model is a better fit for whole-boat charter than per-rule evaluation. *Delete §1.3* — rejected: the
+satisfiability finding and the two-horizon frame are load-bearing and cited from §1.1 and §1.2.
+*Leave it and annotate* — rejected: the section's failure was that it read as descriptive; a banner
+on top of eighty lines of wrong description does not fix that.
+
+**Schema:** none. Doc-only.
+
+**Revisit if:** Muster becomes multi-tenant (soft severity and tenant rule-downgrade come back), or
+the cutover (DEC-126) surfaces a booking-time constraint the set-subtraction model cannot express —
+at which point the parked `Verdict` machinery is the place to start, not a fresh design.

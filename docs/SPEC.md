@@ -245,85 +245,116 @@ per-person override toggle. Default contested-seat winner is **first-acceptable-
 rollout (simple, matches Spink's instinct, feels fair); **best-by-score** is a knob to flip once
 reliability data is trusted. The two mostly agree — they diverge only when a flake answers first.
 
-## 1.3 The availability oracle
+## 1.3 Availability — two questions, two mechanisms
 
-One authoritative function; everything queries it, nobody computes availability independently.
-A **rule engine** (synchronous "may I?" evaluator) — explicitly *not* an event engine.
+> **Rewritten 2026-07-25 (DEC-138).** This section previously specified a single **rule engine**: one
+> merged list of property and crew rules, a `Verdict` object, per-rule `hard | soft` severity with
+> tenant downgrade, and `first-fail` / `collect-all` evaluation modes. **That framing is superseded.**
+> Two separate mechanisms shipped instead, and the old prose described neither. The *insights* it
+> recorded — two horizons, and "crew rules are not independent booleans" — survive and are kept below.
 
-### Policy / mechanism split
-- **Policy** = the rules. Tenant-owned data/config.
-- **Mechanism** = the generic engine that runs them.
+Two different questions wear the word "availability." Different code, different shapes. Conflating
+them is the mistake the old §1.3 made.
 
-### Rule contract
-Every rule `reads` a slice of state and `returns { passed, severity, reason, ruleId }`:
-- `severity`: **hard** (blocks) or **soft** (warns; tenant can downgrade a rule to warn-only).
-- `reason`: **structured payload, not a sentence** — the admin views need the detail (especially
-  the crew group's per-candidate failure reasons).
+| Question | Mechanism | Lives in |
+|---|---|---|
+| **"Can a customer book this boat?"** | Set subtraction over a schedule | `src/reservations/availability.ts` |
+| **"Who may crew this seat?"** | Per-candidate rule evaluation | `src/oracle/` |
 
-### Evaluation mode (a caller-supplied parameter, one code path)
-- `first-fail` — bail on first hard failure. Customer booking flow, "open slots" view.
-- `collect-all` — evaluate everything, return all failures. Admin reschedule screen ("no captain
-  **and** vessel in haul-out").
+### Booking availability — a computed set (DEC-125)
 
-### Two horizons (per-rule setting)
-A rule outside its horizon does not fail — it **abstains** (`deferred` / not-yet-evaluated). The
-verdict vocabulary is **pass / fail / deferred**, never pass/fail/maybe.
-- **Booking horizon** — knowable far out, gates the sale. Property rules vote here.
-- **Staffing horizon** — N days before the trip, when humans get committed. Crew rules vote here.
+Muster does not write an `Event` row per potential departure. An `Offering` **plus its schedule is a
+rule**; open availability is **computed on read**, and a row materializes only once a slot acquires
+state — a booking, a hold, or a block:
 
-> **⏳ RESERVED (v0.2 — not v1): the staffing horizon may be *staged*.** v1 has one staffing
-> horizon (a single threshold where crew rules wake up and humans get committed). Progressive
-> commitment (§4 parked) generalizes this to an **ordered list of checkpoints** — earlier *soft*
-> horizons that bank tentative willingness, converging on the existing *hard* horizon that commits
-> real bodies. Model the staffing horizon as a list-of-one, not a scalar, so adding earlier
-> checkpoints later isn't a retrofit.
-
-`Deferred` is first-class: it makes a booking *provisional* and feeds the admin worklist ("N trips
-booked inside the staffing window, no crew assigned") — the operational view Xola cannot produce.
-
-### The crew satisfiability finding (the most important architectural point)
-Crew rules are **not independent booleans**. Evaluated separately they lie: Captain A is free but
-his MMC lapsed; Captain B is current but already booked — every rule passes about a *different
-person*, so the naive shape returns a false yes. The crew cluster is therefore **one composite
-rule** solving a satisfiability problem over a shared human pool: *is there an assignment of real
-people to every required seat such that each is simultaneously available, not double-booked, and
-credential-valid on the trip date?* It returns "yes, here's a valid assignment" or "no, here's why
-each candidate failed" — hence the structured `reason`.
-
-- **Property rules** stay clean independent booleans.
-- **Crew rules collapse into the one composite rule.**
-- The full solve only runs **inside the staffing horizon**; outside it the crew group abstains and
-  at most does a cheap "could this ever plausibly be crewed" sanity check. Two horizons, two levels
-  of rigor.
-
-### The oracle evaluates a hypothetical world
-Relational rules (turnaround buffer, double-booking) read *neighboring* bookings and can fail
-because the new trip would crowd an existing one. The oracle evaluates **the world as it would be
-if this booking existed**, not the world as it is.
-
-### Verdict object (sketch)
 ```
-Verdict {
-  bookable: boolean          // hard rules all passed (or deferred)
-  status: 'pass' | 'fail' | 'deferred'
-  failures: RuleResult[]     // populated per mode; structured reasons
-  deferred: RuleResult[]     // rules abstaining until their horizon
-  recheckBy?: date           // earliest horizon among deferred rules
-}
+open slots = schedule × vessels × dates × muster-owned-days − blocks − bookings
 ```
 
-### Rule list (verdicts)
-Property rules (booking horizon): vessel not double-booked · COI valid on date · pax ≤ COI max
-(**supernumerary crew count against this**) · not in maintenance/haul-out · lead-time cutoff · min/max
-pax · within season · within daily hours · blackout dates · turnaround buffer (relational). Crew
-rules (staffing horizon, composite): qualified captain available & not booked elsewhere · captain
-MMC valid on date · minimum manning met · crew not double-booked same slot · crew marked available
-(not PTO). Tenant-configurable soft/"M" rules (ship as warn-only or omit for BrewBoat v1): fuel/
-cleaning turnaround · TWIC · medical cert · drug-testing consortium · duty-hour/rest · daylight/tide
-window · weather/small-craft-advisory. **Not the oracle's job ("N"):** waiver (check-in gate),
-payment (booking flow), coupon (pricing), customer standing (risk). The filter: *knowable fact vs.
-judgment* — hard knowable facts are clean rules; judgments and things that change after booking
-drift to soft or get kicked out.
+`deriveVirtualAvailability` is that computation, and it is **pure**. This is where the old §1.3's
+"property rules" actually live — not as rules, as terms in a set difference:
+
+| Old §1.3 property rule | Where it went |
+|---|---|
+| within season · within daily hours | the **schedule** term (`Offering.seasonStart`/`seasonEnd`, departure times) |
+| not in maintenance / haul-out | `Block{kind:"vessel"}` — an inclusive out-of-service date range |
+| blackout dates | `Block{kind:"location"}` (day + time window) and `Block{kind:"vessel"}` |
+| vessel not double-booked | the **slot-identity guardrail** — one boat holds one departure per day+time — plus `Block{kind:"vesselHold"}` |
+| pax ≤ COI max | `canBook` — `partySize > event.capacity` fails |
+| min/max pax | partial: `canBook` bounds party to `1..capacity`. **No per-offering minimum exists.** |
+
+**Whole-boat, not seats.** BrewBoat sells whole-boat private charters — one reservationist per
+boat-event (DEC-105). So availability is a **mutex, not a seat count**: an event is bookable iff it
+carries zero active `source='muster'` reservations. Remaining is a step function — `capacity` when
+unclaimed, `0` when claimed — **never** `COI max − Σ party sizes`. The whole-boat rule lives in the
+predicate, not as a database constraint (DEC-109). Only `source='muster'` events are sellable here;
+Xola events keep their money in Xola (DEC-105) and never enter this funnel.
+
+**Deliberately absent, and staying that way** (DEC-138):
+
+- **COI expiry as a booking rule.** Inspection is scheduled and passed; the failure mode this would
+  guard is one where a "your COI expired" banner in Muster is the least of the operator's problems.
+  Not Muster's job. *(Note the asymmetry with crew: `mmc_valid_on_date` **is** enforced, because a
+  lapsed individual credential is a routine, silent, per-person event. A vessel certificate is not.)*
+- **A lead-time cutoff.** It would block the flow §1.2 calls the payoff — the autonomous last-minute
+  booking. A short-notice booking is *supposed* to land inside the staffing horizon and fire Tier 1
+  immediately. Holding a short-notice slot until crew is confirmed, rather than refusing it, is a
+  parked idea (`FUTURE_IDEAS.md`), not a cutoff.
+
+### Crew eligibility — the composite that stayed a filter
+
+`src/oracle/` answers who may crew a seat. Six rules, all hard, all per-candidate: `is_active` ·
+`has_rating` · `mmc_valid_on_date` · `not_double_booked` · `not_on_pto` · `not_recurring_off`. Each
+returns `{ ruleId, passed, severity, details }`, where `details` is the **structured reason payload**
+the admin surfaces render — never a sentence.
+
+**The satisfiability finding still holds, and is still the important architectural point.** Crew
+rules are not independent booleans. Evaluated separately they lie: Captain A is free but his MMC
+lapsed; Captain B is current but already booked — every rule passes about a *different person*, so
+the naive shape returns a false yes. The resolution is the one §1.1 records: **the eligible pool is
+computed upstream of the ask.** Only people whose credentials are valid on the trip date and who hold
+the required rating are ever asked, so by the time someone can tap "in," they are already a legal
+candidate. The satisfiability problem collapses into a filter on *who gets asked* — which is why the
+oracle is a per-candidate filter and not a solver.
+
+### The two horizons — the surviving frame
+
+- **Booking horizon** — knowable far out; gates the sale. Answered by the computed set above.
+- **Staffing horizon** — N days out, when humans get committed. Answered by the oracle.
+
+A shift outside its staffing horizon is `Pending`: crew rules **abstain**, they do not fail. This is
+the old `deferred` verdict, and it is real — it just isn't an object. It is the `Pending → Filling`
+edge (§1.1) plus the At-Risk board.
+
+**"Provisional" resolved into the state machine.** The old §1.3 said a deferred rule makes a booking
+*provisional* and feeds an admin worklist — "N trips booked inside the staffing window, no crew
+assigned," the operational view Xola cannot produce. **That view exists**, by a different mechanism:
+the Shift Builder derives shifts from vessel manning **source-agnostically**, so a Muster-sold event
+staffs exactly like a Xola-imported one, and a shift that cannot be crewed escalates to `At-Risk`
+(§1.2 Tier 3) where Spink sees it. The concept shipped; the `Verdict` wrapper did not.
+
+> **⏳ RESERVED (v0.2 — not v1): the staffing horizon may be *staged*.** v1 has one staffing horizon.
+> Progressive commitment (§4 parked) generalizes it to an **ordered list of checkpoints** — earlier
+> *soft* horizons banking tentative willingness, converging on the existing *hard* horizon that
+> commits real bodies. Model the staffing horizon as a list-of-one, not a scalar.
+
+### Parked from the original §1.3
+
+Recorded here so they are not re-derived as gaps. All are engine generality with **no current
+consumer**, and Muster is single-tenant:
+
+- **`hard | soft` severity with tenant downgrade-to-warn.** `RuleResult.severity` is the literal
+  `"hard"` — soft is unrepresentable, not merely unused.
+- **The `Verdict` object** (`{ bookable, status, failures, deferred, recheckBy }`).
+- **`first-fail` / `collect-all` evaluation modes.**
+- **The tenant-configurable "M" rules** — fuel/cleaning turnaround, TWIC, medical cert, drug-testing
+  consortium, duty-hour/rest, daylight/tide, weather/small-craft-advisory.
+- **Booking turnaround buffer** (relational). *(The `turnaround` in `src/builder/derive.ts` is the
+  crew fatigue call — a different concept that happens to share the word.)*
+
+**Not availability's job at all ("N"):** waiver (check-in gate), payment (booking flow), coupon
+(pricing), customer standing (risk). The filter is *knowable fact vs. judgment* — hard knowable facts
+are clean terms; judgments and things that change after booking get kicked out.
 
 ## 1.4 The reliability score
 
@@ -499,8 +530,11 @@ view of their standing and credential nudges lives in the crew app, §2.6, readi
       it restores them. No positive-availability entry is ever required.
 - [ ] A newly added crew member shows neutral/mid-pool standing labeled "no history," not a low
       score.
-- [ ] Deactivating a crew member assigned to future shifts surfaces those shifts and reopens the
-      seats rather than failing silently.
+- [ ] ~~Deactivating a crew member assigned to future shifts surfaces those shifts and reopens the
+      seats rather than failing silently.~~ — **CLOSED as a non-issue on operator input, 2026-07-27.**
+      Not built and not wanted: at one boat and ~six crew, the operator benched the person himself
+      thirty seconds ago and the shift still shows a body in the seat. Parked at lowest priority in
+      `FUTURE_IDEAS.md` so a future sweep doesn't re-derive it as a defect.
 
 ---
 
@@ -510,7 +544,7 @@ view of their standing and credential nudges lives in the crew app, §2.6, readi
 > the thing both the shift builder and the crew manifest read from. A **data-management** surface,
 > not a second booking system.
 
-> **⚠️ Reconciled 2026-07-15 (S54).** This section was written for a world that no longer exists: the
+> **⚠️ Reconciled 2026-07-15 (S54), revised 2026-07-26 (S71, DEC-126).** This section was written for a world that no longer exists: the
 > **CSV bridge** (retired — DEC-043 killed the `.xlsx` path; ingest is a manual Xola **API pull** at
 > `/admin/import`, DEC-036/037), a **2027** customer portal (reservations went live in **2026** —
 > DEC-105, Phases 11/12), and **shift locking** (cut — Xola is source of truth, so a "reviewed/locked"
@@ -528,9 +562,23 @@ between syncs.
 spreadsheet path at all** — DEC-036/037 kept the `.xlsx` reader as a Xola-downtime fallback, but
 **DEC-043 retired it outright** (it can't resolve a boat, and a fallback that collapses four boats into
 one event is worse than no fallback). And the customer portal that writes reservations here directly is
-**not a 2027 event** — it is **Phase 11/12, now** (DEC-105). Both source-of-write paths coexist
-permanently: Xola-sourced imports drain as Xola drains, Muster-native reservations arrive alongside
-them, discriminated by `source` (DEC-106). This layer stays either way — that part held.
+**not a 2027 event** — it is **Phase 11/12, now** (DEC-105). The two source-of-write paths coexist
+**through the pilot** — Xola-sourced imports alongside Muster-native reservations, discriminated by
+`source` (DEC-106) — and then **stop coexisting at the cutover** (DEC-126): one final full import of
+Xola's reservations, after which Muster is the reservation source of truth and **the ongoing Xola pull
+stops**. This layer stays either way — that part held; only its *upstream* goes away.
+
+*(Revised 2026-07-26, S71 — audit shard C2.2. The S54 wording said the paths "coexist permanently"
+and that Xola "drains naturally", which DEC-126 reversed on 2026-07-17. The S56 pass corrected §0.2,
+§0.3 and §4 and missed this section, so the file contradicted itself for nine days. Operator position,
+confirmed this session: one Xola import once customers can book in Muster, then Muster only — as soon
+as `feature/reservations` lands.)*
+
+> **This section has an end date, and that is not a defect.** Everything below describes the
+> Xola-sourced pipeline. At the cutover it stops running and this section can be deleted outright —
+> the `Event` and `Reservation` tables outlive it as the substrate under the reservations product, but
+> the *ingest* does not. Don't invest in surfaces here that the flip will delete; do keep it accurate
+> while it's the thing importing every trip on the board.
 
 ### States to render
 - **Event list** — events grouped by date (and filterable by boat), each showing boat · day · time ·
@@ -552,6 +600,13 @@ them, discriminated by `source` (DEC-106). This layer stays either way — that 
   the odd phone booking is fixed in Xola and re-pulled. *(This is the same reasoning that cut locking —
   you don't hand-edit a projection of someone else's source of truth.)* A **Muster-native** reservation
   is not this section's business at all — it belongs to the reservations purchases surface (DEC-123).
+  > **The `cancel` half is coming back (DEC-126 item 4, task 12.14 / #467).** The cutover leaves Muster
+  > holding imported bookings it must be able to cancel *in Muster*, with no write back to Xola — "the
+  > thing you can't do today". The `add` half stays struck. This does not reopen Muster-side *editing*
+  > of a Xola-sourced record; it is one status write that frees the slot. **Sequencing matters:** while
+  > the pull still runs, a re-import overwrites `status` straight from the Xola row, so either 12.14
+  > ships after the pull is switched off, or it needs a "cancelled in Muster wins" guard. Decide which
+  > before building it.
 - **Browse** events with their reservations — also how Spink eyeballs the weekend before building
   shifts.
 
@@ -581,8 +636,14 @@ what it always was: the **data layer under the crew engine**, not a booking syst
   (DEC-106), so the two sources never write the same event.
 - **Dirty / partial source.** Unparseable records surface in the import result for Spink to fix by
   hand, rather than failing the whole import or dropping records silently.
-- **Event edited after shifts formed.** Changing an event's time/capacity after its shift was built
-  must propagate to the shift. *(Corrected: the original said this raises a shift-builder "changed
+- **Event edited after shifts formed.** Changing an event's **time** after its shift was built
+  must propagate to the shift. *(Revised 2026-07-26, S71 — audit C2.2-6: this said "time/capacity",
+  but capacity propagates to nothing and can't. Seats come from vessel manning — `deriveSeats` takes
+  the `Vessel`, never the `Event` — and `Event.capacity` is re-derived from the boat at import, not
+  read from Xola. Time propagation, by contrast, is met the strong way: the shift stores no time at
+  all, only `eventIds`, so call time and trip times are computed live from the events on every read.
+  What is **not** met is telling the crew a retime happened — issue #548.)*
+  *(Corrected: the original said this raises a shift-builder "changed
   since you reviewed it" nudge **if locked**. **Locking was cut — DEC-082** ("Locking cut — Xola is
   the source of truth; supersedes SPEC §2.3 Lock, reframes DEC-029"): a reviewed/locked stamp over a
   projection of someone else's source of truth is meaningless. Propagation is unconditional; there is
@@ -1503,11 +1564,16 @@ now. Building any of these is out of scope until its trigger condition is met.
   > governs ask-order; the human awards the pay. The report **informs**; the operator **decides**.
 
 ### Owner decisions (Drew / Spink — not Claude's to set)
-- **Deposit vs full payment** at booking — Drew. (Recommendation: full upfront for v1.)
-- **Refund schedule numbers** (the partial-refund tiers) — Drew.
+- ~~**Deposit vs full payment** at booking — Drew. (Recommendation: full upfront for v1.)~~
+  **DECIDED: deposit + balance** (DEC-107, 2026-07-11) — the operator chose it over full-upfront as
+  the closer match to Xola. The recommendation above was not taken.
+- **Refund schedule numbers** (the partial-refund tiers) — Drew. *(Still open — #472; DEC-135 notes the
+  refund policy does not exist yet, which is what blocks self-service cancel.)*
 - **Credit-vs-cash default ordering** in the cancel flow — lean credit-first, cash always available;
-  confirm with Drew.
-- **Balance-capture timing** if deposits are used (tie to a horizon?).
+  confirm with Drew. *(Still open — §3.3 refund cascade is parked by DEC-107.)*
+- ~~**Balance-capture timing** if deposits are used (tie to a horizon?).~~
+  **DECIDED: on demand** (DEC-107 amendment, 11.2b) — a re-minted Stripe Checkout URL is the balance
+  link. The auto-emit scheduler that would read `balanceDueDaysBeforeEvent` is deferred to P12+.
 - **Which "M" rules** ship as soft/warn vs omitted for BrewBoat v1 (TWIC, medical, drug consortium,
   duty-hour, weather/tide) — Spink/Drew against real operations.
 

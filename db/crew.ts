@@ -9,6 +9,8 @@
  *   npm run db:crew -- set crew-eric --phone=+15035550123 --name="Eric Stoffer"
  *   npm run db:crew -- disable crew-jane-roe        # out of the ask pool
  *   npm run db:crew -- enable  crew-jane-roe        # back in
+ *   npm run db:crew -- import-gusto                 # dry-run: bulk Gusto ids from xola-tip-extractor
+ *   npm run db:crew -- import-gusto --apply         # write the matched identities
  *
  * `add` also seeds the DEC-044 placeholder MMC so the new hire is actually
  * askable (no MMC ⇒ eligible for nothing); pass --mmc=YYYY-MM-DD for a real date.
@@ -18,10 +20,29 @@
  *   DATABASE_URL="<neon-direct>" npm run db:crew -- set crew-eric --email=…
  * `.env.local` is auto-sourced like db:mint, but an inline DATABASE_URL wins.
  */
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
 import { CrewCliError, runCrewCommand } from "../src/crew/crew-cli.js";
+import type { GustoMapEntry } from "../src/crew/gusto-import.js";
 import { DEFAULT_DATABASE_URL } from "./migrate.js";
+
+/** Read the extractor's guide-gusto-map.json and field-rename it to Muster's shape.
+ *  Key = the Xola guide name (the crew.name join key); `__doc__` is ignored. */
+function loadGustoMap(path: string): GustoMapEntry[] {
+  const raw = JSON.parse(readFileSync(path, "utf8")) as Record<
+    string,
+    { first_name: string; last_name: string; title: string; gusto_employee_id: string }
+  >;
+  return Object.entries(raw)
+    .filter(([name]) => name !== "__doc__")
+    .map(([name, v]) => ({
+      name,
+      firstName: v.first_name,
+      lastName: v.last_name,
+      title: v.title,
+      employeeId: v.gusto_employee_id,
+    }));
+}
 
 // Auto-source .env.local (parity with db:mint), but let an inline DATABASE_URL win.
 if (existsSync(".env.local")) {
@@ -45,7 +66,7 @@ const url = process.env.DATABASE_URL || DEFAULT_DATABASE_URL;
 const repo = PostgresRepository.fromConnectionString(url);
 
 try {
-  const out = await runCrewCommand(repo, process.argv.slice(2));
+  const out = await runCrewCommand(repo, process.argv.slice(2), new Date(), { loadGustoMap });
   console.log(out);
   console.error(`  (db: ${dbHost(url)})`);
 } catch (e) {

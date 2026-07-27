@@ -5,7 +5,7 @@
 -- stranded seats) only to Vercel logs — so an unattended overnight CRON pull left
 -- no reviewable trace. These two tables snapshot the whole envelope per run.
 --
--- House style (0001/0005): text PK, ISO dates as `text`, NO foreign keys
+-- House style (0001/0005): text PK, ISO dates as `text`, NO foreign keys (posture: DEC-131)
 -- (integrity is the service layer's — DEC-DATA-1); nested/diagnostic data as
 -- `jsonb`. Adapter-side, like the outbox (DEC-030): written by the import edge,
 -- read by the audit view, never by the domain. ADDITIVE — no existing table changes.
@@ -22,7 +22,7 @@ create index import_runs_ran_at_idx on import_runs(ran_at);
 
 create table import_run_items (
   id      text primary key,            -- <run_id>-item-NNNN (zero-padded → lexical = insertion order)
-  run_id  text not null,               -- → import_runs.id (no FK — DEC-DATA-1)
+  run_id  text not null,               -- → import_runs.id (no FK — DEC-131)
   kind    text not null,               -- reservation_added|_updated|_cancelled | shift_created|_cancelled
   ref_id  text not null,               -- reservation id or shift id
   label   text                         -- customer name (reservations); null for shifts

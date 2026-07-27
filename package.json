@@ -17,14 +17,20 @@
     "db:admin": "tsx db/admin.ts",
     "db:crew": "tsx db/crew.ts",
     "db:own": "tsx db/own-vessel-day.ts",
-    "db:all": "tsx db/all-dev.ts",
+    "db:checkout": "tsx db/checkout-dev.ts",
+    "db:balance": "tsx db/balance-dev.ts",
+    "db:backfill:customers": "tsx db/backfill-customers.ts",
     "db:seed:fleet": "tsx db/seed-fleet.ts",
+    "db:seed:crew:pilot": "tsx db/seed-pilot-crew.ts",
     "db:seed:crew": "tsx db/seed-crewapp-dev.ts",
     "db:seed:atrisk": "tsx db/seed-atrisk-dev.ts",
     "db:seed:outbox": "tsx db/seed-outbox-dev.ts",
     "db:seed:split": "tsx db/seed-split-dev.ts",
+    "db:seed:gratuity": "tsx db/seed-gratuity-dev.ts",
+    "db:seed:reservation": "tsx db/seed-reservation-dev.ts",
     "db:tick": "tsx db/tick-dev.ts",
     "db:doorbell": "tsx db/doorbell-dev.ts",
+    "db:reset:dev": "tsx db/reset-dev.ts",
     "db:reset:test": "tsx db/reset-test.ts",
     "test": "vitest run",
     "test:pg": "vitest run src/adapters/postgres-repository.test.ts src/adapters/postgres-presence.test.ts",
@@ -54,9 +60,12 @@
     "vitest": "^4.0.0"
   },
   "dependencies": {
+    "@stripe/react-stripe-js": "^6.8.0",
+    "@stripe/stripe-js": "^9.12.0",
     "next": "^16.2.7",
     "pg": "^8.21.0",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "stripe": "^22.3.1"
   }
 }

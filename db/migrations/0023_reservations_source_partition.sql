@@ -19,7 +19,7 @@
 --    cascade is P12. Cents so it maps 1:1 to Stripe amounts at 11.2.
 --
 -- 3. `muster_owned_vessel_days` — the whole-vessel-day ownership set (DEC-106 grain:
---    vessel_id + date, NOT time). No FK, text date — house style (DEC-DATA-1).
+--    vessel_id + date, NOT time). No FK (posture: DEC-131), text date — house style.
 --    Empty on `main` ⇒ the importer guard never fires ⇒ zero behavior change.
 --    Marked via the `db:own` CLI (no admin UI — Phase 11 UI is throwaway).
 --

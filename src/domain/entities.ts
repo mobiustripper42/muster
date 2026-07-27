@@ -13,12 +13,20 @@
  */
 
 import type {
+  AddOnId,
+  CustomerId,
   AskId,
+  BlockId,
+  CheckoutHoldId,
   CredentialId,
   CrewMemberId,
   EventId,
+  GratuityId,
+  LocationId,
   MagicTokenId,
+  OfferingId,
   OutboxEntryId,
+  PaymentId,
   PtoWindowId,
   ReservationId,
   RingOutboxEntryId,
@@ -66,6 +74,21 @@ export interface Vessel {
   name: string;
   /** Certificate-of-Inspection max passengers. BrewBoat = 6. */
   coiMaxPax: number;
+  /**
+   * Vessel identity hue (DEC-086 palette, 12.9) — the index (1–6) of the locked
+   * `--color-vessel-N` token this boat renders in across the crew shift board and the
+   * reservation calendar. Operator-chosen on the Vessel admin (color is information, not
+   * decoration — DEC-021/042). Optional: absent ⇒ the derived hue stands (pinned map, then a
+   * stable id-hash), so an un-coloured vessel looks exactly as it did pre-12.9.
+   */
+  hue?: number;
+  /**
+   * Default launch Location (12.9) — the boat's home dock. Optional; a reference by id (no
+   * FK, house style DEC-DATA-1). Display/config only; the availability deriver doesn't read it.
+   */
+  homeLocationId?: LocationId;
+  /** Internal operator notes (12.9) — never customer-facing. */
+  notes?: string;
   /** The manning rule as a list; the seat builder loops it (DEC-ROLE-1). */
   manning: ManningRequirement[];
 }
@@ -151,9 +174,285 @@ export interface CrewMember {
    * stays null/flat (DEC-008) and the two don't diverge in practice.
    */
   reliabilityScore: number | null;
+  /**
+   * Gusto payroll identity (DEC-124, 12.3b) — the crew→Gusto map the gratuity report emits as
+   * the timesheet CSV. Lives on the crew row (Muster owns crew natively; no separate map file,
+   * unlike `xola-tip-extractor`'s `guide-gusto-map.json`). Optional: absent ⇒ the crew member's
+   * tips warn loudly and their CSV row won't import (no `employeeId`). Seeded from the roster.
+   */
+  gusto?: GustoIdentity;
+}
+
+/** A crew member's Gusto timesheet identity (DEC-124, 12.3b) — the four fields the Gusto CSV
+ *  keys on. `employeeId` is the import key; a row without it won't import. */
+export interface GustoIdentity {
+  firstName: string;
+  lastName: string;
+  title: string;
+  employeeId: string;
 }
 
 // ── Event + Reservation ─────────────────────────────────────────────────────
+
+// ── Reservation catalog — Offering / Location / Block (Phase 12, DEC-123/125) ─
+//
+// The virtual-availability read model (12.0). `Offering` + its `schedule` is the
+// DEC-125 **rule**; open departures are COMPUTED (`deriveVirtualAvailability`), not
+// materialized — an `Event` row exists only once a slot acquires state (booked /
+// override). These interfaces carry exactly the fields the deriver reads, plus the
+// price-composition inputs, so the shape is coherent end-to-end. Later tasks APPEND
+// inert display/config fields (12.8 catalog: photos, add-ons, gratuity config; 12.9
+// location admin) and the WRITE ports + admin UI — they never redefine these.
+
+/**
+ * A pickup place — first-class so a **location block** (DEC-125) can dark every
+ * offering leaving from it at once, and so the confirmation/manage surfaces can show
+ * pickup + route copy. The deriver reads NO `Location` field; it only matches an
+ * `Offering.locationId` against a location-kind `Block`. Rows exist for coexistence
+ * coherence + the 12.9 admin surface.
+ */
+export interface Location {
+  id: LocationId;
+  name: string;
+  /** Where to meet — the customer-facing pickup description. */
+  pickupDescription: string;
+  /** Optional tappable map link for the pickup point. */
+  pickupLink?: string;
+  /** What the trip does — route/experience blurb. */
+  routeDescription: string;
+}
+
+/**
+ * Publish state (DEC-123 catalog model). Only `live` offerings publish their rule and
+ * therefore generate virtual slots — a `draft` or `hidden` offering emits nothing.
+ */
+export type OfferingStatus = "draft" | "live" | "hidden";
+
+/**
+ * One rule in an offering's ordered price list (DEC-123/125). Evaluated **first match
+ * wins — never stacked** (operator, settled in the catalog mockup): the deriver walks
+ * `priceVariations` in order and stops at the first `applies` that matches the date.
+ */
+export interface PriceVariation {
+  /** Operator label, e.g. "July 4th", "Prime Saturday". Display only. */
+  label: string;
+  /** When this variation applies. Weekdays are Mon=0…Sun=6 (vessel-local). */
+  applies:
+    | { kind: "weekdays"; weekdays: number[] }
+    | { kind: "date"; date: string }
+    | { kind: "dateRange"; start: string; end: string };
+  /** How it moves the base fare. `flatCents` adds/subtracts cents; `percent` is ±%. */
+  adjustment:
+    | { kind: "flatCents"; deltaCents: number }
+    | { kind: "percent"; percent: number };
+}
+
+/**
+ * The DEC-125 schedule **rule** — a season window + weekday mask + departure clock
+ * times. `deriveVirtualAvailability` expands this across vessels × dates into virtual
+ * slots; no row is written. Editing it just recomputes (nothing to rewrite).
+ */
+export interface OfferingSchedule {
+  /** ISO-8601 inclusive season start (vessel-local day). */
+  seasonStart: string;
+  /** ISO-8601 inclusive season end. */
+  seasonEnd: string;
+  /** Weekdays the trip runs — Mon=0…Sun=6. */
+  weekdays: number[];
+  /** Departure clock times, e.g. ["11:30","13:30","15:30"]. */
+  departureTimes: string[];
+}
+
+/**
+ * A sellable experience (= Xola Experience). The `schedule` + `basePriceCents` +
+ * `priceVariations` are the DEC-125 rule the deriver expands. Capacity is NOT here —
+ * it's the running vessel's `coiMaxPax` (whole-boat, DEC-108/109). `extraGuestPriceCents`
+ * is read at BOOKING time (base + extras × extraGuestPrice + gratuity, DEC-124), never
+ * by the availability deriver.
+ */
+export interface Offering {
+  id: OfferingId;
+  tenantId: TenantId;
+  name: string;
+  status: OfferingStatus;
+  /** Customer-facing description (12.8 catalog) — markdown, rendered on browse/checkout. */
+  description?: string;
+  /** Minutes on the water (12.8) — display config; the customer sees "1h 40min". */
+  tripLengthMinutes?: number;
+  /** Minutes the boat is held per departure, turnaround included (12.8). Display/config. */
+  holdMinutes?: number;
+  /** Minutes before departure the guests are told to arrive (12.8). Display/config. */
+  arriveBeforeMinutes?: number;
+  /** The boats this offering can run on; each expands into its own per-vessel slot. */
+  vesselIds: VesselId[];
+  /** Pickup place — the location-block target. */
+  locationId: LocationId;
+  schedule: OfferingSchedule;
+  /** Whole-boat base fare in integer CENTS (DEC-112), before variations. */
+  basePriceCents: number;
+  /** Ordered price rules; first match wins (see {@link PriceVariation}). */
+  priceVariations: PriceVariation[];
+  /**
+   * Base-fare included guest count (DEC-125 build note pricing composition; moved
+   * Vessel → Offering in 12.8 — the included count prices the PRODUCT, not the boat) — the
+   * whole-boat base fare covers up to this many guests; each guest ABOVE it adds
+   * `extraGuestPriceCents`, up to the running vessel's `coiMaxPax` (the cap stays a Vessel
+   * fact). Optional/nullable: absent ⇒ treated as `coiMaxPax` (whole boat included, no
+   * per-guest extras). Booking-time only; the availability deriver never reads it (DEC-125).
+   */
+  includedGuestCount?: number;
+  /** Per-guest surcharge over the base-fare included count — booking-time only (DEC-124). */
+  extraGuestPriceCents: number;
+  /**
+   * Per-kind gratuity config (12.8, DEC-124) — one entry per collected kind (`pre` at
+   * checkout, typically required; `post` via the booking link, not required). Replaces the
+   * flat `gratuityTiersBps`/`gratuityDefaultBps` pair (migrated into a `pre` entry).
+   * Optional/absent ⇒ the code defaults (`GRATUITY_KINDS_DEFAULT`: pre required + post
+   * optional, tiers 15/20/25%). Gratuity is first-class crew money — tax/fee-EXEMPT, keyed
+   * by kind, deliberately NOT an add-on.
+   */
+  gratuityKinds?: GratuityKindConfig[];
+  /**
+   * Attached add-ons (#491) — references to first-class {@link AddOn} entities the offering
+   * sells, picked by id from the shared catalog (`/admin/add-ons`), NOT defined inline. Mirrors
+   * `vesselIds`. `required` is a GLOBAL property of the AddOn, not of this attachment. Taxed +
+   * fee'd as REVENUE, unlike gratuity. Optional/absent ⇒ none.
+   */
+  addOnIds?: AddOnId[];
+}
+
+/**
+ * One gratuity kind's collection config (12.8, DEC-124). `tiersBps` are the offered tip
+ * choices in basis points; `defaultBps` is the pre-selected one (∈ `tiersBps`); `required`
+ * means the customer must pick a tier (pre's posture — no decline), vs. optional (post).
+ */
+export interface GratuityKindConfig {
+  kind: GratuityKind;
+  tiersBps: number[];
+  defaultBps: number;
+  required: boolean;
+}
+
+/**
+ * A customer CONTACT RECORD (12.12b, DEC-132) — not an account. No password, no login; the
+ * customer never authenticates. It exists so two bookings by the same person hang together.
+ *
+ * **Identity is the phone, but the PK is not.** `phoneE164` carries a UNIQUE constraint (same
+ * phone ⇒ same customer, so "merge duplicate contacts" mostly dissolves), while `id` is an
+ * immutable surrogate. Welding a mutable business fact into the key means migrating the row and
+ * every reference when a number changes, and a carrier-recycled number would inherit the previous
+ * customer's history — the same instinct as the `Reservation.eventId` guardrail.
+ *
+ * Phone is REQUIRED as of 12.12b; whether identity should ultimately be phone-OR-email is
+ * deliberately deferred (DEC-132) and will be forced by the Xola importer at cutover. All
+ * resolution lives in `src/customers/identity.ts` so that stays a one-file policy change.
+ */
+export interface Customer {
+  id: CustomerId;
+  /** Readable short code, `C-` + 6 Crockford base32 chars — UNIQUE. Operator convenience
+   *  (something short to say on the phone), NOT a customer-facing account number. */
+  displayCode: string;
+  name: string;
+  /** Canonical E.164 — the identity key, UNIQUE. Produced ONLY by `canonicalizePhone`. */
+  phoneE164: string;
+  email?: string;
+  /** ISO-8601 UTC. */
+  createdAt: string;
+  notes?: string;
+  /** Soft-retire (DEC-123 posture). Note soft-delete RETAINS PII — true erasure is out of scope. */
+  active: boolean;
+}
+
+/**
+ * A first-class sellable add-on (#491) — revenue, taxed + fee'd (the opposite of gratuity).
+ * Its own entity (like {@link Vessel}/{@link Location}), edited once at `/admin/add-ons` and
+ * ATTACHED to offerings by id (`Offering.addOnIds`). `type` is `"flat"` only for now; a text
+ * discriminator so new pricing shapes are a value, not a migration (DEC-DATA-1 posture).
+ */
+export interface AddOn {
+  id: AddOnId;
+  tenantId: TenantId;
+  label: string;
+  type: "flat";
+  amountCents: number;
+  /** GLOBAL — a property of the add-on itself, not of any offering attachment (#491). */
+  required: boolean;
+  /** Soft-retire (DEC-123 posture): `false` ⇒ out of the offering picker + browse, refs kept. */
+  active: boolean;
+}
+
+// ── Gratuity — first-class crew money (DEC-124, 12.3) ─────────────────────────
+
+/** Which leg collected the gratuity: `pre` = required at checkout; `post` = added later via
+ *  the booking-link manage page. Text, not an enum — the column takes more kinds if they
+ *  appear (DEC-DATA-1). */
+export type GratuityKind = "pre" | "post";
+
+/**
+ * One collected gratuity (DEC-124). **Crew money, NOT revenue** — tax- and service-fee-exempt,
+ * charged in full (never deposit-split), and it routes to crew via the per-event pool that the
+ * 12.3b payroll report splits across the event's assigned crew. Linked to BOTH the `event`
+ * (the split grain) and the `reservation` (post-trip attach + cancel exclusion). The `id` is
+ * deterministic from the Stripe session (`grat_${kind}_${sessionId}`) so a re-delivered webhook
+ * upserts, never double-counts.
+ */
+export interface Gratuity {
+  id: GratuityId;
+  eventId: EventId;
+  reservationId: ReservationId;
+  kind: GratuityKind;
+  /** Integer CENTS (DEC-112). Never taxed, never fee'd (DEC-124). */
+  amountCents: number;
+  /** Tier chosen, basis points — pre only (post is a free amount); provenance for the summary. */
+  bps?: number;
+  /** The Stripe session that collected it — reconciliation handle. */
+  stripeCheckoutSessionId?: string;
+  /** ISO-8601 UTC. */
+  createdAt: string;
+}
+
+/**
+ * An availability **subtraction** (DEC-125) — blackout as scoped blocks, not Xola's
+ * per-event toggle. Three kinds, discriminated on `kind`:
+ *  - `location`   — a date + time WINDOW; the river's closed → every slot at that
+ *                   `Location` (across offerings/vessels) in the window goes dark.
+ *  - `vessel`     — a date RANGE; a boat's out of service → all its slots gone.
+ *  - `vesselHold` — a SINGLE slot reserved for a private thing, with no customer
+ *                   `Event`. NB: distinct from the DEC-109 transient checkout-hold
+ *                   (a claim-path row — 12.1's concern, not modeled here).
+ * No FK / no CHECK on `kind` — house style (DEC-DATA-1).
+ */
+export type Block =
+  | {
+      id: BlockId;
+      kind: "location";
+      locationId: LocationId;
+      /** ISO-8601 day. */
+      date: string;
+      /** Inclusive "HH:MM" window the closure covers. */
+      startTime: string;
+      endTime: string;
+      note?: string;
+    }
+  | {
+      id: BlockId;
+      kind: "vessel";
+      vesselId: VesselId;
+      /** Inclusive ISO-8601 out-of-service range. */
+      startDate: string;
+      endDate: string;
+      note?: string;
+    }
+  | {
+      id: BlockId;
+      kind: "vesselHold";
+      vesselId: VesselId;
+      /** ISO-8601 day. */
+      date: string;
+      /** The single departure "HH:MM" held. */
+      time: string;
+      note?: string;
+    };
 
 export type EventStatus = "scheduled" | "cancelled";
 
@@ -205,6 +504,17 @@ export interface Reservation {
   customerName: string;
   partySize: number;
   /**
+   * The extra-guest surcharge portion of the booked fare, in integer CENTS, FROZEN at
+   * booking (12.2, DEC-107 amend / #474). `Event.price` is the per-departure BASE only
+   * (DEC-125); the fare the customer was charged is `base + extrasCents` (`composeFare`,
+   * `extraGuests × extraGuestPriceCents`). The balance deriver reads this so a deposit-mode
+   * balance collects the extras too — it is deliberately a booking property (a function of
+   * `guestCount`), NOT on `Event`, and NOT recomputed from the live Offering (that would
+   * reintroduce config drift `balanceOwedCents` forbids). Absent ⇒ 0: `'xola'` reservations,
+   * the legacy seeded `writeBooking` path (base carried the whole price), and any pre-12.2 row.
+   */
+  extrasCents?: number;
+  /**
    * Email is the manifest spine and the customers-export join key (DEC-017) —
    * inline on every Xola reservation. Optional because manual/legacy entries may
    * lack it.
@@ -218,6 +528,17 @@ export interface Reservation {
   phone?: string;
   status: ReservationStatus;
   /**
+   * Liability-waiver consent (11.5, DEC-110) — Muster-SOLD side only. `waiverConsentAt`
+   * is the ISO-8601 UTC instant the customer agreed (stamped at checkout-start, the
+   * agreement moment); `waiverVersion` is the terms version they agreed to (server-
+   * authoritative, from config — proves WHICH terms). Both absent on `source='xola'`
+   * reservations (Xola owns its own waiver) and on any pre-11.5 Muster booking. A real
+   * waiver-provider integration is P12; this is the minimal consent record, not a
+   * subsystem.
+   */
+  waiverConsentAt?: string;
+  waiverVersion?: string;
+  /**
    * When this reservation was created or last *materially* changed (ISO-8601 UTC).
    * Stamped by the import on create + material change only (DEC-029). Optional:
    * absent = predates tracking. Retained as the raw change signal; a future
@@ -225,7 +546,123 @@ export interface Reservation {
    * diffs (the lock-anchored nudge was retired with locking, DEC-082/#215).
    */
   updatedAt?: string;
+  /**
+   * The {@link Customer} this booking belongs to (12.12b, DEC-132) — the FIRST real foreign key
+   * in this schema, per DEC-131 (the DB may hold structural invariants; it still holds no
+   * business rules). Nullable on purpose: historical reservations that never captured a
+   * canonicalizable phone stay unlinked permanently, and `NULL` passes the FK.
+   *
+   * Set by `writeBooking`'s get-or-create at booking time and by the one-time backfill. NOT set
+   * by the Xola importer — importer-created customers are deferred to the cutover (DEC-132).
+   */
+  customerId?: CustomerId;
   // No waiver field — DEC-012.
+}
+
+// ── CheckoutHold — the transient 15-min soft reservation (12.1, DEC-109) ──────
+
+/**
+ * A customer checkout-hold (DEC-109): the **optimistic** front-door that makes the
+ * common case collision-free — while a buyer is paying, the slot reads unavailable, so
+ * the second buyer never starts. **Distinct** from the DEC-125 admin/vessel-hold
+ * *block* (a `Block{kind:"vesselHold"}` row, no lifetime) — this one is transient,
+ * lazily-expired, and tied to a Stripe session.
+ *
+ * Load-bearing rules (DEC-109), enforced by 12.1's data layer:
+ *  - The hold is an **optimization**, never the authority — the whole-boat mutex
+ *    (`saveBookingIfSlotFree`) is the defeat-proof backstop; a booking whose hold
+ *    expired mid-payment still runs the CAS. Never gate the write on a hold.
+ *  - **Lazy-on-read expiry, no cron:** a hold with `expiresAt <= asOf` reads as free
+ *    everywhere (the deriver filters on it). The physical-slot unique index means a
+ *    stale row would *block* re-acquire, so `acquireCheckoutHold` deletes the expired
+ *    row for the identity first, in the same critical section.
+ *  - **Holds are only ever read through the `expiresAt > asOf` filter** — never
+ *    raw-counted. A raw `SELECT … WHERE slot=…` that treats a hit as "held" would
+ *    resurrect an expired hold; the deriver + `acquireCheckoutHold` are the only
+ *    sanctioned readers.
+ */
+export interface CheckoutHold {
+  id: CheckoutHoldId;
+  /** The boat this hold is on — assignment is resolved at acquire (fit-and-fallback). */
+  vesselId: VesselId;
+  /** ISO-8601 vessel-local day. */
+  date: string;
+  /** Departure clock "HH:MM". */
+  time: string;
+  /** Constant `'muster'` — keeps the slot-identity key parallel to `Event`'s (DEC-125). */
+  source: "muster";
+  offeringId: OfferingId;
+  /** Guest/passenger count (never "party") — validated ≤ boat COI cap at acquire. */
+  guestCount: number;
+  /** ISO-8601 UTC — acquire instant + 15 min. Lazily compared to `asOf`; no cron. */
+  expiresAt: string;
+  /** ISO-8601 UTC of acquire. */
+  createdAt: string;
+  /** Bound once the Checkout session is created — links the hold to its payment. */
+  stripeCheckoutSessionId?: string;
+}
+
+// ── Payment (Muster-native reservations only — DEC-107) ──────────────────────
+
+/**
+ * How a payment was taken. Only `stripe` (card via Checkout) is implemented; the
+ * discriminator is log-day-one (DEC-008) so `cash` / `venmo` are a one-line widen
+ * later, with no schema change — the `stripe*` ids below go unused for those.
+ */
+export type PaymentMethod = "stripe" | (string & {});
+
+/** full = paid in one shot; deposit + balance = the two-part flow (DEC-107, 11.2b). */
+export type PaymentKind = "full" | "deposit" | "balance";
+
+/** `refunded` states exist for the record only — refunds are ALWAYS manual in the
+ *  Stripe dashboard (operator decision); nothing in Muster issues a programmatic refund. */
+export type PaymentStatus = "succeeded" | "refunded" | "partially_refunded";
+
+/**
+ * One money movement against a Muster-native reservation (DEC-107). A booking is a
+ * 1:n money log — `full`, or `deposit` then `balance` — modeled as a separate append
+ * record like every other Muster side-effect log (reliability, outbox, audit), NOT as
+ * columns on `Reservation` (which is shared with Xola, whose money lives in Xola —
+ * DEC-105/106; payment columns would sit null on every imported row). No FK
+ * (DEC-DATA-1). Balance-due is DERIVED (`price + tax − Σ succeeded`), never stored.
+ */
+export interface Payment {
+  /** Deterministic from the Stripe checkout-session id (hosted) or PaymentIntent id
+   *  (Elements, DEC-134) — idempotent write either way. */
+  id: PaymentId;
+  reservationId: ReservationId;
+  method: PaymentMethod;
+  kind: PaymentKind;
+  /** Amount captured, integer cents (DEC-112). */
+  amountCents: number;
+  /** Tax portion of `amountCents`, cents — recorded for the (parked) sales-tax report. */
+  taxCents: number;
+  /**
+   * Gratuity portion of `amountCents`, cents (DEC-124, 12.3) — crew money, NOT price+tax. The
+   * booking charge bundles the tip into `amountCents`, so `balanceOwedCents` MUST net this out
+   * or a deposit booking's balance under-charges. Optional/absent ⇒ 0 (no gratuity, or a
+   * balance/pre-12.3 payment).
+   */
+  gratuityCents?: number;
+  /**
+   * Service-fee portion of `amountCents`, cents (DEC-134, 12.5) — a one-shot surcharge on the
+   * fare, frozen at checkout and charged in full with the deposit. `balanceOwedCents` MUST net
+   * this out like the gratuity, or a deposit booking's balance under-charges. Optional/absent
+   * ⇒ 0 (a balance payment, or a pre-12.5 hosted booking).
+   */
+  serviceFeeCents?: number;
+  /** ISO-4217 lowercase, e.g. "usd". */
+  currency: string;
+  /** Stripe Checkout session id (hosted-Checkout payments; absent on an Elements
+   *  PaymentIntent payment, which carries only `stripePaymentIntentId` — DEC-134). */
+  stripeCheckoutSessionId?: string;
+  /** Stripe PaymentIntent id (present once the charge settles). */
+  stripePaymentIntentId?: string;
+  status: PaymentStatus;
+  /** Cents refunded so far — set by hand-reconciliation if ever tracked; refunds are manual. */
+  refundedCents?: number;
+  /** ISO-8601 UTC. */
+  createdAt: string;
 }
 
 /**

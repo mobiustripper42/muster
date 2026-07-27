@@ -12,25 +12,34 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { checkIntegrity } from "../admin/integrity.js";
 import { asId } from "../domain/ids.js";
 import type {
+  AddOn,
+  Customer,
   Admin,
   Ask,
+  Block,
+  CheckoutHold,
   Credential,
   CrewMember,
   Event,
+  Gratuity,
+  Location,
   LoginCode,
   MagicToken,
+  Offering,
   OutboxEntry,
   RingOutboxEntry,
   NoticeOutboxEntry,
   SmsConsent,
   GuestContact,
   PtoWindow,
+  Payment,
   Reservation,
   RoleType,
   Seat,
   Shift,
   Vessel,
 } from "../domain/entities.js";
+import { eventIdForSlot } from "../reservations/availability.js";
 import type { ReliabilityEvent } from "../domain/reliability.js";
 import type { ImportRun, ImportRunItem } from "../import/import-audit.js";
 import type { Message, Participant, Thread } from "../messaging/entities.js";
@@ -321,6 +330,19 @@ export function runRepositoryContract(
       );
     });
 
+    it("crew: Gusto identity round-trips + updateCrewGusto is targeted (DEC-124, 12.3b)", async () => {
+      await repo.saveCrewMember(crew({ reliabilityScore: 7 })); // no gusto
+      expect("gusto" in (await repo.getCrewMember(CREW))!).toBe(false); // omitted, not null
+      const gusto = { firstName: "Ann", lastName: "Alpha", title: "Captain", employeeId: "E1" };
+      await repo.saveCrewMember(crew({ gusto, reliabilityScore: 7 }));
+      expect((await repo.getCrewMember(CREW))!.gusto).toEqual(gusto);
+      // targeted update: sets gusto only, leaves reliabilityScore untouched (DEC-094)
+      const g2 = { firstName: "Ann", lastName: "Beta", title: "Mate", employeeId: "E2" };
+      const updated = await repo.updateCrewGusto(CREW, g2);
+      expect(updated).toMatchObject({ gusto: g2, reliabilityScore: 7 });
+      expect(await repo.updateCrewGusto(CREW_B, g2)).toBeNull(); // unknown id
+    });
+
     it("updateCrewWeekdaysOff: replaces the set, clears to omitted, leaves score/status (DEC-094/119)", async () => {
       await repo.saveCrewMember(crew({ reliabilityScore: 7, status: "inactive" }));
       const set = await repo.updateCrewWeekdaysOff(CREW, [6]);
@@ -425,6 +447,524 @@ export function runRepositoryContract(
       ).toBe("muster");
     });
 
+    it("reservations: waiver consent round-trips (11.5, DEC-110)", async () => {
+      await repo.saveReservation(
+        reservation({ source: "muster", waiverConsentAt: "2026-07-13T12:00:00.000Z", waiverVersion: "v1" }),
+      );
+      const got = (await repo.getReservation(asId<"ReservationId">("resv-1")))!;
+      expect(got.waiverConsentAt).toBe("2026-07-13T12:00:00.000Z");
+      expect(got.waiverVersion).toBe("v1");
+    });
+
+    // ── saveReservationIfUnclaimed — the whole-boat claim (DEC-109) ────────────
+    const rid = (s: string) => asId<"ReservationId">(s);
+
+    it("saveReservationIfUnclaimed: writes when the boat is unclaimed", async () => {
+      await repo.saveEvent(event({ source: "muster" }));
+      expect(await repo.saveReservationIfUnclaimed(reservation({ source: "muster" }))).toBe(true);
+      expect(await repo.listReservationsForEvent(EVENT)).toHaveLength(1);
+    });
+
+    it("saveReservationIfUnclaimed: idempotent on id — same reservation twice, no duplicate", async () => {
+      await repo.saveEvent(event({ source: "muster" }));
+      const r = reservation({ source: "muster" });
+      expect(await repo.saveReservationIfUnclaimed(r)).toBe(true);
+      expect(await repo.saveReservationIfUnclaimed(r)).toBe(true); // idempotent re-put
+      expect(await repo.listReservationsForEvent(EVENT)).toHaveLength(1);
+    });
+
+    it("saveReservationIfUnclaimed: blocked by a DIFFERENT active Muster reservation", async () => {
+      await repo.saveEvent(event({ source: "muster" }));
+      expect(await repo.saveReservationIfUnclaimed(reservation({ id: rid("resv-a"), source: "muster" }))).toBe(true);
+      expect(await repo.saveReservationIfUnclaimed(reservation({ id: rid("resv-b"), source: "muster" }))).toBe(false);
+      expect(await repo.listReservationsForEvent(EVENT)).toHaveLength(1);
+    });
+
+    it("saveReservationIfUnclaimed: an active Xola reservation does NOT block (source-scoped)", async () => {
+      await repo.saveEvent(event({ source: "muster" }));
+      await repo.saveReservation(reservation({ id: rid("resv-x"), source: "xola" }));
+      expect(await repo.saveReservationIfUnclaimed(reservation({ id: rid("resv-m"), source: "muster" }))).toBe(true);
+    });
+
+    it("saveReservationIfUnclaimed: a cancelled Muster reservation does NOT block", async () => {
+      await repo.saveEvent(event({ source: "muster" }));
+      await repo.saveReservation(reservation({ id: rid("resv-c"), source: "muster", status: "cancelled" }));
+      expect(await repo.saveReservationIfUnclaimed(reservation({ id: rid("resv-m"), source: "muster" }))).toBe(true);
+    });
+
+    it("saveReservationIfUnclaimed: false for a nonexistent event", async () => {
+      expect(await repo.saveReservationIfUnclaimed(reservation({ source: "muster" }))).toBe(false);
+    });
+
+    it("saveReservationIfUnclaimed: exactly one of two concurrent claims wins (DEC-109)", async () => {
+      await repo.saveEvent(event({ source: "muster" }));
+      const [a, b] = await Promise.all([
+        repo.saveReservationIfUnclaimed(reservation({ id: rid("resv-a"), source: "muster", customerName: "A" })),
+        repo.saveReservationIfUnclaimed(reservation({ id: rid("resv-b"), source: "muster", customerName: "B" })),
+      ]);
+      expect([a, b].filter(Boolean)).toHaveLength(1); // exactly one winner
+      const active = (await repo.listReservationsForEvent(EVENT)).filter(
+        (r) => r.source === "muster" && r.status === "booked",
+      );
+      expect(active).toHaveLength(1);
+    });
+
+    // ── saveBookingIfSlotFree — materialize + claim a virtual slot (12.1, DEC-109/125) ──
+    const SLOT_ID = eventIdForSlot(VESSEL, "2026-07-01", "14:00");
+    const slotEvent = (over: Partial<Event> = {}): Event =>
+      event({ id: SLOT_ID, source: "muster", ...over });
+
+    it("saveBookingIfSlotFree: materializes the Event and claims on an empty slot", async () => {
+      const ev = slotEvent();
+      const res = await repo.saveBookingIfSlotFree(
+        ev,
+        reservation({ id: rid("resv-a"), source: "muster", eventId: SLOT_ID }),
+      );
+      expect(res.result).toBe("won");
+      expect(await repo.getEvent(SLOT_ID)).not.toBeNull(); // materialized
+      expect(await repo.listReservationsForEvent(SLOT_ID)).toHaveLength(1);
+    });
+
+    it("saveBookingIfSlotFree: idempotent on reservation id (redelivered webhook)", async () => {
+      const ev = slotEvent();
+      const r = reservation({ id: rid("resv-a"), source: "muster", eventId: SLOT_ID });
+      expect((await repo.saveBookingIfSlotFree(ev, r)).result).toBe("won");
+      expect((await repo.saveBookingIfSlotFree(ev, r)).result).toBe("won"); // idempotent
+      expect(await repo.listReservationsForEvent(SLOT_ID)).toHaveLength(1);
+    });
+
+    it("saveBookingIfSlotFree: a DIFFERENT reservation loses on an already-claimed slot", async () => {
+      const ev = slotEvent();
+      expect(
+        (await repo.saveBookingIfSlotFree(ev, reservation({ id: rid("resv-a"), source: "muster", eventId: SLOT_ID }))).result,
+      ).toBe("won");
+      expect(
+        (await repo.saveBookingIfSlotFree(ev, reservation({ id: rid("resv-b"), source: "muster", eventId: SLOT_ID }))).result,
+      ).toBe("lost");
+      const active = (await repo.listReservationsForEvent(SLOT_ID)).filter((r) => r.status === "booked");
+      expect(active).toHaveLength(1);
+    });
+
+    it("saveBookingIfSlotFree: exactly one of two concurrent first-bookings wins (one Event, one claim)", async () => {
+      const ev = slotEvent();
+      const [a, b] = await Promise.all([
+        repo.saveBookingIfSlotFree(ev, reservation({ id: rid("resv-a"), source: "muster", eventId: SLOT_ID, customerName: "A" })),
+        repo.saveBookingIfSlotFree(ev, reservation({ id: rid("resv-b"), source: "muster", eventId: SLOT_ID, customerName: "B" })),
+      ]);
+      expect([a.result, b.result].filter((x) => x === "won")).toHaveLength(1);
+      expect(await repo.getEvent(SLOT_ID)).not.toBeNull();
+      const active = (await repo.listReservationsForEvent(SLOT_ID)).filter((r) => r.status === "booked");
+      expect(active).toHaveLength(1); // the guardrail held — no double-sold boat
+    });
+
+    it("saveBookingIfSlotFree: claims a PRE-EXISTING override event at the slot, reconciling eventId", async () => {
+      // an override event with a NON-deterministic id already occupies the physical slot
+      await repo.saveEvent(
+        event({ id: asId<"EventId">("override-1"), source: "muster", vesselId: VESSEL, date: "2026-07-01", time: "14:00", price: 55500 }),
+      );
+      const res = await repo.saveBookingIfSlotFree(
+        slotEvent(), // deterministic-id candidate
+        reservation({ id: rid("resv-a"), source: "muster", eventId: SLOT_ID }),
+      );
+      expect(res.result).toBe("won");
+      if (res.result === "won") expect(String(res.eventId)).toBe("override-1"); // claimed the existing row
+      expect(await repo.getEvent(SLOT_ID)).toBeNull(); // no duplicate materialized (slot guardrail)
+      expect(await repo.listReservationsForEvent(asId<"EventId">("override-1"))).toHaveLength(1);
+    });
+
+    // ── Checkout holds — acquire / lifecycle (12.1, DEC-109) ───────────────────
+    const hold = (over: Partial<CheckoutHold> = {}): CheckoutHold => ({
+      id: asId<"CheckoutHoldId">("hold-1"),
+      vesselId: VESSEL,
+      date: "2026-07-01",
+      time: "14:00",
+      source: "muster",
+      offeringId: asId<"OfferingId">("off-1"),
+      guestCount: 4,
+      expiresAt: "2026-07-01T12:15:00.000Z",
+      createdAt: "2026-07-01T12:00:00.000Z",
+      ...over,
+    });
+
+    /**
+     * Save the parent rows the reservations-era foreign keys require (DEC-131). Postgres now
+     * enforces `checkout_holds.{vessel_id,offering_id}` and `offerings.location_id`; the
+     * in-memory double enforces nothing, so these saves are inert there. Pure fixture setup —
+     * no test's assertions change, they just stop writing children into thin air.
+     */
+    const saveCatalogParents = async (): Promise<void> => {
+      await repo.saveVessel(vessel());
+      await repo.saveLocation({
+        id: asId<"LocationId">("loc-1"),
+        name: "Dock",
+        pickupDescription: "Meet at the dock",
+        routeDescription: "Up the river",
+      });
+      await repo.saveOffering({
+        id: asId<"OfferingId">("off-1"),
+        tenantId: TENANT,
+        name: "Sunset Cruise",
+        status: "live",
+        vesselIds: [VESSEL],
+        locationId: asId<"LocationId">("loc-1"),
+        schedule: { seasonStart: "2026-06-01", seasonEnd: "2026-08-31", weekdays: [5], departureTimes: ["14:00"] },
+        basePriceCents: 49900,
+        priceVariations: [],
+        extraGuestPriceCents: 5000,
+      });
+    };
+
+    it("acquireCheckoutHold: fresh acquire succeeds and is listable", async () => {
+      await saveCatalogParents();
+      expect((await repo.acquireCheckoutHold(hold())).acquired).toBe(true);
+      expect(await repo.listCheckoutHolds()).toHaveLength(1);
+    });
+
+    it("acquireCheckoutHold: two live acquires on one slot — exactly one wins", async () => {
+      await saveCatalogParents();
+      const a = await repo.acquireCheckoutHold(hold({ id: asId<"CheckoutHoldId">("h-a") }));
+      const b = await repo.acquireCheckoutHold(hold({ id: asId<"CheckoutHoldId">("h-b") }));
+      expect([a.acquired, b.acquired].filter(Boolean)).toHaveLength(1);
+      expect(await repo.listCheckoutHolds()).toHaveLength(1);
+    });
+
+    it("acquireCheckoutHold: idempotent re-acquire of one's OWN live hold", async () => {
+      await saveCatalogParents();
+      expect((await repo.acquireCheckoutHold(hold())).acquired).toBe(true);
+      expect((await repo.acquireCheckoutHold(hold())).acquired).toBe(true);
+      expect(await repo.listCheckoutHolds()).toHaveLength(1);
+    });
+
+    it("acquireCheckoutHold: an EXPIRED hold is inert — re-acquire succeeds (delete-expired-first)", async () => {
+      await saveCatalogParents();
+      // seed a hold that is live at its own createdAt but expired by the new acquire's clock
+      await repo.acquireCheckoutHold(
+        hold({ id: asId<"CheckoutHoldId">("h-old"), createdAt: "2026-07-01T10:45:00.000Z", expiresAt: "2026-07-01T11:00:00.000Z" }),
+      );
+      const res = await repo.acquireCheckoutHold(hold({ id: asId<"CheckoutHoldId">("h-new") }));
+      expect(res.acquired).toBe(true);
+      const holds = await repo.listCheckoutHolds();
+      expect(holds).toHaveLength(1);
+      expect(String(holds[0]!.id)).toBe("h-new"); // the stale row was deleted, not left to block
+    });
+
+    it("checkout holds: remove is idempotent", async () => {
+      await saveCatalogParents();
+      await repo.acquireCheckoutHold(hold());
+      await repo.removeCheckoutHold(asId<"CheckoutHoldId">("hold-1"));
+      expect(await repo.listCheckoutHolds()).toHaveLength(0);
+      await repo.removeCheckoutHold(asId<"CheckoutHoldId">("hold-1")); // no-op, no throw
+      expect(await repo.listCheckoutHolds()).toHaveLength(0);
+    });
+
+    // ── Reservation catalog — write + read round-trip (12.1a) ──────────────────
+    it("catalog: offering / location / block write + read round-trip", async () => {
+      await repo.saveVessel(vessel()); // parent for blocks.vessel_id (DEC-131)
+      const loc: Location = {
+        id: asId<"LocationId">("loc-1"),
+        name: "Dock",
+        pickupDescription: "Meet at the dock",
+        routeDescription: "Up the river",
+      };
+      await repo.saveLocation(loc);
+      expect(await repo.getLocation(loc.id)).toEqual(loc);
+
+      const off: Offering = {
+        id: asId<"OfferingId">("off-1"),
+        tenantId: TENANT,
+        name: "Sunset Cruise",
+        status: "live",
+        vesselIds: [VESSEL],
+        locationId: loc.id,
+        schedule: { seasonStart: "2026-06-01", seasonEnd: "2026-08-31", weekdays: [5], departureTimes: ["14:00"] },
+        basePriceCents: 49900,
+        priceVariations: [{ label: "Sat", applies: { kind: "weekdays", weekdays: [5] }, adjustment: { kind: "percent", percent: 10 } }],
+        extraGuestPriceCents: 5000,
+      };
+      await repo.saveOffering(off);
+      expect(await repo.getOffering(off.id)).toEqual(off);
+      expect(await repo.listOfferings()).toHaveLength(1);
+
+      const blk: Block = { id: asId<"BlockId">("blk-1"), kind: "vessel", vesselId: VESSEL, startDate: "2026-07-04", endDate: "2026-07-05" };
+      await repo.saveBlock(blk);
+      expect(await repo.listBlocks()).toEqual([blk]);
+      await repo.removeBlock(blk.id);
+      expect(await repo.listBlocks()).toEqual([]);
+    });
+
+    it("catalog: Offering gratuityKinds round-trip present and absent (DEC-124, 12.8)", async () => {
+      await saveCatalogParents();
+      const base: Offering = {
+        id: asId<"OfferingId">("off-g"), tenantId: TENANT, name: "Tipped", status: "live",
+        vesselIds: [VESSEL], locationId: asId<"LocationId">("loc-1"),
+        schedule: { seasonStart: "2026-06-01", seasonEnd: "2026-08-31", weekdays: [5], departureTimes: ["14:00"] },
+        basePriceCents: 49900, priceVariations: [], extraGuestPriceCents: 5000,
+      };
+      await repo.saveOffering(base); // no per-kind config → code defaults apply
+      const got = (await repo.getOffering(base.id))!;
+      expect("gratuityKinds" in got).toBe(false); // omitted, not null
+      const kinds = [
+        { kind: "pre" as const, tiersBps: [1500, 2000, 2500], defaultBps: 2000, required: true },
+        { kind: "post" as const, tiersBps: [1500, 2000, 2500], defaultBps: 2000, required: false },
+      ];
+      await repo.saveOffering({ ...base, gratuityKinds: kinds });
+      expect((await repo.getOffering(base.id))!.gratuityKinds).toEqual(kinds);
+    });
+
+    it("catalog: Offering 12.8 display/config fields round-trip present and absent", async () => {
+      await saveCatalogParents();
+      const base: Offering = {
+        id: asId<"OfferingId">("off-cfg"), tenantId: TENANT, name: "Configured", status: "draft",
+        vesselIds: [VESSEL], locationId: asId<"LocationId">("loc-1"),
+        schedule: { seasonStart: "2026-06-01", seasonEnd: "2026-08-31", weekdays: [5], departureTimes: ["14:00"] },
+        basePriceCents: 49900, priceVariations: [], extraGuestPriceCents: 5000,
+      };
+      await repo.saveOffering(base); // none of the optionals set
+      const bare = (await repo.getOffering(base.id))!;
+      for (const k of ["description", "tripLengthMinutes", "holdMinutes", "arriveBeforeMinutes", "addOnIds"]) {
+        expect(k in bare).toBe(false); // omitted, not null
+      }
+      const full: Offering = {
+        ...base,
+        description: "**NO Pedaling Required** — party pontoons.",
+        tripLengthMinutes: 100,
+        holdMinutes: 100,
+        arriveBeforeMinutes: 15,
+        addOnIds: [asId<"AddOnId">("addon-flex"), asId<"AddOnId">("addon-hour")],
+      };
+      await repo.saveOffering(full);
+      expect(await repo.getOffering(base.id)).toEqual(full);
+      // clearing back to unset round-trips as absent again (upsert writes null)
+      await repo.saveOffering(base);
+      expect("addOnIds" in (await repo.getOffering(base.id))!).toBe(false);
+    });
+
+    it("add-on: round-trip incl. global required/active; upsert updates (#491)", async () => {
+      const addOn: AddOn = {
+        id: asId<"AddOnId">("addon-1"),
+        tenantId: TENANT,
+        label: "Extra hour",
+        type: "flat",
+        amountCents: 15000,
+        required: false,
+        active: true,
+      };
+      await repo.saveAddOn(addOn);
+      expect(await repo.getAddOn(addOn.id)).toEqual(addOn);
+      // Soft-retire + relabel is an upsert, not an insert.
+      await repo.saveAddOn({ ...addOn, label: "Bonus hour", active: false });
+      const updated = await repo.getAddOn(addOn.id);
+      expect(updated).toMatchObject({ label: "Bonus hour", active: false });
+      expect(await repo.listAddOns()).toHaveLength(1);
+      expect(await repo.getAddOn(asId<"AddOnId">("addon-none"))).toBeNull();
+    });
+
+    // ── Customers (12.12b, DEC-132 / DEC-131) ─────────────────────────────────
+    const customer = (over: Partial<Customer> = {}): Customer => ({
+      id: asId<"CustomerId">("cust-1"),
+      displayCode: "C-K7X3P9",
+      name: "Jordan Ellis",
+      phoneE164: "+12165550148",
+      createdAt: "2026-07-22T12:00:00.000Z",
+      active: true,
+      ...over,
+    });
+
+    it("customer: round-trips incl. optional email/notes present and absent", async () => {
+      const bare = customer();
+      await repo.saveCustomer(bare);
+      expect(await repo.getCustomer(bare.id)).toEqual(bare);
+      // Optionals absent stay ABSENT, not null (exactOptionalPropertyTypes contract).
+      const got = (await repo.getCustomer(bare.id))!;
+      expect("email" in got).toBe(false);
+      expect("notes" in got).toBe(false);
+
+      const full = customer({ email: "jordan@example.com", notes: "Repeat guest" });
+      await repo.saveCustomer(full);
+      expect(await repo.getCustomer(full.id)).toEqual(full);
+      expect(await repo.getCustomer(asId<"CustomerId">("cust-none"))).toBeNull();
+    });
+
+    it("customer: soft-retire is an upsert, never a delete", async () => {
+      await repo.saveCustomer(customer());
+      await repo.saveCustomer(customer({ active: false, name: "Jordan E." }));
+      expect(await repo.getCustomer(asId<"CustomerId">("cust-1"))).toMatchObject({
+        active: false,
+        name: "Jordan E.",
+      });
+      expect(await repo.listCustomers()).toHaveLength(1);
+    });
+
+    it("customer: looked up by canonical phone and by display code", async () => {
+      await repo.saveCustomer(customer());
+      expect((await repo.getCustomerByPhone("+12165550148"))?.id).toBe("cust-1");
+      expect((await repo.getCustomerByCode("C-K7X3P9"))?.id).toBe("cust-1");
+      // Lookups are exact — canonicalization is the caller's job, not the adapter's.
+      expect(await repo.getCustomerByPhone("2165550148")).toBeNull();
+      expect(await repo.getCustomerByCode("c-k7x3p9")).toBeNull();
+      expect(await repo.getCustomerByPhone("+12165550000")).toBeNull();
+    });
+
+    it("getOrCreateCustomerByPhone: creates once, then returns the SAME customer", async () => {
+      const first = await repo.getOrCreateCustomerByPhone(customer());
+      expect(first.created).toBe(true);
+
+      // Same phone, different id/name/code — the phone wins; nothing is inserted or updated.
+      const second = await repo.getOrCreateCustomerByPhone(
+        customer({ id: asId<"CustomerId">("cust-2"), displayCode: "C-ZZZZZZ", name: "J. Ellis" }),
+      );
+      expect(second.created).toBe(false);
+      expect(second.customer.id).toBe("cust-1");
+      expect(second.customer.name).toBe("Jordan Ellis"); // NOT overwritten by the candidate
+      expect(await repo.listCustomers()).toHaveLength(1);
+    });
+
+    it("getOrCreateCustomerByPhone: a different phone creates a second customer", async () => {
+      await repo.getOrCreateCustomerByPhone(customer());
+      const other = await repo.getOrCreateCustomerByPhone(
+        customer({
+          id: asId<"CustomerId">("cust-2"),
+          displayCode: "C-AAAAAA",
+          phoneE164: "+14405550102",
+          name: "Dana Whit",
+        }),
+      );
+      expect(other.created).toBe(true);
+      expect(await repo.listCustomers()).toHaveLength(2);
+    });
+
+    it("reservation: customerId round-trips present and absent, and lists per customer", async () => {
+      await repo.saveCustomer(customer());
+      const linked = reservation({
+        id: asId<"ReservationId">("resv-linked"),
+        customerId: asId<"CustomerId">("cust-1"),
+      });
+      const unlinked = reservation({ id: asId<"ReservationId">("resv-unlinked") });
+      await repo.saveReservation(linked);
+      await repo.saveReservation(unlinked);
+
+      expect((await repo.getReservation(linked.id))!.customerId).toBe("cust-1");
+      // Unlinked is ABSENT, not null — historical rows stay unlinked forever (DEC-132).
+      expect("customerId" in (await repo.getReservation(unlinked.id))!).toBe(false);
+
+      const history = await repo.listReservationsForCustomer(asId<"CustomerId">("cust-1"));
+      expect(history.map((r) => String(r.id))).toEqual(["resv-linked"]);
+      expect(await repo.listReservationsForCustomer(asId<"CustomerId">("cust-none"))).toEqual([]);
+    });
+
+    it("catalog: Offering includedGuestCount round-trips present and absent (12.8)", async () => {
+      await saveCatalogParents();
+      const base: Offering = {
+        id: asId<"OfferingId">("off-inc"), tenantId: TENANT, name: "Counted", status: "live",
+        vesselIds: [VESSEL], locationId: asId<"LocationId">("loc-1"),
+        schedule: { seasonStart: "2026-06-01", seasonEnd: "2026-08-31", weekdays: [5], departureTimes: ["14:00"] },
+        basePriceCents: 49900, priceVariations: [], extraGuestPriceCents: 5000,
+      };
+      await repo.saveOffering(base); // no includedGuestCount
+      expect("includedGuestCount" in (await repo.getOffering(base.id))!).toBe(false); // omitted, not null
+      await repo.saveOffering({ ...base, includedGuestCount: 8 });
+      expect((await repo.getOffering(base.id))!.includedGuestCount).toBe(8);
+      // clearing it back to unset round-trips as absent again
+      await repo.saveOffering(base);
+      expect("includedGuestCount" in (await repo.getOffering(base.id))!).toBe(false);
+    });
+
+    // ── Gratuity (DEC-124, 12.3) ──────────────────────────────────────────────
+    const gratuity = (over: Partial<Gratuity> = {}): Gratuity => ({
+      id: asId<"GratuityId">("grat_pre_cs1"),
+      eventId: EVENT,
+      reservationId: asId<"ReservationId">("resv-1"),
+      kind: "pre",
+      amountCents: 9980,
+      bps: 2000,
+      stripeCheckoutSessionId: "cs1",
+      createdAt: "2026-07-04T12:00:00.000Z",
+      ...over,
+    });
+
+    it("gratuity: save + list by event + list all; deterministic id is idempotent", async () => {
+      // Parents for gratuity's FKs on event_id + reservation_id (DEC-131).
+      await repo.saveEvent(event());
+      await repo.saveReservation(reservation());
+      expect(await repo.listAllGratuities()).toEqual([]);
+      await repo.saveGratuity(gratuity());
+      await repo.saveGratuity(gratuity()); // same id ⇒ no duplicate
+      expect(await repo.listGratuitiesForEvent(EVENT)).toEqual([gratuity()]);
+      expect(await repo.listAllGratuities()).toHaveLength(1);
+      // a post gratuity on the same event is a distinct row (no bps — free amount)
+      const postGrat: Gratuity = {
+        id: asId<"GratuityId">("grat_post_cs2"), eventId: EVENT,
+        reservationId: asId<"ReservationId">("resv-1"), kind: "post",
+        amountCents: 5000, stripeCheckoutSessionId: "cs2", createdAt: "2026-07-04T13:00:00.000Z",
+      };
+      await repo.saveGratuity(postGrat);
+      expect(await repo.listGratuitiesForEvent(EVENT)).toHaveLength(2);
+      // bps omitted (post) stays omitted, not null
+      const post = (await repo.listGratuitiesForEvent(EVENT)).find((g) => g.kind === "post")!;
+      expect("bps" in post).toBe(false);
+      // a gratuity on a different event isn't returned (the other event must exist — DEC-131)
+      await repo.saveEvent(event({ id: asId<"EventId">("evt-other"), time: "16:00" }));
+      await repo.saveGratuity(gratuity({ id: asId<"GratuityId">("grat_pre_cs3"), eventId: asId<"EventId">("evt-other") }));
+      expect(await repo.listGratuitiesForEvent(EVENT)).toHaveLength(2);
+      expect(await repo.listAllGratuities()).toHaveLength(3);
+    });
+
+    // ── Payments (DEC-107) ────────────────────────────────────────────────────
+    const payment = (over: Partial<Payment> = {}): Payment => ({
+      id: asId<"PaymentId">("pay-1"),
+      reservationId: asId<"ReservationId">("resv-1"),
+      method: "stripe",
+      kind: "full",
+      amountCents: 53521,
+      taxCents: 3621,
+      currency: "usd",
+      status: "succeeded",
+      createdAt: "2026-07-12T00:00:00.000Z",
+      stripeCheckoutSessionId: "cs_test_1",
+      ...over,
+    });
+
+    it("payment config: defaults when unset; per-field override round-trips (DEC-107)", async () => {
+      expect(await repo.getPaymentConfig()).toEqual({
+        depositMode: "deposit",
+        depositPercent: 25,
+        taxRateBps: 725,
+        serviceFeeBps: 300,
+        balanceDueDaysBeforeEvent: 14,
+      });
+      await repo.setPaymentConfig({ depositMode: "full", taxRateBps: 800 }, "2026-07-12T00:00:00.000Z");
+      const cfg = await repo.getPaymentConfig();
+      expect(cfg.depositMode).toBe("full");
+      expect(cfg.taxRateBps).toBe(800);
+      expect(cfg.depositPercent).toBe(25); // untouched field keeps its default
+    });
+
+    it("payments: save/get/listForReservation; idempotent upsert on id; optional stripe ids", async () => {
+      // Parent for payments' FK on reservation_id (DEC-131).
+      await repo.saveReservation(reservation());
+      await repo.savePayment(payment());
+      const got = await repo.getPayment(asId<"PaymentId">("pay-1"));
+      expect(got).toEqual(payment());
+      // idempotent: same id again doesn't duplicate
+      await repo.savePayment(payment({ amountCents: 53521 }));
+      expect(await repo.listPaymentsForReservation(asId<"ReservationId">("resv-1"))).toHaveLength(1);
+      // a balance payment for the same reservation is a second row
+      await repo.savePayment(payment({ id: asId<"PaymentId">("pay-2"), kind: "balance", stripeCheckoutSessionId: "cs_test_2" }));
+      expect(await repo.listPaymentsForReservation(asId<"ReservationId">("resv-1"))).toHaveLength(2);
+      // listAllPayments spans reservations — the purchases list's rollup read (12.12a).
+      expect(await repo.listAllPayments()).toHaveLength(2);
+      // optional stripePaymentIntentId omitted stays omitted (not undefined)
+      expect("stripePaymentIntentId" in got!).toBe(false);
+      // gratuityCents (DEC-124, 12.3): absent stays omitted; present round-trips
+      expect("gratuityCents" in got!).toBe(false);
+      await repo.savePayment(payment({ id: asId<"PaymentId">("pay-3"), gratuityCents: 9980, stripeCheckoutSessionId: "cs_test_3" }));
+      expect((await repo.getPayment(asId<"PaymentId">("pay-3")))!.gratuityCents).toBe(9980);
+      // serviceFeeCents (DEC-134, 12.5): absent stays omitted; present round-trips
+      expect("serviceFeeCents" in got!).toBe(false);
+      await repo.savePayment(payment({ id: asId<"PaymentId">("pay-4"), serviceFeeCents: 1497, stripeCheckoutSessionId: "cs_test_4" }));
+      expect((await repo.getPayment(asId<"PaymentId">("pay-4")))!.serviceFeeCents).toBe(1497);
+    });
+
     it("muster-owned vessel-days: mark + list; upsert on (vessel,date) (DEC-106)", async () => {
       expect(await repo.listMusterOwnedVesselDays()).toEqual([]);
       await repo.markVesselDayMusterOwned(
@@ -451,6 +991,16 @@ export function runRepositoryContract(
         "2026-07-02T00:00:00.000Z",
       );
       expect(await repo.listMusterOwnedVesselDays()).toHaveLength(2);
+    });
+
+    it("reservation catalog: a fresh repo reads empty (DEC-125)", async () => {
+      // Empty on both adapters before anything is written (write round-trip is covered by
+      // "catalog: offering / location / block write + read round-trip" above, added in 12.1a).
+      expect(await repo.listOfferings()).toEqual([]);
+      expect(await repo.getOffering(asId<"OfferingId">("off-none"))).toBeNull();
+      expect(await repo.listLocations()).toEqual([]);
+      expect(await repo.getLocation(asId<"LocationId">("loc-none"))).toBeNull();
+      expect(await repo.listBlocks()).toEqual([]);
     });
 
     it("reservations: nullable phone present and absent; listForEvent", async () => {

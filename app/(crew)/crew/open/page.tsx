@@ -233,7 +233,7 @@ function ClaimRow({ row, back }: { row: ClaimableSeatView; back: string }) {
             {/* DEC-086 vessel identity dot — which boat, at a glance. aria-hidden;
                 the vessel name is the accessible answer. */}
             <span
-              className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${vesselHueClass(row.vesselId)}`}
+              className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${vesselHueClass(row.vesselId, row.vesselHue)}`}
               aria-hidden
             />
             {row.vesselName} · {row.roleName}

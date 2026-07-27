@@ -11,14 +11,23 @@
  */
 
 import type {
+  AddOn,
   Admin,
   Ask,
   AuthSubjectKind,
+  Block,
   CalendarFeed,
+  CheckoutHold,
+  Gratuity,
+  GustoIdentity,
+  Location,
   MusterOwnedVesselDay,
+  Offering,
+  Payment,
   Credential,
   CrewMember,
   CrewStatus,
+  Customer,
   Event,
   LoginCode,
   MagicToken,
@@ -36,7 +45,13 @@ import type {
   Vessel,
 } from "../domain/entities.js";
 import type {
+  AddOnId,
   AskId,
+  BlockId,
+  CheckoutHoldId,
+  CustomerId,
+  LocationId,
+  OfferingId,
   CredentialId,
   CrewMemberId,
   EventId,
@@ -44,6 +59,7 @@ import type {
   OutboxEntryId,
   RingOutboxEntryId,
   NoticeOutboxEntryId,
+  PaymentId,
   PtoWindowId,
   ReservationId,
   RoleTypeId,
@@ -58,6 +74,7 @@ import type { SeatState } from "../domain/states.js";
 import type { ImportRun, ImportRunItem } from "../import/import-audit.js";
 import type { ImportRunId } from "../domain/ids.js";
 import type { Message, Participant, Thread } from "../messaging/entities.js";
+import type { PaymentConfig } from "../reservations/payment-config.js";
 import type { ThreadId } from "../domain/ids.js";
 
 export interface Repository {
@@ -73,6 +90,37 @@ export interface Repository {
   saveVessel(vessel: Vessel): Promise<void>;
   getVessel(id: VesselId): Promise<Vessel | null>;
   listVessels(): Promise<Vessel[]>;
+
+  // ── Add-ons (first-class sellable extras — #491) ───────────────────────────
+  // A twin to Vessels/Locations: edited once at /admin/add-ons, attached to offerings
+  // by id (`Offering.addOnIds`). `required` + `active` are the add-on's own globals.
+  saveAddOn(addOn: AddOn): Promise<void>;
+  getAddOn(id: AddOnId): Promise<AddOn | null>;
+  listAddOns(): Promise<AddOn[]>;
+
+  // ── Customers (contact records — 12.12b, DEC-132) ──────────────────────────
+  // Identity is the canonical E.164 phone (UNIQUE in Postgres); the PK is a surrogate.
+  saveCustomer(customer: Customer): Promise<void>;
+  getCustomer(id: CustomerId): Promise<Customer | null>;
+  getCustomerByPhone(phoneE164: string): Promise<Customer | null>;
+  getCustomerByCode(displayCode: string): Promise<Customer | null>;
+  listCustomers(): Promise<Customer[]>;
+  /**
+   * Get-or-create by canonical phone — the ONE sanctioned way a customer comes into being at
+   * booking time. Returns the existing customer when the phone is already known, otherwise
+   * inserts `candidate`. **The uniqueness race is settled by the database**, not by a
+   * read-then-write in the caller: two first-time bookings from the same phone in the same
+   * instant would both see "no customer" and both insert. Same shape as
+   * `saveReservationIfUnclaimed` — a constraint the caller must react to is exposed through the
+   * port as a typed result, never as a raw driver error (DEC-131).
+   *
+   * `created` tells the caller which branch won; the backfill and the contract tests assert it.
+   */
+  getOrCreateCustomerByPhone(
+    candidate: Customer,
+  ): Promise<{ customer: Customer; created: boolean }>;
+  /** A customer's bookings — the detail pane's history list. */
+  listReservationsForCustomer(id: CustomerId): Promise<Reservation[]>;
 
   // ── Crew ───────────────────────────────────────────────────────────────────
   saveCrewMember(crew: CrewMember): Promise<void>;
@@ -99,6 +147,12 @@ export interface Repository {
   updateCrewWeekdaysOff(
     id: CrewMemberId,
     weekdaysOff: number[],
+  ): Promise<CrewMember | null>;
+  /** Set the crew member's Gusto payroll identity (DEC-124, 12.3b) — a targeted UPDATE of
+   *  `gusto` only, same lost-update safety as {@link updateCrewContact}. Null if id unknown. */
+  updateCrewGusto(
+    id: CrewMemberId,
+    gusto: GustoIdentity,
   ): Promise<CrewMember | null>;
   /** Onboard a crew member + their gating credential ATOMICALLY (DEC-094/044).
    *  A half-write (member saved, credential lost) would strand an active crew
@@ -128,6 +182,24 @@ export interface Repository {
    *  {@link removeCredential}: idempotent, no-op if the id is already gone. */
   removePtoWindow(id: PtoWindowId): Promise<void>;
 
+  // ── Reservation catalog (DEC-123/125) ──────────────────────────────────────
+  // Read by the virtual-availability model (`deriveVirtualAvailability`). The bare
+  // persistence WRITES (save*/remove*) landed in 12.1a because the booking path can't
+  // run or be tested without seedable offerings/blocks; the admin UI + validation still
+  // land with each entity's own task (offerings 12.8, locations 12.9, blocks 12.10).
+  listOfferings(): Promise<Offering[]>;
+  getOffering(id: OfferingId): Promise<Offering | null>;
+  saveOffering(offering: Offering): Promise<void>;
+  listLocations(): Promise<Location[]>;
+  getLocation(id: LocationId): Promise<Location | null>;
+  saveLocation(location: Location): Promise<void>;
+  /** Every availability block (location / vessel / vessel-hold) — the deriver's
+   *  subtraction set. */
+  listBlocks(): Promise<Block[]>;
+  saveBlock(block: Block): Promise<void>;
+  /** Remove a block — idempotent no-op if the id is already gone. */
+  removeBlock(id: BlockId): Promise<void>;
+
   // ── Events ─────────────────────────────────────────────────────────────────
   saveEvent(event: Event): Promise<void>;
   getEvent(id: EventId): Promise<Event | null>;
@@ -139,6 +211,68 @@ export interface Repository {
   listReservationsForEvent(eventId: EventId): Promise<Reservation[]>;
   /** Every reservation — the integrity diagnostic's orphan scan. */
   listAllReservations(): Promise<Reservation[]>;
+  /**
+   * Atomic whole-boat claim (DEC-109, the customer-side REQ-CLAIM-1). Writes
+   * `reservation` (source='muster', status='booked') IFF the boat-event carries no
+   * OTHER active Muster reservation. Returns `true` iff, after the call, the event is
+   * held by exactly this reservation id — freshly inserted OR already present from a
+   * prior identical call (idempotent on id). Returns `false` iff a DIFFERENT active
+   * Muster reservation holds the event, or the event does not exist. The mutex lives
+   * HERE in the port — identical across adapters, never a DB unique constraint (n:1
+   * stays intact, DEC-DATA-1). Source-scoped: an active `xola` reservation never
+   * blocks. Capacity is NOT checked here (it can't race) — that's `canBook`'s job.
+   */
+  saveReservationIfUnclaimed(reservation: Reservation): Promise<boolean>;
+
+  /**
+   * Atomic first-booking-of-a-virtual-slot (12.1, DEC-109/125) — the pessimistic write-time
+   * backstop that no hold can defeat by timing. In ONE critical section: (1) materialize the
+   * `Event` at its slot identity `(vessel,date,time,source='muster')` if none exists — the
+   * `events_muster_slot_identity` partial-unique guardrail makes concurrent first-bookings
+   * collide, so exactly one row is ever created per physical boat-slot (the DEC-125 guardrail
+   * enforcement, deferred from 12.0); (2) claim IFF no OTHER active Muster reservation holds
+   * that slot (the whole-boat mutex). `reservation.eventId` is reconciled to the actual
+   * materialized event id (`won.eventId`). Idempotent on `reservation.id`: a re-delivered
+   * webhook returns `{result:"won"}`. `event.id` MUST be the deterministic `eventIdForSlot`.
+   */
+  saveBookingIfSlotFree(
+    event: Event,
+    reservation: Reservation,
+  ): Promise<{ result: "won"; eventId: EventId } | { result: "lost" }>;
+
+  // ── Checkout holds — the transient 15-min soft reservation (12.1, DEC-109) ──
+  /**
+   * Acquire a checkout-hold on a physical slot. Atomic: deletes any EXPIRED hold for the
+   * slot identity first (so a stale row can't block a fresh acquire — the identity is
+   * unique), then inserts. Two live buyers collide on the `checkout_holds_slot_identity`
+   * unique → exactly one `{acquired:true}`; the other gets `{acquired:false}`. Idempotent on
+   * id: re-acquiring one's own live hold returns `{acquired:true}` with the existing row.
+   */
+  acquireCheckoutHold(
+    hold: CheckoutHold,
+  ): Promise<{ acquired: true; hold: CheckoutHold } | { acquired: false }>;
+  /** Every checkout-hold row (including expired-but-undeleted). The deriver filters these
+   *  to live (`expiresAt > asOf`) — the ONLY sanctioned raw read; never raw-count for "held". */
+  listCheckoutHolds(): Promise<CheckoutHold[]>;
+  /** Release a hold by id — idempotent no-op if already gone. Called when a checkout is
+   *  abandoned. */
+  removeCheckoutHold(id: CheckoutHoldId): Promise<void>;
+  /** Release the hold on a physical slot — how a won booking clears its own hold (the id was
+   *  a per-attempt mint the webhook doesn't have). Idempotent; there's ≤1 hold per slot. */
+  removeCheckoutHoldForSlot(
+    vesselId: VesselId,
+    date: string,
+    time: string,
+  ): Promise<void>;
+
+  // ── Gratuity — first-class crew money (12.3, DEC-124) ───────────────────────
+  /** Record a collected gratuity. Deterministic id (`grat_${kind}_${sessionId}`) ⇒ idempotent
+   *  upsert, so a re-delivered webhook never double-counts. */
+  saveGratuity(gratuity: Gratuity): Promise<void>;
+  /** Every gratuity on an event — the per-event pool the payroll split (12.3b) sums. */
+  listGratuitiesForEvent(eventId: EventId): Promise<Gratuity[]>;
+  /** Every gratuity — the payroll report's source set (12.3b). */
+  listAllGratuities(): Promise<Gratuity[]>;
 
   // ── Coexistence partition — Muster-owned vessel-days (DEC-106) ───────────────
   /** Every vessel-day marked Muster-owned. The importer hoists this to a Set once
@@ -151,6 +285,19 @@ export interface Repository {
     date: string,
     markedAt: string,
   ): Promise<void>;
+
+  // ── Payments (Muster-native reservations — DEC-107) ─────────────────────────
+  /** Operator payment config (deposit mode/%, tax rate, balance-due-days), backed by the
+   *  `app_settings` KV; an absent key falls to `PAYMENT_CONFIG_DEFAULTS` per field. */
+  getPaymentConfig(): Promise<PaymentConfig>;
+  setPaymentConfig(patch: Partial<PaymentConfig>, at: string): Promise<void>;
+  /** Idempotent upsert on the deterministic id — a re-delivered webhook can't double-write. */
+  savePayment(payment: Payment): Promise<void>;
+  getPayment(id: PaymentId): Promise<Payment | null>;
+  listPaymentsForReservation(reservationId: ReservationId): Promise<Payment[]>;
+  /** Every payment row — the purchases list's rollup (12.12a). A per-row
+   *  `listPaymentsForReservation` would be an N+1 read across the whole order list. */
+  listAllPayments(): Promise<Payment[]>;
 
   // ── Shifts ─────────────────────────────────────────────────────────────────
   saveShift(shift: Shift): Promise<void>;

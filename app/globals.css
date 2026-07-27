@@ -57,6 +57,10 @@
   --radius-card: 14px;
 }
 
+html {
+  font-size: 80%; /* 12.8px root — IBM Plex reads oversized at 16px */
+}
+
 body {
   background: var(--color-bg);
   color: var(--color-ink);

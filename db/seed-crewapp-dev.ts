@@ -7,13 +7,8 @@
  *   docker compose up -d && npm run db:migrate && npx tsx db/seed-crewapp-dev.ts
  * Then: GET /crew/dev-link?crew=crew-quint → tap the link → /crew.
  *
- * Also a step in the `db:all` registry — hence the exported function
- * plus CLI-entry guard: `db:all` calls it in-process on one connection, while
- * `npm run db:seed:crew` still runs it standalone.
- *
  * Dev tooling, not app code. Uses the same Postgres adapter the app runs on.
  */
-import { fileURLToPath } from "node:url";
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
 import { TENANT_TIMEZONE } from "../src/config/tenant.js";
 import { asId } from "../src/domain/ids.js";
@@ -26,8 +21,10 @@ import {
   logShiftBailed,
   logShiftCompleted,
 } from "../src/oracle/reliability-log.js";
-import type { Repository } from "../src/ports/repository.js";
 import { DEFAULT_DATABASE_URL } from "./migrate.js";
+
+const url = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
+const repo = PostgresRepository.fromConnectionString(url);
 
 const TENANT = asId<"TenantId">("tenant-brewboat"); // match app TENANT_ID + canonical seeds
 const CAPTAIN = asId<"RoleTypeId">("role-captain");
@@ -51,29 +48,7 @@ const dateOf = (d: Date) =>
 const SOON = dateOf(at(15 * 24));
 const LATER = dateOf(at(16 * 24));
 
-/**
- * The operator's own dev record — the ONE real person any seed may carry
- * his phone, his call. Kept separate from the rest of the crew-app
- * scenario because `db:all` needs it in EVERY mode — it's the crew id the admin
- * row points at (DEC-092), so `--split` would otherwise leave you unable to sign
- * in to the admin surfaces it exists to test. Defined once, called from both.
- *
- * REAL phone, for the Twilio live-SMS smoke (#242). MATE-rated (NOT captain —
- * bail-regression.spec depends on Quint being the only valid captain) with a
- * long MMC, so he lands in mate-seat ask pools; "Ask to fill" on shift-open's
- * mate seat texts his actual phone once the three TWILIO_* vars are set.
- *
- * The EMAIL is the sign-in identity: login matches on email only
- * (`matchCrewByEmail`, src/auth/login-code.ts), so a crew record without one can
- * never receive a code. Requires `role-mate` to exist already.
- */
-export async function seedOperator(repo: Repository): Promise<void> {
-  const ERIC = asId<"CrewMemberId">("crew-eric");
-  await repo.saveCrewMember({ id: ERIC, name: "Eric Stoffer", phone: "+14403631599", email: "eric@bb.test", ratings: [MATE], status: "active", reliabilityScore: null });
-  await repo.saveCredential({ id: asId<"CredentialId">("cred-eric-mmc"), crewMemberId: ERIC, type: "MMC", expiry: "2030-12-31" });
-}
-
-export async function seedCrewApp(repo: Repository): Promise<void> {
+try {
   await repo.saveRoleType({ id: CAPTAIN, tenantId: TENANT, name: "captain" });
   await repo.saveRoleType({ id: MATE, tenantId: TENANT, name: "mate" });
   await repo.saveVessel({
@@ -82,15 +57,45 @@ export async function seedCrewApp(repo: Repository): Promise<void> {
     coiMaxPax: 12,
     manning: [{ roleTypeId: CAPTAIN, count: 1 }, { roleTypeId: MATE, count: 1 }],
   });
-  await repo.saveCrewMember({ id: QUINT, name: "Quint", phone: "+15555550101", email: "quint@brewboat.test", ratings: [CAPTAIN], status: "active", reliabilityScore: null });
-  await repo.saveCrewMember({ id: HOOPER, name: "Hooper", phone: "+15555550102", ratings: [MATE], status: "active", reliabilityScore: null });
+  await repo.saveCrewMember({ id: QUINT, name: "Quint", email: "quint@brewboat.test", phone: "+15555550101", ratings: [CAPTAIN], status: "active", reliabilityScore: null });
+  await repo.saveCrewMember({ id: HOOPER, name: "Hooper", email: "hooper@bb.test", phone: "+15555550102", ratings: [MATE], status: "active", reliabilityScore: null });
   // Quint's MMC expires ~30d from seed time (anchored to now so the #57 nudge
   // line always shows inside the 60d window); Hooper's is comfortably valid.
   const in30d = new Date(Date.now() + 30 * 24 * 3600_000).toISOString().slice(0, 10);
   await repo.saveCredential({ id: asId<"CredentialId">("cred-quint-mmc"), crewMemberId: QUINT, type: "MMC", expiry: in30d });
   await repo.saveCredential({ id: asId<"CredentialId">("cred-hooper-mmc"), crewMemberId: HOOPER, type: "MMC", expiry: "2027-12-31" });
 
-  await seedOperator(repo);
+  // Eric — REAL phone, for the Twilio live-SMS smoke (#242): MATE-rated (NOT
+  // captain — bail-regression.spec depends on Quint being the only valid
+  // captain) with a long MMC, so he lands in mate-seat ask pools; "Ask to
+  // fill" on shift-open's mate seat texts his actual phone once the three
+  // TWILIO_* vars are set. Dev seed only.
+  const ERIC = asId<"CrewMemberId">("crew-eric");
+  await repo.saveCrewMember({ id: ERIC, name: "Eric Stoffer", email: "eric@bb.test", phone: "+14403631599", ratings: [MATE], status: "active", reliabilityScore: null });
+  await repo.saveCredential({ id: asId<"CredentialId">("cred-eric-mmc"), crewMemberId: ERIC, type: "MMC", expiry: "2030-12-31" });
+  // …and an ADMIN, so a reset dev DB has a way in.
+  //
+  // NOTHING else creates one: 0018 seeded a provisional roster and 0019 deleted it, so the
+  // migration ledger yields zero admins by design. That left dev with only whatever admin was
+  // added by hand — which any reset wipes, with nothing to restore it.
+  //
+  // 0019's header states "admins are CLI-managed (`db:admin`), not seeded" as though it were a
+  // project rule. It isn't: no DEC says it, and DEC-092 — the decision that actually governs
+  // admin identity — is silent on seeding. What 0019 genuinely justified is narrower: don't
+  // bake GUESSED PROD crew ids into a migration, since an admin id must be a real crew id
+  // (DEC-092) and prod's ids aren't knowable at authoring time. That reasoning doesn't reach
+  // dev, where the roster is fixture data and the ids are knowable — which is the whole
+  // difference. Prod still gets its admins from `db:admin` after the real roster exists.
+  //
+  // Sign in at /crew/dev-link?admin=eric, or via the crew code flow on eric@bb.test.
+  await repo.saveAdmin({
+    id: ERIC,
+    handle: "eric",
+    name: "Eric Stoffer",
+    active: true,
+    createdAt: new Date().toISOString(),
+    deactivatedAt: null,
+  });
 
   // A confirmed upcoming shift with two events (3pm + 5pm, different docks) →
   // my-shifts row → the shift card (call/departure times, dock pins, per-event
@@ -118,7 +123,7 @@ export async function seedCrewApp(repo: Repository): Promise<void> {
   const GROWLER = asId<"VesselId">("vessel-growler");
   const GILLY = asId<"CrewMemberId">("crew-gilly");
   await repo.saveVessel({ id: GROWLER, name: "Growler", coiMaxPax: 12, manning: [{ roleTypeId: CAPTAIN, count: 1 }] });
-  await repo.saveCrewMember({ id: GILLY, name: "Gilly", phone: "+15555550109", ratings: [], status: "active", reliabilityScore: null });
+  await repo.saveCrewMember({ id: GILLY, name: "Gilly", email: "gilly@bb.test", phone: "+15555550109", ratings: [], status: "active", reliabilityScore: null });
   const SHIFT_SOON_B = asId<"ShiftId">("shift-soon-growler");
   const EGB = asId<"EventId">("evt-soon-growler-1pm");
   const EGB2 = asId<"EventId">("evt-soon-growler-4pm");
@@ -163,7 +168,7 @@ export async function seedCrewApp(repo: Repository): Promise<void> {
   // standing line (every reason kind at once — #32). No shifts/asks of his own;
   // this seed is purely to eyeball the standing subline wrapping + neutral tone.
   const DOOLEY = asId<"CrewMemberId">("crew-dooley");
-  await repo.saveCrewMember({ id: DOOLEY, name: "Dooley", phone: "+15555550103", ratings: [CAPTAIN], status: "active", reliabilityScore: null });
+  await repo.saveCrewMember({ id: DOOLEY, name: "Dooley", email: "dooley@bb.test", phone: "+15555550103", ratings: [CAPTAIN], status: "active", reliabilityScore: null });
 
   // The reliability log is append-only (no upsert), so only seed it once — re-runs
   // would otherwise duplicate. Past timestamps (all before any plausible `now`) so
@@ -189,15 +194,6 @@ export async function seedCrewApp(repo: Repository): Promise<void> {
   console.log("  + Bail demo (#56): open the shift card → 'I can't make it…' — Quint is the only");
   console.log("    captain, so the seat rests Bailed and the shift lands on /admin/at-risk as a regression.");
   console.log("Seeded crew-dooley: full reliability log → worst-case standing line. View: /crew/dev-link?crew=crew-dooley");
-}
-
-// CLI entry: `npm run db:seed:crew`. Skipped when imported by db:all.
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  const url = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
-  const repo = PostgresRepository.fromConnectionString(url);
-  try {
-    await seedCrewApp(repo);
-  } finally {
-    await repo.close();
-  }
+} finally {
+  await repo.close();
 }

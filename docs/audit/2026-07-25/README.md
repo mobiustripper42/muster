@@ -82,7 +82,7 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
   "code-login cannot make you an admin" — which `SECURITY_AUDIT.md` contradicts outright.
 - **Shard C closed** — 6 findings, 9 verified-consistent. **3 fixed here** (`USER_STORIES.md`
   SP-6/SP-7 described shift lock, cut by DEC-082; DR-1 said payments were parked to 2027).
-  **3 were one operator decision — now RESOLVED by DEC-138** (PR #540): SPEC §1.3 rewritten to the
+  **3 were one operator decision — now RESOLVED by DEC-140** (PR #540; authored as DEC-138, renumbered at the merge): SPEC §1.3 rewritten to the
   DEC-125 model (two mechanisms, not one rule engine). COI-expiry and lead-time-cutoff both
   **rejected on operator input** and closed on the record. See the shard file's RESOLVED header for
   two corrections to the original severity read.
@@ -268,7 +268,9 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
     **no restructure is recommended**.
 - **Shard Z FIXED and the audit is CLOSED (S72, 2026-07-27).** `main`'s DEC-134/135 **deleted** (neither
   decided anything; the operator's call), which resolved two thirds of the #562 id collision for free —
-  `feature/reservations` keeps 134/135, 136/137 are freed, only DEC-138 still collides. The index now
+  `feature/reservations` keeps 134/135, its **DEC-136/137 were dropped at the merge** (they were the
+  renumbered copies of the two `main` deleted), and DEC-138 was resolved by renumbering the SPEC §1.3
+  rewrite to **DEC-140**. **#562 is closed — the id collision is gone.** The index now
   resolves **both directions** with zero orphans, gained the third state the file always needed
   (`amended by DEC-N`, since **zero of 135 DECs are fully superseded**), and 7 of the worst one-way
   edges got back-pointers. **Z3's substrate debt is closed:** 11 unlanded amendments applied across
@@ -321,7 +323,7 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
    rules shard C surfaced (COI expiry, lead-time cutoff) were rejected on domain knowledge no
    amount of code-reading would have produced — one because the risk is managed off-system, one
    because the "gap" was a designed-for behavior. Escalate absences as **questions**, not defects,
-   and record the answer (DEC-138) so the next sweep doesn't re-derive them.
+   and record the answer (DEC-140) so the next sweep doesn't re-derive them.
 11. **A reconciliation pass is itself a doc edit, and doc edits stop early.** Shard C2.3's headline was
    not drift between a doc and the code — it was drift **inside one section** between a `⚠️ Reconciled`
    header and the four blocks below it that the header declared dead. Three of five got struck; two

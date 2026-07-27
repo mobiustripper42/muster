@@ -14,7 +14,7 @@
 -- crew-app unread substrate (6.7), notifications are doorbell-private (6.6b) —
 -- different owners, different lifecycles.
 --
--- House style (0008/0009): ISO dates as `text`, NO foreign keys (integrity is the
+-- House style (0008/0009): ISO dates as `text`, NO foreign keys (posture: DEC-131; integrity is the
 -- service layer's — DEC-DATA-1), keyed by the canonical subject as a COMPOSITE
 -- `(subject_kind, subject_id)` (DEC-058) with `thread_id` leading (the doorbell's
 -- thread-scoped access path). `priority` is the schema's first native `boolean`
@@ -23,7 +23,7 @@
 create table message_reads (
   thread_id     text not null,
   subject_kind  text not null,   -- canonical AuthSubjectKind: admin | crew (DEC-058)
-  subject_id    text not null,   -- namespace-local subject id (no FK — DEC-DATA-1)
+  subject_id    text not null,   -- namespace-local subject id (no FK — DEC-131)
   last_read_at  text not null,   -- ISO-8601 UTC, latest-wins
   primary key (thread_id, subject_kind, subject_id)
 );

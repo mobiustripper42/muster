@@ -12,22 +12,11 @@ things to eyeball.
 ## Quick start
 ```bash
 npm install
-npm run db:up   # docker compose up -d  → postgres:17 on :5432 (muster_dev + muster_test)
-npm run db:all  # migrate + WIPE + seed everything + make you admin
-npm run dev     # next dev --webpack on :3000
+npm run db:up        # docker compose up -d  → postgres:17 on :5432 (muster_dev + muster_test)
+npm run db:migrate   # apply db/migrations/*.sql
+npm run db:seed:crew # seed "crew-quint": 1 confirmed shift + 1 open ask (so the crew app has data)
+npm run dev          # next dev --webpack on :3000
 ```
-Then sign in at `/crew` with **`eric@bb.test`** — the 6-digit code prints in the `npm run dev`
-terminal (`[login-code] →`). No mail server, no magic link to mint.
-
-**`db:all` always resets.** It truncates every table before seeding, refuses any `DATABASE_URL`
-that isn't localhost, and is the intended way to start each PR: throw the database away, get the
-full scenario set back. Adding new test data means adding a line to the `SEEDS` registry in
-`db/all-dev.ts` — the data resets every run, the registry only grows.
-
-`npm run db:all -- --split` swaps in the split/merge fixture, which **must** run alone — `formShifts`
-is global, so splitting with the scenario set loaded duplicates every scenario shift. The individual
-`db:migrate` / `db:seed:*` commands still work for a targeted, non-destructive re-seed.
-
 Teardown: `npm run db:down` (keeps the data volume; add nothing to wipe).
 
 ## Opening it in a browser
@@ -62,10 +51,9 @@ In dev there's a link issuer:
     shift shows on **/admin/at-risk** as a red **Lacking crew · late bail** regression.
     ⚠️ "Crew seed only" means a DB that has *never* run `db:seed:atrisk` — its captains persist
     (upserts never delete; `db:migrate` is forward-only and won't drop them), so a plain re-run of
-    `db:seed:crew` on a contaminated DB **won't** get you here. Wipe first:
+    `db:seed:crew` on a contaminated DB **won't** get you here. Wipe the volume first:
     `docker compose down -v && npm run db:up && npm run db:migrate && npm run db:seed:crew`,
-    *then* bail. (`npm run db:all` also wipes, but it loads the at-risk seed too — so it puts
-    you on the **other** branch below, not this one.)
+    *then* bail.
   - **At-risk seed also loaded** → that seed adds eligible captains, so the bail **re-asks** instead
     → seat goes `Asked`, shift `Filling`. A live ask far from the trip is suppressed from the board
     by design — open the Hops cockpit (`/admin/shift/shift-soon`) and watch the pool read
@@ -196,9 +184,7 @@ npm run db:seed:outbox   # 3 cards: 2 relays + 1 addressed to the operator (trip
   PRs call out exactly which surface to look at.
 
 ## Production notes (not needed for local dev)
-These are dev-defaulted locally but **must be set in production**. This is the short list that
-bites *local* assumptions — the full deploy set (Xola keys, `CREW_SELF_SERVE`, email/SMS) is in
-`DEPLOY.md §Environment variables`:
+Two env vars are dev-defaulted locally but **must be set in production**:
 - **`SESSION_SECRET`** — signs session cookies. Unset in prod = a repo-public signing key = session
   forgery; the app fails fast if it's missing in production.
 - **`APP_BASE_URL`** — the real external origin, used to build any **delivered** magic link. Without it

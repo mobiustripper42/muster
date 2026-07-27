@@ -16,15 +16,27 @@
 import pg from "pg";
 import type {
   Admin,
+  AddOn,
+  Customer,
   Ask,
   AuthSubjectKind,
+  Block,
+  CheckoutHold,
   Credential,
   CrewMember,
   CrewStatus,
   Event,
+  Gratuity,
+  GratuityKindConfig,
+  GustoIdentity,
+  Location,
   LoginCode,
   CalendarFeed,
   MusterOwnedVesselDay,
+  Offering,
+  OfferingSchedule,
+  Payment,
+  PriceVariation,
   MagicToken,
   NoticeOutboxEntry,
   SmsConsent,
@@ -42,13 +54,21 @@ import type {
 import { asId } from "../domain/ids.js";
 import { subjectKey } from "../domain/subject.js";
 import type {
+  AddOnId,
+  CustomerId,
   AskId,
+  BlockId,
+  CheckoutHoldId,
+  GratuityId,
   CredentialId,
   CrewMemberId,
   EventId,
+  LocationId,
   MagicTokenId,
   NoticeOutboxEntryId,
+  OfferingId,
   OutboxEntryId,
+  PaymentId,
   PtoWindowId,
   RingOutboxEntryId,
   ReservationId,
@@ -77,6 +97,10 @@ import type {
   ThreadKind,
 } from "../messaging/entities.js";
 import type { ThreadId } from "../domain/ids.js";
+import {
+  PAYMENT_CONFIG_DEFAULTS,
+  type PaymentConfig,
+} from "../reservations/payment-config.js";
 import type { Repository } from "../ports/repository.js";
 
 /** Add `key: value` only when value is non-null — keeps optional fields absent. */
@@ -107,10 +131,34 @@ const toAdmin = (r: any): Admin => ({
   deactivatedAt: r.deactivated_at ?? null,
 });
 
+const toAddOn = (r: any): AddOn => ({
+  id: asId<"AddOnId">(r.id),
+  tenantId: asId<"TenantId">(r.tenant_id),
+  label: r.label,
+  type: r.type,
+  amountCents: r.amount_cents,
+  required: r.required,
+  active: r.active,
+});
+
+const toCustomer = (r: any): Customer => ({
+  id: asId<"CustomerId">(r.id),
+  displayCode: r.display_code,
+  name: r.name,
+  phoneE164: r.phone_e164,
+  createdAt: r.created_at,
+  active: r.active,
+  ...opt("email", r.email),
+  ...opt("notes", r.notes),
+});
+
 const toVessel = (r: any): Vessel => ({
   id: asId<"VesselId">(r.id),
   name: r.name,
   coiMaxPax: r.coi_max_pax,
+  ...opt("hue", r.hue),
+  ...opt("homeLocationId", r.home_location_id ? asId<"LocationId">(r.home_location_id) : null),
+  ...opt("notes", r.notes),
   manning: (r.manning as { roleTypeId: string; count: number }[]).map((m) => ({
     roleTypeId: asId<"RoleTypeId">(m.roleTypeId),
     count: m.count,
@@ -128,6 +176,7 @@ const toCrew = (r: any): CrewMember => ({
   ...opt("manualBoost", r.manual_boost),
   ...opt("manualFloor", r.manual_floor),
   ...opt("protocolOverride", r.protocol_override),
+  ...(r.gusto != null ? { gusto: r.gusto as GustoIdentity } : {}),
   // Optional like the fields above — omitted (not []) when the crew member has no
   // recurring days off, so absence round-trips (the DB column defaults to []).
   ...((r.weekdays_off as number[] | null)?.length
@@ -162,6 +211,84 @@ const toEvent = (r: any): Event => ({
   ...opt("price", r.price),
 });
 
+const toOffering = (r: any): Offering => ({
+  id: asId<"OfferingId">(r.id),
+  tenantId: asId<"TenantId">(r.tenant_id),
+  name: r.name,
+  status: r.status,
+  vesselIds: (r.vessel_ids as string[]).map((x) => asId<"VesselId">(x)),
+  locationId: asId<"LocationId">(r.location_id),
+  schedule: r.schedule as OfferingSchedule, // jsonb → object (node-pg parses)
+  basePriceCents: r.base_price_cents,
+  priceVariations: r.price_variations as PriceVariation[], // jsonb
+  ...opt("includedGuestCount", r.included_guest_count),
+  extraGuestPriceCents: r.extra_guest_price_cents,
+  ...opt("description", r.description),
+  ...opt("tripLengthMinutes", r.trip_length_minutes),
+  ...opt("holdMinutes", r.hold_minutes),
+  ...opt("arriveBeforeMinutes", r.arrive_before_minutes),
+  ...(r.gratuity_kinds != null ? { gratuityKinds: r.gratuity_kinds as GratuityKindConfig[] } : {}),
+  ...(r.add_on_ids != null
+    ? { addOnIds: (r.add_on_ids as string[]).map((x) => asId<"AddOnId">(x)) }
+    : {}),
+});
+
+const toLocation = (r: any): Location => ({
+  id: asId<"LocationId">(r.id),
+  name: r.name,
+  pickupDescription: r.pickup_description,
+  routeDescription: r.route_description,
+  ...opt("pickupLink", r.pickup_link),
+});
+
+const toBlock = (r: any): Block => {
+  switch (r.kind) {
+    case "location":
+      return {
+        id: asId<"BlockId">(r.id),
+        kind: "location",
+        locationId: asId<"LocationId">(r.location_id),
+        date: r.date,
+        startTime: r.start_time,
+        endTime: r.end_time,
+        ...opt("note", r.note),
+      };
+    case "vessel":
+      return {
+        id: asId<"BlockId">(r.id),
+        kind: "vessel",
+        vesselId: asId<"VesselId">(r.vessel_id),
+        startDate: r.start_date,
+        endDate: r.end_date,
+        ...opt("note", r.note),
+      };
+    case "vesselHold":
+      return {
+        id: asId<"BlockId">(r.id),
+        kind: "vesselHold",
+        vesselId: asId<"VesselId">(r.vessel_id),
+        date: r.date,
+        time: r.time,
+        ...opt("note", r.note),
+      };
+    default:
+      throw new Error(`unknown block kind: ${String(r.kind)}`);
+  }
+};
+
+const toCheckoutHold = (r: any): CheckoutHold => ({
+  id: asId<"CheckoutHoldId">(r.id),
+  vesselId: asId<"VesselId">(r.vessel_id),
+  date: r.date,
+  time: r.time,
+  source: "muster",
+  offeringId: asId<"OfferingId">(r.offering_id),
+  guestCount: r.guest_count,
+  expiresAt: r.expires_at,
+  createdAt: r.created_at,
+  ...opt("stripeCheckoutSessionId", r.stripe_checkout_session_id),
+});
+
 const toReservation = (r: any): Reservation => ({
   id: asId<"ReservationId">(r.id),
   eventId: asId<"EventId">(r.event_id),
@@ -171,13 +298,45 @@ const toReservation = (r: any): Reservation => ({
   status: r.status,
   ...opt("email", r.email),
   ...opt("phone", r.phone),
+  ...opt("extrasCents", r.extras_cents),
+  ...opt("waiverConsentAt", r.waiver_consent_at),
+  ...opt("waiverVersion", r.waiver_version),
   ...opt("updatedAt", r.updated_at),
+  ...opt<"customerId", CustomerId>("customerId", r.customer_id ?? null),
 });
 
 const toMusterOwnedVesselDay = (r: any): MusterOwnedVesselDay => ({
   vesselId: asId<"VesselId">(r.vessel_id),
   date: r.date,
   markedAt: r.marked_at,
+});
+
+const toPayment = (r: any): Payment => ({
+  id: asId<"PaymentId">(r.id),
+  reservationId: asId<"ReservationId">(r.reservation_id),
+  method: r.method,
+  kind: r.kind,
+  amountCents: r.amount_cents,
+  taxCents: r.tax_cents,
+  currency: r.currency,
+  status: r.status,
+  createdAt: r.created_at,
+  ...opt("gratuityCents", r.gratuity_cents),
+  ...opt("serviceFeeCents", r.service_fee_cents),
+  ...opt("stripeCheckoutSessionId", r.stripe_checkout_session_id),
+  ...opt("stripePaymentIntentId", r.stripe_payment_intent_id),
+  ...opt("refundedCents", r.refunded_cents),
+});
+
+const toGratuity = (r: any): Gratuity => ({
+  id: asId<"GratuityId">(r.id),
+  eventId: asId<"EventId">(r.event_id),
+  reservationId: asId<"ReservationId">(r.reservation_id),
+  kind: r.kind,
+  amountCents: r.amount_cents,
+  createdAt: r.created_at,
+  ...opt("bps", r.bps),
+  ...opt("stripeCheckoutSessionId", r.stripe_checkout_session_id),
 });
 
 const toShift = (r: any): Shift => ({
@@ -402,12 +561,132 @@ export class PostgresRepository implements Repository {
     return rows.map(toRoleType);
   }
 
+  // ── Add-ons (first-class sellable extras — #491) ───────────────────────────
+  async saveAddOn(a: AddOn): Promise<void> {
+    await this.#pool.query(
+      `insert into add_ons(id, tenant_id, label, type, amount_cents, required, active)
+       values ($1,$2,$3,$4,$5,$6,$7)
+       on conflict (id) do update set
+         tenant_id=excluded.tenant_id, label=excluded.label, type=excluded.type,
+         amount_cents=excluded.amount_cents, required=excluded.required, active=excluded.active`,
+      [a.id, a.tenantId, a.label, a.type, a.amountCents, a.required, a.active],
+    );
+  }
+  async getAddOn(id: AddOnId): Promise<AddOn | null> {
+    const { rows } = await this.#pool.query("select * from add_ons where id=$1", [id]);
+    return rows[0] ? toAddOn(rows[0]) : null;
+  }
+  async listAddOns(): Promise<AddOn[]> {
+    const { rows } = await this.#pool.query("select * from add_ons");
+    return rows.map(toAddOn);
+  }
+
+  // ── Customers (contact records — 12.12b, DEC-132) ──────────────────────────
+  // `customers` is the FIRST table in this schema with real constraints (DEC-131): UNIQUE on
+  // phone_e164 + display_code, and reservations.customer_id carries an FK. The in-memory double
+  // enforces none of that on purpose — see its note. Where the constraint is semantic, it is
+  // exposed through the port as a typed result rather than a leaked driver error.
+  async saveCustomer(c: Customer): Promise<void> {
+    await this.#pool.query(
+      `insert into customers(id, display_code, name, phone_e164, email, created_at, notes, active)
+       values ($1,$2,$3,$4,$5,$6,$7,$8)
+       on conflict (id) do update set
+         display_code=excluded.display_code, name=excluded.name, phone_e164=excluded.phone_e164,
+         email=excluded.email, created_at=excluded.created_at, notes=excluded.notes,
+         active=excluded.active`,
+      [c.id, c.displayCode, c.name, c.phoneE164, c.email ?? null, c.createdAt, c.notes ?? null, c.active],
+    );
+  }
+  async getCustomer(id: CustomerId): Promise<Customer | null> {
+    const { rows } = await this.#pool.query("select * from customers where id=$1", [id]);
+    return rows[0] ? toCustomer(rows[0]) : null;
+  }
+  async getCustomerByPhone(phoneE164: string): Promise<Customer | null> {
+    const { rows } = await this.#pool.query(
+      "select * from customers where phone_e164=$1",
+      [phoneE164],
+    );
+    return rows[0] ? toCustomer(rows[0]) : null;
+  }
+  async getCustomerByCode(displayCode: string): Promise<Customer | null> {
+    const { rows } = await this.#pool.query(
+      "select * from customers where display_code=$1",
+      [displayCode],
+    );
+    return rows[0] ? toCustomer(rows[0]) : null;
+  }
+  async listCustomers(): Promise<Customer[]> {
+    const { rows } = await this.#pool.query("select * from customers");
+    return rows.map(toCustomer);
+  }
+  /**
+   * Get-or-create, with the UNIQUE index as the arbiter. `on conflict (phone_e164) do nothing`
+   * returns zero rows when someone else won the race, so the follow-up select resolves the
+   * winner — no read-then-write window, no unique-violation error surfacing to the caller.
+   * `created` is true only for the insert that actually landed.
+   */
+  async getOrCreateCustomerByPhone(
+    candidate: Customer,
+  ): Promise<{ customer: Customer; created: boolean }> {
+    const inserted = await this.#pool.query(
+      `insert into customers(id, display_code, name, phone_e164, email, created_at, notes, active)
+       values ($1,$2,$3,$4,$5,$6,$7,$8)
+       on conflict (phone_e164) do nothing
+       returning *`,
+      [
+        candidate.id,
+        candidate.displayCode,
+        candidate.name,
+        candidate.phoneE164,
+        candidate.email ?? null,
+        candidate.createdAt,
+        candidate.notes ?? null,
+        candidate.active,
+      ],
+    );
+    if (inserted.rows[0]) return { customer: toCustomer(inserted.rows[0]), created: true };
+
+    const { rows } = await this.#pool.query(
+      "select * from customers where phone_e164=$1",
+      [candidate.phoneE164],
+    );
+    // Unreachable in practice: the arbiter is phone_e164, so a display_code collision throws
+    // synchronously from the INSERT above, not here. This fires only if the row that caused the
+    // conflict vanished between insert and select — impossible today (nothing deletes
+    // customers). Surface it rather than returning a lie; the caller's retry mints a new code.
+    if (!rows[0]) {
+      throw new Error(
+        `getOrCreateCustomerByPhone: insert conflicted but no customer holds ${candidate.phoneE164} ` +
+          `(display_code collision on ${candidate.displayCode}? retry with a fresh code)`,
+      );
+    }
+    return { customer: toCustomer(rows[0]), created: false };
+  }
+  async listReservationsForCustomer(id: CustomerId): Promise<Reservation[]> {
+    const { rows } = await this.#pool.query(
+      "select * from reservations where customer_id=$1",
+      [id],
+    );
+    return rows.map(toReservation);
+  }
+
   // ── Vessels ────────────────────────────────────────────────────────────────
   async saveVessel(v: Vessel): Promise<void> {
     await this.#pool.query(
-      `insert into vessels(id, name, coi_max_pax, manning) values ($1,$2,$3,$4)
-       on conflict (id) do update set name=excluded.name, coi_max_pax=excluded.coi_max_pax, manning=excluded.manning`,
-      [v.id, v.name, v.coiMaxPax, JSON.stringify(v.manning)],
+      `insert into vessels(id, name, coi_max_pax, hue, home_location_id, notes, manning)
+       values ($1,$2,$3,$4,$5,$6,$7)
+       on conflict (id) do update set name=excluded.name, coi_max_pax=excluded.coi_max_pax,
+         hue=excluded.hue,
+         home_location_id=excluded.home_location_id, notes=excluded.notes, manning=excluded.manning`,
+      [
+        v.id,
+        v.name,
+        v.coiMaxPax,
+        v.hue ?? null,
+        v.homeLocationId ?? null,
+        v.notes ?? null,
+        JSON.stringify(v.manning),
+      ],
     );
   }
   async getVessel(id: VesselId): Promise<Vessel | null> {
@@ -426,13 +705,13 @@ export class PostgresRepository implements Repository {
   async saveCrewMember(c: CrewMember): Promise<void> {
     await this.#pool.query(
       `insert into crew_members
-         (id, name, phone, email, ratings, status, manual_boost, manual_floor, protocol_override, reliability_score, weekdays_off)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+         (id, name, phone, email, ratings, status, manual_boost, manual_floor, protocol_override, reliability_score, weekdays_off, gusto)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
        on conflict (id) do update set
          name=excluded.name, phone=excluded.phone, email=excluded.email, ratings=excluded.ratings,
          status=excluded.status, manual_boost=excluded.manual_boost, manual_floor=excluded.manual_floor,
          protocol_override=excluded.protocol_override, reliability_score=excluded.reliability_score,
-         weekdays_off=excluded.weekdays_off`,
+         weekdays_off=excluded.weekdays_off, gusto=excluded.gusto`,
       [
         c.id,
         c.name,
@@ -445,6 +724,7 @@ export class PostgresRepository implements Repository {
         c.protocolOverride ?? null,
         c.reliabilityScore,
         JSON.stringify(c.weekdaysOff ?? []),
+        c.gusto ? JSON.stringify(c.gusto) : null,
       ],
     );
   }
@@ -489,6 +769,17 @@ export class PostgresRepository implements Repository {
     const { rows } = await this.#pool.query(
       "update crew_members set weekdays_off=$1 where id=$2 returning *",
       [JSON.stringify(weekdaysOff), id],
+    );
+    return rows[0] ? toCrew(rows[0]) : null;
+  }
+  async updateCrewGusto(
+    id: CrewMemberId,
+    gusto: GustoIdentity,
+  ): Promise<CrewMember | null> {
+    // Targeted UPDATE (DEC-094) — touches only gusto (DEC-124, 12.3b).
+    const { rows } = await this.#pool.query(
+      "update crew_members set gusto=$1 where id=$2 returning *",
+      [JSON.stringify(gusto), id],
     );
     return rows[0] ? toCrew(rows[0]) : null;
   }
@@ -611,6 +902,117 @@ export class PostgresRepository implements Repository {
     return rows.map(toEvent);
   }
 
+  // ── Reservation catalog (DEC-123/125) — read-only in 12.0 ───────────────────
+  async listOfferings(): Promise<Offering[]> {
+    const { rows } = await this.#pool.query("select * from offerings");
+    return rows.map(toOffering);
+  }
+  async getOffering(id: OfferingId): Promise<Offering | null> {
+    const { rows } = await this.#pool.query(
+      "select * from offerings where id = $1",
+      [id],
+    );
+    return rows[0] ? toOffering(rows[0]) : null;
+  }
+  async saveOffering(o: Offering): Promise<void> {
+    await this.#pool.query(
+      `insert into offerings
+         (id, tenant_id, name, status, vessel_ids, location_id, schedule, base_price_cents, price_variations, included_guest_count, extra_guest_price_cents, description, trip_length_minutes, hold_minutes, arrive_before_minutes, gratuity_kinds, add_on_ids)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+       on conflict (id) do update set
+         tenant_id=excluded.tenant_id, name=excluded.name, status=excluded.status,
+         vessel_ids=excluded.vessel_ids, location_id=excluded.location_id,
+         schedule=excluded.schedule, base_price_cents=excluded.base_price_cents,
+         price_variations=excluded.price_variations, included_guest_count=excluded.included_guest_count,
+         extra_guest_price_cents=excluded.extra_guest_price_cents,
+         description=excluded.description, trip_length_minutes=excluded.trip_length_minutes,
+         hold_minutes=excluded.hold_minutes, arrive_before_minutes=excluded.arrive_before_minutes,
+         gratuity_kinds=excluded.gratuity_kinds, add_on_ids=excluded.add_on_ids`,
+      [
+        o.id,
+        o.tenantId,
+        o.name,
+        o.status,
+        JSON.stringify(o.vesselIds),
+        o.locationId,
+        JSON.stringify(o.schedule),
+        o.basePriceCents,
+        JSON.stringify(o.priceVariations),
+        o.includedGuestCount ?? null,
+        o.extraGuestPriceCents,
+        o.description ?? null,
+        o.tripLengthMinutes ?? null,
+        o.holdMinutes ?? null,
+        o.arriveBeforeMinutes ?? null,
+        o.gratuityKinds ? JSON.stringify(o.gratuityKinds) : null,
+        o.addOnIds ? JSON.stringify(o.addOnIds) : null,
+      ],
+    );
+  }
+  async listLocations(): Promise<Location[]> {
+    const { rows } = await this.#pool.query("select * from locations");
+    return rows.map(toLocation);
+  }
+  async getLocation(id: LocationId): Promise<Location | null> {
+    const { rows } = await this.#pool.query(
+      "select * from locations where id = $1",
+      [id],
+    );
+    return rows[0] ? toLocation(rows[0]) : null;
+  }
+  async saveLocation(l: Location): Promise<void> {
+    await this.#pool.query(
+      `insert into locations (id, name, pickup_description, pickup_link, route_description)
+       values ($1,$2,$3,$4,$5)
+       on conflict (id) do update set
+         name=excluded.name, pickup_description=excluded.pickup_description,
+         pickup_link=excluded.pickup_link, route_description=excluded.route_description`,
+      [l.id, l.name, l.pickupDescription, l.pickupLink ?? null, l.routeDescription],
+    );
+  }
+  async listBlocks(): Promise<Block[]> {
+    const { rows } = await this.#pool.query("select * from blocks");
+    return rows.map(toBlock);
+  }
+  async saveBlock(b: Block): Promise<void> {
+    // Flat columns per kind; the unused ones stay null (house style over three narrow tables).
+    const row = {
+      locationId: b.kind === "location" ? b.locationId : null,
+      vesselId: b.kind === "vessel" || b.kind === "vesselHold" ? b.vesselId : null,
+      date: b.kind === "location" || b.kind === "vesselHold" ? b.date : null,
+      startTime: b.kind === "location" ? b.startTime : null,
+      endTime: b.kind === "location" ? b.endTime : null,
+      startDate: b.kind === "vessel" ? b.startDate : null,
+      endDate: b.kind === "vessel" ? b.endDate : null,
+      time: b.kind === "vesselHold" ? b.time : null,
+    };
+    await this.#pool.query(
+      `insert into blocks
+         (id, kind, location_id, vessel_id, date, start_time, end_time, start_date, end_date, time, note)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       on conflict (id) do update set
+         kind=excluded.kind, location_id=excluded.location_id, vessel_id=excluded.vessel_id,
+         date=excluded.date, start_time=excluded.start_time, end_time=excluded.end_time,
+         start_date=excluded.start_date, end_date=excluded.end_date, time=excluded.time, note=excluded.note`,
+      [
+        b.id,
+        b.kind,
+        row.locationId,
+        row.vesselId,
+        row.date,
+        row.startTime,
+        row.endTime,
+        row.startDate,
+        row.endDate,
+        row.time,
+        b.note ?? null,
+      ],
+    );
+  }
+  async removeBlock(id: BlockId): Promise<void> {
+    await this.#pool.query("delete from blocks where id=$1", [id]);
+  }
+
   // ── Coexistence partition — Muster-owned vessel-days (DEC-106) ───────────────
   async listMusterOwnedVesselDays(): Promise<MusterOwnedVesselDay[]> {
     const { rows } = await this.#pool.query(
@@ -630,14 +1032,99 @@ export class PostgresRepository implements Repository {
     );
   }
 
+  // ── Payments (DEC-107) ──────────────────────────────────────────────────────
+  async getPaymentConfig(): Promise<PaymentConfig> {
+    const { rows } = await this.#pool.query(
+      "select key, value from app_settings where key like 'payment.%'",
+    );
+    const kv = new Map<string, string>(rows.map((r) => [r.key, r.value]));
+    const num = (k: string, d: number): number => {
+      const n = kv.has(k) ? Number(kv.get(k)) : NaN;
+      return Number.isFinite(n) ? n : d; // absent / unparseable ⇒ default (DEC-054)
+    };
+    const mode = kv.get("payment.deposit_mode");
+    return {
+      depositMode:
+        mode === "full" || mode === "deposit"
+          ? mode
+          : PAYMENT_CONFIG_DEFAULTS.depositMode,
+      depositPercent: num("payment.deposit_percent", PAYMENT_CONFIG_DEFAULTS.depositPercent),
+      taxRateBps: num("payment.tax_rate_bps", PAYMENT_CONFIG_DEFAULTS.taxRateBps),
+      serviceFeeBps: num("payment.service_fee_bps", PAYMENT_CONFIG_DEFAULTS.serviceFeeBps),
+      balanceDueDaysBeforeEvent: num(
+        "payment.balance_due_days",
+        PAYMENT_CONFIG_DEFAULTS.balanceDueDaysBeforeEvent,
+      ),
+    };
+  }
+  async setPaymentConfig(patch: Partial<PaymentConfig>, at: string): Promise<void> {
+    const entries: [string, string][] = [];
+    if (patch.depositMode !== undefined) entries.push(["payment.deposit_mode", patch.depositMode]);
+    if (patch.depositPercent !== undefined) entries.push(["payment.deposit_percent", String(patch.depositPercent)]);
+    if (patch.taxRateBps !== undefined) entries.push(["payment.tax_rate_bps", String(patch.taxRateBps)]);
+    if (patch.serviceFeeBps !== undefined) entries.push(["payment.service_fee_bps", String(patch.serviceFeeBps)]);
+    if (patch.balanceDueDaysBeforeEvent !== undefined) entries.push(["payment.balance_due_days", String(patch.balanceDueDaysBeforeEvent)]);
+    for (const [key, value] of entries) {
+      await this.#pool.query(
+        `insert into app_settings(key, value, updated_at) values ($1,$2,$3)
+         on conflict (key) do update set value=excluded.value, updated_at=excluded.updated_at`,
+        [key, value, at],
+      );
+    }
+  }
+  async savePayment(p: Payment): Promise<void> {
+    await this.#pool.query(
+      // Insert-only: a payment row is immutable once written. A re-delivered webhook must
+      // NOT rewrite created_at (or, once refund reconciliation lands, reset status) — so
+      // do nothing on a duplicate id rather than overwrite. Idempotent by construction.
+      `insert into payments(id, reservation_id, method, kind, amount_cents, tax_cents, gratuity_cents, service_fee_cents, currency,
+         stripe_checkout_session_id, stripe_payment_intent_id, status, refunded_cents, created_at)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+       on conflict (id) do nothing`,
+      [
+        p.id,
+        p.reservationId,
+        p.method,
+        p.kind,
+        p.amountCents,
+        p.taxCents,
+        p.gratuityCents ?? null,
+        p.serviceFeeCents ?? null,
+        p.currency,
+        p.stripeCheckoutSessionId ?? null,
+        p.stripePaymentIntentId ?? null,
+        p.status,
+        p.refundedCents ?? null,
+        p.createdAt,
+      ],
+    );
+  }
+  async getPayment(id: PaymentId): Promise<Payment | null> {
+    const { rows } = await this.#pool.query("select * from payments where id=$1", [id]);
+    return rows[0] ? toPayment(rows[0]) : null;
+  }
+  async listAllPayments(): Promise<Payment[]> {
+    const { rows } = await this.#pool.query("select * from payments");
+    return rows.map(toPayment);
+  }
+  async listPaymentsForReservation(reservationId: ReservationId): Promise<Payment[]> {
+    const { rows } = await this.#pool.query(
+      "select * from payments where reservation_id=$1 order by created_at",
+      [reservationId],
+    );
+    return rows.map(toPayment);
+  }
+
   // ── Reservations ───────────────────────────────────────────────────────────
   async saveReservation(r: Reservation): Promise<void> {
     await this.#pool.query(
-      `insert into reservations(id, event_id, customer_name, party_size, email, phone, status, updated_at, source)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      `insert into reservations(id, event_id, customer_name, party_size, email, phone, status, updated_at, source, waiver_consent_at, waiver_version, extras_cents, customer_id)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
        on conflict (id) do update set event_id=excluded.event_id, customer_name=excluded.customer_name,
          party_size=excluded.party_size, email=excluded.email, phone=excluded.phone, status=excluded.status,
-         updated_at=excluded.updated_at, source=excluded.source`,
+         updated_at=excluded.updated_at, source=excluded.source,
+         waiver_consent_at=excluded.waiver_consent_at, waiver_version=excluded.waiver_version,
+         extras_cents=excluded.extras_cents, customer_id=excluded.customer_id`,
       [
         r.id,
         r.eventId,
@@ -648,6 +1135,10 @@ export class PostgresRepository implements Repository {
         r.status,
         r.updatedAt ?? null,
         r.source,
+        r.waiverConsentAt ?? null,
+        r.waiverVersion ?? null,
+        r.extrasCents ?? null,
+        r.customerId ?? null,
       ],
     );
   }
@@ -668,6 +1159,241 @@ export class PostgresRepository implements Repository {
   async listAllReservations(): Promise<Reservation[]> {
     const { rows } = await this.#pool.query("select * from reservations");
     return rows.map(toReservation);
+  }
+  async saveReservationIfUnclaimed(r: Reservation): Promise<boolean> {
+    // Atomic whole-boat claim (DEC-109). The mutex is a `select … for update` on the
+    // pre-existing EVENT row — NOT a unique constraint (n:1 on reservations→event
+    // stays intact per DEC-DATA-1). A plain `insert … where not exists` would oversell
+    // under READ COMMITTED (two concurrent inserts each snapshot before the other's
+    // uncommitted row); the row lock serializes claims on this boat, so the loser's
+    // guarded insert re-evaluates against the winner's committed row and writes zero.
+    // `id <> $1` + `on conflict (id) do nothing` make a retry of the SAME reservation
+    // idempotent (its own row never blocks it, never duplicates).
+    const client = await this.#pool.connect();
+    try {
+      await client.query("begin");
+      const ev = await client.query("select 1 from events where id=$1 for update", [
+        r.eventId,
+      ]);
+      if (ev.rowCount === 0) {
+        await client.query("rollback");
+        return false; // no such event — unbookable
+      }
+      await client.query(
+        `insert into reservations
+           (id, event_id, customer_name, party_size, email, phone, status, updated_at, source, waiver_consent_at, waiver_version, extras_cents, customer_id)
+         select $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13
+         where not exists (
+           select 1 from reservations
+           where event_id=$2 and source='muster' and status='booked' and id <> $1
+         )
+         on conflict (id) do nothing`,
+        [
+          r.id,
+          r.eventId,
+          r.customerName,
+          r.partySize,
+          r.email ?? null,
+          r.phone ?? null,
+          r.status,
+          r.updatedAt ?? null,
+          r.source,
+          r.waiverConsentAt ?? null,
+          r.waiverVersion ?? null,
+          r.extrasCents ?? null,
+          r.customerId ?? null,
+        ],
+      );
+      const won = await client.query(
+        "select 1 from reservations where id=$1",
+        [r.id],
+      );
+      await client.query("commit");
+      return won.rowCount === 1;
+    } catch (e) {
+      await client.query("rollback");
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+
+  async saveBookingIfSlotFree(
+    event: Event,
+    reservation: Reservation,
+  ): Promise<{ result: "won"; eventId: EventId } | { result: "lost" }> {
+    // First-booking-of-a-virtual-slot (DEC-109/125). One transaction: (1) materialize the
+    // Muster Event at its slot identity — `on conflict do nothing` + the partial-unique
+    // `events_muster_slot_identity` guardrail make concurrent first-bookings collide, so at
+    // most one row per physical boat-slot; (2) lock that row (`for update`) and claim the
+    // whole-boat mutex, exactly as saveReservationIfUnclaimed. reservation.event_id is
+    // reconciled to the row that actually backs the slot (a pre-existing override wins).
+    const client = await this.#pool.connect();
+    try {
+      await client.query("begin");
+      await client.query(
+        `insert into events (id, vessel_id, date, time, capacity, status, source, price, dock)
+         values ($1,$2,$3,$4,$5,$6,'muster',$7,$8)
+         on conflict do nothing`,
+        [
+          event.id,
+          event.vesselId,
+          event.date,
+          event.time,
+          event.capacity,
+          event.status,
+          event.price ?? null,
+          event.dock ?? null,
+        ],
+      );
+      const slot = await client.query(
+        `select id from events
+         where vessel_id=$1 and date=$2 and time=$3 and source='muster' and status='scheduled'
+         for update`,
+        [event.vesselId, event.date, event.time],
+      );
+      if (slot.rowCount === 0) {
+        await client.query("rollback");
+        return { result: "lost" }; // slot un-materializable (e.g. cancelled) — no oversell
+      }
+      const eventId = asId<"EventId">(slot.rows[0].id);
+      await client.query(
+        `insert into reservations
+           (id, event_id, customer_name, party_size, email, phone, status, updated_at, source, waiver_consent_at, waiver_version, extras_cents, customer_id)
+         select $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13
+         where not exists (
+           select 1 from reservations
+           where event_id=$2 and source='muster' and status='booked' and id <> $1
+         )
+         on conflict (id) do nothing`,
+        [
+          reservation.id,
+          eventId,
+          reservation.customerName,
+          reservation.partySize,
+          reservation.email ?? null,
+          reservation.phone ?? null,
+          reservation.status,
+          reservation.updatedAt ?? null,
+          reservation.source,
+          reservation.waiverConsentAt ?? null,
+          reservation.waiverVersion ?? null,
+          reservation.extrasCents ?? null,
+          reservation.customerId ?? null,
+        ],
+      );
+      const won = await client.query("select 1 from reservations where id=$1", [
+        reservation.id,
+      ]);
+      await client.query("commit");
+      return won.rowCount === 1 ? { result: "won", eventId } : { result: "lost" };
+    } catch (e) {
+      await client.query("rollback");
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+
+  // ── Checkout holds (12.1, DEC-109) ──────────────────────────────────────────
+  async acquireCheckoutHold(
+    hold: CheckoutHold,
+  ): Promise<{ acquired: true; hold: CheckoutHold } | { acquired: false }> {
+    // Delete any EXPIRED hold for this slot identity first (a stale row would block the
+    // unique), then insert. "now" for expiry = hold.createdAt (the acquire instant) — the
+    // same reference the in-memory adapter uses, so both are behaviorally identical under
+    // the contract. The `checkout_holds_slot_identity` unique makes two live acquires
+    // collide; `on conflict do nothing` + the by-id re-select decides the winner.
+    const client = await this.#pool.connect();
+    try {
+      await client.query("begin");
+      await client.query(
+        `delete from checkout_holds
+         where vessel_id=$1 and date=$2 and time=$3 and source='muster' and expires_at <= $4`,
+        [hold.vesselId, hold.date, hold.time, hold.createdAt],
+      );
+      await client.query(
+        `insert into checkout_holds
+           (id, vessel_id, date, time, source, offering_id, guest_count, expires_at, created_at, stripe_checkout_session_id)
+         values ($1,$2,$3,$4,'muster',$5,$6,$7,$8,$9)
+         on conflict do nothing`,
+        [
+          hold.id,
+          hold.vesselId,
+          hold.date,
+          hold.time,
+          hold.offeringId,
+          hold.guestCount,
+          hold.expiresAt,
+          hold.createdAt,
+          hold.stripeCheckoutSessionId ?? null,
+        ],
+      );
+      // We hold the slot iff the row now under this identity is OURS (fresh insert, or an
+      // idempotent re-acquire of our own live hold). A rival's live hold → not ours → false.
+      const mine = await client.query(
+        `select * from checkout_holds
+         where vessel_id=$1 and date=$2 and time=$3 and source='muster' and id=$4`,
+        [hold.vesselId, hold.date, hold.time, hold.id],
+      );
+      await client.query("commit");
+      return mine.rowCount === 1
+        ? { acquired: true, hold: toCheckoutHold(mine.rows[0]) }
+        : { acquired: false };
+    } catch (e) {
+      await client.query("rollback");
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+  async listCheckoutHolds(): Promise<CheckoutHold[]> {
+    const { rows } = await this.#pool.query("select * from checkout_holds");
+    return rows.map(toCheckoutHold);
+  }
+  async removeCheckoutHold(id: CheckoutHoldId): Promise<void> {
+    await this.#pool.query("delete from checkout_holds where id=$1", [id]);
+  }
+  async removeCheckoutHoldForSlot(
+    vesselId: VesselId,
+    date: string,
+    time: string,
+  ): Promise<void> {
+    await this.#pool.query(
+      "delete from checkout_holds where vessel_id=$1 and date=$2 and time=$3 and source='muster'",
+      [vesselId, date, time],
+    );
+  }
+
+  // ── Gratuity (12.3, DEC-124) ────────────────────────────────────────────────
+  async saveGratuity(g: Gratuity): Promise<void> {
+    await this.#pool.query(
+      // Deterministic id ⇒ idempotent; a re-delivered webhook must not double-count.
+      `insert into gratuity(id, event_id, reservation_id, kind, amount_cents, bps, stripe_checkout_session_id, created_at)
+       values ($1,$2,$3,$4,$5,$6,$7,$8)
+       on conflict (id) do nothing`,
+      [
+        g.id,
+        g.eventId,
+        g.reservationId,
+        g.kind,
+        g.amountCents,
+        g.bps ?? null,
+        g.stripeCheckoutSessionId ?? null,
+        g.createdAt,
+      ],
+    );
+  }
+  async listGratuitiesForEvent(eventId: EventId): Promise<Gratuity[]> {
+    const { rows } = await this.#pool.query(
+      "select * from gratuity where event_id=$1",
+      [eventId],
+    );
+    return rows.map(toGratuity);
+  }
+  async listAllGratuities(): Promise<Gratuity[]> {
+    const { rows } = await this.#pool.query("select * from gratuity");
+    return rows.map(toGratuity);
   }
 
   // ── Shifts ─────────────────────────────────────────────────────────────────

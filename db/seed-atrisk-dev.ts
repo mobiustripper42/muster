@@ -30,13 +30,14 @@
  * row leaves the board while that ask is in flight. That's the engine doing
  * its job, not the seed breaking.
  */
-import { fileURLToPath } from "node:url";
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
 import { asId } from "../src/domain/ids.js";
 import { logShiftBailed } from "../src/oracle/reliability-log.js";
 import { TENANT_TIMEZONE } from "../src/config/tenant.js";
-import type { Repository } from "../src/ports/repository.js";
 import { DEFAULT_DATABASE_URL } from "./migrate.js";
+
+const url = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
+const repo = PostgresRepository.fromConnectionString(url);
 
 const TENANT = asId<"TenantId">("tenant-brewboat"); // match app TENANT_ID + canonical seeds
 const CAPTAIN = asId<"RoleTypeId">("role-captain");
@@ -61,104 +62,105 @@ const timeOf = (d: Date) =>
     hourCycle: "h23",
   }).format(d);
 
-export async function seedAtRisk(repo: Repository): Promise<void> {
-  const MMC_GOOD = "2027-12-31";
+const MMC_GOOD = "2027-12-31";
 
-  async function captain(id: string, name: string, mmcExpiry = MMC_GOOD) {
-    const crewId = asId<"CrewMemberId">(id);
-    await repo.saveCrewMember({
-      id: crewId,
-      name,
-      phone: "+15555550100",
-      ratings: [CAPTAIN],
-      status: "active",
-      reliabilityScore: null,
-    });
-    await repo.saveCredential({
-      id: asId<"CredentialId">(`cred-${id}`),
-      crewMemberId: crewId,
-      type: "MMC",
-      expiry: mmcExpiry,
-    });
-    return crewId;
-  }
+async function captain(id: string, name: string, mmcExpiry = MMC_GOOD) {
+  const crewId = asId<"CrewMemberId">(id);
+  await repo.saveCrewMember({
+    id: crewId,
+    name,
+    email: `${name.split(/\s+/)[0]!.toLowerCase().replace(/[^a-z0-9]/g, "")}@bb.test`,
+    phone: "+15555550100",
+    ratings: [CAPTAIN],
+    status: "active",
+    reliabilityScore: null,
+  });
+  await repo.saveCredential({
+    id: asId<"CredentialId">(`cred-${id}`),
+    crewMemberId: crewId,
+    type: "MMC",
+    expiry: mmcExpiry,
+  });
+  return crewId;
+}
 
-  async function shipShift(
-    key: string,
-    vesselName: string,
-    role: typeof CAPTAIN | typeof ENGINEER,
-    tripAt: Date,
-    seatState: "Open" | "Bailed" | "Claimed" | "Confirmed",
-    persisted: "Pending" | "Filling" | "AtRisk" | "Crewed",
-    assigned?: ReturnType<typeof asId<"CrewMemberId">>,
-    extraTrips: Date[] = [],
-  ) {
-    const vesselId = asId<"VesselId">(`vessel-ar-${key}`);
-    const shiftId = asId<"ShiftId">(`shift-ar-${key}`);
-    const eventId = asId<"EventId">(`evt-ar-${key}`);
-    await repo.saveVessel({
-      id: vesselId,
-      name: vesselName,
-      coiMaxPax: 12,
-      manning: [{ roleTypeId: role, count: 1 }],
-    });
+async function shipShift(
+  key: string,
+  vesselName: string,
+  role: typeof CAPTAIN | typeof ENGINEER,
+  tripAt: Date,
+  seatState: "Open" | "Bailed" | "Claimed" | "Confirmed",
+  persisted: "Pending" | "Filling" | "AtRisk" | "Crewed",
+  assigned?: ReturnType<typeof asId<"CrewMemberId">>,
+  extraTrips: Date[] = [],
+) {
+  const vesselId = asId<"VesselId">(`vessel-ar-${key}`);
+  const shiftId = asId<"ShiftId">(`shift-ar-${key}`);
+  const eventId = asId<"EventId">(`evt-ar-${key}`);
+  await repo.saveVessel({
+    id: vesselId,
+    name: vesselName,
+    coiMaxPax: 12,
+    manning: [{ roleTypeId: role, count: 1 }],
+  });
+  await repo.saveEvent({
+    id: eventId,
+    vesselId,
+    date: dateOf(tripAt),
+    time: timeOf(tripAt),
+    capacity: 12,
+    source: "xola", status: "scheduled",
+    dock: "East Bank of the Flats at Canal Basin Park",
+  });
+  // A multi-trip day (#59): more scheduled departures on the SAME shift (one
+  // boat, one day, one crew requirement — the manning is per-vessel). The board
+  // shows every time; the fill deadline still anchors to the earliest.
+  const extraIds = extraTrips.map((_, i) => asId<"EventId">(`evt-ar-${key}-${i + 2}`));
+  for (const [i, t] of extraTrips.entries()) {
     await repo.saveEvent({
-      id: eventId,
+      id: extraIds[i]!,
       vesselId,
-      date: dateOf(tripAt),
-      time: timeOf(tripAt),
+      date: dateOf(t),
+      time: timeOf(t),
       capacity: 12,
       source: "xola", status: "scheduled",
       dock: "East Bank of the Flats at Canal Basin Park",
     });
-    // A multi-trip day (#59): more scheduled departures on the SAME shift (one
-    // boat, one day, one crew requirement — the manning is per-vessel). The board
-    // shows every time; the fill deadline still anchors to the earliest.
-    const extraIds = extraTrips.map((_, i) => asId<"EventId">(`evt-ar-${key}-${i + 2}`));
-    for (const [i, t] of extraTrips.entries()) {
-      await repo.saveEvent({
-        id: extraIds[i]!,
-        vesselId,
-        date: dateOf(t),
-        time: timeOf(t),
-        capacity: 12,
-        source: "xola", status: "scheduled",
-        dock: "East Bank of the Flats at Canal Basin Park",
-      });
-    }
-    await repo.saveShift({
-      id: shiftId,
-      vesselId,
-      date: dateOf(tripAt),
-      state: persisted,
-      eventIds: [eventId, ...extraIds],
-    });
-    const seatId = asId<"SeatId">(`seat-ar-${key}`);
-    await repo.saveSeat({
-      id: seatId,
-      shiftId,
-      role,
-      kind: "required",
-      state: seatState,
-      ...(assigned ? { assignedCrewMemberId: assigned } : {}),
-    });
-    return { shiftId, seatId };
   }
+  await repo.saveShift({
+    id: shiftId,
+    vesselId,
+    date: dateOf(tripAt),
+    state: persisted,
+    eventIds: [eventId, ...extraIds],
+  });
+  const seatId = asId<"SeatId">(`seat-ar-${key}`);
+  await repo.saveSeat({
+    id: seatId,
+    shiftId,
+    role,
+    kind: "required",
+    state: seatState,
+    ...(assigned ? { assignedCrewMemberId: assigned } : {}),
+  });
+  return { shiftId, seatId };
+}
 
-  /**
-   * Close any LIVE asks on a scenario seat — a prior `db:tick` may have escalated
-   * scenario A (a Tier-2 nudge ask), and an in-flight ask would keep the row off
-   * the board after a re-seed. Stamping respondedAt with no response marks them
-   * timed-out (more silents in the trail — harmless), restoring the scenario.
-   */
-  async function closeLiveAsks(seatId: ReturnType<typeof asId<"SeatId">>) {
-    for (const ask of await repo.listAsksForSeat(seatId)) {
-      if (ask.respondedAt === undefined) {
-        await repo.saveAsk({ ...ask, respondedAt: new Date().toISOString() });
-      }
+/**
+ * Close any LIVE asks on a scenario seat — a prior `db:tick` may have escalated
+ * scenario A (a Tier-2 nudge ask), and an in-flight ask would keep the row off
+ * the board after a re-seed. Stamping respondedAt with no response marks them
+ * timed-out (more silents in the trail — harmless), restoring the scenario.
+ */
+async function closeLiveAsks(seatId: ReturnType<typeof asId<"SeatId">>) {
+  for (const ask of await repo.listAsksForSeat(seatId)) {
+    if (ask.respondedAt === undefined) {
+      await repo.saveAsk({ ...ask, respondedAt: new Date().toISOString() });
     }
   }
+}
 
+try {
   await repo.saveRoleType({ id: CAPTAIN, tenantId: TENANT, name: "captain" });
   await repo.saveRoleType({ id: ENGINEER, tenantId: TENANT, name: "engineer" });
 
@@ -310,15 +312,6 @@ export async function seedAtRisk(repo: Repository): Promise<void> {
   console.log("Board:   /crew/dev-link?admin=spink → tap link → /admin/at-risk");
   console.log("Cockpit: /admin/shift/shift-ar-claimed  (Confirm demo)");
   console.log("Warming: any cockpit → 'Warming signals →'  (shows Kettle)");
-}
-
-// CLI entry: `npm run db:seed:atrisk`. Skipped when imported by db:all.
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  const url = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
-  const repo = PostgresRepository.fromConnectionString(url);
-  try {
-    await seedAtRisk(repo);
-  } finally {
-    await repo.close();
-  }
+} finally {
+  await repo.close();
 }

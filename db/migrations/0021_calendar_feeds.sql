@@ -17,7 +17,7 @@
 --     text/calendar read of one person's schedule (DEC-098; does NOT reopen DEC-081).
 --
 -- House rules (DEC-DATA-1, per 0017/0020): text columns, ISO-8601 dates as `text`
--- (verbatim round-trip, in-memory parity), NO foreign keys (the service layer
+-- (verbatim round-trip, in-memory parity), NO foreign keys (posture: DEC-131; the service layer
 -- guarantees the crew member exists at mint). Edge/adapter-written, never the domain.
 
 create table calendar_feeds (

@@ -8,7 +8,7 @@
 -- CURRENT state is the point, not the history.
 --
 -- Denormalized `contacted_by_name` snapshot so the manifest read needs no join to the
--- crew/admin tables (no-FK, read-simple — DEC-DATA-1). Best-effort edge write (the
+-- crew/admin tables (no-FK, read-simple — posture: DEC-131, not DEC-DATA-1). Best-effort edge write (the
 -- /api/guest-contact route), never the domain. House rules: text keys, ISO-8601 dates
 -- as text (verbatim round-trip, in-memory parity), no foreign keys.
 

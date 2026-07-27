@@ -527,7 +527,7 @@ view of their standing and credential nudges lives in the crew app, §2.6, readi
 > the thing both the shift builder and the crew manifest read from. A **data-management** surface,
 > not a second booking system.
 
-> **⚠️ Reconciled 2026-07-15 (S54).** This section was written for a world that no longer exists: the
+> **⚠️ Reconciled 2026-07-15 (S54), revised 2026-07-26 (S71, DEC-126).** This section was written for a world that no longer exists: the
 > **CSV bridge** (retired — DEC-043 killed the `.xlsx` path; ingest is a manual Xola **API pull** at
 > `/admin/import`, DEC-036/037), a **2027** customer portal (reservations went live in **2026** —
 > DEC-105, Phases 11/12), and **shift locking** (cut — Xola is source of truth, so a "reviewed/locked"
@@ -545,9 +545,23 @@ between syncs.
 spreadsheet path at all** — DEC-036/037 kept the `.xlsx` reader as a Xola-downtime fallback, but
 **DEC-043 retired it outright** (it can't resolve a boat, and a fallback that collapses four boats into
 one event is worse than no fallback). And the customer portal that writes reservations here directly is
-**not a 2027 event** — it is **Phase 11/12, now** (DEC-105). Both source-of-write paths coexist
-permanently: Xola-sourced imports drain as Xola drains, Muster-native reservations arrive alongside
-them, discriminated by `source` (DEC-106). This layer stays either way — that part held.
+**not a 2027 event** — it is **Phase 11/12, now** (DEC-105). The two source-of-write paths coexist
+**through the pilot** — Xola-sourced imports alongside Muster-native reservations, discriminated by
+`source` (DEC-106) — and then **stop coexisting at the cutover** (DEC-126): one final full import of
+Xola's reservations, after which Muster is the reservation source of truth and **the ongoing Xola pull
+stops**. This layer stays either way — that part held; only its *upstream* goes away.
+
+*(Revised 2026-07-26, S71 — audit shard C2.2. The S54 wording said the paths "coexist permanently"
+and that Xola "drains naturally", which DEC-126 reversed on 2026-07-17. The S56 pass corrected §0.2,
+§0.3 and §4 and missed this section, so the file contradicted itself for nine days. Operator position,
+confirmed this session: one Xola import once customers can book in Muster, then Muster only — as soon
+as `feature/reservations` lands.)*
+
+> **This section has an end date, and that is not a defect.** Everything below describes the
+> Xola-sourced pipeline. At the cutover it stops running and this section can be deleted outright —
+> the `Event` and `Reservation` tables outlive it as the substrate under the reservations product, but
+> the *ingest* does not. Don't invest in surfaces here that the flip will delete; do keep it accurate
+> while it's the thing importing every trip on the board.
 
 ### States to render
 - **Event list** — events grouped by date (and filterable by boat), each showing boat · day · time ·
@@ -569,6 +583,13 @@ them, discriminated by `source` (DEC-106). This layer stays either way — that 
   the odd phone booking is fixed in Xola and re-pulled. *(This is the same reasoning that cut locking —
   you don't hand-edit a projection of someone else's source of truth.)* A **Muster-native** reservation
   is not this section's business at all — it belongs to the reservations purchases surface (DEC-123).
+  > **The `cancel` half is coming back (DEC-126 item 4, task 12.14 / #467).** The cutover leaves Muster
+  > holding imported bookings it must be able to cancel *in Muster*, with no write back to Xola — "the
+  > thing you can't do today". The `add` half stays struck. This does not reopen Muster-side *editing*
+  > of a Xola-sourced record; it is one status write that frees the slot. **Sequencing matters:** while
+  > the pull still runs, a re-import overwrites `status` straight from the Xola row, so either 12.14
+  > ships after the pull is switched off, or it needs a "cancelled in Muster wins" guard. Decide which
+  > before building it.
 - **Browse** events with their reservations — also how Spink eyeballs the weekend before building
   shifts.
 
@@ -595,8 +616,14 @@ what it always was: the **data layer under the crew engine**, not a booking syst
   (DEC-106), so the two sources never write the same event.
 - **Dirty / partial source.** Unparseable records surface in the import result for Spink to fix by
   hand, rather than failing the whole import or dropping records silently.
-- **Event edited after shifts formed.** Changing an event's time/capacity after its shift was built
-  must propagate to the shift. *(Corrected: the original said this raises a shift-builder "changed
+- **Event edited after shifts formed.** Changing an event's **time** after its shift was built
+  must propagate to the shift. *(Revised 2026-07-26, S71 — audit C2.2-6: this said "time/capacity",
+  but capacity propagates to nothing and can't. Seats come from vessel manning — `deriveSeats` takes
+  the `Vessel`, never the `Event` — and `Event.capacity` is re-derived from the boat at import, not
+  read from Xola. Time propagation, by contrast, is met the strong way: the shift stores no time at
+  all, only `eventIds`, so call time and trip times are computed live from the events on every read.
+  What is **not** met is telling the crew a retime happened — issue #548.)*
+  *(Corrected: the original said this raises a shift-builder "changed
   since you reviewed it" nudge **if locked**. **Locking was cut — DEC-082** ("Locking cut — Xola is
   the source of truth; supersedes SPEC §2.3 Lock, reframes DEC-029"): a reviewed/locked stamp over a
   projection of someone else's source of truth is meaningless. Propagation is unconditional; there is

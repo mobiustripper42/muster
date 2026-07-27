@@ -266,6 +266,15 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
     file's real structural defect is the binary strike convention, not its length. Options were costed
     (fix the 11 rows ≈ 0 risk · fix the index ≈ 0 conflicts · full split ≈ all 11 hunks conflict) and
     **no restructure is recommended**.
+- **Shard Z FIXED and the audit is CLOSED (S72, 2026-07-27).** `main`'s DEC-134/135 **deleted** (neither
+  decided anything; the operator's call), which resolved two thirds of the #562 id collision for free —
+  `feature/reservations` keeps 134/135, 136/137 are freed, only DEC-138 still collides. The index now
+  resolves **both directions** with zero orphans, gained the third state the file always needed
+  (`amended by DEC-N`, since **zero of 135 DECs are fully superseded**), and 7 of the worst one-way
+  edges got back-pointers. **Z3's substrate debt is closed:** 11 unlanded amendments applied across
+  §0.2, §1.1, §1.2, §1.4, §2.2, §2.3 and §4 — including one last unstruck "and locks" in §2.3 that
+  shard C2.3's own pass missed. Two owed v1.1 unlocks filed as **#565**; the file-size fix — one file
+  per decision with a generated index — filed as **#564**, blocked on the reservations merge.
 - **Next: the C2.4–C2.7 doc fixes** (28 `doc-wrong` rows, enumerated per-ledger), the **12 operator
   decisions**, then **Z** (`DECISIONS.md` internals) — which C2.7-4 already feeds: DEC-078's "MVP
   claimable set" paragraph is the *origin* of stale wording #440 widened, so a SPEC-only fix would leave

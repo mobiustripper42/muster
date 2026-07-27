@@ -281,7 +281,7 @@ describe("formShifts — reconciliation (#20)", () => {
    *
    * OPEN, and NOT answerable from this repo: whether Xola retimes an occurrence in
    * place (same `event.id` — this test's case, silent) or cancels and recreates it
-   * (new id — the set changes and the notice fires). DECISIONS.md:2159 says "a
+   * (new id — the set changes and the notice fires). DEC-083 says "a
    * replacement trip has a new id", which suggests the second, and the operator
    * recalls seeing exactly that. Settle it against a real import run before building
    * anything: if Xola always recreates, this gap is unreachable and the right fix is

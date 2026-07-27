@@ -42,7 +42,8 @@
     "typecheck": "tsc -p tsconfig.core.json",
     "typecheck:app": "tsc -p tsconfig.json",
     "lint": "eslint app components",
-    "verify": "npm run typecheck && npm run typecheck:app && npm run lint && npm run test && npm run build"
+    "check:decisions": "node scripts/check-decisions.mjs",
+    "verify": "npm run check:decisions && npm run typecheck && npm run typecheck:app && npm run lint && npm run test && npm run build"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.0",

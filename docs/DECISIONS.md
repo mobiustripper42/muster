@@ -194,7 +194,9 @@ _• **row + "amended by DEC-N"** — the DEC still governs, but one leg was rep
 - DEC-059 — `main` stays promotable; multi-PR features land on a feature branch
 - DEC-121 — timestamp-prefixed migration filenames (cross-branch collision-proof)
 
-_Indexed 124 of 124 DECs. Feature-branch DECs (099–104, 122) fold in when they merge._
+_Indexed 137 of 137 DECs. DEC-TBD (open questions, at the bottom) is deliberately unindexed._
+_This tally, and the rows above it, are checked by `npm run check:decisions` — a missing row, a
+dangling reference, a duplicate id, or a stale count fails the build (#564)._
 
 ---
 
@@ -3122,7 +3124,7 @@ already opens the drill-in at the top.
 
 **Why an island (DEC-026 enhancement, not a break).** No-JS still fully works — the row selects, the cockpit
 renders, the operator scrolls by hand; only auto-place-keeping needs JS. Joins the existing DEC-026 island
-family (DEC-097 redirect-feedback, DEC-100 submit spinner, DEC-030 CopyButton/RelaySend, the GuestText button)
+family (DEC-097 redirect-feedback, DEC-089 submit spinner, DEC-030 CopyButton/RelaySend, the GuestText button)
 — a bounded, progressively-enhanced enhancement, not drift toward client-rendered surfaces. Scoping the scroll
 imperatively to the one named scroller (vs a CSS fragment) is deliberately **decoupled from the pre-existing
 ~100px `lg` document overflow** (#376) so this fix can't be silently reintroduced by a future 1px layout change.

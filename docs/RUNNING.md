@@ -13,7 +13,7 @@ things to eyeball.
 ```bash
 npm install
 npm run db:up   # docker compose up -d  → postgres:17 on :5432 (muster_dev + muster_test)
-npm run db:all  # migrate + WIPE + seed everything + make you admin (DEC-135)
+npm run db:all  # migrate + WIPE + seed everything + make you admin
 npm run dev     # next dev --webpack on :3000
 ```
 Then sign in at `/crew` with **`eric@bb.test`** — the 6-digit code prints in the `npm run dev`
@@ -24,9 +24,22 @@ that isn't localhost, and is the intended way to start each PR: throw the databa
 full scenario set back. Adding new test data means adding a line to the `SEEDS` registry in
 `db/all-dev.ts` — the data resets every run, the registry only grows.
 
-`npm run db:all -- --split` swaps in the split/merge fixture, which **must** run alone (see
-DEC-135). The individual `db:migrate` / `db:seed:*` commands still work for a targeted, non-
-destructive re-seed.
+`npm run db:all -- --split` swaps in the split/merge fixture, which **must** run alone — `formShifts`
+is global, so splitting with the scenario set loaded duplicates every scenario shift. The individual
+`db:migrate` / `db:seed:*` commands still work for a targeted, non-destructive re-seed.
+
+> **Rule: no seed script carries a real person's name, email or phone.** Dev seeds use invented crew
+> (`crew-quint`, `crew-hooper`, `crew-dooley`, …). The **one** exception is the operator's own record
+> (`crew-eric`, real phone) — that's the Twilio live-SMS smoke test and it's his number to give. The
+> production roster is built one person at a time with
+> `npm run db:crew -- add --name= --phone= --email= --ratings=`, which also mints the placeholder MMC
+> (DEC-044/DEC-094), so it fully replaces what a seed would do.
+>
+> The reason is load-bearing, not hygiene theatre: a dev DB exists to have test SMS fired at it, and a
+> seeded roster puts every live phone number one `npm run` away from every scenario that sends. *(This
+> rule previously lived in DEC-134, deleted 2026-07-27 — it documented a script rather than deciding
+> anything, and the rule belongs where someone about to write a seed will see it. Enforced in comment
+> at `db/seed-fleet.ts:41` and `src/crew/crew-cli.ts:68`.)*
 
 Teardown: `npm run db:down` (keeps the data volume; add nothing to wipe).
 

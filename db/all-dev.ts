@@ -1,6 +1,6 @@
 /**
  * `db:all` — the one command that gets a dev database to a known-good state
- * (DEC-135). Reset, seed, make the operator an admin, print how to sign in.
+ * Reset, seed, make the operator an admin, print how to sign in.
  *
  *   npm run db:all              # the whole scenario set
  *   npm run db:all -- --split   # the split/merge fixture, which must run alone

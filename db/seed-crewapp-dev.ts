@@ -7,7 +7,7 @@
  *   docker compose up -d && npm run db:migrate && npx tsx db/seed-crewapp-dev.ts
  * Then: GET /crew/dev-link?crew=crew-quint → tap the link → /crew.
  *
- * Also a step in the `db:all` registry (DEC-135) — hence the exported function
+ * Also a step in the `db:all` registry — hence the exported function
  * plus CLI-entry guard: `db:all` calls it in-process on one connection, while
  * `npm run db:seed:crew` still runs it standalone.
  *
@@ -53,7 +53,7 @@ const LATER = dateOf(at(16 * 24));
 
 /**
  * The operator's own dev record — the ONE real person any seed may carry
- * (DEC-134): his phone, his call. Kept separate from the rest of the crew-app
+ * (no crew PII in seeds — docs/RUNNING.md): his phone, his call. Kept separate from the rest of the crew-app
  * scenario because `db:all` needs it in EVERY mode — it's the crew id the admin
  * row points at (DEC-092), so `--split` would otherwise leave you unable to sign
  * in to the admin surfaces it exists to test. Defined once, called from both.

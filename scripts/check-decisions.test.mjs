@@ -113,9 +113,31 @@ describe("checkDecisions", () => {
   });
 
   it("ignores index-shaped rows that appear inside a decision body", () => {
-    const text = `${good}\nSome body list:\n- DEC-999 — not an index row, just prose in a body\n`;
+    // DEC-002 rather than an invented id: an unknown id would fail the reference scan
+    // no matter what the boundary did, and the test would pass for the wrong reason.
+    // With a real id, a broken boundary shows up as "duplicate index row for DEC-002".
+    const text = `${good}\nSee also:\n- DEC-002 — prose in a body, not an index row\n`;
     const { failures, indexRows } = checkDecisions(text);
+    expect(failures).toEqual([]);
     expect(indexRows).toBe(2);
-    expect(failures.some((f) => f.includes("index row for DEC-999"))).toBe(false);
+  });
+
+  it("ignores an example row in the preamble, above the first topic heading", () => {
+    const text = good.replace("## Index", "## Index\n\nRows look like this:\n- DEC-001 — an illustrative example\n");
+    const { failures, indexRows } = checkDecisions(text);
+    expect(failures).toEqual([]);
+    expect(indexRows).toBe(2);
+  });
+
+  it("catches the same decision listed twice in the index", () => {
+    const text = good.replace("- DEC-002 — second thing", "- DEC-001 — listed twice\n- DEC-002 — second thing");
+    const { failures } = checkDecisions(text);
+    expect(failures.some((f) => f.includes("duplicate index row for DEC-001"))).toBe(true);
+  });
+
+  it("names the missing colon when a decision heading is typed without one", () => {
+    const text = good.replace("## DEC-002: Second thing", "## DEC-002 Second thing");
+    const { failures } = checkDecisions(text);
+    expect(failures.some((f) => f.includes("needs a colon"))).toBe(true);
   });
 });

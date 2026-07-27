@@ -47,16 +47,28 @@ export function checkDecisions(text) {
   const indexRows = new Map() // id -> line
   let tally = null
 
-  // The index region runs from the top to the first decision body. Index rows and
-  // `###` headings below that are body prose — DEC-123 has its own sub-headings.
+  // The index region runs from the top to the first decision body. `###` headings
+  // below that are body prose — DEC-123 has its own catalog sub-sections.
   const firstBody = lines.findIndex((l) => DECISION_HEAD.test(l))
   if (firstBody === -1) {
     fail(1, 'no decision headings found — is the file the right shape?')
     return { failures, decisions: 0, indexRows: 0, amendments: 0 }
   }
 
+  // A row only counts under a topic heading, not merely "somewhere above the first
+  // body". The preamble explains the row formats by example, and an example written
+  // with an ordinary `- ` bullet would otherwise read as a real row and fail the
+  // build over a documentation edit. (The preamble uses `•` today — a workaround
+  // for exactly this, which is the tell that the boundary wanted tightening.)
+  let inTopic = false
+
   lines.forEach((line, i) => {
     const n = i + 1
+
+    if (i < firstBody && line.startsWith('### ')) {
+      inTopic = true
+      return
+    }
 
     const decision = line.match(DECISION_HEAD)
     if (decision) {
@@ -75,7 +87,7 @@ export function checkDecisions(text) {
       return
     }
 
-    if (i < firstBody) {
+    if (i < firstBody && inTopic) {
       const row = line.match(INDEX_ROW)
       if (row) {
         const [, id] = row
@@ -91,9 +103,17 @@ export function checkDecisions(text) {
     if (t) tally = { indexed: Number(t[1]), total: Number(t[2]), line: n }
   })
 
-  // An amendment section has to hang off a decision that exists.
+  // An amendment section has to hang off a decision that exists. The likeliest way to
+  // land here is a new decision heading typed without its colon, so say so — otherwise
+  // the author goes hunting for an orphaned amendment they never wrote.
   for (const { id, line } of amendments) {
-    if (!decisions.has(id)) fail(line, `amendment section for ${id}, which has no decision body`)
+    if (!decisions.has(id)) {
+      fail(
+        line,
+        `amendment section for ${id}, which has no decision body — ` +
+          `if this is meant to be the decision itself, its heading needs a colon (\`## ${id}: Title\`)`,
+      )
+    }
   }
 
   // Index row with no body: the row outlived its decision, or names a typo.

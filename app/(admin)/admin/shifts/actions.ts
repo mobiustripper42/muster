@@ -30,8 +30,14 @@ export async function splitAction(formData: FormData): Promise<void> {
   if (!subject || subject.kind !== "admin" || !shiftId) redirect("/admin/shifts");
 
   let param: string;
+  // One clock for the whole action, passed INTO the engine (C2.3-8): the re-form
+  // births side B, and birth is horizon-aware only when given a `now` (DEC-022).
+  // Omit it and a side B spawned inside the staffing horizon persists `Pending`
+  // instead of `Filling` — masked on screen by `resolveShiftStateOnRead` and
+  // corrected by the next tick, but wrong on the row in the meantime.
+  const now = new Date();
   try {
-    const form = await splitShift(getRepo(), asId<"ShiftId">(shiftId), cut);
+    const form = await splitShift(getRepo(), asId<"ShiftId">(shiftId), cut, now);
     // A split's one-shot re-form CONSUMES any external Cancelled↔live transition
     // it's first to observe (the new state is written, so no later Xola pull
     // re-sees it) — relay it here or that crew member is never texted (#259).
@@ -45,7 +51,7 @@ export async function splitAction(formData: FormData): Promise<void> {
     // committed day may move (`changedCrew` → `shift_changed`), actor `admin`. Same
     // best-effort, post-commit posture as the relay and the import audit.
     try {
-      await logFormAudit(getRepo(), form, { kind: "admin", id: subject!.id }, new Date());
+      await logFormAudit(getRepo(), form, { kind: "admin", id: subject!.id }, now);
     } catch {
       // audit is best-effort; the split stands regardless
     }
@@ -79,8 +85,13 @@ export async function mergeAction(formData: FormData): Promise<void> {
   if (!subject || subject.kind !== "admin" || !shiftId) redirect("/admin/shifts");
 
   let param: string;
+  // Hoisted above the try and passed into the engine (C2.3-8) — same reasoning as
+  // split: the merge's re-form re-births the surviving shift, and birth is
+  // horizon-aware only with a clock (DEC-022). Also the audit's timestamp below,
+  // so the state resolution and the audit row share one instant.
+  const now = new Date();
   try {
-    const { form, freedCrew } = await mergeShift(getRepo(), asId<"ShiftId">(shiftId));
+    const { form, freedCrew } = await mergeShift(getRepo(), asId<"ShiftId">(shiftId), now);
     // Notify everyone dropped off the far side — except the operator about their own
     // action (DEC-072/084).
     const toNotify = freedCrew.filter(
@@ -117,7 +128,6 @@ export async function mergeAction(formData: FormData): Promise<void> {
     //    form.cancelledCrew (side A survives the re-form), so they'd be missed by
     //    the form audit alone. Log each a `crew_removed`, actor `admin`. Unlike the
     //    notice, the operator is NOT excluded (audit records who-did-what-to-whom).
-    const now = new Date();
     const actor = { kind: "admin" as const, id: subject!.id };
     try {
       await logFormAudit(getRepo(), form, actor, now);

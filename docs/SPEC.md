@@ -775,41 +775,88 @@ to a calm monitor that exposes controls on demand.
   availability) — assigns, nudges, overrides.
 
 ### View structure / states to render
-- **Shift header:** boat · date · trips (1/3/5pm) · pax totals · overall crewing-state badge
-  (Filling / Crewed / At-Risk) · the **fills-by deadline** to the staffing horizon, **rendered "deadline"**
-  on the cockpit (DEC-038; the concept stays "fills by" in code/decisions).
+- **Shift header:** boat · date · trips (1/3/5pm) · **per-trip** pax chips · overall crewing-state
+  badge (Filling / Crewed / At-Risk) · the **fills-by deadline**, **rendered "deadline"** on the
+  cockpit (DEC-038; the concept stays "fills by" in code/decisions).
+  *(Correction: the deadline anchors to **departure − 48h** (DEC-031), **not** to the staffing horizon
+  (departure − 7d, DEC-022/062). These are two instants five days apart and the cockpit renders both,
+  stacked — `staffing starts:` then `deadline:`. DEC-027 §4 pulled them apart in as many words: "the
+  staffing horizon is when asks start, not a fill deadline." The doc absorbed DEC-038's **label** change
+  and kept the wrong **anchor**.)*
+  *(Correction: the aggregate "aboard total" is computed but rendered nowhere — deliberately dropped,
+  "add back if missed". Per-trip chips are what ships.)*
 - **Seat cards** — one per required seat, each showing its sub-state + occupant:
-  **Open** (expands to the eligible pool) · **Asked** (who/when) · **Claimed** (accepted, awaiting
-  confirm) · **Confirmed** (name + one-tap contact) · **Bailed** (flips red; auto-reopens & re-asks).
-- **Eligible pool** (per open seat) — the oracle's computed pool (§1.3), **ranked by reliability**
-  (§1.4). Only legally fillable people appear (credentials valid on date, correct rating, not
-  double-booked, not on PTO). Each candidate row: name + reliability indicator (high/med/low or
-  ordering is enough) · **ask status: available · asked · in (+reply time) · declined · silent
-  (asked, timed out)** · quick actions.
+  **Open** · **Asked** (who/when) · **Claimed** · **Confirmed** (name + one-tap contact) ·
+  ~~**Bailed** (flips red; auto-reopens & re-asks)~~.
+  *(Corrections: pools are **collapsed by default** on every seat — an explicit operator preference,
+  2026-07-05, reversing the earlier auto-expand; and they render on **Open, Asked and Bailed** seats,
+  not Open alone, because DEC-027 gave Asked seats a monitor view and Bailed seats a pool minus the
+  bailer. `Claimed` is **momentary, not resting** — DEC-061 advances a winning accept
+  `Asked → Claimed → Confirmed` in one operation. **`Bailed` is retired as a resting state** —
+  DEC-128 rests a bailed seat `Open` and mints no inline re-ask; the red treatment survives for legacy
+  rows only.)*
+- **Eligible pool** (per Open / Asked / Bailed seat) — the oracle's computed pool (§1.3), **ranked by
+  reliability** (§1.4). Only legally fillable people appear. Each candidate row: name + reliability
+  indicator (high/med/low or ordering is enough) · **ask status: available · asked · in (+reply time) ·
+  declined · silent (asked, timed out)** · quick actions.
+  - *The hard rule set is **six**, not the four this line used to name: active · rated · MMC valid on
+    date · not double-booked · not on PTO · **not on a standing weekday off** (DEC-119). The ranked
+    list then drops three more classes: **over-ranked** crew (a captain is never asked for a mate seat,
+    DEC-066), this shift's **bailers** (DEC-019), and holders of a **live ask on another seat of the
+    same shift**. All under-inclusive, so "only legally fillable people appear" always holds — but a
+    reader auditing the pool against a four-item list will find people missing with no explanation.*
+- **Also rendered, and previously unlisted here:** the per-event **guest manifest** (#319, the same
+  assembly the crew card reads), the **"✉ Message this day's crew →"** cohort deep-link (#317 — note
+  this is a **cross-shift** action, i.e. partial delivery of the open question below), and the
+  **Crewed-gate summary** ("N/M required seats confirmed — Crewed when all confirm").
   - **Silent is first-class and visually distinct from declined** — silence is the thing Spink hates
     and the thing the score penalizes; a ghost must be obvious at a glance.
 
 ### Actions
-- **Broadcast ask** — fire to the whole eligible pool (mate flow / ask-then-assign).
-- **Assign a person** — name someone into a seat; they get a confirm/decline ask (captain flow /
-  assign-then-confirm).
-- **Confirm** — lock a claimant into the seat.
+*(Reconciled 2026-07-27 against DEC-027 §1, which settled this inventory in June 2026 and never came
+back to this list. The shipped set is: **assign · nudge · confirm · override · report-a-bail ·
+no-penalty remove**.)*
+- ~~**Broadcast ask** — fire to the whole eligible pool (mate flow / ask-then-assign).~~ — **DEFERRED
+  (DEC-027 §1).** No manual broadcast control exists; the tick-fired path satisfies the intent, and
+  "a blanket re-broadcast to decliners is spam, not escalation". `broadcastAsk` itself has no
+  production caller — DEC-063 replaced the birth blast with the staged `widenAsk` drip.
+- **Assign a person** — name someone into a seat; they get an ask. *(Correction, DEC-061: their "In"
+  **auto-confirms**. There is no operator confirm step on the happy path.)*
+- **Confirm** — ~~lock a claimant into the seat~~ **a vestigial backstop** (DEC-061, which amends this
+  section by name). Still shipped, no longer the normal route.
 - **Nudge** — direct individual escalation (manual Tier 2).
-- **Widen / re-ask** — broaden the pool or re-fire after declines/timeouts.
-- **Manual override** — drop anyone into a seat directly. Spink is always the authority;
-  last-resort backstop.
+- ~~**Widen / re-ask** — broaden the pool or re-fire after declines/timeouts.~~ — **CUT.** "'Widen' has
+  no rail by DEC-024" (DEC-027 §1). Widening happens automatically, on the drip.
+- **Manual override** — drop **anyone rated for the role** into a seat directly, regardless of rank
+  and seat state. Spink is always the authority; last-resort backstop. *(Correction: not literally
+  "anyone" — **DEC-064**'s competency floor refuses an unrated placement ("no mate as captain") and
+  **DEC-096** refuses an archived one. The picker enforces both, so a mate is never even offered for a
+  captain seat. Rank is bypassed; competency is not.)*
+- **Report a bail** / **no-penalty remove** (#87, DEC-039) — shipped, previously unlisted here.
 
-In the autonomous posture the system performs broadcast → rank → confirm on its own; these actions
-are Spink's manual equivalents for taking over.
+~~In the autonomous posture the system performs broadcast → rank → confirm on its own; these actions
+are Spink's manual equivalents for taking over.~~ *(The autonomous posture is now **drip → rank →
+auto-confirm** — DEC-063 + DEC-061.)*
 
 > **Fork resolved (assignment §1): contested seat → first-acceptable-yes-wins** for rollout (fast,
 > fair, matches Spink's instinct); **best-by-score** is a knob to flip once reliability data is
 > trusted. The two mostly agree — they diverge only when a flake answers first.
 
-### Both protocols live here
-Same seat cards, same eligible pool; the only difference is whether the ask goes to the crowd first
+### ~~Both protocols live here~~ — **the fork is cut (operator, 2026-07-27; removal tracked in #561)**
+~~Same seat cards, same eligible pool; the only difference is whether the ask goes to the crowd first
 (**ask-then-assign**, mates) or names someone first (**assign-then-confirm**, captains). Per-role
-default with per-person override (the override lives on the roster record, §2.1).
+default with per-person override (the override lives on the roster record, §2.1).~~
+
+The distinction stopped being live before it was ever decided against: **DEC-063** (the drip) means
+nobody is asked "as a crowd", and **DEC-061** (auto-confirm) means nobody is "named then confirmed" by
+a human. The two ends collapsed it independently and nobody removed the scaffolding — `resolveProtocol`
+has no production caller, `protocolOverride` persists with no reader and no editor, and no per-role
+default exists as data at all.
+
+**Settled on operator input:** neither protocol is wanted. A manual assignment happens *because the
+asks failed* and the operator has already spoken to the person — that is the out-of-band path, not a
+second protocol. §2.1's "the override lives on the roster record" describes a column that is being
+removed.
 
 ### Data read
 - Reads the **shift + seat states** (§1.1), the **escalation/tier activity** (§1.2), the **eligible
@@ -817,13 +864,25 @@ default with per-person override (the override lives on the roster record, §2.1
   (§2.1). Writes seat-state changes back through the machine.
 
 ### Edge cases
-- **Bail** → seat card flips red, auto-reopens, re-asks the next candidate (the `Crewed → Filling`
-  edge, §1.1).
-- **All declined / all silent** → pool exhausts; if also close to the deadline, the shift escalates
-  to At-Risk and onto the board (§2.5).
-- **Manual override of the automation** — see open question on whether it implicitly pauses the bots.
-- **Reliability exposure** — **resolved:** show Spink the ordering plus reasons on demand; no need to
-  hide a number from the operator (crew see their own standing too, §1.4).
+- **Bail** → the seat **rests `Open`** and re-crewing is the tick's job (the `Crewed → Filling` edge,
+  §1.1). *(Correction, DEC-128 / #483 — a prod fix: `Bailed` is retired as a resting state and a bail
+  no longer fires its own re-ask. The old inline re-ask was **horizon-blind** — verified in production
+  2026-07-19, where a captain bail ~13 days pre-horizon stamped six identical-millisecond asks.
+  Pre-horizon a bail now deliberately asks nobody. The card no longer flips red for new bails.)*
+- **All declined / all silent** → the shift boards At-Risk (§2.5). *(Correction, DEC-065: the "**if
+  also** close to the deadline" conjunction is wrong in both directions. A still-`Filling` shift with an
+  uncrewed required seat boards inside the exhaustion threshold **regardless of in-flight asks** — the
+  old pending/asked gate is deleted, so a live ask or a nudge no longer hides a near-term uncrewed
+  shift. And the **eligibility**-exhaustion route boards **however far out**, with no deadline
+  condition at all.)*
+- **Manual override of the automation** — the automation cannot fight a manual placement; see the
+  resolved open question below.
+- **Reliability exposure** — ~~**resolved:** show Spink the ordering plus reasons on demand~~ —
+  **ordering ships; "reasons" do not exist and never did.** `ReliabilityScore` is a scalar plus two
+  window facts, with no per-factor breakdown to expose, and no admin surface renders a reliability
+  value at all. The sibling clause under Eligible pool already sanctions ordering-only ("or ordering is
+  enough"). **Open for the operator:** is ordering-only the settled answer, or are reasons still
+  wanted? Do not close by deleting the clause — §1.4 is a different shard's subject.
 
 ### Acceptance criteria
 - [ ] Each required seat renders its current sub-state and, when Open, an eligible pool ranked by
@@ -832,16 +891,29 @@ default with per-person override (the override lives on the roster record, §2.1
 - [ ] Broadcasting an ask and a candidate accepting moves the seat
       Open → Asked → Confirmed (auto-confirm, DEC-061; `Claimed` is momentary) and reflects it in
       the shift badge. (Pre-DEC-061 this required a separate Spink confirm.)
-- [ ] A confirmed crew bailing flips the seat to Bailed, reopens it, and re-asks the next candidate
-      without manual intervention.
-- [ ] Manual override places any person into a seat regardless of rank (authority backstop), and the
-      fills-by deadline (rendered **"deadline"**, DEC-038) reflects the staffing horizon.
+- [ ] A confirmed crew bailing ~~flips the seat to Bailed,~~ **rests it `Open`**, and re-crewing
+      happens on the tick without manual intervention. *(Rewritten to DEC-128 — the old wording
+      specified the horizon-blind inline re-ask that DEC-128 removed after it misfired in production.)*
+- [ ] Manual override places any person **rated for the role** into a seat regardless of rank
+      (authority backstop, bounded by DEC-064/DEC-096).
+- [ ] The **deadline** rendered on the cockpit (DEC-038) is the **fills-by** instant —
+      departure − 48h (DEC-031) — and is distinct from the **staffing horizon** line above it
+      (departure − 7d, DEC-022). *(Split out of the previous criterion, which conflated the two and was
+      therefore un-tickable against code that is correct and settled.)*
 
 ### Open questions (Assignment View)
-- Whether the autonomous posture needs an explicit **"pause automation, I've got this"** toggle per
+- ~~Whether the autonomous posture needs an explicit **"pause automation, I've got this"** toggle per
   shift, or whether any manual action implicitly pauses the bots. *(Lean: any manual action pauses;
-  confirm in build.)*
+  confirm in build.)*~~ — **RESOLVED, twice over.** **DEC-027 §2** confirmed the implicit pause is
+  *emergent*: escalation fires only on a stalled shift with no live asks, and every manual assign or
+  nudge **creates** a live ask, so the autonomous tier is already incapable of fighting a manual
+  placement — no pause flag, no resume action. The explicit per-shift toggle is parked in
+  FUTURE_IDEAS. Separately, **DEC-054 shipped an operator engine pause** — but **global, at `/admin`**,
+  honored by both cron routes, not per-shift.
 - **Bulk actions** across multiple shifts (one weekend broadcast) — partly here, partly on the board.
+  *(Partly delivered: the cockpit's "✉ Message this day's crew →" cohort deep-link (#317) is a
+  cross-shift action. The weekend-**lock** half of the `§4 Parked` bulk-actions row is cut, not parked —
+  DEC-082, see §2.3.)*
 
 ---
 
@@ -856,20 +928,40 @@ The list of shifts that genuinely need a human — and almost nothing else.
 
 - **Empty is success.** If Tiers 1–2 are working, nothing lands here. An empty board is the system
   doing its job, not a reminder Spink forgot to check.
-- **Push, not pull.** A shift reaching the board **pings Spink**; he goes there *when summoned*, he
-  does not monitor it. This is the whole point — semi-retired, no babysitting.
+  *(Caveat the shipped page adds and this line predates — **DEC-054**: with the operator pause on, an
+  empty board means the engine is **muted**, not that every shift is covered. The page renders a warn
+  banner saying exactly that. "Empty is success" holds only while the engine is running.)*
+- **Push, not pull.** A shift reaching the board **pings Spink** (SMS to every active admin — DEC-095).
+  ~~he goes there *when summoned*, he does not monitor it.~~ *(Correction: the shipped posture is push
+  **and** pull. `/admin/at-risk` is the **admin post-login landing page**, a standing nav item, and the
+  redirect target of four cockpit actions — the code calls it "the standing surface". Defensible, since
+  the empty state renders as success and so costs nothing to look at; but the absolute as written is
+  false.)* The intent stands: semi-retired, no babysitting.
 - The failure mode to design against is the **anxiety dashboard** where everything glows yellow.
   Keep the bar for landing here **high**.
 
 ### What lands on the board (states to render)
 - **Uncrewed shifts** — a required seat still empty, by either route: (a) eligibility-exhausted
-  (nobody left to ask — boards however far out) or (b) the trip is within the fill deadline (48h),
+  (nobody left to ask — ~~boards however far out~~ **boards only from the staffing horizon inward**) or
+  (b) the trip is within the fill deadline (48h),
   **whether or not asks are still in flight** (DEC-065). The core case.
 - **Regressions (late bails)** — a `Crewed` shift lost a confirmed crew close to the trip and can't
   auto-refill in time (the 11pm bail). **Distinct regression flag; rockets to the top** — was
-  solved, now broken, little time.
-- **Credential lapse on assigned crew** — an assigned person's MMC/medical/TWIC will expire before
+  solved, now broken, little time. *(The regression route genuinely is horizon-free, unlike route (a)
+  above — which is what makes route (a)'s bound legible as unstated rather than deliberate.)*
+  > **Open for the operator (route (a)'s horizon bound).** A trip three weeks out that **nobody on the
+  > roster may legally crew** is invisible until the staffing horizon (default 7 days), because
+  > `resolveShiftState` returns `Pending` before the horizon whatever the pool says — DEC-022, "crew
+  > rules abstain before the horizon". A test pins this as intended. But **the module's own doc comment
+  > repeats this doc's error** ("summoned immediately, however far out the trip is"), so a doc-only fix
+  > is insufficient. Is the horizon bound right for an *unfillable* trip, or should eligibility
+  > exhaustion board early?
+- **Credential lapse on assigned crew** — an assigned person's **MMC** will expire before
   the trip date, invalidating the assignment. Surfaces here so it's caught **before the dock**.
+  *(Correction: **only MMC is checked.** `HARD_CREDENTIAL_TYPES` is a one-element list; `medical`,
+  `TWIC` and `drug_consortium` are modeled credential types that can never board a shift. The board's
+  own copy says "credential", broader than the check behind it. **Open for the operator:** widening the
+  list moves the **oracle's** gate too, not just the board's — a domain question, not a board one.)*
 - **Empty state** — rendered as success, not as an error/void.
 - A shift still being actively worked **and more than the fill deadline (48h) from its trip** does
   not appear — it stays the system's problem in the assignment view. Inside the deadline it boards
@@ -877,9 +969,14 @@ The list of shifts that genuinely need a human — and almost nothing else.
   nudge no longer hides it.
 
 ### Urgency model (sort order)
-A blend of **time to trip** (sooner = more urgent) · **severity of gap** (missing a **captain** —
-small, fickle pool — outranks a **mate**; a **regression** outranks a never-filled seat) ·
-**fillability** (how thin the remaining pool is). Most-urgent at top.
+A blend of **time to trip** (sooner = more urgent) · **fillability** (how thin the remaining pool is) ·
+a **regression** term (a regression outranks a never-filled seat). Most-urgent at top.
+*(Correction, DEC-025: this used to list three terms including "severity of gap — missing a **captain**
+outranks a **mate**". That is **two** terms in code, not three, and the role-name ordering is
+explicitly rejected: urgency is "expressed **only** as pool-thinness … never a role-name check". The
+spec's own rationale for captain-outranks-mate **is** the small pool — thinness is the cause, the role
+name only its BrewBoat-shaped shadow. So a missing **mate** with two candidates correctly outranks a
+missing **captain** with six. Right in spirit, wrong in letter and arity.)*
 
 ### Triage from the list (context without clicking)
 Each row carries enough to act without opening it:
@@ -889,43 +986,82 @@ Each row carries enough to act without opening it:
   deadline a still-worked uncrewed shift boards too, DEC-065.)*
 - **Escalation transparency** — proof the system tried: "asked 6 mates · 4 declined · 2 silent ·
   pool widened · nudged Bob · exhausted." So Spink trusts it gave up for real reasons, not laziness.
-- **Who's still theoretically available** (if anyone) for a manual lean.
+- **Who's still ~~theoretically~~ *leanably* available** (if anyone) for a manual lean. *(Precision: the
+  list is the **rankable** set, which is narrower than "theoretically available" — DEC-066 drops
+  over-ranked crew, so a captain never appears under a mate seat even though the oracle counts them as
+  able to crew it. On a mate seat whose only remaining candidates are captains the row therefore reads
+  "nobody left in the eligible pool", when DEC-066's own text says the right move is to **override a
+  captain in** from the cockpit. Tracked as #556.)*
 
 Deep work happens in the assignment view (§2.4) — clicking a row drops Spink into that workbench.
 
 ### The decision surface: lean / reschedule / cancel
 Make the three real options first-class — especially the painful ones, since this is the 11pm call:
 - **Lean** — direct nudge to a specific high-value person ("I need you on this"). Manual Tier-2.
+  **Shipped.**
 - **Reschedule** — move the trip to a slot that *can* be crewed. Triggers customer-facing comms.
 - **Cancel** — kill the shift. **This cascades** (notify customers, refund per policy, optionally
   offer reschedule). Cancel is never "delete the shift" — it has customer + payment fallout (the
   cancel-cascade flow, §3).
 
+> **Status, 2026-07-27: two of the three are deliberately unbuilt, and §2.5 was the only doc not saying
+> so.** Reschedule and Cancel **render disabled** with the honest title "customer-side cancellation
+> cascades land with payments (parked, P3)", plus a standing line "Handle reschedule/cancel by phone for
+> now". **DEC-026 §3** defers the cancel-cascade AC to the payments phase by name; `USER_STORIES.md`
+> SP-13 already carries the marker; nothing in `src/` implements a cascade or a refund. **§3.3 also
+> still states this AC as in-scope** and needs the same marker.
+
 The board should make cancel/reschedule **easy and informed** — that's the decision that currently
-keeps Spink up at night.
+keeps Spink up at night — but until payments land, the board's honest job there is to say "phone call".
 
 ### Data read
-- Reads shifts in **At-Risk** (and regressed) state (§1.1), the **escalation log** (§1.2), **roster
-  + credential** data (§2.1, for lapses and for who's available). The **cancel** action invokes the
-  cancel-cascade flow (§3), which reads refund policy and writes customer comms + booking/shift state.
+- Reads **every** shift except the two lifecycle terminals (`Cancelled` / `Completed`) and
+  **re-resolves state itself**; membership is recomputed on read, never taken from the stored badge
+  (the DEC-023 corollary, which the module states in its own header). *(Correction: this line used to
+  say it "reads shifts in **At-Risk** (and regressed) state", which describes trusting a persisted
+  badge — the one thing a display surface must not do. It also hid the headline case: **`Crewed` shifts
+  are scanned too**, deliberately, because "the headline case is precisely the boat that looks fine" —
+  a fully-crewed shift whose confirmed captain's MMC lapses before the trip.)* Also reads the
+  **escalation log** (§1.2) and **roster + credential** data (§2.1). The **cancel** action would invoke
+  the cancel-cascade flow (§3) — deferred with payments, see above.
 
 ### Edge cases
-- **Regression channel** — given the 11pm timing, a regression may warrant a louder channel than a
-  normal in-app ping (e.g. SMS to Spink). *(Open, §3 notifications.)*
+- ~~**Regression channel** — given the 11pm timing, a regression may warrant a louder channel than a
+  normal in-app ping (e.g. SMS to Spink). *(Open, §3 notifications.)*~~ — **RESOLVED by removing the
+  question's premise (DEC-095).** There is no "normal in-app ping" to be louder than: the board is the
+  only non-SMS surface. Every landing sends **SMS to every active admin** — one composed body, one
+  `admin_alert` kind, no per-reason routing (the reason only picks a label). Note the recipients are
+  **all active admins**, deliberately not the single operator id. §3.1 restates the dead question and
+  needs the same strike.
 - **Warming / trending-toward-risk** — **explicitly not here** (would reopen the anxiety-dashboard
   door). It lives on the assignment view's monitor posture (§2.4), opened deliberately.
-- **"Exhausted" threshold** — how many declines / how close to horizon before a shift lands here is
-  tunable; keep it high. *(Open, don't agonize.)*
+- ~~**"Exhausted" threshold** — how many declines / how close to horizon before a shift lands here is
+  tunable; keep it high. *(Open, don't agonize.)*~~ — **RESOLVED on both halves, and one half was
+  deleted rather than tuned.** *How close:* `EXHAUSTED_THRESHOLD_HOURS = FILL_DEADLINE_HOURS` — one
+  constant, so the rendered deadline **is** the boarding instant (DEC-031), env-overridable, default 48h
+  (DEC-115), with the inclusive boundary pinned by test. *How many declines:* no longer exists at any
+  value — DEC-065 removed decline and ask counts from membership entirely, so a **never-asked** shift
+  boards. §4's Tuning-knobs row parks the same resolved question and needs the same strike.
 
 ### Acceptance criteria
-- [ ] A shift appears on the board only after Tiers 1–2 exhaust (or a regression/credential-lapse
-      occurs) — not while still being actively worked.
+- [ ] ~~A shift appears on the board only after Tiers 1–2 exhaust (or a regression/credential-lapse
+      occurs) — not while still being actively worked.~~ — **REWRITTEN to DEC-065.** A shift appears
+      when a required seat is uncrewed and either the pool is eligibility-exhausted **or** the trip is
+      inside the fill deadline — **regardless of in-flight asks**, including a shift nobody has been
+      asked about yet. *(The struck wording specified the exact defect DEC-065 was filed to fix: the
+      operator-reported case where nudging a candidate **removed** a near-term uncrewed shift from the
+      board. The body of this section carried the DEC-065 reconciliation in two places while the
+      acceptance criterion was left at the old rule, so anyone verifying the board against its own
+      criteria would have marked correct shipped behaviour as a failure.)*
 - [ ] Regressions render with a distinct flag and sort above never-filled at-risk shifts of similar
       time-to-trip.
 - [ ] Each row shows what's missing, time to trip, and the escalation trail — enough to triage
       without opening it.
 - [ ] An empty board renders as a success state, and the board does not show "warming" shifts.
 - [ ] Cancel triggers the cancel-cascade (§3) across every booking on the shift, not a silent delete.
+      *(**Deferred to the payments phase by DEC-026 §3** — not a gap. Reschedule and Cancel ship
+      disabled with an explanatory title; the operator handles both by phone. This box cannot be ticked
+      until payments land, and that is the plan of record.)*
 - [ ] Clicking a row opens that shift's assignment view (§2.4).
 
 ---
@@ -934,22 +1070,47 @@ keeps Spink up at night.
 
 > Source: crew-app-surface (+ the per-event manifest reconciliation from event-admin §1, folded in
 > here). Design stance: **insultingly small.** The failure mode is not missing features — it is
-> **friction and stale info.** Every screen added is a place for bullshit to hide. The crew member's
-> entire world is three surfaces. (Native vs PWA is parked, §4.)
+> **friction and stale info.** Every screen added is a place for bullshit to hide. ~~The crew member's
+> entire world is three surfaces.~~ (Native vs PWA is parked, §4.)
+>
+> **⚠️ Reconciled 2026-07-27 (audit shard C2.6).** This section had **never had a reconciliation pass**,
+> and five accepted DECs had moved under it unrecorded. Corrections are struck in place below.
+>
+> **Surface count:** **seven** crew routes ship — `/crew`, `/crew/shift/[shiftId]`, `/crew/open`,
+> `/crew/calendar`, `/crew/threads`, `/crew/time-off`, `/crew/help` — and the hub renders four
+> navigation entries plus a footer link. Each arrived with its own DEC (DEC-074, DEC-091, DEC-098,
+> DEC-009, §7.6) and **none amended the count**. The *stance* stands — insultingly small, no bullshit —
+> but "three surfaces" is a number, and it is wrong. `BRAND.md` carries the same stale claim, and §2.7's
+> block-quote still calls self-serve "a **fourth** crew surface", true at DEC-074 and overtaken since.
 
 ### 2.6.1 The ask
-Arrives as **push / SMS**, answerable **without opening anything**:
+Arrives as **push / SMS**, answered by **tapping through to the app**:
 
 > *Sat Jul 18 · BrewBoat · mate · call 12:30, back ~6. In or out?*
 
-- **Two buttons. ~3 seconds. No login, no navigate-to-respond.** If accepting is harder than
-  replying to a text, it has already failed (the Xola lesson).
+- ~~**Two buttons. ~3 seconds. No login, no navigate-to-respond.**~~ — **half met, half settled against.**
+  **"No login" is real and shipped:** the SMS carries a magic link that lands the crew member
+  authenticated (DEC-030 §2/§4 — 24h TTL, prefetch-safe consume), so there is no password step. **"No
+  navigate-to-respond" is not, and will not be:** answering means opening the app. DEC-030 chose an
+  operator-relayed web link with **no inbound webhook**, the Twilio adapter kept that posture ("no
+  inbound SMS parsing"), and no inbound route exists.
+  **Settled on operator input, 2026-07-27: there will never be reply-by-SMS — too many problems.** The
+  aspiration was never built and is now closed; the standard it set (accepting must not be harder than
+  replying to a text) survives as the *bar*, not as the mechanism. §3.1 repeats the retired claim and
+  needs the same strike.
 - **Magic-link auth, no passwords** (§3.2) — casual crew won't manage credentials; a forgotten
   password is a ghosted shift.
+  > **Open for the operator:** the **shipped SMS carries no time at all** — just date, boat, role, "In
+  > or out?" — while the in-app ask card renders the full call→back window. The two ask surfaces
+  > disagree, which is the exact shape §2.6.3's "single source of truth" invariant forbids. The reason
+  > is real but is only a code comment, not a decision: GSM-7, 1-segment, 160 chars. Adding the window
+  > costs ~16 characters against a ~55-character body. Worth it, or leave the text minimal?
 
 ### 2.6.2 My shifts
-The home screen if they open the app: a short list of **confirmed upcoming** shifts, one card each,
-past stuff hidden. Plus the crew member's **own reliability standing** (individual, not comparative —
+The home screen if they open the app: a short list of **confirmed *and claimed*** upcoming shifts, one
+card each, past stuff hidden. *(Correction, #4: a fresh "In" lands visibly here — badged "Awaiting
+confirmation" — instead of vanishing into nothing. A deliberate improvement on the spec'd behavior.
+"Past stuff hidden" is exactly right, and uses a **vessel-local** today.)* Plus the crew member's **own reliability standing** (individual, not comparative —
 §1.4). That's all. **Empty state** (no upcoming shifts) is normal, not an error.
 
 ### 2.6.3 The shift card — single source of truth
@@ -957,41 +1118,74 @@ Everything needed on one screen, no hunting. This is where "bulletproof" lives.
 
 - **Call time, distinct from departure time** — crew need when to *show up*, which is not the
   customer's departure. The #1 source of dock confusion. Show both, **labeled clearly**.
+  *(Vocabulary drift worth closing: the constraint is **met**, but the card labels the rows "Shift
+  Start" / "First departure" / "Shift End · off the clock", while this spec, `ui-context.md`, the view
+  model (`callTime`) and DEC-041 all say **call time** — the word crew actually hear on the dock.
+  Either the UI adopts it or this doc does; a binding constraint stated in vocabulary the surface
+  doesn't share is hard to check on the rendered page.)*
 - **Dock as a tappable map pin**, not a copy-paste address.
-- Boat, trip type, pax count.
+- Boat, ~~trip type,~~ pax count.
 - **Who else is crewing, with one-tap contact** — kills "I'm running late, who do I call."
 - **Manifest — grouped per event.** A mate on the Saturday shift needs the 1pm, 3pm, and 5pm guest
   lists separately, because different customers are on each event. Each shows **name + count/phone**;
-  **waivers are not shown** (not needed for crew, §0.4). *This is the hinge that ends the Xola split
-  (§3.5) — pull it early.*
-- Notes.
+  **waivers are not shown** (not needed for crew, §0.4). ~~*This is the hinge that ends the Xola split
+  (§3.5) — pull it early.*~~ — **the pull happened.** The manifest has been live for phases; the §3.5
+  Xola guide sheet it was meant to retire was **never built**, so §3.5's "explicitly temporary" framing
+  describes a retirement trigger that has already fired. Advice now spent — §3.5 needs the update.
+- ~~Notes.~~
 - *(Later)* the day-cohort message thread hangs off this card (parked, §4).
+- **Shipped and previously undocumented here:** a per-guest **Text button** that deep-links to Messages
+  with a composed intro body (#345 Part A), and a **guest-contact ledger** on the row — "✓ Texted by
+  {name} · {time}" (#345 Part B). A crew member can text a guest from the card and see who already did.
+
+> **Open for the operator — two spec'd card fields that exist nowhere.** "Trip type" and "Notes" have
+> no model field, no column and no surface; Xola's product name isn't carried through the event mapping
+> either, and the only "notes" a crew member sees is Messages ("where notes from the office land").
+> Escalated as a question, not a defect: at four hulls running one product, trip type may be a
+> distinction without a difference, and per-shift notes may be deliberately routed to Messages by
+> DEC-091's hub-and-spoke IA. Struck above pending your answer.
 
 ### The three bulletproofing principles (the load-bearing behavior)
 1. **The card is authoritative and live.** Departure changes → card changes → crew gets a ping
    (§3.1). Never "check your email for the update." The entire value is that the app is the *one
    known place*; the moment info splits across channels, you're back to Xola.
+   *(Status: the **card** half is structurally true — it re-reads the event on every render, no cache.
+   The **ping** half has a known hole: notices fire on event-**id-set** change, so a Xola retime that
+   keeps its event id tells nobody their call time moved. Pinned by a characterization test that says so
+   in its own name; filed as **#548**.)*
 2. **Bailing is as easy as accepting.** If "I can't make it" is a guilt-trip wall, crew ghost
-   instead and you find out at the dock. A frictionless decline that *immediately re-asks the next
-   person* beats a hard one that produces no-shows — this is exactly the `Crewed → Filling` edge
-   (§1.1).
+   instead and you find out at the dock. A frictionless decline beats a hard one that produces
+   no-shows — this is exactly the `Crewed → Filling` edge (§1.1).
+   *(Correction, DEC-128 / #483: a bail no longer ~~immediately re-asks the next person~~ — it rests
+   the seat `Open` and defers re-crewing to the tick, and "the re-crew latency is operator-accepted".
+   Three consequences the old "immediately" hid: **pre-horizon** a bail is re-crewed **never** — the
+   shift falls back to `Pending` and nobody is asked, which DEC-128 calls the fix; **in-horizon** the
+   next tick drips **one** candidate, not "the next person" now; inside the fill deadline the urgent
+   blast lands within ~15 minutes.)*
 3. **The app watches their credentials for them.** Quietly nudge the crew member when their own
    MMC / medical / TWIC nears expiry — *before* it drops them from the eligible pool. Turns a
    compliance landmine into a gentle heads-up and keeps the pool healthy without Spink tracking
    everyone's paperwork in his head.
 
 ### States to render
-- **The ask** (in/out, answerable from the notification itself).
+- **The ask** (in/out, answered in-app via the magic link — not from the notification itself; see
+  §2.6.1).
 - **Confirmed-shifts list** + own reliability standing; empty state.
-- **Shift card** with all fields above, a **live-updated** indicator when something changed since
-  last viewed, and the per-event manifest.
+- **Shift card** with all fields above, ~~a **live-updated** indicator when something changed since
+  last viewed,~~ and the per-event manifest.
+  > **Open for the operator:** the *"changed since last viewed"* indicator is **not built**, and is
+  > named as a deferred follow-up in two docstrings with nothing in `DECISIONS.md` cutting it. There is
+  > no read-state, no last-viewed timestamp, no per-crew view ledger anywhere. The **operator** board
+  > has the analogous cue ("changed in the last pull"); the crew card has no equivalent. This is the
+  > *quiet* half of principle 1 — the loud half (the ping) is #548 — so both halves of "the card is
+  > authoritative and live" are currently incomplete. Build it, or cut it on the record?
 - **Bail action + confirmation.**
 - **Credential nudge** (expiring-soon).
 - **"Seat already filled"** acknowledgement (a contested yes that lost — first-yes-wins, §1.2/§2.4).
 
 ### Actions
-- **Accept / decline an ask** (from notification or in-app).
-- **Bail** on a confirmed shift (frictionless; triggers re-ask).
+- **Accept / decline an ask** (in-app, via the magic link in the notification).
+- **Bail** on a confirmed shift (frictionless; the seat rests `Open` and the tick re-crews — DEC-128).
 - Tap the **dock pin**; **one-tap contact** co-crew.
 - See the **credential nudge**; see **own standing + reasons**.
 
@@ -1003,18 +1197,27 @@ Everything needed on one screen, no hunting. This is where "bulletproof" lives.
 ### Edge cases
 - **Accept a seat that just filled** (contested, first-yes-wins) → clear "this one's taken" message,
   no error state.
-- **Bail** → seat reopens and re-asks next candidate immediately (§1.1); the bailer's card drops off
-  their list.
+- **Bail** → seat rests `Open` and the **tick** re-crews (§1.1, DEC-128 — ~~re-asks next candidate
+  immediately~~); the bailer's card drops off their list.
 - **Departure/detail change** on a confirmed shift → card updates + ping; never silent.
 - **Magic link** expired/reused → graceful re-request, not a dead end (§3.2).
 
 ### Acceptance criteria
-- [ ] An ask is fully answerable (in/out) from the push/SMS without opening or logging into the app.
+- [ ] ~~An ask is fully answerable (in/out) from the push/SMS without opening or logging into the
+      app.~~ — **REWRITTEN.** An ask is answerable in **two taps from the notification** — tap the
+      magic link, tap In or Out — **with no login and no password**. *(The "without opening" half is
+      closed on operator input, 2026-07-27: there will never be reply-by-SMS. DEC-030 chose an
+      operator-relayed magic link with no inbound webhook and that stands. The "no login" half is fully
+      met and well-built.)*
 - [ ] The shift card shows call time and departure time as **distinct, labeled** fields.
 - [ ] The shift card shows the manifest **grouped per event** (separate 1/3/5pm lists), name + count,
       no waiver field.
 - [ ] Changing a shift's departure updates every assigned crew member's card and pushes a ping.
-- [ ] Bailing reopens the seat and re-asks the next candidate with no operator action.
+      *(Card half met — it re-reads the event on every render. **Ping half has a known hole, #548:**
+      notices fire on event-**id-set** change, so a Xola retime that keeps its event id tells nobody.)*
+- [ ] Bailing reopens the seat and the **tick** re-crews it, with no operator action.
+      *(Rewritten to DEC-128 — the inline "re-asks the next candidate" was removed after it fired
+      horizon-blind in production. Pre-horizon a bail deliberately asks nobody.)*
 - [ ] A crew member sees only their own standing and reasons — never a ranking against other crew.
 - [ ] A credential nearing expiry triggers a crew-facing nudge before the person drops from the pool.
 
@@ -1022,24 +1225,66 @@ Everything needed on one screen, no hunting. This is where "bulletproof" lives.
 
 ## 2.7 Crew Self-Serve — "Pick your shifts" (the crew pull surface)
 
-> **Stance:** a fourth crew surface, added as a knowing exception to §2.6's "three surfaces" (DEC-074) —
-> a *restoration* of the self-pick workflow mates always loved. It is **pull, opt-in, anti-anxiety**
-> (DEC-042 guardrails) and is **not** the parked positive-availability calendar (§4): crew claim
-> concrete, already-formed shifts, never declare abstract availability.
+> **Stance:** ~~a fourth crew surface, added as a knowing exception to §2.6's "three surfaces"~~ a crew
+> pull surface (DEC-074) — a *restoration* of the self-pick workflow mates always loved. It is **pull,
+> opt-in, anti-anxiety** (DEC-042 guardrails) and is **not** the parked positive-availability calendar
+> (§4): crew claim concrete, already-formed shifts, never declare abstract availability.
+> *(The "fourth surface" framing was true at DEC-074 and has been overtaken three times since — seven
+> crew routes ship. See §2.6's reconcile banner.)*
+>
+> **Dark by default, and coupled.** `/crew/open` 404s unless `CREW_SELF_SERVE=1`; the claim action
+> redirects on the same gate and the hub entry doesn't render. **The coupling is the point, not the
+> flag:** one env var gates **both** this surface **and** the DEC-079/DEC-081 crew code-login front
+> door, so they cannot ship independently — a fact stated in neither §2.7 nor §3.2 until now. Shard E's
+> E1 named the consequence: a deploy built from the runbook comes up with crew unable to sign in.
 
-**2.7.1 The list.** Open **required** seats the viewer is **eligible** for (credentials valid on the
-trip date + native role per DEC-076 + not suppressed, §1.3), on shifts in `Pending`/`Filling`, within
-`[today, today+45d]`. Default filter **today**; presets **this weekend** / from–to range. One row per
-claimable seat: **date · vessel · role · committed window (call → back) · Claim**. No auto-refresh, no
-live counts, neutral ink (DEC-042). Empty = normal, not an error.
+**2.7.1 The list.** ~~Open~~ **Uncommitted** **required** seats the viewer is **eligible** for, on
+shifts in `Pending`/`Filling`/**`AtRisk`**, within `[today, today+45d]`.
+*(Correction, #440: both halves were widened and never back-ported. Seats are the **complement of
+committed** — `Open`, **`Asked`** and **`Bailed`** — because "an outstanding ask is not a reservation".
+Shifts include **`AtRisk`** deliberately: "the shift that most needs a body is the last one that should
+be hidden." The same stale wording is the origin text in **DEC-078's "MVP claimable set"**, so fixing it
+here alone leaves the DEC as the surviving wrong answer — routed to shard Z.)*
+*(Precision on "eligible": the gate is **six** rules, not the three named here — active · rated · MMC
+valid on date · not double-booked · not on PTO · **not on a standing weekday off** (DEC-119). §1.3's own
+rule list omits the sixth and §2.1 calls suppressions "PTO / blackout only", so following this pointer
+does not let a reader enumerate the gate. Note also that "suppressed" here means **PTO** in the §1.3
+sense, **not** the DEC-129/130 `working`/`declinedOnDay` ask-suppression — a collision this spec
+predates.)*
+Default filter **7 Days**; presets **7 Days / 2 Weeks / 30 Days** plus a from–to range. *(Correction,
+#414: not "today", and the "this weekend" preset was removed — the e2e suite actively asserts its
+absence. This is a pull surface, so crew browse a week ahead.)* One row per claimable seat: **date ·
+vessel hue + vessel · role · first departure · trip count · Claim**; the **call → back window** lives in
+the confirm sheet, not the collapsed row ("too busy collapsed"). No auto-refresh, no polling, neutral
+ink (DEC-042) — ~~no live counts~~ a bare `N open` row count for orientation is fine, which is how the
+surface reads DEC-042's guardrail. Empty = normal, not an error.
 
 **2.7.2 The claim.** One tap → confirm sheet stating the **whole-day** scope, the **live trip count**,
 and the **call/back window** (DEC-077 copy). Confirm → seat `Open → Confirmed` (auto-lock, DEC-075). The
-seat now appears in **My shifts** (§2.6.2). Guarded against races and the one-shift-per-date conflict
-(DEC-078).
+seat now appears in **My shifts** (§2.6.2). Guarded against races ~~and the one-shift-per-date
+conflict~~ (DEC-078).
 
-**2.7.3 Release.** Releasing a self-claimed seat is as easy as claiming it (§2.6 principle 2): seat
-returns to `Open` and re-asks; a reliability event is recorded, lead-time-weighted (§1.4).
+> **The one-shift-per-date guard is not concurrency-safe — #554.** The single-seat race genuinely is
+> closed (a guarded CAS; the loser gets `just_taken`). The same-date guard is a read-then-CAS over a
+> cross-record invariant the no-FK store cannot enforce, and the code says so in its own comment: two
+> **concurrent** claims by one crew member for two **different** same-date shifts both read an empty
+> committed set, both pass, and each per-seat CAS wins → confirmed to two boats the same day. DEC-078
+> asserts both guards in one breath with no caveat and needs the same correction.
+>
+> **Related but separate — #560.** The operator has questioned whether the whole-day rule is right at
+> all: two non-overlapping single trips on different boats should arguably be workable by one person,
+> and today the rule removes them from the **eligible pool** entirely, so they are never even asked.
+> That is a policy change to the oracle, not to this surface. **Neither this clause nor DEC-077/078
+> should be rewritten further until #560 is decided**, or they get rewritten twice.
+
+**2.7.3 Release.** Releasing a self-claimed seat ~~is as easy as claiming it~~ ships via §2.6's bail,
+not a §2.7 control: seat returns to `Open` and **the tick re-crews it** (DEC-128 — ~~re-asks~~ no inline
+ask); a reliability event is recorded, lead-time-weighted (§1.4).
+*(Three corrections. The function written for this subsection, `releaseSelfClaim`, has **zero production
+callers** — the behavior moved to `bailFromSeat` and ships correctly from the shift card, so this is
+"its function moved", not "it's missing"; the dead export is tracked in #558. "Re-asks" is stale per
+DEC-128. And "as easy as claiming it" is not true of the shipped geometry: claiming is one tap on
+`/crew/open`, releasing is `/crew` → `/crew/shift/[id]` → bail, on a different surface.)*
 
 **2.7.4 What this surface is NOT (Phase 7 non-goals).** No sub-day blocks/"watches" (whole-day only,
 DEC-077). No multi-role / role-picker (native-role-only; dual-rating is the operator-assign hack,
@@ -1050,6 +1295,27 @@ a dormant `app_settings` seam, DEC-075). No availability calendar (§4).
 (especially mates) during `Pending`/early `Filling`; whatever's still `Open` at the staffing horizon
 flows into the existing ask cascade (§1.2) — which remains the primary captain-fill tool. The two never
 conflict: both end at a `Confirmed` seat via the same state machine.
+
+### Acceptance criteria
+> **Added 2026-07-27 (audit shard C2.7).** §2.7 was the **only** §2.x section with no acceptance
+> criteria and no open questions — six sections established the format and the seventh silently dropped
+> it, in the section whose behavior is the most concurrency-sensitive in the crew app. Phase 7 shipped
+> anyway, so nothing was blocked; the cost was retrospective, i.e. this audit had zero boxes to tick and
+> verdicted the five numbered sub-clauses instead. **Confirm or amend this list** — it is derived from
+> the sub-clauses and shipped behavior, not from an original author's intent.
+
+- [ ] The list shows only seats the viewer is eligible for under the **same six-rule gate** the oracle
+      applies — no seat is claimable that the engine would never have asked them about.
+- [ ] An `AtRisk` shift and an already-`Asked` seat both appear (#440); a **committed** seat never does.
+- [ ] One tap → a confirm sheet stating whole-day scope, live trip count, and the call/back window
+      before anything is written.
+- [ ] Two concurrent claims on the **same seat** produce exactly one `Confirmed`; the loser gets an
+      honest "just taken", not an error. *(Met — guarded CAS.)*
+- [ ] A crew member cannot end up committed to two shifts on the same date. *(**NOT met** — #554;
+      and the rule itself is under review in #560.)*
+- [ ] Releasing a claimed seat returns it to `Open` and records a lead-time-weighted reliability event,
+      with no operator action.
+- [ ] The surface renders nothing and claims nothing when `CREW_SELF_SERVE` is off.
 
 ---
 

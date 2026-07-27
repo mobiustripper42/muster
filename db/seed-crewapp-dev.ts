@@ -57,7 +57,7 @@ try {
     coiMaxPax: 12,
     manning: [{ roleTypeId: CAPTAIN, count: 1 }, { roleTypeId: MATE, count: 1 }],
   });
-  await repo.saveCrewMember({ id: QUINT, name: "Quint", email: "quint@bb.test", phone: "+15555550101", ratings: [CAPTAIN], status: "active", reliabilityScore: null });
+  await repo.saveCrewMember({ id: QUINT, name: "Quint", email: "quint@brewboat.test", phone: "+15555550101", ratings: [CAPTAIN], status: "active", reliabilityScore: null });
   await repo.saveCrewMember({ id: HOOPER, name: "Hooper", email: "hooper@bb.test", phone: "+15555550102", ratings: [MATE], status: "active", reliabilityScore: null });
   // Quint's MMC expires ~30d from seed time (anchored to now so the #57 nudge
   // line always shows inside the 60d window); Hooper's is comfortably valid.

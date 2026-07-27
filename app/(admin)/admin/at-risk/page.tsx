@@ -21,11 +21,6 @@ import { getRepo } from "../../../lib/repo";
 
 export const dynamic = "force-dynamic";
 
-/** Inside this many hours of departure the countdown turns red. UI-only —
- * deliberately NOT core's `EXHAUSTED_THRESHOLD_HOURS` (48h, a membership rule);
- * this is just when the clock starts shouting. */
-const TIGHT_HOURS = 36;
-
 /** Feedback params carry codes/ids, never prose (see actions.ts) — map here. */
 const LEAN_ERROR_COPY: Record<string, string> = {
   shift_gone: "That shift is no longer live.",
@@ -195,7 +190,6 @@ async function buildVMs(rows: AtRiskRow[]): Promise<RiskRowVM[]> {
       dateLabel: fmtDate(r.date),
       departs: r.tripStarts.map((t) => `departs ${fmtTime(t)}`),
       toTrip: r.hoursToTrip === null ? null : ttLabel(r.hoursToTrip),
-      tight: r.hoursToTrip !== null && r.hoursToTrip < TIGHT_HOURS,
       flag,
       regression: r.reasons.includes("regression"),
       missing: r.gaps.map((g) => ({

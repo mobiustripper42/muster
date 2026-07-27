@@ -26,7 +26,6 @@ export interface OutboxCardVM {
   /** "20h to trip" / "departed" — null when no scheduled event anchors it. */
   toTrip: string | null;
   /** Inside the shouting window — the countdown turns red. */
-  tight: boolean;
   /** "2nd ask · Lance declined" */
   whyLabel: string;
   /** The prefilled `sms:` href — null when the crew member has no phone. */
@@ -58,7 +57,7 @@ export function OutboxCard({ card }: { card: OutboxCardVM }) {
           </span>
           {card.toTrip && (
             <span
-              className={`shrink-0 font-mono text-sm font-semibold ${card.tight ? "text-bad" : "text-ink"}`}
+              className="shrink-0 font-mono text-sm font-semibold text-ink"
             >
               {card.toTrip}
             </span>

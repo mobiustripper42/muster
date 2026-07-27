@@ -41,9 +41,6 @@ import { WarmingPanel, type WarmingRowVM } from "./warming-panel";
  * is NOT faked; it lands with #59.
  */
 
-/** Inside this many hours of departure the countdown turns red (UI-only). */
-const TIGHT_HOURS = 36;
-
 /** Feedback params carry codes/ids only, never prose (DEC-026) — map here. */
 const ACT_ERROR_COPY: Record<string, string> = {
   shift_gone: "That shift or seat is no longer live.",
@@ -262,11 +259,7 @@ export async function ShiftCockpit({
         </div>
         <div className="flex flex-col items-start sm:items-end">
           <span
-            className={`font-mono text-lg font-semibold ${
-              hoursToTrip !== null && hoursToTrip < TIGHT_HOURS
-                ? "text-bad"
-                : "text-ink"
-            }`}
+            className="font-mono text-lg font-semibold text-ink"
           >
             {hoursToTrip === null
               ? "no scheduled trip"

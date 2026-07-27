@@ -28,19 +28,6 @@ full scenario set back. Adding new test data means adding a line to the `SEEDS` 
 is global, so splitting with the scenario set loaded duplicates every scenario shift. The individual
 `db:migrate` / `db:seed:*` commands still work for a targeted, non-destructive re-seed.
 
-> **Rule: no seed script carries a real person's name, email or phone.** Dev seeds use invented crew
-> (`crew-quint`, `crew-hooper`, `crew-dooley`, …). The **one** exception is the operator's own record
-> (`crew-eric`, real phone) — that's the Twilio live-SMS smoke test and it's his number to give. The
-> production roster is built one person at a time with
-> `npm run db:crew -- add --name= --phone= --email= --ratings=`, which also mints the placeholder MMC
-> (DEC-044/DEC-094), so it fully replaces what a seed would do.
->
-> The reason is load-bearing, not hygiene theatre: a dev DB exists to have test SMS fired at it, and a
-> seeded roster puts every live phone number one `npm run` away from every scenario that sends. *(This
-> rule previously lived in DEC-134, deleted 2026-07-27 — it documented a script rather than deciding
-> anything, and the rule belongs where someone about to write a seed will see it. Enforced in comment
-> at `db/seed-fleet.ts:41` and `src/crew/crew-cli.ts:68`.)*
-
 Teardown: `npm run db:down` (keeps the data volume; add nothing to wipe).
 
 ## Opening it in a browser

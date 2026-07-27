@@ -38,7 +38,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const repo = PostgresRepository.fromConnectionString(url);
   try {
     await seedFleetDev(repo);
-    // Roster bootstrap is CLI-only — no crew PII in the repo (see docs/RUNNING.md). Only on
+    // Roster bootstrap is CLI-only. Only on
     // the standalone path: db:all seeds its own dev crew and shouldn't say this.
     console.log('\nNext: add crew with `npm run db:crew -- add --name="Jane Roe" --phone=+1… --email=… --ratings=captain,mate`');
     console.log("(seeds the DEC-044 placeholder MMC too), then import at /admin/import.");

@@ -53,7 +53,7 @@ const LATER = dateOf(at(16 * 24));
 
 /**
  * The operator's own dev record — the ONE real person any seed may carry
- * (no crew PII in seeds — docs/RUNNING.md): his phone, his call. Kept separate from the rest of the crew-app
+ * his phone, his call. Kept separate from the rest of the crew-app
  * scenario because `db:all` needs it in EVERY mode — it's the crew id the admin
  * row points at (DEC-092), so `--split` would otherwise leave you unable to sign
  * in to the admin surfaces it exists to test. Defined once, called from both.

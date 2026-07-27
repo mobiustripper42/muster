@@ -118,13 +118,17 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
     column dropped by migration `0022`, `src/builder/lock.ts` deleted, `USER_STORIES.md` SP-6/SP-7 struck
     by shard C. **SPEC §2.3 was the last live description of shift lock in the project.** Now struck in
     place, plus the `§4 Parked` "weekend-lock" row that parked as future work a thing DEC-082 cut.
-  - **Open operator decision (C2.3-6 / AC-3):** "a supernumerary seat **consumes a passenger slot** vs
-    COI max-pax" is asserted in the spec restatement, in an acceptance criterion, **and in shipped
-    operator UI copy** (`manning-section.tsx:72`) — and implemented in none of the three. Non-obvious
-    because COI max-pax is a **legal** limit, and because the shipped booking model is a whole-boat
-    **mutex** (DEC-105/108/109), so there is no per-seat availability number to decrement without cutting
-    across DEC-108. `BUILDER-RECONCILIATION.md:44-45` named the same gap; bundles 9.6/9.8 shipped `[x]`
-    without it. **Do not close by deleting the AC clause** — that buries a COI question under a doc tidy.
+  - **C2.3-6 / AC-3 — RESOLVED on operator input 2026-07-27, and the shard had it half wrong.** The
+    ledger reported "a supernumerary seat **consumes a passenger slot** vs COI max-pax" as asserted in
+    three places — spec, acceptance criterion, and shipped UI copy — and implemented in none. The third
+    citation was wrong: `ManningSection` has **zero callers** and dropped out at `cc581f8` (Phase 9.5),
+    so that copy is dead code. Caught by the operator, not the sweep — see lesson 12. The operator's two
+    answers close it without any code: **(a)** COI max-pax counts *people* — a trainee, a guest and a
+    working hand are identical to it, "if they have a heartbeat they count" — so the claim is **correct**,
+    and correct for reasons unrelated to the seat being supernumerary; the spec's framing of it as a
+    special trainee rule is the part that's off. **(b)** Supernumerary seats are **removed from the UI**;
+    the seat machinery is retained but dead, so there is no operator path to create the seat and nothing
+    to decrement against. AC-3's second clause is therefore **unreachable, not unmet**.
   - **Open code item (C2.3-8), low:** the split/merge server actions call `splitShift`/`mergeShift`
     without `now` (`app/(admin)/admin/shifts/actions.ts:34,83`), so a split inside the staffing horizon
     persists side B as `Pending` rather than `Filling`. Self-healing and not user-visible —
@@ -226,9 +230,14 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
    **When a section carries a reconcile banner, check every block against the banner's own claim** — the
    banner is a promise about the text beneath it, and it is checkable like any other claim. Cheap: the
    banner tells you exactly what to grep for.
-12. **Budget a shard by whether its code has an operator surface, not by its line count.** C2.1/C2.2 cost
-   120–141k because the expensive move was proving negatives across the whole tree. C2.3 covered a
-   *longer* section for ~95k because `/admin/shifts` exists, so nothing had to be proven absent. Check
-   for a route before setting the budget, and drop the speculative zero-caller sweep when one exists.
+12. **Budget a shard by whether its code has an operator surface, not by its line count — but "a route
+   exists" is not "this component renders."** C2.1/C2.2 cost 120–141k because the expensive move was
+   proving negatives across the whole tree. C2.3 covered a *longer* section for ~95k because
+   `/admin/shifts` exists, so nothing had to be proven absent. **That saving cost one wrong row.** C2.3-6
+   cited `manning-section.tsx:72` as shipped operator copy; `ManningSection` has **zero callers** and
+   dropped out at `cc581f8` (Phase 9.5). The orchestrator's brief had suppressed the zero-caller sweep,
+   and the operator caught it. The rule that survives: **drop the speculative whole-tree sweep, but
+   always grep the symbol of any component you cite as live evidence.** One grep per citation, not per
+   module. A component file existing on disk is worth nothing — this repo keeps withdrawn UI in place.
 3. **The ledger-on-disk pattern held.** The orchestrator read one 79-line file instead of taking
    53 findings into context. Keep it for every remaining shard.

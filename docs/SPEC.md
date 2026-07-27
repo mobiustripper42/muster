@@ -651,6 +651,13 @@ in production today. The exclusion is deliberate, not a bug.)*
 Per-shift overrides: add a **required** working
 hand (big-pax day — gates `Crewed`); add a **supernumerary/trainee** seat (non-gating, pairing
 rule, **consumes a passenger slot** vs COI max-pax). Derived default is the COI minimum.
+*(Clarification, operator input 2026-07-27: "consumes a passenger slot" is not a rule about trainees.
+**COI max-pax counts people** — a trainee, a guest and a working hand are identical to it; if they have
+a heartbeat they count. The supernumerary seat is not a special case, it is an instance.)*
+*(Status, 2026-07-27: **supernumerary seats are withdrawn from the UI.** The seat machinery is retained
+in the domain layer — the `supernumerary` seat kind, `manning.ts`, the ask loop's `trainee_seat` guard,
+payroll's unpaid-ride rule — but `ManningSection` has no caller, so there is no operator path to add
+either override seat kind today. Dead, not deleted.)*
 
 ### States to render
 - **Date-range / weekend view, ~~grouped by boat then day~~ grouped by *day* then boat.** *(Correction,
@@ -720,6 +727,11 @@ too: the `locked_at` column is dropped by migration `0022`, `src/builder/lock.ts
       change the two sides' union is deliberately **not** the original's set.)*
 - [ ] Overriding to add a required hand changes the gate for `Crewed`; adding a supernumerary seat
       does **not** gate `Crewed` and **decrements** available pax against COI max.
+      *(Verdict 2026-07-26/27: **first clause met in the domain layer, second clause unreachable.**
+      Gating is implemented and tested. The pax decrement is not implemented anywhere — and does not
+      need to be while the seats are withdrawn from the UI, since nothing can create one. Revisit
+      together with any decision to restore the manning surface: at that point max-pax must count every
+      body aboard, not just guests.)*
 - [ ] ~~Locking a shift inside the staffing horizon fires Tier-1 asks; locking one outside does not.~~
       — **struck (DEC-082).** Replaced by: a shift crossing the **staffing horizon** moves
       `Pending → Filling` and fires Tier-1 asks (DEC-022/062).

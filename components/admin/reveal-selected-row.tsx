@@ -19,7 +19,7 @@ import { useEffect } from "react";
  * to reveal the row without that leak.
  *
  * **A `'use client'` island in the DEC-026 family (DEC-114)** — joining the
- * redirect-feedback (DEC-097), submit-spinner (DEC-100), and copy/relay (DEC-030)
+ * redirect-feedback (DEC-097), submit-spinner (DEC-089), and copy/relay (DEC-030)
  * islands: JS is an *enhancement* here, never a requirement. With JS off the row
  * still selects and the cockpit still renders; only the auto-place-keeping is lost
  * and the column just opens at the top as it does today.

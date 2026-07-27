@@ -5,7 +5,9 @@ export default defineConfig({
     environment: "node",
     // `db/**` joined the include when db:reset:dev landed: its target guard decides whether a
     // destructive script runs, which is exactly the kind of thing that must be tested.
-    include: ["src/**/*.test.ts", "app/**/*.test.ts", "db/**/*.test.ts"],
+    // `scripts/**` joined for the same reason as `db/**`: check-decisions.mjs decides
+    // whether the build passes (#564), and a guard nobody tests is a guard nobody trusts.
+    include: ["src/**/*.test.ts", "app/**/*.test.ts", "db/**/*.test.ts", "scripts/**/*.test.mjs"],
     env: {
       // Civil send window (DEC-088) held WIDE OPEN for the suite: the tests'
       // clocks are arbitrary UTC instants, and the gate is orthogonal to what

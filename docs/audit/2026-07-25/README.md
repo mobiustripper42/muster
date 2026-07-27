@@ -129,11 +129,15 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
     special trainee rule is the part that's off. **(b)** Supernumerary seats are **removed from the UI**;
     the seat machinery is retained but dead, so there is no operator path to create the seat and nothing
     to decrement against. AC-3's second clause is therefore **unreachable, not unmet**.
-  - **Open code item (C2.3-8), low:** the split/merge server actions call `splitShift`/`mergeShift`
-    without `now` (`app/(admin)/admin/shifts/actions.ts:34,83`), so a split inside the staffing horizon
-    persists side B as `Pending` rather than `Filling`. Self-healing and not user-visible —
-    `resolveShiftStateOnRead` re-resolves on every board read (the DEC-023 corollary, "never trust the
-    persisted badge") and the next tick advances it. One argument at two call sites.
+  - **Code item (C2.3-8) — FIXED 2026-07-27.** The split/merge server actions called
+    `splitShift`/`mergeShift` without `now` (`app/(admin)/admin/shifts/actions.ts:34,83`), so a side B
+    spawned inside the staffing horizon persisted as `Pending` rather than `Filling`. Both actions now
+    build one clock above the `try` and pass it in; `mergeAction`'s audit `now` was hoisted rather than
+    re-minted, so state resolution and the audit row share an instant. **Four tests pin both halves of
+    the contract** (`Filling` with a clock, `Pending` without) at the domain layer — deliberately not
+    e2e, because `resolveShiftStateOnRead` re-resolves on every read (the DEC-023 corollary, "never
+    trust the persisted badge") and would mask the defect from any UI assertion. That masking is also
+    why it stayed unnoticed: the only observable was the persisted row.
   - **Also fixed:** the pre-DEC-126 "2026 import-mode vs 2027 live-mode" framing (twice — §0.3 and §2.2
     were rewritten away from it, §2.3 was missed); "CSV import" (DEC-043-retired); "grouped by boat then
     day", which is the **opposite** of the shipped board (day-then-boat, blessed by DEC-085/086); the

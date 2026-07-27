@@ -530,8 +530,11 @@ view of their standing and credential nudges lives in the crew app, §2.6, readi
       it restores them. No positive-availability entry is ever required.
 - [ ] A newly added crew member shows neutral/mid-pool standing labeled "no history," not a low
       score.
-- [ ] Deactivating a crew member assigned to future shifts surfaces those shifts and reopens the
-      seats rather than failing silently.
+- [ ] ~~Deactivating a crew member assigned to future shifts surfaces those shifts and reopens the
+      seats rather than failing silently.~~ — **CLOSED as a non-issue on operator input, 2026-07-27.**
+      Not built and not wanted: at one boat and ~six crew, the operator benched the person himself
+      thirty seconds ago and the shift still shows a body in the seat. Parked at lowest priority in
+      `FUTURE_IDEAS.md` so a future sweep doesn't re-derive it as a defect.
 
 ---
 

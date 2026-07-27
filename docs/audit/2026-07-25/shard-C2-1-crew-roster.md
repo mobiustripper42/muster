@@ -102,6 +102,10 @@ It passes for **everyone forever**, because `reliabilityScore` is never written 
 issue #32) — and it passes on a surface nobody can open (AC-3). The criterion is satisfied by the
 deriver; it has never been exercised against a real score.
 
+> **CLOSED 2026-07-27 — operator called it a non-issue.** Not a defect and not wanted at this scale;
+> parked at lowest priority in `FUTURE_IDEAS.md`. The verdict below stands as the *finding*; the
+> *disposition* is closed. Do not re-open as a bug.
+
 ### AC-7 — "Deactivating a crew member assigned to future shifts surfaces those shifts and reopens the seats rather than failing silently." — **NOT MET**
 No code implements either half. `setCrewStatus` flips a column (`postgres-repository.ts:476`,
 `in-memory-repository.ts:177`); `db:crew disable` / `archive` return a one-line confirmation naming

@@ -121,7 +121,14 @@ import.
 - **At-Risk board** — `riskapp.jsx`, `riskcards.jsx`, `riskdata.jsx`, `riskmobile.jsx`, `riskmodals.jsx`
 - **Assignment cockpit** — `assignapp.jsx`, `assigndata.jsx`, `assignmobile.jsx`, `assignseat.jsx`
 - **Shift builder** — `shiftapp.jsx`, `shiftboard.jsx`, `shiftdata.jsx`, `shiftdetail.jsx`
-- **Event admin / import** — `eventapp.jsx`, `eventdata.jsx`, `eventdetail.jsx`, `eventlist.jsx`, `eventimport.jsx`
+- **Event admin / import** — **deleted 2026-07-26** (audit shard C2.2). The five mockups
+  (`eventapp/eventdata/eventdetail/eventlist/eventimport.jsx`) and `Event Admin.html` are gone. Two
+  thirds of what they showed was accurate; the rest modelled three cancelled behaviors — **CSV import**
+  (retired, DEC-043), **manually adding a reservation** (struck, SPEC §2.2), and the **manual-vs-import
+  merge conflict** (moot). But the deciding argument was the surface's expiry date, not the drift: per
+  DEC-126 the Xola pull **stops at the cutover** and SPEC §2.2 goes with it, so this was the design
+  reference for a screen that was never built and now never will be. Recoverable from git if the call
+  changes.
 - **Roster** — `roster.jsx`
 - **Shared** — `atoms.jsx`, `forms.jsx`, `data.jsx`, `detail.jsx`, `app.jsx`, `tweaks-panel.jsx`
 - **Phase 12 reservations (HTML)** — `booking-form.html`, `booking-manage.html`, `booking-recovery.html`,

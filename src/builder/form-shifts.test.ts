@@ -267,6 +267,47 @@ describe("formShifts — reconciliation (#20)", () => {
     expect(r.changedCrew).toEqual([]);
   });
 
+  /**
+   * CHARACTERIZATION, not an endorsement (audit C2.2-5). Pins what a RETIME does
+   * today so the answer stops being re-derived from comments.
+   *
+   * DEC-029 said time changes were caught for free, and under its scheme they were:
+   * event identity was `evt-${vesselId}-${date}-${time}`, so moving a trip minted a
+   * new id and the shift's `eventIds` set changed. **DEC-043 replaced that identity
+   * with Xola's real `event.id`** and nobody re-checked the consequence: a retime
+   * that keeps its id now leaves the set identical, so the `#350` diff-gate sees no
+   * change and no crew member is told — while their call time (earliest departure −
+   * lead) has moved underneath them.
+   *
+   * OPEN, and NOT answerable from this repo: whether Xola retimes an occurrence in
+   * place (same `event.id` — this test's case, silent) or cancels and recreates it
+   * (new id — the set changes and the notice fires). DECISIONS.md:2159 says "a
+   * replacement trip has a new id", which suggests the second, and the operator
+   * recalls seeing exactly that. Settle it against a real import run before building
+   * anything: if Xola always recreates, this gap is unreachable and the right fix is
+   * a comment; if it retimes in place, the gate needs to compare times too.
+   */
+  it("a retime that keeps the event id tells NOBODY (open question — see the comment)", async () => {
+    const repo = new InMemoryRepository();
+    await seedEvents(repo);
+    await formShifts(repo);
+    const seat = (await repo.listSeatsForShift(day1))[0]!;
+    await repo.saveSeat({
+      ...seat,
+      state: "Confirmed",
+      assignedCrewMemberId: asId<"CrewMemberId">("cap"),
+    });
+
+    // Same event, same day, moved 15:30 → 08:00. The crew member's call time moves
+    // by seven and a half hours; the event-id set does not move at all.
+    await repo.saveEvent(event("e1", PARTY, "2026-05-16", "08:00"));
+    const r = await formShifts(repo, { notifyTripChanges: true });
+
+    expect((await repo.getEvent(asId<"EventId">("e1")))?.time).toBe("08:00");
+    expect((await repo.getShift(day1))?.eventIds).toEqual(["e1", "e2"]);
+    expect(r.changedCrew).toEqual([]); // ← the gap, pinned
+  });
+
   it("never forms a shift from cancelled-only events (no prior shift)", async () => {
     const repo = new InMemoryRepository();
     await seedEvents(repo);

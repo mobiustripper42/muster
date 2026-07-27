@@ -45,7 +45,7 @@ importing**. These are read by the code and were never backfilled here:
 | Var | Where it comes from | Used for |
 |-----|---------------------|----------|
 | `CREW_SELF_SERVE` | **you set it** — `"1"` to enable | **The crew code-login front door** (`app/lib/flags.ts`, DEC-081). **OFF by default** so `main` stays promotable — so production must set it explicitly or crew cannot sign in at all |
-| `XOLA_API_KEY`, `XOLA_SELLER_ID` | **you set them** — from Xola | **The reservation import** (DEC-036/043). Unset ⇒ `/admin/import` refuses with "Xola isn't configured on this server … nothing was pulled", and the hourly cron pull does nothing |
+| `XOLA_API_KEY`, `XOLA_SELLER_ID` | **you set them** — from Xola | **The reservation import** (DEC-036/043). Unset ⇒ `/admin/import` refuses with "Xola isn't configured on this server … nothing was pulled". There is no scheduled pull — every import is the operator pressing "Pull from Xola now" |
 | `XOLA_API_BASE`, `XOLA_API_VERSION` | optional — defaults in `src/import/xola-client.ts` | Xola endpoint pinning; leave unset unless Xola moves |
 | `RESEND_API_KEY`, `EMAIL_FROM` | **you set them** | Email delivery — the 6-digit login code has no way out without them (DEC-081) |
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM`, `TWILIO_MESSAGING_SERVICE_SID` | you set them, **if** using SMS | The Twilio channel adapter (DEC-MSG-1). Omit to stay on the operator-relay outbox |

@@ -6,7 +6,7 @@
  * DATABASE_URL pointed at the test DB, so the harness reuses the exact states
  * the manual walkthrough (RUNNING.md) documents.
  *
- * The seeds DO export functions now (DEC-135 made them `seedX(repo)` so `db:all`
+ * The seeds DO export functions now (they are `seedX(repo)` so `db:all`
  * could call them in-process), so the original "they're CLI-only" reason is
  * gone. The spawn stays anyway, deliberately: it keeps each seed's DATABASE_URL
  * scoped to one child process, so nothing in the harness can import a seed and

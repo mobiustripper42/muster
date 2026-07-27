@@ -9,7 +9,7 @@
  * Idempotent (every write is an upsert). Run once per environment:
  *   DATABASE_URL="<prod-neon-direct>" npm run db:seed:fleet
  *
- * Also step 1 of the `db:all` registry (DEC-135) — hence the exported function
+ * Also step 1 of the `db:all` registry — hence the exported function
  * plus CLI-entry guard: `db:all` calls it in-process on one connection, while
  * `npm run db:seed:fleet` still runs it standalone against a live DB.
  *
@@ -38,7 +38,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const repo = PostgresRepository.fromConnectionString(url);
   try {
     await seedFleetDev(repo);
-    // Roster bootstrap is CLI-only (DEC-134) — no crew PII in the repo. Only on
+    // Roster bootstrap is CLI-only. Only on
     // the standalone path: db:all seeds its own dev crew and shouldn't say this.
     console.log('\nNext: add crew with `npm run db:crew -- add --name="Jane Roe" --phone=+1… --email=… --ratings=captain,mate`');
     console.log("(seeds the DEC-044 placeholder MMC too), then import at /admin/import.");

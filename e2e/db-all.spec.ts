@@ -1,5 +1,5 @@
 /**
- * `db:all` (DEC-135) — the one command that gets a dev DB to a known-good state.
+ * `db:all` — the one command that gets a dev DB to a known-good state.
  * Two properties worth a black-box test, because both are things you only find
  * out are broken when you're already trying to work:
  *

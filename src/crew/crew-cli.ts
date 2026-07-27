@@ -65,7 +65,7 @@ const formatDays = (days: number[]): string =>
   [...days].sort((a, b) => a - b).map((d) => WEEKDAY_NAMES[d] ?? String(d)).join(", ");
 
 /** DEC-044 far-future sentinel MMC — keeps the universal MMC gate open until real
- *  credential tracking lands. Sole owner of the sentinel since DEC-134 retired
+ *  credential tracking lands. Sole owner of the sentinel since the pilot crew seed was removed
  *  `db/seed-pilot-crew.ts`; `db:crew add` is now the only roster-bootstrap path. */
 const PLACEHOLDER_MMC_EXPIRY = "2099-12-31";
 

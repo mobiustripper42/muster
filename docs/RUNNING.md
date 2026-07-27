@@ -13,7 +13,7 @@ things to eyeball.
 ```bash
 npm install
 npm run db:up   # docker compose up -d  → postgres:17 on :5432 (muster_dev + muster_test)
-npm run db:all  # migrate + WIPE + seed everything + make you admin (DEC-135)
+npm run db:all  # migrate + WIPE + seed everything + make you admin
 npm run dev     # next dev --webpack on :3000
 ```
 Then sign in at `/crew` with **`eric@bb.test`** — the 6-digit code prints in the `npm run dev`
@@ -24,9 +24,9 @@ that isn't localhost, and is the intended way to start each PR: throw the databa
 full scenario set back. Adding new test data means adding a line to the `SEEDS` registry in
 `db/all-dev.ts` — the data resets every run, the registry only grows.
 
-`npm run db:all -- --split` swaps in the split/merge fixture, which **must** run alone (see
-DEC-135). The individual `db:migrate` / `db:seed:*` commands still work for a targeted, non-
-destructive re-seed.
+`npm run db:all -- --split` swaps in the split/merge fixture, which **must** run alone — `formShifts`
+is global, so splitting with the scenario set loaded duplicates every scenario shift. The individual
+`db:migrate` / `db:seed:*` commands still work for a targeted, non-destructive re-seed.
 
 Teardown: `npm run db:down` (keeps the data volume; add nothing to wipe).
 

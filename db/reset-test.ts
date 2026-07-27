@@ -26,7 +26,7 @@ export const TEST_DATABASE_URL =
  *
  * Takes the connection string explicitly and has NO default — every caller must
  * name the database it is about to truncate. `resetTestDb` binds it to the test
- * DB; `db:all` (DEC-135) binds it to dev behind a localhost guard. There is no
+ * DB; `db:all` binds it to dev behind a localhost guard. There is no
  * ambient default to get wrong.
  */
 export async function resetDb(connectionString: string): Promise<void> {

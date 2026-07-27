@@ -63,10 +63,16 @@ Muster be built perfect for one niche (BrewBoat) and still be sellable later wit
   alongside Xola), then a **cutover** — a one-time full import of Xola's reservations into Muster, after
   which Muster is the reservation source of truth (the cutover is reversible). 2026 reservations do **not**
   arrive via CSV — that's the live Xola **API pull** (DEC-036/037/043), which stops at the cutover.
-- **Payments topology internals** — deposit-vs-full, refund-schedule numbers, Stripe integration
-  detail. Only the admin-facing *surfaces* of payments are in scope.
+- ~~**Payments topology internals** — deposit-vs-full, refund-schedule numbers, Stripe integration
+  detail. Only the admin-facing *surfaces* of payments are in scope.~~ — **EXPIRED (DEC-105/107/124).**
+  Payments landed **in 2026**, not later: deposit-vs-full is decided (deposit + balance, DEC-107),
+  Stripe is in (card checkout only, no wallets — DEC-139), and tips come in as collect-and-expose
+  (DEC-124). The **refund schedule** remains the one genuinely open number (#472) and is what blocks
+  self-service cancel.
 - **Native vs PWA** for the crew app — decided at the infrastructure stage.
-- **Historical Xola data migration** — leaning read-only archive.
+- ~~**Historical Xola data migration** — leaning read-only archive.~~ — **SETTLED by DEC-105: never
+  migrate.** Xola stays a read-only archive; nothing is brought across but the one-time cutover import
+  of *live* reservations (DEC-126).
 - ~~The **Xola API bolt-on** — killed~~ — **UN-KILLED by DEC-036 (2026-06-15)**, which explicitly
   flags this line as needing correction: the kill rested on DEC-011's belief that the API was
   unreliable and hard to extract from (traced to faulty "crewbook" info), **falsified by a working,
@@ -162,7 +168,7 @@ in and flagged.
 | **Asked** | Ask is out — broadcast to pool, or named person notified. Awaiting response. |
 | **Claimed** | Someone accepted (ask-then-assign) or a named person was assigned (assign-then-confirm). Tentative. |
 | **Confirmed** | Locked to a specific person. |
-| **Bailed** | A confirmed person backed out. Seat returns to Open; shift re-evaluates. |
+| **Bailed** | A confirmed person backed out. Seat returns to Open; shift re-evaluates. *(DEC-128: `Bailed` is **retired as a resting state** — a bail rests the seat `Open` directly and fires **no** ask; re-crewing is the tick's. Readers are kept for legacy rows, no migration.)* |
 
 > **⏳ RESERVED (v0.2 — not v1): a tentative `Held` tier.** Progressive commitment (see §4 parked,
 > "Progressive crew commitment") will add a state weaker than `Confirmed` but stronger than `Asked`
@@ -187,7 +193,7 @@ in and flagged.
 - `Cancelled` — reachable from every pre-Completed state.
 
 Seat machine: `Open → Asked → Claimed → Confirmed`, with `Asked → Open` (timeout/all-declined,
-re-ask next), `Claimed → Open` (claim rescinded), `Confirmed → Bailed → Open` (re-opens & re-asks).
+re-ask next), `Claimed → Open` (claim rescinded), `Confirmed → Open` (**DEC-128** — ~~`Confirmed → Bailed → Open` (re-opens & re-asks)~~; the bail rests the seat `Open` and fires no inline ask, because the old inline re-ask was **horizon-blind** and stamped six identical-millisecond asks in production on 2026-07-19. Re-crewing is deferred to the tick, and **pre-horizon that means nobody is asked** — which DEC-128 calls the fix. §2.4 and §2.6 were reconciled to this on 2026-07-27; this line is the substrate they cite as canonical and was missed.)
 
 **The eligible pool is computed upstream of the ask:** only people whose credentials are valid on
 the trip date and who hold the required rating ever get asked. By the time someone can tap "in,"
@@ -202,8 +208,11 @@ degrees of automation within `Filling`:
 - **Tier 1 — autonomous fill.** Shift enters `Filling`; system asks the eligible pool ranked by
   reliability, accepts down the list until required seats are `Confirmed` → `Crewed`. No Spink.
   The normal Saturday.
-- **Tier 2 — semi-autonomous escalation.** Tier 1 stalls. System widens the pool, direct-nudges
-  high-reliability people, optionally sweetens. Still `Filling`, still no Spink.
+- **Tier 2 — semi-autonomous escalation.** Tier 1 stalls. System direct-nudges high-reliability
+  people. Still `Filling`, still no Spink. *(Corrections, **DEC-024**: ~~widens the pool~~ — there is
+  **no widen rail**; the pool is what the oracle computes and Tier 2 does not enlarge it. Widening
+  happens automatically inside Tier 1 as the DEC-063 drip. ~~optionally sweetens~~ — **no sweetener
+  in v1**; there is no pay/bonus lever anywhere in the engine.)*
 - **Tier 3 — human.** Automation exhausted. Shift → `At-Risk`, surfaces on the board with full
   context (who was asked, who declined, who never answered, how close it got). Spink leans /
   reschedules / cancels.
@@ -333,7 +342,9 @@ compensating for them, which is the thing Spink does in his head today.
   **neutral**) · `ask_ignored` (timed out — **negative**).
 - **Commitment (per confirmed seat):** `shift_completed` (positive) · `shift_bailed` (+how far in
   advance, **negative scaled by lateness**) · `no_show` (worst case).
-- **Bonus:** `escalation_accepted` · `at_risk_rescue`.
+- ~~**Bonus:** `escalation_accepted` · `at_risk_rescue`.~~ — **CUT (DEC-024).** No escalation bonus in
+  v1: accepting a Tier-2 nudge scores the same as accepting a Tier-1 ask. Rewarding rescue over
+  routine reliability is a Goodhart lever nobody asked for.
 - **Acknowledgment** `shift_acknowledged` — **NEW, decided this session.** See box below.
 
 ### The two distinctions that make or break it
@@ -348,8 +359,9 @@ Rolling window (last ~90 days or ~N shifts — pick one). `+` for `ask_accepted`
 `shift_completed`; `+` small for low `ask_declined` latency; `0` for the decline itself
 (**superseded by DEC-120**: an Out now scores **+1**, an In **+2** — "reward responsiveness regardless
 of answer" is implemented as a small positive, not zero); `−` for
-`ask_ignored`; `−` for `shift_bailed` scaled by lateness; `−−` for `no_show`; `+` bonus for
-`escalation_accepted` / `at_risk_rescue`. One number, rolling window, no tuning machinery. Weights
+`ask_ignored`; `−` for `shift_bailed` scaled by lateness; `−−` for `no_show`; ~~`+` bonus for
+`escalation_accepted` / `at_risk_rescue`~~ (**cut, DEC-024**). One number, rolling window, no tuning
+machinery. Weights
 are an anticipated near-term knob (e.g. exponential bail-lateness penalty) — fine to add against
 real data; do not block launch tuning them.
 
@@ -543,7 +555,10 @@ them, discriminated by `source` (DEC-106). This layer stays either way — that 
 - **Browse** events with their reservations — also how Spink eyeballs the weekend before building
   shifts.
 
-Deliberately **out of scope here:** marketing. **Corrected:** pricing, payment capture, and customer
+Deliberately **out of scope here:** marketing. *(Note on the import cadence: DEC-043's original trust
+model assumed an automatic recurring pull. There is **no automatic import** — the operator confirmed
+this 2026-07-26 and five docs carrying the dead "runs every hour" cadence were corrected. The pull is
+manual, at `/admin/import`.)* **Corrected:** pricing, payment capture, and customer
 comms were parked as "Xola's job in 2026 or the portal/payments work later" — that expired with
 DEC-105. They are now **Muster's**, but they live in the **reservations** surfaces (per-event price
 DEC-112, Stripe DEC-107, the `Offering` catalog DEC-123, tips DEC-124), **not here**. This section stays
@@ -630,8 +645,9 @@ applies judgment.
 
 > **Fork resolved (builder §1): continuous auto-grouping, not manual build.** There is **no
 > blank-slate "build" flow** to design. Proposed shifts already exist on the screen; Spink adjusts
-> and locks. This is what makes the autonomous last-minute case (§1.2) work without a manual build
-> step.
+> ~~and locks~~. This is what makes the autonomous last-minute case (§1.2) work without a manual build
+> step. *(**DEC-082** — the last unstruck "and locks" in this section; missed by the 2026-07-26 pass
+> that struck its neighbours, found by audit shard Z3.)*
 
 ### Auto-grouping rule
 **Same vessel + same day → one candidate shift** (matches "crew work the day"). Large mid-day gaps
@@ -673,7 +689,10 @@ either override seat kind today. Dead, not deleted.)*
   change can invalidate. *(The change-cue mechanism that survives is the split/merge re-derivation cue
   — DEC-083/114, not this.)*
 - **A freshly spawned proposed shift** — a late booking for a boat/day with no existing shift
-  creates one; it appears as a new block needing review.
+  creates one; it appears as a new block needing review. *(**DEC-083**: the review cue is the amber
+  "new · review" treatment on the row, and the same re-derivation cue marks a split day whose trips
+  changed in the last pull — see `splitDaysChanged`. This is the change-signal that survived DEC-082's
+  removal of the lock nudge.)*
 
 ### Actions
 - **Split** a shift (e.g. morning private charter wants different crew than the afternoon public trips).
@@ -1337,8 +1356,11 @@ keeps info from going stale across channels.
 - **Credential nudges** → to crew, before expiry (§2.6, principle 3 / §2.1).
 - **At-Risk ping** → to Spink, **push not pull**: a shift reaching the board summons him; he does not
   monitor a dashboard (§2.5).
-- **Regression ping** → to Spink, possibly a **louder channel** (SMS) than a normal at-risk item,
-  given the 11pm timing. *(Open — §3 below.)*
+- **Regression ping** → **SMS to every active admin** (DEC-095). ~~possibly a louder channel than a
+  normal at-risk item~~ — *the question presumed an in-app ping to be louder than; there isn't one. The
+  board is the only non-SMS surface, and **every** board landing sends SMS with no per-reason routing.
+  Note the recipients are all active admins, deliberately not the single operator id (#293). §2.5
+  carries the same strike.*
 - **Acknowledgment signal** → captured for the score (§1.4). Prefer **passive** (crew opened the live
   card within ~24h of call time) over an explicit tap; explicit one-tap "still good" is the fallback.
 
@@ -1494,7 +1516,12 @@ now. Building any of these is out of scope until its trigger condition is met.
   defaults.)
 - **Reliability weights** — bail-lateness penalty curve, ack weight, decay. Flat v1; tune later.
 - **Two-axis reliability split** (separate responsiveness vs dependability) — blend for v1.
-- **"Exhausted" threshold** for landing on the At-Risk board; **split-suggestion** gap threshold.
+- ~~**"Exhausted" threshold** for landing on the At-Risk board; **split-suggestion** gap threshold.~~ —
+  **BOTH SHIPPED as env knobs.** At-risk boarding is `EXHAUSTED_THRESHOLD_HOURS = FILL_DEADLINE_HOURS`,
+  one constant so the rendered deadline **is** the boarding instant (DEC-031/115, default 48h).
+  Split suggestion has **two** independent triggers with their own knobs —
+  `SPLIT_SUGGEST_GAP_MINUTES` (120) and `SPLIT_SUGGEST_SPAN_MINUTES` (600) — in the DEC-062 pattern.
+  See §2.3 and §2.5.
 - **Matching algorithm** inside the crew composite rule — greedy-by-score to start.
 - ~~**Event Admin merge rule** — precise reconciliation of manual entries vs re-import.~~ —
   **RESOLVED by DEC-043**: no Muster-side manual writes, so there are no manual entries to reconcile
@@ -1503,8 +1530,18 @@ now. Building any of these is out of scope until its trigger condition is met.
 ### Infrastructure-stage decisions
 - **Native app vs PWA** for the crew app — decided once all requirements are in; the real question is
   push reliability (§3.1).
-- **Historical Xola data** — migrate 2024/25/26 reservations, or leave Xola as read-only archive.
-  Leaning **archive**.
+- ~~**Historical Xola data** — migrate 2024/25/26 reservations, or leave Xola as read-only archive.
+  Leaning **archive**.~~ — **SETTLED by DEC-105: never migrate.** Listed as open in two places; this is
+  the second.
+
+> **⚠️ Two owed SPEC v1.1 unlocks are booked and unpaid (audit shard Z3, 2026-07-27).** Both are
+> *write-ups this document owes*, not open questions:
+> - **DEC-045** booked a **messaging / doorbell** unlock. Crew messaging ships and crew use it daily,
+>   yet §4 below still parks it as future work.
+> - **DEC-105** booked a **§2.8 reservations** write-up. **No §2.8 exists** — the reservations
+>   subsystem is the largest thing in the project with no spec section at all.
+>
+> Filed as #565. Until they land, §4 parks as "future" two subsystems that are in production.
 
 ### Explicitly killed — do not revive
 - **The Xola API bolt-on.** A live API integration is a maintained dependency on a system with an

@@ -47,7 +47,10 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
 | ~~D2~~ | ~~`PILOT_RUNBOOK` + `PILOT_IMPORT_FINDINGS` + walkthrough Parts 0–7~~ | — | **CANCELLED — corpus deleted** |
 | E | Deploy / env / ops | `DEPLOY.md`, `RUNNING.md` *(`PILOT_RUNBOOK.md` deleted)* | **✅ CLOSED — 2 rows, 4 noise** (audited `main`; both fixed) |
 | G | Brand / UI | `BRAND.md`, `docs/design/DESIGN-REFERENCE.md` | **✅ CLOSED — 4 rows, 5 noise** (audited `main`; all fixed, index rebuild deferred to C2) |
-| Z | DECISIONS-internal | `DECISIONS.md` only | **deferred to its own task** |
+| Z1 | Index integrity | `DECISIONS.md:13–180` vs bodies | **✅ SWEPT — 14 rows, 10 noise** |
+| Z2 | Cross-reference graph | `DECISIONS.md` edges | **✅ SWEPT — 22 rows, 14 noise; 28 one-way edges + 23 "amends SPEC" claims inventoried** |
+| Z3 | "Amends SPEC" verified | `DECISIONS.md` → `SPEC.md` | **✅ SWEPT — 15 rows; 41 claims: 24 LANDED, 11 NOT, 5 PARTIAL, 1 UNCLEAR** |
+| Z4 | Contradictions + archive | `DECISIONS.md` internals | **✅ SWEPT — 11 rows, 16 noise; archive returns zero candidates** |
 
 ## Standing rules for this run
 
@@ -222,6 +225,47 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
     went back to the doc. **C2.4's agent proposed the cheap pre-flight that would have found all of them:
     grep `DECISIONS.md` for "Amends SPEC §2.x" before reading any code** — each hit names a doc edit that
     may never have happened. Adopt it for shard Z and any future sweep.
+- **Shard Z SWEPT IN PARALLEL (S72, 2026-07-27) — the audit's last unswept corpus.** Four agents,
+  ~10 min wall clock, ~407k subagent tokens, **62 findings + 50 verified-consistent rows**. The file is
+  3,949 lines and 136 DECs, so Z was split by *question*, not by line range: index integrity,
+  cross-reference graph, "amends SPEC" verification, contradictions + the archive question.
+  - **Headline, and it is not a doc-tidy: `DEC-138` names two unrelated live decisions.** `main` =
+    an embeddable booking widget; `feature/reservations` = **the SPEC §1.3 rewrite this audit itself
+    shipped in PR #540**, cited four times in this README. `DEC-134` and `DEC-135` collide the same way.
+    `feature` already renumbered `main`'s pair to 136/137 **from one side only**, and its DEC-137
+    *reverses* the decision it renumbers (`db:all` retired vs `db:all` kept). `main` carries 8 files
+    citing 134/135 by number. **Filed #562** — cheaper to resolve now than inside a 252-line merge.
+  - **One cause explains almost every Z finding, and it is lesson 11 one level up.** A DEC that changes
+    another DEC updates *itself* and never its target. DEC-126 says it reverses DEC-105; DEC-105 says
+    nothing. DEC-061 and DEC-063 each say they amend DEC-007; DEC-007 says nothing. **28 one-way
+    supersede edges**, 20 unmitigated in both body and index. The reconciliation pass now stops *before*
+    the decision it invalidated, having already fixed the spec.
+  - **The index actively misleads.** Its completeness contract holds one way — all 131 rows resolve —
+    but the three most-amended DECs (036, 020, 105) are labelled "**(current)**" *in the index* while
+    being amended elsewhere. **A reader who consults the index is worse off than one who doesn't.**
+    Four of the last nine DECs never got a row at all, and the first casualty is **DEC-127 — the DEC
+    that mandates index rows**, whose own body says to treat a missing row as a review defect. Twelve
+    later DECs passed review without anyone applying it.
+  - **"Superseded" is a binary strike over a non-binary reality.** Z4 checked all 135 and found
+    **zero fully-superseded DECs**: every one of the five struck rows retains a leg cited by SPEC, code
+    or a later DEC. DEC-016's preserved leg is cited as live authority by `SPEC.md:642` — verdicted
+    accurate by shard C2.3 the night before. Two rows are unstruck that should be struck, and two are
+    struck whole when their successors preserve a leg.
+  - **The C2.4 pre-flight paid off, in a different place than predicted.** 41 "amends SPEC" claims,
+    **24 landed**. The §2.x backlog it was proposed to catch is genuinely cleared (19 of 22) — the
+    unlanded ones cluster in **§4 (five) and §1 (three)**. The mechanism: every reconciliation pass this
+    project has run was scoped to a §2.x *line range*, so a decision that changed both a surface and the
+    substrate beneath it got the surface fixed and the substrate left. **§2.4 and §2.6 now describe the
+    DEC-128 bail correctly while §1.1 — the section they cite as canonical — still describes the
+    behaviour DEC-128 deleted.** In three cases a §2.x sweep wrote the instruction to fix §4 or §3 *into
+    the SPEC* and nobody could act on it, because it was out of range.
+  - **Two owed SPEC v1.1 unlocks are booked and unpaid** (DEC-045 messaging/doorbell, DEC-105
+    reservations §2.8) — so §4 still parks as "future" a subsystem the crew use daily.
+  - **Archive question: answered by the evidence, not by a judgement call.** There is nothing to
+    archive — zero fully-superseded DECs, and 113 of 135 cited by id across 1,821 code citations. The
+    file's real structural defect is the binary strike convention, not its length. Options were costed
+    (fix the 11 rows ≈ 0 risk · fix the index ≈ 0 conflicts · full split ≈ all 11 hunks conflict) and
+    **no restructure is recommended**.
 - **Next: the C2.4–C2.7 doc fixes** (28 `doc-wrong` rows, enumerated per-ledger), the **12 operator
   decisions**, then **Z** (`DECISIONS.md` internals) — which C2.7-4 already feeds: DEC-078's "MVP
   claimable set" paragraph is the *origin* of stale wording #440 widened, so a SPEC-only fix would leave
@@ -285,5 +329,16 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
    and the operator caught it. The rule that survives: **drop the speculative whole-tree sweep, but
    always grep the symbol of any component you cite as live evidence.** One grep per citation, not per
    module. A component file existing on disk is worth nothing — this repo keeps withdrawn UI in place.
+13. **Shard by *question*, not by line range — and a line-range sweep leaves a substrate debt.** Every
+   reconciliation pass this project ran was scoped to a §2.x range, so a decision that changed a surface
+   *and* the substrate under it got the surface fixed and the substrate left: §2.4 and §2.6 describe the
+   DEC-128 bail correctly while §1.1, which they cite as canonical, still describes what DEC-128 deleted.
+   Three §2.x sweeps even wrote "§4 needs the same strike" **into the SPEC** and nobody could act on it.
+   Shard Z was split by question (index / graph / amends / contradictions) and each sub-shard covered the
+   whole 3,949-line file cheaply. **When a corpus is one big file, partition the *check*, not the text.**
+14. **Fixing the doc is not fixing the decision.** The §2.x sweep reconciled SPEC to 18 DECs; Z then
+   found those same DECs still describing the world they no longer govern. A reconciliation pass stops
+   at the spec because that is where the reader was — but the DEC is where the *next* reader starts.
+   **Any sweep that cites "DEC-X supersedes this" should check DEC-X's own body in the same pass.**
 3. **The ledger-on-disk pattern held.** The orchestrator read one 79-line file instead of taking
    53 findings into context. Keep it for every remaining shard.

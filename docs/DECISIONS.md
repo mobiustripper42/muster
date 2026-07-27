@@ -12,7 +12,16 @@ questions live at the bottom as DEC-TBD.
 
 ## Index
 
-_Current decision per topic. Superseded DECs struck through with their replacement. Keep current: every new DEC adds a row here (DEC-127)._
+_Current decision per topic. Every new DEC adds a row here (DEC-127)._
+
+_**Three states, not two** (corrected 2026-07-27, audit shard Z1). A strike-through was the only marker
+for "something changed", which forced every partial supersession to be recorded as total or as nothing —
+and an audit of all 135 DECs found **zero are fully superseded**: every struck row still has a leg cited
+by SPEC, code, or a later DEC. So:_
+_• **plain row** — current, nothing amends it._
+_• **~~struck~~ → superseded by DEC-N** — the whole holding is replaced._
+_• **row + "amended by DEC-N"** — the DEC still governs, but one leg was replaced. **Use this by default**;
+  total supersession is rarer than it looks._
 
 ### Core architecture & engine mechanics
 - DEC-001 — policy/mechanism split
@@ -22,8 +31,13 @@ _Current decision per topic. Superseded DECs struck through with their replaceme
 - DEC-023 — engine advances via explicit `tick()`; no scheduler
 - DEC-054 — operator engine pause/resume (edge-gated)
 - DEC-118 — crew audit log = append-only `audit_events`
+- DEC-127 — DECISIONS.md carries this topic index; every new DEC updates it
 - DEC-131 — constraint posture: DEC-DATA-1 governs logic placement, not FK/UNIQUE
-  (⚠️ ~19 migration headers miscite DEC-DATA-1 for a no-FK rule it never contained)
+  (⚠️ **19 migration files / 27 lines on `main`** miscite DEC-DATA-1 for a no-FK rule it never
+  contained — verified 2026-07-27, none corrected. The count **includes** `0001_init.sql`, which is
+  where the rule was minted, so it is the origin rather than a miscite; DEC-131's body says "nineteen
+  *later*" and disagrees by one. **After the `feature/reservations` merge a re-grep reads 31** — the 12
+  extra are post-DEC-131 and clean, 5 explicitly corrective. Do not file that as a regression.)
 - DEC-DATA-1 — service layer; Supabase is managed Postgres, not the architecture
 
 ### Availability & commitment rules
@@ -82,14 +96,14 @@ _Current decision per topic. Superseded DECs struck through with their replaceme
 - DEC-ROLE-1 — crew roles & vessel manning are tenant data, not a hardcoded enum
 
 ### Xola ingest, import & lock
-- ~~DEC-011~~ → superseded by DEC-036 — 2026 coexistence; Xola API bolt-on killed
+- DEC-011 — 2026 coexistence; ~~Xola API bolt-on killed~~ _(**amended by DEC-036**, which revived the API path. The coexistence leg is live and further amended by DEC-126 — coexistence ends at a cutover.)_
 - DEC-015 — Xola import architecture — Land → Map → Reconcile
-- ~~DEC-016~~ → superseded by DEC-043 — BrewBoat worked example / vessel-from-product collapse
+- DEC-016 — BrewBoat worked example: real fleet, scope ≠ current holdings, invented test data _(**amended by DEC-043** on the vessel-from-product collapse only. The worked-example leg is **live authority** — cited by `SPEC.md:642` for per-vessel manning counts and verdicted accurate by audit shard C2.3.)_
 - ~~DEC-017~~ → superseded by DEC-040 — manifest contact via email-join
 - ~~DEC-029~~ → superseded by DEC-082 — "changed since you reviewed it" derivation
-- DEC-035 — Xola import surface — import → formShifts chaining
-- DEC-036 — live Xola API import — Land adapter behind Map/Reconcile  (current)
-- DEC-037 — task #73 split — xlsx surface first, API Land adapter fast-follow
+- DEC-035 — Xola import surface — import → formShifts chaining _(xlsx surface retired by DEC-043; the import→formShifts chaining survives)_
+- DEC-036 — live Xola API import — Land adapter behind Map/Reconcile _(amended by DEC-040 + DEC-043; partly reversed by DEC-124)_
+- ~~DEC-037~~ → superseded by DEC-043 — task #73 split — xlsx surface first, API Land adapter fast-follow _(the xlsx-first half is retired; the API Land adapter shipped)_
 - DEC-040 — Xola live-API import — build resolution + sync strategy  (current)
 - DEC-043 — ingest is events-driven; boat = the event's assigned Resource  (current)
 - DEC-056 — import runs audited to the DB (edge-assembled, two-table)
@@ -139,9 +153,9 @@ _Current decision per topic. Superseded DECs struck through with their replaceme
 
 ### Reservations & payments
 - DEC-097 — guest-contact tracking = progressive-enhancement client island
-- DEC-105 — reservations go live 2026 as a Muster-native parallel-run (pilot)
+- DEC-105 — reservations go live 2026 as a Muster-native parallel-run _(**amended by DEC-126**: the parallel run ends in a **cutover**, not permanent coexistence — the body still says "not a cutover")_
 - DEC-106 — coexistence partition = whole vessel-day (one system owns each)
-- DEC-107 — payments = Stripe hosted Checkout (deposit + balance, webhook-driven)
+- DEC-107 — payments: deposit + balance, webhook-driven _(**amended**: hosted Checkout is no longer the front door — DEC-139 rules out wallets on this tree, and `feature/reservations` moves the first charge to inline Elements)_
 - DEC-108 — public surface `app/(public)` + single-flip "Book Now"
 - DEC-109 — atomic capacity claim on public booking
 - DEC-110 — waiver = Muster-sold side only; provider deferred
@@ -151,8 +165,16 @@ _Current decision per topic. Superseded DECs struck through with their replaceme
 - DEC-123 — reservations gets its own calendar + catalog + purchases area
 - DEC-124 — tips = collect-and-expose via `xola-tip-extractor`
 - DEC-125 — virtual availability — schedule is a rule; `Event` materializes on state
+- DEC-140 — SPEC §1.3 rewritten to the DEC-125 model: availability is two mechanisms, not one rule engine
 - DEC-126 — the flip = a cutover with a one-time full Xola import (reversible)
 - DEC-132 — `Customer` = contact record keyed by phone (surrogate PK + unique E.164)
+- DEC-122 — customer booking link: stateless HMAC capability-URL + guest confirmation emit
+- DEC-133 — the customer availability screen is server-rendered; the guest stepper is the one client island
+- DEC-134 — customer checkout is inline Stripe Elements over a deferred PaymentIntent
+- DEC-135 — the "Your booking" manage page: view + post-tip + cancel/change-as-request (self-service cancel deferred)
+- DEC-138 — the booking flow ships as an embeddable iframe widget (BrewBoat rollout + multi-tenant seam)
+  _(⚠️ **id collides across branches** — `feature/reservations` DEC-138 is the SPEC §1.3 rewrite. #562)_
+- DEC-139 — payments = Stripe card checkout only; no Apple Pay / wallets
 
 ### UI, brand & frontend patterns
 - DEC-021 — frontend styling = Tailwind v4; component library deferred
@@ -167,7 +189,7 @@ _Current decision per topic. Superseded DECs struck through with their replaceme
 
 ### Deployment, infra & versioning
 - ~~DEC-013~~ → superseded by DEC-020 — stack & infrastructure deferred to ~M4
-- DEC-020 — M4 stack = Next.js/Vercel; Postgres-behind-the-port; self-rolled magic-link  (current)
+- DEC-020 — M4 stack = Next.js/Vercel; Postgres-behind-the-port; self-rolled magic-link _(amended by DEC-092 + DEC-121)_
 - DEC-033 — hosted deploy — Vercel topology, `tick` cron, `production` branch
 - DEC-059 — `main` stays promotable; multi-PR features land on a feature branch
 - DEC-121 — timestamp-prefixed migration filenames (cross-branch collision-proof)
@@ -245,6 +267,8 @@ a special feature (SPEC §1.2).
 **Revisit if:** Never for v1.
 
 ## DEC-007: Per-role assignment protocol + first-acceptable-yes-wins
+
+> **⚠️ Superseded — the two-protocol fork is cut (operator, 2026-07-27; removal tracked in #561).** DEC-063 (the ask drip) and DEC-061 (auto-confirm) collapsed it independently from both ends: nobody is asked "as a crowd" and nobody is "named then confirmed" by a human. `resolveProtocol` has no production caller and `protocolOverride` has no reader or editor. Manual assignment is the **out-of-band** path — the operator has already spoken to the person — not a second protocol. The *first-acceptable-yes-wins* leg survives and is live.
 **Decision:** Two protocols ride the same seat machine: **ask-then-assign** (mates: broadcast →
 yeses accrue → confirm down the list) and **assign-then-confirm** (captains: name a person → they
 confirm/decline). Default is per-role, with a **per-person override** toggle (lives on the roster
@@ -280,6 +304,8 @@ feature (SPEC §2.1, §4 guardrail).
 has failed.
 
 ## DEC-010: Crew auth is magic-link passwordless; crew don't self-register
+
+> **⚠️ Amended by DEC-079/DEC-081.** The crew front door is phone-entry → roster lookup → 6-digit code, not the magic-link story described below. The **passwordless** and **no-self-registration** legs stand; the *mechanism* moved.
 **Decision:** Crew authenticate via **magic-link, no passwords**; the link drops them straight onto
 the relevant ask/card. Crew records are **operator-created** (no self-registration). Admin (Spink)
 gets a real authenticated login; exact admin mechanism is a build-phase detail.
@@ -672,6 +698,8 @@ the machine.
 **Phase:** M3 (task 1.4b). @architect pass, 2026-06-05.
 
 ## DEC-020: M4 stack — Next.js (App Router) / Vercel; persistence is Postgres-behind-the-port with the hosted provider deferred; magic-link is self-rolled. No platform adopted.
+
+> **⚠️ Amended by DEC-092** (admin is a first-class auth identity) **and DEC-121** (timestamp-prefixed migration filenames). The index previously labelled this "(current)".
 **Decision:** Resolves the DEC-013 / DEC-TBD stack question at task 1.5a.
 - **Web framework = Next.js (App Router)**, a single app with route groups `app/(admin)` / `app/(crew)` / `app/api`. **Host = Vercel.** Both confirmed by the owner.
 - **The stack-agnostic `src/` domain core (M0–M3) is untouched** and stays framework-free: its own strict NodeNext + `verbatimModuleSyntax` profile in `tsconfig.core.json`; Next consumes it via the `@core/*` alias and bundles it directly (webpack `extensionAlias` maps the core's `.js` specifiers → `.ts` sources — Turbopack lacks this, so build/dev run `--webpack`; revisit when Turbopack supports extension aliasing).
@@ -1167,6 +1195,8 @@ needs tuning (the number, not the definition).
 
 ## DEC-036: Live Xola API import — Land adapter behind existing Map/Reconcile; supersedes DEC-011's API kill
 
+> **⚠️ Amended by DEC-040 and DEC-043; partly reversed by DEC-124.** The index previously labelled this "(current)" while three DECs amended it.
+
 **Status:** Proposed (Phase 5 / reframes 5.4, #73) — @architect 2026-06-15 (Opus; Fable unavailable). Confirm at build; **two field-shape confirmations deferred to build (below).**
 
 **Decision (proposed):** The 2026 coexistence import gains a **live Xola API Land adapter** as the primary ingest, replacing the manual `.xlsx` export+upload. **Everything downstream of the Land seam is unchanged** — `importReservations`'s Map+Reconcile (event upsert by `evt-${vesselId}-${date}-${time}`, identity on `Reservation ID`, `updatedAt` materiality per DEC-029, `resolveProduct` quarantine per DEC-018) stays as-is. The client (`X-API-Key`/`X-API-Version` auth, skip-pagination, 429/5xx retry, DST-aware date windows) is **ported from the sibling `xola-tip-extractor` (`netlify/functions/lib/xola.js`) into strict TS/NodeNext** — **`fetchOrders` + `fetchEvents` only**; the gratuity / tip-split / guide machinery is left behind (not Muster's job — payments parked, SPEC §4).
@@ -1350,7 +1380,8 @@ Both share the **occupant-pin race guard** (a swap between reads → `raced`, re
 - **Cancels are explicit status-700 rows, not absences** (verified) — matched by `items[].id`, status `200→700`. A fully-cancelled trip de-boats; its 700 row reconciles against the **stored** event (which kept its vessel) → event `cancelled` → shift cancelled. No vanish/absence-detection (DEC-037 punt holds).
 - **Boat-less events are skipped + counted**; the next pull picks them up once a boat is assigned.
 - **Crew is seeded manually, not imported** (the guide roster is 403 for the seller key); Xola guide *assignments* are **not** imported as seats (DEC-009 — Muster owns crewing).
-- **Operator trust model:** auto-import stays, Xola is the single source of truth; a bad boat assignment is fixed **in Xola + "Pull now"** (no Muster-side staging/override). `XolaPullResult.assignments` (per-day boat→times) + `unmappedResources` (an unknown boat id) are the operator's review surface to catch a bad assignment.
+- **Operator trust model:** ~~auto-import stays~~, Xola is the single source of truth; a bad boat assignment is fixed **in Xola + "Pull now"** (no Muster-side staging/override). `XolaPullResult.assignments` (per-day boat→times) + `unmappedResources` (an unknown boat id) are the operator's review surface to catch a bad assignment.
+  > **Amended 2026-07-26 (S71, audit shard C2.2).** *Auto-import did not stay.* Commit `13d3fb5` removed the hourly `xola-pull` cron from `vercel.json` — the operator wants to control when imports land — and on operator confirmation this session, **there is no automatic import and there will not be one**. Every import is the "Pull now" button. The rest of the trust model is unaffected: Xola is still the single source of truth and the review surface is unchanged; the only change is that "Pull now" is the *sole* trigger rather than a manual supplement to a background pull. Five files asserted the hourly cadence in operator-facing copy and comments long after it was gone (`/admin/import` ×2, `xola-pull/route.ts`, `xola-pull.ts`, `DEPLOY.md`) — all corrected here.
 
 **Supersedes:** DEC-016's single-vessel-per-product collapse + its 5 invented vessels (the durable DEC-016 / DEC-ROLE-1 principle — manning is data the deriver loops — **stands**; only the invented fleet dies). **Amends:** DEC-036/DEC-037 (the planned `fetchEvents` half is now the primary adapter; the xlsx upload is retired — it can't resolve a boat), DEC-018 (quarantine keys off `resource.id`), DEC-029 (`vesselId` joins the material set; event identity is the real `event.id`). **Untouched:** DEC-015 (seam), DEC-032 (vessel-local), DEC-022/DEC-031 (horizon / fills-by), DEC-009.
 
@@ -1360,7 +1391,7 @@ Both share the **occupant-pin race guard** (a swap between reads → `raced`, re
 
 ## DEC-044: Crew seed carries a placeholder MMC until BrewBoat tracks real credentials
 
-**Status:** Built (Session 22). Originally `db/seed-pilot-crew.ts` seeded every crew member a far-future sentinel MMC expiry (`2099-12-31`); a real `mmcExpiry` overrides it per person as records are collected. **Since DEC-136** that script is gone and `db:crew add` (`src/crew/crew-cli.ts` → `PLACEHOLDER_MMC_EXPIRY`) is the sole owner of the sentinel — same value, same rationale.
+**Status:** Built (Session 22). Originally `db/seed-pilot-crew.ts` seeded every crew member a far-future sentinel MMC expiry (`2099-12-31`); a real `mmcExpiry` overrides it per person as records are collected. **Since the pilot crew seed was removed** (2026-07-25) that script is gone and `db:crew add` (`src/crew/crew-cli.ts` → `PLACEHOLDER_MMC_EXPIRY`) is the sole owner of the sentinel — same value, same rationale.
 
 **Why:** MMC is a **universal** hard credential gate (`src/oracle/eligibility.ts` → `HARD_CREDENTIAL_TYPES = ["MMC"]`) — no valid MMC → eligible for *no* seat, captain or mate. BrewBoat keeps **no MMC records today** (the operator has never had a tool; Muster will become that tool). Without a placeholder the eligible pool is empty and the board crews nobody. This is an **operator-authorized stopgap, not invented data** — the distinction that matters after DEC-016: the operator named the gap and chose the placeholder, and a real (or lapsed) date replaces the sentinel the moment it exists.
 
@@ -1707,7 +1738,7 @@ remove). **Revisit if:** previews ever stop being isolated branches, or carry se
 
 ## DEC-064: The manual override honors the role-competency floor — no mate as captain
 **Decision:** The cockpit's manual override (`overrideSeat`, `src/asks/ask-loop.ts`) still bypasses pool, rank, and current state — but **not** the seat's role rating. A crew member is placeable only if `isRatedFor(crew.ratings, seat.role)` (`src/oracle/eligibility.ts`). Enforced in **two** places: the shift-view override picker lists only crew rated for that seat's role (`page.tsx` scopes the roster per seat via `ratingsById`), and the `overrideTo` action re-checks server-side so a crafted form post can't seat a mate as captain (→ `act_error=not_rated`). `manualOverride` (the pure, unguarded primitive) is unchanged; `overrideSeat` composes the rating gate in front of it.
-**Why:** Operator-reported (Eric): the override for a captain seat offered **mates**, which is a no-go — a mate can't hold a captain's license. The asymmetry "captains can sub for mates, not the other way" is already encoded in the **ratings**: on the pilot roster captains are rated `[captain, mate]` and mates `[mate]` (then `db/seed-pilot-crew.ts`; that script was retired by DEC-136 — the same rating convention is now set per-person by `db:crew add --ratings=`), so the exact-match `isRatedFor` passes a captain into a mate seat (the legit downward sub) while never passing a mate into a captain seat. No role hierarchy needed (DEC-ROLE-1 stays intact — roles remain a flat, tenant-defined set). The auto-ask / assign paths were already correct (they use eligibility); only the override bypassed it.
+**Why:** Operator-reported (Eric): the override for a captain seat offered **mates**, which is a no-go — a mate can't hold a captain's license. The asymmetry "captains can sub for mates, not the other way" is already encoded in the **ratings**: on the pilot roster captains are rated `[captain, mate]` and mates `[mate]` (then `db/seed-pilot-crew.ts`; that script was retired 2026-07-25 — the same rating convention is now set per-person by `db:crew add --ratings=`), so the exact-match `isRatedFor` passes a captain into a mate seat (the legit downward sub) while never passing a mate into a captain seat. No role hierarchy needed (DEC-ROLE-1 stays intact — roles remain a flat, tenant-defined set). The auto-ask / assign paths were already correct (they use eligibility); only the override bypassed it.
 **Tradeoff:** The override is no longer *literally* "place anyone" — the role floor is the one thing it won't skip. Accepted: seating an unlicensed person as captain is a legal/safety floor, not a policy knob, so even the authority backstop shouldn't cross it. If a genuine "the rating data is wrong" case ever needs a true bypass, that's a data fix (correct the crew's ratings), not an override.
 **Distinct from #148:** #148 (don't *auto-ask* dual-rated captains for mate seats) is the **downward** direction and needs a primary-role/precedence model the ratings don't carry. This DEC is the **upward** block (mate→captain), which the flat ratings already express — so it ships now without #148's model.
 **Revisit if:** a tenant defines more than two roles with partial overlaps where exact-match rating is too coarse (then a precedence/rank model — the #148 work — would subsume this).
@@ -1923,6 +1954,8 @@ the newcomers who need reps); a tunable threshold (`app_settings`/env like the h
 
 ## DEC-077: Day-granularity commitment; elastic absorption is already built; sub-day "watches" are deferred
 
+> **⚠️ Under review — #560.** The whole-day commitment rule below removes a crew member from the **eligible pool** for the entire date, so two non-overlapping trips on different boats can never be worked by one person — and that person is never even asked. The operator has questioned whether that is right. The likely replacement is a time-overlap + turnaround-buffer rule, which the code already anticipates (`eligibility.ts` — "a separate relational rule the time-aware oracle adds later"). **Do not rewrite this DEC until #560 is decided.**
+
 **Status:** Accepted (Phase 7).
 
 **Decision:**
@@ -1960,6 +1993,8 @@ parked calendar). **Revisit if:** crew decline whole-day claims they'd take as e
 grouping-key refinement. **Phase:** 7 (day); sub-day deferred.
 
 ## DEC-078: Concurrency, conflict, and crew self-release
+
+> **⚠️ Amended twice (2026-07-27, audit shard Z).** (1) **The one-shift-per-date guard is asserted below without caveat and is not concurrency-safe** — two in-flight claims by one crew member for two same-date shifts both pass and both win their CAS. `src/asks/claim.ts:111-119` names it a known open hole. **#554.** The single-seat race *is* genuinely closed. (2) The **"MVP claimable set"** below ("Open required seats on shifts in `Pending` or `Filling`") was widened by **#440**: `AtRisk` shifts and `Asked`/`Bailed` seats are claimable. SPEC §2.7 was corrected 2026-07-27; this text is the origin of the stale wording.
 
 **Status:** Accepted (Phase 7).
 
@@ -2713,8 +2748,10 @@ be tamper-checked per-shift (currently any signed-in subject can post), or an ap
 
 ## DEC-105: Reservations go live in 2026 as a Muster-native parallel-run — permanent coexistence, not a cutover
 
+> **⚠️ Amended by DEC-126 (2026-07-27, audit shard Z).** The parallel run ends in a **cutover** — Muster becomes the reservation source of truth and the ongoing Xola pull **stops**. Any wording below asserting permanent coexistence or "not a cutover" is superseded. The 2026-not-2027 timing leg stands.
+
 **Status:** Decided 2026-07-11 (Eric + @architect). Reopens the parked customer-portal / 2027 scope
-(SPEC §0.2/§0.3/§2.2/§4). Umbrella DEC for Phase 11–12; the mechanism DECs (099–104) sit under it.
+(SPEC §0.2/§0.3/§2.2/§4). Umbrella DEC for Phase 11–12; the mechanism DECs (099–104, and DEC-138 — embed-first rollout) sit under it.
 
 **Context.** The crew engine shipped at v1.0.0 and, four days into real crew use, is exceeding
 expectations. The operator wants the *other* half of the eventual Xola replacement — taking bookings —
@@ -3969,29 +4006,40 @@ importer-created customers (not needed until cutover); "Edit contact"; and "Mess
 
 **Deferred to follow-ups (infra not built):** crew NAMES (the view model gives counts, not names); the guest waiver roster ("N of M signed" — there's no per-attendee roster, DEC-110 is one consent row); leave-a-review; email-the-receipt; and the date/time *reschedule* (re-hold + re-price is its own feature). The re-estimate: the full mockup is an 8+, not the issue's 5 — this ships the honest core and flags the rest. **Depends on DEC-134** (reads `Payment.serviceFeeCents` for the "Tax + service fee" line — 12.6 stacks on 12.5).
 
-## DEC-136: Real crew never live in a seed script — the roster is bootstrapped by CLI only
+## DEC-138: The customer booking flow ships as an embeddable widget — the BrewBoat rollout path and the multi-tenant seam
 
-*(Authored on `main` as DEC-134; renumbered here — `feature/reservations` had already taken 134/135 for 12.5/12.6. Same precedent as the 126→131 / 127→132 renumber.)*
+**Status:** Decided 2026-07-20 (Eric + design). Extends DEC-105 (Phase 11–12 booking) as a mechanism DEC under it. Reflected in the booking mockups (`the-booking-1.md` §8, `availability-picker` + `booking-form`).
 
-**Decision:** `db/seed-pilot-crew.ts` (`npm run db:seed:crew:pilot`) is **deleted**. No seed script may carry a real person's name, email, or phone. The production roster is built one person at a time with `npm run db:crew -- add --name= --phone= --email= --ratings=` (DEC-094, `src/crew/crew-cli.ts`), which also seeds the DEC-044 placeholder MMC — so it fully replaces what the seed did. Dev seeds carry invented crew only (`crew-quint`, `crew-hooper`, `crew-dooley`, …), with **one** allowed exception: the operator's own record (`crew-eric`, real phone) — that's the Twilio live-SMS smoke and it's his number to give.
+**Context.** DEC-105 established Muster sells its own reservations in 2026 as a permanent parallel-run — "the cutover is a sales-channel flip, not a data event." It left open *how the customer booking flow physically reaches customers.* **brewcle.com still runs on WordPress.** Rebuilding the marketing site just to launch bookings would couple two unrelated efforts and delay the money-making half of the Xola replacement.
 
-**Why:** Operator-stated (Eric): he does not want the real crew in the test database. That's the load-bearing reason — a dev DB exists to have test SMS fired at it, and the pilot seed put 21 live phone numbers one `npm run` away from every scenario that sends. *Claude's additional observation, not the operator's stated rationale:* the file was also a standing data-exposure surface independent of whether anyone ran it — 21 crew members' contact details committed to git, readable by anyone with repo access.
+**Decision.** The customer booking flow ships as a **self-contained, URL-routed surface on its own origin** (`book.brewcle.com` or `/embed/book/…`), delivered as an **iframe embed via a paste-in `<script>` snippet**, with **postMessage** for height/resize and open/close. Presentation is responsive — a **lightbox dialog on desktop, a full-screen routed page on mobile** (both first-class; mobile leads). This is *how* DEC-105's sales-channel flip actually happens:
+- **BrewBoat rollout.** Muster takes over bookings on the existing WordPress brewcle.com by dropping the widget onto the page (replacing the current booking widget). No site rebuild; WordPress keeps doing marketing indefinitely; the site migration is decoupled and optional. This *is* the coexistence mechanism — same page, Muster owns the flow inside the frame.
+- **Multi-tenant seam.** The same snippet on another operator's site is the sell-it path. Built once for BrewBoat as a widget; sellable later without forking (the SPEC's standing policy/mechanism bet). Not built now — the shape just doesn't foreclose it.
 
-**Not done:** the records remain in git **history**. Purging them needs a `git filter-repo` rewrite + force-push, which breaks every open branch and every existing clone. Deliberately deferred as its own decision — deleting the file stops the bleeding without a history rewrite nobody asked for.
+**Constraints (build discipline).**
+- Keep the flow **iframe-shaped**: self-contained, works in a narrow/constrained viewport, no dependency on top-level browser navigation or Muster's app chrome; postMessage-ready for resize + launch.
+- Each step is **URL-addressable** and renders standalone at its own origin too (deep-linkable — coherent with "the confirmation IS the living link," DEC-122). `frame-ancestors` CSP allows the embedding operator's domain.
+- **Stripe wallet gotcha:** Apple Pay requires per-domain association. Keep **payment on Muster's own origin inside the frame** (as FareHarbor does), so wallet verification is against Muster's domain, not each operator's. **— Made moot by DEC-139 (no Apple Pay / no wallets): payment is plain Stripe card on Muster's origin, embeddable anywhere with no per-domain wallet setup.**
 
-**Consequence:** fleet-seed's "next step" pointer now points at `db:crew add`. `docs/PILOT_IMPORT_FINDINGS.md` keeps its pilot-era roster description as a historical finding, annotated. **Companions:** DEC-044 (placeholder MMC — sentinel ownership moved to the CLI), DEC-092/094 (admins and crew are CLI-managed identities).
+**Revisit if:** a tenant needs the flow where per-domain Apple Pay verification isn't feasible (fall back to a hosted redirect link for that tenant), or a non-iframe distribution (hosted booking link) is preferred.
 
-## DEC-137: `db:all` is retired in favor of `db:reset:dev` — the reservations line got there first
+**Numbering note.** Authored as DEC-126, renumbered to DEC-131, and landed as DEC-138 — each earlier number was taken by an unrelated DEC on `main` while this branch sat unmerged. ~~Numbers 136/137 are reserved for `feature/reservations`, which renumbered `main`'s DEC-134/135 into them.~~ **Superseded 2026-07-27:** `main`'s DEC-134 and DEC-135 were **deleted**, not renumbered — neither decided anything (one documented a seed script, one described `db:all`), and the operator's call was that they should never have existed. `feature/reservations` therefore keeps **134/135** as its own, 136/137 are free, and only **DEC-138** still collides across the two trees (#562).
 
-**Decision:** `db/all-dev.ts` (`npm run db:all`) and `e2e/db-all.spec.ts`, built on `main` and merged there as DEC-135, are **deleted** at the `main` → `feature/reservations` merge. `db:reset:dev` (`db/reset-dev.ts`, PR #511) is the one dev-database rebuild command.
+---
 
-**Why:** they solve the same problem and `reset-dev` solves it better. It has `--fresh` (drop and replay the whole migration ledger — the only way to catch a migration that only works on a database that already has state), `--seeds` selection, and a guard that checks **both** the host *and* a database-name allowlist, where `db:all` checked only the host. It also covers the reservation seeds, which `db:all` never knew about.
+## DEC-139: Payments — Stripe card checkout only; no Apple Pay / wallets (foreseeable future)
 
-**How it happened, recorded so it doesn't repeat:** `db:all` was specced and built against `main` without checking what the `feature/reservations` line already had. Roughly three points of work duplicated an existing, better tool. The check that would have caught it is one `git log origin/feature/reservations -- db/` before starting — cheap, and skipped.
+**Status:** Decided 2026-07-20 (Eric). Refines the DEC-138 payment note; sits under DEC-105 (Phase 11–12 payments).
 
-**Two things `db:all` had that survive**, because `feature/reservations` had independently arrived at both: the operator's crew record carries `email: "eric@bb.test"` (login matches on email only — `matchCrewByEmail` — so a record without one can never receive a code, and DEC-081's no-enumeration hides the failure), and the dev seed writes the admin row directly. That branch's seed also makes the better argument about migration 0019: its "admins are CLI-managed, not seeded" line is a *migration comment*, not a project rule — no DEC says it, DEC-092 is silent on seeding, and what 0019 actually justified is narrower (don't bake **guessed prod** crew ids into a migration). Dev fixture ids are knowable, so that reasoning doesn't reach dev. DEC-135-as-written cited 0019 the other way and was wrong to.
+**Decision.** The customer checkout takes **card payment via Stripe and nothing else** — **no Apple Pay, no Google Pay, no PayPal or other wallets** — for the foreseeable future. One checkout, Stripe only. (FareHarbor ships several checkout variants; that's multi-tenant tax we don't inherit — Muster ships a single checkout.)
 
-**Superseded:** DEC-135-on-`main` (the `db:all` decision). Its one durable idea — that the database resets every run while the seed *registry* grows, so seeds never need to be idempotent — is worth keeping in mind if `reset-dev`'s seed list ever wants the same treatment. Not adopted here; noted.
+**Why.** Card-only is enough for BrewBoat; wallets add surface without a clear return, and Apple Pay specifically carries a **per-embedding-domain verification burden**. Dropping wallets **removes that headache from the DEC-138 iframe embed entirely** — payment is just Stripe card on Muster's origin, embeddable on any operator page with no per-domain wallet setup.
+
+**Stripe Link is not excluded.** Link is Stripe-native (1-click card autofill, not a third-party wallet), so it's compatible with "Stripe only" and could be added later as a pure Stripe feature. The current booking mockup leaves it out for simplicity.
+
+**Revisit if:** conversion data later shows wallets meaningfully lift completion, or a specific tenant's audience clearly expects Apple/Google Pay — then weigh the per-domain verification cost against the measured lift.
+
+---
 
 ## DEC-TBD: Open questions (carried from the spec; not Claude's to set alone)
 
@@ -4037,7 +4085,11 @@ human owner) before building past the trigger.**
 
 ---
 
-## DEC-138: SPEC §1.3 rewritten to the DEC-125 model — availability is two mechanisms, not one rule engine; COI-expiry and lead-time cutoff closed as out of scope
+## DEC-140: SPEC §1.3 rewritten to the DEC-125 model — availability is two mechanisms, not one rule engine; COI-expiry and lead-time cutoff closed as out of scope
+
+*(Authored on `feature/reservations` as DEC-138; **renumbered to DEC-140 at the 2026-07-27 merge** —
+`main` had independently taken 138 for the embeddable-booking-widget decision. Numbers are allocated on
+`main` from now on: a branch takes the next free number at merge time. See #562.)*
 
 **Status:** Decided 2026-07-25 (Eric + Claude, under DEC-105/125). Doc-only — **no code change**.
 Triggered by the 2026-07-25 doc-consistency audit, shard C

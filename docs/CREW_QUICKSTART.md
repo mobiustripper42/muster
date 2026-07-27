@@ -2,8 +2,7 @@
 
 *The one-page "what is this text I got" for crew. Same content as the in-app
 **How Muster works** page (`/crew/help`) — this copy is for sharing/printing or
-pasting into a welcome message. Operator onboarding steps live in
-`OPERATOR_MANUAL.md`.*
+pasting into a welcome message.*
 
 ---
 

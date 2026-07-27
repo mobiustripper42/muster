@@ -57,6 +57,30 @@ describe("splitShift (DEC-083)", () => {
     expect((await repo.listSeatsForShift(SIDE_B)).length).toBe(2);
   });
 
+  // C2.3-8 (audit shard C2.3): the persisted birth state of a freshly-spawned side B
+  // is horizon-aware ONLY when the caller supplies a clock. `formShifts` falls back to
+  // the pure seat-fold otherwise (`form-shifts.ts:395`), so an omitted `now` writes
+  // `Pending` for a shift the engine should already be working. Masked on screen by
+  // `resolveShiftStateOnRead` (the DEC-023 corollary — never trust the persisted badge),
+  // which is exactly why it needs a test at this layer rather than an e2e.
+  it("births side B horizon-aware when given a clock: inside the horizon it persists Filling", async () => {
+    const repo = await seedDay();
+    // DAY is 2026-07-18; default lead is 7 days, so 3 days out is inside the horizon.
+    await splitShift(repo, CANON, "14:00", new Date("2026-07-15T12:00:00Z"));
+
+    expect((await repo.getShift(SIDE_B))?.state).toBe("Filling");
+  });
+
+  it("births side B Pending with no clock — the pure seat-fold, why the edge must pass `now`", async () => {
+    const repo = await seedDay();
+    await splitShift(repo, CANON, "14:00");
+
+    // Not a bug in the engine: the fold is the documented no-clock behaviour (DEC-032).
+    // Pinned so that dropping `now` at a call site fails here instead of silently
+    // persisting a stale badge (C2.3-8).
+    expect((await repo.getShift(SIDE_B))?.state).toBe("Pending");
+  });
+
   it("side A preserves its confirmed crew across the split (seat id + state stable)", async () => {
     const repo = await seedDay();
     const seat = (await repo.listSeatsForShift(CANON))[0]!;

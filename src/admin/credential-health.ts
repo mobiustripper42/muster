@@ -32,13 +32,18 @@ export function healthOf(
   now: Date,
   windowDays: number = EXPIRING_SOON_DAYS,
 ): CredentialHealth {
-  // Expiry is a date-only ISO string → parsed at 00:00Z. A credential expiring
-  // "today" thus reads expired once `now` passes midnight UTC — deliberately
-  // conservative for a renew-before-you-drop flag. The oracle's date-valid gate
-  // (§1.3) must adopt the same boundary so the two never disagree.
-  const expiry = new Date(credential.expiry).getTime();
-  const daysLeft = (expiry - now.getTime()) / MS_PER_DAY;
-  if (daysLeft < 0) return "expired";
+  // Compare DATES, not instants — the expiry day itself is still valid, which is
+  // exactly what the oracle's gate does (`mmcValidOnDate`: `expiry >= tripDate`,
+  // a plain string compare). The two must agree, and until the C2.1 audit they
+  // didn't: this read the expiry as an instant at 00:00Z, so any `now` past
+  // midnight on the expiry day flagged EXPIRED while the oracle still put the
+  // person in that day's pool. Same rule, one boundary.
+  const today = now.toISOString().slice(0, 10);
+  if (credential.expiry < today) return "expired";
+  // Whole days from today's midnight to the expiry's — integral by construction,
+  // so the window boundary can't drift with the time of day either.
+  const daysLeft =
+    (new Date(credential.expiry).getTime() - new Date(today).getTime()) / MS_PER_DAY;
   if (daysLeft <= windowDays) return "expiring_soon";
   return "valid";
 }

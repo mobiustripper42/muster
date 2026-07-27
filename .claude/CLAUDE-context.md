@@ -81,9 +81,6 @@ Project-specific docs beyond the baseline `## Key Docs` table in the `CLAUDE.md`
 | `docs/FUTURE_IDEAS.md` | The shiny-object parking lot. New ideas land here, not in the locked spec (DEC-014). |
 | `docs/RUNNING.md` | How to run the app locally, see the UI (Tailscale host, magic-link dev flow), check a change. PRs link here for setup. |
 | `docs/DEPLOY.md` | Go-live runbook — Vercel + Neon Postgres (Phase 5.1, DEC-033). |
-| `docs/E2E-PILOT-WALKTHROUGH.md` | Click-by-click acceptance test of the whole first slice — the crew engine end to end. |
-| `docs/OPERATOR_MANUAL.md` | Task-oriented operator (Spink) manual + flow/state diagrams — the human-facing translation of SPEC/DECISIONS. Centerpiece: "empty board = success" (#68). |
-| `docs/PILOT_RUNBOOK.md` | One-page operational sequence for running a real crew weekend on the hosted pilot (seed→import→tick→outbox→triage); carries #70's pilot-only-not-production warning (5.R / #78). |
 | `docs/design/DESIGN-REFERENCE.md` | How to consume the UI mockups: spec wins on *what*, mockups inform *how*; **read JSX, never import**. Read before building any surface (M4). |
 | `docs/design/mockups/` | Claude Design export (HTML + JSX) per surface §2.1–2.6.3. **Visual-direction reference, not spec.** |
 
@@ -137,7 +134,7 @@ Persistence is **Postgres behind the `Repository` port**: **local Postgres in de
 - DB columns: `snake_case`
 
 ### UI / Brand
-- Tokens are harvested from the mockups into `@theme` in `app/globals.css` (DEC-021) — colors, radius scale (`--radius-card: 14px`). No color for color's sake. Binding constraints live in `.claude/ui-context.md`.
+- Tokens are harvested from the mockups into `@theme` in `app/globals.css` (DEC-021) — colors, one card radius (`--radius-card: 14px` — deliberately a single value, not a scale; see `BRAND.md`). No color for color's sake. Binding constraints live in `.claude/ui-context.md`.
 - Font: IBM Plex Sans/Mono, loaded via next/font in `app/layout.tsx`.
 - Layout padding in `layout.tsx` only.
 - Every page works at 375px — eyeball at `mill-dev:3000` per `docs/RUNNING.md` (Playwright screenshots when that tooling lands).
@@ -176,7 +173,7 @@ It's billed and launches many agents in parallel, so it's worth it exactly where
 
 ## Versioning (project)
 
-Follows the shell (DEC-S022). SemVer in `package.json` (created at task 0.3), tag on `main`. This project has a `production` branch, so **`/promote-production` patch-bumps + tags on each ship** (one release = one patch); **`/retro` minor-bumps at phase close**; `/bump-major` for breaking changes. (The earlier "bumps only at `/retro`" note predated adopting the `production` branch.) The `<VersionTag />` component is **available but not yet wired** — pull `templates/VersionTag.tsx` from seeds into a layout when a deployed build needs the stamp; until then the version lives in `package.json` + git tags.
+Follows the shell (DEC-S022). SemVer in `package.json` (created at task 0.3), tag on `main`. This project has a `production` branch, so **`/promote-production` patch-bumps + tags on each ship** (one release = one patch); **`/retro` minor-bumps at phase close**; `/bump-major` for breaking changes. (The earlier "bumps only at `/retro`" note predated adopting the `production` branch.) The `<VersionTag />` component lives at `components/ui/version-tag.tsx` and is **wired** into the crew and admin surfaces (`app/(crew)/crew/{,open,calendar,time-off}/page.tsx`, `app/(admin)/admin/{,time-off}/page.tsx`); the build-time stamp is injected via `next.config.ts`.
 
 ## MCP fast-fix loop (9.0/#230)
 
@@ -196,19 +193,11 @@ theirs to move.
 - **Webpack, not Turbopack** (DEC-020) — `next build --webpack` / `next dev --webpack`. The core's NodeNext `.js`→`.ts` `extensionAlias` is unsupported by Turbopack.
 - **Two TS profiles:** `tsconfig.core.json` (the framework-free core) vs root `tsconfig.json` (the Next app). `npm run verify` checks both.
 - **`git push` exception to the shell's "environment-changing commands":** the `/kill-this` ritual owns commit + push + PR — that's its job, no separate approval needed for the push inside it.
-- **`@ui-reviewer` is installed but inert until `.claude/ui-context.md` exists** — it hard-stops without it. That file (brand tokens, surfaces, viewports, checklist) is authored with the first crew/admin surface.
+- **`@ui-reviewer` is live** — `.claude/ui-context.md` exists and carries the brand tokens, surfaces, viewports and review checklist it hard-stops without. That file (brand tokens, surfaces, viewports, checklist) is authored with the first crew/admin surface.
 
 ## Scope Discipline (project)
 
 Check `docs/SPEC.md` §4 *Parked* + the 2027 line before adding anything — that's the "Not V1" guardrail. New ideas go to `docs/FUTURE_IDEAS.md`, **not** the locked spec (DEC-014).
-
-## Model Selection (project override)
-
-The shell's `## Model Selection` is the standing policy (Opus 4.8 default, Sonnet for cheap/scoped work). **Fable is disabled (seeds DEC-S029)**, so muster's prior "architect on the frontier tier" override collapses to:
-- **`@architect` runs `claude-opus-4-8`** (`.claude/agents/architect.md` frontmatter is authoritative) — architecture decisions (the oracle) are where being wrong compounds, so they get the standing top tier. Revisit pinning it back to the frontier if/when Fable is re-enabled.
-- **`@ui-reviewer` stays Sonnet** but is worth bumping to Opus 4.8 for vision-heavy mockup-vs-build review (`docs/design/mockups/*.jsx`).
-
-Everything else follows the shell unchanged.
 
 ## Tone (project)
 

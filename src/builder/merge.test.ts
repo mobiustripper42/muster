@@ -42,6 +42,26 @@ const gone = async (repo: InMemoryRepository, id: typeof SIDE_B) =>
   (await repo.getShift(id)) ?? null; // normalize undefined → null
 
 describe("mergeShift (DEC-083 inverse / DEC-084)", () => {
+  // C2.3-8, the merge half — see the matching pair in split.test.ts. The merge's
+  // re-form re-births the surviving vessel-day shift, so the same clock rule applies:
+  // horizon-aware with `now`, pure seat-fold without.
+  it("re-births the merged shift horizon-aware when given a clock (Filling inside the horizon)", async () => {
+    const repo = await seedDay();
+    await splitShift(repo, CANON, "14:00");
+    // DAY is 2026-07-18; default lead is 7 days, so 3 days out is inside the horizon.
+    await mergeShift(repo, CANON, new Date("2026-07-15T12:00:00Z"));
+
+    expect((await repo.getShift(CANON))?.state).toBe("Filling");
+  });
+
+  it("re-births Pending with no clock — why the edge must pass `now`", async () => {
+    const repo = await seedDay();
+    await splitShift(repo, CANON, "14:00");
+    await mergeShift(repo, CANON);
+
+    expect((await repo.getShift(CANON))?.state).toBe("Pending");
+  });
+
   it("merges a split back into one un-split shift — tears down `-b`, re-forms with all trips", async () => {
     const repo = await seedDay();
     await splitShift(repo, CANON, "14:00");

@@ -23,10 +23,14 @@ summons him when it genuinely can't.
 ### Shift Builder (SPEC §2.3)
 - SP-5: I see shifts **already auto-formed** from the week's events (one boat, one day) so my Monday
   is a review pass, not a build-from-blank.
-- SP-6: I **lock** a reviewed shift so crewing may proceed; inside the staffing horizon, locking
-  fires the asks.
-- SP-7: When a late booking lands on a locked shift, I get a "changed since you reviewed it" nudge
-  so I'm never blindsided. *(fast-follow — Pass C)*
+- ~~SP-6: I **lock** a reviewed shift so crewing may proceed; inside the staffing horizon, locking
+  fires the asks.~~ — **CUT (DEC-082).** Muster sits next to Xola, which is the source of truth for
+  bookings, so a "reviewed/locked" stamp over Xola-derived data is meaningless. The column was
+  dropped in `0022_drop_shifts_locked_at.sql`. Asks fire on the staffing horizon, no lock step.
+- ~~SP-7: When a late booking lands on a locked shift, I get a "changed since you reviewed it" nudge
+  so I'm never blindsided. *(fast-follow — Pass C)*~~ — **Precondition removed with SP-6.** The
+  underlying want (don't get blindsided by a late booking) is still live; it just can't be framed
+  against a lock. Re-file it if it matters.
 
 ### Assignment View (SPEC §2.4)
 - SP-8: I watch the system work a shift's seats (asked top mates, 2 declined, waiting on 3) and
@@ -83,6 +87,9 @@ features (SPEC §2.6).
 ## Drew — the owner
 
 Mostly out of the 2026 build; owns money/policy decisions that are parked.
-- DR-1: I decide deposit-vs-full and the refund schedule. *(parked — payments are 2027)*
+- DR-1: I decide deposit-vs-full and the refund schedule. *(~~parked — payments are 2027~~ —
+  **payments landed in 2026.** DEC-105 reopened the customer portal; **deposit-vs-full is DECIDED —
+  deposit + balance**, DEC-107. The **refund schedule is still Drew's open call** (#472), and it's
+  what blocks self-service cancel per DEC-135 — *that is `feature/reservations`' DEC-135 (the "Your booking" manage page), not this tree's, which was deleted 2026-07-27; the citation resolves correctly once reservations merges*.)*
 - DR-2: I review a year-end reliability report to inform bonuses I award by hand — the algorithm
   never signs the check. *(parked — FUTURE_IDEAS / SPEC §4 Goodhart guardrail)*

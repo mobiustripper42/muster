@@ -26,7 +26,7 @@ TASK_NUM=$(($(grep -c "^## Task " "$SESSION_FILE") + 1))
 
 ## Step 1 — Build check
 
-Look up the project's build check in `CLAUDE.md §Commands` (e.g. `npm run build`, `cargo build`, `make`). Run it. Fix errors before proceeding. Do not commit broken code.
+Look up the project's build check in `.claude/CLAUDE-context.md §Commands` (e.g. `npm run build`, `cargo build`, `make`). Run it. Fix errors before proceeding. Do not commit broken code.
 
 If no build step is defined (markdown-only / domain project), skip silently.
 

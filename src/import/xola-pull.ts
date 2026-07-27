@@ -1,9 +1,11 @@
 /**
  * The Xola pull orchestrator (DEC-036 → DEC-043) — Architecture B's primary
  * ingest: a windowed `fetchOrders` ⨝ `fetchEvents` → `mapXolaOrders` →
- * `importRecords` → `formShifts`, so the board self-updates without anyone
- * uploading a spreadsheet. Runs hourly off its own cron (`/api/cron/xola-pull`),
- * isolated from the ask `tick` so a Xola outage can't disrupt the engine.
+ * `importRecords` → `formShifts`, so the board fills without anyone uploading a
+ * spreadsheet. **Operator-triggered only** — the "Pull from Xola now" button at
+ * `/admin/import` is the sole caller in production. It ran hourly off its own cron
+ * until `13d3fb5` removed the schedule; imports are manual by decision, not by
+ * omission, so don't re-derive "the cron must be broken" from this file again.
  *
  * **Two feeds, joined on `event.id` (DEC-043):** orders carry the bookings; events
  * carry the assigned boat (`resourceUsages`). `eventVesselMap` resolves events →

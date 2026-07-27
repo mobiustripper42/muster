@@ -80,8 +80,8 @@ values," not "what files do we add to package.json."
 
 ## How to read a mockup (worked example: the at-risk board → spec §2.5)
 
-Looking at `at-risk-board.jsx` (rendered, the board you've seen), here's the binding-vs-reference
-read:
+Looking at the at-risk board mockups — `riskapp.jsx` and `riskcards.jsx` (rendered, the board you've
+seen) — here's the binding-vs-reference read:
 
 **Binding (because it's the spec showing up):**
 - The header framing "only shifts the automation couldn't close land here" — the empty-is-success,
@@ -104,24 +104,42 @@ import.
 
 ---
 
-## Mockup index (filename → surface → spec section)
+## Mockup index — REMOVED (stale), rebuild pending
 
-Each JSX file maps to the spec section that is its authoritative source. Read them together — JSX for
-the *how*, spec for the *what*.
+> **The index that lived here was wrong in every row** (audit shard G, 2026-07-25). It listed eight
+> files — `crew-roster.jsx`, `event-admin.jsx`, `shift-builder.jsx`, `assignment-view.jsx`,
+> `at-risk-board.jsx`, `crew-ask.jsx`, `crew-myshifts.jsx`, `crew-shift-card.jsx` — **none of which
+> exist**. Its own footnote had offered the out ("*or update this table to match your filenames*") and
+> nobody took it, so it had stopped being an index and started being a wrong map: a reader hunting the
+> at-risk mockup searched `at-risk-board.jsx`, found nothing, and had no way to learn that
+> `riskapp.jsx` / `riskcards.jsx` / `riskmobile.jsx` were what they wanted. One row also still listed
+> **lock** as a binding highlight — cut by DEC-082.
 
-| File | Surface | Spec section | Binding highlights (full list in spec) |
-|---|---|---|---|
-| `crew-roster.jsx` | Crew Roster / People | §2.1 | credential-health flag at list level; cold-start "no history"; manual boost/floor |
-| `event-admin.jsx` | Event Admin | §2.2 | event→reservation drill-in; name+phone, **no waiver**; import result |
-| `shift-builder.jsx` | Shift Builder | §2.3 | proposed shifts (no blank-slate build); derived seats; lock; state badges |
-| `assignment-view.jsx` | Assignment View | §2.4 | seat cards by state; eligible pool ranked; **silent ≠ declined**; "fills by" countdown |
-| `at-risk-board.jsx` | At-Risk Board | §2.5 | regression-to-top; SYSTEM TRIED trail; lean/reschedule/cancel; empty=success |
-| `crew-ask.jsx` | Crew App — the ask | §2.6.1 | answerable without opening; 2 buttons |
-| `crew-myshifts.jsx` | Crew App — my shifts | §2.6.2 | confirmed-upcoming only; own standing (individual, not comparative) |
-| `crew-shift-card.jsx` | Crew App — shift card | §2.6.3 | **call time vs departure time, distinct + labeled**; manifest **per event**; co-crew one-tap; dock pin |
+**What is actually in `docs/design/mockups/` (~50 files):**
 
-*(Rename your exports to match, or update this table to match your filenames — the point is each JSX
-file is paired with its spec section.)*
+- **Crew app** — `crewapp.jsx`, `crewdata.jsx`, `mobileapp.jsx`, `mobiledetail.jsx`, `ios-frame.jsx`
+- **At-Risk board** — `riskapp.jsx`, `riskcards.jsx`, `riskdata.jsx`, `riskmobile.jsx`, `riskmodals.jsx`
+- **Assignment cockpit** — `assignapp.jsx`, `assigndata.jsx`, `assignmobile.jsx`, `assignseat.jsx`
+- **Shift builder** — `shiftapp.jsx`, `shiftboard.jsx`, `shiftdata.jsx`, `shiftdetail.jsx`
+- **Event admin / import** — **deleted 2026-07-26** (audit shard C2.2). The five mockups
+  (`eventapp/eventdata/eventdetail/eventlist/eventimport.jsx`) and `Event Admin.html` are gone. Two
+  thirds of what they showed was accurate; the rest modelled three cancelled behaviors — **CSV import**
+  (retired, DEC-043), **manually adding a reservation** (struck, SPEC §2.2), and the **manual-vs-import
+  merge conflict** (moot). But the deciding argument was the surface's expiry date, not the drift: per
+  DEC-126 the Xola pull **stops at the cutover** and SPEC §2.2 goes with it, so this was the design
+  reference for a screen that was never built and now never will be. Recoverable from git if the call
+  changes.
+- **Roster** — `roster.jsx`
+- **Shared** — `atoms.jsx`, `forms.jsx`, `data.jsx`, `detail.jsx`, `app.jsx`, `tweaks-panel.jsx`
+- **Phase 12 reservations (HTML)** — `booking-form.html`, `booking-manage.html`, `booking-recovery.html`,
+  `availability-picker.html`, `offering-catalog.html`, `offerings-list.html`,
+  `purchases-customers.html`, `reservation-calendar{,-mobile,-scale}.html`, `blocks.html`,
+  `location.html`, `vessel.html`
+
+**The file → spec-section mapping is deliberately not rebuilt here.** Pairing ~50 mockups to their
+authoritative §2.x sections requires reading those sections, which is exactly **audit shard C2's**
+corpus. Guessing the pairings now would mean inventing the answer C2 is about to establish properly.
+Until then: the authority order below still governs — **spec wins on *what*, mockups inform *how***.
 
 ---
 

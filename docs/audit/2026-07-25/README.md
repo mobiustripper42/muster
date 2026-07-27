@@ -38,7 +38,8 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
 | C | Asks / shifts / derived state | `SPEC.md`, `USER_STORIES.md` | **✅ CLOSED — 6 rows, 9 noise** (audited `main`; 3 fixed, 3 are one operator decision) |
 | C2.1 | §2.1 Crew Roster / People | `SPEC.md:400–493` | **✅ CLOSED — 12 rows, 13 noise, 7 AC verdicted** (audited `main`; 1 bug fixed, rest are one operator decision) |
 | C2.2 | §2.2 Event Admin | `SPEC.md:495–605` | **✅ CLOSED — 12 rows, 12 noise, 7 AC verdicted** (audited `main` + `feature/reservations`; 3 fixed, 1 filed #548) |
-| C2.3–C2.7 | §2.3 Shift Builder · §2.4 Assignment View · §2.5 At-Risk Board · §2.6 Crew App · §2.7 Crew Self-Serve | `SPEC.md:606–1022` | **not started** — the remaining ~420 doc lines of the §2.x sweep |
+| C2.3 | §2.3 Shift Builder | `SPEC.md:606–717` | **✅ CLOSED — 11 rows, 20 noise, 5 AC verdicted** (audited `main`; 9 fixed, 1 operator decision, 1 code item open) |
+| C2.4–C2.7 | §2.4 Assignment View · §2.5 At-Risk Board · §2.6 Crew App · §2.7 Crew Self-Serve | `SPEC.md:720–1022` | **not started** — the remaining ~300 doc lines of the §2.x sweep |
 | D | Reservations & import | ~~`OPERATOR_MANUAL.md`, `E2E-PILOT-WALKTHROUGH.md`, `PILOT_*`~~ | **CLOSED — corpus DELETED 2026-07-25.** 7 rows found; the docs they indicted are gone |
 | ~~D2~~ | ~~`PILOT_RUNBOOK` + `PILOT_IMPORT_FINDINGS` + walkthrough Parts 0–7~~ | — | **CANCELLED — corpus deleted** |
 | E | Deploy / env / ops | `DEPLOY.md`, `RUNNING.md` *(`PILOT_RUNBOOK.md` deleted)* | **✅ CLOSED — 2 rows, 4 noise** (audited `main`; both fixed) |
@@ -106,6 +107,43 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
     and 141k for C2.2. The original ~40–90k estimate was wrong by roughly half. The expensive work is
     proving *absences* — zero-caller greps across the whole tree — not reading the corpus. Budget
     ~150k per remaining sub-shard.
+- **Shard C2.3 closed + FIXED (S72, 2026-07-26).** 11 findings, 20 verified-consistent, all 5 ACs
+  verdicted: **3 MET, 1 MET-with-nuance, 1 PARTIALLY MET** — the healthiest section swept so far, and the
+  first §2.x sub-shard whose surface is fully shipped. **9 doc fixes applied here**; 1 operator decision
+  and 1 low-severity code item left open.
+  - **Headline: a reconciliation pass that stopped early.** The DEC-082 pass of 2026-07-15 struck the
+    Lock bullet, the Lock action, the locked-shift edge case and one of three open questions — then left
+    the **entire `### Lock semantics` subsection** and the **bulk-weekend-lock open question** standing,
+    both declared superseded by that section's own header 60 lines above. Lock is dead everywhere else:
+    column dropped by migration `0022`, `src/builder/lock.ts` deleted, `USER_STORIES.md` SP-6/SP-7 struck
+    by shard C. **SPEC §2.3 was the last live description of shift lock in the project.** Now struck in
+    place, plus the `§4 Parked` "weekend-lock" row that parked as future work a thing DEC-082 cut.
+  - **Open operator decision (C2.3-6 / AC-3):** "a supernumerary seat **consumes a passenger slot** vs
+    COI max-pax" is asserted in the spec restatement, in an acceptance criterion, **and in shipped
+    operator UI copy** (`manning-section.tsx:72`) — and implemented in none of the three. Non-obvious
+    because COI max-pax is a **legal** limit, and because the shipped booking model is a whole-boat
+    **mutex** (DEC-105/108/109), so there is no per-seat availability number to decrement without cutting
+    across DEC-108. `BUILDER-RECONCILIATION.md:44-45` named the same gap; bundles 9.6/9.8 shipped `[x]`
+    without it. **Do not close by deleting the AC clause** — that buries a COI question under a doc tidy.
+  - **Open code item (C2.3-8), low:** the split/merge server actions call `splitShift`/`mergeShift`
+    without `now` (`app/(admin)/admin/shifts/actions.ts:34,83`), so a split inside the staffing horizon
+    persists side B as `Pending` rather than `Filling`. Self-healing and not user-visible —
+    `resolveShiftStateOnRead` re-resolves on every board read (the DEC-023 corollary, "never trust the
+    persisted badge") and the next tick advances it. One argument at two call sites.
+  - **Also fixed:** the pre-DEC-126 "2026 import-mode vs 2027 live-mode" framing (twice — §0.3 and §2.2
+    were rewritten away from it, §2.3 was missed); "CSV import" (DEC-043-retired); "grouped by boat then
+    day", which is the **opposite** of the shipped board (day-then-boat, blessed by DEC-085/086); the
+    split-threshold open question, answered by two env knobs and 14 tests; and AC-2's "partition the
+    original's trips", which mis-words a deliberate DEC-083 design (the partition re-derives from live
+    trips, so the two sides' union is *not* the original's set after any booking change).
+  - **Cost: ~95k subagent tokens** against a ~150k budget — the first sub-shard to come in under. The
+    orchestrator's prediction held: **cost tracks whether the section's code has an operator surface, not
+    the section's line count.** C2.1/C2.2 spent their budget proving absences (whole-tree zero-caller
+    greps); §2.3's machinery is shipped and reachable, so the brief dropped the speculative-grep step.
+    §2.4–§2.7 all have shipped routes — budget them at ~95–120k, not 150k.
+  - **Which-tree check, corrected:** `docs/SPEC.md` **does** diverge between `main` and
+    `feature/reservations` (10 hunks, 150+/89−), but none touch 606–717. The shorthand "SPEC §2.x is
+    byte-identical" is **false at file granularity** — re-run the range check per sub-shard.
 - **Shard D CLOSED — by deletion, not by fixing.** 7 findings, 6 verified-consistent. Its headline
   was that both *procedural* docs were wrong about procedure: `OPERATOR_MANUAL` §Import described a
   retired spreadsheet upload, and the walkthrough's "must be resolved before crew test" list had all
@@ -134,8 +172,10 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
   §2.x sections that mapping requires. Also: `CLAUDE-context` said `@ui-reviewer` was *inert* until
   `.claude/ui-context.md` existed — it exists (83 lines), so the docs had been calling a working agent
   broken. **`BRAND.md` is the healthiest document in the audit**; its neighbours were the problem.
-- **Next shard: C2** (SPEC §2.x, ~700 lines) — the last substantial unswept area, and the one that
-  should use a sweep agent (lesson 9). Then **Z** (`DECISIONS.md` internals). Muster-only, no seeds.
+- **Next shard: C2.4** (§2.4 Assignment View, `SPEC.md:720–808`), then C2.5–C2.7. All four have shipped
+  routes (`/admin/shift/[shiftId]`, `/admin/at-risk`, `/crew`, `/crew/open`), so run them on the C2.3
+  brief — drop the speculative zero-caller greps and spend the budget on doc-vs-code drift over live
+  code. Then **Z** (`DECISIONS.md` internals). Muster-only, no seeds.
 - Shard F cost one agent, 143k subagent tokens, and produced 53 findings from the *smallest*
   corpus slice. A, B and C each ran in-context for far less — but all three had small, grep-reachable
   corpora. **C2 does not**; budget it closer to F.
@@ -179,5 +219,16 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
    amount of code-reading would have produced — one because the risk is managed off-system, one
    because the "gap" was a designed-for behavior. Escalate absences as **questions**, not defects,
    and record the answer (DEC-138) so the next sweep doesn't re-derive them.
+11. **A reconciliation pass is itself a doc edit, and doc edits stop early.** Shard C2.3's headline was
+   not drift between a doc and the code — it was drift **inside one section** between a `⚠️ Reconciled`
+   header and the four blocks below it that the header declared dead. Three of five got struck; two
+   didn't, and the survivors were the last live description of a cut feature in the whole project.
+   **When a section carries a reconcile banner, check every block against the banner's own claim** — the
+   banner is a promise about the text beneath it, and it is checkable like any other claim. Cheap: the
+   banner tells you exactly what to grep for.
+12. **Budget a shard by whether its code has an operator surface, not by its line count.** C2.1/C2.2 cost
+   120–141k because the expensive move was proving negatives across the whole tree. C2.3 covered a
+   *longer* section for ~95k because `/admin/shifts` exists, so nothing had to be proven absent. Check
+   for a route before setting the budget, and drop the speculative zero-caller sweep when one exists.
 3. **The ledger-on-disk pattern held.** The orchestrator read one 79-line file instead of taking
    53 findings into context. Keep it for every remaining shard.

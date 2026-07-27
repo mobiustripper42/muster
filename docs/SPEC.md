@@ -606,8 +606,11 @@ what it always was: the **data layer under the crew engine**, not a booking syst
 ## 2.3 Shift Builder
 
 > Source: admin-1. The **bridge between the two halves of the app** — where continuous reservations
-> become discrete crewable shifts. Net-new (Xola has no crewing-unit concept). The 2026 import-mode
-> and the 2027 live-mode are the **same surface** — only the input source differs (coexistence §4).
+> become discrete crewable shifts. Net-new (Xola has no crewing-unit concept). The builder is
+> **source-agnostic** — the imported-Xola mode and the Muster-native mode are the *same surface*, only
+> the input differs. *(Correction, DEC-126: this is a **cutover, not permanent coexistence** — at the
+> cutover the Xola API pull **stops** and the import mode ceases to exist. There is no "2027 live-mode"
+> arriving on a calendar date; see §0.3, which was rewritten away from that framing.)*
 
 > **⚠️ Reconciled 2026-07-15 (S54). LOCK IS CUT — DEC-082** ("Locking cut — Xola is the source of
 > truth; **supersedes SPEC §2.3 Lock**, reframes DEC-029"). Everything below that specs a lock state,
@@ -641,12 +644,19 @@ One boat, one day; the trips inside it batched; **required seats derived from CO
 `{roleTypeId, count}` **list** the seat builder iterates — N lines, not a captain/mate pair.)*
 *(Correction, DEC-016: the "1 captain + 1 mate" figure is illustrative — the real fleet is 4 boats
 needing 2 crew each, and zero-crew rentals are in scope; the count is per-vessel data, 0/1/2/N.)*
+*(Scope of that claim, verified 2026-07-26: zero-crew is in scope **for the deriver** — an empty
+`manning` list yields zero seats and a vacuously `Crewed` shift, tested — but is **excluded at ingest**,
+where both self-captained Duffy resources sit in `EXCLUDED_RESOURCES`. So no zero-crew vessel-day forms
+in production today. The exclusion is deliberate, not a bug.)*
 Per-shift overrides: add a **required** working
 hand (big-pax day — gates `Crewed`); add a **supernumerary/trainee** seat (non-gating, pairing
 rule, **consumes a passenger slot** vs COI max-pax). Derived default is the COI minimum.
 
 ### States to render
-- **Date-range / weekend view, grouped by boat then day.** Each proposed shift is a block showing:
+- **Date-range / weekend view, ~~grouped by boat then day~~ grouped by *day* then boat.** *(Correction,
+  DEC-085/086: the shipped board renders one section per date and carries boat identity by per-vessel
+  hue + vessel name on the row, not by grouping. Day-first matches the weekend review rhythm, #122.)*
+  Each proposed shift is a block showing:
   boat · date · the trips inside (1/3/5pm) with pax totals · required seats (derived) · current
   **crewing-state badge** (Pending / Filling / Crewed / At-Risk).
 - ~~**Lock state** per shift — unlocked (system still assembling) vs locked (reviewed, crewing may
@@ -667,15 +677,23 @@ rule, **consumes a passenger slot** vs COI max-pax). Derived default is the COI 
   (DEC-082).** No lock, no bulk lock. **Asks fire on the staffing horizon itself** (DEC-022/062), which
   is what removed the need for a hand-off in the first place.
 
-(The CSV **import** action itself lives in Event Admin §2.2; the builder reads the resulting events.
-In 2026 the builder simply shows shifts auto-formed from imported events — same as it will from the
-live feed in 2027.)
+(The ~~CSV~~ **import** action itself lives in Event Admin §2.2; the builder reads the resulting events.
+The builder simply shows shifts auto-formed from imported events — same as it will from Muster-native
+ones. *(Corrections: DEC-043 retired the `.xlsx`/CSV upload — it can't resolve a boat — so the ingest is
+a manual Xola **API pull**. And per DEC-126 the import path ends at the **cutover**, not at a 2027 live
+feed; see the header note.)*)
 
-### Lock semantics
-- **Before lock:** the shift quietly absorbs incoming bookings — no noise.
-- **After lock:** bookings still join, but each change raises a **review nudge** so Spink is never
-  blindsided at the dock.
-- Lock = "the system was assembling this" → "I've reviewed it and crewing may proceed."
+### ~~Lock semantics~~ — **CUT (DEC-082)**
+*This subsection was missed by the 2026-07-15 reconciliation pass that struck its neighbours, and until
+2026-07-26 it was the last live description of shift lock anywhere in the project. Lock is gone in code
+too: the `locked_at` column is dropped by migration `0022`, `src/builder/lock.ts` is deleted, and
+`USER_STORIES.md` SP-6/SP-7 are struck. Struck in place, per this section's convention.*
+- ~~**Before lock:** the shift quietly absorbs incoming bookings — no noise.~~ — this is now simply
+  **the** behavior, unconditionally (see Edge cases).
+- ~~**After lock:** bookings still join, but each change raises a **review nudge** so Spink is never
+  blindsided at the dock.~~ — **CUT.** Nothing is "reviewed" in a way a change can invalidate.
+- ~~Lock = "the system was assembling this" → "I've reviewed it and crewing may proceed."~~ — **CUT.**
+  Crewing proceeds on the staffing horizon (DEC-022/062), never on a hand-off.
 
 ### Data read
 - Reads **events** from Event Admin (§2.2) → auto-forms shifts.
@@ -695,8 +713,11 @@ live feed in 2027.)
 ### Acceptance criteria
 - [ ] Importing/refreshing events produces proposed shifts grouped one-boat-one-day, with required
       seats derived from COI — no manual grouping step.
-- [ ] Splitting a shift produces two shifts whose trips partition the original's; merging is the
-      inverse.
+- [ ] Splitting a shift partitions the vessel-day's trips across two shifts at the chosen cut; merging
+      is the inverse. *(Precision, DEC-083: the partition is re-derived from the vessel-day's **live**
+      scheduled trips on every pull, not frozen from the original's trip set — which is what lets a new
+      Xola trip auto-land on the correct side and a cancelled one land on neither. So after any booking
+      change the two sides' union is deliberately **not** the original's set.)*
 - [ ] Overriding to add a required hand changes the gate for `Crewed`; adding a supernumerary seat
       does **not** gate `Crewed` and **decrements** available pax against COI max.
 - [ ] ~~Locking a shift inside the staffing horizon fires Tier-1 asks; locking one outside does not.~~
@@ -711,9 +732,15 @@ live feed in 2027.)
   starts at the horizon, autonomously. The "leaning: crewing waits for lock during rollout so Spink
   stays in control" is the exact posture DEC-082 rejected — Xola keeps changing the bookings, so
   waiting for a human stamp buys nothing and costs the autonomous path.
-- Lock granularity — per-shift confirmed; **bulk weekend-lock** likely also. *(Build per-shift
-  first.)*
-- The "suggest a split" gap threshold — tune later, don't agonize.
+- ~~Lock granularity — per-shift confirmed; **bulk weekend-lock** likely also. *(Build per-shift
+  first.)*~~ — **RESOLVED by DEC-082,** which cut both by name (8.2b per-shift lock and 8.6 bulk
+  weekend-lock, "formally cut, not completed"). The question presumed a lock; there isn't one.
+- ~~The "suggest a split" gap threshold — tune later, don't agonize.~~ — **RESOLVED and shipped,** with
+  more than the question asked for: `suggestSplit` has two independent triggers, `large-gap` (dead time
+  between one trip's teardown and the next's prep) and `long-span` (a long day with no single big gap),
+  each with its own env knob in the DEC-062 pattern (`SPLIT_SUGGEST_GAP_MINUTES` 120,
+  `SPLIT_SUGGEST_SPAN_MINUTES` 600), 14 tests including both threshold boundaries, surfaced per-row plus
+  a "split candidates only" board filter.
 
 ---
 
@@ -1138,8 +1165,10 @@ now. Building any of these is out of scope until its trigger condition is met.
 - **Day-cohort messaging** — future; same messaging substrate as the crew ask, different audience
   selector + timing.
 - **AI captain-phone-call agent** ★ — real and useful for won't-text captains, but phase-B garnish.
-- **Bulk actions** — weekend-lock (builder), cross-shift broadcast (assignment/board). Build the
-  single-item versions first.
+- **Bulk actions** — ~~weekend-lock (builder),~~ cross-shift broadcast (assignment/board). Build the
+  single-item version first. *(Correction, DEC-082: the weekend-lock half is **cut, not parked** — 8.6
+  by name — and "build the single-item version first" was unreachable advice, since per-shift lock
+  (8.2b) was cut in the same breath. The broadcast half is untouched and stays parked.)*
 - **Progressive crew commitment (soft-hold + staged horizons)** ⏳ — bank crew *willingness* early
   via a tentative **soft-hold** ("hold this Saturday 11–9; confirmed 5 days out"), converging on the
   existing hard staffing horizon that commits real bodies. Reduces operator anxiety by locking in

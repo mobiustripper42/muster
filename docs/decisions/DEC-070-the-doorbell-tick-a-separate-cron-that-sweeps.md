@@ -1,0 +1,13 @@
+---
+id: DEC-070
+title: "The doorbell tick — a separate cron that sweeps threads-with-messages and records-on-decide"
+topic: "Messaging, presence & doorbell"
+---
+
+## DEC-070: The doorbell tick — a separate cron that sweeps threads-with-messages and records-on-decide
+
+**Status:** Accepted (Phase 6 / 6.6b).
+**Decision:** The doorbell runs on its **own** cron `/api/cron/doorbell-tick` (DEC-040 precedent — separate from the engine `tick` and the Xola pull, CRON_SECRET-guarded, `*/2`), the time-driven trigger for the irreducible outbound ring (DEC-049). Each sweep covers **every thread that has messages** (`listThreadsWithMessages`), **not** a `createdAt`-bounded slice — §7.4 priority can be flipped on an *old* message whose timestamp predates any window, so a slice would silently miss it; a quiet thread instead costs the decider one cheap `all_read` pass. The tick assembles the decider's inputs from the store + `PresencePort`, classifies presence at the **edge** (coarse signal → `present_elsewhere | absent`, never `present_here` — DEC-068), runs the pure decider, and **records notify-state on decide** (the ring is the source of truth; first-only-until-read must hold even if delivery later fails — delivery is best-effort/swappable). It shares the engine pause gate (DEC-054): a paused operator means a quiet doorbell.
+**Why:** A separate cron isolates a doorbell hiccup from staffing and lets cadence tune independently (DEC-040: cadence is the latency lever). Record-on-decide mirrors the engine tick's record-then-relay split — the decider/tick own the decision (pure + idempotent on stored state), the edge owns delivery. Sweep-all-threads-with-messages is the only enumeration safe against the priority-on-old-message trap the 6.6a architect flagged; at a 20–25-crew pilot the per-thread cost is trivial.
+**Tradeoff:** A growing message history grows the sweep set (every ever-messaged thread, swept every 2 min) — acceptable at pilot scale; a "threads with un-rung unread" index is the optimization if it ever bites. Record-on-decide means a ring recorded but undelivered (a fake/relay failure) is suppressed until the recipient reads — accepted because delivery is best-effort and a re-ask isn't the doorbell's job.
+**Pilot delivery is the fake/log adapter** (DEC-050): the loop is closed end-to-end and proven, but the real ring relay is 6.8 (operator outbox) / 6.9 (Twilio). Vercel crons run **only on the production deploy**, and Phase 6 isn't promoted until 6.8's real relay lands — so the fake delivery never runs against live traffic. **Revisit if:** the sweep set grows costly (add the un-rung-unread index); or a dedicated doorbell pause (independent of the engine pause) is wanted. **Phase:** Phase 6 (6.6b).

@@ -1,0 +1,13 @@
+---
+id: DEC-064
+title: "The manual override honors the role-competency floor — no mate as captain"
+topic: "Staffing engine — asks, escalation, At-Risk board & cockpit"
+---
+
+## DEC-064: The manual override honors the role-competency floor — no mate as captain
+
+**Decision:** The cockpit's manual override (`overrideSeat`, `src/asks/ask-loop.ts`) still bypasses pool, rank, and current state — but **not** the seat's role rating. A crew member is placeable only if `isRatedFor(crew.ratings, seat.role)` (`src/oracle/eligibility.ts`). Enforced in **two** places: the shift-view override picker lists only crew rated for that seat's role (`page.tsx` scopes the roster per seat via `ratingsById`), and the `overrideTo` action re-checks server-side so a crafted form post can't seat a mate as captain (→ `act_error=not_rated`). `manualOverride` (the pure, unguarded primitive) is unchanged; `overrideSeat` composes the rating gate in front of it.
+**Why:** Operator-reported (Eric): the override for a captain seat offered **mates**, which is a no-go — a mate can't hold a captain's license. The asymmetry "captains can sub for mates, not the other way" is already encoded in the **ratings**: on the pilot roster captains are rated `[captain, mate]` and mates `[mate]` (then `db/seed-pilot-crew.ts`; that script was retired 2026-07-25 — the same rating convention is now set per-person by `db:crew add --ratings=`), so the exact-match `isRatedFor` passes a captain into a mate seat (the legit downward sub) while never passing a mate into a captain seat. No role hierarchy needed (DEC-ROLE-1 stays intact — roles remain a flat, tenant-defined set). The auto-ask / assign paths were already correct (they use eligibility); only the override bypassed it.
+**Tradeoff:** The override is no longer *literally* "place anyone" — the role floor is the one thing it won't skip. Accepted: seating an unlicensed person as captain is a legal/safety floor, not a policy knob, so even the authority backstop shouldn't cross it. If a genuine "the rating data is wrong" case ever needs a true bypass, that's a data fix (correct the crew's ratings), not an override.
+**Distinct from #148:** #148 (don't *auto-ask* dual-rated captains for mate seats) is the **downward** direction and needs a primary-role/precedence model the ratings don't carry. This DEC is the **upward** block (mate→captain), which the flat ratings already express — so it ships now without #148's model.
+**Revisit if:** a tenant defines more than two roles with partial overlaps where exact-match rating is too coarse (then a precedence/rank model — the #148 work — would subsume this).

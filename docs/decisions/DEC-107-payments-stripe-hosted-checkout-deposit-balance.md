@@ -1,0 +1,117 @@
+---
+id: DEC-107
+title: "Payments — Stripe hosted Checkout, deposit + balance, webhook-driven booking write"
+topic: "Reservations & payments"
+---
+
+## DEC-107: Payments — Stripe hosted Checkout, deposit + balance, webhook-driven booking write
+
+**Status:** Decided 2026-07-11 (Eric + @architect, under DEC-105). New dependency: the `stripe` Node SDK.
+**⚠️ The hosted-Checkout decision below was REVERSED for the customer booking charge by DEC-134 (12.5)** —
+that charge is now an **inline Stripe Payment Element** over a deferred PaymentIntent. Hosted Checkout
+survives only for **balance** and **post-trip gratuity**. Everything else here — deposit + balance as the
+model, webhook-driven write, the sailbook charge/refund lift, the parked refund cascade — still stands.
+Read DEC-134 before acting on the Decision paragraph.
+
+**Context.** Muster-native bookings need to take money. The operator chose **deposit + balance** over
+full-upfront (the closer match to how Xola works, which matters for a Xola replacement).
+
+**Decision.** **Stripe hosted Checkout (redirect)**, not embedded Payment Intents — Stripe hosts the card
+fields (PCI SAQ-A, no card data touches Muster), handles 3DS/SCA + wallets free, and is the fastest path to
+a working redirect. Embedded UX control isn't worth the PCI surface for a thin slice.
+- **Deposit + balance:** deposit taken at Checkout; **balance collected later via an emitted payment-link**,
+  **not** an off-session auto-charge of a saved card — the auto-charge path drags in off-session card-decline
+  handling not worth it at pilot scale.
+- **Charge + refund are a port, not a from-scratch build:** the sibling **`sailbook`** project already runs
+  working Stripe **charge + refund** code — **lift and audit** it into strict TS (precedent: the DEC-036
+  `xola-tip-extractor` port). **Deposit collection is the net-new piece.** This lifts refund *mechanism*
+  only — the refund *cascade* surface (§3.3) stays parked. Build-time dependency: add `sailbook` to the
+  session scope so the source can be read + audited on lift.
+- **Webhook-driven write:** the signature-verified, idempotent `checkout.session.completed` webhook is the
+  thing that writes the Muster-native Reservation — **never** the browser redirect (not proof of payment).
+- **New dependency (`stripe` SDK) cleared:** it saves well beyond hand-rolling a PCI-safe payment +
+  reconciliation path and its webhook-signature verification + typed session API justify the SDK over the
+  raw-`fetch` posture DEC-081 took for email. (Confirm SDK-vs-fetch at build.)
+
+**Stays parked (do not build in Phase 11):** the **refund cascade (§3.3)** and **dispute/chargeback
+surfacing (§3.4)**. For Xola bookings, refunds live in Xola (DEC-105) — *permanently*. For Muster bookings
+at pilot volume, a refund/cancel is handled **manually in the Stripe dashboard** (documented in the
+runbook); an in-app money-ops surface is a later phase, gated on Muster carrying real volume.
+
+**Owner-gated (Drew), flag each — gates the Stripe task only:** deposit-% and balance timing; per-seat /
+product pricing; refund policy + terms shown at booking; **whether Muster bills through BrewBoat's existing
+Stripe account or a separate one** (payout/tax/reconciliation-against-Xola implications during the overlap);
+tax/fees; cancellation / no-show terms. **Revisit if:** deposit auto-charge (saved card) becomes worth the
+off-session-decline handling, or refund volume justifies pulling §3.3 in-house.
+
+**Amendment (2026-07-18, @architect + operator — task 12.1b, under DEC-109):** the "refunds are ALWAYS
+manual" posture is **narrowed** — Muster now issues **one** programmatic refund automatically. The DEC-109
+**residual-race loser** (two customers both paid, one won the atomic whole-boat claim; the loser cannot be
+booked) is **auto-refunded + told "sold out while you were paying — fully refunded."** This is the reversal
+already directed by the operator ([[customer-self-refund-reverses-manual]]) plus the DEC-109 amendment; a
+silent unrefunded loss was never acceptable, and a human-in-the-loop manual refund for a race the engine
+caused is the wrong default. **Mechanism:** `PaymentPort.refund({paymentIntentId, amountCents?,
+idempotencyKey})` (Stripe `refunds.create` + Fake), **keyed-idempotent** (`refund_${sessionId}`) so a
+re-delivered webhook can't double-refund; the webhook `lost` branch refunds → notifies, and the loud
+**manual-refund alert becomes the FALLBACK** (fires only when there's no PaymentIntent or the refund call
+throws). **Still manual (unchanged):** every OTHER refund — operator-discretion cancels, the §3.3 refund
+**cascade** (still parked), disputes/chargebacks (§3.4), and anomalous `unbookable` outcomes
+(event_missing, unknown purpose) which stay on the loud manual-alert path. This lifts the refund
+*mechanism* DEC-107 always anticipated ("charge **+ refund** are a port … lift from sailbook"); it does
+**not** un-park the cascade.
+
+**Amendment (2026-07-19, @architect + operator — #474, under DEC-112/DEC-124/DEC-125):** the balance
+deriver now composes the **party fare**, not the bare base. `balanceOwedCents` was called with
+`Event.price` — the frozen per-departure **base** (DEC-125/DEC-112) — but since 12.2 the customer is
+charged **base + extra-guest** charges (`composeFare`), so a `depositMode:"deposit"` booking with guests
+above the vessel's `includedGuestCount` **undercollected the balance** by `extrasCents + tax(extrasCents)`.
+Latent only (RESERVATIONS flag off; `"full"` mode charges the whole composed fare upfront and was already
+correct). **Fix:** the extras are **frozen at booking time on `Reservation.extrasCents`** (new nullable
+`reservations.extras_cents`, DEC-121 timestamped migration; absent ⇒ 0 for seeded/Xola/pre-12.2 rows) — a
+**booking property** (a function of `guestCount`), deliberately **not** on `Event` (keeps the DEC-125
+`Event.price = base` invariant clean) and deliberately **not** recomputed from the live `Offering` link
+(would reintroduce the config-drift `balanceOwedCents`'s "never a config recompute" contract exists to
+prevent). Both callers — `create-balance-checkout` and the webhook's `recordBalancePayment` overpay guard —
+pass `event.price + (reservation.extrasCents ?? 0)`. **Tax still collected in full at deposit; the balance
+carries zero tax; gratuity still netted per DEC-124** (walked the deposit→balance arithmetic: balance =
+remaining share of the *full* fare, tax and tip both net out, nothing double-counted). Fixes #474.
+
+## DEC-107 amendment (11.2b) — on-demand balance collection
+
+**Status:** Decided 2026-07-13 (@architect, under DEC-107).
+
+Balance is collected **on demand** (the auto-emit scheduler that reads `balanceDueDaysBeforeEvent`
+stays P12+). **Amount authority is the canonical deriver `balanceOwedCents`, computed at click time** —
+never a config recompute of the deposit share, so it can't drift when `depositPercent`/price change
+between deposit and balance (the `Payment` entity already mandates balance be *derived, never stored*).
+It sums only `status==='succeeded'`, so a future refund re-opens the balance through the same one
+function.
+
+> **Formula, as it stands after #474 and DEC-134** (this paragraph originally read
+> `(event.price + tax) − Σ succeeded payments`, which is now under-specified in two ways):
+> ```
+> balanceOwedCents = fareCents + tax(fareCents)
+>                  − Σ succeeded (amountCents − gratuityCents − serviceFeeCents)
+> ```
+> - **`fareCents` is the composed party fare** — `event.price` **+** the frozen
+>   `Reservation.extrasCents` (#474), not the bare base. The base alone undercollects a
+>   deposit-mode balance by `extras + tax(extras)`.
+> - **Gratuity and the service fee are netted out of each paid amount** (DEC-124 / DEC-134). The tip
+>   is crew money and the fee is a one-shot surcharge; counting either as "paid toward balance" would
+>   under-charge a deposit booking. The balance stays pure remaining principal + its tax.
+>
+> Implementation: `src/reservations/payment-config.ts`.
+
+The **Stripe Checkout URL, re-minted per request, is the balance link** — no durable/custom token (and no
+dependency on 11.4's `booking-link.ts`); a re-minted link always reflects the current outstanding balance.
+
+The webhook **routes on `metadata.purpose`**: `"balance"` records a `Payment{kind:'balance'}` against the
+existing reservation (**no `writeBooking`, no confirmation emit** — the boat was claimed at deposit,
+DEC-109); absent/`"booking"` keeps the existing spine; any **other** purpose is loudly flagged and NOT
+booked (a non-booking session has no `eventId` → would orphan a reservation). **Overpay** from a
+two-session race is recorded (the money moved) then loudly flagged for a **manual** refund — consistent
+with the DEC-107 paid-but-unbooked posture; nothing auto-refunds. Balance is never stored on `Reservation`
+(DEC-105/106); the payment log is the sole source of truth. No migration (`payments` table + `kind:'balance'`
+already exist). Trigger for now is the `db:balance` CLI; the customer-facing email/page is P12.
+
+---

@@ -39,7 +39,10 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
 | C2.1 | §2.1 Crew Roster / People | `SPEC.md:400–493` | **✅ CLOSED — 12 rows, 13 noise, 7 AC verdicted** (audited `main`; 1 bug fixed, rest are one operator decision) |
 | C2.2 | §2.2 Event Admin | `SPEC.md:495–605` | **✅ CLOSED — 12 rows, 12 noise, 7 AC verdicted** (audited `main` + `feature/reservations`; 3 fixed, 1 filed #548) |
 | C2.3 | §2.3 Shift Builder | `SPEC.md:606–717` | **✅ CLOSED — 11 rows, 20 noise, 5 AC verdicted** (audited `main`; 9 fixed, 1 operator decision, 1 code item open) |
-| C2.4–C2.7 | §2.4 Assignment View · §2.5 At-Risk Board · §2.6 Crew App · §2.7 Crew Self-Serve | `SPEC.md:720–1022` | **not started** — the remaining ~300 doc lines of the §2.x sweep |
+| C2.4 | §2.4 Assignment View | `SPEC.md:759–847` | **✅ SWEPT — 15 rows, 14 noise, 5 AC verdicted** (2 MET, 1 MET-stale-wording, 2 PARTIAL) |
+| C2.5 | §2.5 At-Risk Board | `SPEC.md:848–932` | **✅ SWEPT — 12 rows, 18 noise, 6 AC verdicted** (3 MET, 1 PARTIAL, 2 NOT MET) |
+| C2.6 | §2.6 Crew App | `SPEC.md:933–1022` | **✅ SWEPT — 13 rows, 16 noise, 7 AC verdicted** (3 MET, 1 nuance, 2 PARTIAL, 1 NOT MET) |
+| C2.7 | §2.7 Crew Self-Serve | `SPEC.md:1023–1061` | **✅ SWEPT — 9 rows, 18 noise, 0 AC boxes exist** (the absence is finding C2.7-5; 5 sub-clauses verdicted instead) |
 | D | Reservations & import | ~~`OPERATOR_MANUAL.md`, `E2E-PILOT-WALKTHROUGH.md`, `PILOT_*`~~ | **CLOSED — corpus DELETED 2026-07-25.** 7 rows found; the docs they indicted are gone |
 | ~~D2~~ | ~~`PILOT_RUNBOOK` + `PILOT_IMPORT_FINDINGS` + walkthrough Parts 0–7~~ | — | **CANCELLED — corpus deleted** |
 | E | Deploy / env / ops | `DEPLOY.md`, `RUNNING.md` *(`PILOT_RUNBOOK.md` deleted)* | **✅ CLOSED — 2 rows, 4 noise** (audited `main`; both fixed) |
@@ -176,10 +179,49 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
   §2.x sections that mapping requires. Also: `CLAUDE-context` said `@ui-reviewer` was *inert* until
   `.claude/ui-context.md` existed — it exists (83 lines), so the docs had been calling a working agent
   broken. **`BRAND.md` is the healthiest document in the audit**; its neighbours were the problem.
-- **Next shard: C2.4** (§2.4 Assignment View, `SPEC.md:720–808`), then C2.5–C2.7. All four have shipped
-  routes (`/admin/shift/[shiftId]`, `/admin/at-risk`, `/crew`, `/crew/open`), so run them on the C2.3
-  brief — drop the speculative zero-caller greps and spend the budget on doc-vs-code drift over live
-  code. Then **Z** (`DECISIONS.md` internals). Muster-only, no seeds.
+- **C2.4–C2.7 SWEPT IN PARALLEL (S72, 2026-07-27) — the §2.x corpus is now fully covered.** Four agents
+  concurrently, ~10 minutes wall clock, ~490k subagent tokens, **49 findings + 66 verified-consistent
+  rows**, every acceptance criterion in §2.4–§2.6 verdicted against source. **Sequential-only is retired
+  as a rule** — the ledger-on-disk pattern was always what protected the orchestrator's context, not the
+  sequencing, and four independent subjects share no state. Cost per shard was unchanged by running
+  them together (90k / 118k / 110k / 105k).
+  **Six code items filed: #554 #555 #556 #557 #558.** Doc fixes and the 12 operator decisions are open.
+  - **#554 is the one that matters: a crew member can be confirmed to two boats the same day.** §2.7.2
+    *and* DEC-078 both assert the claim is guarded against "the one-shift-per-date conflict". The
+    single-seat race is genuinely closed by a CAS; the same-date guard is a read-then-CAS over a
+    cross-record invariant the no-FK store cannot enforce, and `src/asks/claim.ts:111–119` **says so in
+    its own words**. Two in-flight taps by one person, both read an empty `committedDates`, both CAS-win.
+    Whole-day commitment is the entire premise DEC-077 chose day granularity for. Nothing had been filed —
+    the only prior record of a reachable double-confirm was a code comment contradicting two documents.
+  - **Two live copy defects that mislead the operator at the worst moment.** #555: the cockpit's "Ask to
+    fill" tooltip still promises "their yes still needs your confirm" — false since DEC-061, which made
+    a crew "In" auto-confirm. #556: when a mate seat's only remaining candidates are captains, DEC-066
+    drops them from the ranked pool, so the At-Risk row reads "nobody left in the eligible pool — this is
+    the reschedule / cancel" **while pointing at two disabled buttons**, when DEC-066's own text says the
+    fix is a cockpit override. That is the 11pm-before-a-charter screen telling him to cancel a fillable
+    trip.
+  - **The audit found its own prior fix incomplete.** #557: PR #549 narrowed the C2.1-10 credential-expiry
+    skew from a full day to ~4 evening-ET hours — it did not close it, and the comment beside it still
+    asserts "Same rule, one boundary." Second time a **stated invariant** in a comment turned out false.
+  - **Each section failed differently, which is why the per-surface split earned its cost.** §2.4 is the
+    least-reconciled: five DECs (027/061/063/065/128) each say in their own text that they change its
+    behavior and four never came back to the doc — the fills-by deadline (departure −48h, DEC-031) and the
+    staffing horizon (departure −7d, DEC-022) are conflated in the spec and rendered on adjacent lines of
+    the same header. §2.5's body was reconciled to DEC-065 twice while **AC-1 was left specifying the
+    exact defect DEC-065 was filed to fix** — anyone verifying the board against its own criteria would
+    mark correct shipped behavior as a failure. §2.6 has **never had a reconciliation pass at all**, and
+    its founding claim — "Two buttons. ~3 seconds. No login, no navigate-to-respond" — describes the one
+    thing the shipped ask does not do (DEC-030 chose an operator-relayed magic link; no inbound webhook
+    exists). §2.7 is the only §2.x section with **no acceptance criteria at all**.
+  - **Lesson 11 held three more times.** C2.5-1, C2.6's whole-section drift, and C2.4's five-DEC backlog
+    are all the same shape as C2.3's unstruck lock section: a decision that changed the system and never
+    went back to the doc. **C2.4's agent proposed the cheap pre-flight that would have found all of them:
+    grep `DECISIONS.md` for "Amends SPEC §2.x" before reading any code** — each hit names a doc edit that
+    may never have happened. Adopt it for shard Z and any future sweep.
+- **Next: the C2.4–C2.7 doc fixes** (28 `doc-wrong` rows, enumerated per-ledger), the **12 operator
+  decisions**, then **Z** (`DECISIONS.md` internals) — which C2.7-4 already feeds: DEC-078's "MVP
+  claimable set" paragraph is the *origin* of stale wording #440 widened, so a SPEC-only fix would leave
+  the DEC as the surviving wrong answer. Muster-only, no seeds.
 - Shard F cost one agent, 143k subagent tokens, and produced 53 findings from the *smallest*
   corpus slice. A, B and C each ran in-context for far less — but all three had small, grep-reachable
   corpora. **C2 does not**; budget it closer to F.

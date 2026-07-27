@@ -25,10 +25,6 @@ import { messagingEnabled } from "../../../lib/flags";
 
 export const dynamic = "force-dynamic";
 
-/** Inside this many hours of departure the countdown turns red (UI-only — the
- * board's shouting threshold, not core's membership rule). */
-const TIGHT_HOURS = 36;
-
 /** Feedback params carry codes/ids, never prose (DEC-026) — map here. */
 // Past-tense / action-framed so a lingering redirect param (manual reload, or a
 // reseed while sitting on the param'd URL) still reads true — the same stale-safe
@@ -218,7 +214,6 @@ function toVM(c: OutboxCardView): OutboxCardVM {
       .filter(Boolean)
       .join(" · "),
     toTrip: c.hoursToTrip === null ? null : ttLabel(c.hoursToTrip),
-    tight: c.hoursToTrip !== null && c.hoursToTrip < TIGHT_HOURS,
     whyLabel: whyLabel(c),
     smsHref: c.crewPhone
       ? buildSmsUrl({ phone: c.crewPhone, body: message })

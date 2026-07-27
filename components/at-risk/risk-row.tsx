@@ -18,7 +18,6 @@ export interface RiskRowVM {
   /** "1d 4h to trip" — null when no scheduled event anchors the shift. */
   toTrip: string | null;
   /** Inside 36h — the countdown turns red. */
-  tight: boolean;
   /** Every scheduled departure, earliest first ("departs 1:00 PM"). A two-trip
    * day shows both; empty when no scheduled trip anchors the shift. */
   departs: string[];
@@ -100,7 +99,7 @@ export function RiskRow({ row }: { row: RiskRowVM }) {
           </div>
           <div className="flex flex-col items-end">
             <span
-              className={`font-mono text-sm font-semibold ${row.tight ? "text-bad" : "text-ink"}`}
+              className="font-mono text-sm font-semibold text-ink"
             >
               {row.toTrip ?? "no scheduled trip"}
             </span>

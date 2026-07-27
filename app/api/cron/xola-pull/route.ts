@@ -5,14 +5,19 @@ import { getRepo } from "../../../lib/repo";
 import { runXolaPull } from "../../../lib/xola";
 
 /**
- * Hourly Xola pull (DEC-036, task 5.4b) — Architecture B's primary ingest, on its
- * OWN cron (`vercel.json`, `0 * * * *`) rather than folded into `/api/cron/tick`.
- * The isolation is deliberate: a Xola 5xx on a crew Saturday must not take down
- * the ask `tick`, and the two have different cadences (hourly vs every 15m).
+ * Xola pull endpoint (DEC-036, task 5.4b) — Architecture B's primary ingest.
+ *
+ * **NO CRON IS ATTACHED, AND NONE IS COMING.** This ran on its own `vercel.json`
+ * schedule (`0 * * * *`) until `13d3fb5` removed it — the operator wants to control
+ * when imports land, so the only path that reaches this code today is the "Pull from
+ * Xola now" button at `/admin/import`. The route survives as the shared runner
+ * behind that action; it is not a scheduled job. Don't re-add the schedule without
+ * an operator decision — a background import is exactly what was ruled out.
  *
  * Read-only against Xola; idempotent downstream (identity on `items[].id`,
  * DEC-029 materiality), so a re-pull over an overlapping window is a cheap no-op.
- * The manual xlsx upload (5.4a) stays the Xola-downtime fallback.
+ * The manual xlsx upload (5.4a) is retired outright (DEC-043 — it can't resolve a
+ * boat), so there is no fallback ingest either.
  *
  * `runtime = "nodejs"` — the pull writes through `pg`, which the Edge runtime
  * can't open a TCP socket for.

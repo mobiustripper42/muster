@@ -12,8 +12,10 @@ import { ClearFeedbackParams } from "./clear-feedback-params";
 
 /**
  * Import surface (DEC-043) — the operator's path to get live Xola trips onto the
- * board. The `/events` ⨝ `/orders` pull runs hourly on its own; this is the "do it
- * now" button. Admin-gated. A failed pull rides a redirect param (codes only,
+ * board, and the ONLY one: the `/events` ⨝ `/orders` pull runs when this button is
+ * pressed and at no other time. The hourly cron was removed in `13d3fb5` (the
+ * operator wants to control when imports land) and is not coming back — every
+ * import is manual. Admin-gated. A failed pull rides a redirect param (codes only,
  * DEC-026); a SUCCESSFUL pull redirects to its audit detail (#128) — the full
  * breakdown of what changed. The xlsx upload is retired (can't resolve a boat).
  */
@@ -59,9 +61,9 @@ export default async function ImportPage({
         <h1 className="text-xl font-semibold text-ink">Pull from Xola</h1>
         <p className="text-sm text-muted">
           Imports the next week of trips straight from the live Xola account and
-          fills the board with the crew seats they need. Runs automatically every
-          hour — this is the “do it now” button. Safe to press anytime (it updates
-          in place, never duplicates).
+          fills the board with the crew seats they need. Nothing imports on its
+          own — trips reach the board when you press the button, and not before.
+          Safe to press anytime (it updates in place, never duplicates).
         </p>
       </header>
 
@@ -85,8 +87,8 @@ export default async function ImportPage({
       >
         <span className="text-sm font-semibold text-ink">Pull the latest schedule</span>
         <p className="text-xs text-muted">
-          The live pull also runs every hour on its own; press this to import now —
-          you’ll land on a full breakdown of what changed.
+          This is the only way trips get imported — there’s no scheduled pull
+          behind it. You’ll land on a full breakdown of what changed.
         </p>
         <SubmitButton className="mt-1 min-h-11 rounded-card bg-accent px-4 font-semibold text-white shadow-sm">
           Pull from Xola now

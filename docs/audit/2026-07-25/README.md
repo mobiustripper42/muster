@@ -36,7 +36,9 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
 | B | Auth / RLS / login paths | `AUTH.md`, `SECURITY_AUDIT.md`, `RUNNING.md`, `SPEC.md` | **✅ CLOSED — 7 rows, 8 noise** (audited `main`) |
 | A | Money / pricing / payments | `SPEC.md`, migrations | **✅ CLOSED — 7 rows, 8 noise** (audited `feature/reservations`) |
 | C | Asks / shifts / derived state | `SPEC.md`, `USER_STORIES.md` | **✅ CLOSED — 6 rows, 9 noise** (audited `main`; 3 fixed, 3 are one operator decision) |
-| C2 | **§2.x surface acceptance criteria** — *spun out of shard C* | `SPEC.md` §2.1–§2.7 (~700 lines) | not started — **largest unswept area** |
+| C2.1 | §2.1 Crew Roster / People | `SPEC.md:400–493` | **✅ CLOSED — 12 rows, 13 noise, 7 AC verdicted** (audited `main`; 1 bug fixed, rest are one operator decision) |
+| C2.2 | §2.2 Event Admin | `SPEC.md:495–605` | **✅ CLOSED — 12 rows, 12 noise, 7 AC verdicted** (audited `main` + `feature/reservations`; 3 fixed, 1 filed #548) |
+| C2.3–C2.7 | §2.3 Shift Builder · §2.4 Assignment View · §2.5 At-Risk Board · §2.6 Crew App · §2.7 Crew Self-Serve | `SPEC.md:606–1022` | **not started** — the remaining ~420 doc lines of the §2.x sweep |
 | D | Reservations & import | ~~`OPERATOR_MANUAL.md`, `E2E-PILOT-WALKTHROUGH.md`, `PILOT_*`~~ | **CLOSED — corpus DELETED 2026-07-25.** 7 rows found; the docs they indicted are gone |
 | ~~D2~~ | ~~`PILOT_RUNBOOK` + `PILOT_IMPORT_FINDINGS` + walkthrough Parts 0–7~~ | — | **CANCELLED — corpus deleted** |
 | E | Deploy / env / ops | `DEPLOY.md`, `RUNNING.md` *(`PILOT_RUNBOOK.md` deleted)* | **✅ CLOSED — 2 rows, 4 noise** (audited `main`; both fixed) |
@@ -77,8 +79,33 @@ Buckets are *proposed* by the sweep and re-assigned at triage. The sweep does no
   DEC-125 model (two mechanisms, not one rule engine). COI-expiry and lead-time-cutoff both
   **rejected on operator input** and closed on the record. See the shard file's RESOLVED header for
   two corrections to the original severity read.
-- **Spun out: shard C2** — SPEC §2.x per-surface acceptance criteria (~700 lines, untouched by any
-  shard so far). This is the **largest unswept area in the doc set** and wants a sweep agent.
+- **Shard C2 SPLIT PER SURFACE and two-sevenths done (S71, 2026-07-26).** The sweep-agent + ledger
+  pattern was piloted on C2.1 alone before fanning out, and it held: every row cites `file:line` or a
+  test name, absences escalate as questions, and each `- [ ]` acceptance criterion gets its own
+  verdict block — **14 checkboxes ticked against source for the first time**. C2.1 and C2.2 closed;
+  §2.3–§2.7 remain. **Fixes shipped in PR #549 (`main`) + PR #550 (`feature/reservations`).**
+  - **The two shards found the same shape twice: a derivation layer with no surface on top.**
+    `buildRoster` (§2.1) and `browse.ts` (§2.2) are both complete, both tested, and both have **zero
+    callers on either tree**. Four of §2.1's seven Actions have no operator write path at all. The
+    answers differ, though — the roster surface is wanted (#408), while §2.2's dies at the DEC-126
+    cutover, so "unbuilt" there is correct rather than late.
+  - **Live defect, now fixed:** `/admin/import` told the operator the Xola pull "runs automatically
+    every hour". It hasn't since `13d3fb5`; the operator confirmed there is no automatic import and
+    never will be. Five files carried the dead cadence — including `DEPLOY.md`, written by shard E
+    *the previous night*. A doc audit's own output rotted within 24 hours.
+  - **Real bug, now fixed:** the roster's expiry flag and the oracle's gate disagreed by one day
+    (instant-vs-date compare), so a crew member could read EXPIRED and be askable the same afternoon.
+    A code comment *and* a test name both asserted they agreed.
+  - **Filed #548:** a retime that keeps its event id notifies nobody — DEC-029 caught it for free when
+    event identity encoded the time, DEC-043 changed identity to Xola's real `event.id`, and nobody
+    re-checked. Shipped as a characterization test, not a fix: whether the gap is reachable depends on
+    whether Xola retimes in place or cancels-and-recreates, which this repo cannot answer.
+  - **Deleted:** the five Event Admin mockups + `Event Admin.html` — design reference for a screen
+    never built and, per DEC-126, now never to be.
+  - **Cost, for whoever budgets C2.3–C2.7:** 120k subagent tokens for C2.1 (the *smallest* section)
+    and 141k for C2.2. The original ~40–90k estimate was wrong by roughly half. The expensive work is
+    proving *absences* — zero-caller greps across the whole tree — not reading the corpus. Budget
+    ~150k per remaining sub-shard.
 - **Shard D CLOSED — by deletion, not by fixing.** 7 findings, 6 verified-consistent. Its headline
   was that both *procedural* docs were wrong about procedure: `OPERATOR_MANUAL` §Import described a
   retired spreadsheet upload, and the walkthrough's "must be resolved before crew test" list had all

@@ -155,12 +155,22 @@ export function banner(edges) {
   return [BANNER_OPEN, ...lines, BANNER_CLOSE].join('\n')
 }
 
-/** Body with any existing generated banner removed. */
+/**
+ * Body with any existing generated banner removed.
+ *
+ * Only the seam left by the removal is normalized. A global blank-line collapse here
+ * would make the generator a non-fixed-point for any amended decision whose body has a
+ * double blank line anywhere in it: the first run writes the file, and the next
+ * `check:decisions` re-generates, collapses that unrelated gap, and reports the file it
+ * just wrote as stale — a red build with no author error to fix.
+ */
 export function stripBanner(body) {
   const open = body.indexOf(BANNER_OPEN)
   if (open === -1) return body
   const close = body.indexOf(BANNER_CLOSE, open)
-  return (body.slice(0, open) + body.slice(close + BANNER_CLOSE.length)).replace(/\n{3,}/g, '\n\n')
+  const before = body.slice(0, open).replace(/\n+$/, '')
+  const after = body.slice(close + BANNER_CLOSE.length).replace(/^\n+/, '')
+  return `${before}\n\n${after}`
 }
 
 /** Full file text for a decision, with its banner in the right place (or absent). */

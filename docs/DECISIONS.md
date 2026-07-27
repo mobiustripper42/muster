@@ -66,12 +66,12 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 
 ### Staffing engine — asks, escalation, At-Risk board & cockpit
 - DEC-006 — Escalation Tiers 1–3 are degrees of automation, not states
-- DEC-007 — Per-role assignment protocol + first-acceptable-yes-wins _(retired by DEC-061 — the two-protocol fork — nobody is "named then confirmed" by a human. The first-acceptable-yes-wins leg survives and is live (#561); retired by DEC-063 — the two-protocol fork — nobody is asked "as a crowd". The first-acceptable-yes-wins leg survives and is live (#561))_
+- DEC-007 — Per-role assignment protocol + first-acceptable-yes-wins _(retired by DEC-061 — the two-protocol fork only — nobody is "named then confirmed" by a human. The first-acceptable-yes-wins leg survives and is live (#561); retired by DEC-063 — the two-protocol fork only — nobody is asked "as a crowd" (#561))_
 - DEC-024 — Tier-2 escalation is a *nudge* over a *derived* escalation trail; "widen the pool" is a logged stub, not a soft-constraint engine
 - DEC-025 — At-Risk urgency encodes "captain > mate" as pool-thinness, not a role-name check
 - DEC-026 — Board ping = detection-now / delivery-later; lean = a manual nudge in the one log; reschedule/cancel render disabled _(extended by DEC-095 — the deferred delivery half)_
 - DEC-027 — Cockpit v1 — four manual actions over existing rails; implicit automation-pause confirmed as emergent; warming = board-complement derive; "fills by" deferred to the fill-deadline decision
-- DEC-031 — "Fills by" = the fill deadline — `tripStart − FILL_DEADLINE_HOURS`, derived, bound to the escalation threshold _(amended by DEC-038 — fills-by display and label — the concept and code symbols are unchanged; the board no longer renders the line)_
+- DEC-031 — "Fills by" = the fill deadline — `tripStart − FILL_DEADLINE_HOURS`, derived, bound to the escalation threshold _(amended by DEC-038 — fills-by display and label only — the concept, the code symbols (`fillsBy`, `FILL_DEADLINE_HOURS`) and the mechanic are unchanged; the board no longer renders the line and the cockpit relabels it "deadline")_
 - DEC-042 — "All shifts" full-visibility view — a deliberate, opt-in pull surface (#100)
 - DEC-063 — Tier-1 ask fan-out is a staged "drip" — ranked, one candidate per interval, accumulating _(refined by DEC-088)_
 - DEC-064 — The manual override honors the role-competency floor — no mate as captain

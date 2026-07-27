@@ -32,6 +32,18 @@ export function check() {
     return [`${DIR} — ${e.message}`]
   }
 
+  // `load()` only looks at files shaped `DEC-*.md`. Anything else in the directory —
+  // a lowercase `dec-014-...`, a missing hyphen, a stray draft carrying a duplicate id —
+  // would be invisible to both the generator and every check below, which is the silent
+  // rot this whole record was split to eliminate. A shape it does not look at is worse
+  // than a shape it cannot parse.
+  const loaded = new Set([...decisions.values()].map((d) => d.file))
+  for (const f of readdirSync(DIR).filter((f) => f.endsWith('.md') && f !== '_preamble.md')) {
+    if (!loaded.has(f)) {
+      fail(`${DIR}/${f}`, 'is not a recognized decision file — the name must be `DEC-<id>-<slug>.md`')
+    }
+  }
+
   for (const [id, d] of decisions) {
     const at = `${DIR}/${d.file}`
 

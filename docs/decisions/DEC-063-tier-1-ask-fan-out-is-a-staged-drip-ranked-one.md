@@ -5,7 +5,7 @@ topic: "Staffing engine — asks, escalation, At-Risk board & cockpit"
 amends:
   - id: DEC-007
     relation: retires
-    scope: "the two-protocol fork — nobody is asked \"as a crowd\". The first-acceptable-yes-wins leg survives and is live (#561)"
+    scope: "the two-protocol fork only — nobody is asked \"as a crowd\" (#561)"
 ---
 
 ## DEC-063: Tier-1 ask fan-out is a staged "drip" — ranked, one candidate per interval, accumulating

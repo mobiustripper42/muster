@@ -5,7 +5,7 @@ topic: "Seats, shifts & state machine"
 amends:
   - id: DEC-007
     relation: retires
-    scope: "the two-protocol fork — nobody is \"named then confirmed\" by a human. The first-acceptable-yes-wins leg survives and is live (#561)"
+    scope: "the two-protocol fork only — nobody is \"named then confirmed\" by a human. The first-acceptable-yes-wins leg survives and is live (#561)"
 ---
 
 ## DEC-061: A winning "in" auto-confirms — `Claimed` is momentary on the happy path

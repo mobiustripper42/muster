@@ -131,6 +131,19 @@ describe("renderDecision", () => {
     expect(twice).toBe(once);
   });
 
+  it("is idempotent when the body has a double blank line of its own", () => {
+    // A global blank-line collapse in stripBanner made the generator a non-fixed-point
+    // here: gen:decisions writes the file, then check:decisions re-generates, collapses
+    // the unrelated gap, and calls the file it just wrote stale — a red build with no
+    // author error to fix. Masked today only because no real body has one.
+    const gappy = { ...d, body: "## DEC-020: A title\n\nFirst para.\n\n\nSecond para, after a wide gap.\n" };
+    const edges = [{ from: "DEC-092", relation: "revises", scope: "" }];
+    const once = renderDecision(gappy, edges);
+    const twice = renderDecision({ ...gappy, body: parseFrontmatter(once).body }, edges);
+    expect(twice).toBe(once);
+    expect(once).toContain("First para.\n\n\nSecond para");
+  });
+
   it("drops a stale banner when the last edge to a decision is removed", () => {
     const withBanner = renderDecision(d, [{ from: "DEC-092", relation: "revises", scope: "" }]);
     const after = renderDecision({ ...d, body: parseFrontmatter(withBanner).body }, []);

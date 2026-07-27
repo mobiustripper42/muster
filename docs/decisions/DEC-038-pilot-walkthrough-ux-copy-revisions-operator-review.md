@@ -5,7 +5,7 @@ topic: "UI, brand & frontend patterns"
 amends:
   - id: DEC-031
     relation: amends
-    scope: "fills-by display and label — the concept and code symbols are unchanged; the board no longer renders the line"
+    scope: "fills-by display and label only — the concept, the code symbols (`fillsBy`, `FILL_DEADLINE_HOURS`) and the mechanic are unchanged; the board no longer renders the line and the cockpit relabels it \"deadline\""
 ---
 
 ## DEC-038: Pilot-walkthrough UX/copy revisions (operator review of the slice-1 surfaces)

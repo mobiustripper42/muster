@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { issueMagicLink, randomSecret } from "@core/auth/magic-link.js";
 import { baseUrl } from "../../../lib/base-url";
+import { isProdDeploy } from "../../../lib/flags";
 import { getRepo } from "../../../lib/repo";
 
 /**
@@ -29,10 +30,12 @@ import { getRepo } from "../../../lib/repo";
 export async function GET(req: NextRequest) {
   // 404 on any prod deploy: Vercel prod (VERCEL_ENV) OR self-hosted prod
   // (no VERCEL_ENV, NODE_ENV=production). Live only on Vercel previews + local dev.
-  const isProdDeploy =
-    process.env.VERCEL_ENV === "production" ||
-    (!process.env.VERCEL_ENV && process.env.NODE_ENV === "production");
-  if (isProdDeploy) {
+  //
+  // Imported, not re-typed. This route hand-copied the predicate while `dev-code` and
+  // `auth-delivery` imported the shared one — two spellings of the check standing between
+  // the public internet and an unauthenticated admin-session minter, with nothing keeping
+  // them in step (#522 sweep 2). First, before any repo read or reflected output.
+  if (isProdDeploy()) {
     return new NextResponse("Not found", { status: 404 });
   }
   const crew = req.nextUrl.searchParams.get("crew");

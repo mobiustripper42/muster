@@ -175,8 +175,18 @@ async function recordConsentBestEffort(
 /**
  * Step 2 of self-serve sign-in (DEC-081): verify the pasted code against the
  * email carried in the cookie. A correct code mints the session; a wrong one
- * counts against the attempt cap. `locked`/`expired` send the crew member back
- * to the start; `invalid` keeps them on the code screen to retry.
+ * counts against the attempt cap.
+ *
+ * EVERY failure produces the identical response — same redirect, same query, same
+ * cookie state, same rendered copy. It used to branch: `locked`/`expired` cleared the
+ * cookie and sent you to `/crew?err=<reason>`, `invalid` kept you at the code step.
+ * Since only a roster email can reach `locked` or `expired`, six wrong guesses told an
+ * unauthenticated caller whether an address was on the roster (#522 sweep 2). The
+ * cookie divergence leaked it too — a `Set-Cookie` deletion is observable.
+ *
+ * The UX cost is real and accepted: a crew member whose code genuinely expired is told
+ * it didn't match rather than that it aged out. The copy names both possibilities and
+ * offers a fresh code, which is the same affordance the old branch gave them.
  */
 export async function verifyLoginCode(formData: FormData): Promise<void> {
   if (!selfServeEnabled()) redirect("/crew");
@@ -201,11 +211,9 @@ export async function verifyLoginCode(formData: FormData): Promise<void> {
     redirect("/crew");
   }
 
-  // A dead code (locked/expired) restarts the flow; a wrong one stays put.
-  const reason = result && !result.ok ? result.reason : "invalid";
-  if (reason === "locked" || reason === "expired") {
-    jar.delete(LOGIN_EMAIL_COOKIE);
-    redirect(`/crew?err=${reason}`);
-  }
+  // One response for every failure — wrong code, dead code, no code, unknown email, or a
+  // thrown domain call. The cookie is deliberately LEFT in place in all of them: keeping it
+  // holds the crew member at the code step where they can retry or request a fresh code,
+  // and, more to the point, deleting it on only some failures is itself the oracle.
   redirect("/crew?stage=code&err=invalid");
 }

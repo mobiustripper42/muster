@@ -77,6 +77,24 @@ import type { Message, Participant, Thread } from "../messaging/entities.js";
 import type { PaymentConfig } from "../reservations/payment-config.js";
 import type { ThreadId } from "../domain/ids.js";
 
+/**
+ * The rolling per-subject failure bound applied on top of the per-code attempt cap
+ * (DEC-142, #522 sweep 2).
+ *
+ * `startsAt` is the window's left edge — failures stamped before it are aged out and the
+ * window restarts. Comparison is lexicographic on ISO-8601 UTC text, which is ordering-
+ * correct given every timestamp in this schema is written by `toISOString()` (house style:
+ * ISO as `text`, verbatim round-trip, parity with the in-memory double).
+ */
+export interface FailureWindow {
+  /** ISO-8601 UTC. Failures stamped before this are discarded and the window restarts. */
+  startsAt: string;
+  /** ISO-8601 UTC — "now", stamped as the new window's start when one opens. */
+  now: string;
+  /** Failures allowed inside the window before claims are refused. */
+  max: number;
+}
+
 export interface Repository {
   // ── Role types (tenant config — DEC-ROLE-1) ───────────────────────────────
   saveRoleType(roleType: RoleType): Promise<void>;
@@ -416,11 +434,18 @@ export interface Repository {
    * increment is ONE row-locked statement, so K concurrent guesses can't all read
    * the same pre-increment count and blow past the cap — the ceiling is the whole
    * security model (DEC-081), so it must be race-safe, not check-then-bump.
+   *
+   * `window` adds the bound `maxAttempts` never had (DEC-142, #522 sweep 2): `attempts`
+   * caps guesses per CODE and a re-mint resets it, so without this the sustained rate was
+   * `maxAttempts` per resend-cooldown, forever. The window counter survives the re-mint.
+   * It is enforced in the SAME statement for the same reason the per-code cap is — a
+   * separate read-then-check is a race, and this cap is the security model.
    */
   claimLoginAttempt(
     subjectKind: AuthSubjectKind,
     subjectId: string,
     maxAttempts: number,
+    window: FailureWindow,
   ): Promise<{ codeHash: string; expiresAt: string; attempts: number } | null>;
 
   // ── Calendar feeds (crew iCal subscription — #355, DEC-098) ────────────────

@@ -856,8 +856,18 @@ export interface LoginCode {
   createdAt: string;
   /** ISO-8601 UTC. Past this instant the code is dead even if unconsumed. */
   expiresAt: string;
-  /** Failed verify attempts — capped to defeat brute-force of the short secret. */
+  /** Failed verify attempts against THIS code — reset to 0 by every re-mint. */
   attempts: number;
+  /**
+   * Start of the rolling failure window (ISO-8601 UTC), or absent before the first
+   * failure. Survives the re-mint that resets `attempts`, which is the whole point:
+   * `attempts` bounds guesses per code, this pair bounds them per person (DEC-142,
+   * #522). Absent on rows written before the window existed — they open one on their
+   * next failure rather than inheriting a window they never had.
+   */
+  failedSince?: string;
+  /** Failed verifies accumulated across every code minted inside the current window. */
+  failedInWindow?: number;
   /** ISO-8601 UTC; absent until redeemed. Single-use: set once, by the CAS. */
   consumedAt?: string;
 }

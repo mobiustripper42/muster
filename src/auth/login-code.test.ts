@@ -2,12 +2,19 @@ import { describe, expect, it } from "vitest";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import { asId } from "../domain/ids.js";
 import {
+  FAILURE_WINDOW_MS,
   MAX_ATTEMPTS,
+  MAX_FAILURES_PER_WINDOW,
+  RESEND_COOLDOWN_MS,
   normalizeEmail,
   randomCode,
   requestLoginCode,
   verifyLoginCode,
 } from "./login-code.js";
+
+/** The one failure `verifyLoginCode` can return. Named so the tests read as the property
+ *  they're asserting: not "this branch says X", but "every branch says the same thing". */
+const FAILED = { ok: false, reason: "invalid" } as const;
 
 const CAPTAIN = asId<"RoleTypeId">("captain");
 const EMAIL = "Quint@BrewBoat.test"; // stored mixed-case on purpose
@@ -134,17 +141,16 @@ describe("verifyLoginCode", () => {
     for (let i = 0; i < MAX_ATTEMPTS; i++) {
       last = await verifyLoginCode(repo, { email: EMAIL, code: "000000" }, { now: at(1000 + i) });
     }
-    expect(last).toEqual({ ok: false, reason: "locked" });
-    // The real code is now dead too.
-    expect(await verifyLoginCode(repo, { email: EMAIL, code }, { now: at(2000) }))
-      .toEqual({ ok: false, reason: "locked" });
+    expect(last).toEqual(FAILED);
+    // The real code is now dead too — the cap still holds, it just doesn't announce itself.
+    expect(await verifyLoginCode(repo, { email: EMAIL, code }, { now: at(2000) })).toEqual(FAILED);
   });
 
-  it("treats an expired code as expired", async () => {
+  it("an expired code fails identically to a wrong one", async () => {
     const repo = await repoWithCrew();
     const code = await mintFor(repo, EMAIL, "123456", at(0));
     const r = await verifyLoginCode(repo, { email: EMAIL, code }, { now: at(11 * 60_000) });
-    expect(r).toEqual({ ok: false, reason: "expired" });
+    expect(r).toEqual(FAILED);
   });
 
   it("is invalid for a non-matching email (no code exists)", async () => {
@@ -154,7 +160,79 @@ describe("verifyLoginCode", () => {
       { email: "stranger@nope.test", code: "123456" },
       { now: at(1000) },
     );
-    expect(r).toEqual({ ok: false, reason: "invalid" });
+    expect(r).toEqual(FAILED);
+  });
+
+  // THE test this module was missing (#522 sweep 2). Two tests used to sit twelve lines
+  // apart pinning "known email → expired" and "unknown email → invalid" as the contract —
+  // which is a roster oracle stated as a requirement. Every failure is now one value, and
+  // this asserts the property directly rather than leaving it implied by three assertions
+  // that happen to match.
+  it("NO ENUMERATION: every failure mode is byte-identical, on-roster or not", async () => {
+    const known = async (setup: (repo: InMemoryRepository) => Promise<unknown>, now: number) => {
+      const repo = await repoWithCrew();
+      await setup(repo);
+      return verifyLoginCode(repo, { email: EMAIL, code: "000000" }, { now: at(now) });
+    };
+
+    const results = [
+      // Unknown email — the attacker's control case.
+      await (async () => {
+        const repo = await repoWithCrew();
+        return verifyLoginCode(repo, { email: "stranger@nope.test", code: "000000" }, { now: at(1) });
+      })(),
+      // On-roster, no code ever minted.
+      await known(async () => {}, 1),
+      // On-roster, code expired.
+      await known((r) => mintFor(r, EMAIL, "123456", at(0)), 11 * 60_000),
+      // On-roster, code consumed.
+      await known(async (r) => {
+        const code = await mintFor(r, EMAIL, "123456", at(0));
+        await verifyLoginCode(r, { email: EMAIL, code }, { now: at(1) });
+      }, 2),
+      // On-roster, locked at the per-code cap.
+      await known(async (r) => {
+        await mintFor(r, EMAIL, "123456", at(0));
+        for (let i = 0; i < MAX_ATTEMPTS; i++) {
+          await verifyLoginCode(r, { email: EMAIL, code: "999999" }, { now: at(1 + i) });
+        }
+      }, 100),
+    ];
+
+    for (const r of results) expect(r).toEqual(FAILED);
+    // Not just equal-shaped: one distinct serialization across every branch.
+    expect(new Set(results.map((r) => JSON.stringify(r))).size).toBe(1);
+  });
+
+  it("the per-subject window survives re-mints, so mint-guess-mint can't run forever", async () => {
+    // The brute-force hole (DEC-142): MAX_ATTEMPTS caps guesses per CODE, and a re-mint
+    // reset it — ~7,200 guesses/day against a 6-digit space, in parallel across the whole
+    // roster. Admins are crew (DEC-092) and a crew session escalates to the cockpit in one
+    // click, so the prize was the operator account.
+    const repo = await repoWithCrew();
+    let clock = 0;
+    let failures = 0;
+
+    // Burn the window the way an attacker would: mint, exhaust the per-code cap, re-mint.
+    while (failures < MAX_FAILURES_PER_WINDOW) {
+      await mintFor(repo, EMAIL, String(failures).padStart(6, "0"), at(clock));
+      for (let i = 0; i < MAX_ATTEMPTS && failures < MAX_FAILURES_PER_WINDOW; i++) {
+        await verifyLoginCode(repo, { email: EMAIL, code: "999999" }, { now: at(clock) });
+        failures++;
+      }
+      clock += RESEND_COOLDOWN_MS + 1;
+    }
+
+    // A fresh code + a KNOWN-correct value is still refused — the subject is spent.
+    const code = await mintFor(repo, EMAIL, "123456", at(clock));
+    expect(await verifyLoginCode(repo, { email: EMAIL, code }, { now: at(clock) })).toEqual(FAILED);
+
+    // And it rolls: past the window, the same correct code redeems.
+    const later = clock + FAILURE_WINDOW_MS + 1;
+    const fresh = await mintFor(repo, EMAIL, "654321", at(later));
+    expect(await verifyLoginCode(repo, { email: EMAIL, code: fresh }, { now: at(later) })).toMatchObject({
+      ok: true,
+    });
   });
 });
 

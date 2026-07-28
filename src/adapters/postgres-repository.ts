@@ -101,7 +101,7 @@ import {
   PAYMENT_CONFIG_DEFAULTS,
   type PaymentConfig,
 } from "../reservations/payment-config.js";
-import type { Repository } from "../ports/repository.js";
+import type { FailureWindow, Repository } from "../ports/repository.js";
 
 /** Add `key: value` only when value is non-null — keeps optional fields absent. */
 function opt<K extends string, V>(
@@ -388,6 +388,8 @@ const toLoginCode = (r: any): LoginCode => ({
   createdAt: r.created_at,
   expiresAt: r.expires_at,
   attempts: r.attempts,
+  ...opt("failedSince", r.failed_since),
+  ...opt("failedInWindow", r.failed_in_window),
   ...opt("consumedAt", r.consumed_at),
 });
 
@@ -1593,6 +1595,11 @@ export class PostgresRepository implements Repository {
   // ── Login codes (crew self-serve sign-in — DEC-081) ────────────────────────
   async saveLoginCode(c: LoginCode): Promise<void> {
     await this.#pool.query(
+      // The re-mint deliberately does NOT touch failed_since / failed_in_window. Resetting
+      // `attempts` here is correct — it caps guesses against one code — but carrying that
+      // reset to the window would recreate the exact hole DEC-142 closes: mint, guess, mint,
+      // guess, forever. The window is only ever advanced by `claimLoginAttempt`, which is
+      // also the only place that can age it out. (#522 sweep 2)
       `insert into login_codes(subject_kind, subject_id, code_hash, created_at, expires_at, attempts, consumed_at)
        values ($1,$2,$3,$4,$5,$6,$7)
        on conflict (subject_kind, subject_id) do update set
@@ -1639,16 +1646,35 @@ export class PostgresRepository implements Repository {
     subjectKind: AuthSubjectKind,
     subjectId: string,
     maxAttempts: number,
+    window: FailureWindow,
   ): Promise<{ codeHash: string; expiresAt: string; attempts: number } | null> {
     // Guarded increment: the `attempts < $3` predicate under the row lock means
     // K concurrent claims serialize and only the first `maxAttempts` succeed — the
     // rest return no row. Race-safe brute-force ceiling (#297).
+    //
+    // The window bound rides the SAME statement (DEC-142, #522). `stale` is computed once
+    // in a CTE so the three places that need it — the guard, the new `failed_since`, and
+    // the reset-or-increment — cannot disagree; inlining the predicate three times is one
+    // edit away from a counter that resets itself on every failure. A stale window is
+    // treated as absent: the claim is allowed and the window restarts at 1.
     const { rows } = await this.#pool.query(
-      `update login_codes set attempts = attempts + 1
-        where subject_kind=$1 and subject_id=$2 and consumed_at is null
-          and attempts < $3
-        returning code_hash, expires_at, attempts`,
-      [subjectKind, subjectId, maxAttempts],
+      `with cur as (
+         select subject_kind, subject_id,
+                (failed_since is null or failed_since < $5) as stale
+           from login_codes
+          where subject_kind=$1 and subject_id=$2
+       )
+       update login_codes lc set
+         attempts = lc.attempts + 1,
+         failed_since = case when cur.stale then $6 else lc.failed_since end,
+         failed_in_window = case when cur.stale then 1 else coalesce(lc.failed_in_window, 0) + 1 end
+        from cur
+       where lc.subject_kind=cur.subject_kind and lc.subject_id=cur.subject_id
+         and lc.consumed_at is null
+         and lc.attempts < $3
+         and (cur.stale or coalesce(lc.failed_in_window, 0) < $4)
+       returning lc.code_hash, lc.expires_at, lc.attempts`,
+      [subjectKind, subjectId, maxAttempts, window.max, window.startsAt, window.now],
     );
     return rows[0]
       ? {

@@ -155,6 +155,12 @@ const loginCode = (over: Partial<LoginCode> = {}): LoginCode => ({
   attempts: 0,
   ...over,
 });
+/** A failure window wide enough to never be the thing under test (DEC-142). */
+const WIDE_WINDOW = {
+  startsAt: "2026-01-01T00:00:00.000Z",
+  now: "2026-07-01T12:00:00.000Z",
+  max: 1_000,
+};
 const outboxEntry = (over: Partial<OutboxEntry> = {}): OutboxEntry => ({
   id: asId<"OutboxEntryId">("obx-ask-1"),
   askId: asId<"AskId">("ask-1"),
@@ -1324,27 +1330,62 @@ export function runRepositoryContract(
 
     it("claimLoginAttempt: increments + returns codeHash/expiresAt; null when absent/consumed", async () => {
       await repo.saveLoginCode(loginCode());
-      const c1 = await repo.claimLoginAttempt("crew", CREW, 5);
+      const c1 = await repo.claimLoginAttempt("crew", CREW, 5, WIDE_WINDOW);
       expect(c1).toMatchObject({ codeHash: "code-hash-1", attempts: 1 });
       expect(c1!.expiresAt).toBe("2026-07-01T12:10:00.000Z");
-      expect((await repo.claimLoginAttempt("crew", CREW, 5))!.attempts).toBe(2);
+      expect((await repo.claimLoginAttempt("crew", CREW, 5, WIDE_WINDOW))!.attempts).toBe(2);
       expect((await repo.getLoginCode("crew", CREW))!.attempts).toBe(2);
       // Absent → null; consumed → null (can't guess a spent code).
-      expect(await repo.claimLoginAttempt("crew", "ghost", 5)).toBeNull();
+      expect(await repo.claimLoginAttempt("crew", "ghost", 5, WIDE_WINDOW)).toBeNull();
       await repo.consumeLoginCodeIfUnused("crew", CREW, "2026-07-01T12:05:00.000Z");
-      expect(await repo.claimLoginAttempt("crew", CREW, 5)).toBeNull();
+      expect(await repo.claimLoginAttempt("crew", CREW, 5, WIDE_WINDOW)).toBeNull();
     });
 
     it("claimLoginAttempt: the cap is atomic — concurrent claims can't exceed maxAttempts (#297)", async () => {
       await repo.saveLoginCode(loginCode());
       // 10 concurrent guesses against a max of 3 → exactly 3 non-null claims.
       const results = await Promise.all(
-        Array.from({ length: 10 }, () => repo.claimLoginAttempt("crew", CREW, 3)),
+        Array.from({ length: 10 }, () =>
+          repo.claimLoginAttempt("crew", CREW, 3, WIDE_WINDOW),
+        ),
       );
       expect(results.filter((r) => r !== null)).toHaveLength(3);
       expect((await repo.getLoginCode("crew", CREW))!.attempts).toBe(3);
       // Once at the cap, further claims stay null.
-      expect(await repo.claimLoginAttempt("crew", CREW, 3)).toBeNull();
+      expect(await repo.claimLoginAttempt("crew", CREW, 3, WIDE_WINDOW)).toBeNull();
+    });
+
+    it("claimLoginAttempt: the failure window survives the re-mint that resets attempts (DEC-142, #522)", async () => {
+      // The hole this closes: `attempts` caps guesses per CODE, and a re-mint upserts the
+      // row with attempts=0 — so mint/guess/mint/guess ran forever. The window counter is
+      // the per-SUBJECT bound, and the only reason it works is that saveLoginCode carries
+      // it forward. Both adapters must agree, since one expresses it in SQL and one in JS.
+      const window = { startsAt: "2026-07-01T00:00:00.000Z", now: "2026-07-01T12:00:00.000Z", max: 3 };
+      await repo.saveLoginCode(loginCode());
+
+      expect(await repo.claimLoginAttempt("crew", CREW, 5, window)).not.toBeNull();
+      expect((await repo.getLoginCode("crew", CREW))!.failedInWindow).toBe(1);
+
+      // Re-mint: a fresh code, attempts back to 0 — the window must NOT follow it.
+      await repo.saveLoginCode(loginCode({ codeHash: "code-hash-2", attempts: 0 }));
+      expect((await repo.getLoginCode("crew", CREW))!.attempts).toBe(0);
+      expect((await repo.getLoginCode("crew", CREW))!.failedInWindow).toBe(1);
+
+      // Two more failures reach max=3, and the next claim is refused despite attempts=2.
+      await repo.claimLoginAttempt("crew", CREW, 5, window);
+      await repo.claimLoginAttempt("crew", CREW, 5, window);
+      expect((await repo.getLoginCode("crew", CREW))!.failedInWindow).toBe(3);
+      expect(await repo.claimLoginAttempt("crew", CREW, 5, window)).toBeNull();
+      // Re-minting does not buy a way out — that WAS the exploit.
+      await repo.saveLoginCode(loginCode({ codeHash: "code-hash-3", attempts: 0 }));
+      expect(await repo.claimLoginAttempt("crew", CREW, 5, window)).toBeNull();
+
+      // A window that has aged out restarts at 1 rather than staying locked.
+      const later = { startsAt: "2026-07-02T12:00:00.000Z", now: "2026-07-03T12:00:00.000Z", max: 3 };
+      expect(await repo.claimLoginAttempt("crew", CREW, 5, later)).not.toBeNull();
+      const rolled = (await repo.getLoginCode("crew", CREW))!;
+      expect(rolled.failedInWindow).toBe(1);
+      expect(rolled.failedSince).toBe(later.now);
     });
 
     it("calendar feeds: hash-lookup round-trip; one per crew (rotate replaces); revoke + touch (DEC-098)", async () => {

@@ -208,8 +208,13 @@ async function processBookingCharge(
   // paid-but-unbooked branch records the payment and alerts (#522 review).
   //
   // Alert first, then rethrow: the retry behaviour is unchanged, the money is visible.
-  // A try/catch rather than a `.catch()` on the promise, because `requireCents` throws
-  // while the argument object is being BUILT — synchronously, before the write is called.
+  //
+  // SCOPED TO THE PARSE, not the write. Wrapping the write too would alert "PAID but NOT
+  // booked — unusable booking metadata … REFUND MANUALLY" for a pg connection blip or a
+  // serialization failure, which the route already documents as expected and retryable
+  // (`app/api/webhooks/stripe/route.ts:68`). Telling an operator to refund a booking that
+  // will land on the next retry is worse than saying nothing, and it gets worse still once
+  // the alert fans out to admins over SMS.
   const alertUnusableMetadata = async (e: unknown): Promise<void> => {
     await deps
       .alertPaidButUnbooked(
@@ -222,10 +227,31 @@ async function processBookingCharge(
       });
   };
 
-  let result: BookingResult | SlotBookingResult;
-  try {
-    result = await (isSlotBooking
-      ? writeSlotBooking(
+  // Parse the money metadata BEFORE the write, in its own guard. A defect here is our bug
+  // and needs the alert; a write failure is infra and Stripe's retry already covers it.
+  const parseSlotMoney = async (): Promise<{ priceCents: number; extrasCents: number }> => {
+    try {
+      return {
+        // Never default. `?? 0` materialized the event at price 0, after which
+        // `balanceOwedCents` derives "nothing owed" and `purchases-view` reports
+        // `priceKnown: true` — a free boat that reads as a normal paid booking (#522).
+        priceCents: requireCents(m.priceCents, "priceCents", charge.key),
+        // Extras frozen at checkout (composeFare, #474) — carried so the deposit-mode
+        // balance deriver bills base + extras, not the bare base (DEC-107 amend). Absent is
+        // legitimate (a pre-#474 charge) and reads 0; present-but-unusable is not, and used
+        // to slip through the same `Number()` coercion `priceCents` was hardened against.
+        extrasCents: requireCents(m.extrasCents ?? "0", "extrasCents", charge.key),
+      };
+    } catch (e) {
+      await alertUnusableMetadata(e);
+      throw e;
+    }
+  };
+
+  const money = isSlotBooking ? await parseSlotMoney() : null;
+
+  const result: BookingResult | SlotBookingResult = money
+    ? await writeSlotBooking(
         deps.repo,
         {
           offeringId: asId<"OfferingId">(m.offeringId ?? ""),
@@ -233,15 +259,8 @@ async function processBookingCharge(
           date: m.date ?? "",
           time: m.time ?? "",
           guestCount: partySize,
-          // Never default. `?? 0` materialized the event at price 0, after which
-          // `balanceOwedCents` derives "nothing owed" and `purchases-view` reports
-          // `priceKnown: true` — a free boat that reads as a normal paid booking. Only our
-          // own builders mint this metadata and all of them set it, so an absent value is a
-          // bug on our side; it should be a loud 500 Stripe retries, not a silent zero (#522).
-          priceCents: requireCents(m.priceCents, "priceCents", charge.key),
-          // Extras frozen at checkout (composeFare, #474) — carried so the deposit-mode
-          // balance deriver bills base + extras, not the bare base (DEC-107 amend).
-          extrasCents: Number(m.extrasCents ?? 0),
+          priceCents: money.priceCents,
+          extrasCents: money.extrasCents,
           customerName: m.customerName ?? "",
           ...(m.email ? { email: m.email } : {}),
           ...(m.phone ? { phone: m.phone } : {}),
@@ -251,24 +270,20 @@ async function processBookingCharge(
         },
         deps.now,
       )
-      : writeBooking(
-          deps.repo,
-          {
-            eventId: asId<"EventId">(m.eventId ?? ""),
-            customerName: m.customerName ?? "",
-            partySize,
-            ...(m.email ? { email: m.email } : {}),
-            ...(m.phone ? { phone: m.phone } : {}),
-            ...(m.waiverConsentAt ? { waiverConsentAt: m.waiverConsentAt } : {}),
-            ...(m.waiverVersion ? { waiverVersion: m.waiverVersion } : {}),
-            idempotencyKey,
-          },
-          deps.now,
-        ));
-  } catch (e) {
-    await alertUnusableMetadata(e);
-    throw e;
-  }
+    : await writeBooking(
+        deps.repo,
+        {
+          eventId: asId<"EventId">(m.eventId ?? ""),
+          customerName: m.customerName ?? "",
+          partySize,
+          ...(m.email ? { email: m.email } : {}),
+          ...(m.phone ? { phone: m.phone } : {}),
+          ...(m.waiverConsentAt ? { waiverConsentAt: m.waiverConsentAt } : {}),
+          ...(m.waiverVersion ? { waiverVersion: m.waiverVersion } : {}),
+          idempotencyKey,
+        },
+        deps.now,
+      );
 
   // The money moved — record the Payment against the (would-be) reservation either way.
   await recordPayment(deps, charge, kind, reservationId);

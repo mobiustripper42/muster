@@ -84,15 +84,22 @@ Balance is collected **on demand** (the auto-emit scheduler that reads `balanceD
 stays P12+). **Amount authority is the canonical deriver `balanceOwedCents`, computed at click time** —
 never a config recompute of the deposit share, so it can't drift when `depositPercent`/price change
 between deposit and balance (the `Payment` entity already mandates balance be *derived, never stored*).
-It sums only `status==='succeeded'`, so a future refund re-opens the balance through the same one
-function.
+A refund re-opens the balance through the same one function.
 
-> **Formula, as it stands after #474 and DEC-134** (this paragraph originally read
-> `(event.price + tax) − Σ succeeded payments`, which is now under-specified in two ways):
+> **Formula, as it stands after #474, DEC-134 and #522** (this paragraph originally read
+> `(event.price + tax) − Σ succeeded payments`, which is now under-specified in three ways):
 > ```
 > balanceOwedCents = fareCents + tax(fareCents)
->                  − Σ succeeded (amountCents − gratuityCents − serviceFeeCents)
+>                  − Σ notRefunded max(0, (amount − gratuity − fee)
+>                                        − max(0, refunded − gratuity − fee))
 > ```
+> - **Refunds net against gratuity and fee FIRST** (#522), and only the excess reduces
+>   fare+tax. This used to sum `status==='succeeded'` only, which was equivalent to "not
+>   refunded" while nothing could write a partial — once `markPaymentRefunded` landed, a
+>   partially refunded deposit counted as zero paid and re-billed the whole fare. Attributing
+>   a partial refund to fare+tax instead would re-bill fare on a **tip-only refund**, which is
+>   the likeliest partial an operator makes. A refund's composition is not recorded, so the
+>   order is an assumption; this is the one that cannot over-charge a customer.
 > - **`fareCents` is the composed party fare** — `event.price` **+** the frozen
 >   `Reservation.extrasCents` (#474), not the bare base. The base alone undercollects a
 >   deposit-mode balance by `extras + tax(extras)`.

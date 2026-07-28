@@ -89,14 +89,33 @@ export function balanceOwedCents(
     amountCents: number;
     gratuityCents?: number;
     serviceFeeCents?: number;
+    refundedCents?: number;
   }[],
 ): number {
   const total = fareCents + taxCentsFor(fareCents, taxRateBps);
   // Net the GRATUITY and the SERVICE FEE out of each paid amount (DEC-124 / DEC-134): the tip
   // is crew money and the fee is a one-shot surcharge — neither is part of fare+tax, so
   // counting either as "paid toward balance" would under-charge a deposit booking's balance.
-  const paid = payments
-    .filter((p) => p.status === "succeeded")
-    .reduce((sum, p) => sum + p.amountCents - (p.gratuityCents ?? 0) - (p.serviceFeeCents ?? 0), 0);
+  //
+  // A REFUNDED amount is no longer paid. Before `markPaymentRefunded` existed nothing could
+  // write `partially_refunded`, so filtering to `succeeded` was equivalent to "not refunded"
+  // — it isn't any more (#522 review). Left as a filter, a partially refunded deposit would
+  // count as £0 paid and the balance charge would bill the customer the FULL fare + tax on
+  // top of what they already paid. Netting `refundedCents` instead is correct for all three
+  // states: `succeeded` has none, `partially_refunded` nets the part, `refunded` nets to 0.
+  const paid = payments.reduce((sum, p) => {
+    // A fully refunded row contributes nothing regardless of what `refundedCents` says —
+    // it may be absent on a hand-reconciled or legacy row, and trusting the amount alone
+    // would count refunded money as paid. Status wins for the terminal state.
+    if (p.status === "refunded") return sum;
+    const towardFareAndTax =
+      p.amountCents - (p.gratuityCents ?? 0) - (p.serviceFeeCents ?? 0);
+    // Refunds come off what was paid toward fare+tax, floored at zero — a FULL refund
+    // returns the tip and fee too, so netting them a second time would push this negative
+    // and inflate the balance. Which part of a PARTIAL refund came back is not modelled
+    // (nothing records a refund's composition), so it is attributed to fare+tax first,
+    // which errs toward still-owed rather than silently forgiving a balance.
+    return sum + Math.max(0, towardFareAndTax - (p.refundedCents ?? 0));
+  }, 0);
   return total - paid;
 }

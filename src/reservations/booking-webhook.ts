@@ -171,14 +171,18 @@ const paymentIdFor = (chargeKey: string): PaymentId => asId<"PaymentId">(`pay_${
  * a 500, which is the correct answer to Stripe — it retries, and the failure is visible.
  */
 function requireCents(raw: string | undefined, field: string, chargeKey: string): number {
-  const n = Number(raw);
-  if (raw === undefined || raw === "" || !Number.isFinite(n) || n < 0) {
+  // Validate the STRING, not the coercion. `Number("  ")` is 0 — finite and not negative
+  // — so a whitespace-only value walked straight through the first version of this guard
+  // and booked at price zero, which is the exact defect it exists to prevent. `Number`
+  // also accepts `"0x10"` (→ 16) and `"1e3"`, neither of which our builders emit; Stripe
+  // makes no promise about what a metadata value contains. Integer cents only (DEC-112).
+  if (raw === undefined || !/^\d+$/.test(raw)) {
     throw new Error(
       `booking metadata is missing a usable ${field} (got ${JSON.stringify(raw)}) on charge ${chargeKey} — ` +
         `refusing to book at a defaulted price`,
     );
   }
-  return n;
+  return Number(raw);
 }
 
 /** The charge→booking spine, shared by both event paths (11.2 / 12.5). */
@@ -195,8 +199,33 @@ async function processBookingCharge(
   const partySize = Number(m.guestCount ?? m.partySize);
   const reservationId = reservationIdFor(idempotencyKey);
 
-  const result: BookingResult | SlotBookingResult = isSlotBooking
-    ? await writeSlotBooking(
+  // Money has already moved by the time we get here, so a metadata problem must be LOUD
+  // before it is fatal. `requireCents` throws below (correctly — a 500 makes Stripe
+  // retry), but a bare throw from inside the `writeSlotBooking` argument list would run
+  // before `recordPayment` and before any alert: no Payment row, no reservation, no
+  // notification, and Stripe gives up after ~3 days. The only trace would be a
+  // `console.error` in the route. That inverts this module's own posture — every other
+  // paid-but-unbooked branch records the payment and alerts (#522 review).
+  //
+  // Alert first, then rethrow: the retry behaviour is unchanged, the money is visible.
+  // A try/catch rather than a `.catch()` on the promise, because `requireCents` throws
+  // while the argument object is being BUILT — synchronously, before the write is called.
+  const alertUnusableMetadata = async (e: unknown): Promise<void> => {
+    await deps
+      .alertPaidButUnbooked(
+        `⚠️ PAID but NOT booked — unusable booking metadata on Stripe charge ${charge.key} ` +
+          `(${charge.amountCents} ${charge.currency}): ${e instanceof Error ? e.message : String(e)}. ` +
+          `Stripe will retry; if it keeps failing, REFUND MANUALLY and investigate the builder that minted it.`,
+      )
+      .catch(() => {
+        // An alert failure must not replace the underlying error — the caller rethrows that.
+      });
+  };
+
+  let result: BookingResult | SlotBookingResult;
+  try {
+    result = await (isSlotBooking
+      ? writeSlotBooking(
         deps.repo,
         {
           offeringId: asId<"OfferingId">(m.offeringId ?? ""),
@@ -222,20 +251,24 @@ async function processBookingCharge(
         },
         deps.now,
       )
-    : await writeBooking(
-        deps.repo,
-        {
-          eventId: asId<"EventId">(m.eventId ?? ""),
-          customerName: m.customerName ?? "",
-          partySize,
-          ...(m.email ? { email: m.email } : {}),
-          ...(m.phone ? { phone: m.phone } : {}),
-          ...(m.waiverConsentAt ? { waiverConsentAt: m.waiverConsentAt } : {}),
-          ...(m.waiverVersion ? { waiverVersion: m.waiverVersion } : {}),
-          idempotencyKey,
-        },
-        deps.now,
-      );
+      : writeBooking(
+          deps.repo,
+          {
+            eventId: asId<"EventId">(m.eventId ?? ""),
+            customerName: m.customerName ?? "",
+            partySize,
+            ...(m.email ? { email: m.email } : {}),
+            ...(m.phone ? { phone: m.phone } : {}),
+            ...(m.waiverConsentAt ? { waiverConsentAt: m.waiverConsentAt } : {}),
+            ...(m.waiverVersion ? { waiverVersion: m.waiverVersion } : {}),
+            idempotencyKey,
+          },
+          deps.now,
+        ));
+  } catch (e) {
+    await alertUnusableMetadata(e);
+    throw e;
+  }
 
   // The money moved — record the Payment against the (would-be) reservation either way.
   await recordPayment(deps, charge, kind, reservationId);

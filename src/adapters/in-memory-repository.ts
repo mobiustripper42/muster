@@ -418,12 +418,12 @@ export class InMemoryRepository implements Repository {
   async listAllPayments(): Promise<Payment[]> {
     return [...this.#payments.values()].map(clone);
   }
-  async markPaymentRefunded(id: PaymentId, refundedCents: number): Promise<void> {
+  async markPaymentRefunded(id: PaymentId, refundedTotalCents: number): Promise<void> {
     // Mirrors the postgres `greatest(coalesce(...))`: idempotent on redelivery, accumulating
     // across partial refunds, and the status derived from the row's own amount.
     const p = this.#payments.get(id);
     if (!p) return;
-    const total = Math.max(p.refundedCents ?? 0, refundedCents);
+    const total = Math.max(p.refundedCents ?? 0, refundedTotalCents);
     this.#payments.set(id, {
       ...clone(p),
       refundedCents: total,

@@ -53,34 +53,46 @@ export interface SeatPool {
 
 /**
  * Map each crew member → the set of ISO dates they already hold a committed seat
- * on, optionally excluding one shift (the one being solved). One pass over all
- * shifts and their seats — fine for the throwaway in-memory store; a real DB
- * indexes this later.
+ * on, optionally excluding one shift (the one being solved).
+ *
+ * TWO queries, not 1+N. It used to call `listSeatsForShift` per shift, which against
+ * Postgres is one sequential round trip each — fine when this only ran inside the tick,
+ * and not fine since it started guarding the crew-facing "In" tap (#522 sweep 3). Four
+ * boats over a ~200-day season is ~800 shifts and rows are never pruned, so that shape
+ * was ~800 round trips (seconds) on a user-latency path in year one, and roughly ten
+ * times that by season three. `listAllSeats` makes it flat.
  */
 export async function committedDatesByCrew(
   repo: Repository,
   excludeShiftId?: ShiftId,
 ): Promise<Map<CrewMemberId, Set<string>>> {
   const byCrew = new Map<CrewMemberId, Set<string>>();
-  const shifts = await repo.listShifts();
+  const [shifts, seats] = await Promise.all([repo.listShifts(), repo.listAllSeats()]);
+
+  // A Cancelled shift is not a commitment. Its seats are deliberately KEPT (for
+  // resurrection — form-shifts `restoredCrew`), so a crew member the cancel dropped
+  // still carries a Confirmed seat there; counting it would read them as double-booked
+  // on that date and bar them from the very shift they were moved to (a boat
+  // reassignment cancels the old vessel-day and forms a new one). The claimable-list
+  // scan already excludes Cancelled shifts — this makes the availability scan agree.
+  // (Completed stays a real same-day commitment.)
+  const dateByShift = new Map<string, string>();
   for (const shift of shifts) {
     if (shift.id === excludeShiftId) continue;
-    // A Cancelled shift is not a commitment. Its seats are deliberately KEPT
-    // (for resurrection — form-shifts `restoredCrew`), so a crew member the cancel
-    // dropped still carries a Confirmed seat here; counting it would read them as
-    // double-booked on that date and bar them from the very shift they were moved
-    // to (a boat reassignment cancels the old vessel-day and forms a new one). The
-    // claimable-list scan already excludes Cancelled shifts — this makes the
-    // availability scan agree. (Completed stays a real same-day commitment.)
     if (shift.state === "Cancelled") continue;
-    const seats = await repo.listSeatsForShift(shift.id);
-    for (const seat of seats) {
-      if (!seat.assignedCrewMemberId) continue;
-      if (!COMMITTED_SEAT_STATES.has(seat.state)) continue;
-      const dates = byCrew.get(seat.assignedCrewMemberId) ?? new Set<string>();
-      dates.add(shift.date);
-      byCrew.set(seat.assignedCrewMemberId, dates);
-    }
+    dateByShift.set(String(shift.id), shift.date);
+  }
+
+  for (const seat of seats) {
+    if (!seat.assignedCrewMemberId) continue;
+    if (!COMMITTED_SEAT_STATES.has(seat.state)) continue;
+    // Absent ⇒ the seat's shift was excluded, Cancelled, or gone. Same outcome as the
+    // per-shift loop's `continue`, reached by lookup instead of by not querying.
+    const date = dateByShift.get(String(seat.shiftId));
+    if (date === undefined) continue;
+    const dates = byCrew.get(seat.assignedCrewMemberId) ?? new Set<string>();
+    dates.add(date);
+    byCrew.set(seat.assignedCrewMemberId, dates);
   }
   return byCrew;
 }

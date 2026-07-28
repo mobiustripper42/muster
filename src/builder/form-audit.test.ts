@@ -14,7 +14,6 @@ function form(over: Partial<FormResult>): FormResult {
     seatsCreated: 0,
     seatsPruned: 0,
     seatsStranded: 0,
-    vesselsMissing: [],
     shiftsCancelled: 0,
     createdShiftIds: [],
     cancelledShiftIds: [],

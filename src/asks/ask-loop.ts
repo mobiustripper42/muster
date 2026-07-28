@@ -365,13 +365,25 @@ export async function recordResponse(
       // which asks whether this becomes a time-overlap rule instead of whole-day —
       // stays a one-site change in `notDoubleBooked` that every path inherits.
       // Until then this is what SPEC §2.7.2 and DEC-078 already claim is enforced.
+      //
+      // KNOWN GAP, the same one #554 documents at `claim.ts:111-119` and DEC-078's
+      // amendment banner names: this is a read-then-CAS over a cross-record invariant
+      // the no-FK store cannot enforce. The CAS below compares only THIS seat's state,
+      // so two genuinely concurrent accepts for two same-date shifts both read an empty
+      // set, both pass here, and both win. What this closes is the SEQUENTIAL case —
+      // two texts, two taps, minutes apart — which needed no interleaving at all.
+      // #554 must list this file alongside `claim.ts`; fixing it there won't fix it here.
       const shift = await repo.getShift(seat.shiftId);
-      if (shift) {
-        const committed = await committedDatesByCrew(repo, seat.shiftId);
-        const elsewhere = committed.get(ask.crewMemberId) ?? new Set<string>();
-        if (!notDoubleBooked(elsewhere, shift.date).passed) {
-          return { claimed: false, reason: "double_booked", seatState: seat.state };
-        }
+      if (!shift) {
+        // Fail CLOSED. Every other missing precondition in this function throws, and a
+        // guard that seats someone when it can't evaluate itself is the wrong posture —
+        // especially this one, whose failure mode is a boat with nobody at the dock.
+        throw new Error(`no shift ${seat.shiftId} for seat ${seat.id}`);
+      }
+      const committed = await committedDatesByCrew(repo, seat.shiftId);
+      const elsewhere = committed.get(ask.crewMemberId) ?? new Set<string>();
+      if (!notDoubleBooked(elsewhere, shift.date).passed) {
+        return { claimed: false, reason: "double_booked", seatState: seat.state };
       }
       // Atomic compare-and-swap (REQ-CLAIM-1): claim only if STILL Asked.
       const won = await repo.saveSeatIfState(

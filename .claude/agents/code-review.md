@@ -44,9 +44,16 @@ file that was never committed is exactly where a missing auth check hides.
 If the range covers more than ~25 files, say so up front, review the highest-risk subset
 (anything under `src/`, any money path, any auth path), and name what you skipped.
 
-**Step 1 — read the decisions.** Open `docs/DECISIONS.md` and read every DEC entry governing the
-areas the diff touches. Do not review from memory of the conventions; read them. If a change
+**Step 1 — read the decisions.** Decisions live one per file in `docs/decisions/DEC-*.md`;
+`docs/DECISIONS.md` is a generated topic index over them (DEC-141). Skim the index to find the DECs
+governing the areas the diff touches, then **read those files** — `grep -rl DEC-042 docs/decisions/`
+resolves any id. The index carries titles and amendment pointers only; reviewing off it is reviewing
+off a table of contents. Do not review from memory of the conventions; read them. If a change
 appears to contradict a DEC, quote the DEC number in the finding.
+
+A decision that has been amended carries a generated banner at the top of its file naming what
+amended it and in what scope. Read it before citing the decision — the body below it may describe a
+leg that was replaced.
 
 **Step 2 — read enough context to judge.** For each changed file, read the surrounding code —
 especially across the core/app boundary and on money paths. A diff hunk alone is not enough
@@ -171,7 +178,8 @@ bury a double-charge behind a naming nit.
 
 ## Sources of Truth
 
-- `docs/DECISIONS.md` — read it (Step 1); don't contradict these
+- `docs/decisions/DEC-*.md` — read the relevant ones (Step 1); don't contradict these.
+  `docs/DECISIONS.md` is the generated index over them
 - `.claude/CLAUDE-context.md` — stack, data model, commands
 - `CLAUDE.md` — workflow conventions
 - `docs/SPEC.md` — scope; flag apparent scope creep

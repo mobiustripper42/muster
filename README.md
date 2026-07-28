@@ -20,7 +20,8 @@ domain core (state machine, availability oracle, reliability log) behind a repos
 |------|------|
 | [`docs/SPEC.md`](docs/SPEC.md) | 🔒 LOCKED v1.0 — the buildable source of truth |
 | [`docs/FUTURE_IDEAS.md`](docs/FUTURE_IDEAS.md) | The shiny-object parking lot |
-| [`docs/DECISIONS.md`](docs/DECISIONS.md) | Architectural decisions (DEC-NNN) |
+| [`docs/DECISIONS.md`](docs/DECISIONS.md) | Generated topic index of architectural decisions (DEC-NNN) |
+| [`docs/decisions/`](docs/decisions/) | The decisions themselves, one per file. Edit these, then `npm run gen:decisions` |
 | [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md) | Phases, tasks, velocity |
 | [`docs/USER_STORIES.md`](docs/USER_STORIES.md) · [`docs/BRAND.md`](docs/BRAND.md) | Roles / voice |
 | [`CLAUDE.md`](CLAUDE.md) | Project context for Claude Code |

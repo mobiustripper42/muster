@@ -84,7 +84,7 @@ Project-specific docs beyond the baseline `## Key Docs` table in the `CLAUDE.md`
 | `docs/design/DESIGN-REFERENCE.md` | How to consume the UI mockups: spec wins on *what*, mockups inform *how*; **read JSX, never import**. Read before building any surface (M4). |
 | `docs/design/mockups/` | Claude Design export (HTML + JSX) per surface §2.1–2.6.3. **Visual-direction reference, not spec.** |
 
-Notes on the baseline docs: `docs/SPEC.md` is 🔒 **LOCKED v1.0** — the buildable source of truth; edits are corrections only (DEC-014). `docs/DECISIONS.md` carries DEC-001–012 (extracted from the spec), 013–014 (setup), and the M4 / DATA / MSG / ROLE / 033 series referenced throughout this file.
+Notes on the baseline docs: `docs/SPEC.md` is 🔒 **LOCKED v1.0** — the buildable source of truth; edits are corrections only (DEC-014). **Decisions live one per file in `docs/decisions/DEC-*.md`** (139 of them, DEC-001–141 plus the `DATA` / `MSG` / `ROLE` / `TBD` families); `docs/DECISIONS.md` is the **generated** topic index over them (DEC-141). Read a decision by reading its file — `grep -rl DEC-042 docs/decisions/` resolves any id. To add or change one, edit its file and run `npm run gen:decisions`; `npm run check:decisions` runs first in `verify` and fails on a stale index, a duplicate id, or a dangling reference.
 
 ## Workflow Overrides
 

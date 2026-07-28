@@ -1,178 +1,123 @@
 #!/usr/bin/env node
-// Validates docs/DECISIONS.md structural integrity (#564).
+// Validates the decision record (#564, DEC-141). Text-only, no deps — runs first in
+// `npm run verify` so it fails in milliseconds rather than behind typecheck/test/build.
+// CI needs no workflow step of its own; the existing verify job already runs `verify`.
 //
-// The record is one 4,000-line file with a hand-maintained topic index (DEC-127).
-// Manual steps decay: four of the last nine DECs shipped without an index row, and
-// DEC-138 named two unrelated decisions across `main` and `feature/reservations`
-// because both branches drew from the same counter and nothing surfaced it (#562).
-// This is that surface. Text-only, no deps — runs first in `npm run verify` so it
-// fails in milliseconds rather than behind the typecheck/test/build chain.
+// 564a validated the single 4,161-line file. 564b split it into docs/decisions/*.md with
+// docs/DECISIONS.md as the generated index, so the checks moved with it. The one that
+// matters most now is FRESHNESS: the generator is still a manual step, and this is what
+// makes forgetting it a red build instead of an invisible defect. That — not discipline —
+// is the actual fix for DEC-127's decay.
 //
-// It does not stop a collision happening — two branches can still both pick 141.
-// It stops one being *silent*: the second to merge goes red on `push: main`, where
-// the previous one sat unnoticed until an audit swept all 134 decisions.
+// It does not stop a DEC-number collision happening; two branches can still both pick 142.
+// It stops one being silent. The second to merge goes red, where DEC-138's collision sat
+// unnoticed across two branches until an audit swept all 134 decisions (#562).
 
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
+import { DIR, OUT, RELATIONS, TOPICS, generate, load, reverseGraph } from './gen-decisions-index.mjs'
 
-export const FILE = 'docs/DECISIONS.md'
-
-// A decision heading is colon-terminated: `## DEC-107: Payments — ...`.
-// An amendment heading is not: `## DEC-107 amendment (11.2b) — ...`. DEC-107 is
-// the only one today; the shape is what keeps it from reading as a duplicate id.
-const DECISION_HEAD = /^## (DEC-[A-Z0-9-]+):/
-const AMENDMENT_HEAD = /^## (DEC-[A-Z0-9-]+) /
-const INDEX_ROW = /^- (?:~~)?(DEC-[A-Z0-9-]+)(?:~~)?(?: |$)/
-const TALLY = /_Indexed (\d+) of (\d+) DECs/
-
-// Anchored so `DEC-026-family` still resolves (it names a real DEC) while the seeds
-// repo's `DEC-S019` series — whose record lives in another repo — does not match at
-// all. The five non-numeric ids are enumerated rather than globbed for that reason.
+// Anchored so `DEC-026-family` resolves to a real id while the seeds repo's `DEC-S019`
+// series — whose record lives in another repo — never matches. The five non-numeric
+// families are enumerated rather than globbed for the same reason.
 const REFERENCE = /\bDEC-(?:\d{3}|MSG-\d+|ROLE-\d+|DATA-\d+|TBD)\b/g
 
-// DEC-TBD is open questions, deliberately not a decision and deliberately unindexed
-// (see the preamble). Everything else owes a row.
-const UNINDEXED = new Set(['DEC-TBD'])
-
-/**
- * @param {string} text contents of DECISIONS.md
- * @returns {{ failures: string[], decisions: number, indexRows: number, amendments: number }}
- */
-export function checkDecisions(text) {
-  const lines = text.split('\n')
+export function check() {
   const failures = []
-  const fail = (line, msg) => failures.push(`${FILE}:${line} — ${msg}`)
+  const fail = (where, msg) => failures.push(`${where} — ${msg}`)
 
-  const decisions = new Map() // id -> line
-  const amendments = [] // { id, line }
-  const indexRows = new Map() // id -> line
-  let tally = null
-
-  // The index region runs from the top to the first decision body. `###` headings
-  // below that are body prose — DEC-123 has its own catalog sub-sections.
-  const firstBody = lines.findIndex((l) => DECISION_HEAD.test(l))
-  if (firstBody === -1) {
-    fail(1, 'no decision headings found — is the file the right shape?')
-    return { failures, decisions: 0, indexRows: 0, amendments: 0 }
+  let decisions
+  try {
+    decisions = load()
+  } catch (e) {
+    return [`${DIR} — ${e.message}`]
   }
 
-  // A row only counts under a topic heading, not merely "somewhere above the first
-  // body". The preamble explains the row formats by example, and an example written
-  // with an ordinary `- ` bullet would otherwise read as a real row and fail the
-  // build over a documentation edit. (The preamble uses `•` today — a workaround
-  // for exactly this, which is the tell that the boundary wanted tightening.)
-  let inTopic = false
+  // `load()` only looks at files shaped `DEC-*.md`. Anything else in the directory —
+  // a lowercase `dec-014-...`, a missing hyphen, a stray draft carrying a duplicate id —
+  // would be invisible to both the generator and every check below, which is the silent
+  // rot this whole record was split to eliminate. A shape it does not look at is worse
+  // than a shape it cannot parse.
+  const loaded = new Set([...decisions.values()].map((d) => d.file))
+  for (const f of readdirSync(DIR).filter((f) => f.endsWith('.md') && f !== '_preamble.md')) {
+    if (!loaded.has(f)) {
+      fail(`${DIR}/${f}`, 'is not a recognized decision file — the name must be `DEC-<id>-<slug>.md`')
+    }
+  }
 
-  lines.forEach((line, i) => {
-    const n = i + 1
+  for (const [id, d] of decisions) {
+    const at = `${DIR}/${d.file}`
 
-    if (i < firstBody && line.startsWith('### ')) {
-      inTopic = true
-      return
+    if (!d.file.startsWith(`${id}-`) && d.file !== `${id}.md`) {
+      fail(at, `filename does not start with its id (${id})`)
+    }
+    if (!d.title) fail(at, 'no title')
+    if (!TOPICS.includes(d.topic)) {
+      fail(at, `unknown topic ${JSON.stringify(d.topic)} — add it to TOPICS in gen-decisions-index.mjs if it is real`)
     }
 
-    const decision = line.match(DECISION_HEAD)
-    if (decision) {
-      const [, id] = decision
-      if (decisions.has(id)) {
-        fail(n, `duplicate id ${id} — already defined at ${FILE}:${decisions.get(id)}`)
-      } else {
-        decisions.set(id, n)
+    for (const a of d.amends ?? []) {
+      if (!RELATIONS[a.relation]) {
+        fail(at, `unknown relation ${JSON.stringify(a.relation)} — one of: ${Object.keys(RELATIONS).join(', ')}`)
       }
-      return
-    }
-
-    const amendment = line.match(AMENDMENT_HEAD)
-    if (amendment) {
-      amendments.push({ id: amendment[1], line: n })
-      return
-    }
-
-    if (i < firstBody && inTopic) {
-      const row = line.match(INDEX_ROW)
-      if (row) {
-        const [, id] = row
-        if (indexRows.has(id)) {
-          fail(n, `duplicate index row for ${id} — already listed at ${FILE}:${indexRows.get(id)}`)
-        } else {
-          indexRows.set(id, n)
-        }
+      if (!decisions.has(a.id)) {
+        fail(at, `amends ${a.id}, which has no decision file`)
+        continue
+      }
+      // A decision cannot amend one that did not exist when it was written. This is the
+      // check that catches an id typo'd into a real-but-wrong decision, which a bare
+      // existence check waves through.
+      const [from, to] = [id.match(/^DEC-(\d+)$/), a.id.match(/^DEC-(\d+)$/)]
+      if (from && to && Number(to[1]) >= Number(from[1])) {
+        fail(at, `amends ${a.id}, which is not earlier than ${id} — an amendment points backwards`)
       }
     }
+  }
 
-    const t = line.match(TALLY)
-    if (t) tally = { indexed: Number(t[1]), total: Number(t[2]), line: n }
-  })
+  // Every DEC-NNN mentioned in a decision file or the index resolves to a real decision.
+  const sources = [
+    ...readdirSync(DIR)
+      .filter((f) => f.endsWith('.md'))
+      .map((f) => [`${DIR}/${f}`, readFileSync(`${DIR}/${f}`, 'utf8')]),
+    [OUT, readFileSync(OUT, 'utf8')],
+  ]
+  for (const [path, text] of sources) {
+    text.split('\n').forEach((line, i) => {
+      for (const ref of line.matchAll(REFERENCE)) {
+        if (!decisions.has(ref[0])) fail(`${path}:${i + 1}`, `reference to ${ref[0]}, which has no decision file`)
+      }
+    })
+  }
 
-  // An amendment section has to hang off a decision that exists. The likeliest way to
-  // land here is a new decision heading typed without its colon, so say so — otherwise
-  // the author goes hunting for an orphaned amendment they never wrote.
-  for (const { id, line } of amendments) {
-    if (!decisions.has(id)) {
-      fail(
-        line,
-        `amendment section for ${id}, which has no decision body — ` +
-          `if this is meant to be the decision itself, its heading needs a colon (\`## ${id}: Title\`)`,
-      )
+  if (failures.length) return failures
+
+  // Freshness. Everything above can pass on a record whose index and banners were never
+  // regenerated, which is the exact defect this replaces.
+  const { index, files } = generate()
+  if (readFileSync(OUT, 'utf8') !== index) {
+    fail(OUT, 'index is stale — run `npm run gen:decisions`')
+  }
+  for (const [file, text] of files) {
+    if (readFileSync(`${DIR}/${file}`, 'utf8') !== text) {
+      fail(`${DIR}/${file}`, 'amended-by banner or frontmatter is stale — run `npm run gen:decisions`')
     }
   }
 
-  // Index row with no body: the row outlived its decision, or names a typo.
-  for (const [id, line] of indexRows) {
-    if (!decisions.has(id)) fail(line, `index row for ${id}, which has no decision body`)
-  }
-
-  // Body with no index row: the DEC-127 decay mode.
-  for (const [id, line] of decisions) {
-    if (!indexRows.has(id) && !UNINDEXED.has(id)) {
-      fail(line, `${id} has no index row (DEC-127 requires one)`)
-    }
-  }
-
-  // Every DEC-NNN mentioned anywhere in the file resolves to a real decision. This is
-  // what caught DEC-114 citing "DEC-100 submit spinner" for what is actually DEC-089.
-  lines.forEach((line, i) => {
-    for (const ref of line.matchAll(REFERENCE)) {
-      if (!decisions.has(ref[0])) fail(i + 1, `reference to ${ref[0]}, which has no decision body`)
-    }
-  })
-
-  // The tally is the index's own claim about itself, and it drifts silently — it read
-  // "124 of 124" against 137 rows when this check was written.
-  const expectedIndexed = indexRows.size
-  const expectedTotal = [...decisions.keys()].filter((id) => !UNINDEXED.has(id)).length
-  if (!tally) {
-    fail(firstBody + 1, 'no `_Indexed N of M DECs` tally found at the end of the index')
-  } else if (tally.indexed !== expectedIndexed || tally.total !== expectedTotal) {
-    fail(
-      tally.line,
-      `tally reads "Indexed ${tally.indexed} of ${tally.total}" but the file has ` +
-        `${expectedIndexed} index rows and ${expectedTotal} indexable decisions`,
-    )
-  }
-
-  return {
-    failures,
-    decisions: decisions.size,
-    indexRows: indexRows.size,
-    amendments: amendments.length,
-  }
+  return failures
 }
 
-// CLI entry. Guarded so the test can import the checker without running it.
 if (process.argv[1]?.endsWith('check-decisions.mjs')) {
-  const result = checkDecisions(readFileSync(FILE, 'utf8'))
-
-  if (result.failures.length) {
-    const n = result.failures.length
-    console.error(`✗ ${FILE} — ${n} problem${n === 1 ? '' : 's'}:\n`)
-    for (const f of result.failures) console.error(`  ${f}`)
+  const failures = check()
+  if (failures.length) {
+    console.error(`✗ decision record — ${failures.length} problem${failures.length === 1 ? '' : 's'}:\n`)
+    for (const f of failures) console.error(`  ${f}`)
     console.error('')
     process.exit(1)
   }
-
+  const decisions = load()
+  const incoming = reverseGraph(decisions)
+  const edges = [...incoming.values()].reduce((n, l) => n + l.length, 0)
   console.log(
-    `✓ ${FILE} — ${result.decisions} decisions, ${result.indexRows} index rows, ` +
-      `${result.amendments} amendment section${result.amendments === 1 ? '' : 's'}, ` +
-      `all references resolve`,
+    `✓ decision record — ${decisions.size} decisions in ${DIR}/, ${edges} amendment edges across ` +
+      `${incoming.size} amended decisions, index fresh, all references resolve`,
   )
 }

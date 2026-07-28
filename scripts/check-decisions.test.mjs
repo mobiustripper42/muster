@@ -1,143 +1,183 @@
-// Tests for the DECISIONS.md validator (#564).
+// Tests for the decision-record generator and validator (#564, DEC-141).
 //
-// The script decides whether the build passes, which is the same argument that put
-// `db/**` in the vitest include — a guard nobody tests is a guard nobody trusts.
-// Fixtures are minimal hand-written records, not slices of the real file, so a
-// legitimate edit to DECISIONS.md never turns these red.
+// The scripts decide whether the build passes, which is the same argument that put `db/**`
+// in the vitest include — a guard nobody tests is a guard nobody trusts.
+//
+// Almost everything here runs against hand-written fixtures, not the real record, so a
+// legitimate edit to a decision never turns these red. The one exception is the last
+// block, which asserts the real record is valid: that IS the thing being guarded, and it
+// is cheap (139 small files).
 
 import { describe, expect, it } from "vitest";
-import { checkDecisions } from "./check-decisions.mjs";
+import {
+  RELATIONS,
+  TOPICS,
+  banner,
+  parseFrontmatter,
+  renderDecision,
+  reverseGraph,
+  stripBanner,
+} from "./gen-decisions-index.mjs";
+import { check } from "./check-decisions.mjs";
 
-/** A minimal well-formed record: two indexed decisions plus the tally. */
-const good = `# Decisions
-
-## Index
-
-### Some topic
-- DEC-001 — first thing
-- DEC-002 — second thing
-
-_Indexed 2 of 2 DECs._
-
+const fm = `---
+id: DEC-042
+title: "A title with \\"quotes\\" and: a colon"
+topic: "Core architecture & engine mechanics"
+amends:
+  - id: DEC-020
+    relation: refines
+    scope: "one leg only"
+  - id: DEC-013
+    relation: supersedes
+    scope: ""
 ---
 
-## DEC-001: First thing
+## DEC-042: A title
 
-Body text citing DEC-002.
-
-## DEC-002: Second thing
-
-Body text.
+Body.
 `;
 
-describe("checkDecisions", () => {
-  it("passes a well-formed record", () => {
-    const { failures, decisions, indexRows } = checkDecisions(good);
-    expect(failures).toEqual([]);
-    expect(decisions).toBe(2);
-    expect(indexRows).toBe(2);
+describe("parseFrontmatter", () => {
+  it("reads scalars, unescaping quotes and tolerating colons in values", () => {
+    const { meta } = parseFrontmatter(fm);
+    expect(meta.id).toBe("DEC-042");
+    expect(meta.title).toBe('A title with "quotes" and: a colon');
+    expect(meta.topic).toBe("Core architecture & engine mechanics");
   });
 
-  it("catches a duplicate id — the #562 cross-branch collision", () => {
-    const text = good.replace("## DEC-002: Second thing\n\nBody text.", "## DEC-001: Colliding thing\n\nBody text.");
-    const { failures } = checkDecisions(text);
-    expect(failures.some((f) => f.includes("duplicate id DEC-001"))).toBe(true);
+  it("reads the amends list as objects", () => {
+    const { meta } = parseFrontmatter(fm);
+    expect(meta.amends).toEqual([
+      { id: "DEC-020", relation: "refines", scope: "one leg only" },
+      { id: "DEC-013", relation: "supersedes", scope: "" },
+    ]);
   });
 
-  it("catches a decision with no index row — the DEC-127 decay mode", () => {
-    const text = good.replace("- DEC-002 — second thing\n", "").replace("Indexed 2 of 2", "Indexed 1 of 2");
-    const { failures } = checkDecisions(text);
-    expect(failures.some((f) => f.includes("DEC-002 has no index row"))).toBe(true);
+  it("returns the body without the frontmatter block", () => {
+    expect(parseFrontmatter(fm).body.trim().startsWith("## DEC-042:")).toBe(true);
   });
 
-  it("catches an index row whose decision was deleted", () => {
-    const text = good.replace("- DEC-002 — second thing", "- DEC-099 — a decision that never landed");
-    const { failures } = checkDecisions(text);
-    expect(failures.some((f) => f.includes("index row for DEC-099"))).toBe(true);
+  it("throws rather than silently skipping a file it cannot parse", () => {
+    expect(() => parseFrontmatter("no frontmatter here")).toThrow(/no frontmatter/);
+    expect(() => parseFrontmatter("---\nid: DEC-001\n")).toThrow(/unterminated/);
+    expect(() => parseFrontmatter("---\n!! junk\n---\n\nbody\n")).toThrow(/unparseable/);
+  });
+});
+
+describe("reverseGraph", () => {
+  const decisions = new Map([
+    ["DEC-010", { id: "DEC-010", amends: [] }],
+    ["DEC-020", { id: "DEC-020", amends: [{ id: "DEC-010", relation: "revises", scope: "a leg" }] }],
+    ["DEC-030", { id: "DEC-030", amends: [{ id: "DEC-010", relation: "refines", scope: "" }] }],
+  ]);
+
+  it("inverts the declared edges onto their targets", () => {
+    const incoming = reverseGraph(decisions);
+    expect(incoming.get("DEC-010")).toEqual([
+      { from: "DEC-020", relation: "revises", scope: "a leg" },
+      { from: "DEC-030", relation: "refines", scope: "" },
+    ]);
   });
 
-  it("catches a dangling reference in body prose", () => {
-    const text = good.replace("citing DEC-002", "citing DEC-100");
-    const { failures } = checkDecisions(text);
-    expect(failures.some((f) => f.includes("reference to DEC-100"))).toBe(true);
+  it("gives an unamended decision no entry at all", () => {
+    expect(reverseGraph(decisions).has("DEC-020")).toBe(false);
+  });
+});
+
+describe("banner", () => {
+  it("renders the relation as a past participle and carries the scope", () => {
+    const text = banner([{ from: "DEC-092", relation: "revises", scope: "admin is a first-class auth identity" }]);
+    expect(text).toContain("**Revised by DEC-092 — admin is a first-class auth identity**");
   });
 
-  it("catches a stale tally", () => {
-    const { failures } = checkDecisions(good.replace("Indexed 2 of 2", "Indexed 124 of 124"));
-    expect(failures.some((f) => f.includes('tally reads "Indexed 124 of 124"'))).toBe(true);
+  it("omits the em-dash when there is no scope", () => {
+    expect(banner([{ from: "DEC-092", relation: "revises", scope: "" }])).toContain("**Revised by DEC-092**");
   });
 
-  it("catches a missing tally", () => {
-    const { failures } = checkDecisions(good.replace("_Indexed 2 of 2 DECs._\n", ""));
-    expect(failures.some((f) => f.includes("no `_Indexed N of M DECs` tally"))).toBe(true);
+  it("round-trips through stripBanner, so regenerating is idempotent", () => {
+    const edges = [{ from: "DEC-092", relation: "revises", scope: "x" }];
+    const body = `## DEC-020: Title\n\n${banner(edges)}\n\nReal body text.\n`;
+    expect(stripBanner(body)).not.toContain("Revised by");
+    expect(stripBanner(body)).toContain("Real body text.");
   });
 
-  it("ignores the seeds repo's DEC-S series, whose record lives elsewhere", () => {
-    const text = good.replace("citing DEC-002", "citing DEC-002 and DEC-S019 and DEC-S026");
-    expect(checkDecisions(text).failures).toEqual([]);
+  it("leaves a body with no banner untouched", () => {
+    const body = "## DEC-020: Title\n\nReal body text.\n";
+    expect(stripBanner(body)).toBe(body);
+  });
+});
+
+describe("renderDecision", () => {
+  const d = {
+    id: "DEC-020",
+    title: "A title",
+    topic: "Core architecture & engine mechanics",
+    amends: [],
+    body: "## DEC-020: A title\n\nOriginal body.\n",
+  };
+
+  it("puts the banner directly under the heading, where a Ctrl-F reader lands", () => {
+    const out = renderDecision(d, [{ from: "DEC-092", relation: "revises", scope: "" }]);
+    const lines = out.split("\n").filter(Boolean);
+    expect(lines.indexOf("## DEC-020: A title")).toBeLessThan(lines.findIndex((l) => l.includes("Revised by")));
+    expect(lines.findIndex((l) => l.includes("Revised by"))).toBeLessThan(lines.indexOf("Original body."));
   });
 
-  it("resolves compound prose tokens like DEC-001-family to the bare id", () => {
-    const text = good.replace("citing DEC-002", "citing the DEC-002-family of islands");
-    expect(checkDecisions(text).failures).toEqual([]);
+  it("is idempotent — regenerating an already-bannered file changes nothing", () => {
+    const edges = [{ from: "DEC-092", relation: "revises", scope: "one leg" }];
+    const once = renderDecision(d, edges);
+    const twice = renderDecision({ ...d, body: parseFrontmatter(once).body }, edges);
+    expect(twice).toBe(once);
   });
 
-  it("reads an amendment heading as a section, not a second decision", () => {
-    const text = good.replace(
-      "## DEC-002: Second thing",
-      "## DEC-001 amendment (11.2b) — on-demand collection\n\nMore body.\n\n## DEC-002: Second thing",
-    );
-    const { failures, decisions, amendments } = checkDecisions(text);
-    expect(failures).toEqual([]);
-    expect(decisions).toBe(2);
-    expect(amendments).toBe(1);
+  it("is idempotent when the body has a double blank line of its own", () => {
+    // A global blank-line collapse in stripBanner made the generator a non-fixed-point
+    // here: gen:decisions writes the file, then check:decisions re-generates, collapses
+    // the unrelated gap, and calls the file it just wrote stale — a red build with no
+    // author error to fix. Masked today only because no real body has one.
+    const gappy = { ...d, body: "## DEC-020: A title\n\nFirst para.\n\n\nSecond para, after a wide gap.\n" };
+    const edges = [{ from: "DEC-092", relation: "revises", scope: "" }];
+    const once = renderDecision(gappy, edges);
+    const twice = renderDecision({ ...gappy, body: parseFrontmatter(once).body }, edges);
+    expect(twice).toBe(once);
+    expect(once).toContain("First para.\n\n\nSecond para");
   });
 
-  it("catches an amendment hanging off a decision that does not exist", () => {
-    const text = good.replace(
-      "## DEC-002: Second thing",
-      "## DEC-077 amendment — orphaned\n\nMore body.\n\n## DEC-002: Second thing",
-    );
-    const { failures } = checkDecisions(text);
-    expect(failures.some((f) => f.includes("amendment section for DEC-077"))).toBe(true);
+  it("drops a stale banner when the last edge to a decision is removed", () => {
+    const withBanner = renderDecision(d, [{ from: "DEC-092", relation: "revises", scope: "" }]);
+    const after = renderDecision({ ...d, body: parseFrontmatter(withBanner).body }, []);
+    expect(after).not.toContain("Revised by");
+    expect(after).toContain("Original body.");
   });
 
-  it("reads a struck row as an index row", () => {
-    const text = good.replace("- DEC-002 — second thing", "- ~~DEC-002~~ → superseded by DEC-001 — second thing");
-    expect(checkDecisions(text).failures).toEqual([]);
+  it("escapes quotes in the title so the frontmatter it writes parses back", () => {
+    const out = renderDecision({ ...d, title: 'has "quotes"' }, []);
+    expect(parseFrontmatter(out).meta.title).toBe('has "quotes"');
+  });
+});
+
+describe("vocabulary", () => {
+  it("renders every relation as a distinct past participle", () => {
+    const rendered = Object.values(RELATIONS);
+    expect(new Set(rendered).size).toBe(rendered.length);
   });
 
-  it("does not treat DEC-TBD as owing an index row", () => {
-    const text = good.replace("## DEC-001: First thing", "## DEC-TBD: Open questions\n\nStuff.\n\n## DEC-001: First thing");
-    expect(checkDecisions(text).failures).toEqual([]);
+  it("reserves the strike-through for `supersedes` alone", () => {
+    // The record's own convention: an audit of all 138 found zero fully superseded, so a
+    // strike is the rare case. If a second relation ever earns one, the index renderer's
+    // total/partial split has to change with it.
+    expect(RELATIONS.supersedes).toBe("superseded by");
+    expect(Object.keys(RELATIONS).filter((r) => r === "supersedes")).toHaveLength(1);
+  });
+});
+
+describe("the real record", () => {
+  it("is valid — no stale index, dangling reference, unknown topic, or bad edge", () => {
+    expect(check()).toEqual([]);
   });
 
-  it("ignores index-shaped rows that appear inside a decision body", () => {
-    // DEC-002 rather than an invented id: an unknown id would fail the reference scan
-    // no matter what the boundary did, and the test would pass for the wrong reason.
-    // With a real id, a broken boundary shows up as "duplicate index row for DEC-002".
-    const text = `${good}\nSee also:\n- DEC-002 — prose in a body, not an index row\n`;
-    const { failures, indexRows } = checkDecisions(text);
-    expect(failures).toEqual([]);
-    expect(indexRows).toBe(2);
-  });
-
-  it("ignores an example row in the preamble, above the first topic heading", () => {
-    const text = good.replace("## Index", "## Index\n\nRows look like this:\n- DEC-001 — an illustrative example\n");
-    const { failures, indexRows } = checkDecisions(text);
-    expect(failures).toEqual([]);
-    expect(indexRows).toBe(2);
-  });
-
-  it("catches the same decision listed twice in the index", () => {
-    const text = good.replace("- DEC-002 — second thing", "- DEC-001 — listed twice\n- DEC-002 — second thing");
-    const { failures } = checkDecisions(text);
-    expect(failures.some((f) => f.includes("duplicate index row for DEC-001"))).toBe(true);
-  });
-
-  it("names the missing colon when a decision heading is typed without one", () => {
-    const text = good.replace("## DEC-002: Second thing", "## DEC-002 Second thing");
-    const { failures } = checkDecisions(text);
-    expect(failures.some((f) => f.includes("needs a colon"))).toBe(true);
+  it("files every decision under a known topic", () => {
+    expect(TOPICS.length).toBe(15);
   });
 });

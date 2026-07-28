@@ -31,8 +31,12 @@ import {
   STAFFING_HORIZON_LEAD_DAYS,
 } from "../builder/derive.js";
 import { TENANT_TIMEZONE } from "../config/tenant.js";
-import { isAskableFor, isRatedFor } from "../oracle/eligibility.js";
-import { eligiblePool, poolExhaustedFor } from "../oracle/oracle.js";
+import { isAskableFor, isRatedFor, notDoubleBooked } from "../oracle/eligibility.js";
+import {
+  committedDatesByCrew,
+  eligiblePool,
+  poolExhaustedFor,
+} from "../oracle/oracle.js";
 import { rankEligibleIds } from "../oracle/reliability-score.js";
 import {
   logAskAccepted,
@@ -344,6 +348,30 @@ export async function recordResponse(
       const onShift = await committedOnShift(repo, seat.shiftId, seat.id);
       if (onShift.has(ask.crewMemberId)) {
         return { claimed: false, reason: "double_booked", seatState: seat.state };
+      }
+      // Cross-shift guard (#522 sweep 3). This was the ONE seating path that never
+      // re-ran eligibility: `committedOnShift` above scans a single shift, and
+      // `notDoubleBooked` runs at fan-out time, when the candidate is committed
+      // nowhere — an outstanding ask is deliberately not a commitment.
+      //
+      // The tick's #393 one-boat-per-day spread normally stops two same-day asks
+      // reaching one person, but the urgent blast path drops it (`tick.ts` passes
+      // only `suppression.working`, never the day exclusion). Two boats inside
+      // fills-by on a thin captain pool → two texts, two taps, both shifts green,
+      // one boat with nobody at the dock. The At-Risk board can't catch it: both
+      // shifts resolve `Crewed`.
+      //
+      // Calls the SHARED rule rather than re-implementing a date check, so #560 —
+      // which asks whether this becomes a time-overlap rule instead of whole-day —
+      // stays a one-site change in `notDoubleBooked` that every path inherits.
+      // Until then this is what SPEC §2.7.2 and DEC-078 already claim is enforced.
+      const shift = await repo.getShift(seat.shiftId);
+      if (shift) {
+        const committed = await committedDatesByCrew(repo, seat.shiftId);
+        const elsewhere = committed.get(ask.crewMemberId) ?? new Set<string>();
+        if (!notDoubleBooked(elsewhere, shift.date).passed) {
+          return { claimed: false, reason: "double_booked", seatState: seat.state };
+        }
       }
       // Atomic compare-and-swap (REQ-CLAIM-1): claim only if STILL Asked.
       const won = await repo.saveSeatIfState(

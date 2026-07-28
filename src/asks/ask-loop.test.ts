@@ -332,6 +332,87 @@ describe("intra-shift shared pool (DEC-003) — can't crew two seats on one boat
   });
 });
 
+describe("cross-shift double-book on accept (#522 sweep 3)", () => {
+  /** A second shift on the SAME date, different vessel — the two-boats-one-day shape. */
+  async function addSecondBoatSameDay(): Promise<SeatId> {
+    const shiftId = asId<"ShiftId">("shift-2");
+    await repo.saveShift({
+      id: shiftId,
+      vesselId: asId<"VesselId">("vessel-y"),
+      date: DATE,
+      state: "Pending",
+      eventIds: [],
+    });
+    const seatId = asId<"SeatId">("seat-boat2");
+    await repo.saveSeat({
+      id: seatId,
+      shiftId,
+      role: CAPTAIN,
+      kind: "required",
+      state: "Open",
+    });
+    return seatId;
+  }
+
+  it("refuses the second accept when both asks are already outstanding", async () => {
+    // THE hole. `committedOnShift` scans one shift, and `notDoubleBooked` runs at
+    // fan-out time when the candidate is committed nowhere — so the accept path was
+    // the one seating path with no cross-shift guard. The tick's #393 day-spread
+    // normally stops two same-day asks reaching one person, but the urgent blast
+    // path drops it. Two texts, two taps, both shifts green, one boat with nobody
+    // at the dock — and the At-Risk board can't see it, because both resolve Crewed.
+    const captain = await addCrew("crew-captain");
+    const [s1] = await addShift(1);
+    const s2 = await addSecondBoatSameDay();
+
+    // Both asks fired BEFORE either is answered — an outstanding ask is not a
+    // commitment, so ask-time eligibility can't catch this.
+    const a1 = await assignPerson(repo, s1!, captain, T0);
+    const a2 = await assignPerson(repo, s2, captain, T0);
+
+    const first = await recordResponse(repo, a1!.id, "accepted", later(1000));
+    expect(first).toMatchObject({ claimed: true });
+
+    // 60 seconds later — sequential and deterministic, not a race.
+    const second = await recordResponse(repo, a2!.id, "accepted", later(61_000));
+    expect(second).toMatchObject({ claimed: false, reason: "double_booked" });
+
+    expect(await shiftState(asId<"ShiftId">("shift-2"))).not.toBe("Crewed");
+    expect(await seatState(s2)).toBe("Asked");
+  });
+
+  it("still allows the same person on the same date's OTHER seat set on a different date", async () => {
+    // The guard is date-scoped, not person-scoped: a commitment on one day must not
+    // bar the next. Cheap, and it's the assertion that fails if someone reaches for
+    // a blunter "already committed anywhere" check.
+    const captain = await addCrew("crew-captain");
+    const [s1] = await addShift(1);
+    const a1 = await assignPerson(repo, s1!, captain, T0);
+    await recordResponse(repo, a1!.id, "accepted", later(1000));
+
+    const otherDayShift = asId<"ShiftId">("shift-next-day");
+    await repo.saveShift({
+      id: otherDayShift,
+      vesselId: asId<"VesselId">("vessel-y"),
+      date: "2026-07-02",
+      state: "Pending",
+      eventIds: [],
+    });
+    const seatId = asId<"SeatId">("seat-next-day");
+    await repo.saveSeat({
+      id: seatId,
+      shiftId: otherDayShift,
+      role: CAPTAIN,
+      kind: "required",
+      state: "Open",
+    });
+
+    const a2 = await assignPerson(repo, seatId, captain, later(2000));
+    const out = await recordResponse(repo, a2!.id, "accepted", later(3000));
+    expect(out).toMatchObject({ claimed: true });
+  });
+});
+
 describe("all-declined reopens the seat", () => {
   it("after every candidate declines, seat returns to Open", async () => {
     const a = await addCrew("crew-a");

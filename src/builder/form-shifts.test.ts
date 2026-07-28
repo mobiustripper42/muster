@@ -56,6 +56,32 @@ describe("formShifts", () => {
     expect(duffy?.state).toBe("Crewed");
   });
 
+  it("a MISSING vessel row is not a zero-crew vessel — no ghost Crewed shift (#522 sweep 3)", async () => {
+    // `deriveShiftState` reads an empty required set as vacuously Crewed — correct for
+    // the Duffy above, and it used to swallow "we have no Vessel row for this boat"
+    // too. That shift then went invisible: the tick skips Crewed, the At-Risk board
+    // has no unfilled seat to board, self-claim excludes it. A boat with a booking
+    // and no crew, showing green. Reachable by adding a boat to RESOURCE_MAP without
+    // re-seeding — seedFleet only ever runs by hand.
+    const repo = new InMemoryRepository();
+    await seedEvents(repo);
+    const ghost = asId<"VesselId">("vessel-never-seeded");
+    await repo.saveEvent(event("e-ghost", ghost, "2026-06-28", "10:00"));
+
+    const result = await formShifts(repo);
+    const shift = await repo.getShift(asId(`shift-${ghost}-2026-06-28`));
+
+    // The shift still forms — the trip is real and must not vanish.
+    expect(shift).not.toBeNull();
+    expect(await repo.listSeatsForShift(shift!.id)).toHaveLength(0);
+    // ...but it is NOT green, and the missing vessel is surfaced for a human.
+    expect(shift!.state).not.toBe("Crewed");
+    expect(shift!.state).toBe("Pending");
+    expect(result.vesselsMissing).toContain(String(ghost));
+    // A real zero-crew vessel is untouched by the change.
+    expect((await repo.getShift(asId(`shift-${DUFFY}-2026-06-27`)))!.state).toBe("Crewed");
+  });
+
   it("is idempotent — re-form preserves a Confirmed seat and does not duplicate", async () => {
     const repo = new InMemoryRepository();
     await seedEvents(repo);

@@ -43,6 +43,15 @@ export interface FormResult {
    * (`Asked`/`Claimed`/`Confirmed`/`Bailed`) — surfaced for a human to resolve.
    */
   seatsStranded: number;
+  /**
+   * Vessel ids that events referenced but which have no `Vessel` row (#522 sweep 3).
+   * Their shifts are formed — the trips are real and must not vanish — but seatless,
+   * and their state is deliberately NOT written, because a missing vessel is not the
+   * same fact as a zero-crew vessel and `deriveShiftState` cannot tell them apart
+   * (an empty required set is vacuously `Crewed`). Surfaced so a human resolves it;
+   * silently green was the bug.
+   */
+  vesselsMissing: string[];
   /** Existing shifts transitioned to `Cancelled` because every event cancelled. */
   shiftsCancelled: number;
   /** Identity behind the counts (#128) — the shift ids created / cancelled this
@@ -116,6 +125,7 @@ export async function formShifts(
     seatsCreated: 0,
     seatsPruned: 0,
     seatsStranded: 0,
+    vesselsMissing: [],
     shiftsCancelled: 0,
     createdShiftIds: [],
     cancelledShiftIds: [],
@@ -392,7 +402,22 @@ async function formOneShift(
 
   // Birth/refresh state: horizon-aware when a clock is supplied (DEC-022), else the
   // pure seat-fold (DEC-032: tz default-only, tenant zone).
-  const state = opts?.now
+  //
+  // NOT derived when the vessel row is missing (#522 sweep 3). Seat derivation is
+  // already skipped above, and `deriveShiftState` reads an empty required set as
+  // vacuously `Crewed` — a branch that exists for a genuine zero-crew vessel (a
+  // self-captained Duffy, DEC-005) and cannot distinguish it from "we have no idea
+  // what this boat needs". Persisting `Crewed` made the shift invisible to
+  // everything downstream: the tick skips `Crewed`, the At-Risk board has no
+  // unfilled seat to board, self-claim excludes it. A boat with a booking and no
+  // crew, showing green. An existing shift keeps whatever state it had; a new one
+  // is born `Pending`, which is the honest "not staffed yet" and stays workable
+  // once the vessel row appears.
+  const missingVessel = vessel === null;
+  if (missingVessel && !result.vesselsMissing.includes(String(vesselId))) {
+    result.vesselsMissing.push(String(vesselId));
+  }
+  const derived = opts?.now
     ? resolveShiftState(seats, {
         now: opts.now,
         horizon: staffingHorizonFromEvents(
@@ -402,6 +427,7 @@ async function formOneShift(
         poolExhausted: false,
       })
     : deriveShiftState(seats);
+  const state = missingVessel ? (existing?.state ?? "Pending") : derived;
 
   const shift: Shift = {
     id: shiftId,

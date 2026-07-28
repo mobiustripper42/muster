@@ -31,8 +31,12 @@ import {
   STAFFING_HORIZON_LEAD_DAYS,
 } from "../builder/derive.js";
 import { TENANT_TIMEZONE } from "../config/tenant.js";
-import { isAskableFor, isRatedFor } from "../oracle/eligibility.js";
-import { eligiblePool, poolExhaustedFor } from "../oracle/oracle.js";
+import { isAskableFor, isRatedFor, notDoubleBooked } from "../oracle/eligibility.js";
+import {
+  committedDatesByCrew,
+  eligiblePool,
+  poolExhaustedFor,
+} from "../oracle/oracle.js";
 import { rankEligibleIds } from "../oracle/reliability-score.js";
 import {
   logAskAccepted,
@@ -343,6 +347,42 @@ export async function recordResponse(
       // Shared-pool guard (DEC-003): can't claim if already on another seat here.
       const onShift = await committedOnShift(repo, seat.shiftId, seat.id);
       if (onShift.has(ask.crewMemberId)) {
+        return { claimed: false, reason: "double_booked", seatState: seat.state };
+      }
+      // Cross-shift guard (#522 sweep 3). This was the ONE seating path that never
+      // re-ran eligibility: `committedOnShift` above scans a single shift, and
+      // `notDoubleBooked` runs at fan-out time, when the candidate is committed
+      // nowhere — an outstanding ask is deliberately not a commitment.
+      //
+      // The tick's #393 one-boat-per-day spread normally stops two same-day asks
+      // reaching one person, but the urgent blast path drops it (`tick.ts` passes
+      // only `suppression.working`, never the day exclusion). Two boats inside
+      // fills-by on a thin captain pool → two texts, two taps, both shifts green,
+      // one boat with nobody at the dock. The At-Risk board can't catch it: both
+      // shifts resolve `Crewed`.
+      //
+      // Calls the SHARED rule rather than re-implementing a date check, so #560 —
+      // which asks whether this becomes a time-overlap rule instead of whole-day —
+      // stays a one-site change in `notDoubleBooked` that every path inherits.
+      // Until then this is what SPEC §2.7.2 and DEC-078 already claim is enforced.
+      //
+      // KNOWN GAP, the same one #554 documents at `claim.ts:111-119` and DEC-078's
+      // amendment banner names: this is a read-then-CAS over a cross-record invariant
+      // the no-FK store cannot enforce. The CAS below compares only THIS seat's state,
+      // so two genuinely concurrent accepts for two same-date shifts both read an empty
+      // set, both pass here, and both win. What this closes is the SEQUENTIAL case —
+      // two texts, two taps, minutes apart — which needed no interleaving at all.
+      // #554 must list this file alongside `claim.ts`; fixing it there won't fix it here.
+      const shift = await repo.getShift(seat.shiftId);
+      if (!shift) {
+        // Fail CLOSED. Every other missing precondition in this function throws, and a
+        // guard that seats someone when it can't evaluate itself is the wrong posture —
+        // especially this one, whose failure mode is a boat with nobody at the dock.
+        throw new Error(`no shift ${seat.shiftId} for seat ${seat.id}`);
+      }
+      const committed = await committedDatesByCrew(repo, seat.shiftId);
+      const elsewhere = committed.get(ask.crewMemberId) ?? new Set<string>();
+      if (!notDoubleBooked(elsewhere, shift.date).passed) {
         return { claimed: false, reason: "double_booked", seatState: seat.state };
       }
       // Atomic compare-and-swap (REQ-CLAIM-1): claim only if STILL Asked.

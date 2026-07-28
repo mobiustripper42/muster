@@ -13,6 +13,7 @@
  * which keeps this deterministic under test.
  */
 
+import { vesselDateOf } from "../config/tenant.js";
 import type { Credential } from "../domain/entities.js";
 
 export type CredentialHealth = "valid" | "expiring_soon" | "expired";
@@ -38,7 +39,13 @@ export function healthOf(
   // didn't: this read the expiry as an instant at 00:00Z, so any `now` past
   // midnight on the expiry day flagged EXPIRED while the oracle still put the
   // person in that day's pool. Same rule, one boundary.
-  const today = now.toISOString().slice(0, 10);
+  //
+  // VESSEL-LOCAL, not UTC (#522 sweep 3). `toISOString().slice(0,10)` rolled the day
+  // at 00:00Z, so for the 4–5 hours between local evening and UTC midnight this said
+  // "expired" while the oracle — which compares against a vessel-local trip date
+  // (DEC-032) — still seated the person. The docstring above already claimed the two
+  // agree; they didn't, for a few hours every evening.
+  const today = vesselDateOf(now);
   if (credential.expiry < today) return "expired";
   // Whole days from today's midnight to the expiry's — integral by construction,
   // so the window boundary can't drift with the time of day either.

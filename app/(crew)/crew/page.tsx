@@ -248,7 +248,7 @@ function SignedOut({
       {onCodeStep ? (
         <CodeStep email={pendingEmail!} err={err} />
       ) : (
-        <EmailStep err={err} />
+        <EmailStep />
       )}
       <VersionTag />
     </Shell>
@@ -307,16 +307,16 @@ function SmsConsentBlock() {
   );
 }
 
-/** Step 1: enter your crew email → a code is emailed (DEC-081). */
-function EmailStep({ err }: { err?: string }) {
+/**
+ * Step 1: enter your crew email → a code is emailed (DEC-081).
+ *
+ * Takes no `err`: `locked` / `expired` are gone — the verify step no longer distinguishes
+ * them, and reaching the email step with either meant the response had already leaked which
+ * one it was (#522 sweep 2). Nothing redirects here with an `err` any more.
+ */
+function EmailStep() {
   return (
     <div className="flex flex-col gap-3">
-      {err === "locked" && (
-        <Notice>Too many tries on that code. Request a fresh one below.</Notice>
-      )}
-      {err === "expired" && (
-        <Notice>That code expired. Request a fresh one below.</Notice>
-      )}
       <form action={requestLoginCode} className="flex flex-col gap-3">
         <label htmlFor="email" className="text-sm text-muted">
           Sign in with your crew email
@@ -348,8 +348,15 @@ function CodeStep({ email, err }: { email: string; err?: string }) {
       <Notice>
         If {email} is on the crew, a 6-digit code is on its way. Enter it below.
       </Notice>
+      {/* The ONE failure message (#522 sweep 2). It has to cover wrong / expired / too
+          many tries without saying which, because only a roster email can reach the last
+          two — naming them enumerated the crew. So it names both possibilities and points
+          at the fix, which is the same thing the old branching copy did for the user. */}
       {err === "invalid" && (
-        <Notice>That code didn’t match — check it and try again.</Notice>
+        <Notice>
+          That code didn’t match, or it has expired. Check it and try again, or request a
+          fresh one.
+        </Notice>
       )}
       <form action={verifyLoginCode} className="flex flex-col gap-3">
         <label htmlFor="code" className="text-sm text-muted">
@@ -377,6 +384,14 @@ function CodeStep({ email, err }: { email: string; err?: string }) {
           Send a new code
         </SubmitButton>
       </form>
+      {/* The way back out. Every failure now returns here and nothing clears the pending
+          email — deliberately, because clearing it on only some failures was itself the
+          enumeration oracle (#522 sweep 2). So someone who typo'd their address, or whose
+          daily window is spent (DEC-142), would otherwise loop on "didn't match" with no
+          in-page exit. Unconditional, so it leaks nothing. */}
+      <AppLink href="/crew" className="text-sm text-muted underline">
+        Use a different email
+      </AppLink>
     </div>
   );
 }

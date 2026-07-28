@@ -101,7 +101,7 @@ import {
   PAYMENT_CONFIG_DEFAULTS,
   type PaymentConfig,
 } from "../reservations/payment-config.js";
-import type { Repository } from "../ports/repository.js";
+import type { FailureWindow, Repository } from "../ports/repository.js";
 
 /** Add `key: value` only when value is non-null — keeps optional fields absent. */
 function opt<K extends string, V>(
@@ -388,6 +388,8 @@ const toLoginCode = (r: any): LoginCode => ({
   createdAt: r.created_at,
   expiresAt: r.expires_at,
   attempts: r.attempts,
+  ...opt("failedSince", r.failed_since),
+  ...opt("failedInWindow", r.failed_in_window),
   ...opt("consumedAt", r.consumed_at),
 });
 
@@ -1607,8 +1609,19 @@ export class PostgresRepository implements Repository {
   // ── Login codes (crew self-serve sign-in — DEC-081) ────────────────────────
   async saveLoginCode(c: LoginCode): Promise<void> {
     await this.#pool.query(
-      `insert into login_codes(subject_kind, subject_id, code_hash, created_at, expires_at, attempts, consumed_at)
-       values ($1,$2,$3,$4,$5,$6,$7)
+      // The re-mint deliberately does NOT touch failed_since / failed_in_window. Resetting
+      // `attempts` here is correct — it caps guesses against one code — but carrying that
+      // reset to the window would recreate the exact hole DEC-142 closes: mint, guess, mint,
+      // guess, forever. The window is only ever advanced by `claimLoginAttempt`, which is
+      // also the only place that can age it out. (#522 sweep 2)
+      // The window columns are in the INSERT list but deliberately absent from the
+      // `do update set` — a first insert round-trips whatever the caller passed (parity
+      // with the in-memory double, which spreads the record), while a re-mint leaves the
+      // stored window alone. Nothing in `requestLoginCode` sets them today; the asymmetry
+      // is a divergence the contract suite would have advertised as parity anyway.
+      `insert into login_codes(subject_kind, subject_id, code_hash, created_at, expires_at, attempts,
+         failed_since, failed_in_window, consumed_at)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
        on conflict (subject_kind, subject_id) do update set
          code_hash=excluded.code_hash, created_at=excluded.created_at,
          expires_at=excluded.expires_at, attempts=excluded.attempts,
@@ -1620,6 +1633,8 @@ export class PostgresRepository implements Repository {
         c.createdAt,
         c.expiresAt,
         c.attempts,
+        c.failedSince ?? null,
+        c.failedInWindow ?? null,
         c.consumedAt ?? null,
       ],
     );
@@ -1653,16 +1668,39 @@ export class PostgresRepository implements Repository {
     subjectKind: AuthSubjectKind,
     subjectId: string,
     maxAttempts: number,
+    window: FailureWindow,
   ): Promise<{ codeHash: string; expiresAt: string; attempts: number } | null> {
     // Guarded increment: the `attempts < $3` predicate under the row lock means
     // K concurrent claims serialize and only the first `maxAttempts` succeed — the
     // rest return no row. Race-safe brute-force ceiling (#297).
+    //
+    // The window bound rides the SAME statement (DEC-142, #522). The staleness predicate
+    // is spelled out at each of its three uses — the guard, the new `failed_since`, and
+    // the reset-or-increment — rather than computed once in a CTE.
+    //
+    // That repetition is deliberate and it is the correctness-critical part. A CTE reads
+    // under the statement's snapshot, and when the UPDATE blocks on a row another
+    // transaction is changing, Postgres re-evaluates the plan against the NEW tuple —
+    // but only for references to the target relation. A CTE's value is not refreshed. So
+    // concurrent claims at a window rollover would every one of them see `stale = true`,
+    // take the `then 1` arm, and leave the counter at 1 after N failures. Bounded by
+    // MAX_ATTEMPTS rather than unbounded, but it is exactly the disagreement the CTE was
+    // supposed to prevent, in the one statement whose whole job is race-safety.
+    // Every predicate below reads `login_codes` directly, so all of them re-evaluate.
+    //
+    // A stale window is treated as absent: the claim is allowed and the window restarts.
     const { rows } = await this.#pool.query(
-      `update login_codes set attempts = attempts + 1
-        where subject_kind=$1 and subject_id=$2 and consumed_at is null
-          and attempts < $3
-        returning code_hash, expires_at, attempts`,
-      [subjectKind, subjectId, maxAttempts],
+      `update login_codes set
+         attempts = attempts + 1,
+         failed_since = case when failed_since is null or failed_since < $5 then $6 else failed_since end,
+         failed_in_window = case when failed_since is null or failed_since < $5
+                                 then 1 else coalesce(failed_in_window, 0) + 1 end
+       where subject_kind=$1 and subject_id=$2
+         and consumed_at is null
+         and attempts < $3
+         and (failed_since is null or failed_since < $5 or coalesce(failed_in_window, 0) < $4)
+       returning code_hash, expires_at, attempts`,
+      [subjectKind, subjectId, maxAttempts, window.max, window.startsAt, window.now],
     );
     return rows[0]
       ? {

@@ -80,7 +80,7 @@ import {
   type PaymentConfig,
 } from "../reservations/payment-config.js";
 import { slotIdentity } from "../reservations/availability.js";
-import type { Repository } from "../ports/repository.js";
+import type { FailureWindow, Repository } from "../ports/repository.js";
 
 const clone = <T>(value: T): T => structuredClone(value);
 
@@ -677,7 +677,22 @@ export class InMemoryRepository implements Repository {
 
   // ── Login codes (crew self-serve sign-in — DEC-081) ────────────────────────
   async saveLoginCode(c: LoginCode): Promise<void> {
-    this.#loginCodes.set(`${c.subjectKind}:${c.subjectId}`, clone(c));
+    // Mirrors the postgres upsert: the re-mint replaces the code and resets `attempts`,
+    // but CARRIES the failure window forward. Letting the mint clear it would restore the
+    // mint-guess-mint loop DEC-142 exists to close, and the double has to hold the same
+    // rule or the contract suite proves parity on a hole.
+    const key = `${c.subjectKind}:${c.subjectId}`;
+    const prior = this.#loginCodes.get(key);
+    this.#loginCodes.set(
+      key,
+      clone({
+        ...c,
+        ...(prior?.failedSince !== undefined ? { failedSince: prior.failedSince } : {}),
+        ...(prior?.failedInWindow !== undefined
+          ? { failedInWindow: prior.failedInWindow }
+          : {}),
+      }),
+    );
   }
   async getLoginCode(
     subjectKind: AuthSubjectKind,
@@ -703,6 +718,7 @@ export class InMemoryRepository implements Repository {
     subjectKind: AuthSubjectKind,
     subjectId: string,
     maxAttempts: number,
+    window: FailureWindow,
   ): Promise<{ codeHash: string; expiresAt: string; attempts: number } | null> {
     const key = `${subjectKind}:${subjectId}`;
     const current = this.#loginCodes.get(key);
@@ -713,8 +729,20 @@ export class InMemoryRepository implements Repository {
     ) {
       return null;
     }
+    // Mirrors the postgres CTE (DEC-142): `stale` decided ONCE, then reused by the guard,
+    // the new window start, and the reset-or-increment. String compare on ISO-8601 UTC is
+    // ordering-correct, and it's what the SQL side does — a Date.parse here would be a
+    // second implementation of the comparison, free to disagree at a boundary.
+    const stale = current.failedSince === undefined || current.failedSince < window.startsAt;
+    if (!stale && (current.failedInWindow ?? 0) >= window.max) return null;
+
     const attempts = current.attempts + 1;
-    this.#loginCodes.set(key, clone({ ...current, attempts }));
+    // A live window keeps its own `failedSince` — the spread already carries it, so it is
+    // never rewritten here. Only a stale (or first-ever) window stamps a new start.
+    const next: LoginCode = stale
+      ? { ...current, attempts, failedSince: window.now, failedInWindow: 1 }
+      : { ...current, attempts, failedInWindow: (current.failedInWindow ?? 0) + 1 };
+    this.#loginCodes.set(key, clone(next));
     return { codeHash: current.codeHash, expiresAt: current.expiresAt, attempts };
   }
 

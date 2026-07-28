@@ -40,12 +40,27 @@ export const CODE_TTL_MS = 10 * 60_000;
 /**
  * Failed guesses before the code is dead — the brute-force ceiling PER CODE.
  * NOT a per-target bound: a re-mint after the cooldown writes a fresh row with
- * `attempts: 0`, so the sustained rate is MAX_ATTEMPTS per RESEND_COOLDOWN_MS,
- * indefinitely. That's the accepted DEC-081 "throttle does the work" posture at
- * pilot scale; a daily re-mint cap / escalating lockout is a 7.0b hardening
- * follow-up (issue #189), not a hard guarantee this constant gives today.
+ * `attempts: 0`. On its own that made the sustained rate MAX_ATTEMPTS per
+ * RESEND_COOLDOWN_MS, indefinitely — see FAILURE_WINDOW_MS for the bound that closes it.
  */
 export const MAX_ATTEMPTS = 5;
+
+/**
+ * The rolling window the per-subject failure cap is measured over (DEC-142, #522).
+ *
+ * MAX_ATTEMPTS alone was ~7,200 guesses/day against a 10^6 space, in parallel across every
+ * roster email, with no per-IP limit anywhere. ~0.7%/day per target, better than even odds
+ * inside four months. And admins are crew (DEC-092) — a crew session escalates to the full
+ * cockpit in one click — so the prize was the operator account, not one crew view.
+ *
+ * MAX_FAILURES_PER_WINDOW is set GENEROUSLY on purpose. Any per-subject cap is an
+ * account-lockout DoS: burn someone's window and they can't sign in until it rolls. 50/day
+ * is ~144× fewer guesses (putting a break well past the life of the deployment) while
+ * being a number a real crew member cannot reach by fumbling a code — the honest reading
+ * of 50 failures in a day is that it isn't them.
+ */
+export const FAILURE_WINDOW_MS = 24 * 60 * 60_000;
+export const MAX_FAILURES_PER_WINDOW = 50;
 /** Suppress a fresh re-mint within this window — anti-spam + dedup. */
 export const RESEND_COOLDOWN_MS = 60_000;
 
@@ -170,11 +185,33 @@ export async function requestLoginCode(
   };
 }
 
-export type VerifyFailure = "invalid" | "expired" | "locked";
+/**
+ * The ONLY failure a caller ever sees. There is deliberately one value.
+ *
+ * It used to be `"invalid" | "expired" | "locked"`, and that was a roster oracle
+ * (#522 sweep 2). An unknown email can only ever produce `invalid`; a known one at
+ * the attempt cap produced `locked`, and after the TTL `expired`. So six wrong
+ * guesses — or one guess ten minutes late — told an unauthenticated caller whether
+ * an address was on the roster, with no rate limit anywhere to bound the sweep.
+ * That is exactly the property DEC-081 calls load-bearing ("the identical generic
+ * response, no leak"), which held for `requestLoginCode` and not for this one.
+ *
+ * Collapsed HERE rather than at the app boundary on purpose: a union with three
+ * arms invites the next caller to branch on it for friendlier copy, which is how it
+ * leaked the first time. The distinction the cap logic needs is internal to this
+ * function and never crosses the return.
+ *
+ * If failure telemetry is ever wanted, it goes to a log or the outbox — a side
+ * channel the person guessing can't observe — never into this type.
+ */
+export type VerifyFailure = "invalid";
 
 export type VerifyResult =
   | { ok: true; subject: Subject }
   | { ok: false; reason: VerifyFailure };
+
+/** The single generic failure. Named so every return site reads as deliberate. */
+const FAILED: VerifyResult = { ok: false, reason: "invalid" };
 
 export interface VerifyParams {
   email: string;
@@ -198,42 +235,34 @@ export async function verifyLoginCode(
   deps: VerifyDeps,
 ): Promise<VerifyResult> {
   const crew = matchCrewByEmail(await repo.listCrewMembers(), params.email);
-  if (!crew) return { ok: false, reason: "invalid" };
+  if (!crew) return FAILED;
 
   // Atomically claim one guess BEFORE evaluating it (#297): the increment-if-under-cap
   // is a single row-locked UPDATE, so concurrent submits can't all read attempts=0 and
   // bypass the cap that IS the security model (DEC-081). null ⇒ no live under-cap code.
   // NB claim precedes the expiry check, so a guess against an expired-but-unconsumed code
-  // burns the cap (vs. free before) — accepted: it still reports "expired", and a re-mint
-  // after the cooldown resets attempts=0. The cap must be the atomic gate, not expiry.
-  const claim = await repo.claimLoginAttempt("crew", crew.id, MAX_ATTEMPTS);
-  if (!claim) {
-    // Distinguish the reason for copy (no code / consumed / locked at the cap).
-    const record = await repo.getLoginCode("crew", crew.id);
-    if (!record || record.consumedAt) return { ok: false, reason: "invalid" };
-    if (deps.now.getTime() >= Date.parse(record.expiresAt)) {
-      return { ok: false, reason: "expired" };
-    }
-    return { ok: false, reason: "locked" };
-  }
-  if (deps.now.getTime() >= Date.parse(claim.expiresAt)) {
-    return { ok: false, reason: "expired" };
-  }
+  // burns the cap (vs. free before) — accepted, and a re-mint after the cooldown resets
+  // the per-code attempts. The cap must be the atomic gate, not expiry.
+  const claim = await repo.claimLoginAttempt("crew", crew.id, MAX_ATTEMPTS, {
+    startsAt: new Date(deps.now.getTime() - FAILURE_WINDOW_MS).toISOString(),
+    now: deps.now.toISOString(),
+    max: MAX_FAILURES_PER_WINDOW,
+  });
+  // No live under-cap code — locked at the cap, consumed, expired, or never minted. All
+  // four are the same answer to the caller; the second read that used to tell them apart
+  // is gone with the copy it fed.
+  if (!claim) return FAILED;
+  if (deps.now.getTime() >= Date.parse(claim.expiresAt)) return FAILED;
 
-  if (hashCode(params.code) !== claim.codeHash) {
-    return {
-      ok: false,
-      reason: claim.attempts >= MAX_ATTEMPTS ? "locked" : "invalid",
-    };
-  }
+  if (hashCode(params.code) !== claim.codeHash) return FAILED;
 
   const won = await repo.consumeLoginCodeIfUnused(
     "crew",
     crew.id,
     deps.now.toISOString(),
   );
-  // Lost the race (a concurrent submit consumed it first) → treat as invalid.
-  if (!won) return { ok: false, reason: "invalid" };
+  // Lost the race (a concurrent submit consumed it first).
+  if (!won) return FAILED;
 
   return { ok: true, subject: { kind: "crew", id: crew.id } };
 }

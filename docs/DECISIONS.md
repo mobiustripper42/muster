@@ -153,11 +153,12 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 - DEC-075 — Self-claim is auto-lock (`Open → Confirmed`), bypassing `Asked`; operator-confirm-required is a built-in seam, not built
 - DEC-076 — Two eligibility doors — self-claim is native-role-only; operator-assign is ratings-inclusive (the dual-rating escape hatch)
 - DEC-079 — Crew-initiated sign-in + sign-out — the self-serve front door (a small addition, not a re-architecture) _(refined by DEC-081 — the mechanism only)_
-- DEC-081 — Crew sign-in is a 6-digit email code, not a magic link — and it's the one login primitive (refines DEC-079)
+- DEC-081 — Crew sign-in is a 6-digit email code, not a magic link — and it's the one login primitive (refines DEC-079) _(refined by DEC-142 — the cap only — `attempts` per code gains a rolling per-subject failure window, and the verify response collapses to one value. The email-as-channel and code-shape legs stand)_
 - DEC-092 — Admin becomes a first-class auth identity — per-person revoke (10.2, #283; revises DEC-020)
 - DEC-093 — Crew ↔ admin view switcher — same-identity session re-mint (builds on DEC-092)
 - DEC-094 — Operator break-glass is CLI + runbook, not an admin UI (10.5; extends DEC-092)
 - DEC-098 — Crew calendar feed — the first persistent bearer capability URL; hash-only, guest-PII-free, UTC-instant ICS
+- DEC-142 — Login brute force is bounded per subject, not per code — and every verify failure is one generic response
 
 ### Reservations & payments
 - DEC-105 — Reservations go live in 2026 as a Muster-native parallel-run — permanent coexistence, not a cutover _(reversed by DEC-126 — the parallel run ends in a cutover, not permanent coexistence — and the "no migration" leg)_
@@ -203,7 +204,7 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 ### Open questions
 - DEC-TBD — Open questions (carried from the spec; not Claude's to set alone)
 
-_Indexed 139 of 139 DECs. **This file is GENERATED** by `npm run gen:decisions` —
+_Indexed 140 of 140 DECs. **This file is GENERATED** by `npm run gen:decisions` —
 edit `docs/decisions/DEC-*.md`, not this file. `npm run check:decisions` fails on a stale index, a
 duplicate id, an unknown topic, an unknown relation, a forward-pointing amendment, or a
 reference to a decision that does not exist._

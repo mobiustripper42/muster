@@ -325,7 +325,7 @@ export interface Repository {
    * forever — refunded money recorded as collected revenue, with no method that could
    * correct it (#522 sweep 1). Idempotent: re-recording the same refund is a no-op.
    */
-  markPaymentRefunded(id: PaymentId, refundedCents: number): Promise<void>;
+  markPaymentRefunded(id: PaymentId, refundedTotalCents: number): Promise<void>;
 
   // ── Shifts ─────────────────────────────────────────────────────────────────
   saveShift(shift: Shift): Promise<void>;

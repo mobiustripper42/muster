@@ -37,7 +37,7 @@ import type {
   Shift,
   Vessel,
 } from "../domain/entities.js";
-import { balanceOwedCents, taxCentsFor } from "./payment-config.js";
+import { balanceOwedCents, countsAsPaid, taxCentsFor } from "./payment-config.js";
 
 export interface ReservationDetailInput {
   reservation: Reservation;
@@ -119,7 +119,9 @@ export function buildReservationDetail(input: ReservationDetailInput): Reservati
   const fareCents = (event.price ?? 0) + (r.extrasCents ?? 0);
   const taxCents = taxCentsFor(fareCents, taxRateBps);
   const gratuityCents = gratuities.reduce((sum, g) => sum + g.amountCents, 0);
-  const succeeded = payments.filter((p) => p.status === "succeeded");
+  // `countsAsPaid`, shared with `balanceOwedCents` — a partially refunded row is still
+  // money the customer paid, shown gross here with `refundedCents` on its own line (#522).
+  const succeeded = payments.filter(countsAsPaid);
   const paidCents = succeeded.reduce((sum, p) => sum + p.amountCents, 0);
   const refundedCents = payments.reduce((sum, p) => sum + (p.refundedCents ?? 0), 0);
 

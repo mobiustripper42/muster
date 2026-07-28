@@ -67,6 +67,72 @@ describe("balanceOwedCents", () => {
     expect(balanceOwedCents(50000, 725, [depositPayment({ status: "refunded" })])).toBe(53625);
   });
 
+  it("a fully refunded row re-opens the balance even with refundedCents absent", () => {
+    // Status wins for the terminal state — a hand-reconciled row may carry no amount, and
+    // trusting the amount alone would count refunded money as still paid.
+    expect(
+      balanceOwedCents(50000, 725, [depositPayment({ status: "refunded", refundedCents: 0 })]),
+    ).toBe(53625);
+  });
+
+  describe("partial refunds (#522)", () => {
+    // A real Elements deposit charge: fare 50000, tax 3625, fee 1500, tip 10000, 25%
+    // deposit → amountCents 27625, of which 16125 went toward fare+tax.
+    const charged = (over: Partial<Payment> = {}): Payment =>
+      depositPayment({
+        amountCents: 27625,
+        gratuityCents: 10000,
+        serviceFeeCents: 1500,
+        ...over,
+      });
+
+    it("nets nothing while the refund is covered by the tip and fee", () => {
+      // THE bug this replaced: attributing the refund to fare+tax first turned a tip-only
+      // refund into a $100 re-bill of fare the customer had already paid, and
+      // `createBalanceCheckout` would mint that charge with nobody in the loop.
+      expect(balanceOwedCents(50000, 725, [charged()])).toBe(37500);
+      expect(
+        balanceOwedCents(50000, 725, [
+          charged({ status: "partially_refunded", refundedCents: 10000 }),
+        ]),
+      ).toBe(37500); // the whole tip back — fare+tax contribution untouched
+      expect(
+        balanceOwedCents(50000, 725, [
+          charged({ status: "partially_refunded", refundedCents: 11500 }),
+        ]),
+      ).toBe(37500); // tip AND fee back — still nothing off fare+tax
+    });
+
+    it("reduces fare+tax only by the excess over tip and fee", () => {
+      expect(
+        balanceOwedCents(50000, 725, [
+          charged({ status: "partially_refunded", refundedCents: 12500 }),
+        ]),
+      ).toBe(38500); // 1000 past the 11500 of tip+fee → 1000 more owed
+    });
+
+    it("a refund of the whole charge leaves the full balance, never more", () => {
+      // The floor: netting tip+fee a second time would push the contribution negative and
+      // inflate the balance past the total.
+      expect(
+        balanceOwedCents(50000, 725, [
+          charged({ status: "partially_refunded", refundedCents: 27625 }),
+        ]),
+      ).toBe(53625);
+      expect(
+        balanceOwedCents(50000, 725, [
+          charged({ status: "partially_refunded", refundedCents: 999999 }),
+        ]),
+      ).toBe(53625);
+    });
+
+    it("nets a refund on a still-succeeded row (status and amount can disagree)", () => {
+      expect(
+        balanceOwedCents(50000, 725, [charged({ refundedCents: 12500 })]),
+      ).toBe(38500);
+    });
+  });
+
   it("zero when paid in full; negative when overpaid", () => {
     expect(balanceOwedCents(50000, 725, [depositPayment({ amountCents: 53625 })])).toBe(0);
     expect(

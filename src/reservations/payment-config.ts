@@ -11,6 +11,8 @@
  * speculative. They live as code constants in `refund-terms.ts`, inert until that phase.
  */
 
+import type { PaymentStatus } from "../domain/entities.js";
+
 export interface PaymentConfig {
   /** Charge the whole price up front, or a deposit now + balance later (11.2b). */
   depositMode: "full" | "deposit";
@@ -67,13 +69,18 @@ export function chargeNowCents(
 
 /**
  * The balance still OWED on a reservation, derived (11.2b, DEC-107) — never a
- * recompute of the deposit share. `total = fare + tax`, minus the sum of every
- * SUCCEEDED payment already collected (the deposit carried all the tax, so the
- * residual is pure principal). The `Payment` entity mandates balance be derived,
- * not stored, so this is the ONE authority: immune to a `depositPercent`/price
- * change between deposit and balance, and the single seam a future refund reopens
- * (a refund drops a payment out of the succeeded sum → balance re-opens). `<= 0`
- * means nothing owed (paid in full, or full-mode).
+ * recompute of the deposit share. `total = fare + tax`, minus what every live payment
+ * contributed toward fare+tax (the deposit carried all the tax, so the residual is pure
+ * principal). The `Payment` entity mandates balance be derived, not stored, so this is
+ * the ONE authority: immune to a `depositPercent`/price change between deposit and
+ * balance, and the seam a refund reopens. `<= 0` means nothing owed.
+ *
+ * **Refund handling (amended #522).** This used to sum only `status === "succeeded"`,
+ * which was equivalent to "not refunded" while nothing could write a partial. Since
+ * `markPaymentRefunded` landed it isn't: a partially refunded deposit would have counted
+ * as zero paid and re-billed the customer the whole fare + tax. Now a refund is netted
+ * against **gratuity and fee first**, and only the remainder reduces fare+tax — see the
+ * body for why that order is the customer-safe one.
  *
  * **`fareCents` is the composed party fare** — `Event.price` base **+** the frozen
  * `Reservation.extrasCents` (#474, DEC-107 amend), NOT the bare base. The base alone
@@ -81,22 +88,68 @@ export function chargeNowCents(
  * `event.price + (reservation.extrasCents ?? 0)`. Extras are frozen at booking, never
  * recomputed from a live Offering — that would break the "never a config recompute" rule.
  */
+/**
+ * Is this payment still live money, or has it been handed back in full?
+ *
+ * The ONE definition of "counts as paid", shared by `balanceOwedCents` and by the
+ * operator-facing `paidCents` totals (purchases list, calendar detail). They used to spell
+ * it independently as `status === "succeeded"`, which was equivalent while nothing could
+ * write a partial — the moment `markPaymentRefunded` landed, one of them started netting
+ * partial refunds and the other kept dropping the whole row, so a partially refunded
+ * booking rendered "Paid $0.00" beside a balance that said otherwise (#522 review).
+ */
+export const countsAsPaid = (p: { status: PaymentStatus }): boolean =>
+  p.status !== "refunded";
+
 export function balanceOwedCents(
   fareCents: number,
   taxRateBps: number,
+  // `PaymentStatus`, not `string`. The body branches on status, and with a bare `string`
+  // the branch is a DENY-list: any value that isn't `"refunded"` counts as fully paid.
+  // The column carries no CHECK constraint (deliberately — DEC-131), so the compiler is
+  // the only thing that forces this function to be revisited when the union widens to
+  // disputes or chargebacks. Fail-safe was the old behaviour; keep it typed so it stays.
   payments: readonly {
-    status: string;
+    status: PaymentStatus;
     amountCents: number;
     gratuityCents?: number;
     serviceFeeCents?: number;
+    refundedCents?: number;
   }[],
 ): number {
   const total = fareCents + taxCentsFor(fareCents, taxRateBps);
   // Net the GRATUITY and the SERVICE FEE out of each paid amount (DEC-124 / DEC-134): the tip
   // is crew money and the fee is a one-shot surcharge — neither is part of fare+tax, so
   // counting either as "paid toward balance" would under-charge a deposit booking's balance.
-  const paid = payments
-    .filter((p) => p.status === "succeeded")
-    .reduce((sum, p) => sum + p.amountCents - (p.gratuityCents ?? 0) - (p.serviceFeeCents ?? 0), 0);
+  //
+  // A REFUNDED amount is no longer paid. Before `markPaymentRefunded` existed nothing could
+  // write `partially_refunded`, so filtering to `succeeded` was equivalent to "not refunded"
+  // — it isn't any more (#522 review). Left as a filter, a partially refunded deposit would
+  // count as £0 paid and the balance charge would bill the customer the FULL fare + tax on
+  // top of what they already paid. Netting `refundedCents` instead is correct for all three
+  // states: `succeeded` has none, `partially_refunded` nets the part, `refunded` nets to 0.
+  const paid = payments.reduce((sum, p) => {
+    // A fully refunded row contributes nothing regardless of what `refundedCents` says —
+    // it may be absent on a hand-reconciled or legacy row, and trusting the amount alone
+    // would count refunded money as paid. Status wins for the terminal state.
+    if (!countsAsPaid(p)) return sum;
+
+    const notFareOrTax = (p.gratuityCents ?? 0) + (p.serviceFeeCents ?? 0);
+    const towardFareAndTax = p.amountCents - notFareOrTax;
+
+    // A refund is attributed to GRATUITY AND FEE FIRST; only what exceeds them reduces
+    // fare+tax. Nothing records a refund's composition, so this is an assumption — but it
+    // is the only safe one, because the likeliest partial refund an operator makes is a
+    // tip-only refund, and the alternative silently re-bills fare the customer already paid.
+    //
+    // Worked, from a real deposit charge (fare 50000, tax 3625, fee 1500, tip 10000, 25%
+    // deposit → amount 27625): toward fare+tax is 16125 and the balance is 37500. Refund
+    // the $100 tip. Attributing to fare+tax first gives max(0, 16125 − 10000) = 6125 and a
+    // balance of 47500 — the customer is billed $100 MORE for a refund that never touched
+    // their fare, and `createBalanceCheckout` mints that charge with no human in the loop.
+    // Tip-first gives 16125 and leaves the balance at 37500, which is correct.
+    const fareAndTaxRefund = Math.max(0, (p.refundedCents ?? 0) - notFareOrTax);
+    return sum + Math.max(0, towardFareAndTax - fareAndTaxRefund);
+  }, 0);
   return total - paid;
 }

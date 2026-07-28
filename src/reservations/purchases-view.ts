@@ -17,7 +17,7 @@
  */
 
 import type { Event, Payment, Reservation } from "../domain/entities.js";
-import { balanceOwedCents, taxCentsFor } from "./payment-config.js";
+import { balanceOwedCents, countsAsPaid, taxCentsFor } from "./payment-config.js";
 
 /**
  * The mockup shows three states (Paid / Deposit / Refunded). Real data needs two more:
@@ -99,7 +99,9 @@ export function buildPurchaseRows(input: PurchasesInput): PurchaseRow[] {
     const fareCents = (event?.price ?? 0) + (r.extrasCents ?? 0);
     const totalCents = fareCents + taxCentsFor(fareCents, input.taxRateBps);
     const payments = input.paymentsByReservation.get(String(r.id)) ?? [];
-    const succeeded = payments.filter((p) => p.status === "succeeded");
+    // `countsAsPaid`, shared with `balanceOwedCents` — a partially refunded row is still
+    // money the customer paid, shown gross here with `refundedCents` on its own line (#522).
+    const succeeded = payments.filter(countsAsPaid);
     const paidCents = succeeded.reduce((sum, p) => sum + p.amountCents, 0);
     const refundedCents = payments.reduce((sum, p) => sum + (p.refundedCents ?? 0), 0);
     const balanceCents = balanceOwedCents(fareCents, input.taxRateBps, payments);

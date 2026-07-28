@@ -325,6 +325,78 @@ describe("payment_intent.succeeded webhook path (12.5, DEC-134)", () => {
     expect(await repo.listAllReservations()).toHaveLength(0);
   });
 
+  it("rejects a priceCents that COERCES to a number but isn't one", async () => {
+    // The guard originally validated `Number(raw)`, and `Number("  ")` is 0 — finite and
+    // not negative — so whitespace walked through and booked at price zero, which is the
+    // exact defect it exists to prevent. `"0x10"` (→ 16) and `"1e3"` are the same class.
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    await createDeparturePaymentIntent(repo, pay, req, now);
+    const { deps } = makeDeps(repo, pay);
+    const m = pay.intents[0]!.metadata;
+
+    for (const bad of ["  ", "", "0x10", "1e3", "-1", "12.5", "abc"]) {
+      await expect(
+        processBookingWebhook(deps, piEvent("pi_fake_1", 27570, { ...m, priceCents: bad }), FAKE_SIGNATURE),
+      ).rejects.toThrow(/missing a usable priceCents/);
+    }
+    expect(await repo.listAllReservations()).toHaveLength(0);
+  });
+
+  it("applies the same guard to extrasCents, which under-bills the balance when silently zeroed", async () => {
+    // `extrasCents` sat one line below `priceCents` still using the coercion this hardened
+    // against — a whitespace value books extras at 0 and under-collects the deposit-mode
+    // balance by `extras + tax(extras)`, which is the #474 bug arriving silently.
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    await createDeparturePaymentIntent(repo, pay, req, now);
+    const { deps } = makeDeps(repo, pay);
+    const m = pay.intents[0]!.metadata;
+
+    await expect(
+      processBookingWebhook(deps, piEvent("pi_fake_1", 27570, { ...m, extrasCents: " " }), FAKE_SIGNATURE),
+    ).rejects.toThrow(/missing a usable extrasCents/);
+
+    // Absent is still legitimate — a pre-#474 charge reads 0 and books fine.
+    const { extrasCents: _gone, ...noExtras } = m;
+    const r = await processBookingWebhook(deps, piEvent("pi_fake_1", 27570, noExtras), FAKE_SIGNATURE);
+    expect(r).toMatchObject({ handled: true, outcome: "booked" });
+  });
+
+  it("ALERTS on unusable metadata — money moved, so it must not fail silently", async () => {
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    await createDeparturePaymentIntent(repo, pay, req, now);
+    const { deps, alert } = makeDeps(repo, pay);
+    const m = pay.intents[0]!.metadata;
+
+    await expect(
+      processBookingWebhook(deps, piEvent("pi_fake_1", 27570, { ...m, priceCents: "  " }), FAKE_SIGNATURE),
+    ).rejects.toThrow();
+    expect(alert).toHaveBeenCalledOnce();
+    expect(alert.mock.calls[0]![0]).toMatch(/PAID but NOT booked/);
+  });
+
+  it("does NOT alert 'unusable metadata' when the WRITE fails — that's infra, and Stripe retries", async () => {
+    // The alert names a metadata defect and tells the operator to refund manually. Firing
+    // it for a pg blip means telling them to refund a booking that lands on the next retry
+    // — and the route already treats a post-signature throw as expected and retryable.
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    await createDeparturePaymentIntent(repo, pay, req, now);
+    const { deps, alert } = makeDeps(repo, pay);
+    const m = pay.intents[0]!.metadata;
+
+    repo.saveBookingIfSlotFree = async () => {
+      throw new Error("transient: connection terminated");
+    };
+
+    await expect(
+      processBookingWebhook(deps, piEvent("pi_fake_1", 27570, m), FAKE_SIGNATURE),
+    ).rejects.toThrow(/connection terminated/);
+    expect(alert).not.toHaveBeenCalled();
+  });
+
   it("the hosted session-completed path still books (both event types coexist)", async () => {
     const repo = await seededRepo();
     const { deps, confirm } = makeDeps(repo);

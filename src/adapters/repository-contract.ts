@@ -1350,7 +1350,14 @@ export function runRepositoryContract(
         ),
       );
       expect(results.filter((r) => r !== null)).toHaveLength(3);
-      expect((await repo.getLoginCode("crew", CREW))!.attempts).toBe(3);
+      const after = (await repo.getLoginCode("crew", CREW))!;
+      expect(after.attempts).toBe(3);
+      // The WINDOW counter must survive the same race (DEC-142). The row starts with no
+      // `failedSince`, so every concurrent claim sees a stale window — and an
+      // implementation that decides staleness once, outside the row lock, leaves this at
+      // 1 while `attempts` correctly reads 3. That asymmetry is the whole bug, and
+      // asserting only `attempts` cannot see it.
+      expect(after.failedInWindow).toBe(3);
       // Once at the cap, further claims stay null.
       expect(await repo.claimLoginAttempt("crew", CREW, 3, WIDE_WINDOW)).toBeNull();
     });

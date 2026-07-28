@@ -248,7 +248,7 @@ function SignedOut({
       {onCodeStep ? (
         <CodeStep email={pendingEmail!} err={err} />
       ) : (
-        <EmailStep err={err} />
+        <EmailStep />
       )}
       <VersionTag />
     </Shell>
@@ -307,13 +307,16 @@ function SmsConsentBlock() {
   );
 }
 
-/** Step 1: enter your crew email → a code is emailed (DEC-081). */
-function EmailStep({ err }: { err?: string }) {
+/**
+ * Step 1: enter your crew email → a code is emailed (DEC-081).
+ *
+ * Takes no `err`: `locked` / `expired` are gone — the verify step no longer distinguishes
+ * them, and reaching the email step with either meant the response had already leaked which
+ * one it was (#522 sweep 2). Nothing redirects here with an `err` any more.
+ */
+function EmailStep() {
   return (
     <div className="flex flex-col gap-3">
-      {/* `locked` / `expired` are gone — the verify step no longer distinguishes them, and
-          reaching the email step with either meant the response had already leaked which one
-          it was (#522 sweep 2). Nothing redirects here with an `err` any more. */}
       <form action={requestLoginCode} className="flex flex-col gap-3">
         <label htmlFor="email" className="text-sm text-muted">
           Sign in with your crew email
@@ -381,6 +384,14 @@ function CodeStep({ email, err }: { email: string; err?: string }) {
           Send a new code
         </SubmitButton>
       </form>
+      {/* The way back out. Every failure now returns here and nothing clears the pending
+          email — deliberately, because clearing it on only some failures was itself the
+          enumeration oracle (#522 sweep 2). So someone who typo'd their address, or whose
+          daily window is spent (DEC-142), would otherwise loop on "didn't match" with no
+          in-page exit. Unconditional, so it leaks nothing. */}
+      <AppLink href="/crew" className="text-sm text-muted underline">
+        Use a different email
+      </AppLink>
     </div>
   );
 }

@@ -614,8 +614,10 @@ export type PaymentMethod = "stripe" | (string & {});
 /** full = paid in one shot; deposit + balance = the two-part flow (DEC-107, 11.2b). */
 export type PaymentKind = "full" | "deposit" | "balance";
 
-/** `refunded` states exist for the record only — refunds are ALWAYS manual in the
- *  Stripe dashboard (operator decision); nothing in Muster issues a programmatic refund. */
+/** Operator-initiated refunds are manual in the Stripe dashboard. The ONE programmatic
+ *  refund Muster issues is the DEC-109 residual-race auto-refund (12.1b) — a buyer whose
+ *  hold expired mid-payment and who lost the slot is refunded without anyone deciding, and
+ *  the webhook writes the outcome back via `markPaymentRefunded`. */
 export type PaymentStatus = "succeeded" | "refunded" | "partially_refunded";
 
 /**
@@ -659,7 +661,8 @@ export interface Payment {
   /** Stripe PaymentIntent id (present once the charge settles). */
   stripePaymentIntentId?: string;
   status: PaymentStatus;
-  /** Cents refunded so far — set by hand-reconciliation if ever tracked; refunds are manual. */
+  /** Cents refunded so far. Written by `markPaymentRefunded` on the residual-race auto-refund;
+   *  an operator's manual dashboard refund is not reflected here until hand-reconciled. */
   refundedCents?: number;
   /** ISO-8601 UTC. */
   createdAt: string;

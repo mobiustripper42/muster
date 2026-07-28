@@ -22,6 +22,7 @@ import {
   type EventId,
   type GratuityId,
   type OfferingId,
+  type PaymentId,
   type ReservationId,
   type VesselId,
 } from "../domain/ids.js";
@@ -152,6 +153,34 @@ export async function processBookingWebhook(
   });
 }
 
+/**
+ * The Payment row id for a charge — deterministic from the charge key (session id, or PI id
+ * on the Elements path per DEC-134), which is what makes the write idempotent.
+ *
+ * Extracted because the refund write-back now needs to name the same row `recordPayment`
+ * created. Two inline template literals would be one edit away from silently disagreeing,
+ * and the failure mode is an update that matches nothing.
+ */
+const paymentIdFor = (chargeKey: string): PaymentId => asId<"PaymentId">(`pay_${chargeKey}`);
+
+/**
+ * Read a required cents value out of charge metadata, or throw.
+ *
+ * Money read from metadata must never fall back to a default: a zero that flows into the
+ * booking is indistinguishable downstream from a genuinely free one. Throwing surfaces as
+ * a 500, which is the correct answer to Stripe — it retries, and the failure is visible.
+ */
+function requireCents(raw: string | undefined, field: string, chargeKey: string): number {
+  const n = Number(raw);
+  if (raw === undefined || raw === "" || !Number.isFinite(n) || n < 0) {
+    throw new Error(
+      `booking metadata is missing a usable ${field} (got ${JSON.stringify(raw)}) on charge ${chargeKey} — ` +
+        `refusing to book at a defaulted price`,
+    );
+  }
+  return n;
+}
+
 /** The charge→booking spine, shared by both event paths (11.2 / 12.5). */
 async function processBookingCharge(
   deps: WebhookDeps,
@@ -175,7 +204,12 @@ async function processBookingCharge(
           date: m.date ?? "",
           time: m.time ?? "",
           guestCount: partySize,
-          priceCents: Number(m.priceCents ?? 0),
+          // Never default. `?? 0` materialized the event at price 0, after which
+          // `balanceOwedCents` derives "nothing owed" and `purchases-view` reports
+          // `priceKnown: true` — a free boat that reads as a normal paid booking. Only our
+          // own builders mint this metadata and all of them set it, so an absent value is a
+          // bug on our side; it should be a loud 500 Stripe retries, not a silent zero (#522).
+          priceCents: requireCents(m.priceCents, "priceCents", charge.key),
           // Extras frozen at checkout (composeFare, #474) — carried so the deposit-mode
           // balance deriver bills base + extras, not the bare base (DEC-107 amend).
           extrasCents: Number(m.extrasCents ?? 0),
@@ -220,26 +254,37 @@ async function processBookingCharge(
       } catch {
         // swallowed by contract — see above
       }
-      // Record the PRE-gratuity (DEC-124) — crew money, keyed to the event pool. Slot bookings
-      // only carry a tip; deterministic id ⇒ idempotent (gated to the fresh `booked`, like the
-      // confirmation, so a redelivery — which resolves `already` — never re-records).
-      const gratuityCents = Number(m.gratuityCents ?? 0);
-      if (isSlotBooking && gratuityCents > 0) {
-        await deps.repo.saveGratuity({
-          id: asId<"GratuityId">(`grat_pre_${charge.key}`),
-          eventId: result.reservation.eventId,
-          reservationId: result.reservation.id,
-          kind: "pre",
-          amountCents: gratuityCents,
-          ...(m.gratuityBps ? { bps: Number(m.gratuityBps) } : {}),
-          // Reconciliation handle: the hosted path keeps the session id; an Elements
-          // gratuity's handle is the PI id baked into the deterministic row id.
-          ...(charge.sessionId !== undefined
-            ? { stripeCheckoutSessionId: charge.sessionId }
-            : {}),
-          createdAt: deps.now(),
-        });
-      }
+    }
+
+    // Record the PRE-gratuity (DEC-124) — crew money, keyed to the event pool. Slot
+    // bookings only carry a tip.
+    //
+    // Runs on `already` as well as `booked`, and MUST. Idempotency here is the
+    // deterministic id plus `on conflict (id) do nothing`, not the outcome gate — a
+    // redelivery cannot double-record whichever branch it lands in. Gating on `booked`
+    // (as the confirmation legitimately does) made the tip unrecoverable instead: if
+    // anything after the booking commit throws — `recordPayment` above, or this write —
+    // the webhook 500s, Stripe redelivers, `writeSlotBooking` short-circuits to `already`,
+    // and the `booked` branch is false forever. The result was silent: `Payment.gratuityCents`
+    // still nets out of the customer's balance, so nothing looks wrong, but `splitGratuity`
+    // builds the crew pool from `Gratuity` rows alone — so the tip stays in the operator's
+    // Stripe account and the crew is never paid it (#522 sweep 1).
+    const gratuityCents = Number(m.gratuityCents ?? 0);
+    if (isSlotBooking && gratuityCents > 0) {
+      await deps.repo.saveGratuity({
+        id: asId<"GratuityId">(`grat_pre_${charge.key}`),
+        eventId: result.reservation.eventId,
+        reservationId: result.reservation.id,
+        kind: "pre",
+        amountCents: gratuityCents,
+        ...(m.gratuityBps ? { bps: Number(m.gratuityBps) } : {}),
+        // Reconciliation handle: the hosted path keeps the session id; an Elements
+        // gratuity's handle is the PI id baked into the deterministic row id.
+        ...(charge.sessionId !== undefined
+          ? { stripeCheckoutSessionId: charge.sessionId }
+          : {}),
+        createdAt: deps.now(),
+      });
     }
     return { handled: true, outcome: result.outcome };
   }
@@ -267,6 +312,12 @@ async function processBookingCharge(
         paymentIntentId: charge.paymentIntentId,
         idempotencyKey: `refund_${charge.key}`,
       });
+      // Write the refund back onto the ledger. Without this the loser's row stayed
+      // `succeeded` forever — refunded money recorded as collected revenue, invisible to the
+      // operator (the row's reservation never existed, so it doesn't reach the purchases
+      // list) while still inflating any `listAllPayments` rollup (#522 sweep 1). Full
+      // refund, so `amountCents` is the refunded total.
+      await deps.repo.markPaymentRefunded(paymentIdFor(charge.key), charge.amountCents);
     } catch (e) {
       await deps.alertPaidButUnbooked(
         `⚠️ Residual-race loss AND the auto-refund FAILED (${e instanceof Error ? e.message : "unknown error"}) — ` +
@@ -302,7 +353,7 @@ async function recordPayment(
   reservationId: ReservationId,
 ): Promise<void> {
   const payment: Payment = {
-    id: asId<"PaymentId">(`pay_${charge.key}`), // deterministic ⇒ idempotent upsert
+    id: paymentIdFor(charge.key), // deterministic ⇒ idempotent upsert
     reservationId,
     method: "stripe",
     kind,

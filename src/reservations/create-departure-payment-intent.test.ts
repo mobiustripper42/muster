@@ -228,6 +228,101 @@ describe("payment_intent.succeeded webhook path (12.5, DEC-134)", () => {
     });
     expect(soldOut).toHaveBeenCalledOnce();
     expect(alert).not.toHaveBeenCalled();
+
+    // The refund is written BACK onto the ledger (#522 sweep 1). Without this the loser's
+    // row stayed `succeeded` forever — refunded money recorded as collected revenue, and
+    // invisible to the operator because its reservation never existed, so it never reaches
+    // the purchases list while still inflating every `listAllPayments` rollup.
+    const lost = await repo.getPayment(asId<"PaymentId">("pay_pi_fake_2"));
+    expect(lost).toMatchObject({ status: "refunded", refundedCents: 27570 });
+  });
+
+  it("a redelivered losing charge re-records the same refund without rewinding it", async () => {
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    await createDeparturePaymentIntent(repo, pay, req, now);
+    const { deps } = makeDeps(repo, pay);
+    const m = pay.intents[0]!.metadata;
+
+    await processBookingWebhook(deps, piEvent("pi_fake_1", 27570, m), FAKE_SIGNATURE);
+    await processBookingWebhook(deps, piEvent("pi_fake_2", 27570, m), FAKE_SIGNATURE);
+    const again = await processBookingWebhook(deps, piEvent("pi_fake_2", 27570, m), FAKE_SIGNATURE);
+
+    expect(again).toEqual({ handled: true, outcome: "lost" });
+    const lost = await repo.getPayment(asId<"PaymentId">("pay_pi_fake_2"));
+    expect(lost).toMatchObject({ status: "refunded", refundedCents: 27570 });
+  });
+
+  it("the crew tip survives a failure between the booking commit and the gratuity write", async () => {
+    // THE defect this sweep existed to find (#522). The gratuity write used to sit inside
+    // `if (outcome === "booked")`. If anything after the booking commit threw, the webhook
+    // 500s, Stripe redelivers, `writeSlotBooking` short-circuits to `already` — and the
+    // `booked` branch is false forever, so the tip is never recorded. Silent, because
+    // `Payment.gratuityCents` still nets out of the customer's balance so nothing looks
+    // wrong; but `splitGratuity` builds the crew pool from `Gratuity` rows alone, so the
+    // money stays in the operator's Stripe account and the crew is never paid it.
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    await createDeparturePaymentIntent(repo, pay, req, now);
+    const { deps } = makeDeps(repo, pay);
+    const m = pay.intents[0]!.metadata;
+
+    // Fail once, AFTER the booking has committed.
+    const realSaveGratuity = repo.saveGratuity.bind(repo);
+    let failed = false;
+    repo.saveGratuity = async (g) => {
+      if (!failed) {
+        failed = true;
+        throw new Error("transient: pool exhausted");
+      }
+      return realSaveGratuity(g);
+    };
+
+    await expect(
+      processBookingWebhook(deps, piEvent("pi_fake_1", 27570, m), FAKE_SIGNATURE),
+    ).rejects.toThrow(/pool exhausted/);
+
+    // The booking committed before the throw, so redelivery resolves `already`.
+    const retry = await processBookingWebhook(deps, piEvent("pi_fake_1", 27570, m), FAKE_SIGNATURE);
+    expect(retry).toEqual({ handled: true, outcome: "already" });
+
+    const grats = await repo.listGratuitiesForEvent(eventIdForSlot(SMALL, DATE, TIME));
+    expect(grats).toHaveLength(1);
+    expect(grats[0]).toMatchObject({ id: "grat_pre_pi_fake_1", kind: "pre", amountCents: 9980 });
+  });
+
+  it("a redelivery still records the tip exactly once", async () => {
+    // The other half: idempotency here is the deterministic id plus `on conflict do nothing`,
+    // NOT the outcome gate — so running on `already` cannot double-record.
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    await createDeparturePaymentIntent(repo, pay, req, now);
+    const { deps } = makeDeps(repo, pay);
+    const m = pay.intents[0]!.metadata;
+
+    await processBookingWebhook(deps, piEvent("pi_fake_1", 27570, m), FAKE_SIGNATURE);
+    await processBookingWebhook(deps, piEvent("pi_fake_1", 27570, m), FAKE_SIGNATURE);
+    await processBookingWebhook(deps, piEvent("pi_fake_1", 27570, m), FAKE_SIGNATURE);
+
+    expect(await repo.listGratuitiesForEvent(eventIdForSlot(SMALL, DATE, TIME))).toHaveLength(1);
+  });
+
+  it("refuses to book at a defaulted price when priceCents is missing from metadata", async () => {
+    // `Number(m.priceCents ?? 0)` materialized the event at price 0, after which
+    // `balanceOwedCents` derives "nothing owed" and the purchases view reports
+    // `priceKnown: true` — a free boat that reads as a normal paid booking. Only our own
+    // builders mint this metadata, so an absent value is our bug: it should be a loud 500
+    // Stripe retries, not a silent zero.
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    await createDeparturePaymentIntent(repo, pay, req, now);
+    const { deps } = makeDeps(repo, pay);
+    const { priceCents: _dropped, ...without } = pay.intents[0]!.metadata;
+
+    await expect(
+      processBookingWebhook(deps, piEvent("pi_fake_1", 27570, without), FAKE_SIGNATURE),
+    ).rejects.toThrow(/missing a usable priceCents/);
+    expect(await repo.listAllReservations()).toHaveLength(0);
   });
 
   it("the hosted session-completed path still books (both event types coexist)", async () => {

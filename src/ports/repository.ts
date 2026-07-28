@@ -298,6 +298,16 @@ export interface Repository {
   /** Every payment row — the purchases list's rollup (12.12a). A per-row
    *  `listPaymentsForReservation` would be an N+1 read across the whole order list. */
   listAllPayments(): Promise<Payment[]>;
+  /**
+   * Record a refund against an already-written payment: sets `refundedCents` and moves
+   * `status` to `refunded` or `partially_refunded` by comparing against `amountCents`.
+   *
+   * The one sanctioned mutation of a payment row, which is otherwise insert-only. It exists
+   * because the DEC-109 residual-race auto-refund left the loser's row at `succeeded`
+   * forever — refunded money recorded as collected revenue, with no method that could
+   * correct it (#522 sweep 1). Idempotent: re-recording the same refund is a no-op.
+   */
+  markPaymentRefunded(id: PaymentId, refundedCents: number): Promise<void>;
 
   // ── Shifts ─────────────────────────────────────────────────────────────────
   saveShift(shift: Shift): Promise<void>;

@@ -1107,6 +1107,20 @@ export class PostgresRepository implements Repository {
     const { rows } = await this.#pool.query("select * from payments");
     return rows.map(toPayment);
   }
+  async markPaymentRefunded(id: PaymentId, refundedCents: number): Promise<void> {
+    // The status is derived IN SQL from the row's own amount_cents rather than passed in,
+    // so a caller can't record a full refund as partial (or vice versa) by reading a stale
+    // amount. `greatest` makes redelivery idempotent: re-recording the same refund can only
+    // hold the total steady, never rewind it, and a second partial refund accumulates.
+    await this.#pool.query(
+      `update payments
+          set refunded_cents = greatest(coalesce(refunded_cents, 0), $2),
+              status = case when greatest(coalesce(refunded_cents, 0), $2) >= amount_cents
+                            then 'refunded' else 'partially_refunded' end
+        where id = $1`,
+      [id, refundedCents],
+    );
+  }
   async listPaymentsForReservation(reservationId: ReservationId): Promise<Payment[]> {
     const { rows } = await this.#pool.query(
       "select * from payments where reservation_id=$1 order by created_at",

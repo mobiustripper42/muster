@@ -965,6 +965,38 @@ export function runRepositoryContract(
       expect((await repo.getPayment(asId<"PaymentId">("pay-4")))!.serviceFeeCents).toBe(1497);
     });
 
+    it("markPaymentRefunded: derives status from the row's own amount, accumulates, never rewinds (#522)", async () => {
+      // The one sanctioned mutation of an otherwise insert-only row. Contract-tested because
+      // the two implementations express the same rule differently — postgres does it in SQL
+      // with `greatest(coalesce(...))`, in-memory with `Math.max` — and a divergence here
+      // means refunded money is misreported on exactly one of the two.
+      await repo.saveReservation(reservation());
+      await repo.savePayment(payment()); // amountCents 53520 per the fixture
+      const id = asId<"PaymentId">("pay-1");
+      const amount = (await repo.getPayment(id))!.amountCents;
+
+      // Partial: status reflects that money is still held.
+      await repo.markPaymentRefunded(id, 1000);
+      expect(await repo.getPayment(id)).toMatchObject({
+        status: "partially_refunded",
+        refundedCents: 1000,
+      });
+
+      // A second partial accumulates to the larger total, not a replacement of the smaller.
+      await repo.markPaymentRefunded(id, 2500);
+      expect((await repo.getPayment(id))!.refundedCents).toBe(2500);
+
+      // A redelivered SMALLER refund can't rewind the total or downgrade the status.
+      await repo.markPaymentRefunded(id, amount);
+      await repo.markPaymentRefunded(id, 1);
+      expect(await repo.getPayment(id)).toMatchObject({ status: "refunded", refundedCents: amount });
+
+      // Nothing else on the row moved.
+      expect((await repo.getPayment(id))!.amountCents).toBe(amount);
+      // Unknown id is a silent no-op, not a throw — the webhook must not 500 over it.
+      await repo.markPaymentRefunded(asId<"PaymentId">("pay-nope"), 100);
+    });
+
     it("muster-owned vessel-days: mark + list; upsert on (vessel,date) (DEC-106)", async () => {
       expect(await repo.listMusterOwnedVesselDays()).toEqual([]);
       await repo.markVesselDayMusterOwned(

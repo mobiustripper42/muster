@@ -54,6 +54,11 @@ export async function checkIntegrity(repo: Repository): Promise<IntegrityReport>
     ptoWindows,
     magicTokens,
     outboxEntries,
+    locations,
+    ownedDays,
+    noticeOutbox,
+    ringOutbox,
+    auditEvents,
   ] = await Promise.all([
     repo.listAllRoleTypes(),
     repo.listVessels(),
@@ -67,8 +72,14 @@ export async function checkIntegrity(repo: Repository): Promise<IntegrityReport>
     repo.listAllPtoWindows(),
     repo.listAllMagicTokens(),
     repo.listOutboxEntries(),
+    repo.listLocations(),
+    repo.listMusterOwnedVesselDays(),
+    repo.listNoticeOutboxEntries(),
+    repo.listRingOutboxEntries(),
+    repo.listAuditEvents(),
   ]);
 
+  const locationIds = new Set(locations.map((l) => l.id as string));
   const roleIds = new Set(roleTypes.map((r) => r.id as string));
   const vesselIds = new Set(vessels.map((v) => v.id as string));
   const crewIds = new Set(crew.map((c) => c.id as string));
@@ -90,6 +101,11 @@ export async function checkIntegrity(repo: Repository): Promise<IntegrityReport>
   for (const vessel of vessels) {
     for (const m of vessel.manning) {
       miss(roleIds, "vessel", vessel.id, "manning.roleTypeId", m.roleTypeId);
+    }
+    // Optional: a vessel with no home location is legitimate, a vessel pointing at a
+    // location that was deleted is not.
+    if (vessel.homeLocationId !== undefined) {
+      miss(locationIds, "vessel", vessel.id, "homeLocationId", vessel.homeLocationId);
     }
   }
   for (const c of crew) {
@@ -134,6 +150,31 @@ export async function checkIntegrity(repo: Repository): Promise<IntegrityReport>
     miss(crewIds, "outboxEntry", o.id, "crewMemberId", o.crewMemberId);
   }
 
+  // The DEC-106 coexistence partition: which vessel-days Muster owns. A dangling vesselId
+  // here silently changes which days the importer treats as its own.
+  for (const d of ownedDays) {
+    miss(vesselIds, "musterOwnedVesselDay", `${d.vesselId}:${d.date}`, "vesselId", d.vesselId);
+  }
+  // The two relay worklists that arrived after this diagnostic was written (DEC-084 notices,
+  // DEC-073 doorbell rings). Same argument as `outbox_entries` above — adapter state, but it
+  // points into the spine, and a dangling ref means a relay card that can't render.
+  for (const n of noticeOutbox) {
+    miss(crewIds, "noticeOutboxEntry", n.id, "crewMemberId", n.crewMemberId);
+  }
+  for (const r of ringOutbox) {
+    miss(crewIds, "ringOutboxEntry", r.id, "crewMemberId", r.crewMemberId);
+  }
+  // Crew audit log (DEC-118). Unlike the reliability log this is NOT exempt: it is the
+  // operator-facing record of who changed what, and a row about a crew member who no longer
+  // exists renders as a blank actor. `actorId` is polymorphic (admin | crew | importer), so
+  // only the crew-actor case is checkable — the same shape as `magic_tokens.subject_id`.
+  for (const a of auditEvents) {
+    miss(crewIds, "auditEvent", a.id, "crewMemberId", a.crewMemberId);
+    if (a.actorKind === "crew" && a.actorId !== undefined) {
+      miss(crewIds, "auditEvent", a.id, "actorId", a.actorId);
+    }
+  }
+
   return {
     ok: v.length === 0,
     violations: v,
@@ -150,6 +191,11 @@ export async function checkIntegrity(repo: Repository): Promise<IntegrityReport>
       ptoWindows: ptoWindows.length,
       magicTokens: magicTokens.length,
       outboxEntries: outboxEntries.length,
+      locations: locations.length,
+      musterOwnedVesselDays: ownedDays.length,
+      noticeOutboxEntries: noticeOutbox.length,
+      ringOutboxEntries: ringOutbox.length,
+      auditEvents: auditEvents.length,
     },
   };
 }

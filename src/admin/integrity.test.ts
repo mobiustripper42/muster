@@ -23,6 +23,7 @@ const CREW = asId<"CrewMemberId">("crew-a");
 const EVENT = asId<"EventId">("evt-1");
 const SHIFT = asId<"ShiftId">("shift-1");
 const SEAT = asId<"SeatId">("seat-1");
+const NOW = "2026-07-01T12:00:00.000Z";
 
 /** A repo wired with one valid, fully-connected spine. */
 async function seedSpine(): Promise<InMemoryRepository> {
@@ -178,6 +179,90 @@ describe("checkIntegrity", () => {
     expect(refs).toContain("seat.assignedCrewMemberId");
     expect(refs).toContain("credential.crewMemberId");
     expect(refs).toContain("magicToken.subjectId");
+  });
+
+  it("catches the refs that arrived after this diagnostic was written (#584)", async () => {
+    // Notice + ring outbox (DEC-084/DEC-073), the DEC-106 coexistence partition, the crew
+    // audit log (DEC-118) and vessel→location. Each is a table that landed after the
+    // diagnostic and inherited no check, because nothing made adding one part of adding a
+    // table — see integrity-coverage.ts.
+    const repo = await seedSpine();
+    const ghostCrew = asId<"CrewMemberId">("crew-ghost");
+    const ghostVessel = asId<"VesselId">("vessel-ghost");
+
+    await repo.saveNoticeOutboxEntry({
+      id: asId<"NoticeOutboxEntryId">("notice-1"),
+      crewMemberId: ghostCrew,
+      action: "added",
+      body: "b",
+      link: "l",
+      status: "pending",
+      createdAt: NOW,
+    });
+    await repo.saveRingOutboxEntry({
+      id: asId<"RingOutboxEntryId">("ring-1"),
+      crewMemberId: ghostCrew,
+      threadId: asId<"ThreadId">("thr-1"),
+      body: "b",
+      link: "l",
+      status: "pending",
+      createdAt: NOW,
+    });
+    await repo.markVesselDayMusterOwned(ghostVessel, "2026-07-04", NOW);
+    await repo.appendAuditEvent({
+      id: asId<"AuditEventId">("audit-1"),
+      crewMemberId: ghostCrew,
+      actorKind: "engine",
+      type: "crew_added",
+      timestamp: NOW,
+      metadata: {},
+    });
+
+    const report = await checkIntegrity(repo);
+    expect(report.ok).toBe(false);
+    const refs = report.violations.map((v) => `${v.entity}.${v.ref}`).sort();
+    expect(refs).toEqual(
+      [
+        "auditEvent.crewMemberId",
+        "musterOwnedVesselDay.vesselId",
+        "noticeOutboxEntry.crewMemberId",
+        "ringOutboxEntry.crewMemberId",
+      ].sort(),
+    );
+  });
+
+  it("catches a vessel pointing at a deleted home location, and allows none at all", async () => {
+    const repo = await seedSpine();
+    const vessels = await repo.listVessels();
+    await repo.saveVessel({ ...vessels[0]!, homeLocationId: asId<"LocationId">("loc-ghost") });
+    const report = await checkIntegrity(repo);
+    expect(report.violations).toContainEqual({
+      entity: "vessel",
+      id: vessels[0]!.id as string,
+      ref: "homeLocationId",
+      missingId: "loc-ghost",
+    });
+
+    // Undefined is legitimate — not every vessel has a home berth.
+    const { homeLocationId: _dropped, ...noHome } = vessels[0]!;
+    await repo.saveVessel(noHome);
+    expect((await checkIntegrity(repo)).ok).toBe(true);
+  });
+
+  it("only checks an audit event's actor when that actor is crew", async () => {
+    // `actorId` is polymorphic (admin | crew | importer) — the same shape as a magic token's
+    // subject. Checking an admin handle against crew ids would fail every admin action.
+    const repo = await seedSpine();
+    await repo.appendAuditEvent({
+      id: asId<"AuditEventId">("audit-admin"),
+      crewMemberId: CREW,
+      actorKind: "admin",
+      actorId: "eric",
+      type: "crew_added",
+      timestamp: NOW,
+      metadata: {},
+    });
+    expect((await checkIntegrity(repo)).ok).toBe(true);
   });
 
   it("ignores admin-subject tokens (no entity to point at)", async () => {

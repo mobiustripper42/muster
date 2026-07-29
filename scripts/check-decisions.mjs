@@ -116,7 +116,7 @@ export function check() {
       if (!sections.has(sec)) {
         fail(at, `amends_spec §${sec}, which is not a numbered section of ${SPEC}`)
       }
-      if (!a.scope) {
+      if (!a.scope?.trim()) {
         fail(at, `amends_spec §${sec} with no scope — the scope is what tells a reader of that section what changed`)
       }
     }

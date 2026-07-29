@@ -1,15 +1,20 @@
 # Muster — Authoritative Design Spec
 
-Status: **🔒 LOCKED v1.0 — 2026-06-03** · Baseline for the Claude Code build. Consolidates the 11
-design artifacts into one buildable source of truth. Working name: **Muster** (crew engine). Worked
-example / tenant #1: **BrewBoat**.
+Baseline for the Claude Code build, first consolidated 2026-06-03 from the 11 design artifacts into
+one buildable source of truth. Working name: **Muster** (crew engine). Worked example / tenant #1:
+**BrewBoat**.
 
-> **LOCK RULE.** This document is frozen as the build baseline. **No new features or scope go in
-> here.** Anything new — however good — goes in a separate `future-ideas` doc in the project and
-> waits. The only edits permitted to a locked spec are *corrections* (something already in scope is
-> wrong, contradictory, or unclear) and downstream feedback from Design/Code about existing
-> behavior — never additions. Unlock with a deliberate version bump (v1.1) only when a batch of
-> changes is genuinely ready; don't let the baseline drift one shiny idea at a time. 😬
+> **SCOPE RULE (DEC-014).** **No new features or scope go in here.** Anything new — however good —
+> goes in `docs/FUTURE_IDEAS.md` and waits. Edits to this document are *corrections* (something
+> already in scope is wrong, contradictory, or unclear), downstream feedback from Design/Code about
+> existing behavior, and **amendments that a decision declares** — under DEC-143 a decision that
+> changes a section says so in its frontmatter, and the pointer under that section's heading is
+> generated. Don't let the spec drift one shiny idea at a time. 😬
+>
+> *(This carried a "🔒 LOCKED v1.0" stamp and a lock rule promising a v1.1 unlock. Neither was true:
+> DEC-105, DEC-140 and a dozen others rewrote whole sections, and no version bump ever happened. The
+> discipline the stamp was protecting — new ideas go elsewhere — is real and is stated above. The
+> stamp itself was decoration on a door that was never locked.)*
 
 **This document is the source of truth.** Screens are built from these words. When a screen
 reveals something the words got wrong or missed, the words get edited first, then the screen is
@@ -702,7 +707,7 @@ what it always was: the **data layer under the crew engine**, not a booking syst
 > **Amended by DEC-016 — the builder restatement carries the same illustrative manning figure**
 > **Amended by DEC-082 — the Lock action and Lock semantics are cut — Xola is the source of truth, so there is nothing to lock against**
 > **Amended by DEC-083 — Split is a cut-time partition on the canonical row, re-derived each pull; the "new block needing attention" cue is an import-diff over the existing audit**
-> **Amended by DEC-085 — the board groups day → boat, not the spec'd "grouped by boat then day"**
+> **Amended by DEC-085 — the board groups day → time, carrying vessel identity as a hue rather than a grouping axis — not the spec'd "grouped by boat then day"**
 <!-- /amended-by-dec -->
 
 > Source: admin-1. The **bridge between the two halves of the app** — where continuous reservations

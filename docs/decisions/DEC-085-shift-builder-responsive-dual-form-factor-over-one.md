@@ -4,7 +4,7 @@ title: "Shift Builder — responsive dual-form-factor over one no-JS core"
 topic: "UI, brand & frontend patterns"
 amends_spec:
   - section: "2.3"
-    scope: "the board groups day → boat, not the spec'd \"grouped by boat then day\""
+    scope: "the board groups day → time, carrying vessel identity as a hue rather than a grouping axis — not the spec'd \"grouped by boat then day\""
 ---
 
 ## DEC-085: Shift Builder — responsive dual-form-factor over one no-JS core

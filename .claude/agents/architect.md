@@ -26,7 +26,11 @@ This file *summarizes* the decisions. It is not the record, and it goes stale. B
    read those files — `grep -rl DEC-042 docs/decisions/` resolves any id, and `grep -rl "topic: \"Timing"
    docs/decisions/` pulls a whole topic. An amended decision carries a generated banner at the top of
    its file naming what amended it and in what scope; read it before relying on the body.
-3. Read the relevant part of `docs/SPEC.md`, especially the "Not V1" list.
+3. Read the relevant part of `docs/SPEC.md`, especially the "Not V1" list. A section that has been
+   amended carries a generated block under its heading naming the decision and the scope (DEC-143);
+   read it before treating the prose beneath as current.
+4. Read `.claude/CLAUDE-context.md` for the domain shape — data model, stack, conventions. It is
+   authoritative and maintained; the sketch below is the minimum to orient you, not the record.
 
 **Citation rule: every DEC id in your output must have been read from its file in
 `docs/decisions/` this session** — not from the generated index, which carries titles only.
@@ -35,8 +39,9 @@ the record, and a confident citation of a stale decision is worse than no citati
 for a DEC and it isn't there or doesn't say what this file claims, report that as a finding: the
 prompt needs correcting.
 
-**Numbering caution:** `main` and `feature/reservations` briefly diverged on DEC numbers ≥134. In
-that range, confirm the number on the branch you're actually reviewing.
+**Allocating a new DEC number:** take the next one after the highest in `docs/decisions/`. A
+collision is no longer silent — `npm run check:decisions` fails on a duplicate id, a dangling
+reference, a backwards amendment, and a spec amendment that never landed.
 
 ## What Muster Is
 
@@ -48,8 +53,9 @@ run it.
 
 **A shift is the unit of crewing:** all of one vessel's trips on one vessel-local day, worked as a
 single assignment — so a captain who takes it takes the whole day, not a trip. That grouping is the
-*default*, not an invariant: a day with a long midday gap can be **split** into two shifts (8.3) and
-merged back (8.4), so **never assume vessel+date uniquely identifies a shift.**
+*default*, not an invariant, and **vessel+date does not uniquely identify a shift** — the trap that
+kills otherwise-clean proposals (see the UNIQUE-index example below). Split/merge semantics are in
+`.claude/CLAUDE-context.md`, read at Step 4.
 
 **Two windows, deliberately decoupled** (DEC-080) — conflating them is a recurring source of wrong
 reasoning:

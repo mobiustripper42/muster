@@ -14,7 +14,7 @@ test.describe("admin /admin/asks — crew audit trail", () => {
     await resetAndSeed("atrisk");
   });
 
-  test("lists crew events with kinds, reachable from the admin hub", async ({ page }) => {
+  test("lists crew events with kinds, reachable from the nav", async ({ page }) => {
     await signInAsAdmin(page, "spink");
     await page.goto("/admin");
     await page.getByRole("link", { name: /Audit/ }).click();

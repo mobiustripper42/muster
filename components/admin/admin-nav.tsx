@@ -201,24 +201,37 @@ export function AdminNav({
               {l.label}
             </AppLink>
           ))}
-          <div className="overflow-y-auto">
-            {groups.map((g) => (
-              <section key={g.label} className="mt-3">
-                <h3 className="px-3 pb-1 text-xs uppercase tracking-wide text-faint">{g.label}</h3>
-                {g.links.map((l) => (
-                  <AppLink
-                    key={l.href}
-                    href={l.href}
-                    aria-current={isActive(l.href) ? "page" : undefined}
-                    className={`flex items-center gap-2 rounded-lg px-3 py-2.5 text-base ${
-                      isActive(l.href) ? "bg-bg font-semibold text-accent" : "text-ink"
-                    }`}
-                  >
-                    {l.label}
-                  </AppLink>
-                ))}
-              </section>
-            ))}
+          {/* Groups collapse here too. The first cut rendered them expanded — one flat scroll,
+              on the theory that a drawer has vertical room a bar doesn't. It doesn't: seventeen
+              rows is longer than the phone, and a menu you have to scroll to read is a menu you
+              can't use. Collapsed, the whole thing is the four daily items plus four headers,
+              and everything is on screen at once. */}
+          <div className="mt-2 overflow-y-auto">
+            {groups.map((g) => {
+              const holdsActive = g.links.some((l) => isActive(l.href));
+              return (
+                <details key={g.label} open={holdsActive} className="group border-t border-line">
+                  <summary className="flex cursor-pointer list-none items-center justify-between rounded-lg px-3 py-2.5 text-base text-ink">
+                    <span className={holdsActive ? "font-semibold text-accent" : undefined}>{g.label}</span>
+                    <span aria-hidden className="text-xs text-muted transition-transform group-open:rotate-180">
+                      ▾
+                    </span>
+                  </summary>
+                  {g.links.map((l) => (
+                    <AppLink
+                      key={l.href}
+                      href={l.href}
+                      aria-current={isActive(l.href) ? "page" : undefined}
+                      className={`flex items-center gap-2 rounded-lg py-2.5 pl-6 pr-3 text-base ${
+                        isActive(l.href) ? "bg-bg font-semibold text-accent" : "text-ink"
+                      }`}
+                    >
+                      {l.label}
+                    </AppLink>
+                  ))}
+                </details>
+              );
+            })}
           </div>
         </div>
       </div>

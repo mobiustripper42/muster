@@ -69,7 +69,7 @@ test.describe("admin nav", () => {
     await openMenuIfMobile(page);
     // Desktop: Messages is shelved under People (#603) — open the group first. The drawer
     // renders every group expanded, so this is a no-op there.
-    const people = nav.locator("summary").filter({ hasText: "People" });
+    const people = nav.locator("summary:visible").filter({ hasText: "People" });
     if (await people.isVisible()) await people.click();
     await nav.getByRole("link", { name: "Messages" }).click();
     await page.waitForURL(/\/admin\/messages/);

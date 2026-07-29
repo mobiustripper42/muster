@@ -114,10 +114,14 @@ test.describe("admin integrity diagnostic (#501)", () => {
     await expect(page.getByRole("heading", { name: /^scanned$/i })).toBeVisible();
   });
 
-  test("is reachable from the admin hub", async ({ page }) => {
+  test("is reachable from the nav", async ({ page }) => {
     await signInAsAdmin(page, "spink");
     await page.goto("/admin");
 
+    // Shelved under Settings (#603) — open the group first on desktop.
+    const nav = page.getByRole("navigation", { name: "Admin" });
+    const settings = nav.locator("summary:visible").filter({ hasText: "Settings" });
+    if (await settings.isVisible()) await settings.click();
     await page.getByRole("link", { name: /integrity check/i }).click();
     await expect(page).toHaveURL(/\/admin\/integrity$/);
   });

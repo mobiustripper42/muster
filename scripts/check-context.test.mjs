@@ -5,8 +5,9 @@
 // #589 failure. So the cases below pin what it deliberately ignores as hard as what it catches,
 // and the last block asserts the real docs are clean.
 
+import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { check, isClaim } from "./check-context.mjs";
+import { check, expandBraces, isClaim } from "./check-context.mjs";
 
 describe("isClaim — what counts as a claim about this repo", () => {
   it("accepts a path rooted in a real top-level directory", () => {
@@ -42,6 +43,21 @@ describe("isClaim — what counts as a claim about this repo", () => {
   });
 });
 
+describe("expandBraces", () => {
+  it("expands a brace list, including the empty alternative", () => {
+    expect(expandBraces("crew/{,open,calendar}/page.tsx")).toEqual([
+      "crew//page.tsx",
+      "crew/open/page.tsx",
+      "crew/calendar/page.tsx",
+    ]);
+  });
+
+  it("expands nested groups and leaves a brace-free pattern alone", () => {
+    expect(expandBraces("{a,b}/{x,y}")).toEqual(["a/x", "a/y", "b/x", "b/y"]);
+    expect(expandBraces("src/*.ts")).toEqual(["src/*.ts"]);
+  });
+});
+
 describe("check", () => {
   it("passes on the real docs — every cited path and pattern resolves", () => {
     expect(check()).toEqual([]);
@@ -64,6 +80,30 @@ describe("check", () => {
     expect(
       check([{ path: "fixture.md", text: "`src/adapters/*-channel.ts` and `scripts/{check,gen}-decisions*.mjs`" }]),
     ).toEqual([]);
+  });
+
+  it("checks a pointer written as the `ls <path>` command a reader would run", () => {
+    // The first version's no-whitespace rule made every `ls `-prefixed span invisible — including
+    // the two authoritative-list pointers in CLAUDE-context.md and the one this script's own
+    // comment holds up as the worked example. The check was blind to exactly the pattern it
+    // exists to encourage, and the docs asserted it was covered.
+    expect(check([{ path: "f.md", text: "list: `ls src/adapters/*-channel.ts`" }])).toEqual([]);
+    expect(check([{ path: "f.md", text: "list: `ls src/adapters/*-nope.ts`" }])[0]).toMatch(/does not exist/);
+  });
+
+  it("reads a span the author escaped for a shell paste", () => {
+    // `app/\(crew\)/crew/` is written backslashed so it can be pasted into bash. Those slashes
+    // are for the shell, not for a filesystem lookup.
+    expect(check([{ path: "f.md", text: "`ls app/\\(crew\\)/crew/`" }])).toEqual([]);
+  });
+
+  it("never invokes a shell, so a doc cannot execute anything", () => {
+    // Review demonstrated real command execution against the first version, which interpolated
+    // the span into `bash -lc "ls ${pattern}"`. This runs in `verify` on every dev machine and in
+    // CI, and the premise of this whole check is that docs get less scrutiny than code.
+    const payload = "src/*;touch$IFS/tmp/check-context-should-not-exist";
+    expect(check([{ path: "evil.md", text: `\`${payload}\`` }])[0]).toMatch(/does not exist/);
+    expect(existsSync("/tmp/check-context-should-not-exist")).toBe(false);
   });
 
   it("reports the line number, so a failure is one click from the claim", () => {

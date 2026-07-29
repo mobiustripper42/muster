@@ -22,13 +22,17 @@
 // matters more than the code below — a guard whose blind spot is undocumented gets trusted for
 // things it never checked (#589).
 
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
-import { execFileSync } from 'node:child_process'
+import { existsSync, globSync, readFileSync, readdirSync, statSync } from 'node:fs'
 
 export const DOCS = ['CLAUDE.md', '.claude/CLAUDE-context.md']
 
-// Backticked spans with no whitespace.
-const PATHISH = /`([^`\s]+)`/g
+// A backticked span, optionally written as the `ls <path>` command a reader would actually run.
+// That prefix is the docs' own convention for a pointer — "authoritative list: `ls
+// src/adapters/*-channel.ts`" — and the first version's no-whitespace rule made every one of them
+// invisible: the two highest-value pointers in the file, including the one written as this
+// script's worked example, were never checked. A guard blind to exactly the pattern it exists to
+// encourage is worse than no guard, because the doc claims it is covered.
+const PATHISH = /`(?:ls\s+)?([^`\s]+)`/g
 
 // Only a span rooted in a real top-level directory of THIS repo counts as a claim about this
 // repo's contents. The first draft checked anything path-shaped and produced 16 findings, 15 of
@@ -61,14 +65,36 @@ export const isClaim = (s) => s.includes('/') && ROOTS.has(s.split('/')[0]) && !
  */
 const isPattern = (p) => /[*?{]/.test(p)
 
-function globMatches(pattern) {
+/**
+ * `{a,b}` → every combination, left to right. `globSync` handles `*` and `?` but not brace
+ * expansion, and the docs use it (`crew/{,open,calendar,time-off}/page.tsx`).
+ */
+export function expandBraces(pattern) {
+  const open = pattern.indexOf('{')
+  if (open === -1) return [pattern]
+  const close = pattern.indexOf('}', open)
+  if (close === -1) return [pattern]
+  const [head, tail] = [pattern.slice(0, open), pattern.slice(close + 1)]
+  return pattern
+    .slice(open + 1, close)
+    .split(',')
+    .flatMap((alt) => expandBraces(`${head}${alt}${tail}`))
+}
+
+/**
+ * Does this pattern match anything on disk?
+ *
+ * Node's own globber, not a shell. The first version ran `bash -lc "ls ${pattern}"` with the
+ * pattern interpolated after escaping parentheses, and review demonstrated real command execution
+ * from a doc-only payload: a span like `src/*;touch$IFS/tmp/x` roots on a real directory, dodges
+ * the no-whitespace filter via `$IFS`, and runs. Reaching that requires commit access to
+ * `CLAUDE.md`, so the practical risk was low — but this script runs in `verify` on every dev
+ * machine and in CI, and the premise of this whole PR is that docs get *less* scrutiny than code.
+ * A docs diff should never be a code-exec path. No shell, no escaping to get right, no risk.
+ */
+function patternMatches(pattern) {
   try {
-    // `ls` is what the docs literally tell a reader to run, so check the same thing they will.
-    // Route groups put parentheses in real Next.js paths (`app/(crew)/…`) and bash reads those as
-    // a subshell; escape them while leaving braces and stars to expand.
-    const escaped = pattern.replace(/([()])/g, '\\$1')
-    const out = execFileSync('bash', ['-lc', `ls ${escaped} 2>/dev/null | head -1`], { encoding: 'utf8' })
-    return out.trim().length > 0
+    return expandBraces(pattern).some((p) => globSync(p).length > 0)
   } catch {
     return false
   }
@@ -98,8 +124,10 @@ export function check(sources) {
         const raw = m[1]
         if (!isClaim(raw)) continue
         // Strip a trailing colon+line-number citation (`src/builder/derive.ts:148,192`).
-        const path = raw.replace(/:[\d,]+$/, '')
-        const ok = isPattern(path) ? globMatches(path) : existsSync(path)
+        // Strip a trailing line-number citation, and any backslashes the author added to make the
+        // span paste-able into a shell (`app/\(crew\)/`) — those are for bash, not for a lookup.
+        const path = raw.replace(/:[\d,]+$/, '').replace(/\\(?=[()])/g, '')
+        const ok = isPattern(path) ? patternMatches(path) : existsSync(path)
         if (!ok) failures.push(`${doc}:${i + 1} — cites \`${raw}\`, which does not exist`)
       }
     })

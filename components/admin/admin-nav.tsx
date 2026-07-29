@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { AppLink } from "../ui/app-link";
 import { SubmitButton } from "../ui/submit-button";
 import { switchToCrew } from "../../app/lib/switch-actions";
+import { visibleAdminLinks } from "../../app/lib/admin-links";
 
 /**
  * Persistent admin nav (#174) — the frame that stitches the per-screen admin
@@ -19,26 +20,12 @@ import { switchToCrew } from "../../app/lib/switch-actions";
  * colors). Links the BUILT surfaces (9.12 added Messages); the rest are one line
  * each later.
  */
-const LINKS = [
-  { href: "/admin/at-risk", label: "At-Risk" },
-  { href: "/admin/outbox", label: "Outbox" },
-  { href: "/admin/messages", label: "Messages" },
-  { href: "/admin/import", label: "Import" },
-  { href: "/admin/shifts", label: "Shifts" },
-  { href: "/admin/offerings", label: "Offerings" },
-  { href: "/admin/calendar", label: "Calendar" },
-  { href: "/admin/purchases", label: "Purchases" },
-  { href: "/admin/customers", label: "Customers" },
-  { href: "/admin/add-ons", label: "Add-ons" },
-  { href: "/admin/vessels", label: "Vessels" },
-  { href: "/admin/locations", label: "Locations" },
-  { href: "/admin/blocks", label: "Blocks" },
-] as const;
 
 export function AdminNav({
   tenant,
   dateLabel,
   messaging,
+  reservations,
 }: {
   /** Tenant display name + today's VESSEL-LOCAL date (9.8) — computed by the
    *  server layout (DEC-032: never the viewer's clock) and passed down. */
@@ -48,9 +35,11 @@ export function AdminNav({
    *  component, so the env flag can't be read here) and passed down. Drops the
    *  Messages nav item when off. */
   messaging: boolean;
+  /** Reservations feature on? (DEC-111, #586) — same server-side resolution. Drops the six
+   *  reservations-era entries when off, which is most of the bar's width. */
+  reservations: boolean;
 }) {
-  // Filter server-side flag → hide the Messages item when messaging is off (#389).
-  const links = messaging ? LINKS : LINKS.filter((l) => l.href !== "/admin/messages");
+  const links = visibleAdminLinks({ messaging, reservations });
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -73,7 +62,12 @@ export function AdminNav({
 
   return (
     <nav aria-label="Admin" className="sticky top-0 z-20 border-b border-line bg-card">
-      <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-2.5">
+      {/* Wider than the `max-w-3xl` page shell on purpose (#586). The nav is chrome, not reading
+          copy: borrowing the body-copy width capped nav content at 768px no matter how wide the
+          monitor was, so a 1440px screen had ~830px of empty white bar on either side while the
+          links fought for room in the middle. That manufactured the collision, and no bigger
+          display could ever relieve it. */}
+      <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-2.5">
         <div className="flex min-w-0 items-baseline gap-2">
           <AppLink href="/admin" className="shrink-0 font-semibold text-ink">
             Muster
@@ -93,8 +87,23 @@ export function AdminNav({
 
         {/* Desktop: inline links. `gap-4` + nowrap — 12.8 added a ninth link (Offerings)
             and gap-5 let "Crew view"/a hyphenated label wrap, busting the 52px height
-            budget the two-pane shell subtracts (#253, pinned by admin-nav.spec). */}
-        <div className="hidden shrink-0 items-center gap-4 text-sm sm:flex">
+            budget the two-pane shell subtracts (#253, pinned by admin-nav.spec).
+
+            Inline only at `xl` (#586). The first attempt at this let the row scroll instead of
+            overflow, which measured worse than the bug it replaced: at 1440px four links sat
+            outside a 443px box with the scrollbar hidden, so the bar rendered as a tidy,
+            complete-looking 8 items and silently swallowed Add-ons, Vessels, Locations and
+            Blocks. The original collision was at least self-evidently broken — it got reported
+            within one usage cycle. A clean-looking bar that is missing navigation does not.
+
+            Below `xl` the links live in the hamburger drawer, which holds all of them. That is
+            crude — with the default flag set there are six links and they would fit at 1024 —
+            but a fixed breakpoint cannot know the link count, and every alternative either
+            clips silently or paints over the brand again.
+
+            Grouping is what actually fixes this: twelve peers is not a hierarchy and roughly
+            half are edited once a season. Direction 2 in #586, its own design pass. */}
+        <div className="hidden shrink-0 items-center gap-4 text-sm xl:flex">
           {links.map((l) => (
             <AppLink
               key={l.href}
@@ -113,7 +122,7 @@ export function AdminNav({
           aria-label="Open menu"
           aria-expanded={open}
           aria-controls="admin-drawer"
-          className="-mr-1 flex h-9 w-9 items-center justify-center rounded-lg text-ink sm:hidden"
+          className="-mr-1 flex h-9 w-9 items-center justify-center rounded-lg text-ink xl:hidden"
         >
           <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
             <path d="M4 6h14M4 11h14M4 16h14" />
@@ -123,7 +132,7 @@ export function AdminNav({
 
       {/* Mobile slide-in drawer + backdrop — always mounted (so it animates both
           ways), mobile-only, and inert while closed so its links leave the tab order. */}
-      <div className="sm:hidden">
+      <div className="xl:hidden">
         <div
           aria-hidden
           onClick={() => setOpen(false)}

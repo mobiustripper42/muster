@@ -17,6 +17,33 @@ test.describe("admin nav", () => {
     await resetAndSeed("crew");
   });
 
+  test("#586: the links never paint over the brand cluster", async ({ page }, testInfo) => {
+    // The bug: at 1280px with twelve links, the inline row carried `shrink-0`, overflowed the
+    // `max-w-3xl` container, and rendered straight on top of `Muster · BrewBoat · Tue, Jul 28 ·
+    // Crew view`. Nothing asserted nav layout, so it shipped and was found by clicking.
+    //
+    // e2e runs with RESERVATIONS=true and MESSAGING=1, so all thirteen entries render here —
+    // strictly worse than any real deployment, which is what makes this the right place to pin it.
+    test.skip(testInfo.project.name !== "desktop", "desktop-only: at 375px the links are behind the hamburger");
+    await signInAsAdmin(page, "spink");
+    const nav = page.getByRole("navigation", { name: "Admin" });
+
+    const crewView = nav.getByRole("button", { name: "Crew view" });
+    const firstLink = nav.getByRole("link", { name: "At-Risk" });
+    const left = await crewView.boundingBox();
+    const right = await firstLink.boundingBox();
+    expect(left, "Crew view must be laid out").not.toBeNull();
+    expect(right, "the first nav link must be laid out").not.toBeNull();
+
+    // The whole bug in one assertion: the link row starts after the brand cluster ends.
+    expect(right!.x).toBeGreaterThanOrEqual(left!.x + left!.width);
+
+    // And the row still fits on one line — the 52px height budget the two-pane shell subtracts
+    // (#253). The previous fix for this collision (gap-5) bought width by wrapping and broke it.
+    const bar = await nav.boundingBox();
+    expect(bar!.height).toBeLessThanOrEqual(56);
+  });
+
   test("admin navigates via the bar; the active link follows the route", async ({ page }) => {
     await signInAsAdmin(page, "spink"); // lands on /admin/at-risk
     const nav = page.getByRole("navigation", { name: "Admin" });

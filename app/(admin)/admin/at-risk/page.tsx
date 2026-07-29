@@ -114,7 +114,7 @@ export default async function AtRiskBoard({
         <Notice tone="warn">
           Engine paused — the automation isn’t firing asks. An empty board here
           means the engine is muted, not that every shift is covered.{" "}
-          <AppLink href="/admin" className="font-semibold text-accent">
+          <AppLink href="/admin/settings" className="font-semibold text-accent">
             Resume staffing ↗
           </AppLink>
         </Notice>

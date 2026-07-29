@@ -2,7 +2,6 @@ import type { Customer, Event, Reservation } from "@core/domain/entities.js";
 import { formatPhoneForDisplay } from "@core/customers/identity.js";
 import { buildCustomerRows, filterCustomerRows } from "@core/customers/customer-view.js";
 import { formatCents } from "@core/reservations/calendar-detail.js";
-import { BackLink } from "../../../../components/ui/back-link";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { AppLink } from "../../../../components/ui/app-link";
@@ -62,7 +61,6 @@ export default async function AdminCustomers({
 
   return (
     <Shell width="3xl">
-      <BackLink href="/admin">Back</BackLink>
 
       <header className="flex flex-col gap-1">
         <p className="text-xs text-faint">Reservations / Customers</p>

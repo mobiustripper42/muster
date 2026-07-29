@@ -1,5 +1,4 @@
 import type { AddOn, Location, Offering, Vessel } from "@core/domain/entities.js";
-import { BackLink } from "../../../../components/ui/back-link";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { AppLink } from "../../../../components/ui/app-link";
@@ -101,7 +100,6 @@ export default async function AdminOfferings({
 
   return (
     <Shell width="6xl">
-      <BackLink href="/admin">Back</BackLink>
       {/* One form spans the header + both columns; `key` remounts the uncontrolled inputs
           (and the variations island) when the selected offering changes. */}
       <form

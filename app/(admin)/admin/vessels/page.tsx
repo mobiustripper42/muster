@@ -1,5 +1,4 @@
 import type { Location, Offering, Vessel } from "@core/domain/entities.js";
-import { BackLink } from "../../../../components/ui/back-link";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { AppLink } from "../../../../components/ui/app-link";
@@ -74,7 +73,6 @@ export default async function AdminVessels({
 
   return (
     <Shell width="6xl">
-      <BackLink href="/admin">Back</BackLink>
       {/* One form spans the header + both columns; `key` remounts the uncontrolled inputs when
           the selected vessel changes, so switching rows always shows that vessel's values. */}
       <form

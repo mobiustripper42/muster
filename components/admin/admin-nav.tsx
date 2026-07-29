@@ -106,10 +106,15 @@ export function AdminNav({
             const holdsActive = g.links.some((l) => isActive(l.href));
             return (
               // `<details>` over a client popover: no JS (DEC-026's posture), keyboard-operable
-              // for free, and `globals.css` already styles `summary:focus-visible`. `open` when
-              // the group holds the current route, or the "you are here" cue disappears behind a
-              // closed dropdown — the same shape `shifts-filter.tsx` uses for its More panel.
-              <details key={g.label} open={holdsActive} className="group relative">
+              // for free, and `globals.css` already styles `summary:focus-visible`.
+              //
+              // Closed after a selection, deliberately. The first cut forced it open whenever the
+              // group held the current route, to preserve the you-are-here cue. The operator's
+              // call: the highlighted GROUP is that cue — "if Time Off is selected, then just
+              // People will be highlighted" — and a panel that reopens itself on every navigation
+              // is a panel you keep closing. Navigation remounts the island, so this needs no
+              // state: absent `open`, every group renders shut.
+              <details key={g.label} className="group relative">
                 <summary
                   className={`inline-flex cursor-pointer list-none items-center gap-1 whitespace-nowrap ${holdsActive ? "font-semibold text-accent" : "text-muted"}`}
                 >
@@ -210,7 +215,7 @@ export function AdminNav({
             {groups.map((g) => {
               const holdsActive = g.links.some((l) => isActive(l.href));
               return (
-                <details key={g.label} open={holdsActive} className="group border-t border-line">
+                <details key={g.label} className="group border-t border-line">
                   <summary className="flex cursor-pointer list-none items-center justify-between rounded-lg px-3 py-2.5 text-base text-ink">
                     <span className={holdsActive ? "font-semibold text-accent" : undefined}>{g.label}</span>
                     <span aria-hidden className="text-xs text-muted transition-transform group-open:rotate-180">

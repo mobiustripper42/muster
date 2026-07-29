@@ -1,7 +1,6 @@
 import { checkIntegrity } from "@core/admin/integrity.js";
 import { buildIntegrityView, type IntegrityView } from "@core/admin/integrity-view.js";
 import { AppLink } from "../../../../components/ui/app-link";
-import { BackLink } from "../../../../components/ui/back-link";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
@@ -53,7 +52,6 @@ export default async function AdminIntegrity({
 
   return (
     <Shell width="3xl">
-      <BackLink href="/admin">Admin</BackLink>
       <h1 className="text-xl font-semibold text-ink">Referential integrity</h1>
 
       <p className="text-sm text-muted">

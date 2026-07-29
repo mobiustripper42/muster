@@ -1,5 +1,4 @@
 import type { AddOn, Offering } from "@core/domain/entities.js";
-import { BackLink } from "../../../../components/ui/back-link";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { AppLink } from "../../../../components/ui/app-link";
@@ -65,7 +64,6 @@ export default async function AdminAddOns({
 
   return (
     <Shell width="6xl">
-      <BackLink href="/admin">Back</BackLink>
       <form
         key={creating ? "new" : selected?.id ?? "none"}
         action={saveAddOn}

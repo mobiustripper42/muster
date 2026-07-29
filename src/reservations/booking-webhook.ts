@@ -117,22 +117,6 @@ export async function processBookingWebhook(
   const event = deps.payments.parseEvent(rawBody, signature); // throws on bad sig
   if (!event) return { handled: false };
 
-  // The flag check sits AFTER verification on purpose: an unsigned request still gets its 400,
-  // so the flag can't be used to probe whether the endpoint is live. Ack rather than error, for
-  // the same reason the DEC-134 double-write guard acks a metadata-less intent — a non-2xx makes
-  // Stripe retry an event we are never going to want.
-  if (!deps.reservationsEnabled) {
-    // Loud, because reaching here means a verified charge succeeded and Muster is deliberately
-    // not booking it. With the flag off nothing can mint a new intent, so this is a replay, a
-    // dashboard send, or a leftover from a flag-on window — in every one of those cases money
-    // has already moved, and dropping it silently is how a paying customer ends up with no
-    // booking and nobody knowing. Acked so Stripe stops retrying; alerted so a human looks.
-    await deps.alertPaidButUnbooked(
-      `⚠️ Verified Stripe event received while RESERVATIONS is off — acked and NOT booked. ` +
-        `Money may have moved; investigate before flipping the flag on.`,
-    );
-    return { handled: false };
-  }
 
   if (event.type === "payment_succeeded") {
     const pi = event.data;
@@ -220,6 +204,34 @@ async function processBookingCharge(
   deps: WebhookDeps,
   charge: BookingCharge,
 ): Promise<WebhookResult> {
+  // The RESERVATIONS gate (#588, DEC-111) lives HERE — on the new-booking path only, and after
+  // both event shapes have resolved their purpose.
+  //
+  // The first version of this gated the whole handler right after signature verification, which
+  // read as the safer place and was not. Balance and post-trip gratuity collection ride the same
+  // webhook on EXISTING reservations, and their entry point (`createBalanceLink`) is admin-gated,
+  // not RESERVATIONS-gated. Since the flag is off by default, that version dropped every real
+  // balance payment in a default deployment: Stripe charges the customer, `recordBalancePayment`
+  // never runs, and the operator gets an alert about new-booking readiness that has nothing to do
+  // with what happened. Caught in review before merge.
+  //
+  // Verification still happens first — `parseEvent` throws on a bad signature well upstream — so
+  // an unsigned request still gets its 400 and the flag cannot be used to probe the endpoint.
+  // Metadata-less shadow intents (DEC-134) return before reaching here, so the expected noise of
+  // a hosted session's bare PI never trips the alert.
+  if (!deps.reservationsEnabled) {
+    // Loud, because reaching here means a verified charge SUCCEEDED and Muster is deliberately
+    // not booking it. With the flag off nothing can mint a new booking intent, so this is a
+    // replay, a dashboard send, or a leftover from a flag-on window — in all three money has
+    // already moved. Dropping it silently is how a paying customer ends up with no booking and
+    // nobody knowing. Acked so Stripe stops retrying; alerted so a human looks.
+    await deps.alertPaidButUnbooked(
+      `⚠️ Verified booking charge received while RESERVATIONS is off — acked and NOT booked ` +
+        `(${charge.key}). Money has moved; investigate before flipping the flag on.`,
+    );
+    return { handled: false };
+  }
+
   const m = charge.metadata;
   const idempotencyKey = charge.key;
   const kind = m.kind === "deposit" ? "deposit" : "full";

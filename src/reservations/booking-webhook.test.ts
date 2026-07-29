@@ -80,6 +80,27 @@ describe("processBookingWebhook — the RESERVATIONS gate (#588, DEC-111)", () =
     expect(alert.mock.calls[0]![0]).toMatch(/RESERVATIONS is off/);
   });
 
+  it("still records a BALANCE payment when the flag is off — the gate is about new bookings only", async () => {
+    // The regression this pins: the gate first sat right after signature verification, ahead of
+    // purpose dispatch, so it swallowed balance collection too. Balance links are minted by an
+    // admin-gated action that has no RESERVATIONS check, and the flag is off by default — so in a
+    // default deployment Stripe charged the customer and Muster recorded nothing.
+    const repo = new InMemoryRepository();
+    await seedDepositBooking(repo);
+    const { deps, alert } = makeDeps(repo);
+
+    const r = await processBookingWebhook(
+      { ...deps, reservationsEnabled: false },
+      JSON.stringify(balanceCompleted()),
+      FAKE_SIGNATURE,
+    );
+
+    expect(r).toEqual({ handled: true, outcome: "balance_paid" });
+    const balances = (await repo.listPaymentsForReservation(RES)).filter((p) => p.kind === "balance");
+    expect(balances).toHaveLength(1);
+    expect(alert).not.toHaveBeenCalled();
+  });
+
   it("still rejects a bad signature when the flag is off, so the flag can't probe the endpoint", async () => {
     // The gate sits AFTER verification deliberately. If it ran first, a forged request would
     // get the same ack as a real one and an attacker could tell a live endpoint from a dark one.

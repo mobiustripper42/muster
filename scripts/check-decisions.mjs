@@ -14,7 +14,34 @@
 // unnoticed across two branches until an audit swept all 134 decisions (#562).
 
 import { readFileSync, readdirSync } from 'node:fs'
-import { DIR, OUT, RELATIONS, TOPICS, generate, load, reverseGraph } from './gen-decisions-index.mjs'
+import { DIR, OUT, RELATIONS, TOPICS, compareDecisionIds, generate, load, reverseGraph } from './gen-decisions-index.mjs'
+
+/**
+ * The backwards-amendment rule, as a pure function so its failure paths are testable
+ * without a fixture directory. Returns the failure message, or null if the edge is fine.
+ *
+ * A decision cannot amend one that did not exist when it was written. This is the check
+ * that catches an id typo'd into a real-but-wrong decision, which a bare existence check
+ * waves through.
+ *
+ * The third outcome is the point of #589. This used to bail out whenever either id failed
+ * `^DEC-(\d+)$` — silently, no error, no warning — so it never once ran for `DEC-DATA-1`
+ * (the 4th-most-cited id in the repo), the three `DEC-MSG-*`, `DEC-ROLE-1`, or `DEC-TBD`.
+ * A guard that abstains without saying so is indistinguishable from a guard that passed,
+ * which is the same failure as an integrity scan covering 12 tables of 38. Where the
+ * record genuinely cannot order two ids, that is now a red build asking for a human, not
+ * a shrug.
+ * @param {string} from the amending decision's id
+ * @param {string} to the amended decision's id
+ */
+export function checkAmendmentEdge(from, to) {
+  const order = compareDecisionIds(to, from)
+  if (order === null) {
+    return `amends ${to}, whose position in the record cannot be compared with ${from} — the backwards-amendment check cannot run on this pair, so it needs a human (see rank() in gen-decisions-index.mjs)`
+  }
+  if (order >= 0) return `amends ${to}, which is not earlier than ${from} — an amendment points backwards`
+  return null
+}
 
 // Anchored so `DEC-026-family` resolves to a real id while the seeds repo's `DEC-S019`
 // series — whose record lives in another repo — never matches. The five non-numeric
@@ -63,13 +90,8 @@ export function check() {
         fail(at, `amends ${a.id}, which has no decision file`)
         continue
       }
-      // A decision cannot amend one that did not exist when it was written. This is the
-      // check that catches an id typo'd into a real-but-wrong decision, which a bare
-      // existence check waves through.
-      const [from, to] = [id.match(/^DEC-(\d+)$/), a.id.match(/^DEC-(\d+)$/)]
-      if (from && to && Number(to[1]) >= Number(from[1])) {
-        fail(at, `amends ${a.id}, which is not earlier than ${id} — an amendment points backwards`)
-      }
+      const backwards = checkAmendmentEdge(id, a.id)
+      if (backwards) fail(at, backwards)
     }
   }
 

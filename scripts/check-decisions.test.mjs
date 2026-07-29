@@ -13,12 +13,14 @@ import {
   RELATIONS,
   TOPICS,
   banner,
+  compareDecisionIds,
   parseFrontmatter,
+  rank,
   renderDecision,
   reverseGraph,
   stripBanner,
 } from "./gen-decisions-index.mjs";
-import { check } from "./check-decisions.mjs";
+import { check, checkAmendmentEdge } from "./check-decisions.mjs";
 
 const fm = `---
 id: DEC-042
@@ -154,6 +156,68 @@ describe("renderDecision", () => {
   it("escapes quotes in the title so the frontmatter it writes parses back", () => {
     const out = renderDecision({ ...d, title: 'has "quotes"' }, []);
     expect(parseFrontmatter(out).meta.title).toBe('has "quotes"');
+  });
+});
+
+describe("rank and comparison", () => {
+  it("places the non-numeric families between DEC-014 and DEC-015, per the pre-split record", () => {
+    expect(compareDecisionIds("DEC-014", "DEC-DATA-1")).toBeLessThan(0);
+    expect(compareDecisionIds("DEC-DATA-1", "DEC-015")).toBeLessThan(0);
+    expect(compareDecisionIds("DEC-MSG-1", "DEC-142")).toBeLessThan(0);
+  });
+
+  it("orders within a family by its trailing number", () => {
+    expect(compareDecisionIds("DEC-MSG-1", "DEC-MSG-3")).toBeLessThan(0);
+    expect(compareDecisionIds("DEC-MSG-3", "DEC-MSG-1")).toBeGreaterThan(0);
+  });
+
+  it("abstains across families rather than inventing an order document position cannot support", () => {
+    expect(compareDecisionIds("DEC-MSG-2", "DEC-ROLE-1")).toBeNull();
+    expect(compareDecisionIds("DEC-DATA-1", "DEC-MSG-1")).toBeNull();
+  });
+
+  it("abstains on DEC-TBD, which is a container of open questions and has no date", () => {
+    expect(rank("DEC-TBD")).toBeNull();
+    expect(compareDecisionIds("DEC-TBD", "DEC-001")).toBeNull();
+  });
+
+  it("abstains on an id family nobody has taught it — the point of #589", () => {
+    // The seeds repo's entire record is DEC-S###. Under the old guard that migration
+    // would have passed green with the check never running once.
+    expect(rank("DEC-S019")).toBeNull();
+    expect(compareDecisionIds("DEC-S019", "DEC-S020")).toBeNull();
+  });
+});
+
+describe("checkAmendmentEdge", () => {
+  it("passes an amendment pointing at an earlier decision", () => {
+    expect(checkAmendmentEdge("DEC-142", "DEC-081")).toBeNull();
+  });
+
+  it("passes a numeric decision amending a family one, which is genuinely older", () => {
+    // DEC-131 does exactly this in the real record, citing DEC-DATA-1 on constraint posture.
+    expect(checkAmendmentEdge("DEC-131", "DEC-DATA-1")).toBeNull();
+  });
+
+  it("catches a numeric amendment pointing forwards, or at itself", () => {
+    expect(checkAmendmentEdge("DEC-081", "DEC-142")).toMatch(/points backwards/);
+    expect(checkAmendmentEdge("DEC-042", "DEC-042")).toMatch(/points backwards/);
+  });
+
+  it("catches a backwards amendment between two non-numeric ids", () => {
+    // The negative control the guard never had: before #589 this returned null, because
+    // neither id matched ^DEC-(\d+)$ and the check bailed out without a word.
+    expect(checkAmendmentEdge("DEC-MSG-1", "DEC-MSG-3")).toMatch(/points backwards/);
+  });
+
+  it("catches a family decision amending a numeric one written long after it", () => {
+    expect(checkAmendmentEdge("DEC-DATA-1", "DEC-105")).toMatch(/points backwards/);
+  });
+
+  it("fails loudly on a pair it cannot order, instead of passing silently", () => {
+    expect(checkAmendmentEdge("DEC-MSG-2", "DEC-ROLE-1")).toMatch(/cannot be compared/);
+    expect(checkAmendmentEdge("DEC-001", "DEC-TBD")).toMatch(/cannot be compared/);
+    expect(checkAmendmentEdge("DEC-143", "DEC-S019")).toMatch(/cannot be compared/);
   });
 });
 

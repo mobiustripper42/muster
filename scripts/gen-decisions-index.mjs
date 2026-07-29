@@ -102,14 +102,64 @@ export function parseFrontmatter(text) {
   return { meta, body }
 }
 
-/** Sort key: numeric DECs ascending, then the alphabetic families (DATA/MSG/ROLE/TBD). */
-const sortKey = (id) => {
+// Where the non-numeric families sit in the record's chronology. The pre-split
+// DECISIONS.md was written in decision order, and it placed all five between DEC-014 and
+// DEC-015 (`git show f41a895^:docs/DECISIONS.md`, lines 374–472). That is the evidence for
+// this number; it is not an editorial choice.
+//
+// It matters because the id is the ONLY time proxy the record carries — no decision file
+// has a `decided:` field — and the backwards-amendment guard in check-decisions.mjs is
+// exactly the assertion that id order tracks time. A family with no position makes that
+// guard unrunnable, which is how it came to be silently inert for five ids (#589).
+const PRE_015 = 14.5
+const FAMILIES = new Set(['MSG', 'ROLE', 'DATA'])
+
+/**
+ * A decision's position in the record, or null if it has none.
+ *
+ * `DEC-TBD` is null on purpose: it is the open-questions container, not a decision taken
+ * at a point in time, so there is no honest answer. Anything new and unrecognized is null
+ * for the same reason — null is what makes the next non-uniform id visible instead of
+ * silent, which was the whole defect in #589.
+ * @param {string} id
+ */
+export function rank(id) {
   const n = id.match(/^DEC-(\d+)$/)
-  return n ? [0, Number(n[1]), ''] : [1, 0, id]
+  if (n) return { n: Number(n[1]), family: '', seq: 0 }
+  const f = id.match(/^DEC-([A-Z]+)-(\d+)$/)
+  if (f && FAMILIES.has(f[1])) return { n: PRE_015, family: f[1], seq: Number(f[2]) }
+  return null
+}
+
+/**
+ * Negative if `a` comes before `b`, positive if after, 0 if the same position — and
+ * **null when the record cannot say**, which callers must handle rather than treat as
+ * equal.
+ *
+ * Cross-family is null even though the pre-split file listed MSG-1/2/3, then ROLE-1, then
+ * DATA-1: that is document order within one sitting, not evidence about when each was
+ * decided. Ranking them off it would manufacture a fact the record does not have.
+ * @param {string} a
+ * @param {string} b
+ */
+export function compareDecisionIds(a, b) {
+  const [x, y] = [rank(a), rank(b)]
+  if (!x || !y) return null
+  if (x.n !== y.n) return x.n - y.n
+  if (x.family !== y.family) return null
+  return x.seq - y.seq
+}
+
+// Sort order for the index and the banner lists: the same ranking, so display order and
+// the guard can never drift apart. Unrankable ids sort to the tail alphabetically —
+// arbitrary, but sorting must be total where comparison is allowed to abstain.
+const sortKey = (id) => {
+  const r = rank(id)
+  return r ? [0, r.n, r.family, r.seq, ''] : [1, 0, '', 0, id]
 }
 const byId = (a, b) => {
   const [x, y] = [sortKey(a), sortKey(b)]
-  return x[0] - y[0] || x[1] - y[1] || x[2].localeCompare(y[2])
+  return x[0] - y[0] || x[1] - y[1] || x[2].localeCompare(y[2]) || x[3] - y[3] || x[4].localeCompare(y[4])
 }
 
 export function load(dir = DIR) {

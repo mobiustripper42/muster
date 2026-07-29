@@ -39,13 +39,13 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 - DEC-002 — The availability oracle is a synchronous rule engine
 - DEC-003 — Crew rules collapse into one composite satisfiability rule
 - DEC-014 — Locked-spec + future-ideas discipline
+- DEC-DATA-1 — Muster keeps a service layer; Supabase (if used) is managed Postgres, not the architecture
 - DEC-023 — The engine advances via an explicit `tick(repo, now)` operation; no scheduler in v1
 - DEC-054 — Operator engine pause/resume — edge-gated, typed-port-backed, default-running (#124)
 - DEC-118 — Crew audit log — dedicated append-only `audit_events`, edge-emitted actor, unioned read, out of the scoring path (#400)
 - DEC-127 — DECISIONS.md carries a topic index at the top; every new DEC updates it _(amended by DEC-141 — the maintenance rule only — the index stands, but it is generated rather than hand-updated)_
 - DEC-131 — Constraint posture — DEC-DATA-1 governs *logic placement*, not structural constraints; FK/UNIQUE/NOT NULL are storage and are allowed
 - DEC-141 — One decision, one file, behind a generated index
-- DEC-DATA-1 — Muster keeps a service layer; Supabase (if used) is managed Postgres, not the architecture
 
 ### Availability & commitment rules
 - DEC-009 — Availability is suppression-only — never a positive-availability calendar
@@ -97,11 +97,11 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 
 ### Crew, vessels & manning model
 - DEC-012 — Manifest is grouped per event on the shift card; no waivers for crew
+- DEC-ROLE-1 — Crew roles and vessel manning are tenant data, not a hardcoded enum
 - DEC-018 — Product string → vessel + manning map — auto-suggest, operator confirms _(amended by DEC-043 — quarantine keys off `resource.id`)_
 - DEC-044 — Crew seed carries a placeholder MMC until BrewBoat tracks real credentials
 - DEC-096 — `archived` crew status — off every list, the one status the override honors (#323)
 - DEC-097 — Guest-contact tracking is a progressive-enhancement client island (#345 Part B)
-- DEC-ROLE-1 — Crew roles and vessel manning are tenant data, not a hardcoded enum
 
 ### Xola ingest & import
 - DEC-011 — 2026 coexistence — CSV bridge is disposable; Xola API bolt-on killed _(amended by DEC-036 — the Xola API bolt-on kill, which DEC-036 revived. The coexistence leg is live; amended by DEC-126 — coexistence ends at a cutover)_
@@ -119,6 +119,9 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 - DEC-083 — Manual Split — cut-time partition on the canonical row, re-derived each pull; import-diff cue over the existing audit
 
 ### Messaging, presence & doorbell
+- DEC-MSG-1 — SMS is the eventual production channel — via the port, not in the slice
+- DEC-MSG-2 — App form factor — native iOS + Android (Capacitor), de-prioritized
+- DEC-MSG-3 — Channel adapters — one port, build in this order
 - DEC-045 — Messaging & the Smart Doorbell — a deliberate SPEC v1.1 unlock
 - DEC-046 — Presence is observed-only, never crew-curated (the DEC-009 guard for messaging)
 - DEC-047 — No realtime vendor for v1 — presence via an activity signal behind a `PresencePort`
@@ -136,9 +139,6 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 - DEC-071 — Crew messaging UI — read + presence are one edge signal on real view; DM list is a participant index; view-auth is the DEC-052 predicate
 - DEC-072 — Operator messaging surface — cross-visibility via the DEC-052 predicate ORed into `buildThreadView`; the operator is excluded from doorbell rings
 - DEC-073 — Real doorbell-ring relay — the operator-outbox `NotificationPort` adapter, on its own table
-- DEC-MSG-1 — SMS is the eventual production channel — via the port, not in the slice
-- DEC-MSG-2 — App form factor — native iOS + Android (Capacitor), de-prioritized
-- DEC-MSG-3 — Channel adapters — one port, build in this order
 
 ### Outbound notifications & operator relay
 - DEC-030 — Pilot channel = operator-relayed web link; the outbox is adapter state, never domain state

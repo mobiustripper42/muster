@@ -14,7 +14,19 @@
 // unnoticed across two branches until an audit swept all 134 decisions (#562).
 
 import { readFileSync, readdirSync } from 'node:fs'
-import { DIR, OUT, RELATIONS, TOPICS, compareDecisionIds, generate, load, reverseGraph } from './gen-decisions-index.mjs'
+import {
+  DIR,
+  OUT,
+  RELATIONS,
+  SPEC,
+  TOPICS,
+  compareDecisionIds,
+  generate,
+  load,
+  reverseGraph,
+  sectionNumber,
+  specSections,
+} from './gen-decisions-index.mjs'
 
 /**
  * The backwards-amendment rule, as a pure function so its failure paths are testable
@@ -64,6 +76,7 @@ export function check() {
   // would be invisible to both the generator and every check below, which is the silent
   // rot this whole record was split to eliminate. A shape it does not look at is worse
   // than a shape it cannot parse.
+  const sections = specSections(readFileSync(SPEC, 'utf8'))
   const loaded = new Set([...decisions.values()].map((d) => d.file))
   for (const f of readdirSync(DIR).filter((f) => f.endsWith('.md') && f !== '_preamble.md')) {
     if (!loaded.has(f)) {
@@ -93,6 +106,29 @@ export function check() {
       const backwards = checkAmendmentEdge(id, a.id)
       if (backwards) fail(at, backwards)
     }
+
+    // A declared spec amendment must land on a section that exists. The audit's largest
+    // finding class was the opposite direction — a decision claiming to change SPEC and
+    // the change never landing — and an anchor nobody validates is how a claim goes quiet:
+    // the section gets renumbered, the pointer stops resolving, and prose says nothing.
+    for (const a of d.amends_spec ?? []) {
+      const sec = sectionNumber(a.section)
+      if (!sections.has(sec)) {
+        fail(at, `amends_spec §${sec}, which is not a numbered section of ${SPEC}`)
+      }
+      if (!a.scope?.trim()) {
+        fail(at, `amends_spec §${sec} with no scope — the scope is what tells a reader of that section what changed`)
+      }
+    }
+
+    // Every scope is rendered inside a bold span, so `**` in the text nests and the
+    // banner renders as garbage — silently, since nothing about the build notices how
+    // markdown looks. Caught the first time anyone wrote one (DEC-082, DEC-085).
+    for (const a of [...(d.amends ?? []), ...(d.amends_spec ?? [])]) {
+      if (a.scope?.includes('**')) {
+        fail(at, `scope for ${a.id ?? `§${sectionNumber(a.section)}`} contains \`**\` — it renders inside a bold span, so the emphasis nests and breaks`)
+      }
+    }
   }
 
   // Every DEC-NNN mentioned in a decision file or the index resolves to a real decision.
@@ -114,7 +150,7 @@ export function check() {
 
   // Freshness. Everything above can pass on a record whose index and banners were never
   // regenerated, which is the exact defect this replaces.
-  const { index, files } = generate()
+  const { index, files, spec } = generate()
   if (readFileSync(OUT, 'utf8') !== index) {
     fail(OUT, 'index is stale — run `npm run gen:decisions`')
   }
@@ -122,6 +158,13 @@ export function check() {
     if (readFileSync(`${DIR}/${file}`, 'utf8') !== text) {
       fail(`${DIR}/${file}`, 'amended-by banner or frontmatter is stale — run `npm run gen:decisions`')
     }
+  }
+  // This is the check the issue is actually asking for. Everything above validates that a
+  // declared amendment POINTS somewhere real; this is what makes it LAND: the pointer in
+  // the amended section is regenerated from the declaration, so a claim that never reached
+  // the spec is a red build rather than a line of prose nobody cross-read.
+  if (readFileSync(SPEC, 'utf8') !== spec) {
+    fail(SPEC, 'declared spec amendments have not landed in the section — run `npm run gen:decisions`')
   }
 
   return failures
@@ -138,8 +181,9 @@ if (process.argv[1]?.endsWith('check-decisions.mjs')) {
   const decisions = load()
   const incoming = reverseGraph(decisions)
   const edges = [...incoming.values()].reduce((n, l) => n + l.length, 0)
+  const specEdges = [...decisions.values()].reduce((n, d) => n + (d.amends_spec?.length ?? 0), 0)
   console.log(
     `✓ decision record — ${decisions.size} decisions in ${DIR}/, ${edges} amendment edges across ` +
-      `${incoming.size} amended decisions, index fresh, all references resolve`,
+      `${incoming.size} amended decisions, ${specEdges} spec amendments landed, index fresh, all references resolve`,
   )
 }

@@ -2,6 +2,9 @@
 id: DEC-MSG-1
 title: "SMS is the eventual production channel — via the port, not in the slice"
 topic: "Messaging, presence & doorbell"
+amends_spec:
+  - section: "3.1"
+    scope: "\"push/SMS\" is port-mediated — SMS is the eventual production adapter, not the slice's channel"
 ---
 
 ## DEC-MSG-1: SMS is the eventual production channel — via the port, not in the slice

@@ -6,6 +6,9 @@ amends:
   - id: DEC-029
     relation: supersedes
     scope: "\"changed since you reviewed it\" derivation is reframed"
+amends_spec:
+  - section: "2.3"
+    scope: "the Lock action and Lock semantics are cut — Xola is the source of truth, so there is nothing to lock against"
 ---
 
 ## DEC-082: Locking cut — Xola is the source of truth (supersedes SPEC §2.3 Lock; reframes DEC-029)

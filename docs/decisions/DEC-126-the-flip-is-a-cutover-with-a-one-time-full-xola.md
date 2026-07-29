@@ -9,6 +9,11 @@ amends:
   - id: DEC-011
     relation: amends
     scope: "coexistence ends at a cutover"
+amends_spec:
+  - section: "0.3"
+    scope: "the arc ends in a cutover with a one-time full Xola import — it had been written to \"no cutover\""
+  - section: "4"
+    scope: "the historical-data park is settled by the cutover import, not left as a read-only archive"
 ---
 
 ## DEC-126: The flip is a cutover with a one-time full Xola import — Muster becomes the reservation source of truth, and the cutover is reversible

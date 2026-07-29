@@ -2,6 +2,9 @@
 id: DEC-140
 title: "SPEC §1.3 rewritten to the DEC-125 model — availability is two mechanisms, not one rule engine; COI-expiry and lead-time cutoff closed as out of scope"
 topic: "Reservations & payments"
+amends_spec:
+  - section: "1.3"
+    scope: "availability is two mechanisms — a computed booking set and per-candidate crew evaluation — not the single rule engine the section specified"
 ---
 
 ## DEC-140: SPEC §1.3 rewritten to the DEC-125 model — availability is two mechanisms, not one rule engine; COI-expiry and lead-time cutoff closed as out of scope

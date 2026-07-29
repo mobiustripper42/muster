@@ -6,6 +6,9 @@ amends:
   - id: DEC-007
     relation: retires
     scope: "the two-protocol fork only — nobody is asked \"as a crowd\" (#561)"
+amends_spec:
+  - section: "1.2"
+    scope: "Tier-1 fan-out is a ranked staged drip — one candidate per interval, accumulating — not a single simultaneous blast"
 ---
 
 ## DEC-063: Tier-1 ask fan-out is a staged "drip" — ranked, one candidate per interval, accumulating

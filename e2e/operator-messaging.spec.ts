@@ -56,6 +56,8 @@ test.describe("operator messaging", () => {
   test("operator sees a crew-created thread (cross-visibility)", async ({ page }) => {
     // Crew posts into their shift thread first.
     await signInAsCrew(page, "crew-quint");
+    const people = page.getByRole("navigation", { name: "Admin" }).locator("summary").filter({ hasText: "People" });
+    if (await people.isVisible()) await people.click(); // Messages is under People ▾ (#603)
     await page.getByRole("link", { name: "Messages" }).click();
     await page.waitForURL(/\/crew\/threads$/); // else /Hops/ races the My-shifts card on home
     await page.getByRole("link", { name: /Hops/ }).click();

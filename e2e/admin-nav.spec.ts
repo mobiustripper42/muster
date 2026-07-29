@@ -52,11 +52,14 @@ test.describe("admin nav", () => {
     await openMenuIfMobile(page);
     await expect(nav.getByRole("link", { name: "At-Risk" })).toHaveAttribute("aria-current", "page");
 
-    await nav.getByRole("link", { name: "Outbox" }).click(); // closes the drawer on mobile
-    await page.waitForURL(/\/admin\/outbox/);
+    // A flat link, deliberately: this test is about the active cue following the route, not
+    // about group mechanics (Outbox moved under Settings ▾ in #603 — covered by the Messages
+    // test below, which opens a group first).
+    await nav.getByRole("link", { name: "Import" }).click(); // closes the drawer on mobile
+    await page.waitForURL(/\/admin\/import/);
 
     await openMenuIfMobile(page);
-    await expect(nav.getByRole("link", { name: "Outbox" })).toHaveAttribute("aria-current", "page");
+    await expect(nav.getByRole("link", { name: "Import" })).toHaveAttribute("aria-current", "page");
     await expect(nav.getByRole("link", { name: "At-Risk" })).not.toHaveAttribute("aria-current", "page");
   });
 
@@ -64,6 +67,10 @@ test.describe("admin nav", () => {
     await signInAsAdmin(page, "spink");
     const nav = page.getByRole("navigation", { name: "Admin" });
     await openMenuIfMobile(page);
+    // Desktop: Messages is shelved under People (#603) — open the group first. The drawer
+    // renders every group expanded, so this is a no-op there.
+    const people = nav.locator("summary").filter({ hasText: "People" });
+    if (await people.isVisible()) await people.click();
     await nav.getByRole("link", { name: "Messages" }).click();
     await page.waitForURL(/\/admin\/messages/);
     await openMenuIfMobile(page);

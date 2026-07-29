@@ -3,6 +3,7 @@ import { SubmitButton } from "../../../components/ui/submit-button";
 import { Notice } from "../../../components/ui/notice";
 import { Shell } from "../../../components/ui/shell";
 import { AdminSignedOut } from "../../../components/admin/admin-signed-out";
+import { EngineControl } from "../../../components/admin/engine-control";
 import { VersionTag } from "../../../components/ui/version-tag";
 import { readSubject } from "../../lib/auth";
 import { getRepo } from "../../lib/repo";
@@ -125,48 +126,5 @@ export default async function AdminHome({
 
       <VersionTag />
     </Shell>
-  );
-}
-
-/** The engine pause/resume control. Server-rendered, no client JS (DEC-026):
- * the button posts the desired next state to `setEnginePaused`. */
-function EngineControl({ paused }: { paused: boolean | null }) {
-  if (paused === null) {
-    return (
-      <div className="rounded-card border border-line bg-card px-4 py-3">
-        <p className="text-sm text-muted">
-          Engine status unavailable — couldn’t reach the database.
-        </p>
-      </div>
-    );
-  }
-  // State carries its own color — green when running, red when paused — so the
-  // card itself is the status signal (no separate top-of-page notice).
-  const tone = paused
-    ? { card: "border-bad-line bg-bad-bg", text: "text-bad", msg: "No asks fire automatically" }
-    : { card: "border-ok-line bg-ok-bg", text: "text-ok", msg: "Automation fires asks" };
-  return (
-    <div
-      className={`flex items-center justify-between gap-3 rounded-card border px-4 py-4 shadow-sm ${tone.card}`}
-    >
-      <div className="flex flex-col gap-0.5">
-        <span className={`font-semibold ${tone.text}`}>
-          Engine: {paused ? "Paused" : "Running"}
-        </span>
-        <span className={`text-sm ${tone.text}`}>{tone.msg}</span>
-      </div>
-      <form action={setEnginePaused}>
-        <input type="hidden" name="paused" value={String(!paused)} />
-        {/* Button color = the state you'd switch TO (white card so it reads on
-            the tinted status card). */}
-        <SubmitButton
-          className={`shrink-0 rounded-card border bg-card px-4 py-2 text-sm font-semibold shadow-sm ${
-            paused ? "border-ok-line text-ok" : "border-bad-line text-bad"
-          }`}
-        >
-          {paused ? "Resume staffing" : "Pause staffing"}
-        </SubmitButton>
-      </form>
-    </div>
   );
 }

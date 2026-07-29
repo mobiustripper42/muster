@@ -36,6 +36,7 @@ import { AppLink } from "../../../../components/ui/app-link";
 import { Notice } from "../../../../components/ui/notice";
 import { getRepo } from "../../../lib/repo";
 import { CheckoutForm } from "./checkout-form";
+import { reservationsEnabled } from "../../../lib/flags";
 
 export const dynamic = "force-dynamic";
 
@@ -53,7 +54,7 @@ function backHref(offering: string | undefined, date: string | undefined): strin
 }
 
 export default async function CheckoutPage({ searchParams }: { searchParams: Promise<Search> }) {
-  if (process.env.RESERVATIONS !== "true") {
+  if (!reservationsEnabled()) {
     return (
       <main className="mx-auto max-w-2xl px-4 py-16">
         <h1 className="text-xl font-semibold">Reservations are off</h1>

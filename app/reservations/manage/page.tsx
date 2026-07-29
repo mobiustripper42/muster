@@ -20,6 +20,7 @@ import { Notice } from "../../../components/ui/notice";
 import { SubmitButton } from "../../../components/ui/submit-button";
 import { addPostTip, requestBookingChange } from "./actions";
 import { loadVerifiedBooking } from "./load";
+import { reservationsEnabled } from "../../lib/flags";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,7 @@ const ERROR_COPY: Record<string, string> = {
 };
 
 export default async function ManagePage({ searchParams }: { searchParams: Promise<Search> }) {
-  if (process.env.RESERVATIONS !== "true") {
+  if (!reservationsEnabled()) {
     return (
       <main className="mx-auto max-w-2xl px-4 py-16">
         <h1 className="text-xl font-semibold">Reservations are off</h1>

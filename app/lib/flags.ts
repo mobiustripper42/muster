@@ -26,6 +26,25 @@ export function messagingEnabled(): boolean {
 }
 
 /**
+ * `RESERVATIONS` (DEC-111): the customer-facing booking flow — `/book`, checkout, the manage
+ * link, and the Stripe webhook that turns a charge into a reservation. **OFF by default**;
+ * DEC-111's whole point is that money must not reach production until one real paid
+ * reservation has validated end to end.
+ *
+ * Note the value is `"true"`, not the `"1"` its two siblings above use. That asymmetry predates
+ * this function and is left alone deliberately: it is already set in deployed environments, and
+ * changing the accepted value would silently turn the feature off on a deploy nobody re-read.
+ *
+ * This function exists because the predicate was hand-spelled at five call sites (#588). That is
+ * the same shape as the auth-sweep defect where `dev-link` carried its own copy of the
+ * production kill-switch while two other files imported the shared one — two spellings of one
+ * guard, and only one of them ever gets fixed.
+ */
+export function reservationsEnabled(): boolean {
+  return process.env.RESERVATIONS === "true";
+}
+
+/**
  * True on any PRODUCTION deploy — Vercel prod (`VERCEL_ENV`) or a self-hosted
  * prod (`next start` with no `VERCEL_ENV`, `NODE_ENV=production`). The single
  * predicate the dev-only affordances gate on (dev-link's inline copy, the

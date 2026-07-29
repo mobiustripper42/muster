@@ -6,6 +6,7 @@ import { asId } from "@core/domain/ids.js";
 import { createDeparturePaymentIntent } from "@core/reservations/create-departure-payment-intent.js";
 import { canonicalizePhone } from "@core/customers/identity.js";
 import { getRepo } from "../../../lib/repo";
+import { reservationsEnabled } from "../../../lib/flags";
 
 /**
  * Start an inline-Elements checkout (12.5, DEC-134): gates → 15-min hold →
@@ -49,7 +50,7 @@ const REASON_MESSAGES: Record<string, string> = {
 export async function startElementsCheckout(
   input: StartElementsCheckoutInput,
 ): Promise<StartElementsCheckoutResult> {
-  if (process.env.RESERVATIONS !== "true") {
+  if (!reservationsEnabled()) {
     return { ok: false, message: "Reservations are currently off." };
   }
   const secretKey = process.env.STRIPE_SECRET_KEY;

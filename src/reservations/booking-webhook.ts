@@ -38,6 +38,19 @@ import {
 } from "./write-booking.js";
 
 export interface WebhookDeps {
+  /**
+   * Is the reservations feature on for this deployment (`RESERVATIONS`, DEC-111)? Injected
+   * rather than read here — the core does not touch `process.env`.
+   *
+   * The route comment used to claim this handler was "gated behind the RESERVATIONS flag."
+   * It wasn't. It was inert only *by consequence*: the sole live PaymentIntent-creating path
+   * is gated, so with the flag off nothing upstream could produce an event. That chain holds
+   * today and the #522 audit verified it — but it rests on a Stripe dashboard nobody can read
+   * from the repo (#544) and on the checkout gate never being removed. A replayed event, a
+   * dashboard test send, or a leftover intent from a flag-on window arrives signature-valid
+   * and books. This makes it inert *because we said so* (#588).
+   */
+  reservationsEnabled: boolean;
   repo: Repository;
   payments: PaymentPort;
   now: () => string;
@@ -103,6 +116,23 @@ export async function processBookingWebhook(
 ): Promise<WebhookResult> {
   const event = deps.payments.parseEvent(rawBody, signature); // throws on bad sig
   if (!event) return { handled: false };
+
+  // The flag check sits AFTER verification on purpose: an unsigned request still gets its 400,
+  // so the flag can't be used to probe whether the endpoint is live. Ack rather than error, for
+  // the same reason the DEC-134 double-write guard acks a metadata-less intent — a non-2xx makes
+  // Stripe retry an event we are never going to want.
+  if (!deps.reservationsEnabled) {
+    // Loud, because reaching here means a verified charge succeeded and Muster is deliberately
+    // not booking it. With the flag off nothing can mint a new intent, so this is a replay, a
+    // dashboard send, or a leftover from a flag-on window — in every one of those cases money
+    // has already moved, and dropping it silently is how a paying customer ends up with no
+    // booking and nobody knowing. Acked so Stripe stops retrying; alerted so a human looks.
+    await deps.alertPaidButUnbooked(
+      `⚠️ Verified Stripe event received while RESERVATIONS is off — acked and NOT booked. ` +
+        `Money may have moved; investigate before flipping the flag on.`,
+    );
+    return { handled: false };
+  }
 
   if (event.type === "payment_succeeded") {
     const pi = event.data;

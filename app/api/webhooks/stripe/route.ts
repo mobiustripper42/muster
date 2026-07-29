@@ -5,6 +5,7 @@ import { processBookingWebhook } from "@core/reservations/booking-webhook.js";
 import { sendReservationConfirmation } from "../../../lib/booking-confirmation";
 import { sendReservationSoldOutNotice } from "../../../lib/sold-out-notice";
 import { getRepo } from "../../../lib/repo";
+import { reservationsEnabled } from "../../../lib/flags";
 
 /**
  * Stripe payment webhook (DEC-107, 11.2; event union 12.5, DEC-134) — the charge→booking
@@ -17,9 +18,12 @@ import { getRepo } from "../../../lib/repo";
  * (12.1b, DEC-107 amended); the loud manual-refund alert is the fallback only when the
  * auto-refund can't run.
  *
- * Rides `feature/reservations`; the public "Book Now" entry that produces these events is
- * gated behind the `RESERVATIONS` flag (DEC-111), so this route is inert until a checkout
- * is created. `nodejs` runtime — it writes through `pg`.
+ * **Gated on `RESERVATIONS` (DEC-111) explicitly**, checked inside `processBookingWebhook`
+ * immediately after signature verification (#588): a verified event arriving with the flag off
+ * is alerted and acked, never booked. It used to be inert only *by consequence* — the sole live
+ * intent-creating path is gated, so nothing upstream could fire — which held, but rested on a
+ * Stripe dashboard nobody can read from the repo (#544) and on that other gate never moving.
+ * `nodejs` runtime — it writes through `pg`.
  */
 export const runtime = "nodejs";
 
@@ -42,6 +46,7 @@ export async function POST(req: Request): Promise<Response> {
       {
         repo: getRepo(),
         payments: new StripePaymentPort(secretKey, webhookSecret),
+        reservationsEnabled: reservationsEnabled(),
         now: () => new Date().toISOString(),
         alertPaidButUnbooked: async (message) => {
           // Loud in the function logs. TODO: fan out to all active admins over SMS (the

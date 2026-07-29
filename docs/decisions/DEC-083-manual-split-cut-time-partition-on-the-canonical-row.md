@@ -2,6 +2,9 @@
 id: DEC-083
 title: "Manual Split — cut-time partition on the canonical row, re-derived each pull; import-diff cue over the existing audit"
 topic: "Xola ingest & import"
+amends_spec:
+  - section: "2.3"
+    scope: "Split is a cut-time partition on the canonical row, re-derived each pull; the \"new block needing attention\" cue is an import-diff over the existing audit"
 ---
 
 ## DEC-083: Manual Split — cut-time partition on the canonical row, re-derived each pull; import-diff cue over the existing audit

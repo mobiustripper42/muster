@@ -2,6 +2,11 @@
 id: DEC-016
 title: "BrewBoat worked example corrected — real fleet; scope ≠ current holdings; test data invented"
 topic: "Xola ingest & import"
+amends_spec:
+  - section: "0.4"
+    scope: "the glossary's \"capacity 6\" and \"1 captain + 1 mate\" are illustrative — the real fleet is 4 inspected boats, COI 12–16, 2 crew each, and manning is per-vessel data"
+  - section: "2.3"
+    scope: "the builder restatement carries the same illustrative manning figure"
 ---
 
 ## DEC-016: BrewBoat worked example corrected — real fleet; scope ≠ current holdings; test data invented

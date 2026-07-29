@@ -17,8 +17,12 @@ import {
   parseFrontmatter,
   rank,
   renderDecision,
+  renderSpec,
   reverseGraph,
+  sectionNumber,
+  specSections,
   stripBanner,
+  stripSpecBlocks,
 } from "./gen-decisions-index.mjs";
 import { check, checkAmendmentEdge } from "./check-decisions.mjs";
 
@@ -156,6 +160,113 @@ describe("renderDecision", () => {
   it("escapes quotes in the title so the frontmatter it writes parses back", () => {
     const out = renderDecision({ ...d, title: 'has "quotes"' }, []);
     expect(parseFrontmatter(out).meta.title).toBe('has "quotes"');
+  });
+});
+
+describe("amends_spec parsing", () => {
+  const withSpec = `---
+id: DEC-061
+title: "A title"
+topic: "Seats, shifts & state machine"
+amends:
+  - id: DEC-007
+    relation: retires
+    scope: "one leg"
+amends_spec:
+  - section: "2.4"
+    scope: "the confirm step is gone"
+  - section: "2.6"
+    scope: "the acceptance is now automatic"
+---
+
+## DEC-061: A title
+
+Body.
+`;
+
+  it("reads both lists, keyed on the open list rather than the first field", () => {
+    const { meta } = parseFrontmatter(withSpec);
+    expect(meta.amends).toEqual([{ id: "DEC-007", relation: "retires", scope: "one leg" }]);
+    expect(meta.amends_spec).toEqual([
+      { section: "2.4", scope: "the confirm step is gone" },
+      { section: "2.6", scope: "the acceptance is now automatic" },
+    ]);
+  });
+
+  it("gives a decision with neither list two empty lists, not undefined", () => {
+    const { meta } = parseFrontmatter('---\nid: DEC-001\ntitle: "T"\ntopic: "X"\n---\n\nBody.\n');
+    expect(meta.amends).toEqual([]);
+    expect(meta.amends_spec).toEqual([]);
+  });
+
+  it("throws on a list item that opens before any list key", () => {
+    expect(() => parseFrontmatter('---\nid: DEC-001\n  - section: "2.4"\n---\n\nBody.\n')).toThrow(/outside any list/);
+  });
+
+  it("round-trips through renderDecision", () => {
+    const { meta, body } = parseFrontmatter(withSpec);
+    const out = renderDecision({ ...meta, body }, []);
+    expect(parseFrontmatter(out).meta.amends_spec).toEqual(meta.amends_spec);
+  });
+
+  it("normalizes the section sign, so §2.4 and 2.4 are the same anchor", () => {
+    expect(sectionNumber("§2.4")).toBe("2.4");
+    expect(sectionNumber("2.4")).toBe("2.4");
+  });
+});
+
+describe("specSections", () => {
+  const spec = ["# 0. Overview", "text", "## 0.4 Glossary", "text", "### 2.6.1 The ask", "## 2.6 Crew App"].join("\n");
+
+  it("resolves every numbered heading depth, with or without the trailing dot", () => {
+    const s = specSections(spec);
+    expect(s.get("0")).toBe(0);
+    expect(s.get("0.4")).toBe(2);
+    expect(s.get("2.6.1")).toBe(4);
+    expect(s.get("2.6")).toBe(5);
+  });
+
+  it("ignores unnumbered headings, whose text is prose that gets reworded", () => {
+    expect(specSections("## Booking availability — a computed set").size).toBe(0);
+  });
+});
+
+describe("renderSpec", () => {
+  const spec = ["# 1. Substrate", "", "Text about the substrate.", "", "## 1.3 Availability", "", "Old prose.", ""].join(
+    "\n",
+  );
+  const edges = new Map([["1.3", [{ from: "DEC-140", scope: "two mechanisms, not one rule engine" }]]]);
+
+  it("puts the block under the amended section's heading, not at the top of the file", () => {
+    const out = renderSpec(spec, edges).split("\n");
+    expect(out.indexOf("## 1.3 Availability")).toBeLessThan(out.findIndex((l) => l.includes("Amended by DEC-140")));
+    expect(out.findIndex((l) => l.includes("Amended by DEC-140"))).toBeLessThan(out.indexOf("Old prose."));
+  });
+
+  it("is a fixed point — regenerating an already-annotated spec changes nothing", () => {
+    const once = renderSpec(spec, edges);
+    expect(renderSpec(once, edges)).toBe(once);
+  });
+
+  it("strips back to the pristine spec exactly, so the insertion is fully reversible", () => {
+    expect(stripSpecBlocks(renderSpec(spec, edges))).toBe(spec);
+  });
+
+  it("drops the block when the declaration is removed", () => {
+    expect(renderSpec(renderSpec(spec, edges), new Map())).toBe(spec);
+  });
+
+  it("leaves the file alone when an anchor does not resolve — check() reports it instead", () => {
+    expect(renderSpec(spec, new Map([["9.9", [{ from: "DEC-001", scope: "x" }]]]))).toBe(spec);
+  });
+
+  it("fails the freshness comparison when a declared amendment never landed", () => {
+    // THE negative control this issue asks for: a decision declares it amends §1.3, the
+    // spec says nothing about it, and `check()` compares the regenerated text against the
+    // file on disk. Before this check existed, that claim lived in prose and nothing
+    // anywhere noticed it had not landed — 17 of the audit's 41 claims were in exactly
+    // this state.
+    expect(renderSpec(spec, edges)).not.toBe(spec);
   });
 });
 

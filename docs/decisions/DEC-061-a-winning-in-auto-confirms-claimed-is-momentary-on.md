@@ -6,6 +6,11 @@ amends:
   - id: DEC-007
     relation: retires
     scope: "the two-protocol fork only — nobody is \"named then confirmed\" by a human. The first-acceptable-yes-wins leg survives and is live (#561)"
+amends_spec:
+  - section: "2.4"
+    scope: "the \"confirm down the list\" step is gone — a winning `in` auto-confirms, and `Claimed` is momentary on the happy path"
+  - section: "2.6"
+    scope: "the acceptance \"…and Spink confirming moves the seat\" is now automatic; \"In\" means committed, and a retraction is a penalized bail"
 ---
 
 ## DEC-061: A winning "in" auto-confirms — `Claimed` is momentary on the happy path

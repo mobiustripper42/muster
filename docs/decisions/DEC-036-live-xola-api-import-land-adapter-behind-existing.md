@@ -6,6 +6,9 @@ amends:
   - id: DEC-011
     relation: amends
     scope: "the Xola API bolt-on kill, which DEC-036 revived. The coexistence leg is live"
+amends_spec:
+  - section: "4"
+    scope: "\"Explicitly killed · The Xola API bolt-on\" is un-killed — DEC-011's kill rested on a premise falsified by a working client proven live 2026-06-15"
 ---
 
 ## DEC-036: Live Xola API import — Land adapter behind existing Map/Reconcile; supersedes DEC-011's API kill

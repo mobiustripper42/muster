@@ -23,7 +23,7 @@ A crew engine: reservations → **events** → **shifts** → **seats** → asks
 order. A **shift** is all of one vessel's trips on one vessel-local day, worked as a single
 assignment. That grouping is the default, not an invariant, so **vessel+date does not uniquely
 identify a shift** — a UNIQUE index or a lookup keyed that way is a defect. Split/merge semantics
-and the rest of the domain shape are in `.claude/CLAUDE-context.md`, read at Step 1.
+and the rest of the domain shape are in `.claude/CLAUDE-context.md`, read at Step 1b.
 
 `src/` is a framework-free domain core behind a `Repository` port; `app/` is the Next.js App Router
 wrapper that imports it via `@core/*`. Money (deposits, balances, gratuity) runs through Stripe
@@ -57,9 +57,9 @@ amended it and in what scope. Read it before citing the decision — the body be
 leg that was replaced. `docs/SPEC.md` sections carry the same generated block when a decision
 amended them (DEC-143).
 
-Also read `.claude/CLAUDE-context.md` — authoritative for the domain shape, the two TS profiles,
-the error-handling contract and the naming conventions you are reviewing against. The sketch above
-is the minimum to orient you, not the record.
+**Step 1b — read the conventions you are reviewing against.** `.claude/CLAUDE-context.md` is
+authoritative for the domain shape, the two TS profiles, the error-handling contract and the naming
+rules. The sketch at the top of this file is the minimum to orient you, not the record.
 
 **Step 2 — read enough context to judge.** For each changed file, read the surrounding code —
 especially across the core/app boundary and on money paths. A diff hunk alone is not enough

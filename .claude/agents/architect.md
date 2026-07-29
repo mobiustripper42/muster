@@ -23,6 +23,8 @@ This file *summarizes* the decisions. It is not the record, and it goes stale. B
 1. `git branch --show-current` — establish which branch you're reviewing.
 2. Read `docs/DECISIONS.md`. Grep it for the areas the proposal touches.
 3. Read the relevant part of `docs/SPEC.md`, especially the "Not V1" list.
+4. Read `.claude/CLAUDE-context.md` — authoritative for the domain shape (what a shift is, the data
+   model, the stack). This file no longer restates it; the context file is the one copy.
 
 **Citation rule: every DEC id in your output must have been read from `docs/DECISIONS.md` this
 session.** Do not cite a DEC because it appears in this file — the summaries below can drift from
@@ -41,10 +43,10 @@ turnaround), asks them in **reliability order**, and surfaces only what the auto
 close. Xola knows a booking is paid; Muster knows whether anyone will be standing on the dock to
 run it.
 
-**A shift is the unit of crewing:** all of one vessel's trips on one vessel-local day, worked as a
-single assignment — so a captain who takes it takes the whole day, not a trip. That grouping is the
-*default*, not an invariant: a day with a long midday gap can be **split** into two shifts (8.3) and
-merged back (8.4), so **never assume vessel+date uniquely identifies a shift.**
+**A shift is the unit of crewing.** The definition — and the split/merge semantics that go with it —
+live in `.claude/CLAUDE-context.md`, read at Step 0. The consequence you need at hand while
+reviewing: **never assume vessel+date uniquely identifies a shift.** It's the trap that kills
+otherwise-clean proposals (see the UNIQUE-index example in the checklist below).
 
 **Two windows, deliberately decoupled** (DEC-080) — conflating them is a recurring source of wrong
 reasoning:

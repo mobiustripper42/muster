@@ -20,9 +20,9 @@ rank by severity, skip nitpicks. You do not edit files. You do not fix anything.
 ## What Muster Is (enough to review it)
 
 A crew engine: reservations → **events** → **shifts** → **seats** → asks to **crew**, in reliability
-order. A **shift** is all of one vessel's trips on one vessel-local day, worked as a single
-assignment. That grouping is the default, not an invariant — 8.3 Split partitions a vessel-day into
-two shifts and 8.4 merges them back, so **vessel+date does not uniquely identify a shift**.
+order. The shift definition and its split/merge semantics live in `.claude/CLAUDE-context.md`, read
+at Step 1. The consequence you need while reviewing: **vessel+date does not uniquely identify a
+shift** — a UNIQUE index or lookup keyed that way is a defect.
 
 `src/` is a framework-free domain core behind a `Repository` port; `app/` is the Next.js App Router
 wrapper that imports it via `@core/*`. Money (deposits, balances, gratuity) runs through Stripe
@@ -47,6 +47,9 @@ If the range covers more than ~25 files, say so up front, review the highest-ris
 **Step 1 — read the decisions.** Open `docs/DECISIONS.md` and read every DEC entry governing the
 areas the diff touches. Do not review from memory of the conventions; read them. If a change
 appears to contradict a DEC, quote the DEC number in the finding.
+
+Also read `.claude/CLAUDE-context.md` — authoritative for the domain shape (what a shift is, the
+data model, the conventions). This file no longer restates it; the context file is the one copy.
 
 **Step 2 — read enough context to judge.** For each changed file, read the surrounding code —
 especially across the core/app boundary and on money paths. A diff hunk alone is not enough

@@ -47,6 +47,7 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 - DEC-131 — Constraint posture — DEC-DATA-1 governs *logic placement*, not structural constraints; FK/UNIQUE/NOT NULL are storage and are allowed
 - DEC-141 — One decision, one file, behind a generated index _(extended by DEC-143 — the same generated-reciprocal-pointer mechanism, pointed at SPEC instead of at other decisions)_
 - DEC-143 — A decision that changes SPEC declares it, and the reciprocal pointer in SPEC is generated
+- DEC-144 — Doc consistency is a ratchet in `verify`, not an audit
 
 ### Availability & commitment rules
 - DEC-009 — Availability is suppression-only — never a positive-availability calendar
@@ -205,7 +206,7 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 ### Open questions
 - DEC-TBD — Open questions (carried from the spec; not Claude's to set alone)
 
-_Indexed 141 of 141 DECs. **This file is GENERATED** by `npm run gen:decisions` —
+_Indexed 142 of 142 DECs. **This file is GENERATED** by `npm run gen:decisions` —
 edit `docs/decisions/DEC-*.md`, not this file. `npm run check:decisions` fails on a stale index, a
 duplicate id, an unknown topic, an unknown relation, a forward-pointing amendment, or a
 reference to a decision that does not exist._

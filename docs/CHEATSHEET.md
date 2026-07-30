@@ -1,8 +1,10 @@
-SEEDS WORKFLOW CHEATSHEET                                v2026-06-12
+SEEDS WORKFLOW CHEATSHEET                                v2026-07-25
 
-  /its-alive  ->  [ work ]  ->  /kill-this  ->  /its-dead
-                     ^                              v
+  /its-alive  ->  [ task ]  ->  /kill-this  -+->  /its-dead
+                     ^              |        |
+                     |              +--------+  ( once per task )
                      +--- /pause-this <--- /restart-this
+                                                 /its-dead: once per window
 
 
 SESSION
@@ -10,8 +12,9 @@ SESSION
                    context, recommends task. waits for confirmation.
   /pause-this      walking away. build check + WIP commit.
   /restart-this    resume from /pause-this. reloads context.
-  /kill-this       end pt 1. build + commit + PR + @code-review.
-  /its-dead        end pt 2. stamps ended, tallies points,
+  /kill-this       PER TASK. verify + commit + PR + @code-review,
+                   appends a ## Task <N> block. run N times.
+  /its-dead        ONCE per window. stamps ended, tallies points,
                    shows wall_clock gut-check, finalizes file.
 
 PHASE
@@ -22,9 +25,13 @@ PHASE
 
 SEMVER  ( dev projects only — needs package.json )
   /bump-major      breaking change. manual. tag on main.
-  /promote-production main->prod ff-merge + push.
-                   ( needs origin/production — DEC-S022 )
-  patch bumps      automatic in /its-dead on PR merge.
+  /promote-production patch-bump + tag main, then ff-merge
+                   main->production + push. this is where
+                   patches come from on projects with a
+                   production branch. ( DEC-S022 )
+  patch bumps      /promote-production on ship. projects with no
+                   production branch get them from /retro instead.
+                   never /its-dead.
 
 REFLECT / SYNC
   /read-the-tape   scan a session for anti-patterns.
@@ -32,12 +39,15 @@ REFLECT / SYNC
   /push-seeds      backport workflow wins to seeds.
   /pull-seeds      pull seeds improvements into this project.
                    gated on `seeds-version` match.
+  /doc-consistency-check
+                   ad-hoc only, never on a calendar. cross-refs
+                   docs/*.md + CLAUDE.md. report-only.
 
 INFRA                              DOMAIN
   /update-config                     /stripe-best-practices
   /fewer-permission-prompts          /stripe-projects
   /keybindings-help                  /upgrade-stripe
-  /session-start-hook                /claude-api
+                                     /claude-api
   /simplify
   /loop <interval> <cmd>           BUILT-IN
   /init                              /review

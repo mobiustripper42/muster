@@ -164,13 +164,19 @@ export async function checkIntegrity(repo: Repository): Promise<IntegrityReport>
   for (const r of ringOutbox) {
     miss(crewIds, "ringOutboxEntry", r.id, "crewMemberId", r.crewMemberId);
   }
-  // Crew audit log (DEC-118). Unlike the reliability log this is NOT exempt: it is the
-  // operator-facing record of who changed what, and a row about a crew member who no longer
-  // exists renders as a blank actor. `actorId` is polymorphic (admin | crew | importer), so
-  // only the crew-actor case is checkable — the same shape as `magic_tokens.subject_id`.
+  // Crew audit log (DEC-118) — the operator-facing record of who changed what. A row naming a
+  // crew member who no longer exists renders as a blank actor (`audit-trail.ts`).
+  //
+  // `actorId` is polymorphic and only SOMETIMES a crew id: per `AuditActor` in domain/audit.ts
+  // it is "the admin's crew id for `admin`, a source tag (e.g. \"xola\") for `importer`, and
+  // undefined for `engine`/`crew`-self". So `admin` is the one kind whose actorId is checkable —
+  // admins are crew (DEC-092; `admins.id` IS a crew id), an importer's is a source tag, and the
+  // other two carry nothing. The first version of this gated on `crew`, which is precisely the
+  // kind that never has an id: the branch was dead and its test asserted the inversion as
+  // intended. Same shape as `magic_tokens.subject_id`, and the same trap.
   for (const a of auditEvents) {
     miss(crewIds, "auditEvent", a.id, "crewMemberId", a.crewMemberId);
-    if (a.actorKind === "crew" && a.actorId !== undefined) {
+    if (a.actorKind === "admin" && a.actorId !== undefined) {
       miss(crewIds, "auditEvent", a.id, "actorId", a.actorId);
     }
   }

@@ -249,16 +249,37 @@ describe("checkIntegrity", () => {
     expect((await checkIntegrity(repo)).ok).toBe(true);
   });
 
-  it("only checks an audit event's actor when that actor is crew", async () => {
-    // `actorId` is polymorphic (admin | crew | importer) — the same shape as a magic token's
-    // subject. Checking an admin handle against crew ids would fail every admin action.
+  it("checks an audit event's actor when it is an ADMIN — that is the kind carrying a crew id", async () => {
+    // `admin` is the only actorKind whose `actorId` is a crew id (domain/audit.ts: "the admin's
+    // crew id for `admin`, a source tag for `importer`, undefined for `engine`/`crew`-self").
+    // Admins are crew (DEC-092), so a departed admin leaves a dangling actor.
     const repo = await seedSpine();
     await repo.appendAuditEvent({
       id: asId<"AuditEventId">("audit-admin"),
       crewMemberId: CREW,
       actorKind: "admin",
-      actorId: "eric",
+      actorId: "crew-ghost",
       type: "crew_added",
+      timestamp: NOW,
+      metadata: {},
+    });
+    const report = await checkIntegrity(repo);
+    expect(report.violations).toContainEqual({
+      entity: "auditEvent",
+      id: "audit-admin",
+      ref: "actorId",
+      missingId: "crew-ghost",
+    });
+  });
+
+  it("ignores an importer's actorId — a source tag, not a crew id", async () => {
+    const repo = await seedSpine();
+    await repo.appendAuditEvent({
+      id: asId<"AuditEventId">("audit-import"),
+      crewMemberId: CREW,
+      actorKind: "importer",
+      actorId: "xola",
+      type: "shift_changed",
       timestamp: NOW,
       metadata: {},
     });

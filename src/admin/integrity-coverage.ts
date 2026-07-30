@@ -50,7 +50,13 @@ export const TABLE_COVERAGE: Record<string, Coverage> = {
   muster_owned_vessel_days: { kind: "checked", refs: ["vessel_id"] },
   notice_outbox: { kind: "checked", refs: ["crew_member_id"] },
   ring_outbox: { kind: "checked", refs: ["crew_member_id"] },
-  audit_events: { kind: "checked", refs: ["crew_member_id", "actor_id (crew actors only)"] },
+  // Checked despite being append-only and unbounded, unlike `reliability_events` below. Two
+  // differences carry it: volume (this logs operator ACTIONS — a crew add, drop or change —
+  // where the scoring log records every ask and every response, several per ask), and
+  // consequence (a dangling ref here renders a blank actor on an operator-facing surface, where
+  // one in the scoring log is inert). If the action log ever grows to scoring-log volume, this
+  // reasoning expires and it should be paginated or exempted.
+  audit_events: { kind: "checked", refs: ["crew_member_id", "actor_id (admin actors only)"] },
 
   // ── Foreign-keyed: Postgres will not let these dangle ────────────────────
   payments: { kind: "fk", refs: ["reservation_id"] },
@@ -81,8 +87,13 @@ export const TABLE_COVERAGE: Record<string, Coverage> = {
       "append-only scoring log (DEC-008). High-volume, and a dangling crew ref in an immutable log is benign — scanning it on a healthcheck would violate 'cheap'. Seat/shift ids live in jsonb metadata, not reference columns, so a shift delete cannot orphan it.",
   },
   presence: { kind: "exempt", reason: "observed-only, self-healing: a row for a departed subject stops being written and ages out (DEC-046)" },
-  login_codes: { kind: "exempt", reason: "polymorphic subject_id (crew | admin), and rows are short-lived by construction" },
-  admins: { kind: "exempt", reason: "no reference columns — the id↔crew link is by convention, not a column" },
+  // Bounded, not short-lived: the PK is (subject_kind, subject_id), so a code is upserted in
+  // place per subject rather than accumulating — but nothing deletes the row either.
+  login_codes: { kind: "exempt", reason: "polymorphic subject_id (crew | admin); one row per subject, upserted in place" },
+  // NOT "no reference columns" — `admins.id` IS a crew id (0018_admins.sql: "the crew id of the
+  // crew member who is admin"), so a departed admin leaves an unresolvable row. It reads as
+  // convention rather than a ref column, which is exactly why nothing checks it.
+  admins: { kind: "exempt", reason: "needs listAllAdmins — `id` is itself a crew_members.id (#584)" },
   app_settings: { kind: "exempt", reason: "singleton key/value; no references" },
   import_runs: { kind: "exempt", reason: "no reference columns" },
   add_ons: { kind: "exempt", reason: "tenant_id only, and there is no tenants table — tenant is config, not a row" },

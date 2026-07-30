@@ -1,5 +1,5 @@
 /**
- * Dev seed for shift completion + self-claim scoring (#570, DEC-144).
+ * Dev seed for shift completion + self-claim scoring (#570, DEC-145).
  *
  * The tick's completion sweep only ever fires on a shift whose trips are already
  * OVER — which is exactly the state no other seed produces, because every other

@@ -1,5 +1,5 @@
 ---
-id: DEC-144
+id: DEC-145
 title: "Completion is swept by the tick, and a self-claim scores"
 topic: "Seats, shifts & state machine"
 amends:
@@ -11,7 +11,7 @@ amends_spec:
     scope: "`self_claim` joins the Commitment event list, and `shift_completed` finally has a producer — the tick's completion sweep. Both were declared loggable from day one and neither was ever emitted."
 ---
 
-## DEC-144: Completion is swept by the tick, and a self-claim scores
+## DEC-145: Completion is swept by the tick, and a self-claim scores
 
 **Decision:**
 

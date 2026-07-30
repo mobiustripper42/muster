@@ -255,3 +255,32 @@ describe("lean onto an Asked seat (#601) — the drip is not a lock", () => {
     expect(out.code).toBe("no_gap");
   });
 });
+
+describe("lean's ask and the drip clock (#601)", () => {
+  it("a manual nudge paces the next AUTOMATIC widen — and urgency ignores pacing anyway", async () => {
+    // Pinning the interaction rather than leaving it accidental. `widenDue` reads
+    // `max(sentAt)` across every ask on the seat with no notion of who fired it, so a
+    // lean now shifts the drip clock. Deliberate: someone was just asked, and piling
+    // an automatic ask on a minute later is what the drip exists to prevent.
+    const silent = await addCrew("silent");
+    await addCrew("spare");
+    const [seatId] = await addShift(["Open"]);
+    await broadcastAsk(repo, seatId!, T0);
+    const first = await repo.listAsksForSeat(seatId!);
+    await repo.saveAsk({
+      ...first.find((a) => a.crewMemberId === silent)!,
+      respondedAt: T0.toISOString(),
+    });
+
+    const nudgeAt = new Date(T0.getTime() + 90 * 60_000);
+    expect((await lean(repo, SHIFT, silent, nudgeAt)).error).toBeNull();
+
+    // The newest ask on the seat is the operator's, so the drip paces from THERE.
+    const after = await repo.listAsksForSeat(seatId!);
+    const newest = Math.max(...after.map((a) => Date.parse(a.sentAt)));
+    expect(newest).toBe(nudgeAt.getTime());
+    // And past the fill deadline none of this applies — the tick's `urgent` branch
+    // blasts the remaining pool without consulting `widenDue`. That is the #601
+    // scenario itself (deadline overdue), which is why the pacing shift is harmless.
+  });
+});

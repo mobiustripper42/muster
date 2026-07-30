@@ -75,6 +75,13 @@ select e.id as event_id,
        a.responded_at,
        a.responded_at::timestamptz - a.sent_at::timestamptz as open_for
 from reliability_events e
+-- NB: correlated on (crew, seat) only — `reliability_events` carries no ask id
+-- (metadata has seatId/shiftId, not askId). If one crew member has SEVERAL asks for
+-- the same seat (a withdrawn one plus a later genuine re-ask that also timed out),
+-- this can match more than one pair. That is why every step here is run and counted
+-- by hand: read step 3's list and confirm it is what you expect before step 4 deletes
+-- anything. A per-ask correlation would need an `askId` in the event metadata, which
+-- is a code change, not something to bodge in a repair script.
 join asks a
   on a.crew_member_id = e.crew_member_id
  and a.seat_id        = e.metadata->>'seatId'
@@ -157,6 +164,13 @@ where a.responded_at is null
 -- Expect 0 — no ask_ignored left whose ask sat open past the timeout + slack.
 select count(*) as still_false
 from reliability_events e
+-- NB: correlated on (crew, seat) only — `reliability_events` carries no ask id
+-- (metadata has seatId/shiftId, not askId). If one crew member has SEVERAL asks for
+-- the same seat (a withdrawn one plus a later genuine re-ask that also timed out),
+-- this can match more than one pair. That is why every step here is run and counted
+-- by hand: read step 3's list and confirm it is what you expect before step 4 deletes
+-- anything. A per-ask correlation would need an `askId` in the event metadata, which
+-- is a code change, not something to bodge in a repair script.
 join asks a
   on a.crew_member_id = e.crew_member_id
  and a.seat_id        = e.metadata->>'seatId'

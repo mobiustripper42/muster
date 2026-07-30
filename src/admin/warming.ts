@@ -107,8 +107,37 @@ export async function deriveWarming(
     if (unfilled.length === 0) continue;
 
     const trail = await escalationTrailFor(repo, shift.id, now);
-    const ghosted = trail.silent > 0;
-    const quiet = trail.asked > 0 && trail.pending === 0;
+
+    // The SIGNALS key on the seats that still need a body; `trail` stays whole-shift
+    // for display (DEC-024 transparency). A filled seat's ask history says nothing
+    // about whether the remaining gap is being worked.
+    //
+    // This scoping became load-bearing at #600. `trail` is summed across every
+    // required seat, and a withdrawn ask counts toward `asked` but not `pending` — so
+    // a shift with one FILLED seat (carrying withdrawn losers) plus one Open seat
+    // NEVER asked derived `asked > 0 && pending === 0` and false-positived as "quiet",
+    // i.e. "everyone answered and we're still short", when the gap had simply never
+    // been tried. Before #600 those losing asks stayed live forever, so `pending` was
+    // never 0 in that shape and the bug was unreachable.
+    //
+    // A `withdrawn` ask is not counted as an ask for the CURRENT gap either: it
+    // belongs to the previous, filled cycle. Same rule as `askedSetFrom` — one
+    // concept, so a seat carrying only withdrawn asks reads as un-asked and the drip
+    // is left to do its job rather than the operator being pinged.
+    let gapAsked = 0;
+    let gapPending = 0;
+    let gapSilent = 0;
+    for (const s of unfilled) {
+      for (const ask of await repo.listAsksForSeat(s.id)) {
+        if (ask.response === "withdrawn") continue;
+        gapAsked++;
+        if (ask.respondedAt === undefined) gapPending++;
+        else if (ask.response === undefined) gapSilent++;
+      }
+    }
+
+    const ghosted = gapSilent > 0;
+    const quiet = gapAsked > 0 && gapPending === 0;
     if (!ghosted && !quiet) continue;
 
     const answered = trail.accepted + trail.declined;

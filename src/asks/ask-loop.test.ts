@@ -562,9 +562,9 @@ describe("losing asks are withdrawn when the seat fills (#600)", () => {
     expect(fresh.response).toBe("accepted");
   });
 
-  it("a self-claim onto an Asked seat withdraws the outstanding asks too (#440 door)", async () => {
+  it("an operator override onto an Asked seat withdraws the outstanding asks", async () => {
     // recordResponse is not the only way a seat fills. Fixing only that path would
-    // leave the identical bug reachable through self-claim and the operator override.
+    // leave the identical bug reachable through the other doors.
     const asked = await addCrew("crew-asked");
     const [seatId] = await addShift(1);
     await broadcastAsk(repo, seatId!, T0); // seat now Asked, one live ask

@@ -33,7 +33,11 @@ import { committedDatesByCrew } from "../oracle/oracle.js";
 import { logSelfClaim } from "../oracle/reliability-log.js";
 import type { Repository } from "../ports/repository.js";
 import type { DerivedBailResult } from "./ask-loop.js";
-import { bailWithDerivedLateness, refreshShiftState } from "./ask-loop.js";
+import {
+  bailWithDerivedLateness,
+  refreshShiftState,
+  withdrawLiveAsks,
+} from "./ask-loop.js";
 
 export interface ClaimResult {
   /**
@@ -174,6 +178,14 @@ export async function claimSeat(
   // accept, inverted: that logs responsiveness regardless because answering IS the
   // behavior scored; this scores *acquiring*, which only the winner did.
   await logSelfClaim(repo, crewId, seat.id, seat.shiftId, now);
+  // #600 / DEC-145: this is the THIRD fill door and it needs the same retirement as
+  // the CAS win and the operator override. A claimable seat can be `Asked` (#440), so
+  // a self-claim routinely lands on a seat with live asks out — and leaving them armed
+  // reproduces the original bug exactly: un-swept while the seat is filled, then
+  // `ask_ignored` for everyone the moment it reopens. No `exceptAskId`: the claimant
+  // may hold their own live ask on this seat and took it through a different door, so
+  // that one is moot too.
+  await withdrawLiveAsks(repo, seat.id, now);
   await refreshShiftState(repo, seat.shiftId);
   return { code: null, seat: confirmed };
 }

@@ -61,6 +61,16 @@ by that shape repeatedly — the `/admin` hub's two hand-edited menus, the auth 
 duplicated kill-switch — so the retirement lives in one exported helper the three callers
 share.
 
+**And the first draft of this decision claimed that while one door was still open.**
+`claimSeat` had no retirement call; the sentence above was aspiration written as fact. It
+shipped green because the test named "a self-claim onto an `Asked` seat…" called
+`manualOverride` — so the door that was claimed covered was the one door with no test at
+all. Worth recording because the failure is not the missing call, which was a minute's
+work: it is that **a test named after the behaviour it does not exercise is worse than no
+test**, since it converts an unverified claim into an apparently-verified one. The
+per-door tests now each call the function in their own name, and each was negative-
+controlled by reverting its own door.
+
 **Prod fallout was already written and is the operator's to clear.** 34 asks were armed on
 filled seats, each one a latent unearned penalty, plus ~6 `ask_ignored` events already
 logged (worst: 9d 0h 15m late). `db/ops/600-close-losing-asks.sql` carries the inspect →
@@ -68,6 +78,16 @@ disarm → verify sequence. Deleting the six breaks `reliability_events`' append
 (DEC-008) deliberately: an append-only log earns its keep by being true, and those rows
 record something that did not happen. The alternative — let them age out of the 40-event
 window — costs weeks of mis-ordered asks nobody can attribute, at −3 each.
+
+**A withdrawn ask is not an ask for the CURRENT gap.** The same rule the asked-set uses
+also governs the warming board's signals, and getting there took a second review pass: the
+escalation trail sums asks across *all* a shift's required seats, so a filled seat's
+withdrawn losers made a shift read `asked > 0 && pending === 0` — "everyone answered and
+we're still short" — while its other seat had simply never been tried. Before this change
+those asks stayed live forever, so that shape was unreachable. The warming signals now key
+on the unfilled seats only, and skip withdrawn asks there too; the displayed trail stays
+whole-shift, because transparency (DEC-024) wants the full history even where the *signal*
+does not.
 
 **Tradeoff:** `withdrawn` is a fourth outcome every ask-reading surface must now handle,
 and a surface that forgets it falls through to whatever its `else` branch is — which is how

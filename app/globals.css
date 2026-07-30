@@ -58,7 +58,13 @@
 }
 
 html {
-  font-size: 80%; /* 12.8px root — IBM Plex reads oversized at 16px */
+  /* 15px root. Was 80% (12.8px) from 2026-07-21 — that shrank every rem-based size in the app
+     by a fifth, and it reached `main` with the reservations merge, so `main` has been reading
+     noticeably smaller than production ever since. IBM Plex genuinely does read oversized at
+     16px; the operator settled on 15px — one under browser default.
+     A percentage, not a px value, so a reader who has raised their browser's default font still
+     gets a proportional bump. */
+  font-size: 93.75%;
 }
 
 body {

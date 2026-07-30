@@ -15,9 +15,10 @@ test.describe("version tag", () => {
     await resetAndSeed("crew");
   });
 
-  test("admin hub shows the version; an admin sub-page does not", async ({ page }) => {
+  test("admin settings shows the version; another admin page does not", async ({ page }) => {
+    // Moved off the hub with it (#603): Settings is the admin-side home for the build stamp.
     await signInAsAdmin(page, "spink"); // lands on /admin/at-risk
-    await page.goto("/admin");
+    await page.goto("/admin/settings");
     await expect(page.getByText(VERSION)).toBeVisible();
 
     // The whole point of mounting per-page (not in Shell): sub-pages stay clean.

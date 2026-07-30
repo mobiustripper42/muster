@@ -1,5 +1,4 @@
 import type { Location, Offering } from "@core/domain/entities.js";
-import { BackLink } from "../../../../components/ui/back-link";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { AppLink } from "../../../../components/ui/app-link";
@@ -66,7 +65,6 @@ export default async function AdminLocations({
 
   return (
     <Shell width="6xl">
-      <BackLink href="/admin">Back</BackLink>
       <form
         key={creating ? "new" : selected?.id ?? "none"}
         action={saveLocation}
@@ -77,7 +75,7 @@ export default async function AdminLocations({
         <header className="flex items-center gap-3">
           <div className="min-w-0">
             <p className="text-xs text-faint">
-              Settings / Locations{selected || creating ? ` / ${title}` : ""}
+              Setup / Locations{selected || creating ? ` / ${title}` : ""}
             </p>
             <h1 className="truncate text-[22px] font-semibold leading-tight text-ink">{title}</h1>
           </div>

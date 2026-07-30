@@ -67,10 +67,9 @@ test.describe("all shifts (#100)", () => {
     await expect(page.getByText(/split candidates? ·/i)).toBeVisible();
   });
 
-  test("the /admin hub links the all-shifts view (Part B)", async ({ page }) => {
+  test("/admin lands on the all-shifts view (Part B; #603 — the hub is gone)", async ({ page }) => {
     await signInAsAdmin(page, "spink");
     await page.goto("/admin");
-    await page.getByRole("link", { name: /All shifts/ }).click();
     await expect(page).toHaveURL(/\/admin\/shifts/);
     await expect(page.getByRole("heading", { name: "All shifts" })).toBeVisible();
   });

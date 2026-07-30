@@ -1,4 +1,3 @@
-import { BackLink } from "../../../../components/ui/back-link";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
@@ -46,10 +45,9 @@ export default async function AdminCalendar({
 
   return (
     <Shell width="6xl">
-      <BackLink href="/admin">Back</BackLink>
 
       <header className="flex flex-col gap-1">
-        <p className="text-xs text-faint">Reservations / Calendar</p>
+        <p className="text-xs text-faint">Calendar</p>
         <h1 className="text-[22px] font-semibold leading-tight text-ink">Calendar</h1>
       </header>
 

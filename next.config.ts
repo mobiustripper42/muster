@@ -35,6 +35,16 @@ const nextConfig: NextConfig = {
   // Send island, DEC-030) needed hydration to work. Dev-only; the Vercel build
   // is unaffected.
   allowedDevOrigins: ["mill-dev"],
+  // Hide the dev-tools badge when the e2e harness is driving the app. CI runs the suite against
+  // `next dev` (playwright.config.ts — no dev lock there, and skipping the build keeps the job
+  // fast), and the badge is a fixed bottom-left overlay that can expand over page content. It
+  // ate a `weekday` checkbox click at 375px in add-ons and offering-catalog: a `sr-only` input
+  // whose position had shifted under the badge after the root font size changed. The tests were
+  // right, the app was fine, and the thing in the way was framework chrome that has no business
+  // being in the viewport during a test run.
+  //
+  // Keyed off E2E, set by the harness's webServer only — a normal `npm run dev` keeps the badge.
+  ...(process.env.E2E === "1" ? { devIndicators: false as const } : {}),
   // Forward package.json's version to the client as NEXT_PUBLIC_APP_VERSION so the
   // <VersionTag /> corner stamp can render it (the NEXT_PUBLIC_ prefix is what gets
   // it into client trees — without it the tag renders blank). Build-time only; the

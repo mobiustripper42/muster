@@ -9,7 +9,6 @@ import {
 } from "@core/reservations/purchases-view.js";
 import { formatCents } from "@core/reservations/calendar-detail.js";
 import { canonicalizePhone, formatPhoneForDisplay } from "@core/customers/identity.js";
-import { BackLink } from "../../../../components/ui/back-link";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { AppLink } from "../../../../components/ui/app-link";
@@ -140,10 +139,9 @@ export default async function AdminPurchases({
 
   return (
     <Shell width="3xl">
-      <BackLink href="/admin">Back</BackLink>
 
       <header className="flex flex-col gap-1">
-        <p className="text-xs text-faint">Reservations / Purchases</p>
+        <p className="text-xs text-faint">Bookings / Purchases</p>
         <h1 className="text-[22px] font-semibold leading-tight text-ink">Purchases</h1>
       </header>
 

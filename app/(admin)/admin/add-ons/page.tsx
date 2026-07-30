@@ -1,5 +1,4 @@
 import type { AddOn, Offering } from "@core/domain/entities.js";
-import { BackLink } from "../../../../components/ui/back-link";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { AppLink } from "../../../../components/ui/app-link";
@@ -65,7 +64,6 @@ export default async function AdminAddOns({
 
   return (
     <Shell width="6xl">
-      <BackLink href="/admin">Back</BackLink>
       <form
         key={creating ? "new" : selected?.id ?? "none"}
         action={saveAddOn}
@@ -76,7 +74,7 @@ export default async function AdminAddOns({
         <header className="flex items-center gap-3">
           <div className="min-w-0">
             <p className="text-xs text-faint">
-              Settings / Add-ons{selected || creating ? ` / ${title}` : ""}
+              Setup / Add-ons{selected || creating ? ` / ${title}` : ""}
             </p>
             <h1 className="truncate text-[22px] font-semibold leading-tight text-ink">{title}</h1>
           </div>

@@ -1,6 +1,5 @@
 import { buildAllTimeOff, type TimeOffByCrew } from "@core/crew/time-off.js";
 import type { CrewMember } from "@core/domain/entities.js";
-import { BackLink } from "../../../../components/ui/back-link";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
@@ -64,7 +63,6 @@ export default async function AdminTimeOff({
 
   return (
     <Shell width="3xl">
-      <BackLink href="/admin">Back</BackLink>
       <h1 className="text-xl font-semibold text-ink">Time off</h1>
       <p className="text-sm text-muted">
         Who’s out, and when. Crew don’t get asked for shifts on these dates. For

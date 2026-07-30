@@ -1,5 +1,4 @@
 import type { Location, Offering, Vessel } from "@core/domain/entities.js";
-import { BackLink } from "../../../../components/ui/back-link";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { AppLink } from "../../../../components/ui/app-link";
@@ -74,7 +73,6 @@ export default async function AdminVessels({
 
   return (
     <Shell width="6xl">
-      <BackLink href="/admin">Back</BackLink>
       {/* One form spans the header + both columns; `key` remounts the uncontrolled inputs when
           the selected vessel changes, so switching rows always shows that vessel's values. */}
       <form
@@ -87,7 +85,7 @@ export default async function AdminVessels({
         {/* Header — breadcrumb, boat name, Save (mockup header.top). */}
         <header className="flex items-center gap-3">
           <div className="min-w-0">
-            <p className="text-xs text-faint">Settings / Vessels{selected || creating ? ` / ${title}` : ""}</p>
+            <p className="text-xs text-faint">Setup / Vessels{selected || creating ? ` / ${title}` : ""}</p>
             <h1 className="flex items-center gap-2 text-[22px] font-semibold leading-tight text-ink">
               {selected && (
                 <span

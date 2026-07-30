@@ -35,8 +35,8 @@ test.describe("root redirect (#97)", () => {
     page,
   }) => {
     const res = await page.goto("/admin/definitely-not-a-real-page");
-    // Bounces to the admin hub (which then gates); no hard 404.
-    await expect(page).toHaveURL((u) => u.pathname === "/admin");
+    // Bounces to /admin, which lands on the shifts board (#603 — the hub is gone); no hard 404.
+    await expect(page).toHaveURL((u) => u.pathname === "/admin/shifts");
     expect(res?.status()).toBe(200);
   });
 
@@ -53,6 +53,8 @@ test.describe("root redirect (#97)", () => {
     await signInAsAdmin(page, "spink");
     await page.goto("/");
     await expect(page).toHaveURL(/\/admin(\/|\?|$)/);
-    await expect(page.getByRole("heading", { name: "Admin" })).toBeVisible();
+    // `/admin` lands on the shifts board now (#603 — the hub is gone), so the landing heading
+    // is the board's, not "Admin".
+    await expect(page.getByRole("heading", { name: "All shifts" })).toBeVisible();
   });
 });

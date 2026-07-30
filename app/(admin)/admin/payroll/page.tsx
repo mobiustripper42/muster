@@ -1,4 +1,3 @@
-import { BackLink } from "../../../../components/ui/back-link";
 import { GetFormSubmit } from "../../../../components/ui/get-form-submit";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
@@ -68,7 +67,6 @@ export default async function AdminPayroll({
 
   return (
     <Shell width="3xl">
-      <BackLink href="/admin">Back</BackLink>
       <h1 className="text-xl font-semibold text-ink">Payroll hours</h1>
       <p className="text-sm text-muted">
         Estimated hours per crew member for a pay period — the committed shift window

@@ -119,9 +119,6 @@ export default async function ImportPage({
         </section>
       )}
 
-      <AppLink href="/admin" className="text-sm font-semibold text-accent">
-        ← Admin
-      </AppLink>
     </Shell>
   );
 }

@@ -2,7 +2,6 @@ import type { Block, Event, Location, Offering, Reservation, Vessel } from "@cor
 import type { MusterOwnedVesselDay } from "@core/domain/entities.js";
 import { vesselDateOf } from "@core/config/tenant.js";
 import { blockDateSpan, computeBlockImpact } from "@core/reservations/block-impact.js";
-import { BackLink } from "../../../../components/ui/back-link";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { AppLink } from "../../../../components/ui/app-link";
@@ -149,10 +148,9 @@ export default async function AdminBlocks({
 
   return (
     <Shell width="6xl">
-      <BackLink href="/admin">Back</BackLink>
 
       <header className="flex flex-col gap-1">
-        <p className="text-xs text-faint">Settings / Blocks</p>
+        <p className="text-xs text-faint">Bookings / Blocks</p>
         <h1 className="text-[22px] font-semibold leading-tight text-ink">Blocks</h1>
       </header>
 

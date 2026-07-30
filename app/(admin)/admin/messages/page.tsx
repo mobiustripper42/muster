@@ -31,7 +31,6 @@ export default async function AdminMessages() {
   } catch {
     return (
       <Shell>
-        <BackLink />
         <Notice tone="bad">Can’t reach messages right now. Try again in a moment.</Notice>
       </Shell>
     );
@@ -39,7 +38,6 @@ export default async function AdminMessages() {
 
   return (
     <Shell>
-      <BackLink />
       <h1 className="text-lg font-semibold text-ink">Messages</h1>
       <section className="flex flex-col gap-2">
         {view.threads.map((t) => (
@@ -60,10 +58,3 @@ export default async function AdminMessages() {
   );
 }
 
-function BackLink() {
-  return (
-    <AppLink href="/admin" className="text-sm font-semibold text-accent">
-      ‹ Admin
-    </AppLink>
-  );
-}

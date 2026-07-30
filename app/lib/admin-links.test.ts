@@ -1,0 +1,124 @@
+/**
+ * The admin nav's structure and feature filter (#586, #603).
+ *
+ * Layout can only be checked by looking; which links exist, where they're shelved, and in what
+ * order can be pinned — so they are. The bug that started this was a rendering collision, but the
+ * cause was twelve peers with no hierarchy, six of them pointing at a feature that was off.
+ */
+import { describe, expect, it } from "vitest";
+import { FLAT_LINKS, GROUPS, visibleAdminLinks, visibleAdminNav } from "./admin-links.js";
+
+const ALL = { messaging: true, reservations: true };
+const NONE = { messaging: false, reservations: false };
+
+describe("visibleAdminNav", () => {
+  it("puts the daily work flat, in the operator's order", () => {
+    // Stated directly by the operator: he works the shifts board constantly, expects the same of
+    // the calendar, and uses audit + import daily. At-Risk is last — he almost never opens it.
+    expect(visibleAdminNav(ALL).flat.map((l) => l.label)).toEqual([
+      "Shifts",
+      "Calendar",
+      "Audit",
+      "Import",
+      "At-Risk",
+    ]);
+  });
+
+  it("shelves everything slower behind four groups", () => {
+    expect(visibleAdminNav(ALL).groups.map((g) => g.label)).toEqual([
+      "Bookings",
+      "People",
+      "Setup",
+      "Settings",
+    ]);
+  });
+
+  it('names the crew group "People", not "Crew"', () => {
+    // The bar already carries a "Crew view" button (switch to the crew app, DEC-093) a few dozen
+    // pixels away. One word meaning two unrelated things in one bar is how a nav loses trust.
+    const labels = GROUPS.map((g) => g.label);
+    expect(labels).toContain("People");
+    expect(labels).not.toContain("Crew");
+  });
+
+  it("drops a group whose every link is flagged off, rather than rendering it empty", () => {
+    // Bookings is entirely reservations-gated. Opening an empty menu is worse than not seeing it.
+    const off = visibleAdminNav(NONE);
+    expect(off.groups.map((g) => g.label)).toEqual(["People", "Setup", "Settings"]);
+    expect(off.groups.every((g) => g.links.length > 0)).toBe(true);
+  });
+
+  it("halves the bar on a default deployment", () => {
+    // RESERVATIONS off (DEC-111) and MESSAGING off (#389) is the default.
+    const off = visibleAdminNav(NONE);
+    expect(off.flat.map((l) => l.label)).toEqual(["Shifts", "Audit", "Import", "At-Risk"]);
+    expect(visibleAdminLinks(NONE).length).toBeLessThan(visibleAdminLinks(ALL).length);
+  });
+
+  it("keeps Messages gated on messaging alone, independent of reservations", () => {
+    const people = (f: { messaging: boolean; reservations: boolean }) =>
+      visibleAdminNav(f).groups.find((g) => g.label === "People")!.links.map((l) => l.label);
+    expect(people({ messaging: true, reservations: false })).toContain("Messages");
+    expect(people({ messaging: false, reservations: true })).not.toContain("Messages");
+  });
+
+  it("shelves Blocks with Bookings, not Setup", () => {
+    // It's about a date's availability, not catalog data.
+    const group = (label: string) => visibleAdminNav(ALL).groups.find((g) => g.label === label)!;
+    expect(group("Bookings").links.map((l) => l.label)).toContain("Blocks");
+    expect(group("Setup").links.map((l) => l.label)).not.toContain("Blocks");
+  });
+
+  it("gives Settings a Pause staffing entry pointing at a real route", () => {
+    // The control lived only on the /admin hub, so this menu entry could not exist until the
+    // settings page did. A nav item that 404s is worse than a missing one.
+    const settings = visibleAdminNav(ALL).groups.find((g) => g.label === "Settings")!;
+    expect(settings.links[0]).toEqual({ href: "/admin/settings", label: "Pause staffing" });
+  });
+
+  it("surfaces the five entries the nav never linked", () => {
+    // Time off, audit, payroll, integrity check and engine pause lived only in the /admin hub —
+    // reachable only if you happened to land there. That is how they got orphaned.
+    const all = visibleAdminLinks(ALL).map((l) => l.href);
+    for (const href of [
+      "/admin/time-off",
+      "/admin/asks",
+      "/admin/payroll",
+      "/admin/integrity",
+      "/admin/settings",
+    ]) {
+      expect(all, `${href} must be reachable from the nav`).toContain(href);
+    }
+  });
+
+  it("lists every link once — nothing shelved in two places", () => {
+    const hrefs = visibleAdminLinks(ALL).map((l) => l.href);
+    expect(new Set(hrefs).size).toBe(hrefs.length);
+  });
+
+  it("reads flat first, then each group in order — the drawer's reading order", () => {
+    const nav = visibleAdminNav(ALL);
+    expect(visibleAdminLinks(ALL)).toEqual([...nav.flat, ...nav.groups.flatMap((g) => g.links)]);
+  });
+
+  it("preserves declared order under every flag combination", () => {
+    // The bar's order is muscle memory; filtering must never reorder it.
+    const declared = [...FLAT_LINKS, ...GROUPS.flatMap((g) => g.links)];
+    for (const messaging of [true, false]) {
+      for (const reservations of [true, false]) {
+        const order = visibleAdminLinks({ messaging, reservations }).map((l) =>
+          declared.findIndex((d) => d.href === l.href),
+        );
+        expect(order).toEqual([...order].sort((a, b) => a - b));
+      }
+    }
+  });
+
+  it("gates every entry on a flag that exists", () => {
+    // TypeScript catches this today; the test survives the field becoming a plain string, and a
+    // link silently absent from every deployment is the kind of thing nobody reports.
+    for (const l of [...FLAT_LINKS, ...GROUPS.flatMap((g) => g.links)]) {
+      if (l.feature !== undefined) expect(["messaging", "reservations"]).toContain(l.feature);
+    }
+  });
+});

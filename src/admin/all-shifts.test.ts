@@ -1,6 +1,7 @@
 /**
  * "All shifts" derivation (#100, DEC-042). Tests the read-model's own logic —
- * window filtering, cancelled/completed exclusion, trip aggregation + sort, pax,
+ * window filtering, cancelled exclusion + completed INCLUSION (#570), trip
+ * aggregation + sort, pax,
  * seat-fill counts, and row ordering. The live-state resolution it delegates to
  * `resolveShiftStateOnRead` is exercised in tick's suite; here we assert one
  * clean Crewed case to prove the wiring, not the whole state machine.
@@ -184,17 +185,32 @@ describe("deriveAllShifts", () => {
     expect(seats.find((s) => s.roleName === "mate")!.crewName).toBeUndefined();
   });
 
-  it("excludes cancelled and completed shifts", async () => {
+  it("excludes cancelled shifts but KEEPS completed ones (#570)", async () => {
     await addShift("alive", "2026-07-03", "Hops", [{ time: "15:00", pax: [2] }], [{ state: "Confirmed" }], "Crewed");
     await addShift("dead", "2026-07-03", "Kettle", [{ time: "15:00", pax: [2] }], [{ state: "Open" }], "Cancelled");
     await addShift("done", "2026-07-03", "Firkin", [{ time: "15:00", pax: [2] }], [{ state: "Confirmed" }], "Completed");
 
     const rows = await deriveAllShifts(repo, { from: "2026-07-01", to: "2026-07-31" }, T0, OPTS);
-    expect(rows.map((r) => r.vesselName)).toEqual(["Hops"]);
+    // Completed stays on the board (operator's call, #570) — a trip that ran is still
+    // part of the day. Cancelled remains opt-in behind `includeCancelled` (#416).
+    expect(rows.map((r) => r.vesselName).sort()).toEqual(["Firkin", "Hops"]);
+    expect(rows.find((r) => r.vesselName === "Hops")!.cancelled).toBe(false);
+  });
+
+  it("a completed shift reads Completed, NOT relabelled Crewed by the resolver (#570)", async () => {
+    // The seat-folding resolver can only yield Pending/Filling/Crewed/AtRisk
+    // (`derive.ts:652`), so without the verbatim branch a finished trip whose seats
+    // are still Confirmed would present as a live Crewed shift — with the live
+    // affordances that implies. Same hazard #416 fixed for Cancelled.
+    await addShift("done", "2026-07-03", "Firkin", [{ time: "15:00", pax: [2] }], [{ state: "Confirmed" }], "Completed");
+
+    const rows = await deriveAllShifts(repo, { from: "2026-07-01", to: "2026-07-31" }, T0, OPTS);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.state).toBe("Completed");
     expect(rows[0]!.cancelled).toBe(false);
   });
 
-  it("includeCancelled folds Cancelled in (flagged), still excludes Completed (#416)", async () => {
+  it("includeCancelled folds Cancelled in (flagged); Completed is present either way (#416, #570)", async () => {
     await addShift("alive", "2026-07-03", "Hops", [{ time: "15:00", pax: [2] }], [{ state: "Confirmed" }], "Crewed");
     await addShift("dead", "2026-07-03", "Kettle", [{ time: "15:00", pax: [2] }], [{ state: "Open" }], "Cancelled");
     await addShift("done", "2026-07-03", "Firkin", [{ time: "15:00", pax: [2] }], [{ state: "Confirmed" }], "Completed");
@@ -205,8 +221,9 @@ describe("deriveAllShifts", () => {
       T0,
       { ...OPTS, includeCancelled: true },
     );
-    // Cancelled now present + flagged; Completed still excluded.
-    expect(rows.map((r) => r.vesselName).sort()).toEqual(["Hops", "Kettle"]);
+    // Cancelled now present + flagged; Completed is present regardless of the flag —
+    // the flag only ever governed Cancelled (#570 keeps Completed unconditionally).
+    expect(rows.map((r) => r.vesselName).sort()).toEqual(["Firkin", "Hops", "Kettle"]);
     const dead = rows.find((r) => r.vesselName === "Kettle")!;
     expect(dead.cancelled).toBe(true);
     // State stays "Cancelled" — NOT relabelled by the seat-folding resolver, which

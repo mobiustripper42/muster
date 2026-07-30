@@ -99,7 +99,7 @@ describe("buildCalendarFeed (#355)", () => {
     expect(feed!.events[0]!.training).toBe(true);
   });
 
-  it("excludes claimed (tentative), cancelled, completed, and past-retention shifts", async () => {
+  it("excludes claimed (tentative), cancelled, and past-retention shifts — but KEEPS completed (#570)", async () => {
     await seedShift("confirmed", "2026-07-15", "18:00");
     await seedShift("tentative", "2026-07-16", "18:00", { state: "Claimed" });
     await seedShift("killed", "2026-07-17", "18:00", { shiftState: "Cancelled" });
@@ -108,7 +108,11 @@ describe("buildCalendarFeed (#355)", () => {
     await seedShift("old", "2026-07-01", "18:00");
 
     const feed = await buildCalendarFeed(repo, ME, NOW, TZ);
-    expect(feed!.events.map((e) => e.uid)).toEqual(["confirmed"]);
+    // A completed shift stays in the feed (#570). This is a SUBSCRIBED calendar, so
+    // dropping it would retroactively delete a trip the crew member actually worked
+    // from every client the evening the tick swept it. `floor` — exercised by the
+    // retention test below — is the control for how far back the feed reaches.
+    expect(feed!.events.map((e) => e.uid).sort()).toEqual(["confirmed", "done"]);
   });
 
   it("keeps a just-finished shift within the 7-day retention window", async () => {

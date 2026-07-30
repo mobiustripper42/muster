@@ -168,6 +168,19 @@ describe("buildThreadList — assembly (#117, DEC-071)", () => {
     expect(view.threads.map((t) => t.threadId)).not.toContain(String(shiftThread(killed)));
   });
 
+  it("KEEPS a Completed shift's thread — the crew who just ran the trip are still talking (#570)", async () => {
+    const repo = await seed();
+    // The inverse of the Cancelled case above. A cancelled trip has nothing to
+    // discuss; a completed one just happened, and losing the thread the evening the
+    // tick sweeps is exactly when it's most wanted.
+    const done = asId<"ShiftId">("shift-done");
+    await repo.saveShift({ ...shift(SHIFT_TODAY, TOMORROW), id: done, state: "Completed" });
+    await repo.saveSeat(seatFor("s-done", done, ME));
+
+    const view = await buildThreadList(repo, ME, TENANT, NOW, TZ);
+    expect(view.threads.map((t) => t.threadId)).toContain(String(shiftThread(done)));
+  });
+
   it("hides an empty DM (no message) but lists one that carries a message", async () => {
     const repo = await seed();
     // Empty DM ME↔DEE — participants exist, no message.

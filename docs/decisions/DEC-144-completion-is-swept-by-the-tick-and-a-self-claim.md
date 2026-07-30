@@ -35,6 +35,15 @@ amends_spec:
   `Offering.tripLengthMinutes` when the booking materializes the slot, and never resolved from the
   offering on read. Absent ⇒ the flat `TRIP_DURATION_MINUTES` fallback, which is every Xola-sourced
   event, permanently.
+- **A completed shift stays VISIBLE everywhere; only ACTIONS are refused.** The split is the rule:
+  display surfaces keep it (the shifts board, the crew's My Shifts, the shift thread, the calendar
+  feed), and engine/action surfaces keep excluding it (asks, drip, lean, escalation, the At-Risk
+  board, the warming watchlist, and the crew's open-asks list — an unanswered ask for a trip that
+  already sailed is a phantom). **Bailing a completed shift is refused outright** (`shift_over`).
+- **A terminal state is never re-derived for display.** The seat-folding resolver can only produce
+  Pending/Filling/Crewed/AtRisk, so a `Completed` shift resolved on read comes back **`Crewed`** —
+  a finished trip presenting as a live one. The board keeps the persisted state verbatim, extending
+  the guard #416 already added for `Cancelled`.
 
 **Why:** Two of the three behaviors the operator wants to reward emitted no event at all, so
 answering asks was the only thing that moved a score. Ranked against shifts actually held — the
@@ -61,6 +70,16 @@ Accepted at pilot scale. **Revisit if:** a real claim-release churn pattern show
 hard fix is pairing a `self_claim` to its own seat's later bail in the scorer, which the flat
 per-event fold deliberately cannot express today.
 
+**Visible, not hidden — and the reason the question came up at all.** Every surface already carried a
+defensive `Completed` guard, written when nothing could ever set the state, so all of them were dead
+code that turned live at once. Most were labelled "historical" and dropped the shift. That is wrong:
+a shift completes when its own trips finish, which for a same-day trip is *that evening*, so hiding
+it makes a trip the operator watched all day vanish from the board mid-day-view, deletes tonight's
+shift off the crew member's own list, and — on a **subscribed** calendar feed — retroactively removes
+work they actually did from every client. The useful distinction is not live-vs-historical but
+**display vs action**: a finished shift is a true fact worth showing and an invalid thing to ask,
+lean, escalate, or bail against.
+
 **Reliability-grade, deliberately not money-grade.** The sweep asserts that a scheduled trip's clock
 ran out with crew still assigned. Nobody asserts the boat left the dock. That is enough to order an
 ask queue and it is **not** enough to release money — direct-to-crew tip distribution needs a real
@@ -81,5 +100,6 @@ the event's duration, and the shift end, the sweep, and the crew's hours all fol
 approximate by exactly the amount it always was. **Rejected:** an operator "mark complete" action (a
 daily chore that gets skipped, and a skipped completion silently withholds the `+5` — the same class
 of bug as this one); `Offering.holdMinutes` as the shift-end basis (it is write-only config today,
-read by nothing); a compensating event type to net against bad history. **Revisit if:** money is ever
-hung off completion — then it needs its own evidence, not this one. **Phase:** 12.
+read by nothing); a compensating event type to net against bad history; hiding completed shifts as
+"historical" (see above). **Revisit if:** money is ever hung off completion — then it needs its own
+evidence, not this one. **Phase:** 12.

@@ -16,6 +16,7 @@ import { asId } from "../domain/ids.js";
 import type { CrewMemberId } from "../domain/ids.js";
 import type { ChannelPort } from "../ports/channel.js";
 import type { Repository } from "../ports/repository.js";
+import { outbound } from "./message-opener.js";
 
 /** A landing the tick surfaced (DEC-095) — shift + why it boarded. */
 export interface BoardLanding {
@@ -77,7 +78,15 @@ export async function composeBoardAlert(repo: Repository, landings: BoardLanding
     lines.push(`• ${when} · ${what} — ${why}`);
   }
   const n = byShift.size;
-  return `⚠ Muster: ${n} shift${n === 1 ? "" : "s"} need${n === 1 ? "s" : ""} you\n${lines.join("\n")}`;
+  // #599: the audience marker leads. This used to open `⚠ Muster:` against the crew
+  // ask's `Muster:` — a one-glyph difference, at the front of a preview that
+  // truncates from the right, for the one person (DEC-092: every admin is also crew)
+  // who receives both classes on the same phone. The ⚠ is dropped: the word ADMIN
+  // does the job the glyph was failing to do, and it costs a UCS-2 segment.
+  return outbound(
+    "admin",
+    `${n} shift${n === 1 ? "" : "s"} need${n === 1 ? "s" : ""} you\n${lines.join("\n")}`,
+  );
 }
 
 /**

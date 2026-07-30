@@ -7,6 +7,7 @@ import type { NotificationPort } from "../ports/notification.js";
 import { FakeNotificationChannel } from "./fake-notification-channel.js";
 import { forwardNotifications } from "./forward-notifications.js";
 import { InMemoryRepository } from "./in-memory-repository.js";
+import { RING_NOTIFICATION_BODY } from "./forward-notifications.js";
 
 const T = asId<"ThreadId">("thread-1");
 const AT = (): Date => new Date("2026-07-04T12:00:00.000Z");
@@ -33,13 +34,16 @@ const ring = (over: Partial<NotificationDecision> = {}): NotificationDecision =>
 });
 
 describe("forwardNotifications", () => {
-  it("every ring carries the bare 'You have a new Muster message' body (no count) (#387)", async () => {
+  it("every ring carries the bare notification body — no count (#387)", async () => {
     const repo = new InMemoryRepository();
     await repo.saveCrewMember(crew("crew-a"));
     const ch = new FakeNotificationChannel(AT);
     const n = await forwardNotifications(repo, ch, [ring({ messageCount: 3, mode: "summary" })]);
     expect(n).toBe(1);
-    expect(ch.last()?.body).toBe("You have a new Muster message"); // not "3 new messages"
+    // Asserted against the exported constant, not a literal: #387's rule is "no
+    // count, no content", which a copy change (#599 re-fronted it) must not redden.
+    expect(ch.last()?.body).toBe(RING_NOTIFICATION_BODY);
+    expect(ch.last()?.body).not.toMatch(/\d/); // not "3 new messages"
     expect(ch.last()?.to.phone).toBe("555-crew-a"); // recipient resolved for the later real adapter
   });
 
@@ -58,7 +62,7 @@ describe("forwardNotifications", () => {
     await repo.saveMessage(m);
     const ch = new FakeNotificationChannel(AT);
     await forwardNotifications(repo, ch, [ring({ mode: "content", messageIds: [m.id] })]);
-    expect(ch.last()?.body).toBe("You have a new Muster message");
+    expect(ch.last()?.body).toBe(RING_NOTIFICATION_BODY);
     expect(ch.last()?.body).not.toContain("slip B"); // the message text stays out of the SMS
   });
 

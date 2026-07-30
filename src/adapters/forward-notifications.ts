@@ -8,7 +8,7 @@
  * `NotificationPort` — the operator relay, then Twilio, this glue reused verbatim.
  *
  * **Body is a bare notification (#387):** every ring reads exactly
- * `"You have a new Muster message"` + the deep link the channel appends — NEVER the
+ * `RING_NOTIFICATION_BODY` + the deep link the channel appends — NEVER the
  * note's text inline. Relaying a message's content out-of-context (no sender, no
  * thread) as an SMS read as confusing (the §7.5 content-inlining, retired here); a
  * pointer-to-the-app is the clear signal, and it also keeps message text out of the
@@ -24,9 +24,10 @@ import { asId } from "../domain/ids.js";
 import type { NotificationDecision } from "../messaging/doorbell-decider.js";
 import type { NotificationPort } from "../ports/notification.js";
 import type { Repository } from "../ports/repository.js";
+import { outbound } from "./message-opener.js";
 
 /** The one line every ring carries — a pointer to the app, never the note itself. */
-export const RING_NOTIFICATION_BODY = "You have a new Muster message";
+export const RING_NOTIFICATION_BODY = outbound("crew", "you have a new message");
 
 export async function forwardNotifications(
   repo: Repository,

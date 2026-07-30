@@ -26,6 +26,7 @@ import type { Ask } from "../domain/entities.js";
 import type { CrewMemberId } from "../domain/ids.js";
 import type { ChannelPort } from "../ports/channel.js";
 import type { Repository } from "../ports/repository.js";
+import { outbound } from "./message-opener.js";
 
 /** "Sat, Jul 4" from an ISO date — UTC-pinned so the text is TZ-deterministic. */
 function fmtDate(iso: string): string {
@@ -51,7 +52,10 @@ async function singleAskBody(repo: Repository, ask: Ask): Promise<string | null>
     repo.getVessel(shift.vesselId),
     repo.getRoleType(seat.role),
   ]);
-  return `Muster: ${fmtDate(shift.date)} - ${vessel?.name ?? shift.vesselId} - ${role?.name ?? seat.role}. In or out?`;
+  return outbound(
+    "crew",
+    `${fmtDate(shift.date)} - ${vessel?.name ?? shift.vesselId} - ${role?.name ?? seat.role}. In or out?`,
+  );
 }
 
 /**
@@ -104,7 +108,7 @@ export async function forwardAsks(
         }
         // Link is crew-scoped → `/crew`, so every live ask in the group is
         // answerable there regardless of which one anchors the entry.
-        if (rep !== null) body = `Muster: ${group.length} shifts need you. Tap to answer.`;
+        if (rep !== null) body = outbound("crew", `${group.length} shifts need you. Tap to answer.`);
       }
       if (rep === null || body === null) continue;
 

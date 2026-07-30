@@ -17,6 +17,7 @@ import { InMemoryPresence } from "../adapters/in-memory-presence.js";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import { makeDoorbellRules } from "../messaging/doorbell-decider.js";
 import { doorbellTick } from "./doorbell-tick.js";
+import { RING_NOTIFICATION_BODY } from "../adapters/forward-notifications.js";
 
 const RULES = makeDoorbellRules({
   batchWindowMs: 90_000,
@@ -89,8 +90,8 @@ describe("doorbellTick + forwardNotifications (the loop, #167)", () => {
     // Bare notification (#387) — the note's text never rides the SMS, even in
     // content mode; both absent members get the same pointer line.
     expect(channel.sent.map((s) => s.body)).toEqual([
-      "You have a new Muster message",
-      "You have a new Muster message",
+      RING_NOTIFICATION_BODY,
+      RING_NOTIFICATION_BODY,
     ]);
   });
 

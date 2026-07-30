@@ -145,6 +145,7 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 - DEC-030 — Pilot channel = operator-relayed web link; the outbox is adapter state, never domain state
 - DEC-084 — Crew assignment-change notice — a third operator-relay sibling
 - DEC-095 — Operator At-Risk alert — the deferred delivery half of DEC-026, NOT a fourth outbound lane
+- DEC-147 — Every outbound message names its audience first
 
 ### Crew self-serve, auth & admin identity
 - DEC-010 — Crew auth is magic-link passwordless; crew don't self-register _(revised by DEC-079 — the mechanism only — the crew front door is phone-entry → roster lookup → 6-digit code, not magic-link. The passwordless and no-self-registration legs stand; revised by DEC-081 — the mechanism only — see DEC-079)_
@@ -205,7 +206,7 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 ### Open questions
 - DEC-TBD — Open questions (carried from the spec; not Claude's to set alone)
 
-_Indexed 141 of 141 DECs. **This file is GENERATED** by `npm run gen:decisions` —
+_Indexed 142 of 142 DECs. **This file is GENERATED** by `npm run gen:decisions` —
 edit `docs/decisions/DEC-*.md`, not this file. `npm run check:decisions` fails on a stale index, a
 duplicate id, an unknown topic, an unknown relation, a forward-pointing amendment, or a
 reference to a decision that does not exist._

@@ -2,6 +2,7 @@ import type { CrewMemberId, ShiftId } from "../domain/ids.js";
 import type { AssignmentAction } from "../domain/entities.js";
 import type { NoticePort } from "../ports/notice.js";
 import type { Repository } from "../ports/repository.js";
+import { outbound } from "./message-opener.js";
 
 /** One "you're on / you're off a shift" change to relay (DEC-084). The engine
  * (e.g. `mergeShift`) returns the crew ids + the shift; the edge maps each to this. */
@@ -56,10 +57,10 @@ export async function forwardNotices(
       const where = `${fmtDate(shift.date)} - ${vessel?.name ?? shift.vesselId}`;
       const body =
         change.action === "removed"
-          ? `Muster: you're off the ${where} shift.`
+          ? outbound("crew", `you're off the ${where} shift.`)
           : change.action === "changed"
-            ? `Muster: your ${where} shift changed - check the app.`
-            : `Muster: you're on the ${where} shift.`;
+            ? outbound("crew", `your ${where} shift changed - check the app.`)
+            : outbound("crew", `you're on the ${where} shift.`);
 
       await channel.send({
         to: { crewMemberId: crew.id, phone: crew.phone },

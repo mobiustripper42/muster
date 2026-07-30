@@ -154,6 +154,7 @@ export async function ShiftCockpit({
             ? null
             : `${Math.round(r.responseRate * 100)}% answered`,
         silent: r.trail.silent,
+        withdrawn: r.trail.withdrawn,
         // Warming rows stay in the SAME host — a pane-hosted cockpit links other
         // shifts as `?sel=`, standalone links the standalone route (DEC-085).
         href:

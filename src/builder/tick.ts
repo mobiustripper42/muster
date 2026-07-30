@@ -25,7 +25,12 @@ import type { Ask, Seat, Shift } from "../domain/entities.js";
 import type { CrewMemberId, SeatId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 import { deriveAtRiskBoard } from "../admin/at-risk-board.js";
-import { expireAsks, rankedEligible, widenAsk } from "../asks/ask-loop.js";
+import {
+  askedSetFrom,
+  expireAsks,
+  rankedEligible,
+  widenAsk,
+} from "../asks/ask-loop.js";
 import { escalate } from "../asks/escalate.js";
 import { buildAskSuppression } from "../asks/suppression.js";
 import { poolExhaustedFor } from "../oracle/oracle.js";
@@ -352,7 +357,9 @@ export async function tick(
         if (seat.state !== "Open" && seat.state !== "Asked") continue; // settled/bailed
 
         const seatAsks = await repo.listAsksForSeat(seat.id);
-        const asked = new Set(seatAsks.map((a) => a.crewMemberId));
+        // #600: shares `askedSetFrom` with `widenAsk` so a withdrawn ask is
+        // re-askable on BOTH paths — the comment below asserts the two agree.
+        const asked = askedSetFrom(seatAsks);
         const unAsked = await rankedEligible(repo, seat, now, asked);
 
         if (unAsked.length === 0) {

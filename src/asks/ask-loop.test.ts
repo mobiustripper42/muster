@@ -466,6 +466,118 @@ describe("expireAsks — the clockless ask_ignored sweep", () => {
   });
 });
 
+describe("losing asks are withdrawn when the seat fills (#600)", () => {
+  /**
+   * The prod incident, reproduced: six captains broadcast, one accepts 51s later,
+   * the seat is bailed nine days on and reopens. Before #600 `expireAsks` then
+   * stamped `ask_ignored` on all five losers in a single pass — dated the sweep, for
+   * silence on a question that stopped being answerable 51 seconds after it was asked.
+   */
+  it("the reopened-seat sweep no longer fires ask_ignored at the losers", async () => {
+    const winner = await addCrew("crew-win");
+    const l1 = await addCrew("crew-lose-1");
+    const l2 = await addCrew("crew-lose-2");
+    const [seatId] = await addShift(1);
+
+    const asks = await broadcastAsk(repo, seatId!, T0);
+    expect(asks).toHaveLength(3);
+    const win = asks.find((a) => a.crewMemberId === winner)!;
+    await recordResponseAndConfirm(repo, win.id, "accepted", later(51_000));
+
+    // Nine days later the winner bails; the seat reopens and the tick sweeps it.
+    const nineDays = 9 * 24 * 3600_000;
+    await bailWithDerivedLateness(repo, seatId!, later(nineDays), winner);
+    const expired = await expireAsks(repo, seatId!, later(nineDays + 900_000), 2 * 3600_000);
+
+    expect(expired).toBe(0); // nothing left live to expire — this is the fix
+    for (const loser of [l1, l2]) {
+      expect(await types(loser)).not.toContain("ask_ignored");
+      expect(await types(loser)).toEqual(["ask_sent"]); // asked, and nothing more
+    }
+  });
+
+  it("marks them withdrawn — not the timeout stamp, and no reliability event", async () => {
+    const winner = await addCrew("crew-win");
+    const loser = await addCrew("crew-lose");
+    const [seatId] = await addShift(1);
+    const asks = await broadcastAsk(repo, seatId!, T0);
+    const win = asks.find((a) => a.crewMemberId === winner)!;
+
+    await recordResponseAndConfirm(repo, win.id, "accepted", later(51_000));
+
+    const after = await repo.listAsksForSeat(seatId!);
+    const lost = after.find((a) => a.crewMemberId === loser)!;
+    expect(lost.response).toBe("withdrawn");
+    expect(lost.respondedAt).toBeDefined(); // closed, so the sweep skips it
+    expect(await types(loser)).toEqual(["ask_sent"]);
+    // The winner's own ask is untouched by the withdrawal.
+    expect(after.find((a) => a.crewMemberId === winner)!.response).toBe("accepted");
+  });
+
+  it("a withdrawn ask does NOT bar a re-ask — it never got a fair answer", async () => {
+    const winner = await addCrew("crew-win");
+    const loser = await addCrew("crew-lose");
+    const [seatId] = await addShift(1);
+    const asks = await broadcastAsk(repo, seatId!, T0);
+    await recordResponseAndConfirm(
+      repo,
+      asks.find((a) => a.crewMemberId === winner)!.id,
+      "accepted",
+      later(51_000),
+    );
+    // Winner bails → seat reopens. The loser must be back in the askable pool.
+    await bailWithDerivedLateness(repo, seatId!, later(3600_000), winner);
+
+    const re = await widenAsk(repo, seatId!, later(3700_000));
+
+    expect(re).not.toBeNull();
+    expect(re!.crewMemberId).toBe(loser);
+  });
+
+  it("still answerable: a contested yes after withdrawal keeps its +2 (DEC-120)", async () => {
+    // The withdrawal stops the SWEEP inventing a penalty; it is not a refusal of the
+    // crew member's own answer. Someone tapping "In" ten minutes late lost the seat
+    // but was responsive, and responsiveness is paid regardless of outcome.
+    const winner = await addCrew("crew-win");
+    const loser = await addCrew("crew-lose");
+    const [seatId] = await addShift(1);
+    const asks = await broadcastAsk(repo, seatId!, T0);
+    const lost = asks.find((a) => a.crewMemberId === loser)!;
+    await recordResponseAndConfirm(
+      repo,
+      asks.find((a) => a.crewMemberId === winner)!.id,
+      "accepted",
+      later(51_000),
+    );
+
+    const out = await recordResponse(repo, lost.id, "accepted", later(600_000));
+
+    expect(out.claimed).toBe(false);
+    expect(out.reason).toBe("already_filled"); // contested, not "already_answered"
+    expect(await types(loser)).toContain("ask_accepted");
+    // Their real answer replaces the marker, and latency is from sentAt.
+    const fresh = (await repo.listAsksForSeat(seatId!)).find(
+      (a) => a.crewMemberId === loser,
+    )!;
+    expect(fresh.response).toBe("accepted");
+  });
+
+  it("a self-claim onto an Asked seat withdraws the outstanding asks too (#440 door)", async () => {
+    // recordResponse is not the only way a seat fills. Fixing only that path would
+    // leave the identical bug reachable through self-claim and the operator override.
+    const asked = await addCrew("crew-asked");
+    const [seatId] = await addShift(1);
+    await broadcastAsk(repo, seatId!, T0); // seat now Asked, one live ask
+    expect(await seatState(seatId!)).toBe("Asked");
+
+    await manualOverride(repo, seatId!, asked, later(1000));
+
+    const after = await repo.listAsksForSeat(seatId!);
+    expect(after.every((a) => a.response === "withdrawn")).toBe(true);
+    expect(await types(asked)).not.toContain("ask_ignored");
+  });
+});
+
 describe("bail (DEC-019, DEC-128 #483 — fires no asks, defers to the tick)", () => {
   async function confirmFirst(seatId: SeatId, crewId: CrewMemberId) {
     const ask = await assignPerson(repo, seatId, crewId, T0);

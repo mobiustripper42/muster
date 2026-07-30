@@ -22,9 +22,22 @@ import type { Ask, AskChannel, AskResponse } from "../domain/entities.js";
 import type { AskId, CrewMemberId, ShiftId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 
-/** What became of one ask — the derived status the surface colors. `timed_out` =
- *  a stamped `respondedAt` with no `response` (the ghost/silent case). */
-export type AskOutcome = "accepted" | "declined" | "timed_out" | "waiting";
+/**
+ * What became of one ask — the derived status the surface colors. `timed_out` = a
+ * stamped `respondedAt` with no `response` (the ghost/silent case).
+ *
+ * `withdrawn` (#600) = the seat was filled while this ask was still out, so it was
+ * retired unanswered. **Distinct from `timed_out`**, which means we waited and they
+ * said nothing and carries an `ask_ignored` penalty. Before #600 a withdrawn ask
+ * had no representation and read as `timed_out` — the trail accused people of
+ * ghosting an ask that had stopped being answerable.
+ */
+export type AskOutcome =
+  | "accepted"
+  | "declined"
+  | "timed_out"
+  | "withdrawn"
+  | "waiting";
 
 export interface AskTrailRow {
   askId: AskId;
@@ -55,9 +68,11 @@ const outcomeOf = (ask: Ask): AskOutcome =>
     ? "accepted"
     : ask.response === "declined"
       ? "declined"
-      : ask.respondedAt
-        ? "timed_out"
-        : "waiting";
+      : ask.response === "withdrawn"
+        ? "withdrawn"
+        : ask.respondedAt
+          ? "timed_out"
+          : "waiting";
 
 /**
  * Build the ask trail, newest ask first. Resolves each ask's seat → shift for the

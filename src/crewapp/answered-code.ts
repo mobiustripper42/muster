@@ -1,4 +1,5 @@
 import type { ResponseOutcome } from "../asks/ask-loop.js";
+import type { AskAnswer } from "../domain/entities.js";
 
 /**
  * Map an In/Out response + its outcome to a `/crew` notice code (#161). A win or a
@@ -11,7 +12,7 @@ import type { ResponseOutcome } from "../asks/ask-loop.js";
  * Pure so the surface stays dumb and this is unit-testable (the action layer is not).
  */
 export function answeredNoticeCode(
-  response: "accepted" | "declined",
+  response: AskAnswer,
   outcome: ResponseOutcome,
 ): "in" | "out" | "filled" | "booked" | "already" {
   if (response === "declined") return "out";

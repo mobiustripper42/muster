@@ -7,7 +7,8 @@
  * it gave up. That proof is **derived, not stored**: there is no escalation
  * aggregate. This projection reconstructs the trail for one shift from data that
  * already exists —
- *   - asked / accepted / declined / silent  ← the seats' asks (`listAsksForSeat`),
+ *   - asked / accepted / declined / silent / withdrawn  ← the seats' asks
+ *     (`listAsksForSeat`),
  *     which already carry `response` + `respondedAt`;
  *   - pool-widened / nudged                 ← the two Tier-2 actions on the one
  *     append-only reliability log (DEC-008), filtered by `metadata.shiftId`;
@@ -43,6 +44,14 @@ export interface EscalationTrail {
   declined: number;
   /** Asks that timed out unanswered — the negative signal (stamped, no response). */
   silent: number;
+  /**
+   * Asks retired unanswered because the seat got filled (#600) — `response ===
+   * "withdrawn"`. Its own bucket, NOT folded into `silent`: this surface exists to
+   * prove the automation tried, and reporting five people as ghosts when the seat was
+   * taken 51 seconds after they were asked is the opposite of proof. `asked` still
+   * counts them — we did ask.
+   */
+  withdrawn: number;
   /** Asks still live: no response and not yet timed out. */
   pending: number;
   /** Tier-2 re-confirmed full-pool exhaustion at least once (the v1 stub). */
@@ -73,6 +82,7 @@ export async function escalationTrailFor(
     accepted: 0,
     declined: 0,
     silent: 0,
+    withdrawn: 0,
     pending: 0,
     poolWidened: false,
     nudged: [],
@@ -90,6 +100,7 @@ export async function escalationTrailFor(
       trail.asked++;
       if (ask.response === "accepted") trail.accepted++;
       else if (ask.response === "declined") trail.declined++;
+      else if (ask.response === "withdrawn") trail.withdrawn++; // #600 — seat filled
       else if (ask.respondedAt !== undefined)
         trail.silent++; // stamped without a response = timed out (expireAsks)
       else trail.pending++;

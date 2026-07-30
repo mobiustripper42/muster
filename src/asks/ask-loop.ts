@@ -18,7 +18,7 @@
  * split needs the staffing-horizon clock and is left to that task.
  */
 
-import type { Ask, CrewMember, Event, Seat } from "../domain/entities.js";
+import type { Ask, AskAnswer, CrewMember, Event, Seat } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import type { AskId, CrewMemberId, SeatId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
@@ -267,9 +267,7 @@ export async function widenAsk(
 ): Promise<Ask | null> {
   const seat = await repo.getSeat(seatId);
   if (!seat || (seat.state !== "Open" && seat.state !== "Asked")) return null;
-  const asked = new Set(
-    (await repo.listAsksForSeat(seatId)).map((a) => a.crewMemberId),
-  );
+  const asked = askedSetFrom(await repo.listAsksForSeat(seatId));
   for (const id of exclude) asked.add(id);
   const [pick] = await rankedEligible(repo, seat, now, asked);
   if (!pick) return null; // pool walked — nothing un-asked left
@@ -317,7 +315,7 @@ export interface ResponseOutcome {
 export async function recordResponse(
   repo: Repository,
   askId: AskId,
-  response: "accepted" | "declined",
+  response: AskAnswer,
   now: Date,
 ): Promise<ResponseOutcome> {
   const ask = await repo.getAsk(askId);
@@ -327,10 +325,22 @@ export async function recordResponse(
 
   // #145: an already-answered (or timed-out) ask is closed — a re-tap must not
   // re-log ask_accepted/declined or re-stamp respondedAt. No-op idempotently.
-  if (ask.respondedAt !== undefined) {
+  //
+  // **A `withdrawn` ask is the exception and it is still answerable (#600).** The
+  // withdrawal exists to stop `expireAsks` inventing an `ask_ignored` for a seat that
+  // got taken; it is emphatically NOT a refusal of the crew member's own answer. Six
+  // captains asked, one accepts at 51 seconds, a second taps "In" ten minutes later:
+  // they lost the seat, but they ANSWERED, and DEC-120 pays responsiveness regardless
+  // of outcome (`ask_accepted` +2, the contested-loss credit). Treating `withdrawn` as
+  // closed here silently deleted that credit — three existing tests caught it, and the
+  // tests were right. Their real answer overwrites the marker below; the seat is
+  // already filled, so they fall through to the `already_filled` contested path.
+  if (ask.respondedAt !== undefined && ask.response !== "withdrawn") {
     return { claimed: false, reason: "already_answered", seatState: seat.state };
   }
 
+  // Latency is measured from `sentAt`, so a withdrawn-then-answered ask reports the
+  // crew member's true reply time — the withdrawal instant is not part of the signal.
   const latencyMs = now.getTime() - new Date(ask.sentAt).getTime();
   await repo.saveAsk({ ...ask, respondedAt: now.toISOString(), response });
 
@@ -391,6 +401,11 @@ export async function recordResponse(
         "Asked",
       );
       if (won) {
+        // #600: the seat is filled, so every other outstanding ask on it is moot.
+        // Retire them NOW rather than leaving them live to be mis-swept as
+        // `ask_ignored` whenever the seat next reopens. Only on the CAS win — a
+        // contested loser didn't fill the seat and must not close anyone's ask.
+        await withdrawLiveAsks(repo, seat.id, now, askId);
         await refreshShiftState(repo, seat.shiftId);
         return { claimed: true, seatState: "Claimed" };
       }
@@ -423,6 +438,79 @@ export async function recordResponse(
     return { claimed: false, seatState: "Open" };
   }
   return { claimed: false, seatState: seat.state };
+}
+
+/**
+ * Retire every still-live ask on a seat that has just been filled (#600) — the
+ * losers of a broadcast. `respondedAt` stamped, `response: "withdrawn"`, and
+ * **no reliability event**: nothing happened worth scoring.
+ *
+ * **This is the fix for #600, and the ordering is the whole bug.** `recordResponse`
+ * used to close only the winner's ask, so an ask's lifecycle was keyed to its own row
+ * and never to the seat's state. The losers stayed live — correctly un-swept while the
+ * seat was filled, because the tick only sweeps `Asked` seats (DEC-067) — and then
+ * detonated the moment the seat reopened: `expireAsks` found them, measured `sentAt`
+ * against the timeout, and stamped `ask_ignored` on all of them in one pass. In prod
+ * that charged five captains −3 each for silence on an ask from **nine days earlier**,
+ * on a seat that had been taken 51 seconds after they were asked. Their liveness
+ * outlived their relevance; the missing event type was a symptom of that, not the cause.
+ *
+ * `exceptAskId` skips the winning ask, which already carries its real `accepted`.
+ * Omit it when the seat was filled by a door that isn't an ask — a self-claim or an
+ * operator override — where EVERY live ask is moot, including one held by the person
+ * who just took the seat through the other door.
+ *
+ * **Called from all three fill paths, which is the point.** `recordResponse` is only
+ * one way a seat gets filled: `claimSeat` can take an `Asked` seat (legal since #440)
+ * and `manualOverride` can force-place onto one. Fixing only the ask path would leave
+ * the identical bug reachable through the other two doors — the shape this codebase
+ * has been bitten by before (a second list of the same thing always drifts).
+ */
+export async function withdrawLiveAsks(
+  repo: Repository,
+  seatId: SeatId,
+  now: Date,
+  exceptAskId?: AskId,
+): Promise<number> {
+  let withdrawn = 0;
+  for (const ask of await repo.listAsksForSeat(seatId)) {
+    if (exceptAskId !== undefined && ask.id === exceptAskId) continue;
+    if (ask.respondedAt !== undefined) continue; // already answered or swept
+    await repo.saveAsk({
+      ...ask,
+      respondedAt: now.toISOString(),
+      response: "withdrawn",
+    });
+    withdrawn++;
+  }
+  return withdrawn;
+}
+
+/**
+ * Who has already been *genuinely* asked for this seat — the drip's don't-re-ask set.
+ *
+ * **A `withdrawn` ask does not count (#600).** The set exists to stop pestering
+ * someone with the same question twice; a withdrawn ask never got a fair answer,
+ * because the seat was taken out from under it. Counting it would permanently bar the
+ * losers of one broadcast from ever being asked again for that seat — so the five
+ * captains who lost `Brew 4 · Jul 29` by 51 seconds would be skipped for the rest of
+ * that seat's life, having done nothing.
+ *
+ * Timed-out asks (`respondedAt` set, no `response`) DO count — they were asked and
+ * stayed silent. Declines count. Live asks count (they're mid-flight).
+ *
+ * **One definition on purpose.** `widenAsk` and the tick's drip branch both need this,
+ * and `tick.ts` asserts by construction that its own pick equals `widenAsk`'s — two
+ * copies of the rule would let that invariant rot silently, which is the exact shape
+ * that bit us before.
+ */
+export function askedSetFrom(asks: readonly Ask[]): Set<CrewMemberId> {
+  const asked = new Set<CrewMemberId>();
+  for (const a of asks) {
+    if (a.response === "withdrawn") continue;
+    asked.add(a.crewMemberId);
+  }
+  return asked;
 }
 
 /** Every ask on the seat has a response or has timed out (no live ask remains). */
@@ -473,7 +561,7 @@ export async function confirmSeat(
 export async function recordResponseAndConfirm(
   repo: Repository,
   askId: AskId,
-  response: "accepted" | "declined",
+  response: AskAnswer,
   now: Date,
 ): Promise<ResponseOutcome> {
   const outcome = await recordResponse(repo, askId, response, now);
@@ -747,7 +835,6 @@ export async function manualOverride(
   crewMemberId: CrewMemberId,
   now: Date,
 ): Promise<OverridePlacement | null> {
-  void now;
   const seat = await repo.getSeat(seatId);
   if (!seat) return null;
   // Capture the bumped occupant BEFORE the overwrite below (#400, DEC-118) — this
@@ -766,6 +853,11 @@ export async function manualOverride(
     acquiredVia: "operator",
   };
   await repo.saveSeat(confirmed);
+  // #600: the seat is filled by the operator's hand, so every outstanding ask on it
+  // is moot — retire them rather than leave them to be mis-swept as `ask_ignored`
+  // when the seat next reopens. No `exceptAskId`: the override isn't an ask, so even
+  // a live ask held by the person being placed is retired.
+  await withdrawLiveAsks(repo, seat.id, now);
   await refreshShiftState(repo, seat.shiftId);
   return { seat: confirmed, ...(displaced !== undefined ? { displaced } : {}) };
 }

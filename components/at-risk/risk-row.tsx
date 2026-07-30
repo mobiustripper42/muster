@@ -30,6 +30,8 @@ export interface RiskRowVM {
     asked: number;
     declined: number;
     silent: number;
+    /** #600: asked, then the seat filled — retired unanswered, NOT a ghost. */
+    withdrawn: number;
     pending: number;
     widened: boolean;
     nudgedNames: string[];
@@ -55,6 +57,10 @@ function TrailLine({ trail }: { trail: RiskRowVM["trail"] }) {
   if (trail.asked) push("a", <>asked <b>{trail.asked}</b></>);
   if (trail.declined) push("d", <span className="text-muted">{trail.declined} declined</span>);
   if (trail.silent) push("s", <span className="font-medium text-bad">{trail.silent} silent</span>);
+  // #600: neutral ink, deliberately — a withdrawn ask is not a negative signal about
+  // the person. Shown rather than omitted so the sub-counts still account for `asked`.
+  if (trail.withdrawn)
+    push("wd", <span className="text-muted">{trail.withdrawn} seat filled</span>);
   if (trail.pending) push("p", <>{trail.pending} awaiting reply</>);
   if (trail.widened) push("w", <>pool widened</>);
   if (trail.nudgedNames.length)

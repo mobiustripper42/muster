@@ -169,6 +169,11 @@ async function deriveWhy(
   for (const a of seatAsks) {
     if (a.sentAt >= sentAt || a.respondedAt === undefined) continue;
     if (a.response === "accepted") continue; // an acceptor left; don't guess why
+    // #600: a withdrawn ask is not a negative — the seat was filled while it was
+    // out, so it carries no signal about this person's willingness. Skipped for the
+    // same reason an accept is: attributing "silent" to them would be a guess, and
+    // the wrong one.
+    if (a.response === "withdrawn") continue;
     if (
       !best ||
       a.sentAt > best.sentAt ||

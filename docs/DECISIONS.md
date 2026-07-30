@@ -65,6 +65,7 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 - DEC-129 — On-shift ask suppression — the engine never auto-asks crew mid-shift (hard, no valve) (#341)
 - DEC-130 — Same-day decline cooldown — a "no" quiets that date's cross-shift auto-asks (soft, valved) (#341→#342)
 - DEC-144 — Completion is swept by the tick, and a self-claim scores
+- DEC-145 — A filled seat retires its outstanding asks
 
 ### Staffing engine — asks, escalation, At-Risk board & cockpit
 - DEC-006 — Escalation Tiers 1–3 are degrees of automation, not states
@@ -206,7 +207,7 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 ### Open questions
 - DEC-TBD — Open questions (carried from the spec; not Claude's to set alone)
 
-_Indexed 142 of 142 DECs. **This file is GENERATED** by `npm run gen:decisions` —
+_Indexed 143 of 143 DECs. **This file is GENERATED** by `npm run gen:decisions` —
 edit `docs/decisions/DEC-*.md`, not this file. `npm run check:decisions` fails on a stale index, a
 duplicate id, an unknown topic, an unknown relation, a forward-pointing amendment, or a
 reference to a decision that does not exist._

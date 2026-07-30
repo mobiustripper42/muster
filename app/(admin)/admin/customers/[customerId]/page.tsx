@@ -82,7 +82,7 @@ export default async function CustomerDetailPage({
       <BackLink href="/admin/customers">Customers</BackLink>
 
       <header className="flex flex-col gap-1">
-        <p className="text-xs text-faint">Reservations / Customers / Contact</p>
+        <p className="text-xs text-faint">Bookings / Customers / Contact</p>
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="text-[22px] font-semibold leading-tight text-ink">{v.name}</h1>
           <span className="font-mono text-xs text-faint">{v.displayCode}</span>

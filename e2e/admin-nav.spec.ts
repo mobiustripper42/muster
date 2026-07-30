@@ -64,6 +64,13 @@ test.describe("admin nav", () => {
     await page.locator("h1").first().click();
     await expect(nav.locator("details[open]")).toHaveCount(0);
 
+    // …nor on tabbing out: Enter on a group, tab past its links, and focus lands on the next
+    // group's summary with the first panel still floating over the page.
+    await group("Bookings").click();
+    await expect(nav.locator("details[open]")).toHaveCount(1);
+    for (let i = 0; i < 5; i++) await page.keyboard.press("Tab");
+    await expect(nav.locator("details[open]")).toHaveCount(0);
+
     // …nor on navigation: the nav lives in the layout, so a client-side route change does not
     // remount it and the panel would hang over the new page.
     await group("Bookings").click();

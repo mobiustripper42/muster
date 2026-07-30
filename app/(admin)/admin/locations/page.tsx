@@ -75,7 +75,7 @@ export default async function AdminLocations({
         <header className="flex items-center gap-3">
           <div className="min-w-0">
             <p className="text-xs text-faint">
-              Settings / Locations{selected || creating ? ` / ${title}` : ""}
+              Setup / Locations{selected || creating ? ` / ${title}` : ""}
             </p>
             <h1 className="truncate text-[22px] font-semibold leading-tight text-ink">{title}</h1>
           </div>

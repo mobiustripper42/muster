@@ -63,7 +63,7 @@ export default async function AdminCustomers({
     <Shell width="3xl">
 
       <header className="flex flex-col gap-1">
-        <p className="text-xs text-faint">Reservations / Customers</p>
+        <p className="text-xs text-faint">Bookings / Customers</p>
         <h1 className="text-[22px] font-semibold leading-tight text-ink">Customers</h1>
       </header>
 

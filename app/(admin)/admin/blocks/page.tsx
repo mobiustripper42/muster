@@ -150,7 +150,7 @@ export default async function AdminBlocks({
     <Shell width="6xl">
 
       <header className="flex flex-col gap-1">
-        <p className="text-xs text-faint">Settings / Blocks</p>
+        <p className="text-xs text-faint">Bookings / Blocks</p>
         <h1 className="text-[22px] font-semibold leading-tight text-ink">Blocks</h1>
       </header>
 

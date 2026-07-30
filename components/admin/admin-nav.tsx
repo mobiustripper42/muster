@@ -73,11 +73,23 @@ export function AdminNav({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") closeGroups(e);
     };
+    // Tabbing out has to close it too. Enter on a group, then tab past its links, and focus
+    // lands on the NEXT group's summary while the first panel is still floating over the page —
+    // a keyboard user ends up with a panel open somewhere they aren't. `focusout` fires before
+    // focus lands, so the new target is `relatedTarget`, not `document.activeElement`.
+    const onFocusOut = (e: FocusEvent) => {
+      const next = e.relatedTarget as Node | null;
+      for (const d of navRef.current?.querySelectorAll("details[open]") ?? []) {
+        if (!next || !d.contains(next)) d.removeAttribute("open");
+      }
+    };
     document.addEventListener("click", closeGroups);
     document.addEventListener("keydown", onKey);
+    document.addEventListener("focusout", onFocusOut);
     return () => {
       document.removeEventListener("click", closeGroups);
       document.removeEventListener("keydown", onKey);
+      document.removeEventListener("focusout", onFocusOut);
     };
   }, []);
   // …and on Escape; move focus into the drawer when it opens.
@@ -104,7 +116,9 @@ export function AdminNav({
             Muster
           </AppLink>
           {/* Whose board, which day (9.8) — vessel-local, tertiary ink. */}
-          <span className="truncate text-xs text-faint">
+          {/* `text-muted` not `text-faint`: faint measures 2.66:1 on the card, failing even the
+              3:1 UI-component bar, and the 14px root made this text smaller still. */}
+          <span className="truncate text-xs text-muted">
             {tenant} · {dateLabel}
           </span>
           {/* Switch down to the crew app (DEC-093) — the admin is also crew.
@@ -154,10 +168,10 @@ export function AdminNav({
                   // panel is closed, so the highlighted GROUP is the signal. `data-active` states
                   // that in markup rather than leaving a test to infer it from class strings.
                   data-active={holdsActive ? "" : undefined}
-                  className={`inline-flex cursor-pointer list-none items-center gap-1 whitespace-nowrap ${holdsActive ? "font-semibold text-accent" : "text-muted"}`}
+                  className={`inline-flex cursor-pointer list-none items-center gap-1 whitespace-nowrap py-1.5 ${holdsActive ? "font-semibold text-accent" : "text-muted"}`}
                 >
                   {g.label}
-                  <span aria-hidden className="text-[0.65rem] transition-transform group-open:rotate-180">
+                  <span aria-hidden className="text-[0.65rem] transition-transform group-open:rotate-180 motion-reduce:transition-none">
                     ▾
                   </span>
                 </summary>
@@ -187,7 +201,7 @@ export function AdminNav({
           aria-label="Open menu"
           aria-expanded={open}
           aria-controls="admin-drawer"
-          className="-mr-1 flex h-9 w-9 items-center justify-center rounded-lg text-ink lg:hidden"
+          className="-mr-1 flex size-[44px] items-center justify-center rounded-lg text-ink lg:hidden"
         >
           <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
             <path d="M4 6h14M4 11h14M4 16h14" />
@@ -201,7 +215,7 @@ export function AdminNav({
         <div
           aria-hidden
           onClick={() => setOpen(false)}
-          className={`fixed inset-0 z-30 bg-ink/40 transition-opacity duration-200 ${
+          className={`fixed inset-0 z-30 bg-ink/40 transition-opacity duration-200 motion-reduce:transition-none ${
             open ? "opacity-100" : "pointer-events-none opacity-0"
           }`}
         />
@@ -211,7 +225,7 @@ export function AdminNav({
           aria-modal="true"
           aria-label="Menu"
           inert={!open}
-          className={`fixed right-0 top-0 z-40 flex h-full w-64 max-w-[80vw] flex-col gap-1 border-l border-line bg-card p-4 shadow-lg transition-transform duration-200 ${
+          className={`fixed right-0 top-0 z-40 flex h-full w-64 max-w-[80vw] flex-col gap-1 border-l border-line bg-card p-4 shadow-lg transition-transform duration-200 motion-reduce:transition-none ${
             open ? "translate-x-0" : "translate-x-full"
           }`}
         >
@@ -222,7 +236,7 @@ export function AdminNav({
               type="button"
               onClick={() => setOpen(false)}
               aria-label="Close menu"
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-muted"
+              className="flex size-[44px] items-center justify-center rounded-lg text-muted"
             >
               <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
                 <path d="M5 5l10 10M15 5L5 15" />
@@ -237,7 +251,7 @@ export function AdminNav({
               key={l.href}
               href={l.href}
               aria-current={isActive(l.href) ? "page" : undefined}
-              className={`flex items-center gap-2 rounded-lg px-3 py-2.5 text-base ${
+              className={`flex items-center gap-2 rounded-lg px-3 py-3 text-base ${
                 isActive(l.href) ? "bg-bg font-semibold text-accent" : "text-ink"
               }`}
             >
@@ -256,10 +270,10 @@ export function AdminNav({
                 <details key={g.label} name="admin-drawer" className="group border-t border-line">
                   <summary
                     data-active={holdsActive ? "" : undefined}
-                    className="flex cursor-pointer list-none items-center justify-between rounded-lg px-3 py-2.5 text-base text-ink"
+                    className="flex cursor-pointer list-none items-center justify-between rounded-lg px-3 py-3 text-base text-ink"
                   >
                     <span className={holdsActive ? "font-semibold text-accent" : undefined}>{g.label}</span>
-                    <span aria-hidden className="text-xs text-muted transition-transform group-open:rotate-180">
+                    <span aria-hidden className="text-xs text-muted transition-transform group-open:rotate-180 motion-reduce:transition-none">
                       ▾
                     </span>
                   </summary>
@@ -268,7 +282,7 @@ export function AdminNav({
                       key={l.href}
                       href={l.href}
                       aria-current={isActive(l.href) ? "page" : undefined}
-                      className={`flex items-center gap-2 rounded-lg py-2.5 pl-6 pr-3 text-base ${
+                      className={`flex items-center gap-2 rounded-lg py-3 pl-6 pr-3 text-base ${
                         isActive(l.href) ? "bg-bg font-semibold text-accent" : "text-ink"
                       }`}
                     >

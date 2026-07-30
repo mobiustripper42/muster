@@ -47,7 +47,7 @@ export default async function AdminCalendar({
     <Shell width="6xl">
 
       <header className="flex flex-col gap-1">
-        <p className="text-xs text-faint">Reservations / Calendar</p>
+        <p className="text-xs text-faint">Calendar</p>
         <h1 className="text-[22px] font-semibold leading-tight text-ink">Calendar</h1>
       </header>
 

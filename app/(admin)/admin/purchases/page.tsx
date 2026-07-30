@@ -141,7 +141,7 @@ export default async function AdminPurchases({
     <Shell width="3xl">
 
       <header className="flex flex-col gap-1">
-        <p className="text-xs text-faint">Reservations / Purchases</p>
+        <p className="text-xs text-faint">Bookings / Purchases</p>
         <h1 className="text-[22px] font-semibold leading-tight text-ink">Purchases</h1>
       </header>
 

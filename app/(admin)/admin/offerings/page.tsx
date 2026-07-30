@@ -113,7 +113,7 @@ export default async function AdminOfferings({
         <header className="flex items-center gap-3">
           <div className="min-w-0">
             <p className="text-xs text-faint">
-              Settings / Offerings{selected || creating ? ` / ${title}` : ""}
+              Setup / Offerings{selected || creating ? ` / ${title}` : ""}
             </p>
             <h1 className="flex items-center gap-2 text-[22px] font-semibold leading-tight text-ink">
               <span className="truncate">{title}</span>

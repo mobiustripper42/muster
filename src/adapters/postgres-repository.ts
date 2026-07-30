@@ -209,6 +209,7 @@ const toEvent = (r: any): Event => ({
   source: r.source,
   ...opt("dock", r.dock),
   ...opt("price", r.price),
+  ...opt("durationMinutes", r.duration_minutes),
 });
 
 const toOffering = (r: any): Offering => ({
@@ -886,11 +887,11 @@ export class PostgresRepository implements Repository {
   // ── Events ─────────────────────────────────────────────────────────────────
   async saveEvent(e: Event): Promise<void> {
     await this.#pool.query(
-      `insert into events(id, vessel_id, date, time, capacity, status, dock, source, price) values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      `insert into events(id, vessel_id, date, time, capacity, status, dock, source, price, duration_minutes) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
        on conflict (id) do update set vessel_id=excluded.vessel_id, date=excluded.date,
          time=excluded.time, capacity=excluded.capacity, status=excluded.status, dock=excluded.dock,
-         source=excluded.source, price=excluded.price`,
-      [e.id, e.vesselId, e.date, e.time, e.capacity, e.status, e.dock ?? null, e.source, e.price ?? null],
+         source=excluded.source, price=excluded.price, duration_minutes=excluded.duration_minutes`,
+      [e.id, e.vesselId, e.date, e.time, e.capacity, e.status, e.dock ?? null, e.source, e.price ?? null, e.durationMinutes ?? null],
     );
   }
   async getEvent(id: EventId): Promise<Event | null> {
@@ -1248,8 +1249,8 @@ export class PostgresRepository implements Repository {
     try {
       await client.query("begin");
       await client.query(
-        `insert into events (id, vessel_id, date, time, capacity, status, source, price, dock)
-         values ($1,$2,$3,$4,$5,$6,'muster',$7,$8)
+        `insert into events (id, vessel_id, date, time, capacity, status, source, price, dock, duration_minutes)
+         values ($1,$2,$3,$4,$5,$6,'muster',$7,$8,$9)
          on conflict do nothing`,
         [
           event.id,
@@ -1260,6 +1261,7 @@ export class PostgresRepository implements Repository {
           event.status,
           event.price ?? null,
           event.dock ?? null,
+          event.durationMinutes ?? null,
         ],
       );
       const slot = await client.query(

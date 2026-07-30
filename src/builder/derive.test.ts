@@ -16,6 +16,7 @@ import {
   resolveShiftState,
   scheduledStarts,
   latestScheduledStart,
+  eventDurationMinutes,
   shiftEndFromEvents,
   staffingHorizonFor,
   staffingHorizonFromEvents,
@@ -269,6 +270,59 @@ describe("shiftEndFromEvents", () => {
     ], "UTC");
     expect(end?.toISOString()).toBe("2026-05-16T21:35:00.000Z");
     expect(shiftEndFromEvents([])).toBeNull();
+  });
+
+  it("uses each event's own durationMinutes when it carries one (#570)", () => {
+    const end = shiftEndFromEvents(
+      [{ ...ev("e1", "2026-05-16", "19:30"), durationMinutes: 240 }],
+      "UTC",
+    );
+    // 19:30Z + (240 offering length + 25 teardown) = 23:55Z — NOT the flat 100.
+    expect(end?.toISOString()).toBe("2026-05-16T23:55:00.000Z");
+  });
+
+  it("falls back to the flat constant per-event, so a mixed shift uses both (#570)", () => {
+    const end = shiftEndFromEvents(
+      [
+        { ...ev("e1", "2026-05-16", "12:00"), durationMinutes: 240 }, // ends 16:00
+        ev("e2", "2026-05-16", "15:00"), // no length → flat 100 → ends 16:40
+      ],
+      "UTC",
+    );
+    // Later END is the flat-fallback trip: 16:40 + 25 teardown = 17:05Z.
+    expect(end?.toISOString()).toBe("2026-05-16T17:05:00.000Z");
+  });
+
+  it("is max(start + duration), NOT latest start + duration (#570)", () => {
+    // The regression this guards: a long charter departing EARLY and a short
+    // sunset departing LATE. Anchoring on the latest DEPARTURE (18:00 + 60 + 25 =
+    // 19:25) reads the shift as over while the noon charter is still on the water
+    // until 20:00. Completion keys on this instant, so the wrong pick pays out
+    // reliability for a trip that hasn't finished.
+    const charterEnds = shiftEndFromEvents(
+      [
+        { ...ev("e1", "2026-05-16", "12:00"), durationMinutes: 480 }, // ends 20:00
+        { ...ev("e2", "2026-05-16", "18:00"), durationMinutes: 60 }, // ends 19:00
+      ],
+      "UTC",
+    );
+    expect(charterEnds?.toISOString()).toBe("2026-05-16T20:25:00.000Z");
+    // Sanity: the latest DEPARTURE is the sunset, so the two rules genuinely differ.
+    expect(
+      latestScheduledStart(
+        [ev("e1", "2026-05-16", "12:00"), ev("e2", "2026-05-16", "18:00")],
+        "UTC",
+      )?.toISOString(),
+    ).toBe("2026-05-16T18:00:00.000Z");
+  });
+
+  it("eventDurationMinutes: own value wins, absent falls back", () => {
+    expect(
+      eventDurationMinutes({ ...ev("e", "2026-05-16", "12:00"), durationMinutes: 45 }),
+    ).toBe(45);
+    expect(eventDurationMinutes(ev("e", "2026-05-16", "12:00"))).toBe(
+      TRIP_DURATION_MINUTES,
+    );
   });
 });
 

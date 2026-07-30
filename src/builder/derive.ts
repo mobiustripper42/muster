@@ -412,17 +412,29 @@ export const TEARDOWN_MINUTES = 25;
 
 /**
  * Flat trip length in minutes — the (c) stopgap source for a trip's duration
- * (DEC-041), sibling to `CALL_LEAD_MINUTES`. There is no per-event duration in
- * the model yet (Xola exposes no length; no operator-config surface): until a
- * real source lands — Xola product duration (a) or an operator-set value (b) —
- * every trip is assumed this long. Swap this constant for `Event.durationMinutes`
- * when that field and its source arrive.
+ * (DEC-041), sibling to `CALL_LEAD_MINUTES`. Now the **fallback**, not the rule:
+ * `Event.durationMinutes` (#570) is DEC-041's (b) source and it has landed, seeded
+ * from `Offering.tripLengthMinutes` and frozen at materialization. This constant
+ * still governs every event that carries no length of its own — which is every
+ * Xola-sourced event, permanently, since Xola exposes no product length (source
+ * (a) never landed).
  */
 export const TRIP_DURATION_MINUTES = 100;
 
+/** This event's trip length: its own frozen value, else the flat fallback (#570). */
+export function eventDurationMinutes(e: Event): number {
+  return e.durationMinutes ?? TRIP_DURATION_MINUTES;
+}
+
 /**
- * The latest scheduled departure among `events` — the trip that ends the shift.
- * Mirror of `earliestScheduledStart`; `null` when nothing is scheduled.
+ * The latest scheduled DEPARTURE among `events`. Mirror of
+ * `earliestScheduledStart`; `null` when nothing is scheduled.
+ *
+ * **Not the shift's end** — it stopped being a proxy for that at #570, when trip
+ * lengths became per-event: the last boat to leave is no longer necessarily the
+ * last to get back. Use `shiftEndFromEvents` for anything that means "when is the
+ * crew done". Retained as the honest primitive (and as the contrast oracle in the
+ * derive tests); no production caller today.
  */
 export function latestScheduledStart(
   events: Event[],
@@ -438,22 +450,36 @@ export function latestScheduledStart(
 }
 
 /**
- * The instant a shift "ends" (DEC-041): the latest scheduled departure + the
- * trip length + the post-trip `TEARDOWN_MINUTES` (#275 — a shorter, distinct
- * buffer than the pre-trip call lead; teardown < prep). Pure; derived, never
- * stored. `null` when no scheduled event anchors the shift. With a flat trip
- * length the latest *departure* yields the latest *end*; when per-event durations
- * land this becomes max(start+duration).
+ * The instant a shift "ends" (DEC-041): the latest trip *end* + the post-trip
+ * `TEARDOWN_MINUTES` (#275 — a shorter, distinct buffer than the pre-trip call
+ * lead; teardown < prep). Pure; derived, never stored. `null` when no scheduled
+ * event anchors the shift.
+ *
+ * **`max(start + duration)`, not `latestStart + duration` (#570).** Under a flat
+ * fleet-wide trip length those two were the same expression, which is why this
+ * read the latest departure and added one duration. With per-event durations they
+ * diverge whenever an EARLIER departure runs LONGER: an 8-hour charter at noon
+ * ends 20:00, a 1-hour sunset at 18:00 ends 19:00 — so the latest *departure* is
+ * the sunset while the latest *end* is the charter's. Anchoring on the departure
+ * reads the shift as finished while the charter is still on the water. That misread
+ * now costs more than a stale label, because the completion sweep keys on this
+ * instant and completion feeds reliability.
  */
 export function shiftEndFromEvents(
   events: Event[],
   tz: string = TENANT_TIMEZONE,
 ): Date | null {
-  const last = latestScheduledStart(events, tz);
-  if (last === null) return null;
-  return new Date(
-    last.getTime() + (TRIP_DURATION_MINUTES + TEARDOWN_MINUTES) * MINUTE_MS,
+  const scheduled = events.filter((e) => e.status === "scheduled");
+  if (scheduled.length === 0) return null;
+  const lastEnd = scheduled.reduce(
+    (max, e) =>
+      Math.max(
+        max,
+        eventStart(e, tz).getTime() + eventDurationMinutes(e) * MINUTE_MS,
+      ),
+    -Infinity,
   );
+  return new Date(lastEnd + TEARDOWN_MINUTES * MINUTE_MS);
 }
 
 // ── Split suggestion (SPEC §2.3 "large mid-day gaps → 'split this?'") ──────────

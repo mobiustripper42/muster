@@ -446,6 +446,19 @@ export function runRepositoryContract(
       expect(await repo.getEvent(EVENT)).toEqual(priced);
     });
 
+    it("events: durationMinutes round-trips and stays omitted when absent (#570)", async () => {
+      await repo.saveEvent(event()); // Xola-sourced: no length, permanently
+      const bare = await repo.getEvent(EVENT);
+      expect("durationMinutes" in bare!).toBe(false); // omitted, not undefined
+      // A null column must not surface as `durationMinutes: undefined` — the
+      // fallback in `eventDurationMinutes` keys on absence, and the shift end (and
+      // so the completion sweep) is downstream of it.
+      const charter = event({ source: "muster", durationMinutes: 240 });
+      await repo.saveEvent(charter);
+      expect(await repo.getEvent(EVENT)).toEqual(charter);
+      expect((await repo.listEvents())[0]!.durationMinutes).toBe(240);
+    });
+
     it("reservations: source round-trips (DEC-106)", async () => {
       await repo.saveReservation(reservation({ source: "muster" }));
       expect(

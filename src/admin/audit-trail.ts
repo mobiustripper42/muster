@@ -5,8 +5,8 @@
  * Two sources, one row each (no projection, no dedup — every event is its own
  * line, in time order):
  *  - `reliability_events` (DEC-008), the crew-keyed ones: asked / nudged / in /
- *    escalation-in / out / no-reply / acknowledged / completed / bailed / no-show
- *    / rescue. The two shift-level, system-actor events (`pool_widened`,
+ *    escalation-in / out / no-reply / acknowledged / claimed / completed / bailed /
+ *    no-show / rescue. The two shift-level, system-actor events (`pool_widened`,
  *    `board_landed`) are NOT a crew's audit and are excluded.
  *  - `audit_events`, the operator/import/self actions: added / removed / changed.
  *
@@ -32,6 +32,7 @@ export type AuditKind =
   | "removed"
   | "changed"
   | "acknowledged"
+  | "claimed"
   | "completed"
   | "bailed"
   | "no_show"
@@ -49,6 +50,7 @@ export const AUDIT_KIND_LABEL: Record<AuditKind, string> = {
   removed: "Removed",
   changed: "Changed",
   acknowledged: "Acknowledged",
+  claimed: "Claimed",
   completed: "Completed",
   bailed: "Bailed",
   no_show: "No-show",
@@ -67,6 +69,7 @@ export const AUDIT_KINDS: readonly AuditKind[] = [
   "removed",
   "changed",
   "acknowledged",
+  "claimed",
   "completed",
   "bailed",
   "no_show",
@@ -83,6 +86,9 @@ const RELIABILITY_KIND: Partial<Record<ReliabilityEventType, AuditKind>> = {
   ask_declined: "out",
   ask_ignored: "no_reply",
   shift_acknowledged: "acknowledged",
+  // #570: without this the +4 would move a score with no row explaining it —
+  // `buildAuditTrail` drops any reliability type absent from this map.
+  self_claim: "claimed",
   shift_completed: "completed",
   shift_bailed: "bailed",
   no_show: "no_show",

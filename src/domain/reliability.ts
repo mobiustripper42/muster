@@ -30,6 +30,7 @@ export const RELIABILITY_EVENT_TYPES = [
   "ask_declined", // +latency, neutral
   "ask_ignored", // timed out — negative
   // Commitment (per confirmed seat)
+  "self_claim", // took an open seat unprompted — positive (#570, amends DEC-078)
   "shift_completed", // positive
   "shift_bailed", // negative, scaled by lateness
   "no_show", // worst case

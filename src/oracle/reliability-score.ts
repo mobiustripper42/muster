@@ -27,6 +27,19 @@
  *    A fast "no" costs nothing and earns a little — reachability is the signal;
  *    silence is the only ask-level sin. (Reverses the prior decline-neutral rule,
  *    DEC-008/DEC-025 — a decline used to weigh 0.)
+ *  - **Doing the work outweighs answering about it (#570).** `shift_completed` +5
+ *    and `self_claim` +4 both beat `ask_accepted` +2. Before #570 neither was ever
+ *    emitted, so answering asks was the *only* thing that moved a score — which
+ *    ranked the two hardest-working crew 16th and 13th while two crew with one
+ *    shift each sat 3rd and 4th on accumulated declines. Completion is the
+ *    dominant term (it alone cut rank displacement 106 → 32 against the operator's
+ *    own ordering); `self_claim` adds little to *fit* — self-claimers complete
+ *    those shifts anyway, so completion already counts them — and is carried as a
+ *    **leading indicator**: someone who picks up five shifts next month should
+ *    rank up before any of them run, which a past-seat measure structurally can't
+ *    see. Self-claim outranks `ask_accepted` because no prompt was needed.
+ *    Gaming it is already closed: a claim then a release nets ≤0, since release
+ *    routes through the bail edge (−3 plus lateness).
  *  - **Bail lateness is the signal.** `shift_bailed` carries a fixed floor (−3, =
  *    a ghosted ask so "confirm-then-cancel-early" never beats vanishing) plus a
  *    lateness-scaled penalty from `metadata.latenessMs`, so a late bail weighs
@@ -95,6 +108,7 @@ export const DEFAULT_WEIGHTS: ReliabilityWeights = {
     ask_accepted: 2,
     ask_declined: 1,
     ask_ignored: -3,
+    self_claim: 4,
     shift_completed: 5,
     shift_bailed: -3,
     no_show: -15,

@@ -492,6 +492,21 @@ export interface Event {
    * may not carry it yet → no pin).
    */
   dock?: string;
+  /**
+   * Minutes on the water for THIS departure (#570) — the per-event trip length
+   * DEC-041 named as its eventual (b) source. Seeded from the running
+   * `Offering.tripLengthMinutes` and **frozen here at materialization**, never
+   * resolved from the offering on read: the same posture as `price` (DEC-125) and
+   * the reservation's `extrasCents` (#474), because a later edit to the offering
+   * must not retroactively change how long a trip that already ran was. It is also
+   * what makes a post-booking extra-time upsell expressible — that writes this
+   * field, and `shiftEndFromEvents` (and so the completion sweep, and so crew
+   * reliability) follows the money.
+   *
+   * Absent ⇒ the flat `TRIP_DURATION_MINUTES` fallback. Xola-sourced events leave
+   * it absent permanently — Xola exposes no product length.
+   */
+  durationMinutes?: number;
 }
 
 export type ReservationStatus = "booked" | "cancelled";

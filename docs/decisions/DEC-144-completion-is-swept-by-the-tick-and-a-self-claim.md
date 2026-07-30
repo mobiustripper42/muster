@@ -1,0 +1,77 @@
+---
+id: DEC-144
+title: "Completion is swept by the tick, and a self-claim scores"
+topic: "Seats, shifts & state machine"
+amends:
+  - id: DEC-078
+    relation: corrects
+    scope: "only the clause 'a claim itself emits no reliability event' — a winning self-claim now logs `self_claim` (+4). The adjacent 'Rejected: reliability-dinging the claim' line is untouched and still stands; that rejected a PENALTY, and this is the opposite direction."
+amends_spec:
+  - section: "1.4"
+    scope: "`self_claim` joins the Commitment event list, and `shift_completed` finally has a producer — the tick's completion sweep. Both were declared loggable from day one and neither was ever emitted."
+---
+
+## DEC-144: Completion is swept by the tick, and a self-claim scores
+
+**Decision:**
+
+- **The tick completes shifts.** A live shift whose derived end (`shiftEndFromEvents` — the latest
+  trip *end* plus `TEARDOWN_MINUTES`, DEC-041) has passed, and which still holds at least one
+  `Confirmed` **required** seat, advances to `Completed`, fanning out one `shift_completed` per
+  occupant of those seats. Supernumerary and trainee seats are excluded (DEC-087) — they rode, they
+  didn't crew it. The sweep sits **above** the past-trip guard (DEC-062/#147), which is precisely why
+  nothing ever set `Completed`: that guard `continue`s past departed shifts, and a departed shift is
+  the only kind that can complete.
+- **A shift nobody crewed is left alone.** No occupants means no `Completed` and no events, rather
+  than a state change that mints `+5`s for an empty boat. The operator decides what happened; the
+  At-Risk trail already records it.
+- **Not gated on the shift's own state.** `Pending` is claimable (DEC-078 as widened by #440), so a
+  shift that never entered the staffing window can still have been crewed by a self-claim and really
+  have run.
+- **A winning self-claim logs `self_claim`, weighted +4.** Only on the CAS win — a loser of the race
+  acquired nothing. Resulting value per shift by acquisition path: self-claimed & worked **+9**,
+  ask-won & worked +7, operator-placed & worked +5.
+- **Trip length is per-event and frozen.** `Event.durationMinutes` is seeded from the running
+  `Offering.tripLengthMinutes` when the booking materializes the slot, and never resolved from the
+  offering on read. Absent ⇒ the flat `TRIP_DURATION_MINUTES` fallback, which is every Xola-sourced
+  event, permanently.
+
+**Why:** Two of the three behaviors the operator wants to reward emitted no event at all, so
+answering asks was the only thing that moved a score. Ranked against shifts actually held — the
+operator's stated ground truth — the two hardest-working crew sat **16th and 13th of 20**, while two
+crew with one shift each sat 3rd and 4th on accumulated `ask_declined` credit. Completion is the
+dominant term: it alone cut total rank displacement from 106 to 32. `self_claim` adds little to rank
+*fit*, because self-claimers complete those shifts anyway and completion already counts them; it is
+carried as a **leading indicator**, since someone who picks up five shifts next month should rank up
+before any of them run, which a past-seat measure structurally cannot see.
+
+**The asymmetry is the actual bug.** DEC-078 had reliability "earned at `Completed`" — but nothing
+ever set `Completed`, while self-*release* had shipped and routes through the bail edge (−3 plus a
+lateness ramp). So the engine could subtract from a self-server who dropped a shift and never add for
+one who worked it. Self-serve was all downside, for a year, silently.
+
+**Gaming it was already closed before we opened it.** A claim then a release nets ≤ 0, because the
+release runs the bail edge. No new cutoff or cooldown was needed.
+
+**Reliability-grade, deliberately not money-grade.** The sweep asserts that a scheduled trip's clock
+ran out with crew still assigned. Nobody asserts the boat left the dock. That is enough to order an
+ask queue and it is **not** enough to release money — direct-to-crew tip distribution needs a real
+departure signal or a human, and that is a separate build with a separate event. Naming this
+`Completed` and then hanging payouts off it later, without revisiting the evidence, is the failure
+mode this paragraph exists to prevent.
+
+**Why per-event duration rather than reading the offering.** A flat fleet-wide trip length made
+`latestStart + duration` and `max(start + duration)` the same expression; with real durations they
+diverge, and a shift running a long charter at noon plus a short sunset in the evening would read as
+finished while the charter was still on the water. Freezing the value on the event — the same posture
+as `price` (DEC-125) and the reservation's `extrasCents` (#474) — means re-configuring an offering
+next season cannot rewrite how long last season's shifts were, and so cannot rewrite who earned
+reliability on them. It is also what makes a post-booking extra-time upsell expressible: that writes
+the event's duration, and the shift end, the sweep, and the crew's hours all follow.
+
+**Tradeoff:** the flat fallback still governs every Xola event, so completion timing for those is
+approximate by exactly the amount it always was. **Rejected:** an operator "mark complete" action (a
+daily chore that gets skipped, and a skipped completion silently withholds the `+5` — the same class
+of bug as this one); `Offering.holdMinutes` as the shift-end basis (it is write-only config today,
+read by nothing); a compensating event type to net against bad history. **Revisit if:** money is ever
+hung off completion — then it needs its own evidence, not this one. **Phase:** 12.

@@ -76,12 +76,12 @@ function rel(
 }
 
 describe("buildAuditTrail — every crew event, its own row", () => {
-  it("maps all 11 crew reliability types to their kinds and EXCLUDES the 2 shift-level ones", async () => {
+  it("maps all 12 crew reliability types to their kinds and EXCLUDES the 2 shift-level ones", async () => {
     const repo = new InMemoryRepository();
     await seedBase(repo);
     const types: ReliabilityEventType[] = [
       "ask_sent", "nudged", "ask_accepted", "escalation_accepted", "ask_declined",
-      "ask_ignored", "shift_acknowledged", "shift_completed", "shift_bailed",
+      "ask_ignored", "shift_acknowledged", "self_claim", "shift_completed", "shift_bailed",
       "no_show", "at_risk_rescue",
       "pool_widened", "board_landed", // excluded
     ];
@@ -90,11 +90,22 @@ describe("buildAuditTrail — every crew event, its own row", () => {
       await repo.logReliabilityEvent(rel("crew-quint", ty, `2026-07-13T10:${String(t++).padStart(2, "0")}:00.000Z`));
     }
     const rows = await buildAuditTrail(repo);
-    // 11 crew types → 11 rows; pool_widened / board_landed produced none.
-    expect(rows.length).toBe(11);
+    // 12 crew types → 12 rows; pool_widened / board_landed produced none.
+    expect(rows.length).toBe(12);
     expect(rows.map((r) => r.kind).sort()).toEqual(
-      ["acknowledged", "asked", "bailed", "completed", "escalation_in", "in", "no_reply", "no_show", "nudged", "out", "rescue"],
+      ["acknowledged", "asked", "bailed", "claimed", "completed", "escalation_in", "in", "no_reply", "no_show", "nudged", "out", "rescue"],
     );
+  });
+
+  it("a self-claim reads as the crew's own action, not the engine's (#570)", async () => {
+    const repo = new InMemoryRepository();
+    await seedBase(repo);
+    await repo.logReliabilityEvent(
+      rel("crew-quint", "self_claim", "2026-07-13T10:00:00.000Z"),
+    );
+    const [row] = await buildAuditTrail(repo);
+    expect(row!.kind).toBe("claimed");
+    expect(row!.actorLabel).toBe("self");
   });
 
   it("maps the 3 audit types to added/removed/changed with resolved context", async () => {

@@ -35,6 +35,7 @@ try {
   console.log(`  shiftsAdvanced:  ${r.shiftsAdvanced}`);
   console.log(`  bornFilling:     ${r.bornFilling}`);
   console.log(`  toAtRisk:        ${r.toAtRisk}`);
+  console.log(`  shiftsCompleted: ${r.shiftsCompleted}   (trips that ran, crew still aboard — #570)`);
   console.log(`  asksFired:       ${r.asksFired}   (Tier-1 broadcasts)`);
   console.log(`  shiftsEscalated: ${r.shiftsEscalated}   (Tier-2 stalls worked)`);
   console.log(`  nudgesFired:     ${r.nudgesFired}   (Tier-2 direct nudges)`);

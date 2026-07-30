@@ -1,5 +1,5 @@
 /**
- * Dev seed for #600 / DEC-145 — losing asks retired when a seat fills.
+ * Dev seed for #600 / DEC-146 — losing asks retired when a seat fills.
  *
  * Two jobs, and the first is the one worth having:
  *

@@ -1,5 +1,5 @@
 ---
-id: DEC-145
+id: DEC-146
 title: "A filled seat retires its outstanding asks"
 topic: "Seats, shifts & state machine"
 amends_spec:
@@ -9,7 +9,7 @@ amends_spec:
     scope: "`ask_ignored` is only for genuine silence; an ask retired because its seat filled is `withdrawn` and scores nothing"
 ---
 
-## DEC-145: A filled seat retires its outstanding asks
+## DEC-146: A filled seat retires its outstanding asks
 
 **Decision:**
 

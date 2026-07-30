@@ -293,7 +293,7 @@ describe("claimSeat (DEC-075/078)", () => {
 
   it("a self-claim onto an Asked seat withdraws the outstanding asks (#600, the #440 door)", async () => {
     // The THIRD fill door. Code review caught that this was claimed as covered in
-    // both the commit message and DEC-145 while `claimSeat` never called
+    // both the commit message and DEC-146 while `claimSeat` never called
     // `withdrawLiveAsks` — because the test that claimed to cover it called
     // `manualOverride` instead. This one calls the function in its own name.
     const claimer = await crew("claimer", [MATE]);

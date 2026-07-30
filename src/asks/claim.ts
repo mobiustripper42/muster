@@ -178,7 +178,7 @@ export async function claimSeat(
   // accept, inverted: that logs responsiveness regardless because answering IS the
   // behavior scored; this scores *acquiring*, which only the winner did.
   await logSelfClaim(repo, crewId, seat.id, seat.shiftId, now);
-  // #600 / DEC-145: this is the THIRD fill door and it needs the same retirement as
+  // #600 / DEC-146: this is the THIRD fill door and it needs the same retirement as
   // the CAS win and the operator override. A claimable seat can be `Asked` (#440), so
   // a self-claim routinely lands on a seat with live asks out — and leaving them armed
   // reproduces the original bug exactly: un-swept while the seat is filled, then

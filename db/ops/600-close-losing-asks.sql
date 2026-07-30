@@ -5,7 +5,7 @@
 -- so `db/migrate.ts` never picks it up. Per the DEC-S009 posture: ad-hoc production
 -- data fixes are the operator's explicit call, never a silent automated action.
 --
--- WHAT HAPPENED (DEC-145): when a claim won a seat, only the winner's ask was closed.
+-- WHAT HAPPENED (DEC-146): when a claim won a seat, only the winner's ask was closed.
 -- The losing recipients kept `responded_at IS NULL` forever — correctly un-swept while
 -- the seat was filled, because the tick only sweeps `Asked` seats (DEC-067) — and then
 -- detonated the moment the seat reopened: `expireAsks` found them, measured `sent_at`

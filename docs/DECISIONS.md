@@ -60,12 +60,12 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 - DEC-039 — Confirmed-seat vacate splits into Remove (no penalty) vs Bailed (logs lateness) (#87) _(amended by DEC-128)_
 - DEC-041 — Trip length → shift end, from a flat constant (#92)
 - DEC-061 — A winning "in" auto-confirms — `Claimed` is momentary on the happy path
-- DEC-078 — Concurrency, conflict, and crew self-release _(corrected by DEC-144 — only the clause 'a claim itself emits no reliability event' — a winning self-claim now logs `self_claim` (+4). The adjacent 'Rejected: reliability-dinging the claim' line is untouched and still stands; that rejected a PENALTY, and this is the opposite direction.)_
+- DEC-078 — Concurrency, conflict, and crew self-release _(corrected by DEC-145 — only the clause 'a claim itself emits no reliability event' — a winning self-claim now logs `self_claim` (+4). The adjacent 'Rejected: reliability-dinging the claim' line is untouched and still stands; that rejected a PENALTY, and this is the opposite direction.)_
 - DEC-128 — `bail()` and `vacateSeat()` fire no asks — re-crewing is deferred to the tick (#483)
 - DEC-129 — On-shift ask suppression — the engine never auto-asks crew mid-shift (hard, no valve) (#341)
 - DEC-130 — Same-day decline cooldown — a "no" quiets that date's cross-shift auto-asks (soft, valved) (#341→#342)
-- DEC-144 — Completion is swept by the tick, and a self-claim scores
-- DEC-145 — A filled seat retires its outstanding asks
+- DEC-145 — Completion is swept by the tick, and a self-claim scores
+- DEC-146 — A filled seat retires its outstanding asks
 
 ### Staffing engine — asks, escalation, At-Risk board & cockpit
 - DEC-006 — Escalation Tiers 1–3 are degrees of automation, not states

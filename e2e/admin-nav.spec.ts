@@ -44,6 +44,34 @@ test.describe("admin nav", () => {
     expect(bar!.height).toBeLessThanOrEqual(56);
   });
 
+  test("#603: one group open at a time, and a click elsewhere closes it", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "desktop", "the dropdowns are the desktop rendering");
+    await signInAsAdmin(page, "spink");
+    const nav = page.getByRole("navigation", { name: "Admin" });
+    const group = (label: string) => nav.locator("summary:visible").filter({ hasText: label });
+
+    await group("Bookings").click();
+    await expect(nav.locator("details[open]")).toHaveCount(1);
+
+    // `name` on <details> makes the browser close the others. Without it every group could sit
+    // open at once and the panels overlapped each other on a sticky bar.
+    await group("Setup").click();
+    await expect(nav.locator("details[open]")).toHaveCount(1);
+    await expect(group("Setup").locator("xpath=..")).toHaveAttribute("open", "");
+
+    // A <details> never closes on an outside click by itself, so a panel opened by accident
+    // would sit over the page until you clicked its summary again.
+    await page.locator("h1").first().click();
+    await expect(nav.locator("details[open]")).toHaveCount(0);
+
+    // …nor on navigation: the nav lives in the layout, so a client-side route change does not
+    // remount it and the panel would hang over the new page.
+    await group("Bookings").click();
+    await nav.getByRole("link", { name: "Customers" }).click();
+    await page.waitForURL(/\/admin\/customers/);
+    await expect(nav.locator("details[open]")).toHaveCount(0);
+  });
+
   test("admin navigates via the bar; the active link follows the route", async ({ page }) => {
     await signInAsAdmin(page, "spink"); // lands on /admin/at-risk
     const nav = page.getByRole("navigation", { name: "Admin" });
@@ -74,7 +102,13 @@ test.describe("admin nav", () => {
     await nav.getByRole("link", { name: "Messages" }).click();
     await page.waitForURL(/\/admin\/messages/);
     await openMenuIfMobile(page);
-    await expect(nav.getByRole("link", { name: "Messages" })).toHaveAttribute("aria-current", "page");
+    // The group closes after a selection (#603), so the you-are-here cue is the highlighted
+    // GROUP, not a visible link — the operator's call: "if Time Off is selected, then just
+    // People will be highlighted."
+    await expect(nav.locator("summary:visible").filter({ hasText: "People" })).toHaveAttribute(
+      "data-active",
+      "",
+    );
   });
 
   test("desktop: the nav fits the two-pane height budget (guards #253)", async ({ page }) => {

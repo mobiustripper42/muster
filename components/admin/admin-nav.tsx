@@ -43,12 +43,43 @@ export function AdminNav({
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const navRef = useRef<HTMLElement>(null);
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
-  // Close on navigation (a tapped link changes the path)…
+  // Close on navigation (a tapped link changes the path) — the drawer, and any open group.
+  //
+  // The groups need doing by hand: the nav lives in the layout, so a client-side navigation does
+  // NOT remount it, and `<details open>` is uncontrolled here (dropping the `open` prop is what
+  // makes a group stay shut after a selection). Without this, clicking Bookings ▸ Customers
+  // navigates and leaves the panel hanging over the new page.
   useEffect(() => {
     setOpen(false);
+    for (const d of navRef.current?.querySelectorAll("details[open]") ?? []) {
+      d.removeAttribute("open");
+    }
   }, [pathname]);
+
+  // …and close an open group on an outside click or Escape. `name` gives the groups mutual
+  // exclusion for free, but a `<details>` never closes on a click elsewhere — so a panel opened
+  // by accident would sit over the page, on a STICKY bar, until you clicked its summary again.
+  useEffect(() => {
+    const closeGroups = (e: Event) => {
+      const root = navRef.current;
+      if (!root) return;
+      for (const d of root.querySelectorAll("details[open]")) {
+        if (e.type === "keydown" || !d.contains(e.target as Node)) d.removeAttribute("open");
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeGroups(e);
+    };
+    document.addEventListener("click", closeGroups);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("click", closeGroups);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, []);
   // …and on Escape; move focus into the drawer when it opens.
   useEffect(() => {
     if (!open) return;
@@ -61,7 +92,7 @@ export function AdminNav({
   }, [open]);
 
   return (
-    <nav aria-label="Admin" className="sticky top-0 z-20 border-b border-line bg-card">
+    <nav ref={navRef} aria-label="Admin" className="sticky top-0 z-20 border-b border-line bg-card">
       {/* Wider than the `max-w-3xl` page shell on purpose (#586). The nav is chrome, not reading
           copy: borrowing the body-copy width capped nav content at 768px no matter how wide the
           monitor was, so a 1440px screen had ~830px of empty white bar on either side while the
@@ -114,8 +145,15 @@ export function AdminNav({
               // People will be highlighted" — and a panel that reopens itself on every navigation
               // is a panel you keep closing. Navigation remounts the island, so this needs no
               // state: absent `open`, every group renders shut.
-              <details key={g.label} className="group relative">
+              // `name` makes these an exclusive accordion in the browser itself — opening one
+              // closes the others, no JS and no state. Without it every group could sit open at
+              // once and the panels overlapped each other.
+              <details key={g.label} name="admin-nav" className="group relative">
                 <summary
+                  // The group carries the you-are-here cue when it holds the current route: the
+                  // panel is closed, so the highlighted GROUP is the signal. `data-active` states
+                  // that in markup rather than leaving a test to infer it from class strings.
+                  data-active={holdsActive ? "" : undefined}
                   className={`inline-flex cursor-pointer list-none items-center gap-1 whitespace-nowrap ${holdsActive ? "font-semibold text-accent" : "text-muted"}`}
                 >
                   {g.label}
@@ -215,8 +253,11 @@ export function AdminNav({
             {groups.map((g) => {
               const holdsActive = g.links.some((l) => isActive(l.href));
               return (
-                <details key={g.label} className="group border-t border-line">
-                  <summary className="flex cursor-pointer list-none items-center justify-between rounded-lg px-3 py-2.5 text-base text-ink">
+                <details key={g.label} name="admin-drawer" className="group border-t border-line">
+                  <summary
+                    data-active={holdsActive ? "" : undefined}
+                    className="flex cursor-pointer list-none items-center justify-between rounded-lg px-3 py-2.5 text-base text-ink"
+                  >
                     <span className={holdsActive ? "font-semibold text-accent" : undefined}>{g.label}</span>
                     <span aria-hidden className="text-xs text-muted transition-transform group-open:rotate-180">
                       ▾

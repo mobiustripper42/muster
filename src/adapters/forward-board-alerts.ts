@@ -80,9 +80,11 @@ export async function composeBoardAlert(repo: Repository, landings: BoardLanding
   const n = byShift.size;
   // #599: the audience marker leads. This used to open `⚠ Muster:` against the crew
   // ask's `Muster:` — a one-glyph difference, at the front of a preview that
-  // truncates from the right, for the one person (DEC-092: every admin is also crew)
-  // who receives both classes on the same phone. The ⚠ is dropped: the word ADMIN
-  // does the job the glyph was failing to do, and it costs a UCS-2 segment.
+  // truncates from the RIGHT, for the one person (DEC-092: every admin is also crew)
+  // who receives both classes on the same phone from the same sender. On 2026-07-29
+  // the operator read this alert as an ask. The distinguishing words ("needs you" vs
+  // "In or out?") were already there — they just sat behind a date and a vessel name,
+  // i.e. exactly where truncation eats them. See `message-opener.ts` for the ⚠.
   return outbound(
     "admin",
     `${n} shift${n === 1 ? "" : "s"} need${n === 1 ? "s" : ""} you\n${lines.join("\n")}`,

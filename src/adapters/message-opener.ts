@@ -35,6 +35,16 @@ export type Audience =
  *
  * The wording is the operator's call and changing it is a one-line edit here; the
  * *shape* — marker first, distinct word — is the part that must hold.
+ *
+ * **The At-Risk alert's leading `⚠` was dropped when this landed** (#599). It was
+ * carrying the entire crew-vs-admin distinction and failing at it, and a non-GSM-7
+ * character forces the whole SMS to UCS-2 — halving the per-segment budget for the
+ * same reason `forward-notices` avoids `·`. The word ADMIN does the job for free.
+ *
+ * No DEC: SPEC never specified any of these bodies, and #387's sibling rule (a
+ * doorbell ring carries no count and no note content) is likewise a code-level fact.
+ * The convention is enforced by this signature — you cannot compose an outbound body
+ * without naming an audience — which holds better than a document would.
  */
 export const OPENER: Record<Audience, string> = {
   crew: "Muster:",

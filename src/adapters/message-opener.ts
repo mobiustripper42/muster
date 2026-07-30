@@ -36,10 +36,15 @@ export type Audience =
  * The wording is the operator's call and changing it is a one-line edit here; the
  * *shape* — marker first, distinct word — is the part that must hold.
  *
- * **The At-Risk alert's leading `⚠` was dropped when this landed** (#599). It was
- * carrying the entire crew-vs-admin distinction and failing at it, and a non-GSM-7
- * character forces the whole SMS to UCS-2 — halving the per-segment budget for the
- * same reason `forward-notices` avoids `·`. The word ADMIN does the job for free.
+ * **The At-Risk alert's leading `⚠` was dropped when this landed** (#599), purely for
+ * legibility: it was carrying the entire crew-vs-admin distinction and failing at it,
+ * because a glyph is not a word and the eye does not read it as one.
+ *
+ * It bought nothing on SMS cost, and an earlier version of this comment claimed it did
+ * — wrongly. `composeBoardAlert` emits `•`, `·` and `—` on every line, none of which
+ * are GSM-7, so that body is UCS-2 with or without the `⚠`. (`forward-notices` avoiding
+ * `·` is a real constraint, but on a *different* message.) If the alert's segment count
+ * ever matters, the bullets and dashes are what to look at — not the opener.
  *
  * No DEC: SPEC never specified any of these bodies, and #387's sibling rule (a
  * doorbell ring carries no count and no note content) is likewise a code-level fact.
@@ -59,8 +64,12 @@ export const OPENER: Record<Audience, string> = {
  * during the migration and is cheap to keep.
  */
 export function outbound(audience: Audience, body: string): string {
-  const opener = OPENER[audience];
   const trimmed = body.trim();
-  if (trimmed.startsWith(opener)) return trimmed;
-  return `${opener} ${trimmed}`;
+  // Checked against EVERY opener, not just this audience's. Guarding only the
+  // requested one would let `outbound("admin", "Muster: …")` produce
+  // `Muster ADMIN: Muster: …` — a body wearing both hats at once, which is precisely
+  // the confusion this module exists to remove. Latent today (all four call sites
+  // pass raw bodies) and cheap to close.
+  if (Object.values(OPENER).some((o) => trimmed.startsWith(o))) return trimmed;
+  return `${OPENER[audience]} ${trimmed}`;
 }

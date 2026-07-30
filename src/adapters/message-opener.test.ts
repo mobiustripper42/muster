@@ -110,3 +110,18 @@ describe("every outbound sender front-loads its audience marker (#599)", () => {
     expect(adminPreview).toContain("ADMIN");
   });
 });
+
+describe("outbound is idempotent across audiences, not just its own (#599 review)", () => {
+  it("does not double-prefix a body already carrying the OTHER audience's opener", () => {
+    // Latent, not live — every call site passes a raw body today. But an
+    // audience-specific `startsWith` is exactly the cross-audience mixup this whole
+    // feature exists to prevent, so the guard should catch it rather than produce
+    // `Muster ADMIN: Muster: …`.
+    expect(outbound("admin", "Muster: you're on the shift")).not.toMatch(
+      /^Muster ADMIN: Muster:/,
+    );
+    expect(outbound("crew", "Muster ADMIN: 1 shift needs you")).not.toMatch(
+      /^Muster: Muster ADMIN:/,
+    );
+  });
+});

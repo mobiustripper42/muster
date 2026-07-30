@@ -12,7 +12,14 @@ export function toSeatVM(
   seatOccupant: Map<string, string>,
   crew: Map<string, { name: string; phone: string | null }>,
 ): SeatCardVM {
-  const canAct = s.state === "Open" || s.state === "Bailed";
+  // `Asked` included (#601): the drip makes it the normal state of a filling seat, so
+  // gating actions on Open/Bailed left the cockpit read-only for most of the fill
+  // window — and most read-only exactly when the operator is watching, because the
+  // deadline has passed. This mirrors `lean()`'s gap set rather than guessing at it;
+  // the file's rule is never render a button the action refuses, so the two move
+  // together. Settled seats (Claimed/Confirmed) still offer nothing but the override.
+  const canAct =
+    s.state === "Open" || s.state === "Bailed" || s.state === "Asked";
   const occupantId = seatOccupant.get(String(s.seatId));
   const occ = occupantId ? crew.get(occupantId) : undefined;
   return {

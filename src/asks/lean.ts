@@ -104,13 +104,22 @@ export async function lean(
   const required = (await repo.listSeatsForShift(shiftId)).filter(
     (s) => s.kind === "required",
   );
-  // Gap = needs a body: Open, or resting Bailed (reopened below if leaned onto).
+  // Gap = needs a body: Open, resting Bailed (reopened below if leaned onto), or
+  // **Asked** (#601). An outstanding ask is not a reservation: DEC-063 makes the drip
+  // one candidate per interval, so `Asked` is the NORMAL state of a filling seat, not
+  // a transient one. With a 120-minute silent timeout, treating it as "handled" made
+  // the seat un-actionable for two hours at a stretch, repeatedly, across the entire
+  // fill window — and least actionable exactly when the operator is watching it,
+  // because the deadline has passed. The same premise ("a live ask means the seat is
+  // covered") was already revisited once for the At-Risk board (`at-risk-board.ts:24`).
+  //
+  // Settled seats (Claimed/Confirmed) are still not gaps — somebody holds them.
   const gapSeats = required.filter(
-    (s) => s.state === "Open" || s.state === "Bailed",
+    (s) => s.state === "Open" || s.state === "Bailed" || s.state === "Asked",
   );
   if (gapSeats.length === 0) {
     return {
-      error: "No open seat to fill — nothing to lean for.",
+      error: "No seat to fill — nothing to lean for.",
       code: "no_gap",
     };
   }

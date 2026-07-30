@@ -47,6 +47,7 @@ function makeDeps(repo: InMemoryRepository, payments: FakePaymentPort = new Fake
   const soldOut = vi.fn(async (_c: unknown) => {});
   const deps: WebhookDeps = {
     repo,
+    reservationsEnabled: true,
     payments,
     now: NOW,
     alertPaidButUnbooked: alert,
@@ -55,6 +56,62 @@ function makeDeps(repo: InMemoryRepository, payments: FakePaymentPort = new Fake
   };
   return { deps, alert, confirm, soldOut, payments };
 }
+
+describe("processBookingWebhook — the RESERVATIONS gate (#588, DEC-111)", () => {
+  it("acks a valid signed event without booking anything when the flag is off", async () => {
+    const repo = new InMemoryRepository();
+    await repo.saveEvent(musterEvent());
+    const { deps, alert, confirm } = makeDeps(repo);
+
+    const r = await processBookingWebhook(
+      { ...deps, reservationsEnabled: false },
+      JSON.stringify(completed()),
+      FAKE_SIGNATURE,
+    );
+
+    // Acked, not errored: a non-2xx would make Stripe retry an event we never want.
+    expect(r).toEqual({ handled: false });
+    // Nothing written, nobody emailed.
+    expect(await repo.getReservation(reservationIdFor("cs_test_1"))).toBeNull();
+    expect(await repo.listPaymentsForReservation(reservationIdFor("cs_test_1"))).toHaveLength(0);
+    expect(confirm).not.toHaveBeenCalled();
+    // But loud — a verified charge succeeded and we deliberately did not book it.
+    expect(alert).toHaveBeenCalledOnce();
+    expect(alert.mock.calls[0]![0]).toMatch(/RESERVATIONS is off/);
+  });
+
+  it("still records a BALANCE payment when the flag is off — the gate is about new bookings only", async () => {
+    // The regression this pins: the gate first sat right after signature verification, ahead of
+    // purpose dispatch, so it swallowed balance collection too. Balance links are minted by an
+    // admin-gated action that has no RESERVATIONS check, and the flag is off by default — so in a
+    // default deployment Stripe charged the customer and Muster recorded nothing.
+    const repo = new InMemoryRepository();
+    await seedDepositBooking(repo);
+    const { deps, alert } = makeDeps(repo);
+
+    const r = await processBookingWebhook(
+      { ...deps, reservationsEnabled: false },
+      JSON.stringify(balanceCompleted()),
+      FAKE_SIGNATURE,
+    );
+
+    expect(r).toEqual({ handled: true, outcome: "balance_paid" });
+    const balances = (await repo.listPaymentsForReservation(RES)).filter((p) => p.kind === "balance");
+    expect(balances).toHaveLength(1);
+    expect(alert).not.toHaveBeenCalled();
+  });
+
+  it("still rejects a bad signature when the flag is off, so the flag can't probe the endpoint", async () => {
+    // The gate sits AFTER verification deliberately. If it ran first, a forged request would
+    // get the same ack as a real one and an attacker could tell a live endpoint from a dark one.
+    const repo = new InMemoryRepository();
+    const { deps } = makeDeps(repo);
+
+    await expect(
+      processBookingWebhook({ ...deps, reservationsEnabled: false }, JSON.stringify(completed()), "bad_signature"),
+    ).rejects.toThrow();
+  });
+});
 
 describe("processBookingWebhook", () => {
   it("booked: writes the reservation + records the payment", async () => {

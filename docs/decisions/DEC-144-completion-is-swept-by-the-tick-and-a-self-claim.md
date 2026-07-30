@@ -50,8 +50,16 @@ ever set `Completed`, while self-*release* had shipped and routes through the ba
 lateness ramp). So the engine could subtract from a self-server who dropped a shift and never add for
 one who worked it. Self-serve was all downside, for a year, silently.
 
-**Gaming it was already closed before we opened it.** A claim then a release nets ≤ 0, because the
-release runs the bail edge. No new cutoff or cooldown was needed.
+**Claim-then-release is weakly self-limiting, not closed — and that is accepted, not overlooked.**
+A release runs the bail edge, but `bailLatenessMs` clamps to zero once notice exceeds the staffing
+lead, so a release seven or more days out takes only the flat −3 and the pair nets **+1**; at
+departure it nets −7.4. The claimable window is 45 days against a 7-day lead, so most of it sits in
+the +1 zone. What blunts it is the **count-based** window: the pair burns two of the forty slots to
+earn +1, where simply answering an ask "out" earns +1 in one slot — so churning claims ranks worse
+per slot than ordinary responsiveness, and the exploit is dominated by behavior we already want.
+Accepted at pilot scale. **Revisit if:** a real claim-release churn pattern shows up in the log; the
+hard fix is pairing a `self_claim` to its own seat's later bail in the scorer, which the flat
+per-event fold deliberately cannot express today.
 
 **Reliability-grade, deliberately not money-grade.** The sweep asserts that a scheduled trip's clock
 ran out with crew still assigned. Nobody asserts the boat left the dock. That is enough to order an

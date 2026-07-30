@@ -392,16 +392,29 @@ async function formOneShift(
 
   // Birth/refresh state: horizon-aware when a clock is supplied (DEC-022), else the
   // pure seat-fold (DEC-032: tz default-only, tenant zone).
-  const state = opts?.now
-    ? resolveShiftState(seats, {
-        now: opts.now,
-        horizon: staffingHorizonFromEvents(
-          scheduled,
-          opts.leadDays ?? STAFFING_HORIZON_LEAD_DAYS,
-        ),
-        poolExhausted: false,
-      })
-    : deriveShiftState(seats);
+  //
+  // `Completed` is TERMINAL and survives a re-import (#570). Neither
+  // `deriveShiftState` nor `resolveShiftState` can yield it — it's a lifecycle state
+  // set only by the tick's completion sweep — so recomputing here would fold a
+  // finished shift back to `Crewed` off its still-`Confirmed` seats. The next tick
+  // would then re-enter the sweep and fan out a SECOND `shift_completed` per
+  // occupant, double-scoring everyone who worked it. `pullXola` calls `formShifts`
+  // on every manual pull, so this is the ordinary next import after any shift
+  // completes, not a race. The all-cancelled branch above already guards `Completed`;
+  // this is the same invariant on the branch a still-scheduled trip set takes.
+  const state =
+    existing?.state === "Completed"
+      ? existing.state
+      : opts?.now
+        ? resolveShiftState(seats, {
+            now: opts.now,
+            horizon: staffingHorizonFromEvents(
+              scheduled,
+              opts.leadDays ?? STAFFING_HORIZON_LEAD_DAYS,
+            ),
+            poolExhausted: false,
+          })
+        : deriveShiftState(seats);
 
   const shift: Shift = {
     id: shiftId,

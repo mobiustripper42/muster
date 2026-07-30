@@ -334,6 +334,26 @@ describe("formShifts — reconciliation (#20)", () => {
     expect((await repo.getShift(day1))?.state).toBe("Completed");
   });
 
+  it("never un-completes a Completed shift whose trips are still scheduled (#570)", async () => {
+    // The sibling of the test above, on the OTHER branch. That one covers
+    // all-events-cancelled; this covers the ordinary reconcile path, which
+    // recomputes state from the seat fold — and neither `deriveShiftState` nor
+    // `resolveShiftState` can produce `Completed`. Unguarded, the next Xola pull
+    // after any shift completes folds it back to `Crewed` off its still-Confirmed
+    // seats, and the following tick re-completes it and double-logs
+    // `shift_completed` for everyone who worked it.
+    const repo = new InMemoryRepository();
+    await seedEvents(repo);
+    await formShifts(repo);
+    const shift = await repo.getShift(day1);
+    await repo.saveShift({ ...shift!, state: "Completed" });
+
+    // Same events, still scheduled — a plain re-pull, nothing changed.
+    await formShifts(repo);
+
+    expect((await repo.getShift(day1))?.state).toBe("Completed");
+  });
+
   it("births a past-horizon shift into Filling when a clock is supplied (DEC-022)", async () => {
     const repo = new InMemoryRepository();
     await seedEvents(repo);

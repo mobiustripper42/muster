@@ -38,8 +38,16 @@
  *    **leading indicator**: someone who picks up five shifts next month should
  *    rank up before any of them run, which a past-seat measure structurally can't
  *    see. Self-claim outranks `ask_accepted` because no prompt was needed.
- *    Gaming it is already closed: a claim then a release nets ≤0, since release
- *    routes through the bail edge (−3 plus lateness).
+ *    A claim-then-release is **weakly** self-limiting, not fully closed: release
+ *    routes through the bail edge, and `bailLatenessMs` clamps to 0 once notice
+ *    exceeds `STAFFING_HORIZON_LEAD_DAYS` (`derive.ts:616`), so a release ≥7 days
+ *    out takes only the flat −3 and the pair nets **+1**. At departure it nets
+ *    −7.4. The claimable window is 45 days against a 7-day lead, so most of it sits
+ *    in the +1 zone. What blunts it is the **count-based** window: the pair burns
+ *    two of the 40 slots for +1, where a plain `ask_declined` earns +1 in one — so
+ *    churning claims is worse per slot than just answering "out". Known and
+ *    accepted at pilot scale (#570); a hard fix means pairing a `self_claim` to its
+ *    own seat's later bail in the scorer.
  *  - **Bail lateness is the signal.** `shift_bailed` carries a fixed floor (−3, =
  *    a ghosted ask so "confirm-then-cancel-early" never beats vanishing) plus a
  *    lateness-scaled penalty from `metadata.latenessMs`, so a late bail weighs

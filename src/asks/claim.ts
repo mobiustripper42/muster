@@ -174,10 +174,6 @@ export async function claimSeat(
   // accept, inverted: that logs responsiveness regardless because answering IS the
   // behavior scored; this scores *acquiring*, which only the winner did.
   await logSelfClaim(repo, crewId, seat.id, seat.shiftId, now);
-  // Logged only on the CAS WIN (#570) — a loser of the race took no seat, so the
-  // +4 must not accrue to them. Same discipline as `recordResponse`'s contested
-  // accept, inverted: that logs responsiveness regardless because answering IS the
-  // behavior scored; this scores *acquiring*, which only the winner did.
   await refreshShiftState(repo, seat.shiftId);
   return { code: null, seat: confirmed };
 }

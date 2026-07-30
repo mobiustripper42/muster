@@ -21,25 +21,30 @@ const plexMono = IBM_Plex_Mono({
  * Which environment this build is, in words — the tab-title half of the coloured top-edge line
  * below. Red line = local dev, yellow = Vercel preview, nothing = production.
  *
- * The line tells you at a glance while you're looking at the page; the title tells you from the
- * tab strip, which is where you actually are when you have prod and a branch open side by side
- * and click the wrong one. Same `VERCEL_ENV` / `NODE_ENV` pair the line and the DEC-057 dev-link
- * gate key off, so all three agree by construction.
+ * The line tells you while you're looking at the page; the title tells you from the tab strip,
+ * which is where you are when prod and a branch are both open and you click the wrong one.
+ *
+ * PREFIXED, not suffixed: a tab is a few characters wide with a dozen open and it truncates from
+ * the right, so anything after "Muster" is the first thing to disappear — exactly when you have
+ * enough tabs open to need it.
+ *
+ * Same `NODE_ENV` / `VERCEL_ENV` pair the line and the DEC-057 dev-link gate key off, so all
+ * three agree by construction rather than by remembering to change them together.
  */
-const ENV_SUFFIX =
+const TITLE =
   process.env.NODE_ENV === "development"
-    ? " — Dev"
+    ? "Dev-Muster"
     : process.env.VERCEL_ENV === "preview"
-      ? " — Preview"
-      : "";
+      ? "Pre-Muster"
+      : "Muster";
 
 export const metadata = {
-  title: `Muster${ENV_SUFFIX}`,
+  title: TITLE,
   description: "Crew engine for small-passenger-vessel operators",
   applicationName: "Muster",
   // Installable to a phone home screen (Phase 10.6). app/manifest.ts is
   // auto-linked; these give iOS its touch icon + standalone chrome.
-  appleWebApp: { capable: true, title: `Muster${ENV_SUFFIX}`, statusBarStyle: "default" as const },
+  appleWebApp: { capable: true, title: TITLE, statusBarStyle: "default" as const },
   icons: {
     icon: [
       { url: "/icon.svg", type: "image/svg+xml" },

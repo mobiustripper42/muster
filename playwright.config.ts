@@ -98,6 +98,11 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     env: {
       DATABASE_URL: TEST_DATABASE_URL,
+      // Suppresses the Next dev-tools badge (next.config.ts). It is a fixed bottom-left overlay
+      // that expands over page content, and on the CI dev-server path it swallowed clicks on
+      // controls that happened to sit under it. Framework chrome shouldn't be in the viewport
+      // during a test run.
+      E2E: "1",
       // Prod server only: keep `/crew/dev-link` live (isProdDeploy → false) exactly
       // as on a Vercel preview, and pin E2E_PROD so the build/start subprocess picks
       // the `.next-e2e` distDir (next.config.ts) instead of the operator's `.next`.

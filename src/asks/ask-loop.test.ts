@@ -1079,7 +1079,7 @@ describe("out-raced by a self-claim (#440)", () => {
   // ask, so an asked member can answer a seat that's already gone. The operator
   // rule: ANY Yes or No scores a + — the response is credited on its own terms,
   // regardless of whether the seat survived. Silence is the only sin.
-  it("an 'In' to a seat someone else already took still credits ask_accepted", async () => {
+  it("a 'Yes' to a seat someone else already took still credits ask_accepted", async () => {
     const asked = await addCrew("crew-asked");
     const claimer = await addCrew("crew-claimer");
     const [seatId] = await addShift(1);

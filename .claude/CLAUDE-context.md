@@ -63,8 +63,9 @@ The per-task gate (run by `/kill-this`, `/pause-this`) is **`npm run verify`** �
 
 | Command | Covers |
 |---------|--------|
-| `npm run verify` | **the gate** — `check:decisions` + `check:context` + `typecheck` + `typecheck:app` + `lint` + `test` + `build`, in order |
+| `npm run verify` | **the gate** — `check:decisions` + `check:context` + `check:docs` + `typecheck` + `typecheck:app` + `lint` + `test` + `build`, in order |
 | `npm run check:context` | every repo path this file and `CLAUDE.md` cite still resolves. **These docs carry decisions, rationale and pointers — never inventory.** A prose snapshot of current state is stale the day the code moves; a pointer (`ls src/adapters/*-channel.ts`) sends the reader to the truth and is checkable. Cite a full path and it gets checked; a bare filename does not. `<angle brackets>` mark a deliberate placeholder |
+| `npm run check:docs` | the same discipline over every top-level `docs/*.md` (DEC-144). DEC ids, `npm run` commands, issue-link text vs its own URL, skill/agent rosters vs `.claude/` in **both** directions, and repo paths. Historical ledgers (`SPEC`, `PROJECT_PLAN`, `RETROSPECTIVES`, `FUTURE_IDEAS`, `SECURITY_AUDIT`) are exempt from the path class **by name and with a reason** — they cite deleted files correctly. Reads structure, never prose: `@doc-consistency` still owns characterization |
 | `npm run typecheck` | domain core only (`tsconfig.core.json`, strict NodeNext) |
 | `npm run typecheck:app` | Next app only (`tsconfig.json`, bundler) |
 | `npm run test` | Vitest (domain core) |

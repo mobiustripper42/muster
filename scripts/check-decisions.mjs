@@ -58,7 +58,11 @@ export function checkAmendmentEdge(from, to) {
 // Anchored so `DEC-026-family` resolves to a real id while the seeds repo's `DEC-S019`
 // series — whose record lives in another repo — never matches. The five non-numeric
 // families are enumerated rather than globbed for the same reason.
-const REFERENCE = /\bDEC-(?:\d{3}|MSG-\d+|ROLE-\d+|DATA-\d+|TBD)\b/g
+//
+// Exported because `check-docs.mjs` applies the same rule to the rest of the doc set. This script's
+// scan stops at `docs/decisions/` + the index, which was never a statement that references
+// elsewhere are safe — only that this script's subject is the record itself.
+export const REFERENCE = /\bDEC-(?:\d{3}|MSG-\d+|ROLE-\d+|DATA-\d+|TBD)\b/g
 
 export function check() {
   const failures = []

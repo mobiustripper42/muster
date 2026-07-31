@@ -32,7 +32,7 @@ export const DOCS = ['CLAUDE.md', '.claude/CLAUDE-context.md']
 // invisible: the two highest-value pointers in the file, including the one written as this
 // script's worked example, were never checked. A guard blind to exactly the pattern it exists to
 // encourage is worse than no guard, because the doc claims it is covered.
-const PATHISH = /`(?:ls\s+)?([^`\s]+)`/g
+export const PATHISH = /`(?:ls\s+)?([^`\s]+)`/g
 
 // Only a span rooted in a real top-level directory of THIS repo counts as a claim about this
 // repo's contents. The first draft checked anything path-shaped and produced 16 findings, 15 of
@@ -101,6 +101,27 @@ function patternMatches(pattern) {
 }
 
 /**
+ * Does this backticked span name something that exists? Takes the span as written in the doc and
+ * does the normalising a lookup needs.
+ *
+ * Exported because `check-docs.mjs` runs the same rule over `docs/*.md` and there must be exactly
+ * ONE implementation of it. The first version of the resolver executed shell commands out of a
+ * markdown file; a second copy is a second chance to reintroduce that, and the copy would be the
+ * one nobody reviews. Same reason the brace expander isn't duplicated.
+ */
+export function resolves(raw) {
+  // Strip a trailing line-number citation, and any backslashes the author added to make the span
+  // paste-able into a shell (`app/\(crew\)/`) — those are for bash, not for a lookup.
+  //
+  // Both citation styles the docs use: a list (`src/builder/derive.ts:148,192`) and a RANGE
+  // (`app/lib/auth.ts:88-96`). The range form was missed until `check-docs` ran the same resolver
+  // over `docs/*.md` and reported three live files as dead — the check-context blind spot nobody
+  // would have found from its own corpus, because `CLAUDE-context.md` happens to cite only lists.
+  const path = raw.replace(/:[\d,-]+$/, '').replace(/\\(?=[()])/g, '')
+  return isPattern(path) ? patternMatches(path) : existsSync(path)
+}
+
+/**
  * @param {{path: string, text: string}[]} [sources] injected documents; defaults to the real
  *   context docs. Injection exists so the failure paths are testable — a checker whose red
  *   branches are never exercised is a checker nobody knows still fires.
@@ -123,12 +144,7 @@ export function check(sources) {
       for (const m of line.matchAll(PATHISH)) {
         const raw = m[1]
         if (!isClaim(raw)) continue
-        // Strip a trailing colon+line-number citation (`src/builder/derive.ts:148,192`).
-        // Strip a trailing line-number citation, and any backslashes the author added to make the
-        // span paste-able into a shell (`app/\(crew\)/`) — those are for bash, not for a lookup.
-        const path = raw.replace(/:[\d,]+$/, '').replace(/\\(?=[()])/g, '')
-        const ok = isPattern(path) ? patternMatches(path) : existsSync(path)
-        if (!ok) failures.push(`${doc}:${i + 1} — cites \`${raw}\`, which does not exist`)
+        if (!resolves(raw)) failures.push(`${doc}:${i + 1} — cites \`${raw}\`, which does not exist`)
       }
     })
   }

@@ -291,6 +291,36 @@ describe("claimSeat (DEC-075/078)", () => {
     expect(events[0]!.metadata.shiftId).toBe(sh);
   });
 
+  it("a self-claim onto an Asked seat withdraws the outstanding asks (#600, the #440 door)", async () => {
+    // The THIRD fill door. Code review caught that this was claimed as covered in
+    // both the commit message and DEC-146 while `claimSeat` never called
+    // `withdrawLiveAsks` — because the test that claimed to cover it called
+    // `manualOverride` instead. This one calls the function in its own name.
+    const claimer = await crew("claimer", [MATE]);
+    const other = await crew("other", [MATE]);
+    const sh = await shift("sh");
+    const seatId = await seat(sh, "seat-1", { role: MATE, state: "Asked" });
+    // A live, unanswered ask out to someone else on the seat being claimed.
+    await repo.saveAsk({
+      id: asId<"AskId">("ask-live"),
+      seatId,
+      crewMemberId: other,
+      channel: "push",
+      sentAt: NOW.toISOString(),
+    });
+
+    expect((await claimSeat(repo, claimer, seatId, NOW)).code).toBeNull();
+
+    const asks = await repo.listAsksForSeat(seatId);
+    expect(asks).toHaveLength(1);
+    expect(asks[0]!.response).toBe("withdrawn");
+    expect(asks[0]!.respondedAt).toBeDefined();
+    // No penalty for the person whose ask was retired.
+    expect(
+      (await repo.reliabilityEventsFor(other)).map((e) => e.type),
+    ).not.toContain("ask_ignored");
+  });
+
   it("only the CAS winner is scored — the just_taken loser emits nothing (#570)", async () => {
     // Concurrent, not sequential: a sequential second claim returns `not_claimable`
     // on the Confirmed seat and never reaches the CAS, so it would prove nothing

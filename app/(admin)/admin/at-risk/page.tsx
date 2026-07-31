@@ -203,6 +203,7 @@ async function buildVMs(rows: AtRiskRow[]): Promise<RiskRowVM[]> {
         asked: r.trail.asked,
         declined: r.trail.declined,
         silent: r.trail.silent,
+        withdrawn: r.trail.withdrawn,
         pending: r.trail.pending,
         widened: r.trail.poolWidened,
         nudgedNames: r.trail.nudged.map(nameOf),

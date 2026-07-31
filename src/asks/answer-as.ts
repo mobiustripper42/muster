@@ -14,7 +14,7 @@
  * logging (REQ-CLAIM-1, DEC-007), and a winning "in" auto-confirms (DEC-061).
  */
 
-import type { AskResponse } from "../domain/entities.js";
+import type { AskAnswer } from "../domain/entities.js";
 import type { AskId, CrewMemberId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 import { recordResponseAndConfirm, type ResponseOutcome } from "./ask-loop.js";
@@ -34,7 +34,7 @@ export async function recordResponseAs(
   repo: Repository,
   askId: AskId,
   asCrewMemberId: CrewMemberId,
-  response: AskResponse,
+  response: AskAnswer,
   now: Date,
 ): Promise<AnswerAsResult> {
   const ask = await repo.getAsk(askId);

@@ -121,6 +121,25 @@ describe("warming membership — negative signals only", () => {
     void bob;
   });
 
+  it("a filled seat's withdrawn losers do NOT warm a shift whose other seat was never asked (#600)", async () => {
+    // Regression from #600, found in review. `escalationTrailFor` sums across ALL
+    // required seats, and a withdrawn ask counts toward `asked` but not `pending` —
+    // so the whole-shift trail read `asked > 0 && pending === 0` and false-positived
+    // as "quiet" ("everyone answered and we're still short") when seat 2 had simply
+    // never been tried. Before #600 the losing asks stayed live forever, so `pending`
+    // was never 0 in this shape and the bug was unreachable.
+    const ann = await addCrew("ann");
+    await addCrew("bob");
+    const { seatIds } = await addShift("w1", hoursAfterT0(72), ["Open", "Open"]);
+    // Seat 1: broadcast, Ann accepts → Bob's ask is withdrawn. Seat 1 is now filled.
+    const asks = await broadcastAsk(repo, seatIds[0]!, T0);
+    const annAsk = asks.find((a) => a.crewMemberId === ann)!;
+    await recordResponse(repo, annAsk.id, "accepted", T0);
+    // Seat 2 stays Open and has NEVER been asked — the drip's job, not the operator's.
+
+    expect(await deriveWarming(repo, hoursAfterT0(1))).toHaveLength(0);
+  });
+
   it("all-declined far out warms (the board's quiet zone, surfaced as weather)", async () => {
     const ann = await addCrew("ann");
     const { shiftId, seatIds } = await addShift("w1", hoursAfterT0(120), ["Open"]);

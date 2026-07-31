@@ -751,7 +751,36 @@ export interface Seat {
 /** Delivery channel (DEC-MSG): one channel port, many adapters. */
 export type AskChannel = "push" | "sms";
 
-export type AskResponse = "accepted" | "declined";
+/**
+ * How an ask ended. `accepted`/`declined` are the crew member's own answers.
+ *
+ * **`withdrawn` (#600) is not an answer — it's the ask being retired unanswered
+ * because the seat stopped being fillable.** When a claim wins, every other
+ * outstanding ask on that seat is moot: the question "will you work this?" no longer
+ * has a meaning. Before #600 those rows were simply left live, and `expireAsks`
+ * would later stamp them `ask_ignored` — charging silence to people who were never
+ * given a chance to answer, on a seat taken 51 seconds after they were asked.
+ *
+ * Distinct from the timeout marker (`respondedAt` set, `response` **absent**), which
+ * means "we waited and they said nothing" and DOES carry an `ask_ignored`. A
+ * `withdrawn` ask carries **no reliability event at all** — nothing happened worth
+ * scoring.
+ *
+ * No migration: `asks.response` is plain `text` with no CHECK constraint.
+ */
+export type AskResponse = "accepted" | "declined" | "withdrawn";
+
+/**
+ * What a HUMAN can answer — the submittable subset of {@link AskResponse} (#600).
+ *
+ * `withdrawn` is a system outcome, never an answer, so it must not be reachable from
+ * any surface that takes crew (or operator-as-crew) input. Naming the subset makes
+ * that a type error rather than a validation rule someone has to remember: every
+ * answer door (`recordResponse`, `recordResponseAndConfirm`, `recordResponseAs`, the
+ * crewapp's answered-code) takes this, and only the engine's own
+ * `withdrawLiveAsks` writes the wider value.
+ */
+export type AskAnswer = Exclude<AskResponse, "withdrawn">;
 
 /**
  * ⏳ confirm vs hold: `hold` is RESERVED for Pass D progressive commitment

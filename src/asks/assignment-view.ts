@@ -113,6 +113,14 @@ function statusFromAsks(
       replyMs: new Date(latest.respondedAt!).getTime() - new Date(latest.sentAt).getTime(),
     };
   }
+  // Withdrawn (#600): the seat was filled while this ask was out, so it was retired
+  // unanswered. They read **available**, not `silent` — this is the exact row the
+  // issue was raised about ("the cockpit renders all five as 👻 silent — no reply,
+  // timed out"). They never ghosted anything, `askedSetFrom` no longer excludes them
+  // from a re-ask, and the operator should get the assign affordance rather than the
+  // nudge-a-ghoster one. The fact that they WERE asked is not lost — it lives in the
+  // ask trail, whose job is history; this field's job is "can I use this person".
+  if (latest.response === "withdrawn") return { status: "available" };
   // respondedAt set but no response = timed out (expireAsks stamp) → silent.
   if (latest.respondedAt !== undefined) return { status: "silent" };
   return { status: "asked" };

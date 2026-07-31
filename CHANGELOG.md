@@ -1,5 +1,49 @@
 # Changelog
 
+## [1.0.20] - 2026-07-31
+
+The reservations spine, an engine that closes its own loops, and a doc set that checks itself.
+**257 commits / 77 PRs** since v1.0.19 — the first promotion since `feature/reservations` merged.
+`RESERVATIONS` remains OFF, so the customer funnel ships dark; everything below is either crew-side,
+operator-side, or infrastructure.
+
+### Reservations (Phase 11-12, dark behind the flag)
+- Stripe charge spine, balance-link door, booking claim + confirm, waiver consent, booking harness,
+  manifest hinge (#386-#405, 11.2a-11.7)
+- Virtual availability as a computed set (DEC-125), the 15-min claim/hold mutex, refund-on-loss,
+  pricing composition, gratuity collection + Gusto report (#470-#519, 12.0-12.3b)
+- Availability screen, checkout, manage page, offering catalog, vessel/location admin, blocks,
+  calendar + detail pane, purchases, customers (#520-#573, 12.4-12.12b)
+- Add-ons as first-class entities (#491); extra-guest charges in the balance (#474); the
+  reservations-era FK sweep (#514)
+
+### Crew engine
+- **Shifts complete themselves** — the tick sweeps departed shifts with crew still aboard, and
+  `shift_completed` (+5) / `self_claim` (+4) finally have producers. Per-event trip length, frozen
+  at booking (#606, DEC-145)
+- **A filled seat retires its outstanding asks** — losing recipients are `withdrawn`, not charged
+  `ask_ignored` weeks later when the seat reopens (#607, DEC-146)
+- **The cockpit can nudge an `Asked` seat** — the drip is no longer a lock on operator action (#611)
+- Every outbound message names its audience first, so an operator alert can't read as a crew ask (#610)
+- Webhook gated on the RESERVATIONS flag inside the booking path (#597); at-risk/board fixes,
+  split/merge clock, TIGHT_HOURS retired (#553, #559, #568)
+
+### Admin
+- **Admin nav rebuilt** — grouped by cadence, the `/admin` hub retired, five orphaned surfaces
+  reachable for the first time (#602)
+- Integrity diagnostic on real data + coverage map (#605); tab title names the environment (#604)
+
+### Security + correctness sweeps (#522)
+- Money, auth, and derived-state review sweeps and their follow-ups (#576, #580, #581, #585)
+
+### Docs + tooling that enforce themselves
+- One decision per file behind a generated index; a validator that fails on duplicate ids, unknown
+  topics and forward-pointing amendments (#563, #569)
+- Decisions declare their SPEC amendments and the reciprocal pointer is generated (#592)
+- `check:context` — every path cited in the context docs must resolve (#595)
+- `check:docs` — the whole doc set checked on every task gate (#609)
+- Test-first promoted to its own workflow step (#612); `db:reset:dev` replaces `db:all` (DEC-137)
+
 ## [1.0.19] - 2026-07-23
 - PR #507 (#501): `/admin/integrity` — the referential-integrity diagnostic now runs against the live database from an authenticated admin surface, not just the contract suite's synthetic fixtures. Idle until `?run=1` (auth answers the DoS concern that pulled it off `/api/health`; it doesn't make twelve full-table reads cheap). Violations grouped by entity, scanned counts always shown so "clean" can't be confused with "didn't run".
 - PR #509 (#504): un-skipped the crew login-code round-trip e2e. Not a defect — the `next start` worker-split hypothesis was disproven by direct observation, and the sign-in path is byte-identical on the branch where it was reported. Full suite green: 162 passed, 6 skipped, 0 failed.

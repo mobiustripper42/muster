@@ -236,7 +236,17 @@ export async function assignPerson(
   now: Date,
 ): Promise<Ask | null> {
   const seat = await repo.getSeat(seatId);
-  if (!seat || seat.state !== "Open") return null;
+  // `Open` OR `Asked` (#601). That one guard was doing two jobs: refusing a SETTLED
+  // seat (Claimed/Confirmed — essential, kept) and refusing an already-`Asked` one,
+  // which is the over-broad half. `widenAsk` twelve lines down has always accepted
+  // both, letting asks ACCUMULATE on an `Asked` seat with first-acceptable-yes-wins
+  // deciding between them (DEC-007/061) — so a second outstanding ask is the drip's
+  // own normal behaviour, not a new concept. Without this, `lean()` could never nudge
+  // onto a filling seat, and DEC-063 makes `Asked` the normal state of one.
+  //
+  // Callers still gate upstream and are unaffected: `escalate` passes `Open` seats
+  // only, `lean` filters via `gapSeats`, `assignFromPool` has its own `no_gap`.
+  if (!seat || (seat.state !== "Open" && seat.state !== "Asked")) return null;
   await repo.saveSeat({ ...seat, state: "Asked" });
   const ask = await fireAsk(repo, seat, crewMemberId, now);
   await refreshShiftState(repo, seat.shiftId);

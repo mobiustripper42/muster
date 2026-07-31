@@ -176,7 +176,7 @@ describe("lean — guards (the board's available semantics, enforced)", () => {
     await addShift(["Confirmed"]);
 
     const out = await lean(repo, SHIFT, bob, T0);
-    expect(out.error).toMatch(/no open seat/i);
+    expect(out.error).toMatch(/no seat to fill/i);
   });
 
   it("rejects a Cancelled shift", async () => {
@@ -185,5 +185,102 @@ describe("lean — guards (the board's available semantics, enforced)", () => {
 
     const out = await lean(repo, SHIFT, bob, T0);
     expect(out.error).toMatch(/no longer live/i);
+  });
+});
+
+describe("lean onto an Asked seat (#601) — the drip is not a lock", () => {
+  it("nudges a silent candidate on a seat that already has a live ask out", async () => {
+    // The reported state: captain seat badged ASKED, one candidate awaiting reply,
+    // five shown silent, and no Nudge button anywhere. DEC-063 makes `Asked` the
+    // NORMAL state of a filling seat, not a transient one — with a 120-minute
+    // timeout a single outstanding ask made the seat un-actionable for two hours at
+    // a stretch, repeatedly, across the whole fill window.
+    const waiting = await addCrew("waiting");
+    const silent = await addCrew("silent");
+    const [seatId] = await addShift(["Open"]);
+    // Fire the drip's first ask, then let it go silent so `waiting` still holds a
+    // live one and the seat sits `Asked`.
+    await broadcastAsk(repo, seatId!, T0);
+    const asks = await repo.listAsksForSeat(seatId!);
+    const silentAsk = asks.find((a) => a.crewMemberId === silent)!;
+    await repo.saveAsk({ ...silentAsk, respondedAt: T0.toISOString() }); // timed out
+    expect((await repo.getSeat(seatId!))!.state).toBe("Asked");
+
+    // A later instant: `fireAsk` mints `ask-{seat}-{crew}-{sentAt}`, so re-asking at
+    // the SAME millisecond collides on the id and overwrites (documented in
+    // `fireAsk`). Real re-asks are minutes apart.
+    const later = new Date(T0.getTime() + 90 * 60_000);
+    const out = await lean(repo, SHIFT, silent, later);
+
+    expect(out.error).toBeNull();
+    expect(out.seatId).toBe(seatId);
+    // Asks ACCUMULATE — the existing one is untouched, first-yes-wins decides
+    // between them (DEC-007/061), exactly as the drip's own widen already behaves.
+    const after = await repo.listAsksForSeat(seatId!);
+    expect(after.filter((a) => a.crewMemberId === silent)).toHaveLength(2);
+    // The person mid-decision keeps their single LIVE ask, untouched.
+    const waitingAsks = after.filter((a) => a.crewMemberId === waiting);
+    expect(waitingAsks).toHaveLength(1);
+    expect(waitingAsks[0]!.respondedAt).toBeUndefined();
+    expect((await repo.getSeat(seatId!))!.state).toBe("Asked");
+    expect(await nudgesFor(silent)).toHaveLength(1);
+  });
+
+  it("still refuses someone who holds a LIVE ask on the shift — they're mid-decision", async () => {
+    // The double-ask guard is not relaxed. It keys on `respondedAt === undefined`,
+    // so it never blocked the silent candidates above; it does still block the one
+    // person who hasn't answered yet.
+    const waiting = await addCrew("waiting");
+    await addCrew("other");
+    const [seatId] = await addShift(["Open"]);
+    await broadcastAsk(repo, seatId!, T0);
+    expect((await repo.getSeat(seatId!))!.state).toBe("Asked");
+
+    const out = await lean(repo, SHIFT, waiting, T0);
+
+    expect(out.code).toBe("already_asked");
+  });
+
+  it("still refuses a settled seat — Confirmed is not nudgeable", async () => {
+    const bob = await addCrew("bob");
+    const other = await addCrew("other");
+    const [seatId] = await addShift(["Open"]);
+    await broadcastAsk(repo, seatId!, T0);
+    const asks = await repo.listAsksForSeat(seatId!);
+    await recordResponse(repo, asks.find((a) => a.crewMemberId === other)!.id, "accepted", T0);
+    await confirmSeat(repo, seatId!, T0);
+
+    const out = await lean(repo, SHIFT, bob, T0);
+
+    expect(out.code).toBe("no_gap");
+  });
+});
+
+describe("lean's ask and the drip clock (#601)", () => {
+  it("a manual nudge paces the next AUTOMATIC widen — and urgency ignores pacing anyway", async () => {
+    // Pinning the interaction rather than leaving it accidental. `widenDue` reads
+    // `max(sentAt)` across every ask on the seat with no notion of who fired it, so a
+    // lean now shifts the drip clock. Deliberate: someone was just asked, and piling
+    // an automatic ask on a minute later is what the drip exists to prevent.
+    const silent = await addCrew("silent");
+    await addCrew("spare");
+    const [seatId] = await addShift(["Open"]);
+    await broadcastAsk(repo, seatId!, T0);
+    const first = await repo.listAsksForSeat(seatId!);
+    await repo.saveAsk({
+      ...first.find((a) => a.crewMemberId === silent)!,
+      respondedAt: T0.toISOString(),
+    });
+
+    const nudgeAt = new Date(T0.getTime() + 90 * 60_000);
+    expect((await lean(repo, SHIFT, silent, nudgeAt)).error).toBeNull();
+
+    // The newest ask on the seat is the operator's, so the drip paces from THERE.
+    const after = await repo.listAsksForSeat(seatId!);
+    const newest = Math.max(...after.map((a) => Date.parse(a.sentAt)));
+    expect(newest).toBe(nudgeAt.getTime());
+    // And past the fill deadline none of this applies — the tick's `urgent` branch
+    // blasts the remaining pool without consulting `widenDue`. That is the #601
+    // scenario itself (deadline overdue), which is why the pacing shift is harmless.
   });
 });

@@ -12,7 +12,21 @@ export function toSeatVM(
   seatOccupant: Map<string, string>,
   crew: Map<string, { name: string; phone: string | null }>,
 ): SeatCardVM {
-  const canAct = s.state === "Open" || s.state === "Bailed";
+  // The two actions accept DIFFERENT seat states, so they get separate gates (#601).
+  // One shared `canAct` was the bug: widening it to include `Asked` switched on BOTH
+  // buttons, but "Ask to fill" → `assignFromPool` still refuses a non-gap seat
+  // (`lean.ts:204`), so it rendered and then errored. The file's rule is never render
+  // a button the action refuses — which only holds if each gate mirrors its own action.
+  //
+  //  - assign ("Ask to fill") → `assignFromPool`: Open | Bailed.
+  //  - nudge  ("Nudge")       → `lean`: Open | Bailed | Asked. `Asked` is the NORMAL
+  //    state of a filling seat under the DEC-063 drip, so excluding it left the
+  //    cockpit read-only for most of the fill window — least actionable exactly when
+  //    the operator is watching, because the deadline had passed.
+  //
+  // Settled seats (Claimed/Confirmed) offer neither — somebody holds them.
+  const canAssign = s.state === "Open" || s.state === "Bailed";
+  const canNudge = canAssign || s.state === "Asked";
   const occupantId = seatOccupant.get(String(s.seatId));
   const occ = occupantId ? crew.get(occupantId) : undefined;
   return {
@@ -25,12 +39,20 @@ export function toSeatVM(
     occupant: occ ? { name: occ.name, phone: occ.phone } : null,
     pool:
       s.pool?.map((c): CandidateVM => {
-        const action = !canAct
-          ? null
-          : c.status === "available"
-            ? "assign"
+        // An un-asked candidate on an `Asked` seat is nudge-able, not assign-able:
+        // `lean()` takes them (they hold no live ask, so its double-ask guard passes),
+        // while `assignFromPool` would refuse the seat itself.
+        const action =
+          c.status === "available"
+            ? canAssign
+              ? "assign"
+              : canNudge
+                ? "nudge"
+                : null
             : c.status === "declined" || c.status === "silent"
-              ? "nudge"
+              ? canNudge
+                ? "nudge"
+                : null
               : null;
         return {
           id: String(c.crewMemberId),

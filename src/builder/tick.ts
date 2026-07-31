@@ -117,6 +117,20 @@ export interface TickResult {
  * already fell through. An `Asked` seat (a live ask still out) waits `dripMs` from
  * its most recent ask. (The blast path — urgent / interval 0 — routes around this.)
  */
+/**
+ * **A manual nudge counts toward the pacing (#601), deliberately.** `lean()` can now
+ * fire onto an `Asked` seat, so an operator's nudge lands in `asks` and pushes the
+ * next AUTOMATIC widen out by up to a full interval, timed from their ask. That reads
+ * backwards at first — the human acted because it was urgent, and the engine slows
+ * down — but it is the right rule twice over:
+ *
+ *  - Pre-deadline, someone was just asked. Adding another automatic ask a minute later
+ *    is piling on; one interval of quiet after the most recent ask is the whole point
+ *    of the drip (DEC-063), and it should not matter who fired it.
+ *  - Post-deadline it is moot: `urgent` short-circuits above and blasts the remaining
+ *    pool without consulting this function at all — which is the #601 scenario exactly
+ *    (fill deadline overdue, trip 7h52m out).
+ */
 function widenDue(seat: Seat, asks: Ask[], dripMs: number, now: Date): boolean {
   if (seat.state === "Open") return true;
   const lastMs = Math.max(...asks.map((a) => Date.parse(a.sentAt)));

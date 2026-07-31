@@ -1,7 +1,8 @@
 /**
  * "All shifts" derivation (#100 Part A, DEC-042) — the operator's deliberate
- * full-visibility PULL surface: every CURRENT shift (not cancelled/completed) in
- * a date window, with the facts to scan and a click-through to the cockpit.
+ * full-visibility PULL surface: every shift in a date window that isn't cancelled,
+ * with the facts to scan and a click-through to the cockpit. `Completed` shifts are
+ * included (#570): a trip that ran is still part of the day being looked at.
  *
  * A pure read over existing derivations. The live state comes from
  * `resolveShiftStateOnRead` (the DEC-023 corollary — never trust the persisted
@@ -49,7 +50,9 @@ export interface AllShiftsRow {
   vesselHue?: number;
   /** ISO-8601 vessel-local date. */
   date: string;
-  /** Live state resolved on read — one of Pending/Filling/Crewed/AtRisk. */
+  /** Live state resolved on read — Pending/Filling/Crewed/AtRisk — or the persisted
+   *  terminal state verbatim for a Cancelled (#416) or Completed (#570) shift, which
+   *  the seat-folding resolver cannot produce. */
   state: Shift["state"];
   /** Scheduled trips, earliest first. */
   trips: AllShiftsTrip[];
@@ -80,12 +83,12 @@ export interface AllShiftsRow {
 }
 
 /**
- * Every current shift whose date falls in `[from, to]` (inclusive ISO date
- * strings), sorted by date then earliest departure. Completed shifts are always
- * excluded (historical). Cancelled shifts are excluded by default — "current"
- * means on the books, not killed — but the operator can opt them in via
- * `includeCancelled` (#416) to see what got killed; they come back flagged
- * `cancelled: true` for the surface to grey.
+ * Every shift whose date falls in `[from, to]` (inclusive ISO date strings), sorted
+ * by date then earliest departure. **Completed shifts are included** (#570) and keep
+ * their state verbatim. Cancelled shifts are excluded by default — "current" means on
+ * the books, not killed — but the operator can opt them in via `includeCancelled`
+ * (#416) to see what got killed; they come back flagged `cancelled: true` for the
+ * surface to grey.
  *
  * Per-shift `resolveShiftStateOnRead` re-reads events each call (pilot scale —
  * a handful of shifts per day window; revisit with an index if it ever grows).
@@ -99,7 +102,8 @@ export async function deriveAllShifts(
     tz?: string;
     crewMemberId?: string;
     /** #416: keep Cancelled shifts in the result (flagged), instead of dropping
-     *  them. Completed stays excluded regardless. Default off (DEC-042). */
+     *  them. Governs Cancelled ONLY — Completed is always included (#570).
+     *  Default off (DEC-042). */
     includeCancelled?: boolean;
   },
 ): Promise<AllShiftsRow[]> {
@@ -129,7 +133,11 @@ export async function deriveAllShifts(
   }
 
   for (const shift of allShifts) {
-    if (shift.state === "Completed") continue; // historical — never on the board
+    // A `Completed` shift STAYS on the board (#570 — operator's call). It used to be
+    // dropped as "historical", which was free when nothing ever set the state; now
+    // that the tick completes shifts, dropping them would make a trip vanish from the
+    // board the same evening it ran, mid-day-view. A finished shift is still part of
+    // the day you're looking at.
     // Cancelled: dropped by default (DEC-042 "current only"); opt-in via #416.
     if (shift.state === "Cancelled" && !opts?.includeCancelled) continue;
     if (shift.date < window.from || shift.date > window.to) continue;
@@ -152,14 +160,16 @@ export async function deriveAllShifts(
       if (!seated) continue;
     }
 
-    // A Cancelled shift keeps its persisted state verbatim (#416): the resolver
-    // folds SEAT states and never yields "Cancelled" (derive.ts:637's Cancelled
-    // branch is only reached with a Cancelled base, which seat-folding can't
-    // produce), so resolving here would relabel a dead shift Pending/Filling/…/
-    // AtRisk — and the row would then sprout a live "needs attention" At-Risk link.
+    // A Cancelled or Completed shift keeps its persisted state verbatim (#416, #570):
+    // the resolver folds SEAT states and can only yield Pending/Filling/Crewed/AtRisk
+    // (`derive.ts:652` — neither terminal state is producible from seats), so resolving
+    // one here would relabel it and the row would sprout live affordances. Cancelled
+    // would read Pending/Filling/AtRisk; `Completed` would read **Crewed**, which is
+    // the more dangerous of the two now that the board keeps showing it — a finished
+    // trip presenting as a live crewed one, complete with a "needs attention" link.
     const state =
-      shift.state === "Cancelled"
-        ? "Cancelled"
+      shift.state === "Cancelled" || shift.state === "Completed"
+        ? shift.state
         : (await resolveShiftStateOnRead(repo, shift.id, now, opts)) ?? shift.state;
 
     const trips: AllShiftsTrip[] = [];

@@ -585,8 +585,10 @@ export interface DerivedBailResult {
    * "trainee_seat" = a supernumerary ride (DEC-087): a trainee stepping off is
    * not a bail — no reliability event, no re-ask; `unstaffTraineeSeat` is the
    * path (the caller maps this to "tell the office" copy).
+   * "shift_over" = the shift already `Completed` (#570) — you cannot back out of
+   * work you already did; see the guard for why this is a refusal, not a no-op.
    */
-  code: "raced" | "trainee_seat" | null;
+  code: "raced" | "trainee_seat" | "shift_over" | null;
 }
 
 /**
@@ -625,6 +627,20 @@ export async function bailWithDerivedLateness(
     return { code: "raced" };
   }
   const shift = await repo.getShift(seat.shiftId);
+  // You cannot bail out of work you already did (#570). The seat guards above are
+  // the only ones `bail()` has, so before completion existed this was merely odd:
+  // a crew member tapping "can't make it" on the evening of a trip they'd already
+  // run took the full penalty (notice is negative once departed, so
+  // `bailLatenessMs` saturates at the whole lead — −11.4 at the default horizon).
+  // Completion makes it incoherent as well as unfair: the occupant would hold a +5
+  // `shift_completed` AND a −11.4 `shift_bailed` for the same trip, and because
+  // `refreshShiftStateHorizon` returns early on a terminal state, the shift would
+  // sit `Completed` with a newly `Open` seat under it.
+  //
+  // A refusal, not a silent no-op: both callers (the crew "can't make it" and the
+  // admin "report a bail") need to say something true to a human, and "that shift
+  // already ran" is it.
+  if (shift?.state === "Completed") return { code: "shift_over" };
   const events: Event[] = [];
   for (const eventId of shift?.eventIds ?? []) {
     const event = await repo.getEvent(eventId);

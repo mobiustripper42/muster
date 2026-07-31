@@ -172,7 +172,10 @@ export async function writeSlotBooking(
   if (prior) return { outcome: "already", reservation: prior };
 
   const eventId = eventIdForSlot(req.vesselId, req.date, req.time);
-  const vessel = await repo.getVessel(req.vesselId);
+  const [vessel, offering] = await Promise.all([
+    repo.getVessel(req.vesselId),
+    repo.getOffering(req.offeringId),
+  ]);
   const candidateEvent: Event = {
     id: eventId,
     vesselId: req.vesselId,
@@ -184,6 +187,14 @@ export async function writeSlotBooking(
     status: "scheduled",
     source: "muster",
     price: req.priceCents,
+    // Trip length FROZEN off the offering at materialization (#570), the same reason
+    // `price` is frozen one line up: a later edit to the offering must not change how
+    // long a trip that already ran was. Downstream this sets the shift's end, so it
+    // decides when the completion sweep pays out reliability. Absent on the offering ⇒
+    // omitted, and `eventDurationMinutes` falls back to the flat DEC-041 constant.
+    ...(offering?.tripLengthMinutes !== undefined
+      ? { durationMinutes: offering.tripLengthMinutes }
+      : {}),
   };
   // Same get-or-create as the seeded path (12.12b, DEC-132) — this is the LIVE booking path.
   const customerId = await resolveCustomerId(repo, req, now);

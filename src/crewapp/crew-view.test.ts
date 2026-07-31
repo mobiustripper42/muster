@@ -147,7 +147,7 @@ describe("buildCrewAppView", () => {
     expect(view!.shifts[0]).toMatchObject({ vesselName: "Hops", vesselId: "vessel-1", roleName: "captain", date: "2026-07-04", pending: false });
   });
 
-  it("drops a Confirmed seat orphaned on a Cancelled/Completed shift — the phantom (#415)", async () => {
+  it("drops a Confirmed seat orphaned on a Cancelled shift — the phantom (#415)", async () => {
     const repo = await seed();
     // A future Cancelled shift I still hold a Confirmed seat on (Xola re-import
     // Cancels the shift; DEC-084 leaves the seat) — the prod phantom. Must NOT
@@ -170,6 +170,24 @@ describe("buildCrewAppView", () => {
     // The live ones are untouched.
     expect(view!.shifts.map((s) => s.shiftId)).toContain("shift-up");
     expect(view!.asks.map((a) => a.askId)).toContain("ask-open");
+  });
+
+  it("KEEPS a Completed shift in my-shifts, but still drops a live ask on one (#570)", async () => {
+    const repo = await seed();
+    // The trip ran and I worked it. Until the day rolls over on the `date < today`
+    // guard, it stays on my list — the tick sweeping it at 21:05 must not delete
+    // tonight's shift out from under me. This is the half that differs from Cancelled.
+    await repo.saveShift({ id: asId<"ShiftId">("shift-done"), vesselId: VESSEL, date: "2026-07-18", state: "Completed", eventIds: [] });
+    await repo.saveSeat({ id: asId<"SeatId">("seat-done"), shiftId: asId<"ShiftId">("shift-done"), role: CAPTAIN, kind: "required", state: "Confirmed", assignedCrewMemberId: ME });
+    // An unanswered ask on a shift that already ran is still a phantom, though —
+    // that's an ACTION ("answer this"), not a record of work done.
+    await repo.saveShift({ id: asId<"ShiftId">("shift-done-ask"), vesselId: VESSEL, date: "2026-07-19", state: "Completed", eventIds: [] });
+    await repo.saveSeat({ id: asId<"SeatId">("seat-done-ask"), shiftId: asId<"ShiftId">("shift-done-ask"), role: CAPTAIN, kind: "required", state: "Asked" });
+    await repo.saveAsk({ id: asId<"AskId">("ask-done"), seatId: asId<"SeatId">("seat-done-ask"), crewMemberId: ME, channel: "push", sentAt: "2026-07-01T09:00:00.000Z" });
+
+    const view = await buildCrewAppView(repo, ME, NOW);
+    expect(view!.shifts.map((s) => s.shiftId)).toContain("shift-done");
+    expect(view!.asks.map((a) => a.askId)).not.toContain("ask-done");
   });
 
   it("includes a Claimed (not-yet-confirmed) seat in my-shifts, marked pending (#4)", async () => {

@@ -410,6 +410,120 @@ describe("tick — board-landing detection (DEC-026)", () => {
   });
 });
 
+describe("tick — completion sweep (#570)", () => {
+  /** Crew the shift's single captain seat and confirm it, as of `AFTER`. */
+  async function crewIt(): Promise<{ crew: CrewMemberId; seat: SeatId }> {
+    const crew = await addCaptain("cap-1");
+    await formShifts(repo);
+    await tick(repo, AFTER); // births Filling + fires the ask
+    const seatId = (await repo.listSeatsForShift(SHIFT))[0]!.id;
+    const asks = await repo.listAsksForSeat(seatId);
+    await recordResponse(repo, asks[0]!.id, "accepted", AFTER);
+    await confirmSeat(repo, seatId, AFTER);
+    return { crew, seat: seatId };
+  }
+
+  it("completes a departed shift whose crew was still aboard, and scores each of them", async () => {
+    await seedVesselEvent();
+    const { crew, seat } = await crewIt();
+    expect(await shiftState()).toBe("Crewed");
+
+    // Departure is 15:00 TENANT-local (America/New_York) = 19:00Z, so the flat
+    // shift end is 19:00Z + 100 trip + 25 teardown = 21:05Z on 07-01. DEPARTED is
+    // 07-02T00:00Z, past it.
+    const r = await tick(repo, DEPARTED);
+
+    expect(r.shiftsCompleted).toBe(1);
+    expect(await shiftState()).toBe("Completed");
+    const completed = (await repo.reliabilityEventsFor(crew)).filter(
+      (e) => e.type === "shift_completed",
+    );
+    expect(completed).toHaveLength(1);
+    expect(completed[0]!.metadata.seatId).toBe(seat);
+    expect(completed[0]!.metadata.shiftId).toBe(SHIFT);
+  });
+
+  it("does NOT complete before the shift end — a trip mid-water is not done", async () => {
+    await seedVesselEvent();
+    await crewIt();
+
+    // 20:00Z: genuinely mid-trip — after the 19:00Z departure, before the 21:05Z end.
+    const r = await tick(repo, new Date("2026-07-01T20:00:00.000Z"));
+
+    expect(r.shiftsCompleted).toBe(0);
+    expect(await shiftState()).toBe("Crewed");
+  });
+
+  it("respects the event's own duration — a long charter is still out when a flat shift would be done (#570)", async () => {
+    await seedVesselEvent();
+    // Same departure, but a 6-hour charter: ends 19:00Z + 360 + 25 = 01:25Z on 07-02.
+    const e = (await repo.listEvents())[0]!;
+    await repo.saveEvent({ ...e, durationMinutes: 360 });
+    await crewIt();
+
+    // DEPARTED (07-02T00:00Z) is the exact instant that completes a FLAT shift in
+    // the first test. This charter is still on the water, so it must not complete —
+    // this assertion is the whole point of per-event duration.
+    expect((await tick(repo, DEPARTED)).shiftsCompleted).toBe(0);
+    expect(await shiftState()).toBe("Crewed");
+
+    expect(
+      (await tick(repo, new Date("2026-07-02T02:00:00.000Z"))).shiftsCompleted,
+    ).toBe(1);
+    expect(await shiftState()).toBe("Completed");
+  });
+
+  it("is idempotent — a second sweep neither re-completes nor double-scores", async () => {
+    await seedVesselEvent();
+    const { crew } = await crewIt();
+
+    await tick(repo, DEPARTED);
+    const r2 = await tick(repo, DEPARTED);
+
+    expect(r2.shiftsCompleted).toBe(0);
+    expect(
+      (await repo.reliabilityEventsFor(crew)).filter((e) => e.type === "shift_completed"),
+    ).toHaveLength(1);
+  });
+
+  it("leaves a departed shift nobody crewed alone — no +5 for an empty boat", async () => {
+    await seedVesselEvent();
+    await addCaptain("cap-1");
+    await formShifts(repo); // Pending, seat Open, never filled
+
+    const r = await tick(repo, DEPARTED);
+
+    expect(r.shiftsCompleted).toBe(0);
+    expect(await shiftState()).toBe("Pending");
+    expect(await repo.reliabilityEventsFor(asId<"CrewMemberId">("cap-1"))).toEqual([]);
+  });
+
+  it("scores only required seats — a supernumerary rider didn't crew it (DEC-087)", async () => {
+    await seedVesselEvent();
+    const { crew } = await crewIt();
+    const rider = await addMate("rider");
+    const seats = await repo.listSeatsForShift(SHIFT);
+    await repo.saveSeat({
+      ...seats[0]!,
+      id: asId<"SeatId">("seat-super"),
+      kind: "supernumerary",
+      role: MATE,
+      state: "Confirmed",
+      assignedCrewMemberId: rider,
+    });
+
+    const r = await tick(repo, DEPARTED);
+
+    expect(r.shiftsCompleted).toBe(1);
+    expect(
+      (await repo.reliabilityEventsFor(crew)).filter((e) => e.type === "shift_completed"),
+    ).toHaveLength(1);
+    expect(
+      (await repo.reliabilityEventsFor(rider)).filter((e) => e.type === "shift_completed"),
+    ).toEqual([]);
+  });
+});
+
 describe("resolveShiftStateOnRead (DEC-023 corollary)", () => {
   it("resolves past-horizon exhaustion to AtRisk even when the badge is stale", async () => {
     await seedVesselEvent();

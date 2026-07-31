@@ -145,6 +145,26 @@ export function logAskIgnored(
 
 // ── Commitment events (per confirmed seat) ──────────────────────────────────
 
+/**
+ * Took an open seat unprompted (#570) — positive, and the one reliability event
+ * emitted at acquisition rather than at outcome. Amends DEC-078's "a claim itself
+ * emits no reliability event": the engine could already *subtract* from a
+ * self-server who dropped a shift (release routes through the bail edge) but never
+ * add for one who worked it, so self-serve was all downside.
+ */
+export function logSelfClaim(
+  repo: Repository,
+  crewMemberId: CrewMemberId,
+  seatId: SeatId,
+  shiftId: ShiftId,
+  now: Date,
+): Promise<ReliabilityEvent> {
+  return recordReliabilityEvent(repo, crewMemberId, "self_claim", now, {
+    seatId,
+    shiftId,
+  });
+}
+
 /** Trip ran and they crewed it — positive. */
 export function logShiftCompleted(
   repo: Repository,

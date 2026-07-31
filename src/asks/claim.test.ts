@@ -277,14 +277,39 @@ describe("claimSeat (DEC-075/078)", () => {
     expect((await repo.getSeat(seatId))?.state).toBe("Open");
   });
 
-  it("a claim emits no reliability event (DEC-078 — earned at Completed, not claim)", async () => {
+  it("a winning claim emits self_claim (#570 — amends DEC-078's earned-at-Completed rule)", async () => {
     const c = await crew("c", [MATE]);
     const sh = await shift("sh");
     const seatId = await seat(sh, "seat-1", { role: MATE });
 
     await claimSeat(repo, c, seatId, NOW);
 
-    expect(await repo.reliabilityEventsFor(c)).toHaveLength(0);
+    const events = await repo.reliabilityEventsFor(c);
+    expect(events).toHaveLength(1);
+    expect(events[0]!.type).toBe("self_claim");
+    expect(events[0]!.metadata.seatId).toBe(seatId);
+    expect(events[0]!.metadata.shiftId).toBe(sh);
+  });
+
+  it("only the CAS winner is scored — the just_taken loser emits nothing (#570)", async () => {
+    // Concurrent, not sequential: a sequential second claim returns `not_claimable`
+    // on the Confirmed seat and never reaches the CAS, so it would prove nothing
+    // about the branch this guards. Promise.all is what actually produces a
+    // `just_taken` loser (same shape as the race test above).
+    const a = await crew("a", [MATE]);
+    const b = await crew("b", [MATE]);
+    const sh = await shift("sh");
+    const seatId = await seat(sh, "contested", { role: MATE });
+
+    const [ra, rb] = await Promise.all([
+      claimSeat(repo, a, seatId, NOW),
+      claimSeat(repo, b, seatId, NOW),
+    ]);
+
+    expect([ra.code, rb.code]).toContain("just_taken");
+    const [winner, loser] = ra.code === null ? [a, b] : [b, a];
+    expect(await repo.reliabilityEventsFor(winner)).toHaveLength(1);
+    expect(await repo.reliabilityEventsFor(loser)).toHaveLength(0);
   });
 
   it("inactive crew and missing seats are gone", async () => {

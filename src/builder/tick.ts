@@ -31,6 +31,7 @@ import { buildAskSuppression } from "../asks/suppression.js";
 import { poolExhaustedFor } from "../oracle/oracle.js";
 import {
   logBoardLanded,
+  logShiftCompleted,
   SYSTEM_ACTOR_ID,
 } from "../oracle/reliability-log.js";
 import { vesselDateOf, withinCivilWindow } from "../config/tenant.js";
@@ -41,6 +42,7 @@ import {
   fillDeadlineFromEvents,
   FILL_DEADLINE_HOURS,
   resolveShiftState,
+  shiftEndFromEvents,
   staffingHorizonFor,
   staffingHorizonFromEvents,
   STAFFING_HORIZON_LEAD_DAYS,
@@ -95,6 +97,12 @@ export interface TickResult {
    * talks to a transport (DEC-MSG-3); this return value is the seam.
    */
   firedAsks: Ask[];
+  /**
+   * Shifts advanced to `Completed` this tick (#570) — trips that ran, with their
+   * crew still aboard at the end. Counts shifts, not the per-seat
+   * `shift_completed` events fanned out under them.
+   */
+  shiftsCompleted: number;
 }
 
 /**
@@ -171,6 +179,7 @@ export async function tick(
     boardLanded: 0,
     boardLandings: [],
     firedAsks: [],
+    shiftsCompleted: 0,
   };
 
   // One-boat-per-day (#393): a crew member holds at most one live ask across the
@@ -228,6 +237,62 @@ export async function tick(
     // scheduled event (`null`) has no departure to be past, so it falls through.
     const ids = new Set(shift.eventIds);
     const events = allEvents.filter((e) => ids.has(e.id));
+
+    // Completion sweep (#570) — deliberately ABOVE the past-trip guard below, which
+    // is precisely why nothing ever set `Completed`: that `continue` walks away from
+    // a departed shift, and a departed shift is the only kind that can complete.
+    //
+    // The rule is the operator's: the trip ran and the crew was still on it. So the
+    // shift end has passed (`shiftEndFromEvents` — last trip END + teardown, DEC-041,
+    // now per-event since #570) and at least one required seat is still `Confirmed`.
+    // A shift whose crew all bailed reaches its end date having never run with anyone
+    // aboard; completing it would mint +5s for an empty boat, so it is left alone for
+    // the operator (the At-Risk trail already records what happened).
+    //
+    // This is RELIABILITY-grade, not money-grade: `shiftEndFromEvents` is derived from
+    // scheduled departures + a duration, and nobody asserts the boat actually left.
+    // Good enough to score ranking, deliberately NOT the signal to pay a tip on — that
+    // needs a human or a real departure feed, and is a separate build.
+    //
+    // `Completed` is terminal and stays that way: `refreshShiftState` /
+    // `refreshShiftStateHorizon` both return early on it (`ask-loop.ts:67,99`) and
+    // `formShifts` guards it (#20), so a later seat mutation or Xola re-import can't
+    // fold it back to a live state.
+    //
+    // NOT gated on the shift's own state. `Pending` is claimable (`claimable.ts:29`),
+    // so a shift that never entered the staffing window can still carry a Confirmed
+    // self-claimed seat and really have run — skipping it would silently withhold the
+    // +5, which is the exact failure #570 exists to fix.
+    const shiftEnd = shiftEndFromEvents(events, tz);
+    if (shiftEnd !== null && shiftEnd.getTime() <= now.getTime()) {
+      const seats = await repo.listSeatsForShift(shift.id);
+      // DEC-087: supernumerary/trainee seats are not the crew that ran the boat.
+      const crewed = seats.filter(
+        (s) =>
+          s.kind === "required" &&
+          s.state === "Confirmed" &&
+          s.assignedCrewMemberId !== undefined,
+      );
+      if (crewed.length > 0) {
+        await repo.saveShift({ ...shift, state: "Completed" });
+        for (const seat of crewed) {
+          await logShiftCompleted(
+            repo,
+            seat.assignedCrewMemberId!,
+            shift.id,
+            now,
+            seat.id,
+          );
+        }
+        result.shiftsCompleted++;
+        result.shiftsAdvanced++;
+        continue; // terminal — no drip, no escalation, no board landing
+      }
+    }
+
+    // Past-trip guard (#147, DEC-062): once the earliest scheduled trip has
+    // departed, the shift is no longer the engine's to work (see the note above
+    // `const ids` — this is the `continue` that comment describes).
     const tripStart = earliestScheduledStart(events, tz);
     if (tripStart !== null && tripStart.getTime() <= now.getTime()) continue;
     // The shift's vessel-local trip day — the key for the one-boat-per-day drip

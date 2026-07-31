@@ -27,6 +27,27 @@
  *    A fast "no" costs nothing and earns a little — reachability is the signal;
  *    silence is the only ask-level sin. (Reverses the prior decline-neutral rule,
  *    DEC-008/DEC-025 — a decline used to weigh 0.)
+ *  - **Doing the work outweighs answering about it (#570).** `shift_completed` +5
+ *    and `self_claim` +4 both beat `ask_accepted` +2. Before #570 neither was ever
+ *    emitted, so answering asks was the *only* thing that moved a score — which
+ *    ranked the two hardest-working crew 16th and 13th while two crew with one
+ *    shift each sat 3rd and 4th on accumulated declines. Completion is the
+ *    dominant term (it alone cut rank displacement 106 → 32 against the operator's
+ *    own ordering); `self_claim` adds little to *fit* — self-claimers complete
+ *    those shifts anyway, so completion already counts them — and is carried as a
+ *    **leading indicator**: someone who picks up five shifts next month should
+ *    rank up before any of them run, which a past-seat measure structurally can't
+ *    see. Self-claim outranks `ask_accepted` because no prompt was needed.
+ *    A claim-then-release is **weakly** self-limiting, not fully closed: release
+ *    routes through the bail edge, and `bailLatenessMs` clamps to 0 once notice
+ *    exceeds `STAFFING_HORIZON_LEAD_DAYS` (`derive.ts:616`), so a release ≥7 days
+ *    out takes only the flat −3 and the pair nets **+1**. At departure it nets
+ *    −7.4. The claimable window is 45 days against a 7-day lead, so most of it sits
+ *    in the +1 zone. What blunts it is the **count-based** window: the pair burns
+ *    two of the 40 slots for +1, where a plain `ask_declined` earns +1 in one — so
+ *    churning claims is worse per slot than just answering "out". Known and
+ *    accepted at pilot scale (#570); a hard fix means pairing a `self_claim` to its
+ *    own seat's later bail in the scorer.
  *  - **Bail lateness is the signal.** `shift_bailed` carries a fixed floor (−3, =
  *    a ghosted ask so "confirm-then-cancel-early" never beats vanishing) plus a
  *    lateness-scaled penalty from `metadata.latenessMs`, so a late bail weighs
@@ -95,6 +116,7 @@ export const DEFAULT_WEIGHTS: ReliabilityWeights = {
     ask_accepted: 2,
     ask_declined: 1,
     ask_ignored: -3,
+    self_claim: 4,
     shift_completed: 5,
     shift_bailed: -3,
     no_show: -15,

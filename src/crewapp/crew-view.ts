@@ -198,11 +198,15 @@ export async function buildCrewAppView(
   for (const seat of held) {
     const shift = await repo.getShift(seat.shiftId);
     if (!shift || shift.date < today) continue; // past shifts drop off
-    // #415 family: a Confirmed/Claimed seat orphaned on a Cancelled/Completed shift
-    // (a Xola re-import Cancels the shift but DEC-084 leaves the seat) is a phantom.
-    // Every "my committed shifts" read needs this guard — here, the calendar feed,
-    // the thread list, and the availability scan (committedDatesByCrew) all carry it.
-    if (shift.state === "Cancelled" || shift.state === "Completed") continue;
+    // #415 family: a Confirmed/Claimed seat orphaned on a **Cancelled** shift (a Xola
+    // re-import Cancels the shift but DEC-084 leaves the seat) is a phantom — the
+    // trip isn't happening and the card would be a lie.
+    //
+    // `Completed` is NOT that case (#570) and is deliberately kept: the trip DID
+    // happen, this crew member worked it, and the card stays truthful until the day
+    // rolls over on the `shift.date < today` guard above. Dropping it would delete
+    // tonight's shift off your own list the moment the tick swept it.
+    if (shift.state === "Cancelled") continue;
     // #196: seat provenance decides the "Added for you" badge. An operator
     // override is a force-place → badge; a self-claim or an accepted ask is an
     // opt-in → no badge (the bug #196 fixes: a self-claim has no accepted ask, so

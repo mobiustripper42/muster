@@ -82,8 +82,14 @@ export async function buildCalendarFeed(
   for (const seat of mine) {
     const shift = await repo.getShift(seat.shiftId);
     if (!shift || shift.date < floor) continue;
-    // A live regen shouldn't emit a killed/done shift even if a stale seat lingers.
-    if (shift.state === "Cancelled" || shift.state === "Completed") continue;
+    // A live regen shouldn't emit a KILLED shift even if a stale seat lingers.
+    //
+    // A `Completed` one is emitted (#570). This is a subscribed calendar: dropping an
+    // event retroactively deletes it from the crew member's own calendar the evening
+    // the tick sweeps, so a shift they actually worked disappears from their history
+    // on every client. `floor` already bounds how far back the feed reaches — that's
+    // the right control for "how much past", not the shift's lifecycle state.
+    if (shift.state === "Cancelled") continue;
 
     const evs: Event[] = [];
     for (const id of shift.eventIds) {

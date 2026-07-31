@@ -30,6 +30,7 @@ import {
 import type { CandidateVerdict } from "../oracle/eligibility.js";
 import { evaluateCandidate, nativeRole } from "../oracle/eligibility.js";
 import { committedDatesByCrew } from "../oracle/oracle.js";
+import { logSelfClaim } from "../oracle/reliability-log.js";
 import type { Repository } from "../ports/repository.js";
 import type { DerivedBailResult } from "./ask-loop.js";
 import { bailWithDerivedLateness, refreshShiftState } from "./ask-loop.js";
@@ -68,8 +69,12 @@ export interface ClaimResult {
  * Claim an Open seat for a crew member (`Open → Confirmed`, auto-lock — DEC-075).
  *
  * Re-validates the *whole* claimable predicate (it never trusts `seatId`), then
- * does the guarded CAS. Emits **no** reliability event — a claim is an assignment,
- * like an operator override; reliability is earned at `Completed` (DEC-078).
+ * does the guarded CAS. On a win it emits `self_claim` (+4) — #570's amendment to
+ * DEC-078, which had reliability earned only at `Completed`. That rule made
+ * self-serve all downside: releasing a claimed seat already ran through the bail
+ * edge (−3 plus lateness) while taking one scored nothing. DEC-078's adjacent
+ * *"Rejected: reliability-dinging the claim"* line is untouched and still stands —
+ * that was about penalizing a claim, and this is the opposite direction.
  */
 export async function claimSeat(
   repo: Repository,
@@ -164,6 +169,11 @@ export async function claimSeat(
   };
   const won = await repo.saveSeatIfState(confirmed, seat.state);
   if (!won) return { code: "just_taken" };
+  // Logged only on the CAS WIN (#570) — a loser of the race took no seat, so the
+  // +4 must not accrue to them. Same discipline as `recordResponse`'s contested
+  // accept, inverted: that logs responsiveness regardless because answering IS the
+  // behavior scored; this scores *acquiring*, which only the winner did.
+  await logSelfClaim(repo, crewId, seat.id, seat.shiftId, now);
   await refreshShiftState(repo, seat.shiftId);
   return { code: null, seat: confirmed };
 }

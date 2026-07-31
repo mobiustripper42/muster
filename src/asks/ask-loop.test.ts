@@ -705,6 +705,29 @@ describe("bailWithDerivedLateness (DEC-028 glue — the one home of it)", () => 
     const out = await bailWithDerivedLateness(repo, seatId!, T0);
     expect(out.code).toBe("raced");
   });
+
+  it("refuses to bail a Completed shift — you can't back out of work you did (#570)", async () => {
+    const a = await addCrew("crew-a");
+    const [seatId] = await addShift(1);
+    const ask = await assignPerson(repo, seatId!, a, T0);
+    await recordResponse(repo, ask!.id, "accepted", later(1000));
+    await confirmSeat(repo, seatId!, later(2000));
+    const shift = (await repo.getShift(SHIFT))!;
+    await repo.saveShift({ ...shift, state: "Completed" });
+
+    const out = await bailWithDerivedLateness(repo, seatId!, later(3000), a);
+
+    // Without the guard this logs the FULL penalty: notice is negative once the trip
+    // has run, so `bailLatenessMs` saturates at the whole lead (−11.4 at the default
+    // horizon) — on top of the +5 the completion sweep already granted for the same
+    // trip. And since `refreshShiftStateHorizon` returns early on a terminal state,
+    // the shift would be left `Completed` with an `Open` seat beneath it.
+    expect(out.code).toBe("shift_over");
+    expect(await types(a)).not.toContain("shift_bailed");
+    expect((await repo.getSeat(seatId!))!.state).toBe("Confirmed");
+    expect((await repo.getSeat(seatId!))!.assignedCrewMemberId).toBe(a);
+    expect((await repo.getShift(SHIFT))!.state).toBe("Completed");
+  });
 });
 
 describe("manualOverride — the authority backstop (§2.4)", () => {

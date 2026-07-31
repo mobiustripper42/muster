@@ -208,7 +208,7 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 ### Open questions
 - DEC-TBD — Open questions (carried from the spec; not Claude's to set alone)
 
-_Indexed 143 of 143 DECs. **This file is GENERATED** by `npm run gen:decisions` —
+_Indexed 144 of 144 DECs. **This file is GENERATED** by `npm run gen:decisions` —
 edit `docs/decisions/DEC-*.md`, not this file. `npm run check:decisions` fails on a stale index, a
 duplicate id, an unknown topic, an unknown relation, a forward-pointing amendment, or a
 reference to a decision that does not exist._

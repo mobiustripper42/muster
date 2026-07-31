@@ -16,6 +16,7 @@ import { forwardNotifications } from "../adapters/forward-notifications.js";
 import { makeDoorbellRules } from "../messaging/doorbell-decider.js";
 import { buildRingOutboxView } from "../admin/ring-outbox-view.js";
 import { doorbellTick } from "./doorbell-tick.js";
+import { RING_NOTIFICATION_BODY } from "../adapters/forward-notifications.js";
 
 const RULES = makeDoorbellRules({ batchWindowMs: 90_000, presenceWindowMs: 300_000, shortNoticeMaxChars: 160 });
 const THREAD = asId<"ThreadId">("thread-all_staff-t1-all");
@@ -68,7 +69,7 @@ describe("doorbell-ring relay loop (#118, DEC-073)", () => {
     // Two ring entries, each a deep-link into the thread (the §7.5 inlined content).
     let view = await buildRingOutboxView(repo);
     expect(view.pending.map((c) => c.crewName).sort()).toEqual(["Alice", "Bob"]);
-    expect(view.pending[0]!.body).toBe("You have a new Muster message"); // bare notification, not the note text (#387)
+    expect(view.pending[0]!.body).toBe(RING_NOTIFICATION_BODY); // bare, not the note text (#387)
     expect(view.pending[0]!.link).toContain(`thread=${encodeURIComponent(String(THREAD))}`);
     expect(view.sent).toHaveLength(0);
 

@@ -573,6 +573,53 @@ historical migration with no rollback.
 
 ---
 
+## Phase 13: Time Clock & Payroll Hours
+
+*Trigger: operator ask (2026-07-31) — crew clock in and out on their own phone, and a per-pay-period hours
+report to hand to the payroll company. Runs on **`feature/time-clock`** beside Phase 12 rather than after it:
+reservations is running longer than planned, and this feature shares no tables with it. DEC-059 shape — task
+PRs target the feature branch, which merges to `main` only when the whole thing is prod-ready.*
+
+**What it replaces.** `/admin/payroll` already reports per-crew hours for a biweekly pay period — but they are
+*estimated* from confirmed seats, and `src/admin/payroll.ts:6` says "not a punch clock" in its own header.
+Phase 13 makes the real number exist and puts it **beside** the estimate rather than over it, so the two can
+disagree visibly. Pay periods (`src/admin/pay-periods.ts`) and the CSV-route pattern
+(`app/(admin)/admin/payroll/tips.csv/route.ts`) are already built and get reused, not rebuilt.
+
+**The four calls** (operator, 2026-07-31 — recorded as **DEC-144**, authored at 13.1):
+- **Free-standing punch, shift auto-matched.** A punch is a person and two timestamps; the day's confirmed
+  shift is tagged on when there's exactly one, else left null. Cleaning and dock days still log.
+- **Honor system.** No geofence, no device binding, no photo. A phone can clock in from a couch — accepted,
+  because this produces a number to send out, not surveillance.
+- **A missed clock-out is flagged, never auto-closed.** It shows as still-clocked-in and an admin fixes it.
+  Muster does not invent a time that becomes a paycheck.
+- **Exact minutes, decimal hours.** No rounding policy in the code; the payroll company applies its own.
+
+**No collision with Phase 12.** New table, new routes. The one shared file is `/admin/payroll`'s page, which
+12.3 also touches for the tips section. Timestamped migrations (DEC-121) keep the ledger clean across two live
+feature branches — precisely the `feature/reservations`-vs-`main` clash that decision was written for.
+
+| # | Task | Effort | Notes |
+|---|------|--------|-------|
+| 13.1 | **Time punch domain + persistence** — `TimePunch` (`inAt` / `outAt` / `shiftId` / `origin` / `adminEditedAt`) + `TimePunchId`; `clockIn` / `clockOut` / `openPunchFor` use-cases; confirmed-seat shift auto-match (exactly-one, else null); port + in-memory + Postgres adapters + contract-suite coverage; migration carrying a **partial unique index on `(crew_member_id) where out_at is null`** — one open punch per person as a structural invariant (DEC-131), which is what makes a double-tapped *Clock in* a no-op rather than two punches | 5 | authors **DEC-144** · the phase's only real unknowns (mutex, auto-match, vessel-local-vs-UTC bucketing) · **re-poker to 8 if it grows**  · [#625](https://github.com/mobiustripper42/muster/issues/625) |
+| 13.2 | **Crew `/crew/time`** — clock in / clock out card reflecting current state, an "on the clock since" line, this period's punches + running total; a "Time" tile on `/crew` beside Time off. Server-rendered, no client JS (DEC-026); feedback rides redirect params as **codes**, never prose | 3 | mirrors `/crew/time-off` · mobile-primary, works at 375px · elapsed is a render-time value, not a ticking counter  · [#626](https://github.com/mobiustripper42/muster/issues/626) |
+| 13.3 | **Admin `/admin/time-clock`** — punch list per pay period; **add a punch outright** (crew + date + in/out), edit either time, close an open punch, delete. Admin-written punches stamp `origin` / `adminEditedAt` and are marked as such on the report, so hours nobody actually punched are never silently indistinguishable from hours they did | 3 | **grew at poker** — create was added to the original edit-only scope · the likeliest 3→5  · [#627](https://github.com/mobiustripper42/muster/issues/627) |
+| 13.4 | **Hours report + CSV** — `buildTimeClockReport` (vessel-local bucketing via `vesselDateOf`, DST-safe window bounds via `zonedWallClockToInstant`); an Actual-hours section on `/admin/payroll` beside the estimate; an `hours.csv` route mirroring `tips.csv`. Open punches are **excluded from the hours total and counted in their own column** — the recipient sees an incomplete number rather than a silently short one | 3 | `employee_id` reuses `crew_members.gusto` (migration `20260719011405`), blank when unmapped  · [#628](https://github.com/mobiustripper42/muster/issues/628) |
+
+**Phase 13 total: 4 tasks, 14 points** (pokered 2026-07-31). Against this project's burst history — 146 pts
+across 11.2 days over phases 4/7/8/9/10, at 9–12 pts per session — that reads as **1–2 working sessions,
+1–3 calendar days**, ±50% per `VELOCITY_AND_POKER_GUIDE.md`. It will be a *burst*, not a weekly rate: no phase
+under 30 points has ever spanned a week here.
+
+**Watch for** 13.1 growing. Net drift has run +4, +7, −2, 0, 0, 0, and when it goes positive it is always the
+same signature — a coherent unit turning out bigger once committed to, not an estimate missed. If 13.1 becomes
+an 8 the phase is 17 and it is two sessions.
+
+**Off the velocity plan** (operator time, out-of-band): the migration is hand-applied to prod *before* the code
+is promoted, per the Migration Protocol. Ship the code first and `/crew/time` 500s on a missing table.
+
+---
+
 ## Estimation Poker — Standing Disagreements
 
 Phase 0 + Phase 1 pokered 2026-06-03. Contested estimates resolved in session:

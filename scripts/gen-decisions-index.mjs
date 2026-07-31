@@ -396,8 +396,27 @@ export function renderIndex(decisions, incoming, preamble) {
     out.push('')
   }
 
+  // Completeness is ASSERTED, not printed. It used to be rendered as "Indexed N of M
+  // DECs" — which the 2026-07-25 audit found had drifted to "124 of 124" against a real
+  // 131 rows / 136 bodies (shards Z1-2, Z2-5, Z4-9), i.e. the number that claimed
+  // completeness was itself the thing that was wrong.
+  //
+  // Generating it fixed the drift and created a worse problem: it is the ONLY
+  // per-branch-varying line in a generated, committed file. Two branches that each add a
+  // decision write different numbers here, git merges the DEC rows cleanly and silently
+  // takes one footer, and `main` lands stale with no conflict marker — which is exactly
+  // how main went red after the six-PR merge on 2026-07-31. A throw catches the same
+  // invariant at generation time, where it's actionable, and costs the file nothing:
+  // the row count is visible by looking at the list directly above.
+  if (indexed !== decisions.size) {
+    throw new Error(
+      `index rendered ${indexed} of ${decisions.size} decisions — ` +
+        `${decisions.size - indexed} did not reach a topic section`,
+    )
+  }
+
   out.push(
-    `_Indexed ${indexed} of ${decisions.size} DECs. **This file is GENERATED** by \`npm run gen:decisions\` —`,
+    `_**This file is GENERATED** by \`npm run gen:decisions\` —`,
     `edit \`${DIR}/DEC-*.md\`, not this file. \`npm run check:decisions\` fails on a stale index, a`,
     'duplicate id, an unknown topic, an unknown relation, a forward-pointing amendment, or a',
     'reference to a decision that does not exist._',

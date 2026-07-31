@@ -599,17 +599,27 @@ disagree visibly. Pay periods (`src/admin/pay-periods.ts`) and the CSV-route pat
 12.3 also touches for the tips section. Timestamped migrations (DEC-121) keep the ledger clean across two live
 feature branches — precisely the `feature/reservations`-vs-`main` clash that decision was written for.
 
+**One vocabulary fix rides along (13.0).** The ask card asks "In or out?" and the time clock adds "Clock in /
+Clock out" — two different meanings of *in* on one small app, and *out* was already carrying "Time off" as a
+third. Operator was never sold on In/Out anyway (2026-07-31), so the collision is the forcing function rather
+than the reason. **It costs nothing structural:** the domain stores `AskResponse = "accepted" | "declined"`
+(`src/domain/entities.ts:739`) — In/Out never reached the database, so this is copy and a revert away from
+undone. **13.0 is the one task here that PRs straight to `main`**, not onto the feature branch: it's
+independently shippable and `main` stays promotable (DEC-059). It only needs to land *before* crew meet both
+surfaces.
+
 | # | Task | Effort | Notes |
 |---|------|--------|-------|
+| 13.0 | **Ask vocabulary: In/Out → Yes/No** — the ask card heading, explainer + both buttons (`app/(crew)/crew/page.tsx:618`); **the ask SMS body** (`src/adapters/forward-asks.ts:54`) — the highest-stakes of the four, since it's what crew read before any screen; the help page that teaches the vocabulary; the operator-as-crew inline buttons (`src/asks/answer-as.ts`). Buttons go blunt and the sentence above them keeps the warmth: *"Yes = you're on for this shift. No = you're not — either way, please tap."* | 2 | **PRs to `main`, not `feature/time-clock`** · authors **DEC-145** + a declared `amends_spec` on §2.6.1 (DEC-143) · also `docs/SPEC.md:1206` and `.claude/ui-context.md:76` — the latter is `@ui-reviewer`'s binding-constraint list, so it moves or the agent reviews against dead vocabulary · 6 test assertions on the literal string · could be 3 if the amendment ceremony sprawls  · [#630](https://github.com/mobiustripper42/muster/issues/630) |
 | 13.1 | **Time punch domain + persistence** — `TimePunch` (`inAt` / `outAt` / `shiftId` / `origin` / `adminEditedAt`) + `TimePunchId`; `clockIn` / `clockOut` / `openPunchFor` use-cases; confirmed-seat shift auto-match (exactly-one, else null); port + in-memory + Postgres adapters + contract-suite coverage; migration carrying a **partial unique index on `(crew_member_id) where out_at is null`** — one open punch per person as a structural invariant (DEC-131), which is what makes a double-tapped *Clock in* a no-op rather than two punches | 5 | authors **DEC-144** · the phase's only real unknowns (mutex, auto-match, vessel-local-vs-UTC bucketing) · **re-poker to 8 if it grows**  · [#625](https://github.com/mobiustripper42/muster/issues/625) |
 | 13.2 | **Crew `/crew/time`** — clock in / clock out card reflecting current state, an "on the clock since" line, this period's punches + running total; a "Time" tile on `/crew` beside Time off. Server-rendered, no client JS (DEC-026); feedback rides redirect params as **codes**, never prose | 3 | mirrors `/crew/time-off` · mobile-primary, works at 375px · elapsed is a render-time value, not a ticking counter  · [#626](https://github.com/mobiustripper42/muster/issues/626) |
 | 13.3 | **Admin `/admin/time-clock`** — punch list per pay period; **add a punch outright** (crew + date + in/out), edit either time, close an open punch, delete. Admin-written punches stamp `origin` / `adminEditedAt` and are marked as such on the report, so hours nobody actually punched are never silently indistinguishable from hours they did | 3 | **grew at poker** — create was added to the original edit-only scope · the likeliest 3→5  · [#627](https://github.com/mobiustripper42/muster/issues/627) |
 | 13.4 | **Hours report + CSV** — `buildTimeClockReport` (vessel-local bucketing via `vesselDateOf`, DST-safe window bounds via `zonedWallClockToInstant`); an Actual-hours section on `/admin/payroll` beside the estimate; an `hours.csv` route mirroring `tips.csv`. Open punches are **excluded from the hours total and counted in their own column** — the recipient sees an incomplete number rather than a silently short one | 3 | `employee_id` reuses `crew_members.gusto` (migration `20260719011405`), blank when unmapped  · [#628](https://github.com/mobiustripper42/muster/issues/628) |
 
-**Phase 13 total: 4 tasks, 14 points** (pokered 2026-07-31). Against this project's burst history — 146 pts
-across 11.2 days over phases 4/7/8/9/10, at 9–12 pts per session — that reads as **1–2 working sessions,
-1–3 calendar days**, ±50% per `VELOCITY_AND_POKER_GUIDE.md`. It will be a *burst*, not a weekly rate: no phase
-under 30 points has ever spanned a week here.
+**Phase 13 total: 5 tasks, 16 points** (pokered 2026-07-31; 14 for the time clock proper + 13.0's 2). Against
+this project's burst history — 146 pts across 11.2 days over phases 4/7/8/9/10, at 9–12 pts per session — that
+reads as **1–2 working sessions, 1–3 calendar days**, ±50% per `VELOCITY_AND_POKER_GUIDE.md`. It will be a
+*burst*, not a weekly rate: no phase under 30 points has ever spanned a week here.
 
 **Watch for** 13.1 growing. Net drift has run +4, +7, −2, 0, 0, 0, and when it goes positive it is always the
 same signature — a coherent unit turning out bigger once committed to, not an estimate missed. If 13.1 becomes

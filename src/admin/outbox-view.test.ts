@@ -99,7 +99,7 @@ async function addEntry(
     askId: ask.id,
     seatId: ask.seatId,
     crewMemberId: ask.crewMemberId,
-    body: "Muster: in or out?",
+    body: "Muster: yes or no?",
     link: "http://mill-dev:3000/crew/auth?t=x",
     status: "pending",
     createdAt: ask.sentAt,

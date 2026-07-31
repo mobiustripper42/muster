@@ -71,7 +71,7 @@ export interface ShiftCardView {
   /**
    * Derived end of the time commitment, "HH:mm" — latest departure + the trip
    * length + the call lead reused as a post-trip teardown buffer (DEC-041). The
-   * "when am I free" half of the In/Out decision. Absent on an event-less shift,
+   * "when am I free" half of the Yes/No decision. Absent on an event-less shift,
    * same as `callTime`.
    */
   shiftEndTime?: string;

@@ -63,11 +63,11 @@ export default function CrewHelpPage() {
         An ask shows the day, time, boat, and role, then two buttons:
         <ul className="mt-1 ml-4 list-disc">
           <li>
-            <b className="text-ink">In</b> — you’re on for <b>that shift</b> (the one
+            <b className="text-ink">Yes</b> — you’re on for <b>that shift</b> (the one
             on the card). Just that shift — not a standing commitment.
           </li>
           <li>
-            <b className="text-ink">Out</b> — you’re not available for this one.
+            <b className="text-ink">No</b> — you’re not available for this one.
           </li>
         </ul>
         <span className="mt-1 block">
@@ -75,13 +75,13 @@ export default function CrewHelpPage() {
         </span>
       </Block>
 
-      <Block title="Why we ask you to answer — even Out">
+      <Block title="Why we ask you to answer — even No">
         Everyone has a quiet <b className="text-ink">reliability score</b>. It isn’t a
         grade and it isn’t a gate on what you’re qualified for — the only thing it does
         is set who gets asked <b>first</b>. Here’s the deal, and it’s meant to be fair:
         <ul className="mt-1 ml-4 list-disc">
           <li>
-            A quick <b className="text-ink">Out</b> costs you nothing — it’s a real
+            A quick <b className="text-ink">No</b> costs you nothing — it’s a real
             answer, and it frees Muster to ask the next person right away instead of
             waiting on you.
           </li>

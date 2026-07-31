@@ -29,7 +29,7 @@ function Spinner() {
  * JS posture for pending state only (DEC-089). Plain nav `<Link>`s and `<details>`
  * toggles have no pending state and stay press-only (Layer 1's `:active` cue).
  *
- * **Multi-submit forms** (the crew In/Out ask: one form, two buttons): give each
+ * **Multi-submit forms** (the crew Yes/No ask: one form, two buttons): give each
  * button a distinct `name`/`value`. `useFormStatus().pending` is form-wide (both
  * buttons `disabled`), but `.data` carries the submitted FormData, so a NAMED
  * button spins only when its own `name`/`value` is the pair that was submitted.

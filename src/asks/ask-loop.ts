@@ -339,7 +339,7 @@ export async function recordResponse(
   // **A `withdrawn` ask is the exception and it is still answerable (#600).** The
   // withdrawal exists to stop `expireAsks` inventing an `ask_ignored` for a seat that
   // got taken; it is emphatically NOT a refusal of the crew member's own answer. Six
-  // captains asked, one accepts at 51 seconds, a second taps "In" ten minutes later:
+  // captains asked, one accepts at 51 seconds, a second taps "Yes" ten minutes later:
   // they lost the seat, but they ANSWERED, and DEC-120 pays responsiveness regardless
   // of outcome (`ask_accepted` +2, the contested-loss credit). Treating `withdrawn` as
   // closed here silently deleted that credit — three existing tests caught it, and the

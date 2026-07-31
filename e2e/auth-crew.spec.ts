@@ -21,11 +21,11 @@ test.describe("crew sign-in + render", () => {
     await expect(page.getByRole("heading", { name: "Quint" })).toBeVisible();
     await expect(page.locator('p[aria-label^="Your standing:"]')).toBeVisible();
 
-    // The open ask (§2.6.1) with its In/Out polarity.
-    await expect(page.getByText("In or out?")).toBeVisible();
+    // The open ask (§2.6.1) with its Yes/No polarity.
+    await expect(page.getByText("Yes or no?")).toBeVisible();
     // exact: the page now also has a "Sign out" button (DEC-081).
-    await expect(page.getByRole("button", { name: "In", exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Out", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Yes", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "No", exact: true })).toBeVisible();
 
     // My shifts section.
     await expect(page.getByRole("heading", { name: "My shifts" })).toBeVisible();
@@ -43,6 +43,6 @@ test.describe("crew sign-in + render", () => {
     await expect(
       page.getByText(/sign in with your crew email/i),
     ).toBeVisible();
-    await expect(page.getByText("In or out?")).toHaveCount(0);
+    await expect(page.getByText("Yes or no?")).toHaveCount(0);
   });
 });

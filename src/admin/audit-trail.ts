@@ -42,9 +42,9 @@ export type AuditKind =
 export const AUDIT_KIND_LABEL: Record<AuditKind, string> = {
   asked: "Asked",
   nudged: "Nudged",
-  in: "In",
-  escalation_in: "Escalation In",
-  out: "Out",
+  in: "Yes",
+  escalation_in: "Escalation Yes",
+  out: "No",
   no_reply: "No reply",
   added: "Added",
   removed: "Removed",

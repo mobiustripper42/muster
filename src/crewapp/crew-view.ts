@@ -24,7 +24,7 @@ import type { CrewStandingView } from "./standing.js";
 export type { CrewStandingView } from "./standing.js";
 export type { CredentialConcern } from "../admin/credential-health.js";
 
-/** One open ask awaiting this crew member's In/Out. */
+/** One open ask awaiting this crew member's Yes/No. */
 export interface OpenAskView {
   askId: string;
   seatId: string;
@@ -34,12 +34,12 @@ export interface OpenAskView {
   /** ISO-8601 date of the shift (vessel-local day). */
   date: string;
   /** Call time (show-up), "HH:mm" vessel-local (DEC-041) — earliest departure −
-   * the call lead. The "when do I need to be there" half of the In/Out decision
+   * the call lead. The "when do I need to be there" half of the Yes/No decision
    * (#419: was the raw departure; now the same call→back window as the shift card).
    * Undefined when no event anchors the ask. */
   callTime?: string;
   /** Shift end, "HH:mm" vessel-local (DEC-041) — latest departure + trip length
-   * + teardown (#275), the "how long am I committed" half of the In/Out decision
+   * + teardown (#275), the "how long am I committed" half of the Yes/No decision
    * (#92). Undefined when no event anchors the ask, same as `callTime`. */
   shiftEndTime?: string;
   /** ISO-8601 UTC when the ask went out (for "answered fast" / ordering). */
@@ -68,8 +68,8 @@ export interface MyShiftView {
   callTime?: string;
   shiftEndTime?: string;
   /**
-   * True when the seat is `Claimed` (the crew said "In" but the operator hasn't
-   * confirmed yet) vs `Confirmed` (locked). Shown so a fresh "In" lands visibly
+   * True when the seat is `Claimed` (the crew said "Yes" but the operator hasn't
+   * confirmed yet) vs `Confirmed` (locked). Shown so a fresh "Yes" lands visibly
    * in My shifts instead of vanishing into nothing (#4); the surface labels it
    * "awaiting confirmation".
    */
@@ -77,7 +77,7 @@ export interface MyShiftView {
   /**
    * True when the crew member holds this (`Confirmed`) seat but never accepted an
    * ask for it — the operator force-placed them (override / force-assign), so they
-   * got no In/Out (#161). The surface flags it so a shift they didn't sign up for
+   * got no Yes/No (#161). The surface flags it so a shift they didn't sign up for
    * isn't a silent surprise. A `Claimed` seat is self-accepted by definition, so
    * this only ever marks `Confirmed`.
    */
@@ -186,7 +186,7 @@ export async function buildCrewAppView(
   }
 
   // My shifts: seats I hold on an upcoming shift, soonest first. Includes both
-  // Confirmed (locked) and Claimed (I said "In", operator hasn't confirmed yet —
+  // Confirmed (locked) and Claimed (I said "Yes", operator hasn't confirmed yet —
   // #4: a fresh claim must show here, marked pending, not silently disappear).
   const allSeats = await repo.listAllSeats();
   const held = allSeats.filter(

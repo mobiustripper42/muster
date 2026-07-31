@@ -15,7 +15,7 @@ The spine is a **policy/mechanism split** (DEC-001): the rules are tenant-owned 
 Roles:
 - **Spink** — the operator (BrewBoat's). Semi-retired; the design goal is **no babysitting**. Runs the admin app, leans on crew, makes the 11pm cancel/reschedule call.
 - **Drew** — the owner. Owns the money/policy decisions (refunds, deposit-vs-full). Mostly out of the 2026 build (payments are parked).
-- **Crew** — captains and mates. Magic-link auth, no passwords. The crew app is deliberately small but it is **not** three screens — as of this writing: the ask (the core In/Out card; everything else is secondary), my shifts, the shift card, pick up a shift, messages, calendar, time off, help. **Two are feature-flagged** (`/crew/open` behind `selfServeEnabled()`, `/crew/threads` behind `messagingEnabled()`), so "the crew app" means different things per deploy. Authoritative list: `ls app/\(crew\)/crew/`. The standing pressure isn't a screen count — it's whether a new thing earns a screen, because every extra screen is somewhere stale information can hide.
+- **Crew** — captains and mates. Magic-link auth, no passwords. The crew app is deliberately small but it is **not** three screens — as of this writing: the ask (the core Yes/No card; everything else is secondary), my shifts, the shift card, pick up a shift, messages, calendar, time off, help. **Two are feature-flagged** (`/crew/open` behind `selfServeEnabled()`, `/crew/threads` behind `messagingEnabled()`), so "the crew app" means different things per deploy. Authoritative list: `ls app/\(crew\)/crew/`. The standing pressure isn't a screen count — it's whether a new thing earns a screen, because every extra screen is somewhere stale information can hide.
 
 ## Stack
 

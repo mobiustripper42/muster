@@ -1,7 +1,7 @@
 /**
  * Dev seed for the Crew App (SPEC §2.6). Populates enough state to exercise the
  * crew surfaces by hand: one crew member ("crew-quint") with one CONFIRMED
- * upcoming shift (shows in my-shifts) and one OPEN ask (shows the In/Out card).
+ * upcoming shift (shows in my-shifts) and one OPEN ask (shows the Yes/No card).
  *
  * Idempotent — every write is an upsert. Run against local dev Postgres:
  *   docker compose up -d && npm run db:migrate && npx tsx db/seed-crewapp-dev.ts
@@ -145,7 +145,7 @@ try {
   await repo.saveReservation({ id: asId<"ReservationId">("r-3pm-2"), eventId: E3, customerName: "Vaughn party", partySize: 6, source: "xola", status: "booked" });
   await repo.saveReservation({ id: asId<"ReservationId">("r-5pm-1"), eventId: E5, customerName: "Ellen party", partySize: 2, source: "xola", phone: "+15555552222", status: "booked" });
 
-  // An open ask → the In/Out card on /crew.
+  // An open ask → the Yes/No card on /crew.
   await repo.saveShift({ id: asId<"ShiftId">("shift-ask"), vesselId: VESSEL, date: LATER, state: "Filling", eventIds: [] });
   await repo.saveSeat({ id: asId<"SeatId">("seat-ask"), shiftId: asId<"ShiftId">("shift-ask"), role: CAPTAIN, kind: "required", state: "Asked" });
   await repo.saveAsk({ id: asId<"AskId">("ask-quint-1"), seatId: asId<"SeatId">("seat-ask"), crewMemberId: QUINT, channel: "push", sentAt: "2026-07-01T09:00:00.000Z" });

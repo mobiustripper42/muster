@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { answeredNoticeCode } from "./answered-code.js";
 
-describe("answeredNoticeCode (#161 In/Out feedback)", () => {
+describe("answeredNoticeCode (#161 Yes/No feedback)", () => {
   it("a winning accept → in", () => {
     expect(
       answeredNoticeCode("accepted", { claimed: true, seatState: "Confirmed" }),

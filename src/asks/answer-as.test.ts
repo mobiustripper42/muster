@@ -1,5 +1,5 @@
 /**
- * The operator-as-crew identity guard (DEC-030): the outbox's inline In/Out
+ * The operator-as-crew identity guard (DEC-030): the outbox's inline Yes/No
  * may only answer an ask actually addressed to the operator's own crew
  * identity — never someone else's (reliability-log integrity, DEC-008).
  */

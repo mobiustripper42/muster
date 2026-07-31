@@ -91,7 +91,7 @@ number from this file as current.
 | DEC numbers ≥134 | `docs/DECISIONS.md` on the current branch |
 
 **On crew surface area.** The crew app is deliberately small but it is **not** three screens — as of
-this writing: the ask (the core In/Out card, everything else is secondary), my shifts, the shift card
+this writing: the ask (the core Yes/No card, everything else is secondary), my shifts, the shift card
 (call time vs departure, dock, manifest, co-crew), pick up a shift, messages, calendar, time off, and
 help. Two are feature-flagged, so "the crew app" means different things per deploy. When reviewing a
 proposal that adds crew surface area, the question is never "is three the limit" — it's whether the

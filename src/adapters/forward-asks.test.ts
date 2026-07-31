@@ -76,7 +76,7 @@ describe("forwardAsks — the edge wiring's shared seam (DEC-030)", () => {
       crewMemberId: CREW,
       status: "pending",
       // Human relay text from the spine — GSM-7 only (1-segment SMS).
-      body: "Muster: Sat, Jul 4 - Hops - captain. In or out?",
+      body: "Muster: Sat, Jul 4 - Hops - captain. Yes or no?",
       link: "http://mill-dev:3000/crew/auth?t=secret-0",
     });
   });
@@ -161,13 +161,13 @@ describe("forwardAsks — per-recipient batching (#393)", () => {
     expect(fake.sent[0]!.to.crewMemberId).toBe(CREW);
   });
 
-  it("a lone ask still sends the per-seat 'In or out?' body (no batching)", async () => {
+  it("a lone ask still sends the per-seat 'Yes or no?' body (no batching)", async () => {
     const repo = new InMemoryRepository();
     const ask = await seedSpine(repo);
     const fake = new FakeChannel(() => T0);
     await forwardAsks(repo, fake, [ask]);
     expect(fake.sent).toHaveLength(1);
-    expect(fake.sent[0]!.body).toContain("In or out?");
+    expect(fake.sent[0]!.body).toContain("Yes or no?");
   });
 
   it("batches per recipient — two people get two sends, not one blob", async () => {
@@ -192,7 +192,7 @@ describe("forwardAsks — per-recipient batching (#393)", () => {
       fake.sent.map((s) => [s.to.crewMemberId, s.body]),
     );
     expect(bodyByCrew[CREW]).toBe("Muster: 2 shifts need you. Tap to answer.");
-    expect(bodyByCrew[crewB]).toContain("In or out?");
+    expect(bodyByCrew[crewB]).toContain("Yes or no?");
   });
 
   it("anchors a batch to a surviving ask when the first ask's seat vanished", async () => {

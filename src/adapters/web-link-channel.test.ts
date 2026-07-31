@@ -13,7 +13,7 @@ const ASK = asId<"AskId">("ask-1");
 const askMsg = (over: Partial<OutboundMessage> = {}): OutboundMessage => ({
   to: { crewMemberId: CREW, phone: "+15555550100" },
   kind: "ask",
-  body: "Muster: Sat, Jul 4 · Hops · captain — in or out?",
+  body: "Muster: Sat, Jul 4 · Hops · captain — yes or no?",
   seatId: SEAT,
   askId: ASK,
   ...over,
@@ -44,7 +44,7 @@ describe("WebLinkChannel (DEC-030)", () => {
       askId: ASK,
       seatId: SEAT,
       crewMemberId: CREW,
-      body: "Muster: Sat, Jul 4 · Hops · captain — in or out?",
+      body: "Muster: Sat, Jul 4 · Hops · captain — yes or no?",
       link: "http://mill-dev:3000/crew/auth?t=secret-0",
       status: "pending",
       createdAt: "2026-07-01T12:00:00.000Z",

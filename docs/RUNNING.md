@@ -38,7 +38,7 @@ In dev there's a link issuer:
    confirm page. That extra tap is the prefetch guard (DEC-030): a GET only *peeks* at the token
    (link-preview bots in iMessage/SMS GET every URL); the **POST** behind the button is what
    consumes it, sets the `muster_session` cookie, and redirects to **`/crew`**.
-3. You should see Quint's **ask** (In/Out), **My shifts**, the standing chip, and the amber
+3. You should see Quint's **ask** (Yes/No), **My shifts**, the standing chip, and the amber
    **credential line** (#57): "Your MMC expires &lt;~30d out&gt; — renew it to keep getting asked for shifts."
 
 `/crew/dev-link` is **dev-only** (404 in production). What to try:
@@ -94,7 +94,7 @@ npm run db:seed:atrisk   # 4 board + 2 cockpit scenarios, trips anchored to NOW 
    <48h rows — is the check.)
 3. Tap **↗ Nudge Marisol** (Firkin row) → green *"Last action: nudged Marisol — asked, not yet
    filled"* and the Firkin row is **gone** — its ask is now in flight, which is the engine working,
-   not a bug. (`/crew/dev-link?crew=crew-ar-sub` shows Marisol's In/Out card if you want the loop.)
+   not a bug. (`/crew/dev-link?crew=crew-ar-sub` shows Marisol's Yes/No card if you want the loop.)
 4. Tap **Assignment ↗** (Tidewater row) → the assignment cockpit (#54), badge **Filling**;
    in the pool, Lance reads *declined* (muted, with a **↗ Nudge** button) and Gardner *👻 silent*
    (red, **↗ Nudge**) — visibly different.
@@ -153,7 +153,7 @@ npm run db:seed:outbox   # 3 cards: 2 relays + 1 addressed to the operator (trip
    card is gone (the ask is answered; nothing left to relay).
 5. The full crew loop: paste the Bo card's magic link (it's the second line of the prefilled text)
    into a private window → the **"Tap to sign in →"** confirm page → tap → you land on `/crew` as
-   Bo with the Tideline In/Out ask. Answer it → back in the outbox, Bo's card is gone.
+   Bo with the Tideline Yes/No ask. Answer it → back in the outbox, Bo's card is gone.
 6. Re-run `npm run db:seed:outbox` to reset (old cards retire; fresh asks + links are minted).
 
 ## Other endpoints
@@ -177,7 +177,7 @@ npm run db:seed:outbox   # 3 cards: 2 relays + 1 addressed to the operator (trip
   npm run test:e2e            # headless run
   npm run test:e2e:ui         # interactive runner
   ```
-  Covers: dev-link sign-in + crew render, ask In/Out, bail→regression (crew-only), bail→re-ask
+  Covers: dev-link sign-in + crew render, ask Yes/No, bail→regression (crew-only), bail→re-ask
   suppression (both seeds), board nudge. All three seeds anchor their shifts to *now* (#101), so the
   suite never rots on a future clock.
 - **Other UI changes:** for surfaces the harness doesn't cover, eyeball by hand via the flow above.

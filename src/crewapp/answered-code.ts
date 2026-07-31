@@ -2,7 +2,7 @@ import type { ResponseOutcome } from "../asks/ask-loop.js";
 import type { AskAnswer } from "../domain/entities.js";
 
 /**
- * Map an In/Out response + its outcome to a `/crew` notice code (#161). A win or a
+ * Map an Yes/No response + its outcome to a `/crew` notice code (#161). A win or a
  * decline is straightforward; a non-claiming accept is one of three DISTINCT things
  * the crew member must not all hear as "you lost the seat":
  *  - `double_booked` — they already hold another seat that day (DEC-003).

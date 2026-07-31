@@ -73,7 +73,7 @@ which ones exist. Route group tells you the posture:
   register, no urgency tactics.
 
 Anchor surfaces worth knowing, since the binding constraints attach to them:
-- **The ask + my shifts** (`app/(crew)/crew/page.tsx`, §2.6.1–2) — push-style card, inline In/Out;
+- **The ask + my shifts** (`app/(crew)/crew/page.tsx`, §2.6.1–2) — push-style card, inline Yes/No;
   own standing as a non-comparative muted subline, never a leaderboard.
 - **At-Risk board** (`app/(admin)/admin/at-risk/page.tsx`, §2.5) — most-urgent-first triage, mono
   time-to-trip, SYSTEM-TRIED trail, **empty state = success card**.

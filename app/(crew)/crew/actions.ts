@@ -29,7 +29,7 @@ import {
 import { randomUUID } from "node:crypto";
 
 /**
- * Answer an ask — the In/Out tap (SPEC §2.6.1). Driven by a <form action>, so it
+ * Answer an ask — the Yes/No tap (SPEC §2.6.1). Driven by a <form action>, so it
  * works with no client JS. Guards two ways: the caller must hold a crew session,
  * AND the ask must actually be addressed to them (no answering someone else's ask
  * by forging the id). The seat-state race itself is handled downstream by

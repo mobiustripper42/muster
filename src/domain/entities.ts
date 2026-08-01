@@ -37,6 +37,7 @@ import type {
   ShiftId,
   TenantId,
   ThreadId,
+  TimePunchId,
   VesselId,
 } from "./ids.js";
 import type { SeatKind, SeatState, ShiftState } from "./states.js";
@@ -135,6 +136,39 @@ export interface PtoWindow {
   start: string;
   end: string;
 }
+
+/**
+ * One time-clock interval (SPEC §2.9) — a **timesheet entry, not a tracker**.
+ *
+ * The one place in the crew model that stores **instants** rather than vessel-local
+ * wall clock (DEC-032's deliberate exception, shared with the calendar feed): elapsed
+ * time across a DST transition is only correct if both ends are absolute. Everything
+ * user-facing about a punch is still *rendered* vessel-local, and period bucketing
+ * runs off `vesselDateOf(inAt)`.
+ */
+export interface TimePunch {
+  id: TimePunchId;
+  crewMemberId: CrewMemberId;
+  /** ISO-8601 UTC instant. When they went on the clock. */
+  inAt: string;
+  /** ISO-8601 UTC instant, or `null` — **still on the clock**, a state, not missing data. */
+  outAt: string | null;
+  /**
+   * The shift this punch appears to belong to — **auto-matched at clock-in, never
+   * asked for** (§2.9.2). Null on zero matches AND on several: an ambiguous tag is
+   * worse than none, and hours are owed either way.
+   */
+  shiftId: ShiftId | null;
+  /**
+   * Who created it. An admin-entered punch must never be indistinguishable from one
+   * somebody actually tapped (§2.9.8) — this is what makes the honor system survivable.
+   */
+  origin: TimePunchOrigin;
+  /** Stamped when an admin changes a time; null otherwise. */
+  adminEditedAt: string | null;
+}
+
+export type TimePunchOrigin = "crew" | "admin";
 
 /** Per-person override of the per-role ask protocol default (§1.2). */
 export type ProtocolOverride = "ask_then_assign" | "assign_then_confirm";

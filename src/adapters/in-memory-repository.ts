@@ -35,6 +35,7 @@ import type {
   SmsConsent,
   GuestContact,
   PtoWindow,
+  TimePunch,
   Reservation,
   RoleType,
   Seat,
@@ -61,6 +62,7 @@ import type {
   NoticeOutboxEntryId,
   PaymentId,
   PtoWindowId,
+  TimePunchId,
   ReservationId,
   RoleTypeId,
   SeatId,
@@ -105,6 +107,7 @@ export class InMemoryRepository implements Repository {
   readonly #crew = new Map<CrewMemberId, CrewMember>();
   readonly #credentials = new Map<CredentialId, Credential>();
   readonly #ptoWindows = new Map<PtoWindowId, PtoWindow>();
+  readonly #timePunches = new Map<TimePunchId, TimePunch>();
   readonly #events = new Map<EventId, Event>();
   readonly #reservations = new Map<ReservationId, Reservation>();
   /** Reservation catalog (DEC-123/125) — read-only surface in 12.0; writes 12.8–12.10. */
@@ -339,6 +342,49 @@ export class InMemoryRepository implements Repository {
   }
   async removePtoWindow(id: PtoWindowId): Promise<void> {
     this.#ptoWindows.delete(id);
+  }
+
+  // ── Time punches (SPEC §2.9) ───────────────────────────────────────────────
+  async saveTimePunch(punch: TimePunch): Promise<void> {
+    // Deliberately does NOT enforce the one-open-punch partial unique index — the
+    // double stays dumb about constraints (see the Customers note above, DEC-131):
+    // integrity lives in the schema, and mirroring it here would put it in two
+    // places. `clockIn`'s check is what makes the use case deterministic on both
+    // adapters; the index is what survives a real concurrent tap on Postgres.
+    this.#timePunches.set(punch.id, clone(punch));
+  }
+  async getTimePunch(id: TimePunchId): Promise<TimePunch | null> {
+    const p = this.#timePunches.get(id);
+    return p ? clone(p) : null;
+  }
+  async getOpenPunchForCrew(crewMemberId: CrewMemberId): Promise<TimePunch | null> {
+    const open = [...this.#timePunches.values()].find(
+      (p) => p.crewMemberId === crewMemberId && p.outAt === null,
+    );
+    return open ? clone(open) : null;
+  }
+  async listTimePunchesForCrew(crewMemberId: CrewMemberId): Promise<TimePunch[]> {
+    return [...this.#timePunches.values()]
+      .filter((p) => p.crewMemberId === crewMemberId)
+      .sort((a, b) => b.inAt.localeCompare(a.inAt))
+      .map(clone);
+  }
+  async listTimePunchesBetween(
+    fromInstant: string,
+    toInstant: string,
+  ): Promise<TimePunch[]> {
+    // Half-open [from, to) — see the port doc. ISO-8601 UTC strings compare
+    // lexicographically iff they're the same shape, which `.toISOString()` guarantees.
+    return [...this.#timePunches.values()]
+      .filter((p) => p.inAt >= fromInstant && p.inAt < toInstant)
+      .sort((a, b) => a.inAt.localeCompare(b.inAt))
+      .map(clone);
+  }
+  async listAllTimePunches(): Promise<TimePunch[]> {
+    return [...this.#timePunches.values()].map(clone);
+  }
+  async removeTimePunch(id: TimePunchId): Promise<void> {
+    this.#timePunches.delete(id);
   }
 
   // ── Events ─────────────────────────────────────────────────────────────────

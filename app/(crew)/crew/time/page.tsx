@@ -35,10 +35,18 @@ const ERR_COPY: Record<string, string> = {
   error: "Couldn’t record that just now — try again in a moment.",
 };
 
-/** "8h 30m" / "45m" — decimal hours are for payroll, not for people. */
+/**
+ * "8h 30m" / "45m" — decimal hours are for payroll, not for people.
+ *
+ * **This is the only place elapsed time is rounded**, and it floors rather than
+ * rounds: the stored value is exact to the millisecond (§2.9.6 forbids a rounding
+ * policy), so the display truncates seconds instead of inflating a punch by up to
+ * 30s. What goes to payroll is computed from the punches, never from this string.
+ */
 function fmtMinutes(total: number): string {
-  const h = Math.floor(total / 60);
-  const m = total % 60;
+  const whole = Math.floor(total);
+  const h = Math.floor(whole / 60);
+  const m = whole % 60;
   if (h === 0) return `${m}m`;
   return m === 0 ? `${h}h` : `${h}h ${m}m`;
 }

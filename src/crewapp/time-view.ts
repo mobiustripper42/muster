@@ -125,7 +125,13 @@ function toRow(p: TimePunch): TimePunchRow {
     outTime: outAt === null ? null : vesselClockOf(outAt),
     // Instants, so this is TRUE elapsed time — a punch spanning a DST transition
     // reports the hours actually worked, not the hours the wall clock advanced.
-    minutes: outAt === null ? null : Math.round((outAt.getTime() - inAt.getTime()) / MINUTE_MS),
+    //
+    // NOT rounded. §2.9.6 is explicit: no rounding policy, "not to the quarter hour,
+    // not to the nearest five minutes, in neither direction." Both ends are stamped
+    // at button-press, so a real punch essentially never lands on a whole minute —
+    // rounding here would put a silent ±30s into the one number this file elsewhere
+    // calls exact. Precision is lost once, at the edge, in `fmtMinutes`.
+    minutes: outAt === null ? null : (outAt.getTime() - inAt.getTime()) / MINUTE_MS,
     open: outAt === null,
     adminTouched: p.origin === "admin" || p.adminEditedAt !== null,
   };

@@ -17,9 +17,10 @@ import { getRepo } from "../../../lib/repo";
  * either payload — a crew member can only punch themselves, by construction rather
  * than by check.
  *
- * Feedback rides redirect params as codes (the DEC-055 idiom — the page maps them to
- * copy, so a crafted URL can't inject text onto a trusted surface). `redirect()`
- * throws by design → it stays OUTSIDE the try.
+ * Feedback rides redirect params as codes (DEC-026 — codes/ids only, mapped to copy
+ * server-side, so a crafted URL can't inject text onto a trusted surface), matching
+ * the citation the sibling `time-off/actions.ts` uses rather than adding a third
+ * variant. `redirect()` throws by design → it stays OUTSIDE the try.
  */
 
 const BACK = "/crew/time";

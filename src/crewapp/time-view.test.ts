@@ -222,6 +222,21 @@ describe("buildCrewTimeView — the total", () => {
     expect(view.totalMinutes).toBe(180);
   });
 
+  it("does NOT round — a punch stamped mid-minute keeps its fraction (§2.9.6)", async () => {
+    // Both ends are stamped at button-press, so a real punch essentially never lands
+    // on a whole minute. §2.9.6 forbids a rounding policy "in neither direction", and
+    // rounding here would put a silent ±30s into the value the spec calls exact.
+    // 09:00:20 → 17:00:50 is 480.5 minutes, not 480 and not 481.
+    const repo = await seed();
+    await repo.saveTimePunch(
+      punch({ id: "p-odd", inAt: "2026-07-15T13:00:20.000Z", outAt: "2026-07-15T21:00:50.000Z" }),
+    );
+
+    const view = await buildCrewTimeView(repo, QUINT, NOW);
+    expect(view.punches[0]!.minutes).toBe(480.5);
+    expect(view.totalMinutes).toBe(480.5);
+  });
+
   it("an empty period is zero, not an error", async () => {
     const repo = await seed();
     const view = await buildCrewTimeView(repo, QUINT, NOW);

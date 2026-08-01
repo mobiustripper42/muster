@@ -197,6 +197,7 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 - DEC-090 — Click & loading feedback — the standing rule (`<SubmitButton>` for submits, `<AppLink>` for links; lint-enforced)
 - DEC-091 — Crew navigation is hub-and-spoke — no persistent nav chrome (9.12, #238)
 - DEC-114 — `<RevealSelectedRow>` — scroll-position keeping on the two-pane board, an imperative island scoped to `board-col`
+- DEC-147 — Server-rendering is the default; a client island is earned, and feedback params carry codes not prose
 
 ### Deployment, infra & versioning
 - ~~DEC-013 — Stack & infrastructure deferred to ~M4~~ → superseded by DEC-020 — stack & infrastructure are no longer deferred

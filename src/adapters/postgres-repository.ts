@@ -44,6 +44,7 @@ import type {
   OutboxEntry,
   PtoWindow,
   TimePunch,
+  TimePunchEdit,
   RingOutboxEntry,
   Reservation,
   RoleType,
@@ -72,6 +73,7 @@ import type {
   PaymentId,
   PtoWindowId,
   TimePunchId,
+  TimePunchEditId,
   RingOutboxEntryId,
   ReservationId,
   RoleTypeId,
@@ -209,6 +211,20 @@ const toTimePunch = (r: any): TimePunch => ({
   shiftId: r.shift_id ? asId<"ShiftId">(r.shift_id) : null,
   origin: r.origin,
   adminEditedAt: r.admin_edited_at ?? null,
+});
+
+const toTimePunchEdit = (r: any): TimePunchEdit => ({
+  id: asId<"TimePunchEditId">(r.id),
+  timePunchId: asId<"TimePunchId">(r.time_punch_id),
+  actorKind: r.actor_kind,
+  actorId: asId<"CrewMemberId">(r.actor_id),
+  at: r.at,
+  action: r.action,
+  fromInAt: r.from_in_at ?? null,
+  fromOutAt: r.from_out_at ?? null,
+  toInAt: r.to_in_at ?? null,
+  toOutAt: r.to_out_at ?? null,
+  reason: r.reason ?? "",
 });
 
 const toEvent = (r: any): Event => ({
@@ -957,6 +973,31 @@ export class PostgresRepository implements Repository {
   }
   async removeTimePunch(id: TimePunchId): Promise<void> {
     await this.#pool.query("delete from time_punches where id=$1", [id]);
+  }
+
+  // ── Time-punch edit trail (#635) ───────────────────────────────────────────
+  async appendTimePunchEdit(e: TimePunchEdit): Promise<void> {
+    // Append-only: `do nothing` on conflict rather than an upsert, so a retried write
+    // can't rewrite history. There is no update path and no delete path by design.
+    await this.#pool.query(
+      `insert into time_punch_edits(id, time_punch_id, actor_kind, actor_id, at, action,
+         from_in_at, from_out_at, to_in_at, to_out_at, reason)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       on conflict (id) do nothing`,
+      [e.id, e.timePunchId, e.actorKind, e.actorId, e.at, e.action,
+       e.fromInAt, e.fromOutAt, e.toInAt, e.toOutAt, e.reason],
+    );
+  }
+  async listTimePunchEdits(timePunchId: TimePunchId): Promise<TimePunchEdit[]> {
+    const { rows } = await this.#pool.query(
+      "select * from time_punch_edits where time_punch_id=$1 order by at asc",
+      [timePunchId],
+    );
+    return rows.map(toTimePunchEdit);
+  }
+  async listAllTimePunchEdits(): Promise<TimePunchEdit[]> {
+    const { rows } = await this.#pool.query("select * from time_punch_edits");
+    return rows.map(toTimePunchEdit);
   }
 
   // ── Events ─────────────────────────────────────────────────────────────────

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { asId } from "@core/domain/ids.js";
+import { vesselDateOf } from "@core/config/tenant.js";
 import { buildCrewTimeView, type CrewTimeView } from "@core/crewapp/time-view.js";
 import { BackLink } from "../../../../components/ui/back-link";
 import { Notice } from "../../../../components/ui/notice";
@@ -9,7 +10,8 @@ import { VersionTag } from "../../../../components/ui/version-tag";
 import { readSubject } from "../../../lib/auth";
 import { fmt12, fmtDateRange } from "../../../lib/format";
 import { getRepo } from "../../../lib/repo";
-import { clockInNow, clockOutNow } from "./actions";
+import { AppLink } from "../../../../components/ui/app-link";
+import { addMyPunch, clockInNow, clockOutNow, deleteMyPunch, editMyPunch } from "./actions";
 
 /**
  * /crew/time (SPEC §2.9.7) — the crew member's own clock. **Clock in** when they're
@@ -26,13 +28,31 @@ import { clockInNow, clockOutNow } from "./actions";
 
 export const dynamic = "force-dynamic";
 
-type Search = { in?: string; out?: string; err?: string };
+type Search = {
+  in?: string;
+  out?: string;
+  err?: string;
+  saved?: string;
+  added?: string;
+  deleted?: string;
+  /** Which punch is open for editing — one at a time, by construction (#635). */
+  edit?: string;
+  /** The add form is open. */
+  add?: string;
+};
 
 const ERR_COPY: Record<string, string> = {
   already_in: "You’re already on the clock — nothing changed.",
   not_in: "You weren’t on the clock, so there was nothing to close.",
-  out_before_in: "That would end the punch before it started — ask the office to fix it.",
+  // #635 made this fixable by the person reading it — before crew edit, this copy sent
+  // them to the office, which is no longer where the fix lives.
+  out_before_in: "That would end the punch before it started — check the times.",
   error: "Couldn’t record that just now — try again in a moment.",
+  reason_required: "Add a short note saying why — it goes on the record with the change.",
+  day_moved:
+    "That time would move the punch to a different day. Delete it and add it on the right day instead.",
+  gone: "That punch isn’t there any more.",
+  bad_input: "Something was missing — check the times and try again.",
 };
 
 /**
@@ -77,6 +97,10 @@ export default async function CrewTime({
 
   const errCopy = sp.err ? ERR_COPY[sp.err] ?? ERR_COPY.error : null;
   const { onTheClock } = view;
+  // Exactly one editor at a time (#635). Everything else renders inert while it's open,
+  // which is why this is one boolean rather than per-row state.
+  const anyOpen = sp.edit !== undefined || sp.add !== undefined;
+  const today = vesselDateOf(new Date());
 
   return (
     <Shell>
@@ -91,6 +115,9 @@ export default async function CrewTime({
 
       {sp.in && <Notice tone="ok">You’re on the clock.</Notice>}
       {sp.out && <Notice tone="ok">Clocked out — your hours are below.</Notice>}
+      {sp.saved && <Notice tone="ok">Saved.</Notice>}
+      {sp.added && <Notice tone="ok">Added.</Notice>}
+      {sp.deleted && <Notice tone="ok">Deleted.</Notice>}
       {errCopy && <Notice tone="bad">{errCopy}</Notice>}
 
       {/* The one card, one button. `onTheClock` is the whole decision — at most one
@@ -143,29 +170,59 @@ export default async function CrewTime({
           <Notice>No hours yet this period.</Notice>
         ) : (
           <>
-            {view.punches.map((p) => (
-              <div
-                key={p.id}
-                className="flex items-center justify-between gap-3 rounded-card border border-line bg-card px-4 py-3 shadow-sm"
-              >
-                <div className="flex flex-col">
-                  <span className="font-medium text-ink">
-                    {fmtDateRange(p.date, p.date)}
-                  </span>
-                  <span className="font-mono text-sm text-muted">
-                    {fmt12(p.inTime)} – {p.outTime ? fmt12(p.outTime) : "still on the clock"}
-                  </span>
-                  {/* §2.9.8: hours nobody actually punched must never look identical
-                      to hours they did — including to the person whose name is on them. */}
-                  {p.adminTouched && (
-                    <span className="text-xs text-muted">Entered or edited by the office</span>
+            {view.punches.map((p) => {
+              const open = sp.edit === String(p.id);
+              return (
+                <div
+                  key={p.id}
+                  id={`punch-${p.id}`}
+                  className={`flex flex-col rounded-card border bg-card shadow-sm ${
+                    open ? "border-accent" : "border-line"
+                  }`}
+                >
+                  {/* The row. Tapping it opens THIS one for editing — and because the
+                      open editor is keyed to `?edit=<id>`, opening one closes any other
+                      by construction rather than by script. While one is open the rest
+                      render as plain text: no second editor, no competing affordance. */}
+                  {open || anyOpen ? (
+                    <div className="flex items-center justify-between gap-3 px-4 py-3">
+                      <PunchFacts punch={p} />
+                      <span className="shrink-0 font-mono text-sm font-semibold text-ink">
+                        {p.minutes === null ? "—" : fmtMinutes(p.minutes)}
+                      </span>
+                    </div>
+                  ) : (
+                    <AppLink
+                      href={`/crew/time?edit=${encodeURIComponent(String(p.id))}#punch-${p.id}`}
+                      prefetch={false}
+                      className="flex items-center justify-between gap-3 px-4 py-3"
+                    >
+                      <PunchFacts punch={p} />
+                      <span className="flex shrink-0 items-center gap-2">
+                        <span className="font-mono text-sm font-semibold text-ink">
+                          {p.minutes === null ? "—" : fmtMinutes(p.minutes)}
+                        </span>
+                        <span className="text-faint" aria-hidden>
+                          ›
+                        </span>
+                      </span>
+                    </AppLink>
                   )}
+
+                  {open && (
+                    <PunchForm
+                      mode="edit"
+                      punchId={String(p.id)}
+                      day={p.date}
+                      inTime={p.inTime}
+                      outTime={p.outTime}
+                      outIsNextDay={p.outIsNextDay}
+                    />
+                  )}
+                  {open && <DeleteForm punchId={String(p.id)} />}
                 </div>
-                <span className="shrink-0 font-mono text-sm font-semibold text-ink">
-                  {p.minutes === null ? "—" : fmtMinutes(p.minutes)}
-                </span>
-              </div>
-            ))}
+              );
+            })}
 
             <div className="flex items-center justify-between gap-3 px-4 py-2">
               <span className="font-semibold text-ink">Total</span>
@@ -182,9 +239,204 @@ export default async function CrewTime({
             )}
           </>
         )}
+
+        {/* Add sits after the list, not fixed to the bottom: a pay period is a couple
+            of dozen rows, so it's already reachable, and a sticky bar would cost a
+            permanent strip of a 375px screen and crowd the VersionTag. */}
+        {sp.add ? (
+          <div id="punch-new" className="rounded-card border border-accent bg-card shadow-sm">
+            <PunchForm mode="add" day={today} />
+          </div>
+        ) : (
+          !anyOpen && (
+            <AppLink
+              href="/crew/time?add=1#punch-new"
+              prefetch={false}
+              className="flex min-h-[52px] items-center justify-center rounded-card border border-line bg-card font-semibold text-ink shadow-sm"
+            >
+              Add hours
+            </AppLink>
+          )
+        )}
       </section>
 
       <VersionTag />
     </Shell>
+  );
+}
+
+/** The facts half of a punch row — shared by the tappable and the inert renderings so
+ *  they can't drift into looking like different rows. */
+function PunchFacts({
+  punch,
+}: {
+  punch: { date: string; inTime: string; outTime: string | null; adminTouched: boolean };
+}) {
+  return (
+    <span className="flex flex-col">
+      <span className="font-medium text-ink">{fmtDateRange(punch.date, punch.date)}</span>
+      <span className="font-mono text-sm text-muted">
+        {fmt12(punch.inTime)} –{" "}
+        {punch.outTime ? fmt12(punch.outTime) : "still on the clock"}
+      </span>
+      {/* §2.9.8: hours nobody actually punched must never look identical to hours they
+          did — including to the person whose name is on them. */}
+      {punch.adminTouched && (
+        <span className="text-xs text-muted">Entered or edited by the office</span>
+      )}
+    </span>
+  );
+}
+
+/**
+ * ONE form for add and edit (#635). Rendered inside an expanded row, or at the bottom
+ * of the list with empty fields — same fields, same required note, same validation.
+ * Two forms with the same rules drift apart; that's what put four senders in charge of
+ * their own SMS opener (#599) and three fill doors in charge of their own ask
+ * retirement (#600).
+ *
+ * Server-rendered, no client JS: Cancel is a plain link back to the row.
+ */
+function PunchForm({
+  mode,
+  punchId,
+  day,
+  inTime,
+  outTime,
+  outIsNextDay,
+}: {
+  mode: "add" | "edit";
+  punchId?: string;
+  day: string;
+  inTime?: string;
+  outTime?: string | null;
+  outIsNextDay?: boolean;
+}) {
+  const anchor = mode === "edit" ? `#punch-${punchId}` : "#punch-new";
+  return (
+    <form
+      action={mode === "edit" ? editMyPunch : addMyPunch}
+      className="flex flex-col gap-3 border-t border-line px-4 py-3"
+    >
+      {mode === "edit" ? (
+        <>
+          <input type="hidden" name="punchId" value={punchId} />
+          {/* No date field: a punch belongs to the day it started on, which is what
+              buckets it into a pay period. The domain refuses a cross-midnight in-time
+              (`day_moved`) rather than trusting this to be absent. */}
+          <input type="hidden" name="punchDay" value={day} />
+        </>
+      ) : (
+        <div className="flex flex-col gap-1">
+          <label htmlFor="new-day" className="text-xs text-muted">
+            Day
+          </label>
+          <input
+            id="new-day"
+            name="punchDay"
+            type="date"
+            defaultValue={day}
+            required
+            className="min-h-[44px] rounded-card border border-line bg-card px-3 text-ink"
+          />
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-3">
+        <div className="flex flex-col gap-1">
+          <label htmlFor={`in-${punchId ?? "new"}`} className="text-xs text-muted">
+            In
+          </label>
+          <input
+            id={`in-${punchId ?? "new"}`}
+            name="inTime"
+            type="time"
+            defaultValue={inTime}
+            required
+            className="min-h-[44px] rounded-card border border-line bg-card px-3 text-ink"
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label htmlFor={`out-${punchId ?? "new"}`} className="text-xs text-muted">
+            Out <span className="text-muted">(blank leaves it running)</span>
+          </label>
+          <input
+            id={`out-${punchId ?? "new"}`}
+            name="outTime"
+            type="time"
+            defaultValue={outTime ?? ""}
+            className="min-h-[44px] rounded-card border border-line bg-card px-3 text-ink"
+          />
+        </div>
+      </div>
+
+      {/* An evening trip that lands after midnight is ONE punch on the earlier day
+          (§2.9.6). Explicit, never inferred from out < in — that would turn a typo into
+          paid hours you didn't work. */}
+      <label className="flex items-center gap-2 text-xs text-muted">
+        <input
+          type="checkbox"
+          name="outNextDay"
+          value="1"
+          defaultChecked={outIsNextDay}
+          className="h-5 w-5"
+        />
+        Out is next day
+      </label>
+
+      {/* Required, and the reason the trail is worth keeping. */}
+      <div className="flex flex-col gap-1">
+        <label htmlFor={`why-${punchId ?? "new"}`} className="text-xs text-muted">
+          Why
+        </label>
+        <input
+          id={`why-${punchId ?? "new"}`}
+          name="reason"
+          type="text"
+          required
+          placeholder="Forgot to clock out — boat was back at 5"
+          className="min-h-[44px] rounded-card border border-line bg-card px-3 text-ink"
+        />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <SubmitButton className="min-h-[44px] rounded-card bg-ok px-4 font-semibold text-white">
+          Save
+        </SubmitButton>
+        <AppLink
+          href={`/crew/time${anchor}`}
+          prefetch={false}
+          className="min-h-[44px] px-2 py-2 font-semibold text-ink"
+        >
+          Cancel
+        </AppLink>
+      </div>
+    </form>
+  );
+}
+
+/** Delete lives in its own form so the required note is the delete's note, not the
+ *  edit's — they are different assertions about different acts. */
+function DeleteForm({ punchId }: { punchId: string }) {
+  return (
+    <form action={deleteMyPunch} className="flex flex-col gap-2 border-t border-line px-4 py-3">
+      <input type="hidden" name="punchId" value={punchId} />
+      <label htmlFor={`del-why-${punchId}`} className="text-xs text-muted">
+        Delete this punch — why?
+      </label>
+      <div className="flex flex-wrap items-center gap-3">
+        <input
+          id={`del-why-${punchId}`}
+          name="reason"
+          type="text"
+          required
+          placeholder="Double punch, this one is wrong"
+          className="min-h-[44px] flex-1 rounded-card border border-line bg-card px-3 text-ink"
+        />
+        <SubmitButton className="min-h-[44px] rounded-card border border-bad px-4 font-semibold text-bad">
+          Delete
+        </SubmitButton>
+      </div>
+    </form>
   );
 }

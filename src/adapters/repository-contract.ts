@@ -33,6 +33,7 @@ import type {
   GuestContact,
   PtoWindow,
   TimePunch,
+  TimePunchEdit,
   Payment,
   Reservation,
   RoleType,
@@ -519,6 +520,100 @@ export function runRepositoryContract(
         "punch-1",
         "punch-2",
       ]);
+    });
+
+    it("time punch edits: append-only round-trip, oldest first, per punch", async () => {
+      await repo.saveCrewMember(crew());
+      const edit = (id: string, at: string, over: Partial<TimePunchEdit> = {}): TimePunchEdit => ({
+        id: asId<"TimePunchEditId">(id),
+        timePunchId: asId<"TimePunchId">("punch-1"),
+        actorKind: "crew",
+        actorId: CREW,
+        at,
+        action: "changed",
+        fromInAt: "2026-07-15T13:00:00.000Z",
+        fromOutAt: null,
+        toInAt: "2026-07-15T13:00:00.000Z",
+        toOutAt: "2026-07-15T21:00:00.000Z",
+        reason: "forgot to clock out",
+        ...over,
+      });
+
+      await repo.appendTimePunchEdit(edit("e2", "2026-07-16T15:00:00.000Z"));
+      await repo.appendTimePunchEdit(edit("e1", "2026-07-16T14:00:00.000Z"));
+      await repo.appendTimePunchEdit(
+        edit("e-other", "2026-07-16T16:00:00.000Z", {
+          timePunchId: asId<"TimePunchId">("punch-2"),
+        }),
+      );
+
+      // Oldest first — the order it happened in — and scoped to the one punch.
+      const trail = await repo.listTimePunchEdits(asId<"TimePunchId">("punch-1"));
+      expect(trail.map((e) => String(e.id))).toEqual(["e1", "e2"]);
+      expect(trail[0]).toEqual(edit("e1", "2026-07-16T14:00:00.000Z"));
+      expect((await repo.listAllTimePunchEdits()).length).toBe(3);
+    });
+
+    it("time punch edits: a created row has no before, a deleted row no after", async () => {
+      await repo.saveCrewMember(crew());
+      const base = {
+        timePunchId: asId<"TimePunchId">("punch-1"),
+        actorKind: "admin" as const,
+        actorId: CREW,
+        reason: "",
+      };
+      const created: TimePunchEdit = {
+        ...base,
+        id: asId<"TimePunchEditId">("e-new"),
+        at: "2026-07-16T14:00:00.000Z",
+        action: "created",
+        fromInAt: null,
+        fromOutAt: null,
+        toInAt: "2026-07-15T13:00:00.000Z",
+        toOutAt: null,
+      };
+      const deleted: TimePunchEdit = {
+        ...base,
+        id: asId<"TimePunchEditId">("e-del"),
+        at: "2026-07-16T15:00:00.000Z",
+        action: "deleted",
+        fromInAt: "2026-07-15T13:00:00.000Z",
+        fromOutAt: "2026-07-15T21:00:00.000Z",
+        toInAt: null,
+        toOutAt: null,
+      };
+      await repo.appendTimePunchEdit(created);
+      await repo.appendTimePunchEdit(deleted);
+
+      expect(await repo.listTimePunchEdits(asId<"TimePunchId">("punch-1"))).toEqual([
+        created,
+        deleted,
+      ]);
+    });
+
+    it("time punch edits: the trail OUTLIVES the punch it describes (#635)", async () => {
+      // The reason this table carries no FK to time_punches: after a delete, the
+      // `deleted` row is the only evidence those hours ever existed.
+      await repo.saveCrewMember(crew());
+      await repo.saveTimePunch(punch());
+      await repo.appendTimePunchEdit({
+        id: asId<"TimePunchEditId">("e-del"),
+        timePunchId: asId<"TimePunchId">("punch-1"),
+        actorKind: "crew",
+        actorId: CREW,
+        at: "2026-07-16T15:00:00.000Z",
+        action: "deleted",
+        fromInAt: "2026-07-15T13:00:00.000Z",
+        fromOutAt: null,
+        toInAt: null,
+        toOutAt: null,
+        reason: "double punch",
+      });
+
+      await repo.removeTimePunch(asId<"TimePunchId">("punch-1"));
+
+      expect(await repo.getTimePunch(asId<"TimePunchId">("punch-1"))).toBeNull();
+      expect(await repo.listTimePunchEdits(asId<"TimePunchId">("punch-1"))).toHaveLength(1);
     });
 
     it("time punches: remove drops it; second remove is a no-op", async () => {

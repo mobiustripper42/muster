@@ -83,6 +83,78 @@ test.describe("crew /crew/time — clock in, clock out", () => {
     await stale.close();
   });
 
+  test("edit my own punch: one editor at a time, required note, back to the row", async ({
+    page,
+  }) => {
+    await signInAsCrew(page, "crew-quint");
+    await page.goto("/crew/time");
+    // Two closed punches to work with.
+    await page.getByRole("button", { name: "Clock in" }).click();
+    await page.waitForURL(/in=1/);
+    await page.getByRole("button", { name: "Clock out" }).click();
+    await page.waitForURL(/out=1/);
+
+    // Add one, which is the same form as edit.
+    await page.getByRole("link", { name: "Add hours" }).click();
+    await page.waitForURL(/add=1/);
+    await page.locator("#new-day").fill(await page.locator("#new-day").inputValue());
+    await page.locator('input[name="inTime"]').fill("09:00");
+    await page.locator('input[name="outTime"]').fill("17:00");
+    await page.locator('input[name="reason"]').first().fill("Worked the dock, never clocked in");
+    await page.getByRole("button", { name: "Save" }).click();
+    await page.waitForURL(/added=1/);
+    await expect(page.getByText("Added.")).toBeVisible();
+    // Twice on purpose — the row AND the period total, which is the stronger assertion.
+    await expect(page.getByText("8h")).toHaveCount(2);
+
+    // Open that punch for editing by clicking its ROW (not the text, which the total
+    // also carries). The URL carries which one is open.
+    await page.locator('[id^="punch-"]').filter({ hasText: "8h" }).getByRole("link").first().click();
+    await page.waitForURL(/edit=/);
+
+    // ONE editor: every other row is now inert, so there is exactly one Save on screen.
+    await expect(page.getByRole("button", { name: "Save" })).toHaveCount(1);
+
+    // The note is required — a blank one is refused by the browser before it posts.
+    await expect(page.locator('form input[name="reason"]').first()).toHaveAttribute(
+      "required",
+      "",
+    );
+
+    await page.locator('form input[name="outTime"]').first().fill("18:30");
+    await page.locator('form input[name="reason"]').first().fill("Boat came back late");
+    await page.getByRole("button", { name: "Save" }).click();
+    await page.waitForURL(/saved=1/);
+    await expect(page.getByText("9h 30m")).toHaveCount(2);
+    // Back to the row, not the top of the list.
+    expect(page.url()).toMatch(/#punch-/);
+  });
+
+  test("a refused edit keeps the editor open on that row", async ({ page }) => {
+    await signInAsCrew(page, "crew-quint");
+    await page.goto("/crew/time");
+    await page.getByRole("button", { name: "Clock in" }).click();
+    await page.waitForURL(/in=1/);
+    await page.getByRole("button", { name: "Clock out" }).click();
+    await page.waitForURL(/out=1/);
+
+    const row = page.locator('[id^="punch-"]').first();
+    await row.getByRole("link").first().click();
+    await page.waitForURL(/edit=/);
+
+    // An out at/before the in is refused by the DOMAIN, not the browser.
+    const inVal = await page.locator('form input[name="inTime"]').first().inputValue();
+    await page.locator('form input[name="outTime"]').first().fill(inVal);
+    await page.locator('form input[name="reason"]').first().fill("testing the guard");
+    await page.getByRole("button", { name: "Save" }).click();
+
+    await page.waitForURL(/err=out_before_in/);
+    await expect(page.getByText(/before it started/)).toBeVisible();
+    // Still open on that row, so the field they got wrong is in front of them.
+    expect(page.url()).toMatch(/edit=/);
+    await expect(page.getByRole("button", { name: "Save" })).toHaveCount(1);
+  });
+
   test("signed out, /crew/time redirects to the crew door", async ({ page }) => {
     await page.goto("/crew/time");
     await page.waitForURL(/\/crew$/);

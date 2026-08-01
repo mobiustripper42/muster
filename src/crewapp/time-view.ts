@@ -52,6 +52,13 @@ export interface TimePunchRow {
   minutes: number | null;
   open: boolean;
   /**
+   * The punch ends on a LATER vessel-local day than it started — an evening trip that
+   * landed after midnight. One punch, on the earlier day (§2.9.6); the edit form needs
+   * it to pre-tick "out is next day", since there is one date and the out time alone
+   * can't say which day it means.
+   */
+  outIsNextDay: boolean;
+  /**
    * An admin created or edited this one (§2.9.8). Shown so hours nobody actually
    * punched never look identical to hours they did — including to the crew member
    * whose name is on them.
@@ -133,6 +140,7 @@ function toRow(p: TimePunch): TimePunchRow {
     // calls exact. Precision is lost once, at the edge, in `fmtMinutes`.
     minutes: outAt === null ? null : (outAt.getTime() - inAt.getTime()) / MINUTE_MS,
     open: outAt === null,
+    outIsNextDay: outAt !== null && vesselDateOf(outAt) > vesselDateOf(inAt),
     adminTouched: p.origin === "admin" || p.adminEditedAt !== null,
   };
 }

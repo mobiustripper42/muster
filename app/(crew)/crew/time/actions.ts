@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { asId } from "@core/domain/ids.js";
 import { clockIn, clockOut } from "@core/crew/time-clock.js";
+import { addOwnPunch, deleteOwnPunch, editOwnPunch } from "@core/crew/time-clock-crew.js";
+import { addDays, zonedWallClockToInstant } from "@core/config/tenant.js";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
 
@@ -70,4 +72,135 @@ export async function clockOutNow(): Promise<void> {
 
   revalidatePath(BACK);
   redirect(code ? `${BACK}?err=${code}` : `${BACK}?out=1`);
+}
+
+// ── Their own edits (#635, SPEC §2.9.8) ─────────────────────────────────────
+// The crew member corrects their own record. Ownership, the required reason and the
+// trail all live in `time-clock-crew.ts`; these are auth + glue and nothing else.
+//
+// **The subject still comes only from the session.** A punch id arrives from the form
+// — it has to — but a forged one naming someone else's punch comes back `gone`, the
+// same answer a nonexistent id gets, so it can't be used to discover whose is whose.
+
+/** A wall-clock `HH:MM` on a vessel-local day → an instant. Null when blank. */
+function instantOf(day: string, time: string): Date | null {
+  if (!/^\d{2}:\d{2}$/.test(time)) return null;
+  return zonedWallClockToInstant(day, time);
+}
+
+/** Honours the explicit "ends next day" box — an evening trip landing at 02:00 is one
+ *  punch on the earlier day. Never inferred from `out < in`, which would turn a typo
+ *  into paid hours (the #627 reasoning, same form). */
+function outInstantOf(day: string, time: string, nextDay: boolean): Date | null {
+  return instantOf(nextDay ? addDays(day, 1) : day, time);
+}
+
+/** Back to the row they were working on, not the top of the list. */
+function backToRow(punchId: string, param: string): string {
+  return `${BACK}?${param}#punch-${punchId}`;
+}
+
+export async function editMyPunch(formData: FormData): Promise<void> {
+  const subject = await readSubject();
+  if (!subject || subject.kind !== "crew") redirect("/crew");
+  const punchId = String(formData.get("punchId") ?? "");
+  const day = String(formData.get("punchDay") ?? "");
+  const inAt = instantOf(day, String(formData.get("inTime") ?? ""));
+  const outAt = outInstantOf(
+    day,
+    String(formData.get("outTime") ?? ""),
+    formData.get("outNextDay") === "1",
+  );
+
+  let code: string | null = null;
+  if (!punchId || inAt === null) {
+    code = "bad_input";
+  } else {
+    try {
+      const result = await editOwnPunch(getRepo(), {
+        editId: asId<"TimePunchEditId">(`punchedit-${randomUUID()}`),
+        punchId: asId<"TimePunchId">(punchId),
+        crewMemberId: asId<"CrewMemberId">(subject.id),
+        inAt,
+        outAt,
+        reason: String(formData.get("reason") ?? ""),
+        now: new Date(),
+      });
+      code = result.ok ? null : result.code;
+    } catch {
+      code = "error";
+    }
+  }
+
+  revalidatePath(BACK);
+  // On refusal the editor stays OPEN on that row, so the reason they typed and the
+  // field they got wrong are both still in front of them.
+  redirect(
+    code
+      ? backToRow(punchId, `edit=${encodeURIComponent(punchId)}&err=${code}`)
+      : backToRow(punchId, "saved=1"),
+  );
+}
+
+export async function addMyPunch(formData: FormData): Promise<void> {
+  const subject = await readSubject();
+  if (!subject || subject.kind !== "crew") redirect("/crew");
+  const id = `punch-${randomUUID()}`;
+  const day = String(formData.get("punchDay") ?? "");
+  const inAt = instantOf(day, String(formData.get("inTime") ?? ""));
+  const outAt = outInstantOf(
+    day,
+    String(formData.get("outTime") ?? ""),
+    formData.get("outNextDay") === "1",
+  );
+
+  let code: string | null = null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || inAt === null) {
+    code = "bad_input";
+  } else {
+    try {
+      const result = await addOwnPunch(getRepo(), {
+        id: asId<"TimePunchId">(id),
+        editId: asId<"TimePunchEditId">(`punchedit-${randomUUID()}`),
+        crewMemberId: asId<"CrewMemberId">(subject.id),
+        inAt,
+        outAt,
+        reason: String(formData.get("reason") ?? ""),
+        now: new Date(),
+      });
+      code = result.ok ? null : result.code;
+    } catch {
+      code = "error";
+    }
+  }
+
+  revalidatePath(BACK);
+  redirect(code ? `${BACK}?add=1&err=${code}` : backToRow(id, "added=1"));
+}
+
+export async function deleteMyPunch(formData: FormData): Promise<void> {
+  const subject = await readSubject();
+  if (!subject || subject.kind !== "crew") redirect("/crew");
+  const punchId = String(formData.get("punchId") ?? "");
+
+  let code: string | null = null;
+  try {
+    const result = await deleteOwnPunch(getRepo(), {
+      editId: asId<"TimePunchEditId">(`punchedit-${randomUUID()}`),
+      punchId: asId<"TimePunchId">(punchId),
+      crewMemberId: asId<"CrewMemberId">(subject.id),
+      reason: String(formData.get("reason") ?? ""),
+      now: new Date(),
+    });
+    code = result.ok ? null : result.code;
+  } catch {
+    code = "error";
+  }
+
+  revalidatePath(BACK);
+  redirect(
+    code
+      ? backToRow(punchId, `edit=${encodeURIComponent(punchId)}&err=${code}`)
+      : `${BACK}?deleted=1`,
+  );
 }

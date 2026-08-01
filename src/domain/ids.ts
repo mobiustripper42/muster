@@ -38,6 +38,7 @@ export type NoticeOutboxEntryId = Brand<string, "NoticeOutboxEntryId">;
 export type ImportRunId = Brand<string, "ImportRunId">;
 export type ImportRunItemId = Brand<string, "ImportRunItemId">;
 export type TimePunchId = Brand<string, "TimePunchId">;
+export type TimePunchEditId = Brand<string, "TimePunchEditId">;
 export type ThreadId = Brand<string, "ThreadId">;
 export type ParticipantId = Brand<string, "ParticipantId">;
 export type MessageId = Brand<string, "MessageId">;

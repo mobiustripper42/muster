@@ -112,6 +112,7 @@ describe("buildCrewTimeView — this pay period", () => {
         outTime: "12:00",
         minutes: 240,
         open: false,
+        outIsNextDay: false,
         adminTouched: false,
       },
       {
@@ -121,6 +122,7 @@ describe("buildCrewTimeView — this pay period", () => {
         outTime: "17:30",
         minutes: 510,
         open: false,
+        outIsNextDay: false,
         adminTouched: false,
       },
     ]);
@@ -235,6 +237,17 @@ describe("buildCrewTimeView — the total", () => {
     const view = await buildCrewTimeView(repo, QUINT, NOW);
     expect(view.punches[0]!.minutes).toBe(480.5);
     expect(view.totalMinutes).toBe(480.5);
+  });
+
+  it("flags a punch that ends on a later vessel-local day — the overnight trip", async () => {
+    const repo = await seed();
+    // 10:00 PM EDT on the 15th → 2:00 AM EDT on the 16th. One punch, on the 15th.
+    await repo.saveTimePunch(
+      punch({ id: "p-night", inAt: "2026-07-16T02:00:00.000Z", outAt: "2026-07-16T06:00:00.000Z" }),
+    );
+
+    const view = await buildCrewTimeView(repo, QUINT, NOW);
+    expect(view.punches[0]).toMatchObject({ date: "2026-07-15", outIsNextDay: true, minutes: 240 });
   });
 
   it("an empty period is zero, not an error", async () => {

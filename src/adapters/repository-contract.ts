@@ -32,6 +32,7 @@ import type {
   SmsConsent,
   GuestContact,
   PtoWindow,
+  TimePunch,
   Payment,
   Reservation,
   RoleType,
@@ -84,6 +85,16 @@ const pto = (): PtoWindow => ({
   crewMemberId: CREW,
   start: "2026-07-01",
   end: "2026-07-05",
+});
+const punch = (over: Partial<TimePunch> = {}): TimePunch => ({
+  id: asId<"TimePunchId">("punch-1"),
+  crewMemberId: CREW,
+  inAt: "2026-07-15T13:00:00.000Z",
+  outAt: null,
+  shiftId: null,
+  origin: "crew",
+  adminEditedAt: null,
+  ...over,
 });
 const event = (over: Partial<Event> = {}): Event => ({
   id: EVENT,
@@ -424,6 +435,100 @@ export function runRepositoryContract(
       expect(await repo.listAllPtoWindows()).toEqual([]);
       // Idempotent — removing an absent id must not throw (surfaces double-submit).
       await repo.removePtoWindow(asId<"PtoWindowId">("pto-1"));
+    });
+
+    it("time punches: round-trip with every optional both null and set (§2.9)", async () => {
+      await repo.saveCrewMember(crew()); // FK: a punch without a person is meaningless
+      await repo.saveTimePunch(punch());
+      expect(await repo.getTimePunch(asId<"TimePunchId">("punch-1"))).toEqual(punch());
+
+      const full = punch({
+        id: asId<"TimePunchId">("punch-2"),
+        inAt: "2026-07-16T13:00:00.000Z",
+        outAt: "2026-07-16T21:30:00.000Z",
+        shiftId: SHIFT,
+        origin: "admin",
+        adminEditedAt: "2026-07-17T09:00:00.000Z",
+      });
+      await repo.saveTimePunch(full);
+      expect(await repo.getTimePunch(asId<"TimePunchId">("punch-2"))).toEqual(full);
+    });
+
+    it("time punches: getOpenPunchForCrew finds the open one and nothing once closed", async () => {
+      await repo.saveCrewMember(crew());
+      await repo.saveTimePunch(punch());
+      expect(await repo.getOpenPunchForCrew(CREW)).toEqual(punch());
+
+      await repo.saveTimePunch(punch({ outAt: "2026-07-15T21:00:00.000Z" }));
+      expect(await repo.getOpenPunchForCrew(CREW)).toBeNull();
+    });
+
+    it("time punches: getOpenPunchForCrew is scoped per crew member", async () => {
+      await repo.saveCrewMember(crew());
+      await repo.saveCrewMember(crew({ id: CREW_B, name: "Hooper" }));
+      await repo.saveTimePunch(punch({ crewMemberId: CREW_B }));
+      expect(await repo.getOpenPunchForCrew(CREW)).toBeNull();
+      expect(await repo.getOpenPunchForCrew(CREW_B)).toMatchObject({ crewMemberId: CREW_B });
+    });
+
+    it("time punches: listForCrew is newest-first and excludes other people", async () => {
+      await repo.saveCrewMember(crew());
+      await repo.saveCrewMember(crew({ id: CREW_B, name: "Hooper" }));
+      await repo.saveTimePunch(
+        punch({ id: asId<"TimePunchId">("p-old"), inAt: "2026-07-10T13:00:00.000Z", outAt: "2026-07-10T20:00:00.000Z" }),
+      );
+      await repo.saveTimePunch(
+        punch({ id: asId<"TimePunchId">("p-new"), inAt: "2026-07-20T13:00:00.000Z", outAt: "2026-07-20T20:00:00.000Z" }),
+      );
+      await repo.saveTimePunch(punch({ id: asId<"TimePunchId">("p-theirs"), crewMemberId: CREW_B }));
+
+      expect((await repo.listTimePunchesForCrew(CREW)).map((p) => String(p.id))).toEqual([
+        "p-new",
+        "p-old",
+      ]);
+    });
+
+    it("time punches: listBetween is half-open [from, to) so midnight isn't double-counted", async () => {
+      await repo.saveCrewMember(crew());
+      // All saved CLOSED so the one-open-punch index doesn't refuse the batch.
+      await repo.saveTimePunch(
+        punch({ id: asId<"TimePunchId">("p-before"), inAt: "2026-07-14T23:59:59.999Z", outAt: "2026-07-15T01:00:00.000Z" }),
+      );
+      await repo.saveTimePunch(
+        punch({ id: asId<"TimePunchId">("p-lower"), inAt: "2026-07-15T00:00:00.000Z", outAt: "2026-07-15T08:00:00.000Z" }),
+      );
+      await repo.saveTimePunch(
+        punch({ id: asId<"TimePunchId">("p-upper"), inAt: "2026-07-16T00:00:00.000Z", outAt: "2026-07-16T08:00:00.000Z" }),
+      );
+
+      const rows = await repo.listTimePunchesBetween(
+        "2026-07-15T00:00:00.000Z",
+        "2026-07-16T00:00:00.000Z",
+      );
+      // Lower bound included, upper bound excluded.
+      expect(rows.map((p) => String(p.id))).toEqual(["p-lower"]);
+    });
+
+    it("time punches: listAll spans every crew member — the diagnostic's scan (#584)", async () => {
+      await repo.saveCrewMember(crew());
+      await repo.saveCrewMember(crew({ id: CREW_B, name: "Hooper" }));
+      await repo.saveTimePunch(punch());
+      await repo.saveTimePunch(punch({ id: asId<"TimePunchId">("punch-2"), crewMemberId: CREW_B }));
+
+      expect((await repo.listAllTimePunches()).map((p) => String(p.id)).sort()).toEqual([
+        "punch-1",
+        "punch-2",
+      ]);
+    });
+
+    it("time punches: remove drops it; second remove is a no-op", async () => {
+      await repo.saveCrewMember(crew());
+      await repo.saveTimePunch(punch());
+      await repo.removeTimePunch(asId<"TimePunchId">("punch-1"));
+      expect(await repo.getTimePunch(asId<"TimePunchId">("punch-1"))).toBeNull();
+      expect(await repo.listTimePunchesForCrew(CREW)).toEqual([]);
+      // Idempotent — surfaces double-submit.
+      await repo.removeTimePunch(asId<"TimePunchId">("punch-1"));
     });
 
     it("events: round-trip + list; dock optional present and absent", async () => {

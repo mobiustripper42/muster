@@ -44,6 +44,10 @@ export const TABLE_COVERAGE: Record<string, Coverage> = {
   asks: { kind: "checked", refs: ["seat_id", "crew_member_id"] },
   credentials: { kind: "checked", refs: ["crew_member_id"] },
   pto_windows: { kind: "checked", refs: ["crew_member_id"] },
+  // crew_member_id is ALSO FK'd (on delete restrict) — checked here because the
+  // diagnostic runs against the in-memory adapter too, which holds no constraints.
+  // shift_id is deliberately un-FK'd (SPEC §2.9.2), so the walk is the only net on it.
+  time_punches: { kind: "checked", refs: ["crew_member_id", "shift_id"] },
   magic_tokens: { kind: "checked", refs: ["subject_id (crew subjects only — polymorphic)"] },
   outbox_entries: { kind: "checked", refs: ["ask_id", "seat_id", "crew_member_id"] },
   locations: { kind: "checked", refs: [] },

@@ -42,6 +42,7 @@ export function SubmitButton({
   name,
   value,
   title,
+  disabled,
   "aria-label": ariaLabel,
 }: {
   children: ReactNode;
@@ -49,6 +50,9 @@ export function SubmitButton({
   name?: string;
   value?: string;
   title?: string;
+  /** Disable for a reason of the caller's own (e.g. nothing has changed yet — see
+   *  `DirtySubmit`). Additive: pending still disables regardless. */
+  disabled?: boolean;
   /** For an icon/short-label button whose accessible name needs to be fuller. */
   "aria-label"?: string;
 }) {
@@ -67,7 +71,7 @@ export function SubmitButton({
       value={value}
       title={title}
       aria-label={ariaLabel}
-      disabled={pending}
+      disabled={pending || disabled}
       aria-busy={showing}
       // `relative` only while spinning, to host the centered spinner overlay.
       className={showing ? `relative ${className ?? ""}` : className}

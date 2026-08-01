@@ -74,9 +74,11 @@ export default defineConfig({
       // fixed corner version tag (version-tag — must clear content at 375px), the
       // crew self-serve sign-in form + code entry (crew-sign-in — DEC-081), and the
       // all-shifts filter bar (shifts-view — 5 preset chips + date + crew dropdown
-      // that must wrap, not overflow, at 375px — #321/#330).
+      // that must wrap, not overflow, at 375px — #321/#330), and the time clock both
+      // sides (#626/#627 — the crew card is phone-primary, and the admin punch card
+      // packs two <input type="time"> plus Save on one row, the tightest row in §2.9).
       name: "mobile",
-      testMatch: /(auth-crew|admin-nav|outbox-relay|crew-messaging|operator-messaging|version-tag|crew-sign-in|crew-open|crew-reconciliation|crew-help|cockpit-manifest|cockpit-override|ask-trail|time-off|payroll|shifts-view|calendar-feed|other-shifts-today|vessel-location-admin|offering-catalog|add-ons|blocks|calendar|customers|purchases|book-availability|book-checkout|book-manage)\.spec\.ts/,
+      testMatch: /(auth-crew|admin-nav|outbox-relay|crew-messaging|operator-messaging|version-tag|crew-sign-in|crew-open|crew-reconciliation|crew-help|cockpit-manifest|cockpit-override|ask-trail|time-off|payroll|shifts-view|calendar-feed|other-shifts-today|vessel-location-admin|offering-catalog|add-ons|blocks|calendar|customers|purchases|book-availability|book-checkout|book-manage|crew-time|admin-time-clock)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 375, height: 812 } },
     },
   ],

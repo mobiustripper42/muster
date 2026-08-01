@@ -113,8 +113,13 @@ export default async function CrewTime({
                 </span>
               )}
             </div>
+            {/* NOT `text-bad`. Clocking out is the ordinary end of a shift, not an
+                error or a destructive act — and the earlier-day warning directly above
+                is `text-bad`, so sharing the colour would put a real problem and a
+                routine button in one register. `bad` stays reserved for the warning
+                here and for Delete on the admin bench. */}
             <form action={clockOutNow}>
-              <SubmitButton className="min-h-[52px] w-full bg-card font-semibold text-bad">
+              <SubmitButton className="min-h-[52px] w-full bg-card font-semibold text-ink">
                 Clock out
               </SubmitButton>
             </form>

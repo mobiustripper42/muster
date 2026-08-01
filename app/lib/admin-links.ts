@@ -79,9 +79,15 @@ export const GROUPS: readonly AdminGroup[] = [
   {
     label: "People",
     links: [
-      { href: "/admin/time-off", label: "Time off" },
+      // Ordered by how often the operator reaches for them. Time clock leads: it's
+      // the one with a standing repair queue, and payroll reads what it produces.
+      // Time off is set-and-forget, so it sits last (operator, 2026-08-01).
+      // Distinct from Time off, which is days somebody is unavailable — this is hours
+      // they actually worked (#627, SPEC §2.9).
+      { href: "/admin/time-clock", label: "Time clock" },
       { href: "/admin/payroll", label: "Payroll" },
       { href: "/admin/messages", label: "Messages", feature: "messaging" },
+      { href: "/admin/time-off", label: "Time off" },
     ],
   },
   {

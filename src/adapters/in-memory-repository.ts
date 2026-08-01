@@ -401,9 +401,6 @@ export class InMemoryRepository implements Repository {
       .sort((a, b) => a.at.localeCompare(b.at))
       .map(clone);
   }
-  async listAllTimePunchEdits(): Promise<TimePunchEdit[]> {
-    return this.#timePunchEdits.map(clone);
-  }
 
   // ── Events ─────────────────────────────────────────────────────────────────
   async saveEvent(event: Event): Promise<void> {

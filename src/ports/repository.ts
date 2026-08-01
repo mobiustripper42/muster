@@ -243,8 +243,6 @@ export interface Repository {
   appendTimePunchEdit(edit: TimePunchEdit): Promise<void>;
   /** One punch's history, oldest first — the order it happened in. */
   listTimePunchEdits(timePunchId: TimePunchId): Promise<TimePunchEdit[]>;
-  /** Every edit — the integrity diagnostic's orphan scan (#584). */
-  listAllTimePunchEdits(): Promise<TimePunchEdit[]>;
 
   // ── Reservation catalog (DEC-123/125) ──────────────────────────────────────
   // Read by the virtual-availability model (`deriveVirtualAvailability`). The bare

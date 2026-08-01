@@ -995,10 +995,6 @@ export class PostgresRepository implements Repository {
     );
     return rows.map(toTimePunchEdit);
   }
-  async listAllTimePunchEdits(): Promise<TimePunchEdit[]> {
-    const { rows } = await this.#pool.query("select * from time_punch_edits");
-    return rows.map(toTimePunchEdit);
-  }
 
   // ── Events ─────────────────────────────────────────────────────────────────
   async saveEvent(e: Event): Promise<void> {

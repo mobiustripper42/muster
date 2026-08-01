@@ -104,17 +104,18 @@ export async function editOwnPunch(
   if (!before) return { ok: false, code: "gone" };
   if (!reasonGiven(input.reason)) return { ok: false, code: "reason_required" };
 
+  // `actor: "crew"` rather than a corrective second write: the punch lands once, with
+  // `adminEditedAt` already left alone. The first cut wrote it twice, which meant a
+  // failure between the writes changed someone's hours, marked them as office-edited,
+  // and left no trail row — on a money path (#635 review).
   const result = await editPunch(repo, input.punchId, {
     ...(input.inAt !== undefined ? { inAt: input.inAt } : {}),
     ...(input.outAt !== undefined ? { outAt: input.outAt } : {}),
     now: input.now,
+    actor: "crew",
   });
   if (!result.ok) return result;
-
-  // `editPunch` stamps `adminEditedAt` — correct for the office, wrong here. Put it
-  // back to what it was, so the flag keeps meaning "someone ELSE moved your hours".
-  const mine: TimePunch = { ...result.punch, adminEditedAt: before.adminEditedAt };
-  await repo.saveTimePunch(mine);
+  const mine = result.punch;
 
   await repo.appendTimePunchEdit(
     trailRow({
@@ -150,17 +151,17 @@ export async function addOwnPunch(
 ): Promise<CrewEditResult> {
   if (!reasonGiven(input.reason)) return { ok: false, code: "reason_required" };
 
+  // Same reasoning as the edit door: `origin` is passed in, not corrected afterwards,
+  // so the row is never briefly persisted as the office's entry.
   const result = await addPunch(repo, {
     id: input.id,
     crewMemberId: input.crewMemberId,
     inAt: input.inAt,
     outAt: input.outAt,
+    origin: "crew",
   });
   if (!result.ok) return result;
-
-  // `addPunch` is the office's door and stamps `origin: "admin"`. This one is theirs.
-  const mine: TimePunch = { ...result.punch, origin: "crew" };
-  await repo.saveTimePunch(mine);
+  const mine = result.punch;
 
   await repo.appendTimePunchEdit(
     trailRow({

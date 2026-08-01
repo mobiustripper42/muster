@@ -551,7 +551,6 @@ export function runRepositoryContract(
       const trail = await repo.listTimePunchEdits(asId<"TimePunchId">("punch-1"));
       expect(trail.map((e) => String(e.id))).toEqual(["e1", "e2"]);
       expect(trail[0]).toEqual(edit("e1", "2026-07-16T14:00:00.000Z"));
-      expect((await repo.listAllTimePunchEdits()).length).toBe(3);
     });
 
     it("time punch edits: a created row has no before, a deleted row no after", async () => {

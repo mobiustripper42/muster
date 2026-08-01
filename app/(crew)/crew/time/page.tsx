@@ -11,6 +11,7 @@ import { readSubject } from "../../../lib/auth";
 import { fmt12, fmtDateRange } from "../../../lib/format";
 import { getRepo } from "../../../lib/repo";
 import { AppLink } from "../../../../components/ui/app-link";
+import { DirtySubmit } from "../../../../components/admin/dirty-submit";
 import { addMyPunch, clockInNow, clockOutNow, deleteMyPunch, editMyPunch } from "./actions";
 
 /**
@@ -99,7 +100,11 @@ export default async function CrewTime({
   const { onTheClock } = view;
   // Exactly one editor at a time (#635). Everything else renders inert while it's open,
   // which is why this is one boolean rather than per-row state.
-  const anyOpen = sp.edit !== undefined || sp.add !== undefined;
+  // Only an id that actually matches one of THEIR punches counts as open. A stale
+  // bookmark, a deleted punch, or a hand-typed id would otherwise render every row
+  // inert with no visible way back — the editor that would carry Cancel never opens.
+  const editing = view.punches.some((p) => String(p.id) === sp.edit) ? sp.edit : undefined;
+  const anyOpen = editing !== undefined || sp.add !== undefined;
   const today = vesselDateOf(new Date());
 
   return (
@@ -171,7 +176,7 @@ export default async function CrewTime({
         ) : (
           <>
             {view.punches.map((p) => {
-              const open = sp.edit === String(p.id);
+              const open = editing === String(p.id);
               return (
                 <div
                   key={p.id}
@@ -400,9 +405,12 @@ function PunchForm({
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <SubmitButton className="min-h-[44px] rounded-card bg-ok px-4 font-semibold text-white">
+        {/* Disabled until something changes, and guards against navigating away from
+            an unsaved edit — the same island #627's bench uses, not a second
+            mechanism. Cancel is an anchor, which its capture-phase guard covers. */}
+        <DirtySubmit className="min-h-[44px] rounded-card bg-ok px-4 font-semibold text-white disabled:opacity-40">
           Save
-        </SubmitButton>
+        </DirtySubmit>
         <AppLink
           href={`/crew/time${anchor}`}
           prefetch={false}
@@ -433,9 +441,9 @@ function DeleteForm({ punchId }: { punchId: string }) {
           placeholder="Double punch, this one is wrong"
           className="min-h-[44px] flex-1 rounded-card border border-line bg-card px-3 text-ink"
         />
-        <SubmitButton className="min-h-[44px] rounded-card border border-bad px-4 font-semibold text-bad">
+        <DirtySubmit className="min-h-[44px] rounded-card border border-bad px-4 font-semibold text-bad disabled:opacity-40">
           Delete
-        </SubmitButton>
+        </DirtySubmit>
       </div>
     </form>
   );

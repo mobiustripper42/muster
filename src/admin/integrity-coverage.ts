@@ -53,7 +53,13 @@ export const TABLE_COVERAGE: Record<string, Coverage> = {
   // it is the only remaining evidence those hours existed (#635). So unlike
   // time_punches.shift_id, this one must NOT be walked; a dangling ref here is the
   // expected steady state rather than a defect.
-  time_punch_edits: { kind: "fk", refs: ["actor_id", "time_punch_id (dangles by design)"] },
+  // `actor_id` is FK'd (on delete restrict) — that is the whole enforceable surface.
+  // `time_punch_id` is deliberately un-FK'd AND deliberately allowed to dangle: a
+  // `deleted` row must OUTLIVE the punch it records, being the only remaining evidence
+  // those hours existed (#635). So there is nothing here for the diagnostic to walk —
+  // unlike time_punches.shift_id, a dangling ref is the expected steady state, not a
+  // defect. Classified by the net that actually enforces something.
+  time_punch_edits: { kind: "fk", refs: ["actor_id"] },
   magic_tokens: { kind: "checked", refs: ["subject_id (crew subjects only — polymorphic)"] },
   outbox_entries: { kind: "checked", refs: ["ask_id", "seat_id", "crew_member_id"] },
   locations: { kind: "checked", refs: [] },

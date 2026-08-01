@@ -153,6 +153,13 @@ export async function addPunch(
     crewMemberId: CrewMemberId;
     inAt: Date;
     outAt: Date | null;
+    /**
+     * Who is entering it. Defaults to `"admin"` — this door's original caller is the
+     * repair bench. The crew's own door (#635) passes `"crew"`, because THEY entered
+     * it, and passing it here rather than correcting the row afterwards is what keeps
+     * the write atomic: one `saveTimePunch`, always with the right provenance.
+     */
+    origin?: TimePunchOrigin;
   },
 ): Promise<AddPunchResult> {
   const inAt = input.inAt.toISOString();
@@ -169,7 +176,7 @@ export async function addPunch(
     inAt,
     outAt,
     shiftId: await autoMatchShift(repo, input.crewMemberId, input.inAt),
-    origin: "admin",
+    origin: input.origin ?? "admin",
     adminEditedAt: null,
   };
 
@@ -207,7 +214,20 @@ export type EditPunchResult =
 export async function editPunch(
   repo: Repository,
   id: TimePunchId,
-  patch: { inAt?: Date; outAt?: Date | null; now: Date },
+  patch: {
+    inAt?: Date;
+    outAt?: Date | null;
+    now: Date;
+    /**
+     * Who is editing. Defaults to `"admin"`, which stamps `adminEditedAt`. **A `"crew"`
+     * edit leaves that flag alone**: it exists so a crew member can see that SOMEONE
+     * ELSE moved their hours, and setting it on their own correction would make the
+     * surface lie about who did it. Passed in rather than fixed up afterwards so the
+     * punch is written once — a second corrective write is a window where the row is
+     * saved with the wrong provenance and no trail row exists yet (#635 review).
+     */
+    actor?: TimePunchOrigin;
+  },
 ): Promise<EditPunchResult> {
   const existing = await repo.getTimePunch(id);
   if (!existing) return { ok: false, code: "gone" };
@@ -229,7 +249,10 @@ export async function editPunch(
     ...existing,
     inAt,
     outAt,
-    adminEditedAt: patch.now.toISOString(),
+    adminEditedAt:
+      (patch.actor ?? "admin") === "crew"
+        ? existing.adminEditedAt
+        : patch.now.toISOString(),
   };
 
   try {

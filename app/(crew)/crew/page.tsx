@@ -470,6 +470,21 @@ function CrewApp({
         </AppLink>
       )}
 
+      {/* Time (#626, SPEC §2.9): clock in / clock out. Neutral border like Time off
+          beside it — a utility, not a summons. Distinct from Time OFF, which is
+          about days you're unavailable; this is hours you actually worked. */}
+      <AppLink
+        href="/crew/time"
+        prefetch={false}
+        spinner="overlay"
+        className="flex items-center justify-between rounded-card border border-line bg-card px-4 py-3 shadow-sm"
+      >
+        <span className="font-semibold text-ink">Time</span>
+        <span className="text-faint" aria-hidden>
+          ›
+        </span>
+      </AppLink>
+
       {/* Time off (#332, DEC-009): a quiet self-serve entry — set the dates you're
           off. Neutral, never accent — it's a utility, not a summons, and
           deliberately NOT an availability screen (DEC-009 line). */}

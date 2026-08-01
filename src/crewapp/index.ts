@@ -3,4 +3,5 @@
 export * from "./crew-view.js";
 export * from "./shift-card.js";
 export * from "./thread-list.js";
+export * from "./time-view.js";
 export * from "./thread-view.js";

@@ -36,7 +36,7 @@ export const CLAIMABLE_SHIFT_STATES: ReadonlySet<ShiftState> =
  *  engine texting a seat made that seat vanish from the browse surface, so a shift
  *  whose every seat had been asked was uncrewed and invisible to everyone. First
  *  response wins now, by ask-link or self-claim — and the out-raced member's
- *  In/Out still scores (`recordResponse` logs before it reads seat state). */
+ *  Yes/No still scores (`recordResponse` logs before it reads seat state). */
 export const CLAIMABLE_SEAT_STATES: ReadonlySet<SeatState> = new Set<SeatState>(
   SEAT_STATES.filter((s) => !COMMITTED_SEAT_STATES.has(s)),
 );

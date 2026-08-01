@@ -7,7 +7,7 @@
  *      list (tightest trip), red countdown.
  *   2. RELAY, far (~4d) — Mira's ask on "Maibock", "1st ask". Sorts below Bo.
  *   3. SELF (~30h) — an ask addressed to OPERATOR_CREW_MEMBER_ID (crew-spink),
- *      so the card renders inline In/Out instead of an `sms:` Send link.
+ *      so the card renders inline Yes/No instead of an `sms:` Send link.
  *
  * The asks are fired through the REAL rails (`assignPerson`) and forwarded
  * through the REAL adapter (`WebLinkChannel` → `forwardAsks`), so every entry
@@ -157,7 +157,7 @@ try {
   // 2 — relay, far out, first round.
   const maibock = await shipShift("maibock", "Maibock", at(96));
 
-  // 3 — the operator's own ask → the inline In/Out card.
+  // 3 — the operator's own ask → the inline Yes/No card.
   const keelhaul = await shipShift("keelhaul", "Keelhaul", at(30));
 
   // Fire through the real rails, forward through the real adapter.
@@ -191,7 +191,7 @@ try {
 
   console.log("Seeded 3 outbox cards (trips anchored to now — re-run to re-anchor):");
   console.log("  1 Tideline  ~20h  RELAY — Bo · '2nd ask · Fred declined' · red countdown");
-  console.log("  2 Keelhaul  ~30h  SELF  — Spink ('you' pill) · inline In/Out, no Send link");
+  console.log("  2 Keelhaul  ~30h  SELF  — Spink ('you' pill) · inline Yes/No, no Send link");
   console.log("  3 Maibock   ~4d   RELAY — Mira · '1st ask'");
   console.log("  + New messages: Nora No-Phone — a no-phone ring (Web Share relay, #186)");
   console.log("Outbox: /crew/dev-link?admin=spink → tap through → /admin/outbox");

@@ -166,7 +166,7 @@ const outboxEntry = (over: Partial<OutboxEntry> = {}): OutboxEntry => ({
   askId: asId<"AskId">("ask-1"),
   seatId: SEAT,
   crewMemberId: CREW,
-  body: "Muster: Wed, Jul 1 · Hops · captain — in or out?",
+  body: "Muster: Wed, Jul 1 · Hops · captain — yes or no?",
   link: "https://app.example/crew/auth?t=secret",
   status: "pending",
   createdAt: "2026-07-01T12:00:00.000Z",

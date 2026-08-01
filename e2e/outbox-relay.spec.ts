@@ -43,7 +43,7 @@ test.describe("outbox relay (#160)", () => {
     await expect(bo.getByText("Sent ✓")).toBeVisible();
   });
 
-  test("Dismiss (the In/Out-style red button) clears the card from the worklist", async ({ page }) => {
+  test("Dismiss (the Yes/No-style red button) clears the card from the worklist", async ({ page }) => {
     await signInAsAdmin(page, "spink");
     await page.goto("/admin/outbox");
     const bo = page.locator("article").filter({ hasText: "+15555550101" });

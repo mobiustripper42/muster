@@ -54,14 +54,14 @@ async function singleAskBody(repo: Repository, ask: Ask): Promise<string | null>
   ]);
   return outbound(
     "crew",
-    `${fmtDate(shift.date)} - ${vessel?.name ?? shift.vesselId} - ${role?.name ?? seat.role}. In or out?`,
+    `${fmtDate(shift.date)} - ${vessel?.name ?? shift.vesselId} - ${role?.name ?? seat.role}. Yes or no?`,
   );
 }
 
 /**
  * Forward fired asks to the channel, **batched per recipient** (#393). A crew
  * member who drew several asks in one tick gets ONE message — its magic link
- * lands on `/crew`, which already renders all their live asks as In/Out — instead
+ * lands on `/crew`, which already renders all their live asks as Yes/No — instead
  * of one SMS per ask (the top candidate for a whole weekend batch would otherwise
  * get a pile of simultaneous texts). Only *delivery* is coalesced: the per-ask
  * domain records are untouched and all show on `/crew`; a batch is sent once,

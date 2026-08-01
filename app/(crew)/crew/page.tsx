@@ -22,10 +22,12 @@ import { requestLoginCode, respondToAsk, signOut, verifyLoginCode } from "./acti
 import { switchToAdmin } from "../../lib/switch-actions";
 import { SubmitButton } from "../../../components/ui/submit-button";
 
-/** #161: the In/Out tap's outcome → a calm /crew notice (codes only, DEC-026). */
+/** #161: the Yes/No tap's outcome → a calm /crew notice (codes only, DEC-026).
+ *  The `in`/`out` keys are the URL param (DEC-026 keeps prose out of params) —
+ *  #630 swapped the words on screen, not the codes on the wire. */
 const ANSWERED_NOTE: Record<string, string> = {
-  in: "You’re in — it’s in My shifts below.",
-  out: "Marked out — thanks for the quick reply.",
+  in: "You’re on — it’s in My shifts below.",
+  out: "Noted — thanks for the quick reply.",
   filled: "That seat was already filled — nothing more needed from you.",
   booked: "You’re already on another seat that day — can’t take two.",
   already: "You already answered this one — you’re all set.",
@@ -39,7 +41,7 @@ const ANSWERED_NOTE: Record<string, string> = {
  * tapping a shift here will open it.
  *
  * Server component: reads the session, builds the view model through the port,
- * renders. The In/Out buttons post to a server action — no client JS required.
+ * renders. The Yes/No buttons post to a server action — no client JS required.
  */
 type Search = {
   auth?: string;
@@ -537,7 +539,7 @@ function CrewApp({
           view.shifts.map((s) =>
             // A claimed-but-unconfirmed seat (#4) has no shift card yet (the card
             // is Confirmed-only) — render it as a non-link "awaiting confirmation"
-            // row so the "In" visibly landed, without navigating to a dead card.
+            // row so the "Yes" visibly landed, without navigating to a dead card.
             s.pending ? (
               <div
                 key={s.seatId}
@@ -615,19 +617,19 @@ function AskCard({ ask }: { ask: CrewAppView["asks"][number] }) {
             ? ` · ${fmt12(ask.callTime)}${ask.shiftEndTime ? `–${fmt12(ask.shiftEndTime)}` : ""}`
             : ""}{" "}
           · {ask.vesselName} · {ask.roleName}.{" "}
-          <b>In or out?</b>
+          <b>Yes or no?</b>
         </div>
         {/* First-timer orientation (10.6): name what the tap commits — this one
             shift (NOT "the whole day" — that's the open-shift claim). Nudge
             toward answering either way (silence is what hurts the score). Muted,
             non-alarming (the anxiety-dashboard guard). */}
         <div className="mt-1 text-xs text-muted">
-          In = you’re on for this shift. Out = you’re not — either way, please tap.
+          Yes = you’re on for this shift. No = you’re not — either way, please tap.
         </div>
       </div>
       {/* One form, two submit buttons — only the tapped button's response posts;
           each spins alone via its own name/value (DEC-089). No-JS still submits;
-          green In / red Out is the scannable polarity (mockup). */}
+          green Yes / red No is the scannable polarity (mockup). */}
       <form action={respondToAsk} className="grid grid-cols-2 gap-px bg-line">
         <input type="hidden" name="askId" value={ask.askId} />
         <SubmitButton
@@ -635,14 +637,14 @@ function AskCard({ ask }: { ask: CrewAppView["asks"][number] }) {
           value="declined"
           className="min-h-[52px] w-full bg-card font-semibold text-bad"
         >
-          Out
+          No
         </SubmitButton>
         <SubmitButton
           name="response"
           value="accepted"
           className="min-h-[52px] w-full bg-ok font-semibold text-white"
         >
-          In
+          Yes
         </SubmitButton>
       </form>
     </div>

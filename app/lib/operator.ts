@@ -3,7 +3,7 @@
  *
  * BrewBoat reality: the operator (Spink) also captains, so the engine sometimes
  * asks HIM for a seat. In the outbox, an ask addressed to this crew member
- * renders inline In/Out buttons (answerable right there, admin session) instead
+ * renders inline Yes/No buttons (answerable right there, admin session) instead
  * of an `sms:` self-text — inline-or-relayed, never both, so the same ask can't
  * be answered through two doors at once.
  *

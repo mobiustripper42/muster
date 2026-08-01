@@ -2,7 +2,7 @@
  * Identity-guarded ask answer (DEC-030 operator-as-crew clause).
  *
  * The operator is also crew (BrewBoat reality: Spink captains), so some asks in
- * the outbox are addressed to HIM. Those render inline In/Out buttons instead
+ * the outbox are addressed to HIM. Those render inline Yes/No buttons instead
  * of an `sms:` relay link — but the inline action must not become a back door
  * for answering *anyone's* ask from an admin session: a reliability event
  * recorded against the wrong person corrupts the one log (DEC-008).

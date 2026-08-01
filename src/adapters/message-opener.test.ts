@@ -14,7 +14,7 @@ describe("outbound openers (#599)", () => {
     // The whole point. A lock-screen preview truncates from the right, so a marker
     // anywhere but the front is invisible exactly when there are enough messages to
     // need it. Assert on the opening characters, not on containment.
-    expect(outbound("crew", "Wed, Jul 29 - Brew 4 - captain. In or out?")).toMatch(
+    expect(outbound("crew", "Wed, Jul 29 - Brew 4 - captain. Yes or no?")).toMatch(
       /^Muster: /,
     );
     expect(outbound("admin", "1 shift needs you")).toMatch(/^Muster ADMIN: /);
@@ -104,7 +104,7 @@ describe("every outbound sender front-loads its audience marker (#599)", () => {
   it("crew and admin openers cannot be confused by a truncated preview", () => {
     // Truncate both to the width a lock screen actually shows and confirm they
     // still differ — the failure was that they didn't.
-    const crewPreview = outbound("crew", "Wed, Jul 29 - Brew 4 - captain. In or out?").slice(0, 14);
+    const crewPreview = outbound("crew", "Wed, Jul 29 - Brew 4 - captain. Yes or no?").slice(0, 14);
     const adminPreview = outbound("admin", "1 shift needs you").slice(0, 14);
     expect(crewPreview).not.toBe(adminPreview);
     expect(adminPreview).toContain("ADMIN");

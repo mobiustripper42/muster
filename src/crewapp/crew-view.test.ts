@@ -100,7 +100,7 @@ describe("buildCrewAppView", () => {
     await repo.saveShift({ id: asId<"ShiftId">("shift-dec"), vesselId: VESSEL, date: "2026-07-08", state: "Crewed", eventIds: [] });
     await repo.saveSeat({ id: asId<"SeatId">("seat-dec"), shiftId: asId<"ShiftId">("shift-dec"), role: CAPTAIN, kind: "required", state: "Confirmed", assignedCrewMemberId: ME });
     await repo.saveAsk({ id: asId<"AskId">("ask-dec"), seatId: asId<"SeatId">("seat-dec"), crewMemberId: ME, channel: "push", sentAt: "2026-07-01T08:00:00.000Z", respondedAt: "2026-07-01T08:05:00.000Z", response: "declined" });
-    // Claimed (pending) seat — claim = "In", so never operator-added.
+    // Claimed (pending) seat — claim = "Yes", so never operator-added.
     await repo.saveShift({ id: asId<"ShiftId">("shift-cl"), vesselId: VESSEL, date: "2026-07-09", state: "Filling", eventIds: [] });
     await repo.saveSeat({ id: asId<"SeatId">("seat-cl"), shiftId: asId<"ShiftId">("shift-cl"), role: CAPTAIN, kind: "required", state: "Claimed", assignedCrewMemberId: ME });
 

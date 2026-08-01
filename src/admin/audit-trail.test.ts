@@ -10,7 +10,7 @@ import { asId } from "../domain/ids.js";
 import type { CrewMember, Shift, Vessel, RoleType } from "../domain/entities.js";
 import type { AuditEvent, AuditEventType, AuditActorKind, AuditEventMetadata } from "../domain/audit.js";
 import type { ReliabilityEvent, ReliabilityEventType, ReliabilityEventMetadata } from "../domain/reliability.js";
-import { buildAuditTrail } from "./audit-trail.js";
+import { AUDIT_KIND_LABEL, buildAuditTrail } from "./audit-trail.js";
 
 const TENANT = asId<"TenantId">("t-1");
 const CAPTAIN = asId<"RoleTypeId">("role-captain");
@@ -163,5 +163,21 @@ describe("buildAuditTrail — every crew event, its own row", () => {
     );
     const [row] = await buildAuditTrail(repo);
     expect(row).toMatchObject({ crewName: "Quint", date: null, vesselName: null });
+  });
+});
+
+describe("AUDIT_KIND_LABEL (#630 ask vocabulary)", () => {
+  it("the ask-answer pills read Yes/No — the kind keys stay in/out", () => {
+    // The pill text on /admin/asks is the only place these labels surface. The
+    // kinds themselves are derived display keys (ask_accepted → "in"), never
+    // stored, so the vocabulary swap is label-only.
+    expect(AUDIT_KIND_LABEL.in).toBe("Yes");
+    expect(AUDIT_KIND_LABEL.out).toBe("No");
+    expect(AUDIT_KIND_LABEL.escalation_in).toBe("Escalation Yes");
+  });
+
+  it("no label anywhere still reads In or Out", () => {
+    expect(Object.values(AUDIT_KIND_LABEL)).not.toContain("In");
+    expect(Object.values(AUDIT_KIND_LABEL)).not.toContain("Out");
   });
 });

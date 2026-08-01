@@ -2,7 +2,7 @@
  * TwilioChannel (9.4/#225, DEC-MSG-1 swap) — one class, three relay ports.
  * Asserts the Twilio request shape (endpoint, basic auth, form-encoded
  * To/From/Body) without a live send, the mint-at-send magic-link per port
- * (ask In/Out, notice sign-in, ring thread deep-link), and the port contract's
+ * (ask Yes/No, notice sign-in, ring thread deep-link), and the port contract's
  * throw-on-reject (missing phone, non-2xx).
  */
 import { describe, expect, it } from "vitest";
@@ -52,7 +52,7 @@ function channel(fetch: FetchLike, repo = new InMemoryRepository()) {
 const ask = (over: Partial<OutboundMessage> = {}): OutboundMessage => ({
   to: { crewMemberId: CREW, phone: "+15035550111" },
   kind: "ask",
-  body: "Muster: Sat, Jul 4 · Hops · captain — in or out?",
+  body: "Muster: Sat, Jul 4 · Hops · captain — yes or no?",
   seatId: asId<"SeatId">("seat-1"),
   askId: asId<"AskId">("ask-1"),
   ...over,
@@ -114,14 +114,14 @@ describe("TwilioChannel", () => {
     ).toThrow(/messagingServiceSid or from/);
   });
 
-  it("an ask SMS carries the body + a freshly minted In/Out magic link", async () => {
+  it("an ask SMS carries the body + a freshly minted Yes/No magic link", async () => {
     const { fetch, calls } = fakeFetch();
     const repo = new InMemoryRepository();
     await channel(fetch, repo).send(ask());
 
     const body = new URLSearchParams(calls[0]!.init.body).get("Body")!;
     expect(body).toBe(
-      "Muster: Sat, Jul 4 · Hops · captain — in or out?\n" +
+      "Muster: Sat, Jul 4 · Hops · captain — yes or no?\n" +
         "https://muster.test/crew/auth?t=s3cret",
     );
   });

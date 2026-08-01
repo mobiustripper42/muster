@@ -13,7 +13,7 @@
  *
  * Link handling mirrors the outbox adapters it replaces (DEC-030 "mint at
  * send"): each SMS that needs a tap-in appends a fresh one-time magic link —
- * the ask's In/Out URL, the notice's my-shifts sign-in, the ring's thread
+ * the ask's Yes/No URL, the notice's my-shifts sign-in, the ring's thread
  * deep-link. Minted here, once, straight into the delivered text.
  *
  * Unlike the outbox worklist adapters there is no dedupe slot: a real SMS has
@@ -132,7 +132,7 @@ export class TwilioChannel implements ChannelPort, NoticePort, NotificationPort 
       text = `${message.body}\n${link}`;
     } else if (message.kind === "ask") {
       // The ask (DEC-030): same 24h answer-window link the web-link relay
-      // mints — the crew member taps, lands authenticated on In/Out, and
+      // mints — the crew member taps, lands authenticated on Yes/No, and
       // answers through `recordResponseAndConfirm`. No inbound SMS parsing.
       const link =
         message.link ?? (await this.#mintLink(requireCrewId(message.to)));

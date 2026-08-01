@@ -3,7 +3,7 @@
  * an At-Risk board row: "I need you on this", aimed at one specific person.
  *
  * A lean is an **ask**, not the override hammer (`manualOverride` confirms
- * regardless of pool; a lean still asks and the person still answers In/Out).
+ * regardless of pool; a lean still asks and the person still answers Yes/No).
  * Mechanically it is exactly `escalate`'s per-person move — `assignPerson` +
  * `logNudged` — manually targeted, with the nudge flagged `manual: true` so the
  * one log keeps "the human had to step in" distinguishable from engine nudges

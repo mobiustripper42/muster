@@ -64,7 +64,7 @@ summons him when it genuinely can't.
 Their entire world is three surfaces. The failure mode is friction and stale info, not missing
 features (SPEC §2.6).
 
-- CR-1: I get the ask as a push/SMS and answer **in or out in ~3 seconds without opening or logging
+- CR-1: I get the ask as a push/SMS and answer **yes or no in ~3 seconds without opening or logging
   into anything**.
 - CR-2: I land on the right shift via a **magic link** — no password to forget.
 - CR-3: I see my **confirmed upcoming shifts**, one card each, past stuff hidden.

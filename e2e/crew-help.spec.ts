@@ -1,5 +1,5 @@
 /**
- * Onboarding orientation (Phase 10.6): the ask card spells out that "In" commits
+ * Onboarding orientation (Phase 10.6): the ask card spells out that "Yes" commits
  * the whole day (it used to commit silently), and a public "How Muster works"
  * page (/crew/help) explains the app + add-to-home-screen to a newcomer, reachable
  * from the crew home and without a session.
@@ -11,12 +11,12 @@ test.describe("crew onboarding — orientation", () => {
     await resetAndSeed("crew");
   });
 
-  test("the ask card states the In/Out consequence (In = this shift)", async ({
+  test("the ask card states the Yes/No consequence (Yes = this shift)", async ({
     page,
   }) => {
     await signInAsCrew(page, "crew-quint");
-    await expect(page.getByText("In or out?")).toBeVisible();
-    await expect(page.getByText(/In = you.re on for this shift/)).toBeVisible();
+    await expect(page.getByText("Yes or no?")).toBeVisible();
+    await expect(page.getByText(/Yes = you.re on for this shift/)).toBeVisible();
   });
 
   test('"How Muster works" on the crew home opens the help page', async ({ page }) => {

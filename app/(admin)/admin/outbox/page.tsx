@@ -18,7 +18,7 @@ import { messagingEnabled } from "../../../lib/flags";
  * The operator outbox (DEC-030) — the relay worklist for the web-link pilot
  * channel. Every ask the engine fired and the operator hasn't texted yet,
  * tightest trip first; texted-and-awaiting cards muted below. An ask addressed
- * to the operator themself renders inline In/Out instead of a Send link
+ * to the operator themself renders inline Yes/No instead of a Send link
  * (inline-or-relayed, never both). Mobile-first: this page is worked from a
  * phone, where the `sms:` anchor opens the native composer.
  */
@@ -30,8 +30,8 @@ export const dynamic = "force-dynamic";
 // reseed while sitting on the param'd URL) still reads true — the same stale-safe
 // phrasing the At-Risk board uses for its "Last action: …" notices (#93).
 const ANSWERED_COPY: Record<string, { tone: "ok" | "bad"; text: string }> = {
-  accepted: { tone: "ok", text: "You answered: in." },
-  declined: { tone: "ok", text: "You answered: out." },
+  accepted: { tone: "ok", text: "You answered: yes." },
+  declined: { tone: "ok", text: "You answered: no." },
   lost: {
     tone: "bad",
     text: "Your yes landed second — the seat was already filled.",

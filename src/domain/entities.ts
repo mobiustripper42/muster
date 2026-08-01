@@ -968,7 +968,7 @@ export interface OutboxEntry {
   crewMemberId: CrewMemberId;
   /** The ask text the operator relays, frozen at enqueue. */
   body: string;
-  /** The magic link (24h TTL) to the In/Out screen, minted + frozen at enqueue. */
+  /** The magic link (24h TTL) to the Yes/No screen, minted + frozen at enqueue. */
   link: string;
   status: OutboxStatus;
   /** ISO-8601 UTC — enqueue time, and the channel's `deliveredAt`. */

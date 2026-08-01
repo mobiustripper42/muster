@@ -97,7 +97,7 @@ Consequence (Spink's explicit requirement): **scheduling SMS and message-notific
 land as separate threads on the phone.** Since the phone threads by *number*, that means two
 sender identities:
 
-- **Scheduling number** — the crew **ask** (in/out), call-time/dock changes (`crew-app §1`).
+- **Scheduling number** — the crew **ask** (yes/no), call-time/dock changes (`crew-app §1`).
 - **Doorbell number** — "new message in Muster, tap to open."
 
 Two numbers → two clean streams on the handset. (Both ride the registered crew campaign, §12.)

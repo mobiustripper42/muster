@@ -536,7 +536,7 @@ describe("losing asks are withdrawn when the seat fills (#600)", () => {
 
   it("still answerable: a contested yes after withdrawal keeps its +2 (DEC-120)", async () => {
     // The withdrawal stops the SWEEP inventing a penalty; it is not a refusal of the
-    // crew member's own answer. Someone tapping "In" ten minutes late lost the seat
+    // crew member's own answer. Someone tapping "Yes" ten minutes late lost the seat
     // but was responsive, and responsiveness is paid regardless of outcome.
     const winner = await addCrew("crew-win");
     const loser = await addCrew("crew-lose");
@@ -1077,9 +1077,9 @@ describe("refreshShiftState — terminal shifts never resurrect (cancel/complete
 describe("out-raced by a self-claim (#440)", () => {
   // #440 lets a crew member self-claim a seat that already has an outstanding
   // ask, so an asked member can answer a seat that's already gone. The operator
-  // rule: ANY In or Out scores a + — the response is credited on its own terms,
+  // rule: ANY Yes or No scores a + — the response is credited on its own terms,
   // regardless of whether the seat survived. Silence is the only sin.
-  it("an 'In' to a seat someone else already took still credits ask_accepted", async () => {
+  it("a 'Yes' to a seat someone else already took still credits ask_accepted", async () => {
     const asked = await addCrew("crew-asked");
     const claimer = await addCrew("crew-claimer");
     const [seatId] = await addShift(1);

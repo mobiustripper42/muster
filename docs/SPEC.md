@@ -1209,7 +1209,7 @@ keeps Spink up at night — but until payments land, the board's honest job ther
 ### 2.6.1 The ask
 Arrives as **push / SMS**, answered by **tapping through to the app**:
 
-> *Sat Jul 18 · BrewBoat · mate · call 12:30, back ~6. In or out?*
+> *Sat Jul 18 · BrewBoat · mate · call 12:30, back ~6. Yes or no?*
 
 - ~~**Two buttons. ~3 seconds. No login, no navigate-to-respond.**~~ — **half met, half settled against.**
   **"No login" is real and shipped:** the SMS carries a magic link that lands the crew member
@@ -1223,8 +1223,8 @@ Arrives as **push / SMS**, answered by **tapping through to the app**:
   needs the same strike.
 - **Magic-link auth, no passwords** (§3.2) — casual crew won't manage credentials; a forgotten
   password is a ghosted shift.
-  > **Open for the operator:** the **shipped SMS carries no time at all** — just date, boat, role, "In
-  > or out?" — while the in-app ask card renders the full call→back window. The two ask surfaces
+  > **Open for the operator:** the **shipped SMS carries no time at all** — just date, boat, role, "Yes
+  > or no?" — while the in-app ask card renders the full call→back window. The two ask surfaces
   > disagree, which is the exact shape §2.6.3's "single source of truth" invariant forbids. The reason
   > is real but is only a code comment, not a decision: GSM-7, 1-segment, 160 chars. Adding the window
   > costs ~16 characters against a ~55-character body. Worth it, or leave the text minimal?
@@ -1291,7 +1291,7 @@ Everything needed on one screen, no hunting. This is where "bulletproof" lives.
    everyone's paperwork in his head.
 
 ### States to render
-- **The ask** (in/out, answered in-app via the magic link — not from the notification itself; see
+- **The ask** (yes/no, answered in-app via the magic link — not from the notification itself; see
   §2.6.1).
 - **Confirmed-shifts list** + own reliability standing; empty state.
 - **Shift card** with all fields above, ~~a **live-updated** indicator when something changed since
@@ -1326,9 +1326,9 @@ Everything needed on one screen, no hunting. This is where "bulletproof" lives.
 - **Magic link** expired/reused → graceful re-request, not a dead end (§3.2).
 
 ### Acceptance criteria
-- [ ] ~~An ask is fully answerable (in/out) from the push/SMS without opening or logging into the
+- [ ] ~~An ask is fully answerable (yes/no) from the push/SMS without opening or logging into the
       app.~~ — **REWRITTEN.** An ask is answerable in **two taps from the notification** — tap the
-      magic link, tap In or Out — **with no login and no password**. *(The "without opening" half is
+      magic link, tap Yes or No — **with no login and no password**. *(The "without opening" half is
       closed on operator input, 2026-07-27: there will never be reply-by-SMS. DEC-030 chose an
       operator-relayed magic link with no inbound webhook and that stands. The "no login" half is fully
       met and well-built.)*

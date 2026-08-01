@@ -57,7 +57,7 @@ export interface SeatPool {
  *
  * TWO queries, not 1+N. It used to call `listSeatsForShift` per shift, which against
  * Postgres is one sequential round trip each — fine when this only ran inside the tick,
- * and not fine since it started guarding the crew-facing "In" tap (#522 sweep 3). Four
+ * and not fine since it started guarding the crew-facing "Yes" tap (#522 sweep 3). Four
  * boats over a ~200-day season is ~800 shifts and rows are never pruned, so that shape
  * was ~800 round trips (seconds) on a user-latency path in year one, and roughly ten
  * times that by season three. `listAllSeats` makes it flat.

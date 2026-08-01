@@ -10,7 +10,7 @@ import { RelaySend } from "./relay-send";
  * One outbox card (DEC-030) — one ask the operator still owes a relay (or, for
  * an ask addressed to the operator themself, an inline answer). The relay Send
  * is the single-click `RelaySend` island (the one `'use client'` exception,
- * DEC-026); the inline In/Out and the no-phone notice stay server-rendered.
+ * DEC-026); the inline Yes/No and the no-phone notice stay server-rendered.
  *
  * A card is inline-OR-relayed, never both (`mode: "self"` replaces the relay
  * affordances entirely) — the same ask must not be answerable through two
@@ -92,7 +92,7 @@ export function OutboxCard({ card }: { card: OutboxCardVM }) {
             </div>
           </div>
           {card.mode === "relay" ? (
-            // Pending: Dismiss | Send as a two-button row — the In/Out idiom
+            // Pending: Dismiss | Send as a two-button row — the Yes/No idiom
             // (white-red Dismiss | green-white Send). Send is Web Share (Google
             // Voice) → sms: fallback; works even with no phone (share has no
             // recipient field). Both buttons carry the top border so the row reads
@@ -145,7 +145,7 @@ export function OutboxCard({ card }: { card: OutboxCardVM }) {
 
       {card.mode === "self" && (
         // The operator's own ask: answer it right here (admin session), exactly
-        // the crew app's In/Out — one form, two submit buttons, no client JS.
+        // the crew app's Yes/No — one form, two submit buttons, no client JS.
         <form
           action={answerOwnAsk}
           className="grid grid-cols-2 gap-px border-t border-line bg-line"
@@ -157,7 +157,7 @@ export function OutboxCard({ card }: { card: OutboxCardVM }) {
             value="declined"
             className="min-h-[52px] w-full bg-card font-semibold text-bad"
           >
-            Out
+            No
           </button>
           <button
             type="submit"
@@ -165,7 +165,7 @@ export function OutboxCard({ card }: { card: OutboxCardVM }) {
             value="accepted"
             className="min-h-[52px] w-full bg-ok font-semibold text-white"
           >
-            In
+            Yes
           </button>
         </form>
       )}

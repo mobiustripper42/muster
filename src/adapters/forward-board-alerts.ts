@@ -83,8 +83,9 @@ export async function composeBoardAlert(repo: Repository, landings: BoardLanding
   // truncates from the RIGHT, for the one person (DEC-092: every admin is also crew)
   // who receives both classes on the same phone from the same sender. On 2026-07-29
   // the operator read this alert as an ask. The distinguishing words ("needs you" vs
-  // "In or out?") were already there — they just sat behind a date and a vessel name,
-  // i.e. exactly where truncation eats them.
+  // "In or out?" — the ask's wording that day; #630 has since made it "Yes or no?")
+  // were already there — they just sat behind a date and a vessel name, i.e. exactly
+  // where truncation eats them.
   //
   // The `⚠` was dropped for legibility only. It saved no SMS segments: the `•`/`·`/`—`
   // below are already non-GSM-7, so this body is UCS-2 either way.

@@ -22,7 +22,7 @@ import { getRepo } from "../../../lib/repo";
  *   redirect (that would interrupt the composer handoff) — it returns a status
  *   and the island flips optimistically. "Sent" still means "you fired the
  *   composer", not proof of delivery; Resend re-opens it.
- * - answerOwnAsk is the operator-as-crew inline In/Out. GUARDED: it answers
+ * - answerOwnAsk is the operator-as-crew inline Yes/No. GUARDED: it answers
  *   only an ask addressed to `OPERATOR_CREW_MEMBER_ID` (`recordResponseAs`
  *   refuses anything else) — an admin session is not a back door for writing
  *   reliability events against other people's asks (DEC-008).

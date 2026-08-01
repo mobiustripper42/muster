@@ -64,10 +64,13 @@ Run this check against the branch diff (`git diff $(git merge-base HEAD main)...
 
 | Trigger | What to match |
 |---|---|
-| **Money path** | `src/reservations/*payment*`, `src/reservations/booking-webhook.ts`, `src/adapters/stripe-payment.ts`, `app/api/webhooks/**`, `app/(public)/book/checkout/**` — PaymentIntent creation, webhook handling, refunds, fee/tip/balance math |
+| **Money moving** | `src/reservations/*payment*`, `src/reservations/booking-webhook.ts`, `src/adapters/stripe-payment.ts`, `app/api/webhooks/**`, `app/(public)/book/checkout/**` — PaymentIntent creation, webhook handling, refunds, fee/tip/balance math |
+| **Money being computed** | `src/admin/payroll.ts`, `src/admin/pay-periods.ts`, `src/admin/gratuity-payroll.ts`, `src/admin/time-clock-report.ts`, `src/crew/time-clock.ts`, the `time_punches` / `gratuity` tables, and any `*.csv` export route — hours, tips, pay-period bucketing |
 | **Auth / capability URL** | `src/auth/**`, `app/lib/auth*.ts`, `app/(crew)/crew/auth/**`, token minting, the `/reservations/manage` bearer path |
 | **Data-changing migration** | a new `db/migrations/*.sql` containing `drop`, `alter … type`, `update`, or `delete` (an additive `add column` does **not** trigger) |
 | **Too big to review well** | the diff is large or sprawling enough that you would not confidently sign off on it yourself |
+
+**The test, when a path isn't listed:** *does a number this code produces end up on someone's paycheck or invoice?* If yes, it's the money path — whether or not Stripe is anywhere near it. The first two rows exist separately because the original table defined "money" by **where money moves**, and missed where it is **computed**: #625 added the `time_punches` spine with no payment file in the diff, and a wrong `outAt`, a mis-bucketed pay period, or a double-counted punch is a wrong payment that no Stripe-shaped trigger would ever catch (operator, 2026-07-31).
 
 If one or more hit, print exactly this and continue — never block, never run it:
 

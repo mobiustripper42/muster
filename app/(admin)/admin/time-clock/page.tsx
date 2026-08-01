@@ -48,6 +48,7 @@ type Search = {
   ain?: string;
   aout?: string;
   acrew?: string;
+  anext?: string;
 };
 
 const ERR_COPY: Record<string, string> = {
@@ -133,6 +134,7 @@ export default async function AdminTimeClock({
     in: isTime(sp.ain),
     out: isTime(sp.aout),
     crew: sp.acrew && crewList.some((c) => c.id === sp.acrew) ? sp.acrew : null,
+    next: sp.anext === "1",
   };
   const view = dayMode ? dayView : crewView;
   const rows: PunchRow[] = view?.rows ?? [];
@@ -415,6 +417,19 @@ function PunchCard({
             className="min-h-[44px] rounded-card border border-line bg-card px-3 text-ink"
           />
         </div>
+        {/* An evening trip that lands after midnight is ONE punch on the earlier day
+            (§2.9.6), so the out time needs to be able to say "next day". Explicit, not
+            inferred from out < in — that would turn a typo into a paid 16 hours. */}
+        <label className="flex items-center gap-2 pb-2 text-xs text-muted">
+          <input
+            type="checkbox"
+            name="outNextDay"
+            value="1"
+            defaultChecked={row.outIsNextDay}
+            className="h-5 w-5"
+          />
+          Out is next day
+        </label>
         {/* Disabled until something in this row actually changes — a column of live
             Save buttons on rows you're only reading is noise. */}
         <DirtySubmit className="min-h-[44px] rounded-card bg-accent px-4 font-semibold text-white disabled:opacity-40">
@@ -453,7 +468,7 @@ function AddPunchForm({
   period: { start: string; end: string };
   /** What was attempted on a refused add — re-filled so a rejection costs one field,
    *  not three. Already shape-validated by the caller. */
-  retry: { day: string | null; in: string; out: string; crew: string | null };
+  retry: { day: string | null; in: string; out: string; crew: string | null; next: boolean };
 }) {
   return (
     <section className="flex flex-col gap-2">
@@ -534,6 +549,16 @@ function AddPunchForm({
             className="min-h-[44px] rounded-card border border-line bg-card px-3 text-ink"
           />
         </div>
+        <label className="flex items-center gap-2 pb-2 text-xs text-muted">
+          <input
+            type="checkbox"
+            name="outNextDay"
+            value="1"
+            defaultChecked={retry.next}
+            className="h-5 w-5"
+          />
+          Out is next day
+        </label>
         <SubmitButton className="min-h-[44px] rounded-card bg-accent px-4 font-semibold text-white">
           Add
         </SubmitButton>

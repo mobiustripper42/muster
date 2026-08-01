@@ -76,6 +76,42 @@ test.describe("admin /admin/time-clock — the repair bench", () => {
     await expect(page.locator("#add-day")).toHaveValue(addDay!);
   });
 
+  test("an overnight punch — in at 10pm, out at 2am the next day — is one punch", async ({
+    page,
+  }) => {
+    // The case the action layer originally couldn't express at all: both times were
+    // resolved against the SAME day, so 22:00 → 02:00 came back `out_before_in` and a
+    // night shift was unrecordable. "Out is next day" is explicit rather than inferred
+    // from out < in, so a typo stays an error instead of becoming a paid 16 hours.
+    await signInAsAdmin(page, "spink");
+    await page.goto("/admin/time-clock");
+    const addDay = await page.locator("#add-day").getAttribute("min");
+    await page.locator("#add-day").fill(addDay!);
+    await page.locator("#add-in").fill("22:00");
+    await page.locator("#add-out").fill("02:00");
+    await page.locator('input[name="outNextDay"]').last().check();
+    await page.getByRole("button", { name: "Add" }).click();
+
+    await page.waitForURL(/added=1/);
+    // Four hours, on the day it STARTED — not two days, not a rejection.
+    await expect(page.getByText("4h")).toHaveCount(2); // the row and the total
+    // And the row comes back with its next-day box already ticked.
+    await expect(page.locator('input[name="outNextDay"]').first()).toBeChecked();
+  });
+
+  test("without the next-day box, an out before the in is still refused", async ({ page }) => {
+    await signInAsAdmin(page, "spink");
+    await page.goto("/admin/time-clock");
+    const addDay = await page.locator("#add-day").getAttribute("min");
+    await page.locator("#add-day").fill(addDay!);
+    await page.locator("#add-in").fill("22:00");
+    await page.locator("#add-out").fill("02:00");
+    await page.getByRole("button", { name: "Add" }).click();
+
+    await page.waitForURL(/err=out_before_in/);
+    await expect(page.getByText("No punches here.")).toBeVisible();
+  });
+
   test("the day view's date picker actually navigates, and ‹ › keep it in sync", async ({
     page,
   }) => {

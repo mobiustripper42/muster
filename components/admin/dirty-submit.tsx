@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { confirmLeaveIfDirty, forgetDirty, markDirty } from "./dirty-state";
 import { SubmitButton } from "../ui/submit-button";
 
 /**
@@ -22,12 +23,15 @@ import { SubmitButton } from "../ui/submit-button";
  * of that span, so their events bubble to the form and stop there. Reached through the
  * button's own `.form` — no prop threading, and it covers any field the caller adds.
  *
- * **The navigation guard has two halves, because one doesn't cover the other.**
+ * **The navigation guard has three halves, because no one of them covers the others.**
  * `beforeunload` catches a reload, a tab close, or a link out of the app — but NOT an
- * in-app `AppLink`, which is a client-side `router.push` and fires no unload. The day
- * ‹/› steps and the view tabs are exactly that. So a capture-phase click listener
- * intercepts anchor clicks while dirty and asks first. Both are removed the moment the
- * form is submitted, so saving never argues with you on the way out.
+ * in-app `AppLink`, which is a client-side `router.push` and fires no unload; the day
+ * ‹/› steps and the view tabs are exactly that, so a capture-phase click listener
+ * intercepts anchor clicks. And neither covers `AutoSubmitSelect`/`AutoSubmitDate`,
+ * which navigate from a `change` handler and are not anchors at all — those consult the
+ * shared flag in `dirty-state.ts` before pushing. Switching crew member mid-edit used to
+ * discard the edit in silence. All are released the moment the form submits, so saving
+ * never argues with you on the way out.
  *
  * **No-JS:** the effect never runs, the button renders from the server as enabled, and
  * there is no guard — a no-JS operator gets the previous always-live behaviour rather
@@ -42,6 +46,9 @@ export function DirtySubmit({
 }) {
   const [dirty, setDirty] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
+  // Identity for this row's entry in the shared registry — several punch rows are on
+  // screen at once and each owns its own dirtiness.
+  const token = useMemo(() => Symbol("dirty-submit"), []);
 
   useEffect(() => {
     const form = ref.current?.closest("form");
@@ -57,8 +64,14 @@ export function DirtySubmit({
       form.removeEventListener("input", mark);
       form.removeEventListener("change", mark);
       form.removeEventListener("submit", clear);
+      forgetDirty(token);
     };
-  }, []);
+  }, [token]);
+
+  // Publish to the shared registry so the auto-submitting pickers can see it.
+  useEffect(() => {
+    markDirty(token, dirty);
+  }, [token, dirty]);
 
   useEffect(() => {
     if (!dirty) return;
@@ -76,7 +89,7 @@ export function DirtySubmit({
       if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
       const anchor = (e.target as HTMLElement | null)?.closest("a");
       if (!anchor || anchor.target === "_blank") return;
-      if (!window.confirm("You have an unsaved change on this punch. Leave without saving?")) {
+      if (!confirmLeaveIfDirty()) {
         e.preventDefault();
         e.stopPropagation();
       }

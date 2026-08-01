@@ -38,6 +38,13 @@ export interface PunchRow {
   /** True elapsed minutes, or null while open. Unrounded (§2.9.6). */
   minutes: number | null;
   open: boolean;
+  /**
+   * The punch ends on a LATER vessel-local day than it started — an evening trip that
+   * landed after midnight. One punch, on the earlier day (§2.9.6); the edit form needs
+   * this to pre-check its "out is next day" box, because there is one date field and
+   * the out time alone can't say which day it means.
+   */
+  outIsNextDay: boolean;
   /** `origin: "admin"` — the operator entered it; nobody tapped anything (§2.9.8). */
   enteredByAdmin: boolean;
   /** `adminEditedAt` set — someone else moved these hours. */
@@ -103,6 +110,7 @@ function toRow(p: TimePunch, crewName: string | null): PunchRow {
     // floors for display.
     minutes: outAt === null ? null : (outAt.getTime() - inAt.getTime()) / MINUTE_MS,
     open: outAt === null,
+    outIsNextDay: outAt !== null && vesselDateOf(outAt) > vesselDateOf(inAt),
     enteredByAdmin: p.origin === "admin",
     editedByAdmin: p.adminEditedAt !== null,
     shiftId: p.shiftId,

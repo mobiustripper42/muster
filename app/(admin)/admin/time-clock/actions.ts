@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { asId } from "@core/domain/ids.js";
 import { addPunch, deletePunch, editPunch } from "@core/crew/time-clock.js";
-import { zonedWallClockToInstant } from "@core/config/tenant.js";
+import { addDays, zonedWallClockToInstant } from "@core/config/tenant.js";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
 
@@ -53,13 +53,33 @@ function instantOf(day: string, time: string): Date | null {
   return zonedWallClockToInstant(day, time);
 }
 
+/**
+ * The out-time's instant, honouring the form's explicit "ends next day" box.
+ *
+ * A punch belongs to the vessel-local day its `inAt` falls on (§2.9.6) — so an evening
+ * trip that lands at 02:00 is ONE punch on the earlier day, and its `outAt` is on the
+ * next calendar day. There is one date field, so the form has to be able to say that.
+ *
+ * **Explicit, not inferred.** Rolling the day forward automatically whenever
+ * `out < in` would silently turn a typo — 17:00 in, 09:00 out — into a paid sixteen
+ * hours. On a surface whose output is a paycheck, a mistake must stay an error
+ * (`out_before_in`); the operator asserts the overnight case deliberately.
+ */
+function outInstantOf(day: string, time: string, nextDay: boolean): Date | null {
+  return instantOf(nextDay ? addDays(day, 1) : day, time);
+}
+
 export async function addPunchAction(formData: FormData): Promise<void> {
   await requireAdmin();
   const back = backTo(formData);
   const day = String(formData.get("punchDay") ?? "");
   const crewMemberId = String(formData.get("crewMemberId") ?? "");
   const inAt = instantOf(day, String(formData.get("inTime") ?? ""));
-  const outAt = instantOf(day, String(formData.get("outTime") ?? ""));
+  const outAt = outInstantOf(
+    day,
+    String(formData.get("outTime") ?? ""),
+    formData.get("outNextDay") === "1",
+  );
 
   let code: string | null = null;
   if (!crewMemberId || !/^\d{4}-\d{2}-\d{2}$/.test(day) || inAt === null) {
@@ -89,6 +109,7 @@ export async function addPunchAction(formData: FormData): Promise<void> {
     aday: day,
     ain: String(formData.get("inTime") ?? ""),
     aout: String(formData.get("outTime") ?? ""),
+    anext: formData.get("outNextDay") === "1" ? "1" : "",
     acrew: crewMemberId,
   });
   redirect(`${back}&${retry.toString()}`);
@@ -102,7 +123,11 @@ export async function editPunchAction(formData: FormData): Promise<void> {
   // field, and the domain refuses a cross-midnight move anyway (`day_moved`).
   const day = String(formData.get("punchDay") ?? "");
   const inAt = instantOf(day, String(formData.get("inTime") ?? ""));
-  const outAt = instantOf(day, String(formData.get("outTime") ?? ""));
+  const outAt = outInstantOf(
+    day,
+    String(formData.get("outTime") ?? ""),
+    formData.get("outNextDay") === "1",
+  );
 
   let code: string | null = null;
   if (!id || inAt === null) {

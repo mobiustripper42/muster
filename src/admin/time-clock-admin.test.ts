@@ -122,6 +122,22 @@ describe("buildCrewPeriodView — one crew × one pay period", () => {
     expect(by["p-edited"]).toMatchObject({ enteredByAdmin: false, editedByAdmin: true });
   });
 
+  it("flags a punch that ends on a later vessel-local day — the overnight trip", async () => {
+    const repo = await seed();
+    // 10:00 PM EDT on the 15th → 2:00 AM EDT on the 16th. One punch, on the 15th.
+    await repo.saveTimePunch(
+      punch({ id: "p-night", inAt: "2026-07-16T02:00:00.000Z", outAt: "2026-07-16T06:00:00.000Z" }),
+    );
+    await repo.saveTimePunch(
+      punch({ id: "p-day", inAt: "2026-07-15T13:00:00.000Z", outAt: "2026-07-15T21:00:00.000Z" }),
+    );
+
+    const view = await buildCrewPeriodView(repo, QUINT, PERIOD);
+    const by = Object.fromEntries(view.rows.map((r) => [String(r.id), r]));
+    expect(by["p-night"]).toMatchObject({ day: "2026-07-15", outIsNextDay: true, minutes: 240 });
+    expect(by["p-day"]).toMatchObject({ outIsNextDay: false });
+  });
+
   it("an unknown crew id yields an empty view rather than throwing", async () => {
     const repo = await seed();
     const view = await buildCrewPeriodView(repo, asId<"CrewMemberId">("ghost"), PERIOD);

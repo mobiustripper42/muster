@@ -93,6 +93,16 @@ export async function clockIn(
 }
 
 /**
+ * A punch's span is valid when it's still open, or ends strictly after it starts.
+ * A zero-length punch is not a punch. ONE definition, shared by `clockOut`,
+ * {@link addPunch} and {@link editPunch} — the admin surface must not re-implement
+ * validation the domain already owns (#627 AC).
+ */
+function spanIsValid(inAt: string, outAt: string | null): boolean {
+  return outAt === null || Date.parse(outAt) > Date.parse(inAt);
+}
+
+/**
  * Come off the clock. `not_in` when nothing is open — never invents a punch to close.
  * `out_before_in` when the proposed `outAt` is at or before its `inAt`; a zero-length
  * punch is not a punch, and the open punch is left untouched so a human can fix it.
@@ -106,13 +116,139 @@ export async function clockOut(
   if (!open) return { ok: false, code: "not_in" };
 
   const outAt = at.toISOString();
-  if (Date.parse(outAt) <= Date.parse(open.inAt)) {
+  if (!spanIsValid(open.inAt, outAt)) {
     return { ok: false, code: "out_before_in" };
   }
 
   const closed: TimePunch = { ...open, outAt };
   await repo.saveTimePunch(closed);
   return { ok: true, punch: closed };
+}
+
+// ── The admin repair bench (#627, §2.9.5) ───────────────────────────────────
+// Muster never guesses when someone went home, so a missed clock-out is closed by a
+// human. These are the doors that human uses. They share `clockIn`/`clockOut`'s
+// validation and error vocabulary rather than restating it at the route.
+
+/** Expected, surfaced-to-the-operator failures of {@link addPunch}. */
+export type AddPunchCode = "out_before_in" | "already_in";
+
+export type AddPunchResult =
+  | { ok: true; punch: TimePunch }
+  | { ok: false; code: AddPunchCode };
+
+/**
+ * Enter a punch from scratch — the operator recording hours somebody worked without
+ * tapping anything (#627). Stamped `origin: "admin"`, so it never looks identical to
+ * one they tapped (§2.9.8), and **auto-matched exactly like a real clock-in** so a
+ * back-entered punch carries the same shift association a live one would.
+ *
+ * `outAt: null` enters it OPEN, which is legitimate (correcting a missed clock-in
+ * mid-shift) — and subject to the same one-open-punch rule, index included.
+ */
+export async function addPunch(
+  repo: Repository,
+  input: {
+    id: TimePunchId;
+    crewMemberId: CrewMemberId;
+    inAt: Date;
+    outAt: Date | null;
+  },
+): Promise<AddPunchResult> {
+  const inAt = input.inAt.toISOString();
+  const outAt = input.outAt === null ? null : input.outAt.toISOString();
+  if (!spanIsValid(inAt, outAt)) return { ok: false, code: "out_before_in" };
+
+  if (outAt === null && (await repo.getOpenPunchForCrew(input.crewMemberId))) {
+    return { ok: false, code: "already_in" };
+  }
+
+  const punch: TimePunch = {
+    id: input.id,
+    crewMemberId: input.crewMemberId,
+    inAt,
+    outAt,
+    shiftId: await autoMatchShift(repo, input.crewMemberId, input.inAt),
+    origin: "admin",
+    adminEditedAt: null,
+  };
+
+  try {
+    await repo.saveTimePunch(punch);
+  } catch (err) {
+    if (isUniqueViolation(err)) return { ok: false, code: "already_in" };
+    throw err;
+  }
+  return { ok: true, punch };
+}
+
+/** Expected, surfaced-to-the-operator failures of {@link editPunch}. */
+export type EditPunchCode = "gone" | "out_before_in" | "day_moved" | "already_in";
+
+export type EditPunchResult =
+  | { ok: true; punch: TimePunch }
+  | { ok: false; code: EditPunchCode };
+
+/**
+ * Change a punch's times. Stamps `adminEditedAt` so a crew member can see that
+ * someone else moved their hours (§2.9.8) — `origin` is left alone, because who
+ * CREATED a punch and who last edited it are different facts.
+ *
+ * **The day is immutable** (`day_moved`). A punch belongs to the vessel-local day its
+ * `inAt` falls on: that's what buckets it into a pay period and what its `shiftId` was
+ * auto-matched against. There is no date field on the edit form — but times alone can
+ * cross midnight (23:50 → 00:10 is twenty minutes and a different day), so the rule is
+ * enforced here rather than assumed from the form's shape. Moving a punch to another
+ * day is delete + add: explicit, and it re-matches the shift on the way in.
+ *
+ * `outAt` may cross midnight freely — a night shift is one punch, and only `inAt`
+ * decides which day it belongs to.
+ */
+export async function editPunch(
+  repo: Repository,
+  id: TimePunchId,
+  patch: { inAt?: Date; outAt?: Date | null; now: Date },
+): Promise<EditPunchResult> {
+  const existing = await repo.getTimePunch(id);
+  if (!existing) return { ok: false, code: "gone" };
+
+  const inAt = patch.inAt === undefined ? existing.inAt : patch.inAt.toISOString();
+  const outAt =
+    patch.outAt === undefined
+      ? existing.outAt
+      : patch.outAt === null
+        ? null
+        : patch.outAt.toISOString();
+
+  if (vesselDateOf(new Date(inAt)) !== vesselDateOf(new Date(existing.inAt))) {
+    return { ok: false, code: "day_moved" };
+  }
+  if (!spanIsValid(inAt, outAt)) return { ok: false, code: "out_before_in" };
+
+  const edited: TimePunch = {
+    ...existing,
+    inAt,
+    outAt,
+    adminEditedAt: patch.now.toISOString(),
+  };
+
+  try {
+    await repo.saveTimePunch(edited);
+  } catch (err) {
+    // Re-opening a punch (clearing `outAt`) for someone already on the clock.
+    if (isUniqueViolation(err)) return { ok: false, code: "already_in" };
+    throw err;
+  }
+  return { ok: true, punch: edited };
+}
+
+/**
+ * Delete a punch outright. **Real deletion, not a flag** — the surface says so before
+ * calling this (#627 AC). Idempotent at the adapter, so a double-submitted delete is a
+ * no-op rather than an error.
+ */
+export async function deletePunch(repo: Repository, id: TimePunchId): Promise<void> {
+  await repo.removeTimePunch(id);
 }
 
 /** The crew member's open punch, or null. At most one can exist (§2.9.4) — the

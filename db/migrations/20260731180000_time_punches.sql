@@ -29,7 +29,12 @@ create table if not exists time_punches (
   in_at           text not null,
   out_at          text,
   shift_id        text,
-  origin          text not null default 'crew' check (origin in ('crew', 'admin')),
+  -- Text, NOT a CHECK/enum — the same call 0023 made for `source`: which values a
+  -- discriminator admits is a domain fact, and a CHECK would exist in Postgres but not
+  -- in the in-memory double, breaking the adapter-equivalence the contract suite proves
+  -- (DEC-DATA-1; DEC-131 permits structural constraints, not vocabularies). The default
+  -- stays permanently: `clockIn` writes 'crew' unless an admin surface says otherwise.
+  origin          text not null default 'crew',
   admin_edited_at text
 );
 

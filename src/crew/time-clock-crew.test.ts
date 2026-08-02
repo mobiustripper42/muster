@@ -220,6 +220,76 @@ describe("editOwnPunch", () => {
   });
 });
 
+describe("no punch in the future", () => {
+  // On principle: hours are a record of work done, not a plan. The same check covers
+  // "next Tuesday" and "6pm today at 2pm" — one is only a coarser version of the other.
+  it("refuses an inAt after now", async () => {
+    const repo = await seed();
+
+    const result = await addOwnPunch(repo, {
+      id: pid("p-future"),
+      editId: eid("e1"),
+      crewMemberId: QUINT,
+      inAt: new Date("2026-07-17T13:00:00.000Z"), // NOW is the 16th
+      outAt: null,
+      reason: REASON,
+      now: NOW,
+    });
+
+    expect(result).toEqual({ ok: false, code: "future" });
+    expect(await repo.getTimePunch(pid("p-future"))).toBeNull();
+  });
+
+  it("refuses an outAt after now — you can't have finished later than now either", async () => {
+    const repo = await seed();
+
+    const result = await addOwnPunch(repo, {
+      id: pid("p-future"),
+      editId: eid("e1"),
+      crewMemberId: QUINT,
+      inAt: new Date("2026-07-16T12:00:00.000Z"),
+      outAt: new Date("2026-07-16T20:00:00.000Z"), // NOW is 14:00
+      reason: REASON,
+      now: NOW,
+    });
+
+    expect(result).toEqual({ ok: false, code: "future" });
+  });
+
+  it("refuses an EDIT that moves a time into the future", async () => {
+    const repo = await seed();
+    await repo.saveTimePunch(punch({ id: "p1", inAt: "2026-07-16T12:00:00.000Z", outAt: null }));
+
+    const result = await editOwnPunch(repo, {
+      editId: eid("e1"),
+      punchId: pid("p1"),
+      crewMemberId: QUINT,
+      outAt: new Date("2026-07-16T20:00:00.000Z"),
+      reason: REASON,
+      now: NOW,
+    });
+
+    expect(result).toEqual({ ok: false, code: "future" });
+    expect(await repo.listTimePunchEdits(pid("p1"))).toEqual([]);
+  });
+
+  it("allows right now — the boundary is not the future", async () => {
+    const repo = await seed();
+
+    const result = await addOwnPunch(repo, {
+      id: pid("p-now"),
+      editId: eid("e1"),
+      crewMemberId: QUINT,
+      inAt: new Date("2026-07-16T12:00:00.000Z"),
+      outAt: NOW,
+      reason: REASON,
+      now: NOW,
+    });
+
+    expect(result.ok).toBe(true);
+  });
+});
+
 describe("addOwnPunch", () => {
   it("creates a punch marked origin crew, with a `created` trail row", async () => {
     const repo = await seed();

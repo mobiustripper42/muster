@@ -159,6 +159,7 @@ export async function addOwnPunch(
     inAt: input.inAt,
     outAt: input.outAt,
     origin: "crew",
+    now: input.now,
   });
   if (!result.ok) return result;
   const mine = result.punch;

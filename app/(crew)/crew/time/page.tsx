@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { asId } from "@core/domain/ids.js";
-import { vesselDateOf } from "@core/config/tenant.js";
+import { PAY_PERIOD_ANCHOR, vesselDateOf } from "@core/config/tenant.js";
+import { currentPeriod, periodsForYear } from "@core/admin/pay-periods.js";
 import { buildCrewTimeView, type CrewTimeView } from "@core/crewapp/time-view.js";
 import { BackLink } from "../../../../components/ui/back-link";
 import { Notice } from "../../../../components/ui/notice";
@@ -12,6 +13,7 @@ import { fmt12, fmtDateRange } from "../../../lib/format";
 import { getRepo } from "../../../lib/repo";
 import { AppLink } from "../../../../components/ui/app-link";
 import { DirtySubmit } from "../../../../components/admin/dirty-submit";
+import { AutoSubmitSelect } from "../../../../components/admin/auto-submit-select";
 import { addMyPunch, clockInNow, clockOutNow, deleteMyPunch, editMyPunch } from "./actions";
 
 /**
@@ -30,6 +32,7 @@ import { addMyPunch, clockInNow, clockOutNow, deleteMyPunch, editMyPunch } from 
 export const dynamic = "force-dynamic";
 
 type Search = {
+  period?: string;
   in?: string;
   out?: string;
   err?: string;
@@ -54,6 +57,7 @@ const ERR_COPY: Record<string, string> = {
     "That time would move the punch to a different day. Delete it and add it on the right day instead.",
   gone: "That punch isn’t there any more.",
   bad_input: "Something was missing — check the times and try again.",
+  future: "That time hasn’t happened yet — a punch records work you've done.",
 };
 
 /**
@@ -83,10 +87,14 @@ export default async function CrewTime({
 
   let view: CrewTimeView;
   try {
+    const [selFrom, selTo] = (sp.period ?? "").split("|");
+    const isDay = (d?: string): d is string => !!d && /^\d{4}-\d{2}-\d{2}$/.test(d);
+    const chosen = isDay(selFrom) && isDay(selTo) ? { start: selFrom, end: selTo } : undefined;
     view = await buildCrewTimeView(
       getRepo(),
       asId<"CrewMemberId">(subject.id),
       new Date(),
+      chosen,
     );
   } catch {
     return (
@@ -106,6 +114,7 @@ export default async function CrewTime({
   const editing = view.punches.some((p) => String(p.id) === sp.edit) ? sp.edit : undefined;
   const anyOpen = editing !== undefined || sp.add !== undefined;
   const today = vesselDateOf(new Date());
+  const thisPeriod = currentPeriod(PAY_PERIOD_ANCHOR, today);
 
   return (
     <Shell>
@@ -113,8 +122,7 @@ export default async function CrewTime({
       <header className="flex flex-col gap-1">
         <h1 className="text-lg font-semibold text-ink">Time</h1>
         <p className="text-sm text-muted">
-          Clock in when you start and out when you finish. This is what gets sent to
-          payroll.
+          Clock in and out for your shift. Tap a punch to edit it, or add one you missed.
         </p>
       </header>
 
@@ -166,10 +174,23 @@ export default async function CrewTime({
       </section>
 
       <section className="flex flex-col gap-2">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">
-          This pay period
-        </h2>
-        <p className="text-sm text-muted">{fmtDateRange(view.period.start, view.period.end)}</p>
+        {/* Crew can look at a past period — "what did I get paid for last time" is a
+            question they have, and the answer was previously only the operator's. */}
+        <form method="get" className="flex flex-col gap-1">
+          <label htmlFor="period" className="sr-only">
+            Pay period
+          </label>
+          <AutoSubmitSelect
+            name="period"
+            value={`${view.period.start}|${view.period.end}`}
+            options={periodsForYear(PAY_PERIOD_ANCHOR, Number(today.slice(0, 4))).map((p) => ({
+              value: `${p.start}|${p.end}`,
+              label: `${fmtDateRange(p.start, p.end)}${p.start === thisPeriod.start ? " — current" : ""}`,
+            }))}
+            ariaLabel="Pay period"
+            className="min-h-[44px] rounded-card border border-line bg-card px-3 text-ink"
+          />
+        </form>
 
         {view.punches.length === 0 ? (
           <Notice>No hours yet this period.</Notice>
@@ -224,7 +245,6 @@ export default async function CrewTime({
                       outIsNextDay={p.outIsNextDay}
                     />
                   )}
-                  {open && <DeleteForm punchId={String(p.id)} />}
                 </div>
               );
             })}
@@ -333,7 +353,7 @@ function PunchForm({
         </>
       ) : (
         <div className="flex flex-col gap-1">
-          <label htmlFor="new-day" className="text-xs text-muted">
+          <label htmlFor="new-day" className="text-sm text-muted">
             Day
           </label>
           <input
@@ -349,7 +369,7 @@ function PunchForm({
 
       <div className="flex flex-wrap gap-3">
         <div className="flex flex-col gap-1">
-          <label htmlFor={`in-${punchId ?? "new"}`} className="text-xs text-muted">
+          <label htmlFor={`in-${punchId ?? "new"}`} className="text-sm text-muted">
             In
           </label>
           <input
@@ -362,7 +382,7 @@ function PunchForm({
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label htmlFor={`out-${punchId ?? "new"}`} className="text-xs text-muted">
+          <label htmlFor={`out-${punchId ?? "new"}`} className="text-sm text-muted">
             Out <span className="text-muted">(blank leaves it running)</span>
           </label>
           <input
@@ -375,31 +395,24 @@ function PunchForm({
         </div>
       </div>
 
-      {/* An evening trip that lands after midnight is ONE punch on the earlier day
-          (§2.9.6). Explicit, never inferred from out < in — that would turn a typo into
-          paid hours you didn't work. */}
-      <label className="flex items-center gap-2 text-xs text-muted">
-        <input
-          type="checkbox"
-          name="outNextDay"
-          value="1"
-          defaultChecked={outIsNextDay}
-          className="h-5 w-5"
-        />
-        Out is next day
-      </label>
+      {/* NO "out is next day" control here (operator, 2026-08-01): BrewBoat doesn't run
+          overnight, and the checkbox cost more confusion than the case is worth. A crew
+          member who forgets to clock out simply leaves the punch open — it's excluded
+          from their hours and surfaces on the admin bench's stale strip. The VALUE is
+          still carried, so editing a punch the office entered as overnight doesn't
+          silently collapse it into `out_before_in`. The admin bench keeps the control. */}
+      <input type="hidden" name="outNextDay" value={outIsNextDay ? "1" : ""} />
 
       {/* Required, and the reason the trail is worth keeping. */}
       <div className="flex flex-col gap-1">
-        <label htmlFor={`why-${punchId ?? "new"}`} className="text-xs text-muted">
-          Why
+        <label htmlFor={`why-${punchId ?? "new"}`} className="text-sm text-muted">
+          Reason
         </label>
         <input
           id={`why-${punchId ?? "new"}`}
           name="reason"
           type="text"
           required
-          placeholder="Forgot to clock out — boat was back at 5"
           className="min-h-[44px] rounded-card border border-line bg-card px-3 text-ink"
         />
       </div>
@@ -418,33 +431,22 @@ function PunchForm({
         >
           Cancel
         </AppLink>
+        {/* Delete shares the ONE reason field (operator, 2026-08-01) — only one action
+            happens per submit, so a single "Reason" describes whatever you did to this
+            punch. Two boxes would ask the reader to work out which belongs to which
+            button, which is the confusion the next-day checkbox was removed for.
+            `formAction` posts the same fields to a different action; with no JS it is
+            still a plain second submit button. */}
+        {mode === "edit" && (
+          <SubmitButton
+            formAction={deleteMyPunch}
+            className="ml-auto min-h-[44px] rounded-card border border-bad px-4 font-semibold text-bad"
+          >
+            Delete
+          </SubmitButton>
+        )}
       </div>
     </form>
   );
 }
 
-/** Delete lives in its own form so the required note is the delete's note, not the
- *  edit's — they are different assertions about different acts. */
-function DeleteForm({ punchId }: { punchId: string }) {
-  return (
-    <form action={deleteMyPunch} className="flex flex-col gap-2 border-t border-line px-4 py-3">
-      <input type="hidden" name="punchId" value={punchId} />
-      <label htmlFor={`del-why-${punchId}`} className="text-xs text-muted">
-        Delete this punch — why?
-      </label>
-      <div className="flex flex-wrap items-center gap-3">
-        <input
-          id={`del-why-${punchId}`}
-          name="reason"
-          type="text"
-          required
-          placeholder="Double punch, this one is wrong"
-          className="min-h-[44px] flex-1 rounded-card border border-line bg-card px-3 text-ink"
-        />
-        <DirtySubmit className="min-h-[44px] rounded-card border border-bad px-4 font-semibold text-bad disabled:opacity-40">
-          Delete
-        </DirtySubmit>
-      </div>
-    </form>
-  );
-}

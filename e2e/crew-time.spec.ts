@@ -155,6 +155,43 @@ test.describe("crew /crew/time — clock in, clock out", () => {
     await expect(page.getByRole("button", { name: "Save" })).toHaveCount(1);
   });
 
+  test("a punch can't be entered in the future", async ({ page }) => {
+    // Hours are a record of work done, not a plan (operator, 2026-08-01).
+    await signInAsCrew(page, "crew-quint");
+    await page.goto("/crew/time?add=1");
+    const day = await page.locator("#new-day").inputValue();
+    const [y, m, d] = day.split("-").map(Number);
+    const tomorrow = new Date(Date.UTC(y!, m! - 1, d! + 1)).toISOString().slice(0, 10);
+
+    await page.locator("#new-day").fill(tomorrow);
+    await page.locator('input[name="inTime"]').fill("09:00");
+    await page.locator('input[name="outTime"]').fill("17:00");
+    await page.locator('input[name="reason"]').first().fill("planning ahead");
+    await page.getByRole("button", { name: "Save" }).click();
+
+    await page.waitForURL(/err=future/);
+    await expect(page.getByText(/hasn’t happened yet|future/i)).toBeVisible();
+  });
+
+  test("delete shares the one reason field", async ({ page }) => {
+    await signInAsCrew(page, "crew-quint");
+    await page.goto("/crew/time");
+    await page.getByRole("button", { name: "Clock in" }).click();
+    await page.waitForURL(/in=1/);
+    await page.getByRole("button", { name: "Clock out" }).click();
+    await page.waitForURL(/out=1/);
+
+    await page.locator('[id^="punch-"]').first().getByRole("link").first().click();
+    await page.waitForURL(/edit=/);
+    // ONE reason box serving both buttons.
+    await expect(page.locator('form input[name="reason"]')).toHaveCount(1);
+    await page.locator('form input[name="reason"]').fill("double punch");
+    await page.getByRole("button", { name: "Delete" }).click();
+
+    await page.waitForURL(/deleted=1/);
+    await expect(page.getByText("No hours yet this period.")).toBeVisible();
+  });
+
   test("signed out, /crew/time redirects to the crew door", async ({ page }) => {
     await page.goto("/crew/time");
     await page.waitForURL(/\/crew$/);

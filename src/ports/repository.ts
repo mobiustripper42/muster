@@ -38,6 +38,7 @@ import type {
   GuestContact,
   PtoWindow,
   TimePunch,
+  TimePunchEdit,
   Reservation,
   RoleType,
   Seat,
@@ -68,6 +69,7 @@ import type {
   ShiftId,
   TenantId,
   TimePunchId,
+  TimePunchEditId,
   VesselId,
 } from "../domain/ids.js";
 import type { ReliabilityEvent } from "../domain/reliability.js";
@@ -233,6 +235,14 @@ export interface Repository {
   /** Real deletion — the admin repair bench (13.3). Idempotent, like
    *  {@link removePtoWindow}: no-op if the id is already gone. */
   removeTimePunch(id: TimePunchId): Promise<void>;
+
+  // ── Time-punch edit trail (#635, SPEC §2.9.8) ──────────────────────────────
+  // Append-only. Never updated, never deleted — a punch's hours can be corrected;
+  // what was done to it cannot be. Survives the punch it describes (a `deleted` row
+  // is the only remaining evidence those hours ever existed).
+  appendTimePunchEdit(edit: TimePunchEdit): Promise<void>;
+  /** One punch's history, oldest first — the order it happened in. */
+  listTimePunchEdits(timePunchId: TimePunchId): Promise<TimePunchEdit[]>;
 
   // ── Reservation catalog (DEC-123/125) ──────────────────────────────────────
   // Read by the virtual-availability model (`deriveVirtualAvailability`). The bare

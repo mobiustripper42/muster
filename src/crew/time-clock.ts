@@ -103,6 +103,20 @@ function spanIsValid(inAt: string, outAt: string | null): boolean {
 }
 
 /**
+ * No punch may claim time that hasn't happened yet (operator, 2026-08-01).
+ *
+ * Hours are a record of work done, not a plan. The same rule covers "next Tuesday" and
+ * "6pm today, entered at 2pm" — the second is only a finer-grained version of the first,
+ * so there is one check rather than a date rule and a time rule that could disagree.
+ *
+ * `now` is not the future: clocking in stamps `new Date()` and must not be refused by
+ * its own timestamp, so the comparison is strictly greater.
+ */
+function inTheFuture(instant: string | null, now: Date): boolean {
+  return instant !== null && Date.parse(instant) > now.getTime();
+}
+
+/**
  * Come off the clock. `not_in` when nothing is open — never invents a punch to close.
  * `out_before_in` when the proposed `outAt` is at or before its `inAt`; a zero-length
  * punch is not a punch, and the open punch is left untouched so a human can fix it.
@@ -131,7 +145,7 @@ export async function clockOut(
 // validation and error vocabulary rather than restating it at the route.
 
 /** Expected, surfaced-to-the-operator failures of {@link addPunch}. */
-export type AddPunchCode = "out_before_in" | "already_in";
+export type AddPunchCode = "out_before_in" | "already_in" | "future";
 
 export type AddPunchResult =
   | { ok: true; punch: TimePunch }
@@ -153,11 +167,26 @@ export async function addPunch(
     crewMemberId: CrewMemberId;
     inAt: Date;
     outAt: Date | null;
+    /** The clock, injectable for tests. Defaults to the wall clock. */
+    now?: Date;
+    /**
+     * Who is entering it. Defaults to `"admin"` — this door's original caller is the
+     * repair bench. The crew's own door (#635) passes `"crew"`, because THEY entered
+     * it, and passing it here rather than correcting the row afterwards is what keeps
+     * the write atomic: one `saveTimePunch`, always with the right provenance.
+     */
+    origin?: TimePunchOrigin;
   },
 ): Promise<AddPunchResult> {
   const inAt = input.inAt.toISOString();
   const outAt = input.outAt === null ? null : input.outAt.toISOString();
   if (!spanIsValid(inAt, outAt)) return { ok: false, code: "out_before_in" };
+  // `now` defaults to the wall clock: `clockIn` passes the instant it just stamped, so
+  // the strict comparison lets it through while a hand-entered future time is refused.
+  const now = input.now ?? new Date();
+  if (inTheFuture(inAt, now) || inTheFuture(outAt, now)) {
+    return { ok: false, code: "future" };
+  }
 
   if (outAt === null && (await repo.getOpenPunchForCrew(input.crewMemberId))) {
     return { ok: false, code: "already_in" };
@@ -169,7 +198,7 @@ export async function addPunch(
     inAt,
     outAt,
     shiftId: await autoMatchShift(repo, input.crewMemberId, input.inAt),
-    origin: "admin",
+    origin: input.origin ?? "admin",
     adminEditedAt: null,
   };
 
@@ -183,7 +212,7 @@ export async function addPunch(
 }
 
 /** Expected, surfaced-to-the-operator failures of {@link editPunch}. */
-export type EditPunchCode = "gone" | "out_before_in" | "day_moved" | "already_in";
+export type EditPunchCode = "gone" | "out_before_in" | "day_moved" | "already_in" | "future";
 
 export type EditPunchResult =
   | { ok: true; punch: TimePunch }
@@ -207,7 +236,20 @@ export type EditPunchResult =
 export async function editPunch(
   repo: Repository,
   id: TimePunchId,
-  patch: { inAt?: Date; outAt?: Date | null; now: Date },
+  patch: {
+    inAt?: Date;
+    outAt?: Date | null;
+    now: Date;
+    /**
+     * Who is editing. Defaults to `"admin"`, which stamps `adminEditedAt`. **A `"crew"`
+     * edit leaves that flag alone**: it exists so a crew member can see that SOMEONE
+     * ELSE moved their hours, and setting it on their own correction would make the
+     * surface lie about who did it. Passed in rather than fixed up afterwards so the
+     * punch is written once — a second corrective write is a window where the row is
+     * saved with the wrong provenance and no trail row exists yet (#635 review).
+     */
+    actor?: TimePunchOrigin;
+  },
 ): Promise<EditPunchResult> {
   const existing = await repo.getTimePunch(id);
   if (!existing) return { ok: false, code: "gone" };
@@ -224,12 +266,18 @@ export async function editPunch(
     return { ok: false, code: "day_moved" };
   }
   if (!spanIsValid(inAt, outAt)) return { ok: false, code: "out_before_in" };
+  if (inTheFuture(inAt, patch.now) || inTheFuture(outAt, patch.now)) {
+    return { ok: false, code: "future" };
+  }
 
   const edited: TimePunch = {
     ...existing,
     inAt,
     outAt,
-    adminEditedAt: patch.now.toISOString(),
+    adminEditedAt:
+      (patch.actor ?? "admin") === "crew"
+        ? existing.adminEditedAt
+        : patch.now.toISOString(),
   };
 
   try {

@@ -36,6 +36,7 @@ import type {
   GuestContact,
   PtoWindow,
   TimePunch,
+  TimePunchEdit,
   Reservation,
   RoleType,
   Seat,
@@ -63,6 +64,7 @@ import type {
   PaymentId,
   PtoWindowId,
   TimePunchId,
+  TimePunchEditId,
   ReservationId,
   RoleTypeId,
   SeatId,
@@ -108,6 +110,7 @@ export class InMemoryRepository implements Repository {
   readonly #credentials = new Map<CredentialId, Credential>();
   readonly #ptoWindows = new Map<PtoWindowId, PtoWindow>();
   readonly #timePunches = new Map<TimePunchId, TimePunch>();
+  readonly #timePunchEdits: TimePunchEdit[] = [];
   readonly #events = new Map<EventId, Event>();
   readonly #reservations = new Map<ReservationId, Reservation>();
   /** Reservation catalog (DEC-123/125) — read-only surface in 12.0; writes 12.8–12.10. */
@@ -385,6 +388,18 @@ export class InMemoryRepository implements Repository {
   }
   async removeTimePunch(id: TimePunchId): Promise<void> {
     this.#timePunches.delete(id);
+  }
+
+  // ── Time-punch edit trail (#635) ───────────────────────────────────────────
+  // An array, not a Map — append-only, and the `reliability_events` precedent.
+  async appendTimePunchEdit(edit: TimePunchEdit): Promise<void> {
+    this.#timePunchEdits.push(clone(edit));
+  }
+  async listTimePunchEdits(timePunchId: TimePunchId): Promise<TimePunchEdit[]> {
+    return this.#timePunchEdits
+      .filter((e) => e.timePunchId === timePunchId)
+      .sort((a, b) => a.at.localeCompare(b.at))
+      .map(clone);
   }
 
   // ── Events ─────────────────────────────────────────────────────────────────

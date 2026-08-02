@@ -38,6 +38,7 @@ import type {
   TenantId,
   ThreadId,
   TimePunchId,
+  TimePunchEditId,
   VesselId,
 } from "./ids.js";
 import type { SeatKind, SeatState, ShiftState } from "./states.js";
@@ -169,6 +170,46 @@ export interface TimePunch {
 }
 
 export type TimePunchOrigin = "crew" | "admin";
+
+/**
+ * One recorded change to a punch — append-only (#635, SPEC §2.9.8).
+ *
+ * **Why a trail and not columns.** `TimePunch.adminEditedAt` answers "did someone
+ * else touch this?" for the LAST edit only. Once crew and admin can both edit the same
+ * row, and every crew edit carries a **reason**, last-write-wins metadata loses the
+ * story: a punch edited by its owner and then corrected by the office keeps only the
+ * office's reason. The question that actually gets asked — "who changed my hours, and
+ * why?" — is per-edit, so the record has to be per-edit.
+ *
+ * Same idiom as `reliability_events` (DEC-008) and the audit trail (DEC-118): append
+ * only, never updated, never deleted. A punch's hours can be corrected; what was done
+ * to it cannot be.
+ */
+export interface TimePunchEdit {
+  id: TimePunchEditId;
+  timePunchId: TimePunchId;
+  /** Who made the change. `crew` = the punch's owner editing their own. */
+  actorKind: TimePunchOrigin;
+  /** The crew id for either kind — admins are crew (DEC-092/093). */
+  actorId: CrewMemberId;
+  /** ISO-8601 UTC. */
+  at: string;
+  action: TimePunchEditAction;
+  /** The punch's times BEFORE this change — null on `created`. */
+  fromInAt: string | null;
+  fromOutAt: string | null;
+  /** The punch's times AFTER it — null on `deleted`. */
+  toInAt: string | null;
+  toOutAt: string | null;
+  /**
+   * Why. **Required for a crew edit** and free text; the operator's own edits from the
+   * repair bench may leave it empty, because an operator fixing a clock nobody tapped
+   * is the surface's whole purpose rather than an exception to explain.
+   */
+  reason: string;
+}
+
+export type TimePunchEditAction = "created" | "changed" | "deleted";
 
 /** Per-person override of the per-role ask protocol default (§1.2). */
 export type ProtocolOverride = "ask_then_assign" | "assign_then_confirm";

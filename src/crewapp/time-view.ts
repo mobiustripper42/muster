@@ -52,6 +52,13 @@ export interface TimePunchRow {
   minutes: number | null;
   open: boolean;
   /**
+   * The punch ends on a LATER vessel-local day than it started — an evening trip that
+   * landed after midnight. One punch, on the earlier day (§2.9.6); the edit form needs
+   * it to pre-tick "out is next day", since there is one date and the out time alone
+   * can't say which day it means.
+   */
+  outIsNextDay: boolean;
+  /**
    * An admin created or edited this one (§2.9.8). Shown so hours nobody actually
    * punched never look identical to hours they did — including to the crew member
    * whose name is on them.
@@ -76,9 +83,11 @@ export async function buildCrewTimeView(
   repo: Repository,
   crewMemberId: CrewMemberId,
   now: Date,
+  /** Which period to show. Defaults to the one containing today — crew can now pick a
+   *  past one, because "what did I get paid for last time" is a question they have. */
+  period: PayPeriod = currentPeriod(PAY_PERIOD_ANCHOR, vesselDateOf(now)),
 ): Promise<CrewTimeView> {
   const today = vesselDateOf(now);
-  const period = currentPeriod(PAY_PERIOD_ANCHOR, today);
 
   // Their own punches, not `listTimePunchesBetween` — that scans the whole fleet to
   // show one person their own list. Filtering in memory is right here: a crew
@@ -104,7 +113,10 @@ export async function buildCrewTimeView(
       return date >= period.start && date <= period.end;
     })
     .map(toRow)
-    .sort((a, b) => (a.date === b.date ? b.inTime.localeCompare(a.inTime) : b.date.localeCompare(a.date)));
+    // OLDEST first — a timesheet reads like the fortnight happened, not backwards
+    // (operator, 2026-08-01). The admin bench keeps newest-first: it's a triage queue,
+    // where the thing that just broke is the thing you came for.
+    .sort((a, b) => (a.date === b.date ? a.inTime.localeCompare(b.inTime) : a.date.localeCompare(b.date)));
 
   return {
     onTheClock,
@@ -133,6 +145,7 @@ function toRow(p: TimePunch): TimePunchRow {
     // calls exact. Precision is lost once, at the edge, in `fmtMinutes`.
     minutes: outAt === null ? null : (outAt.getTime() - inAt.getTime()) / MINUTE_MS,
     open: outAt === null,
+    outIsNextDay: outAt !== null && vesselDateOf(outAt) > vesselDateOf(inAt),
     adminTouched: p.origin === "admin" || p.adminEditedAt !== null,
   };
 }

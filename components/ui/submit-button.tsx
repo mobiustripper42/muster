@@ -43,6 +43,7 @@ export function SubmitButton({
   value,
   title,
   disabled,
+  formAction,
   "aria-label": ariaLabel,
 }: {
   children: ReactNode;
@@ -53,6 +54,10 @@ export function SubmitButton({
   /** Disable for a reason of the caller's own (e.g. nothing has changed yet — see
    *  `DirtySubmit`). Additive: pending still disables regardless. */
   disabled?: boolean;
+  /** Post this form's fields to a DIFFERENT server action — the second-verb button
+   *  (#635's Delete, which shares the edit form's one reason field). Native HTML, so
+   *  it still works with no JS. */
+  formAction?: (formData: FormData) => void | Promise<void>;
   /** For an icon/short-label button whose accessible name needs to be fuller. */
   "aria-label"?: string;
 }) {
@@ -70,6 +75,7 @@ export function SubmitButton({
       name={name}
       value={value}
       title={title}
+      formAction={formAction}
       aria-label={ariaLabel}
       disabled={pending || disabled}
       aria-busy={showing}

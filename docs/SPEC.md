@@ -1479,7 +1479,7 @@ still stands. Hours are owed for time worked whether or not the schedule can exp
 **2.9.3 Honor system.** No geofence, no device binding, no photo, no supervisor countersign. A phone
 can clock in from a couch. This is a small crew the operator knows personally; the surveillance
 apparatus would cost more trust than it could recover in minutes. **The repair path is a human one**
-(§2.9.5), not a preventative one.
+(§2.9.5), not a preventative one — and **the first human is the crew member themself** (§2.9.9).
 
 **2.9.4 One open punch, enforced by the database.** A crew member has **at most one** open punch. This
 is a **partial unique index** on `(crew_member_id) where out_at is null` — a structural constraint,
@@ -1492,7 +1492,8 @@ Error codes are the whole vocabulary: `already_in` (a punch is open), `not_in` (
 
 **2.9.5 A missed clock-out is flagged, never auto-closed.** Muster does not guess when someone went
 home. An open punch from a previous day is **surfaced first and marked** on the admin surface, excluded
-from computed hours, and closed by a **human** who knows what actually happened. An auto-close at
+from computed hours, and closed by a **human** who knows what actually happened — either the crew
+member, on their own record (§2.9.9), or the operator on the repair bench. An auto-close at
 midnight (or at trip end, or after N hours) would silently manufacture a number that reads exactly like
 a real one — the failure mode this rule exists to prevent. The cost is a chore; the chore is the point.
 
@@ -1509,7 +1510,8 @@ day of every period, in the direction that looks like a shortfall.
 **2.9.7 The three surfaces.**
 
 - **`/crew/time`** (crew) — one card, one button. **Clock in** when they're out, **Clock out** when
-  they're in; never both, never a guess about which they meant. An "On the clock since 9:04 AM" line
+  they're in; never both, never a guess about which they meant. Each punch below also **opens for
+  editing** (§2.9.9). An "On the clock since 9:04 AM" line
   while a punch is open — a **render-time value, not a ticking counter**. This period's punches with a
   running total. A neutral **Time** tile on the crew hub beside Time off: a utility, not a summons.
 - **`/admin/time-clock`** (operator) — the repair bench, per pay period: **add** a punch from scratch,
@@ -1523,6 +1525,23 @@ day of every period, in the direction that looks like a shortfall.
 (`adminEditedAt`) are **marked on both** the admin surface and the report. Hours nobody actually
 punched must never look identical to hours they did. This is what makes the honor system survivable:
 the record says who asserted each number.
+
+**2.9.9 A crew member may correct their own record, on the record.** They can change, add and delete
+their **own** punches — never anyone else's, and a forged id gets the same answer a nonexistent one
+does, so it can't be used to discover whose punches exist. This follows from the honor system rather
+than contradicting it: hours are already their assertion, so the useful control is not a gate but a
+record. **Every change requires a reason and appends a row** — who, when, from→to, and why —
+append-only, never updated, never deleted. A punch's hours can be corrected; what was done to it
+cannot. The row **outlives the punch**: after a delete it is the only remaining evidence those hours
+existed.
+
+There is deliberately **no approval workflow**. A crew edit lands immediately and is visible; making
+it a request the operator approves would rebuild the gate the honor system already declined, and
+leave someone unable to fix their own timesheet on a Sunday. Revisit only if it is abused — and the
+trail is what would show that.
+
+A crew member's own edit does **not** stamp `adminEditedAt`. That flag means *someone else* moved
+your hours, and setting it on your own correction would make the surface lie about who did it.
 
 ### Edge cases
 
@@ -1554,6 +1573,10 @@ the record says who asserted each number.
       report.
 - [ ] A crew member can punch only themselves; the admin surface refuses `kind !== "admin"`.
 - [ ] Nothing auto-closes. An open punch stays open until a human closes it.
+- [ ] A crew member can change, add and delete **only their own** punches; a forged id gets the same
+      answer a nonexistent one does.
+- [ ] Every crew edit carries a reason and appends a trail row; the row survives the punch's deletion.
+- [ ] A crew member's own edit does not stamp `adminEditedAt`.
 
 ---
 

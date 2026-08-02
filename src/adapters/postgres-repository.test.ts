@@ -26,6 +26,7 @@ const TABLES = [
   "credentials",
   "pto_windows",
   "time_punches",
+  "time_punch_edits",
   "events",
   "reservations",
   "offerings",

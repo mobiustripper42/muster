@@ -104,16 +104,8 @@ describe("buildCrewTimeView — this pay period", () => {
     );
 
     const view = await buildCrewTimeView(repo, QUINT, NOW);
+    // Oldest first — a timesheet reads like the fortnight happened.
     expect(view.punches).toEqual([
-      {
-        id: asId<"TimePunchId">("p-wed"),
-        date: "2026-07-15",
-        inTime: "08:00",
-        outTime: "12:00",
-        minutes: 240,
-        open: false,
-        adminTouched: false,
-      },
       {
         id: asId<"TimePunchId">("p-mon"),
         date: "2026-07-13",
@@ -121,6 +113,17 @@ describe("buildCrewTimeView — this pay period", () => {
         outTime: "17:30",
         minutes: 510,
         open: false,
+        outIsNextDay: false,
+        adminTouched: false,
+      },
+      {
+        id: asId<"TimePunchId">("p-wed"),
+        date: "2026-07-15",
+        inTime: "08:00",
+        outTime: "12:00",
+        minutes: 240,
+        open: false,
+        outIsNextDay: false,
         adminTouched: false,
       },
     ]);
@@ -235,6 +238,31 @@ describe("buildCrewTimeView — the total", () => {
     const view = await buildCrewTimeView(repo, QUINT, NOW);
     expect(view.punches[0]!.minutes).toBe(480.5);
     expect(view.totalMinutes).toBe(480.5);
+  });
+
+  it("shows a period other than today's when asked — crew can look back", async () => {
+    const repo = await seed();
+    await repo.saveTimePunch(
+      punch({ id: "p-last", inAt: "2026-06-25T13:00:00.000Z", outAt: "2026-06-25T17:00:00.000Z" }),
+    );
+
+    const previous = { start: "2026-06-22", end: "2026-07-05" };
+    const view = await buildCrewTimeView(repo, QUINT, NOW, previous);
+
+    expect(view.period).toEqual(previous);
+    expect(view.punches.map((p) => String(p.id))).toEqual(["p-last"]);
+    expect(view.totalMinutes).toBe(240);
+  });
+
+  it("flags a punch that ends on a later vessel-local day — the overnight trip", async () => {
+    const repo = await seed();
+    // 10:00 PM EDT on the 15th → 2:00 AM EDT on the 16th. One punch, on the 15th.
+    await repo.saveTimePunch(
+      punch({ id: "p-night", inAt: "2026-07-16T02:00:00.000Z", outAt: "2026-07-16T06:00:00.000Z" }),
+    );
+
+    const view = await buildCrewTimeView(repo, QUINT, NOW);
+    expect(view.punches[0]).toMatchObject({ date: "2026-07-15", outIsNextDay: true, minutes: 240 });
   });
 
   it("an empty period is zero, not an error", async () => {

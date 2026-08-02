@@ -420,7 +420,12 @@ function PunchForm({
       <div className="flex flex-wrap items-center gap-3">
         {/* Disabled until something changes, and guards against navigating away from
             an unsaved edit — the same island #627's bench uses, not a second
-            mechanism. Cancel is an anchor, which its capture-phase guard covers. */}
+            mechanism. Cancel is an anchor, which its capture-phase guard covers.
+            **Untested on this surface, knowingly** (operator, 2026-08-02): the guard
+            has e2e coverage on the admin bench and none here. Recorded rather than
+            left silent, because the first cut of this island attached its listener to
+            the button instead of the enclosing form — so it did nothing at all, and
+            only a test caught it. If this stops warning, that's where to look. */}
         <DirtySubmit className="min-h-[44px] rounded-card bg-ok px-4 font-semibold text-white disabled:opacity-40">
           Save
         </DirtySubmit>

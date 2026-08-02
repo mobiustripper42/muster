@@ -158,12 +158,18 @@ export default async function CrewTime({
                 is `text-bad`, so sharing the colour would put a real problem and a
                 routine button in one register. `bad` stays reserved for the warning
                 here and for Delete on the admin bench. */}
-            <form action={clockOutNow}>
-              <SubmitButton className="min-h-[52px] w-full bg-card font-semibold text-ink">
-                Clock out
-              </SubmitButton>
-            </form>
+            {anyOpen ? (
+              <ClockBusy />
+            ) : (
+              <form action={clockOutNow}>
+                <SubmitButton className="min-h-[52px] w-full bg-card font-semibold text-ink">
+                  Clock out
+                </SubmitButton>
+              </form>
+            )}
           </>
+        ) : anyOpen ? (
+          <ClockBusy />
         ) : (
           <form action={clockInNow}>
             <SubmitButton className="min-h-[52px] w-full bg-ok font-semibold text-white">
@@ -455,3 +461,24 @@ function PunchForm({
   );
 }
 
+/**
+ * What the clock card shows while an editor is open.
+ *
+ * Clock in/out post their own forms, so pressing one mid-edit navigated away and threw
+ * the edit out (operator, 2026-08-02). `DirtySubmit`'s guard couldn't catch it: it
+ * covers anchors, `beforeunload` and the auto-submitting pickers, and **a submit button
+ * belonging to a different form is none of those** — the same blind spot the #635
+ * review found for the pickers, one surface over.
+ *
+ * Removed rather than guarded. The page already puts everything else inert while an
+ * editor is open — the other punch rows, the Add button — so the clock following that
+ * rule is the consistent answer, it needs no JS (a confirm dialog can't help a no-JS
+ * user), and it makes losing the edit impossible instead of merely warned about.
+ */
+function ClockBusy() {
+  return (
+    <p className="px-4 py-3 text-sm text-muted">
+      Finish the punch you’re editing first.
+    </p>
+  );
+}

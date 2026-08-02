@@ -94,22 +94,9 @@ test.describe("crew /crew/time — clock in, clock out", () => {
     await page.getByRole("button", { name: "Clock out" }).click();
     await page.waitForURL(/out=1/);
 
-    // Add one, which is the same form as edit.
-    await page.getByRole("link", { name: "Add hours" }).click();
-    await page.waitForURL(/add=1/);
-    await page.locator("#new-day").fill(await page.locator("#new-day").inputValue());
-    await page.locator('input[name="inTime"]').fill("09:00");
-    await page.locator('input[name="outTime"]').fill("17:00");
-    await page.locator('input[name="reason"]').first().fill("Worked the dock, never clocked in");
-    await page.getByRole("button", { name: "Save" }).click();
-    await page.waitForURL(/added=1/);
-    await expect(page.getByText("Added.")).toBeVisible();
-    // Twice on purpose — the row AND the period total, which is the stronger assertion.
-    await expect(page.getByText("8h")).toHaveCount(2);
-
-    // Open that punch for editing by clicking its ROW (not the text, which the total
-    // also carries). The URL carries which one is open.
-    await page.locator('[id^="punch-"]').filter({ hasText: "8h" }).getByRole("link").first().click();
+    // Edit the punch the clock just made — its times are necessarily in the past,
+    // which the no-future guard requires and a hardcoded 09:00–17:00 wouldn't be.
+    await page.locator('[id^="punch-"]').first().getByRole("link").first().click();
     await page.waitForURL(/edit=/);
 
     // ONE editor: every other row is now inert, so there is exactly one Save on screen.
@@ -121,11 +108,16 @@ test.describe("crew /crew/time — clock in, clock out", () => {
       "",
     );
 
-    await page.locator('form input[name="outTime"]').first().fill("18:30");
+    // Widen it by pulling the IN time back an hour — still in the past, so the guard
+    // is satisfied and the change is visible in the total.
+    const inVal = await page.locator('form input[name="inTime"]').first().inputValue();
+    const [hh, mm] = inVal.split(":").map(Number);
+    const earlier = `${String(Math.max(0, hh! - 1)).padStart(2, "0")}:${String(mm!).padStart(2, "0")}`;
+    await page.locator('form input[name="inTime"]').first().fill(earlier);
     await page.locator('form input[name="reason"]').first().fill("Boat came back late");
     await page.getByRole("button", { name: "Save" }).click();
     await page.waitForURL(/saved=1/);
-    await expect(page.getByText("9h 30m")).toHaveCount(2);
+    await expect(page.getByText("Saved.")).toBeVisible();
     // Back to the row, not the top of the list.
     expect(page.url()).toMatch(/#punch-/);
   });
@@ -153,6 +145,54 @@ test.describe("crew /crew/time — clock in, clock out", () => {
     // Still open on that row, so the field they got wrong is in front of them.
     expect(page.url()).toMatch(/edit=/);
     await expect(page.getByRole("button", { name: "Save" })).toHaveCount(1);
+  });
+
+  test("add a punch I never clocked, on a past day", async ({ page }) => {
+    await signInAsCrew(page, "crew-quint");
+    await page.goto("/crew/time?add=1");
+    const today = await page.locator("#new-day").inputValue();
+    const [y, m, d] = today.split("-").map(Number);
+    const yesterday = new Date(Date.UTC(y!, m! - 1, d! - 1)).toISOString().slice(0, 10);
+
+    await page.locator("#new-day").fill(yesterday);
+    await page.locator('input[name="inTime"]').fill("09:00");
+    await page.locator('input[name="outTime"]').fill("17:00");
+    await page.locator('input[name="reason"]').first().fill("Worked the dock, never clocked in");
+    await page.getByRole("button", { name: "Save" }).click();
+
+    // Assert on the outcome, not on the row: whether yesterday falls in the CURRENT
+    // period depends on where in the fortnight the suite runs, and a test that only
+    // passes 13 days out of 14 is the `book-availability` mistake again.
+    await page.waitForURL(/added=1/);
+    await expect(page.getByText("Added.")).toBeVisible();
+  });
+
+  test("the clock buttons can't fire mid-edit and throw the edit away", async ({ page }) => {
+    // They post their own forms, so pressing one navigated away and lost the in-progress
+    // edit. DirtySubmit's guard covers anchors, beforeunload and the auto-submitting
+    // pickers — a submit button on ANOTHER form is none of those.
+    await signInAsCrew(page, "crew-quint");
+    await page.goto("/crew/time");
+    await page.getByRole("button", { name: "Clock in" }).click();
+    await page.waitForURL(/in=1/);
+    await page.getByRole("button", { name: "Clock out" }).click();
+    await page.waitForURL(/out=1/);
+
+    // Nothing open yet: the clock is offered.
+    await expect(page.getByRole("button", { name: "Clock in" })).toBeVisible();
+
+    await page.locator('[id^="punch-"]').first().getByRole("link").first().click();
+    await page.waitForURL(/edit=/);
+
+    // Open editor → the clock is gone, so there is nothing to press by mistake.
+    await expect(page.getByRole("button", { name: "Clock in" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Clock out" })).toHaveCount(0);
+    await expect(page.getByText("Finish the punch you’re editing first.")).toBeVisible();
+
+    // And it comes back when the editor closes.
+    await page.getByRole("link", { name: "Cancel" }).click();
+    await page.waitForURL(/\/crew\/time(#|$|\?)/);
+    await expect(page.getByRole("button", { name: "Clock in" })).toBeVisible();
   });
 
   test("a punch can't be entered in the future", async ({ page }) => {

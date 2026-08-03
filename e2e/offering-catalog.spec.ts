@@ -9,7 +9,14 @@
  * The crew seed's vessel is "Hops" (`vessel-hops`); an offering needs a Location, so the
  * flow creates one first (same as the vessel-location spec).
  */
-import { test, expect, resetAndSeed, signInAsAdmin } from "./fixtures.js";
+import {
+  test,
+  expect,
+  resetAndSeed,
+  signInAsAdmin,
+  clickHydrated,
+  selectOptionHydrated,
+} from "./fixtures.js";
 
 test.describe("admin /admin/offerings", () => {
   test.beforeEach(async () => {
@@ -54,18 +61,21 @@ test.describe("admin /admin/offerings", () => {
     await page.fill('input[name="seasonEnd"]', "2026-09-30");
     await page.locator('input[name="weekday"][value="4"]').check({ force: true }); // Fri
     await page.locator('input[name="weekday"][value="5"]').check({ force: true }); // Sat
-    await page.getByLabel("New departure hour").selectOption("11");
-    await page.getByLabel("New departure minute").selectOption("30");
-    await page.getByRole("button", { name: "+ Add time" }).click();
-    await page.getByLabel("New departure hour").selectOption("15");
-    await page.getByLabel("New departure minute").selectOption("00");
-    await page.getByRole("button", { name: "+ Add time" }).click();
+    // Islands throughout (#642): the selects are CONTROLLED, so a pre-hydration
+    // selection is reverted when React asserts its own value, and the Add click is a
+    // no-op until the handler is attached.
+    await selectOptionHydrated(page.getByLabel("New departure hour"), "11");
+    await selectOptionHydrated(page.getByLabel("New departure minute"), "30");
+    await clickHydrated(page.getByRole("button", { name: "+ Add time" }));
+    await selectOptionHydrated(page.getByLabel("New departure hour"), "15");
+    await selectOptionHydrated(page.getByLabel("New departure minute"), "00");
+    await clickHydrated(page.getByRole("button", { name: "+ Add time" }));
 
     // Pricing: base + included + extra guest + one ordered variation (the client island).
     await page.fill('input[name="basePrice"]', "499.00");
     await page.fill('input[name="includedGuestCount"]', "10");
     await page.fill('input[name="extraGuestPrice"]', "40.00");
-    await page.getByRole("button", { name: "+ Price variation" }).click();
+    await clickHydrated(page.getByRole("button", { name: "+ Price variation" }));
     await page.getByLabel("Variation 1 label").fill("July 4th");
     await page.getByLabel("Variation 1 applies").selectOption("date");
     await page.getByLabel("Variation 1 date").fill("2026-07-04");

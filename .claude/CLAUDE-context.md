@@ -143,6 +143,8 @@ Persistence is **Postgres behind the `Repository` port**: **local Postgres in de
 
 ### Testing
 - The domain core (oracle, state machine, reliability log) is heavily unit/integration tested with Vitest. UI tests arrive with the stack tooling (M4). No pgTAP (no RLS).
+- **e2e: interact with a `"use client"` island via `clickHydrated` / `selectOptionHydrated`** (`e2e/fixtures.ts`), never a bare `.click()` / `.selectOption()`. An island is server-rendered, so its controls pass every Playwright actionability check *before* React attaches a handler — the bare call then succeeds and does nothing, and the next locator waits out its full timeout (#642). A controlled `<select>` fails a second way: React reverts the selection on hydration. Plain server-form controls (`SubmitButton`, `<a>`, `<details>/<summary>`) work without JS by design and need neither.
+- **After an action that navigates, wait for the navigation before asserting** — `waitForURL`, or an assertion that can only be true on the new page. Polling immediately after a click can read the page you were supposed to have left, which passes while testing nothing (#646).
 
 ## PR Workflow (project)
 

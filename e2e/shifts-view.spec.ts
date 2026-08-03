@@ -8,7 +8,13 @@
  * Seed: `atrisk` scenario H (Barrel, 11:00 + 18:00 ~2d out) is the gappy day; the
  * other scenarios are single-trip or contiguous, so exactly one cue renders.
  */
-import { test, expect, resetAndSeed, signInAsAdmin } from "./fixtures.js";
+import {
+  test,
+  expect,
+  resetAndSeed,
+  signInAsAdmin,
+  selectOptionHydrated,
+} from "./fixtures.js";
 
 test.describe("builder view — /admin/shifts (8.2a)", () => {
   test.beforeEach(async () => {
@@ -75,7 +81,7 @@ test.describe("builder view — /admin/shifts (8.2a)", () => {
     await page.getByText("More filters").click();
     // The crew select auto-submits on change now (no "Filter" button) — picking a
     // crew navigates on its own.
-    await page.getByLabel("Crew").selectOption({ label: "Gus" });
+    await selectOptionHydrated(page.getByLabel("Crew"), { label: "Gus" });
     await page.waitForURL(/crew=/);
 
     // The crew pick does NOT change the window (operator's call — "what you see is

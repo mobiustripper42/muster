@@ -4,12 +4,19 @@
  * operator chrome. Responsive — desktop inline links, mobile hamburger → slide-in
  * drawer. Runs at desktop + 375px (the mobile drawer is exercised at 375).
  */
-import { test, expect, resetAndSeed, signInAsCrew, signInAsAdmin } from "./fixtures.js";
+import {
+  test,
+  expect,
+  resetAndSeed,
+  signInAsCrew,
+  signInAsAdmin,
+  clickHydrated,
+} from "./fixtures.js";
 
 /** On mobile the links live behind the hamburger; open it first. No-op on desktop. */
 async function openMenuIfMobile(page: import("@playwright/test").Page): Promise<void> {
   const burger = page.getByRole("button", { name: "Open menu" });
-  if (await burger.isVisible()) await burger.click();
+  if (await burger.isVisible()) await clickHydrated(burger);
 }
 
 test.describe("admin nav", () => {
@@ -140,7 +147,7 @@ test.describe("admin nav", () => {
     // Closed → open: aria-expanded is the reliable state signal (a transformed
     // off-screen drawer still reads "visible" to Playwright, so assert on this).
     await expect(burger).toHaveAttribute("aria-expanded", "false");
-    await burger.click();
+    await clickHydrated(burger);
     await expect(burger).toHaveAttribute("aria-expanded", "true");
 
     // The drawer's Shifts link is now on-screen + actionable; tapping it navigates.

@@ -17,6 +17,7 @@ import type { CrewMember, Event, Seat, Shift, TimePunch } from "../domain/entiti
 import {
   buildPayrollReconcile,
   gustoPayrollCsv,
+  decimalHoursForTest,
   EXPORT_BLOCKED_MESSAGE,
 } from "./payroll-reconcile.js";
 
@@ -193,6 +194,33 @@ describe("one Gusto file carries hours AND tips", () => {
     // No punches at all ⇒ nothing open ⇒ the file builds; the row just carries zero hours.
     expect(r.exportBlocked).toBe(false);
     expect(gustoPayrollCsv(r).trim().split("\n")).toHaveLength(2);
+  });
+
+  it("does not lose a cent to floating point — 69 minutes is exactly 1.15h", async () => {
+    // `(69 / 60) * 100` is 114.99999999999999, so flooring it emitted "1.14" for a value that
+    // is exactly 1.15. Not the deliberate sub-cent truncation §2.9.6 describes — an EXTRA cent,
+    // lost to representation, in the column Gusto pays from. It hit ~2.3% of whole-minute
+    // totals, always downward, always silently. Caught by @code-review; found by nobody's
+    // arithmetic on screen, because there is none.
+    const repo = new InMemoryRepository();
+    await repo.saveCrewMember(crew("crew-quint", "Quint", gusto("E1", "Sam", "Quint")));
+    await repo.saveTimePunch(punch("crew-quint", "2026-07-07T13:00:00Z", "2026-07-07T14:09:00Z"));
+
+    const csv = gustoPayrollCsv(await buildPayrollReconcile(repo, WINDOW));
+    const cols = csv.trim().split("\n")[0]!.split(",");
+    const vals = csv.trim().split("\n")[1]!.split(",");
+    expect(vals[cols.indexOf("regular_hours")]).toBe("1.15");
+  });
+
+  it("agrees with exact rational arithmetic across every whole-minute total", async () => {
+    // The single case above pins the bug; this pins the CLASS. Hours are m/60, so the exact
+    // hundredths are floor(m * 5 / 3) — integer arithmetic with no representation to get wrong.
+    // A sweep is worth it here because the failures are scattered (69, 123, 138, 153, 246…)
+    // rather than clustered, so any handful of hand-picked cases would have missed most of them.
+    for (let m = 0; m <= 20_000; m++) {
+      const exact = (Math.floor((m * 5) / 3) / 100).toFixed(2);
+      expect(decimalHoursForTest(m), `${m} minutes`).toBe(exact);
+    }
   });
 
   it("truncates hours at the file edge rather than inflating them", async () => {

@@ -89,7 +89,13 @@ export async function buildPayrollReconcile(
     const act = actById.get(id);
     const tip = tipById.get(id);
     const member = byId.get(id);
-    const name = member?.name ?? act?.name ?? est?.name ?? null;
+    // Resolve the name ONCE, from the roster. The fallback chain used to reach into the
+    // estimate row, which defaults its own unresolved names to the literal string "(unknown)"
+    // (`payroll.ts`) — so an estimate-only orphan rendered that string as plain ink while a
+    // punch-only orphan rendered the styled "(unknown crew)". Two spellings of "nobody knows
+    // this person" for no reason. All three sources read the same roster, so neither fallback
+    // could ever supply a name this doesn't.
+    const name = member?.name ?? null;
     const estimateMinutes = est?.minutes ?? 0;
     const actualMinutes = act?.minutes ?? 0;
 
@@ -151,12 +157,25 @@ function csvField(v: string): string {
  * same reasoning that truncating beats inflating when the number becomes a payment. Worst case
  * is 0.6 of a minute per person per period.
  *
+ * **The arithmetic order is load-bearing, and the obvious spelling is wrong.**
+ * `(minutes / 60) * 100` looks equivalent and is not: for 69 minutes — exactly 1.15 hours — it
+ * yields 114.99999999999999, which floors to an emitted "1.14". That is a whole extra cent
+ * BELOW the intended truncation, it hit roughly one whole-minute total in forty, always
+ * downward, and it lands in the column the payroll company pays from. Multiplying into
+ * hundredths first keeps every exact boundary exact; the epsilon then absorbs residual float
+ * noise for fractional minutes (1e-9 hundredths of an hour is ~3.6 microseconds, far below the
+ * millisecond that is the smallest real difference two punches can have, so it can never mask
+ * one).
+ *
  * Whether 2dp is right at all is the receiving company's answer, not ours — see #628's note
  * about confirming the format before the first real send.
  */
 function decimalHours(minutes: number): string {
-  return (Math.floor((minutes / 60) * 100) / 100).toFixed(2);
+  return (Math.floor((minutes * 100) / 60 + 1e-9) / 100).toFixed(2);
 }
+
+/** @internal Exposed for the exhaustive whole-minute sweep in the tests. */
+export const decimalHoursForTest = decimalHours;
 
 /**
  * The ONE Gusto timesheet CSV — identity, `regular_hours` and `paycheck_tips` on a single row

@@ -7,14 +7,17 @@
  * racing a link navigation and asserting against the page it never left. The seed is now relative
  * (`reservationDemo`), and these are the derived values the specs read instead of literals.
  *
- * **This is where the clock read lives.** `reservationDemo` is pure and the core stays clock-free;
- * `db/seed-reservation-dev.ts` makes the same call when it seeds. Both use `vesselDateOf` so they
- * agree on which day it is in the vessel's zone rather than the runner's.
+ * **This is where the clock read lives**, and there is deliberately only ONE of it per run.
+ * `reservationDemo` is pure and the core stays clock-free. {@link TODAY} is computed once, at module
+ * import, and `resetAndSeed` hands it to the seed subprocess as `SEED_TODAY` — so the fixture in
+ * the database and the expectations in the specs are derived from the *same* day by construction.
  *
- * **The one seam that can still bite:** the seed subprocess and this module read the clock
- * independently. Crossing vessel-local midnight between `resetAndSeed()` and the assertions would
- * put them in different months. Anchoring on the month narrows it to the final midnight of a
- * month; it isn't zero, and a spec that fails at 00:00:00 on the 1st is probably this.
+ * That matters more than it first looks. The suite runs `workers: 1, fullyParallel: false`, and
+ * `resetAndSeed` re-seeds in every `beforeEach`, so a subprocess reading its own clock would be
+ * re-deriving the window dozens of times across a run that spans many spec files. A month rollover
+ * mid-run would then mismatch this module's cached value for **every remaining test**, not just the
+ * one that straddled it. Passing the day down removes the disagreement rather than narrowing it:
+ * a rollover mid-run now simply means the whole run used yesterday's date, which is harmless.
  *
  * Labels come from the app's OWN formatters (`formatShortDay`, and the same
  * `toLocaleDateString` shape `buildMonthCalendar` uses for its header) — a spec that reimplements
@@ -25,8 +28,11 @@ import { vesselDateOf } from "../src/config/tenant.js";
 import { formatShortDay } from "../src/reservations/availability-screen.js";
 import { demoReservationId, reservationDemo } from "../src/reservations/seed-reservation.js";
 
+/** The run's single day, vessel-local (DEC-032). Handed to the seed so both sides agree. */
+export const TODAY = vesselDateOf(new Date());
+
 /** The seeded world for today — the 10th–16th of next month. */
-export const DEMO = reservationDemo(vesselDateOf(new Date()));
+export const DEMO = reservationDemo(TODAY);
 
 /** The first booking (Marcus Webb, party 8, $549) — the slot most specs point at. */
 export const BOOKED = DEMO.bookings[0]!;
@@ -53,7 +59,7 @@ export function monthLabel(isoDay: string): string {
 export const DEMO_MONTH_LABEL = monthLabel(DEMO.ownedRange.start);
 
 /** Today's month header — what `/book` opens on, and which must contain no availability. */
-export const TODAY_MONTH_LABEL = monthLabel(vesselDateOf(new Date()));
+export const TODAY_MONTH_LABEL = monthLabel(TODAY);
 
 /** "Wed, Aug 12" — the app's own short-day rendering. */
 export { formatShortDay };

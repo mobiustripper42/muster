@@ -31,6 +31,7 @@
 import type { Event, Location, Offering, Reservation } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import type { VesselId } from "../domain/ids.js";
+import { addDays } from "../config/tenant.js";
 import { eventIdForSlot } from "./availability.js";
 
 export interface ReservationDemoBooking {
@@ -66,11 +67,6 @@ function firstOfNextMonth(todayISO: string): string {
   const ny = m === 12 ? y + 1 : y;
   const nm = m === 12 ? 1 : m + 1;
   return `${ny}-${String(nm).padStart(2, "0")}-01`;
-}
-
-/** `yyyy-mm-dd` + n days, UTC-midnight math (same idiom as {@link eachDay}). */
-function addDays(date: string, n: number): string {
-  return new Date(Date.parse(`${date}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 }
 
 /**

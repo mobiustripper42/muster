@@ -46,8 +46,10 @@ if (!isLocal && !args.includes("--force")) {
 const repo = PostgresRepository.fromConnectionString(url);
 try {
   await seedFleet(repo); // vessels + role types — vessel-brew-3 must exist for the offering
-  // The one clock read: the core builder stays pure, the script supplies today (#646).
-  const demo = reservationDemo(vesselDateOf(new Date()));
+  // The core builder stays pure; the script supplies today (#646). `SEED_TODAY` lets a caller
+  // pin the day — the e2e harness sets it so the seeded DB and the specs' expectations come from
+  // one clock read instead of two that can disagree across a midnight.
+  const demo = reservationDemo(process.env.SEED_TODAY ?? vesselDateOf(new Date()));
   const world = buildSeededReservationWorld(new Date().toISOString(), demo);
 
   await repo.saveLocation(world.location);

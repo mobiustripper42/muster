@@ -12,6 +12,7 @@ import { execFileSync } from "node:child_process";
 import { test as base, expect, type Locator, type Page } from "@playwright/test";
 import { resetTestDb, TEST_DATABASE_URL } from "../db/reset-test.js";
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
+import { TODAY } from "./reservation-demo.js";
 
 /** Local tsx binary — resolved explicitly so we don't depend on PATH/npx. */
 const TSX = "node_modules/.bin/tsx";
@@ -78,13 +79,20 @@ export async function setAdminActive(handle: string, active: boolean): Promise<v
   }
 }
 
-/** Truncate the test DB, seed the operator admin, then run the named dev seeds. */
+/**
+ * Truncate the test DB, seed the operator admin, then run the named dev seeds.
+ *
+ * `SEED_TODAY` pins the seeds to the run's single day (#646). The reservation fixture derives
+ * its window from today, and this runs in a fresh subprocess on every `beforeEach` — without
+ * this the DB and the specs would each read their own clock dozens of times across a run, and a
+ * month rollover partway through would silently desync every remaining test.
+ */
 export async function resetAndSeed(...seeds: SeedName[]): Promise<void> {
   await resetTestDb();
   await seedAdmin({ id: "crew-spink", handle: "spink", name: "Spink" });
   for (const name of seeds) {
     execFileSync(TSX, [SEED_SCRIPTS[name]], {
-      env: { ...process.env, DATABASE_URL: TEST_DATABASE_URL },
+      env: { ...process.env, DATABASE_URL: TEST_DATABASE_URL, SEED_TODAY: TODAY },
       stdio: "pipe",
     });
   }

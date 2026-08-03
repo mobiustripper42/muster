@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { asId } from "@core/domain/ids.js";
 import { PAY_PERIOD_ANCHOR, vesselDateOf } from "@core/config/tenant.js";
 import { currentPeriod, periodsForYear } from "@core/admin/pay-periods.js";
@@ -9,6 +9,7 @@ import { Shell } from "../../../../components/ui/shell";
 import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { readSubject } from "../../../lib/auth";
+import { timeClockEnabled } from "../../../lib/flags";
 import { fmt12, fmtDateRange } from "../../../lib/format";
 import { getRepo } from "../../../lib/repo";
 import { AppLink } from "../../../../components/ui/app-link";
@@ -81,6 +82,10 @@ export default async function CrewTime({
 }: {
   searchParams: Promise<Search>;
 }) {
+  // Phase dark (#628): 404 the ROUTE, not just the hub tile. A flag that only hides an entry
+  // point is the #621 defect — the URL still works for anyone who has it.
+  if (!timeClockEnabled()) notFound();
+
   const sp = await searchParams;
   const subject = await readSubject();
   if (!subject || subject.kind !== "crew") redirect("/crew");

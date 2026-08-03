@@ -15,7 +15,9 @@ import { currentPeriod, periodsForYear, periodLabel } from "@core/admin/pay-peri
 import { PAY_PERIOD_ANCHOR, addDays, vesselDateOf } from "@core/config/tenant.js";
 import { asId } from "@core/domain/ids.js";
 import { fmt12, fmtDateRange } from "../../../lib/format";
+import { notFound } from "next/navigation";
 import { readSubject } from "../../../lib/auth";
+import { timeClockEnabled } from "../../../lib/flags";
 import { getRepo } from "../../../lib/repo";
 import { addPunchAction, deletePunchAction, editPunchAction } from "./actions";
 
@@ -77,6 +79,9 @@ export default async function AdminTimeClock({
 }: {
   searchParams: Promise<Search>;
 }) {
+  // Phase dark (#628) — the route 404s, it does not merely lose its nav entry (#621).
+  if (!timeClockEnabled()) notFound();
+
   const sp = await searchParams;
   const subject = await readSubject();
   if (!subject || subject.kind !== "admin")

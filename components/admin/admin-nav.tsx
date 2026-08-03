@@ -26,6 +26,7 @@ export function AdminNav({
   dateLabel,
   messaging,
   reservations,
+  timeClock,
 }: {
   /** Tenant display name + today's VESSEL-LOCAL date (9.8) — computed by the
    *  server layout (DEC-032: never the viewer's clock) and passed down. */
@@ -38,8 +39,10 @@ export function AdminNav({
   /** Reservations feature on? (DEC-111, #586) — same server-side resolution. Drops the six
    *  reservations-era entries when off, which is most of the bar's width. */
   reservations: boolean;
+  /** Time clock on? (#628) — drops the Time clock entry when the phase is dark. */
+  timeClock: boolean;
 }) {
-  const { flat, groups } = visibleAdminNav({ messaging, reservations });
+  const { flat, groups } = visibleAdminNav({ messaging, reservations, timeClock });
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);

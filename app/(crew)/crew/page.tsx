@@ -7,7 +7,7 @@ import { Notice } from "../../../components/ui/notice";
 import { Shell } from "../../../components/ui/shell";
 import { VersionTag } from "../../../components/ui/version-tag";
 import { readSubject } from "../../lib/auth";
-import { selfServeEnabled, messagingEnabled } from "../../lib/flags";
+import { selfServeEnabled, messagingEnabled, timeClockEnabled } from "../../lib/flags";
 import { LOGIN_EMAIL_COOKIE } from "../../lib/login-cookie";
 import {
   SMS_CONSENT_FIELD,
@@ -472,7 +472,9 @@ function CrewApp({
 
       {/* Time (#626, SPEC §2.9): clock in / clock out. Neutral border like Time off
           beside it — a utility, not a summons. Distinct from Time OFF, which is
-          about days you're unavailable; this is hours you actually worked. */}
+          about days you're unavailable; this is hours you actually worked.
+          Hidden while the phase is dark (#628); the route 404s regardless. */}
+      {timeClockEnabled() && (
       <AppLink
         href="/crew/time"
         prefetch={false}
@@ -484,6 +486,7 @@ function CrewApp({
           ›
         </span>
       </AppLink>
+      )}
 
       {/* Time off (#332, DEC-009): a quiet self-serve entry — set the dates you're
           off. Neutral, never accent — it's a utility, not a summons, and

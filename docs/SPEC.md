@@ -1500,8 +1500,17 @@ a real one — the failure mode this rule exists to prevent. The cost is a chore
 **2.9.6 Exact minutes. No rounding.** `hours` is exact elapsed minutes expressed as decimal hours.
 Muster has **no rounding policy** — not to the quarter hour, not to the nearest five minutes, in
 neither direction. The payroll company applies its own, and one rounding step is auditable where two
-compounded are not. **Open punches are excluded from the hours total and counted separately** — a
-number the recipient can see is incomplete beats a number that is silently short.
+compounded are not. Precision is lost exactly once, at the **file edge**, where decimal hours are
+**truncated** rather than rounded up — the same call the crew surface makes, on the same reasoning
+that under-stating beats inflating when the number becomes a payment.
+
+**Open punches are excluded from the hours total, counted, and they BLOCK the export.** An open
+punch when reconciling is an **error needing attention**, not a footnote (operator, 2026-08-02).
+The earlier rule here said a visibly-incomplete number beats a silently-short one, and stopped at
+counting them separately — but a warning printed beside a file that still downloads is a file that
+still gets sent, and the number inside it is still short. So the file is not offered, the export
+route answers **409**, and the report links each open punch to the bench that can close it. §2.9.5
+is unchanged: still flagged, still never auto-closed.
 
 **Period bucketing is by the vessel-local date of `inAt`** (DEC-032), never UTC. An 8pm Eastern punch
 is already tomorrow in UTC; bucketing on UTC would move a person's hours between paychecks on the last
@@ -1517,9 +1526,16 @@ day of every period, in the direction that looks like a shortfall.
 - **`/admin/time-clock`** (operator) — the repair bench, per pay period: **add** a punch from scratch,
   **edit** either timestamp, **close** an open one, **delete** one outright. Open punches render first
   and flagged. Validation is the domain's, not the route's.
-- **The hours report + `hours.csv`** — per-crew hours for a pay period, shown on `/admin/payroll`
-  **beside** the existing estimate rather than replacing it. The estimate is a useful cross-check
-  exactly when the two disagree.
+- **The hours report + the Gusto file** — per-crew hours for a pay period, shown on
+  `/admin/payroll` **beside** the existing estimate rather than replacing it. The estimate is a
+  useful cross-check exactly when the two disagree, so the two sit in one table with the delta,
+  and the rows are a **union**: a Confirmed seat with no punch, and a punch with no seat, are the
+  disagreements worth looking at. One file goes to payroll carrying **both hours and tips**
+  (`gusto.csv`), rather than an hours file the operator has to combine by hand.
+
+**The whole of §2.9 is behind the `TIME_CLOCK` kill switch, off by default** — routes 404 and
+server actions refuse, not merely nav entries hidden. A half-finished timesheet is worse than
+none: crew would clock in against a surface the operator cannot yet repair.
 
 **2.9.8 Provenance is visible.** An admin-created punch (`origin: "admin"`) and an admin-edited time
 (`adminEditedAt`) are **marked on both** the admin surface and the report. Hours nobody actually

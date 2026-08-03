@@ -48,6 +48,7 @@ const SEEDS: Record<string, string> = {
   split: "db:seed:split",
   gratuity: "db:seed:gratuity",
   reservation: "db:seed:reservation",
+  timeclock: "db:seed:timeclock",
 };
 
 interface Target {

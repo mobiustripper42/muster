@@ -29,8 +29,14 @@ import { addDays, zonedWallClockToInstant } from "../config/tenant.js";
 
 export interface TimeClockRow {
   crewMemberId: string;
-  /** Null when the punch's crew id resolves to nobody — punches carry no FK and outlive crew
-   *  rows. The hours are still owed, so the row renders nameless rather than disappearing. */
+  /**
+   * Null when the punch's crew id resolves to nobody. **Not reachable through Postgres:**
+   * `crew_member_id` carries `references crew_members(id) on delete restrict` (migration
+   * `20260731180000`) — it is `shift_id` that is deliberately un-FK'd, not this — and no
+   * delete path for a crew member exists in the port at all (`status` is the lifecycle).
+   * Kept because the in-memory repo enforces neither, and because if it ever did happen the
+   * hours would still be owed: the row renders nameless rather than disappearing.
+   */
   name: string | null;
   /** CLOSED punches only — an open one has no hours to count. */
   punchCount: number;

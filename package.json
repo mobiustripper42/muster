@@ -30,6 +30,7 @@
     "db:seed:reservation": "tsx db/seed-reservation-dev.ts",
     "db:seed:completion": "tsx db/seed-completion-dev.ts",
     "db:seed:losing-asks": "tsx db/seed-losing-asks-dev.ts",
+    "db:seed:timeclock": "tsx db/seed-timeclock-dev.ts",
     "db:tick": "tsx db/tick-dev.ts",
     "db:doorbell": "tsx db/doorbell-dev.ts",
     "db:reset:dev": "tsx db/reset-dev.ts",

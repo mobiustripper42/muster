@@ -11,7 +11,7 @@
  * vessel-brew-3 at the fixed dates exported as RESERVATION_DEMO, so the conflict count is real.
  */
 import { RESERVATION_DEMO } from "../src/reservations/seed-reservation.js";
-import { test, expect, resetAndSeed, signInAsAdmin } from "./fixtures.js";
+import { test, expect, resetAndSeed, signInAsAdmin, clickHydrated } from "./fixtures.js";
 
 test.describe("admin /admin/blocks", () => {
   test.beforeEach(async () => {
@@ -37,7 +37,7 @@ test.describe("admin /admin/blocks", () => {
 
     // ── + New → a Vessel block over Aug 11–14 (kind toggle swaps to the vessel fields) ──
     await page.getByRole("link", { name: "+ New" }).click();
-    await page.getByRole("button", { name: /Vessel/ }).click(); // kind toggle → vessel fields
+    await clickHydrated(page.getByRole("button", { name: /Vessel/ })); // kind toggle → vessel fields
     await page.selectOption('select[name="vesselId"]', { label: RESERVATION_DEMO.vesselName });
     await page.fill('input[name="startDate"]', RESERVATION_DEMO.vesselBlockWindow.start);
     await page.fill('input[name="endDate"]', RESERVATION_DEMO.vesselBlockWindow.end);

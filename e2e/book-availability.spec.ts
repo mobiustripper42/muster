@@ -10,7 +10,7 @@
  *
  * Runs desktop + 375px (registered in the mobile testMatch): the one screen, two native layouts.
  */
-import { test, expect, resetAndSeed } from "./fixtures.js";
+import { test, expect, resetAndSeed, clickHydrated } from "./fixtures.js";
 
 const AUG12 = "/book?date=2026-08-12";
 
@@ -51,7 +51,7 @@ test.describe("public /book availability", () => {
     const count = page.getByTestId("guest-count");
     await expect(count).toHaveText("2");
 
-    await page.getByRole("button", { name: "More guests" }).click();
+    await clickHydrated(page.getByRole("button", { name: "More guests" }));
     await expect(count).toHaveText("3");
 
     // The Continue href updates client-side with the new count — no navigation.
@@ -60,7 +60,7 @@ test.describe("public /book availability", () => {
 
     // The stepper floors at one guest.
     const fewer = page.getByRole("button", { name: "Fewer guests" });
-    await fewer.click(); // 3 → 2
+    await clickHydrated(fewer); // 3 → 2
     await fewer.click(); // 2 → 1
     await expect(count).toHaveText("1");
     await expect(fewer).toBeDisabled();

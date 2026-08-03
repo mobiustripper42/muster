@@ -4,7 +4,7 @@
  * to "sent". Web Share has no headless share sheet, so we stub `navigator.share`
  * to take the share path (no `sms:` navigation) and assert the flip.
  */
-import { test, expect, resetAndSeed, signInAsAdmin } from "./fixtures.js";
+import { test, expect, resetAndSeed, signInAsAdmin, clickHydrated } from "./fixtures.js";
 
 test.describe("outbox relay (#160)", () => {
   test.beforeEach(async () => {
@@ -34,12 +34,12 @@ test.describe("outbox relay (#160)", () => {
     await expect(bo.getByText(/crew\/auth/)).toBeVisible();
     const copy = bo.getByRole("button", { name: "Copy", exact: true });
     await expect(copy).toBeVisible();
-    await copy.click();
+    await clickHydrated(copy);
     await expect(bo.getByRole("button", { name: /Copied/ })).toBeVisible();
 
     // Part 2: Send flips optimistically to the sent state — in the Dismiss|Send
     // pair that's the compact "Sent ✓" (the full Resend bar would overflow the cell).
-    await bo.getByRole("link", { name: "Send" }).click();
+    await clickHydrated(bo.getByRole("link", { name: "Send" }));
     await expect(bo.getByText("Sent ✓")).toBeVisible();
   });
 
@@ -78,7 +78,7 @@ test.describe("outbox relay (#160)", () => {
     await expect(send).toBeVisible();
 
     // And it relays: the optimistic flip to the sent state.
-    await send.click();
+    await clickHydrated(send);
     await expect(nora.getByText(/awaiting reply/i)).toBeVisible();
   });
 });

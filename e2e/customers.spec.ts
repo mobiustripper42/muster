@@ -12,6 +12,7 @@
  * Runs desktop + 375px.
  */
 import { test, expect, resetAndSeed, signInAsAdmin } from "./fixtures.js";
+import { BOOKED, BOOKED_3, monthDay } from "./reservation-demo.js";
 
 test.describe("admin /admin/customers", () => {
   test.beforeEach(async () => {
@@ -81,11 +82,11 @@ test.describe("admin /admin/customers", () => {
     await expect(page.getByText("(216) 555-0148")).toBeVisible();
     await expect(page.getByText(/2 bookings · \$1,098\.00 lifetime/)).toBeVisible();
 
-    // History newest departure first: Aug 16 before Aug 12.
+    // History newest departure first: the 16th before the 12th.
     const rows = page.getByRole("listitem");
     await expect(rows).toHaveCount(2);
-    await expect(rows.first()).toContainText("Aug 16");
-    await expect(rows.last()).toContainText("Aug 12");
+    await expect(rows.first()).toContainText(monthDay(BOOKED_3.date));
+    await expect(rows.last()).toContainText(monthDay(BOOKED.date));
     await expect(rows.first()).toContainText("10 guests");
 
     // Read-only slice — no edit/message actions ship yet.

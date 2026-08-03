@@ -1,7 +1,8 @@
 /**
  * Customer "Your booking" manage page (task 12.6, #459) — the capability-URL landing (DEC-122).
  *
- * Uses the `reservation` seed: a booked trip on 2026-08-12 13:30 (Marcus Webb, fare $549) on the
+ * Uses the `reservation` seed: a booked trip at 13:30 on the 12th of next month (Marcus Webb,
+ * fare $549, dates derived per #646) on the
  * live "Reservation Demo Cruise". The trip is in the FUTURE relative to the test clock, so the page
  * renders its UPCOMING state (the completed state's phase flip is unit-tested in manage-view.test).
  * Tokens are minted here with the same HMAC + secret the server verifies (`RESERVATION_LINK_SECRET`
@@ -9,8 +10,11 @@
  */
 import { createHmac } from "node:crypto";
 import { test, expect, resetAndSeed } from "./fixtures.js";
+import { BOOKED, demoReservationId } from "./reservation-demo.js";
 
-const RID = "resv-demo-2026-08-12-13:30";
+// Built with the seed's OWN id function — the dates inside it move now, and six specs
+// hand-spelling `resv-demo-<date>-<time>` is how that drifts.
+const RID = demoReservationId(BOOKED.date, BOOKED.time);
 const SECRET = "e2e-reservation-link-secret";
 
 /** Mirror `reservationLinkToken` (booking-link.ts): base64url(HMAC-SHA256(secret, tag:id)). */

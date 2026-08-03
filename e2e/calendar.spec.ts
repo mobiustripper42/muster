@@ -3,13 +3,14 @@
  * Read-only slice: one day as fleet-vessel columns × a fixed 8:00–21:30 axis, each computed
  * departure a duration-spanning block (deriveVirtualAvailability, DEC-125).
  *
- * The `reservation` seed builds a LIVE offering + owned days (Aug 10–16) on Brew 3 with two
- * booked trips (RESERVATION_DEMO): Aug 12 13:30 Marcus Webb (party 8), Aug 13 15:30 Dana Cho.
- * So on 2026-08-12 Brew 3 shows one BOOKED block (Marcus Webb) + two OPEN blocks (15:30, 17:30
+ * The `reservation` seed builds a LIVE offering + owned days (the 10th–16th of NEXT month, #646)
+ * on Brew 3 with two booked trips: 13:30 on the 12th Marcus Webb (party 8), 15:30 on the 13th
+ * Dana Cho. So on the booked day Brew 3 shows one BOOKED block (Marcus Webb) + two OPEN (15:30, 17:30
  * — the offering's other departures). The Booked filter hides the opens, keeps the booking.
  * Runs desktop + 375px (the grid scrolls; the booked block stays present).
  */
 import { test, expect, resetAndSeed, signInAsAdmin } from "./fixtures.js";
+import { BOOKED, BOOKED_2, demoReservationId, monthDay } from "./reservation-demo.js";
 
 test.describe("admin /admin/calendar", () => {
   test.beforeEach(async () => {
@@ -18,7 +19,7 @@ test.describe("admin /admin/calendar", () => {
 
   test("Day·Grid renders the day; Booked filter hides opens", async ({ page }) => {
     await signInAsAdmin(page, "spink");
-    await page.goto("/admin/calendar?date=2026-08-12");
+    await page.goto(`/admin/calendar?date=${BOOKED.date}`);
 
     // Brew 3 has a column header.
     await expect(page.getByText("Brew 3", { exact: true })).toBeVisible();
@@ -51,7 +52,7 @@ test.describe("admin /admin/calendar", () => {
     page,
   }) => {
     await signInAsAdmin(page, "spink");
-    await page.goto("/admin/calendar?date=2026-08-12");
+    await page.goto(`/admin/calendar?date=${BOOKED.date}`);
 
     await page.getByTestId("cal-block").filter({ hasText: "Marcus Webb" }).click();
     await page.waitForURL(/\/admin\/calendar\/resv-demo/);
@@ -95,18 +96,18 @@ test.describe("admin /admin/calendar", () => {
 
     // Back returns to the day you came from.
     await page.getByRole("link", { name: "Back to calendar" }).click();
-    await page.waitForURL(/\/admin\/calendar\?date=2026-08-12/);
+    await page.waitForURL(new RegExp(`/admin/calendar\\?date=${BOOKED.date}`));
     await expect(page.getByTestId("cal-block").filter({ hasText: "Marcus Webb" })).toBeVisible();
   });
 
   /** A direct link with no ?date must land on the reservation's OWN day, not today's grid. */
   test("deep link with no date resolves the reservation's own day", async ({ page }) => {
     await signInAsAdmin(page, "spink");
-    await page.goto("/admin/calendar/resv-demo-2026-08-13-15:30");
+    await page.goto(`/admin/calendar/${demoReservationId(BOOKED_2.date, BOOKED_2.time)}`);
 
     const pane = page.getByTestId("reservation-detail");
     await expect(page.getByRole("heading", { name: "Dana Cho", level: 1 })).toBeVisible();
-    await expect(pane).toContainText("Aug 13");
+    await expect(pane).toContainText(monthDay(BOOKED_2.date));
     await expect(pane).toContainText("3:30 PM");
     // Dana's fare is 43900 → tax 3183 → 47083 due.
     await expect(pane).toContainText("$439.00");
@@ -122,7 +123,7 @@ test.describe("admin /admin/calendar", () => {
    */
   test("balance link: offered when money is owed, hidden once settled", async ({ page }) => {
     await signInAsAdmin(page, "spink");
-    await page.goto("/admin/calendar/resv-demo-2026-08-12-13%3A30?date=2026-08-12");
+    await page.goto(`/admin/calendar/${encodeURIComponent(demoReservationId(BOOKED.date, BOOKED.time))}?date=${BOOKED.date}`);
 
     const pane = page.getByTestId("reservation-detail");
     await expect(pane).toContainText("$588.80"); // balance due
@@ -130,7 +131,7 @@ test.describe("admin /admin/calendar", () => {
 
     // The minted link renders with a copy affordance, and the button gives way to it.
     await page.goto(
-      "/admin/calendar/resv-demo-2026-08-12-13%3A30?date=2026-08-12&balanceUrl=https%3A%2F%2Fcheckout.stripe.com%2Fc%2Fpay%2Ftest123",
+      `/admin/calendar/${encodeURIComponent(demoReservationId(BOOKED.date, BOOKED.time))}?date=${BOOKED.date}&balanceUrl=https%3A%2F%2Fcheckout.stripe.com%2Fc%2Fpay%2Ftest123`,
     );
     await expect(pane.getByTestId("balance-link")).toContainText("checkout.stripe.com/c/pay/test123");
     await expect(pane.getByRole("button", { name: "Copy link" })).toBeVisible();
@@ -138,7 +139,7 @@ test.describe("admin /admin/calendar", () => {
 
     // A refusal explains itself in operator language, not a reason code.
     await page.goto(
-      "/admin/calendar/resv-demo-2026-08-12-13%3A30?date=2026-08-12&balanceErr=stripe_not_configured",
+      `/admin/calendar/${encodeURIComponent(demoReservationId(BOOKED.date, BOOKED.time))}?date=${BOOKED.date}&balanceErr=stripe_not_configured`,
     );
     await expect(pane).toContainText("Stripe isn’t configured");
     await expect(pane).not.toContainText("stripe_not_configured");

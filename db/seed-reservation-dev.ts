@@ -5,19 +5,22 @@
  *     (3 daily departures, full-year season) and the owned-day mask that lets its slots emit;
  *   - two MATERIALIZED bookings (Event + booked Reservation) at known slots inside that window.
  *
- * Then a Vessel block over Aug 11–14, or a Location block on Aug 12 13:00–16:00, shows a
- * non-zero "removes N" AND a booked-trip conflict.
+ * Then a Vessel block over the printed window, or a Location block on the printed day, shows a
+ * non-zero "removes N" AND a booked-trip conflict. **The dates are relative to today (#646)** —
+ * the 10th–16th of NEXT month — so the fixture never expires; the exact days are printed below.
  *
  *   npm run db:seed:reservation           # local/preview DB
  *   npm run db:seed:reservation --force   # bypass the local-DB guard
  *
- * Idempotent: deterministic ids ⇒ re-running upserts, never double-writes.
+ * Idempotent **within a day**: ids embed the derived dates, so re-running after the month rolls
+ * writes a fresh window rather than upserting the old one. Re-seed from scratch if that matters.
  */
 import { existsSync } from "node:fs";
 import { resolveCustomerId } from "../src/customers/resolve.js";
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
 import { seedFleet } from "../src/import/resource-map.js";
-import { RESERVATION_DEMO, buildSeededReservationWorld } from "../src/reservations/seed-reservation.js";
+import { buildSeededReservationWorld, reservationDemo } from "../src/reservations/seed-reservation.js";
+import { vesselDateOf } from "../src/config/tenant.js";
 import { DEFAULT_DATABASE_URL } from "./migrate.js";
 
 if (existsSync(".env.local")) {
@@ -43,7 +46,11 @@ if (!isLocal && !args.includes("--force")) {
 const repo = PostgresRepository.fromConnectionString(url);
 try {
   await seedFleet(repo); // vessels + role types — vessel-brew-3 must exist for the offering
-  const world = buildSeededReservationWorld(new Date().toISOString());
+  // The core builder stays pure; the script supplies today (#646). `SEED_TODAY` lets a caller
+  // pin the day — the e2e harness sets it so the seeded DB and the specs' expectations come from
+  // one clock read instead of two that can disagree across a midnight.
+  const demo = reservationDemo(process.env.SEED_TODAY ?? vesselDateOf(new Date()));
+  const world = buildSeededReservationWorld(new Date().toISOString(), demo);
 
   await repo.saveLocation(world.location);
   await repo.saveOffering(world.offering);
@@ -67,15 +74,15 @@ try {
   const customers = await repo.listCustomers();
   console.log(`✓ Seeded reservation demo world (db: ${new URL(url).host}).`);
   console.log(`  customers ${customers.length} (${customers.map((c) => `${c.name} ${c.displayCode}`).join(", ")})`);
-  console.log(`  offering  ${world.offering.id}  (LIVE, ${RESERVATION_DEMO.departureTimes.join("/")}, ${RESERVATION_DEMO.vesselName})`);
-  console.log(`  owned     ${RESERVATION_DEMO.vesselName}  ${RESERVATION_DEMO.ownedRange.start} … ${RESERVATION_DEMO.ownedRange.end}`);
-  for (const b of RESERVATION_DEMO.bookings) {
+  console.log(`  offering  ${world.offering.id}  (LIVE, ${demo.departureTimes.join("/")}, ${demo.vesselName})`);
+  console.log(`  owned     ${demo.vesselName}  ${demo.ownedRange.start} … ${demo.ownedRange.end}`);
+  for (const b of demo.bookings) {
     console.log(`  booked    ${b.date} ${b.time}  ${b.customerName} · ${b.partySize} guests · $${(b.priceCents / 100).toFixed(2)}`);
   }
   console.log("");
   console.log("Try it at /admin/blocks:");
-  console.log(`  • Vessel block ${RESERVATION_DEMO.vesselName}  ${RESERVATION_DEMO.vesselBlockWindow.start} → ${RESERVATION_DEMO.vesselBlockWindow.end}  → removes slots + 2 booked ($988) conflict`);
-  console.log(`  • Location block Reservation Demo Dock  ${RESERVATION_DEMO.locationBlockWindow.date} ${RESERVATION_DEMO.locationBlockWindow.startTime}–${RESERVATION_DEMO.locationBlockWindow.endTime}  → removes 1 + 1 booked ($549) conflict`);
+  console.log(`  • Vessel block ${demo.vesselName}  ${demo.vesselBlockWindow.start} → ${demo.vesselBlockWindow.end}  → removes slots + 2 booked ($988) conflict`);
+  console.log(`  • Location block Reservation Demo Dock  ${demo.locationBlockWindow.date} ${demo.locationBlockWindow.startTime}–${demo.locationBlockWindow.endTime}  → removes 1 + 1 booked ($549) conflict`);
 } finally {
   await repo.close();
 }

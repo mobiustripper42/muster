@@ -18,7 +18,13 @@
  *
  * Runs desktop + 375px (registered in the mobile testMatch).
  */
-import { test, expect, resetAndSeed, clickHydrated } from "./fixtures.js";
+import {
+  test,
+  expect,
+  resetAndSeed,
+  clickHydrated,
+  setCheckedHydrated,
+} from "./fixtures.js";
 
 const CHECKOUT =
   "/book/checkout?offering=offering-reservation-demo&date=2026-08-12&time=15:30&guests=2";
@@ -79,10 +85,10 @@ test.describe("public /book/checkout", () => {
     await expect(pay).toBeVisible();
     await expect(pay).toBeDisabled(); // no waiver, no submit (DEC-110)
 
-    await page.getByTestId("waiver").check();
+    await setCheckedHydrated(page.getByTestId("waiver"), true);
     await expect(pay).toBeEnabled();
 
-    await page.getByTestId("waiver").uncheck();
+    await setCheckedHydrated(page.getByTestId("waiver"), false);
     await expect(pay).toBeDisabled();
   });
 

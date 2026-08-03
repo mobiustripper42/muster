@@ -136,6 +136,16 @@ export async function isHydrated(locator: Locator): Promise<boolean> {
   );
 }
 
+/** Block until React owns this element, or fail loudly saying which one didn't. */
+async function waitForHydrated(locator: Locator): Promise<void> {
+  await expect
+    .poll(() => isHydrated(locator), {
+      timeout: 15_000,
+      message: `island never hydrated: ${locator}`,
+    })
+    .toBe(true);
+}
+
 /**
  * Click an island control once React is actually listening.
  *
@@ -147,13 +157,25 @@ export async function isHydrated(locator: Locator): Promise<boolean> {
  * work without JS by design, so waiting on hydration there would be waiting on nothing.
  */
 export async function clickHydrated(locator: Locator): Promise<void> {
-  await expect
-    .poll(() => isHydrated(locator), {
-      timeout: 15_000,
-      message: `island never hydrated: ${locator}`,
-    })
-    .toBe(true);
+  await waitForHydrated(locator);
   await locator.click();
+}
+
+/**
+ * Tick or untick a **controlled** checkbox (`checked={state}`) inside an island.
+ *
+ * The same two failures as `selectOptionHydrated`, and the checkout waiver is the
+ * expensive case: ticking it pre-hydration sets the box but never runs `setWaiver`, so
+ * the DEC-110 gate on **Book & pay** stays shut and the assertion times out — on the
+ * payment path, in CI, intermittently. An uncontrolled checkbox in a server form (the
+ * `weekday`/`vesselIds` boxes) needs none of this.
+ */
+export async function setCheckedHydrated(
+  locator: Locator,
+  checked: boolean,
+): Promise<void> {
+  await waitForHydrated(locator);
+  await locator.setChecked(checked);
 }
 
 /**
@@ -169,12 +191,7 @@ export async function selectOptionHydrated(
   locator: Locator,
   value: Parameters<Locator["selectOption"]>[0],
 ): Promise<void> {
-  await expect
-    .poll(() => isHydrated(locator), {
-      timeout: 15_000,
-      message: `island never hydrated: ${locator}`,
-    })
-    .toBe(true);
+  await waitForHydrated(locator);
   await locator.selectOption(value);
 }
 

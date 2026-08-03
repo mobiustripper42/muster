@@ -60,6 +60,7 @@ const ERR_COPY: Record<string, string> = {
     "That time would move the punch to a different day. Delete it and add it on the right day instead.",
   gone: "That punch no longer exists — someone may have deleted it.",
   bad_input: "Something was missing or malformed — check the fields and try again.",
+  future: "That time hasn’t happened yet — a punch records work that’s already been done.",
   error: "Couldn’t save that just now — try again in a moment.",
 };
 

@@ -1584,7 +1584,8 @@ your hours, and setting it on your own correction would make the surface lie abo
 - [ ] An 8pm-Eastern punch on the **last day of a period** lands in that period.
 - [ ] A punch spanning a DST transition reports true elapsed minutes.
 - [ ] Hours are exact minutes as decimal hours; open punches are excluded from the total and reported
-      as a separate count, and the operator is warned before exporting a period containing one.
+      as a separate count, and the export is refused (409) while any open punch exists in the period,
+      each linked to the bench that can close it.
 - [ ] `origin: "admin"` and a non-null `adminEditedAt` are visible on the admin surface **and** the
       report.
 - [ ] A crew member can punch only themselves; the admin surface refuses `kind !== "admin"`.

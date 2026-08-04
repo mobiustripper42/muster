@@ -37,9 +37,11 @@
  * will not import. Everyone else is mapped, so the blank is visible as a contrast rather
  * than as the uniform state.
  *
- * The estimate side of the union comes free: these seven hold no seats, so they are
- * clock-only rows (positive delta), while `db:seed:crew`'s roster is seat-only
- * (negative delta). One table, both orphan directions.
+ * These six hold no seats, so every row is clock-only: actual hours against a zero estimate.
+ * They are also the only rows in the seeded period — `db:seed:crew`'s roster is seated in the
+ * current and future periods, so the estimate-only half of the union is not on screen beside
+ * them. Showing both halves in one window needs a seat and a punch in the same period, which
+ * is #638's fixture to build (a Confirmed seat with no punch is that issue's whole subject).
  *
  * **Not covered:** a punch spanning a DST transition. The report is DST-safe via
  * `zonedWallClockToInstant`, but a fixture can only exercise it in a period that actually
@@ -199,22 +201,41 @@ try {
 
   const sel = `${PERIOD.start}|${PERIOD.end}`;
   console.log(`Seeded the time clock into the PREVIOUS pay period — ${periodLabel(PERIOD)}.`);
-  console.log("(Previous, not current: every punch is then unconditionally in the past.)\n");
-  console.log("  A Ada   1h09m on " + day(2) + "   = 1.15h EXACTLY  → CSV must read 1.15, not 1.14");
-  console.log("  B Bo    3 x 8h                    = 24.00h          → the plain total");
-  console.log("  C Cyd   20:00-23:30 ET on " + day(5) + " = 3.50h    → UTC bucketing moves this day");
-  console.log("  D Dov   8h15m closed + ONE OPEN    → export BLOCKED, gusto.csv answers 409");
-  console.log("  E Eze   8h, origin: admin          → marked as office-entered (§2.9.8)");
-  console.log("  F Fen   8h30m, adminEditedAt set   → marked as moved by an admin\n");
-  console.log("Ada has NO gusto identity — her CSV employee_id is blank and won't import.\n");
-  console.log("Look at:");
-  console.log(`  reconcile   /admin/payroll?period=${sel}`);
-  console.log("              Ada/Bo/Cyd/... are clock-only (positive delta); db:seed:crew's");
-  console.log("              roster is seat-only (negative). Both orphan directions, one table.");
-  console.log("  the gate    the download is absent while Dov is open —");
-  console.log(`              /admin/payroll/gusto.csv?period=${sel} answers 409 directly`);
-  console.log(`  unblock     /admin/time-clock — close Dov's punch, then reload the payroll page`);
-  console.log("  the cent    download the CSV, find Ada's regular_hours: 1.15");
+  console.log("Previous, not current: every punch is then unconditionally in the past, so this");
+  console.log("seed behaves the same on day 1 of a period as on day 13.\n");
+  console.log("SIX CREW, one concern each. All clock-only (they hold no seats), so every row");
+  console.log("shows actual hours against a zero estimate — a positive delta.\n");
+  console.log("These six are the ONLY rows in this period: db:seed:crew's roster is seated in");
+  console.log("the current and future periods, not this one, so the estimate-only half of the");
+  console.log("union isn't on screen here. To see both halves at once you need a seat and a");
+  console.log("punch in the same window — which is #638's fixture, not this one's.\n");
+  console.log(`  Ada   ${day(2)}  09:00-10:09          69 min = 1.15h EXACTLY`);
+  console.log("        → THE ONE THAT MATTERS. (minutes/60)*100 floors this to 1.14 — a cent");
+  console.log("          under, in the column Gusto pays from. Ada also has NO gusto identity,");
+  console.log("          so her employee_id is blank and her row alone won't import.");
+  console.log(`  Bo    ${day(1)}, ${day(3)}, ${day(4)}  08:00-16:00   1440 min = 24.00h`);
+  console.log("        → the boring row. If this isn't 24.00 the sum is broken before anything");
+  console.log("          interesting gets a chance to be.");
+  console.log(`  Cyd   ${day(5)}  20:00-23:30 ET      210 min = 3.50h`);
+  console.log(`        → that is 00:00-03:30 UTC on ${day(6)}. It must file under ${day(5)}.`);
+  console.log("          Anywhere else and something is reading UTC instead of vessel-local.");
+  console.log(`  Dov   ${day(6)}  07:30-15:45         495 min = 8.25h`);
+  console.log(`        + ${day(7)}  08:00 → STILL OPEN   → this is what blocks the export.`);
+  console.log(`  Eze   ${day(8)}  09:00-17:00         480 min = 8.00h, origin: admin`);
+  console.log("        → must render as office-entered. Nobody tapped anything (§2.9.8).");
+  console.log(`  Fen   ${day(9)}  10:00-18:30         510 min = 8.50h, adminEditedAt set`);
+  console.log("        → crew punched it, an admin moved it. The other half of §2.9.8.\n");
+  console.log("WALKTHROUGH, in order:\n");
+  console.log(`  1. /admin/payroll?period=${sel}`);
+  console.log("     Exactly the six rows above. NO download button — Dov is open.");
+  console.log(`  2. /admin/payroll/gusto.csv?period=${sel}`);
+  console.log("     Straight into the address bar. Answers 409, not a file. The guard is in the");
+  console.log("     domain, not just hidden in the UI.");
+  console.log("  3. /admin/time-clock — close EVERY open punch in the period, not just Dov's");
+  console.log("     (see below if the seed found others).");
+  console.log("  4. Reload the payroll page. The download is back.");
+  console.log("  5. Download it. Ada's regular_hours reads 1.15, not 1.14. Her employee_id is");
+  console.log("     blank; everyone else's is filled.");
 
   if (strays.length > 0) {
     console.log(

@@ -7,6 +7,7 @@ import { asId } from "@core/domain/ids.js";
 import { addPunch, deletePunch, editPunch } from "@core/crew/time-clock.js";
 import { addDays, zonedWallClockToInstant } from "@core/config/tenant.js";
 import { readSubject } from "../../../lib/auth";
+import { timeClockEnabled } from "../../../lib/flags";
 import { getRepo } from "../../../lib/repo";
 
 /**
@@ -16,6 +17,9 @@ import { getRepo } from "../../../lib/repo";
  *
  * **Admin-gated, and that is the whole authorization story**: unlike the crew surface,
  * these deliberately act on someone else's punches. The gate is `kind === "admin"`.
+ *
+ * **Every door checks `timeClockEnabled()` (#628)** — a server action is a POST endpoint, and a
+ * kill switch that only hides nav links is the #621 defect.
  *
  * Times arrive as vessel-local wall clock from `<input type="time">` and are converted
  * with `zonedWallClockToInstant` (DEC-032) — never `new Date(string)`, which would read
@@ -70,6 +74,7 @@ function outInstantOf(day: string, time: string, nextDay: boolean): Date | null 
 }
 
 export async function addPunchAction(formData: FormData): Promise<void> {
+  if (!timeClockEnabled()) redirect("/admin"); // phase dark (#628)
   await requireAdmin();
   const back = backTo(formData);
   const day = String(formData.get("punchDay") ?? "");
@@ -116,6 +121,7 @@ export async function addPunchAction(formData: FormData): Promise<void> {
 }
 
 export async function editPunchAction(formData: FormData): Promise<void> {
+  if (!timeClockEnabled()) redirect("/admin"); // phase dark (#628)
   await requireAdmin();
   const back = backTo(formData);
   const id = String(formData.get("punchId") ?? "");
@@ -151,6 +157,7 @@ export async function editPunchAction(formData: FormData): Promise<void> {
 }
 
 export async function deletePunchAction(formData: FormData): Promise<void> {
+  if (!timeClockEnabled()) redirect("/admin"); // phase dark (#628)
   await requireAdmin();
   const back = backTo(formData);
   const id = String(formData.get("punchId") ?? "");

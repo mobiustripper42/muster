@@ -8,8 +8,8 @@
 import { describe, expect, it } from "vitest";
 import { FLAT_LINKS, GROUPS, visibleAdminLinks, visibleAdminNav } from "./admin-links.js";
 
-const ALL = { messaging: true, reservations: true };
-const NONE = { messaging: false, reservations: false };
+const ALL = { messaging: true, reservations: true, timeClock: true };
+const NONE = { messaging: false, reservations: false, timeClock: false };
 
 describe("visibleAdminNav", () => {
   it("puts the daily work flat, in the operator's order", () => {
@@ -56,10 +56,20 @@ describe("visibleAdminNav", () => {
   });
 
   it("keeps Messages gated on messaging alone, independent of reservations", () => {
-    const people = (f: { messaging: boolean; reservations: boolean }) =>
+    const people = (f: Parameters<typeof visibleAdminNav>[0]) =>
       visibleAdminNav(f).groups.find((g) => g.label === "People")!.links.map((l) => l.label);
-    expect(people({ messaging: true, reservations: false })).toContain("Messages");
-    expect(people({ messaging: false, reservations: true })).not.toContain("Messages");
+    expect(people({ ...NONE, messaging: true })).toContain("Messages");
+    expect(people({ ...NONE, reservations: true })).not.toContain("Messages");
+  });
+
+  it("drops Time clock when the phase is dark, and keeps Payroll (#628)", () => {
+    // The kill switch hides the punch clock, but /admin/payroll predates Phase 13 and still has
+    // its estimate — gating the whole People group on TIME_CLOCK would take payroll down with it.
+    const people = (f: Parameters<typeof visibleAdminNav>[0]) =>
+      visibleAdminNav(f).groups.find((g) => g.label === "People")!.links.map((l) => l.label);
+    expect(people(NONE)).not.toContain("Time clock");
+    expect(people(NONE)).toContain("Payroll");
+    expect(people({ ...NONE, timeClock: true })).toContain("Time clock");
   });
 
   it("shelves Blocks with Bookings, not Setup", () => {
@@ -106,10 +116,12 @@ describe("visibleAdminNav", () => {
     const declared = [...FLAT_LINKS, ...GROUPS.flatMap((g) => g.links)];
     for (const messaging of [true, false]) {
       for (const reservations of [true, false]) {
-        const order = visibleAdminLinks({ messaging, reservations }).map((l) =>
-          declared.findIndex((d) => d.href === l.href),
-        );
-        expect(order).toEqual([...order].sort((a, b) => a - b));
+        for (const timeClock of [true, false]) {
+          const order = visibleAdminLinks({ messaging, reservations, timeClock }).map((l) =>
+            declared.findIndex((d) => d.href === l.href),
+          );
+          expect(order).toEqual([...order].sort((a, b) => a - b));
+        }
       }
     }
   });
@@ -118,7 +130,8 @@ describe("visibleAdminNav", () => {
     // TypeScript catches this today; the test survives the field becoming a plain string, and a
     // link silently absent from every deployment is the kind of thing nobody reports.
     for (const l of [...FLAT_LINKS, ...GROUPS.flatMap((g) => g.links)]) {
-      if (l.feature !== undefined) expect(["messaging", "reservations"]).toContain(l.feature);
+      if (l.feature !== undefined)
+        expect(["messaging", "reservations", "timeClock"]).toContain(l.feature);
     }
   });
 });

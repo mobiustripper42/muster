@@ -6,6 +6,30 @@
  */
 import { test, expect, resetAndSeed, signInAsAdmin } from "./fixtures.js";
 
+/**
+ * Move the bench to the PREVIOUS pay period, so every day in it is already past.
+ *
+ * The add tests below enter 09:00–17:00 on the period's first day. That day is usually behind
+ * us — but on day 1 of a period it IS today, and the domain's no-future-punch guard then refuses
+ * the 17:00 out with `err=future`. So these specs failed for roughly one day in fourteen, before
+ * 5pm, which is a nastier shape than failing outright: the suite is green thirteen days running
+ * and then red for reasons that look unrelated to whatever shipped that morning.
+ *
+ * Selecting a past period removes the class rather than patching each entry, and needs no clock
+ * arithmetic in the spec. Found on 2026-08-03, which happened to be a period's first day.
+ */
+async function usePreviousPeriod(page: import("@playwright/test").Page): Promise<void> {
+  const select = page.getByLabel("Pay period");
+  const values = await select
+    .locator("option")
+    .evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
+  const current = await select.inputValue();
+  const i = values.indexOf(current);
+  expect(i, "the current period must be in the list").toBeGreaterThan(0);
+  await select.selectOption(values[i - 1]!);
+  await page.waitForURL(/period=/);
+}
+
 test.describe("admin /admin/time-clock — the repair bench", () => {
   test.beforeEach(async () => {
     await resetAndSeed("crew");
@@ -20,6 +44,7 @@ test.describe("admin /admin/time-clock — the repair bench", () => {
   test("add a punch, correct it, then delete it", async ({ page }) => {
     await signInAsAdmin(page, "spink");
     await page.goto("/admin/time-clock");
+    await usePreviousPeriod(page);
 
     // Add: crew view, so the person is fixed and we pick a day. The day is READ FROM
     // THE PAGE (the input's own `min` = the selected period's first day) rather than
@@ -59,6 +84,7 @@ test.describe("admin /admin/time-clock — the repair bench", () => {
   test("an out time before the in time is refused with copy, not a 500", async ({ page }) => {
     await signInAsAdmin(page, "spink");
     await page.goto("/admin/time-clock");
+    await usePreviousPeriod(page);
 
     const addDay = await page.locator("#add-day").getAttribute("min");
     await page.locator("#add-day").fill(addDay!);
@@ -85,6 +111,7 @@ test.describe("admin /admin/time-clock — the repair bench", () => {
     // from out < in, so a typo stays an error instead of becoming a paid 16 hours.
     await signInAsAdmin(page, "spink");
     await page.goto("/admin/time-clock");
+    await usePreviousPeriod(page);
     const addDay = await page.locator("#add-day").getAttribute("min");
     await page.locator("#add-day").fill(addDay!);
     await page.locator("#add-in").fill("22:00");
@@ -102,6 +129,7 @@ test.describe("admin /admin/time-clock — the repair bench", () => {
   test("without the next-day box, an out before the in is still refused", async ({ page }) => {
     await signInAsAdmin(page, "spink");
     await page.goto("/admin/time-clock");
+    await usePreviousPeriod(page);
     const addDay = await page.locator("#add-day").getAttribute("min");
     await page.locator("#add-day").fill(addDay!);
     await page.locator("#add-in").fill("22:00");
@@ -143,13 +171,13 @@ test.describe("admin /admin/time-clock — the repair bench", () => {
   }) => {
     await signInAsAdmin(page, "spink");
     await page.goto("/admin/time-clock");
+    await usePreviousPeriod(page);
 
-    // Leave one running on the period's first day — by the time this runs it is
-    // either today or earlier; the strip only fires on EARLIER, so skip if the period
-    // just started today rather than assert something that isn't true yet.
+    // Leave one running on the period's first day. The strip only fires on an EARLIER day, and
+    // this used to skip itself whenever the period had started today — which is exactly the day
+    // the assertion was most worth making. On a PAST period every day qualifies, so it now runs
+    // every time instead of quietly opting out one day in fourteen.
     const addDay = (await page.locator("#add-day").getAttribute("min"))!;
-    const today = await page.locator("#add-day").getAttribute("max");
-    test.skip(addDay === today, "period starts today — no earlier day to leave open");
     await page.locator("#add-day").fill(addDay);
     await page.locator("#add-in").fill("09:00");
     await page.getByRole("button", { name: "Add" }).click();

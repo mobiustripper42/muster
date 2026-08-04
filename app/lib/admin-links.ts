@@ -28,7 +28,7 @@ export interface AdminLink {
   href: string;
   label: string;
   /** Server-resolved flag this entry is gated on. Absent = always shown. */
-  feature?: "messaging" | "reservations";
+  feature?: "messaging" | "reservations" | "timeClock";
 }
 
 export interface AdminGroup {
@@ -39,6 +39,7 @@ export interface AdminGroup {
 export interface AdminFlags {
   messaging: boolean;
   reservations: boolean;
+  timeClock: boolean;
 }
 
 /**
@@ -84,7 +85,7 @@ export const GROUPS: readonly AdminGroup[] = [
       // Time off is set-and-forget, so it sits last (operator, 2026-08-01).
       // Distinct from Time off, which is days somebody is unavailable — this is hours
       // they actually worked (#627, SPEC §2.9).
-      { href: "/admin/time-clock", label: "Time clock" },
+      { href: "/admin/time-clock", label: "Time clock", feature: "timeClock" },
       { href: "/admin/payroll", label: "Payroll" },
       { href: "/admin/messages", label: "Messages", feature: "messaging" },
       { href: "/admin/time-off", label: "Time off" },

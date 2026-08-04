@@ -8,6 +8,7 @@ import { clockIn, clockOut } from "@core/crew/time-clock.js";
 import { addOwnPunch, deleteOwnPunch, editOwnPunch } from "@core/crew/time-clock-crew.js";
 import { addDays, zonedWallClockToInstant } from "@core/config/tenant.js";
 import { readSubject } from "../../../lib/auth";
+import { timeClockEnabled } from "../../../lib/flags";
 import { getRepo } from "../../../lib/repo";
 
 /**
@@ -19,6 +20,10 @@ import { getRepo } from "../../../lib/repo";
  * either payload — a crew member can only punch themselves, by construction rather
  * than by check.
  *
+ * **Every door checks `timeClockEnabled()` (#628).** A server action is a POST endpoint: gating
+ * the page and not these would leave the whole clock writable by anyone who kept a form around,
+ * which is the #621 shape — a kill switch that hides its links and kills nothing.
+ *
  * Feedback rides redirect params as codes (DEC-026 — codes/ids only, mapped to copy
  * server-side, so a crafted URL can't inject text onto a trusted surface), matching
  * the citation the sibling `time-off/actions.ts` uses rather than adding a third
@@ -28,6 +33,7 @@ import { getRepo } from "../../../lib/repo";
 const BACK = "/crew/time";
 
 export async function clockInNow(): Promise<void> {
+  if (!timeClockEnabled()) redirect("/crew"); // phase dark (#628) — the door isn't there
   const subject = await readSubject();
   if (!subject || subject.kind !== "crew") redirect("/crew");
 
@@ -52,6 +58,7 @@ export async function clockInNow(): Promise<void> {
 }
 
 export async function clockOutNow(): Promise<void> {
+  if (!timeClockEnabled()) redirect("/crew"); // phase dark (#628) — the door isn't there
   const subject = await readSubject();
   if (!subject || subject.kind !== "crew") redirect("/crew");
 
@@ -101,6 +108,7 @@ function backToRow(punchId: string, param: string): string {
 }
 
 export async function editMyPunch(formData: FormData): Promise<void> {
+  if (!timeClockEnabled()) redirect("/crew"); // phase dark (#628) — the door isn't there
   const subject = await readSubject();
   if (!subject || subject.kind !== "crew") redirect("/crew");
   const punchId = String(formData.get("punchId") ?? "");
@@ -143,6 +151,7 @@ export async function editMyPunch(formData: FormData): Promise<void> {
 }
 
 export async function addMyPunch(formData: FormData): Promise<void> {
+  if (!timeClockEnabled()) redirect("/crew"); // phase dark (#628) — the door isn't there
   const subject = await readSubject();
   if (!subject || subject.kind !== "crew") redirect("/crew");
   const id = `punch-${randomUUID()}`;
@@ -179,6 +188,7 @@ export async function addMyPunch(formData: FormData): Promise<void> {
 }
 
 export async function deleteMyPunch(formData: FormData): Promise<void> {
+  if (!timeClockEnabled()) redirect("/crew"); // phase dark (#628) — the door isn't there
   const subject = await readSubject();
   if (!subject || subject.kind !== "crew") redirect("/crew");
   const punchId = String(formData.get("punchId") ?? "");

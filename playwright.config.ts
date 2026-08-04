@@ -78,7 +78,7 @@ export default defineConfig({
       // sides (#626/#627 — the crew card is phone-primary, and the admin punch card
       // packs two <input type="time"> plus Save on one row, the tightest row in §2.9).
       name: "mobile",
-      testMatch: /(auth-crew|admin-nav|outbox-relay|crew-messaging|operator-messaging|version-tag|crew-sign-in|crew-open|crew-reconciliation|crew-help|cockpit-manifest|cockpit-override|ask-trail|time-off|payroll|shifts-view|calendar-feed|other-shifts-today|vessel-location-admin|offering-catalog|add-ons|blocks|calendar|customers|purchases|book-availability|book-checkout|book-manage|crew-time|admin-time-clock)\.spec\.ts/,
+      testMatch: /(auth-crew|admin-nav|outbox-relay|crew-messaging|operator-messaging|version-tag|crew-sign-in|crew-open|crew-reconciliation|crew-help|cockpit-manifest|cockpit-override|ask-trail|time-off|payroll|payroll-reconcile|shifts-view|calendar-feed|other-shifts-today|vessel-location-admin|offering-catalog|add-ons|blocks|calendar|customers|purchases|book-availability|book-checkout|book-manage|crew-time|admin-time-clock)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 375, height: 812 } },
     },
   ],
@@ -125,6 +125,12 @@ export default defineConfig({
       // Messaging (#389) is disabled in prod (kill switch, off by default), but the
       // code stays and its e2e specs must keep exercising it — turn it on here.
       MESSAGING: "1",
+      // The Phase 13 time clock (#628) is a kill switch, OFF in prod until the phase ships.
+      // The e2e is where it gets exercised, so turn it on — same posture as MESSAGING above.
+      // NB the flag-OFF behaviour (routes 404, actions refuse) can't be covered here: this env
+      // is per-RUN, not per-test, so a spec can't turn it off for itself. That gap is why
+      // `app/lib/time-clock-gate.test.ts` asserts the wiring structurally instead.
+      TIME_CLOCK: "1",
       // Reservations (DEC-111) gate the public /book customer flow (12.4+). Off in prod
       // until the customer surface is customer-ready (the one P12 merge to main); on here
       // so the availability + checkout specs can drive it.

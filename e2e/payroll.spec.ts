@@ -43,8 +43,10 @@ test.describe("admin /admin/payroll — estimated hours by pay period", () => {
     // shift-soon: two trips (15:00 + 17:00) → span 120 + trip 100 + call lead 45 +
     // teardown 25 = 290 min = 4h 50m (#275), for both confirmed required crew
     // (Quint captain, Hooper mate).
-    await expect(page.getByText("Quint")).toBeVisible();
-    await expect(page.getByText("Hooper")).toBeVisible();
+    // Scoped to the table: with TIME_CLOCK on, the page also carries a warnings list that can
+    // name the same person, so a bare getByText is ambiguous (#628).
+    await expect(page.getByRole("cell", { name: "Quint", exact: true })).toBeVisible();
+    await expect(page.getByRole("cell", { name: "Hooper", exact: true })).toBeVisible();
     await expect(page.getByText("4h 50m").first()).toBeVisible();
   });
 });

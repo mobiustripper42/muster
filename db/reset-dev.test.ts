@@ -4,7 +4,7 @@
  * guard, because it's trusted.
  */
 import { describe, expect, it } from "vitest";
-import { resolveTarget } from "./reset-dev.js";
+import { parseSeeds, resolveTarget } from "./reset-dev.js";
 
 const local = (db: string) => `postgres://muster:muster@localhost:5432/${db}`;
 
@@ -50,5 +50,43 @@ describe("resolveTarget — what it refuses", () => {
     expect(() => resolveTarget("postgres://u:p@prod.example.com/muster_dev")).toThrow(
       /reset-pilot/,
     );
+  });
+});
+
+/**
+ * `--seeds` parsing. The guard above is about refusing the wrong DATABASE; this is about
+ * refusing to guess at the wrong FIXTURES — a reset that silently seeds something other than
+ * what you asked for sends you debugging an empty page instead of the flag you mistyped.
+ */
+describe("parseSeeds", () => {
+  it("reads the space-separated form", () => {
+    expect(parseSeeds(["--seeds", "fleet,crew"])).toEqual(["fleet", "crew"]);
+  });
+
+  it("reads the --seeds=a,b form", () => {
+    // The form `npm run` users reach for first, and the one the timeclock seed's own docs
+    // used. It parsed as a single unrecognised token, so `indexOf("--seeds")` missed it and
+    // the run silently fell back to DEFAULT_SEEDS — a reset that looked like it worked and
+    // seeded something else entirely.
+    expect(parseSeeds(["--seeds=fleet,crew,timeclock"])).toEqual(["fleet", "crew", "timeclock"]);
+  });
+
+  it("defaults only when no --seeds flag is present at all", () => {
+    expect(parseSeeds([])).toEqual(["fleet", "crew", "reservation"]);
+    expect(parseSeeds(["--fresh"])).toEqual(["fleet", "crew", "reservation"]);
+  });
+
+  it("still refuses an unknown seed name in either form", () => {
+    expect(() => parseSeeds(["--seeds", "fleet,nope"])).toThrow(/Unknown seed/);
+    expect(() => parseSeeds(["--seeds=nope"])).toThrow(/Unknown seed/);
+  });
+
+  it("refuses an empty list rather than defaulting", () => {
+    expect(() => parseSeeds(["--seeds="])).toThrow(/comma-separated/);
+    expect(() => parseSeeds(["--seeds"])).toThrow(/comma-separated/);
+  });
+
+  it("--no-seed still wins", () => {
+    expect(parseSeeds(["--no-seed", "--seeds=fleet"])).toEqual([]);
   });
 });

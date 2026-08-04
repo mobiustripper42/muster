@@ -1512,6 +1512,17 @@ still gets sent, and the number inside it is still short. So the file is not off
 route answers **409**, and the report links each open punch to the bench that can close it. §2.9.5
 is unchanged: still flagged, still never auto-closed.
 
+**A confirmed seat with no punch is counted and flagged, and does NOT block the export** (#638,
+operator 2026-08-03). The bench catches punches that are wrong; it cannot catch the punch that
+isn't there, and that person's hours read a silent zero. The report names the vessel-local days
+someone held a **required Confirmed** seat on a non-Cancelled shift and has no punch at all — open
+punches included, since open and missing are different problems and one day must not be reported
+as both. **The asymmetry with an open punch is deliberate:** closing an open punch always clears
+its block, so gating on it strands nobody; a missing day may simply be true, so gating on it would
+stop payroll for the whole crew over one no-show with no action available to release it. Each
+missing day links to the day view that can fix it. Supernumerary seats never count — an unpaid
+ride (DEC-087) owes no hours, the same rule the estimate already applies.
+
 **Period bucketing is by the vessel-local date of `inAt`** (DEC-032), never UTC. An 8pm Eastern punch
 is already tomorrow in UTC; bucketing on UTC would move a person's hours between paychecks on the last
 day of every period, in the direction that looks like a shortfall.
@@ -1586,6 +1597,10 @@ your hours, and setting it on your own correction would make the surface lie abo
 - [ ] Hours are exact minutes as decimal hours; open punches are excluded from the total and reported
       as a separate count, and the export is refused (409) while any open punch exists in the period,
       each linked to the bench that can close it.
+- [ ] A required Confirmed seat on a non-Cancelled shift with no punch that vessel-local day is
+      counted and named as missing, links to the day view, and does **not** block the export. A
+      supernumerary seat never counts; a day with any punch — including an open one — is not
+      missing.
 - [ ] `origin: "admin"` and a non-null `adminEditedAt` are visible on the admin surface **and** the
       report.
 - [ ] A crew member can punch only themselves; the admin surface refuses `kind !== "admin"`.

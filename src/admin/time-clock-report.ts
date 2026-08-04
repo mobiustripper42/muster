@@ -25,7 +25,7 @@
 
 import type { TimePunch } from "../domain/entities.js";
 import type { Repository } from "../ports/repository.js";
-import { addDays, zonedWallClockToInstant } from "../config/tenant.js";
+import { addDays, vesselDateOf, zonedWallClockToInstant } from "../config/tenant.js";
 
 export interface TimeClockRow {
   crewMemberId: string;
@@ -43,6 +43,13 @@ export interface TimeClockRow {
   /** True elapsed minutes of the closed punches, unrounded. */
   minutes: number;
   openCount: number;
+  /**
+   * The vessel-local dates this person has ANY punch on, ascending (#638) — open punches
+   * included. A day with an unfinished punch is not a day with no punch: open and missing are
+   * different problems, and reporting one day as both would send the operator hunting for a
+   * punch that exists and merely hasn't been closed.
+   */
+  days: string[];
   /** `origin: "admin"` — the operator entered it; nobody tapped anything (§2.9.8). */
   adminEnteredCount: number;
   /** `adminEditedAt` set — someone else moved these hours. */
@@ -89,12 +96,25 @@ export async function buildTimeClockReport(
   ]);
   const nameById = new Map(crew.map((c) => [String(c.id), c.name]));
 
-  const acc = new Map<string, Omit<TimeClockRow, "crewMemberId" | "name" | "touchedByAdmin">>();
+  const acc =
+    new Map<string, Omit<TimeClockRow, "crewMemberId" | "name" | "touchedByAdmin" | "days">>();
+  // Days accumulate as Sets — several punches in one day are one day.
+  const daysById = new Map<string, Set<string>>();
   for (const p of punches) {
     const key = String(p.crewMemberId);
     const row =
       acc.get(key) ??
       { punchCount: 0, minutes: 0, openCount: 0, adminEnteredCount: 0, adminEditedCount: 0 };
+
+    // Bucketed on the vessel-local date of `inAt` (DEC-032), the same rule as the window above
+    // and the calendar the estimate's `shift.date` is already on. An 8pm Eastern punch is
+    // tomorrow in UTC; bucketing it there would leave its real day looking empty and invent a
+    // missing shift for someone who worked an evening trip. Open punches count as a day here —
+    // see `days`.
+    const dayKey = vesselDateOf(new Date(p.inAt));
+    const days = daysById.get(key) ?? new Set<string>();
+    days.add(dayKey);
+    daysById.set(key, days);
 
     if (p.outAt === null) {
       row.openCount += 1;
@@ -113,6 +133,7 @@ export async function buildTimeClockReport(
       crewMemberId,
       name: nameById.get(crewMemberId) ?? null,
       ...v,
+      days: [...(daysById.get(crewMemberId) ?? [])].sort(),
       touchedByAdmin: v.adminEnteredCount > 0 || v.adminEditedCount > 0,
     }))
     // Nameless rows sort last rather than throwing on a null compare — they're the exception and

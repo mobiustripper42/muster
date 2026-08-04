@@ -296,6 +296,47 @@ function ReconcileSection({
         </Notice>
       )}
 
+      {/*
+       * Missing days (#638) — `warn`, not `bad`, and deliberately no effect on the export. An
+       * open punch is an error with a guaranteed fix: a human closes it and the block clears.
+       * A missing day may simply be true — the person didn't work — so there is no action that
+       * always resolves it, and blocking payroll for the whole crew on one no-show would leave
+       * the operator stuck. It reads as something to check, because that is what it is.
+       */}
+      {rec.missingCount > 0 && (
+        <Notice tone="warn">
+          <p className="font-semibold">
+            {rec.missingCount === 1
+              ? "One shift in this period has no punch against it."
+              : `${rec.missingCount} shifts in this period have no punch against them.`}
+          </p>
+          <p>
+            Someone held a confirmed seat and never clocked in, so their hours read zero. That may
+            be right — check each day and add the punch on the time clock if it isn’t.
+          </p>
+          <ul className="mt-1 list-disc pl-4">
+            {rec.rows
+              .filter((r) => r.missingDays.length > 0)
+              .map((r) => (
+                <li key={r.crewMemberId}>
+                  {r.name ?? r.crewMemberId} —{" "}
+                  {r.missingDays.map((d, i) => (
+                    <span key={d}>
+                      {i > 0 && ", "}
+                      <a
+                        className="underline"
+                        href={`/admin/time-clock?day=${encodeURIComponent(d)}`}
+                      >
+                        {d}
+                      </a>
+                    </span>
+                  ))}
+                </li>
+              ))}
+          </ul>
+        </Notice>
+      )}
+
       {rec.warnings.length > 0 && (
         <Notice>
           <ul className="list-disc pl-4">

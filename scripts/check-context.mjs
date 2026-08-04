@@ -1,26 +1,32 @@
 #!/usr/bin/env node
-// Validates that the always-loaded context docs point at things that exist (#593 fallout).
+// Validates that the always-loaded context docs point at things that exist.
 //
-// The failure this exists for: `.claude/CLAUDE-context.md` described the crew ask channel as
-// "fake/log + pilot seam, Twilio/SMS = later swap" for weeks after `src/adapters/twilio-channel.ts`
-// shipped and became the live production transport. A session read that line, believed it, and
-// filed an issue asserting a feature was blocked on an adapter that had existed since 9.4/#225.
+// Install to the project's own `scripts/` and add it to the verify chain:
+//   "check:context": "node scripts/check-context.mjs"
+// It needs no dependencies and runs in about 0.2s. `check-context.test.mjs` is a vitest suite;
+// drop it if the project has no test runner — the script stands alone.
 //
-// The 2026-07-25 doc-consistency audit could not have caught it. That audit compared docs to
-// DOCS; this claim was false against CODE, which was the one corpus never swept — and the audit's
-// own dominant finding says exactly that: a change that lands in code updates the code and never
-// the doc.
+// THE FAILURE THIS EXISTS FOR (muster, 2026-07-28). `.claude/CLAUDE-context.md` described the crew
+// ask channel as "fake/log adapter + pilot seam · Twilio/SMS = later swap" for weeks after the
+// Twilio adapter shipped and became the live production transport. A session read that line,
+// believed it, and filed an issue asserting a feature was blocked on an adapter that had existed
+// since June — then explained the blockage at length.
 //
-// So the rule these files now follow is: **carry decisions, rationale and pointers — not
-// inventory.** Rationale doesn't rot. A pointer (`ls src/adapters/*-channel.ts`) sends the reader
-// to the truth instead of copying it, and it is checkable, which is what this script does. A prose
-// snapshot of current state is stale the day the code moves and nothing anywhere notices.
+// A five-day doc-consistency audit had just finished and could not have caught it. That audit
+// compared docs to DOCS; this claim was false against CODE, the one corpus doc sweeps never read.
+// The audit's own dominant finding says exactly that: a change that lands in code updates the code
+// and never the doc.
 //
-// What it cannot do is judge a CHARACTERIZATION. "Twilio is the live transport" is a sentence no
-// script can validate; only a reader can. This closes the existence half, which is most of the
-// volume once inventory has become pointers, and leaves the rest to review. Saying so out loud
-// matters more than the code below — a guard whose blind spot is undocumented gets trusted for
-// things it never checked (#589).
+// So the rule these files follow is: **carry decisions, rationale and pointers — not inventory.**
+// Rationale doesn't rot. A pointer (`ls src/adapters/*-channel.ts`) sends the reader to the truth
+// instead of copying it, and it is checkable, which is what this script does. A prose snapshot of
+// current state is stale the day the code moves and nothing anywhere notices.
+//
+// What it cannot do is judge a CHARACTERIZATION. "X is the live transport" is a sentence no script
+// can validate; only a reader can. This closes the existence half — most of the volume once
+// inventory has become pointers — and leaves the rest to review. Saying so out loud matters more
+// than the code below: a guard whose blind spot is undocumented gets trusted for things it never
+// checked.
 
 import { existsSync, globSync, readFileSync, readdirSync, statSync } from 'node:fs'
 
@@ -115,8 +121,8 @@ export function resolves(raw) {
   //
   // Both citation styles the docs use: a list (`src/builder/derive.ts:148,192`) and a RANGE
   // (`app/lib/auth.ts:88-96`). The range form was missed until `check-docs` ran the same resolver
-  // over `docs/*.md` and reported three live files as dead — the check-context blind spot nobody
-  // would have found from its own corpus, because `CLAUDE-context.md` happens to cite only lists.
+  // over `docs/*.md` and reported three live files as dead — the blind spot nobody would have
+  // found from this script's own corpus, because context docs happen to cite only lists.
   const path = raw.replace(/:[\d,-]+$/, '').replace(/\\(?=[()])/g, '')
   return isPattern(path) ? patternMatches(path) : existsSync(path)
 }

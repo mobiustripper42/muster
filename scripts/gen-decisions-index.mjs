@@ -1,47 +1,77 @@
 #!/usr/bin/env node
 // Generates docs/DECISIONS.md from docs/decisions/*.md, and writes the reciprocal
-// "amended by" banner into each amended decision's own file (#564, DEC-141).
+// "amended by" banner into each amended decision's own file (DEC-S036, from muster DEC-141).
 //
 // Run: `npm run gen:decisions`. `npm run check:decisions` fails if the output is stale,
 // so forgetting to run it is a red build rather than an invisible defect — which is the
-// actual fix for DEC-127's decay. There is still a step; it just can't be skipped quietly.
+// actual fix for a hand-maintained index's decay. There is still a step; it just can't be
+// skipped quietly.
 //
-// The banner matters as much as the index. Audit shard Z2 found 28 supersede-class edges
-// where the amending DEC updated itself and never its target, and noted that a reader
-// arriving by Ctrl-F, a code comment, or another doc's citation lands in the body and
-// reads the retired answer with no signal. An index-only pointer only helps the reader
-// who came via the index. Nobody does.
+// The banner matters as much as the index. An audit of the originating project found 28
+// supersede-class edges where the amending decision updated itself and never its target,
+// and noted that a reader arriving by Ctrl-F, a code comment, or another doc's citation
+// lands in the body and reads the retired answer with no signal. An index-only pointer
+// only helps the reader who came via the index. Nobody does.
+//
+// EVERYTHING PROJECT-SPECIFIC LIVES IN `docs/decisions/_config.json` — the topic order, the
+// non-numeric id families, and the spec path. This file is byte-identical across every
+// project that installs it, which is what lets `@sync-config` classify it `logic` and
+// forward-port it without a per-project merge.
 
-import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { readFileSync, readdirSync, writeFileSync, existsSync } from 'node:fs'
 
 export const DIR = 'docs/decisions'
 export const OUT = 'docs/DECISIONS.md'
-export const SPEC = 'docs/SPEC.md'
 const PREAMBLE = `${DIR}/_preamble.md`
+const CONFIG = `${DIR}/_config.json`
 
-// Topic order is the index's reading order and is not derivable from the files — it is
-// editorial. An unknown topic in frontmatter fails the check rather than appending
-// silently to the bottom, where nobody would see it.
-export const TOPICS = [
-  'Core architecture & engine mechanics',
-  'Availability & commitment rules',
-  'Seats, shifts & state machine',
-  'Staffing engine — asks, escalation, At-Risk board & cockpit',
-  'Reliability scoring',
-  'Timing — horizons, deadlines & vessel clock',
-  'Crew, vessels & manning model',
-  'Xola ingest & import',
-  'Messaging, presence & doorbell',
-  'Outbound notifications & operator relay',
-  'Crew self-serve, auth & admin identity',
-  'Reservations & payments',
-  'UI, brand & frontend patterns',
-  'Deployment, infra & versioning',
-  'Open questions',
-]
+/**
+ * The editorial knobs, read from `docs/decisions/_config.json`.
+ *
+ * A missing config is an error, not a defaulted one. Every knob here is a statement about
+ * a specific project's record — the topic order is its reading order, the families are its
+ * history — and inventing a default for either would put a plausible-looking wrong answer
+ * in a generated file that people then trust.
+ */
+export function config(path = CONFIG) {
+  if (!existsSync(path)) {
+    throw new Error(`${path} is missing — the decision record needs its topic order and id families declared`)
+  }
+  const c = JSON.parse(readFileSync(path, 'utf8'))
+  if (!Array.isArray(c.topics) || !c.topics.length) throw new Error(`${path}: topics must be a non-empty array`)
+  if (c.families && typeof c.families !== 'object') throw new Error(`${path}: families must be an object`)
+  return { spec: 'docs/SPEC.md', families: {}, ...c }
+}
+
+// Resolved once at import so the constants below read like the constants they replaced.
+// Tests inject their own via the optional trailing parameters rather than mutating these.
+const CFG = config()
+
+/** Topic order is the index's reading order and is not derivable from the files — it is
+ *  editorial. An unknown topic in frontmatter fails the check rather than appending
+ *  silently to the bottom, where nobody would see it. */
+export const TOPICS = CFG.topics
+
+/** Where each non-numeric id family sits in the record's chronology, as a fractional rank
+ *  between the numeric ids that bracket it. See `rank()` for why this has to exist. */
+export const FAMILIES = CFG.families
+
+export const SPEC = CFG.spec
+
+/**
+ * Does this record have a bare-numeric main line (`DEC-001`), or is every id prefixed?
+ *
+ * Set false for a record built entirely on one family, and the citation scan stops treating
+ * `DEC-001` as one of ours. That is not a nicety: seeds' own record is all `DEC-S###`, and it
+ * cites plain numeric ids *on purpose* — DEC-S025 exists to say that a project's own decisions
+ * stay unprefixed. Matching those would report another repo's record as this one's dangling
+ * references, and a check that reddens a doc for being right is the fastest way to get the check
+ * disabled.
+ */
+export const NUMERIC_IDS = CFG.numericIds ?? true
 
 // `supersedes` strikes the target's row; everything else annotates it. The vocabulary is
-// the one already in use across the record — shard Z2's point was that it was prose, and
+// the one already in use across the record — the audit's point was that it was prose, and
 // prose is not checkable. Rendered as the past participle a back-pointer wants.
 export const RELATIONS = {
   supersedes: 'superseded by',
@@ -59,9 +89,9 @@ export const RELATIONS = {
 const BANNER_OPEN = '<!-- amended-by: generated by `npm run gen:decisions` — do not edit by hand -->'
 const BANNER_CLOSE = '<!-- /amended-by -->'
 
-// The DEC→SPEC leg (#590). DEC-141 made the DEC→DEC leg checkable; this is the other half
-// of the pattern the 2026-07-25 audit named as its largest finding class — a change that
-// lands in a decision and never in the spec it claims to change.
+// The DEC→SPEC leg. The DEC→DEC leg above makes amendment between decisions checkable;
+// this is the other half of the pattern the originating audit named as its largest finding
+// class — a change that lands in a decision and never in the spec it claims to change.
 //
 // Frontmatter keys whose value is a list of entries rather than a scalar. Enumerated
 // because the parser has to know a list is open before it reads the first `- ` under it.
@@ -92,9 +122,9 @@ export function specSections(text) {
 export const sectionNumber = (s) => String(s).replace(/^§/, '').replace(/\.$/, '')
 
 /**
- * Minimal frontmatter reader for exactly the shape this project writes — no YAML
- * dependency for one flat block plus one list of three scalars. A shape it can't parse
- * is an error, not a silent skip.
+ * Minimal frontmatter reader for exactly the shape this record writes — no YAML
+ * dependency for one flat block plus lists of three scalars. A shape it can't parse is an
+ * error, not a silent skip.
  * @param {string} text
  */
 export function parseFrontmatter(text) {
@@ -144,33 +174,45 @@ export function parseFrontmatter(text) {
   return { meta, body }
 }
 
-// Where the non-numeric families sit in the record's chronology. The pre-split
-// DECISIONS.md was written in decision order, and it placed all five between DEC-014 and
-// DEC-015 (`git show f41a895^:docs/DECISIONS.md`, lines 374–472). That is the evidence for
-// this number; it is not an editorial choice.
-//
-// It matters because the id is the ONLY time proxy the record carries — no decision file
-// has a `decided:` field — and the backwards-amendment guard in check-decisions.mjs is
-// exactly the assertion that id order tracks time. A family with no position makes that
-// guard unrunnable, which is how it came to be silently inert for five ids (#589).
-const PRE_015 = 14.5
-const FAMILIES = new Set(['MSG', 'ROLE', 'DATA'])
-
 /**
  * A decision's position in the record, or null if it has none.
+ *
+ * The id is usually the ONLY time proxy the record carries — decision files have no
+ * `decided:` field — and the backwards-amendment guard in check-decisions.mjs is exactly
+ * the assertion that id order tracks time. A family with no declared position makes that
+ * guard unrunnable, which is how it came to be silently inert for five ids in the
+ * originating project. So an unrecognized family is null, not a guess.
  *
  * `DEC-TBD` is null on purpose: it is the open-questions container, not a decision taken
  * at a point in time, so there is no honest answer. Anything new and unrecognized is null
  * for the same reason — null is what makes the next non-uniform id visible instead of
- * silent, which was the whole defect in #589.
+ * silent.
  * @param {string} id
+ * @param {Record<string, number>} [families] injected in tests
  */
-export function rank(id) {
+export function rank(id, families = FAMILIES) {
   const n = id.match(/^DEC-(\d+)$/)
   if (n) return { n: Number(n[1]), family: '', seq: 0 }
-  const f = id.match(/^DEC-([A-Z]+)-(\d+)$/)
-  if (f && FAMILIES.has(f[1])) return { n: PRE_015, family: f[1], seq: Number(f[2]) }
+  // The hyphen is optional so both spellings in use resolve: `DEC-MSG-1` (a side family
+  // alongside a numeric main line) and `DEC-S001` (a repo whose whole record is one
+  // prefixed family). A family still has to be declared in `_config.json` either way.
+  const f = id.match(/^DEC-([A-Z]+)-?(\d+)$/)
+  if (f && f[1] in families) return { n: families[f[1]], family: f[1], seq: Number(f[2]) }
   return null
+}
+
+/**
+ * The regex that finds decision citations in prose, built from the declared families.
+ *
+ * Anchored so `DEC-026-family` resolves to a real id, and so a sibling project's series —
+ * whose record lives in another repo — never matches. Families are enumerated from config
+ * rather than globbed for the same reason: an id shape nobody declared should read as
+ * someone else's, not as a dangling reference in this record.
+ * @param {Record<string, number>} [families] injected in tests
+ */
+export function referencePattern(families = FAMILIES, numeric = NUMERIC_IDS) {
+  const alts = [...(numeric ? ['\\d{3}'] : []), ...Object.keys(families).map((f) => `${f}-?\\d+`), 'TBD']
+  return new RegExp(`\\bDEC-(?:${alts.join('|')})\\b`, 'g')
 }
 
 /**
@@ -178,14 +220,15 @@ export function rank(id) {
  * **null when the record cannot say**, which callers must handle rather than treat as
  * equal.
  *
- * Cross-family is null even though the pre-split file listed MSG-1/2/3, then ROLE-1, then
- * DATA-1: that is document order within one sitting, not evidence about when each was
- * decided. Ranking them off it would manufacture a fact the record does not have.
+ * Cross-family is null even when the pre-split file listed one family before another:
+ * that is document order within one sitting, not evidence about when each was decided.
+ * Ranking them off it would manufacture a fact the record does not have.
  * @param {string} a
  * @param {string} b
+ * @param {Record<string, number>} [families] injected in tests
  */
-export function compareDecisionIds(a, b) {
-  const [x, y] = [rank(a), rank(b)]
+export function compareDecisionIds(a, b, families = FAMILIES) {
+  const [x, y] = [rank(a, families), rank(b, families)]
   if (!x || !y) return null
   if (x.n !== y.n) return x.n - y.n
   if (x.family !== y.family) return null
@@ -365,17 +408,17 @@ export function renderDecision(d, edges) {
 
 const quote = (s) => `"${String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
 
-export function renderIndex(decisions, incoming, preamble) {
+export function renderIndex(decisions, incoming, preamble, topics = TOPICS) {
   const out = [preamble.replace(/\s+$/, ''), '', '## Index', '']
 
-  const byTopic = new Map(TOPICS.map((t) => [t, []]))
+  const byTopic = new Map(topics.map((t) => [t, []]))
   for (const [id, d] of decisions) {
     if (!byTopic.has(d.topic)) throw new Error(`${d.file}: unknown topic ${JSON.stringify(d.topic)}`)
     byTopic.get(d.topic).push(id)
   }
 
   let indexed = 0
-  for (const topic of TOPICS) {
+  for (const topic of topics) {
     const ids = byTopic.get(topic).sort(byId)
     if (!ids.length) continue
     out.push(`### ${topic}`)
@@ -397,17 +440,16 @@ export function renderIndex(decisions, incoming, preamble) {
   }
 
   // Completeness is ASSERTED, not printed. It used to be rendered as "Indexed N of M
-  // DECs" — which the 2026-07-25 audit found had drifted to "124 of 124" against a real
-  // 131 rows / 136 bodies (shards Z1-2, Z2-5, Z4-9), i.e. the number that claimed
-  // completeness was itself the thing that was wrong.
+  // DECs" — which an audit found had drifted to "124 of 124" against a real 131 rows /
+  // 136 bodies, i.e. the number that claimed completeness was itself the thing that was
+  // wrong.
   //
   // Generating it fixed the drift and created a worse problem: it is the ONLY
   // per-branch-varying line in a generated, committed file. Two branches that each add a
   // decision write different numbers here, git merges the DEC rows cleanly and silently
-  // takes one footer, and `main` lands stale with no conflict marker — which is exactly
-  // how main went red after the six-PR merge on 2026-07-31. A throw catches the same
-  // invariant at generation time, where it's actionable, and costs the file nothing:
-  // the row count is visible by looking at the list directly above.
+  // takes one footer, and the trunk lands stale with no conflict marker. A throw catches
+  // the same invariant at generation time, where it's actionable, and costs the file
+  // nothing: the row count is visible by looking at the list directly above.
   if (indexed !== decisions.size) {
     throw new Error(
       `index rendered ${indexed} of ${decisions.size} decisions — ` +
@@ -432,7 +474,8 @@ export function generate(dir = DIR, specPath = SPEC) {
   const files = new Map()
   for (const [id, d] of decisions) files.set(d.file, renderDecision(d, incoming.get(id)))
   const specIncoming = specGraph(decisions)
-  const spec = renderSpec(readFileSync(specPath, 'utf8'), specIncoming)
+  // A project with no spec still gets a working record; only the DEC→SPEC leg goes quiet.
+  const spec = existsSync(specPath) ? renderSpec(readFileSync(specPath, 'utf8'), specIncoming) : null
   return { index: renderIndex(decisions, incoming, preamble), files, spec, decisions, incoming, specIncoming }
 }
 
@@ -447,7 +490,7 @@ if (process.argv[1]?.endsWith('gen-decisions-index.mjs')) {
     }
   }
   writeFileSync(OUT, index)
-  if (readFileSync(SPEC, 'utf8') !== spec) writeFileSync(SPEC, spec)
+  if (spec !== null && readFileSync(SPEC, 'utf8') !== spec) writeFileSync(SPEC, spec)
   const banners = [...incoming.keys()].length
   console.log(
     `✓ ${OUT} regenerated from ${decisions.size} decisions — ` +

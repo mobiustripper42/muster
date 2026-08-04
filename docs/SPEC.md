@@ -1512,6 +1512,25 @@ still gets sent, and the number inside it is still short. So the file is not off
 route answers **409**, and the report links each open punch to the bench that can close it. §2.9.5
 is unchanged: still flagged, still never auto-closed.
 
+**Two punches covering a shared minute BLOCK the export** (#645). Nobody works two shifts at
+once, and `clockIn` cannot produce it — the one-open-punch index sees to that — but every
+hand-entry path can: 09:00–17:00 plus 13:00–18:00 is thirteen paid hours for nine worked, with
+no error anywhere. Comparison is half-open `[inAt, outAt)`, so a split shift that ends 13:00 and
+restarts 13:00 touches and is legal. **Open punches are excluded from the comparison**: an open
+punch has no end, so including it would mean deciding whether it runs to now or to infinity —
+and it already blocks the export on its own account, so counting it here would report one
+problem as two. Punches are compared across the whole period rather than within each day, or an
+overlap straddling midnight would never be examined; the days it names are derived after the
+comparison. Each is linked to the day view that can fix it.
+
+**The rule behind which conditions block.** An open punch and an overlap both gate the file
+because a guaranteed action clears them — closing the punch, or deciding which of two punches is
+wrong. A missing punch does not, because the zero may be correct and no action is guaranteed to
+resolve it; blocking on it would stop payroll for the whole crew over one no-show with nothing
+available to release it. **The refusal message names which condition applies** — "close it on
+the time clock" is wrong advice for an overlap, and a message naming the wrong problem costs
+more than a generic one.
+
 **A confirmed seat with no punch is counted and flagged, and does NOT block the export** (#638,
 operator 2026-08-03). The bench catches punches that are wrong; it cannot catch the punch that
 isn't there, and that person's hours read a silent zero. The report names the vessel-local days
@@ -1597,6 +1616,10 @@ your hours, and setting it on your own correction would make the surface lie abo
 - [ ] Hours are exact minutes as decimal hours; open punches are excluded from the total and reported
       as a separate count, and the export is refused (409) while any open punch exists in the period,
       each linked to the bench that can close it.
+- [ ] Two punches for one crew member covering any shared minute are counted, named by day,
+      linked to the day view, and **block** the export; a shared boundary (13:00 out, 13:00 in)
+      is legal; an open punch is excluded from the comparison; an overlap spanning midnight is
+      still caught. The refusal message names which condition blocked the file.
 - [ ] A required Confirmed seat on a non-Cancelled shift with no punch that vessel-local day is
       counted and named as missing, links to the day view, and does **not** block the export. A
       supernumerary seat never counts; a day with any punch — including an open one — is not

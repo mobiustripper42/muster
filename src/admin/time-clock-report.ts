@@ -50,6 +50,17 @@ export interface TimeClockRow {
    * punch that exists and merely hasn't been closed.
    */
   days: string[];
+  /**
+   * Vessel-local days on which this person holds two punches covering a shared minute (#645),
+   * ascending. Nobody works two shifts at once, and every hand-entry path can record it —
+   * 09:00–17:00 plus 13:00–18:00 is thirteen paid hours for nine worked.
+   *
+   * **Closed punches only.** An open punch has no end, so including it would mean deciding
+   * whether it runs to now or to infinity — an answer that changes with the wall clock or flags
+   * everything after it. It is also moot: an open punch already blocks the export by itself, so
+   * counting it here would report one problem as two.
+   */
+  overlapDays: string[];
   /** `origin: "admin"` — the operator entered it; nobody tapped anything (§2.9.8). */
   adminEnteredCount: number;
   /** `adminEditedAt` set — someone else moved these hours. */
@@ -68,6 +79,51 @@ export interface TimeClockReport {
    * on a file that goes out anyway.
    */
   openCount: number;
+  /** Overlapping days across everyone (#645). **The export gates on this too.** */
+  overlapCount: number;
+}
+
+/**
+ * Vessel-local days on which these punches cover a shared minute.
+ *
+ * Half-open `[inAt, outAt)`, matching `listTimePunchesBetween` — a split shift that ends 13:00
+ * and restarts 13:00 touches, it does not overlap, and refusing that would refuse the ordinary
+ * case to catch the pathological one.
+ *
+ * Sorted by start, tracking the furthest end seen rather than only the previous punch's. For the
+ * day-level answer this file needs, comparing against the previous punch alone would in fact do:
+ * if any two punches overlap then some adjacent pair does too. The running maximum is kept
+ * because it stays correct if this is ever asked to count PAIRS rather than days, where the
+ * previous-only form genuinely misses (a long punch containing two short ones that don't touch
+ * each other).
+ */
+function overlappingDays(punches: readonly TimePunch[]): string[] {
+  // Compared across the WHOLE window, not day by day. Bucketing first and comparing within each
+  // bucket would miss the overnight case entirely: a 22:00→02:00 punch is filed on its start day
+  // while a 01:00→03:00 punch the next morning is filed on the next, so the two would never be
+  // compared even though they cover the same hour. Attribution to a day happens after the
+  // comparison, not before it.
+  const spans = punches
+    .filter((p) => p.outAt !== null) // open punches excluded — see `overlapDays`
+    .map((p) => ({ start: Date.parse(p.inAt), end: Date.parse(p.outAt!), inAt: p.inAt }))
+    .sort((a, b) => a.start - b.start);
+
+  const days = new Set<string>();
+  let maxEnd = -Infinity;
+  let maxEndInAt: string | null = null;
+  for (const s of spans) {
+    if (s.start < maxEnd) {
+      // Both sides named: the operator has to look at a pair, and the punch that starts the
+      // overlap may sit on a different vessel-local day than the one it runs into.
+      days.add(vesselDateOf(new Date(s.inAt)));
+      if (maxEndInAt) days.add(vesselDateOf(new Date(maxEndInAt)));
+    }
+    if (s.end > maxEnd) {
+      maxEnd = s.end;
+      maxEndInAt = s.inAt;
+    }
+  }
+  return [...days].sort();
 }
 
 const MINUTE_MS = 60_000;
@@ -97,9 +153,11 @@ export async function buildTimeClockReport(
   const nameById = new Map(crew.map((c) => [String(c.id), c.name]));
 
   const acc =
-    new Map<string, Omit<TimeClockRow, "crewMemberId" | "name" | "touchedByAdmin" | "days">>();
+    new Map<string, Omit<TimeClockRow, "crewMemberId" | "name" | "touchedByAdmin" | "days" | "overlapDays">>();
   // Days accumulate as Sets — several punches in one day are one day.
   const daysById = new Map<string, Set<string>>();
+  // The punches themselves, per crew member — `overlappingDays` needs the spans, not a total.
+  const punchesById = new Map<string, TimePunch[]>();
   for (const p of punches) {
     const key = String(p.crewMemberId);
     const row =
@@ -115,6 +173,9 @@ export async function buildTimeClockReport(
     const days = daysById.get(key) ?? new Set<string>();
     days.add(dayKey);
     daysById.set(key, days);
+    const mine = punchesById.get(key) ?? [];
+    mine.push(p);
+    punchesById.set(key, mine);
 
     if (p.outAt === null) {
       row.openCount += 1;
@@ -134,6 +195,7 @@ export async function buildTimeClockReport(
       name: nameById.get(crewMemberId) ?? null,
       ...v,
       days: [...(daysById.get(crewMemberId) ?? [])].sort(),
+      overlapDays: overlappingDays(punchesById.get(crewMemberId) ?? []),
       touchedByAdmin: v.adminEnteredCount > 0 || v.adminEditedCount > 0,
     }))
     // Nameless rows sort last rather than throwing on a null compare — they're the exception and
@@ -144,6 +206,7 @@ export async function buildTimeClockReport(
     rows,
     totalMinutes: rows.reduce((s, r) => s + r.minutes, 0),
     openCount: rows.reduce((s, r) => s + r.openCount, 0),
+    overlapCount: rows.reduce((s, r) => s + r.overlapDays.length, 0),
   };
 }
 

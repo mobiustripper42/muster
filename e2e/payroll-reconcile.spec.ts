@@ -65,7 +65,9 @@ test.describe("admin /admin/payroll — estimate vs actual, and the export gate"
       `/admin/payroll/gusto.csv?period=${encodeURIComponent(period)}`,
     );
     expect(blocked.status()).toBe(409);
-    expect(await blocked.text()).toMatch(/open punch/i);
+    // Still asserts the REASON, not just the 409 — the message is reason-specific since #645
+    // (it can now also name an overlap), and a generic assertion would pass for either.
+    expect(await blocked.text()).toMatch(/still open/i);
 
     // ── Close it the way a human would, on the repair bench ───────────────────
     await page.goto("/crew/time");
@@ -171,6 +173,52 @@ test.describe("admin /admin/payroll — estimate vs actual, and the export gate"
     // NOT blocked. This is the assertion the whole decision rests on.
     await expect(page.getByRole("link", { name: "Download Gusto CSV" })).toBeVisible();
     await expect(page.getByText("Export unavailable")).toHaveCount(0);
+  });
+
+  test("#645: two overlapping punches block the export, entered the way it really happens", async ({
+    page,
+  }) => {
+    // Driven through the admin bench rather than seeded, because hand entry is the ONLY way this
+    // state can arise — `clockIn` cannot produce it (the one-open-punch index sees to that), so
+    // seeding the rows directly would test the detector without testing the door that lets it in.
+    await signInAsAdmin(page, "spink");
+    await page.goto("/admin/time-clock");
+
+    // Previous period: every day in it is already past, so the no-future guard can't refuse the
+    // out time. Day 1 of a period is today, and that is how admin-time-clock.spec.ts went red
+    // one day in fourteen.
+    const select = page.getByLabel("Pay period");
+    const values = await select
+      .locator("option")
+      .evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
+    const i = values.indexOf(await select.inputValue());
+    await select.selectOption(values[i - 1]!);
+    await page.waitForURL(/period=/);
+    const period = new URL(page.url()).searchParams.get("period")!;
+
+    const day = await page.locator("#add-day").getAttribute("min");
+    for (const [inAt, outAt] of [["09:00", "17:00"], ["13:00", "18:00"]]) {
+      await page.locator("#add-day").fill(day!);
+      await page.locator("#add-in").fill(inAt!);
+      await page.locator("#add-out").fill(outAt!);
+      await page.getByRole("button", { name: "Add" }).click();
+      await page.waitForURL(/added=1/);
+    }
+
+    // Both punches were ACCEPTED — the domain does not refuse the write (#645 is a report
+    // condition, not a write guard). The refusal happens at the file.
+    await page.goto(`/admin/payroll?period=${encodeURIComponent(period)}`);
+    await expect(page.getByText(/covering the same time/)).toBeVisible();
+    await expect(page.getByRole("link", { name: "Download Gusto CSV" })).toHaveCount(0);
+
+    // And the route refuses directly, not just the button being hidden.
+    const res = await page.request.get(
+      `/admin/payroll/gusto.csv?period=${encodeURIComponent(period)}`,
+    );
+    expect(res.status()).toBe(409);
+    // The message names THIS condition. "Close it on the time clock" would be wrong advice —
+    // there is nothing open to close.
+    expect(await res.text()).toMatch(/overlapping/i);
   });
 
   test("no horizontal overflow — six columns still fit the phone (375px)", async ({ page }, testInfo) => {

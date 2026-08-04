@@ -1,7 +1,7 @@
 import {
   buildPayrollReconcile,
   gustoPayrollCsv,
-  EXPORT_BLOCKED_MESSAGE,
+  exportBlockedMessage,
 } from "@core/admin/payroll-reconcile.js";
 import { readSubject } from "../../../../lib/auth";
 import { timeClockEnabled } from "../../../../lib/flags";
@@ -39,7 +39,7 @@ export async function GET(req: Request): Promise<Response> {
   if (reconcile.exportBlocked) {
     // 409 Conflict, not 400: the request is well-formed, the DATA isn't ready. The body names
     // the fix rather than the failure — whoever hits this needs to close a punch, not debug a URL.
-    return new Response(EXPORT_BLOCKED_MESSAGE, { status: 409, headers: { "content-type": "text/plain; charset=utf-8" } });
+    return new Response(exportBlockedMessage(reconcile), { status: 409, headers: { "content-type": "text/plain; charset=utf-8" } });
   }
 
   return new Response(gustoPayrollCsv(reconcile), {

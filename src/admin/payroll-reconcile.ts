@@ -47,6 +47,12 @@ export interface ReconcileRow {
    * so an eight-hour gap reads as one missed shift or four partial ones rather than a number
    * the operator has to reconstruct a fortnight later.
    */
+  /**
+   * Days this person holds two punches covering a shared minute (#645), ascending. Closed
+   * punches only. Unlike `missingDays`, these BLOCK the export — an overlap is never legitimate
+   * and editing or deleting either punch always clears it.
+   */
+  overlapDays: string[];
   missingDays: string[];
   /** An admin entered or edited at least one of these punches (§2.9.8). */
   touchedByAdmin: boolean;
@@ -71,13 +77,44 @@ export interface PayrollReconcile {
    * with nothing the operator could do to release it. Flagged in the UI, linked to the bench.
    */
   missingCount: number;
-  /** `openCount > 0` — the export is refused while true. Deliberately NOT `missingCount`. */
+  /**
+   * Days with overlapping punches, across everyone (#645). **Blocks the export**, unlike
+   * `missingCount`. The rule is whether a guaranteed action clears the condition: editing or
+   * deleting one of two overlapping punches always does, exactly as closing an open punch does.
+   * A missing day may simply be true, so nothing the operator does is guaranteed to clear it.
+   */
+  overlapCount: number;
+  /** `openCount > 0 || overlapCount > 0`. Deliberately NOT `missingCount`. */
   exportBlocked: boolean;
   warnings: string[];
 }
 
-export const EXPORT_BLOCKED_MESSAGE =
-  "Refusing to build the payroll file: the period still has an open punch. Close it on /admin/time-clock first.";
+/**
+ * Why the file was refused, in the operator's terms.
+ *
+ * Reason-specific rather than one constant. "Close it on /admin/time-clock" is actively wrong
+ * advice for an overlap — there is nothing open to close — and a message that names the wrong
+ * problem costs more than a generic one, because it sends someone looking for something that
+ * isn't there. Kept exported under the old name for the route, which has no reason to know.
+ */
+export function exportBlockedMessage(r: Pick<PayrollReconcile, "openCount" | "overlapCount">): string {
+  const reasons: string[] = [];
+  if (r.openCount > 0) {
+    reasons.push(
+      r.openCount === 1
+        ? "one punch is still open"
+        : `${r.openCount} punches are still open`,
+    );
+  }
+  if (r.overlapCount > 0) {
+    reasons.push(
+      r.overlapCount === 1
+        ? "one day has overlapping punches"
+        : `${r.overlapCount} days have overlapping punches`,
+    );
+  }
+  return `Refusing to build the payroll file: ${reasons.join(", and ")}. Fix it on /admin/time-clock first.`;
+}
 
 export async function buildPayrollReconcile(
   repo: Repository,
@@ -128,6 +165,7 @@ export async function buildPayrollReconcile(
       actualMinutes,
       deltaMinutes: actualMinutes - estimateMinutes,
       openCount: act?.openCount ?? 0,
+      overlapDays: act?.overlapDays ?? [],
       missingDays,
       touchedByAdmin: act?.touchedByAdmin ?? false,
       tipCents: tip?.tipCents ?? 0,
@@ -152,6 +190,7 @@ export async function buildPayrollReconcile(
   rows.sort((a, b) => (a.name ?? "￿").localeCompare(b.name ?? "￿"));
 
   const openCount = rows.reduce((s, r) => s + r.openCount, 0);
+  const overlapCount = rows.reduce((s, r) => s + r.overlapDays.length, 0);
   return {
     window,
     rows,
@@ -160,7 +199,8 @@ export async function buildPayrollReconcile(
     totalTipCents: rows.reduce((s, r) => s + r.tipCents, 0),
     openCount,
     missingCount: rows.reduce((s, r) => s + r.missingDays.length, 0),
-    exportBlocked: openCount > 0,
+    overlapCount,
+    exportBlocked: openCount > 0 || overlapCount > 0,
     warnings,
   };
 }
@@ -214,7 +254,7 @@ export const decimalHoursForTest = decimalHours;
  * incomplete payroll file is the failure this whole phase exists to prevent.
  */
 export function gustoPayrollCsv(r: PayrollReconcile): string {
-  if (r.exportBlocked) throw new Error(EXPORT_BLOCKED_MESSAGE);
+  if (r.exportBlocked) throw new Error(exportBlockedMessage(r));
 
   const lines = [GUSTO_CSV_HEADER];
   for (const row of r.rows) {

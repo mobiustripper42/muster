@@ -43,6 +43,8 @@ import type {
   GuestContact,
   OutboxEntry,
   PtoWindow,
+  TimePunch,
+  TimePunchEdit,
   RingOutboxEntry,
   Reservation,
   RoleType,
@@ -70,6 +72,8 @@ import type {
   OutboxEntryId,
   PaymentId,
   PtoWindowId,
+  TimePunchId,
+  TimePunchEditId,
   RingOutboxEntryId,
   ReservationId,
   RoleTypeId,
@@ -197,6 +201,30 @@ const toPto = (r: any): PtoWindow => ({
   crewMemberId: asId<"CrewMemberId">(r.crew_member_id),
   start: r.start_date,
   end: r.end_date,
+});
+
+const toTimePunch = (r: any): TimePunch => ({
+  id: asId<"TimePunchId">(r.id),
+  crewMemberId: asId<"CrewMemberId">(r.crew_member_id),
+  inAt: r.in_at,
+  outAt: r.out_at ?? null,
+  shiftId: r.shift_id ? asId<"ShiftId">(r.shift_id) : null,
+  origin: r.origin,
+  adminEditedAt: r.admin_edited_at ?? null,
+});
+
+const toTimePunchEdit = (r: any): TimePunchEdit => ({
+  id: asId<"TimePunchEditId">(r.id),
+  timePunchId: asId<"TimePunchId">(r.time_punch_id),
+  actorKind: r.actor_kind,
+  actorId: asId<"CrewMemberId">(r.actor_id),
+  at: r.at,
+  action: r.action,
+  fromInAt: r.from_in_at ?? null,
+  fromOutAt: r.from_out_at ?? null,
+  toInAt: r.to_in_at ?? null,
+  toOutAt: r.to_out_at ?? null,
+  reason: r.reason ?? "",
 });
 
 const toEvent = (r: any): Event => ({
@@ -882,6 +910,90 @@ export class PostgresRepository implements Repository {
   }
   async removePtoWindow(id: PtoWindowId): Promise<void> {
     await this.#pool.query("delete from pto_windows where id=$1", [id]);
+  }
+
+  // ── Time punches (SPEC §2.9) ───────────────────────────────────────────────
+  async saveTimePunch(p: TimePunch): Promise<void> {
+    // A 23505 here is the one-open-punch partial unique index refusing a second
+    // open row (§2.9.4). It propagates: `clockIn` maps it to `already_in` — the
+    // adapter's job is to let the constraint speak, not to swallow it.
+    await this.#pool.query(
+      `insert into time_punches(id, crew_member_id, in_at, out_at, shift_id, origin, admin_edited_at)
+       values ($1,$2,$3,$4,$5,$6,$7)
+       on conflict (id) do update set crew_member_id=excluded.crew_member_id,
+         in_at=excluded.in_at, out_at=excluded.out_at, shift_id=excluded.shift_id,
+         origin=excluded.origin, admin_edited_at=excluded.admin_edited_at`,
+      [
+        p.id,
+        p.crewMemberId,
+        p.inAt,
+        p.outAt,
+        p.shiftId,
+        p.origin,
+        p.adminEditedAt,
+      ],
+    );
+  }
+  async getTimePunch(id: TimePunchId): Promise<TimePunch | null> {
+    const { rows } = await this.#pool.query(
+      "select * from time_punches where id=$1",
+      [id],
+    );
+    return rows[0] ? toTimePunch(rows[0]) : null;
+  }
+  async getOpenPunchForCrew(crewMemberId: CrewMemberId): Promise<TimePunch | null> {
+    const { rows } = await this.#pool.query(
+      "select * from time_punches where crew_member_id=$1 and out_at is null",
+      [crewMemberId],
+    );
+    return rows[0] ? toTimePunch(rows[0]) : null;
+  }
+  async listTimePunchesForCrew(crewMemberId: CrewMemberId): Promise<TimePunch[]> {
+    const { rows } = await this.#pool.query(
+      "select * from time_punches where crew_member_id=$1 order by in_at desc",
+      [crewMemberId],
+    );
+    return rows.map(toTimePunch);
+  }
+  async listTimePunchesBetween(
+    fromInstant: string,
+    toInstant: string,
+  ): Promise<TimePunch[]> {
+    // Half-open [from, to) — see the port doc. `text` comparison is exact for
+    // same-shape ISO-8601 UTC strings, which is what `.toISOString()` emits.
+    const { rows } = await this.#pool.query(
+      "select * from time_punches where in_at >= $1 and in_at < $2 order by in_at asc",
+      [fromInstant, toInstant],
+    );
+    return rows.map(toTimePunch);
+  }
+  async listAllTimePunches(): Promise<TimePunch[]> {
+    const { rows } = await this.#pool.query("select * from time_punches");
+    return rows.map(toTimePunch);
+  }
+  async removeTimePunch(id: TimePunchId): Promise<void> {
+    await this.#pool.query("delete from time_punches where id=$1", [id]);
+  }
+
+  // ── Time-punch edit trail (#635) ───────────────────────────────────────────
+  async appendTimePunchEdit(e: TimePunchEdit): Promise<void> {
+    // Append-only: `do nothing` on conflict rather than an upsert, so a retried write
+    // can't rewrite history. There is no update path and no delete path by design.
+    await this.#pool.query(
+      `insert into time_punch_edits(id, time_punch_id, actor_kind, actor_id, at, action,
+         from_in_at, from_out_at, to_in_at, to_out_at, reason)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       on conflict (id) do nothing`,
+      [e.id, e.timePunchId, e.actorKind, e.actorId, e.at, e.action,
+       e.fromInAt, e.fromOutAt, e.toInAt, e.toOutAt, e.reason],
+    );
+  }
+  async listTimePunchEdits(timePunchId: TimePunchId): Promise<TimePunchEdit[]> {
+    const { rows } = await this.#pool.query(
+      "select * from time_punch_edits where time_punch_id=$1 order by at asc",
+      [timePunchId],
+    );
+    return rows.map(toTimePunchEdit);
   }
 
   // ── Events ─────────────────────────────────────────────────────────────────

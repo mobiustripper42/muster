@@ -48,6 +48,7 @@ const SEEDS: Record<string, string> = {
   split: "db:seed:split",
   gratuity: "db:seed:gratuity",
   reservation: "db:seed:reservation",
+  timeclock: "db:seed:timeclock",
 };
 
 interface Target {
@@ -118,11 +119,18 @@ async function truncateAll(url: string): Promise<number> {
   }
 }
 
-function parseSeeds(argv: readonly string[]): string[] {
+export function parseSeeds(argv: readonly string[]): string[] {
   if (argv.includes("--no-seed")) return [];
+
+  // BOTH spellings. `--seeds=a,b` is one argv token, so the old `indexOf("--seeds")` missed it
+  // and fell through to DEFAULT_SEEDS — a reset that reported success while seeding something
+  // other than what was asked for, with the empty page showing up minutes later somewhere
+  // unrelated. Defaulting is only correct when no --seeds flag was given AT ALL; a flag that
+  // was given and not understood must be loud.
+  const eq = argv.find((a) => a.startsWith("--seeds="));
   const i = argv.indexOf("--seeds");
-  if (i === -1) return [...DEFAULT_SEEDS];
-  const raw = argv[i + 1];
+  if (eq === undefined && i === -1) return [...DEFAULT_SEEDS];
+  const raw = eq !== undefined ? eq.slice("--seeds=".length) : argv[i + 1];
   if (!raw) throw new Error("--seeds needs a comma-separated list, e.g. --seeds fleet,reservation");
   const names = raw.split(",").map((s) => s.trim()).filter(Boolean);
   const unknown = names.filter((n) => !(n in SEEDS));

@@ -92,9 +92,11 @@ async function seed(): Promise<InMemoryRepository> {
 describe("buildPayrollReport", () => {
   it("sums on-clock minutes per required crew member, in-window, sorted by name", async () => {
     const report = await buildPayrollReport(await seed(), WINDOW);
+    // `days` (#638) carries the vessel-local dates behind each row — the same seat rules, so
+    // the Cancelled S4 (07-11) and the out-of-window S3 (06-01) are absent from it too.
     expect(report).toEqual([
-      { crewMemberId: "crew-hooper", name: "Hooper", shiftCount: 1, minutes: 170 }, // S1 only
-      { crewMemberId: "crew-quint", name: "Quint", shiftCount: 2, minutes: 520 }, // S1 170 + S2 350
+      { crewMemberId: "crew-hooper", name: "Hooper", shiftCount: 1, minutes: 170, days: ["2026-07-10"] }, // S1 only
+      { crewMemberId: "crew-quint", name: "Quint", shiftCount: 2, minutes: 520, days: ["2026-07-10", "2026-07-12"] }, // S1 170 + S2 350
     ]);
   });
 

@@ -37,6 +37,8 @@ import type {
   SmsConsent,
   GuestContact,
   PtoWindow,
+  TimePunch,
+  TimePunchEdit,
   Reservation,
   RoleType,
   Seat,
@@ -66,6 +68,8 @@ import type {
   SeatId,
   ShiftId,
   TenantId,
+  TimePunchId,
+  TimePunchEditId,
   VesselId,
 } from "../domain/ids.js";
 import type { ReliabilityEvent } from "../domain/reliability.js";
@@ -199,6 +203,46 @@ export interface Repository {
   /** Delete one PTO window — the add/remove surfaces (#332). Mirrors
    *  {@link removeCredential}: idempotent, no-op if the id is already gone. */
   removePtoWindow(id: PtoWindowId): Promise<void>;
+
+  // ── Time punches (SPEC §2.9) ───────────────────────────────────────────────
+  // Hours for payroll. Instants, not wall clock — see `TimePunch`.
+  /** Insert or update by id. */
+  saveTimePunch(punch: TimePunch): Promise<void>;
+  getTimePunch(id: TimePunchId): Promise<TimePunch | null>;
+  /**
+   * The crew member's open punch (`outAt is null`), or null. **At most one can
+   * exist** — a partial unique index enforces it in Postgres (§2.9.4), so this
+   * returning a single value is a guarantee, not a `[0]` convenience.
+   *
+   * **Never memoize this** (`memoizing-repo.ts`): it changes on write inside a
+   * single request — clock in, then read back. The allowlist is opt-in, so this
+   * needs no change there; it needs to *stay* off it.
+   */
+  getOpenPunchForCrew(crewMemberId: CrewMemberId): Promise<TimePunch | null>;
+  /** One crew member's punches, newest first — the `/crew/time` list (13.2). */
+  listTimePunchesForCrew(crewMemberId: CrewMemberId): Promise<TimePunch[]>;
+  /**
+   * Every punch whose `inAt` falls in `[fromInstant, toInstant)` — the pay-period
+   * query behind the hours report (13.4). **Half-open on purpose:** the caller
+   * converts vessel-local period bounds to instants via `zonedWallClockToInstant`,
+   * and an inclusive upper bound would double-count midnight.
+   */
+  listTimePunchesBetween(fromInstant: string, toInstant: string): Promise<TimePunch[]>;
+  /** Every punch — the integrity diagnostic's orphan scan (#584). It exists because
+   *  `shift_id` is deliberately un-FK'd (§2.9.2), so nothing else would catch a tag
+   *  pointing at a reformed shift. */
+  listAllTimePunches(): Promise<TimePunch[]>;
+  /** Real deletion — the admin repair bench (13.3). Idempotent, like
+   *  {@link removePtoWindow}: no-op if the id is already gone. */
+  removeTimePunch(id: TimePunchId): Promise<void>;
+
+  // ── Time-punch edit trail (#635, SPEC §2.9.8) ──────────────────────────────
+  // Append-only. Never updated, never deleted — a punch's hours can be corrected;
+  // what was done to it cannot be. Survives the punch it describes (a `deleted` row
+  // is the only remaining evidence those hours ever existed).
+  appendTimePunchEdit(edit: TimePunchEdit): Promise<void>;
+  /** One punch's history, oldest first — the order it happened in. */
+  listTimePunchEdits(timePunchId: TimePunchId): Promise<TimePunchEdit[]>;
 
   // ── Reservation catalog (DEC-123/125) ──────────────────────────────────────
   // Read by the virtual-availability model (`deriveVirtualAvailability`). The bare

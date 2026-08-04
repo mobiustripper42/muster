@@ -20,6 +20,13 @@ export interface PayrollRow {
   shiftCount: number;
   /** Total on-clock minutes (sum of each shift's committed window). */
   minutes: number;
+  /**
+   * The vessel-local dates this person held a qualifying seat on, ascending (#638). The seat
+   * rules that produced them — required, Confirmed, not Cancelled, not event-less — stay here
+   * rather than being re-applied by a consumer: four rules and a dedupe, and a second copy
+   * would drift from this one the first time any of them changed.
+   */
+  days: string[];
 }
 
 export async function buildPayrollReport(
@@ -29,7 +36,7 @@ export async function buildPayrollReport(
   const nameById = new Map(
     (await repo.listCrewMembers()).map((c) => [String(c.id), c.name]),
   );
-  const acc = new Map<string, { shiftCount: number; minutes: number }>();
+  const acc = new Map<string, { shiftCount: number; minutes: number; days: Set<string> }>();
 
   for (const shift of await repo.listShifts()) {
     // Cancelled only — Completed IS counted (unlike the forward-looking all-shifts
@@ -57,9 +64,12 @@ export async function buildPayrollReport(
       seatedHere.add(String(seat.assignedCrewMemberId));
     }
     for (const id of seatedHere) {
-      const row = acc.get(id) ?? { shiftCount: 0, minutes: 0 };
+      const row = acc.get(id) ?? { shiftCount: 0, minutes: 0, days: new Set<string>() };
       row.shiftCount += 1;
       row.minutes += minutes;
+      // `shift.date` is already the vessel-local day (DEC-032) — the same calendar on which
+      // #638 asks whether a punch exists. A Set because two shifts in one day is one day.
+      row.days.add(shift.date);
       acc.set(id, row);
     }
   }
@@ -70,6 +80,7 @@ export async function buildPayrollReport(
       name: nameById.get(crewMemberId) ?? "(unknown)",
       shiftCount: v.shiftCount,
       minutes: v.minutes,
+      days: [...v.days].sort(),
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }

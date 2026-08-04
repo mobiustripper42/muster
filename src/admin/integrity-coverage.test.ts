@@ -71,10 +71,23 @@ describe("integrity coverage", () => {
       .join("\n");
     for (const [table, c] of Object.entries(TABLE_COVERAGE)) {
       if (c.kind !== "fk") continue;
-      // Constraints are added by a `do $$` loop over (child, column, parent) value rows.
-      expect(ddl, `${table} is marked fk but no constraint mentions it`).toMatch(
-        new RegExp(`'${table}'\\s*,\\s*'[a-z_]+'\\s*,`),
-      );
+      // TWO ways a foreign key gets declared in this schema, and the check has to see
+      // both or it fails a table for having used the wrong dialect of "correct":
+      //  1. The reservations-era backfill adds them from a `do $$` loop over
+      //     (child, column, parent) value rows — `'table', 'column',`.
+      //  2. A table created after that declares them INLINE on the column
+      //     (`... references crew_members(id)`), which is how `time_punches` and
+      //     `time_punch_edits` do it. Missed entirely until #635 marked a table `fk`
+      //     that used only this form.
+      const inLoop = new RegExp(`'${table}'\\s*,\\s*'[a-z_]+'\\s*,`).test(ddl);
+      const created = ddl.match(
+        new RegExp(`create\\s+table[^;]*?\\b${table}\\b[^;]*;`, "is"),
+      )?.[0];
+      const inline = created !== undefined && /\breferences\s+[a-z_]+\s*\(/i.test(created);
+      expect(
+        inLoop || inline,
+        `${table} is marked fk but no constraint mentions it — neither the do-loop form nor an inline \`references\``,
+      ).toBe(true);
     }
   });
 });

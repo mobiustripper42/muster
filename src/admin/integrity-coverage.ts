@@ -44,6 +44,22 @@ export const TABLE_COVERAGE: Record<string, Coverage> = {
   asks: { kind: "checked", refs: ["seat_id", "crew_member_id"] },
   credentials: { kind: "checked", refs: ["crew_member_id"] },
   pto_windows: { kind: "checked", refs: ["crew_member_id"] },
+  // crew_member_id is ALSO FK'd (on delete restrict) — checked here because the
+  // diagnostic runs against the in-memory adapter too, which holds no constraints.
+  // shift_id is deliberately un-FK'd (SPEC §2.9.2), so the walk is the only net on it.
+  time_punches: { kind: "checked", refs: ["crew_member_id", "shift_id"] },
+  // actor_id is FK'd (on delete restrict). `time_punch_id` is deliberately un-FK'd AND
+  // deliberately allowed to dangle: a `deleted` row must OUTLIVE the punch it records —
+  // it is the only remaining evidence those hours existed (#635). So unlike
+  // time_punches.shift_id, this one must NOT be walked; a dangling ref here is the
+  // expected steady state rather than a defect.
+  // `actor_id` is FK'd (on delete restrict) — that is the whole enforceable surface.
+  // `time_punch_id` is deliberately un-FK'd AND deliberately allowed to dangle: a
+  // `deleted` row must OUTLIVE the punch it records, being the only remaining evidence
+  // those hours existed (#635). So there is nothing here for the diagnostic to walk —
+  // unlike time_punches.shift_id, a dangling ref is the expected steady state, not a
+  // defect. Classified by the net that actually enforces something.
+  time_punch_edits: { kind: "fk", refs: ["actor_id"] },
   magic_tokens: { kind: "checked", refs: ["subject_id (crew subjects only — polymorphic)"] },
   outbox_entries: { kind: "checked", refs: ["ask_id", "seat_id", "crew_member_id"] },
   locations: { kind: "checked", refs: [] },

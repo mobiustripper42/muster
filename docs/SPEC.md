@@ -1442,6 +1442,199 @@ conflict: both end at a `Confirmed` seat via the same state machine.
 
 ---
 
+> **§2.8 is reserved for Reservations** — the v1.1 unlock owed to DEC-105, still unwritten (#565).
+> Time Clock takes §2.9 rather than renumbering around the gap.
+
+## 2.9 Time Clock — hours for payroll
+
+> **Stance:** this is a **timesheet, not a tracker.** It exists to answer one question — *how many
+> hours do I pay this person for this period* — and it is not evidence, not attendance policing, and
+> not a second source of truth about who worked a shift (the seat is that; §1.1). Every design call
+> below follows from that: if a rule would only earn its keep by catching someone lying, it doesn't
+> belong here.
+>
+> **Phase 13.** Distinct from `/admin/payroll`'s existing **estimate**, which derives hours from
+> Confirmed seats and trip lengths. The estimate stays — see §2.9.6.
+
+**2.9.1 The record.** A **punch** is a free-standing interval owned by a crew member:
+
+| Field | Meaning |
+|---|---|
+| `inAt` | ISO-8601 **UTC instant**. When they went on the clock. |
+| `outAt` | UTC instant, or `null` — **`null` means still on the clock**, and is a first-class state, not missing data. |
+| `shiftId` | The shift this punch appears to belong to, or `null`. **Auto-matched, never asked for.** |
+| `origin` | `crew` \| `admin` — who created it. |
+| `adminEditedAt` | Stamped when an admin changes a time; `null` otherwise. |
+
+A punch stores **instants**, not wall-clock strings — the one place in Muster that does, alongside the
+calendar feed. It has to: elapsed time across a DST boundary is only correct if both ends are absolute.
+Everything *user-facing* about a punch is still rendered vessel-local (DEC-032).
+
+**2.9.2 Free-standing, with auto-match.** A punch is not attached to a shift by the person making it.
+Nobody picks a shift from a dropdown at 6am. At clock-in, Muster looks for the shift on that
+**vessel-local date** where the person holds a **Confirmed required** seat — the same filter payroll
+already uses. **Exactly one** match tags the punch; **zero or many** leave `shiftId` null and the punch
+still stands. Hours are owed for time worked whether or not the schedule can explain it.
+
+**2.9.3 Honor system.** No geofence, no device binding, no photo, no supervisor countersign. A phone
+can clock in from a couch. This is a small crew the operator knows personally; the surveillance
+apparatus would cost more trust than it could recover in minutes. **The repair path is a human one**
+(§2.9.5), not a preventative one — and **the first human is the crew member themself** (§2.9.9).
+
+**2.9.4 One open punch, enforced by the database.** A crew member has **at most one** open punch. This
+is a **partial unique index** on `(crew_member_id) where out_at is null` — a structural constraint,
+which DEC-131 permits — not a TypeScript check that a double-tapped button can race. A second
+`clockIn` is a **no-op returning `already_in`**, never a second row and never a 500: the constraint is
+the enforcement, the error code is the contract, and the surface maps the code to copy.
+
+Error codes are the whole vocabulary: `already_in` (a punch is open), `not_in` (nothing to close),
+`out_before_in` (an `outAt` at or before its `inAt`).
+
+**2.9.5 A missed clock-out is flagged, never auto-closed.** Muster does not guess when someone went
+home. An open punch from a previous day is **surfaced first and marked** on the admin surface, excluded
+from computed hours, and closed by a **human** who knows what actually happened — either the crew
+member, on their own record (§2.9.9), or the operator on the repair bench. An auto-close at
+midnight (or at trip end, or after N hours) would silently manufacture a number that reads exactly like
+a real one — the failure mode this rule exists to prevent. The cost is a chore; the chore is the point.
+
+**2.9.6 Exact minutes. No rounding.** `hours` is exact elapsed minutes expressed as decimal hours.
+Muster has **no rounding policy** — not to the quarter hour, not to the nearest five minutes, in
+neither direction. The payroll company applies its own, and one rounding step is auditable where two
+compounded are not. Precision is lost exactly once, at the **file edge**, where decimal hours are
+**truncated** rather than rounded up — the same call the crew surface makes, on the same reasoning
+that under-stating beats inflating when the number becomes a payment.
+
+**Open punches are excluded from the hours total, counted, and they BLOCK the export.** An open
+punch when reconciling is an **error needing attention**, not a footnote (operator, 2026-08-02).
+The earlier rule here said a visibly-incomplete number beats a silently-short one, and stopped at
+counting them separately — but a warning printed beside a file that still downloads is a file that
+still gets sent, and the number inside it is still short. So the file is not offered, the export
+route answers **409**, and the report links each open punch to the bench that can close it. §2.9.5
+is unchanged: still flagged, still never auto-closed.
+
+**Two punches covering a shared minute BLOCK the export** (#645). Nobody works two shifts at
+once, and `clockIn` cannot produce it — the one-open-punch index sees to that — but every
+hand-entry path can: 09:00–17:00 plus 13:00–18:00 is thirteen paid hours for nine worked, with
+no error anywhere. Comparison is half-open `[inAt, outAt)`, so a split shift that ends 13:00 and
+restarts 13:00 touches and is legal. **Open punches are excluded from the comparison**: an open
+punch has no end, so including it would mean deciding whether it runs to now or to infinity —
+and it already blocks the export on its own account, so counting it here would report one
+problem as two. Punches are compared across the whole period rather than within each day, or an
+overlap straddling midnight would never be examined; the days it names are derived after the
+comparison. Each is linked to the day view that can fix it.
+
+**The rule behind which conditions block.** An open punch and an overlap both gate the file
+because a guaranteed action clears them — closing the punch, or deciding which of two punches is
+wrong. A missing punch does not, because the zero may be correct and no action is guaranteed to
+resolve it; blocking on it would stop payroll for the whole crew over one no-show with nothing
+available to release it. **The refusal message names which condition applies** — "close it on
+the time clock" is wrong advice for an overlap, and a message naming the wrong problem costs
+more than a generic one.
+
+**A confirmed seat with no punch is counted and flagged, and does NOT block the export** (#638,
+operator 2026-08-03). The bench catches punches that are wrong; it cannot catch the punch that
+isn't there, and that person's hours read a silent zero. The report names the vessel-local days
+someone held a **required Confirmed** seat on a non-Cancelled shift and has no punch at all — open
+punches included, since open and missing are different problems and one day must not be reported
+as both. **The asymmetry with an open punch is deliberate:** closing an open punch always clears
+its block, so gating on it strands nobody; a missing day may simply be true, so gating on it would
+stop payroll for the whole crew over one no-show with no action available to release it. Each
+missing day links to the day view that can fix it. Supernumerary seats never count — an unpaid
+ride (DEC-087) owes no hours, the same rule the estimate already applies.
+
+**Period bucketing is by the vessel-local date of `inAt`** (DEC-032), never UTC. An 8pm Eastern punch
+is already tomorrow in UTC; bucketing on UTC would move a person's hours between paychecks on the last
+day of every period, in the direction that looks like a shortfall.
+
+**2.9.7 The three surfaces.**
+
+- **`/crew/time`** (crew) — one card, one button. **Clock in** when they're out, **Clock out** when
+  they're in; never both, never a guess about which they meant. Each punch below also **opens for
+  editing** (§2.9.9). An "On the clock since 9:04 AM" line
+  while a punch is open — a **render-time value, not a ticking counter**. This period's punches with a
+  running total. A neutral **Time** tile on the crew hub beside Time off: a utility, not a summons.
+- **`/admin/time-clock`** (operator) — the repair bench, per pay period: **add** a punch from scratch,
+  **edit** either timestamp, **close** an open one, **delete** one outright. Open punches render first
+  and flagged. Validation is the domain's, not the route's.
+- **The hours report + the Gusto file** — per-crew hours for a pay period, shown on
+  `/admin/payroll` **beside** the existing estimate rather than replacing it. The estimate is a
+  useful cross-check exactly when the two disagree, so the two sit in one table with the delta,
+  and the rows are a **union**: a Confirmed seat with no punch, and a punch with no seat, are the
+  disagreements worth looking at. One file goes to payroll carrying **both hours and tips**
+  (`gusto.csv`), rather than an hours file the operator has to combine by hand.
+
+**The whole of §2.9 is behind the `TIME_CLOCK` kill switch, off by default** — routes 404 and
+server actions refuse, not merely nav entries hidden. A half-finished timesheet is worse than
+none: crew would clock in against a surface the operator cannot yet repair.
+
+**2.9.8 Provenance is visible.** An admin-created punch (`origin: "admin"`) and an admin-edited time
+(`adminEditedAt`) are **marked on both** the admin surface and the report. Hours nobody actually
+punched must never look identical to hours they did. This is what makes the honor system survivable:
+the record says who asserted each number.
+
+**2.9.9 A crew member may correct their own record, on the record.** They can change, add and delete
+their **own** punches — never anyone else's, and a forged id gets the same answer a nonexistent one
+does, so it can't be used to discover whose punches exist. This follows from the honor system rather
+than contradicting it: hours are already their assertion, so the useful control is not a gate but a
+record. **Every change requires a reason and appends a row** — who, when, from→to, and why —
+append-only, never updated, never deleted. A punch's hours can be corrected; what was done to it
+cannot. The row **outlives the punch**: after a delete it is the only remaining evidence those hours
+existed.
+
+There is deliberately **no approval workflow**. A crew edit lands immediately and is visible; making
+it a request the operator approves would rebuild the gate the honor system already declined, and
+leave someone unable to fix their own timesheet on a Sunday. Revisit only if it is abused — and the
+trail is what would show that.
+
+A crew member's own edit does **not** stamp `adminEditedAt`. That flag means *someone else* moved
+your hours, and setting it on your own correction would make the surface lie about who did it.
+
+### Edge cases
+
+- **Clock in with no shift that day** — allowed, `shiftId` null. Someone doing maintenance is still
+  working.
+- **Two Confirmed seats on one vessel-local date** — `shiftId` null rather than a coin flip. An
+  ambiguous tag is worse than none.
+- **A punch spanning midnight** — bucketed by the vessel-local date of `inAt`. It belongs to the day
+  the person started.
+- **A punch spanning a DST transition** — reports **true elapsed minutes**, because both ends are
+  instants.
+- **Crew deleted / deactivated with punches** — punches survive; hours already worked are still owed.
+- **A crafted form posting someone else's id** — impossible by construction: the crew surface reads the
+  subject from the session and never from the form.
+
+### Acceptance criteria
+
+- [ ] A second `clockIn` while a punch is open returns `already_in` and creates **no** row — enforced by
+      the partial unique index, verified against real Postgres, not only in-memory.
+- [ ] `clockOut` with nothing open returns `not_in`; an `outAt` at or before `inAt` returns
+      `out_before_in`. Both codes are rejected identically on the admin surface — one implementation.
+- [ ] Auto-match tags the shift on a one-match vessel-local day and leaves `null` on both zero and
+      multiple matches.
+- [ ] An 8pm-Eastern punch on the **last day of a period** lands in that period.
+- [ ] A punch spanning a DST transition reports true elapsed minutes.
+- [ ] Hours are exact minutes as decimal hours; open punches are excluded from the total and reported
+      as a separate count, and the export is refused (409) while any open punch exists in the period,
+      each linked to the bench that can close it.
+- [ ] Two punches for one crew member covering any shared minute are counted, named by day,
+      linked to the day view, and **block** the export; a shared boundary (13:00 out, 13:00 in)
+      is legal; an open punch is excluded from the comparison; an overlap spanning midnight is
+      still caught. The refusal message names which condition blocked the file.
+- [ ] A required Confirmed seat on a non-Cancelled shift with no punch that vessel-local day is
+      counted and named as missing, links to the day view, and does **not** block the export. A
+      supernumerary seat never counts; a day with any punch — including an open one — is not
+      missing.
+- [ ] `origin: "admin"` and a non-null `adminEditedAt` are visible on the admin surface **and** the
+      report.
+- [ ] A crew member can punch only themselves; the admin surface refuses `kind !== "admin"`.
+- [ ] Nothing auto-closes. An open punch stays open until a human closes it.
+- [ ] A crew member can change, add and delete **only their own** punches; a forged id gets the same
+      answer a nonexistent one does.
+- [ ] Every crew edit carries a reason and appends a trail row; the row survives the punch's deletion.
+- [ ] A crew member's own edit does not stamp `adminEditedAt`.
+
+---
+
 # 3. Cross-cutting
 
 Behavior that spans surfaces. **Payments appears here only where it surfaces inside the admin app**

@@ -117,6 +117,33 @@ route group.
 
 A missing state is a finding. Name which one.
 
+**Pass B2 — what's there that shouldn't be.** The mirror of Pass B, and the one reviews skip:
+prose that explains what the surface already says. Muster's operator knows what his own tools do —
+"if I don't know what this page does, I shouldn't be using this app" (2026-08-01). A paragraph
+under the heading, a sentence introducing a form, an explanation above a button: each is a
+candidate for deletion, not a nicety.
+
+Ask of every block of explanatory text:
+
+- **Does the heading already say it?** A page called "Time clock" does not need "Fix what the
+  clock got wrong: close a punch someone left open…". Cut it.
+- **Does the control already say it?** A form headed "Add a punch" does not need "For hours
+  somebody worked without clocking in."
+- **Is the deliberate act already the confirmation?** Opening a `<details>` labelled "Delete this
+  punch" IS the confirmation step; a sentence inside it explaining that delete deletes is padding.
+- **Is a qualifier restating a rule the number already implies?** "Total (closed punches only)"
+  where the open punch is visibly marked open.
+
+**Report these as findings with the exact text to cut**, the same as any other. Redundant copy is
+not harmless: it pushes the actionable part of the surface below the fold, and on a repair bench
+the operator reads the same paragraph every visit forever. This is the calm-voice rule applied to
+*volume* rather than tone — brevity is part of the register, not separate from it.
+
+Exception: copy that carries a fact the surface can't otherwise show — a consequence
+("these don't count toward anyone's hours until they're closed"), a scope ("assigned crew only, no
+trainee rides"), a non-obvious rule. Keep those. The test is whether deleting the sentence removes
+information or only words.
+
 **Pass C — accessibility, measured not eyeballed.**
 
 - **Contrast:** do not estimate. Resolve the actual hex values for the foreground/background pair

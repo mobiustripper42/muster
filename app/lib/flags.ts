@@ -45,6 +45,23 @@ export function reservationsEnabled(): boolean {
 }
 
 /**
+ * `TIME_CLOCK` (#628, SPEC §2.9): the whole Phase 13 punch clock — `/crew/time`, the crew hub's
+ * Time tile, `/admin/time-clock`, the Actual-hours reconcile on `/admin/payroll`, and the Gusto
+ * export route. **OFF by default**, same kill-switch shape as `MESSAGING` above.
+ *
+ * The point is that `main` stays promotable while the phase is still landing: the schema goes to
+ * production ahead of the code (migrations are applied out-of-band), and a half-finished timesheet
+ * is worse than none — crew would clock in against a surface the operator can't yet repair.
+ *
+ * **Gate the ROUTE, not just the nav.** #621 is the standing example of getting this wrong: the
+ * RESERVATIONS switch hid its links and left the admin routes reachable by URL, which is a
+ * kill switch that doesn't kill anything. Every entry point below 404s, not just un-links.
+ */
+export function timeClockEnabled(): boolean {
+  return process.env.TIME_CLOCK === "1";
+}
+
+/**
  * True on any PRODUCTION deploy — Vercel prod (`VERCEL_ENV`) or a self-hosted
  * prod (`next start` with no `VERCEL_ENV`, `NODE_ENV=production`). The single
  * predicate the dev-only affordances gate on (dev-link's inline copy, the

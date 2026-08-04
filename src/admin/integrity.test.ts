@@ -231,6 +231,59 @@ describe("checkIntegrity", () => {
     );
   });
 
+  it("catches a time punch whose auto-matched shift is gone, and tolerates an untagged one (#625)", async () => {
+    // `time_punches.shift_id` is deliberately un-FK'd (SPEC §2.9.2): the tag is an
+    // annotation, and reforming a shift must never take a punch with it. Un-FK'd is
+    // exactly why the diagnostic has to walk it. A NULL tag is the normal
+    // zero-or-many-matches case and must never be reported.
+    const repo = await seedSpine();
+    await repo.saveTimePunch({
+      id: asId<"TimePunchId">("punch-untagged"),
+      crewMemberId: CREW,
+      inAt: NOW,
+      outAt: null,
+      shiftId: null,
+      origin: "crew",
+      adminEditedAt: null,
+    });
+    expect((await checkIntegrity(repo)).ok).toBe(true);
+
+    await repo.saveTimePunch({
+      id: asId<"TimePunchId">("punch-ghost"),
+      crewMemberId: CREW,
+      inAt: NOW,
+      outAt: "2026-07-01T20:00:00.000Z",
+      shiftId: asId<"ShiftId">("shift-ghost"),
+      origin: "crew",
+      adminEditedAt: null,
+    });
+
+    const report = await checkIntegrity(repo);
+    expect(report.ok).toBe(false);
+    expect(report.violations.map((v) => `${v.entity}.${v.ref}`)).toEqual([
+      "timePunch.shiftId",
+    ]);
+    expect(report.scanned.timePunches).toBe(2);
+  });
+
+  it("catches a time punch whose crew member is gone", async () => {
+    const repo = await seedSpine();
+    await repo.saveTimePunch({
+      id: asId<"TimePunchId">("punch-1"),
+      crewMemberId: asId<"CrewMemberId">("crew-ghost"),
+      inAt: NOW,
+      outAt: null,
+      shiftId: SHIFT,
+      origin: "admin",
+      adminEditedAt: null,
+    });
+
+    const report = await checkIntegrity(repo);
+    expect(report.violations.map((v) => `${v.entity}.${v.ref}`)).toEqual([
+      "timePunch.crewMemberId",
+    ]);
+  });
+
   it("catches a vessel pointing at a deleted home location, and allows none at all", async () => {
     const repo = await seedSpine();
     const vessels = await repo.listVessels();

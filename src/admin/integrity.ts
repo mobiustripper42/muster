@@ -59,6 +59,7 @@ export async function checkIntegrity(repo: Repository): Promise<IntegrityReport>
     noticeOutbox,
     ringOutbox,
     auditEvents,
+    timePunches,
   ] = await Promise.all([
     repo.listAllRoleTypes(),
     repo.listVessels(),
@@ -77,6 +78,7 @@ export async function checkIntegrity(repo: Repository): Promise<IntegrityReport>
     repo.listNoticeOutboxEntries(),
     repo.listRingOutboxEntries(),
     repo.listAuditEvents(),
+    repo.listAllTimePunches(),
   ]);
 
   const locationIds = new Set(locations.map((l) => l.id as string));
@@ -135,6 +137,20 @@ export async function checkIntegrity(repo: Repository): Promise<IntegrityReport>
   }
   for (const p of ptoWindows) {
     miss(crewIds, "ptoWindow", p.id, "crewMemberId", p.crewMemberId);
+  }
+  // Time punches (SPEC §2.9). `crewMemberId` is FK'd in Postgres, but the diagnostic
+  // also runs against the in-memory adapter, which holds no constraints (DEC-131) —
+  // so it's checked here too. `shiftId` is the one nothing else watches: deliberately
+  // un-FK'd, because it's an auto-matched annotation and reforming a shift must never
+  // take a punch with it. A dangling tag is benign (the hours stand, the tag stops
+  // resolving) — which is why it's reported rather than prevented. A NULL tag is the
+  // normal zero-or-many-matches case, so it's guarded here (`miss` reports any value
+  // its set lacks; it has no null branch — see the `homeLocationId` call above).
+  for (const p of timePunches) {
+    miss(crewIds, "timePunch", p.id, "crewMemberId", p.crewMemberId);
+    if (p.shiftId !== null) {
+      miss(shiftIds, "timePunch", p.id, "shiftId", p.shiftId);
+    }
   }
   for (const t of magicTokens) {
     if (t.subjectKind === "crew") {
@@ -202,6 +218,7 @@ export async function checkIntegrity(repo: Repository): Promise<IntegrityReport>
       noticeOutboxEntries: noticeOutbox.length,
       ringOutboxEntries: ringOutbox.length,
       auditEvents: auditEvents.length,
+      timePunches: timePunches.length,
     },
   };
 }

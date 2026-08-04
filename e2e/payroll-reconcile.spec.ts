@@ -130,6 +130,49 @@ test.describe("admin /admin/payroll — estimate vs actual, and the export gate"
     await expect(row.getByRole("link", { name: "Time clock" })).toBeVisible();
   });
 
+  test("a missing punch is flagged and linked — and the file still builds", async ({ page }) => {
+    // The #638 asymmetry, end to end. Quint's Confirmed seat with no punch is the SAME fixture
+    // the test above uses; here it has to produce a named day, a link to that day's bench, and
+    // — the part that matters — an export that still works. An open punch blocks because
+    // closing it always clears the block; a missing day may simply be true, so gating on it
+    // would stop payroll for everyone with nothing the operator could do to release it.
+    await signInAsAdmin(page, "spink");
+    await page.goto("/admin/payroll");
+
+    const soon = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/New_York",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date(Date.now() + 15 * 24 * 3600 * 1000));
+    const values = await page
+      .locator("#period option")
+      .evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
+    const target = values.find((v) => {
+      const [s, e] = v.split("|");
+      return s! <= soon && soon <= e!;
+    })!;
+    await page.locator("#period").selectOption(target);
+    await page.getByRole("button", { name: "View", exact: true }).click();
+    await page.waitForURL(/period=/);
+
+    // Named, not just counted — "someone is short somewhere" is not actionable a fortnight on.
+    await expect(page.getByText(/no punch against (it|them)/)).toBeVisible();
+
+    // Scoped to Quint's own entry. The seed puts several people on that day, so the date link
+    // is not unique on the page — asserting it globally passes for the wrong reason (someone
+    // else's link) and would keep passing if Quint's row lost its own.
+    const quintEntry = page.locator("li").filter({ hasText: "Quint" });
+    await expect(quintEntry.getByRole("link", { name: soon })).toHaveAttribute(
+      "href",
+      `/admin/time-clock?day=${soon}`,
+    );
+
+    // NOT blocked. This is the assertion the whole decision rests on.
+    await expect(page.getByRole("link", { name: "Download Gusto CSV" })).toBeVisible();
+    await expect(page.getByText("Export unavailable")).toHaveCount(0);
+  });
+
   test("no horizontal overflow — six columns still fit the phone (375px)", async ({ page }, testInfo) => {
     // The reconcile table went from three columns to six (crew, est, actual, delta, tips, link).
     // The table itself scrolls inside `overflow-x-auto`; what must NOT happen is the PAGE

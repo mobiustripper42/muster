@@ -41,6 +41,13 @@ export interface ReconcileRow {
   deltaMinutes: number;
   /** Punches still open in this window — hours this row does NOT yet contain. */
   openCount: number;
+  /**
+   * Vessel-local days they held a paid seat and have no punch at all (#638), ascending.
+   * The estimate row already shows the shortfall as a negative delta; this says WHICH days,
+   * so an eight-hour gap reads as one missed shift or four partial ones rather than a number
+   * the operator has to reconstruct a fortnight later.
+   */
+  missingDays: string[];
   /** An admin entered or edited at least one of these punches (§2.9.8). */
   touchedByAdmin: boolean;
   tipCents: number;
@@ -56,7 +63,15 @@ export interface PayrollReconcile {
   totalTipCents: number;
   /** Open punches anywhere in the window. */
   openCount: number;
-  /** `openCount > 0` — the export is refused while true. */
+  /**
+   * Seat-days with no punch, across everyone (#638) — **counted, never blocking**
+   * (operator, 2026-08-03). An open punch blocks the export because closing it always clears
+   * the block; a missing day has no such action, since the person may genuinely not have
+   * worked. Gating the file on it would stop payroll for the whole crew over one no-show,
+   * with nothing the operator could do to release it. Flagged in the UI, linked to the bench.
+   */
+  missingCount: number;
+  /** `openCount > 0` — the export is refused while true. Deliberately NOT `missingCount`. */
   exportBlocked: boolean;
   warnings: string[];
 }
@@ -99,6 +114,13 @@ export async function buildPayrollReconcile(
     const estimateMinutes = est?.minutes ?? 0;
     const actualMinutes = act?.minutes ?? 0;
 
+    // The set difference. Both sides arrive already bucketed on the vessel-local calendar by
+    // the module that owns their rules — `payroll.ts` the seat filter, `time-clock-report.ts`
+    // the punch bucketing — so this is the join and nothing more. Neither rule is re-applied
+    // here, which is the point of doing it in the module that already reads both.
+    const punched = new Set(act?.days ?? []);
+    const missingDays = (est?.days ?? []).filter((d) => !punched.has(d));
+
     return {
       crewMemberId: id,
       name,
@@ -106,6 +128,7 @@ export async function buildPayrollReconcile(
       actualMinutes,
       deltaMinutes: actualMinutes - estimateMinutes,
       openCount: act?.openCount ?? 0,
+      missingDays,
       touchedByAdmin: act?.touchedByAdmin ?? false,
       tipCents: tip?.tipCents ?? 0,
       ...(member?.gusto ? { gusto: member.gusto } : {}),
@@ -136,6 +159,7 @@ export async function buildPayrollReconcile(
     totalActualMinutes: rows.reduce((s, r) => s + r.actualMinutes, 0),
     totalTipCents: rows.reduce((s, r) => s + r.tipCents, 0),
     openCount,
+    missingCount: rows.reduce((s, r) => s + r.missingDays.length, 0),
     exportBlocked: openCount > 0,
     warnings,
   };

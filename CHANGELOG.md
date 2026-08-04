@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.0.21] - 2026-08-04
+
+**Phase 13 — Time Clock & Payroll Hours.** Ships behind `TIME_CLOCK`, off by default.
+
+- Time punch domain + persistence; one open punch per person enforced by a partial unique index (#625)
+- `/crew/time` — crew clock in and out from their phone (#626)
+- `/admin/time-clock` — the repair bench: add, edit, close and delete punches (#627)
+- Crew can change, add and delete their own punches, with a reason on the record (#635)
+- Hours report, the estimate-vs-actual reconcile, and `gusto.csv` carrying hours and tips (#628)
+- A Confirmed seat with no punch is named and linked — warns, never blocks the export (#638)
+- Two punches covering a shared minute are named, linked, and block the export (#645)
+
+**Also shipping**
+
+- The ask now asks "Yes or no?" — In/Out carried three meanings of "in" (#630)
+- iPhone: tapping a link inside an admin nav group closed the menu instead of navigating (#655)
+- Islands accept a click before React is listening — hydration-aware e2e helpers (#642)
+- The reservation demo fixture stops expiring (#646)
+- Focus ring reaches form controls; the spinner honours reduced motion (#639)
+- Admin nav: reservations links flag-gated, wider bar, grouped by cadence (#586, #603)
+- DEC-147: the no-JS rule everyone cited and nobody could point at, written down
+- First WebKit pass in the suite, scoped to the admin nav spec (#655)
+
 ## [1.0.20] - 2026-07-31
 
 The reservations spine, an engine that closes its own loops, and a doc set that checks itself.

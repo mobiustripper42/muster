@@ -18,7 +18,7 @@ test.describe("admin /admin/purchases", () => {
     await signInAsAdmin(page, "spink");
     await page.goto("/admin/purchases");
 
-    // Three seeded bookings, newest departure first (Aug 16 → Aug 13 → Aug 12).
+    // Three seeded bookings, newest departure first (the 16th → the 13th → the 12th).
     const rows = page.getByRole("row");
     await expect(page.getByRole("link", { name: "Marcus Webb" })).toHaveCount(2);
     await expect(page.getByRole("link", { name: "Dana Cho" })).toHaveCount(1);

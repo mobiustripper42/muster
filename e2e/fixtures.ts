@@ -9,9 +9,10 @@
  * walkthrough (RUNNING.md) already documents.
  */
 import { execFileSync } from "node:child_process";
-import { test as base, expect, type Page } from "@playwright/test";
+import { test as base, expect, type Locator, type Page } from "@playwright/test";
 import { resetTestDb, TEST_DATABASE_URL } from "../db/reset-test.js";
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
+import { TODAY } from "./reservation-demo.js";
 
 /** Local tsx binary — resolved explicitly so we don't depend on PATH/npx. */
 const TSX = "node_modules/.bin/tsx";
@@ -78,13 +79,20 @@ export async function setAdminActive(handle: string, active: boolean): Promise<v
   }
 }
 
-/** Truncate the test DB, seed the operator admin, then run the named dev seeds. */
+/**
+ * Truncate the test DB, seed the operator admin, then run the named dev seeds.
+ *
+ * `SEED_TODAY` pins the seeds to the run's single day (#646). The reservation fixture derives
+ * its window from today, and this runs in a fresh subprocess on every `beforeEach` — without
+ * this the DB and the specs would each read their own clock dozens of times across a run, and a
+ * month rollover partway through would silently desync every remaining test.
+ */
 export async function resetAndSeed(...seeds: SeedName[]): Promise<void> {
   await resetTestDb();
   await seedAdmin({ id: "crew-spink", handle: "spink", name: "Spink" });
   for (const name of seeds) {
     execFileSync(TSX, [SEED_SCRIPTS[name]], {
-      env: { ...process.env, DATABASE_URL: TEST_DATABASE_URL },
+      env: { ...process.env, DATABASE_URL: TEST_DATABASE_URL, SEED_TODAY: TODAY },
       stdio: "pipe",
     });
   }
@@ -104,6 +112,95 @@ export async function signInAsAdmin(page: Page, handle: string): Promise<void> {
   await page.goto(`/crew/dev-link?admin=${encodeURIComponent(handle)}`);
   await page.getByRole("button", { name: /tap to sign in/i }).click();
   await page.waitForURL(/\/admin\/at-risk/);
+}
+
+// ── Client-island hydration (#642) ───────────────────────────────────────────
+
+/**
+ * Has React taken ownership of this element yet?
+ *
+ * A `"use client"` island is server-rendered, so its markup — buttons included — is in
+ * the first HTML response and passes every Playwright actionability check immediately.
+ * Until hydration runs, though, no handler is attached and a click is a **no-op that
+ * reports success**. That is the `offering-catalog:69` failure: the click adds no row,
+ * and the next locator waits out its full 15s against a page that will never change.
+ *
+ * The probe reads React's own bookkeeping. React DOM stamps `__reactFiber$<hash>` and
+ * `__reactProps$<hash>` onto each host node it manages, and for a hydrated tree that
+ * happens at hydration — so the key's presence is the exact condition the failure is
+ * about, not a proxy for it. `e2e/island-hydration.spec.ts` negative-controls this
+ * against a page whose bundle is blocked, because a probe that always answered "yes"
+ * would turn every call below into a no-op wait and go green fixing nothing.
+ *
+ * Yes, it reads a React internal. The honest alternatives are worse: there is no public
+ * "hydrated" signal in the App Router, and every substitute (sleep, retry-the-click,
+ * assert-then-retry) either slows the whole suite or hides the failure it should report.
+ * Test-only, one call site, and it fails loudly rather than silently if React renames
+ * the key — the negative control asserts the probe can return `true`.
+ */
+export async function isHydrated(locator: Locator): Promise<boolean> {
+  return locator.evaluate((el) =>
+    Object.keys(el).some((k) => k.startsWith("__reactProps$")),
+  );
+}
+
+/** Block until React owns this element, or fail loudly saying which one didn't. */
+async function waitForHydrated(locator: Locator): Promise<void> {
+  await expect
+    .poll(() => isHydrated(locator), {
+      timeout: 15_000,
+      message: `island never hydrated: ${locator}`,
+    })
+    .toBe(true);
+}
+
+/**
+ * Click an island control once React is actually listening.
+ *
+ * Use this for **any** interaction whose effect depends on a client handler — adding a
+ * row, opening a drawer, toggling state. A plain `.click()` on a server-rendered island
+ * button is a race the fast machine always wins and CI sometimes loses.
+ *
+ * Plain server-form controls (a submit button that POSTs, an `<a>`) do NOT need it: they
+ * work without JS by design, so waiting on hydration there would be waiting on nothing.
+ */
+export async function clickHydrated(locator: Locator): Promise<void> {
+  await waitForHydrated(locator);
+  await locator.click();
+}
+
+/**
+ * Tick or untick a **controlled** checkbox (`checked={state}`) inside an island.
+ *
+ * The same two failures as `selectOptionHydrated`, and the checkout waiver is the
+ * expensive case: ticking it pre-hydration sets the box but never runs `setWaiver`, so
+ * the DEC-110 gate on **Book & pay** stays shut and the assertion times out — on the
+ * payment path, in CI, intermittently. An uncontrolled checkbox in a server form (the
+ * `weekday`/`vesselIds` boxes) needs none of this.
+ */
+export async function setCheckedHydrated(
+  locator: Locator,
+  checked: boolean,
+): Promise<void> {
+  await waitForHydrated(locator);
+  await locator.setChecked(checked);
+}
+
+/**
+ * Choose an option on a select whose `onChange` does the work — the crew filter that
+ * navigates, the departure-time pair the island reads on "+ Add time".
+ *
+ * Two ways this loses without the wait, not one. The handler may not be attached yet
+ * (as with a click), and a **controlled** select (`value={state}`) will have whatever
+ * Playwright set reverted the moment React hydrates and asserts its own value. The
+ * second is nastier: the selection visibly takes and then silently un-takes.
+ */
+export async function selectOptionHydrated(
+  locator: Locator,
+  value: Parameters<Locator["selectOption"]>[0],
+): Promise<void> {
+  await waitForHydrated(locator);
+  await locator.selectOption(value);
 }
 
 export const test = base;

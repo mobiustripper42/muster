@@ -1,0 +1,25 @@
+{
+  "spec": "docs/SPEC.md",
+  "families": {
+    "DATA": 14.5,
+    "MSG": 14.5,
+    "ROLE": 14.5
+  },
+  "topics": [
+    "Core architecture & engine mechanics",
+    "Availability & commitment rules",
+    "Seats, shifts & state machine",
+    "Staffing engine — asks, escalation, At-Risk board & cockpit",
+    "Reliability scoring",
+    "Timing — horizons, deadlines & vessel clock",
+    "Crew, vessels & manning model",
+    "Xola ingest & import",
+    "Messaging, presence & doorbell",
+    "Outbound notifications & operator relay",
+    "Crew self-serve, auth & admin identity",
+    "Reservations & payments",
+    "UI, brand & frontend patterns",
+    "Deployment, infra & versioning",
+    "Open questions"
+  ]
+}

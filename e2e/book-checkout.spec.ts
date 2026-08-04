@@ -4,7 +4,8 @@
  *
  * Uses the `reservation` seed (see book-availability.spec.ts): LIVE offering
  * "Reservation Demo Cruise" on Brew 3 (cap 12, included = cap), base $499, $50/extra guest,
- * owned Aug 10–16 2026, departures 13:30/15:30/17:30, Aug 12 13:30 booked (Marcus Webb).
+ * owned the 10th–16th of NEXT month, departures 13:30/15:30/17:30, 13:30 on the 12th booked
+ * (Marcus Webb). Dates derived, never typed — see `e2e/reservation-demo.ts` (#646).
  * Payment config rides the defaults: deposit 25%, tax 7.25%, service fee 3% (DEC-134),
  * tip tiers 15/20/25 with 20% preselected (DEC-124).
  *
@@ -18,10 +19,17 @@
  *
  * Runs desktop + 375px (registered in the mobile testMatch).
  */
-import { test, expect, resetAndSeed } from "./fixtures.js";
+import {
+  test,
+  expect,
+  resetAndSeed,
+  clickHydrated,
+  setCheckedHydrated,
+} from "./fixtures.js";
+import { BOOKED, OPEN_TIME, formatShortDay } from "./reservation-demo.js";
 
 const CHECKOUT =
-  "/book/checkout?offering=offering-reservation-demo&date=2026-08-12&time=15:30&guests=2";
+  `/book/checkout?offering=offering-reservation-demo&date=${BOOKED.date}&time=${OPEN_TIME}&guests=2`;
 
 test.describe("public /book/checkout", () => {
   test.beforeEach(async () => {
@@ -33,7 +41,9 @@ test.describe("public /book/checkout", () => {
 
     // Hero + trip block reflect the picked slot.
     await expect(page.getByRole("heading", { name: "Reservation Demo Cruise", level: 1 })).toBeVisible();
-    await expect(page.getByText("Wed, Aug 12 · 3:30 PM")).toBeVisible();
+    // The app's own formatter builds the expectation, so a format change reddens here rather
+    // than quietly disagreeing with a string this spec invented.
+    await expect(page.getByText(`${formatShortDay(BOOKED.date)} · 3:30 PM`)).toBeVisible();
     await expect(page.getByText("· 2 guests")).toBeVisible();
 
     // Summary: fare · tip → crew · tax · fee · total (DEC-134 line items, honest about
@@ -61,7 +71,7 @@ test.describe("public /book/checkout", () => {
     // 20% is preselected (DEC-124).
     await expect(page.getByTestId("tip-2000")).toHaveAttribute("aria-pressed", "true");
 
-    await page.getByTestId("tip-1500").click();
+    await clickHydrated(page.getByTestId("tip-1500"));
     await expect(page.getByTestId("tip-1500")).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("due-now")).toHaveText("$250.75");
     await expect(page.getByTestId("summary-total")).toContainText("$625.00");
@@ -79,17 +89,17 @@ test.describe("public /book/checkout", () => {
     await expect(pay).toBeVisible();
     await expect(pay).toBeDisabled(); // no waiver, no submit (DEC-110)
 
-    await page.getByTestId("waiver").check();
+    await setCheckedHydrated(page.getByTestId("waiver"), true);
     await expect(pay).toBeEnabled();
 
-    await page.getByTestId("waiver").uncheck();
+    await setCheckedHydrated(page.getByTestId("waiver"), false);
     await expect(pay).toBeDisabled();
   });
 
   test("a stale link to a sold-out slot gets an honest notice, not a doomed form", async ({ page }) => {
-    // Aug 12 13:30 is the seeded Marcus Webb booking — sold out before this link was opened.
+    // The seeded Marcus Webb booking — sold out before this link was opened.
     await page.goto(
-      "/book/checkout?offering=offering-reservation-demo&date=2026-08-12&time=13:30&guests=2",
+      `/book/checkout?offering=offering-reservation-demo&date=${BOOKED.date}&time=${BOOKED.time}&guests=2`,
     );
     await expect(
       page.getByRole("heading", { name: "That departure is no longer available" }),
@@ -101,7 +111,7 @@ test.describe("public /book/checkout", () => {
 
   test("a guest count over the boat's cap is refused up front", async ({ page }) => {
     await page.goto(
-      "/book/checkout?offering=offering-reservation-demo&date=2026-08-12&time=15:30&guests=99",
+      `/book/checkout?offering=offering-reservation-demo&date=${BOOKED.date}&time=${OPEN_TIME}&guests=99`,
     );
     await expect(
       page.getByRole("heading", { name: "That departure is no longer available" }),
@@ -109,11 +119,11 @@ test.describe("public /book/checkout", () => {
   });
 
   test("the availability screen's Continue link lands here with the same slot + guests", async ({ page }) => {
-    await page.goto("/book?date=2026-08-12");
+    await page.goto(`/book?date=${BOOKED.date}`);
     await page.getByTestId("continue").click();
 
     await expect(page).toHaveURL(/\/book\/checkout\?offering=offering-reservation-demo/);
-    await expect(page).toHaveURL(/date=2026-08-12/);
+    await expect(page).toHaveURL(new RegExp(`date=${BOOKED.date}`));
     await expect(page).toHaveURL(/guests=2/);
     await expect(page.getByRole("heading", { name: "Reservation Demo Cruise", level: 1 })).toBeVisible();
     await expect(page.getByTestId("due-now")).toBeVisible();

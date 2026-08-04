@@ -1,0 +1,21 @@
+{
+  "repo": "mobiustripper42/muster",
+  "rosters": {
+    "CLAUDE.md": { "skills": true, "agents": true },
+    "docs/AGENTS.md": { "skills": true, "agents": true },
+    "docs/CHEATSHEET.md": { "skills": true, "agents": false }
+  },
+  "historical": {
+    "docs/SPEC.md": "struck passages cite the files their decisions deleted (e.g. :805 on src/builder/lock.ts)",
+    "docs/PROJECT_PLAN.md": "shipped task rows cite what they retired; :186 annotates its own deletion date",
+    "docs/RETROSPECTIVES.md": "per-phase record of what was true at phase close",
+    "docs/FUTURE_IDEAS.md": "parked ideas cite sketches and drop-lists that predate the current tree",
+    "docs/SECURITY_AUDIT.md": "findings as of an audit date, same shape as docs/audit/"
+  },
+  "knownForeign": [
+    "stripe-best-practices", "stripe-projects", "upgrade-stripe", "claude-api",
+    "update-config", "fewer-permission-prompts", "keybindings-help", "review",
+    "security-review", "init", "loop", "simplify", "config", "mcp", "help",
+    "clear", "start-phase-note"
+  ]
+}

@@ -10,6 +10,12 @@ topic: "Staffing engine — asks, escalation, At-Risk board & cockpit"
 > **Extended by DEC-095 — the deferred delivery half**
 <!-- /amended-by -->
 
+> **Commonly mis-cited — see DEC-147.** ~34 code comments cite DEC-026 for
+> *"server-rendered, no client JS"* and *"feedback params carry codes, never prose."* This
+> decision says neither; those rules are **DEC-147**. The citations are being corrected as
+> the files are touched rather than in one sweep, so expect to meet a few more. If you
+> arrived here from one, DEC-147 is what you wanted. Nothing below is affected.
+
 **Decision:** Three calls for the board surface + decision surface (#42/#43):
 
 1. **"Landing on the board pings Spink" (§2.5) splits into detection + record + delivery.**

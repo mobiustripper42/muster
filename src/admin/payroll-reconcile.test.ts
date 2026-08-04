@@ -18,7 +18,6 @@ import {
   buildPayrollReconcile,
   gustoPayrollCsv,
   decimalHoursForTest,
-  EXPORT_BLOCKED_MESSAGE,
 } from "./payroll-reconcile.js";
 
 const CAP = asId<"RoleTypeId">("role-captain");
@@ -143,7 +142,10 @@ describe("an open punch blocks the export (§2.9.6, operator 2026-08-02)", () =>
     await repo.saveTimePunch(punch("crew-quint", "2026-07-08T13:00:00Z", null));
 
     const r = await buildPayrollReconcile(repo, WINDOW);
-    expect(() => gustoPayrollCsv(r)).toThrow(EXPORT_BLOCKED_MESSAGE);
+    // Reason-specific since #645: the message names the open punch rather than a generic
+    // refusal, because the export now has two possible reasons and the wrong one is worse
+    // than none — it sends the operator looking for a problem that isn't there.
+    expect(() => gustoPayrollCsv(r)).toThrow(/still open/);
   });
 
   it("builds once every punch is closed", async () => {
@@ -353,5 +355,121 @@ describe("a Confirmed seat with no punch is reported as missing (#638)", () => {
     const r = await buildPayrollReconcile(repo, WINDOW);
     expect(r.rows[0]!.missingDays).toEqual(["2026-07-07"]);
     expect(r.missingCount).toBe(1);
+  });
+});
+
+/**
+ * Overlapping punches (#645). Nobody works two shifts at once, and until now nothing stopped a
+ * hand-entry path recording it: 09:00–17:00 plus 13:00–18:00 is thirteen paid hours for nine
+ * worked, with no error anywhere.
+ *
+ * **Blocks the export**, unlike a missing day. The rule across all three conditions is whether a
+ * guaranteed action clears it: closing an open punch always works, and editing or deleting one of
+ * two overlapping punches always works — so both gate the file. A missing day has no such action
+ * (the person may genuinely not have worked), so it only warns.
+ */
+describe("overlapping punches block the export (#645)", () => {
+  it("flags a day where two punches share a minute", async () => {
+    const repo = new InMemoryRepository();
+    await repo.saveCrewMember(crew("crew-brody", "Brody"));
+    await repo.saveTimePunch(punch("crew-brody", "2026-07-07T13:00:00Z", "2026-07-07T18:00:00Z"));
+    await repo.saveTimePunch(punch("crew-brody", "2026-07-07T17:00:00Z", "2026-07-07T20:00:00Z"));
+
+    const r = await buildPayrollReconcile(repo, WINDOW);
+    expect(r.rows[0]!.overlapDays).toEqual(["2026-07-07"]);
+    expect(r.overlapCount).toBe(1);
+  });
+
+  it("blocks the export, and says which problem it is", async () => {
+    // The message is the operator's only instruction. "Close it on /admin/time-clock" is the
+    // wrong advice for an overlap — there is nothing open to close — so a shared constant that
+    // names open punches would send them looking for something that isn't there.
+    const repo = new InMemoryRepository();
+    await repo.saveCrewMember(crew("crew-brody", "Brody", gusto("E-1", "Martin", "Brody")));
+    await repo.saveTimePunch(punch("crew-brody", "2026-07-07T13:00:00Z", "2026-07-07T18:00:00Z"));
+    await repo.saveTimePunch(punch("crew-brody", "2026-07-07T17:00:00Z", "2026-07-07T20:00:00Z"));
+
+    const r = await buildPayrollReconcile(repo, WINDOW);
+    expect(r.exportBlocked).toBe(true);
+    expect(() => gustoPayrollCsv(r)).toThrow(/overlap/i);
+  });
+
+  it("a shared boundary is not an overlap — 13:00 out, 13:00 in", async () => {
+    // Half-open [in, out), matching listTimePunchesBetween. A split shift is two punches that
+    // touch; refusing it would refuse the ordinary case to catch the pathological one.
+    const repo = new InMemoryRepository();
+    await repo.saveCrewMember(crew("crew-brody", "Brody"));
+    await repo.saveTimePunch(punch("crew-brody", "2026-07-07T13:00:00Z", "2026-07-07T17:00:00Z"));
+    await repo.saveTimePunch(punch("crew-brody", "2026-07-07T17:00:00Z", "2026-07-07T21:00:00Z"));
+
+    const r = await buildPayrollReconcile(repo, WINDOW);
+    expect(r.overlapCount).toBe(0);
+    expect(r.exportBlocked).toBe(false);
+  });
+
+  it("catches a punch wholly inside another, not just a partial overlap", async () => {
+    const repo = new InMemoryRepository();
+    await repo.saveCrewMember(crew("crew-brody", "Brody"));
+    await repo.saveTimePunch(punch("crew-brody", "2026-07-07T13:00:00Z", "2026-07-07T21:00:00Z"));
+    await repo.saveTimePunch(punch("crew-brody", "2026-07-07T15:00:00Z", "2026-07-07T16:00:00Z"));
+
+    const r = await buildPayrollReconcile(repo, WINDOW);
+    expect(r.rows[0]!.overlapDays).toEqual(["2026-07-07"]);
+    expect(r.overlapCount).toBe(1);
+  });
+
+  it("an OPEN punch is excluded from the comparison — it already blocks on its own", async () => {
+    // An open punch has no end, so "does it overlap?" needs an answer. Treating it as running to
+    // infinity would flag every later punch; it is also moot, because an open punch already
+    // blocks the export by itself. Including it would report one problem as two.
+    const repo = new InMemoryRepository();
+    await repo.saveCrewMember(crew("crew-brody", "Brody"));
+    await repo.saveTimePunch(punch("crew-brody", "2026-07-07T13:00:00Z", null));
+    await repo.saveTimePunch(punch("crew-brody", "2026-07-07T14:00:00Z", "2026-07-07T20:00:00Z"));
+
+    const r = await buildPayrollReconcile(repo, WINDOW);
+    expect(r.overlapCount).toBe(0);
+    expect(r.openCount).toBe(1);
+    expect(r.exportBlocked).toBe(true); // blocked by the OPEN punch, not by an overlap
+  });
+
+  it("two different people working the same hours is not an overlap", async () => {
+    const repo = new InMemoryRepository();
+    await repo.saveCrewMember(crew("crew-brody", "Brody"));
+    await repo.saveCrewMember(crew("crew-hooper", "Hooper"));
+    await repo.saveTimePunch(punch("crew-brody", "2026-07-07T13:00:00Z", "2026-07-07T18:00:00Z"));
+    await repo.saveTimePunch(punch("crew-hooper", "2026-07-07T13:00:00Z", "2026-07-07T18:00:00Z"));
+
+    const r = await buildPayrollReconcile(repo, WINDOW);
+    expect(r.overlapCount).toBe(0);
+  });
+
+  it("catches an overlap that straddles midnight", async () => {
+    // 02:00-06:00Z is 22:00 on 07-07 through 02:00 on 07-08, Eastern. 05:00-07:00Z is 01:00-03:00
+    // on 07-08. They share the hour 05:00-06:00Z — but their `inAt`s fall on DIFFERENT
+    // vessel-local days, so any implementation that buckets by day before comparing never puts
+    // them side by side. Both days are named, because the operator has to look at a pair and
+    // the pair spans two dates.
+    const repo = new InMemoryRepository();
+    await repo.saveCrewMember(crew("crew-brody", "Brody"));
+    await repo.saveTimePunch(punch("crew-brody", "2026-07-08T02:00:00Z", "2026-07-08T06:00:00Z"));
+    await repo.saveTimePunch(punch("crew-brody", "2026-07-08T05:00:00Z", "2026-07-08T07:00:00Z"));
+
+    const r = await buildPayrollReconcile(repo, WINDOW);
+    expect(r.rows[0]!.overlapDays).toEqual(["2026-07-07", "2026-07-08"]);
+    expect(r.exportBlocked).toBe(true);
+  });
+
+  it("attributes the overlap to the VESSEL-LOCAL day (DEC-032)", async () => {
+    // 2026-07-08T00:30Z and 01:00Z are 20:30 and 21:00 Eastern on 07-07. Read as UTC the overlap
+    // is filed on the 8th — the wrong day to link the operator to, and on a period boundary the
+    // wrong period entirely.
+    const repo = new InMemoryRepository();
+    await repo.saveCrewMember(crew("crew-brody", "Brody"));
+    await repo.saveTimePunch(punch("crew-brody", "2026-07-08T00:30:00Z", "2026-07-08T03:00:00Z"));
+    await repo.saveTimePunch(punch("crew-brody", "2026-07-08T01:00:00Z", "2026-07-08T02:00:00Z"));
+
+    const r = await buildPayrollReconcile(repo, WINDOW);
+    expect(r.rows[0]!.overlapDays).toEqual(["2026-07-07"]);
   });
 });

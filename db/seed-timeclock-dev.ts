@@ -27,6 +27,8 @@
  *      the export comes back — that round trip is the demo.
  *   E. Eze    — `origin: "admin"`. Nobody tapped anything; the row must say so (§2.9.8).
  *   F. Fen    — `adminEditedAt` set on a crew-origin punch. Someone else moved these hours.
+ *   H. Hal    — the OVERLAP (#645). Two punches covering the same afternoon, plus a legal
+ *      split shift on another day that must not be flagged. Blocks the export.
  *   G. Gil    — the MISSING punch (#638). Two required Confirmed seats, one punched and one
  *      not, so exactly one day is missing — which also proves the check compares days rather
  *      than deciding per person. Flagged and linked, and pointedly NOT blocking the export:
@@ -246,6 +248,17 @@ try {
   await punch("gil-punched", gil, at(11, "09:00"), at(11, "17:00"));
   await seat("gil-missing", gil, 12, "09:00");
 
+  // H — the overlap (#645). Hal punched 09:00-17:00 and again 13:00-18:00 on the same day:
+  // thirteen paid hours for nine worked, which nothing refused before this. Blocks the export
+  // exactly as Dov's open punch does — and unlike Gil's missing day, which only warns. Hal also
+  // has a legal split shift on another day (out 13:00, back in 13:00) that must NOT be flagged;
+  // without it a check that refuses every touching pair would look correct here.
+  const hal = await crew("crew-tc-hal", "Hal", gusto("Hal", "Half", "GU-1008"));
+  await punch("hal-a", hal, at(3, "09:00"), at(3, "17:00"));
+  await punch("hal-b", hal, at(3, "13:00"), at(3, "18:00"));
+  await punch("hal-split-1", hal, at(4, "09:00"), at(4, "13:00"));
+  await punch("hal-split-2", hal, at(4, "13:00"), at(4, "17:00"));
+
   // Any OTHER open punch in this period also blocks the export, so "close Dov and the file
   // comes back" silently fails while one exists — and hand-testing the crew surface leaves
   // them behind routinely. Reported, never removed: deleting a punch is deleting someone's
@@ -284,6 +297,10 @@ try {
   console.log("        → must render as office-entered. Nobody tapped anything (§2.9.8).");
   console.log(`  Fen   ${day(9)}  10:00-18:30         510 min = 8.50h, adminEditedAt set`);
   console.log("        → crew punched it, an admin moved it. The other half of §2.9.8.");
+  console.log(`  Hal   ${day(3)} 09:00-17:00 AND 13:00-18:00 → OVERLAP (#645)`);
+  console.log("        → 13 paid hours for 9 worked. BLOCKS the export, like Dov's open punch");
+  console.log(`        → and unlike Gil's missing day. Also has a LEGAL split on ${day(4)}`);
+  console.log("          (out 13:00, back in 13:00) that must not be flagged.");
   console.log(`  Gil   seats on ${day(11)} AND ${day(12)}; punched only ${day(11)}`);
   console.log(`        → ${day(12)} is MISSING (#638): a confirmed seat, no punch, hours read`);
   console.log("          zero. Flagged and linked, but it does NOT block the export — unlike");

@@ -267,7 +267,13 @@ function ReconcileSection({
           ))}
       </div>
 
-      {rec.exportBlocked && (
+      {/*
+       * Gated on `openCount`, NOT on `exportBlocked` (#645). The export now has two possible
+       * reasons and this notice can only explain one: an overlap-only block rendered here would
+       * read "0 punches in this period are still open" and send the operator to close something
+       * that does not exist.
+       */}
+      {rec.openCount > 0 && (
         <Notice tone="bad">
           <p className="font-semibold">
             {rec.openCount === 1
@@ -290,6 +296,43 @@ function ReconcileSection({
                     {r.name ?? r.crewMemberId}
                   </a>{" "}
                   — {r.openCount} open
+                </li>
+              ))}
+          </ul>
+        </Notice>
+      )}
+
+      {/*
+       * Overlapping punches (#645) — `bad` and blocking, beside the open-punch notice rather
+       * than merged with it: they are different repairs. An open punch is finished by closing
+       * it; an overlap is finished by deciding which of two punches is wrong. Same gate, same
+       * severity, different instruction.
+       */}
+      {rec.overlapCount > 0 && (
+        <Notice tone="bad">
+          <p className="font-semibold">
+            {rec.overlapCount === 1
+              ? "One day has two punches covering the same time."
+              : `${rec.overlapCount} days have two punches covering the same time.`}
+          </p>
+          <p>
+            Nobody works two shifts at once, so these hours are counted twice and the payroll file
+            can’t be built. Open each day and decide which punch is wrong.
+          </p>
+          <ul className="mt-1 list-disc pl-4">
+            {rec.rows
+              .filter((r) => r.overlapDays.length > 0)
+              .map((r) => (
+                <li key={r.crewMemberId}>
+                  {r.name ?? r.crewMemberId} —{" "}
+                  {r.overlapDays.map((d, i) => (
+                    <span key={d}>
+                      {i > 0 && ", "}
+                      <a className="underline" href={`/admin/time-clock?day=${encodeURIComponent(d)}`}>
+                        {d}
+                      </a>
+                    </span>
+                  ))}
                 </li>
               ))}
           </ul>

@@ -77,10 +77,19 @@ export function AdminNav({
     // lands on the NEXT group's summary while the first panel is still floating over the page —
     // a keyboard user ends up with a panel open somewhere they aren't. `focusout` fires before
     // focus lands, so the new target is `relatedTarget`, not `document.activeElement`.
+    //
+    // Only when focus lands SOMEWHERE, and that somewhere is outside (#655). Closing on a null
+    // `relatedTarget` — focus leaving and landing nowhere — made every grouped link unusable on
+    // iPhone: Safari does not focus a link on tap, so the panel closed mid-gesture and the click
+    // never resolved against a link that was no longer in the layout. Ungrouped links were fine
+    // and Android was fine, which is what identified it. Nothing is lost by the narrowing: a tab
+    // always carries a `relatedTarget`, and focus dropping to nothing is already covered by the
+    // document `click` handler above and by Escape.
     const onFocusOut = (e: FocusEvent) => {
       const next = e.relatedTarget as Node | null;
+      if (!next) return;
       for (const d of navRef.current?.querySelectorAll("details[open]") ?? []) {
-        if (!next || !d.contains(next)) d.removeAttribute("open");
+        if (!d.contains(next)) d.removeAttribute("open");
       }
     };
     document.addEventListener("click", closeGroups);

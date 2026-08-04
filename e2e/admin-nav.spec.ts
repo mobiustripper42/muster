@@ -206,8 +206,9 @@ test.describe("admin nav", () => {
     //
     // Chromium cannot reproduce the iOS focus behaviour, but it does not need to: the defect is
     // in OUR branch, so dispatching the focusout Safari would have produced exercises it here.
+    // No extra goto: signInAsAdmin already lands on /admin/at-risk, which carries the nav.
+    // Navigating again races the sign-in redirect in dev mode and interrupts it.
     await signInAsAdmin(page, "spink");
-    await page.goto("/admin/shifts");
     await openMenuIfMobile(page);
 
     // The <summary> toggle is native — HTML's own accordion, no JS — so a plain click is right
@@ -227,14 +228,41 @@ test.describe("admin nav", () => {
     await page.waitForURL(/\/admin\/payroll/);
   });
 
+  test("#655: a REAL tap on a grouped link navigates (WebKit)", async ({ page }, testInfo) => {
+    // **This does NOT reproduce #655, and it is labelled that way on purpose.** It was written
+    // expecting Playwright's WebKit to execute the real gesture Chromium cannot. Negative
+    // control says otherwise: revert the one-line fix and this still passes, while the sibling
+    // synthetic test reddens. Linux WebKit is the same engine as Safari but not the same
+    // platform, and it evidently focuses a link on tap the way Chromium does — so the behaviour
+    // the bug depends on is absent here.
+    //
+    // Kept as a smoke test, not a regression guard: it asserts a grouped link is tappable at all
+    // under WebKit with touch. The synthetic focusout test is the only thing standing between
+    // this bug and the operator's phone. Deleting this would be defensible; leaving it MISLABELLED
+    // would not, because a test that cannot fail for the reason in its name launders a claim.
+    //
+    // Runs only in the `iphone` project (WebKit + isMobile + hasTouch). `tap()` requires touch,
+    // so this would fail as a setup error rather than a finding anywhere else.
+    test.skip(testInfo.project.name !== "iphone", "needs WebKit with touch");
+    // No extra goto: signInAsAdmin already lands on /admin/at-risk, which carries the nav.
+    // Navigating again races the sign-in redirect in dev mode and interrupts it.
+    await signInAsAdmin(page, "spink");
+    await openMenuIfMobile(page);
+    await openGroupHydrated(page);
+
+    await page.getByRole("link", { name: "Payroll" }).tap();
+    await page.waitForURL(/\/admin\/payroll/);
+  });
+
   test("#655: tabbing out of a group still closes it — the case onFocusOut exists for", async ({
     page,
   }) => {
     // The other half. The handler was added because tabbing past a group's links left the panel
     // floating over the page on a sticky bar. Narrowing it to "focus landed somewhere outside"
     // must not cost that: a tab always carries a relatedTarget, so this stays closed.
+    // No extra goto: signInAsAdmin already lands on /admin/at-risk, which carries the nav.
+    // Navigating again races the sign-in redirect in dev mode and interrupts it.
     await signInAsAdmin(page, "spink");
-    await page.goto("/admin/shifts");
     await openMenuIfMobile(page);
 
     await openGroupHydrated(page);
@@ -256,6 +284,12 @@ test.describe("admin nav", () => {
 
   test("a crew subject sees no admin nav", async ({ page }) => {
     await signInAsCrew(page, "crew-quint");
+    // `signInAsCrew` returns on the URL change, which can be before the load settles — a goto
+    // fired into that window is cancelled outright ("interrupted by another navigation"). Only
+    // dev mode is slow enough to lose the race, so it is latent in CI (which runs `next dev`)
+    // rather than specific to this project. Fixed locally; the shared fixture is used by every
+    // spec and is not something to change at the tail of an unrelated task.
+    await page.waitForLoadState("load");
     await page.goto("/admin/at-risk");
     await expect(page.getByRole("navigation", { name: "Admin" })).toHaveCount(0);
   });

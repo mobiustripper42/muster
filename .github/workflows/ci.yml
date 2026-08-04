@@ -88,7 +88,7 @@ jobs:
 
       - run: npm ci
 
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium webkit
 
       # The harness migrates + seeds the test DB itself (fixtures' beforeEach);
       # webServer boots the app against it. CI=true → fresh server, no reuse.

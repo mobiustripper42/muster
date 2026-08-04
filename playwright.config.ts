@@ -79,6 +79,31 @@ export default defineConfig({
       testMatch: /(auth-crew|admin-nav|outbox-relay|crew-messaging|operator-messaging|version-tag|crew-sign-in|crew-open|crew-reconciliation|crew-help|cockpit-manifest|cockpit-override|ask-trail|time-off|payroll|shifts-view|calendar-feed|other-shifts-today|vessel-location-admin|offering-catalog|add-ons|blocks|calendar|customers|purchases|book-availability|book-checkout|book-manage)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 375, height: 812 } },
     },
+    {
+      // The only WebKit pass in the suite (#655). Everything above — including the project
+      // literally called "mobile" — is Chromium; `devices["Desktop Chrome"]` at 375px is a
+      // narrow window, not a phone and not Safari. That is why an iPhone-only nav bug reached
+      // the operator: no test in this repo could execute Safari's focus semantics.
+      //
+      // Deliberately ONE spec. Turning WebKit on suite-wide lights up unrelated failures and
+      // needs its own triage; this pins the one behaviour that has actually bitten. Widen it
+      // when there is appetite to work through what it surfaces, not before.
+      //
+      // Playwright's Linux WebKit is not iOS Safari — same engine, different platform — so a
+      // pass here is evidence, not proof. It does carry `isMobile` + `hasTouch`, which is what
+      // makes `tap()` behave like a tap rather than a click.
+      //
+      // **Locally this needs `E2E_PROD=0`.** `next start` sets NODE_ENV=production, which makes
+      // the session cookie `Secure` (app/lib/auth.ts:48) — correct in production, fatal here,
+      // because the e2e server is plain http and WebKit refuses Secure cookies over it. Chromium
+      // special-cases localhost and stores them anyway, which is why only this project notices.
+      // Symptom is not an auth error: sign-in redirects, the URL looks right, and every page
+      // renders signed-out with no cookies at all. CI is unaffected — E2E_PROD defaults to !CI,
+      // so CI already runs `next dev` and the cookie is not Secure there.
+      name: "iphone",
+      testMatch: /admin-nav\.spec\.ts/,
+      use: { ...devices["iPhone 13"] },
+    },
   ],
   webServer: {
     // Prod: build once, then `next start` (no dev lock). reuseExistingServer skips

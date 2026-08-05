@@ -4,11 +4,27 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { asId } from "@core/domain/ids.js";
-import { addPunch, deletePunch, editPunch } from "@core/crew/time-clock.js";
+import {
+  addPunch,
+  deletePunch,
+  editPunch,
+  type AddPunchCode,
+  type EditPunchCode,
+} from "@core/crew/time-clock.js";
 import { addDays, zonedWallClockToInstant } from "@core/config/tenant.js";
 import { readSubject } from "../../../lib/auth";
 import { timeClockEnabled } from "../../../lib/flags";
 import { getRepo } from "../../../lib/repo";
+
+/**
+ * Every code this surface can put in `?err=` (#654) — the domain's result codes across all of
+ * its doors, plus the glue codes minted here. Declared beside the `redirect()` that mints them
+ * and consumed by the page's copy table, so a code with nothing to say about it is a build error
+ * rather than a silent fall through to "try again in a moment". This is the surface the bug was
+ * found on: the admin table shipped without a `future` entry while its crew sibling had one, so
+ * an operator entering a future time was told to retry a deterministic refusal.
+ */
+export type TimeClockErr = AddPunchCode | EditPunchCode | "bad_input" | "error";
 
 /**
  * The repair bench's write half (#627, SPEC §2.9.5). Auth + glue over `addPunch` /
@@ -86,7 +102,7 @@ export async function addPunchAction(formData: FormData): Promise<void> {
     formData.get("outNextDay") === "1",
   );
 
-  let code: string | null = null;
+  let code: TimeClockErr | null = null;
   if (!crewMemberId || !/^\d{4}-\d{2}-\d{2}$/.test(day) || inAt === null) {
     code = "bad_input";
   } else {
@@ -135,7 +151,7 @@ export async function editPunchAction(formData: FormData): Promise<void> {
     formData.get("outNextDay") === "1",
   );
 
-  let code: string | null = null;
+  let code: TimeClockErr | null = null;
   if (!id || inAt === null) {
     code = "bad_input";
   } else {
@@ -162,7 +178,7 @@ export async function deletePunchAction(formData: FormData): Promise<void> {
   const back = backTo(formData);
   const id = String(formData.get("punchId") ?? "");
 
-  let code: string | null = null;
+  let code: TimeClockErr | null = null;
   try {
     if (id) await deletePunch(getRepo(), asId<"TimePunchId">(id));
   } catch {

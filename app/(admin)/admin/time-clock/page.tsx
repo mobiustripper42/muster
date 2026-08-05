@@ -17,9 +17,15 @@ import { asId } from "@core/domain/ids.js";
 import { fmt12, fmtDateRange } from "../../../lib/format";
 import { notFound } from "next/navigation";
 import { readSubject } from "../../../lib/auth";
+import { errCopyFor } from "../../../lib/err-copy";
 import { timeClockEnabled } from "../../../lib/flags";
 import { getRepo } from "../../../lib/repo";
-import { addPunchAction, deletePunchAction, editPunchAction } from "./actions";
+import {
+  addPunchAction,
+  deletePunchAction,
+  editPunchAction,
+  type TimeClockErr,
+} from "./actions";
 
 /**
  * /admin/time-clock (#627, SPEC §2.9.5) — the operator's repair bench. Muster never
@@ -53,7 +59,7 @@ type Search = {
   anext?: string;
 };
 
-const ERR_COPY: Record<string, string> = {
+const ERR_COPY: Record<TimeClockErr, string> = {
   out_before_in: "The out time is at or before the in time — a punch can’t end before it starts.",
   already_in: "That person already has an open punch. Close it first.",
   day_moved:
@@ -130,7 +136,7 @@ export default async function AdminTimeClock({
     );
   }
 
-  const errCopy = sp.err ? ERR_COPY[sp.err] ?? ERR_COPY.error : null;
+  const errCopy = errCopyFor(ERR_COPY, sp.err, "error");
   // Re-validate every echoed value before it reaches an input — a crafted `?ain=`
   // must not put arbitrary text in a form on a trusted surface. Anything off-shape is
   // dropped, so the field falls back to empty rather than to whatever was in the URL.
@@ -364,6 +370,11 @@ function PunchCard({
 }) {
   return (
     <div
+      // A countable hook for the bench's rows. Same reasoning as `data-active` on the admin nav:
+      // a test that has to infer "how many punches are on screen" from a class string is a test
+      // that breaks on a styling change. `payroll-reconcile.spec.ts` waits on this count after
+      // each Add, because the redirect URL cannot tell two consecutive adds apart.
+      data-punch-row={row.id}
       className={`flex flex-col gap-2 rounded-card border bg-card px-4 py-3 shadow-sm ${
         row.open ? "border-bad" : "border-line"
       }`}

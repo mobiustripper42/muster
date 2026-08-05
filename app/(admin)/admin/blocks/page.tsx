@@ -8,7 +8,9 @@ import { AppLink } from "../../../../components/ui/app-link";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { readSubject } from "../../../lib/auth";
+import { errCopyFor } from "../../../lib/err-copy";
 import { getRepo } from "../../../lib/repo";
+import type { BlockErr } from "./actions";
 import {
   KindPill,
   VesselHueDot,
@@ -41,7 +43,7 @@ type Search = {
   err?: string;
 };
 
-const ERR_COPY: Record<string, string> = {
+const ERR_COPY: Record<BlockErr, string> = {
   bad_kind: "Pick a block kind — Location or Vessel. (Holds are made on the calendar.)",
   bad_location: "Pick a location that still exists.",
   bad_date: "Give the block a real date.",
@@ -144,7 +146,7 @@ export default async function AdminBlocks({
     (r) => (filter === "all" || filterKeyOf(r.block.kind) === filter) && (showPast ? r.past : !r.past),
   );
 
-  const errCopy = sp.err ? ERR_COPY[sp.err] ?? ERR_COPY.error : null;
+  const errCopy = errCopyFor(ERR_COPY, sp.err, "error");
 
   return (
     <Shell width="6xl">

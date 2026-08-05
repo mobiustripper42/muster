@@ -6,8 +6,9 @@ import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { readSubject } from "../../../lib/auth";
+import { errCopyFor } from "../../../lib/err-copy";
 import { getRepo } from "../../../lib/repo";
-import { saveOffering } from "./actions";
+import { saveOffering, type OfferingErr } from "./actions";
 import {
   STATUS_COPY,
   DetailsSection,
@@ -35,7 +36,7 @@ export const dynamic = "force-dynamic";
 
 type Search = { sel?: string; saved?: string; err?: string; hidden?: string };
 
-const ERR_COPY: Record<string, string> = {
+const ERR_COPY: Record<OfferingErr, string> = {
   name_required: "Give the offering a name.",
   bad_status: "Pick a status — Draft, Live, or Hidden.",
   bad_location: "That location no longer exists — pick another.",
@@ -94,7 +95,7 @@ export default async function AdminOfferings({
 
   const creating = sp.sel === "new" || visible.length === 0;
   const selected = creating ? null : visible.find((o) => o.id === sp.sel) ?? visible[0] ?? null;
-  const errCopy = sp.err ? ERR_COPY[sp.err] ?? ERR_COPY.error : null;
+  const errCopy = errCopyFor(ERR_COPY, sp.err, "error");
   const title = creating ? "New offering" : selected?.name ?? "Offerings";
   const hiddenParam = showHidden ? "&hidden=1" : "";
 

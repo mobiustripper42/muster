@@ -120,10 +120,13 @@ export async function saveBlockAdmin(
  * `not_found` if the id is already gone so the caller can distinguish a stale link from a
  * successful lift (the port's `removeBlock` is a silent idempotent no-op, which can't).
  */
+export type BlockRemoveError = "not_found";
+export type BlockRemoveResult = { ok: true } | { ok: false; code: BlockRemoveError };
+
 export async function removeBlockAdmin(
   repo: Repository,
   id: string,
-): Promise<{ ok: true } | { ok: false; code: "not_found" }> {
+): Promise<BlockRemoveResult> {
   const blockId = asId<"BlockId">(id) as BlockId;
   const exists = (await repo.listBlocks()).some((b) => String(b.id) === String(blockId));
   if (!exists) return { ok: false, code: "not_found" };

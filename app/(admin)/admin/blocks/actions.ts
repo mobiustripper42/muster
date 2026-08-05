@@ -3,9 +3,22 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { removeBlockAdmin, saveBlockAdmin } from "@core/admin/block-admin.js";
+import {
+  removeBlockAdmin,
+  saveBlockAdmin,
+  type BlockRemoveError,
+  type BlockSaveError,
+} from "@core/admin/block-admin.js";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
+
+/**
+ * Every code this surface can put in `?err=` (#654) — the domain's validation errors plus the
+ * glue codes minted here. Declared beside the `redirect()` that mints them and consumed by the
+ * page's copy table, so a code with nothing to say about it is a build error rather than a silent
+ * fall through to "try again in a moment".
+ */
+export type BlockErr = BlockSaveError | BlockRemoveError | "error";
 
 /**
  * Create a block (task 12.10). Auth + FormData glue over `saveBlockAdmin`, which owns
@@ -22,7 +35,7 @@ export async function saveBlock(formData: FormData): Promise<void> {
   const kind = String(formData.get("kind") ?? "");
   const note = String(formData.get("note") ?? "");
 
-  let code: string | null = null;
+  let code: BlockErr | null = null;
   try {
     const result = await saveBlockAdmin(getRepo(), {
       id,
@@ -58,7 +71,7 @@ export async function liftBlock(formData: FormData): Promise<void> {
   if (!subject || subject.kind !== "admin") redirect("/admin");
 
   const id = String(formData.get("id") ?? "").trim();
-  let code: string | null = null;
+  let code: BlockErr | null = null;
   try {
     const result = await removeBlockAdmin(getRepo(), id);
     code = result.ok ? null : result.code;

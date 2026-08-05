@@ -5,9 +5,10 @@ import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { readSubject } from "../../../lib/auth";
+import { errCopyFor } from "../../../lib/err-copy";
 import { fmtRunWhen, IMPORT_SOURCE_LABEL } from "../../../lib/format";
 import { getRepo } from "../../../lib/repo";
-import { pullFromXola } from "./actions";
+import { pullFromXola, type XolaPullErr } from "./actions";
 import { ClearFeedbackParams } from "./clear-feedback-params";
 
 /**
@@ -21,7 +22,14 @@ import { ClearFeedbackParams } from "./clear-feedback-params";
  */
 export const dynamic = "force-dynamic";
 
-const ERR_COPY: Record<string, string> = {
+/**
+ * No `error` key and no fallback, unlike every other surface (#654). All three codes name a
+ * specific cause and each already carries "nothing was pulled", so there is no generic line worth
+ * showing — a hand-typed `?xerr=` renders no notice rather than a retry prompt for a failure that
+ * did not happen. The other nine surfaces fall back to `error` because their actions have a real
+ * catch-all path; this one does not.
+ */
+const ERR_COPY: Record<XolaPullErr, string> = {
   x_not_configured:
     "Xola isn’t configured on this server (XOLA_API_KEY / XOLA_SELLER_ID unset) — nothing was pulled.",
   x_auth:
@@ -41,7 +49,7 @@ export default async function ImportPage({
   if (!subject || subject.kind !== "admin")
     return <AdminSignedOut subject={subject} />;
 
-  const err = sp.xerr ? (ERR_COPY[sp.xerr] ?? null) : null;
+  const err = errCopyFor(ERR_COPY, sp.xerr);
 
   // Recent imports (#128 Part B) — the history list, drill-in to each run's
   // detail. A flaky DB just hides the list rather than 500-ing the pull button.

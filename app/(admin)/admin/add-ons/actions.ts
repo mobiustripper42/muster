@@ -3,10 +3,18 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { saveAddOnAdmin } from "@core/admin/add-on-admin.js";
+import { saveAddOnAdmin, type AddOnSaveError } from "@core/admin/add-on-admin.js";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
 import { TENANT_ID } from "../../../lib/tenant";
+
+/**
+ * Every code this surface can put in `?err=` (#654) — the domain's validation errors plus the
+ * glue codes minted here. Declared beside the `redirect()` that mints them and consumed by the
+ * page's copy table, so a code with nothing to say about it is a build error rather than a silent
+ * fall through to "try again in a moment".
+ */
+export type AddOnErr = AddOnSaveError | "error";
 
 /**
  * Upsert an add-on (#491). Auth + FormData glue over `saveAddOnAdmin`, which owns validation.
@@ -33,7 +41,7 @@ export async function saveAddOn(formData: FormData): Promise<void> {
   const required = Boolean(formData.get("required"));
   const active = Boolean(formData.get("active"));
 
-  let code: string | null = null;
+  let code: AddOnErr | null = null;
   try {
     const result = await saveAddOnAdmin(getRepo(), {
       id,

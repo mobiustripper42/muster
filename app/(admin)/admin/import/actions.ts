@@ -11,6 +11,15 @@ import { getRepo } from "../../../lib/repo";
 import { runXolaPull } from "../../../lib/xola";
 
 /**
+ * Every code this surface can put in `?xerr=` (#654). Unlike the other admin surfaces these are
+ * minted entirely here rather than returned by a domain door — the three causes #121 distinguishes
+ * (env unset, Xola 4xx, 5xx/network) are a property of the HTTP call, not of a validation rule.
+ * Consumed by the page's copy table, so a fourth cause cannot be added without saying what it
+ * means to the operator.
+ */
+export type XolaPullErr = "x_not_configured" | "x_auth" | "x_unavailable";
+
+/**
  * Pull live reservations from Xola on demand (DEC-043) — the operator button atop
  * the same hourly `runXolaPull`. Reuses the import seam: pull the
  * [today−1, today+horizon] window of `/events` ⨝ `/orders` → import → form shifts.
@@ -38,7 +47,7 @@ export async function pullFromXola(): Promise<void> {
     result = await runXolaPull(repo, now);
   } catch (e) {
     console.error("[xola-pull] manual pull failed:", e);
-    const code =
+    const code: XolaPullErr =
       e instanceof Error && /not configured/i.test(e.message)
         ? "x_not_configured"
         : e instanceof XolaError &&

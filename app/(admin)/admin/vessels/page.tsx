@@ -7,9 +7,10 @@ import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { Field, settingsInputClass } from "../../../../components/admin/settings-field";
 import { readSubject } from "../../../lib/auth";
+import { errCopyFor } from "../../../lib/err-copy";
 import { getRepo } from "../../../lib/repo";
 import { HUE_COUNT, vesselHueClass, vesselHueIndex } from "../../../lib/vessel-hue";
-import { saveVessel } from "./actions";
+import { saveVessel, type VesselErr } from "./actions";
 
 /**
  * /admin/vessels (task 12.9, DEC-123) — the Vessel settings twin, laid out to
@@ -28,7 +29,7 @@ export const dynamic = "force-dynamic";
 
 type Search = { sel?: string; saved?: string; err?: string };
 
-const ERR_COPY: Record<string, string> = {
+const ERR_COPY: Record<VesselErr, string> = {
   name_required: "Give the vessel a name.",
   bad_capacity: "Capacity must be a whole number of passengers (1–99).",
   bad_hue: "Pick a color from the palette.",
@@ -68,7 +69,7 @@ export default async function AdminVessels({
   // blank form with no way to save.
   const creating = sp.sel === "new" || vessels.length === 0;
   const selected = creating ? null : vessels.find((v) => v.id === sp.sel) ?? vessels[0] ?? null;
-  const errCopy = sp.err ? ERR_COPY[sp.err] ?? ERR_COPY.error : null;
+  const errCopy = errCopyFor(ERR_COPY, sp.err, "error");
   const title = creating ? "New vessel" : selected?.name ?? "Vessels";
 
   return (

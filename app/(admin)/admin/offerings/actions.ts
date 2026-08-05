@@ -4,10 +4,18 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { GratuityKindConfig, PriceVariation } from "@core/domain/entities.js";
-import { saveOfferingAdmin } from "@core/admin/offering-admin.js";
+import { saveOfferingAdmin, type OfferingSaveError } from "@core/admin/offering-admin.js";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
 import { TENANT_ID } from "../../../lib/tenant";
+
+/**
+ * Every code this surface can put in `?err=` (#654) — the domain's validation errors plus the
+ * glue codes minted here. Declared beside the `redirect()` that mints them and consumed by the
+ * page's copy table, so a code with nothing to say about it is a build error rather than a silent
+ * fall through to "try again in a moment".
+ */
+export type OfferingErr = OfferingSaveError | "error";
 
 /**
  * Upsert an offering (task 12.8). Auth + FormData glue over `saveOfferingAdmin`, which owns
@@ -105,7 +113,7 @@ export async function saveOffering(formData: FormData): Promise<void> {
   // like vesselIds. The checkbox group posts each checked add-on's id.
   const addOnIds = formData.getAll("addOnIds").map(String);
 
-  let code: string | null = null;
+  let code: OfferingErr | null = null;
   if (!variationsParse) code = "bad_variations";
   else {
     try {

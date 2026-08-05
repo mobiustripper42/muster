@@ -77,12 +77,17 @@ test.describe("crew ↔ admin switcher (DEC-093)", () => {
     page,
   }) => {
     await signInAsCrew(page, "crew-spink");
+    // "Switch to admin" moved into the crew drawer (#644) — open it to see the control. The
+    // drawer is a `<details>`, so while it is shut the control is genuinely not rendered, which
+    // is why the count assertion below still means what it meant before.
+    await page.locator(`summary[aria-label="Open menu"]`).click();
     await expect(page.getByRole(SWITCH_TO_ADMIN.role, { name: SWITCH_TO_ADMIN.name })).toBeVisible();
 
     await setAdminActive("spink", false); // deprovision
     await page.reload();
 
     // viewerIsActiveAdmin is now false → the control is gone (visibility only).
+    await page.locator(`summary[aria-label="Open menu"]`).click();
     await expect(page.getByRole(SWITCH_TO_ADMIN.role, { name: SWITCH_TO_ADMIN.name })).toHaveCount(0);
   });
 
@@ -90,6 +95,7 @@ test.describe("crew ↔ admin switcher (DEC-093)", () => {
     page,
   }) => {
     await signInAsCrew(page, "crew-spink");
+    await page.locator(`summary[aria-label="Open menu"]`).click();
     const btn = page.getByRole(SWITCH_TO_ADMIN.role, { name: SWITCH_TO_ADMIN.name });
     await expect(btn).toBeVisible();
 

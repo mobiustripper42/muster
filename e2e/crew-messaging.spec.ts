@@ -20,7 +20,8 @@ test.describe("crew messaging", () => {
   test("thread list → compose in a standing thread → message lands", async ({ page }) => {
     await signInAsCrew(page, "crew-quint");
 
-    // Discoverable from home.
+    // Discoverable from home — via the drawer since #644, where the nav cards moved.
+    await page.locator(`summary[aria-label="Open menu"]`).click();
     await page.getByRole("link", { name: "Messages" }).click();
     await page.waitForURL(/\/crew\/threads$/);
 

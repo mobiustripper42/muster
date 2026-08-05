@@ -145,7 +145,10 @@ test.describe("crew /crew/open — uncrewed seats stay visible (#440)", () => {
     // seat — Quint's own outstanding ask. Before #440 the Asked state hid it from
     // the browse surface entirely: uncrewed, but invisible. It lists now: two rows,
     // the Asked one identified by its trip-less "TBD" departure (it has no events).
-    await expect(page.locator("details")).toHaveCount(2);
+    // Scoped to the list, not the document (#644): the crew header's menu is a `<details>` too,
+    // so a bare `locator("details")` counts the drawer and would keep passing if a day row
+    // vanished and the drawer took its place in the tally.
+    await expect(page.locator("main section details")).toHaveCount(2);
     await expect(
       page.locator("summary", { hasText: "1:00" }), // shift-open, the Open seat
     ).toBeVisible();

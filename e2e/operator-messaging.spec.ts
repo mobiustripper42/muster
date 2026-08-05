@@ -56,8 +56,10 @@ test.describe("operator messaging", () => {
   test("operator sees a crew-created thread (cross-visibility)", async ({ page }) => {
     // Crew posts into their shift thread first.
     await signInAsCrew(page, "crew-quint");
-    const people = page.getByRole("navigation", { name: "Admin" }).locator("summary:visible").filter({ hasText: "People" });
-    if (await people.isVisible()) await people.click(); // Messages is under People ▾ (#603)
+    // Messages lives in the CREW drawer since #644. The two lines here before reached for the
+    // ADMIN nav's People ▾ group behind an `isVisible()` guard — dead in a crew session, which
+    // has no admin nav at all, so they never fired and only read as if they did.
+    await page.locator(`summary[aria-label="Open menu"]`).click();
     await page.getByRole("link", { name: "Messages" }).click();
     await page.waitForURL(/\/crew\/threads$/); // else /Hops/ races the My-shifts card on home
     await page.getByRole("link", { name: /Hops/ }).click();

@@ -1,5 +1,5 @@
 import { AppLink } from "../../../../components/ui/app-link";
-import { BackLink } from "../../../../components/ui/back-link";
+import { CrewHeader } from "../../../../components/crew/crew-header";
 import { GetFormSubmit } from "../../../../components/ui/get-form-submit";
 import { notFound, redirect } from "next/navigation";
 import {
@@ -70,7 +70,7 @@ export default async function CrewOpenPage({
   } catch {
     return (
       <Shell>
-        <BackLink href="/crew">Shifts</BackLink>
+        <CrewHeader title="Pick up a shift" back={{ href: "/crew", label: "My shifts" }} />
         <Notice>Can’t reach the schedule right now. Try again in a moment.</Notice>
       </Shell>
     );
@@ -80,9 +80,8 @@ export default async function CrewOpenPage({
 
   return (
     <Shell>
-      <BackLink href="/crew">Shifts</BackLink>
+      <CrewHeader title="Pick up a shift" back={{ href: "/crew", label: "My shifts" }} />
       <header className="flex flex-col gap-1">
-        <h1 className="text-lg font-semibold text-ink">Pick up a shift</h1>
         <p className="text-sm text-muted">
           Open spots you’re cleared for. Claiming puts you on for the whole day.
         </p>

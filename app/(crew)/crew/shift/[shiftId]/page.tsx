@@ -1,4 +1,4 @@
-import { BackLink } from "../../../../../components/ui/back-link";
+import { CrewHeader } from "../../../../../components/crew/crew-header";
 import { buildShiftCard, type ShiftCardView } from "@core/crewapp/shift-card.js";
 import {
   otherShiftsOnDay,
@@ -87,7 +87,7 @@ export default async function ShiftCardPage({
   if (!card) {
     return (
       <Shell>
-        <BackLink href="/crew">Shifts</BackLink>
+        <CrewHeader title="Shift" back={{ href: "/crew", label: "My shifts" }} />
         <Notice>That shift isn’t on your list.</Notice>
       </Shell>
     );
@@ -151,12 +151,14 @@ function Card({
   const firstDeparture = card.events[0]?.departureTime;
   return (
     <Shell>
-      <BackLink href="/crew">Shifts</BackLink>
+      <CrewHeader title={card.vesselName} back={{ href: "/crew", label: "My shifts" }} />
       {bailError && <Notice tone="bad">{bailError}</Notice>}
 
-      <header className="flex flex-col">
+      {/* The vessel name moved INTO the shared header row (#644), so it is `text-lg` here rather
+          than the old `text-2xl`. The card below carries the emphasis that matters — Shift Start
+          and the first departure — and a 2xl name was competing with it for the same glance. */}
+      <header className="-mt-2 flex flex-col items-center">
         <span className="text-sm text-muted">{fmtDate(card.date)}</span>
-        <h1 className="text-2xl font-semibold text-ink">{card.vesselName}</h1>
         <span className="text-sm text-muted">
           {card.viewerRole} · {card.paxTotal} guests
         </span>

@@ -14,6 +14,8 @@ test.describe("crew /crew/time-off — my days off", () => {
   test("add a window from the crew home link, see it, then remove it", async ({ page }) => {
     await signInAsCrew(page, "crew-quint");
     await page.goto("/crew");
+    // Via the drawer since #644 — the hub's "Time off" card moved there.
+    await page.locator(`summary[aria-label="Open menu"]`).click();
     await page.getByRole("link", { name: "Time off" }).click();
     await page.waitForURL(/\/crew\/time-off/);
 

@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { asId } from "@core/domain/ids.js";
 import { sortWindows } from "@core/crew/time-off.js";
 import type { PtoWindow } from "@core/domain/entities.js";
-import { BackLink } from "../../../../components/ui/back-link";
+import { CrewHeader } from "../../../../components/crew/crew-header";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { SubmitButton } from "../../../../components/ui/submit-button";
@@ -76,9 +76,8 @@ export default async function CrewTimeOff({
 
   return (
     <Shell>
-      <BackLink href="/crew">Back</BackLink>
+      <CrewHeader title="Time off" back={{ href: "/crew", label: "My shifts" }} current="/crew/time-off" />
       <header className="flex flex-col gap-1">
-        <h1 className="text-lg font-semibold text-ink">Time off</h1>
         <p className="text-sm text-muted">
           Days and weekdays you’re off. You won’t be asked for shifts on them —
           there’s nothing to opt into, so anything not listed here means you’re

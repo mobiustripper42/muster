@@ -96,13 +96,24 @@ export interface TimeClockReport {
  * because it stays correct if this is ever asked to count PAIRS rather than days, where the
  * previous-only form genuinely misses (a long punch containing two short ones that don't touch
  * each other).
+ *
+ * **The period seam is a known, accepted gap (#660).** `punches` is whatever the caller loaded,
+ * and every caller loads one pay period by `inAt`. So a pair straddling the period cut — in
+ * 22:00 on the last day, out 02:00; the other in 01:00 the next morning — is never held by one
+ * report, and the export gate passes it in BOTH periods rather than deferring it to the second.
+ * Accepted 2026-08-05: the trigger needs an overnight punch landing on the one night in fourteen
+ * that is the cut AND a hand-entry overlap on it, while the fix requires loading punches from
+ * outside the window for comparison without letting them reach the hours accumulator — added
+ * risk on the one path in §2.9 where a mistake becomes a wrong paycheck. `payroll-reconcile.test.ts`
+ * pins the gap so it stays visible; #660 records the shape of the fix if the frequency changes.
  */
 function overlappingDays(punches: readonly TimePunch[]): string[] {
-  // Compared across the WHOLE window, not day by day. Bucketing first and comparing within each
-  // bucket would miss the overnight case entirely: a 22:00→02:00 punch is filed on its start day
-  // while a 01:00→03:00 punch the next morning is filed on the next, so the two would never be
-  // compared even though they cover the same hour. Attribution to a day happens after the
-  // comparison, not before it.
+  // Compared across the whole window rather than day by day — but the window is one pay period,
+  // not all time (see the period seam above). Bucketing first and comparing within each bucket
+  // would miss the overnight case entirely: a 22:00→02:00 punch is filed on its start day while
+  // a 01:00→03:00 punch the next morning is filed on the next, so the two would never be compared
+  // even though they cover the same hour. Attribution to a day happens after the comparison, not
+  // before it.
   const spans = punches
     .filter((p) => p.outAt !== null) // open punches excluded — see `overlapDays`
     .map((p) => ({ start: Date.parse(p.inAt), end: Date.parse(p.outAt!), inAt: p.inAt }))

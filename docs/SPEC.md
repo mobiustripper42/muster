@@ -1523,6 +1523,15 @@ problem as two. Punches are compared across the whole period rather than within 
 overlap straddling midnight would never be examined; the days it names are derived after the
 comparison. Each is linked to the day view that can fix it.
 
+**The period seam is an accepted gap** (#660, operator 2026-08-05). Comparison is bounded by the
+pay period, so a pair whose punches start either side of the period cut is never examined — and
+because each period sees only its own half, the export is passed in **both**, not deferred to the
+second. This is stated rather than fixed: the trigger is an overnight punch landing on the one
+night in fourteen that is the cut *and* a hand-entry overlap on that night, while closing it means
+loading punches from outside the period for comparison without letting them reach the hours
+total — added risk on the one path in §2.9 where a mistake becomes a wrong paycheck. Revisit if
+overnight work stops being exceptional.
+
 **The rule behind which conditions block.** An open punch and an overlap both gate the file
 because a guaranteed action clears them — closing the punch, or deciding which of two punches is
 wrong. A missing punch does not, because the zero may be correct and no action is guaranteed to

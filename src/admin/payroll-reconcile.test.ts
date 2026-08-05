@@ -473,3 +473,63 @@ describe("overlapping punches block the export (#645)", () => {
     expect(r.rows[0]!.overlapDays).toEqual(["2026-07-07"]);
   });
 });
+
+/**
+ * #660 — an ACCEPTED GAP, not a bug being asserted correct.
+ *
+ * The overlap comparison runs across the pay period, which closes the day seam (see "straddles
+ * midnight" above) and leaves the PERIOD seam open. A pair whose `inAt`s fall either side of the
+ * period cut is never held by one report, so the export gate passes it in both periods.
+ *
+ * Kept as a test rather than only a comment because the gap is invisible in the code — every
+ * other overlap test constructs both punches inside one window, so the suite reads as complete.
+ * If someone later widens the fetch, this reddens and makes them read the reason instead of
+ * silently "fixing" something that was decided.
+ *
+ * **Why it was accepted** (operator, 2026-08-05): the trigger is a conjunction — an overnight
+ * punch, landing on the one night in fourteen that is the period cut, AND a hand-entry overlap
+ * on that same night. Closing it costs a new port method, both adapters, a contract case, and a
+ * two-set separation inside `buildTimeClockReport` (loaded-for-comparison vs counted-for-hours)
+ * on the one path in §2.9 where a mistake becomes a wrong paycheck. The fix is riskier than the
+ * hole. The shape of that fix is recorded on #660 if the frequency ever changes.
+ */
+describe("the period seam is NOT detected — accepted gap (#660)", () => {
+  // 2026-07-20T02:00Z is 22:00 Eastern on 07-19, the last day of WINDOW. 05:00Z is 01:00 Eastern
+  // on 07-20, the first day of the NEXT period. The two punches share the hour 05:00–06:00Z.
+  const straddlingPair = async (repo: InMemoryRepository) => {
+    await repo.saveCrewMember(crew("crew-brody", "Brody"));
+    await repo.saveTimePunch(punch("crew-brody", "2026-07-20T02:00:00Z", "2026-07-20T06:00:00Z"));
+    await repo.saveTimePunch(punch("crew-brody", "2026-07-20T05:00:00Z", "2026-07-20T07:00:00Z"));
+  };
+
+  it("is a REAL overlap — one window holding both punches catches it", async () => {
+    // The control for the two tests below. Without it they would also pass on a fixture whose
+    // punches don't overlap at all, and would prove nothing about the seam.
+    const repo = new InMemoryRepository();
+    await straddlingPair(repo);
+
+    const r = await buildPayrollReconcile(repo, { from: "2026-07-06", to: "2026-07-20" });
+    expect(r.rows[0]!.overlapDays).toEqual(["2026-07-19", "2026-07-20"]);
+    expect(r.exportBlocked).toBe(true);
+  });
+
+  it("this period holds only the earlier punch, so nothing blocks", async () => {
+    const repo = new InMemoryRepository();
+    await straddlingPair(repo);
+
+    const r = await buildPayrollReconcile(repo, WINDOW);
+    expect(r.overlapCount).toBe(0);
+    expect(r.exportBlocked).toBe(false);
+  });
+
+  it("and the NEXT period holds only the later one — silent on both sides", async () => {
+    // This is the half that makes it worth writing down. A condition missed in one period but
+    // caught in the next is a deferral; missed in both is a hole.
+    const repo = new InMemoryRepository();
+    await straddlingPair(repo);
+
+    const r = await buildPayrollReconcile(repo, { from: "2026-07-20", to: "2026-08-02" });
+    expect(r.overlapCount).toBe(0);
+    expect(r.exportBlocked).toBe(false);
+  });
+});

@@ -113,7 +113,9 @@ export function exportBlockedMessage(r: Pick<PayrollReconcile, "openCount" | "ov
         : `${r.overlapCount} days have overlapping punches`,
     );
   }
-  return `Refusing to build the payroll file: ${reasons.join(", and ")}. Fix it on /admin/time-clock first.`;
+  // Plain " and " — there are only ever two reasons, so a serial comma reads as a truncated list
+  // ("one punch is still open, and one day has overlapping punches").
+  return `Refusing to build the payroll file: ${reasons.join(" and ")}. Fix it on /admin/time-clock first.`;
 }
 
 export async function buildPayrollReconcile(

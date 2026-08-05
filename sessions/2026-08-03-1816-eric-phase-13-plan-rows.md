@@ -4,10 +4,10 @@ dev: eric
 slug: phase-13-plan-rows
 branch: task/phase-13-plan-rows
 started: 2026-08-03T18:16:06Z
-ended:
-points:
+ended: 2026-08-05T03:02:38Z
+points: 8
 pr_numbers: [652, 656, 657, 658]
-status: open
+status: closed
 transcript: /home/eric/.claude/projects/-home-eric-muster/89b01c17-af5f-481b-87c3-81f73b7c0b74.jsonl
 ---
 
@@ -148,6 +148,42 @@ reached `main` in the phase merge [#658](https://github.com/mobiustripper42/must
 **Opened at:** 2026-08-04T19:38:03Z
 
 **Next Steps:**
+- **Send the crew email** (operator, sending 2026-08-05). Drafted in this session's transcript, never
+  committed anywhere — two blanks: the date, and how crew actually get into Muster. It says the
+  clocking moves to Muster and **Gusto stays** as the payroll processor, deliberately: the export is
+  a Gusto CSV, so "we're not using Gusto anymore" would send the first person needing a pay stub
+  straight to the phone.
+- **#660 first of the three follow-ups** — it is the money path and it is live: overlapping punches
+  straddling a pay-period boundary go undetected, and the export gate passes them in BOTH periods.
+  Decide widen-the-fetch vs document-the-seam before writing code; option 1 touches the hours path.
+- **#659** (e2e sign-in fixture race — live in CI, 11 specs exposed) and **#661** (`/its-dead` should
+  refuse to close silently when shipped work was never logged; seeds-managed, backports).
+- **#634** — pay-period cadence is an env var plus a hardcoded 14. Payroll-adjacent, unlabelled for
+  any phase, and the next thing that bites this area.
+- **Phase 12 retro is still pending** — 23 open issues; the operator closes it when reservations
+  ships. Phase 11 was never retro'd either.
+
+**Context:**
+- **Phase 13 is live in production.** `TIME_CLOCK=1` is set; the operator hand-verified all three
+  report states (open blocks, overlap blocks, missing warns) before the flip. `main` is at **v1.1.0**
+  (the phase-close tag), `production` at **v1.0.21** — that gap is expected and correct; the minor
+  only reaches production at the next `/promote-production`.
+- **`Closes #a, #b, #c` closes only the first issue.** GitHub's parser needs the keyword before each
+  number. PR #658 used a comma list and left six issues open after the phase merged; they were closed
+  by hand at retro, so their `closedAt` is 2026-08-05 and is NOT a ship date. Real ship dates are in
+  the PROJECT_PLAN Phase 13 section.
+- **"375px" in this repo means Chromium**, not a phone — `playwright.config.ts`'s `mobile` project is
+  `devices["Desktop Chrome"]` at 375px. The new `iphone` project is the only WebKit anywhere, scoped
+  to `admin-nav.spec.ts`. **Locally it needs `E2E_PROD=0`**: `next start` sets NODE_ENV=production,
+  which makes the session cookie `Secure`, and WebKit refuses Secure cookies over the plain-http e2e
+  server where Chromium special-cases localhost. It does not error — every page renders signed-out
+  with zero cookies. CI is unaffected (`E2E_PROD` defaults to `!CI`).
+- **The Phase 13 PROJECT_PLAN section was authored at retro**, not ticked — its rows were written
+  2026-07-31 and never merged (PR #650, closed as stale). Original intent survives on
+  `task/phase-13-plan-rows` and `claude/muster-time-clock-d61kju`; neither branch is deleted.
+- **`git checkout <file>` to revert a negative control destroys uncommitted work in that file.** Cost
+  a redo of the #638 implementation mid-session. Use a file copy for controls on uncommitted code.
+- Wall clock on this session reads ~32h and spans two overnights — elapsed, not desk time.
 
 **Context:**
 - Picks up directly from Session 76, which ended by window loss rather than a normal close.

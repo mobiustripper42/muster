@@ -284,11 +284,18 @@ test.describe("admin nav", () => {
 
   test("a crew subject sees no admin nav", async ({ page }) => {
     await signInAsCrew(page, "crew-quint");
-    // `signInAsCrew` returns on the URL change, which can be before the load settles — a goto
-    // fired into that window is cancelled outright ("interrupted by another navigation"). Only
-    // dev mode is slow enough to lose the race, so it is latent in CI (which runs `next dev`)
-    // rather than specific to this project. Fixed locally; the shared fixture is used by every
-    // spec and is not something to change at the tail of an unrelated task.
+    // `signInAsCrew` returns on the URL change, and a `goto` fired into that window is cancelled
+    // outright ("interrupted by another navigation"). Local to this spec on purpose (#659,
+    // measured 2026-08-05): **only WebKit loses this race**, and this file is the suite's only
+    // WebKit project, so the eleven other specs doing signIn→goto cannot hit it. #656 and #659
+    // both guessed the cause was `next dev` being slower than `next start`; instrumenting
+    // `framenavigated` says otherwise — the interrupter is a SECOND navigation to /crew at
+    // ~150ms with no network request behind it, i.e. Next's client router taking over at
+    // hydration. Both obvious fixes miss it: `waitForLoadState("load")` returns in ~2ms because
+    // the document is already loaded, and `document.readyState` reads "complete" at that same
+    // instant with or without a guard. Waiting on hydration itself fixes the admin path and
+    // still loses the crew path 2 runs in 3. Pushing this into the shared fixture was tried and
+    // abandoned — see #659 for the full trace and why the cost stopped being worth it.
     await page.waitForLoadState("load");
     await page.goto("/admin/at-risk");
     await expect(page.getByRole("navigation", { name: "Admin" })).toHaveCount(0);

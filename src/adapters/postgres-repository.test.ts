@@ -6,11 +6,17 @@
  * exercises it. Migrates the test DB once, truncates before each test.
  */
 import pg from "pg";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { migrate } from "../../db/migrate.js";
 import { PostgresRepository } from "./postgres-repository.js";
 import { runRepositoryContract } from "./repository-contract.js";
 import { clockIn } from "../crew/time-clock.js";
+import { FAKE_SIGNATURE, FakePaymentPort } from "./fake-payment.js";
+import {
+  processBookingWebhook,
+  paymentIdFor,
+  type WebhookDeps,
+} from "../reservations/booking-webhook.js";
 import { asId } from "../domain/ids.js";
 import type { TimePunch } from "../domain/entities.js";
 import type { CrewMemberId, TimePunchId } from "../domain/ids.js";
@@ -174,6 +180,144 @@ if (!dbUp) {
       await expect(
         pool.query("delete from crew_members where id=$1", [CREW]),
       ).rejects.toMatchObject({ code: "23503" });
+    });
+  });
+
+
+  /**
+   * Paid-but-unbooked: the `payments` → `reservations` FK (#613).
+   *
+   * **This can only be proven here, for the same reason the one-open-punch index above can.**
+   * `payments.reservation_id` is `not null` with an immediate FK to `reservations(id)`
+   * (`db/migrations/20260715024322_payments.sql:26`, `20260722170000_fk_reservations_era.sql:44`).
+   * `InMemoryRepository.savePayment` is a `Map.set` with no referential integrity (DEC-131), so
+   * the unit suite happily "records a payment" against a reservation that was never written and
+   * proves nothing about production.
+   *
+   * The bug: `processBookingCharge` recorded the Payment BEFORE branching on the outcome. On a
+   * `lost` or `unbookable` outcome no reservation exists, the insert violated the FK, and the
+   * throw took out everything after it — the DEC-107 auto-refund, the sold-out notice to the
+   * customer, and the operator alert. Stripe then retried into the same violation for ~3 days.
+   * Net: charged, unbooked, unrefunded, unreported. #472 is closed asserting that auto-refund
+   * works; it could never run.
+   */
+  describe("paid-but-unbooked — the payments→reservations FK (#613)", () => {
+    const EVENT = asId<"EventId">("m-evt-pg-1");
+    const NOW = () => "2026-07-12T00:00:00.000Z";
+
+    const completed = (over: Record<string, unknown> = {}) => ({
+      sessionId: "cs_pg_1",
+      paymentIntentId: "pi_pg_1",
+      amountTotalCents: 53625,
+      currency: "usd",
+      metadata: {
+        eventId: String(EVENT),
+        partySize: "6",
+        kind: "full",
+        taxCents: "3625",
+        customerName: "Mary",
+        email: "m@x.io",
+      },
+      ...over,
+    });
+
+    async function freshRepo(): Promise<PostgresRepository> {
+      await pool.query(`truncate ${TABLES.join(", ")} restart identity cascade`);
+      return new PostgresRepository(pool);
+    }
+
+    function makeDeps(repo: PostgresRepository, payments = new FakePaymentPort()) {
+      const alert = vi.fn(async (_m: string) => {});
+      const soldOut = vi.fn(async (_c: unknown) => {});
+      const deps: WebhookDeps = {
+        repo,
+        reservationsEnabled: true,
+        payments,
+        now: NOW,
+        alertPaidButUnbooked: alert,
+        sendConfirmation: vi.fn(async (_r: unknown) => {}),
+        notifyCustomerSoldOut: soldOut,
+      };
+      return { deps, alert, soldOut, payments };
+    }
+
+    it("the FK is real: a payment against a reservation that was never written is REFUSED", async () => {
+      // Pins the premise the rest of this block rests on. If this ever stops throwing, the
+      // in-memory double and Postgres have converged and the unit tests regain their meaning —
+      // but until then, a green unit test here means nothing.
+      const repo = await freshRepo();
+      await expect(
+        repo.savePayment({
+          id: asId<"PaymentId">("pay_orphan"),
+          reservationId: asId<"ReservationId">("res-does-not-exist"),
+          method: "stripe",
+          kind: "full",
+          amountCents: 1000,
+          taxCents: 0,
+          currency: "usd",
+          status: "succeeded",
+          createdAt: NOW(),
+        }),
+      ).rejects.toThrow();
+    });
+
+    it("an UNBOOKABLE charge alerts the operator instead of crashing the webhook", async () => {
+      // `event_missing` — the deterministic unbookable: the charge names an event that is not
+      // in the database. Deliberately NOT auto-refunded (a human investigates); the alert is
+      // the whole safety net, and it sat behind the FK throw.
+      const repo = await freshRepo();
+      const { deps, alert } = makeDeps(repo);
+
+      const r = await processBookingWebhook(deps, JSON.stringify(completed()), FAKE_SIGNATURE);
+
+      expect(r.handled).toBe(true);
+      expect(alert).toHaveBeenCalledTimes(1);
+      expect(alert.mock.calls[0]![0]).toMatch(/REFUND MANUALLY/i);
+      // And no orphan payment was left behind.
+      expect(await repo.getPayment(paymentIdFor("cs_pg_1"))).toBeNull();
+    });
+
+    it("a LOST race refunds the customer, tells them, and leaves no orphan payment", async () => {
+      // A real residual race needs a rival to win the CAS between our pre-check and our write —
+      // not reproducible by sequencing alone. So `saveReservationIfUnclaimed` is failed ONCE,
+      // which is precisely what losing the race looks like to this code. Everything else —
+      // events, reservations, payments — is real Postgres.
+      const repo = await freshRepo();
+      await repo.saveEvent({
+        id: EVENT,
+        vesselId: asId<"VesselId">("vessel-brew-1"),
+        date: "2026-07-04",
+        time: "17:00",
+        capacity: 12,
+        status: "scheduled",
+        source: "muster",
+        price: 50000,
+      });
+      // A Proxy, not `Object.create` — `PostgresRepository` holds its pool in a `#private`
+      // field, and prototype delegation cannot carry those (every real call then dies with
+      // "Cannot read private member #pool"). `Reflect.get(t, prop, t)` keeps the receiver on the
+      // target so the private field resolves, and methods are bound for the same reason.
+      const lose = new Proxy(repo, {
+        get(t, prop) {
+          if (prop === "saveReservationIfUnclaimed") return async () => false;
+          const v = Reflect.get(t, prop, t);
+          return typeof v === "function" ? v.bind(t) : v;
+        },
+      }) as PostgresRepository;
+      const { deps, alert, soldOut, payments } = makeDeps(lose);
+
+      const r = await processBookingWebhook(deps, JSON.stringify(completed()), FAKE_SIGNATURE);
+
+      expect(r).toEqual({ handled: true, outcome: "lost" });
+      // Refunded automatically…
+      expect(payments.refunds).toHaveLength(1);
+      // …the customer is told they were refunded…
+      expect(soldOut).toHaveBeenCalledTimes(1);
+      // …and no manual-refund alarm, because nothing needed a human.
+      expect(alert).not.toHaveBeenCalled();
+      // No payment row: there is no reservation to hang it on, and Stripe holds the record of
+      // money that never became a booking.
+      expect(await repo.getPayment(paymentIdFor("cs_pg_1"))).toBeNull();
     });
   });
 

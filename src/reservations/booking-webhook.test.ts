@@ -199,7 +199,12 @@ describe("processBookingWebhook", () => {
     expect(res.waiverVersion).toBe("v1");
   });
 
-  it("paid-but-unbooked (rival holds the boat): records the payment + alerts admins to refund manually", async () => {
+  // Retitled at #613. It used to claim "records the payment", and asserted a row that PRODUCTION
+  // could never write: `payments.reservation_id` is `not null` with an immediate FK, and no
+  // reservation exists on an unbookable outcome. It passed only because `InMemoryRepository` is a
+  // `Map.set` with no referential integrity (DEC-131). The alert is the real contract here — and
+  // it was unreachable, because the FK violation threw before it.
+  it("paid-but-unbooked (rival holds the boat): alerts admins to refund manually, and writes NO payment", async () => {
     const repo = new InMemoryRepository();
     await repo.saveEvent(musterEvent());
     await repo.saveReservation({
@@ -217,10 +222,12 @@ describe("processBookingWebhook", () => {
     expect(alert).toHaveBeenCalledOnce();
     expect(alert.mock.calls[0]![0]).toContain("REFUND MANUALLY");
     expect(confirm).not.toHaveBeenCalled(); // no booking → no confirmation
-    // the money moved, so the payment is still recorded (for the audit trail)
+    // No payment row — there is no reservation to hang it on. Postgres enforces this; the
+    // in-memory double does not, which is why the Postgres suite carries the real guard
+    // (`postgres-repository.test.ts` → "paid-but-unbooked — the payments→reservations FK").
     expect(
       await repo.listPaymentsForReservation(reservationIdFor("cs_test_1")),
-    ).toHaveLength(1);
+    ).toHaveLength(0);
   });
 
   it("a throwing sendConfirmation never breaks the committed booking (best-effort, DEC-122)", async () => {
@@ -335,13 +342,16 @@ describe("processBookingWebhook — balance (11.2b)", () => {
     expect(alert.mock.calls[0]![0]).toContain("OVERPAID");
   });
 
-  it("a balance against a missing/cancelled reservation is recorded but loudly flagged for reconciliation", async () => {
+  // Retitled at #613, same reason as the unbookable case above: "is recorded" described a row
+  // Postgres refuses. The alert is the contract, and it sat behind the FK throw.
+  it("a balance against a missing/cancelled reservation is NOT recorded, and is loudly flagged", async () => {
     const repo = new InMemoryRepository(); // no reservation seeded
     const { deps, alert } = makeDeps(repo);
     const r = await processBookingWebhook(deps, JSON.stringify(balanceCompleted()), FAKE_SIGNATURE);
     expect(r).toEqual({ handled: true, outcome: "balance_paid" });
-    // money moved → payment recorded, but admins are paged (can't reconcile)
-    expect(await repo.listPaymentsForReservation(RES)).toHaveLength(1);
+    // No payment row — nothing to reference. Admins are paged instead, which is the only
+    // outcome that was ever reachable in production.
+    expect(await repo.listPaymentsForReservation(RES)).toHaveLength(0);
     expect(alert).toHaveBeenCalledOnce();
     expect(alert.mock.calls[0]![0]).toContain("RECONCILE");
   });

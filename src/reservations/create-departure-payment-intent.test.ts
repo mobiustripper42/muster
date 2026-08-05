@@ -229,15 +229,18 @@ describe("payment_intent.succeeded webhook path (12.5, DEC-134)", () => {
     expect(soldOut).toHaveBeenCalledOnce();
     expect(alert).not.toHaveBeenCalled();
 
-    // The refund is written BACK onto the ledger (#522 sweep 1). Without this the loser's
-    // row stayed `succeeded` forever — refunded money recorded as collected revenue, and
-    // invisible to the operator because its reservation never existed, so it never reaches
-    // the purchases list while still inflating every `listAllPayments` rollup.
-    const lost = await repo.getPayment(asId<"PaymentId">("pay_pi_fake_2"));
-    expect(lost).toMatchObject({ status: "refunded", refundedCents: 27570 });
+    // NO ledger row for the loser (#613). #522 sweep 1 wrote one and marked it `refunded`, to
+    // stop refunded money reading as collected revenue — the right goal via a row Postgres
+    // refuses, since its reservation never existed (that comment said so itself: "it never
+    // reaches the purchases list"). Not writing it achieves the same thing and leaves nothing
+    // to inflate a `listAllPayments` rollup. Stripe holds the record.
+    expect(await repo.getPayment(asId<"PaymentId">("pay_pi_fake_2"))).toBeNull();
   });
 
-  it("a redelivered losing charge re-records the same refund without rewinding it", async () => {
+  // Retitled at #613 — there is no ledger row to "re-record" any more. The property that still
+  // matters, and the one that protects the customer, is that a Stripe redelivery refunds under
+  // the SAME idempotency key, so Stripe returns the original refund instead of issuing a second.
+  it("a redelivered losing charge refunds under the same idempotency key — never twice", async () => {
     const repo = await seededRepo();
     const pay = new FakePaymentPort();
     await createDeparturePaymentIntent(repo, pay, req, now);
@@ -249,8 +252,12 @@ describe("payment_intent.succeeded webhook path (12.5, DEC-134)", () => {
     const again = await processBookingWebhook(deps, piEvent("pi_fake_2", 27570, m), FAKE_SIGNATURE);
 
     expect(again).toEqual({ handled: true, outcome: "lost" });
-    const lost = await repo.getPayment(asId<"PaymentId">("pay_pi_fake_2"));
-    expect(lost).toMatchObject({ status: "refunded", refundedCents: 27570 });
+    // Same key both times ⇒ Stripe returns the first refund rather than making a second.
+    const keys = pay.refunds.map((r) => r.idempotencyKey);
+    expect(keys).toEqual(keys.map(() => "refund_pi_fake_2"));
+    expect(new Set(keys).size).toBe(1);
+    // And still no orphan payment row.
+    expect(await repo.getPayment(asId<"PaymentId">("pay_pi_fake_2"))).toBeNull();
   });
 
   it("the crew tip survives a failure between the booking commit and the gratuity write", async () => {

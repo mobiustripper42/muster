@@ -370,6 +370,11 @@ function PunchCard({
 }) {
   return (
     <div
+      // A countable hook for the bench's rows. Same reasoning as `data-active` on the admin nav:
+      // a test that has to infer "how many punches are on screen" from a class string is a test
+      // that breaks on a styling change. `payroll-reconcile.spec.ts` waits on this count after
+      // each Add, because the redirect URL cannot tell two consecutive adds apart.
+      data-punch-row={row.id}
       className={`flex flex-col gap-2 rounded-card border bg-card px-4 py-3 shadow-sm ${
         row.open ? "border-bad" : "border-line"
       }`}

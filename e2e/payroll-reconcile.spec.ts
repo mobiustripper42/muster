@@ -197,12 +197,20 @@ test.describe("admin /admin/payroll — estimate vs actual, and the export gate"
     const period = new URL(page.url()).searchParams.get("period")!;
 
     const day = await page.locator("#add-day").getAttribute("min");
-    for (const [inAt, outAt] of [["09:00", "17:00"], ["13:00", "18:00"]]) {
+    // Wait on the ROW COUNT, not on the URL. A successful add redirects to `${back}&added=1`
+    // (`admin/time-clock/actions.ts:123`), so on the second pass `waitForURL(/added=1/)` matched
+    // the URL the FIRST add had already left and returned instantly — the test never waited for
+    // the second punch to be written, then navigated to payroll. Fast machines won that race;
+    // CI on a slow runner did not, and it failed as "no overlap notice" with the CSV link still
+    // present, which reads like a detector bug rather than a test that skipped a step.
+    const cards = page.locator("[data-punch-row]");
+    const before = await cards.count();
+    for (const [i, [inAt, outAt]] of [["09:00", "17:00"], ["13:00", "18:00"]].entries()) {
       await page.locator("#add-day").fill(day!);
       await page.locator("#add-in").fill(inAt!);
       await page.locator("#add-out").fill(outAt!);
       await page.getByRole("button", { name: "Add" }).click();
-      await page.waitForURL(/added=1/);
+      await expect(cards).toHaveCount(before + i + 1);
     }
 
     // Both punches were ACCEPTED — the domain does not refuse the write (#645 is a report

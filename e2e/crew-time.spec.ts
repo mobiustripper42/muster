@@ -12,8 +12,12 @@ test.describe("crew /crew/time — clock in, clock out", () => {
     await resetAndSeed("crew");
   });
 
-  test("the hub carries a Time tile that opens the clock", async ({ page }) => {
+  // Retitled at #644: the hub no longer carries a Time TILE — the four navigation cards moved
+  // into the drawer so the hub could open on work. What still has to hold is that the clock is
+  // one tap from the hub, which is what this now says and checks.
+  test("the clock is one tap from the hub, via the menu", async ({ page }) => {
     await signInAsCrew(page, "crew-quint");
+    await page.locator(`summary[aria-label="Open menu"]`).click();
     await page.getByRole("link", { name: "Time", exact: true }).click();
     await page.waitForURL(/\/crew\/time$/);
     await expect(page.getByRole("heading", { name: "Time" })).toBeVisible();

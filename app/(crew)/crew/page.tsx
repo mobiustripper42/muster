@@ -1,13 +1,13 @@
 import { cookies } from "next/headers";
 import { AppLink } from "../../../components/ui/app-link";
 import { buildCrewAppView, type CrewAppView } from "@core/crewapp/crew-view.js";
-import { buildThreadList } from "@core/crewapp/thread-list.js";
 import { asId } from "@core/domain/ids.js";
 import { Notice } from "../../../components/ui/notice";
 import { Shell } from "../../../components/ui/shell";
+import { CrewHeader } from "../../../components/crew/crew-header";
 import { VersionTag } from "../../../components/ui/version-tag";
 import { readSubject } from "../../lib/auth";
-import { selfServeEnabled, messagingEnabled, timeClockEnabled } from "../../lib/flags";
+import { selfServeEnabled } from "../../lib/flags";
 import { LOGIN_EMAIL_COOKIE } from "../../lib/login-cookie";
 import {
   SMS_CONSENT_FIELD,
@@ -15,11 +15,9 @@ import {
   SMS_CONSENT_POLICY_URL,
 } from "../../lib/sms-consent";
 import { getRepo } from "../../lib/repo";
-import { TENANT_ID } from "../../lib/tenant";
 import { fmt12 } from "../../lib/format";
 import { vesselHueClass } from "../../lib/vessel-hue";
-import { requestLoginCode, respondToAsk, signOut, verifyLoginCode } from "./actions";
-import { switchToAdmin } from "../../lib/switch-actions";
+import { requestLoginCode, respondToAsk, verifyLoginCode } from "./actions";
 import { SubmitButton } from "../../../components/ui/submit-button";
 
 /** #161: the Yes/No tap's outcome → a calm /crew notice (codes only, DEC-026).
@@ -80,16 +78,10 @@ export default async function CrewHome({
   let claimedNote: string | null = null;
   // Dual-role (DEC-093): a crew member who is ALSO an active admin gets a
   // "Switch to admin" control by sign-out. `getAdmin` is null for the (near-all)
-  // crew-only majority — one cheap lookup on an already-DB-heavy home render.
-  // Best-effort: a hiccup here just hides the switch, never breaks the crew home
-  // (asks/shifts are the priority surface). The escalation is gated server-side
-  // regardless — this only decides whether the button shows.
-  const viewerIsActiveAdmin = await getRepo()
-    .getAdmin(subject.id)
-    .then((a) => !!a?.active)
-    .catch(() => false);
-
-  let unreadTotal = 0;
+  // The active-admin lookup and the unread-count query both moved out with the controls that
+  // used them (#644): "Switch to admin" now lives in the drawer, and `CrewHeader` does its own
+  // best-effort lookup, so keeping a second one here was a query paying for nothing. The unread
+  // total went with the Messages card — it fed a badge that no longer exists on this page.
   try {
     const repo = getRepo();
     view = await buildCrewAppView(
@@ -97,19 +89,6 @@ export default async function CrewHome({
       asId<"CrewMemberId">(subject.id),
       new Date(),
     );
-    // In-app unread badge (§7.6) — best-effort: a messaging hiccup must never
-    // break the crew member's home (asks/shifts are the priority surface). Skipped
-    // entirely when messaging is disabled (#389) — the badge is hidden anyway, so
-    // the thread-list query is pure waste.
-    try {
-      unreadTotal = messagingEnabled()
-        ? (
-            await buildThreadList(repo, asId<"CrewMemberId">(subject.id), TENANT_ID, new Date())
-          ).totalUnread
-        : 0;
-    } catch {
-      unreadTotal = 0;
-    }
     // `bailed` carries a shift id (codes/ids only, DEC-026); resolve it to a
     // date we know — a crafted URL with an unknown id renders nothing, and one
     // naming a shift they're demonstrably still on is suppressed too. No
@@ -152,9 +131,7 @@ export default async function CrewHome({
       bailedNote={bailedNote}
       claimedNote={claimedNote}
       answeredNote={answeredNote}
-      unreadTotal={unreadTotal}
       selfServe={selfServeEnabled()}
-      viewerIsActiveAdmin={viewerIsActiveAdmin}
     />
   );
 }
@@ -417,105 +394,35 @@ function CrewApp({
   bailedNote,
   claimedNote,
   answeredNote,
-  unreadTotal,
   selfServe,
-  viewerIsActiveAdmin,
 }: {
   view: CrewAppView;
   bailedNote: string | null;
   claimedNote: string | null;
   answeredNote: string | null;
-  unreadTotal: number;
   selfServe: boolean;
-  viewerIsActiveAdmin: boolean;
 }) {
   return (
     <Shell>
-      <header className="flex flex-col gap-1">
-        <h1 className="text-lg font-semibold text-ink">{view.me.name}</h1>
-        {/* Own standing (§2.6.2): individual, plain, never comparative. Stays
-            visually quiet — do NOT color the negative facts; that would turn a
-            neutral fact into the anxiety dashboard BRAND forbids. */}
-        <p
-          className="text-xs leading-snug text-muted"
-          aria-label={`Your standing: ${view.standing.line}`}
-        >
-          {view.standing.line}
-        </p>
-      </header>
-
-      {/* Messages (§7.6 in-app): a calm entry point with the unread count — an
-          accent pill, never an alarm color (the anxiety-dashboard guard). Hidden
-          when messaging is disabled (#389). */}
-      {messagingEnabled() && (
-        <AppLink
-          href="/crew/threads"
-          prefetch={false}
-          spinner="overlay"
-          className="relative flex items-center justify-between rounded-card border border-line bg-card px-4 py-3 shadow-sm"
-        >
-          <span className="font-semibold text-ink">Messages</span>
-          {unreadTotal > 0 ? (
-            <span
-              className="rounded-full bg-accent px-2 py-0.5 text-xs font-bold text-white"
-              aria-label={`${unreadTotal} unread`}
-            >
-              {unreadTotal}
-            </span>
-          ) : (
-            <span className="text-faint" aria-hidden>
-              ›
-            </span>
-          )}
-        </AppLink>
-      )}
-
-      {/* Time (#626, SPEC §2.9): clock in / clock out. Neutral border like Time off
-          beside it — a utility, not a summons. Distinct from Time OFF, which is
-          about days you're unavailable; this is hours you actually worked.
-          Hidden while the phase is dark (#628); the route 404s regardless. */}
-      {timeClockEnabled() && (
-      <AppLink
-        href="/crew/time"
-        prefetch={false}
-        spinner="overlay"
-        className="flex items-center justify-between rounded-card border border-line bg-card px-4 py-3 shadow-sm"
+      <CrewHeader title={view.me.name} />
+      {/* Own standing (§2.6.2): individual, plain, never comparative. Stays visually quiet — do
+          NOT color the negative facts; that would turn a neutral fact into the anxiety dashboard
+          BRAND forbids. Centred beneath the centred name so the two read as one block. */}
+      <p
+        className="-mt-2 text-center text-xs leading-snug text-muted"
+        aria-label={`Your standing: ${view.standing.line}`}
       >
-        <span className="font-semibold text-ink">Time</span>
-        <span className="text-faint" aria-hidden>
-          ›
-        </span>
-      </AppLink>
-      )}
+        {view.standing.line}
+      </p>
 
-      {/* Time off (#332, DEC-009): a quiet self-serve entry — set the dates you're
-          off. Neutral, never accent — it's a utility, not a summons, and
-          deliberately NOT an availability screen (DEC-009 line). */}
-      <AppLink
-        href="/crew/time-off"
-        prefetch={false}
-        spinner="overlay"
-        className="flex items-center justify-between rounded-card border border-line bg-card px-4 py-3 shadow-sm"
-      >
-        <span className="font-semibold text-ink">Time off</span>
-        <span className="text-faint" aria-hidden>
-          ›
-        </span>
-      </AppLink>
-
-      {/* Calendar sync (#355, DEC-098) — a subscribable iCal feed of your confirmed
-          shifts. Push, not pull: the shift lands in your own calendar. */}
-      <AppLink
-        href="/crew/calendar"
-        prefetch={false}
-        spinner="overlay"
-        className="flex items-center justify-between rounded-card border border-line bg-card px-4 py-3 shadow-sm"
-      >
-        <span className="font-semibold text-ink">Calendar sync</span>
-        <span className="text-faint" aria-hidden>
-          ›
-        </span>
-      </AppLink>
+      {/* Messages, Time, Time off and Calendar sync moved into the drawer (#644). They were
+          four full-width cards here, and with "Pick up a shift" below them the hub opened on
+          ~330px of navigation — "My shifts" began at y=637 in an 812px viewport. Nobody chose
+          that; it accrued one DEC at a time while SPEC §2.6's stance stayed "insultingly small".
+          The drawer is a MOVE, not a second path: `app/lib/crew-links.ts` holds them and they no
+          longer appear here. Messages keeps its unread count in the list but not on the closed
+          hamburger — messaging is dark (operator, 2026-08-05) and that is the question to answer
+          before it comes back. */}
 
       {/* The 4th surface (DEC-074): a calm pull entry point, flag-gated. Neutral
           accent, never an alarm — it's an invitation, not a demand. */}
@@ -594,31 +501,10 @@ function CrewApp({
         )}
       </section>
 
-      {/* Sign-out (DEC-081): quiet, always available — matters on shared/family
-          phones with a standing 14-day session. No flag; it only clears the
-          caller's own cookie. Beside it, for a dual-role person, the switch UP
-          to the admin cockpit (DEC-093 — gated server-side on active-admin). */}
-      <div className="flex items-center gap-4 pt-2">
-        <AppLink
-          href="/crew/help"
-          prefetch={false}
-          className="text-xs text-muted underline"
-        >
-          How Muster works
-        </AppLink>
-        {viewerIsActiveAdmin && (
-          <form action={switchToAdmin}>
-            <SubmitButton className="text-xs text-accent underline">
-              Switch to admin
-            </SubmitButton>
-          </form>
-        )}
-        <form action={signOut}>
-          <SubmitButton className="text-xs text-muted underline">
-            Sign out
-          </SubmitButton>
-        </form>
-      </div>
+      {/* How Muster works, Switch to admin and Sign out all moved into the drawer (#644) — they
+          are chrome, and the footer was the same tax on vertical space as the nav cards above.
+          Sign-out in particular stays one tap away rather than one scroll away, which matters on
+          the shared/family phones DEC-081 is about. `CrewMenu` owns them now. */}
 
       <VersionTag />
     </Shell>

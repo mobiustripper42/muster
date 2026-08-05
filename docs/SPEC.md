@@ -1200,11 +1200,23 @@ keeps Spink up at night — but until payments land, the board's honest job ther
 > and five accepted DECs had moved under it unrecorded. Corrections are struck in place below.
 >
 > **Surface count:** **seven** crew routes ship — `/crew`, `/crew/shift/[shiftId]`, `/crew/open`,
-> `/crew/calendar`, `/crew/threads`, `/crew/time-off`, `/crew/help` — and the hub renders four
-> navigation entries plus a footer link. Each arrived with its own DEC (DEC-074, DEC-091, DEC-098,
-> DEC-009, §7.6) and **none amended the count**. The *stance* stands — insultingly small, no bullshit —
-> but "three surfaces" is a number, and it is wrong. `BRAND.md` carries the same stale claim, and §2.7's
-> block-quote still calls self-serve "a **fourth** crew surface", true at DEC-074 and overtaken since.
+> `/crew/calendar`, `/crew/threads`, `/crew/time-off`, `/crew/help`. Each arrived with its own DEC
+> (DEC-074, DEC-091, DEC-098, DEC-009, §7.6) and **none amended the count**. The *stance* stands —
+> insultingly small, no bullshit — but "three surfaces" is a number, and it is wrong. `BRAND.md`
+> carries the same stale claim, and §2.7's block-quote still calls self-serve "a **fourth** crew
+> surface", true at DEC-074 and overtaken since.
+>
+> **The hub renders NO navigation entries as of #644** (operator, 2026-08-05). It had reached five
+> cards plus a footer trio, and "My shifts" started **637px down an 812px phone** — 78% of the first
+> screen spent on a menu, accrued one DEC at a time with nobody deciding to. Navigation moved into a
+> drawer behind the shared crew header (`app/lib/crew-links.ts`); the hub keeps only work. It is a
+> **move, not a duplicate** — the cards are gone from the hub, so there is exactly one path to each
+> route. The single exception is **"Pick up a shift", which stays on the hub**: DEC-074 calls it "an
+> invitation, not a demand", and it offers WORK rather than a way to reach a utility, so filing it
+> under a menu would change what it is. Every crew route now carries the same one-row header — back
+> left, title centred, menu right — and `My shifts` starts at 411px, the rest being the ask, the
+> standing line and a credential nudge. The count above is routes that SHIP, not entries on the hub;
+> those are now two different numbers and this paragraph is why.
 
 ### 2.6.1 The ask
 Arrives as **push / SMS**, answered by **tapping through to the app**:

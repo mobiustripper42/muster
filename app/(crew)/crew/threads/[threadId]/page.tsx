@@ -1,4 +1,4 @@
-import { BackLink } from "../../../../../components/ui/back-link";
+import { CrewHeader } from "../../../../../components/crew/crew-header";
 import { SubmitButton } from "../../../../../components/ui/submit-button";
 import { buildThreadView, type ThreadView } from "@core/crewapp/thread-view.js";
 import { asId } from "@core/domain/ids.js";
@@ -41,7 +41,7 @@ export default async function ThreadPage({
   } catch {
     return (
       <Shell>
-        <BackLink href="/crew/threads" prefetch={false}>Messages</BackLink>
+        <CrewHeader title="Conversation" back={{ href: "/crew/threads", label: "Messages" }} />
         <Notice>Can’t reach this conversation right now. Try again in a moment.</Notice>
       </Shell>
     );
@@ -49,7 +49,7 @@ export default async function ThreadPage({
   if (!view) {
     return (
       <Shell>
-        <BackLink href="/crew/threads" prefetch={false}>Messages</BackLink>
+        <CrewHeader title="Conversation" back={{ href: "/crew/threads", label: "Messages" }} />
         <Notice>That conversation isn’t on your list.</Notice>
       </Shell>
     );
@@ -57,8 +57,7 @@ export default async function ThreadPage({
 
   return (
     <Shell>
-      <BackLink href="/crew/threads" prefetch={false}>Messages</BackLink>
-      <h1 className="text-lg font-semibold text-ink">{view.title}</h1>
+      <CrewHeader title={view.title} back={{ href: "/crew/threads", label: "Messages" }} />
 
       <section className="flex flex-col gap-2">
         {view.messages.length === 0 ? (

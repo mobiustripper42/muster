@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { BackLink } from "../../../../components/ui/back-link";
+import { CrewHeader } from "../../../../components/crew/crew-header";
 import { Shell } from "../../../../components/ui/shell";
 
 /**
@@ -25,9 +25,8 @@ function Block({ title, children }: { title: string; children: React.ReactNode }
 export default function CrewHelpPage() {
   return (
     <Shell>
-      <BackLink href="/crew">Shifts</BackLink>
+      <CrewHeader title="How Muster works" back={{ href: "/crew", label: "My shifts" }} />
       <header className="flex flex-col gap-1">
-        <h1 className="text-lg font-semibold text-ink">How Muster works</h1>
         <p className="text-sm text-muted">
           The short version — you can get back to this anytime from the link on
           your home screen.

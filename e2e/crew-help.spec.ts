@@ -21,6 +21,8 @@ test.describe("crew onboarding — orientation", () => {
 
   test('"How Muster works" on the crew home opens the help page', async ({ page }) => {
     await signInAsCrew(page, "crew-quint");
+    // Reached from the drawer since #644 — the hub's footer links moved there with the nav cards.
+    await page.locator(`summary[aria-label="Open menu"]`).click();
     await page.getByRole("link", { name: "How Muster works" }).click();
     await expect(page.getByRole("heading", { name: "How Muster works" })).toBeVisible();
     await expect(page.getByText(/Add to Home Screen/)).toBeVisible();

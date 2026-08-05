@@ -1,7 +1,7 @@
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { asId } from "@core/domain/ids.js";
-import { BackLink } from "../../../../components/ui/back-link";
+import { CrewHeader } from "../../../../components/crew/crew-header";
 import { CopyButton } from "../../../../components/ui/copy-button";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
@@ -56,8 +56,7 @@ export default async function CrewCalendar() {
 
   return (
     <Shell>
-      <BackLink href="/crew">Home</BackLink>
-      <h1 className="text-lg font-semibold text-ink">Calendar sync</h1>
+      <CrewHeader title="Calendar sync" back={{ href: "/crew", label: "My shifts" }} />
       <p className="text-sm text-muted">
         Add your confirmed shifts to your phone’s calendar. They appear automatically
         and stay in sync — no need to open Muster to see what’s next.

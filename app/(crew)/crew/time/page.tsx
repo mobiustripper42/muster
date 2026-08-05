@@ -3,7 +3,7 @@ import { asId } from "@core/domain/ids.js";
 import { PAY_PERIOD_ANCHOR, vesselDateOf } from "@core/config/tenant.js";
 import { currentPeriod, periodsForYear } from "@core/admin/pay-periods.js";
 import { buildCrewTimeView, type CrewTimeView } from "@core/crewapp/time-view.js";
-import { BackLink } from "../../../../components/ui/back-link";
+import { CrewHeader } from "../../../../components/crew/crew-header";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { SubmitButton } from "../../../../components/ui/submit-button";
@@ -123,9 +123,8 @@ export default async function CrewTime({
 
   return (
     <Shell>
-      <BackLink href="/crew">Back</BackLink>
+      <CrewHeader title="Time" back={{ href: "/crew", label: "My shifts" }} />
       <header className="flex flex-col gap-1">
-        <h1 className="text-lg font-semibold text-ink">Time</h1>
         <p className="text-sm text-muted">
           Clock in and out for your shift. Tap a punch to edit it, or add one you missed.
         </p>

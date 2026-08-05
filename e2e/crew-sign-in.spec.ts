@@ -89,6 +89,9 @@ test.describe("crew self-serve sign-in (DEC-081)", () => {
   test("a signed-in crew member can sign out", async ({ page }) => {
     await signInAsCrew(page, "crew-quint");
     await expect(page.getByRole("heading", { name: "Quint" })).toBeVisible();
+    // Sign out moved into the drawer (#644). It is pinned to the bottom, away from the
+    // destinations — DEC-081 is about shared phones, so it has to stay findable, not just exist.
+    await page.locator(`summary[aria-label="Open menu"]`).click();
     await page.getByRole("button", { name: /sign out/i }).click();
     // Back to the signed-out front door — the app (their name) is gone.
     await expect(page.getByLabel(/sign in with your crew email/i)).toBeVisible();

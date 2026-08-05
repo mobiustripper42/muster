@@ -6,9 +6,10 @@ import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { readSubject } from "../../../lib/auth";
+import { errCopyFor } from "../../../lib/err-copy";
 import { fmtDateRange } from "../../../lib/format";
 import { getRepo } from "../../../lib/repo";
-import { adminAddTimeOff, adminRemoveTimeOff } from "./actions";
+import { adminAddTimeOff, adminRemoveTimeOff, type AdminTimeOffErr } from "./actions";
 
 /**
  * /admin/time-off (#332, SPEC §2.1, DEC-009) — the office's view of everyone's
@@ -22,7 +23,7 @@ export const dynamic = "force-dynamic";
 
 type Search = { added?: string; removed?: string; err?: string };
 
-const ERR_COPY: Record<string, string> = {
+const ERR_COPY: Record<AdminTimeOffErr, string> = {
   bad_date: "That date didn’t look right — check the day and try again.",
   end_before_start: "The end date is before the start — flip them and try again.",
   no_crew: "Pick a crew member first.",
@@ -59,7 +60,7 @@ export default async function AdminTimeOff({
   const pickable = crew
     .filter((c) => c.status !== "archived")
     .sort((a, b) => a.name.localeCompare(b.name));
-  const errCopy = sp.err ? ERR_COPY[sp.err] ?? ERR_COPY.error : null;
+  const errCopy = errCopyFor(ERR_COPY, sp.err, "error");
 
   return (
     <Shell width="3xl">

@@ -8,9 +8,10 @@ import { Shell } from "../../../../components/ui/shell";
 import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { readSubject } from "../../../lib/auth";
+import { errCopyFor } from "../../../lib/err-copy";
 import { fmtDateRange } from "../../../lib/format";
 import { getRepo } from "../../../lib/repo";
-import { addMyTimeOff, removeMyTimeOff, setMyDaysOff } from "./actions";
+import { addMyTimeOff, removeMyTimeOff, setMyDaysOff, type CrewTimeOffErr } from "./actions";
 
 /**
  * /crew/time-off (SPEC §2.1, DEC-009) — the crew member's own time off, two axes on
@@ -25,7 +26,7 @@ export const dynamic = "force-dynamic";
 
 type Search = { added?: string; removed?: string; saved?: string; err?: string };
 
-const ERR_COPY: Record<string, string> = {
+const ERR_COPY: Record<CrewTimeOffErr, string> = {
   bad_date: "That date didn’t look right — check the day and try again.",
   end_before_start: "The end date is before the start — flip them and try again.",
   error: "Couldn’t save that just now — try again in a moment.",
@@ -70,7 +71,7 @@ export default async function CrewTimeOff({
     );
   }
 
-  const errCopy = sp.err ? ERR_COPY[sp.err] ?? ERR_COPY.error : null;
+  const errCopy = errCopyFor(ERR_COPY, sp.err, "error");
   const offSet = new Set(weekdaysOff);
 
   return (

@@ -7,8 +7,9 @@ import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { Field, settingsInputClass } from "../../../../components/admin/settings-field";
 import { readSubject } from "../../../lib/auth";
+import { errCopyFor } from "../../../lib/err-copy";
 import { getRepo } from "../../../lib/repo";
-import { saveAddOn } from "./actions";
+import { saveAddOn, type AddOnErr } from "./actions";
 
 /**
  * /admin/add-ons (#491, DEC-123) — the Add-on settings twin, matching the Vessel/Location
@@ -26,7 +27,7 @@ export const dynamic = "force-dynamic";
 
 type Search = { sel?: string; saved?: string; err?: string };
 
-const ERR_COPY: Record<string, string> = {
+const ERR_COPY: Record<AddOnErr, string> = {
   name_required: "Give the add-on a label.",
   bad_amount: "The amount must be a dollar figure (like 0, 29, or 150.00), not negative.",
   error: "Couldn’t save that just now — try again in a moment.",
@@ -59,7 +60,7 @@ export default async function AdminAddOns({
   // blank form with no way to save.
   const creating = sp.sel === "new" || addOns.length === 0;
   const selected = creating ? null : addOns.find((a) => a.id === sp.sel) ?? addOns[0] ?? null;
-  const errCopy = sp.err ? ERR_COPY[sp.err] ?? ERR_COPY.error : null;
+  const errCopy = errCopyFor(ERR_COPY, sp.err, "error");
   const title = creating ? "New add-on" : selected?.label ?? "Add-ons";
 
   return (

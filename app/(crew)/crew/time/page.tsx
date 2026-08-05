@@ -9,13 +9,21 @@ import { Shell } from "../../../../components/ui/shell";
 import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { readSubject } from "../../../lib/auth";
+import { errCopyFor } from "../../../lib/err-copy";
 import { timeClockEnabled } from "../../../lib/flags";
 import { fmt12, fmtDateRange } from "../../../lib/format";
 import { getRepo } from "../../../lib/repo";
 import { AppLink } from "../../../../components/ui/app-link";
 import { DirtySubmit } from "../../../../components/admin/dirty-submit";
 import { AutoSubmitSelect } from "../../../../components/admin/auto-submit-select";
-import { addMyPunch, clockInNow, clockOutNow, deleteMyPunch, editMyPunch } from "./actions";
+import {
+  addMyPunch,
+  clockInNow,
+  clockOutNow,
+  deleteMyPunch,
+  editMyPunch,
+  type CrewTimeErr,
+} from "./actions";
 
 /**
  * /crew/time (SPEC §2.9.7) — the crew member's own clock. **Clock in** when they're
@@ -46,7 +54,7 @@ type Search = {
   add?: string;
 };
 
-const ERR_COPY: Record<string, string> = {
+const ERR_COPY: Record<CrewTimeErr, string> = {
   already_in: "You’re already on the clock — nothing changed.",
   not_in: "You weren’t on the clock, so there was nothing to close.",
   // #635 made this fixable by the person reading it — before crew edit, this copy sent
@@ -109,7 +117,7 @@ export default async function CrewTime({
     );
   }
 
-  const errCopy = sp.err ? ERR_COPY[sp.err] ?? ERR_COPY.error : null;
+  const errCopy = errCopyFor(ERR_COPY, sp.err, "error");
   const { onTheClock } = view;
   // Exactly one editor at a time (#635). Everything else renders inert while it's open,
   // which is why this is one boolean rather than per-row state.

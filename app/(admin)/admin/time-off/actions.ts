@@ -4,9 +4,17 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { asId } from "@core/domain/ids.js";
-import { addTimeOff, removeTimeOff } from "@core/crew/time-off.js";
+import { addTimeOff, removeTimeOff, type AddTimeOffCode } from "@core/crew/time-off.js";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
+
+/**
+ * Every code this surface can put in `?err=` (#654) — the domain's validation errors plus the
+ * glue codes minted here. Declared beside the `redirect()` that mints them and consumed by the
+ * page's copy table, so a code with nothing to say about it is a build error rather than a silent
+ * fall through to "try again in a moment".
+ */
+export type AdminTimeOffErr = AddTimeOffCode | "no_crew" | "error";
 
 /**
  * Operator-set time off (#332). The office puts a crew member out — e.g. someone
@@ -23,7 +31,7 @@ export async function adminAddTimeOff(formData: FormData): Promise<void> {
   const end = String(formData.get("end") ?? "");
   if (!crewMemberId) redirect("/admin/time-off?err=no_crew");
 
-  let code: string | null = null;
+  let code: AdminTimeOffErr | null = null;
   try {
     const result = await addTimeOff(getRepo(), {
       id: asId<"PtoWindowId">(`pto-${randomUUID()}`),

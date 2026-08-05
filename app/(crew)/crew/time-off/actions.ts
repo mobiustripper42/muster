@@ -4,9 +4,17 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { asId } from "@core/domain/ids.js";
-import { addTimeOff, ownsTimeOff, removeTimeOff } from "@core/crew/time-off.js";
+import { addTimeOff, ownsTimeOff, removeTimeOff, type AddTimeOffCode } from "@core/crew/time-off.js";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
+
+/**
+ * Every code this surface can put in `?err=` (#654) — the domain's validation errors plus the
+ * glue codes minted here. Declared beside the `redirect()` that mints them and consumed by the
+ * page's copy table, so a code with nothing to say about it is a build error rather than a silent
+ * fall through to "try again in a moment".
+ */
+export type CrewTimeOffErr = AddTimeOffCode | "error";
 
 /**
  * Crew self-serve time off (#332, SPEC §2.1, DEC-009). Add/remove my own blackout
@@ -23,7 +31,7 @@ export async function addMyTimeOff(formData: FormData): Promise<void> {
   const start = String(formData.get("start") ?? "");
   const end = String(formData.get("end") ?? "");
 
-  let code: string | null = null;
+  let code: CrewTimeOffErr | null = null;
   try {
     const result = await addTimeOff(getRepo(), {
       id: asId<"PtoWindowId">(`pto-${randomUUID()}`),

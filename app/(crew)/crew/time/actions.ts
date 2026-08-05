@@ -4,12 +4,33 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { asId } from "@core/domain/ids.js";
-import { clockIn, clockOut } from "@core/crew/time-clock.js";
-import { addOwnPunch, deleteOwnPunch, editOwnPunch } from "@core/crew/time-clock-crew.js";
+import {
+  clockIn,
+  clockOut,
+  type AddPunchCode,
+  type ClockInCode,
+  type ClockOutCode,
+} from "@core/crew/time-clock.js";
+import {
+  addOwnPunch,
+  deleteOwnPunch,
+  editOwnPunch,
+  type CrewEditCode,
+} from "@core/crew/time-clock-crew.js";
 import { addDays, zonedWallClockToInstant } from "@core/config/tenant.js";
 import { readSubject } from "../../../lib/auth";
 import { timeClockEnabled } from "../../../lib/flags";
 import { getRepo } from "../../../lib/repo";
+
+/**
+ * Every code this surface can put in `?err=` (#654) — the domain's result codes across all of
+ * its doors, plus the glue codes minted here. Declared beside the `redirect()` that mints them
+ * and consumed by the page's copy table, so a code with nothing to say about it is a build error
+ * rather than a silent fall through to "try again in a moment". This is the surface the bug was
+ * found on: the admin table shipped without a `future` entry while its crew sibling had one, so
+ * an operator entering a future time was told to retry a deterministic refusal.
+ */
+export type CrewTimeErr = ClockInCode | ClockOutCode | AddPunchCode | CrewEditCode | "bad_input" | "error";
 
 /**
  * Crew time clock (#626, SPEC §2.9) — go on and off the clock. Auth + glue over the
@@ -37,7 +58,7 @@ export async function clockInNow(): Promise<void> {
   const subject = await readSubject();
   if (!subject || subject.kind !== "crew") redirect("/crew");
 
-  let code: string | null = null;
+  let code: CrewTimeErr | null = null;
   try {
     // The caller mints the id (the `addMyTimeOff` convention — core mints nothing it
     // can't make deterministic). A double-tapped button mints two ids and still
@@ -62,7 +83,7 @@ export async function clockOutNow(): Promise<void> {
   const subject = await readSubject();
   if (!subject || subject.kind !== "crew") redirect("/crew");
 
-  let code: string | null = null;
+  let code: CrewTimeErr | null = null;
   try {
     // No punch id from the form: `clockOut` closes whatever THIS person has open,
     // and at most one can exist. A stale form can't close someone else's punch, or
@@ -120,7 +141,7 @@ export async function editMyPunch(formData: FormData): Promise<void> {
     formData.get("outNextDay") === "1",
   );
 
-  let code: string | null = null;
+  let code: CrewTimeErr | null = null;
   if (!punchId || inAt === null) {
     code = "bad_input";
   } else {
@@ -163,7 +184,7 @@ export async function addMyPunch(formData: FormData): Promise<void> {
     formData.get("outNextDay") === "1",
   );
 
-  let code: string | null = null;
+  let code: CrewTimeErr | null = null;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || inAt === null) {
     code = "bad_input";
   } else {
@@ -193,7 +214,7 @@ export async function deleteMyPunch(formData: FormData): Promise<void> {
   if (!subject || subject.kind !== "crew") redirect("/crew");
   const punchId = String(formData.get("punchId") ?? "");
 
-  let code: string | null = null;
+  let code: CrewTimeErr | null = null;
   try {
     const result = await deleteOwnPunch(getRepo(), {
       editId: asId<"TimePunchEditId">(`punchedit-${randomUUID()}`),

@@ -7,8 +7,9 @@ import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { Field, settingsInputClass } from "../../../../components/admin/settings-field";
 import { readSubject } from "../../../lib/auth";
+import { errCopyFor } from "../../../lib/err-copy";
 import { getRepo } from "../../../lib/repo";
-import { saveLocation } from "./actions";
+import { saveLocation, type LocationErr } from "./actions";
 
 /**
  * /admin/locations (task 12.9, DEC-123) — the Location settings twin, laid out to
@@ -23,7 +24,7 @@ export const dynamic = "force-dynamic";
 
 type Search = { sel?: string; saved?: string; err?: string };
 
-const ERR_COPY: Record<string, string> = {
+const ERR_COPY: Record<LocationErr, string> = {
   name_required: "Give the location a name.",
   pickup_required: "Add a pickup description — where guests meet the boat.",
   route_required: "Add a route description — where the trip goes.",
@@ -60,7 +61,7 @@ export default async function AdminLocations({
   const selected = creating
     ? null
     : locations.find((l) => l.id === sp.sel) ?? locations[0] ?? null;
-  const errCopy = sp.err ? ERR_COPY[sp.err] ?? ERR_COPY.error : null;
+  const errCopy = errCopyFor(ERR_COPY, sp.err, "error");
   const title = creating ? "New location" : selected?.name ?? "Locations";
 
   return (

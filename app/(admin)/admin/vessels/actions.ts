@@ -3,9 +3,17 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { saveVesselAdmin } from "@core/admin/vessel-admin.js";
+import { saveVesselAdmin, type VesselSaveError } from "@core/admin/vessel-admin.js";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
+
+/**
+ * Every code this surface can put in `?err=` (#654) — the domain's validation errors plus the
+ * glue codes minted here. Declared beside the `redirect()` that mints them and consumed by the
+ * page's copy table, so a code with nothing to say about it is a build error rather than a silent
+ * fall through to "try again in a moment".
+ */
+export type VesselErr = VesselSaveError | "error";
 
 /**
  * Upsert a vessel (task 12.9). Auth + glue over `saveVesselAdmin`, which owns validation.
@@ -25,7 +33,7 @@ export async function saveVessel(formData: FormData): Promise<void> {
   const homeLocationId = String(formData.get("homeLocationId") ?? "");
   const notes = String(formData.get("notes") ?? "");
 
-  let code: string | null = null;
+  let code: VesselErr | null = null;
   try {
     const result = await saveVesselAdmin(getRepo(), {
       id,

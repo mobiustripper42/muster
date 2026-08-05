@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.0] - 2026-08-05 — Phase 13
+
+- 30 pts shipped across 2 sessions (throughput: burst — 30 pts in 4d, 2026-07-31 → 2026-08-04)
+- Time Clock & Payroll Hours: crew clock in/out, the admin repair bench, crew self-edit, the hours
+  report, and one Gusto file carrying hours and tips. Ships behind `TIME_CLOCK`.
+- Estimate calibration: 2 tasks re-estimated, net drift +6 pts
+- See `docs/RETROSPECTIVES.md` for the full retro
+
 ## [1.0.21] - 2026-08-04
 
 **Phase 13 — Time Clock & Payroll Hours.** Ships behind `TIME_CLOCK`, off by default.

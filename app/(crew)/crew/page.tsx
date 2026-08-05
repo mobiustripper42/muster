@@ -404,7 +404,7 @@ function CrewApp({
 }) {
   return (
     <Shell>
-      <CrewHeader title={view.me.name} />
+      <CrewHeader title={view.me.name} current="/crew" />
       {/* Own standing (§2.6.2): individual, plain, never comparative. Stays visually quiet — do
           NOT color the negative facts; that would turn a neutral fact into the anxiety dashboard
           BRAND forbids. Centred beneath the centred name so the two read as one block. */}

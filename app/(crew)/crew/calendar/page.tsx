@@ -56,7 +56,7 @@ export default async function CrewCalendar() {
 
   return (
     <Shell>
-      <CrewHeader title="Calendar sync" back={{ href: "/crew", label: "My shifts" }} />
+      <CrewHeader title="Calendar sync" back={{ href: "/crew", label: "My shifts" }} current="/crew/calendar" />
       <p className="text-sm text-muted">
         Add your confirmed shifts to your phone’s calendar. They appear automatically
         and stay in sync — no need to open Muster to see what’s next.

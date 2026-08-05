@@ -123,7 +123,7 @@ export default async function CrewTime({
 
   return (
     <Shell>
-      <CrewHeader title="Time" back={{ href: "/crew", label: "My shifts" }} />
+      <CrewHeader title="Time" back={{ href: "/crew", label: "My shifts" }} current="/crew/time" />
       <header className="flex flex-col gap-1">
         <p className="text-sm text-muted">
           Clock in and out for your shift. Tap a punch to edit it, or add one you missed.

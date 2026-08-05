@@ -33,7 +33,7 @@ export default async function ThreadsPage() {
   } catch {
     return (
       <Shell>
-        <CrewHeader title="Messages" back={{ href: "/crew", label: "My shifts" }} />
+        <CrewHeader title="Messages" back={{ href: "/crew", label: "My shifts" }} current="/crew/threads" />
         <Notice>Can’t reach messages right now. Try again in a moment.</Notice>
       </Shell>
     );
@@ -41,7 +41,7 @@ export default async function ThreadsPage() {
 
   return (
     <Shell>
-      <CrewHeader title="Messages" back={{ href: "/crew", label: "My shifts" }} />
+      <CrewHeader title="Messages" back={{ href: "/crew", label: "My shifts" }} current="/crew/threads" />
       <section className="flex flex-col gap-2">
         {view.threads.map((t) => (
           <AppLink

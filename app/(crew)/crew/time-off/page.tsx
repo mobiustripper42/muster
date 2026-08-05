@@ -75,7 +75,7 @@ export default async function CrewTimeOff({
 
   return (
     <Shell>
-      <CrewHeader title="Time off" back={{ href: "/crew", label: "My shifts" }} />
+      <CrewHeader title="Time off" back={{ href: "/crew", label: "My shifts" }} current="/crew/time-off" />
       <header className="flex flex-col gap-1">
         <p className="text-sm text-muted">
           Days and weekdays you’re off. You won’t be asked for shifts on them —

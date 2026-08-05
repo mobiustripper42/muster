@@ -1217,6 +1217,14 @@ keeps Spink up at night — but until payments land, the board's honest job ther
 > left, title centred, menu right — and `My shifts` starts at 411px, the rest being the ask, the
 > standing line and a credential nudge. The count above is routes that SHIP, not entries on the hub;
 > those are now two different numbers and this paragraph is why.
+>
+> **The open drawer is modal, and the page behind it is inert** (operator, 2026-08-05). The first
+> cut dimmed the page without disabling it — the pay-period selector on `/crew/time` still worked
+> through the backdrop — and at 375px the panel covered the only control that could close the
+> drawer. The drawer opens and closes with no JS (it is a `<details>`); `inert`, Escape and
+> backdrop-dismiss are enhancement on top, so a JS-less crew member keeps navigation and loses
+> only the modal niceties. The entry for the current page renders as a marker, not a link:
+> tapping it re-navigated to the page you were on, which showed a spinner and changed nothing.
 
 ### 2.6.1 The ask
 Arrives as **push / SMS**, answered by **tapping through to the app**:

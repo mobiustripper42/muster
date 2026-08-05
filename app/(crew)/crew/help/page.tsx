@@ -25,7 +25,7 @@ function Block({ title, children }: { title: string; children: React.ReactNode }
 export default function CrewHelpPage() {
   return (
     <Shell>
-      <CrewHeader title="How Muster works" back={{ href: "/crew", label: "My shifts" }} />
+      <CrewHeader title="How Muster works" back={{ href: "/crew", label: "My shifts" }} current="/crew/help" />
       <header className="flex flex-col gap-1">
         <p className="text-sm text-muted">
           The short version — you can get back to this anytime from the link on

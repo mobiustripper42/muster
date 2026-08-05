@@ -36,10 +36,18 @@ import { CrewMenu } from "./crew-menu";
 export async function CrewHeader({
   title,
   back,
+  current,
 }: {
   title: string;
   /** Omitted on `/crew` itself — the hub has nowhere above it to go. */
   back?: { href: string; label: string };
+  /**
+   * This page's own route. The drawer renders that entry as a marked-current row rather than a
+   * link, because tapping it navigated to the URL you were already on — overlay spinner, no
+   * change (operator, 2026-08-05). Passed explicitly because a Server Component cannot read the
+   * pathname, and reading it would mean a client island for a static fact each page already knows.
+   */
+  current?: string;
 }) {
   const subject = await readSubject();
 
@@ -64,12 +72,28 @@ export async function CrewHeader({
         <AppLink
           href={back.href}
           prefetch={false}
+          data-crew-back
           aria-label={`Back to ${back.label}`}
           className="-ml-1 flex size-[44px] items-center justify-center rounded-lg text-accent"
         >
-          <span aria-hidden className="text-xl leading-none">
-            ‹
-          </span>
+          {/* Drawn as an SVG at 26px rather than a text "‹" (operator, 2026-08-05: "can the little
+              tiny back arrow be slightly larger"). The glyph rendered small and thin at any font
+              size that kept the 44px box from growing — a stroked chevron scales without that
+              trade, and matches the weight of the menu icon on the other rail. The TAP TARGET is
+              unchanged at 44px; only the mark inside it grew. */}
+          <svg
+            width="26"
+            height="26"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.25"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <path d="M15 5l-7 7 7 7" />
+          </svg>
         </AppLink>
       ) : (
         <span />
@@ -79,7 +103,7 @@ export async function CrewHeader({
           task exists to remove. Crew headings are short by design (SPEC §2.6). */}
       <h1 className="truncate text-center text-lg font-semibold text-ink">{title}</h1>
 
-      <CrewMenu links={links} viewerIsActiveAdmin={viewerIsActiveAdmin} />
+      <CrewMenu links={links} viewerIsActiveAdmin={viewerIsActiveAdmin} current={current} />
     </header>
   );
 }

@@ -118,6 +118,103 @@ test.describe("crew header (#644)", () => {
     });
   }
 
+  /**
+   * Three defects the operator found on first read (2026-08-05) that the original suite missed,
+   * and the reason it missed them is worth keeping: every drawer assertion clicked the summary by
+   * LOCATOR. Playwright resolves a locator to an element and clicks it whether or not anything is
+   * drawn on top, so a control buried under the panel tested as perfectly operable. These use
+   * `elementFromPoint` and raw mouse coordinates instead — what a thumb would actually hit.
+   */
+  test.describe("the open drawer is actually modal (operator, 2026-08-05)", () => {
+    test("the close control is ON TOP of the panel, not under it", async ({ page }) => {
+      // At 375px the panel is `max-w-[80vw]` pinned right, so it covered the top-right corner
+      // where the summary lives: the drawer had NO visible way to close. Hit-testing the
+      // summary's own centre is the assertion the locator-based tests could not make.
+      await page.setViewportSize({ width: 375, height: 812 });
+      await signInAsCrew(page, "crew-quint");
+      await page.goto("/crew/time");
+      const summary = page.locator(`summary[aria-label="Open menu"]`);
+      await summary.click();
+
+      const b = (await summary.boundingBox())!;
+      // `elementFromPoint` returns the deepest node — the ✕ path inside the summary — so ask
+      // whether the summary CONTAINS what a thumb would hit, not whether it is that node.
+      const hit = await page.evaluate(
+        ({ x, y }) => {
+          const el = document.elementFromPoint(x, y);
+          return !!el?.closest("summary[aria-label='Open menu']");
+        },
+        { x: b.x + b.width / 2, y: b.y + b.height / 2 },
+      );
+      expect(hit, "the close control must be the topmost thing at its own centre").toBe(true);
+
+      // And a real positional click shuts it.
+      await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
+      await expect(page.locator("details[open]")).toHaveCount(0);
+    });
+
+    test("the page behind is INERT — its controls can't be operated", async ({ page }) => {
+      // "it's grey but you can select anything when the draw is open". The backdrop blocks the
+      // pointer, but focus does not care: the pay-period select still changed value.
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await signInAsCrew(page, "crew-quint");
+      await page.goto("/crew/time");
+      // `inert` is enhancement, so wait for the island rather than racing hydration — a click
+      // that lands first would "prove" the guard broken when it had simply not attached yet.
+      await expect(page.locator("details[data-crew-menu-ready]")).toBeAttached();
+      const select = page.locator("select").first();
+      // Operable before, so the assertion after means something. Without this the test would
+      // pass just as happily against a page that had no working selector in the first place.
+      await select.selectOption({ index: 1 });
+
+      await page.locator(`summary[aria-label="Open menu"]`).click();
+
+      await expect(page.locator("main > [inert]").first()).toBeAttached();
+
+      // Focusability is the probe, and picking it took two wrong ones. `toBeEnabled()` reads the
+      // `disabled` property and ignores `inert` entirely. `selectOption()` then also passed —
+      // Playwright sets the value through the DOM rather than through the input stack, so it
+      // reaches a control no thumb and no Tab key can. `focus()` is the honest question: `inert`
+      // removes an element from the focus order, so this is exactly what a keyboard user hits.
+      const focused = await select.evaluate((el) => {
+        (el as HTMLSelectElement).focus();
+        return document.activeElement === el;
+      });
+      expect(focused, "an inert control must not take focus").toBe(false);
+    });
+
+    test("Escape and a tap on the dimmed page both close it", async ({ page }) => {
+      await page.setViewportSize({ width: 375, height: 812 });
+      await signInAsCrew(page, "crew-quint");
+      await page.goto("/crew/time");
+      await expect(page.locator("details[data-crew-menu-ready]")).toBeAttached();
+      const summary = page.locator(`summary[aria-label="Open menu"]`);
+
+      await summary.click();
+      await page.keyboard.press("Escape");
+      await expect(page.locator("details[open]")).toHaveCount(0);
+
+      // A tap on the backdrop. It hit-tests as the summary but sits outside the summary's own
+      // box, which is exactly why the browser's native toggle does NOT fire for it.
+      await summary.click();
+      await page.mouse.click(30, 500);
+      await expect(page.locator("details[open]")).toHaveCount(0);
+    });
+
+    test("the current page's entry is a marker, not a link that reloads it", async ({ page }) => {
+      // Tapping "Time" while on /crew/time navigated to the same URL: overlay spinner, no change.
+      await signInAsCrew(page, "crew-quint");
+      await page.goto("/crew/time");
+      await page.locator(`summary[aria-label="Open menu"]`).click();
+
+      await expect(page.getByRole("link", { name: "Time", exact: true })).toHaveCount(0);
+      const marker = page.locator('[aria-current="page"]', { hasText: "Time" });
+      await expect(marker).toBeVisible();
+      // A neighbour is still a link — otherwise this would pass on a drawer with no links at all.
+      await expect(page.getByRole("link", { name: "Time off", exact: true })).toBeVisible();
+    });
+  });
+
   test("the drawer works with NO JAVASCRIPT, and its links are gone when shut", async ({
     browser,
   }) => {

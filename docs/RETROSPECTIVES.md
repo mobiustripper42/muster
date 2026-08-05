@@ -3,6 +3,57 @@
 Phase-end retrospectives. Written by `/retro` at each phase boundary — velocity, scope changes,
 process notes, forecast update. One entry per phase, newest at the top.
 
+## Phase 13 — 2026-08-05
+
+**Points:** 30 shipped / 24 pointed / 16 originally planned (188% of plan)
+**Span:** 4 days (2026-07-31 → 2026-08-04)
+**Throughput:** `burst — 30 pts in 4d` ← sub-week span; a per-week rate would read ~52 pts/wk and mean nothing
+**Estimate calibration:** 2 tasks re-estimated, net drift **+6 pts** ← both in the same direction, both payroll-adjacent
+**Sessions:** 2   **PRs merged:** 16
+**Issues:** 8 created, 8 closed, 0 moved
+**Closed at:** v1.1.0 (production v1.0.21)
+
+> **Closed out of order.** Phases 11 and 12 have not been retro'd — 12 closes when reservations
+> ships. Phase 13 ran beside them on `feature/time-clock` (DEC-059) and finished first.
+
+### Phase throughput line
+| Phase | Date | Points | Span(d) | Throughput | Re-est'd | Net drift | Sessions | PRs |
+|-------|------|--------|---------|------------|----------|-----------|----------|-----|
+| 13 | 2026-08-04 | 30 | 4 | burst | 2 | +6 | 2 | 16 |
+
+### What worked
+- "new workflow is smooth. dec feels cleaner"
+
+### What didn't
+- "the no kill-this is a problem. I thought I was checking that but I get confused sometimes. I'll try to watch closer. I think adding the IPhone tests is a giant win"
+
+### Changes for next phase
+- The missed-`/kill-this` check becomes structural rather than vigilance — `/its-dead` refuses to close silently when a PR merged in the session window never got a task block. Filed as **#661**; seeds-managed, so it backports.
+
+### Scope changes
+- **Added mid-phase:** #635 (crew self-edit, 3), #638 (missing-punch flag, 2→3), #645 (overlapping punches, 3). Each was an operator ask raised while reviewing the task before it — the phase's real shape: every finished surface produced the next one.
+- **Re-estimated:** #628 filed 3 → shipped 8; #638 filed 2 → shipped 3. `points:` labels were never updated, so the label sum (24) understates the shipped total (30) by the drift.
+- **Not descoped, not moved:** nothing.
+- **Plan rows never landed.** PR #650 (the Phase 13 plan section) was closed deliberately as stale — it described 5 tasks and 16 points. The PROJECT_PLAN section was therefore *authored at this retro* from the issues rather than ticked. Original intent survives on `task/phase-13-plan-rows` and `claude/muster-time-clock-d61kju`.
+
+### Process notes
+- **`/kill-this` ran once across three shipped tasks**, so two tasks also skipped its code-review step. Both retroactive reviews found real defects: **#659** (e2e sign-in fixture race — live in CI, 11 specs exposed) and **#660** (overlapping punches straddling a pay-period boundary go undetected — money path, now in production). Two for two.
+- **`Closes #a, #b, #c` closes only the first.** PR #658 used a comma list, so six issues stayed open after the phase merged and were closed by hand at retro; their `closedAt` is an artifact of that cleanup, not a ship date. Real ship dates are the PR merge dates, recorded in the plan section.
+- **"Verified at 375px" meant Chromium** for the whole phase — `devices["Desktop Chrome"]` in a narrow window. The one iPhone-only bug (#655) reached the operator, not CI. A WebKit project was added afterwards, scoped to one spec. It does **not** reproduce that bug (the real-tap test passes with the fix reverted); it immediately caught a `Secure`-cookie mismatch and two navigation races. A win for WebKit-class differences generally, explicitly not a regression guard for #655.
+- **A money bug was caught before merge by cloud review:** `(minutes / 60) * 100` floored 69 minutes to `1.14` instead of `1.15` — 4,588 of the first 200,000 whole-minute totals, every one underpaying, scattered rather than clustered. Hand-picked examples would have missed nearly all of them; a sweep against exact rational arithmetic caught them.
+- **One design rule emerged mid-phase rather than being specified:** block the export when a guaranteed action clears the condition, warn when the state may be legitimate. Open punch blocks, overlap blocks, missing punch warns. Now in SPEC §2.9.6. All three states were hand-verified in production before the `TIME_CLOCK=1` flip.
+
+### PM read
+Thirty points against 24 pointed and 16 originally planned, in four days and two sessions — that's not drift, that's a different phase than the one you scoped. Three of the five original tasks stayed roughly true to size; the overage is entirely the three adds (#635, #638, #645), each one an operator ask surfaced while reviewing the task before it. That's the healthy version of scope growth — real gaps found by looking at the thing, not feature creep — but "healthy" and "16→30" both belong in the same sentence, and next time's estimate should assume clock/payroll surfaces spawn siblings, not treat each as a one-off.
+
+The re-estimates are the more interesting number: 13.4 filed at 3, shipped at 8; #638 filed at 2, shipped at 3. Both moved in the same direction, both on the same phase. If that's a pattern rather than noise, payroll-adjacent tasks are underestimated at filing time by roughly the same margin twice running — worth a specific line in the next estimation pass rather than filing this under general "estimates drift."
+
+The process failure is the one worth dwelling on: `/kill-this` ran once across three shipped tasks, which means two tasks skipped code review entirely, and both of the skipped ones had real defects — one an e2e fixture race live in CI across 11 specs, the other an overlapping-punch gap straddling a pay-period boundary, undetected, in production, on a money path. That's not a near-miss average; that's two-for-two. Your own answer — "I thought I was checking that but I get confused sometimes" — is honest, and honest self-report is exactly the input that should never be patched with more vigilance. #661 filing it as structural is the right call, and it's worth noting the fix has to make the skip *impossible to miss*, not just easier to catch — "watch closer" was already the standing instruction and it didn't hold under a four-day burst.
+
+You're right that the DEC workflow felt cleaner and that the iPhone/WebKit project is a win — it already paid for itself, catching a `Secure`-cookie mismatch and two navigation races that Chromium-at-375px was structurally blind to. Worth holding both halves of that honestly: it did not reproduce the WebKit-only bug that prompted it, so it is coverage for a class of difference rather than a guard on #655. Set against that: the comma-list `Closes #625, #626, ...` GitHub quirk left six issues open post-merge with now-artifactual `closedAt` timestamps, and the plan-rows PR going stale meant PROJECT_PLAN had to be reconstructed at retro instead of read. Small process leaks, but they're the same shape as the `/kill-this` miss — the workflow assumes a step happened and nothing forces a check when it didn't.
+
+The rounding bug is the one to sit with, separate from process: `(minutes/60)*100` floored 69 minutes to 1.14 instead of 1.15, underpaying 4,588 of the first 200,000 whole-minute totals, caught by cloud review before merge. That's the review layer doing exactly the job it's for on exactly the kind of bug that a green build won't flag. On go-live: the three states that rule produced — open-punch-blocks, overlap-blocks, missing-punch-warns — were hand-verified in production before the `TIME_CLOCK=1` flip, which is the right instinct given the rule was discovered mid-phase rather than specified. *(Corrected at retro: the original commentary recommended that verification as still-pending; the operator had already done it.)*
+
 ## Release v1.0.5 — 2026-07-13 (cross-phase batch, not a phase close)
 
 A promote-and-ship batch rather than a phase boundary — 17 PRs merged since v1.0.4 (2026-07-10),

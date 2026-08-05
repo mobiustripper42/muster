@@ -38,6 +38,11 @@ phases are *burst-shaped* (clear inside a calendar week), so a per-week rate isn
 | 7     | 2        | 20     | — (DEC-S026) | — | — | **burst** — 20 pts in ~1.1d (06-29→06-30); re-est'd 1, drift 0 (7.0 split a/b); +2 follow-ups shipped (#186, #196) |
 | 8     | 2        | 19     | — (DEC-S026) | — | — | **burst** — 19 pts over ~2d (07-01→07-03); re-est'd 3, drift −2 (8.2b lock + 8.6 cut; 8.4 3→5) |
 | 9     | 5        | 55     | — (DEC-S026) | — | — | **burst** — 55 pts over ~4.3d (07-01→07-06); re-est'd 1, drift 0 (9.12 collapsed 5→~2 via @architect gate, label held); ~32 PRs, closed at v0.11.0; #247 → P10 |
+| 13    | 2        | 30     | — (DEC-S026) | — | — | **burst** — 30 pts shipped over 4d (07-31→08-04) against 24 pointed; re-est'd 2, drift **+6** (13.4 filed 3 → shipped 8; #638 2→3); 3 tasks added mid-phase (#635, #638, #645); 16 PRs, closed at v1.1.0, production v1.0.21 |
+
+> **Rows 10–12 are absent, not lost.** Phase 10's retro exists in `RETROSPECTIVES.md` but its row was
+> never appended here; Phases 11 and 12 have not been retro'd at all — 12 closes when reservations
+> ships. Phase 13 ran beside them on `feature/time-clock` (DEC-059), which is why it closes out of order.
 
 **Build strategy — vertical, not horizontal** (build plan §1): build a thin sliver through every
 layer so one real thing works end-to-end, then fatten it. The spine doesn't change as it thickens;
@@ -585,6 +590,63 @@ Phase 0 + Phase 1 pokered 2026-06-03. Contested estimates resolved in session:
 | 1.5 (M4) | 8 whole | **split 5+5** | 1.5a infra/stack standup / 1.5b crew tap-in. Infra decision gets its own gate. |
 
 No unresolved disagreements.
+
+---
+
+## Phase 13: Time Clock & Payroll Hours — ✅ COMPLETE 2026-08-04 (shipped at **v1.1.0**, production **v1.0.21**)
+
+> **Authored at the Phase 13 retro (2026-08-05), not before it.** This phase ran without a plan
+> section: the rows were written on 2026-07-31, never merged (PR #650, closed deliberately), and had
+> gone stale — they described 5 tasks and 16 points against a phase that ran 8 tasks and shipped 30.
+> What follows is reconstructed from the issues and the shipped code. The original intent survives on
+> `task/phase-13-plan-rows` and `claude/muster-time-clock-d61kju`; neither is deleted.
+
+Crew clock in and out on their own phone, and a per-pay-period hours report to hand to payroll. Ran
+on **`feature/time-clock`** beside Phase 12 rather than after it (DEC-059) — reservations was running
+long and the two share no tables. Task PRs targeted the feature branch; it reached `main` in one merge
+(#658) once the whole thing was prod-ready.
+
+**What it replaces.** `/admin/payroll` already reported per-crew hours, but *estimated* from confirmed
+seats — `src/admin/payroll.ts` says "not a punch clock" in its own header. Phase 13 makes the real
+number exist and puts it **beside** the estimate rather than over it, so the two can disagree visibly.
+
+**The four calls** (operator, 2026-07-31 — DEC-144): a free-standing punch with the shift
+auto-matched only when unambiguous; **honor system** (no geofence, no device binding, no photo);
+**a missed clock-out is flagged, never auto-closed** — Muster does not invent a time that becomes a
+paycheck; **exact minutes, decimal hours**, no rounding policy in the code.
+
+**One rule emerged during the phase that wasn't in the brief.** Three report conditions needed
+deciding, and they resolved to a single principle: **block the export when a guaranteed action clears
+the condition; warn when the state may be legitimate.** An open punch blocks (close it). An overlap
+blocks (decide which punch is wrong). A confirmed seat with no punch only warns — the zero may be
+correct, and gating on it would stop payroll for the whole crew over one no-show. Recorded in
+SPEC §2.9.6.
+
+| # | Task | Est | Status |
+|---|------|-----|--------|
+| 13.0 | **Ask vocabulary: In/Out → Yes/No** — the ask card, the ask SMS, the help page, the operator-as-crew buttons. PR'd straight to `main`, not the feature branch | 2 | [x] [#630](https://github.com/mobiustripper42/muster/issues/630) |
+| 13.1 | **Time punch domain + persistence** — `TimePunch`, `clockIn`/`clockOut`, shift auto-match, adapters, and the partial unique index making one open punch per person structural | 5 | [x] [#625](https://github.com/mobiustripper42/muster/issues/625) |
+| 13.2 | **Crew `/crew/time`** — one card, one button, server-rendered, phone-primary | 3 | [x] [#626](https://github.com/mobiustripper42/muster/issues/626) |
+| 13.3 | **Admin `/admin/time-clock`** — the repair bench: add, edit, close, delete; provenance stamped and shown | 3 | [x] [#627](https://github.com/mobiustripper42/muster/issues/627) |
+| 13.3.5 | **Crew edit their own punches**, with a reason on the record | 3 | [x] [#635](https://github.com/mobiustripper42/muster/issues/635) · *added mid-phase* |
+| 13.4 | **Hours report + reconcile + `gusto.csv`** — one file carrying hours **and** tips | 3 → **8** | [x] [#628](https://github.com/mobiustripper42/muster/issues/628) · *re-estimated* |
+| 13.5 | **A Confirmed seat with no punch** is named, linked, and warns — never blocks | 2 → **3** | [x] [#638](https://github.com/mobiustripper42/muster/issues/638) · *added mid-phase, re-estimated* |
+| 13.6 | **Overlapping punches** are named, linked, and **block** the export | 3 | [x] [#645](https://github.com/mobiustripper42/muster/issues/645) · *added mid-phase; rewritten from a write guard to a report condition* |
+
+**Phase 13 actual: 8 tasks, 30 points shipped against 24 pointed** — a 4-day burst (07-31 → 08-04),
+16 PRs, 2 sessions. The original plan called 5 tasks and 16 points; the three added tasks
+(#635, #638, #645) are all operator asks raised while reviewing the task before them, which is the
+phase's real shape: each surface, once seen, produced the next one.
+
+**Ships dark.** `TIME_CLOCK` is off by default; with it unset the routes 404, every server action
+refuses, and `/admin/payroll` does not query `time_punches` at all. Go-live is a separate deliberate
+flip after the deploy.
+
+**Carried out of the phase:** [#659](https://github.com/mobiustripper42/muster/issues/659) (e2e
+sign-in fixture race — live in CI, 11 specs exposed) and
+[#660](https://github.com/mobiustripper42/muster/issues/660) (overlapping punches straddling a
+pay-period boundary go undetected — money path). Both found by code review run *after* the code
+shipped, which is the phase's clearest process miss.
 
 ---
 

@@ -155,6 +155,35 @@ The shell's `## PR Workflow` is the baseline. Muster adds:
 - **`production` branch + `/promote-production` are live as of the Neon deploy** (DEC-033/DEC-S022). `main` is always the active trunk; `production` is only the downstream deploy pointer, never a PR base.
 - The shell's *PR Review on Mobile* notes apply, with muster's substitutions: the eyeball path is the Vercel preview URL once deployed (else `mill-dev:3000`); the PR checklist asks "schema/DDL change?" rather than "migration/RLS change?".
 
+### Reservations (`phase:12b`) — every PR ships a state the operator can actually test
+
+**Standing requirement, operator 2026-08-05.** The reservation system has had almost no hands-on
+testing: the operator deliberately held it back to do one big pass once the polish landed. That
+pass will happen **long after** each PR is written, by someone who does not have the diff in their
+head. So a `phase:12b` PR that merges without a reproducible starting state is a PR that silently
+opts out of the only testing this subsystem will get.
+
+On top of the eyeball rules above, every `phase:12b` PR must carry:
+
+1. **A named seed that produces the state under test** — an `npm run db:seed:*` that exists in the
+   repo *after this PR*. `db/seed-reservation-dev.ts` is the base world (a LIVE Offering, a
+   Location, the owned-day mask, two materialized bookings, dates relative to today so it never
+   expires). If no seed reaches the state, **extend one or add one in the same PR** — "click
+   through the booking flow first" is not a starting state.
+2. **Seeds that compose and re-run.** The pass runs several in one sitting. A seed that assumes an
+   empty database, or that collides with another seed's ids, breaks the step after it. State the
+   composition explicitly: which seeds, in which order.
+3. **Steps that name the literal expected sight**, starting from a URL and a seeded fact — "`/admin/purchases` → the Aug 12 Hops row reads **Refunded**", not "verify the refund worked".
+4. **The reset.** How to get back to the starting state after a destructive step, so the pass can
+   be repeated or resumed. `npm run db:reset:test` is e2e-only; say what the human runs.
+5. **For money paths, what to check in Stripe** — which test-mode object (PaymentIntent, Refund,
+   webhook delivery) and what it should read. Muster's own screen agreeing with itself is not
+   evidence the ledger reconciled.
+
+**Why it is written here rather than remembered:** the operator offered to repeat it every session.
+That would work and it should not be necessary — this file is read at the start of every session,
+and the requirement outlives whoever is at the keyboard.
+
 ### When to run `/code-review ultra`
 
 `@code-review` runs on every task (wired into `/kill-this`) and hunts Muster's known invariants. `/code-review ultra` is the other thing: multiple agents auditing the branch independently from different angles, filtered by confidence. It is **user-triggered and billed — Claude cannot launch it** and must not try.

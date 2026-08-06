@@ -56,9 +56,23 @@ export function CrewMenuModal() {
     const close = () => {
       details.open = false;
       sync();
+      // Return focus to the control that opened it. Native `<details>` collapse sets the panel's
+      // contents to `display:none`, so whatever link the keyboard was on is destroyed and focus
+      // falls to `<body>` — the user loses their place and tabs from the top of the document.
+      // `admin-nav.tsx` avoids this by managing focus around its open/close; this is the same
+      // move for a `<details>`.
+      summary?.focus();
     };
 
-    const onToggle = () => sync();
+    const onToggle = () => {
+      sync();
+      // Move focus INTO the panel on open, so the next Tab walks the menu rather than continuing
+      // from the summary into a page that is now inert. Unconditional, like admin-nav focusing
+      // its close button: gating on `document.activeElement === summary` looked safer but is not
+      // reliable — a browser does not consistently focus a `<summary>` before firing its toggle,
+      // so the guard dropped the focus move at random and the test failed only in a full run.
+      if (details.open) panel?.querySelector<HTMLElement>("a, button")?.focus();
+    };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && details.open) close();
     };

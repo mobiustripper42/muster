@@ -110,6 +110,11 @@ export function CrewMenu({
 
       <div
         data-crew-menu-panel
+        // `role="dialog"` + `aria-modal` match `admin-nav.tsx`'s panel. Without them a screen
+        // reader announces a plain group and gives no signal that the rest of the page has gone
+        // inert — which it has, so the silence is a lie about the state of the app.
+        role="dialog"
+        aria-modal="true"
         aria-label="Menu"
         className="fixed right-0 top-0 z-40 flex h-full w-64 max-w-[80vw] flex-col gap-1 border-l border-line bg-card p-4 shadow-lg"
       >

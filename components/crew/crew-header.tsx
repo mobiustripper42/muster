@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { AppLink } from "../ui/app-link";
 import { readSubject } from "../../app/lib/auth";
 import { getRepo } from "../../app/lib/repo";
@@ -33,6 +34,29 @@ import { CrewMenu } from "./crew-menu";
  * adds a header with `<CrewHeader title="Time" back={{ href: "/crew", label: "Shifts" }} />` and
  * nothing else. `CrewMenu` is the client island underneath.
  */
+/**
+ * Does the viewer hold an ACTIVE admin row? — decides whether the drawer offers "Switch to
+ * admin" (DEC-093). Best-effort: a DB hiccup hides the control rather than breaking the header on
+ * every crew screen, and the escalation is gated server-side regardless.
+ *
+ * **Wrapped in React `cache`** so the header's lookup is deduped per request rather than repeated
+ * (post-merge audit of #665). The header renders on ~9 routes, each of which already resolves its
+ * own subject, so before #644 only the hub paid for this check and now every crew page does.
+ *
+ * Honest about what this does and doesn't buy: the drawer is on every route, so the *first*
+ * lookup per request is inherent to the feature and cannot be cached away. What `cache` removes is
+ * the lookup MULTIPLYING — a second `CrewHeader` in a branch, or any other consumer added later,
+ * now shares the one result instead of issuing another round-trip.
+ */
+const isViewerActiveAdmin = cache(async (): Promise<boolean> => {
+  const subject = await readSubject();
+  if (!subject) return false;
+  return getRepo()
+    .getAdmin(subject.id)
+    .then((a) => !!a?.active)
+    .catch(() => false);
+});
+
 export async function CrewHeader({
   title,
   back,
@@ -49,17 +73,7 @@ export async function CrewHeader({
    */
   current?: string;
 }) {
-  const subject = await readSubject();
-
-  // Best-effort, exactly as the hub's own check was (`crew/page.tsx`): a DB hiccup hides the
-  // switch rather than breaking the header on every crew screen. The escalation is gated
-  // server-side regardless — this only decides whether the control renders.
-  const viewerIsActiveAdmin = subject
-    ? await getRepo()
-        .getAdmin(subject.id)
-        .then((a) => !!a?.active)
-        .catch(() => false)
-    : false;
+  const viewerIsActiveAdmin = await isViewerActiveAdmin();
 
   const links = visibleCrewLinks({
     messaging: messagingEnabled(),

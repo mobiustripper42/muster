@@ -11,11 +11,20 @@
  *   --unbookable  the anomaly (default): the charge names an event that isn't there. Deliberately
  *                 NOT auto-refunded — expected: a loud REFUND MANUALLY alert for the operator.
  *
- * **Why this script exists.** Neither state can be reached by clicking: the race needs two buyers
- * colliding inside one 15-minute window, and the anomaly needs an event to vanish mid-checkout.
- * Before #613 both of these crashed on the `payments`→`reservations` foreign key, which took out
- * the refund, the customer notice AND the alert — so the customer was charged and nobody, including
- * the operator, was ever told. This is the observable proof that the net now catches them.
+ * **Why this script exists — and what it does NOT prove.** Both states are absolutely reachable
+ * through the app, by clicking; that is the whole problem, and real customers get here. What is
+ * hard is reaching them ON DEMAND: the race needs two buyers colliding inside one 15-minute hold
+ * window, and the anomaly needs a trip to vanish mid-checkout.
+ *
+ * So this script does not create a race. It forces the claim to fail, which is what LOSING one
+ * looks like to this code, and then shows what the handler does about it. That the losing branch
+ * refunds, notifies and writes no orphan row is proven here and in `postgres-repository.test.ts`.
+ * That a real concurrent collision actually produces that losing branch is a separate claim, and
+ * it is proven separately — "two buyers, one seat, concurrently" in the same Postgres suite runs
+ * two genuine simultaneous bookings and asserts the boat is sold exactly once.
+ *
+ * Before #613 both states crashed on the `payments`→`reservations` foreign key, which took out the
+ * refund, the customer notice AND the operator alert — charged, unbooked, unrefunded, unreported.
  *
  * Uses `FakePaymentPort`, so **no Stripe keys and no network** — the refund is recorded in-process
  * and printed. For the real-Stripe path see `npm run db:checkout`.

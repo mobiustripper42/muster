@@ -17,6 +17,7 @@ import {
   paymentIdFor,
   type WebhookDeps,
 } from "../reservations/booking-webhook.js";
+import { writeBooking } from "../reservations/write-booking.js";
 import { asId } from "../domain/ids.js";
 import type { TimePunch } from "../domain/entities.js";
 import type { CrewMemberId, TimePunchId } from "../domain/ids.js";
@@ -318,6 +319,71 @@ if (!dbUp) {
       // No payment row: there is no reservation to hang it on, and Stripe holds the record of
       // money that never became a booking.
       expect(await repo.getPayment(paymentIdFor("cs_pg_1"))).toBeNull();
+    });
+  });
+
+
+  /**
+   * Two buyers, one seat, genuinely at the same time (#613 follow-on).
+   *
+   * **Every other test of this race is stubbed.** `write-booking.test.ts` forces the loss with
+   * `repo.saveReservationIfUnclaimed = async () => false`, and the `#613` block above does the
+   * same through a Proxy. Both prove what happens *given* a lost outcome; neither proves a real
+   * collision produces one. The operator called that out — "we have to trust the script that it
+   * actually creates the race condition" — and he was right: the link was asserted nowhere.
+   *
+   * This runs two real `writeBooking` calls concurrently against one seat in real Postgres, so
+   * the conditional write — `saveReservationIfUnclaimed`, the CAS the whole DEC-109 design rests
+   * on — is the thing under test rather than a stub of it.
+   *
+   * The loser may read `lost` (both pre-checks passed, the CAS decided it) or
+   * `unbookable/already_claimed` (the rival committed before the loser's pre-check). Which one
+   * depends on interleaving and is not worth pinning. **The invariant that matters is that the
+   * boat is sold exactly once.**
+   */
+  describe("two buyers, one seat, concurrently — the claim CAS (DEC-109)", () => {
+    const EVENT2 = asId<"EventId">("m-evt-pg-race");
+    const NOW2 = () => "2026-07-12T00:00:00.000Z";
+
+    it("sells the seat exactly once, and the loser is never booked", async () => {
+      await pool.query(`truncate ${TABLES.join(", ")} restart identity cascade`);
+      const repo = new PostgresRepository(pool);
+      // Capacity 6 with two parties of 6: only ONE can fit, so they genuinely contend.
+      await repo.saveEvent({
+        id: EVENT2,
+        vesselId: asId<"VesselId">("vessel-brew-1"),
+        date: "2026-07-04",
+        time: "17:00",
+        capacity: 6,
+        status: "scheduled",
+        source: "muster",
+        price: 50000,
+      });
+
+      const buyer = (key: string, name: string) => ({
+        eventId: EVENT2,
+        customerName: name,
+        partySize: 6,
+        idempotencyKey: key,
+      });
+
+      const [a, b] = await Promise.all([
+        writeBooking(repo, buyer("sess_a", "Ann"), NOW2),
+        writeBooking(repo, buyer("sess_b", "Ben"), NOW2),
+      ]);
+
+      const outcomes = [a.outcome, b.outcome].sort();
+      // Exactly one winner…
+      expect(outcomes.filter((o) => o === "booked")).toHaveLength(1);
+      // …and the loser did NOT book. `lost` and `already_claimed` are both legitimate losses;
+      // what must never happen is two bookings, or a loser that reads as booked.
+      const loser = a.outcome === "booked" ? b : a;
+      expect(["lost", "unbookable"]).toContain(loser.outcome);
+
+      // The invariant, stated on the data rather than on the return values: one seat, one row.
+      const rows = await repo.listReservationsForEvent(EVENT2);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.status).toBe("booked");
     });
   });
 

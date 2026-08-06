@@ -244,12 +244,19 @@ describe("processBookingWebhook", () => {
     expect(await repo.getReservation(reservationIdFor("cs_test_1"))).not.toBeNull();
   });
 
-  it("paid-but-unbooked (event missing): records payment + alerts admins", async () => {
+  // Third of three siblings claiming "records payment"; the #613 sweep retitled two and missed
+  // this one. Without the payment assertion, hoisting `recordPayment` back above the outcome
+  // branch would leave this green — the in-memory repo has no FK (DEC-131) — losing one of the
+  // two independent checks on the regression.
+  it("paid-but-unbooked (event missing): alerts admins to refund manually, and writes NO payment", async () => {
     const repo = new InMemoryRepository(); // no event
     const { deps, alert } = makeDeps(repo);
     const r = await processBookingWebhook(deps, JSON.stringify(completed()), FAKE_SIGNATURE);
     expect(r).toEqual({ handled: true, outcome: "unbookable" });
     expect(alert).toHaveBeenCalledOnce();
+    expect(
+      await repo.listPaymentsForReservation(reservationIdFor("cs_test_1")),
+    ).toHaveLength(0);
   });
 
   it("handled:false for a non-checkout event; throws on a bad signature", async () => {

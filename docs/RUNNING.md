@@ -68,6 +68,35 @@ In dev there's a link issuer:
 > **Note:** the crew seed's shifts anchor to *now* (~2 weeks out, #101), like the `atrisk`/`outbox`
 > seeds — they never rot on a future clock. Re-run `npm run db:seed:crew` to re-anchor + reset state.
 
+### Signing in the front way (the 6-digit code)
+`dev-link` above skips the front door. To exercise the real one — `/crew` → enter email → 6-digit
+code (DEC-081, needs `CREW_SELF_SERVE=1`) — note that **the code will never reach an inbox in dev**:
+the seeded crew all have undeliverable addresses (`quint@brewboat.test`). If `RESEND_API_KEY` +
+`EMAIL_FROM` are set in `.env.local`, a real send is attempted and dropped, and because it runs in
+`after()` the failure never reaches the page — the UI just says "check your email" forever.
+
+Read the code out of the dev echo instead (`app/lib/auth-delivery.ts`, gated off on any prod deploy):
+
+```bash
+curl 'http://localhost:3000/crew/dev-code?email=quint@brewboat.test'
+```
+
+It is also printed to the dev-server terminal: `[login-code] → Quint <quint@brewboat.test>: 123456`.
+
+**If nothing shows up, don't hit submit again — that is what keeps it from showing up.** The echo
+only fires on `outcome: "deliver"`, and `mintLoginCode` returns `skip` in two cases that look
+identical from the browser (`src/auth/login-code.ts`):
+
+- **a live code minted less than 60s ago** (`RESEND_COOLDOWN_MS`, :160) — you already have one, so
+  no second code is minted and nothing is logged. Retrying re-arms this every time.
+- **a roster miss** (:149) — wrong email, or a DB the seed never reached.
+
+The code itself is stored hash-only, so a code you missed the log line for is gone; you have to wait
+the cooldown out. **Wait 60s, submit once, watch the terminal.** Only if it is still silent after a
+clean 60-second gap is it a roster miss — re-run `npm run db:seed:crew` against the same
+`DATABASE_URL` the dev server is using. (A `204` from the echo while an e2e server is alive on
+`:3100` has one other known cause — see the stale-build note in `auth-delivery.ts`.)
+
 ## Seeing the At-Risk board (admin)
 Admin needs **no seed** — there's no admin entity (DEC-020): the session subject is a free-form
 handle, so any `?admin=<handle>` works in dev.
@@ -175,7 +204,19 @@ Set the hold short and it becomes a two-minute job:
 CHECKOUT_HOLD_MINUTES=0.5 npm run dev     # 30-second holds
 ```
 
-Then, with `stripe listen` forwarding to the webhook (see `npm run db:checkout` for that loop):
+Stripe's webhooks go to Stripe, not to your laptop, so nothing is written locally until you forward
+them. In a second terminal:
+
+```bash
+stripe listen --forward-to localhost:3000/api/webhooks/stripe
+```
+
+Leave it running. On first start it prints a `whsec_…` signing secret — put that in `.env.local` as
+`STRIPE_WEBHOOK_SECRET`, alongside a test `STRIPE_SECRET_KEY`. Without the forward the payment
+still succeeds *at Stripe* and no booking is ever written here, which looks exactly like the app
+being broken.
+
+Then:
 
 1. **Browser A** — pick a departure, reach Stripe checkout, and *stop*. Don't pay.
 2. Wait ~30 seconds for the hold to lapse.

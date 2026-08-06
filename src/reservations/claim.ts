@@ -10,6 +10,7 @@
  * (`saveBookingIfSlotFree`) is the defeat-proof backstop at the write (DEC-109).
  */
 import { randomUUID } from "node:crypto";
+import { isProdDeploy } from "../config/deploy.js";
 import type {
   Block,
   CheckoutHold,
@@ -23,7 +24,44 @@ import type { Repository } from "../ports/repository.js";
 import { isActiveMusterClaim, isSlotBlocked, slotIdentity } from "./availability.js";
 
 /** The soft-hold lifetime (DEC-109). Lifted from sailbook's proven 15 min. */
-export const HOLD_MINUTES = 15;
+export const HOLD_MINUTES_DEFAULT = 15;
+
+/**
+ * The hold lifetime, **overridable outside production only** (`CHECKOUT_HOLD_MINUTES`).
+ *
+ * **Why this exists.** The residual race (DEC-109) — hold expires mid-payment, a rival takes the
+ * freed slot and pays first, the first payment then lands — is reachable by clicking, because
+ * that is how the app works. It is just not reachable *on demand*: at 15 minutes, reproducing it
+ * by hand means two browsers and a fifteen-minute wait, so in practice nobody ever checks it.
+ * `CHECKOUT_HOLD_MINUTES=0.5` turns that into a two-minute job with two browser windows. Same
+ * move sailbook made (operator, 2026-08-05), and it is why #613's handling is testable at all
+ * rather than only assertable.
+ *
+ * Fractions are allowed on purpose — 0.5 is thirty seconds, which is the useful setting. Garbage
+ * and non-positive values fall back rather than throwing: a typo must not mint a zero-length
+ * hold, which would make every buyer lose the race to themselves.
+ *
+ * **Ignored outright on a production deploy.** Shortening a real buyer's hold means their slot is
+ * released while their card is still processing — manufacturing the exact race this constant
+ * exists to bound. The guard is not a style preference; a stray env var on prod would cost real
+ * customers real bookings.
+ */
+export function resolveHoldMinutes(): number {
+  if (isProdDeploy()) return HOLD_MINUTES_DEFAULT;
+  const raw = process.env.CHECKOUT_HOLD_MINUTES;
+  if (!raw) return HOLD_MINUTES_DEFAULT;
+  // The same poison-resistant shape as `tenant.ts`'s `envMs` and `derive.ts`'s
+  // `envPositiveNumber`, spelled here rather than reused: both are private to their modules and
+  // named for units this is not (milliseconds, counts). Exporting one under a misleading name to
+  // save four lines would trade a small duplication for a worse one. `isProdDeploy` above was a
+  // different case — one predicate, one meaning, and a documented history of drifting copies.
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : HOLD_MINUTES_DEFAULT;
+}
+
+/** Resolved once at import — a change to `CHECKOUT_HOLD_MINUTES` needs a restart, like every
+ *  other env-driven constant in the tree. */
+export const HOLD_MINUTES = resolveHoldMinutes();
 
 /**
  * A UNIQUE hold id per acquire attempt — NOT slot-derived. One-hold-per-slot is enforced by

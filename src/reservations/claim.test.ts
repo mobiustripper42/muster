@@ -2,11 +2,17 @@
  * Departure claim orchestration (12.1a, DEC-109) — `candidateVessels` (pure boat
  * selection) + `acquireDepartureHold` (fit-and-fallback), driven against the in-memory repo.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import type { CheckoutHold, Offering, Vessel } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
-import { acquireDepartureHold, candidateVessels, holdExpiry } from "./claim.js";
+import {
+  acquireDepartureHold,
+  candidateVessels,
+  holdExpiry,
+  resolveHoldMinutes,
+  HOLD_MINUTES_DEFAULT,
+} from "./claim.js";
 import { eventIdForSlot } from "./availability.js";
 
 const SMALL = asId<"VesselId">("v-small"); // coiMaxPax 6
@@ -154,5 +160,68 @@ describe("acquireDepartureHold — fit-and-fallback (DEC-109)", () => {
     const b = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: TIME, guestCount: 4 }, now);
     // two different buyers → two different boats → two distinct hold ids
     expect("held" in a && "held" in b && String(a.held.id) !== String(b.held.id)).toBe(true);
+  });
+});
+
+/**
+ * The dev-only hold-TTL override (`CHECKOUT_HOLD_MINUTES`).
+ *
+ * The reason it exists is testability of the residual race: at 15 minutes, reproducing a
+ * hold-expires-mid-payment collision by hand means two browsers and a fifteen-minute wait, so
+ * nobody ever does it. At 0.5 it is a two-minute job.
+ *
+ * **The assertion that matters is the last one.** Shortening a real buyer's hold releases their
+ * slot while their card is still processing — manufacturing the very race the constant bounds. A
+ * stray env var on a production deploy would cost real customers real bookings, so production
+ * must ignore it no matter what it says.
+ */
+describe("hold TTL override (CHECKOUT_HOLD_MINUTES)", () => {
+  const ENV = { ...process.env };
+  afterEach(() => {
+    process.env = { ...ENV };
+  });
+
+  it("defaults to 15 minutes with nothing set", () => {
+    delete process.env.CHECKOUT_HOLD_MINUTES;
+    expect(resolveHoldMinutes()).toBe(HOLD_MINUTES_DEFAULT);
+  });
+
+  it("accepts a fraction — 0.5 is the thirty seconds that makes this usable", () => {
+    process.env.CHECKOUT_HOLD_MINUTES = "0.5";
+    delete process.env.VERCEL_ENV;
+    process.env.NODE_ENV = "development";
+    expect(resolveHoldMinutes()).toBe(0.5);
+  });
+
+  it("falls back on garbage and on zero rather than minting a zero-length hold", () => {
+    delete process.env.VERCEL_ENV;
+    process.env.NODE_ENV = "development";
+    for (const bad of ["", "abc", "0", "-5", "NaN", "Infinity"]) {
+      process.env.CHECKOUT_HOLD_MINUTES = bad;
+      // A zero-length hold would make every buyer lose the race to themselves.
+      expect(resolveHoldMinutes()).toBe(HOLD_MINUTES_DEFAULT);
+    }
+  });
+
+  it("is IGNORED on a production deploy, however it is set", () => {
+    process.env.CHECKOUT_HOLD_MINUTES = "0.5";
+
+    // Vercel production.
+    process.env.VERCEL_ENV = "production";
+    expect(resolveHoldMinutes()).toBe(HOLD_MINUTES_DEFAULT);
+
+    // Self-hosted production — no VERCEL_ENV, NODE_ENV says production.
+    delete process.env.VERCEL_ENV;
+    process.env.NODE_ENV = "production";
+    expect(resolveHoldMinutes()).toBe(HOLD_MINUTES_DEFAULT);
+  });
+
+  it("still applies on a PREVIEW deploy, which is why VERCEL_ENV is checked first", () => {
+    // Vercel sets NODE_ENV=production on previews too. A NODE_ENV-only guard would silently
+    // disable the override exactly where a reviewer would want to exercise the race.
+    process.env.CHECKOUT_HOLD_MINUTES = "0.5";
+    process.env.VERCEL_ENV = "preview";
+    process.env.NODE_ENV = "production";
+    expect(resolveHoldMinutes()).toBe(0.5);
   });
 });

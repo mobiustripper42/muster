@@ -80,7 +80,7 @@ Pass the transcript, the observations worktree, and the slug:
 > Project skills are in `.claude/skills/`, agents in `.claude/agents/` — read them for context.
 > Change nothing in this repo. The observation is your only output."
 
-The agent analyses, presents its findings, and writes the observation. It has no `Edit` tool.
+The agent analyses, presents its findings, and writes the observation. `Edit` is withheld from it, which removes the habitual path — but it keeps `Write` and `Bash`, so Step 3 is the check that actually catches a violation.
 
 ## Step 3 — Confirm the observation landed, and that nothing else did
 

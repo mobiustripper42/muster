@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { forwardFormNotices } from "../../../lib/channel";
 import { StripePaymentPort } from "@core/adapters/stripe-payment.js";
 import { PaymentSignatureError } from "@core/ports/payment.js";
 import { processBookingWebhook } from "@core/reservations/booking-webhook.js";
@@ -58,6 +59,12 @@ export async function POST(req: Request): Promise<Response> {
         sendConfirmation: sendReservationConfirmation,
         // Best-effort "sold out while you paid — fully refunded" on a residual-race loss (12.1b).
         notifyCustomerSoldOut: sendReservationSoldOutNotice,
+        // A booking re-forms shifts (#614), and that re-form can be the first to observe a shift
+        // collapsing or resurrecting anywhere on the calendar. `cancelledCrew`/`restoredCrew`
+        // fire regardless of `notifyTripChanges`, and after DEC-126 turns off the Xola pull this
+        // webhook is one of only two `formShifts` triggers left in production — so without this
+        // wire, a crew member dropped from a shift is simply never told (DEC-084, #244).
+        relayFormNotices: forwardFormNotices,
       },
       rawBody,
       signature,

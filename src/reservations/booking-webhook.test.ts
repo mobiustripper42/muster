@@ -511,6 +511,48 @@ describe("a native booking forms its own crewable shift (#614)", () => {
     expect(seats.map((s) => String(s.role)).sort()).toEqual([String(CAPTAIN), String(MATE)].sort());
   });
 
+  it("relays and audits the re-form's crew transitions — they are NOT gated by notifyTripChanges", async () => {
+    // The finding @code-review caught. The first cut discarded `formShifts`'s result, reasoning
+    // that a newborn shift has nobody to notify. True of the shift being born, irrelevant to the
+    // call: `formShifts` re-derives EVERY vessel-day, and `cancelledCrew`/`restoredCrew` fire
+    // whenever this call is first to observe a collapse or resurrection anywhere. After DEC-126
+    // turns off the Xola pull, this webhook and the cron tick are the only triggers left — an
+    // unrelayed transition is a crew member who is never told.
+    const repo = await slotWorld();
+    const relayed: unknown[] = [];
+    const { deps } = makeDeps(repo);
+    deps.relayFormNotices = async (form) => void relayed.push(form);
+
+    await processBookingWebhook(deps, JSON.stringify(slotCharge()), FAKE_SIGNATURE);
+
+    // The result reached the relay at all — that is the regression this pins — and it is the
+    // REAL `FormResult`, not an empty stand-in: it carries the shift this booking just created.
+    //
+    // No assertion on the audit rows here, deliberately. A newborn shift has no crew transitions,
+    // so `formAuditChanges` legitimately yields nothing, and `expect(rows).toBeDefined()` would
+    // be a check that cannot fail — the exact vacuous-probe pattern this session kept tripping on.
+    // The audit call shares this code path with the relay, which IS asserted.
+    expect(relayed).toHaveLength(1);
+    const form = relayed[0] as { createdShiftIds: string[] };
+    expect(form.createdShiftIds).toHaveLength(1);
+  });
+
+  it("a relay failure does not cost the customer their paid booking", async () => {
+    // Each leg independently best-effort: the booking is committed and PAID, so a channel hiccup
+    // must not 500 the webhook (Stripe would redeliver, resolve `already`, and re-run nothing).
+    const repo = await slotWorld();
+    const { deps, confirm } = makeDeps(repo);
+    deps.relayFormNotices = async () => {
+      throw new Error("channel is down");
+    };
+
+    const r = await processBookingWebhook(deps, JSON.stringify(slotCharge()), FAKE_SIGNATURE);
+
+    expect(r).toMatchObject({ handled: true, outcome: "booked" });
+    expect(await repo.listShifts()).toHaveLength(1);
+    expect(confirm).toHaveBeenCalledOnce();
+  });
+
   it("a formation failure does not cost the customer their paid booking", async () => {
     // The booking is committed and PAID before this runs. If forming throws, the webhook must
     // still succeed — a 500 would have Stripe redeliver, resolve `already`, and still not form,

@@ -18,8 +18,9 @@
  * states what governs a booking made today; `hasFlex` is one boolean away from the fourth.
  *
  * `hasFlex` is a BOOLEAN on the reservation, per DEC-113 — this file must never learn about
- * add-on ids. How the $30 is collected (an `add_ons` row, per the operator's 2026-08-06 call)
- * is #683's problem and does not reach the refund math.
+ * add-on ids. How the $30 gets collected is #683's problem and does not reach the refund math.
+ * The operator has since chosen an `add_ons` row (2026-08-06), which DEC-113's 2026-07-25
+ * correction forbids; #683 owns the amendment. Do not treat that as settled from here.
  *
  * Money is integer CENTS (DEC-112). Pure — no clock, no repo. The caller supplies the notice
  * because only it knows the departure instant and the tenant timezone.
@@ -103,9 +104,13 @@ export const CANCELLATION_TERMS =
   `for inclement weather, you'll receive a full refund.`;
 
 /**
- * The SMS clause. `bookingConfirmationBody` is sent VERBATIM as a text, so this is charged per
- * segment on every confirmation — the long form would cost a second one. The manage link the
- * confirmation already carries is where the full terms live.
+ * The SMS clause. `bookingConfirmationBody` is sent VERBATIM as a text, and that body is
+ * ALREADY multi-segment: the `— Muster` sign-off's em dash is outside GSM-7, which forces the
+ * whole message to UCS-2 at 67 chars per concatenated segment (not 153). So every character
+ * here is expensive — this clause is roughly a segment of its own, and the long paragraph would
+ * be three. Keep it short; the manage link the confirmation already carries is where the full
+ * terms live. (Dropping the em dash would buy GSM-7 back across every confirmation — not this
+ * task's copy to change.)
  */
 export const CANCELLATION_TERMS_SHORT =
   `Cancel ${STANDARD_CANCEL_DAYS_BEFORE}+ days out for a refund minus a ` +

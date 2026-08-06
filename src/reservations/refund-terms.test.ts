@@ -112,10 +112,11 @@ describe("the copy quotes the constants, not hardcoded dollars", () => {
     expect(CANCELLATION_TERMS_SHORT).toContain("14");
   });
 
-  it("keeps the SMS clause short enough to not cost a second segment", () => {
-    // bookingConfirmationBody is sent VERBATIM as SMS. A 160-char GSM segment is the budget
-    // the rest of the body already spends most of; this clause is the part we control.
-    expect(CANCELLATION_TERMS_SHORT.length).toBeLessThanOrEqual(80);
+  it("keeps the SMS clause to about one segment", () => {
+    // bookingConfirmationBody ships VERBATIM as SMS, and the `— Muster` sign-off's em dash
+    // forces the whole body to UCS-2 — 67 chars per concatenated segment, not 153. One
+    // segment's worth is the budget for the part this file controls.
+    expect(CANCELLATION_TERMS_SHORT.length).toBeLessThanOrEqual(67);
   });
 
   it("never advertises flex insurance — it cannot be bought yet (#683)", () => {

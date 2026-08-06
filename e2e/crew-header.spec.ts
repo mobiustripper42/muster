@@ -213,6 +213,33 @@ test.describe("crew header (#644)", () => {
       // A neighbour is still a link — otherwise this would pass on a drawer with no links at all.
       await expect(page.getByRole("link", { name: "Time off", exact: true })).toBeVisible();
     });
+
+    test("announces itself as a modal dialog, and keeps the keyboard's place", async ({ page }) => {
+      // Both gaps came from the post-merge audit of #665. The panel carried only an aria-label,
+      // so a screen reader announced a plain group and gave no signal that the page behind had
+      // gone inert — which it had. And `close()` collapsed the `<details>`, which sets the
+      // panel's contents to `display:none`: whatever link the keyboard was on is destroyed and
+      // focus falls to `<body>`, so the user tabs from the top of the document again.
+      await signInAsCrew(page, "crew-quint");
+      await page.goto("/crew/time");
+      await expect(page.locator("details[data-crew-menu-ready]")).toBeAttached();
+
+      // The dialog is discoverable by role, not just by a label on a div.
+      const dialog = page.getByRole("dialog", { name: "Menu" });
+      const summary = page.locator(`summary[aria-label="Open menu"]`);
+
+      await summary.click();
+      await expect(dialog).toBeVisible();
+      // Focus moved into the panel, so the next Tab walks the menu rather than an inert page.
+      expect(await page.evaluate(() => document.activeElement?.tagName)).toBe("A");
+
+      await page.keyboard.press("Escape");
+      // …and came back to the control that opened it, not to <body>.
+      const back = await page.evaluate(() =>
+        document.activeElement?.getAttribute("aria-label"),
+      );
+      expect(back).toBe("Open menu");
+    });
   });
 
   test("the drawer works with NO JAVASCRIPT, and its links are gone when shut", async ({

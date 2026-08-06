@@ -199,7 +199,12 @@ describe("processBookingWebhook", () => {
     expect(res.waiverVersion).toBe("v1");
   });
 
-  it("paid-but-unbooked (rival holds the boat): records the payment + alerts admins to refund manually", async () => {
+  // Retitled at #613. It used to claim "records the payment", and asserted a row that PRODUCTION
+  // could never write: `payments.reservation_id` is `not null` with an immediate FK, and no
+  // reservation exists on an unbookable outcome. It passed only because `InMemoryRepository` is a
+  // `Map.set` with no referential integrity (DEC-131). The alert is the real contract here — and
+  // it was unreachable, because the FK violation threw before it.
+  it("paid-but-unbooked (rival holds the boat): alerts admins to refund manually, and writes NO payment", async () => {
     const repo = new InMemoryRepository();
     await repo.saveEvent(musterEvent());
     await repo.saveReservation({
@@ -217,10 +222,12 @@ describe("processBookingWebhook", () => {
     expect(alert).toHaveBeenCalledOnce();
     expect(alert.mock.calls[0]![0]).toContain("REFUND MANUALLY");
     expect(confirm).not.toHaveBeenCalled(); // no booking → no confirmation
-    // the money moved, so the payment is still recorded (for the audit trail)
+    // No payment row — there is no reservation to hang it on. Postgres enforces this; the
+    // in-memory double does not, which is why the Postgres suite carries the real guard
+    // (`postgres-repository.test.ts` → "paid-but-unbooked — the payments→reservations FK").
     expect(
       await repo.listPaymentsForReservation(reservationIdFor("cs_test_1")),
-    ).toHaveLength(1);
+    ).toHaveLength(0);
   });
 
   it("a throwing sendConfirmation never breaks the committed booking (best-effort, DEC-122)", async () => {
@@ -237,12 +244,19 @@ describe("processBookingWebhook", () => {
     expect(await repo.getReservation(reservationIdFor("cs_test_1"))).not.toBeNull();
   });
 
-  it("paid-but-unbooked (event missing): records payment + alerts admins", async () => {
+  // Third of three siblings claiming "records payment"; the #613 sweep retitled two and missed
+  // this one. Without the payment assertion, hoisting `recordPayment` back above the outcome
+  // branch would leave this green — the in-memory repo has no FK (DEC-131) — losing one of the
+  // two independent checks on the regression.
+  it("paid-but-unbooked (event missing): alerts admins to refund manually, and writes NO payment", async () => {
     const repo = new InMemoryRepository(); // no event
     const { deps, alert } = makeDeps(repo);
     const r = await processBookingWebhook(deps, JSON.stringify(completed()), FAKE_SIGNATURE);
     expect(r).toEqual({ handled: true, outcome: "unbookable" });
     expect(alert).toHaveBeenCalledOnce();
+    expect(
+      await repo.listPaymentsForReservation(reservationIdFor("cs_test_1")),
+    ).toHaveLength(0);
   });
 
   it("handled:false for a non-checkout event; throws on a bad signature", async () => {
@@ -335,15 +349,67 @@ describe("processBookingWebhook — balance (11.2b)", () => {
     expect(alert.mock.calls[0]![0]).toContain("OVERPAID");
   });
 
-  it("a balance against a missing/cancelled reservation is recorded but loudly flagged for reconciliation", async () => {
+  /**
+   * The MISSING and CANCELLED legs are different, and conflating them cost a ledger row.
+   *
+   * `payments.reservation_id`'s FK requires the reservation ROW to exist — nothing about its
+   * status. `cancelled` is a legitimate `ReservationStatus`, so a cancelled-but-present
+   * reservation has always satisfied it. #613's first cut reordered the whole three-way guard
+   * (missing / cancelled / unpriced) and skipped the write for all three, which silently dropped
+   * the ledger row for money that genuinely moved.
+   *
+   * It shipped green because the test below is titled for "missing/cancelled" and seeds only
+   * MISSING. Caught by `@code-review`, which reproduced it against real Postgres. Hence a case
+   * per leg now, rather than one test whose title covers a case it never builds.
+   */
+  it("a balance against a MISSING reservation is not recorded — there is no row to reference", async () => {
     const repo = new InMemoryRepository(); // no reservation seeded
     const { deps, alert } = makeDeps(repo);
     const r = await processBookingWebhook(deps, JSON.stringify(balanceCompleted()), FAKE_SIGNATURE);
     expect(r).toEqual({ handled: true, outcome: "balance_paid" });
-    // money moved → payment recorded, but admins are paged (can't reconcile)
-    expect(await repo.listPaymentsForReservation(RES)).toHaveLength(1);
+    // No payment row — nothing to reference. Admins are paged instead, which is the only
+    // outcome that was ever reachable in production.
+    expect(await repo.listPaymentsForReservation(RES)).toHaveLength(0);
     expect(alert).toHaveBeenCalledOnce();
     expect(alert.mock.calls[0]![0]).toContain("RECONCILE");
+  });
+
+  it("a balance against a CANCELLED reservation IS recorded, then flagged", async () => {
+    // The row exists, so the FK is satisfied and the money must be on the ledger. A payment
+    // nobody can reconcile is still a payment; a ledger that quietly omits it is worse than one
+    // that shows it flagged.
+    const repo = new InMemoryRepository();
+    await seedDepositBooking(repo);
+    const res = await repo.getReservation(RES);
+    await repo.saveReservation({ ...res!, status: "cancelled" });
+    const { deps, alert } = makeDeps(repo);
+
+    const r = await processBookingWebhook(deps, JSON.stringify(balanceCompleted()), FAKE_SIGNATURE);
+
+    expect(r).toEqual({ handled: true, outcome: "balance_paid" });
+    const balances = (await repo.listPaymentsForReservation(RES)).filter((p) => p.kind === "balance");
+    expect(balances).toHaveLength(1);
+    expect(alert).toHaveBeenCalledOnce();
+    expect(alert.mock.calls[0]![0]).toContain("RECONCILE");
+  });
+
+  it("a balance against an UNPRICED reservation IS recorded, then flagged", async () => {
+    // Same reasoning as cancelled: the row exists, so the money is recordable and must be
+    // recorded. Only the price is missing, which makes it unreconcilable, not unrecordable.
+    const repo = new InMemoryRepository();
+    await seedDepositBooking(repo);
+    const res = await repo.getReservation(RES);
+    const ev = await repo.getEvent(res!.eventId);
+    const { price: _dropped, ...unpriced } = ev!;
+    await repo.saveEvent(unpriced);
+    const { deps, alert } = makeDeps(repo);
+
+    const r = await processBookingWebhook(deps, JSON.stringify(balanceCompleted()), FAKE_SIGNATURE);
+
+    expect(r).toEqual({ handled: true, outcome: "balance_paid" });
+    const balances = (await repo.listPaymentsForReservation(RES)).filter((p) => p.kind === "balance");
+    expect(balances).toHaveLength(1);
+    expect(alert).toHaveBeenCalledOnce();
   });
 
   it("unknown purpose is loudly flagged and NOT booked (no orphan reservation)", async () => {

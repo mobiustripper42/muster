@@ -104,13 +104,15 @@ export const CANCELLATION_TERMS =
   `for inclement weather, you'll receive a full refund.`;
 
 /**
- * The SMS clause. `bookingConfirmationBody` is sent VERBATIM as a text, and that body is
- * ALREADY multi-segment: the `— Muster` sign-off's em dash is outside GSM-7, which forces the
- * whole message to UCS-2 at 67 chars per concatenated segment (not 153). So every character
- * here is expensive — this clause is roughly a segment of its own, and the long paragraph would
- * be three. Keep it short; the manage link the confirmation already carries is where the full
- * terms live. (Dropping the em dash would buy GSM-7 back across every confirmation — not this
- * task's copy to change.)
+ * The SMS clause. `bookingConfirmationBody` ships VERBATIM as a text, so length here is a
+ * recurring per-booking cost. The body is ~210 chars before this clause and GSM-7 concatenated
+ * segments are 153, so a short clause rides in the second segment's slack for free — the
+ * confirmation costs 2 segments with it or without it. The full paragraph would not; the manage
+ * link the confirmation already carries is where the complete terms live.
+ *
+ * That accounting only holds while the body stays inside GSM-7. It did not until #619 — the
+ * sign-off's em dash forced UCS-2 (67 chars/segment) and made the same message cost 4.
+ * `booking-confirmation.test.ts` guards the alphabet; keep this clause ASCII.
  */
 export const CANCELLATION_TERMS_SHORT =
   `Cancel ${STANDARD_CANCEL_DAYS_BEFORE}+ days out for a refund minus a ` +

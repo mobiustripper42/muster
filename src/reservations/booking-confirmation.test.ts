@@ -67,6 +67,26 @@ describe("sendBookingConfirmation", () => {
     expect(sms.sent[0]!.to).toEqual({ phone: "+15550001111" });
   });
 
+  it("the body stays inside GSM-7 — one stray character doubles every SMS bill", async () => {
+    // The em dash in the sign-off did exactly this until #619: a single non-GSM-7 character
+    // re-encodes the WHOLE message as UCS-2, 67 chars per concatenated segment instead of 153.
+    // The failure is invisible — the text still sends, it just costs more, forever.
+    const GSM7 =
+      "@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?¡" +
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà" +
+      "^{}\\[~]|€"; // extension set — 2 septets each, but still GSM-7
+
+    const sms = capturing();
+    await sendBookingConfirmation({ sms, linkBase: BASE, linkSecret: SECRET }, reservation());
+
+    const body = sms.sent[0]!.body;
+    // The customer's own name can force UCS-2 and is not ours to control — check the copy
+    // this file owns, not the interpolated name.
+    const ours = body.replace(reservation().customerName ?? "", "");
+    const strays = [...ours].filter((c) => !GSM7.includes(c));
+    expect(strays).toEqual([]);
+  });
+
   it("carries the cancellation terms on both channels (#619)", async () => {
     const email = capturing();
     const sms = capturing();

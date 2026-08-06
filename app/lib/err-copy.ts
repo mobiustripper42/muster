@@ -1,7 +1,7 @@
 /**
  * Look up the copy for a redirect error code (#654).
  *
- * Server actions report failures as a code in a redirect param (DEC-026 — codes, not prose, so
+ * Server actions report failures as a code in a redirect param (DEC-147 rule 3 — codes, not prose, so
  * the surface works with no client JS). Each surface owns a table mapping its codes to copy.
  *
  * **The bug this exists to prevent.** Those tables were `Record<string, string>` and read as
@@ -27,7 +27,18 @@ export function errCopyFor<K extends string>(
   fallback?: K,
 ): string | null {
   if (!raw) return null;
-  const hit = (table as Readonly<Record<string, string | undefined>>)[raw];
-  if (hit !== undefined) return hit;
+  // **`Object.hasOwn`, not plain property access.** `raw` comes off the URL, so it can be any
+  // string — including one that names an inherited `Object.prototype` member. `table["constructor"]`
+  // returns the `Object` FUNCTION, not `undefined`, so an `!== undefined` guard waves it through
+  // and the caller renders a function into JSX: React throws "Objects are not valid as a React
+  // child" and the page crashes. `?err=toString`, `valueOf`, `hasOwnProperty` and `__proto__` all
+  // do the same. Reachable by URL on every surface with a copy table, by any signed-in user.
+  //
+  // That is the very defect class this file exists to close — "a lookup that cannot fail is a
+  // lookup that cannot tell you it was wrong" — so getting it wrong HERE undoes the point of
+  // #654. TypeScript cannot catch it: at this boundary `raw` is legitimately an arbitrary string.
+  if (Object.hasOwn(table, raw)) {
+    return (table as Readonly<Record<string, string>>)[raw]!;
+  }
   return fallback === undefined ? null : table[fallback];
 }

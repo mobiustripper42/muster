@@ -6,9 +6,14 @@
  * its own `payment.*` key, applying the per-field default on an absent key — the DEC-054
  * absent⇒default idiom). Code holds the defaults below (BrewBoat's numbers).
  *
- * Refund tiers are deliberately NOT here — refunds are always manual (Stripe dashboard),
- * and the refund cascade is parked (DEC-107); config for an unbuilt surface is
- * speculative. They live as code constants in `refund-terms.ts`, inert until that phase.
+ * Refund terms are deliberately NOT here — they are the operator's PUBLISHED policy, not a
+ * knob, and a term a customer agreed to at booking must not be re-quoted by a later settings
+ * edit. They live as code constants in `refund-terms.ts`, which since #619 exists and is
+ * rendered at checkout, on the manage page, and in the confirmation.
+ *
+ * Refunds are no longer always manual: DEC-107's amendment (#472) auto-refunds the
+ * residual-race loser. Manual-only now narrows to operator-discretion refunds, and the
+ * §3.3 cancel cascade stays parked (self-service cancel is #616).
  */
 
 import type { PaymentStatus } from "../domain/entities.js";

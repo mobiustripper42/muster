@@ -96,6 +96,33 @@ test.describe("public /book/checkout", () => {
     await expect(pay).toBeDisabled();
   });
 
+  test("the cancellation terms are stated above the pay button (#619)", async ({ page }) => {
+    await page.goto(CHECKOUT);
+
+    // The literal expected sight — the operator's published policy. The unit suite
+    // (`src/reservations/refund-terms.test.ts`) is what pins this prose to the $50/14-day
+    // constants; this asserts the customer actually sees it before handing over a card.
+    const terms = page.getByTestId("cancellation-terms");
+    await expect(terms).toBeVisible();
+    await expect(terms).toContainText(
+      "Cancel 14 days or more before your cruise for a refund minus a $50 cancellation fee.",
+    );
+    await expect(terms).toContainText("no-shows");
+    await expect(terms).toContainText("full refund");
+
+    // Flex insurance is a published term nothing can sell yet (#683) — it must NOT appear
+    // at the point of sale.
+    await expect(terms).not.toContainText(/insurance/i);
+
+    // "Before the pay button" is the acceptance criterion, so assert the ORDER, not just
+    // co-presence: the terms box precedes the sticky pay bar in the document.
+    const order = await terms.evaluate((el) => {
+      const pay = document.querySelector('[data-testid="book-pay"]')!;
+      return el.compareDocumentPosition(pay) & Node.DOCUMENT_POSITION_FOLLOWING ? "before" : "after";
+    });
+    expect(order).toBe("before");
+  });
+
   test("a stale link to a sold-out slot gets an honest notice, not a doomed form", async ({ page }) => {
     // The seeded Marcus Webb booking — sold out before this link was opened.
     await page.goto(

@@ -58,6 +58,8 @@ export interface CheckoutFormProps {
   tiers: { bps: number; tipCents: number }[];
   defaultBps: number;
   waiverUrl: string;
+  /** The published cancellation terms (#619) — passed as plain data, waiverUrl idiom. */
+  cancellationTerms: string;
 }
 
 export function CheckoutForm(props: CheckoutFormProps) {
@@ -384,11 +386,18 @@ function InnerForm(p: InnerProps) {
           </div>
         </div>
 
-        {/* cancellation / manage note — the refund policy itself is unpinned (DEC-107 amend
-            pending), so this states only what IS true: the manage link. Copy only. */}
-        <div className="pb-4 pt-3 text-xs text-faint">
-          After you book, your confirmation includes a private booking link to view or manage
-          your reservation. Questions? Message us from that link any time.
+        {/* cancellation terms + manage note (#619). The terms are the operator's published
+            policy, quoted from the constants in `refund-terms.ts` — never retyped here.
+            Flex insurance is deliberately absent: it is a published term nothing can sell
+            yet (#683). Copy only. */}
+        <div className="pb-4 pt-3 text-xs">
+          {/* text-muted, not text-faint: this is the term the customer is agreeing to by
+              paying, and it should not be the quietest thing on the screen. */}
+          <p className="text-muted" data-testid="cancellation-terms">{p.cancellationTerms}</p>
+          <p className="pt-2 text-faint">
+            After you book, your confirmation includes a private booking link to view or manage
+            your reservation. Questions? Message us from that link any time.
+          </p>
         </div>
       </div>
 

@@ -15,6 +15,7 @@ import { TENANT_TIMEZONE, vesselClockOf, vesselDateOf } from "@core/config/tenan
 import { formatCents } from "@core/reservations/calendar-detail.js";
 import { formatClock, formatShortDay } from "@core/reservations/availability-screen.js";
 import { buildManageView } from "@core/reservations/manage-view.js";
+import { CANCELLATION_TERMS } from "@core/reservations/refund-terms.js";
 import { AppLink } from "../../../components/ui/app-link";
 import { Notice } from "../../../components/ui/notice";
 import { SubmitButton } from "../../../components/ui/submit-button";
@@ -224,7 +225,8 @@ export default async function ManagePage({ searchParams }: { searchParams: Promi
                 ⟲ Book again
               </AppLink>
 
-              {/* Option (b): request cancel/change — emailed to the operator (self-service is #472). */}
+              {/* Option (b): request cancel/change — emailed to the operator (self-service is #616;
+                  the terms it will enforce are `refund-terms.ts`, rendered below since #619). */}
               <details className="border-b border-line-soft py-3">
                 <summary className="cursor-pointer list-none text-[13.5px] font-semibold text-accent">
                   ↻ Request a date/time change
@@ -237,6 +239,9 @@ export default async function ManagePage({ searchParams }: { searchParams: Promi
                 </summary>
                 <RequestForm r={sp.r ?? ""} t={sp.t ?? ""} kind="cancel" placeholder="Anything we should know? (optional)" />
               </details>
+              <p className="pt-2 text-[11.5px] text-faint" data-testid="cancellation-terms">
+                {CANCELLATION_TERMS}
+              </p>
               <p className="pt-2 text-[11.5px] text-faint">
                 Cancellations and changes are handled by our team — we’ll confirm by text or email.
               </p>

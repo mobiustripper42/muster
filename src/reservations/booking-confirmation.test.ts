@@ -7,6 +7,7 @@ import { asId } from "../domain/ids.js";
 import type { ChannelPort, OutboundMessage, SendResult } from "../ports/channel.js";
 import { verifyReservationLinkToken } from "./booking-link.js";
 import { sendBookingConfirmation } from "./booking-confirmation.js";
+import { CANCELLATION_TERMS_SHORT } from "./refund-terms.js";
 
 const SECRET = "test-link-secret";
 const BASE = "https://muster.app";
@@ -64,6 +65,22 @@ describe("sendBookingConfirmation", () => {
     }
     expect(email.sent[0]!.to).toEqual({ email: "mary@example.com" });
     expect(sms.sent[0]!.to).toEqual({ phone: "+15550001111" });
+  });
+
+  it("carries the cancellation terms on both channels (#619)", async () => {
+    const email = capturing();
+    const sms = capturing();
+
+    await sendBookingConfirmation(
+      { email, sms, linkBase: BASE, linkSecret: SECRET },
+      reservation(),
+    );
+
+    // The SHORT form, quoted from the constant — the body goes out verbatim as SMS and the
+    // long paragraph would cost a second segment on every confirmation.
+    expect(email.sent[0]!.body).toContain(CANCELLATION_TERMS_SHORT);
+    expect(sms.sent[0]!.body).toContain(CANCELLATION_TERMS_SHORT);
+    expect(sms.sent[0]!.body.toLowerCase()).not.toContain("insurance"); // unsellable (#683)
   });
 
   it("email-only reservation ⇒ only the email side fires", async () => {

@@ -22,6 +22,7 @@
 import type { Reservation } from "../domain/entities.js";
 import type { ChannelPort } from "../ports/channel.js";
 import { reservationManageUrl } from "./booking-link.js";
+import { CANCELLATION_TERMS_SHORT } from "./refund-terms.js";
 
 export interface ConfirmationDeps {
   /** Email channel, when configured (Resend). Absent ⇒ no email side. */
@@ -50,6 +51,7 @@ export function bookingConfirmationBody(
   const who = reservation.customerName?.trim() || "there";
   return (
     `Hi ${who}, your Muster booking is confirmed for a party of ${reservation.partySize}.\n\n` +
+    `${CANCELLATION_TERMS_SHORT}\n\n` +
     `Manage your booking: ${manageUrl}\n\n` +
     `— Muster`
   );

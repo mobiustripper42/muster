@@ -49,6 +49,20 @@ test.describe("public /reservations/manage", () => {
     await expect(page.getByText("Request cancellation")).toBeVisible();
   });
 
+  test("the cancellation terms sit with the cancel action (#619)", async ({ page }) => {
+    await page.goto(manageUrl());
+
+    // A customer clicking "Request cancellation" should read the terms in the same place,
+    // not have to go back to the checkout they already left.
+    const terms = page.getByTestId("cancellation-terms");
+    await expect(terms).toBeVisible();
+    await expect(terms).toContainText(
+      "Cancel 14 days or more before your cruise for a refund minus a $50 cancellation fee.",
+    );
+    await expect(terms).toContainText("no-shows");
+    await expect(terms).not.toContainText(/insurance/i); // unsellable yet (#683)
+  });
+
   test("a bad token shows a generic invalid-link state, not the booking", async ({ page }) => {
     await page.goto(`/reservations/manage?r=${encodeURIComponent(RID)}&t=not-a-real-token`);
     await expect(page.getByText("This booking link isn’t valid")).toBeVisible();

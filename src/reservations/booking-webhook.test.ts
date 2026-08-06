@@ -369,3 +369,113 @@ describe("processBookingWebhook — balance (11.2b)", () => {
     expect(await repo.listAllReservations()).toHaveLength(0);
   });
 });
+
+/**
+ * A Muster-native booking must produce a CREWABLE shift, with no Xola pull involved (#614).
+ *
+ * `writeSlotBooking` writes the Event and the Reservation and stops. Nothing downstream formed a
+ * Shift, so a native booking yielded an event with no seats, no asks and nobody to crew it.
+ *
+ * **It has only ever worked because the operator keeps pressing "Pull from Xola"**, which re-forms
+ * shifts from ALL events including Muster-native ones (`form-shifts.ts` iterates `listEvents()`
+ * with no source filter). That inverts the dependency the docs assume — Muster bookings are
+ * crewable BECAUSE Xola is still being polled — and DEC-126 turns that pull off at cutover. The
+ * first Muster-only Saturday would have produced boats that were sold and uncrewed.
+ *
+ * Nothing here imports `xola-pull`, and that absence is the assertion.
+ */
+describe("a native booking forms its own crewable shift (#614)", () => {
+  const OFF = asId<"OfferingId">("off-614");
+  const VES = asId<"VesselId">("vessel-614");
+  const CAPTAIN = asId<"RoleTypeId">("role-captain");
+  const MATE = asId<"RoleTypeId">("role-mate");
+
+  async function slotWorld(): Promise<InMemoryRepository> {
+    const repo = new InMemoryRepository();
+    await repo.saveVessel({
+      id: VES,
+      name: "Brew 2",
+      coiMaxPax: 12,
+      // Real manning, or the shift forms with zero seats and "crewable" means nothing.
+      manning: [
+        { roleTypeId: CAPTAIN, count: 1 },
+        { roleTypeId: MATE, count: 1 },
+      ],
+    });
+    await repo.saveOffering({
+      id: OFF,
+      tenantId: asId<"TenantId">("t"),
+      name: "Sunset Cruise",
+      status: "live",
+      vesselIds: [VES],
+      locationId: asId<"LocationId">("loc-614"),
+      schedule: {
+        seasonStart: "2026-06-01",
+        seasonEnd: "2026-08-31",
+        weekdays: [5],
+        departureTimes: ["17:00"],
+      },
+      basePriceCents: 49900,
+      priceVariations: [],
+      extraGuestPriceCents: 5000,
+    });
+    return repo;
+  }
+
+  const slotCharge = () =>
+    completed({
+      sessionId: "cs_slot_614",
+      metadata: {
+        offeringId: String(OFF),
+        vesselId: String(VES),
+        date: "2026-07-04",
+        time: "17:00",
+        guestCount: "6",
+        priceCents: "49900",
+        kind: "full",
+        customerName: "Mary",
+        email: "m@x.io",
+      },
+    });
+
+  it("books a slot and lands a Shift with derived seats — no Xola pull anywhere", async () => {
+    const repo = await slotWorld();
+    const { deps } = makeDeps(repo);
+
+    const r = await processBookingWebhook(deps, JSON.stringify(slotCharge()), FAKE_SIGNATURE);
+    expect(r).toMatchObject({ handled: true, outcome: "booked" });
+
+    // The event exists — that part always worked.
+    const events = await repo.listEvents();
+    expect(events).toHaveLength(1);
+    expect(events[0]!.source).toBe("muster");
+
+    // …and now so does the shift it earned, on the right boat and day.
+    const shifts = await repo.listShifts();
+    expect(shifts).toHaveLength(1);
+    expect(shifts[0]).toMatchObject({ vesselId: VES, date: "2026-07-04" });
+
+    // Crewable means SEATS. A shift with none is an empty promise: nothing to ask for,
+    // nobody to assign, and the board would read it as fine.
+    const seats = await repo.listSeatsForShift(shifts[0]!.id);
+    expect(seats.length).toBeGreaterThan(0);
+    expect(seats.map((s) => String(s.role)).sort()).toEqual([String(CAPTAIN), String(MATE)].sort());
+  });
+
+  it("a formation failure does not cost the customer their paid booking", async () => {
+    // The booking is committed and PAID before this runs. If forming throws, the webhook must
+    // still succeed — a 500 would have Stripe redeliver, resolve `already`, and still not form,
+    // while the customer's confirmation never sends. The cron tick re-forms as the backstop.
+    const repo = await slotWorld();
+    repo.saveShift = async () => {
+      throw new Error("shift store is down");
+    };
+    const { deps, confirm } = makeDeps(repo);
+
+    const r = await processBookingWebhook(deps, JSON.stringify(slotCharge()), FAKE_SIGNATURE);
+
+    expect(r).toMatchObject({ handled: true, outcome: "booked" });
+    expect(await repo.listAllReservations()).toHaveLength(1);
+    expect(confirm).toHaveBeenCalledOnce();
+  });
+});

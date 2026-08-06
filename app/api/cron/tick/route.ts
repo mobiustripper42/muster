@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { formShifts } from "@core/builder/form-shifts.js";
 import { tick } from "@core/builder/tick.js";
 import { getRepo } from "../../../lib/repo";
 import { forwardToOutbox } from "../../../lib/channel";
@@ -47,6 +48,29 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: true, paused: true, at: now.toISOString() });
   }
 
+  // **Re-form before advancing (#614) — the backstop, and the only autonomous one.**
+  // `tick` walks `repo.listShifts()`; it has never CREATED a shift. Formation's only
+  // production triggers were the "Pull from Xola" button and the manual split/merge commands,
+  // so a Muster-native booking was crewable only because the operator kept pressing Pull —
+  // and DEC-126 turns that off at cutover.
+  //
+  // The booking path forms its own shift immediately (`booking-webhook.ts`); this catches the
+  // case where that best-effort call failed, and it is what makes a Xola-free deployment work
+  // at all. Here at the edge rather than inside `tick` for the same reason the pause gate is:
+  // `tick` stays the pure advance-what-exists engine, and its unit suite keeps meaning what it
+  // meant. No `notifyTripChanges` — that flag belongs to the import, which relays "your shift
+  // changed" to crew whose day actually moved.
+  //
+  // Best-effort: a formation failure must not cost this tick its asks and escalations, which
+  // are the thing the cron exists for.
+  let shiftsFormed = 0;
+  try {
+    const formed = await formShifts(repo, { now });
+    shiftsFormed = formed.createdShiftIds.length;
+  } catch (e) {
+    console.error("tick: formShifts failed — existing shifts still advance", e);
+  }
+
   const r = await tick(repo, now);
   // Edge channel wiring: every ask this tick fired → crew (DEC-030), and every
   // NEW At-Risk landing → the active admins by SMS (DEC-095). Best-effort at the
@@ -69,6 +93,7 @@ export async function GET(req: Request) {
   return NextResponse.json({
     ok: true,
     at: now.toISOString(),
+    shiftsFormed,
     shiftsAdvanced: r.shiftsAdvanced,
     bornFilling: r.bornFilling,
     toAtRisk: r.toAtRisk,

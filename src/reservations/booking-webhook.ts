@@ -16,6 +16,7 @@
  * dashboard) except the DEC-109 residual-race auto-refund. Provider-agnostic +
  * `FakePaymentPort`-testable.
  */
+import { formShifts } from "../builder/form-shifts.js";
 import type { Payment, Reservation } from "../domain/entities.js";
 import {
   asId,
@@ -343,6 +344,33 @@ async function processBookingCharge(
   // `postgres-repository.test.ts`, which is the only place it can be proven.
   if (result.outcome === "booked" || result.outcome === "already") {
     await recordPayment(deps, charge, kind, reservationId);
+
+    // **Form the shift the booking just earned (#614).** `writeSlotBooking` writes the Event and
+    // the Reservation and stops; nothing downstream created a Shift, so a Muster-native booking
+    // produced an event with no seats, no asks and no crew.
+    //
+    // It has worked so far only because the operator keeps pressing "Pull from Xola", which
+    // re-forms shifts from ALL events including Muster-native ones. That inverts the dependency
+    // the docs assume — Muster bookings are crewable BECAUSE Xola is still being polled — and
+    // DEC-126 turns that pull off at cutover. The first Muster-only Saturday would have produced
+    // boats that were sold and uncrewed.
+    //
+    // Here rather than inside `writeSlotBooking` because this is where a completed booking's side
+    // effects already live (`sendConfirmation` below), and it covers the legacy `writeBooking`
+    // path in the same stroke. Best-effort by the same contract: the booking is committed and
+    // PAID, so a formation failure must never 500 — Stripe would retry a booking that already
+    // exists, resolve `already`, and still not form. The cron tick re-forms as the backstop.
+    //
+    // No `notifyTripChanges`: that flag is the import's, for relaying "your shift changed" to
+    // crew whose committed day moved. Nobody is on this shift yet — it is being born.
+    try {
+      await formShifts(deps.repo, { now: new Date(deps.now()) });
+    } catch (e) {
+      console.error(
+        `[reservations] formShifts after booking ${reservationId} failed — the tick will re-form`,
+        e,
+      );
+    }
     // Confirm ONLY the fresh booking — never the idempotent `already` (a Stripe
     // redelivery), or the customer gets re-texted on every retry (DEC-122).
     if (result.outcome === "booked") {

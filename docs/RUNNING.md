@@ -161,6 +161,39 @@ npm run db:seed:outbox   # 3 cards: 2 relays + 1 addressed to the operator (trip
   integrity diagnostic; `degraded` if the DB is down or a dangling ref exists).
 - `/admin` → links to the At-Risk board + the Outbox (roster/builder surfaces are later phases).
 
+## Reproducing the checkout race by hand (`CHECKOUT_HOLD_MINUTES`)
+
+A checkout hold lasts **15 minutes** (DEC-109). The residual race — the hold expires while a buyer
+is still paying, a rival takes the freed slot and pays first, then the first payment lands — is
+reachable by clicking, because that is how the app works. It just is not reachable *on demand*: at
+15 minutes, reproducing it means two browsers and a fifteen-minute wait, so in practice nobody
+checks it.
+
+Set the hold short and it becomes a two-minute job:
+
+```bash
+CHECKOUT_HOLD_MINUTES=0.5 npm run dev     # 30-second holds
+```
+
+Then, with `stripe listen` forwarding to the webhook (see `npm run db:checkout` for that loop):
+
+1. **Browser A** — pick a departure, reach Stripe checkout, and *stop*. Don't pay.
+2. Wait ~30 seconds for the hold to lapse.
+3. **Browser B** (a different profile or a private window) — book the same departure and pay with
+   `4242 4242 4242 4242`. It should succeed.
+4. **Browser A** — now pay. Expect an **automatic refund** and a "sold out while you were paying"
+   email/SMS; the operator gets no alert, because nothing needs a human.
+
+Fractions are allowed (`0.5` = 30s). Garbage, `0` and negatives fall back to 15 rather than minting
+a zero-length hold, which would make every buyer lose the race to themselves.
+
+**It is ignored outright on a production deploy**, whatever it is set to — shortening a real buyer's
+hold releases their slot while their card is still processing, manufacturing the exact race the
+constant exists to bound. Previews still honour it, so a reviewer can exercise the race there.
+
+For the same path without Stripe or a browser, `npm run db:paid-unbooked -- --lost` drives it
+through the handler directly and prints what the safety net did.
+
 ## Checking a change
 - **The gate:** `npm run verify` → core typecheck + app typecheck + tests + webpack build. Docker-free
   (the Postgres adapter contract suite skips cleanly when no DB is reachable). This is what `/kill-this`

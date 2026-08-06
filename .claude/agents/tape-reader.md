@@ -128,6 +128,18 @@ For each pattern, note: **occurred / not found / inconclusive**.
 
 ---
 
+> **P5 and P6 need the PR body, which is not in the transcript. Fetch it — don't abstain.**
+>
+> Collect every PR the session opened (`gh pr create` calls in the transcript, or `gh pr list --search` by branch), then read each body:
+>
+> ```bash
+> gh pr view <N> --json title,body --jq '.body'
+> ```
+>
+> Only report "not checked" if `gh` is unavailable or the session opened no PRs — and say which of the two it was. **An abstention you declare is honest; an abstention you declare instead of running one command is a gap wearing honesty's clothes.** These two patterns are about the quality of what shipped, so skipping them on a session that shipped a lot is skipping them exactly when they matter. Observed on the first live run, where eight PRs went unexamined this way.
+
+---
+
 ### P7 — Full test suite run during development
 **Signal:** `npx playwright test` without a specific file, called during task work (not during kill-this or explicit user request)
 **Why it hurts:** Slow; may affect database state; blocks faster iteration
@@ -235,12 +247,16 @@ These become **Candidate** sections in the observation. They are never added to 
 
 ## Step 4 — Score every finding for severity, at capture time
 
-Before you present anything, answer two questions per finding. They are the inputs to `@workout`'s promotion call (DEC-S039), and **the second one only you can answer** — whether a failure surfaced on its own or was caught by someone reading carefully is a fact about *this* session that no later reader can reconstruct from the record.
+Before you present anything, answer four questions per finding. They are the inputs to `@workout`'s promotion call (DEC-S039, DEC-S041), and **you are the only one who can answer three of them** — you hold the transcript, `@workout` never sees one, and everything below the first item perishes with the session.
 
 - **Cost if it recurs** — what does the *next* occurrence cost, and is it recoverable? A wasted file read costs seconds and is undone by not doing it again. A wrong number that reaches a paycheck, a decision deleted by a sync, a fabricated rule cited as fact — none of those are undone by noticing later. Write the actual consequence, not a severity word.
 - **Self-announcing** — would it announce itself, or does it pass silently? `yes` / `no`, plus how you know. A guard that quietly stopped running, a check that abstains without saying so, a doc that is confidently wrong: these have a sample size of one no matter how often they happen, which is exactly why counting them is the wrong instrument.
+- **Cause** — *what was the actor doing instead, and what made the wrong path the natural one?* Not "it forgot the rule" — that is a restatement, not a cause. Look for the branch point: what was in flight, what the last operator instruction actually asked for, whether a cheaper path produced the same visible artifact, whether anything marked a stopping point. Cite turns. **A finding without a cause produces a fix aimed at the symptom** — which is exactly what the first cycle shipped, and why this field exists.
+- **Operator reaction** — every operator turn responding to the failure, **quoted verbatim with its turn number. All of them, not the first one.** If the operator raised it once and moved on, say so. If they raised it four times and ended at "I have zero faith these PRs are correct", that escalation *is* the finding, and dropping three of the four turns is dropping the severity reading.
 
-Do **not** compute a promotion verdict. You are not deciding whether this becomes a rule; you are recording the two facts that decision needs.
+**A cause is evidence; a sketch is a proposal.** Deferring the sketch to `@workout` is right (DEC-S039) — your framing on day one should not anchor a judgment that will see the problem from several angles. Deferring the *cause* just loses it: it lives in the transcript, and you are the only reader who will ever hold that transcript. Record it. Do not attach a fix to it.
+
+Do **not** compute a promotion verdict. You are not deciding whether this becomes a rule; you are recording the four facts that decision needs.
 
 ## Step 5 — Present findings
 
@@ -260,7 +276,7 @@ Then, for each **Yes** row, show the occurrence — tool call plus surrounding c
 
 **Always. Every run, including a run that found nothing** — a clean run is evidence that a pattern has stopped recurring, which is what `@workout` needs in order to retire a rule. A workflow that only ever accretes is the failure this whole system exists to avoid.
 
-Write to `$SEEDS_OBS/observations/<YYYY-MM-DD>-<repo>-<slug>.md`, where `$SEEDS_OBS` is the observations worktree `/read-the-tape` attached for you, `<repo>` is this project's directory name, and `<slug>` is the audited session's slug. One file per run, so N projects writing the same day never touch the same path and there is nothing to merge.
+Write to `$SEEDS_OBS/observations/<YYYY-MM-DD>-<repo>-<slug>.md`, where `$SEEDS_OBS` is the observations worktree `/read-the-tape` attached for you, `<YYYY-MM-DD>` is **today**, `<repo>` is this project's directory name, and `<slug>` is the audited session's slug **and nothing else** — `main`, not `2026-08-05-0842-eric-main`. If what you were handed looks like a whole session filename, take the part after the dev handle. One file per run, so N projects writing the same day never touch the same path and there is nothing to merge.
 
 ```markdown
 ---
@@ -275,6 +291,9 @@ observed: 2026-08-06
 **Occurrences:** 3
 **Cost if it recurs:** wasted context; recoverable — nothing wrong was produced
 **Self-announcing:** yes — the redundant read is visible in the transcript
+**Cause:** the skill step says "read last session context" without naming a target; the full read is
+the literal reading, and nothing downstream failed to signal it was too much — turns 14, 51, 92.
+**Operator reaction:** none — not raised in-session.
 **Evidence:**
 - `Read docs/PROJECT_PLAN.md` (full, 412 lines) — turn 14, needed only the Phase 12 rows
 - …
@@ -287,7 +306,11 @@ observed: 2026-08-06
 **Why it might be noise:** …
 **Cost if it recurs:** …
 **Self-announcing:** …
+**Cause:** …
+**Operator reaction:** …
 ```
+
+**On `Operator reaction`, the field most easily under-filled:** quote every turn, in order, with turn numbers — an escalation is only visible as a sequence. Four turns arriving at *"I have zero faith these PRs are correct"* is a different finding from one turn saying *"you skipped that"*, and the difference is invisible if you quote the first and summarise the rest. If a correction was made and the behaviour **continued afterwards**, say so explicitly and cite both sides: that is the strongest evidence a written rule cannot hold the problem, and it is what tells `@workout` to stop reaching for prose.
 
 Three constraints, all load-bearing:
 

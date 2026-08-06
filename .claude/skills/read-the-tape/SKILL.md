@@ -69,7 +69,19 @@ Default to the **second-newest** JSONL (`result[1]`) — the current session's J
 
 The Glob tool is used in place of `ls *.jsonl` because the Bash form trips two harness validator rules (tree-sitter-bash on `"$VAR"/*.glob`, and a newer rule on `cd "$VAR" && ls 2>/dev/null`). See its-alive Step 5 for the full note.
 
-Also capture the audited session's **slug** — from the session filename if one was passed, otherwise ask, or derive from the branch. It names the observation file.
+### Step 1.5 — Derive the slug (just the slug)
+
+The slug names the observation file, and getting it wrong is easy in a specific way. A session file is `YYYY-MM-DD-HHMM-<dev>-<slug>.md`, so **the slug is only the part after the dev handle** — everything before it is date, time, and dev.
+
+```
+sessions/2026-08-05-0842-eric-main.md              → slug is  main
+sessions/2026-08-04-1130-eric-time-clock.md        → slug is  time-clock
+sessions/2026-08-01-0915-eric-644-crew-header.md   → slug is  644-crew-header
+```
+
+**Do not pass the whole filename or its stem.** The observation is named `<observed-date>-<repo>-<slug>.md`, so a full stem produces `2026-08-06-muster-2026-08-05-0842-eric-main.md` — the date twice, the dev handle for no reason, and a name that sorts by the *audited* session's date inside a directory that sorts by the *observation* date. Observed on the first live run; this step exists because of it.
+
+If no session file was passed, derive the slug from the branch the audited session ran on (`task/644-crew-header` → `644-crew-header`, `main` → `main`), the same mapping `/its-alive` Step 3 uses. If neither resolves, ask — don't invent one.
 
 ## Step 2 — Invoke @tape-reader
 

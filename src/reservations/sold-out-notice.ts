@@ -26,14 +26,19 @@ export interface SoldOutNoticeDeps {
 }
 
 /** The notice body. States plainly that they were NOT charged (fully refunded) so the
- *  customer isn't left thinking money is stuck. */
+ *  customer isn't left thinking money is stuck.
+ *
+ *  **Stays inside GSM-7**, like `bookingConfirmationBody` — this ships verbatim as SMS and one
+ *  character outside that alphabet re-encodes the WHOLE message as UCS-2, 67 chars per
+ *  concatenated segment instead of 153. Two em dashes did exactly that until #685. The shared
+ *  guard in `sms-alphabet.ts` is asserted over this body by its own test. */
 export function soldOutNoticeBody(customerName: string): string {
   const who = customerName?.trim() || "there";
   return (
-    `Hi ${who}, we're sorry — your departure sold out while your payment was processing, ` +
+    `Hi ${who}, we're sorry - your departure sold out while your payment was processing, ` +
     `so the booking couldn't be completed. You have NOT been charged: we've issued a full ` +
     `refund, which may take a few days to appear on your statement. Please try another time.\n\n` +
-    `— Muster`
+    `- Muster`
   );
 }
 

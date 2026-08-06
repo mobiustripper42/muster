@@ -8,6 +8,7 @@ import type { ChannelPort, OutboundMessage, SendResult } from "../ports/channel.
 import { verifyReservationLinkToken } from "./booking-link.js";
 import { sendBookingConfirmation } from "./booking-confirmation.js";
 import { CANCELLATION_TERMS_SHORT } from "./refund-terms.js";
+import { nonGsm7Chars } from "./sms-alphabet.js";
 
 const SECRET = "test-link-secret";
 const BASE = "https://muster.app";
@@ -71,20 +72,13 @@ describe("sendBookingConfirmation", () => {
     // The em dash in the sign-off did exactly this until #619: a single non-GSM-7 character
     // re-encodes the WHOLE message as UCS-2, 67 chars per concatenated segment instead of 153.
     // The failure is invisible — the text still sends, it just costs more, forever.
-    const GSM7 =
-      "@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?¡" +
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà" +
-      "^{}\\[~]|€"; // extension set — 2 septets each, but still GSM-7
-
     const sms = capturing();
-    await sendBookingConfirmation({ sms, linkBase: BASE, linkSecret: SECRET }, reservation());
+    const res = reservation();
+    await sendBookingConfirmation({ sms, linkBase: BASE, linkSecret: SECRET }, res);
 
-    const body = sms.sent[0]!.body;
     // The customer's own name can force UCS-2 and is not ours to control — check the copy
-    // this file owns, not the interpolated name.
-    const ours = body.replace(reservation().customerName ?? "", "");
-    const strays = [...ours].filter((c) => !GSM7.includes(c));
-    expect(strays).toEqual([]);
+    // this body owns, not the interpolated name.
+    expect(nonGsm7Chars(sms.sent[0]!.body, [res.customerName ?? ""])).toEqual([]);
   });
 
   it("carries the cancellation terms on both channels (#619)", async () => {

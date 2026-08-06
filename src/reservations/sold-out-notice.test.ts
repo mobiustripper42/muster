@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import type { ChannelPort, OutboundMessage, SendResult } from "../ports/channel.js";
 import { sendSoldOutNotice, soldOutNoticeBody } from "./sold-out-notice.js";
+import { nonGsm7Chars } from "./sms-alphabet.js";
 
 /** A ChannelPort that records what it was handed (and can be made to throw). */
 function capturing(throwOnSend = false): ChannelPort & { sent: OutboundMessage[] } {
@@ -28,6 +29,11 @@ describe("soldOutNoticeBody", () => {
   });
   it("falls back to 'there' when the name is blank", () => {
     expect(soldOutNoticeBody("  ")).toContain("Hi there,");
+  });
+  it("stays inside GSM-7 — two em dashes made every notice UCS-2 until #685", () => {
+    // Same guard as the booking confirmation. The customer's own name can force UCS-2 and is
+    // not ours to control; the copy this body owns is.
+    expect(nonGsm7Chars(soldOutNoticeBody("Mary"), ["Mary"])).toEqual([]);
   });
 });
 

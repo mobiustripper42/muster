@@ -17,7 +17,7 @@ import {
 const FAILED = { ok: false, reason: "invalid" } as const;
 
 const CAPTAIN = asId<"RoleTypeId">("captain");
-const EMAIL = "Quint@BrewBoat.test"; // stored mixed-case on purpose
+const EMAIL = "Quint@BB.test"; // stored mixed-case on purpose
 const BASE = Date.parse("2026-06-29T12:00:00Z");
 const at = (ms = 0) => new Date(BASE + ms);
 const fixedCode = (code: string) => () => code;
@@ -76,7 +76,7 @@ describe("requestLoginCode", () => {
     const repo = await repoWithCrew();
     const r = await requestLoginCode(
       repo,
-      { email: "  quint@brewboat.test  " },
+      { email: "  quint@bb.test  " },
       { now: at(), mintCode: fixedCode("123456") },
     );
     expect(r.outcome).toBe("deliver");

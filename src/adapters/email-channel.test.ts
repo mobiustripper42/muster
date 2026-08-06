@@ -24,7 +24,7 @@ function fakeFetch(
 }
 
 const codeMessage = (over: Partial<OutboundMessage> = {}): OutboundMessage => ({
-  to: { crewMemberId: asId<"CrewMemberId">("crew-quint"), email: "quint@brewboat.test" },
+  to: { crewMemberId: asId<"CrewMemberId">("crew-quint"), email: "quint@bb.test" },
   kind: "magic_link",
   body: "Your Muster sign-in code is 123456. It expires in 10 minutes.",
   ...over,
@@ -52,7 +52,7 @@ describe("EmailChannel", () => {
     const sent = JSON.parse(init.body);
     expect(sent).toEqual({
       from: "Muster <crew@crew.brewcle.com>",
-      to: ["quint@brewboat.test"],
+      to: ["quint@bb.test"],
       subject: "Your Muster sign-in code",
       text: "Your Muster sign-in code is 123456. It expires in 10 minutes.",
     });

@@ -11,7 +11,7 @@
  */
 import { test, expect, resetAndSeed, signInAsCrew } from "./fixtures.js";
 
-const QUINT_EMAIL = "quint@brewboat.test";
+const QUINT_EMAIL = "quint@bb.test";
 const CODE_SENT = /a 6-digit code is on its way/i;
 
 test.describe("crew self-serve sign-in (DEC-081)", () => {

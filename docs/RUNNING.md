@@ -71,17 +71,17 @@ In dev there's a link issuer:
 ### Signing in the front way (the 6-digit code)
 `dev-link` above skips the front door. To exercise the real one — `/crew` → enter email → 6-digit
 code (DEC-081, needs `CREW_SELF_SERVE=1`) — note that **the code will never reach an inbox in dev**:
-the seeded crew all have undeliverable addresses (`quint@brewboat.test`). If `RESEND_API_KEY` +
+the seeded crew all have undeliverable addresses (`quint@bb.test`). If `RESEND_API_KEY` +
 `EMAIL_FROM` are set in `.env.local`, a real send is attempted and dropped, and because it runs in
 `after()` the failure never reaches the page — the UI just says "check your email" forever.
 
 Read the code out of the dev echo instead (`app/lib/auth-delivery.ts`, gated off on any prod deploy):
 
 ```bash
-curl 'http://localhost:3000/crew/dev-code?email=quint@brewboat.test'
+curl 'http://localhost:3000/crew/dev-code?email=quint@bb.test'
 ```
 
-It is also printed to the dev-server terminal: `[login-code] → Quint <quint@brewboat.test>: 123456`.
+It is also printed to the dev-server terminal: `[login-code] → Quint <quint@bb.test>: 123456`.
 
 **If nothing shows up, don't hit submit again — that is what keeps it from showing up.** The echo
 only fires on `outcome: "deliver"`, and `mintLoginCode` returns `skip` in two cases that look

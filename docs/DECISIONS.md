@@ -159,7 +159,7 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 - DEC-079 — Crew-initiated sign-in + sign-out — the self-serve front door (a small addition, not a re-architecture) _(refined by DEC-081 — the mechanism only)_
 - DEC-081 — Crew sign-in is a 6-digit email code, not a magic link — and it's the one login primitive (refines DEC-079) _(refined by DEC-142 — the cap only — `attempts` per code gains a rolling per-subject failure window, and the verify response collapses to one value. The email-as-channel and code-shape legs stand)_
 - DEC-092 — Admin becomes a first-class auth identity — per-person revoke (10.2, #283; revises DEC-020)
-- DEC-093 — Crew ↔ admin view switcher — same-identity session re-mint (builds on DEC-092)
+- DEC-093 — Crew ↔ admin view switcher — same-identity session re-mint (builds on DEC-092) _(corrected by DEC-148 — where the switch-to-admin control lives — the drawer on every crew route, no longer the crew home beside Sign out)_
 - DEC-094 — Operator break-glass is CLI + runbook, not an admin UI (10.5; extends DEC-092)
 - DEC-098 — Crew calendar feed — the first persistent bearer capability URL; hash-only, guest-PII-free, UTC-instant ICS
 - DEC-142 — Login brute force is bounded per subject, not per code — and every verify failure is one generic response
@@ -195,9 +195,10 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 - DEC-086 — Vessel + role identity palette — color that encodes information
 - DEC-089 — `<SubmitButton>` — standing pending-state client island for async form submits (#202/#250, Layer 2)
 - DEC-090 — Click & loading feedback — the standing rule (`<SubmitButton>` for submits, `<AppLink>` for links; lint-enforced)
-- DEC-091 — Crew navigation is hub-and-spoke — no persistent nav chrome (9.12, #238)
+- DEC-091 — Crew navigation is hub-and-spoke — no persistent nav chrome (9.12, #238) _(reversed by DEC-148 — the "no persistent crew nav" holding and the rejection of an admin-style nav — crew navigation is now a persistent drawer on every route; the hub-and-spoke reasoning that justified the ban is what stopped holding)_
 - DEC-114 — `<RevealSelectedRow>` — scroll-position keeping on the two-pane board, an imperative island scoped to `board-col`
 - DEC-147 — Server-rendering is the default; a client island is earned, and feedback params carry codes not prose
+- DEC-148 — Crew navigation moves into a drawer — the hub carries work, not a menu (#644)
 
 ### Deployment, infra & versioning
 - ~~DEC-013 — Stack & infrastructure deferred to ~M4~~ → superseded by DEC-020 — stack & infrastructure are no longer deferred

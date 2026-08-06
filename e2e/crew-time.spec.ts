@@ -112,11 +112,21 @@ test.describe("crew /crew/time — clock in, clock out", () => {
       "",
     );
 
-    // Widen it by pulling the IN time back an hour — still in the past, so the guard
-    // is satisfied and the change is visible in the total.
+    // Widen it by pulling the IN time back — still in the past and still on the same day, so
+    // both the no-future and day_moved guards are satisfied, and the change shows in the total.
+    //
+    // **One MINUTE, not one hour.** The hour version was `Math.max(0, hh - 1)`, which is a no-op
+    // in the 00:00 hour: clock-in and clock-out land in the same minute, so `in == out` to begin
+    // with, and an edit that changes nothing leaves it that way — the domain refuses `out <= in`
+    // as `out_before_in` and the save never happens. It went red on CI at 00:0x vessel-local.
+    // One hour in twenty-four, the same shape as the period-boundary note two tests above.
     const inVal = await page.locator('form input[name="inTime"]').first().inputValue();
     const [hh, mm] = inVal.split(":").map(Number);
-    const earlier = `${String(Math.max(0, hh! - 1)).padStart(2, "0")}:${String(mm!).padStart(2, "0")}`;
+    const mins = hh! * 60 + mm!;
+    // Exactly 00:00 has nowhere to go without crossing into yesterday, which day_moved refuses.
+    // One minute in 1440 rather than sixty, and honest about it instead of silently red.
+    test.skip(mins < 1, "punch is at 00:00 — widening it would cross the vessel-local day");
+    const earlier = `${String(Math.floor((mins - 1) / 60)).padStart(2, "0")}:${String((mins - 1) % 60).padStart(2, "0")}`;
     await page.locator('form input[name="inTime"]').first().fill(earlier);
     await page.locator('form input[name="reason"]').first().fill("Boat came back late");
     await page.getByRole("button", { name: "Save" }).click();

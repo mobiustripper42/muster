@@ -33,12 +33,12 @@ SEMVER  ( dev projects only — needs package.json )
                    production branch get them from /retro instead.
                    never /its-dead.
 
-REFLECT / SYNC
+REFLECT
   /read-the-tape   scan a session for anti-patterns.
                    arg: number, file path, or none = latest.
-  /push-seeds      backport workflow wins to seeds.
-  /pull-seeds      pull seeds improvements into this project.
-                   gated on `seeds-version` match.
+                   writes ONE observation to seeds and changes
+                   nothing here (DEC-S040). needs a seeds
+                   checkout — sibling ../seeds, or pass a path.
   /doc-consistency-check
                    ad-hoc only, never on a calendar. cross-refs
                    docs/*.md + CLAUDE.md. report-only.
@@ -65,5 +65,4 @@ THE SHORT VERSION
   start of phase:    /start-phase
   end of phase:      /retro
   after a rough one: /read-the-tape
-  after a good one:  /push-seeds
-  refresh template:  /pull-seeds
+  moving files to/from seeds: by hand. no sync skill.

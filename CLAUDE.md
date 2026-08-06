@@ -17,8 +17,8 @@
 | `docs/VELOCITY_AND_POKER_GUIDE.md` | Estimation methodology |
 | `docs/CHEATSHEET.md` | One-page printable skill reference |
 | `sessions/*.md` (on orphan `sessions` branch via `.sessions-worktree/`) | Per-session files — `YYYY-MM-DD-HHMM-<dev>-<slug>.md`. Atomic after `/its-dead` closes (DEC-S013); orphan branch decouples session log from any code branch (DEC-S014). |
-| `.claude/seeds-version` | Schema version this project was last installed at. Used by `/pull-seeds` to gate template syncs. |
-| `.claude/project-type` | Project type — `webapp` or `tool`. Used by `@sync-config` to gate template files that don't apply to this project's type (DEC-S011). Optional. |
+| `.claude/seeds-version` | Schema version this project was last installed at. Nothing reads it automatically (DEC-S040) — compare against seeds' `seeds-version` by hand to see which migrations this project owes. |
+| `.claude/project-type` | Project type — `webapp` or `tool`. Says which template files this project has no use for (DEC-S011). Optional. |
 
 Project-specific docs are listed in `.claude/CLAUDE-context.md` under `## Additional Docs`.
 
@@ -64,9 +64,7 @@ Project coding conventions — typing, component structure, data fetching, auth/
 | `/retro` | Phase boundary (end) | Compute per-session active time (wall − breaks) from `started`/`ended` + transcript break inference. Aggregate one phase velocity (active h/pt). Mark `[x]`, write retro, patch-bump per merged PR + minor-bump at close. |
 | `/bump-major` | Breaking change | Manually bump major version. CHANGELOG.md entry + tag on the trunk (`main`). Dev projects only |
 | `/promote-production` | Ship trunk to prod | ff-merge `main` → `production` (deploy-only; tag already on the commit), push. Projects with a `production` branch only |
-| `/push-seeds` | After workflow improvements | Backport project-side improvements to the seeds templates via @sync-config |
-| `/pull-seeds` | After seeds gets new improvements | Pull template changes into this project — schema-version-gated, applied via @sync-config |
-| `/read-the-tape` | After a session worth learning from | Audit JSONL transcript, find anti-patterns, propose skill improvements |
+| `/read-the-tape` | After a session worth learning from | Audit JSONL transcript and write one cited observation to seeds' `observations` branch. **Changes nothing here** (DEC-S040). Needs a resolvable seeds checkout |
 | `/doc-consistency-check` | Ad-hoc, when docs feel drifted (no scheduled trigger) | Cross-reference factual claims across `docs/*.md` + root `CLAUDE.md`; flag mismatches + unfilled placeholders. Report-only via @doc-consistency |
 
 **Dev identity:** `~/.claude/devname` (one-line file with handle, e.g. `eric`). Set once per machine.
@@ -81,8 +79,7 @@ Project coding conventions — typing, component structure, data fetching, auth/
 | @code-review | Sonnet | After every commit (wired into `/kill-this`) | Catch issues early |
 | @pm | Sonnet | Start/end of sessions via skills | Track progress, flag risks |
 | @ui-reviewer | Sonnet | After UI work, phase boundaries | Design quality |
-| @sync-config | Sonnet | `/push-seeds` and `/pull-seeds` | Classifies template-vs-project diffs, gates structural backports |
-| @tape-reader | Sonnet | `/read-the-tape` | Audits session JSONL for workflow anti-patterns |
+| @tape-reader | Sonnet | `/read-the-tape` | Audits session JSONL for workflow anti-patterns. **Observer** (DEC-S040) — writes one observation to seeds, edits nothing here |
 | @doc-consistency | Sonnet | Via `/doc-consistency-check` skill, or ad-hoc | Cross-reference factual claims across project docs; flag mismatches + unfilled placeholders. Report-only |
 | @ideas | Sonnet | Park an idea, re-rank, or audit the parking lot | Curate `docs/FUTURE_IDEAS.md` — capture, dedupe, cross-ref, keep the index. Edits only that file |
 

@@ -68,9 +68,8 @@ export function timeClockEnabled(): boolean {
  * dev-code echo route, and the login-code log/echo), so "live on preview + local,
  * 404/inert in prod" stays consistent across all three (DEC-057).
  */
-export function isProdDeploy(): boolean {
-  return (
-    process.env.VERCEL_ENV === "production" ||
-    (!process.env.VERCEL_ENV && process.env.NODE_ENV === "production")
-  );
-}
+// Re-exported from core (`src/config/deploy.ts`) rather than spelled here, so the predicate has
+// exactly ONE definition. It moved down when `src/reservations/claim.ts` needed the same guard and
+// core cannot import from `app/` — see that file for the reasoning. Every caller of
+// `isProdDeploy` from `app/lib/flags` keeps working unchanged.
+export { isProdDeploy } from "@core/config/deploy.js";

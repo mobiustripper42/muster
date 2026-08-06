@@ -1,7 +1,7 @@
 /**
  * Create a departure PaymentIntent (Phase 12.5, DEC-134) — the inline-Elements twin of
  * `createDepartureCheckout` (12.1a, hosted). Called at "Book & pay" submit from the
- * `/book/checkout` screen: waiver gate → gratuity-tier gate → 15-min hold on a fitting boat
+ * `/book/checkout` screen: waiver gate → gratuity-tier gate → hold (15 min in production; `CHECKOUT_HOLD_MINUTES` shortens it locally) on a fitting boat
  * (fit-and-fallback) → price the held slot exactly as the deriver displayed it → compose the
  * fare → tax + gratuity + SERVICE FEE (DEC-134) → mint a raw PaymentIntent carrying the SLOT
  * + frozen money in metadata. The client confirms against the returned `clientSecret`; the

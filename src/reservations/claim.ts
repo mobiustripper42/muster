@@ -10,6 +10,7 @@
  * (`saveBookingIfSlotFree`) is the defeat-proof backstop at the write (DEC-109).
  */
 import { randomUUID } from "node:crypto";
+import { isProdDeploy } from "../config/deploy.js";
 import type {
   Block,
   CheckoutHold,
@@ -24,20 +25,6 @@ import { isActiveMusterClaim, isSlotBlocked, slotIdentity } from "./availability
 
 /** The soft-hold lifetime (DEC-109). Lifted from sailbook's proven 15 min. */
 export const HOLD_MINUTES_DEFAULT = 15;
-
-/**
- * A production deploy? Mirrors `app/lib/flags.isProdDeploy` — core cannot import from `app/`,
- * and this is the one place the duplication is worth it: it stands between an env var and a
- * real buyer's hold. `VERCEL_ENV` is primary because Vercel sets `NODE_ENV=production` on
- * PREVIEW deploys too; the `NODE_ENV` fallback re-closes the gate on a self-hosted prod where
- * `VERCEL_ENV` is absent.
- */
-function isProdDeploy(): boolean {
-  return (
-    process.env.VERCEL_ENV === "production" ||
-    (!process.env.VERCEL_ENV && process.env.NODE_ENV === "production")
-  );
-}
 
 /**
  * The hold lifetime, **overridable outside production only** (`CHECKOUT_HOLD_MINUTES`).
@@ -60,8 +47,14 @@ function isProdDeploy(): boolean {
  * customers real bookings.
  */
 export function resolveHoldMinutes(): number {
+  if (isProdDeploy()) return HOLD_MINUTES_DEFAULT;
   const raw = process.env.CHECKOUT_HOLD_MINUTES;
-  if (!raw || isProdDeploy()) return HOLD_MINUTES_DEFAULT;
+  if (!raw) return HOLD_MINUTES_DEFAULT;
+  // The same poison-resistant shape as `tenant.ts`'s `envMs` and `derive.ts`'s
+  // `envPositiveNumber`, spelled here rather than reused: both are private to their modules and
+  // named for units this is not (milliseconds, counts). Exporting one under a misleading name to
+  // save four lines would trade a small duplication for a worse one. `isProdDeploy` above was a
+  // different case — one predicate, one meaning, and a documented history of drifting copies.
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? n : HOLD_MINUTES_DEFAULT;
 }

@@ -9,7 +9,7 @@ import { getRepo } from "../../../lib/repo";
 import { reservationsEnabled } from "../../../lib/flags";
 
 /**
- * Start an inline-Elements checkout (12.5, DEC-134): gates → 15-min hold →
+ * Start an inline-Elements checkout (12.5, DEC-134): gates → hold (15 min in production; `CHECKOUT_HOLD_MINUTES` shortens it locally) →
  * `paymentIntents.create` with the frozen slot + money metadata → return the clientSecret
  * the island confirms against. Replaces the 11.6 harness `startBooking` (hosted redirect).
  * **Writes no reservation** — the `payment_intent.succeeded` webhook books (DEC-107/109).

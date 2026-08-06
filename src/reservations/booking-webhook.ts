@@ -24,6 +24,8 @@
  * LOUDLY ALERTS ALL ADMINS to refund manually. Refunds are always manual (Stripe dashboard)
  * except the DEC-109 residual-race auto-refund. Provider-agnostic + `FakePaymentPort`-testable.
  */
+import { formShifts, type FormResult } from "../builder/form-shifts.js";
+import { logFormAudit } from "../oracle/audit-log.js";
 import type { Payment, Reservation } from "../domain/entities.js";
 import {
   asId,
@@ -85,6 +87,16 @@ export interface WebhookDeps {
    * throws here, so a committed booking never 500s the webhook (which would trigger a retry).
    */
   sendConfirmation: (reservation: Reservation) => Promise<void>;
+  /**
+   * Relay a re-form's crew notices — "you're off" (`cancelledCrew`) and "you're on"
+   * (`restoredCrew`), DEC-084/#244. Injected because the channel wiring lives in `app/`.
+   *
+   * Optional so existing test harnesses and any caller that genuinely has no channel keep
+   * compiling; absent, the notices are skipped and the audit row is still written. **The Stripe
+   * route must wire it** — after DEC-126 this webhook is one of only two `formShifts` triggers in
+   * production, and an unrelayed `cancelledCrew` is a crew member who is never told.
+   */
+  relayFormNotices?: (form: FormResult) => Promise<void>;
 }
 
 export type WebhookResult =
@@ -351,6 +363,46 @@ async function processBookingCharge(
   // `postgres-repository.test.ts`, which is the only place it can be proven.
   if (result.outcome === "booked" || result.outcome === "already") {
     await recordPayment(deps, charge, kind, reservationId);
+
+    // **Form the shift the booking just earned (#614).** `writeSlotBooking` writes the Event and
+    // the Reservation and stops; nothing downstream created a Shift, so a Muster-native booking
+    // produced an event with no seats, no asks and no crew.
+    //
+    // It has worked so far only because the operator keeps pressing "Pull from Xola", which
+    // re-forms shifts from ALL events including Muster-native ones. That inverts the dependency
+    // the docs assume — Muster bookings are crewable BECAUSE Xola is still being polled — and
+    // DEC-126 turns that pull off at cutover. The first Muster-only Saturday would have produced
+    // boats that were sold and uncrewed.
+    //
+    // Here rather than inside `writeSlotBooking` because this is where a completed booking's side
+    // effects already live (`sendConfirmation` below), and it covers the legacy `writeBooking`
+    // path in the same stroke. Best-effort by the same contract: the booking is committed and
+    // PAID, so a formation failure must never 500 — Stripe would retry a booking that already
+    // exists, resolve `already`, and still not form. The cron tick re-forms as the backstop.
+    //
+    // No `notifyTripChanges`: that flag is the import's, for relaying "your shift changed" to
+    // crew whose committed day moved. Nobody is on this shift yet — it is being born.
+    //
+    // **The result must be forwarded, not discarded (@code-review).** The first cut dropped it on
+    // the reasoning that a newborn shift has nobody to notify. That is true of the shift being
+    // born and irrelevant to the call: `formShifts` re-derives EVERY vessel-day, and
+    // `cancelledCrew`/`restoredCrew` are NOT gated by `notifyTripChanges` — they fire whenever
+    // this call is the first to observe a shift collapsing or resurrecting anywhere. Every other
+    // caller relays and audits them (`app/lib/xola.ts`, the split and merge commands). Once
+    // DEC-126 turns off the Xola pull, this and the cron tick are the ONLY `formShifts` triggers
+    // left, so a crew member dropped from an unrelated shift would be told nothing, forever.
+    //
+    // Audit is called here (core); the notice relay rides a dep, because the channel wiring lives
+    // in `app/` and core cannot import it — the same seam `sendConfirmation` uses.
+    try {
+      const form = await formShifts(deps.repo, { now: new Date(deps.now()) });
+      await relayAndAudit(deps, form);
+    } catch (e) {
+      console.error(
+        `[reservations] formShifts after booking ${reservationId} failed — the tick will re-form`,
+        e,
+      );
+    }
     // Confirm ONLY the fresh booking — never the idempotent `already` (a Stripe
     // redelivery), or the customer gets re-texted on every retry (DEC-122).
     if (result.outcome === "booked") {
@@ -456,6 +508,26 @@ async function processBookingCharge(
       `${who}. REFUND MANUALLY in Stripe.`,
   );
   return { handled: true, outcome: result.outcome };
+}
+
+/**
+ * Relay + audit a re-form's crew transitions. Each leg is independently best-effort: the booking
+ * is committed and PAID, so neither a channel hiccup nor an audit write may 500 the webhook — and
+ * a relay failure must not skip the audit, or vice versa. Same posture as the cron edge's
+ * `forwardToOutbox` / `forwardBoardAlerts` pair.
+ */
+async function relayAndAudit(deps: WebhookDeps, form: FormResult): Promise<void> {
+  try {
+    await deps.relayFormNotices?.(form);
+  } catch (e) {
+    console.error("[reservations] form-notice relay failed — crew may not have been told", e);
+  }
+  try {
+    // Actor `engine`: nobody pressed anything. The booking webhook is autonomous (DEC-118).
+    await logFormAudit(deps.repo, form, { kind: "engine" }, new Date(deps.now()));
+  } catch (e) {
+    console.error("[reservations] form audit failed — the transition is unrecorded", e);
+  }
 }
 
 async function recordPayment(

@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { formShifts } from "@core/builder/form-shifts.js";
+import { logFormAudit } from "@core/oracle/audit-log.js";
 import { tick } from "@core/builder/tick.js";
 import { getRepo } from "../../../lib/repo";
-import { forwardToOutbox } from "../../../lib/channel";
+import { forwardFormNotices, forwardToOutbox } from "../../../lib/channel";
 import { forwardBoardAlerts } from "../../../lib/alert";
 
 /**
@@ -43,8 +45,41 @@ export async function GET(req: Request) {
   // redeploy. Default is running (absent flag ⇒ false); pause is an explicit
   // operator state, never inferred. Enforced here at the edge, not in `tick`,
   // so the engine core stays pure.
+  // **Formation runs BEFORE the pause gate, deliberately (@code-review).** DEC-054 defines pause
+  // as gating `tick()` — asks and escalations, the outbound noise the operator wants to stop.
+  // Shift FORMATION is structural bookkeeping, not outbound: it is what turns a paid booking into
+  // a crewable day. The first cut sat this after the pause return, which meant a paused engine
+  // never formed a shift — and since the booking-path form is best-effort, a booking whose inline
+  // form failed while paused had NO path to a shift at all until someone unpaused. Pause was
+  // never meant to mean "stop recording what was sold".
+  //
+  // `tick` still never runs while paused; only the derivation does.
+  //
+  // Best-effort per leg: a formation, relay or audit failure must not cost this tick the asks and
+  // escalations it exists for. No `notifyTripChanges` — that flag is the import's.
+  let shiftsFormed = 0;
+  try {
+    const form = await formShifts(repo, { now });
+    shiftsFormed = form.createdShiftIds.length;
+    // Relay + audit like every other `formShifts` caller. `cancelledCrew`/`restoredCrew` are NOT
+    // gated by `notifyTripChanges`, and after DEC-126 this and the booking webhook are the only
+    // triggers left — an unrelayed transition is a crew member who is never told (DEC-084, #244).
+    try {
+      await forwardFormNotices(form);
+    } catch (e) {
+      console.error("tick: form-notice relay failed — crew may not have been told", e);
+    }
+    try {
+      await logFormAudit(repo, form, { kind: "engine" }, now);
+    } catch (e) {
+      console.error("tick: form audit failed — the transition is unrecorded", e);
+    }
+  } catch (e) {
+    console.error("tick: formShifts failed — existing shifts still advance", e);
+  }
+
   if (await repo.isEnginePaused()) {
-    return NextResponse.json({ ok: true, paused: true, at: now.toISOString() });
+    return NextResponse.json({ ok: true, paused: true, shiftsFormed, at: now.toISOString() });
   }
 
   const r = await tick(repo, now);
@@ -69,6 +104,7 @@ export async function GET(req: Request) {
   return NextResponse.json({
     ok: true,
     at: now.toISOString(),
+    shiftsFormed,
     shiftsAdvanced: r.shiftsAdvanced,
     bornFilling: r.bornFilling,
     toAtRisk: r.toAtRisk,

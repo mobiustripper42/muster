@@ -11,10 +11,18 @@
  *    metadata carries `purpose` — the metadata-less PI underlying every hosted session is
  *    acked-and-ignored, so one charge can never book twice.
  *
- * **On a paid-but-unbooked outcome (`lost`/`unbookable`) or an OVERPAID balance: record the
- * payment and LOUDLY ALERT ALL ADMINS to refund manually.** Refunds are always manual (Stripe
- * dashboard) except the DEC-109 residual-race auto-refund. Provider-agnostic +
- * `FakePaymentPort`-testable.
+ * **A Payment row requires a reservation to hang it on (#613).** `payments.reservation_id` is
+ * `not null` with an immediate FK, so the row is written only once a reservation exists:
+ *  - `lost` / `unbookable` — **no row.** The reservation was never written, so one is impossible;
+ *    Stripe holds the record of money that never became a booking.
+ *  - a balance whose reservation is **missing** — no row, same reason.
+ *  - a balance whose reservation is **cancelled or unpriced** — the row EXISTS, so the FK is
+ *    satisfied and the payment IS recorded, then flagged. Unreconcilable is not unrecordable.
+ *  - an **OVERPAID** balance — recorded, then flagged.
+ *
+ * Every case that cannot be recorded, and every case that is recorded but cannot be reconciled,
+ * LOUDLY ALERTS ALL ADMINS to refund manually. Refunds are always manual (Stripe dashboard)
+ * except the DEC-109 residual-race auto-refund. Provider-agnostic + `FakePaymentPort`-testable.
  */
 import { formShifts } from "../builder/form-shifts.js";
 import type { Payment, Reservation } from "../domain/entities.js";
@@ -423,7 +431,8 @@ async function processBookingCharge(
 
   // The DEC-109 RESIDUAL RACE (`lost`): a hold expired mid-payment, another buyer took the
   // freed slot and paid first, and this payment then completed. Both captured money, one won
-  // the atomic claim. The money moved (recorded above). AUTO-REFUND the loser + tell them
+  // the atomic claim. The money moved, and is NOT recorded here (#613 — no reservation to
+  // reference). AUTO-REFUND the loser + tell them
   // "sold out while you were paying" (DEC-107 amended, 12.1b). The loud manual-refund alert
   // is the FALLBACK, only when the refund can't run programmatically.
   if (result.outcome === "lost") {
@@ -565,22 +574,37 @@ async function recordBalancePayment(
     status: "succeeded",
     createdAt: deps.now(),
   };
-  // Reconcile BEFORE writing (#613). This used to `savePayment` first and load the reservation
-  // after — the same inversion as the booking path, and the same failure: a balance session
-  // whose `reservationId` metadata is missing or garbled has no row to reference, the FK
-  // rejects the insert, and the "RECONCILE MANUALLY" alert below — the only thing that tells
-  // anyone — never fires. Stripe retries into the identical violation until it gives up.
+  // **Only the MISSING case may skip the write (#613, review).** The first cut of this fix
+  // reordered the whole three-way guard — missing / cancelled / unpriced — and that was wrong:
+  // the FK requires the reservation ROW to exist, nothing more. `cancelled` is a legitimate
+  // `ReservationStatus`, so a cancelled-but-present reservation has always satisfied it and the
+  // pre-#613 code recorded that payment successfully before alerting. Reordering all three legs
+  // silently dropped the ledger row for money that had genuinely moved — the exact defect class
+  // this issue exists to remove, reintroduced one branch over.
   const reservation = await deps.repo.getReservation(reservationId);
-  const event = reservation ? await deps.repo.getEvent(reservation.eventId) : null;
-  if (!reservation || reservation.status !== "booked" || event?.price === undefined) {
+  if (!reservation) {
+    // No row to reference. Recording is impossible, not merely undesirable — the insert would
+    // violate the FK, throw, and take this alert with it, which is the original #613 failure.
     await deps.alertPaidButUnbooked(
-      `⚠️ Balance payment could NOT be recorded — reservation ${reservationId} is missing, ` +
-        `cancelled, or unpriced. Stripe session ${completed.sessionId}. RECONCILE / REFUND MANUALLY in Stripe.`,
+      `⚠️ Balance payment could NOT be recorded — reservation ${reservationId} does not exist. ` +
+        `Stripe session ${completed.sessionId}. RECONCILE / REFUND MANUALLY in Stripe.`,
     );
     return { handled: true, outcome: "balance_paid" };
   }
 
+  // The reservation exists, so the FK is satisfied whatever its status: record the money that
+  // moved, THEN reconcile. An unreconcilable payment is still a payment, and a ledger that
+  // quietly omits it is worse than one that shows it flagged.
   await deps.repo.savePayment(payment);
+
+  const event = await deps.repo.getEvent(reservation.eventId);
+  if (reservation.status !== "booked" || event?.price === undefined) {
+    await deps.alertPaidButUnbooked(
+      `⚠️ Balance payment recorded for reservation ${reservationId}, but it is cancelled or ` +
+        `unpriced — Stripe session ${completed.sessionId}. RECONCILE / REFUND MANUALLY in Stripe.`,
+    );
+    return { handled: true, outcome: "balance_paid" };
+  }
 
   // Overpay guard: a two-session race over-collects. The append log reflects the money that
   // moved; if the derived balance has gone NEGATIVE, flag the excess for a manual refund.

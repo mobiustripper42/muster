@@ -80,6 +80,7 @@ Project-specific docs beyond the baseline `## Key Docs` table in the `CLAUDE.md`
 
 | File | Purpose |
 |------|---------|
+| `docs/BRAND.md` | Voice, visual direction, philosophy. Webapp-shaped, so it lives here rather than in the shell's Key Docs — a CLI or firmware project has no use for it. |
 | `docs/FUTURE_IDEAS.md` | The shiny-object parking lot. New ideas land here, not in the locked spec (DEC-014). |
 | `docs/RUNNING.md` | How to run the app locally, see the UI (Tailscale host, magic-link dev flow), check a change. PRs link here for setup. |
 | `docs/DEPLOY.md` | Go-live runbook — Vercel + Neon Postgres (Phase 5.1, DEC-033). |

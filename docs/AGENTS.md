@@ -97,21 +97,17 @@ Several agents and slash-command skills support the development workflow. All ru
 
 **Spec:** `.claude/agents/tape-reader.md`
 
-**Output:** Anti-pattern findings (covers a known checklist; surfaces new candidate patterns) with proposed skill/agent edits.
+**Output:** One cited observation, written to the `observations` branch in seeds — every run, clean runs included. **It changes nothing in this repo** (DEC-S040): no fix, no branch, no PR, not even a `.claude/settings.json` permission entry. It has no `Edit` tool. Findings with a local fix still go in the observation; applying one is a separate deliberate act.
 
 ---
 
-### 7. @sync-config
+### 7. Moving files between this project and seeds — retired (DEC-S040)
 
-**Purpose:** Classifies diffs between the project's live workflow files and the seeds template repo. Backports structural improvements (push) or forward-ports template changes (pull); flags cross-family patterns.
+There is no sync agent and no sync skill. The sync-config agent and the push-seeds and pull-seeds skills were all removed — named without slashes or backticks here, because either would read as a claim that they still exist — once it became clear the projects differ more than they agree, and that choosing which file should cross is the part needing judgment.
 
-**When to invoke:**
-- Via `/push-seeds` (project → seeds) or `/pull-seeds` (seeds → project)
-- Also runs unattended via the nightly sync Routine
+Copy by hand, one file at a time, from the seeds checkout. Before copying, check seeds' `.claude/routine-config.yaml` § `file-classes`: `logic` files are identical everywhere and safe to copy wholesale, `context` files are project-owned and must never be copied, `hybrid` means copy the shell only. Nothing enumerates what has drifted — that is `diff`, and it is the one real loss.
 
-**Spec:** `.claude/agents/sync-config.md`
-
-**Output:** Per-hunk classification (backport / forward-port / skip) and a proposed change set for review.
+What a session *reveals* by going wrong travels the other way automatically: see @tape-reader above.
 
 ---
 
@@ -237,7 +233,6 @@ Slash commands manage session lifecycle. Time tracking is automatic.
 | @ui-reviewer | Sonnet | After UI work, phase boundaries | Design quality |
 | @doc-consistency | Sonnet | Via `/doc-consistency-check`, ad-hoc when docs feel drifted | Cross-reference facts across docs; flag mismatches + placeholders. Report-only |
 | @tape-reader | Sonnet | Via `/read-the-tape` | Audit JSONL transcripts for anti-patterns, propose skill improvements |
-| @sync-config | Sonnet | Via `/push-seeds` / `/pull-seeds`, nightly Routine | Classify template diffs, propose backports/forward-ports |
 | @ideas | Sonnet | Park an idea, re-rank, or audit the parking lot | Curate `docs/FUTURE_IDEAS.md`; edits only that file |
 | /its-alive | — | Session start | Open session file + timestamp + briefing |
 | /pause-this | — | Mid-session break | Safe pause with commit |
@@ -249,8 +244,6 @@ Slash commands manage session lifecycle. Time tracking is automatic.
 | /bump-major | — | Breaking change | Manual major version bump |
 | /promote-production | — | Ship trunk to prod | ff-merge `main` → `production` (deploy-only), push |
 | /doc-consistency-check | — | Ad-hoc, when docs feel drifted | Invokes @doc-consistency; cross-refs `docs/*.md` + root `CLAUDE.md` |
-| /push-seeds | — | After workflow improvements | Backport project-side improvements to seeds templates |
-| /pull-seeds | — | After seeds gets new improvements | Pull template changes into this project |
 | /read-the-tape | — | After a session worth learning from | Audit session JSONL for anti-patterns |
 
 **Per-session files:** the workflow uses `sessions/YYYY-MM-DD-HHMM-<dev>-<slug>.md` (one file per session) on the orphan `sessions` branch via `.sessions-worktree/` (DEC-S014). `<dev>` comes from `~/.claude/devname` (one-line file, falls back to `$USER`). The slug is derived from the branch name (`task/X-foo` → `X-foo`, `main` → `main`, etc.). The active JSONL transcript path is captured in the file's frontmatter for later `/read-the-tape` audits.

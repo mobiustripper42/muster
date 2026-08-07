@@ -1,4 +1,4 @@
-// Tests for the context-doc path checker (#593 fallout).
+// Tests for the context-doc path checker.
 //
 // The value of this suite is almost entirely in the NEGATIVE cases. A path checker that finds
 // nothing looks identical whether it is working or whether its matcher stopped matching — the
@@ -74,6 +74,16 @@ describe("check", () => {
     expect(failures[0]).toMatch(/no-such-channel\.ts.*does not exist/);
     expect(failures[1]).toMatch(/\*-nope\.ts.*does not exist/);
     expect(failures[2]).toMatch(/nowhere.*does not exist/);
+  });
+
+  it("resolves a glob under a Next dynamic segment, whose brackets are not a character class", () => {
+    // `globSync` reads `[shiftId]` as "one character from s,h,i,f,t,I,d" and matches nothing, so
+    // every dynamic route in an App Router project was uncitable in the two always-loaded docs —
+    // the check reported the doc as wrong for being right. `isClaim` above already asserts these
+    // are real directories, which is what made the pair contradict each other.
+    expect(check([{ path: "f.md", text: "`app/(crew)/crew/shift/[shiftId]/**`" }])).toEqual([]);
+    // Still a negative control: escaping must not turn every bracket pattern into a pass.
+    expect(check([{ path: "f.md", text: "`app/(crew)/crew/nope/[shiftId]/**`" }])[0]).toMatch(/does not exist/);
   });
 
   it("resolves a real glob and a real brace expansion", () => {

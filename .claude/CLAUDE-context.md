@@ -94,10 +94,25 @@ Notes on the baseline docs: `docs/SPEC.md` is the buildable source of truth. It 
 Overrides to the shell's `## Micro Workflow`. Muster's stack is Next.js over a framework-free domain core, **not** the shell's default Supabase/Playwright shape:
 
 - **The gate is `npm run verify`** (typecheck + typecheck:app + test + build), not a Playwright run. `/kill-this` and `/pause-this` run it.
-- **Step 5 (Write the test):** Vitest against the domain core (oracle, state machine, reliability log) — heavily unit/integration tested. Test-first when behavior changes. **No pgTAP** — there's no Supabase/RLS; persistence is plain Postgres behind the `Repository` port with an in-memory adapter as the test substrate.
+- **Step 4 (Write the failing test FIRST):** Vitest against the domain core (oracle, state machine, reliability log) — heavily unit/integration tested. Test-first when behavior changes. **No pgTAP** — there's no Supabase/RLS; persistence is plain Postgres behind the `Repository` port with an in-memory adapter as the test substrate.
 - **Step 6 (Run targeted tests):** the relevant Vitest file/suite, not the whole thing. Full suite is the user's call.
 - **Step 7 (Mobile screenshot):** Playwright screenshots land when that tooling does (M4 fast-follow). Until then, **every page works at 375px — eyeball at `mill-dev:3000`** per `docs/RUNNING.md`.
 - **Feature branches for multi-PR features (DEC-059 — overrides the shell's `## PR Workflow`):** `main` must stay **promotable to `production` at all times**. A feature shipping across multiple PRs that isn't independently releasable lands on a long-lived `feature/<name>` branch off `main` — its task PRs target *that* branch — and merges to `main` only when the whole feature is prod-ready **or** dark behind a flag. Independently-shippable tasks still PR straight to `main`. The shell's "stack PRs onto `main`" guidance applies only to independently-shippable work; do **not** land partial features on `main`.
+
+## Blast-Radius Triggers
+
+Read by `/kill-this` Step 3.5 and matched against the branch diff. On a hit the skill runs `/security-review` locally and surfaces `/code-review ultra` as the optional deeper pass. Paths, not categories — "the money path" can't be matched against a diff.
+
+| Trigger | Paths |
+|---|---|
+| **Money moving** | `app/api/webhooks/stripe/`, `src/adapters/stripe-payment.ts`, `src/ports/payment.ts`, `src/reservations/create-departure-payment-intent.ts`, `src/reservations/payment-config.ts` |
+| **Money computed** | `app/(admin)/admin/payroll/**` (incl. the `gusto.csv` and `tips.csv` exports), `app/(admin)/admin/time-clock/**`, `app/(admin)/admin/shift/[shiftId]/**`, `app/(admin)/admin/shifts/**`, `app/(crew)/crew/shift/[shiftId]/**` |
+| **Auth / capability URL** | `app/lib/auth.ts`, `app/lib/auth-delivery.ts`, `app/(crew)/crew/auth/`, `app/api/calendar/[token]/**` |
+| **Data-changing migration** | a file under `db/migrations/` containing `drop`, `alter … type`, `update`, or `delete`. An additive `add column` does **not** trigger |
+
+**Why the payroll exports are listed by name.** `gusto.csv` is the file that becomes a paycheck. Nothing in it looks like a payment — no provider, no charge, no amount in cents — so a trigger defined by *where money moves* would never match it. A mis-bucketed pay period or a double-counted punch upstream in `time-clock` or `shift` reaches a person's pay with no payment code anywhere in the diff.
+
+**Not triggers:** `src/oracle/`, `src/domain/reliability.ts` (reliability scoring isn't money), messaging, UI-only work, docs, mockups, and anything under `.claude/`.
 
 ## Migration Protocol (project)
 

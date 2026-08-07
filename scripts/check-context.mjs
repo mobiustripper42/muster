@@ -98,9 +98,28 @@ export function expandBraces(pattern) {
  * machine and in CI, and the premise of this whole PR is that docs get *less* scrutiny than code.
  * A docs diff should never be a code-exec path. No shell, no escaping to get right, no risk.
  */
+/**
+ * `globSync` reads `[token]` as a POSIX bracket expression — one character from t,o,k,e,n — so a
+ * citation of a Next.js dynamic route resolves to nothing even when the directory is sitting right
+ * there. Every dynamic segment in an App Router project is a `[bracket]` directory, so this made
+ * *any* dynamic route uncitable in the two always-loaded context docs, and reported the doc as
+ * wrong for being right. Escaping is the fix: `[` → `[[]`, `]` → `[]]`. Backslash escaping does not
+ * work here — node's glob ignores it and still matches zero.
+ *
+ * Done in one pass over both characters, deliberately. Two sequential replaces would feed the `[`
+ * of a freshly-written `[[]` back into the `]` pass and corrupt it.
+ *
+ * A bracket in a cited path is a literal directory name essentially every time; nobody writes a
+ * character class into a doc. Treating all of them as literal is the right default, and the cost of
+ * being wrong is a pattern that fails to match — the same outcome as today.
+ */
+function escapeBrackets(pattern) {
+  return pattern.replace(/[[\]]/g, (c) => (c === '[' ? '[[]' : '[]]'))
+}
+
 function patternMatches(pattern) {
   try {
-    return expandBraces(pattern).some((p) => globSync(p).length > 0)
+    return expandBraces(pattern).some((p) => globSync(escapeBrackets(p)).length > 0)
   } catch {
     return false
   }

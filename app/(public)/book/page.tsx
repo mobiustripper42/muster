@@ -5,7 +5,9 @@
  * Muster's own design tokens (DEC-021: read the mockup's values, don't import them). Gated behind
  * `RESERVATIONS` (DEC-111).
  *
- * Zero-JS except one island (DEC-133): date and time are picked by `AppLink` server navigation;
+ * Zero-JS except one island (DEC-133): date and time are picked by `AppLink` server navigation
+ * — each `scroll={false}`, so choosing a date or a departure leaves you where you were rather
+ * than throwing you back to the hero on every pick;
  * only the guest stepper is client, so the running total moves live. The picked base price comes
  * from the URL-selected slot (server-derived), the guest count from the island — the footer's
  * Continue link carries both to checkout (`/book/checkout`, built in 12.5). Guests reset to the
@@ -235,6 +237,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                   {canPrev ? (
                     <AppLink
                       href={bookHref({ offering: sp.offering, date: prev.first })}
+                      scroll={false}
                       aria-label="Previous month"
                       className="flex h-[30px] w-[30px] items-center justify-center rounded-lg border border-line text-muted"
                     >
@@ -247,6 +250,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                   )}
                   <AppLink
                     href={bookHref({ offering: sp.offering, date: next.first })}
+                    scroll={false}
                     aria-label="Next month"
                     className="flex h-[30px] w-[30px] items-center justify-center rounded-lg border border-line text-muted"
                   >
@@ -269,6 +273,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                         <AppLink
                           key={i}
                           href={bookHref({ offering: sp.offering, date: c.date })}
+                          scroll={false}
                           spinner="none"
                           className={`${base} border border-ok-line bg-ok-bg font-semibold text-ok hover:border-ok`}
                         >
@@ -349,6 +354,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                           key={r.time}
                           data-testid={`slot-${r.time}`}
                           href={bookHref({ offering: sp.offering, date: selectedDate, time: r.time })}
+                          scroll={false}
                           spinner="none"
                           className={`mb-2.5 flex items-center gap-3 rounded-xl border bg-card px-3.5 py-3 ${
                             selected ? "border-accent bg-accent/5 ring-1 ring-accent" : "border-line hover:border-accent"

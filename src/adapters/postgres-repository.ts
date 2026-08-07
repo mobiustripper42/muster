@@ -1358,14 +1358,20 @@ export class PostgresRepository implements Repository {
             and (split_part(time, ':', 1)::int * 60 + split_part(time, ':', 2)::int)
                   < $4::int + $5::int
             and (split_part(time, ':', 1)::int * 60 + split_part(time, ':', 2)::int
-                  + coalesce(duration_minutes, $5::int)) > $4::int
+                  + coalesce(duration_minutes, $6::int)) > $4::int
           limit 1`,
+        // $5 is the NEW booking's length; $6 is the standing length an EXISTING untimed row is
+        // measured at. They are different numbers and coalescing against $5 was a bug: a short
+        // new charter would shrink an untimed 100-minute trip beside it and open a gap that is
+        // not there. `busyIntervalsFor` always measures an existing untimed row at
+        // XOLA_TRIP_MINUTES, and this predicate is the backstop for that same read.
         [
           event.vesselId,
           event.date,
           event.time,
           minutesOfDay(event.time),
           event.durationMinutes ?? XOLA_TRIP_MINUTES,
+          XOLA_TRIP_MINUTES,
         ],
       );
       if ((overlap.rowCount ?? 0) > 0) {

@@ -186,7 +186,15 @@ export async function acquireDepartureHold(
   const at = now();
   for (const vesselId of candidates) {
     if (bookedSlots.has(slotIdentity(vesselId, req.date, req.time))) continue;
-    if (hullIsBusy(busyIntervalsFor(events, vesselId, req.date), startMinute, tripMinutes)) {
+    // Exempt the MUSTER event at this exact slot — an override materialized here IS the slot
+    // being held, not an occupant of it. Without this a departure the calendar shows as
+    // available reports sold_out at checkout. A Xola event at the same clock time is still a
+    // foreign occupant and still blocks.
+    const ownSlot = slotIdentity(vesselId, req.date, req.time);
+    const others = events.filter(
+      (e) => !(e.source === "muster" && slotIdentity(e.vesselId, e.date, e.time) === ownSlot),
+    );
+    if (hullIsBusy(busyIntervalsFor(others, vesselId, req.date), startMinute, tripMinutes)) {
       continue;
     }
     const hold: CheckoutHold = {

@@ -248,6 +248,25 @@ describe("acquireDepartureHold — the hull, not just the slot (#615, #691)", ()
     expect("held" in res && String(res.held.vesselId)).toBe("v-small");
   });
 
+  it("still holds a slot that has an UNBOOKED override event of its own", async () => {
+    // An override Event materialized at the very slot being held is not an occupant — it IS
+    // the slot. Counting it made the hold see the boat as busy against itself, so a departure
+    // the calendar shows as available would report sold_out at checkout.
+    const repo = await seededRepo();
+    await repo.saveEvent({
+      id: eventIdForSlot(SMALL, DATE, TIME),
+      vesselId: SMALL,
+      date: DATE,
+      time: TIME,
+      capacity: 6,
+      status: "scheduled",
+      source: "muster",
+      price: 42000, // an operator override price on this departure
+    });
+    const res = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: TIME, guestCount: 4 }, now);
+    expect("held" in res && String(res.held.vesselId)).toBe("v-small");
+  });
+
   it("sold out when a Xola trip occupies every fitting boat", async () => {
     const repo = await seededRepo();
     for (const [i, v] of [SMALL, BIG].entries()) {

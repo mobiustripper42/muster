@@ -47,11 +47,16 @@ export interface BusyInterval {
   end: number;
 }
 
-/** `"13:30"` → `810`. Minutes past midnight; no timezone maths — the date already fixes the day. */
+/** `"13:30"` → `810`. Minutes past midnight; no timezone maths — the date already fixes the day.
+ *  `NaN` for anything unparseable — callers must decide what that means rather than letting it
+ *  leak into a comparison, where every `<` is silently false. */
 export function minutesOfDay(time: string): number {
   const [h, m] = time.split(":");
   return Number(h) * 60 + Number(m);
 }
+
+/** Minutes in a day — the window a trip with an unreadable time is assumed to occupy. */
+const WHOLE_DAY: BusyInterval = { start: 0, end: 1440 };
 
 /**
  * Every window this hull is occupied on this date, from ALL materialized events — both sources.
@@ -69,6 +74,13 @@ export function busyIntervalsFor(
     if (e.status !== "scheduled") continue;
     if (String(e.vesselId) !== String(vesselId) || e.date !== date) continue;
     const start = minutesOfDay(e.time);
+    // An unreadable time blocks the whole day. Left as NaN it would drop out entirely — every
+    // comparison against NaN is false — so a garbled row would make its boat *more* sellable.
+    // Bad data costs a slot; it must never cost a double-booked boat.
+    if (!Number.isFinite(start)) {
+      out.push(WHOLE_DAY);
+      continue;
+    }
     // Absent duration ⇒ assume a full trip, never zero. A zero-length window would make an
     // existing booking invisible to this check, which is the exact failure being closed.
     out.push({ start, end: start + (e.durationMinutes ?? XOLA_TRIP_MINUTES) });

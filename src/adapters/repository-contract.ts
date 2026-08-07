@@ -771,6 +771,23 @@ export function runRepositoryContract(
       expect(res.result).toBe("lost");
     });
 
+    it("saveBookingIfSlotFree: an untimed existing trip is measured at the STANDING length, not the new booking's", async () => {
+      // The SQL coalesced a null `duration_minutes` against the NEW booking's duration. Book a
+      // short charter and the untimed Xola trip beside it shrinks to match — opening a gap that
+      // is not there. `busyIntervalsFor` always measures an existing untimed row at
+      // XOLA_TRIP_MINUTES, and the backstop has to agree or the read path and the write path
+      // disagree about the same boat.
+      await repo.saveEvent(
+        // 13:00, no duration ⇒ 100 minutes ⇒ busy to 14:40, over the 14:00 slot.
+        event({ id: asId<"EventId">("evt-untimed"), source: "xola", time: "13:00" }),
+      );
+      const res = await repo.saveBookingIfSlotFree(
+        slotEvent({ durationMinutes: 30 }), // a SHORT new booking at 14:00
+        reservation({ id: rid("resv-short"), source: "muster", eventId: SLOT_ID }),
+      );
+      expect(res.result).toBe("lost");
+    });
+
     it("saveBookingIfSlotFree: WINS when the other trip ends exactly as this one starts", async () => {
       // Half-open intervals. Back-to-back departures are the operator's actual schedule, so
       // a closed interval here would refuse every second sailing of the day.

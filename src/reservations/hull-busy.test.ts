@@ -68,6 +68,15 @@ describe("busyIntervalsFor", () => {
     expect(busyIntervalsFor(events, V, DATE)).toEqual([]);
   });
 
+  it("a malformed time blocks the whole day rather than vanishing", () => {
+    // NaN comparisons are always false, so an unparseable time used to drop OUT of the busy
+    // set — the event became invisible to the very check meant to see it. Wrong direction:
+    // garbage in the data must cost a sellable slot, never a double-booked boat.
+    expect(busyIntervalsFor([ev({ time: "not-a-time" })], V, DATE)).toEqual([
+      { start: 0, end: 1440 },
+    ]);
+  });
+
   it("falls back to the standing trip length for a Muster event with no duration", () => {
     // Pre-#570 events carry no `durationMinutes`. Treating that as a zero-length trip would
     // make an existing booking invisible to the overlap check — the failure this all exists

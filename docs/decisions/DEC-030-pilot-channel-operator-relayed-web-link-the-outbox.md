@@ -69,3 +69,23 @@ the clock starts when the ask fires, not when the text goes out. Scores are MVP-
 nothing reads the skew yet, and it dies at the Twilio swap when `send` actually transmits.
 
 **Phase:** Phase 4 / 4.1 (#53). (@architect passes — Fable — 2026-06-11.)
+
+> **Carve-out (2026-08-07, #696).** Rule 4 stands and its reasoning is unchanged — but it is a
+> defence against a client with **no session**. A preview bot carries no cookie; that is exactly
+> why it must not be able to spend a token.
+>
+> A crew member whose browser already holds a valid session for **the subject this token names**
+> is outside that argument entirely, and was still made to tap on every ask, every doorbell ring,
+> every notice. `/crew/auth` GET now redirects them straight to their world.
+>
+> Two constraints make it safe, and both are load-bearing:
+>
+> - **The session's subject must MATCH the token's.** Presence alone is not enough. Signed in as
+>   someone else — a shared phone, the operator opening a crew member's link — still gets the
+>   button. Auto-redirecting there would put someone in the wrong person's world and look like it
+>   had worked.
+> - **The GET still does not consume.** Skipping the tap is a redirect, not a spend. A GET that
+>   writes is the thing rule 4 exists to prevent, and a browser prefetching *with* cookies would
+>   burn a link the human has not used yet — leaving a dead link that looks fine if their session
+>   lapsed in between. Consuming buys nothing: whoever holds the phone already holds the cookie
+>   that makes the token redundant.

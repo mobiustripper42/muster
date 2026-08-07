@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { peekMagicLink, verifyMagicLink } from "@core/auth/magic-link.js";
-import { buildSessionCookie } from "../../../lib/auth";
+import { buildSessionCookie, readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
 
 /**
@@ -101,7 +101,32 @@ export async function GET(req: NextRequest) {
   }
   if (!result.ok) return fail(result.reason);
 
-  return signInPage(secret, req.nextUrl.searchParams.get("thread"));
+  const thread = req.nextUrl.searchParams.get("thread");
+
+  // ALREADY SIGNED IN (#696) — skip the tap. The interstitial above defends against a client
+  // with NO session (a preview bot); it has nothing to say to a crew member whose browser is
+  // already carrying a valid cookie for the very subject this token names. They were made to
+  // tap on every ask, every doorbell ring, every notice.
+  //
+  // MATCH the subject, don't just check presence. Signed in as someone else — a shared phone,
+  // or the operator opening a crew member's link — must still see the button: auto-redirecting
+  // would drop them into the wrong person's world AND look like it worked.
+  //
+  // The token is deliberately NOT consumed here. A GET that writes is exactly what DEC-030's
+  // prefetch rule exists to prevent, and a browser prefetching WITH cookies would burn a link
+  // the human hasn't used yet — leaving them a dead link that looks fine if their session
+  // lapsed in between. Nothing is gained by consuming: whoever holds this phone already holds
+  // the session cookie that makes the token redundant.
+  const session = await readSubject();
+  if (
+    session &&
+    session.kind === result.subject.kind &&
+    String(session.id) === String(result.subject.id)
+  ) {
+    return redirectTo(session.kind === "admin" ? "/admin/at-risk" : crewLanding(thread));
+  }
+
+  return signInPage(secret, thread);
 }
 
 export async function POST(req: NextRequest) {

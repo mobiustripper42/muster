@@ -41,8 +41,16 @@ test.describe("imported Xola trips", () => {
 
     // The worse regression: renaming the status made every occupied hull fall through to the
     // "open" card, so the whole fleet read free while charters were on the water.
-    const openAt1330 = page.getByTestId("cal-block").filter({ hasText: "open · 1:30" });
-    await expect(openAt1330).toHaveCount(0);
+    //
+    // Scoped to Brew 3 on purpose. The fleet offering puts a 1:30 departure on all four boats and
+    // only Brew 3 carries the import, so a page-wide assertion would fail on three boats that are
+    // correctly open — and "no open cards anywhere" would be the wrong thing to want.
+    const brew3 = page.locator('[data-testid="cal-block"][data-vessel="vessel-brew-3"]');
+    await expect(brew3.filter({ hasText: "open · 1:30" })).toHaveCount(0);
+    // …while the boats with no import that hour DO read open. Without this the assertion above
+    // would still pass on a calendar that had stopped drawing open slots entirely.
+    const brew1 = page.locator('[data-testid="cal-block"][data-vessel="vessel-brew-1"]');
+    await expect(brew1.filter({ hasText: "open · 1:30" })).toHaveCount(1);
   });
 
   test("an overlapping import takes out departures it does not sit on (#691)", async ({ page }) => {

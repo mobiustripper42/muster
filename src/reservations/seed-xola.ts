@@ -61,6 +61,13 @@ export interface XolaFixture {
    * sharing boats; the fixture has to have at least two.
    */
   secondOffering: Offering;
+  /**
+   * The realistic one: five departures a day on all four Brew boats, running from the 1st of the
+   * CURRENT month through the end of the fixture window. The other two offerings exist to make
+   * specific bugs reachable; this one exists so the operator can look at a calendar that resembles
+   * the business — a month with a full schedule on it, rather than a week of contrived cases.
+   */
+  fleetOffering: Offering;
   trips: XolaFixtureTrip[];
   /** Convenience handles the specs assert against, so they never re-derive a date. */
   days: {
@@ -107,6 +114,35 @@ export function xolaFixture(todayISO: string): XolaFixture {
     clean: d(5),
   };
 
+  // The 1st of the month `todayISO` falls in — relative, so the fixture never goes stale, and
+  // wide enough that the calendar has a real month of schedule before the contrived week.
+  const firstOfThisMonth = `${todayISO.slice(0, 7)}-01`;
+  const fleetOffering: Offering = {
+    id: asId<"OfferingId">("offering-xola-fixture-fleet"),
+    tenantId: asId<"TenantId">("brewboat"),
+    name: "Brewboat Cruise",
+    status: "live",
+    vesselIds: [
+      asId<"VesselId">("vessel-brew-1"),
+      asId<"VesselId">("vessel-brew-2"),
+      asId<"VesselId">("vessel-brew-3"),
+      asId<"VesselId">("vessel-brew-4"),
+    ],
+    locationId: asId<"LocationId">(demo.locationId),
+    schedule: {
+      seasonStart: firstOfThisMonth,
+      seasonEnd: demo.window.end,
+      weekdays: [0, 1, 2, 3, 4, 5, 6],
+      departureTimes: ["11:30", "13:30", "15:30", "17:30", "19:30"],
+    },
+    basePriceCents: 49900,
+    priceVariations: [],
+    // 100 minutes on the water — the real trip length, and the number every overlap in this
+    // fixture is reasoned against.
+    tripLengthMinutes: 100,
+    extraGuestPriceCents: 5000,
+  };
+
   const secondOffering: Offering = {
     id: asId<"OfferingId">("offering-xola-fixture-second"),
     tenantId: asId<"TenantId">("brewboat"),
@@ -128,6 +164,7 @@ export function xolaFixture(todayISO: string): XolaFixture {
   return {
     extraVessel: UNCOVERED_VESSEL,
     secondOffering,
+    fleetOffering,
     days,
     trips: [
       {

@@ -52,6 +52,9 @@ await repo.saveVessel(world.extraVessel);
 // produces two slots, which is the only way the calendar's collapse-duplicates behaviour can be
 // tested at all — with a single offering per boat the assertion cannot fail.
 await repo.saveOffering(fx.secondOffering);
+// The realistic schedule: five departures a day on all four Brew boats, from the 1st of this
+// month. The contrived week proves the bugs; this is what a month of the business looks like.
+await repo.saveOffering(fx.fleetOffering);
 
 for (const e of world.events) await repo.saveEvent(e);
 for (const r of world.reservations) {
@@ -73,6 +76,9 @@ console.log(`    ${fx.days.overlapping}  14:00 → takes out BOTH 13:30 and 15:3
 console.log(`    ${fx.days.repeatGuest}  Nora Blake ×2, one phone spelled two ways → ONE customer`);
 console.log(`    ${fx.days.cancelled}  a CANCELLED 15:30 → must NOT block`);
 console.log(`    ${fx.days.clean}  nothing at all → the control, everything open`);
+console.log("");
+console.log(`  Plus "Brewboat Cruise" — 11:30/13:30/15:30/17:30/19:30 on Brew 1-4,`);
+console.log(`  ${fx.fleetOffering.schedule.seasonStart} … ${fx.fleetOffering.schedule.seasonEnd}, 100min trips.`);
 console.log("");
 console.log(`  → /admin/calendar?date=${fx.days.onGrid}`);
 process.exit(0);

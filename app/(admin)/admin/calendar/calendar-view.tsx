@@ -498,6 +498,7 @@ export function CalendarGrid({
                         // ancestor for the overlay scrim.
                         spinner="overlay"
                         data-testid="cal-block"
+                        data-vessel={String(s.vesselId)}
                         data-status="booked"
                         aria-current={selected ? "page" : undefined}
                         className={cls}
@@ -509,6 +510,7 @@ export function CalendarGrid({
                       <div
                         key={key}
                         data-testid="cal-block"
+                        data-vessel={String(s.vesselId)}
                         data-status="booked"
                         className={cls}
                         style={pos}
@@ -523,6 +525,7 @@ export function CalendarGrid({
                       <div
                         key={key}
                         data-testid="cal-block"
+                        data-vessel={String(s.vesselId)}
                         data-status="blocked"
                         className="absolute left-[3px] right-[3px] flex items-center justify-center overflow-hidden rounded-lg border border-line text-[10px] text-muted"
                         style={{
@@ -541,6 +544,7 @@ export function CalendarGrid({
                     <div
                       key={key}
                       data-testid="cal-block"
+                        data-vessel={String(s.vesselId)}
                       data-status="available"
                       className={`absolute left-[3px] right-[3px] flex items-center justify-center overflow-hidden rounded-lg border border-dashed text-[10px] text-faint ${offeringOpenClass(
                         String(s.offeringId),

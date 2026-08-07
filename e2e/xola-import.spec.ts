@@ -94,6 +94,35 @@ test.describe("imported Xola trips", () => {
     expect(drawn).toBeGreaterThan(0);
   });
 
+  test("an imported trip opens its detail — it is a reservation on the operator's boat", async ({
+    page,
+  }) => {
+    // Xola cards were inert: the reservation index was Muster-only, so the card took the
+    // non-link branch. During coexistence most cards are imported, which made most of the
+    // calendar dead to the touch.
+    await signInAsAdmin(page, "spink");
+    await page.goto(`/admin/calendar?date=${FX.days.onGrid}`);
+
+    await page.getByTestId("cal-block").filter({ hasText: "Priya Raman" }).click();
+
+    await expect(page).toHaveURL(/\/admin\/calendar\/resv-xola-/);
+    await expect(page.getByText("Priya Raman").first()).toBeVisible();
+  });
+
+  test("the second offering's 14:00 overlaps the demo's 13:30 — two offerings, one hull (#691)", async ({
+    page,
+  }) => {
+    // No import involved. 14:00 + 60min sits inside 13:30 + 100min, so on a day where 13:30 is
+    // taken the 14:00 departure cannot run either — two slot identities, one boat.
+    await page.goto(`/book?offering=offering-xola-fixture-second&date=${FX.days.onGrid}`);
+    await expect(page.getByTestId("slot-14:00")).toContainText("Sold out");
+
+    // …and on the clean day both are open, because two VIRTUAL slots do not block each other.
+    // Whoever books first takes the other out; that is the real-world shape of #691.
+    await page.goto(`/book?offering=offering-xola-fixture-second&date=${FX.days.clean}`);
+    await expect(page.getByTestId("slot-14:00")).not.toContainText("Sold out");
+  });
+
   test("one physical trip draws one card, not one per offering", async ({ page }) => {
     // Brew 3 is sold by more than one offering in this world, so a single trip produced a card
     // per offering — stacked, same customer's name twice.

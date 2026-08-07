@@ -52,13 +52,20 @@ export interface XolaFixture {
   /** The vessel the fixture needs beyond the standard fleet. */
   extraVessel: Vessel;
   /**
-   * A SECOND live offering on the same boat and the same times as the demo cruise.
+   * A SECOND live offering on the same boat as the demo cruise, at **14:00 for one hour** —
+   * deliberately NOT one of the demo's departure times.
    *
-   * Without it the world has one offering per boat, so a physical trip can only ever produce one
-   * slot — and every assertion about collapsing duplicates passes against a scenario that cannot
-   * happen. That is not hypothetical: the dedupe and badge tests were written, went green, and a
-   * negative control showed neither could fail. The operator's real data has three offerings
-   * sharing boats; the fixture has to have at least two.
+   * This is the Muster-vs-Muster overlap, in the fixture rather than hand-built: 14:00–15:00 sits
+   * inside the demo's 13:30 trip (100 minutes, to 15:10). Two offerings, two slot identities, one
+   * hull — the #691 shape, reachable without an import.
+   *
+   * NB two VIRTUAL slots do not block each other; only a materialized trip occupies a hull. So on
+   * a day with no booking both read open and either can be sold — and the first sale takes the
+   * other out. That is the real-world scenario, and it is why this offering exists at a different
+   * time rather than a duplicate one.
+   *
+   * The duplicate-at-the-same-time case (what the dedupe and badge assertions need) comes from
+   * the demo and fleet offerings both selling Brew 3 at 13:30 on the window's first day.
    */
   secondOffering: Offering;
   /**
@@ -158,10 +165,11 @@ export function xolaFixture(todayISO: string): XolaFixture {
       seasonStart: demo.season.start,
       seasonEnd: demo.season.end,
       weekdays: [0, 1, 2, 3, 4, 5, 6],
-      departureTimes: [...demo.departureTimes],
+      departureTimes: ["14:00"],
     },
     basePriceCents: 59900,
     priceVariations: [],
+    tripLengthMinutes: 60,
     extraGuestPriceCents: 5000,
   };
 

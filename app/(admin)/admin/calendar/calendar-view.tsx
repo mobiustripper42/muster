@@ -157,9 +157,16 @@ export async function loadCalendarData(sp: Search): Promise<CalendarData | null>
   const day = sp.date && ISO_DAY.test(sp.date) ? sp.date : today;
   const filter = sp.filter && FILTERS.some((f) => f.key === sp.filter) ? sp.filter : "all";
 
+  // EVERY booked reservation, both sources. It was Muster-only, on the reasoning that a Xola
+  // reservation's money lives in Xola (DEC-105) so the detail route is not ours to point at it.
+  // That was wrong in practice: during coexistence most cards on this calendar are imported, so
+  // most of the calendar was dead to the touch — and it is still a reservation on the operator's
+  // own boat (operator, 2026-08-07). The detail route loads by id with no source filter; a Xola
+  // row's payments and gratuities simply come back empty. A pane that says plainly this is Xola's
+  // and cannot be edited here is #704.
   const reservationByEventId = new Map<string, Reservation>();
   for (const r of reservations) {
-    if (isActiveMusterClaim(r)) reservationByEventId.set(String(r.eventId), r);
+    if (r.status === "booked") reservationByEventId.set(String(r.eventId), r);
   }
 
   // Who is actually on each physical boat-slot, EITHER source. `reservationByEventId` above is
@@ -469,8 +476,11 @@ export function CalendarGrid({
                   const pos = { top: `${topPct}%`, height: `${heightPct}%` } as const;
 
                   if (s.status === "booked" || s.status === "unavailable") {
+                    // `onBoard`, not `reservation`: a hull-busy slot carries no eventId of its
+                    // own, so the eventId lookup never fires for an imported trip. Resolving
+                    // through the physical slot is what makes those cards openable at all.
                     const selected =
-                      reservation !== undefined && String(reservation.id) === selectedReservationId;
+                      onBoard !== undefined && String(onBoard.id) === selectedReservationId;
                     const body = (
                       <>
                         <span className="truncate text-[11px] font-semibold text-ink">
@@ -488,10 +498,10 @@ export function CalendarGrid({
                     )} ${selected ? "ring-2 ring-ink ring-offset-1" : ""}`;
 
                     // A booked block links to its detail route; an unjoinable one stays inert.
-                    return reservation ? (
+                    return onBoard ? (
                       <AppLink
                         key={key}
-                        href={detailHref(data, String(reservation.id))}
+                        href={detailHref(data, String(onBoard.id))}
                         // `overlay`, not the default `inline`: the inline spinner wraps children
                         // in a single label element, which collapses this block's two stacked
                         // lines onto one. The block is `absolute`, so it's already a positioned

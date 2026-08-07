@@ -1,5 +1,4 @@
 import type { Block, Event, Location, Offering, Reservation, Vessel } from "@core/domain/entities.js";
-import type { MusterOwnedVesselDay } from "@core/domain/entities.js";
 import { vesselDateOf } from "@core/config/tenant.js";
 import { blockDateSpan, computeBlockImpact } from "@core/reservations/block-impact.js";
 import { Notice } from "../../../../components/ui/notice";
@@ -79,17 +78,15 @@ export default async function AdminBlocks({
   let offerings: Offering[];
   let vessels: Vessel[];
   let locations: Location[];
-  let ownedDaysRaw: MusterOwnedVesselDay[];
   let events: Event[];
   let reservations: Reservation[];
   try {
     const repo = getRepo();
-    [blocks, offerings, vessels, locations, ownedDaysRaw, events, reservations] = await Promise.all([
+    [blocks, offerings, vessels, locations, events, reservations] = await Promise.all([
       repo.listBlocks(),
       repo.listOfferings(),
       repo.listVessels(),
       repo.listLocations(),
-      repo.listMusterOwnedVesselDays(),
       repo.listEvents(),
       repo.listAllReservations(),
     ]);
@@ -105,8 +102,7 @@ export default async function AdminBlocks({
   locations.sort((a, b) => a.name.localeCompare(b.name));
   const vesselById = new Map(vessels.map((v) => [String(v.id), v]));
   const locationById = new Map(locations.map((l) => [String(l.id), l]));
-  const ownedDays = ownedDaysRaw.map((o) => ({ vesselId: o.vesselId, date: o.date }));
-  const impactInput = { offerings, vessels, ownedDays, events, reservations };
+  const impactInput = { offerings, vessels, events, reservations };
 
   const today = vesselDateOf(new Date());
   const filter = sp.kind && FILTERS.some((f) => f.key === sp.kind) ? sp.kind : "all";

@@ -50,8 +50,9 @@ export interface ReservationDemo {
   vesselName: string;
   season: { start: string; end: string };
   departureTimes: readonly string[];
-  /** Inclusive owned-day range — the offering emits virtual slots only where owned. */
-  ownedRange: { start: string; end: string };
+  /** Inclusive demo window. Since #688 this IS the offering's season — the schedule is
+   *  the only thing that decides when slots emit, so the season is what scopes the demo. */
+  window: { start: string; end: string };
   /** The materialized bookings, at known slots inside the owned range. */
   bookings: readonly ReservationDemoBooking[];
   /** A vessel-block window overlapping exactly the FIRST TWO bookings. */
@@ -88,11 +89,12 @@ export function reservationDemo(todayISO: string): ReservationDemo {
     /** A fleet boat (seeded by seedFleet — cap 12). */
     vesselId: "vessel-brew-3",
     vesselName: "Brew 3",
-    // Wide enough to contain the window whichever month it lands in, including the December
-    // roll into next year.
-    season: { start: `${todayISO.slice(0, 4)}-01-01`, end: `${Number(anchor.slice(0, 4)) + 1}-12-31` },
+    // The season IS the demo window (#688). It used to be a full year, with a 7-day
+    // owned-day allowlist narrowing it; ownership is gone, so the season does that job
+    // directly. Same visible demo, one mechanism instead of two.
+    season: { start: day(9), end: day(15) }, // the 10th … the 16th
     departureTimes: ["13:30", "15:30", "17:30"],
-    ownedRange: { start: day(9), end: day(15) }, // the 10th … the 16th
+    window: { start: day(9), end: day(15) }, // the 10th … the 16th
     bookings: [
       { date: day(11), time: "13:30", customerName: "Marcus Webb", partySize: 8, priceCents: 54900, phone: "216-555-0148" },
       { date: day(12), time: "15:30", customerName: "Dana Cho", partySize: 6, priceCents: 43900, phone: "(440) 555-0102" },
@@ -110,18 +112,8 @@ export function reservationDemo(todayISO: string): ReservationDemo {
 export interface SeededReservationWorld {
   location: Location;
   offering: Offering;
-  ownedDays: { vesselId: VesselId; date: string }[];
   events: Event[];
   reservations: Reservation[];
-}
-
-/** Inclusive `yyyy-mm-dd` day list. */
-function eachDay(start: string, end: string): string[] {
-  const out: string[] = [];
-  for (let ms = Date.parse(`${start}T00:00:00Z`); ms <= Date.parse(`${end}T00:00:00Z`); ms += 86_400_000) {
-    out.push(new Date(ms).toISOString().slice(0, 10));
-  }
-  return out;
 }
 
 /** Build the demo world. `createdAt` and `demo` are injected to keep the builder clock-free. */
@@ -156,11 +148,6 @@ export function buildSeededReservationWorld(
     extraGuestPriceCents: 5000,
   };
 
-  const ownedDays = eachDay(demo.ownedRange.start, demo.ownedRange.end).map((date) => ({
-    vesselId: V,
-    date,
-  }));
-
   const events: Event[] = [];
   const reservations: Reservation[] = [];
   for (const b of demo.bookings) {
@@ -187,7 +174,7 @@ export function buildSeededReservationWorld(
     });
   }
 
-  return { location, offering, ownedDays, events, reservations };
+  return { location, offering, events, reservations };
 }
 
 /**

@@ -16,7 +16,6 @@
     "db:mint": "tsx db/mint-link.ts",
     "db:admin": "tsx db/admin.ts",
     "db:crew": "tsx db/crew.ts",
-    "db:own": "tsx db/own-vessel-day.ts",
     "db:checkout": "tsx db/checkout-dev.ts",
     "db:balance": "tsx db/balance-dev.ts",
     "db:paid-unbooked": "tsx db/paid-unbooked-dev.ts",

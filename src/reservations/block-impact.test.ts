@@ -36,7 +36,6 @@ const offering: Offering = {
   extraGuestPriceCents: 5000,
 };
 
-const ownedDays = DAYS.map((date) => ({ vesselId: VESSEL, date }));
 
 /** A booked trip on `date`/`time`: a materialized muster Event + an active reservation. */
 function booking(date: string, time: string, priceCents: number): { event: Event; reservation: Reservation } {
@@ -65,7 +64,6 @@ function inputWith(bookings: { event: Event; reservation: Reservation }[]): Bloc
   return {
     offerings: [offering],
     vessels: [vessel],
-    ownedDays,
     events: bookings.map((b) => b.event),
     reservations: bookings.map((b) => b.reservation),
   };

@@ -1215,34 +1215,6 @@ export function runRepositoryContract(
       await repo.markPaymentRefunded(asId<"PaymentId">("pay-nope"), 100);
     });
 
-    it("muster-owned vessel-days: mark + list; upsert on (vessel,date) (DEC-106)", async () => {
-      expect(await repo.listMusterOwnedVesselDays()).toEqual([]);
-      await repo.markVesselDayMusterOwned(
-        VESSEL,
-        "2026-07-04",
-        "2026-07-01T00:00:00.000Z",
-      );
-      expect(await repo.listMusterOwnedVesselDays()).toEqual([
-        { vesselId: VESSEL, date: "2026-07-04", markedAt: "2026-07-01T00:00:00.000Z" },
-      ]);
-      // upsert on (vessel, date): re-mark updates markedAt, no duplicate row
-      await repo.markVesselDayMusterOwned(
-        VESSEL,
-        "2026-07-04",
-        "2026-07-02T00:00:00.000Z",
-      );
-      const one = await repo.listMusterOwnedVesselDays();
-      expect(one).toHaveLength(1);
-      expect(one[0]!.markedAt).toBe("2026-07-02T00:00:00.000Z");
-      // a different date is a distinct row
-      await repo.markVesselDayMusterOwned(
-        VESSEL,
-        "2026-07-05",
-        "2026-07-02T00:00:00.000Z",
-      );
-      expect(await repo.listMusterOwnedVesselDays()).toHaveLength(2);
-    });
-
     it("reservation catalog: a fresh repo reads empty (DEC-125)", async () => {
       // Empty on both adapters before anything is written (write round-trip is covered by
       // "catalog: offering / location / block write + read round-trip" above, added in 12.1a).

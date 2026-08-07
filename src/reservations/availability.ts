@@ -103,9 +103,9 @@ export function canBook(
 // availability is COMPUTED on read and a row materializes only when a slot gets state.
 // `deriveVirtualAvailability` is that computation:
 //
-//   open slots = schedule × vessels × dates × muster-owned-days − blocks − bookings
+//   open slots = schedule × vessels × dates − blocks − bookings
 //
-// It is PURE — feed it the offerings/vessels/blocks/ownedDays + the already-materialized
+// It is PURE — feed it the offerings/vessels/blocks + the already-materialized
 // events/reservations, and it returns one `VirtualSlot` per enumerated departure. The
 // P11 `deriveAvailability`/`canBook` above are UNTOUCHED (they still serve the seeded-Event
 // path); this supersedes the browse path when 12.8 repoints the calendar at it.
@@ -162,7 +162,6 @@ export interface DeriveVirtualAvailabilityInput {
   vessels: readonly Vessel[];
   /** Inclusive ISO-8601 window to compute over. */
   dateRange: { start: string; end: string };
-  ownedDays: readonly { vesselId: VesselId; date: string }[];
   blocks: readonly Block[];
   /** Already-materialized events — overrides + bookings overlay their virtual slots. */
   events: readonly Event[];
@@ -254,16 +253,20 @@ export function resolveBasePrice(offering: Offering, date: string): number {
 /**
  * Compute every virtual departure across the window (DEC-125). Precedence, in order:
  *  1. Only `live` offerings publish a rule (draft/hidden emit nothing).
- *  2. **Owned-day mask** — a slot is emitted only where `(vessel, date)` is Muster-owned
- *     (`× muster-owned-days`); never re-list a Xola-owned boat-day. *(Pilot-coexistence
- *     term; post-DEC-126 cutover the mask is the whole calendar — that generalization is
- *     a later flag, not built here.)*
- *  3. **Materialized `Event` wins its slot identity** — an override recomputes time/price/
+ *  2. **Materialized `Event` wins its slot identity** — an override recomputes time/price/
  *     capacity from the Event; a booked slot is frozen `booked`. Committed state beats
  *     blocks (you can't block away a booking).
- *  4. **Blocks subtract virtual (unmaterialized) slots** → `blocked`.
- *  5. A **live checkout-hold** (`expiresAt > asOf`) on a surviving slot → `held` (12.1).
- *  6. Everything surviving is `available`.
+ *  3. **Blocks subtract virtual (unmaterialized) slots** → `blocked`.
+ *  4. A **live checkout-hold** (`expiresAt > asOf`) on a surviving slot → `held` (12.1).
+ *  5. Everything surviving is `available`.
+ *
+ * **The offering says when; blocks say what's off. Nothing else gates (#688).** There used
+ * to be an owned-day mask here — an allowlist requiring a hand-typed row per boat per date
+ * before anything could be sold, added under DEC-106 for a period where Muster and Xola
+ * would sell simultaneously. That period was never in the plan: Xola sells until the
+ * cutover, Muster after, never both. The mask therefore gated on an operator chore that
+ * protected nothing, and blanked a whole boat-day when the unit of sale is a boat at a
+ * time slot.
  *
  * Grid-driven: slots are enumerated from the schedule and materialized events overlay
  * matching identities. A materialized event that has been moved OFF the schedule grid
@@ -273,11 +276,9 @@ export function resolveBasePrice(offering: Offering, date: string): number {
 export function deriveVirtualAvailability(
   input: DeriveVirtualAvailabilityInput,
 ): VirtualSlot[] {
-  const { offerings, vessels, dateRange, ownedDays, blocks, events, reservations } =
-    input;
+  const { offerings, vessels, dateRange, blocks, events, reservations } = input;
 
   const vesselById = new Map(vessels.map((v) => [String(v.id), v]));
-  const owned = new Set(ownedDays.map((o) => `${String(o.vesselId)}|${o.date}`));
 
   // Live checkout-holds by slot identity — ONLY those with expiresAt > asOf (lazy-on-read;
   // an expired-but-undeleted hold is inert here, exactly as it is at the write CAS).
@@ -320,7 +321,6 @@ export function deriveVirtualAvailability(
       for (const vesselId of offering.vesselIds) {
         const vessel = vesselById.get(String(vesselId));
         if (!vessel) continue; // unknown vessel — nothing to price/cap against
-        if (!owned.has(`${String(vesselId)}|${date}`)) continue; // owned-day mask
         for (const time of schedule.departureTimes) {
           const materialized = eventBySlot.get(slotIdentity(vesselId, date, time));
           if (materialized) {

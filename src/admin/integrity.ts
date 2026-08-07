@@ -55,7 +55,6 @@ export async function checkIntegrity(repo: Repository): Promise<IntegrityReport>
     magicTokens,
     outboxEntries,
     locations,
-    ownedDays,
     noticeOutbox,
     ringOutbox,
     auditEvents,
@@ -74,7 +73,6 @@ export async function checkIntegrity(repo: Repository): Promise<IntegrityReport>
     repo.listAllMagicTokens(),
     repo.listOutboxEntries(),
     repo.listLocations(),
-    repo.listMusterOwnedVesselDays(),
     repo.listNoticeOutboxEntries(),
     repo.listRingOutboxEntries(),
     repo.listAuditEvents(),
@@ -166,11 +164,6 @@ export async function checkIntegrity(repo: Repository): Promise<IntegrityReport>
     miss(crewIds, "outboxEntry", o.id, "crewMemberId", o.crewMemberId);
   }
 
-  // The DEC-106 coexistence partition: which vessel-days Muster owns. A dangling vesselId
-  // here silently changes which days the importer treats as its own.
-  for (const d of ownedDays) {
-    miss(vesselIds, "musterOwnedVesselDay", `${d.vesselId}:${d.date}`, "vesselId", d.vesselId);
-  }
   // The two relay worklists that arrived after this diagnostic was written (DEC-084 notices,
   // DEC-073 doorbell rings). Same argument as `outbox_entries` above — adapter state, but it
   // points into the spine, and a dangling ref means a relay card that can't render.
@@ -214,7 +207,6 @@ export async function checkIntegrity(repo: Repository): Promise<IntegrityReport>
       magicTokens: magicTokens.length,
       outboxEntries: outboxEntries.length,
       locations: locations.length,
-      musterOwnedVesselDays: ownedDays.length,
       noticeOutboxEntries: noticeOutbox.length,
       ringOutboxEntries: ringOutbox.length,
       auditEvents: auditEvents.length,

@@ -21,7 +21,6 @@ import type {
   Gratuity,
   GustoIdentity,
   Location,
-  MusterOwnedVesselDay,
   Offering,
   Payment,
   Credential,
@@ -335,18 +334,6 @@ export interface Repository {
   listGratuitiesForEvent(eventId: EventId): Promise<Gratuity[]>;
   /** Every gratuity — the payroll report's source set (12.3b). */
   listAllGratuities(): Promise<Gratuity[]>;
-
-  // ── Coexistence partition — Muster-owned vessel-days (DEC-106) ───────────────
-  /** Every vessel-day marked Muster-owned. The importer hoists this to a Set once
-   *  per run to skip + itemize Xola events landing on an owned day. Empty in prod
-   *  until an operator marks one via `db:own`. */
-  listMusterOwnedVesselDays(): Promise<MusterOwnedVesselDay[]>;
-  /** Mark a vessel-day Muster-owned — upsert on (vesselId, date). Set via `db:own`. */
-  markVesselDayMusterOwned(
-    vesselId: VesselId,
-    date: string,
-    markedAt: string,
-  ): Promise<void>;
 
   // ── Payments (Muster-native reservations — DEC-107) ─────────────────────────
   /** Operator payment config (deposit mode/%, tax rate, balance-due-days), backed by the

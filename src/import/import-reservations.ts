@@ -26,9 +26,8 @@ export interface SkippedRow {
   time?: string;
   /** Tags a categorized skip so the pull can distinguish it from the benign
    *  malformed / out-of-window drops: `booked_no_boat` (#338 — a booked trip has no
-   *  boat; assign one in Xola + re-import) or `muster_owned` (DEC-106 — a Xola event
-   *  landed on a Muster-owned vessel-day; de-list it in Xola). */
-  category?: "booked_no_boat" | "muster_owned";
+   *  boat; assign one in Xola + re-import). */
+  category?: "booked_no_boat";
   reason: string;
 }
 
@@ -194,15 +193,6 @@ export async function importRecords(
     persistable.push({ rec, rawEventId });
   }
 
-  // Muster-owned vessel-days (DEC-106): hoist to a Set ONCE so Pass 2 membership-checks
-  // in-core (no per-event round-trip). Keyed `${vesselId}|${date}`. Empty in production
-  // until an operator marks a day via `db:own`, so this guard is inert by default.
-  const ownedVesselDays = new Set(
-    (await repo.listMusterOwnedVesselDays()).map(
-      (o) => `${String(o.vesselId)}|${o.date}`,
-    ),
-  );
-
   // Pass 2: upsert events with derived status. The vessel comes from a booked
   // record, else the already-stored event (a fully-cancelled trip de-boats — we
   // reconcile it to `cancelled` against what we have). An event we can place
@@ -220,27 +210,6 @@ export async function importRecords(
           date: rec.date,
           time: rec.time,
           reason: `no resolvable boat for event ${rawEventId}`,
-        });
-      }
-      continue;
-    }
-    // DEC-106 partition guard: a Xola event must not land on a Muster-owned vessel-day.
-    // Skip + itemize each row (category `muster_owned`) and DON'T add to `placed` — so
-    // Pass 3 drops its reservations for free. Whole-vessel-day grain (vessel+date, not
-    // time). The operator de-lists such a day in Xola; per DEC-106 sequencing a day is
-    // only marked owned once it holds no live Xola bookings (the importer never reaps,
-    // so an already-booked day flipped to owned would strand its Xola shift).
-    if (ownedVesselDays.has(`${String(vesselId)}|${pe.date}`)) {
-      for (const { rec } of persistable.filter(
-        (p) => p.rawEventId === rawEventId,
-      )) {
-        result.skipped.push({
-          reservationId: rec.reservationId,
-          product: rec.product,
-          date: rec.date,
-          time: rec.time,
-          category: "muster_owned",
-          reason: `vessel-day ${String(vesselId)} ${pe.date} is Muster-owned — de-list in Xola`,
         });
       }
       continue;

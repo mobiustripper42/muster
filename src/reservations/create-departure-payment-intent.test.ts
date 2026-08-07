@@ -37,8 +37,6 @@ async function seededRepo(): Promise<InMemoryRepository> {
   await repo.saveOffering(offering());
   await repo.saveVessel(vessel(SMALL, 6));
   await repo.saveVessel(vessel(BIG, 12));
-  await repo.markVesselDayMusterOwned(SMALL, DATE, NOW);
-  await repo.markVesselDayMusterOwned(BIG, DATE, NOW);
   // Deposit mode + real rates so the frozen metadata exercises every money field.
   await repo.setPaymentConfig({ depositMode: "deposit", depositPercent: 25, taxRateBps: 725 }, NOW);
   return repo;

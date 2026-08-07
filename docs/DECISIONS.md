@@ -53,6 +53,7 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 - DEC-009 — Availability is suppression-only — never a positive-availability calendar
 - DEC-077 — Day-granularity commitment; elastic absorption is already built; sub-day "watches" are deferred
 - DEC-119 — Recurring weekday-off is a suppression column on the crew record (#411)
+- DEC-149 — Ownership is not a real concept — the offering says when, blocks say what's off
 
 ### Seats, shifts & state machine
 - DEC-005 — Shift state is derived from seat state; reserve a `Held` tier
@@ -166,7 +167,7 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 
 ### Reservations & payments
 - DEC-105 — Reservations go live in 2026 as a Muster-native parallel-run — permanent coexistence, not a cutover _(reversed by DEC-126 — the parallel run ends in a cutover, not permanent coexistence — and the "no migration" leg)_
-- DEC-106 — Coexistence partition = whole vessel-day; an event is owned by exactly one system
+- DEC-106 — Coexistence partition = whole vessel-day; an event is owned by exactly one system _(retired by DEC-149 — the whole-vessel-day ownership allowlist and its availability mask only — the `source` discriminator on Event and Reservation, and the no-cross-source-capacity-arithmetic rule, both stand)_
 - DEC-107 — Payments — Stripe hosted Checkout, deposit + balance, webhook-driven booking write
 - DEC-108 — Public surface `app/(public)` + single-flip "Book Now" entry (instant Xola rollback)
 - DEC-109 — Atomic capacity claim on public booking (the customer-side REQ-CLAIM-1)

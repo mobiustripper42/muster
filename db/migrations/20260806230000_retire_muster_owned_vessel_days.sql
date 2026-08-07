@@ -1,0 +1,34 @@
+-- 20260806230000_retire_muster_owned_vessel_days — drop the ownership allowlist (#688).
+-- Timestamp-named per DEC-121. Applied in filename order by db/migrate.ts.
+--
+-- `muster_owned_vessel_days` (0023, DEC-106) was an ALLOWLIST: one row per boat per date,
+-- meaning "Muster may sell this boat that day." Availability masked on it before anything
+-- else, so a boat-day with no row emitted nothing regardless of the offering's season. The
+-- rows were never computed — an operator typed them in one at a time via `npm run db:own`.
+--
+-- It existed to stop Muster listing a boat-day Xola was still selling, during a stretch
+-- where both systems would sell at once. **That stretch was never in the plan** (operator,
+-- 2026-08-06): Xola sells until the cutover, Muster after, never both. So the mask gated on
+-- a chore that protected nothing — and it gated at boat + DATE when the unit of sale is a
+-- boat at a time slot, so it could only blank a whole day.
+--
+-- The model that replaces it (DEC-149): **the offering says when a boat can be sold, blocks
+-- remove exceptions.** Blocks already existed and point the other way (a denylist);
+-- ownership was a second gate pointing the opposite direction.
+--
+-- DROPPED, not deprecated in place. The house style is additive/reversible, and this is the
+-- deliberate exception: an allowlist row records a PERMISSION, not an event, so there is no
+-- history in this table to preserve — and production holds **zero rows** (verified by the
+-- operator, 2026-08-06). Keeping it costs the only thing it ever cost, which is a reader
+-- finding a table they cannot identify. That is what this change is about.
+--
+-- Reversal, if it is ever needed: `create table` from 0023 and restore the port methods.
+-- But if a coexistence requirement genuinely returns, it needs its own decision and almost
+-- certainly a DIFFERENT grain — per departure, not per boat-day. Do not restore this shape
+-- by reflex.
+--
+-- The `source` discriminator on events + reservations (also 0023, also DEC-106) is a
+-- SEPARATE mechanism and stays: it is what keeps Xola money in Xola and out of the Muster
+-- funnel. Only the whole-vessel-day partition dies here.
+
+drop table if exists muster_owned_vessel_days;

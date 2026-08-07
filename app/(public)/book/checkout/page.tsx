@@ -15,7 +15,7 @@
  * `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` is BUILD-INLINED (the `<VersionTag/>` v0.0.0 trap):
  * absent ⇒ a loud configuration-error state, never a silently-broken Element (DEC-134).
  */
-import type { Block, Event, Location, MusterOwnedVesselDay, Offering, Reservation, Vessel } from "@core/domain/entities.js";
+import type { Block, Event, Location, Offering, Reservation, Vessel } from "@core/domain/entities.js";
 import { WAIVER_TERMS_URL, vesselDateOf } from "@core/config/tenant.js";
 import { deriveVirtualAvailability } from "@core/reservations/availability.js";
 import { CANCELLATION_TERMS } from "@core/reservations/refund-terms.js";
@@ -91,18 +91,16 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
   let offerings: Offering[];
   let vessels: Vessel[];
   let blocks: Block[];
-  let ownedRaw: MusterOwnedVesselDay[];
   let events: Event[];
   let reservations: Reservation[];
   let locations: Location[];
   let config: Awaited<ReturnType<ReturnType<typeof getRepo>["getPaymentConfig"]>>;
   try {
     const repo = getRepo();
-    [offerings, vessels, blocks, ownedRaw, events, reservations, locations, config] = await Promise.all([
+    [offerings, vessels, blocks, events, reservations, locations, config] = await Promise.all([
       repo.listOfferings(),
       repo.listVessels(),
       repo.listBlocks(),
-      repo.listMusterOwnedVesselDays(),
       repo.listEvents(),
       repo.listAllReservations(),
       repo.listLocations(),
@@ -143,7 +141,6 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
           offerings: [chosen],
           vessels,
           dateRange: { start: date, end: date },
-          ownedDays: ownedRaw.map((o) => ({ vesselId: o.vesselId, date: o.date })),
           blocks,
           events,
           reservations,

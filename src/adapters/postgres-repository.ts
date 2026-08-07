@@ -32,7 +32,6 @@ import type {
   Location,
   LoginCode,
   CalendarFeed,
-  MusterOwnedVesselDay,
   Offering,
   OfferingSchedule,
   Payment,
@@ -332,12 +331,6 @@ const toReservation = (r: any): Reservation => ({
   ...opt("waiverVersion", r.waiver_version),
   ...opt("updatedAt", r.updated_at),
   ...opt<"customerId", CustomerId>("customerId", r.customer_id ?? null),
-});
-
-const toMusterOwnedVesselDay = (r: any): MusterOwnedVesselDay => ({
-  vesselId: asId<"VesselId">(r.vessel_id),
-  date: r.date,
-  markedAt: r.marked_at,
 });
 
 const toPayment = (r: any): Payment => ({
@@ -1126,25 +1119,6 @@ export class PostgresRepository implements Repository {
   }
   async removeBlock(id: BlockId): Promise<void> {
     await this.#pool.query("delete from blocks where id=$1", [id]);
-  }
-
-  // ── Coexistence partition — Muster-owned vessel-days (DEC-106) ───────────────
-  async listMusterOwnedVesselDays(): Promise<MusterOwnedVesselDay[]> {
-    const { rows } = await this.#pool.query(
-      "select * from muster_owned_vessel_days",
-    );
-    return rows.map(toMusterOwnedVesselDay);
-  }
-  async markVesselDayMusterOwned(
-    vesselId: VesselId,
-    date: string,
-    markedAt: string,
-  ): Promise<void> {
-    await this.#pool.query(
-      `insert into muster_owned_vessel_days(vessel_id, date, marked_at) values ($1,$2,$3)
-       on conflict (vessel_id, date) do update set marked_at=excluded.marked_at`,
-      [vesselId, date, markedAt],
-    );
   }
 
   // ── Payments (DEC-107) ──────────────────────────────────────────────────────

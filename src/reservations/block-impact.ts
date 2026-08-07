@@ -22,7 +22,6 @@ import { deriveVirtualAvailability, isSlotBlocked } from "./availability.js";
 export interface BlockImpactInput {
   offerings: readonly Offering[];
   vessels: readonly Vessel[];
-  ownedDays: readonly { vesselId: VesselId; date: string }[];
   events: readonly Event[];
   reservations: readonly Reservation[];
 }
@@ -63,7 +62,6 @@ export function computeBlockImpact(block: Block, input: BlockImpactInput): Block
     offerings: input.offerings,
     vessels: input.vessels,
     dateRange: span,
-    ownedDays: input.ownedDays,
     blocks: [], // attribute to THIS block alone — see below
     events: input.events,
     reservations: input.reservations,

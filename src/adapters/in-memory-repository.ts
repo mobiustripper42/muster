@@ -25,7 +25,6 @@ import type {
   Location,
   LoginCode,
   CalendarFeed,
-  MusterOwnedVesselDay,
   Offering,
   Payment,
   MagicToken,
@@ -122,7 +121,6 @@ export class InMemoryRepository implements Repository {
   /** Collected gratuities (12.3, DEC-124), keyed by id. */
   readonly #gratuities = new Map<GratuityId, Gratuity>();
   /** Muster-owned vessel-days (DEC-106), keyed `${vesselId}|${date}`. */
-  readonly #musterOwnedVesselDays = new Map<string, MusterOwnedVesselDay>();
   readonly #payments = new Map<PaymentId, Payment>();
   /** Payment-config overrides (DEC-107); absent fields fall to PAYMENT_CONFIG_DEFAULTS. */
   #paymentConfig: Partial<PaymentConfig> = {};
@@ -446,20 +444,6 @@ export class InMemoryRepository implements Repository {
   }
 
   // ── Coexistence partition — Muster-owned vessel-days (DEC-106) ───────────────
-  async listMusterOwnedVesselDays(): Promise<MusterOwnedVesselDay[]> {
-    return [...this.#musterOwnedVesselDays.values()].map(clone);
-  }
-  async markVesselDayMusterOwned(
-    vesselId: VesselId,
-    date: string,
-    markedAt: string,
-  ): Promise<void> {
-    this.#musterOwnedVesselDays.set(
-      `${String(vesselId)}|${date}`,
-      clone({ vesselId, date, markedAt }),
-    );
-  }
-
   // ── Payments (DEC-107) ──────────────────────────────────────────────────────
   async getPaymentConfig(): Promise<PaymentConfig> {
     return { ...PAYMENT_CONFIG_DEFAULTS, ...this.#paymentConfig };

@@ -46,29 +46,6 @@ describe("importRecords — event-id-keyed Map+Reconcile (DEC-043)", () => {
     expect(e?.vesselId).toBe(VESSEL);
   });
 
-  it("skips + itemizes a Xola event on a Muster-owned vessel-day (DEC-106)", async () => {
-    const repo = new InMemoryRepository();
-    await repo.markVesselDayMusterOwned(VESSEL, "2026-05-16", "2026-05-01T00:00:00.000Z");
-    const r = await importRecords(repo, [booked("r1"), booked("r2")]);
-    // the event isn't written, and its reservations drop with it (not in `placed`)
-    expect(await repo.getEvent(EVENT_ID)).toBeNull();
-    expect(await repo.getReservation(asId<"ReservationId">("resv-r1"))).toBeNull();
-    expect(r.eventsCreated).toBe(0);
-    // both rows are itemized as `muster_owned` skips (same idiom as booked_no_boat)
-    const owned = r.skipped.filter((s) => s.category === "muster_owned");
-    expect(owned).toHaveLength(2);
-    expect(owned[0]!.reason).toContain("Muster-owned");
-    expect(owned.map((s) => s.reservationId).sort()).toEqual(["r1", "r2"]);
-  });
-
-  it("the ownership guard is inert for a vessel-day not marked owned (DEC-106)", async () => {
-    const repo = new InMemoryRepository();
-    // mark a DIFFERENT day owned; the trip (2026-05-16) is untouched
-    await repo.markVesselDayMusterOwned(VESSEL, "2026-05-17", "2026-05-01T00:00:00.000Z");
-    await importRecords(repo, [booked("r1")]);
-    expect((await repo.getEvent(EVENT_ID))?.status).toBe("scheduled");
-  });
-
   it("one booked among cancelled → event still scheduled", async () => {
     const repo = new InMemoryRepository();
     await importRecords(repo, [cancelled("r1"), booked("r2")]);

@@ -117,6 +117,8 @@ export interface CalendarData {
   events: Event[];
   reservations: Reservation[];
   slots: VirtualSlot[];
+  /** The trip occupying each physical `vessel|date|time`, either source — display only. */
+  tripBySlot: Map<string, { event: Event; reservation?: Reservation }>;
   offeringById: Map<string, Offering>;
   vesselById: Map<string, Vessel>;
   reservationByEventId: Map<string, Reservation>;
@@ -160,6 +162,24 @@ export async function loadCalendarData(sp: Search): Promise<CalendarData | null>
     if (isActiveMusterClaim(r)) reservationByEventId.set(String(r.eventId), r);
   }
 
+  // Who is actually on each physical boat-slot, EITHER source. `reservationByEventId` above is
+  // Muster-only on purpose — it drives the detail link, and a Xola reservation's money lives in
+  // Xola (DEC-105), so it is not ours to open. But the operator still has to SEE the trip and
+  // whose it is, so display resolves through this map instead.
+  const bookedByEventId = new Map<string, Reservation>();
+  for (const r of reservations) {
+    if (r.status === "booked") bookedByEventId.set(String(r.eventId), r);
+  }
+  const tripBySlot = new Map<string, { event: Event; reservation?: Reservation }>();
+  for (const e of events) {
+    if (e.status !== "scheduled") continue;
+    const res = bookedByEventId.get(String(e.id));
+    tripBySlot.set(`${String(e.vesselId)}|${e.date}|${e.time}`, {
+      event: e,
+      ...(res ? { reservation: res } : {}),
+    });
+  }
+
   const slots = deriveVirtualAvailability({
     offerings,
     vessels,
@@ -175,6 +195,7 @@ export async function loadCalendarData(sp: Search): Promise<CalendarData | null>
     events,
     reservations,
     slots,
+    tripBySlot,
     offeringById: new Map(offerings.map((o) => [String(o.id), o])),
     vesselById: new Map(vessels.map((v) => [String(v.id), v])),
     reservationByEventId,
@@ -217,7 +238,7 @@ export function detailHref(
 export function CalendarControls({ data }: { data: CalendarData }) {
   const counts = {
     all: data.slots.length,
-    booked: data.slots.filter((s) => s.status === "booked").length,
+    booked: data.slots.filter((s) => s.status === "booked" || s.status === "unavailable").length,
     open: data.slots.filter((s) => s.status === "available").length,
     blackout: data.slots.filter((s) => s.status === "blocked").length,
   };
@@ -328,11 +349,33 @@ export function CalendarGrid({
   selectedReservationId?: string | undefined;
 }) {
   const gridCols = `52px repeat(${data.vessels.length}, minmax(120px, 1fr))`;
-  const matchesFilter = (s: VirtualSlot) =>
-    data.filter === "all" || FILTERS.find((f) => f.key === data.filter)?.status === s.status;
+  const matchesFilter = (s: VirtualSlot) => {
+    if (data.filter === "all") return true;
+    const want = FILTERS.find((f) => f.key === data.filter)?.status;
+    // "Booked" means "this boat is committed", which includes a hull occupied by an imported
+    // Xola charter. Matching only the literal `booked` status would filter those away and
+    // disagree with the count beside the tab.
+    if (want === "booked") return s.status === "booked" || s.status === "unavailable";
+    return want === s.status;
+  };
 
   const slotsByVessel = new Map<string, VirtualSlot[]>();
-  for (const s of data.slots) {
+  // ONE CARD PER PHYSICAL TRIP. A boat-slot can be proposed by several offerings — Brew 3 is
+  // covered by both the demo cruise and the river cruise, so 1:30 produces two slots. When that
+  // slot is OCCUPIED they describe the same trip, and drawing both stacked two identical cards
+  // with the same customer's name on top of each other. Collapse them by `vessel|date|time`.
+  //
+  // OPEN slots are deliberately not collapsed: two offerings genuinely on sale at one time are
+  // two different things the operator could sell, and hiding one would hide a real choice. They
+  // still overlap visually — that is the collision-layout work, not this.
+  const seenOccupied = new Set<string>();
+  for (const s of [...data.slots].sort((a, b) => String(a.offeringId).localeCompare(String(b.offeringId)))) {
+    const occupied = s.status === "booked" || s.status === "unavailable";
+    const physical = `${String(s.vesselId)}|${s.date}|${s.time}`;
+    if (occupied) {
+      if (seenOccupied.has(physical)) continue;
+      seenOccupied.add(physical);
+    }
     const k = String(s.vesselId);
     (slotsByVessel.get(k) ?? slotsByVessel.set(k, []).get(k)!).push(s);
   }
@@ -391,23 +434,30 @@ export function CalendarGrid({
                   const reservation = s.eventId
                     ? data.reservationByEventId.get(String(s.eventId))
                     : undefined;
+                  // A hull-busy slot carries no eventId of its own — the trip occupying it is
+                  // someone else's (usually an imported Xola charter). Resolve it for display.
+                  const occupying = data.tripBySlot.get(
+                    `${String(s.vesselId)}|${s.date}|${s.time}`,
+                  );
+                  const onBoard = reservation ?? occupying?.reservation;
 
                   if (!matchesFilter(s)) return null;
 
                   const key = `${s.time}-${String(s.offeringId)}`;
                   const pos = { top: `${topPct}%`, height: `${heightPct}%` } as const;
 
-                  if (s.status === "booked") {
+                  if (s.status === "booked" || s.status === "unavailable") {
                     const selected =
                       reservation !== undefined && String(reservation.id) === selectedReservationId;
                     const body = (
                       <>
                         <span className="truncate text-[11px] font-semibold text-ink">
-                          {reservation?.customerName ?? "Booked"}
+                          {onBoard?.customerName ?? "Booked"}
                         </span>
                         <span className="font-mono text-[9.5px] text-muted">
                           {shortTime(s.time)}
-                          {reservation ? ` · ${reservation.partySize}` : ""}
+                          {onBoard ? ` · ${onBoard.partySize}` : ""}
+                          {occupying?.event.source === "xola" && !reservation ? " · Xola" : ""}
                         </span>
                       </>
                     );

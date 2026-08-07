@@ -314,6 +314,25 @@ describe("deriveVirtualAvailability — the hull is busy (#615, #691)", () => {
     });
   const day = { ...base, offerings: [trip()], dateRange: ONE_SAT };
 
+  it("hull-busy is `unavailable`, NOT `booked` — nobody bought this slot", () => {
+    // The distinction is the operator's. `booked` means a reservation exists; the admin
+    // calendar draws it as a card with the customer's name. A slot whose boat is merely out
+    // on another trip has no reservation, and rendering it as `booked` put a phantom booking
+    // on the calendar — two "Booked" cards on one boat where only one trip was sold.
+    const out = deriveVirtualAvailability({
+      ...day,
+      events: [ev("x0", { source: "xola", date: "2026-07-04", time: "13:30" })],
+    });
+    expect(out.find((s) => s.time === "13:30")!.status).toBe("unavailable");
+    // …and a REAL booking still reads `booked`.
+    const real = deriveVirtualAvailability({
+      ...day,
+      events: [ev("m0", { date: "2026-07-04", time: "13:30", durationMinutes: 100 })],
+      reservations: [res("r0", "m0")],
+    });
+    expect(real.find((s) => s.time === "13:30")!.status).toBe("booked");
+  });
+
   it("a XOLA trip on the hull takes the slot off the market", () => {
     // The whole point of #615: an imported Xola booking was invisible to the funnel, so
     // Muster would happily sell a boat Xola had already sold.
@@ -514,7 +533,7 @@ describe("deriveVirtualAvailability — materialized events overlay (DEC-125 pre
       events: [xola],
     })[0]!;
     expect(slot.eventId).toBeUndefined(); // still purely virtual — not Muster's to sell
-    expect(slot.status).toBe("booked"); // …but the hull is taken
+    expect(slot.status).toBe("unavailable"); // …but the hull is taken
   });
 });
 

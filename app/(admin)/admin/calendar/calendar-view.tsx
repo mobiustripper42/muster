@@ -17,6 +17,7 @@ import {
   offeringColorClass,
   offeringDotClass,
   offeringOpenClass,
+  drawsOnCalendar,
 } from "@core/reservations/calendar-grid.js";
 import { Notice } from "../../../../components/ui/notice";
 import { AppLink } from "../../../../components/ui/app-link";
@@ -166,7 +167,7 @@ export async function loadCalendarData(sp: Search): Promise<CalendarData | null>
     blocks,
     events,
     reservations,
-  });
+  }).filter((s) => drawsOnCalendar(s, events));
 
   return {
     offerings,

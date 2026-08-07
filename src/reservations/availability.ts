@@ -157,9 +157,15 @@ export interface VirtualSlot {
    *  The party fare (base + extras × extraGuestPrice + gratuity, DEC-124) is booking-time,
    *  NOT computed here. */
   priceCents: number;
-  /** `held` = a live customer checkout-hold occupies the slot (DEC-109, 12.1) — transient,
-   *  distinct from `blocked` (an operator block). */
-  status: "available" | "held" | "booked" | "blocked";
+  /** Four ways a slot is not sellable, and they are NOT interchangeable:
+   *  - `booked` — a reservation exists. The admin calendar draws it with the customer's name.
+   *  - `unavailable` — the BOAT is out on another trip that overlaps this departure (#615,
+   *    #691). Nobody bought this slot; it simply cannot run. Calling it `booked` put phantom
+   *    bookings on the operator's calendar — two cards on one hull where one trip was sold.
+   *  - `held` — a live customer checkout-hold (DEC-109, 12.1), transient.
+   *  - `blocked` — an operator block (DEC-125), deliberate and liftable.
+   *  The customer surface collapses all four to "not available"; the operator's does not. */
+  status: "available" | "held" | "booked" | "blocked" | "unavailable";
   /** Set when a materialized `Event` backs this slot (an override or a booking). */
   eventId?: EventId;
 }
@@ -361,7 +367,7 @@ export function deriveVirtualAvailability(
               minutesOfDay(time),
               materialized.durationMinutes ?? offering.tripLengthMinutes ?? XOLA_TRIP_MINUTES,
             );
-            const booked = collides || bookedEventIds.has(String(materialized.id));
+            const booked = bookedEventIds.has(String(materialized.id));
             slots.push({
               offeringId: offering.id,
               vesselId,
@@ -369,7 +375,7 @@ export function deriveVirtualAvailability(
               time,
               capacity: materialized.capacity,
               priceCents: materialized.price ?? basePrice,
-              status: booked ? "booked" : "available",
+              status: booked ? "booked" : collides ? "unavailable" : "available",
               eventId: materialized.id,
             });
             continue;
@@ -394,7 +400,7 @@ export function deriveVirtualAvailability(
             time,
             capacity: vessel.coiMaxPax,
             priceCents: basePrice,
-            status: occupied ? "booked" : blocked ? "blocked" : held ? "held" : "available",
+            status: occupied ? "unavailable" : blocked ? "blocked" : held ? "held" : "available",
           });
         }
       }

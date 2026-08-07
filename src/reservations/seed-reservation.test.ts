@@ -37,26 +37,26 @@ describe("the demo window is relative to today, not a fixed calendar month (#646
   for (const today of TODAYS) {
     const d = reservationDemo(today);
 
-    it(`owned window starts after today (${today})`, () => {
-      expect(d.ownedRange.start > today).toBe(true);
+    it(`demo window starts after today (${today})`, () => {
+      expect(d.window.start > today).toBe(true);
     });
 
-    it(`today's month contains no owned day, so /book's default is empty (${today})`, () => {
+    it(`today's month contains no demo day, so /book's default is empty (${today})`, () => {
       // The premise of the forward-paging test. If the window ever lands in the current
       // month, that test starts passing by racing a navigation instead of by paging.
-      expect(d.ownedRange.start.slice(0, 7)).not.toBe(today.slice(0, 7));
-      expect(d.ownedRange.end.slice(0, 7)).not.toBe(today.slice(0, 7));
+      expect(d.window.start.slice(0, 7)).not.toBe(today.slice(0, 7));
+      expect(d.window.end.slice(0, 7)).not.toBe(today.slice(0, 7));
     });
 
-    it(`the season contains the whole owned window (${today})`, () => {
-      expect(d.season.start <= d.ownedRange.start).toBe(true);
-      expect(d.season.end >= d.ownedRange.end).toBe(true);
+    it(`the season contains the whole demo window (${today})`, () => {
+      expect(d.season.start <= d.window.start).toBe(true);
+      expect(d.season.end >= d.window.end).toBe(true);
     });
 
-    it(`every booking sits inside the owned window (${today})`, () => {
+    it(`every booking sits inside the demo window (${today})`, () => {
       for (const b of d.bookings) {
-        expect(b.date >= d.ownedRange.start).toBe(true);
-        expect(b.date <= d.ownedRange.end).toBe(true);
+        expect(b.date >= d.window.start).toBe(true);
+        expect(b.date <= d.window.end).toBe(true);
       }
     });
 
@@ -91,12 +91,11 @@ describe("db:seed:reservation fixture", () => {
     }
   });
 
-  it("the deriver sees the demo slots as booked over the owned window", () => {
+  it("the deriver sees the demo slots as booked over the demo window", () => {
     const slots = deriveVirtualAvailability({
       offerings: [world.offering],
       vessels: [{ id: asId<"VesselId">(DEMO.vesselId), name: "Brew 3", coiMaxPax: 12, manning: [] }],
-      dateRange: DEMO.ownedRange,
-      ownedDays: world.ownedDays,
+      dateRange: DEMO.window,
       blocks: [],
       events: world.events,
       reservations: world.reservations,
@@ -116,7 +115,6 @@ describe("db:seed:reservation fixture", () => {
     const impact = computeBlockImpact(block, {
       offerings: [world.offering],
       vessels: [{ id: asId<"VesselId">(DEMO.vesselId), name: "Brew 3", coiMaxPax: 12, manning: [] }],
-      ownedDays: world.ownedDays,
       events: world.events,
       reservations: world.reservations,
     });

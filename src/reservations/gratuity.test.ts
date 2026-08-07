@@ -36,7 +36,6 @@ async function seededRepo(): Promise<InMemoryRepository> {
   const repo = new InMemoryRepository();
   await repo.saveOffering(offering());
   await repo.saveVessel(vessel());
-  await repo.markVesselDayMusterOwned(BOAT, DATE, NOW);
   await repo.setPaymentConfig({ depositMode: "full", taxRateBps: 0 }, NOW);
   return repo;
 }

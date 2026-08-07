@@ -51,19 +51,13 @@ async function seededRepo(): Promise<InMemoryRepository> {
   await repo.saveOffering(offering());
   await repo.saveVessel(vessel(SMALL, 6));
   await repo.saveVessel(vessel(BIG, 12));
-  await repo.markVesselDayMusterOwned(SMALL, DATE, NOW);
-  await repo.markVesselDayMusterOwned(BIG, DATE, NOW);
   return repo;
 }
 
 describe("candidateVessels — smallest-that-fits (DEC-109)", () => {
   const vessels = [vessel(BIG, 12), vessel(SMALL, 6)];
-  const ownedDays = [
-    { vesselId: SMALL, date: DATE, markedAt: NOW },
-    { vesselId: BIG, date: DATE, markedAt: NOW },
-  ];
   const call = (over: Partial<Parameters<typeof candidateVessels>[0]> = {}) =>
-    candidateVessels({ offering: offering(), vessels, date: DATE, time: TIME, guestCount: 4, ownedDays, blocks: [], ...over });
+    candidateVessels({ offering: offering(), vessels, date: DATE, time: TIME, guestCount: 4, blocks: [], ...over });
 
   it("orders smallest-that-fits first", () => {
     expect(call().map(String)).toEqual(["v-small", "v-big"]);
@@ -73,10 +67,6 @@ describe("candidateVessels — smallest-that-fits (DEC-109)", () => {
     expect(call({ guestCount: 10 }).map(String)).toEqual(["v-big"]); // small (6) can't take 10
   });
 
-  it("excludes a boat not owned on the day", () => {
-    expect(call({ ownedDays: [{ vesselId: BIG, date: DATE, markedAt: NOW }] }).map(String)).toEqual(["v-big"]);
-  });
-
   it("excludes a blocked slot", () => {
     const blocks = [{ id: asId<"BlockId">("b"), kind: "vesselHold" as const, vesselId: SMALL, date: DATE, time: TIME }];
     expect(call({ blocks }).map(String)).toEqual(["v-big"]);
@@ -84,13 +74,9 @@ describe("candidateVessels — smallest-that-fits (DEC-109)", () => {
 
   it("tie-break by vesselId when capacities are equal", () => {
     const vs = [vessel(asId<"VesselId">("v-b"), 8), vessel(asId<"VesselId">("v-a"), 8)];
-    const owned = [
-      { vesselId: asId<"VesselId">("v-a"), date: DATE, markedAt: NOW },
-      { vesselId: asId<"VesselId">("v-b"), date: DATE, markedAt: NOW },
-    ];
     const out = candidateVessels({
       offering: offering({ vesselIds: [asId<"VesselId">("v-b"), asId<"VesselId">("v-a")] }),
-      vessels: vs, date: DATE, time: TIME, guestCount: 4, ownedDays: owned, blocks: [],
+      vessels: vs, date: DATE, time: TIME, guestCount: 4, blocks: [],
     });
     expect(out.map(String)).toEqual(["v-a", "v-b"]);
   });

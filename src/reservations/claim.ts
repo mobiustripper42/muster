@@ -14,7 +14,6 @@ import { isProdDeploy } from "../config/deploy.js";
 import type {
   Block,
   CheckoutHold,
-  MusterOwnedVesselDay,
   Offering,
   Vessel,
 } from "../domain/entities.js";
@@ -81,8 +80,8 @@ export function holdExpiry(asOf: string): string {
 
 /**
  * The departure's fitting boats, in claim order — PURE. Filters `offering.vesselIds` to
- * boats that (a) exist, (b) fit the guest count (`coiMaxPax >= guestCount`), (c) are on a
- * Muster-owned day (DEC-106), (d) aren't operator-blocked at this slot (DEC-125). Ordered
+ * boats that (a) exist, (b) fit the guest count (`coiMaxPax >= guestCount`), (c) aren't
+ * operator-blocked at this slot (DEC-125). Ordered
  * **smallest-that-fits, tie-break by vesselId** (DEC-109 build ruling — preserve big hulls
  * for big parties; deterministic for the contract test). Does NOT consider bookings/holds
  * — that dynamic state is layered by `acquireDepartureHold` (booked skip) + the acquire CAS
@@ -94,18 +93,15 @@ export function candidateVessels(input: {
   date: string;
   time: string;
   guestCount: number;
-  ownedDays: readonly MusterOwnedVesselDay[];
   blocks: readonly Block[];
 }): VesselId[] {
-  const { offering, vessels, date, time, guestCount, ownedDays, blocks } = input;
+  const { offering, vessels, date, time, guestCount, blocks } = input;
   const vesselById = new Map(vessels.map((v) => [String(v.id), v]));
-  const owned = new Set(ownedDays.map((o) => `${String(o.vesselId)}|${o.date}`));
 
   return offering.vesselIds
     .map((id) => vesselById.get(String(id)))
     .filter((v): v is Vessel => v !== undefined)
     .filter((v) => v.coiMaxPax >= guestCount)
-    .filter((v) => owned.has(`${String(v.id)}|${date}`))
     .filter((v) => !isSlotBlocked(blocks, String(offering.locationId), v.id, date, time))
     .sort(
       (a, b) =>
@@ -147,9 +143,8 @@ export async function acquireDepartureHold(
     return { unbookable: "invalid_guest_count" };
   }
 
-  const [vessels, ownedDays, blocks, events, reservations] = await Promise.all([
+  const [vessels, blocks, events, reservations] = await Promise.all([
     repo.listVessels(),
-    repo.listMusterOwnedVesselDays(),
     repo.listBlocks(),
     repo.listEvents(),
     repo.listAllReservations(),
@@ -172,7 +167,6 @@ export async function acquireDepartureHold(
     date: req.date,
     time: req.time,
     guestCount: req.guestCount,
-    ownedDays,
     blocks,
   });
 

@@ -758,21 +758,6 @@ export interface Payment {
   createdAt: string;
 }
 
-/**
- * One vessel-day marked Muster-owned (DEC-106) — the coexistence partition unit.
- * When present, the importer skips + itemizes any Xola event landing on this
- * vessel+date (whole-vessel-day grain, NOT time); the day's events are Muster-native.
- * No FK, text date — house style (DEC-DATA-1). Keyed on (vesselId, date). Marked via
- * the `db:own` CLI; empty in production until an operator marks a day.
- */
-export interface MusterOwnedVesselDay {
-  vesselId: VesselId;
-  /** ISO-8601 vessel-local day. */
-  date: string;
-  /** ISO-8601 UTC of the mark. */
-  markedAt: string;
-}
-
 // ── Shift + Seat ────────────────────────────────────────────────────────────
 
 export interface Shift {

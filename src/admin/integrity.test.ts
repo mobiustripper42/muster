@@ -208,7 +208,6 @@ describe("checkIntegrity", () => {
       status: "pending",
       createdAt: NOW,
     });
-    await repo.markVesselDayMusterOwned(ghostVessel, "2026-07-04", NOW);
     await repo.appendAuditEvent({
       id: asId<"AuditEventId">("audit-1"),
       crewMemberId: ghostCrew,
@@ -224,8 +223,7 @@ describe("checkIntegrity", () => {
     expect(refs).toEqual(
       [
         "auditEvent.crewMemberId",
-        "musterOwnedVesselDay.vesselId",
-        "noticeOutboxEntry.crewMemberId",
+          "noticeOutboxEntry.crewMemberId",
         "ringOutboxEntry.crewMemberId",
       ].sort(),
     );

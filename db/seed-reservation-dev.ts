@@ -2,7 +2,7 @@
  * `db:seed:reservation` — seed a self-contained reservation world so the /admin/blocks impact
  * numbers are real when hand-testing (task 12.10, DEC-125). It materializes:
  *   - the crewed fleet (seedFleet — so vessel-brew-3 exists), a demo Location + a LIVE Offering
- *     (3 daily departures, full-year season) and the owned-day mask that lets its slots emit;
+ *     (3 daily departures, season scoped to the demo window);
  *   - two MATERIALIZED bookings (Event + booked Reservation) at known slots inside that window.
  *
  * Then a Vessel block over the printed window, or a Location block on the printed day, shows a
@@ -54,9 +54,6 @@ try {
 
   await repo.saveLocation(world.location);
   await repo.saveOffering(world.offering);
-  for (const o of world.ownedDays) {
-    await repo.markVesselDayMusterOwned(o.vesselId, o.date, new Date().toISOString());
-  }
   for (const e of world.events) await repo.saveEvent(e);
   // Resolve each booking's customer the same way a real booking would (12.12b, DEC-132) —
   // get-or-create by canonical phone, so the two Marcus bookings collapse to ONE customer and
@@ -75,7 +72,7 @@ try {
   console.log(`✓ Seeded reservation demo world (db: ${new URL(url).host}).`);
   console.log(`  customers ${customers.length} (${customers.map((c) => `${c.name} ${c.displayCode}`).join(", ")})`);
   console.log(`  offering  ${world.offering.id}  (LIVE, ${demo.departureTimes.join("/")}, ${demo.vesselName})`);
-  console.log(`  owned     ${demo.vesselName}  ${demo.ownedRange.start} … ${demo.ownedRange.end}`);
+  console.log(`  window    ${demo.vesselName}  ${demo.window.start} … ${demo.window.end}`);
   for (const b of demo.bookings) {
     console.log(`  booked    ${b.date} ${b.time}  ${b.customerName} · ${b.partySize} guests · $${(b.priceCents / 100).toFixed(2)}`);
   }

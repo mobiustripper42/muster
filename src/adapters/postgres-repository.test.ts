@@ -43,7 +43,6 @@ const TABLES = [
   "blocks",
   "checkout_holds",
   "gratuity",
-  "muster_owned_vessel_days",
   "payments",
   "shifts",
   "seats",

@@ -1,7 +1,6 @@
 import type {
   Block,
   Event,
-  MusterOwnedVesselDay,
   Offering,
   Reservation,
   Vessel,
@@ -134,16 +133,14 @@ export async function loadCalendarData(sp: Search): Promise<CalendarData | null>
   let offerings: Offering[];
   let vessels: Vessel[];
   let blocks: Block[];
-  let ownedDaysRaw: MusterOwnedVesselDay[];
   let events: Event[];
   let reservations: Reservation[];
   try {
     const repo = getRepo();
-    [offerings, vessels, blocks, ownedDaysRaw, events, reservations] = await Promise.all([
+    [offerings, vessels, blocks, events, reservations] = await Promise.all([
       repo.listOfferings(),
       repo.listVessels(),
       repo.listBlocks(),
-      repo.listMusterOwnedVesselDays(),
       repo.listEvents(),
       repo.listAllReservations(),
     ]);
@@ -166,7 +163,6 @@ export async function loadCalendarData(sp: Search): Promise<CalendarData | null>
     offerings,
     vessels,
     dateRange: { start: day, end: day },
-    ownedDays: ownedDaysRaw.map((o) => ({ vesselId: o.vesselId, date: o.date })),
     blocks,
     events,
     reservations,
@@ -495,7 +491,7 @@ export function CalendarGrid({
 export function CalendarEmptyNotice({ day }: { day: string }) {
   return (
     <Notice>
-      No departures scheduled for {formatFullDay(day)}. Muster-owned days with a live offering show
+      No departures scheduled for {formatFullDay(day)}. Days with a live offering show
       here — try another day.
     </Notice>
   );

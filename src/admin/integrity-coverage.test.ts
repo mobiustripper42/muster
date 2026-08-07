@@ -16,13 +16,20 @@ const MIGRATIONS = "db/migrations";
 /** Table names as the schema actually declares them. */
 function tablesInSchema(): string[] {
   const names = new Set<string>();
-  for (const f of readdirSync(MIGRATIONS).filter((f) => f.endsWith(".sql"))) {
+  // SORTED — migrations apply in filename order (db/migrate.ts), so a table created in one
+  // file and dropped in a later one must be replayed in that order to end up absent.
+  // Until #688 nothing had ever been dropped, so this only ever added; the first `drop
+  // table` in the repo's history is what showed that the "classifies nothing that isn't a
+  // table" test below could not actually detect a drop.
+  for (const f of readdirSync(MIGRATIONS).filter((f) => f.endsWith(".sql")).sort()) {
     const sql = readFileSync(`${MIGRATIONS}/${f}`, "utf8");
     for (const line of sql.split("\n")) {
       // Only real DDL — a `create table` inside a comment or a doc block doesn't count.
       if (line.trimStart().startsWith("--")) continue;
-      const m = line.match(/create\s+table\s+(?:if\s+not\s+exists\s+)?([a-z_]+)/i);
-      if (m?.[1]) names.add(m[1].toLowerCase());
+      const created = line.match(/create\s+table\s+(?:if\s+not\s+exists\s+)?([a-z_]+)/i);
+      if (created?.[1]) names.add(created[1].toLowerCase());
+      const dropped = line.match(/drop\s+table\s+(?:if\s+exists\s+)?([a-z_]+)/i);
+      if (dropped?.[1]) names.delete(dropped[1].toLowerCase());
     }
   }
   return [...names].sort();
@@ -42,6 +49,16 @@ describe("integrity coverage", () => {
     const schema = new Set(tablesInSchema());
     const stale = Object.keys(TABLE_COVERAGE).filter((t) => !schema.has(t));
     expect(stale, "coverage entries for tables that no longer exist").toEqual([]);
+  });
+
+  it("a dropped table leaves the schema (#688)", () => {
+    // The reader replays create/drop in filename order. Without the drop half, a table
+    // deleted by a migration still counted as live, and BOTH tests above went wrong in
+    // opposite directions: the first demanded a coverage decision for a table that no
+    // longer exists, and the second — whose stated job is catching a lingering entry for
+    // a dropped table — could never fire.
+    expect(tablesInSchema()).not.toContain("muster_owned_vessel_days");
+    expect(tablesInSchema()).toContain("reservations"); // still reading a real schema
   });
 
   it("finds a real schema, not an empty directory", () => {

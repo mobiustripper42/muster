@@ -56,7 +56,7 @@ export function monthLabel(isoDay: string): string {
 }
 
 /** The month header the seeded window lives under — what the paging test pages TO. */
-export const DEMO_MONTH_LABEL = monthLabel(DEMO.ownedRange.start);
+export const DEMO_MONTH_LABEL = monthLabel(DEMO.window.start);
 
 /** Today's month header — what `/book` opens on, and which must contain no availability. */
 export const TODAY_MONTH_LABEL = monthLabel(TODAY);

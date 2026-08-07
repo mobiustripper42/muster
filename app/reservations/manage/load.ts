@@ -57,7 +57,7 @@ export async function loadVerifiedBooking(
     const event = await repo.getEvent(reservation.eventId);
     if (!event) return null;
 
-    const [vessel, payments, gratuities, shifts, config, offerings, vessels, ownedRaw, blocks, allEvents, allReservations] =
+    const [vessel, payments, gratuities, shifts, config, offerings, vessels, blocks, allEvents, allReservations] =
       await Promise.all([
         repo.getVessel(event.vesselId),
         repo.listPaymentsForReservation(reservation.id),
@@ -66,7 +66,6 @@ export async function loadVerifiedBooking(
         repo.getPaymentConfig(),
         repo.listOfferings(),
         repo.listVessels(),
-        repo.listMusterOwnedVesselDays(),
         repo.listBlocks(),
         repo.listEvents(),
         repo.listAllReservations(),
@@ -80,7 +79,6 @@ export async function loadVerifiedBooking(
       offerings,
       vessels,
       dateRange: { start: event.date, end: event.date },
-      ownedDays: ownedRaw.map((o) => ({ vesselId: o.vesselId, date: o.date })),
       blocks,
       events: allEvents,
       reservations: allReservations,

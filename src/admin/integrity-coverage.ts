@@ -63,7 +63,6 @@ export const TABLE_COVERAGE: Record<string, Coverage> = {
   magic_tokens: { kind: "checked", refs: ["subject_id (crew subjects only — polymorphic)"] },
   outbox_entries: { kind: "checked", refs: ["ask_id", "seat_id", "crew_member_id"] },
   locations: { kind: "checked", refs: [] },
-  muster_owned_vessel_days: { kind: "checked", refs: ["vessel_id"] },
   notice_outbox: { kind: "checked", refs: ["crew_member_id"] },
   ring_outbox: { kind: "checked", refs: ["crew_member_id"] },
   // Checked despite being append-only and unbounded, unlike `reliability_events` below. Two

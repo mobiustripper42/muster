@@ -93,7 +93,7 @@ export interface DayCell {
 
 /**
  * Aggregate a day's slots to one calendar state:
- *  - no slots at all ⇒ `off` (not scheduled / off-season / no owned boat that day)
+ *  - no slots at all ⇒ `off` (not scheduled / off-season)
  *  - any `available` slot ⇒ `avail`
  *  - slots exist but none available (all booked/held/blocked) ⇒ `soldout`
  * A past day is always `off` regardless of slots (you can't book yesterday).

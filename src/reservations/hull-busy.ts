@@ -100,6 +100,11 @@ export function hullIsBusy(
   startMinute: number,
   durationMinutes: number,
 ): boolean {
-  const end = startMinute + durationMinutes;
+  // The guard has to be on BOTH sides. `busyIntervalsFor` blocks the whole day on an unreadable
+  // event time; without the same care here, an unreadable *candidate* time (a malformed
+  // `departureTimes` entry) makes every comparison false and the slot reads FREE — bad data
+  // costing a boat instead of a slot, the exact inversion this module refuses elsewhere.
+  if (!Number.isFinite(startMinute)) return true;
+  const end = startMinute + (Number.isFinite(durationMinutes) ? durationMinutes : XOLA_TRIP_MINUTES);
   return busy.some((b) => startMinute < b.end && b.start < end);
 }

@@ -8,7 +8,6 @@ import type {
 import { vesselDateOf } from "@core/config/tenant.js";
 import {
   deriveVirtualAvailability,
-  isActiveMusterClaim,
   type VirtualSlot,
 } from "@core/reservations/availability.js";
 import {
@@ -169,14 +168,9 @@ export async function loadCalendarData(sp: Search): Promise<CalendarData | null>
     if (r.status === "booked") reservationByEventId.set(String(r.eventId), r);
   }
 
-  // Who is actually on each physical boat-slot, EITHER source. `reservationByEventId` above is
-  // Muster-only on purpose — it drives the detail link, and a Xola reservation's money lives in
-  // Xola (DEC-105), so it is not ours to open. But the operator still has to SEE the trip and
-  // whose it is, so display resolves through this map instead.
-  const bookedByEventId = new Map<string, Reservation>();
-  for (const r of reservations) {
-    if (r.status === "booked") bookedByEventId.set(String(r.eventId), r);
-  }
+  // Who is actually on each physical boat-slot. `reservationByEventId` above covers both sources
+  // now, so this indexes through it rather than rebuilding a byte-identical copy — the copy came
+  // from the Muster-only era and its comment outlived the reason for it by about an hour.
   const tripBySlot = new Map<string, { event: Event; reservation?: Reservation }>();
   // Sorted by event id, and FIRST wins — two trips CAN share a physical slot (the unique index
   // is partial on `source='muster'`, so nothing stops two Xola rows landing on one boat-time),
@@ -188,7 +182,7 @@ export async function loadCalendarData(sp: Search): Promise<CalendarData | null>
     if (e.status !== "scheduled") continue;
     const key = `${String(e.vesselId)}|${e.date}|${e.time}`;
     if (tripBySlot.has(key)) continue;
-    const res = bookedByEventId.get(String(e.id));
+    const res = reservationByEventId.get(String(e.id));
     tripBySlot.set(key, { event: e, ...(res ? { reservation: res } : {}) });
   }
 

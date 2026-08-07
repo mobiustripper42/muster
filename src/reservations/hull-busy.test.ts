@@ -123,3 +123,18 @@ describe("hullIsBusy — the overlap rule", () => {
     expect(hullIsBusy([], minutesOfDay("13:30"), 100)).toBe(false);
   });
 });
+
+describe("hullIsBusy — unreadable input errs toward blocking", () => {
+  it("an unparseable CANDIDATE time reads busy, not free", () => {
+    // The mirror of busyIntervalsFor's whole-day block. NaN comparisons are all false, so an
+    // unguarded candidate time made the slot sellable — bad data costing a boat.
+    expect(hullIsBusy([{ start: 810, end: 910 }], minutesOfDay("nonsense"), 100)).toBe(true);
+    expect(hullIsBusy([], minutesOfDay("nonsense"), 100)).toBe(true);
+  });
+
+  it("an unparseable duration falls back to a full trip rather than zero", () => {
+    // A zero-length candidate would slip between two trips that leave no real gap.
+    expect(hullIsBusy([{ start: 810, end: 910 }], 900, Number.NaN)).toBe(true);
+  });
+});
+

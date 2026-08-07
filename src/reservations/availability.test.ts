@@ -333,6 +333,29 @@ describe("deriveVirtualAvailability — the hull is busy (#615, #691)", () => {
     expect(real.find((s) => s.time === "13:30")!.status).toBe("booked");
   });
 
+  it("an operator BLOCK outranks a busy hull — a blackout must not vanish (#694 review)", () => {
+    // `unavailable` used to win, and the calendar hides those, so an operator block on a day
+    // with an overlapping trip disappeared from the grid AND from the Blackout count. The
+    // operator could not see their own blackout. A block is a deliberate act; it outranks a
+    // fact about the boat.
+    const out = deriveVirtualAvailability({
+      ...day,
+      events: [ev("xb", { source: "xola", date: "2026-07-04", time: "13:30" })],
+      blocks: [
+        {
+          id: asId<"BlockId">("blk-day"),
+          kind: "vessel",
+          vesselId: V,
+          startDate: "2026-07-04",
+          endDate: "2026-07-04",
+        },
+      ],
+    });
+    // Every slot that day is blocked, including the one whose hull is also busy.
+    expect(out.every((s) => s.status === "blocked")).toBe(true);
+    expect(out.length).toBeGreaterThan(1);
+  });
+
   it("a XOLA trip on the hull takes the slot off the market", () => {
     // The whole point of #615: an imported Xola booking was invisible to the funnel, so
     // Muster would happily sell a boat Xola had already sold.

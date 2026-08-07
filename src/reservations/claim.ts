@@ -150,11 +150,12 @@ export async function acquireDepartureHold(
     return { unbookable: "invalid_guest_count" };
   }
 
-  const [vessels, blocks, events, reservations] = await Promise.all([
+  const [vessels, blocks, events, reservations, holds] = await Promise.all([
     repo.listVessels(),
     repo.listBlocks(),
     repo.listEvents(),
     repo.listAllReservations(),
+    repo.listCheckoutHolds(),
   ]);
 
   // Slots already sold (a materialized event carrying an active Muster claim) — skip them
@@ -173,6 +174,26 @@ export async function acquireDepartureHold(
   // catches an exact-identity Muster claim, which is what let both of those through.
   const tripMinutes = offering.tripLengthMinutes ?? XOLA_TRIP_MINUTES;
   const startMinute = minutesOfDay(req.time);
+
+  // A LIVE HOLD occupies the hull as surely as a trip does. The events check above cannot see
+  // one — a hold materializes nothing — so two buyers could hold 13:30 and 14:00 on one boat,
+  // both pay, and the write CAS would refund the loser. That refund is precisely what the hold
+  // exists to avoid; catching it here is the whole point of the optimistic front door.
+  //
+  // `expiresAt > at` is the same lazy-on-read rule the deriver uses (DEC-109): an expired row is
+  // inert everywhere, so a stale hold never holds a boat hostage.
+  const at0 = now();
+  const heldIntervals = new Map<string, { start: number; end: number }[]>();
+  for (const h of holds) {
+    if (h.source !== "muster" || h.expiresAt <= at0 || h.date !== req.date) continue;
+    const start = minutesOfDay(h.time);
+    if (!Number.isFinite(start)) continue;
+    const key = String(h.vesselId);
+    const list = heldIntervals.get(key) ?? [];
+    // A hold's own offering sets its trip length; absent, the standing fallback.
+    list.push({ start, end: start + tripMinutes });
+    heldIntervals.set(key, list);
+  }
 
   const candidates = candidateVessels({
     offering,
@@ -197,6 +218,13 @@ export async function acquireDepartureHold(
     if (hullIsBusy(busyIntervalsFor(others, vesselId, req.date), startMinute, tripMinutes)) {
       continue;
     }
+    // …and the same question asked of live holds, excluding any at this exact slot: the acquire
+    // CAS below is what arbitrates an identical-slot contest, and skipping here would turn a
+    // winnable race into an unnecessary fallback.
+    const rivalHolds = (heldIntervals.get(String(vesselId)) ?? []).filter(
+      (h) => h.start !== startMinute,
+    );
+    if (hullIsBusy(rivalHolds, startMinute, tripMinutes)) continue;
     const hold: CheckoutHold = {
       id: mintHoldId(),
       vesselId,

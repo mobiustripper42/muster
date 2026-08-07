@@ -269,7 +269,9 @@ export function resolveBasePrice(offering: Offering, date: string): number {
  *  2. **Materialized `Event` wins its slot identity** — an override recomputes time/price/
  *     capacity from the Event; a booked slot is frozen `booked`. Committed state beats
  *     blocks (you can't block away a booking).
- *  3. **Blocks subtract virtual (unmaterialized) slots** → `blocked`.
+ *  3. **Blocks subtract virtual (unmaterialized) slots** → `blocked`. An operator block wins
+ *     over a busy hull: it is a deliberate act, and the calendar hides `unavailable` slots that
+ *     nothing runs at, so ranking the other way made a blackout vanish from the grid.
  *  4. A **live checkout-hold** (`expiresAt > asOf`) on a surviving slot → `held` (12.1).
  *  5. Everything surviving is `available`.
  *
@@ -391,8 +393,12 @@ export function deriveVirtualAvailability(
             minutesOfDay(time),
             offering.tripLengthMinutes ?? XOLA_TRIP_MINUTES,
           );
-          const blocked = !occupied && isSlotBlocked(blocks, String(offering.locationId), vesselId, date, time);
-          const held = !occupied && !blocked && heldSlots.has(identity);
+          // BLOCK outranks a busy hull. A block is a deliberate operator act and the calendar
+          // has to show it; `unavailable` is hidden there when nothing runs at that time, so
+          // ranking busy first made an operator's own blackout disappear from the grid and from
+          // the Blackout count. Being unsellable twice over is still a blackout.
+          const blocked = isSlotBlocked(blocks, String(offering.locationId), vesselId, date, time);
+          const held = !blocked && !occupied && heldSlots.has(identity);
           slots.push({
             offeringId: offering.id,
             vesselId,
@@ -400,7 +406,7 @@ export function deriveVirtualAvailability(
             time,
             capacity: vessel.coiMaxPax,
             priceCents: basePrice,
-            status: occupied ? "unavailable" : blocked ? "blocked" : held ? "held" : "available",
+            status: blocked ? "blocked" : occupied ? "unavailable" : held ? "held" : "available",
           });
         }
       }

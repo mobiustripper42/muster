@@ -28,6 +28,7 @@
     "db:seed:split": "tsx db/seed-split-dev.ts",
     "db:seed:gratuity": "tsx db/seed-gratuity-dev.ts",
     "db:seed:reservation": "tsx db/seed-reservation-dev.ts",
+    "db:seed:xola": "tsx db/seed-xola-dev.ts",
     "db:seed:overlap": "tsx db/seed-overlap-dev.ts",
     "db:seed:completion": "tsx db/seed-completion-dev.ts",
     "db:seed:losing-asks": "tsx db/seed-losing-asks-dev.ts",

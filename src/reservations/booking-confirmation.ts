@@ -22,6 +22,7 @@
 import type { Reservation } from "../domain/entities.js";
 import type { ChannelPort } from "../ports/channel.js";
 import { reservationManageUrl } from "./booking-link.js";
+import { CANCELLATION_TERMS_SHORT } from "./refund-terms.js";
 
 export interface ConfirmationDeps {
   /** Email channel, when configured (Resend). Absent ⇒ no email side. */
@@ -42,7 +43,15 @@ export interface ConfirmationDeps {
 
 /** The confirmation body — the manage URL inline, so BOTH email (which sends the
  *  body verbatim) and SMS (receipt kind, body verbatim) carry the link without a
- *  separate `link` field that only SMS would append. */
+ *  separate `link` field that only SMS would append.
+ *
+ *  **Every character here must stay inside GSM-7.** The body ships verbatim as SMS, and a
+ *  single character outside that alphabet re-encodes the WHOLE message as UCS-2 — 67 chars
+ *  per concatenated segment instead of 153, better than doubling the segment count and the
+ *  cost of every confirmation sent. The sign-off used an em dash and did exactly that until
+ *  #619. Curly quotes, en/em dashes, and ellipsis characters are the usual offenders; a
+ *  plain ASCII hyphen and straight quotes are safe. (A customer's own name can still force
+ *  UCS-2 — that one is not ours to control.) */
 export function bookingConfirmationBody(
   reservation: Reservation,
   manageUrl: string,
@@ -50,8 +59,9 @@ export function bookingConfirmationBody(
   const who = reservation.customerName?.trim() || "there";
   return (
     `Hi ${who}, your Muster booking is confirmed for a party of ${reservation.partySize}.\n\n` +
+    `${CANCELLATION_TERMS_SHORT}\n\n` +
     `Manage your booking: ${manageUrl}\n\n` +
-    `— Muster`
+    `- Muster`
   );
 }
 

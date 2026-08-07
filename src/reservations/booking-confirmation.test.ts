@@ -7,6 +7,8 @@ import { asId } from "../domain/ids.js";
 import type { ChannelPort, OutboundMessage, SendResult } from "../ports/channel.js";
 import { verifyReservationLinkToken } from "./booking-link.js";
 import { sendBookingConfirmation } from "./booking-confirmation.js";
+import { CANCELLATION_TERMS_SHORT } from "./refund-terms.js";
+import { nonGsm7Chars } from "./sms-alphabet.js";
 
 const SECRET = "test-link-secret";
 const BASE = "https://muster.app";
@@ -64,6 +66,35 @@ describe("sendBookingConfirmation", () => {
     }
     expect(email.sent[0]!.to).toEqual({ email: "mary@example.com" });
     expect(sms.sent[0]!.to).toEqual({ phone: "+15550001111" });
+  });
+
+  it("the body stays inside GSM-7 — one stray character doubles every SMS bill", async () => {
+    // The em dash in the sign-off did exactly this until #619: a single non-GSM-7 character
+    // re-encodes the WHOLE message as UCS-2, 67 chars per concatenated segment instead of 153.
+    // The failure is invisible — the text still sends, it just costs more, forever.
+    const sms = capturing();
+    const res = reservation();
+    await sendBookingConfirmation({ sms, linkBase: BASE, linkSecret: SECRET }, res);
+
+    // The customer's own name can force UCS-2 and is not ours to control — check the copy
+    // this body owns, not the interpolated name.
+    expect(nonGsm7Chars(sms.sent[0]!.body, [res.customerName ?? ""])).toEqual([]);
+  });
+
+  it("carries the cancellation terms on both channels (#619)", async () => {
+    const email = capturing();
+    const sms = capturing();
+
+    await sendBookingConfirmation(
+      { email, sms, linkBase: BASE, linkSecret: SECRET },
+      reservation(),
+    );
+
+    // The SHORT form, quoted from the constant — the body goes out verbatim as SMS and the
+    // long paragraph would cost a second segment on every confirmation.
+    expect(email.sent[0]!.body).toContain(CANCELLATION_TERMS_SHORT);
+    expect(sms.sent[0]!.body).toContain(CANCELLATION_TERMS_SHORT);
+    expect(sms.sent[0]!.body.toLowerCase()).not.toContain("insurance"); // unsellable (#683)
   });
 
   it("email-only reservation ⇒ only the email side fires", async () => {

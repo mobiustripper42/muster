@@ -18,6 +18,7 @@
 import type { Block, Event, Location, MusterOwnedVesselDay, Offering, Reservation, Vessel } from "@core/domain/entities.js";
 import { WAIVER_TERMS_URL, vesselDateOf } from "@core/config/tenant.js";
 import { deriveVirtualAvailability } from "@core/reservations/availability.js";
+import { CANCELLATION_TERMS } from "@core/reservations/refund-terms.js";
 import {
   buildSlotRows,
   formatClock,
@@ -273,6 +274,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
             tiers={tiers}
             defaultBps={selectedDefaultBps}
             waiverUrl={WAIVER_TERMS_URL}
+            cancellationTerms={CANCELLATION_TERMS}
           />
         </div>
       </div>

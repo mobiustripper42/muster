@@ -20,6 +20,14 @@ import { NavSpinner, NavLinkLabel } from "./nav-spinner";
  * - `spinner="overlay"` — a scrim + big centered spinner over the nearest
  *   positioned ancestor (a card/row). The link must sit inside a `relative` box.
  * - `spinner="none"` — opt out (rarely needed; external hrefs opt out on their own).
+ *
+ * **`scroll={false}` is worth reaching for.** `next/link` defaults to scrolling to the top on
+ * every navigation, and since every internal link here is a server round-trip, that default
+ * fires constantly. For a link that REFINES the page you're already on — picking a date or a
+ * departure on `/book`, paging a month — it throws the reader back to the hero and they have to
+ * scroll down again to see what they just chose. Pass it through (it reaches `<Link>` via
+ * `...props`). Keep the default for links that change what the page IS; landing mid-page there
+ * is its own kind of wrong.
  */
 export function AppLink({
   children,

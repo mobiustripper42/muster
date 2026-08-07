@@ -102,4 +102,24 @@ test.describe("public /book availability", () => {
     // …and the month we paged to actually has bookable days, which is the point of going there.
     await expect(page.getByRole("link", { name: /^\d+$/ }).first()).toBeVisible();
   });
+
+  test("picking a slot keeps your place on the page", async ({ page }) => {
+    // Every internal nav here is a force-dynamic server round-trip, and next/link's default
+    // scroll={true} yanks you back to the hero on each one — so choosing a time on a phone
+    // means scrolling back down to see what you chose. Reported by the operator, 2026-08-06.
+    await page.setViewportSize({ width: 375, height: 700 });
+    await page.goto(BOOKED_DAY);
+
+    const slot = page.getByTestId("slot-17:30");
+    await slot.scrollIntoViewIfNeeded();
+    const before = await page.evaluate(() => window.scrollY);
+    expect(before, "the slot list must be below the fold, or this test proves nothing").toBeGreaterThan(0);
+
+    await slot.click();
+    await page.waitForURL(/time=17%3A30|time=17:30/);
+    await expect(page.getByTestId("slot-17:30")).toBeVisible();
+
+    const after = await page.evaluate(() => window.scrollY);
+    expect(after, "navigation scrolled back to the top").toBeGreaterThan(0);
+  });
 });

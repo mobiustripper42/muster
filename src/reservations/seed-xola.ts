@@ -63,9 +63,12 @@ export interface XolaFixture {
   secondOffering: Offering;
   /**
    * The realistic one: five departures a day on all four Brew boats, running from the 1st of the
-   * CURRENT month through the end of the fixture window. The other two offerings exist to make
-   * specific bugs reachable; this one exists so the operator can look at a calendar that resembles
-   * the business — a month with a full schedule on it, rather than a week of contrived cases.
+   * CURRENT month and STOPPING where the contrived week begins. The other two offerings exist to
+   * make specific bugs reachable; this one exists so the operator can look at a calendar that
+   * resembles the business — a month with a full schedule on it.
+   *
+   * Ending it at the window start keeps the two apart: a full realistic month to look at, then a
+   * week where every day is one deliberate case and nothing else is in the way.
    */
   fleetOffering: Offering;
   trips: XolaFixtureTrip[];
@@ -131,7 +134,8 @@ export function xolaFixture(todayISO: string): XolaFixture {
     locationId: asId<"LocationId">(demo.locationId),
     schedule: {
       seasonStart: firstOfThisMonth,
-      seasonEnd: demo.window.end,
+      // Stops where the contrived week starts, so the fixture's days stay legible.
+      seasonEnd: days.onGrid,
       weekdays: [0, 1, 2, 3, 4, 5, 6],
       departureTimes: ["11:30", "13:30", "15:30", "17:30", "19:30"],
     },

@@ -133,3 +133,51 @@ describe("computeBlockImpact", () => {
     expect(impact).toEqual({ removedSlots: 0, conflictCount: 0, conflictCents: 0 });
   });
 });
+
+describe("computeBlockImpact — a hull already out on another trip (#615, #691)", () => {
+  /** An imported Xola charter occupying the boat at `time`, with no Muster reservation. */
+  const xolaTrip = (date: string, time: string): Event => ({
+    id: asId<"EventId">(`xola-${date}-${time}`),
+    vesselId: VESSEL,
+    date,
+    time,
+    capacity: 12,
+    status: "scheduled",
+    source: "xola",
+  });
+
+  const impactWith = (events: Event[], reservations: Reservation[] = []) =>
+    computeBlockImpact(
+      {
+        id: asId<"BlockId">("blk"),
+        kind: "vessel",
+        vesselId: VESSEL,
+        startDate: DAYS[0]!,
+        endDate: DAYS[0]!,
+      },
+      { offerings: [offering], vessels: [vessel], events, reservations } as BlockImpactInput,
+    );
+
+  it("counts an unavailable slot as NEITHER removed nor a conflict", () => {
+    // The boat is out on a Xola charter at 13:30, which (100min) also covers nothing else here.
+    // Blocking the day removes the two slots that were genuinely on sale, and 13:30 is not one
+    // of them — it was never sellable. And it is not a conflict either: no Muster booking, and
+    // `priceCents` there is a display price, so counting it would invent revenue.
+    const clean = impactWith([]);
+    const withXola = impactWith([xolaTrip(DAYS[0]!, "13:30")]);
+
+    expect(clean.removedSlots).toBe(TIMES.length);
+    expect(withXola.removedSlots).toBe(TIMES.length - 1); // 13:30 was already unsellable
+    expect(withXola.conflictCount).toBe(0);
+    expect(withXola.conflictCents).toBe(0);
+  });
+
+  it("a real Muster booking on the same day is still a conflict, with its real money", () => {
+    // The guard against over-correcting: making `unavailable` inert must not make `booked` inert.
+    const b = booking(DAYS[0]!, "15:30", 54900);
+    const out = impactWith([xolaTrip(DAYS[0]!, "13:30"), b.event], [b.reservation]);
+    expect(out.conflictCount).toBe(1);
+    expect(out.conflictCents).toBe(54900);
+  });
+});
+

@@ -48,6 +48,10 @@ const world = buildSeededXolaWorld(now, fx);
 // being INVISIBLE on the calendar is the point (#700), and a missing row would look the same
 // while proving something else entirely.
 await repo.saveVessel(world.extraVessel);
+// A SECOND offering on the same boat and times as the demo cruise. One physical trip then
+// produces two slots, which is the only way the calendar's collapse-duplicates behaviour can be
+// tested at all — with a single offering per boat the assertion cannot fail.
+await repo.saveOffering(fx.secondOffering);
 
 for (const e of world.events) await repo.saveEvent(e);
 for (const r of world.reservations) {

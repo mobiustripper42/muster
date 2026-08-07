@@ -85,6 +85,16 @@ export function computeBlockImpact(block: Block, input: BlockImpactInput): Block
       // Virtual (no materialized Event) + open → this is what the block removes.
       removedSlots += 1;
     }
+    // `unavailable` (#615/#691) is deliberately NEITHER, and this is the third answer it has
+    // had — worth stating so the next person doesn't "fix" it back.
+    //   · Not REMOVED: the boat is already out on an overlapping trip, so the block takes away
+    //     nothing that was on sale. Counting it would inflate the number the operator uses to
+    //     judge whether a block is cheap.
+    //   · Not a CONFLICT: there is no Muster booking here. The occupying trip is someone
+    //     else's — usually an imported Xola charter — and `s.priceCents` is the offering's
+    //     DISPLAY price, not money anyone paid. Adding it to `conflictCents` invents revenue.
+    // A block landing on a day an imported charter runs is still worth telling the operator
+    // about; that is a different number than either of these, and it is #700's territory.
   }
   return { removedSlots, conflictCount, conflictCents };
 }

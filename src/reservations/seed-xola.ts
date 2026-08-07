@@ -21,7 +21,7 @@
  * fixture with literal dates has a shelf life, and when it expires the tests do not go red, they
  * go meaningless. Same anchor as the demo world — the 10th–16th of next month.
  */
-import type { Event, Reservation, Vessel } from "../domain/entities.js";
+import type { Event, Offering, Reservation, Vessel } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import { reservationDemo } from "./seed-reservation.js";
 
@@ -51,6 +51,16 @@ export interface XolaFixtureTrip {
 export interface XolaFixture {
   /** The vessel the fixture needs beyond the standard fleet. */
   extraVessel: Vessel;
+  /**
+   * A SECOND live offering on the same boat and the same times as the demo cruise.
+   *
+   * Without it the world has one offering per boat, so a physical trip can only ever produce one
+   * slot — and every assertion about collapsing duplicates passes against a scenario that cannot
+   * happen. That is not hypothetical: the dedupe and badge tests were written, went green, and a
+   * negative control showed neither could fail. The operator's real data has three offerings
+   * sharing boats; the fixture has to have at least two.
+   */
+  secondOffering: Offering;
   trips: XolaFixtureTrip[];
   /** Convenience handles the specs assert against, so they never re-derive a date. */
   days: {
@@ -97,8 +107,27 @@ export function xolaFixture(todayISO: string): XolaFixture {
     clean: d(5),
   };
 
+  const secondOffering: Offering = {
+    id: asId<"OfferingId">("offering-xola-fixture-second"),
+    tenantId: asId<"TenantId">("brewboat"),
+    name: "Second Cruise",
+    status: "live",
+    vesselIds: [asId<"VesselId">(BOAT)],
+    locationId: asId<"LocationId">(demo.locationId),
+    schedule: {
+      seasonStart: demo.season.start,
+      seasonEnd: demo.season.end,
+      weekdays: [0, 1, 2, 3, 4, 5, 6],
+      departureTimes: [...demo.departureTimes],
+    },
+    basePriceCents: 59900,
+    priceVariations: [],
+    extraGuestPriceCents: 5000,
+  };
+
   return {
     extraVessel: UNCOVERED_VESSEL,
+    secondOffering,
     days,
     trips: [
       {

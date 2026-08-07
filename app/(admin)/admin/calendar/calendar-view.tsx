@@ -171,23 +171,33 @@ export async function loadCalendarData(sp: Search): Promise<CalendarData | null>
     if (r.status === "booked") bookedByEventId.set(String(r.eventId), r);
   }
   const tripBySlot = new Map<string, { event: Event; reservation?: Reservation }>();
-  for (const e of events) {
+  // Sorted by event id, and FIRST wins — two trips CAN share a physical slot (the unique index
+  // is partial on `source='muster'`, so nothing stops two Xola rows landing on one boat-time),
+  // and an unsorted last-write-wins would pick a different occupant run to run. A stable choice
+  // is not a correct one: when this happens the second occupant is a genuine double-booking and
+  // is currently invisible here. Surfacing it is #700's job — the calendar has to draw events in
+  // their own right before it can draw two of them.
+  for (const e of [...events].sort((a, b) => String(a.id).localeCompare(String(b.id)))) {
     if (e.status !== "scheduled") continue;
+    const key = `${String(e.vesselId)}|${e.date}|${e.time}`;
+    if (tripBySlot.has(key)) continue;
     const res = bookedByEventId.get(String(e.id));
-    tripBySlot.set(`${String(e.vesselId)}|${e.date}|${e.time}`, {
-      event: e,
-      ...(res ? { reservation: res } : {}),
-    });
+    tripBySlot.set(key, { event: e, ...(res ? { reservation: res } : {}) });
   }
 
-  const slots = deriveVirtualAvailability({
-    offerings,
-    vessels,
-    dateRange: { start: day, end: day },
-    blocks,
-    events,
-    reservations,
-  }).filter((s) => drawsOnCalendar(s, events));
+  // ONE list, deduped ONCE. The badge counts and the grid draw from the same array on purpose:
+  // when the dedupe lived in the grid alone, "Booked 12" sat above eleven cards, and the very
+  // scenario the dedupe exists for (one boat sold by two offerings) was the one that diverged.
+  const slots = dedupeOccupied(
+    deriveVirtualAvailability({
+      offerings,
+      vessels,
+      dateRange: { start: day, end: day },
+      blocks,
+      events,
+      reservations,
+    }).filter((s) => drawsOnCalendar(s, events)),
+  );
 
   return {
     offerings,
@@ -232,6 +242,33 @@ export function detailHref(
   const id = encodeURIComponent(reservationId);
   const q = params.toString();
   return q ? `/admin/calendar/${id}?${q}` : `/admin/calendar/${id}`;
+}
+
+/**
+ * ONE CARD PER PHYSICAL TRIP. A boat-slot can be proposed by several offerings — Brew 3 is sold
+ * by both the demo cruise and the river cruise, so 1:30 produces two slots. When that slot is
+ * OCCUPIED they describe the same trip, and drawing both stacked two identical cards with the
+ * same customer's name on top of each other.
+ *
+ * OPEN slots are deliberately NOT collapsed: two offerings genuinely on sale at one time are two
+ * different things the operator could sell, and hiding one would hide a real choice. They still
+ * overlap visually — that is the collision-layout work, not this.
+ *
+ * Sorted by offeringId first so the survivor is deterministic rather than dependent on the
+ * deriver's iteration order.
+ */
+export function dedupeOccupied(slots: readonly VirtualSlot[]): VirtualSlot[] {
+  const seen = new Set<string>();
+  const out: VirtualSlot[] = [];
+  for (const s of [...slots].sort((a, b) => String(a.offeringId).localeCompare(String(b.offeringId)))) {
+    if (s.status === "booked" || s.status === "unavailable") {
+      const physical = `${String(s.vesselId)}|${s.date}|${s.time}`;
+      if (seen.has(physical)) continue;
+      seen.add(physical);
+    }
+    out.push(s);
+  }
+  return out;
 }
 
 /** Date nav + status filter — server nav (no JS); each link preserves the other axis. */
@@ -360,22 +397,7 @@ export function CalendarGrid({
   };
 
   const slotsByVessel = new Map<string, VirtualSlot[]>();
-  // ONE CARD PER PHYSICAL TRIP. A boat-slot can be proposed by several offerings — Brew 3 is
-  // covered by both the demo cruise and the river cruise, so 1:30 produces two slots. When that
-  // slot is OCCUPIED they describe the same trip, and drawing both stacked two identical cards
-  // with the same customer's name on top of each other. Collapse them by `vessel|date|time`.
-  //
-  // OPEN slots are deliberately not collapsed: two offerings genuinely on sale at one time are
-  // two different things the operator could sell, and hiding one would hide a real choice. They
-  // still overlap visually — that is the collision-layout work, not this.
-  const seenOccupied = new Set<string>();
-  for (const s of [...data.slots].sort((a, b) => String(a.offeringId).localeCompare(String(b.offeringId)))) {
-    const occupied = s.status === "booked" || s.status === "unavailable";
-    const physical = `${String(s.vesselId)}|${s.date}|${s.time}`;
-    if (occupied) {
-      if (seenOccupied.has(physical)) continue;
-      seenOccupied.add(physical);
-    }
+  for (const s of data.slots) {
     const k = String(s.vesselId);
     (slotsByVessel.get(k) ?? slotsByVessel.set(k, []).get(k)!).push(s);
   }

@@ -141,6 +141,19 @@ const candidates = before.slots
   .filter((s) => s.status === "available")
   .sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
 
+// Idempotence is a claim this tool makes, so it has to be true: once a fixture booking exists in
+// the window, picking a NEW candidate would book a second one on every run — the opposite of the
+// determinism promised above, since each run changes the DB the next run reads.
+const existingFixture = before.reservations.find((r) => r.customerName === "Overlap Fixture");
+if (existingFixture) {
+  const ev = before.events.find((e) => String(e.id) === String(existingFixture.eventId));
+  console.log(`\nB. Already manufactured — ${ev?.date ?? "?"} ${ev?.time ?? "?"} on ${
+    ev ? (vesselById.get(String(ev.vesselId))?.name ?? String(ev.vesselId)) : "?"
+  }`);
+  console.log("   Nothing written. Reset the DB to start over.");
+  process.exit(0);
+}
+
 let booked: { date: string; time: string; vessel: string; offering: Offering } | null = null;
 for (const s of candidates) {
   const o = offeringById.get(String(s.offeringId));

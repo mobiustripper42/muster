@@ -1,7 +1,7 @@
 /**
  * Pure builder for the `db:seed:reservation` dev fixture (task 12.10) — a self-contained
  * reservation world so the /admin/blocks impact numbers show something real when hand-testing:
- * a live Offering (so virtual slots exist), the owned-day mask that lets them emit, and a
+ * a live Offering whose season IS the demo window (so virtual slots exist across it), and a
  * couple of MATERIALIZED bookings (Event + booked Reservation) at KNOWN slots — so a block
  * drawn over that window shows a non-zero "removes N" AND a non-zero booked-trip conflict.
  *

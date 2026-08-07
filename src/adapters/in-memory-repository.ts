@@ -120,7 +120,7 @@ export class InMemoryRepository implements Repository {
   readonly #checkoutHolds = new Map<CheckoutHoldId, CheckoutHold>();
   /** Collected gratuities (12.3, DEC-124), keyed by id. */
   readonly #gratuities = new Map<GratuityId, Gratuity>();
-  /** Muster-owned vessel-days (DEC-106), keyed `${vesselId}|${date}`. */
+  /** Muster-native payments (DEC-107), keyed by id. */
   readonly #payments = new Map<PaymentId, Payment>();
   /** Payment-config overrides (DEC-107); absent fields fall to PAYMENT_CONFIG_DEFAULTS. */
   #paymentConfig: Partial<PaymentConfig> = {};

@@ -211,3 +211,49 @@ describe("hold TTL override (CHECKOUT_HOLD_MINUTES)", () => {
     expect(resolveHoldMinutes()).toBe(0.5);
   });
 });
+
+describe("acquireDepartureHold — the hull, not just the slot (#615, #691)", () => {
+  const xolaTrip = (time: string, id: string) => ({
+    id: asId<"EventId">(id),
+    vesselId: SMALL,
+    date: DATE,
+    time,
+    capacity: 6,
+    status: "scheduled" as const,
+    source: "xola" as const,
+  });
+
+  it("skips a boat a XOLA trip is already using", async () => {
+    const repo = await seededRepo();
+    await repo.saveEvent(xolaTrip(TIME, "x-1"));
+    const res = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: TIME, guestCount: 4 }, now);
+    // Small is physically taken by Xola, so the hold falls through to the big boat. Before
+    // #615 the funnel could not see the Xola trip at all and would have held the small one.
+    expect("held" in res && String(res.held.vesselId)).toBe("v-big");
+  });
+
+  it("skips a boat busy at an OVERLAPPING time, not just the same one (#691)", async () => {
+    const repo = await seededRepo();
+    // 13:00 + 100min runs to 14:40, straight through a 13:30 departure. Different slot
+    // identity, which is exactly why the old exact-triple check missed it.
+    await repo.saveEvent(xolaTrip("13:00", "x-2"));
+    const res = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: TIME, guestCount: 4 }, now);
+    expect("held" in res && String(res.held.vesselId)).toBe("v-big");
+  });
+
+  it("still holds a boat whose trip ends exactly when ours starts", async () => {
+    const repo = await seededRepo();
+    await repo.saveEvent(xolaTrip("11:50", "x-3")); // 11:50 + 100 = 13:30, abuts
+    const res = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: TIME, guestCount: 4 }, now);
+    expect("held" in res && String(res.held.vesselId)).toBe("v-small");
+  });
+
+  it("sold out when a Xola trip occupies every fitting boat", async () => {
+    const repo = await seededRepo();
+    for (const [i, v] of [SMALL, BIG].entries()) {
+      await repo.saveEvent({ ...xolaTrip(TIME, `x-all-${i}`), vesselId: v, capacity: 12 });
+    }
+    const res = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: TIME, guestCount: 4 }, now);
+    expect(res).toEqual({ soldOut: true });
+  });
+});

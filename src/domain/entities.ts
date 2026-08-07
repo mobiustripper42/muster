@@ -660,8 +660,10 @@ export interface Reservation {
  *
  * Load-bearing rules (DEC-109), enforced by 12.1's data layer:
  *  - The hold is an **optimization**, never the authority — the whole-boat mutex
- *    (`saveBookingIfSlotFree`) is the defeat-proof backstop; a booking whose hold
- *    expired mid-payment still runs the CAS. Never gate the write on a hold.
+ *    (`saveBookingIfSlotFree`) is the backstop; a booking whose hold expired mid-payment
+ *    still runs the CAS. Never gate the write on a hold. The backstop guards the whole
+ *    HULL over the trip's duration, not just the exact `(vessel, date, time)` triple —
+ *    identity alone let two overlapping bookings through in silence (#691).
  *  - **Lazy-on-read expiry, no cron:** a hold with `expiresAt <= asOf` reads as free
  *    everywhere (the deriver filters on it). The physical-slot unique index means a
  *    stale row would *block* re-acquire, so `acquireCheckoutHold` deletes the expired

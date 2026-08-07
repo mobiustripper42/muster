@@ -83,6 +83,12 @@ import {
   type PaymentConfig,
 } from "../reservations/payment-config.js";
 import { slotIdentity } from "../reservations/availability.js";
+import {
+  XOLA_TRIP_MINUTES,
+  busyIntervalsFor,
+  hullIsBusy,
+  minutesOfDay,
+} from "../reservations/hull-busy.js";
 import type { FailureWindow, Repository } from "../ports/repository.js";
 
 const clone = <T>(value: T): T => structuredClone(value);
@@ -521,9 +527,33 @@ export class InMemoryRepository implements Repository {
     reservation: Reservation,
   ): Promise<{ result: "won"; eventId: EventId } | { result: "lost" }> {
     // Single-threaded JS ⇒ trivially atomic; the Postgres adapter enforces the same under
-    // real concurrency (partial-unique index + row lock). (1) find-or-materialize the Muster
-    // Event at this slot identity — one row per physical boat-slot (DEC-125 guardrail).
-    const key = slotIdentity(event.vesselId, event.date, event.time);
+    // real concurrency (advisory lock on the hull-day + row lock). (0) the HULL must be free
+    // over this departure — any other scheduled trip, either source, at an overlapping time
+    // (#615, #691). This precedes materialization: losing here must not leave an event row
+    // behind. (1) find-or-materialize the Muster Event at this slot identity — one row per
+    // physical boat-slot (DEC-125 guardrail).
+    const slotKey = slotIdentity(event.vesselId, event.date, event.time);
+    const busy = busyIntervalsFor(
+      // Exempt only the MUSTER event at this exact slot — that is the slot being claimed
+      // (a pre-existing override, or this very row). A Xola event at the same clock time is
+      // a foreign occupant and must still block: exempting by time alone re-opens #615.
+      [...this.#events.values()].filter(
+        (e) =>
+          !(e.source === "muster" && slotIdentity(e.vesselId, e.date, e.time) === slotKey),
+      ),
+      event.vesselId,
+      event.date,
+    );
+    if (
+      hullIsBusy(
+        busy,
+        minutesOfDay(event.time),
+        event.durationMinutes ?? XOLA_TRIP_MINUTES,
+      )
+    ) {
+      return { result: "lost" };
+    }
+    const key = slotKey;
     let existing = [...this.#events.values()].find(
       (e) =>
         e.source === "muster" &&

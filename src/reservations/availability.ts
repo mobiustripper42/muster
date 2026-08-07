@@ -27,6 +27,13 @@ import type {
 } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import type { EventId, OfferingId, VesselId } from "../domain/ids.js";
+import {
+  XOLA_TRIP_MINUTES,
+  busyIntervalsFor,
+  hullIsBusy,
+  minutesOfDay,
+  type BusyInterval,
+} from "./hull-busy.js";
 
 export interface EventAvailability {
   eventId: EventId;
@@ -303,6 +310,30 @@ export function deriveVirtualAvailability(
     }
   }
 
+  // Hull occupancy from EVERY scheduled event, both sources (#615, #691). Tagged with its own
+  // slot identity so a materialized slot is never blocked by its own trip. This is what makes
+  // the deriver see an imported Xola booking — and a Muster booking at an OVERLAPPING (not
+  // identical) time, which the old slot-identity check missed entirely.
+  // Tagged by EVENT ID, not slot identity: a slot must be exempt from its OWN trip, and only
+  // its own. Keying on identity was wrong — it also exempted a foreign (Xola) trip sitting at
+  // the same clock time, which is precisely the collision this exists to catch.
+  const busyByHullDay = new Map<string, { eventId: string; interval: BusyInterval }[]>();
+  for (const e of events) {
+    if (e.status !== "scheduled") continue;
+    const key = `${String(e.vesselId)}|${e.date}`;
+    const [interval] = busyIntervalsFor([e], e.vesselId, e.date);
+    if (!interval) continue;
+    const list = busyByHullDay.get(key) ?? [];
+    list.push({ eventId: String(e.id), interval });
+    busyByHullDay.set(key, list);
+  }
+
+  /** Windows occupying this hull-day, minus the given event's own (pass none for a virtual slot). */
+  const hullBusyExcept = (vesselId: VesselId, date: string, selfEventId?: string): BusyInterval[] =>
+    (busyByHullDay.get(`${String(vesselId)}|${date}`) ?? [])
+      .filter((b) => b.eventId !== selfEventId)
+      .map((b) => b.interval);
+
   // NB: slots carry `offeringId`, so two live offerings that schedule the SAME
   // physical (vessel, date, time) each emit their own slot — a scheduling error the
   // deriver does not resolve. 12.1's slot-identity uniqueness (the conditional insert /
@@ -324,7 +355,13 @@ export function deriveVirtualAvailability(
         for (const time of schedule.departureTimes) {
           const materialized = eventBySlot.get(slotIdentity(vesselId, date, time));
           if (materialized) {
-            const booked = bookedEventIds.has(String(materialized.id));
+            // An unbooked override still can't sail if another trip holds the hull over it.
+            const collides = hullIsBusy(
+              hullBusyExcept(vesselId, date, String(materialized.id)),
+              minutesOfDay(time),
+              materialized.durationMinutes ?? offering.tripLengthMinutes ?? XOLA_TRIP_MINUTES,
+            );
+            const booked = collides || bookedEventIds.has(String(materialized.id));
             slots.push({
               offeringId: offering.id,
               vesselId,
@@ -337,9 +374,19 @@ export function deriveVirtualAvailability(
             });
             continue;
           }
-          // Precedence on a virtual slot: block (operator) beats hold (transient) beats free.
-          const blocked = isSlotBlocked(blocks, String(offering.locationId), vesselId, date, time);
-          const held = !blocked && heldSlots.has(slotIdentity(vesselId, date, time));
+          // Precedence on a virtual slot: hull-busy (another trip is on this boat) beats
+          // block beats hold beats free. Busy is first because it is a fact about the world —
+          // an operator block can be lifted, a trip already sold cannot.
+          const identity = slotIdentity(vesselId, date, time);
+          // No Muster event backs this identity (the materialized branch returned above), so
+          // every window here belongs to another trip.
+          const occupied = hullIsBusy(
+            hullBusyExcept(vesselId, date),
+            minutesOfDay(time),
+            offering.tripLengthMinutes ?? XOLA_TRIP_MINUTES,
+          );
+          const blocked = !occupied && isSlotBlocked(blocks, String(offering.locationId), vesselId, date, time);
+          const held = !occupied && !blocked && heldSlots.has(identity);
           slots.push({
             offeringId: offering.id,
             vesselId,
@@ -347,7 +394,7 @@ export function deriveVirtualAvailability(
             time,
             capacity: vessel.coiMaxPax,
             priceCents: basePrice,
-            status: blocked ? "blocked" : held ? "held" : "available",
+            status: occupied ? "booked" : blocked ? "blocked" : held ? "held" : "available",
           });
         }
       }

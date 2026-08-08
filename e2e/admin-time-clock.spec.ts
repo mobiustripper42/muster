@@ -35,7 +35,7 @@ test.describe("admin /admin/time-clock — the repair bench", () => {
     await resetAndSeed("crew");
   });
 
-  test("the People nav carries Time clock, distinct from Time off", async ({ page }) => {
+  test("the Crew nav carries Time clock, distinct from Time off", async ({ page }) => {
     await signInAsAdmin(page, "spink");
     await page.goto("/admin/time-clock");
     await expect(page.getByRole("heading", { name: "Time clock" })).toBeVisible();

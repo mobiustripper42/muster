@@ -83,6 +83,15 @@ test.describe("crew ↔ admin switcher (DEC-093)", () => {
     await page.waitForURL((u) => u.pathname === "/crew");
     await openCrewMenu(page);
     await expect(page.getByRole(SWITCH_TO_ADMIN.role, { name: SWITCH_TO_ADMIN.name })).toBeVisible();
+
+    // …and back UP, which is the escalation half (DEC-092/093). Asserting the control is merely
+    // VISIBLE here is not enough, and deleting the round-trip test left that gap: @code-review
+    // grepped the suite and found the crew drawer's own "Switch to admin" is otherwise only ever
+    // asserted visible, or clicked after revocation expecting failure. The one place a click on
+    // it is confirmed to land on /admin was `admin-gate.spec.ts`, which drives a DIFFERENT form
+    // (`admin-signed-out.tsx`). So the positive path for THIS button had no test at all.
+    await page.getByRole(SWITCH_TO_ADMIN.role, { name: SWITCH_TO_ADMIN.name }).click();
+    await page.waitForURL(/\/admin/);
   });
 
   test("a crew-only member sees no switch (the control is admin-gated)", async ({

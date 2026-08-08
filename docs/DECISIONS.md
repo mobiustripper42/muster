@@ -146,7 +146,7 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 - DEC-073 — Real doorbell-ring relay — the operator-outbox `NotificationPort` adapter, on its own table
 
 ### Outbound notifications & operator relay
-- DEC-030 — Pilot channel = operator-relayed web link; the outbox is adapter state, never domain state
+- DEC-030 — Pilot channel = operator-relayed web link; the outbox is adapter state, never domain state _(refined by DEC-150 — rule 4 (prefetch-safe consume) only — the interstitial stays for every client without a matching session, and the GET still never consumes)_
 - DEC-084 — Crew assignment-change notice — a third operator-relay sibling
 - DEC-095 — Operator At-Risk alert — the deferred delivery half of DEC-026, NOT a fourth outbound lane
 
@@ -164,6 +164,7 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 - DEC-094 — Operator break-glass is CLI + runbook, not an admin UI (10.5; extends DEC-092)
 - DEC-098 — Crew calendar feed — the first persistent bearer capability URL; hash-only, guest-PII-free, UTC-instant ICS
 - DEC-142 — Login brute force is bounded per subject, not per code — and every verify failure is one generic response
+- DEC-150 — An already-authenticated crew member skips the tap-to-sign-in interstitial
 
 ### Reservations & payments
 - DEC-105 — Reservations go live in 2026 as a Muster-native parallel-run — permanent coexistence, not a cutover _(reversed by DEC-126 — the parallel run ends in a cutover, not permanent coexistence — and the "no migration" leg)_

@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.1.1] - 2026-08-08
+
+First promotion since v1.0.21 (2026-08-04), so production also receives the already-written
+[1.1.0] entry below. Everything here landed after the 1.1.0 tag was cut.
+
+- **#710** — one menu across both apps: account actions at the end of it. Admin gains a Sign out
+  it never had at any width, and an Account menu on desktop; `Crew view` leaves the brand cluster
+  and becomes `Switch to crew`. Nav group People → Crew. Both drawers read "Muster".
+- **#708** — the Xola importer links a customer as it writes. 39 imported reservations were
+  landing unlinked; the back catalogue arrives through that path at the DEC-126 cutover.
+- **#706** — block a single departure from the calendar, and unblock it. `Block{kind:"vesselHold"}`
+  was modelled, subtracted and rendered since 12.10 with nothing able to create one.
+- **#694** — a reservation occupies the boat for its whole trip, whoever sold it (#615, #691).
+  Closes a silent double-book: the guard keyed on exact slot identity, so two overlapping trips on
+  one hull both wrote. Hull-day advisory lock + shared overlap rule across read path and CAS.
+- **#697** — an already-signed-in magic link stops asking you to tap.
+- **#690** — picking a date or slot on /book no longer throws you back to the hero.
+- **#689** — ownership is gone: the offering says when, blocks say what's off (DEC-149). **Drops
+  `muster_owned_vessel_days`** — the one migration in this release.
+- **#684** — the cancellation policy exists in code and on the page, and SMS bodies stay GSM-7.
+- **#669** — paid-but-unbooked detection. **#671** — native booking forms. **#674** — crew drawer
+  a11y. **#665** — the crew header and drawer (#644). **#664** — typed error copy.
+- Tooling and docs: **#695** blast-radius triggers, **#707** kill-this test plans, **#680**/**#676**
+  seeds adoption, **#681**, **#672**, **#670**, **#673**, **#666**, **#663**, **#662**.
+
 ## [1.1.0] - 2026-08-05 — Phase 13
 
 - 30 pts shipped across 2 sessions (throughput: burst — 30 pts in 4d, 2026-07-31 → 2026-08-04)

@@ -150,6 +150,18 @@ Each hand step is three things, and a step missing any of them is not a step:
 
 Close with **`Reset:`** — what to undo afterwards, or `none`. A reviewer who won't touch prod data because they can't tell what's reversible has been given no test plan at all.
 
+**Open the hand section with `#### Setup`, and make it literal.** Everything below is drawn from a test plan that worked — one the operator had to ask for, which is why it is written down here instead of depending on someone thinking of it.
+
+- **The commands, in order, in one block** the reviewer can paste. Not "seed the database" — the actual command names.
+- **Flag anything destructive on the line itself.** `npm run db:reset:dev  # destructive: wipes your dev data` is the difference between a reviewer running your plan and closing the tab.
+- **Name the non-obvious prerequisite, with why it's needed.** The step someone will skip because nothing suggests it matters — *"`db:seed:crew` is not optional: migration 0018 seeded a provisional admin roster and 0019 deletes it, so a freshly-migrated dev DB has zero admins and every `/admin/*` route renders the signed-out screen."* That sentence is worth more than the rest of the setup block combined, because it is the one nobody can derive.
+- **Spell out how to sign in** — the exact URL, the exact button label, and which identity it mints. "Sign in as an admin" is not a step if getting an admin is the hard part.
+- **Say what is *not* needed.** *"No Stripe, no `stripe listen`, no webhook — this touches no money path."* A reviewer who doesn't know whether to start the payment stack will either waste ten minutes or skip the whole plan.
+- **Use literal values, and caveat the generated ones.** Write the real dates and IDs. If the seed builds them relative to today, say so and give the anchor: *"dates assume you seed on 2026-08-07 → the window is 2026-09-10 … 2026-09-16; if you seed on a different day, shift the month and keep the day-of-month."*
+- **Carry forward a gotcha that bit last time** if one applies — a leftover env var, a stale process, a cached build.
+
+**Test the abort path, not just the happy one.** Where the change adds a confirm, a cancel, or a destructive action, a step that clicks Cancel and asserts **nothing was written** is worth more than the one that clicks OK — it is the path nobody writes a test for and the one that silently does damage when it's wrong.
+
 **A green suite never satisfies the hand section on a rendered change.** This is the rule the others exist to serve, and it is written from a specific failure: a PR shipped with five numbered test-plan items — full gate green, eight new e2e cases, an entire 116-test mobile project at 375px, nine specs rerouted — and **not one step a human performed**. It read as thorough. Four defects reached the operator within minutes of merge: a control behind a modal backdrop, an undersized touch target, a dead-end link, and a drawer that could not be closed at 375px. Every suite was green the whole time. **None of those four is a class of defect a passing test can catch**, because each is a question about what a person can reach, hit, read, or escape.
 
 So when the diff touches anything rendered, the hand section answers, in whatever form fits:

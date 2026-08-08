@@ -21,7 +21,7 @@ import { writeSlotBooking } from "../reservations/write-booking.js";
 import { eventIdForSlot } from "../reservations/availability.js";
 import { asId } from "../domain/ids.js";
 import type { TimePunch } from "../domain/entities.js";
-import type { CrewMemberId, TimePunchId } from "../domain/ids.js";
+import type { CrewMemberId, EventId, TimePunchId } from "../domain/ids.js";
 
 const TEST_URL =
   process.env.TEST_DATABASE_URL ??

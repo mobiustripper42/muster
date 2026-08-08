@@ -381,8 +381,9 @@ async function processBookingCharge(
     // boats that were sold and uncrewed.
     //
     // Here rather than inside `writeSlotBooking` because this is where a completed booking's side
-    // effects already live (`sendConfirmation` below), and it covers the legacy `writeBooking`
-    // path in the same stroke. Best-effort by the same contract: the booking is committed and
+    // effects already live (`sendConfirmation` below). It used to cover the legacy `writeBooking`
+    // path in the same stroke; there is only one path now (#693). Best-effort by the same
+    // contract: the booking is committed and
     // PAID, so a formation failure must never 500 — Stripe would retry a booking that already
     // exists, resolve `already`, and still not form. The cron tick re-forms as the backstop.
     //
@@ -607,7 +608,7 @@ async function recordPostGratuity(
 
 /**
  * Record an on-demand BALANCE payment (11.2b) against an already-claimed reservation. No
- * `writeBooking` (the boat was won at deposit, DEC-109), no confirmation emit. The Payment
+ * booking write (the boat was won at deposit, DEC-109), no confirmation emit. The Payment
  * id is deterministic from the balance session id, so a re-delivery is idempotent.
  *
  * Overpay guard: a two-session race (two balance checkouts, both paid) over-collects. The

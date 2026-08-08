@@ -1,5 +1,6 @@
 /**
- * writeBooking (11.3) — the booking-write service, driven against the in-memory repo.
+ * writeSlotBooking (12.5, DEC-125) — the booking-write service, driven against the in-memory
+ * repo. Its `writeBooking` (11.3) sibling was retired at #693; see the note below.
  * The adapter-level atomic claim is contract-tested in repository-contract.ts (incl. the
  * concurrent-claims race); this covers the service's outcome mapping + idempotency.
  */
@@ -7,35 +8,12 @@ import { describe, expect, it } from "vitest";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import type { Event, Offering } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
-import {
-  reservationIdFor,
-  writeBooking,
-  writeSlotBooking,
-  type BookingRequest,
-} from "./write-booking.js";
+import { reservationIdFor, writeSlotBooking } from "./write-booking.js";
 
+// `musterEvent`, `EVENT` and the `req()` BookingRequest builder went with the
+// `describe("writeBooking")` block (#693) — they had no other consumer.
 const NOW = () => "2026-07-01T00:00:00.000Z";
 const V = asId<"VesselId">("vessel-brew-2");
-const EVENT = asId<"EventId">("m-evt-1");
-
-const musterEvent = (over: Partial<Event> = {}): Event => ({
-  id: EVENT,
-  vesselId: V,
-  date: "2026-07-04",
-  time: "17:00",
-  capacity: 12,
-  status: "scheduled",
-  source: "muster",
-  ...over,
-});
-
-const req = (over: Partial<BookingRequest> = {}): BookingRequest => ({
-  eventId: EVENT,
-  customerName: "Mary",
-  partySize: 6,
-  idempotencyKey: "sess_1",
-  ...over,
-});
 
 // The `describe("writeBooking")` block that stood here is GONE (#693). It covered the legacy
 // 11.3 write — booked / already / already_claimed / lost / unbookable×3 — for a function that

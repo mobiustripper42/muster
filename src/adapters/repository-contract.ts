@@ -771,6 +771,29 @@ export function runRepositoryContract(
       expect(res.result).toBe("won");
     });
 
+    /**
+     * A cancelled RESERVATION on the claimed slot does not block a re-claim.
+     *
+     * Distinct from the cancelled-TRIP case above, which cancels the event. This cancels the
+     * booking while the slot stays live — the customer-cancels-then-someone-else-books path. Both
+     * adapters enforce it (`and status='booked'` in the SQL, `r.status === "booked"` in memory),
+     * and the retired `saveReservationIfUnclaimed` block had a case for it; when that block went
+     * with #693 this guarantee was left enforced by code and asserted by nothing. Caught by
+     * @code-review reading what the deletion actually removed rather than counting the cases.
+     */
+    it("saveBookingIfSlotFree: a CANCELLED reservation on the slot does not block a re-claim", async () => {
+      const ev = slotEvent();
+      const first = reservation({ id: rid("resv-gone"), source: "muster", eventId: SLOT_ID });
+      expect((await repo.saveBookingIfSlotFree(ev, first)).result).toBe("won");
+      await repo.saveReservation({ ...first, status: "cancelled" });
+
+      const res = await repo.saveBookingIfSlotFree(
+        ev,
+        reservation({ id: rid("resv-next"), source: "muster", eventId: SLOT_ID }),
+      );
+      expect(res.result).toBe("won");
+    });
+
     it("saveBookingIfSlotFree: idempotent on reservation id (redelivered webhook)", async () => {
       const ev = slotEvent();
       const r = reservation({ id: rid("resv-a"), source: "muster", eventId: SLOT_ID });

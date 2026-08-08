@@ -13,7 +13,7 @@
  * reservation id; a retried call short-circuits to `already` and the CAS's
  * `ON CONFLICT (id)` prevents any double-write. Nothing here imports Stripe — the
  * deferred `checkout.session.completed` webhook (11.2) is a thin translator that builds
- * a `BookingRequest` and passes `checkout.session.id` as the `idempotencyKey`.
+ * a `SlotBookingRequest` and passes `checkout.session.id` as the `idempotencyKey`.
  */
 import { createHash } from "node:crypto";
 import type { Event, Reservation } from "../domain/entities.js";
@@ -45,8 +45,9 @@ export function reservationIdFor(idempotencyKey: string): ReservationId {
 // ── Slot-first booking (12.1a, DEC-109/125) ──────────────────────────────────
 // The virtual-model write: the customer picked offering+time+guestCount, a hold assigned a
 // boat, and the webhook now materializes the Event at its slot identity + claims the mutex
-// atomically (`saveBookingIfSlotFree`). Supersedes the seeded-`Event` `writeBooking` above;
-// the old path stays until 12.8 retires the seeded model.
+// atomically (`saveBookingIfSlotFree`). It superseded the seeded-`Event` `writeBooking`, which
+// this module no longer carries — #693 retired it rather than waiting for 12.8, because it was
+// an unguarded fallback on the money path and nothing minted sessions for it.
 
 export interface SlotBookingRequest {
   offeringId: OfferingId;

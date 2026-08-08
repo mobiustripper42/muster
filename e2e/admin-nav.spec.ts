@@ -15,24 +15,26 @@ import {
 } from "./fixtures.js";
 
 /**
- * The visible "People" group. BOTH navs are in the DOM at every width — the inline bar
+ * The visible "Crew" group. BOTH navs are in the DOM at every width — the inline bar
  * (`details[name="admin-nav"]`) and the drawer (`details[name="admin-drawer"]`) — so an
  * unscoped `locator("details")` resolves to whichever is hidden at this viewport and times out
  * on a click. Filtering on visibility picks the one this width actually uses.
  */
-function peopleGroup(page: import("@playwright/test").Page) {
+function crewGroup(page: import("@playwright/test").Page) {
+  // Scoped to `summary:visible`, which is also what keeps this off the bar's "Crew view" button
+  // (a SubmitButton, `admin-nav.tsx:140`) now that two things in this bar say "Crew".
   // `summary:visible` then up to its <details> — the idiom the #603 test already uses here.
   // Selecting the <details> directly and filtering on visibility does NOT work: at desktop width
   // it matches nothing, and at 375px it matches the hidden bar's copy as readily as the drawer's.
   return page
     .getByRole("navigation", { name: "Admin" })
     .locator("summary:visible")
-    .filter({ hasText: "People" })
+    .filter({ hasText: "Crew" })
     .locator("xpath=..");
 }
 
 /**
- * Open the People group with React provably listening (#655).
+ * Open the Crew group with React provably listening (#655).
  *
  * Two different waits, for two different reasons. The `<summary>` toggle is native, so opening
  * the group needs no JS and a plain click is correct. But every assertion about whether the group
@@ -45,7 +47,7 @@ async function openGroupHydrated(page: import("@playwright/test").Page): Promise
   await expect
     .poll(() => isHydrated(nav), { timeout: 15_000, message: "admin nav never hydrated" })
     .toBe(true);
-  const group = peopleGroup(page);
+  const group = crewGroup(page);
   await group.locator("summary:visible").click();
   await expect(group).toHaveAttribute("open", "");
 }
@@ -146,17 +148,17 @@ test.describe("admin nav", () => {
     await signInAsAdmin(page, "spink");
     const nav = page.getByRole("navigation", { name: "Admin" });
     await openMenuIfMobile(page);
-    // Desktop: Messages is shelved under People (#603) — open the group first. The drawer
+    // Desktop: Messages is shelved under Crew (#603) — open the group first. The drawer
     // renders every group expanded, so this is a no-op there.
-    const people = nav.locator("summary:visible").filter({ hasText: "People" });
-    if (await people.isVisible()) await people.click();
+    const crew = nav.locator("summary:visible").filter({ hasText: "Crew" });
+    if (await crew.isVisible()) await crew.click();
     await nav.getByRole("link", { name: "Messages" }).click();
     await page.waitForURL(/\/admin\/messages/);
     await openMenuIfMobile(page);
     // The group closes after a selection (#603), so the you-are-here cue is the highlighted
     // GROUP, not a visible link — the operator's call: "if Time Off is selected, then just
-    // People will be highlighted."
-    await expect(nav.locator("summary:visible").filter({ hasText: "People" })).toHaveAttribute(
+    // People will be highlighted" (that group is named Crew since 2026-08-08).
+    await expect(nav.locator("summary:visible").filter({ hasText: "Crew" })).toHaveAttribute(
       "data-active",
       "",
     );
@@ -217,7 +219,7 @@ test.describe("admin nav", () => {
     // React listener attached, or this passes for the worst possible reason: no handler ran, so
     // of course nothing closed. Gate on hydration explicitly.
     await openGroupHydrated(page);
-    const group = peopleGroup(page);
+    const group = crewGroup(page);
 
     // The gesture, as this handler sees it.
     await group.locator("summary").dispatchEvent("focusout", { relatedTarget: null });
@@ -266,7 +268,7 @@ test.describe("admin nav", () => {
     await openMenuIfMobile(page);
 
     await openGroupHydrated(page);
-    const group = peopleGroup(page);
+    const group = crewGroup(page);
 
     // A REAL focus move, not a synthetic dispatch. `dispatchEvent` does not carry
     // `relatedTarget` through, so a synthetic focusout is always a null one — it would have

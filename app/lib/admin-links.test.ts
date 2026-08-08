@@ -27,24 +27,26 @@ describe("visibleAdminNav", () => {
   it("shelves everything slower behind four groups", () => {
     expect(visibleAdminNav(ALL).groups.map((g) => g.label)).toEqual([
       "Bookings",
-      "People",
+      "Crew",
       "Setup",
       "Settings",
     ]);
   });
 
-  it('names the crew group "People", not "Crew"', () => {
-    // The bar already carries a "Crew view" button (switch to the crew app, DEC-093) a few dozen
-    // pixels away. One word meaning two unrelated things in one bar is how a nav loses trust.
+  it('names the crew group "Crew", not "People"', () => {
+    // Reversed 2026-08-08 on the operator's call: CUSTOMERS ARE PEOPLE TOO, so "People" read as
+    // though it might hold Bookings › Customers rather than naming the four crew surfaces it
+    // actually holds. Pinned in both directions so the next person who spots the "Crew view"
+    // button and reads this as a collision bug finds the decision instead of reverting it.
     const labels = GROUPS.map((g) => g.label);
-    expect(labels).toContain("People");
-    expect(labels).not.toContain("Crew");
+    expect(labels).toContain("Crew");
+    expect(labels).not.toContain("People");
   });
 
   it("drops a group whose every link is flagged off, rather than rendering it empty", () => {
     // Bookings is entirely reservations-gated. Opening an empty menu is worse than not seeing it.
     const off = visibleAdminNav(NONE);
-    expect(off.groups.map((g) => g.label)).toEqual(["People", "Setup", "Settings"]);
+    expect(off.groups.map((g) => g.label)).toEqual(["Crew", "Setup", "Settings"]);
     expect(off.groups.every((g) => g.links.length > 0)).toBe(true);
   });
 
@@ -56,20 +58,20 @@ describe("visibleAdminNav", () => {
   });
 
   it("keeps Messages gated on messaging alone, independent of reservations", () => {
-    const people = (f: Parameters<typeof visibleAdminNav>[0]) =>
-      visibleAdminNav(f).groups.find((g) => g.label === "People")!.links.map((l) => l.label);
-    expect(people({ ...NONE, messaging: true })).toContain("Messages");
-    expect(people({ ...NONE, reservations: true })).not.toContain("Messages");
+    const crew = (f: Parameters<typeof visibleAdminNav>[0]) =>
+      visibleAdminNav(f).groups.find((g) => g.label === "Crew")!.links.map((l) => l.label);
+    expect(crew({ ...NONE, messaging: true })).toContain("Messages");
+    expect(crew({ ...NONE, reservations: true })).not.toContain("Messages");
   });
 
   it("drops Time clock when the phase is dark, and keeps Payroll (#628)", () => {
     // The kill switch hides the punch clock, but /admin/payroll predates Phase 13 and still has
-    // its estimate — gating the whole People group on TIME_CLOCK would take payroll down with it.
-    const people = (f: Parameters<typeof visibleAdminNav>[0]) =>
-      visibleAdminNav(f).groups.find((g) => g.label === "People")!.links.map((l) => l.label);
-    expect(people(NONE)).not.toContain("Time clock");
-    expect(people(NONE)).toContain("Payroll");
-    expect(people({ ...NONE, timeClock: true })).toContain("Time clock");
+    // its estimate — gating the whole Crew group on TIME_CLOCK would take payroll down with it.
+    const crew = (f: Parameters<typeof visibleAdminNav>[0]) =>
+      visibleAdminNav(f).groups.find((g) => g.label === "Crew")!.links.map((l) => l.label);
+    expect(crew(NONE)).not.toContain("Time clock");
+    expect(crew(NONE)).toContain("Payroll");
+    expect(crew({ ...NONE, timeClock: true })).toContain("Time clock");
   });
 
   it("shelves Blocks with Bookings, not Setup", () => {

@@ -62,9 +62,15 @@ export const FLAT_LINKS: readonly AdminLink[] = [
 /**
  * Everything on a weekly-or-slower rhythm.
  *
- * "People", not "Crew" — the bar already carries a **Crew view** button (the switch down to the
- * crew app, DEC-093) a few dozen pixels away, and one word meaning two unrelated things in one
- * bar is how an operator learns to distrust it.
+ * **"Crew", not "People"** (operator, 2026-08-08), reversing the earlier call.
+ *
+ * The reason is the bar's OTHER group: **customers are people too.** "People" didn't name the
+ * boundary it was drawing — it sat two groups away from Bookings › Customers and read as though
+ * it might hold them. "Crew" names exactly who these four surfaces are about.
+ *
+ * The earlier call avoided "Crew" because the bar also carries a **Crew view** button (the
+ * switch to the crew app, DEC-093). That collision is real but small: the button is desktop-bar
+ * furniture, not a menu entry, and its meaning is obvious from where it sits.
  */
 export const GROUPS: readonly AdminGroup[] = [
   {
@@ -78,7 +84,7 @@ export const GROUPS: readonly AdminGroup[] = [
     ],
   },
   {
-    label: "People",
+    label: "Crew",
     links: [
       // Ordered by how often the operator reaches for them. Time clock leads: it's
       // the one with a standing repair queue, and payroll reads what it produces.

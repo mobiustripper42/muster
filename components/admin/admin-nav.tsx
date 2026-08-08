@@ -168,7 +168,8 @@ export function AdminNav({
               // Closed after a selection, deliberately. The first cut forced it open whenever the
               // group held the current route, to preserve the you-are-here cue. The operator's
               // call: the highlighted GROUP is that cue — "if Time Off is selected, then just
-              // People will be highlighted" — and a panel that reopens itself on every navigation
+              // People will be highlighted" (that group is named Crew since 2026-08-08; the
+              // quote is left as said) — and a panel that reopens itself on every navigation
               // is a panel you keep closing. Navigation remounts the island, so this needs no
               // state: absent `open`, every group renders shut.
               // `name` makes these an exclusive accordion in the browser itself — opening one

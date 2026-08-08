@@ -104,6 +104,7 @@ import {
   PAYMENT_CONFIG_DEFAULTS,
   type PaymentConfig,
 } from "../reservations/payment-config.js";
+import { XOLA_TRIP_MINUTES, minutesOfDay } from "../reservations/hull-busy.js";
 import type { FailureWindow, Repository } from "../ports/repository.js";
 
 /** Add `key: value` only when value is non-null — keeps optional fields absent. */
@@ -1334,6 +1335,49 @@ export class PostgresRepository implements Repository {
     const client = await this.#pool.connect();
     try {
       await client.query("begin");
+      // (0) SERIALIZE THE HULL-DAY. The overlap check below reads rows that a concurrent
+      // booking at a DIFFERENT time has not inserted yet — a phantom, which no row lock can
+      // prevent (`for update` locks rows that exist). Two buyers of 13:30 and 14:00 on one
+      // boat would each look, see nothing, and both write. An advisory lock keyed on the
+      // hull-day is the narrowest thing that actually serializes them; it releases with the
+      // transaction, and it touches no other boat and no other date.
+      await client.query("select pg_advisory_xact_lock(hashtext($1))", [
+        `${String(event.vesselId)}|${event.date}`,
+      ]);
+      // (0b) The HULL must be free over this departure — any other scheduled trip, either
+      // source, at an overlapping time (#615, #691). Exempts the MUSTER event at this exact
+      // slot, which is the slot being claimed; a Xola event at the same clock time is a
+      // foreign occupant and must still block. "HH:MM" text compared as minutes past
+      // midnight; a null duration means a full trip, never zero (see hull-busy.ts).
+      const overlap = await client.query(
+        `select 1 from events
+          where vessel_id = $1
+            and date = $2
+            and status = 'scheduled'
+            and not (source = 'muster' and time = $3)
+            and (split_part(time, ':', 1)::int * 60 + split_part(time, ':', 2)::int)
+                  < $4::int + $5::int
+            and (split_part(time, ':', 1)::int * 60 + split_part(time, ':', 2)::int
+                  + coalesce(duration_minutes, $6::int)) > $4::int
+          limit 1`,
+        // $5 is the NEW booking's length; $6 is the standing length an EXISTING untimed row is
+        // measured at. They are different numbers and coalescing against $5 was a bug: a short
+        // new charter would shrink an untimed 100-minute trip beside it and open a gap that is
+        // not there. `busyIntervalsFor` always measures an existing untimed row at
+        // XOLA_TRIP_MINUTES, and this predicate is the backstop for that same read.
+        [
+          event.vesselId,
+          event.date,
+          event.time,
+          minutesOfDay(event.time),
+          event.durationMinutes ?? XOLA_TRIP_MINUTES,
+          XOLA_TRIP_MINUTES,
+        ],
+      );
+      if ((overlap.rowCount ?? 0) > 0) {
+        await client.query("rollback");
+        return { result: "lost" }; // another trip holds this boat over this departure
+      }
       await client.query(
         `insert into events (id, vessel_id, date, time, capacity, status, source, price, dock, duration_minutes)
          values ($1,$2,$3,$4,$5,$6,'muster',$7,$8,$9)

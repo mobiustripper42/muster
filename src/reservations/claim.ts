@@ -7,7 +7,13 @@
  *
  * This is the OPTIMISTIC front-door. The hold makes the common case collision-free (the
  * second buyer never starts paying). It is NOT the authority — the whole-boat mutex
- * (`saveBookingIfSlotFree`) is the defeat-proof backstop at the write (DEC-109).
+ * (`saveBookingIfSlotFree`) is the backstop at the write (DEC-109).
+ *
+ * **What that backstop actually guarantees (#691).** It used to be called "defeat-proof", and
+ * it was — for two buyers of the SAME slot identity. Two buyers of the same boat at 13:30 and
+ * 14:00 are two different identities: the unique index never fired, the reservation guard is
+ * keyed on `event_id`, and both bookings succeeded silently. It now serializes the hull-day and
+ * rejects any overlapping trip, which is what makes the word defensible.
  */
 import { randomUUID } from "node:crypto";
 import { isProdDeploy } from "../config/deploy.js";
@@ -21,6 +27,7 @@ import { asId } from "../domain/ids.js";
 import type { CheckoutHoldId, OfferingId, VesselId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 import { isActiveMusterClaim, isSlotBlocked, slotIdentity } from "./availability.js";
+import { XOLA_TRIP_MINUTES, busyIntervalsFor, hullIsBusy, minutesOfDay } from "./hull-busy.js";
 
 /** The soft-hold lifetime (DEC-109). Lifted from sailbook's proven 15 min. */
 export const HOLD_MINUTES_DEFAULT = 15;
@@ -143,11 +150,12 @@ export async function acquireDepartureHold(
     return { unbookable: "invalid_guest_count" };
   }
 
-  const [vessels, blocks, events, reservations] = await Promise.all([
+  const [vessels, blocks, events, reservations, holds] = await Promise.all([
     repo.listVessels(),
     repo.listBlocks(),
     repo.listEvents(),
     repo.listAllReservations(),
+    repo.listCheckoutHolds(),
   ]);
 
   // Slots already sold (a materialized event carrying an active Muster claim) — skip them
@@ -159,6 +167,32 @@ export async function acquireDepartureHold(
     if (!isActiveMusterClaim(r)) continue;
     const e = eventById.get(String(r.eventId));
     if (e) bookedSlots.add(slotIdentity(e.vesselId, e.date, e.time));
+  }
+
+  // …and boats physically occupied by ANOTHER trip over this departure — a Xola booking, or a
+  // Muster one at an overlapping-but-different time (#615, #691). `bookedSlots` above only
+  // catches an exact-identity Muster claim, which is what let both of those through.
+  const tripMinutes = offering.tripLengthMinutes ?? XOLA_TRIP_MINUTES;
+  const startMinute = minutesOfDay(req.time);
+
+  // A LIVE HOLD occupies the hull as surely as a trip does. The events check above cannot see
+  // one — a hold materializes nothing — so two buyers could hold 13:30 and 14:00 on one boat,
+  // both pay, and the write CAS would refund the loser. That refund is precisely what the hold
+  // exists to avoid; catching it here is the whole point of the optimistic front door.
+  //
+  // `expiresAt > at` is the same lazy-on-read rule the deriver uses (DEC-109): an expired row is
+  // inert everywhere, so a stale hold never holds a boat hostage.
+  const at0 = now();
+  const heldIntervals = new Map<string, { start: number; end: number }[]>();
+  for (const h of holds) {
+    if (h.source !== "muster" || h.expiresAt <= at0 || h.date !== req.date) continue;
+    const start = minutesOfDay(h.time);
+    if (!Number.isFinite(start)) continue;
+    const key = String(h.vesselId);
+    const list = heldIntervals.get(key) ?? [];
+    // A hold's own offering sets its trip length; absent, the standing fallback.
+    list.push({ start, end: start + tripMinutes });
+    heldIntervals.set(key, list);
   }
 
   const candidates = candidateVessels({
@@ -173,6 +207,24 @@ export async function acquireDepartureHold(
   const at = now();
   for (const vesselId of candidates) {
     if (bookedSlots.has(slotIdentity(vesselId, req.date, req.time))) continue;
+    // Exempt the MUSTER event at this exact slot — an override materialized here IS the slot
+    // being held, not an occupant of it. Without this a departure the calendar shows as
+    // available reports sold_out at checkout. A Xola event at the same clock time is still a
+    // foreign occupant and still blocks.
+    const ownSlot = slotIdentity(vesselId, req.date, req.time);
+    const others = events.filter(
+      (e) => !(e.source === "muster" && slotIdentity(e.vesselId, e.date, e.time) === ownSlot),
+    );
+    if (hullIsBusy(busyIntervalsFor(others, vesselId, req.date), startMinute, tripMinutes)) {
+      continue;
+    }
+    // …and the same question asked of live holds, excluding any at this exact slot: the acquire
+    // CAS below is what arbitrates an identical-slot contest, and skipping here would turn a
+    // winnable race into an unnecessary fallback.
+    const rivalHolds = (heldIntervals.get(String(vesselId)) ?? []).filter(
+      (h) => h.start !== startMinute,
+    );
+    if (hullIsBusy(rivalHolds, startMinute, tripMinutes)) continue;
     const hold: CheckoutHold = {
       id: mintHoldId(),
       vesselId,

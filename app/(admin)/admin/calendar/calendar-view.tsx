@@ -8,7 +8,6 @@ import type {
 import { vesselDateOf } from "@core/config/tenant.js";
 import {
   deriveVirtualAvailability,
-  isActiveMusterClaim,
   type VirtualSlot,
 } from "@core/reservations/availability.js";
 import {
@@ -17,6 +16,7 @@ import {
   offeringColorClass,
   offeringDotClass,
   offeringOpenClass,
+  drawsOnCalendar,
 } from "@core/reservations/calendar-grid.js";
 import { Notice } from "../../../../components/ui/notice";
 import { AppLink } from "../../../../components/ui/app-link";
@@ -116,6 +116,8 @@ export interface CalendarData {
   events: Event[];
   reservations: Reservation[];
   slots: VirtualSlot[];
+  /** The trip occupying each physical `vessel|date|time`, either source — display only. */
+  tripBySlot: Map<string, { event: Event; reservation?: Reservation }>;
   offeringById: Map<string, Offering>;
   vesselById: Map<string, Vessel>;
   reservationByEventId: Map<string, Reservation>;
@@ -154,19 +156,49 @@ export async function loadCalendarData(sp: Search): Promise<CalendarData | null>
   const day = sp.date && ISO_DAY.test(sp.date) ? sp.date : today;
   const filter = sp.filter && FILTERS.some((f) => f.key === sp.filter) ? sp.filter : "all";
 
+  // EVERY booked reservation, both sources. It was Muster-only, on the reasoning that a Xola
+  // reservation's money lives in Xola (DEC-105) so the detail route is not ours to point at it.
+  // That was wrong in practice: during coexistence most cards on this calendar are imported, so
+  // most of the calendar was dead to the touch — and it is still a reservation on the operator's
+  // own boat (operator, 2026-08-07). The detail route loads by id with no source filter; a Xola
+  // row's payments and gratuities simply come back empty. A pane that says plainly this is Xola's
+  // and cannot be edited here is #704.
   const reservationByEventId = new Map<string, Reservation>();
   for (const r of reservations) {
-    if (isActiveMusterClaim(r)) reservationByEventId.set(String(r.eventId), r);
+    if (r.status === "booked") reservationByEventId.set(String(r.eventId), r);
   }
 
-  const slots = deriveVirtualAvailability({
-    offerings,
-    vessels,
-    dateRange: { start: day, end: day },
-    blocks,
-    events,
-    reservations,
-  });
+  // Who is actually on each physical boat-slot. `reservationByEventId` above covers both sources
+  // now, so this indexes through it rather than rebuilding a byte-identical copy — the copy came
+  // from the Muster-only era and its comment outlived the reason for it by about an hour.
+  const tripBySlot = new Map<string, { event: Event; reservation?: Reservation }>();
+  // Sorted by event id, and FIRST wins — two trips CAN share a physical slot (the unique index
+  // is partial on `source='muster'`, so nothing stops two Xola rows landing on one boat-time),
+  // and an unsorted last-write-wins would pick a different occupant run to run. A stable choice
+  // is not a correct one: when this happens the second occupant is a genuine double-booking and
+  // is currently invisible here. Surfacing it is #700's job — the calendar has to draw events in
+  // their own right before it can draw two of them.
+  for (const e of [...events].sort((a, b) => String(a.id).localeCompare(String(b.id)))) {
+    if (e.status !== "scheduled") continue;
+    const key = `${String(e.vesselId)}|${e.date}|${e.time}`;
+    if (tripBySlot.has(key)) continue;
+    const res = reservationByEventId.get(String(e.id));
+    tripBySlot.set(key, { event: e, ...(res ? { reservation: res } : {}) });
+  }
+
+  // ONE list, deduped ONCE. The badge counts and the grid draw from the same array on purpose:
+  // when the dedupe lived in the grid alone, "Booked 12" sat above eleven cards, and the very
+  // scenario the dedupe exists for (one boat sold by two offerings) was the one that diverged.
+  const slots = dedupeOccupied(
+    deriveVirtualAvailability({
+      offerings,
+      vessels,
+      dateRange: { start: day, end: day },
+      blocks,
+      events,
+      reservations,
+    }).filter((s) => drawsOnCalendar(s, events)),
+  );
 
   return {
     offerings,
@@ -174,6 +206,7 @@ export async function loadCalendarData(sp: Search): Promise<CalendarData | null>
     events,
     reservations,
     slots,
+    tripBySlot,
     offeringById: new Map(offerings.map((o) => [String(o.id), o])),
     vesselById: new Map(vessels.map((v) => [String(v.id), v])),
     reservationByEventId,
@@ -212,11 +245,38 @@ export function detailHref(
   return q ? `/admin/calendar/${id}?${q}` : `/admin/calendar/${id}`;
 }
 
+/**
+ * ONE CARD PER PHYSICAL TRIP. A boat-slot can be proposed by several offerings — Brew 3 is sold
+ * by both the demo cruise and the river cruise, so 1:30 produces two slots. When that slot is
+ * OCCUPIED they describe the same trip, and drawing both stacked two identical cards with the
+ * same customer's name on top of each other.
+ *
+ * OPEN slots are deliberately NOT collapsed: two offerings genuinely on sale at one time are two
+ * different things the operator could sell, and hiding one would hide a real choice. They still
+ * overlap visually — that is the collision-layout work, not this.
+ *
+ * Sorted by offeringId first so the survivor is deterministic rather than dependent on the
+ * deriver's iteration order.
+ */
+export function dedupeOccupied(slots: readonly VirtualSlot[]): VirtualSlot[] {
+  const seen = new Set<string>();
+  const out: VirtualSlot[] = [];
+  for (const s of [...slots].sort((a, b) => String(a.offeringId).localeCompare(String(b.offeringId)))) {
+    if (s.status === "booked" || s.status === "unavailable") {
+      const physical = `${String(s.vesselId)}|${s.date}|${s.time}`;
+      if (seen.has(physical)) continue;
+      seen.add(physical);
+    }
+    out.push(s);
+  }
+  return out;
+}
+
 /** Date nav + status filter — server nav (no JS); each link preserves the other axis. */
 export function CalendarControls({ data }: { data: CalendarData }) {
   const counts = {
     all: data.slots.length,
-    booked: data.slots.filter((s) => s.status === "booked").length,
+    booked: data.slots.filter((s) => s.status === "booked" || s.status === "unavailable").length,
     open: data.slots.filter((s) => s.status === "available").length,
     blackout: data.slots.filter((s) => s.status === "blocked").length,
   };
@@ -327,8 +387,15 @@ export function CalendarGrid({
   selectedReservationId?: string | undefined;
 }) {
   const gridCols = `52px repeat(${data.vessels.length}, minmax(120px, 1fr))`;
-  const matchesFilter = (s: VirtualSlot) =>
-    data.filter === "all" || FILTERS.find((f) => f.key === data.filter)?.status === s.status;
+  const matchesFilter = (s: VirtualSlot) => {
+    if (data.filter === "all") return true;
+    const want = FILTERS.find((f) => f.key === data.filter)?.status;
+    // "Booked" means "this boat is committed", which includes a hull occupied by an imported
+    // Xola charter. Matching only the literal `booked` status would filter those away and
+    // disagree with the count beside the tab.
+    if (want === "booked") return s.status === "booked" || s.status === "unavailable";
+    return want === s.status;
+  };
 
   const slotsByVessel = new Map<string, VirtualSlot[]>();
   for (const s of data.slots) {
@@ -390,23 +457,33 @@ export function CalendarGrid({
                   const reservation = s.eventId
                     ? data.reservationByEventId.get(String(s.eventId))
                     : undefined;
+                  // A hull-busy slot carries no eventId of its own — the trip occupying it is
+                  // someone else's (usually an imported Xola charter). Resolve it for display.
+                  const occupying = data.tripBySlot.get(
+                    `${String(s.vesselId)}|${s.date}|${s.time}`,
+                  );
+                  const onBoard = reservation ?? occupying?.reservation;
 
                   if (!matchesFilter(s)) return null;
 
                   const key = `${s.time}-${String(s.offeringId)}`;
                   const pos = { top: `${topPct}%`, height: `${heightPct}%` } as const;
 
-                  if (s.status === "booked") {
+                  if (s.status === "booked" || s.status === "unavailable") {
+                    // `onBoard`, not `reservation`: a hull-busy slot carries no eventId of its
+                    // own, so the eventId lookup never fires for an imported trip. Resolving
+                    // through the physical slot is what makes those cards openable at all.
                     const selected =
-                      reservation !== undefined && String(reservation.id) === selectedReservationId;
+                      onBoard !== undefined && String(onBoard.id) === selectedReservationId;
                     const body = (
                       <>
                         <span className="truncate text-[11px] font-semibold text-ink">
-                          {reservation?.customerName ?? "Booked"}
+                          {onBoard?.customerName ?? "Booked"}
                         </span>
                         <span className="font-mono text-[9.5px] text-muted">
                           {shortTime(s.time)}
-                          {reservation ? ` · ${reservation.partySize}` : ""}
+                          {onBoard ? ` · ${onBoard.partySize}` : ""}
+                          {occupying?.event.source === "xola" && !reservation ? " · Xola" : ""}
                         </span>
                       </>
                     );
@@ -415,16 +492,17 @@ export function CalendarGrid({
                     )} ${selected ? "ring-2 ring-ink ring-offset-1" : ""}`;
 
                     // A booked block links to its detail route; an unjoinable one stays inert.
-                    return reservation ? (
+                    return onBoard ? (
                       <AppLink
                         key={key}
-                        href={detailHref(data, String(reservation.id))}
+                        href={detailHref(data, String(onBoard.id))}
                         // `overlay`, not the default `inline`: the inline spinner wraps children
                         // in a single label element, which collapses this block's two stacked
                         // lines onto one. The block is `absolute`, so it's already a positioned
                         // ancestor for the overlay scrim.
                         spinner="overlay"
                         data-testid="cal-block"
+                        data-vessel={String(s.vesselId)}
                         data-status="booked"
                         aria-current={selected ? "page" : undefined}
                         className={cls}
@@ -436,6 +514,7 @@ export function CalendarGrid({
                       <div
                         key={key}
                         data-testid="cal-block"
+                        data-vessel={String(s.vesselId)}
                         data-status="booked"
                         className={cls}
                         style={pos}
@@ -450,6 +529,7 @@ export function CalendarGrid({
                       <div
                         key={key}
                         data-testid="cal-block"
+                        data-vessel={String(s.vesselId)}
                         data-status="blocked"
                         className="absolute left-[3px] right-[3px] flex items-center justify-center overflow-hidden rounded-lg border border-line text-[10px] text-muted"
                         style={{
@@ -468,6 +548,7 @@ export function CalendarGrid({
                     <div
                       key={key}
                       data-testid="cal-block"
+                        data-vessel={String(s.vesselId)}
                       data-status="available"
                       className={`absolute left-[3px] right-[3px] flex items-center justify-center overflow-hidden rounded-lg border border-dashed text-[10px] text-faint ${offeringOpenClass(
                         String(s.offeringId),

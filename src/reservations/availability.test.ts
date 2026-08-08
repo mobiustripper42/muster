@@ -305,6 +305,117 @@ describe("deriveVirtualAvailability — the DEC-125 grid", () => {
   });
 });
 
+describe("deriveVirtualAvailability — the hull is busy (#615, #691)", () => {
+  const trip = (over: Partial<Offering> = {}) =>
+    offering({
+      tripLengthMinutes: 100,
+      schedule: { seasonStart: "2026-06-01", seasonEnd: "2026-08-31", weekdays: [5], departureTimes: ["13:30", "15:30"] },
+      ...over,
+    });
+  const day = { ...base, offerings: [trip()], dateRange: ONE_SAT };
+
+  it("hull-busy is `unavailable`, NOT `booked` — nobody bought this slot", () => {
+    // The distinction is the operator's. `booked` means a reservation exists; the admin
+    // calendar draws it as a card with the customer's name. A slot whose boat is merely out
+    // on another trip has no reservation, and rendering it as `booked` put a phantom booking
+    // on the calendar — two "Booked" cards on one boat where only one trip was sold.
+    const out = deriveVirtualAvailability({
+      ...day,
+      events: [ev("x0", { source: "xola", date: "2026-07-04", time: "13:30" })],
+    });
+    expect(out.find((s) => s.time === "13:30")!.status).toBe("unavailable");
+    // …and a REAL booking still reads `booked`.
+    const real = deriveVirtualAvailability({
+      ...day,
+      events: [ev("m0", { date: "2026-07-04", time: "13:30", durationMinutes: 100 })],
+      reservations: [res("r0", "m0")],
+    });
+    expect(real.find((s) => s.time === "13:30")!.status).toBe("booked");
+  });
+
+  it("an operator BLOCK outranks a busy hull — a blackout must not vanish (#694 review)", () => {
+    // `unavailable` used to win, and the calendar hides those, so an operator block on a day
+    // with an overlapping trip disappeared from the grid AND from the Blackout count. The
+    // operator could not see their own blackout. A block is a deliberate act; it outranks a
+    // fact about the boat.
+    const out = deriveVirtualAvailability({
+      ...day,
+      events: [ev("xb", { source: "xola", date: "2026-07-04", time: "13:30" })],
+      blocks: [
+        {
+          id: asId<"BlockId">("blk-day"),
+          kind: "vessel",
+          vesselId: V,
+          startDate: "2026-07-04",
+          endDate: "2026-07-04",
+        },
+      ],
+    });
+    // Every slot that day is blocked, including the one whose hull is also busy.
+    expect(out.every((s) => s.status === "blocked")).toBe(true);
+    expect(out.length).toBeGreaterThan(1);
+  });
+
+  it("a XOLA trip on the hull takes the slot off the market", () => {
+    // The whole point of #615: an imported Xola booking was invisible to the funnel, so
+    // Muster would happily sell a boat Xola had already sold.
+    const out = deriveVirtualAvailability({
+      ...day,
+      events: [ev("x1", { source: "xola", date: "2026-07-04", time: "13:30" })],
+    });
+    const at1330 = out.find((s) => s.time === "13:30")!;
+    expect(at1330.status).not.toBe("available");
+    expect(out.find((s) => s.time === "15:30")!.status).toBe("available");
+  });
+
+  it("a Xola trip at 14:00 also takes out the 15:30 slot — overlap, not identity (#691)", () => {
+    // 14:00 + 100min runs to 15:40, over the 15:30 departure. Different slot identity, so
+    // the old exact-triple guard let this through.
+    const out = deriveVirtualAvailability({
+      ...day,
+      events: [ev("x2", { source: "xola", date: "2026-07-04", time: "14:00" })],
+    });
+    expect(out.find((s) => s.time === "15:30")!.status).not.toBe("available");
+  });
+
+  it("a MUSTER booking blocks an overlapping slot too — same defect, either source", () => {
+    const out = deriveVirtualAvailability({
+      ...day,
+      events: [ev("m1", { date: "2026-07-04", time: "14:00", durationMinutes: 100 })],
+      reservations: [res("r1", "m1")],
+    });
+    expect(out.find((s) => s.time === "15:30")!.status).not.toBe("available");
+  });
+
+  it("a busy hull does not block the SAME offering on another vessel", () => {
+    const V2 = asId<"VesselId">("vessel-brew-9");
+    const out = deriveVirtualAvailability({
+      ...day,
+      offerings: [trip({ vesselIds: [V, V2] })],
+      vessels: [vessel(), vessel({ id: V2 })],
+      events: [ev("x3", { source: "xola", date: "2026-07-04", time: "13:30" })],
+    });
+    const at1330 = out.filter((s) => s.time === "13:30");
+    expect(at1330.find((s) => String(s.vesselId) === "vessel-brew-9")!.status).toBe("available");
+    expect(at1330.find((s) => String(s.vesselId) === String(V))!.status).not.toBe("available");
+  });
+
+  it("a CANCELLED Xola trip releases the boat", () => {
+    const out = deriveVirtualAvailability({
+      ...day,
+      events: [ev("x4", { source: "xola", status: "cancelled", date: "2026-07-04", time: "13:30" })],
+    });
+    expect(out.find((s) => s.time === "13:30")!.status).toBe("available");
+  });
+
+  it("back-to-back departures still both sell", () => {
+    // 13:30 and 15:30 on a 100-minute trip abut exactly (13:30–15:10, then 15:30). A closed
+    // interval would refuse the operator's own schedule.
+    const out = deriveVirtualAvailability(day);
+    expect(out.filter((s) => s.status === "available")).toHaveLength(2);
+  });
+});
+
 describe("deriveVirtualAvailability — price resolution (first match wins)", () => {
   const one = (over: Partial<Offering>) =>
     deriveVirtualAvailability({
@@ -433,14 +544,19 @@ describe("deriveVirtualAvailability — materialized events overlay (DEC-125 pre
     expect(slot.status).toBe("booked"); // not "blocked"
   });
 
-  it("a Xola-owned event never overlays a Muster slot", () => {
+  it("a Xola event occupies the hull but never becomes the Muster slot's event", () => {
+    // Two halves, and #615 inverted one of them. A Xola event must never overlay a Muster
+    // slot's IDENTITY — its money lives in Xola (DEC-105) and it must not be sold or mutated
+    // through the Muster funnel, so `eventId` stays undefined. But it does occupy the boat,
+    // and this test used to assert the slot stayed `available` — encoding the double-sell as
+    // the contract. It was green the whole time.
     const xola = ev("evt-xola", { time: "13:30", source: "xola" });
     const slot = deriveVirtualAvailability({
       ...base,
       events: [xola],
     })[0]!;
-    expect(slot.eventId).toBeUndefined(); // stays purely virtual
-    expect(slot.status).toBe("available");
+    expect(slot.eventId).toBeUndefined(); // still purely virtual — not Muster's to sell
+    expect(slot.status).toBe("unavailable"); // …but the hull is taken
   });
 });
 

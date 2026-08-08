@@ -10,6 +10,8 @@
 
 // ── Time window (matches the mockup: 8:00 → 21:30) ───────────────────────────
 /** Grid start — 08:00 in minutes-since-midnight. */
+import type { VesselId } from "../domain/ids.js";
+
 export const GRID_START_MIN = 8 * 60; // 480
 /** Grid end — 21:30 in minutes-since-midnight. */
 export const GRID_END_MIN = 21 * 60 + 30; // 1290
@@ -107,4 +109,35 @@ export function offeringDotClass(offeringId: string): string {
 /** The dashed-border tint (transparent fill) for an OPEN slot of this offering. */
 export function offeringOpenClass(offeringId: string): string {
   return OFFERING_OPEN_CLASSES[offeringColorIndex(offeringId) - 1]!;
+}
+
+/**
+ * Should the operator's calendar draw this slot? (#615/#691, operator's call 2026-08-07.)
+ *
+ * `unavailable` covers two very different things, and the calendar must not treat them alike:
+ *
+ *  - **A real trip is running at this exact time.** The boat is out — a Xola charter, or a
+ *    Muster departure. The operator has to see that, so it is DRAWN.
+ *  - **Nothing is running here.** The slot is unsellable only because a trip at a *different*
+ *    time overlaps it — a 17:30 charter reaching over an 18:00 departure. There is no booking
+ *    and no trip; it is a departure the schedule proposes and the boat cannot make. Drawing it
+ *    put a second "Booked" card on a hull that had sold one trip, which is what the operator
+ *    saw. It is HIDDEN.
+ *
+ * Every other status draws as before. The customer surface makes no such distinction — it
+ * collapses everything non-available to sold out, which is the honest answer to "can I book
+ * this?" The operator's question is different: "what is my boat doing?"
+ */
+export function drawsOnCalendar(
+  slot: { vesselId: VesselId; date: string; time: string; status: string },
+  events: readonly { vesselId: VesselId; date: string; time: string; status: string }[],
+): boolean {
+  if (slot.status !== "unavailable") return true;
+  return events.some(
+    (e) =>
+      e.status === "scheduled" &&
+      String(e.vesselId) === String(slot.vesselId) &&
+      e.date === slot.date &&
+      e.time === slot.time,
+  );
 }

@@ -27,6 +27,13 @@ import type {
 } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import type { EventId, OfferingId, VesselId } from "../domain/ids.js";
+import {
+  XOLA_TRIP_MINUTES,
+  busyIntervalsFor,
+  hullIsBusy,
+  minutesOfDay,
+  type BusyInterval,
+} from "./hull-busy.js";
 
 export interface EventAvailability {
   eventId: EventId;
@@ -150,9 +157,15 @@ export interface VirtualSlot {
    *  The party fare (base + extras × extraGuestPrice + gratuity, DEC-124) is booking-time,
    *  NOT computed here. */
   priceCents: number;
-  /** `held` = a live customer checkout-hold occupies the slot (DEC-109, 12.1) — transient,
-   *  distinct from `blocked` (an operator block). */
-  status: "available" | "held" | "booked" | "blocked";
+  /** Four ways a slot is not sellable, and they are NOT interchangeable:
+   *  - `booked` — a reservation exists. The admin calendar draws it with the customer's name.
+   *  - `unavailable` — the BOAT is out on another trip that overlaps this departure (#615,
+   *    #691). Nobody bought this slot; it simply cannot run. Calling it `booked` put phantom
+   *    bookings on the operator's calendar — two cards on one hull where one trip was sold.
+   *  - `held` — a live customer checkout-hold (DEC-109, 12.1), transient.
+   *  - `blocked` — an operator block (DEC-125), deliberate and liftable.
+   *  The customer surface collapses all four to "not available"; the operator's does not. */
+  status: "available" | "held" | "booked" | "blocked" | "unavailable";
   /** Set when a materialized `Event` backs this slot (an override or a booking). */
   eventId?: EventId;
 }
@@ -256,7 +269,9 @@ export function resolveBasePrice(offering: Offering, date: string): number {
  *  2. **Materialized `Event` wins its slot identity** — an override recomputes time/price/
  *     capacity from the Event; a booked slot is frozen `booked`. Committed state beats
  *     blocks (you can't block away a booking).
- *  3. **Blocks subtract virtual (unmaterialized) slots** → `blocked`.
+ *  3. **Blocks subtract virtual (unmaterialized) slots** → `blocked`. An operator block wins
+ *     over a busy hull: it is a deliberate act, and the calendar hides `unavailable` slots that
+ *     nothing runs at, so ranking the other way made a blackout vanish from the grid.
  *  4. A **live checkout-hold** (`expiresAt > asOf`) on a surviving slot → `held` (12.1).
  *  5. Everything surviving is `available`.
  *
@@ -303,6 +318,30 @@ export function deriveVirtualAvailability(
     }
   }
 
+  // Hull occupancy from EVERY scheduled event, both sources (#615, #691). Tagged with its own
+  // slot identity so a materialized slot is never blocked by its own trip. This is what makes
+  // the deriver see an imported Xola booking — and a Muster booking at an OVERLAPPING (not
+  // identical) time, which the old slot-identity check missed entirely.
+  // Tagged by EVENT ID, not slot identity: a slot must be exempt from its OWN trip, and only
+  // its own. Keying on identity was wrong — it also exempted a foreign (Xola) trip sitting at
+  // the same clock time, which is precisely the collision this exists to catch.
+  const busyByHullDay = new Map<string, { eventId: string; interval: BusyInterval }[]>();
+  for (const e of events) {
+    if (e.status !== "scheduled") continue;
+    const key = `${String(e.vesselId)}|${e.date}`;
+    const [interval] = busyIntervalsFor([e], e.vesselId, e.date);
+    if (!interval) continue;
+    const list = busyByHullDay.get(key) ?? [];
+    list.push({ eventId: String(e.id), interval });
+    busyByHullDay.set(key, list);
+  }
+
+  /** Windows occupying this hull-day, minus the given event's own (pass none for a virtual slot). */
+  const hullBusyExcept = (vesselId: VesselId, date: string, selfEventId?: string): BusyInterval[] =>
+    (busyByHullDay.get(`${String(vesselId)}|${date}`) ?? [])
+      .filter((b) => b.eventId !== selfEventId)
+      .map((b) => b.interval);
+
   // NB: slots carry `offeringId`, so two live offerings that schedule the SAME
   // physical (vessel, date, time) each emit their own slot — a scheduling error the
   // deriver does not resolve. 12.1's slot-identity uniqueness (the conditional insert /
@@ -324,6 +363,12 @@ export function deriveVirtualAvailability(
         for (const time of schedule.departureTimes) {
           const materialized = eventBySlot.get(slotIdentity(vesselId, date, time));
           if (materialized) {
+            // An unbooked override still can't sail if another trip holds the hull over it.
+            const collides = hullIsBusy(
+              hullBusyExcept(vesselId, date, String(materialized.id)),
+              minutesOfDay(time),
+              materialized.durationMinutes ?? offering.tripLengthMinutes ?? XOLA_TRIP_MINUTES,
+            );
             const booked = bookedEventIds.has(String(materialized.id));
             slots.push({
               offeringId: offering.id,
@@ -332,14 +377,28 @@ export function deriveVirtualAvailability(
               time,
               capacity: materialized.capacity,
               priceCents: materialized.price ?? basePrice,
-              status: booked ? "booked" : "available",
+              status: booked ? "booked" : collides ? "unavailable" : "available",
               eventId: materialized.id,
             });
             continue;
           }
-          // Precedence on a virtual slot: block (operator) beats hold (transient) beats free.
+          // Precedence on a virtual slot: hull-busy (another trip is on this boat) beats
+          // block beats hold beats free. Busy is first because it is a fact about the world —
+          // an operator block can be lifted, a trip already sold cannot.
+          const identity = slotIdentity(vesselId, date, time);
+          // No Muster event backs this identity (the materialized branch returned above), so
+          // every window here belongs to another trip.
+          const occupied = hullIsBusy(
+            hullBusyExcept(vesselId, date),
+            minutesOfDay(time),
+            offering.tripLengthMinutes ?? XOLA_TRIP_MINUTES,
+          );
+          // BLOCK outranks a busy hull. A block is a deliberate operator act and the calendar
+          // has to show it; `unavailable` is hidden there when nothing runs at that time, so
+          // ranking busy first made an operator's own blackout disappear from the grid and from
+          // the Blackout count. Being unsellable twice over is still a blackout.
           const blocked = isSlotBlocked(blocks, String(offering.locationId), vesselId, date, time);
-          const held = !blocked && heldSlots.has(slotIdentity(vesselId, date, time));
+          const held = !blocked && !occupied && heldSlots.has(identity);
           slots.push({
             offeringId: offering.id,
             vesselId,
@@ -347,7 +406,7 @@ export function deriveVirtualAvailability(
             time,
             capacity: vessel.coiMaxPax,
             priceCents: basePrice,
-            status: blocked ? "blocked" : held ? "held" : "available",
+            status: blocked ? "blocked" : occupied ? "unavailable" : held ? "held" : "available",
           });
         }
       }

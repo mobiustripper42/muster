@@ -211,3 +211,109 @@ describe("hold TTL override (CHECKOUT_HOLD_MINUTES)", () => {
     expect(resolveHoldMinutes()).toBe(0.5);
   });
 });
+
+describe("acquireDepartureHold — the hull, not just the slot (#615, #691)", () => {
+  const xolaTrip = (time: string, id: string) => ({
+    id: asId<"EventId">(id),
+    vesselId: SMALL,
+    date: DATE,
+    time,
+    capacity: 6,
+    status: "scheduled" as const,
+    source: "xola" as const,
+  });
+
+  it("skips a boat a XOLA trip is already using", async () => {
+    const repo = await seededRepo();
+    await repo.saveEvent(xolaTrip(TIME, "x-1"));
+    const res = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: TIME, guestCount: 4 }, now);
+    // Small is physically taken by Xola, so the hold falls through to the big boat. Before
+    // #615 the funnel could not see the Xola trip at all and would have held the small one.
+    expect("held" in res && String(res.held.vesselId)).toBe("v-big");
+  });
+
+  it("skips a boat busy at an OVERLAPPING time, not just the same one (#691)", async () => {
+    const repo = await seededRepo();
+    // 13:00 + 100min runs to 14:40, straight through a 13:30 departure. Different slot
+    // identity, which is exactly why the old exact-triple check missed it.
+    await repo.saveEvent(xolaTrip("13:00", "x-2"));
+    const res = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: TIME, guestCount: 4 }, now);
+    expect("held" in res && String(res.held.vesselId)).toBe("v-big");
+  });
+
+  it("still holds a boat whose trip ends exactly when ours starts", async () => {
+    const repo = await seededRepo();
+    await repo.saveEvent(xolaTrip("11:50", "x-3")); // 11:50 + 100 = 13:30, abuts
+    const res = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: TIME, guestCount: 4 }, now);
+    expect("held" in res && String(res.held.vesselId)).toBe("v-small");
+  });
+
+  it("still holds a slot that has an UNBOOKED override event of its own", async () => {
+    // An override Event materialized at the very slot being held is not an occupant — it IS
+    // the slot. Counting it made the hold see the boat as busy against itself, so a departure
+    // the calendar shows as available would report sold_out at checkout.
+    const repo = await seededRepo();
+    await repo.saveEvent({
+      id: eventIdForSlot(SMALL, DATE, TIME),
+      vesselId: SMALL,
+      date: DATE,
+      time: TIME,
+      capacity: 6,
+      status: "scheduled",
+      source: "muster",
+      price: 42000, // an operator override price on this departure
+    });
+    const res = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: TIME, guestCount: 4 }, now);
+    expect("held" in res && String(res.held.vesselId)).toBe("v-small");
+  });
+
+  it("sold out when a Xola trip occupies every fitting boat", async () => {
+    const repo = await seededRepo();
+    for (const [i, v] of [SMALL, BIG].entries()) {
+      await repo.saveEvent({ ...xolaTrip(TIME, `x-all-${i}`), vesselId: v, capacity: 12 });
+    }
+    const res = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: TIME, guestCount: 4 }, now);
+    expect(res).toEqual({ soldOut: true });
+  });
+});
+
+describe("acquireDepartureHold — a live HOLD occupies the hull too (#694 review)", () => {
+  it("skips a boat whose overlapping departure is already held by a rival", async () => {
+    // Two buyers, one boat, 13:30 and a departure inside its trip length. The events check
+    // could not see this — a hold materializes nothing — so both started paying and the write
+    // CAS refunded the loser. That refund is exactly what the hold system exists to prevent.
+    const repo = await seededRepo();
+    await repo.acquireCheckoutHold({
+      id: asId<"CheckoutHoldId">("rival-overlap"),
+      vesselId: SMALL,
+      date: DATE,
+      time: "13:00", // 13:00 + 100min runs to 14:40, over a 13:30 departure
+      source: "muster",
+      offeringId: OFF,
+      guestCount: 2,
+      expiresAt: holdExpiry(NOW),
+      createdAt: NOW,
+    });
+    const res = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: TIME, guestCount: 4 }, now);
+    expect("held" in res && String(res.held.vesselId)).toBe("v-big"); // fell back off the held hull
+  });
+
+  it("an EXPIRED overlapping hold does not occupy anything", async () => {
+    // Lazy-on-read expiry (DEC-109). A stale row must not hold a boat hostage.
+    const repo = await seededRepo();
+    await repo.acquireCheckoutHold({
+      id: asId<"CheckoutHoldId">("stale-overlap"),
+      vesselId: SMALL,
+      date: DATE,
+      time: "13:00",
+      source: "muster",
+      offeringId: OFF,
+      guestCount: 2,
+      expiresAt: "2026-07-04T11:00:00.000Z", // before `now`
+      createdAt: "2026-07-04T10:45:00.000Z",
+    });
+    const res = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: TIME, guestCount: 4 }, now);
+    expect("held" in res && String(res.held.vesselId)).toBe("v-small");
+  });
+});
+

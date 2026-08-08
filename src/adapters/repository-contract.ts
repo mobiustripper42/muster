@@ -743,6 +743,75 @@ export function runRepositoryContract(
       expect(await repo.listReservationsForEvent(SLOT_ID)).toHaveLength(1);
     });
 
+    it("saveBookingIfSlotFree: LOSES when a Xola trip already holds the hull (#615)", async () => {
+      // The imported Xola booking is a different source and a different event id, so every
+      // guard the CAS had — the partial unique index, the `not exists` reservation check —
+      // sailed straight past it. Muster would sell a boat Xola had already sold.
+      await repo.saveEvent(
+        event({ id: asId<"EventId">("evt-xola-hull"), source: "xola", time: "14:00" }),
+      );
+      const res = await repo.saveBookingIfSlotFree(
+        slotEvent(),
+        reservation({ id: rid("resv-x"), source: "muster", eventId: SLOT_ID }),
+      );
+      expect(res.result).toBe("lost");
+      expect(await repo.listReservationsForEvent(SLOT_ID)).toHaveLength(0);
+    });
+
+    it("saveBookingIfSlotFree: LOSES on an OVERLAPPING time, not just the same one (#691)", async () => {
+      // 13:00 + 100min runs to 14:40, over a 14:00 departure. A different slot identity, which
+      // is exactly why the exact-triple guard called itself defeat-proof and wasn't.
+      await repo.saveEvent(
+        event({ id: asId<"EventId">("evt-overlap"), source: "muster", time: "13:00", durationMinutes: 100 }),
+      );
+      const res = await repo.saveBookingIfSlotFree(
+        slotEvent(),
+        reservation({ id: rid("resv-o"), source: "muster", eventId: SLOT_ID }),
+      );
+      expect(res.result).toBe("lost");
+    });
+
+    it("saveBookingIfSlotFree: an untimed existing trip is measured at the STANDING length, not the new booking's", async () => {
+      // The SQL coalesced a null `duration_minutes` against the NEW booking's duration. Book a
+      // short charter and the untimed Xola trip beside it shrinks to match — opening a gap that
+      // is not there. `busyIntervalsFor` always measures an existing untimed row at
+      // XOLA_TRIP_MINUTES, and the backstop has to agree or the read path and the write path
+      // disagree about the same boat.
+      await repo.saveEvent(
+        // 13:00, no duration ⇒ 100 minutes ⇒ busy to 14:40, over the 14:00 slot.
+        event({ id: asId<"EventId">("evt-untimed"), source: "xola", time: "13:00" }),
+      );
+      const res = await repo.saveBookingIfSlotFree(
+        slotEvent({ durationMinutes: 30 }), // a SHORT new booking at 14:00
+        reservation({ id: rid("resv-short"), source: "muster", eventId: SLOT_ID }),
+      );
+      expect(res.result).toBe("lost");
+    });
+
+    it("saveBookingIfSlotFree: WINS when the other trip ends exactly as this one starts", async () => {
+      // Half-open intervals. Back-to-back departures are the operator's actual schedule, so
+      // a closed interval here would refuse every second sailing of the day.
+      await repo.saveEvent(
+        event({ id: asId<"EventId">("evt-abuts"), source: "muster", time: "12:20", durationMinutes: 100 }),
+      );
+      const res = await repo.saveBookingIfSlotFree(
+        slotEvent(),
+        reservation({ id: rid("resv-ab"), source: "muster", eventId: SLOT_ID }),
+      );
+      expect(res.result).toBe("won");
+    });
+
+    it("saveBookingIfSlotFree: a CANCELLED trip on the hull does not block", async () => {
+      await repo.saveEvent(
+        event({ id: asId<"EventId">("evt-cancelled"), source: "xola", time: "14:00", status: "cancelled" }),
+      );
+      const res = await repo.saveBookingIfSlotFree(
+        slotEvent(),
+        reservation({ id: rid("resv-c"), source: "muster", eventId: SLOT_ID }),
+      );
+      expect(res.result).toBe("won");
+    });
+
     it("saveBookingIfSlotFree: idempotent on reservation id (redelivered webhook)", async () => {
       const ev = slotEvent();
       const r = reservation({ id: rid("resv-a"), source: "muster", eventId: SLOT_ID });

@@ -45,6 +45,7 @@ Two design changes the mockups forced, plus the answer to the Stripe-timing race
      timeout *inside* Stripe (no server-side payment deadline), so a hold can expire while a payment is
      still in flight. Only the atomic write-time claim is defeat-proof by timing. The hold is an
      optimization on top of the CAS, never a replacement for it. Do not "optimize away" the backstop.
+     *(See the correction below — "defeat-proof" was true of the design and not of the code.)*
    - **The residual race** (a hold expires mid-payment, another buyer grabs the freed slot and pays, the
      first payment then completes): both captured money, one wins the atomic claim, the **loser is
      auto-refunded and told the slot sold out while they were paying** — an explicit customer-facing
@@ -62,3 +63,25 @@ the both-adapters contract, and the refund-on-loss webhook flow. This wants a de
 sailbook's real implementation, not an inline design — it's the highest-risk piece. **Supersedes** the
 "Revisit if overbooking-with-waitlist" note only insofar as the waitlist itself stays parked (FUTURE_IDEAS,
 DEC-109's own trigger); the hold is not a waitlist.
+
+> **Correction (2026-08-06, #691 — a defect, not a change of mind).**
+>
+> The design above is unchanged and was right. What was wrong is that **the code implementing it
+> ignored the fact that a reservation lasts longer than zero minutes.**
+>
+> The CAS guarded **slot identity** — the exact `(vessel, date, time)` triple. Two bookings on one boat
+> at 13:30 and 14:00 are two different identities, so the partial unique index never fired and the
+> reservation guard (keyed on `event_id`) never fired. **Both writes succeeded.** One hull, two paying
+> parties, overlapping on the water — and silently: #613's paid-but-unbooked net only fires when a write
+> is *rejected*, and here a clean reservation is written. Reproduced against real Postgres: two
+> concurrent bookings returned `won, won` in 3 of 3 runs.
+>
+> Three places in the tree — `claim.ts`, `entities.ts`, and this decision — called the claim
+> **defeat-proof**. It was, for an identical triple. It was trivially defeated by overlap, and that word
+> is what stopped anyone from looking.
+>
+> **Fixed in #615/#691.** The guard is now the **hull over the trip's duration**: any other scheduled
+> trip on that boat whose window overlaps blocks the sale, regardless of `source` (a whole-boat mutex is
+> not the cross-source *capacity arithmetic* DEC-106 prohibits — there is no count to reconcile). The
+> write serializes on the hull-day with a Postgres advisory lock, because a row lock cannot see a rival
+> booking at a different time until it inserts. Details live in `src/reservations/hull-busy.ts`.

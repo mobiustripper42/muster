@@ -18,6 +18,7 @@ import {
   type WebhookDeps,
 } from "../reservations/booking-webhook.js";
 import { writeBooking } from "../reservations/write-booking.js";
+import { eventIdForSlot } from "../reservations/availability.js";
 import { asId } from "../domain/ids.js";
 import type { TimePunch } from "../domain/entities.js";
 import type { CrewMemberId, TimePunchId } from "../domain/ids.js";
@@ -383,6 +384,77 @@ if (!dbUp) {
       const rows = await repo.listReservationsForEvent(EVENT2);
       expect(rows).toHaveLength(1);
       expect(rows[0]!.status).toBe("booked");
+    });
+  });
+
+  /**
+   * Two buyers, one HULL, overlapping-but-different times (#691).
+   *
+   * The sibling race above contends on ONE event id, which the whole-boat mutex has always
+   * handled. This one contends on two DIFFERENT slot identities on the same boat — 13:30 and
+   * 14:00 against a 100-minute trip. Every guard that existed keyed on the exact triple: the
+   * partial unique index, the `not exists` reservation check. Both writes used to succeed, and
+   * nothing anywhere reported it (#613's net only fires when a write is REJECTED).
+   *
+   * A row lock cannot close this — `for update` locks rows that exist, and the rival's row is a
+   * phantom until it inserts. The advisory lock on the hull-day is what makes it real, and this
+   * test is the only thing that proves the lock is doing the work: negative-control it by
+   * deleting the `pg_advisory_xact_lock` line and this goes red with two bookings.
+   */
+  describe("two buyers, one hull, overlapping times — the #691 hole", () => {
+    const VESSEL3 = asId<"VesselId">("vessel-brew-7");
+    const DATE3 = "2026-07-04";
+    const NOW3 = () => "2026-07-12T00:00:00.000Z";
+
+    it("sells the boat exactly once across two overlapping departures", async () => {
+      await pool.query(`truncate ${TABLES.join(", ")} restart identity cascade`);
+      const repo = new PostgresRepository(pool);
+
+      const booking = (time: string, name: string) => {
+        const id = eventIdForSlot(VESSEL3, DATE3, time);
+        return {
+          event: {
+            id,
+            vesselId: VESSEL3,
+            date: DATE3,
+            time,
+            capacity: 12,
+            status: "scheduled" as const,
+            source: "muster" as const,
+            durationMinutes: 100,
+          },
+          reservation: {
+            id: asId<"ReservationId">(`resv-${time}`),
+            eventId: id,
+            source: "muster" as const,
+            customerName: name,
+            partySize: 4,
+            status: "booked" as const,
+          },
+        };
+      };
+
+      const a = booking("13:30", "Ann"); // 13:30 → 15:10
+      const b = booking("14:00", "Ben"); // 14:00 → 15:40, overlapping Ann by 70 minutes
+
+      const [ra, rb] = await Promise.all([
+        repo.saveBookingIfSlotFree(a.event, a.reservation),
+        repo.saveBookingIfSlotFree(b.event, b.reservation),
+      ]);
+
+      // Exactly one winner. Which one depends on interleaving and is not worth pinning.
+      const results = [ra.result, rb.result].sort();
+      expect(results).toEqual(["lost", "won"]);
+
+      // The invariant stated on the data, not the return values: one boat, one booked party
+      // on that day. This is the assertion that reads `2` without the advisory lock.
+      const { rows } = await pool.query(
+        `select count(*)::int as n from reservations r
+           join events e on e.id = r.event_id
+          where e.vessel_id = $1 and e.date = $2 and r.status = 'booked'`,
+        [VESSEL3, DATE3],
+      );
+      expect(rows[0].n).toBe(1);
     });
   });
 

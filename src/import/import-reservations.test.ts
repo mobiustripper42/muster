@@ -190,16 +190,38 @@ describe("importRecords — event-id-keyed Map+Reconcile (DEC-043)", () => {
      * internal bookkeeping, not a change to the booking — if it counted, the first import after
      * this ships would bump `updatedAt` on every row in the back catalogue and fire a DEC-029
      * nudge for all of them.
+     *
+     * **The stored row must start UNLINKED**, which is the whole point and what this test got
+     * wrong first time round: importing twice post-#701 links on pass one, so pass two compares
+     * an identical `customerId` and the assertion holds whether or not the field is in the
+     * materiality set. @code-review caught it by adding `customerId` to the set and watching all
+     * five tests still pass. The scenario that matters is a PRE-#701 row — 39 of them, sitting
+     * in the operator's database right now — meeting the first import after this ships.
      */
-    it("linking a customer is not a material change — updatedAt survives a re-import", async () => {
+    it("linking a previously-unlinked row is not a material change — updatedAt survives", async () => {
       const repo = new InMemoryRepository();
       const t1 = new Date("2026-05-01T00:00:00.000Z");
       const t2 = new Date("2026-05-02T00:00:00.000Z");
 
-      await importRecords(repo, [booked("r1", { phone: "(216) 555-0148" })], t1);
+      // A row as the importer wrote them before this change: every material field already
+      // correct, `customerId` absent. Written directly, because no version of the importer
+      // that produces one exists any more.
+      await repo.saveReservation({
+        id: rid("r1"),
+        eventId: EVENT_ID,
+        source: "xola",
+        customerName: "Ada",
+        partySize: 4,
+        status: "booked",
+        phone: "(216) 555-0148",
+        updatedAt: t1.toISOString(),
+      });
+
       await importRecords(repo, [booked("r1", { phone: "(216) 555-0148" })], t2);
 
-      expect((await repo.getReservation(rid("r1")))?.updatedAt).toBe(t1.toISOString());
+      const after = await repo.getReservation(rid("r1"));
+      expect(after?.customerId).toBeDefined(); // the link DID appear …
+      expect(after?.updatedAt).toBe(t1.toISOString()); // … and it was not a material change
     });
   });
 });

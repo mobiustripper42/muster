@@ -503,24 +503,6 @@ export class InMemoryRepository implements Repository {
   async listAllReservations(): Promise<Reservation[]> {
     return [...this.#reservations.values()].map(clone);
   }
-  async saveReservationIfUnclaimed(reservation: Reservation): Promise<boolean> {
-    // Single-threaded JS makes this trivially atomic; the contract it upholds is what
-    // matters — the Postgres adapter enforces the same whole-boat mutex under real
-    // concurrency (DEC-109). Absent event ⇒ false (mirrors saveSeatIfState). The claim
-    // is source-scoped (only active `muster` reservations block) and idempotent on id
-    // (a re-put of the same reservation never blocks itself, never duplicates).
-    if (!this.#events.has(reservation.eventId)) return false;
-    const blocked = [...this.#reservations.values()].some(
-      (r) =>
-        r.eventId === reservation.eventId &&
-        r.source === "muster" &&
-        r.status === "booked" &&
-        r.id !== reservation.id,
-    );
-    if (blocked) return false;
-    this.#reservations.set(reservation.id, clone(reservation));
-    return true;
-  }
 
   async saveBookingIfSlotFree(
     event: Event,

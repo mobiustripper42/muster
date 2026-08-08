@@ -30,9 +30,16 @@ const completed = (over: Partial<CheckoutCompleted> = {}): CheckoutCompleted => 
   paymentIntentId: "pi_1",
   amountTotalCents: 53625,
   currency: "usd",
+  // Slot-shaped, because that is the only booking shape the webhook accepts since #693 retired
+  // the legacy `eventId` path. The one test that still needs the old shape overrides it and
+  // asserts the refusal.
   metadata: {
-    eventId: "m-evt-1",
-    partySize: "6",
+    offeringId: "off-1",
+    vesselId: "v",
+    date: "2026-07-04",
+    time: "17:00",
+    guestCount: "6",
+    priceCents: "50000",
     kind: "full",
     taxCents: "3625",
     customerName: "Mary",
@@ -158,6 +165,39 @@ describe("processBookingWebhook", () => {
     expect(confirm).toHaveBeenCalledOnce();
   });
 
+  /**
+   * The legacy 11.2 booking path is RETIRED (issue #693). A session whose metadata carries an
+   * `eventId` instead of a slot must alert and book nothing.
+   *
+   * Why retire rather than guard it: #615/#691 put the hull-overlap guard and the hull-day
+   * advisory lock on `saveBookingIfSlotFree`; `saveReservationIfUnclaimed` never got them, so
+   * this branch still claimed by row-locking one `event_id` — exactly the pre-#691 behaviour
+   * where two overlapping trips on one boat both succeed. Nothing mints legacy metadata
+   * (`createBookingCheckout` had no caller under `app/`), so it was an UNGUARDED FALLBACK rather
+   * than a removed one, sitting on the money path.
+   *
+   * Money has already moved by the time this runs, so the refusal is loud — same posture as the
+   * flag-off branch above it, and as every other paid-but-unbooked outcome (#613).
+   */
+  it("refuses a legacy eventId-shaped session: alerts, books nothing (#693)", async () => {
+    const repo = new InMemoryRepository();
+    await repo.saveEvent(musterEvent());
+    const { deps, alert, confirm } = makeDeps(repo);
+
+    const legacy = completed({
+      metadata: { eventId: "m-evt-1", partySize: "6", kind: "full", taxCents: "3625", customerName: "Mary" },
+    });
+    const r = await processBookingWebhook(deps, JSON.stringify(legacy), FAKE_SIGNATURE);
+
+    expect(r).toEqual({ handled: true, outcome: "unbookable" });
+    expect(alert).toHaveBeenCalledOnce();
+    expect(alert.mock.calls[0]![0]).toContain("REFUND MANUALLY");
+    expect(confirm).not.toHaveBeenCalled();
+    // The point of the ticket: no reservation, on a path that used to write one without the
+    // hull guard. An assertion on the alert alone would pass if it booked AND alerted.
+    expect(await repo.getReservation(reservationIdFor("cs_test_1"))).toBeNull();
+  });
+
   it("freezes the party-fare extras from slot metadata onto the reservation (#474)", async () => {
     const repo = new InMemoryRepository();
     const { deps } = makeDeps(repo);
@@ -204,7 +244,19 @@ describe("processBookingWebhook", () => {
   // reservation exists on an unbookable outcome. It passed only because `InMemoryRepository` is a
   // `Map.set` with no referential integrity (DEC-131). The alert is the real contract here — and
   // it was unreachable, because the FK violation threw before it.
-  it("paid-but-unbooked (rival holds the boat): alerts admins to refund manually, and writes NO payment", async () => {
+  /**
+   * Retitled and re-asserted at #693, and the outcome is BETTER than what this test used to pin.
+   *
+   * It was written against the retired legacy path, where losing the boat produced `unbookable`
+   * and a "REFUND MANUALLY" alert — a human chasing a refund for a customer who had already
+   * paid. The slot path reports the same situation as `lost` and handles it: keyed auto-refund
+   * plus a sold-out notice to the customer, with no operator in the loop. Asserting the old
+   * shape here would have pinned the worse behaviour of a path that no longer exists.
+   *
+   * What is unchanged, and is the part #613 cares about: no reservation was written, so no
+   * payment row may exist to hang off one.
+   */
+  it("loses the boat to a rival: auto-refunds, tells the customer, writes NO payment", async () => {
     const repo = new InMemoryRepository();
     await repo.saveEvent(musterEvent());
     await repo.saveReservation({
@@ -215,12 +267,17 @@ describe("processBookingWebhook", () => {
       partySize: 4,
       status: "booked",
     });
-    const { deps, alert, confirm } = makeDeps(repo);
+    const payments = new FakePaymentPort();
+    const { deps, alert, confirm, soldOut } = makeDeps(repo, payments);
 
     const r = await processBookingWebhook(deps, JSON.stringify(completed()), FAKE_SIGNATURE);
-    expect(r).toEqual({ handled: true, outcome: "unbookable" });
-    expect(alert).toHaveBeenCalledOnce();
-    expect(alert.mock.calls[0]![0]).toContain("REFUND MANUALLY");
+    expect(r).toEqual({ handled: true, outcome: "lost" });
+    // Refunded once, keyed on the charge so a redelivery cannot double-refund (DEC-107 amended).
+    expect(payments.refunds).toHaveLength(1);
+    expect(payments.refunds[0]!.idempotencyKey).toBe("refund_cs_test_1");
+    expect(soldOut).toHaveBeenCalledOnce();
+    // No operator alert: this path resolves itself. An alert here would be the old behaviour.
+    expect(alert).not.toHaveBeenCalled();
     expect(confirm).not.toHaveBeenCalled(); // no booking → no confirmation
     // No payment row — there is no reservation to hang it on. Postgres enforces this; the
     // in-memory double does not, which is why the Postgres suite carries the real guard
@@ -244,20 +301,19 @@ describe("processBookingWebhook", () => {
     expect(await repo.getReservation(reservationIdFor("cs_test_1"))).not.toBeNull();
   });
 
-  // Third of three siblings claiming "records payment"; the #613 sweep retitled two and missed
-  // this one. Without the payment assertion, hoisting `recordPayment` back above the outcome
-  // branch would leave this green — the in-memory repo has no FK (DEC-131) — losing one of the
-  // two independent checks on the regression.
-  it("paid-but-unbooked (event missing): alerts admins to refund manually, and writes NO payment", async () => {
-    const repo = new InMemoryRepository(); // no event
-    const { deps, alert } = makeDeps(repo);
-    const r = await processBookingWebhook(deps, JSON.stringify(completed()), FAKE_SIGNATURE);
-    expect(r).toEqual({ handled: true, outcome: "unbookable" });
-    expect(alert).toHaveBeenCalledOnce();
-    expect(
-      await repo.listPaymentsForReservation(reservationIdFor("cs_test_1")),
-    ).toHaveLength(0);
-  });
+  // DELETED at #693: "paid-but-unbooked (event missing)".
+  //
+  // Its scenario is unreachable on the surviving path — a slot booking MATERIALIZES its event
+  // (`writeSlotBooking`), so "no event exists" is not a failure any more; it is Tuesday. The
+  // test only had a missing-event case because the retired legacy path took an `eventId` and
+  // required the row to already be there.
+  //
+  // Its stated value was being the SECOND independent check that `recordPayment` never runs on a
+  // non-booked outcome (#613) — so that hoisting it back above the outcome branch could not pass
+  // unnoticed, the in-memory repo having no FK to catch it (DEC-131). That check is not lost:
+  // the rival-holds-the-boat test above asserts the same empty-payments contract on a `lost`
+  // outcome, and the #693 refusal test asserts no reservation on an `unbookable` one. Two
+  // independent non-booked outcomes still cover it, which is what the comment actually wanted.
 
   it("handled:false for a non-checkout event; throws on a bad signature", async () => {
     const repo = new InMemoryRepository();

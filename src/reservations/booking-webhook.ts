@@ -41,9 +41,7 @@ import type { Repository } from "../ports/repository.js";
 import { balanceOwedCents } from "./payment-config.js";
 import {
   reservationIdFor,
-  writeBooking,
   writeSlotBooking,
-  type BookingResult,
   type SlotBookingResult,
 } from "./write-booking.js";
 
@@ -257,9 +255,32 @@ async function processBookingCharge(
   const m = charge.metadata;
   const idempotencyKey = charge.key;
   const kind = m.kind === "deposit" ? "deposit" : "full";
-  // Slot-first (12.1) sessions carry the SLOT (no eventId); legacy 11.2 sessions carry an
-  // eventId. Guest count is `guestCount` on the new path, `partySize` on the old.
+  // A booking session MUST carry the slot (12.1). The legacy 11.2 shape — an `eventId` and
+  // `partySize` instead — is retired (issue #693): it is refused here rather than booked.
+  //
+  // It claimed by row-locking one `event_id`, which is what #615/#691 replaced. Those put the
+  // hull-overlap guard and the hull-day advisory lock on `saveBookingIfSlotFree`;
+  // `saveReservationIfUnclaimed` never got them, so this branch still reverted to the exact
+  // pre-#691 behaviour where two overlapping trips on one hull both succeed — silently, since
+  // a clean reservation is written and #613's net only fires on a REJECTED write.
+  //
+  // Nothing minted this shape (`createBookingCheckout`, now deleted, had no caller under
+  // `app/`), so it was an unguarded FALLBACK rather than a removed path: dead in practice and
+  // reachable the moment anything started minting a legacy session again. Deleting it makes the
+  // deadness enforced instead of assumed, and a future caller has to consciously build a path
+  // rather than inherit one with no guard on it.
+  //
+  // Loud, not silent — money has already moved, same posture as the flag-off branch above.
   const isSlotBooking = Boolean(m.vesselId && m.date && m.time && m.offeringId);
+  if (!isSlotBooking) {
+    await deps.alertPaidButUnbooked(
+      `⚠️ PAID but NOT booked — booking session ${charge.key} carries no slot ` +
+        `(${charge.amountCents} ${charge.currency}). The legacy eventId booking path was retired ` +
+        `(#693) because it wrote without the hull-overlap guard. REFUND MANUALLY and find what ` +
+        `minted a session with this shape — nothing in the app should.`,
+    );
+    return { handled: true, outcome: "unbookable" };
+  }
   const partySize = Number(m.guestCount ?? m.partySize);
   const reservationId = reservationIdFor(idempotencyKey);
 
@@ -312,42 +333,27 @@ async function processBookingCharge(
     }
   };
 
-  const money = isSlotBooking ? await parseSlotMoney() : null;
+  const money = await parseSlotMoney();
 
-  const result: BookingResult | SlotBookingResult = money
-    ? await writeSlotBooking(
-        deps.repo,
-        {
-          offeringId: asId<"OfferingId">(m.offeringId ?? ""),
-          vesselId: asId<"VesselId">(m.vesselId ?? ""),
-          date: m.date ?? "",
-          time: m.time ?? "",
-          guestCount: partySize,
-          priceCents: money.priceCents,
-          extrasCents: money.extrasCents,
-          customerName: m.customerName ?? "",
-          ...(m.email ? { email: m.email } : {}),
-          ...(m.phone ? { phone: m.phone } : {}),
-          ...(m.waiverConsentAt ? { waiverConsentAt: m.waiverConsentAt } : {}),
-          ...(m.waiverVersion ? { waiverVersion: m.waiverVersion } : {}),
-          idempotencyKey,
-        },
-        deps.now,
-      )
-    : await writeBooking(
-        deps.repo,
-        {
-          eventId: asId<"EventId">(m.eventId ?? ""),
-          customerName: m.customerName ?? "",
-          partySize,
-          ...(m.email ? { email: m.email } : {}),
-          ...(m.phone ? { phone: m.phone } : {}),
-          ...(m.waiverConsentAt ? { waiverConsentAt: m.waiverConsentAt } : {}),
-          ...(m.waiverVersion ? { waiverVersion: m.waiverVersion } : {}),
-          idempotencyKey,
-        },
-        deps.now,
-      );
+  const result: SlotBookingResult = await writeSlotBooking(
+    deps.repo,
+    {
+      offeringId: asId<"OfferingId">(m.offeringId ?? ""),
+      vesselId: asId<"VesselId">(m.vesselId ?? ""),
+      date: m.date ?? "",
+      time: m.time ?? "",
+      guestCount: partySize,
+      priceCents: money.priceCents,
+      extrasCents: money.extrasCents,
+      customerName: m.customerName ?? "",
+      ...(m.email ? { email: m.email } : {}),
+      ...(m.phone ? { phone: m.phone } : {}),
+      ...(m.waiverConsentAt ? { waiverConsentAt: m.waiverConsentAt } : {}),
+      ...(m.waiverVersion ? { waiverVersion: m.waiverVersion } : {}),
+      idempotencyKey,
+    },
+    deps.now,
+  );
 
   // **Record the Payment ONLY once a reservation exists to hang it on (#613).**
   //
@@ -499,15 +505,23 @@ async function processBookingCharge(
     return { handled: true, outcome: result.outcome };
   }
 
-  // Anomalous `unbookable` (event_missing / not_sellable / … — only reachable via the legacy
-  // seeded-Event path or a genuinely broken session). NOT auto-refunded — a human investigates
-  // (money may or may not have moved as expected). Loud manual-refund alert (architect ruling).
-  const detail = `${result.outcome}/${result.reason}`;
-  await deps.alertPaidButUnbooked(
-    `⚠️ Paid booking could NOT be placed (${detail}) — Stripe charge ${charge.key}, ` +
-      `${who}. REFUND MANUALLY in Stripe.`,
+  // The anomalous-`unbookable` tail that used to sit here is GONE (#693), and TypeScript is what
+  // proved it could go: with the legacy path retired, `result` is a `SlotBookingResult`, which
+  // has no `unbookable` variant, so this code narrowed to `never`. Its own comment had already
+  // said as much — "only reachable via the legacy seeded-Event path or a genuinely broken
+  // session" — and the legacy half of that is what just went away.
+  //
+  // The genuinely-broken-session half did not evaporate; it moved EARLIER, to the metadata guard
+  // near the top, which alerts REFUND MANUALLY before anything is parsed or written. That is the
+  // better place for it: it fires before the money is reasoned about rather than after.
+  //
+  // `writeSlotBooking` returns only `booked` / `already` / `lost`, all handled above, so control
+  // never reaches here — TypeScript agrees, which is why the old tail narrowed to `never`. The
+  // throw exists to satisfy the compiler's return check and to fail loudly if the union ever
+  // grows a variant without someone handling it here.
+  throw new Error(
+    `unreachable: unhandled writeSlotBooking outcome ${JSON.stringify(result)} for charge ${charge.key}`,
   );
-  return { handled: true, outcome: result.outcome };
 }
 
 /**

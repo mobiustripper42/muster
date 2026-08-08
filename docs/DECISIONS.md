@@ -44,7 +44,7 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 - DEC-054 — Operator engine pause/resume — edge-gated, typed-port-backed, default-running (#124)
 - DEC-118 — Crew audit log — dedicated append-only `audit_events`, edge-emitted actor, unioned read, out of the scoring path (#400)
 - DEC-127 — DECISIONS.md carries a topic index at the top; every new DEC updates it _(amended by DEC-141 — the maintenance rule only — the index stands, but it is generated rather than hand-updated)_
-- DEC-131 — Constraint posture — DEC-DATA-1 governs *logic placement*, not structural constraints; FK/UNIQUE/NOT NULL are storage and are allowed
+- DEC-131 — Constraint posture — DEC-DATA-1 governs *logic placement*, not structural constraints; FK/UNIQUE/NOT NULL are storage and are allowed _(corrected by DEC-151 — the named precedent only — a constraint the caller must react to is still exposed through the port as a typed result, which is the holding)_
 - DEC-141 — One decision, one file, behind a generated index _(extended by DEC-143 — the same generated-reciprocal-pointer mechanism, pointed at SPEC instead of at other decisions)_
 - DEC-143 — A decision that changes SPEC declares it, and the reciprocal pointer in SPEC is generated
 - DEC-144 — Doc consistency is a ratchet in `verify`, not an audit
@@ -169,25 +169,26 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 ### Reservations & payments
 - DEC-105 — Reservations go live in 2026 as a Muster-native parallel-run — permanent coexistence, not a cutover _(reversed by DEC-126 — the parallel run ends in a cutover, not permanent coexistence — and the "no migration" leg)_
 - DEC-106 — Coexistence partition = whole vessel-day; an event is owned by exactly one system _(retired by DEC-149 — the whole-vessel-day ownership allowlist and its availability mask only — the `source` discriminator on Event and Reservation, and the no-cross-source-capacity-arithmetic rule, both stand)_
-- DEC-107 — Payments — Stripe hosted Checkout, deposit + balance, webhook-driven booking write
+- DEC-107 — Payments — Stripe hosted Checkout, deposit + balance, webhook-driven booking write _(corrected by DEC-151 — the `writeBooking` citation only — the hosted-Checkout and deposit/balance decisions stand, and the balance flow it describes is unchanged)_
 - DEC-108 — Public surface `app/(public)` + single-flip "Book Now" entry (instant Xola rollback)
 - DEC-109 — Atomic capacity claim on public booking (the customer-side REQ-CLAIM-1)
 - DEC-110 — Waiver — Muster-sold side only; integrate a provider (deferred pre-flip); pilot uses minimal consent
 - DEC-111 — `feature/reservations` dark behind a `RESERVATIONS` flag until the first real paid booking
 - DEC-112 — Reservation price resolves per-`Event`; nullable `Event.price` column
 - DEC-113 — Flex-insurance is a boolean selector on the reservation, not a priced add-on product
-- DEC-122 — Customer booking link — stateless HMAC capability-URL + guest confirmation emit (renumbered from DEC-119 at the feature→main merge — main's DEC-119 is recurring weekday-off #411; 11.4, #370; extends DEC-020/098/108)
+- DEC-122 — Customer booking link — stateless HMAC capability-URL + guest confirmation emit (renumbered from DEC-119 at the feature→main merge — main's DEC-119 is recurring weekday-off #411; 11.4, #370; extends DEC-020/098/108) _(corrected by DEC-151 — the `writeBooking` citation only — the stateless-HMAC capability URL and its non-interference with the race-critical CAS both stand)_
 - DEC-123 — Reservations gets its own calendar — customer-centric, beside the crew-centric shift view; plus a net-new catalog and purchases/customers area
 - DEC-124 — Tips come into Muster as collect-and-expose; `xola-tip-extractor` owns the split and the Xola+Muster union until Xola dies (reverses DEC-036's tip parking)
 - DEC-125 — Virtual availability — the schedule is a rule, `Event` rows materialize on state; blackout is scoped blocks, not per-event toggles
 - DEC-126 — The flip is a cutover with a one-time full Xola import — Muster becomes the reservation source of truth, and the cutover is reversible
-- DEC-132 — `Customer` is a contact record keyed by phone — surrogate PK, UNIQUE canonical E.164, readable short code
+- DEC-132 — `Customer` is a contact record keyed by phone — surrogate PK, UNIQUE canonical E.164, readable short code _(corrected by DEC-151 — the `writeBooking` citation only — booking-path customer linking is still in scope and still happens at the write, now on the surviving path)_
 - DEC-133 — The customer availability screen is server-rendered; the guest stepper is the one client island (12.4, #457)
 - DEC-134 — Customer checkout is inline Stripe Elements over a deferred PaymentIntent; hosted Checkout remains for balance + post-gratuity (12.5, #458; revisits DEC-107/108 as DEC-108 anticipated)
 - DEC-135 — The "Your booking" manage page ships view + post-tip + cancel/change-as-request; self-service cancel is deferred (12.6, #459)
 - DEC-138 — The customer booking flow ships as an embeddable widget — the BrewBoat rollout path and the multi-tenant seam
 - DEC-139 — Payments — Stripe card checkout only; no Apple Pay / wallets (foreseeable future)
 - DEC-140 — SPEC §1.3 rewritten to the DEC-125 model — availability is two mechanisms, not one rule engine; COI-expiry and lead-time cutoff closed as out of scope
+- DEC-151 — Retire the legacy booking write path rather than guard it — one write path, or the unguarded one outlives the guarded one
 
 ### UI, brand & frontend patterns
 - DEC-021 — Frontend styling = Tailwind v4; component library deferred _(retired by DEC-041 — the `Event.durationMinutes` line only; refined by DEC-086 — adds tokens to the locked palette)_

@@ -674,58 +674,17 @@ export function runRepositoryContract(
       expect(got.waiverVersion).toBe("v1");
     });
 
-    // ── saveReservationIfUnclaimed — the whole-boat claim (DEC-109) ────────────
+    // The `saveReservationIfUnclaimed` contract block that stood here is GONE (#693). It was
+    // the DEC-109 whole-boat claim keyed on one `event_id` — seven cases across both adapters —
+    // and its only caller was the legacy `writeBooking`, retired in the same change. The
+    // guarantee is not lost: `saveBookingIfSlotFree` below claims the same whole-boat mutex and
+    // adds what the old one lacked, the hull-day advisory lock and the overlap predicate that
+    // #691 needed. Keeping a second write path alive purely because it had tests is how an
+    // unguarded fallback survives a decade.
+    //
+    // `rid` stayed — it was declared inside that block and the `saveBookingIfSlotFree` cases
+    // below use it.
     const rid = (s: string) => asId<"ReservationId">(s);
-
-    it("saveReservationIfUnclaimed: writes when the boat is unclaimed", async () => {
-      await repo.saveEvent(event({ source: "muster" }));
-      expect(await repo.saveReservationIfUnclaimed(reservation({ source: "muster" }))).toBe(true);
-      expect(await repo.listReservationsForEvent(EVENT)).toHaveLength(1);
-    });
-
-    it("saveReservationIfUnclaimed: idempotent on id — same reservation twice, no duplicate", async () => {
-      await repo.saveEvent(event({ source: "muster" }));
-      const r = reservation({ source: "muster" });
-      expect(await repo.saveReservationIfUnclaimed(r)).toBe(true);
-      expect(await repo.saveReservationIfUnclaimed(r)).toBe(true); // idempotent re-put
-      expect(await repo.listReservationsForEvent(EVENT)).toHaveLength(1);
-    });
-
-    it("saveReservationIfUnclaimed: blocked by a DIFFERENT active Muster reservation", async () => {
-      await repo.saveEvent(event({ source: "muster" }));
-      expect(await repo.saveReservationIfUnclaimed(reservation({ id: rid("resv-a"), source: "muster" }))).toBe(true);
-      expect(await repo.saveReservationIfUnclaimed(reservation({ id: rid("resv-b"), source: "muster" }))).toBe(false);
-      expect(await repo.listReservationsForEvent(EVENT)).toHaveLength(1);
-    });
-
-    it("saveReservationIfUnclaimed: an active Xola reservation does NOT block (source-scoped)", async () => {
-      await repo.saveEvent(event({ source: "muster" }));
-      await repo.saveReservation(reservation({ id: rid("resv-x"), source: "xola" }));
-      expect(await repo.saveReservationIfUnclaimed(reservation({ id: rid("resv-m"), source: "muster" }))).toBe(true);
-    });
-
-    it("saveReservationIfUnclaimed: a cancelled Muster reservation does NOT block", async () => {
-      await repo.saveEvent(event({ source: "muster" }));
-      await repo.saveReservation(reservation({ id: rid("resv-c"), source: "muster", status: "cancelled" }));
-      expect(await repo.saveReservationIfUnclaimed(reservation({ id: rid("resv-m"), source: "muster" }))).toBe(true);
-    });
-
-    it("saveReservationIfUnclaimed: false for a nonexistent event", async () => {
-      expect(await repo.saveReservationIfUnclaimed(reservation({ source: "muster" }))).toBe(false);
-    });
-
-    it("saveReservationIfUnclaimed: exactly one of two concurrent claims wins (DEC-109)", async () => {
-      await repo.saveEvent(event({ source: "muster" }));
-      const [a, b] = await Promise.all([
-        repo.saveReservationIfUnclaimed(reservation({ id: rid("resv-a"), source: "muster", customerName: "A" })),
-        repo.saveReservationIfUnclaimed(reservation({ id: rid("resv-b"), source: "muster", customerName: "B" })),
-      ]);
-      expect([a, b].filter(Boolean)).toHaveLength(1); // exactly one winner
-      const active = (await repo.listReservationsForEvent(EVENT)).filter(
-        (r) => r.source === "muster" && r.status === "booked",
-      );
-      expect(active).toHaveLength(1);
-    });
 
     // ── saveBookingIfSlotFree — materialize + claim a virtual slot (12.1, DEC-109/125) ──
     const SLOT_ID = eventIdForSlot(VESSEL, "2026-07-01", "14:00");

@@ -13,8 +13,9 @@ import { saveBlock, liftBlock } from "./actions";
  * toggle SWAPS the field sets (Location vs Vessel), a real interaction a no-JS form can't
  * express cleanly. `selected` null ⇒ a fresh create (kind toggle + editable target); a scoped
  * block ⇒ edit it (kind fixed, target read-only — you don't re-point a block, you delete and
- * remake — only the dates/times/reason are editable). A `vesselHold` is calendar-managed, so
- * it's read-only here. Submits through the server actions (`saveBlock`/`liftBlock`).
+ * remake — only the dates/times/reason are editable). A single-slot block never reaches here —
+ * it is made and unmade on the calendar, and its registry row links straight there (#703).
+ * Submits through the server actions (`saveBlock`/`liftBlock`).
  *
  * NOTE: the date/time inputs are the plain native pickers for now — a proper 15-min-enforcing,
  * consistent date/time picker (and unifying the location-vs-vessel date/time shape) is a
@@ -45,35 +46,11 @@ export function BlockEditor({
   locations: Location[];
   vessels: Vessel[];
 }) {
-  // A calendar-made hold: read-only summary, manage on the calendar.
-  if (selected && selected.kind === "vesselHold") {
-    const v = vessels.find((x) => String(x.id) === String(selected.vesselId));
-    return (
-      <aside className="self-start rounded-card border border-line bg-card shadow-sm min-[1080px]:sticky min-[1080px]:top-4">
-        <div className="px-4 py-3 text-sm text-muted">
-          <p className="font-medium text-ink">{v?.name ?? String(selected.vesselId)}</p>
-          <p className="mt-1 font-mono text-xs">
-            {formatDay(selected.date)} · {formatTime(selected.time)}
-          </p>
-          <p className="mt-3 text-xs text-faint">
-            Single-slot holds are made and managed on the calendar. Open it there and click the
-            held departure to put it back on sale.
-          </p>
-          <div className="mt-3 flex items-center gap-3">
-            {/* The hold's OWN day — the calendar defaults to today, so a bare link landed the
-                operator on a grid with nothing of theirs on it (#703). */}
-            <AppLink href={`/admin/calendar?date=${selected.date}`} className="text-accent">
-              On calendar →
-            </AppLink>
-            <AppLink href="/admin/blocks" className="text-muted">
-              Close
-            </AppLink>
-          </div>
-        </div>
-      </aside>
-    );
-  }
-
+  // No `vesselHold` branch, by construction: the page never selects one (its row links straight
+  // to the calendar), so `selected` is a location or vessel block or null. The read-only aside
+  // that used to live here showed the boat, day and time — every one of them already on the row
+  // the operator clicked — plus a link onward to the calendar. Two clicks to reach a page the
+  // row could have gone to directly (operator, 2026-08-08, #703).
   const editing = selected !== null;
   const loc = selected?.kind === "location" ? selected : null;
   const ves = selected?.kind === "vessel" ? selected : null;

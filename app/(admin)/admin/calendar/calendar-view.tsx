@@ -38,10 +38,15 @@ import { holdSlot, releaseHold, type CalendarErr } from "./actions";
  * which a media-query-dependent href could never do without client JS.
  *
  * Selling from the calendar stays deferred (it shares the 12.1 claim). The one write that lives
- * here is the single-slot HOLD (#703): clicking an open departure takes it off the market as a
- * `Block{kind:"vesselHold"}`, and clicking a held one puts it back. Both go through a confirm
+ * here is the SLOT BLOCK (#703): clicking an open departure takes it off the market as a
+ * `Block{kind:"vesselHold"}`, and clicking a blocked one puts it back. Both go through a confirm
  * banner above the grid rather than a dialog in the card — no-JS (DEC-026) has no toast to
  * undo into, and a card is ~40px tall, which is not a place to ask a question at 375px.
+ *
+ * **The operator's word is "block", not "hold"** (operator, 2026-08-08). The identifiers here
+ * still say `hold` — they track the data model's `kind: "vesselHold"`, which is unchanged, and
+ * the divergence is deliberate rather than drift: "hold" is also DEC-109's transient customer
+ * checkout-hold, so keeping it out of the UI leaves the word meaning one thing on screen.
  */
 
 export type Search = {
@@ -54,11 +59,22 @@ export type Search = {
   err?: string;
 };
 
-export const FILTERS: { key: string; label: string; status: VirtualSlot["status"] | "all" }[] = [
+/**
+ * The chip keys, as a literal union rather than `string`.
+ *
+ * This exists because renaming the `blackout` chip to `blocked` (#703) silently dropped its
+ * COUNT: the counts object still had a `blackout` key, and the lookup was
+ * `counts[f.key as keyof typeof counts]` — a cast that turns exactly this typo into `undefined`
+ * at runtime and nothing at all at compile time. Typing both ends off one union makes the next
+ * rename a build error. Caught by looking at a screenshot, which is not a durable strategy.
+ */
+export type FilterKey = "all" | "booked" | "open" | "blocked";
+
+export const FILTERS: { key: FilterKey; label: string; status: VirtualSlot["status"] | "all" }[] = [
   { key: "all", label: "All", status: "all" },
   { key: "booked", label: "Booked", status: "booked" },
   { key: "open", label: "Open", status: "available" },
-  { key: "blackout", label: "Blackout", status: "blocked" },
+  { key: "blocked", label: "Blocked", status: "blocked" },
 ];
 
 /** The fixed 8a→8p gutter ticks (label + the clock we position it at). */
@@ -368,11 +384,12 @@ export function dedupeOccupied(slots: readonly VirtualSlot[]): VirtualSlot[] {
 
 /** Date nav + status filter — server nav (no JS); each link preserves the other axis. */
 export function CalendarControls({ data }: { data: CalendarData }) {
-  const counts = {
+  // Annotated, not inferred: this is the half of the pair that must stay in step with FILTERS.
+  const counts: Record<FilterKey, number> = {
     all: data.slots.length,
     booked: data.slots.filter((s) => s.status === "booked" || s.status === "unavailable").length,
     open: data.slots.filter((s) => s.status === "available").length,
-    blackout: data.slots.filter((s) => s.status === "blocked").length,
+    blocked: data.slots.filter((s) => s.status === "blocked").length,
   };
 
   return (
@@ -418,7 +435,7 @@ export function CalendarControls({ data }: { data: CalendarData }) {
                 active ? "bg-ink font-medium text-white" : "text-muted"
               }`}
             >
-              {f.label} {counts[f.key as keyof typeof counts]}
+              {f.label} {counts[f.key]}
             </AppLink>
           );
         })}
@@ -427,7 +444,7 @@ export function CalendarControls({ data }: { data: CalendarData }) {
   );
 }
 
-/** Legend — offerings present today (derived colour, #495) + Open + Blackout. */
+/** Legend — offerings present today (derived colour, #495) + Open + Blocked. */
 export function CalendarLegend({ data }: { data: CalendarData }) {
   const presentOfferingIds = [...new Set(data.slots.map((s) => String(s.offeringId)))];
   const legendOfferings = presentOfferingIds
@@ -462,11 +479,11 @@ export function CalendarLegend({ data }: { data: CalendarData }) {
           }}
           aria-hidden
         />
-        Blackout
+        Blocked
       </span>
       {/* Only when one is on screen — a legend key for a state the day doesn't contain is noise
-          on every other day. `Held` shares Blackout's hatch; the label is what distinguishes it,
-          and it earns a key because it is the one dark card you can undo from here (#703). */}
+          on every other day. Both dark cards read "Blocked"; the accent border is what says
+          which one you can undo without leaving, and that is worth a key (#703). */}
       {data.holdBySlot.size > 0 && (
         <span className="inline-flex items-center gap-1.5">
           <span
@@ -477,7 +494,7 @@ export function CalendarLegend({ data }: { data: CalendarData }) {
             }}
             aria-hidden
           />
-          Held · click to release
+          Blocked here · click to unblock
         </span>
       )}
     </div>
@@ -488,9 +505,9 @@ const ERR_COPY: Record<CalendarErr, string> = {
   bad_vessel: "That boat isn’t in the fleet any more.",
   bad_date: "Couldn’t read that date — try the slot again from the grid.",
   bad_time: "Couldn’t read that departure time — try the slot again from the grid.",
-  already_held: "That departure was already held.",
-  slot_taken: "Someone booked that departure — it’s a trip now, so it can’t be held.",
-  not_found: "That hold was already released.",
+  already_held: "That departure was already blocked.",
+  slot_taken: "Someone booked that departure — it’s a trip now, so it can’t be blocked.",
+  not_found: "That block was already lifted.",
   not_a_hold: "That’s a location or vessel block — lift it on Blocks, where its full scope shows.",
   error: "Couldn’t do that just now — try again in a moment.",
 };
@@ -502,13 +519,13 @@ export function CalendarError({ err }: { err?: string | undefined }) {
 }
 
 /**
- * The confirm step for holding or releasing one departure (#703).
+ * The confirm step for blocking or unblocking one departure (#703).
  *
  * A banner above the grid, not a dialog in the card: no-JS (DEC-026) rules out a toast to undo
  * into, and an open block is ~40px tall — there is no room to ask a question in it, least of all
  * at 375px. It also gives the SCOPE sentence somewhere to live, and that sentence is the point.
- * A hold is physical (one boat, one clock time), so it removes every offering proposing that
- * boat-time — a fact the block row it writes cannot show, because the row has no offering on it.
+ * A slot block is physical (one boat, one clock time), so it removes every offering proposing
+ * that boat-time — a fact the registry row cannot show, because the row has no offering on it.
  */
 export function HoldConfirm({ data }: { data: CalendarData }) {
   const p = data.pending;
@@ -524,7 +541,7 @@ export function HoldConfirm({ data }: { data: CalendarData }) {
     >
       <div className="min-w-0">
         <p className="text-sm font-medium text-ink">
-          {p.action === "hold" ? `Hold ${when}?` : `Release the hold on ${when}?`}
+          {p.action === "hold" ? `Block ${when}?` : `Unblock ${when}?`}
         </p>
         <p className="mt-0.5 text-xs text-muted">
           {p.action === "hold" ? (
@@ -535,10 +552,10 @@ export function HoldConfirm({ data }: { data: CalendarData }) {
               <>
                 Takes the departure off the market for all {p.offeringCount}
                 {" offerings that sell this boat-time — it’s one boat."} It stays off until you
-                release it.
+                unblock it.
               </>
             ) : (
-              <>Takes the departure off the market until you release it.</>
+              <>Takes the departure off the market until you unblock it.</>
             )
           ) : (
             <>The departure goes back on sale.</>
@@ -564,7 +581,7 @@ export function HoldConfirm({ data }: { data: CalendarData }) {
             <input type="hidden" name="id" value={p.blockId} />
           )}
           <SubmitButton className="rounded-card bg-accent px-4 py-2 text-sm font-semibold text-white">
-            {p.action === "hold" ? "Hold it" : "Release it"}
+            {p.action === "hold" ? "Block it" : "Unblock it"}
           </SubmitButton>
         </form>
       </div>
@@ -741,7 +758,7 @@ export function CalendarGrid({
                       data.pending?.action === "release" &&
                       hold !== undefined &&
                       data.pending.blockId === String(hold.id);
-                    // A hold wears an accent border, a blackout the plain line. Both are dark
+                    // A slot block wears an accent border, a scoped one the plain line. Both dark
                     // and unsellable, but only one is the operator's own and undoable from
                     // here — if they looked identical the legend would be the only thing
                     // saying which dark cards click, and a legend is not where you look.
@@ -759,16 +776,21 @@ export function CalendarGrid({
                         key={key}
                         href={calendarHref(data, { release: String(hold.id) })}
                         spinner="overlay"
-                        aria-label={`Release the hold on ${shortTime(s.time)}, ${
+                        aria-label={`Unblock ${shortTime(s.time)}, ${
                           data.vesselById.get(String(s.vesselId))?.name ?? String(s.vesselId)
                         }`}
                         data-testid="cal-block"
                         data-vessel={String(s.vesselId)}
                         data-status="blocked"
+                        // Both dark cards read "Blocked", so the SCOPE that made them dark is
+                        // the thing a test has to address. Keying a spec on the label would
+                        // have it matching the wrong card the moment the copy converged, which
+                        // is exactly what just happened to "Held" vs "Blackout".
+                        data-blocked-by="slot"
                         className={cls}
                         style={style}
                       >
-                        Held
+                        Blocked
                       </AppLink>
                     ) : (
                       <div
@@ -776,10 +798,11 @@ export function CalendarGrid({
                         data-testid="cal-block"
                         data-vessel={String(s.vesselId)}
                         data-status="blocked"
+                        data-blocked-by="scoped"
                         className={cls}
                         style={style}
                       >
-                        Blackout
+                        Blocked
                       </div>
                     );
                   }
@@ -787,7 +810,7 @@ export function CalendarGrid({
                   // available → an offering-tinted dashed "open" block. Selling from here is
                   // still deferred (12.1); the link takes the slot OFF the market (#703). The
                   // href is keyed on the PHYSICAL slot, not the offering, so every card sharing
-                  // a boat-time leads to the same confirm — which is what the hold really does.
+                  // a boat-time leads to the same confirm — which is what the block really does.
                   return (
                     <AppLink
                       key={key}
@@ -795,9 +818,9 @@ export function CalendarGrid({
                         hold: `${String(s.vesselId)}|${s.time}`,
                       })}
                       spinner="overlay"
-                      // The card says "open" and the link HOLDS it — without a name of its own
+                      // The card says "open" and the link BLOCKS it — without a name of its own
                       // a screen reader announces the state and hides the action.
-                      aria-label={`Hold ${shortTime(s.time)}, ${
+                      aria-label={`Block ${shortTime(s.time)}, ${
                         data.vesselById.get(String(s.vesselId))?.name ?? String(s.vesselId)
                       }`}
                       data-testid="cal-block"

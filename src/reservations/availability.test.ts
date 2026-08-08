@@ -335,7 +335,7 @@ describe("deriveVirtualAvailability — the hull is busy (#615, #691)", () => {
 
   it("an operator BLOCK outranks a busy hull — a blackout must not vanish (#694 review)", () => {
     // `unavailable` used to win, and the calendar hides those, so an operator block on a day
-    // with an overlapping trip disappeared from the grid AND from the Blackout count. The
+    // with an overlapping trip disappeared from the grid AND from the Blocked count. The
     // operator could not see their own blackout. A block is a deliberate act; it outranks a
     // fact about the boat.
     const out = deriveVirtualAvailability({

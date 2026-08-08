@@ -94,8 +94,10 @@ try {
     };
     await repo.saveEvent(event);
   }
-  // …and for --unbookable we deliberately save nothing, so the charge names an event that
-  // does not exist: `event_missing`.
+  // …and for --unbookable we deliberately send a SLOTLESS session, which #693 made the
+  // deterministic unbookable. It used to be `event_missing` — a charge naming an event that does
+  // not exist — but a slot booking materializes its own event, so a missing one is no longer a
+  // failure. See the metadata below, which drops the slot fields in that mode.
 
   // Losing the CAS is what a rival winning the boat looks like to this code, and it cannot be
   // produced by sequencing alone. A Proxy rather than `Object.create`, because the repository
@@ -103,7 +105,10 @@ try {
   const target: PostgresRepository = lost
     ? (new Proxy(repo, {
         get(t, prop) {
-          if (prop === "saveReservationIfUnclaimed") return async () => false;
+          // `saveBookingIfSlotFree` since #693 retired the row-lock claim. Stubbing the method
+          // nothing calls any more would have left this script printing a PASS while simulating
+          // nothing — the exact failure it exists to catch elsewhere.
+          if (prop === "saveBookingIfSlotFree") return async () => ({ result: "lost" });
           const v = Reflect.get(t, prop, t);
           return typeof v === "function" ? v.bind(t) : v;
         },
@@ -125,9 +130,19 @@ try {
     paymentIntentId: `pi_${stamp}`,
     amountTotalCents: 53625,
     currency: "usd",
+    // Slot-shaped for --lost (the only booking shape the webhook accepts since #693); slotless
+    // for --unbookable, which is now what "deterministically cannot be booked" means.
     metadata: {
-      eventId: String(eventId),
-      partySize: "6",
+      ...(lost
+        ? {
+            offeringId: "offering-paid-unbooked",
+            vesselId: "vessel-brew-2",
+            date,
+            time: "17:00",
+            guestCount: "6",
+            priceCents: "50000",
+          }
+        : { eventId: String(eventId), partySize: "6" }),
       kind: "full",
       taxCents: "3625",
       customerName: "Test Customer",

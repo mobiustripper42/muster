@@ -26,7 +26,7 @@ TASK_NUM=$(($(grep -c "^## Task " "$SESSION_FILE") + 1))
 
 ## Step 1 — Build check
 
-Look up the project's build check in `.claude/CLAUDE-context.md §Commands` (e.g. `npm run build`, `cargo build`, `make`). Run it. Fix errors before proceeding. Do not commit broken code.
+Look up the project's build check in `.claude/CLAUDE-context.md §Commands` (e.g. `npm run build`, `cargo build`, `make`), **with the Read tool** — never a `sed`/`grep` one-liner. Run it. Fix errors before proceeding. Do not commit broken code.
 
 If no build step is defined (markdown-only / domain project), skip silently.
 
@@ -60,7 +60,7 @@ When addressing review findings before opening the PR: Read every file before ed
 
 `@code-review` hunts the project's known invariants. `/code-review ultra` is a different tool — it launches multiple agents to audit the branch independently from different angles and filters by confidence. It is **user-triggered and billed; Claude cannot launch it.** Do not attempt to run it via Bash or otherwise.
 
-Get the project's trigger table from `.claude/CLAUDE-context.md` under `## Blast-Radius Triggers` **with the Read tool** — not `sed`, `grep`, `awk`, or `cat`. Read is allowlisted and never prompts; a shell one-liner extracting a section is the kind of command that can miss an allow-pattern match and stop the skill dead on a permission prompt, which is what happened the first time this step ran in a remote session. Reading the whole file costs less than the interruption. Then match the table against the branch diff (`git diff $(git merge-base HEAD main)...HEAD --name-only`). If that section is absent, fall back to the four generic triggers below.
+Get the project's trigger table from `.claude/CLAUDE-context.md` under `## Blast-Radius Triggers` **with the Read tool** — never a `sed`/`grep` one-liner. Then match the table against the branch diff (`git diff $(git merge-base HEAD main)...HEAD --name-only`). If that section is absent, fall back to the four generic triggers below.
 
 | Trigger | What to match |
 |---|---|
@@ -175,6 +175,8 @@ So when the diff touches anything rendered, the hand section answers, in whateve
 
 **Non-UI changes still get both sections.** A migration's hand step is applying it and confirming the expected shape and row counts, plus what happens to existing rows. A money-path change is reconciling an amount end to end. A capability-URL change is confirming a stale or forged token is refused.
 
+**Every number in the body says which kind it is** — `issue #699`, `PR #707`, never a bare `#699`. Issues and PRs come from one shared GitHub counter, so they interleave and nothing in the number distinguishes them. **The single exception is the `closes #<issue>` line**, which is GitHub syntax and stops auto-closing if you prefix it. Write that one bare and say the kind in the prose around it.
+
 Try in order:
 1. `gh pr create --base "$BASE" --head "$BRANCH" --title "$SUBJECT" --body "$BODY"`
 2. MCP `mcp__github__create_pull_request` fallback.
@@ -195,7 +197,7 @@ Compose the task block:
 - <bullet list of what got done, with file paths>
 
 **Code review:** <findings summary or "Clean">
-**PR:** [#<PR_NUMBER>](<PR_URL>)
+**PR:** [PR #<PR_NUMBER>](<PR_URL>)
 **Points:** <effort estimate>
 **Blocked:** <only if blocked>
 **Branch:** <BRANCH>

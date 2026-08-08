@@ -25,6 +25,22 @@ export const GRID_SPAN_MIN = GRID_END_MIN - GRID_START_MIN; // 810
  */
 export const DEFAULT_TRIP_MINUTES = 90;
 
+/**
+ * "HH:MM" → the grid's terse clock, no am/pm: "13:30" → "1:30". Malformed input passes through
+ * unchanged rather than rendering "NaN:30" in a card.
+ *
+ * Lives in core, not in the view, because the e2e specs address open slots by their VISIBLE
+ * label ("open · 3:30"). A spec that reimplements the format asserts its own idea of correct,
+ * which is how a test keeps passing while the card says something else.
+ */
+export function shortTime(hhmm: string): string {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm);
+  if (!m) return hhmm;
+  const h = Number(m[1]);
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${m[2]}`;
+}
+
 /** "HH:MM" → minutes since midnight. Returns NaN for a malformed clock. */
 export function parseHhmmToMinutes(hhmm: string): number {
   const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm);

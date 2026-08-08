@@ -56,11 +56,13 @@ export function BlockEditor({
             {formatDay(selected.date)} · {formatTime(selected.time)}
           </p>
           <p className="mt-3 text-xs text-faint">
-            Single-slot holds are made and managed on the calendar. Open it there to change or
-            release this one.
+            Single-slot holds are made and managed on the calendar. Open it there and click the
+            held departure to put it back on sale.
           </p>
           <div className="mt-3 flex items-center gap-3">
-            <AppLink href="/admin/calendar" className="text-accent">
+            {/* The hold's OWN day — the calendar defaults to today, so a bare link landed the
+                operator on a grid with nothing of theirs on it (#703). */}
+            <AppLink href={`/admin/calendar?date=${selected.date}`} className="text-accent">
               On calendar →
             </AppLink>
             <AppLink href="/admin/blocks" className="text-muted">

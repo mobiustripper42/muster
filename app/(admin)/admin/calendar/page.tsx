@@ -6,8 +6,10 @@ import { readSubject } from "../../../lib/auth";
 import {
   CalendarControls,
   CalendarEmptyNotice,
+  CalendarError,
   CalendarGrid,
   CalendarLegend,
+  HoldConfirm,
   loadCalendarData,
   type Search,
 } from "./calendar-view";
@@ -18,9 +20,10 @@ import {
  * block spanning its true duration (`docs/design/mockups/reservation-calendar-scale.html`,
  * "Day · Grid (A revised)"). The blocks registry links single-slot holds here ("On calendar →").
  *
- * Read-only. A booked block links to `/admin/calendar/[reservationId]` (the detail pane); open
- * and blackout blocks are inert — sell-from-calendar shares the 12.1 claim and is deferred, as
- * are week/month views. Everything the two calendar routes share lives in `calendar-view.tsx`.
+ * A booked block links to `/admin/calendar/[reservationId]` (the detail pane). An OPEN block
+ * takes the departure off the market as a single-slot hold, behind a confirm banner (#703); a
+ * held one releases it. Selling from here is still deferred (it shares the 12.1 claim), as are
+ * week/month views. Everything the two calendar routes share lives in `calendar-view.tsx`.
  */
 
 export const dynamic = "force-dynamic";
@@ -51,8 +54,11 @@ export default async function AdminCalendar({
         <h1 className="text-[22px] font-semibold leading-tight text-ink">Calendar</h1>
       </header>
 
+      <CalendarError err={data.err} />
+
       <CalendarControls data={data} />
       <CalendarLegend data={data} />
+      <HoldConfirm data={data} />
 
       {data.slots.length === 0 && <CalendarEmptyNotice day={data.day} />}
 

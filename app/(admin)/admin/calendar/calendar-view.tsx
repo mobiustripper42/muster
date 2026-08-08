@@ -17,11 +17,15 @@ import {
   offeringDotClass,
   offeringOpenClass,
   drawsOnCalendar,
+  shortTime,
 } from "@core/reservations/calendar-grid.js";
 import { Notice } from "../../../../components/ui/notice";
 import { AppLink } from "../../../../components/ui/app-link";
+import { SubmitButton } from "../../../../components/ui/submit-button";
 import { vesselHueClass } from "../../../lib/vessel-hue";
+import { errCopyFor } from "../../../lib/err-copy";
 import { getRepo } from "../../../lib/repo";
+import { holdSlot, releaseHold, type CalendarErr } from "./actions";
 
 /**
  * The Day·Grid calendar surface (task 12.11, #464), shared by both calendar routes:
@@ -33,13 +37,21 @@ import { getRepo } from "../../../lib/repo";
  * page on mobile, a side pane on desktop) — two native layouts off one server-rendered link,
  * which a media-query-dependent href could never do without client JS.
  *
- * Open and blackout blocks stay inert: sell-from-calendar shares the 12.1 claim and is
- * deferred, and this slice ships NO actions at all.
+ * Selling from the calendar stays deferred (it shares the 12.1 claim). The one write that lives
+ * here is the single-slot HOLD (#703): clicking an open departure takes it off the market as a
+ * `Block{kind:"vesselHold"}`, and clicking a held one puts it back. Both go through a confirm
+ * banner above the grid rather than a dialog in the card — no-JS (DEC-026) has no toast to
+ * undo into, and a card is ~40px tall, which is not a place to ask a question at 375px.
  */
 
 export type Search = {
   date?: string;
   filter?: string;
+  /** `<vesselId>|<HH:MM>` — the open slot the confirm banner is asking about (#703). */
+  hold?: string;
+  /** A `vesselHold` block id — the held slot the banner is offering to release. */
+  release?: string;
+  err?: string;
 };
 
 export const FILTERS: { key: string; label: string; status: VirtualSlot["status"] | "all" }[] = [
@@ -67,15 +79,6 @@ export function addDays(date: string, delta: number): string {
   return new Date(Date.parse(`${date}T00:00:00Z`) + delta * 86_400_000)
     .toISOString()
     .slice(0, 10);
-}
-
-/** "HH:MM" → short clock without am/pm, e.g. "13:30" → "1:30" (matches the mockup). */
-export function shortTime(hhmm: string): string {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm);
-  if (!m) return hhmm;
-  const h = Number(m[1]);
-  const h12 = h % 12 === 0 ? 12 : h % 12;
-  return `${h12}:${m[2]}`;
 }
 
 /** "HH:MM" → "11:30 AM" for the detail header (the grid uses the terse `shortTime`). */
@@ -121,9 +124,43 @@ export interface CalendarData {
   offeringById: Map<string, Offering>;
   vesselById: Map<string, Vessel>;
   reservationByEventId: Map<string, Reservation>;
+  /** The `vesselHold` covering each physical `vessel|date|time`, if any (#703) — what makes a
+   *  dark card releasable HERE. A slot darkened by a `vessel` or `location` block has no entry,
+   *  stays inert, and is lifted on /admin/blocks where its real scope is visible. */
+  holdBySlot: Map<string, Block>;
   day: string;
   today: string;
   filter: string;
+  /** The confirm the operator is being shown, resolved from `?hold=`/`?release=` (#703). */
+  pending: PendingHold | null;
+  err?: string | undefined;
+}
+
+/**
+ * A resolved confirm step. Both variants carry the physical slot, because the banner names the
+ * boat and time and the form posts them — a param that no longer resolves to a real open slot
+ * (someone booked it while the banner sat open) produces `null` and no banner at all.
+ */
+export type PendingHold =
+  | {
+      action: "hold";
+      vesselId: string;
+      vesselName: string;
+      time: string;
+      /** How many offerings propose this one boat-time — the scope sentence's number. */
+      offeringCount: number;
+    }
+  | {
+      action: "release";
+      blockId: string;
+      vesselId: string;
+      vesselName: string;
+      time: string;
+    };
+
+/** The physical slot key shared by `tripBySlot`, `holdBySlot` and the confirm params. */
+export function slotKey(vesselId: string, date: string, time: string): string {
+  return `${vesselId}|${date}|${time}`;
 }
 
 /**
@@ -200,6 +237,50 @@ export async function loadCalendarData(sp: Search): Promise<CalendarData | null>
     }).filter((s) => drawsOnCalendar(s, events)),
   );
 
+  // Only the single-slot kind, and only on the day being drawn — the map's whole job is
+  // answering "is this dark card releasable from here?" (#703).
+  const holdBySlot = new Map<string, Block>();
+  for (const b of blocks) {
+    if (b.kind !== "vesselHold" || b.date !== day) continue;
+    holdBySlot.set(slotKey(String(b.vesselId), b.date, b.time), b);
+  }
+
+  const vesselById = new Map(vessels.map((v) => [String(v.id), v]));
+  const nameOf = (id: string) => vesselById.get(id)?.name ?? id;
+
+  // Resolve the confirm from the query. A param that names nothing real renders NO banner
+  // rather than an error: the common way to get one is a slot that was booked or already
+  // released while the confirm sat open, and the grid behind it already shows what happened.
+  let pending: PendingHold | null = null;
+  if (sp.release) {
+    const block = [...holdBySlot.values()].find((b) => String(b.id) === sp.release);
+    if (block && block.kind === "vesselHold") {
+      pending = {
+        action: "release",
+        blockId: String(block.id),
+        vesselId: String(block.vesselId),
+        vesselName: nameOf(String(block.vesselId)),
+        time: block.time,
+      };
+    }
+  } else if (sp.hold) {
+    const [vesselId = "", time = ""] = sp.hold.split("|");
+    const open = slots.filter(
+      (s) => String(s.vesselId) === vesselId && s.time === time && s.status === "available",
+    );
+    if (open.length > 0 && vesselById.has(vesselId)) {
+      pending = {
+        action: "hold",
+        vesselId,
+        vesselName: nameOf(vesselId),
+        time,
+        // Distinct offerings, not cards: the deriver emits one slot per offering, but counting
+        // rows would say "2 offerings" for one offering that somehow produced two.
+        offeringCount: new Set(open.map((s) => String(s.offeringId))).size,
+      };
+    }
+  }
+
   return {
     offerings,
     vessels,
@@ -208,24 +289,37 @@ export async function loadCalendarData(sp: Search): Promise<CalendarData | null>
     slots,
     tripBySlot,
     offeringById: new Map(offerings.map((o) => [String(o.id), o])),
-    vesselById: new Map(vessels.map((v) => [String(v.id), v])),
+    vesselById,
     reservationByEventId,
+    holdBySlot,
     day,
     today,
     filter,
+    pending,
+    err: sp.err,
   };
 }
 
-/** Build the `/admin/calendar` href preserving the other axis (date ↔ filter). */
+/**
+ * Build the `/admin/calendar` href preserving the other axis (date ↔ filter).
+ *
+ * `hold`/`release` are deliberately NOT preserved: every other link on this surface (date nav,
+ * filter chips, the banner's own Cancel) should DROP an open confirm, because moving off the
+ * slot you were asked about is an answer. They are set explicitly, one link each.
+ */
 export function calendarHref(data: Pick<CalendarData, "day" | "today" | "filter">, o: {
   date?: string;
   filter?: string;
+  hold?: string;
+  release?: string;
 }): string {
   const d = o.date ?? data.day;
   const f = o.filter ?? data.filter;
   const params = new URLSearchParams();
   if (d !== data.today) params.set("date", d);
   if (f !== "all") params.set("filter", f);
+  if (o.hold) params.set("hold", o.hold);
+  if (o.release) params.set("release", o.release);
   const q = params.toString();
   return q ? `/admin/calendar?${q}` : "/admin/calendar";
 }
@@ -370,6 +464,110 @@ export function CalendarLegend({ data }: { data: CalendarData }) {
         />
         Blackout
       </span>
+      {/* Only when one is on screen — a legend key for a state the day doesn't contain is noise
+          on every other day. `Held` shares Blackout's hatch; the label is what distinguishes it,
+          and it earns a key because it is the one dark card you can undo from here (#703). */}
+      {data.holdBySlot.size > 0 && (
+        <span className="inline-flex items-center gap-1.5">
+          <span
+            className="inline-block h-3 w-3 rounded-sm border border-accent/60"
+            style={{
+              background:
+                "repeating-linear-gradient(45deg, color-mix(in srgb, var(--color-faint) 24%, transparent) 0 3px, transparent 3px 6px)",
+            }}
+            aria-hidden
+          />
+          Held · click to release
+        </span>
+      )}
+    </div>
+  );
+}
+
+const ERR_COPY: Record<CalendarErr, string> = {
+  bad_vessel: "That boat isn’t in the fleet any more.",
+  bad_date: "Couldn’t read that date — try the slot again from the grid.",
+  bad_time: "Couldn’t read that departure time — try the slot again from the grid.",
+  already_held: "That departure was already held.",
+  slot_taken: "Someone booked that departure — it’s a trip now, so it can’t be held.",
+  not_found: "That hold was already released.",
+  not_a_hold: "That’s a location or vessel block — lift it on Blocks, where its full scope shows.",
+  error: "Couldn’t do that just now — try again in a moment.",
+};
+
+/** The `?err=` banner for a refused hold/release (#703, #654 typed copy). */
+export function CalendarError({ err }: { err?: string | undefined }) {
+  const copy = errCopyFor(ERR_COPY, err, "error");
+  return copy ? <Notice tone="bad">{copy}</Notice> : null;
+}
+
+/**
+ * The confirm step for holding or releasing one departure (#703).
+ *
+ * A banner above the grid, not a dialog in the card: no-JS (DEC-026) rules out a toast to undo
+ * into, and an open block is ~40px tall — there is no room to ask a question in it, least of all
+ * at 375px. It also gives the SCOPE sentence somewhere to live, and that sentence is the point.
+ * A hold is physical (one boat, one clock time), so it removes every offering proposing that
+ * boat-time — a fact the block row it writes cannot show, because the row has no offering on it.
+ */
+export function HoldConfirm({ data }: { data: CalendarData }) {
+  const p = data.pending;
+  if (!p) return null;
+
+  const cancelHref = calendarHref(data, {});
+  const when = `${shortTime(p.time)} on ${p.vesselName}`;
+
+  return (
+    <div
+      data-testid="hold-confirm"
+      className="mt-3 flex flex-col gap-2 rounded-card border border-line bg-card px-4 py-3 shadow-sm min-[560px]:flex-row min-[560px]:items-center min-[560px]:justify-between"
+    >
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-ink">
+          {p.action === "hold" ? `Hold ${when}?` : `Release the hold on ${when}?`}
+        </p>
+        <p className="mt-0.5 text-xs text-muted">
+          {p.action === "hold" ? (
+            // The scope clause appears only when there IS scope to explain. On the usual slot
+            // it would be a sentence about a number that is always 1 — noise the operator
+            // learns to skip, which is how they miss it on the day it says 2.
+            p.offeringCount > 1 ? (
+              <>
+                Takes the departure off the market for all {p.offeringCount}
+                {" offerings that sell this boat-time — it’s one boat."} It stays off until you
+                release it.
+              </>
+            ) : (
+              <>Takes the departure off the market until you release it.</>
+            )
+          ) : (
+            <>The departure goes back on sale.</>
+          )}
+        </p>
+      </div>
+
+      <div className="flex shrink-0 items-center gap-3">
+        <AppLink href={cancelHref} className="text-sm text-muted">
+          Cancel
+        </AppLink>
+        <form action={p.action === "hold" ? holdSlot : releaseHold}>
+          {/* The write's inputs come from the RESOLVED slot, never from the raw query — the
+              param only selects what to ask about. */}
+          <input type="hidden" name="date" value={data.day} />
+          <input type="hidden" name="filter" value={data.filter} />
+          {p.action === "hold" ? (
+            <>
+              <input type="hidden" name="vesselId" value={p.vesselId} />
+              <input type="hidden" name="time" value={p.time} />
+            </>
+          ) : (
+            <input type="hidden" name="id" value={p.blockId} />
+          )}
+          <SubmitButton className="rounded-card bg-accent px-4 py-2 text-sm font-semibold text-white">
+            {p.action === "hold" ? "Hold it" : "Release it"}
+          </SubmitButton>
+        </form>
+      </div>
     </div>
   );
 }
@@ -524,39 +722,94 @@ export function CalendarGrid({
                     );
                   }
 
+                  const physical = slotKey(String(s.vesselId), s.date, s.time);
+                  // Ring what the banner is asking about. With several cards on one boat-time
+                  // it rings ALL of them, which is the scope sentence shown rather than stated.
+                  const asked =
+                    data.pending?.action === "hold" &&
+                    data.pending.vesselId === String(s.vesselId) &&
+                    data.pending.time === s.time;
+                  const ring = asked ? " ring-2 ring-ink ring-offset-1" : "";
+
                   if (s.status === "blocked") {
-                    return (
+                    // A dark card is releasable HERE only when a single-slot hold is what made
+                    // it dark. A `vessel` or `location` block covers far more than this card
+                    // shows, so it stays inert and is lifted on /admin/blocks, where its scope
+                    // is visible — the same reason `releaseVesselHoldAdmin` refuses one by id.
+                    const hold = data.holdBySlot.get(physical);
+                    const askedRelease =
+                      data.pending?.action === "release" &&
+                      hold !== undefined &&
+                      data.pending.blockId === String(hold.id);
+                    // A hold wears an accent border, a blackout the plain line. Both are dark
+                    // and unsellable, but only one is the operator's own and undoable from
+                    // here — if they looked identical the legend would be the only thing
+                    // saying which dark cards click, and a legend is not where you look.
+                    const cls = `absolute left-[3px] right-[3px] flex items-center justify-center overflow-hidden rounded-lg border text-[10px] ${
+                      hold ? "border-accent/60 font-medium text-accent" : "border-line text-muted"
+                    }${askedRelease ? " ring-2 ring-ink ring-offset-1" : ""}`;
+                    const style = {
+                      ...pos,
+                      background:
+                        "repeating-linear-gradient(45deg, color-mix(in srgb, var(--color-faint) 24%, transparent) 0 4px, transparent 4px 8px)",
+                    } as const;
+
+                    return hold ? (
+                      <AppLink
+                        key={key}
+                        href={calendarHref(data, { release: String(hold.id) })}
+                        spinner="overlay"
+                        aria-label={`Release the hold on ${shortTime(s.time)}, ${
+                          data.vesselById.get(String(s.vesselId))?.name ?? String(s.vesselId)
+                        }`}
+                        data-testid="cal-block"
+                        data-vessel={String(s.vesselId)}
+                        data-status="blocked"
+                        className={cls}
+                        style={style}
+                      >
+                        Held
+                      </AppLink>
+                    ) : (
                       <div
                         key={key}
                         data-testid="cal-block"
                         data-vessel={String(s.vesselId)}
                         data-status="blocked"
-                        className="absolute left-[3px] right-[3px] flex items-center justify-center overflow-hidden rounded-lg border border-line text-[10px] text-muted"
-                        style={{
-                          ...pos,
-                          background:
-                            "repeating-linear-gradient(45deg, color-mix(in srgb, var(--color-faint) 24%, transparent) 0 4px, transparent 4px 8px)",
-                        }}
+                        className={cls}
+                        style={style}
                       >
                         Blackout
                       </div>
                     );
                   }
 
-                  // available → an offering-tinted dashed "open" block (sell deferred to 12.1).
+                  // available → an offering-tinted dashed "open" block. Selling from here is
+                  // still deferred (12.1); the link takes the slot OFF the market (#703). The
+                  // href is keyed on the PHYSICAL slot, not the offering, so every card sharing
+                  // a boat-time leads to the same confirm — which is what the hold really does.
                   return (
-                    <div
+                    <AppLink
                       key={key}
+                      href={calendarHref(data, {
+                        hold: `${String(s.vesselId)}|${s.time}`,
+                      })}
+                      spinner="overlay"
+                      // The card says "open" and the link HOLDS it — without a name of its own
+                      // a screen reader announces the state and hides the action.
+                      aria-label={`Hold ${shortTime(s.time)}, ${
+                        data.vesselById.get(String(s.vesselId))?.name ?? String(s.vesselId)
+                      }`}
                       data-testid="cal-block"
-                        data-vessel={String(s.vesselId)}
+                      data-vessel={String(s.vesselId)}
                       data-status="available"
                       className={`absolute left-[3px] right-[3px] flex items-center justify-center overflow-hidden rounded-lg border border-dashed text-[10px] text-faint ${offeringOpenClass(
                         String(s.offeringId),
-                      )}`}
+                      )}${ring}`}
                       style={pos}
                     >
                       open · {shortTime(s.time)}
-                    </div>
+                    </AppLink>
                   );
                 })}
               </div>

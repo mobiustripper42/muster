@@ -36,8 +36,9 @@ describe("visibleAdminNav", () => {
   it('names the crew group "Crew", not "People"', () => {
     // Reversed 2026-08-08 on the operator's call: CUSTOMERS ARE PEOPLE TOO, so "People" read as
     // though it might hold Bookings › Customers rather than naming the four crew surfaces it
-    // actually holds. Pinned in both directions so the next person who spots the "Crew view"
-    // button and reads this as a collision bug finds the decision instead of reverting it.
+    // actually holds. Pinned in both directions so the rename cannot be quietly undone by
+    // someone who finds the earlier "People, not Crew" reasoning in the git history — that
+    // objection was the "Crew view" button, which #709 renamed and moved in the same change.
     const labels = GROUPS.map((g) => g.label);
     expect(labels).toContain("Crew");
     expect(labels).not.toContain("People");

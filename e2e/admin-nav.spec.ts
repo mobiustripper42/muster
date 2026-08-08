@@ -21,9 +21,9 @@ import {
  * on a click. Filtering on visibility picks the one this width actually uses.
  */
 function crewGroup(page: import("@playwright/test").Page) {
-  // Scoped to `summary:visible`, which is also what keeps this off the bar's "Crew view" button
-  // (a SubmitButton, `admin-nav.tsx:140`) now that two things in this bar say "Crew".
   // `summary:visible` then up to its <details> — the idiom the #603 test already uses here.
+  // It also keeps this off the "Switch to crew" button in the Account panel, which is a
+  // SubmitButton rather than a summary and so can never match.
   // Selecting the <details> directly and filtering on visibility does NOT work: at desktop width
   // it matches nothing, and at 375px it matches the hidden bar's copy as readily as the drawer's.
   return page

@@ -68,9 +68,11 @@ export const FLAT_LINKS: readonly AdminLink[] = [
  * boundary it was drawing — it sat two groups away from Bookings › Customers and read as though
  * it might hold them. "Crew" names exactly who these four surfaces are about.
  *
- * The earlier call avoided "Crew" because the bar also carries a **Crew view** button (the
- * switch to the crew app, DEC-093). That collision is real but small: the button is desktop-bar
- * furniture, not a menu entry, and its meaning is obvious from where it sits.
+ * The earlier call avoided "Crew" because the bar also carried a **Crew view** button (the switch
+ * to the crew app, DEC-093) — one word labelling two unrelated things a few dozen pixels apart.
+ * **That collision no longer exists:** #709 renamed the button to "Switch to crew" and moved it
+ * into the Account menu, in the same change as this rename. Recorded because the earlier decision
+ * is still in the git history and reads as though the objection stands.
  */
 export const GROUPS: readonly AdminGroup[] = [
   {

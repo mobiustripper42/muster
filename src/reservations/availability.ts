@@ -396,7 +396,7 @@ export function deriveVirtualAvailability(
           // BLOCK outranks a busy hull. A block is a deliberate operator act and the calendar
           // has to show it; `unavailable` is hidden there when nothing runs at that time, so
           // ranking busy first made an operator's own blackout disappear from the grid and from
-          // the Blackout count. Being unsellable twice over is still a blackout.
+          // the Blocked count. Being unsellable twice over is still blocked.
           const blocked = isSlotBlocked(blocks, String(offering.locationId), vesselId, date, time);
           const held = !blocked && !occupied && heldSlots.has(identity);
           slots.push({

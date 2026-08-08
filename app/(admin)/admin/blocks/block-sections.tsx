@@ -8,10 +8,17 @@ import { vesselHueClass } from "../../../lib/vessel-hue";
 
 export type BlockKind = "location" | "vessel" | "vesselHold";
 
+/**
+ * The three kinds are one FAMILY — a block — distinguished by SCOPE: a location, a vessel, or a
+ * single slot. The `vesselHold` kind used to label itself "Hold", which gave the operator two
+ * words for one thing (you held on the calendar, then went to Blocks to find it) and collided
+ * with DEC-109's transient customer checkout-hold, a different row with a countdown on it.
+ * Operator's call, 2026-08-08. The data-model name stays `vesselHold`; this is the label only.
+ */
 export const KIND_META: Record<BlockKind, { label: string; dot: string; pill: string }> = {
   location: { label: "Location", dot: "bg-muted", pill: "border-line bg-bg text-muted" },
   vessel: { label: "Vessel", dot: "bg-bad", pill: "border-bad-line bg-bad-bg text-bad" },
-  vesselHold: { label: "Hold", dot: "bg-accent", pill: "border-line bg-bg text-ink" },
+  vesselHold: { label: "Slot", dot: "bg-accent", pill: "border-line bg-bg text-ink" },
 };
 
 /** "2026-08-12" → "Wed Aug 12". Read at UTC midnight so the label never shifts by TZ. */

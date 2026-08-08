@@ -10,7 +10,20 @@
  * Runs desktop + 375px (the grid scrolls; the booked block stays present).
  */
 import { test, expect, resetAndSeed, signInAsAdmin } from "./fixtures.js";
-import { BOOKED, BOOKED_2, demoReservationId, monthDay } from "./reservation-demo.js";
+import { shortTime as shortLabel } from "../src/reservations/calendar-grid.js";
+import { xolaFixture } from "../src/reservations/seed-xola.js";
+import {
+  BOOKED,
+  BOOKED_2,
+  DEMO,
+  OPEN_TIME,
+  TODAY,
+  demoReservationId,
+  monthDay,
+} from "./reservation-demo.js";
+
+/** The xola fixture's days, derived from the SAME clock read the seed subprocess gets (#646). */
+const XOLA = xolaFixture(TODAY);
 
 test.describe("admin /admin/calendar", () => {
   test.beforeEach(async () => {
@@ -149,5 +162,118 @@ test.describe("admin /admin/calendar", () => {
     await signInAsAdmin(page, "spink");
     const res = await page.goto("/admin/calendar/resv-does-not-exist");
     expect(res?.status()).toBe(404);
+  });
+
+  /**
+   * Hold a single departure from the calendar (#703) — the write the registry's "make a hold on
+   * the calendar" copy has been promising since 12.10 with nothing able to produce one.
+   *
+   * The round trip is the test: hold it, see it dark, see the row the registry renders for it,
+   * release it from the same place, see it back on sale. Asserting only the hold would pass with
+   * a one-way door, which is the version of this feature nobody can undo.
+   */
+  test("an open slot is blocked from the calendar, lands in the registry, and is unblocked", async ({
+    page,
+  }) => {
+    await signInAsAdmin(page, "spink");
+    await page.goto(`/admin/calendar?date=${BOOKED.date}`);
+
+    // Addressed by SCOPE, not by label: both dark cards read "Blocked", and only the slot-scoped
+    // one is undoable here. A `hasText` filter would match either.
+    const slotBlock = page.locator('[data-testid="cal-block"][data-blocked-by="slot"]');
+
+    // 3:30 is open (the offering's second departure; nobody has taken it).
+    await expect(page.getByText(`open · ${shortLabel(OPEN_TIME)}`)).toBeVisible();
+
+    // Clicking it asks first — a misclick on a busy grid must not silently unsell a departure.
+    await page.getByText(`open · ${shortLabel(OPEN_TIME)}`).click();
+    const confirm = page.getByTestId("hold-confirm");
+    await expect(confirm).toBeVisible();
+    await expect(confirm).toContainText("Brew 3");
+    await expect(confirm).toContainText(shortLabel(OPEN_TIME));
+    // Still on sale until the second click — the confirm is a question, not a receipt.
+    await expect(page.getByText(`open · ${shortLabel(OPEN_TIME)}`)).toBeVisible();
+
+    await confirm.getByRole("button", { name: "Block it" }).click();
+    await expect(page.getByTestId("hold-confirm")).toHaveCount(0);
+    await expect(page.getByText(`open · ${shortLabel(OPEN_TIME)}`)).toHaveCount(0);
+    await expect(slotBlock).toBeVisible();
+    await expect(slotBlock).toContainText("Blocked");
+    // The chip's COUNT, not just its label. Renaming this chip dropped the number once already
+    // — the lookup was cast to `keyof typeof counts`, so the stale key read `undefined` and
+    // rendered as nothing. A label-only assertion would have passed through that.
+    await expect(page.getByTestId("filter-blocked")).toHaveText("Blocked 1");
+    await expect(page.getByTestId("filter-open")).toHaveText("Open 1");
+
+    // One block family, one list: the registry renders the row it already knew how to render.
+    await page.goto("/admin/blocks?kind=slot");
+    const row = page.getByTestId("block-row");
+    await expect(row).toHaveCount(1);
+    await expect(row).toContainText("Slot");
+    await expect(row).toContainText("Brew 3");
+    await expect(row).toContainText("one departure · opens on the calendar");
+    await expect(row).toContainText("1");
+
+    // The row IS the forward link — one click to the block's own day, no read-only aside in
+    // between (#703). Clicking it must not select it into the editor.
+    await row.click();
+    await page.waitForURL(new RegExp(`/admin/calendar\\?date=${BOOKED.date}`));
+
+    // Unblocked from the calendar, the slot comes back on sale (DEC-125, reversible-in-spirit).
+    await slotBlock.click();
+    const release = page.getByTestId("hold-confirm");
+    await expect(release).toContainText("back on sale");
+    await release.getByRole("button", { name: "Unblock it" }).click();
+
+    await expect(page.getByText(`open · ${shortLabel(OPEN_TIME)}`)).toBeVisible();
+    await expect(slotBlock).toHaveCount(0);
+  });
+
+  /**
+   * A slot block is PHYSICAL — one boat, one clock time — so it removes every offering that
+   * proposes that boat-time, not the one card the operator happened to click (#702, #703).
+   *
+   * The xola seed's fleet offering sells Brew 3 at the demo offering's own departure times, so
+   * `days.onGrid` draws TWO open cards on one slot. That doubling is the whole test: with a
+   * single offering per boat the href could be keyed on the offering and nothing would notice.
+   */
+  test("blocking one card takes the boat-time off the market for every offering selling it", async ({
+    page,
+  }) => {
+    await resetAndSeed("reservation", "xola");
+    await signInAsAdmin(page, "spink");
+    await page.goto(`/admin/calendar?date=${XOLA.days.onGrid}&filter=open`);
+
+    // Two offerings, one boat-time: two open cards at 3:30 on Brew 3 before anything is blocked.
+    const opens = page
+      .getByTestId("cal-block")
+      .filter({ hasText: `open · ${shortLabel(OPEN_TIME)}` })
+      .and(page.locator(`[data-vessel="${DEMO.vesselId}"]`));
+    await expect(opens).toHaveCount(2);
+
+    // Both cards lead to the SAME confirm — the href is the boat-time, not the offering. This
+    // is the assertion the doubling exists for; clicking can only ever reach one of them,
+    // because the two cards are drawn exactly on top of each other (#702's collision layout is
+    // not this task). So the last one in DOM order is the one painted on top and clickable.
+    const hrefs = await opens.evaluateAll((els) => els.map((e) => e.getAttribute("href")));
+    expect(new Set(hrefs).size).toBe(1);
+
+    await opens.last().click();
+    const confirm = page.getByTestId("hold-confirm");
+    // The scope is said out loud, because the row this writes cannot show it.
+    await expect(confirm).toContainText("2 offerings");
+    await confirm.getByRole("button", { name: "Block it" }).click();
+
+    // BOTH are gone from the open filter — one physical boat, one block.
+    await expect(
+      page
+        .getByTestId("cal-block")
+        .filter({ hasText: `open · ${shortLabel(OPEN_TIME)}` })
+        .and(page.locator(`[data-vessel="${DEMO.vesselId}"]`)),
+    ).toHaveCount(0);
+    // And the registry attributes both to the one block it wrote.
+    await page.goto("/admin/blocks?kind=slot");
+    await expect(page.getByTestId("block-row")).toHaveCount(1);
+    await expect(page.getByTestId("block-row")).toContainText("2");
   });
 });

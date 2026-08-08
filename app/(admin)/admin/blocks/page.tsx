@@ -43,7 +43,7 @@ type Search = {
 };
 
 const ERR_COPY: Record<BlockErr, string> = {
-  bad_kind: "Pick a block kind — Location or Vessel. (Holds are made on the calendar.)",
+  bad_kind: "Pick a block kind — Location or Vessel. (Slot blocks are made on the calendar.)",
   bad_location: "Pick a location that still exists.",
   bad_date: "Give the block a real date.",
   bad_window: "Check the time window — HH:MM, and the start can’t be after the end.",
@@ -57,12 +57,12 @@ const FILTERS: { key: string; label: string }[] = [
   { key: "all", label: "All" },
   { key: "location", label: "Location" },
   { key: "vessel", label: "Vessel" },
-  { key: "hold", label: "Hold" },
+  { key: "slot", label: "Slot" },
 ];
 
-/** Registry filter key for a block kind (both hold-family kinds fold to "hold"). */
+/** Registry filter key for a block kind — the single-slot kind files under "slot". */
 function filterKeyOf(kind: BlockKind): string {
-  return kind === "vesselHold" ? "hold" : kind;
+  return kind === "vesselHold" ? "slot" : kind;
 }
 
 export default async function AdminBlocks({
@@ -109,7 +109,13 @@ export default async function AdminBlocks({
   // Time scope: Upcoming (default) or Past — a two-way segment, never both.
   const showPast = sp.past === "1";
   // The selected block loads into the edit panel (master-detail); absent ⇒ a fresh "New block".
-  const selected = sp.sel ? blocks.find((b) => String(b.id) === sp.sel) ?? null : null;
+  // A SLOT block is never selectable: its row links to the calendar instead, and there is
+  // nothing here to edit. Excluding it at the source matters — a stale `?sel=<slot-id>` would
+  // otherwise reach the editor, which has no branch for the kind and would render a LOCATION
+  // form pointed at a slot block (#703).
+  const selected = sp.sel
+    ? blocks.find((b) => String(b.id) === sp.sel && b.kind !== "vesselHold") ?? null
+    : null;
   // Every nav link preserves the OTHER axes (kind + time scope + selection), so filtering never
   // drops your selection or empties the panel.
   const hrefWith = (o: { kind?: string; past?: boolean; sel?: string | null }) => {
@@ -205,7 +211,7 @@ export default async function AdminBlocks({
           {visible.length === 0 ? (
             <p className="px-4 py-6 text-sm text-muted">
               No blocks{filter !== "all" ? " of this kind" : ""} yet. Create one on the right, or
-              make a hold on the calendar.
+              block a single departure on the calendar.
             </p>
           ) : (
             visible.map(({ block, span, past, impact, vessel, location }) => {
@@ -220,10 +226,19 @@ export default async function AdminBlocks({
               const locationName = location?.name ?? (block.kind === "location" ? String(block.locationId) : "");
 
               const isSel = selected !== null && String(selected.id) === String(block.id);
+              // A SLOT block row goes straight to its day on the calendar, not into the edit
+              // panel (#703). Selecting one used to open a read-only aside whose entire content
+              // — boat, day, time — is already on the row you clicked, plus a second link to
+              // the place you were trying to reach. There is nothing to edit here: a slot block
+              // is made and unmade on the calendar, so the row IS the forward link.
+              const rowHref =
+                block.kind === "vesselHold"
+                  ? `/admin/calendar?date=${block.date}`
+                  : hrefWith({ sel: String(block.id) });
               return (
                 <AppLink
                   key={block.id}
-                  href={hrefWith({ sel: String(block.id) })}
+                  href={rowHref}
                   data-testid="block-row"
                   aria-current={isSel ? "page" : undefined}
                   className={`block border-t border-line hover:bg-bg ${isSel ? "bg-bg" : ""} ${
@@ -250,7 +265,7 @@ export default async function AdminBlocks({
                       {kind === "location"
                         ? "all vessels · all offerings here"
                         : kind === "vesselHold"
-                          ? "reserved · made on calendar"
+                          ? "one departure · opens on the calendar"
                           : "out of service"}
                       {block.note ? ` · ${block.note}` : ""}
                     </div>

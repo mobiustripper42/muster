@@ -130,8 +130,15 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
   }
 
   // Re-derive availability for the exact slot — a stale link (someone else booked it, a
-  // block landed, the day passed) gets an honest notice instead of a doomed form. Same
-  // derivation shape as /book (no holds passed — the action's hold is authoritative).
+  // block landed, the day passed) gets an honest notice instead of a doomed form.
+  //
+  // **Still no `holds` here, deliberately, after #620 added them to /book.** The diagnosis on
+  // that issue named both call sites; its acceptance named only `/book`, and this one should
+  // stay as it is. `CheckoutHold` carries no customer identity — only `stripeCheckoutSessionId`,
+  // bound after the session exists — so there is no way to tell YOUR hold from a rival's at
+  // render time, and therefore no way to exempt your own. Pass holds here and anyone who backs
+  // into this page while holding the slot is told it is sold out, by their own hold. The
+  // action's hold remains authoritative, and the write CAS is the real backstop either way.
   const today = vesselDateOf(new Date());
   const date = sp.date!;
   const time = sp.time!;

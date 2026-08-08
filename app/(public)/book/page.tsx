@@ -14,7 +14,7 @@
  * default when the date or time changes (not carried in the URL) — a minor, accepted v1 wrinkle;
  * the natural order is date → time → guests → continue.
  */
-import type { Block, Event, Location, Offering, Reservation, Vessel } from "@core/domain/entities.js";
+import type { Block, CheckoutHold, Event, Location, Offering, Reservation, Vessel } from "@core/domain/entities.js";
 import { vesselDateOf } from "@core/config/tenant.js";
 import { deriveVirtualAvailability, type VirtualSlot } from "@core/reservations/availability.js";
 import {
@@ -74,15 +74,17 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
   let events: Event[];
   let reservations: Reservation[];
   let locations: Location[];
+  let holds: CheckoutHold[];
   try {
     const repo = getRepo();
-    [offerings, vessels, blocks, events, reservations, locations] = await Promise.all([
+    [offerings, vessels, blocks, events, reservations, locations, holds] = await Promise.all([
       repo.listOfferings(),
       repo.listVessels(),
       repo.listBlocks(),
       repo.listEvents(),
       repo.listAllReservations(),
       repo.listLocations(),
+      repo.listCheckoutHolds(),
     ]);
   } catch {
     return (
@@ -139,6 +141,15 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
   // Derive over [monthStart, lastDayOfMonth]. lastDay = day before next month's first.
   const lastDay = new Date(Date.parse(`${monthEnd}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
 
+  // `holds` + `asOf` (#620). The deriver has supported hold-awareness since 12.1 and NEITHER
+  // caller passed them, so the branch was dead in production: a slot another customer was
+  // actively paying for rendered as available, the loser walked the whole funnel, and the write
+  // CAS rejected them at the end with "that departure was just taken while you were checking
+  // out". The guard existed and never ran.
+  //
+  // `asOf` is required for a hold to count at all — absent, the deriver treats none as live
+  // (conservative by design, since the CAS is still the real backstop). Vessel-local day for the
+  // window, UTC instant for expiry: `expiresAt` is UTC and the comparison is string-lexical.
   const slots = deriveVirtualAvailability({
     offerings: [chosen],
     vessels,
@@ -146,6 +157,8 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
     blocks,
     events,
     reservations,
+    holds,
+    asOf: new Date().toISOString(),
   });
   const slotsByDate = new Map<string, VirtualSlot[]>();
   for (const s of slots) {

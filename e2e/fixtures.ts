@@ -64,6 +64,44 @@ export async function seedExtraAdmin(
   await seedAdmin(a);
 }
 
+/**
+ * Plant a live customer checkout-hold on a slot (12.1, DEC-109) — the transient 15-minute soft
+ * reservation another buyer takes while they are paying (#620).
+ *
+ * Written straight through the port rather than by driving the funnel: acquiring one for real
+ * needs a Stripe session, and the thing under test is whether `/book` SUBTRACTS a live hold, not
+ * how the hold got there. `expiresAt` is caller-supplied so a test can plant an expired one and
+ * prove the slot stays on sale — the lazy-on-read half of the contract, which has no cron behind
+ * it and so is only ever exercised by a comparison at derive time.
+ */
+export async function plantCheckoutHold(h: {
+  id: string;
+  vesselId: string;
+  date: string;
+  time: string;
+  offeringId: string;
+  guestCount: number;
+  expiresAt: string;
+}): Promise<void> {
+  const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
+  try {
+    const result = await repo.acquireCheckoutHold({
+      id: h.id as never,
+      vesselId: h.vesselId as never,
+      date: h.date,
+      time: h.time,
+      source: "muster",
+      offeringId: h.offeringId as never,
+      guestCount: h.guestCount,
+      expiresAt: h.expiresAt,
+      createdAt: "2026-07-06T00:00:00.000Z",
+    });
+    if (!result.acquired) throw new Error(`hold not acquired for ${h.vesselId} ${h.date} ${h.time}`);
+  } finally {
+    await repo.close();
+  }
+}
+
 /** Flip an admin's `active` flag — the per-person revoke lever (DEC-092). */
 export async function setAdminActive(handle: string, active: boolean): Promise<void> {
   const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);

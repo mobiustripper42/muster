@@ -113,4 +113,93 @@ describe("importRecords — event-id-keyed Map+Reconcile (DEC-043)", () => {
     await formShifts(repo);
     expect((await repo.getShift(SHIFT_ID))?.state).toBe("Cancelled");
   });
+
+  /**
+   * Customer identity on the import path (#701, DEC-132).
+   *
+   * The booking path resolves a customer and stamps `customer_id`; the importer never did, so
+   * every imported reservation landed unlinked. That is invisible today and ruinous at the
+   * DEC-126 cutover, when the entire back catalogue arrives through this function: a returning
+   * guest who booked via Xola would read as brand new, and repeat-guest history — the reason
+   * the table exists — would start at the cutover.
+   *
+   * Phone-first, exactly as `resolveCustomerId` and `db:backfill:customers` do it. Two
+   * implementations of "the same person" would drift, and the second one would be this one.
+   */
+  describe("customer identity (#701)", () => {
+    const rid = (r: string) => asId<"ReservationId">(`resv-${r}`);
+
+    it("resolves one customer for two bookings whose phone is spelled differently", async () => {
+      const repo = new InMemoryRepository();
+      await importRecords(repo, [
+        booked("r1", { customerName: "Nora Blake", phone: "(216) 555-0148" }),
+        booked("r2", { customerName: "nora blake", phone: "+1 216-555-0148" }),
+      ]);
+
+      const a = await repo.getReservation(rid("r1"));
+      const b = await repo.getReservation(rid("r2"));
+      expect(a?.customerId).toBeDefined();
+      // The canonicalizer's job, asserted through the importer: one person, one row.
+      expect(b?.customerId).toBe(a?.customerId);
+      expect(await repo.listCustomers()).toHaveLength(1);
+    });
+
+    it("leaves a record with no usable phone unlinked, and creates no customer", async () => {
+      const repo = new InMemoryRepository();
+      await importRecords(repo, [
+        booked("r1"), // the base record carries no phone
+        booked("r2", { customerName: "Sarah", phone: "not-a-phone" }),
+      ]);
+
+      expect((await repo.getReservation(rid("r1")))?.customerId).toBeUndefined();
+      expect((await repo.getReservation(rid("r2")))?.customerId).toBeUndefined();
+      // Matching on NAME would merge two different Sarahs. Unlinked is the honest answer, and
+      // it is the same one `db:backfill:customers` gives for the same input.
+      expect(await repo.listCustomers()).toHaveLength(0);
+    });
+
+    /**
+     * A link may MOVE but must never be REMOVED. Xola dropping a phone on a later pull is an
+     * upstream data wobble, not evidence the booking belongs to nobody — and an import that
+     * silently unlinks history reports nothing while doing it.
+     */
+    it("keeps the existing link when a re-import arrives with the phone gone", async () => {
+      const repo = new InMemoryRepository();
+      await importRecords(repo, [booked("r1", { phone: "(216) 555-0148" })]);
+      const linked = (await repo.getReservation(rid("r1")))?.customerId;
+      expect(linked).toBeDefined();
+
+      await importRecords(repo, [booked("r1")]); // same booking, no phone this time
+      expect((await repo.getReservation(rid("r1")))?.customerId).toBe(linked);
+    });
+
+    it("follows the customer when the phone genuinely changes", async () => {
+      const repo = new InMemoryRepository();
+      await importRecords(repo, [booked("r1", { phone: "(216) 555-0148" })]);
+      const first = (await repo.getReservation(rid("r1")))?.customerId;
+
+      await importRecords(repo, [booked("r1", { phone: "(440) 555-0102" })]);
+      const second = (await repo.getReservation(rid("r1")))?.customerId;
+      expect(second).toBeDefined();
+      expect(second).not.toBe(first);
+      expect(await repo.listCustomers()).toHaveLength(2);
+    });
+
+    /**
+     * `customerId` must stay OUT of the materiality set (`reservationMateriallyChanged`). It is
+     * internal bookkeeping, not a change to the booking — if it counted, the first import after
+     * this ships would bump `updatedAt` on every row in the back catalogue and fire a DEC-029
+     * nudge for all of them.
+     */
+    it("linking a customer is not a material change — updatedAt survives a re-import", async () => {
+      const repo = new InMemoryRepository();
+      const t1 = new Date("2026-05-01T00:00:00.000Z");
+      const t2 = new Date("2026-05-02T00:00:00.000Z");
+
+      await importRecords(repo, [booked("r1", { phone: "(216) 555-0148" })], t1);
+      await importRecords(repo, [booked("r1", { phone: "(216) 555-0148" })], t2);
+
+      expect((await repo.getReservation(rid("r1")))?.updatedAt).toBe(t1.toISOString());
+    });
+  });
 });

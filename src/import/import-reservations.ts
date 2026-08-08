@@ -12,6 +12,7 @@ import type { Event, Reservation } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import type { VesselId } from "../domain/ids.js";
 import { assertOptionalIsoDateTime } from "../domain/iso-date.js";
+import { resolveCustomerId } from "../customers/resolve.js";
 import type { Repository } from "../ports/repository.js";
 import { vesselCapacity } from "./resource-map.js";
 
@@ -235,9 +236,35 @@ export async function importRecords(
     const eventId = asId<"EventId">(rawEventId);
     const internalId = asId<"ReservationId">(`resv-${rec.reservationId}`);
     const existingReservation = await repo.getReservation(internalId);
+
+    // Customer identity (#701, DEC-132) — the same get-or-create the booking path runs, so an
+    // imported guest and a Muster guest are one person. Without it every imported reservation
+    // lands unlinked, which is invisible now and ruinous at the DEC-126 cutover: the whole back
+    // catalogue arrives through here, and a returning guest would read as brand new.
+    //
+    // Phone-first, and NO name fallback — the resolver returns `undefined` for an absent or
+    // uncanonicalizable phone and the row stays unlinked, permanently and by design. That is
+    // the answer `db:backfill:customers` already gives for the same input; a second rule here
+    // would be the one nobody tests, and matching on name alone merges two different Sarahs.
+    const resolved = await resolveCustomerId(
+      repo,
+      {
+        customerName: rec.customerName,
+        ...(rec.phone !== undefined ? { phone: rec.phone } : {}),
+        ...(rec.email !== undefined ? { email: rec.email } : {}),
+      },
+      () => now.toISOString(),
+    );
+    // A link may MOVE but must never be REMOVED. Xola dropping a phone on a later pull is an
+    // upstream wobble, not evidence the booking belongs to nobody — and an unlink would be
+    // silent, since nothing on this path reports a link that used to exist and now doesn't.
+    const customerId = resolved ?? existingReservation?.customerId;
+
     // The fields below double as the materiality set — keep in lockstep with
     // `reservationMateriallyChanged` so a new tracked field can't silently suppress
-    // the DEC-029 nudge.
+    // the DEC-029 nudge. `customerId` is deliberately NOT in it: a customer link appearing is
+    // internal bookkeeping, not a change to the booking. If it counted, the first import after
+    // #701 shipped would bump `updatedAt` on every row in the catalogue and nudge on all of them.
     const core: Reservation = {
       id: internalId,
       eventId,
@@ -247,6 +274,7 @@ export async function importRecords(
       status: rec.status,
       ...(rec.email ? { email: rec.email } : {}),
       ...(rec.phone ? { phone: rec.phone } : {}),
+      ...(customerId ? { customerId } : {}),
     };
     // Stamp updatedAt on create + material change only (DEC-029); otherwise preserve
     // the stored timestamp so re-imports don't bump unchanged rows.

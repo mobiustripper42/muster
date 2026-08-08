@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { getRepo } from "./repo";
-import { readSubject, startSession } from "./auth";
+import { endSession, readSubject, startSession } from "./auth";
 
 /**
  * Crew ↔ admin view switching for a dual-role person (DEC-093). Every admin is
@@ -39,5 +39,22 @@ export async function switchToAdmin(): Promise<void> {
   const admin = await getRepo().getAdmin(subject.id);
   if (!admin || !admin.active) redirect("/crew");
   await startSession({ kind: "admin", id: subject.id });
+  redirect("/admin");
+}
+
+/**
+ * Sign out from the admin side (#709) — drop the session and land on the ADMIN front door.
+ *
+ * A sibling of `signOut` in `app/(crew)/crew/actions.ts` rather than a parameter on it. The two
+ * differ only in where they land, and a shared `redirect(to)` argument is a landing page a
+ * caller can get wrong — including a caller that passes one from a request. Two callers, two
+ * fixed destinations, nothing to pass.
+ *
+ * Until now there was **no way for an admin to sign out at all**, at any width: the only sign-out
+ * in the codebase was the crew drawer's, so an admin had to switch to crew view first. Clearing
+ * your own cookie is always safe, so there is no gate here beyond ending the session.
+ */
+export async function signOutAdmin(): Promise<void> {
+  await endSession();
   redirect("/admin");
 }

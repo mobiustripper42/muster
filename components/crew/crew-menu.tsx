@@ -115,10 +115,52 @@ export function CrewMenu({
         // inert — which it has, so the silence is a lie about the state of the app.
         role="dialog"
         aria-modal="true"
+        // Still "Menu", though the heading below reads "Muster" (#709).
+        //
+        // The operator called this "a tough call, not a slam dunk", and the split is what makes
+        // it cost nothing. FOR "Muster": the crew app never says the product's name anywhere
+        // else — this is the one place a crew member learns what they are using. AGAINST: a
+        // screen reader announcing "Muster dialog" says nothing about what the thing IS.
+        //
+        // So they do different jobs. Visible label = branding; accessible name = description.
+        // Changing this to "Muster" to "match" would trade the only description a non-sighted
+        // user gets for a word they cannot act on.
         aria-label="Menu"
-        className="fixed right-0 top-0 z-40 flex h-full w-64 max-w-[80vw] flex-col gap-1 border-l border-line bg-card p-4 shadow-lg"
+        // `h-dvh`, not `h-full` — the right unit, and NOT a fix for the bug below.
+        //
+        // `h-full` is `height:100%`, which on a fixed element resolves against the initial
+        // containing block rather than what you can see. `dvh` means "full screen height" and
+        // is what this wants. Kept on those merits alone.
+        //
+        // **The open bug it did NOT solve** (operator's phone, 2026-08-08, both apps): open the
+        // drawer, scroll so the browser toolbar collapses, and a band of page shows below the
+        // panel. `h-full` → `h-dvh` changed nothing there. The clue for whoever picks it up is
+        // that the BACKDROP stops at the same line as the panel — and the backdrop is
+        // `fixed inset-0`, which has no height of its own. So this is not the drawer being
+        // short: fixed positioning itself is being bounded by something smaller than the visual
+        // viewport, and the height property is the wrong end of it.
+        //
+        // Deliberately not filed (operator's call): the only symptom is a white box at the foot
+        // of the screen while scrolling a menu you are about to tap, and no other effect was
+        // found. Written here rather than in an issue so it is in front of the next person who
+        // touches drawer sizing, instead of in a backlog they will not read.
+        //
+        // Do NOT try to confirm any of this in the e2e suite. Playwright's Chromium has a static
+        // viewport with no collapsing toolbar and renders the drawer full-height either way — a
+        // green test here would assert nothing and claim everything.
+        className="fixed right-0 top-0 z-40 flex h-dvh w-64 max-w-[80vw] flex-col gap-1 border-l border-line bg-card px-4 pb-4 pt-[22px] shadow-lg"
       >
-        <p className="mb-2 px-3 font-semibold text-ink">Menu</p>
+        {/* The heading comes to the ✕, not the other way round (#709). The ✕ IS the `<summary>`,
+            which lives in the page header row OUTSIDE this panel and cannot move without giving
+            up the no-JS toggle this whole component exists for (see the header note).
+
+            `pt-[22px]` is MEASURED, not derived, and that is deliberate: the panel is
+            `fixed top-0`, so it cannot see the page shell's top padding that puts the summary
+            where it is. Measured 2026-08-08 at 375px — summary box y=22.5 h=44 (centre 44.5);
+            with pt-22 the heading's 44px box centres at 44, half a pixel out. Re-measure if the
+            crew shell's top padding changes; the numbers are here so the next person can, rather
+            than nudging until it looks right. */}
+        <p className="mb-2 flex h-[44px] items-center px-3 font-semibold text-ink">Muster</p>
 
         <div className="flex flex-col gap-1 overflow-y-auto">
           {links.map((l) =>

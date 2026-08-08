@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { AppLink } from "../ui/app-link";
 import { SubmitButton } from "../ui/submit-button";
-import { switchToCrew } from "../../app/lib/switch-actions";
+import { signOutAdmin, switchToCrew } from "../../app/lib/switch-actions";
 import { visibleAdminNav } from "../../app/lib/admin-links";
 
 /**
@@ -20,6 +20,34 @@ import { visibleAdminNav } from "../../app/lib/admin-links";
  * colors). Links the BUILT surfaces (9.12 added Messages); the rest are one line
  * each later.
  */
+
+/**
+ * The two account actions, rendered identically in the desktop Account panel and at the bottom
+ * of the mobile drawer (#709).
+ *
+ * One component so the two widths cannot drift — the bug this issue is about was precisely that
+ * `Crew view` existed at one width and in one place, and `Sign out` existed at neither.
+ *
+ * "Switch to crew", not "Crew view": it sits beside a sign-out now, and the crew drawer's
+ * counterpart says "Switch to admin" (`crew-menu.tsx:150`). The symmetric pair reads as what it
+ * is — a direction — where "Crew view" reads as a place.
+ *
+ * Both are server-action forms, so they post without JS like everything else in this bar.
+ * Switching down to crew is de-escalation and always allowed (DEC-093); signing out clears only
+ * the caller's own cookie.
+ */
+function AccountActions({ className }: { className: string }) {
+  return (
+    <>
+      <form action={switchToCrew}>
+        <SubmitButton className={`${className} w-full text-accent`}>Switch to crew</SubmitButton>
+      </form>
+      <form action={signOutAdmin}>
+        <SubmitButton className={`${className} w-full text-muted`}>Sign out</SubmitButton>
+      </form>
+    </>
+  );
+}
 
 export function AdminNav({
   tenant,
@@ -123,7 +151,7 @@ export function AdminNav({
           links fought for room in the middle. That manufactured the collision, and no bigger
           display could ever relieve it. */}
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-2.5">
-        <div className="flex min-w-0 items-baseline gap-2">
+        <div data-testid="nav-brand" className="flex min-w-0 items-baseline gap-2">
           <AppLink href="/admin" className="shrink-0 font-semibold text-ink">
             Muster
           </AppLink>
@@ -133,13 +161,10 @@ export function AdminNav({
           <span className="truncate text-xs text-muted">
             {tenant} · {dateLabel}
           </span>
-          {/* Switch down to the crew app (DEC-093) — the admin is also crew.
-              Always safe (de-escalation); gated server-side. */}
-          <form action={switchToCrew} className="shrink-0">
-            <SubmitButton className="whitespace-nowrap text-xs text-muted underline hover:text-ink">
-              Crew view
-            </SubmitButton>
-          </form>
+          {/* "Crew view" used to live HERE, in the brand cluster, and nowhere else — not in the
+              drawer, where anyone who has used the crew app looks for it. It now sits with Sign
+              out at the end of the menu at both widths (#709). Deliberately not left in both
+              places: two locations for one control is the confusion this fixed. */}
         </div>
 
         {/* Desktop: the daily four inline, everything slower behind a group (#603).
@@ -205,6 +230,26 @@ export function AdminNav({
               </details>
             );
           })}
+
+          {/* Account — the END of the desktop menu, which is the far right of the bar (#709).
+              Same `name="admin-nav"` as the groups above, so it joins the browser's own exclusive
+              accordion: opening it closes Bookings/Crew/Setup/Settings, no JS and no state.
+
+              Says "Account", not the admin's handle. Showing WHO you are is the better version —
+              it matters on a shared laptop — but this component takes `tenant`, `dateLabel` and
+              three feature flags and no subject, so the handle is a new prop from the server
+              layout. That is a decision, not a detail, and it isn't this issue's. */}
+          <details name="admin-nav" className="group relative">
+            <summary className="inline-flex cursor-pointer list-none items-center gap-1 whitespace-nowrap py-1.5 text-muted">
+              Account
+              <span aria-hidden className="text-[0.65rem] transition-transform group-open:rotate-180 motion-reduce:transition-none">
+                ▾
+              </span>
+            </summary>
+            <div className="absolute right-0 top-full z-30 mt-2 flex min-w-44 flex-col gap-1 rounded-card border border-line bg-card p-2 shadow-lg">
+              <AccountActions className="whitespace-nowrap rounded-lg px-2 py-1.5 text-left" />
+            </div>
+          </details>
         </div>
 
         {/* Mobile: hamburger on the right. */}
@@ -238,12 +283,19 @@ export function AdminNav({
           aria-modal="true"
           aria-label="Menu"
           inert={!open}
-          className={`fixed right-0 top-0 z-40 flex h-full w-64 max-w-[80vw] flex-col gap-1 border-l border-line bg-card p-4 shadow-lg transition-transform duration-200 motion-reduce:transition-none ${
+          // `h-dvh`, not `h-full` — the right unit for "full screen height", and NOT a fix for
+          // the toolbar-collapse gap the operator sees on a real phone. See the long note in
+          // `crew-menu.tsx`, which has the observation, what was tried, and the clue; both
+          // drawers have the same open bug and it is deliberately unfiled.
+          className={`fixed right-0 top-0 z-40 flex h-dvh w-64 max-w-[80vw] flex-col gap-1 border-l border-line bg-card p-4 shadow-lg transition-transform duration-200 motion-reduce:transition-none ${
             open ? "translate-x-0" : "translate-x-full"
           }`}
         >
           <div className="mb-2 flex items-center justify-between">
-            <span className="font-semibold text-ink">Menu</span>
+            {/* "Muster", matching crew (#709) — one menu concept, one heading. This panel's ✕ is a
+                real button inside the row, so it aligns for free; crew's cannot be (its ✕ is the
+                `<summary>`) and reaches the same look from the other direction. */}
+            <span className="font-semibold text-ink">Muster</span>
             <button
               ref={closeRef}
               type="button"
@@ -305,6 +357,15 @@ export function AdminNav({
                 </details>
               );
             })}
+          </div>
+
+          {/* Account actions at the bottom, below a rule, away from the destinations — the same
+              shape and the same position as the crew drawer (`crew-menu.tsx:146`), which is the
+              point of #709: one menu concept, two apps, nothing to relearn when you switch.
+              `mt-auto` pins it to the foot of the panel however short the link list is, so a
+              mis-tap at the end of the groups cannot land on Sign out. */}
+          <div className="mt-auto flex flex-col gap-1 border-t border-line pt-2">
+            <AccountActions className="flex min-h-[44px] items-center rounded-lg px-3 py-3 text-base" />
           </div>
         </div>
       </div>

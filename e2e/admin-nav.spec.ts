@@ -70,15 +70,19 @@ test.describe("admin nav", () => {
     //
     // e2e runs with RESERVATIONS=true and MESSAGING=1, so all thirteen entries render here —
     // strictly worse than any real deployment, which is what makes this the right place to pin it.
+    //
+    // Measured against the brand CLUSTER, not against "Crew view" — that button was the cluster's
+    // right edge until #709 moved it into the Account menu, and anchoring a layout assertion to
+    // one child meant a control moving out of the cluster read as a layout regression.
     test.skip(testInfo.project.name !== "desktop", "desktop-only: at 375px the links are behind the hamburger");
     await signInAsAdmin(page, "spink");
     const nav = page.getByRole("navigation", { name: "Admin" });
 
-    const crewView = nav.getByRole("button", { name: "Crew view" });
+    const brand = nav.getByTestId("nav-brand");
     const firstLink = nav.getByRole("link", { name: "At-Risk" });
-    const left = await crewView.boundingBox();
+    const left = await brand.boundingBox();
     const right = await firstLink.boundingBox();
-    expect(left, "Crew view must be laid out").not.toBeNull();
+    expect(left, "the brand cluster must be laid out").not.toBeNull();
     expect(right, "the first nav link must be laid out").not.toBeNull();
 
     // The whole bug in one assertion: the link row starts after the brand cluster ends.
@@ -282,6 +286,72 @@ test.describe("admin nav", () => {
   test("a signed-out visitor sees no operator nav", async ({ page }) => {
     await page.goto("/admin/at-risk");
     await expect(page.getByRole("navigation", { name: "Admin" })).toHaveCount(0);
+  });
+
+  /**
+   * Account actions live at the END of the menu, at both widths (#709).
+   *
+   * The complaint that produced this: "crew and admin menus should be the same, it's actually
+   * been a little confusing that they were always in a different location to switch." Crew ends
+   * its drawer with Switch to admin + Sign out below a rule (`crew-menu.tsx:146`). Admin had
+   * Crew view in the top-left BRAND CLUSTER and no Sign out anywhere, at any width.
+   *
+   * Mobile's menu is the drawer, so the end of it is the bottom. Desktop's menu is the bar, so
+   * the end of it is the far right — an Account group joining the same exclusive accordion.
+   */
+  test.describe("account actions (#709)", () => {
+    test("both are reachable from the end of the menu, at this width", async ({ page }) => {
+      await signInAsAdmin(page, "spink");
+      await page.goto("/admin/shifts");
+
+      const nav = page.getByRole("navigation", { name: "Admin" });
+      await openMenuIfMobile(page);
+      // Desktop shelves them behind Account; the drawer renders every group expanded, so this
+      // is a no-op there — the same shape the Messages test uses for the Crew group.
+      const account = nav.locator("summary:visible").filter({ hasText: "Account" });
+      if (await account.isVisible()) await clickHydrated(account);
+
+      await expect(nav.getByRole("button", { name: "Switch to crew" })).toBeVisible();
+      await expect(nav.getByRole("button", { name: "Sign out" })).toBeVisible();
+    });
+
+    /**
+     * ONE place per width. This is the assertion that fails if the brand-cluster copy of
+     * "Crew view" is left in alongside the new Account entry — which would re-create the exact
+     * two-locations problem the issue is about, while every other test here still passed.
+     */
+    test("the switch control exists exactly once", async ({ page }) => {
+      await signInAsAdmin(page, "spink");
+      await page.goto("/admin/shifts");
+
+      const nav = page.getByRole("navigation", { name: "Admin" });
+      await openMenuIfMobile(page);
+      const account = nav.locator("summary:visible").filter({ hasText: "Account" });
+      if (await account.isVisible()) await clickHydrated(account);
+
+      // Both navs are in the DOM at every width (see `crewGroup` above), so count the VISIBLE
+      // ones — an unscoped count reads the hidden copy too and would pass on two.
+      await expect(
+        nav.getByRole("button", { name: "Switch to crew" }).locator("visible=true"),
+      ).toHaveCount(1);
+    });
+
+    /** An admin signing out must not land on the crew sign-in page (`signOut` redirects to
+     *  /crew, which is why this needs its own action). */
+    test("signing out lands on the admin front door, not the crew one", async ({ page }) => {
+      await signInAsAdmin(page, "spink");
+      await page.goto("/admin/shifts");
+
+      const nav = page.getByRole("navigation", { name: "Admin" });
+      await openMenuIfMobile(page);
+      const account = nav.locator("summary:visible").filter({ hasText: "Account" });
+      if (await account.isVisible()) await clickHydrated(account);
+
+      await nav.getByRole("button", { name: "Sign out" }).click();
+      await page.waitForURL(/\/admin(\?|$)/);
+      // And the session is actually gone, not just the URL changed.
+      await expect(page.getByRole("navigation", { name: "Admin" })).toHaveCount(0);
+    });
   });
 
   test("a crew subject sees no admin nav", async ({ page }) => {

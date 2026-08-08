@@ -22,7 +22,7 @@ If non-empty, STOP. Tell the user: "Uncommitted changes — commit, stash, or di
 
 ## Step 0.5 — Run the project's pre-promote checks
 
-Projects define their own pre-promote gates — a staging/preview QA confirmation, a "no unapplied migrations on prod" check, whatever must be true before shipping. These are project-specific, so they live project-side: read `.claude/CLAUDE-context.md` (`## Migration Protocol (project)`, plus any `## Pre-promote checks` section) and `docs/DEPLOYMENT.md`, then run or confirm every gate listed there before continuing.
+Projects define their own pre-promote gates — a staging/preview QA confirmation, a "no unapplied migrations on prod" check, whatever must be true before shipping. These are project-specific, so they live project-side: **use the Read tool** on `.claude/CLAUDE-context.md` (`## Migration Protocol (project)`, plus any `## Pre-promote checks` section) and `docs/DEPLOYMENT.md` — never a `sed`/`grep` one-liner — then run or confirm every gate listed there before continuing.
 
 The common gate — **QA confirmation:** if the project deploys the trunk to a shared staging/preview environment, confirm it was actually QA'd against **this** release since the last merge. Ask the user: **"Has the staging/preview environment been QA'd against this release? (yes/no)"**
 

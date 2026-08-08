@@ -17,7 +17,7 @@ Otherwise check `session-log.md` for `[open]`: LEGACY MODE — pause note goes t
 
 ## Step 1 — Build check (conditional)
 
-Look up the project's build check in `.claude/CLAUDE-context.md §Commands`. Run whatever is defined (e.g. `npm run build`, `cargo build`, `make`). If `.claude/CLAUDE-context.md §Commands` defines no build step, skip silently.
+Look up the project's build check in `.claude/CLAUDE-context.md §Commands`, **with the Read tool** — never a `sed`/`grep` one-liner. Run whatever is defined (e.g. `npm run build`, `cargo build`, `make`). If `.claude/CLAUDE-context.md §Commands` defines no build step, skip silently.
 
 If the build fails: do NOT commit broken code. If you can't fix quickly, note the errors in the pause entry so the next sitting knows where to start.
 

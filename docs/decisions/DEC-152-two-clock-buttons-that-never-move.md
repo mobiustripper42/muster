@@ -1,7 +1,7 @@
 ---
 id: DEC-152
 title: "Two clock buttons that never move, one disabled — a control that vanishes moves its neighbour under the thumb"
-topic: "Timing — horizons, deadlines & vessel clock"
+topic: "UI, brand & frontend patterns"
 amends_spec:
   - section: "2.9"
     scope: "§2.9.7's `/crew/time` bullet only — its \"one card, one button … never both\" rule. Everything else in the Time Clock section stands: the one-open-punch rule (§2.9.4), the forgotten clock-out (§2.9.5, relocated on screen but unchanged), the three surfaces, the render-time \"On the clock since\" line, the per-punch editor and the running total. Anchored at §2.9 because §2.9.7 is a bold paragraph rather than a numbered heading, and the checker only resolves headings"

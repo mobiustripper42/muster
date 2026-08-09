@@ -23,23 +23,36 @@ test.describe("crew /crew/time — clock in, clock out", () => {
     await expect(page.getByRole("heading", { name: "Time" })).toBeVisible();
   });
 
-  test("clock in then out — one button at a time, and the hours land", async ({ page }) => {
+  /**
+   * Both buttons, always, in fixed positions — one enabled (issue #718, DEC-152 amending
+   * SPEC §2.9.7).
+   *
+   * The spec said "one card, one button … never both, never a guess about which they meant."
+   * That bought unambiguity by MOVING the control, which turned out to be the worse failure:
+   * clocking out shrinks the card, the remaining button slides up 46px into a 6px overlap with
+   * where the thumb just pressed, and a second tap clocks you back in. It happened in production
+   * on day one. A disabled twin cannot be mis-tapped; a moving button can.
+   */
+  test("clock in then out — both buttons always, one enabled, and the hours land", async ({ page }) => {
     await signInAsCrew(page, "crew-quint");
     await page.goto("/crew/time");
 
-    // Out: only Clock in is offered.
-    await expect(page.getByRole("button", { name: "Clock in" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Clock out" })).toHaveCount(0);
+    const clockIn = page.getByRole("button", { name: "Clock in" });
+    const clockOut = page.getByRole("button", { name: "Clock out" });
+
+    // Out: both rendered, only Clock in live.
+    await expect(clockIn).toBeEnabled();
+    await expect(clockOut).toBeDisabled();
     await expect(page.getByText("No hours yet this period.")).toBeVisible();
 
-    await page.getByRole("button", { name: "Clock in" }).click();
+    await clockIn.click();
     await page.waitForURL(/in=1/);
     await expect(page.getByText("You’re on the clock.")).toBeVisible();
 
-    // In: the offer flips. Never both — that's the §2.9.7 line.
+    // In: the ENABLEMENT flips; the buttons themselves do not move.
     await expect(page.getByText(/On the clock since/)).toBeVisible();
-    await expect(page.getByRole("button", { name: "Clock out" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Clock in" })).toHaveCount(0);
+    await expect(clockOut).toBeEnabled();
+    await expect(clockIn).toBeDisabled();
     // The open punch is listed but contributes nothing to the total (§2.9.6).
     await expect(page.getByText("still on the clock")).toBeVisible();
     await expect(page.getByText(/Doesn’t include the punch you haven’t closed/)).toBeVisible();
@@ -48,10 +61,48 @@ test.describe("crew /crew/time — clock in, clock out", () => {
     await page.waitForURL(/out=1/);
     await expect(page.getByText(/Clocked out/)).toBeVisible();
 
-    // Back to offering Clock in, and the punch is now closed and counted.
-    await expect(page.getByRole("button", { name: "Clock in" })).toBeVisible();
+    // Back to Clock in live, and the punch is now closed and counted.
+    await expect(clockIn).toBeEnabled();
+    await expect(clockOut).toBeDisabled();
     await expect(page.getByText("still on the clock")).toHaveCount(0);
     await expect(page.getByText("Total")).toBeVisible();
+  });
+
+  /**
+   * The whole point of #718, asserted the only way it can be: by measuring.
+   *
+   * A crew member clocked out and immediately clocked back in on the time clock's first live day.
+   * Not a race — a layout shift. Clocking out removes the "On the clock since HH:MM" line and
+   * changes the banner, the button below slides UP 46px, and its new box overlaps the old one by
+   * 6px. A thumb that never moved lands on the opposite action.
+   *
+   * Reading the code is how I got this wrong twice: first claiming the buttons shared coordinates
+   * (they do not), then that a pre-hydration tap ate the press (it cannot — a server-action form
+   * posts natively). Only bounding boxes settled it, so bounding boxes are what this pins.
+   */
+  test("#718: neither clock button moves across a punch", async ({ page }) => {
+    await signInAsCrew(page, "crew-quint");
+    await page.goto("/crew/time");
+
+    const boxes = async () => ({
+      in: await page.getByRole("button", { name: "Clock in" }).boundingBox(),
+      out: await page.getByRole("button", { name: "Clock out" }).boundingBox(),
+    });
+
+    const atRest = await boxes();
+    expect(atRest.in, "Clock in must be laid out").not.toBeNull();
+    expect(atRest.out, "Clock out must be laid out").not.toBeNull();
+
+    await page.getByRole("button", { name: "Clock in" }).click();
+    await page.waitForURL(/in=1/);
+    // Clocking IN grew the card by a line before #718; that is a shift too, just a safer one.
+    expect(await boxes()).toEqual(atRest);
+
+    await page.getByRole("button", { name: "Clock out" }).click();
+    await page.waitForURL(/out=1/);
+    // The dangerous direction — the card SHRINKS here, which is what pulled the button up
+    // under the thumb. Same boxes, or the bug is back.
+    expect(await boxes()).toEqual(atRest);
   });
 
   test("a second clock-in is refused with a calm notice, not a second punch", async ({
@@ -192,21 +243,24 @@ test.describe("crew /crew/time — clock in, clock out", () => {
     await page.getByRole("button", { name: "Clock out" }).click();
     await page.waitForURL(/out=1/);
 
-    // Nothing open yet: the clock is offered.
-    await expect(page.getByRole("button", { name: "Clock in" })).toBeVisible();
+    // Nothing open yet: the clock is live.
+    await expect(page.getByRole("button", { name: "Clock in" })).toBeEnabled();
 
     await page.locator('[id^="punch-"]').first().getByRole("link").first().click();
     await page.waitForURL(/edit=/);
 
-    // Open editor → the clock is gone, so there is nothing to press by mistake.
-    await expect(page.getByRole("button", { name: "Clock in" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Clock out" })).toHaveCount(0);
+    // Open editor → BOTH clock buttons go disabled. They used to be removed outright; #718
+    // changed that, because a control that vanishes is a control whose neighbour slides into
+    // its place — the same defect this whole issue is about, one state over. Disabled is the
+    // same protection without the movement.
+    await expect(page.getByRole("button", { name: "Clock in" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Clock out" })).toBeDisabled();
     await expect(page.getByText("Finish the punch you’re editing first.")).toBeVisible();
 
-    // And it comes back when the editor closes.
+    // And the clock comes back when the editor closes.
     await page.getByRole("link", { name: "Cancel" }).click();
     await page.waitForURL(/\/crew\/time(#|$|\?)/);
-    await expect(page.getByRole("button", { name: "Clock in" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Clock in" })).toBeEnabled();
   });
 
   test("a punch can't be entered in the future", async ({ page }) => {

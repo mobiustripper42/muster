@@ -126,6 +126,12 @@ export default async function CrewTime({
   // inert with no visible way back — the editor that would carry Cancel never opens.
   const editing = view.punches.some((p) => String(p.id) === sp.edit) ? sp.edit : undefined;
   const anyOpen = editing !== undefined || sp.add !== undefined;
+  // Which clock control is inert. Named once rather than inlined twice: #718's whole point is
+  // that these two are one decision with two faces, and computing them apart is how they drift.
+  // `onTheClock` is `null` when off (`src/crewapp/time-view.ts:70`) — reading it as `undefined`
+  // disabled both buttons at rest, which is how this was first written.
+  const clockInOff = onTheClock !== null || anyOpen;
+  const clockOutOff = onTheClock === null || anyOpen;
   const today = vesselDateOf(new Date());
   const thisPeriod = currentPeriod(PAY_PERIOD_ANCHOR, today);
 
@@ -138,58 +144,76 @@ export default async function CrewTime({
         </p>
       </header>
 
+      {/* BOTH buttons, always, in fixed positions — one enabled (#718, DEC-152 amending
+          SPEC §2.9.7). The spec said "one card, one button … never both, never a guess about
+          which they meant", and bought that unambiguity by MOVING the control: clocking out
+          removed the status line, the sole button slid up 46px, and its new box overlapped the
+          old one by 6px. A crew member clocked out and straight back in on the first live day.
+          A disabled twin cannot be mis-tapped; a moving button can.
+
+          Everything that changes size now lives BELOW the buttons — the status line above them
+          renders in both states so it cannot collapse, and the earlier-day warning and the
+          notices moved down. Nothing above a button may vary in height; that is the whole rule
+          and it is measured in `crew-time.spec.ts` ("neither clock button moves across a
+          punch") rather than eyeballed. */}
+      <section className="overflow-hidden rounded-card border border-line bg-card shadow-sm">
+        <div className="border-b border-line px-4 py-3">
+          <span className="font-semibold text-ink">
+            {onTheClock ? `On the clock since ${fmt12(onTheClock.sinceTime)}` : "Not on the clock"}
+          </span>
+        </div>
+
+        {/* Order is fixed and never reorders: Clock in, then Clock out. `disabled` on the one
+            that does not apply — and mid-edit BOTH are disabled rather than replaced by a
+            message, which is the same reason: a control that vanishes is a control whose
+            neighbour moves into its place.
+
+            GREEN FOLLOWS ENABLEMENT, not identity (operator, 2026-08-09). Green is not "this
+            is Clock in", it is "this is the live action" — so it moves between the two as the
+            state changes, and the disabled twin is inert grey. Separated and rounded rather
+            than flush, so they read as two discrete controls: the single full-bleed green
+            button is the right shape for the ask in/out surface, where there IS one action.
+            Here there are two and only one is live, which is a different thing to say. */}
+        <div className="flex flex-col gap-2 p-3">
+          <form action={clockInNow}>
+            <SubmitButton disabled={clockInOff} className={clockBtn(!clockInOff)}>
+              Clock in
+            </SubmitButton>
+          </form>
+          {/* NOT `text-bad` when live. Clocking out is the ordinary end of a shift, not an
+              error or a destructive act — `bad` stays reserved for the earlier-day warning
+              below and for Delete on the admin bench. */}
+          <form action={clockOutNow}>
+            <SubmitButton disabled={clockOutOff} className={clockBtn(!clockOutOff)}>
+              Clock out
+            </SubmitButton>
+          </form>
+        </div>
+
+        {onTheClock?.startedOnAnEarlierDay && (
+          // A forgotten clock-out (§2.9.5). Muster does not guess when someone went home, so
+          // this is shown rather than closed — and until the admin repair bench ships (13.3),
+          // the office is the fix. BELOW the buttons since #718: it is conditional, so above
+          // them it would move both every time it appeared.
+          <p className="border-t border-line px-4 py-3 text-sm text-bad">
+            Started {fmtDateRange(onTheClock.sinceDate, onTheClock.sinceDate)} — that’s not
+            today. Clocking out now records the whole span; ask the office to correct it.
+          </p>
+        )}
+        {anyOpen && <ClockBusy />}
+      </section>
+
+      {/* BELOW the card since #718. These appear and disappear on every punch and change
+          length between "You’re on the clock." and "Clocked out — your hours are below." — so
+          above the card they moved both buttons every single time. Where they finally sit is
+          the operator's call once he has seen it work; that they cannot be above the buttons
+          is not. */}
       {sp.in && <Notice tone="ok">You’re on the clock.</Notice>}
       {sp.out && <Notice tone="ok">Clocked out — your hours are below.</Notice>}
       {sp.saved && <Notice tone="ok">Saved.</Notice>}
       {sp.added && <Notice tone="ok">Added.</Notice>}
       {sp.deleted && <Notice tone="ok">Deleted.</Notice>}
       {errCopy && <Notice tone="bad">{errCopy}</Notice>}
-
-      {/* The one card, one button. `onTheClock` is the whole decision — at most one
-          punch can be open (§2.9.4), so there is never an ambiguous state here. */}
-      <section className="overflow-hidden rounded-card border border-line bg-card shadow-sm">
-        {onTheClock ? (
-          <>
-            <div className="flex flex-col gap-1 border-b border-line px-4 py-3">
-              <span className="font-semibold text-ink">
-                On the clock since {fmt12(onTheClock.sinceTime)}
-              </span>
-              {onTheClock.startedOnAnEarlierDay && (
-                // A forgotten clock-out (§2.9.5). Muster does not guess when someone
-                // went home, so this is shown rather than closed — and until the
-                // admin repair bench ships (13.3), the office is the fix.
-                <span className="text-sm text-bad">
-                  Started {fmtDateRange(onTheClock.sinceDate, onTheClock.sinceDate)} —
-                  that’s not today. Clocking out now records the whole span; ask the
-                  office to correct it.
-                </span>
-              )}
-            </div>
-            {/* NOT `text-bad`. Clocking out is the ordinary end of a shift, not an
-                error or a destructive act — and the earlier-day warning directly above
-                is `text-bad`, so sharing the colour would put a real problem and a
-                routine button in one register. `bad` stays reserved for the warning
-                here and for Delete on the admin bench. */}
-            {anyOpen ? (
-              <ClockBusy />
-            ) : (
-              <form action={clockOutNow}>
-                <SubmitButton className="min-h-[52px] w-full bg-card font-semibold text-ink">
-                  Clock out
-                </SubmitButton>
-              </form>
-            )}
-          </>
-        ) : anyOpen ? (
-          <ClockBusy />
-        ) : (
-          <form action={clockInNow}>
-            <SubmitButton className="min-h-[52px] w-full bg-ok font-semibold text-white">
-              Clock in
-            </SubmitButton>
-          </form>
-        )}
-      </section>
 
       <section className="flex flex-col gap-2">
         {/* Crew can look at a past period — "what did I get paid for last time" is a
@@ -487,6 +511,13 @@ function PunchForm({
  * rule is the consistent answer, it needs no JS (a confirm dialog can't help a no-JS
  * user), and it makes losing the edit impossible instead of merely warned about.
  */
+/** The clock buttons' one class rule: green means LIVE, not "this is Clock in" (#718). */
+function clockBtn(live: boolean): string {
+  return `min-h-[52px] w-full rounded-card font-semibold ${
+    live ? "bg-ok text-white" : "border border-line bg-bg text-muted"
+  }`;
+}
+
 function ClockBusy() {
   return (
     <p className="px-4 py-3 text-sm text-muted">

@@ -99,6 +99,7 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 - DEC-062 — The engine never works a departed shift; staffing horizon is env-tunable
 - DEC-080 — The Xola pull window is decoupled from the staffing horizon
 - DEC-115 — `FILL_DEADLINE_HOURS` is env-tunable (plumbing only — value stays 48h)
+- DEC-152 — Two clock buttons that never move, one disabled — a control that vanishes moves its neighbour under the thumb
 
 ### Crew, vessels & manning model
 - DEC-012 — Manifest is grouped per event on the shift card; no waivers for crew

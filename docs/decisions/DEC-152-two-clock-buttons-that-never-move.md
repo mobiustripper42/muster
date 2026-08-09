@@ -68,4 +68,17 @@ Where the notices finally sit is **deferred, not settled** (operator: *"I don't 
 
 **Asserted by measurement, not by eye.** `e2e/crew-time.spec.ts` → *"#718: neither clock button moves across a punch"* reads both bounding boxes at rest, after clocking in, and after clocking out, and requires all three to be identical. A visual review would have passed the original layout too — 46px looks fine on a screenshot and is a thumb's width in the hand.
 
+### Shipped to be observed, with two changes deliberately not made
+
+*"We're going to go with this design and see how it goes"* (operator, 2026-08-09). Two candidates
+were raised and held back rather than rejected:
+
+- **Bigger buttons, further apart.** Both already clear the 44px target; more separation is cheap
+  and would widen the margin further. Worth doing if a mis-tap is reported again.
+- **One green, one red** — and the operator named the objection in the same breath: *"which would
+  only look the same color to color blind people."* Red/green is the single worst pair for
+  deuteranopia and protanopia, and it would make the live/inert distinction **invisible** to a
+  chunk of crew while looking more legible to everyone else. Green-vs-grey survives greyscale as a
+  lightness difference. Do not "improve" this to red/green.
+
 **Touches** SPEC §2.9.4 (at most one open punch — unchanged, and it is why the *domain* never double-punched even when the UI invited it), §2.9.5 (the forgotten clock-out, relocated not changed), and #718.

@@ -27,19 +27,19 @@ Project-specific docs are listed in `.claude/CLAUDE-context.md` under `## Additi
 1. **Spec it** — poker estimate + acceptance criteria. Before writing code, pin what "done" looks like: enumerate the concrete set from source and confirm it with me. My live words override prior docs. **Get the whole spec down before step 4** — the model does its best work on a complete brief given in one turn, not assembled across a dozen exchanges. (Issue exists from `/start-phase`.)
 2. **Plan it** — summarize what you're going to do. Wait for explicit approval before writing code or running commands.
 3. **Cut the branch** — once approved: `git checkout -b task/X.Y-short-description`.
-4. **Write the failing test FIRST** — when behavior is changing, the test comes before the code: write it, run it, and watch it fail *for the reason you expect*. That failure is the proof the test actually bites; a test written afterwards has never been observed failing, so it may be asserting nothing. Playwright integration test + pgTAP if RLS-touching. The test must exercise the function named in its own title — a test named for one thing that calls another is worse than no test, because it turns an unverified claim into an apparently-verified one.
+4. **Prove it first** — when behaviour is changing, the check comes before the change: write it, run it, and watch it fail *for the reason you expect*. That failure is what proves the check bites; one written afterwards has never been observed failing, so it may be asserting nothing. The check must exercise the thing named in its own title — a test named for one thing that calls another is worse than none, because it turns an unverified claim into an apparently-verified one. **What counts as a check here is the `Proof` slot in `.claude/CLAUDE-context.md` § Workflow Mechanisms.**
 5. **Build it** — until the test passes. If you find yourself writing code first and then reconstructing the proof by deleting it to watch the test fail, you have done step 4 the long way round.
-6. **Run targeted tests** — `npx playwright test tests/foo.spec.ts --project=desktop`. `supabase test db` if RLS-touching. Do NOT run full suite — that's the user's call.
-7. **Mobile screenshot** — confirm 375px viewport passes
+6. **Run the proof** — the checks covering what you touched, not the whole suite; the full suite is my call, never automatic. **Command: the `Proof command` slot in `.claude/CLAUDE-context.md` § Workflow Mechanisms.**
+7. **Check the surface** — confirm the change is right where a person actually meets it, which a passing check does not tell you. **How: the `Surface check` slot in `.claude/CLAUDE-context.md` § Workflow Mechanisms.**
 8. **STOP. The task is built, not shipped.** Report what changed and what passes, then **stop and wait**. Do not commit, do not push, do not open a PR, do not start the next task. This is a hard stop, and it is the point of the whole workflow: it is where I look at the work. Waiting is the correct end of a build turn — including when everything is green, the next task is obvious, and stopping feels like leaving something unfinished. It isn't. Handing back *is* the finished state.
 9. **`/kill-this` — I invoke it, you don't.** It commits, pushes, runs `@code-review`, opens the PR with `closes #<issue>`, and appends a `## Task <N>` block to the session file (on the orphan `sessions` branch). Run per task; multiple per session. **Reaching the same end state by hand is not the same thing and is never acceptable** — a hand-typed `git push` + `gh pr create` produces a PR that looks identical and has never been read by `@code-review`. That is the only automatic read of the diff before it merges, and its absence announces itself to nobody. If you believe a task is ready, say so and stop; that belief is not a trigger.
 10. **Pick up another task or close out** — start step 1 with a new branch, or run `/its-dead` once at the end of the Claude window. Merge PRs whenever — order doesn't matter.
 
-**No test, no push.**
+**No proof, no push.**
 
-**Full suite (`npx playwright test`) is never run automatically.** Ask first.
+**Steps 4, 6 and 7 name a slot rather than a tool** (DEC-S042). The shell states what the step must achieve; `.claude/CLAUDE-context.md` § Workflow Mechanisms says how it is done here. They are filled, not overridden — there is no default to correct, and nothing cites a step *number*, because numbers move and a stale cross-reference in an always-loaded file fails silently.
 
-Project-specific step overrides (e.g. a tool project with no database swaps the test steps) live in `.claude/CLAUDE-context.md` under `## Workflow Overrides`.
+**An unfilled slot is a real answer and must be written as one.** `Surface check: none — no human-facing surface` is a fact a reader can check. Leaving it blank is not.
 
 ## Migration Protocol
 
@@ -216,19 +216,13 @@ Occasional dry humor and sarcasm welcome. One good line beats three forced ones.
 **Pick the kind of reply before writing it.** Not a label on the output — a decision about its shape. "Be concise" is a disposition and it erodes over a session; this is a discrete choice, so it doesn't.
 
 - **Lookup** — *where is that file, did the migration run, what's the current value.* The answer is a fact. Give it in a line or two and stop. **Hard cap: do not add the extra sentence even when it is true and relevant** — that sentence is always true and relevant, which is why nothing ever cuts it. If the fact took work, cite where you got it on the same line.
-- **Action** — *you did the thing; report what happened.* Result first, then only what **changes what I do next**: a blocker, a surprise, something I'm about to trip over, a thing you did differently than asked. Nothing else — no recap of work I just watched, no restatement of the task, no summary of your reasoning.
-- **Judgment** — *why did this fail, which approach, what's the tradeoff.* The reasoning **is** the answer; a one-liner is useless. Explain at whatever length it takes. Do not compress a real explanation to look terse — that costs three follow-ups to reassemble.
+- **Action** — *you did the thing; report what happened.* Result first, then only what **changes what I do next**: a blocker, a surprise, something I'm about to trip over, a thing you did differently than asked. Nothing else — no recap of work I just watched, no restatement of the task, no summary of your reasoning. Specifically: **one artifact** (a commit list, a diagram and a consequence paragraph in one reply makes me work out which is the answer), and **don't bolt on the adjacent concern** you noticed while answering — raise it after, in one line, or not at all.
+- **Judgment** — *why did this fail, which approach, what's the tradeoff.* The reasoning **is** the answer; a one-liner is useless. Explain at whatever length it takes. Do not compress a real explanation to look terse — that costs three follow-ups to reassemble. The complaint is never that you explained something; it is explaining the answer to a question I could have grepped.
 - **Session summary** — end of turn: one or two sentences, what changed and what's next. First thing I read next session. If a turn ends with a bullet list plus three paragraphs, the prose is wrong.
 
-**I want good explanations.** The complaint is never that you explained — it is that you explained the wrong thing, or the answer to something I could have grepped. Unsure which kind you're in? If one tool call and no thinking would have answered it, it's Lookup.
+Unsure which? If one tool call and no thinking would have answered it, it's Lookup.
 
 **In all four, the first line is the answer** — not the route you took to it. Reasoning goes after the conclusion, never in front.
-
-**One artifact per answer.** A commit list, a diagram and a consequence paragraph in one reply makes me work out which is the answer. Pick the one that answers me.
-
-**Don't volunteer the adjacent concern.** Notice a second problem while answering the first? Finish the answer and stop. Raise it after, in one line, or not at all — a worry I didn't ask for is noise wearing the costume of diligence, and it lands hardest when I'm already frustrated, which is exactly when it surfaces.
-
-**Density, not length.** Everything relevant, nothing else. A long answer that's dense throughout is fine; a short one that pads or repeats is not.
 
 **When I push back, say less — never explain.** "Trim", "again", "too many words", "this is confusing": re-answer shorter, immediately. Explaining why the confusing thing was confusing is the same failure recursing, and it reads as arguing. Asked "do you have any idea how confusing this is?", a session replied with four more paragraphs and an unprompted offer to redesign the project.
 

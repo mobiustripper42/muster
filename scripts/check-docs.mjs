@@ -35,7 +35,7 @@ const CONFIG = '.claude/doc-check.json'
 
 export function config(path = CONFIG) {
   if (!existsSync(path)) throw new Error(`${path} is missing — check-docs needs its roster and exemption lists`)
-  return { rosters: {}, historical: {}, knownForeign: [], ...JSON.parse(readFileSync(path, 'utf8')) }
+  return { rosters: {}, historical: {}, foreignDecs: {}, knownForeign: [], ...JSON.parse(readFileSync(path, 'utf8')) }
 }
 
 const CFG = config()
@@ -66,6 +66,20 @@ export const HISTORICAL = CFG.historical
 /** Slash commands the docs name that are deliberately not this project's — plugin skills and
  *  Claude Code built-ins. Enumerated rather than pattern-matched so adding one is a decision. */
 export const KNOWN_FOREIGN = new Set(CFG.knownForeign)
+
+/**
+ * Docs exempt from the decision-reference check, each with the reason.
+ *
+ * For a doc that legitimately cites ANOTHER repo's record — an estate survey, a cross-project
+ * handoff, a comparison. Those ids will never resolve here and are not supposed to: DEC-S025 has
+ * project decisions staying unprefixed, so one repo's `DEC-046` is indistinguishable from
+ * another's by shape alone. Without this the only ways out are to stop citing sibling projects
+ * precisely or to disable the check, and the second is what actually happens.
+ *
+ * Same shape as HISTORICAL and for the same reason: exemption list, not allowlist, each entry
+ * carries its justification, and every exempted path is asserted to exist.
+ */
+export const FOREIGN_DECS = CFG.foreignDecs
 
 /** This repo, as it appears in an issue URL. Configured rather than shelled out of `git remote`:
  *  the check runs in CI where the remote may be rewritten, and if the repo genuinely moves, a red
@@ -112,6 +126,7 @@ const at = (doc, i) => `${doc}:${i + 1}`
 export function checkDecRefs(docs, ids) {
   const failures = []
   for (const { path, text } of docs) {
+    if (path in FOREIGN_DECS) continue
     text.split('\n').forEach((line, i) => {
       for (const ref of line.matchAll(REFERENCE)) {
         if (!ids.has(ref[0])) failures.push(`${at(path, i)} — cites ${ref[0]}, which has no decision file`)
@@ -232,9 +247,14 @@ export function checkPaths(docs) {
  * list nobody can trust is a list that grows.
  */
 export function checkExemptions() {
-  return Object.keys(HISTORICAL)
-    .filter((p) => !existsSync(p))
-    .map((p) => `${p} — exempted from the path check in ${CONFIG} but does not exist`)
+  return [
+    ...Object.keys(HISTORICAL)
+      .filter((p) => !existsSync(p))
+      .map((p) => `${p} — exempted from the path check in ${CONFIG} but does not exist`),
+    ...Object.keys(FOREIGN_DECS)
+      .filter((p) => !existsSync(p))
+      .map((p) => `${p} — exempted from the decision-reference check in ${CONFIG} but does not exist`),
+  ]
 }
 
 /**
@@ -289,8 +309,11 @@ if (process.argv[1]?.endsWith('check-docs.mjs')) {
     process.exit(1)
   }
   const exempt = Object.keys(HISTORICAL).length
+  const foreign = Object.keys(FOREIGN_DECS).length
   console.log(
     `✓ docs — ${DOCS.length} docs: DEC refs, npm scripts and issue links resolve, ` +
-      `skill/agent rosters match disk both ways, paths resolve (${exempt} historical ledger${exempt === 1 ? '' : 's'} exempt)`,
+      `skill/agent rosters match disk both ways, paths resolve ` +
+      `(${exempt} historical ledger${exempt === 1 ? '' : 's'} exempt` +
+      `${foreign ? `, ${foreign} citing another repo's record` : ''})`,
   )
 }

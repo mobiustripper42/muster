@@ -71,6 +71,27 @@ Total points: <SUM>
 
 If the wall_clock looks wildly wrong (e.g. user expected 2h, sees 9h because of an overnight gap), the user can record a note in the Context section. The actual active time will be inferred at retro (wall_clock minus transcript break gaps); the displayed wall_clock is just the raw delta.
 
+## Step 4.5 — PRs opened outside `/kill-this` (the review that didn't run)
+
+A PR opened by hand-typed `gh pr create` never passed `/kill-this` Step 3, so `@code-review` never ran on it. Nothing else in the workflow notices: the code is on a branch, the PR looks normal, and the only missing artifact is a review that was never going to announce its own absence.
+
+List the PRs this session actually produced and compare against the frontmatter:
+
+```
+gh pr list --author @me --state all --limit 30 --json number,createdAt,headRefName
+```
+
+Keep the ones created at or after the session's `started:` stamp. Any of those **not** in `pr_numbers:` was shipped by hand.
+
+For each, display:
+
+```
+⚠ PR #N (<branch>) was opened outside /kill-this — @code-review never ran on it.
+  Review before merging: @code-review against `gh pr diff N`.
+```
+
+Report only. Don't open the review yourself and don't backfill a `## Task` block for it — the user decides whether the PR is worth a retrospective pass. If every session PR is in `pr_numbers:`, say nothing.
+
 ## Step 5 — Commit + push the sessions branch (from the worktree)
 
 ```

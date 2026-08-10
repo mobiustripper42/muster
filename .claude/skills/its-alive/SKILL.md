@@ -216,6 +216,24 @@ When a recommendation *is* wanted (cold open), grep `docs/PROJECT_PLAN.md`:
 
 If the project uses phase-rituals: `gh issue list --label "phase:current" --state open --json number,title,labels --limit 50`.
 
+## Step 8.5 — Drift against seeds
+
+Resolve the seeds checkout (skill arg → `../seeds` sibling → `$SEEDS_REPO`; the same order `/read-the-tape` uses), then:
+
+```
+node <seeds>/dev/claude/scripts/drift.mjs .
+```
+
+Read-only. It prints which `logic`-class files differ from the templates, which are absent, and whether this project owes a schema migration.
+
+**Report it in the briefing only when there is something to report** — a `DRIFT` count, or a `seeds-version` gap. Silence when clean; a line every session that always says "nothing differs" is a line nobody reads by the third one.
+
+**Why this check lives here rather than in seeds.** A repo's drift only matters when you are about to work in it, and that is exactly when this runs. A dormant project can sit twelve template changes behind for months at no cost — the day you open it for a one-line bugfix, the briefing says so and you decide whether to sync first or ignore it. That also means there is no fleet list to maintain, and no report enumerating repos nobody has touched since spring.
+
+**It reports; it does not act.** Do not sync, do not copy, do not offer to. Deciding what should cross is the part that needs a person (DEC-S040), and this exists so that person is not guessing at the state.
+
+If seeds doesn't resolve, skip silently and say so in Context. A session must never be blocked by a checkout not being on this machine.
+
 ## Step 9 — Present briefing
 
 ```

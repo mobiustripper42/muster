@@ -89,14 +89,22 @@ Project-specific docs beyond the baseline `## Key Docs` table in the `CLAUDE.md`
 
 Notes on the baseline docs: `docs/SPEC.md` is the buildable source of truth. It is **not** locked — it carried a "🔒 LOCKED v1.0" stamp for months while DEC-105, DEC-140 and others rewrote whole sections, and the stamp was removed rather than kept as a fiction. What survives is DEC-014's scope rule: new ideas go to `docs/FUTURE_IDEAS.md`, and a change to a section is a **declared amendment** — `amends_spec: [{section, scope}]` in the amending decision's frontmatter, with the pointer under that section's heading generated (DEC-143). **Decisions live one per file in `docs/decisions/DEC-*.md`** (141 of them, DEC-001–143 plus the `DATA` / `MSG` / `ROLE` / `TBD` families); `docs/DECISIONS.md` is the **generated** topic index over them (DEC-141). Read a decision by reading its file — `grep -rl DEC-042 docs/decisions/` resolves any id. To add or change one, edit its file and run `npm run gen:decisions`; `npm run check:decisions` runs first in `verify` and fails on a stale index, a duplicate id, a dangling reference, or a spec amendment that never landed.
 
-## Workflow Overrides
+## Workflow Mechanisms
 
-Overrides to the shell's `## Micro Workflow`. Muster's stack is Next.js over a framework-free domain core, **not** the shell's default Supabase/Playwright shape:
+The shell's `## Micro Workflow` states what three steps must achieve and names a slot for how (DEC-S042). Filled below. **Slots, not overrides** — the shell states no default to correct, and nothing here cites a step *number*, because numbers move and a stale cross-reference in an always-loaded file fails silently. This section previously said "Step 5 (Write the test)" for two months after the shell renumbered.
 
-- **The gate is `npm run verify`** (typecheck + typecheck:app + test + build), not a Playwright run. `/kill-this` and `/pause-this` run it.
-- **Step 4 (Write the failing test FIRST):** Vitest against the domain core (oracle, state machine, reliability log) — heavily unit/integration tested. Test-first when behavior changes. **No pgTAP** — there's no Supabase/RLS; persistence is plain Postgres behind the `Repository` port with an in-memory adapter as the test substrate.
-- **Step 6 (Run targeted tests):** the relevant Vitest file/suite, not the whole thing. Full suite is the user's call.
-- **Step 7 (Mobile screenshot):** Playwright screenshots land when that tooling does (M4 fast-follow). Until then, **every page works at 375px — eyeball at `mill-dev:3000`** per `docs/RUNNING.md`.
+Muster is Next.js over a framework-free domain core — not the shell's old Supabase/Playwright default.
+
+| Slot | This project |
+|---|---|
+| **Proof** | Vitest against the domain core (oracle, state machine, reliability log), which is heavily unit- and integration-tested. Test-first when behaviour changes. **No pgTAP** — there is no Supabase and no RLS; persistence sits behind the `Repository` port with an in-memory adapter as the test substrate. |
+| **Proof command** | The relevant Vitest file or suite, not the whole thing. The full suite is my call, never automatic. |
+| **Surface check** | **Every page works at 375px — eyeball it at `mill-dev:3000`** per `docs/RUNNING.md`. Playwright screenshots land when that tooling does (M4 fast-follow); until then this step is done by looking, which is exactly why it is a separate step from the proof. |
+
+**The gate** is `npm run verify` (`check:decisions` + `check:context` + `check:docs` + typecheck + typecheck:app + lint + test + build). `/kill-this` and `/pause-this` run it. Named here rather than under Commands because it chains the whole check.
+
+## PR Workflow Overrides
+
 - **Feature branches for multi-PR features (DEC-059 — overrides the shell's `## PR Workflow`):** `main` must stay **promotable to `production` at all times**. A feature shipping across multiple PRs that isn't independently releasable lands on a long-lived `feature/<name>` branch off `main` — its task PRs target *that* branch — and merges to `main` only when the whole feature is prod-ready **or** dark behind a flag. Independently-shippable tasks still PR straight to `main`. The shell's "stack PRs onto `main`" guidance applies only to independently-shippable work; do **not** land partial features on `main`.
 
 ## Blast-Radius Triggers

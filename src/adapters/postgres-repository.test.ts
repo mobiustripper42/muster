@@ -17,11 +17,11 @@ import {
   paymentIdFor,
   type WebhookDeps,
 } from "../reservations/booking-webhook.js";
-import { writeBooking } from "../reservations/write-booking.js";
+import { writeSlotBooking } from "../reservations/write-booking.js";
 import { eventIdForSlot } from "../reservations/availability.js";
 import { asId } from "../domain/ids.js";
 import type { TimePunch } from "../domain/entities.js";
-import type { CrewMemberId, TimePunchId } from "../domain/ids.js";
+import type { CrewMemberId, EventId, TimePunchId } from "../domain/ids.js";
 
 const TEST_URL =
   process.env.TEST_DATABASE_URL ??
@@ -211,9 +211,14 @@ if (!dbUp) {
       paymentIntentId: "pi_pg_1",
       amountTotalCents: 53625,
       currency: "usd",
+      // Slot-shaped since #693 retired the legacy `eventId` booking path.
       metadata: {
-        eventId: String(EVENT),
-        partySize: "6",
+        offeringId: "off-pg",
+        vesselId: "vessel-brew-1",
+        date: "2026-07-04",
+        time: "17:00",
+        guestCount: "6",
+        priceCents: "50000",
         kind: "full",
         taxCents: "3625",
         customerName: "Mary",
@@ -263,13 +268,22 @@ if (!dbUp) {
     });
 
     it("an UNBOOKABLE charge alerts the operator instead of crashing the webhook", async () => {
-      // `event_missing` — the deterministic unbookable: the charge names an event that is not
-      // in the database. Deliberately NOT auto-refunded (a human investigates); the alert is
+      // The deterministic unbookable used to be `event_missing` — a charge naming an event not in
+      // the database, which only the legacy path could produce. #693 retired that path, so the
+      // remaining deterministic one is a session carrying NO SLOT: refused before anything is
+      // parsed or written. Deliberately not auto-refunded (a human investigates); the alert is
       // the whole safety net, and it sat behind the FK throw.
+      //
+      // Converted rather than deleted because what this pins is the #613 guard against an orphan
+      // payment on a non-booked outcome, and that needs a real FK — which only Postgres has
+      // (DEC-131). Any non-booked outcome will do; the shape of it is incidental.
       const repo = await freshRepo();
       const { deps, alert } = makeDeps(repo);
 
-      const r = await processBookingWebhook(deps, JSON.stringify(completed()), FAKE_SIGNATURE);
+      const noSlot = completed({
+        metadata: { eventId: String(EVENT), partySize: "6", kind: "full", taxCents: "3625", customerName: "Mary" },
+      });
+      const r = await processBookingWebhook(deps, JSON.stringify(noSlot), FAKE_SIGNATURE);
 
       expect(r.handled).toBe(true);
       expect(alert).toHaveBeenCalledTimes(1);
@@ -280,9 +294,13 @@ if (!dbUp) {
 
     it("a LOST race refunds the customer, tells them, and leaves no orphan payment", async () => {
       // A real residual race needs a rival to win the CAS between our pre-check and our write —
-      // not reproducible by sequencing alone. So `saveReservationIfUnclaimed` is failed ONCE,
-      // which is precisely what losing the race looks like to this code. Everything else —
-      // events, reservations, payments — is real Postgres.
+      // not reproducible by sequencing alone. So `saveBookingIfSlotFree` is failed ONCE, which is
+      // precisely what losing the race looks like to this code. Everything else — events,
+      // reservations, payments — is real Postgres.
+      //
+      // It used to stub `saveReservationIfUnclaimed`; #693 retired that path, and the slot CAS is
+      // what the webhook actually calls now. Stubbing the method nothing calls would have left
+      // this test green while simulating nothing.
       const repo = await freshRepo();
       await repo.saveEvent({
         id: EVENT,
@@ -300,7 +318,7 @@ if (!dbUp) {
       // target so the private field resolves, and methods are bound for the same reason.
       const lose = new Proxy(repo, {
         get(t, prop) {
-          if (prop === "saveReservationIfUnclaimed") return async () => false;
+          if (prop === "saveBookingIfSlotFree") return async () => ({ result: "lost" });
           const v = Reflect.get(t, prop, t);
           return typeof v === "function" ? v.bind(t) : v;
         },
@@ -326,20 +344,20 @@ if (!dbUp) {
   /**
    * Two buyers, one seat, genuinely at the same time (#613 follow-on).
    *
-   * **Every other test of this race is stubbed.** `write-booking.test.ts` forces the loss with
-   * `repo.saveReservationIfUnclaimed = async () => false`, and the `#613` block above does the
-   * same through a Proxy. Both prove what happens *given* a lost outcome; neither proves a real
-   * collision produces one. The operator called that out — "we have to trust the script that it
-   * actually creates the race condition" — and he was right: the link was asserted nowhere.
+   * **Every other test of this race is stubbed.** The `#613` block above forces the loss through
+   * a Proxy over `saveBookingIfSlotFree`. That proves what happens *given* a lost outcome; it
+   * does not prove a real collision produces one. The operator called that out — "we have to
+   * trust the script that it actually creates the race condition" — and he was right: the link
+   * was asserted nowhere.
    *
-   * This runs two real `writeBooking` calls concurrently against one seat in real Postgres, so
-   * the conditional write — `saveReservationIfUnclaimed`, the CAS the whole DEC-109 design rests
-   * on — is the thing under test rather than a stub of it.
+   * This runs two real `writeSlotBooking` calls concurrently against one slot in real Postgres,
+   * so the conditional write — `saveBookingIfSlotFree`, the CAS the whole DEC-109/125 design
+   * rests on — is the thing under test rather than a stub of it. (It named
+   * `saveReservationIfUnclaimed` until #693 retired that path.)
    *
-   * The loser may read `lost` (both pre-checks passed, the CAS decided it) or
-   * `unbookable/already_claimed` (the rival committed before the loser's pre-check). Which one
-   * depends on interleaving and is not worth pinning. **The invariant that matters is that the
-   * boat is sold exactly once.**
+   * The loser reads `lost` — `writeSlotBooking` returns only booked/already/lost, so the
+   * `unbookable/already_claimed` variant this used to allow for went with the retired path.
+   * **The invariant that matters is that the boat is sold exactly once.**
    */
   describe("two buyers, one seat, concurrently — the claim CAS (DEC-109)", () => {
     const EVENT2 = asId<"EventId">("m-evt-pg-race");
@@ -360,28 +378,44 @@ if (!dbUp) {
         price: 50000,
       });
 
+      // Through `writeSlotBooking` since #693 retired `writeBooking`. Both buyers contend on the
+      // SAME slot identity, which is the case the sibling test below does NOT cover — that one
+      // contends on two different times against one hull (#691). Keeping both matters: the
+      // same-slot race is caught by the partial unique index plus the conditional insert, the
+      // overlapping-times race by the hull-day advisory lock, and they are different mechanisms.
       const buyer = (key: string, name: string) => ({
-        eventId: EVENT2,
+        offeringId: asId<"OfferingId">("off-race"),
+        vesselId: asId<"VesselId">("vessel-brew-1"),
+        date: "2026-07-04",
+        time: "17:00",
+        guestCount: 6,
+        priceCents: 50000,
+        extrasCents: 0,
         customerName: name,
-        partySize: 6,
         idempotencyKey: key,
       });
 
       const [a, b] = await Promise.all([
-        writeBooking(repo, buyer("sess_a", "Ann"), NOW2),
-        writeBooking(repo, buyer("sess_b", "Ben"), NOW2),
+        writeSlotBooking(repo, buyer("sess_a", "Ann"), NOW2),
+        writeSlotBooking(repo, buyer("sess_b", "Ben"), NOW2),
       ]);
 
       const outcomes = [a.outcome, b.outcome].sort();
       // Exactly one winner…
       expect(outcomes.filter((o) => o === "booked")).toHaveLength(1);
-      // …and the loser did NOT book. `lost` and `already_claimed` are both legitimate losses;
-      // what must never happen is two bookings, or a loser that reads as booked.
+      // …and the loser did NOT book. `lost` is the residual-race loss; what must never happen is
+      // two bookings, or a loser that reads as booked.
       const loser = a.outcome === "booked" ? b : a;
-      expect(["lost", "unbookable"]).toContain(loser.outcome);
+      expect(loser.outcome).toBe("lost");
 
-      // The invariant, stated on the data rather than on the return values: one seat, one row.
-      const rows = await repo.listReservationsForEvent(EVENT2);
+      // The invariant, stated on the data rather than on the return values: one slot, one row.
+      // Read the event id off the WINNER rather than re-deriving it — re-deriving would pass a
+      // second copy of the same assumption through the assertion and prove nothing if the
+      // derivation itself drifted.
+      const winner = a.outcome === "booked" ? a : b;
+      const rows = await repo.listReservationsForEvent(
+        (winner as { eventId: EventId }).eventId,
+      );
       expect(rows).toHaveLength(1);
       expect(rows[0]!.status).toBe("booked");
     });

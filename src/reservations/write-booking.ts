@@ -1,14 +1,19 @@
 /**
- * Booking write (Phase 11.3, DEC-109) — the correctness hinge for Muster-native
- * reservations. Composes 11.1's pure `canBook` pre-check with the authoritative atomic
- * claim (`saveReservationIfUnclaimed`) so two simultaneous checkouts of the same
- * whole-boat event can't both win.
+ * Booking write (DEC-109/125) — the correctness hinge for Muster-native reservations. Composes
+ * 11.1's pure `canBook` pre-check with the authoritative atomic claim (`saveBookingIfSlotFree`)
+ * so two simultaneous checkouts of the same whole-boat slot can't both win.
+ *
+ * The 11.3 half of this module — `writeBooking`, claiming a pre-existing `Event` by row-locking
+ * its id — was retired at #693. It never received #691's hull-overlap guard or hull-day advisory
+ * lock, so it still reverted to the behaviour where two overlapping trips on one hull both
+ * succeed; nothing minted sessions for it, which made it an unguarded fallback rather than a
+ * removed path.
  *
  * **Provider-agnostic.** Idempotency is a caller-supplied key → a deterministic
  * reservation id; a retried call short-circuits to `already` and the CAS's
  * `ON CONFLICT (id)` prevents any double-write. Nothing here imports Stripe — the
  * deferred `checkout.session.completed` webhook (11.2) is a thin translator that builds
- * a `BookingRequest` and passes `checkout.session.id` as the `idempotencyKey`.
+ * a `SlotBookingRequest` and passes `checkout.session.id` as the `idempotencyKey`.
  */
 import { createHash } from "node:crypto";
 import type { Event, Reservation } from "../domain/entities.js";
@@ -23,37 +28,6 @@ import type { Repository } from "../ports/repository.js";
 import { canBook, eventIdForSlot } from "./availability.js";
 import { resolveCustomerId } from "../customers/resolve.js";
 
-export interface BookingRequest {
-  eventId: EventId;
-  customerName: string;
-  partySize: number;
-  email?: string;
-  phone?: string;
-  /** Liability-waiver consent (11.5, DEC-110) — carried from the checkout metadata
-   *  (gated required at checkout-start, so a booked reservation always has both). */
-  waiverConsentAt?: string;
-  waiverVersion?: string;
-  /**
-   * Provider-agnostic idempotency key. Two requests with the same key resolve to the
-   * same reservation, so a retry is a no-op. The Stripe webhook (11.2) passes
-   * `checkout.session.id`.
-   */
-  idempotencyKey: string;
-}
-
-export type BookingResult =
-  /** This call won the boat and wrote the reservation. */
-  | { outcome: "booked"; reservation: Reservation }
-  /** An identical prior/concurrent call already wrote this reservation — idempotent. */
-  | { outcome: "already"; reservation: Reservation }
-  /** A DIFFERENT party holds the boat — the refund-and-notify seam (paid-but-lost). */
-  | { outcome: "lost" }
-  /** The request can't be booked at all. */
-  | {
-      outcome: "unbookable";
-      reason: "event_missing" | "not_sellable" | "invalid_party" | "already_claimed";
-    };
-
 /**
  * Deterministic reservation id from the idempotency key — same key ⇒ same id, so a
  * retried booking targets the same row (short-circuit + `ON CONFLICT (id)`).
@@ -67,65 +41,13 @@ export function reservationIdFor(idempotencyKey: string): ReservationId {
  * Write a Muster-native reservation under the whole-boat claim. `now` is injected
  * (house style) for a deterministic `updatedAt`.
  */
-export async function writeBooking(
-  repo: Repository,
-  req: BookingRequest,
-  now: () => string,
-): Promise<BookingResult> {
-  const id = reservationIdFor(req.idempotencyKey);
-
-  // Idempotent retry: a prior identical call already wrote this reservation → never re-claim.
-  const prior = await repo.getReservation(id);
-  if (prior) return { outcome: "already", reservation: prior };
-
-  const event = await repo.getEvent(req.eventId);
-  if (!event) return { outcome: "unbookable", reason: "event_missing" };
-  if (event.source !== "muster" || event.status !== "scheduled") {
-    return { outcome: "unbookable", reason: "not_sellable" };
-  }
-  if (!Number.isInteger(req.partySize) || req.partySize < 1 || req.partySize > event.capacity) {
-    return { outcome: "unbookable", reason: "invalid_party" };
-  }
-
-  // Fast pre-check (11.1) — cheap reject before the transactional claim. Sellable +
-  // party already hold here, so this reduces to the mutex read; the CAS is authoritative.
-  if (!canBook(event, await repo.listReservationsForEvent(req.eventId), req.partySize)) {
-    return { outcome: "unbookable", reason: "already_claimed" };
-  }
-
-  // Get-or-create the customer (12.12b, DEC-132). Never fails the booking: an unusable phone
-  // leaves the reservation unlinked rather than dropping a paid booking (see resolveCustomerId).
-  const customerId = await resolveCustomerId(repo, req, now);
-
-  const reservation: Reservation = {
-    id,
-    eventId: req.eventId,
-    source: "muster",
-    customerName: req.customerName,
-    partySize: req.partySize,
-    ...(customerId !== undefined ? { customerId } : {}),
-    ...(req.email !== undefined ? { email: req.email } : {}),
-    ...(req.phone !== undefined ? { phone: req.phone } : {}),
-    ...(req.waiverConsentAt !== undefined ? { waiverConsentAt: req.waiverConsentAt } : {}),
-    ...(req.waiverVersion !== undefined ? { waiverVersion: req.waiverVersion } : {}),
-    status: "booked",
-    updatedAt: now(),
-  };
-
-  if (await repo.saveReservationIfUnclaimed(reservation)) {
-    return { outcome: "booked", reservation };
-  }
-  // Lost the CAS — either a rival won the boat, or a concurrent identical retry wrote
-  // first. Disambiguate: our id present ⇒ idempotent `already`; else a rival ⇒ `lost`.
-  const after = await repo.getReservation(id);
-  return after ? { outcome: "already", reservation: after } : { outcome: "lost" };
-}
 
 // ── Slot-first booking (12.1a, DEC-109/125) ──────────────────────────────────
 // The virtual-model write: the customer picked offering+time+guestCount, a hold assigned a
 // boat, and the webhook now materializes the Event at its slot identity + claims the mutex
-// atomically (`saveBookingIfSlotFree`). Supersedes the seeded-`Event` `writeBooking` above;
-// the old path stays until 12.8 retires the seeded model.
+// atomically (`saveBookingIfSlotFree`). It superseded the seeded-`Event` `writeBooking`, which
+// this module no longer carries — #693 retired it rather than waiting for 12.8, because it was
+// an unguarded fallback on the money path and nothing minted sessions for it.
 
 export interface SlotBookingRequest {
   offeringId: OfferingId;

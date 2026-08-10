@@ -55,7 +55,7 @@ export async function createBalanceCheckout(
     productName: `Balance — whole-boat charter ${event.date} ${event.time}`,
     successUrl: urls.successUrl,
     cancelUrl: urls.cancelUrl,
-    // `purpose:"balance"` routes the webhook to record a balance Payment (no writeBooking).
+    // `purpose:"balance"` routes the webhook to record a balance Payment (no booking write).
     metadata: {
       purpose: "balance",
       reservationId: String(reservationId),

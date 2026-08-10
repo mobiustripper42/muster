@@ -601,7 +601,8 @@ export interface Reservation {
    * balance collects the extras too — it is deliberately a booking property (a function of
    * `guestCount`), NOT on `Event`, and NOT recomputed from the live Offering (that would
    * reintroduce config drift `balanceOwedCents` forbids). Absent ⇒ 0: `'xola'` reservations,
-   * the legacy seeded `writeBooking` path (base carried the whole price), and any pre-12.2 row.
+   * the legacy seeded booking path (base carried the whole price; retired #693), and any
+   * pre-12.2 row.
    */
   extrasCents?: number;
   /**
@@ -642,7 +643,8 @@ export interface Reservation {
    * business rules). Nullable on purpose: historical reservations that never captured a
    * canonicalizable phone stay unlinked permanently, and `NULL` passes the FK.
    *
-   * Set by `writeBooking`'s get-or-create at booking time and by the one-time backfill. NOT set
+   * Set by `writeSlotBooking`'s get-or-create at booking time and by the one-time backfill (and
+   * by the importer since #701). NOT set
    * by the Xola importer — importer-created customers are deferred to the cutover (DEC-132).
    */
   customerId?: CustomerId;

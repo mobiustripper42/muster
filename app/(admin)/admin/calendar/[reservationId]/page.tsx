@@ -192,6 +192,10 @@ export default async function ReservationDetailPage({
     const quoteFor = (by: CancelledBy): number =>
       quoteCancelRefund({ by, payments, departureAt, now }).refundCents;
 
+    // Stripe's real ceiling. Read before the outcome copy, which needs it: a booking nobody
+    // paid for gets no refund box, so the post-cancel message must not promise one.
+    const refundable = refundableTotalFor(payments);
+
     // Which outcome to report, if the last action redirected back with one.
     //
     // **Errors are checked FIRST, and that ordering is load-bearing.** A partial refund
@@ -209,7 +213,10 @@ export default async function ReservationDetailPage({
     // A partial refund failure carries `refunded` alongside `refundErr`; the copy needs both.
     const movedCents = /^\d+$/.test(sp.refunded ?? "") ? Number(sp.refunded) : undefined;
     const message = outcome
-      ? actionMessage(outcome[0], outcome[1] ?? "", movedCents)
+      ? actionMessage(outcome[0], outcome[1] ?? "", {
+          ...(movedCents !== undefined ? { movedCents } : {}),
+          refundableCents: refundable,
+        })
       : undefined;
     const isError = outcome ? outcome[0].endsWith("Err") : false;
 
@@ -217,7 +224,6 @@ export default async function ReservationDetailPage({
     // whole refundable amount. Either way the operator is typing over a number, not into an
     // empty box — "who knows what the refund amount might be" cuts both ways, and a blank
     // field on a money form is its own kind of prompt.
-    const refundable = refundableTotalFor(payments);
     const prefillCents =
       sp.cancelled !== undefined
         ? Math.min(refundable, quoteFor(sp.cancelled === "operator" ? "operator" : "customer"))

@@ -17,6 +17,7 @@
     "db:admin": "tsx db/admin.ts",
     "db:crew": "tsx db/crew.ts",
     "db:balance": "tsx db/balance-dev.ts",
+    "db:pay": "tsx db/pay-dev.ts",
     "db:paid-unbooked": "tsx db/paid-unbooked-dev.ts",
     "db:backfill:customers": "tsx db/backfill-customers.ts",
     "db:seed:fleet": "tsx db/seed-fleet.ts",

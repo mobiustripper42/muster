@@ -337,6 +337,64 @@ test.describe("admin reservation actions (#616)", () => {
     await expect(page.getByText(`open · ${shortLabel(BOOKED.time)}`)).toBeVisible();
   });
 
+  test("the two cancellation quotes differ by the fee, and no copy points at a position", async ({
+    page,
+  }) => {
+    // Two things, both reported from the rendered page rather than the code.
+    //
+    // (a) The quotes only differ when money has actually been paid. On the bare seed both read
+    //     $0.00, which is correct and was also why the original test plan's "check they differ
+    //     by $50" step could not be run — no dev command could record a payment. `npm run db:pay`
+    //     exists now; this test plants one the same way.
+    //
+    // (b) **No action copy may say "above" or "below".** It did, and the #718 fix — reordering so
+    //     the destructive block renders last — silently turned every one of those into a wrong
+    //     direction: "refund below, afterwards" pointed down at a refund box that had moved up,
+    //     and on an unpaid booking pointed at one that does not exist at all. Position is the
+    //     property of a layout most likely to be changed by an unrelated later fix, so the copy
+    //     must not depend on it.
+    await plantPayment({
+      id: "pay-e2e-3",
+      reservationId: RESV,
+      amountCents: 58880,
+      taxCents: 3980,
+      stripePaymentIntentId: "pi_e2e_3",
+    });
+    await signInAsAdmin(page, "spink");
+    await page.goto(detail("&cancel=1"));
+
+    const confirm = page.getByTestId("cancel-confirm");
+    await expect(confirm).toContainText("$538.80"); // customer asked — less the $50 fee
+    await expect(confirm).toContainText("$588.80"); // we cancelled — everything paid
+
+    const actionsText = (await page.getByTestId("reservation-actions").innerText()).toLowerCase();
+    expect(actionsText).not.toMatch(/\b(above|below)\b/);
+
+    // And after cancelling, the outcome copy is equally position-free.
+    await confirm.getByRole("button", { name: "Cancel this booking" }).click();
+    await page.waitForURL(/cancelled=/);
+    const done = (await page.getByTestId("action-done").innerText()).toLowerCase();
+    expect(done).not.toMatch(/\b(above|below)\b/);
+    expect(done).toContain("refund box is filled in");
+  });
+
+  test("an unpaid booking says there is nothing to refund, rather than promising a refund step", async ({
+    page,
+  }) => {
+    // The state the operator was actually looking at: the seeded booking has no payments, so
+    // both quotes are $0.00 and there is no refund box. The copy has to say so — "refund below,
+    // afterwards" on this screen is an instruction to do something impossible.
+    await signInAsAdmin(page, "spink");
+    await page.goto(detail("&cancel=1"));
+
+    await expect(page.getByTestId("cancel-confirm")).toContainText("nothing to refund");
+    await expect(page.getByTestId("refund-form")).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Cancel this booking" }).click();
+    await page.waitForURL(/cancelled=/);
+    await expect(page.getByTestId("action-done")).toContainText("nothing to refund");
+  });
+
   test("the refund box caps at what was actually paid, and carries the double-submit token", async ({
     page,
   }) => {

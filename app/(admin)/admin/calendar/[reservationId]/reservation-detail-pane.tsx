@@ -74,13 +74,32 @@ function balanceErrorMessage(reason: string): string {
  * some did not. That case redirects with both an error and an amount, and the operator's next
  * decision depends entirely on the amount — "Stripe failed, try again" against a refund that
  * already moved $200 is how a customer gets refunded twice.
+ *
+ * `refundableCents` decides whether the post-cancel copy may promise a refund step at all. On a
+ * booking nobody paid for there is no refund box, and telling the operator an amount has been
+ * filled in for them is a straightforward lie about the screen they are looking at.
+ *
+ * **No copy here says "above" or "below".** It did, and the #718 reorder — which moved the
+ * refund box to sit before the cancel block so a vanishing button stops landing under a thumb —
+ * turned every one of those words into a wrong direction. Position is the one property of a
+ * layout that a later, unrelated fix is most likely to change.
  */
-export function actionMessage(kind: string, value: string, movedCents?: number): string {
+export function actionMessage(
+  kind: string,
+  value: string,
+  opts: { movedCents?: number; refundableCents?: number } = {},
+): string {
+  const { movedCents, refundableCents = 0 } = opts;
   switch (kind) {
-    case "cancelled":
+    case "cancelled": {
+      const freed = "Cancelled. The boat is free again and the crew have been told.";
+      if (refundableCents <= 0) {
+        return `${freed} Nothing was paid on this booking, so there is nothing to refund.`;
+      }
       return value === "operator"
-        ? "Cancelled. The boat is free again and the crew have been told. Full refund is owed — the amount is filled in below."
-        : "Cancelled. The boat is free again and the crew have been told. The published terms are filled in below.";
+        ? `${freed} A full refund is owed — the refund box is filled in with it. Check the figure before you send it.`
+        : `${freed} The refund box is filled in with what the published terms owe. Check the figure before you send it.`;
+    }
     case "refunded":
       return `Refunded ${formatCents(Number(value) || 0)} to the card it came from.`;
     case "resent":
@@ -474,8 +493,10 @@ function PaneActions({
           <form action={cancelBooking} className="mb-3" data-testid="cancel-confirm">
             {hidden}
             <p className="mb-2 text-xs text-muted">
-              This frees the boat and tells the crew they’re off. It moves no money — refund
-              below, afterwards.
+              This frees the boat and tells the crew they’re off. It moves no money.{" "}
+              {actions.refundableCents > 0
+                ? "Refunding is a separate step, afterwards."
+                : "Nothing has been paid on this booking, so there is nothing to refund."}
             </p>
             {/* Both figures are rendered NEXT TO their option rather than in one line that
                 updates on selection. With no client JS a single figure could not follow the

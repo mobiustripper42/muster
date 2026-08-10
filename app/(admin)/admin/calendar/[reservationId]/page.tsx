@@ -192,14 +192,25 @@ export default async function ReservationDetailPage({
     const quoteFor = (by: CancelledBy): number =>
       quoteCancelRefund({ by, payments, departureAt, now }).refundCents;
 
-    // Which outcome to report, if the last action redirected back with one. At most one of
-    // these is ever present; first match wins.
+    // Which outcome to report, if the last action redirected back with one.
+    //
+    // **Errors are checked FIRST, and that ordering is load-bearing.** A partial refund
+    // redirects with BOTH `refunded=<what moved>` and `refundErr=provider_error`, deliberately,
+    // so the operator learns how much actually went back. With success keys first, that landed
+    // as the green "Refunded $200.00" — a Stripe failure rendered as a clean success, and the
+    // `provider_error` copy written for exactly this case was unreachable. Worse when the FIRST
+    // leg fails: "Refunded $0.00 to the card it came from", which is a total failure reported
+    // as a completed refund. Found in security review.
     const outcome = (
-      ["cancelled", "refunded", "resent", "cancelErr", "refundErr", "resendErr"] as const
+      ["cancelErr", "refundErr", "resendErr", "cancelled", "refunded", "resent"] as const
     )
       .map((k) => [k, sp[k]] as const)
       .find(([, val]) => val !== undefined);
-    const message = outcome ? actionMessage(outcome[0], outcome[1] ?? "") : undefined;
+    // A partial refund failure carries `refunded` alongside `refundErr`; the copy needs both.
+    const movedCents = /^\d+$/.test(sp.refunded ?? "") ? Number(sp.refunded) : undefined;
+    const message = outcome
+      ? actionMessage(outcome[0], outcome[1] ?? "", movedCents)
+      : undefined;
     const isError = outcome ? outcome[0].endsWith("Err") : false;
 
     // Prefill: the quote for the reason just chosen if we have just cancelled, otherwise the
@@ -224,6 +235,10 @@ export default async function ReservationDetailPage({
       refundedTotalCents: refundedTotalFor(payments),
       refundPrefill: (prefillCents / 100).toFixed(2),
       canResend: Boolean(reservation.email || reservation.phone),
+      needsRelease:
+        reservation.status === "cancelled" &&
+        event.source === "muster" &&
+        event.status === "scheduled",
       ...(message && !isError ? { done: message } : {}),
       ...(message && isError ? { error: message } : {}),
     };

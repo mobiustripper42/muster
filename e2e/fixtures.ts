@@ -141,6 +141,29 @@ export async function plantPayment(p: {
   }
 }
 
+/**
+ * Put a cancelled Muster event back to `scheduled` behind the app's back (#616).
+ *
+ * There is no product path to this state and there must not be — it models the HALF-APPLIED
+ * cancel: `cancelReservation` writes the reservation, then the event, and a crash between them
+ * leaves the reservation Cancelled with its boat still held. Written straight through the pool
+ * rather than the port for exactly that reason; the port's `cancelEventIfUnclaimed` only moves
+ * in the other direction.
+ */
+export async function reopenEvent(date: string, time: string): Promise<void> {
+  const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
+  try {
+    const events = await repo.listEvents();
+    const target = events.find(
+      (e) => e.date === date && e.time === time && e.source === "muster",
+    );
+    if (!target) throw new Error(`no muster event at ${date} ${time}`);
+    await repo.saveEvent({ ...target, status: "scheduled" });
+  } finally {
+    await repo.close();
+  }
+}
+
 /** Flip an admin's `active` flag — the per-person revoke lever (DEC-092). */
 export async function setAdminActive(handle: string, active: boolean): Promise<void> {
   const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);

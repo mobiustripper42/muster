@@ -265,6 +265,22 @@ export interface Repository {
   saveEvent(event: Event): Promise<void>;
   getEvent(id: EventId): Promise<Event | null>;
   listEvents(): Promise<Event[]>;
+  /**
+   * Cancel a Muster event **iff no active Muster reservation still holds it** (#616) — the
+   * write that releases the hull. Returns `true` if this call cancelled it, `false` if it was
+   * already cancelled, absent, not Muster-owned, or still claimed.
+   *
+   * A conditional write rather than `getEvent` + `saveEvent`, for the same reason
+   * `saveBookingIfSlotFree` and `saveSeatIfState` are: the read-then-write version has a window.
+   * Cancelling reservation A frees the slot immediately (the claim check filters
+   * `status='booked'`), so a new buyer B can win that exact slot **between** the caller's read
+   * and its write — and the unconditional `saveEvent` would then cancel B's live, paid booking,
+   * collapse the shift and tell the crew they're off a boat B is actually on.
+   *
+   * Takes the SAME hull-day advisory lock `saveBookingIfSlotFree` takes, so the two genuinely
+   * serialize instead of merely being individually atomic.
+   */
+  cancelEventIfUnclaimed(id: EventId): Promise<boolean>;
 
   // ── Reservations ───────────────────────────────────────────────────────────
   saveReservation(reservation: Reservation): Promise<void>;
@@ -345,7 +361,7 @@ export interface Repository {
    *
    * A scan of `listAllPayments` would do the same job and is what a first cut reaches for; it
    * is a full table read on the webhook hot path, once per refund, forever. The Postgres
-   * adapter has an index for this (`20260810_payment_intent_lookup`).
+   * adapter has an index for this (`db/migrations/20260810011500_payment_intent_lookup.sql`).
    */
   getPaymentByIntentId(stripePaymentIntentId: string): Promise<Payment | null>;
   /**

@@ -178,6 +178,14 @@ export async function refundBooking(formData: FormData): Promise<void> {
     // A partial failure still moved money. Say how much, so the operator's next decision is
     // made against what actually happened rather than against the amount they asked for.
     if (result.reason === "provider_error") {
+      // Log the provider's own message. The operator gets generic copy by design (a raw Stripe
+      // string in the UI is both unhelpful and an exposure question), but discarding it
+      // entirely left a production refund failure with NO record anywhere in Muster of why —
+      // nothing to correlate against Stripe's dashboard. Security review.
+      console.error(
+        `[reservations] refund of ${amountCents}c on ${reservationId} failed partway ` +
+          `(${result.refundedCents}c did move): ${result.message}`,
+      );
       redirect(back({ refundErr: "provider_error", refunded: String(result.refundedCents) }));
     }
     redirect(back({ refundErr: result.reason }));
@@ -212,6 +220,10 @@ export async function resendConfirmation(formData: FormData): Promise<void> {
   // The manage link is Muster-side only (DEC-122) — a Xola booking has no capability URL.
   if (reservation.source !== "muster") redirect(back({ resendErr: "not_muster" }));
   if (!reservation.email && !reservation.phone) redirect(back({ resendErr: "no_contact" }));
+  // A cancelled booking must not be re-confirmed. The body says the trip is booked and carries a
+  // live manage link; sending it after a cancellation tells the customer the opposite of what
+  // just happened, in writing. Security review.
+  if (reservation.status !== "booked") redirect(back({ resendErr: "cancelled" }));
 
   await sendReservationConfirmation(reservation);
   redirect(back({ resent: "1" }));

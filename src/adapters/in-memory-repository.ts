@@ -417,6 +417,18 @@ export class InMemoryRepository implements Repository {
   async listEvents(): Promise<Event[]> {
     return [...this.#events.values()].map(clone);
   }
+  async cancelEventIfUnclaimed(id: EventId): Promise<boolean> {
+    // Single-threaded JS ⇒ trivially atomic; the Postgres adapter enforces the same under real
+    // concurrency (row lock + the hull-day advisory lock `saveBookingIfSlotFree` also takes).
+    const event = this.#events.get(id);
+    if (!event || event.source !== "muster" || event.status !== "scheduled") return false;
+    const claimed = [...this.#reservations.values()].some(
+      (r) => r.eventId === id && r.source === "muster" && r.status === "booked",
+    );
+    if (claimed) return false;
+    this.#events.set(id, { ...clone(event), status: "cancelled" });
+    return true;
+  }
 
   // ── Reservation catalog (DEC-123/125) ───────────────────────────────────────
   async listOfferings(): Promise<Offering[]> {
@@ -568,15 +580,22 @@ export class InMemoryRepository implements Repository {
           slotIdentity(e.vesselId, e.date, e.time) === key,
       );
       if (cancelled) {
+        // **Overwrite price and duration UNCONDITIONALLY, including to absent.** Postgres writes
+        // `price = $5` / `duration_minutes = $6` from `?? null`, so a candidate with no duration
+        // NULLS the resurrected row. Spreading only when defined — the obvious shape — instead
+        // keeps the previous cancelled booking's duration, and `writeSlotBooking` genuinely omits
+        // it whenever the offering carries no `tripLengthMinutes` (`write-booking.ts:117`). That
+        // divergence is the DEC-131 trap this very method exists to close, one field narrower;
+        // code review caught it here.
         const revived: Event = {
           ...clone(cancelled),
           status: "scheduled",
           capacity: event.capacity,
-          ...(event.price !== undefined ? { price: event.price } : {}),
-          ...(event.durationMinutes !== undefined
-            ? { durationMinutes: event.durationMinutes }
-            : {}),
         };
+        delete revived.price;
+        delete revived.durationMinutes;
+        if (event.price !== undefined) revived.price = event.price;
+        if (event.durationMinutes !== undefined) revived.durationMinutes = event.durationMinutes;
         this.#events.set(revived.id, revived);
         existing = revived;
       } else {

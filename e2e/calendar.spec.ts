@@ -9,7 +9,14 @@
  * — the offering's other departures). The Booked filter hides the opens, keeps the booking.
  * Runs desktop + 375px (the grid scrolls; the booked block stays present).
  */
-import { test, expect, plantPayment, resetAndSeed, signInAsAdmin } from "./fixtures.js";
+import {
+  test,
+  expect,
+  plantPayment,
+  reopenEvent,
+  resetAndSeed,
+  signInAsAdmin,
+} from "./fixtures.js";
 import { shortTime as shortLabel } from "../src/reservations/calendar-grid.js";
 import { xolaFixture } from "../src/reservations/seed-xola.js";
 import {
@@ -411,6 +418,33 @@ test.describe("admin reservation actions (#616)", () => {
         Math.min(destructive!.y + destructive!.height, b.bottom) - Math.max(destructive!.y, b.top);
       expect(overlap, `"${b.name}" overlaps the cancel press point by ${Math.round(overlap)}px`).toBeLessThanOrEqual(0);
     }
+  });
+
+  test("a half-applied cancel offers a repair instead of stranding the boat", async ({ page }) => {
+    // The state a crash between `cancelReservation`'s two writes leaves: reservation Cancelled,
+    // event still scheduled — so the hull is still held, the crew were never told, and the pane
+    // reads "Cancelled" with nothing indicating a repair is owed. The core self-heals on a
+    // re-run and its comment says so, but the first cut hid the cancel control the moment the
+    // reservation flipped, making the re-run unreachable. Security review.
+    await signInAsAdmin(page, "spink");
+    await page.goto(detail());
+    await page.getByTestId("cancel-start").click();
+    await page.getByRole("button", { name: "Cancel this booking" }).click();
+    await page.waitForURL(/cancelled=/);
+
+    // Put the event back to `scheduled` behind the app's back — exactly the half-written state.
+    await reopenEvent(BOOKED.date, BOOKED.time);
+    await page.goto(detail());
+
+    const repair = page.getByTestId("release-repair");
+    await expect(repair).toContainText("never released");
+    await repair.getByRole("button", { name: "Release the boat" }).click();
+    await page.waitForURL(/cancelled=|cancelErr=/);
+
+    // Repaired: the slot is back on sale and the repair prompt is gone.
+    await expect(page.getByTestId("release-repair")).toHaveCount(0);
+    await page.goto(`/admin/calendar?date=${BOOKED.date}`);
+    await expect(page.getByText(`open · ${shortLabel(BOOKED.time)}`)).toBeVisible();
   });
 
   test("resend is offered when there is somewhere to send, and reports back", async ({ page }) => {

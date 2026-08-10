@@ -147,21 +147,17 @@ export async function cancelReservation(
   // leaves the reservation cancelled and the event scheduled — a boat silently un-released,
   // with the surface reading "Cancelled" and nothing to suggest otherwise. Re-running finishes
   // the job. That is only safe because every write below is idempotent.
-  const event = await deps.repo.getEvent(reservation.eventId);
-  let freedEventId: EventId | undefined;
-  if (event && event.source === "muster" && event.status === "scheduled") {
-    // Never release a boat somebody else is still on. The whole-boat mutex means a second
-    // active claim should not exist, so this is a guard against a state we believe impossible
-    // rather than one we expect — the cost of being wrong is a double-sold boat.
-    const others = await deps.repo.listReservationsForEvent(event.id);
-    const stillClaimed = others.some(
-      (r) => r.id !== reservation.id && r.source === "muster" && r.status === "booked",
-    );
-    if (!stillClaimed) {
-      await deps.repo.saveEvent({ ...event, status: "cancelled" });
-      freedEventId = event.id;
-    }
-  }
+  // Release the hull through the CONDITIONAL write, not a read-then-`saveEvent`.
+  //
+  // The obvious version — read the event, check nobody else holds it, write it cancelled — has
+  // a real window, and code review caught it. Cancelling the reservation a few lines above frees
+  // the slot *immediately* (the claim check filters `status='booked'`), so a new buyer can win
+  // this exact slot between that read and this write. An unconditional `saveEvent` would then
+  // cancel their live, paid booking, collapse the shift and tell the crew they are off a boat
+  // somebody is on. `cancelEventIfUnclaimed` does the check and the write under the same
+  // hull-day advisory lock the booking path takes, so the two serialize.
+  const cancelledEvent = await deps.repo.cancelEventIfUnclaimed(reservation.eventId);
+  const freedEventId: EventId | undefined = cancelledEvent ? reservation.eventId : undefined;
 
   // Re-form so the shift collapses and its crew are told. Best-effort by the same contract the
   // booking webhook uses: the cancellation is COMMITTED by this point, so a channel hiccup or

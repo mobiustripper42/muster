@@ -290,6 +290,13 @@ which is the exact defect #616 exists to remove, reintroduced by a checkbox.
 
 Nothing in the repo can verify the subscription list (#544). It has to be read off the dashboard.
 
+**Not subscribed, deliberately: `charge.refund.updated`.** A card refund can fail at the bank days
+later, at which point Stripe *decrements* `amount_refunded` and emits that event. Muster's
+`markPaymentRefunded` only ever ratchets upward (`greatest()`), so a reversed refund would be
+recorded permanently as money returned that in fact came back. Low likelihood on cards and
+deliberately out of scope for #616 — but if a reversal ever happens, the payment row needs
+correcting by hand.
+
 ### Test it once in production, with real money
 
 The refund path cannot be proven by the test suite: `FakePaymentPort` models Stripe's keyed

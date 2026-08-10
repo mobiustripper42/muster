@@ -97,7 +97,21 @@ function refundableOn(p: Payment): number {
  * amount.
  */
 export function parseDollarsToCents(raw: string): number | null {
-  const cleaned = raw.trim().replace(/^\$/, "").replace(/,/g, "");
+  const trimmed = raw.trim().replace(/^\$/, "");
+  // **Commas must be in thousands positions or the value is refused.** Stripping them
+  // unconditionally turns a DECIMAL comma into a 100× refund: `"1,50"` → `"150"` → $150.00
+  // against an intended $1.50, with the success message, the ledger and the compare-and-swap
+  // all agreeing on the wrong number. `,` and `.` are adjacent kinds of typo, and a decimal
+  // comma is what you get pasting from most of the world. The only backstop was
+  // `exceeds_refundable`, which does nothing on a booking large enough to absorb it.
+  //
+  // So: either no commas at all, or `1,234,567` exactly. Anything else is refused rather
+  // than interpreted, because there is no reading of `1,50` that is safe to guess at.
+  const grouped = /^\d{1,3}(,\d{3})+$/;
+  const [intPart = "", ...restParts] = trimmed.split(".");
+  if (intPart.includes(",") && !grouped.test(intPart)) return null;
+  if (restParts.some((p) => p.includes(","))) return null;
+  const cleaned = trimmed.replace(/,/g, "");
   const m = /^(\d+)(?:\.(\d{1,2}))?$/.exec(cleaned);
   if (!m) return null;
   const dollars = Number(m[1]);
@@ -149,6 +163,14 @@ export async function refundReservation(
   if (refundedTotalFor(payments) !== expectedRefundedCents) {
     return { ok: false, reason: "stale" };
   }
+  // **This closes the double-submit, NOT true concurrency**, and the difference matters.
+  // It is a read-then-check with no lock, so two genuinely simultaneous refunds of DIFFERENT
+  // amounts both read the same total, both pass, and both key differently at Stripe — so both
+  // pay out while `markPaymentRefunded`'s `greatest()` records only the larger. Self-healing
+  // once `charge.refunded` lands (the webhook writes Stripe's true cumulative total), but only
+  // where that subscription exists. Fixing it properly needs a lease, not a lock: the Stripe
+  // call is a network round-trip and cannot be held inside a transaction. Filed as its own
+  // task — see the issue linked from DEC-153.
 
   // Newest first. `createdAt` is ISO-8601 UTC text throughout this schema, so lexicographic
   // ordering is chronological; the payment id breaks a tie deterministically so two charges

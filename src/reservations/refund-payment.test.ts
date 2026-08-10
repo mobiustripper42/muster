@@ -274,6 +274,22 @@ describe("parseDollarsToCents", () => {
     expect(parseDollarsToCents("536.2")).toBe(53620);
   });
 
+  it("refuses a DECIMAL comma rather than reading it as a thousands separator", () => {
+    // The 100x bug (security review). `"1,50"` stripped to `"150"` is $150.00 against an
+    // intended $1.50 — and every downstream number agrees with it, so nothing catches it
+    // except a refundable ceiling that a large enough booking clears.
+    expect(parseDollarsToCents("1,50")).toBeNull();
+    expect(parseDollarsToCents("1,5")).toBeNull();
+    expect(parseDollarsToCents("536,25")).toBeNull();
+    expect(parseDollarsToCents("1,2345")).toBeNull();
+    expect(parseDollarsToCents("1,23.45")).toBeNull();
+    expect(parseDollarsToCents("12,34,567")).toBeNull();
+    // Real thousands grouping still parses — operators paste it from Stripe.
+    expect(parseDollarsToCents("1,536.25")).toBe(153625);
+    expect(parseDollarsToCents("1,234,567")).toBe(123456700);
+    expect(parseDollarsToCents("536.25")).toBe(53625);
+  });
+
   it("refuses everything else rather than guessing", () => {
     // Each of these is a value some coercion would happily turn into a number.
     for (const bad of ["", "   ", "abc", "50abc", "12.3.4", "-50", "5e2", "0x10", "50.123", "."]) {

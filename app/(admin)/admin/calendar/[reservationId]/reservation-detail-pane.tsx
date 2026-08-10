@@ -36,6 +36,12 @@ export interface PaneActionState {
   /** Dollars string prefilled into the amount box. */
   refundPrefill: string;
   canResend: boolean;
+  /**
+   * The reservation is cancelled but its event is still `scheduled` — a half-applied cancel.
+   * The boat is silently still held: neighbouring departures stay unsellable and the crew shift
+   * never collapsed. `cancelReservation` repairs this on a re-run, so the pane has to offer one.
+   */
+  needsRelease: boolean;
   /** Outcome copy from the last action, if any. */
   done?: string | undefined;
   error?: string | undefined;
@@ -61,8 +67,15 @@ function balanceErrorMessage(reason: string): string {
   }
 }
 
-/** Operator-facing copy for a refused or completed action (#616). Says what happened. */
-export function actionMessage(kind: string, value: string): string {
+/**
+ * Operator-facing copy for a refused or completed action (#616). Says what happened.
+ *
+ * `movedCents` is only meaningful for a PARTIAL refund failure, where some legs landed and
+ * some did not. That case redirects with both an error and an amount, and the operator's next
+ * decision depends entirely on the amount — "Stripe failed, try again" against a refund that
+ * already moved $200 is how a customer gets refunded twice.
+ */
+export function actionMessage(kind: string, value: string, movedCents?: number): string {
   switch (kind) {
     case "cancelled":
       return value === "operator"
@@ -89,7 +102,9 @@ export function actionMessage(kind: string, value: string): string {
         case "stale":
           return "Nothing was refunded — this page was out of date (a refund had already gone through). It’s reloaded now; check the figures before trying again.";
         case "provider_error":
-          return "Stripe failed partway. Any amount shown as refunded DID go back; the rest did not. Check Stripe before retrying.";
+          return movedCents && movedCents > 0
+            ? `Stripe failed partway. ${formatCents(movedCents)} DID go back to the customer; the rest did not. Check Stripe before retrying — retrying the full amount would refund that ${formatCents(movedCents)} twice.`
+            : "Stripe failed and NOTHING was refunded. Check Stripe before retrying.";
         case "not_muster":
           return "This booking is Xola's — its money lives in Xola.";
         case "stripe_not_configured":
@@ -98,7 +113,9 @@ export function actionMessage(kind: string, value: string): string {
           return "Couldn’t refund just now. Nothing moved. Try again in a moment.";
       }
     case "resendErr":
-      return value === "no_contact"
+      return value === "cancelled"
+        ? "This booking is cancelled — resending would confirm a trip that isn’t sailing."
+        : value === "no_contact"
         ? "This booking has no email or phone on it, so there’s nowhere to send."
         : value === "not_muster"
           ? "Xola bookings have no Muster manage link."
@@ -429,6 +446,27 @@ function PaneActions({
           </SubmitButton>
         </form>
       )}
+      {/* A HALF-APPLIED CANCEL (security review). `cancelReservation` writes the reservation,
+          then the event; if anything between them throws, the reservation reads Cancelled while
+          the event stays `scheduled` — the boat still held, neighbours still unsellable, the crew
+          never told, and nothing on screen saying so. The core repairs this on a re-run and its
+          comment says so, but the UI hid the only control that could trigger one: `!cancelled`
+          removed the whole cancel block the moment the first write landed. So the repair gets its
+          own affordance, and it states the consequence rather than the mechanism. */}
+      {cancelled && actions.needsRelease && (
+        <form action={cancelBooking} className="mb-3" data-testid="release-repair">
+          {hidden}
+          <input type="hidden" name="by" value="operator" />
+          <p className="mb-2 text-xs text-bad">
+            This booking is cancelled but its boat was never released — the departure is still
+            blocking that hull, and the crew were never told they’re off. Finish it:
+          </p>
+          <SubmitButton className="min-h-[44px] w-full rounded-lg border border-line bg-ink px-3 text-sm font-medium text-white">
+            Release the boat
+          </SubmitButton>
+        </form>
+      )}
+
       {/* CANCEL. Two steps, because it is the one action here that cannot be undone by pressing
           the same button again — the boat is released and the crew have been told. */}
       {!cancelled &&

@@ -612,6 +612,108 @@ if (!dbUp) {
     });
   });
 
+  /**
+   * Cancel racing a fresh booking of the slot it just freed (#616, code review).
+   *
+   * Cancelling a reservation frees its slot the instant the reservation row flips — the claim
+   * check filters `status='booked'`. So there is a real window between "reservation cancelled"
+   * and "event cancelled" in which a new buyer can win that exact slot. The first cut wrote the
+   * event with an unconditional `saveEvent`, which would cancel the new customer's live, PAID
+   * booking, collapse the shift and tell the crew they're off a boat somebody is on.
+   *
+   * `cancelEventIfUnclaimed` takes the same hull-day advisory lock `saveBookingIfSlotFree` takes,
+   * so the two serialize. Negative-control it by reverting that method to a bare
+   * `update events set status='cancelled'` and this goes red with a cancelled event under a
+   * booked reservation.
+   */
+  describe("cancel racing a re-book of the freed slot (#616)", () => {
+    const VESSEL5 = asId<"VesselId">("vessel-brew-11");
+    const DATE5 = "2026-07-04";
+    const NOW5 = () => "2026-07-12T00:00:00.000Z";
+
+    it("never cancels an event a new buyer has just won", async () => {
+      await pool.query(`truncate ${TABLES.join(", ")} restart identity cascade`);
+      const repo = new PostgresRepository(pool);
+
+      const buyer = (key: string, name: string) => ({
+        offeringId: asId<"OfferingId">("off-race-cancel"),
+        vesselId: VESSEL5,
+        date: DATE5,
+        time: "13:30",
+        guestCount: 4,
+        priceCents: 50000,
+        extrasCents: 0,
+        customerName: name,
+        idempotencyKey: key,
+      });
+
+      const first = await writeSlotBooking(repo, buyer("sess_race_1", "Ann"), NOW5);
+      expect(first.outcome).toBe("booked");
+      const eventId = (first as { eventId: EventId }).eventId;
+      const annId = (first as { reservation: { id: ReservationId } }).reservation.id;
+
+      // Ann cancels. Her reservation flips first — exactly as `cancelReservation` does it — and
+      // that alone re-opens the slot. Ben buys it in the window before the event is released.
+      const ann = await repo.getReservation(annId);
+      await repo.saveReservation({ ...ann!, status: "cancelled" });
+
+      const [ben, released] = await Promise.all([
+        writeSlotBooking(repo, buyer("sess_race_2", "Ben"), NOW5),
+        repo.cancelEventIfUnclaimed(eventId),
+      ]);
+
+      // **The invariant is the FINAL STATE, not a relationship between the two return values.**
+      //
+      // A first version asserted `released === false` whenever Ben booked, and that was wrong
+      // about this system rather than about the code: the release can genuinely commit first and
+      // Ben's booking then RESURRECT the slot (the #616 resurrect path, three describes up), so
+      // `released: true` and a booked Ben are both true in sequence and nothing is broken.
+      //
+      // What must never happen — in any interleaving — is a booked reservation sitting on a
+      // cancelled event. That is the state the unguarded `saveEvent` produced: a paid customer
+      // on a boat the system believes is not sailing, with the shift collapsed under them.
+      const { rows } = await pool.query(
+        `select e.status as event_status,
+                count(r.id) filter (where r.status='booked')::int as booked
+           from events e
+           left join reservations r on r.event_id = e.id
+          where e.id = $1
+          group by e.status`,
+        [eventId],
+      );
+      const state = rows[0];
+      expect(released || ben.outcome === "booked").toBe(true); // one of them had to happen
+      if (state.booked > 0) expect(state.event_status).toBe("scheduled");
+      if (state.event_status === "cancelled") expect(state.booked).toBe(0);
+    });
+
+    it("refuses to release a slot that is still claimed", async () => {
+      await pool.query(`truncate ${TABLES.join(", ")} restart identity cascade`);
+      const repo = new PostgresRepository(pool);
+      const booked = await writeSlotBooking(
+        repo,
+        {
+          offeringId: asId<"OfferingId">("off-race-cancel"),
+          vesselId: VESSEL5,
+          date: DATE5,
+          time: "15:30",
+          guestCount: 4,
+          priceCents: 50000,
+          extrasCents: 0,
+          customerName: "Cal",
+          idempotencyKey: "sess_race_3",
+        },
+        NOW5,
+      );
+      expect(booked.outcome).toBe("booked");
+      const eventId = (booked as { eventId: EventId }).eventId;
+
+      // The reservation is still `booked` — releasing here would strand a paying customer.
+      expect(await repo.cancelEventIfUnclaimed(eventId)).toBe(false);
+      expect((await repo.getEvent(eventId))?.status).toBe("scheduled");
+    });
+  });
+
   afterAll(async () => {
     await pool.end();
   });

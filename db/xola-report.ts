@@ -337,6 +337,19 @@ interface Row {
   extra: string;
   declared: string;
   flags: string;
+  /**
+   * Structured facts behind the flags. **Summaries key off these, never off the flag TEXT.**
+   * They did briefly: the "declared more than paid" section filtered on
+   * `flags.includes("declared")`, and the moment a calmer flag reading `extra ×2 declared and
+   * paid` was added, every consistent booking matched and the heading became a lie about its own
+   * contents. Display copy is written for a human and changes for a human's reasons; a filter
+   * built on it breaks silently and stays plausible.
+   */
+  isOver: boolean;
+  wouldBeOver: boolean;
+  isMismatch: boolean;
+  hasExtras: boolean;
+  isCancelled: boolean;
 }
 
 const CAPACITY: Record<string, number> = {
@@ -371,6 +384,9 @@ for (const order of orders) {
     const dt = item.arrivalDatetime ?? "";
 
     const flags: string[] = [];
+    let isOver = false;
+    let wouldBeOver = false;
+    let isMismatch = false;
     // **An unresolved boat is a FLAG, not a silent pass.** This is the defect the operator caught
     // once already: the row printed blank and looked clean while its capacity check had simply
     // not run. Fixing the lookup was not enough — without a flag here the row is still dropped by
@@ -389,17 +405,46 @@ for (const order of orders) {
       flags.push("UNAUDITED — no boat resolved");
     }
     if (selfCaptained) flags.push("self-captained — capacity not audited");
+    // **Every "yes" is on the report, paid or not** (operator, 2026-08-10).
+    //
+    // The first cut only flagged a DISAGREEMENT between what was declared and what was paid, so
+    // a booking that declared two extra guests and paid for exactly two passed in silence. That
+    // is right as an invoicing check and wrong as an operational one: the boat still has extra
+    // people on it, and the operator wants eyes on every one of those regardless of whether the
+    // money is settled. Paid-and-consistent is reported calmly rather than omitted.
+    const saidYes = declared.some((a) => !/^no\b/i.test(a));
     if (declaredMax !== null && declaredMax !== extra) {
+      isMismatch = true;
       flags.push(`declared ${declaredMax}≠paid ${extra}`);
+    } else if (saidYes) {
+      flags.push(`extra ×${extra} declared and paid`);
     }
     if (declared.length > 1) flags.push("two answers");
     // A "yes" whose count nobody parsed is a real disagreement hiding in an unrecognised
     // phrasing. Left as `null` it produced no flag at all — visible only to someone reading the
     // `declared` column, which is exactly the passive failure the UNAUDITED case above fixes.
-    if (declaredMax === null && declared.length > 0 && extra === 0) {
+    if (declaredMax === null && declared.length > 0) {
       flags.push("declared ? — unparsed answer");
     }
-    if (cap !== undefined && pax > cap) flags.push(`OVER ${boat} cap ${cap}`);
+    // **The guest who was declared but never paid for still turns up.** `pax` counts what was
+    // PAID, so an unpaid declaration cannot trip the OVER check above — Ali Eltatawy declared one
+    // more on a 12-cap Brew 4 and reads as exactly 12. If that person arrives it is 13 on a boat
+    // licensed for 12, which is the same legal problem as a paid overage and is invisible in the
+    // money columns. Separate flag, because the fix is different: chase the payment, or move the
+    // boat, or both.
+    if (
+      cap !== undefined &&
+      declaredMax !== null &&
+      declaredMax > extra &&
+      BASE_GUESTS + declaredMax > cap
+    ) {
+      wouldBeOver = true;
+      flags.push(`WOULD BE OVER if the declared guest shows (${BASE_GUESTS + declaredMax} > ${cap})`);
+    }
+    if (cap !== undefined && pax > cap) {
+      isOver = true;
+      flags.push(`OVER ${boat} cap ${cap}`);
+    }
     if (item.status === 700) flags.push("cancelled");
 
     rows.push({
@@ -413,26 +458,44 @@ for (const order of orders) {
       extra: String(extra),
       declared: declared.join(" | "),
       flags: flags.join("; "),
+      isOver,
+      wouldBeOver,
+      isMismatch,
+      hasExtras: extra > 0 || saidYes,
+      isCancelled: item.status === 700,
     });
   }
 }
 rows.sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
 
-const COLS: (keyof Row)[] = [
+/**
+ * The printable columns. Typed as its own union rather than `keyof Row`, because `Row` also
+ * carries the structured booleans the summaries key off — and `keyof Row` widens `r[c]` to
+ * `string | boolean`, which breaks `padEnd`/`slice`. Narrowing here keeps the rendering code
+ * honest about what it can print.
+ */
+type TextCol =
+  | "date" | "time" | "boat" | "cap" | "customer" | "status" | "pax" | "extra" | "declared" | "flags";
+
+const COLS: TextCol[] = [
   "date", "time", "boat", "cap", "customer", "status", "pax", "extra", "declared", "flags",
 ];
 
-/** `--flagged` narrows to the rows that need a decision. A cancelled line is not one. */
-const shown = onlyFlagged
-  ? rows.filter((r) => r.flags && r.flags !== "cancelled")
-  : rows;
+/**
+ * `--flagged` narrows to the rows that need a DECISION, which is a narrower set than "has a
+ * flag". A cancelled booking is excluded outright rather than merely labelled: there is no
+ * action attached to a trip that is not sailing, and a triage list padded with rows nobody can
+ * act on is the same failure as one that hides rows they can. Cancelled rows stay in the full
+ * table with their flags intact.
+ */
+const shown = onlyFlagged ? rows.filter((r) => r.flags && !r.flags.includes("cancelled")) : rows;
 
 if (has("--csv")) {
   const esc = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
   console.log(COLS.join(","));
   for (const r of shown) console.log(COLS.map((c) => esc(r[c])).join(","));
 } else {
-  const cap = (c: keyof Row) => (c === "declared" ? 34 : c === "flags" ? 0 : 22);
+  const cap = (c: TextCol) => (c === "declared" ? 34 : c === "flags" ? 0 : 22);
   const widths = COLS.map((c) =>
     cap(c) === 0 ? 0 : Math.min(cap(c), Math.max(c.length, ...rows.map((r) => r[c].length), 1)),
   );
@@ -447,30 +510,23 @@ if (has("--csv")) {
 const flagged = rows.filter((r) => r.flags && r.flags !== "cancelled");
 console.error(`\n${rows.length} reservation line(s), ${flagged.length} flagged.`);
 
-const overCap = rows.filter((r) => r.flags.includes("OVER"));
-if (overCap.length) {
-  console.error(`\nOVER CAPACITY — ${overCap.length}:`);
-  for (const r of overCap) {
-    console.error(`  ${r.date} ${r.time}  ${r.boat} (cap ${r.cap})  ${r.customer}  ${r.pax} pax`);
+const live = rows.filter((r) => !r.isCancelled);
+const section = (title: string, set: Row[]): void => {
+  if (!set.length) return;
+  console.error(`\n${title} — ${set.length}:`);
+  for (const r of set) {
+    console.error(
+      `  ${r.date} ${r.time}  ${(r.boat || "—").padEnd(8)}${r.customer.padEnd(22)} ${r.pax} pax  ${r.flags}`,
+    );
   }
-}
-const unpaid = rows.filter((r) => r.flags.includes("declared"));
-if (unpaid.length) {
-  console.error(`\nDECLARED MORE THAN PAID FOR — ${unpaid.length}:`);
-  for (const r of unpaid) {
-    console.error(`  ${r.date} ${r.time}  ${r.boat}  ${r.customer}  ${r.flags}`);
-  }
-}
-if (itemsWithoutAddOns > 0) {
-  console.error(
-    `\n! ${itemsWithoutAddOns} item(s) carried NO addOns field — the passenger count for those ` +
-      `is base only and may be wrong. Xola may have changed the wire shape; re-run with --raw.`,
-  );
-}
-console.error(`\nexperiences in this pull: ${[...experiences].join(" | ")}`);
-if (experiences.size > 1) {
-  console.error(
-    `! ${experiences.size} different experiences — one flat --base of ${BASE_GUESTS} may not ` +
-      `apply to all of them, so pax (and every OVER flag) is only as right as that assumption.`,
-  );
-}
+};
+
+// Ordered by what the operator has to do about it, most urgent first. Cancelled trips are out of
+// every section — there is nothing to move, chase or seat.
+section("OVER CAPACITY — move the boat", live.filter((r) => r.isOver));
+section("WOULD BE OVER if the declared guest shows", live.filter((r) => r.wouldBeOver));
+section("DECLARED ≠ PAID — money to chase", live.filter((r) => r.isMismatch));
+section(
+  "EXTRA GUESTS, consistent and within capacity",
+  live.filter((r) => r.hasExtras && !r.isOver && !r.wouldBeOver && !r.isMismatch),
+);

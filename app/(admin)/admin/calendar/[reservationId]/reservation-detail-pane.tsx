@@ -10,6 +10,7 @@ import {
   createBalanceLink,
   refundBooking,
   resendConfirmation,
+  startRefund,
 } from "./actions";
 
 /**
@@ -35,6 +36,10 @@ export interface PaneActionState {
   refundedTotalCents: number;
   /** Dollars string prefilled into the amount box. */
   refundPrefill: string;
+  /** Cents awaiting confirmation, from `?refundConfirm=` — the two-step's second screen. */
+  confirmingRefundCents?: number | undefined;
+  /** …and the href that backs out of it. */
+  refundBackHref: string;
   canResend: boolean;
   /**
    * The reservation is cancelled but its event is still `scheduled` — a half-applied cancel.
@@ -425,9 +430,45 @@ function PaneActions({
       )}
 
       {/* REFUND. Available whether or not the booking is cancelled — a goodwill partial on a
-          trip that is still sailing is a real thing an operator does. */}
-      {actions.refundableCents > 0 && (
-        <form action={refundBooking} className="mb-2" data-testid="refund-form">
+          trip that is still sailing is a real thing an operator does.
+
+          TWO STEPS, like the cancel. This is the only control here that moves real money in a
+          single press, and unlike a cancellation a wrong amount leaves no trace that says so —
+          $538.80 and $53.88 look equally plausible on the row afterwards. The confirm screen
+          states the figure back in words the operator did not type. */}
+      {actions.refundableCents > 0 && actions.confirmingRefundCents !== undefined && (
+        <form action={refundBooking} className="mb-2" data-testid="refund-confirm">
+          {hidden}
+          <input type="hidden" name="expectedRefunded" value={actions.refundedTotalCents} />
+          <input
+            type="hidden"
+            name="amount"
+            value={(actions.confirmingRefundCents / 100).toFixed(2)}
+          />
+          <p className="mb-2 text-sm text-ink">
+            Refund <b className="font-mono">{formatCents(actions.confirmingRefundCents)}</b> to the
+            card it came from?
+          </p>
+          <p className="mb-2 text-xs text-muted">
+            This moves real money now. Muster cannot take it back — a mistake has to be collected
+            from the customer again.
+          </p>
+          <div className="flex gap-2">
+            <SubmitButton className="min-h-[44px] flex-1 rounded-lg border border-line bg-bad px-3 text-sm font-medium text-white">
+              Yes, refund {formatCents(actions.confirmingRefundCents)}
+            </SubmitButton>
+            <AppLink
+              href={actions.refundBackHref}
+              className="flex min-h-[44px] items-center rounded-lg border border-line px-3 text-sm text-muted"
+            >
+              Keep it
+            </AppLink>
+          </div>
+        </form>
+      )}
+
+      {actions.refundableCents > 0 && actions.confirmingRefundCents === undefined && (
+        <form action={startRefund} className="mb-2" data-testid="refund-form">
           {hidden}
           {/* The compare-and-swap token: the refunded total this screen was DRAWN against.
               Stripe's idempotency key cannot stop a double-submit here, because the second
@@ -457,14 +498,6 @@ function PaneActions({
         </form>
       )}
 
-      {actions.canResend && (
-        <form action={resendConfirmation}>
-          {hidden}
-          <SubmitButton className="min-h-[44px] w-full rounded-lg border border-line px-3 text-sm text-ink">
-            Resend confirmation + manage link
-          </SubmitButton>
-        </form>
-      )}
       {/* A HALF-APPLIED CANCEL (security review). `cancelReservation` writes the reservation,
           then the event; if anything between them throws, the reservation reads Cancelled while
           the event stays `scheduled` — the boat still held, neighbours still unsellable, the crew
@@ -541,6 +574,33 @@ function PaneActions({
             Cancel booking
           </AppLink>
         ))}
+
+      {/* RESEND, last (operator, 2026-08-10) — and rendered even when it cannot be used, with
+          `disabled`, which is the DEC-152 pattern rather than a stylistic choice.
+          
+          Putting it below the cancel block means that when that block collapses after a press,
+          resend reflows UP into the coordinates the thumb just left — the #718 defect, measured
+          at 8px on the first arrangement of this very section. Disabling it makes the thing that
+          lands under the thumb inert instead of moving it somewhere else, and the disabled state
+          is honest rather than defensive: `resendConfirmation` already refuses a cancelled
+          booking server-side, because the body says the trip is booked and carries a live manage
+          link. Green-vs-grey survives greyscale; the reason is in the line beneath. */}
+      <form action={resendConfirmation}>
+        {hidden}
+        <SubmitButton
+          disabled={!actions.canResend || cancelled}
+          className="min-h-[44px] w-full rounded-lg border border-line px-3 text-sm text-ink disabled:cursor-not-allowed disabled:text-faint"
+        >
+          Resend confirmation + manage link
+        </SubmitButton>
+        {(cancelled || !actions.canResend) && (
+          <p className="mt-1 text-[11px] text-faint">
+            {cancelled
+              ? "Cancelled bookings can’t be re-confirmed — it would tell the customer their trip is on."
+              : "No email or phone on this booking, so there’s nowhere to send."}
+          </p>
+        )}
+      </form>
 
     </div>
   );

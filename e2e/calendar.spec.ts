@@ -414,9 +414,45 @@ test.describe("admin reservation actions (#616)", () => {
     const form = pane.getByTestId("refund-form");
     await expect(form).toContainText("Refund up to $588.80");
     await expect(form.locator('input[name="amount"]')).toHaveValue("588.80");
-    // Rendered against a clean ledger, so the CAS token is zero. It is what makes a second
-    // post of this same form refuse instead of refunding twice.
-    await expect(form.locator('input[name="expectedRefunded"]')).toHaveValue("0");
+
+    // Refunding is TWO steps (operator, 2026-08-10): the first press opens a confirm that states
+    // the figure back, because this is the only control here that moves real money in one press
+    // and a wrong amount leaves nothing behind that looks wrong.
+    await form.getByRole("button", { name: "Refund" }).click();
+    await page.waitForURL(/refundConfirm=58880/);
+    const confirm = pane.getByTestId("refund-confirm");
+    await expect(confirm).toContainText("Refund $588.80 to the card it came from?");
+    await expect(confirm).toContainText("Muster cannot take it back");
+    // The CAS token rides the CONFIRM form — it is what makes a second post refuse rather than
+    // refund twice, so it has to be on the form that actually moves money.
+    await expect(confirm.locator('input[name="expectedRefunded"]')).toHaveValue("0");
+
+    // "Keep it" backs out and moves nothing.
+    await confirm.getByRole("link", { name: "Keep it" }).click();
+    await expect(pane.getByTestId("refund-confirm")).toHaveCount(0);
+    await expect(pane.getByTestId("refund-form")).toBeVisible();
+  });
+
+  test("the confirm step refuses an over-ask before asking you to confirm it", async ({ page }) => {
+    // Validation belongs on the FIRST press. Being told "that isn't a valid amount" after
+    // confirming is being asked to confirm something the system had already rejected — and the
+    // ceiling is re-derived server-side, because the box is a text input and the posted value is
+    // whatever the client sent.
+    await plantPayment({
+      id: "pay-e2e-4",
+      reservationId: RESV,
+      amountCents: 10000,
+      stripePaymentIntentId: "pi_e2e_4",
+    });
+    await signInAsAdmin(page, "spink");
+    await page.goto(detail());
+
+    const form = page.getByTestId("refund-form");
+    await form.locator('input[name="amount"]').fill("500.00");
+    await form.getByRole("button", { name: "Refund" }).click();
+
+    await expect(page.getByTestId("action-error")).toContainText("more than this booking can give back");
+    await expect(page.getByTestId("refund-confirm")).toHaveCount(0);
   });
 
   test("a refund that Stripe rejected says so, and says nothing moved", async ({ page }) => {
@@ -431,19 +467,24 @@ test.describe("admin reservation actions (#616)", () => {
   });
 
   /**
-   * The #718 defect, in the one place it would cost money (DEC-152).
+   * The #718 defect, in the two places here that would cost money (DEC-152).
    *
    * Pressing a button that then VANISHES leaves whatever reflows into its coordinates sitting
    * under a thumb that is still there. On `/crew/time` that cost a crew member a clock-out and
-   * an immediate clock-in; here the controls in question are Refund and Resend, and the second
-   * tap would fire one of them against a booking the operator has just cancelled.
+   * an immediate clock-in; here the two destructive presses are "Cancel this booking" and
+   * "Yes, refund $X", and what lands underneath must not be able to do anything.
    *
-   * Measured, not eyeballed: 46px looked fine in a screenshot on #718 and was a thumb's width
-   * in the hand. The fix is ordering — the destructive block renders LAST, so collapsing it
-   * moves nothing above it — and this test is what stops a later tidy-up from reordering the
-   * section back.
+   * **The invariant is no ENABLED control, not no control.** Resend sits below the cancel block
+   * at the operator's request, so after a cancel it genuinely does reflow into the press point —
+   * measured at 3.5px. It is rendered `disabled` there (it is refused server-side on a cancelled
+   * booking anyway), which is DEC-152's own answer: make the thing under the thumb inert rather
+   * than move it somewhere else and hope. A version that asserted "no overlap at all" would
+   * force a layout the operator does not want, to solve a problem `disabled` already solves.
+   *
+   * Measured, not eyeballed — 46px looked fine in a screenshot on #718 and is a thumb's width
+   * in the hand.
    */
-  test("after cancelling, nothing interactive sits where the cancel button was", async ({
+  test("after a destructive press, nothing ENABLED sits where the button was", async ({
     page,
   }) => {
     await plantPayment({
@@ -454,28 +495,62 @@ test.describe("admin reservation actions (#616)", () => {
       stripePaymentIntentId: "pi_e2e_2",
     });
     await signInAsAdmin(page, "spink");
-    await page.goto(detail("&cancel=1"));
 
-    const destructive = await page
-      .getByRole("button", { name: "Cancel this booking" })
-      .boundingBox();
+    /** Every enabled control in the actions block, with its page coordinates. */
+    const enabledBoxes = async () =>
+      page
+        .getByTestId("reservation-actions")
+        .getByRole("button")
+        .evaluateAll((els) =>
+          els
+            .filter((e) => !(e as HTMLButtonElement).disabled)
+            .map((e) => {
+              const r = e.getBoundingClientRect();
+              return {
+                name: (e.textContent ?? "").trim(),
+                top: r.top + window.scrollY,
+                bottom: r.bottom + window.scrollY,
+              };
+            }),
+        );
+
+    const assertClear = async (
+      pressed: { y: number; height: number },
+      label: string,
+    ): Promise<void> => {
+      const after = await enabledBoxes();
+      expect(after.length, `${label}: nothing rendered, so this would pass vacuously`)
+        .toBeGreaterThan(0);
+      for (const b of after) {
+        const overlap = Math.min(pressed.y + pressed.height, b.bottom) - Math.max(pressed.y, b.top);
+        expect(
+          overlap,
+          `after ${label}, "${b.name}" is ENABLED and overlaps the press point by ${Math.round(overlap)}px`,
+        ).toBeLessThanOrEqual(0);
+      }
+    };
+
+    // (a) The refund confirm's destructive button. Both outcomes land back on this page, so the
+    // post-press layout is the same either way — drive the plain page rather than a real refund
+    // (which needs Stripe).
+    await page.goto(detail("&refundConfirm=58880"));
+    const refundPress = await page.getByRole("button", { name: /Yes, refund/ }).boundingBox();
+    await page.goto(detail());
+    await assertClear(refundPress!, "the refund confirm");
+
+    // (b) The cancel confirm's destructive button — the one that actually collapses its block.
+    await page.goto(detail("&cancel=1"));
+    const cancelPress = await page.getByRole("button", { name: "Cancel this booking" }).boundingBox();
     await page.getByRole("button", { name: "Cancel this booking" }).click();
     await page.waitForURL(/cancelled=/);
+    await assertClear(cancelPress!, "the cancel confirm");
 
-    // Every control the post-cancel pane offers, against the coordinates just pressed.
-    const after = page.getByTestId("reservation-actions").getByRole("button");
-    const boxes = await after.evaluateAll((els) =>
-      els.map((e) => {
-        const r = e.getBoundingClientRect();
-        return { name: e.textContent?.trim() ?? "", top: r.top + window.scrollY, bottom: r.bottom + window.scrollY };
-      }),
-    );
-    expect(boxes.length).toBeGreaterThan(0); // a version that rendered nothing would pass vacuously
-    for (const b of boxes) {
-      const overlap =
-        Math.min(destructive!.y + destructive!.height, b.bottom) - Math.max(destructive!.y, b.top);
-      expect(overlap, `"${b.name}" overlaps the cancel press point by ${Math.round(overlap)}px`).toBeLessThanOrEqual(0);
-    }
+    // And the control that DOES land there is inert rather than absent — if resend ever stops
+    // being disabled on a cancelled booking, the assertion above starts failing, which is the
+    // point. This pins why it passes.
+    await expect(
+      page.getByRole("button", { name: /Resend confirmation/ }),
+    ).toBeDisabled();
   });
 
   test("a half-applied cancel offers a repair instead of stranding the boat", async ({ page }) => {

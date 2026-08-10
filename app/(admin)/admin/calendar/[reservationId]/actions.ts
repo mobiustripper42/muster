@@ -5,7 +5,11 @@ import { StripePaymentPort } from "@core/adapters/stripe-payment.js";
 import { asId } from "@core/domain/ids.js";
 import { createBalanceCheckout } from "@core/reservations/create-balance-checkout.js";
 import { cancelReservation, type CancelledBy } from "@core/reservations/cancel-reservation.js";
-import { parseDollarsToCents, refundReservation } from "@core/reservations/refund-payment.js";
+import {
+  parseDollarsToCents,
+  refundableTotalFor,
+  refundReservation,
+} from "@core/reservations/refund-payment.js";
 import type { Reservation } from "@core/domain/entities.js";
 import { forwardFormNotices } from "../../../../lib/channel";
 import { sendReservationConfirmation } from "../../../../lib/booking-confirmation";
@@ -138,6 +142,40 @@ export async function cancelBooking(formData: FormData): Promise<void> {
  * refunded total the screen was rendered against — a compare-and-swap that makes a
  * double-submit (or a no-JS double post) refuse rather than refund twice.
  */
+/**
+ * Step ONE of a refund: validate the typed amount and open the confirm screen (#616).
+ *
+ * Refunding is the one action here that moves real money in a single press, and unlike
+ * cancelling it cannot be inferred from the surrounding state afterwards — a wrong amount looks
+ * exactly like a right one. So it gets the same two-step the cancel has, and the validation runs
+ * HERE rather than on the confirm screen: being told "that isn't a valid amount" after
+ * confirming is being asked to confirm something the system had already rejected.
+ *
+ * Writes nothing and calls no provider, so it needs no confirmation of its own.
+ */
+export async function startRefund(formData: FormData): Promise<void> {
+  const subject = await readSubject();
+  if (!subject || subject.kind !== "admin") redirect("/admin");
+
+  const { reservationId, back } = readContext(formData);
+
+  const amountCents = parseDollarsToCents(String(formData.get("amount") ?? ""));
+  if (amountCents === null || amountCents <= 0) {
+    redirect(back({ refundErr: "invalid_amount" }));
+  }
+  // Re-derive the ceiling server-side rather than trusting the form's own cap — the box is a
+  // text input and the posted value is whatever the client sent. `refundReservation` would
+  // refuse an over-ask anyway; catching it before the confirm screen means the operator is
+  // never asked to confirm an amount that cannot go through.
+  const payments = await getRepo().listPaymentsForReservation(
+    asId<"ReservationId">(reservationId),
+  );
+  if (amountCents > refundableTotalFor(payments)) {
+    redirect(back({ refundErr: "exceeds_refundable" }));
+  }
+  redirect(back({ refundConfirm: String(amountCents) }));
+}
+
 export async function refundBooking(formData: FormData): Promise<void> {
   const subject = await readSubject();
   if (!subject || subject.kind !== "admin") redirect("/admin");

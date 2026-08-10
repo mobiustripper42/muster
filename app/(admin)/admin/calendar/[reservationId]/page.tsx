@@ -71,6 +71,7 @@ export default async function ReservationDetailPage({
       cancelErr?: string;
       refunded?: string;
       refundErr?: string;
+      refundConfirm?: string;
       resent?: string;
       resendErr?: string;
     }
@@ -240,6 +241,15 @@ export default async function ReservationDetailPage({
       refundableCents: refundable,
       refundedTotalCents: refundedTotalFor(payments),
       refundPrefill: (prefillCents / 100).toFixed(2),
+      // `?refundConfirm=<cents>` is the two-step's second screen. Validated by `startRefund`
+      // before the redirect, but re-checked here: the query string is user-editable, and a
+      // hand-typed value must not reach a confirm screen that would then move that money.
+      ...(/^\d+$/.test(sp.refundConfirm ?? "") &&
+      Number(sp.refundConfirm) > 0 &&
+      Number(sp.refundConfirm) <= refundable
+        ? { confirmingRefundCents: Number(sp.refundConfirm) }
+        : {}),
+      refundBackHref: detailHref({}),
       canResend: Boolean(reservation.email || reservation.phone),
       needsRelease:
         reservation.status === "cancelled" &&

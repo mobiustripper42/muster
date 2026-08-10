@@ -45,7 +45,11 @@ function detailHref(
   if (filter) p.set("filter", filter);
   for (const [k, v] of Object.entries(extra)) p.set(k, v);
   const q = p.toString();
-  return `/admin/calendar/${encodeURIComponent(reservationId)}${q ? `?${q}` : ""}`;
+  // `#booking-actions` so a server action's redirect lands you back at the controls rather than
+  // at the top of the page. A `redirect()` is a full navigation and `AppLink`'s `scroll={false}`
+  // cannot reach it; the fragment can, with no JS. Every action on this pane redirects, so
+  // without it each press costs a scroll back down (operator, 2026-08-10).
+  return `/admin/calendar/${encodeURIComponent(reservationId)}${q ? `?${q}` : ""}#booking-actions`;
 }
 
 /** The three fields every action on this pane posts back. */

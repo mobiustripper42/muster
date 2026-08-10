@@ -182,7 +182,10 @@ export default async function ReservationDetailPage({
       if (sp.filter) p.set("filter", sp.filter);
       for (const [k, val] of Object.entries(extra)) p.set(k, val);
       const q = p.toString();
-      return `/admin/calendar/${encodeURIComponent(String(reservation.id))}${q ? `?${q}` : ""}`;
+      // Same `#booking-actions` anchor the actions redirect to — the confirm-open and
+      // back-out links must land in the same place a form post does, or the two routes into
+      // the same screen behave differently.
+      return `/admin/calendar/${encodeURIComponent(String(reservation.id))}${q ? `?${q}` : ""}#booking-actions`;
     };
 
     // DEC-032: the departure instant is minted from the vessel-local wall clock, never by

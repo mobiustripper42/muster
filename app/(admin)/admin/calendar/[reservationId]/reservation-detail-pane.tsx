@@ -413,9 +413,30 @@ function PaneActions({
     </>
   );
   const cancelled = v.status === "cancelled";
+  const confirmingRefund = actions.confirmingRefundCents !== undefined;
+  /**
+   * **A confirm screen shows its own two buttons and nothing else** (operator, 2026-08-10).
+   *
+   * The first cut left the refund box live underneath an open cancel confirm. Two money
+   * controls armed at once, one of them mid-question, and nothing saying which the red button
+   * belonged to — "kind of confusing" was the operator's read, and it is worse than confusing
+   * on a surface where the wrong press moves real money. Hidden rather than disabled: a greyed
+   * refund box beside an open cancel still invites reading the two together, and the question
+   * on screen is not "which of these do you want" but "are you sure about this one".
+   */
+  const confirming = confirmingRefund || actions.confirmingCancel;
 
   return (
-    <div className="mt-4 border-t border-line pt-3" data-testid="reservation-actions">
+    <div
+      // The scroll anchor every action redirects to. A server action's `redirect()` is a full
+      // navigation, so without it each press lands you back at the top of the page and you
+      // scroll down to find the confirm you just opened — the defect #690 fixed on `/book`,
+      // which is why `AppLink` carries `scroll={false}`. That prop cannot reach a form POST;
+      // a fragment can, with no JS.
+      id="booking-actions"
+      className="mt-4 scroll-mt-4 border-t border-line pt-3"
+      data-testid="reservation-actions"
+    >
       <Section title="Actions" />
 
       {actions.done && (
@@ -467,7 +488,17 @@ function PaneActions({
         </form>
       )}
 
-      {actions.refundableCents > 0 && actions.confirmingRefundCents === undefined && (
+      {/* While the CANCEL confirm is open this keeps its SPACE (`invisible`) rather than being
+          removed. Hiding it outright is what the operator asked for and is right — two armed
+          money controls, one mid-question, with nothing saying which the red button belongs to
+          — but removing 110px from above the confirm makes the whole block slide up, and when
+          the confirm resolves the refund box slides back down INTO the coordinates the thumb
+          just pressed. Measured at 22px, by the #718 test, on the first version of this change.
+          Reserving the space means nothing above a destructive button ever moves, which is the
+          same rule DEC-152 landed on for `/crew/time`. Controls BELOW the confirm are free to
+          collapse — nothing above them shifts when they do. */}
+      {actions.refundableCents > 0 && !confirmingRefund && (
+        <div className={confirming ? "invisible" : undefined} aria-hidden={confirming}>
         <form action={startRefund} className="mb-2" data-testid="refund-form">
           {hidden}
           {/* The compare-and-swap token: the refunded total this screen was DRAWN against.
@@ -496,6 +527,7 @@ function PaneActions({
             automatically, newest first.
           </p>
         </form>
+        </div>
       )}
 
       {/* A HALF-APPLIED CANCEL (security review). `cancelReservation` writes the reservation,
@@ -505,7 +537,7 @@ function PaneActions({
           comment says so, but the UI hid the only control that could trigger one: `!cancelled`
           removed the whole cancel block the moment the first write landed. So the repair gets its
           own affordance, and it states the consequence rather than the mechanism. */}
-      {cancelled && actions.needsRelease && (
+      {!confirming && cancelled && actions.needsRelease && (
         <form action={cancelBooking} className="mb-3" data-testid="release-repair">
           {hidden}
           <input type="hidden" name="by" value="operator" />
@@ -521,7 +553,8 @@ function PaneActions({
 
       {/* CANCEL. Two steps, because it is the one action here that cannot be undone by pressing
           the same button again — the boat is released and the crew have been told. */}
-      {!cancelled &&
+      {!confirmingRefund &&
+        !cancelled &&
         (actions.confirmingCancel ? (
           <form action={cancelBooking} className="mb-3" data-testid="cancel-confirm">
             {hidden}
@@ -584,23 +617,27 @@ function PaneActions({
           lands under the thumb inert instead of moving it somewhere else, and the disabled state
           is honest rather than defensive: `resendConfirmation` already refuses a cancelled
           booking server-side, because the body says the trip is booked and carries a live manage
-          link. Green-vs-grey survives greyscale; the reason is in the line beneath. */}
-      <form action={resendConfirmation}>
-        {hidden}
-        <SubmitButton
-          disabled={!actions.canResend || cancelled}
-          className="min-h-[44px] w-full rounded-lg border border-line px-3 text-sm text-ink disabled:cursor-not-allowed disabled:text-faint"
-        >
-          Resend confirmation + manage link
-        </SubmitButton>
-        {(cancelled || !actions.canResend) && (
-          <p className="mt-1 text-[11px] text-faint">
-            {cancelled
-              ? "Cancelled bookings can’t be re-confirmed — it would tell the customer their trip is on."
-              : "No email or phone on this booking, so there’s nowhere to send."}
-          </p>
-        )}
-      </form>
+          link. Green-vs-grey survives greyscale; the reason is in the line beneath.
+
+          Hidden entirely while a confirm is open — see `confirming` above. */}
+      {!confirming && (
+          <form action={resendConfirmation}>
+          {hidden}
+          <SubmitButton
+            disabled={!actions.canResend || cancelled}
+            className="min-h-[44px] w-full rounded-lg border border-line px-3 text-sm text-ink disabled:cursor-not-allowed disabled:text-faint"
+          >
+            Resend confirmation + manage link
+          </SubmitButton>
+          {(cancelled || !actions.canResend) && (
+            <p className="mt-1 text-[11px] text-faint">
+              {cancelled
+                ? "Cancelled bookings can’t be re-confirmed — it would tell the customer their trip is on."
+                : "No email or phone on this booking, so there’s nowhere to send."}
+            </p>
+          )}
+        </form>
+      )}
 
     </div>
   );

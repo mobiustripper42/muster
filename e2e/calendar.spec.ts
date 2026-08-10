@@ -553,6 +553,56 @@ test.describe("admin reservation actions (#616)", () => {
     ).toBeDisabled();
   });
 
+  test("a confirm screen shows only its own two buttons, and the press leaves you where you were", async ({
+    page,
+  }) => {
+    // Two operator reports, one test — they are the same screen.
+    //
+    // (a) With the cancel confirm open, the refund box used to still be armed underneath it:
+    //     two money controls live at once, one mid-question, nothing saying which the red
+    //     button belonged to.
+    // (b) Every action `redirect()`s, which is a full navigation, so each press dropped you at
+    //     the TOP of the page and you scrolled back down to find the confirm you just opened.
+    //     `AppLink`'s `scroll={false}` (the #690 fix on /book) cannot reach a form POST; the
+    //     `#booking-actions` fragment can.
+    await plantPayment({
+      id: "pay-e2e-5",
+      reservationId: RESV,
+      amountCents: 58880,
+      taxCents: 3980,
+      stripePaymentIntentId: "pi_e2e_5",
+    });
+    await signInAsAdmin(page, "spink");
+    await page.goto(detail());
+
+    // Open the cancel confirm by pressing the real control, from the bottom of a scrolled page.
+    await page.getByTestId("cancel-start").scrollIntoViewIfNeeded();
+    await page.getByTestId("cancel-start").click();
+    await page.waitForURL(/cancel=1/);
+
+    // (b) Landed at the controls, not the top of the page.
+    const afterOpen = await page.evaluate(() => window.scrollY);
+    expect(afterOpen, "opening the confirm scrolled back to the top of the page").toBeGreaterThan(0);
+    await expect(page.getByTestId("cancel-confirm")).toBeInViewport();
+
+    // (a) Only the confirm's own controls are operable. The refund box keeps its SPACE (so the
+    // confirm cannot drift — see the #718 test) but must not be usable or reachable.
+    const enabled = await page
+      .getByTestId("reservation-actions")
+      .getByRole("button")
+      .evaluateAll((els) =>
+        els.filter((e) => !(e as HTMLButtonElement).disabled).map((e) => (e.textContent ?? "").trim()),
+      );
+    expect(enabled).toEqual(["Cancel this booking"]);
+    await expect(page.getByTestId("refund-form").getByRole("button")).toBeHidden();
+
+    // And the same on the way out of the action itself.
+    await page.getByRole("button", { name: "Cancel this booking" }).click();
+    await page.waitForURL(/cancelled=/);
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    await expect(page.getByTestId("action-done")).toBeInViewport();
+  });
+
   test("a half-applied cancel offers a repair instead of stranding the boat", async ({ page }) => {
     // The state a crash between `cancelReservation`'s two writes leaves: reservation Cancelled,
     // event still scheduled — so the hull is still held, the crew were never told, and the pane

@@ -45,6 +45,7 @@ export function SubmitButton({
   disabled,
   formAction,
   "aria-label": ariaLabel,
+  "data-commits": dataCommits,
 }: {
   children: ReactNode;
   className?: string;
@@ -54,6 +55,13 @@ export function SubmitButton({
   /** Disable for a reason of the caller's own (e.g. nothing has changed yet — see
    *  `DirtySubmit`). Additive: pending still disables regardless. */
   disabled?: boolean;
+  /**
+   * Marks a button that COMMITS in a single press — money moves, or state changes, with no
+   * further confirmation. Purely declarative: nothing in this component reads it. It exists so a
+   * test can ask "what would a stray second tap actually do here?" without matching on visible
+   * labels, which change for copy reasons and would silently stop matching (#616 / DEC-152).
+   */
+  "data-commits"?: string | undefined;
   /** Post this form's fields to a DIFFERENT server action — the second-verb button
    *  (#635's Delete, which shares the edit form's one reason field). Native HTML, so
    *  it still works with no JS. */
@@ -78,6 +86,8 @@ export function SubmitButton({
       formAction={formAction}
       aria-label={ariaLabel}
       disabled={pending || disabled}
+
+      data-commits={dataCommits}
       aria-busy={showing}
       // `relative` only while spinning, to host the centered spinner overlay.
       className={showing ? `relative ${className ?? ""}` : className}

@@ -209,6 +209,10 @@ export default async function ReservationDetailPage({
     // `provider_error` copy written for exactly this case was unreachable. Worse when the FIRST
     // leg fails: "Refunded $0.00 to the card it came from", which is a total failure reported
     // as a completed refund. Found in security review.
+    // **`cancelled` outranks `refunded`, and both outrank nothing.** One press can now produce
+    // both, so the compound case is the normal one and the cancelled copy reports the money too
+    // (see `actionMessage`). Errors still win outright — a partial refund carries `refundErr`
+    // AND an amount, and reporting that as a success is the defect security review caught.
     const outcome = (
       ["cancelErr", "refundErr", "resendErr", "cancelled", "refunded", "resent"] as const
     )
@@ -228,10 +232,16 @@ export default async function ReservationDetailPage({
     // whole refundable amount. Either way the operator is typing over a number, not into an
     // empty box — "who knows what the refund amount might be" cuts both ways, and a blank
     // field on a money form is its own kind of prompt.
+    // What the standalone refund box starts at. After a cancel-and-refund the money has already
+    // moved, so the box offers what is STILL refundable rather than re-offering the figure that
+    // was just spent — the fastest way to refund the same amount twice is to leave it sitting
+    // there looking unspent.
     const prefillCents =
-      sp.cancelled !== undefined
-        ? Math.min(refundable, quoteFor(sp.cancelled === "operator" ? "operator" : "customer"))
-        : refundable;
+      sp.refunded !== undefined
+        ? refundable
+        : sp.cancelled !== undefined
+          ? Math.min(refundable, quoteFor(sp.cancelled === "operator" ? "operator" : "customer"))
+          : refundable;
 
     actions = {
       date: sp.date ?? "",

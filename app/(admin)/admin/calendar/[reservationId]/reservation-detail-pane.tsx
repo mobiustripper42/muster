@@ -5,6 +5,7 @@ import { vesselHueClass } from "../../../../lib/vessel-hue";
 import { clockTime, formatShortDay } from "../calendar-view";
 import { CopyButton } from "../../../../../components/ui/copy-button";
 import { SubmitButton } from "../../../../../components/ui/submit-button";
+import { RefundAmountSync } from "../../../../../components/admin/refund-amount-sync";
 import {
   cancelBooking,
   createBalanceLink,
@@ -23,7 +24,7 @@ export interface PaneActionState {
   filter: string;
   /** This reservation's detail with the confirm block open. */
   cancelHref: string;
-  /** …and with it closed — the "Keep it" escape. */
+  /** …and with it closed — the "Do Not Cancel" escape. */
   backHref: string;
   confirmingCancel: boolean;
   /** Published-terms refund if the CUSTOMER asked, in cents. */
@@ -97,13 +98,18 @@ export function actionMessage(
   const { movedCents, refundableCents = 0 } = opts;
   switch (kind) {
     case "cancelled": {
+      // `cancelled` now arrives WITH the refund outcome, because one press does both. The copy
+      // has to report the compound result: saying "the refund box is filled in" after the money
+      // has already gone is the same class of lie as the positional copy this file removed
+      // earlier — technically about the right feature, false about the screen in front of you.
       const freed = "Cancelled. The boat is free again and the crew have been told.";
-      if (refundableCents <= 0) {
-        return `${freed} Nothing was paid on this booking, so there is nothing to refund.`;
+      if (movedCents !== undefined && movedCents > 0) {
+        return `${freed} ${formatCents(movedCents)} refunded to the card it came from.`;
       }
-      return value === "operator"
-        ? `${freed} A full refund is owed — the refund box is filled in with it. Check the figure before you send it.`
-        : `${freed} The refund box is filled in with what the published terms owe. Check the figure before you send it.`;
+      if (refundableCents <= 0) {
+        return `${freed} Nothing was paid on this booking, so there was nothing to refund.`;
+      }
+      return `${freed} No refund was sent — use the refund box if something is owed.`;
     }
     case "refunded":
       return `Refunded ${formatCents(Number(value) || 0)} to the card it came from.`;
@@ -475,30 +481,33 @@ function PaneActions({
             from the customer again.
           </p>
           <div className="flex gap-2">
-            <SubmitButton className="min-h-[44px] flex-1 rounded-lg border border-line bg-bad px-3 text-sm font-medium text-white">
+            <SubmitButton
+              data-commits="refund"
+              className="min-h-[44px] flex-1 rounded-lg border border-line bg-bad px-3 text-sm font-medium text-white"
+            >
               Yes, refund {formatCents(actions.confirmingRefundCents)}
             </SubmitButton>
             <AppLink
               href={actions.refundBackHref}
               className="flex min-h-[44px] items-center rounded-lg border border-line px-3 text-sm text-muted"
             >
-              Keep it
+              Do Not Refund
             </AppLink>
           </div>
         </form>
       )}
 
-      {/* While the CANCEL confirm is open this keeps its SPACE (`invisible`) rather than being
-          removed. Hiding it outright is what the operator asked for and is right — two armed
-          money controls, one mid-question, with nothing saying which the red button belongs to
-          — but removing 110px from above the confirm makes the whole block slide up, and when
-          the confirm resolves the refund box slides back down INTO the coordinates the thumb
-          just pressed. Measured at 22px, by the #718 test, on the first version of this change.
-          Reserving the space means nothing above a destructive button ever moves, which is the
-          same rule DEC-152 landed on for `/crew/time`. Controls BELOW the confirm are free to
-          collapse — nothing above them shifts when they do. */}
-      {actions.refundableCents > 0 && !confirmingRefund && (
-        <div className={confirming ? "invisible" : undefined} aria-hidden={confirming}>
+      {/* This used to hold its SPACE (`invisible`) while the cancel confirm was open, so the
+          confirm could not drift — removing 110px from above it slid the block up, and on
+          resolve the refund box slid back down 22px into the coordinates just pressed. That was
+          the right fix at the time and it left a blank gap the operator (rightly) wanted gone.
+          
+          It collapses now because the hazard changed underneath it: **Refund became a two-step.**
+          The button that lands in the press point no longer moves money — it opens a confirm the
+          operator reads and can back out of. The invariant was never "nothing may reflow into the
+          press point"; it is "nothing that COMMITS in one press may". Controls that commit carry
+          `data-commits`, and the #718 e2e asserts against exactly those. */}
+      {!confirming && actions.refundableCents > 0 && (
         <form action={startRefund} className="mb-2" data-testid="refund-form">
           {hidden}
           {/* The compare-and-swap token: the refunded total this screen was DRAWN against.
@@ -527,7 +536,6 @@ function PaneActions({
             automatically, newest first.
           </p>
         </form>
-        </div>
       )}
 
       {/* A HALF-APPLIED CANCEL (security review). `cancelReservation` writes the reservation,
@@ -545,7 +553,10 @@ function PaneActions({
             This booking is cancelled but its boat was never released — the departure is still
             blocking that hull, and the crew were never told they’re off. Finish it:
           </p>
-          <SubmitButton className="min-h-[44px] w-full rounded-lg border border-line bg-ink px-3 text-sm font-medium text-white">
+          <SubmitButton
+            data-commits="release"
+            className="min-h-[44px] w-full rounded-lg border border-line bg-ink px-3 text-sm font-medium text-white"
+          >
             Release the boat
           </SubmitButton>
         </form>
@@ -559,10 +570,10 @@ function PaneActions({
           <form action={cancelBooking} className="mb-3" data-testid="cancel-confirm">
             {hidden}
             <p className="mb-2 text-xs text-muted">
-              This frees the boat and tells the crew they’re off. It moves no money.{" "}
+              This frees the boat and tells the crew they’re off
               {actions.refundableCents > 0
-                ? "Refunding is a separate step, afterwards."
-                : "Nothing has been paid on this booking, so there is nothing to refund."}
+                ? ", and refunds the amount you set here in the same press."
+                : ". Nothing has been paid on this booking, so there is nothing to refund."}
             </p>
             {/* Both figures are rendered NEXT TO their option rather than in one line that
                 updates on selection. With no client JS a single figure could not follow the
@@ -586,15 +597,60 @@ function PaneActions({
                 </label>
               ))}
             </fieldset>
+
+            {/* **The amount is an OVERRIDE, not a prefill, and that is the whole point.**
+                
+                The figures above belong to their radio. A prefilled box cannot follow a radio
+                without client JS, so prefilling it would mean: pick "We cancelled", forget to
+                retype, and refund at the customer rate — a wrong amount of real money, chosen by
+                a field that looked already-correct. Leaving it BLANK makes the server compute the
+                figure for whichever reason was actually posted, so the two can never disagree.
+                Typing in it is a deliberate act that overrides both. */}
+            {actions.refundableCents > 0 && (
+              <div className="mb-2">
+                <label className="mb-1 block text-xs text-muted" htmlFor="cancel-refund-amount">
+                  Refund — leave blank to use the amount for the reason you picked
+                </label>
+                <input
+                  id="cancel-refund-amount"
+                  name="amount"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="blank = the amount for your reason"
+                  className="min-h-[44px] w-full rounded-lg border border-line bg-bg px-2 font-mono text-sm text-ink"
+                  aria-describedby="cancel-refund-help"
+                />
+                <p id="cancel-refund-help" className="mt-1 text-[11px] text-faint">
+                  Enter <span className="font-mono">0</span> to cancel without refunding anything.
+                  Up to {formatCents(actions.refundableCents)}.
+                </p>
+                {/* Fills the box to match the chosen reason, and backs off the moment the
+                    operator types. Purely additive — with JS off the box stays blank, and blank
+                    already means "use the figure for the reason posted" (DEC-147 rule 2). */}
+                <RefundAmountSync
+                  inputId="cancel-refund-amount"
+                  radioName="by"
+                  amountByReason={{
+                    customer: Math.min(actions.refundableCents, actions.quoteCustomerCents),
+                    operator: Math.min(actions.refundableCents, actions.quoteOperatorCents),
+                  }}
+                />
+              </div>
+            )}
+            <input type="hidden" name="expectedRefunded" value={actions.refundedTotalCents} />
+
             <div className="flex gap-2">
-              <SubmitButton className="min-h-[44px] flex-1 rounded-lg border border-line bg-bad px-3 text-sm font-medium text-white">
-                Cancel this booking
+              <SubmitButton
+                data-commits="cancel"
+                className="min-h-[44px] flex-1 rounded-lg border border-line bg-bad px-3 text-sm font-medium text-white"
+              >
+                {actions.refundableCents > 0 ? "Cancel and refund" : "Cancel this booking"}
               </SubmitButton>
               <AppLink
                 href={actions.backHref}
                 className="flex min-h-[44px] items-center rounded-lg border border-line px-3 text-sm text-muted"
               >
-                Keep it
+                Do Not Cancel
               </AppLink>
             </div>
           </form>
@@ -624,6 +680,7 @@ function PaneActions({
           <form action={resendConfirmation}>
           {hidden}
           <SubmitButton
+            data-commits="resend"
             disabled={!actions.canResend || cancelled}
             className="min-h-[44px] w-full rounded-lg border border-line px-3 text-sm text-ink disabled:cursor-not-allowed disabled:text-faint"
           >

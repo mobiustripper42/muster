@@ -87,6 +87,39 @@ It is handled **outside the RESERVATIONS gate**, for the reason the gate was mov
 
 **Deployment dependency, and it is silent if missed:** the Stripe endpoint must subscribe to `charge.refunded`. None of this fires otherwise, and nothing in the repo can verify it (#544).
 
+### Cancelling and refunding are ONE press, and the amount is an override
+
+The first cut made them two deliberate actions: cancel, then refund, on the reasoning that
+cancelling and moving money are different decisions. In use that was wrong, and the operator said
+why — the two published-terms figures sit on the cancel confirm, and *"the $110 and $160 don't
+really mean anything here anymore"* because the press that spends them happened on a later screen,
+below the fold. A number shown at the moment of a decision it does not affect is worse than no
+number.
+
+So one press does both. The staging was the problem, not the separation: **refund remains a
+standalone control** for the case that has nothing to do with cancelling — a goodwill partial on a
+trip that is still sailing.
+
+**The amount field is an OVERRIDE, not a prefill, and that is a correctness argument rather than a
+style one.** The figure differs by reason ($50 fee or not), and with no client JS a prefilled box
+cannot follow the radio. A prefill would mean: pick "We cancelled", fail to retype, and refund at
+the customer rate from a field that looked already-correct. Blank has no wrong value to carry — it
+means "compute the figure for the reason actually posted", server-side, from the same
+`quoteCancelRefund` that rendered the labels. Typing is a deliberate override; `0` cancels without
+refunding, which is a real outcome inside the 14-day window rather than a validation error.
+
+**A client island fills the box, and nothing depends on it (DEC-147 rule 2).** `RefundAmountSync`
+writes the figure for the selected radio and follows a change, so the operator sees what they are
+about to send. It only ever writes the value the server would compute anyway, it retires itself
+the moment a key is pressed in the field, and with JS off the box stays blank and the server path
+is the one described above. An e2e runs the whole cancel with `javaScriptEnabled: false` to prove
+that, rather than asserting it.
+
+**Ordering: the cancellation is committed first and is never rolled back if the refund fails.**
+Freeing the boat and telling the crew is the urgent half and is correct standing alone; money that
+did not move can move on the next press, from a page that now shows what is still owed. The
+reverse would leave a refunded customer holding a boat.
+
 ### Where the destructive control sits (DEC-152 applied)
 
 The cancel confirm renders **last** in the actions block, below refund and resend. Measured at 375px, the first arrangement put "Resend confirmation" 8px into the coordinates "Cancel this booking" had just occupied — the #718 defect exactly, in a place where the second tap fires a different action against a booking that was just cancelled. Ordering the destructive block last means collapsing it moves nothing above it. An e2e asserts no interactive control overlaps the press point.

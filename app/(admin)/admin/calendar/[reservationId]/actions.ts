@@ -4,7 +4,12 @@ import { redirect } from "next/navigation";
 import { StripePaymentPort } from "@core/adapters/stripe-payment.js";
 import { asId } from "@core/domain/ids.js";
 import { createBalanceCheckout } from "@core/reservations/create-balance-checkout.js";
-import { cancelReservation, type CancelledBy } from "@core/reservations/cancel-reservation.js";
+import {
+  cancelReservation,
+  quoteCancelRefund,
+  type CancelledBy,
+} from "@core/reservations/cancel-reservation.js";
+import { zonedWallClockToInstant } from "@core/config/tenant.js";
 import {
   parseDollarsToCents,
   refundableTotalFor,
@@ -135,7 +140,89 @@ export async function cancelBooking(formData: FormData): Promise<void> {
   }
 
   if (!result.ok) redirect(back({ cancelErr: result.reason }));
-  redirect(back({ cancelled: by }));
+
+  // ── and refund, in the same press (operator, 2026-08-10) ────────────────────
+  //
+  // Cancelling and refunding were two separate presses, and the figures on the confirm screen
+  // therefore belonged to a decision made somewhere else — "they don't really mean anything
+  // here". They mean something now: this is the press that spends them.
+  //
+  // **The amount is computed HERE when the box is blank**, from the reason actually posted. That
+  // is not a convenience, it is the correctness argument for the whole design: with no client JS
+  // a prefilled box cannot follow the radio, so a prefill would let "We cancelled" refund at the
+  // customer rate whenever the operator didn't retype. A blank box has no wrong value to carry.
+  //
+  // Ordering is deliberate: the cancellation is already committed above and is NOT rolled back if
+  // the refund fails. Freeing the boat and telling the crew is the urgent half and it is correct
+  // on its own; money that did not move can be moved on the next press, from a page that now
+  // shows what is still owed. The reverse — refunding and then failing to cancel — would leave a
+  // refunded customer holding a boat.
+  const typed = String(formData.get("amount") ?? "").trim();
+  let refundCents: number | null = null;
+  if (typed === "") {
+    const payments = await getRepo().listPaymentsForReservation(asId<"ReservationId">(reservationId));
+    const event = result.freedEventId
+      ? await getRepo().getEvent(result.freedEventId)
+      : null;
+    // No event ⇒ no departure instant ⇒ no notice window, so the published-terms figure cannot
+    // be derived. Cancel stands; the operator refunds by hand from the box.
+    if (event) {
+      refundCents = quoteCancelRefund({
+        by,
+        payments,
+        departureAt: zonedWallClockToInstant(event.date, event.time),
+        now: new Date(),
+      }).refundCents;
+    }
+  } else {
+    const parsed = parseDollarsToCents(typed);
+    // The cancel HAPPENED. A bad amount cannot undo it, so this reports the cancel as done and
+    // the refund as not attempted — never a bare `invalid_amount` that reads like nothing ran.
+    if (parsed === null) redirect(back({ cancelled: by, refundErr: "invalid_amount" }));
+    refundCents = parsed;
+  }
+
+  // Zero is a legitimate outcome, not a failure: inside the 14-day window the published terms owe
+  // nothing, and the operator can type 0 to cancel without refunding.
+  if (refundCents === null || refundCents <= 0) redirect(back({ cancelled: by }));
+
+  const secretKey = process.env.STRIPE_SECRET_KEY;
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!secretKey || !webhookSecret) {
+    redirect(back({ cancelled: by, refundErr: "stripe_not_configured" }));
+  }
+  const expectedRaw = String(formData.get("expectedRefunded") ?? "");
+  if (!/^\d+$/.test(expectedRaw)) redirect(back({ cancelled: by, refundErr: "stale" }));
+
+  let refund: Awaited<ReturnType<typeof refundReservation>>;
+  try {
+    refund = await refundReservation(
+      {
+        repo: getRepo(),
+        payments: new StripePaymentPort(secretKey, webhookSecret),
+        now: () => new Date().toISOString(),
+      },
+      asId<"ReservationId">(reservationId),
+      refundCents,
+      Number(expectedRaw),
+    );
+  } catch {
+    redirect(back({ cancelled: by, refundErr: "unreachable" }));
+  }
+
+  if (!refund.ok) {
+    if (refund.reason === "provider_error") {
+      console.error(
+        `[reservations] cancel+refund of ${refundCents}c on ${reservationId} failed partway ` +
+          `(${refund.refundedCents}c did move): ${refund.message}`,
+      );
+      redirect(
+        back({ cancelled: by, refundErr: "provider_error", refunded: String(refund.refundedCents) }),
+      );
+    }
+    redirect(back({ cancelled: by, refundErr: refund.reason }));
+  }
+  redirect(back({ cancelled: by, refunded: String(refund.refundedCents) }));
 }
 
 /**

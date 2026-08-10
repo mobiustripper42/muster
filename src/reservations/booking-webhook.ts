@@ -101,7 +101,15 @@ export type WebhookResult =
   | { handled: false } // verified but ignorable (unknown type / a hosted session's bare PI) → ack + ignore
   | {
       handled: true;
-      outcome: "booked" | "already" | "lost" | "unbookable" | "balance_paid" | "gratuity_paid" | "ignored";
+      outcome:
+        | "booked"
+        | "already"
+        | "lost"
+        | "unbookable"
+        | "balance_paid"
+        | "gratuity_paid"
+        | "refund_recorded"
+        | "ignored";
     };
 
 /** The contact-bearing slice of a charge the sold-out notice needs (both event paths). */
@@ -135,6 +143,20 @@ export async function processBookingWebhook(
   const event = deps.payments.parseEvent(rawBody, signature); // throws on bad sig
   if (!event) return { handled: false };
 
+
+  // A REFUND landed (#616) — reconcile it into the ledger.
+  //
+  // Deliberately BEFORE the RESERVATIONS gate and outside the booking spine entirely. The gate
+  // guards new bookings (#588); money that has already gone back must be recorded in every
+  // deployment, flag on or off, exactly like the balance payment the gate was moved off for.
+  //
+  // This is the path that makes a STRIPE DASHBOARD refund visible at all. Before it, the docs
+  // told the operator to refund there and Muster never learned: the reservation kept reading
+  // paid, the slot stayed booked, `balanceOwedCents` kept billing, and `/admin/purchases` kept
+  // counting the revenue. It also catches Muster's own refunds a second time, harmlessly —
+  // `markPaymentRefunded` takes a cumulative total, so the write is the same one
+  // `refundReservation` already made.
+  if (event.type === "refund_recorded") return recordRefund(deps, event.data);
 
   if (event.type === "payment_succeeded") {
     const pi = event.data;
@@ -573,6 +595,34 @@ async function recordPayment(
     createdAt: deps.now(),
   };
   await deps.repo.savePayment(payment);
+}
+
+/**
+ * Reconcile a refund into the ledger (#616) — ours or one taken in the Stripe dashboard.
+ *
+ * `amountRefundedCents` is the charge's CUMULATIVE refunded total, which is the contract
+ * `markPaymentRefunded` already had, so redelivery and a second partial refund are the same
+ * write and neither needs a guard here (`greatest()` in SQL, `Math.max` in the double).
+ *
+ * **Never throws on an unrecognized charge.** A refund on a PaymentIntent Muster never recorded
+ * is real — a Xola-era charge, a payment taken by hand, a booking whose write was lost — and a
+ * throw would 500 into a Stripe retry loop that can never succeed. Alert a human and ack.
+ */
+async function recordRefund(
+  deps: WebhookDeps,
+  refund: { paymentIntentId: string; amountRefundedCents: number },
+): Promise<WebhookResult> {
+  const payment = await deps.repo.getPaymentByIntentId(refund.paymentIntentId);
+  if (!payment) {
+    await deps.alertPaidButUnbooked(
+      `⚠️ Refund of ${refund.amountRefundedCents} cents recorded in Stripe for payment intent ` +
+        `${refund.paymentIntentId}, which matches NO payment in Muster. The ledger is unchanged; ` +
+        `RECONCILE MANUALLY (this is expected for a Xola-era or hand-taken charge).`,
+    );
+    return { handled: true, outcome: "refund_recorded" };
+  }
+  await deps.repo.markPaymentRefunded(payment.id, refund.amountRefundedCents);
+  return { handled: true, outcome: "refund_recorded" };
 }
 
 /**

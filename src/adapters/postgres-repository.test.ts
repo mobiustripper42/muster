@@ -21,7 +21,7 @@ import { writeSlotBooking } from "../reservations/write-booking.js";
 import { eventIdForSlot } from "../reservations/availability.js";
 import { asId } from "../domain/ids.js";
 import type { TimePunch } from "../domain/entities.js";
-import type { CrewMemberId, EventId, TimePunchId } from "../domain/ids.js";
+import type { CrewMemberId, EventId, ReservationId, TimePunchId } from "../domain/ids.js";
 
 const TEST_URL =
   process.env.TEST_DATABASE_URL ??
@@ -489,6 +489,126 @@ if (!dbUp) {
         [VESSEL3, DATE3],
       );
       expect(rows[0].n).toBe(1);
+    });
+  });
+
+  /**
+   * Cancelling a booking must RELEASE the boat (#616) — and the release is a database
+   * property, so this is the only place it can be proven.
+   *
+   * `events_muster_slot_identity` is `on events (vessel_id, date, time) where source='muster'`
+   * (`db/migrations/20260718142705_claim_hold_mutex.sql:28-30`) — it does NOT mention status.
+   * So a cancelled Muster event still occupies its slot identity: the re-booking insert hits
+   * `on conflict do nothing`, the follow-up `select … where status='scheduled' for update`
+   * finds nothing, and `saveBookingIfSlotFree` returns `lost` FOREVER. The slot is bricked by
+   * the act of cancelling it.
+   *
+   * **`InMemoryRepository` cannot show this**, and would actively hide it: its slot lookup
+   * filters on `status === "scheduled"`, misses the cancelled row, and then does
+   * `#events.set(event.id, …)` on the SAME deterministic id — an accidental resurrect-by-
+   * overwrite that passes the test while clobbering the row's frozen price. Same DEC-131 trap
+   * the #613 comment above describes: a green unit suite over a production-only failure.
+   *
+   * These tests deliberately drive the repo primitives rather than `cancelReservation`, so
+   * they fail on the BRICKED SLOT rather than on a missing import.
+   */
+  describe("cancel releases the boat — the status-agnostic slot index (#616)", () => {
+    const VESSEL4 = asId<"VesselId">("vessel-brew-9");
+    const DATE4 = "2026-07-04";
+    const NOW4 = () => "2026-07-12T00:00:00.000Z";
+
+    const buyer = (time: string, key: string, name: string) => ({
+      offeringId: asId<"OfferingId">("off-cancel"),
+      vesselId: VESSEL4,
+      date: DATE4,
+      time,
+      guestCount: 4,
+      priceCents: 50000,
+      extrasCents: 0,
+      customerName: name,
+      idempotencyKey: key,
+    });
+
+    /** Book the slot, then cancel BOTH rows the way `cancelReservation` will. */
+    async function bookThenCancel(
+      repo: PostgresRepository,
+      time: string,
+      key: string,
+      name: string,
+    ): Promise<void> {
+      const booked = await writeSlotBooking(repo, buyer(time, key, name), NOW4);
+      expect(booked.outcome).toBe("booked");
+      const reservation = (booked as { reservation: { id: ReservationId } }).reservation;
+      const eventId = (booked as { eventId: EventId }).eventId;
+
+      const stored = await repo.getReservation(reservation.id);
+      await repo.saveReservation({ ...stored!, status: "cancelled" });
+      const event = await repo.getEvent(eventId);
+      await repo.saveEvent({ ...event!, status: "cancelled" });
+    }
+
+    it("the same slot can be SOLD AGAIN after a cancellation", async () => {
+      await pool.query(`truncate ${TABLES.join(", ")} restart identity cascade`);
+      const repo = new PostgresRepository(pool);
+
+      await bookThenCancel(repo, "13:30", "sess_cancel_1", "Ann");
+
+      // The whole point of cancelling: someone else can buy that boat.
+      const second = await writeSlotBooking(
+        repo,
+        buyer("13:30", "sess_cancel_2", "Ben"),
+        NOW4,
+      );
+      expect(second.outcome).toBe("booked");
+
+      // One event row at the identity (the index guarantees it), scheduled again, holding
+      // exactly one booked party. Asserted on the data — a `booked` outcome over a
+      // resurrected row that kept the OLD reservation attached would still be a double-sell.
+      const { rows } = await pool.query(
+        `select e.status as event_status, count(r.id) filter (where r.status='booked')::int as booked
+           from events e
+           left join reservations r on r.event_id = e.id
+          where e.vessel_id=$1 and e.date=$2 and e.time=$3 and e.source='muster'
+          group by e.status`,
+        [VESSEL4, DATE4, "13:30"],
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].event_status).toBe("scheduled");
+      expect(rows[0].booked).toBe(1);
+    });
+
+    it("the EVENT is what frees the neighbouring departures — cancelling the reservation alone does not", async () => {
+      // **This is why `cancelReservation` cancels the event and not just the reservation**, and
+      // it is asserted in BOTH directions on purpose. Only the second half would pass over an
+      // implementation that cancels the reservation and leaves the event scheduled, because
+      // this slot's own re-sale is governed by the reservation check
+      // (`postgres-repository.ts:1358`, `status='booked'`) while its NEIGHBOURS are governed by
+      // the hull-overlap query (`:1296`, `status='scheduled'`). Two different predicates, two
+      // different rows, and a one-sided test cannot tell them apart.
+      //
+      // No offering row on purpose: with none, both trips are measured at the standing
+      // XOLA_TRIP_MINUTES (100), so 13:30 → 15:10 and 14:00 → 15:40 overlap by 70 minutes.
+      // Same arithmetic the #691 sibling test above relies on.
+      await pool.query(`truncate ${TABLES.join(", ")} restart identity cascade`);
+      const repo = new PostgresRepository(pool);
+
+      const booked = await writeSlotBooking(repo, buyer("13:30", "sess_nbr_1", "Ann"), NOW4);
+      expect(booked.outcome).toBe("booked");
+      const reservation = (booked as { reservation: { id: ReservationId } }).reservation;
+      const eventId = (booked as { eventId: EventId }).eventId;
+
+      // (a) Reservation cancelled, event left SCHEDULED — the boat still reads as busy, so
+      // the neighbouring 14:00 is refused. A cancelled trip holding a hull it is not using.
+      const stored = await repo.getReservation(reservation.id);
+      await repo.saveReservation({ ...stored!, status: "cancelled" });
+      const blocked = await writeSlotBooking(repo, buyer("14:00", "sess_nbr_2", "Ben"), NOW4);
+      expect(blocked.outcome).toBe("lost");
+
+      // (b) Cancel the event too, and the hull is genuinely released.
+      const event = await repo.getEvent(eventId);
+      await repo.saveEvent({ ...event!, status: "cancelled" });
+      const freed = await writeSlotBooking(repo, buyer("14:00", "sess_nbr_3", "Cal"), NOW4);
+      expect(freed.outcome).toBe("booked");
     });
   });
 

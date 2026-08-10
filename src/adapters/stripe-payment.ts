@@ -111,6 +111,31 @@ export class StripePaymentPort implements PaymentPort {
         },
       };
     }
+    if (event.type === "charge.refunded") {
+      // #616. Fires for EVERY refund on the charge, including one the operator issued by hand
+      // in the Stripe dashboard — the case Muster was blind to. `amount_refunded` is the
+      // charge's cumulative total, not this refund's delta, which is why the handler can write
+      // it straight through `markPaymentRefunded` and be idempotent on redelivery.
+      //
+      // Keyed on the PaymentIntent rather than the charge: `Payment` records
+      // `stripePaymentIntentId` on both the hosted and the Elements path (DEC-134) and has
+      // never carried a charge id.
+      const c = event.data.object as Stripe.Charge;
+      const paymentIntentId =
+        typeof c.payment_intent === "string" ? c.payment_intent : undefined;
+      // No PaymentIntent on the charge means nothing to reconcile against. Ack and ignore
+      // rather than invent a lookup key — the handler's unknown-intent alert would fire on a
+      // fabricated one and send the operator hunting for a row that was never written.
+      if (paymentIntentId === undefined) return null;
+      return {
+        type: "refund_recorded",
+        data: {
+          paymentIntentId,
+          amountRefundedCents: c.amount_refunded ?? 0,
+          currency: c.currency ?? "usd",
+        },
+      };
+    }
     if (event.type === "payment_intent.succeeded") {
       const pi = event.data.object as Stripe.PaymentIntent;
       return {

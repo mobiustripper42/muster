@@ -5,7 +5,41 @@ import { vesselHueClass } from "../../../../lib/vessel-hue";
 import { clockTime, formatShortDay } from "../calendar-view";
 import { CopyButton } from "../../../../../components/ui/copy-button";
 import { SubmitButton } from "../../../../../components/ui/submit-button";
-import { createBalanceLink } from "./actions";
+import {
+  cancelBooking,
+  createBalanceLink,
+  refundBooking,
+  resendConfirmation,
+} from "./actions";
+
+/**
+ * Everything the actions block needs, resolved by the route (#616). Passed in rather than
+ * derived in `buildReservationDetail` because two of these need a CLOCK — the refund quotes
+ * depend on how much notice the cancellation gives — and the detail view model is pure.
+ */
+export interface PaneActionState {
+  date: string;
+  filter: string;
+  /** This reservation's detail with the confirm block open. */
+  cancelHref: string;
+  /** …and with it closed — the "Keep it" escape. */
+  backHref: string;
+  confirmingCancel: boolean;
+  /** Published-terms refund if the CUSTOMER asked, in cents. */
+  quoteCustomerCents: number;
+  /** …and if WE cancelled (weather, crew, mechanical) — everything paid, no fee. */
+  quoteOperatorCents: number;
+  /** Stripe's real ceiling: what the charges can still give back. */
+  refundableCents: number;
+  /** Already refunded — the compare-and-swap token the form posts back. */
+  refundedTotalCents: number;
+  /** Dollars string prefilled into the amount box. */
+  refundPrefill: string;
+  canResend: boolean;
+  /** Outcome copy from the last action, if any. */
+  done?: string | undefined;
+  error?: string | undefined;
+}
 
 /** Operator-facing copy for a refused balance link. Says what happened, not a reason code. */
 function balanceErrorMessage(reason: string): string {
@@ -27,11 +61,62 @@ function balanceErrorMessage(reason: string): string {
   }
 }
 
+/** Operator-facing copy for a refused or completed action (#616). Says what happened. */
+export function actionMessage(kind: string, value: string): string {
+  switch (kind) {
+    case "cancelled":
+      return value === "operator"
+        ? "Cancelled. The boat is free again and the crew have been told. Full refund is owed — the amount is filled in below."
+        : "Cancelled. The boat is free again and the crew have been told. The published terms are filled in below.";
+    case "refunded":
+      return `Refunded ${formatCents(Number(value) || 0)} to the card it came from.`;
+    case "resent":
+      return "Confirmation and manage link sent again.";
+    case "cancelErr":
+      return value === "not_muster"
+        ? "This booking is Xola's — cancel it there, or the next import will bring it back."
+        : value === "reservation_missing"
+          ? "That reservation no longer exists."
+          : "Couldn’t cancel just now. Try again in a moment.";
+    case "refundErr":
+      switch (value) {
+        case "invalid_amount":
+          return "Enter an amount like 50 or 536.25.";
+        case "exceeds_refundable":
+          return "That’s more than this booking can give back. Check the figure above.";
+        case "no_payment_intent":
+          return "One of the charges has no Stripe payment on file, so it can’t be refunded from here. Refund that one in the Stripe dashboard.";
+        case "stale":
+          return "Nothing was refunded — this page was out of date (a refund had already gone through). It’s reloaded now; check the figures before trying again.";
+        case "provider_error":
+          return "Stripe failed partway. Any amount shown as refunded DID go back; the rest did not. Check Stripe before retrying.";
+        case "not_muster":
+          return "This booking is Xola's — its money lives in Xola.";
+        case "stripe_not_configured":
+          return "Stripe isn’t configured on this deployment, so nothing can be refunded from here.";
+        default:
+          return "Couldn’t refund just now. Nothing moved. Try again in a moment.";
+      }
+    case "resendErr":
+      return value === "no_contact"
+        ? "This booking has no email or phone on it, so there’s nowhere to send."
+        : value === "not_muster"
+          ? "Xola bookings have no Muster manage link."
+          : "Couldn’t send just now. Try again in a moment.";
+    default:
+      return "";
+  }
+}
+
 /**
- * The reservation detail pane (task 12.11 continued, #464) — read-only, per the approved
- * scope: NO actions in this slice (message / guests / change time / resend / refund / cancel
- * all defer, and refund waits on #472 besides). The pane is the same component in both form
- * factors; the route decides whether it sits beside the grid or replaces it.
+ * The reservation detail pane (task 12.11 continued, #464; actions #616).
+ *
+ * It shipped read-only, and its own comment listed what was deferred: "message / guests /
+ * change time / resend / refund / cancel all defer, and refund waits on #472 besides". #616
+ * lands three of those — cancel, refund, resend. Message, guests and change-time still defer.
+ *
+ * The pane is the same component in both form factors; the route decides whether it sits
+ * beside the grid or replaces it.
  *
  * Three sections the mockup drew are deliberately shaped differently — see the module note in
  * `src/reservations/calendar-detail.ts`: add-ons are omitted (no per-reservation selection
@@ -70,10 +155,13 @@ function waiverText(w: ReservationDetailView["waiver"]): string {
 export function ReservationDetailPane({
   v,
   balance,
+  actions,
 }: {
   v: ReservationDetailView;
   /** Balance-link state from the query string (11.2b) — the minted URL, or why not. */
   balance?: { url?: string | undefined; err?: string | undefined; date: string; filter: string } | undefined;
+  /** Cancel / refund / resend state (#616). Absent ⇒ the pane stays read-only. */
+  actions?: PaneActionState | undefined;
 }) {
   const money = v.money;
 
@@ -205,11 +293,26 @@ export function ReservationDetailPane({
           </p>
         )}
 
-        {/* The ONE action in this pane (11.2b, DEC-107). Shown only when money is actually
-            owed — a "collect balance" button on a settled booking is a trap. The operator
-            sends the link; the customer pays; the webhook writes the payment. Nothing is
-            charged or written here, so re-minting is free and needs no confirmation. */}
-        {money.priceKnown && money.balanceCents > 0 && balance && (
+        {/* The balance link (11.2b, DEC-107). Shown only when money is actually owed — a
+            "collect balance" button on a settled booking is a trap. The operator sends the
+            link; the customer pays; the webhook writes the payment. Nothing is charged or
+            written here, so re-minting is free and needs no confirmation.
+
+            **Two more states must hide it (#616), both created or exposed by refunds:**
+
+            - CANCELLED. `createBalanceCheckout` has refused this since 11.2b (`not_active`) and
+              the copy for that refusal exists at the top of this file, but nothing could reach
+              it: the button rendered on a cancelled booking and errored on press. Now that
+              bookings can actually BE cancelled, that dead end is on the common path.
+            - REFUNDED. A refund reduces `paid`, so `balanceOwedCents` goes back UP
+              (`payment-config.ts:136`). Left alone, the pane would offer to re-bill a customer
+              for money the operator had just handed back — with `createBalanceCheckout` happy
+              to mint that charge, because from its side a balance is genuinely owed. */}
+        {money.priceKnown &&
+          money.balanceCents > 0 &&
+          v.status === "booked" &&
+          money.refundedCents === 0 &&
+          balance && (
           <div className="mt-3 border-t border-line pt-3">
             {balance.url ? (
               <>
@@ -242,7 +345,144 @@ export function ReservationDetailPane({
             )}
           </div>
         )}
+
+        {actions && <PaneActions v={v} actions={actions} />}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Cancel / refund / resend (#616) — the actions the pane's own header comment used to list as
+ * deferred. All three are plain `<form>` posts: no client JS, so they work on the operator's
+ * phone with a dead connection to the CDN, same as every other control here.
+ */
+function PaneActions({
+  v,
+  actions,
+}: {
+  v: ReservationDetailView;
+  actions: PaneActionState;
+}): React.ReactNode {
+  const hidden = (
+    <>
+      <input type="hidden" name="reservationId" value={v.reservationId} />
+      <input type="hidden" name="date" value={actions.date} />
+      <input type="hidden" name="filter" value={actions.filter} />
+    </>
+  );
+  const cancelled = v.status === "cancelled";
+
+  return (
+    <div className="mt-4 border-t border-line pt-3" data-testid="reservation-actions">
+      <Section title="Actions" />
+
+      {actions.done && (
+        <p className="mb-2 rounded-lg border border-line bg-bg px-3 py-2 text-xs text-ink" data-testid="action-done">
+          {actions.done}
+        </p>
+      )}
+      {actions.error && (
+        <p className="mb-2 text-xs text-bad" data-testid="action-error">
+          {actions.error}
+        </p>
+      )}
+
+      {/* REFUND. Available whether or not the booking is cancelled — a goodwill partial on a
+          trip that is still sailing is a real thing an operator does. */}
+      {actions.refundableCents > 0 && (
+        <form action={refundBooking} className="mb-2" data-testid="refund-form">
+          {hidden}
+          {/* The compare-and-swap token: the refunded total this screen was DRAWN against.
+              Stripe's idempotency key cannot stop a double-submit here, because the second
+              press computes a different cumulative total and therefore keys differently. */}
+          <input type="hidden" name="expectedRefunded" value={actions.refundedTotalCents} />
+          <label className="mb-1 block text-xs text-muted" htmlFor="refund-amount">
+            Refund up to {formatCents(actions.refundableCents)}
+          </label>
+          <div className="flex gap-2">
+            <input
+              id="refund-amount"
+              name="amount"
+              type="text"
+              inputMode="decimal"
+              defaultValue={actions.refundPrefill}
+              className="min-h-[44px] min-w-0 flex-1 rounded-lg border border-line bg-bg px-2 font-mono text-sm text-ink"
+              aria-describedby="refund-help"
+            />
+            <SubmitButton className="min-h-[44px] rounded-lg border border-line bg-ink px-3 text-sm font-medium text-white">
+              Refund
+            </SubmitButton>
+          </div>
+          <p id="refund-help" className="mt-1 text-[11px] text-faint">
+            Goes back on the card it came from. Split across the deposit and balance charges
+            automatically, newest first.
+          </p>
+        </form>
+      )}
+
+      {actions.canResend && (
+        <form action={resendConfirmation}>
+          {hidden}
+          <SubmitButton className="min-h-[44px] w-full rounded-lg border border-line px-3 text-sm text-ink">
+            Resend confirmation + manage link
+          </SubmitButton>
+        </form>
+      )}
+      {/* CANCEL. Two steps, because it is the one action here that cannot be undone by pressing
+          the same button again — the boat is released and the crew have been told. */}
+      {!cancelled &&
+        (actions.confirmingCancel ? (
+          <form action={cancelBooking} className="mb-3" data-testid="cancel-confirm">
+            {hidden}
+            <p className="mb-2 text-xs text-muted">
+              This frees the boat and tells the crew they’re off. It moves no money — refund
+              below, afterwards.
+            </p>
+            {/* Both figures are rendered NEXT TO their option rather than in one line that
+                updates on selection. With no client JS a single figure could not follow the
+                radio, and a number that silently belongs to the other choice is worse than no
+                number at all on a screen whose whole job is deciding an amount. */}
+            <fieldset className="mb-2">
+              <legend className="sr-only">Who cancelled?</legend>
+              {(
+                [
+                  ["customer", "The customer asked", actions.quoteCustomerCents],
+                  ["operator", "We cancelled — weather, crew, mechanical", actions.quoteOperatorCents],
+                ] as const
+              ).map(([value, label, cents], i) => (
+                <label
+                  key={value}
+                  className="flex min-h-[44px] items-center gap-2 border-b border-line py-1 last:border-0 text-sm text-ink"
+                >
+                  <input type="radio" name="by" value={value} defaultChecked={i === 0} />
+                  <span className="flex-1">{label}</span>
+                  <span className="font-mono text-xs text-muted">{formatCents(cents)}</span>
+                </label>
+              ))}
+            </fieldset>
+            <div className="flex gap-2">
+              <SubmitButton className="min-h-[44px] flex-1 rounded-lg border border-line bg-bad px-3 text-sm font-medium text-white">
+                Cancel this booking
+              </SubmitButton>
+              <AppLink
+                href={actions.backHref}
+                className="flex min-h-[44px] items-center rounded-lg border border-line px-3 text-sm text-muted"
+              >
+                Keep it
+              </AppLink>
+            </div>
+          </form>
+        ) : (
+          <AppLink
+            href={actions.cancelHref}
+            className="mb-2 flex min-h-[44px] items-center justify-center rounded-lg border border-line px-3 text-sm font-medium text-ink"
+            data-testid="cancel-start"
+          >
+            Cancel booking
+          </AppLink>
+        ))}
+
     </div>
   );
 }

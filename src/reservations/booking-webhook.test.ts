@@ -633,3 +633,115 @@ describe("a native booking forms its own crewable shift (#614)", () => {
     expect(confirm).toHaveBeenCalledOnce();
   });
 });
+
+/**
+ * `charge.refunded` (#616) — the ledger half.
+ *
+ * Before this, `parseEvent` handled exactly two event types, so the thing every doc tells the
+ * operator to do — refund in the Stripe dashboard — was invisible to Muster. The reservation
+ * kept reading paid, `/admin/purchases` kept counting the revenue, and `balanceOwedCents` kept
+ * billing a balance against money that had gone back.
+ *
+ * Stripe's `amount_refunded` on a charge is CUMULATIVE, which is exactly the contract
+ * `markPaymentRefunded(id, refundedTotalCents)` already had — so the two fit without arithmetic,
+ * and a redelivered event is idempotent by `greatest()` rather than by a guard here.
+ */
+describe("processBookingWebhook — charge.refunded reconciles the ledger (#616)", () => {
+  const refunded = (over: Record<string, unknown> = {}) =>
+    JSON.stringify({
+      type: "refund_recorded",
+      data: { paymentIntentId: "pi_1", amountRefundedCents: 53625, currency: "usd", ...over },
+    });
+
+  async function paidWorld(): Promise<InMemoryRepository> {
+    const repo = new InMemoryRepository();
+    await repo.saveEvent(musterEvent());
+    await repo.saveReservation({
+      id: asId<"ReservationId">("resv-1"),
+      eventId: EVENT,
+      source: "muster",
+      customerName: "Mary",
+      partySize: 6,
+      status: "booked",
+    });
+    await repo.savePayment({
+      id: asId<"PaymentId">("pay-1"),
+      reservationId: asId<"ReservationId">("resv-1"),
+      method: "stripe",
+      kind: "full",
+      amountCents: 53625,
+      taxCents: 3625,
+      currency: "usd",
+      stripePaymentIntentId: "pi_1",
+      status: "succeeded",
+      createdAt: "2026-07-12T00:00:00.000Z",
+    });
+    return repo;
+  }
+
+  it("a DASHBOARD refund lands on the payment row", async () => {
+    const repo = await paidWorld();
+    const { deps } = makeDeps(repo);
+
+    const r = await processBookingWebhook(deps, refunded(), FAKE_SIGNATURE);
+
+    expect(r).toMatchObject({ handled: true, outcome: "refund_recorded" });
+    expect(await repo.getPayment(asId<"PaymentId">("pay-1"))).toMatchObject({
+      refundedCents: 53625,
+      status: "refunded",
+    });
+  });
+
+  it("a PARTIAL dashboard refund marks the row partially refunded", async () => {
+    const repo = await paidWorld();
+    const { deps } = makeDeps(repo);
+
+    await processBookingWebhook(deps, refunded({ amountRefundedCents: 20000 }), FAKE_SIGNATURE);
+
+    expect(await repo.getPayment(asId<"PaymentId">("pay-1"))).toMatchObject({
+      refundedCents: 20000,
+      status: "partially_refunded",
+    });
+  });
+
+  it("redelivery is idempotent, and a LATER refund accumulates", async () => {
+    // Stripe fires `charge.refunded` again for each additional refund on the same charge, and
+    // may redeliver any of them. Because the field is cumulative, both cases are the same write.
+    const repo = await paidWorld();
+    const { deps } = makeDeps(repo);
+
+    await processBookingWebhook(deps, refunded({ amountRefundedCents: 20000 }), FAKE_SIGNATURE);
+    await processBookingWebhook(deps, refunded({ amountRefundedCents: 20000 }), FAKE_SIGNATURE);
+    await processBookingWebhook(deps, refunded({ amountRefundedCents: 35000 }), FAKE_SIGNATURE);
+
+    expect(await repo.getPayment(asId<"PaymentId">("pay-1"))).toMatchObject({
+      refundedCents: 35000,
+      status: "partially_refunded",
+    });
+  });
+
+  it("an UNKNOWN PaymentIntent alerts instead of throwing", async () => {
+    // A refund on a charge Muster never recorded — a Xola-era charge, a manual one taken in the
+    // dashboard, or a payment whose booking write was lost. There is nothing to reconcile, and
+    // a throw would 500 the webhook into a retry loop that can never succeed.
+    const repo = await paidWorld();
+    const { deps, alert } = makeDeps(repo);
+
+    const r = await processBookingWebhook(deps, refunded({ paymentIntentId: "pi_unknown" }), FAKE_SIGNATURE);
+
+    expect(r).toMatchObject({ handled: true, outcome: "refund_recorded" });
+    expect(alert).toHaveBeenCalledOnce();
+    expect(alert.mock.calls[0]![0]).toMatch(/pi_unknown/);
+  });
+
+  it("is NOT gated by the RESERVATIONS flag — a refund must reconcile in any deployment", async () => {
+    // Same reasoning that moved the flag off the whole handler and onto the new-booking path:
+    // money that has already moved must be recorded regardless of whether new sales are on.
+    const repo = await paidWorld();
+    const { deps } = makeDeps(repo);
+
+    await processBookingWebhook({ ...deps, reservationsEnabled: false }, refunded(), FAKE_SIGNATURE);
+
+    expect(await repo.getPayment(asId<"PaymentId">("pay-1"))).toMatchObject({ status: "refunded" });
+  });
+});

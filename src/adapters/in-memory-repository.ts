@@ -469,6 +469,12 @@ export class InMemoryRepository implements Repository {
   async listAllPayments(): Promise<Payment[]> {
     return [...this.#payments.values()].map(clone);
   }
+  async getPaymentByIntentId(stripePaymentIntentId: string): Promise<Payment | null> {
+    const p = [...this.#payments.values()].find(
+      (x) => x.stripePaymentIntentId === stripePaymentIntentId,
+    );
+    return p ? clone(p) : null;
+  }
   async markPaymentRefunded(id: PaymentId, refundedTotalCents: number): Promise<void> {
     // Mirrors the postgres `greatest(coalesce(...))`: idempotent on redelivery, accumulating
     // across partial refunds, and the status derived from the row's own amount.
@@ -543,8 +549,40 @@ export class InMemoryRepository implements Repository {
         slotIdentity(e.vesselId, e.date, e.time) === key,
     );
     if (!existing) {
-      this.#events.set(event.id, clone(event));
-      existing = event;
+      // RESURRECT a cancelled slot (#616), explicitly. Postgres has to do this because
+      // `events_muster_slot_identity` is status-agnostic and a cancelled row keeps owning the
+      // identity; here the same case used to be handled BY ACCIDENT, and only sometimes. The
+      // `#events.set(event.id, …)` below happens to overwrite the cancelled row whenever the
+      // candidate's deterministic `eventIdForSlot` id matches it — but a slot backed by an
+      // operator OVERRIDE row carries a different id, so the old code left the cancelled
+      // override in place and added a SECOND event at the same identity: a state the database
+      // index makes impossible. Divergence between the double and production is precisely the
+      // DEC-131 trap, so state the behaviour rather than inherit it from a Map key collision.
+      //
+      // Same field policy as the pg adapter: re-freeze capacity/price/duration from the new
+      // candidate (this customer's quoted fare), leave `dock` alone.
+      const cancelled = [...this.#events.values()].find(
+        (e) =>
+          e.source === "muster" &&
+          e.status === "cancelled" &&
+          slotIdentity(e.vesselId, e.date, e.time) === key,
+      );
+      if (cancelled) {
+        const revived: Event = {
+          ...clone(cancelled),
+          status: "scheduled",
+          capacity: event.capacity,
+          ...(event.price !== undefined ? { price: event.price } : {}),
+          ...(event.durationMinutes !== undefined
+            ? { durationMinutes: event.durationMinutes }
+            : {}),
+        };
+        this.#events.set(revived.id, revived);
+        existing = revived;
+      } else {
+        this.#events.set(event.id, clone(event));
+        existing = event;
+      }
     }
     const eventId = existing.id;
     // (2) whole-boat mutex against the actual event id — source-scoped, idempotent on id.

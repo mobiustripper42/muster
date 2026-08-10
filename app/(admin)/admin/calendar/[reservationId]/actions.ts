@@ -4,6 +4,11 @@ import { redirect } from "next/navigation";
 import { StripePaymentPort } from "@core/adapters/stripe-payment.js";
 import { asId } from "@core/domain/ids.js";
 import { createBalanceCheckout } from "@core/reservations/create-balance-checkout.js";
+import { cancelReservation, type CancelledBy } from "@core/reservations/cancel-reservation.js";
+import { parseDollarsToCents, refundReservation } from "@core/reservations/refund-payment.js";
+import type { Reservation } from "@core/domain/entities.js";
+import { forwardFormNotices } from "../../../../lib/channel";
+import { sendReservationConfirmation } from "../../../../lib/booking-confirmation";
 import { readSubject } from "../../../../lib/auth";
 import { getRepo } from "../../../../lib/repo";
 
@@ -24,23 +29,44 @@ import { getRepo } from "../../../../lib/repo";
  * Deliberately NOT emailed/texted to the customer: customer messaging needs the second sender
  * number (#119) so a customer can never reach the crew line. Operator copies and sends.
  */
+/** Back to a reservation's detail, preserving the grid's day/filter. */
+function detailHref(
+  reservationId: string,
+  date: string,
+  filter: string,
+  extra: Record<string, string>,
+): string {
+  const p = new URLSearchParams();
+  if (date) p.set("date", date);
+  if (filter) p.set("filter", filter);
+  for (const [k, v] of Object.entries(extra)) p.set(k, v);
+  const q = p.toString();
+  return `/admin/calendar/${encodeURIComponent(reservationId)}${q ? `?${q}` : ""}`;
+}
+
+/** The three fields every action on this pane posts back. */
+function readContext(formData: FormData): {
+  reservationId: string;
+  date: string;
+  filter: string;
+  back: (extra: Record<string, string>) => string;
+} {
+  const reservationId = String(formData.get("reservationId") ?? "");
+  const date = String(formData.get("date") ?? "");
+  const filter = String(formData.get("filter") ?? "");
+  return {
+    reservationId,
+    date,
+    filter,
+    back: (extra) => detailHref(reservationId, date, filter, extra),
+  };
+}
+
 export async function createBalanceLink(formData: FormData): Promise<void> {
   const subject = await readSubject();
   if (!subject || subject.kind !== "admin") redirect("/admin");
 
-  const reservationId = String(formData.get("reservationId") ?? "");
-  const date = String(formData.get("date") ?? "");
-  const filter = String(formData.get("filter") ?? "");
-
-  /** Back to this reservation's detail, preserving the grid's day/filter. */
-  const back = (extra: Record<string, string>): string => {
-    const p = new URLSearchParams();
-    if (date) p.set("date", date);
-    if (filter) p.set("filter", filter);
-    for (const [k, v] of Object.entries(extra)) p.set(k, v);
-    const q = p.toString();
-    return `/admin/calendar/${encodeURIComponent(reservationId)}${q ? `?${q}` : ""}`;
-  };
+  const { reservationId, back } = readContext(formData);
 
   const secretKey = process.env.STRIPE_SECRET_KEY;
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -63,4 +89,130 @@ export async function createBalanceLink(formData: FormData): Promise<void> {
 
   if (!result.ok) redirect(back({ balanceErr: result.reason }));
   redirect(back({ balanceUrl: result.url }));
+}
+
+/**
+ * Cancel the booking (#616) — the operator action that did not exist anywhere in the product.
+ *
+ * Writes the reservation AND its event to `cancelled`, which is what actually frees the boat:
+ * the reservation releases this slot for re-sale, the event releases every neighbouring
+ * departure on that hull and collapses the crew shift. See `cancelReservation` for why both.
+ *
+ * **Moves no money.** The confirm screen quotes what the published terms produce and the
+ * operator refunds separately, with a figure they can edit — cancelling and refunding are
+ * different decisions and one press should not make both.
+ */
+export async function cancelBooking(formData: FormData): Promise<void> {
+  const subject = await readSubject();
+  if (!subject || subject.kind !== "admin") redirect("/admin");
+
+  const { reservationId, back } = readContext(formData);
+  const by: CancelledBy = formData.get("by") === "operator" ? "operator" : "customer";
+
+  let result: Awaited<ReturnType<typeof cancelReservation>>;
+  try {
+    result = await cancelReservation(
+      {
+        repo: getRepo(),
+        now: () => new Date().toISOString(),
+        // A cancel collapses the shift, and the crew on it have to be TOLD (DEC-084/#244).
+        // This is the notice that matters most in the whole product: without it a confirmed
+        // crew member drives to a boat that is not sailing.
+        relayFormNotices: forwardFormNotices,
+      },
+      asId<"ReservationId">(reservationId),
+    );
+  } catch {
+    redirect(back({ cancelErr: "unreachable" }));
+  }
+
+  if (!result.ok) redirect(back({ cancelErr: result.reason }));
+  redirect(back({ cancelled: by }));
+}
+
+/**
+ * Refund some or all of what the customer paid (#616).
+ *
+ * The operator types one dollar figure; `refundReservation` splits it across the booking's
+ * charges because Stripe refunds a PaymentIntent, not a booking. `expectedRefunded` is the
+ * refunded total the screen was rendered against — a compare-and-swap that makes a
+ * double-submit (or a no-JS double post) refuse rather than refund twice.
+ */
+export async function refundBooking(formData: FormData): Promise<void> {
+  const subject = await readSubject();
+  if (!subject || subject.kind !== "admin") redirect("/admin");
+
+  const { reservationId, back } = readContext(formData);
+
+  const amountCents = parseDollarsToCents(String(formData.get("amount") ?? ""));
+  if (amountCents === null) redirect(back({ refundErr: "invalid_amount" }));
+
+  // The CAS token. A missing or non-numeric value is a malformed post, not a zero — treating
+  // it as zero would silently disarm the double-submit guard on the one path that needs it.
+  const expectedRaw = String(formData.get("expectedRefunded") ?? "");
+  if (!/^\d+$/.test(expectedRaw)) redirect(back({ refundErr: "stale" }));
+
+  const secretKey = process.env.STRIPE_SECRET_KEY;
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!secretKey || !webhookSecret) redirect(back({ refundErr: "stripe_not_configured" }));
+
+  let result: Awaited<ReturnType<typeof refundReservation>>;
+  try {
+    result = await refundReservation(
+      {
+        repo: getRepo(),
+        payments: new StripePaymentPort(secretKey, webhookSecret),
+        now: () => new Date().toISOString(),
+      },
+      asId<"ReservationId">(reservationId),
+      amountCents,
+      Number(expectedRaw),
+    );
+  } catch {
+    // Reaching here means the call threw OUTSIDE the provider loop (the loop returns
+    // `provider_error` rather than throwing), so no refund was issued.
+    redirect(back({ refundErr: "unreachable" }));
+  }
+
+  if (!result.ok) {
+    // A partial failure still moved money. Say how much, so the operator's next decision is
+    // made against what actually happened rather than against the amount they asked for.
+    if (result.reason === "provider_error") {
+      redirect(back({ refundErr: "provider_error", refunded: String(result.refundedCents) }));
+    }
+    redirect(back({ refundErr: result.reason }));
+  }
+  redirect(back({ refunded: String(result.refundedCents) }));
+}
+
+/**
+ * Re-send the booking confirmation + manage link (#616).
+ *
+ * `booking-confirmation.ts:37` has described this path since 11.4 ("a durable log / admin
+ * notice so the operator can resend") and there was no way to do it.
+ *
+ * The precondition worth checking here is the one that actually fails: a reservation with
+ * neither an email nor a phone has nowhere to send. Channel-level failures stay in the logs —
+ * `sendReservationConfirmation` is structurally best-effort for the webhook's sake and does
+ * not report back, so this reports "sent" meaning "handed to the channels", not "delivered".
+ */
+export async function resendConfirmation(formData: FormData): Promise<void> {
+  const subject = await readSubject();
+  if (!subject || subject.kind !== "admin") redirect("/admin");
+
+  const { reservationId, back } = readContext(formData);
+
+  let reservation: Reservation | null;
+  try {
+    reservation = await getRepo().getReservation(asId<"ReservationId">(reservationId));
+  } catch {
+    redirect(back({ resendErr: "unreachable" }));
+  }
+  if (!reservation) redirect(back({ resendErr: "reservation_missing" }));
+  // The manage link is Muster-side only (DEC-122) — a Xola booking has no capability URL.
+  if (reservation.source !== "muster") redirect(back({ resendErr: "not_muster" }));
+  if (!reservation.email && !reservation.phone) redirect(back({ resendErr: "no_contact" }));
+
+  await sendReservationConfirmation(reservation);
+  redirect(back({ resent: "1" }));
 }

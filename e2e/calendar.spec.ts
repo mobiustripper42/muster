@@ -9,7 +9,7 @@
  * — the offering's other departures). The Booked filter hides the opens, keeps the booking.
  * Runs desktop + 375px (the grid scrolls; the booked block stays present).
  */
-import { test, expect, resetAndSeed, signInAsAdmin } from "./fixtures.js";
+import { test, expect, plantPayment, resetAndSeed, signInAsAdmin } from "./fixtures.js";
 import { shortTime as shortLabel } from "../src/reservations/calendar-grid.js";
 import { xolaFixture } from "../src/reservations/seed-xola.js";
 import {
@@ -91,13 +91,18 @@ test.describe("admin /admin/calendar", () => {
     await expect(pane).toContainText("$588.80");
     await expect(pane).not.toContainText("Service fee");
 
-    // The mockup's remaining actions are still deferred — refund waits on #472, message on
-    // #119 (a customer must never reach the crew line). Narrowed from "zero buttons" when the
-    // balance link shipped (11.2b): that assertion encoded a scope decision we changed on
-    // purpose, so it names the deferred actions now instead of counting.
-    for (const action of ["Refund", "Cancel", "Message", "Guests", "Change time"]) {
+    // The mockup's remaining actions are still deferred — message waits on #119 (a customer
+    // must never reach the crew line), guests and change-time on their own tasks. Narrowed
+    // twice now: once when the balance link shipped (11.2b) and again at #616, which built
+    // cancel / refund / resend. The list names what is deferred rather than counting buttons,
+    // precisely so it has to be edited — deliberately — each time that scope moves.
+    for (const action of ["Message", "Guests", "Change time"]) {
       await expect(pane.getByRole("button", { name: action })).toHaveCount(0);
     }
+    // Refund is absent here for a DIFFERENT reason than deferral: this booking has no
+    // payments, so there is nothing to give back and the box would be a trap.
+    await expect(pane.getByTestId("refund-form")).toHaveCount(0);
+    await expect(pane.getByTestId("cancel-start")).toBeVisible();
 
     // One route, two native layouts (no client JS): the grid sits BESIDE the pane on desktop
     // and is hidden on mobile, where the pane is the whole page. It's hidden rather than
@@ -275,5 +280,148 @@ test.describe("admin /admin/calendar", () => {
     await page.goto("/admin/blocks?kind=slot");
     await expect(page.getByTestId("block-row")).toHaveCount(1);
     await expect(page.getByTestId("block-row")).toContainText("2");
+  });
+});
+
+/**
+ * Cancel, refund and resend (#616) — the operator toolkit that did not exist. Before this the
+ * whole toolkit was one action: mint a balance link and copy it by hand.
+ */
+test.describe("admin reservation actions (#616)", () => {
+  const RESV = demoReservationId(BOOKED.date, BOOKED.time);
+  const detail = (extra = "") =>
+    `/admin/calendar/${encodeURIComponent(RESV)}?date=${BOOKED.date}${extra}`;
+
+  test.beforeEach(async () => {
+    await resetAndSeed("reservation");
+  });
+
+  test("cancelling frees the boat, and the freed slot goes back on sale", async ({ page }) => {
+    await signInAsAdmin(page, "spink");
+    await page.goto(detail());
+    const pane = page.getByTestId("reservation-detail");
+
+    // The confirm step quotes BOTH outcomes side by side. It has to: with no client JS a
+    // single figure could not follow the radio, and the operator is choosing an amount.
+    await pane.getByTestId("cancel-start").click();
+    const confirm = page.getByTestId("cancel-confirm");
+    await expect(confirm).toContainText("The customer asked");
+    await expect(confirm).toContainText("We cancelled");
+    // Nothing has been paid on this booking, so both quotes are zero — and the screen says so
+    // rather than leaving the operator to infer it.
+    await expect(confirm).toContainText("$0.00");
+
+    await confirm.getByRole("button", { name: "Cancel this booking" }).click();
+    await page.waitForURL(/cancelled=/);
+
+    await expect(pane).toContainText("Cancelled");
+    await expect(page.getByTestId("action-done")).toContainText("The boat is free again");
+    // The balance link must be GONE. `createBalanceCheckout` refuses a cancelled booking
+    // (`not_active`), so leaving the button up is a control whose only outcome is an error.
+    await expect(pane.getByRole("button", { name: "Create balance link" })).toHaveCount(0);
+    // Cancelling twice is not offered.
+    await expect(pane.getByTestId("cancel-start")).toHaveCount(0);
+
+    // The point of all of it: that departure is sellable again on the public calendar.
+    await page.goto(`/admin/calendar?date=${BOOKED.date}`);
+    await expect(
+      page.getByTestId("cal-block").filter({ hasText: "Marcus Webb" }),
+    ).toHaveCount(0);
+    await expect(page.getByText(`open · ${shortLabel(BOOKED.time)}`)).toBeVisible();
+  });
+
+  test("the refund box caps at what was actually paid, and carries the double-submit token", async ({
+    page,
+  }) => {
+    // A real refund needs Stripe, so what is driven here is the part that decides how much
+    // money moves: the ceiling, the prefill, and the compare-and-swap token the form posts.
+    await plantPayment({
+      id: "pay-e2e-1",
+      reservationId: RESV,
+      amountCents: 58880,
+      taxCents: 3980,
+      stripePaymentIntentId: "pi_e2e_1",
+    });
+    await signInAsAdmin(page, "spink");
+    await page.goto(detail());
+    const pane = page.getByTestId("reservation-detail");
+
+    const form = pane.getByTestId("refund-form");
+    await expect(form).toContainText("Refund up to $588.80");
+    await expect(form.locator('input[name="amount"]')).toHaveValue("588.80");
+    // Rendered against a clean ledger, so the CAS token is zero. It is what makes a second
+    // post of this same form refuse instead of refunding twice.
+    await expect(form.locator('input[name="expectedRefunded"]')).toHaveValue("0");
+  });
+
+  test("a refund that Stripe rejected says so, and says nothing moved", async ({ page }) => {
+    await signInAsAdmin(page, "spink");
+    await page.goto(detail("&refundErr=exceeds_refundable"));
+    await expect(page.getByTestId("action-error")).toContainText("more than this booking can give back");
+
+    // The stale case is the double-submit landing. It must be unmistakable that no second
+    // refund happened, or the operator reconciles against a number that never moved.
+    await page.goto(detail("&refundErr=stale"));
+    await expect(page.getByTestId("action-error")).toContainText("Nothing was refunded");
+  });
+
+  /**
+   * The #718 defect, in the one place it would cost money (DEC-152).
+   *
+   * Pressing a button that then VANISHES leaves whatever reflows into its coordinates sitting
+   * under a thumb that is still there. On `/crew/time` that cost a crew member a clock-out and
+   * an immediate clock-in; here the controls in question are Refund and Resend, and the second
+   * tap would fire one of them against a booking the operator has just cancelled.
+   *
+   * Measured, not eyeballed: 46px looked fine in a screenshot on #718 and was a thumb's width
+   * in the hand. The fix is ordering — the destructive block renders LAST, so collapsing it
+   * moves nothing above it — and this test is what stops a later tidy-up from reordering the
+   * section back.
+   */
+  test("after cancelling, nothing interactive sits where the cancel button was", async ({
+    page,
+  }) => {
+    await plantPayment({
+      id: "pay-e2e-2",
+      reservationId: RESV,
+      amountCents: 58880,
+      taxCents: 3980,
+      stripePaymentIntentId: "pi_e2e_2",
+    });
+    await signInAsAdmin(page, "spink");
+    await page.goto(detail("&cancel=1"));
+
+    const destructive = await page
+      .getByRole("button", { name: "Cancel this booking" })
+      .boundingBox();
+    await page.getByRole("button", { name: "Cancel this booking" }).click();
+    await page.waitForURL(/cancelled=/);
+
+    // Every control the post-cancel pane offers, against the coordinates just pressed.
+    const after = page.getByTestId("reservation-actions").getByRole("button");
+    const boxes = await after.evaluateAll((els) =>
+      els.map((e) => {
+        const r = e.getBoundingClientRect();
+        return { name: e.textContent?.trim() ?? "", top: r.top + window.scrollY, bottom: r.bottom + window.scrollY };
+      }),
+    );
+    expect(boxes.length).toBeGreaterThan(0); // a version that rendered nothing would pass vacuously
+    for (const b of boxes) {
+      const overlap =
+        Math.min(destructive!.y + destructive!.height, b.bottom) - Math.max(destructive!.y, b.top);
+      expect(overlap, `"${b.name}" overlaps the cancel press point by ${Math.round(overlap)}px`).toBeLessThanOrEqual(0);
+    }
+  });
+
+  test("resend is offered when there is somewhere to send, and reports back", async ({ page }) => {
+    await signInAsAdmin(page, "spink");
+    await page.goto(detail());
+    const pane = page.getByTestId("reservation-detail");
+
+    await pane.getByRole("button", { name: "Resend confirmation + manage link" }).click();
+    await page.waitForURL(/resent=1|resendErr=/);
+    // Either outcome is legitimate in a test deployment (no channel is configured), but it
+    // must SAY which — the failure this replaces was a button that reported nothing at all.
+    await expect(page.getByTestId("action-done").or(page.getByTestId("action-error"))).toBeVisible();
   });
 });

@@ -82,12 +82,31 @@ export interface PaymentSucceeded {
 }
 
 /**
- * The verified-webhook event union (12.5, DEC-134). `checkout_completed` drives the hosted
- * flows (balance + post-gratuity); `payment_succeeded` drives the inline-Elements booking.
+ * A verified `charge.refunded` event (#616), normalized off the provider's shape.
+ *
+ * **`amountRefundedCents` is CUMULATIVE**, not the delta of the refund that triggered this
+ * event — that is Stripe's `charge.amount_refunded`, and it is the same shape
+ * `markPaymentRefunded(id, refundedTotalCents)` already took. Keeping it cumulative is what
+ * makes redelivery and a second partial refund the identical write.
+ */
+export interface RefundRecorded {
+  /** The refunded charge's PaymentIntent — how the ledger row is found. */
+  paymentIntentId: string;
+  /** Total refunded on that charge SO FAR, cents. */
+  amountRefundedCents: number;
+  currency: string;
+}
+
+/**
+ * The verified-webhook event union (12.5, DEC-134; refunds #616). `checkout_completed` drives
+ * the hosted flows (balance + post-gratuity); `payment_succeeded` drives the inline-Elements
+ * booking; `refund_recorded` reconciles a refund back into the ledger — including one the
+ * operator issued in the STRIPE DASHBOARD, which Muster could not see at all before.
  */
 export type PaymentEvent =
   | { type: "checkout_completed"; data: CheckoutCompleted }
-  | { type: "payment_succeeded"; data: PaymentSucceeded };
+  | { type: "payment_succeeded"; data: PaymentSucceeded }
+  | { type: "refund_recorded"; data: RefundRecorded };
 
 export interface RefundInput {
   /** The PaymentIntent to refund (from `CheckoutCompleted.paymentIntentId`). */

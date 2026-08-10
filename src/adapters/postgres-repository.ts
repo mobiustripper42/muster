@@ -1197,6 +1197,16 @@ export class PostgresRepository implements Repository {
     const { rows } = await this.#pool.query("select * from payments");
     return rows.map(toPayment);
   }
+  async getPaymentByIntentId(stripePaymentIntentId: string): Promise<Payment | null> {
+    // `limit 1` with no ordering is deliberate: `payment_intent_id` is one-per-charge in
+    // practice, and if two rows ever shared one the right answer is a loud reconciliation
+    // problem, not a silently-picked winner. The index makes this a lookup, not a scan.
+    const { rows } = await this.#pool.query(
+      "select * from payments where stripe_payment_intent_id=$1 limit 1",
+      [stripePaymentIntentId],
+    );
+    return rows[0] ? toPayment(rows[0]) : null;
+  }
   async markPaymentRefunded(id: PaymentId, refundedTotalCents: number): Promise<void> {
     // The status is derived IN SQL from the row's own amount_cents rather than passed in,
     // so a caller can't record a full refund as partial (or vice versa) by reading a stale
@@ -1335,6 +1345,40 @@ export class PostgresRepository implements Repository {
           event.status,
           event.price ?? null,
           event.dock ?? null,
+          event.durationMinutes ?? null,
+        ],
+      );
+      // RESURRECT a cancelled slot (#616). `events_muster_slot_identity` is
+      // `(vessel_id, date, time) where source='muster'` — it says nothing about status, so a
+      // cancelled row still OWNS the identity: the insert above conflicts into a no-op and the
+      // `status='scheduled'` select below finds nothing, returning `lost` forever. Cancelling a
+      // booking would brick its boat-slot permanently, which is the opposite of what cancelling
+      // is for.
+      //
+      // Re-materializing in place is the fix, and it must carry the NEW booking's frozen money:
+      // `price` is resolved at this customer's checkout-start (DEC-125) and keeping the previous
+      // customer's would derive their balance from a fare nobody quoted. `capacity` and
+      // `duration_minutes` are re-frozen for the same reason (vessel COI / offering trip length
+      // at THIS materialization, #570).
+      //
+      // `dock` is deliberately NOT touched: it is a property of where the boat leaves from, not
+      // of the booking, and the candidate never carries one — writing `null` would erase an
+      // operator's dock assignment on every resale.
+      //
+      // Scoped to `status='cancelled'`, never a scheduled row: this runs inside the hull-day
+      // advisory lock, but a predicate that could also match a LIVE slot would let a losing
+      // concurrent booking overwrite the winner's frozen price.
+      await client.query(
+        `update events
+            set status = 'scheduled', capacity = $4, price = $5, duration_minutes = $6
+          where vessel_id=$1 and date=$2 and time=$3
+            and source='muster' and status='cancelled'`,
+        [
+          event.vesselId,
+          event.date,
+          event.time,
+          event.capacity,
+          event.price ?? null,
           event.durationMinutes ?? null,
         ],
       );

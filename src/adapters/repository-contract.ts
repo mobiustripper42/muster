@@ -1234,6 +1234,22 @@ export function runRepositoryContract(
       expect((await repo.getPayment(asId<"PaymentId">("pay-4")))!.serviceFeeCents).toBe(1497);
     });
 
+    it("getPaymentByIntentId: finds the row a refund event names, or null (#616)", async () => {
+      // The `charge.refunded` handler's only handle on the ledger — a Stripe refund event
+      // carries the PaymentIntent, never Muster's payment id. Contract-tested because the two
+      // implementations diverge in shape (indexed SQL lookup vs a linear find over a Map) and
+      // a mismatch means a dashboard refund reconciles on one adapter and silently doesn't on
+      // the other, which is the exact failure #616 exists to remove.
+      await repo.saveReservation(reservation());
+      await repo.savePayment(payment({ stripePaymentIntentId: "pi_live_1" }));
+      // A second row with NO intent id — it must never be returned as a false match for a
+      // lookup, and it must not throw the linear scan off.
+      await repo.savePayment(payment({ id: asId<"PaymentId">("pay-2"), stripeCheckoutSessionId: "cs_test_2" }));
+
+      expect(await repo.getPaymentByIntentId("pi_live_1")).toMatchObject({ id: "pay-1" });
+      expect(await repo.getPaymentByIntentId("pi_never_seen")).toBeNull();
+    });
+
     it("markPaymentRefunded: derives status from the row's own amount, accumulates, never rewinds (#522)", async () => {
       // The one sanctioned mutation of an otherwise insert-only row. Contract-tested because
       // the two implementations express the same rule differently — postgres does it in SQL

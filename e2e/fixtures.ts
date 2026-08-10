@@ -102,6 +102,45 @@ export async function plantCheckoutHold(h: {
   }
 }
 
+/**
+ * Plant a recorded payment against a seeded booking (#616) — the money a refund gives back.
+ *
+ * The `reservation` seed writes bookings with NO payments (every money assertion in
+ * `calendar.spec.ts` reads off the pure fare+tax derivation), and adding one to the seed would
+ * move those numbers under seven other specs. So the refund tests plant their own, the same
+ * way `plantCheckoutHold` does rather than driving a real checkout.
+ *
+ * `stripePaymentIntentId` matters: it is what `refundReservation` refuses without, and what a
+ * `charge.refunded` webhook would find the row by.
+ */
+export async function plantPayment(p: {
+  id: string;
+  reservationId: string;
+  amountCents: number;
+  taxCents?: number;
+  kind?: "full" | "deposit" | "balance";
+  stripePaymentIntentId?: string;
+  createdAt?: string;
+}): Promise<void> {
+  const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
+  try {
+    await repo.savePayment({
+      id: p.id as never,
+      reservationId: p.reservationId as never,
+      method: "stripe",
+      kind: p.kind ?? "full",
+      amountCents: p.amountCents,
+      taxCents: p.taxCents ?? 0,
+      currency: "usd",
+      ...(p.stripePaymentIntentId ? { stripePaymentIntentId: p.stripePaymentIntentId } : {}),
+      status: "succeeded",
+      createdAt: p.createdAt ?? "2026-07-06T00:00:00.000Z",
+    });
+  } finally {
+    await repo.close();
+  }
+}
+
 /** Flip an admin's `active` flag — the per-person revoke lever (DEC-092). */
 export async function setAdminActive(handle: string, active: boolean): Promise<void> {
   const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);

@@ -265,6 +265,58 @@ required). Upload → the board fills with upcoming trips + their crew seats.
 - **Rollback** = redeploy a previous build from the Vercel dashboard (instant; the DB is unchanged
   unless a migration ran).
 
+## Stripe webhook events (#616)
+
+**This section is narrow on purpose.** DEPLOY.md carries no other Stripe content — the env-var
+table (#618) and the full go-live runbook (#623) are their own tasks. What is here is the one
+thing that fails *silently* if it is missed.
+
+### The endpoint must subscribe to `charge.refunded`
+
+Muster's webhook handles four event types:
+
+| Event | What it does |
+|---|---|
+| `checkout.session.completed` | hosted Checkout — balance + post-trip gratuity |
+| `payment_intent.succeeded` | the inline-Elements booking (DEC-134) |
+| `charge.refunded` | **reconciles a refund into the ledger (#616, DEC-153)** |
+
+The **local** listener (`stripe listen`) forwards everything, so refunds reconcile in dev whether
+or not anyone thought about it. **A production endpoint subscribes to an explicit list**, and if
+`charge.refunded` is not on it there is no error anywhere: refunds still succeed at Stripe, and
+Muster simply never learns. The reservation keeps reading paid, the boat stays held,
+`balanceOwedCents` keeps billing the balance, and `/admin/purchases` keeps counting the revenue —
+which is the exact defect #616 exists to remove, reintroduced by a checkbox.
+
+Nothing in the repo can verify the subscription list (#544). It has to be read off the dashboard.
+
+### Test it once in production, with real money
+
+The refund path cannot be proven by the test suite: `FakePaymentPort` models Stripe's keyed
+idempotency, not Stripe. Do this **once**, after the first deploy that carries #616, on a real
+booking of your own:
+
+1. Take a **real booking** through `/book` for the smallest amount the catalog allows, with a real
+   card. It must be a genuine charge — a test-mode charge exercises a different key and a
+   different endpoint.
+2. Refund it **from the Stripe dashboard**, not from Muster. That is the route that was invisible
+   and the one the subscription list can silently break.
+3. Within a few seconds, `/admin/purchases` should show the row as **Refunded**, and the
+   reservation's detail pane should show a **Refunded** line. If it still reads Paid, the endpoint
+   is not subscribed to `charge.refunded` — fix the subscription, then use
+   **Stripe → Developers → Events → Resend** on that same event rather than refunding again.
+4. Then refund a second real booking **from Muster** (the Refund box on the detail pane) and
+   confirm the same two surfaces. This proves the in-app route and the write-back agree; the
+   webhook re-writes the same cumulative total, so the two cannot disagree by construction, but
+   the API key and the endpoint are only exercised for real here.
+5. **Cancel** that booking too, and confirm the departure returns to the calendar as open. The
+   slot-resurrection path (DEC-153) is the one piece of #616 that touches a unique index under
+   concurrency; it is covered against real Postgres in CI, but a first production cancel is cheap
+   insurance.
+
+Keep the amounts small. This is real money in the operator's real account, and steps 1 and 4 leave
+Stripe's processing fee behind on each charge even after a full refund.
+
 ## Running the management CLIs against prod (`db:crew`, `db:admin`, `db:mint`)
 
 This is the recipe for every operator CLI. All three connect through **`DATABASE_URL` = the Neon

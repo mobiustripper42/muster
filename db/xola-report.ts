@@ -130,6 +130,13 @@ async function pullWindowed(start: string, end: string, depth = 0): Promise<Xola
 
 console.error(`Pulling Xola orders, arrival ${from} … ${to}`);
 const CHUNK_DAYS = Number(arg("--chunk") ?? 14);
+// `--chunk 0` walks the loop below backwards forever, and a negative one walks it off the
+// calendar — both before a single network call, so the symptom is a hang with no output.
+// `Number(undefined)` is NaN too, which is what a trailing `--chunk` with no value produces.
+if (!Number.isInteger(CHUNK_DAYS) || CHUNK_DAYS < 1) {
+  console.error(`--chunk must be a positive whole number of days (got ${arg("--chunk")}).`);
+  process.exit(1);
+}
 const chunks: [string, string][] = [];
 for (let t = new Date(`${from}T00:00:00Z`).getTime(); ; ) {
   const endT = Math.min(t + (CHUNK_DAYS - 1) * 86_400_000, new Date(`${to}T00:00:00Z`).getTime());
@@ -257,6 +264,14 @@ if (stillUnknown.length) {
  *    limit, not an invoicing question.
  */
 const BASE_GUESTS = Number(arg("--base") ?? 12);
+// A malformed `--base` (trailing flag, or one that swallows the next flag's name) yields NaN,
+// and `NaN > cap` is false for every row — so the capacity check turns itself OFF and the report
+// prints zero problems with no error. That is the single worst outcome this script can produce,
+// so it exits rather than guessing.
+if (!Number.isFinite(BASE_GUESTS) || BASE_GUESTS < 0) {
+  console.error(`--base must be a number of guests (got ${arg("--base")}).`);
+  process.exit(1);
+}
 
 /** Add-on rows are `{quantity, amount, configuration:{name}}`. Only the name identifies them. */
 interface XolaAddOn {
@@ -272,11 +287,18 @@ const WORD: Record<string, number> = {
   one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
 };
 
+/** Items whose `addOns` key was absent entirely — a wire-shape change, not an empty cart. */
+let itemsWithoutAddOns = 0;
+
 function readAddOns(item: Record<string, unknown>): {
   extra: number;
   declared: string[];
   declaredMax: number | null;
 } {
+  // `addOns` is read through a cast: it is not on `XolaOrderItem`, and `db/` has no typecheck,
+  // no lint and no test in this project — so nothing would catch Xola renaming or moving this
+  // field except a wrong report. Count the absences instead; every real order carries the key.
+  if (!Array.isArray(item.addOns)) itemsWithoutAddOns += 1;
   const addOns = (item.addOns ?? []) as XolaAddOn[];
   let extra = 0;
   const declared: string[] = [];
@@ -324,10 +346,23 @@ const CAPACITY: Record<string, number> = {
   "Brew 4": 12,
 };
 
+/**
+ * Distinct experience names across the pull.
+ *
+ * **`--base` is one number applied to every boat, and that is only sound if every booking is the
+ * same product.** Review flagged the risk: Brew 1 (14) and Brew 2 (16) are bigger boats, and if
+ * their included-guest count is not 12 then `pax` — and every OVER flag — is wrong for them, in
+ * the under-reporting direction. Rather than invent per-boat numbers this script cannot verify,
+ * it reports the evidence: one experience across the pull means one base is defensible; more
+ * than one means the flat base is a guess and says so.
+ */
+const experiences = new Set<string>();
+
 const rows: Row[] = [];
 for (const order of orders) {
   for (const item of order.items ?? []) {
     const raw = item as unknown as Record<string, unknown>;
+    experiences.add(String(item.name ?? "?").trim());
     const { extra, declared, declaredMax } = readAddOns(raw);
     const eventId = (item.event?.id ?? "").trim();
     const boat = (eventId && boatByEvent.get(eventId)) || "—";
@@ -336,10 +371,34 @@ for (const order of orders) {
     const dt = item.arrivalDatetime ?? "";
 
     const flags: string[] = [];
+    // **An unresolved boat is a FLAG, not a silent pass.** This is the defect the operator caught
+    // once already: the row printed blank and looked clean while its capacity check had simply
+    // not run. Fixing the lookup was not enough — without a flag here the row is still dropped by
+    // `--flagged`, which is the view anyone triaging actually reads, and absent from the CSV's
+    // problem set. Reported as loudly as a real breach, because it might be one.
+    //
+    // Two things that look the same in the data are NOT this, and saying so keeps the flag worth
+    // reading — a triage view full of rows nobody can act on is the same failure as a blank one:
+    //  - a CANCELLED booking needs no capacity audit; its event is often gone precisely because
+    //    it was cancelled, which is why all three of the first run's unaudited rows were 700s;
+    //  - a SELF-CAPTAINED Duffy is a resolved resource that is deliberately out of the crewed
+    //    fleet (`resolveResource` → `ignored`), and it is a different product with its own guest
+    //    range — the flat `--base` is meaningless for it rather than merely unverified.
+    const selfCaptained = boat.startsWith("(");
+    if (cap === undefined && item.status !== 700 && !selfCaptained) {
+      flags.push("UNAUDITED — no boat resolved");
+    }
+    if (selfCaptained) flags.push("self-captained — capacity not audited");
     if (declaredMax !== null && declaredMax !== extra) {
       flags.push(`declared ${declaredMax}≠paid ${extra}`);
     }
     if (declared.length > 1) flags.push("two answers");
+    // A "yes" whose count nobody parsed is a real disagreement hiding in an unrecognised
+    // phrasing. Left as `null` it produced no flag at all — visible only to someone reading the
+    // `declared` column, which is exactly the passive failure the UNAUDITED case above fixes.
+    if (declaredMax === null && declared.length > 0 && extra === 0) {
+      flags.push("declared ? — unparsed answer");
+    }
     if (cap !== undefined && pax > cap) flags.push(`OVER ${boat} cap ${cap}`);
     if (item.status === 700) flags.push("cancelled");
 
@@ -401,4 +460,17 @@ if (unpaid.length) {
   for (const r of unpaid) {
     console.error(`  ${r.date} ${r.time}  ${r.boat}  ${r.customer}  ${r.flags}`);
   }
+}
+if (itemsWithoutAddOns > 0) {
+  console.error(
+    `\n! ${itemsWithoutAddOns} item(s) carried NO addOns field — the passenger count for those ` +
+      `is base only and may be wrong. Xola may have changed the wire shape; re-run with --raw.`,
+  );
+}
+console.error(`\nexperiences in this pull: ${[...experiences].join(" | ")}`);
+if (experiences.size > 1) {
+  console.error(
+    `! ${experiences.size} different experiences — one flat --base of ${BASE_GUESTS} may not ` +
+      `apply to all of them, so pax (and every OVER flag) is only as right as that assumption.`,
+  );
 }

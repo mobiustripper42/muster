@@ -122,9 +122,46 @@ dashboard scroll. Tick each one off against its source.
 > (`ops/site-monitor/`, runs elsewhere), `VERCEL_ENV` (absent by design — step 45 depends on it
 > being absent).
 
-> ⚠️ **`RESERVATION_LINK_SECRET` and `SESSION_SECRET` behave differently.** Losing the session
-> secret costs everyone a re-login. Losing the reservation link secret **dead-links every
-> manage-booking URL already in a guest's inbox**, with no way to reissue them.
+### Tuning vars — read through helpers, every one optional
+
+These are read as `process.env[name]` through helper functions (`envPositiveInt`, `envDayOfWeek`,
+… in `src/builder/derive.ts:79-129` and `src/config/tenant.ts:184-261`), so a literal grep for
+`process.env.NAME` **does not find them**. All have code defaults; carry over only the ones set on
+Vercel today.
+
+`ASK_DRIP_INTERVAL_MINUTES` · `ASK_SILENT_TIMEOUT_MINUTES` · `CIVIL_SEND_START` ·
+`CIVIL_SEND_END` · `DOORBELL_BATCH_WINDOW_MS` · `DOORBELL_PRESENCE_WINDOW_MS` ·
+`DOORBELL_SHORT_NOTICE_MAX_CHARS` · `FILL_DEADLINE_HOURS` · `SPLIT_SUGGEST_GAP_MINUTES` ·
+`SPLIT_SUGGEST_SPAN_MINUTES` · `STAFFING_HORIZON_LEAD_DAYS` · `STAFFING_HORIZON_TRIGGER_DAY` ·
+`STAFFING_HORIZON_WEEKEND_ASK_TIME` · `STAFFING_HORIZON_WEEKEND_DAYS` · `XOLA_PULL_LEAD_DAYS`
+
+### What is actually set on Vercel today (`vercel env ls`, 2026-08-11)
+
+**Do not migrate these 14 — nothing reads them.** `POSTGRES_URL`, `POSTGRES_URL_NON_POOLING`,
+`POSTGRES_PRISMA_URL`, `POSTGRES_URL_NO_SSL`, `POSTGRES_USER`, `POSTGRES_PASSWORD`,
+`POSTGRES_DATABASE`, `POSTGRES_HOST`, `PGUSER`, `PGPASSWORD`, `PGHOST`, `PGHOST_UNPOOLED`,
+`PGDATABASE`, `NEON_PROJECT_ID`. They are auto-injected by the Vercel↔Neon integration; the app
+reads **`DATABASE_URL` only** (`app/lib/repo.ts:17`). They disappear with the integration and the
+box does not want them. This is most of the "~22 values" the step used to warn about.
+
+**Set and needed:** `DATABASE_URL`, `APP_BASE_URL`, `SESSION_SECRET`, `CRON_SECRET`,
+`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_MESSAGING_SERVICE_SID`, `RESEND_API_KEY`,
+`EMAIL_FROM`, `XOLA_API_KEY`, `XOLA_SELLER_ID`, `CREW_SELF_SERVE`, `TIME_CLOCK`, plus the seven
+tuning vars above that are set.
+
+**Read by code, NOT set in production** — all currently running on their code defaults:
+`RESERVATION_LINK_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
+`NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `TWILIO_FROM`, `TENANT_ID`, `TENANT_NAME`, `TENANT_TZ`,
+`PICKUP_LOCATION`, `PICKUP_MAP_URL`, `WAIVER_TERMS_URL`, `WAIVER_TERMS_VERSION`,
+`PAY_PERIOD_ANCHOR`, `CHECKOUT_HOLD_MINUTES`, `OPERATOR_CREW_MEMBER_ID`, `OPERATOR_NOTIFY_EMAIL`,
+`MESSAGING`, `RESERVATIONS`.
+
+> ⚠️ **`RESERVATION_LINK_SECRET` is unset in production.** `app/reservations/manage/load.ts:48`
+> returns `null` without it, so the guest manage-booking link does nothing today. Consistent with
+> `RESERVATIONS` being off. **The moment it is set, it becomes unrotatable** — it signs links that
+> go out in guest email, and changing it dead-links every one already sent. Set it once, on the
+> box, and never regenerate it. `SESSION_SECRET` is the opposite: rotating it costs a re-login and
+> nothing more.
 
 **3.** Record from Vercel: the **Node major version** the project builds on, and the plan tier.
 
@@ -139,9 +176,19 @@ dashboard scroll. Tick each one off against its source.
    - Both connection strings for the current project — pooled and **direct/unpooled**. Save the
      direct one as `NEON_OLD_DIRECT`. **Copy these yourself from the Neon console.**
 
-**5.** Confirm which feature flags are ON in production: `CREW_SELF_SERVE`, `MESSAGING`,
-`RESERVATIONS`. All three are OFF by default in code. `MESSAGING` decides whether the 2-minute
-doorbell timer does anything at all.
+**5.** ✅ **Mostly answered by step 2's listing (2026-08-11).** There are **four** flags, not three
+— `TIME_CLOCK` too (`app/lib/flags.ts:61`).
+
+   - **`MESSAGING` — OFF.** Not set in production at all. Per step 52, the 2-minute doorbell timer
+     is therefore inert; wire the timer anyway, but expect nothing from it.
+   - **`RESERVATIONS` — OFF.** Not set. Consistent with no Stripe keys and no
+     `RESERVATION_LINK_SECRET` in the environment.
+   - **`CREW_SELF_SERVE`, `TIME_CLOCK` — set, values not read.** Presence is not proof of ON.
+     Confirm the values yourself in the dashboard before writing the box's env file.
+
+> ⚠️ **The flags do not share a truthy value.** `CREW_SELF_SERVE`, `MESSAGING` and `TIME_CLOCK`
+> test `=== "1"`; **`RESERVATIONS` tests `=== "true"`** (`app/lib/flags.ts:12,25,44,61`). Writing
+> `RESERVATIONS=1` in the box's env file silently leaves it off.
 
 **6.** ✅ **Answered 2026-08-11 — no transfer.** The Neon console's *Transfer project* control is
 disabled for this project: *"Project transfers are not currently supported for Vercel-managed

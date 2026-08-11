@@ -1010,6 +1010,65 @@ export class PostgresRepository implements Repository {
     const { rows } = await this.#pool.query("select * from events");
     return rows.map(toEvent);
   }
+  async cancelEventIfUnclaimed(id: EventId): Promise<boolean> {
+    // Release the hull (#616), conditionally. The mirror of `saveBookingIfSlotFree`: that one
+    // claims a slot iff nobody holds it, this one releases a slot iff nobody holds it, and they
+    // take the SAME hull-day advisory lock so the pair is serialized rather than merely each
+    // being atomic on its own. Without the shared lock, a cancel and a fresh booking of the
+    // just-freed slot interleave and the cancel wins — cancelling a customer who has paid.
+    const client = await this.#pool.connect();
+    try {
+      await client.query("begin");
+      // **Locks are taken in the SAME ORDER as `saveBookingIfSlotFree`: hull-day advisory lock
+      // first, event row second.** Reversing them deadlocks — this path would hold the row and
+      // want the advisory lock while a concurrent booking holds the advisory lock and wants the
+      // row, which Postgres resolves by aborting one of them with a 40P01 the caller has no
+      // handling for. So the first read is deliberately WITHOUT `for update`: it exists only to
+      // learn the hull-day the lock is keyed on.
+      const probe = await client.query(
+        "select vessel_id, date from events where id=$1",
+        [id],
+      );
+      if (!probe.rows[0]) {
+        await client.query("rollback");
+        return false;
+      }
+      await client.query("select pg_advisory_xact_lock(hashtext($1))", [
+        `${probe.rows[0].vessel_id}|${probe.rows[0].date}`,
+      ]);
+      // NOW take the row, and re-read its status under both locks — the unlocked probe above
+      // proves nothing about the row's state by the time we hold the lock.
+      const found = await client.query(
+        "select status, source from events where id=$1 for update",
+        [id],
+      );
+      const row = found.rows[0];
+      if (!row || row.source !== "muster" || row.status !== "scheduled") {
+        await client.query("rollback");
+        return false;
+      }
+      const claimed = await client.query(
+        `select 1 from reservations
+          where event_id=$1 and source='muster' and status='booked' limit 1`,
+        [id],
+      );
+      if ((claimed.rowCount ?? 0) > 0) {
+        await client.query("rollback");
+        return false; // somebody is on this boat — never release it
+      }
+      const updated = await client.query(
+        "update events set status='cancelled' where id=$1 and status='scheduled'",
+        [id],
+      );
+      await client.query("commit");
+      return (updated.rowCount ?? 0) > 0;
+    } catch (e) {
+      await client.query("rollback");
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
 
   // ── Reservation catalog (DEC-123/125) — read-only in 12.0 ───────────────────
   async listOfferings(): Promise<Offering[]> {
@@ -1197,6 +1256,19 @@ export class PostgresRepository implements Repository {
     const { rows } = await this.#pool.query("select * from payments");
     return rows.map(toPayment);
   }
+  async getPaymentByIntentId(stripePaymentIntentId: string): Promise<Payment | null> {
+    // `order by` is NOT decoration. The index is deliberately non-unique (a unique one would
+    // turn a historical duplicate into a failed migration on a production table), so two rows
+    // sharing an intent is possible — and an unordered `limit 1` would then reconcile a refund
+    // against whichever row Postgres happened to return, varying between executions, leaving
+    // the other reading paid. Oldest-first is at least deterministic and repeatable; a genuine
+    // duplicate is a reconciliation problem for a human, but it must not be a coin flip.
+    const { rows } = await this.#pool.query(
+      "select * from payments where stripe_payment_intent_id=$1 order by created_at, id limit 1",
+      [stripePaymentIntentId],
+    );
+    return rows[0] ? toPayment(rows[0]) : null;
+  }
   async markPaymentRefunded(id: PaymentId, refundedTotalCents: number): Promise<void> {
     // The status is derived IN SQL from the row's own amount_cents rather than passed in,
     // so a caller can't record a full refund as partial (or vice versa) by reading a stale
@@ -1335,6 +1407,40 @@ export class PostgresRepository implements Repository {
           event.status,
           event.price ?? null,
           event.dock ?? null,
+          event.durationMinutes ?? null,
+        ],
+      );
+      // RESURRECT a cancelled slot (#616). `events_muster_slot_identity` is
+      // `(vessel_id, date, time) where source='muster'` — it says nothing about status, so a
+      // cancelled row still OWNS the identity: the insert above conflicts into a no-op and the
+      // `status='scheduled'` select below finds nothing, returning `lost` forever. Cancelling a
+      // booking would brick its boat-slot permanently, which is the opposite of what cancelling
+      // is for.
+      //
+      // Re-materializing in place is the fix, and it must carry the NEW booking's frozen money:
+      // `price` is resolved at this customer's checkout-start (DEC-125) and keeping the previous
+      // customer's would derive their balance from a fare nobody quoted. `capacity` and
+      // `duration_minutes` are re-frozen for the same reason (vessel COI / offering trip length
+      // at THIS materialization, #570).
+      //
+      // `dock` is deliberately NOT touched: it is a property of where the boat leaves from, not
+      // of the booking, and the candidate never carries one — writing `null` would erase an
+      // operator's dock assignment on every resale.
+      //
+      // Scoped to `status='cancelled'`, never a scheduled row: this runs inside the hull-day
+      // advisory lock, but a predicate that could also match a LIVE slot would let a losing
+      // concurrent booking overwrite the winner's frozen price.
+      await client.query(
+        `update events
+            set status = 'scheduled', capacity = $4, price = $5, duration_minutes = $6
+          where vessel_id=$1 and date=$2 and time=$3
+            and source='muster' and status='cancelled'`,
+        [
+          event.vesselId,
+          event.date,
+          event.time,
+          event.capacity,
+          event.price ?? null,
           event.durationMinutes ?? null,
         ],
       );

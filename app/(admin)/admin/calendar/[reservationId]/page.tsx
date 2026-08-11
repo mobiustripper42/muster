@@ -2,6 +2,9 @@ import { notFound } from "next/navigation";
 import type { Event, Gratuity, Payment, Reservation, Seat, Shift } from "@core/domain/entities.js";
 import { asId } from "@core/domain/ids.js";
 import { buildReservationDetail, shiftForEvent } from "@core/reservations/calendar-detail.js";
+import { quoteCancelRefund, type CancelledBy } from "@core/reservations/cancel-reservation.js";
+import { refundableTotalFor, refundedTotalFor } from "@core/reservations/refund-payment.js";
+import { zonedWallClockToInstant } from "@core/config/tenant.js";
 import { BackLink } from "../../../../../components/ui/back-link";
 import { Notice } from "../../../../../components/ui/notice";
 import { Shell } from "../../../../../components/ui/shell";
@@ -17,11 +20,18 @@ import {
   loadCalendarData,
   type Search,
 } from "../calendar-view";
-import { ReservationDetailPane } from "./reservation-detail-pane";
+import {
+  ReservationDetailPane,
+  actionMessage,
+  type PaneActionState,
+} from "./reservation-detail-pane";
 
 /**
- * /admin/calendar/[reservationId] (task 12.11 continued, #464) — the reservation detail,
- * READ-ONLY (no actions in this slice).
+ * /admin/calendar/[reservationId] (task 12.11 continued, #464) — the reservation detail.
+ *
+ * Read-only until #616, which adds cancel / refund / resend. Still zero client JS: every
+ * action is a `<form>` post, and the cancel confirm step is a query param rather than a
+ * dialog, so the whole thing works on a phone with no script running.
  *
  * One route, two native layouts, zero client JS: **desktop** renders the day grid beside a
  * sticky pane (the mockup's two-pane calendar, with the open reservation ringed in the grid);
@@ -50,8 +60,22 @@ export default async function ReservationDetailPage({
   searchParams,
 }: {
   params: Promise<{ reservationId: string }>;
-  /** `Search` plus the balance-link round-trip params the action redirects back with (11.2b). */
-  searchParams: Promise<Search & { balanceUrl?: string; balanceErr?: string }>;
+  /** `Search`, the balance-link round-trip params (11.2b), and the cancel/refund/resend
+   *  round-trip params (#616) each action redirects back with. */
+  searchParams: Promise<
+    Search & {
+      balanceUrl?: string;
+      balanceErr?: string;
+      cancel?: string;
+      cancelled?: string;
+      cancelErr?: string;
+      refunded?: string;
+      refundErr?: string;
+      refundConfirm?: string;
+      resent?: string;
+      resendErr?: string;
+    }
+  >;
 }) {
   const { reservationId: rawId } = await params;
   const sp = await searchParams;
@@ -144,6 +168,111 @@ export default async function ReservationDetailPage({
 
   const backHref = calendarHref(data, {});
 
+  // Cancel / refund / resend state (#616). Assembled here rather than inside
+  // `buildReservationDetail` because the refund quotes need a CLOCK — how much notice the
+  // cancellation gives decides whether the $50 fee applies — and that view model is pure.
+  //
+  // Xola bookings get NO actions block: their money and their cancellations live in Xola
+  // (DEC-105), and a cancel here would be reverted by the next import.
+  let actions: PaneActionState | undefined;
+  if (reservation.source === "muster") {
+    const detailHref = (extra: Record<string, string>): string => {
+      const p = new URLSearchParams();
+      if (sp.date) p.set("date", sp.date);
+      if (sp.filter) p.set("filter", sp.filter);
+      for (const [k, val] of Object.entries(extra)) p.set(k, val);
+      const q = p.toString();
+      // Same `#booking-actions` anchor the actions redirect to — the confirm-open and
+      // back-out links must land in the same place a form post does, or the two routes into
+      // the same screen behave differently.
+      return `/admin/calendar/${encodeURIComponent(String(reservation.id))}${q ? `?${q}` : ""}#booking-actions`;
+    };
+
+    // DEC-032: the departure instant is minted from the vessel-local wall clock, never by
+    // parsing `date`+`time` as if they were UTC — which would move the 14-day boundary by
+    // four or five hours and silently flip a refund from full to zero at the edge.
+    const departureAt = zonedWallClockToInstant(event.date, event.time);
+    const now = new Date();
+    const quoteFor = (by: CancelledBy): number =>
+      quoteCancelRefund({ by, payments, departureAt, now }).refundCents;
+
+    // Stripe's real ceiling. Read before the outcome copy, which needs it: a booking nobody
+    // paid for gets no refund box, so the post-cancel message must not promise one.
+    const refundable = refundableTotalFor(payments);
+
+    // Which outcome to report, if the last action redirected back with one.
+    //
+    // **Errors are checked FIRST, and that ordering is load-bearing.** A partial refund
+    // redirects with BOTH `refunded=<what moved>` and `refundErr=provider_error`, deliberately,
+    // so the operator learns how much actually went back. With success keys first, that landed
+    // as the green "Refunded $200.00" — a Stripe failure rendered as a clean success, and the
+    // `provider_error` copy written for exactly this case was unreachable. Worse when the FIRST
+    // leg fails: "Refunded $0.00 to the card it came from", which is a total failure reported
+    // as a completed refund. Found in security review.
+    // **`cancelled` outranks `refunded`, and both outrank nothing.** One press can now produce
+    // both, so the compound case is the normal one and the cancelled copy reports the money too
+    // (see `actionMessage`). Errors still win outright — a partial refund carries `refundErr`
+    // AND an amount, and reporting that as a success is the defect security review caught.
+    const outcome = (
+      ["cancelErr", "refundErr", "resendErr", "cancelled", "refunded", "resent"] as const
+    )
+      .map((k) => [k, sp[k]] as const)
+      .find(([, val]) => val !== undefined);
+    // A partial refund failure carries `refunded` alongside `refundErr`; the copy needs both.
+    const movedCents = /^\d+$/.test(sp.refunded ?? "") ? Number(sp.refunded) : undefined;
+    const message = outcome
+      ? actionMessage(outcome[0], outcome[1] ?? "", {
+          ...(movedCents !== undefined ? { movedCents } : {}),
+          refundableCents: refundable,
+        })
+      : undefined;
+    const isError = outcome ? outcome[0].endsWith("Err") : false;
+
+    // Prefill: the quote for the reason just chosen if we have just cancelled, otherwise the
+    // whole refundable amount. Either way the operator is typing over a number, not into an
+    // empty box — "who knows what the refund amount might be" cuts both ways, and a blank
+    // field on a money form is its own kind of prompt.
+    // What the standalone refund box starts at. After a cancel-and-refund the money has already
+    // moved, so the box offers what is STILL refundable rather than re-offering the figure that
+    // was just spent — the fastest way to refund the same amount twice is to leave it sitting
+    // there looking unspent.
+    const prefillCents =
+      sp.refunded !== undefined
+        ? refundable
+        : sp.cancelled !== undefined
+          ? Math.min(refundable, quoteFor(sp.cancelled === "operator" ? "operator" : "customer"))
+          : refundable;
+
+    actions = {
+      date: sp.date ?? "",
+      filter: sp.filter ?? "",
+      cancelHref: detailHref({ cancel: "1" }),
+      backHref: detailHref({}),
+      confirmingCancel: sp.cancel === "1",
+      quoteCustomerCents: quoteFor("customer"),
+      quoteOperatorCents: quoteFor("operator"),
+      refundableCents: refundable,
+      refundedTotalCents: refundedTotalFor(payments),
+      refundPrefill: (prefillCents / 100).toFixed(2),
+      // `?refundConfirm=<cents>` is the two-step's second screen. Validated by `startRefund`
+      // before the redirect, but re-checked here: the query string is user-editable, and a
+      // hand-typed value must not reach a confirm screen that would then move that money.
+      ...(/^\d+$/.test(sp.refundConfirm ?? "") &&
+      Number(sp.refundConfirm) > 0 &&
+      Number(sp.refundConfirm) <= refundable
+        ? { confirmingRefundCents: Number(sp.refundConfirm) }
+        : {}),
+      refundBackHref: detailHref({}),
+      canResend: Boolean(reservation.email || reservation.phone),
+      needsRelease:
+        reservation.status === "cancelled" &&
+        event.source === "muster" &&
+        event.status === "scheduled",
+      ...(message && !isError ? { done: message } : {}),
+      ...(message && isError ? { error: message } : {}),
+    };
+  }
+
   return (
     <Shell width="6xl">
       {/* Labelled distinctly from the admin nav's "Calendar" — on mobile this Back link IS the
@@ -172,6 +301,7 @@ export default async function ReservationDetailPage({
               date: sp.date ?? "",
               filter: sp.filter ?? "",
             }}
+            {...(actions ? { actions } : {})}
           />
         </aside>
       </div>

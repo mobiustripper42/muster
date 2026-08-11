@@ -417,6 +417,18 @@ export class InMemoryRepository implements Repository {
   async listEvents(): Promise<Event[]> {
     return [...this.#events.values()].map(clone);
   }
+  async cancelEventIfUnclaimed(id: EventId): Promise<boolean> {
+    // Single-threaded JS ⇒ trivially atomic; the Postgres adapter enforces the same under real
+    // concurrency (row lock + the hull-day advisory lock `saveBookingIfSlotFree` also takes).
+    const event = this.#events.get(id);
+    if (!event || event.source !== "muster" || event.status !== "scheduled") return false;
+    const claimed = [...this.#reservations.values()].some(
+      (r) => r.eventId === id && r.source === "muster" && r.status === "booked",
+    );
+    if (claimed) return false;
+    this.#events.set(id, { ...clone(event), status: "cancelled" });
+    return true;
+  }
 
   // ── Reservation catalog (DEC-123/125) ───────────────────────────────────────
   async listOfferings(): Promise<Offering[]> {
@@ -468,6 +480,12 @@ export class InMemoryRepository implements Repository {
   }
   async listAllPayments(): Promise<Payment[]> {
     return [...this.#payments.values()].map(clone);
+  }
+  async getPaymentByIntentId(stripePaymentIntentId: string): Promise<Payment | null> {
+    const p = [...this.#payments.values()].find(
+      (x) => x.stripePaymentIntentId === stripePaymentIntentId,
+    );
+    return p ? clone(p) : null;
   }
   async markPaymentRefunded(id: PaymentId, refundedTotalCents: number): Promise<void> {
     // Mirrors the postgres `greatest(coalesce(...))`: idempotent on redelivery, accumulating
@@ -543,8 +561,47 @@ export class InMemoryRepository implements Repository {
         slotIdentity(e.vesselId, e.date, e.time) === key,
     );
     if (!existing) {
-      this.#events.set(event.id, clone(event));
-      existing = event;
+      // RESURRECT a cancelled slot (#616), explicitly. Postgres has to do this because
+      // `events_muster_slot_identity` is status-agnostic and a cancelled row keeps owning the
+      // identity; here the same case used to be handled BY ACCIDENT, and only sometimes. The
+      // `#events.set(event.id, …)` below happens to overwrite the cancelled row whenever the
+      // candidate's deterministic `eventIdForSlot` id matches it — but a slot backed by an
+      // operator OVERRIDE row carries a different id, so the old code left the cancelled
+      // override in place and added a SECOND event at the same identity: a state the database
+      // index makes impossible. Divergence between the double and production is precisely the
+      // DEC-131 trap, so state the behaviour rather than inherit it from a Map key collision.
+      //
+      // Same field policy as the pg adapter: re-freeze capacity/price/duration from the new
+      // candidate (this customer's quoted fare), leave `dock` alone.
+      const cancelled = [...this.#events.values()].find(
+        (e) =>
+          e.source === "muster" &&
+          e.status === "cancelled" &&
+          slotIdentity(e.vesselId, e.date, e.time) === key,
+      );
+      if (cancelled) {
+        // **Overwrite price and duration UNCONDITIONALLY, including to absent.** Postgres writes
+        // `price = $5` / `duration_minutes = $6` from `?? null`, so a candidate with no duration
+        // NULLS the resurrected row. Spreading only when defined — the obvious shape — instead
+        // keeps the previous cancelled booking's duration, and `writeSlotBooking` genuinely omits
+        // it whenever the offering carries no `tripLengthMinutes` (`write-booking.ts:117`). That
+        // divergence is the DEC-131 trap this very method exists to close, one field narrower;
+        // code review caught it here.
+        const revived: Event = {
+          ...clone(cancelled),
+          status: "scheduled",
+          capacity: event.capacity,
+        };
+        delete revived.price;
+        delete revived.durationMinutes;
+        if (event.price !== undefined) revived.price = event.price;
+        if (event.durationMinutes !== undefined) revived.durationMinutes = event.durationMinutes;
+        this.#events.set(revived.id, revived);
+        existing = revived;
+      } else {
+        this.#events.set(event.id, clone(event));
+        existing = event;
+      }
     }
     const eventId = existing.id;
     // (2) whole-boat mutex against the actual event id — source-scoped, idempotent on id.

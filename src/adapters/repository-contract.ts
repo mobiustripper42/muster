@@ -1234,6 +1234,122 @@ export function runRepositoryContract(
       expect((await repo.getPayment(asId<"PaymentId">("pay-4")))!.serviceFeeCents).toBe(1497);
     });
 
+    it("cancelEventIfUnclaimed: releases an unclaimed Muster slot, refuses a claimed one (#616)", async () => {
+      // Both adapters must agree, because the two express it differently — Postgres under a row
+      // lock plus the hull-day advisory lock, in-memory as a straight-line check — and a
+      // divergence means a cancel releases a paying customer's boat on exactly one of them.
+      const evt = {
+        id: asId<"EventId">("evt-cancel-1"),
+        vesselId: asId<"VesselId">("v-1"),
+        date: "2026-08-20",
+        time: "17:00",
+        capacity: 12,
+        status: "scheduled" as const,
+        source: "muster" as const,
+      };
+      await repo.saveEvent(evt);
+      await repo.saveReservation({
+        id: asId<"ReservationId">("resv-holds-it"),
+        eventId: evt.id,
+        source: "muster",
+        customerName: "Ann",
+        partySize: 4,
+        status: "booked",
+      });
+
+      // Claimed ⇒ refused, and the event is untouched.
+      expect(await repo.cancelEventIfUnclaimed(evt.id)).toBe(false);
+      expect((await repo.getEvent(evt.id))?.status).toBe("scheduled");
+
+      // Released once the claim goes away.
+      await repo.saveReservation({
+        id: asId<"ReservationId">("resv-holds-it"),
+        eventId: evt.id,
+        source: "muster",
+        customerName: "Ann",
+        partySize: 4,
+        status: "cancelled",
+      });
+      expect(await repo.cancelEventIfUnclaimed(evt.id)).toBe(true);
+      expect((await repo.getEvent(evt.id))?.status).toBe("cancelled");
+
+      // Idempotent: a second call reports it did nothing rather than re-cancelling.
+      expect(await repo.cancelEventIfUnclaimed(evt.id)).toBe(false);
+      // Unknown id is `false`, never a throw — the cancel path must not 500 on a stale link.
+      expect(await repo.cancelEventIfUnclaimed(asId<"EventId">("evt-nope"))).toBe(false);
+    });
+
+    it("resurrecting a cancelled slot re-freezes price and duration IDENTICALLY on both adapters (#616)", async () => {
+      // The divergence code review caught: postgres writes `price`/`duration_minutes` from
+      // `?? null` unconditionally, so a candidate carrying neither NULLS them. An in-memory
+      // version that only overwrote when defined kept the DEAD booking's numbers — a resurrected
+      // slot priced at the previous customer's fare, on one adapter only.
+      const slot = { vesselId: asId<"VesselId">("v-res"), date: "2026-08-21", time: "13:30" };
+      const first = {
+        id: eventIdForSlot(slot.vesselId, slot.date, slot.time),
+        ...slot,
+        capacity: 12,
+        status: "scheduled" as const,
+        source: "muster" as const,
+        price: 50000,
+        durationMinutes: 100,
+      };
+      const won = await repo.saveBookingIfSlotFree(first, {
+        id: asId<"ReservationId">("resv-res-1"),
+        eventId: first.id,
+        source: "muster",
+        customerName: "Ann",
+        partySize: 4,
+        status: "booked",
+      });
+      expect(won.result).toBe("won");
+
+      await repo.saveReservation({
+        id: asId<"ReservationId">("resv-res-1"),
+        eventId: first.id,
+        source: "muster",
+        customerName: "Ann",
+        partySize: 4,
+        status: "cancelled",
+      });
+      expect(await repo.cancelEventIfUnclaimed(first.id)).toBe(true);
+
+      // Re-book with NO price and NO duration — both must come back absent, not inherited.
+      const again = await repo.saveBookingIfSlotFree(
+        { id: first.id, ...slot, capacity: 8, status: "scheduled", source: "muster" },
+        {
+          id: asId<"ReservationId">("resv-res-2"),
+          eventId: first.id,
+          source: "muster",
+          customerName: "Ben",
+          partySize: 2,
+          status: "booked",
+        },
+      );
+      expect(again.result).toBe("won");
+      const revived = await repo.getEvent(first.id);
+      expect(revived?.status).toBe("scheduled");
+      expect(revived?.capacity).toBe(8);
+      expect(revived?.price).toBeUndefined();
+      expect(revived?.durationMinutes).toBeUndefined();
+    });
+
+    it("getPaymentByIntentId: finds the row a refund event names, or null (#616)", async () => {
+      // The `charge.refunded` handler's only handle on the ledger — a Stripe refund event
+      // carries the PaymentIntent, never Muster's payment id. Contract-tested because the two
+      // implementations diverge in shape (indexed SQL lookup vs a linear find over a Map) and
+      // a mismatch means a dashboard refund reconciles on one adapter and silently doesn't on
+      // the other, which is the exact failure #616 exists to remove.
+      await repo.saveReservation(reservation());
+      await repo.savePayment(payment({ stripePaymentIntentId: "pi_live_1" }));
+      // A second row with NO intent id — it must never be returned as a false match for a
+      // lookup, and it must not throw the linear scan off.
+      await repo.savePayment(payment({ id: asId<"PaymentId">("pay-2"), stripeCheckoutSessionId: "cs_test_2" }));
+
+      expect(await repo.getPaymentByIntentId("pi_live_1")).toMatchObject({ id: "pay-1" });
+      expect(await repo.getPaymentByIntentId("pi_never_seen")).toBeNull();
+    });
+
     it("markPaymentRefunded: derives status from the row's own amount, accumulates, never rewinds (#522)", async () => {
       // The one sanctioned mutation of an otherwise insert-only row. Contract-tested because
       // the two implementations express the same rule differently — postgres does it in SQL

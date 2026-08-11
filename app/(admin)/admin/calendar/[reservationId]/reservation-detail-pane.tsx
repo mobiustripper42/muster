@@ -485,10 +485,6 @@ function PaneActions({
             Refund <b className="font-mono">{formatCents(actions.confirmingRefundCents)}</b> to the
             card it came from?
           </p>
-          <p className="mb-2 text-xs text-muted">
-            This moves real money now. Muster cannot take it back — a mistake has to be collected
-            from the customer again.
-          </p>
           <div className="flex gap-2">
             <SubmitButton
               data-commits="refund"

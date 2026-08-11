@@ -444,8 +444,10 @@ test.describe("admin reservation actions (#616)", () => {
     await form.getByRole("button", { name: "Refund" }).click();
     await page.waitForURL(/refundConfirm=58880/);
     const confirm = pane.getByTestId("refund-confirm");
+    // The question names the amount and the destination; that is the confirm. The
+    // irreversibility sentence that used to sit under it was cut (operator: too many words) —
+    // a red button on a screen asking "refund $X?" carries it.
     await expect(confirm).toContainText("Refund $588.80 to the card it came from?");
-    await expect(confirm).toContainText("Muster cannot take it back");
     // The CAS token rides the CONFIRM form — it is what makes a second post refuse rather than
     // refund twice, so it has to be on the form that actually moves money.
     await expect(confirm.locator('input[name="expectedRefunded"]')).toHaveValue("0");

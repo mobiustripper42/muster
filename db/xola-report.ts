@@ -507,7 +507,11 @@ if (has("--csv")) {
   for (const r of shown) console.log(line(COLS.map((c) => r[c])));
 }
 
-const flagged = rows.filter((r) => r.flags && r.flags !== "cancelled");
+// `!r.isCancelled`, not `r.flags !== "cancelled"`. The string compare was asking "is this row's
+// ONLY flag the word cancelled", which a cancelled row carrying any second flag fails — so
+// `extra ×2 declared and paid; cancelled` was counted as flagged while every section below
+// (all built from `live`) correctly excluded it. It appeared in the headline and nowhere else.
+const flagged = rows.filter((r) => r.flags && !r.isCancelled);
 console.error(`\n${rows.length} reservation line(s), ${flagged.length} flagged.`);
 
 const live = rows.filter((r) => !r.isCancelled);

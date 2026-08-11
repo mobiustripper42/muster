@@ -66,17 +66,62 @@ non-interactive session cannot authorize them.
 
 **1.** Run `/mcp`. Authorize **neon** and **vercel** in the browser. One-time per machine.
 
-**2.** **Export every production env var from Vercel.** ~22 values exist in the dashboard that
-`docs/DEPLOY.md` never recorded. The single easiest thing to lose in this migration. Save to your
-scratch file.
+**2.** **Reassemble the production env — you cannot export it.** `vercel env pull` prints
+`[Sensitive]` in place of the values, so there is no export step; every secret has to come from
+the system that issued it. The single easiest thing to lose in this migration.
 
-> `vercel env pull` returns **Sensitive** vars (the Neon connection strings) **empty** — keys
-> only. Copy those from the Neon console by hand.
+The list below is **every var the code actually reads in production**, taken from `process.env.*`
+across `app/`, `src/` and `db/` — so it is checkable against the repo rather than against a
+dashboard scroll. Tick each one off against its source.
+
+| Var | Read at | Source of truth |
+|---|---|---|
+| `DATABASE_URL` | `app/lib/repo.ts` | Neon console (pooled). Becomes `NEON_NEW_POOLED` after Phase D |
+| `APP_BASE_URL` | `app/lib/base-url.ts` | `https://crew.brewcle.com` — app throws in prod without it (step 39) |
+| `SESSION_SECRET` | `app/lib/auth.ts` | Unrecoverable — **mint fresh**. Rotating it logs everyone out |
+| `RESERVATION_LINK_SECRET` | `app/reservations/manage/load.ts` | ⚠️ **Do NOT regenerate** — signs guest manage-booking links already sent. Must carry over |
+| `CRON_SECRET` | `app/api/cron/*/route.ts` | Mint fresh; goes in the timer env file too (step 55) |
+| `STRIPE_SECRET_KEY` | `app/api/webhooks/stripe/route.ts` | Stripe dashboard |
+| `STRIPE_WEBHOOK_SECRET` | `app/api/webhooks/stripe/route.ts` | Stripe dashboard → the endpoint's signing secret |
+| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | `app/(public)/book/checkout/page.tsx` | Stripe. **Build-time** — see step 40 |
+| `TWILIO_ACCOUNT_SID` | `app/lib/sms.ts` | Twilio console |
+| `TWILIO_AUTH_TOKEN` | `app/lib/sms.ts` | Twilio console |
+| `TWILIO_FROM` | `app/lib/sms.ts` | Twilio console |
+| `TWILIO_MESSAGING_SERVICE_SID` | `app/lib/sms.ts` | Twilio console |
+| `RESEND_API_KEY` | `app/lib/auth-delivery.ts` | Resend dashboard |
+| `EMAIL_FROM` | `app/lib/auth-delivery.ts` | Not secret — the sending address |
+| `XOLA_API_KEY` | `app/lib/xola.ts` | Xola |
+| `XOLA_SELLER_ID` | `app/lib/xola.ts` | Xola |
+| `XOLA_API_BASE` | `app/lib/xola.ts:31` | Optional — falls back to `XOLA_API_BASE_DEFAULT` in code |
+| `XOLA_API_VERSION` | `app/lib/xola.ts:32` | Optional — falls back to the code constant |
+| `TENANT_ID` / `TENANT_NAME` | `app/lib/tenant.ts` | Not secret |
+| `TENANT_TZ` | `src/config/tenant.ts` | Not secret. Getting this wrong moves every departure time |
+| `PICKUP_LOCATION` / `PICKUP_MAP_URL` | `src/config/tenant.ts` | Not secret |
+| `WAIVER_TERMS_URL` / `WAIVER_TERMS_VERSION` | `src/config/tenant.ts` | Not secret. The version is recorded on signed waivers — carry it over, don't invent one |
+| `PAY_PERIOD_ANCHOR` | `src/config/tenant.ts` | Not secret |
+| `CHECKOUT_HOLD_MINUTES` | `src/reservations/claim.ts` | Not secret |
+| `OPERATOR_CREW_MEMBER_ID` | `app/lib/operator.ts` | Not secret |
+| `OPERATOR_NOTIFY_EMAIL` | `app/reservations/manage/actions.ts` | Not secret |
+| `NODE_ENV` | — | `production`. See step 45; getting this wrong is a security hole |
+| `CREW_SELF_SERVE` `MESSAGING` `RESERVATIONS` `TIME_CLOCK` | `app/lib/flags.ts` | Step 5 |
+
+> Not needed on the box: `E2E`, `E2E_PROD`, `SEED_TODAY`, `TEST_DATABASE_URL`, `RESET_PILOT_*`,
+> `BACKFILL_CONFIRM`, `OUTBOX_TEST_PHONE`, `XOLA_REPORT_*` (CLI script args), `PROBE_*`
+> (`ops/site-monitor/`, runs elsewhere), `VERCEL_ENV` (absent by design — step 45 depends on it
+> being absent).
+
+> ⚠️ **`RESERVATION_LINK_SECRET` and `SESSION_SECRET` behave differently.** Losing the session
+> secret costs everyone a re-login. Losing the reservation link secret **dead-links every
+> manage-booking URL already in a guest's inbox**, with no way to reissue them.
 
 **3.** Record from Vercel: the **Node major version** the project builds on, and the plan tier.
 
 **4.** Record from Neon:
-   - `select filename from _migrations order by filename;` against `delicate-art-65084110`
+   - `select filename from _migrations order by filename;` against `delicate-art-65084110` —
+     **read 2026-08-11: 45 rows, `0001_init.sql` … `20260806230000_retire_muster_owned_vessel_days.sql`.**
+     `db/migrations/` holds **46**. The one not applied in production is
+     **`20260810011500_payment_intent_lookup.sql`** (the refund lookup index). Apply it by hand
+     before promoting the code that needs it — see § Unchanged by this migration
    - The **PITR retention window** on the current plan — **answered 2026-08-11: 24 hours**
      (`history_retention_seconds: 86400`, org on the `launch` plan). See step 22; this is short.
    - Both connection strings for the current project — pooled and **direct/unpooled**. Save the

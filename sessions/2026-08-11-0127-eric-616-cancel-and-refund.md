@@ -6,7 +6,7 @@ branch: task/616-cancel-and-refund
 started: 2026-08-11T01:27:14Z
 ended:
 points:
-pr_numbers: [733, 734]
+pr_numbers: [733, 734, 735]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/e09c3178-c206-4232-92e5-d68538c4d699.jsonl
 ---
@@ -86,6 +86,52 @@ the $588.80 balance row actually renders) and that the checkout spec swap didn't
 **Points:** 2
 **Branch:** task/617-launch-money-posture
 **Opened at:** 2026-08-11T14:40:00Z
+
+## Task 3: The Xola passenger report mails itself every morning
+
+**Completed:**
+- `db/xola-report-email.ts` + `db/xola-report-email.test.ts` (new, 26 cases) + `db:xola:report:email`.
+  Spawns the existing report unchanged, captures both streams SEPARATELY (merging as they arrive
+  makes section order depend on how the OS interleaves two pipes), hoists `OVER CAPACITY` and
+  `DECLARED ≠ PAID` above the diagnostics, sends via Resend. Cron line on mill-dev at 11:00.
+- `db/xola-report.ts` — one-line fix to its own flagged count.
+- `npm run verify` green (2098 tests / 149 files). Run live against Xola at every step; three real
+  sends to eric@brewcle.com only. Deliberately temporary — dies at the DEC-126 cutover.
+
+**Three counting bugs, all the same shape: technically true, practically noise.** The report
+counted `flags !== "cancelled"` — a string compare asking whether a row's ONLY flag was the word
+cancelled — so a cancelled row carrying a second flag sat in the headline while every section
+excluded it (17 → 16 live, and 16 now reconciles with the sections). My wrapper then scraped
+`N event(s) STILL have no boat` and called them unaudited ROWS; events and rows differ by exactly
+the cancelled trips whose events are gone BECAUSE they were cancelled, so it put a red ⚠ on three
+trips nobody is sailing. And the subject said `17 flagged of 49` on a morning whose only real item
+was one payment to chase — 15 of the 17 were guests who had paid and fit the boat.
+
+**The operator caught all three, and none of them by reading code.** *"why does it say 17 flagged
+of 49?"* and *"how can I find out what those 3 rows are?"* — the second question is what exposed
+that the three unaudited events were all status-700 cancellations. The report's own source comment
+had said so all along; I had not read it before writing the warning.
+
+**He also corrected my framing of issue #729.** I wrote a header line implying the report only
+covers a 3-week window. It pulls orders across two years — only the bulk `/events` boat-join call
+is narrow, and the script already routes around it with individual fetches. The residual damage is
+a handful of 404s, not the coverage. The misleading sentence is gone; #729's own issue text carries
+the same overstatement and should be re-scoped.
+
+**`@code-review` found the fourth, and it was mine:** the ⚠ went into the body but never into the
+subject, so an unresolved-boat morning with nothing else would read "nothing to act on" on a locked
+phone — the exact failure the file exists to prevent. Its sharper finding was structural: the
+section titles are a string contract across two files, `db/` is in no typecheck or lint, and a
+FIXTURE CANNOT CATCH A DRIFT — reword the title, update the fixture, still green. The test now reads
+the real source.
+
+**Code review:** 3 findings (1 bug, 1 missing-guard, 1 consistency), all fixed before the PR.
+**Security review:** not run — no blast-radius trigger; a read-only `db/` script, no money path, no
+auth, no migration.
+**PR:** [PR #735](https://github.com/mobiustripper42/muster/pull/735)
+**Points:** 3
+**Branch:** task/xola-daily-report-email
+**Opened at:** 2026-08-11T23:55:00Z
 
 **Next Steps:**
 

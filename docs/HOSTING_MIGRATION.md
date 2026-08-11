@@ -18,6 +18,10 @@ NEON_NEW_POOLED=     NEON_NEW_DIRECT=     NEON_OLD_DIRECT=
 APP_BASE_URL=https://crew.brewcle.com
 ```
 
+> Secrets in this file are recorded **by you, by hand**. Don't ask an agent session to read
+> connection strings, keys or `CRON_SECRET` — a value read into a transcript is a copy of the
+> credential somewhere nobody is guarding.
+
 ---
 
 ## Decisions (settled)
@@ -25,14 +29,23 @@ APP_BASE_URL=https://crew.brewcle.com
 - **Host:** new **Linode Shared 4 GB, Chicago (us-ord)** with backups. Not a reused box, not
   `mill-dev`.
 - **Database:** Neon stays as the provider, but the project **moves out of Vercel's managed org**
-  into an account you own.
+  into a **new Neon account you own** — not the existing `spinkbickle@gmail.com` org, which is on
+  the free plan.
+- **The Vercel account stays.** Other projects deploy from it. What gets decommissioned at the end
+  of this migration is the **muster project** on Vercel, not the account. Read every later mention
+  of "decommission Vercel" that way.
+- **The database move is dump-and-restore.** Neon does not support project transfer out of a
+  Vercel-managed org, and the claim-link path does not apply either (step 6, answered
+  2026-08-11). Steps 12–18 are mandatory.
 
 ### Why the database moves first
 
 The Neon project (`delicate-art-65084110`, org `org-spring-feather-31353161`) lives inside
 Vercel's managed org — Vercel owns the billing relationship and the console access path
-(`docs/DEPLOY.md` step 1: *"Billing stays in Vercel"*). You cannot decommission Vercel while the
-database lives there.
+(`docs/DEPLOY.md` step 1: *"Billing stays in Vercel"*). Since the account is staying, this is no
+longer a blocker to finishing the migration; it is an ownership decision, made deliberately. The
+database is the sole durable record of booking truth and it should not sit behind another
+product's billing relationship.
 
 The handoff put this late, which creates a trap: migrate the database while Vercel is still your
 rollback target, and Vercel's auto-injected `DATABASE_URL` still points at the **old** database.
@@ -64,17 +77,19 @@ scratch file.
 
 **4.** Record from Neon:
    - `select filename from _migrations order by filename;` against `delicate-art-65084110`
-   - The **PITR retention window** on the current plan
+   - The **PITR retention window** on the current plan — **answered 2026-08-11: 24 hours**
+     (`history_retention_seconds: 86400`, org on the `launch` plan). See step 22; this is short.
    - Both connection strings for the current project — pooled and **direct/unpooled**. Save the
-     direct one as `NEON_OLD_DIRECT`
+     direct one as `NEON_OLD_DIRECT`. **Copy these yourself from the Neon console.**
 
 **5.** Confirm which feature flags are ON in production: `CREW_SELF_SERVE`, `MESSAGING`,
 `RESERVATIONS`. All three are OFF by default in code. `MESSAGING` decides whether the 2-minute
 doorbell timer does anything at all.
 
-**6.** **Ask Neon support whether the project can be transferred** out of the Vercel-managed org
-into an org you own. If yes, that beats dump-and-restore — you keep the same endpoints and skip
-steps 12–18. Not answerable from the repo; ask before doing the manual path.
+**6.** ✅ **Answered 2026-08-11 — no transfer.** The Neon console's *Transfer project* control is
+disabled for this project: *"Project transfers are not currently supported for Vercel-managed
+organizations."* The claim-link path does not apply either. **Steps 12–18 are mandatory** — the
+move is a dump-and-restore. Nothing to do here; kept for the record.
 
 ---
 
@@ -105,11 +120,14 @@ DEC-043 retired. Fix or delete it — it's a doc you'll be reading during Phase 
 
 ## Phase D — Move Neon out of Vercel (Vercel still serving production)
 
-Skip steps 12–18 if step 6 says a transfer is possible; do the transfer instead, then resume at
-step 19.
+Mandatory — step 6 established there is no transfer path.
 
-**12.** Create a Neon account/org **you own** — your login, your billing, no Vercel. Create a new
-project. Match the region to the current one.
+**12.** Create a **new Neon account** — your login, your billing, no Vercel. Create a project in
+it, region matching the current one (**`aws-us-east-1`**, Postgres **17**).
+
+> **Pick the plan against step 22, not the default.** The current project's retention is 24 hours
+> and the free tier is no better. Retention is the one setting that cannot be fixed after you need
+> it.
 
 **13.** Record `NEON_NEW_POOLED` (host contains `-pooler`) and `NEON_NEW_DIRECT`.
 
@@ -142,7 +160,7 @@ load `/admin/at-risk`, confirm today's shifts look right. Unpause the engine.
 database is untouched and still live.
 
 **21.** **Leave the old Neon project running** until the whole migration is finished. It is your
-database-level rollback. Do not delete it at any point before step 62.
+database-level rollback. Do not delete it at any point before step 68.
 
 ---
 
@@ -152,7 +170,8 @@ The database is the **sole durable record of booking truth**. Stripe has the cha
 booking — party size, date, guest contact live only in Postgres.
 
 **22.** Confirm the new project's **PITR retention window** is long enough to notice a problem
-before it rolls off. Raise the plan if not.
+before it rolls off. Raise the plan if not. For reference, the **old** project's window is 24
+hours — a bad Saturday write is unrecoverable by Sunday afternoon.
 
 **23.** Set up an **independent** nightly `pg_dump` to object storage you control (B2/S3) — a copy
 that does not depend on Neon being reachable or solvent. Run it from `mill-dev` for now; move it
@@ -333,16 +352,21 @@ is using. The rollback is real, not stale.
 
 ## Phase K — Rollback window, then decommission
 
-**65.** Leave the Vercel deployment intact for several days of stable operation.
+**65.** Leave the muster Vercel project intact — building from `production` — for several days of
+stable operation.
 
 **66.** ⚠️ **Never rescale the old Hetzner CCX23 during this window** — a resize re-prices it from
 $39.99 to $102.99.
 
-**67.** Once stable: decommission Vercel. Nothing depends on the account any more — the database
-moved out in Phase D, which is what makes this step possible at all.
+**67.** Once stable: decommission the **muster project** on Vercel — set
+`git.deploymentEnabled` false or delete the project. ⚠️ **The Vercel account stays.** Other
+projects deploy from it, and a second Neon project (`neon-blue-cloud`, `autumn-heart-75034866`)
+lives in the same Vercel-managed org. Do not touch the account, the org, or that project.
 
-**68.** Delete the **old** Neon project (the one in Vercel's org) only after Vercel is gone and
-you have a verified dump of it in your own storage.
+**68.** Delete the **old** Neon project (`delicate-art-65084110`, in Vercel's org) only after step
+67 is done and you have a verified dump of it in your own storage. Deleting the muster Vercel
+project may or may not tear the store down with it — either way, do not rely on that, and do not
+let it reach `neon-blue-cloud`.
 
 **69.** `docs/DEPLOY.md` now describes a topology that no longer exists. Rewrite it or mark it
 superseded by this document. Two live runbooks describing incompatible topologies is how someone

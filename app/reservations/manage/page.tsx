@@ -174,8 +174,12 @@ export default async function ManagePage({ searchParams }: { searchParams: Promi
                 ) : (
                   <>
                     <Row label="Paid so far" value={formatCents(m.paidCents)} mono />
+                    {/* "charged" promised an automatic collection that does not exist — nothing in
+                        Muster reads `balanceDueDaysBeforeEvent` on a schedule (#617; #712 is the
+                        unbuilt auto-collect). The obligation is real; the mechanism is a link the
+                        operator sends, so the label states the first and claims nothing about the second. */}
                     {m.balanceCents > 0 && (
-                      <Row label="Balance · charged before your trip" value={formatCents(m.balanceCents)} mono strong />
+                      <Row label="Balance · due before your trip" value={formatCents(m.balanceCents)} mono strong />
                     )}
                   </>
                 )}

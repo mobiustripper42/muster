@@ -378,7 +378,10 @@ function InnerForm(p: InnerProps) {
                   <span className="font-mono">{money(p.dueNowCents)}</span>
                 </div>
                 <div className="flex justify-between py-1 text-faint">
-                  <span>Balance · charged before your trip</span>
+                  {/* Not "charged" — nothing collects this automatically (#617; #712 is the
+                      unbuilt auto-collect). Promising it at the point of sale is the worst
+                      place to promise it. */}
+                  <span>Balance · due before your trip</span>
                   <span className="font-mono">{money(p.money.balanceLaterCents)}</span>
                 </div>
               </>

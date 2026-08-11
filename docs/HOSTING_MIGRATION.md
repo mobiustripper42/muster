@@ -64,7 +64,19 @@ enough to change the plan if it fails.
 From a CLI session on `mill-dev`. Both `neon` and `vercel` in `.mcp.json` are remote/OAuth, so a
 non-interactive session cannot authorize them.
 
-**1.** Run `/mcp`. Authorize **neon** and **vercel** in the browser. One-time per machine.
+**1.** ✅ **Done 2026-08-11.** Neon and Vercel are reachable, but by **different routes** — this
+matters at step 18:
+
+   - **Neon — MCP.** `/mcp` → authorize `neon`. Working.
+   - **Vercel — the CLI, not MCP.** `npm i -g vercel && vercel login` (logged in as
+     `spinkbickle-7788`). Use `vercel …` for every Vercel step in this runbook. **Do not go back
+     to `/mcp` for Vercel.**
+
+> Why the CLI won for Vercel: step 18 is a **write** (set the env vars, then force a redeploy),
+> and the CLI certainly does that. The login also persists per-machine rather than per-client —
+> `/mcp` run through Remote Control authorizes the Desktop process, whose token store a terminal
+> session cannot see. And typing connection strings into the CLI yourself keeps them out of an
+> agent transcript.
 
 **2.** **Reassemble the production env — you cannot export it.** `vercel env pull` prints
 `[Sensitive]` in place of the values, so there is no export step; every secret has to come from

@@ -574,6 +574,9 @@ function PaneActions({
         (actions.confirmingCancel ? (
           <form action={cancelBooking} className="mb-3" data-testid="cancel-confirm">
             {hidden}
+            {/* Kept when the rest of the explanations were cut: the button covers the money,
+                and nothing else on screen says a text lands on a crew member's phone. */}
+            <p className="mb-2 text-xs text-muted">Frees the boat and tells the crew.</p>
             {/* Both figures are rendered NEXT TO their option rather than in one line that
                 updates on selection. With no client JS a single figure could not follow the
                 radio, and a number that silently belongs to the other choice is worse than no
@@ -618,6 +621,11 @@ function PaneActions({
                   placeholder="blank = the amount for your reason"
                   className="min-h-[44px] w-full rounded-lg border border-line bg-bg px-2 font-mono text-sm text-ink"
                 />
+                {/* The box arrives prefilled with the policy figure, so nothing suggests zero is
+                    allowed — and cancelling without refunding is a real choice inside the
+                    14-day window. Four characters for a capability that otherwise needs
+                    someone to have told you. */}
+                <p className="mt-1 text-[11px] text-faint">0 = no refund</p>
                 {/* Fills the box to match the chosen reason, and backs off the moment the
                     operator types. Purely additive — with JS off the box stays blank, and blank
                     already means "use the figure for the reason posted" (DEC-147 rule 2). */}
@@ -673,6 +681,11 @@ function PaneActions({
       {!confirming && (
           <form action={resendConfirmation}>
           {hidden}
+          {/* Only the no-contact reason survives. A greyed resend under a "Cancelled" chip
+            explains itself; a greyed resend on a live booking has no visible cause at all. */}
+          {!actions.canResend && (
+            <p className="mb-1 text-[11px] text-faint">No email or phone on this booking.</p>
+          )}
           <SubmitButton
             data-commits="resend"
             disabled={!actions.canResend || cancelled}

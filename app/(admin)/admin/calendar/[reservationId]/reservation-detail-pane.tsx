@@ -325,12 +325,21 @@ export function ReservationDetailPane({
                   <span className="font-mono">{formatCents(money.refundedCents)}</span>
                 </Row>
               )}
-              <Row label={money.balanceCents > 0 ? "Balance due" : "Balance"}>
-                <span
-                  className={`font-mono ${money.balanceCents > 0 ? "font-semibold text-ink" : "text-muted"}`}
-                >
-                  {money.balanceCents > 0 ? formatCents(money.balanceCents) : "Settled"}
-                </span>
+              {/* **A cancelled booking owes nothing.** `balanceOwedCents` is fare+tax minus what
+                  was paid, which is a live number for a live trip and meaningless once the trip
+                  is off — it kept reading "Balance due $445.36" in bold on a booking that had
+                  just been cancelled AND refunded. The balance LINK was already hidden for this
+                  case (#616); the figure it was hidden because of was still on screen. */}
+              <Row label="Balance">
+                {v.status === "cancelled" ? (
+                  <span className="text-muted">Not owed — cancelled</span>
+                ) : (
+                  <span
+                    className={`font-mono ${money.balanceCents > 0 ? "font-semibold text-ink" : "text-muted"}`}
+                  >
+                    {money.balanceCents > 0 ? formatCents(money.balanceCents) : "Settled"}
+                  </span>
+                )}
               </Row>
             </div>
           </div>
@@ -525,16 +534,12 @@ function PaneActions({
               inputMode="decimal"
               defaultValue={actions.refundPrefill}
               className="min-h-[44px] min-w-0 flex-1 rounded-lg border border-line bg-bg px-2 font-mono text-sm text-ink"
-              aria-describedby="refund-help"
             />
             <SubmitButton className="min-h-[44px] rounded-lg border border-line bg-ink px-3 text-sm font-medium text-white">
               Refund
             </SubmitButton>
           </div>
-          <p id="refund-help" className="mt-1 text-[11px] text-faint">
-            Goes back on the card it came from. Split across the deposit and balance charges
-            automatically, newest first.
-          </p>
+
         </form>
       )}
 
@@ -569,12 +574,6 @@ function PaneActions({
         (actions.confirmingCancel ? (
           <form action={cancelBooking} className="mb-3" data-testid="cancel-confirm">
             {hidden}
-            <p className="mb-2 text-xs text-muted">
-              This frees the boat and tells the crew they’re off
-              {actions.refundableCents > 0
-                ? ", and refunds the amount you set here in the same press."
-                : ". Nothing has been paid on this booking, so there is nothing to refund."}
-            </p>
             {/* Both figures are rendered NEXT TO their option rather than in one line that
                 updates on selection. With no client JS a single figure could not follow the
                 radio, and a number that silently belongs to the other choice is worse than no
@@ -609,7 +608,7 @@ function PaneActions({
             {actions.refundableCents > 0 && (
               <div className="mb-2">
                 <label className="mb-1 block text-xs text-muted" htmlFor="cancel-refund-amount">
-                  Refund — leave blank to use the amount for the reason you picked
+                  Refund amount
                 </label>
                 <input
                   id="cancel-refund-amount"
@@ -618,12 +617,7 @@ function PaneActions({
                   inputMode="decimal"
                   placeholder="blank = the amount for your reason"
                   className="min-h-[44px] w-full rounded-lg border border-line bg-bg px-2 font-mono text-sm text-ink"
-                  aria-describedby="cancel-refund-help"
                 />
-                <p id="cancel-refund-help" className="mt-1 text-[11px] text-faint">
-                  Enter <span className="font-mono">0</span> to cancel without refunding anything.
-                  Up to {formatCents(actions.refundableCents)}.
-                </p>
                 {/* Fills the box to match the chosen reason, and backs off the moment the
                     operator types. Purely additive — with JS off the box stays blank, and blank
                     already means "use the figure for the reason posted" (DEC-147 rule 2). */}
@@ -686,13 +680,7 @@ function PaneActions({
           >
             Resend confirmation + manage link
           </SubmitButton>
-          {(cancelled || !actions.canResend) && (
-            <p className="mt-1 text-[11px] text-faint">
-              {cancelled
-                ? "Cancelled bookings can’t be re-confirmed — it would tell the customer their trip is on."
-                : "No email or phone on this booking, so there’s nowhere to send."}
-            </p>
-          )}
+  
         </form>
       )}
 

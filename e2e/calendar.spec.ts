@@ -403,7 +403,14 @@ test.describe("admin reservation actions (#616)", () => {
     await signInAsAdmin(page, "spink");
     await page.goto(detail("&cancel=1"));
 
-    await expect(page.getByTestId("cancel-confirm")).toContainText("nothing to refund");
+    // The explanatory sentence was cut (operator: too many words). What says "nothing to
+    // refund" now is the data itself — both reasons quote $0.00, there is no amount field, and
+    // the button is single-purpose. Assert those rather than prose, which is the more durable
+    // thing to pin anyway.
+    const confirm = page.getByTestId("cancel-confirm");
+    await expect(confirm).toContainText("$0.00");
+    await expect(confirm.locator('input[name="amount"]')).toHaveCount(0);
+    await expect(confirm.getByRole("button", { name: "Cancel this booking" })).toBeVisible();
     await expect(page.getByTestId("refund-form")).toHaveCount(0);
 
     await page.getByRole("button", { name: CANCEL_BUTTON }).click();
@@ -744,8 +751,10 @@ test.describe("admin reservation actions (#616)", () => {
       await page.goto(detail("&cancel=1"));
 
       const confirm = page.getByTestId("cancel-confirm");
+      // Empty with JS off — which is the whole contract: empty means "server computes the figure
+      // for the reason posted". The label no longer spells that out (operator: too many words),
+      // so this assertion is now the only place the contract is stated.
       await expect(confirm.locator('input[name="amount"]')).toHaveValue("");
-      await expect(confirm).toContainText("leave blank to use the amount for the reason you picked");
 
       // Post it blank, having chosen the NON-default reason — the case a prefill would get wrong.
       await confirm.getByRole("radio").nth(1).check();

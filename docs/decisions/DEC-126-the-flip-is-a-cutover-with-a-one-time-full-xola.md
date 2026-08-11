@@ -13,7 +13,7 @@ amends_spec:
   - section: "0.3"
     scope: "the arc ends in a cutover with a one-time full Xola import — it had been written to \"no cutover\""
   - section: "4"
-    scope: "the historical-data park is settled by the cutover import, not left as a read-only archive"
+    scope: "the historical-data park is settled for the current season's forward book, which the cutover import brings across; pre-2026 reservations are never imported and the read-only archive posture stands for them"
 ---
 
 ## DEC-126: The flip is a cutover with a one-time full Xola import — Muster becomes the reservation source of truth, and the cutover is reversible
@@ -24,10 +24,14 @@ build**. Evolves DEC-105 (see the reconciliation below).
 **Decision.** The flip from Xola to Muster is a **cutover**, not the "Xola drains naturally, no migration"
 picture DEC-105 first painted. At cutover:
 
-1. **One-time full import of ALL Xola reservations into Muster.** After it, **Muster is the single source
-   of truth for reservations** — availability (DEC-125) sees *every* booking (imported + Muster-native), so
-   nothing double-books. This is the whole reason the import exists: a reservation only avoids collision if
-   it lives where the availability check looks, and post-cutover that's Muster.
+1. **One-time import of this season's forward book — the Xola trips dated after the cutover** (~47 records,
+   operator 2026-08-11). After it, **Muster is the single source of truth for reservations** — availability
+   (DEC-125) sees *every* booking (imported + Muster-native), so nothing double-books. This is the whole
+   reason the import exists: a reservation only avoids collision if it lives where the availability check
+   looks, and post-cutover that's Muster. That rationale is also what bounds the import — a trip that has
+   already run occupies no future slot, so importing it buys the availability check nothing. **Xola's
+   2024/25 history and 2026's already-run trips stay in Xola, read-only.** (This paragraph read "full
+   import of ALL Xola reservations" until 2026-08-11; nothing was built against it.)
 2. **Money stays in Xola for the imported bookings.** Muster manages the *reservation* (arrival, cancel,
    roster, message); Xola keeps the *money* for anything it sold. New Muster-native bookings run through
    Stripe (DEC-107). So a Muster reservation may point at money held in either system.

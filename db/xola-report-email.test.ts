@@ -15,6 +15,7 @@
  * This runs under `db/**` in the vitest include (see vitest.config.ts) — `db/` scripts
  * carry guards, and a guard nobody tests is a guard nobody trusts.
  */
+import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
 import {
   parseRecipients,
@@ -22,7 +23,48 @@ import {
   hoistSections,
   countUnaudited,
   urgentCounts,
+  parseCounts,
+  URGENT,
+  UNAUDITED_FLAG,
 } from "./xola-report-email.js";
+
+/**
+ * Every helper here parses text emitted by `db/xola-report.ts`. That is a string contract
+ * across two files with no type between them, and `db/` is in no typecheck or lint — so a
+ * reworded section title would break the parse silently, and `subjectFor` would then report
+ * "nothing to act on" on a genuinely over-capacity morning.
+ *
+ * The fixtures below cannot catch that on their own: rewording the title and updating the
+ * fixture keeps them green. This block reads the REAL source and asserts the literals are
+ * still there, which is the only end of the contract a fixture cannot fake.
+ */
+describe("the string contract with db/xola-report.ts", () => {
+  const REPORT_SRC = readFileSync(new URL("./xola-report.ts", import.meta.url), "utf8");
+
+  it.each(URGENT)("still emits a section titled %s", (title) => {
+    expect(REPORT_SRC).toContain(`section("${title}`);
+  });
+
+  it("still raises the exact flag text countUnaudited looks for", () => {
+    expect(REPORT_SRC).toContain(`flags.push("${UNAUDITED_FLAG}")`);
+  });
+
+  it("still prints the summary line parseCounts scrapes", () => {
+    expect(REPORT_SRC).toContain("reservation line(s), ");
+  });
+});
+
+describe("parseCounts", () => {
+  it("reads the report's own summary line", () => {
+    expect(parseCounts("\n49 reservation line(s), 16 flagged.\n")).toEqual({ total: 49, flagged: 16 });
+  });
+
+  it("returns zeroes when the line never appeared — a crash before the summary", () => {
+    // total: 0 is what drives the "NO ROWS returned" subject, so this path must not
+    // invent a number that makes a dead run look like a quiet one.
+    expect(parseCounts("Pulling Xola orders…\nXolaError: 500\n")).toEqual({ total: 0, flagged: 0 });
+  });
+});
 
 describe("parseRecipients", () => {
   it("splits a comma list and trims whitespace", () => {
@@ -125,7 +167,7 @@ describe("hoistSections", () => {
 
 describe("subjectFor", () => {
   it("names the failure when the report exited non-zero — never a clean-looking subject", () => {
-    const s = subjectFor({ ok: false, total: 0, over: 0, chase: 0 });
+    const s = subjectFor({ ok: false, total: 0, over: 0, chase: 0, unaudited: 0 });
     expect(s).toMatch(/FAILED/);
     expect(s).not.toMatch(/nothing to act on/i);
   });
@@ -133,31 +175,46 @@ describe("subjectFor", () => {
   it("names the failure even when the crashed run happened to parse a clean count", () => {
     // The dangerous case: the script printed its summary, THEN died. Counts look fine.
     // Exit status is the authority, not the numbers scraped out of the output.
-    expect(subjectFor({ ok: false, total: 47, over: 0, chase: 0 })).toMatch(/FAILED/);
+    expect(subjectFor({ ok: false, total: 47, over: 0, chase: 0, unaudited: 0 })).toMatch(/FAILED/);
   });
 
   it("counts only what needs acting on — not every row carrying a flag", () => {
     // The failure this replaces: "17 flagged of 49" on a morning whose only real item was one
     // payment to chase. 15 of the 17 were extras that were paid for and fit the boat.
-    expect(subjectFor({ ok: true, total: 49, over: 1, chase: 1 })).toBe(
+    expect(subjectFor({ ok: true, total: 49, over: 1, chase: 1, unaudited: 0 })).toBe(
       "Xola daily — 1 over capacity, 1 to chase",
     );
   });
 
   it("still names an over-capacity boat when there is no money to chase", () => {
-    expect(subjectFor({ ok: true, total: 49, over: 2, chase: 0 })).toBe("Xola daily — 2 over capacity");
+    expect(subjectFor({ ok: true, total: 49, over: 2, chase: 0, unaudited: 0 })).toBe("Xola daily — 2 over capacity");
   });
 
   it("says nothing to act on explicitly, with the line count to prove it ran", () => {
-    expect(subjectFor({ ok: true, total: 49, over: 0, chase: 0 })).toBe(
+    expect(subjectFor({ ok: true, total: 49, over: 0, chase: 0, unaudited: 0 })).toBe(
       "Xola daily — nothing to act on, 49 lines",
+    );
+  });
+
+  it("never says nothing to act on while a live trip went unaudited", () => {
+    // The defect this pins: the ⚠ was written into the BODY only, so a morning with an
+    // unresolved boat and no other finding read "nothing to act on" on a locked phone —
+    // the precise misleading-subject failure this file exists to prevent.
+    const s = subjectFor({ ok: true, total: 49, over: 0, chase: 0, unaudited: 2 });
+    expect(s).not.toMatch(/nothing to act on/);
+    expect(s).toContain("2 unaudited");
+  });
+
+  it("carries unaudited alongside the other counts rather than replacing them", () => {
+    expect(subjectFor({ ok: true, total: 49, over: 1, chase: 1, unaudited: 3 })).toBe(
+      "Xola daily — 1 over capacity, 1 to chase, 3 unaudited",
     );
   });
 
   it("distinguishes a quiet morning from one that returned no rows at all", () => {
     // Zero rows is not the same as zero to act on: a pull that silently returned nothing must
     // never read as quiet.
-    expect(subjectFor({ ok: true, total: 0, over: 0, chase: 0 })).toMatch(/NO ROWS/);
+    expect(subjectFor({ ok: true, total: 0, over: 0, chase: 0, unaudited: 0 })).toMatch(/NO ROWS/);
   });
 });
 

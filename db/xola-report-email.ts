@@ -46,6 +46,8 @@ export interface RunOutcome {
   over: number;
   /** Declared-but-unpaid guests — money to chase. */
   chase: number;
+  /** Live trips whose boat never resolved, so no capacity check ran on them. */
+  unaudited: number;
 }
 
 /**
@@ -87,6 +89,9 @@ export function subjectFor(o: RunOutcome): string {
   const parts: string[] = [];
   if (o.over > 0) parts.push(`${o.over} over capacity`);
   if (o.chase > 0) parts.push(`${o.chase} to chase`);
+  // A row that skipped its check is not a quiet row. Putting this in the body alone let a
+  // morning with an unresolved boat read "nothing to act on" on a locked phone.
+  if (o.unaudited > 0) parts.push(`${o.unaudited} unaudited`);
   if (parts.length === 0) return `Xola daily — nothing to act on, ${o.total} lines`;
   return `Xola daily — ${parts.join(", ")}`;
 }
@@ -98,7 +103,13 @@ export function subjectFor(o: RunOutcome): string {
  *
  * Hoisted, not copied — a duplicated section reads as two findings.
  */
-const URGENT = ["OVER CAPACITY", "DECLARED ≠ PAID"];
+/**
+ * Exported so the test can assert `db/xola-report.ts` still emits these literals. The contract
+ * between the two files is plain text with no type across it, and `db/` is in no typecheck or
+ * lint — a reworded title would send both counts to 0 and print "nothing to act on" on a real
+ * over-capacity morning. A fixture cannot catch that; only reading the other file's source can.
+ */
+export const URGENT = ["OVER CAPACITY", "DECLARED ≠ PAID"] as const;
 
 export function hoistSections(stderr: string): { hoisted: string; rest: string } {
   const lines = stderr.split("\n");
@@ -140,8 +151,10 @@ export function hoistSections(stderr: string): { hoisted: string; rest: string }
  * trips on the first run of this wrapper. `stderr` is accepted but deliberately unused for the
  * count: it is here so nobody re-reaches for it.
  */
+export const UNAUDITED_FLAG = "UNAUDITED — no boat resolved";
+
 export function countUnaudited(stdout: string, _stderr: string): number {
-  return stdout.split("\n").filter((l) => l.includes("UNAUDITED — no boat resolved")).length;
+  return stdout.split("\n").filter((l) => l.includes(UNAUDITED_FLAG)).length;
 }
 
 /** Scrape `N reservation line(s), M flagged.` out of the report's own summary line. */
@@ -216,15 +229,15 @@ async function main(): Promise<never> {
   const { ok, stdout, stderr } = await runReport();
   const { total } = parseCounts(stderr);
   const { over, chase } = urgentCounts(stderr);
-  const subject = subjectFor({ ok, total, over, chase });
+  const unaudited = countUnaudited(stdout, stderr);
+  const subject = subjectFor({ ok, total, over, chase, unaudited });
   const { hoisted, rest } = hoistSections(stderr);
 
   // A LIVE trip whose boat never resolved got no capacity check and still printed looking clean —
   // worth as much attention as an over-capacity row, so it goes up top rather than buried in the
-  // pull diagnostics. Cancelled trips are excluded: their events are gone because they were
-  // cancelled, and warning about them every morning is how a ⚠ becomes wallpaper.
-  const unaudited = countUnaudited(stdout, stderr);
-
+  // pull diagnostics, AND into the subject above. Cancelled trips are excluded: their events are
+  // gone because they were cancelled, and warning about them every morning is how a ⚠ becomes
+  // wallpaper.
   const header = [
     subject,
     `Run at ${new Date().toISOString()} (report exit: ${ok ? "ok" : "FAILED"})`,

@@ -20,10 +20,10 @@ next-env.d.ts
 /playwright-report/
 /playwright/.cache/
 
-# Env / secrets
-.env
-.env.*
-!.env.example
+# Env / secrets — everything matching .env* is a secret, no exceptions (DEC-S043).
+# The template is `env.example`, outside this namespace, so there is no negation
+# to keep in sync and no doubt about whether a given env file is ignored.
+.env*
 
 # Local DB scratch (in-memory/SQLite throwaway persistence for M0–M3)
 *.sqlite
@@ -37,8 +37,6 @@ __pycache__/
 # OS / editor
 .DS_Store
 *.log
-.env*
-!.env.example
 
 # Editor swap files (a populated .env swap would otherwise leak secrets — 10.3)
 *.sw[a-p]

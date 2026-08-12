@@ -173,7 +173,7 @@ Read 2026-08-11 via `vercel project inspect muster`:
 | Owner / team | `MobiusTripper` (`mobiustripper`) |
 | **Node.js Version** | **24.x** |
 | Framework | Next.js (`next ^16.2.7`), build `npm run build`, root `.` |
-| Plan tier | ⬜ **not recorded** — `vercel teams ls` doesn't report it; read it in the dashboard |
+| Plan tier | **Pro** (dashboard → team → Settings → Billing) |
 
 > ⚠️ **Production builds on Node 24, not 22.** This document previously said "verified building on
 > v22.22.2" — that was `mill-dev`'s local Node, not the version Vercel uses. So the box should

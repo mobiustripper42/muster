@@ -1804,7 +1804,7 @@ cross-referencing two screens (~10 min/week at BrewBoat volume).
 > **Amended by DEC-036 — "Explicitly killed · The Xola API bolt-on" is un-killed — DEC-011's kill rested on a premise falsified by a working client proven live 2026-06-15**
 > **Amended by DEC-105 — the customer portal and payments parks expire — both land in 2026**
 > **Amended by DEC-124 — the payments park no longer covers gratuity — Muster collects and exposes tips, though it does not own the split**
-> **Amended by DEC-126 — the historical-data park is settled by the cutover import, not left as a read-only archive**
+> **Amended by DEC-126 — the historical-data park is settled for the current season's forward book, which the cutover import brings across; pre-2026 reservations are never imported and the read-only archive posture stands for them**
 <!-- /amended-by-dec -->
 
 These are inherited deferrals (§0.2). Listed so they're visible and owned — **not** to be designed

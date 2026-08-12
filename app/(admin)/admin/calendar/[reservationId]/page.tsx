@@ -239,7 +239,7 @@ export default async function ReservationDetailPage({
           refundableCents: refundable,
           // The resend copy names the address and number it reached (#686). Read off the
           // reservation rather than round-tripped on the query string — a contact detail is
-          // prose, and DEC-026 keeps prose out of redirect params.
+          // prose, and DEC-147 keeps prose out of redirect params.
           ...(reservation.email ? { email: reservation.email } : {}),
           ...(reservation.phone ? { phone: reservation.phone } : {}),
         })

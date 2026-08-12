@@ -361,8 +361,20 @@ export async function resendConfirmation(formData: FormData): Promise<void> {
   // just happened, in writing. Security review.
   if (reservation.status !== "booked") redirect(back({ resendErr: "cancelled" }));
 
-  const outcome = await resendReservationLink(reservation);
-  // Codes only on the query string, never prose (DEC-026) — the page maps them to copy. The
+  // Wrapped like every other core call in this file (`createBalanceCheckout`, `cancelReservation`,
+  // `refundReservation`). `resendReservationLink` builds its own channels and calls `getRepo()`
+  // again, and unlike `sendReservationConfirmation` — which wraps its whole body because the
+  // webhook cannot tolerate a throw — it deliberately does not swallow. So a pool hiccup here
+  // would escape a server action instead of landing on the `unreachable` copy that already exists
+  // three times over on this page.
+  let outcome: Awaited<ReturnType<typeof resendReservationLink>>;
+  try {
+    outcome = await resendReservationLink(reservation);
+  } catch {
+    redirect(back({ resendErr: "unreachable" }));
+  }
+  // Codes only on the query string, never prose (DEC-147, not DEC-026 — see that DEC's own
+  // banner about ~34 comments mis-citing it). The page maps them to copy. The
   // pair is what makes the message truthful: `sent-absent` is an email-only booking, which the
   // old flat `resent=1` reported identically to a successful two-channel send.
   if (outcome.kind === "skipped") redirect(back({ resendErr: outcome.reason }));

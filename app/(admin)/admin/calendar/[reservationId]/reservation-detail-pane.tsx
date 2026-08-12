@@ -141,12 +141,26 @@ export function actionMessage(
       ].filter(Boolean);
       const head = sent.length ? `Link ${sent.join(" and ")}.` : "Link sent again.";
       if (failed.length) return `${head} But ${failed.join(" and ")} — try again or call them.`;
-      // Silence about a channel the booking never had would read as "both went". Say it.
+      // `absent` covers two different facts and the operator needs them apart:
+      //   - the BOOKING has no such contact — nothing to fix, nothing to chase;
+      //   - the DEPLOYMENT has no channel for a contact that IS there — the customer has a phone
+      //     number sitting untried, which is the difference between "done" and "also call them".
+      // Silence on either reads as "both went".
       const missing = [
         emailState === "absent" && !opts.email ? "email" : "",
         smsState === "absent" && !opts.phone ? "phone" : "",
       ].filter(Boolean);
-      return missing.length ? `${head} No ${missing.join(" or ")} on this booking.` : head;
+      const untried = [
+        emailState === "absent" && opts.email ? `email (${opts.email})` : "",
+        smsState === "absent" && opts.phone ? `text (${opts.phone})` : "",
+      ].filter(Boolean);
+      const tail = [
+        missing.length ? `No ${missing.join(" or ")} on this booking.` : "",
+        untried.length
+          ? `Not tried: ${untried.join(" and ")} — no channel configured for it here.`
+          : "",
+      ].filter(Boolean);
+      return tail.length ? `${head} ${tail.join(" ")}` : head;
     }
     case "cancelErr":
       return value === "not_muster"

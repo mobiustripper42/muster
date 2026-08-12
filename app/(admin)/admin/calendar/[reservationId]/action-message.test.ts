@@ -30,6 +30,17 @@ describe("actionMessage — resent", () => {
     expect(m).not.toContain("emailed");
   });
 
+  it("says a contact was not tried when the deployment has no channel for it", () => {
+    // The gap: `absent` means EITHER the booking has no such contact OR this deployment has no
+    // channel configured for it. Both render as "we didn't send there", and only the first was
+    // being reported. On a half-configured deployment (email up, Twilio down) the operator saw
+    // "Link emailed X." with no hint that a phone number sat there untried — not a false success,
+    // but the one fact they need to decide whether to also pick up the phone.
+    const m = actionMessage("resent", "sent-absent", CONTACTS);
+    expect(m).toContain("marcus@example.com");
+    expect(m).toMatch(/not tried|no SMS/i);
+  });
+
   it("reports a partial failure as a failure, alongside what did get out", () => {
     const m = actionMessage("resent", "failed-sent", CONTACTS);
     expect(m).toContain("+1 216 555 0148");

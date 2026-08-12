@@ -111,8 +111,14 @@ describe("resendBookingLinkBody", () => {
   it("stays inside GSM-7", () => {
     // The body ships verbatim as SMS. One character outside GSM-7 re-encodes the WHOLE message
     // as UCS-2 — 67 chars per segment instead of 153. An em dash did exactly that at #619.
-    const body = resendBookingLinkBody(reservation(), "https://muster.example/reservations/manage?r=x&t=y");
-    expect(nonGsm7Chars(body)).toEqual([]);
+    // `ignore` the interpolated name, per `sms-alphabet.ts` and both sibling tests
+    // (`sold-out-notice.test.ts`, `booking-confirmation.test.ts`): a customer's own name can
+    // legitimately force UCS-2 and is not ours to control. Without it this asserts the fixture
+    // name happens to be ASCII rather than the TEMPLATE's own GSM-7 safety, which is the thing
+    // under test.
+    const r = reservation({ customerName: "Zoë Ångström" });
+    const body = resendBookingLinkBody(r, "https://muster.example/reservations/manage?r=x&t=y");
+    expect(nonGsm7Chars(body, ["Zoë"])).toEqual([]);
   });
 
   it("does not claim the booking was just made — this is a resend, not a confirmation", () => {

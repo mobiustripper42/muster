@@ -78,7 +78,13 @@ matters at step 18:
 > session cannot see. And typing connection strings into the CLI yourself keeps them out of an
 > agent transcript.
 
-**2.** **Reassemble the production env — you cannot export it.** `vercel env pull` prints
+**2.** ⬜ **OPEN — blocked on being at a computer.** The inventory below is complete and the flag
+values are confirmed (step 5). What remains is copying the **Sensitive values** into the scratch
+file: `SESSION_SECRET`, `CRON_SECRET`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`,
+`TWILIO_MESSAGING_SERVICE_SID`, `RESEND_API_KEY`, `XOLA_API_KEY`, `XOLA_SELLER_ID`. Nothing before
+Phase G needs them.
+
+**Reassemble the production env — you cannot export it.** `vercel env pull` prints
 `[Sensitive]` in place of the values, so there is no export step; every secret has to come from
 the system that issued it. The single easiest thing to lose in this migration.
 
@@ -187,7 +193,10 @@ Read 2026-08-11 via `vercel project inspect muster`:
 has watched succeed here was on 22. `npm ci && npm run build` under Node 24 on `mill-dev`, or on
 the box at step 42.
 
-**4.** Record from Neon:
+**4.** ⬜ **OPEN — blocked on being at a computer.** The first two items are recorded; the two
+connection strings are not. Phase D (step 14) is the first thing that needs them.
+
+Record from Neon:
    - `select filename from _migrations order by filename;` against `delicate-art-65084110` —
      **read 2026-08-11: 45 rows, `0001_init.sql` … `20260806230000_retire_muster_owned_vessel_days.sql`.**
      `db/migrations/` holds **46**. The one not applied in production is
@@ -198,15 +207,23 @@ the box at step 42.
    - Both connection strings for the current project — pooled and **direct/unpooled**. Save the
      direct one as `NEON_OLD_DIRECT`. **Copy these yourself from the Neon console.**
 
-**5.** ✅ **Mostly answered by step 2's listing (2026-08-11).** There are **four** flags, not three
-— `TIME_CLOCK` too (`app/lib/flags.ts:61`).
+**5.** ✅ **Answered 2026-08-11.** There are **four** flags, not three — `TIME_CLOCK` too
+(`app/lib/flags.ts:61`). Production state:
 
-   - **`MESSAGING` — OFF.** Not set in production at all. Per step 52, the 2-minute doorbell timer
-     is therefore inert; wire the timer anyway, but expect nothing from it.
-   - **`RESERVATIONS` — OFF.** Not set. Consistent with no Stripe keys and no
-     `RESERVATION_LINK_SECRET` in the environment.
-   - **`CREW_SELF_SERVE`, `TIME_CLOCK` — set, values not read.** Presence is not proof of ON.
-     Confirm the values yourself in the dashboard before writing the box's env file.
+   | Flag | State | Value on Vercel |
+   |---|---|---|
+   | `CREW_SELF_SERVE` | **ON** | `1` |
+   | `TIME_CLOCK` | **ON** | `1` |
+   | `MESSAGING` | **OFF** | not set |
+   | `RESERVATIONS` | **OFF** | not set |
+
+   Carry all four into the box's env file **explicitly**, including the two that are off — an
+   unset flag reads off today, but writing it down is what stops a later reader assuming it was
+   forgotten.
+
+   Consequences to hold on to: per step 52 the 2-minute doorbell timer is **inert** (`MESSAGING`
+   off), so wire it but expect nothing from it. And `RESERVATIONS` off is consistent with there
+   being no Stripe keys and no `RESERVATION_LINK_SECRET` in the environment.
 
 > ⚠️ **The flags do not share a truthy value.** `CREW_SELF_SERVE`, `MESSAGING` and `TIME_CLOCK`
 > test `=== "1"`; **`RESERVATIONS` tests `=== "true"`** (`app/lib/flags.ts:12,25,44,61`). Writing

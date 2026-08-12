@@ -6,7 +6,7 @@ branch: task/616-cancel-and-refund
 started: 2026-08-11T01:27:14Z
 ended:
 points:
-pr_numbers: [733, 734, 735]
+pr_numbers: [733, 734, 735, 737]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/e09c3178-c206-4232-92e5-d68538c4d699.jsonl
 ---
@@ -132,6 +132,55 @@ auth, no migration.
 **Points:** 3
 **Branch:** task/xola-daily-report-email
 **Opened at:** 2026-08-11T23:55:00Z
+
+## Task 4: The resend says which channels it reached, and dev gets a copyable manage link (issue #686)
+
+**Completed:**
+- `src/reservations/resend-booking-link.ts` (new, 10 tests, test-first) — per-channel resend with
+  `sent` / `failed` / `absent` kept apart; `app/lib/booking-confirmation.ts` gains
+  `resendReservationLink`; the pane action maps outcomes to redirect codes and `actionMessage`
+  renders them.
+- `app/lib/manage-link.ts` (new, 6 tests) — the off-production gate on a **Copy manage link**
+  control, plus the block in the detail pane.
+- `vitest.config.ts` gains the `@core` alias `tsconfig.json` already has.
+- `npm run verify` green (2124 tests / 152 files); `e2e/calendar.spec.ts` 42 passed, both widths.
+
+**Half the issue had already shipped and the issue did not know.** `resendConfirmation` landed with
+issue #616 — button, codes, Xola/cancelled refusals. Built as written, this would have added a
+SECOND button doing the same job. Found by reading the pane before writing, not after; the core
+module was already written by then, and it wired into the existing action instead.
+
+**The suite had been printing a lie every run since #616.** The e2e blanks Twilio and the seed
+booking is phone-only, so `resent=1` → "Confirmation and manage link sent again." over a deployment
+that sent nothing. `sendReservationConfirmation` returns `void` — correct inside the Stripe webhook,
+where a throw makes Stripe retry the event, and wrong behind a button someone is standing at.
+
+**My first cut reproduced the bug in a new place** — both channels `absent` still read "Link sent
+again." The new e2e caught it on its first run. Nothing out is never a success.
+
+**I cited DEC-026 for "codes not prose", twice, in a file whose DEC banner says ~34 comments make
+exactly that mistake and asks for correction as files are touched.** Caught by `@code-review`. It is
+DEC-147. A cited fact that is wrong is worse than an uncited one.
+
+**Playwright's strict mode caught a real ambiguity**, not just a test collision: two buttons in one
+pane both labelled "Copy link", carrying a Stripe checkout URL and a capability token. Renamed.
+
+**The copy link's gate cannot be e2e'd and the PR says so.** `E2E_PROD` defaults to `!CI`, so the
+suite is production-like locally and dev-like in CI — a spec asserting either direction passes in
+one place and fails in the other. Unit-tested pure function instead, the same route
+`app/lib/time-clock-gate.test.ts` took for its own gate. The PR's hand section carries the
+`next start` step no automated test here can perform.
+
+**Code review:** 4 findings (1 bug — the only unguarded core call in the file; 1 wrong DEC citation;
+1 half-truthful `absent`; 1 test-convention cleanup), all fixed in `fb04c77`.
+**Security review:** run — capability-URL token minting is a blast-radius trigger by the generic
+test even though no project path matches literally. 0 findings at confidence ≥ 8; it verified the
+gate returns before the token is derived, the URL never reaches a redirect param or a referrer, and
+the refusals still short-circuit.
+**PR:** [PR #737](https://github.com/mobiustripper42/muster/pull/737)
+**Points:** 3
+**Branch:** task/686-resend-and-copy-link
+**Opened at:** 2026-08-12T03:35:00Z
 
 **Next Steps:**
 

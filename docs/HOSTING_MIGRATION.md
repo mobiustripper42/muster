@@ -165,6 +165,28 @@ tuning vars above that are set.
 
 **3.** Record from Vercel: the **Node major version** the project builds on, and the plan tier.
 
+Read 2026-08-11 via `vercel project inspect muster`:
+
+| | |
+|---|---|
+| Project ID | `prj_S6nh8TpgUXtmAy9U9Ngifjw9lGvX` |
+| Owner / team | `MobiusTripper` (`mobiustripper`) |
+| **Node.js Version** | **24.x** |
+| Framework | Next.js (`next ^16.2.7`), build `npm run build`, root `.` |
+| Plan tier | ⬜ **not recorded** — `vercel teams ls` doesn't report it; read it in the dashboard |
+
+> ⚠️ **Production builds on Node 24, not 22.** This document previously said "verified building on
+> v22.22.2" — that was `mill-dev`'s local Node, not the version Vercel uses. So the box should
+> install **Node 24** (step 32) and step 9 should pin **24**, otherwise the cutover changes the
+> host *and* the Node major at the same time, and a failure afterwards has two candidate causes.
+>
+> The corollary is worth knowing on its own: **local builds on `mill-dev` are on a different Node
+> major than production**, and have been all along.
+
+**3a.** Confirm the build actually passes on Node 24 before relying on it — the only build anyone
+has watched succeed here was on 22. `npm ci && npm run build` under Node 24 on `mill-dev`, or on
+the box at step 42.
+
 **4.** Record from Neon:
    - `select filename from _migrations order by filename;` against `delicate-art-65084110` —
      **read 2026-08-11: 45 rows, `0001_init.sql` … `20260806230000_retire_muster_owned_vessel_days.sql`.**
@@ -210,8 +232,10 @@ ceiling. Raise to 10–20. Keep the pooled (`-pooler`) endpoint.
 `end()`s it. Fine on serverless, connection churn on a long-lived server, and the endpoint is
 unauthenticated. Use the shared pool from `app/lib/repo.ts`.
 
-**9.** **Pin Node.** Add `.nvmrc` and an `engines` field to `package.json`, matching step 3.
-There is currently no pin of any kind. (Verified building on v22.22.2.)
+**9.** **Pin Node to 24**, matching what Vercel builds on (step 3). Add `.nvmrc` and an `engines`
+field to `package.json` — confirmed 2026-08-11 that `package.json` has **no `engines` field and no
+pin of any kind**. Note `mill-dev` currently runs Node 22 under mise, so pinning 24 makes the
+mismatch visible instead of silent.
 
 **10.** *Optional:* set `output: 'standalone'` in `next.config.ts` — produces a self-contained
 server directory instead of needing the full 662 MB `node_modules` on the box. Decide before
@@ -307,7 +331,7 @@ restorable.
 **31.** Base hardening: non-root user with sudo, SSH key auth only, password auth off, firewall
 allowing **only** 22 + 80 + 443.
 
-**32.** Install Node at the version from step 3. Install `git`, `curl`, `postgresql-client`.
+**32.** Install **Node 24** (step 3). Install `git`, `curl`, `postgresql-client`.
 
 **33.** Add the box to Tailscale — gives you a private path for smoke-testing and admin CLI work.
 

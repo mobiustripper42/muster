@@ -11,6 +11,8 @@ import { Shell } from "../../../../../components/ui/shell";
 import { AdminSignedOut } from "../../../../../components/admin/admin-signed-out";
 import { VersionTag } from "../../../../../components/ui/version-tag";
 import { readSubject } from "../../../../lib/auth";
+import { isProdDeploy } from "../../../../lib/flags";
+import { operatorManageLink } from "../../../../lib/manage-link";
 import { getRepo } from "../../../../lib/repo";
 import {
   CalendarControls,
@@ -176,6 +178,17 @@ export default async function ReservationDetailPage({
   // (DEC-105), and a cancel here would be reverted by the next import.
   let actions: PaneActionState | undefined;
   if (reservation.source === "muster") {
+    // The manage link, for copying into a browser (#686) — **off production only**. It is a
+    // bearer token with no expiry and no revocation, so on prod it must never reach the
+    // operator's clipboard; same posture as `/crew/dev-link` (DEC-057). Built from the trusted
+    // APP_BASE_URL, never a Host header (see base-url.ts); unset env yields no link rather than
+    // a wrong one. This branch is already Muster-only — a Xola booking has no capability URL.
+    const manageUrl = operatorManageLink({
+      isProd: isProdDeploy(),
+      base: process.env.APP_BASE_URL?.replace(/\/+$/, ""),
+      secret: process.env.RESERVATION_LINK_SECRET,
+      reservationId: reservation.id,
+    });
     const detailHref = (extra: Record<string, string>): string => {
       const p = new URLSearchParams();
       if (sp.date) p.set("date", sp.date);
@@ -224,6 +237,11 @@ export default async function ReservationDetailPage({
       ? actionMessage(outcome[0], outcome[1] ?? "", {
           ...(movedCents !== undefined ? { movedCents } : {}),
           refundableCents: refundable,
+          // The resend copy names the address and number it reached (#686). Read off the
+          // reservation rather than round-tripped on the query string — a contact detail is
+          // prose, and DEC-026 keeps prose out of redirect params.
+          ...(reservation.email ? { email: reservation.email } : {}),
+          ...(reservation.phone ? { phone: reservation.phone } : {}),
         })
       : undefined;
     const isError = outcome ? outcome[0].endsWith("Err") : false;
@@ -264,6 +282,10 @@ export default async function ReservationDetailPage({
         : {}),
       refundBackHref: detailHref({}),
       canResend: Boolean(reservation.email || reservation.phone),
+      // Off-production only (#686), and only for a Muster booking — a Xola reservation has no
+      // capability URL at all (DEC-122). Built from the trusted APP_BASE_URL, never a Host
+      // header; unset env simply means no link rather than a wrong one.
+      ...(manageUrl ? { manageUrl } : {}),
       needsRelease:
         reservation.status === "cancelled" &&
         event.source === "muster" &&

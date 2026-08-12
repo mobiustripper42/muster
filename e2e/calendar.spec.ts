@@ -792,6 +792,27 @@ test.describe("admin reservation actions (#616)", () => {
     await expect(page.getByText(`open · ${shortLabel(BOOKED.time)}`)).toBeVisible();
   });
 
+  test("a resend that sent nothing says so, instead of a green Sent (#686)", async ({ page }) => {
+    // The suite blanks Twilio (`playwright.config.ts`) and the seed booking is phone-only, so
+    // this deployment has no channel for this booking's contact and NOTHING goes out. The old
+    // action redirected `resent=1` regardless and the pane printed "Confirmation and manage link
+    // sent again." — a green success over a send that never happened, on screen every time this
+    // suite ran. The first cut of the replacement reported it as "Link sent again." for the same
+    // reason; this test is what caught that.
+    //
+    // The per-channel copy (which address, which number, which one failed) is pinned in
+    // `action-message.test.ts`, where every outcome can be driven directly. This asserts the one
+    // end-to-end fact only a running deployment decides.
+    await signInAsAdmin(page, "spink");
+    await page.goto(detail());
+
+    await page.getByRole("button", { name: /Resend confirmation/ }).click();
+    await page.waitForURL(/resent=|resendErr=/);
+
+    await expect(page.getByTestId("action-error")).toContainText("Nothing was sent");
+    await expect(page.getByTestId("action-done")).toHaveCount(0);
+  });
+
   test("a half-applied cancel offers a repair instead of stranding the boat", async ({ page }) => {
     // The state a crash between `cancelReservation`'s two writes leaves: reservation Cancelled,
     // event still scheduled — so the hull is still held, the crew were never told, and the pane

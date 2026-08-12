@@ -17,7 +17,7 @@ import {
 } from "@core/reservations/refund-payment.js";
 import type { Reservation } from "@core/domain/entities.js";
 import { forwardFormNotices } from "../../../../lib/channel";
-import { sendReservationConfirmation } from "../../../../lib/booking-confirmation";
+import { resendReservationLink } from "../../../../lib/booking-confirmation";
 import { readSubject } from "../../../../lib/auth";
 import { getRepo } from "../../../../lib/repo";
 
@@ -329,9 +329,16 @@ export async function refundBooking(formData: FormData): Promise<void> {
  * notice so the operator can resend") and there was no way to do it.
  *
  * The precondition worth checking here is the one that actually fails: a reservation with
- * neither an email nor a phone has nowhere to send. Channel-level failures stay in the logs —
- * `sendReservationConfirmation` is structurally best-effort for the webhook's sake and does
- * not report back, so this reports "sent" meaning "handed to the channels", not "delivered".
+ * neither an email nor a phone has nowhere to send.
+ *
+ * **It reports per channel (#686).** It used to redirect `resent=1` whatever happened, because
+ * the confirmation emitter returns `void` — right inside the Stripe webhook, where nobody is
+ * watching and a throw makes Stripe retry the event, but wrong behind a button. An email-only
+ * booking, a Twilio outage and a two-channel success all rendered as the same green "Sent".
+ * `resendReservationLink` hands the outcome back and the pair travels as a code.
+ *
+ * "Sent" still means handed to the medium, not delivered — Resend accepting an email is not the
+ * customer receiving it. What it no longer means is "we tried nothing and called it success".
  */
 export async function resendConfirmation(formData: FormData): Promise<void> {
   const subject = await readSubject();
@@ -354,6 +361,21 @@ export async function resendConfirmation(formData: FormData): Promise<void> {
   // just happened, in writing. Security review.
   if (reservation.status !== "booked") redirect(back({ resendErr: "cancelled" }));
 
-  await sendReservationConfirmation(reservation);
-  redirect(back({ resent: "1" }));
+  const outcome = await resendReservationLink(reservation);
+  // Codes only on the query string, never prose (DEC-026) — the page maps them to copy. The
+  // pair is what makes the message truthful: `sent-absent` is an email-only booking, which the
+  // old flat `resent=1` reported identically to a successful two-channel send.
+  if (outcome.kind === "skipped") redirect(back({ resendErr: outcome.reason }));
+  const { email, sms } = outcome.result;
+  // NOTHING out is never a success, and the two ways to get there are different facts.
+  //
+  // `failed` is a medium that rejected it; `absent` is a contact this deployment has no channel
+  // for — a booking with only a phone on a deployment with only email configured sends nothing
+  // at all, and the first cut of this reported it as "Link sent again." The e2e caught it: the
+  // suite blanks Twilio, and the seed booking is phone-only, so that lie was on screen the first
+  // time the test ran.
+  if (email !== "sent" && sms !== "sent") {
+    redirect(back({ resendErr: email === "failed" || sms === "failed" ? "all_failed" : "nothing_sent" }));
+  }
+  redirect(back({ resent: `${email}-${sms}` }));
 }

@@ -1,6 +1,15 @@
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      // Mirrors tsconfig.json's `paths` (`@core/* → ./src/*`), which is how everything under
+      // `app/` imports the domain core. Without it a test may only import an `app/` module that
+      // happens to reach no core code — a constraint on WHICH app modules are testable, not on
+      // which ones are worth testing, and one that fails at import time rather than saying so.
+      "@core": new URL("./src", import.meta.url).pathname,
+    },
+  },
   test: {
     environment: "node",
     // `db/**` joined the include when db:reset:dev landed: its target guard decides whether a

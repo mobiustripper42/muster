@@ -60,6 +60,59 @@ importing**. These are read by the code and were never backfilled here:
 > landed and never backfilled into this runbook. The running production deploy has them. The gap bites
 > the *next* one — a rebuild, a second environment, or a disaster-recovery restore.
 
+### Required for reservations + payments (#618)
+
+The same gap, one feature later: the whole payments surface shipped in Phase 12 and none of its vars
+reached this file. A deploy built from the two tables above comes up with **the booking flow either
+invisible or unable to take money**.
+
+| Var | Where it comes from | Used for |
+|-----|---------------------|----------|
+| `RESERVATIONS` | **you set it** — the literal string `true` | The customer flow: `/book`, checkout, the manage page (`app/lib/flags.ts:44`, DEC-111). **OFF by default** so `main` stays promotable. **Tests `=== "true"`, not `=== "1"`** — see the traps below |
+| `STRIPE_SECRET_KEY` | **you set it** — Stripe dashboard, live mode | Every server-side Stripe call |
+| `STRIPE_WEBHOOK_SECRET` | **you set it** — the signing secret of *this deployment's* endpoint | Verifying webhook signatures **and gating checkout** — see the traps |
+| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | **you set it** — Stripe dashboard, live mode | The inline Payment Element (DEC-134). **Build-inlined** — see the traps |
+| `RESERVATION_LINK_SECRET` | **you set it** (`openssl rand -base64 32`) | The HMAC on every "manage my booking" capability URL (DEC-122). **Rotating it dead-links every booking link already sitting in a customer's inbox**, with no way to reissue them |
+| `OPERATOR_NOTIFY_EMAIL` | optional, but the feature is dark without it | Where a customer's change/cancel request is emailed (`app/reservations/manage/actions.ts:78`). Unset ⇒ the request is logged and **nobody is told** |
+| `WAIVER_TERMS_URL` | optional — defaults `https://www.brewcle.com/liability-waiver/` | The "I agree to the liability waiver" link on the booking form (`src/config/tenant.ts:50`) |
+| `WAIVER_TERMS_VERSION` | optional — defaults `v1` | Stamped onto the reservation as the terms version consented to (`src/config/tenant.ts:48`). Server-authoritative; **bump it whenever the waiver text changes**, or old consents claim to be for text nobody agreed to |
+
+**Confirm the two waiver defaults before real customers consent to them.** They are live URLs and a
+version string that become part of a legal record at the moment someone ticks the box.
+
+> **`.env.example` is the complete list, and it is the one that stays honest.** It now carries every
+> variable the code reads — swept from `process.env.*` across `app/`, `src/`, `db/` and `scripts/`,
+> which turned up twelve more than this file had, `APP_BASE_URL` and `CRON_SECRET` among them. The
+> three tables here group vars by *what breaks without them*, which is what a runbook is for; when
+> the two disagree, `.env.example` sits next to the code and is the one to trust.
+
+#### Three traps, each of which presents as something else
+
+**1. `STRIPE_WEBHOOK_SECRET` gates checkout, not just the webhook.** `StripePaymentPort` takes it at
+construction (`src/adapters/stripe-payment.ts:27`), and the checkout action refuses outright when
+either Stripe var is missing (`app/(public)/book/checkout/actions.ts:56-60`):
+
+> Checkout isn't configured on this deployment. Nothing was charged.
+
+So **a typo in the webhook secret presents as a broken booking form** — not as a webhook problem, and
+not anywhere near where anyone would look. Nothing is charged, which is the right failure, but the
+symptom points at the wrong var.
+
+**2. The publishable key is baked at build time.** `NEXT_PUBLIC_*` vars are inlined into the bundle,
+so setting it on a running deployment changes nothing **until a rebuild**. It fails loudly — the
+checkout page renders a red "Checkout is not configured" card rather than a broken Element
+(`app/(public)/book/checkout/page.tsx:180`) — but the fix is a redeploy, not a var edit.
+
+**3. The flags disagree about what "on" looks like.** `RESERVATIONS` tests `=== "true"`;
+`CREW_SELF_SERVE`, `MESSAGING` and `TIME_CLOCK` all test `=== "1"` (`app/lib/flags.ts:12,25,44,61`).
+**`RESERVATIONS=1` leaves the entire customer flow silently off.**
+
+`MESSAGING` is worse, because it is read in two places with different rules:
+`messagingEnabled()` is `=== "1"`, but `app/lib/booking-confirmation.ts:29` treats
+`MESSAGING === "false"` as a hard kill for confirmation sends. So **`MESSAGING=0` leaves booking
+confirmations ON**, and **`MESSAGING=false` silently kills them** while `messagingEnabled()` reads
+off either way. Set it to `1` or leave it unset; never `0` or `false`.
+
 ---
 
 ## Steps
@@ -267,9 +320,10 @@ required). Upload → the board fills with upcoming trips + their crew seats.
 
 ## Stripe webhook events (#616)
 
-**This section is narrow on purpose.** DEPLOY.md carries no other Stripe content — the env-var
-table (#618) and the full go-live runbook (#623) are their own tasks. What is here is the one
-thing that fails *silently* if it is missed.
+**This section is narrow on purpose:** what is here is the one thing that fails *silently* if it is
+missed. The **env vars** now live above under *Required for reservations + payments* (issue #618);
+the full go-live runbook — seeding the catalog, verifying the dashboard, guarding test-vs-live keys —
+is still its own task (issue #623).
 
 ### The endpoint must subscribe to `charge.refunded`
 

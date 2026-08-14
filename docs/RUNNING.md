@@ -7,7 +7,7 @@ things to eyeball.
 ## Prerequisites
 - **Docker** (for local Postgres) and **Node 22**.
 - No `.env` needed for local work — `DATABASE_URL`, `SESSION_SECRET`, and the base URL all have dev
-  defaults. (Copy `.env.example` → `.env.local` only if you want to override.)
+  defaults. (Copy `env.example` → `.env.local` only if you want to override.)
 
 ## Quick start
 ```bash

@@ -66,7 +66,7 @@ which ones exist. Route group tells you the posture:
   magic link. The strictest surface: every extra screen is somewhere stale info hides.
 - **Admin** (`app/(admin)`) — Spink's cockpit. Desktop-leaning, must not break on a phone. Dense is
   fine; **anxious is not**. Triage surfaces summon; they aren't monitors.
-- **Customer** (`app/(public)/book/*`, `app/reservations/manage`) — the newest audience, and the one
+- **Customer** (`app/(public)/book/*`, `app/b/[code]`) — the newest audience, and the one
   with different rules. These people have never seen the product, get no training, and may never
   return. Copy carries more weight, error states must be self-explanatory, and a stale link must
   render an honest dead end rather than a doomed form. Still Muster's calm voice — no marketing
@@ -84,7 +84,7 @@ Anchor surfaces worth knowing, since the binding constraints attach to them:
 - **Booking flow** (`app/(public)/book` → `/book/checkout` → `/book/success`) — availability, then
   inline Stripe Elements. The checkout screen prices with the same pure money functions the charge
   builder freezes, so displayed and charged totals cannot drift.
-- **Your booking** (`app/reservations/manage`) — capability-URL landing (DEC-122), bearer token and
+- **Your booking** (`app/b/[code]`) — capability-URL landing (DEC-122, mechanism amended by DEC-154), bearer code and
   no login; one page, two states driven by trip time.
 
 For anything not listed, read the file's header comment — this codebase documents *why* at the top of

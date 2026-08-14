@@ -97,7 +97,6 @@ dashboard scroll. Tick each one off against its source.
 | `DATABASE_URL` | `app/lib/repo.ts` | Neon console (pooled). Becomes `NEON_NEW_POOLED` after Phase D |
 | `APP_BASE_URL` | `app/lib/base-url.ts` | `https://crew.brewcle.com` — app throws in prod without it (step 39) |
 | `SESSION_SECRET` | `app/lib/auth.ts` | Unrecoverable — **mint fresh**. Rotating it logs everyone out |
-| `RESERVATION_LINK_SECRET` | `app/reservations/manage/load.ts` | ⚠️ **Do NOT regenerate** — signs guest manage-booking links already sent. Must carry over |
 | `CRON_SECRET` | `app/api/cron/*/route.ts` | Mint fresh; goes in the timer env file too (step 55) |
 | `STRIPE_SECRET_KEY` | `app/api/webhooks/stripe/route.ts` | Stripe dashboard |
 | `STRIPE_WEBHOOK_SECRET` | `app/api/webhooks/stripe/route.ts` | Stripe dashboard → the endpoint's signing secret |
@@ -119,7 +118,7 @@ dashboard scroll. Tick each one off against its source.
 | `PAY_PERIOD_ANCHOR` | `src/config/tenant.ts` | Not secret |
 | `CHECKOUT_HOLD_MINUTES` | `src/reservations/claim.ts` | Not secret |
 | `OPERATOR_CREW_MEMBER_ID` | `app/lib/operator.ts` | Not secret |
-| `OPERATOR_NOTIFY_EMAIL` | `app/reservations/manage/actions.ts` | Not secret |
+| `OPERATOR_NOTIFY_EMAIL` | `app/b/[code]/actions.ts` | Not secret |
 | `NODE_ENV` | — | `production`. See step 45; getting this wrong is a security hole |
 | `CREW_SELF_SERVE` `MESSAGING` `RESERVATIONS` `TIME_CLOCK` | `app/lib/flags.ts` | Step 5 |
 
@@ -156,18 +155,18 @@ box does not want them. This is most of the "~22 values" the step used to warn a
 tuning vars above that are set.
 
 **Read by code, NOT set in production** — all currently running on their code defaults:
-`RESERVATION_LINK_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
+`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
 `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `TWILIO_FROM`, `TENANT_ID`, `TENANT_NAME`, `TENANT_TZ`,
 `PICKUP_LOCATION`, `PICKUP_MAP_URL`, `WAIVER_TERMS_URL`, `WAIVER_TERMS_VERSION`,
 `PAY_PERIOD_ANCHOR`, `CHECKOUT_HOLD_MINUTES`, `OPERATOR_CREW_MEMBER_ID`, `OPERATOR_NOTIFY_EMAIL`,
 `MESSAGING`, `RESERVATIONS`.
 
-> ⚠️ **`RESERVATION_LINK_SECRET` is unset in production.** `app/reservations/manage/load.ts:48`
-> returns `null` without it, so the guest manage-booking link does nothing today. Consistent with
-> `RESERVATIONS` being off. **The moment it is set, it becomes unrotatable** — it signs links that
-> go out in guest email, and changing it dead-links every one already sent. Set it once, on the
-> box, and never regenerate it. `SESSION_SECRET` is the opposite: rotating it costs a re-login and
-> nothing more.
+> ⚠️ **`RESERVATION_LINK_SECRET` no longer exists (#741, DEC-154).** It was never set in
+> production, and that fact is what made it cheap to delete: no deploy had ever minted a link
+> against it, so no customer held one. The manage link is now a stored code (`/b/<code>`,
+> `booking_codes`) with no secret to carry, rotate or lose. The env var this section used to warn
+> about is gone from the code and from `docs/DEPLOY.md`; nothing needs to be migrated in its
+> place. `SESSION_SECRET` is unaffected — rotating it still costs a re-login and nothing more.
 
 **3.** Record from Vercel: the **Node major version** the project builds on, and the plan tier.
 
@@ -223,7 +222,7 @@ Record from Neon:
 
    Consequences to hold on to: per step 52 the 2-minute doorbell timer is **inert** (`MESSAGING`
    off), so wire it but expect nothing from it. And `RESERVATIONS` off is consistent with there
-   being no Stripe keys and no `RESERVATION_LINK_SECRET` in the environment.
+   being no Stripe keys in the environment.
 
 > ⚠️ **The flags do not share a truthy value.** `CREW_SELF_SERVE`, `MESSAGING` and `TIME_CLOCK`
 > test `=== "1"`; **`RESERVATIONS` tests `=== "true"`** (`app/lib/flags.ts:12,25,44,61`). Writing

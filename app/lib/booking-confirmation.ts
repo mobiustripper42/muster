@@ -1,6 +1,7 @@
 import { EmailChannel } from "@core/adapters/email-channel.js";
 import type { Reservation } from "@core/domain/entities.js";
 import { sendBookingConfirmation } from "@core/reservations/booking-confirmation.js";
+import { ensureBookingCode } from "@core/reservations/ensure-booking-code.js";
 import { resendBookingLink, type ResendResult } from "@core/reservations/resend-booking-link.js";
 import { readEmailEnv } from "./auth-delivery";
 import { isProdDeploy } from "./flags";
@@ -30,12 +31,9 @@ export async function sendReservationConfirmation(
     if (process.env.MESSAGING === "false") return;
 
     const linkBase = process.env.APP_BASE_URL?.replace(/\/+$/, "");
-    const linkSecret = process.env.RESERVATION_LINK_SECRET;
-    if (!linkBase || !linkSecret) {
+    if (!linkBase) {
       if (isProdDeploy()) {
-        console.error(
-          "[reservations] confirmation skipped — set APP_BASE_URL and RESERVATION_LINK_SECRET",
-        );
+        console.error("[reservations] confirmation skipped — set APP_BASE_URL");
       }
       return;
     }
@@ -53,10 +51,15 @@ export async function sendReservationConfirmation(
       return;
     }
 
+    // Mint (or reuse) the code BEFORE composing the message — there is no link to send without
+    // one. A failure here is caught by the outer wrapper and logged: the booking is already
+    // committed and paid, so it must never reach the webhook as a throw (Stripe would retry the
+    // whole event). The operator's resend recovers it.
+    const bookingCode = await ensureBookingCode(repo, reservation.id, () => new Date().toISOString());
+
     await sendBookingConfirmation(
       {
         linkBase,
-        linkSecret,
         ...(email ? { email } : {}),
         ...(sms ? { sms } : {}),
         // Low-severity: the booking succeeded; only the notice failed → resend when
@@ -65,6 +68,7 @@ export async function sendReservationConfirmation(
           console.error(`[reservations] confirmation send failed — ${detail}`),
       },
       reservation,
+      bookingCode,
     );
   } catch (e) {
     console.error(
@@ -99,9 +103,8 @@ export async function resendReservationLink(reservation: Reservation): Promise<R
   if (process.env.MESSAGING === "false") return { kind: "skipped", reason: "messaging_off" };
 
   const linkBase = process.env.APP_BASE_URL?.replace(/\/+$/, "");
-  const linkSecret = process.env.RESERVATION_LINK_SECRET;
   // Same rule as the confirmation: the link rides the trusted APP_BASE_URL, never a Host header.
-  if (!linkBase || !linkSecret) return { kind: "skipped", reason: "not_configured" };
+  if (!linkBase) return { kind: "skipped", reason: "not_configured" };
 
   const repo = getRepo();
   const emailEnv = readEmailEnv();
@@ -109,15 +112,19 @@ export async function resendReservationLink(reservation: Reservation): Promise<R
   const sms = makeTwilioChannel(repo, linkBase) ?? undefined;
   if (!email && !sms) return { kind: "skipped", reason: "no_channels" };
 
+  // Reuses the live code; mints only if there is none (an imported booking, or one whose
+  // confirmation predates codes). A resend is NOT a reissue — see `resend-booking-link.ts`.
+  const bookingCode = await ensureBookingCode(repo, reservation.id, () => new Date().toISOString());
+
   const result = await resendBookingLink(
     {
       linkBase,
-      linkSecret,
       ...(email ? { email } : {}),
       ...(sms ? { sms } : {}),
       onFailure: (detail) => console.error(`[reservations] link resend failed — ${detail}`),
     },
     reservation,
+    bookingCode,
   );
   return { kind: "attempted", result };
 }

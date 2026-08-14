@@ -26,7 +26,12 @@
  */
 import { vesselDateOf } from "../src/config/tenant.js";
 import { formatShortDay } from "../src/reservations/availability-screen.js";
-import { demoReservationId, reservationDemo } from "../src/reservations/seed-reservation.js";
+import {
+  demoBookingCode,
+  demoRevokedBookingCode,
+  demoReservationId,
+  reservationDemo,
+} from "../src/reservations/seed-reservation.js";
 
 /** The run's single day, vessel-local (DEC-032). Handed to the seed so both sides agree. */
 export const TODAY = vesselDateOf(new Date());
@@ -75,3 +80,14 @@ export function monthDay(isoDay: string): string {
 
 /** `resv-demo-<date>-<time>`, built by the seed's own id function rather than hand-spelled. */
 export { demoReservationId };
+
+/**
+ * The seeded booking codes (#741), derived by the SEED's own functions.
+ *
+ * The specs used to mint their own HMAC with a copy of the server's algorithm and a secret
+ * pinned in `playwright.config.ts` — a mirror that could drift from the implementation while
+ * every test kept passing. A stored code has no algorithm to mirror: the seed writes the row,
+ * these read the same derivation, and a mismatch fails as "link isn't valid" rather than
+ * silently asserting against a re-implementation.
+ */
+export { demoBookingCode, demoRevokedBookingCode };

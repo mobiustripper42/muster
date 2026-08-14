@@ -8,7 +8,7 @@ describe("bookingChangeRequestEmail", () => {
     tripLabel: "Sat, Jul 18 · 1:30 PM · Brew Boat Party",
     phone: "+12165550148",
     email: "jordan@example.com",
-    manageUrl: "https://app.example.com/reservations/manage?r=resv-1&t=tok",
+    manageUrl: "https://app.example.com/b/K3F9QZ2MX7RN4P",
   };
 
   it("composes a cancellation email naming the trip, contact, and manage link", () => {

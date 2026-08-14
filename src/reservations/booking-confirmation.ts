@@ -2,6 +2,11 @@
  * Booking confirmation emit (11.4, DEC-122) — email + SMS to the customer, each
  * carrying the "manage my booking" capability URL, on a fresh booking.
  *
+ * The URL is now `<base>/b/<code>` against a stored code the CALLER ensured (#741, DEC-154),
+ * not a token this module derives. That is why `bookingCode` is a parameter rather than a
+ * secret in `deps`: minting touches the repository, and this module stays a pure composer of
+ * copy over injected channels.
+ *
  * Two properties the webhook depends on:
  *  - **Best-effort, never throws.** A confirmation send failure must not 500 the
  *    Stripe webhook (a 500 → Stripe retries → the booking is re-processed). Each
@@ -21,7 +26,7 @@
 
 import type { Reservation } from "../domain/entities.js";
 import type { ChannelPort } from "../ports/channel.js";
-import { reservationManageUrl } from "./booking-link.js";
+import { bookingUrl } from "./booking-code.js";
 import { CANCELLATION_TERMS_SHORT } from "./refund-terms.js";
 
 export interface ConfirmationDeps {
@@ -31,8 +36,6 @@ export interface ConfirmationDeps {
   sms?: ChannelPort;
   /** Trusted public origin for the link (APP_BASE_URL at the edge). */
   linkBase: string;
-  /** The dedicated RESERVATION_LINK_SECRET (DEC-122). */
-  linkSecret: string;
   /**
    * Low-severity observer for a failed send — a durable log / admin notice so the
    * operator can resend, distinct from the urgent refund alert. Optional; a
@@ -74,8 +77,9 @@ export function bookingConfirmationBody(
 export async function sendBookingConfirmation(
   deps: ConfirmationDeps,
   reservation: Reservation,
+  bookingCode: string,
 ): Promise<void> {
-  const url = reservationManageUrl(deps.linkBase, reservation.id, deps.linkSecret);
+  const url = bookingUrl(deps.linkBase, bookingCode);
   const body = bookingConfirmationBody(reservation, url);
 
   if (reservation.email && deps.email) {

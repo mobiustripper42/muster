@@ -84,3 +84,43 @@ describe("actionMessage — resendErr", () => {
     expect(actionMessage("resendErr", "no_contact")).toMatch(/nowhere to send/);
   });
 });
+
+describe("actionMessage — reissued / reissueErr (#741)", () => {
+  const CONTACTS = { email: "marcus@example.com", phone: "+1 216 555 0148" };
+
+  it("says the old link is dead, not just that a new one was sent", () => {
+    // The half an operator can act on. "New link texted" alone reads like a resend, and the
+    // difference decides whether they warn the customer that the link they saved is now dead.
+    const m = actionMessage("reissued", "sent-sent", CONTACTS);
+    expect(m).toContain("emailed marcus@example.com");
+    expect(m).toContain("texted +1 216 555 0148");
+    expect(m).toMatch(/old link no longer works/i);
+  });
+
+  it("names only the channels that actually carried the new link", () => {
+    const m = actionMessage("reissued", "absent-sent", { phone: CONTACTS.phone });
+    expect(m).toContain("texted +1 216 555 0148");
+    expect(m).not.toContain("emailed");
+    expect(m).toMatch(/old link no longer works/i);
+  });
+
+  it("the worst case is stated plainly: old link dead, new one not delivered", () => {
+    // The one outcome that leaves the customer with NO working link. If this copy is vague the
+    // operator has no reason to pick up the phone, and the customer finds out at the dock.
+    const m = actionMessage("reissueErr", "sent_nothing");
+    expect(m).toMatch(/no working link/i);
+    expect(m).toMatch(/Resend link|call them/i);
+  });
+
+  it("a failed reissue reassures that the existing link still works", () => {
+    // `reissueBookingCode` mints before it revokes, so a failure genuinely leaves the old code
+    // live — the copy is allowed to say so, and must, or the operator re-presses and panics.
+    expect(actionMessage("reissueErr", "unreachable")).toMatch(/existing link still works/i);
+  });
+
+  it("refuses the same booking-level cases resend does", () => {
+    expect(actionMessage("reissueErr", "cancelled")).toMatch(/no live trip/i);
+    expect(actionMessage("reissueErr", "not_muster")).toMatch(/Xola/);
+    expect(actionMessage("reissueErr", "no_contact")).toMatch(/nowhere to go/i);
+  });
+});

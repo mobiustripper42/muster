@@ -16,6 +16,7 @@ import type {
   Ask,
   AuthSubjectKind,
   Block,
+  BookingCode,
   CalendarFeed,
   CheckoutHold,
   Gratuity,
@@ -142,6 +143,23 @@ export interface Repository {
   ): Promise<{ customer: Customer; created: boolean }>;
   /** A customer's bookings — the detail pane's history list. */
   listReservationsForCustomer(id: CustomerId): Promise<Reservation[]>;
+
+  // ── Booking codes (the customer manage credential — #741, DEC-154) ─────────
+  /**
+   * Insert a freshly minted code. **Throws on a duplicate `code`** rather than upserting: the
+   * caller (`ensureBookingCode`) retries with a new mint, and an upsert would silently hand one
+   * customer's link to another booking. The PK is the uniqueness arbiter (DEC-131).
+   */
+  saveBookingCode(row: BookingCode): Promise<void>;
+  /** Resolve a presented code. Returns revoked/expired rows too — the CALLER decides what to
+   *  render, because "replaced" and "never existed" are different answers to the customer. */
+  getBookingCode(code: string): Promise<BookingCode | null>;
+  /** Every code ever minted for a reservation, newest first. Reissue reads this to revoke the
+   *  predecessors; the operator pane reads it to know whether a live link exists. */
+  listBookingCodesForReservation(id: ReservationId): Promise<BookingCode[]>;
+  /** Kill one code. Idempotent, and it never re-stamps an already-revoked row — the first
+   *  revocation is the one that happened. A missing code is a no-op, not an error. */
+  revokeBookingCode(code: string, atIso: string): Promise<void>;
 
   // ── Crew ───────────────────────────────────────────────────────────────────
   saveCrewMember(crew: CrewMember): Promise<void>;

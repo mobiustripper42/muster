@@ -17,16 +17,17 @@
  * email-only or phone-only, and "the reservation has no email" is a different fact from "the
  * email failed" — the operator reads the difference to decide whether to pick up the phone.
  *
- * **The token does not rotate.** `reservationLinkToken` is a bare HMAC over the reservation id
- * with no expiry and no revocation, so this re-sends the *same* URL every time. That was already
- * true of the confirmation and this changes nothing about it — but it is the reason the operator
- * surface is "resend to the customer" rather than "show me the link": a resend puts the bearer
- * token only where it already was, in the customer's own inbox.
+ * **A resend REUSES the live code, it does not mint one** (#741, DEC-154). The caller passes the
+ * code from `ensureBookingCode`, which returns the existing one when there is one. That keeps the
+ * two operator affordances meaningfully different: a *resend* puts the same credential back where
+ * it already was — the customer's own inbox — while a *reissue* mints a new code and revokes this
+ * one. Minting here would silently make every resend a reissue, breaking the customer's saved
+ * link every time the operator was being helpful.
  */
 
 import type { Reservation } from "../domain/entities.js";
 import type { ChannelPort } from "../ports/channel.js";
-import { reservationManageUrl } from "./booking-link.js";
+import { bookingUrl } from "./booking-code.js";
 
 /**
  * What happened on one channel. `absent` is deliberately distinct from both others: it means
@@ -44,8 +45,6 @@ export interface ResendDeps {
   sms?: ChannelPort;
   /** Trusted public origin for the link (APP_BASE_URL at the edge). */
   linkBase: string;
-  /** The dedicated RESERVATION_LINK_SECRET (DEC-122). */
-  linkSecret: string;
   /** Durable observer for a failed send; the operator already sees the outcome on screen. */
   onFailure?: (detail: string) => void;
 }
@@ -73,8 +72,9 @@ export function resendBookingLinkBody(reservation: Reservation, manageUrl: strin
 export async function resendBookingLink(
   deps: ResendDeps,
   reservation: Reservation,
+  bookingCode: string,
 ): Promise<ResendResult> {
-  const url = reservationManageUrl(deps.linkBase, reservation.id, deps.linkSecret);
+  const url = bookingUrl(deps.linkBase, bookingCode);
   const body = resendBookingLinkBody(reservation, url);
 
   // Sequential rather than Promise.all: two sends to one customer, and the ordering keeps the

@@ -20,12 +20,12 @@ import { AppLink } from "../../../components/ui/app-link";
 import { Notice } from "../../../components/ui/notice";
 import { SubmitButton } from "../../../components/ui/submit-button";
 import { addPostTip, requestBookingChange } from "./actions";
-import { loadVerifiedBooking } from "./load";
+import { loadBookingByCode } from "./load";
 import { reservationsEnabled } from "../../lib/flags";
 
 export const dynamic = "force-dynamic";
 
-type Search = { r?: string; t?: string; requested?: string; tipped?: string; error?: string };
+type Search = { requested?: string; tipped?: string; error?: string };
 
 const ERROR_COPY: Record<string, string> = {
   link: "That didn’t work — please reopen your booking link.",
@@ -33,7 +33,13 @@ const ERROR_COPY: Record<string, string> = {
   pay: "Tips are temporarily unavailable. Please try again later.",
 };
 
-export default async function ManagePage({ searchParams }: { searchParams: Promise<Search> }) {
+export default async function ManagePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ code: string }>;
+  searchParams: Promise<Search>;
+}) {
   if (!reservationsEnabled()) {
     return (
       <main className="mx-auto max-w-2xl px-4 py-16">
@@ -42,14 +48,34 @@ export default async function ManagePage({ searchParams }: { searchParams: Promi
     );
   }
 
+  const { code } = await params;
   const sp = await searchParams;
-  const booking = await loadVerifiedBooking(sp.r, sp.t);
-  if (!booking) {
+  const load = await loadBookingByCode(code);
+
+  // A code that resolved but is dead gets its own state (DEC-154). Whoever holds it already knew
+  // the booking existed, so this leaks nothing — and without it, a customer whose link was
+  // reissued reads "isn't valid" and concludes their booking is gone rather than asking for the
+  // new link. The generic state below still never confirms a booking exists.
+  if (load.kind === "refused") {
+    return (
+      <main className="mx-auto max-w-lg px-4 py-16">
+        <h1 className="mb-2 text-xl font-semibold">
+          {load.reason === "revoked" ? "This booking link was replaced" : "This booking link has expired"}
+        </h1>
+        <p className="text-muted">
+          Your booking is still there — this particular link just doesn’t open it any more. Reply to
+          your confirmation text or email and we’ll send you a new one.
+        </p>
+      </main>
+    );
+  }
+
+  if (load.kind === "unknown") {
     return (
       <main className="mx-auto max-w-lg px-4 py-16">
         <h1 className="mb-2 text-xl font-semibold">This booking link isn’t valid</h1>
         <p className="text-muted">
-          The link may be incomplete or expired. Check the text or email we sent you, or{" "}
+          The link may be incomplete or mistyped. Check the text or email we sent you, or{" "}
           <AppLink href="/book" className="text-accent">
             start a new booking
           </AppLink>
@@ -58,6 +84,8 @@ export default async function ManagePage({ searchParams }: { searchParams: Promi
       </main>
     );
   }
+
+  const booking = load.booking;
 
   const now = new Date();
   const view = buildManageView({
@@ -77,7 +105,6 @@ export default async function ManagePage({ searchParams }: { searchParams: Promi
   const taxAndFees = m.taxCents + serviceFeeCents;
   const cancelled = detail.status === "cancelled";
   const statusLabel = cancelled ? "Cancelled" : phase === "completed" ? "Completed" : "Confirmed";
-  const capParams = `r=${encodeURIComponent(sp.r ?? "")}&t=${encodeURIComponent(sp.t ?? "")}`;
 
   return (
     <main className="mx-auto max-w-lg px-3 py-6 sm:px-4 sm:py-8">
@@ -195,8 +222,7 @@ export default async function ManagePage({ searchParams }: { searchParams: Promi
             <Section title={phase === "completed" ? "Add a little more for your crew?" : "Add a tip for your crew"}>
               <p className="mb-3 text-[12.5px] text-muted">100% goes to the crew running your boat.</p>
               <form action={addPostTip} className="flex flex-wrap gap-2">
-                <input type="hidden" name="r" value={sp.r ?? ""} />
-                <input type="hidden" name="t" value={sp.t ?? ""} />
+                <input type="hidden" name="code" value={code} />
                 {view.postTipTiers.map((tier) => (
                   <SubmitButton
                     key={tier.bps}
@@ -217,7 +243,7 @@ export default async function ManagePage({ searchParams }: { searchParams: Promi
           {!cancelled && (
             <Section title="Manage">
               <a
-                href={`/reservations/manage/calendar?${capParams}`}
+                href={`/b/${code}/calendar`}
                 className="flex items-center gap-2 border-b border-line-soft py-3 text-[13.5px] font-semibold text-accent"
               >
                 📅 Add to calendar
@@ -235,13 +261,13 @@ export default async function ManagePage({ searchParams }: { searchParams: Promi
                 <summary className="cursor-pointer list-none text-[13.5px] font-semibold text-accent">
                   ↻ Request a date/time change
                 </summary>
-                <RequestForm r={sp.r ?? ""} t={sp.t ?? ""} kind="change" placeholder="Any preferred dates or times?" />
+                <RequestForm code={code} kind="change" placeholder="Any preferred dates or times?" />
               </details>
               <details className="py-3">
                 <summary className="cursor-pointer list-none text-[13.5px] font-semibold text-bad">
                   ✕ Request cancellation
                 </summary>
-                <RequestForm r={sp.r ?? ""} t={sp.t ?? ""} kind="cancel" placeholder="Anything we should know? (optional)" />
+                <RequestForm code={code} kind="cancel" placeholder="Anything we should know? (optional)" />
               </details>
               <p className="pt-2 text-[11.5px] text-faint" data-testid="cancellation-terms">
                 {CANCELLATION_TERMS}
@@ -255,21 +281,31 @@ export default async function ManagePage({ searchParams }: { searchParams: Promi
           {/* past trips */}
           {booking.pastTrips.length > 0 && (
             <Section title="Your other trips">
-              {booking.pastTrips.map((p) => (
-                <AppLink
-                  key={p.reservationId}
-                  href={p.href}
-                  spinner="none"
-                  className="flex items-center justify-between border-b border-line-soft py-2.5 text-[13px] last:border-0"
-                >
-                  <span>
-                    {formatShortDay(p.date)} · {formatClock(p.time)}
-                  </span>
-                  <span className={`text-[12px] font-semibold ${p.status === "cancelled" ? "text-faint" : "text-muted"}`}>
-                    {p.status === "cancelled" ? "Cancelled" : "Trip"} ›
-                  </span>
-                </AppLink>
-              ))}
+              {booking.pastTrips.map((p) => {
+                const label = (
+                  <>
+                    <span>
+                      {formatShortDay(p.date)} · {formatClock(p.time)}
+                    </span>
+                    <span className={`text-[12px] font-semibold ${p.status === "cancelled" ? "text-faint" : "text-muted"}`}>
+                      {p.status === "cancelled" ? "Cancelled" : "Trip"}
+                      {p.href ? " ›" : ""}
+                    </span>
+                  </>
+                );
+                const row = "flex items-center justify-between border-b border-line-soft py-2.5 text-[13px] last:border-0";
+                // No live code for that booking (imported, or pre-#741) ⇒ it still LISTS, it just
+                // isn't a link. Rendering a link that lands on "isn't valid" is worse than none.
+                return p.href ? (
+                  <AppLink key={p.reservationId} href={p.href} spinner="none" className={row}>
+                    {label}
+                  </AppLink>
+                ) : (
+                  <div key={p.reservationId} className={row}>
+                    {label}
+                  </div>
+                );
+              })}
             </Section>
           )}
         </div>
@@ -308,11 +344,10 @@ function Row({
   );
 }
 
-function RequestForm({ r, t, kind, placeholder }: { r: string; t: string; kind: "cancel" | "change"; placeholder: string }) {
+function RequestForm({ code, kind, placeholder }: { code: string; kind: "cancel" | "change"; placeholder: string }) {
   return (
     <form action={requestBookingChange} className="mt-3 flex flex-col gap-2">
-      <input type="hidden" name="r" value={r} />
-      <input type="hidden" name="t" value={t} />
+      <input type="hidden" name="code" value={code} />
       <input type="hidden" name="kind" value={kind} />
       <textarea
         name="note"

@@ -15,6 +15,7 @@ import type {
   Ask,
   AuthSubjectKind,
   Block,
+  BookingCode,
   CheckoutHold,
   Credential,
   CrewMember,
@@ -110,6 +111,7 @@ export class InMemoryRepository implements Repository {
   readonly #roleTypes = new Map<RoleTypeId, RoleType>();
   readonly #addOns = new Map<AddOnId, AddOn>();
   readonly #customers = new Map<CustomerId, Customer>();
+  readonly #bookingCodes = new Map<string, BookingCode>();
   readonly #vessels = new Map<VesselId, Vessel>();
   readonly #crew = new Map<CrewMemberId, CrewMember>();
   readonly #credentials = new Map<CredentialId, Credential>();
@@ -236,6 +238,36 @@ export class InMemoryRepository implements Repository {
     return [...this.#reservations.values()]
       .filter((r) => r.customerId === id)
       .map(clone);
+  }
+
+  // ── Booking codes (#741, DEC-154) ─────────────────────────────────────────
+  // The duplicate-code THROW is enforced here, unlike the phone/display-code UNIQUE indexes
+  // above which the double deliberately ignores. Same reason as `getOrCreateCustomerByPhone`:
+  // the behaviour is semantic, not just integrity. `ensureBookingCode` catches this exact throw
+  // to retry with a fresh mint, so a double that silently overwrote would make the retry loop
+  // untestable here and would hand one customer's live link to another booking.
+  async saveBookingCode(row: BookingCode): Promise<void> {
+    if (this.#bookingCodes.has(row.code)) {
+      throw new Error(`duplicate key value violates unique constraint "booking_codes_pkey"`);
+    }
+    this.#bookingCodes.set(row.code, clone(row));
+  }
+  async getBookingCode(code: string): Promise<BookingCode | null> {
+    const row = this.#bookingCodes.get(code);
+    return row ? clone(row) : null;
+  }
+  async listBookingCodesForReservation(id: ReservationId): Promise<BookingCode[]> {
+    return [...this.#bookingCodes.values()]
+      .filter((c) => c.reservationId === id)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map(clone);
+  }
+  async revokeBookingCode(code: string, atIso: string): Promise<void> {
+    const row = this.#bookingCodes.get(code);
+    // Already revoked ⇒ keep the FIRST stamp. Re-stamping would rewrite when the link actually
+    // died, which is the one fact a "why can't I open my link" conversation turns on.
+    if (!row || row.revokedAt) return;
+    this.#bookingCodes.set(code, { ...clone(row), revokedAt: atIso });
   }
 
   // ── Vessels ──────────────────────────────────────────────────────────────

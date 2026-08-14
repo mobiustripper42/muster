@@ -8,34 +8,33 @@
  * spec asserting either would pass in one place and fail in the other. Same constraint that made
  * `app/lib/time-clock-gate.test.ts` assert its wiring structurally instead.
  *
- * **Why the gate exists.** `reservationLinkToken` is a bare HMAC over the reservation id — no
- * expiry, no revocation, no rotation. Anyone holding the URL can open that booking forever. On a
- * dev box that is the point: there is otherwise no way to reach the manage page at all, short of
- * hand-running the HMAC in a `node -e` one-liner. On production it would put a live bearer token
- * on the operator's clipboard, one paste from a Slack thread — and unlike a leaked password there
- * is nothing to reset. Same posture as `/crew/dev-link` (DEC-057).
+ * **Why the gate still exists after #741.** The link is now `/b/<code>` against a stored, and
+ * therefore revocable, credential — which is exactly the change the original gate said would
+ * justify revisiting it. Revisiting it is deliberately NOT in #741's scope: a revocable token on
+ * the operator's clipboard is still a live token in a Slack thread, and the remedy (notice it,
+ * reissue) depends on someone realising it leaked. Same posture as `/crew/dev-link` (DEC-057)
+ * until that's a decision someone makes on purpose.
  *
- * The resend path carries no such exposure: it puts the token only where it already was, in the
+ * The resend path carries no such exposure: it puts the code only where it already was, in the
  * customer's own inbox.
  */
-import { reservationManageUrl } from "@core/reservations/booking-link.js";
-import { asId } from "@core/domain/ids.js";
+import { bookingUrl } from "@core/reservations/booking-code.js";
 
 export interface ManageLinkInput {
   /** `isProdDeploy()` at the call site — passed, not read, so this stays pure. */
   isProd: boolean;
   /** The trusted public origin (APP_BASE_URL), already trimmed of trailing slashes. */
   base: string | undefined;
-  /** RESERVATION_LINK_SECRET (DEC-122). */
-  secret: string | undefined;
-  reservationId: string;
+  /** The booking's LIVE code (#741), read at the call site. Absent ⇒ no link to show: an
+   *  imported booking, or one whose code was revoked and not yet reissued. */
+  code: string | undefined;
 }
 
 /** The URL, or `undefined` when it must not or cannot be built. */
 export function operatorManageLink(input: ManageLinkInput): string | undefined {
   if (input.isProd) return undefined;
-  // No base or secret means no link — never a Host-header fallback, which is how a manage URL
-  // would get minted against an attacker-supplied origin (see base-url.ts).
-  if (!input.base || !input.secret) return undefined;
-  return reservationManageUrl(input.base, asId<"ReservationId">(input.reservationId), input.secret);
+  // No base or no live code means no link — never a Host-header fallback, which is how a manage
+  // URL would get minted against an attacker-supplied origin (see base-url.ts).
+  if (!input.base || !input.code) return undefined;
+  return bookingUrl(input.base, input.code);
 }

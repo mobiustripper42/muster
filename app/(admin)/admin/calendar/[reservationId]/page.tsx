@@ -13,6 +13,7 @@ import { VersionTag } from "../../../../../components/ui/version-tag";
 import { readSubject } from "../../../../lib/auth";
 import { isProdDeploy } from "../../../../lib/flags";
 import { operatorManageLink } from "../../../../lib/manage-link";
+import { liveBookingCode } from "@core/reservations/ensure-booking-code.js";
 import { getRepo } from "../../../../lib/repo";
 import {
   CalendarControls,
@@ -178,16 +179,19 @@ export default async function ReservationDetailPage({
   // (DEC-105), and a cancel here would be reverted by the next import.
   let actions: PaneActionState | undefined;
   if (reservation.source === "muster") {
-    // The manage link, for copying into a browser (#686) — **off production only**. It is a
-    // bearer token with no expiry and no revocation, so on prod it must never reach the
-    // operator's clipboard; same posture as `/crew/dev-link` (DEC-057). Built from the trusted
-    // APP_BASE_URL, never a Host header (see base-url.ts); unset env yields no link rather than
-    // a wrong one. This branch is already Muster-only — a Xola booking has no capability URL.
+    // The manage link, for copying into a browser (#686) — **off production only**, unchanged
+    // by #741. The code is revocable now, which weakens the original argument, but "revisit the
+    // production gate" is explicitly not in this task's scope; same posture as `/crew/dev-link`
+    // (DEC-057) until it is. Built from the trusted APP_BASE_URL, never a Host header (see
+    // base-url.ts). This branch is already Muster-only — a Xola booking has no capability URL.
+    //
+    // READ-ONLY: shows the live code if there is one, never mints. A page render must not create
+    // a credential, and the resend/reissue buttons below are where minting belongs.
+    const liveCode = await liveBookingCode(getRepo(), reservation.id, () => new Date().toISOString());
     const manageUrl = operatorManageLink({
       isProd: isProdDeploy(),
       base: process.env.APP_BASE_URL?.replace(/\/+$/, ""),
-      secret: process.env.RESERVATION_LINK_SECRET,
-      reservationId: reservation.id,
+      code: liveCode,
     });
     const detailHref = (extra: Record<string, string>): string => {
       const p = new URLSearchParams();

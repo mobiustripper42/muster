@@ -10,6 +10,7 @@ import {
   cancelBooking,
   createBalanceLink,
   refundBooking,
+  reissueBookingLink,
   resendConfirmation,
   startRefund,
 } from "./actions";
@@ -162,6 +163,35 @@ export function actionMessage(
       ].filter(Boolean);
       return tail.length ? `${head} ${tail.join(" ")}` : head;
     }
+    case "reissued": {
+      // Same `<email>-<sms>` pair as `resent`, but the headline has to carry the destructive half:
+      // the operator just made the customer's old link stop working, and if the send went to only
+      // one of two channels they need to know which one carries the replacement.
+      const [emailState, smsState] = value.split("-");
+      const sent = [
+        emailState === "sent" && opts.email ? `emailed ${opts.email}` : "",
+        smsState === "sent" && opts.phone ? `texted ${opts.phone}` : "",
+      ].filter(Boolean);
+      const head = sent.length ? `New link ${sent.join(" and ")}.` : "New link sent.";
+      return `${head} Their old link no longer works.`;
+    }
+    case "reissueErr":
+      switch (value) {
+        case "cancelled":
+          return "This booking is cancelled — there’s no live trip to issue a link for.";
+        case "no_contact":
+          return "This booking has no email or phone on it, so a new link would have nowhere to go.";
+        case "not_muster":
+          return "Xola bookings have no Muster manage link.";
+        case "reservation_missing":
+          return "That reservation no longer exists.";
+        // The one outcome the operator must not misread: the old link IS dead and the new one
+        // did not get out. Says the state plainly and names the way back.
+        case "sent_nothing":
+          return "The old link was replaced, but nothing could be sent — so this customer now has no working link. Use “Resend link” once messaging is working, or call them.";
+        default:
+          return "Couldn’t issue a new link just now. Their existing link still works.";
+      }
     case "cancelErr":
       return value === "not_muster"
         ? "This booking is Xola's — cancel it there, or the next import will bring it back."
@@ -203,7 +233,7 @@ export function actionMessage(
         case "messaging_off":
           return "Messaging is switched off on this deployment, so nothing was sent.";
         case "not_configured":
-          return "This deployment can’t build a manage link (APP_BASE_URL / RESERVATION_LINK_SECRET are unset), so nothing was sent.";
+          return "This deployment can’t build a manage link (APP_BASE_URL is unset), so nothing was sent.";
         case "no_channels":
           return "No email or SMS channel is configured on this deployment, so nothing was sent.";
         case "all_failed":
@@ -754,6 +784,38 @@ function PaneActions({
           </SubmitButton>
 
         </form>
+      )}
+
+      {/* REISSUE (#741) — behind a `<details>` disclosure, deliberately.
+
+          Resend and reissue sit one above the other and read almost the same, but one is
+          harmless and the other breaks the link the customer already has. A plain second button
+          beside "Resend" is a mis-tap that strands someone. `<details>` costs the operator one
+          extra tap, needs no client JS (DEC-026), and puts the consequence in front of them at
+          the moment they are deciding rather than in a notice afterwards.
+
+          Same disabled conditions as resend: without a contact there is nowhere to send the new
+          link, and a cancelled booking has no live trip to issue one for. */}
+      {!confirming && (
+        <details className="mt-2">
+          <summary className="cursor-pointer list-none text-[13px] text-muted underline decoration-dotted">
+            Customer lost their link, or it leaked?
+          </summary>
+          <form action={reissueBookingLink} className="mt-2">
+            {hidden}
+            <p className="mb-1.5 text-[11px] text-faint">
+              Issues a new link and sends it. The link they have now will stop working — use
+              “Resend” instead if they just mislaid it.
+            </p>
+            <SubmitButton
+              data-commits="reissue"
+              disabled={!actions.canResend || cancelled}
+              className="min-h-[44px] w-full rounded-lg border border-line px-3 text-sm text-ink disabled:cursor-not-allowed disabled:text-faint"
+            >
+              Replace their link
+            </SubmitButton>
+          </form>
+        </details>
       )}
 
       {/* DEV ONLY — the manage link, for pasting into a browser (#686).

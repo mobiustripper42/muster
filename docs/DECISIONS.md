@@ -176,7 +176,7 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 - DEC-111 — `feature/reservations` dark behind a `RESERVATIONS` flag until the first real paid booking
 - DEC-112 — Reservation price resolves per-`Event`; nullable `Event.price` column
 - DEC-113 — Flex-insurance is a boolean selector on the reservation, not a priced add-on product
-- DEC-122 — Customer booking link — stateless HMAC capability-URL + guest confirmation emit (renumbered from DEC-119 at the feature→main merge — main's DEC-119 is recurring weekday-off #411; 11.4, #370; extends DEC-020/098/108) _(corrected by DEC-151 — the `writeBooking` citation only — the stateless-HMAC capability URL and its non-interference with the race-critical CAS both stand)_
+- DEC-122 — Customer booking link — stateless HMAC capability-URL + guest confirmation emit (renumbered from DEC-119 at the feature→main merge — main's DEC-119 is recurring weekday-off #411; 11.4, #370; extends DEC-020/098/108) _(corrected by DEC-151 — the `writeBooking` citation only — the stateless-HMAC capability URL and its non-interference with the race-critical CAS both stand; reversed by DEC-154 — the link MECHANISM only — the stateless HMAC and its `RESERVATION_LINK_SECRET`. The capability-URL MODEL stands unchanged: no login, re-openable (never single-use), bearer semantics, and one link surfacing the contact's other trips. The guest confirmation emit, its `booked`-only rule, the `GuestRecipient` shape and the structural best-effort posture are untouched.)_
 - DEC-123 — Reservations gets its own calendar — customer-centric, beside the crew-centric shift view; plus a net-new catalog and purchases/customers area
 - DEC-124 — Tips come into Muster as collect-and-expose; `xola-tip-extractor` owns the split and the Xola+Muster union until Xola dies (reverses DEC-036's tip parking)
 - DEC-125 — Virtual availability — the schedule is a rule, `Event` rows materialize on state; blackout is scoped blocks, not per-event toggles
@@ -190,6 +190,7 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 - DEC-140 — SPEC §1.3 rewritten to the DEC-125 model — availability is two mechanisms, not one rule engine; COI-expiry and lead-time cutoff closed as out of scope
 - DEC-151 — Retire the legacy booking write path rather than guard it — one write path, or the unguarded one outlives the guarded one
 - DEC-153 — Cancel and refund from Muster — the operator keeps the discretion, both routes reconcile, and cancelling releases the event not just the reservation
+- DEC-154 — The customer booking link is a stored short code (`/b/<code>`), not a stateless HMAC URL — 129 characters to 43, and revocable (#741)
 
 ### UI, brand & frontend patterns
 - DEC-021 — Frontend styling = Tailwind v4; component library deferred _(retired by DEC-041 — the `Event.durationMinutes` line only; refined by DEC-086 — adds tokens to the locked palette)_

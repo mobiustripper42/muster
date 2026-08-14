@@ -28,7 +28,9 @@
  * month is next. Anchoring on the month (not a day offset) narrows that to the final midnight of
  * a month. It is not zero.
  */
+import { createHash } from "node:crypto";
 import type { Event, Location, Offering, Reservation } from "../domain/entities.js";
+import { mintBookingCode } from "./booking-code.js";
 import { asId } from "../domain/ids.js";
 import type { VesselId } from "../domain/ids.js";
 import { addDays } from "../config/tenant.js";
@@ -184,4 +186,30 @@ export function buildSeededReservationWorld(
  */
 export function demoReservationId(date: string, time: string): string {
   return `resv-demo-${date}-${time}`;
+}
+
+/**
+ * The seeded booking's manage code (#741) — DERIVED from its reservation id, so the seed writes
+ * a code the specs and the hand-testing runbook can build without reading the database.
+ *
+ * A real code comes from `crypto.randomBytes` and is unguessable on purpose; this one is
+ * deliberately not, because a fixture whose credential can only be discovered by querying is a
+ * fixture nobody can start a test from. That trade is safe **only** because this function has one
+ * caller shape — the dev seeds, behind their local-DB guard — and it never runs against a
+ * database anyone books on.
+ *
+ * SHA-256 over the id, then the same `& 31` mapping `mintBookingCode` uses over the same
+ * alphabet, so the output is a valid code by construction rather than by a hand-checked literal.
+ */
+export function demoBookingCode(reservationId: string): string {
+  const digest = createHash("sha256").update(`booking-code-seed:${reservationId}`).digest();
+  return mintBookingCode(() => digest);
+}
+
+/** A code the seed writes REVOKED, so the "this link was replaced" state has a starting URL.
+ *  Belongs to the first booking; minted from a different tag so it can't collide with its live
+ *  one. */
+export function demoRevokedBookingCode(reservationId: string): string {
+  const digest = createHash("sha256").update(`booking-code-seed-revoked:${reservationId}`).digest();
+  return mintBookingCode(() => digest);
 }

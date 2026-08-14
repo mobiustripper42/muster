@@ -17,6 +17,7 @@ import type {
   Admin,
   Ask,
   Block,
+  BookingCode,
   CheckoutHold,
   Credential,
   CrewMember,
@@ -1119,6 +1120,80 @@ export function runRepositoryContract(
       const history = await repo.listReservationsForCustomer(asId<"CustomerId">("cust-1"));
       expect(history.map((r) => String(r.id))).toEqual(["resv-linked"]);
       expect(await repo.listReservationsForCustomer(asId<"CustomerId">("cust-none"))).toEqual([]);
+    });
+
+    // ── Booking codes (#741, DEC-154) ─────────────────────────────────────────
+    // The FK means every code here needs its reservation saved first — in Postgres an orphan
+    // insert fails, and writing these tests against the double alone would hide that.
+    const bookingCode = (over: Partial<BookingCode> = {}): BookingCode => ({
+      code: "K3F9QZ2MX7RN4P",
+      reservationId: asId<"ReservationId">("resv-coded"),
+      createdAt: "2026-08-14T12:00:00.000Z",
+      ...over,
+    });
+
+    it("booking code: round-trips, optionals absent stay absent", async () => {
+      await repo.saveReservation(reservation({ id: asId<"ReservationId">("resv-coded") }));
+      const row = bookingCode();
+      await repo.saveBookingCode(row);
+
+      const got = (await repo.getBookingCode(row.code))!;
+      expect(got).toEqual(row);
+      expect("expiresAt" in got).toBe(false);
+      expect("revokedAt" in got).toBe(false);
+      expect(await repo.getBookingCode("NOTAREALCODE00")).toBeNull();
+    });
+
+    it("booking code: a duplicate code THROWS — the mint retries, it never overwrites", async () => {
+      // The behaviour `ensureBookingCode`'s retry loop is built on, and the reason the in-memory
+      // double enforces this one constraint: an upsert would repoint a live customer link at a
+      // different booking.
+      await repo.saveReservation(reservation({ id: asId<"ReservationId">("resv-coded") }));
+      await repo.saveReservation(reservation({ id: asId<"ReservationId">("resv-other") }));
+      await repo.saveBookingCode(bookingCode());
+      await expect(
+        repo.saveBookingCode(bookingCode({ reservationId: asId<"ReservationId">("resv-other") })),
+      ).rejects.toThrow();
+      // The original still points where it did.
+      expect((await repo.getBookingCode("K3F9QZ2MX7RN4P"))!.reservationId).toBe("resv-coded");
+    });
+
+    it("booking code: lists every code for a reservation, newest first", async () => {
+      await repo.saveReservation(reservation({ id: asId<"ReservationId">("resv-coded") }));
+      await repo.saveReservation(reservation({ id: asId<"ReservationId">("resv-other") }));
+      await repo.saveBookingCode(bookingCode({ code: "AAAAAAAAAAAAAA", createdAt: "2026-08-01T00:00:00.000Z" }));
+      await repo.saveBookingCode(bookingCode({ code: "BBBBBBBBBBBBBB", createdAt: "2026-08-09T00:00:00.000Z" }));
+      await repo.saveBookingCode(
+        bookingCode({ code: "CCCCCCCCCCCCCC", reservationId: asId<"ReservationId">("resv-other") }),
+      );
+
+      const mine = await repo.listBookingCodesForReservation(asId<"ReservationId">("resv-coded"));
+      expect(mine.map((c) => c.code)).toEqual(["BBBBBBBBBBBBBB", "AAAAAAAAAAAAAA"]);
+      expect(await repo.listBookingCodesForReservation(asId<"ReservationId">("resv-none"))).toEqual([]);
+    });
+
+    it("booking code: revoke stamps once and is idempotent, and revoked rows still RESOLVE", async () => {
+      await repo.saveReservation(reservation({ id: asId<"ReservationId">("resv-coded") }));
+      await repo.saveBookingCode(bookingCode());
+
+      await repo.revokeBookingCode("K3F9QZ2MX7RN4P", "2026-08-14T13:00:00.000Z");
+      // Still readable — the caller needs the row to tell the customer "this link was replaced"
+      // instead of the generic "never existed". Filtering it out here would erase that difference.
+      const revoked = (await repo.getBookingCode("K3F9QZ2MX7RN4P"))!;
+      expect(revoked.revokedAt).toBe("2026-08-14T13:00:00.000Z");
+
+      // A second revoke keeps the FIRST timestamp — when the link died is the fact support needs.
+      await repo.revokeBookingCode("K3F9QZ2MX7RN4P", "2026-08-20T00:00:00.000Z");
+      expect((await repo.getBookingCode("K3F9QZ2MX7RN4P"))!.revokedAt).toBe("2026-08-14T13:00:00.000Z");
+
+      // An unknown code is a no-op, not an error.
+      await expect(repo.revokeBookingCode("NOTAREALCODE00", "2026-08-14T13:00:00.000Z")).resolves.toBeUndefined();
+    });
+
+    it("booking code: expiresAt round-trips when set", async () => {
+      await repo.saveReservation(reservation({ id: asId<"ReservationId">("resv-coded") }));
+      await repo.saveBookingCode(bookingCode({ expiresAt: "2026-09-01T00:00:00.000Z" }));
+      expect((await repo.getBookingCode("K3F9QZ2MX7RN4P"))!.expiresAt).toBe("2026-09-01T00:00:00.000Z");
     });
 
     it("catalog: Offering includedGuestCount round-trips present and absent (12.8)", async () => {

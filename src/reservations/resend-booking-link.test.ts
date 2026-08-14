@@ -13,7 +13,8 @@ import type { Reservation } from "../domain/entities.js";
 import { resendBookingLink, resendBookingLinkBody } from "./resend-booking-link.js";
 import { nonGsm7Chars } from "./sms-alphabet.js";
 
-const DEPS = { linkBase: "https://muster.example", linkSecret: "s3cret" };
+const DEPS = { linkBase: "https://muster.example" };
+const CODE = "K3F9QZ2MX7RN4P";
 
 function reservation(over: Record<string, unknown> = {}): Reservation {
   return {
@@ -43,7 +44,7 @@ describe("resendBookingLink", () => {
   it("sends on both channels the reservation has, and reports both", async () => {
     const email = channel();
     const sms = channel();
-    const r = await resendBookingLink({ ...DEPS, email, sms }, reservation());
+    const r = await resendBookingLink({ ...DEPS, email, sms }, reservation(), CODE);
     expect(r).toEqual({ email: "sent", sms: "sent" });
     expect(email.sent).toHaveLength(1);
     expect(sms.sent).toHaveLength(1);
@@ -51,8 +52,8 @@ describe("resendBookingLink", () => {
 
   it("carries the manage URL for THIS reservation in the body", async () => {
     const email = channel();
-    await resendBookingLink({ ...DEPS, email }, reservation());
-    expect(email.sent[0]!.body).toContain("https://muster.example/reservations/manage?r=resv-1&t=");
+    await resendBookingLink({ ...DEPS, email }, reservation(), CODE);
+    expect(email.sent[0]!.body).toContain(`https://muster.example/b/${CODE}`);
   });
 
   it("reports a channel the reservation has no contact for as absent, not sent", async () => {
@@ -60,18 +61,18 @@ describe("resendBookingLink", () => {
     // whether to pick up the phone.
     const email = channel();
     const sms = channel();
-    const r = await resendBookingLink({ ...DEPS, email, sms }, reservation({ email: undefined }));
+    const r = await resendBookingLink({ ...DEPS, email, sms }, reservation({ email: undefined }), CODE);
     expect(r).toEqual({ email: "absent", sms: "sent" });
     expect(email.sent).toHaveLength(0);
   });
 
   it("reports a channel that is not configured at all as absent", async () => {
-    const r = await resendBookingLink({ ...DEPS, email: channel() }, reservation());
+    const r = await resendBookingLink({ ...DEPS, email: channel() }, reservation(), CODE);
     expect(r.sms).toBe("absent");
   });
 
   it("reports a rejecting channel as failed — never as sent", async () => {
-    const r = await resendBookingLink({ ...DEPS, email: channel({ throws: true }) }, reservation());
+    const r = await resendBookingLink({ ...DEPS, email: channel({ throws: true }) }, reservation(), CODE);
     expect(r.email).toBe("failed");
   });
 
@@ -82,6 +83,7 @@ describe("resendBookingLink", () => {
     const r = await resendBookingLink(
       { ...DEPS, email: channel({ throws: true }), sms },
       reservation(),
+      CODE,
     );
     expect(r).toEqual({ email: "failed", sms: "sent" });
     expect(sms.sent).toHaveLength(1);
@@ -92,6 +94,7 @@ describe("resendBookingLink", () => {
       resendBookingLink(
         { ...DEPS, email: channel({ throws: true }), sms: channel({ throws: true }) },
         reservation(),
+        CODE,
       ),
     ).resolves.toEqual({ email: "failed", sms: "failed" });
   });
@@ -101,6 +104,7 @@ describe("resendBookingLink", () => {
     await resendBookingLink(
       { ...DEPS, email: channel({ throws: true }), onFailure: (d) => seen.push(d) },
       reservation(),
+      CODE,
     );
     expect(seen).toHaveLength(1);
     expect(seen[0]).toContain("resv-1");
@@ -117,7 +121,7 @@ describe("resendBookingLinkBody", () => {
     // name happens to be ASCII rather than the TEMPLATE's own GSM-7 safety, which is the thing
     // under test.
     const r = reservation({ customerName: "Zoë Ångström" });
-    const body = resendBookingLinkBody(r, "https://muster.example/reservations/manage?r=x&t=y");
+    const body = resendBookingLinkBody(r, "https://muster.example/b/K3F9QZ2MX7RN4P");
     expect(nonGsm7Chars(body, ["Zoë"])).toEqual([]);
   });
 

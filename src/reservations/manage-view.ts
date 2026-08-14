@@ -1,6 +1,6 @@
 /**
  * Customer "Your booking" view model (Phase 12.6, #459) — the pure shaping behind the
- * capability-URL manage page (`/reservations/manage`, DEC-122). The token scheme + verify
+ * capability-URL manage page (`/b/<code>`, DEC-122 as amended by DEC-154). The code scheme + resolve
  * already exist (`booking-link.ts`); this turns a loaded reservation into what the mockup's
  * "Your booking" screen draws, in TWO states driven by trip time: **upcoming** (details +
  * balance) and **completed** (post-trip tip + receipt).

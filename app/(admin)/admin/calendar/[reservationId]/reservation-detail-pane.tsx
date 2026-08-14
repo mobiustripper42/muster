@@ -45,11 +45,15 @@ export interface PaneActionState {
   canResend: boolean;
   /**
    * The customer's manage URL, for copying into a browser (#686). **Present only off
-   * production** — it is a live bearer token with no expiry and no revocation
-   * (`reservationLinkToken` is a bare HMAC over the id), so on a production deploy it must not
-   * reach the operator's clipboard, one paste away from a Slack thread. Same posture as
-   * `/crew/dev-link` under DEC-057. The resend path has no such exposure: it puts the token only
-   * where it already was, in the customer's own inbox.
+   * production** — it is a live bearer credential, so on a production deploy it must not reach
+   * the operator's clipboard, one paste away from a Slack thread. Same posture as
+   * `/crew/dev-link` under DEC-057.
+   *
+   * #741 made the code revocable, which weakens but does not retire that argument: the remedy
+   * (notice the leak, press Replace their link) depends on someone realising it leaked, and a
+   * leaked link works until they do. Revisiting the gate is deliberately out of #741's scope.
+   * The resend path has no such exposure: it puts the code only where it already was, in the
+   * customer's own inbox.
    */
   manageUrl?: string | undefined;
   /**
@@ -189,6 +193,10 @@ export function actionMessage(
         // did not get out. Says the state plainly and names the way back.
         case "sent_nothing":
           return "The old link was replaced, but nothing could be sent — so this customer now has no working link. Use “Resend link” once messaging is working, or call them.";
+        // The mixed state: new link delivered, old one NOT shut off. Says so, because the
+        // operator pressed this to close a link and would otherwise assume it closed.
+        case "old_link_alive":
+          return "The new link was sent, but their OLD link could not be switched off and may still open the booking. Press this again in a moment; if it keeps failing, say so — the old link is still live until it works.";
         default:
           return "Couldn’t issue a new link just now. Their existing link still works.";
       }
@@ -820,10 +828,12 @@ function PaneActions({
 
       {/* DEV ONLY — the manage link, for pasting into a browser (#686).
           Absent on production by construction (the page only fills `manageUrl` off-prod), not
-          merely hidden: this is a live bearer token with no expiry and no revocation.
-          It exists because there was NO way to reach the manage page to look at it — verifying
-          anything on it meant hand-running an HMAC in a `node -e` one-liner, which is why the
-          #619 test plan's step for that page was unusable as written. */}
+          merely hidden: this is a live bearer credential, revocable since #741 but still one
+          paste from a Slack thread.
+          It exists because there was NO way to reach the manage page to look at it — which under
+          the old HMAC scheme meant hand-running it in a `node -e` one-liner, and is why the #619
+          test plan's step for that page was unusable as written. (The dev seed now prints
+          `/b/<code>` URLs directly, so this is no longer the only route in.) */}
       {!confirming && actions.manageUrl && (
         <div className="mt-3 border-t border-line pt-3" data-testid="manage-link-block">
           <p className="mb-1.5 text-xs text-muted">

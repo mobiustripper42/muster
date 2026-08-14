@@ -74,6 +74,19 @@ export async function ensureBookingCode(
 }
 
 /**
+ * What a reissue actually achieved.
+ *
+ * `staleCodes` is non-empty only when the new code was minted but one or more old ones could not
+ * be revoked — the mixed state. It exists because the alternative is a caller that says "their
+ * old link is dead" without knowing whether it is, which is the one sentence an operator acts on.
+ */
+export interface ReissueResult {
+  code: string;
+  /** Old codes still live despite the reissue. Empty on the normal path. */
+  staleCodes: string[];
+}
+
+/**
  * Mint a NEW code and kill every previous one for the booking.
  *
  * **Revoking the predecessors is the point, not a side effect.** A reissue is what an operator
@@ -90,7 +103,7 @@ export async function reissueBookingCode(
   reservationId: ReservationId,
   now: () => string,
   bytes?: (n: number) => Buffer,
-): Promise<string> {
+): Promise<ReissueResult> {
   const priors = await repo.listBookingCodesForReservation(reservationId);
 
   let lastError: unknown;
@@ -99,14 +112,26 @@ export async function reissueBookingCode(
     const row: BookingCode = { code, reservationId, createdAt: now() };
     try {
       await repo.saveBookingCode(row);
-      for (const prior of priors) {
-        if (!prior.revokedAt) await repo.revokeBookingCode(prior.code, now());
-      }
-      return code;
     } catch (e) {
       if (!isDuplicateCode(e)) throw e;
       lastError = e;
+      continue;
     }
+
+    // Past the mint, so a NEW code exists and throwing would lose it. A revoke that fails is
+    // reported, not raised: the caller has to tell the operator something true, and "the reissue
+    // failed" is false once a live replacement is in the table. `staleCodes` is the honest
+    // remainder — old links that are still open despite the operator asking for them to be shut.
+    const staleCodes: string[] = [];
+    for (const prior of priors) {
+      if (prior.revokedAt) continue;
+      try {
+        await repo.revokeBookingCode(prior.code, now());
+      } catch {
+        staleCodes.push(prior.code);
+      }
+    }
+    return { code, staleCodes };
   }
   throw lastError;
 }

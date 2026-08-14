@@ -130,18 +130,39 @@ describe("reissueBookingCode", () => {
     // is cosmetic and a leaked link stays live forever.
     const old = await ensureBookingCode(repo, RID, now);
     clock = "2026-08-15T09:00:00.000Z";
-    const fresh = await reissueBookingCode(repo, RID, now);
+    const { code: fresh, staleCodes } = await reissueBookingCode(repo, RID, now);
 
     expect(fresh).not.toBe(old);
+    expect(staleCodes).toEqual([]); // nothing survived the reissue
     expect((await repo.getBookingCode(old))!.revokedAt).toBe("2026-08-15T09:00:00.000Z");
     expect((await repo.getBookingCode(fresh))!.revokedAt).toBeUndefined();
     expect(await liveBookingCode(repo, RID, now)).toBe(fresh);
   });
 
+  it("a failed REVOKE reports the surviving code instead of throwing the new one away", async () => {
+    // The mixed state, and the reason `staleCodes` exists. Past the mint there is a live
+    // replacement in the table, so raising would discard a credential that already exists — but
+    // the operator pressed this to CLOSE a link, and must not be told it closed when it didn't.
+    const old = await ensureBookingCode(repo, RID, now);
+    const failing = Object.assign(Object.create(InMemoryRepository.prototype) as InMemoryRepository, {
+      listBookingCodesForReservation: async () => [
+        { code: old, reservationId: RID, createdAt: "2026-08-14T12:00:00.000Z" },
+      ],
+      saveBookingCode: async () => undefined,
+      revokeBookingCode: async () => {
+        throw new Error("connection terminated unexpectedly");
+      },
+    });
+
+    const { code, staleCodes } = await reissueBookingCode(failing, RID, now);
+    expect(code).toHaveLength(14);
+    expect(staleCodes).toEqual([old]);
+  });
+
   it("revokes EVERY prior code, not just the most recent", async () => {
     const a = await ensureBookingCode(repo, RID, now);
-    const b = await reissueBookingCode(repo, RID, now);
-    const c = await reissueBookingCode(repo, RID, now);
+    const { code: b } = await reissueBookingCode(repo, RID, now);
+    const { code: c } = await reissueBookingCode(repo, RID, now);
 
     for (const dead of [a, b]) expect((await repo.getBookingCode(dead))!.revokedAt).toBeDefined();
     expect((await repo.getBookingCode(c))!.revokedAt).toBeUndefined();
@@ -149,7 +170,7 @@ describe("reissueBookingCode", () => {
   });
 
   it("works on a booking that had no code at all", async () => {
-    const code = await reissueBookingCode(repo, RID, now);
+    const { code } = await reissueBookingCode(repo, RID, now);
     expect(await liveBookingCode(repo, RID, now)).toBe(code);
   });
 

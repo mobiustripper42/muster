@@ -424,11 +424,12 @@ export async function reissueBookingLink(formData: FormData): Promise<void> {
   if (!reservation.email && !reservation.phone) redirect(back({ reissueErr: "no_contact" }));
   if (reservation.status !== "booked") redirect(back({ reissueErr: "cancelled" }));
 
+  let reissue: Awaited<ReturnType<typeof reissueBookingCode>>;
   try {
-    await reissueBookingCode(getRepo(), reservation.id, () => new Date().toISOString());
+    reissue = await reissueBookingCode(getRepo(), reservation.id, () => new Date().toISOString());
   } catch {
-    // Nothing was revoked — `reissueBookingCode` mints before it revokes — so the customer's
-    // existing link still works and the operator can try again.
+    // A throw means the MINT failed — `reissueBookingCode` never raises past that point — so
+    // nothing was revoked and the customer's existing link still works.
     redirect(back({ reissueErr: "unreachable" }));
   }
 
@@ -442,5 +443,8 @@ export async function reissueBookingLink(formData: FormData): Promise<void> {
   if (outcome.kind === "skipped") redirect(back({ reissueErr: "sent_nothing" }));
   const { email: e2, sms: s2 } = outcome.result;
   if (e2 !== "sent" && s2 !== "sent") redirect(back({ reissueErr: "sent_nothing" }));
+  // The new link went out, but an old one survived the revoke — so the operator must NOT be told
+  // the previous link is dead, which is the whole reason they pressed this.
+  if (reissue.staleCodes.length > 0) redirect(back({ reissueErr: "old_link_alive" }));
   redirect(back({ reissued: `${e2}-${s2}` }));
 }

@@ -113,9 +113,18 @@ describe("actionMessage — reissued / reissueErr (#741)", () => {
   });
 
   it("a failed reissue reassures that the existing link still works", () => {
-    // `reissueBookingCode` mints before it revokes, so a failure genuinely leaves the old code
-    // live — the copy is allowed to say so, and must, or the operator re-presses and panics.
+    // Only reachable when the MINT failed — `reissueBookingCode` no longer raises past that
+    // point — so the old code genuinely is untouched and the copy is allowed to say so.
     expect(actionMessage("reissueErr", "unreachable")).toMatch(/existing link still works/i);
+  });
+
+  it("the mixed state says the OLD link may still open the booking", () => {
+    // New link delivered, old one not shut off. The operator pressed this to close a link; being
+    // told it succeeded is the failure that matters, because they then stop worrying about it.
+    const m = actionMessage("reissueErr", "old_link_alive");
+    expect(m).toMatch(/OLD link/);
+    expect(m).toMatch(/still (open|live)/i);
+    expect(m).not.toMatch(/no longer works/i); // never claims the kill landed
   });
 
   it("refuses the same booking-level cases resend does", () => {

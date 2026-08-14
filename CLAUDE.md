@@ -91,7 +91,7 @@ The generator writes the reciprocal banner into the amended decision's own file,
 | `/retro` | Phase boundary (end) | Compute per-session active time (wall − breaks) from `started`/`ended` + transcript break inference. Aggregate one phase velocity (active h/pt). Mark `[x]`, write retro, patch-bump per merged PR + minor-bump at close. |
 | `/bump-major` | Breaking change | Manually bump major version. CHANGELOG.md entry + tag on the trunk (`main`). Dev projects only |
 | `/promote-production` | Ship trunk to prod | ff-merge `main` → `production` (deploy-only; tag already on the commit), push. Projects with a `production` branch only |
-| `/read-the-tape` | After a session worth learning from | Audit JSONL transcript. Fixes what this project owns; records everything `logic`-class as a cited observation in seeds. Needs a resolvable seeds checkout (DEC-S039) |
+| `/read-the-tape` | `--queue` on a weekly-ish cadence; bare to audit one session now | Audits session JSONL and writes one cited observation per session to seeds. **Changes nothing here** (DEC-S040). Drain mode works through whatever the `SessionEnd` capture hook queued (DEC-S045). Needs a resolvable seeds checkout |
 | `/doc-consistency-check` | Ad-hoc, when docs feel drifted (no scheduled trigger) | Cross-reference factual claims across `docs/*.md` + root `CLAUDE.md`; flag mismatches + unfilled placeholders. Report-only via @doc-consistency |
 
 **Dev identity:** `~/.claude/devname` (one-line file with handle, e.g. `eric`). Set once per machine.
@@ -101,6 +101,8 @@ The generator writes the reciprocal banner into the amended decision's own file,
 **Workflow fixes don't get made here (DEC-S039, DEC-S040).** A skill or shared agent that misbehaves in this project is **not** fixed in this project. Those files are canonical in seeds, and there is no sync in either direction any more — so a local fix does not get overwritten, it just never goes anywhere. It becomes invisible drift in a file that is meant to be identical across every project, and nothing will ever reconcile it.
 
 The route that ends somewhere: `/read-the-tape` records the failure as a cited observation on seeds' `observations` branch. `@workout` runs periodically in seeds, judges what has accumulated across every project, and promotes what earns it into the templates. Then someone copies the merged change back out, by hand.
+
+**You do not have to remember to start that route (DEC-S045).** A `SessionEnd` hook on the machine copies each ending session's transcript into a local queue, so the evidence survives whether or not anyone thought the session was interesting — which matters, because transcripts are deleted after `cleanupPeriodDays` (default 30) and the sessions worth auditing are usually the ones nobody suspected. `/read-the-tape --queue` distils the backlog later. The hook is installed per machine, in the user-global settings, not in this repo — and it captures nothing from a cloud-container session, whose filesystem dies with it.
 
 **Nothing here is exempt.** `/read-the-tape` no longer applies even the small local fixes it used to — `.claude/settings.json` permission entries included. It observes and writes one file to seeds; that is all it does. Fixing anything in this repo is your call, made deliberately, not something an audit does on its way past.
 

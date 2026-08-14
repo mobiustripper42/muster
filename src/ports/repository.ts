@@ -330,6 +330,31 @@ export interface Repository {
     time: string,
   ): Promise<void>;
 
+  // ── Refund lease — the refund mutex (#726) ─────────────────────────────────
+  /**
+   * Claim the exclusive right to refund this reservation, or report that someone else holds it.
+   *
+   * **Why a lease rather than a lock.** The refund makes a Stripe network call, and a Postgres
+   * transaction must not be held open across one — so the mutex is a row taken before the call
+   * and released after, not a lock spanning it. `cancelEventIfUnclaimed` can use an advisory
+   * lock because everything it touches is in the database; this cannot.
+   *
+   * **Lazily expired, exactly like `acquireCheckoutHold`**: an existing row whose `expiresAt` is
+   * at or before `nowIso` is dead and gets replaced. Without that, a process dying mid-refund
+   * would block every future refund on the booking forever — silently and permanently, which is
+   * worse than the double-refund this exists to prevent.
+   *
+   * `{ acquired: false }` is a normal outcome the caller renders, never an error.
+   */
+  acquireRefundLease(
+    reservationId: ReservationId,
+    nowIso: string,
+    expiresAtIso: string,
+  ): Promise<{ acquired: boolean }>;
+  /** Release the lease. Idempotent — a no-op if it already expired or was never taken. Called
+   *  from a `finally`, so it must not throw on an absent row. */
+  releaseRefundLease(reservationId: ReservationId): Promise<void>;
+
   // ── Gratuity — first-class crew money (12.3, DEC-124) ───────────────────────
   /** Record a collected gratuity. Deterministic id (`grat_${kind}_${sessionId}`) ⇒ idempotent
    *  upsert, so a re-delivered webhook never double-counts. */

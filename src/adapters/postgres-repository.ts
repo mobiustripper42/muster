@@ -1494,6 +1494,48 @@ export class PostgresRepository implements Repository {
   }
 
   // ── Checkout holds (12.1, DEC-109) ──────────────────────────────────────────
+  // ── Refund lease (#726) ───────────────────────────────────────────────────
+  /**
+   * Delete-if-expired then insert, in ONE transaction — the `acquireCheckoutHold` shape below,
+   * for the same reason: `now()` is not immutable so liveness can't live in an index predicate.
+   * The primary key on `reservation_id` is the mutex; `on conflict do nothing` + `returning`
+   * decides the winner without raising.
+   *
+   * The transaction is short and contains no network call — that is the whole point of a lease.
+   * The Stripe round-trip happens *outside* it, between acquire and release.
+   */
+  async acquireRefundLease(
+    reservationId: ReservationId,
+    nowIso: string,
+    expiresAtIso: string,
+  ): Promise<{ acquired: boolean }> {
+    const client = await this.#pool.connect();
+    try {
+      await client.query("begin");
+      await client.query(
+        "delete from refund_leases where reservation_id=$1 and expires_at <= $2",
+        [reservationId, nowIso],
+      );
+      const { rows } = await client.query(
+        `insert into refund_leases (reservation_id, acquired_at, expires_at)
+         values ($1,$2,$3)
+         on conflict do nothing
+         returning reservation_id`,
+        [reservationId, nowIso, expiresAtIso],
+      );
+      await client.query("commit");
+      return { acquired: rows.length > 0 };
+    } catch (e) {
+      await client.query("rollback");
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+  async releaseRefundLease(reservationId: ReservationId): Promise<void> {
+    await this.#pool.query("delete from refund_leases where reservation_id=$1", [reservationId]);
+  }
+
   async acquireCheckoutHold(
     hold: CheckoutHold,
   ): Promise<{ acquired: true; hold: CheckoutHold } | { acquired: false }> {

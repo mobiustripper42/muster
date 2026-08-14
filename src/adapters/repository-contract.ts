@@ -883,6 +883,63 @@ export function runRepositoryContract(
       });
     };
 
+    // ── Refund lease (#726) ───────────────────────────────────────────────────
+    // The FK means the reservation must exist first — in Postgres an orphan lease insert fails,
+    // and testing this against the double alone would hide that.
+    const LEASE_RESV = asId<"ReservationId">("resv-leased");
+    const T0 = "2026-08-14T12:00:00.000Z";
+    const T_LATER = "2026-08-14T12:00:30.000Z";
+    const T_AFTER_EXPIRY = "2026-08-14T12:02:00.000Z";
+    const EXPIRES = "2026-08-14T12:01:00.000Z";
+
+    it("refund lease: a fresh acquire wins", async () => {
+      await repo.saveReservation(reservation({ id: LEASE_RESV }));
+      expect(await repo.acquireRefundLease(LEASE_RESV, T0, EXPIRES)).toEqual({ acquired: true });
+    });
+
+    it("refund lease: a second live acquire LOSES — this is the money guard", async () => {
+      // The whole reason the table exists: two concurrent refunds of different amounts must not
+      // both reach Stripe. Both adapters must agree on which side of this the second call lands.
+      await repo.saveReservation(reservation({ id: LEASE_RESV }));
+      expect(await repo.acquireRefundLease(LEASE_RESV, T0, EXPIRES)).toEqual({ acquired: true });
+      expect(await repo.acquireRefundLease(LEASE_RESV, T_LATER, EXPIRES)).toEqual({
+        acquired: false,
+      });
+    });
+
+    it("refund lease: releasing lets the next one in, and is idempotent", async () => {
+      await repo.saveReservation(reservation({ id: LEASE_RESV }));
+      await repo.acquireRefundLease(LEASE_RESV, T0, EXPIRES);
+      await repo.releaseRefundLease(LEASE_RESV);
+      expect(await repo.acquireRefundLease(LEASE_RESV, T_LATER, EXPIRES)).toEqual({
+        acquired: true,
+      });
+      // Called from a `finally`, so a double release (or one on a lease that already expired)
+      // must be a no-op rather than a throw.
+      await repo.releaseRefundLease(LEASE_RESV);
+      await expect(repo.releaseRefundLease(LEASE_RESV)).resolves.toBeUndefined();
+    });
+
+    it("refund lease: an EXPIRED lease is inert — a crashed refund can't strand the booking", async () => {
+      // Without lazy expiry, a process dying mid-refund blocks every future refund on this
+      // booking forever: silent, permanent, and worse than the bug the lease fixes.
+      await repo.saveReservation(reservation({ id: LEASE_RESV }));
+      await repo.acquireRefundLease(LEASE_RESV, T0, EXPIRES);
+      expect(await repo.acquireRefundLease(LEASE_RESV, T_AFTER_EXPIRY, EXPIRES)).toEqual({
+        acquired: true,
+      });
+    });
+
+    it("refund lease: leases are per-reservation, not global", async () => {
+      // A refund on one booking must never block a refund on another.
+      await repo.saveReservation(reservation({ id: LEASE_RESV }));
+      await repo.saveReservation(reservation({ id: asId<"ReservationId">("resv-other-lease") }));
+      await repo.acquireRefundLease(LEASE_RESV, T0, EXPIRES);
+      expect(
+        await repo.acquireRefundLease(asId<"ReservationId">("resv-other-lease"), T0, EXPIRES),
+      ).toEqual({ acquired: true });
+    });
+
     it("acquireCheckoutHold: fresh acquire succeeds and is listable", async () => {
       await saveCatalogParents();
       expect((await repo.acquireCheckoutHold(hold())).acquired).toBe(true);

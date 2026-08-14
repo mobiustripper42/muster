@@ -34,6 +34,16 @@ export interface RefundDeps {
   now: () => string;
 }
 
+/**
+ * How long a refund lease is held before it is considered abandoned (#726).
+ *
+ * Longer than any Stripe round-trip, shorter than an operator's patience. Not env-overridable:
+ * nothing about it is per-deploy, and the two failure modes are symmetric and both bounded —
+ * too short reopens the double-refund window for a pathologically slow call, too long makes a
+ * crashed refund un-retryable for that much longer.
+ */
+const LEASE_TTL_MS = 60_000;
+
 /** One leg of the split — what actually went back off a single charge. */
 export interface RefundAllocation {
   paymentId: PaymentId;
@@ -163,14 +173,10 @@ export async function refundReservation(
   if (refundedTotalFor(payments) !== expectedRefundedCents) {
     return { ok: false, reason: "stale" };
   }
-  // **This closes the double-submit, NOT true concurrency**, and the difference matters.
-  // It is a read-then-check with no lock, so two genuinely simultaneous refunds of DIFFERENT
-  // amounts both read the same total, both pass, and both key differently at Stripe — so both
-  // pay out while `markPaymentRefunded`'s `greatest()` records only the larger. Self-healing
-  // once `charge.refunded` lands (the webhook writes Stripe's true cumulative total), but only
-  // where that subscription exists. Fixing it properly needs a lease, not a lock: the Stripe
-  // call is a network round-trip and cannot be held inside a transaction. Filed as its own
-  // task — see the issue linked from DEC-153.
+  // The compare-and-swap above closes the DOUBLE-SUBMIT — the same amount posted twice. It
+  // cannot close true concurrency (two tabs, two operators, two DIFFERENT amounts), because it
+  // is a read-then-check and the second read lands before the first write. The lease below is
+  // what closes that (#726); the two guards are complementary, not redundant.
 
   // Newest first. `createdAt` is ISO-8601 UTC text throughout this schema, so lexicographic
   // ordering is chronological; the payment id breaks a tie deterministically so two charges
@@ -200,6 +206,38 @@ export async function refundReservation(
   }
   if (remaining > 0) return { ok: false, reason: "exceeds_refundable" };
 
+  // ── The mutex (#726) ──────────────────────────────────────────────────────
+  // Taken AFTER planning, so a request that was going to be refused anyway (bad amount, no
+  // PaymentIntent, over the ceiling) never takes a lease and never blocks a concurrent good one.
+  // Everything below moves real money.
+  const lease = await deps.repo.acquireRefundLease(
+    reservationId,
+    deps.now(),
+    new Date(Date.parse(deps.now()) + LEASE_TTL_MS).toISOString(),
+  );
+  // Reported as `stale` deliberately: from the operator's seat the two situations are the same
+  // — someone else is acting on this booking, re-read the screen before deciding again — and the
+  // copy for it already exists and already says the safe thing.
+  if (!lease.acquired) return { ok: false, reason: "stale" };
+
+  try {
+    return await executeRefundPlan(deps, plan);
+  } finally {
+    // ALWAYS released, including on `provider_error` and on a throw. A lease that outlives its
+    // refund blocks the booking until it expires, and the operator's retry is exactly what a
+    // partial failure demands.
+    await deps.repo.releaseRefundLease(reservationId);
+  }
+}
+
+/**
+ * Issue the planned legs. Split out so the lease's `try`/`finally` wraps the whole of the
+ * money-moving half and nothing else — the acquire must not be inside its own `finally`.
+ */
+async function executeRefundPlan(
+  deps: RefundDeps,
+  plan: RefundAllocation[],
+): Promise<RefundOutcome> {
   const done: RefundAllocation[] = [];
   for (const leg of plan) {
     try {

@@ -246,6 +246,96 @@ describe("refundReservation", () => {
     expect((await repo.getPayment(asId<"PaymentId">("pay-deposit")))?.refundedCents).toBeUndefined();
   });
 
+  it("two SIMULTANEOUS refunds of different amounts: only one reaches Stripe (#726)", async () => {
+    // NOT the double-submit case (closed by the compare-and-swap). Two operators, or one in two
+    // tabs, refunding DIFFERENT amounts: both read `refunded = 0`, both pass the compare, and
+    // both key differently at Stripe (`refund_op_P_5000` vs `refund_op_P_3000`) — so Stripe
+    // executes both and $80 leaves the account. `markPaymentRefunded`'s `greatest()` then
+    // records only the larger, so the ledger says $50 and `/admin/purchases` over-reports
+    // revenue. The compare-and-swap cannot catch it: it is a read-then-check with no lock, and
+    // the second read happens before the first write.
+    const repo = await twoCharges();
+    const payments = new FakePaymentPort();
+
+    // Hold the FIRST refund inside the provider call until the second has started, which is the
+    // interleaving that matters — the second must pass its compare while the first is in flight
+    // at Stripe. Without this gate the two calls serialize and the bug is invisible.
+    let releaseFirst!: () => void;
+    const firstInFlight = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let started = 0;
+    const original = payments.refund.bind(payments);
+    payments.refund = async (input) => {
+      started += 1;
+      if (started === 1) await firstInFlight;
+      return original(input);
+    };
+
+    const first = refundReservation(deps(repo, payments), RESV, 5000, 0);
+    const second = refundReservation(deps(repo, payments), RESV, 3000, 0);
+    // Let the second run to completion (or refusal) before the first is allowed to finish.
+    const secondResult = await second;
+    releaseFirst();
+    const firstResult = await first;
+
+    // Exactly one refund may reach the provider. This is the assertion the money turns on.
+    expect(payments.refunds).toHaveLength(1);
+
+    // One winner, one refusal — and the loser must not report success.
+    const outcomes = [firstResult, secondResult];
+    expect(outcomes.filter((r) => r.ok)).toHaveLength(1);
+    expect(outcomes.filter((r) => !r.ok && r.reason === "stale")).toHaveLength(1);
+
+    // The ledger agrees with what actually moved: one refund's worth, not the max of two.
+    const rows = await repo.listPaymentsForReservation(RESV);
+    const ledger = rows.reduce((s, p) => s + (p.refundedCents ?? 0), 0);
+    expect(ledger).toBe(payments.refunds[0]!.amountCents);
+  });
+
+  it("releases the lease on success — a later, separate refund is not blocked", async () => {
+    // The lease must not outlive its refund. If it did, the operator refunding $50 now and $30
+    // an hour later would be refused the second one for no visible reason.
+    const repo = await twoCharges();
+    const payments = new FakePaymentPort();
+
+    const first = await refundReservation(deps(repo, payments), RESV, 5000, 0);
+    expect(first).toMatchObject({ ok: true });
+
+    const second = await refundReservation(deps(repo, payments), RESV, 3000, 5000);
+    expect(second).toMatchObject({ ok: true, refundedCents: 3000 });
+    expect(payments.refunds).toHaveLength(2);
+  });
+
+  it("releases the lease when the provider fails — the retry is the whole point", async () => {
+    // A partial failure is exactly when the operator presses again. Holding the lease through
+    // it would refuse that retry for a full minute, with copy that says the page is stale.
+    const repo = await twoCharges();
+    const payments = new FakePaymentPort();
+    payments.refundError = new Error("stripe is down");
+
+    const failed = await refundReservation(deps(repo, payments), RESV, 5000, 0);
+    expect(failed).toMatchObject({ ok: false, reason: "provider_error" });
+
+    payments.refundError = null;
+    const retry = await refundReservation(deps(repo, payments), RESV, 5000, 0);
+    expect(retry).toMatchObject({ ok: true, refundedCents: 5000 });
+  });
+
+  it("a refused plan takes no lease — it must not block a concurrent good refund", async () => {
+    // `exceeds_refundable` is refused before the lease is taken. If it took one, an operator
+    // fat-fingering $9,999 would lock the booking for a minute while a colleague's correct
+    // refund bounced off it.
+    const repo = await twoCharges();
+    const payments = new FakePaymentPort();
+
+    expect(await refundReservation(deps(repo, payments), RESV, 999_999, 0)).toMatchObject({
+      ok: false,
+      reason: "exceeds_refundable",
+    });
+    expect(await refundReservation(deps(repo, payments), RESV, 5000, 0)).toMatchObject({ ok: true });
+  });
+
   it("refuses a Xola reservation", async () => {
     const repo = await twoCharges();
     await repo.saveReservation({ ...reservation, source: "xola" });

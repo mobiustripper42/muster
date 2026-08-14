@@ -809,7 +809,16 @@ test.describe("admin reservation actions (#616)", () => {
     await page.getByRole("button", { name: /Resend confirmation/ }).click();
     await page.waitForURL(/resent=|resendErr=/);
 
-    await expect(page.getByTestId("action-error")).toContainText("Nothing was sent");
+    // Asserts the PROPERTY, not one deployment's phrasing. Which refusal fires depends on how
+    // the runner happens to be configured — CI has no APP_BASE_URL or RESERVATION_LINK_SECRET so
+    // it lands on `not_configured` ("…so nothing was sent"), while a dev box with those set but
+    // no channels lands on `no_channels` ("Nothing was sent — …"). The first cut pinned the exact
+    // capitalised string and so passed locally and failed in CI: a test that asserts the copy of
+    // whichever branch the author's machine takes is testing the machine.
+    //
+    // What must hold on every one of them: an error is shown, it says nothing went out, and there
+    // is no green success line beside it.
+    await expect(page.getByTestId("action-error")).toContainText(/nothing was sent/i);
     await expect(page.getByTestId("action-done")).toHaveCount(0);
   });
 

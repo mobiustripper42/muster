@@ -43,6 +43,15 @@ export interface PaneActionState {
   refundBackHref: string;
   canResend: boolean;
   /**
+   * The customer's manage URL, for copying into a browser (#686). **Present only off
+   * production** — it is a live bearer token with no expiry and no revocation
+   * (`reservationLinkToken` is a bare HMAC over the id), so on a production deploy it must not
+   * reach the operator's clipboard, one paste away from a Slack thread. Same posture as
+   * `/crew/dev-link` under DEC-057. The resend path has no such exposure: it puts the token only
+   * where it already was, in the customer's own inbox.
+   */
+  manageUrl?: string | undefined;
+  /**
    * The reservation is cancelled but its event is still `scheduled` — a half-applied cancel.
    * The boat is silently still held: neighbouring departures stay unsellable and the crew shift
    * never collapsed. `cancelReservation` repairs this on a re-run, so the pane has to offer one.
@@ -93,7 +102,7 @@ function balanceErrorMessage(reason: string): string {
 export function actionMessage(
   kind: string,
   value: string,
-  opts: { movedCents?: number; refundableCents?: number } = {},
+  opts: { movedCents?: number; refundableCents?: number; email?: string; phone?: string } = {},
 ): string {
   const { movedCents, refundableCents = 0 } = opts;
   switch (kind) {
@@ -113,8 +122,46 @@ export function actionMessage(
     }
     case "refunded":
       return `Refunded ${formatCents(Number(value) || 0)} to the card it came from.`;
-    case "resent":
-      return "Confirmation and manage link sent again.";
+    case "resent": {
+      // `value` is `<email>-<sms>`, each `sent` | `failed` | `absent` (#686). Naming the address
+      // and number matters more than it looks: the operator is usually on the phone to the
+      // customer, and "we've emailed you" is only useful if it says WHICH address — a typo'd
+      // one at booking is exactly why they are on the phone.
+      const [emailState, smsState] = value.split("-");
+      const to = (state: string | undefined, contact: string | undefined, verb: string): string =>
+        state === "sent" && contact ? `${verb} ${contact}` : "";
+      const sent = [to(emailState, opts.email, "emailed"), to(smsState, opts.phone, "texted")].filter(
+        Boolean,
+      );
+      // A failure here is partial by construction — the action redirects to `resendErr` when
+      // nothing got out — so this always has something to report as sent alongside it.
+      const failed = [
+        emailState === "failed" ? "the email failed" : "",
+        smsState === "failed" ? "the text failed" : "",
+      ].filter(Boolean);
+      const head = sent.length ? `Link ${sent.join(" and ")}.` : "Link sent again.";
+      if (failed.length) return `${head} But ${failed.join(" and ")} — try again or call them.`;
+      // `absent` covers two different facts and the operator needs them apart:
+      //   - the BOOKING has no such contact — nothing to fix, nothing to chase;
+      //   - the DEPLOYMENT has no channel for a contact that IS there — the customer has a phone
+      //     number sitting untried, which is the difference between "done" and "also call them".
+      // Silence on either reads as "both went".
+      const missing = [
+        emailState === "absent" && !opts.email ? "email" : "",
+        smsState === "absent" && !opts.phone ? "phone" : "",
+      ].filter(Boolean);
+      const untried = [
+        emailState === "absent" && opts.email ? `email (${opts.email})` : "",
+        smsState === "absent" && opts.phone ? `text (${opts.phone})` : "",
+      ].filter(Boolean);
+      const tail = [
+        missing.length ? `No ${missing.join(" or ")} on this booking.` : "",
+        untried.length
+          ? `Not tried: ${untried.join(" and ")} — no channel configured for it here.`
+          : "",
+      ].filter(Boolean);
+      return tail.length ? `${head} ${tail.join(" ")}` : head;
+    }
     case "cancelErr":
       return value === "not_muster"
         ? "This booking is Xola's — cancel it there, or the next import will bring it back."
@@ -143,13 +190,29 @@ export function actionMessage(
           return "Couldn’t refund just now. Nothing moved. Try again in a moment.";
       }
     case "resendErr":
-      return value === "cancelled"
-        ? "This booking is cancelled — resending would confirm a trip that isn’t sailing."
-        : value === "no_contact"
-        ? "This booking has no email or phone on it, so there’s nowhere to send."
-        : value === "not_muster"
-          ? "Xola bookings have no Muster manage link."
-          : "Couldn’t send just now. Try again in a moment.";
+      switch (value) {
+        case "cancelled":
+          return "This booking is cancelled — resending would confirm a trip that isn’t sailing.";
+        case "no_contact":
+          return "This booking has no email or phone on it, so there’s nowhere to send.";
+        case "not_muster":
+          return "Xola bookings have no Muster manage link.";
+        // The three below mean NOTHING was attempted — a deployment problem, not a bad booking.
+        // Retrying changes nothing until the deployment does, so the copy says so rather than
+        // inviting a second press.
+        case "messaging_off":
+          return "Messaging is switched off on this deployment, so nothing was sent.";
+        case "not_configured":
+          return "This deployment can’t build a manage link (APP_BASE_URL / RESERVATION_LINK_SECRET are unset), so nothing was sent.";
+        case "no_channels":
+          return "No email or SMS channel is configured on this deployment, so nothing was sent.";
+        case "all_failed":
+          return "Nothing got out — every channel this booking has failed. Check the logs, or call them.";
+        case "nothing_sent":
+          return "Nothing was sent — this deployment has no channel for the contact details on this booking. Call them, or add the missing contact.";
+        default:
+          return "Couldn’t send just now. Try again in a moment.";
+      }
     default:
       return "";
   }
@@ -689,8 +752,37 @@ function PaneActions({
           >
             Resend confirmation + manage link
           </SubmitButton>
-  
+
         </form>
+      )}
+
+      {/* DEV ONLY — the manage link, for pasting into a browser (#686).
+          Absent on production by construction (the page only fills `manageUrl` off-prod), not
+          merely hidden: this is a live bearer token with no expiry and no revocation.
+          It exists because there was NO way to reach the manage page to look at it — verifying
+          anything on it meant hand-running an HMAC in a `node -e` one-liner, which is why the
+          #619 test plan's step for that page was unusable as written. */}
+      {!confirming && actions.manageUrl && (
+        <div className="mt-3 border-t border-line pt-3" data-testid="manage-link-block">
+          <p className="mb-1.5 text-xs text-muted">
+            The customer&rsquo;s manage link. Not shown on production — it opens the booking for
+            anyone holding it.
+          </p>
+          <div className="flex items-center gap-2">
+            <span
+              className="min-w-0 flex-1 select-all truncate rounded-lg border border-line bg-bg px-2 py-1.5 font-mono text-[11px] text-muted"
+              data-testid="manage-link"
+            >
+              {actions.manageUrl}
+            </span>
+            {/* "Copy manage link", not "Copy link" — the balance block above already has a
+                "Copy link" button, and two controls with the same accessible name in one pane
+                carrying DIFFERENT URLs (a Stripe checkout vs a capability token) is a real
+                ambiguity, for a screen reader and for anyone scanning. The e2e caught it as a
+                strict-mode violation; it would have reached the operator as a wrong paste. */}
+            <CopyButton value={actions.manageUrl} label="Copy manage link" />
+          </div>
+        </div>
       )}
 
     </div>

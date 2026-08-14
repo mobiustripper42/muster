@@ -792,6 +792,36 @@ test.describe("admin reservation actions (#616)", () => {
     await expect(page.getByText(`open · ${shortLabel(BOOKED.time)}`)).toBeVisible();
   });
 
+  test("a resend that sent nothing says so, instead of a green Sent (#686)", async ({ page }) => {
+    // The suite blanks Twilio (`playwright.config.ts`) and the seed booking is phone-only, so
+    // this deployment has no channel for this booking's contact and NOTHING goes out. The old
+    // action redirected `resent=1` regardless and the pane printed "Confirmation and manage link
+    // sent again." — a green success over a send that never happened, on screen every time this
+    // suite ran. The first cut of the replacement reported it as "Link sent again." for the same
+    // reason; this test is what caught that.
+    //
+    // The per-channel copy (which address, which number, which one failed) is pinned in
+    // `action-message.test.ts`, where every outcome can be driven directly. This asserts the one
+    // end-to-end fact only a running deployment decides.
+    await signInAsAdmin(page, "spink");
+    await page.goto(detail());
+
+    await page.getByRole("button", { name: /Resend confirmation/ }).click();
+    await page.waitForURL(/resent=|resendErr=/);
+
+    // Asserts the PROPERTY, not one deployment's phrasing. Which refusal fires depends on how
+    // the runner happens to be configured — CI has no APP_BASE_URL or RESERVATION_LINK_SECRET so
+    // it lands on `not_configured` ("…so nothing was sent"), while a dev box with those set but
+    // no channels lands on `no_channels` ("Nothing was sent — …"). The first cut pinned the exact
+    // capitalised string and so passed locally and failed in CI: a test that asserts the copy of
+    // whichever branch the author's machine takes is testing the machine.
+    //
+    // What must hold on every one of them: an error is shown, it says nothing went out, and there
+    // is no green success line beside it.
+    await expect(page.getByTestId("action-error")).toContainText(/nothing was sent/i);
+    await expect(page.getByTestId("action-done")).toHaveCount(0);
+  });
+
   test("a half-applied cancel offers a repair instead of stranding the boat", async ({ page }) => {
     // The state a crash between `cancelReservation`'s two writes leaves: reservation Cancelled,
     // event still scheduled — so the hull is still held, the crew were never told, and the pane

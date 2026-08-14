@@ -1,6 +1,7 @@
 import { EmailChannel } from "@core/adapters/email-channel.js";
 import type { Reservation } from "@core/domain/entities.js";
 import { sendBookingConfirmation } from "@core/reservations/booking-confirmation.js";
+import { resendBookingLink, type ResendResult } from "@core/reservations/resend-booking-link.js";
 import { readEmailEnv } from "./auth-delivery";
 import { isProdDeploy } from "./flags";
 import { getRepo } from "./repo";
@@ -70,4 +71,53 @@ export async function sendReservationConfirmation(
       `[reservations] confirmation errored for ${reservation.id} — ${e instanceof Error ? e.message : e}`,
     );
   }
+}
+
+/**
+ * What a resend did, for a caller who is going to render it (#686).
+ *
+ * `skipped` is not a failure of a send — it means no send was ever attempted, because this
+ * deployment cannot make one. Rendering that as "sent" is the defect this type exists to make
+ * impossible: the operator would tell a customer their link is on the way when nothing left the
+ * building. It stays distinct from `attempted`, whose per-channel outcomes may themselves be
+ * `failed`.
+ */
+export type ResendOutcome =
+  | { kind: "attempted"; result: ResendResult }
+  | { kind: "skipped"; reason: "messaging_off" | "not_configured" | "no_channels" };
+
+/**
+ * Resend the manage link from an operator press (#686) — the same channel wiring as the
+ * confirmation above, with the result handed back instead of swallowed.
+ *
+ * The confirmation path returns `void` on purpose: it runs inside the Stripe webhook, where
+ * there is nobody to report to and a throw would make Stripe retry the whole event. Behind a
+ * button, that same silence renders every outcome as a flat green "Sent" — including an
+ * email-only booking, a Twilio outage, and a deployment with no channels configured at all.
+ */
+export async function resendReservationLink(reservation: Reservation): Promise<ResendOutcome> {
+  if (process.env.MESSAGING === "false") return { kind: "skipped", reason: "messaging_off" };
+
+  const linkBase = process.env.APP_BASE_URL?.replace(/\/+$/, "");
+  const linkSecret = process.env.RESERVATION_LINK_SECRET;
+  // Same rule as the confirmation: the link rides the trusted APP_BASE_URL, never a Host header.
+  if (!linkBase || !linkSecret) return { kind: "skipped", reason: "not_configured" };
+
+  const repo = getRepo();
+  const emailEnv = readEmailEnv();
+  const email = emailEnv ? new EmailChannel(emailEnv) : undefined;
+  const sms = makeTwilioChannel(repo, linkBase) ?? undefined;
+  if (!email && !sms) return { kind: "skipped", reason: "no_channels" };
+
+  const result = await resendBookingLink(
+    {
+      linkBase,
+      linkSecret,
+      ...(email ? { email } : {}),
+      ...(sms ? { sms } : {}),
+      onFailure: (detail) => console.error(`[reservations] link resend failed — ${detail}`),
+    },
+    reservation,
+  );
+  return { kind: "attempted", result };
 }

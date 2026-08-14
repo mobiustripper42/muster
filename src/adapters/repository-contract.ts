@@ -894,39 +894,81 @@ export function runRepositoryContract(
 
     it("refund lease: a fresh acquire wins", async () => {
       await repo.saveReservation(reservation({ id: LEASE_RESV }));
-      expect(await repo.acquireRefundLease(LEASE_RESV, T0, EXPIRES)).toEqual({ acquired: true });
+      expect(await repo.acquireRefundLease(LEASE_RESV, "tok-a", T0, EXPIRES)).toEqual({ acquired: true });
     });
 
     it("refund lease: a second live acquire LOSES — this is the money guard", async () => {
       // The whole reason the table exists: two concurrent refunds of different amounts must not
       // both reach Stripe. Both adapters must agree on which side of this the second call lands.
       await repo.saveReservation(reservation({ id: LEASE_RESV }));
-      expect(await repo.acquireRefundLease(LEASE_RESV, T0, EXPIRES)).toEqual({ acquired: true });
-      expect(await repo.acquireRefundLease(LEASE_RESV, T_LATER, EXPIRES)).toEqual({
+      expect(await repo.acquireRefundLease(LEASE_RESV, "tok-a", T0, EXPIRES)).toEqual({ acquired: true });
+      expect(await repo.acquireRefundLease(LEASE_RESV, "tok-b", T_LATER, EXPIRES)).toEqual({
         acquired: false,
       });
     });
 
     it("refund lease: releasing lets the next one in, and is idempotent", async () => {
       await repo.saveReservation(reservation({ id: LEASE_RESV }));
-      await repo.acquireRefundLease(LEASE_RESV, T0, EXPIRES);
-      await repo.releaseRefundLease(LEASE_RESV);
-      expect(await repo.acquireRefundLease(LEASE_RESV, T_LATER, EXPIRES)).toEqual({
+      await repo.acquireRefundLease(LEASE_RESV, "tok-a", T0, EXPIRES);
+      await repo.releaseRefundLease(LEASE_RESV, "tok-a");
+      expect(await repo.acquireRefundLease(LEASE_RESV, "tok-b", T_LATER, EXPIRES)).toEqual({
         acquired: true,
       });
       // Called from a `finally`, so a double release (or one on a lease that already expired)
       // must be a no-op rather than a throw.
-      await repo.releaseRefundLease(LEASE_RESV);
-      await expect(repo.releaseRefundLease(LEASE_RESV)).resolves.toBeUndefined();
+      await repo.releaseRefundLease(LEASE_RESV, "tok-a");
+      await expect(repo.releaseRefundLease(LEASE_RESV, "tok-a")).resolves.toBeUndefined();
     });
 
     it("refund lease: an EXPIRED lease is inert — a crashed refund can't strand the booking", async () => {
       // Without lazy expiry, a process dying mid-refund blocks every future refund on this
       // booking forever: silent, permanent, and worse than the bug the lease fixes.
       await repo.saveReservation(reservation({ id: LEASE_RESV }));
-      await repo.acquireRefundLease(LEASE_RESV, T0, EXPIRES);
-      expect(await repo.acquireRefundLease(LEASE_RESV, T_AFTER_EXPIRY, EXPIRES)).toEqual({
+      await repo.acquireRefundLease(LEASE_RESV, "tok-a", T0, EXPIRES);
+      expect(await repo.acquireRefundLease(LEASE_RESV, "tok-b", T_AFTER_EXPIRY, EXPIRES)).toEqual({
         acquired: true,
+      });
+    });
+
+    it("refund lease: `now` EXACTLY equal to expires_at counts as expired, on both adapters", async () => {
+      // The boundary, pinned rather than assumed. Postgres deletes on `expires_at <= now` and
+      // the double blocks only while `expiresAt > nowIso` — two different spellings of the same
+      // rule, which is exactly how adapters drift apart without either one looking wrong. An
+      // off-by-one here is a lease that outlives itself by a tick (a refund refused for no
+      // visible reason) or dies a tick early (the double-refund window reopening).
+      await repo.saveReservation(reservation({ id: LEASE_RESV }));
+      await repo.acquireRefundLease(LEASE_RESV, "tok-a", T0, EXPIRES);
+      expect(await repo.acquireRefundLease(LEASE_RESV, "tok-b", EXPIRES, EXPIRES)).toEqual({
+        acquired: true,
+      });
+    });
+
+    it("refund lease: one tick BEFORE expiry still blocks", async () => {
+      // The other side of the same boundary — without this, an adapter that treated every lease
+      // as expired would pass the case above and reopen the exact race #726 closed.
+      await repo.saveReservation(reservation({ id: LEASE_RESV }));
+      await repo.acquireRefundLease(LEASE_RESV, "tok-a", T0, EXPIRES);
+      expect(await repo.acquireRefundLease(LEASE_RESV, "tok-b", "2026-08-14T12:00:59.999Z", EXPIRES)).toEqual({
+        acquired: false,
+      });
+    });
+
+    it("refund lease: a stale holder's release does NOT kill its successor's live lease", async () => {
+      // The scenario: refund A's lease expires while its Stripe call is still in flight, refund B
+      // legitimately acquires, then A's `finally` fires. Releasing by reservation alone would
+      // delete B's LIVE lease, letting a third refund run alongside B — reopening the race, in
+      // exactly the slow-call case the expiry exists to handle. Release is own-lease-only.
+      await repo.saveReservation(reservation({ id: LEASE_RESV }));
+      await repo.acquireRefundLease(LEASE_RESV, "tok-a", T0, EXPIRES);
+      // B acquires after A's lease expired.
+      expect(await repo.acquireRefundLease(LEASE_RESV, "tok-b", T_AFTER_EXPIRY, "2026-08-14T12:03:00.000Z")).toEqual({
+        acquired: true,
+      });
+      // A finally returns and releases with ITS token.
+      await repo.releaseRefundLease(LEASE_RESV, "tok-a");
+      // B still holds it — a third attempt is still refused.
+      expect(await repo.acquireRefundLease(LEASE_RESV, "tok-c", T_AFTER_EXPIRY, EXPIRES)).toEqual({
+        acquired: false,
       });
     });
 
@@ -934,9 +976,9 @@ export function runRepositoryContract(
       // A refund on one booking must never block a refund on another.
       await repo.saveReservation(reservation({ id: LEASE_RESV }));
       await repo.saveReservation(reservation({ id: asId<"ReservationId">("resv-other-lease") }));
-      await repo.acquireRefundLease(LEASE_RESV, T0, EXPIRES);
+      await repo.acquireRefundLease(LEASE_RESV, "tok-a", T0, EXPIRES);
       expect(
-        await repo.acquireRefundLease(asId<"ReservationId">("resv-other-lease"), T0, EXPIRES),
+        await repo.acquireRefundLease(asId<"ReservationId">("resv-other-lease"), "tok-c", T0, EXPIRES),
       ).toEqual({ acquired: true });
     });
 

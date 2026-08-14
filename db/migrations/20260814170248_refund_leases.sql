@@ -25,8 +25,14 @@
 --
 -- ONE ROW PER RESERVATION, so `reservation_id` IS the primary key — the operator refunds "a
 -- booking", and the per-charge split beneath it is one indivisible operation.
+-- THE TOKEN IS NOT DECORATION. Release deletes by `(reservation_id, token)`, never by
+-- reservation alone. Without it: refund A's lease expires while its Stripe call is still in
+-- flight, refund B legitimately acquires, and then A's `finally` deletes B's LIVE lease — so a
+-- third refund acquires alongside B and the race this table exists to close is reopened, in the
+-- exact scenario (a slow Stripe call) that the expiry exists to handle.
 create table if not exists refund_leases (
   reservation_id text primary key references reservations (id) on delete cascade,
+  token          text not null,  -- per-acquire; makes release own-lease-only
   acquired_at    text not null,  -- ISO-8601 UTC
   expires_at     text not null   -- ISO-8601 UTC; past ⇒ the row is dead and re-acquirable
 );

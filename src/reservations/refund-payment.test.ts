@@ -293,6 +293,47 @@ describe("refundReservation", () => {
     expect(ledger).toBe(payments.refunds[0]!.amountCents);
   });
 
+  it("acquires the lease BEFORE reading the payments it plans from (#726 ordering)", async () => {
+    // Asserted as an ORDER, deliberately, because the defect it prevents cannot be reproduced
+    // once the order is right — which makes an outcome-based test here a test that passes either
+    // way. With the read outside the lease: two callers both read `refunded = 0` and plan, the
+    // first executes and releases, and the second then acquires cleanly and executes its STALE
+    // plan. A second refund, moments later, with the mutex correctly held throughout.
+    //
+    // So the property under test is "everything the plan derives from is read inside the lease",
+    // and the honest way to check it is to watch the call sequence.
+    const repo = await twoCharges();
+    const calls: string[] = [];
+    // Delegates through closures rather than copying the instance — the repository keeps its
+    // state in `#private` fields, which a spread or `Object.create` copy cannot reach.
+    const watched = {
+      getReservation: (...a: Parameters<typeof repo.getReservation>) => repo.getReservation(...a),
+      markPaymentRefunded: (...a: Parameters<typeof repo.markPaymentRefunded>) =>
+        repo.markPaymentRefunded(...a),
+      acquireRefundLease: (...a: Parameters<typeof repo.acquireRefundLease>) => {
+        calls.push("acquire");
+        return repo.acquireRefundLease(...a);
+      },
+      listPaymentsForReservation: (...a: Parameters<typeof repo.listPaymentsForReservation>) => {
+        calls.push("read");
+        return repo.listPaymentsForReservation(...a);
+      },
+      releaseRefundLease: (...a: Parameters<typeof repo.releaseRefundLease>) => {
+        calls.push("release");
+        return repo.releaseRefundLease(...a);
+      },
+    } as unknown as InMemoryRepository;
+
+    const result = await refundReservation(deps(watched), RESV, 5000, 0);
+    expect(result).toMatchObject({ ok: true });
+
+    // The read that feeds the plan sits strictly between acquire and release.
+    expect(calls[0]).toBe("acquire");
+    expect(calls.indexOf("read")).toBeGreaterThan(calls.indexOf("acquire"));
+    expect(calls.indexOf("read")).toBeLessThan(calls.indexOf("release"));
+    expect(calls[calls.length - 1]).toBe("release");
+  });
+
   it("releases the lease on success — a later, separate refund is not blocked", async () => {
     // The lease must not outlive its refund. If it did, the operator refunding $50 now and $30
     // an hour later would be refused the second one for no visible reason.
@@ -322,10 +363,11 @@ describe("refundReservation", () => {
     expect(retry).toMatchObject({ ok: true, refundedCents: 5000 });
   });
 
-  it("a refused plan takes no lease — it must not block a concurrent good refund", async () => {
-    // `exceeds_refundable` is refused before the lease is taken. If it took one, an operator
-    // fat-fingering $9,999 would lock the booking for a minute while a colleague's correct
-    // refund bounced off it.
+  it("a refused plan releases its lease — the next refund is not blocked", async () => {
+    // The lease is now taken BEFORE the payments are read (so the plan can't be built from a
+    // stale read), which means a refusal happens while holding it. What matters is that the
+    // `finally` gives it back immediately: an operator fat-fingering $9,999 must not lock the
+    // booking for a minute while a colleague's correct refund bounces off it.
     const repo = await twoCharges();
     const payments = new FakePaymentPort();
 

@@ -22,6 +22,7 @@
  * what changes is that the operator can now exercise that discretion in Muster, and either route
  * reconciles — a dashboard refund lands via the `charge.refunded` webhook.
  */
+import { randomUUID } from "node:crypto";
 import type { Payment } from "../domain/entities.js";
 import type { PaymentId, ReservationId } from "../domain/ids.js";
 import type { PaymentPort } from "../ports/payment.js";
@@ -169,49 +170,20 @@ export async function refundReservation(
   // Xola holds its own money (DEC-105) — there is nothing here to hand back.
   if (reservation.source !== "muster") return { ok: false, reason: "not_muster" };
 
-  const payments = await deps.repo.listPaymentsForReservation(reservationId);
-  if (refundedTotalFor(payments) !== expectedRefundedCents) {
-    return { ok: false, reason: "stale" };
-  }
-  // The compare-and-swap above closes the DOUBLE-SUBMIT — the same amount posted twice. It
-  // cannot close true concurrency (two tabs, two operators, two DIFFERENT amounts), because it
-  // is a read-then-check and the second read lands before the first write. The lease below is
-  // what closes that (#726); the two guards are complementary, not redundant.
-
-  // Newest first. `createdAt` is ISO-8601 UTC text throughout this schema, so lexicographic
-  // ordering is chronological; the payment id breaks a tie deterministically so two charges
-  // stamped in the same millisecond don't allocate differently between adapters.
-  const ordered = [...payments].sort(
-    (a, b) => b.createdAt.localeCompare(a.createdAt) || String(b.id).localeCompare(String(a.id)),
-  );
-
-  const plan: RefundAllocation[] = [];
-  let remaining = amountCents;
-  for (const p of ordered) {
-    if (remaining <= 0) break;
-    const available = refundableOn(p);
-    if (available <= 0) continue;
-    const cents = Math.min(available, remaining);
-    // Refuse BEFORE moving anything. A row with no PaymentIntent (hand-reconciled, or a legacy
-    // pre-DEC-134 row) has nothing for Stripe to refund against, and discovering that after
-    // the newer charge has already been refunded leaves the operator half-done.
-    if (!p.stripePaymentIntentId) return { ok: false, reason: "no_payment_intent" };
-    plan.push({
-      paymentId: p.id,
-      paymentIntentId: p.stripePaymentIntentId,
-      cents,
-      refundedTotalCents: (p.refundedCents ?? 0) + cents,
-    });
-    remaining -= cents;
-  }
-  if (remaining > 0) return { ok: false, reason: "exceeds_refundable" };
-
   // ── The mutex (#726) ──────────────────────────────────────────────────────
-  // Taken AFTER planning, so a request that was going to be refused anyway (bad amount, no
-  // PaymentIntent, over the ceiling) never takes a lease and never blocks a concurrent good one.
-  // Everything below moves real money.
+  // Taken BEFORE the payments are read, and that ordering is the fix, not an implementation
+  // detail. A lease acquired *after* planning would guard only the writes, leaving the
+  // read-modify-write open: two callers plan from the same `refunded = 0`, the first executes
+  // and releases, and the second then acquires cleanly and executes its STALE plan. Everything
+  // the plan is derived from has to be read inside the lease.
+  //
+  // The cost is that a request refused on its plan (over the ceiling, no PaymentIntent) does
+  // hold the lease — for the duration of one database read, released immediately in the
+  // `finally`. That is not the 60-second block the earlier ordering was avoiding.
+  const token = randomUUID();
   const lease = await deps.repo.acquireRefundLease(
     reservationId,
+    token,
     deps.now(),
     new Date(Date.parse(deps.now()) + LEASE_TTL_MS).toISOString(),
   );
@@ -221,12 +193,50 @@ export async function refundReservation(
   if (!lease.acquired) return { ok: false, reason: "stale" };
 
   try {
+    const payments = await deps.repo.listPaymentsForReservation(reservationId);
+    if (refundedTotalFor(payments) !== expectedRefundedCents) {
+      return { ok: false, reason: "stale" };
+    }
+    // The compare-and-swap still earns its place: it catches a DOUBLE-SUBMIT of the same amount
+    // arriving after the first has finished and released, which no lease can see. The lease
+    // catches genuine concurrency, which the compare-and-swap cannot. Complementary, not
+    // redundant — and now the compare reads inside the mutex, so it cannot be raced either.
+
+    // Newest first. `createdAt` is ISO-8601 UTC text throughout this schema, so lexicographic
+    // ordering is chronological; the payment id breaks a tie deterministically so two charges
+    // stamped in the same millisecond don't allocate differently between adapters.
+    const ordered = [...payments].sort(
+      (a, b) => b.createdAt.localeCompare(a.createdAt) || String(b.id).localeCompare(String(a.id)),
+    );
+
+    const plan: RefundAllocation[] = [];
+    let remaining = amountCents;
+    for (const p of ordered) {
+      if (remaining <= 0) break;
+      const available = refundableOn(p);
+      if (available <= 0) continue;
+      const cents = Math.min(available, remaining);
+      // Refuse BEFORE moving anything. A row with no PaymentIntent (hand-reconciled, or a legacy
+      // pre-DEC-134 row) has nothing for Stripe to refund against, and discovering that after
+      // the newer charge has already been refunded leaves the operator half-done.
+      if (!p.stripePaymentIntentId) return { ok: false, reason: "no_payment_intent" };
+      plan.push({
+        paymentId: p.id,
+        paymentIntentId: p.stripePaymentIntentId,
+        cents,
+        refundedTotalCents: (p.refundedCents ?? 0) + cents,
+      });
+      remaining -= cents;
+    }
+    if (remaining > 0) return { ok: false, reason: "exceeds_refundable" };
+
     return await executeRefundPlan(deps, plan);
   } finally {
-    // ALWAYS released, including on `provider_error` and on a throw. A lease that outlives its
-    // refund blocks the booking until it expires, and the operator's retry is exactly what a
-    // partial failure demands.
-    await deps.repo.releaseRefundLease(reservationId);
+    // ALWAYS released, including on every refusal above, on `provider_error`, and on a throw. A
+    // lease that outlives its refund blocks the booking until it expires, and the operator's
+    // retry is exactly what a partial failure demands. `token` makes this own-lease-only: if
+    // this lease expired mid-call and someone else acquired, that successor's lease survives.
+    await deps.repo.releaseRefundLease(reservationId, token);
   }
 }
 

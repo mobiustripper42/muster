@@ -348,12 +348,20 @@ export interface Repository {
    */
   acquireRefundLease(
     reservationId: ReservationId,
+    token: string,
     nowIso: string,
     expiresAtIso: string,
   ): Promise<{ acquired: boolean }>;
-  /** Release the lease. Idempotent — a no-op if it already expired or was never taken. Called
-   *  from a `finally`, so it must not throw on an absent row. */
-  releaseRefundLease(reservationId: ReservationId): Promise<void>;
+  /**
+   * Release the lease **held under `token`**. Idempotent — a no-op if it already expired, was
+   * never taken, or now belongs to someone else. Called from a `finally`, so it must not throw.
+   *
+   * **The token is what makes this safe, and it is not optional.** Deleting by reservation alone
+   * means a holder whose lease expired mid-Stripe-call deletes its SUCCESSOR's live lease on the
+   * way out — so a third refund acquires alongside one already in flight, reopening the exact
+   * race the table exists to close, in precisely the slow-call case expiry was added for.
+   */
+  releaseRefundLease(reservationId: ReservationId, token: string): Promise<void>;
 
   // ── Gratuity — first-class crew money (12.3, DEC-124) ───────────────────────
   /** Record a collected gratuity. Deterministic id (`grat_${kind}_${sessionId}`) ⇒ idempotent

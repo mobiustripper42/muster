@@ -1506,6 +1506,7 @@ export class PostgresRepository implements Repository {
    */
   async acquireRefundLease(
     reservationId: ReservationId,
+    token: string,
     nowIso: string,
     expiresAtIso: string,
   ): Promise<{ acquired: boolean }> {
@@ -1517,11 +1518,11 @@ export class PostgresRepository implements Repository {
         [reservationId, nowIso],
       );
       const { rows } = await client.query(
-        `insert into refund_leases (reservation_id, acquired_at, expires_at)
-         values ($1,$2,$3)
+        `insert into refund_leases (reservation_id, token, acquired_at, expires_at)
+         values ($1,$2,$3,$4)
          on conflict do nothing
          returning reservation_id`,
-        [reservationId, nowIso, expiresAtIso],
+        [reservationId, token, nowIso, expiresAtIso],
       );
       await client.query("commit");
       return { acquired: rows.length > 0 };
@@ -1532,8 +1533,13 @@ export class PostgresRepository implements Repository {
       client.release();
     }
   }
-  async releaseRefundLease(reservationId: ReservationId): Promise<void> {
-    await this.#pool.query("delete from refund_leases where reservation_id=$1", [reservationId]);
+  /** `and token=$2` is the own-lease-only guard — see the port's note on why deleting by
+   *  reservation alone reopens the race it closes. */
+  async releaseRefundLease(reservationId: ReservationId, token: string): Promise<void> {
+    await this.#pool.query("delete from refund_leases where reservation_id=$1 and token=$2", [
+      reservationId,
+      token,
+    ]);
   }
 
   async acquireCheckoutHold(

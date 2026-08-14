@@ -125,7 +125,10 @@ export class InMemoryRepository implements Repository {
   /** Transient checkout-holds (12.1, DEC-109), keyed by id. */
   readonly #checkoutHolds = new Map<CheckoutHoldId, CheckoutHold>();
   /** Refund mutex (#726), keyed by reservation id — one refund in flight per booking. */
-  readonly #refundLeases = new Map<string, { acquiredAt: string; expiresAt: string }>();
+  readonly #refundLeases = new Map<
+    string,
+    { token: string; acquiredAt: string; expiresAt: string }
+  >();
   /** Collected gratuities (12.3, DEC-124), keyed by id. */
   readonly #gratuities = new Map<GratuityId, Gratuity>();
   /** Muster-native payments (DEC-107), keyed by id. */
@@ -627,17 +630,20 @@ export class InMemoryRepository implements Repository {
   // `acquired` to decide whether real money moves.
   async acquireRefundLease(
     reservationId: ReservationId,
+    token: string,
     nowIso: string,
     expiresAtIso: string,
   ): Promise<{ acquired: boolean }> {
     const held = this.#refundLeases.get(String(reservationId));
     // An expired row is dead, not blocking — otherwise a crashed refund strands the booking.
     if (held && held.expiresAt > nowIso) return { acquired: false };
-    this.#refundLeases.set(String(reservationId), { acquiredAt: nowIso, expiresAt: expiresAtIso });
+    this.#refundLeases.set(String(reservationId), { token, acquiredAt: nowIso, expiresAt: expiresAtIso });
     return { acquired: true };
   }
-  async releaseRefundLease(reservationId: ReservationId): Promise<void> {
-    this.#refundLeases.delete(String(reservationId));
+  async releaseRefundLease(reservationId: ReservationId, token: string): Promise<void> {
+    // Own-lease-only: a holder whose lease expired must NOT delete its successor's live one.
+    const held = this.#refundLeases.get(String(reservationId));
+    if (held?.token === token) this.#refundLeases.delete(String(reservationId));
   }
 
   async acquireCheckoutHold(

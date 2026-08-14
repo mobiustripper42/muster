@@ -4,10 +4,10 @@ dev: eric
 slug: 616-cancel-and-refund
 branch: task/616-cancel-and-refund
 started: 2026-08-11T01:27:14Z
-ended:
-points:
+ended: 2026-08-14T03:33:28Z
+points: 10
 pr_numbers: [733, 734, 735, 737]
-status: open
+status: closed
 transcript: /home/eric/.claude/projects/-home-eric-muster/e09c3178-c206-4232-92e5-d68538c4d699.jsonl
 ---
 
@@ -183,5 +183,51 @@ the refusals still short-circuit.
 **Opened at:** 2026-08-12T03:35:00Z
 
 **Next Steps:**
+- **Everything merged** — PRs #733, #734, #735, #737, #739 (plus #732 and #738 from other windows).
+  Nothing left open.
+- **issue #741 is time-boxed and should go before go-live (~Sept 1).** Booking links become a
+  14-character short code instead of a 129-character HMAC URL. It is free *right now* because
+  `RESERVATION_LINK_SECRET` is not set in production, so not one link exists in any customer's
+  inbox. After go-live it needs dual verification and a reissue path. Entropy decided at 14
+  Crockford base32 chars (~70 bits) — recorded in the issue with the guessing table, not open to
+  re-litigation downward.
+- **issue #740** — the "your shift changed" SMS says nothing about what changed, and the diff that
+  triggered it is discarded at `src/builder/form-shifts.ts:448`. First move is keeping the diff.
+- **issue #742** — two flaky e2e specs, sighted on two unrelated branches.
+- **issue #731** — self-host IBM Plex; every CI *and* production build currently depends on
+  `fonts.gstatic.com` being reachable. It already cost one red build this session.
+- Remaining go-live prep: **issue #623** (runbook), **issue #545** (audit the live Vercel env — now
+  has something to audit against), **issue #544** (verify the Stripe endpoint subscribes to
+  `payment_intent.succeeded`, and add `charge.refunded` while in there — both fail silently).
+- **PR #739 shipped without `/kill-this`**, so `@code-review` never read it and it has no `## Task`
+  block. Operator's call, recorded here so the gap is visible rather than inferred (issue #661).
 
 **Context:**
+- **The daily Xola report is live on cron** — 11:00 on mill-dev, `db:xola:report:email`. Temporary;
+  dies at the DEC-126 cutover. The box never sleeps, so there is no uptime gap.
+- **An unterminated quote in an env file is not a syntax error.** Node's parser swallows the rest of
+  the file into the value. That is how the first real cron morning failed: `XOLA_REPORT_TO` became
+  one 397-character "address" carrying `STRIPE_SECRET_KEY`, and Resend rejected the whole send. The
+  test-mode key is exposed in `/home/eric/muster-xola-report.log`; operator may rotate.
+- **`.env.example` is now `env.example`** (PR #738) so each tool's deny list can be a blanket
+  `.env*`. Side effect: the template is readable to tooling again, so the next change to it does not
+  have to go through the operator.
+- **A number that is technically true and practically noise is a bug.** Four of them this session,
+  same shape: `17 flagged of 49` on a morning with one real item; a ⚠ on three cancelled trips; a
+  cancelled row counted in a headline and excluded from every section; a green "sent again" over a
+  deployment that sent nothing. Each one trains someone to stop reading the thing.
+- **Assert the property, not the copy of whichever branch your machine takes.** The one genuine CI
+  failure this session was an e2e pinning an exact string that differs by deployment config — passed
+  locally, failed in CI. `APP_BASE_URL= npm run test:e2e` reproduces CI's env shape locally.
+- **The operator caught three defects by reading output, not code** — the "17 flagged" question, "how
+  do I find those 3 rows", and the link length. Two of the three exposed real bugs underneath.
+- **Verify a live-state claim in the same turn, even from a well-written issue.** issue #618 said
+  `grep -ci stripe docs/DEPLOY.md` → 0; it was 10. issue #686 described building a resend that had
+  already shipped with #616. Both issues were right when filed.
+- **Prettier was considered and declined.** The case for it rested on a citation-invalidation cost
+  that turned out not to exist (12 live line-number citations, not ~875 — the rest are in a dated
+  audit snapshot) and on a format-drift claim that was never measured. Do not re-litigate without a
+  churn number from `prettier --check` at a matched `printWidth`.
+- **`npx` auto-installs.** A prior session ran `npx prettier --write` bundled into a typecheck
+  command — no deliberation, a package pulled off the network, a file rewritten. The permissions gap
+  that allowed it is closed (PR #732).

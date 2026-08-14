@@ -49,6 +49,15 @@ test.describe("public /reservations/manage", () => {
     await expect(page.getByText("Request cancellation")).toBeVisible();
   });
 
+  test("the balance row states an obligation, never an automatic charge (#617)", async ({ page }) => {
+    await page.goto(manageUrl());
+
+    // The seed pays nothing, so the balance row renders. Nothing in Muster collects it —
+    // #712 is the unbuilt auto-collect — so the label must not promise that it will.
+    await expect(page.getByText(/Balance · due before your trip/)).toBeVisible();
+    await expect(page.getByText(/charged before your trip/)).toHaveCount(0);
+  });
+
   test("the cancellation terms sit with the cancel action (#619)", async ({ page }) => {
     await page.goto(manageUrl());
 

@@ -58,7 +58,8 @@ test.describe("public /book/checkout", () => {
     // Deposit mode: due-now = deposit share + FULL tax + FULL fee + FULL tip; balance is
     // the remaining fare only (no second fee — the DEC-134 pin, visible to the customer).
     await expect(page.getByTestId("summary-due-now")).toContainText("$275.70");
-    await expect(page.getByText("Balance · charged before your trip")).toBeVisible();
+    // "due", not "charged" — nothing auto-collects the balance (#617; #712 is the unbuilt auto-collect).
+    await expect(page.getByText("Balance · due before your trip")).toBeVisible();
     await expect(page.getByTestId("due-now")).toHaveText("$275.70");
 
     // The inert future gift-card row renders disabled, not clickable-looking.

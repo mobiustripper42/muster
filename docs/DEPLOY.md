@@ -80,11 +80,11 @@ invisible or unable to take money**.
 **Confirm the two waiver defaults before real customers consent to them.** They are live URLs and a
 version string that become part of a legal record at the moment someone ticks the box.
 
-> **`.env.example` is the complete list, and it is the one that stays honest.** It now carries every
+> **`env.example` is the complete list, and it is the one that stays honest.** It now carries every
 > variable the code reads — swept from `process.env.*` across `app/`, `src/`, `db/` and `scripts/`,
 > which turned up twelve more than this file had, `APP_BASE_URL` and `CRON_SECRET` among them. The
 > three tables here group vars by *what breaks without them*, which is what a runbook is for; when
-> the two disagree, `.env.example` sits next to the code and is the one to trust.
+> the two disagree, `env.example` sits next to the code and is the one to trust.
 
 #### Three traps, each of which presents as something else
 

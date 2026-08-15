@@ -223,10 +223,16 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
               44px tap target rather than a label beside a small hyperlink. */}
           <AppLink
             href="/b/find"
-            className="ml-auto flex min-h-[44px] flex-none flex-col items-end justify-center leading-tight"
+            className="ml-auto flex min-h-[44px] flex-none items-center"
           >
-            <span className="text-[10.5px] text-muted">Already booked?</span>
-            <span className="text-[11.5px] font-semibold text-accent">Find my booking</span>
+            {/* The stack lives in an inner wrapper, NOT on the anchor. `AppLink` wraps its
+                children in `NavLinkLabel` — a `relative inline-flex items-center` span for the
+                nav spinner — so a `flex-col` on the anchor never reaches these two and they
+                render side by side. Column + centred here, inside that wrapper. */}
+            <span className="flex flex-col items-center leading-tight">
+              <span className="text-[10.5px] text-muted">Already booked?</span>
+              <span className="text-[11.5px] font-semibold text-accent">Find my booking</span>
+            </span>
           </AppLink>
         </div>
 

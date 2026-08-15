@@ -56,6 +56,9 @@ export interface PaneActionState {
    * customer's own inbox.
    */
   manageUrl?: string | undefined;
+  /** True when `manageUrl` is being shown because a reissue just happened — changes the copy
+   *  from "here is their link" to "here is their NEW link, their old one is dead". */
+  justReissued?: boolean | undefined;
   /**
    * The reservation is cancelled but its event is still `scheduled` — a half-applied cancel.
    * The boat is silently still held: neighbouring departures stay unsellable and the crew shift
@@ -189,10 +192,12 @@ export function actionMessage(
           return "Xola bookings have no Muster manage link.";
         case "reservation_missing":
           return "That reservation no longer exists.";
-        // The one outcome the operator must not misread: the old link IS dead and the new one
-        // did not get out. Says the state plainly and names the way back.
+        // The old link IS dead and the new one did not get out. Since 2026-08-15 the new link is
+        // on screen in this exact case, so the instruction is "read it to them" rather than the
+        // dead end this used to be ("they have no working link, call them" — with nothing the
+        // operator could actually say once they had).
         case "sent_nothing":
-          return "The old link was replaced, but nothing could be sent — so this customer now has no working link. Use “Resend link” once messaging is working, or call them.";
+          return "The old link was replaced, but nothing could be sent. Their new link is below — read it to them or send it yourself.";
         // The mixed state: new link delivered, old one NOT shut off. Says so, because the
         // operator pressed this to close a link and would otherwise assume it closed.
         case "old_link_alive":
@@ -826,19 +831,29 @@ function PaneActions({
         </details>
       )}
 
-      {/* DEV ONLY — the manage link, for pasting into a browser (#686).
-          Absent on production by construction (the page only fills `manageUrl` off-prod), not
-          merely hidden: this is a live bearer credential, revocable since #741 but still one
-          paste from a Slack thread.
-          It exists because there was NO way to reach the manage page to look at it — which under
-          the old HMAC scheme meant hand-running it in a `node -e` one-liner, and is why the #619
-          test plan's step for that page was unusable as written. (The dev seed now prints
-          `/b/<code>` URLs directly, so this is no longer the only route in.) */}
+      {/* The manage link (#686; gate revised 2026-08-15).
+          Off production it always renders. On production it renders only on the load right after
+          a reissue — the page decides, this just draws whatever it was handed. Absence is by
+          construction rather than by hiding, so there is no markup to inspect for a link that
+          shouldn't be there.
+          It exists because there was otherwise NO way to reach the manage page — under the old
+          HMAC scheme that meant hand-running it in a `node -e` one-liner, which is why the #619
+          test plan's step for that page was unusable as written. */}
       {!confirming && actions.manageUrl && (
         <div className="mt-3 border-t border-line pt-3" data-testid="manage-link-block">
+          {/* Two different situations, and the copy has to say which. After a reissue this is a
+              brand-new link the operator is about to hand over — most likely by reading it out,
+              which is what the 14-character alphabet was chosen for. At rest (dev only) it is
+              just the customer's current link, sitting there. */}
           <p className="mb-1.5 text-xs text-muted">
-            The customer&rsquo;s manage link. Not shown on production — it opens the booking for
-            anyone holding it.
+            {actions.justReissued ? (
+              <>
+                <b className="text-ink">Their new link.</b> Safe to read out or paste — their old
+                one no longer works. It won&rsquo;t be shown again after you leave this page.
+              </>
+            ) : (
+              <>The customer&rsquo;s manage link. It opens the booking for anyone holding it.</>
+            )}
           </p>
           <div className="flex items-center gap-2">
             <span

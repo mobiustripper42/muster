@@ -104,12 +104,15 @@ describe("actionMessage — reissued / reissueErr (#741)", () => {
     expect(m).toMatch(/old link no longer works/i);
   });
 
-  it("the worst case is stated plainly: old link dead, new one not delivered", () => {
-    // The one outcome that leaves the customer with NO working link. If this copy is vague the
-    // operator has no reason to pick up the phone, and the customer finds out at the dock.
+  it("the worst case points at the link on screen instead of dead-ending", () => {
+    // Old link dead, new one not delivered. Since the gate revision the pane shows the new link
+    // in exactly this state — the reissue's own redirect params are what reveal it — so the copy
+    // sends the operator there. It used to say the customer has no working link and to call
+    // them, which was true and left them nothing to say once they had.
     const m = actionMessage("reissueErr", "sent_nothing");
-    expect(m).toMatch(/no working link/i);
-    expect(m).toMatch(/Resend link|call them/i);
+    expect(m).toMatch(/nothing could be sent/i);
+    expect(m).toMatch(/new link is below/i);
+    expect(m).not.toMatch(/no working link/i); // there IS one, and it is on screen
   });
 
   it("a failed reissue reassures that the existing link still works", () => {

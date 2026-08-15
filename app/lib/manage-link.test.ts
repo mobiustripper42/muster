@@ -18,9 +18,32 @@ describe("operatorManageLink", () => {
     expect(url).toBe("https://muster.example/b/K3F9QZ2MX7RN4P");
   });
 
-  it("returns nothing on production, however well configured", () => {
-    // The one case that matters. Everything else here is a config guard; this is the gate.
+  it("returns nothing on production by default", () => {
+    // The resting state. A live bearer credential must not sit on the operator's screen for
+    // every booking they open, where it lands in screenshots and over-the-shoulder glances.
     expect(operatorManageLink({ isProd: true, base: BASE, code: CODE })).toBeUndefined();
+  });
+
+  it("DOES return the link on production immediately after a reissue", () => {
+    // The whole of the change. A code the operator just deliberately minted, one action ago, is
+    // a link they intended to hand over — so they can read it down the phone (14 Crockford
+    // characters, chosen to be sayable) or paste it. The customer's previous link is already
+    // dead by then, because a reissue revokes it, so this reveals nothing that outlived the
+    // decision to reveal it.
+    //
+    // It also un-strands the worst outcome: when the reissue's send fails (no channel
+    // configured, Twilio down), the operator now has the new link in front of them instead of
+    // a notice telling them the customer has no working link and to call them.
+    expect(
+      operatorManageLink({ isProd: true, base: BASE, code: CODE, justReissued: true }),
+    ).toBe("https://muster.example/b/K3F9QZ2MX7RN4P");
+  });
+
+  it("the reveal does NOT survive a reload — it is scoped to the action, not the session", () => {
+    // `justReissued` comes from the post-action redirect's own params. Reloading the pane
+    // without them puts the link away again, so a tab left open on a booking is not a tab
+    // sitting on a credential.
+    expect(operatorManageLink({ isProd: true, base: BASE, code: CODE, justReissued: false })).toBeUndefined();
   });
 
   it("returns nothing without a base URL — never a Host-header fallback", () => {

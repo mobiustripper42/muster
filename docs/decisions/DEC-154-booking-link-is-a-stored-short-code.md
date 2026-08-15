@@ -78,3 +78,31 @@ verifying. A compatibility shim would be a permanent second credential path guar
 revocable token on a clipboard is still a live token in a Slack thread, and the remedy depends on someone
 noticing the leak — revisiting that gate is a decision someone should make on purpose, not a side effect of
 this one.
+
+### Amendment, 2026-08-15 (operator) — the gate is now conditional
+
+Decided on purpose, as the paragraph above asked for. **On production the manage link renders on the one
+render that immediately follows a reissue, and nowhere else.** Off production it renders as before.
+
+Three things moved the decision:
+
+- **A reissue has already killed the customer's previous link** by the time the new one appears. The
+  operator is looking at a credential they minted deliberately, one action ago — nothing is exposed that
+  outlived the decision to expose it. That is a materially different object from "this booking's standing
+  link, on screen whenever anyone opens the pane".
+- **The code is sayable.** 14 Crockford base32 characters, an alphabet chosen so I/L/O/U can't be misheard.
+  The 129-character HMAC could not be read down a phone, which is the actual reason nobody ever wanted to
+  see it. The realistic support call — customer at the dock, link gone, operator on the phone — now has an
+  answer that doesn't depend on email or SMS working.
+- **It removes a dead end this decision created.** A reissue whose send failed left the operator holding a
+  notice saying the customer has no working link, with no way to deliver one. The link is now on screen in
+  exactly that state, and the copy points at it.
+
+**The exposure this still closes** is a link sitting on screen for every booking anyone opens — a
+screenshot, a shared screen, a tab left open. That is the real risk for this operator, and it is worth
+being precise: the "pasted into a chat thread" framing above was inherited from the code comment the gate
+was born with, not from anything about how BrewBoat works.
+
+Mechanically: the reveal is driven by the reissue action's own redirect params, so it does not survive a
+reload, and the **code itself never travels in the URL** — the pane re-reads it server-side. A credential in
+a query string would land in browser history and any access log that records one.

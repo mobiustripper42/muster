@@ -1536,6 +1536,39 @@ export class PostgresRepository implements Repository {
   }
 
   // ── Checkout holds (12.1, DEC-109) ──────────────────────────────────────────
+  // ── Recovery throttle (issue #460) ────────────────────────────────────────
+  /** Delete-if-expired then insert, in one short transaction with no network call inside it —
+   *  the `acquireCheckoutHold` shape below. The primary key is the mutex; `on conflict do
+   *  nothing` + `returning` decides the winner without raising. */
+  async claimRecoverySend(
+    contactKey: string,
+    nowIso: string,
+    cooldownUntilIso: string,
+  ): Promise<{ claimed: boolean }> {
+    const client = await this.#pool.connect();
+    try {
+      await client.query("begin");
+      await client.query(
+        "delete from recovery_throttle where contact_key=$1 and cooldown_until <= $2",
+        [contactKey, nowIso],
+      );
+      const { rows } = await client.query(
+        `insert into recovery_throttle (contact_key, claimed_at, cooldown_until)
+         values ($1,$2,$3)
+         on conflict do nothing
+         returning contact_key`,
+        [contactKey, nowIso, cooldownUntilIso],
+      );
+      await client.query("commit");
+      return { claimed: rows.length > 0 };
+    } catch (e) {
+      await client.query("rollback");
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+
   async acquireCheckoutHold(
     hold: CheckoutHold,
   ): Promise<{ acquired: true; hold: CheckoutHold } | { acquired: false }> {

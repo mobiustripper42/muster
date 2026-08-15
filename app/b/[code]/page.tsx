@@ -63,8 +63,11 @@ export default async function ManagePage({
           {load.reason === "revoked" ? "This booking link was replaced" : "This booking link has expired"}
         </h1>
         <p className="text-muted">
-          Your booking is still there — this particular link just doesn’t open it any more. Reply to
-          your confirmation text or email and we’ll send you a new one.
+          Your booking is still there — this particular link just doesn’t open it any more.{" "}
+          <AppLink href="/b/find" className="text-accent">
+            Send me a new link
+          </AppLink>
+          , or reply to your confirmation text and we’ll sort it out.
         </p>
       </main>
     );
@@ -75,7 +78,11 @@ export default async function ManagePage({
       <main className="mx-auto max-w-lg px-4 py-16">
         <h1 className="mb-2 text-xl font-semibold">This booking link isn’t valid</h1>
         <p className="text-muted">
-          The link may be incomplete or mistyped. Check the text or email we sent you, or{" "}
+          The link may be incomplete or mistyped. Check the text or email we sent you,{" "}
+          <AppLink href="/b/find" className="text-accent">
+            have your link sent again
+          </AppLink>
+          , or{" "}
           <AppLink href="/book" className="text-accent">
             start a new booking
           </AppLink>

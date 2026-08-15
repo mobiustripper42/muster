@@ -43,6 +43,7 @@ const TABLES = [
   "customers",
   "blocks",
   "checkout_holds",
+  "recovery_throttle",
   "gratuity",
   "payments",
   "shifts",

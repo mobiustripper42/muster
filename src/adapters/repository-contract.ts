@@ -884,6 +884,45 @@ export function runRepositoryContract(
       });
     };
 
+    // ── Recovery throttle (issue #460) ────────────────────────────────────────
+    const T0 = "2026-08-15T12:00:00.000Z";
+    const COOLDOWN = "2026-08-15T12:15:00.000Z";
+
+    it("recovery throttle: the first claim wins, a second inside the window loses", async () => {
+      // The bound on the one unauthenticated endpoint that spends money per request.
+      expect(await repo.claimRecoverySend("+12165550148", T0, COOLDOWN)).toEqual({ claimed: true });
+      expect(
+        await repo.claimRecoverySend("+12165550148", "2026-08-15T12:05:00.000Z", COOLDOWN),
+      ).toEqual({ claimed: false });
+    });
+
+    it("recovery throttle: the window expires, at the exact boundary", async () => {
+      // Pinned at equality on both adapters — Postgres deletes on `cooldown_until <= now` and the
+      // double blocks while `cooldownUntil > nowIso`, two spellings of one rule. A customer who
+      // is permanently locked out of recovery is a worse failure than an extra text.
+      await repo.claimRecoverySend("+12165550148", T0, COOLDOWN);
+      expect(await repo.claimRecoverySend("+12165550148", COOLDOWN, COOLDOWN)).toEqual({
+        claimed: true,
+      });
+    });
+
+    it("recovery throttle: one tick before expiry still blocks", async () => {
+      await repo.claimRecoverySend("+12165550148", T0, COOLDOWN);
+      expect(
+        await repo.claimRecoverySend("+12165550148", "2026-08-15T12:14:59.999Z", COOLDOWN),
+      ).toEqual({ claimed: false });
+    });
+
+    it("recovery throttle: buckets are per contact", async () => {
+      // One person's request must not throttle another's. The key is the canonicalized contact,
+      // so this is also what stops "216-555-0148" and "+12165550148" being two free attempts —
+      // the CALLER canonicalizes, and the contract is that distinct keys are independent.
+      await repo.claimRecoverySend("+12165550148", T0, COOLDOWN);
+      expect(await repo.claimRecoverySend("dana@example.com", T0, COOLDOWN)).toEqual({
+        claimed: true,
+      });
+    });
+
     it("acquireCheckoutHold: fresh acquire succeeds and is listable", async () => {
       await saveCatalogParents();
       expect((await repo.acquireCheckoutHold(hold())).acquired).toBe(true);

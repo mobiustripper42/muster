@@ -126,6 +126,8 @@ export class InMemoryRepository implements Repository {
   readonly #blocks = new Map<BlockId, Block>();
   /** Transient checkout-holds (12.1, DEC-109), keyed by id. */
   readonly #checkoutHolds = new Map<CheckoutHoldId, CheckoutHold>();
+  /** Recovery throttle (issue #460): canonical contact key → ISO cooldown expiry. */
+  readonly #recoveryThrottle = new Map<string, string>();
   /** Collected gratuities (12.3, DEC-124), keyed by id. */
   readonly #gratuities = new Map<GratuityId, Gratuity>();
   /** Muster-native payments (DEC-107), keyed by id. */
@@ -650,6 +652,21 @@ export class InMemoryRepository implements Repository {
   }
 
   // ── Checkout holds (12.1, DEC-109) ──────────────────────────────────────────
+  // ── Recovery throttle (issue #460) ────────────────────────────────────────
+  // Enforced by the double, unlike the uniques it deliberately ignores, because the RESULT is
+  // semantic: the recovery action branches on `claimed` to decide whether to spend an SMS.
+  async claimRecoverySend(
+    contactKey: string,
+    nowIso: string,
+    cooldownUntilIso: string,
+  ): Promise<{ claimed: boolean }> {
+    const cooldownUntil = this.#recoveryThrottle.get(contactKey);
+    // A dead window is not a block — otherwise a customer who tried once could never try again.
+    if (cooldownUntil && cooldownUntil > nowIso) return { claimed: false };
+    this.#recoveryThrottle.set(contactKey, cooldownUntilIso);
+    return { claimed: true };
+  }
+
   async acquireCheckoutHold(
     hold: CheckoutHold,
   ): Promise<{ acquired: true; hold: CheckoutHold } | { acquired: false }> {

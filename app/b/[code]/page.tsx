@@ -63,11 +63,21 @@ export default async function ManagePage({
           {load.reason === "revoked" ? "This booking link was replaced" : "This booking link has expired"}
         </h1>
         <p className="text-muted">
-          Your booking is still there — this particular link just doesn’t open it any more.{" "}
-          <AppLink href="/b/find" className="text-accent">
-            Send me a new link
-          </AppLink>
-          , or reply to your confirmation text and we’ll sort it out.
+          Your booking is still there — this particular link just doesn’t open it any more. Click
+          the button below and we’ll send you a new one.
+        </p>
+        {/* A BUTTON, not an inline link (operator, 2026-08-15). This is the only thing to do on
+            this page, and an underlined phrase in the middle of a sentence reads as explanation
+            rather than as the way out — the customer is already confused about why their link
+            stopped working. Full width and 44px so it is unmissable and tappable at 375px. */}
+        <AppLink
+          href="/b/find"
+          className="mt-5 flex min-h-[44px] w-full items-center justify-center rounded-[10px] bg-accent px-4 text-[14px] font-semibold text-white"
+        >
+          Send me a new link
+        </AppLink>
+        <p className="mt-4 text-[12.5px] text-muted">
+          Or reply to your confirmation text and we’ll sort it out.
         </p>
       </main>
     );

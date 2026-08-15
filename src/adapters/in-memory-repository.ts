@@ -660,6 +660,11 @@ export class InMemoryRepository implements Repository {
     nowIso: string,
     cooldownUntilIso: string,
   ): Promise<{ claimed: boolean }> {
+    // Sweep every expired row, matching the Postgres adapter — the table would otherwise grow
+    // one row per novel contact, forever.
+    for (const [key, until] of this.#recoveryThrottle) {
+      if (until <= nowIso) this.#recoveryThrottle.delete(key);
+    }
     const cooldownUntil = this.#recoveryThrottle.get(contactKey);
     // A dead window is not a block — otherwise a customer who tried once could never try again.
     if (cooldownUntil && cooldownUntil > nowIso) return { claimed: false };

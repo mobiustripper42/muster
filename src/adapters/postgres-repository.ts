@@ -1548,10 +1548,11 @@ export class PostgresRepository implements Repository {
     const client = await this.#pool.connect();
     try {
       await client.query("begin");
-      await client.query(
-        "delete from recovery_throttle where contact_key=$1 and cooldown_until <= $2",
-        [contactKey, nowIso],
-      );
+      // Sweeps EVERY expired row, not just this key's. Deleting only the incoming key would let
+      // the table grow without bound: each novel contact leaves a row that is never revisited,
+      // and an attacker can mint unlimited valid-looking addresses. One indexed delete per claim
+      // keeps it to roughly "contacts that tried in the last 15 minutes".
+      await client.query("delete from recovery_throttle where cooldown_until <= $1", [nowIso]);
       const { rows } = await client.query(
         `insert into recovery_throttle (contact_key, claimed_at, cooldown_until)
          values ($1,$2,$3)

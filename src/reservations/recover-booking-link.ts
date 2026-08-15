@@ -18,6 +18,13 @@
  * **Errors are swallowed.** A repo outage or a dead channel must not surface, because "something
  * went wrong" is itself a signal that differs from the silent no-match path. Failures go to
  * `onFailure` for the operator's logs.
+ *
+ * **The caller must run this OFF the response path** (`after()` — see `app/b/find/actions.ts`).
+ * An identical response body is only half of no-enumeration: awaiting a real network send that
+ * fires only on a match makes a match observably *slower* than a miss, which is the same oracle
+ * measured with a stopwatch instead of read off the page. This codebase already learned that on
+ * the login path — `app/lib/auth-delivery.ts` and `src/auth/login-code.ts` both record it — and
+ * this module was written without applying it until review caught the omission.
  */
 
 import type { ChannelPort } from "../ports/channel.js";
@@ -54,12 +61,15 @@ export interface RecoverDeps {
 /**
  * Process one recovery request. Always resolves, always identically.
  *
- * `rows` is the reservation+event set to search — read by the caller so this stays a composer
- * rather than a second place that knows how to join those two.
+ * **`loadRows` is a THUNK, not an array, and that is load-bearing.** The reservation+event scan
+ * is the expensive part of this request, and it must happen *after* the throttle claim or the
+ * throttle bounds only the sends and not the work — one request per second with a fresh contact
+ * would force a full-table read every time, for free. Taking rows eagerly made the file's own
+ * comment ("bounded ahead of it by the throttle") false; taking a thunk makes it true.
  */
 export async function recoverBookingLink(
   deps: RecoverDeps,
-  rows: readonly RecoveryRow[],
+  loadRows: () => Promise<readonly RecoveryRow[]>,
   query: RecoveryQuery,
 ): Promise<void> {
   try {
@@ -79,7 +89,8 @@ export async function recoverBookingLink(
     // uses, and it is free to run otherwise.
     if (!claim.claimed) return;
 
-    const match = matchBookingForRecovery(rows, query, deps.today);
+    // Only now — past the claim — is it worth reading the world.
+    const match = matchBookingForRecovery(await loadRows(), query, deps.today);
     if (!match) return;
 
     // Mints one if this booking never had a code — an imported or pre-#741 booking is exactly

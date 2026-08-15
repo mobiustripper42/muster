@@ -84,3 +84,55 @@ describe("actionMessage — resendErr", () => {
     expect(actionMessage("resendErr", "no_contact")).toMatch(/nowhere to send/);
   });
 });
+
+describe("actionMessage — reissued / reissueErr (#741)", () => {
+  const CONTACTS = { email: "marcus@example.com", phone: "+1 216 555 0148" };
+
+  it("says the old link is dead, not just that a new one was sent", () => {
+    // The half an operator can act on. "New link texted" alone reads like a resend, and the
+    // difference decides whether they warn the customer that the link they saved is now dead.
+    const m = actionMessage("reissued", "sent-sent", CONTACTS);
+    expect(m).toContain("emailed marcus@example.com");
+    expect(m).toContain("texted +1 216 555 0148");
+    expect(m).toMatch(/old link no longer works/i);
+  });
+
+  it("names only the channels that actually carried the new link", () => {
+    const m = actionMessage("reissued", "absent-sent", { phone: CONTACTS.phone });
+    expect(m).toContain("texted +1 216 555 0148");
+    expect(m).not.toContain("emailed");
+    expect(m).toMatch(/old link no longer works/i);
+  });
+
+  it("the worst case points at the link on screen instead of dead-ending", () => {
+    // Old link dead, new one not delivered. Since the gate revision the pane shows the new link
+    // in exactly this state — the reissue's own redirect params are what reveal it — so the copy
+    // sends the operator there. It used to say the customer has no working link and to call
+    // them, which was true and left them nothing to say once they had.
+    const m = actionMessage("reissueErr", "sent_nothing");
+    expect(m).toMatch(/nothing could be sent/i);
+    expect(m).toMatch(/new link is below/i);
+    expect(m).not.toMatch(/no working link/i); // there IS one, and it is on screen
+  });
+
+  it("a failed reissue reassures that the existing link still works", () => {
+    // Only reachable when the MINT failed — `reissueBookingCode` no longer raises past that
+    // point — so the old code genuinely is untouched and the copy is allowed to say so.
+    expect(actionMessage("reissueErr", "unreachable")).toMatch(/existing link still works/i);
+  });
+
+  it("the mixed state says the OLD link may still open the booking", () => {
+    // New link delivered, old one not shut off. The operator pressed this to close a link; being
+    // told it succeeded is the failure that matters, because they then stop worrying about it.
+    const m = actionMessage("reissueErr", "old_link_alive");
+    expect(m).toMatch(/OLD link/);
+    expect(m).toMatch(/still (open|live)/i);
+    expect(m).not.toMatch(/no longer works/i); // never claims the kill landed
+  });
+
+  it("refuses the same booking-level cases resend does", () => {
+    expect(actionMessage("reissueErr", "cancelled")).toMatch(/no live trip/i);
+    expect(actionMessage("reissueErr", "not_muster")).toMatch(/Xola/);
+    expect(actionMessage("reissueErr", "no_contact")).toMatch(/nowhere to go/i);
+  });
+});

@@ -115,7 +115,7 @@ Read by `/kill-this` Step 3.5 and matched against the branch diff. On a hit the 
 |---|---|
 | **Money moving** | `app/api/webhooks/stripe/`, `src/adapters/stripe-payment.ts`, `src/ports/payment.ts`, `src/reservations/create-departure-payment-intent.ts`, `src/reservations/payment-config.ts` |
 | **Money computed** | `app/(admin)/admin/payroll/**` (incl. the `gusto.csv` and `tips.csv` exports), `app/(admin)/admin/time-clock/**`, `app/(admin)/admin/shift/[shiftId]/**`, `app/(admin)/admin/shifts/**`, `app/(crew)/crew/shift/[shiftId]/**` |
-| **Auth / capability URL** | `app/lib/auth.ts`, `app/lib/auth-delivery.ts`, `app/(crew)/crew/auth/`, `app/api/calendar/[token]/**` |
+| **Auth / capability URL** | `app/lib/auth.ts`, `app/lib/auth-delivery.ts`, `app/(crew)/crew/auth/`, `app/api/calendar/[token]/**`, `app/b/**`, `src/reservations/booking-code.ts`, `src/reservations/ensure-booking-code.ts` |
 | **Data-changing migration** | a file under `db/migrations/` containing `drop`, `alter … type`, `update`, or `delete`. An additive `add column` does **not** trigger |
 
 **Why the payroll exports are listed by name.** `gusto.csv` is the file that becomes a paycheck. Nothing in it looks like a payment — no provider, no charge, no amount in cents — so a trigger defined by *where money moves* would never match it. A mis-bucketed pay period or a double-counted punch upstream in `time-clock` or `shift` reaches a person's pay with no payment code anywhere in the diff.
@@ -217,7 +217,7 @@ and the requirement outlives whoever is at the keyboard.
 Run it when a PR meets **any one** of:
 
 1. **Touches money** — PaymentIntent creation, webhook handling, refunds, fee/tip/balance math. A defect is a real charge against a real card, discovered by a customer.
-2. **Touches auth or a capability URL** — `login-code.ts`, session/subject handling, token minting, the `/reservations/manage` bearer path. These fail *silently* and don't self-correct.
+2. **Touches auth or a capability URL** — `login-code.ts`, session/subject handling, token minting, the `/b/<code>` booking-code path (`app/b/`). These fail *silently* and don't self-correct.
 3. **Contains a data-changing migration** — a rewrite or drop, not an additive column. In prod that's a restore, not a revert.
 4. **The diff is too big to review well yourself** — the same signal that triggers splitting, pointed at a different remedy. When a change is coherent enough not to split but too large to hold in your head, independent auditors are the point.
 

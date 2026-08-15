@@ -5,13 +5,14 @@ import { describe, expect, it, vi } from "vitest";
 import type { Reservation } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import type { ChannelPort, OutboundMessage, SendResult } from "../ports/channel.js";
-import { verifyReservationLinkToken } from "./booking-link.js";
 import { sendBookingConfirmation } from "./booking-confirmation.js";
 import { CANCELLATION_TERMS_SHORT } from "./refund-terms.js";
 import { nonGsm7Chars } from "./sms-alphabet.js";
 
-const SECRET = "test-link-secret";
 const BASE = "https://muster.app";
+/** The real production origin — the length assertion is only honest against it. */
+const PROD_BASE = "https://muster.brewcle.com";
+const CODE = "K3F9QZ2MX7RN4P";
 
 /** A ChannelPort that records what it was handed (and can be made to throw). */
 function capturing(throwOnSend = false): ChannelPort & { sent: OutboundMessage[] } {
@@ -46,12 +47,12 @@ const reservation = (
 };
 
 describe("sendBookingConfirmation", () => {
-  it("emails and texts, both carrying the verifiable manage link", async () => {
+  it("emails and texts, both carrying the manage link", async () => {
     const email = capturing();
     const sms = capturing();
     const res = reservation();
 
-    await sendBookingConfirmation({ email, sms, linkBase: BASE, linkSecret: SECRET }, res);
+    await sendBookingConfirmation({ email, sms, linkBase: BASE }, res, CODE);
 
     expect(email.sent).toHaveLength(1);
     expect(sms.sent).toHaveLength(1);
@@ -61,11 +62,33 @@ describe("sendBookingConfirmation", () => {
       // The URL is inline in the body (not a separate `link` field that only SMS
       // appends) so email carries it too.
       const url = msg.body.match(/https:\/\/\S+/)![0];
-      const token = new URL(url).searchParams.get("t")!;
-      expect(verifyReservationLinkToken(res.id, SECRET, token)).toBe(true);
+      expect(url).toBe(`${BASE}/b/${CODE}`);
     }
     expect(email.sent[0]!.to).toEqual({ email: "mary@example.com" });
     expect(sms.sent[0]!.to).toEqual({ phone: "+15550001111" });
+  });
+
+  it("the manage link is a short /b/<code> URL, not a 129-character HMAC (#741)", async () => {
+    // The link ships in the confirmation SMS, where length is billed in segments. A stored
+    // short code replaces the stateless HMAC (DEC-154 reverses DEC-122's mechanism): the id
+    // and the 43-char token both leave the URL, taking it from 129 characters to 43.
+    const email = capturing();
+    const sms = capturing();
+
+    await sendBookingConfirmation({ email, sms, linkBase: PROD_BASE }, reservation(), CODE);
+
+    for (const chan of [email, sms]) {
+      const url = chan.sent[0]!.body.match(/https:\/\/\S+/)![0];
+      expect(url).toBe(`${PROD_BASE}/b/${CODE}`);
+      // The two contributors the code removes. Asserted by absence because either one
+      // reappearing (a stray `pastTrips`-style href, a half-migrated caller) puts the
+      // length straight back.
+      expect(url).not.toContain("?r=");
+      expect(url).not.toContain("&t=");
+      // The acceptance number, measured against the REAL production origin — not the
+      // shorter test base, which would let a regression pass here and fail in the SMS.
+      expect(url.length).toBeLessThanOrEqual(43);
+    }
   });
 
   it("the body stays inside GSM-7 — one stray character doubles every SMS bill", async () => {
@@ -74,7 +97,7 @@ describe("sendBookingConfirmation", () => {
     // The failure is invisible — the text still sends, it just costs more, forever.
     const sms = capturing();
     const res = reservation();
-    await sendBookingConfirmation({ sms, linkBase: BASE, linkSecret: SECRET }, res);
+    await sendBookingConfirmation({ sms, linkBase: BASE }, res, CODE);
 
     // The customer's own name can force UCS-2 and is not ours to control — check the copy
     // this body owns, not the interpolated name.
@@ -86,8 +109,9 @@ describe("sendBookingConfirmation", () => {
     const sms = capturing();
 
     await sendBookingConfirmation(
-      { email, sms, linkBase: BASE, linkSecret: SECRET },
+      { email, sms, linkBase: BASE },
       reservation(),
+      CODE,
     );
 
     // The SHORT form, quoted from the constant — the body goes out verbatim as SMS and the
@@ -101,8 +125,9 @@ describe("sendBookingConfirmation", () => {
     const email = capturing();
     const sms = capturing();
     await sendBookingConfirmation(
-      { email, sms, linkBase: BASE, linkSecret: SECRET },
+      { email, sms, linkBase: BASE },
       reservation({ phone: null }),
+      CODE,
     );
     expect(email.sent).toHaveLength(1);
     expect(sms.sent).toHaveLength(0);
@@ -112,8 +137,9 @@ describe("sendBookingConfirmation", () => {
     const email = capturing();
     const sms = capturing();
     await sendBookingConfirmation(
-      { email, sms, linkBase: BASE, linkSecret: SECRET },
+      { email, sms, linkBase: BASE },
       reservation({ email: null }),
+      CODE,
     );
     expect(email.sent).toHaveLength(0);
     expect(sms.sent).toHaveLength(1);
@@ -124,8 +150,9 @@ describe("sendBookingConfirmation", () => {
     // email channel configured, but the reservation has no email.
     const email = capturing();
     await sendBookingConfirmation(
-      { email, sms, linkBase: BASE, linkSecret: SECRET },
+      { email, sms, linkBase: BASE },
       reservation({ email: null, phone: null }),
+      CODE,
     );
     expect(email.sent).toHaveLength(0);
     expect(sms.sent).toHaveLength(0);
@@ -138,8 +165,9 @@ describe("sendBookingConfirmation", () => {
 
     await expect(
       sendBookingConfirmation(
-        { email, sms, linkBase: BASE, linkSecret: SECRET, onFailure },
+        { email, sms, linkBase: BASE, onFailure },
         reservation(),
+        CODE,
       ),
     ).resolves.toBeUndefined(); // never throws — a paid booking must not 500 the webhook
 

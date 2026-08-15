@@ -19,7 +19,12 @@ import { existsSync } from "node:fs";
 import { resolveCustomerId } from "../src/customers/resolve.js";
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
 import { seedFleet } from "../src/import/resource-map.js";
-import { buildSeededReservationWorld, reservationDemo } from "../src/reservations/seed-reservation.js";
+import {
+  buildSeededReservationWorld,
+  demoBookingCode,
+  demoRevokedBookingCode,
+  reservationDemo,
+} from "../src/reservations/seed-reservation.js";
 import { vesselDateOf } from "../src/config/tenant.js";
 import { DEFAULT_DATABASE_URL } from "./migrate.js";
 
@@ -66,6 +71,33 @@ try {
       () => r.updatedAt ?? new Date().toISOString(),
     );
     await repo.saveReservation({ ...r, ...(customerId !== undefined ? { customerId } : {}) });
+
+    // The manage code (#741). Derived from the reservation id rather than random, so the URLs
+    // printed below are reproducible and a spec can build one without querying. `if not exists`
+    // semantics by hand: the PK throws on a re-seed within the same day, and a seed that dies on
+    // its second run is a seed nobody re-runs.
+    const code = demoBookingCode(String(r.id));
+    if (!(await repo.getBookingCode(code))) {
+      await repo.saveBookingCode({
+        code,
+        reservationId: r.id,
+        createdAt: r.updatedAt ?? new Date().toISOString(),
+      });
+    }
+  }
+
+  // One REVOKED code on the first booking, so the "this booking link was replaced" state has a
+  // starting URL. Without it that state is only reachable by pressing Replace-their-link first,
+  // which makes it a step in someone else's test rather than a state you can open.
+  const firstId = String(world.reservations[0]!.id);
+  const revoked = demoRevokedBookingCode(firstId);
+  if (!(await repo.getBookingCode(revoked))) {
+    await repo.saveBookingCode({
+      code: revoked,
+      reservationId: world.reservations[0]!.id,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      revokedAt: "2026-01-02T00:00:00.000Z",
+    });
   }
 
   const customers = await repo.listCustomers();
@@ -76,6 +108,12 @@ try {
   for (const b of demo.bookings) {
     console.log(`  booked    ${b.date} ${b.time}  ${b.customerName} · ${b.partySize} guests · $${(b.priceCents / 100).toFixed(2)}`);
   }
+  console.log("");
+  console.log("Customer booking links (#741):");
+  for (const r of world.reservations) {
+    console.log(`  /b/${demoBookingCode(String(r.id))}   ${r.customerName}`);
+  }
+  console.log(`  /b/${demoRevokedBookingCode(firstId)}   REVOKED — the "link was replaced" state`);
   console.log("");
   console.log("Try it at /admin/blocks:");
   console.log(`  • Vessel block ${demo.vesselName}  ${demo.vesselBlockWindow.start} → ${demo.vesselBlockWindow.end}  → removes slots + 2 booked ($988) conflict`);

@@ -160,9 +160,9 @@ export default defineConfig({
       // until the customer surface is customer-ready (the one P12 merge to main); on here
       // so the availability + checkout specs can drive it.
       RESERVATIONS: "true",
-      // The booking-link (DEC-122) HMAC secret — the manage page + its actions verify capability
-      // tokens against it; the manage e2e mints links with this same value.
-      RESERVATION_LINK_SECRET: "e2e-reservation-link-secret",
+      // No RESERVATION_LINK_SECRET any more (#741, DEC-154): the manage link is a stored code
+      // (`/b/<code>`), so there is no secret for the suite to pin and no HMAC for a spec to
+      // mirror. The seed writes the codes; `reservation-demo.ts` re-derives them.
       // The checkout screen (12.5, DEC-134) hard-gates on the BUILD-INLINED publishable key
       // (missing ⇒ a loud config-error state instead of the form). A dummy test key lets the
       // form render; the e2e never crosses stripe.confirmPayment (no Stripe network), so the

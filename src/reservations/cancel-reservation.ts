@@ -1,7 +1,7 @@
 /**
  * Cancel a Muster-native booking (#616) — the operator action that did not exist. Nothing in
  * the product ever wrote `status: "cancelled"` on a reservation; the only `saveReservation`
- * caller was the Xola importer, and the customer-facing "cancel" on `/reservations/manage`
+ * caller was the Xola importer, and the customer-facing "cancel" on the `/b/<code>` manage page
  * composes an EMAIL and persists nothing (`manage/actions.ts:64`).
  *
  * **Cancelling writes TWO rows, and the second one is the point.** Marking the reservation

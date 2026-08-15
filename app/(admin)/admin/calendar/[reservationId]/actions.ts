@@ -17,6 +17,7 @@ import {
 } from "@core/reservations/refund-payment.js";
 import type { Reservation } from "@core/domain/entities.js";
 import { forwardFormNotices } from "../../../../lib/channel";
+import { reissueBookingCode } from "@core/reservations/ensure-booking-code.js";
 import { resendReservationLink } from "../../../../lib/booking-confirmation";
 import { readSubject } from "../../../../lib/auth";
 import { getRepo } from "../../../../lib/repo";
@@ -390,4 +391,60 @@ export async function resendConfirmation(formData: FormData): Promise<void> {
     redirect(back({ resendErr: email === "failed" || sms === "failed" ? "all_failed" : "nothing_sent" }));
   }
   redirect(back({ resent: `${email}-${sms}` }));
+}
+
+/**
+ * Mint a NEW booking code, kill the old one, and send the new link to the customer (#741).
+ *
+ * The difference from `resendConfirmation` is the whole point and is worth stating where an
+ * operator's finger is: a **resend** puts the same link back in the customer's inbox; a
+ * **reissue** makes their existing link stop working. It is the control for a link that leaked,
+ * a phone that was lost, or a booking forwarded to the wrong person — and it is destructive in a
+ * way a resend never is, which is why the pane asks for a confirm.
+ *
+ * Guards are `resendConfirmation`'s, for the same reasons, plus one consequence of ordering:
+ * the reissue happens FIRST and the send second, so a send failure leaves the customer holding a
+ * dead link. That is the correct trade — the operator reached for this because the OLD link had
+ * to die — but it means a failed send here is worse than a failed resend, and the copy says so.
+ */
+export async function reissueBookingLink(formData: FormData): Promise<void> {
+  const subject = await readSubject();
+  if (!subject || subject.kind !== "admin") redirect("/admin");
+
+  const { reservationId, back } = readContext(formData);
+
+  let reservation: Reservation | null;
+  try {
+    reservation = await getRepo().getReservation(asId<"ReservationId">(reservationId));
+  } catch {
+    redirect(back({ reissueErr: "unreachable" }));
+  }
+  if (!reservation) redirect(back({ reissueErr: "reservation_missing" }));
+  if (reservation.source !== "muster") redirect(back({ reissueErr: "not_muster" }));
+  if (!reservation.email && !reservation.phone) redirect(back({ reissueErr: "no_contact" }));
+  if (reservation.status !== "booked") redirect(back({ reissueErr: "cancelled" }));
+
+  let reissue: Awaited<ReturnType<typeof reissueBookingCode>>;
+  try {
+    reissue = await reissueBookingCode(getRepo(), reservation.id, () => new Date().toISOString());
+  } catch {
+    // A throw means the MINT failed — `reissueBookingCode` never raises past that point — so
+    // nothing was revoked and the customer's existing link still works.
+    redirect(back({ reissueErr: "unreachable" }));
+  }
+
+  // Picks up the code just minted (it is now the live one).
+  let outcome: Awaited<ReturnType<typeof resendReservationLink>>;
+  try {
+    outcome = await resendReservationLink(reservation);
+  } catch {
+    redirect(back({ reissueErr: "sent_nothing" }));
+  }
+  if (outcome.kind === "skipped") redirect(back({ reissueErr: "sent_nothing" }));
+  const { email: e2, sms: s2 } = outcome.result;
+  if (e2 !== "sent" && s2 !== "sent") redirect(back({ reissueErr: "sent_nothing" }));
+  // The new link went out, but an old one survived the revoke — so the operator must NOT be told
+  // the previous link is dead, which is the whole reason they pressed this.
+  if (reissue.staleCodes.length > 0) redirect(back({ reissueErr: "old_link_alive" }));
+  redirect(back({ reissued: `${e2}-${s2}` }));
 }

@@ -72,8 +72,7 @@ invisible or unable to take money**.
 | `STRIPE_SECRET_KEY` | **you set it** — Stripe dashboard, live mode | Every server-side Stripe call |
 | `STRIPE_WEBHOOK_SECRET` | **you set it** — the signing secret of *this deployment's* endpoint | Verifying webhook signatures **and gating checkout** — see the traps |
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | **you set it** — Stripe dashboard, live mode | The inline Payment Element (DEC-134). **Build-inlined** — see the traps |
-| `RESERVATION_LINK_SECRET` | **you set it** (`openssl rand -base64 32`) | The HMAC on every "manage my booking" capability URL (DEC-122). **Rotating it dead-links every booking link already sitting in a customer's inbox**, with no way to reissue them |
-| `OPERATOR_NOTIFY_EMAIL` | optional, but the feature is dark without it | Where a customer's change/cancel request is emailed (`app/reservations/manage/actions.ts:78`). Unset ⇒ the request is logged and **nobody is told** |
+| `OPERATOR_NOTIFY_EMAIL` | optional, but the feature is dark without it | Where a customer's change/cancel request is emailed (`app/b/[code]/actions.ts`). Unset ⇒ the request is logged and **nobody is told** |
 | `WAIVER_TERMS_URL` | optional — defaults `https://www.brewcle.com/liability-waiver/` | The "I agree to the liability waiver" link on the booking form (`src/config/tenant.ts:50`) |
 | `WAIVER_TERMS_VERSION` | optional — defaults `v1` | Stamped onto the reservation as the terms version consented to (`src/config/tenant.ts:48`). Server-authoritative; **bump it whenever the waiver text changes**, or old consents claim to be for text nobody agreed to |
 

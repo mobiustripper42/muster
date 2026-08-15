@@ -439,6 +439,29 @@ export interface Customer {
 }
 
 /**
+ * A customer's booking code (#741, DEC-154) — the credential behind `/b/<code>`, and the row
+ * that gives the manage link the three things DEC-122's stateless HMAC could never have:
+ * revocation (`revokedAt`), expiry (`expiresAt`), and reissue (a second row for the same
+ * reservation).
+ *
+ * MANY-to-one by construction: a reissue mints a new row and revokes the prior ones rather than
+ * mutating a code in place, so a support conversation can still tell "this link was replaced"
+ * from "this link never existed".
+ */
+export interface BookingCode {
+  /** 14 Crockford base32 chars — the PRIMARY KEY. Minted by `mintBookingCode`. */
+  code: string;
+  reservationId: ReservationId;
+  /** ISO-8601 UTC. */
+  createdAt: string;
+  /** ISO-8601 UTC. Set ⇒ the code stops working at that instant. Unset today (see
+   *  `bookingCodeRefusal`) — a manage page stays open for the post-trip tip and the receipt. */
+  expiresAt?: string;
+  /** ISO-8601 UTC. Set ⇒ killed, by a reissue or an operator revoke. Never un-set. */
+  revokedAt?: string;
+}
+
+/**
  * A first-class sellable add-on (#491) — revenue, taxed + fee'd (the opposite of gratuity).
  * Its own entity (like {@link Vessel}/{@link Location}), edited once at `/admin/add-ons` and
  * ATTACHED to offerings by id (`Offering.addOnIds`). `type` is `"flat"` only for now; a text

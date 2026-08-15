@@ -10,6 +10,7 @@ import {
   cancelBooking,
   createBalanceLink,
   refundBooking,
+  reissueBookingLink,
   resendConfirmation,
   startRefund,
 } from "./actions";
@@ -44,13 +45,20 @@ export interface PaneActionState {
   canResend: boolean;
   /**
    * The customer's manage URL, for copying into a browser (#686). **Present only off
-   * production** — it is a live bearer token with no expiry and no revocation
-   * (`reservationLinkToken` is a bare HMAC over the id), so on a production deploy it must not
-   * reach the operator's clipboard, one paste away from a Slack thread. Same posture as
-   * `/crew/dev-link` under DEC-057. The resend path has no such exposure: it puts the token only
-   * where it already was, in the customer's own inbox.
+   * production** — it is a live bearer credential, so on a production deploy it must not reach
+   * the operator's clipboard, one paste away from a Slack thread. Same posture as
+   * `/crew/dev-link` under DEC-057.
+   *
+   * #741 made the code revocable, which weakens but does not retire that argument: the remedy
+   * (notice the leak, press Replace their link) depends on someone realising it leaked, and a
+   * leaked link works until they do. Revisiting the gate is deliberately out of #741's scope.
+   * The resend path has no such exposure: it puts the code only where it already was, in the
+   * customer's own inbox.
    */
   manageUrl?: string | undefined;
+  /** True when `manageUrl` is being shown because a reissue just happened — changes the copy
+   *  from "here is their link" to "here is their NEW link, their old one is dead". */
+  justReissued?: boolean | undefined;
   /**
    * The reservation is cancelled but its event is still `scheduled` — a half-applied cancel.
    * The boat is silently still held: neighbouring departures stay unsellable and the crew shift
@@ -162,6 +170,41 @@ export function actionMessage(
       ].filter(Boolean);
       return tail.length ? `${head} ${tail.join(" ")}` : head;
     }
+    case "reissued": {
+      // Same `<email>-<sms>` pair as `resent`, but the headline has to carry the destructive half:
+      // the operator just made the customer's old link stop working, and if the send went to only
+      // one of two channels they need to know which one carries the replacement.
+      const [emailState, smsState] = value.split("-");
+      const sent = [
+        emailState === "sent" && opts.email ? `emailed ${opts.email}` : "",
+        smsState === "sent" && opts.phone ? `texted ${opts.phone}` : "",
+      ].filter(Boolean);
+      const head = sent.length ? `New link ${sent.join(" and ")}.` : "New link sent.";
+      return `${head} Their old link no longer works.`;
+    }
+    case "reissueErr":
+      switch (value) {
+        case "cancelled":
+          return "This booking is cancelled — there’s no live trip to issue a link for.";
+        case "no_contact":
+          return "This booking has no email or phone on it, so a new link would have nowhere to go.";
+        case "not_muster":
+          return "Xola bookings have no Muster manage link.";
+        case "reservation_missing":
+          return "That reservation no longer exists.";
+        // The old link IS dead and the new one did not get out. Since 2026-08-15 the new link is
+        // on screen in this exact case, so the instruction is "read it to them" rather than the
+        // dead end this used to be ("they have no working link, call them" — with nothing the
+        // operator could actually say once they had).
+        case "sent_nothing":
+          return "The old link was replaced, but nothing could be sent. Their new link is below — read it to them or send it yourself.";
+        // The mixed state: new link delivered, old one NOT shut off. Says so, because the
+        // operator pressed this to close a link and would otherwise assume it closed.
+        case "old_link_alive":
+          return "The new link was sent, but their OLD link could not be switched off and may still open the booking. Press this again in a moment; if it keeps failing, say so — the old link is still live until it works.";
+        default:
+          return "Couldn’t issue a new link just now. Their existing link still works.";
+      }
     case "cancelErr":
       return value === "not_muster"
         ? "This booking is Xola's — cancel it there, or the next import will bring it back."
@@ -203,7 +246,7 @@ export function actionMessage(
         case "messaging_off":
           return "Messaging is switched off on this deployment, so nothing was sent.";
         case "not_configured":
-          return "This deployment can’t build a manage link (APP_BASE_URL / RESERVATION_LINK_SECRET are unset), so nothing was sent.";
+          return "This deployment can’t build a manage link (APP_BASE_URL is unset), so nothing was sent.";
         case "no_channels":
           return "No email or SMS channel is configured on this deployment, so nothing was sent.";
         case "all_failed":
@@ -756,17 +799,61 @@ function PaneActions({
         </form>
       )}
 
-      {/* DEV ONLY — the manage link, for pasting into a browser (#686).
-          Absent on production by construction (the page only fills `manageUrl` off-prod), not
-          merely hidden: this is a live bearer token with no expiry and no revocation.
-          It exists because there was NO way to reach the manage page to look at it — verifying
-          anything on it meant hand-running an HMAC in a `node -e` one-liner, which is why the
-          #619 test plan's step for that page was unusable as written. */}
+      {/* REISSUE (#741) — behind a `<details>` disclosure, deliberately.
+
+          Resend and reissue sit one above the other and read almost the same, but one is
+          harmless and the other breaks the link the customer already has. A plain second button
+          beside "Resend" is a mis-tap that strands someone. `<details>` costs the operator one
+          extra tap, needs no client JS (DEC-026), and puts the consequence in front of them at
+          the moment they are deciding rather than in a notice afterwards.
+
+          Same disabled conditions as resend: without a contact there is nowhere to send the new
+          link, and a cancelled booking has no live trip to issue one for. */}
+      {!confirming && (
+        <details className="mt-2">
+          <summary className="cursor-pointer list-none text-[13px] text-muted underline decoration-dotted">
+            Customer lost their link, or it leaked?
+          </summary>
+          <form action={reissueBookingLink} className="mt-2">
+            {hidden}
+            <p className="mb-1.5 text-[11px] text-faint">
+              Issues a new link and sends it. The link they have now will stop working — use
+              “Resend” instead if they just mislaid it.
+            </p>
+            <SubmitButton
+              data-commits="reissue"
+              disabled={!actions.canResend || cancelled}
+              className="min-h-[44px] w-full rounded-lg border border-line px-3 text-sm text-ink disabled:cursor-not-allowed disabled:text-faint"
+            >
+              Replace their link
+            </SubmitButton>
+          </form>
+        </details>
+      )}
+
+      {/* The manage link (#686; gate revised 2026-08-15).
+          Off production it always renders. On production it renders only on the load right after
+          a reissue — the page decides, this just draws whatever it was handed. Absence is by
+          construction rather than by hiding, so there is no markup to inspect for a link that
+          shouldn't be there.
+          It exists because there was otherwise NO way to reach the manage page — under the old
+          HMAC scheme that meant hand-running it in a `node -e` one-liner, which is why the #619
+          test plan's step for that page was unusable as written. */}
       {!confirming && actions.manageUrl && (
         <div className="mt-3 border-t border-line pt-3" data-testid="manage-link-block">
+          {/* Two different situations, and the copy has to say which. After a reissue this is a
+              brand-new link the operator is about to hand over — most likely by reading it out,
+              which is what the 14-character alphabet was chosen for. At rest (dev only) it is
+              just the customer's current link, sitting there. */}
           <p className="mb-1.5 text-xs text-muted">
-            The customer&rsquo;s manage link. Not shown on production — it opens the booking for
-            anyone holding it.
+            {actions.justReissued ? (
+              <>
+                <b className="text-ink">Their new link.</b> Safe to read out or paste — their old
+                one no longer works. It won&rsquo;t be shown again after you leave this page.
+              </>
+            ) : (
+              <>The customer&rsquo;s manage link. It opens the booking for anyone holding it.</>
+            )}
           </p>
           <div className="flex items-center gap-2">
             <span

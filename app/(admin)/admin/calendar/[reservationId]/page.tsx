@@ -13,6 +13,7 @@ import { VersionTag } from "../../../../../components/ui/version-tag";
 import { readSubject } from "../../../../lib/auth";
 import { isProdDeploy } from "../../../../lib/flags";
 import { operatorManageLink } from "../../../../lib/manage-link";
+import { liveBookingCode } from "@core/reservations/ensure-booking-code.js";
 import { getRepo } from "../../../../lib/repo";
 import {
   CalendarControls,
@@ -76,6 +77,10 @@ export default async function ReservationDetailPage({
       refundConfirm?: string;
       resent?: string;
       resendErr?: string;
+      /** Present ⇒ the render immediately after a reissue on this booking (#741). Their
+       *  PRESENCE reveals the new link on production; their value carries the send outcome. */
+      reissued?: string;
+      reissueErr?: string;
     }
   >;
 }) {
@@ -178,16 +183,27 @@ export default async function ReservationDetailPage({
   // (DEC-105), and a cancel here would be reverted by the next import.
   let actions: PaneActionState | undefined;
   if (reservation.source === "muster") {
-    // The manage link, for copying into a browser (#686) — **off production only**. It is a
-    // bearer token with no expiry and no revocation, so on prod it must never reach the
-    // operator's clipboard; same posture as `/crew/dev-link` (DEC-057). Built from the trusted
-    // APP_BASE_URL, never a Host header (see base-url.ts); unset env yields no link rather than
-    // a wrong one. This branch is already Muster-only — a Xola booking has no capability URL.
+    // The manage link, for copying or reading down the phone (#686, gate revised 2026-08-15).
+    // Off production: always. On production: only on the render right after a reissue, which is
+    // the moment the operator deliberately minted this code and the customer's old one died.
+    // See `app/lib/manage-link.ts` for why that trade is the right one now the code is revocable.
+    // Built from the trusted APP_BASE_URL, never a Host header (see base-url.ts). This branch is
+    // already Muster-only — a Xola booking has no capability URL.
+    //
+    // `justReissued` reads the reissue action's OWN redirect params, so it cannot be forged into
+    // a standing reveal by hand-typing a URL — worst case someone types `?reissued=` and sees the
+    // link for one render of a booking they can already fully administer. It also means a reload
+    // puts it away.
+    //
+    // READ-ONLY: shows the live code if there is one, never mints. A page render must not create
+    // a credential, and the resend/reissue buttons below are where minting belongs.
+    const liveCode = await liveBookingCode(getRepo(), reservation.id, () => new Date().toISOString());
+    const justReissued = sp.reissued !== undefined || sp.reissueErr !== undefined;
     const manageUrl = operatorManageLink({
       isProd: isProdDeploy(),
       base: process.env.APP_BASE_URL?.replace(/\/+$/, ""),
-      secret: process.env.RESERVATION_LINK_SECRET,
-      reservationId: reservation.id,
+      code: liveCode,
+      justReissued,
     });
     const detailHref = (extra: Record<string, string>): string => {
       const p = new URLSearchParams();
@@ -285,7 +301,7 @@ export default async function ReservationDetailPage({
       // Off-production only (#686), and only for a Muster booking — a Xola reservation has no
       // capability URL at all (DEC-122). Built from the trusted APP_BASE_URL, never a Host
       // header; unset env simply means no link rather than a wrong one.
-      ...(manageUrl ? { manageUrl } : {}),
+      ...(manageUrl ? { manageUrl, justReissued } : {}),
       needsRelease:
         reservation.status === "cancelled" &&
         event.source === "muster" &&

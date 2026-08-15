@@ -21,6 +21,7 @@ import type {
   Ask,
   AuthSubjectKind,
   Block,
+  BookingCode,
   CheckoutHold,
   Credential,
   CrewMember,
@@ -154,6 +155,14 @@ const toCustomer = (r: any): Customer => ({
   active: r.active,
   ...opt("email", r.email),
   ...opt("notes", r.notes),
+});
+
+const toBookingCode = (r: any): BookingCode => ({
+  code: r.code,
+  reservationId: asId<"ReservationId">(r.reservation_id),
+  createdAt: r.created_at,
+  ...opt("expiresAt", r.expires_at),
+  ...opt("revokedAt", r.revoked_at),
 });
 
 const toVessel = (r: any): Vessel => ({
@@ -693,6 +702,39 @@ export class PostgresRepository implements Repository {
       [id],
     );
     return rows.map(toReservation);
+  }
+
+  // ── Booking codes (#741, DEC-154) ─────────────────────────────────────────
+  /**
+   * Plain insert, NO `on conflict` — a duplicate code must throw so `ensureBookingCode` retries
+   * with a fresh mint. An upsert here would hand one customer's live link to another booking,
+   * which is the worst outcome this table can produce.
+   */
+  async saveBookingCode(row: BookingCode): Promise<void> {
+    await this.#pool.query(
+      `insert into booking_codes(code, reservation_id, created_at, expires_at, revoked_at)
+       values ($1,$2,$3,$4,$5)`,
+      [row.code, row.reservationId, row.createdAt, row.expiresAt ?? null, row.revokedAt ?? null],
+    );
+  }
+  async getBookingCode(code: string): Promise<BookingCode | null> {
+    const { rows } = await this.#pool.query("select * from booking_codes where code=$1", [code]);
+    return rows[0] ? toBookingCode(rows[0]) : null;
+  }
+  async listBookingCodesForReservation(id: ReservationId): Promise<BookingCode[]> {
+    const { rows } = await this.#pool.query(
+      "select * from booking_codes where reservation_id=$1 order by created_at desc",
+      [id],
+    );
+    return rows.map(toBookingCode);
+  }
+  /** `where revoked_at is null` keeps the FIRST revocation's timestamp — when the link actually
+   *  died is the fact a "why won't my link open" conversation turns on. */
+  async revokeBookingCode(code: string, atIso: string): Promise<void> {
+    await this.#pool.query(
+      "update booking_codes set revoked_at=$2 where code=$1 and revoked_at is null",
+      [code, atIso],
+    );
   }
 
   // ── Vessels ────────────────────────────────────────────────────────────────

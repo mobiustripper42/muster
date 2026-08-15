@@ -69,10 +69,11 @@ export default async function ManagePage({
         {/* A BUTTON, not an inline link (operator, 2026-08-15). This is the only thing to do on
             this page, and an underlined phrase in the middle of a sentence reads as explanation
             rather than as the way out — the customer is already confused about why their link
-            stopped working. Full width and 44px so it is unmissable and tappable at 375px. */}
+            stopped working. Sized to its label rather than the column (operator, same day); still
+            44px tall, which is the part that matters at 375px. */}
         <AppLink
           href="/b/find"
-          className="mt-5 flex min-h-[44px] w-full items-center justify-center rounded-[10px] bg-accent px-4 text-[14px] font-semibold text-white"
+          className="mt-5 inline-flex min-h-[44px] items-center justify-center rounded-[10px] bg-accent px-5 text-[14px] font-semibold text-white"
         >
           Send me a new link
         </AppLink>

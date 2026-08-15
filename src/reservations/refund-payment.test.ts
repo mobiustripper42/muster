@@ -246,6 +246,138 @@ describe("refundReservation", () => {
     expect((await repo.getPayment(asId<"PaymentId">("pay-deposit")))?.refundedCents).toBeUndefined();
   });
 
+  it("two SIMULTANEOUS refunds of different amounts: only one reaches Stripe (#726)", async () => {
+    // NOT the double-submit case (closed by the compare-and-swap). Two operators, or one in two
+    // tabs, refunding DIFFERENT amounts: both read `refunded = 0`, both pass the compare, and
+    // both key differently at Stripe (`refund_op_P_5000` vs `refund_op_P_3000`) — so Stripe
+    // executes both and $80 leaves the account. `markPaymentRefunded`'s `greatest()` then
+    // records only the larger, so the ledger says $50 and `/admin/purchases` over-reports
+    // revenue. The compare-and-swap cannot catch it: it is a read-then-check with no lock, and
+    // the second read happens before the first write.
+    const repo = await twoCharges();
+    const payments = new FakePaymentPort();
+
+    // Hold the FIRST refund inside the provider call until the second has started, which is the
+    // interleaving that matters — the second must pass its compare while the first is in flight
+    // at Stripe. Without this gate the two calls serialize and the bug is invisible.
+    let releaseFirst!: () => void;
+    const firstInFlight = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let started = 0;
+    const original = payments.refund.bind(payments);
+    payments.refund = async (input) => {
+      started += 1;
+      if (started === 1) await firstInFlight;
+      return original(input);
+    };
+
+    const first = refundReservation(deps(repo, payments), RESV, 5000, 0);
+    const second = refundReservation(deps(repo, payments), RESV, 3000, 0);
+    // Let the second run to completion (or refusal) before the first is allowed to finish.
+    const secondResult = await second;
+    releaseFirst();
+    const firstResult = await first;
+
+    // Exactly one refund may reach the provider. This is the assertion the money turns on.
+    expect(payments.refunds).toHaveLength(1);
+
+    // One winner, one refusal — and the loser must not report success.
+    const outcomes = [firstResult, secondResult];
+    expect(outcomes.filter((r) => r.ok)).toHaveLength(1);
+    expect(outcomes.filter((r) => !r.ok && r.reason === "stale")).toHaveLength(1);
+
+    // The ledger agrees with what actually moved: one refund's worth, not the max of two.
+    const rows = await repo.listPaymentsForReservation(RESV);
+    const ledger = rows.reduce((s, p) => s + (p.refundedCents ?? 0), 0);
+    expect(ledger).toBe(payments.refunds[0]!.amountCents);
+  });
+
+  it("acquires the lease BEFORE reading the payments it plans from (#726 ordering)", async () => {
+    // Asserted as an ORDER, deliberately, because the defect it prevents cannot be reproduced
+    // once the order is right — which makes an outcome-based test here a test that passes either
+    // way. With the read outside the lease: two callers both read `refunded = 0` and plan, the
+    // first executes and releases, and the second then acquires cleanly and executes its STALE
+    // plan. A second refund, moments later, with the mutex correctly held throughout.
+    //
+    // So the property under test is "everything the plan derives from is read inside the lease",
+    // and the honest way to check it is to watch the call sequence.
+    const repo = await twoCharges();
+    const calls: string[] = [];
+    // Delegates through closures rather than copying the instance — the repository keeps its
+    // state in `#private` fields, which a spread or `Object.create` copy cannot reach.
+    const watched = {
+      getReservation: (...a: Parameters<typeof repo.getReservation>) => repo.getReservation(...a),
+      markPaymentRefunded: (...a: Parameters<typeof repo.markPaymentRefunded>) =>
+        repo.markPaymentRefunded(...a),
+      acquireRefundLease: (...a: Parameters<typeof repo.acquireRefundLease>) => {
+        calls.push("acquire");
+        return repo.acquireRefundLease(...a);
+      },
+      listPaymentsForReservation: (...a: Parameters<typeof repo.listPaymentsForReservation>) => {
+        calls.push("read");
+        return repo.listPaymentsForReservation(...a);
+      },
+      releaseRefundLease: (...a: Parameters<typeof repo.releaseRefundLease>) => {
+        calls.push("release");
+        return repo.releaseRefundLease(...a);
+      },
+    } as unknown as InMemoryRepository;
+
+    const result = await refundReservation(deps(watched), RESV, 5000, 0);
+    expect(result).toMatchObject({ ok: true });
+
+    // The read that feeds the plan sits strictly between acquire and release.
+    expect(calls[0]).toBe("acquire");
+    expect(calls.indexOf("read")).toBeGreaterThan(calls.indexOf("acquire"));
+    expect(calls.indexOf("read")).toBeLessThan(calls.indexOf("release"));
+    expect(calls[calls.length - 1]).toBe("release");
+  });
+
+  it("releases the lease on success — a later, separate refund is not blocked", async () => {
+    // The lease must not outlive its refund. If it did, the operator refunding $50 now and $30
+    // an hour later would be refused the second one for no visible reason.
+    const repo = await twoCharges();
+    const payments = new FakePaymentPort();
+
+    const first = await refundReservation(deps(repo, payments), RESV, 5000, 0);
+    expect(first).toMatchObject({ ok: true });
+
+    const second = await refundReservation(deps(repo, payments), RESV, 3000, 5000);
+    expect(second).toMatchObject({ ok: true, refundedCents: 3000 });
+    expect(payments.refunds).toHaveLength(2);
+  });
+
+  it("releases the lease when the provider fails — the retry is the whole point", async () => {
+    // A partial failure is exactly when the operator presses again. Holding the lease through
+    // it would refuse that retry for a full minute, with copy that says the page is stale.
+    const repo = await twoCharges();
+    const payments = new FakePaymentPort();
+    payments.refundError = new Error("stripe is down");
+
+    const failed = await refundReservation(deps(repo, payments), RESV, 5000, 0);
+    expect(failed).toMatchObject({ ok: false, reason: "provider_error" });
+
+    payments.refundError = null;
+    const retry = await refundReservation(deps(repo, payments), RESV, 5000, 0);
+    expect(retry).toMatchObject({ ok: true, refundedCents: 5000 });
+  });
+
+  it("a refused plan releases its lease — the next refund is not blocked", async () => {
+    // The lease is now taken BEFORE the payments are read (so the plan can't be built from a
+    // stale read), which means a refusal happens while holding it. What matters is that the
+    // `finally` gives it back immediately: an operator fat-fingering $9,999 must not lock the
+    // booking for a minute while a colleague's correct refund bounces off it.
+    const repo = await twoCharges();
+    const payments = new FakePaymentPort();
+
+    expect(await refundReservation(deps(repo, payments), RESV, 999_999, 0)).toMatchObject({
+      ok: false,
+      reason: "exceeds_refundable",
+    });
+    expect(await refundReservation(deps(repo, payments), RESV, 5000, 0)).toMatchObject({ ok: true });
+  });
+
   it("refuses a Xola reservation", async () => {
     const repo = await twoCharges();
     await repo.saveReservation({ ...reservation, source: "xola" });

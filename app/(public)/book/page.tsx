@@ -216,11 +216,17 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
               a link, and making a claim nothing verifies. It is the most visible spot on the one
               muster URL a customer who lost their link is likely to reach, so it earns its place
               as the recovery entry point instead (operator, 2026-08-15). */}
+          {/* Two lines rather than one (operator, 2026-08-15): "Already booked?" is what makes
+              the link legible to someone scanning — without it, "Find my booking" reads as a
+              feature of the page they are already on. Stacked so the pair doesn't crowd the
+              title at 375px, and the question sits INSIDE the link so the whole block is one
+              44px tap target rather than a label beside a small hyperlink. */}
           <AppLink
             href="/b/find"
-            className="ml-auto flex min-h-[44px] flex-none items-center text-[11.5px] font-semibold text-accent"
+            className="ml-auto flex min-h-[44px] flex-none flex-col items-end justify-center leading-tight"
           >
-            Find my booking
+            <span className="text-[10.5px] text-muted">Already booked?</span>
+            <span className="text-[11.5px] font-semibold text-accent">Find my booking</span>
           </AppLink>
         </div>
 

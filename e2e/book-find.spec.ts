@@ -89,7 +89,10 @@ test.describe("public /b/find", () => {
     // The commonest recovery case, and the one the other two entry points cannot serve: the
     // customer deleted the text, so they have nothing to click.
     await page.goto("/book");
-    await page.getByRole("link", { name: "Find my booking" }).click();
+    // The accessible name is both lines — "Already booked? Find my booking" — because the
+    // question sits inside the link to make one 44px tap target. Matched loosely so a copy tweak
+    // doesn't fail a test that is about the ROUTE existing.
+    await page.getByRole("link", { name: /Find my booking/ }).click();
     await expect(page.getByRole("heading", { name: "Lost your link?" })).toBeVisible();
   });
 });

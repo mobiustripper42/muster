@@ -71,12 +71,14 @@ export default async function ManagePage({
             rather than as the way out — the customer is already confused about why their link
             stopped working. Sized to its label rather than the column (operator, same day); still
             44px tall, which is the part that matters at 375px. */}
-        <AppLink
-          href="/b/find"
-          className="mt-5 inline-flex min-h-[44px] items-center justify-center rounded-[10px] bg-accent px-5 text-[14px] font-semibold text-white"
-        >
-          Send me a new link
-        </AppLink>
+        <div className="mt-5 flex justify-center">
+          <AppLink
+            href="/b/find"
+            className="inline-flex min-h-[44px] items-center justify-center rounded-[10px] bg-accent px-5 text-[14px] font-semibold text-white"
+          >
+            Send me a new link
+          </AppLink>
+        </div>
         <p className="mt-4 text-[12.5px] text-muted">
           Or reply to your confirmation text and we’ll sort it out.
         </p>

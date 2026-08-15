@@ -82,11 +82,13 @@ export default async function FindBookingPage({
                 </label>
                 <label className="flex flex-col gap-1">
                   <span className="text-[12px] font-semibold text-ink">Last name</span>
+                  {/* No placeholder (operator, 2026-08-15). The contact field's placeholder earns
+                      its place by showing two accepted FORMATS; a specimen surname teaches
+                      nothing and reads as a value already filled in. */}
                   <input
                     name="lastName"
                     required
                     autoComplete="family-name"
-                    placeholder="Webb"
                     className="min-h-[44px] w-full rounded-[10px] border border-line bg-bg px-3 text-[15px] text-ink placeholder:text-faint"
                   />
                 </label>

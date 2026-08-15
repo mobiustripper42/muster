@@ -89,7 +89,7 @@ test.describe("public /b/find", () => {
     // The commonest recovery case, and the one the other two entry points cannot serve: the
     // customer deleted the text, so they have nothing to click.
     await page.goto("/book");
-    await page.getByRole("link", { name: "Find your booking" }).click();
+    await page.getByRole("link", { name: "Find my booking" }).click();
     await expect(page.getByRole("heading", { name: "Lost your link?" })).toBeVisible();
   });
 });

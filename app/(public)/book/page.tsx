@@ -212,7 +212,16 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
             <b className="truncate text-[13.5px] font-semibold">Book a cruise</b>
             <span className="text-[11.5px] text-muted">Whole boat, one group</span>
           </div>
-          <span className="ml-auto flex items-center gap-1.5 text-[11.5px] font-semibold text-ok">🔒 Secure</span>
+          {/* This slot held a static "🔒 Secure" badge — no mockup and no decision behind it, not
+              a link, and making a claim nothing verifies. It is the most visible spot on the one
+              muster URL a customer who lost their link is likely to reach, so it earns its place
+              as the recovery entry point instead (operator, 2026-08-15). */}
+          <AppLink
+            href="/b/find"
+            className="ml-auto flex min-h-[44px] flex-none items-center text-[11.5px] font-semibold text-accent"
+          >
+            Find my booking
+          </AppLink>
         </div>
 
         <BookingProvider
@@ -387,19 +396,6 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
         </BookingProvider>
       </div>
 
-      {/* The recovery entry point (issue #460). It lives HERE, on the one muster URL a customer
-          might still have or search for, because the two states that also link to it — "this
-          link was replaced" and "this link isn't valid" — are only reachable by someone who
-          still HAS a link. The commonest case is the customer who deleted the text, and they
-          have nothing to click on. Outside the card so it can't be mistaken for part of the
-          booking flow. */}
-      <p className="mx-auto mt-4 max-w-[900px] px-1 text-center text-[12.5px] text-muted">
-        Already booked?{" "}
-        <AppLink href="/b/find" className="text-accent">
-          Find your booking
-        </AppLink>
-        .
-      </p>
     </main>
   );
 }

@@ -325,14 +325,16 @@ describe("acquireDepartureHold — a live HOLD occupies the hull too (#694 revie
  * this, a declined card — the commonest checkout failure there is — made it do the opposite: each
  * retry took another boat, and the third reported sold_out on a departure nobody had paid for.
  */
-describe("acquireDepartureHold — buyer reuse (#575)", () => {
-  const BUYER = "+12165550148";
+describe("acquireDepartureHold — session reuse (#575)", () => {
+  // A real-shaped holder token (32 CSPRNG bytes, base64url) — the cookie value, not an identity.
+  const TOKEN = "Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MGFiY2RlZmdoaWo";
+  const OTHER_TOKEN = "b3RoZXJzZXNzaW9udG9rZW4wMTIzNDU2Nzg5YWJjZGU";
   const ask = (over: Record<string, unknown> = {}) => ({
     offeringId: OFF,
     date: DATE,
     time: TIME,
     guestCount: 4,
-    buyerKey: BUYER,
+    holderToken: TOKEN,
     ...over,
   });
 
@@ -357,46 +359,57 @@ describe("acquireDepartureHold — buyer reuse (#575)", () => {
     const later = () => "2026-07-04T12:10:00.000Z";
     const second = await acquireDepartureHold(repo, ask(), later);
 
+    // UNCONDITIONAL, and it is the point: with every assertion inside the type guard, a
+    // regression that returned `soldOut` would run zero expects and pass green — pinning
+    // nothing while looking like coverage.
+    expect("held" in first && "held" in second).toBe(true);
     if ("held" in first && "held" in second) {
       expect(second.held.expiresAt).toBe(first.held.expiresAt);
       expect(second.held.expiresAt).toBe(holdExpiry(NOW));
     }
   });
 
-  it("a DIFFERENT buyer still takes the next boat, and the third is still sold out", async () => {
+  it("a DIFFERENT session still takes the next boat, and the third is still sold out", async () => {
     // The sold-out path is real and must survive the fix — this is capacity, not a retry.
     const repo = await seededRepo();
     await acquireDepartureHold(repo, ask(), now);
-    const other = await acquireDepartureHold(repo, ask({ buyerKey: "+14405550102" }), now);
+    const other = await acquireDepartureHold(repo, ask({ holderToken: OTHER_TOKEN }), now);
     expect("held" in other && String(other.held.vesselId)).toBe("v-big");
 
-    const third = await acquireDepartureHold(repo, ask({ buyerKey: "sam@x.io" }), now);
+    const third = await acquireDepartureHold(repo, ask({ holderToken: "dGhpcmRzZXNzaW9udG9rZW4wMTIzNDU2Nzg5YWJjZGU" }), now);
     expect(third).toEqual({ soldOut: true });
   });
 
-  it("releases and re-acquires when the retry no longer FITS the held boat", async () => {
+  it("takes a bigger boat when the retry no longer FITS — and leaves the old hold alone", async () => {
     // Held the small boat (cap 6) for 4, comes back with 9. Silently keeping it would book a
-    // party onto a boat too small for them — worse than the bug being fixed.
+    // party onto a boat too small for them, so the reuse is refused and a fitting boat acquired.
+    //
+    // The old hold is NOT deleted. An earlier cut released it here, and `/security-review` showed
+    // why that was dangerous while holds were keyed on the buyer's email: anyone could delete a
+    // named person's hold by submitting their address with an absurd guest count. The token makes
+    // that unreachable, but deleting is still the wrong instinct on a path whose input is a raw
+    // guest count — so the stale hold simply expires. One boat idle for the rest of a 15-minute
+    // window is a smaller cost than a destroyed checkout.
     const repo = await seededRepo();
     const first = await acquireDepartureHold(repo, ask(), now);
     const bigger = await acquireDepartureHold(repo, ask({ guestCount: 9 }), now);
 
+    expect("held" in first && "held" in bigger).toBe(true);
     expect("held" in bigger && String(bigger.held.vesselId)).toBe("v-big");
     if ("held" in first && "held" in bigger) {
       expect(String(bigger.held.id)).not.toBe(String(first.held.id));
     }
-    // The small boat's hold is gone, not orphaned — it must not block anyone else.
     const holds = await repo.listCheckoutHolds();
-    expect(holds).toHaveLength(1);
-    expect(String(holds[0]!.vesselId)).toBe("v-big");
+    expect(holds).toHaveLength(2);
+    expect(holds.map((h) => String(h.vesselId)).sort()).toEqual(["v-big", "v-small"]);
   });
 
-  it("two buyers with NO contact never share a hold", async () => {
+  it("two sessions with NO token never share a hold", async () => {
     // The one way this rule could sell one boat twice. A keyless hold is never reused, by
     // anybody — including the person who minted it.
     const repo = await seededRepo();
-    const a = await acquireDepartureHold(repo, ask({ buyerKey: undefined }), now);
-    const b = await acquireDepartureHold(repo, ask({ buyerKey: undefined }), now);
+    const a = await acquireDepartureHold(repo, ask({ holderToken: undefined }), now);
+    const b = await acquireDepartureHold(repo, ask({ holderToken: undefined }), now);
 
     expect("held" in a && "held" in b).toBe(true);
     if ("held" in a && "held" in b) {
@@ -413,6 +426,7 @@ describe("acquireDepartureHold — buyer reuse (#575)", () => {
     // fresh acquire rather than a resurrection.
     const muchLater = () => "2026-07-04T12:30:00.000Z";
     const again = await acquireDepartureHold(repo, ask(), muchLater);
+    expect("held" in again).toBe(true);
     if ("held" in again) expect(again.held.expiresAt).toBe(holdExpiry("2026-07-04T12:30:00.000Z"));
   });
 

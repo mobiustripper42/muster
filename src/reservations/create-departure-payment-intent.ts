@@ -14,7 +14,6 @@
 import type { OfferingId } from "../domain/ids.js";
 import type { PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
-import { contactKey } from "../customers/identity.js";
 import { resolveBasePrice, slotIdentity } from "./availability.js";
 import { acquireDepartureHold } from "./claim.js";
 import { chargeNowCents, feeCentsFor, taxCentsFor } from "./payment-config.js";
@@ -41,6 +40,12 @@ export interface DeparturePaymentIntentRequest {
   /** Liability-waiver consent (DEC-110) — REQUIRED: no consent, no hold, no charge. */
   waiverConsentAt?: string;
   waiverVersion?: string;
+  /**
+   * The checkout session's holder token (#575) — read from an httpOnly cookie at the edge and
+   * passed down. Proof of possession, so a retry reuses ITS OWN hold rather than taking a second
+   * boat. Absent ⇒ mint every time, as before.
+   */
+  holderToken?: string;
 }
 
 export type DeparturePaymentIntentStart =
@@ -76,12 +81,6 @@ export async function createDeparturePaymentIntent(
     return { ok: false, reason: "gratuity_required" };
   }
 
-  // Who is buying (#575). Canonicalized HERE rather than inside the claim path, so there is one
-  // spelling of it across the codebase (`customers/identity.ts`). Email wins when both are
-  // present — it is the more stable identifier across a retry where someone fixes a typo'd phone.
-  // Neither present ⇒ undefined ⇒ pre-#575 behaviour: mint every time, reuse never.
-  const buyerKey = contactKey(req.email ?? req.phone ?? "") ?? undefined;
-
   const held = await acquireDepartureHold(
     repo,
     {
@@ -89,7 +88,9 @@ export async function createDeparturePaymentIntent(
       date: req.date,
       time: req.time,
       guestCount: req.guestCount,
-      buyerKey,
+      // Passed through from the edge's cookie (#575) — this module never derives it from the
+      // customer's typed contact, which is what made the first version a hold hijack.
+      ...(req.holderToken !== undefined ? { holderToken: req.holderToken } : {}),
     },
     now,
   );

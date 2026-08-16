@@ -42,9 +42,13 @@ async function seededRepo(): Promise<InMemoryRepository> {
   return repo;
 }
 
+const TOKEN_A = "Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MGFiY2RlZmdoaWo";
+const TOKEN_B = "b3RoZXJzZXNzaW9udG9rZW4wMTIzNDU2Nzg5YWJjZGU";
+const TOKEN_C = "dGhpcmRzZXNzaW9udG9rZW4wMTIzNDU2Nzg5YWJjZGU";
+
 const req = {
   offeringId: OFF, date: DATE, time: TIME, guestCount: 4, gratuityBps: 2000,
-  customerName: "Mary", email: "m@x.io", phone: "+12165550148",
+  customerName: "Mary", email: "m@x.io", phone: "+12165550148", holderToken: TOKEN_A,
   waiverConsentAt: "2026-07-13T12:00:00.000Z", waiverVersion: "v1",
 };
 
@@ -88,6 +92,9 @@ describe("createDeparturePaymentIntent — hold + frozen money metadata (12.5, D
       waiverConsentAt: "2026-07-13T12:00:00.000Z", waiverVersion: "v1",
     });
     expect(intent.metadata.eventId).toBeUndefined(); // no Event yet — the slot is the payload
+    // The holder token is a SESSION credential and must not travel to Stripe. Nothing needs it
+    // there, and metadata is somebody else's log.
+    expect(intent.metadata.holderToken).toBeUndefined();
   });
 
   it("waiver consent is a hard gate — no hold parked without it", async () => {
@@ -113,11 +120,11 @@ describe("createDeparturePaymentIntent — hold + frozen money metadata (12.5, D
     const repo = await seededRepo();
     const pay = new FakePaymentPort();
     await createDeparturePaymentIntent(repo, pay, req, now);
-    await createDeparturePaymentIntent(repo, pay, { ...req, email: "dana@x.io", phone: "+14405550102" }, now);
+    await createDeparturePaymentIntent(repo, pay, { ...req, email: "dana@x.io", phone: "+14405550102", holderToken: TOKEN_B }, now);
     const third = await createDeparturePaymentIntent(
       repo,
       pay,
-      { ...req, email: "sam@x.io", phone: "+12165550199" },
+      { ...req, email: "sam@x.io", phone: "+12165550199", holderToken: TOKEN_C },
       now,
     );
     expect(third).toEqual({ ok: false, reason: "sold_out" });
@@ -144,7 +151,7 @@ describe("createDeparturePaymentIntent — hold + frozen money metadata (12.5, D
     const other = await createDeparturePaymentIntent(
       repo,
       pay,
-      { ...req, email: "dana@x.io", phone: "+14405550102" },
+      { ...req, email: "dana@x.io", phone: "+14405550102", holderToken: TOKEN_B },
       now,
     );
     expect(other.ok).toBe(true);

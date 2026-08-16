@@ -125,13 +125,12 @@ export interface DepartureHoldRequest {
   time: string;
   guestCount: number;
   /**
-   * Canonicalized buyer contact (#575) — `contactKey` of the request's email or phone.
+   * The checkout session's holder token (#575) — proof of possession, from the cookie.
    *
-   * Absent ⇒ pre-#575 behaviour: always mint, never reuse. The caller canonicalizes rather than
-   * this module, so there is one spelling of "which buyer is this" (`customers/identity.ts`) and
-   * `(216) 555-0148` can't become a different person from `+12165550148`.
+   * Absent ⇒ pre-#575 behaviour: always mint, never reuse. NOT the buyer's identity: see
+   * `holder-token.ts` for why keying this on an email was a hold hijack.
    */
-  buyerKey?: string | undefined;
+  holderToken?: string | undefined;
 }
 
 export type DepartureHoldResult =
@@ -192,39 +191,42 @@ export async function acquireDepartureHold(
   // inert everywhere, so a stale hold never holds a boat hostage.
   const at0 = now();
 
-  // ── One buyer, one hold per departure (#575) ───────────────────────────────
+  // ── One checkout session, one hold per departure (#575) ────────────────────
   // Asked BEFORE the fit-and-fallback loop, because the loop's whole job is finding a boat this
-  // buyer does not yet have — and if they already have one, that search is the bug. A declined
+  // session does not yet have — and if it already has one, that search is the bug. A declined
   // card is an ordinary event: without this, retry 2 took the big boat and retry 3 reported
   // sold_out on a departure nobody had paid for.
   //
-  // Requires a key on BOTH sides. A hold minted from a request carrying neither email nor phone
-  // has none, and must never match another keyless hold — two anonymous buyers sharing one is
-  // the only way this rule could sell a boat twice.
-  const buyerKey = req.buyerKey ?? null;
-  if (buyerKey) {
+  // Matched on POSSESSION of the holder token, never on the buyer's typed identity. Requires a
+  // token on both sides: a tokenless hold is never reused and never matches another tokenless
+  // hold, which is the only way this rule could sell a boat twice.
+  const holderToken = req.holderToken ?? null;
+  if (holderToken) {
     const mine = holds.find(
       (h) =>
         h.source === "muster" &&
-        h.buyerKey === buyerKey &&
+        h.holderToken === holderToken &&
         h.expiresAt > at0 &&
         String(h.offeringId) === String(req.offeringId) &&
         h.date === req.date &&
         h.time === req.time,
     );
-    if (mine) {
-      // Their boat still has to FIT. A retry that raised the guest count above the held vessel's
-      // cap must not silently keep it — that would book a party onto a boat too small for them,
-      // which is worse than the bug being fixed. Release and fall through to a normal acquire.
-      const vessel = vessels.find((v) => String(v.id) === String(mine.vesselId));
-      if (vessel && req.guestCount <= vessel.coiMaxPax) {
-        // Returned with its ORIGINAL expiry, not a fresh one. A decline-and-retry happens inside
-        // a minute, so extending buys almost nothing — and not extending closes the hole where a
-        // buyer parks a boat indefinitely by resubmitting.
-        return { held: mine };
-      }
-      await repo.removeCheckoutHold(mine.id);
+    // The held boat still has to FIT. A retry that raised the guest count above its cap must not
+    // silently keep it — that would book a party onto a boat too small for them, which is worse
+    // than the bug being fixed.
+    const vessel = mine ? vessels.find((v) => String(v.id) === String(mine.vesselId)) : undefined;
+    if (mine && vessel && req.guestCount <= vessel.coiMaxPax) {
+      // Returned with its ORIGINAL expiry, not a fresh one. A decline-and-retry happens inside a
+      // minute, so extending buys almost nothing — and not extending closes the hole where a
+      // session parks a boat indefinitely by resubmitting.
+      return { held: mine };
     }
+    // A hold that no longer fits is LEFT ALONE to expire, never released here. Releasing was the
+    // second exploit `/security-review` found in the identity-keyed version: it let anyone delete
+    // a named person's hold on demand. That argument is gone with the token — you cannot reach
+    // someone else's hold now — but deleting is still the wrong instinct on a path whose input is
+    // a raw guest count. The cost of waiting is one boat idle for at most the remainder of a
+    // 15-minute window; the cost of being wrong is somebody's checkout destroyed.
   }
 
   const heldIntervals = new Map<string, { start: number; end: number }[]>();
@@ -279,7 +281,7 @@ export async function acquireDepartureHold(
       guestCount: req.guestCount,
       expiresAt: holdExpiry(at),
       createdAt: at,
-      ...(buyerKey ? { buyerKey } : {}),
+      ...(holderToken ? { holderToken } : {}),
     };
     const res = await repo.acquireCheckoutHold(hold);
     if (res.acquired) return { held: res.hold };

@@ -5,8 +5,10 @@ import { WAIVER_TERMS_VERSION } from "@core/config/tenant.js";
 import { asId } from "@core/domain/ids.js";
 import { createDeparturePaymentIntent } from "@core/reservations/create-departure-payment-intent.js";
 import { canonicalizePhone } from "@core/customers/identity.js";
+import { isHolderToken, mintHolderToken } from "@core/reservations/holder-token.js";
+import { cookies } from "next/headers";
 import { getRepo } from "../../../lib/repo";
-import { reservationsEnabled } from "../../../lib/flags";
+import { isProdDeploy, reservationsEnabled } from "../../../lib/flags";
 
 /**
  * Start an inline-Elements checkout (12.5, DEC-134): gates → hold (15 min in production; `CHECKOUT_HOLD_MINUTES` shortens it locally) →
@@ -47,6 +49,44 @@ const REASON_MESSAGES: Record<string, string> = {
   gratuity_required: "Please pick a crew tip to continue.",
 };
 
+/** The cookie carrying the checkout session's holder token (#575). */
+const HOLDER_COOKIE = "muster_checkout";
+
+/**
+ * The caller's holder token, minting and setting one if absent — or `undefined` when the cookie
+ * cannot be written (which degrades to pre-#575 behaviour rather than failing the checkout).
+ *
+ * `httpOnly` so no script can read it, `sameSite: "lax"` so it survives the return trip from
+ * Stripe, and a lifetime a little over the hold's own — a token that outlives every hold it could
+ * name is just a longer-lived identifier for no benefit.
+ *
+ * An existing cookie is validated by SHAPE before it is trusted as a match key. A crafted value
+ * can't collide with a real token (32 CSPRNG bytes), but refusing malformed input at the door is
+ * cheaper than reasoning about what a 4KB cookie does to a `.find()`.
+ */
+async function readOrMintHolderToken(): Promise<string | undefined> {
+  try {
+    const jar = await cookies();
+    const existing = jar.get(HOLDER_COOKIE)?.value;
+    if (isHolderToken(existing)) return existing;
+
+    const minted = mintHolderToken();
+    jar.set(HOLDER_COOKIE, minted, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: isProdDeploy(),
+      path: "/",
+      maxAge: 30 * 60,
+    });
+    return minted;
+  } catch {
+    // A server action CAN set cookies; a render cannot. If this ever moves, the checkout must
+    // keep working — an absent token means "mint a fresh hold", which is exactly what happened
+    // before this feature existed.
+    return undefined;
+  }
+}
+
 export async function startElementsCheckout(
   input: StartElementsCheckoutInput,
 ): Promise<StartElementsCheckoutResult> {
@@ -80,6 +120,18 @@ export async function startElementsCheckout(
     };
   }
 
+  // The checkout session's holder token (#575). Read from an httpOnly cookie, minted on first
+  // submit — it is what lets a retry after a declined card reuse ITS OWN hold instead of taking
+  // a second boat and eventually reporting a false sold_out.
+  //
+  // POSSESSION, not identity: keying this on the customer's email (the first attempt) meant
+  // anyone who knew an address could be handed that person's hold, or delete it. A cookie can't
+  // be guessed from public information.
+  //
+  // A client that refuses cookies simply gets the old behaviour — a fresh hold per submit — so
+  // this degrades to the bug rather than to a broken checkout.
+  const holderToken = await readOrMintHolderToken();
+
   const email = input.email.trim();
   const result = await createDeparturePaymentIntent(
     getRepo(),
@@ -97,6 +149,7 @@ export async function startElementsCheckout(
       phone: canonicalPhone.phone,
       waiverConsentAt: new Date().toISOString(),
       waiverVersion: WAIVER_TERMS_VERSION,
+      ...(holderToken ? { holderToken } : {}),
     },
     () => new Date().toISOString(),
   );

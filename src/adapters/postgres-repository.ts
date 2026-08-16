@@ -325,7 +325,7 @@ const toCheckoutHold = (r: any): CheckoutHold => ({
   expiresAt: r.expires_at,
   createdAt: r.created_at,
   ...opt("stripeCheckoutSessionId", r.stripe_checkout_session_id),
-  ...opt("buyerKey", r.buyer_key),
+  ...opt("holderToken", r.holder_token),
 });
 
 const toReservation = (r: any): Reservation => ({
@@ -1637,7 +1637,7 @@ export class PostgresRepository implements Repository {
       );
       await client.query(
         `insert into checkout_holds
-           (id, vessel_id, date, time, source, offering_id, guest_count, expires_at, created_at, stripe_checkout_session_id, buyer_key)
+           (id, vessel_id, date, time, source, offering_id, guest_count, expires_at, created_at, stripe_checkout_session_id, holder_token)
          values ($1,$2,$3,$4,'muster',$5,$6,$7,$8,$9,$10)
          on conflict do nothing`,
         [
@@ -1650,7 +1650,7 @@ export class PostgresRepository implements Repository {
           hold.expiresAt,
           hold.createdAt,
           hold.stripeCheckoutSessionId ?? null,
-          hold.buyerKey ?? null,
+          hold.holderToken ?? null,
         ],
       );
       // We hold the slot iff the row now under this identity is OURS (fresh insert, or an

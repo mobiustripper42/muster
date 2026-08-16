@@ -1536,6 +1536,54 @@ export class PostgresRepository implements Repository {
   }
 
   // ── Checkout holds (12.1, DEC-109) ──────────────────────────────────────────
+  // ── Refund lease (#726) ───────────────────────────────────────────────────
+  /**
+   * Delete-if-expired then insert, in ONE transaction — the `acquireCheckoutHold` shape below,
+   * for the same reason: `now()` is not immutable so liveness can't live in an index predicate.
+   * The primary key on `reservation_id` is the mutex; `on conflict do nothing` + `returning`
+   * decides the winner without raising.
+   *
+   * The transaction is short and contains no network call — that is the whole point of a lease.
+   * The Stripe round-trip happens *outside* it, between acquire and release.
+   */
+  async acquireRefundLease(
+    reservationId: ReservationId,
+    token: string,
+    nowIso: string,
+    expiresAtIso: string,
+  ): Promise<{ acquired: boolean }> {
+    const client = await this.#pool.connect();
+    try {
+      await client.query("begin");
+      await client.query(
+        "delete from refund_leases where reservation_id=$1 and expires_at <= $2",
+        [reservationId, nowIso],
+      );
+      const { rows } = await client.query(
+        `insert into refund_leases (reservation_id, token, acquired_at, expires_at)
+         values ($1,$2,$3,$4)
+         on conflict do nothing
+         returning reservation_id`,
+        [reservationId, token, nowIso, expiresAtIso],
+      );
+      await client.query("commit");
+      return { acquired: rows.length > 0 };
+    } catch (e) {
+      await client.query("rollback");
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+  /** `and token=$2` is the own-lease-only guard — see the port's note on why deleting by
+   *  reservation alone reopens the race it closes. */
+  async releaseRefundLease(reservationId: ReservationId, token: string): Promise<void> {
+    await this.#pool.query("delete from refund_leases where reservation_id=$1 and token=$2", [
+      reservationId,
+      token,
+    ]);
+  }
+
   // ── Recovery throttle (issue #460) ────────────────────────────────────────
   /** Delete-if-expired then insert, in one short transaction with no network call inside it —
    *  the `acquireCheckoutHold` shape below. The primary key is the mutex; `on conflict do

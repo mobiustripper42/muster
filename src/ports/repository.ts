@@ -348,6 +348,38 @@ export interface Repository {
     time: string,
   ): Promise<void>;
 
+  // ── Refund lease — the refund mutex (#726) ─────────────────────────────────
+  /**
+   * Claim the exclusive right to refund this reservation, or report that someone else holds it.
+   *
+   * **Why a lease rather than a lock.** The refund makes a Stripe network call, and a Postgres
+   * transaction must not be held open across one — so the mutex is a row taken before the call
+   * and released after, not a lock spanning it. `cancelEventIfUnclaimed` can use an advisory
+   * lock because everything it touches is in the database; this cannot.
+   *
+   * **Lazily expired, exactly like `acquireCheckoutHold`**: an existing row whose `expiresAt` is
+   * at or before `nowIso` is dead and gets replaced. Without that, a process dying mid-refund
+   * would block every future refund on the booking forever — silently and permanently, which is
+   * worse than the double-refund this exists to prevent.
+   *
+   * `{ acquired: false }` is a normal outcome the caller renders, never an error.
+   */
+  acquireRefundLease(
+    reservationId: ReservationId,
+    token: string,
+    nowIso: string,
+    expiresAtIso: string,
+  ): Promise<{ acquired: boolean }>;
+  /**
+   * Release the lease **held under `token`**. Idempotent — a no-op if it already expired, was
+   * never taken, or now belongs to someone else. Called from a `finally`, so it must not throw.
+   *
+   * **The token is what makes this safe, and it is not optional.** Deleting by reservation alone
+   * means a holder whose lease expired mid-Stripe-call deletes its SUCCESSOR's live lease on the
+   * way out — so a third refund acquires alongside one already in flight, reopening the exact
+   * race the table exists to close, in precisely the slow-call case expiry was added for.
+   */
+  releaseRefundLease(reservationId: ReservationId, token: string): Promise<void>;
   // ── Recovery throttle — the public "lost your link?" bound (issue #460) ────
   /**
    * Claim the right to process one recovery request for `contactKey`, or report that a recent

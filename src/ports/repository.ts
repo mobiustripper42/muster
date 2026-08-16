@@ -380,6 +380,26 @@ export interface Repository {
    * race the table exists to close, in precisely the slow-call case expiry was added for.
    */
   releaseRefundLease(reservationId: ReservationId, token: string): Promise<void>;
+  // ── Recovery throttle — the public "lost your link?" bound (issue #460) ────
+  /**
+   * Claim the right to process one recovery request for `contactKey`, or report that a recent
+   * one already holds the window.
+   *
+   * **Claimed BEFORE matching, on every request.** Throttling only successful matches would
+   * leave the no-match path unbounded, which is the path that gets abused. `/b/find` is the only
+   * unauthenticated endpoint whose success path spends money (an SMS segment per send) and it
+   * answers identically either way by design, so nothing on screen would ever show it being
+   * hammered.
+   *
+   * Same lazy-expiry mechanics as `acquireRefundLease`: an existing row whose `cooldownUntil` is
+   * at or before `nowIso` is dead and replaced. `{ claimed: false }` is a normal outcome the
+   * caller renders as the same confirmation it renders for everything else.
+   */
+  claimRecoverySend(
+    contactKey: string,
+    nowIso: string,
+    cooldownUntilIso: string,
+  ): Promise<{ claimed: boolean }>;
 
   // ── Gratuity — first-class crew money (12.3, DEC-124) ───────────────────────
   /** Record a collected gratuity. Deterministic id (`grat_${kind}_${sessionId}`) ⇒ idempotent

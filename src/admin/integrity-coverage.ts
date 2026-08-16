@@ -82,6 +82,11 @@ export const TABLE_COVERAGE: Record<string, Coverage> = {
   blocks: { kind: "fk", refs: ["vessel_id", "location_id"] },
   customers: { kind: "exempt", reason: "parent table — no outgoing references. It is the target of reservations_customer_id_fkey, not the holder of one." },
   booking_codes: { kind: "fk", refs: ["reservation_id"] },
+  recovery_throttle: {
+    kind: "exempt",
+    reason:
+      "holds no references — a canonicalized contact string and two timestamps, keyed on nothing in the schema. Rows are transient (a 15-minute window) and deliberately NOT linked to a customer or reservation: the throttle is claimed before any match, including for contacts that belong to nobody (issue #460).",
+  },
 
   // ── Waiting on a Repository port method (#584 follow-up) ─────────────────
   // These carry real references and nothing watches them. They need a `listAll*` on the

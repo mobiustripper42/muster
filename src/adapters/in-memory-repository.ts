@@ -131,6 +131,8 @@ export class InMemoryRepository implements Repository {
     string,
     { token: string; acquiredAt: string; expiresAt: string }
   >();
+  /** Recovery throttle (issue #460): canonical contact key → ISO cooldown expiry. */
+  readonly #recoveryThrottle = new Map<string, string>();
   /** Collected gratuities (12.3, DEC-124), keyed by id. */
   readonly #gratuities = new Map<GratuityId, Gratuity>();
   /** Muster-native payments (DEC-107), keyed by id. */
@@ -676,6 +678,26 @@ export class InMemoryRepository implements Repository {
     // Own-lease-only: a holder whose lease expired must NOT delete its successor's live one.
     const held = this.#refundLeases.get(String(reservationId));
     if (held?.token === token) this.#refundLeases.delete(String(reservationId));
+  }
+
+  // ── Recovery throttle (issue #460) ────────────────────────────────────────
+  // Enforced by the double, unlike the uniques it deliberately ignores, because the RESULT is
+  // semantic: the recovery action branches on `claimed` to decide whether to spend an SMS.
+  async claimRecoverySend(
+    contactKey: string,
+    nowIso: string,
+    cooldownUntilIso: string,
+  ): Promise<{ claimed: boolean }> {
+    // Sweep every expired row, matching the Postgres adapter — the table would otherwise grow
+    // one row per novel contact, forever.
+    for (const [key, until] of this.#recoveryThrottle) {
+      if (until <= nowIso) this.#recoveryThrottle.delete(key);
+    }
+    const cooldownUntil = this.#recoveryThrottle.get(contactKey);
+    // A dead window is not a block — otherwise a customer who tried once could never try again.
+    if (cooldownUntil && cooldownUntil > nowIso) return { claimed: false };
+    this.#recoveryThrottle.set(contactKey, cooldownUntilIso);
+    return { claimed: true };
   }
 
   async acquireCheckoutHold(

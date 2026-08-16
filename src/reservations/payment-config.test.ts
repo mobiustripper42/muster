@@ -33,6 +33,41 @@ describe("feeCentsFor (DEC-134)", () => {
   });
 });
 
+/**
+ * The launch money posture (issue #617).
+ *
+ * The default was `deposit` at 25% from the day the file was written, and nothing in production
+ * overrides it — `app_settings` holds one row, and it isn't this. So an environment nobody had
+ * configured would take 25% and leave 75% owed to a collection mechanism **that does not exist**:
+ * there is no scheduler reading `balanceDueDaysBeforeEvent`, and issue #712 (the auto-collect) is
+ * unbuilt and deferred. Collecting meant the operator noticing, opening the booking, copying a
+ * URL and texting it, per booking.
+ *
+ * issue #617 asked for two things — flip the default, and stop telling customers the balance is
+ * charged automatically. PR #734 did the copy half and the issue was closed; this is the half
+ * that was left, found when a local checkout still quoted a deposit.
+ *
+ * Deposit mode is not removed. It is opt-IN now, which is the correct direction for a mode whose
+ * back half is manual.
+ */
+describe("PAYMENT_CONFIG_DEFAULTS — the posture an unconfigured environment inherits", () => {
+  it("charges the FULL fare, not a deposit (#617)", () => {
+    expect(PAYMENT_CONFIG_DEFAULTS.depositMode).toBe("full");
+  });
+
+  it("still carries a deposit percent, for the deployments that opt in", () => {
+    // Inert while the mode is `full`. Kept so switching the mode is one setting, not two.
+    expect(PAYMENT_CONFIG_DEFAULTS.depositPercent).toBe(25);
+  });
+
+  it("full mode charges fare + tax + fee in one go — no balance left behind", () => {
+    // The property that makes the default safe: nothing is owed afterwards, so no manual
+    // collection step can be forgotten.
+    const cfg = PAYMENT_CONFIG_DEFAULTS;
+    expect(chargeNowCents(49900, 3618, 1497, cfg)).toBe(49900 + 3618 + 1497);
+  });
+});
+
 describe("chargeNowCents with the service fee (DEC-134)", () => {
   it("full mode: fare + tax + fee, one charge", () => {
     expect(chargeNowCents(49900, 3618, 1497, cfg({ depositMode: "full" }))).toBe(55015);

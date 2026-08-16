@@ -1427,16 +1427,19 @@ export function runRepositoryContract(
     });
 
     it("payment config: defaults when unset; per-field override round-trips (DEC-107)", async () => {
+      // `full` is the default since issue #617: an unset environment must charge the whole fare,
+      // not 25% with the remaining 75% owed to a collection mechanism that does not exist.
       expect(await repo.getPaymentConfig()).toEqual({
-        depositMode: "deposit",
+        depositMode: "full",
         depositPercent: 25,
         taxRateBps: 725,
         serviceFeeBps: 300,
         balanceDueDaysBeforeEvent: 14,
       });
-      await repo.setPaymentConfig({ depositMode: "full", taxRateBps: 800 }, "2026-07-12T00:00:00.000Z");
+      await repo.setPaymentConfig({ depositMode: "deposit", taxRateBps: 800 }, "2026-07-12T00:00:00.000Z");
       const cfg = await repo.getPaymentConfig();
-      expect(cfg.depositMode).toBe("full");
+      // Deposit mode is still fully supported — it is opt-IN now rather than inherited.
+      expect(cfg.depositMode).toBe("deposit");
       expect(cfg.taxRateBps).toBe(800);
       expect(cfg.depositPercent).toBe(25); // untouched field keeps its default
     });

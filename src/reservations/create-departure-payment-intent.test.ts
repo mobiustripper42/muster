@@ -105,13 +105,50 @@ describe("createDeparturePaymentIntent — hold + frozen money metadata (12.5, D
     expect(await repo.listCheckoutHolds()).toHaveLength(0);
   });
 
-  it("sold out once both boats are held", async () => {
+  it("sold out once both boats are held — by DIFFERENT buyers", async () => {
+    // Three submits of the same `req` used to stand here, and it passed for the wrong reason:
+    // one buyer retrying took a second boat and then hit sold_out (#575). The sold-out path is
+    // real and worth pinning, but it needs three distinct buyers to be about capacity rather
+    // than about the retry defect below.
     const repo = await seededRepo();
     const pay = new FakePaymentPort();
     await createDeparturePaymentIntent(repo, pay, req, now);
-    await createDeparturePaymentIntent(repo, pay, req, now);
-    const third = await createDeparturePaymentIntent(repo, pay, req, now);
+    await createDeparturePaymentIntent(repo, pay, { ...req, email: "dana@x.io", phone: "+14405550102" }, now);
+    const third = await createDeparturePaymentIntent(
+      repo,
+      pay,
+      { ...req, email: "sam@x.io", phone: "+12165550199" },
+      now,
+    );
     expect(third).toEqual({ ok: false, reason: "sold_out" });
+  });
+
+  it("a buyer retrying a declined card reuses their hold, not a second boat (#575)", async () => {
+    // The ordinary event: card declines, customer fixes it and resubmits. Every submit called
+    // `acquireDepartureHold`, which knows nothing about who is asking — so attempt 2 landed on
+    // the big boat and attempt 3 reported sold_out on a departure with ZERO paying customers,
+    // for everyone, for fifteen minutes.
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+
+    const first = await createDeparturePaymentIntent(repo, pay, req, now);
+    const second = await createDeparturePaymentIntent(repo, pay, req, now);
+    const third = await createDeparturePaymentIntent(repo, pay, req, now);
+
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(true);
+    expect(third.ok).toBe(true);
+    // One buyer, one boat — the whole point.
+    expect(await repo.listCheckoutHolds()).toHaveLength(1);
+    // …and the fleet is still sellable to somebody else.
+    const other = await createDeparturePaymentIntent(
+      repo,
+      pay,
+      { ...req, email: "dana@x.io", phone: "+14405550102" },
+      now,
+    );
+    expect(other.ok).toBe(true);
+    expect(await repo.listCheckoutHolds()).toHaveLength(2);
   });
 
   it("extra guests bill on top and the fee is on the COMPOSED fare", async () => {

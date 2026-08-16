@@ -317,3 +317,113 @@ describe("acquireDepartureHold — a live HOLD occupies the hull too (#694 revie
   });
 });
 
+
+/**
+ * One buyer, one hold per departure (#575).
+ *
+ * The hold exists to turn "you paid and we refunded you" into "sold out, before you paid". Before
+ * this, a declined card — the commonest checkout failure there is — made it do the opposite: each
+ * retry took another boat, and the third reported sold_out on a departure nobody had paid for.
+ */
+describe("acquireDepartureHold — buyer reuse (#575)", () => {
+  const BUYER = "+12165550148";
+  const ask = (over: Record<string, unknown> = {}) => ({
+    offeringId: OFF,
+    date: DATE,
+    time: TIME,
+    guestCount: 4,
+    buyerKey: BUYER,
+    ...over,
+  });
+
+  it("returns the SAME hold on a retry instead of taking a second boat", async () => {
+    const repo = await seededRepo();
+    const first = await acquireDepartureHold(repo, ask(), now);
+    const second = await acquireDepartureHold(repo, ask(), now);
+
+    expect("held" in first && "held" in second).toBe(true);
+    if ("held" in first && "held" in second) {
+      expect(String(second.held.id)).toBe(String(first.held.id));
+      expect(String(second.held.vesselId)).toBe("v-small");
+    }
+    expect(await repo.listCheckoutHolds()).toHaveLength(1);
+  });
+
+  it("does NOT extend the expiry — a retry cannot park a boat indefinitely", async () => {
+    // Decided at build (#575): a decline-and-retry happens inside a minute, so extension buys
+    // almost nothing, and refusing it closes the hole where resubmitting holds a boat forever.
+    const repo = await seededRepo();
+    const first = await acquireDepartureHold(repo, ask(), now);
+    const later = () => "2026-07-04T12:10:00.000Z";
+    const second = await acquireDepartureHold(repo, ask(), later);
+
+    if ("held" in first && "held" in second) {
+      expect(second.held.expiresAt).toBe(first.held.expiresAt);
+      expect(second.held.expiresAt).toBe(holdExpiry(NOW));
+    }
+  });
+
+  it("a DIFFERENT buyer still takes the next boat, and the third is still sold out", async () => {
+    // The sold-out path is real and must survive the fix — this is capacity, not a retry.
+    const repo = await seededRepo();
+    await acquireDepartureHold(repo, ask(), now);
+    const other = await acquireDepartureHold(repo, ask({ buyerKey: "+14405550102" }), now);
+    expect("held" in other && String(other.held.vesselId)).toBe("v-big");
+
+    const third = await acquireDepartureHold(repo, ask({ buyerKey: "sam@x.io" }), now);
+    expect(third).toEqual({ soldOut: true });
+  });
+
+  it("releases and re-acquires when the retry no longer FITS the held boat", async () => {
+    // Held the small boat (cap 6) for 4, comes back with 9. Silently keeping it would book a
+    // party onto a boat too small for them — worse than the bug being fixed.
+    const repo = await seededRepo();
+    const first = await acquireDepartureHold(repo, ask(), now);
+    const bigger = await acquireDepartureHold(repo, ask({ guestCount: 9 }), now);
+
+    expect("held" in bigger && String(bigger.held.vesselId)).toBe("v-big");
+    if ("held" in first && "held" in bigger) {
+      expect(String(bigger.held.id)).not.toBe(String(first.held.id));
+    }
+    // The small boat's hold is gone, not orphaned — it must not block anyone else.
+    const holds = await repo.listCheckoutHolds();
+    expect(holds).toHaveLength(1);
+    expect(String(holds[0]!.vesselId)).toBe("v-big");
+  });
+
+  it("two buyers with NO contact never share a hold", async () => {
+    // The one way this rule could sell one boat twice. A keyless hold is never reused, by
+    // anybody — including the person who minted it.
+    const repo = await seededRepo();
+    const a = await acquireDepartureHold(repo, ask({ buyerKey: undefined }), now);
+    const b = await acquireDepartureHold(repo, ask({ buyerKey: undefined }), now);
+
+    expect("held" in a && "held" in b).toBe(true);
+    if ("held" in a && "held" in b) {
+      expect(String(b.held.id)).not.toBe(String(a.held.id));
+      expect(String(b.held.vesselId)).toBe("v-big"); // took the next boat, as before #575
+    }
+    expect(await repo.listCheckoutHolds()).toHaveLength(2);
+  });
+
+  it("an EXPIRED hold of the same buyer is not reused", async () => {
+    const repo = await seededRepo();
+    await acquireDepartureHold(repo, ask(), now);
+    // Past the 15 minutes: the old row is inert everywhere (DEC-109 lazy expiry), so this is a
+    // fresh acquire rather than a resurrection.
+    const muchLater = () => "2026-07-04T12:30:00.000Z";
+    const again = await acquireDepartureHold(repo, ask(), muchLater);
+    if ("held" in again) expect(again.held.expiresAt).toBe(holdExpiry("2026-07-04T12:30:00.000Z"));
+  });
+
+  it("does not reuse a hold from a different departure", async () => {
+    // Same person, same day, different time — a genuinely separate purchase.
+    const repo = await seededRepo();
+    const first = await acquireDepartureHold(repo, ask(), now);
+    const otherTime = await acquireDepartureHold(repo, ask({ time: "16:00" }), now);
+    if ("held" in first && "held" in otherTime) {
+      expect(String(otherTime.held.id)).not.toBe(String(first.held.id));
+    }
+    expect(await repo.listCheckoutHolds()).toHaveLength(2);
+  });
+});

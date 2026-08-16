@@ -29,7 +29,7 @@
 
 import type { ChannelPort } from "../ports/channel.js";
 import type { Repository } from "../ports/repository.js";
-import { canonicalizePhone } from "../customers/identity.js";
+import { contactKey } from "../customers/identity.js";
 import { ensureBookingCode } from "./ensure-booking-code.js";
 import { matchBookingForRecovery, type RecoveryQuery, type RecoveryRow } from "./find-booking.js";
 import { resendBookingLink } from "./resend-booking-link.js";
@@ -115,15 +115,8 @@ export async function recoverBookingLink(
 }
 
 /**
- * The throttle bucket for a typed contact, or null if it can't be one.
- *
- * Canonicalized so `216-555-0148`, `(216) 555-0148` and `+12165550148` share one bucket instead
- * of being three free attempts — the bound is on the person, not on the spelling.
+ * Re-exported so this module's callers and tests keep one import. The implementation moved to
+ * `customers/identity.ts` at #575, when the checkout-hold reuse needed the same key — two
+ * spellings of "which buyer is this" is how one person becomes two.
  */
-export function contactKey(raw: string): string | null {
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-  if (trimmed.includes("@")) return trimmed.toLowerCase();
-  const phone = canonicalizePhone(trimmed);
-  return phone.ok ? phone.phone : null;
-}
+export { contactKey };

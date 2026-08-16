@@ -717,6 +717,15 @@ export interface CheckoutHold {
   createdAt: string;
   /** Bound once the Checkout session is created — links the hold to its payment. */
   stripeCheckoutSessionId?: string;
+  /**
+   * Who is buying (#575) — the canonicalized contact: lowercased email, else E.164 phone.
+   *
+   * Exists so a buyer retrying a declined card REUSES this hold instead of taking a second boat.
+   * Absent when the request carried neither contact, in which case the hold is never reused and
+   * never matches another keyless hold — two anonymous buyers sharing one is the only way the
+   * reuse rule could sell a boat twice.
+   */
+  buyerKey?: string;
 }
 
 // ── Payment (Muster-native reservations only — DEC-107) ──────────────────────

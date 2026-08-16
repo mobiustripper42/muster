@@ -40,6 +40,12 @@ export interface DeparturePaymentIntentRequest {
   /** Liability-waiver consent (DEC-110) — REQUIRED: no consent, no hold, no charge. */
   waiverConsentAt?: string;
   waiverVersion?: string;
+  /**
+   * The checkout session's holder token (#575) — read from an httpOnly cookie at the edge and
+   * passed down. Proof of possession, so a retry reuses ITS OWN hold rather than taking a second
+   * boat. Absent ⇒ mint every time, as before.
+   */
+  holderToken?: string;
 }
 
 export type DeparturePaymentIntentStart =
@@ -82,6 +88,9 @@ export async function createDeparturePaymentIntent(
       date: req.date,
       time: req.time,
       guestCount: req.guestCount,
+      // Passed through from the edge's cookie (#575) — this module never derives it from the
+      // customer's typed contact, which is what made the first version a hold hijack.
+      ...(req.holderToken !== undefined ? { holderToken: req.holderToken } : {}),
     },
     now,
   );

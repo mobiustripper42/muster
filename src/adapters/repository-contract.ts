@@ -1022,6 +1022,26 @@ export function runRepositoryContract(
       });
     });
 
+    /** A real-shaped holder token: 32 CSPRNG bytes as base64url is 43 chars (#575). */
+    const TOKEN = "Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MGFiY2RlZmdoaWo";
+
+    it("checkout hold: holderToken round-trips, present and absent (#575)", async () => {
+      // The column the retry-reuse rule reads. Absent must stay ABSENT rather than null — the
+      // reuse lookup requires a key on both sides, and a null that round-trips as `null` rather
+      // than `undefined` is the kind of thing that makes two keyless holds compare equal.
+      await saveCatalogParents();
+      expect((await repo.acquireCheckoutHold(hold())).acquired).toBe(true);
+      const bare = (await repo.listCheckoutHolds())[0]!;
+      expect("holderToken" in bare).toBe(false);
+
+      await repo.removeCheckoutHold(bare.id);
+      expect(
+        (await repo.acquireCheckoutHold(hold({ id: asId<"CheckoutHoldId">("h-keyed"), holderToken: TOKEN })))
+          .acquired,
+      ).toBe(true);
+      expect((await repo.listCheckoutHolds())[0]!.holderToken).toBe(TOKEN);
+    });
+
     it("acquireCheckoutHold: fresh acquire succeeds and is listable", async () => {
       await saveCatalogParents();
       expect((await repo.acquireCheckoutHold(hold())).acquired).toBe(true);

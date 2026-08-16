@@ -102,6 +102,29 @@ export function formatPhoneForDisplay(phone: CanonicalPhone): string {
   return m ? `(${m[1]}) ${m[2]}-${m[3]}` : phone;
 }
 
+/**
+ * The canonical key for "which buyer is this", from whatever contact they typed.
+ *
+ * Lowercased email, else E.164 phone, else `null` when it can't be either. One spelling, because
+ * three features now key on it and a second spelling is how `(216) 555-0148` and `+12165550148`
+ * become two people: the #460 recovery throttle (one window per person, not per formatting), and
+ * the #575 checkout-hold reuse (one hold per buyer per departure, so a declined card retried
+ * doesn't take a second boat).
+ *
+ * It lives HERE, beside `canonicalizePhone`, for the reason this module's header already gives —
+ * it is the module that decides who a customer is, so a deferred phone-or-email policy change
+ * lands in one file rather than across every call site (DEC-132).
+ *
+ * An `@` is the only signal needed to tell the two apart: a phone number never contains one.
+ */
+export function contactKey(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  if (trimmed.includes("@")) return trimmed.toLowerCase();
+  const phone = canonicalizePhone(trimmed);
+  return phone.ok ? phone.phone : null;
+}
+
 // ── Display code (DEC-132) ────────────────────────────────────────────────────
 
 /**

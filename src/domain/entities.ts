@@ -717,6 +717,19 @@ export interface CheckoutHold {
   createdAt: string;
   /** Bound once the Checkout session is created — links the hold to its payment. */
   stripeCheckoutSessionId?: string;
+  /**
+   * Which checkout SESSION owns this hold (#575) — an opaque token from `mintHolderToken`,
+   * carried in an httpOnly cookie.
+   *
+   * Exists so a buyer retrying a declined card reuses this hold instead of taking a second boat.
+   * Deliberately a possession token and NOT the buyer's email or phone: those are typed into a
+   * public form, so keying on them made "knowing a stranger's address" sufficient to take over
+   * or delete their hold (`holder-token.ts` records the review that caught it).
+   *
+   * Absent ⇒ never reused, and never matches another tokenless hold — two anonymous sessions
+   * sharing one is the only way this rule could sell a boat twice.
+   */
+  holderToken?: string;
 }
 
 // ── Payment (Muster-native reservations only — DEC-107) ──────────────────────

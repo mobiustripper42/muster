@@ -8,7 +8,7 @@ import { canonicalizePhone } from "@core/customers/identity.js";
 import { isHolderToken, mintHolderToken } from "@core/reservations/holder-token.js";
 import { cookies } from "next/headers";
 import { getRepo } from "../../../lib/repo";
-import { isProdDeploy, reservationsEnabled } from "../../../lib/flags";
+import { reservationsEnabled } from "../../../lib/flags";
 
 /**
  * Start an inline-Elements checkout (12.5, DEC-134): gates → hold (15 min in production; `CHECKOUT_HOLD_MINUTES` shortens it locally) →
@@ -49,8 +49,34 @@ const REASON_MESSAGES: Record<string, string> = {
   gratuity_required: "Please pick a crew tip to continue.",
 };
 
-/** The cookie carrying the checkout session's holder token (#575). */
-const HOLDER_COOKIE = "muster_checkout";
+/**
+ * Is this deploy served over HTTPS? — the predicate the cookie flags need, which is NOT
+ * `isProdDeploy()`.
+ *
+ * `isProdDeploy()` is deliberately false on Vercel previews so dev affordances survive there
+ * (DEC-057). Previews are still real HTTPS hosts, so gating `Secure` on it left the token cookie
+ * unprotected on every preview. Transport is the question here, not deploy tier.
+ */
+const secureCookies = (): boolean =>
+  !!process.env.VERCEL_ENV || process.env.NODE_ENV === "production";
+
+/**
+ * The cookie carrying the checkout session's holder token (#575).
+ *
+ * **`__Host-` wherever HTTPS allows it, and that prefix is doing real work.** Browsers refuse a
+ * `__Host-` cookie that carries a `Domain` attribute, which is precisely the injection this is
+ * exposed to otherwise: an attacker with a foothold on any sibling subdomain sets
+ * `muster_checkout=<known value>; Domain=.<apex>`, the victim's checkout mints a hold under the
+ * attacker's token, and the attacker reuses it — the original hijack, rebuilt. `Secure` blocks
+ * reading such a cookie, not writing one, and `jar.get()` returns the older domain cookie in
+ * preference to the host-only one we set, so it does not self-heal.
+ *
+ * `__Host-` also mandates `Secure`, so the plain name is used on local HTTP where that is
+ * impossible. Different environments, different cookie names — which is fine, because a token
+ * from one is meaningless in the other.
+ */
+const holderCookieName = (): string =>
+  secureCookies() ? "__Host-muster_checkout" : "muster_checkout";
 
 /**
  * The caller's holder token, minting and setting one if absent — or `undefined` when the cookie
@@ -66,15 +92,19 @@ const HOLDER_COOKIE = "muster_checkout";
  */
 async function readOrMintHolderToken(): Promise<string | undefined> {
   try {
+    const name = holderCookieName();
     const jar = await cookies();
-    const existing = jar.get(HOLDER_COOKIE)?.value;
+    const existing = jar.get(name)?.value;
     if (isHolderToken(existing)) return existing;
 
     const minted = mintHolderToken();
-    jar.set(HOLDER_COOKIE, minted, {
+    jar.set(name, minted, {
       httpOnly: true,
+      // Lax, not Strict: the 3-D Secure return from Stripe is a top-level GET navigation, which
+      // Lax sends and Strict would drop — losing the token exactly when the customer comes back
+      // to finish. Nothing in this flow needs it on a cross-site POST.
       sameSite: "lax",
-      secure: isProdDeploy(),
+      secure: secureCookies(),
       path: "/",
       maxAge: 30 * 60,
     });

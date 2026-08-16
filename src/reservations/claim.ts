@@ -191,44 +191,6 @@ export async function acquireDepartureHold(
   // inert everywhere, so a stale hold never holds a boat hostage.
   const at0 = now();
 
-  // ── One checkout session, one hold per departure (#575) ────────────────────
-  // Asked BEFORE the fit-and-fallback loop, because the loop's whole job is finding a boat this
-  // session does not yet have — and if it already has one, that search is the bug. A declined
-  // card is an ordinary event: without this, retry 2 took the big boat and retry 3 reported
-  // sold_out on a departure nobody had paid for.
-  //
-  // Matched on POSSESSION of the holder token, never on the buyer's typed identity. Requires a
-  // token on both sides: a tokenless hold is never reused and never matches another tokenless
-  // hold, which is the only way this rule could sell a boat twice.
-  const holderToken = req.holderToken ?? null;
-  if (holderToken) {
-    const mine = holds.find(
-      (h) =>
-        h.source === "muster" &&
-        h.holderToken === holderToken &&
-        h.expiresAt > at0 &&
-        String(h.offeringId) === String(req.offeringId) &&
-        h.date === req.date &&
-        h.time === req.time,
-    );
-    // The held boat still has to FIT. A retry that raised the guest count above its cap must not
-    // silently keep it — that would book a party onto a boat too small for them, which is worse
-    // than the bug being fixed.
-    const vessel = mine ? vessels.find((v) => String(v.id) === String(mine.vesselId)) : undefined;
-    if (mine && vessel && req.guestCount <= vessel.coiMaxPax) {
-      // Returned with its ORIGINAL expiry, not a fresh one. A decline-and-retry happens inside a
-      // minute, so extending buys almost nothing — and not extending closes the hole where a
-      // session parks a boat indefinitely by resubmitting.
-      return { held: mine };
-    }
-    // A hold that no longer fits is LEFT ALONE to expire, never released here. Releasing was the
-    // second exploit `/security-review` found in the identity-keyed version: it let anyone delete
-    // a named person's hold on demand. That argument is gone with the token — you cannot reach
-    // someone else's hold now — but deleting is still the wrong instinct on a path whose input is
-    // a raw guest count. The cost of waiting is one boat idle for at most the remainder of a
-    // 15-minute window; the cost of being wrong is somebody's checkout destroyed.
-  }
-
   const heldIntervals = new Map<string, { start: number; end: number }[]>();
   for (const h of holds) {
     if (h.source !== "muster" || h.expiresAt <= at0 || h.date !== req.date) continue;
@@ -250,27 +212,72 @@ export async function acquireDepartureHold(
     blocks,
   });
 
-  const at = now();
-  for (const vesselId of candidates) {
-    if (bookedSlots.has(slotIdentity(vesselId, req.date, req.time))) continue;
-    // Exempt the MUSTER event at this exact slot — an override materialized here IS the slot
-    // being held, not an occupant of it. Without this a departure the calendar shows as
-    // available reports sold_out at checkout. A Xola event at the same clock time is still a
-    // foreign occupant and still blocks.
+  /** Everything the mint loop refuses a boat for, asked of one vessel. Shared so the reuse path
+   *  below cannot drift from the loop and hand back a boat the loop would have skipped. */
+  const vesselIsAvailable = (vesselId: VesselId): boolean => {
+    if (bookedSlots.has(slotIdentity(vesselId, req.date, req.time))) return false;
     const ownSlot = slotIdentity(vesselId, req.date, req.time);
     const others = events.filter(
       (e) => !(e.source === "muster" && slotIdentity(e.vesselId, e.date, e.time) === ownSlot),
     );
     if (hullIsBusy(busyIntervalsFor(others, vesselId, req.date), startMinute, tripMinutes)) {
-      continue;
+      return false;
     }
-    // …and the same question asked of live holds, excluding any at this exact slot: the acquire
-    // CAS below is what arbitrates an identical-slot contest, and skipping here would turn a
-    // winnable race into an unnecessary fallback.
     const rivalHolds = (heldIntervals.get(String(vesselId)) ?? []).filter(
       (h) => h.start !== startMinute,
     );
-    if (hullIsBusy(rivalHolds, startMinute, tripMinutes)) continue;
+    return !hullIsBusy(rivalHolds, startMinute, tripMinutes);
+  };
+
+  // ── One checkout session, one hold per departure (#575) ────────────────────
+  // Asked before the fit-and-fallback loop runs, because the loop's whole job is finding a boat
+  // this session does not yet have — and if it already has one, that search is the bug. A
+  // declined card is an ordinary event: without this, retry 2 took the big boat and retry 3
+  // reported sold_out on a departure nobody had paid for.
+  //
+  // Matched on POSSESSION of the holder token, never on the buyer's typed identity. Requires a
+  // token on both sides: a tokenless hold is never reused and never matches another tokenless
+  // hold, which is the only way this rule could sell a boat twice.
+  const holderToken = req.holderToken ?? null;
+  if (holderToken) {
+    const mine = holds.find(
+      (h) =>
+        h.source === "muster" &&
+        h.holderToken === holderToken &&
+        h.expiresAt > at0 &&
+        String(h.offeringId) === String(req.offeringId) &&
+        h.date === req.date &&
+        h.time === req.time,
+    );
+    // **A reused hold gets the SAME scrutiny a fresh one would.** `candidates` re-applies fit and
+    // blocks; `vesselIsAvailable` re-applies booked / hull-busy. Skipping either was a real gap:
+    // an operator blocking a vessel for a mechanical fault at 10:00 would otherwise hand the
+    // 10:02 retry that same boat, and take payment for it — where before #575 the retry would
+    // have moved hull or reported sold_out. The world can change inside a 15-minute hold.
+    if (
+      mine &&
+      candidates.some((v) => String(v) === String(mine.vesselId)) &&
+      vesselIsAvailable(mine.vesselId)
+    ) {
+      // Returned with its ORIGINAL expiry, not a fresh one. A decline-and-retry happens inside a
+      // minute, so extending buys almost nothing — and not extending closes the hole where a
+      // session parks a boat indefinitely by resubmitting.
+      return { held: mine };
+    }
+    // A hold that no longer qualifies is LEFT ALONE to expire, never released here. Releasing was
+    // the second exploit `/security-review` found in the identity-keyed version: it let anyone
+    // delete a named person's hold on demand. The token makes that unreachable, but deleting is
+    // still the wrong instinct on a path whose input is a raw guest count. One boat idle for the
+    // rest of a 15-minute window costs less than a destroyed checkout.
+  }
+
+  const at = now();
+  for (const vesselId of candidates) {
+    // `vesselIsAvailable` is the whole refusal set — booked slot, a foreign trip occupying the
+    // hull, a rival's live hold overlapping it. It lives above rather than inline here because
+    // the #575 reuse path has to ask exactly the same question, and two copies of this would
+    // drift into a reused hold being handed out on a boat the mint loop would have skipped.
+    if (!vesselIsAvailable(vesselId)) continue;
     const hold: CheckoutHold = {
       id: mintHoldId(),
       vesselId,

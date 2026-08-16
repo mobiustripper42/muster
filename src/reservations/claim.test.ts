@@ -404,6 +404,41 @@ describe("acquireDepartureHold — session reuse (#575)", () => {
     expect(holds.map((h) => String(h.vesselId)).sort()).toEqual(["v-big", "v-small"]);
   });
 
+  it("does NOT hand back a held boat that has since been blocked", async () => {
+    // The world changes inside a 15-minute hold. Operator blocks the vessel at 10:00 for a
+    // mechanical fault; the customer's retry at 10:02 must not be handed that boat and charged
+    // for it. The reuse path re-asks every question the mint loop asks — before this it asked
+    // only "is it mine, live, and big enough".
+    const repo = await seededRepo();
+    const first = await acquireDepartureHold(repo, ask(), now);
+    expect("held" in first && String(first.held.vesselId)).toBe("v-small");
+
+    await repo.saveBlock({
+      id: asId<"BlockId">("b-mech"),
+      kind: "vesselHold",
+      vesselId: SMALL,
+      date: DATE,
+      time: TIME,
+    });
+
+    const retry = await acquireDepartureHold(repo, ask(), now);
+    expect("held" in retry && String(retry.held.vesselId)).toBe("v-big");
+  });
+
+  it("does NOT hand back a held boat that has since been BOOKED", async () => {
+    // Same shape, different cause: the residual race resolved against this session while its
+    // hold was live. Handing the boat back would take payment for a boat already sold.
+    const repo = await seededRepo();
+    await acquireDepartureHold(repo, ask(), now);
+
+    const evId = eventIdForSlot(SMALL, DATE, TIME);
+    await repo.saveEvent({ id: evId, vesselId: SMALL, date: DATE, time: TIME, capacity: 6, status: "scheduled", source: "muster" });
+    await repo.saveReservation({ id: asId<"ReservationId">("r-won"), eventId: evId, source: "muster", customerName: "Rival", partySize: 2, status: "booked" });
+
+    const retry = await acquireDepartureHold(repo, ask(), now);
+    expect("held" in retry && String(retry.held.vesselId)).toBe("v-big");
+  });
+
   it("two sessions with NO token never share a hold", async () => {
     // The one way this rule could sell one boat twice. A keyless hold is never reused, by
     // anybody — including the person who minted it.

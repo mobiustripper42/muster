@@ -1863,6 +1863,11 @@ now. Building any of these is out of scope until its trigger condition is met.
 - ~~**Deposit vs full payment** at booking — Drew. (Recommendation: full upfront for v1.)~~
   **DECIDED: deposit + balance** (DEC-107, 2026-07-11) — the operator chose it over full-upfront as
   the closer match to Xola. The recommendation above was not taken.
+  **REVERSED for the default and the launch posture (DEC-155, 2026-08-16):** full payment is what
+  every environment now inherits, because deposit mode's second half was never built — nothing
+  collects the balance on a schedule (issue #712, deferred), so 75% of revenue depended on the
+  operator texting a link per booking. Deposit + balance stays fully supported as an opt-in
+  setting; the recommendation above turns out to have been right for launch.
 - **Refund schedule numbers** (the partial-refund tiers) — Drew. *(Still open — #472; DEC-135 notes the
   refund policy does not exist yet, which is what blocks self-service cancel.)*
 - **Credit-vs-cash default ordering** in the cancel flow — lean credit-first, cash always available;

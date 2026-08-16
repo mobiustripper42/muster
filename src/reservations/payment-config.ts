@@ -49,10 +49,11 @@ export interface PaymentConfig {
  *
  * `depositPercent` stays at 25 so opting in remains one setting rather than two.
  *
- * **This IS the operator's choice, for every environment** (2026-08-16). issue #617 also asked for
- * the launch posture to be an explicit row in production's `app_settings` rather than inherited —
- * that is answered here instead: full payment is the decision, everywhere, and the default carries
- * it. No per-environment row to set, and none to forget.
+ * **This IS the operator's choice, for every environment — recorded as DEC-155**, which reverses
+ * DEC-107 on the default and launch posture only. issue #617 also asked for that posture to be an
+ * explicit row in production's `app_settings` rather than inherited; it is answered by the
+ * decision instead — full payment everywhere, carried by this default, with no per-environment row
+ * to set and none to forget.
  */
 export const PAYMENT_CONFIG_DEFAULTS: PaymentConfig = {
   depositMode: "full",

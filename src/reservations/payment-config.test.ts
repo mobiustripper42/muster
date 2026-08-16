@@ -4,6 +4,8 @@
  * the balance. Pure functions only; the builders/webhook are covered by their own suites.
  */
 import { describe, expect, it } from "vitest";
+import type { Payment } from "../domain/entities.js";
+import { asId } from "../domain/ids.js";
 import {
   balanceOwedCents,
   chargeNowCents,
@@ -60,11 +62,28 @@ describe("PAYMENT_CONFIG_DEFAULTS — the posture an unconfigured environment in
     expect(PAYMENT_CONFIG_DEFAULTS.depositPercent).toBe(25);
   });
 
-  it("full mode charges fare + tax + fee in one go — no balance left behind", () => {
+  it("full mode charges fare + tax + fee in one go — and leaves NO balance behind", () => {
     // The property that makes the default safe: nothing is owed afterwards, so no manual
-    // collection step can be forgotten.
+    // collection step can be forgotten. The title claims two things, so both are checked — the
+    // charge amount AND the balance the ledger derives from it afterwards. Asserting only the
+    // first would name a guarantee the test never exercises.
     const cfg = PAYMENT_CONFIG_DEFAULTS;
-    expect(chargeNowCents(49900, 3618, 1497, cfg)).toBe(49900 + 3618 + 1497);
+    const charged = chargeNowCents(49900, 3618, 1497, cfg);
+    expect(charged).toBe(49900 + 3618 + 1497);
+
+    const payment: Payment = {
+      id: asId<"PaymentId">("pay-full"),
+      reservationId: asId<"ReservationId">("resv-full"),
+      method: "stripe",
+      kind: "full",
+      amountCents: charged,
+      taxCents: 3618,
+      serviceFeeCents: 1497,
+      currency: "usd",
+      status: "succeeded",
+      createdAt: "2026-08-16T00:00:00.000Z",
+    };
+    expect(balanceOwedCents(49900, cfg.taxRateBps, [payment])).toBe(0);
   });
 });
 

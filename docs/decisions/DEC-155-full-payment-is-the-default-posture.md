@@ -48,5 +48,15 @@ default carries it. There is no per-environment row to set, and none to forget.
 
 **What this does not decide.** Whether BrewBoat ever *wants* deposits back is Drew's call, and the machinery is
 waiting if so — but it should not come back until something collects the balance without a person remembering
-(issue #712). Issue #574 (deposit-mode balance repriced from the live tax rate) is deferred on the same basis and
-becomes live again the moment deposit mode is switched on.
+(issue #712).
+
+**It does, however, change what issue #574 means, and the first draft of this decision got that wrong.** #574 is
+filed as a deposit-mode defect: `balanceOwedCents` computes the total from the **live** tax rate while each
+payment carries the **frozen** one, so the balance drifts by `liveTax − frozenTax`. Under the old deposit default
+that drift hid inside a real 75% balance. Under full payment it is *more* visible, not less — a booking paid in
+full has a balance of exactly zero, so any later edit to `payment.tax_rate_bps` gives every previously settled
+booking a **phantom balance**: rendered to the customer as "Balance · due before your trip", shown as unpaid in
+`/admin/purchases`, and mintable as a real Stripe charge through the balance link.
+
+Nothing in this decision introduces that — the mechanism predates it and no operator has edited the rate — but it
+is wrong to say #574 sleeps until deposits return. It sleeps until someone changes the tax rate, in either mode.

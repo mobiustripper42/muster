@@ -6,12 +6,17 @@
  * "Reservation Demo Cruise" on Brew 3 (cap 12, included = cap), base $499, $50/extra guest,
  * owned the 10th–16th of NEXT month, departures 13:30/15:30/17:30, 13:30 on the 12th booked
  * (Marcus Webb). Dates derived, never typed — see `e2e/reservation-demo.ts` (#646).
- * Payment config rides the defaults: deposit 25%, tax 7.25%, service fee 3% (DEC-134),
- * tip tiers 15/20/25 with 20% preselected (DEC-124).
+ * Payment config rides the defaults: FULL payment (issue #617 — the default was `deposit` at 25%
+ * while nothing collected the balance), tax 7.25%, service fee 3% (DEC-134), tip tiers 15/20/25
+ * with 20% preselected (DEC-124).
  *
  * Money pins for 2 guests at 15:30 (fare $499.00, no extras):
- *   tax $36.18 · fee $14.97 · tip20 $99.80 → total $649.95, due now $275.70 (deposit $124.75
- *   + full tax + full fee + full tip) · tip15 $74.85 → total $625.00, due now $250.75.
+ *   tax $36.18 · fee $14.97 · tip20 $99.80 → total $649.95, and due-now is the SAME $649.95
+ *   because nothing is deferred · tip15 $74.85 → total $625.00.
+ *
+ * **This spec inherits the default deliberately.** Pinning it to an explicit `deposit` override
+ * would have kept these numbers stable and hidden the flip from the suite entirely — which is
+ * exactly how #617's default survived a year of green runs.
  *
  * The e2e deliberately stops SHORT of `stripe.confirmPayment` — there is no Stripe network
  * here (the publishable key is a dummy), so it asserts form states, totals, and gates. The
@@ -55,12 +60,12 @@ test.describe("public /book/checkout", () => {
     await expect(page.getByTestId("summary-fee")).toContainText("3%");
     await expect(page.getByTestId("summary-total")).toContainText("$649.95");
 
-    // Deposit mode: due-now = deposit share + FULL tax + FULL fee + FULL tip; balance is
-    // the remaining fare only (no second fee — the DEC-134 pin, visible to the customer).
-    await expect(page.getByTestId("summary-due-now")).toContainText("$275.70");
-    // "due", not "charged" — nothing auto-collects the balance (#617; #712 is the unbuilt auto-collect).
-    await expect(page.getByText("Balance · due before your trip")).toBeVisible();
-    await expect(page.getByTestId("due-now")).toHaveText("$275.70");
+    // FULL payment (issue #617): one charge, nothing deferred. The deposit/balance block does
+    // not render at all — asserted by absence, because its presence would mean the customer is
+    // being quoted a balance that no mechanism collects.
+    await expect(page.getByTestId("summary-due-now")).toHaveCount(0);
+    await expect(page.getByText("Balance · due before your trip")).toHaveCount(0);
+    await expect(page.getByTestId("due-now")).toHaveText("$649.95");
 
     // The inert future gift-card row renders disabled, not clickable-looking.
     await expect(page.getByText("Apply gift card or discount code")).toBeVisible();
@@ -74,12 +79,15 @@ test.describe("public /book/checkout", () => {
 
     await clickHydrated(page.getByTestId("tip-1500"));
     await expect(page.getByTestId("tip-1500")).toHaveAttribute("aria-pressed", "true");
-    await expect(page.getByTestId("due-now")).toHaveText("$250.75");
+    // Full payment (#617): due-now IS the total, so these two must agree — a divergence would
+    // mean something is being deferred again.
+    await expect(page.getByTestId("due-now")).toHaveText("$625.00");
     await expect(page.getByTestId("summary-total")).toContainText("$625.00");
     await expect(page.getByTestId("summary-tip")).toContainText("$74.85");
 
     await page.getByTestId("tip-2500").click();
-    await expect(page.getByTestId("due-now")).toHaveText("$300.65");
+    // tip25 = $124.75 → 499.00 + 36.18 + 14.97 + 124.75 = $674.90.
+    await expect(page.getByTestId("due-now")).toHaveText("$674.90");
     await expect(page).toHaveURL(/time=15/); // same server render — the island did the math
   });
 

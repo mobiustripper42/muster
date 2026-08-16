@@ -4,6 +4,8 @@
  * the balance. Pure functions only; the builders/webhook are covered by their own suites.
  */
 import { describe, expect, it } from "vitest";
+import type { Payment } from "../domain/entities.js";
+import { asId } from "../domain/ids.js";
 import {
   balanceOwedCents,
   chargeNowCents,
@@ -30,6 +32,58 @@ describe("feeCentsFor (DEC-134)", () => {
 
   it("default rate is 300 bps (3%)", () => {
     expect(PAYMENT_CONFIG_DEFAULTS.serviceFeeBps).toBe(300);
+  });
+});
+
+/**
+ * The launch money posture (issue #617).
+ *
+ * The default was `deposit` at 25% from the day the file was written, and nothing in production
+ * overrides it — `app_settings` holds one row, and it isn't this. So an environment nobody had
+ * configured would take 25% and leave 75% owed to a collection mechanism **that does not exist**:
+ * there is no scheduler reading `balanceDueDaysBeforeEvent`, and issue #712 (the auto-collect) is
+ * unbuilt and deferred. Collecting meant the operator noticing, opening the booking, copying a
+ * URL and texting it, per booking.
+ *
+ * issue #617 asked for two things — flip the default, and stop telling customers the balance is
+ * charged automatically. PR #734 did the copy half and the issue was closed; this is the half
+ * that was left, found when a local checkout still quoted a deposit.
+ *
+ * Deposit mode is not removed. It is opt-IN now, which is the correct direction for a mode whose
+ * back half is manual.
+ */
+describe("PAYMENT_CONFIG_DEFAULTS — the posture an unconfigured environment inherits", () => {
+  it("charges the FULL fare, not a deposit (#617)", () => {
+    expect(PAYMENT_CONFIG_DEFAULTS.depositMode).toBe("full");
+  });
+
+  it("still carries a deposit percent, for the deployments that opt in", () => {
+    // Inert while the mode is `full`. Kept so switching the mode is one setting, not two.
+    expect(PAYMENT_CONFIG_DEFAULTS.depositPercent).toBe(25);
+  });
+
+  it("full mode charges fare + tax + fee in one go — and leaves NO balance behind", () => {
+    // The property that makes the default safe: nothing is owed afterwards, so no manual
+    // collection step can be forgotten. The title claims two things, so both are checked — the
+    // charge amount AND the balance the ledger derives from it afterwards. Asserting only the
+    // first would name a guarantee the test never exercises.
+    const cfg = PAYMENT_CONFIG_DEFAULTS;
+    const charged = chargeNowCents(49900, 3618, 1497, cfg);
+    expect(charged).toBe(49900 + 3618 + 1497);
+
+    const payment: Payment = {
+      id: asId<"PaymentId">("pay-full"),
+      reservationId: asId<"ReservationId">("resv-full"),
+      method: "stripe",
+      kind: "full",
+      amountCents: charged,
+      taxCents: 3618,
+      serviceFeeCents: 1497,
+      currency: "usd",
+      status: "succeeded",
+      createdAt: "2026-08-16T00:00:00.000Z",
+    };
+    expect(balanceOwedCents(49900, cfg.taxRateBps, [payment])).toBe(0);
   });
 });
 

@@ -33,9 +33,30 @@ export interface PaymentConfig {
   balanceDueDaysBeforeEvent: number;
 }
 
-/** Defaults (BrewBoat). Overridden per-field by any `payment.*` key set on the settings screen. */
+/**
+ * Defaults (BrewBoat). Overridden per-field by any `payment.*` key in `app_settings`.
+ *
+ * **`depositMode` is `full`, and that is a deliberate reversal (issue #617).** It was `deposit` at
+ * 25% from the day this file was written — and nothing overrides it: production's `app_settings`
+ * holds a single row and it isn't this one. So any environment nobody had configured charged 25%
+ * and left 75% owed to a collection mechanism **that does not exist**. Nothing reads
+ * `balanceDueDaysBeforeEvent` on a schedule; issue #712 is the unbuilt auto-collect. Collecting
+ * meant the operator noticing, opening the booking, copying a link and texting it, per booking.
+ *
+ * A default is what an unconfigured deploy inherits, so it should be the posture that cannot leak
+ * revenue by being forgotten. Deposit mode is untouched and fully supported — it is now opt-IN,
+ * which is the right direction for a mode whose back half is manual.
+ *
+ * `depositPercent` stays at 25 so opting in remains one setting rather than two.
+ *
+ * **This IS the operator's choice, for every environment — recorded as DEC-155**, which reverses
+ * DEC-107 on the default and launch posture only. issue #617 also asked for that posture to be an
+ * explicit row in production's `app_settings` rather than inherited; it is answered by the
+ * decision instead — full payment everywhere, carried by this default, with no per-environment row
+ * to set and none to forget.
+ */
 export const PAYMENT_CONFIG_DEFAULTS: PaymentConfig = {
-  depositMode: "deposit",
+  depositMode: "full",
   depositPercent: 25,
   taxRateBps: 725, // Ohio state sales tax 7.25% (operator-adjustable)
   serviceFeeBps: 300, // 3% of the fare (operator-adjustable), untaxed + untipped (DEC-134)

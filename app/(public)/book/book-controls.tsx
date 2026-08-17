@@ -204,8 +204,14 @@ export function Footer({
    *  Null when nothing is bookable. Guests are appended live. */
   continueBase: string | null;
 }) {
-  const { fareCents, count } = useBooking();
-  const canContinue = fareCents !== null && continueBase !== null;
+  const { fareCents, count, syncing } = useBooking();
+  // `syncing` gates Continue as well as the stepper's `aria-busy`. `continueBase` is built from
+  // the SERVER's selected slot, resolved against the server's guest count, while the `&guests=`
+  // below is the live one — so inside the debounce window those two disagree, and a tap in that
+  // window sends checkout a departure chosen for a different party size. Checkout catches it
+  // (`row.fits`) and refuses, which is the right backstop but the wrong experience: the customer
+  // gets a dead end for a click that looked valid. Better to not offer the click for 350ms.
+  const canContinue = fareCents !== null && continueBase !== null && !syncing;
   return (
     <div className="sticky bottom-0 z-10 flex items-center gap-3.5 border-t border-line bg-card px-4 py-3">
       <div className="flex flex-col">

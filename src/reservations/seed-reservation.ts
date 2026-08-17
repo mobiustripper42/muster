@@ -180,8 +180,6 @@ export function buildSeededReservationWorld(
   createdAt: string,
   demo: ReservationDemo,
 ): SeededReservationWorld {
-  const V = asId<"VesselId">(demo.vesselId);
-
   const location: Location = {
     id: asId<"LocationId">(demo.locationId),
     name: "Reservation Demo Dock",

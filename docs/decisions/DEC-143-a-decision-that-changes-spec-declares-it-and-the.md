@@ -2,13 +2,12 @@
 id: DEC-143
 title: "A decision that changes SPEC declares it, and the reciprocal pointer in SPEC is generated"
 topic: "Core architecture & engine mechanics"
-amends:
-  - id: DEC-141
-    relation: extends
-    scope: "the same generated-reciprocal-pointer mechanism, pointed at SPEC instead of at other decisions"
 ---
 
 ## DEC-143: A decision that changes SPEC declares it, and the reciprocal pointer in SPEC is generated
+
+**See also** — decisions this one changed part of:
+- Extends DEC-141 — the same generated-reciprocal-pointer mechanism, pointed at SPEC instead of at other decisions
 
 **Decision:** A decision that changes SPEC declares it in frontmatter — `amends_spec: [{ section,
 scope }]` — and `npm run gen:decisions` writes the reciprocal pointer into that section of

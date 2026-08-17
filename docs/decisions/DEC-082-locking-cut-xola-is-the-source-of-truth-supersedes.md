@@ -2,16 +2,15 @@
 id: DEC-082
 title: "Locking cut — Xola is the source of truth (supersedes SPEC §2.3 Lock; reframes DEC-029)"
 topic: "Xola ingest & import"
-amends:
-  - id: DEC-029
-    relation: supersedes
-    scope: "\"changed since you reviewed it\" derivation is reframed"
 amends_spec:
   - section: "2.3"
     scope: "the Lock action and Lock semantics are cut — Xola is the source of truth, so there is nothing to lock against"
 ---
 
 ## DEC-082: Locking cut — Xola is the source of truth (supersedes SPEC §2.3 Lock; reframes DEC-029)
+
+**See also** — decisions this one changed part of:
+- Supersedes DEC-029 — "changed since you reviewed it" derivation is reframed
 
 **Status:** Decided 2026-07-01 (operator). Phase 8 drops **8.2b** (Edit mode = per-shift lock) and **8.6** (bulk "lock the weekend"). The lock scaffolding shipped **unwired** in 4.6/DEC-029 — `lockShift`, `Shift.lockedAt`, `changedSinceReviewed` + the cockpit "changed since reviewed" nudge — but **no UI ever called `lockShift`**, so nothing was ever locked in production (only `seed-atrisk-dev` scenario G sets one, to demo the nudge). Formally cut, not completed.
 

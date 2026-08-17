@@ -2,13 +2,12 @@
 id: DEC-156
 title: "Party size is chosen first, lives in the URL, and filters availability to boats that fit (#715)"
 topic: "Reservations & payments"
-amends:
-  - id: DEC-133
-    relation: revises
-    scope: "the accepted wrinkle only — guest count now lives in the URL, and the order is guests → date → time. The server-rendering-default posture and the single-island boundary stand."
 ---
 
 ## DEC-156: Party size is chosen first, lives in the URL, and filters availability to boats that fit (#715)
+
+**See also** — decisions this one changed part of:
+- Revises DEC-133 — the accepted wrinkle only — guest count now lives in the URL, and the order is guests → date → time. The server-rendering-default posture and the single-island boundary stand.
 
 **Decision:** on `/book`, the guest count is chosen **before** the date, is carried in the URL alongside `offering`/`date`/`time`, and **filters** the calendar and the departure list to boats that can take the party. A day whose boats are all free but all too small renders in its own state — not "sold out", not "nothing runs".
 

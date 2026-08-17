@@ -2,16 +2,15 @@
 id: DEC-153
 title: "Cancel and refund from Muster — the operator keeps the discretion, both routes reconcile, and cancelling releases the event not just the reservation"
 topic: "Reservations & payments"
-amends:
-  - id: DEC-107
-    relation: revises
-    scope: "the refund MECHANISM only — its 2026-07-18 amendment's closing line, \"Still manual (unchanged): every OTHER refund — operator-discretion cancels\". Refunds stay operator-discretion; what changes is that the discretion can now be exercised in Muster, and a refund taken in the Stripe dashboard reconciles back instead of being invisible. Everything else in DEC-107 stands untouched: hosted Checkout, the deposit/balance model, the webhook-driven write, `balanceOwedCents` as the one balance authority, the DEC-109 residual-race auto-refund, and the §3.3 refund CASCADE staying parked"
 amends_spec:
   - section: "3.3"
     scope: "the STATUS claim only — \"nothing in `src/` implements a cascade or a refund\" is no longer true, and neither is §0.2's reading that the whole refund surface is parked. The cascade's own design is untouched and still unbuilt: shift-level cancel from the At-Risk board, the per-booking fan-out, rebook-or-credit offered before cash, and the customer notification all stand exactly as written. What exists now is reservation-level cancel + refund from the calendar detail pane, which supplies §3.3's step 1 (the policy function, `refund-terms.ts`), its step 2 (operator-initiated ⇒ full refund) and half of step 4 (issue the refund, set the booking to Cancelled) for ONE booking at a time, with no fan-out and no customer notice"
 ---
 
 ## DEC-153: Cancel and refund from Muster — the operator keeps the discretion, both routes reconcile, and cancelling releases the event not just the reservation
+
+**See also** — decisions this one changed part of:
+- Revises DEC-107 — the refund MECHANISM only — its 2026-07-18 amendment's closing line, "Still manual (unchanged): every OTHER refund — operator-discretion cancels". Refunds stay operator-discretion; what changes is that the discretion can now be exercised in Muster, and a refund taken in the Stripe dashboard reconciles back instead of being invisible. Everything else in DEC-107 stands untouched: hosted Checkout, the deposit/balance model, the webhook-driven write, `balanceOwedCents` as the one balance authority, the DEC-109 residual-race auto-refund, and the §3.3 refund CASCADE staying parked
 
 **Status:** Accepted (operator, 2026-08-10). Issue #616, which consolidates the action halves of #459 / #464 / #465.
 

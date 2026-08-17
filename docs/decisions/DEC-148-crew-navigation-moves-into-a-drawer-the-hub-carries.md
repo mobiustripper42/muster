@@ -2,19 +2,16 @@
 id: DEC-148
 title: "Crew navigation moves into a drawer — the hub carries work, not a menu (#644)"
 topic: "UI, brand & frontend patterns"
-amends:
-  - id: DEC-091
-    relation: reverses
-    scope: "the \"no persistent crew nav\" holding and the rejection of an admin-style nav — crew navigation is now a persistent drawer on every route; the hub-and-spoke reasoning that justified the ban is what stopped holding"
-  - id: DEC-093
-    relation: corrects
-    scope: "where the switch-to-admin control lives — the drawer on every crew route, no longer the crew home beside Sign out"
 amends_spec:
   - section: "2.6"
     scope: "the hub renders no navigation entries — they moved into the drawer; \"Pick up a shift\" is the single exception and stays on the hub"
 ---
 
 ## DEC-148: Crew navigation moves into a drawer — the hub carries work, not a menu (#644)
+
+**See also** — decisions this one changed part of:
+- Reverses DEC-091 — the "no persistent crew nav" holding and the rejection of an admin-style nav — crew navigation is now a persistent drawer on every route; the hub-and-spoke reasoning that justified the ban is what stopped holding
+- Corrects DEC-093 — where the switch-to-admin control lives — the drawer on every crew route, no longer the crew home beside Sign out
 
 **Status:** Decided 2026-08-05 (Eric). Recorded 2026-08-06.
 

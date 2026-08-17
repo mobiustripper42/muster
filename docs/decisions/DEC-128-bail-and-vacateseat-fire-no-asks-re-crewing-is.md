@@ -2,16 +2,13 @@
 id: DEC-128
 title: "`bail()` and `vacateSeat()` fire no asks — re-crewing is deferred to the tick (#483)"
 topic: "Seats, shifts & state machine"
-amends:
-  - id: DEC-019
-    relation: amends
-    scope: ""
-  - id: DEC-039
-    relation: amends
-    scope: ""
 ---
 
 ## DEC-128: `bail()` and `vacateSeat()` fire no asks — re-crewing is deferred to the tick (#483)
+
+**See also** — decisions this one changed part of:
+- Amends DEC-019
+- Amends DEC-039
 
 **Decision:** `bail()` and `vacateSeat()` (`src/asks/ask-loop.ts`) stop minting asks. Both now: validate (occupant-pin guard, unchanged) → (`bail()` only) `logShiftBailed` (+`latenessMs`/`noticeMs`, unchanged — DEC-028) → drop the occupant + clear provenance (#196) → rest the seat **`Open`** → **horizon-aware state refresh** → return. Deleted from both: the `rankedEligible` fetch, the inline `Promise.all(pool.map(fireAsk))` pool blast, the exhausted-vs-not branching, and the DEC-088 civil-window branch. The **tick is the sole ask-writer** again (SPEC §1.2, DEC-063): a `bail`/`vacate` previously fired its own re-ask **inline and horizon-blind**, blasting the whole ranked-eligible pool at once regardless of the staffing horizon (DEC-022) or the drip (DEC-063) — so releasing a seat weeks out immediately texted the entire role pool. Verified in prod 2026-07-19 (Brew 4 / Aug 8 shift, ~13 days pre-horizon: a captain bail stamped 6 identical-millisecond `push` asks). Re-crewing is now entirely the tick's: pre-horizon → `Pending` (silent — **the fix**); in-horizon → next tick drips one (DEC-063); inside `fillsBy` (DEC-031) → the tick's urgent path blasts the remaining pool within one cadence (~15 min). The re-crew latency is operator-accepted.
 

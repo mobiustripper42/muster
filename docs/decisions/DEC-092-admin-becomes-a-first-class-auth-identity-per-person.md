@@ -2,13 +2,12 @@
 id: DEC-092
 title: "Admin becomes a first-class auth identity — per-person revoke (10.2, #283; revises DEC-020)"
 topic: "Crew self-serve, auth & admin identity"
-amends:
-  - id: DEC-020
-    relation: revises
-    scope: "admin is a first-class auth identity"
 ---
 
 ## DEC-092: Admin becomes a first-class auth identity — per-person revoke (10.2, #283; revises DEC-020)
+
+**See also** — decisions this one changed part of:
+- Revises DEC-020 — admin is a first-class auth identity
 
 **Status:** Decided 2026-07-06 (Eric, Phase 10). @architect-gated.
 

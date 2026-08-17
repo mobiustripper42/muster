@@ -2,13 +2,12 @@
 id: DEC-142
 title: "Login brute force is bounded per subject, not per code — and every verify failure is one generic response"
 topic: "Crew self-serve, auth & admin identity"
-amends:
-  - id: DEC-081
-    relation: refines
-    scope: "the cap only — `attempts` per code gains a rolling per-subject failure window, and the verify response collapses to one value. The email-as-channel and code-shape legs stand"
 ---
 
 ## DEC-142: Login brute force is bounded per subject, not per code — and every verify failure is one generic response
+
+**See also** — decisions this one changed part of:
+- Refines DEC-081 — the cap only — `attempts` per code gains a rolling per-subject failure window, and the verify response collapses to one value. The email-as-channel and code-shape legs stand
 
 **Decision.** Two changes to crew self-serve sign-in, both closing holes found by the #522 sweep 2
 auth review with `CREW_SELF_SERVE=1` live in production.

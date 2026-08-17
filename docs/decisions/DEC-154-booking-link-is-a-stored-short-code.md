@@ -2,13 +2,12 @@
 id: DEC-154
 title: "The customer booking link is a stored short code (`/b/<code>`), not a stateless HMAC URL — 129 characters to 43, and revocable (#741)"
 topic: "Reservations & payments"
-amends:
-  - id: DEC-122
-    relation: reverses
-    scope: "the link MECHANISM only — the stateless HMAC and its `RESERVATION_LINK_SECRET`. The capability-URL MODEL stands unchanged: no login, re-openable (never single-use), bearer semantics, and one link surfacing the contact's other trips. The guest confirmation emit, its `booked`-only rule, the `GuestRecipient` shape and the structural best-effort posture are untouched."
 ---
 
 ## DEC-154: The customer booking link is a stored short code (`/b/<code>`), not a stateless HMAC URL
+
+**See also** — decisions this one changed part of:
+- Reverses DEC-122 — the link MECHANISM only — the stateless HMAC and its `RESERVATION_LINK_SECRET`. The capability-URL MODEL stands unchanged: no login, re-openable (never single-use), bearer semantics, and one link surfacing the contact's other trips. The guest confirmation emit, its `booked`-only rule, the `GuestRecipient` shape and the structural best-effort posture are untouched.
 
 **Status:** Decided 2026-08-14 (operator, #741).
 

@@ -2,16 +2,15 @@
 id: DEC-124
 title: "Tips come into Muster as collect-and-expose; `xola-tip-extractor` owns the split and the Xola+Muster union until Xola dies (reverses DEC-036's tip parking)"
 topic: "Reservations & payments"
-amends:
-  - id: DEC-036
-    relation: reverses
-    scope: "its tip/gratuity/guide-machinery parking only"
 amends_spec:
   - section: "4"
     scope: "the payments park no longer covers gratuity — Muster collects and exposes tips, though it does not own the split"
 ---
 
 ## DEC-124: Tips come into Muster as collect-and-expose; `xola-tip-extractor` owns the split and the Xola+Muster union until Xola dies (reverses DEC-036's tip parking)
+
+**See also** — decisions this one changed part of:
+- Reverses DEC-036 — its tip/gratuity/guide-machinery parking only
 
 **Status:** Accepted (operator, 2026-07-15, S54) — the reversal is the operator's call; the shape is
 **pending @architect**. Amends **DEC-036**.

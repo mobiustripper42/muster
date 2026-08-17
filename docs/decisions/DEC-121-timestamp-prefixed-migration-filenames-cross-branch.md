@@ -2,13 +2,12 @@
 id: DEC-121
 title: "Timestamp-prefixed migration filenames — cross-branch collision made structurally impossible (refines DEC-020)"
 topic: "Deployment, infra & versioning"
-amends:
-  - id: DEC-020
-    relation: refines
-    scope: "timestamp-prefixed migration filenames"
 ---
 
 ## DEC-121: Timestamp-prefixed migration filenames — cross-branch collision made structurally impossible (refines DEC-020)
+
+**See also** — decisions this one changed part of:
+- Refines DEC-020 — timestamp-prefixed migration filenames
 
 **Status:** Decided 2026-07-15 (Eric + @architect).
 

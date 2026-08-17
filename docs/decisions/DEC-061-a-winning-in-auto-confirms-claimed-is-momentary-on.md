@@ -2,10 +2,6 @@
 id: DEC-061
 title: "A winning \"in\" auto-confirms — `Claimed` is momentary on the happy path"
 topic: "Seats, shifts & state machine"
-amends:
-  - id: DEC-007
-    relation: retires
-    scope: "the two-protocol fork only — nobody is \"named then confirmed\" by a human. The first-acceptable-yes-wins leg survives and is live (#561)"
 amends_spec:
   - section: "2.4"
     scope: "the \"confirm down the list\" step is gone — a winning `in` auto-confirms, and `Claimed` is momentary on the happy path"
@@ -14,6 +10,9 @@ amends_spec:
 ---
 
 ## DEC-061: A winning "in" auto-confirms — `Claimed` is momentary on the happy path
+
+**See also** — decisions this one changed part of:
+- Retires DEC-007 — the two-protocol fork only — nobody is "named then confirmed" by a human. The first-acceptable-yes-wins leg survives and is live (#561)
 
 **Decision:** A winning accept advances `Asked → Claimed → Confirmed` in one operation. New core composition `recordResponseAndConfirm(repo, askId, response, now)` calls `recordResponse` (unchanged: CAS claim, reliability log, double-book/contested handling) and, **only when `outcome.claimed === true`**, calls the existing `confirmSeat`. Both answer surfaces route through it: crew `respondToAsk` and the operator-as-crew path (`recordResponseAs` → composition, ownership gate preserved). `recordResponse` and `confirmSeat` stay untouched (channel adapters, tests, and the manual cockpit confirm — now a vestigial backstop — depend on them). Applies to **both** protocols (DEC-007): the mate broadcast's first-yes and the named-captain's accept.
 **Why:** The manual confirm ratified an already-decided CAS winner, never selected among yeses; for assign-then-confirm it was a redundant second confirmation of the person's own yes. Auto-confirm matches the operator's actual workflow (triage is nowhere near the per-shift cockpit confirm button) and the loop's documented intent ("the autonomous Tier-1 confirm of the first acceptable yes," `ask-loop.ts confirmSeat`). Operator-requested for the pilot (Eric, 2026-06-25): "in = they're on the boat."

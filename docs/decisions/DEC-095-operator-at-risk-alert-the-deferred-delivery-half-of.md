@@ -2,13 +2,12 @@
 id: DEC-095
 title: "Operator At-Risk alert — the deferred delivery half of DEC-026, NOT a fourth outbound lane"
 topic: "Outbound notifications & operator relay"
-amends:
-  - id: DEC-026
-    relation: extends
-    scope: "the deferred delivery half"
 ---
 
 ## DEC-095: Operator At-Risk alert — the deferred delivery half of DEC-026, NOT a fourth outbound lane
+
+**See also** — decisions this one changed part of:
+- Extends DEC-026 — the deferred delivery half
 
 **Status:** Decided 2026-07-07 (@architect, Phase 10). Realizes DEC-026's deferred delivery ("the admin
 ping ships the same moment crew-ask delivery does — one line at the send site") now that Twilio is live

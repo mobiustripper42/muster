@@ -2,13 +2,12 @@
 id: DEC-155
 title: "Full payment is the default and the launch posture — deposit mode becomes opt-in (#617)"
 topic: "Reservations & payments"
-amends:
-  - id: DEC-107
-    relation: reverses
-    scope: "the DEFAULT and launch posture only — deposit-vs-full. Deposit + balance remains fully built and fully supported: the deposit share, the balance deriver, the balance checkout link, and the frozen-money rule are untouched. What changes is which one an unconfigured deploy inherits."
 ---
 
 ## DEC-155: Full payment is the default and the launch posture
+
+**See also** — decisions this one changed part of:
+- Reverses DEC-107 — the DEFAULT and launch posture only — deposit-vs-full. Deposit + balance remains fully built and fully supported: the deposit share, the balance deriver, the balance checkout link, and the frozen-money rule are untouched. What changes is which one an unconfigured deploy inherits.
 
 **Status:** Decided 2026-08-16 (operator).
 

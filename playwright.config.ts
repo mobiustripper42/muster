@@ -159,7 +159,7 @@ export default defineConfig({
       // Reservations (DEC-111) gate the public /book customer flow (12.4+). Off in prod
       // until the customer surface is customer-ready (the one P12 merge to main); on here
       // so the availability + checkout specs can drive it.
-      RESERVATIONS: "true",
+      RESERVATIONS: "1",
       // No RESERVATION_LINK_SECRET any more (#741, DEC-154): the manage link is a stored code
       // (`/b/<code>`), so there is no secret for the suite to pin and no HMAC for a spec to
       // mirror. The seed writes the codes; `reservation-demo.ts` re-derives them.

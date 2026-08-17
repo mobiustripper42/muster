@@ -6,7 +6,7 @@
  * just read false. Nothing in the environment told you which spelling a given flag wanted, and
  * the failure surface was `/book` rendering its "not configured" copy while everyone believed
  * the feature was on. The VPS migration writes that env file by hand for the first time, next to
- * three flags taking the other spelling.
+ * three flags taking the other spelling. `1` is now the only accepted value, everywhere.
  *
  * **Why it's a table.** The bug was not in any one flag — it was in the four disagreeing. A test
  * per flag would have passed on all four the day it was written. Asserting the same matrix
@@ -29,16 +29,11 @@ const FLAGS: ReadonlyArray<{ env: string; fn: () => boolean }> = [
   { env: "TIME_CLOCK", fn: timeClockEnabled },
 ];
 
-/** Values that must turn a flag ON, whichever flag it is. */
-const ON = ["1", "true"];
+/** The one value that turns a flag ON, whichever flag it is. */
+const ON = ["1"];
 
-/**
- * Values that must leave it OFF. `"TRUE"` and `" 1"` are deliberately here rather than in `ON`:
- * the fix accepts exactly the two documented spellings, so this pins the boundary as it stands.
- * Whether it *should* be case- and whitespace-tolerant is a separate question — an operator
- * hand-typing `TRUE` hits the same silent-off this issue is about — and is not decided here.
- */
-const OFF = ["", "0", "TRUE", "True", " 1", "yes", "on", "no", "false"];
+/** Everything else is OFF — including `"true"`, which `RESERVATIONS` alone used to accept. */
+const OFF = ["", "0", "true", "TRUE", "True", " 1", "yes", "on", "no", "false"];
 
 describe("feature flags accept one spelling across the board (#736)", () => {
   const saved = new Map<string, string | undefined>();

@@ -1,11 +1,10 @@
 /**
  * Feature flags (env-driven). One place so the gate reads the same everywhere.
  *
- * **Every flag accepts the same two values: `1` and `true`** (#736). It used to be three flags on
- * `"1"` and `RESERVATIONS` on `"true"`, which meant `RESERVATIONS=1` read false and turned the
- * booking flow off with no error and no warning. Accepting both spellings everywhere is
- * backwards-compatible in both directions, so nothing that was on can go off. Read the value
- * through `flagOn` — a flag hand-spelled against `process.env` is how the asymmetry got in.
+ * **Every flag is on for `1` and nothing else** (#736). `RESERVATIONS` used to test `=== "true"`
+ * while its three siblings tested `=== "1"`, so `RESERVATIONS=1` read false and turned the booking
+ * flow off with no error and no warning. Read the value through `flagOn` — a flag hand-spelled
+ * against `process.env` is how the asymmetry got in.
  *
  * `CREW_SELF_SERVE` (DEC-081, DEC-059): the crew code-login front door. OFF by
  * default so `main` stays promotable to production at all times — until 7.0b
@@ -15,8 +14,7 @@
  * exercise the flow against the fake channel.
  */
 function flagOn(name: string): boolean {
-  const raw = process.env[name];
-  return raw === "1" || raw === "true";
+  return process.env[name] === "1";
 }
 
 export function selfServeEnabled(): boolean {

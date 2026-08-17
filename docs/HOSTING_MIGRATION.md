@@ -224,9 +224,9 @@ Record from Neon:
    off), so wire it but expect nothing from it. And `RESERVATIONS` off is consistent with there
    being no Stripe keys in the environment.
 
-> ⚠️ **The flags do not share a truthy value.** `CREW_SELF_SERVE`, `MESSAGING` and `TIME_CLOCK`
-> test `=== "1"`; **`RESERVATIONS` tests `=== "true"`** (`app/lib/flags.ts:12,25,44,61`). Writing
-> `RESERVATIONS=1` in the box's env file silently leaves it off.
+> ✅ **All four flags are on for `1` and nothing else** (`app/lib/flags.ts`, #736). This used to be
+> a trap: `RESERVATIONS` alone tested `=== "true"`, so writing `RESERVATIONS=1` in the box's env
+> file silently left it off. Write `1` for every flag you want on.
 
 **6.** ✅ **Answered 2026-08-11 — no transfer.** The Neon console's *Transfer project* control is
 disabled for this project: *"Project transfers are not currently supported for Vercel-managed

@@ -46,15 +46,48 @@ const SILENT_BY_DESIGN: Record<string, string> = {
   "db/seed-split-dev.ts": "a dev seed — builds a world from nothing, no crew to tell",
 };
 
+/**
+ * Strip block and line comments. Non-negotiable: every file this rule governs *discusses*
+ * `notifyTripChanges` in prose right next to the call, so a raw text match would be satisfied by
+ * the comment explaining the flag even after someone deleted the flag itself — a guard that reads
+ * its own documentation and calls it compliance (@code-review).
+ */
+function stripComments(src: string): string {
+  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+}
+
+/** The argument text of one call, by balancing parentheses from the opening one. */
+function argsAt(src: string, openParen: number): string {
+  let depth = 0;
+  for (let i = openParen; i < src.length; i++) {
+    if (src[i] === "(") depth++;
+    else if (src[i] === ")") {
+      depth--;
+      if (depth === 0) return src.slice(openParen + 1, i);
+    }
+  }
+  return src.slice(openParen + 1);
+}
+
+/**
+ * One entry per CALL, not per file. A file with a correct flagged call plus a second unflagged
+ * one must fail — file-level matching would report it green on the strength of the first.
+ */
 function callSites(): { file: string; passesFlag: boolean }[] {
   const hits: { file: string; passesFlag: boolean }[] = [];
   for (const dir of SEARCH_DIRS) {
     for (const abs of filesUnder(join(ROOT, dir))) {
-      const src = readFileSync(abs, "utf8");
-      if (!/\bformShifts\s*\(/.test(src)) continue;
+      const src = stripComments(readFileSync(abs, "utf8"));
       const rel = abs.replace(ROOT + "/", "");
-      // The options object may be inline or spread over several lines; the flag is the signal.
-      hits.push({ file: rel, passesFlag: /notifyTripChanges:\s*true/.test(src) });
+      const re = /\bformShifts\s*\(/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(src))) {
+        // Skip the declaration itself (`export async function formShifts(`).
+        const before = src.slice(Math.max(0, m.index - 40), m.index);
+        if (/function\s+$/.test(before)) continue;
+        const args = argsAt(src, m.index + m[0].length - 1);
+        hits.push({ file: rel, passesFlag: /notifyTripChanges:\s*true/.test(args) });
+      }
     }
   }
   return hits;
@@ -78,14 +111,43 @@ describe("every formShifts caller opts into the change notice (#765)", () => {
     expect(files).toContain("app/api/cron/tick/route.ts");
   });
 
-  for (const { file, passesFlag } of sites) {
+  it("reads code, not the comments about the code", () => {
+    // The regression @code-review caught in the first cut. Every file governed by this rule
+    // explains `notifyTripChanges` in prose beside the call, so a whole-file text match stays
+    // green after the flag is deleted from the argument — the guard quoting its own
+    // documentation back as evidence. Pin that comments are invisible to the matcher.
+    const withOnlyAComment = stripComments(`
+      // notifyTripChanges: true — we should really pass this
+      /* notifyTripChanges: true */
+      await formShifts(repo, { now });
+    `);
+    expect(withOnlyAComment).not.toMatch(/notifyTripChanges/);
+  });
+
+  it("reports one result per call, not per file", () => {
+    // A file with a correct flagged call plus a second unflagged one must not be reported green
+    // on the strength of the first.
+    const twoCalls = `
+      await formShifts(repo, { now, notifyTripChanges: true });
+      await formShifts(repo, { now });
+    `;
+    const found: boolean[] = [];
+    const re = /\bformShifts\s*\(/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(twoCalls))) {
+      found.push(/notifyTripChanges:\s*true/.test(argsAt(twoCalls, m.index + m[0].length - 1)));
+    }
+    expect(found).toEqual([true, false]);
+  });
+
+  for (const [i, { file, passesFlag }] of sites.entries()) {
     const reason = SILENT_BY_DESIGN[file];
     if (reason) {
       it(`${file} — silent by design (${reason})`, () => {
         expect(reason.length).toBeGreaterThan(0);
       });
     } else {
-      it(`${file} — passes notifyTripChanges`, () => {
+      it(`${file} — call ${i + 1} passes notifyTripChanges`, () => {
         expect(
           passesFlag,
           `${file} calls formShifts without notifyTripChanges: true. A trip-set change on a ` +

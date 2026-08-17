@@ -14,11 +14,7 @@ import { describe, expect, it } from "vitest";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import { asId } from "../domain/ids.js";
 import type { CrewMember, Event, Seat, Shift, TimePunch } from "../domain/entities.js";
-import {
-  buildPayrollReconcile,
-  gustoPayrollCsv,
-  decimalHoursForTest,
-} from "./payroll-reconcile.js";
+import { buildPayrollReconcile, gustoPayrollCsv } from "./payroll-reconcile.js";
 
 const CAP = asId<"RoleTypeId">("role-captain");
 const V = asId<"VesselId">("vessel-1");
@@ -214,21 +210,16 @@ describe("one Gusto file carries hours AND tips", () => {
     expect(vals[cols.indexOf("regular_hours")]).toBe("1.15");
   });
 
-  it("agrees with exact rational arithmetic across every whole-minute total", async () => {
-    // The single case above pins the bug; this pins the CLASS. Hours are m/60, so the exact
-    // hundredths are floor(m * 5 / 3) — integer arithmetic with no representation to get wrong.
-    // A sweep is worth it here because the failures are scattered (69, 123, 138, 153, 246…)
-    // rather than clustered, so any handful of hand-picked cases would have missed most of them.
-    for (let m = 0; m <= 20_000; m++) {
-      const exact = (Math.floor((m * 5) / 3) / 100).toFixed(2);
-      expect(decimalHoursForTest(m), `${m} minutes`).toBe(exact);
-    }
-  });
+  // The exhaustive whole-minute sweep over the rounding rule itself lives with the rule, in
+  // `hours-format.test.ts`. What belongs HERE is that the file is wired to it — the same value
+  // reaching the `regular_hours` column, through `buildPayrollReconcile` and the CSV writer.
 
-  it("truncates hours at the file edge rather than inflating them", async () => {
-    // 2h37m43s = 2.6286h. The file needs A decimal, so precision is lost exactly ONCE, here,
-    // and DOWNWARD — the same call #626 made for the crew surface. Muster still stores and
-    // reconciles exact minutes (§2.9.6); this is the payroll company's unit, not our policy.
+  it("rounds hours at the file edge rather than truncating them (#758)", async () => {
+    // 2h37m43s = 2.6286h. The file needs A decimal, so precision is lost exactly ONCE, here —
+    // and to the NEAREST hundredth, not downward. §2.9.6 used to truncate on the reasoning that
+    // under-stating beats inflating "when the number becomes a payment"; that is right for a
+    // number you charge and backwards for one you owe. Muster still stores and reconciles exact
+    // minutes; this is the payroll company's unit, not our policy.
     const repo = new InMemoryRepository();
     await repo.saveCrewMember(crew("crew-quint", "Quint", gusto("E1", "Sam", "Quint")));
     await repo.saveTimePunch(punch("crew-quint", "2026-07-07T13:00:00Z", "2026-07-07T15:37:43Z"));
@@ -236,7 +227,7 @@ describe("one Gusto file carries hours AND tips", () => {
     const csv = gustoPayrollCsv(await buildPayrollReconcile(repo, WINDOW));
     const cols = csv.trim().split("\n")[0]!.split(",");
     const vals = csv.trim().split("\n")[1]!.split(",");
-    expect(vals[cols.indexOf("regular_hours")]).toBe("2.62"); // not 2.63
+    expect(vals[cols.indexOf("regular_hours")]).toBe("2.63"); // not 2.62
   });
 });
 

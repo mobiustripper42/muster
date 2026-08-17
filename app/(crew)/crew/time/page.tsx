@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { asId } from "@core/domain/ids.js";
 import { PAY_PERIOD_ANCHOR, vesselDateOf } from "@core/config/tenant.js";
+import { compactDuration } from "@core/admin/hours-format.js";
 import { currentPeriod, periodsForYear } from "@core/admin/pay-periods.js";
 import { buildCrewTimeView, type CrewTimeView } from "@core/crewapp/time-view.js";
 import { CrewHeader } from "../../../../components/crew/crew-header";
@@ -68,22 +69,6 @@ const ERR_COPY: Record<CrewTimeErr, string> = {
   bad_input: "Something was missing — check the times and try again.",
   future: "That time hasn’t happened yet — a punch records work you've done.",
 };
-
-/**
- * "8h 30m" / "45m" — decimal hours are for payroll, not for people.
- *
- * **This is the only place elapsed time is rounded**, and it floors rather than
- * rounds: the stored value is exact to the millisecond (§2.9.6 forbids a rounding
- * policy), so the display truncates seconds instead of inflating a punch by up to
- * 30s. What goes to payroll is computed from the punches, never from this string.
- */
-function fmtMinutes(total: number): string {
-  const whole = Math.floor(total);
-  const h = Math.floor(whole / 60);
-  const m = whole % 60;
-  if (h === 0) return `${m}m`;
-  return m === 0 ? `${h}h` : `${h}h ${m}m`;
-}
 
 export default async function CrewTime({
   searchParams,
@@ -256,7 +241,7 @@ export default async function CrewTime({
                     <div className="flex items-center justify-between gap-3 px-4 py-3">
                       <PunchFacts punch={p} />
                       <span className="shrink-0 font-mono text-sm font-semibold text-ink">
-                        {p.minutes === null ? "—" : fmtMinutes(p.minutes)}
+                        {p.minutes === null ? "—" : compactDuration(p.minutes)}
                       </span>
                     </div>
                   ) : (
@@ -268,7 +253,7 @@ export default async function CrewTime({
                       <PunchFacts punch={p} />
                       <span className="flex shrink-0 items-center gap-2">
                         <span className="font-mono text-sm font-semibold text-ink">
-                          {p.minutes === null ? "—" : fmtMinutes(p.minutes)}
+                          {p.minutes === null ? "—" : compactDuration(p.minutes)}
                         </span>
                         <span className="text-faint" aria-hidden>
                           ›
@@ -294,7 +279,7 @@ export default async function CrewTime({
             <div className="flex items-center justify-between gap-3 px-4 py-2">
               <span className="font-semibold text-ink">Total</span>
               <span className="font-mono font-semibold text-ink">
-                {fmtMinutes(view.totalMinutes)}
+                {compactDuration(view.totalMinutes)}
               </span>
             </div>
             {/* §2.9.6: an open punch is excluded from the total and said so out loud —

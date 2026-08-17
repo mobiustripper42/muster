@@ -109,6 +109,7 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-044 — Crew seed carries a placeholder MMC until BrewBoat tracks real credentials
 - DEC-096 — `archived` crew status — off every list, the one status the override honors (#323)
 - DEC-097 — Guest-contact tracking is a progressive-enhancement client island (#345 Part B)
+- DEC-157 — Hours round at the edge rather than truncate, through one shared rule (#758)
 
 ### Xola ingest & import
 - DEC-011 — 2026 coexistence — CSV bridge is disposable; Xola API bolt-on killed

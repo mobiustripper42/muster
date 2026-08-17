@@ -2,6 +2,7 @@ import { GetFormSubmit } from "../../../../components/ui/get-form-submit";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
+import { hoursLabel } from "@core/admin/hours-format.js";
 import { buildPayrollReport, type PayrollRow } from "@core/admin/payroll.js";
 import { buildGratuityPayroll, type GratuityPayroll } from "@core/admin/gratuity-payroll.js";
 import {
@@ -36,9 +37,8 @@ export const dynamic = "force-dynamic";
 
 type Search = { period?: string };
 
-/** minutes → "12h 30m". Floors the minute — display only; stored data keeps its seconds (§2.9.6). */
-const hoursLabel = (min: number) => `${Math.floor(min / 60)}h ${Math.floor(min % 60)}m`;
-/** A signed delta — "+45m", "−1h 20m", "even". */
+/** A signed delta — "+45m", "−1h 20m", "even". The sign lives here, where it means something;
+ *  `hoursLabel` takes the magnitude (`@core/admin/hours-format.js`). */
 function deltaLabel(min: number): string {
   if (Math.abs(min) < 1) return "even";
   return `${min > 0 ? "+" : "−"}${hoursLabel(Math.abs(min))}`;

@@ -26,6 +26,7 @@ import type { GustoIdentity } from "../domain/entities.js";
 import type { Repository } from "../ports/repository.js";
 import { buildGratuityPayroll } from "./gratuity-payroll.js";
 import { GUSTO_CSV_HEADER } from "./gratuity-payroll.js";
+import { decimalHours } from "./hours-format.js";
 import { buildPayrollReport } from "./payroll.js";
 import { buildTimeClockReport } from "./time-clock-report.js";
 
@@ -213,35 +214,6 @@ export async function buildPayrollReconcile(
 function csvField(v: string): string {
   return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
 }
-
-/**
- * Exact minutes → decimal hours, **truncated** to 2dp.
- *
- * §2.9.6 forbids a rounding policy on stored data, and none is applied there — punches keep
- * their odd seconds all the way to here. A file has to pick a decimal, so precision is lost
- * exactly ONCE, at the edge, and DOWNWARD: the same call #626 made for the crew surface, on the
- * same reasoning that truncating beats inflating when the number becomes a payment. Worst case
- * is 0.6 of a minute per person per period.
- *
- * **The arithmetic order is load-bearing, and the obvious spelling is wrong.**
- * `(minutes / 60) * 100` looks equivalent and is not: for 69 minutes — exactly 1.15 hours — it
- * yields 114.99999999999999, which floors to an emitted "1.14". That is a whole extra cent
- * BELOW the intended truncation, it hit roughly one whole-minute total in forty, always
- * downward, and it lands in the column the payroll company pays from. Multiplying into
- * hundredths first keeps every exact boundary exact; the epsilon then absorbs residual float
- * noise for fractional minutes (1e-9 hundredths of an hour is ~3.6 microseconds, far below the
- * millisecond that is the smallest real difference two punches can have, so it can never mask
- * one).
- *
- * Whether 2dp is right at all is the receiving company's answer, not ours — see #628's note
- * about confirming the format before the first real send.
- */
-function decimalHours(minutes: number): string {
-  return (Math.floor((minutes * 100) / 60 + 1e-9) / 100).toFixed(2);
-}
-
-/** @internal Exposed for the exhaustive whole-minute sweep in the tests. */
-export const decimalHoursForTest = decimalHours;
 
 /**
  * The ONE Gusto timesheet CSV — identity, `regular_hours` and `paycheck_tips` on a single row

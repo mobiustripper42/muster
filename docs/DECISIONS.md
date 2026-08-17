@@ -182,7 +182,7 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 - DEC-125 — Virtual availability — the schedule is a rule, `Event` rows materialize on state; blackout is scoped blocks, not per-event toggles
 - DEC-126 — The flip is a cutover with a one-time full Xola import — Muster becomes the reservation source of truth, and the cutover is reversible
 - DEC-132 — `Customer` is a contact record keyed by phone — surrogate PK, UNIQUE canonical E.164, readable short code _(corrected by DEC-151 — the `writeBooking` citation only — booking-path customer linking is still in scope and still happens at the write, now on the surviving path)_
-- DEC-133 — The customer availability screen is server-rendered; the guest stepper is the one client island (12.4, #457)
+- DEC-133 — The customer availability screen is server-rendered; the guest stepper is the one client island (12.4, #457) _(revised by DEC-156 — the accepted wrinkle only — guest count now lives in the URL, and the order is guests → date → time. The server-rendering-default posture and the single-island boundary stand.)_
 - DEC-134 — Customer checkout is inline Stripe Elements over a deferred PaymentIntent; hosted Checkout remains for balance + post-gratuity (12.5, #458; revisits DEC-107/108 as DEC-108 anticipated)
 - DEC-135 — The "Your booking" manage page ships view + post-tip + cancel/change-as-request; self-service cancel is deferred (12.6, #459)
 - DEC-138 — The customer booking flow ships as an embeddable widget — the BrewBoat rollout path and the multi-tenant seam
@@ -192,6 +192,7 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 - DEC-153 — Cancel and refund from Muster — the operator keeps the discretion, both routes reconcile, and cancelling releases the event not just the reservation
 - DEC-154 — The customer booking link is a stored short code (`/b/<code>`), not a stateless HMAC URL — 129 characters to 43, and revocable (#741)
 - DEC-155 — Full payment is the default and the launch posture — deposit mode becomes opt-in (#617)
+- DEC-156 — Party size is chosen first, lives in the URL, and filters availability to boats that fit (#715)
 
 ### UI, brand & frontend patterns
 - DEC-021 — Frontend styling = Tailwind v4; component library deferred _(retired by DEC-041 — the `Event.durationMinutes` line only; refined by DEC-086 — adds tokens to the locked palette)_

@@ -43,13 +43,28 @@ export interface ReservationDemoBooking {
   partySize: number;
   priceCents: number;
   phone: string;
+  /** Which hull this sits on. Absent ⇒ the demo's primary boat, which is what the first three
+   *  bookings (and every block-impact figure computed against them) have always assumed. */
+  vesselId?: string;
 }
 
 export interface ReservationDemo {
   locationId: string;
   offeringId: string;
+  /** The offering's PRIMARY boat — the one the materialized bookings and the vessel block sit
+   *  on, and the only one the block-impact figures are computed against. */
   vesselId: string;
   vesselName: string;
+  /**
+   * Every boat on the demo offering, smallest first, with its COI cap (#715).
+   *
+   * The offering used to carry one 12-pax hull, which made the guest filter invisible: with a
+   * single boat size there is no day a party of 14 can see differ from a party of 4, so nothing
+   * a hand-test does can tell a working filter from a broken one. Three real BrewBoats at three
+   * real capacities — Brew 3 (12), Brew 1 (14), Brew 2 (16), matching `resource-map.ts` — give
+   * the screen two capacity boundaries to cross and a top end to bump into.
+   */
+  fleet: readonly { vesselId: string; name: string; coiMaxPax: number }[];
   season: { start: string; end: string };
   departureTimes: readonly string[];
   /** Inclusive demo window. Since #688 this IS the offering's season — the schedule is
@@ -91,6 +106,12 @@ export function reservationDemo(todayISO: string): ReservationDemo {
     /** A fleet boat (seeded by seedFleet — cap 12). */
     vesselId: "vessel-brew-3",
     vesselName: "Brew 3",
+    // All three are seeded by `seedFleet` already; this just attaches them to the offering.
+    fleet: [
+      { vesselId: "vessel-brew-3", name: "Brew 3", coiMaxPax: 12 },
+      { vesselId: "vessel-brew-1", name: "Brew 1", coiMaxPax: 14 },
+      { vesselId: "vessel-brew-2", name: "Brew 2", coiMaxPax: 16 },
+    ],
     // The season IS the demo window (#688). It used to be a full year, with a 7-day
     // owned-day allowlist narrowing it; ownership is gone, so the season does that job
     // directly. Same visible demo, one mechanism instead of two.
@@ -105,6 +126,42 @@ export function reservationDemo(todayISO: string): ReservationDemo {
       // Deliberately OUTSIDE `vesselBlockWindow` so the block-impact fixture, which asserts an
       // exact conflict count and dollar total, keeps meaning what it says.
       { date: day(15), time: "13:30", customerName: "Marcus Webb", partySize: 10, priceCents: 54900, phone: "+1 216 555 0148" },
+
+      // ── Big-party fixtures (#715, operator 2026-08-16) ────────────────────────────────────
+      // The first three bookings are all small and all on the 12, which left the two states the
+      // guest filter exists for untestable: a 16 that is actually SOLD, and a party being put on
+      // a bigger hull because the smaller ones are gone.
+      //
+      // **Day allocation is a contract with the Xola fixture** (`seed-xola.ts`), whose comment
+      // records it: the demo world books offsets +2, +3 and +6 of its window and the import
+      // fixture takes the four free days. Every booking below therefore lands on +2/+3/+6 —
+      // day(11), day(12), day(15) — and none on the days Xola owns.
+      //
+      // Two further constraints, both load-bearing for figures asserted elsewhere:
+      //   · `vesselBlockWindow` is a **Brew 3** block over day(10)…day(13), and the drift test
+      //     pins its impact at exactly 2 conflicts / $988. So no new Brew 3 booking in that
+      //     range — the ones below sit on day(15), outside it.
+      //   · `locationBlockWindow` covers day(11) 13:00–16:00 across ALL boats. So nothing new on
+      //     day(11) before 16:00, which also keeps `/book`'s day(11) boat counts where the
+      //     availability spec pins them.
+
+      // day(15) 13:30 — Marcus (10) already has the 12; the 14 goes too, leaving only the 16.
+      // THIS is the "book 12 passengers onto a 16-passenger boat" case: a party of 12 arriving
+      // here fits all three hulls on paper and can only be given Brew 2.
+      { date: day(15), time: "13:30", customerName: "Priya Raman", partySize: 14, priceCents: 62900, phone: "216-555-0311", vesselId: "vessel-brew-1" },
+
+      // day(15) 15:30 — a 14 and a 16 sold in the SAME departure. Only the 12 is left, so a
+      // party of 13+ sees a departure that is genuinely too big for what remains.
+      { date: day(15), time: "15:30", customerName: "Tom Alderman", partySize: 14, priceCents: 62900, phone: "440-555-0177", vesselId: "vessel-brew-1" },
+      { date: day(15), time: "15:30", customerName: "Renata Vaz", partySize: 16, priceCents: 70900, phone: "216-555-0422", vesselId: "vessel-brew-2" },
+
+      // day(15) 17:30 — a single 12, on the boat whose cap it exactly is. A full small boat.
+      { date: day(15), time: "17:30", customerName: "Owen Brady", partySize: 12, priceCents: 57900, phone: "440-555-0288", vesselId: "vessel-brew-3" },
+
+      // day(12) — a 14 on its own, plus mid-size parties on the boats that fit them loosely.
+      { date: day(12), time: "17:30", customerName: "Sasha Nolan", partySize: 14, priceCents: 62900, phone: "216-555-0195", vesselId: "vessel-brew-1" },
+      { date: day(12), time: "13:30", customerName: "Iris Kwon", partySize: 8, priceCents: 54900, phone: "440-555-0233", vesselId: "vessel-brew-2" },
+      { date: day(12), time: "15:30", customerName: "Hector Mena", partySize: 10, priceCents: 54900, phone: "216-555-0266", vesselId: "vessel-brew-1" },
     ],
     vesselBlockWindow: { start: day(10), end: day(13) }, // the 11th … the 14th
     locationBlockWindow: { date: day(11), startTime: "13:00", endTime: "16:00" },
@@ -123,8 +180,6 @@ export function buildSeededReservationWorld(
   createdAt: string,
   demo: ReservationDemo,
 ): SeededReservationWorld {
-  const V = asId<"VesselId">(demo.vesselId);
-
   const location: Location = {
     id: asId<"LocationId">(demo.locationId),
     name: "Reservation Demo Dock",
@@ -137,7 +192,7 @@ export function buildSeededReservationWorld(
     tenantId: asId<"TenantId">("tenant-brewboat"),
     name: "Reservation Demo Cruise",
     status: "live",
-    vesselIds: [V],
+    vesselIds: demo.fleet.map((f) => asId<"VesselId">(f.vesselId)),
     locationId: location.id,
     schedule: {
       seasonStart: demo.season.start,
@@ -145,27 +200,46 @@ export function buildSeededReservationWorld(
       weekdays: [0, 1, 2, 3, 4, 5, 6],
       departureTimes: [...demo.departureTimes],
     },
+    // 100 minutes is not new behaviour — it is the number `deriveVirtualAvailability` has been
+    // silently assuming all along via `XOLA_TRIP_MINUTES` (hull-busy.ts) whenever an offering
+    // leaves this unset. Stating it changes no arithmetic; it just stops the customer hero
+    // dropping its duration line, which `formatDuration(undefined)` returns null for.
+    tripLengthMinutes: 100,
     basePriceCents: 49900,
     priceVariations: [],
-    extraGuestPriceCents: 5000,
+    // Test data (operator, 2026-08-16). WITHOUT `includedGuestCount` the extra-guest price is
+    // unreachable: `guestPricing` falls back to `included = the boat's cap`, and the guest count
+    // is clamped to that same cap, so `extraGuests` is structurally always 0 and the per-head
+    // charge below can never fire. 10 included makes DEC-124's extras path something a hand-test
+    // can actually see — a party of 12 on Brew 3 quotes $499 + 2 × $40.
+    includedGuestCount: 10,
+    extraGuestPriceCents: 4000,
   };
+
+  const capByVessel = new Map(demo.fleet.map((f) => [f.vesselId, f.coiMaxPax]));
 
   const events: Event[] = [];
   const reservations: Reservation[] = [];
   for (const b of demo.bookings) {
+    // Per-booking hull since #715 — two boats can be sold in one departure, which is the whole
+    // point of the big-party fixtures. `capacity` follows the boat rather than the flat 12 it
+    // used to be; a 16-guest booking on an Event capped at 12 is a fixture that contradicts
+    // itself, and `canBook` enforces `partySize <= capacity`.
+    const boat = b.vesselId ?? demo.vesselId;
+    const V = asId<"VesselId">(boat);
     const eventId = eventIdForSlot(V, b.date, b.time);
     events.push({
       id: eventId,
       vesselId: V,
       date: b.date,
       time: b.time,
-      capacity: 12,
+      capacity: capByVessel.get(boat) ?? 12,
       status: "scheduled",
       source: "muster",
       price: b.priceCents,
     });
     reservations.push({
-      id: asId<"ReservationId">(demoReservationId(b.date, b.time)),
+      id: asId<"ReservationId">(demoReservationId(b.date, b.time, boat)),
       eventId,
       source: "muster",
       customerName: b.customerName,
@@ -184,8 +258,12 @@ export function buildSeededReservationWorld(
  * (`/admin/calendar/<id>`, the manage link) and hand-spelling the format in six specs is how
  * it drifts — the dates inside it move now.
  */
-export function demoReservationId(date: string, time: string): string {
-  return `resv-demo-${date}-${time}`;
+export function demoReservationId(date: string, time: string, vesselId = "vessel-brew-3"): string {
+  // The hull joined the id in #715, when the fixture started selling two boats in one departure
+  // — date+time alone stopped being unique and two bookings would have collapsed onto one row.
+  // Defaulted to the primary boat so the e2e call sites, all of which mean that boat, still read
+  // as `demoReservationId(BOOKED.date, BOOKED.time)`.
+  return `resv-demo-${date}-${time}-${vesselId}`;
 }
 
 /**

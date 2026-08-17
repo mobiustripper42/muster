@@ -103,6 +103,36 @@ export async function plantCheckoutHold(h: {
 }
 
 /**
+ * Take a boat out of service over a date range (#715) — the only way to reach the availability
+ * screen's "no boat here fits your party" state.
+ *
+ * The `reservation` seed attaches three boats at 12/14/16 and no blocks, so the offering's
+ * largest hull runs every day of the season and a party is never bigger than everything on the
+ * water — the stepper's ceiling IS that boat. Blocking the 16 for a few days is what makes those
+ * days genuinely too small for a party of 15, and it plants the block rather than seeding one so
+ * the seed's `/admin/blocks` demo keeps starting from an empty block list.
+ */
+export async function plantVesselBlock(b: {
+  id: string;
+  vesselId: string;
+  startDate: string;
+  endDate: string;
+}): Promise<void> {
+  const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
+  try {
+    await repo.saveBlock({
+      id: b.id as never,
+      kind: "vessel",
+      vesselId: b.vesselId as never,
+      startDate: b.startDate,
+      endDate: b.endDate,
+    });
+  } finally {
+    await repo.close();
+  }
+}
+
+/**
  * Plant a recorded payment against a seeded booking (#616) — the money a refund gives back.
  *
  * The `reservation` seed writes bookings with NO payments (every money assertion in

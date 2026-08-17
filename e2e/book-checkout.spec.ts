@@ -30,8 +30,18 @@ import {
   resetAndSeed,
   clickHydrated,
   setCheckedHydrated,
+  plantVesselBlock,
 } from "./fixtures.js";
-import { BOOKED, OPEN_TIME, formatShortDay } from "./reservation-demo.js";
+import { BOOKED, DEMO, OPEN_TIME, formatShortDay } from "./reservation-demo.js";
+
+/** The stepper's landing value on `/book` — the offering's smallest boat (#715). Read off the
+ *  fixture, because "2" was a constant that stopped being the default. */
+const DEFAULT_GUESTS = DEMO.fleet[0]!.coiMaxPax;
+/** What the base fare covers before the $40 per-head charge starts (`seed-reservation.ts`). The
+ *  fare row names THIS, not the boat's capacity — the two coincided only while the offering left
+ *  `includedGuestCount` unset, which also made the extra-guest price unreachable. A literal, like
+ *  every other money figure pinned in this file. */
+const INCLUDED = 10;
 
 const CHECKOUT =
   `/book/checkout?offering=offering-reservation-demo&date=${BOOKED.date}&time=${OPEN_TIME}&guests=2`;
@@ -53,7 +63,9 @@ test.describe("public /book/checkout", () => {
 
     // Summary: fare · tip → crew · tax · fee · total (DEC-134 line items, honest about
     // where money goes — the tip is exempt from tax + fee and the rows reflect that).
-    await expect(page.getByText("Fare — up to 12 guests")).toBeVisible();
+    // What the base covers, not the hull's capacity — 2 guests are inside the included 10, so
+    // there are no extras and the fare is the flat base.
+    await expect(page.getByText(`Fare — up to ${INCLUDED} guests`)).toBeVisible();
     await expect(page.getByTestId("summary-tip")).toContainText("$99.80");
     await expect(page.getByText("Tax · 7.25%")).toBeVisible();
     await expect(page.getByTestId("summary-fee")).toContainText("$14.97");
@@ -133,7 +145,18 @@ test.describe("public /book/checkout", () => {
   });
 
   test("a stale link to a sold-out slot gets an honest notice, not a doomed form", async ({ page }) => {
-    // The seeded Marcus Webb booking — sold out before this link was opened.
+    // The seeded Marcus Webb booking takes Brew 3's 13:30. Since #715 the offering carries two
+    // more hulls, so that ALONE no longer sells the departure out — the other two have to be off
+    // the water for this to be the sold-out case the test is named for. Without these blocks the
+    // page renders a perfectly good form and the assertion below tests nothing.
+    for (const boat of DEMO.fleet.filter((f) => f.vesselId !== DEMO.vesselId)) {
+      await plantVesselBlock({
+        id: `blk-soldout-${boat.vesselId}`,
+        vesselId: boat.vesselId,
+        startDate: BOOKED.date,
+        endDate: BOOKED.date,
+      });
+    }
     await page.goto(
       `/book/checkout?offering=offering-reservation-demo&date=${BOOKED.date}&time=${BOOKED.time}&guests=2`,
     );
@@ -143,6 +166,30 @@ test.describe("public /book/checkout", () => {
     await expect(page.getByText("Nothing was charged.")).toBeVisible();
     await expect(page.getByRole("link", { name: "Pick another time" })).toBeVisible();
     await expect(page.getByTestId("book-pay")).toHaveCount(0); // no form rendered
+  });
+
+  /**
+   * "Change" is a round trip, not a reset (#715).
+   *
+   * `backHref` carried only the offering and the date, so returning to the availability screen
+   * dropped the party size AND the departure — the count fell back to the offering's smallest
+   * boat and the customer had to re-pick both. That is the "guests reset when you navigate"
+   * wrinkle this issue exists to kill, surviving on the one edge that leaves the page: a party of
+   * 14 tapped Change and came back as a party of 12.
+   */
+  test("Change returns to the availability screen with the party and the time intact", async ({ page }) => {
+    await page.goto(
+      `/book/checkout?offering=offering-reservation-demo&date=${BOOKED.date}&time=${OPEN_TIME}&guests=14`,
+    );
+    await expect(page.getByText("· 14 guests")).toBeVisible();
+
+    await page.getByRole("link", { name: "Change" }).click();
+    await page.waitForURL(/\/book\?/);
+
+    await expect(page).toHaveURL(/guests=14/);
+    await expect(page).toHaveURL(new RegExp(`date=${BOOKED.date}`));
+    await expect(page).toHaveURL(/time=15/); // colon-encoded
+    await expect(page.getByTestId("guest-count")).toHaveText("14");
   });
 
   test("a guest count over the boat's cap is refused up front", async ({ page }) => {
@@ -160,7 +207,7 @@ test.describe("public /book/checkout", () => {
 
     await expect(page).toHaveURL(/\/book\/checkout\?offering=offering-reservation-demo/);
     await expect(page).toHaveURL(new RegExp(`date=${BOOKED.date}`));
-    await expect(page).toHaveURL(/guests=2/);
+    await expect(page).toHaveURL(new RegExp(`guests=${DEFAULT_GUESTS}`));
     await expect(page.getByRole("heading", { name: "Reservation Demo Cruise", level: 1 })).toBeVisible();
     await expect(page.getByTestId("due-now")).toBeVisible();
   });

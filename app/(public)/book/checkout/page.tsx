@@ -20,6 +20,7 @@ import { WAIVER_TERMS_URL, vesselDateOf } from "@core/config/tenant.js";
 import { deriveVirtualAvailability } from "@core/reservations/availability.js";
 import { CANCELLATION_TERMS } from "@core/reservations/refund-terms.js";
 import {
+  bookHref,
   buildSlotRows,
   formatClock,
   formatDuration,
@@ -46,12 +47,22 @@ const HHMM = /^\d{2}:\d{2}$/;
 
 type Search = { offering?: string; date?: string; time?: string; guests?: string };
 
-function backHref(offering: string | undefined, date: string | undefined): string {
-  const q = new URLSearchParams();
-  if (offering) q.set("offering", offering);
-  if (date) q.set("date", date);
-  const s = q.toString();
-  return s ? `/book?${s}` : "/book";
+/**
+ * Back to the availability screen with everything the customer already chose.
+ *
+ * This used to build its own query string carrying the offering and the date only, so "Change"
+ * dropped the departure and the party size and sent them back to re-pick both — the party
+ * silently re-defaulting to the offering's smallest boat (#715). It delegates to the same
+ * `bookHref` every link on `/book` uses, which is the point of that function existing: seven
+ * call sites, and the one that lived in a different file was the one that forgot an axis.
+ */
+function backHref(sp: Search, date: string | undefined, time: string | undefined, guests: number): string {
+  return bookHref({
+    ...(sp.offering !== undefined ? { offering: sp.offering } : {}),
+    ...(date !== undefined ? { date } : {}),
+    ...(time !== undefined ? { time } : {}),
+    ...(Number.isFinite(guests) && guests > 0 ? { guests } : {}),
+  });
 }
 
 export default async function CheckoutPage({ searchParams }: { searchParams: Promise<Search> }) {
@@ -153,8 +164,10 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
           reservations,
         })
       : [];
-  const row = buildSlotRows(slots.filter((s) => s.date === date)).find((r) => r.time === time);
-  const bookable = row !== undefined && !row.soldOut && guests <= row.capacity;
+  // `buildSlotRows` takes the party size since #715, so the fit test it used to be handed
+  // separately (`guests <= row.capacity`) is now `row.fits` — the same predicate, computed once.
+  const row = buildSlotRows(slots.filter((s) => s.date === date), guests).find((r) => r.time === time);
+  const bookable = row !== undefined && !row.soldOut && row.fits;
   if (!bookable) {
     return (
       <main className="mx-auto max-w-2xl px-4 py-16">
@@ -165,7 +178,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
         </p>
         <p className="mt-4">
           <AppLink
-            href={backHref(sp.offering, date)}
+            href={backHref(sp, date, time, guests)}
             className="inline-block rounded-[11px] bg-accent px-5 py-3 text-sm font-semibold text-white"
           >
             Pick another time
@@ -191,7 +204,10 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
   }
 
   // ── Money (the same pure functions the charge builder freezes — DEC-107/134) ──
-  const fare = guestPricing(chosen, row.capacity, row.priceCents, guests);
+  // `boatCapacity`, not `capacity` (#715): the fare row reads "Fare — up to N guests", and N has
+  // to be the boat they are getting — the smallest that fits, the one `candidateVessels` claims.
+  // The departure's ceiling is a bigger hull that is about to be sold to a bigger party.
+  const fare = guestPricing(chosen, row.boatCapacity, row.priceCents, guests);
   const taxCents = taxCentsFor(fare.fareCents, config.taxRateBps);
   const serviceFeeCents = feeCentsFor(fare.fareCents, config.serviceFeeBps);
   // Due now, EXCLUDING tip (the island adds the selected tier's tip on top live).
@@ -218,7 +234,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
         {/* header — same shell as /book */}
         <div className="flex flex-none items-center gap-2.5 border-b border-line px-4 py-3">
           <AppLink
-            href={backHref(sp.offering, date)}
+            href={backHref(sp, date, time, guests)}
             aria-label="Back to date & time"
             className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-lg border border-line text-muted"
           >
@@ -226,7 +242,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
           </AppLink>
           <div className="flex min-w-0 flex-col">
             <b className="truncate text-[13.5px] font-semibold">Checkout</b>
-            <span className="text-[11.5px] text-muted">Whole boat, one group</span>
+            <span className="text-[11.5px] text-muted">Private charter</span>
           </div>
           <span className="ml-auto flex items-center gap-1.5 text-[11.5px] font-semibold text-ok">🔒 Secure</span>
         </div>
@@ -250,7 +266,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
                 <b className="font-semibold">{dateTimeLabel}</b>
                 <span className="text-muted"> · {guests} {guests === 1 ? "guest" : "guests"}</span>
               </span>
-              <AppLink href={backHref(sp.offering, date)} className="text-xs font-semibold text-accent">
+              <AppLink href={backHref(sp, date, time, guests)} className="text-xs font-semibold text-accent">
                 Change
               </AppLink>
             </div>

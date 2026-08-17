@@ -6,7 +6,7 @@
  * drifts so the fixture stops rendering a conflict, this goes red.
  */
 import { describe, expect, it } from "vitest";
-import type { Block } from "../domain/entities.js";
+import type { Block, Vessel } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import { deriveVirtualAvailability } from "./availability.js";
 import { computeBlockImpact } from "./block-impact.js";
@@ -63,8 +63,16 @@ describe("the demo window is relative to today, not a fixed calendar month (#646
     it(`the vessel block covers exactly the first two bookings (${today})`, () => {
       // The block-impact fixture asserts an exact conflict count and dollar total, so the
       // third booking must stay OUTSIDE the window however the dates are derived.
+      //
+      // Filtered by HULL as well as date since #715. This is a **vessel** block on the primary
+      // boat, so a booking that merely shares a date with it is not a conflict — and the big-party
+      // fixtures put Brew 1 and Brew 2 bookings inside this window on purpose. Date-only was
+      // right while every booking was on one boat; left alone it would now count five.
       const inWindow = d.bookings.filter(
-        (b) => b.date >= d.vesselBlockWindow.start && b.date <= d.vesselBlockWindow.end,
+        (b) =>
+          (b.vesselId ?? d.vesselId) === d.vesselId &&
+          b.date >= d.vesselBlockWindow.start &&
+          b.date <= d.vesselBlockWindow.end,
       );
       expect(inWindow).toHaveLength(2);
       expect(inWindow.map((b) => b.date)).toEqual([d.bookings[0]!.date, d.bookings[1]!.date]);
@@ -80,21 +88,62 @@ describe("the demo window is relative to today, not a fixed calendar month (#646
   });
 });
 
+/** Every boat the offering sells. Passing only the primary hull made the deriver skip the
+ *  big-party bookings on Brew 1 and Brew 2 outright — it cannot place a slot for a vessel it
+ *  was not given, so those bookings silently stopped existing (#715). */
+const FLEET: Vessel[] = DEMO.fleet.map(
+  (f) => ({ id: asId<"VesselId">(f.vesselId), name: f.name, coiMaxPax: f.coiMaxPax, manning: [] }) as Vessel,
+);
+
 describe("db:seed:reservation fixture", () => {
-  it("materializes the expected bookings on vessel-brew-3", () => {
+  it("materializes each booking on its own hull, at that hull's capacity", () => {
     expect(world.reservations).toHaveLength(DEMO.bookings.length);
     for (const b of DEMO.bookings) {
-      const ev = world.events.find((e) => e.date === b.date && e.time === b.time);
-      expect(ev, `event on ${b.date} ${b.time}`).toBeDefined();
-      expect(String(ev?.vesselId)).toBe(DEMO.vesselId);
+      const boat = b.vesselId ?? DEMO.vesselId;
+      // Keyed on the vessel too: two boats share a departure in the big-party fixtures, so
+      // date+time no longer identifies one event.
+      const ev = world.events.find(
+        (e) => e.date === b.date && e.time === b.time && String(e.vesselId) === boat,
+      );
+      expect(ev, `event on ${b.date} ${b.time} ${boat}`).toBeDefined();
       expect(ev?.source).toBe("muster");
+      // A 16-guest party on an Event capped at 12 is a fixture that contradicts itself — and
+      // `canBook` would refuse it. The capacity has to follow the boat.
+      const cap = DEMO.fleet.find((f) => f.vesselId === boat)?.coiMaxPax;
+      expect(ev?.capacity, `capacity for ${boat}`).toBe(cap);
+      expect(b.partySize).toBeLessThanOrEqual(cap!);
     }
+  });
+
+  it("gives every booking a distinct reservation id, including two boats in one departure", () => {
+    const ids = world.reservations.map((r) => String(r.id));
+    expect(new Set(ids).size).toBe(ids.length);
+    // The case that forced the hull into the id: same date, same time, different boat.
+    const shared = DEMO.bookings.filter(
+      (b) => DEMO.bookings.filter((o) => o.date === b.date && o.time === b.time).length > 1,
+    );
+    expect(shared.length, "the fixture must actually sell one departure twice").toBeGreaterThan(0);
+  });
+
+  // #715 — the hand-test for the guest filter is only meaningful against an offering with more
+  // than one boat SIZE. With a single 12-pax hull, every party from 1 to 12 sees an identical
+  // calendar and a broken filter looks exactly like a working one. This pins the fixture the
+  // runbook's steps are written against: three boats, three distinct caps, two boundaries to
+  // cross. It has no assertion about which boats — only that the shape survives.
+  it("attaches boats of three distinct capacities, so the guest filter is observable", () => {
+    const caps = DEMO.fleet.map((f) => f.coiMaxPax);
+    expect(new Set(caps).size).toBe(3);
+    expect([...caps].sort((a, b) => a - b)).toEqual(caps); // smallest first — the stepper's default
+    expect(world.offering.vesselIds.map(String)).toEqual(DEMO.fleet.map((f) => f.vesselId));
+    // The bookings and the block-impact figures all sit on the primary boat; if that stopped
+    // being one of the offering's vessels the fixtures above would silently stop overlapping.
+    expect(DEMO.fleet.some((f) => f.vesselId === DEMO.vesselId)).toBe(true);
   });
 
   it("the deriver sees the demo slots as booked over the demo window", () => {
     const slots = deriveVirtualAvailability({
       offerings: [world.offering],
-      vessels: [{ id: asId<"VesselId">(DEMO.vesselId), name: "Brew 3", coiMaxPax: 12, manning: [] }],
+      vessels: FLEET,
       dateRange: DEMO.window,
       blocks: [],
       events: world.events,
@@ -114,7 +163,7 @@ describe("db:seed:reservation fixture", () => {
     };
     const impact = computeBlockImpact(block, {
       offerings: [world.offering],
-      vessels: [{ id: asId<"VesselId">(DEMO.vesselId), name: "Brew 3", coiMaxPax: 12, manning: [] }],
+      vessels: FLEET,
       events: world.events,
       reservations: world.reservations,
     });

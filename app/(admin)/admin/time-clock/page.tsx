@@ -13,6 +13,7 @@ import {
 } from "@core/admin/time-clock-admin.js";
 import { currentPeriod, periodsForYear, periodLabel } from "@core/admin/pay-periods.js";
 import { PAY_PERIOD_ANCHOR, addDays, vesselDateOf } from "@core/config/tenant.js";
+import { compactDuration } from "@core/admin/hours-format.js";
 import { asId } from "@core/domain/ids.js";
 import { fmt12, fmtDateRange } from "../../../lib/format";
 import { notFound } from "next/navigation";
@@ -71,15 +72,6 @@ const ERR_COPY: Record<TimeClockErr, string> = {
 };
 
 const isDay = (s?: string): s is string => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
-
-/** "8h 30m" — floors, because §2.9.6 forbids rounding and inflating is worse. */
-function fmtMinutes(total: number): string {
-  const whole = Math.floor(total);
-  const h = Math.floor(whole / 60);
-  const m = whole % 60;
-  if (h === 0) return `${m}m`;
-  return m === 0 ? `${h}h` : `${h}h ${m}m`;
-}
 
 export default async function AdminTimeClock({
   searchParams,
@@ -327,7 +319,7 @@ export default async function AdminTimeClock({
               Total
             </span>
             <span className="font-mono font-semibold text-ink">
-              {fmtMinutes(view?.totalMinutes ?? 0)}
+              {compactDuration(view?.totalMinutes ?? 0)}
             </span>
           </div>
         )}
@@ -391,7 +383,7 @@ function PunchCard({
         <span className="font-mono text-sm text-ink">
           {/* Same words as /crew/time for the same state — one punch must not read
               two ways depending on who's looking at it. */}
-          {row.minutes === null ? "still on the clock" : fmtMinutes(row.minutes)}
+          {row.minutes === null ? "still on the clock" : compactDuration(row.minutes)}
         </span>
       </div>
 

@@ -3,7 +3,7 @@
  *
  * No other seed writes `time_punches`, so before this the reconcile surface only ever
  * rendered its degenerate case: every crew member estimate-only, `actualMinutes: 0`, delta
- * fully negative. The export gate, the truncation, the §2.9.8 admin marking and the
+ * fully negative. The export gate, the edge rounding, the §2.9.8 admin marking and the
  * vessel-local bucketing were all unreachable by hand.
  *
  * **It seeds the PREVIOUS pay period, not the current one.** A punch may not claim time
@@ -17,8 +17,10 @@
  * Seven crew, each isolating one thing the report or the CSV has to get right:
  *
  *   A. Ada    — 69 minutes, EXACTLY 1.15 hours. The regression fixture. `(minutes / 60) * 100`
- *      yields 114.99999999999999 and floors to "1.14" — a cent under, in the one column
- *      Gusto pays from. Cloud review found it in #649; this is where you see it stay fixed.
+ *      yields 114.99999999999999, which the old floor turned into "1.14" — a cent under, in the
+ *      one column Gusto pays from. Cloud review found it in #649; this is where you see it stay
+ *      fixed. The edge rounds now (DEC-157/#758), so this case has no cliff to fall off either
+ *      way — the arithmetic order is still what keeps it exact.
  *   B. Bo     — three ordinary 8h days. The boring row that proves the total is a total.
  *   C. Cyd    — 20:00→23:30 vessel-local. Already tomorrow in UTC, so it buckets to the
  *      wrong DAY (and on a boundary, the wrong PERIOD) the moment anything reads UTC.
@@ -282,7 +284,7 @@ try {
   console.log("anything. These seven are the ONLY rows in this period — db:seed:crew's roster");
   console.log("is seated in the current and future periods, not this one.\n");
   console.log(`  Ada   ${day(2)}  09:00-10:09          69 min = 1.15h EXACTLY`);
-  console.log("        → THE ONE THAT MATTERS. (minutes/60)*100 floors this to 1.14 — a cent");
+  console.log("        → THE ONE THAT MATTERS. (minutes/60)*100 once floored this to 1.14 — a cent");
   console.log("          under, in the column Gusto pays from. Ada also has NO gusto identity,");
   console.log("          so her employee_id is blank and her row alone won't import.");
   console.log(`  Bo    ${day(1)}, ${day(3)}, ${day(4)}  08:00-16:00   1440 min = 24.00h`);

@@ -13,21 +13,23 @@ is the generated index. Read one decision by reading its file — `grep -rl DEC-
 resolves any id — rather than loading all 138. To add or change a decision, edit its file and run
 `npm run gen:decisions`; `npm run check:decisions` fails the build if this index is stale.
 
-**Three states, not two** (corrected 2026-07-25, audit shard Z1). A strike-through was the only
-marker for "something changed", which forced every partial supersession to be recorded as total or
-as nothing — and an audit of all 138 found **zero fully superseded**: every struck row still has a
-leg cited by SPEC, code, or a later DEC. So:
+**A change to a decision goes IN that decision's file** (DEC-141, amended 2026-08-17), appended as a
+dated `## Amendment, YYYY-MM-DD (who)` section. It is not a new decision and gets no id of its own.
+A new id is for a subject the record has no decision about yet — one worth writing even if nothing
+before it existed. Two decisions that merely relate name each other in a plain **see also**.
 
-- **plain row** — current, nothing amends it.
-- **~~struck~~ → superseded by DEC-N** — the whole holding is replaced.
-- **row + "amended by DEC-N — scope"** — the DEC still governs, but one leg was replaced. **Use
-  this by default**; total supersession is rarer than it looks.
+**So every row here is one subject, and the file behind it holds the current answer.** There are no
+strike-throughs and no "amended by" annotations: a decision amended last week still shows its
+original title on its row, because the amendment is inside it. The row tells you a subject exists;
+the file tells you what is true. Open the file.
 
-The relation and its scope are declared once, in the amending decision's `amends:` frontmatter, and
-generated in both directions — onto the row below *and* into a banner at the top of the amended
-decision's own file. Audit shard Z2 found 28 supersede-class edges where the amending DEC updated
-itself and never its target, because a reader arriving by `Ctrl-F`, a code comment, or another doc's
-citation lands in the body, not the index. Declaring it once is what makes both ends agree.
+The retired model did the opposite — a change meant a NEW decision whose `amends:` frontmatter
+pointed back, and a generated banner in the target. An audit of 138 found **zero fully superseded**,
+so nearly every change was partial, and a subject accumulated files: the payment posture needed
+DEC-107, 151, 153 and 155 read in order before any of them answered it. The 51 pointers that model
+produced are now plain **see also** prose inside the files, and the frontmatter is gone.
 
-Available relations: `supersedes` (the only one that strikes a row), `amends`, `revises`, `refines`,
-`reverses`, `retires`, `extends`, `corrects`, `resolves`, `reframes`.
+A decision that changes the spec declares that in frontmatter — `amends_spec: [{section, scope}]` —
+and the pointer under that spec section's heading is generated from the declaration. A claim that
+never reached the spec is a red build rather than prose nobody cross-read. This is the one generated
+cross-reference left, and it points at the spec, never at another decision.

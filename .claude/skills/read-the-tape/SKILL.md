@@ -54,7 +54,7 @@ If the fetch or worktree attach fails, **stop before invoking the agent**. Runni
 The queue is written by `tape-capture.sh` on session end and lives **outside every repo**, at `$TAPE_QUEUE` or `~/.claude/tape-queue` by default. It holds one copied transcript per session plus `index.jsonl`, one JSON object per line:
 
 ```json
-{"observed":"2026-08-14","repo":"muster","cwd":"/home/eric/muster","branch":"task/618-x","session_id":"…","transcript":"…","origin":"…","sha":"…","reason":"prompt_input_exit"}
+{"observed":"2026-08-14","repo":"muster","cwd":"/home/eric/muster","repo_root":"/home/eric/muster","branch":"task/618-x","session_id":"…","transcript":"…","origin":"…","sha":"…","reason":"prompt_input_exit"}
 ```
 
 **No index, or an empty one: say "tape queue is empty — nothing to drain" and stop.** A clean no-op, not an error. It is also the expected result on a machine where the hook was never installed, so say which of the two it is: if `~/.claude/tape-queue` does not exist at all, the hook is not installed on this box — point at `README.md` § Learning loop rather than reporting an empty queue.
@@ -63,19 +63,23 @@ Then, **for each entry, oldest first**:
 
 1. **Check the copy still exists.** If `transcript` is missing from disk, report the entry, drop its index line, and continue — do not stop the drain. A missing copy means someone cleaned the queue by hand; it is not a failure worth abandoning the other entries over.
 2. **Derive the slug from `branch`** using the Step 1.5 mapping (`task/644-crew-header` → `644-crew-header`, `main` → `main`). Read Step 1.5 before doing this — the slug is the part after the dev handle, and getting it wrong names the observation badly in a way that is annoying to fix later.
-3. **Run Steps 2 and 3** against that transcript, passing `repo` **and `cwd`** from the entry.
+3. **Run Steps 2 and 3** against that transcript, passing `repo` **and `repo_root`** from the entry.
 
-   **The entry's repo is usually not the repo you are standing in** — that is the whole point of a queue. Two things follow, and both have to be done deliberately:
+   **The entry's repo is usually not the repo you are standing in** — that is the whole point of a queue. Three things follow, and all have to be done deliberately:
 
    - **File the observation under the entry's `repo`**, never the current directory's name.
-   - **Step 2's prompt tells the agent to read `.claude/skills/` and `.claude/agents/` for context. Those paths resolve against the working directory.** So point the agent at the entry's `cwd` explicitly — `.claude/skills/` *in `<cwd>`*. Draining from seeds without doing this hands `@tape-reader` **seeds' own** skills and agents as context for a session that ran somewhere else, and nothing errors: the observation just quietly describes the wrong workflow.
-   - **If `cwd` no longer exists** (repo moved or deleted), say so in the prompt and tell the agent to audit the transcript without project context rather than falling back to whatever is at the current path.
+   - **Step 2's prompt tells the agent to read `.claude/skills/` and `.claude/agents/` for context. Those paths resolve against the working directory.** So point the agent at the entry's `repo_root` explicitly — `.claude/skills/` *in `<repo_root>`*. Draining from seeds without doing this hands `@tape-reader` **seeds' own** skills and agents as context for a session that ran somewhere else, and nothing errors: the observation just quietly describes the wrong workflow.
+   - **Use `repo_root`, not `cwd`, for those context paths — they are different fields on purpose.** `cwd` is where the session ran; `repo_root` is where its `.claude/` lives. In a linked worktree they differ, and only `repo_root` has anything under it: a session run in `<project>/.sessions-worktree` has a `cwd` holding `sessions/` and no skills or agents at all. That path *exists*, so the missing-directory case below never fires — the agent would simply be handed an empty context directory and would not know.
+   - **On an entry with no `repo_root`** (captured before the hook recorded it), fall back to `cwd` and say so in the prompt. Those entries carry the old bug: if `cwd` is a linked worktree, the entry's `repo` is that directory's name too, so file the observation under the parent repo's real name rather than propagating it. **How to tell:** in a linked worktree, `.git` is a *file* containing a `gitdir:` pointer, not a directory — `git -C <cwd> rev-parse --path-format=absolute --git-common-dir` then resolves to the parent repo's `.git`, and its parent directory is the name you want.
+   - **If the directory no longer exists** (repo moved or deleted), say so in the prompt and tell the agent to audit the transcript without project context rather than falling back to whatever is at the current path.
 
 4. **Only when Step 3 confirms the observation committed and pushed**, move the copy to `<queue>/drained/` and drop that line from `index.jsonl`. On any other outcome, leave both in place so the next drain retries it.
 
    **Re-read `index.jsonl` immediately before each removal and filter that fresh copy** — do not read the whole index once at the start of the drain and write back a filtered version at the end. A drain runs an LLM and a git push per entry, so it can span minutes, and the capture hook appends to this same file with no lock. A batch rewrite silently discards any session that ended mid-drain: the index line vanishes while its transcript copy sits in the queue, unindexed and invisible to every future drain. Filter by `session_id`, write to a temp file, move it into place.
 
 Report at the end: how many drained, how many retried, how many dropped for a missing copy.
+
+**Also report orphaned copies — transcripts in the queue with no index line naming them.** `ls` the queue and check each `.jsonl` other than `index.jsonl` against the index. An orphan is invisible to every drain, forever, and nothing else looks for it. They should no longer be created — the hook writes to the path the index already names — but any left from before that fix are still sitting there, and one of them was a *more complete* copy of a session whose indexed transcript had been truncated by an earlier fire. Do not delete them: report the filenames and let the operator decide, since an orphan is usually the better copy rather than a stray.
 
 **Do not batch the observations into one file.** One session, one observation, same as single mode — `@workout` counts recurrences across observations, and merging five sessions into one file makes five sightings look like one.
 

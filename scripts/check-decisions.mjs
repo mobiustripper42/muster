@@ -19,43 +19,14 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import {
   DIR,
   OUT,
-  RELATIONS,
   SPEC,
   TOPICS,
-  compareDecisionIds,
   generate,
   load,
   referencePattern,
-  reverseGraph,
   sectionNumber,
   specSections,
 } from './gen-decisions-index.mjs'
-
-/**
- * The backwards-amendment rule, as a pure function so its failure paths are testable
- * without a fixture directory. Returns the failure message, or null if the edge is fine.
- *
- * A decision cannot amend one that did not exist when it was written. This is the check
- * that catches an id typo'd into a real-but-wrong decision, which a bare existence check
- * waves through.
- *
- * The third outcome is the point. This used to bail out whenever either id failed
- * `^DEC-(\d+)$` — silently, no error, no warning — so it never once ran for the
- * originating project's five non-numeric ids, one of which was the 4th-most-cited id in
- * the repo. A guard that abstains without saying so is indistinguishable from a guard that
- * passed. Where the record genuinely cannot order two ids, that is now a red build asking
- * for a human, not a shrug.
- * @param {string} from the amending decision's id
- * @param {string} to the amended decision's id
- */
-export function checkAmendmentEdge(from, to) {
-  const order = compareDecisionIds(to, from)
-  if (order === null) {
-    return `amends ${to}, whose position in the record cannot be compared with ${from} — the backwards-amendment check cannot run on this pair, so it needs a human (declare the id family in ${DIR}/_config.json, or see rank() in gen-decisions-index.mjs)`
-  }
-  if (order >= 0) return `amends ${to}, which is not earlier than ${from} — an amendment points backwards`
-  return null
-}
 
 /** Exported because `check-docs.mjs` applies the same rule to the rest of the doc set.
  *  This script's scan stops at `docs/decisions/` + the index, which was never a statement
@@ -98,18 +69,6 @@ export function check() {
       fail(at, `unknown topic ${JSON.stringify(d.topic)} — add it to topics in ${DIR}/_config.json if it is real`)
     }
 
-    for (const a of d.amends ?? []) {
-      if (!RELATIONS[a.relation]) {
-        fail(at, `unknown relation ${JSON.stringify(a.relation)} — one of: ${Object.keys(RELATIONS).join(', ')}`)
-      }
-      if (!decisions.has(a.id)) {
-        fail(at, `amends ${a.id}, which has no decision file`)
-        continue
-      }
-      const backwards = checkAmendmentEdge(id, a.id)
-      if (backwards) fail(at, backwards)
-    }
-
     // A declared spec amendment must land on a section that exists. The originating
     // audit's largest finding class was the opposite direction — a decision claiming to
     // change SPEC and the change never landing — and an anchor nobody validates is how a
@@ -132,11 +91,11 @@ export function check() {
     // Every scope is rendered inside a bold span, so `**` in the text nests and the
     // banner renders as garbage — silently, since nothing about the build notices how
     // markdown looks. Caught the first time anyone wrote one.
-    for (const a of [...(d.amends ?? []), ...(d.amends_spec ?? [])]) {
+    for (const a of d.amends_spec ?? []) {
       if (a.scope?.includes('**')) {
         fail(
           at,
-          `scope for ${a.id ?? `§${sectionNumber(a.section)}`} contains \`**\` — it renders inside a bold span, so the emphasis nests and breaks`,
+          `scope for §${sectionNumber(a.section)} contains \`**\` — it renders inside a bold span, so the emphasis nests and breaks`,
         )
       }
     }
@@ -159,15 +118,15 @@ export function check() {
 
   if (failures.length) return failures
 
-  // Freshness. Everything above can pass on a record whose index and banners were never
-  // regenerated, which is the exact defect this replaces.
+  // Freshness. Everything above can pass on a record whose index was never regenerated,
+  // which is the exact defect this replaces.
   const { index, files, spec } = generate()
   if (readFileSync(OUT, 'utf8') !== index) {
     fail(OUT, 'index is stale — run `npm run gen:decisions`')
   }
   for (const [file, text] of files) {
     if (readFileSync(`${DIR}/${file}`, 'utf8') !== text) {
-      fail(`${DIR}/${file}`, 'amended-by banner or frontmatter is stale — run `npm run gen:decisions`')
+      fail(`${DIR}/${file}`, 'frontmatter is stale — run `npm run gen:decisions`')
     }
   }
   // This is what makes a declared amendment LAND: the pointer in the amended section is
@@ -189,11 +148,10 @@ if (process.argv[1]?.endsWith('check-decisions.mjs')) {
     process.exit(1)
   }
   const decisions = load()
-  const incoming = reverseGraph(decisions)
-  const edges = [...incoming.values()].reduce((n, l) => n + l.length, 0)
+
   const specEdges = [...decisions.values()].reduce((n, d) => n + (d.amends_spec?.length ?? 0), 0)
   console.log(
-    `✓ decision record — ${decisions.size} decisions in ${DIR}/, ${edges} amendment edges across ` +
-      `${incoming.size} amended decisions, ${specEdges} spec amendments landed, index fresh, all references resolve`,
+    `✓ decision record — ${decisions.size} decisions in ${DIR}/, ` +
+      `${specEdges} spec amendments landed, index fresh, all references resolve`,
   )
 }

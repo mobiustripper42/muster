@@ -1658,6 +1658,31 @@ export function runRepositoryContract(
       expect("splitCutTime" in (await repo.getShift(SHIFT))!).toBe(false);
     });
 
+    it("shifts: earliestStart round-trips, and ABSENT stays absent (#740)", async () => {
+      // The change-detection watermark. Both halves matter and they are not symmetric:
+      //
+      //  - A stored instant must come back byte-identical, or every form after a restart
+      //    compares a good value against a mangled one and announces a retime that never
+      //    happened — to every crew member on the boat, at whatever hour the tick runs.
+      //  - ABSENT must stay ABSENT, not become `null`. `form-shifts.ts` reads absent as
+      //    "unknown" and refuses to call it a change; `null` is a real value meaning
+      //    "nothing scheduled". Collapsing the two is precisely the fleet-wide false
+      //    alarm the migration's nullable column exists to avoid, so the distinction has
+      //    to survive the round trip in BOTH adapters — which is why this is here and
+      //    not in a postgres-only test.
+      await repo.saveShift(shift());
+      expect("earliestStart" in (await repo.getShift(SHIFT))!).toBe(false);
+
+      await repo.saveShift(shift({ earliestStart: "2026-05-16T19:30:00.000Z" }));
+      expect(await repo.getShift(SHIFT)).toMatchObject({
+        earliestStart: "2026-05-16T19:30:00.000Z",
+      });
+
+      // And it clears back to absent when a later form has nothing to record.
+      await repo.saveShift(shift());
+      expect("earliestStart" in (await repo.getShift(SHIFT))!).toBe(false);
+    });
+
     it("seats: round-trip + listForShift; assignedCrewMemberId optional", async () => {
       await repo.saveShift(shift());
       await repo.saveSeat(seat());

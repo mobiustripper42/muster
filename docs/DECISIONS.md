@@ -152,6 +152,7 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-030 — Pilot channel = operator-relayed web link; the outbox is adapter state, never domain state
 - DEC-084 — Crew assignment-change notice — a third operator-relay sibling
 - DEC-095 — Operator At-Risk alert — the deferred delivery half of DEC-026, NOT a fourth outbound lane
+- DEC-158 — A change notice names what moved — the SMS carries a subset, the app carries all of it
 
 ### Crew self-serve, auth & admin identity
 - DEC-010 — Crew auth is magic-link passwordless; crew don't self-register

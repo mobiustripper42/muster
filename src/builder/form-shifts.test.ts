@@ -230,9 +230,13 @@ describe("formShifts — reconciliation (#20)", () => {
     // The import opts into the notice (`notifyTripChanges`).
     await repo.saveEvent(event("e1b", PARTY, "2026-05-16", "17:00"));
     const r1 = await formShifts(repo, { notifyTripChanges: true });
-    expect(r1.changedCrew).toEqual([
-      { shiftId: day1, crewMemberId: asId<"CrewMemberId">("cap") },
-    ]);
+    // `toMatchObject`, not `toEqual`: the entry carries the diff too (#740), asserted in
+    // its own tests below. Here the subject is WHO is reported, which #350 owns.
+    expect(r1.changedCrew).toHaveLength(1);
+    expect(r1.changedCrew[0]).toMatchObject({
+      shiftId: day1,
+      crewMemberId: asId<"CrewMemberId">("cap"),
+    });
     // Not also reported as a cancel/resurrection — it stayed live.
     expect(r1.cancelledCrew).toEqual([]);
     expect(r1.restoredCrew).toEqual([]);
@@ -245,9 +249,11 @@ describe("formShifts — reconciliation (#20)", () => {
     await cancelEvent(repo, "e1b");
     const r3 = await formShifts(repo, { notifyTripChanges: true });
     expect((await repo.getShift(day1))?.state).not.toBe("Cancelled");
-    expect(r3.changedCrew).toEqual([
-      { shiftId: day1, crewMemberId: asId<"CrewMemberId">("cap") },
-    ]);
+    expect(r3.changedCrew).toHaveLength(1);
+    expect(r3.changedCrew[0]).toMatchObject({
+      shiftId: day1,
+      crewMemberId: asId<"CrewMemberId">("cap"),
+    });
   });
 
   it("does NOT report changed crew without the opt-in — the notice is command-driven (#350)", async () => {
@@ -268,26 +274,23 @@ describe("formShifts — reconciliation (#20)", () => {
   });
 
   /**
-   * CHARACTERIZATION, not an endorsement (audit C2.2-5). Pins what a RETIME does
-   * today so the answer stops being re-derived from comments.
+   * The gap this used to CHARACTERIZE, now closed (#740).
    *
    * DEC-029 said time changes were caught for free, and under its scheme they were:
    * event identity was `evt-${vesselId}-${date}-${time}`, so moving a trip minted a
    * new id and the shift's `eventIds` set changed. **DEC-043 replaced that identity
    * with Xola's real `event.id`** and nobody re-checked the consequence: a retime
-   * that keeps its id now leaves the set identical, so the `#350` diff-gate sees no
-   * change and no crew member is told — while their call time (earliest departure −
-   * lead) has moved underneath them.
+   * that keeps its id left the set identical, so the `#350` diff-gate saw no change
+   * and no crew member was told — while their call time (earliest departure − lead)
+   * had moved underneath them. This test pinned that silence.
    *
-   * OPEN, and NOT answerable from this repo: whether Xola retimes an occurrence in
-   * place (same `event.id` — this test's case, silent) or cancels and recreates it
-   * (new id — the set changes and the notice fires). DEC-083 says "a
-   * replacement trip has a new id", which suggests the second, and the operator
-   * recalls seeing exactly that. Settle it against a real import run before building
-   * anything: if Xola always recreates, this gap is unreachable and the right fix is
-   * a comment; if it retimes in place, the gate needs to compare times too.
+   * It stopped being an open question the moment Muster began selling its own
+   * reservations: whatever Xola does with ids, Muster controls its own, and an
+   * operator retiming a departure in place is an ordinary act. Operator's call
+   * (2026-08-17): *"if the time changes and the crew isn't notified, then that's a
+   * bug."* So the gate compares the earliest scheduled start as well as the id set.
    */
-  it("a retime that keeps the event id tells NOBODY (open question — see the comment)", async () => {
+  it("a retime that keeps the event id now tells the crew, with the times (#740)", async () => {
     const repo = new InMemoryRepository();
     await seedEvents(repo);
     await formShifts(repo);
@@ -305,7 +308,85 @@ describe("formShifts — reconciliation (#20)", () => {
 
     expect((await repo.getEvent(asId<"EventId">("e1")))?.time).toBe("08:00");
     expect((await repo.getShift(day1))?.eventIds).toEqual(["e1", "e2"]);
-    expect(r.changedCrew).toEqual([]); // ← the gap, pinned
+
+    expect(r.changedCrew).toHaveLength(1);
+    const c = r.changedCrew[0]!;
+    expect(String(c.crewMemberId)).toBe("cap");
+    // Nothing was added or removed — the trip set is identical. Only the clock moved,
+    // which is the whole point: a diff reported as "+0 trips" would say nothing.
+    expect(c.added).toEqual([]);
+    expect(c.removed).toEqual([]);
+    expect(c.startBefore).not.toBe(c.startAfter);
+    expect(c.startBefore).not.toBeNull();
+    expect(c.startAfter).not.toBeNull();
+  });
+
+  it("a steady re-form after a retime does not re-report it (#740)", async () => {
+    // The diff gate has to hold for the new time comparison exactly as it does for the
+    // id set, or the cron tick re-announces the same retime every 15 minutes forever.
+    const repo = new InMemoryRepository();
+    await seedEvents(repo);
+    await formShifts(repo);
+    const seat = (await repo.listSeatsForShift(day1))[0]!;
+    await repo.saveSeat({
+      ...seat,
+      state: "Confirmed",
+      assignedCrewMemberId: asId<"CrewMemberId">("cap"),
+    });
+
+    await repo.saveEvent(event("e1", PARTY, "2026-05-16", "08:00"));
+    expect((await formShifts(repo, { notifyTripChanges: true })).changedCrew).toHaveLength(1);
+    expect((await formShifts(repo, { notifyTripChanges: true })).changedCrew).toEqual([]);
+    expect((await formShifts(repo, { notifyTripChanges: true })).changedCrew).toEqual([]);
+  });
+
+  it("a trip added carries WHICH trip was added (#740)", async () => {
+    // #350 reported the fact of a change; the notice built on it could only say
+    // "something moved". The diff was computed and dropped on the floor.
+    const repo = new InMemoryRepository();
+    await seedEvents(repo);
+    await formShifts(repo);
+    const seat = (await repo.listSeatsForShift(day1))[0]!;
+    await repo.saveSeat({
+      ...seat,
+      state: "Confirmed",
+      assignedCrewMemberId: asId<"CrewMemberId">("cap"),
+    });
+
+    // Added EARLIER than the existing 15:30, so the call time moves too — both halves
+    // of the diff in one change, which is the case the SMS has to fit into one segment.
+    await repo.saveEvent(event("e1b", PARTY, "2026-05-16", "09:00"));
+    const r = await formShifts(repo, { notifyTripChanges: true });
+
+    expect(r.changedCrew).toHaveLength(1);
+    const c = r.changedCrew[0]!;
+    expect(c.added.map(String)).toEqual(["e1b"]);
+    expect(c.removed).toEqual([]);
+    expect(c.startBefore).not.toBe(c.startAfter);
+  });
+
+  it("a trip cancelled off a surviving shift carries WHICH trip was removed (#740)", async () => {
+    const repo = new InMemoryRepository();
+    await seedEvents(repo);
+    await formShifts(repo);
+    const seat = (await repo.listSeatsForShift(day1))[0]!;
+    await repo.saveSeat({
+      ...seat,
+      state: "Confirmed",
+      assignedCrewMemberId: asId<"CrewMemberId">("cap"),
+    });
+
+    await cancelEvent(repo, "e2"); // 19:30 goes; 15:30 survives, so the shift lives
+    const r = await formShifts(repo, { notifyTripChanges: true });
+
+    expect((await repo.getShift(day1))?.state).not.toBe("Cancelled");
+    expect(r.changedCrew).toHaveLength(1);
+    const c = r.changedCrew[0]!;
+    expect(c.removed.map(String)).toEqual(["e2"]);
+    expect(c.added).toEqual([]);
+    // The earliest trip did not move, so the call time is unchanged — the notice must
+    // be able to say "-1 trip" WITHOUT claiming a call-time change that did not happen.
+    expect(c.startBefore).toBe(c.startAfter);
   });
 
   it("never forms a shift from cancelled-only events (no prior shift)", async () => {

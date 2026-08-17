@@ -379,6 +379,10 @@ const toShift = (r: any): Shift => ({
   state: r.state,
   eventIds: (r.event_ids as string[]).map((x) => asId<"EventId">(x)),
   ...opt("splitCutTime", r.split_cut_time),
+  // #740. NULL → key ABSENT → `undefined`, which `form-shifts.ts` reads as "unknown" and does
+  // not treat as a change. That is what stops every pre-migration row announcing a retime it
+  // never had, on the first form after deploy. Do not "helpfully" default this to null.
+  ...opt("earliestStart", r.earliest_start),
 });
 
 const toSeat = (r: any): Seat => ({
@@ -1723,11 +1727,21 @@ export class PostgresRepository implements Repository {
   // ── Shifts ─────────────────────────────────────────────────────────────────
   async saveShift(s: Shift): Promise<void> {
     await this.#pool.query(
-      `insert into shifts(id, vessel_id, date, state, event_ids, split_cut_time) values ($1,$2,$3,$4,$5,$6)
+      `insert into shifts(id, vessel_id, date, state, event_ids, split_cut_time, earliest_start)
+         values ($1,$2,$3,$4,$5,$6,$7)
        on conflict (id) do update set vessel_id=excluded.vessel_id, date=excluded.date,
          state=excluded.state, event_ids=excluded.event_ids,
-         split_cut_time=excluded.split_cut_time`,
-      [s.id, s.vesselId, s.date, s.state, JSON.stringify(s.eventIds), s.splitCutTime ?? null],
+         split_cut_time=excluded.split_cut_time,
+         earliest_start=excluded.earliest_start`,
+      [
+        s.id,
+        s.vesselId,
+        s.date,
+        s.state,
+        JSON.stringify(s.eventIds),
+        s.splitCutTime ?? null,
+        s.earliestStart ?? null,
+      ],
     );
   }
   async getShift(id: ShiftId): Promise<Shift | null> {

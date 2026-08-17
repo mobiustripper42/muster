@@ -27,10 +27,12 @@ import type { Repository } from "../ports/repository.js";
 import {
   deriveSeats,
   deriveShiftState,
+  earliestScheduledStart,
   resolveShiftState,
   staffingHorizonFromEvents,
   STAFFING_HORIZON_LEAD_DAYS,
 } from "./derive.js";
+import type { EventId } from "../domain/ids.js";
 
 export interface FormResult {
   shiftsCreated: number;
@@ -71,13 +73,30 @@ export interface FormResult {
    * `cancelledCrew`. The `added` notice slot is distinct from the earlier `removed`
    * one (id = shift·member·action), so it fires cleanly. */
   restoredCrew: { shiftId: ShiftId; crewMemberId: CrewMemberId }[];
-  /** #350: assigned crew on a SURVIVING shift whose scheduled TRIP SET changed this
-   * run (a trip added, or one of several cancelled while the shift lives on) — their
-   * committed day moved (call time / trips / manifest), so the import edge relays each
-   * a "your shift changed" notice. Transition-only (diff-gated: no set change → no
-   * entry), so a steady re-pull doesn't re-fire. Excludes the cancel (→`cancelledCrew`)
-   * and resurrection (→`restoredCrew`) transitions, which carry their own notice. */
-  changedCrew: { shiftId: ShiftId; crewMemberId: CrewMemberId }[];
+  /** #350: assigned crew on a SURVIVING shift whose committed day moved this run —
+   * a trip added, one of several cancelled while the shift lives on, or the earliest
+   * departure retimed. The edge relays each a "your shift changed" notice.
+   * Transition-only (diff-gated: no change → no entry), so a steady re-pull doesn't
+   * re-fire. Excludes the cancel (→`cancelledCrew`) and resurrection (→`restoredCrew`)
+   * transitions, which carry their own notice.
+   *
+   * **#740: it carries the diff, not just the fact of one.** The comparison that proves
+   * something changed used to be dropped on the floor here, leaving every layer
+   * downstream describing a change it could no longer see — "your shift changed - check
+   * the app" for both a trip added and a call time moving 90 minutes. `startBefore` /
+   * `startAfter` are the earliest scheduled departure as ISO instants (null when
+   * nothing is scheduled); the crew-facing CALL time is that minus `CALL_LEAD_MINUTES`,
+   * derived at the surface rather than stored twice (the DEC-157 lesson: one rule, one
+   * implementation). Both start fields equal ⇒ the call time did not move, and the
+   * notice must not claim it did. */
+  changedCrew: {
+    shiftId: ShiftId;
+    crewMemberId: CrewMemberId;
+    added: EventId[];
+    removed: EventId[];
+    startBefore: string | null;
+    startAfter: string | null;
+  }[];
 }
 
 /**
@@ -416,12 +435,14 @@ async function formOneShift(
           })
         : deriveShiftState(seats);
 
+  const startAfter = earliestScheduledStart(scheduled)?.toISOString() ?? null;
   const shift: Shift = {
     id: shiftId,
     vesselId,
     date,
     state,
     eventIds: scheduled.map((e) => e.id).sort(),
+    earliestStart: startAfter,
     ...(extra?.splitCutTime ? { splitCutTime: extra.splitCutTime } : {}),
   };
   await repo.saveShift(shift);
@@ -434,22 +455,45 @@ async function formOneShift(
     // says "you're on") and a Completed shift (already ran); diff-gate so a no-change
     // re-pull adds nothing.
     //
-    // ONLY when the caller opts in (`notifyTripChanges`) — the three explicit commands
-    // that move a crew member's day: the Xola import (a real booking change) and the
-    // manual split/merge (the operator reshapes the day). Each passes the flag; a silent
-    // idempotent re-form (were one added) would leave it off, so it never fires notices
-    // no human action drove. Keyed to THIS shift's id (each split side notifies its own —
-    // a dual-side person whose trip crosses the cut in one pull can get two texts; rare,
-    // accepted, mirrors merge.ts's tolerated duplicate).
+    // ONLY when the caller opts in (`notifyTripChanges`) — every caller that can move an
+    // already-crewed day (DEC-084 as amended 2026-08-17, #765). A caller that stays
+    // silent is silent by declaration, enforced by `form-shifts-notify.test.ts`. Keyed to
+    // THIS shift's id (each split side notifies its own — a dual-side person whose trip
+    // crosses the cut in one pull can get two texts; rare, accepted, mirrors merge.ts's
+    // tolerated duplicate).
+    //
+    // **Two things count as a change (#740).** The trip SET moving, as always — and the
+    // earliest scheduled departure moving, which the id set cannot see. DEC-043 replaced
+    // the old time-derived event id with Xola's real one, so a trip retimed in place
+    // keeps its id and the set compares equal while the crew member's call time has moved
+    // underneath them. That was pinned as a known gap for months; Muster selling its own
+    // reservations made it reachable by an ordinary operator edit, not just a Xola quirk.
+    const startBefore = existing.earliestStart ?? null;
+    const tripsMoved = !idSetEq(existing.eventIds.map(String), shift.eventIds.map(String));
+    // A row written before `earliestStart` existed reads `undefined`, which is "unknown",
+    // NOT "changed" — treating it as a change would have every pre-migration shift
+    // announce a retime that never happened, on the first form after deploy.
+    const startMoved = existing.earliestStart !== undefined && startBefore !== startAfter;
     if (
       opts?.notifyTripChanges &&
       existing.state !== "Cancelled" &&
       existing.state !== "Completed" &&
-      !idSetEq(existing.eventIds.map(String), shift.eventIds.map(String))
+      (tripsMoved || startMoved)
     ) {
+      const before = new Set(existing.eventIds.map(String));
+      const after = new Set(shift.eventIds.map(String));
+      const added = shift.eventIds.filter((id) => !before.has(String(id)));
+      const removed = existing.eventIds.filter((id) => !after.has(String(id)));
       for (const seat of seats) {
         if (seat.assignedCrewMemberId) {
-          result.changedCrew.push({ shiftId, crewMemberId: seat.assignedCrewMemberId });
+          result.changedCrew.push({
+            shiftId,
+            crewMemberId: seat.assignedCrewMemberId,
+            added,
+            removed,
+            startBefore,
+            startAfter,
+          });
         }
       }
     }

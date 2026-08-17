@@ -108,9 +108,13 @@ describe("splitShift (DEC-083)", () => {
     // changed, so the command relays them a "your shift changed" notice (side B is
     // born fresh + unstaffed, so it has nobody to notify).
     const form = await splitShift(repo, CANON, "14:00");
-    expect(form.changedCrew).toEqual([
-      { shiftId: CANON, crewMemberId: asId<"CrewMemberId">("cap") },
-    ]);
+    // `toMatchObject`: the entry also carries the diff (#740). WHO is reported is this
+    // test's subject; what the diff says is asserted in `form-shifts.test.ts`.
+    expect(form.changedCrew).toHaveLength(1);
+    expect(form.changedCrew[0]).toMatchObject({
+      shiftId: CANON,
+      crewMemberId: asId<"CrewMemberId">("cap"),
+    });
   });
 
   it("survives re-import: a new Xola trip auto-lands on the correct side by its time", async () => {

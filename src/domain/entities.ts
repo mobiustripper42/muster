@@ -815,6 +815,22 @@ export interface Shift {
    * every pull, so the split survives Xola re-import. Absent → not split.
    */
   splitCutTime?: string;
+  /**
+   * The earliest scheduled departure as an ISO instant, or `null` when nothing is
+   * scheduled. **A change-detection watermark, not a display source (#740).**
+   *
+   * Times are derived, never stored (DEC-022), and everything that RENDERS a departure
+   * or call time still derives it from the events. This exists for one job the events
+   * cannot do: `formShifts` compares the freshly derived day against the STORED shift,
+   * and the stored shift carried only `eventIds` — so a trip retimed in place kept the
+   * same id set, the diff gate saw nothing, and the crew were never told their call
+   * time had moved. A watermark is the only way to notice a change in a value that is
+   * otherwise recomputed from scratch each run.
+   *
+   * Written on every form. Absent on rows written before the column existed, which
+   * reads as "unknown" and is deliberately NOT treated as a change (see `form-shifts`).
+   */
+  earliestStart?: string | null;
 }
 
 export interface Seat {

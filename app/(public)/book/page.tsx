@@ -9,16 +9,24 @@
  * — each `scroll={false}`, so choosing a date or a departure leaves you where you were rather
  * than throwing you back to the hero on every pick;
  * only the guest stepper is client, so the running total moves live. The picked base price comes
- * from the URL-selected slot (server-derived), the guest count from the island — the footer's
- * Continue link carries both to checkout (`/book/checkout`, built in 12.5). Guests reset to the
- * default when the date or time changes (not carried in the URL) — a minor, accepted v1 wrinkle;
- * the natural order is date → time → guests → continue.
+ * from the URL-selected slot (server-derived), the guest count from the URL too — the footer's
+ * Continue link carries both to checkout (`/book/checkout`, built in 12.5).
+ *
+ * **The order is guests → date → time → continue (#715).** It used to be the reverse, and the
+ * page's own header said so. Party size is the first thing that decides what a customer can buy
+ * and it was the last thing we asked: the hero advertised the fleet's biggest boat, the calendar
+ * offered every day that had any boat free, and a party of 15 discovered at checkout that the
+ * only hull open that afternoon takes 12. Guests now filter the calendar and the departure list,
+ * which is why the count is a URL param rather than island state — the server needs it. The
+ * operator's standard, and the acceptance behind the acceptance: **never show a customer
+ * something they cannot buy.**
  */
 import type { Block, CheckoutHold, Event, Location, Offering, Reservation, Vessel } from "@core/domain/entities.js";
 import { vesselDateOf } from "@core/config/tenant.js";
 import { deriveVirtualAvailability, type VirtualSlot } from "@core/reservations/availability.js";
 import {
   boatsOpenLabel,
+  bookHref,
   buildMonthCalendar,
   buildSlotRows,
   formatClock,
@@ -26,6 +34,7 @@ import {
   formatShortDay,
   guestPricing,
   offeringCapacity,
+  offeringMinCapacity,
   shiftMonth,
   shortClock,
   type SlotRow,
@@ -41,19 +50,8 @@ export const dynamic = "force-dynamic";
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 const DOW = ["S", "M", "T", "W", "T", "F", "S"];
-const DEFAULT_GUESTS = 2;
 
 type Search = { offering?: string; date?: string; time?: string; guests?: string };
-
-/** Build a `/book` href, omitting empty axes so the default URL stays clean. */
-function bookHref(p: { offering?: string; date?: string; time?: string }): string {
-  const q = new URLSearchParams();
-  if (p.offering) q.set("offering", p.offering);
-  if (p.date) q.set("date", p.date);
-  if (p.time) q.set("time", p.time);
-  const s = q.toString();
-  return s ? `/book?${s}` : "/book";
-}
 
 export default async function BookPage({ searchParams }: { searchParams: Promise<Search> }) {
   if (!reservationsEnabled()) {
@@ -130,6 +128,22 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
   const location = locations.find((l) => String(l.id) === String(chosen.locationId));
   const cap = offeringCapacity(chosen, vessels);
 
+  // Party size, resolved before anything else is derived — it filters everything below (#715).
+  // Both bounds are read off THIS offering's boats: nothing here knows the fleet is 12/14/16.
+  //
+  // The default is the SMALLEST boat, not 1 and not 2. Landing there means the customer opens on
+  // the fullest calendar the offering can show — every hull fits, so nothing is filtered out —
+  // and days only start disappearing once they step past a boat. Starting at the largest would
+  // do the opposite and open on the emptiest month.
+  const minCap = offeringMinCapacity(chosen, vessels);
+  const parsedGuests = sp.guests !== undefined ? Number.parseInt(sp.guests, 10) : NaN;
+  const guests = Number.isFinite(parsedGuests)
+    ? Math.min(Math.max(parsedGuests, 1), Math.max(cap, 1))
+    : Math.max(minCap, 1);
+  // Only carried on this page's own links once the customer has actually chosen — the first
+  // visit keeps a clean URL, and re-resolves to the same default on arrival.
+  const hrefGuests = sp.guests !== undefined ? guests : undefined;
+
   // Month window: the month of ?date, else today's. Derive availability across the whole month so
   // every future day gets a state; past days fall to `off` in the view model regardless.
   const today = vesselDateOf(new Date());
@@ -168,22 +182,37 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
   }
 
   // Selected date: the ?date if it's this month, in the future, and has availability; else null.
+  // Deliberately NOT gated on the party fitting: stepping the count up past the boats that run
+  // on your chosen day should keep you on that day and explain, not silently drop the selection.
   const selectedDate =
     sp.date && ISO_DAY.test(sp.date) && sp.date >= today && slotsByDate.has(sp.date) ? sp.date : null;
-  const calendar = buildMonthCalendar(year, month, slotsByDate, selectedDate, today);
+  const calendar = buildMonthCalendar(year, month, slotsByDate, selectedDate, today, guests);
 
-  const rows: SlotRow[] = selectedDate ? buildSlotRows(slotsByDate.get(selectedDate) ?? []) : [];
-  const availRows = rows.filter((r) => !r.soldOut);
-  // Selected time: ?time if still available today, else the first available row.
+  const rows: SlotRow[] = selectedDate ? buildSlotRows(slotsByDate.get(selectedDate) ?? [], guests) : [];
+  // Bookable = free AND big enough. `fits` is what changed here: a departure with two open boats
+  // that both seat 12 is not a departure a party of 14 can be auto-selected onto.
+  const availRows = rows.filter((r) => !r.soldOut && r.fits);
+  // Selected time: ?time if still bookable for this party, else the first row that is.
   const selectedRow =
     (sp.time && availRows.find((r) => r.time === sp.time)) || availRows[0] || undefined;
 
   const baseCents = selectedRow ? selectedRow.priceCents : null;
-  // The stepper ceiling is the SELECTED departure's open-boat cap (a multi-vessel offering can
-  // lose its big boat and drop to the small one), NOT the offering's fleet-wide max — so a
-  // customer can't pick a count the remaining boat can't seat and get rejected only at checkout.
-  const slotCap = selectedRow ? selectedRow.capacity : cap;
-  const fare = baseCents !== null ? guestPricing(chosen, slotCap, baseCents, DEFAULT_GUESTS) : null;
+  // Pricing reads the boat this party will actually be PUT ON — the smallest that fits, which is
+  // the order `candidateVessels` claims in (DEC-109). `guestPricing` falls back to it for the
+  // included count, and on a 12/14/16 departure a party of 12 is going on the 12; quoting them
+  // "16 guests included" describes a hull the claim would hand to somebody else.
+  //
+  // The STEPPER's ceiling is a different number again (`cap`, the offering's largest boat):
+  // guests are chosen before a departure is, so at first render there is no slot to read from.
+  const slotCap = selectedRow ? selectedRow.boatCapacity : minCap || cap;
+  const fare = baseCents !== null ? guestPricing(chosen, slotCap, baseCents, guests) : null;
+  // What the hero promises. Once a day is picked, the fleet-wide maximum is a claim about boats
+  // that may not run that day — the exact lie #715 is about — so it narrows to the day's real
+  // ceiling. Before that, the offering's largest boat is honest: it IS the most this trip can
+  // ever take.
+  const dayCap = selectedDate
+    ? Math.max(0, ...rows.filter((r) => !r.soldOut).map((r) => r.capacity))
+    : cap;
   const durationLabel = formatDuration(chosen.tripLengthMinutes);
   const dateTimeLabel = selectedDate && selectedRow ? `${formatShortDay(selectedDate)} · ${formatClock(selectedRow.time)}` : null;
   const continueBase =
@@ -210,7 +239,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
           )}
           <div className="flex min-w-0 flex-col">
             <b className="truncate text-[13.5px] font-semibold">Book a cruise</b>
-            <span className="text-[11.5px] text-muted">Whole boat, one group</span>
+            <span className="text-[11.5px] text-muted">Private charter</span>
           </div>
           {/* This slot held a static "🔒 Secure" badge — no mockup and no decision behind it, not
               a link, and making a claim nothing verifies. It is the most visible spot on the one
@@ -240,8 +269,11 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
           baseCents={baseCents}
           included={fare?.included ?? slotCap}
           extraPriceCents={chosen.extraGuestPriceCents}
-          cap={slotCap}
-          initialGuests={DEFAULT_GUESTS}
+          cap={cap}
+          guests={guests}
+          offering={sp.offering}
+          date={selectedDate ?? sp.date}
+          time={selectedRow?.time ?? sp.time}
         >
           <div className="flex flex-col overflow-y-auto">
             {/* hero */}
@@ -252,10 +284,22 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
             <div className="border-b border-line bg-gradient-to-br from-accent/10 to-transparent px-[18px] py-4">
               <h1 className="text-[19px] font-semibold tracking-[-0.01em]">{chosen.name}</h1>
               <div className="mt-1 text-[12.5px] text-muted">
-                {[location?.name, durationLabel && `${durationLabel} on the water`, cap > 0 && `up to ${cap} guests`]
+                {[
+                  location?.name,
+                  durationLabel && `${durationLabel} on the water`,
+                  dayCap > 0 && (selectedDate ? `up to ${dayCap} guests that day` : `up to ${dayCap} guests`),
+                ]
                   .filter(Boolean)
                   .join(" · ")}
               </div>
+            </div>
+
+            {/* Guests FIRST (#715) — above the calendar, because it decides what the calendar is
+                allowed to offer. Full width rather than in the right-hand column: on md+ the
+                column sits beside the calendar, and a control the customer is meant to use before
+                the calendar cannot live to its right. */}
+            <div className="border-b border-line px-[18px] py-4">
+              <GuestCard />
             </div>
 
             <div className="px-[18px] pb-2 pt-4 md:grid md:grid-cols-[1fr_320px] md:items-start md:gap-6">
@@ -267,7 +311,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                   <span className="flex-1" />
                   {canPrev ? (
                     <AppLink
-                      href={bookHref({ offering: sp.offering, date: prev.first })}
+                      href={bookHref({ offering: sp.offering, date: prev.first, guests: hrefGuests })}
                       scroll={false}
                       aria-label="Previous month"
                       className="flex h-[30px] w-[30px] items-center justify-center rounded-lg border border-line text-muted"
@@ -280,7 +324,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                     </span>
                   )}
                   <AppLink
-                    href={bookHref({ offering: sp.offering, date: next.first })}
+                    href={bookHref({ offering: sp.offering, date: next.first, guests: hrefGuests })}
                     scroll={false}
                     aria-label="Next month"
                     className="flex h-[30px] w-[30px] items-center justify-center rounded-lg border border-line text-muted"
@@ -303,7 +347,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                       return (
                         <AppLink
                           key={i}
-                          href={bookHref({ offering: sp.offering, date: c.date })}
+                          href={bookHref({ offering: sp.offering, date: c.date, guests: hrefGuests })}
                           scroll={false}
                           spinner="none"
                           className={`${base} border border-ok-line bg-ok-bg font-semibold text-ok hover:border-ok`}
@@ -323,6 +367,20 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                           {c.day}
                         </span>
                       );
+                    // Boats run that day and they're free — they're just too small for this
+                    // party. Marked, not hidden, and marked DIFFERENTLY from sold out: hiding it
+                    // is silent, and struck-through says "someone got there first" when the
+                    // truth is "bring fewer people, or this trip isn't for you" (#715).
+                    if (c.state === "toobig")
+                      return (
+                        <span
+                          key={i}
+                          title={`No boat on this day takes ${guests}`}
+                          className={`${base} border border-dashed border-line text-faint`}
+                        >
+                          {c.day}
+                        </span>
+                      );
                     return (
                       <span key={i} className={`${base} text-faint opacity-50`}>
                         {c.day}
@@ -330,23 +388,26 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                     );
                   })}
                 </div>
-                <div className="mt-2.5 flex gap-3.5 text-[11px] text-muted">
+                <div className="mt-2.5 flex flex-wrap gap-x-3.5 gap-y-1 text-[11px] text-muted">
                   <span className="inline-flex items-center gap-1.5">
                     <i className="h-2.5 w-2.5 rounded-[3px] border border-ok-line bg-ok-bg" />
                     Available
                   </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <i className="h-2.5 w-2.5 rounded-[3px] bg-accent" />
-                    Selected
-                  </span>
+                  {/* No "Selected" key. A customer who can't tell which day they just tapped is
+                      not helped by a legend entry — the filled accent cell either reads as
+                      selected on its own or the cell is wrong (operator, 2026-08-16). */}
                   <span className="inline-flex items-center gap-1.5">
                     <i className="h-2.5 w-2.5 rounded-[3px] border border-line bg-bg" />
                     Sold out
                   </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <i className="h-2.5 w-2.5 rounded-[3px] border border-dashed border-line bg-bg" />
+                    Too big for {guests}
+                  </span>
                 </div>
               </div>
 
-              {/* time slots + guest card */}
+              {/* time slots */}
               <div className="mt-5 md:mt-0">
                 {selectedDate ? (
                   <>
@@ -354,28 +415,45 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                       {formatShortDay(selectedDate)} — choose a start time
                     </div>
                     {rows.length === 0 && <Notice>No departures on this day.</Notice>}
+                    {rows.length > 0 && availRows.length === 0 && (
+                      <Notice>
+                        Nothing on {formatShortDay(selectedDate)} takes {guests}. Try another day, or fewer guests.
+                      </Notice>
+                    )}
                     {rows.map((r) => {
                       const label = boatsOpenLabel(r.boatsOpen);
                       const selected = selectedRow?.time === r.time;
                       const inner = (
                         <>
                           <span className="min-w-[74px] text-[15px] font-semibold tabular-nums">{shortClock(r.time)}</span>
+                          {/* A departure that IS free but can't take this party gets its own line
+                              rather than "Sold out" — the boats are sitting there, and telling a
+                              party of 15 they were beaten to it is both false and unactionable.
+                              This one is actionable: drop to {r.capacity} and it opens up. */}
                           <span
                             className={`text-xs font-semibold ${
-                              label.tone === "open" ? "text-ok" : label.tone === "tight" ? "text-warn" : "text-faint"
+                              !r.soldOut && !r.fits
+                                ? "text-faint"
+                                : label.tone === "open"
+                                  ? "text-ok"
+                                  : label.tone === "tight"
+                                    ? "text-warn"
+                                    : "text-faint"
                             }`}
                           >
-                            {label.text}
+                            {!r.soldOut && !r.fits ? `Takes ${r.capacity}` : label.text}
                           </span>
                           <span className="ml-auto font-mono text-sm font-semibold">{formatCents(r.priceCents)}</span>
                         </>
                       );
-                      if (r.soldOut)
+                      if (r.soldOut || !r.fits)
                         return (
                           <div
                             key={r.time}
                             data-testid={`slot-${r.time}`}
-                            className="mb-2.5 flex items-center gap-3 rounded-xl border border-line bg-card px-3.5 py-3 opacity-55"
+                            className={`mb-2.5 flex items-center gap-3 rounded-xl border bg-card px-3.5 py-3 opacity-55 ${
+                              r.soldOut ? "border-line" : "border-dashed border-line"
+                            }`}
                           >
                             {inner}
                           </div>
@@ -384,7 +462,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                         <AppLink
                           key={r.time}
                           data-testid={`slot-${r.time}`}
-                          href={bookHref({ offering: sp.offering, date: selectedDate, time: r.time })}
+                          href={bookHref({ offering: sp.offering, date: selectedDate, time: r.time, guests: hrefGuests })}
                           scroll={false}
                           spinner="none"
                           className={`mb-2.5 flex items-center gap-3 rounded-xl border bg-card px-3.5 py-3 ${
@@ -395,7 +473,6 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                         </AppLink>
                       );
                     })}
-                    <GuestCard />
                   </>
                 ) : (
                   <Notice>Pick an available date to see start times.</Notice>

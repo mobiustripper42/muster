@@ -8,6 +8,7 @@ import { asId } from "../domain/ids.js";
 import type { VirtualSlot } from "./availability.js";
 import {
   boatsOpenLabel,
+  bookHref,
   buildMonthCalendar,
   buildSlotRows,
   dayState,
@@ -16,7 +17,9 @@ import {
   formatDuration,
   formatShortDay,
   guestPricing,
+  offeringCapacities,
   offeringCapacity,
+  offeringMinCapacity,
   shiftMonth,
   shortClock,
   weekdaySun0,
@@ -73,22 +76,41 @@ describe("boatsOpenLabel", () => {
 describe("dayState", () => {
   const today = "2026-07-10";
   it("is off for a past day even with availability", () => {
-    expect(dayState([slot({ date: "2026-07-05" })], "2026-07-05", today)).toBe("off");
+    expect(dayState([slot({ date: "2026-07-05" })], "2026-07-05", today, 1)).toBe("off");
   });
   it("is off when no slots exist", () => {
-    expect(dayState([], "2026-07-18", today)).toBe("off");
+    expect(dayState([], "2026-07-18", today, 1)).toBe("off");
   });
   it("is avail when any slot is available", () => {
-    expect(dayState([slot({ status: "booked" }), slot({ status: "available" })], "2026-07-18", today)).toBe("avail");
+    expect(dayState([slot({ status: "booked" }), slot({ status: "available" })], "2026-07-18", today, 1)).toBe("avail");
   });
   it("is soldout when slots exist but none are available", () => {
-    expect(dayState([slot({ status: "booked" }), slot({ status: "blocked" })], "2026-07-18", today)).toBe("soldout");
+    expect(dayState([slot({ status: "booked" }), slot({ status: "blocked" })], "2026-07-18", today, 1)).toBe("soldout");
+  });
+
+  // #715. The three not-bookable reasons are NOT interchangeable to the customer: "nothing runs
+  // that day", "it's taken", and "your party doesn't fit on anything here" are three different
+  // answers, and collapsing the third into either of the others is the Xola behaviour the
+  // operator named ("never show a customer something they cannot buy").
+  it("is toobig when every boat that day is free but none fits the party", () => {
+    const slots = [slot({ status: "available", capacity: 12 }), slot({ status: "available", capacity: 14 })];
+    expect(dayState(slots, "2026-07-18", today, 15)).toBe("toobig");
+  });
+  it("is soldout, NOT toobig, when a fitting boat exists that day but is taken", () => {
+    // The 16 fits a party of 15 and is booked; the free 12 does not fit. A boat that fits exists
+    // — the customer's problem is availability, not their party size.
+    const slots = [slot({ status: "available", capacity: 12 }), slot({ status: "booked", capacity: 16 })];
+    expect(dayState(slots, "2026-07-18", today, 15)).toBe("soldout");
+  });
+  it("is avail when the fitting boat is the one that is free", () => {
+    const slots = [slot({ status: "booked", capacity: 12 }), slot({ status: "available", capacity: 16 })];
+    expect(dayState(slots, "2026-07-18", today, 15)).toBe("avail");
   });
 });
 
 describe("buildMonthCalendar", () => {
   it("pads leading blanks to the Sunday-first weekday and labels the month", () => {
-    const cal = buildMonthCalendar(2026, 7, new Map(), null, "2026-07-01");
+    const cal = buildMonthCalendar(2026, 7, new Map(), null, "2026-07-01", 1);
     expect(cal.label).toBe("July 2026");
     // Jul 1 2026 is a Wednesday → 3 leading blanks.
     expect(cal.days.slice(0, 3).every((d) => d.state === "blank" && d.day === null)).toBe(true);
@@ -97,7 +119,7 @@ describe("buildMonthCalendar", () => {
   });
   it("marks the selected day selected, overriding its availability", () => {
     const byDate = new Map([["2026-07-18", [slot({ date: "2026-07-18" })]]]);
-    const cal = buildMonthCalendar(2026, 7, byDate, "2026-07-18", "2026-07-01");
+    const cal = buildMonthCalendar(2026, 7, byDate, "2026-07-18", "2026-07-01", 1);
     expect(cal.days.find((d) => d.date === "2026-07-18")?.state).toBe("selected");
   });
   it("reflects avail / soldout / off per day", () => {
@@ -105,7 +127,7 @@ describe("buildMonthCalendar", () => {
       ["2026-07-18", [slot({ date: "2026-07-18", status: "available" })]],
       ["2026-07-19", [slot({ date: "2026-07-19", status: "booked" })]],
     ]);
-    const cal = buildMonthCalendar(2026, 7, byDate, null, "2026-07-01");
+    const cal = buildMonthCalendar(2026, 7, byDate, null, "2026-07-01", 1);
     expect(cal.days.find((d) => d.date === "2026-07-18")?.state).toBe("avail");
     expect(cal.days.find((d) => d.date === "2026-07-19")?.state).toBe("soldout");
     expect(cal.days.find((d) => d.date === "2026-07-20")?.state).toBe("off");
@@ -114,12 +136,15 @@ describe("buildMonthCalendar", () => {
 
 describe("buildSlotRows", () => {
   it("collapses per-vessel slots to one row per time with a boats-open count", () => {
-    const rows = buildSlotRows([
-      slot({ time: "13:30", vesselId: V("a"), status: "available", priceCents: 54900, capacity: 16 }),
-      slot({ time: "13:30", vesselId: V("b"), status: "available", priceCents: 52900, capacity: 12 }),
-      slot({ time: "13:30", vesselId: V("c"), status: "booked", priceCents: 40000, capacity: 40 }),
-      slot({ time: "11:30", vesselId: V("a"), status: "available", priceCents: 49900 }),
-    ]);
+    const rows = buildSlotRows(
+      [
+        slot({ time: "13:30", vesselId: V("a"), status: "available", priceCents: 54900, capacity: 16 }),
+        slot({ time: "13:30", vesselId: V("b"), status: "available", priceCents: 52900, capacity: 12 }),
+        slot({ time: "13:30", vesselId: V("c"), status: "booked", priceCents: 40000, capacity: 40 }),
+        slot({ time: "11:30", vesselId: V("a"), status: "available", priceCents: 49900 }),
+      ],
+      1,
+    );
     expect(rows.map((r) => r.time)).toEqual(["11:30", "13:30"]); // time-sorted
     const midday = rows.find((r) => r.time === "13:30")!;
     expect(midday.boatsOpen).toBe(2);
@@ -128,11 +153,77 @@ describe("buildSlotRows", () => {
     expect(midday.soldOut).toBe(false);
   });
   it("still lists a fully-taken time as sold out, priced from all its boats", () => {
-    const rows = buildSlotRows([
-      slot({ time: "15:30", vesselId: V("a"), status: "booked", priceCents: 54900, capacity: 16 }),
-      slot({ time: "15:30", vesselId: V("b"), status: "blocked", priceCents: 51900, capacity: 12 }),
-    ]);
+    const rows = buildSlotRows(
+      [
+        slot({ time: "15:30", vesselId: V("a"), status: "booked", priceCents: 54900, capacity: 16 }),
+        slot({ time: "15:30", vesselId: V("b"), status: "blocked", priceCents: 51900, capacity: 12 }),
+      ],
+      1,
+    );
     expect(rows[0]).toMatchObject({ time: "15:30", boatsOpen: 0, soldOut: true, priceCents: 51900, capacity: 16 });
+  });
+
+  // #715 — the row is where "2 boats open" stops being true for THIS customer.
+  it("counts, prices and caps from the boats that fit the party", () => {
+    const rows = buildSlotRows(
+      [
+        slot({ time: "13:30", vesselId: V("a"), status: "available", priceCents: 52900, capacity: 12 }),
+        slot({ time: "13:30", vesselId: V("b"), status: "available", priceCents: 58900, capacity: 16 }),
+      ],
+      14,
+    );
+    // The 12 is free but cannot take 14 — quoting "2 boats open" at $529 is the lie.
+    expect(rows[0]).toMatchObject({ boatsOpen: 1, priceCents: 58900, capacity: 16, fits: true, soldOut: false });
+  });
+  it("marks a time whose open boats are all too small as not-fitting, distinct from sold out", () => {
+    const rows = buildSlotRows(
+      [
+        slot({ time: "13:30", vesselId: V("a"), status: "available", priceCents: 52900, capacity: 12 }),
+        slot({ time: "13:30", vesselId: V("b"), status: "available", priceCents: 51900, capacity: 14 }),
+      ],
+      15,
+    );
+    expect(rows[0]).toMatchObject({ boatsOpen: 0, fits: false, soldOut: false });
+  });
+  /**
+   * The boat the party will actually be put on — the SMALLEST that fits, matching
+   * `candidateVessels`' claim order (DEC-109: preserve big hulls for big parties).
+   *
+   * `capacity` is the departure's ceiling and `boatCapacity` is the hull you get, and conflating
+   * them told a party of 12 on a 12/14/16 offering "16 guests included" — a number describing a
+   * boat the claim would have handed to someone else.
+   */
+  it("reports the boat the party will be assigned, not just the departure's ceiling", () => {
+    const boats = [
+      slot({ time: "13:30", vesselId: V("a"), status: "available", capacity: 12 }),
+      slot({ time: "13:30", vesselId: V("b"), status: "available", capacity: 14 }),
+      slot({ time: "13:30", vesselId: V("c"), status: "available", capacity: 16 }),
+    ];
+    expect(buildSlotRows(boats, 12)[0]).toMatchObject({ boatCapacity: 12, capacity: 16 });
+    expect(buildSlotRows(boats, 13)[0]).toMatchObject({ boatCapacity: 14, capacity: 16 });
+    expect(buildSlotRows(boats, 15)[0]).toMatchObject({ boatCapacity: 16, capacity: 16 });
+  });
+  it("skips a fitting boat that is taken when naming the assigned hull", () => {
+    const rows = buildSlotRows(
+      [
+        slot({ time: "13:30", vesselId: V("a"), status: "booked", capacity: 12 }),
+        slot({ time: "13:30", vesselId: V("b"), status: "available", capacity: 14 }),
+      ],
+      10,
+    );
+    // The 12 fits and is gone, so the party lands on the 14 — not "included: 12".
+    expect(rows[0]).toMatchObject({ boatCapacity: 14, capacity: 14 });
+  });
+
+  it("is sold out rather than not-fitting when the boat that fits is taken", () => {
+    const rows = buildSlotRows(
+      [
+        slot({ time: "13:30", vesselId: V("a"), status: "booked", priceCents: 58900, capacity: 16 }),
+        slot({ time: "13:30", vesselId: V("b"), status: "booked", priceCents: 52900, capacity: 12 }),
+      ],
+      15,
+    );
+    expect(rows[0]).toMatchObject({ boatsOpen: 0, fits: false, soldOut: true });
   });
 });
 
@@ -193,5 +284,57 @@ describe("offeringCapacity", () => {
   });
   it("is 0 when the offering has no vessels", () => {
     expect(offeringCapacity({ vesselIds: [] }, vessels)).toBe(0);
+  });
+});
+
+describe("offeringMinCapacity / offeringCapacities", () => {
+  // The real BrewBoat spread (resource-map.ts): 12, 14, 16. Nothing in the UI hardcodes these —
+  // the stepper's floor, default and ceiling are all read off whatever boats the offering has.
+  const vessels: Vessel[] = [
+    { id: V("v1"), coiMaxPax: 14 } as Vessel,
+    { id: V("v2"), coiMaxPax: 12 } as Vessel,
+    { id: V("v3"), coiMaxPax: 16 } as Vessel,
+    { id: V("v4"), coiMaxPax: 12 } as Vessel,
+  ];
+  const all = [V("v1"), V("v2"), V("v3"), V("v4")];
+
+  it("lists the distinct caps ascending, deduped", () => {
+    expect(offeringCapacities({ vesselIds: all }, vessels)).toEqual([12, 14, 16]);
+  });
+  it("is the smallest COI cap among the offering's vessels", () => {
+    expect(offeringMinCapacity({ vesselIds: all }, vessels)).toBe(12);
+    // A different offering, a different floor — the number is the boats', not the fleet's.
+    expect(offeringMinCapacity({ vesselIds: [V("v1"), V("v3")] }, vessels)).toBe(14);
+  });
+  it("is 0 when the offering has no vessels", () => {
+    expect(offeringMinCapacity({ vesselIds: [] }, vessels)).toBe(0);
+    expect(offeringCapacities({ vesselIds: [] }, vessels)).toEqual([]);
+  });
+});
+
+// The URL is the work (#715): guests filter the calendar, so the SERVER needs the count, so it
+// has to survive every date, time and month navigation the way `date` already does. Extracted
+// from page.tsx so that carry is asserted rather than eyeballed across six link sites.
+describe("bookHref", () => {
+  it("omits every empty axis so the landing URL stays clean", () => {
+    expect(bookHref({})).toBe("/book");
+  });
+  it("carries the guest count alongside the other axes", () => {
+    expect(bookHref({ offering: "off-1", date: "2026-07-18", time: "13:30", guests: 14 })).toBe(
+      "/book?offering=off-1&date=2026-07-18&time=13%3A30&guests=14",
+    );
+  });
+  it("keeps guests when only the date changes — a day cell must not drop the party size", () => {
+    expect(bookHref({ offering: "off-1", date: "2026-07-19", guests: 14 })).toBe(
+      "/book?offering=off-1&date=2026-07-19&guests=14",
+    );
+  });
+  it("keeps guests when only the month changes — a pager must not drop it either", () => {
+    expect(bookHref({ offering: "off-1", date: "2026-08-01", guests: 16 })).toBe(
+      "/book?offering=off-1&date=2026-08-01&guests=16",
+    );
+  });
+  it("omits guests when unset, so the first visit inherits the offering's default", () => {
+    expect(bookHref({ offering: "off-1", date: "2026-07-18" })).toBe("/book?offering=off-1&date=2026-07-18");
   });
 });

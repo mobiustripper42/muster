@@ -103,10 +103,19 @@ try {
   const customers = await repo.listCustomers();
   console.log(`✓ Seeded reservation demo world (db: ${new URL(url).host}).`);
   console.log(`  customers ${customers.length} (${customers.map((c) => `${c.name} ${c.displayCode}`).join(", ")})`);
-  console.log(`  offering  ${world.offering.id}  (LIVE, ${demo.departureTimes.join("/")}, ${demo.vesselName})`);
-  console.log(`  window    ${demo.vesselName}  ${demo.window.start} … ${demo.window.end}`);
-  for (const b of demo.bookings) {
-    console.log(`  booked    ${b.date} ${b.time}  ${b.customerName} · ${b.partySize} guests · $${(b.priceCents / 100).toFixed(2)}`);
+  console.log(`  offering  ${world.offering.id}  (LIVE, ${demo.departureTimes.join("/")})`);
+  // Printed because the guest filter is only testable against boats of DIFFERENT sizes (#715),
+  // and "which boats, at what capacity" is the first thing a hand-test needs to know.
+  console.log(`  boats     ${demo.fleet.map((f) => `${f.name} (${f.coiMaxPax})`).join(", ")}  — the block suggestions below are ${demo.vesselName}'s`);
+  console.log(`  window    ${demo.window.start} … ${demo.window.end}`);
+  // Sorted and boat-labelled: the big-party fixtures (#715) put two hulls in one departure, and
+  // "which boat" is the whole question a guest-count hand-test is asking.
+  const boatName = (id: string | undefined) =>
+    demo.fleet.find((f) => f.vesselId === (id ?? demo.vesselId))?.name ?? "?";
+  for (const b of [...demo.bookings].sort((a, z) => `${a.date}${a.time}`.localeCompare(`${z.date}${z.time}`))) {
+    console.log(
+      `  booked    ${b.date} ${b.time}  ${boatName(b.vesselId).padEnd(6)} ${String(b.partySize).padStart(2)} guests  $${(b.priceCents / 100).toFixed(2).padStart(7)}  ${b.customerName}`,
+    );
   }
   console.log("");
   console.log("Customer booking links (#741):");

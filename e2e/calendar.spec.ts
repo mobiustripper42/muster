@@ -17,6 +17,7 @@ import {
   resetAndSeed,
   signInAsAdmin,
 } from "./fixtures.js";
+import type { Page } from "@playwright/test";
 import { shortTime as shortLabel } from "../src/reservations/calendar-grid.js";
 import { xolaFixture } from "../src/reservations/seed-xola.js";
 import {
@@ -31,6 +32,18 @@ import {
 
 /** The xola fixture's days, derived from the SAME clock read the seed subprocess gets (#646). */
 const XOLA = xolaFixture(TODAY);
+
+/**
+ * An OPEN card on the demo offering's primary boat at `time`.
+ *
+ * Scoped to the vessel since #715. That offering carried one hull when this file was written, so
+ * `getByText("open · 3:30")` matched exactly one card and read as "the departure is on sale". It
+ * now carries three, so the bare matcher resolves to one card per boat and trips strict mode —
+ * and the fix is not `.first()`, which would silently stop caring WHICH boat. Every booking,
+ * block and cancellation in this file is on Brew 3; the assertions are about that hull.
+ */
+const openAt = (page: Page, time: string) =>
+  page.locator(`[data-testid="cal-block"][data-vessel="${DEMO.vesselId}"]`).filter({ hasText: `open · ${time}` });
 
 test.describe("admin /admin/calendar", () => {
   test.beforeEach(async () => {
@@ -51,14 +64,14 @@ test.describe("admin /admin/calendar", () => {
     await expect(booked).toContainText("8");
 
     // The offering's other two departures show as OPEN blocks (15:30, 17:30).
-    await expect(page.getByText("open · 3:30")).toBeVisible();
-    await expect(page.getByText("open · 5:30")).toBeVisible();
+    await expect(openAt(page, "3:30")).toBeVisible();
+    await expect(openAt(page, "5:30")).toBeVisible();
 
     // Filter → Booked: opens vanish, the booking stays.
     await page.getByTestId("filter-booked").click();
     await page.waitForURL(/filter=booked/);
-    await expect(page.getByText("open · 3:30")).toHaveCount(0);
-    await expect(page.getByText("open · 5:30")).toHaveCount(0);
+    await expect(openAt(page, "3:30")).toHaveCount(0);
+    await expect(openAt(page, "5:30")).toHaveCount(0);
     await expect(page.getByTestId("cal-block").filter({ hasText: "Marcus Webb" })).toBeVisible();
   });
 
@@ -195,27 +208,32 @@ test.describe("admin /admin/calendar", () => {
     const slotBlock = page.locator('[data-testid="cal-block"][data-blocked-by="slot"]');
 
     // 3:30 is open (the offering's second departure; nobody has taken it).
-    await expect(page.getByText(`open · ${shortLabel(OPEN_TIME)}`)).toBeVisible();
+    await expect(openAt(page, shortLabel(OPEN_TIME))).toBeVisible();
 
     // Clicking it asks first — a misclick on a busy grid must not silently unsell a departure.
-    await page.getByText(`open · ${shortLabel(OPEN_TIME)}`).click();
+    await openAt(page, shortLabel(OPEN_TIME)).click();
     const confirm = page.getByTestId("hold-confirm");
     await expect(confirm).toBeVisible();
     await expect(confirm).toContainText("Brew 3");
     await expect(confirm).toContainText(shortLabel(OPEN_TIME));
     // Still on sale until the second click — the confirm is a question, not a receipt.
-    await expect(page.getByText(`open · ${shortLabel(OPEN_TIME)}`)).toBeVisible();
+    await expect(openAt(page, shortLabel(OPEN_TIME))).toBeVisible();
 
     await confirm.getByRole("button", { name: "Block it" }).click();
     await expect(page.getByTestId("hold-confirm")).toHaveCount(0);
-    await expect(page.getByText(`open · ${shortLabel(OPEN_TIME)}`)).toHaveCount(0);
+    await expect(openAt(page, shortLabel(OPEN_TIME))).toHaveCount(0);
     await expect(slotBlock).toBeVisible();
     await expect(slotBlock).toContainText("Blocked");
     // The chip's COUNT, not just its label. Renaming this chip dropped the number once already
     // — the lookup was cast to `keyof typeof counts`, so the stale key read `undefined` and
     // rendered as nothing. A label-only assertion would have passed through that.
     await expect(page.getByTestId("filter-blocked")).toHaveText("Blocked 1");
-    await expect(page.getByTestId("filter-open")).toHaveText("Open 1");
+    // Derived, not typed. This read "Open 1" while the offering had one boat and three
+    // departures, two of them free — a literal that was only ever right by coincidence of the
+    // fixture's shape, and #715's third hull turned it into an arbitrary 7. Spelling out the
+    // arithmetic means the next fleet change moves the number instead of reddening the chip.
+    const openSlots = DEMO.fleet.length * DEMO.departureTimes.length - 1 /* Marcus */ - 1 /* just blocked */;
+    await expect(page.getByTestId("filter-open")).toHaveText(`Open ${openSlots}`);
 
     // One block family, one list: the registry renders the row it already knew how to render.
     await page.goto("/admin/blocks?kind=slot");
@@ -237,7 +255,7 @@ test.describe("admin /admin/calendar", () => {
     await expect(release).toContainText("back on sale");
     await release.getByRole("button", { name: "Unblock it" }).click();
 
-    await expect(page.getByText(`open · ${shortLabel(OPEN_TIME)}`)).toBeVisible();
+    await expect(openAt(page, shortLabel(OPEN_TIME))).toBeVisible();
     await expect(slotBlock).toHaveCount(0);
   });
 
@@ -346,7 +364,7 @@ test.describe("admin reservation actions (#616)", () => {
     await expect(
       page.getByTestId("cal-block").filter({ hasText: "Marcus Webb" }),
     ).toHaveCount(0);
-    await expect(page.getByText(`open · ${shortLabel(BOOKED.time)}`)).toBeVisible();
+    await expect(openAt(page, shortLabel(BOOKED.time))).toBeVisible();
   });
 
   test("the two cancellation quotes differ by the fee, and no copy points at a position", async ({
@@ -789,7 +807,7 @@ test.describe("admin reservation actions (#616)", () => {
     await expect(page.getByTestId("action-done")).toContainText("No refund was sent");
     // The boat is free regardless — that half never depended on the money.
     await page.goto(`/admin/calendar?date=${BOOKED.date}`);
-    await expect(page.getByText(`open · ${shortLabel(BOOKED.time)}`)).toBeVisible();
+    await expect(openAt(page, shortLabel(BOOKED.time))).toBeVisible();
   });
 
   test("a resend that sent nothing says so, instead of a green Sent (#686)", async ({ page }) => {
@@ -846,7 +864,7 @@ test.describe("admin reservation actions (#616)", () => {
     // Repaired: the slot is back on sale and the repair prompt is gone.
     await expect(page.getByTestId("release-repair")).toHaveCount(0);
     await page.goto(`/admin/calendar?date=${BOOKED.date}`);
-    await expect(page.getByText(`open · ${shortLabel(BOOKED.time)}`)).toBeVisible();
+    await expect(openAt(page, shortLabel(BOOKED.time))).toBeVisible();
   });
 
   test("resend is offered when there is somewhere to send, and reports back", async ({ page }) => {

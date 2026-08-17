@@ -49,32 +49,47 @@ test.describe("imported Xola trips", () => {
     await expect(brew3.filter({ hasText: "open · 1:30" })).toHaveCount(0);
     // …while the boats with no import that hour DO read open. Without this the assertion above
     // would still pass on a calendar that had stopped drawing open slots entirely.
+    //
+    // Deliberately not an exact count. Brew 1 joined the demo offering in #715 and the fleet
+    // offering already sold it at 1:30, so two offerings now draw an open card on one hull —
+    // that is issue #702, stacked open slots, and it is not this test's subject. Pinning the
+    // number here would make a bug's current symptom load-bearing for an unrelated regression
+    // test, and #702's fix would redden the wrong file.
     const brew1 = page.locator('[data-testid="cal-block"][data-vessel="vessel-brew-1"]');
-    await expect(brew1.filter({ hasText: "open · 1:30" })).toHaveCount(1);
+    await expect(brew1.filter({ hasText: "open · 1:30" })).not.toHaveCount(0);
   });
 
+  /**
+   * **Read as "Brew 3 left the funnel", not "the day sold out".** The demo offering carried one
+   * boat when this file was written, so an import on Brew 3 emptied its departures outright and
+   * the assertion could be the word "Sold out". #715 attached Brew 1 and Brew 2 to that offering,
+   * so the same import now removes ONE hull of three. The subject is unchanged — an occupied hull
+   * must not be advertised — and the boat count is a sharper signal than the sold-out word ever
+   * was: it fails if the import removes nothing AND if it removes too much.
+   */
   test("an overlapping import takes out departures it does not sit on (#691)", async ({ page }) => {
     // 14:00 + 100min covers 15:30, and 13:30 + 100 reaches into it. Neither is the trip's own
     // slot identity — the shape the exact-triple guard could not see.
     await page.goto(bookHref(FX.days.overlapping));
 
-    await expect(page.getByTestId("slot-13:30")).toContainText("Sold out");
-    await expect(page.getByTestId("slot-15:30")).toContainText("Sold out");
-    await expect(page.getByTestId("slot-17:30")).not.toContainText("Sold out");
+    await expect(page.getByTestId("slot-13:30")).toContainText("2 boats open");
+    await expect(page.getByTestId("slot-15:30")).toContainText("2 boats open");
+    await expect(page.getByTestId("slot-17:30")).toContainText("3 boats open");
   });
 
   test("the clean day sells normally — the control", async ({ page }) => {
     // Without this, every assertion above could pass on a page that shows nothing bookable ever.
     await page.goto(bookHref(FX.days.clean));
-    await expect(page.getByTestId("slot-13:30")).not.toContainText("Sold out");
-    await expect(page.getByTestId("slot-15:30")).not.toContainText("Sold out");
+    await expect(page.getByTestId("slot-13:30")).toContainText("3 boats open");
+    await expect(page.getByTestId("slot-15:30")).toContainText("3 boats open");
   });
 
   test("a cancelled import releases the boat", async ({ page }) => {
     await page.goto(bookHref(FX.days.cancelled));
-    // 15:30 carries a CANCELLED import and two live trips that leave it in a gap.
-    await expect(page.getByTestId("slot-15:30")).not.toContainText("Sold out");
-    await expect(page.getByTestId("slot-13:30")).toContainText("Sold out"); // the live one still blocks
+    // 15:30 carries a CANCELLED import and two live trips that leave it in a gap — all three
+    // hulls are sellable there.
+    await expect(page.getByTestId("slot-15:30")).toContainText("3 boats open");
+    await expect(page.getByTestId("slot-13:30")).toContainText("2 boats open"); // the live one still blocks
   });
 
   test("the Booked badge counts exactly the cards on the board", async ({ page }) => {

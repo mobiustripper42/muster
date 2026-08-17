@@ -441,7 +441,11 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                                     : "text-faint"
                             }`}
                           >
-                            {!r.soldOut && !r.fits ? `Takes ${r.capacity}` : label.text}
+                            {/* "12 max", not "Takes 12" (operator, 2026-08-16) — this sits in the
+                                same column as "1 boat left", so it reads as a status, and a limit
+                                is what it is. No seat word (DEC-125): the number is the boat's
+                                whole-boat capacity, not a count of anything for sale. */}
+                            {!r.soldOut && !r.fits ? `${r.capacity} max` : label.text}
                           </span>
                           <span className="ml-auto font-mono text-sm font-semibold">{formatCents(r.priceCents)}</span>
                         </>

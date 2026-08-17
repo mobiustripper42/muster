@@ -111,7 +111,7 @@ test.describe("public /book availability", () => {
     // and too small. The departure list says which of the two problems it is.
     await page.goto(`${BOOKED_DAY}&guests=15`);
     await expect(page.getByText(`Nothing on`)).toBeVisible();
-    await expect(page.getByTestId("slot-15:30")).toContainText("Takes 14");
+    await expect(page.getByTestId("slot-15:30")).toContainText("14 max");
     await expect(page.getByTestId("slot-15:30")).not.toContainText("Sold out");
 
     // The legend names the party size it is filtering by, so the marked days are legible.

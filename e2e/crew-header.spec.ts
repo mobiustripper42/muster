@@ -231,14 +231,22 @@ test.describe("crew header (#644)", () => {
       await summary.click();
       await expect(dialog).toBeVisible();
       // Focus moved into the panel, so the next Tab walks the menu rather than an inert page.
-      expect(await page.evaluate(() => document.activeElement?.tagName)).toBe("A");
+      //
+      // `toBeFocused` POLLS; `page.evaluate(() => document.activeElement)` reads once (#742). The
+      // panel becoming visible and focus arriving in it are two different moments: `<details>`
+      // flips `open` and paints synchronously, but the focus move lives in a `toggle` listener
+      // (`components/crew/crew-menu-modal.tsx:67-75`) and `toggle` is QUEUED as a task. So a
+      // single read after `toBeVisible()` legitimately catches `SUMMARY` — the control just
+      // clicked — and did, on 6 of 20 local runs. A human's next keystroke is many task-queue
+      // turns later, so this is a test race, not a product one.
+      await expect(dialog.getByRole("link").first()).toBeFocused();
 
       await page.keyboard.press("Escape");
-      // …and came back to the control that opened it, not to <body>.
-      const back = await page.evaluate(() =>
-        document.activeElement?.getAttribute("aria-label"),
-      );
-      expect(back).toBe("Open menu");
+      // …and came back to the control that opened it, not to <body>. `close()` focuses the
+      // summary synchronously, so this one has never been seen to flake — but it is the same
+      // single-read shape, and the reason it is safe today is a detail of the handler rather
+      // than anything the test states. Polling costs nothing and stops it depending on that.
+      await expect(summary).toBeFocused();
     });
   });
 

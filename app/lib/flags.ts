@@ -1,6 +1,11 @@
 /**
  * Feature flags (env-driven). One place so the gate reads the same everywhere.
  *
+ * **Every flag is on for `1` and nothing else** (#736). `RESERVATIONS` used to test `=== "true"`
+ * while its three siblings tested `=== "1"`, so `RESERVATIONS=1` read false and turned the booking
+ * flow off with no error and no warning. Read the value through `flagOn` — a flag hand-spelled
+ * against `process.env` is how the asymmetry got in.
+ *
  * `CREW_SELF_SERVE` (DEC-081, DEC-059): the crew code-login front door. OFF by
  * default so `main` stays promotable to production at all times — until 7.0b
  * wires real email delivery (Resend on a DKIM-verified `crew.brewcle.com`), a
@@ -8,8 +13,12 @@
  * login. Flip it on (set the env var) once delivery is real. e2e turns it on to
  * exercise the flow against the fake channel.
  */
+function flagOn(name: string): boolean {
+  return process.env[name] === "1";
+}
+
 export function selfServeEnabled(): boolean {
-  return process.env.CREW_SELF_SERVE === "1";
+  return flagOn("CREW_SELF_SERVE");
 }
 
 /**
@@ -22,7 +31,7 @@ export function selfServeEnabled(): boolean {
  * `MESSAGING=1` to restore the whole feature. e2e sets it on to keep exercising it.
  */
 export function messagingEnabled(): boolean {
-  return process.env.MESSAGING === "1";
+  return flagOn("MESSAGING");
 }
 
 /**
@@ -31,17 +40,13 @@ export function messagingEnabled(): boolean {
  * DEC-111's whole point is that money must not reach production until one real paid
  * reservation has validated end to end.
  *
- * Note the value is `"true"`, not the `"1"` its two siblings above use. That asymmetry predates
- * this function and is left alone deliberately: it is already set in deployed environments, and
- * changing the accepted value would silently turn the feature off on a deploy nobody re-read.
- *
  * This function exists because the predicate was hand-spelled at five call sites (#588). That is
  * the same shape as the auth-sweep defect where `dev-link` carried its own copy of the
  * production kill-switch while two other files imported the shared one — two spellings of one
  * guard, and only one of them ever gets fixed.
  */
 export function reservationsEnabled(): boolean {
-  return process.env.RESERVATIONS === "true";
+  return flagOn("RESERVATIONS");
 }
 
 /**
@@ -58,7 +63,7 @@ export function reservationsEnabled(): boolean {
  * kill switch that doesn't kill anything. Every entry point below 404s, not just un-links.
  */
 export function timeClockEnabled(): boolean {
-  return process.env.TIME_CLOCK === "1";
+  return flagOn("TIME_CLOCK");
 }
 
 /**

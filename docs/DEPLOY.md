@@ -44,12 +44,12 @@ importing**. These are read by the code and were never backfilled here:
 
 | Var | Where it comes from | Used for |
 |-----|---------------------|----------|
-| `CREW_SELF_SERVE` | **you set it** — `"1"` to enable | **The crew code-login front door** (`app/lib/flags.ts`, DEC-081). **OFF by default** so `main` stays promotable — so production must set it explicitly or crew cannot sign in at all |
+| `CREW_SELF_SERVE` | **you set it** — `1` to enable | **The crew code-login front door** (`app/lib/flags.ts`, DEC-081). **OFF by default** so `main` stays promotable — so production must set it explicitly or crew cannot sign in at all |
 | `XOLA_API_KEY`, `XOLA_SELLER_ID` | **you set them** — from Xola | **The reservation import** (DEC-036/043). Unset ⇒ `/admin/import` refuses with "Xola isn't configured on this server … nothing was pulled". There is no scheduled pull — every import is the operator pressing "Pull from Xola now" |
 | `XOLA_API_BASE`, `XOLA_API_VERSION` | optional — defaults in `src/import/xola-client.ts` | Xola endpoint pinning; leave unset unless Xola moves |
 | `RESEND_API_KEY`, `EMAIL_FROM` | **you set them** | Email delivery — the 6-digit login code has no way out without them (DEC-081) |
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM`, `TWILIO_MESSAGING_SERVICE_SID` | you set them, **if** using SMS | The Twilio channel adapter (DEC-MSG-1). Omit to stay on the operator-relay outbox |
-| `MESSAGING` | optional — off unless set | Gates `/admin/messages`, `/crew/threads` and the doorbell (`app/lib/flags.ts`) |
+| `MESSAGING` | optional — off unless set; `1` to enable | Gates `/admin/messages`, `/crew/threads` and the doorbell (`app/lib/flags.ts`). **Never set it to `false`** — see the traps |
 | `TENANT_ID`, `TENANT_NAME` | optional — defaults in `app/lib/tenant.ts` | Tenant identity + admin-nav label |
 | `PICKUP_LOCATION`, `PICKUP_MAP_URL` | you set them | The dock pin on the crew shift card — a SPEC §2.6.3 binding constraint |
 | `PAY_PERIOD_ANCHOR` | optional — has a default | Pay-period boundary math |
@@ -68,7 +68,7 @@ invisible or unable to take money**.
 
 | Var | Where it comes from | Used for |
 |-----|---------------------|----------|
-| `RESERVATIONS` | **you set it** — the literal string `true` | The customer flow: `/book`, checkout, the manage page (`app/lib/flags.ts:44`, DEC-111). **OFF by default** so `main` stays promotable. **Tests `=== "true"`, not `=== "1"`** — see the traps below |
+| `RESERVATIONS` | **you set it** — `1` | The customer flow: `/book`, checkout, the manage page (`app/lib/flags.ts`, DEC-111). **OFF by default** so `main` stays promotable |
 | `STRIPE_SECRET_KEY` | **you set it** — Stripe dashboard, live mode | Every server-side Stripe call |
 | `STRIPE_WEBHOOK_SECRET` | **you set it** — the signing secret of *this deployment's* endpoint | Verifying webhook signatures **and gating checkout** — see the traps |
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | **you set it** — Stripe dashboard, live mode | The inline Payment Element (DEC-134). **Build-inlined** — see the traps |
@@ -102,15 +102,15 @@ so setting it on a running deployment changes nothing **until a rebuild**. It fa
 checkout page renders a red "Checkout is not configured" card rather than a broken Element
 (`app/(public)/book/checkout/page.tsx:180`) — but the fix is a redeploy, not a var edit.
 
-**3. The flags disagree about what "on" looks like.** `RESERVATIONS` tests `=== "true"`;
-`CREW_SELF_SERVE`, `MESSAGING` and `TIME_CLOCK` all test `=== "1"` (`app/lib/flags.ts:12,25,44,61`).
-**`RESERVATIONS=1` leaves the entire customer flow silently off.**
-
-`MESSAGING` is worse, because it is read in two places with different rules:
-`messagingEnabled()` is `=== "1"`, but `app/lib/booking-confirmation.ts:29` treats
-`MESSAGING === "false"` as a hard kill for confirmation sends. So **`MESSAGING=0` leaves booking
-confirmations ON**, and **`MESSAGING=false` silently kills them** while `messagingEnabled()` reads
-off either way. Set it to `1` or leave it unset; never `0` or `false`.
+**3. `MESSAGING` is read two ways, and they disagree (issue #761).** Every flag is now on for `1`
+and nothing else, through one helper (`flagOn`, `app/lib/flags.ts`, #736) — that half of this trap
+is gone. What remains is `MESSAGING` specifically: `messagingEnabled()` asks whether it is **on**,
+but `app/lib/booking-confirmation.ts:31,103`, `app/lib/sold-out-notice.ts:20` and
+`app/b/find/actions.ts:40` separately treat `MESSAGING === "false"` as a hard kill for booking
+confirmation and sold-out sends. Those are different questions of the same variable, so
+**`MESSAGING=0` leaves booking confirmations ON** and **`MESSAGING=false` silently kills them**
+while `messagingEnabled()` reads off either way. Set it to `1`, or leave it unset; never `0` or
+`false`.
 
 ---
 

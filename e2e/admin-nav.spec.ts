@@ -68,7 +68,7 @@ test.describe("admin nav", () => {
     // `max-w-3xl` container, and rendered straight on top of `Muster · BrewBoat · Tue, Jul 28 ·
     // Crew view`. Nothing asserted nav layout, so it shipped and was found by clicking.
     //
-    // e2e runs with RESERVATIONS=true and MESSAGING=1, so all thirteen entries render here —
+    // e2e runs with RESERVATIONS=1 and MESSAGING=1, so all thirteen entries render here —
     // strictly worse than any real deployment, which is what makes this the right place to pin it.
     //
     // Measured against the brand CLUSTER, not against "Crew view" — that button was the cluster's

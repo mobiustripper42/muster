@@ -15,22 +15,18 @@
 
 import { describe, expect, it } from 'vitest'
 import {
-  RELATIONS,
   TOPICS,
-  banner,
   compareDecisionIds,
   parseFrontmatter,
   rank,
   referencePattern,
   renderDecision,
   renderSpec,
-  reverseGraph,
   sectionNumber,
   specSections,
-  stripBanner,
   stripSpecBlocks,
 } from './gen-decisions-index.mjs'
-import { check, checkAmendmentEdge } from './check-decisions.mjs'
+import { check } from './check-decisions.mjs'
 
 /** A three-family record with the families sitting between DEC-014 and DEC-015 — the shape
  *  a project gets when a side family predates the numeric main line. */
@@ -42,13 +38,6 @@ const fm = `---
 id: DEC-042
 title: "A title with \\"quotes\\" and: a colon"
 topic: ${JSON.stringify(TOPIC)}
-amends:
-  - id: DEC-020
-    relation: refines
-    scope: "one leg only"
-  - id: DEC-013
-    relation: supersedes
-    scope: ""
 ---
 
 ## DEC-042: A title
@@ -64,12 +53,17 @@ describe('parseFrontmatter', () => {
     expect(meta.topic).toBe(TOPIC)
   })
 
-  it('reads the amends list as objects', () => {
-    const { meta } = parseFrontmatter(fm)
-    expect(meta.amends).toEqual([
-      { id: 'DEC-020', relation: 'refines', scope: 'one leg only' },
-      { id: 'DEC-013', relation: 'supersedes', scope: '' },
-    ])
+  it('rejects a retired `amends:` list rather than parsing it', () => {
+    // DEC-S036 (amended 2026-08-16) retired the DEC→DEC leg. `amends` is no longer a known
+    // list key, so its items have no open list to attach to and the parser throws. That is
+    // the intended migration signal: a record still carrying the old frontmatter fails
+    // loudly on the next gate run instead of having its declarations silently ignored.
+    const stale = fm.replace('---\n\n## DEC-042', '---\n\n## DEC-042')
+    const withAmends = stale.replace(
+      `topic: ${JSON.stringify(TOPIC)}`,
+      `topic: ${JSON.stringify(TOPIC)}\namends:\n  - id: DEC-020\n    relation: refines\n    scope: "one leg only"`,
+    )
+    expect(() => parseFrontmatter(withAmends)).toThrow(/list item outside any list/)
   })
 
   it('returns the body without the frontmatter block', () => {
@@ -83,90 +77,40 @@ describe('parseFrontmatter', () => {
   })
 })
 
-describe('reverseGraph', () => {
-  const decisions = new Map([
-    ['DEC-010', { id: 'DEC-010', amends: [] }],
-    ['DEC-020', { id: 'DEC-020', amends: [{ id: 'DEC-010', relation: 'revises', scope: 'a leg' }] }],
-    ['DEC-030', { id: 'DEC-030', amends: [{ id: 'DEC-010', relation: 'refines', scope: '' }] }],
-  ])
-
-  it('inverts the declared edges onto their targets', () => {
-    const incoming = reverseGraph(decisions)
-    expect(incoming.get('DEC-010')).toEqual([
-      { from: 'DEC-020', relation: 'revises', scope: 'a leg' },
-      { from: 'DEC-030', relation: 'refines', scope: '' },
-    ])
-  })
-
-  it('gives an unamended decision no entry at all', () => {
-    expect(reverseGraph(decisions).has('DEC-020')).toBe(false)
-  })
-})
-
-describe('banner', () => {
-  it('renders the relation as a past participle and carries the scope', () => {
-    const text = banner([{ from: 'DEC-092', relation: 'revises', scope: 'admin is a first-class identity' }])
-    expect(text).toContain('**Revised by DEC-092 — admin is a first-class identity**')
-  })
-
-  it('omits the em-dash when there is no scope', () => {
-    expect(banner([{ from: 'DEC-092', relation: 'revises', scope: '' }])).toContain('**Revised by DEC-092**')
-  })
-
-  it('round-trips through stripBanner, so regenerating is idempotent', () => {
-    const edges = [{ from: 'DEC-092', relation: 'revises', scope: 'x' }]
-    const body = `## DEC-020: Title\n\n${banner(edges)}\n\nReal body text.\n`
-    expect(stripBanner(body)).not.toContain('Revised by')
-    expect(stripBanner(body)).toContain('Real body text.')
-  })
-
-  it('leaves a body with no banner untouched', () => {
-    const body = '## DEC-020: Title\n\nReal body text.\n'
-    expect(stripBanner(body)).toBe(body)
-  })
-})
-
 describe('renderDecision', () => {
   const d = {
     id: 'DEC-020',
     title: 'A title',
     topic: TOPIC,
-    amends: [],
     body: '## DEC-020: A title\n\nOriginal body.\n',
   }
 
-  it('puts the banner directly under the heading, where a Ctrl-F reader lands', () => {
-    const out = renderDecision(d, [{ from: 'DEC-092', relation: 'revises', scope: '' }])
-    const lines = out.split('\n').filter(Boolean)
-    expect(lines.indexOf('## DEC-020: A title')).toBeLessThan(lines.findIndex((l) => l.includes('Revised by')))
-    expect(lines.findIndex((l) => l.includes('Revised by'))).toBeLessThan(lines.indexOf('Original body.'))
+  it('passes the body through untouched — an `## Amendment` section is prose, not output', () => {
+    const amended = {
+      ...d,
+      body: '## DEC-020: A title\n\nOriginal body.\n\n## Amendment, 2026-08-16 (operator) — flipped\n\nWhat changed.\n',
+    }
+    const out = renderDecision(amended)
+    expect(out).toContain('## Amendment, 2026-08-16 (operator) — flipped')
+    expect(out).toContain('Original body.')
   })
 
-  it('is idempotent — regenerating an already-bannered file changes nothing', () => {
-    const edges = [{ from: 'DEC-092', relation: 'revises', scope: 'one leg' }]
-    const once = renderDecision(d, edges)
-    const twice = renderDecision({ ...d, body: parseFrontmatter(once).body }, edges)
+  it('is a fixed point — regenerating rewrites nothing', () => {
+    const once = renderDecision(d)
+    const twice = renderDecision({ ...d, body: parseFrontmatter(once).body })
     expect(twice).toBe(once)
   })
 
-  it('is idempotent when the body has a double blank line of its own', () => {
-    // A global blank-line collapse in stripBanner made the generator a non-fixed-point
-    // here: gen:decisions writes the file, then check:decisions re-generates, collapses
-    // the unrelated gap, and calls the file it just wrote stale — a red build with no
-    // author error to fix.
+  it('is a fixed point when the body has a double blank line of its own', () => {
+    // The old stripBanner collapsed blank lines globally, which made the generator a
+    // non-fixed-point here: gen:decisions wrote the file, check:decisions re-generated,
+    // collapsed the unrelated gap, and called the file it just wrote stale. Nothing
+    // touches the body now, but the guarantee is worth keeping pinned.
     const gappy = { ...d, body: '## DEC-020: A title\n\nFirst para.\n\n\nSecond para, after a wide gap.\n' }
-    const edges = [{ from: 'DEC-092', relation: 'revises', scope: '' }]
-    const once = renderDecision(gappy, edges)
-    const twice = renderDecision({ ...gappy, body: parseFrontmatter(once).body }, edges)
+    const once = renderDecision(gappy)
+    const twice = renderDecision({ ...gappy, body: parseFrontmatter(once).body })
     expect(twice).toBe(once)
     expect(once).toContain('First para.\n\n\nSecond para')
-  })
-
-  it('drops a stale banner when the last edge to a decision is removed', () => {
-    const withBanner = renderDecision(d, [{ from: 'DEC-092', relation: 'revises', scope: '' }])
-    const after = renderDecision({ ...d, body: parseFrontmatter(withBanner).body }, [])
-    expect(after).not.toContain('Revised by')
-    expect(after).toContain('Original body.')
   })
 
   it('escapes quotes in the title so the frontmatter it writes parses back', () => {
@@ -180,10 +124,6 @@ describe('amends_spec parsing', () => {
 id: DEC-061
 title: "A title"
 topic: ${JSON.stringify(TOPIC)}
-amends:
-  - id: DEC-007
-    relation: retires
-    scope: "one leg"
 amends_spec:
   - section: "2.4"
     scope: "the confirm step is gone"
@@ -196,18 +136,16 @@ amends_spec:
 Body.
 `
 
-  it('reads both lists, keyed on the open list rather than the first field', () => {
+  it('reads the list, keyed on the open list key rather than the first field', () => {
     const { meta } = parseFrontmatter(withSpec)
-    expect(meta.amends).toEqual([{ id: 'DEC-007', relation: 'retires', scope: 'one leg' }])
     expect(meta.amends_spec).toEqual([
       { section: '2.4', scope: 'the confirm step is gone' },
       { section: '2.6', scope: 'the acceptance is now automatic' },
     ])
   })
 
-  it('gives a decision with neither list two empty lists, not undefined', () => {
+  it('gives a decision with no list an empty list, not undefined', () => {
     const { meta } = parseFrontmatter('---\nid: DEC-001\ntitle: "T"\ntopic: "X"\n---\n\nBody.\n')
-    expect(meta.amends).toEqual([])
     expect(meta.amends_spec).toEqual([])
   })
 
@@ -217,7 +155,7 @@ Body.
 
   it('round-trips through renderDecision', () => {
     const { meta, body } = parseFrontmatter(withSpec)
-    const out = renderDecision({ ...meta, body }, [])
+    const out = renderDecision({ ...meta, body })
     expect(parseFrontmatter(out).meta.amends_spec).toEqual(meta.amends_spec)
   })
 
@@ -327,32 +265,6 @@ describe('referencePattern', () => {
 
   it('matches an un-hyphenated family when it is declared', () => {
     expect('see DEC-S019'.match(referencePattern({ S: 0 }))).toEqual(['DEC-S019'])
-  })
-})
-
-describe('checkAmendmentEdge', () => {
-  it('passes an amendment pointing at an earlier decision', () => {
-    expect(checkAmendmentEdge('DEC-142', 'DEC-081')).toBeNull()
-  })
-
-  it('catches a numeric amendment pointing forwards, or at itself', () => {
-    expect(checkAmendmentEdge('DEC-081', 'DEC-142')).toMatch(/points backwards/)
-    expect(checkAmendmentEdge('DEC-042', 'DEC-042')).toMatch(/points backwards/)
-  })
-})
-
-describe('vocabulary', () => {
-  it('renders every relation as a distinct past participle', () => {
-    const rendered = Object.values(RELATIONS)
-    expect(new Set(rendered).size).toBe(rendered.length)
-  })
-
-  it('reserves the strike-through for `supersedes` alone', () => {
-    // An audit of 138 decisions found zero fully superseded, so a strike is the rare case.
-    // If a second relation ever earns one, the index renderer's total/partial split has to
-    // change with it.
-    expect(RELATIONS.supersedes).toBe('superseded by')
-    expect(Object.keys(RELATIONS).filter((r) => r === 'supersedes')).toHaveLength(1)
   })
 })
 

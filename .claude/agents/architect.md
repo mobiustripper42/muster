@@ -24,8 +24,9 @@ This file *summarizes* the decisions. It is not the record, and it goes stale. B
 2. Read the decisions. They live one per file in `docs/decisions/DEC-*.md`; `docs/DECISIONS.md` is a
    generated topic index over them (DEC-141). Skim the index for the areas the proposal touches, then
    read those files — `grep -rl DEC-042 docs/decisions/` resolves any id, and `grep -rl "topic: \"Timing"
-   docs/decisions/` pulls a whole topic. An amended decision carries a generated banner at the top of
-   its file naming what amended it and in what scope; read it before relying on the body.
+   docs/decisions/` pulls a whole topic. **Read to the bottom of the file** — a decision that has been
+   changed carries dated `## Amendment` sections there, and the last one is the current position.
+   Some also carry a `**See also**` block near the top pointing at related decisions.
 3. Read the relevant part of `docs/SPEC.md`, especially the "Not V1" list. A section that has been
    amended carries a generated block under its heading naming the decision and the scope (DEC-143);
    read it before treating the prose beneath as current.
@@ -181,9 +182,11 @@ only.
 
 **Owner:** [defer only — the named human who owns this call, and the DEC-TBD it sits under]
 
-**Decision file:** [if recommending proceed, draft `docs/decisions/DEC-<id>-<slug>.md` — frontmatter
-(`id`, `title`, `topic`, and `amends: [{id, relation, scope}]` for anything it changes) plus the body.
-Do not hand-write an index row; `npm run gen:decisions` writes both ends of every amendment edge.]
+**Decision:** [state the `grep -rli "<subject>" docs/decisions/` result FIRST. If it hit, this is an
+amendment: draft the `## Amendment, YYYY-MM-DD (who)` section to append to that decision's own file —
+what changes and what still stands — and do not open a new id. If it did not hit, draft
+`docs/decisions/DEC-<id>-<slug>.md` — frontmatter (`id`, `title`, `topic`, plus `amends_spec` if it
+changes a numbered SPEC section) and the body. Do not hand-write an index row.]
 ```
 
 `defer` exists so a proposal crossing an open question with a named owner has somewhere to go.

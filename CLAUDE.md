@@ -58,25 +58,46 @@ Project coding conventions — typing, component structure, data fetching, auth/
 
 **Reading.** Read one decision by reading its file: `grep -rl DEC-NNN docs/decisions/` resolves any id, and `grep -rl 'topic: "Auth' docs/decisions/` pulls a whole topic. Don't load the whole record to answer one question, and **don't cite a decision you only saw in the index** — the index carries titles, not holdings, and a confident citation of a decision you didn't read is how a stale answer gets laundered into a fact.
 
-**Writing.** Edit the file, then `npm run gen:decisions`. A new id is the next one after the highest in `docs/decisions/`; a collision is no longer silent, it's a red build on whichever branch merges second.
+**Writing — search before you write, every time.** Name the subject, search the record for it, and **say what came back**:
 
-**Amendments are declared once, in frontmatter, and generated in both directions:**
+```
+grep -rli "<subject>" docs/decisions/
+```
+
+- **A decision on that subject exists → you are amending it.** Open that file. This is the common case and gets more common as the record matures.
+- **Nothing comes back → new decision.** Next id after the highest in `docs/decisions/`. Then `npm run gen:decisions`.
+- **Several come back → amend the one your change is *about*.** Not every file that mentions the word. Ask which decision would be wrong if you shipped this; that is the one. The others get a **see also** if a reader of them would be misled without it, and nothing otherwise.
+- **Partial overlap → amend the part you change, and say so.** A change that alters one leg of a decision is still that decision, later. If it genuinely changes two subjects, that is two amendments in two files, not one new decision covering both.
+
+State the search result in the PR — *"`grep -rli deposit` returned DEC-107; this changes its posture, so it amends"*, or *"nothing on rate limiting; new id."* **That sentence is the whole control.** A session that has to write "DEC-107 covers deposits and this is not that" cannot do it when it's false, and no definition of "amendment" catches what that catches.
+
+**An amendment goes in the decision's own file**, appended at the bottom:
+
+```markdown
+## Amendment, YYYY-MM-DD (who) — one line on what changed
+
+**What this changes, and what still stands.** Then context, decision, why.
+```
+
+Say what still stands. An amendment that only states the new position leaves a reader guessing which parts of the original survived — and the original is not edited or struck through, so both remain readable in order.
+
+**There is no new decision that amends an old one.** If it changes what an existing decision decided, it is that decision, later — not a new subject. A new id is for something worth writing even if nothing before it existed. Two decisions that merely relate carry a plain **see also**, named in both files.
+
+**What this protects:** one place per subject, so *"what did we decide about X"* has one answer; and a session reading the one file it needs rather than a monolith — which four files on one subject defeats just as thoroughly as one file holding everything.
+
+**A decision that changes `SPEC.md` still declares it in frontmatter** — this part is unchanged and is not the same mechanism as the retired `amends:`:
 
 ```yaml
-amends:
-  - id: DEC-NNN
-    relation: refines          # or supersedes / revises / reverses / retires / extends / corrects / resolves / reframes
-    scope: "the retry policy only — the transport choice stands"
 amends_spec:
   - section: "2.4"             # a NUMBERED section of docs/SPEC.md
     scope: "the availability rule; the surface below is unchanged"
 ```
 
-The generator writes the reciprocal banner into the amended decision's own file, the annotation onto its index row, and the pointer under the amended spec section's heading. **Never hand-write any of those ends.** Declaring it once is what makes them agree — a reader arriving by `Ctrl-F`, a code comment, or another doc's citation lands in the *body*, not the index, and an index-only pointer never reaches them.
+The generator writes the pointer under that spec section's heading — never hand-write it — and the gate fails the build if the claimed spec edit never landed. That check exists because unlanded spec claims were the largest single finding class in the audit behind DEC-S036, and nothing else catches one. Declare it from an amendment section the same as from a new decision.
 
-**Prefer `amends` + scope over `supersedes`.** A strike-through says the whole holding is dead. In the project this pattern came from, an audit of 138 decisions found *zero* fully superseded — every struck row still had a live leg. Total supersession is rarer than it looks.
+**The index is a list of subjects, not a summary of what is current.** An in-file amendment leaves the index row showing the original title and date. The current answer is in the file.
 
-**The gate.** `npm run check:decisions` fails on a stale index, a duplicate id, an unknown topic or relation, a dangling reference, a backwards-pointing amendment, and a declared spec amendment that never landed. Its siblings `check:context` and `check:docs` cover the always-loaded context files and the rest of the doc set. All three run before the slow stages of `verify` — they fail in milliseconds. Project-specific knobs live in `docs/decisions/_config.json` and `.claude/doc-check.json`; the scripts themselves are shared and identical everywhere, so don't edit them per-project.
+**The gate.** `npm run check:decisions` fails on a stale index, a duplicate id, an unknown topic, a dangling reference, and a declared spec amendment that never landed. Its siblings `check:context` and `check:docs` cover the always-loaded context files and the rest of the doc set. All three run before the slow stages of `verify` — they fail in milliseconds. Project-specific knobs live in `docs/decisions/_config.json` and `.claude/doc-check.json`; the scripts themselves are shared and identical everywhere, so don't edit them per-project.
 
 ## Session Skills
 
@@ -180,6 +201,7 @@ The `<VersionTag />` wiring (login + footer, and the `NEXT_PUBLIC_` gotcha that 
 - **Never rebase a task branch that already has commits on origin.** If main has advanced while a PR branch is open, leave the branch as-is — GitHub's "Update branch" button handles this at merge time. Rebasing rewrites remote history and requires a force-push. Use `git merge --ff-only` only if explicitly asked.
 - **On a surprise or mismatch, reconcile before diagnosing.** Pin the assumption and the environment first — dev vs prod, which DB, is the server even up — before chasing a theory or building. One environmental check ("can you run the suite right now? what env vars are set?") beats a multi-step debug built on an unchecked premise.
 - **JSON parsing in Bash:** Prefer `gh ... --jq '...'` (built-in jq via `gh`) or `jq` over `python3 -c "import json,sys; ..."` one-liners. The python invocations trigger per-pattern permission prompts (each unique argument list is a new allowlist entry), while `gh --jq` runs under the existing `Bash(gh ...)` allowance. For non-`gh` JSON, install/use `jq` directly. Reserve python for cases where the data shape genuinely needs control flow.
+- **`npx` is denied fleet-wide — run a locally-pinned binary as `npm run <script>` or `./node_modules/.bin/<bin>`.** The deny entry is `Bash(npx *)`; DEC-S023 governs the mechanism (default-allow plus a deny guardrail, and the precedence rule below) rather than this specific line. It exists because the *same syntax* fetches an arbitrary package off the network and runs it against the repo; nothing in the command string distinguishes that from invoking a devDependency you already installed, so the pattern cannot be narrowed to catch only the dangerous half. **`deny` beats `allow`, so no project can allowlist its way out** — an added `Bash(npx playwright *)` does nothing. The direct path is the route, and it works: verified in a project where `npx vitest` was refused and `./node_modules/.bin/vitest` ran unchanged. Prefer an npm script, because it survives someone reading the docs a year later. **Docs that spell commands as `npx <thing>` are the real trap** — they read as sanctioned, and the failure is a permission refusal rather than an error, so it looks like the agent being difficult rather than the doc being stale.
 - **A scripted edit must fail loudly when its anchor doesn't match.** `Edit` refuses to write when its target string is missing or ambiguous; a `read_text()` / `.replace()` / `write_text()` script writes the file back unchanged, prints nothing, and exits 0. Applying a mechanical change across many files with one script is a legitimate choice — reproducing the same anchor by hand ten times has its own failure mode — but only if the script asserts the match count per file and exits non-zero on zero matches. Without that, "done" means the script ran, not that the change landed, and the file it silently skipped looks reviewed.
 - **Read files with the Read tool — never `sed`, `grep`, `awk`, or `cat` to pull a section out.** Read is allowlisted and never prompts. A shell one-liner extracting a section can miss an allow-pattern match and stop a skill dead on a permission prompt mid-run, which has now happened twice on `.claude/CLAUDE-context.md` — once in `/kill-this`, once in `/promote-production` — in a session whose allowlist carries `Bash(*)` and that prompted for nothing else. Reading the whole file costs less than one interruption. `grep` to *search* across many files is fine. The banned shape is sed-ing a section range out of one file whose path you already know — the thing Read does without a prompt.
 - **Never write a bare `#N`. Always say which kind: `issue #699`, `PR #707`.** GitHub allocates issues and PRs from **one shared counter**, so the two sequences interleave and stay permanently adjacent — `#699` is an issue, `#707` is a PR, and nothing in the number tells you which. There is no way to separate them: they are drawn from the same sequence at creation, and burning numbers advances both. So the prefix is the only fix, and it costs one word. Applies everywhere the number is written — PR bodies, issue text, commit messages, decision records, session files, and chat. The one exception is `closes #N` in a PR body, which is GitHub syntax and must stay bare to work.

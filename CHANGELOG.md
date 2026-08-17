@@ -1,5 +1,47 @@
 # Changelog
 
+## [1.1.2] - 2026-08-17
+
+Nine days and 32 PRs since [1.1.1] — the largest promotion so far. Reservations (`phase:12b`) is
+the bulk of it: the money posture changed, holds and refunds gained real concurrency guards, and
+the booking link became a short code. Five migrations were applied to prod out-of-band before this
+promotion (`payment_intent_lookup`, `booking_codes`, `refund_leases`, `recovery_throttle`,
+`checkout_hold_holder_token`).
+
+- **#759** — minutes→hours rounds at the edge instead of truncating, through one shared rule
+  (`src/admin/hours-format.ts`). The Gusto CSV was under-paying by up to a minute per punch (#758).
+- **#755** — retire the `amends:` machinery; correct the decision-index prose.
+- **#754** — migrate the decision record off `amends:`; pointers become prose.
+- **#753** — guests come first, and the calendar only offers boats the party fits (#715).
+- **#751** — charge the full fare by default, not a 25% deposit (#617).
+- **#750** — one checkout session, one hold per departure; hold reuse keyed on a session cookie (#575).
+- **#749** — lost your link? A public way back in (#460).
+- **#748** — two simultaneous refunds can no longer both pay out (#726).
+- **#744** — booking links are a short code now, and a link can be killed (#741).
+- **#743** — `/read-the-tape` gains drain mode; the shell stops contradicting itself.
+- **#739** — write down the env vars reservations runs on, and the three traps (#618).
+- **#738** — `env.example` loses its dot; deny list gains the installers (DEC-S043).
+- **#737** — the resend says which channels it reached; dev gets a copyable manage link (#686).
+- **#735** — mail the Xola passenger report every morning, counting only what needs doing.
+- **#734** — the balance is due before your trip, not charged before it (#617).
+- **#733** — the cutover import is this season's forward book, not all of Xola's history.
+- **#732** — commit `.claude/settings.json`; no repo-level policy since DEC-S032.
+- **#730** — `db:xola:report` audits Xola passenger counts against boat capacity.
+- **#727** — cancel and refund a booking, and reconcile dashboard refunds (#616).
+- **#722** — adopt seeds #169–#172: drift check, reply tags, S042 slots.
+- **#721** — pick up the tightened Communication section (seeds PR #166).
+- **#720** — two clock buttons that never move, one enabled (#718).
+- **#717** — retire the legacy booking write path instead of guarding it (#693).
+- **#716** — adopt seeds #161–#165: test-plan setup block, Read tool, `#N` prefix, reply kinds.
+- **#714** — `/book` stops advertising slots someone is mid-payment on (#620).
+- **#710** — one menu, two apps: account actions at the end of it (#709).
+- **#708** — the Xola importer links a customer as it writes (#701).
+- **#707** — `/kill-this`: human test-plan section, literal setup block, Read instead of `sed`.
+- **#706** — hold one departure from the calendar, and put it back (#703).
+- **#697** — already signed in? The magic link stops asking you to tap (#696).
+- **#694** — a reservation occupies the boat for its whole trip, whoever sold it (#615, #691).
+- **#692** — Vercel → VPS migration: the Phase A audit and the runbook it feeds.
+
 ## [1.1.1] - 2026-08-08
 
 First promotion since v1.0.21 (2026-08-04), so production also receives the already-written

@@ -409,8 +409,16 @@ async function processBookingCharge(
     // PAID, so a formation failure must never 500 — Stripe would retry a booking that already
     // exists, resolve `already`, and still not form. The cron tick re-forms as the backstop.
     //
-    // No `notifyTripChanges`: that flag is the import's, for relaying "your shift changed" to
-    // crew whose committed day moved. Nobody is on this shift yet — it is being born.
+    // `notifyTripChanges: true` (#765). This used to be off, reasoning "nobody is on this shift
+    // yet — it is being born". True of the shift being born, and it is not the only shift this
+    // booking can touch: `formShifts` groups events by vessel + day, so a booking onto a day that
+    // ALREADY has a crewed shift joins that shift's trip set. Somebody's committed day just grew
+    // a trip and they were told nothing. The gate stays diff-gated in `form-shifts.ts`, so a
+    // newborn shift still notifies nobody and a re-form that changes nothing still sends nothing.
+    //
+    // This is also why the flag cannot stay off "until the import needs it": after DEC-126 turns
+    // off the Xola pull, this webhook and the cron tick are the only formation triggers left, so
+    // "your shift changed" would have stopped firing entirely — dead code, nothing failing.
     //
     // **The result must be forwarded, not discarded (@code-review).** The first cut dropped it on
     // the reasoning that a newborn shift has nobody to notify. That is true of the shift being
@@ -424,7 +432,10 @@ async function processBookingCharge(
     // Audit is called here (core); the notice relay rides a dep, because the channel wiring lives
     // in `app/` and core cannot import it — the same seam `sendConfirmation` uses.
     try {
-      const form = await formShifts(deps.repo, { now: new Date(deps.now()) });
+      const form = await formShifts(deps.repo, {
+        now: new Date(deps.now()),
+        notifyTripChanges: true,
+      });
       await relayAndAudit(deps, form);
     } catch (e) {
       console.error(

@@ -2,13 +2,6 @@
 id: DEC-126
 title: "The flip is a cutover with a one-time full Xola import — Muster becomes the reservation source of truth, and the cutover is reversible"
 topic: "Reservations & payments"
-amends:
-  - id: DEC-105
-    relation: reverses
-    scope: "the parallel run ends in a cutover, not permanent coexistence — and the \"no migration\" leg"
-  - id: DEC-011
-    relation: amends
-    scope: "coexistence ends at a cutover"
 amends_spec:
   - section: "0.3"
     scope: "the arc ends in a cutover with a one-time full Xola import — it had been written to \"no cutover\""
@@ -17,6 +10,10 @@ amends_spec:
 ---
 
 ## DEC-126: The flip is a cutover with a one-time full Xola import — Muster becomes the reservation source of truth, and the cutover is reversible
+
+**See also** — decisions this one changed part of:
+- Reverses DEC-105 — the parallel run ends in a cutover, not permanent coexistence — and the "no migration" leg
+- Amends DEC-011 — coexistence ends at a cutover
 
 **Status:** Accepted (operator, 2026-07-17, S56) — the cutover model; mechanism **`@architect`-gated at
 build**. Evolves DEC-105 (see the reconciliation below).

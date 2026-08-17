@@ -2,13 +2,12 @@
 id: DEC-149
 title: "Ownership is not a real concept — the offering says when, blocks say what's off"
 topic: "Availability & commitment rules"
-amends:
-  - id: DEC-106
-    relation: retires
-    scope: "the whole-vessel-day ownership allowlist and its availability mask only — the `source` discriminator on Event and Reservation, and the no-cross-source-capacity-arithmetic rule, both stand"
 ---
 
 ## DEC-149: Ownership is not a real concept — the offering says when, blocks say what's off
+
+**See also** — decisions this one changed part of:
+- Retires DEC-106 — the whole-vessel-day ownership allowlist and its availability mask only — the `source` discriminator on Event and Reservation, and the no-cross-source-capacity-arithmetic rule, both stand
 
 **Status:** Decided 2026-08-06 (Eric). Retires the DEC-106 ownership allowlist. Implemented in #688.
 

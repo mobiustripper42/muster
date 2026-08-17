@@ -2,16 +2,13 @@
 id: DEC-086
 title: "Vessel + role identity palette — color that encodes information"
 topic: "UI, brand & frontend patterns"
-amends:
-  - id: DEC-021
-    relation: refines
-    scope: "adds tokens to the locked palette"
-  - id: DEC-085
-    relation: refines
-    scope: ""
 ---
 
 ## DEC-086: Vessel + role identity palette — color that encodes information
+
+**See also** — decisions this one changed part of:
+- Refines DEC-021 — adds tokens to the locked palette
+- Refines DEC-085
 
 **Status:** Decided 2026-07-03 (Eric, Phase 9). Hue values set when the 9.6 board bundle lands.
 

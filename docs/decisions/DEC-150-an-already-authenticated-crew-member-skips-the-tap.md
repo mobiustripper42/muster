@@ -2,13 +2,12 @@
 id: DEC-150
 title: "An already-authenticated crew member skips the tap-to-sign-in interstitial"
 topic: "Crew self-serve, auth & admin identity"
-amends:
-  - id: DEC-030
-    relation: refines
-    scope: "rule 4 (prefetch-safe consume) only — the interstitial stays for every client without a matching session, and the GET still never consumes"
 ---
 
 ## DEC-150: An already-authenticated crew member skips the tap-to-sign-in interstitial
+
+**See also** — decisions this one changed part of:
+- Refines DEC-030 — rule 4 (prefetch-safe consume) only — the interstitial stays for every client without a matching session, and the GET still never consumes
 
 **Status:** Decided 2026-08-07 (Eric, from production use). Refines DEC-030 rule 4. Implemented in #696.
 

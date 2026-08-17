@@ -43,9 +43,9 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 - DEC-023 — The engine advances via an explicit `tick(repo, now)` operation; no scheduler in v1
 - DEC-054 — Operator engine pause/resume — edge-gated, typed-port-backed, default-running (#124)
 - DEC-118 — Crew audit log — dedicated append-only `audit_events`, edge-emitted actor, unioned read, out of the scoring path (#400)
-- DEC-127 — DECISIONS.md carries a topic index at the top; every new DEC updates it _(amended by DEC-141 — the maintenance rule only — the index stands, but it is generated rather than hand-updated)_
-- DEC-131 — Constraint posture — DEC-DATA-1 governs *logic placement*, not structural constraints; FK/UNIQUE/NOT NULL are storage and are allowed _(corrected by DEC-151 — the named precedent only — a constraint the caller must react to is still exposed through the port as a typed result, which is the holding)_
-- DEC-141 — One decision, one file, behind a generated index _(extended by DEC-143 — the same generated-reciprocal-pointer mechanism, pointed at SPEC instead of at other decisions)_
+- DEC-127 — DECISIONS.md carries a topic index at the top; every new DEC updates it
+- DEC-131 — Constraint posture — DEC-DATA-1 governs *logic placement*, not structural constraints; FK/UNIQUE/NOT NULL are storage and are allowed
+- DEC-141 — One decision, one file, behind a generated index
 - DEC-143 — A decision that changes SPEC declares it, and the reciprocal pointer in SPEC is generated
 - DEC-144 — Doc consistency is a ratchet in `verify`, not an audit
 
@@ -57,12 +57,12 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 
 ### Seats, shifts & state machine
 - DEC-005 — Shift state is derived from seat state; reserve a `Held` tier
-- DEC-019 — `Bailed` is a seat *transition*, not a resting state _(amended by DEC-128)_
-- DEC-028 — Bail `latenessMs` is the notice shortfall vs the staffing horizon, clamped to it _(amended by DEC-120 — the bail lateness floor — weights only)_
-- DEC-039 — Confirmed-seat vacate splits into Remove (no penalty) vs Bailed (logs lateness) (#87) _(amended by DEC-128)_
+- DEC-019 — `Bailed` is a seat *transition*, not a resting state
+- DEC-028 — Bail `latenessMs` is the notice shortfall vs the staffing horizon, clamped to it
+- DEC-039 — Confirmed-seat vacate splits into Remove (no penalty) vs Bailed (logs lateness) (#87)
 - DEC-041 — Trip length → shift end, from a flat constant (#92)
 - DEC-061 — A winning "in" auto-confirms — `Claimed` is momentary on the happy path
-- DEC-078 — Concurrency, conflict, and crew self-release _(corrected by DEC-145 — only the clause 'a claim itself emits no reliability event' — a winning self-claim now logs `self_claim` (+4). The adjacent 'Rejected: reliability-dinging the claim' line is untouched and still stands; that rejected a PENALTY, and this is the opposite direction.)_
+- DEC-078 — Concurrency, conflict, and crew self-release
 - DEC-128 — `bail()` and `vacateSeat()` fire no asks — re-crewing is deferred to the tick (#483)
 - DEC-129 — On-shift ask suppression — the engine never auto-asks crew mid-shift (hard, no valve) (#341)
 - DEC-130 — Same-day decline cooldown — a "no" quiets that date's cross-shift auto-asks (soft, valved) (#341→#342)
@@ -71,30 +71,30 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 
 ### Staffing engine — asks, escalation, At-Risk board & cockpit
 - DEC-006 — Escalation Tiers 1–3 are degrees of automation, not states
-- DEC-007 — Per-role assignment protocol + first-acceptable-yes-wins _(retired by DEC-061 — the two-protocol fork only — nobody is "named then confirmed" by a human. The first-acceptable-yes-wins leg survives and is live (#561); retired by DEC-063 — the two-protocol fork only — nobody is asked "as a crowd" (#561))_
+- DEC-007 — Per-role assignment protocol + first-acceptable-yes-wins
 - DEC-024 — Tier-2 escalation is a *nudge* over a *derived* escalation trail; "widen the pool" is a logged stub, not a soft-constraint engine
 - DEC-025 — At-Risk urgency encodes "captain > mate" as pool-thinness, not a role-name check
-- DEC-026 — Board ping = detection-now / delivery-later; lean = a manual nudge in the one log; reschedule/cancel render disabled _(extended by DEC-095 — the deferred delivery half)_
+- DEC-026 — Board ping = detection-now / delivery-later; lean = a manual nudge in the one log; reschedule/cancel render disabled
 - DEC-027 — Cockpit v1 — four manual actions over existing rails; implicit automation-pause confirmed as emergent; warming = board-complement derive; "fills by" deferred to the fill-deadline decision
-- DEC-031 — "Fills by" = the fill deadline — `tripStart − FILL_DEADLINE_HOURS`, derived, bound to the escalation threshold _(amended by DEC-038 — fills-by display and label only — the concept, the code symbols (`fillsBy`, `FILL_DEADLINE_HOURS`) and the mechanic are unchanged; the board no longer renders the line and the cockpit relabels it "deadline")_
+- DEC-031 — "Fills by" = the fill deadline — `tripStart − FILL_DEADLINE_HOURS`, derived, bound to the escalation threshold
 - DEC-042 — "All shifts" full-visibility view — a deliberate, opt-in pull surface (#100)
-- DEC-063 — Tier-1 ask fan-out is a staged "drip" — ranked, one candidate per interval, accumulating _(refined by DEC-088)_
+- DEC-063 — Tier-1 ask fan-out is a staged "drip" — ranked, one candidate per interval, accumulating
 - DEC-064 — The manual override honors the role-competency floor — no mate as captain
 - DEC-065 — The At-Risk board shows every uncrewed shift within the fill deadline — no hide-while-working
 - DEC-066 — Captains are never *asked* for mate seats — over-ranked crew drop from the askable pool
 - DEC-067 — Silent-ask sweep wired into the tick — ghosted asks time out, seats reopen
 - DEC-087 — Trainee seats are staffable — DEC-064's rating floor is scoped to required manning
 - DEC-088 — Civil send window — automated ask sends gated on vessel-local wall-clock; state advance is not
-- DEC-116 — Weekend-batch staffing trigger — Fri/Sat/Sun shifts go live together on one weekday + time (#392) _(refined by DEC-117)_
+- DEC-116 — Weekend-batch staffing trigger — Fri/Sat/Sun shifts go live together on one weekday + time (#392)
 - DEC-117 — Weekend-batch ask distribution — one text per person, one boat per day (#393)
 
 ### Reliability scoring
-- DEC-008 — Reliability score is a ranking, not a grade or gate — log events day one _(amended by DEC-120 — decline-neutral — weights only)_
+- DEC-008 — Reliability score is a ranking, not a grade or gate — log events day one
 - DEC-120 — Reliability retune — reward responsiveness; bail floor lowered, ramp rescaled (#425)
 
 ### Timing — horizons, deadlines & vessel clock
 - DEC-004 — Two horizons; `deferred` is first-class
-- DEC-022 — Staffing horizon is *derived* config, not a stored field; shift time-state is a composition layer over seat-derivation _(revised by DEC-032)_
+- DEC-022 — Staffing horizon is *derived* config, not a stored field; shift time-state is a composition layer over seat-derivation
 - DEC-032 — Vessel-local time — wall-clock storage + one tenant timezone, NOT stored instants
 - DEC-062 — The engine never works a departed shift; staffing horizon is env-tunable
 - DEC-080 — The Xola pull window is decoupled from the staffing horizon
@@ -103,22 +103,22 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 ### Crew, vessels & manning model
 - DEC-012 — Manifest is grouped per event on the shift card; no waivers for crew
 - DEC-ROLE-1 — Crew roles and vessel manning are tenant data, not a hardcoded enum
-- DEC-018 — Product string → vessel + manning map — auto-suggest, operator confirms _(amended by DEC-043 — quarantine keys off `resource.id`)_
+- DEC-018 — Product string → vessel + manning map — auto-suggest, operator confirms
 - DEC-044 — Crew seed carries a placeholder MMC until BrewBoat tracks real credentials
 - DEC-096 — `archived` crew status — off every list, the one status the override honors (#323)
 - DEC-097 — Guest-contact tracking is a progressive-enhancement client island (#345 Part B)
 
 ### Xola ingest & import
-- DEC-011 — 2026 coexistence — CSV bridge is disposable; Xola API bolt-on killed _(amended by DEC-036 — the Xola API bolt-on kill, which DEC-036 revived. The coexistence leg is live; amended by DEC-126 — coexistence ends at a cutover)_
+- DEC-011 — 2026 coexistence — CSV bridge is disposable; Xola API bolt-on killed
 - DEC-015 — Xola import — verified source, grain, identity keys, and quarantined Land→Map→Reconcile architecture
-- DEC-016 — BrewBoat worked example corrected — real fleet; scope ≠ current holdings; test data invented _(amended by DEC-043 — the vessel-from-product collapse only. The worked-example leg is live authority — cited by SPEC §Fleet for per-vessel manning counts)_
-- ~~DEC-017 — Manifest contact — email is the spine, phone via email-join, phone nullable~~ → superseded by DEC-040 — manifest contact via email-join is retired
-- ~~DEC-029 — "Changed since you reviewed it" is a pure derivation — `max(reservation.updatedAt) > shift.lockedAt`~~ → superseded by DEC-082 — "changed since you reviewed it" derivation is reframed _(also amended by DEC-043 — `vesselId` joins the material set; extended by DEC-106 — the import merge rule)_
+- DEC-016 — BrewBoat worked example corrected — real fleet; scope ≠ current holdings; test data invented
+- DEC-017 — Manifest contact — email is the spine, phone via email-join, phone nullable
+- DEC-029 — "Changed since you reviewed it" is a pure derivation — `max(reservation.updatedAt) > shift.lockedAt`
 - DEC-035 — Xola import surface — import→formShifts chaining, re-import idempotency, upload security
-- DEC-036 — Live Xola API import — Land adapter behind existing Map/Reconcile; supersedes DEC-011's API kill _(corrected by DEC-040 — resolves DEC-036's 'confirm at build' items and corrects its field-mapping guesses; amended by DEC-043 — the planned `fetchEvents` half is now the primary adapter; the xlsx upload is retired; reversed by DEC-124 — its tip/gratuity/guide-machinery parking only)_
-- ~~DEC-037 — Task #73 (5.4) splits — xlsx import surface first (5.4a), Xola API Land adapter fast-follow (5.4b); review surface stays deferred~~ → superseded by DEC-043 — the xlsx-first half is retired; the API Land adapter shipped
+- DEC-036 — Live Xola API import — Land adapter behind existing Map/Reconcile; supersedes DEC-011's API kill
+- DEC-037 — Task #73 (5.4) splits — xlsx import surface first (5.4a), Xola API Land adapter fast-follow (5.4b); review surface stays deferred
 - DEC-040 — Xola live-API import — build resolution + sync strategy (5.4b; resolves DEC-036)
-- DEC-043 — Ingest is events-driven — the boat is the event's assigned Resource, not a vessel invented from the product string (supersedes DEC-016's collapse) _(extended by DEC-106 — the import merge rule)_
+- DEC-043 — Ingest is events-driven — the boat is the event's assigned Resource, not a vessel invented from the product string (supersedes DEC-016's collapse)
 - DEC-056 — Import runs are audited to the DB — edge-assembled, two-table, identity-level (#128)
 - DEC-082 — Locking cut — Xola is the source of truth (supersedes SPEC §2.3 Lock; reframes DEC-029)
 - DEC-083 — Manual Split — cut-time partition on the canonical row, re-derived each pull; import-diff cue over the existing audit
@@ -146,43 +146,43 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 - DEC-073 — Real doorbell-ring relay — the operator-outbox `NotificationPort` adapter, on its own table
 
 ### Outbound notifications & operator relay
-- DEC-030 — Pilot channel = operator-relayed web link; the outbox is adapter state, never domain state _(refined by DEC-150 — rule 4 (prefetch-safe consume) only — the interstitial stays for every client without a matching session, and the GET still never consumes)_
+- DEC-030 — Pilot channel = operator-relayed web link; the outbox is adapter state, never domain state
 - DEC-084 — Crew assignment-change notice — a third operator-relay sibling
 - DEC-095 — Operator At-Risk alert — the deferred delivery half of DEC-026, NOT a fourth outbound lane
 
 ### Crew self-serve, auth & admin identity
-- DEC-010 — Crew auth is magic-link passwordless; crew don't self-register _(revised by DEC-079 — the mechanism only — the crew front door is phone-entry → roster lookup → 6-digit code, not magic-link. The passwordless and no-self-registration legs stand; revised by DEC-081 — the mechanism only — see DEC-079)_
+- DEC-010 — Crew auth is magic-link passwordless; crew don't self-register
 - DEC-034 — Production auth path — operator link mint, dev-link stays 404, NO email provider
 - DEC-057 — The dev-link minter is gated by `VERCEL_ENV`, not `NODE_ENV` — live on previews, off in prod
 - DEC-074 — Crew self-serve is a fourth crew surface — a knowing, recorded exception to "insultingly small"
 - DEC-075 — Self-claim is auto-lock (`Open → Confirmed`), bypassing `Asked`; operator-confirm-required is a built-in seam, not built
 - DEC-076 — Two eligibility doors — self-claim is native-role-only; operator-assign is ratings-inclusive (the dual-rating escape hatch)
-- DEC-079 — Crew-initiated sign-in + sign-out — the self-serve front door (a small addition, not a re-architecture) _(refined by DEC-081 — the mechanism only)_
-- DEC-081 — Crew sign-in is a 6-digit email code, not a magic link — and it's the one login primitive (refines DEC-079) _(refined by DEC-142 — the cap only — `attempts` per code gains a rolling per-subject failure window, and the verify response collapses to one value. The email-as-channel and code-shape legs stand)_
+- DEC-079 — Crew-initiated sign-in + sign-out — the self-serve front door (a small addition, not a re-architecture)
+- DEC-081 — Crew sign-in is a 6-digit email code, not a magic link — and it's the one login primitive (refines DEC-079)
 - DEC-092 — Admin becomes a first-class auth identity — per-person revoke (10.2, #283; revises DEC-020)
-- DEC-093 — Crew ↔ admin view switcher — same-identity session re-mint (builds on DEC-092) _(corrected by DEC-148 — where the switch-to-admin control lives — the drawer on every crew route, no longer the crew home beside Sign out)_
+- DEC-093 — Crew ↔ admin view switcher — same-identity session re-mint (builds on DEC-092)
 - DEC-094 — Operator break-glass is CLI + runbook, not an admin UI (10.5; extends DEC-092)
 - DEC-098 — Crew calendar feed — the first persistent bearer capability URL; hash-only, guest-PII-free, UTC-instant ICS
 - DEC-142 — Login brute force is bounded per subject, not per code — and every verify failure is one generic response
 - DEC-150 — An already-authenticated crew member skips the tap-to-sign-in interstitial
 
 ### Reservations & payments
-- DEC-105 — Reservations go live in 2026 as a Muster-native parallel-run — permanent coexistence, not a cutover _(reversed by DEC-126 — the parallel run ends in a cutover, not permanent coexistence — and the "no migration" leg)_
-- DEC-106 — Coexistence partition = whole vessel-day; an event is owned by exactly one system _(retired by DEC-149 — the whole-vessel-day ownership allowlist and its availability mask only — the `source` discriminator on Event and Reservation, and the no-cross-source-capacity-arithmetic rule, both stand)_
-- DEC-107 — Payments — Stripe hosted Checkout, deposit + balance, webhook-driven booking write _(corrected by DEC-151 — the `writeBooking` citation only — the hosted-Checkout and deposit/balance decisions stand, and the balance flow it describes is unchanged; revised by DEC-153 — the refund MECHANISM only — its 2026-07-18 amendment's closing line, "Still manual (unchanged): every OTHER refund — operator-discretion cancels". Refunds stay operator-discretion; what changes is that the discretion can now be exercised in Muster, and a refund taken in the Stripe dashboard reconciles back instead of being invisible. Everything else in DEC-107 stands untouched: hosted Checkout, the deposit/balance model, the webhook-driven write, `balanceOwedCents` as the one balance authority, the DEC-109 residual-race auto-refund, and the §3.3 refund CASCADE staying parked; reversed by DEC-155 — the DEFAULT and launch posture only — deposit-vs-full. Deposit + balance remains fully built and fully supported: the deposit share, the balance deriver, the balance checkout link, and the frozen-money rule are untouched. What changes is which one an unconfigured deploy inherits.)_
+- DEC-105 — Reservations go live in 2026 as a Muster-native parallel-run — permanent coexistence, not a cutover
+- DEC-106 — Coexistence partition = whole vessel-day; an event is owned by exactly one system
+- DEC-107 — Payments — Stripe hosted Checkout, deposit + balance, webhook-driven booking write
 - DEC-108 — Public surface `app/(public)` + single-flip "Book Now" entry (instant Xola rollback)
 - DEC-109 — Atomic capacity claim on public booking (the customer-side REQ-CLAIM-1)
 - DEC-110 — Waiver — Muster-sold side only; integrate a provider (deferred pre-flip); pilot uses minimal consent
 - DEC-111 — `feature/reservations` dark behind a `RESERVATIONS` flag until the first real paid booking
 - DEC-112 — Reservation price resolves per-`Event`; nullable `Event.price` column
 - DEC-113 — Flex-insurance is a boolean selector on the reservation, not a priced add-on product
-- DEC-122 — Customer booking link — stateless HMAC capability-URL + guest confirmation emit (renumbered from DEC-119 at the feature→main merge — main's DEC-119 is recurring weekday-off #411; 11.4, #370; extends DEC-020/098/108) _(corrected by DEC-151 — the `writeBooking` citation only — the stateless-HMAC capability URL and its non-interference with the race-critical CAS both stand; reversed by DEC-154 — the link MECHANISM only — the stateless HMAC and its `RESERVATION_LINK_SECRET`. The capability-URL MODEL stands unchanged: no login, re-openable (never single-use), bearer semantics, and one link surfacing the contact's other trips. The guest confirmation emit, its `booked`-only rule, the `GuestRecipient` shape and the structural best-effort posture are untouched.)_
+- DEC-122 — Customer booking link — stateless HMAC capability-URL + guest confirmation emit (renumbered from DEC-119 at the feature→main merge — main's DEC-119 is recurring weekday-off #411; 11.4, #370; extends DEC-020/098/108)
 - DEC-123 — Reservations gets its own calendar — customer-centric, beside the crew-centric shift view; plus a net-new catalog and purchases/customers area
 - DEC-124 — Tips come into Muster as collect-and-expose; `xola-tip-extractor` owns the split and the Xola+Muster union until Xola dies (reverses DEC-036's tip parking)
 - DEC-125 — Virtual availability — the schedule is a rule, `Event` rows materialize on state; blackout is scoped blocks, not per-event toggles
 - DEC-126 — The flip is a cutover with a one-time full Xola import — Muster becomes the reservation source of truth, and the cutover is reversible
-- DEC-132 — `Customer` is a contact record keyed by phone — surrogate PK, UNIQUE canonical E.164, readable short code _(corrected by DEC-151 — the `writeBooking` citation only — booking-path customer linking is still in scope and still happens at the write, now on the surviving path)_
-- DEC-133 — The customer availability screen is server-rendered; the guest stepper is the one client island (12.4, #457) _(revised by DEC-156 — the accepted wrinkle only — guest count now lives in the URL, and the order is guests → date → time. The server-rendering-default posture and the single-island boundary stand.)_
+- DEC-132 — `Customer` is a contact record keyed by phone — surrogate PK, UNIQUE canonical E.164, readable short code
+- DEC-133 — The customer availability screen is server-rendered; the guest stepper is the one client island (12.4, #457)
 - DEC-134 — Customer checkout is inline Stripe Elements over a deferred PaymentIntent; hosted Checkout remains for balance + post-gratuity (12.5, #458; revisits DEC-107/108 as DEC-108 anticipated)
 - DEC-135 — The "Your booking" manage page ships view + post-tip + cancel/change-as-request; self-service cancel is deferred (12.6, #459)
 - DEC-138 — The customer booking flow ships as an embeddable widget — the BrewBoat rollout path and the multi-tenant seam
@@ -195,22 +195,22 @@ Available relations: `supersedes` (the only one that strikes a row), `amends`, `
 - DEC-156 — Party size is chosen first, lives in the URL, and filters availability to boats that fit (#715)
 
 ### UI, brand & frontend patterns
-- DEC-021 — Frontend styling = Tailwind v4; component library deferred _(retired by DEC-041 — the `Event.durationMinutes` line only; refined by DEC-086 — adds tokens to the locked palette)_
-- DEC-038 — Pilot-walkthrough UX/copy revisions (operator review of the slice-1 surfaces) _(retired by DEC-039 — the "Remove" button only)_
+- DEC-021 — Frontend styling = Tailwind v4; component library deferred
+- DEC-038 — Pilot-walkthrough UX/copy revisions (operator review of the slice-1 surfaces)
 - DEC-055 — Transient feedback params are stripped post-render by a contained client island (#121)
-- DEC-085 — Shift Builder — responsive dual-form-factor over one no-JS core _(refined by DEC-086)_
+- DEC-085 — Shift Builder — responsive dual-form-factor over one no-JS core
 - DEC-086 — Vessel + role identity palette — color that encodes information
 - DEC-089 — `<SubmitButton>` — standing pending-state client island for async form submits (#202/#250, Layer 2)
 - DEC-090 — Click & loading feedback — the standing rule (`<SubmitButton>` for submits, `<AppLink>` for links; lint-enforced)
-- DEC-091 — Crew navigation is hub-and-spoke — no persistent nav chrome (9.12, #238) _(reversed by DEC-148 — the "no persistent crew nav" holding and the rejection of an admin-style nav — crew navigation is now a persistent drawer on every route; the hub-and-spoke reasoning that justified the ban is what stopped holding)_
+- DEC-091 — Crew navigation is hub-and-spoke — no persistent nav chrome (9.12, #238)
 - DEC-114 — `<RevealSelectedRow>` — scroll-position keeping on the two-pane board, an imperative island scoped to `board-col`
 - DEC-147 — Server-rendering is the default; a client island is earned, and feedback params carry codes not prose
 - DEC-148 — Crew navigation moves into a drawer — the hub carries work, not a menu (#644)
 - DEC-152 — Two clock buttons that never move, one disabled — a control that vanishes moves its neighbour under the thumb
 
 ### Deployment, infra & versioning
-- ~~DEC-013 — Stack & infrastructure deferred to ~M4~~ → superseded by DEC-020 — stack & infrastructure are no longer deferred
-- DEC-020 — M4 stack — Next.js (App Router) / Vercel; persistence is Postgres-behind-the-port with the hosted provider deferred; magic-link is self-rolled. No platform adopted. _(revised by DEC-092 — admin is a first-class auth identity; refined by DEC-121 — timestamp-prefixed migration filenames)_
+- DEC-013 — Stack & infrastructure deferred to ~M4
+- DEC-020 — M4 stack — Next.js (App Router) / Vercel; persistence is Postgres-behind-the-port with the hosted provider deferred; magic-link is self-rolled. No platform adopted.
 - DEC-033 — Hosted deploy — provider pick (OPEN), Vercel topology, `tick` cron, `production` branch
 - DEC-059 — `main` stays promotable — multi-PR features land on a feature branch, not piecemeal on `main`
 - DEC-121 — Timestamp-prefixed migration filenames — cross-branch collision made structurally impossible (refines DEC-020)

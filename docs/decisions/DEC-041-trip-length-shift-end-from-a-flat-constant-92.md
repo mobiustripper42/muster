@@ -2,13 +2,12 @@
 id: DEC-041
 title: "Trip length → shift end, from a flat constant (#92)"
 topic: "Seats, shifts & state machine"
-amends:
-  - id: DEC-021
-    relation: retires
-    scope: "the `Event.durationMinutes` line only"
 ---
 
 ## DEC-041: Trip length → shift end, from a flat constant (#92)
+
+**See also** — decisions this one changed part of:
+- Retires DEC-021 — the `Event.durationMinutes` line only
 
 **Status:** Built (task 92). Surfaced while adding trip times to the outbox/crew cards: an `Event` carries only a departure `time` (no length, no end), so neither the operator-as-crew In/Out decision nor the crew card could show "how long am I committed." This adds the **end** of the window; the start (call time = first departure − `CALL_LEAD_MINUTES`) already existed.
 

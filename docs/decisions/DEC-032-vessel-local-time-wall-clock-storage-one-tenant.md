@@ -2,13 +2,12 @@
 id: DEC-032
 title: "Vessel-local time — wall-clock storage + one tenant timezone, NOT stored instants"
 topic: "Timing — horizons, deadlines & vessel clock"
-amends:
-  - id: DEC-022
-    relation: revises
-    scope: ""
 ---
 
 ## DEC-032: Vessel-local time — wall-clock storage + one tenant timezone, NOT stored instants
+
+**See also** — decisions this one changed part of:
+- Revises DEC-022
 
 **Status:** DECIDED — Phase 5 / 5.3 (#77), 2026-06-12. (@architect design + operator confirm.)
 

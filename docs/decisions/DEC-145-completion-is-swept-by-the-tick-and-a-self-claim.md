@@ -2,16 +2,15 @@
 id: DEC-145
 title: "Completion is swept by the tick, and a self-claim scores"
 topic: "Seats, shifts & state machine"
-amends:
-  - id: DEC-078
-    relation: corrects
-    scope: "only the clause 'a claim itself emits no reliability event' — a winning self-claim now logs `self_claim` (+4). The adjacent 'Rejected: reliability-dinging the claim' line is untouched and still stands; that rejected a PENALTY, and this is the opposite direction."
 amends_spec:
   - section: "1.4"
     scope: "`self_claim` joins the Commitment event list, and `shift_completed` finally has a producer — the tick's completion sweep. Both were declared loggable from day one and neither was ever emitted."
 ---
 
 ## DEC-145: Completion is swept by the tick, and a self-claim scores
+
+**See also** — decisions this one changed part of:
+- Corrects DEC-078 — only the clause 'a claim itself emits no reliability event' — a winning self-claim now logs `self_claim` (+4). The adjacent 'Rejected: reliability-dinging the claim' line is untouched and still stands; that rejected a PENALTY, and this is the opposite direction.
 
 **Decision:**
 

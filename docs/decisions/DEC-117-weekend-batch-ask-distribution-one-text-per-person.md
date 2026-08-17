@@ -2,13 +2,12 @@
 id: DEC-117
 title: "Weekend-batch ask distribution — one text per person, one boat per day (#393)"
 topic: "Staffing engine — asks, escalation, At-Risk board & cockpit"
-amends:
-  - id: DEC-116
-    relation: refines
-    scope: ""
 ---
 
 ## DEC-117: Weekend-batch ask distribution — one text per person, one boat per day (#393)
+
+**See also** — decisions this one changed part of:
+- Refines DEC-116
 
 **Status:** Decided 2026-07-13 (Eric + @architect, rescoped). The ask-distribution fix DEC-116's env flip
 waits on. Supersedes #393's original "turn-based push / round-robin matcher" framing — Muster's existing In/Out

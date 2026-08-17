@@ -2,16 +2,13 @@
 id: DEC-120
 title: "Reliability retune — reward responsiveness; bail floor lowered, ramp rescaled (#425)"
 topic: "Reliability scoring"
-amends:
-  - id: DEC-008
-    relation: amends
-    scope: "decline-neutral — weights only"
-  - id: DEC-028
-    relation: amends
-    scope: "the bail lateness floor — weights only"
 ---
 
 ## DEC-120: Reliability retune — reward responsiveness; bail floor lowered, ramp rescaled (#425)
+
+**See also** — decisions this one changed part of:
+- Amends DEC-008 — decline-neutral — weights only
+- Amends DEC-028 — the bail lateness floor — weights only
 
 **Status:** Decided 2026-07-14 (Eric + @architect).
 

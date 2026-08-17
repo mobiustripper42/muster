@@ -2,22 +2,15 @@
 id: DEC-151
 title: "Retire the legacy booking write path rather than guard it — one write path, or the unguarded one outlives the guarded one"
 topic: "Reservations & payments"
-amends:
-  - id: DEC-107
-    relation: corrects
-    scope: "the `writeBooking` citation only — the hosted-Checkout and deposit/balance decisions stand, and the balance flow it describes is unchanged"
-  - id: DEC-122
-    relation: corrects
-    scope: "the `writeBooking` citation only — the stateless-HMAC capability URL and its non-interference with the race-critical CAS both stand"
-  - id: DEC-131
-    relation: corrects
-    scope: "the named precedent only — a constraint the caller must react to is still exposed through the port as a typed result, which is the holding"
-  - id: DEC-132
-    relation: corrects
-    scope: "the `writeBooking` citation only — booking-path customer linking is still in scope and still happens at the write, now on the surviving path"
 ---
 
 ## DEC-151: Retire the legacy booking write path rather than guard it — one write path, or the unguarded one outlives the guarded one
+
+**See also** — decisions this one changed part of:
+- Corrects DEC-107 — the `writeBooking` citation only — the hosted-Checkout and deposit/balance decisions stand, and the balance flow it describes is unchanged
+- Corrects DEC-122 — the `writeBooking` citation only — the stateless-HMAC capability URL and its non-interference with the race-critical CAS both stand
+- Corrects DEC-131 — the named precedent only — a constraint the caller must react to is still exposed through the port as a typed result, which is the holding
+- Corrects DEC-132 — the `writeBooking` citation only — booking-path customer linking is still in scope and still happens at the write, now on the surviving path
 
 **Status:** Accepted (operator, 2026-08-08). Issue #693, found by `@code-review` while shipping #615/#691.
 

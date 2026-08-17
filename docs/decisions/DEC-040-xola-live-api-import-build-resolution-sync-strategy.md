@@ -2,16 +2,13 @@
 id: DEC-040
 title: "Xola live-API import — build resolution + sync strategy (5.4b; resolves DEC-036)"
 topic: "Xola ingest & import"
-amends:
-  - id: DEC-017
-    relation: supersedes
-    scope: "manifest contact via email-join is retired"
-  - id: DEC-036
-    relation: corrects
-    scope: "resolves DEC-036's 'confirm at build' items and corrects its field-mapping guesses"
 ---
 
 ## DEC-040: Xola live-API import — build resolution + sync strategy (5.4b; resolves DEC-036)
+
+**See also** — decisions this one changed part of:
+- Supersedes DEC-017 — manifest contact via email-join is retired
+- Corrects DEC-036 — resolves DEC-036's 'confirm at build' items and corrects its field-mapping guesses
 
 **Status:** Built (task 5.4b). Resolves DEC-036's "confirm at build" items against a live sandbox `GET /orders` (2026-06-18) and sets the ongoing-sync strategy DEC-036 left open. DEC-036's architecture (a second Land adapter behind the DEC-015 seam) stands unchanged; this corrects its field-mapping guesses and adds the "how it stays current" leg.
 

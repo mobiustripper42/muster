@@ -2,13 +2,12 @@
 id: DEC-088
 title: "Civil send window — automated ask sends gated on vessel-local wall-clock; state advance is not"
 topic: "Staffing engine — asks, escalation, At-Risk board & cockpit"
-amends:
-  - id: DEC-063
-    relation: refines
-    scope: ""
 ---
 
 ## DEC-088: Civil send window — automated ask sends gated on vessel-local wall-clock; state advance is not
+
+**See also** — decisions this one changed part of:
+- Refines DEC-063
 
 **Status:** Decided 2026-07-04 (@architect gate, Phase 9.9, #235).
 

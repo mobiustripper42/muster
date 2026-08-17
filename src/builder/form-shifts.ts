@@ -435,14 +435,17 @@ async function formOneShift(
           })
         : deriveShiftState(seats);
 
-  const startAfter = earliestScheduledStart(scheduled)?.toISOString() ?? null;
+  // `scheduled` is non-empty here — the all-cancelled group returned long before this — so
+  // `earliestScheduledStart` always yields an instant and the watermark is never written as
+  // "unknown". That is why `Shift.earliestStart` is `string | undefined` with no null case.
+  const startAfter = earliestScheduledStart(scheduled)?.toISOString();
   const shift: Shift = {
     id: shiftId,
     vesselId,
     date,
     state,
     eventIds: scheduled.map((e) => e.id).sort(),
-    earliestStart: startAfter,
+    ...(startAfter ? { earliestStart: startAfter } : {}),
     ...(extra?.splitCutTime ? { splitCutTime: extra.splitCutTime } : {}),
   };
   await repo.saveShift(shift);
@@ -468,12 +471,15 @@ async function formOneShift(
     // keeps its id and the set compares equal while the crew member's call time has moved
     // underneath them. That was pinned as a known gap for months; Muster selling its own
     // reservations made it reachable by an ordinary operator edit, not just a Xola quirk.
-    const startBefore = existing.earliestStart ?? null;
     const tripsMoved = !idSetEq(existing.eventIds.map(String), shift.eventIds.map(String));
     // A row written before `earliestStart` existed reads `undefined`, which is "unknown",
     // NOT "changed" — treating it as a change would have every pre-migration shift
     // announce a retime that never happened, on the first form after deploy.
-    const startMoved = existing.earliestStart !== undefined && startBefore !== startAfter;
+    const startMoved =
+      existing.earliestStart !== undefined && existing.earliestStart !== startAfter;
+    // The diff payload keeps its `null`, and it means the same thing the absent field does:
+    // unknown. `changeSummary` refuses to name a clock change it cannot substantiate.
+    const startBefore = existing.earliestStart ?? null;
     if (
       opts?.notifyTripChanges &&
       existing.state !== "Cancelled" &&
@@ -492,7 +498,7 @@ async function formOneShift(
             added,
             removed,
             startBefore,
-            startAfter,
+            startAfter: startAfter ?? null,
           });
         }
       }

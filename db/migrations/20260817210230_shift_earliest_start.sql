@@ -22,4 +22,4 @@
 --
 -- ISO-8601 UTC instant as `text`, house style (0008/0009/0010).
 
-alter table shifts add column earliest_start text;
+alter table shifts add column if not exists earliest_start text;

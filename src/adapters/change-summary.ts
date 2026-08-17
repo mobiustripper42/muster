@@ -73,8 +73,15 @@ export function changeSummary(detail: ChangeDetail, opts: { budget: number }): s
   }
 
   // `added` and `removed` read the same, by the operator's call (2026-08-17) — no distinct
-  // phrasing for a day that grew versus one that shrank. Netted, because "+1 trip, -1 trip" on a
-  // swap is noise where "+0" would be a lie; a pure swap moves the clock and that token covers it.
+  // phrasing for a day that grew versus one that shrank. Netted, because "+1 trip, -1 trip" is
+  // noise and "+0 trips" says nothing.
+  //
+  // **What netting cannot express** (@code-review): a 1-for-1 swap of two LATE trips nets to
+  // zero AND leaves the earliest departure alone, so both tokens vanish and the body falls back
+  // to the bare "shift changed." The manifest really did move, and the SMS cannot say so. That is
+  // survivable only because the fallback is by design a pointer to a surface carrying the full
+  // diff — which is issue #769, not yet built. Until it is, this case is the thinnest the notice
+  // gets, and it is the strongest argument for finishing that half.
   const net = detail.added.length - detail.removed.length;
   if (net !== 0) {
     const n = Math.abs(net);

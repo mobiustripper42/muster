@@ -71,7 +71,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
       <main className="mx-auto max-w-2xl px-4 py-16">
         <h1 className="text-xl font-semibold">Reservations are off</h1>
         <p className="mt-2 text-muted">
-          Set <code>RESERVATIONS=true</code> to enable booking (DEC-111).
+          Set <code>RESERVATIONS=1</code> to enable booking (DEC-111).
         </p>
       </main>
     );

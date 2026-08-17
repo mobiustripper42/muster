@@ -7,7 +7,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import { asId } from "../domain/ids.js";
-import type { CrewMemberId, SeatId, ShiftId } from "../domain/ids.js";
+import type { CrewMemberId, SeatId } from "../domain/ids.js";
 import type { CrewMember, Seat, Shift } from "../domain/entities.js";
 import type { SeatState, ShiftState } from "../domain/states.js";
 import { broadcastAsk, bail, confirmSeat, recordResponse } from "./ask-loop.js";

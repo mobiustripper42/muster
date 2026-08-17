@@ -19,7 +19,7 @@
 
 import type { Subject } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
-import type { CrewMemberId, TenantId, ThreadId } from "../domain/ids.js";
+import type { TenantId, ThreadId } from "../domain/ids.js";
 import type { Message, Thread } from "../messaging/entities.js";
 import type { Repository } from "../ports/repository.js";
 import { TENANT_TIMEZONE } from "../config/tenant.js";

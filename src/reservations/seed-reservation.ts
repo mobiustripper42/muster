@@ -32,7 +32,6 @@ import { createHash } from "node:crypto";
 import type { Event, Location, Offering, Reservation } from "../domain/entities.js";
 import { mintBookingCode } from "./booking-code.js";
 import { asId } from "../domain/ids.js";
-import type { VesselId } from "../domain/ids.js";
 import { addDays } from "../config/tenant.js";
 import { eventIdForSlot } from "./availability.js";
 

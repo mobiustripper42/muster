@@ -29,12 +29,8 @@ import { logFormAudit } from "../oracle/audit-log.js";
 import type { Payment, Reservation } from "../domain/entities.js";
 import {
   asId,
-  type EventId,
-  type GratuityId,
-  type OfferingId,
   type PaymentId,
   type ReservationId,
-  type VesselId,
 } from "../domain/ids.js";
 import type { CheckoutCompleted, PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";

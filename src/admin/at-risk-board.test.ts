@@ -15,7 +15,7 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import { asId } from "../domain/ids.js";
-import type { CrewMemberId, SeatId, ShiftId, VesselId } from "../domain/ids.js";
+import type { CrewMemberId, SeatId, ShiftId } from "../domain/ids.js";
 import type {
   Credential,
   CrewMember,

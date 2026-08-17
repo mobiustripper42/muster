@@ -11,7 +11,6 @@
  */
 
 import type { Customer, Event, Reservation } from "../domain/entities.js";
-import type { CustomerId } from "../domain/ids.js";
 
 export interface CustomerBooking {
   reservationId: string;

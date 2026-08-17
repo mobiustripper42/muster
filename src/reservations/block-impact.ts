@@ -16,7 +16,6 @@
  * what the calendar will render. O(blocks × slots), fine for a season (a few dozen slots).
  */
 import type { Block, Event, Offering, Reservation, Vessel } from "../domain/entities.js";
-import type { VesselId } from "../domain/ids.js";
 import { deriveVirtualAvailability, isSlotBlocked } from "./availability.js";
 
 export interface BlockImpactInput {

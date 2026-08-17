@@ -241,7 +241,17 @@ function toRingVM(c: RingOutboxCardView): RingOutboxCardVM {
   };
 }
 
-/** Format one notice read-model into the notice card's display strings (DEC-084). */
+/**
+ * Format one notice read-model into the notice card's display strings (DEC-084).
+ *
+ * Byte-identical to `toRingVM` above, and deliberately left that way. The two take different
+ * input types and return different output types (ring = DEC-073, notice = DEC-084); the bodies
+ * coincide only because the two read models happen to have the same shape *today*. Merging them
+ * would couple two independently-evolving surfaces, so that a change to how a notice card renders
+ * silently changes ring cards — a worse defect than the repetition, and a harder one to see.
+ * Revisit if the two ever become genuinely one concept.
+ */
+// eslint-disable-next-line sonarjs/no-identical-functions -- same shape, different concepts; see above
 function toNoticeVM(c: NoticeOutboxCardView): NoticeOutboxCardVM {
   const message = `${c.body}\n${c.link}`;
   return {

@@ -6,7 +6,6 @@ import { describe, expect, it } from "vitest";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import { asId } from "../domain/ids.js";
 import type { Payment, Reservation } from "../domain/entities.js";
-import type { EventId, ReservationId, VesselId } from "../domain/ids.js";
 import { seedFleet } from "../import/resource-map.js";
 import { formShifts } from "../builder/form-shifts.js";
 import { cancelReservation, quoteCancelRefund } from "./cancel-reservation.js";

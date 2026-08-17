@@ -37,7 +37,7 @@
  */
 
 import { asId } from "../domain/ids.js";
-import type { CrewMemberId, MessageId, ThreadId } from "../domain/ids.js";
+import type { CrewMemberId, ThreadId } from "../domain/ids.js";
 import type { Subject } from "../domain/entities.js";
 import {
   DOORBELL_BATCH_WINDOW_MS,

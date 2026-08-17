@@ -7,7 +7,6 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import { asId } from "../domain/ids.js";
-import type { CrewMemberId } from "../domain/ids.js";
 import type {
   ReliabilityEvent,
   ReliabilityEventMetadata,

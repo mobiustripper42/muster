@@ -12,9 +12,6 @@ import { buildPayrollReport } from "./payroll.js";
 
 const CAP = asId<"RoleTypeId">("role-captain");
 const V = asId<"VesselId">("vessel-1");
-const QUINT = asId<"CrewMemberId">("crew-quint");
-const HOOPER = asId<"CrewMemberId">("crew-hooper");
-const TRAINEE = asId<"CrewMemberId">("crew-trainee");
 
 const crew = (id: string, name: string): CrewMember => ({
   id: asId<"CrewMemberId">(id),

@@ -21,7 +21,7 @@ import { writeSlotBooking } from "../reservations/write-booking.js";
 import { eventIdForSlot } from "../reservations/availability.js";
 import { asId } from "../domain/ids.js";
 import type { TimePunch } from "../domain/entities.js";
-import type { CrewMemberId, EventId, ReservationId, TimePunchId } from "../domain/ids.js";
+import type { EventId, ReservationId } from "../domain/ids.js";
 
 const TEST_URL =
   process.env.TEST_DATABASE_URL ??
@@ -439,7 +439,6 @@ if (!dbUp) {
   describe("two buyers, one hull, overlapping times — the #691 hole", () => {
     const VESSEL3 = asId<"VesselId">("vessel-brew-7");
     const DATE3 = "2026-07-04";
-    const NOW3 = () => "2026-07-12T00:00:00.000Z";
 
     it("sells the boat exactly once across two overlapping departures", async () => {
       await pool.query(`truncate ${TABLES.join(", ")} restart identity cascade`);

@@ -12,7 +12,6 @@
  * repo. Deterministic ids keyed on date+seq ⇒ idempotent re-seed.
  */
 import type { Event, Gratuity, Reservation, Seat, Shift, Vessel } from "../domain/entities.js";
-import type { CrewMemberId, RoleTypeId } from "../domain/ids.js";
 import { asId } from "../domain/ids.js";
 
 export interface SeedGratuityCrew {

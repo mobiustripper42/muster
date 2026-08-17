@@ -7,7 +7,6 @@ import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import { FakePaymentPort } from "../adapters/fake-payment.js";
 import { asId } from "../domain/ids.js";
 import type { Payment, Reservation } from "../domain/entities.js";
-import type { PaymentId, ReservationId } from "../domain/ids.js";
 import { parseDollarsToCents, refundReservation } from "./refund-payment.js";
 
 const RESV = asId<"ReservationId">("resv-refund-1");

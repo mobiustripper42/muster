@@ -188,7 +188,6 @@ describe("checkIntegrity", () => {
     // table — see integrity-coverage.ts.
     const repo = await seedSpine();
     const ghostCrew = asId<"CrewMemberId">("crew-ghost");
-    const ghostVessel = asId<"VesselId">("vessel-ghost");
 
     await repo.saveNoticeOutboxEntry({
       id: asId<"NoticeOutboxEntryId">("notice-1"),

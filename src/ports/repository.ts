@@ -69,7 +69,6 @@ import type {
   ShiftId,
   TenantId,
   TimePunchId,
-  TimePunchEditId,
   VesselId,
 } from "../domain/ids.js";
 import type { ReliabilityEvent } from "../domain/reliability.js";

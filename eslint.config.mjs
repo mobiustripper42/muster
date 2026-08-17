@@ -168,7 +168,12 @@ export default tseslint.config(
     // config is. That needs a token-level cross-file detector (jscpd or equivalent) for the
     // twins, and the repo-wide "one rule, many spellings" audit parked in docs/FUTURE_IDEAS.md
     // for the synonyms — which is the harder and more common half.
-    files: ["src/**/*.{ts,tsx}", "app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}", "db/**/*.ts"],
+    files: [
+      "src/**/*.{ts,tsx}",
+      "app/**/*.{ts,tsx}",
+      "components/**/*.{ts,tsx}",
+      "db/**/*.{ts,tsx}",
+    ],
     plugins: { sonarjs },
     rules: { "sonarjs/no-identical-functions": "error" },
   },

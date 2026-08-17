@@ -118,7 +118,7 @@ function opt<K extends string, V>(
 
 // ── Row → domain mappers ────────────────────────────────────────────────────
 
- 
+
 const toRoleType = (r: any): RoleType => ({
   id: asId<"RoleTypeId">(r.id),
   tenantId: asId<"TenantId">(r.tenant_id),
@@ -548,7 +548,7 @@ const toMessage = (r: any): Message => ({
   createdAt: r.created_at,
   priority: r.priority, // native boolean (0010) — pg returns a JS boolean
 });
- 
+
 
 export class PostgresRepository implements Repository {
   readonly #pool: pg.Pool;

@@ -300,6 +300,8 @@ interface Row {
   isOver: boolean;
   wouldBeOver: boolean;
   isMismatch: boolean;
+  /** The guest question was calibrated to a different hull than the one assigned. */
+  isHullMismatch: boolean;
   hasExtras: boolean;
   isCancelled: boolean;
 }
@@ -328,7 +330,7 @@ for (const order of orders) {
   for (const item of order.items ?? []) {
     const raw = item as unknown as Record<string, unknown>;
     experiences.add(String(item.name ?? "?").trim());
-    const { extra, declared, declaredMax, missingAddOnsKey } = readAddOns(raw);
+    const { extra, declared, declaredMax, threshold, missingAddOnsKey } = readAddOns(raw);
     if (missingAddOnsKey) itemsWithoutAddOns += 1;
     const eventId = (item.event?.id ?? "").trim();
     const boat = (eventId && boatByEvent.get(eventId)) || "—";
@@ -340,6 +342,7 @@ for (const order of orders) {
     let isOver = false;
     let wouldBeOver = false;
     let isMismatch = false;
+    let isHullMismatch = false;
     // **An unresolved boat is a FLAG, not a silent pass.** This is the defect the operator caught
     // once already: the row printed blank and looked clean while its capacity check had simply
     // not run. Fixing the lookup was not enough — without a flag here the row is still dropped by
@@ -398,6 +401,19 @@ for (const order of orders) {
       isOver = true;
       flags.push(`OVER ${boat} cap ${cap}`);
     }
+    // **The question was asked about a different boat than the one they got** (operator,
+    // 2026-08-18). The checkout asks "adding more guests over 12?" — that 12 is the hull the
+    // customer was answering about. Sarah McCarty answered it and sailed on a 14-pax Brew 1, so
+    // somebody moved her up a boat after the fact and the extra guests were never charged.
+    //
+    // This is NOT the declared-vs-paid check above, and it survives the fix to it: her "declared
+    // 4" came from an option she had actually DECLINED, so once that stopped counting she fell
+    // off every list — while the real anomaly, the hull she is on, was never being tested at all.
+    // It reads off the question rather than the answer, so it fires whatever the customer picked.
+    if (threshold !== null && cap !== undefined && threshold !== cap) {
+      isHullMismatch = true;
+      flags.push(`ANSWERED for a ${threshold}-pax boat, BOOKED on ${boat} (cap ${cap})`);
+    }
     if (item.status === 700) flags.push("cancelled");
 
     rows.push({
@@ -414,6 +430,7 @@ for (const order of orders) {
       isOver,
       wouldBeOver,
       isMismatch,
+      isHullMismatch,
       hasExtras: extra > 0 || saidYes,
       isCancelled: item.status === 700,
     });
@@ -493,6 +510,10 @@ const section = (title: string, set: Row[]): void => {
 section("OVER CAPACITY — move the boat", live.filter((r) => r.isOver));
 section("WOULD BE OVER if the declared guest shows", live.filter((r) => r.wouldBeOver));
 section("DECLARED ≠ PAID — money to chase", live.filter((r) => r.isMismatch));
+section(
+  "ANSWER ≠ BOAT — the guest question was asked about a different hull",
+  live.filter((r) => r.isHullMismatch),
+);
 section(
   "EXTRA GUESTS, consistent and within capacity",
   live.filter((r) => r.hasExtras && !r.isOver && !r.wouldBeOver && !r.isMismatch),

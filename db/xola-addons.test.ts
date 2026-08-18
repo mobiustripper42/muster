@@ -59,6 +59,30 @@ describe("readAddOns — an option the customer DECLINED is not a declaration", 
   });
 });
 
+describe("readAddOns — the question's own threshold", () => {
+  it("captures the number the question was calibrated to", () => {
+    // "…over 12?" is asked against a 12-pax hull. The threshold is the only place the booking
+    // records which size boat the customer was answering ABOUT, so it has to come back out —
+    // comparing it to the boat they actually got is what catches an upgraded hull.
+    expect(readAddOns({ addOns: [q(`${GUESTS}: No-Good with 12`, 1)] }).threshold).toBe(12);
+    expect(
+      readAddOns({ addOns: [q("Are you interested in adding more guests over 14?: No", 1)] })
+        .threshold,
+    ).toBe(14);
+  });
+
+  it("reads the threshold off an unselected option too — the question was still asked", () => {
+    // Sarah's only quantity-1 answer is the "No"; the threshold must not depend on which option
+    // she picked, because the mismatch is a property of the QUESTION, not of the answer.
+    expect(readAddOns({ addOns: [q(`${GUESTS}: Yes-four more`, 0)] }).threshold).toBe(12);
+  });
+
+  it("is null when no guest question was asked at all", () => {
+    expect(readAddOns({ addOns: [q("Extra Tickets: $40/person", 1)] }).threshold).toBeNull();
+    expect(readAddOns({}).threshold).toBeNull();
+  });
+});
+
 describe("readAddOns — the rest of the shape", () => {
   it("sums extra tickets by quantity, never by row count", () => {
     const r = readAddOns({ addOns: [q("Extra Tickets: $40/person", 3)] });

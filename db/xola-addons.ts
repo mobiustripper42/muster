@@ -22,7 +22,8 @@ export interface XolaAddOn {
 }
 
 export const EXTRA_TICKETS = /^extra tickets/i;
-export const MORE_GUESTS = /adding more guests over \d+\?:\s*(.+)$/i;
+/** Group 1 = the threshold the question was calibrated to; group 2 = the customer's answer. */
+export const MORE_GUESTS = /adding more guests over (\d+)\?:\s*(.+)$/i;
 /** "Yes-two more" → 2. The checkout offers words, not digits. */
 export const WORD: Record<string, number> = {
   one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
@@ -35,6 +36,17 @@ export interface AddOnReading {
   declared: string[];
   /** The largest guest count any answer declared, or null if nothing parsed. */
   declaredMax: number | null;
+  /**
+   * The hull size the guest question was calibrated to — the `12` in "adding more guests over
+   * 12?". Null when the question was not asked.
+   *
+   * This is the ONLY record of which size boat the customer was answering *about*. Compared
+   * against the boat they were actually assigned, it catches an upgraded hull: Sarah McCarty
+   * answered "over 12?" and sailed on a 14-pax boat, so somebody moved her up and the extra
+   * guests were never charged. Read off the question, NOT the chosen answer — the mismatch is a
+   * property of what was asked, so an unselected option carries it just as well.
+   */
+  threshold: number | null;
   /** True when the item carried no `addOns` key at all — a wire-shape change, not an empty cart. */
   missingAddOnsKey: boolean;
 }
@@ -45,6 +57,7 @@ export function readAddOns(item: { addOns?: unknown }): AddOnReading {
   let extra = 0;
   const declared: string[] = [];
   let declaredMax: number | null = null;
+  let threshold: number | null = null;
   for (const a of addOns) {
     const name = (a.configuration?.name ?? "").trim();
     if (EXTRA_TICKETS.test(name)) {
@@ -53,6 +66,10 @@ export function readAddOns(item: { addOns?: unknown }): AddOnReading {
     }
     const m = MORE_GUESTS.exec(name);
     if (!m) continue;
+    // Taken BEFORE the quantity guard below: the threshold is a property of the question, which
+    // was asked whether or not the customer picked this particular option.
+    const t = Number(m[1]);
+    if (Number.isFinite(t)) threshold = threshold === null ? t : Math.max(threshold, t);
     // An option the customer DECLINED is still on the wire, at quantity 0. Reading existence
     // instead of quantity reads back the answer they said no to — which is how a booking whose
     // only selected answer was "No-Good with 12" landed on the WOULD-BE-OVER list.
@@ -62,7 +79,7 @@ export function readAddOns(item: { addOns?: unknown }): AddOnReading {
     // safe direction for an unknown is to raise the alert, not to swallow it. Same reasoning as
     // `max` below reporting the worst case when someone answered more than once.
     if (typeof a.quantity === "number" && a.quantity < 1) continue;
-    const answer = (m[1] ?? "").trim();
+    const answer = (m[2] ?? "").trim();
     declared.push(answer);
     // "No-Good with 12" ⇒ 0; "Yes-two more" ⇒ 2. An unrecognised phrasing is left null rather
     // than coerced to 0 — reporting "declared 0" for a sentence nobody parsed would invent a
@@ -74,5 +91,5 @@ export function readAddOns(item: { addOns?: unknown }): AddOnReading {
       if (typeof n === "number" && Number.isFinite(n)) declaredMax = Math.max(declaredMax ?? 0, n);
     }
   }
-  return { extra, declared, declaredMax, missingAddOnsKey };
+  return { extra, declared, declaredMax, threshold, missingAddOnsKey };
 }

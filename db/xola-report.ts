@@ -313,6 +313,16 @@ function readAddOns(item: Record<string, unknown>): {
     }
     const m = MORE_GUESTS.exec(name);
     if (!m) continue;
+    // **An option the customer did NOT pick is still on the wire, at quantity 0.** Xola emits
+    // every option of a question as its own add-on row and marks the chosen one with a quantity;
+    // its own Roster Details screen shows only the picked ones, which is why the report could
+    // disagree with the operator looking at the same booking.
+    //
+    // Reading every row regardless of quantity therefore reports back answers nobody gave. Sarah
+    // McCarty read `declared 4` off a "Yes-four more" row she never selected (her answer was
+    // "No-Good with 12"), and Mallory Mitchell read `declared 1` the same way. Both then produced
+    // a WOULD-BE-OVER alert on the one report whose job is to warn that a boat is overloaded.
+    if (typeof a.quantity === "number" && a.quantity < 1) continue;
     const answer = (m[1] ?? "").trim();
     declared.push(answer);
     // "No-Good with 12" ⇒ 0; "Yes-two more" ⇒ 2. An unrecognised phrasing is left null rather
@@ -350,9 +360,16 @@ interface Row {
   isOver: boolean;
   wouldBeOver: boolean;
   isMismatch: boolean;
+  /** On a bigger hull than the paid party needs — the upgrade was never charged. */
+  isOverBoated: boolean;
+  /** Guests owed at the extra-guest rate when over-boated: `cap - pax`. */
+  owed: number;
   hasExtras: boolean;
   isCancelled: boolean;
 }
+
+/** Fleet capacities ascending — used to ask which is the SMALLEST boat a party would fit on. */
+const FLEET_CAPS: number[] = [12, 12, 14, 16];
 
 const CAPACITY: Record<string, number> = {
   "Brew 1": 14,
@@ -389,6 +406,8 @@ for (const order of orders) {
     let isOver = false;
     let wouldBeOver = false;
     let isMismatch = false;
+    let isOverBoated = false;
+    let owed = 0;
     // **An unresolved boat is a FLAG, not a silent pass.** This is the defect the operator caught
     // once already: the row printed blank and looked clean while its capacity check had simply
     // not run. Fixing the lookup was not enough — without a flag here the row is still dropped by
@@ -447,6 +466,20 @@ for (const order of orders) {
       isOver = true;
       flags.push(`OVER ${boat} cap ${cap}`);
     }
+    // **A party on a bigger hull than it needs was upgraded and never charged for it** (operator,
+    // 2026-08-18). BrewBoat bills the BOAT, not the head count: take a 14 for a party of 12 and
+    // you owe the two seats at the extra-guest rate.
+    //
+    // The test is the smallest boat in the fleet that would have fitted them, NOT `cap - pax`.
+    // Ali Eltatawy is 13 on a 14 and correct — 13 does not fit on a 12, so the 14 is the right
+    // boat and he owes nothing. Sarah McCarty is 12 on a 14 when a 12 was available, so she owes
+    // two. `cap - pax` alone flags them both.
+    const smallestFit = FLEET_CAPS.find((c) => c >= pax);
+    if (cap !== undefined && smallestFit !== undefined && cap > smallestFit) {
+      isOverBoated = true;
+      owed = cap - pax;
+      flags.push(`OVER-BOATED — ${pax} on ${boat} (cap ${cap}); a ${smallestFit} would fit, ${owed} guest(s) to charge`);
+    }
     if (item.status === 700) flags.push("cancelled");
 
     rows.push({
@@ -463,6 +496,8 @@ for (const order of orders) {
       isOver,
       wouldBeOver,
       isMismatch,
+      isOverBoated,
+      owed,
       hasExtras: extra > 0 || saidYes,
       isCancelled: item.status === 700,
     });
@@ -542,6 +577,10 @@ const section = (title: string, set: Row[]): void => {
 section("OVER CAPACITY — move the boat", live.filter((r) => r.isOver));
 section("WOULD BE OVER if the declared guest shows", live.filter((r) => r.wouldBeOver));
 section("DECLARED ≠ PAID — money to chase", live.filter((r) => r.isMismatch));
+section(
+  "OVER-BOATED — bigger hull than the party needs, upgrade never charged",
+  live.filter((r) => r.isOverBoated),
+);
 section(
   "EXTRA GUESTS, consistent and within capacity",
   live.filter((r) => r.hasExtras && !r.isOver && !r.wouldBeOver && !r.isMismatch),

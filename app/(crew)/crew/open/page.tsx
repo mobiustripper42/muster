@@ -284,12 +284,16 @@ function confirmLead(r: ClaimableSeatView): string {
   return hasTrips(r) ? head : `${head} No trips are scheduled yet.`;
 }
 
-/** The DEC-077 live facts — trip count/times · call · back — rendered after a
- *  "Currently:" label. Null when the shift has no scheduled trips yet. */
+/** The DEC-077 live facts — trip count/times · start · back — rendered after a
+ *  "Currently:" label. Null when the shift has no scheduled trips yet.
+ *
+ *  `r.callTime` is the field name; **"start" is the word the crew get** — the same value the
+ *  shift card labels "Shift Start" (DEC-158). Nobody outside the trade knows what a call time
+ *  is, and this was the last crew-facing surface still using the internal term. */
 function confirmFacts(r: ClaimableSeatView): string | null {
   if (!hasTrips(r)) return null;
   const n = r.tripTimes.length;
-  return `${n} trip${n === 1 ? "" : "s"} (${joinTimes(r.tripTimes)}) · call ${fmt12(r.callTime!)} · back ~${backAt(r.shiftEndTime!)}`;
+  return `${n} trip${n === 1 ? "" : "s"} (${joinTimes(r.tripTimes)}) · start ${fmt12(r.callTime!)} · back ~${backAt(r.shiftEndTime!)}`;
 }
 
 /** A shift has a renderable trip picture only if it has scheduled trips AND a

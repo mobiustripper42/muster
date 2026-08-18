@@ -163,8 +163,17 @@ export async function cancelReservation(
   // booking webhook uses: the cancellation is COMMITTED by this point, so a channel hiccup or
   // an audit failure must not throw back to the operator and make them press cancel again on a
   // booking that is already cancelled. The cron tick re-forms as the backstop.
+  //
+  // `notifyTripChanges: true` (#765): "the shift collapses and its crew are told" only covered
+  // the case where the cancelled trip was the day's ONLY trip — that collapse emits
+  // `cancelledCrew`, which is ungated. A day with other trips keeps a LIVE shift with a smaller
+  // trip set, which lands in `changedCrew`, which was gated off. The crew member kept a shift
+  // whose shape moved under them — plausibly a different call time — and heard nothing.
   try {
-    const form = await formShifts(deps.repo, { now: new Date(deps.now()) });
+    const form = await formShifts(deps.repo, {
+      now: new Date(deps.now()),
+      notifyTripChanges: true,
+    });
     try {
       await deps.relayFormNotices?.(form);
     } catch (e) {

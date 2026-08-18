@@ -27,3 +27,25 @@ topic: "Outbound notifications & operator relay"
 **Not the messaging/threads rail (DEC-051).** That's derived-membership broadcast chat; a transactional assignment notice is neither, and the office is barred from originating a DM anyway.
 
 **Relationship:** implements the SPEC §2.3 Merge action's crew-facing half; reuses DEC-030/050 (operator-relay outbox pattern), DEC-073 (own-lane-per-outbound precedent), DEC-MSG-1 (SMS swap seam), DEC-083 (merge mechanics), DEC-072 (operator ring-exclusion). Supersedes nothing.
+
+## Amendment, 2026-08-17 (eric) — notices DO come from the `formShifts` re-derive path, and every caller that can move a crewed day must opt in
+
+**What this changes.** The Idempotency paragraph above says notices are emitted "**only** from the explicit merge command, once — **never** from the `formShifts` re-derive path." That is no longer true, and had already stopped being true before this amendment was written.
+
+**What still stands.** Everything structural: the third `NoticePort` lane, `NoticeOutboxEntry` + `notice_outbox`, terminal-on-sent, the core-returns-intent / edge-delivers seam, the deterministic entry id, and the operator-as-crew exclusion. None of that moves. What changes is only **which callers may emit**.
+
+**Context.** #350 added a third action, `"changed"` ("your shift changed"), which by its nature can only be detected during re-derivation — it is the diff between a shift's stored trip set and its newly derived one. So it necessarily emits from `formShifts`, and the original "never" became false the day it landed. The guard against the chatter this paragraph feared is not "never re-derive" but the **diff gate** (`form-shifts.ts`): a re-form that changes nothing emits nothing, and re-running the same pull twice is silent the second time.
+
+#350 gated that emission behind an opt-in, `notifyTripChanges`, passed only by the Xola import and the manual split/merge — "the explicit commands a human drove". #765 found the hole that left: the **Muster booking webhook**, the **cancel path** and the **cron tick** all call `formShifts` and none passed the flag. A customer booking that grew an already-crewed day, and a cancellation that shrank one without collapsing it, both told nobody. Worse, per DEC-126 the Xola pull switches off at cutover, after which the webhook and the tick are the only formation triggers left — so "your shift changed" would have stopped firing entirely, as dead code, with nothing failing.
+
+**Decision.** The rule is no longer *"only human-driven commands emit"*. It is:
+
+> **Every `formShifts` caller that can move an already-crewed day passes `notifyTripChanges: true`.** A caller that stays silent is silent *by declaration*, with the reason recorded — not by omission.
+
+This includes the **cron tick**, which is the judgment call and is decided deliberately here. It is not a human action, but it is the backstop for two best-effort callers that swallow their own formation failures; with the flag off, the retry that repaired the shift told nobody either. It cannot chatter for the same reason the import cannot: the diff gate compares against the stored set, so the tick emits only when it is genuinely the first to observe the change.
+
+`src/builder/form-shifts-notify.test.ts` enforces this by reading the source, because the failure mode is a *missing* line in a caller written later — a class no behavioural test can reach, since every existing caller's test passed while the defect was live. A caller that should stay quiet is added to `SILENT_BY_DESIGN` with its reason.
+
+**Why the operator principle drives this.** DEC-084 opens with Eric's rule — when a crew member's commitment changes they **always get a message**, "no matter how it gets to them during what phase." An emission rule that depends on which internal function happened to trigger the re-derive serves the implementation, not that principle. Restated on 2026-08-17 in the same terms: *"if the time changes and the crew isn't notified, then that's a bug."*
+
+**What this does not decide.** What the notice *says* — issue #740, still open, where the "changed" notice names an event without naming its content. And the retime gap characterised at `src/builder/form-shifts.test.ts:290`: a trip retimed **in place** keeps its event id, so the trip-set diff sees nothing and no notice fires even with the flag on. That is a gap in the trigger, not in which callers opt in, and it is #740's to close.

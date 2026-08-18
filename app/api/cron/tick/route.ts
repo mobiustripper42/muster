@@ -56,10 +56,23 @@ export async function GET(req: Request) {
   // `tick` still never runs while paused; only the derivation does.
   //
   // Best-effort per leg: a formation, relay or audit failure must not cost this tick the asks and
-  // escalations it exists for. No `notifyTripChanges` — that flag is the import's.
+  // escalations it exists for.
+  //
+  // `notifyTripChanges: true` (#765) — deliberately, and this is the one caller where it is a
+  // judgment call rather than an obvious fix. The old reasoning was that notices should only come
+  // from a human action, and a scheduled tick is not one. But the tick is the BACKSTOP for two
+  // best-effort callers: the booking webhook and the cancel path both form inline and swallow a
+  // failure, and this is what forms the shift when they do. Leaving the flag off meant the
+  // backstop path formed silently — the crew member's day moved, the inline notice never fired,
+  // and the retry that fixed the shift told nobody either.
+  //
+  // It cannot chatter: the gate in `form-shifts.ts` is diff-gated against the STORED trip set, so
+  // once any caller has formed a change this tick sees no diff and sends nothing. It fires only
+  // when this tick is genuinely the first to observe the change — which is exactly the case that
+  // was silent.
   let shiftsFormed = 0;
   try {
-    const form = await formShifts(repo, { now });
+    const form = await formShifts(repo, { now, notifyTripChanges: true });
     shiftsFormed = form.createdShiftIds.length;
     // Relay + audit like every other `formShifts` caller. `cancelledCrew`/`restoredCrew` are NOT
     // gated by `notifyTripChanges`, and after DEC-126 this and the booking webhook are the only

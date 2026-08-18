@@ -102,6 +102,56 @@ describe("cancelReservation", () => {
     expect((relayed[0] as { cancelledCrew: unknown[] }).cancelledCrew).toHaveLength(1);
   });
 
+  it("a cancellation that SHRINKS a still-live day tells that crew too (#765)", async () => {
+    // The sibling of the collapse above, and the half that was silent. When the cancelled trip is
+    // the day's ONLY trip the shift collapses and `cancelledCrew` fires — that path is ungated and
+    // always worked. When the day has other trips the shift SURVIVES with a smaller trip set, so
+    // the change lands in `changedCrew`, which was gated off here. The crew member keeps a shift
+    // whose shape moved under them — plausibly a different call time — and was told nothing.
+    const repo = await seeded();
+    // A second trip on the same hull that day, so cancelling the first cannot collapse the shift.
+    await repo.saveEvent({
+      id: asId<"EventId">("slot_vessel-brew-2|2026-08-20|12:00"),
+      vesselId: VESSEL,
+      date: "2026-08-20",
+      time: "12:00",
+      capacity: 16,
+      status: "scheduled",
+      source: "muster",
+      price: 50000,
+    });
+    await formShifts(repo);
+    const shiftId = asId<"ShiftId">(`shift-${VESSEL}-2026-08-20`);
+    const seats = await repo.listSeatsForShift(shiftId);
+    await repo.saveSeat({
+      ...seats[0]!,
+      state: "Confirmed",
+      assignedCrewMemberId: asId<"CrewMemberId">("crew-quint"),
+    });
+    expect((await repo.getShift(shiftId))?.eventIds).toHaveLength(2);
+
+    const relayed: unknown[] = [];
+    await cancelReservation(
+      deps(repo, async (f) => {
+        relayed.push(f);
+      }),
+      RESV,
+    );
+
+    // The shift is still live and still crewed — it just lost a trip.
+    expect((await repo.getShift(shiftId))?.state).not.toBe("Cancelled");
+    expect((await repo.getShift(shiftId))?.eventIds).toHaveLength(1);
+
+    expect(relayed).toHaveLength(1);
+    const form = relayed[0] as {
+      cancelledCrew: unknown[];
+      changedCrew: { crewMemberId: string }[];
+    };
+    // Not "you're off" — they are still on the boat. "Your shift changed".
+    expect(form.cancelledCrew).toEqual([]);
+    expect(form.changedCrew.map((c) => String(c.crewMemberId))).toEqual(["crew-quint"]);
+  });
+
   it("refuses a Xola reservation — Xola owns its own bookings (DEC-105)", async () => {
     const repo = await seeded({ source: "xola" });
     const result = await cancelReservation(deps(repo), RESV);

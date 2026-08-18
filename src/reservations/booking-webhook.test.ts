@@ -4,6 +4,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { FAKE_SIGNATURE, FakePaymentPort } from "../adapters/fake-payment.js";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
+import { formShifts } from "../builder/form-shifts.js";
 import type { Event } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import type { CheckoutCompleted } from "../ports/payment.js";
@@ -598,6 +599,75 @@ describe("a native booking forms its own crewable shift (#614)", () => {
     expect(relayed).toHaveLength(1);
     const form = relayed[0] as { createdShiftIds: string[] };
     expect(form.createdShiftIds).toHaveLength(1);
+  });
+
+  it("a booking that GROWS an already-crewed day tells that crew (#765)", async () => {
+    // The case the "nobody is on this shift yet — it is being born" comment does not reach.
+    // A shift is born empty, but `formShifts` groups events by vessel + day, so a later booking
+    // on the SAME day joins the existing shift's trip set. Somebody's committed day just grew a
+    // trip. Xola-sourced changes relay this (`xola-pull.ts` opts in); a Muster booking did not —
+    // and after the DEC-126 cutover this webhook and the cron tick are the only formation
+    // triggers left, so "your shift changed" would stop firing altogether.
+    const repo = await slotWorld();
+
+    // A trip already on that boat that day, formed into a shift, with a captain confirmed on it.
+    await repo.saveEvent({
+      id: asId<"EventId">("evt-already-there"),
+      vesselId: VES,
+      date: "2026-07-04",
+      time: "12:00",
+      capacity: 12,
+      status: "scheduled",
+      source: "muster",
+      price: 49900,
+    });
+    await formShifts(repo);
+    const shift = (await repo.listShifts())[0]!;
+    const seat = (await repo.listSeatsForShift(shift.id))[0]!;
+    await repo.saveSeat({
+      ...seat,
+      state: "Confirmed",
+      assignedCrewMemberId: asId<"CrewMemberId">("cap-765"),
+    });
+
+    const relayed: unknown[] = [];
+    const { deps } = makeDeps(repo);
+    deps.relayFormNotices = async (form) => void relayed.push(form);
+
+    // Now a customer buys the 17:00 on the same boat, same day.
+    await processBookingWebhook(deps, JSON.stringify(slotCharge()), FAKE_SIGNATURE);
+
+    // The trip set genuinely moved — one trip became two, on the shift the captain is on.
+    expect((await repo.getShift(shift.id))?.eventIds).toHaveLength(2);
+
+    // …so the captain must be in the relayed change list. Before #765 this was empty: the
+    // webhook called `formShifts` without `notifyTripChanges`, so the diff was computed,
+    // discarded, and nobody was told their day had grown a trip.
+    expect(relayed).toHaveLength(1);
+    const form = relayed[0] as {
+      changedCrew: { shiftId: string; crewMemberId: string }[];
+    };
+    expect(form.changedCrew.map((c) => String(c.crewMemberId))).toEqual(["cap-765"]);
+  });
+
+  it("a booking that creates a BRAND-NEW shift still tells nobody (#765)", async () => {
+    // The other half, and the reason the flag can't just be waved on everywhere: a shift being
+    // born has no assigned crew, so there is no one to tell and the notice must stay silent.
+    // Without this, "fires on a booking" and "fires on every booking" look identical.
+    const repo = await slotWorld();
+    const relayed: unknown[] = [];
+    const { deps } = makeDeps(repo);
+    deps.relayFormNotices = async (form) => void relayed.push(form);
+
+    await processBookingWebhook(deps, JSON.stringify(slotCharge()), FAKE_SIGNATURE);
+
+    expect(relayed).toHaveLength(1);
+    const form = relayed[0] as {
+      changedCrew: unknown[];
+      createdShiftIds: string[];
+    };
+    expect(form.createdShiftIds).toHaveLength(1);
+    expect(form.changedCrew).toEqual([]);
   });
 
   it("a relay failure does not cost the customer their paid booking", async () => {

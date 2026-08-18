@@ -45,37 +45,23 @@ export function readAddOns(item: { addOns?: unknown }): AddOnReading {
   let extra = 0;
   const declared: string[] = [];
   let declaredMax: number | null = null;
-
-  // **A guest answer is only overridden by an explicitly SELECTED answer to the same question —
-  // never by the absence of payment.** Two real cases forced this shape, and the naive rule
-  // ("skip quantity 0") gets the second one dangerously wrong:
-  //
-  //   Mallory — "Yes-one more" at qty 0 AND "No-Good with 12" at qty 1. She chose No; the Yes row
-  //     is an option she declined, still on the wire. Reading existence flagged her WOULD BE OVER
-  //     on a boat she had said she was not adding to.
-  //   Sarah   — declared 4, paid 0, and NO selected answer to fall back on. Dropping her unpaid
-  //     row silenced a real over-capacity warning (16 > 14). Unpaid is the whole point of the
-  //     DECLARED ≠ PAID section: "didn't pay" is not "didn't say".
-  //
-  // So: if any answer was selected, the selected ones are the answer. If none was, every answer
-  // counts. That can only ever ADD an alert back, which is the safe direction for a
-  // Certificate-of-Inspection limit.
-  const answers = addOns
-    .map((a) => ({ a, m: MORE_GUESTS.exec((a.configuration?.name ?? "").trim()) }))
-    .filter((x): x is { a: XolaAddOn; m: RegExpExecArray } => x.m !== null);
-  const selected = answers.filter(
-    (x) => typeof x.a.quantity !== "number" || x.a.quantity >= 1,
-  );
-  const answering = selected.length > 0 ? selected : answers;
-
   for (const a of addOns) {
     const name = (a.configuration?.name ?? "").trim();
     if (EXTRA_TICKETS.test(name)) {
       extra += typeof a.quantity === "number" ? a.quantity : 0;
+      continue;
     }
-  }
-
-  for (const { m } of answering) {
+    const m = MORE_GUESTS.exec(name);
+    if (!m) continue;
+    // An option the customer DECLINED is still on the wire, at quantity 0. Reading existence
+    // instead of quantity reads back the answer they said no to — which is how a booking whose
+    // only selected answer was "No-Good with 12" landed on the WOULD-BE-OVER list.
+    //
+    // A MISSING quantity is treated as selected, not skipped. Every observed row carries one, so
+    // this only fires if Xola changes the shape — and on a Certificate-of-Inspection limit the
+    // safe direction for an unknown is to raise the alert, not to swallow it. Same reasoning as
+    // `max` below reporting the worst case when someone answered more than once.
+    if (typeof a.quantity === "number" && a.quantity < 1) continue;
     const answer = (m[1] ?? "").trim();
     declared.push(answer);
     // "No-Good with 12" ⇒ 0; "Yes-two more" ⇒ 2. An unrecognised phrasing is left null rather

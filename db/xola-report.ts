@@ -368,15 +368,18 @@ interface Row {
   isCancelled: boolean;
 }
 
-/** Fleet capacities ascending — used to ask which is the SMALLEST boat a party would fit on. */
-const FLEET_CAPS: number[] = [12, 12, 14, 16];
-
 const CAPACITY: Record<string, number> = {
   "Brew 1": 14,
   "Brew 2": 16,
   "Brew 3": 12,
   "Brew 4": 12,
 };
+
+/** The fleet's capacities, ascending — "what is the smallest boat this party fits on?".
+ *  DERIVED from CAPACITY rather than written out again: two hand-maintained copies of the same
+ *  fleet drift the day a boat is added or re-rated, and the `.find` below is silently wrong if
+ *  this is not sorted. */
+const FLEET_CAPS: number[] = Object.values(CAPACITY).sort((a, b) => a - b);
 
 /**
  * Distinct experience names across the pull.
@@ -583,5 +586,7 @@ section(
 );
 section(
   "EXTRA GUESTS, consistent and within capacity",
-  live.filter((r) => r.hasExtras && !r.isOver && !r.wouldBeOver && !r.isMismatch),
+  live.filter(
+    (r) => r.hasExtras && !r.isOver && !r.wouldBeOver && !r.isMismatch && !r.isOverBoated,
+  ),
 );

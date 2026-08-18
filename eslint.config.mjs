@@ -2,6 +2,7 @@ import tseslint from "typescript-eslint";
 import sonarjs from "eslint-plugin-sonarjs";
 import vitest from "@vitest/eslint-plugin";
 import playwright from "eslint-plugin-playwright";
+import reactHooks from "eslint-plugin-react-hooks";
 
 /** Why the core and its scripts may not import a framework package — one message, cited below.
  *  Worded to be true from `db/` as well as `src/`: these rules cover both, and a db script told
@@ -207,5 +208,22 @@ export default tseslint.config(
     plugins: { playwright },
     languageOptions: { parser: tseslint.parser },
     rules: { "playwright/no-focused-test": "error" },
+  },
+  {
+    // The Rules of Hooks, across the `"use client"` islands (#757). A hook called
+    // conditionally or inside a loop corrupts React's per-render hook ordering, and this
+    // project has no React unit-test layer to catch it — the islands are covered, if at all,
+    // by e2e, which sees a symptom rather than the cause.
+    //
+    // **One rule, cherry-picked by name, not a preset.** eslint-plugin-react-hooks v7 ships
+    // ~30 rules including the whole React Compiler set; `recommended` would drag them all in
+    // unmeasured, which is precisely what DEC-159 rule 1 forbids. `exhaustive-deps` is
+    // deliberately NOT here: it was proposed at `warn`, and `lint` carries no
+    // `--max-warnings 0`, so a warn-level rule cannot fail the gate — it prints advice into
+    // output nobody reads while implying enforcement (DEC-159 rule 2). If it is ever wanted,
+    // it goes in at `error` after someone reads every finding.
+    files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}"],
+    plugins: { "react-hooks": reactHooks },
+    rules: { "react-hooks/rules-of-hooks": "error" },
   },
 );

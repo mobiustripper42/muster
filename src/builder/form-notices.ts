@@ -35,12 +35,21 @@ export function formNoticeChanges(
         action: "added" as const,
         shiftId: c.shiftId,
       })),
+    // #740: carry the diff through, don't re-derive it. `formShifts` held both trip sets at the
+    // moment it decided something had changed; anything reconstructing that later is guessing
+    // against a database that has already moved on.
     ...form.changedCrew
       .filter((c) => notOperator(String(c.crewMemberId)))
       .map((c) => ({
         crewMemberId: c.crewMemberId,
         action: "changed" as const,
         shiftId: c.shiftId,
+        detail: {
+          added: c.added,
+          removed: c.removed,
+          startBefore: c.startBefore,
+          startAfter: c.startAfter,
+        },
       })),
   ];
 }

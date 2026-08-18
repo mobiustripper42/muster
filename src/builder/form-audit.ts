@@ -36,8 +36,24 @@ export interface AuditChange {
 
 export function formAuditChanges(form: FormResult): AuditChange[] {
   return [
-    ...form.changedCrew.map((c) => ({ ...c, type: "shift_changed" as const })),
-    ...form.cancelledCrew.map((c) => ({ ...c, type: "crew_removed" as const })),
-    ...form.restoredCrew.map((c) => ({ ...c, type: "crew_added" as const })),
+    // Project the three declared fields rather than spreading (#740). `changedCrew` entries now
+    // also carry the diff, and `...c` would silently widen every audit row the moment a field is
+    // added upstream — the audit row's shape should change when someone decides it should, not as
+    // a side effect of an unrelated addition three files away.
+    ...form.changedCrew.map(({ crewMemberId, shiftId }) => ({
+      crewMemberId,
+      shiftId,
+      type: "shift_changed" as const,
+    })),
+    ...form.cancelledCrew.map(({ crewMemberId, shiftId }) => ({
+      crewMemberId,
+      shiftId,
+      type: "crew_removed" as const,
+    })),
+    ...form.restoredCrew.map(({ crewMemberId, shiftId }) => ({
+      crewMemberId,
+      shiftId,
+      type: "crew_added" as const,
+    })),
   ];
 }

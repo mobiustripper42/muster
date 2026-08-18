@@ -1658,6 +1658,36 @@ export function runRepositoryContract(
       expect("splitCutTime" in (await repo.getShift(SHIFT))!).toBe(false);
     });
 
+    it("shifts: earliestStart round-trips, and ABSENT stays absent (#740)", async () => {
+      // The change-detection watermark. Two properties, both load-bearing:
+      //
+      //  - A stored instant must come back byte-identical, or every form after a restart
+      //    compares a good value against a mangled one and announces a retime that never
+      //    happened — to every crew member on the boat, at whatever hour the tick runs.
+      //  - ABSENT must stay ABSENT. `form-shifts.ts` reads absent as "unknown" and refuses
+      //    to call it a change; if a round trip turned it into any present value, the first
+      //    form after deploy would compare that against a real instant and fire a
+      //    fleet-wide false retime.
+      //
+      // The field is `string | undefined` with NO null case, so there is exactly one
+      // "unknown" and one representation of it. An earlier version of this comment claimed
+      // to prove that absent and `null` stay distinct across both adapters — it did not
+      // test that, and postgres cannot represent it (`opt()` maps SQL NULL to an absent
+      // key). Narrowing the type removed the distinction rather than leaving a claim the
+      // test didn't back (@code-review).
+      await repo.saveShift(shift());
+      expect("earliestStart" in (await repo.getShift(SHIFT))!).toBe(false);
+
+      await repo.saveShift(shift({ earliestStart: "2026-05-16T19:30:00.000Z" }));
+      expect(await repo.getShift(SHIFT)).toMatchObject({
+        earliestStart: "2026-05-16T19:30:00.000Z",
+      });
+
+      // And it clears back to absent when a later form has nothing to record.
+      await repo.saveShift(shift());
+      expect("earliestStart" in (await repo.getShift(SHIFT))!).toBe(false);
+    });
+
     it("seats: round-trip + listForShift; assignedCrewMemberId optional", async () => {
       await repo.saveShift(shift());
       await repo.saveSeat(seat());

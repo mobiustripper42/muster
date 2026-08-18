@@ -107,9 +107,13 @@ describe("mergeShift (DEC-083 inverse / DEC-084)", () => {
     // "your shift changed" notice (distinct from side B's dropped crew, who'd get
     // "you're off" via `freedCrew`).
     const { form } = await mergeShift(repo, CANON);
-    expect(form.changedCrew).toEqual([
-      { shiftId: CANON, crewMemberId: asId<"CrewMemberId">("cap") },
-    ]);
+    // `toMatchObject`: the entry also carries the diff (#740). WHO is reported is this
+    // test's subject; what the diff says is asserted in `form-shifts.test.ts`.
+    expect(form.changedCrew).toHaveLength(1);
+    expect(form.changedCrew[0]).toMatchObject({
+      shiftId: CANON,
+      crewMemberId: asId<"CrewMemberId">("cap"),
+    });
   });
 
   it("reports side B's assigned crew as freed (the release-notice list)", async () => {

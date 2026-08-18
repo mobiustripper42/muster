@@ -1,0 +1,25 @@
+-- 20260817210230_shift_earliest_start.sql — shift_earliest_start
+-- Timestamp-named per DEC-121. Applied in filename order by db/migrate.ts.
+--
+-- #740: a change-detection watermark for the earliest scheduled departure.
+--
+-- Times are derived, never stored (DEC-022), and everything that RENDERS a departure or a call
+-- time still derives it from the events. This column does the one job the events cannot:
+-- `formShifts` compares the freshly derived day against the STORED shift, and the stored shift
+-- carried only `event_ids`. DEC-043 replaced the old time-derived event id with Xola's real one,
+-- so a trip retimed IN PLACE keeps its id, the id set compares equal, the diff gate sees nothing —
+-- and the crew are never told their call time moved. That gap was characterised and left open for
+-- months (`src/builder/form-shifts.test.ts`); Muster selling its own reservations made it
+-- reachable by an ordinary operator edit rather than a Xola quirk.
+--
+-- ADDITIVE and NULLABLE, deliberately. Existing rows backfill to NULL, which the adapter maps to
+-- an ABSENT field, which `form-shifts.ts` reads as "unknown" and explicitly does NOT treat as a
+-- change. Backfilling a computed value instead would be worse: it would either be wrong (we do not
+-- know what the earliest start was when the row was last formed) or, if computed from today's
+-- events, would make every pre-existing shift announce a retime that never happened on the first
+-- form after deploy — a fleet-wide false alarm at 3am, since the cron tick would be the one to
+-- notice.
+--
+-- ISO-8601 UTC instant as `text`, house style (0008/0009/0010).
+
+alter table shifts add column if not exists earliest_start text;

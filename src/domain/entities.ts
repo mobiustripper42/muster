@@ -815,6 +815,30 @@ export interface Shift {
    * every pull, so the split survives Xola re-import. Absent → not split.
    */
   splitCutTime?: string;
+  /**
+   * The earliest scheduled departure as an ISO instant, **absent when unknown**.
+   * A change-detection watermark, not a display source (#740).
+   *
+   * Deliberately `string | undefined`, NOT `string | null` (@code-review). There is
+   * exactly one meaning — "we don't know what this was" — and one representation.
+   * A nullable version invited a second, `null` for "known, nothing scheduled", which
+   * the postgres adapter's `opt()` cannot represent anyway: it maps SQL NULL to an
+   * absent key, so the two would silently collapse on one adapter and not the other.
+   * A shift with nothing scheduled never reaches this field regardless — it returns
+   * down the all-cancelled path before the watermark is written.
+   *
+   * Times are derived, never stored (DEC-022), and everything that RENDERS a departure
+   * or call time still derives it from the events. This exists for one job the events
+   * cannot do: `formShifts` compares the freshly derived day against the STORED shift,
+   * and the stored shift carried only `eventIds` — so a trip retimed in place kept the
+   * same id set, the diff gate saw nothing, and the crew were never told their call
+   * time had moved. A watermark is the only way to notice a change in a value that is
+   * otherwise recomputed from scratch each run.
+   *
+   * Written on every form. Absent on rows written before the column existed, which
+   * reads as "unknown" and is deliberately NOT treated as a change (see `form-shifts`).
+   */
+  earliestStart?: string;
 }
 
 export interface Seat {

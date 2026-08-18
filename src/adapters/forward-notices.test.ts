@@ -65,13 +65,83 @@ describe("forwardNotices (DEC-084)", () => {
     expect(fake.last()!.body).toBe("Muster: you're on the Sat, Jul 4 - Barrel shift.");
   });
 
-  it("phrases a changed notice as a shift-changed prompt (#350)", async () => {
+  it("phrases a changed notice as a shift-changed prompt when it has no detail (#350)", async () => {
+    // The fallback, still reachable: a caller with no diff to hand (and the pre-watermark rows
+    // described in the `earliest_start` migration) gets the original text.
     const repo = await seed();
     const fake = new FakeNoticeChannel();
     await forwardNotices(repo, fake, [
       { crewMemberId: CREW, action: "changed", shiftId: SHIFT },
     ]);
-    expect(fake.last()!.body).toBe("Muster: your Sat, Jul 4 - Barrel shift changed - check the app.");
+    expect(fake.last()!.body).toBe("Muster: your Sat, Jul 4 - Barrel shift changed.");
+  });
+
+  it("says WHAT changed when the detail is there (#740)", async () => {
+    const repo = await seed();
+    const fake = new FakeNoticeChannel();
+    await forwardNotices(repo, fake, [
+      {
+        crewMemberId: CREW,
+        action: "changed",
+        shiftId: SHIFT,
+        detail: {
+          added: [asId<"EventId">("new-trip")],
+          removed: [],
+          startBefore: "2026-05-16T19:30:00.000Z", // 3:30 PM local → 2:45 call
+          startAfter: "2026-05-16T18:00:00.000Z", // 2:00 PM local → 1:15 call
+        },
+      },
+    ]);
+    expect(fake.last()!.body).toBe(
+      "Muster: your Sat, Jul 4 - Barrel shift changed: start 2:45->1:15, +1 trip.",
+    );
+  });
+
+  it("stays one GSM-7 segment, falling back rather than splitting (#740, #619)", async () => {
+    // #619 was bitten by a single character silently doubling the segment count. The summary is
+    // fitted against the REAL remaining budget — the opener, the date and the vessel name are all
+    // already spent — so this asserts the finished body, not the fragment.
+    const repo = await seed();
+    const fake = new FakeNoticeChannel();
+    await forwardNotices(repo, fake, [
+      {
+        crewMemberId: CREW,
+        action: "changed",
+        shiftId: SHIFT,
+        detail: {
+          added: Array.from({ length: 9 }, (_, i) => asId<"EventId">(`t${i}`)),
+          removed: [],
+          startBefore: "2026-05-16T19:30:00.000Z",
+          startAfter: "2026-05-16T18:00:00.000Z",
+        },
+      },
+    ]);
+    const body = fake.last()!.body;
+    expect(body.length).toBeLessThanOrEqual(160);
+    expect(body).toMatch(/^[ -~]*$/); // printable ASCII — a strict subset of GSM-7
+  });
+
+  it("does not claim a call-time change on a shift whose start is unknown (#740)", async () => {
+    // A row written before the `earliest_start` watermark existed reads absent. Unknown is not
+    // "moved": the notice reports the trip count and says nothing about the clock.
+    const repo = await seed();
+    const fake = new FakeNoticeChannel();
+    await forwardNotices(repo, fake, [
+      {
+        crewMemberId: CREW,
+        action: "changed",
+        shiftId: SHIFT,
+        detail: {
+          added: [asId<"EventId">("new-trip")],
+          removed: [],
+          startBefore: null,
+          startAfter: "2026-05-16T18:00:00.000Z",
+        },
+      },
+    ]);
+    expect(fake.last()!.body).toBe(
+      "Muster: your Sat, Jul 4 - Barrel shift changed: +1 trip.",
+    );
   });
 
   it("skips a dangling crew ref (best-effort) without throwing", async () => {

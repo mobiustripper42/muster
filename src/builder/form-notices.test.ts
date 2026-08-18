@@ -5,6 +5,7 @@ import { asId } from "../domain/ids.js";
 
 const S = (n: string) => asId<"ShiftId">(n);
 const C = (n: string) => asId<"CrewMemberId">(n);
+const E = (n: string) => asId<"EventId">(n);
 const OP = "crew-operator";
 
 /** A zeroed FormResult with only the transition lists filled in. */
@@ -58,18 +59,50 @@ describe("formNoticeChanges (DEC-084 transition → notice mapping)", () => {
   });
 
   it("maps changedCrew → changed, excluding the operator (#350)", () => {
+    const diff = {
+      added: [],
+      removed: [],
+      startBefore: null,
+      startAfter: null,
+    };
     const changes = formNoticeChanges(
       form({
         changedCrew: [
-          { shiftId: S("shift-1"), crewMemberId: C("crew-a") },
-          { shiftId: S("shift-1"), crewMemberId: C(OP) },
+          { shiftId: S("shift-1"), crewMemberId: C("crew-a"), ...diff },
+          { shiftId: S("shift-1"), crewMemberId: C(OP), ...diff },
         ],
       }),
       OP,
     );
     expect(changes).toEqual([
-      { crewMemberId: "crew-a", action: "changed", shiftId: "shift-1" },
+      { crewMemberId: "crew-a", action: "changed", shiftId: "shift-1", detail: diff },
     ]);
+  });
+
+  it("carries the diff through to the notice, not just the fact of one (#740)", () => {
+    // The whole point of #740: the comparison that proved a change existed used to stop here.
+    // Everything downstream then described a change it could no longer see.
+    const changes = formNoticeChanges(
+      form({
+        changedCrew: [
+          {
+            shiftId: S("shift-1"),
+            crewMemberId: C("crew-a"),
+            added: [E("trip-new")],
+            removed: [E("trip-gone")],
+            startBefore: "2026-05-16T19:30:00.000Z",
+            startAfter: "2026-05-16T18:00:00.000Z",
+          },
+        ],
+      }),
+      OP,
+    );
+    expect(changes[0]!.detail).toEqual({
+      added: ["trip-new"],
+      removed: ["trip-gone"],
+      startBefore: "2026-05-16T19:30:00.000Z",
+      startAfter: "2026-05-16T18:00:00.000Z",
+    });
   });
 
   it("is empty when the form observed no transitions", () => {

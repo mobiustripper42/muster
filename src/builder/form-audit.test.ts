@@ -5,6 +5,8 @@ import { asId } from "../domain/ids.js";
 
 const S = (n: string) => asId<"ShiftId">(n);
 const C = (n: string) => asId<"CrewMemberId">(n);
+/** #740 added a diff to `changedCrew`; these fixtures are about WHO is reported, not what moved. */
+const NO_DIFF = { added: [], removed: [], startBefore: null, startAfter: null };
 
 /** A zeroed FormResult with only the transition lists filled in. */
 function form(over: Partial<FormResult>): FormResult {
@@ -43,7 +45,7 @@ describe("formAuditChanges (DEC-118 transition → audit mapping)", () => {
     const changes = formAuditChanges(
       form({
         restoredCrew: [{ shiftId: S("shift-2"), crewMemberId: C("crew-b") }],
-        changedCrew: [{ shiftId: S("shift-3"), crewMemberId: C("crew-c") }],
+        changedCrew: [{ shiftId: S("shift-3"), crewMemberId: C("crew-c"), ...NO_DIFF }],
       }),
     );
     expect(changes).toContainEqual({
@@ -61,7 +63,7 @@ describe("formAuditChanges (DEC-118 transition → audit mapping)", () => {
   it("emits every transition set in one pass, no dropped rows", () => {
     const changes = formAuditChanges(
       form({
-        changedCrew: [{ shiftId: S("s1"), crewMemberId: C("a") }],
+        changedCrew: [{ shiftId: S("s1"), crewMemberId: C("a"), ...NO_DIFF }],
         cancelledCrew: [{ shiftId: S("s2"), crewMemberId: C("b") }],
         restoredCrew: [{ shiftId: S("s3"), crewMemberId: C("c") }],
       }),

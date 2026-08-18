@@ -140,6 +140,8 @@ describe("deterministic id", () => {
 describe("logFormAudit — every form transition reaches the audit (DEC-118)", () => {
   const S = (n: string) => asId<"ShiftId">(n);
   const C = (n: string) => asId<"CrewMemberId">(n);
+/** #740 added a diff to `changedCrew`; these fixtures are about WHO is reported, not what moved. */
+const NO_DIFF = { added: [], removed: [], startBefore: null, startAfter: null };
 
   /** A zeroed FormResult with only the transition lists filled in. */
   function form(over: Partial<FormResult>): FormResult {
@@ -167,7 +169,7 @@ describe("logFormAudit — every form transition reaches the audit (DEC-118)", (
       form({
         cancelledCrew: [{ shiftId: S("s1"), crewMemberId: C("crew-a") }],
         restoredCrew: [{ shiftId: S("s2"), crewMemberId: C("crew-b") }],
-        changedCrew: [{ shiftId: S("s3"), crewMemberId: C("crew-c") }],
+        changedCrew: [{ shiftId: S("s3"), crewMemberId: C("crew-c"), ...NO_DIFF }],
       }),
       { kind: "importer", id: "xola" },
       NOW,

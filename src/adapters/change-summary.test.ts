@@ -22,15 +22,15 @@ const AT_1530 = "2026-05-16T19:30:00.000Z";
 const AT_1400 = "2026-05-16T18:00:00.000Z";
 
 describe("changeSummary (#740)", () => {
-  it("names the call time move, in crew-facing terms", () => {
+  it("names the shift-start move, in crew-facing terms", () => {
     // The crew member does not care when the boat leaves so much as when THEY have to be
-    // there — call time is departure minus the 45-minute lead (CALL_LEAD_MINUTES). 15:30
-    // departure = 2:45 PM call; 14:00 departure = 1:15 PM call.
+    // there. The code calls that the CALL time (departure minus CALL_LEAD_MINUTES); the crew are
+    // told "start", matching the "Shift Start" tile in the app. 15:30 departure = 2:45 start.
     const s = changeSummary(
       { added: [], removed: [], startBefore: AT_1530, startAfter: AT_1400 },
       { budget: 200 },
     );
-    expect(s).toBe("call 2:45->1:15");
+    expect(s).toBe("start 2:45->1:15");
   });
 
   it("counts trips added and removed, and does not distinguish them by phrasing", () => {
@@ -56,35 +56,35 @@ describe("changeSummary (#740)", () => {
     ).toBe("+2 trips");
   });
 
-  it("puts the call time first when both moved", () => {
-    // Ordered by what the crew member acts on. A call time move changes when they leave the
+  it("puts the shift start first when both moved", () => {
+    // Ordered by what the crew member acts on. A start-time move changes when they leave the
     // house; a trip added mostly does not. If only one token fits, it must be this one.
     const s = changeSummary(
       { added: [ev("a")], removed: [], startBefore: AT_1530, startAfter: AT_1400 },
       { budget: 200 },
     );
-    expect(s).toBe("call 2:45->1:15, +1 trip");
+    expect(s).toBe("start 2:45->1:15, +1 trip");
   });
 
-  it("never claims a call-time change that did not happen", () => {
+  it("never claims a start-time change that did not happen", () => {
     // The trap: a trip cancelled off the END of a day leaves the earliest departure alone.
-    // Reporting "call 2:45->2:45" would be noise; inventing a move would be a lie that sends
+    // Reporting "start 2:45->2:45" would be noise; inventing a move would be a lie that sends
     // someone to the dock at the wrong time.
     const s = changeSummary(
       { added: [], removed: [ev("b")], startBefore: AT_1530, startAfter: AT_1530 },
       { budget: 200 },
     );
     expect(s).toBe("-1 trip");
-    expect(s).not.toContain("call");
+    expect(s).not.toContain("start");
   });
 
   it("drops whole tokens to fit the budget, never truncates one", () => {
-    // A truncated token is worse than an absent one: "call 2:45->1:" is unreadable, and
+    // A truncated token is worse than an absent one: "start 2:45->1:" is unreadable, and
     // "+1 tri" looks like a bug to the person holding the phone.
     const full = { added: [ev("a")], removed: [], startBefore: AT_1530, startAfter: AT_1400 };
-    expect(changeSummary(full, { budget: 200 })).toBe("call 2:45->1:15, +1 trip");
+    expect(changeSummary(full, { budget: 200 })).toBe("start 2:45->1:15, +1 trip");
     // Room for the first token only.
-    expect(changeSummary(full, { budget: 16 })).toBe("call 2:45->1:15");
+    expect(changeSummary(full, { budget: 17 })).toBe("start 2:45->1:15");
     // Room for neither.
     expect(changeSummary(full, { budget: 5 })).toBeNull();
   });

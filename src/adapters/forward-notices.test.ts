@@ -93,7 +93,7 @@ describe("forwardNotices (DEC-084)", () => {
       },
     ]);
     expect(fake.last()!.body).toBe(
-      "Muster: your Sat, Jul 4 - Barrel shift changed: call 2:45->1:15, +1 trip.",
+      "Muster: your Sat, Jul 4 - Barrel shift changed: start 2:45->1:15, +1 trip.",
     );
   });
 

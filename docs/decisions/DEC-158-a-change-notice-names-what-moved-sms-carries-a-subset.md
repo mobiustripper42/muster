@@ -36,18 +36,18 @@ The body is GSM-7 and one segment on purpose, and #619 was already bitten by a s
 
 The rules, in order:
 
-- **Tokens are ordered by what the crew member acts on.** Call time first — it changes when they leave the house; a trip added mostly does not. If only one token fits, that is the one worth the characters.
-- **Tokens drop whole.** `call 2:45->1:` is unreadable and `+1 tri` looks like a defect to the person holding the phone.
+- **Tokens are ordered by what the crew member acts on.** Shift start first — it changes when they leave the house; a trip added mostly does not. If only one token fits, that is the one worth the characters.
+- **Tokens drop whole.** `start 2:45->1:` is unreadable and `+1 tri` looks like a defect to the person holding the phone.
 - **Fit against the real remainder, not a constant.** The opener, date and vessel name are already spent, and the vessel name is tenant data of unknown length. A summary sized against a fixed allowance overflows on a long boat name and splits the message — #619 with extra steps.
-- **Nothing false, ever.** No call-time token when the earliest departure did not move (a cancelled *late* trip leaves it alone). No call-time token when the watermark is unknown. Trips are **netted**, because `+1 trip, -1 trip` is noise and `+0 trips` says nothing.
+- **Nothing false, ever.** No start-time token when the earliest departure did not move (a cancelled *late* trip leaves it alone). No start-time token when the watermark is unknown. Trips are **netted**, because `+1 trip, -1 trip` is noise and `+0 trips` says nothing.
 - **Netting has one blind spot, accepted knowingly.** A 1-for-1 swap of two *late* trips nets to zero and leaves the earliest departure alone, so both tokens vanish and the body falls back to bare `shift changed.` The manifest moved and the SMS cannot say so. This is survivable only because the fallback is a pointer to a surface carrying the full diff — so it is a standing argument for finishing the app half (#769), not a case the SMS can be made to cover within one segment.
 - **`added` and `removed` read the same** (operator's call): `+1 trip` / `-1 trip`, no distinct phrasing for a day that grew versus one that shrank.
 - **ASCII only**, asserted, so nothing silently flips the body to UCS-2.
 - **No `check the app.` tail** (operator, 2026-08-17): the crew have had this notice for months and know where the detail lives. It cost ~15 characters of a budget measured in single digits, and those characters buy another token of what actually moved.
 
-Result: `Muster: your Sat, Jul 4 - Barrel shift changed: call 2:45->1:15, +1 trip.`
+Result: `Muster: your Sat, Jul 4 - Barrel shift changed: start 2:45->1:15, +1 trip.`
 
-The call time shown is the departure minus `CALL_LEAD_MINUTES`, derived at composition from the shared constant rather than stored a second time — the DEC-157 lesson, one rule with one implementation.
+**The token says `start`, not `call`** (operator, 2026-08-17): *"nobody knows what call time is — that's why we changed it to shift start in the UI."* The value is unchanged — departure minus `CALL_LEAD_MINUTES` — and it is the same number the app already labels **Shift Start** (`app/(crew)/crew/shift/[shiftId]/page.tsx`), beside **First departure**. The codebase keeps calling it the call time internally; the crew-facing surfaces use the crew's word, and now the SMS matches them rather than the source. Derived at composition from the shared constant rather than stored a second time — the DEC-157 lesson, one rule with one implementation.
 
 **Decision 4 — the app half, deferred but decided.**
 

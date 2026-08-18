@@ -47,8 +47,15 @@ function localClock(iso: string): string {
   return `${h}:${String(local.getUTCMinutes()).padStart(2, "0")}`;
 }
 
-/** Departure minus the call lead — the time the crew member actually has to be there. */
-function callClock(iso: string): string {
+/**
+ * Departure minus the lead — the time the crew member actually has to be there.
+ *
+ * The code calls this the CALL time and the crew are told **"start"**. That is not sloppiness:
+ * `app/(crew)/crew/shift/[shiftId]/page.tsx` labels this exact value **"Shift Start"**, sitting
+ * beside "First departure", because nobody outside the trade knows what a call time is (operator,
+ * 2026-08-17). The SMS uses the crew's vocabulary, not the codebase's.
+ */
+function startClock(iso: string): string {
   return localClock(new Date(new Date(iso).getTime() - CALL_LEAD_MINUTES * MINUTE_MS).toISOString());
 }
 
@@ -63,13 +70,13 @@ function callClock(iso: string): string {
 export function changeSummary(detail: ChangeDetail, opts: { budget: number }): string | null {
   const tokens: string[] = [];
 
-  // Call time first: it changes when they leave the house. A trip added mostly does not, so if
+  // Shift start first: it changes when they leave the house. A trip added mostly does not, so if
   // only one token fits this is the one worth spending the characters on.
   //
   // A null on either side is UNKNOWN, not "moved" — a pre-watermark row (see the `earliest_start`
   // migration) must not produce a notice claiming a time change it cannot substantiate.
   if (detail.startBefore && detail.startAfter && detail.startBefore !== detail.startAfter) {
-    tokens.push(`call ${callClock(detail.startBefore)}->${callClock(detail.startAfter)}`);
+    tokens.push(`start ${startClock(detail.startBefore)}->${startClock(detail.startAfter)}`);
   }
 
   // `added` and `removed` read the same, by the operator's call (2026-08-17) — no distinct

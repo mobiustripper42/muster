@@ -1,0 +1,46 @@
+---
+id: DEC-159
+title: "Lint encodes invariants, at error, inside the one gate — and every rule is measured before it is admitted (#757)"
+topic: "Core architecture & engine mechanics"
+---
+
+## DEC-159: Lint encodes invariants, at error, inside the one gate
+
+**See also** — DEC-090, which established the config and still owns the two loading-feedback rules; DEC-144, whose ratchet posture this extends from docs to code; DEC-013 and DEC-020, whose framework-free core is what the central rule here enforces; DEC-157 and issue #757, which prompted it.
+
+**Decision:** ESLint's job in this project is to turn invariants we already hold into build failures. It is not a style tier. Five rules govern what may be added, and they are the durable part of this decision — the specific rule list will change and should.
+
+**1. A rule is admitted only if it encodes an invariant that already holds.** The core-purity ban — `src/` and `db/` may not import `react`, `react-dom`, `next`, `next/*`, `server-only`, `client-only`, or the `@core/*` alias — makes DEC-013's stack-agnostic core and DEC-020's framework-free `src/` a build failure rather than something `@code-review` catches by reading. It landed at **zero violations**, which is the point: it changes nothing today and forecloses a whole class tomorrow. `tsconfig.core.json` enforced this only *indirectly* (its `lib` omits `dom`, so a React import fails typechecking for a reason that never mentions the actual rule).
+
+**2. Every rule is `error`. There is no warning tier.** `package.json`'s `lint` script carries no `--max-warnings 0`, so a `warn`-level rule **cannot fail the gate**. It prints advice into the output of a run nobody reads unless it fails, while creating the impression the rule is enforced — accretion with the enforcement removed. `react-hooks/exhaustive-deps` was proposed at `warn` during #757 and rejected on exactly this ground. A rule worth having is `error`, or it is not added.
+
+**3. Measure before admitting, and report the count.** A rule that lands at zero is prevention, and per DEC-144 the job is the count not climbing back off zero. A rule with findings is a cleanup task that deserves its own conversation rather than a silent fix. This is not theoretical: `no-unused-vars` was argued for as "modest value, near-zero cost" and returned **57 findings across 37 files** — of which one was a real defect (`write-booking.ts` importing a `canBook` it never called, while the module's own doc claimed it composed it — issue #767) and one was a false positive on a legitimate idiom.
+
+**"Assigned a value but never used" does NOT mean the code is dead, and reading it that way shipped a crash.** The rule reports a variable that is *written and never read* — the writes are live code. `db/xola-report.ts` carried a deliberate wire-shape canary, `itemsWithoutAddOns`, incremented whenever a Xola order item arrived with no `addOns` key at all. It was never *printed*, so the rule flagged it; the cleanup deleted the declaration and left the increment, which would have thrown `ReferenceError` on exactly the input the counter's own comment says is expected. Nothing in `verify` catches that — `db/` is in neither tsconfig's `include` and has no test — so lint, typecheck and 2294 tests all passed on a file that crashes when run. Caught by `@code-review`, and the fix was to *surface* the counter rather than remove it: a write-only diagnostic is a canary in a sealed box, and deleting it would have removed a safety net whose author had written down why it existed.
+
+**4. A false positive on a legitimate idiom is fixed in config, or the rule is dropped.** `const { vesselId, ...rest } = record` names a property solely to omit it from `rest`; deleting the binding changes behaviour. Reporting that as dead code is the shape of finding that gets a whole rule switched off, so `ignoreRestSiblings` is set. DEC-144's formulation applies unchanged: a check that cries wolf gets muted, at which point it is worse than no check.
+
+**5. State each rule's ceiling where it is configured.** `sonarjs/no-identical-functions` is **per-file** — verified by test, not assumed. It would *not* have caught the `fmtMinutes` twins that motivated #757, because those lived in two different files; that claim was made three times before anyone checked it. Nothing in this config addresses cross-file duplication. That needs a token-level detector for twins and the parked repo-wide audit (`docs/FUTURE_IDEAS.md`) for synonyms, which is the harder and more common half.
+
+**A rule's `files` glob must track the config that defines its subject.** `vitest/no-focused-tests` first shipped matching `src/**/*.test.ts` while `vitest.config.ts` includes five roots, leaving ten test files able to go green on a stray `.only`; `playwright/no-focused-test` matched `**/*.spec.ts`, leaving `e2e/fixtures.ts` — imported by every spec — unlinted entirely. Both read as full coverage from the `lint` script. This is DEC-144's *"a guard whose blind spot is undocumented gets trusted for things it never checked"*, and it is the specific way a lint rule fails quietly.
+
+**Lint stays inside `npm run verify`. There is no CI-only lint tier.** The gate is one thing (`.claude/CLAUDE-context.md` § Commands) and a green local `verify` must mean what a green CI `verify` means. CI's only sanctioned divergences are **capabilities** the local gate cannot have — `ci.yml` stands up Postgres so the adapter-equivalence contract runs instead of skipping clean, and `e2e` is a separate job because `verify` stays Docker-free. Neither is a speed budget. If a rule is too expensive for the gate, that is an argument about whether to have the rule, not about where to hide it.
+
+**Cherry-pick rules by name; never adopt a plugin's preset.** `eslint-plugin-react-hooks` v7 ships roughly thirty rules, most of them the React Compiler set. Taking `recommended` would admit all of them unmeasured, which rule 1 forbids — and the plugin's contents change between majors, so a preset silently expands what the gate enforces on an upgrade. `react-hooks/rules-of-hooks` is admitted by name and landed at **zero violations** across the 25 `"use client"` islands; a hook called conditionally corrupts React's per-render ordering, and there is no React unit-test layer here to catch it.
+
+**Type-aware linting is REJECTED, and the measurement is why.** `@typescript-eslint/no-floating-promises` and `no-misused-promises` were argued for at length, by me, on this reasoning: *this is a codebase of server actions writing to Postgres, where an unawaited `repo.save*()` is silent data loss that no type error and no test surfaces, and DEC-DATA-1 puts referential integrity in the service layer so there is no database backstop.* That argument is wrong, and measuring it is what showed so.
+
+| Typed scope | `lint` | `verify` | Violations |
+|---|---|---|---|
+| none (today) | **8.6s** | **61.8s** | — |
+| `src/**` only | ~16.0s | — | **0** |
+| `src/**` + server actions + `app/api/**` | 22.5s | — | **0** |
+| `src/**` + all `app/` + `components/` | **24.5s** | **80.8s** | **3** |
+
+**Zero violations in the entire scope the argument rested on** — the core, the server actions, the API routes. The three findings are all client components: an unawaited `elements.update()` in the checkout form, and two async DOM handlers (`onSubmit`, `onClick`) of which the first try/catches internally. The most expensive coverage bought the least valuable findings.
+
+Two further facts, recorded because they cost time to establish. **The price is building the TS programs, not linting files** — narrowing from all of `app/` to just server actions saved 2s of 16s; the core program costs ~7.5s and the app program ~6.5s more. And **`projectService: true` cannot see `tsconfig.core.json`**: it resolves the nearest *default-named* tsconfig, which for `src/` is the root one, and the root one `exclude`s `src`. That silently drops every core file out of the type graph and reports them as parse errors, so any measurement taken with `projectService` alone is an undercount. Two explicit `project` blocks, one per profile, is the working shape. `db/`, `e2e/` and `scripts/` are in **no** tsconfig at all and cannot be covered without inventing one.
+
+Prevention at zero violations is what admitted core purity under rule 1 — but core purity is free, and this is +19s on every task's gate, forever, against a failure mode with no instances in this repo's history. A rule earns the gate on value per second, not on the plausibility of its story. If a floating-promise defect ever ships, that is the evidence that reopens this, and the config shape and the numbers above make reopening cheap.
+
+**Rejected, with the measurement, so a future sweep does not re-derive them:** recommended and stylistic rule sets (both tsconfig profiles are already stricter than most of what they add — `strict`, `noUncheckedIndexedAccess`, plus `exactOptionalPropertyTypes` and `noImplicitOverride` on the core); a `new Date(string)` ban to enforce DEC-032 (**99 call sites**, most of them the deliberately-safe explicit-`Z` template shape, and no AST selector separates those from the dangerous bare-variable form — it stays a comment); and a `process.env` ban outside a config module (**89 reads across 36 files** — a migration wearing a lint rule's clothes).

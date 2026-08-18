@@ -4,7 +4,7 @@
  * in calendar-detail.test.ts), so these tests focus on the customer-facing extras.
  */
 import { describe, expect, it } from "vitest";
-import type { Event, Gratuity, Offering, Reservation, Vessel } from "../domain/entities.js";
+import type { Event, Offering, Reservation, Vessel } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import {
   buildManageView,

@@ -148,7 +148,7 @@ describe("hoistSections", () => {
   });
 
   it("leaves everything else behind exactly once — nothing duplicated, nothing dropped", () => {
-    const { hoisted, rest } = hoistSections(STDERR);
+    const { rest } = hoistSections(STDERR);
     expect(rest).toContain("WOULD BE OVER");
     expect(rest).toContain("Pulling Xola orders");
     expect(rest).not.toContain("Coryonna gaines"); // moved, not copied

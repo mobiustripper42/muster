@@ -3,7 +3,7 @@
  * behind the public `/book` page.
  */
 import { describe, expect, it } from "vitest";
-import type { Offering, Vessel } from "../domain/entities.js";
+import type { Vessel } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import type { VirtualSlot } from "./availability.js";
 import {

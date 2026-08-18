@@ -25,7 +25,7 @@ import {
   type VesselId,
 } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
-import { canBook, eventIdForSlot } from "./availability.js";
+import { eventIdForSlot } from "./availability.js";
 import { resolveCustomerId } from "../customers/resolve.js";
 
 /**

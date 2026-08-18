@@ -287,7 +287,8 @@ const WORD: Record<string, number> = {
   one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
 };
 
-/** Items whose `addOns` key was absent entirely — a wire-shape change, not an empty cart. */
+/** Items whose `addOns` key was absent entirely — a wire-shape change, not an empty cart.
+ *  Printed with the headline below: a counter nobody reads is a canary in a sealed box. */
 let itemsWithoutAddOns = 0;
 
 function readAddOns(item: Record<string, unknown>): {
@@ -295,9 +296,10 @@ function readAddOns(item: Record<string, unknown>): {
   declared: string[];
   declaredMax: number | null;
 } {
-  // `addOns` is read through a cast: it is not on `XolaOrderItem`, and `db/` has no typecheck,
-  // no lint and no test in this project — so nothing would catch Xola renaming or moving this
-  // field except a wrong report. Count the absences instead; every real order carries the key.
+  // `addOns` is read through a cast: it is not on `XolaOrderItem`, and `db/` has no typecheck
+  // or test in this project — so nothing would catch Xola renaming or moving this field except
+  // a wrong report. (`db/` IS linted as of #757, but lint cannot see a field that only exists
+  // on the wire.) Count the absences instead; every real order carries the key.
   if (!Array.isArray(item.addOns)) itemsWithoutAddOns += 1;
   const addOns = (item.addOns ?? []) as XolaAddOn[];
   let extra = 0;
@@ -513,6 +515,16 @@ if (has("--csv")) {
 // (all built from `live`) correctly excluded it. It appeared in the headline and nowhere else.
 const flagged = rows.filter((r) => r.flags && !r.isCancelled);
 console.error(`\n${rows.length} reservation line(s), ${flagged.length} flagged.`);
+// The wire-shape canary finally gets somewhere to sing (#757). It was incremented and never
+// read, so a Xola rename of `addOns` would have silently zeroed every extra-guest figure in
+// this report with nothing on screen to say so. Silent on zero — every real order carries the
+// key, so any non-zero count is the signal.
+if (itemsWithoutAddOns > 0) {
+  console.error(
+    `  ! ${itemsWithoutAddOns} item(s) had NO addOns key at all — suspect a Xola wire-shape ` +
+      `change, not empty carts. Extra-guest counts in this report are unreliable.`,
+  );
+}
 
 const live = rows.filter((r) => !r.isCancelled);
 const section = (title: string, set: Row[]): void => {

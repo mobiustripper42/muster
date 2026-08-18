@@ -9,7 +9,7 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import { asId } from "../domain/ids.js";
-import type { SeatId, ShiftId, VesselId } from "../domain/ids.js";
+import type { ShiftId, VesselId } from "../domain/ids.js";
 import { STAFFING_HORIZON_LEAD_DAYS } from "../builder/derive.js";
 import { seedFleet } from "./resource-map.js";
 import { addDays, pullWindow, pullXola, vesselLocalDate } from "./xola-pull.js";

@@ -5,7 +5,6 @@
 
 import { describe, expect, it } from "vitest";
 import { asId } from "../domain/ids.js";
-import type { RoleTypeId } from "../domain/ids.js";
 import type { Credential, CrewMember, PtoWindow } from "../domain/entities.js";
 import {
   evaluateCandidate,

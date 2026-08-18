@@ -61,7 +61,6 @@ import type {
   AskId,
   BlockId,
   CheckoutHoldId,
-  GratuityId,
   CredentialId,
   CrewMemberId,
   EventId,
@@ -73,7 +72,6 @@ import type {
   PaymentId,
   PtoWindowId,
   TimePunchId,
-  TimePunchEditId,
   RingOutboxEntryId,
   ReservationId,
   RoleTypeId,
@@ -120,7 +118,7 @@ function opt<K extends string, V>(
 
 // ── Row → domain mappers ────────────────────────────────────────────────────
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+
 const toRoleType = (r: any): RoleType => ({
   id: asId<"RoleTypeId">(r.id),
   tenantId: asId<"TenantId">(r.tenant_id),
@@ -554,7 +552,7 @@ const toMessage = (r: any): Message => ({
   createdAt: r.created_at,
   priority: r.priority, // native boolean (0010) — pg returns a JS boolean
 });
-/* eslint-enable @typescript-eslint/no-explicit-any */
+
 
 export class PostgresRepository implements Repository {
   readonly #pool: pg.Pool;

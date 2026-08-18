@@ -10,7 +10,6 @@ import { describe, expect, it } from "vitest";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import { formShifts } from "../builder/form-shifts.js";
 import { asId } from "../domain/ids.js";
-import type { VesselId } from "../domain/ids.js";
 import { importRecords, type RawReservationRecord } from "./import-reservations.js";
 import { seedFleet } from "./resource-map.js";
 

@@ -5,7 +5,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { asId } from "../domain/ids.js";
-import type { EventId, RoleTypeId, ShiftId } from "../domain/ids.js";
+import type { RoleTypeId } from "../domain/ids.js";
 import type { Event, Seat, Shift, Vessel } from "../domain/entities.js";
 import {
   bailLatenessMs,

@@ -153,20 +153,6 @@ function itemDateTime(item: XolaOrderItem): { date: string; time: string } | nul
 }
 
 /**
- * Vessel-local date+time from a Xola event `start` — a **string slice, never a
- * `Date` parse** (DEC-032). `start` carries the local wall-clock under a `Z`/offset
- * suffix that is NOT the real zone, so `new Date(start)` would shift it by the
- * offset (verified: order `…-04:00` == event `start …+00:00`, both 18:00 local).
- */
-function eventDateTime(ev: XolaEvent): { date: string; time: string } | null {
-  const s = ev.start;
-  if (typeof s === "string" && s.length >= 16) {
-    return { date: s.slice(0, 10), time: s.slice(11, 16) };
-  }
-  return null;
-}
-
-/**
  * Build `eventId → vesselId` from the `/events` feed. Only **boated** events whose
  * resource maps to a crewed BrewBoat are included; self-captained Duffy resources
  * are excluded and unknown resource ids are quarantined (DEC-018, now keyed off the

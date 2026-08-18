@@ -139,6 +139,34 @@ const types = (crewId: CrewMemberId) =>
 // Pool ranking lives in oracle/reliability-score.ts now (rankByReliability +
 // effectiveRankScore), tested there. The loop just consumes the ranked order.
 
+// Hoisted out of the describe blocks that each held a byte-identical copy (#757,
+// `sonarjs/no-identical-functions`). Both close only over module-scope values, so one
+// definition serves every caller — and two copies of a fixture helper is two places it can drift.
+async function confirmFirst(seatId: SeatId, crewId: CrewMemberId) {
+  const ask = await assignPerson(repo, seatId, crewId, T0);
+  await recordResponse(repo, ask!.id, "accepted", later(1000));
+  await confirmSeat(repo, seatId, later(2000));
+}
+
+async function mkSeat(id: string, role: typeof CAPTAIN): Promise<SeatId> {
+  const seatId = asId<"SeatId">(id);
+  await repo.saveShift({
+    id: SHIFT,
+    vesselId: VESSEL,
+    date: DATE,
+    state: "Pending",
+    eventIds: [],
+  });
+  await repo.saveSeat({
+    id: seatId,
+    shiftId: SHIFT,
+    role,
+    kind: "required",
+    state: "Open",
+  });
+  return seatId;
+}
+
 describe("happy path — broadcast → accept → confirm", () => {
   it("walks Open→Asked→Claimed→Confirmed and the badge to Crewed", async () => {
     const a = await addCrew("crew-a");
@@ -579,12 +607,6 @@ describe("losing asks are withdrawn when the seat fills (#600)", () => {
 });
 
 describe("bail (DEC-019, DEC-128 #483 — fires no asks, defers to the tick)", () => {
-  async function confirmFirst(seatId: SeatId, crewId: CrewMemberId) {
-    const ask = await assignPerson(repo, seatId, crewId, T0);
-    await recordResponse(repo, ask!.id, "accepted", later(1000));
-    await confirmSeat(repo, seatId, later(2000));
-  }
-
   it("logs the bail, clears the occupant, rests the seat Open — and fires NO asks", async () => {
     const a = await addCrew("crew-a");
     await addCrew("crew-b"); // a live pool — proof the deferral, not exhaustion, is why nothing fires
@@ -720,12 +742,6 @@ describe("bail/vacate — horizon-aware refresh, no inline asks (DEC-128 #483)",
 });
 
 describe("vacateSeat — no-penalty remove (#87)", () => {
-  async function confirmFirst(seatId: SeatId, crewId: CrewMemberId) {
-    const ask = await assignPerson(repo, seatId, crewId, T0);
-    await recordResponse(repo, ask!.id, "accepted", later(1000));
-    await confirmSeat(repo, seatId, later(2000));
-  }
-
   it("clears the occupant, rests Open, fires NO asks, logs NO reliability bail", async () => {
     const a = await addCrew("crew-a");
     await addCrew("crew-b"); // a live pool — nothing fires because vacate defers, not exhausts
@@ -860,25 +876,6 @@ describe("manualOverride — the authority backstop (§2.4)", () => {
 
 describe("overrideSeat — role-guarded override (DEC-064)", () => {
   const MATE = asId<"RoleTypeId">("role-mate");
-  async function mkSeat(id: string, role: typeof CAPTAIN): Promise<SeatId> {
-    const seatId = asId<"SeatId">(id);
-    await repo.saveShift({
-      id: SHIFT,
-      vesselId: VESSEL,
-      date: DATE,
-      state: "Pending",
-      eventIds: [],
-    });
-    await repo.saveSeat({
-      id: seatId,
-      shiftId: SHIFT,
-      role,
-      kind: "required",
-      state: "Open",
-    });
-    return seatId;
-  }
-
   it("rejects a mate placed into a captain seat (not_rated, seat untouched)", async () => {
     const mate = await addCrew("mate-1", { ratings: [MATE] });
     const seatId = await mkSeat("seat-cap", CAPTAIN);
@@ -951,25 +948,6 @@ describe("overrideSeat — role-guarded override (DEC-064)", () => {
 
 describe("broadcast — captains aren't asked for mate seats (#148, DEC-066)", () => {
   const MATE = asId<"RoleTypeId">("role-mate");
-  async function mkSeat(id: string, role: typeof CAPTAIN): Promise<SeatId> {
-    const seatId = asId<"SeatId">(id);
-    await repo.saveShift({
-      id: SHIFT,
-      vesselId: VESSEL,
-      date: DATE,
-      state: "Pending",
-      eventIds: [],
-    });
-    await repo.saveSeat({
-      id: seatId,
-      shiftId: SHIFT,
-      role,
-      kind: "required",
-      state: "Open",
-    });
-    return seatId;
-  }
-
   it("a mate seat is broadcast only to mates — the dual-rated captain is spared", async () => {
     const cap = await addCrew("cap-1", { ratings: [CAPTAIN, MATE] });
     const mate = await addCrew("mate-1", { ratings: [MATE] });

@@ -26,7 +26,7 @@ import { XOLA_TRIP_MINUTES, busyIntervalsFor, hullIsBusy, minutesOfDay } from ".
 import { resolveCustomerId } from "../src/customers/resolve.js";
 import { vesselDateOf } from "../src/config/tenant.js";
 import { asId } from "../src/domain/ids.js";
-import type { Event, Offering, Reservation, Vessel } from "../src/domain/entities.js";
+import type { Event, Offering, Reservation } from "../src/domain/entities.js";
 import { DEFAULT_DATABASE_URL } from "./migrate.js";
 
 const args = process.argv.slice(2);

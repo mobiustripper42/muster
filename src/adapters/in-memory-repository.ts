@@ -64,7 +64,6 @@ import type {
   PaymentId,
   PtoWindowId,
   TimePunchId,
-  TimePunchEditId,
   ReservationId,
   RoleTypeId,
   SeatId,

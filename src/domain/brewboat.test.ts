@@ -11,7 +11,6 @@ import type {
   CrewMemberId,
   ReliabilityEventId,
   RoleTypeId,
-  TenantId,
   VesselId,
 } from "./ids.js";
 import type { CrewMember, RoleType, Vessel } from "./entities.js";

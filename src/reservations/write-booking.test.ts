@@ -6,9 +6,9 @@
  */
 import { describe, expect, it } from "vitest";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
-import type { Event, Offering } from "../domain/entities.js";
+import type { Offering } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
-import { reservationIdFor, writeSlotBooking } from "./write-booking.js";
+import { writeSlotBooking } from "./write-booking.js";
 
 // `musterEvent`, `EVENT` and the `req()` BookingRequest builder went with the
 // `describe("writeBooking")` block (#693) — they had no other consumer.

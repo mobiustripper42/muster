@@ -14,10 +14,8 @@ import { buildAskTrail } from "./ask-trail.js";
 const TENANT = asId<"TenantId">("t-1");
 const CAPTAIN = asId<"RoleTypeId">("role-captain");
 const V1 = asId<"VesselId">("vessel-1");
-const S1 = asId<"ShiftId">("shift-1");
 const S2 = asId<"ShiftId">("shift-2");
 const QUINT = asId<"CrewMemberId">("crew-quint");
-const HOOPER = asId<"CrewMemberId">("crew-hooper");
 
 const crew = (id: string, name: string): CrewMember => ({
   id: asId<"CrewMemberId">(id),

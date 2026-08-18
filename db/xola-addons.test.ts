@@ -43,10 +43,22 @@ describe("readAddOns — an option the customer DECLINED is not a declaration", 
     expect(r.declared).toEqual(["Yes-one more"]);
   });
 
-  it("keeps flagging a customer who genuinely answered more than once", () => {
-    // Sarah McCarty changed her mind repeatedly, so several rows are really selected. Those are
-    // a legitimate ambiguity, not noise, and `max` deliberately reports the worst case — this is
-    // a Certificate-of-Inspection limit, so erring high is the safe direction (operator, 2026-08-18).
+  it("keeps flagging a DECLARED-but-unpaid answer when nothing else was selected", () => {
+    // Sarah McCarty, 2026-08-22 15:30, Brew 1 — declared 4, paid 0, on a 14-pax boat (16 > 14).
+    // Her declaration is unpaid, so its row carries quantity 0, and there is no competing
+    // selected answer to override it. Operator, 2026-08-18: this is a legitimate error and must
+    // stay on the list — "didn't pay" is not "didn't say", and the DECLARED ≠ PAID section
+    // exists for exactly this.
+    //
+    // The first version of this guard skipped every quantity-0 row and silenced her. That is the
+    // dangerous direction on a Certificate-of-Inspection limit, and it shipped because THIS
+    // fixture was invented rather than read off `--raw`.
+    const r = readAddOns({ addOns: [q(`${GUESTS}: Yes-four more`, 0)] });
+    expect(r.declaredMax).toBe(4);
+    expect(r.declared).toEqual(["Yes-four more"]);
+  });
+
+  it("prefers the selected answers when there are any, and takes the worst of them", () => {
     const r = readAddOns({
       addOns: [
         q(`${GUESTS}: No-Good with 12`, 1),

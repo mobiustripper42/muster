@@ -23,6 +23,7 @@
  * add-on, so it stays honest even before the shape is known.
  */
 import { existsSync } from "node:fs";
+import { readAddOns } from "./xola-addons.js";
 import {
   XOLA_API_BASE_DEFAULT,
   XOLA_API_VERSION,
@@ -273,60 +274,9 @@ if (!Number.isFinite(BASE_GUESTS) || BASE_GUESTS < 0) {
   process.exit(1);
 }
 
-/** Add-on rows are `{quantity, amount, configuration:{name}}`. Only the name identifies them. */
-interface XolaAddOn {
-  quantity?: number;
-  amount?: number;
-  configuration?: { name?: string };
-}
-
-const EXTRA_TICKETS = /^extra tickets/i;
-const MORE_GUESTS = /adding more guests over \d+\?:\s*(.+)$/i;
-/** "Yes-two more" → 2. The checkout offers words, not digits. */
-const WORD: Record<string, number> = {
-  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
-};
-
 /** Items whose `addOns` key was absent entirely — a wire-shape change, not an empty cart.
  *  Printed with the headline below: a counter nobody reads is a canary in a sealed box. */
 let itemsWithoutAddOns = 0;
-
-function readAddOns(item: Record<string, unknown>): {
-  extra: number;
-  declared: string[];
-  declaredMax: number | null;
-} {
-  // `addOns` is read through a cast: it is not on `XolaOrderItem`, and `db/` has no typecheck
-  // or test in this project — so nothing would catch Xola renaming or moving this field except
-  // a wrong report. (`db/` IS linted as of #757, but lint cannot see a field that only exists
-  // on the wire.) Count the absences instead; every real order carries the key.
-  if (!Array.isArray(item.addOns)) itemsWithoutAddOns += 1;
-  const addOns = (item.addOns ?? []) as XolaAddOn[];
-  let extra = 0;
-  const declared: string[] = [];
-  let declaredMax: number | null = null;
-  for (const a of addOns) {
-    const name = (a.configuration?.name ?? "").trim();
-    if (EXTRA_TICKETS.test(name)) {
-      extra += typeof a.quantity === "number" ? a.quantity : 0;
-      continue;
-    }
-    const m = MORE_GUESTS.exec(name);
-    if (!m) continue;
-    const answer = (m[1] ?? "").trim();
-    declared.push(answer);
-    // "No-Good with 12" ⇒ 0; "Yes-two more" ⇒ 2. An unrecognised phrasing is left null rather
-    // than coerced to 0 — reporting "declared 0" for a sentence nobody parsed would invent a
-    // clean answer out of an unknown one.
-    if (/^no\b/i.test(answer)) declaredMax = Math.max(declaredMax ?? 0, 0);
-    else {
-      const w = /\b(one|two|three|four|five|six|seven|eight|nine|ten)\b/i.exec(answer);
-      const n = w ? WORD[w[1]!.toLowerCase()] : Number((/\b(\d+)\b/.exec(answer) ?? [])[1]);
-      if (typeof n === "number" && Number.isFinite(n)) declaredMax = Math.max(declaredMax ?? 0, n);
-    }
-  }
-  return { extra, declared, declaredMax };
-}
 
 interface Row {
   date: string;
@@ -378,7 +328,8 @@ for (const order of orders) {
   for (const item of order.items ?? []) {
     const raw = item as unknown as Record<string, unknown>;
     experiences.add(String(item.name ?? "?").trim());
-    const { extra, declared, declaredMax } = readAddOns(raw);
+    const { extra, declared, declaredMax, missingAddOnsKey } = readAddOns(raw);
+    if (missingAddOnsKey) itemsWithoutAddOns += 1;
     const eventId = (item.event?.id ?? "").trim();
     const boat = (eventId && boatByEvent.get(eventId)) || "—";
     const cap = CAPACITY[boat];

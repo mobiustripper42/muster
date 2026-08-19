@@ -254,13 +254,25 @@ describe('rank and comparison', () => {
 })
 
 describe('referencePattern', () => {
-  it('matches declared families and the numeric main line', () => {
-    const re = referencePattern(FAM)
+  // `numeric` is injected in both directions rather than left to default. It defaults to the
+  // HOST repo's `_config.json`, so a test that omits it asserts something different depending on
+  // which repo runs it: green in a project with a numeric main line, red in seeds, whose ids are
+  // `DEC-S###` and whose config sets `numericIds: false` on purpose (DEC-S025). That is how this
+  // case sat failing — the assertion was right about projects and the suite had never been run
+  // anywhere else. A test whose expected value depends on its surroundings is not a test.
+  it('matches declared families and the numeric main line, when one is declared', () => {
+    const re = referencePattern(FAM, true)
     expect('see DEC-042 and DEC-MSG-2 and DEC-TBD'.match(re)).toEqual(['DEC-042', 'DEC-MSG-2', 'DEC-TBD'])
   })
 
+  it('does not match a numeric id when the record has no numeric main line', () => {
+    const re = referencePattern(FAM, false)
+    expect('see DEC-042 and DEC-MSG-2 and DEC-TBD'.match(re)).toEqual(['DEC-MSG-2', 'DEC-TBD'])
+  })
+
   it("does not match another repo's undeclared series", () => {
-    expect('see DEC-S019'.match(referencePattern(FAM))).toBeNull()
+    expect('see DEC-S019'.match(referencePattern(FAM, true))).toBeNull()
+    expect('see DEC-S019'.match(referencePattern(FAM, false))).toBeNull()
   })
 
   it('matches an un-hyphenated family when it is declared', () => {

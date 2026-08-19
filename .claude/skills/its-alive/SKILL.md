@@ -59,13 +59,13 @@ For each Scan-A candidate, find the most recent PR whose `headRefName` matches t
 
 The session file lives on an orphan `sessions` branch checked out at `.sessions-worktree/`. Skills commit there; the user's main checkout never moves.
 
-**Check for worktree.** `[ -d .sessions-worktree/.git ] && echo present || echo missing`.
+**Check for worktree.** `[ -e .sessions-worktree/.git ] && echo present || echo missing`. (`-e`, not `-d`: in a linked worktree `.git` is a *file* — a `gitdir:` pointer — so `-d` reports `missing` on a worktree that is present, and sends the session into sub-case (a) below to fail on `already exists`.)
 
 **If present:** `cd .sessions-worktree && git fetch origin sessions && git reset --hard origin/sessions && cd ..`. Continue to Step 1.
 
 **If missing — three sub-cases:**
 
-a. **`origin/sessions` exists on remote** (fresh clone / accidental delete): `git worktree add .sessions-worktree sessions origin/sessions`. Continue.
+a. **`origin/sessions` exists on remote** (fresh clone / accidental delete): `git fetch origin sessions` then `git worktree add .sessions-worktree sessions`. Continue. (`git worktree add <path> [<commit-ish>]` takes **one** ref — the two-ref form `… sessions origin/sessions` is a usage error, and git answers it with a fragment of its own `--help` output rather than anything that reads like a failure.)
 
 b. **`origin/sessions` does NOT exist** (first run on this project — migration path): bootstrap the orphan branch.
 ```

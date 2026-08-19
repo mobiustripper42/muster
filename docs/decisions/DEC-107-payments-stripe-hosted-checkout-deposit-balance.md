@@ -127,3 +127,42 @@ with the DEC-107 paid-but-unbooked posture; nothing auto-refunds. Balance is nev
 already exist). Trigger for now is the `db:balance` CLI; the customer-facing email/page is P12.
 
 ---
+
+## Amendment, 2026-08-19 (eric) — the tax rate is a live read, and that is safe because it is not a browser-editable knob
+
+**What this changes:** nothing in the formula. `balanceOwedCents` still reads `payment.tax_rate_bps`
+live, and an open deposit balance is still repriced if that value changes — the behaviour issue #574
+identified. What changes is that this is now **decided** rather than incidental. Issue #574 asked
+whether tax should freeze on the reservation the way `Event.price` (DEC-125) and
+`Reservation.extrasCents` (#474) already do. The answer is no, on the grounds below.
+
+**Why it's safe.** The rate is not operator-editable. No surface under `app/` calls
+`setPaymentConfig` — the only callers are the repository adapters and their tests; `/admin/settings`
+carries the engine pause and nothing else. Changing the rate means someone at a `psql` prompt,
+deliberately. The hazard #574 describes needs an operator correcting a typo mid-season from a
+browser, and there is no browser path. The docstring's promise of a "P12 admin settings screen"
+exposing this config is **withdrawn**: building it would reintroduce the hazard without the model
+below, so a future settings screen must exclude `taxRateBps` or ship that model first.
+
+**A reservation-level frozen rate is rejected as the wrong shape**, not merely as overkill. Sales tax
+is not a per-customer term; it is a jurisdiction's rate on a date. Freezing a copy on every
+reservation stores the same number a hundred thousand times to answer a question the jurisdiction
+already answers.
+
+**The rate is 800 bps** — Cuyahoga County (Cleveland). Set explicitly in `app_settings` in both local
+and production on 2026-08-19. The code default at `payment-config.ts` still reads 725 with a comment
+claiming "Ohio state sales tax 7.25%"; that is wrong on both the jurisdiction and the number, and is
+left standing only because both deployments now carry an explicit row so the default never applies.
+A fresh deploy would inherit it.
+
+**If a rate ever does change,** the answer is a `(rate, effective_date)` lookup — sales tax moves
+forward-only from an announced date, so the rate in force is a function of a date, not of a booking.
+The open question that model forces is **which** date governs: booking, departure, or charge. For a
+deposit taken before a rate change against a departure after it, those give different answers, and
+that choice is #574's freeze-vs-live question restated in terms that match how the tax actually
+works. Deliberately unanswered — there is no rate change to answer it against, and guessing now
+would bake in an answer nobody tested.
+
+**Still stands:** the whole 11.2b formula, the refund-netting order, `fareCents` as base + frozen
+extras, tax applying to fare + add-ons only (never tip or service fee), and the freeze rules for
+price, extras and fee. Tax rate is the one live read in the formula, and it stays that way.

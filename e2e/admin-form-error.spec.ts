@@ -44,7 +44,6 @@
 import {
   clickHydrated,
   expect,
-  isHydrated,
   selectOptionHydrated,
   test,
   resetAndSeed,
@@ -304,9 +303,8 @@ test.describe("the same refusal on the other three admin surfaces (#699)", () =>
     // the cookie is written with an explicit path, and deleting it without that path writes a
     // second expired cookie somewhere else and leaves the live one alone.
     //
-    // Reachable by ordinary navigation, not a crafted URL: refuse, correct, save, then press
-    // Back. Without this, the form re-offers the values you already fixed, on a record that has
-    // since been written with different ones.
+    // Reachable by ordinary navigation, not a crafted URL: refuse, save something, then press
+    // Back inside the minute. Without the clear, the form re-offers a spent draft's values.
     await signInAsAdmin(page, "spink");
 
     await page.goto("/admin/add-ons?sel=new");
@@ -317,15 +315,18 @@ test.describe("the same refusal on the other three admin surfaces (#699)", () =>
     // having stashed anything in the first place.
     await expect(page.locator('input[name="label"]')).toHaveValue("Sunset Charcuterie");
 
-    // The restored form arrives as server-rendered HTML and React reconciles it a beat later.
-    // Typing into it before that lands is a machine-speed race a person cannot lose (the
-    // correction is wiped by the reconcile, and the ORIGINAL value posts again) — but Playwright
-    // wins it every time, so wait for React to own the field before re-typing.
-    await expect.poll(() => isHydrated(page.locator('input[name="amount"]'))).toBe(true);
-    await page.fill('input[name="amount"]', "45.00");
+    // Now save something successfully. **Deliberately on a fresh form, not by correcting the
+    // restored one** — correcting in place is its own defect (issue #783: the restored form
+    // swallows an edit made before React reconciles it, and re-posts the original), and a test
+    // that walks through a known-broken path is measuring two things and reporting one.
+    await page.goto("/admin/add-ons?sel=new");
+    await page.fill('input[name="label"]', "Cooler of Ice");
+    await page.fill('input[name="amount"]', "25.00");
     await page.getByRole("button", { name: "Create" }).click();
     await page.waitForURL(/saved=1/);
 
+    // The draft is spent. Reaching an `?err=` URL again — the Back button, a bookmark — must
+    // show an empty create form, not the typing from before the save.
     await page.goto("/admin/add-ons?sel=new&err=bad_amount");
     await expect(page.locator('input[name="label"]')).toHaveValue("");
     await expect(page.locator('input[name="amount"]')).toHaveValue("");

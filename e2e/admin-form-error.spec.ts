@@ -44,6 +44,7 @@
 import {
   clickHydrated,
   expect,
+  isHydrated,
   selectOptionHydrated,
   test,
   resetAndSeed,
@@ -292,5 +293,41 @@ test.describe("the same refusal on the other three admin surfaces (#699)", () =>
     await expect(page.locator('input[name="amount"]')).toHaveValue("forty five");
     await expect(page.locator('input[name="required"]')).toBeChecked();
     await expect(page.locator('input[name="active"]')).not.toBeChecked();
+  });
+
+  test("a successful save spends the draft — a stale ?err= URL does not repopulate it", async ({
+    page,
+  }) => {
+    // The third leg of the draft's self-limiting design (`app/lib/form-draft.ts`): read only on
+    // `?err=`, 60-second expiry, AND cleared on success. The first two are structural; this one
+    // is a call that can silently do nothing, which is exactly what it did on the first cut —
+    // the cookie is written with an explicit path, and deleting it without that path writes a
+    // second expired cookie somewhere else and leaves the live one alone.
+    //
+    // Reachable by ordinary navigation, not a crafted URL: refuse, correct, save, then press
+    // Back. Without this, the form re-offers the values you already fixed, on a record that has
+    // since been written with different ones.
+    await signInAsAdmin(page, "spink");
+
+    await page.goto("/admin/add-ons?sel=new");
+    await page.fill('input[name="label"]', "Sunset Charcuterie");
+    await page.fill('input[name="amount"]', "forty five");
+    await page.getByRole("button", { name: "Create" }).click();
+    // The draft exists — this is the #699 behaviour, asserted so the test can't pass by never
+    // having stashed anything in the first place.
+    await expect(page.locator('input[name="label"]')).toHaveValue("Sunset Charcuterie");
+
+    // The restored form arrives as server-rendered HTML and React reconciles it a beat later.
+    // Typing into it before that lands is a machine-speed race a person cannot lose (the
+    // correction is wiped by the reconcile, and the ORIGINAL value posts again) — but Playwright
+    // wins it every time, so wait for React to own the field before re-typing.
+    await expect.poll(() => isHydrated(page.locator('input[name="amount"]'))).toBe(true);
+    await page.fill('input[name="amount"]', "45.00");
+    await page.getByRole("button", { name: "Create" }).click();
+    await page.waitForURL(/saved=1/);
+
+    await page.goto("/admin/add-ons?sel=new&err=bad_amount");
+    await expect(page.locator('input[name="label"]')).toHaveValue("");
+    await expect(page.locator('input[name="amount"]')).toHaveValue("");
   });
 });

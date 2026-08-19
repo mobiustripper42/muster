@@ -54,6 +54,19 @@ export type FormDraft = {
 const cookieName = (surface: string) => `${PREFIX}${surface}`;
 
 /**
+ * Deletion has to name the path the cookie was SET with.
+ *
+ * `jar.delete("name")` compiles to `set({name, value: "", expires: epoch})` with no `path`
+ * (`@edge-runtime/cookies`), and a `Set-Cookie` with no `Path` defaults to the request URI's
+ * directory (RFC 6265 §5.1.4). For a POST to `/admin/offerings` that is `/admin/`, which does
+ * not match the `/admin/offerings` this cookie carries — so the browser stores a second,
+ * already-expired cookie in the wrong place and leaves the live one alone. The delete looks
+ * like it worked and does nothing, which turns "cleared on a successful save" into a promise
+ * kept only by the 60-second expiry.
+ */
+const draftPath = (surface: string) => `/admin/${surface}`;
+
+/**
  * Stash the submitted form. Call on the refusal path only, before `redirect()`.
  *
  * `File` entries are skipped — this project's admin forms have none, and a file input can't be
@@ -70,14 +83,14 @@ export async function stashFormDraft(surface: string, formData: FormData): Promi
   if (encoded.length > MAX_ENCODED_BYTES) {
     // Too big to carry. Clear rather than leave the PREVIOUS draft standing — restoring an
     // older submission's values would be the original bug with extra steps.
-    jar.delete(cookieName(surface));
+    jar.delete({ name: cookieName(surface), path: draftPath(surface) });
     return;
   }
   jar.set(cookieName(surface), encoded, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
-    path: `/admin/${surface}`,
+    path: draftPath(surface),
     maxAge: TTL_SECONDS,
   });
 }
@@ -85,7 +98,7 @@ export async function stashFormDraft(surface: string, formData: FormData): Promi
 /** Drop the draft. Call on the success path — the values are in the database now. */
 export async function clearFormDraft(surface: string): Promise<void> {
   const jar = await cookies();
-  jar.delete(cookieName(surface));
+  jar.delete({ name: cookieName(surface), path: draftPath(surface) });
 }
 
 /**

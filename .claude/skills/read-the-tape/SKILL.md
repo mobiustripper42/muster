@@ -31,7 +31,9 @@ Do **not** gate on `seeds-version` and do **not** require `$SEEDS` to be on `mai
 git -C "$SEEDS" fetch origin observations
 ```
 
-- **Worktree already present** (`[ -d "$SEEDS/.observations-worktree/.git" ]`): check it's clean
+- **Worktree already present** (`[ -e "$SEEDS/.observations-worktree/.git" ]` — `-e`, not `-d`: in a
+  linked worktree `.git` is a **file**, a `gitdir:` pointer, so `-d` reports missing on a worktree
+  that is present): check it's clean
   first — `git -C "$SEEDS/.observations-worktree" status --porcelain`. **If dirty, STOP** and show
   what's there. A dirty observations worktree means an earlier run wrote a file and failed to push
   it, or another session is mid-write; `reset --hard` over either destroys an observation with no

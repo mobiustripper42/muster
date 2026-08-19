@@ -9,12 +9,18 @@ You are closing the session. Under DEC-S013, this is a one-action skill: stamp `
 ## Step 0 — Locate the open session (on the sessions worktree)
 
 ```
-SESSION_FILE=$(grep -l "^status: open" .sessions-worktree/sessions/*.md 2>/dev/null | head -1)
+grep -l "^status: open" .sessions-worktree/sessions/*.md 2>/dev/null
 ```
 
-If found: NEW MODE. Continue.
+**Exactly one match:** that's `SESSION_FILE`. NEW MODE. Continue.
 
-If not: try legacy `session-log.md` on the current branch. If found: LEGACY MODE — Step 4 still applies; everything else simplifies. If neither: STOP and ask the user how to proceed.
+**No match:** try legacy `session-log.md` on the current branch. If found: LEGACY MODE — Step 4 still applies; everything else simplifies. If neither: STOP and ask the user how to proceed.
+
+**More than one match — resolve it, never pick one.** Two open files means a previous session never reached its own `/its-dead`. Disambiguate on `transcript:`, which `/its-alive` Step 5 stamps and which is unique per window: the file whose `transcript:` matches this session's is the one to close. If that doesn't resolve it, **stop and list the candidates for the user to choose**.
+
+Do not sort, and do not take the first. `... | head -1` returns the lexically-earliest filename, and session filenames start with a date — so on the exact input this guard exists for, it silently selects the **stale** file. That stamps a fabricated `ended:` onto a session that really closed hours or days ago, and leaves the session actually closing marked `status: open` forever. Per the atomicity guarantee in Notes, nothing downstream reopens either one, so there is no undo path and nothing errors: `head -1` always returns something.
+
+Leave the other file alone. Its `ended:` is not knowable from here, and a guess poisons `/retro`'s input more quietly than a blank does. Say in the closing summary that it is still open.
 
 ## Step 1 — Stamp `ended:`
 

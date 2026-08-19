@@ -27,7 +27,7 @@
 // `.claude/doc-check.json`. This file is byte-identical across projects.
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
-import { PATHISH, isClaim, resolves } from './check-context.mjs'
+import { PATHISH, isClaim, resolves, checkSections } from './check-context.mjs'
 import { REFERENCE } from './check-decisions.mjs'
 import { load } from './gen-decisions-index.mjs'
 
@@ -297,6 +297,17 @@ export function check(sources, world) {
     ...checkIssueLinks(docs),
     ...checkRosters(docs, w),
     ...checkPaths(docs),
+    // Same resolver as `check-context`, deliberately — one implementation, two corpora, the same
+    // argument as `resolves()` above it. It matters more here than it looks: seeds has no
+    // `.claude/CLAUDE-context.md`, so `check-context` never runs in this repo. Without this line
+    // seeds would ship a § check it could not execute, which is issue #186's defect wearing a
+    // different hat.
+    //
+    // HISTORICAL applies for the same reason it applies to `checkPaths`: a shipped task row cites
+    // the section it retired. `PROJECT_PLAN.md:23` records de-hardcoding the skills away from
+    // `CLAUDE.md §Commands` — a section DEC-S019 later moved into the context file. The reference
+    // is dead and the sentence is still true, which is what a historical ledger is.
+    ...checkSections(docs.filter((d) => !(d.path in HISTORICAL))),
   ]
 }
 
@@ -312,7 +323,7 @@ if (process.argv[1]?.endsWith('check-docs.mjs')) {
   const foreign = Object.keys(FOREIGN_DECS).length
   console.log(
     `✓ docs — ${DOCS.length} docs: DEC refs, npm scripts and issue links resolve, ` +
-      `skill/agent rosters match disk both ways, paths resolve ` +
+      `skill/agent rosters match disk both ways, paths and § sections resolve ` +
       `(${exempt} historical ledger${exempt === 1 ? '' : 's'} exempt` +
       `${foreign ? `, ${foreign} citing another repo's record` : ''})`,
   )

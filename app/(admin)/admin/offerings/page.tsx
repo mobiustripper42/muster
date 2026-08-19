@@ -7,6 +7,7 @@ import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { readSubject } from "../../../lib/auth";
 import { errCopyFor } from "../../../lib/err-copy";
+import { readFormDraft } from "../../../lib/form-draft";
 import { getRepo } from "../../../lib/repo";
 import { saveOffering, type OfferingErr } from "./actions";
 import {
@@ -94,7 +95,20 @@ export default async function AdminOfferings({
   const visible = showHidden ? offerings : offerings.filter((o) => o.status !== "hidden");
 
   const creating = sp.sel === "new" || visible.length === 0;
-  const selected = creating ? null : visible.find((o) => o.id === sp.sel) ?? visible[0] ?? null;
+  // The substitution the operator actually hit (#699): `?? visible[0]` answered a lookup that
+  // had no answer, and an unrelated offering's data looked exactly like a real selection. A
+  // `sel` naming nothing now says so; no `sel` at all is the landing case and still opens the
+  // first offering. (A hidden offering reached by direct link reads as missing until "Show
+  // hidden" — the same as before, since `visible` is what the list is built from.)
+  const requested = creating ? undefined : sp.sel;
+  const selected = creating
+    ? null
+    : requested
+      ? visible.find((o) => o.id === requested) ?? null
+      : visible[0] ?? null;
+  const missing = requested !== undefined && selected === null;
+  // The submitted values of a refused save, read back as this form's defaults (#699).
+  const draft = sp.err ? await readFormDraft("offerings") : null;
   const errCopy = errCopyFor(ERR_COPY, sp.err, "error");
   const title = creating ? "New offering" : selected?.name ?? "Offerings";
   const hiddenParam = showHidden ? "&hidden=1" : "";
@@ -133,6 +147,9 @@ export default async function AdminOfferings({
         </header>
 
         {errCopy && <Notice tone="bad">{errCopy}</Notice>}
+        {missing && (
+          <Notice tone="bad">That offering no longer exists — pick one from the list.</Notice>
+        )}
 
         <div className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-[230px_1fr]">
           {/* Left column pins while the detail scrolls (desktop only — the mockup's sticky
@@ -206,11 +223,16 @@ export default async function AdminOfferings({
 
           {(selected || creating) && (
             <div className="flex min-w-0 flex-col gap-4">
-              <DetailsSection offering={selected} vessels={vessels} locations={locations} />
-              <ScheduleSection offering={selected} />
-              <PricingSection offering={selected} />
-              <GratuitySection offering={selected} />
-              <AddOnsSection offering={selected} addOns={activeAddOns} />
+              <DetailsSection
+                offering={selected}
+                vessels={vessels}
+                locations={locations}
+                draft={draft}
+              />
+              <ScheduleSection offering={selected} draft={draft} />
+              <PricingSection offering={selected} draft={draft} />
+              <GratuitySection offering={selected} draft={draft} />
+              <AddOnsSection offering={selected} addOns={activeAddOns} draft={draft} />
             </div>
           )}
         </div>

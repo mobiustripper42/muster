@@ -8,6 +8,7 @@ import { VersionTag } from "../../../../components/ui/version-tag";
 import { Field, settingsInputClass } from "../../../../components/admin/settings-field";
 import { readSubject } from "../../../lib/auth";
 import { errCopyFor } from "../../../lib/err-copy";
+import { readFormDraft, type FormDraft } from "../../../lib/form-draft";
 import { getRepo } from "../../../lib/repo";
 import { saveLocation, type LocationErr } from "./actions";
 
@@ -16,7 +17,8 @@ import { saveLocation, type LocationErr } from "./actions";
  * `docs/design/mockups/location.html` and matching the Vessel screen: a full-width header
  * (breadcrumb + name + Save), a location list on the left, the customer-facing pickup + route
  * on the right, plus a read-only Offerings reverse lookup. Master–detail via `?sel=<id|new>`,
- * native forms, no JS (DEC-026). The whole surface is one `<form>` so Save can sit in the header
+ * native forms, no JS (DEC-147 — corrected from DEC-026 per that decision's fix-when-touched
+ * rule). The whole surface is one `<form>` so Save can sit in the header
  * while the fields sit in the card. "Block this location" is deferred to the Blocks surface task.
  */
 
@@ -58,9 +60,17 @@ export default async function AdminLocations({
   // Empty list ⇒ there's nothing to select, so open straight into the create form (with its
   // Create button) rather than a blank form with no way to save.
   const creating = sp.sel === "new" || locations.length === 0;
+  // A `?sel=` naming no row says so rather than substituting one (#699); no `sel` at all is the
+  // landing case and still opens the first location.
+  const requested = creating ? undefined : sp.sel;
   const selected = creating
     ? null
-    : locations.find((l) => l.id === sp.sel) ?? locations[0] ?? null;
+    : requested
+      ? locations.find((l) => l.id === requested) ?? null
+      : locations[0] ?? null;
+  const missing = requested !== undefined && selected === null;
+  // The submitted values of a refused save, read back as this form's defaults (#699).
+  const draft = sp.err ? await readFormDraft("locations") : null;
   const errCopy = errCopyFor(ERR_COPY, sp.err, "error");
   const title = creating ? "New location" : selected?.name ?? "Locations";
 
@@ -88,6 +98,9 @@ export default async function AdminLocations({
         </header>
 
         {errCopy && <Notice tone="bad">{errCopy}</Notice>}
+        {missing && (
+          <Notice tone="bad">That location no longer exists — pick one from the list.</Notice>
+        )}
 
         <div className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-[230px_1fr]">
           <nav className="flex flex-col gap-0.5 self-start rounded-card border border-line bg-card p-1.5">
@@ -125,7 +138,7 @@ export default async function AdminLocations({
           </nav>
 
           <div className="flex flex-col gap-4">
-            <LocationCard location={selected} />
+            {(selected || creating) && <LocationCard location={selected} draft={draft} />}
             {selected && <OfferingsSection location={selected} offerings={offerings} />}
           </div>
         </div>
@@ -136,8 +149,13 @@ export default async function AdminLocations({
   );
 }
 
-/** The "Location" facts card. The Save button lives in the page header (shared form). */
-function LocationCard({ location }: { location: Location | null }) {
+/**
+ * The "Location" facts card. The Save button lives in the page header (shared form).
+ *
+ * Defaults are `draft ?? record ?? blank` (#699) — after a refusal the operator's own submission
+ * is what React's form reset restores.
+ */
+function LocationCard({ location, draft }: { location: Location | null; draft: FormDraft | null }) {
   return (
     <section className="rounded-card border border-line bg-card shadow-sm">
       <div className="flex items-center gap-3 border-b border-line px-4 py-3">
@@ -149,7 +167,7 @@ function LocationCard({ location }: { location: Location | null }) {
           <input
             name="name"
             required
-            defaultValue={location?.name ?? ""}
+            defaultValue={draft?.get("name") ?? location?.name ?? ""}
             className={`${settingsInputClass} w-full max-w-[420px]`}
           />
         </Field>
@@ -158,7 +176,7 @@ function LocationCard({ location }: { location: Location | null }) {
           <textarea
             name="pickupDescription"
             required
-            defaultValue={location?.pickupDescription ?? ""}
+            defaultValue={draft?.get("pickupDescription") ?? location?.pickupDescription ?? ""}
             className={`${settingsInputClass} min-h-[64px] w-full`}
           />
         </Field>
@@ -167,7 +185,7 @@ function LocationCard({ location }: { location: Location | null }) {
           <input
             name="pickupLink"
             type="url"
-            defaultValue={location?.pickupLink ?? ""}
+            defaultValue={draft?.get("pickupLink") ?? location?.pickupLink ?? ""}
             placeholder="https://maps.google.com/…"
             className={`${settingsInputClass} w-full max-w-[420px]`}
           />
@@ -177,7 +195,7 @@ function LocationCard({ location }: { location: Location | null }) {
           <textarea
             name="routeDescription"
             required
-            defaultValue={location?.routeDescription ?? ""}
+            defaultValue={draft?.get("routeDescription") ?? location?.routeDescription ?? ""}
             className={`${settingsInputClass} min-h-[64px] w-full`}
           />
         </Field>

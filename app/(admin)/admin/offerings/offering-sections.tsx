@@ -1,8 +1,16 @@
 import type { ReactNode } from "react";
-import type { AddOn, GratuityKindConfig, Location, Offering, Vessel } from "@core/domain/entities.js";
+import type {
+  AddOn,
+  GratuityKindConfig,
+  Location,
+  Offering,
+  PriceVariation,
+  Vessel,
+} from "@core/domain/entities.js";
 import { gratuityKindsFor } from "@core/reservations/pricing.js";
 import { AppLink } from "../../../../components/ui/app-link";
 import { Field, settingsInputClass } from "../../../../components/admin/settings-field";
+import type { FormDraft } from "../../../lib/form-draft";
 import { vesselHueClass } from "../../../lib/vessel-hue";
 import { PriceVariationsEditor } from "./price-variations-editor";
 import { DepartureTimesEditor } from "./departure-times-editor";
@@ -13,6 +21,15 @@ import { DepartureTimesEditor } from "./departure-times-editor";
  * section of the one native `<form>` in page.tsx — the only client island is
  * `PriceVariationsEditor` (drag/reorder). `STATUS_COPY` lives here (the status chip renders
  * it) and is re-exported for the page header + sidebar pills, so imports flow one way.
+ *
+ * **Every default here is `draft ?? record ?? blank` (#699).** After a refused save the
+ * operator's own submission is the defaults source, because React resets the form on every
+ * submit and restores exactly these defaults — see `app/lib/form-draft.ts` for why that can't
+ * be fought from the client. Two rules that are easy to get wrong:
+ *  - Checkboxes read `draft ? draft.has(…)` and never `??`: an unticked box posts nothing, and
+ *    that "nothing" is a real answer that must survive.
+ *  - The two islands take their `initial` from the draft as well — a departure time added and
+ *    then lost is the same data loss as a cleared text field.
  */
 
 const inputClass = settingsInputClass;
@@ -54,10 +71,12 @@ export function DetailsSection({
   offering,
   vessels,
   locations,
+  draft,
 }: {
   offering: Offering | null;
   vessels: Vessel[];
   locations: Location[];
+  draft: FormDraft | null;
 }) {
   return (
     <Section id="details" title="Details" hint="what the customer reads">
@@ -69,7 +88,7 @@ export function DetailsSection({
                 type="radio"
                 name="status"
                 value={s}
-                defaultChecked={(offering?.status ?? "draft") === s}
+                defaultChecked={(draft?.get("status") ?? offering?.status ?? "draft") === s}
                 className="peer sr-only"
               />
               <span className={chipClass}>{STATUS_COPY[s].label}</span>
@@ -86,7 +105,7 @@ export function DetailsSection({
         <input
           name="name"
           required
-          defaultValue={offering?.name ?? ""}
+          defaultValue={draft?.get("name") ?? offering?.name ?? ""}
           className={`${inputClass} w-full max-w-[420px]`}
         />
       </Field>
@@ -94,7 +113,7 @@ export function DetailsSection({
       <Field label="Description" sub="markdown" align="start">
         <textarea
           name="description"
-          defaultValue={offering?.description ?? ""}
+          defaultValue={draft?.get("description") ?? offering?.description ?? ""}
           className={`${inputClass} min-h-[80px] w-full py-2`}
         />
       </Field>
@@ -104,7 +123,7 @@ export function DetailsSection({
           <select
             name="locationId"
             required
-            defaultValue={offering?.locationId ?? ""}
+            defaultValue={draft?.get("locationId") ?? offering?.locationId ?? ""}
             className={`${inputClass} w-full max-w-[280px]`}
           >
             <option value="" disabled>
@@ -128,7 +147,7 @@ export function DetailsSection({
             name="tripLengthMinutes"
             type="number"
             min={0}
-            defaultValue={offering?.tripLengthMinutes ?? ""}
+            defaultValue={draft?.get("tripLengthMinutes") ?? offering?.tripLengthMinutes ?? ""}
             className={`${inputClass} max-w-[110px] font-mono`}
           />
           <span className="text-xs text-faint">minutes</span>
@@ -141,7 +160,7 @@ export function DetailsSection({
             name="holdMinutes"
             type="number"
             min={0}
-            defaultValue={offering?.holdMinutes ?? ""}
+            defaultValue={draft?.get("holdMinutes") ?? offering?.holdMinutes ?? ""}
             className={`${inputClass} max-w-[110px] font-mono`}
           />
           <span className="text-xs text-faint">minutes</span>
@@ -154,7 +173,7 @@ export function DetailsSection({
             name="arriveBeforeMinutes"
             type="number"
             min={0}
-            defaultValue={offering?.arriveBeforeMinutes ?? ""}
+            defaultValue={draft?.get("arriveBeforeMinutes") ?? offering?.arriveBeforeMinutes ?? ""}
             className={`${inputClass} max-w-[110px] font-mono`}
           />
           <span className="text-xs text-faint">minutes</span>
@@ -169,7 +188,9 @@ export function DetailsSection({
                 type="checkbox"
                 name="vesselIds"
                 value={v.id}
-                defaultChecked={offering?.vesselIds.includes(v.id) ?? false}
+                defaultChecked={
+                  draft ? draft.has("vesselIds", v.id) : offering?.vesselIds.includes(v.id) ?? false
+                }
                 className="peer sr-only"
               />
               <span className="flex cursor-pointer select-none items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1 text-sm text-muted peer-checked:border-accent/40 peer-checked:bg-bg peer-checked:font-medium peer-checked:text-ink">
@@ -192,7 +213,13 @@ export function DetailsSection({
 }
 
 // ── 2 · Schedule ─────────────────────────────────────────────────────────────
-export function ScheduleSection({ offering }: { offering: Offering | null }) {
+export function ScheduleSection({
+  offering,
+  draft,
+}: {
+  offering: Offering | null;
+  draft: FormDraft | null;
+}) {
   const schedule = offering?.schedule;
   return (
     <Section id="schedule" title="Schedule" hint="a rule, not rows">
@@ -202,7 +229,7 @@ export function ScheduleSection({ offering }: { offering: Offering | null }) {
             name="seasonStart"
             type="date"
             required
-            defaultValue={schedule?.seasonStart ?? ""}
+            defaultValue={draft?.get("seasonStart") ?? schedule?.seasonStart ?? ""}
             className={`${inputClass} font-mono`}
           />
           <span className="text-xs text-faint">to</span>
@@ -210,7 +237,7 @@ export function ScheduleSection({ offering }: { offering: Offering | null }) {
             name="seasonEnd"
             type="date"
             required
-            defaultValue={schedule?.seasonEnd ?? ""}
+            defaultValue={draft?.get("seasonEnd") ?? schedule?.seasonEnd ?? ""}
             className={`${inputClass} font-mono`}
           />
         </span>
@@ -224,7 +251,11 @@ export function ScheduleSection({ offering }: { offering: Offering | null }) {
                 type="checkbox"
                 name="weekday"
                 value={d}
-                defaultChecked={schedule?.weekdays.includes(d) ?? false}
+                defaultChecked={
+                  draft
+                    ? draft.has("weekday", String(d))
+                    : schedule?.weekdays.includes(d) ?? false
+                }
                 className="peer sr-only"
               />
               <span className={chipClass}>{label}</span>
@@ -235,7 +266,11 @@ export function ScheduleSection({ offering }: { offering: Offering | null }) {
 
       <Field label="Departures" sub="add or remove times" align="start">
         <div className="pt-1">
-          <DepartureTimesEditor initial={schedule?.departureTimes ?? []} />
+          {/* The island serializes each time to a hidden `departureTime` input, so the draft
+              carries the whole list back — including one added and not yet saved. */}
+          <DepartureTimesEditor
+            initial={draft ? draft.all("departureTime") : schedule?.departureTimes ?? []}
+          />
         </div>
         <p className="pt-1.5 text-xs text-faint">
           Availability is computed from this rule — schedule × vessels × dates − blocks −
@@ -248,7 +283,30 @@ export function ScheduleSection({ offering }: { offering: Offering | null }) {
 }
 
 // ── 3 · Pricing ──────────────────────────────────────────────────────────────
-export function PricingSection({ offering }: { offering: Offering | null }) {
+/**
+ * The variations the island should open with: the draft's serialized list when there is one,
+ * else the record's. A draft that won't parse falls back to the record rather than dropping the
+ * rows — `bad_variations` is itself a parse refusal, and an empty editor would read as "your
+ * rows are gone" when they are merely unsaved.
+ */
+function variationsFor(draft: FormDraft | null, offering: Offering | null): PriceVariation[] {
+  const raw = draft?.get("priceVariations");
+  if (raw === undefined) return offering?.priceVariations ?? [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as PriceVariation[]) : offering?.priceVariations ?? [];
+  } catch {
+    return offering?.priceVariations ?? [];
+  }
+}
+
+export function PricingSection({
+  offering,
+  draft,
+}: {
+  offering: Offering | null;
+  draft: FormDraft | null;
+}) {
   return (
     <Section id="pricing" title="Pricing" hint="the boat, by the guest">
       <Field label="Base fare" sub="buys the whole boat">
@@ -258,7 +316,9 @@ export function PricingSection({ offering }: { offering: Offering | null }) {
             name="basePrice"
             required
             inputMode="decimal"
-            defaultValue={offering ? (offering.basePriceCents / 100).toFixed(2) : ""}
+            defaultValue={
+              draft?.get("basePrice") ?? (offering ? (offering.basePriceCents / 100).toFixed(2) : "")
+            }
             className={`${inputClass} max-w-[130px] font-mono`}
           />
         </span>
@@ -270,7 +330,7 @@ export function PricingSection({ offering }: { offering: Offering | null }) {
             name="includedGuestCount"
             type="number"
             min={1}
-            defaultValue={offering?.includedGuestCount ?? ""}
+            defaultValue={draft?.get("includedGuestCount") ?? offering?.includedGuestCount ?? ""}
             className={`${inputClass} max-w-[110px] font-mono`}
           />
           <span className="text-xs text-faint">blank = the boat’s full capacity</span>
@@ -284,7 +344,10 @@ export function PricingSection({ offering }: { offering: Offering | null }) {
             name="extraGuestPrice"
             required
             inputMode="decimal"
-            defaultValue={offering ? (offering.extraGuestPriceCents / 100).toFixed(2) : "0.00"}
+            defaultValue={
+              draft?.get("extraGuestPrice") ??
+              (offering ? (offering.extraGuestPriceCents / 100).toFixed(2) : "0.00")
+            }
             className={`${inputClass} max-w-[130px] font-mono`}
           />
           <span className="text-xs text-faint">each, up to that boat’s max</span>
@@ -293,7 +356,7 @@ export function PricingSection({ offering }: { offering: Offering | null }) {
 
       <Field label="Variations" sub="first match wins" align="start">
         <div className="pt-1">
-          <PriceVariationsEditor initial={offering?.priceVariations ?? []} />
+          <PriceVariationsEditor initial={variationsFor(draft, offering)} />
         </div>
       </Field>
     </Section>
@@ -301,7 +364,13 @@ export function PricingSection({ offering }: { offering: Offering | null }) {
 }
 
 // ── 4 · Gratuity ─────────────────────────────────────────────────────────────
-export function GratuitySection({ offering }: { offering: Offering | null }) {
+export function GratuitySection({
+  offering,
+  draft,
+}: {
+  offering: Offering | null;
+  draft: FormDraft | null;
+}) {
   // Render from the effective per-kind config: an offering with none yet shows the code
   // defaults (pre required + post optional, 15/20/25) — saving writes them explicitly.
   const kinds = gratuityKindsFor(offering ?? {});
@@ -309,12 +378,19 @@ export function GratuitySection({ offering }: { offering: Offering | null }) {
     kinds.find((g) => g.kind === k);
   return (
     <Section id="gratuity" title="Gratuity" hint="crew money — not an add-on, not revenue">
-      <GratuityKindRow kind="pre" label="Pre" when="at checkout" config={byKind("pre")} />
+      <GratuityKindRow
+        kind="pre"
+        label="Pre"
+        when="at checkout"
+        config={byKind("pre")}
+        draft={draft}
+      />
       <GratuityKindRow
         kind="post"
         label="Post"
         when="after the trip, via booking link"
         config={byKind("post")}
+        draft={draft}
       />
       <p className="py-3 text-xs text-faint">
         Gratuity is first-class, keyed by kind — deliberately NOT an add-on. It routes to
@@ -329,25 +405,34 @@ function GratuityKindRow({
   label,
   when,
   config,
+  draft,
 }: {
   kind: "pre" | "post";
   label: string;
   when: string;
   config: GratuityKindConfig | undefined;
+  draft: FormDraft | null;
 }) {
   const cap = kind === "pre" ? "Pre" : "Post";
   return (
     <Field label={label} sub={when}>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-1">
         <label className="flex items-center gap-1.5 text-sm text-ink">
-          <input type="checkbox" name={`grat${cap}`} defaultChecked={config !== undefined} />
+          <input
+            type="checkbox"
+            name={`grat${cap}`}
+            defaultChecked={draft ? draft.has(`grat${cap}`) : config !== undefined}
+          />
           Collect
         </label>
         <label className="flex items-center gap-1.5 text-sm text-muted">
           Tiers %
           <input
             name={`grat${cap}Tiers`}
-            defaultValue={(config?.tiersBps ?? [1500, 2000, 2500]).map((t) => t / 100).join(", ")}
+            defaultValue={
+              draft?.get(`grat${cap}Tiers`) ??
+              (config?.tiersBps ?? [1500, 2000, 2500]).map((t) => t / 100).join(", ")
+            }
             className={`${inputClass} max-w-[130px] font-mono`}
             aria-label={`${label} gratuity tiers (percent)`}
           />
@@ -356,7 +441,7 @@ function GratuityKindRow({
           Default %
           <input
             name={`grat${cap}Default`}
-            defaultValue={(config?.defaultBps ?? 2000) / 100}
+            defaultValue={draft?.get(`grat${cap}Default`) ?? (config?.defaultBps ?? 2000) / 100}
             className={`${inputClass} max-w-[70px] font-mono`}
             aria-label={`${label} gratuity default (percent)`}
           />
@@ -365,7 +450,9 @@ function GratuityKindRow({
           <input
             type="checkbox"
             name={`grat${cap}Required`}
-            defaultChecked={config?.required ?? kind === "pre"}
+            defaultChecked={
+              draft ? draft.has(`grat${cap}Required`) : config?.required ?? kind === "pre"
+            }
           />
           Required
         </label>
@@ -378,11 +465,13 @@ function GratuityKindRow({
 export function AddOnsSection({
   offering,
   addOns,
+  draft,
 }: {
   offering: Offering | null;
   /** ACTIVE add-ons only (#491) — the offering ATTACHES existing add-ons by id; it no longer
    *  defines them inline. The set is edited at /admin/add-ons. */
   addOns: AddOn[];
+  draft: FormDraft | null;
 }) {
   const attached = new Set(offering?.addOnIds ?? []);
   return (
@@ -409,7 +498,7 @@ export function AddOnsSection({
                   type="checkbox"
                   name="addOnIds"
                   value={a.id}
-                  defaultChecked={attached.has(a.id)}
+                  defaultChecked={draft ? draft.has("addOnIds", a.id) : attached.has(a.id)}
                   className="peer sr-only"
                 />
                 <span className="flex cursor-pointer select-none items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1 text-sm text-muted peer-checked:border-accent/40 peer-checked:bg-bg peer-checked:font-medium peer-checked:text-ink">

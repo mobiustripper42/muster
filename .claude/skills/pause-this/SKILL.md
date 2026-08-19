@@ -22,7 +22,7 @@ Do not try to identify the right one from inside the session. There is no reliab
 
 Do not sort, and do not take the first. `... | head -1` returns the lexically-earliest filename, and session filenames start with a date, so on the exact input this guard exists for it silently selects the **stale** file. Nothing errors: `head -1` always returns something.
 
-**The wrong-tree check goes in Step 2, not here.** This skill commits WIP, and `git branch --show-current` resolves against the current directory rather than the session — `/its-alive` Step 3 offers a linked worktree for a concurrent session, so the two can legitimately differ. Do **not** prompt on a branch mismatch: a session opens on `main` and its work is cut onto branches, so that fires every run and becomes noise. If Step 2 finds **nothing to commit**, that is the ambiguous case — run `git worktree list` and compare against the session file's `branch:` before reporting a clean pause, because "already committed" and "the WIP is in another tree" look identical from here.
+**The wrong-tree check goes in Step 2, not here.** This skill commits WIP, and `git branch --show-current` resolves against the current directory rather than the session — `/its-alive` Step 3 offers a linked worktree for a concurrent session, so the two can legitimately differ. Do **not** prompt on a branch mismatch: a session opens on `main` and its work is cut onto branches, so that fires every run and becomes noise. If Step 2 finds **nothing to commit**, that is the ambiguous case — "already committed" and "the WIP is in another tree" look identical from here. See Step 2 for what to do about it.
 
 ## Step 1 — Build check (conditional)
 

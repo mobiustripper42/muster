@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.1.3] - 2026-08-19
+
+Six PRs since [1.1.2], all correctness and hygiene — no schema change beyond the additive
+`shift_earliest_start` migration already applied to prod.
+
+- **Add-on options the customer never picked are no longer charged** (#775). The hull is billed
+  per the vessel, and unselected options stop reaching the total.
+- **The change notice says what moved**, not merely that something did (#771) — the SMS half.
+  The app half is issue #769.
+- **Three `formShifts` callers never told crew their day had moved** (#768) — they do now.
+- **`src/`, `db/`, `e2e/` and `scripts/` are linted** (#770). They were covered by nothing.
+  Type-aware linting was measured and rejected in the same PR; `react-hooks/rules-of-hooks` landed.
+- **A flaky focus assertion now waits for the move** instead of reading it once (#764).
+- **Feature flags accept `1` and nothing else** (#760), through one helper.
+
 ## [1.1.2] - 2026-08-17
 
 Nine days and 32 PRs since [1.1.1] — the largest promotion so far. Reservations (`phase:12b`) is

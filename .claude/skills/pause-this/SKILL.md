@@ -58,13 +58,12 @@ Append a pause line to the session file's `**Context:**` section:
 **[PAUSED HH:MM UTC]** Working on: [task]. Left off at: [specific file/function/step]. Next: [exactly what to do when resuming].
 ```
 
-Commit + push from inside the worktree:
+Commit + push with `git -C` targeting the worktree — **no `cd`**. Shell state doesn't persist between Bash calls, and a stray `cd` that fails leaves the next command running in the wrong tree. `/kill-this` and `/its-dead` were both moved off this pattern after downstream projects hit it; those backports never reached here.
+
 ```
-cd .sessions-worktree
-git add sessions/$(basename "$SESSION_FILE")
-git commit -m "Pause note for Session <N>"
-git push origin sessions
-cd ..
+git -C .sessions-worktree add sessions/$(basename "$SESSION_FILE")
+git -C .sessions-worktree commit -m "Pause note for Session <N>"
+git -C .sessions-worktree push origin sessions
 ```
 
 Do not close the session. Do not fill `ended:` / `points:`. Status remains `open`.

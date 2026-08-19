@@ -8,6 +8,7 @@ import { VersionTag } from "../../../../components/ui/version-tag";
 import { Field, settingsInputClass } from "../../../../components/admin/settings-field";
 import { readSubject } from "../../../lib/auth";
 import { errCopyFor } from "../../../lib/err-copy";
+import { readFormDraft, type FormDraft } from "../../../lib/form-draft";
 import { getRepo } from "../../../lib/repo";
 import { HUE_COUNT, vesselHueClass, vesselHueIndex } from "../../../lib/vessel-hue";
 import { saveVessel, type VesselErr } from "./actions";
@@ -18,7 +19,8 @@ import { saveVessel, type VesselErr } from "./actions";
  * then a vessel list on the left and the boat's own facts on the right (name, capacity,
  * identity color, home location, notes) plus a read-only Offerings reverse lookup. One vessel,
  * not a twin — this IS the boat the crew engine already knows. Master–detail via `?sel=<id|new>`,
- * native forms, no JS (DEC-026). Out-of-service (a block) and Retire (soft archive) are deferred.
+ * native forms, no JS (DEC-147 — corrected from DEC-026 per that decision's fix-when-touched
+ * rule). Out-of-service (a block) and Retire (soft archive) are deferred.
  *
  * The whole surface is ONE `<form>` so the Save button can sit in the header (mockup) while the
  * fields sit in the detail card — `SubmitButton`'s pending state needs the button inside the
@@ -68,7 +70,17 @@ export default async function AdminVessels({
   // Empty fleet ⇒ open straight into the create form (with its Create button) rather than a
   // blank form with no way to save.
   const creating = sp.sel === "new" || vessels.length === 0;
-  const selected = creating ? null : vessels.find((v) => v.id === sp.sel) ?? vessels[0] ?? null;
+  // A `?sel=` naming no boat says so rather than substituting one (#699); no `sel` at all is
+  // the landing case and still opens the first vessel.
+  const requested = creating ? undefined : sp.sel;
+  const selected = creating
+    ? null
+    : requested
+      ? vessels.find((v) => v.id === requested) ?? null
+      : vessels[0] ?? null;
+  const missing = requested !== undefined && selected === null;
+  // The submitted values of a refused save, read back as this form's defaults (#699).
+  const draft = sp.err ? await readFormDraft("vessels") : null;
   const errCopy = errCopyFor(ERR_COPY, sp.err, "error");
   const title = creating ? "New vessel" : selected?.name ?? "Vessels";
 
@@ -105,6 +117,9 @@ export default async function AdminVessels({
         </header>
 
         {errCopy && <Notice tone="bad">{errCopy}</Notice>}
+        {missing && (
+          <Notice tone="bad">That vessel no longer exists — pick one from the list.</Notice>
+        )}
 
         <div className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-[230px_1fr]">
           <nav className="flex flex-col gap-0.5 self-start rounded-card border border-line bg-card p-1.5">
@@ -142,7 +157,14 @@ export default async function AdminVessels({
           </nav>
 
           <div className="flex flex-col gap-4">
-            <VesselCard vessel={selected} creating={creating} locations={locations} />
+            {(selected || creating) && (
+              <VesselCard
+                vessel={selected}
+                creating={creating}
+                locations={locations}
+                draft={draft}
+              />
+            )}
             {selected && <OfferingsSection vessel={selected} offerings={offerings} />}
           </div>
         </div>
@@ -155,15 +177,24 @@ export default async function AdminVessels({
 
 const inputClass = settingsInputClass;
 
-/** The "Vessel" facts card. The Save button lives in the page header (shared form). */
+/**
+ * The "Vessel" facts card. The Save button lives in the page header (shared form).
+ *
+ * Defaults are `draft ?? record ?? blank` (#699). The colour radio is the reason this surface
+ * needed the server-side fix rather than client state: React never mirrors `checked` into
+ * `defaultChecked` on update, so the form reset would revert the swatch to its mount value no
+ * matter what any island held.
+ */
 function VesselCard({
   vessel,
   creating,
   locations,
+  draft,
 }: {
   vessel: Vessel | null;
   creating: boolean;
   locations: Location[];
+  draft: FormDraft | null;
 }) {
   const isNew = creating || !vessel;
   return (
@@ -177,7 +208,7 @@ function VesselCard({
           <input
             name="name"
             required
-            defaultValue={vessel?.name ?? ""}
+            defaultValue={draft?.get("name") ?? vessel?.name ?? ""}
             className={`${inputClass} w-full max-w-[420px]`}
           />
         </Field>
@@ -189,7 +220,7 @@ function VesselCard({
             min={1}
             max={99}
             required
-            defaultValue={vessel?.coiMaxPax ?? 6}
+            defaultValue={draft?.get("coiMaxPax") ?? vessel?.coiMaxPax ?? 6}
             className={`${inputClass} max-w-[110px] font-mono`}
           />
         </Field>
@@ -203,7 +234,11 @@ function VesselCard({
                   type="radio"
                   name="hue"
                   value={h}
-                  defaultChecked={!isNew && vesselHueIndex(vessel!.id, vessel!.hue) === h}
+                  defaultChecked={
+                    draft
+                      ? draft.get("hue") === String(h)
+                      : !isNew && vesselHueIndex(vessel!.id, vessel!.hue) === h
+                  }
                   className="peer sr-only"
                 />
                 <span
@@ -218,7 +253,7 @@ function VesselCard({
         <Field label="Home location" sub="default launch">
           <select
             name="homeLocationId"
-            defaultValue={vessel?.homeLocationId ?? ""}
+            defaultValue={draft?.get("homeLocationId") ?? vessel?.homeLocationId ?? ""}
             className={`${inputClass} w-full max-w-[280px]`}
           >
             <option value="">— none —</option>
@@ -233,7 +268,7 @@ function VesselCard({
         <Field label="Notes" align="start">
           <textarea
             name="notes"
-            defaultValue={vessel?.notes ?? ""}
+            defaultValue={draft?.get("notes") ?? vessel?.notes ?? ""}
             className={`${inputClass} min-h-[64px] w-full py-2`}
           />
         </Field>

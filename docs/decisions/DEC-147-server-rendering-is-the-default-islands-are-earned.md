@@ -84,3 +84,39 @@ still lands somewhere useful.
 DECs remain the record of their specific carve-outs; this is the default they carve out
 *from*. Amends no SPEC section — SPEC specifies behavior, and this is how the behavior is
 built.
+
+## Amendment, 2026-08-19 (eric) — a fourth rule: after a refusal, the form's defaults come from the server, never from client state
+
+**What this changes, and what still stands.** All three rules above stand unchanged. This adds
+the rule that makes rule 1 survive a *rejected* submit, and closes the escape hatch a session
+reached for twice before anyone read the framework source.
+
+**Rule 4. A refused form is re-rendered with the operator's own submission as its defaults, held
+server-side.** The action stashes the submitted `FormData` in a short-lived `httpOnly` cookie
+scoped to that surface, and the page reads it back as the `defaultValue` / `defaultChecked`
+source whenever `?err=` is present (`app/lib/form-draft.ts`). No `useState`, no island, no JS.
+
+**Why it cannot be done in the client, which is the part worth writing down.** React 19 resets
+every function-valued `<form action>` — a literal `HTMLFormElement.reset()` in the commit phase,
+before the action runs (`react-dom@19.2.7`: `startHostTransition` → `requestFormReset` →
+`recursivelyResetForms`). **There is no opt-out**; the exported `requestFormReset` is the same
+function the automatic path calls, so calling it yourself schedules the identical reset. A
+controlled `value` survives only because React mirrors it into `defaultValue` on every update.
+`checked` and `selected` are **never** mirrored on update, so a controlled checkbox, radio or
+select reverts to its *mount-time* value regardless of the state wrapped around it.
+
+That asymmetry is why converting to controlled state is worse than doing nothing: it fixes text
+fields visibly and leaves every checkbox, radio and select broken invisibly. Issue #699 shipped
+exactly that failure — the offerings surface passed its tests for hours while silently clearing
+every ticked box, because the tests asserted text fields only. A fix that covers three of four
+control types reads exactly like one that covers all four.
+
+**Rule 3, sharpened: a feedback param must name a state that exists.** The same issue's other
+half was `?sel=<id>` carrying an id minted moments earlier for a record the refusal meant was
+never written. The page could not find it, fell through to `?? list[0]`, and rendered an
+unrelated record — data loss dressed as a selection. A refused *create* now selects `new`, and a
+`sel` matching nothing says so rather than substituting.
+
+**Scope:** the four admin CRUD surfaces (offerings, vessels, locations, add-ons). The draft is
+self-limiting three ways — read only when `?err=` is present, 60-second expiry, cleared on a
+successful save — because a draft that outlives its refusal is the same bug wearing a hat.

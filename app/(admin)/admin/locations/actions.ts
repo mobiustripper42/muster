@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { saveLocationAdmin, type LocationSaveError } from "@core/admin/location-admin.js";
 import { readSubject } from "../../../lib/auth";
+import { clearFormDraft, stashFormDraft } from "../../../lib/form-draft";
 import { getRepo } from "../../../lib/repo";
 
 /**
@@ -45,5 +46,11 @@ export async function saveLocation(formData: FormData): Promise<void> {
   }
 
   revalidatePath("/admin/locations");
-  redirect(code ? `/admin/locations?sel=${id}&err=${code}` : `/admin/locations?sel=${id}&saved=1`);
+  if (code) {
+    // Keep what was typed (#699), and select `new` on a refused CREATE — see the add-ons twin.
+    await stashFormDraft("locations", formData);
+    redirect(`/admin/locations?sel=${rawId || "new"}&err=${code}`);
+  }
+  await clearFormDraft("locations");
+  redirect(`/admin/locations?sel=${id}&saved=1`);
 }

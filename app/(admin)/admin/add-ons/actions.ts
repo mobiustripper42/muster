@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { saveAddOnAdmin, type AddOnSaveError } from "@core/admin/add-on-admin.js";
 import { readSubject } from "../../../lib/auth";
+import { clearFormDraft, stashFormDraft } from "../../../lib/form-draft";
 import { getRepo } from "../../../lib/repo";
 import { TENANT_ID } from "../../../lib/tenant";
 
@@ -57,5 +58,13 @@ export async function saveAddOn(formData: FormData): Promise<void> {
   }
 
   revalidatePath("/admin/add-ons");
-  redirect(code ? `/admin/add-ons?sel=${id}&err=${code}` : `/admin/add-ons?sel=${id}&saved=1`);
+  if (code) {
+    // Keep what was typed (#699) — the page reads this back as its defaults, which is the only
+    // thing that survives React's unconditional form reset. `sel=new` on a refused CREATE:
+    // the minted id names no row, so sending it hands the page a lookup it can only get wrong.
+    await stashFormDraft("add-ons", formData);
+    redirect(`/admin/add-ons?sel=${rawId || "new"}&err=${code}`);
+  }
+  await clearFormDraft("add-ons");
+  redirect(`/admin/add-ons?sel=${id}&saved=1`);
 }

@@ -8,19 +8,43 @@
  * Three separate failures stacked, and this spec pins each so they can be fixed and kept fixed
  * independently:
  *
- *  1. The error redirect emitted `sel=` (empty) because a new record has no id, so the page no
- *     longer knew a creation was in progress.
+ *  1. The error redirect emitted `sel=<a freshly minted id>`, so the page no longer knew a
+ *     creation was in progress — that id matches no row.
  *  2. Not knowing, the lookup fell through `?? visible[0]` and substituted an unrelated record.
- *  3. The redirect itself remounted the form, discarding every uncontrolled input.
+ *  3. The re-render had nothing of what was typed, so every field came back on its default.
  *
- * **This needs an EXISTING offering to reproduce.** With an empty catalog `visible.length === 0`
+ * **This needs an EXISTING record to reproduce.** With an empty catalog `visible.length === 0`
  * forces `creating` true and the substitution cannot happen — which is exactly why the existing
  * `offering-catalog.spec.ts`, which seeds nothing, has always passed straight through this bug.
+ *
+ * ## Why defect 3 is not fixable in the client, and what that means for this spec
+ *
+ * React 19's `startHostTransition` calls `HTMLFormElement.reset()` on every function-valued
+ * `<form action>` — unconditionally, in the commit phase, before the action runs (verified in
+ * `react-dom@19.2.7`, `cjs/react-dom-client.development.js`). There is no opt-out: the exported
+ * `requestFormReset` is the same function the automatic path calls. Controlled `value` survives
+ * only because React mirrors it into `defaultValue` on every update; `checked` and `selected`
+ * are **not** mirrored, so a checkbox, radio or select reverts to its mount-time value however
+ * much client state you wrap it in.
+ *
+ * So the fix is server-side — a short-lived draft of the submitted `FormData`, read back as the
+ * *defaults* of the re-rendered form — and these tests are written against plain server forms
+ * accordingly. **No hydration waits on the CRUD fields**, deliberately: they are uncontrolled
+ * server-rendered inputs, a submit that beats hydration is a real POST that the server action
+ * handles identically, and a wait here would be waiting on nothing (`fixtures.ts`). The
+ * departure-times island is the one exception and uses the island helpers, because adding a
+ * time genuinely needs its click handler.
+ *
+ * Every control type is asserted **on some surface**: text, textarea, number, checkbox, radio,
+ * select, and the island. An earlier attempt asserted text fields only, passed, and hid the
+ * fact that ticked checkboxes were cleared on every surface — including one that attempt had
+ * declared fixed. A spec that covers six control types of seven reads exactly like one that
+ * covers all seven.
  */
 import {
+  clickHydrated,
   expect,
-  isHydrated,
-  setCheckedHydrated,
+  selectOptionHydrated,
   test,
   resetAndSeed,
   signInAsAdmin,
@@ -93,20 +117,22 @@ test.describe("a validation error on a NEW record (#699)", () => {
     await page.locator('input[name="weekday"][value="5"]').check({ force: true });
     await page.fill('input[name="basePrice"]', "499");
 
+    // The island: a departure time is typed work too, and it reaches the server as hidden
+    // `departureTime` inputs rather than a field of its own — so it is the one part of this
+    // form whose restore can't come from a plain `defaultValue`.
+    await selectOptionHydrated(page.getByLabel("New departure hour"), "18");
+    await selectOptionHydrated(page.getByLabel("New departure minute"), "30");
+    await clickHydrated(page.getByRole("button", { name: "+ Add time" }));
+    await expect(page.getByText("18:30")).toBeVisible();
+
+    // The location id is minted at seed time, so capture what the select actually holds rather
+    // than hardcoding an id the seed doesn't promise.
+    const locationId = await page.locator('select[name="locationId"]').inputValue();
+    expect(locationId).not.toBe("");
+
     // Trigger a REAL validation refusal: no vessel selected → `bad_vessels`. Chosen over a
-    // malformed price variation because it needs no island interaction, so a hydration race
-    // cannot make this test lie about which failure it is exercising.
-    //
-    // `clickHydrated`, not `.click()` — the form is a client island now, and a submit that
-    // beats hydration does a REAL post, navigates, and loses the values. That is not a test
-    // artifact: it is the genuine limit of this fix, and it is why the assertions below would
-    // otherwise fail intermittently rather than honestly.
-    // Wait for the FORM, not the button. `clickHydrated` probes the element it clicks, and
-    // `SubmitButton` is already its own client component (`useFormStatus`) — so it reports
-    // hydrated while the enclosing ActionForm still isn't listening, and the submit falls
-    // through to a native POST. Probing the wrong element is indistinguishable from a passing
-    // wait, which is how this spec quietly measured nothing on the first attempt.
-    await expect.poll(() => isHydrated(page.locator("form").first())).toBe(true);
+    // malformed price variation because it needs no island interaction, so nothing about the
+    // trigger itself can race.
     await page.getByRole("button", { name: "Create" }).click();
 
     // The error is shown. (Which channel it arrives on is deliberately not asserted — that is
@@ -126,8 +152,11 @@ test.describe("a validation error on a NEW record (#699)", () => {
     );
     await expect(page.locator('input[name="tripLengthMinutes"]')).toHaveValue("90");
 
-    // Checkboxes are part of "what you typed" (#699). Friday was ticked before the refusal.
+    // Checkbox, select and island — the three React's form reset restores to their MOUNT values
+    // rather than their submitted ones, and the three a controlled-state fix cannot reach.
     await expect(page.locator('input[name="weekday"][value="5"]')).toBeChecked();
+    await expect(page.locator('select[name="locationId"]')).toHaveValue(locationId);
+    await expect(page.getByText("18:30")).toBeVisible();
   });
 
   test("a stale ?sel= for a record that does not exist shows nothing, not the first one", async ({
@@ -184,17 +213,12 @@ test.describe("the same refusal on the other three admin surfaces (#699)", () =>
     // "Hops" is already in the list from the seed — the record that must NOT be substituted.
 
     await page.goto("/admin/vessels?sel=new");
-    // Probe the card's own field: these pages carry more than one form, so a poll on
-    // `form.first()` can resolve against a different one and read as a passing wait.
-    await expect.poll(() => isHydrated(page.locator('input[name="name"]'))).toBe(true);
     await page.fill('input[name="name"]', " "); // clears `required`, fails the server's trim
     await page.fill('input[name="coiMaxPax"]', "12");
     await page.fill('textarea[name="notes"]', "Twin diesels, both replaced 2024.");
     // The hue radio is `sr-only` behind a swatch label, so the label intercepts the pointer —
-    // `setChecked` can never reach it. Wait for hydration explicitly, then force the click.
-    const hue = page.locator('input[name="hue"][value="3"]');
-    await expect.poll(() => isHydrated(hue)).toBe(true);
-    await hue.check({ force: true });
+    // hence `force`. It is a plain server-form radio; nothing here waits on React.
+    await page.locator('input[name="hue"][value="3"]').check({ force: true });
 
     await page.getByRole("button", { name: "Create" }).click();
 
@@ -203,11 +227,13 @@ test.describe("the same refusal on the other three admin surfaces (#699)", () =>
     await expect(page.getByRole("heading", { name: "New vessel" })).toBeVisible();
     await expect(page.locator('input[name="name"]')).not.toHaveValue("Hops");
 
-    // The half this surface still loses today.
+    // The half this surface still loses today — including the radio, which no amount of client
+    // state would have saved (React never mirrors `checked` into `defaultChecked` on update).
     await expect(page.locator('input[name="coiMaxPax"]')).toHaveValue("12");
     await expect(page.locator('textarea[name="notes"]')).toHaveValue(
       "Twin diesels, both replaced 2024.",
     );
+    await expect(page.locator('input[name="hue"][value="3"]')).toBeChecked();
   });
 
   test("locations: a refused save keeps you on the create form and keeps your typing", async ({
@@ -217,7 +243,6 @@ test.describe("the same refusal on the other three admin surfaces (#699)", () =>
     await seedOneLocation(page);
 
     await page.goto("/admin/locations?sel=new");
-    await expect.poll(() => isHydrated(page.locator('input[name="name"]'))).toBe(true);
     await page.fill('input[name="name"]', "West Bank Ramp");
     await page.fill('textarea[name="pickupDescription"]', " "); // → pickup_required
     await page.fill('textarea[name="routeDescription"]', "Down past the point and back.");
@@ -248,15 +273,13 @@ test.describe("the same refusal on the other three admin surfaces (#699)", () =>
     await seedOneAddOn(page);
 
     await page.goto("/admin/add-ons?sel=new");
-    await expect.poll(() => isHydrated(page.locator('input[name="label"]'))).toBe(true);
     await page.fill('input[name="label"]', "Sunset Charcuterie");
     await page.fill('input[name="amount"]', "forty five"); // text input, so this reaches the server
     // Both checkboxes moved off their defaults, so a remount is visible in them too: `required`
-    // defaults off and `active` defaults ON for a new add-on. `setCheckedHydrated`, not
-    // `.check()` — these are controlled now, and a tick that beats hydration is reverted the
-    // moment React mounts and asserts its own state over the DOM.
-    await setCheckedHydrated(page.locator('input[name="required"]'), true);
-    await setCheckedHydrated(page.locator('input[name="active"]'), false);
+    // defaults off and `active` defaults ON for a new add-on. Plain server-form checkboxes —
+    // the fix restores them from the submitted values, not from client state.
+    await page.locator('input[name="required"]').check();
+    await page.locator('input[name="active"]').uncheck();
 
     await page.getByRole("button", { name: "Create" }).click();
 

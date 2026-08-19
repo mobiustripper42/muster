@@ -8,6 +8,7 @@ import { VersionTag } from "../../../../components/ui/version-tag";
 import { Field, settingsInputClass } from "../../../../components/admin/settings-field";
 import { readSubject } from "../../../lib/auth";
 import { errCopyFor } from "../../../lib/err-copy";
+import { readFormDraft, type FormDraft } from "../../../lib/form-draft";
 import { getRepo } from "../../../lib/repo";
 import { saveAddOn, type AddOnErr } from "./actions";
 
@@ -15,8 +16,9 @@ import { saveAddOn, type AddOnErr } from "./actions";
  * /admin/add-ons (#491, DEC-123) — the Add-on settings twin, matching the Vessel/Location
  * screens: a full-width header (breadcrumb + name + Save), an add-on list on the left, the
  * add-on's facts on the right (label, amount, Required, Active), plus a read-only Offerings
- * reverse lookup. Master–detail via `?sel=<id|new>`, native forms, no JS (DEC-026). The whole
- * surface is one `<form>` so Save can sit in the header while the fields sit in the card.
+ * reverse lookup. Master–detail via `?sel=<id|new>`, native forms, no JS (DEC-147 — corrected
+ * from DEC-026, which says nothing about it, per DEC-147's own fix-when-touched rule). The
+ * whole surface is one `<form>` so Save can sit in the header while the fields sit in the card.
  *
  * `required` is a GLOBAL property of the add-on (offerings just attach ids). `active` is the
  * DEC-123 soft-retire: unchecking it drops the add-on from the offering picker + browse without
@@ -59,7 +61,19 @@ export default async function AdminAddOns({
   // Empty list ⇒ open straight into the create form (with its Create button) rather than a
   // blank form with no way to save.
   const creating = sp.sel === "new" || addOns.length === 0;
-  const selected = creating ? null : addOns.find((a) => a.id === sp.sel) ?? addOns[0] ?? null;
+  // A `?sel=` naming no row is a dead end, and says so (#699). The old `?? addOns[0]` answered
+  // a question nobody asked, and its answer looked exactly like a real selection. No `sel` at
+  // all is different — that's the landing case, and it still opens the first add-on.
+  const requested = creating ? undefined : sp.sel;
+  const selected = creating
+    ? null
+    : requested
+      ? addOns.find((a) => a.id === requested) ?? null
+      : addOns[0] ?? null;
+  const missing = requested !== undefined && selected === null;
+  // The submitted values of a refused save, read back as this form's defaults (#699). Only on
+  // a refusal, and the cookie itself expires in 60s.
+  const draft = sp.err ? await readFormDraft("add-ons") : null;
   const errCopy = errCopyFor(ERR_COPY, sp.err, "error");
   const title = creating ? "New add-on" : selected?.label ?? "Add-ons";
 
@@ -87,6 +101,9 @@ export default async function AdminAddOns({
         </header>
 
         {errCopy && <Notice tone="bad">{errCopy}</Notice>}
+        {missing && (
+          <Notice tone="bad">That add-on no longer exists — pick one from the list.</Notice>
+        )}
 
         <div className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-[230px_1fr]">
           <nav className="flex flex-col gap-0.5 self-start rounded-card border border-line bg-card p-1.5">
@@ -123,7 +140,9 @@ export default async function AdminAddOns({
           </nav>
 
           <div className="flex flex-col gap-4">
-            <AddOnCard addOn={selected} creating={creating} />
+            {(selected || creating) && (
+              <AddOnCard addOn={selected} creating={creating} draft={draft} />
+            )}
             {selected && <OfferingsSection addOn={selected} offerings={offerings} />}
           </div>
         </div>
@@ -134,8 +153,23 @@ export default async function AdminAddOns({
   );
 }
 
-/** The "Add-on" facts card. The Save button lives in the page header (shared form). */
-function AddOnCard({ addOn, creating }: { addOn: AddOn | null; creating: boolean }) {
+/**
+ * The "Add-on" facts card. The Save button lives in the page header (shared form).
+ *
+ * Every default is `draft ?? record ?? blank` (#699): after a refusal the operator's own
+ * submission is the defaults source, so React's form reset restores what they typed rather than
+ * what the record held. The checkboxes read `draft ? draft.has(…)` rather than `??` — an
+ * unticked box posts nothing, so `?? addOn.required` would quietly re-tick it.
+ */
+function AddOnCard({
+  addOn,
+  creating,
+  draft,
+}: {
+  addOn: AddOn | null;
+  creating: boolean;
+  draft: FormDraft | null;
+}) {
   const isNew = creating || !addOn;
   return (
     <section className="rounded-card border border-line bg-card shadow-sm">
@@ -148,7 +182,7 @@ function AddOnCard({ addOn, creating }: { addOn: AddOn | null; creating: boolean
           <input
             name="label"
             required
-            defaultValue={addOn?.label ?? ""}
+            defaultValue={draft?.get("label") ?? addOn?.label ?? ""}
             className={`${settingsInputClass} w-full max-w-[420px]`}
           />
         </Field>
@@ -160,7 +194,9 @@ function AddOnCard({ addOn, creating }: { addOn: AddOn | null; creating: boolean
               name="amount"
               required
               inputMode="decimal"
-              defaultValue={addOn ? (addOn.amountCents / 100).toFixed(2) : ""}
+              defaultValue={
+                draft?.get("amount") ?? (addOn ? (addOn.amountCents / 100).toFixed(2) : "")
+              }
               className={`${settingsInputClass} max-w-[130px] font-mono`}
             />
           </span>
@@ -168,7 +204,11 @@ function AddOnCard({ addOn, creating }: { addOn: AddOn | null; creating: boolean
 
         <Field label="Required" sub="the customer must buy it">
           <label className="flex items-center gap-2 pt-1 text-sm text-ink">
-            <input type="checkbox" name="required" defaultChecked={addOn?.required ?? false} />
+            <input
+              type="checkbox"
+              name="required"
+              defaultChecked={draft ? draft.has("required") : addOn?.required ?? false}
+            />
             Required at checkout
           </label>
         </Field>
@@ -177,7 +217,11 @@ function AddOnCard({ addOn, creating }: { addOn: AddOn | null; creating: boolean
           <label className="flex items-center gap-2 pt-1 text-sm text-ink">
             {/* Default checked on a new add-on; retired add-ons drop from the offering picker
                 + browse but keep their references (DEC-123 soft-delete). */}
-            <input type="checkbox" name="active" defaultChecked={isNew ? true : addOn.active} />
+            <input
+              type="checkbox"
+              name="active"
+              defaultChecked={draft ? draft.has("active") : isNew ? true : addOn.active}
+            />
             Available to attach to offerings
           </label>
         </Field>

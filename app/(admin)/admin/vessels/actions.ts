@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { saveVesselAdmin, type VesselSaveError } from "@core/admin/vessel-admin.js";
 import { readSubject } from "../../../lib/auth";
+import { clearFormDraft, stashFormDraft } from "../../../lib/form-draft";
 import { getRepo } from "../../../lib/repo";
 
 /**
@@ -49,5 +50,12 @@ export async function saveVessel(formData: FormData): Promise<void> {
   }
 
   revalidatePath("/admin/vessels");
-  redirect(code ? `/admin/vessels?sel=${id}&err=${code}` : `/admin/vessels?sel=${id}&saved=1`);
+  if (code) {
+    // Keep what was typed (#699), and select `new` on a refused CREATE — the minted id names
+    // no row, so the page can only answer that lookup with somebody else's boat.
+    await stashFormDraft("vessels", formData);
+    redirect(`/admin/vessels?sel=${rawId || "new"}&err=${code}`);
+  }
+  await clearFormDraft("vessels");
+  redirect(`/admin/vessels?sel=${id}&saved=1`);
 }

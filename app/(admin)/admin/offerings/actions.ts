@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import type { GratuityKindConfig, PriceVariation } from "@core/domain/entities.js";
 import { saveOfferingAdmin, type OfferingSaveError } from "@core/admin/offering-admin.js";
 import { readSubject } from "../../../lib/auth";
+import { clearFormDraft, stashFormDraft } from "../../../lib/form-draft";
 import { getRepo } from "../../../lib/repo";
 import { TENANT_ID } from "../../../lib/tenant";
 
@@ -147,9 +148,13 @@ export async function saveOffering(formData: FormData): Promise<void> {
 
   revalidatePath("/admin/offerings");
   const hidden = formData.get("showHidden") ? "&hidden=1" : "";
-  redirect(
-    code
-      ? `/admin/offerings?sel=${id}${hidden}&err=${code}`
-      : `/admin/offerings?sel=${id}${hidden}&saved=1`,
-  );
+  if (code) {
+    // Keep what was typed (#699). This is the surface the operator actually lost work on: a
+    // refused create redirected to the id minted three lines up, which matches no offering, so
+    // the page substituted `visible[0]` and showed an unrelated record's data instead.
+    await stashFormDraft("offerings", formData);
+    redirect(`/admin/offerings?sel=${rawId || "new"}${hidden}&err=${code}`);
+  }
+  await clearFormDraft("offerings");
+  redirect(`/admin/offerings?sel=${id}${hidden}&saved=1`);
 }

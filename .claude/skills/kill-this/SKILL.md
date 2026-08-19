@@ -6,16 +6,37 @@ tools: Read, Edit, Write, Bash, Glob, Grep, Agent
 
 You are shipping one task. Under DEC-S013, `/kill-this` runs **per task**, not per session — there may be N invocations between `/its-alive` and `/its-dead`. Each one opens its own PR and appends one `## Task <N>` block to the session file (which lives on the orphan `sessions` branch via `.sessions-worktree/`, per DEC-S014).
 
-## Step 0 — Capture branch + locate session file
+## Step 0 — Locate the session file, then confirm you are in its tree
 
-`BRANCH=$(git branch --show-current)`.
+**Session file first, branch second.** The order matters: the session file records which branch this session opened on, and that is the only thing here that can tell you whether the current directory is the right checkout.
 
-Find the open session file on the sessions worktree:
 ```
-SESSION_FILE=$(grep -l "^status: open" .sessions-worktree/sessions/*.md 2>/dev/null | head -1)
+grep -l "^status: open" .sessions-worktree/sessions/*.md 2>/dev/null
 ```
 
-If none found: STOP. The user must run `/its-alive` first. (If `.sessions-worktree/` doesn't exist, that's also a sign `/its-alive` hasn't run — `/its-alive` Step 0.6 creates the worktree.)
+**Exactly one match:** that's `SESSION_FILE`. Continue.
+
+**No match:** STOP. The user must run `/its-alive` first. (If `.sessions-worktree/` doesn't exist, that's the same sign — `/its-alive` Step 0.6 creates the worktree.)
+
+**More than one match — stop and ask, every time.** Two open files means a session somewhere never reached its own `/its-dead`, or two windows are genuinely running concurrently, which `/its-alive` Step 3 supports. **List the candidates with their `session:`, `branch:` and `started:` and let the user pick.**
+
+Do not try to identify the right one from inside the session. There is no reliable way: the obvious candidate, matching `transcript:`, requires the running session to know its own JSONL path, and it cannot — `/its-alive` Step 5 derives it by globbing the project directory and taking the newest file, which is a guess that is *wrong* in exactly the case that matters, two concurrent windows writing to the same directory. An instruction that cannot be followed is worse than a bad default, because it reads as solved.
+
+Do not sort, and do not take the first. `... | head -1` returns the lexically-earliest filename, and session filenames start with a date, so on the exact input this guard exists for it silently selects the **stale** file. Nothing errors: `head -1` always returns something.
+
+### Step 0.1 — Capture the branch, and check it against the session
+
+```
+BRANCH=$(git branch --show-current)
+```
+
+`git branch --show-current` resolves against the **current directory**, not against the session. `/its-alive` Step 3 offers a **linked worktree** as the answer to a concurrent session, so a session's code can legitimately live in a different checkout from the one this skill is invoked in.
+
+`BRANCH` is what Steps 2 and 4 commit, push and open the PR with. Running from the wrong checkout means `git add -A` stages that tree's changes under this task's branch name and PR.
+
+**Do not compare `BRANCH` against the session file's `branch:` here, and do not prompt on a mismatch.** A session opens on `main` and its tasks are cut onto branches — that is the normal flow, so a mismatch is the common case and a prompt on it fires every single run. A check that says "nothing is wrong" every time is one nobody reads by the third time; `/its-alive` Step 0.5 already retired one nag for exactly that.
+
+**The wrong-tree check belongs in Step 2, and both of its branches need one.** Do not assume a dirty wrong tree announces itself: Step 2 runs `git add -A && git commit` in one go with nobody shown the staged list first, and `@code-review` only sees the diff *after* the commit. If the wrong tree's changes look plausible for this task — two parallel tasks editing the same kind of file, which is common — nothing catches it before the push. See Step 2 for what each branch does.
 
 Read the file's frontmatter to get session number `N` and the current `pr_numbers:` list.
 
@@ -41,7 +62,18 @@ git commit -m "<phase/task summary>
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 ```
 
-If there is nothing to commit, surface that and stop here — no PR for no code.
+**Name the files being staged, before committing.** One line listing `git diff --cached --name-only`. Not ceremony: it is the only point at which a wrong-tree commit is visible to a person, and it costs a sentence. A file list that doesn't look like the task you just did is the signal.
+
+**If there is nothing to commit, do not report a clean no-op — check the other trees first.** An empty stage is ambiguous between "already committed" and "the work is in another checkout this skill cannot see", and those read identically.
+
+```
+git worktree list                                    # every checkout of this repo
+git -C <each other worktree path> status --porcelain # is the work sitting over there?
+```
+
+**Compare on dirtiness, not on the session's `branch:`.** That field records the branch the session *opened* on — normally `main`, which is also what the primary checkout is usually sitting on, so comparing against it is close to tautological and cannot locate the tree holding the work. Uncommitted changes in another worktree is the fact that actually answers the question.
+
+If another worktree is dirty, **say which one and stop** — the task is there, not here. If every other tree is clean too, the stage is genuinely empty; report the no-op normally.
 
 **Push the branch — do not open a PR yet:**
 

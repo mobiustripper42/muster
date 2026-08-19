@@ -1,4 +1,5 @@
 import type { AddOn, Location, Offering, Vessel } from "@core/domain/entities.js";
+import { ActionForm } from "../../../../components/ui/action-form";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { AppLink } from "../../../../components/ui/app-link";
@@ -6,11 +7,10 @@ import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { readSubject } from "../../../lib/auth";
-import { errCopyFor } from "../../../lib/err-copy";
 import { getRepo } from "../../../lib/repo";
 import { saveOffering, type OfferingErr } from "./actions";
+import { STATUS_COPY } from "./status-copy";
 import {
-  STATUS_COPY,
   DetailsSection,
   ScheduleSection,
   PricingSection,
@@ -94,18 +94,36 @@ export default async function AdminOfferings({
   const visible = showHidden ? offerings : offerings.filter((o) => o.status !== "hidden");
 
   const creating = sp.sel === "new" || visible.length === 0;
-  const selected = creating ? null : visible.find((o) => o.id === sp.sel) ?? visible[0] ?? null;
-  const errCopy = errCopyFor(ERR_COPY, sp.err, "error");
+  // #699 — the distinction the old one-liner collapsed, and the existing catalog spec caught
+  // me collapsing it the other way:
+  //   - NO `sel` at all (landing on /admin/offerings): defaulting to the first is a courtesy,
+  //     nobody asked for a specific record, and that behaviour is relied on.
+  //   - A `sel` that matches NOTHING: answer null. Substituting the first record is what turned
+  //     a validation error into "here is a different offering's data", and it misfires the same
+  //     way on a stale bookmark or a deleted row. `admin/blocks` reached this via #703.
+  const selected = creating
+    ? null
+    : sp.sel
+      ? visible.find((o) => o.id === sp.sel) ?? null
+      : visible[0] ?? null;
   const title = creating ? "New offering" : selected?.name ?? "Offerings";
   const hiddenParam = showHidden ? "&hidden=1" : "";
 
   return (
     <Shell width="6xl">
-      {/* One form spans the header + both columns; `key` remounts the uncontrolled inputs
-          (and the variations island) when the selected offering changes. */}
-      <form
+      {/* One form spans the header + both columns; `key` remounts the uncontrolled inputs (and
+          the variations island) when the selected offering changes.
+          #699: the key stays and stops being a hazard. It used to do double duty — "reset the
+          form" AND "which record is this" — and a validation error tripped the second meaning,
+          remounting and wiping the first. Now the two triggers are finally separate: switching
+          records flips the key (reset intended), a returned refusal doesn't (no reset).
+          Everything inside is still server-rendered and arrives as `children`; the island is the
+          <form> element and its Notice slot, nothing more. */}
+      <ActionForm
         key={creating ? "new" : selected?.id ?? "none"}
         action={saveOffering}
+        errCopy={ERR_COPY}
+        fallback="error"
         className="flex flex-col gap-4"
       >
         <input type="hidden" name="id" value={creating || !selected ? "" : selected.id} />
@@ -132,7 +150,16 @@ export default async function AdminOfferings({
           </SubmitButton>
         </header>
 
-        {errCopy && <Notice tone="bad">{errCopy}</Notice>}
+        {/* No `?err=` read here any more (#699): `saveOffering` returns its refusal to the
+            ActionForm above, which renders it. Nothing on this surface redirects with an error
+            code, so a lingering `?err=` in a bookmarked URL is inert rather than misleading. */}
+        {/* #699: a `sel` that matches nothing now selects nothing (see above) — say so, rather
+            than rendering a blank right-hand panel and leaving the reader to guess whether the
+            offering is gone or the page is broken. Failing visibly was the point; failing
+            blankly is only half of it. */}
+        {!creating && !selected && sp.sel && (
+          <Notice tone="bad">That offering no longer exists — pick one from the list.</Notice>
+        )}
 
         <div className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-[230px_1fr]">
           {/* Left column pins while the detail scrolls (desktop only — the mockup's sticky
@@ -214,7 +241,7 @@ export default async function AdminOfferings({
             </div>
           )}
         </div>
-      </form>
+      </ActionForm>
 
       <VersionTag />
     </Shell>

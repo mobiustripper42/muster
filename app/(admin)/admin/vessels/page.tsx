@@ -1,16 +1,16 @@
 import type { Location, Offering, Vessel } from "@core/domain/entities.js";
+import { ActionForm } from "../../../../components/ui/action-form";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { AppLink } from "../../../../components/ui/app-link";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
-import { Field, settingsInputClass } from "../../../../components/admin/settings-field";
 import { readSubject } from "../../../lib/auth";
-import { errCopyFor } from "../../../lib/err-copy";
 import { getRepo } from "../../../lib/repo";
-import { HUE_COUNT, vesselHueClass, vesselHueIndex } from "../../../lib/vessel-hue";
+import { vesselHueClass } from "../../../lib/vessel-hue";
 import { saveVessel, type VesselErr } from "./actions";
+import { VesselCard } from "./vessel-card";
 
 /**
  * /admin/vessels (task 12.9, DEC-123) — the Vessel settings twin, laid out to
@@ -68,17 +68,27 @@ export default async function AdminVessels({
   // Empty fleet ⇒ open straight into the create form (with its Create button) rather than a
   // blank form with no way to save.
   const creating = sp.sel === "new" || vessels.length === 0;
-  const selected = creating ? null : vessels.find((v) => v.id === sp.sel) ?? vessels[0] ?? null;
-  const errCopy = errCopyFor(ERR_COPY, sp.err, "error");
+  // No first-record substitution — see the note in admin/offerings (#699).
+  const selected = creating
+    ? null
+    : sp.sel
+      ? vessels.find((v) => v.id === sp.sel) ?? null
+      : vessels[0] ?? null;
   const title = creating ? "New vessel" : selected?.name ?? "Vessels";
 
   return (
     <Shell width="6xl">
-      {/* One form spans the header + both columns; `key` remounts the uncontrolled inputs when
-          the selected vessel changes, so switching rows always shows that vessel's values. */}
-      <form
+      {/* One form spans the header + both columns; `key` remounts the card when the selected
+          vessel changes, so switching rows always shows that vessel's values.
+          #699: the key stays and stops being a hazard. It used to do double duty — "reset the
+          form" AND "which record is this" — and a validation error tripped the second meaning,
+          remounting and wiping the first. The two triggers are separate now: switching records
+          flips the key (reset intended), a returned refusal doesn't (no reset). */}
+      <ActionForm
         key={creating ? "new" : selected?.id ?? "none"}
         action={saveVessel}
+        errCopy={ERR_COPY}
+        fallback="error"
         className="flex flex-col gap-4"
       >
         <input type="hidden" name="id" value={creating || !selected ? "" : selected.id} />
@@ -104,7 +114,9 @@ export default async function AdminVessels({
           )}
         </header>
 
-        {errCopy && <Notice tone="bad">{errCopy}</Notice>}
+        {/* No `?err=` read here any more (#699): `saveVessel` returns its refusal to the
+            ActionForm above, which renders it. Nothing on this surface redirects with an error
+            code, so a lingering `?err=` in a bookmarked URL is inert rather than misleading. */}
 
         <div className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-[230px_1fr]">
           <nav className="flex flex-col gap-0.5 self-start rounded-card border border-line bg-card p-1.5">
@@ -146,99 +158,10 @@ export default async function AdminVessels({
             {selected && <OfferingsSection vessel={selected} offerings={offerings} />}
           </div>
         </div>
-      </form>
+      </ActionForm>
 
       <VersionTag />
     </Shell>
-  );
-}
-
-const inputClass = settingsInputClass;
-
-/** The "Vessel" facts card. The Save button lives in the page header (shared form). */
-function VesselCard({
-  vessel,
-  creating,
-  locations,
-}: {
-  vessel: Vessel | null;
-  creating: boolean;
-  locations: Location[];
-}) {
-  const isNew = creating || !vessel;
-  return (
-    <section className="rounded-card border border-line bg-card shadow-sm">
-      <div className="flex items-center gap-3 border-b border-line px-4 py-3">
-        <h2 className="text-sm font-semibold text-ink">Vessel</h2>
-      </div>
-
-      <div className="px-4 py-1">
-        <Field label="Name">
-          <input
-            name="name"
-            required
-            defaultValue={vessel?.name ?? ""}
-            className={`${inputClass} w-full max-w-[420px]`}
-          />
-        </Field>
-
-        <Field label="Capacity" sub="The maximum number of passengers">
-          <input
-            name="coiMaxPax"
-            type="number"
-            min={1}
-            max={99}
-            required
-            defaultValue={vessel?.coiMaxPax ?? 6}
-            className={`${inputClass} max-w-[110px] font-mono`}
-          />
-        </Field>
-
-        <Field label="Color">
-          <fieldset className="flex flex-wrap gap-2 pt-1.5">
-            <legend className="sr-only">Color</legend>
-            {Array.from({ length: HUE_COUNT }, (_, i) => i + 1).map((h) => (
-              <label key={h} className="cursor-pointer">
-                <input
-                  type="radio"
-                  name="hue"
-                  value={h}
-                  defaultChecked={!isNew && vesselHueIndex(vessel!.id, vessel!.hue) === h}
-                  className="peer sr-only"
-                />
-                <span
-                  className={`block h-7 w-7 rounded-lg border border-ink/10 ${vesselHueClass("", h)} peer-checked:outline peer-checked:outline-2 peer-checked:outline-offset-2 peer-checked:outline-accent`}
-                  aria-label={`Color ${h}`}
-                />
-              </label>
-            ))}
-          </fieldset>
-        </Field>
-
-        <Field label="Home location" sub="default launch">
-          <select
-            name="homeLocationId"
-            defaultValue={vessel?.homeLocationId ?? ""}
-            className={`${inputClass} w-full max-w-[280px]`}
-          >
-            <option value="">— none —</option>
-            {locations.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.name}
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        <Field label="Notes" align="start">
-          <textarea
-            name="notes"
-            defaultValue={vessel?.notes ?? ""}
-            className={`${inputClass} min-h-[64px] w-full py-2`}
-          />
-        </Field>
-      </div>
-    </section>
   );
 }
 

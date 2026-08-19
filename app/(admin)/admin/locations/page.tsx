@@ -1,15 +1,15 @@
 import type { Location, Offering } from "@core/domain/entities.js";
+import { ActionForm } from "../../../../components/ui/action-form";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { AppLink } from "../../../../components/ui/app-link";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
-import { Field, settingsInputClass } from "../../../../components/admin/settings-field";
 import { readSubject } from "../../../lib/auth";
-import { errCopyFor } from "../../../lib/err-copy";
 import { getRepo } from "../../../lib/repo";
 import { saveLocation, type LocationErr } from "./actions";
+import { LocationCard } from "./location-card";
 
 /**
  * /admin/locations (task 12.9, DEC-123) — the Location settings twin, laid out to
@@ -58,17 +58,23 @@ export default async function AdminLocations({
   // Empty list ⇒ there's nothing to select, so open straight into the create form (with its
   // Create button) rather than a blank form with no way to save.
   const creating = sp.sel === "new" || locations.length === 0;
+  // No first-record substitution — see the note in admin/offerings (#699).
   const selected = creating
     ? null
-    : locations.find((l) => l.id === sp.sel) ?? locations[0] ?? null;
-  const errCopy = errCopyFor(ERR_COPY, sp.err, "error");
+    : sp.sel
+      ? locations.find((l) => l.id === sp.sel) ?? null
+      : locations[0] ?? null;
   const title = creating ? "New location" : selected?.name ?? "Locations";
 
   return (
     <Shell width="6xl">
-      <form
+      {/* #699: the `key` still resets the card when you switch records, but a returned refusal
+          no longer flips it — so a validation error keeps what you typed. */}
+      <ActionForm
         key={creating ? "new" : selected?.id ?? "none"}
         action={saveLocation}
+        errCopy={ERR_COPY}
+        fallback="error"
         className="flex flex-col gap-4"
       >
         <input type="hidden" name="id" value={creating || !selected ? "" : selected.id} />
@@ -87,7 +93,8 @@ export default async function AdminLocations({
           )}
         </header>
 
-        {errCopy && <Notice tone="bad">{errCopy}</Notice>}
+        {/* No `?err=` read here any more (#699): `saveLocation` returns its refusal to the
+            ActionForm above, which renders it. */}
 
         <div className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-[230px_1fr]">
           <nav className="flex flex-col gap-0.5 self-start rounded-card border border-line bg-card p-1.5">
@@ -129,60 +136,10 @@ export default async function AdminLocations({
             {selected && <OfferingsSection location={selected} offerings={offerings} />}
           </div>
         </div>
-      </form>
+      </ActionForm>
 
       <VersionTag />
     </Shell>
-  );
-}
-
-/** The "Location" facts card. The Save button lives in the page header (shared form). */
-function LocationCard({ location }: { location: Location | null }) {
-  return (
-    <section className="rounded-card border border-line bg-card shadow-sm">
-      <div className="flex items-center gap-3 border-b border-line px-4 py-3">
-        <h2 className="text-sm font-semibold text-ink">Location</h2>
-      </div>
-
-      <div className="px-4 py-1">
-        <Field label="Name">
-          <input
-            name="name"
-            required
-            defaultValue={location?.name ?? ""}
-            className={`${settingsInputClass} w-full max-w-[420px]`}
-          />
-        </Field>
-
-        <Field label="Pickup" sub="where guests meet the boat" align="start">
-          <textarea
-            name="pickupDescription"
-            required
-            defaultValue={location?.pickupDescription ?? ""}
-            className={`${settingsInputClass} min-h-[64px] w-full`}
-          />
-        </Field>
-
-        <Field label="Pickup link" sub="map / directions">
-          <input
-            name="pickupLink"
-            type="url"
-            defaultValue={location?.pickupLink ?? ""}
-            placeholder="https://maps.google.com/…"
-            className={`${settingsInputClass} w-full max-w-[420px]`}
-          />
-        </Field>
-
-        <Field label="Route" sub="where the trip goes" align="start">
-          <textarea
-            name="routeDescription"
-            required
-            defaultValue={location?.routeDescription ?? ""}
-            className={`${settingsInputClass} min-h-[64px] w-full`}
-          />
-        </Field>
-      </div>
-    </section>
   );
 }
 

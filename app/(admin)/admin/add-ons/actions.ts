@@ -21,6 +21,10 @@ export type AddOnErr = AddOnSaveError | "error";
  * A blank `id` = create → mint a fresh add-on id; otherwise edit that row. Money arrives as
  * DOLLARS from the form and is converted to integer cents here (DEC-112). `redirect()` throws,
  * so it lives outside the try (house convention). On success we keep the saved add-on selected.
+ *
+ * `useActionState` shape (#699, DEC-147 amended 2026-08-18): a refusal is **returned**, not
+ * redirected — the redirect was what remounted the form and discarded what was typed. Success
+ * still redirects. `_prev` is React's previous state, unused.
  */
 
 /** "150", "150.00", "$1,299.5" → integer cents; NaN when unparseable (domain rejects it). */
@@ -30,7 +34,10 @@ function dollarsToCents(raw: string): number {
   return Math.round(Number(s) * 100);
 }
 
-export async function saveAddOn(formData: FormData): Promise<void> {
+export async function saveAddOn(
+  _prev: AddOnErr | null,
+  formData: FormData,
+): Promise<AddOnErr | null> {
   const subject = await readSubject();
   if (!subject || subject.kind !== "admin") redirect("/admin");
 
@@ -56,6 +63,10 @@ export async function saveAddOn(formData: FormData): Promise<void> {
     code = "error";
   }
 
+  // A refusal wrote NOTHING, so there is nothing to revalidate — and revalidating would refresh
+  // the RSC tree underneath the values this change exists to protect. Success branch only.
+  if (code) return code;
+
   revalidatePath("/admin/add-ons");
-  redirect(code ? `/admin/add-ons?sel=${id}&err=${code}` : `/admin/add-ons?sel=${id}&saved=1`);
+  redirect(`/admin/add-ons?sel=${id}&saved=1`);
 }

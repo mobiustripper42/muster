@@ -20,8 +20,16 @@ export type VesselErr = VesselSaveError | "error";
  * A blank `id` = create → mint a fresh vessel id; otherwise edit that row. `redirect()`
  * throws, so it lives outside the try (house convention). On success we keep the saved
  * vessel selected (`?sel=<id>`).
+ *
+ * `useActionState` shape (#699, DEC-147 amended 2026-08-18): a refusal is **returned**, not
+ * redirected, because the redirect is what remounted the form and discarded what was typed.
+ * Success still redirects. `_prev` is React's previous state, unused — each submission is judged
+ * on the form it was given, never on what the last one said.
  */
-export async function saveVessel(formData: FormData): Promise<void> {
+export async function saveVessel(
+  _prev: VesselErr | null,
+  formData: FormData,
+): Promise<VesselErr | null> {
   const subject = await readSubject();
   if (!subject || subject.kind !== "admin") redirect("/admin");
 
@@ -48,6 +56,11 @@ export async function saveVessel(formData: FormData): Promise<void> {
     code = "error";
   }
 
+  // A refusal wrote NOTHING, so there is nothing to revalidate — and revalidating would refresh
+  // the RSC tree underneath the very values this change exists to protect. Both of these belong
+  // strictly to the success branch now.
+  if (code) return code;
+
   revalidatePath("/admin/vessels");
-  redirect(code ? `/admin/vessels?sel=${id}&err=${code}` : `/admin/vessels?sel=${id}&saved=1`);
+  redirect(`/admin/vessels?sel=${id}&saved=1`);
 }

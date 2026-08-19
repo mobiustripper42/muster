@@ -1,4 +1,6 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { useState, type ReactNode } from "react";
 import type { AddOn, GratuityKindConfig, Location, Offering, Vessel } from "@core/domain/entities.js";
 import { gratuityKindsFor } from "@core/reservations/pricing.js";
 import { AppLink } from "../../../../components/ui/app-link";
@@ -6,13 +8,26 @@ import { Field, settingsInputClass } from "../../../../components/admin/settings
 import { vesselHueClass } from "../../../lib/vessel-hue";
 import { PriceVariationsEditor } from "./price-variations-editor";
 import { DepartureTimesEditor } from "./departure-times-editor";
+import { STATUS_COPY } from "./status-copy";
 
 /**
  * The /admin/offerings editor sections (task 12.8, DEC-123), split out of `page.tsx` to keep
- * the page shell (data load + master list + form) reviewable. Each is a server-rendered
- * section of the one native `<form>` in page.tsx — the only client island is
- * `PriceVariationsEditor` (drag/reorder). `STATUS_COPY` lives here (the status chip renders
- * it) and is re-exported for the page header + sidebar pills, so imports flow one way.
+ * the page shell (data load + master list + form) reviewable. `STATUS_COPY` lives here (the
+ * status chip renders it) and is re-exported for the page header + sidebar pills, so imports
+ * flow one way.
+ *
+ * **These are CONTROLLED client sections (#699).** They used to be server-rendered with
+ * `defaultValue`, which is why a validation refusal wiped thirty typed fields: the action
+ * redirected, the form remounted, and uncontrolled inputs went back to their defaults.
+ *
+ * Returning the error instead of redirecting (`ActionForm`) was tried first and is **not
+ * sufficient on its own** — measured, not assumed. Next refreshes the route's RSC payload after
+ * a server action, and with `force-dynamic` that is a full re-render which resets uncontrolled
+ * inputs even though no navigation occurs. The value only survives if React is holding it.
+ *
+ * So: state per section, not one page-wide blob. The sections don't share fields, so each owns
+ * its own — the island stays section-sized, and a reader editing Pricing doesn't have to reason
+ * about Gratuity's state.
  */
 
 const inputClass = settingsInputClass;
@@ -20,12 +35,6 @@ const chipClass =
   "cursor-pointer select-none rounded-full border border-line bg-card px-3 py-1 text-sm text-muted peer-checked:border-ink peer-checked:bg-ink peer-checked:font-medium peer-checked:text-white";
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]; // Mon=0…Sun=6
-
-export const STATUS_COPY: Record<Offering["status"], { label: string; pill: string }> = {
-  draft: { label: "Draft", pill: "border-line bg-bg text-muted" },
-  live: { label: "Live", pill: "border-ok-line bg-ok-bg text-ok" },
-  hidden: { label: "Hidden", pill: "border-warn-line bg-warn-bg text-warn" },
-};
 
 function Section({
   id,
@@ -59,6 +68,17 @@ export function DetailsSection({
   vessels: Vessel[];
   locations: Location[];
 }) {
+  const [status, setStatus] = useState<Offering["status"]>(offering?.status ?? "draft");
+  const [name, setName] = useState(offering?.name ?? "");
+  const [description, setDescription] = useState(offering?.description ?? "");
+  const [locationId, setLocationId] = useState<string>(offering?.locationId ?? "");
+  const [tripLength, setTripLength] = useState(String(offering?.tripLengthMinutes ?? ""));
+  const [holdMinutes, setHoldMinutes] = useState(String(offering?.holdMinutes ?? ""));
+  const [arriveBefore, setArriveBefore] = useState(String(offering?.arriveBeforeMinutes ?? ""));
+  const [vesselIds, setVesselIds] = useState<string[]>(offering?.vesselIds.map(String) ?? []);
+  const toggleVessel = (id: string) =>
+    setVesselIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+
   return (
     <Section id="details" title="Details" hint="what the customer reads">
       <Field label="Status">
@@ -69,7 +89,8 @@ export function DetailsSection({
                 type="radio"
                 name="status"
                 value={s}
-                defaultChecked={(offering?.status ?? "draft") === s}
+                checked={status === s}
+                onChange={() => setStatus(s)}
                 className="peer sr-only"
               />
               <span className={chipClass}>{STATUS_COPY[s].label}</span>
@@ -86,7 +107,8 @@ export function DetailsSection({
         <input
           name="name"
           required
-          defaultValue={offering?.name ?? ""}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
           className={`${inputClass} w-full max-w-[420px]`}
         />
       </Field>
@@ -94,7 +116,8 @@ export function DetailsSection({
       <Field label="Description" sub="markdown" align="start">
         <textarea
           name="description"
-          defaultValue={offering?.description ?? ""}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
           className={`${inputClass} min-h-[80px] w-full py-2`}
         />
       </Field>
@@ -104,7 +127,8 @@ export function DetailsSection({
           <select
             name="locationId"
             required
-            defaultValue={offering?.locationId ?? ""}
+            value={locationId}
+            onChange={(e) => setLocationId(e.target.value)}
             className={`${inputClass} w-full max-w-[280px]`}
           >
             <option value="" disabled>
@@ -128,7 +152,8 @@ export function DetailsSection({
             name="tripLengthMinutes"
             type="number"
             min={0}
-            defaultValue={offering?.tripLengthMinutes ?? ""}
+            value={tripLength}
+            onChange={(e) => setTripLength(e.target.value)}
             className={`${inputClass} max-w-[110px] font-mono`}
           />
           <span className="text-xs text-faint">minutes</span>
@@ -141,7 +166,8 @@ export function DetailsSection({
             name="holdMinutes"
             type="number"
             min={0}
-            defaultValue={offering?.holdMinutes ?? ""}
+            value={holdMinutes}
+            onChange={(e) => setHoldMinutes(e.target.value)}
             className={`${inputClass} max-w-[110px] font-mono`}
           />
           <span className="text-xs text-faint">minutes</span>
@@ -154,7 +180,8 @@ export function DetailsSection({
             name="arriveBeforeMinutes"
             type="number"
             min={0}
-            defaultValue={offering?.arriveBeforeMinutes ?? ""}
+            value={arriveBefore}
+            onChange={(e) => setArriveBefore(e.target.value)}
             className={`${inputClass} max-w-[110px] font-mono`}
           />
           <span className="text-xs text-faint">minutes</span>
@@ -169,7 +196,8 @@ export function DetailsSection({
                 type="checkbox"
                 name="vesselIds"
                 value={v.id}
-                defaultChecked={offering?.vesselIds.includes(v.id) ?? false}
+                checked={vesselIds.includes(String(v.id))}
+                onChange={() => toggleVessel(String(v.id))}
                 className="peer sr-only"
               />
               <span className="flex cursor-pointer select-none items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1 text-sm text-muted peer-checked:border-accent/40 peer-checked:bg-bg peer-checked:font-medium peer-checked:text-ink">
@@ -194,6 +222,11 @@ export function DetailsSection({
 // ── 2 · Schedule ─────────────────────────────────────────────────────────────
 export function ScheduleSection({ offering }: { offering: Offering | null }) {
   const schedule = offering?.schedule;
+  const [seasonStart, setSeasonStart] = useState(schedule?.seasonStart ?? "");
+  const [seasonEnd, setSeasonEnd] = useState(schedule?.seasonEnd ?? "");
+  const [weekdays, setWeekdays] = useState<number[]>(schedule?.weekdays ?? []);
+  const toggleDay = (d: number) =>
+    setWeekdays((cur) => (cur.includes(d) ? cur.filter((x) => x !== d) : [...cur, d]));
   return (
     <Section id="schedule" title="Schedule" hint="a rule, not rows">
       <Field label="Season">
@@ -202,7 +235,8 @@ export function ScheduleSection({ offering }: { offering: Offering | null }) {
             name="seasonStart"
             type="date"
             required
-            defaultValue={schedule?.seasonStart ?? ""}
+            value={seasonStart}
+            onChange={(e) => setSeasonStart(e.target.value)}
             className={`${inputClass} font-mono`}
           />
           <span className="text-xs text-faint">to</span>
@@ -210,7 +244,8 @@ export function ScheduleSection({ offering }: { offering: Offering | null }) {
             name="seasonEnd"
             type="date"
             required
-            defaultValue={schedule?.seasonEnd ?? ""}
+            value={seasonEnd}
+            onChange={(e) => setSeasonEnd(e.target.value)}
             className={`${inputClass} font-mono`}
           />
         </span>
@@ -224,7 +259,8 @@ export function ScheduleSection({ offering }: { offering: Offering | null }) {
                 type="checkbox"
                 name="weekday"
                 value={d}
-                defaultChecked={schedule?.weekdays.includes(d) ?? false}
+                checked={weekdays.includes(d)}
+                onChange={() => toggleDay(d)}
                 className="peer sr-only"
               />
               <span className={chipClass}>{label}</span>
@@ -249,6 +285,13 @@ export function ScheduleSection({ offering }: { offering: Offering | null }) {
 
 // ── 3 · Pricing ──────────────────────────────────────────────────────────────
 export function PricingSection({ offering }: { offering: Offering | null }) {
+  const [basePrice, setBasePrice] = useState(
+    offering ? (offering.basePriceCents / 100).toFixed(2) : "",
+  );
+  const [includedGuests, setIncludedGuests] = useState(String(offering?.includedGuestCount ?? ""));
+  const [extraGuestPrice, setExtraGuestPrice] = useState(
+    offering ? (offering.extraGuestPriceCents / 100).toFixed(2) : "0.00",
+  );
   return (
     <Section id="pricing" title="Pricing" hint="the boat, by the guest">
       <Field label="Base fare" sub="buys the whole boat">
@@ -258,7 +301,8 @@ export function PricingSection({ offering }: { offering: Offering | null }) {
             name="basePrice"
             required
             inputMode="decimal"
-            defaultValue={offering ? (offering.basePriceCents / 100).toFixed(2) : ""}
+            value={basePrice}
+            onChange={(e) => setBasePrice(e.target.value)}
             className={`${inputClass} max-w-[130px] font-mono`}
           />
         </span>
@@ -270,7 +314,8 @@ export function PricingSection({ offering }: { offering: Offering | null }) {
             name="includedGuestCount"
             type="number"
             min={1}
-            defaultValue={offering?.includedGuestCount ?? ""}
+            value={includedGuests}
+            onChange={(e) => setIncludedGuests(e.target.value)}
             className={`${inputClass} max-w-[110px] font-mono`}
           />
           <span className="text-xs text-faint">blank = the boat’s full capacity</span>
@@ -284,7 +329,8 @@ export function PricingSection({ offering }: { offering: Offering | null }) {
             name="extraGuestPrice"
             required
             inputMode="decimal"
-            defaultValue={offering ? (offering.extraGuestPriceCents / 100).toFixed(2) : "0.00"}
+            value={extraGuestPrice}
+            onChange={(e) => setExtraGuestPrice(e.target.value)}
             className={`${inputClass} max-w-[130px] font-mono`}
           />
           <span className="text-xs text-faint">each, up to that boat’s max</span>
@@ -336,18 +382,30 @@ function GratuityKindRow({
   config: GratuityKindConfig | undefined;
 }) {
   const cap = kind === "pre" ? "Pre" : "Post";
+  const [collect, setCollect] = useState(config !== undefined);
+  const [tiers, setTiers] = useState(
+    (config?.tiersBps ?? [1500, 2000, 2500]).map((t) => t / 100).join(", "),
+  );
+  const [defaultPct, setDefaultPct] = useState(String((config?.defaultBps ?? 2000) / 100));
+  const [required, setRequired] = useState(config?.required ?? kind === "pre");
   return (
     <Field label={label} sub={when}>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-1">
         <label className="flex items-center gap-1.5 text-sm text-ink">
-          <input type="checkbox" name={`grat${cap}`} defaultChecked={config !== undefined} />
+          <input
+            type="checkbox"
+            name={`grat${cap}`}
+            checked={collect}
+            onChange={(e) => setCollect(e.target.checked)}
+          />
           Collect
         </label>
         <label className="flex items-center gap-1.5 text-sm text-muted">
           Tiers %
           <input
             name={`grat${cap}Tiers`}
-            defaultValue={(config?.tiersBps ?? [1500, 2000, 2500]).map((t) => t / 100).join(", ")}
+            value={tiers}
+            onChange={(e) => setTiers(e.target.value)}
             className={`${inputClass} max-w-[130px] font-mono`}
             aria-label={`${label} gratuity tiers (percent)`}
           />
@@ -356,7 +414,8 @@ function GratuityKindRow({
           Default %
           <input
             name={`grat${cap}Default`}
-            defaultValue={(config?.defaultBps ?? 2000) / 100}
+            value={defaultPct}
+            onChange={(e) => setDefaultPct(e.target.value)}
             className={`${inputClass} max-w-[70px] font-mono`}
             aria-label={`${label} gratuity default (percent)`}
           />
@@ -365,7 +424,8 @@ function GratuityKindRow({
           <input
             type="checkbox"
             name={`grat${cap}Required`}
-            defaultChecked={config?.required ?? kind === "pre"}
+            checked={required}
+            onChange={(e) => setRequired(e.target.checked)}
           />
           Required
         </label>
@@ -384,7 +444,11 @@ export function AddOnsSection({
    *  defines them inline. The set is edited at /admin/add-ons. */
   addOns: AddOn[];
 }) {
-  const attached = new Set(offering?.addOnIds ?? []);
+  const [attachedIds, setAttachedIds] = useState<string[]>(
+    (offering?.addOnIds ?? []).map(String),
+  );
+  const toggleAddOn = (id: string) =>
+    setAttachedIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
   return (
     <Section id="addons" title="Add-ons" hint="attach shared add-ons — revenue">
       {addOns.length === 0 ? (
@@ -409,7 +473,8 @@ export function AddOnsSection({
                   type="checkbox"
                   name="addOnIds"
                   value={a.id}
-                  defaultChecked={attached.has(a.id)}
+                  checked={attachedIds.includes(String(a.id))}
+                  onChange={() => toggleAddOn(String(a.id))}
                   className="peer sr-only"
                 />
                 <span className="flex cursor-pointer select-none items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1 text-sm text-muted peer-checked:border-accent/40 peer-checked:bg-bg peer-checked:font-medium peer-checked:text-ink">

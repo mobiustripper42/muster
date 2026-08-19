@@ -18,8 +18,15 @@ export type LocationErr = LocationSaveError | "error";
 /**
  * Upsert a location (task 12.9). Auth + glue over `saveLocationAdmin` (owns validation). Blank
  * `id` = create → mint a fresh location id; otherwise edit. `redirect()` throws → outside try.
+ *
+ * `useActionState` shape (#699, DEC-147 amended 2026-08-18): a refusal is **returned**, not
+ * redirected — the redirect was what remounted the form and discarded what was typed. Success
+ * still redirects. `_prev` is React's previous state, unused.
  */
-export async function saveLocation(formData: FormData): Promise<void> {
+export async function saveLocation(
+  _prev: LocationErr | null,
+  formData: FormData,
+): Promise<LocationErr | null> {
   const subject = await readSubject();
   if (!subject || subject.kind !== "admin") redirect("/admin");
 
@@ -44,6 +51,10 @@ export async function saveLocation(formData: FormData): Promise<void> {
     code = "error";
   }
 
+  // A refusal wrote NOTHING, so there is nothing to revalidate — and revalidating would refresh
+  // the RSC tree underneath the values this change exists to protect. Success branch only.
+  if (code) return code;
+
   revalidatePath("/admin/locations");
-  redirect(code ? `/admin/locations?sel=${id}&err=${code}` : `/admin/locations?sel=${id}&saved=1`);
+  redirect(`/admin/locations?sel=${id}&saved=1`);
 }

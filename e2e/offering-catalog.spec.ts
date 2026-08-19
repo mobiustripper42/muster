@@ -15,8 +15,22 @@ import {
   resetAndSeed,
   signInAsAdmin,
   clickHydrated,
+  isHydrated,
   selectOptionHydrated,
 } from "./fixtures.js";
+
+/**
+ * Tick a CONTROLLED checkbox/radio that is `sr-only` (#699).
+ *
+ * Two constraints at once, and each defeats the obvious helper: the input is visually hidden
+ * (its styled `<span>` is what you see), so it fails Playwright's actionability check and needs
+ * `force` — and it is controlled now, so a pre-hydration tick is reverted the instant React
+ * asserts its own value. `setCheckedHydrated` handles the second and not the first.
+ */
+async function checkHydratedForce(locator: import("@playwright/test").Locator): Promise<void> {
+  await expect.poll(() => isHydrated(locator), { timeout: 15_000 }).toBe(true);
+  await locator.check({ force: true });
+}
 
 test.describe("admin /admin/offerings", () => {
   test.beforeEach(async () => {
@@ -47,20 +61,20 @@ test.describe("admin /admin/offerings", () => {
     await page.goto("/admin/offerings?sel=new");
 
     // Details: Live, name, description, location, minutes, vessel chip.
-    await page.locator('input[name="status"][value="live"]').check({ force: true });
+    await checkHydratedForce(page.locator('input[name="status"][value="live"]'));
     await page.fill('input[name="name"]', "Sunset Cruise");
     await page.fill('textarea[name="description"]', "**NO Pedaling Required** — party pontoons.");
-    await page.selectOption('select[name="locationId"]', { label: "East Bank" });
+    await selectOptionHydrated(page.locator('select[name="locationId"]'), { label: "East Bank" });
     await page.fill('input[name="tripLengthMinutes"]', "100");
     await page.fill('input[name="holdMinutes"]', "100");
     await page.fill('input[name="arriveBeforeMinutes"]', "15");
-    await page.locator('input[name="vesselIds"][value="vessel-hops"]').check({ force: true });
+    await checkHydratedForce(page.locator('input[name="vesselIds"][value="vessel-hops"]'));
 
     // Schedule: season, days, two departure times via the island (add-multiple-in-one-pass).
     await page.fill('input[name="seasonStart"]', "2026-05-01");
     await page.fill('input[name="seasonEnd"]', "2026-09-30");
-    await page.locator('input[name="weekday"][value="4"]').check({ force: true }); // Fri
-    await page.locator('input[name="weekday"][value="5"]').check({ force: true }); // Sat
+    await checkHydratedForce(page.locator('input[name="weekday"][value="4"]')); // Fri
+    await checkHydratedForce(page.locator('input[name="weekday"][value="5"]')); // Sat
     // Islands throughout (#642): the selects are CONTROLLED, so a pre-hydration
     // selection is reverted when React asserts its own value, and the Add click is a
     // no-op until the handler is attached.
@@ -90,7 +104,7 @@ test.describe("admin /admin/offerings", () => {
 
     // Add-ons: attach the shared "Extra hour" add-on via its checkbox (id is minted, so
     // target it through its label text).
-    await page.locator('label:has-text("Extra hour") input[name="addOnIds"]').check({ force: true });
+    await checkHydratedForce(page.locator('label:has-text("Extra hour") input[name="addOnIds"]'));
 
     await page.getByRole("button", { name: "Create" }).click();
     await page.waitForURL(/saved=1/);
@@ -117,7 +131,7 @@ test.describe("admin /admin/offerings", () => {
     ).toBeChecked(); // the attached add-on survives a reload
 
     // ── Hide it: DEC-123 reversible soft-delete ──────────────────────────────
-    await page.locator('input[name="status"][value="hidden"]').check({ force: true });
+    await checkHydratedForce(page.locator('input[name="status"][value="hidden"]'));
     await page.getByRole("button", { name: "Save" }).click();
     await page.waitForURL(/saved=1/);
 

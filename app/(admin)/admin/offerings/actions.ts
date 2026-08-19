@@ -61,7 +61,18 @@ function gratuityKindFromForm(
   return { kind, tiersBps, defaultBps, required: Boolean(fd.get(`grat${cap}Required`)) };
 }
 
-export async function saveOffering(formData: FormData): Promise<void> {
+/**
+ * `useActionState` shape (#699, DEC-147 amended 2026-08-18): a refusal is **returned**, not
+ * redirected. The redirect was what remounted the form and discarded thirty typed fields on an
+ * incomplete price variation. Success still redirects — only the failure path changed.
+ *
+ * `_prev` is React's previous state, unused: each submission is judged on the form it was given,
+ * never on what the last one said.
+ */
+export async function saveOffering(
+  _prev: OfferingErr | null,
+  formData: FormData,
+): Promise<OfferingErr | null> {
   const subject = await readSubject();
   if (!subject || subject.kind !== "admin") redirect("/admin");
 
@@ -145,11 +156,12 @@ export async function saveOffering(formData: FormData): Promise<void> {
     }
   }
 
+  // A refusal wrote NOTHING, so there is nothing to revalidate — and revalidating would refresh
+  // the RSC tree underneath the very DOM values this change exists to protect (@architect).
+  // Both of these belong strictly to the success branch now.
+  if (code) return code;
+
   revalidatePath("/admin/offerings");
   const hidden = formData.get("showHidden") ? "&hidden=1" : "";
-  redirect(
-    code
-      ? `/admin/offerings?sel=${id}${hidden}&err=${code}`
-      : `/admin/offerings?sel=${id}${hidden}&saved=1`,
-  );
+  redirect(`/admin/offerings?sel=${id}${hidden}&saved=1`);
 }

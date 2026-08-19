@@ -1,15 +1,15 @@
 import type { AddOn, Offering } from "@core/domain/entities.js";
+import { ActionForm } from "../../../../components/ui/action-form";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { AppLink } from "../../../../components/ui/app-link";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
-import { Field, settingsInputClass } from "../../../../components/admin/settings-field";
 import { readSubject } from "../../../lib/auth";
-import { errCopyFor } from "../../../lib/err-copy";
 import { getRepo } from "../../../lib/repo";
 import { saveAddOn, type AddOnErr } from "./actions";
+import { AddOnCard } from "./add-on-card";
 
 /**
  * /admin/add-ons (#491, DEC-123) — the Add-on settings twin, matching the Vessel/Location
@@ -59,15 +59,23 @@ export default async function AdminAddOns({
   // Empty list ⇒ open straight into the create form (with its Create button) rather than a
   // blank form with no way to save.
   const creating = sp.sel === "new" || addOns.length === 0;
-  const selected = creating ? null : addOns.find((a) => a.id === sp.sel) ?? addOns[0] ?? null;
-  const errCopy = errCopyFor(ERR_COPY, sp.err, "error");
+  // No first-record substitution — see the note in admin/offerings (#699).
+  const selected = creating
+    ? null
+    : sp.sel
+      ? addOns.find((a) => a.id === sp.sel) ?? null
+      : addOns[0] ?? null;
   const title = creating ? "New add-on" : selected?.label ?? "Add-ons";
 
   return (
     <Shell width="6xl">
-      <form
+      {/* #699: the `key` still resets the card when you switch records, but a returned refusal
+          no longer flips it — so a validation error keeps what you typed. */}
+      <ActionForm
         key={creating ? "new" : selected?.id ?? "none"}
         action={saveAddOn}
+        errCopy={ERR_COPY}
+        fallback="error"
         className="flex flex-col gap-4"
       >
         <input type="hidden" name="id" value={creating || !selected ? "" : selected.id} />
@@ -86,7 +94,8 @@ export default async function AdminAddOns({
           )}
         </header>
 
-        {errCopy && <Notice tone="bad">{errCopy}</Notice>}
+        {/* No `?err=` read here any more (#699): `saveAddOn` returns its refusal to the
+            ActionForm above, which renders it. */}
 
         <div className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-[230px_1fr]">
           <nav className="flex flex-col gap-0.5 self-start rounded-card border border-line bg-card p-1.5">
@@ -127,62 +136,10 @@ export default async function AdminAddOns({
             {selected && <OfferingsSection addOn={selected} offerings={offerings} />}
           </div>
         </div>
-      </form>
+      </ActionForm>
 
       <VersionTag />
     </Shell>
-  );
-}
-
-/** The "Add-on" facts card. The Save button lives in the page header (shared form). */
-function AddOnCard({ addOn, creating }: { addOn: AddOn | null; creating: boolean }) {
-  const isNew = creating || !addOn;
-  return (
-    <section className="rounded-card border border-line bg-card shadow-sm">
-      <div className="flex items-center gap-3 border-b border-line px-4 py-3">
-        <h2 className="text-sm font-semibold text-ink">Add-on</h2>
-      </div>
-
-      <div className="px-4 py-1">
-        <Field label="Label" sub="what the customer sees">
-          <input
-            name="label"
-            required
-            defaultValue={addOn?.label ?? ""}
-            className={`${settingsInputClass} w-full max-w-[420px]`}
-          />
-        </Field>
-
-        <Field label="Amount" sub="a flat charge, revenue">
-          <span className="flex items-center gap-2">
-            <span className="text-xs text-faint">$</span>
-            <input
-              name="amount"
-              required
-              inputMode="decimal"
-              defaultValue={addOn ? (addOn.amountCents / 100).toFixed(2) : ""}
-              className={`${settingsInputClass} max-w-[130px] font-mono`}
-            />
-          </span>
-        </Field>
-
-        <Field label="Required" sub="the customer must buy it">
-          <label className="flex items-center gap-2 pt-1 text-sm text-ink">
-            <input type="checkbox" name="required" defaultChecked={addOn?.required ?? false} />
-            Required at checkout
-          </label>
-        </Field>
-
-        <Field label="Active" sub="uncheck to retire">
-          <label className="flex items-center gap-2 pt-1 text-sm text-ink">
-            {/* Default checked on a new add-on; retired add-ons drop from the offering picker
-                + browse but keep their references (DEC-123 soft-delete). */}
-            <input type="checkbox" name="active" defaultChecked={isNew ? true : addOn.active} />
-            Available to attach to offerings
-          </label>
-        </Field>
-      </div>
-    </section>
   );
 }
 

@@ -27,21 +27,10 @@ import { defineConfig, devices } from "@playwright/test";
  * only deterministic if they don't overlap.
  */
 
-// Prod server locally (dodges the per-dir `next dev` lock), dev server in CI.
-// Override explicitly with E2E_PROD=1 / E2E_PROD=0 (only "1"/"true" enable it, so
-// a stray `E2E_PROD=false` reads as off, not on).
-const E2E_PROD =
-  process.env.E2E_PROD != null
-    ? process.env.E2E_PROD === "1" || process.env.E2E_PROD === "true"
-    : !process.env.CI;
-
-/**
- * Every timeout in this file is multiplied by this (#763). The prebuilt server answers in 1–2s
- * per test; `next dev` compiles routes on demand and takes 4–9s for the same work, measured on
- * the same specs. One set of constants cannot be right for both, and the constants were written
- * for the fast one — so the slow path, which is what CI runs, sat permanently near its ceilings.
- */
-const SLOW_PATH = E2E_PROD ? 1 : 2;
+// `E2E_PROD` (which server) and `SLOW_PATH` (how much slack that earns) are defined ONCE, in
+// `e2e/slow-path.ts`, because `fixtures.ts` needs the same multiplier for its hydration poll and
+// a second copy of the predicate got the CI case backwards on the first attempt (#763).
+import { E2E_PROD, SLOW_PATH } from "./e2e/slow-path.js";
 
 const PORT = Number(process.env.E2E_PORT ?? 3100);
 const BASE_URL = process.env.E2E_BASE_URL ?? `http://localhost:${PORT}`;

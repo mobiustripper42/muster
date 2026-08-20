@@ -11,6 +11,7 @@
 import { execFileSync } from "node:child_process";
 import { test as base, expect, type Locator, type Page } from "@playwright/test";
 import { resetTestDb, TEST_DATABASE_URL } from "../db/reset-test.js";
+import { SLOW_PATH } from "./slow-path.js";
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
 import { TODAY } from "./reservation-demo.js";
 
@@ -276,11 +277,18 @@ export async function isHydrated(locator: Locator): Promise<boolean> {
   );
 }
 
-/** Block until React owns this element, or fail loudly saying which one didn't. */
+/**
+ * Block until React owns this element, or fail loudly saying which one didn't.
+ *
+ * **Scaled by `SLOW_PATH` like every other budget (#763).** This one matters most: hydration is
+ * precisely what compile-on-demand delays, so a fixed ceiling here is tightest exactly when the
+ * server is slowest. Left unscaled it was 15s against a 20s `expect` ceiling on the dev path —
+ * the guard written to fix a flake class would have become the next flake in it.
+ */
 async function waitForHydrated(locator: Locator): Promise<void> {
   await expect
     .poll(() => isHydrated(locator), {
-      timeout: 15_000,
+      timeout: 15_000 * SLOW_PATH,
       message: `island never hydrated: ${locator}`,
     })
     .toBe(true);

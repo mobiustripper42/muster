@@ -580,6 +580,19 @@ async function recordPayment(
   kind: "full" | "deposit",
   reservationId: ReservationId,
 ): Promise<void> {
+  // Stripe's hosted receipt (#679), for the guest's manage page. Best-effort by construction:
+  // a receipt link is a convenience and the payment row is the ledger, so a provider hiccup
+  // here must cost the link and nothing else. Not alerted — there is no money problem and
+  // nothing for a human to do about it.
+  let receiptUrl: string | undefined;
+  if (charge.paymentIntentId) {
+    try {
+      receiptUrl = await deps.payments.getReceiptUrl(charge.paymentIntentId);
+    } catch {
+      receiptUrl = undefined;
+    }
+  }
+
   const payment: Payment = {
     id: paymentIdFor(charge.key), // deterministic ⇒ idempotent upsert
     reservationId,
@@ -598,6 +611,7 @@ async function recordPayment(
     currency: charge.currency,
     ...(charge.sessionId !== undefined ? { stripeCheckoutSessionId: charge.sessionId } : {}),
     ...(charge.paymentIntentId ? { stripePaymentIntentId: charge.paymentIntentId } : {}),
+    ...(receiptUrl !== undefined ? { receiptUrl } : {}),
     status: "succeeded",
     createdAt: deps.now(),
   };

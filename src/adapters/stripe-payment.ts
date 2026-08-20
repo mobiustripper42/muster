@@ -82,9 +82,28 @@ export class StripePaymentPort implements PaymentPort {
       currency: input.currency,
       metadata: input.metadata,
       automatic_payment_methods: { enabled: true },
+      // #679. `description` is the only human-readable field on a raw PaymentIntent — hosted
+      // Checkout gets a line item, this path does not. `receipt_email` is what makes Stripe
+      // send the guest a receipt at all; in live mode it sends regardless of the account's
+      // email settings, so passing it IS the decision to send one.
+      ...(input.description !== undefined ? { description: input.description } : {}),
+      ...(input.receiptEmail !== undefined ? { receipt_email: input.receiptEmail } : {}),
     });
     if (!intent.client_secret) throw new Error("Stripe payment intent returned no client_secret");
     return { clientSecret: intent.client_secret, paymentIntentId: intent.id };
+  }
+
+  async getReceiptUrl(paymentIntentId: string): Promise<string | undefined> {
+    // `latest_charge` comes back as a bare id unless expanded, and the receipt url lives on the
+    // charge — so this is one retrieve with an expand rather than two round trips.
+    const intent = await this.#stripe.paymentIntents.retrieve(paymentIntentId, {
+      expand: ["latest_charge"],
+    });
+    const charge = intent.latest_charge;
+    // A string here means the expand didn't take (or the intent has no charge yet). Return
+    // nothing rather than a charge id masquerading as a url.
+    if (!charge || typeof charge === "string") return undefined;
+    return charge.receipt_url ?? undefined;
   }
 
   parseEvent(rawBody: string, signature: string): PaymentEvent | null {

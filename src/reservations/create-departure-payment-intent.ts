@@ -148,6 +148,17 @@ export async function createDeparturePaymentIntent(
   const intent = await payments.createPaymentIntent({
     amountCents,
     currency: "usd",
+    // What a HUMAN reads on the charge (#679). Metadata below is what the WEBHOOK reads, and
+    // Stripe understands none of it — so before this the dashboard's payments list was a column
+    // of bare dollar amounts. Offering, departure, party size, who booked: enough to answer a
+    // phone call without opening anything.
+    description: `${offering!.name} — ${hold.date} ${hold.time} · ${req.guestCount} guest${
+      req.guestCount === 1 ? "" : "s"
+    } · ${req.customerName}`,
+    // Email is OPTIONAL at `/book` (phone is the identity, DEC-132), so this is absent on a
+    // real and ordinary booking. Absent ⇒ Stripe sends no receipt; present ⇒ it does, in live
+    // mode regardless of the account's email settings. Passing it is the decision to send one.
+    ...(req.email !== undefined && req.email !== "" ? { receiptEmail: req.email } : {}),
     metadata: {
       // The double-write-guard discriminator (DEC-134): only purposed intents book.
       purpose: "booking",

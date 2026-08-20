@@ -790,6 +790,16 @@ export interface Payment {
   stripeCheckoutSessionId?: string;
   /** Stripe PaymentIntent id (present once the charge settles). */
   stripePaymentIntentId?: string;
+  /**
+   * Stripe's HOSTED RECEIPT url (#679) — `pay.stripe.com/receipts/…`, a guest-safe page shown on
+   * `/b/<code>`. Not a dashboard link; a customer must never be handed one of those.
+   *
+   * Captured at webhook time rather than fetched when the manage page renders, because that page
+   * is a guest-facing GET and a live Stripe call in it would break the booking view whenever
+   * Stripe is slow. Absent on every payment written before #679, on one whose receipt lookup
+   * failed, and on any payment Stripe has no receipt for — absent is not an error.
+   */
+  receiptUrl?: string;
   status: PaymentStatus;
   /** Cents refunded so far. Written by `markPaymentRefunded` on the residual-race auto-refund;
    *  an operator's manual dashboard refund is not reflected here until hand-reconciled. */

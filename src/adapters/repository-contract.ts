@@ -1468,6 +1468,20 @@ export function runRepositoryContract(
       expect("serviceFeeCents" in got!).toBe(false);
       await repo.savePayment(payment({ id: asId<"PaymentId">("pay-4"), serviceFeeCents: 1497, stripeCheckoutSessionId: "cs_test_4" }));
       expect((await repo.getPayment(asId<"PaymentId">("pay-4")))!.serviceFeeCents).toBe(1497);
+      // receiptUrl (#679): absent stays omitted; present round-trips. Absent is the normal
+      // state for every payment written before #679 and for any whose lookup failed, so the
+      // omitted case is the one the guest page actually branches on.
+      expect("receiptUrl" in got!).toBe(false);
+      await repo.savePayment(
+        payment({
+          id: asId<"PaymentId">("pay-5"),
+          stripeCheckoutSessionId: "cs_test_5",
+          receiptUrl: "https://pay.stripe.com/receipts/abc123",
+        }),
+      );
+      expect((await repo.getPayment(asId<"PaymentId">("pay-5")))!.receiptUrl).toBe(
+        "https://pay.stripe.com/receipts/abc123",
+      );
     });
 
     it("cancelEventIfUnclaimed: releases an unclaimed Muster slot, refuses a claimed one (#616)", async () => {

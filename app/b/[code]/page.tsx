@@ -122,6 +122,12 @@ export default async function ManagePage({
   const { detail, timing, phase } = view;
   const m = detail.money;
   const serviceFeeCents = booking.payments.reduce((s, p) => s + (p.serviceFeeCents ?? 0), 0);
+  // One link per payment that HAS a hosted receipt (#679) — a deposit booking later collects a
+  // balance, so this is a list rather than a single link. Payments with no `receiptUrl` drop out
+  // entirely: pre-#679 rows, and any whose lookup failed at webhook time.
+  const receiptLinks = booking.payments
+    .filter((p) => p.receiptUrl !== undefined)
+    .map((p) => ({ id: String(p.id), url: p.receiptUrl!, amountCents: p.amountCents }));
   const taxAndFees = m.taxCents + serviceFeeCents;
   const cancelled = detail.status === "cancelled";
   const statusLabel = cancelled ? "Cancelled" : phase === "completed" ? "Completed" : "Confirmed";
@@ -231,6 +237,27 @@ export default async function ManagePage({
                   </>
                 )}
                 {m.refundedCents > 0 && <Row label="Refunded" value={`−${formatCents(m.refundedCents)}`} mono />}
+                {/* Stripe's own hosted receipt (#679) — the itemised, printable one, and the only
+                    copy a guest who gave no email will ever have. Safe to show: `pay.stripe.com`,
+                    not the dashboard. Absent on pre-#679 bookings and on any payment whose receipt
+                    lookup failed, so this renders nothing rather than a dead link. */}
+                {receiptLinks.length > 0 && (
+                  <div className="mt-2 flex flex-col gap-1">
+                    {receiptLinks.map((r) => (
+                      <a
+                        key={r.id}
+                        href={r.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[12.5px] text-accent underline underline-offset-2"
+                      >
+                        {receiptLinks.length > 1
+                          ? `View Stripe receipt — ${formatCents(r.amountCents)}`
+                          : "View Stripe receipt"}
+                      </a>
+                    ))}
+                  </div>
+                )}
               </>
             ) : (
               <p className="text-[12.5px] text-muted">Your receipt will appear here once payment settles.</p>

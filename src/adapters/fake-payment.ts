@@ -26,6 +26,8 @@ export class FakePaymentPort implements PaymentPort {
   readonly refunds: RefundInput[] = [];
   /** Set to make `refund` throw, to exercise the manual-refund fallback path. */
   refundError: Error | null = null;
+  /** Set to make `getReceiptUrl` throw, to exercise the book-anyway fallback (#679). */
+  receiptUrlError: Error | null = null;
   readonly #refundsByKey = new Map<string, { refundId: string }>();
 
   async createCheckoutSession(input: CreateCheckoutInput): Promise<CheckoutSession> {
@@ -56,6 +58,11 @@ export class FakePaymentPort implements PaymentPort {
     // (Stripe mints it — it is NOT carried in metadata). Tests read the returned id.
     const id = `pi_fake_${this.intents.length}`;
     return { clientSecret: `${id}_secret_test`, paymentIntentId: id };
+  }
+
+  async getReceiptUrl(paymentIntentId: string): Promise<string | undefined> {
+    if (this.receiptUrlError) throw this.receiptUrlError;
+    return `https://pay.stripe.test/receipts/${paymentIntentId}`;
   }
 
   parseEvent(rawBody: string, signature: string): PaymentEvent | null {

@@ -11,6 +11,7 @@
 import { execFileSync } from "node:child_process";
 import { test as base, expect, type Locator, type Page } from "@playwright/test";
 import { resetTestDb, TEST_DATABASE_URL } from "../db/reset-test.js";
+import { SLOW_PATH } from "./slow-path.js";
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
 import { TODAY } from "./reservation-demo.js";
 
@@ -276,11 +277,18 @@ export async function isHydrated(locator: Locator): Promise<boolean> {
   );
 }
 
-/** Block until React owns this element, or fail loudly saying which one didn't. */
+/**
+ * Block until React owns this element, or fail loudly saying which one didn't.
+ *
+ * **Scaled by `SLOW_PATH` like every other budget (#763).** This one matters most: hydration is
+ * precisely what compile-on-demand delays, so a fixed ceiling here is tightest exactly when the
+ * server is slowest. Left unscaled it was 15s against a 20s `expect` ceiling on the dev path —
+ * the guard written to fix a flake class would have become the next flake in it.
+ */
 async function waitForHydrated(locator: Locator): Promise<void> {
   await expect
     .poll(() => isHydrated(locator), {
-      timeout: 15_000,
+      timeout: 15_000 * SLOW_PATH,
       message: `island never hydrated: ${locator}`,
     })
     .toBe(true);
@@ -299,6 +307,29 @@ async function waitForHydrated(locator: Locator): Promise<void> {
 export async function clickHydrated(locator: Locator): Promise<void> {
   await waitForHydrated(locator);
   await locator.click();
+}
+
+/**
+ * Type into a field that arrives **server-rendered with a prefill**, once React owns it.
+ *
+ * The failure this exists for is nastier than the un-hydrated click, because the typing takes
+ * and then silently un-takes. `fill()` writes the DOM value; React's reconcile then re-applies
+ * the element's `defaultValue`, and what posts is the prefill — or, as measured on issue #762,
+ * the two spliced together. The form is a plain server form, so nothing here is "controlled" and
+ * `setCheckedHydrated`'s reasoning does not obviously apply; the value is clobbered anyway.
+ *
+ * **It only bites under load.** In an isolated run the page is warm and the fill lands after
+ * hydration; in a full suite on the dev-server path (`E2E_PROD=0`, compile-on-demand) hydration
+ * arrives later than the fill. That is the whole reason #762 reproduced only in a full-suite run
+ * and cost ~35 minutes per diagnostic attempt — and why it read as a product defect in the cancel
+ * outcome for weeks. It was the refund amount never reaching the server.
+ *
+ * Use this for any `fill()` into a field whose default the server rendered. A blank field needs
+ * nothing: there is no prefill to restore over your value.
+ */
+export async function fillHydrated(locator: Locator, value: string): Promise<void> {
+  await waitForHydrated(locator);
+  await locator.fill(value);
 }
 
 /**

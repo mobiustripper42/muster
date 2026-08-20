@@ -4,6 +4,7 @@
  * operator chrome. Responsive — desktop inline links, mobile hamburger → slide-in
  * drawer. Runs at desktop + 375px (the mobile drawer is exercised at 375).
  */
+import { SLOW_PATH } from "./slow-path.js";
 import {
   test,
   expect,
@@ -36,16 +37,21 @@ function crewGroup(page: import("@playwright/test").Page) {
 /**
  * Open the Crew group with React provably listening (#655).
  *
- * Two different waits, for two different reasons. The `<summary>` toggle is native, so opening
- * the group needs no JS and a plain click is correct. But every assertion about whether the group
- * STAYS open is an assertion about `onFocusOut`, which only exists once the nav has hydrated —
- * so without this gate a green test could mean "the handler never ran", which is exactly the
- * failure it is meant to catch.
+ * Two waits, for two reasons — and the first reason changed with #763. Opening a `<summary>` is
+ * native, so the click itself needs no JS; but this nav's island ALSO handles that click, and one
+ * landing exactly as the handler attaches is processed twice — the browser opens the group, the
+ * handler closes it, and nothing ends up open. Measured in a full-suite run (see the #603 test
+ * below). So "a plain click is correct here" is no longer true, and the poll is load-bearing for
+ * the click and not only for what follows it.
+ *
+ * The second reason is unchanged: every assertion about whether the group STAYS open is an
+ * assertion about `onFocusOut`, which only exists once the nav has hydrated — so without this gate
+ * a green test could mean "the handler never ran", which is the failure it exists to catch.
  */
 async function openGroupHydrated(page: import("@playwright/test").Page): Promise<void> {
   const nav = page.getByRole("navigation", { name: "Admin" });
   await expect
-    .poll(() => isHydrated(nav), { timeout: 15_000, message: "admin nav never hydrated" })
+    .poll(() => isHydrated(nav), { timeout: 15_000 * SLOW_PATH, message: "admin nav never hydrated" })
     .toBe(true);
   const group = crewGroup(page);
   await group.locator("summary:visible").click();
@@ -100,30 +106,40 @@ test.describe("admin nav", () => {
     const nav = page.getByRole("navigation", { name: "Admin" });
     const group = (label: string) => nav.locator("summary:visible").filter({ hasText: label });
 
-    await group("Bookings").click();
+    // Every click in this test goes through `clickHydrated` (#763), including the ones that open
+    // a group. Opening a `<details>` is native and needs no JS — but this nav's island also
+    // handles the click, and one landing exactly as the handler attaches gets processed twice:
+    // the browser toggles it open, the handler toggles it shut, and the assertion reads zero open
+    // groups. Which is what it read, in one full-suite run out of eleven.
+    await clickHydrated(group("Bookings"));
     await expect(nav.locator("details[open]")).toHaveCount(1);
 
     // `name` on <details> makes the browser close the others. Without it every group could sit
     // open at once and the panels overlapped each other on a sticky bar.
-    await group("Setup").click();
+    await clickHydrated(group("Setup"));
     await expect(nav.locator("details[open]")).toHaveCount(1);
     await expect(group("Setup").locator("xpath=..")).toHaveAttribute("open", "");
 
     // A <details> never closes on an outside click by itself, so a panel opened by accident
     // would sit over the page until you clicked its summary again.
-    await page.locator("h1").first().click();
+    //
+    // `clickHydrated` on the OUTSIDE target (#763): opening a group is native `<details>` and
+    // needs no JS, but closing it on an outside click is the island's document listener. Click
+    // the heading before that listener attaches and the panel stays open — the assertion then
+    // reports "a group is still open", which is indistinguishable from the feature being broken.
+    await clickHydrated(page.locator("h1").first());
     await expect(nav.locator("details[open]")).toHaveCount(0);
 
     // …nor on tabbing out: Enter on a group, tab past its links, and focus lands on the next
     // group's summary with the first panel still floating over the page.
-    await group("Bookings").click();
+    await clickHydrated(group("Bookings"));
     await expect(nav.locator("details[open]")).toHaveCount(1);
     for (let i = 0; i < 5; i++) await page.keyboard.press("Tab");
     await expect(nav.locator("details[open]")).toHaveCount(0);
 
     // …nor on navigation: the nav lives in the layout, so a client-side route change does not
     // remount it and the panel would hang over the new page.
-    await group("Bookings").click();
+    await clickHydrated(group("Bookings"));
     await nav.getByRole("link", { name: "Customers" }).click();
     await page.waitForURL(/\/admin\/customers/);
     await expect(nav.locator("details[open]")).toHaveCount(0);

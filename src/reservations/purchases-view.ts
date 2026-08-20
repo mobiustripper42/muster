@@ -29,7 +29,7 @@ import { balanceOwedCents, countsAsPaid, taxCentsFor } from "./payment-config.js
  * - `cancelled` — the reservation's own status, which outranks any payment state for display.
  *   A cancelled booking showing "Paid" reads like a live order.
  */
-export type PaymentState = "cancelled" | "refunded" | "paid" | "deposit" | "unpaid";
+export type PaymentState = "cancelled" | "disputed" | "refunded" | "paid" | "deposit" | "unpaid";
 
 export interface PurchaseRow {
   reservationId: string;
@@ -75,14 +75,38 @@ export function groupPaymentsByReservation(
   return out;
 }
 
+/**
+ * Does this booking have a chargeback against it — live or lost? (issue #723)
+ *
+ * **`won` is deliberately not a state here.** A dispute we win puts the money back and the
+ * payment row returns to `succeeded`, so the row reads `paid` again and drops off the Disputed
+ * filter. That is what makes the filter a worklist rather than an archive: everything on it
+ * needs a human, and it shrinks as they deal with it. The consequence is real and worth stating
+ * — once won, Muster keeps no trace the dispute happened; the history lives in the Stripe
+ * dashboard, which is the system of record for the dispute itself. Keeping won ones visible
+ * would need a durable dispute log, not a payment status.
+ *
+ * Live and lost share one state on purpose too: both mean the money is not in the account, which
+ * is the question this list answers. Which of the two it is changes what the operator DOES
+ * (respond by the deadline, versus write it off), and that is a workflow this cut doesn't build.
+ */
+const hasDispute = (payments: readonly Payment[]): boolean =>
+  payments.some((p) => p.status === "disputed" || p.status === "dispute_lost");
+
 function stateOf(
   reservation: Reservation,
   balanceCents: number,
   paidCents: number,
   refundedCents: number,
+  disputed: boolean,
 ): PaymentState {
   // Reservation status outranks money: a cancelled booking is not a live order.
   if (reservation.status !== "booked") return "cancelled";
+  // Above `refunded` and `unpaid` both. Without this a chargeback renders as "Unpaid" — true,
+  // since `countsAsPaid` excludes it, but indistinguishable from a booking whose webhook never
+  // landed, which is a different problem with a different fix. A dispute is the more specific
+  // fact and the one that needs a person.
+  if (disputed) return "disputed";
   if (refundedCents > 0) return "refunded";
   if (paidCents <= 0) return "unpaid";
   return balanceCents > 0 ? "deposit" : "paid";
@@ -120,7 +144,7 @@ export function buildPurchaseRows(input: PurchasesInput): PurchaseRow[] {
       paidCents,
       balanceCents,
       refundedCents,
-      state: stateOf(r, balanceCents, paidCents, refundedCents),
+      state: stateOf(r, balanceCents, paidCents, refundedCents, hasDispute(payments)),
       priceKnown,
     });
   }
@@ -171,6 +195,7 @@ export function stateCounts(rows: readonly PurchaseRow[]): Record<PaymentState |
   const counts: Record<PaymentState | "all", number> = {
     all: rows.length,
     cancelled: 0,
+    disputed: 0,
     refunded: 0,
     paid: 0,
     deposit: 0,

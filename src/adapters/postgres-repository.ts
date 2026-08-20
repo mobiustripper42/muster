@@ -1328,6 +1328,26 @@ export class PostgresRepository implements Repository {
       [id, refundedTotalCents],
     );
   }
+  async markPaymentDisputed(
+    id: PaymentId,
+    status: "disputed" | "dispute_lost" | "succeeded",
+  ): Promise<void> {
+    // The `not in` is the guard, not a race check: a refunded row keeps its refund status
+    // because that status carries an amount (`refunded_cents`) a dispute state would erase,
+    // and both already answer false to `countsAsPaid`. See the port doc for the full reason.
+    //
+    // No `greatest`-style monotonicity here, unlike the refund write, and deliberately: a
+    // dispute legitimately moves BACKWARDS (disputed → succeeded when we win), so the last
+    // event's computed state is the truth. Redelivery is still a no-op — the same event
+    // computes the same status.
+    await this.#pool.query(
+      `update payments
+          set status = $2
+        where id = $1
+          and status not in ('refunded', 'partially_refunded')`,
+      [id, status],
+    );
+  }
   async listPaymentsForReservation(reservationId: ReservationId): Promise<Payment[]> {
     const { rows } = await this.#pool.query(
       "select * from payments where reservation_id=$1 order by created_at",

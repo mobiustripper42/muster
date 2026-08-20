@@ -75,7 +75,7 @@ export async function composeBoardAlert(repo: Repository, landings: BoardLanding
     const when = shift ? fmtDate(shift.date) : shiftId;
     const what = vessel?.name ?? "a shift";
     const why = [...reasons].map((r) => REASON_LABEL[r] ?? r).join(" + ");
-    lines.push(`• ${when} · ${what} — ${why}`);
+    lines.push(`* ${when} - ${what} - ${why}`);
   }
   const n = byShift.size;
   // #599: the audience marker leads. This used to open `⚠ Muster:` against the crew
@@ -87,8 +87,13 @@ export async function composeBoardAlert(repo: Repository, landings: BoardLanding
   // were already there — they just sat behind a date and a vessel name, i.e. exactly
   // where truncation eats them.
   //
-  // The `⚠` was dropped for legibility only. It saved no SMS segments: the `•`/`·`/`—`
-  // below are already non-GSM-7, so this body is UCS-2 either way.
+  // The `⚠` was dropped for legibility only. It saved no SMS segments: the `•`/`·`/`—` this
+  // line used to carry were also non-GSM-7, so the body was UCS-2 either way — 70 characters
+  // per segment instead of 160, which is what issue #777 measured as 2 segments where 1 would do.
+  //
+  // **They are now plain `*` and `-` in the template above** (issue #777). The separators were
+  // never chosen for a reason; they were prose typography leaking into a transport that bills
+  // by the character. Keep SMS copy in plain ASCII.
   return outbound(
     "admin",
     `${n} shift${n === 1 ? "" : "s"} need${n === 1 ? "s" : ""} you\n${lines.join("\n")}`,

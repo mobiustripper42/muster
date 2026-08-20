@@ -67,6 +67,50 @@ describe("payment state", () => {
     expect(build()[0]!.paidCents).toBe(0);
   });
 
+  it("is `disputed` on a live chargeback — not `unpaid` (issue #723)", () => {
+    // Before the Disputed state existed this rendered as "Unpaid", which is true (the money is
+    // gone) and useless: indistinguishable from a booking whose webhook never landed. The
+    // operator could not tell a chargeback from a plumbing failure on the only screen that
+    // shows the money.
+    const rows = build({
+      paymentsByReservation: new Map([["r1", [payment("p1", "r1", { status: "disputed" })]]]),
+    });
+    expect(rows[0]!.state).toBe("disputed");
+    expect(rows[0]!.paidCents).toBe(0);
+  });
+
+  it("is `disputed` on a chargeback we LOST — same chip, money is still gone", () => {
+    const rows = build({
+      paymentsByReservation: new Map([["r1", [payment("p1", "r1", { status: "dispute_lost" })]]]),
+    });
+    expect(rows[0]!.state).toBe("disputed");
+  });
+
+  it("drops off Disputed once we WIN — the funds are back, so it reads paid again", () => {
+    // The webhook writes the row back to `succeeded` on a win, so nothing special happens here.
+    // Asserted anyway because it is the behaviour someone will question: the Disputed filter is
+    // a worklist that shrinks, and Muster keeps no trace of a won dispute (Stripe does).
+    const fare = 49900;
+    const total = fare + Math.round((fare * TAX) / 10000);
+    const rows = build({
+      eventsById: new Map([["e1", event("e1", { price: fare })]]),
+      paymentsByReservation: new Map([
+        ["r1", [payment("p1", "r1", { amountCents: total, status: "succeeded" })]],
+      ]),
+    });
+    expect(rows[0]!.state).toBe("paid");
+  });
+
+  it("a cancelled booking still reads `cancelled` even with a dispute on it", () => {
+    // Reservation status outranks money, unchanged: a cancelled booking is not a live order,
+    // and showing it in the Disputed worklist would put something there nobody can act on.
+    const rows = build({
+      reservations: [reservation("r1", { status: "cancelled" })],
+      paymentsByReservation: new Map([["r1", [payment("p1", "r1", { status: "disputed" })]]]),
+    });
+    expect(rows[0]!.state).toBe("cancelled");
+  });
+
   it("is `deposit` when something is paid but a balance remains", () => {
     const rows = build({
       paymentsByReservation: new Map([["r1", [payment("p1", "r1")]]]),

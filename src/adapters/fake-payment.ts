@@ -75,7 +75,8 @@ export class FakePaymentPort implements PaymentPort {
     if (
       parsed.type === "checkout_completed" ||
       parsed.type === "payment_succeeded" ||
-      parsed.type === "refund_recorded"
+      parsed.type === "refund_recorded" ||
+      parsed.type === "dispute_updated"
     ) {
       return parsed;
     }

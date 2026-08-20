@@ -9,6 +9,7 @@ import type { Event } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import type { CheckoutCompleted } from "../ports/payment.js";
 import { processBookingWebhook, type WebhookDeps } from "./booking-webhook.js";
+import { balanceOwedCents } from "./payment-config.js";
 import { reservationIdFor } from "./write-booking.js";
 
 const EVENT = asId<"EventId">("m-evt-1");
@@ -716,38 +717,44 @@ describe("a native booking forms its own crewable shift (#614)", () => {
  * `markPaymentRefunded(id, refundedTotalCents)` already had — so the two fit without arithmetic,
  * and a redelivered event is idempotent by `greatest()` rather than by a guard here.
  */
+/**
+ * One booked, fully paid reservation with a `succeeded` payment on `pi_1` — the starting state
+ * for both of the after-the-money-moved paths below (`charge.refunded` and `charge.dispute.*`).
+ * Shared rather than duplicated per describe: the two suites need the identical world, and a
+ * drift between two copies would quietly make one of them test a different thing.
+ */
+async function paidWorld(): Promise<InMemoryRepository> {
+  const repo = new InMemoryRepository();
+  await repo.saveEvent(musterEvent());
+  await repo.saveReservation({
+    id: asId<"ReservationId">("resv-1"),
+    eventId: EVENT,
+    source: "muster",
+    customerName: "Mary",
+    partySize: 6,
+    status: "booked",
+  });
+  await repo.savePayment({
+    id: asId<"PaymentId">("pay-1"),
+    reservationId: asId<"ReservationId">("resv-1"),
+    method: "stripe",
+    kind: "full",
+    amountCents: 53625,
+    taxCents: 3625,
+    currency: "usd",
+    stripePaymentIntentId: "pi_1",
+    status: "succeeded",
+    createdAt: "2026-07-12T00:00:00.000Z",
+  });
+  return repo;
+}
+
 describe("processBookingWebhook — charge.refunded reconciles the ledger (#616)", () => {
   const refunded = (over: Record<string, unknown> = {}) =>
     JSON.stringify({
       type: "refund_recorded",
       data: { paymentIntentId: "pi_1", amountRefundedCents: 53625, currency: "usd", ...over },
     });
-
-  async function paidWorld(): Promise<InMemoryRepository> {
-    const repo = new InMemoryRepository();
-    await repo.saveEvent(musterEvent());
-    await repo.saveReservation({
-      id: asId<"ReservationId">("resv-1"),
-      eventId: EVENT,
-      source: "muster",
-      customerName: "Mary",
-      partySize: 6,
-      status: "booked",
-    });
-    await repo.savePayment({
-      id: asId<"PaymentId">("pay-1"),
-      reservationId: asId<"ReservationId">("resv-1"),
-      method: "stripe",
-      kind: "full",
-      amountCents: 53625,
-      taxCents: 3625,
-      currency: "usd",
-      stripePaymentIntentId: "pi_1",
-      status: "succeeded",
-      createdAt: "2026-07-12T00:00:00.000Z",
-    });
-    return repo;
-  }
 
   it("a DASHBOARD refund lands on the payment row", async () => {
     const repo = await paidWorld();
@@ -813,5 +820,133 @@ describe("processBookingWebhook — charge.refunded reconciles the ledger (#616)
     await processBookingWebhook({ ...deps, reservationsEnabled: false }, refunded(), FAKE_SIGNATURE);
 
     expect(await repo.getPayment(asId<"PaymentId">("pay-1"))).toMatchObject({ status: "refunded" });
+  });
+});
+
+/**
+ * `charge.dispute.*` (issue #723) — the other way money leaves without anyone pressing anything.
+ *
+ * A refund is something Muster or the operator DID. A chargeback is something done TO them: the
+ * cardholder went to their bank, Stripe pulls the funds, and before this the reservation kept
+ * reading paid, the boat stayed held, and `/admin/purchases` kept counting the money.
+ *
+ * The three lifecycle events (`created` / `updated` / `closed`) all arrive here as one
+ * `dispute_updated`, carrying the dispute's own status normalized to four states. That is what
+ * makes the handler idempotent without a guard: the same event recomputes the same write.
+ */
+describe("processBookingWebhook — charge.dispute.* records the chargeback (issue #723)", () => {
+  const dispute = (over: Record<string, unknown> = {}) =>
+    JSON.stringify({
+      type: "dispute_updated",
+      data: {
+        paymentIntentId: "pi_1",
+        state: "live",
+        amountCents: 53625,
+        currency: "usd",
+        reason: "fraudulent",
+        ...over,
+      },
+    });
+
+  it("a LIVE dispute marks the payment disputed and alerts a human", async () => {
+    const repo = await paidWorld();
+    const { deps, alert } = makeDeps(repo);
+
+    const r = await processBookingWebhook(deps, dispute(), FAKE_SIGNATURE);
+
+    expect(r).toMatchObject({ handled: true, outcome: "dispute_recorded" });
+    expect(await repo.getPayment(asId<"PaymentId">("pay-1"))).toMatchObject({ status: "disputed" });
+    expect(alert).toHaveBeenCalledOnce();
+    expect(alert.mock.calls[0]![0]).toMatch(/DISPUTE OPENED/);
+  });
+
+  it("a disputed payment stops counting as paid — the whole point", async () => {
+    // The ledger consequence, asserted through the deriver rather than the row, because the row
+    // reading "disputed" is worth nothing if `balanceOwedCents` still counts the money. This is
+    // the assertion that would have failed on the old deny-list `countsAsPaid`.
+    const repo = await paidWorld();
+    const { deps } = makeDeps(repo);
+
+    await processBookingWebhook(deps, dispute(), FAKE_SIGNATURE);
+
+    const payments = await repo.listPaymentsForReservation(asId<"ReservationId">("resv-1"));
+    expect(balanceOwedCents(50000, 725, payments)).toBe(53625);
+  });
+
+  it("an INQUIRY alerts but writes nothing — no money has moved yet", async () => {
+    // The `warning_*` family is a retrieval request, not a chargeback. Marking it disputed would
+    // zero out revenue on a booking that was never charged back, and a false alarm is how an
+    // operator learns to ignore the real ones.
+    const repo = await paidWorld();
+    const { deps, alert } = makeDeps(repo);
+
+    await processBookingWebhook(deps, dispute({ state: "inquiry" }), FAKE_SIGNATURE);
+
+    expect(await repo.getPayment(asId<"PaymentId">("pay-1"))).toMatchObject({ status: "succeeded" });
+    expect(alert).toHaveBeenCalledOnce();
+    expect(alert.mock.calls[0]![0]).toMatch(/INQUIRY/);
+  });
+
+  it("winning puts the money back and the row reads paid again", async () => {
+    const repo = await paidWorld();
+    const { deps, alert } = makeDeps(repo);
+
+    await processBookingWebhook(deps, dispute(), FAKE_SIGNATURE);
+    await processBookingWebhook(deps, dispute({ state: "won" }), FAKE_SIGNATURE);
+
+    expect(await repo.getPayment(asId<"PaymentId">("pay-1"))).toMatchObject({ status: "succeeded" });
+    expect(alert.mock.calls[1]![0]).toMatch(/WON/);
+  });
+
+  it("losing is terminal and still not paid", async () => {
+    const repo = await paidWorld();
+    const { deps, alert } = makeDeps(repo);
+
+    await processBookingWebhook(deps, dispute(), FAKE_SIGNATURE);
+    await processBookingWebhook(deps, dispute({ state: "lost" }), FAKE_SIGNATURE);
+
+    expect(await repo.getPayment(asId<"PaymentId">("pay-1"))).toMatchObject({
+      status: "dispute_lost",
+    });
+    expect(alert.mock.calls[1]![0]).toMatch(/LOST/);
+  });
+
+  it("redelivery is idempotent — the same event is the same write", async () => {
+    const repo = await paidWorld();
+    const { deps, alert } = makeDeps(repo);
+
+    await processBookingWebhook(deps, dispute(), FAKE_SIGNATURE);
+    await processBookingWebhook(deps, dispute(), FAKE_SIGNATURE);
+
+    expect(await repo.getPayment(asId<"PaymentId">("pay-1"))).toMatchObject({ status: "disputed" });
+    // The alert fires per delivery, deliberately: a duplicated warning is a cost the operator
+    // can absorb, a suppressed one is the failure this feature exists to prevent.
+    expect(alert).toHaveBeenCalledTimes(2);
+  });
+
+  it("an UNKNOWN PaymentIntent alerts instead of throwing", async () => {
+    // A dispute against a Xola-era or hand-taken charge is real. A throw would 500 the webhook
+    // into a Stripe retry loop that can never succeed.
+    const repo = await paidWorld();
+    const { deps, alert } = makeDeps(repo);
+
+    const r = await processBookingWebhook(
+      deps,
+      dispute({ paymentIntentId: "pi_unknown" }),
+      FAKE_SIGNATURE,
+    );
+
+    expect(r).toMatchObject({ handled: true, outcome: "dispute_recorded" });
+    expect(alert).toHaveBeenCalledOnce();
+    expect(alert.mock.calls[0]![0]).toMatch(/pi_unknown/);
+  });
+
+  it("is NOT gated by the RESERVATIONS flag — money that left must be recorded anywhere", async () => {
+    const repo = await paidWorld();
+    const { deps } = makeDeps(repo);
+
+    await processBookingWebhook({ ...deps, reservationsEnabled: false }, dispute(), FAKE_SIGNATURE);
+
+    expect(await repo.getPayment(asId<"PaymentId">("pay-1"))).toMatchObject({ status: "disputed" });
   });
 });

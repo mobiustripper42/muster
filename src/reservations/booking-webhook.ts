@@ -32,7 +32,7 @@ import {
   type PaymentId,
   type ReservationId,
 } from "../domain/ids.js";
-import type { CheckoutCompleted, PaymentPort } from "../ports/payment.js";
+import type { CheckoutCompleted, DisputeUpdated, PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
 import { balanceOwedCents } from "./payment-config.js";
 import {
@@ -105,6 +105,7 @@ export type WebhookResult =
         | "balance_paid"
         | "gratuity_paid"
         | "refund_recorded"
+        | "dispute_recorded"
         | "ignored";
     };
 
@@ -154,6 +155,11 @@ export async function processBookingWebhook(
   // `refundReservation` already made.
   if (event.type === "refund_recorded") return recordRefund(deps, event.data);
 
+  // A CHARGEBACK moved (issue #723) — same posture as the refund above, and before the
+  // RESERVATIONS gate for the same reason: money that has already left the account must be
+  // recorded in every deployment, flag on or off.
+  if (event.type === "dispute_updated") return recordDispute(deps, event.data);
+
   if (event.type === "payment_succeeded") {
     const pi = event.data;
     const purpose = pi.metadata.purpose;
@@ -164,7 +170,7 @@ export async function processBookingWebhook(
     if (purpose === undefined) return { handled: false };
     if (purpose !== "booking") {
       await deps.alertPaidButUnbooked(
-        `⚠️ Stripe payment intent with unknown purpose="${purpose}" — ${pi.paymentIntentId}. ` +
+        `Stripe payment intent with unknown purpose="${purpose}" - ${pi.paymentIntentId}. ` +
           `NOT auto-processed; investigate (money may have moved).`,
       );
       return { handled: true, outcome: "ignored" };
@@ -186,7 +192,7 @@ export async function processBookingWebhook(
   if (purpose === "gratuity") return recordPostGratuity(deps, completed);
   if (purpose !== undefined && purpose !== "booking") {
     await deps.alertPaidButUnbooked(
-      `⚠️ Stripe checkout with unknown purpose="${purpose}" — session ${completed.sessionId}. ` +
+      `Stripe checkout with unknown purpose="${purpose}" - session ${completed.sessionId}. ` +
         `NOT auto-processed; investigate (money may have moved).`,
     );
     return { handled: true, outcome: "ignored" };
@@ -230,7 +236,7 @@ function requireCents(raw: string | undefined, field: string, chargeKey: string)
   // makes no promise about what a metadata value contains. Integer cents only (DEC-112).
   if (raw === undefined || !/^\d+$/.test(raw)) {
     throw new Error(
-      `booking metadata is missing a usable ${field} (got ${JSON.stringify(raw)}) on charge ${chargeKey} — ` +
+      `booking metadata is missing a usable ${field} (got ${JSON.stringify(raw)}) on charge ${chargeKey} - ` +
         `refusing to book at a defaulted price`,
     );
   }
@@ -264,7 +270,7 @@ async function processBookingCharge(
     // already moved. Dropping it silently is how a paying customer ends up with no booking and
     // nobody knowing. Acked so Stripe stops retrying; alerted so a human looks.
     await deps.alertPaidButUnbooked(
-      `⚠️ Verified booking charge received while RESERVATIONS is off — acked and NOT booked ` +
+      `Verified booking charge received while RESERVATIONS is off - acked and NOT booked ` +
         `(${charge.key}). Money has moved; investigate before flipping the flag on.`,
     );
     return { handled: false };
@@ -292,10 +298,10 @@ async function processBookingCharge(
   const isSlotBooking = Boolean(m.vesselId && m.date && m.time && m.offeringId);
   if (!isSlotBooking) {
     await deps.alertPaidButUnbooked(
-      `⚠️ PAID but NOT booked — booking session ${charge.key} carries no slot ` +
+      `PAID but NOT booked - booking session ${charge.key} carries no slot ` +
         `(${charge.amountCents} ${charge.currency}). The legacy eventId booking path was retired ` +
         `(#693) because it wrote without the hull-overlap guard. REFUND MANUALLY and find what ` +
-        `minted a session with this shape — nothing in the app should.`,
+        `minted a session with this shape - nothing in the app should.`,
     );
     return { handled: true, outcome: "unbookable" };
   }
@@ -321,7 +327,7 @@ async function processBookingCharge(
   const alertUnusableMetadata = async (e: unknown): Promise<void> => {
     await deps
       .alertPaidButUnbooked(
-        `⚠️ PAID but NOT booked — unusable booking metadata on Stripe charge ${charge.key} ` +
+        `PAID but NOT booked - unusable booking metadata on Stripe charge ${charge.key} ` +
           `(${charge.amountCents} ${charge.currency}): ${e instanceof Error ? e.message : String(e)}. ` +
           `Stripe will retry; if it keeps failing, REFUND MANUALLY and investigate the builder that minted it.`,
       )
@@ -435,7 +441,7 @@ async function processBookingCharge(
       await relayAndAudit(deps, form);
     } catch (e) {
       console.error(
-        `[reservations] formShifts after booking ${reservationId} failed — the tick will re-form`,
+        `[reservations] formShifts after booking ${reservationId} failed - the tick will re-form`,
         e,
       );
     }
@@ -498,7 +504,7 @@ async function processBookingCharge(
   if (result.outcome === "lost") {
     if (!charge.paymentIntentId) {
       await deps.alertPaidButUnbooked(
-        `⚠️ Residual-race loss with NO payment_intent to auto-refund — Stripe charge ` +
+        `Residual-race loss with NO payment_intent to auto-refund - Stripe charge ` +
           `${charge.key}, ${who}. REFUND MANUALLY in Stripe.`,
       );
       return { handled: true, outcome: result.outcome };
@@ -520,7 +526,7 @@ async function processBookingCharge(
       // of money that never became a booking, which is what it is.
     } catch (e) {
       await deps.alertPaidButUnbooked(
-        `⚠️ Residual-race loss AND the auto-refund FAILED (${e instanceof Error ? e.message : "unknown error"}) — ` +
+        `Residual-race loss AND the auto-refund FAILED (${e instanceof Error ? e.message : "unknown error"}) - ` +
           `Stripe charge ${charge.key}, ${who}. REFUND MANUALLY in Stripe.`,
       );
       return { handled: true, outcome: result.outcome };
@@ -622,7 +628,7 @@ async function recordRefund(
   const payment = await deps.repo.getPaymentByIntentId(refund.paymentIntentId);
   if (!payment) {
     await deps.alertPaidButUnbooked(
-      `⚠️ Refund of ${refund.amountRefundedCents} cents recorded in Stripe for payment intent ` +
+      `Refund of ${refund.amountRefundedCents} cents recorded in Stripe for payment intent ` +
         `${refund.paymentIntentId}, which matches NO payment in Muster. The ledger is unchanged; ` +
         `RECONCILE MANUALLY (this is expected for a Xola-era or hand-taken charge).`,
     );
@@ -630,6 +636,80 @@ async function recordRefund(
   }
   await deps.repo.markPaymentRefunded(payment.id, refund.amountRefundedCents);
   return { handled: true, outcome: "refund_recorded" };
+}
+
+/** What each dispute state does to the ledger row. `null` = leave the row alone. */
+const DISPUTE_LEDGER_WRITE: Record<
+  DisputeUpdated["state"],
+  "disputed" | "dispute_lost" | "succeeded" | null
+> = {
+  // A retrieval request. The network is asking a question; no money has moved, so touching
+  // the ledger here would invent a loss that never happened. Alert only.
+  inquiry: null,
+  live: "disputed",
+  lost: "dispute_lost",
+  // We won: the funds are reinstated, so the row goes back to being ordinary revenue. The
+  // argument itself is not re-litigated here — the evidence and the deadlines live in the
+  // Stripe dashboard, which stays the system of record for the dispute WORKFLOW (issue #723
+  // is deliberately record-only).
+  won: "succeeded",
+};
+
+/**
+ * Reconcile a chargeback into the ledger and tell a human (issue #723).
+ *
+ * **Why this exists at all:** a dispute is the one way money leaves the account with nobody in
+ * Muster pressing anything. Before this, the reservation kept reading paid, the boat stayed
+ * held, and `/admin/purchases` kept counting revenue that Stripe had already pulled back — the
+ * same blindness `charge.refunded` fixed for refunds in #616.
+ *
+ * **The alert fires on every state, including the ones that write nothing.** An inquiry moves
+ * no money and changes no row, and it is still the earliest warning the operator will ever get
+ * that a booking is heading for a chargeback — with a response deadline attached that only a
+ * human can act on. Recording it silently would be the "job ran, nobody found out" failure this
+ * whole class of work exists to prevent.
+ *
+ * **Never throws on an unrecognized charge**, same as `recordRefund`: a dispute against a
+ * Xola-era or hand-taken payment is real, and a throw would 500 into a Stripe retry loop that
+ * can never succeed.
+ */
+async function recordDispute(
+  deps: WebhookDeps,
+  dispute: DisputeUpdated,
+): Promise<WebhookResult> {
+  // Plain ASCII, no emoji and no typographic dashes (issue #777): these bodies are TEXTED to
+  // the admins now, and one non-GSM-7 character forces the whole message to UCS-2 — halving
+  // the segment and eating the payment-intent id off the end of the preview, which is the one
+  // thing in here nobody can reconstruct.
+  const money = `${dispute.amountCents} cents (${dispute.currency.toUpperCase()})`;
+  const payment = await deps.repo.getPaymentByIntentId(dispute.paymentIntentId);
+
+  if (!payment) {
+    await deps.alertPaidButUnbooked(
+      `Stripe DISPUTE (${dispute.state}, reason: ${dispute.reason}) for ${money} on payment ` +
+        `intent ${dispute.paymentIntentId}, which matches NO payment in Muster. The ledger is ` +
+        `unchanged; RESPOND IN STRIPE (this is expected for a Xola-era or hand-taken charge).`,
+    );
+    return { handled: true, outcome: "dispute_recorded" };
+  }
+
+  const write = DISPUTE_LEDGER_WRITE[dispute.state];
+  if (write) await deps.repo.markPaymentDisputed(payment.id, write);
+
+  await deps.alertPaidButUnbooked(
+    dispute.state === "inquiry"
+      ? `Stripe INQUIRY (reason: ${dispute.reason}) on ${money} for reservation ` +
+          `${payment.reservationId}. No money has moved and the booking still stands, but this ` +
+          `is the warning before a chargeback. RESPOND IN STRIPE before the deadline.`
+      : dispute.state === "won"
+        ? `Stripe dispute WON on ${money} for reservation ${payment.reservationId}. The funds ` +
+            `are back and the payment reads as paid again.`
+        : `Stripe DISPUTE ${dispute.state === "lost" ? "LOST" : "OPENED"} (reason: ` +
+            `${dispute.reason}) on ${money} for reservation ${payment.reservationId}. The ` +
+            `funds are OUT of the account and this booking no longer counts as paid` +
+            `${dispute.state === "lost" ? ". This is final." : ". RESPOND IN STRIPE."}`,
+  );
+  return { handled: true, outcome: "dispute_recorded" };
 }
 
 /**
@@ -646,7 +726,7 @@ async function recordPostGratuity(
   const reservation = await deps.repo.getReservation(reservationId);
   if (!reservation || reservation.source !== "muster" || reservation.status !== "booked") {
     await deps.alertPaidButUnbooked(
-      `⚠️ Post-trip gratuity paid for reservation ${reservationId}, but it is missing/cancelled — ` +
+      `Post-trip gratuity paid for reservation ${reservationId}, but it is missing/cancelled - ` +
         `Stripe session ${completed.sessionId}. RECONCILE MANUALLY (gratuity received, not attached).`,
     );
     return { handled: true, outcome: "gratuity_paid" };
@@ -702,7 +782,7 @@ async function recordBalancePayment(
     // No row to reference. Recording is impossible, not merely undesirable — the insert would
     // violate the FK, throw, and take this alert with it, which is the original #613 failure.
     await deps.alertPaidButUnbooked(
-      `⚠️ Balance payment could NOT be recorded — reservation ${reservationId} does not exist. ` +
+      `Balance payment could NOT be recorded - reservation ${reservationId} does not exist. ` +
         `Stripe session ${completed.sessionId}. RECONCILE / REFUND MANUALLY in Stripe.`,
     );
     return { handled: true, outcome: "balance_paid" };
@@ -716,8 +796,8 @@ async function recordBalancePayment(
   const event = await deps.repo.getEvent(reservation.eventId);
   if (reservation.status !== "booked" || event?.price === undefined) {
     await deps.alertPaidButUnbooked(
-      `⚠️ Balance payment recorded for reservation ${reservationId}, but it is cancelled or ` +
-        `unpriced — Stripe session ${completed.sessionId}. RECONCILE / REFUND MANUALLY in Stripe.`,
+      `Balance payment recorded for reservation ${reservationId}, but it is cancelled or ` +
+        `unpriced - Stripe session ${completed.sessionId}. RECONCILE / REFUND MANUALLY in Stripe.`,
     );
     return { handled: true, outcome: "balance_paid" };
   }
@@ -735,7 +815,7 @@ async function recordBalancePayment(
   );
   if (owed < 0) {
     await deps.alertPaidButUnbooked(
-      `⚠️ Reservation ${reservationId} OVERPAID by ${-owed} cents — a balance was likely paid ` +
+      `Reservation ${reservationId} OVERPAID by ${-owed} cents - a balance was likely paid ` +
         `twice (two checkout sessions raced). REFUND the excess MANUALLY in Stripe.`,
     );
   }

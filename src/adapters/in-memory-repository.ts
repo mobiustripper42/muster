@@ -537,6 +537,18 @@ export class InMemoryRepository implements Repository {
       status: total >= p.amountCents ? "refunded" : "partially_refunded",
     });
   }
+  async markPaymentDisputed(
+    id: PaymentId,
+    status: "disputed" | "dispute_lost" | "succeeded",
+  ): Promise<void> {
+    // Mirrors the postgres `where ... and status not in ('refunded','partially_refunded')`:
+    // a refund carries an amount a dispute status would erase, and both already count as
+    // not-paid, so the refund detail wins. See the port doc for why.
+    const p = this.#payments.get(id);
+    if (!p) return;
+    if (p.status === "refunded" || p.status === "partially_refunded") return;
+    this.#payments.set(id, { ...clone(p), status });
+  }
   async listPaymentsForReservation(reservationId: ReservationId): Promise<Payment[]> {
     return [...this.#payments.values()]
       .filter((p) => p.reservationId === reservationId)

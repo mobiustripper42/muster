@@ -125,7 +125,32 @@ export function chargeNowCents(
  * booking rendered "Paid $0.00" beside a balance that said otherwise (#522 review).
  */
 export const countsAsPaid = (p: { status: PaymentStatus }): boolean =>
-  p.status !== "refunded";
+  PAID_STATUSES.has(p.status);
+
+/**
+ * **An ALLOW-list, and the direction is the point (issue #723).**
+ *
+ * This was `status !== "refunded"` — a deny-list — and the comment on `balanceOwedCents` below
+ * claimed the compiler would force a revisit "when the union widens to disputes or chargebacks".
+ * It would not have. `!== "refunded"` type-checks cleanly against any wider union, so adding
+ * `disputed` to `PaymentStatus` would have compiled green and counted a chargeback as money in
+ * all five call sites at once: `balanceOwedCents`, `/admin/purchases` (`purchases-view.ts`), the
+ * calendar detail, the cancel refund math, and `refund-payment`'s own guard.
+ *
+ * The `payments.status` column carries no CHECK constraint (deliberately — DEC-131), so nothing
+ * at the database layer rejects an unexpected value either. This set is the only guard there is.
+ *
+ * Listed as a `Set<PaymentStatus>` rather than a `switch` because the failure mode to design
+ * against is a value arriving that the union does NOT carry — a row written by an older deploy,
+ * a hand-edit, a future migration. A `switch` with a `default: return true` reintroduces exactly
+ * the bug; a set lookup answers `false` for anything it was never taught, which is the safe
+ * answer for a question that means "is this real money".
+ */
+const PAID_STATUSES: ReadonlySet<PaymentStatus> = new Set([
+  "succeeded",
+  // Still money: only the refunded PART is netted out, and `balanceOwedCents` does that below.
+  "partially_refunded",
+]);
 
 export function balanceOwedCents(
   fareCents: number,

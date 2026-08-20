@@ -6,7 +6,7 @@ branch: task/699-form-error-keeps-your-work
 started: 2026-08-19T17:52:38Z
 ended:
 points:
-pr_numbers: [782]
+pr_numbers: [782, 786]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/37b3191d-57cf-52a8-ab48-c68f70f9c8ad.jsonl
 ---
@@ -58,6 +58,45 @@ and says why. Same family as issue #776.
 **Points:** 5
 **Branch:** task/699-form-error-keeps-your-work
 **Opened at:** 2026-08-19T21:53:11Z
+
+## Task 2: Concurrent offerings share the calendar column (issue #702)
+
+**Completed:**
+- `src/reservations/calendar-grid.ts` — `assignLanes`: cluster-scoped lane packing on half-open
+  intervals, returning placements parallel to the input. 10 tests written first and watched
+  failing (`src/reservations/calendar-grid.test.ts`).
+- `app/(admin)/admin/calendar/calendar-view.tsx` — lane geometry per card, computed over the cards
+  the current filter *draws* (over all slots it would leave a gap where a hidden card's lane was).
+  One lane keeps the original inset byte-for-byte, so ordinary days are unchanged.
+- `db/seed-concurrent-dev.ts` + `npm run db:seed:concurrent` — nothing in the repo produced this
+  state; the e2e reservation world has exactly one offering. Two extra LIVE offerings on Brew 3
+  only, one of them at 14:00 so it *partially* overlaps the 13:30 rather than matching it.
+- `e2e/calendar.spec.ts` — two cases asserting geometry (pairwise non-overlap; single-offering
+  columns keep near-full width), not card count.
+
+**The thing worth remembering:** overlap here is an interval question, not an equal-start-time
+one. A 14:00 departure starting inside a 13:30 trip collides exactly as a second 13:30 does, and a
+check keyed on matching times finds one and misses the other *while looking correct* — the
+leftover overlap then reads as a rendering glitch rather than a missing rule. The fixture carries
+that case deliberately for the same reason.
+
+**Screenshots drove the review.** Captured before/after at both viewports via a throwaway spec
+(deleted before commit) into `/tmp/muster-702/`, sent to the operator over `tailscale file cp
+<files> <node>:`. That loop — build, screenshot, send, adjust — is worth repeating on any visual
+change; it caught the design question (three lanes at 375px is legible but tight) that no
+assertion would have raised.
+
+**Code review:** clean, 0 findings. It traced the sweep by hand and confirmed neither e2e case can
+pass vacuously. Named one piece of standing debt not from this diff: `calendar-view.tsx` was
+already 855 lines mixing filter logic, geometry and three card-render branches.
+
+**Open, operator's call:** three lanes at 375px wraps the label to two lines. Ship as-is, bare-time
+it at 3+ lanes, or lane only above a breakpoint. Deferred deliberately, not forgotten.
+
+**PR:** [PR #786](https://github.com/mobiustripper42/muster/pull/786)
+**Points:** 3
+**Branch:** task/702-calendar-lanes
+**Opened at:** 2026-08-20T01:25:03Z
 
 **Next Steps:**
 

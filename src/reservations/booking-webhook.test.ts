@@ -911,6 +911,25 @@ describe("processBookingWebhook — charge.dispute.* records the chargeback (iss
     expect(alert.mock.calls[1]![0]).toMatch(/LOST/);
   });
 
+  it("a status this deploy does not recognise writes NOTHING and says so", async () => {
+    // Reachable only at runtime: Stripe adds a ninth dispute status and this deploy's pinned SDK
+    // has not been bumped, so `disputeState`'s exhaustive switch matches nothing. It used to
+    // return `undefined`, which wrote nothing (right) and then alerted "DISPUTE OPENED" (wrong —
+    // it announces an interpretation we did not have). The honest answer is that we cannot tell
+    // whether the money moved, so the row is left alone and the alert names the gap.
+    const repo = await paidWorld();
+    const { deps, alert } = makeDeps(repo);
+
+    const r = await processBookingWebhook(deps, dispute({ state: "unknown" }), FAKE_SIGNATURE);
+
+    expect(r).toMatchObject({ handled: true, outcome: "dispute_recorded" });
+    expect(await repo.getPayment(asId<"PaymentId">("pay-1"))).toMatchObject({
+      status: "succeeded",
+    });
+    expect(alert.mock.calls[0]![0]).toMatch(/does not recognise/);
+    expect(alert.mock.calls[0]![0]).not.toMatch(/DISPUTE OPENED/);
+  });
+
   it("redelivery is idempotent — the same event is the same write", async () => {
     const repo = await paidWorld();
     const { deps, alert } = makeDeps(repo);

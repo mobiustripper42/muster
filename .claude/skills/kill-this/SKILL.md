@@ -18,11 +18,21 @@ grep -l "^status: open" .sessions-worktree/sessions/*.md 2>/dev/null
 
 **No match:** STOP. The user must run `/its-alive` first. (If `.sessions-worktree/` doesn't exist, that's the same sign — `/its-alive` Step 0.6 creates the worktree.)
 
-**More than one match — stop and ask, every time.** Two open files means a session somewhere never reached its own `/its-dead`, or two windows are genuinely running concurrently, which `/its-alive` Step 3 supports. **List the candidates with their `session:`, `branch:` and `started:` and let the user pick.**
+**More than one match — resolve it from what this window knows, and only ask when it knows nothing.**
 
-Do not try to identify the right one from inside the session. There is no reliable way: the obvious candidate, matching `transcript:`, requires the running session to know its own JSONL path, and it cannot — `/its-alive` Step 5 derives it by globbing the project directory and taking the newest file, which is a guess that is *wrong* in exactly the case that matters, two concurrent windows writing to the same directory. An instruction that cannot be followed is worse than a bad default, because it reads as solved.
+**Name your candidate and get one word back. Do not proceed unconfirmed, and do not make the user do the work of choosing.**
 
-Do not sort, and do not take the first. `... | head -1` returns the lexically-earliest filename, and session filenames start with a date, so on the exact input this guard exists for it silently selects the **stale** file. Nothing errors: `head -1` always returns something.
+If this window ran `/its-alive`, you have a strong candidate: you wrote that file, and its name and `session:` are in this conversation. Say which one, in one line, with the reason — *"session 90, the file this window opened; it already carries Task 1"* — and wait for a yes.
+
+**Why it is a candidate and not an answer.** The belief is narrative, not mechanical, and there is a specific way it goes wrong: `/restart-this` Step 4 prints `Session file:` and `Branch:` into a window that **never ran `/its-alive`**, producing the identical evidence shape. Add compaction — a long window that opened a session hours and several tasks ago — and the provenance of those strings is gone while the strings remain. Nothing on disk distinguishes "I opened this" from "I was told this." The corroborating `## Task` blocks don't close it either: on a window's *first* `/kill-this` every candidate has zero of them.
+
+So this is a confirmation, not a prompt to choose. The user reads one line and says yes; they don't read a table and reconstruct which window is which. **If you have no candidate** — a resumed window, a fresh one, no memory of opening anything — list the candidates with their `session:`, `branch:` and `started:` and let the user pick. Do not infer from timestamps, order, or which branch looks busier.
+
+**Record the pick where it survives.** Name the session file in the `## Task` block you write in Step 5. A wrong pick otherwise leaves no artifact anywhere, and `/retro` reads these files later without any way to know.
+
+**Do not use `transcript:`.** It requires the running session to know its own JSONL path, and it cannot: `/its-alive` Step 5 derives it by globbing the project directory and taking the newest file, which is a guess and is *wrong* in exactly the case that matters — two concurrent windows writing to the same directory. An instruction that cannot be followed is worse than a bad default, because it reads as solved.
+
+**Do not sort, and do not take the first.** `... | head -1` returns the lexically-earliest filename, and session filenames start with a date, so when the stale session opened *earlier* — the ordinary shape of a session left open from a previous day — it silently selects that one. Nothing errors: `head -1` always returns something. **It will appear to work whenever the stale file happens to sort later, which is why it survived: the outcome depends on two timestamps, not on the rule being right.**
 
 ### Step 0.1 — Capture the branch, and check it against the session
 
@@ -107,6 +117,31 @@ Get the project's trigger table from `.claude/CLAUDE-context.md` under `## Blast
 **If one or more hit, run the free local pass first, then surface the paid one.** A trigger that only ever produces a suggestion to spend money produces nothing on the days you decide not to spend it — and those are exactly the PRs it fired on.
 
 1. **Run `/security-review`** against the branch. It is local, unbilled, and aimed at this class: authorization boundaries, injection, secret handling, unsafe defaults, failure modes that fail open. This is not a duplicate of Step 3 — `@code-review` hunts the project's conventions and invariants; this hunts the ways a hostile or malformed input gets through. Fold its findings into the PR body under their own heading, so the reviewer can see which pass produced what.
+
+   **`/security-review` resolves the branch from the shell's working directory, not from this task.** It is the same wrong-tree class as Step 0.1, and it fails worse here: in a linked-worktree session it hands back a careful review **of some other branch's diff**, which reads exactly like a clean pass on yours. A security pass that reviewed the wrong code and reported nothing is worse than one that never ran, because Step 3.6 will print a `✓` for it.
+
+   **You can detect this, and you cannot fix it from inside the session.** Both halves matter and the second one is where an earlier version of this step was wrong.
+
+   **Detect:** the pass echoes a `GIT STATUS` block with `On branch <name>` and a `FILES MODIFIED` list ahead of its findings. Both must match `$BRANCH` and `git diff $(git merge-base HEAD main)...HEAD --name-only`. Verified against real invocations — this comparison genuinely works, and it is what caught the case below.
+
+   **Do not try to re-run `/security-review` "from the right checkout."** Its working directory is a property of the **session**, pinned by the harness at launch; no `cd`, no `git -C`, no wrapper moves it. That instruction cannot be carried out and only looks like a remedy.
+
+   **Run the pass yourself instead, against a diff you name explicitly.** `git` reads any directory and any revision — the cwd was never the constraint, only `/security-review`'s use of it was. Spawn `@code-review` with a security brief and have it read the diff by revision:
+
+   ```
+   cd <repo holding $BRANCH>
+   git fetch -q origin
+   git diff $(git merge-base origin/$BASE origin/$BRANCH)...origin/$BRANCH
+   git show origin/$BRANCH:<path>          # full file, when a hunk isn't enough
+   ```
+
+   Give the agent the blast-radius triggers this diff hit and tell it to hunt those specifically — authenticity and replay on a webhook, sign-flips and double-counting on money math, `update`/`delete`/`alter type` in a migration, role gates on a newly-exposed surface, handlers that fail open. **Require it to state the branch and file count it actually reviewed at the top**, so the mismatch you just caught cannot recur silently one level down.
+
+   That is a real pass, not a substitute for one: verified by running it from a seeds session against muster's PR #788 — 27 files, correct branch, one genuine finding on out-of-order Stripe dispute redelivery.
+
+   Mark it `✓` with the branch named. Only if you cannot produce the diff at all — no access to the repo — mark it `✗ did not run against this branch`, say so in the PR body, and point the user at `/code-review ultra` on the PR. Never fold findings from a diff you did not ship: a careful review of someone else's branch reads exactly like a clean pass on yours.
+
+   Observed twice in muster. First: the shell sat in a checkout that had moved on to `task/724-cancel-reason` and the pass came back about that branch, on a PR touching the money path four ways — nothing said so. Then, after this step told the session to re-run from the right tree, it produced **the same output again**, plus that tree's unrelated dirty `e2e/calendar.spec.ts` — which is what proved the redirect is impossible rather than merely awkward.
 2. **Then print exactly this and continue** — never block, never run the billed tool:
 
 ```
@@ -128,6 +163,7 @@ Review passes:
   ✓ @code-review       — <N> findings: <one-line verdict>
   ✓ /security-review   — <N> findings: <one-line verdict>      ← only when a trigger hit
   ⊘ /security-review   — not run (no blast-radius trigger)     ← otherwise
+  ✗ /security-review   — ran against task/724, not this branch ← wrong tree, or errored
   ⊘ /code-review ultra — never automatic; yours to invoke
 ```
 

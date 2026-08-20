@@ -49,6 +49,26 @@ function disputeState(status: Stripe.Dispute.Status): DisputeState {
       return "won";
     case "lost":
       return "lost";
+    default: {
+      // **Both halves are needed, and an earlier cut had only the first.**
+      //
+      // The `never` assignment is the COMPILE-time half: widen `Stripe.Dispute.Status` by
+      // bumping the SDK and `status` stops being `never` here, so `typecheck` fails in this one
+      // file rather than the ledger quietly mis-stating whether money is in the account.
+      //
+      // The `return` is the RUN-time half, and the exhaustive switch alone did not have it. The
+      // union is a claim the pinned SDK makes at build time about a string that arrives over the
+      // wire months later: Stripe adds a status, this deploy has not been bumped, and the switch
+      // matched nothing. It returned `undefined` — which is not a `DisputeState`, wrote nothing
+      // to the ledger, and fell through to the alert branch announcing "DISPUTE OPENED".
+      //
+      // That is the same shape as the defect this whole change exists to fix (issue #723): a
+      // compile-time guarantee assumed to cover a runtime path. `unknown` writes nothing, which
+      // is the right default for a state we cannot interpret, and says so out loud.
+      const unreachable: never = status;
+      void unreachable;
+      return "unknown";
+    }
   }
 }
 

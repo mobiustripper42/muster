@@ -111,8 +111,12 @@ export interface RefundRecorded {
  * - `live` — a real dispute in flight. Treat the funds as gone while it runs.
  * - `won` — resolved our way, the money came back. Also carries `prevented`.
  * - `lost` — resolved against us, the money is gone for good.
+ * - `unknown` — a status the PINNED SDK's union does not contain, which can only happen at
+ *   runtime: Stripe adds one and this deploy has not been bumped. **Writes nothing to the
+ *   ledger and alerts loudly**, because the honest answer to "did the money move" is that we
+ *   cannot tell, and guessing either way is worse than saying so.
  */
-export type DisputeState = "inquiry" | "live" | "won" | "lost";
+export type DisputeState = "inquiry" | "live" | "won" | "lost" | "unknown";
 
 /**
  * A verified `charge.dispute.*` event (issue #723), normalized off the provider's shape.

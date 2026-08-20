@@ -648,6 +648,10 @@ const DISPUTE_LEDGER_WRITE: Record<
   inquiry: null,
   live: "disputed",
   lost: "dispute_lost",
+  // A status the pinned Stripe SDK does not know (see `disputeState`). We cannot tell whether
+  // the money moved, so we do not pretend either way — no write, and an alert that names the
+  // gap rather than dressing it as a dispute we understood.
+  unknown: null,
   // We won: the funds are reinstated, so the row goes back to being ordinary revenue. The
   // argument itself is not re-litigated here — the evidence and the deadlines live in the
   // Stripe dashboard, which stays the system of record for the dispute WORKFLOW (issue #723
@@ -697,7 +701,11 @@ async function recordDispute(
   if (write) await deps.repo.markPaymentDisputed(payment.id, write);
 
   await deps.alertPaidButUnbooked(
-    dispute.state === "inquiry"
+    dispute.state === "unknown"
+      ? `Stripe dispute on ${money} for reservation ${payment.reservationId} reported a status ` +
+          `this deploy does not recognise. The ledger was NOT changed because we cannot tell ` +
+          `whether the money moved. CHECK STRIPE, and update the Stripe SDK.`
+      : dispute.state === "inquiry"
       ? `Stripe INQUIRY (reason: ${dispute.reason}) on ${money} for reservation ` +
           `${payment.reservationId}. No money has moved and the booking still stands, but this ` +
           `is the warning before a chargeback. RESPOND IN STRIPE before the deadline.`

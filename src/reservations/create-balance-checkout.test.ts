@@ -170,6 +170,44 @@ describe("createBalanceCheckout", () => {
     expect(await createBalanceCheckout(repo, new FakePaymentPort(), RES, URLS)).toMatchObject({ reason: "no_balance" });
   });
 
+  it("REFUSES to mint a balance charge against a disputed payment (issue #723)", async () => {
+    // The trap this guard exists for: `countsAsPaid` excludes a disputed row, so `owed` above
+    // jumps back to the FULL amount and from this function's side a balance is genuinely due.
+    // Minting it bills the customer again for money their bank is already clawing back, which
+    // turns one dispute into two. Same shape as the refund guard #616 added, arrived at from
+    // the other direction — a chargeback sets no `refundedCents`, so nothing else catches it.
+    const repo = await seed();
+    await repo.savePayment(depositPayment());
+    // Sanity: a balance IS owed here, so the refusal below is the guard and not an accident.
+    expect(await createBalanceCheckout(repo, new FakePaymentPort(), RES, URLS)).toMatchObject({
+      ok: true,
+    });
+
+    await repo.markPaymentDisputed(asId<"PaymentId">("pay_dep"), "disputed");
+    expect(await createBalanceCheckout(repo, new FakePaymentPort(), RES, URLS)).toMatchObject({
+      reason: "disputed",
+    });
+  });
+
+  it("REFUSES after a dispute we lost, too", async () => {
+    const repo = await seed();
+    await repo.savePayment(depositPayment());
+    await repo.markPaymentDisputed(asId<"PaymentId">("pay_dep"), "dispute_lost");
+    expect(await createBalanceCheckout(repo, new FakePaymentPort(), RES, URLS)).toMatchObject({
+      reason: "disputed",
+    });
+  });
+
+  it("mints again once a dispute is WON — the money is back and the balance is real", async () => {
+    const repo = await seed();
+    await repo.savePayment(depositPayment());
+    await repo.markPaymentDisputed(asId<"PaymentId">("pay_dep"), "disputed");
+    await repo.markPaymentDisputed(asId<"PaymentId">("pay_dep"), "succeeded");
+    expect(await createBalanceCheckout(repo, new FakePaymentPort(), RES, URLS)).toMatchObject({
+      ok: true,
+    });
+  });
+
   it("reservation_missing when it doesn't exist", async () => {
     const repo = new InMemoryRepository();
     await repo.setPaymentConfig({ depositMode: "deposit", depositPercent: 25, taxRateBps: 725 }, "now");

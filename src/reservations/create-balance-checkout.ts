@@ -18,7 +18,10 @@ import { balanceOwedCents } from "./payment-config.js";
 
 export type BalanceCheckoutStart =
   | { ok: true; url: string; sessionId: string; amountCents: number }
-  | { ok: false; reason: "reservation_missing" | "not_active" | "unpriced" | "no_balance" };
+  | {
+      ok: false;
+      reason: "reservation_missing" | "not_active" | "unpriced" | "no_balance" | "disputed";
+    };
 
 export async function createBalanceCheckout(
   repo: Repository,
@@ -47,6 +50,18 @@ export async function createBalanceCheckout(
   );
   // `<= 0` folds no_balance, already-paid, and full-mode into one predicate.
   if (owed <= 0) return { ok: false, reason: "no_balance" };
+
+  // A CHARGEBACK re-opens the balance exactly the way a refund does (issue #723): `countsAsPaid`
+  // excludes `disputed`, so `owed` above jumps back to the full amount. Without this guard the
+  // operator is offered a link that bills the customer AGAIN for the money their bank is
+  // currently clawing back — which is the fastest way to turn one dispute into two.
+  //
+  // Server-side, not just hidden in the pane. The pane's button is a courtesy; this is the
+  // thing that makes minting the charge impossible, including from a stale tab or a re-post.
+  // #616 added the same pair for refunds and this is the state that arrived after it.
+  if (payments_.some((p) => p.status === "disputed" || p.status === "dispute_lost")) {
+    return { ok: false, reason: "disputed" };
+  }
 
   const session = await payments.createCheckoutSession({
     amountCents: owed,

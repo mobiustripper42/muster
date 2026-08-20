@@ -544,9 +544,17 @@ export class InMemoryRepository implements Repository {
     // Mirrors the postgres `where ... and status not in ('refunded','partially_refunded')`:
     // a refund carries an amount a dispute status would erase, and both already count as
     // not-paid, so the refund detail wins. See the port doc for why.
+    // `dispute_lost` is terminal — mirrors the postgres predicate. A stale `updated` redelivered
+    // after the `closed` that resolved it must not reopen a settled loss (issue #723).
     const p = this.#payments.get(id);
     if (!p) return;
-    if (p.status === "refunded" || p.status === "partially_refunded") return;
+    if (
+      p.status === "refunded" ||
+      p.status === "partially_refunded" ||
+      p.status === "dispute_lost"
+    ) {
+      return;
+    }
     this.#payments.set(id, { ...clone(p), status });
   }
   async listPaymentsForReservation(reservationId: ReservationId): Promise<Payment[]> {

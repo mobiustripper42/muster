@@ -324,22 +324,33 @@ missed. The **env vars** now live above under *Required for reservations + payme
 the full go-live runbook — seeding the catalog, verifying the dashboard, guarding test-vs-live keys —
 is still its own task (issue #623).
 
-### The endpoint must subscribe to `charge.refunded`
+### The endpoint must subscribe to `charge.refunded` and `charge.dispute.*`
 
-Muster's webhook handles four event types:
+Muster's webhook handles these event types:
 
 | Event | What it does |
 |---|---|
 | `checkout.session.completed` | hosted Checkout — balance + post-trip gratuity |
 | `payment_intent.succeeded` | the inline-Elements booking (DEC-134) |
 | `charge.refunded` | **reconciles a refund into the ledger (#616, DEC-153)** |
+| `charge.dispute.created` | **a chargeback or an inquiry opened (issue #723)** |
+| `charge.dispute.updated` | **its status moved — including an inquiry BECOMING a real dispute** |
+| `charge.dispute.closed` | **won or lost** |
 
-The **local** listener (`stripe listen`) forwards everything, so refunds reconcile in dev whether
-or not anyone thought about it. **A production endpoint subscribes to an explicit list**, and if
-`charge.refunded` is not on it there is no error anywhere: refunds still succeed at Stripe, and
-Muster simply never learns. The reservation keeps reading paid, the boat stays held,
-`balanceOwedCents` keeps billing the balance, and `/admin/purchases` keeps counting the revenue —
-which is the exact defect #616 exists to remove, reintroduced by a checkbox.
+The **local** listener (`stripe listen`) forwards everything, so all of this reconciles in dev
+whether or not anyone thought about it. **A production endpoint subscribes to an explicit list**,
+and if one of these is not on it there is no error anywhere: the event still happens at Stripe, and
+Muster simply never learns. For `charge.refunded` the reservation keeps reading paid, the boat
+stays held, `balanceOwedCents` keeps billing the balance, and `/admin/purchases` keeps counting the
+revenue — which is the exact defect #616 exists to remove, reintroduced by a checkbox.
+
+**The three dispute events fail the same way, and the money is already gone.** Without them a
+chargeback leaves the booking reading Paid while Stripe has pulled the funds back, no admin is
+texted, and the Disputed filter on `/admin/purchases` stays empty forever — which looks exactly
+like "no disputes" rather than "not subscribed". **`charge.dispute.updated` is not optional:** a
+dispute can open as a `warning_*` inquiry where no money has moved and only later become real, and
+that transition arrives on `updated`. Subscribe to `created` and `closed` alone and Muster records
+the harmless inquiry and never learns the funds actually left.
 
 Nothing in the repo can verify the subscription list (#544). It has to be read off the dashboard.
 

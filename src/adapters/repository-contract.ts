@@ -1642,6 +1642,12 @@ export function runRepositoryContract(
       await repo.markPaymentDisputed(id, "dispute_lost");
       expect(await repo.getPayment(id)).toMatchObject({ status: "dispute_lost" });
 
+      // ...but a LOST dispute is terminal. Stripe does not guarantee delivery order, so a stale
+      // `charge.dispute.updated` can land after the `closed` that resolved it — and the dispute
+      // being closed, nothing further will ever arrive to correct the row.
+      await repo.markPaymentDisputed(id, "disputed");
+      expect(await repo.getPayment(id)).toMatchObject({ status: "dispute_lost" });
+
       // A REFUNDED row is not overwritten: the refund status carries `refundedCents`, which a
       // dispute status would erase, and both already count as not-paid. Refund detail wins.
       await repo.savePayment(

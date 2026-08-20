@@ -70,6 +70,16 @@ export interface DetailMoney {
   /** `> 0` ⇒ still owed (deposit booking); `<= 0` ⇒ settled. */
   balanceCents: number;
   refundedCents: number;
+  /**
+   * A chargeback is live or lost on this booking (issue #723).
+   *
+   * Its own field rather than something the pane infers from the numbers, because a dispute is
+   * arithmetically INVISIBLE here: it sets no `refundedCents`, and its only effect is that
+   * `paidCents` drops and `balanceCents` rises — which is indistinguishable from a deposit
+   * booking that simply hasn't paid its balance yet. That ambiguity is the bug: without this
+   * flag the pane offers a balance link to a customer whose bank is clawing the money back.
+   */
+  disputed: boolean;
   /** `Event.price` absent ⇒ the fare is unknown and the money block can't be trusted. */
   priceKnown: boolean;
 }
@@ -154,6 +164,7 @@ export function buildReservationDetail(input: ReservationDetailInput): Reservati
       paidCents,
       balanceCents: balanceOwedCents(fareCents, taxRateBps, payments),
       refundedCents,
+      disputed: payments.some((p) => p.status === "disputed" || p.status === "dispute_lost"),
       priceKnown,
     },
     crew: crewLinkOf(input.shift),

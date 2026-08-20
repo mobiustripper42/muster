@@ -81,6 +81,8 @@ function balanceErrorMessage(reason: string): string {
       return "This departure has no recorded price, so a balance can’t be computed.";
     case "reservation_missing":
       return "Balances are Muster-side only — this reservation is owned by Xola.";
+    case "disputed":
+      return "There’s a chargeback on this booking. The balance reads as owed because the bank pulled the money back — billing again would make it two disputes, not one. Resolve it in Stripe first.";
     case "stripe_not_configured":
       return "Stripe isn’t configured on this deployment, so no link can be minted.";
     case "stripe_unreachable":
@@ -431,6 +433,17 @@ export function ReservationDetailPane({
                   <span className="font-mono">{formatCents(money.refundedCents)}</span>
                 </Row>
               )}
+              {/* **Say the word "chargeback" (issue #723).** Without this the dispute is
+                  arithmetically invisible on the surface an operator actually lands on from a
+                  bank or customer call: Paid drops, Balance rises, and it looks exactly like a
+                  deposit booking that hasn't settled. That misreading has an expensive next
+                  step — collect the balance — which is why the button above is hidden and this
+                  line takes its place. Detail (reason, deadline, evidence) lives in Stripe. */}
+              {money.disputed && (
+                <Row label="Chargeback">
+                  <span className="text-bad">Disputed — money pulled back by the bank</span>
+                </Row>
+              )}
               {/* **A cancelled booking owes nothing.** `balanceOwedCents` is fare+tax minus what
                   was paid, which is a live number for a live trip and meaningless once the trip
                   is off — it kept reading "Balance due $445.36" in bold on a booking that had
@@ -469,11 +482,18 @@ export function ReservationDetailPane({
             - REFUNDED. A refund reduces `paid`, so `balanceOwedCents` goes back UP
               (`payment-config.ts:136`). Left alone, the pane would offer to re-bill a customer
               for money the operator had just handed back — with `createBalanceCheckout` happy
-              to mint that charge, because from its side a balance is genuinely owed. */}
+              to mint that charge, because from its side a balance is genuinely owed.
+            - DISPUTED (issue #723). The same trap, arrived at from the other direction and
+              WORSE: a chargeback sets no `refundedCents`, so the guard above does not catch it,
+              and `countsAsPaid` now excludes the disputed row — so the balance jumps back to
+              the full amount and this button offers to bill a customer whose bank is currently
+              clawing the money back. `createBalanceCheckout` refuses it server-side too
+              (`reason: "disputed"`); this only stops the operator being offered it. */}
         {money.priceKnown &&
           money.balanceCents > 0 &&
           v.status === "booked" &&
           money.refundedCents === 0 &&
+          !money.disputed &&
           balance && (
           <div className="mt-3 border-t border-line pt-3">
             {balance.url ? (

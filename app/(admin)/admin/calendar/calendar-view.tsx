@@ -857,7 +857,7 @@ export function CalendarGrid({
                       // tint still says it against the legend; this says it in words on hover, and
                       // it costs nothing when the card is full width.
                       title={`open · ${shortTime(s.time)}${offering ? ` · ${offering.name}` : ""}`}
-                      className={`absolute flex items-center justify-center overflow-hidden rounded-lg border border-dashed text-[10px] text-faint ${offeringOpenClass(
+                      className={`absolute flex items-center justify-center overflow-hidden rounded-lg border-2 border-dashed text-[10px] text-faint ${offeringOpenClass(
                         String(s.offeringId),
                       )}${ring}`}
                       style={pos}

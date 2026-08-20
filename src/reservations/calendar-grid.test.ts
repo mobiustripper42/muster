@@ -70,7 +70,9 @@ describe("offering colour (derived, #495)", () => {
       /^border-vessel-[1-6]\/45 bg-vessel-[1-6]\/15$/,
     );
     expect(offeringDotClass("offering-reservation-demo")).toMatch(/^bg-vessel-[1-6]$/);
-    expect(offeringOpenClass("offering-reservation-demo")).toMatch(/^border-vessel-[1-6]\/40$/);
+    // /70, not /45 like the booked tint: an open card has no fill, so the border is the only
+    // thing carrying the offering's colour — and since #702 it can be 34px wide.
+    expect(offeringOpenClass("offering-reservation-demo")).toMatch(/^border-vessel-[1-6]\/70$/);
   });
 });
 

@@ -188,14 +188,22 @@ const OFFERING_DOT_CLASSES = [
   "bg-vessel-6",
 ] as const;
 
-/** Dashed-border tint (no fill) for an OPEN/available slot of this offering. */
+/**
+ * Dashed-border tint (no fill) for an OPEN/available slot of this offering.
+ *
+ * **Stronger than the booked tint on purpose.** A booked card carries its colour in a `/15` fill
+ * and only edges it at `/45`; an open card has no fill, so the border is the entire signal. At
+ * `/40` on a 1px dashed line it read as grey — which was tolerable at full column width and stopped
+ * being so once concurrent slots share a column (#702) and a card can be 34px wide. The view pairs
+ * these with `border-2`; opacity alone doesn't survive a dashed stroke that thin.
+ */
 const OFFERING_OPEN_CLASSES = [
-  "border-vessel-1/40",
-  "border-vessel-2/40",
-  "border-vessel-3/40",
-  "border-vessel-4/40",
-  "border-vessel-5/40",
-  "border-vessel-6/40",
+  "border-vessel-1/70",
+  "border-vessel-2/70",
+  "border-vessel-3/70",
+  "border-vessel-4/70",
+  "border-vessel-5/70",
+  "border-vessel-6/70",
 ] as const;
 
 /** 1-based palette index (1…{@link OFFERING_COLOR_COUNT}) for an offering id — stable hash. */

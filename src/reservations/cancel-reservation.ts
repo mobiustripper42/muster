@@ -24,7 +24,7 @@
  */
 import { formShifts, type FormResult } from "../builder/form-shifts.js";
 import { logFormAudit } from "../oracle/audit-log.js";
-import type { Payment } from "../domain/entities.js";
+import type { CancelledBy, Payment } from "../domain/entities.js";
 import type { EventId, ReservationId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 import { countsAsPaid } from "./payment-config.js";
@@ -35,8 +35,11 @@ import { operatorCancelRefundCents, refundOwedCents } from "./refund-terms.js";
  * given — which is why `refund-terms.ts` keeps the two policies as separate functions rather
  * than one function with a flag. Weather at two hours' notice is a full refund; a customer
  * changing their mind at two hours' notice is nothing.
+ *
+ * Defined on `Reservation` since #724, because it is now persisted rather than only routed. This
+ * re-export keeps the existing import sites working and keeps one definition.
  */
-export type CancelledBy = "customer" | "operator";
+export type { CancelledBy };
 
 export interface CancelQuoteInput {
   by: CancelledBy;
@@ -124,9 +127,16 @@ export type CancelOutcome =
     }
   | { ok: false; reason: "reservation_missing" | "not_muster" };
 
+/**
+ * `by` is REQUIRED, not optional (#724). Every caller already knows the answer — the admin
+ * confirm asks it to pick a refund policy — and an optional parameter is how a surface ends up
+ * recording nothing while looking correct. It is written once and never rewritten; see
+ * `Reservation.cancelledBy`.
+ */
 export async function cancelReservation(
   deps: CancelDeps,
   reservationId: ReservationId,
+  by: CancelledBy,
 ): Promise<CancelOutcome> {
   const reservation = await deps.repo.getReservation(reservationId);
   if (!reservation) return { ok: false, reason: "reservation_missing" };
@@ -139,6 +149,7 @@ export async function cancelReservation(
     await deps.repo.saveReservation({
       ...reservation,
       status: "cancelled",
+      cancelledBy: by,
       updatedAt: deps.now(),
     });
   }

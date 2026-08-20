@@ -1,0 +1,17 @@
+-- Who ended a booking (#724).
+--
+-- The cancel confirm has always asked customer-vs-operator, because the refund policy branches
+-- on it (`src/reservations/refund-terms.ts`). The answer picked a policy and was discarded, so
+-- the refund AMOUNT was the only surviving evidence of which branch ran — and the operator can
+-- type over the amount. "Why did we lose this trip?" and "how many did we cancel for weather
+-- last season?" had no answer here, and could never be reconstructed for a booking already
+-- cancelled.
+--
+-- Additive and nullable, so it is a no-op for every existing row: a live booking has no answer,
+-- and neither does a cancellation made before this column existed. Deliberately NOT backfilled —
+-- guessing 'customer' for historical rows would manufacture evidence, and this column's whole
+-- purpose is to be evidence.
+--
+-- Text rather than an enum, matching `status` and `source` on the same table: the values are
+-- validated in the domain (`CancelledBy`), and DEC-131 keeps business rules out of the schema.
+alter table reservations add column cancelled_by text;

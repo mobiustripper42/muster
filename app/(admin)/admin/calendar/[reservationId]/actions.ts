@@ -125,6 +125,8 @@ export async function cancelBooking(formData: FormData): Promise<void> {
 
   let result: Awaited<ReturnType<typeof cancelReservation>>;
   try {
+    // `by` is what the confirm asked and what the refund branched on; since #724 it is also
+    // recorded on the reservation rather than surviving only as a refund figure.
     result = await cancelReservation(
       {
         repo: getRepo(),
@@ -135,6 +137,7 @@ export async function cancelBooking(formData: FormData): Promise<void> {
         relayFormNotices: forwardFormNotices,
       },
       asId<"ReservationId">(reservationId),
+      by,
     );
   } catch {
     redirect(back({ cancelErr: "unreachable" }));

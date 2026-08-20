@@ -547,6 +547,27 @@ if (!dbUp) {
       await repo.saveEvent({ ...event!, status: "cancelled" });
     }
 
+    it("keeps WHO cancelled across a write and a read (#724)", async () => {
+      // The in-memory double stores whole entities, so it cannot fail this — a missing column,
+      // a missing bind parameter or a missing mapping all look identical there and only break
+      // against real Postgres. That is the entire reason this lives here: the field's value is
+      // that it survives to be asked about next season.
+      await pool.query(`truncate ${TABLES.join(", ")} restart identity cascade`);
+      const repo = new PostgresRepository(pool);
+
+      const booked = await writeSlotBooking(repo, buyer("13:30", "sess_by_1", "Cara"), NOW4);
+      expect(booked.outcome).toBe("booked");
+      const id = (booked as { reservation: { id: ReservationId } }).reservation.id;
+
+      const live = await repo.getReservation(id);
+      expect(live?.cancelledBy).toBeUndefined(); // a live booking has no answer
+
+      // Through the UPSERT's update branch, which is the path a cancel actually takes.
+      await repo.saveReservation({ ...live!, status: "cancelled", cancelledBy: "operator" });
+
+      expect((await repo.getReservation(id))?.cancelledBy).toBe("operator");
+    });
+
     it("the same slot can be SOLD AGAIN after a cancellation", async () => {
       await pool.query(`truncate ${TABLES.join(", ")} restart identity cascade`);
       const repo = new PostgresRepository(pool);

@@ -9,8 +9,10 @@ You are executing the session start ritual.
 ## Step 0 — Branch check
 
 **Worktree check first:** run `git rev-parse --git-dir`.
-- If the output contains `/worktrees/`: this is a **linked worktree session** (concurrent with another session). Skip the rest of Step 0 — the branch here is intentional. Note "Linked worktree" in the briefing output and continue to Step 0.6.
+- If the output contains `/worktrees/`: this is a **linked worktree session** — the normal shape of concurrent work under DEC-S048, created before this session started. Skip the rest of Step 0; the branch here is intentional. Note "Linked worktree" in the briefing and continue to Step 0.6.
 - Otherwise: continue.
+
+This is a **report**, not a decision. Nothing downstream branches on it: the session's shell, checkout and branch are the same thing either way, which is what lets every other skill use plain `git`.
 
 Run `git fetch origin` to refresh remote state. Capture `BRANCH=$(git branch --show-current)`.
 
@@ -122,9 +124,18 @@ esac
 
 Sanitize: lowercase, replace any non-`[a-z0-9.-]` with `-`, collapse repeats.
 
-**Concurrent session check** (now reads from the worktree, not main): `grep -l "^status: open" .sessions-worktree/sessions/*.md 2>/dev/null`. If a session is already open, ask:
-- **(a) concurrent** → set up a linked git worktree for the new task as before (separate from `.sessions-worktree/`, which is for the sessions branch — the linked worktree is for the new task's code branch).
-- **(b) stale** → mark `status: abandoned` in the open file and continue.
+**Concurrent session check:** `grep -l "^status: open" .sessions-worktree/sessions/*.md 2>/dev/null`. If a session is already open, report it — session number, branch, started — and ask whether it is **live** (another window is working right now: say so and continue, nothing to resolve) or **stale** (mark `status: abandoned` in that file and continue).
+
+**This skill creates exactly one worktree, `.sessions-worktree/`, and never another** (DEC-S048). A concurrent session's code worktree is made **before** the session exists, by the user, in a terminal:
+
+```
+git worktree add ../<repo>-<slug> -b task/<slug> main
+cd ../<repo>-<slug> && claude
+```
+
+Do not offer to create it here, and do not create it if asked. A worktree made mid-session cannot capture the shell — the harness pins the working directory where `claude` launched and resets any `cd`. The session would end up with its code in one checkout and its shell in another, which is the split every downstream skill then has to detect and work around. Creating the worktree first makes the session's shell, checkout and branch the same thing, which is what every skill already assumes.
+
+If the user asks for a concurrent worktree here, give them those two lines and stop. Starting the session is their next move, not this one's.
 
 ## Step 4 — Determine session number
 

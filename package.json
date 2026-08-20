@@ -32,6 +32,7 @@
     "db:seed:reservation": "tsx db/seed-reservation-dev.ts",
     "db:seed:xola": "tsx db/seed-xola-dev.ts",
     "db:seed:overlap": "tsx db/seed-overlap-dev.ts",
+    "db:seed:concurrent": "tsx db/seed-concurrent-dev.ts",
     "db:seed:completion": "tsx db/seed-completion-dev.ts",
     "db:seed:losing-asks": "tsx db/seed-losing-asks-dev.ts",
     "db:seed:timeclock": "tsx db/seed-timeclock-dev.ts",

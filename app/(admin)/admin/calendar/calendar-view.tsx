@@ -12,6 +12,7 @@ import {
 } from "@core/reservations/availability.js";
 import {
   DEFAULT_TRIP_MINUTES,
+  assignLanes,
   gridPosition,
   offeringColorClass,
   offeringDotClass,
@@ -656,6 +657,18 @@ export function CalendarGrid({
 
           {data.vessels.map((v) => {
             const colSlots = slotsByVessel.get(String(v.id)) ?? [];
+            // Lanes are computed over the cards this filter actually DRAWS (#702). Computing them
+            // over every slot would leave a gap where a hidden card's lane used to be — the "Open"
+            // tab would show a half-width card with nothing beside it.
+            const drawn = colSlots.filter(matchesFilter);
+            const lanes = assignLanes(
+              drawn.map((s) => ({
+                time: s.time,
+                durationMin:
+                  data.offeringById.get(String(s.offeringId))?.tripLengthMinutes ??
+                  DEFAULT_TRIP_MINUTES,
+              })),
+            );
             return (
               <div
                 key={String(v.id)}
@@ -665,7 +678,7 @@ export function CalendarGrid({
                     "repeating-linear-gradient(180deg, transparent 0, transparent calc(100%/13.5 - 1px), var(--color-line) calc(100%/13.5 - 1px), var(--color-line) calc(100%/13.5))",
                 }}
               >
-                {colSlots.map((s) => {
+                {drawn.map((s, drawnIndex) => {
                   const offering = data.offeringById.get(String(s.offeringId));
                   const durationMin = offering?.tripLengthMinutes ?? DEFAULT_TRIP_MINUTES;
                   const { topPct, heightPct } = gridPosition(s.time, durationMin);
@@ -679,10 +692,23 @@ export function CalendarGrid({
                   );
                   const onBoard = reservation ?? occupying?.reservation;
 
-                  if (!matchesFilter(s)) return null;
-
                   const key = `${s.time}-${String(s.offeringId)}`;
-                  const pos = { top: `${topPct}%`, height: `${heightPct}%` } as const;
+                  // Concurrent cards share the column instead of stacking (#702). One lane is the
+                  // ordinary day and keeps the original full-width inset exactly — this is
+                  // invisible until a boat-time is genuinely sold two ways.
+                  const { lane, laneCount } = lanes[drawnIndex] ?? { lane: 0, laneCount: 1 };
+                  const laneInset =
+                    laneCount > 1
+                      ? {
+                          left: `calc(${((lane / laneCount) * 100).toFixed(4)}% + 3px)`,
+                          width: `calc(${(100 / laneCount).toFixed(4)}% - 6px)`,
+                        }
+                      : { left: "3px", right: "3px" };
+                  const pos = {
+                    top: `${topPct}%`,
+                    height: `${heightPct}%`,
+                    ...laneInset,
+                  } as const;
 
                   if (s.status === "booked" || s.status === "unavailable") {
                     // `onBoard`, not `reservation`: a hull-busy slot carries no eventId of its
@@ -702,7 +728,7 @@ export function CalendarGrid({
                         </span>
                       </>
                     );
-                    const cls = `absolute left-[3px] right-[3px] flex flex-col justify-center overflow-hidden rounded-lg border px-2 py-1 ${offeringColorClass(
+                    const cls = `absolute flex flex-col justify-center overflow-hidden rounded-lg border px-2 py-1 ${offeringColorClass(
                       String(s.offeringId),
                     )} ${selected ? "ring-2 ring-ink ring-offset-1" : ""}`;
 
@@ -762,7 +788,7 @@ export function CalendarGrid({
                     // and unsellable, but only one is the operator's own and undoable from
                     // here — if they looked identical the legend would be the only thing
                     // saying which dark cards click, and a legend is not where you look.
-                    const cls = `absolute left-[3px] right-[3px] flex items-center justify-center overflow-hidden rounded-lg border text-[10px] ${
+                    const cls = `absolute flex items-center justify-center overflow-hidden rounded-lg border text-[10px] ${
                       hold ? "border-accent/60 font-medium text-accent" : "border-line text-muted"
                     }${askedRelease ? " ring-2 ring-ink ring-offset-1" : ""}`;
                     const style = {
@@ -826,7 +852,12 @@ export function CalendarGrid({
                       data-testid="cal-block"
                       data-vessel={String(s.vesselId)}
                       data-status="available"
-                      className={`absolute left-[3px] right-[3px] flex items-center justify-center overflow-hidden rounded-lg border border-dashed text-[10px] text-faint ${offeringOpenClass(
+                      data-lane={laneCount > 1 ? `${lane + 1}/${laneCount}` : undefined}
+                      // Which offering a sliver belongs to is the thing 1/n width takes away. The
+                      // tint still says it against the legend; this says it in words on hover, and
+                      // it costs nothing when the card is full width.
+                      title={`open · ${shortTime(s.time)}${offering ? ` · ${offering.name}` : ""}`}
+                      className={`absolute flex items-center justify-center overflow-hidden rounded-lg border border-dashed text-[10px] text-faint ${offeringOpenClass(
                         String(s.offeringId),
                       )}${ring}`}
                       style={pos}

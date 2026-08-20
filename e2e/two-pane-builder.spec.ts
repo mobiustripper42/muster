@@ -7,7 +7,7 @@
  * navigation preserves the open pane. The standalone route stays untouched for
  * deep links.
  */
-import { test, expect, resetAndSeed, signInAsAdmin } from "./fixtures.js";
+import { test, expect, clickHydrated, resetAndSeed, signInAsAdmin } from "./fixtures.js";
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 const today = () => iso(new Date());
@@ -155,13 +155,19 @@ test.describe("two-pane builder (9.5, DEC-085)", () => {
     const lastRow = boardCol.locator('[id^="shiftrow-"]').last();
     const rowId = (await lastRow.getAttribute("id"))!;
     const sel = rowId.replace("shiftrow-", "");
-    await lastRow.getByRole("link").first().click();
+    // `clickHydrated`, though these are plain `<a>`s and navigate without JS (#763). What is
+    // under test is not the navigation — it is the REVEAL, which is the island's nav-keyed
+    // effect. A click that beats hydration still navigates, as a full page load rather than a
+    // client-side route change, and the effect that scrolls the deep row back into view never
+    // fires for it. The row then sits below the fold and `toBeInViewport` waits out its whole
+    // timeout, which reads as the island being broken rather than never having run.
+    await clickHydrated(lastRow.getByRole("link").first());
     await page.waitForURL((u) => u.searchParams.get("sel") === sel);
     await expect(lastRow).toBeInViewport();
 
     // Flip View→Edit: same rows, pane stays open, board-col re-renders (resets to
     // top). The nav-keyed effect must re-reveal the still-selected deep row.
-    await page.getByRole("link", { name: "Edit", exact: true }).click();
+    await clickHydrated(page.getByRole("link", { name: "Edit", exact: true }));
     await page.waitForURL(/mode=edit/);
     await expect(page.getByTestId("board-col").locator(`#${rowId}`)).toBeInViewport();
     expect(await page.evaluate(() => window.scrollY)).toBeLessThan(5);

@@ -7,7 +7,15 @@
  * (`src/admin/time-clock-report.test.ts`, `payroll-reconcile.test.ts`); this is the surface and
  * the gate.
  */
-import { test, expect, resetAndSeed, signInAsCrew, signInAsAdmin } from "./fixtures.js";
+import {
+  test,
+  expect,
+  clickHydrated,
+  resetAndSeed,
+  selectOptionHydrated,
+  signInAsCrew,
+  signInAsAdmin,
+} from "./fixtures.js";
 
 /** The pay period containing today — what `/admin/payroll` opens on. */
 async function currentPeriodValue(page: import("@playwright/test").Page): Promise<string> {
@@ -192,7 +200,10 @@ test.describe("admin /admin/payroll — estimate vs actual, and the export gate"
       .locator("option")
       .evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
     const i = values.indexOf(await select.inputValue());
-    await select.selectOption(values[i - 1]!);
+    // `selectOptionHydrated` (#763): this select navigates from its `onChange`, so a selection
+    // made before the handler attaches changes the value and goes nowhere — and the
+    // `waitForURL` below then burns its full timeout on a navigation nobody asked for.
+    await selectOptionHydrated(select, values[i - 1]!);
     await page.waitForURL(/period=/);
     const period = new URL(page.url()).searchParams.get("period")!;
 

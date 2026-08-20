@@ -302,6 +302,29 @@ export async function clickHydrated(locator: Locator): Promise<void> {
 }
 
 /**
+ * Type into a field that arrives **server-rendered with a prefill**, once React owns it.
+ *
+ * The failure this exists for is nastier than the un-hydrated click, because the typing takes
+ * and then silently un-takes. `fill()` writes the DOM value; React's reconcile then re-applies
+ * the element's `defaultValue`, and what posts is the prefill — or, as measured on issue #762,
+ * the two spliced together. The form is a plain server form, so nothing here is "controlled" and
+ * `setCheckedHydrated`'s reasoning does not obviously apply; the value is clobbered anyway.
+ *
+ * **It only bites under load.** In an isolated run the page is warm and the fill lands after
+ * hydration; in a full suite on the dev-server path (`E2E_PROD=0`, compile-on-demand) hydration
+ * arrives later than the fill. That is the whole reason #762 reproduced only in a full-suite run
+ * and cost ~35 minutes per diagnostic attempt — and why it read as a product defect in the cancel
+ * outcome for weeks. It was the refund amount never reaching the server.
+ *
+ * Use this for any `fill()` into a field whose default the server rendered. A blank field needs
+ * nothing: there is no prefill to restore over your value.
+ */
+export async function fillHydrated(locator: Locator, value: string): Promise<void> {
+  await waitForHydrated(locator);
+  await locator.fill(value);
+}
+
+/**
  * Tick or untick a **controlled** checkbox (`checked={state}`) inside an island.
  *
  * The same two failures as `selectOptionHydrated`, and the checkout waiver is the

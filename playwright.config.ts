@@ -35,6 +35,14 @@ const E2E_PROD =
     ? process.env.E2E_PROD === "1" || process.env.E2E_PROD === "true"
     : !process.env.CI;
 
+/**
+ * Every timeout in this file is multiplied by this (#763). The prebuilt server answers in 1–2s
+ * per test; `next dev` compiles routes on demand and takes 4–9s for the same work, measured on
+ * the same specs. One set of constants cannot be right for both, and the constants were written
+ * for the fast one — so the slow path, which is what CI runs, sat permanently near its ceilings.
+ */
+const SLOW_PATH = E2E_PROD ? 1 : 2;
+
 const PORT = Number(process.env.E2E_PORT ?? 3100);
 const BASE_URL = process.env.E2E_BASE_URL ?? `http://localhost:${PORT}`;
 const TEST_DATABASE_URL =
@@ -50,14 +58,30 @@ export default defineConfig({
   reporter: process.env.CI
     ? [["github"], ["html", { open: "never" }]]
     : [["list"]],
-  timeout: 30_000,
-  expect: { timeout: 10_000 },
+  // **The budget follows the server, not the test** (#763). The dev path compiles routes on
+  // demand and runs 3–4× slower per test than the prebuilt one — measured on the same specs at
+  // 4–9s versus 1–2s. A 30s ceiling is generous on `next start` and marginal on `next dev`, so a
+  // multi-page test drifts over it under load and then fails at whichever step the clock happened
+  // to land on: `apiRequestContext.get: Test ended` in one run, a `waitForURL` timeout in the
+  // next. One slow test, two unrelated-looking errors — a large part of why this suite read as
+  // "broadly flaky" instead of as a budget set for the wrong server. CI runs the dev path, which
+  // is why CI is where it bit.
+  //
+  // Raising it hides no hang: a genuinely stuck test still fails, one multiple later.
+  //
+  // **All four budgets scale together, deliberately.** Raising only the per-test ceiling moved
+  // the failure rather than removing it: the next runs died on `expect`'s 10s and on the 15s
+  // action timeout instead, one per run, each in a different spec — which looks like three
+  // separate flaky tests and is one mis-set constant seen three ways. They are one knob because
+  // they measure the same thing: how long this server takes to answer.
+  timeout: 30_000 * SLOW_PATH,
+  expect: { timeout: 10_000 * SLOW_PATH },
   use: {
     baseURL: BASE_URL,
     trace: "on-first-retry",
     screenshot: "only-on-failure",
-    navigationTimeout: 30_000,
-    actionTimeout: 15_000,
+    navigationTimeout: 30_000 * SLOW_PATH,
+    actionTimeout: 15_000 * SLOW_PATH,
   },
   projects: [
     {

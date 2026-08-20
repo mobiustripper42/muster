@@ -12,6 +12,7 @@
 import {
   test,
   expect,
+  fillHydrated,
   plantPayment,
   reopenEvent,
   resetAndSeed,
@@ -492,7 +493,10 @@ test.describe("admin reservation actions (#616)", () => {
     await page.goto(detail());
 
     const form = page.getByTestId("refund-form");
-    await form.locator('input[name="amount"]').fill("500.00");
+    // Same prefilled box as #762, filled straight after a `goto` with nothing in between to wait
+    // on — the exact shape that failed. The two `fill`s further down are gated by an assertion on
+    // the box's value first, so they already wait for React by accident; this one did not.
+    await fillHydrated(form.locator('input[name="amount"]'), "500.00");
     await form.getByRole("button", { name: "Refund" }).click();
 
     await expect(page.getByTestId("action-error")).toContainText("more than this booking can give back");
@@ -800,11 +804,26 @@ test.describe("admin reservation actions (#616)", () => {
     await signInAsAdmin(page, "spink");
     await page.goto(detail("&cancel=1"));
 
-    await page.getByTestId("cancel-confirm").locator('input[name="amount"]').fill("0");
+    // **`fillHydrated`, not `fill` — this is issue #762.** The box arrives server-rendered with
+    // the quote prefilled (538.80 here), so a `fill()` that beats hydration is undone by React's
+    // reconcile: the measured value at submit was `538.800`, the prefill and the typed `0`
+    // spliced. That parses to null, `startRefund` redirects `cancelled=…&refundErr=invalid_amount`
+    // (`actions.ts:185`), `refundErr` outranks `cancelled` in the outcome order, and the pane
+    // renders `action-error` — so `action-done` never exists, which is exactly how #762 presented.
+    //
+    // It only reproduced in a full-suite run on the dev path, because that is where hydration
+    // lands after the fill. The two assertions below stay: they turn a recurrence back into
+    // evidence instead of "element not found".
+    const amount = page.getByTestId("cancel-confirm").locator('input[name="amount"]');
+    await fillHydrated(amount, "0");
+    await expect(amount).toHaveValue("0");
     await page.getByRole("button", { name: "Cancel and refund" }).click();
     await page.waitForURL(/cancelled=/);
 
-    await expect(page.getByTestId("action-done")).toContainText("No refund was sent");
+    await expect(
+      page.getByTestId("action-done"),
+      `no action-done. URL at assert: ${page.url()}`,
+    ).toContainText("No refund was sent");
     // The boat is free regardless — that half never depended on the money.
     await page.goto(`/admin/calendar?date=${BOOKED.date}`);
     await expect(openAt(page, shortLabel(BOOKED.time))).toBeVisible();

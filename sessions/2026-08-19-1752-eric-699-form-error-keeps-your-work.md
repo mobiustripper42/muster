@@ -6,7 +6,7 @@ branch: task/699-form-error-keeps-your-work
 started: 2026-08-19T17:52:38Z
 ended:
 points:
-pr_numbers: [782, 786, 787]
+pr_numbers: [782, 786, 787, 796]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/37b3191d-57cf-52a8-ab48-c68f70f9c8ad.jsonl
 ---
@@ -136,6 +136,48 @@ original value) and issue #785 (`/book` calendar swipe + pager weight).
 **Points:** 2
 **Branch:** task/724-cancel-reason
 **Opened at:** 2026-08-20T03:42:18Z
+
+## Task 4: Two causes behind the e2e flakiness (issue #763)
+
+**Session file:** `2026-08-19-1752-eric-699-form-error-keeps-your-work.md` (session 90) — confirmed
+by the operator; recorded here because a wrong pick otherwise leaves no artifact anywhere.
+
+**Completed:**
+- `e2e/slow-path.ts` (new) — `E2E_PROD` + `SLOW_PATH`, imported by both `playwright.config.ts`
+  and `e2e/fixtures.ts`. Four timeouts in the config and the hydration poll in the fixtures all
+  scale off it.
+- `e2e/fixtures.ts` — new `fillHydrated`, the missing fourth sibling.
+- Converted call sites in `calendar.spec.ts`, `admin-nav.spec.ts`, `two-pane-builder.spec.ts`,
+  `payroll-reconcile.spec.ts`.
+- Closes issue #762 in effect as well: it was never a product defect in the cancel outcome.
+
+**The two causes, after fourteen full-suite runs:**
+1. **Interactions beating hydration.** Measured: the refund box held `538.800` at submit — the
+   prefill and the typed `0` spliced — which parses to null, so the action redirected
+   `cancelled=…&refundErr=invalid_amount`, `refundErr` outranks `cancelled`, and the pane rendered
+   `action-error` instead of the `action-done` the test waited for.
+2. **Every timeout sized for the prebuilt server** while CI runs `next dev` at 3–4× slower. A test
+   near the ceiling failed at whichever step the clock landed on, so one slow test produced
+   unrelated-looking errors across runs. That is most of what "broadly flaky" meant.
+
+**What is worth remembering beyond this issue:** `fillHydrated` did not exist while its three
+siblings did — which is exactly why the click and select races got fixed as they appeared and the
+fill race survived for weeks disguised as a product bug. A missing helper is a defect that hides
+in the shape of a different one.
+
+**Code review:** 2 findings, both real, both fixed. The multiplier missed a fifth budget — the
+hydration poll itself, which on the dev path became the tightest ceiling in the suite, inside the
+`expect` budget it sits in. Fixing that surfaced a bug in the fix: a duplicated predicate that
+returned "fast path" in CI, the one environment this targets. Hence one definition in its own file.
+
+**Process failures worth not repeating:** I filtered three runs down to failure names, threw away
+the error text, and had to spend 33 minutes re-collecting it. I also started a confirmation run
+before an edit had landed, twice, and had to kill it.
+
+**PR:** [PR #796](https://github.com/mobiustripper42/muster/pull/796)
+**Points:** 5
+**Branch:** task/763-e2e-flake (worktree `/home/eric/muster-763`)
+**Opened at:** 2026-08-20T22:06:53Z
 
 **Next Steps:**
 

@@ -65,6 +65,99 @@ export function gridPosition(
   return { topPct, heightPct };
 }
 
+// ── Lanes for concurrent slots (#702) ────────────────────────────────────────
+
+/** Where a slot sits across the width of its column: lane `n` of `laneCount`. */
+export type LanePlacement = { lane: number; laneCount: number };
+
+/**
+ * Share a vessel column between slots that run at the same time (#702).
+ *
+ * A boat-time can be scheduled by more than one offering — three ways to sell one hour, only one
+ * of which can be sold. Every block is absolutely positioned from its start time, so concurrent
+ * ones landed at identical coordinates and drew on top of each other: in the seeded fixture, three
+ * deep, text over text. This is the standard calendar answer — side by side at 1/n width — and it
+ * is the geometry half only; what each card *says* at 1/3 width is the view's problem.
+ *
+ * **Overlap is an interval question, not an equal-start-time one.** A 14:00 departure that begins
+ * inside a 13:30 trip collides with it just as surely as a second 13:30 does. A check keyed on
+ * matching times finds the second and misses the first, while appearing to work — which is worse
+ * than not checking, because the remaining overlap looks like a rendering glitch rather than a
+ * missing rule.
+ *
+ * Intervals are **half-open**: a trip ending at 14:30 does not overlap a departure at 14:30, so a
+ * back-to-back schedule keeps full-width cards. Treating that as a collision would halve every
+ * card on the busiest days, which is exactly the days that matter.
+ *
+ * `laneCount` is per **cluster** — a connected run of overlaps — not per slot, so every card in
+ * one run gets the same width and their edges line up. A slot that overlaps nothing is lane 0 of
+ * 1: unchanged geometry, which is what keeps this invisible on the ordinary single-offering day.
+ *
+ * Returns placements **parallel to the input array** (index in, index out). Ties on start time
+ * fall back to input order, so the caller's order decides — and the caller's order is derived
+ * deterministically, so a card does not swap lanes between two renders of the same day.
+ */
+export function assignLanes(
+  slots: readonly { time: string; durationMin: number }[],
+): LanePlacement[] {
+  const out: LanePlacement[] = [];
+  if (slots.length === 0) return out;
+
+  const items = slots.map((s, i) => {
+    const start = parseHhmmToMinutes(s.time);
+    // A non-positive or non-finite duration becomes zero-length: it can share an edge with
+    // anything and overlaps nothing, rather than poisoning every comparison in its cluster.
+    const span = Number.isFinite(s.durationMin) && s.durationMin > 0 ? s.durationMin : 0;
+    return { i, start, end: start + span };
+  });
+
+  // A malformed clock parses to NaN, and every NaN comparison is false — left in the sweep it
+  // would sort unpredictably and read as overlapping nothing, i.e. land in lane 0 on top of a
+  // real card. It gets its own full-width placement instead, and the geometry helper already
+  // renders it harmlessly.
+  const placeable = items.filter((x) => Number.isFinite(x.start));
+  for (const x of items) {
+    if (!Number.isFinite(x.start)) out[x.i] = { lane: 0, laneCount: 1 };
+  }
+
+  placeable.sort((a, b) => a.start - b.start || a.end - b.end || a.i - b.i);
+
+  let cluster: typeof placeable = [];
+  let clusterEnd = Number.NEGATIVE_INFINITY;
+
+  const flush = (): void => {
+    /** The end time currently occupied by each lane; a lane is free once it ends. */
+    const laneEnds: number[] = [];
+    const laneOf = new Map<number, number>();
+    for (const x of cluster) {
+      let lane = laneEnds.findIndex((end) => end <= x.start);
+      if (lane === -1) {
+        lane = laneEnds.length;
+        laneEnds.push(x.end);
+      } else {
+        laneEnds[lane] = x.end;
+      }
+      laneOf.set(x.i, lane);
+    }
+    for (const x of cluster) out[x.i] = { lane: laneOf.get(x.i)!, laneCount: laneEnds.length };
+    cluster = [];
+  };
+
+  for (const x of placeable) {
+    // A slot starting at or after everything seen so far begins a new cluster — nothing before it
+    // can still be running, so its width is decided independently.
+    if (cluster.length > 0 && x.start >= clusterEnd) {
+      flush();
+      clusterEnd = Number.NEGATIVE_INFINITY;
+    }
+    cluster.push(x);
+    clusterEnd = Math.max(clusterEnd, x.end);
+  }
+  if (cluster.length > 0) flush();
+
+  return out;
+}
+
 // ── Offering colour (the #495 gap) ───────────────────────────────────────────
 //
 // Offerings carry NO colour field (#495): the calendar needs a stable per-offering hue so
@@ -95,14 +188,22 @@ const OFFERING_DOT_CLASSES = [
   "bg-vessel-6",
 ] as const;
 
-/** Dashed-border tint (no fill) for an OPEN/available slot of this offering. */
+/**
+ * Dashed-border tint (no fill) for an OPEN/available slot of this offering.
+ *
+ * **Stronger than the booked tint on purpose.** A booked card carries its colour in a `/15` fill
+ * and only edges it at `/45`; an open card has no fill, so the border is the entire signal. At
+ * `/40` on a 1px dashed line it read as grey — which was tolerable at full column width and stopped
+ * being so once concurrent slots share a column (#702) and a card can be 34px wide. The view pairs
+ * these with `border-2`; opacity alone doesn't survive a dashed stroke that thin.
+ */
 const OFFERING_OPEN_CLASSES = [
-  "border-vessel-1/40",
-  "border-vessel-2/40",
-  "border-vessel-3/40",
-  "border-vessel-4/40",
-  "border-vessel-5/40",
-  "border-vessel-6/40",
+  "border-vessel-1/70",
+  "border-vessel-2/70",
+  "border-vessel-3/70",
+  "border-vessel-4/70",
+  "border-vessel-5/70",
+  "border-vessel-6/70",
 ] as const;
 
 /** 1-based palette index (1…{@link OFFERING_COLOR_COUNT}) for an offering id — stable hash. */

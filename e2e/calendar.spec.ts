@@ -879,3 +879,69 @@ test.describe("admin reservation actions (#616)", () => {
     await expect(page.getByTestId("action-done").or(page.getByTestId("action-error"))).toBeVisible();
   });
 });
+
+/**
+ * Concurrent offerings share the column instead of stacking (#702).
+ *
+ * A boat-time can be scheduled by more than one offering — three ways to sell one hour, only one
+ * of which can be sold. Every block is positioned from its start time, so before this they landed
+ * at identical coordinates: text over text, and no way to tell there was more than one card.
+ *
+ * **The assertion is on geometry, not on count.** Counting cards passes just as happily when they
+ * are drawn on top of each other, which is the entire bug. Overlapping rectangles is the thing a
+ * person sees, so it is the thing measured.
+ */
+test.describe("concurrent offerings on one boat (#702)", () => {
+  test.beforeEach(async () => {
+    // `concurrent` composes on `reservation`: two extra LIVE offerings on Brew 3 only — one at the
+    // same three departure times, one at 14:00 that starts INSIDE the 13:30 trip.
+    await resetAndSeed("reservation", "concurrent");
+  });
+
+  test("cards at one boat-time sit side by side, not on top of each other", async ({ page }) => {
+    await signInAsAdmin(page, "spink");
+    await page.goto(`/admin/calendar?date=${DEMO.window.start}&filter=open`);
+
+    const brew3 = page.locator('[data-testid="cal-block"][data-vessel="vessel-brew-3"]');
+    // The fixture puts three cards in one cluster on this boat: 13:30, 13:30 and the 14:00 that
+    // overlaps them. Fewer than three means the seed stopped producing the state under test, and
+    // every geometry assertion below would pass vacuously on a column that no longer stacks.
+    await expect(brew3).toHaveCount(7);
+
+    const boxes = await brew3.evaluateAll((els) =>
+      els.map((el) => {
+        const r = el.getBoundingClientRect();
+        return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+      }),
+    );
+
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i]!;
+        const b = boxes[j]!;
+        const overlaps =
+          a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
+        expect(overlaps, `cards ${i} and ${j} overlap: ${JSON.stringify({ a, b })}`).toBe(false);
+      }
+    }
+  });
+
+  test("a boat with one offering keeps full-width cards", async ({ page }) => {
+    // The other half of the change: laning must be invisible on the ordinary day. Brew 1 carries
+    // only the base offering, so its cards keep the geometry they had before #702 — a regression
+    // here would shrink every card on every column in the fleet.
+    await signInAsAdmin(page, "spink");
+    await page.goto(`/admin/calendar?date=${DEMO.window.start}&filter=open`);
+
+    const widths = await page
+      .locator('[data-testid="cal-block"][data-vessel="vessel-brew-1"]')
+      .evaluateAll((els) => els.map((el) => el.getBoundingClientRect().width));
+    const column = await page
+      .locator('[data-testid="cal-block"][data-vessel="vessel-brew-1"]')
+      .first()
+      .evaluate((el) => el.parentElement!.getBoundingClientRect().width);
+
+    expect(widths.length).toBeGreaterThan(0);
+    for (const w of widths) expect(w).toBeGreaterThan(column - 12);
+  });
+});

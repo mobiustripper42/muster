@@ -23,6 +23,7 @@ const SEED_SCRIPTS = {
   outbox: "db/seed-outbox-dev.ts",
   reservation: "db/seed-reservation-dev.ts",
   xola: "db/seed-xola-dev.ts",
+  concurrent: "db/seed-concurrent-dev.ts",
 } as const;
 
 type SeedName = keyof typeof SEED_SCRIPTS;

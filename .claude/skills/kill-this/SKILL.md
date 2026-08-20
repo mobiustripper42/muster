@@ -120,28 +120,9 @@ Get the project's trigger table from `.claude/CLAUDE-context.md` under `## Blast
 
    **`/security-review` resolves the branch from the shell's working directory, not from this task.** It is the same wrong-tree class as Step 0.1, and it fails worse here: in a linked-worktree session it hands back a careful review **of some other branch's diff**, which reads exactly like a clean pass on yours. A security pass that reviewed the wrong code and reported nothing is worse than one that never ran, because Step 3.6 will print a `✓` for it.
 
-   **You can detect this, and you cannot fix it from inside the session.** Both halves matter and the second one is where an earlier version of this step was wrong.
+   **So check its output before believing it, and you can:** the pass echoes a `GIT STATUS` block with `On branch <name>` and a `FILES MODIFIED` list before its findings. Both must match `$BRANCH` and `git diff $(git merge-base HEAD main)...HEAD --name-only`. (Verified from a real invocation — this is not an instruction that only looks followable.) If they don't match, re-run from the checkout holding `$BRANCH`. If you cannot get it pointed there, **mark it `✗` in Step 3.6 — did not run against this branch — and say so in the PR body.** Never fold findings from a diff you did not ship.
 
-   **Detect:** the pass echoes a `GIT STATUS` block with `On branch <name>` and a `FILES MODIFIED` list ahead of its findings. Both must match `$BRANCH` and `git diff $(git merge-base HEAD main)...HEAD --name-only`. Verified against real invocations — this comparison genuinely works, and it is what caught the case below.
-
-   **Do not try to re-run `/security-review` "from the right checkout."** Its working directory is a property of the **session**, pinned by the harness at launch; no `cd`, no `git -C`, no wrapper moves it. That instruction cannot be carried out and only looks like a remedy.
-
-   **Run the pass yourself instead, against a diff you name explicitly.** `git` reads any directory and any revision — the cwd was never the constraint, only `/security-review`'s use of it was. Spawn `@code-review` with a security brief and have it read the diff by revision:
-
-   ```
-   cd <repo holding $BRANCH>
-   git fetch -q origin
-   git diff $(git merge-base origin/$BASE origin/$BRANCH)...origin/$BRANCH
-   git show origin/$BRANCH:<path>          # full file, when a hunk isn't enough
-   ```
-
-   Give the agent the blast-radius triggers this diff hit and tell it to hunt those specifically — authenticity and replay on a webhook, sign-flips and double-counting on money math, `update`/`delete`/`alter type` in a migration, role gates on a newly-exposed surface, handlers that fail open. **Require it to state the branch and file count it actually reviewed at the top**, so the mismatch you just caught cannot recur silently one level down.
-
-   That is a real pass, not a substitute for one: verified by running it from a seeds session against muster's PR #788 — 27 files, correct branch, one genuine finding on out-of-order Stripe dispute redelivery.
-
-   Mark it `✓` with the branch named. Only if you cannot produce the diff at all — no access to the repo — mark it `✗ did not run against this branch`, say so in the PR body, and point the user at `/code-review ultra` on the PR. Never fold findings from a diff you did not ship: a careful review of someone else's branch reads exactly like a clean pass on yours.
-
-   Observed twice in muster. First: the shell sat in a checkout that had moved on to `task/724-cancel-reason` and the pass came back about that branch, on a PR touching the money path four ways — nothing said so. Then, after this step told the session to re-run from the right tree, it produced **the same output again**, plus that tree's unrelated dirty `e2e/calendar.spec.ts` — which is what proved the redirect is impossible rather than merely awkward.
+   Observed: a muster session ran it while the shell sat in a different checkout that had moved on to `task/724-cancel-reason`, and got that branch's diff back on a PR touching the money path four ways. The pass had not happened and nothing said so.
 2. **Then print exactly this and continue** — never block, never run the billed tool:
 
 ```

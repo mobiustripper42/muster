@@ -1261,6 +1261,24 @@ export function runRepositoryContract(
       expect(await repo.listCustomers()).toHaveLength(2);
     });
 
+    it("reservation: cancelledBy round-trips present and absent (#724)", async () => {
+      // Parity with `customerId` below: both adapters must agree that an unset optional is
+      // ABSENT rather than null. The Postgres suite proves the column/bind/mapping separately;
+      // this is the shared-behaviour half, so the in-memory double cannot drift.
+      const cancelled = reservation({
+        id: asId<"ReservationId">("resv-cancelled-by"),
+        status: "cancelled",
+        cancelledBy: "operator",
+      });
+      const live = reservation({ id: asId<"ReservationId">("resv-still-live") });
+      await repo.saveReservation(cancelled);
+      await repo.saveReservation(live);
+
+      expect((await repo.getReservation(cancelled.id))!.cancelledBy).toBe("operator");
+      // A live booking has no answer — absent, not null, and not a default.
+      expect("cancelledBy" in (await repo.getReservation(live.id))!).toBe(false);
+    });
+
     it("reservation: customerId round-trips present and absent, and lists per customer", async () => {
       await repo.saveCustomer(customer());
       const linked = reservation({

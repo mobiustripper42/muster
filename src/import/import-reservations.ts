@@ -275,6 +275,10 @@ export async function importRecords(
       ...(rec.email ? { email: rec.email } : {}),
       ...(rec.phone ? { phone: rec.phone } : {}),
       ...(customerId ? { customerId } : {}),
+      // NB this object is built fresh rather than spread over the stored row, so any field it
+      // does not name is dropped on re-import — `cancelledBy` (#724) included. That is safe only
+      // because `cancelReservation` refuses `source !== 'muster'` (DEC-105), so a Xola row can
+      // never carry one. If Muster ever cancels an imported booking, this has to spread first.
     };
     // Stamp updatedAt on create + material change only (DEC-029); otherwise preserve
     // the stored timestamp so re-imports don't bump unchanged rows.

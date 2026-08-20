@@ -6,7 +6,7 @@ branch: task/699-form-error-keeps-your-work
 started: 2026-08-19T17:52:38Z
 ended:
 points:
-pr_numbers: [782, 786]
+pr_numbers: [782, 786, 787]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/37b3191d-57cf-52a8-ab48-c68f70f9c8ad.jsonl
 ---
@@ -97,6 +97,45 @@ it at 3+ lanes, or lane only above a breakpoint. Deferred deliberately, not forg
 **Points:** 3
 **Branch:** task/702-calendar-lanes
 **Opened at:** 2026-08-20T01:25:03Z
+
+## Task 3: Record who cancelled a booking (issue #724)
+
+**Completed:**
+- `db/migrations/20260820032840_cancelled_by.sql` — additive, nullable, **not backfilled**.
+- `src/domain/entities.ts` — `Reservation.cancelledBy` + the `CancelledBy` type (one definition;
+  `cancel-reservation.ts` re-exports it so existing importers are untouched).
+- `src/reservations/cancel-reservation.ts` — `by` is a REQUIRED third argument, written once.
+- `src/adapters/postgres-repository.ts` — bind, upsert, read-back.
+- `app/(admin)/admin/calendar/[reservationId]/actions.ts` — passes the `by` it already computed.
+- Tests: core (operator / customer / first-answer-wins), a real-Postgres round trip, and a
+  shared-contract case for both adapters.
+
+**Why it was worth doing before the display half:** this is data that cannot be reconstructed.
+A missing view can be added whenever; a cancellation taken before the column exists loses its
+reason permanently, and the refund amount — the only prior trace — is editable by the operator.
+The display (detail pane, purchases list) is deliberately still absent.
+
+**The design decision worth keeping:** `by` is required rather than optional, so adding it broke
+all six existing call sites. That was the point — an optional parameter is how one surface ends
+up recording nothing while reading as correct, and this field's entire value is completeness.
+
+**Code review:** 2 findings, both latent rather than defects, both acted on in `a3305e5`. The
+important one: the Xola importer's update branch builds its `Reservation` from scratch instead of
+spreading the stored row, so it silently drops any field it doesn't name. Unreachable today only
+because `cancelReservation` refuses a non-Muster booking (DEC-105) — the safety lives in a
+different file from the code that depends on it, which is now said out loud in the importer.
+
+**Also this task:** deferred issues #725 (cancelled bookings are visible on `/admin/purchases`;
+the calendar filter is a nicety) and #621 (kill switch for a surface only the operator reaches).
+Recorded on #762 that its "reproduces 4/4" claim no longer holds — it failed on PR #782's CI run
+and passed on five later full-suite runs, so it is intermittent, and the next step is a pass/fail
+ratio rather than a fix. Filed issue #783 (correcting a refused form too soon re-posts the
+original value) and issue #785 (`/book` calendar swipe + pager weight).
+
+**PR:** [PR #787](https://github.com/mobiustripper42/muster/pull/787)
+**Points:** 2
+**Branch:** task/724-cancel-reason
+**Opened at:** 2026-08-20T03:42:18Z
 
 **Next Steps:**
 

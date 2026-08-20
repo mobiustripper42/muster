@@ -6,47 +6,19 @@ tools: Read, Edit, Write, Bash, Glob, Grep, Agent
 
 You are shipping one task. Under DEC-S013, `/kill-this` runs **per task**, not per session — there may be N invocations between `/its-alive` and `/its-dead`. Each one opens its own PR and appends one `## Task <N>` block to the session file (which lives on the orphan `sessions` branch via `.sessions-worktree/`, per DEC-S014).
 
-## Step 0 — Locate the session file, then confirm you are in its tree
-
-**Session file first, branch second.** The order matters: the session file records which branch this session opened on, and that is the only thing here that can tell you whether the current directory is the right checkout.
+## Step 0 — Locate the session file, capture the branch
 
 ```
 grep -l "^status: open" .sessions-worktree/sessions/*.md 2>/dev/null
-```
-
-**Exactly one match:** that's `SESSION_FILE`. Continue.
-
-**No match:** STOP. The user must run `/its-alive` first. (If `.sessions-worktree/` doesn't exist, that's the same sign — `/its-alive` Step 0.6 creates the worktree.)
-
-**More than one match — resolve it from what this window knows, and only ask when it knows nothing.**
-
-**Name your candidate and get one word back. Do not proceed unconfirmed, and do not make the user do the work of choosing.**
-
-If this window ran `/its-alive`, you have a strong candidate: you wrote that file, and its name and `session:` are in this conversation. Say which one, in one line, with the reason — *"session 90, the file this window opened; it already carries Task 1"* — and wait for a yes.
-
-**Why it is a candidate and not an answer.** The belief is narrative, not mechanical, and there is a specific way it goes wrong: `/restart-this` Step 4 prints `Session file:` and `Branch:` into a window that **never ran `/its-alive`**, producing the identical evidence shape. Add compaction — a long window that opened a session hours and several tasks ago — and the provenance of those strings is gone while the strings remain. Nothing on disk distinguishes "I opened this" from "I was told this." The corroborating `## Task` blocks don't close it either: on a window's *first* `/kill-this` every candidate has zero of them.
-
-So this is a confirmation, not a prompt to choose. The user reads one line and says yes; they don't read a table and reconstruct which window is which. **If you have no candidate** — a resumed window, a fresh one, no memory of opening anything — list the candidates with their `session:`, `branch:` and `started:` and let the user pick. Do not infer from timestamps, order, or which branch looks busier.
-
-**Record the pick where it survives.** Name the session file in the `## Task` block you write in Step 5. A wrong pick otherwise leaves no artifact anywhere, and `/retro` reads these files later without any way to know.
-
-**Do not use `transcript:`.** It requires the running session to know its own JSONL path, and it cannot: `/its-alive` Step 5 derives it by globbing the project directory and taking the newest file, which is a guess and is *wrong* in exactly the case that matters — two concurrent windows writing to the same directory. An instruction that cannot be followed is worse than a bad default, because it reads as solved.
-
-**Do not sort, and do not take the first.** `... | head -1` returns the lexically-earliest filename, and session filenames start with a date, so when the stale session opened *earlier* — the ordinary shape of a session left open from a previous day — it silently selects that one. Nothing errors: `head -1` always returns something. **It will appear to work whenever the stale file happens to sort later, which is why it survived: the outcome depends on two timestamps, not on the rule being right.**
-
-### Step 0.1 — Capture the branch, and check it against the session
-
-```
+SESSION_FILE=<the one match>
 BRANCH=$(git branch --show-current)
 ```
 
-`git branch --show-current` resolves against the **current directory**, not against the session. `/its-alive` Step 3 offers a **linked worktree** as the answer to a concurrent session, so a session's code can legitimately live in a different checkout from the one this skill is invoked in.
+**No match:** STOP. The user must run `/its-alive` first.
 
-`BRANCH` is what Steps 2 and 4 commit, push and open the PR with. Running from the wrong checkout means `git add -A` stages that tree's changes under this task's branch name and PR.
+**More than one match:** another window has a session open. Report the candidates — `session:`, `branch:`, `started:` — and ask which is yours. Do not sort and do not take the first: `... | head -1` returns the lexically-earliest filename, and session filenames start with a date, so it silently picks the *stale* file whenever that one opened earlier. Nothing errors.
 
-**Do not compare `BRANCH` against the session file's `branch:` here, and do not prompt on a mismatch.** A session opens on `main` and its tasks are cut onto branches — that is the normal flow, so a mismatch is the common case and a prompt on it fires every single run. A check that says "nothing is wrong" every time is one nobody reads by the third time; `/its-alive` Step 0.5 already retired one nag for exactly that.
-
-**The wrong-tree check belongs in Step 2, and both of its branches need one.** Do not assume a dirty wrong tree announces itself: Step 2 runs `git add -A && git commit` in one go with nobody shown the staged list first, and `@code-review` only sees the diff *after* the commit. If the wrong tree's changes look plausible for this task — two parallel tasks editing the same kind of file, which is common — nothing catches it before the push. See Step 2 for what each branch does.
+`BRANCH` is read from the current directory, and under DEC-S048 that is correct by construction: a session starts in the checkout its work lives in and stays there. If that stops being true, fix the session, not this skill — every wrong-tree symptom downstream is that one broken assumption wearing a different hat.
 
 Read the file's frontmatter to get session number `N` and the current `pr_numbers:` list.
 
@@ -72,18 +44,9 @@ git commit -m "<phase/task summary>
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 ```
 
-**Name the files being staged, before committing.** One line listing `git diff --cached --name-only`. Not ceremony: it is the only point at which a wrong-tree commit is visible to a person, and it costs a sentence. A file list that doesn't look like the task you just did is the signal.
+**Name the files being staged**, one line from `git diff --cached --name-only`. `git add -A` sweeps whatever is in the tree, so a file list that doesn't look like the task you just did is the signal — an unrelated edit riding along is caught here or not at all.
 
-**If there is nothing to commit, do not report a clean no-op — check the other trees first.** An empty stage is ambiguous between "already committed" and "the work is in another checkout this skill cannot see", and those read identically.
-
-```
-git worktree list                                    # every checkout of this repo
-git -C <each other worktree path> status --porcelain # is the work sitting over there?
-```
-
-**Compare on dirtiness, not on the session's `branch:`.** That field records the branch the session *opened* on — normally `main`, which is also what the primary checkout is usually sitting on, so comparing against it is close to tautological and cannot locate the tree holding the work. Uncommitted changes in another worktree is the fact that actually answers the question.
-
-If another worktree is dirty, **say which one and stop** — the task is there, not here. If every other tree is clean too, the stage is genuinely empty; report the no-op normally.
+If there is nothing to commit, surface that and stop here — no PR for no code.
 
 **Push the branch — do not open a PR yet:**
 
@@ -118,11 +81,7 @@ Get the project's trigger table from `.claude/CLAUDE-context.md` under `## Blast
 
 1. **Run `/security-review`** against the branch. It is local, unbilled, and aimed at this class: authorization boundaries, injection, secret handling, unsafe defaults, failure modes that fail open. This is not a duplicate of Step 3 — `@code-review` hunts the project's conventions and invariants; this hunts the ways a hostile or malformed input gets through. Fold its findings into the PR body under their own heading, so the reviewer can see which pass produced what.
 
-   **`/security-review` resolves the branch from the shell's working directory, not from this task.** It is the same wrong-tree class as Step 0.1, and it fails worse here: in a linked-worktree session it hands back a careful review **of some other branch's diff**, which reads exactly like a clean pass on yours. A security pass that reviewed the wrong code and reported nothing is worse than one that never ran, because Step 3.6 will print a `✓` for it.
 
-   **So check its output before believing it, and you can:** the pass echoes a `GIT STATUS` block with `On branch <name>` and a `FILES MODIFIED` list before its findings. Both must match `$BRANCH` and `git diff $(git merge-base HEAD main)...HEAD --name-only`. (Verified from a real invocation — this is not an instruction that only looks followable.) If they don't match, re-run from the checkout holding `$BRANCH`. If you cannot get it pointed there, **mark it `✗` in Step 3.6 — did not run against this branch — and say so in the PR body.** Never fold findings from a diff you did not ship.
-
-   Observed: a muster session ran it while the shell sat in a different checkout that had moved on to `task/724-cancel-reason`, and got that branch's diff back on a PR touching the money path four ways. The pass had not happened and nothing said so.
 2. **Then print exactly this and continue** — never block, never run the billed tool:
 
 ```
@@ -144,7 +103,6 @@ Review passes:
   ✓ @code-review       — <N> findings: <one-line verdict>
   ✓ /security-review   — <N> findings: <one-line verdict>      ← only when a trigger hit
   ⊘ /security-review   — not run (no blast-radius trigger)     ← otherwise
-  ✗ /security-review   — ran against task/724, not this branch ← wrong tree, or errored
   ⊘ /code-review ultra — never automatic; yours to invoke
 ```
 

@@ -16,11 +16,7 @@ grep -l "^status: open" .sessions-worktree/sessions/*.md 2>/dev/null
 
 **No match:** try legacy `session-log.md` on the current branch. If found: LEGACY MODE — Step 4 still applies; everything else simplifies. If neither: STOP and ask the user how to proceed.
 
-**More than one match — stop and ask, every time.** Two open files means a session somewhere never reached its own `/its-dead`, or two windows are genuinely running concurrently, which `/its-alive` Step 3 supports. **List the candidates with their `session:`, `branch:` and `started:` and let the user pick.**
-
-Do not try to identify the right one from inside the session. There is no reliable way: the obvious candidate, matching `transcript:`, requires the running session to know its own JSONL path, and it cannot — `/its-alive` Step 5 derives it by globbing the project directory and taking the newest file, which is a guess that is *wrong* in exactly the case that matters, two concurrent windows writing to the same directory. An instruction that cannot be followed is worse than a bad default, because it reads as solved.
-
-Do not sort, and do not take the first. `... | head -1` returns the lexically-earliest filename, and session filenames start with a date, so on the exact input this guard exists for it silently selects the **stale** file. Nothing errors: `head -1` always returns something.
+**More than one match:** another window has a session open. Report the candidates — `session:`, `branch:`, `started:` — and ask which is yours. Do not sort and do not take the first: `... | head -1` returns the lexically-earliest filename, and session filenames start with a date, so it silently picks the *stale* file whenever that one opened earlier. Nothing errors.
 
 Leave the other file alone. Its `ended:` is not knowable from here, and a guess poisons `/retro`'s input more quietly than a blank does. Say in the closing summary that it is still open.
 

@@ -147,7 +147,6 @@ function InnerForm(p: InnerProps) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [marketingOptIn, setMarketingOptIn] = useState(false);
   const [waiver, setWaiver] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -182,7 +181,6 @@ function InnerForm(p: InnerProps) {
         email: email.trim(),
         phone: phone.trim(),
         waiverConsent: waiver,
-        marketingOptIn,
       });
       if (!res.ok) {
         setError(res.message);
@@ -191,7 +189,20 @@ function InnerForm(p: InnerProps) {
       const conf = await p.stripe.confirmPayment({
         elements: p.elements,
         clientSecret: res.clientSecret,
-        confirmParams: { return_url: p.returnUrl },
+        confirmParams: {
+          return_url: p.returnUrl,
+          // #679. Without this Stripe builds the payment's contact from whatever the Element
+          // happened to collect on its own — which is why the phone came through blank and the
+          // name could differ from the one on Muster's form. These are the values the guest
+          // actually typed here, so they are the ones the charge should carry.
+          payment_method_data: {
+            billing_details: {
+              name: name.trim(),
+              ...(email.trim() ? { email: email.trim() } : {}),
+              ...(phone.trim() ? { phone: phone.trim() } : {}),
+            },
+          },
+        },
       });
       // Only reached on failure (success redirects to return_url).
       if (conf.error) {
@@ -212,6 +223,9 @@ function InnerForm(p: InnerProps) {
           <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-faint">
             Who&rsquo;s booking?
           </div>
+          {/* Helper text sits under the field it describes, not under the group (#679). Email is
+              optional and nothing said what skipping it costs — a guest who left it blank got no
+              receipt and no warning. Now the trade is stated where the choice is made. */}
           <div className="flex flex-col gap-2">
             <input
               className={inputClass}
@@ -221,36 +235,34 @@ function InnerForm(p: InnerProps) {
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
-            <input
-              className={inputClass}
-              type="tel"
-              placeholder="Mobile — with country code if outside the US"
-              autoComplete="tel"
-              required
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-            />
-            <input
-              className={inputClass}
-              type="email"
-              placeholder="Email"
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
+            <div>
+              <input
+                className={inputClass}
+                type="tel"
+                placeholder="Mobile — with country code if outside the US"
+                autoComplete="tel"
+                required
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+              />
+              <div className="mt-1 text-xs text-faint">
+                We&rsquo;ll text you your booking link and trip updates.
+              </div>
+            </div>
+            <div>
+              <input
+                className={inputClass}
+                type="email"
+                placeholder="Email"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+              <div className="mt-1 text-xs text-faint">
+                Add an email if you want a copy of the receipt.
+              </div>
+            </div>
           </div>
-          <div className="mt-1.5 text-xs text-faint">
-            Your mobile gets your booking link + trip updates.
-          </div>
-          <label className="mt-2 flex items-start gap-2 text-[12.5px] text-muted">
-            <input
-              type="checkbox"
-              className="mt-0.5 h-4 w-4"
-              checked={marketingOptIn}
-              onChange={(e) => setMarketingOptIn(e.target.checked)}
-            />
-            <span>Send me occasional news and offers (optional).</span>
-          </label>
         </div>
 
         {/* TIP — required, no decline (DEC-124) */}
@@ -277,8 +289,14 @@ function InnerForm(p: InnerProps) {
               </button>
             ))}
           </div>
+          {/* One line, and it only normalizes. The competitor version justifies the tip with a
+              list of crew duties — safety, cleanliness, supplies — which reads as "tip us or the
+              boat is a shithole". The old line here ("100% goes to the crew — never taxed, never
+              fee'd") was us talking to ourselves: `fee'd` isn't a word, and the tax treatment is
+              an internal accounting fact, not something a guest asked. The heading already says
+              who the tip is for. */}
           <div className="mt-2 text-xs text-muted">
-            <b className="text-mate">100% goes to the crew</b> — never taxed, never fee&rsquo;d.
+            Gratuity is included for groups, like a restaurant or a limo.
           </div>
         </div>
 
@@ -286,7 +304,19 @@ function InnerForm(p: InnerProps) {
         <div className="pt-5">
           <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Payment</div>
           {p.inElements ? (
-            <PaymentElement />
+            /* #679. Mounted bare, the Element collected its own name and phone — and Stripe's
+               rule is that "details collected by Elements will override values passed here", so
+               simply passing `billing_details` at confirm would have changed nothing. The fields
+               have to be turned OFF for our values to survive.
+               `defaultValues` can't do this job: it's read at mount, and the contact inputs sit
+               above this one, so they're empty at that moment.
+               Name and phone only — both are `required` above, and a field disabled here becomes
+               REQUIRED at confirm. Email is optional at `/book`, so suppressing it would reject
+               the payment of every guest who left it blank. Stripe keeps collecting email when it
+               wants to (Link), and wins on it; the email we pass applies when it doesn't ask. */
+            <PaymentElement
+              options={{ fields: { billingDetails: { name: "never", phone: "never" } } }}
+            />
           ) : p.stripeFailed ? (
             <div className="rounded-card border border-bad-line bg-bad-bg px-4 py-3 text-sm text-bad" data-testid="stripe-error">
               The payment form couldn&rsquo;t load. Check your connection and reload — you have

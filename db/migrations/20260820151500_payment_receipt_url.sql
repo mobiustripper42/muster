@@ -1,0 +1,18 @@
+-- 20260820151500_payment_receipt_url — Stripe's hosted receipt link on a payment (#679).
+-- Timestamp-named per DEC-121; applied in filename order by db/migrate.ts.
+--
+-- The guest's manage page (`/b/<code>`) had no way to show a receipt. Muster stored the
+-- PaymentIntent id and nothing else, and the receipt url hangs off the CHARGE — one hop further
+-- than anything recorded here. This column holds it so the page never has to call Stripe to
+-- render, which matters because `/b/<code>` is a guest-facing GET: a live provider call there
+-- turns a slow Stripe into a broken booking view.
+--
+-- It is `pay.stripe.com/receipts/…`, Stripe's own hosted page — SAFE to show a customer. It is
+-- NOT a dashboard link, and nothing on a customer surface may ever render one of those.
+--
+-- Nullable with no backfill: every payment written before #679 has none, and there is no
+-- reconstruction worth doing (the id is enough to look one up by hand if anyone ever needs to).
+--
+-- Additive: `add column` only. No data-changing verb, so it does not trip the blast-radius
+-- migration trigger.
+alter table payments add column if not exists receipt_url text;

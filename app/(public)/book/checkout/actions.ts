@@ -30,9 +30,6 @@ export interface StartElementsCheckoutInput {
   email: string;
   phone: string;
   waiverConsent: boolean;
-  /** Collected in the form; NOT yet persisted — no Customer field exists for it. Wired
-   *  through here so the storage lands in one place when it does. */
-  marketingOptIn: boolean;
 }
 
 export type StartElementsCheckoutResult =

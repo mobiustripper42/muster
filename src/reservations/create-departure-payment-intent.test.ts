@@ -176,6 +176,58 @@ describe("createDeparturePaymentIntent — hold + frozen money metadata (12.5, D
   });
 });
 
+/**
+ * What Stripe is told about the payment (#679).
+ *
+ * Before this, a booking reached Stripe as an amount plus a metadata bag Stripe does not read.
+ * The payments list showed a bare dollar figure, no receipt was ever sent, and the guest's phone
+ * arrived blank because the Payment Element was mounted with no defaults and collected its own.
+ *
+ * Metadata is NOT the fix and must not be touched: the webhook materializes the Event from it
+ * (`processBookingCharge`), so it is load-bearing, not descriptive.
+ */
+describe("createDeparturePaymentIntent — what Stripe is told (#679)", () => {
+  it("describes the departure in a line a human can read", async () => {
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    await createDeparturePaymentIntent(repo, pay, req, now);
+
+    // A raw PaymentIntent has no line item — without this the dashboard row is an amount and
+    // nothing else, and triaging a guest's phone call means opening metadata.
+    expect(pay.intents[0]!.description).toBe("Cruise — 2026-07-04 13:30 · 4 guests · Mary");
+  });
+
+  it("sets receipt_email when the guest gave one, so Stripe sends them a receipt", async () => {
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    await createDeparturePaymentIntent(repo, pay, req, now);
+    expect(pay.intents[0]!.receiptEmail).toBe("m@x.io");
+  });
+
+  it("omits receipt_email when there is no email — email is optional at /book", async () => {
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    const { email: _e, ...noEmail } = req;
+    const r = await createDeparturePaymentIntent(repo, pay, noEmail, now);
+
+    expect(r.ok).toBe(true);
+    expect(pay.intents[0]!.receiptEmail).toBeUndefined();
+    // Phone is the required field (DEC-132), so a booking without email is ordinary, not an
+    // error — it just gets no Stripe receipt. The description still identifies the departure.
+    expect(pay.intents[0]!.description).toContain("2026-07-04");
+  });
+
+  it("leaves the money metadata untouched — the webhook still books from it", async () => {
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    await createDeparturePaymentIntent(repo, pay, req, now);
+    expect(pay.intents[0]!.metadata).toMatchObject({
+      purpose: "booking", vesselId: "v-small", date: DATE, time: TIME,
+      priceCents: "49900", taxCents: "3618", serviceFeeCents: "1497", gratuityCents: "9980",
+    });
+  });
+});
+
 describe("payment_intent.succeeded webhook path (12.5, DEC-134)", () => {
   it("books exactly one reservation off a purposed PI, keyed on the intent id, fee on the Payment", async () => {
     const repo = await seededRepo();
@@ -216,6 +268,38 @@ describe("payment_intent.succeeded webhook path (12.5, DEC-134)", () => {
     const grats = await repo.listGratuitiesForEvent(evId);
     expect(grats).toHaveLength(1);
     expect(grats[0]).toMatchObject({ id: "grat_pre_pi_fake_1", kind: "pre", amountCents: 9980, bps: 2000 });
+  });
+
+  it("stores Stripe's hosted receipt URL on the payment (#679)", async () => {
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    await createDeparturePaymentIntent(repo, pay, req, now);
+    const { deps } = makeDeps(repo, pay);
+
+    await processBookingWebhook(deps, piEvent("pi_fake_1", 27570, pay.intents[0]!.metadata), FAKE_SIGNATURE);
+
+    // Stored rather than fetched at render: `/b/<code>` is a page a guest loads, and a live
+    // Stripe call there would break it whenever Stripe is slow. The URL is guest-safe — it is
+    // Stripe's own hosted receipt, not a dashboard link.
+    const payments = await repo.listPaymentsForReservation(reservationIdFor("pi_fake_1"));
+    expect(payments[0]!.receiptUrl).toBe("https://pay.stripe.test/receipts/pi_fake_1");
+  });
+
+  it("a receipt lookup that fails does NOT cost the booking", async () => {
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    await createDeparturePaymentIntent(repo, pay, req, now);
+    pay.receiptUrlError = new Error("stripe is down");
+    const { deps, alert } = makeDeps(repo, pay);
+
+    const r = await processBookingWebhook(deps, piEvent("pi_fake_1", 27570, pay.intents[0]!.metadata), FAKE_SIGNATURE);
+
+    // The receipt link is a convenience. The booking and the payment row are not.
+    expect(r).toEqual({ handled: true, outcome: "booked" });
+    const payments = await repo.listPaymentsForReservation(reservationIdFor("pi_fake_1"));
+    expect(payments).toHaveLength(1);
+    expect(payments[0]!.receiptUrl).toBeUndefined();
+    expect(alert).not.toHaveBeenCalled(); // not a money problem — nothing for a human to do
   });
 
   it("a redelivered payment_intent.succeeded is idempotent — one booking, one payment, one confirm", async () => {

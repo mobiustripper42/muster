@@ -66,6 +66,19 @@ export interface CreatePaymentIntentInput {
   amountCents: number;
   /** ISO-4217 lowercase, e.g. "usd". */
   currency: string;
+  /**
+   * Where the provider sends the payment receipt (#679). **Optional because email is optional at
+   * `/book`** — phone is the required contact (DEC-132). No email ⇒ no receipt, which is an
+   * ordinary booking rather than an error.
+   */
+  receiptEmail?: string;
+  /**
+   * One human-readable line identifying the departure (#679). A raw PaymentIntent has NO line
+   * item — hosted Checkout gets one from `productName`, this path gets nothing — so without it
+   * the provider's payments list is a column of bare amounts and triaging a guest's phone call
+   * means opening metadata.
+   */
+  description?: string;
   /** Opaque key/value carried through Stripe back to the webhook — the frozen slot + money
    *  fields (see `createDeparturePaymentIntent`). MUST include `purpose`: the webhook's
    *  `payment_intent.succeeded` handler processes only purposed intents (DEC-134 double-write
@@ -137,6 +150,19 @@ export interface PaymentPort {
    * (the caller falls back to a loud manual-refund alert — never a silent unrefunded loss).
    */
   refund(input: RefundInput): Promise<{ refundId: string }>;
+  /**
+   * The provider's HOSTED RECEIPT url for a settled payment (#679) — a guest-safe page, not a
+   * dashboard link, so it can be shown on `/b/<code>`.
+   *
+   * Separate from `parseEvent` because that method is synchronous and the receipt url hangs off
+   * the CHARGE, which a `payment_intent.succeeded` payload carries only as an id. Fetching it
+   * needs a round trip, so it is its own call rather than a field on the event.
+   *
+   * Returns `undefined` when the provider has no receipt for that intent. **Throws on a provider
+   * failure** — the caller catches and writes the payment without a receipt link. A receipt is a
+   * convenience; the payment row is not.
+   */
+  getReceiptUrl(paymentIntentId: string): Promise<string | undefined>;
   /**
    * Verify the webhook signature and normalize the event (12.5, DEC-134). Returns the
    * discriminated union for a `checkout.session.completed` or `payment_intent.succeeded`

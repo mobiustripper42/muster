@@ -40,6 +40,9 @@ const REASON_MESSAGES: Record<string, string> = {
   offering_missing: "That cruise isn't bookable anymore. Head back and pick another.",
   not_live: "That cruise isn't bookable anymore. Head back and pick another.",
   invalid_guest_count: "That guest count doesn't fit this departure — go back and adjust it.",
+  // The real UI can only submit a departure it rendered, so a human never sees this (issue #799);
+  // it exists for the raw/scripted call that posts an off-grid or out-of-season slot.
+  off_schedule: "That departure isn't on the schedule. Head back and pick a listed time.",
   sold_out:
     "That departure was just taken while you were checking out. You have not been charged — pick another time.",
   waiver_required: "Please agree to the liability waiver to continue.",

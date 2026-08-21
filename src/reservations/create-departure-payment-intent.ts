@@ -56,6 +56,7 @@ export type DeparturePaymentIntentStart =
         | "offering_missing"
         | "not_live"
         | "invalid_guest_count"
+        | "off_schedule"
         | "sold_out"
         | "waiver_required"
         | "gratuity_required";
@@ -95,15 +96,10 @@ export async function createDeparturePaymentIntent(
     now,
   );
   if ("unbookable" in held) {
-    return {
-      ok: false,
-      reason:
-        held.unbookable === "offering_missing"
-          ? "offering_missing"
-          : held.unbookable === "not_live"
-            ? "not_live"
-            : "invalid_guest_count",
-    };
+    // Pass the reason straight through — the union is a superset of `unbookable` (issue #799 added
+    // `off_schedule`), so mapping by hand only risks a new reason silently collapsing to the wrong
+    // one (which is what an earlier `? … : invalid_guest_count` chain would have done here).
+    return { ok: false, reason: held.unbookable };
   }
   if ("soldOut" in held) return { ok: false, reason: "sold_out" };
 

@@ -21,6 +21,7 @@ import type {
   CheckoutHold,
   Event,
   Offering,
+  OfferingSchedule,
   PriceVariation,
   Reservation,
   Vessel,
@@ -116,6 +117,35 @@ export function canBook(
 // events/reservations, and it returns one `VirtualSlot` per enumerated departure. The
 // P11 `deriveAvailability`/`canBook` above are UNTOUCHED (they still serve the seeded-Event
 // path); this supersedes the browse path when 12.8 repoints the calendar at it.
+
+/**
+ * Is `(date, time)` a real departure the deriver would ever emit for this schedule (issue #799)?
+ *
+ * The deriver generates bookable slots as `(date ∈ season ∩ weekdays) × schedule.departureTimes`
+ * (see the loop below), so those four conditions ARE the grid. Anything else is a slot no
+ * legitimate customer can pick — the availability screen never renders it — which is exactly why
+ * the write path must reject it: an off-grid hold has no honest source and, worse, its interval
+ * overlaps a real departure in the claim path while the deriver keys holds on exact identity, so
+ * it locks out the real slot invisibly.
+ *
+ * Pure and total: a malformed or non-round-tripping date (`2026-09-31`, `not-a-date`) and a time
+ * that isn't an exact member of `departureTimes` (`13:3 0`) both return false rather than throwing.
+ * Date bounds compare lexically — safe because `yyyy-mm-dd` sorts chronologically.
+ */
+export function isOnScheduleGrid(
+  schedule: OfferingSchedule,
+  date: string,
+  time: string,
+): boolean {
+  const ms = Date.parse(`${date}T00:00:00Z`);
+  if (!Number.isFinite(ms)) return false;
+  // Reject a date string that doesn't round-trip — `2026-09-31` would otherwise roll into October
+  // and silently pass the weekday check for the wrong day.
+  if (new Date(ms).toISOString().slice(0, 10) !== date) return false;
+  if (date < schedule.seasonStart || date > schedule.seasonEnd) return false;
+  if (!schedule.weekdays.includes(weekdayMon0(date))) return false;
+  return schedule.departureTimes.includes(time);
+}
 
 /** The physical boat-slot identity for a Muster event (DEC-125 guardrail). ONE Brew 3
  *  can hold exactly one departure at a given day+time — `source='muster'` is implicit

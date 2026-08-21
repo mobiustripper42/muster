@@ -112,6 +112,18 @@ describe("createDeparturePaymentIntent — hold + frozen money metadata (12.5, D
     expect(await repo.listCheckoutHolds()).toHaveLength(0);
   });
 
+  it("an off-grid slot is refused before any hold or Stripe call (#799)", async () => {
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    // 13:30 is a listed departure; 13:31 is not. A scripted caller could post it; nothing on the
+    // real UI can. It must never reach `paymentIntents.create` — the whole invisible-lockout class
+    // dies here.
+    const r = await createDeparturePaymentIntent(repo, pay, { ...req, time: "13:31" }, now);
+    expect(r).toEqual({ ok: false, reason: "off_schedule" });
+    expect(await repo.listCheckoutHolds()).toHaveLength(0);
+    expect(pay.intents).toHaveLength(0);
+  });
+
   it("sold out once both boats are held — by DIFFERENT buyers", async () => {
     // Three submits of the same `req` used to stand here, and it passed for the wrong reason:
     // one buyer retrying took a second boat and then hit sold_out (#575). The sold-out path is

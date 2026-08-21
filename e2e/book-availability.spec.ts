@@ -8,7 +8,11 @@
  *
  * **The window is not the season any more (#797).** The season starts TODAY, so bookable slots
  * exist in the current month; only the bookings and the block fixtures live in the window above.
- * That breaks the forward-paging test's premise below — see its own comment.
+ * Read the two as separate things when a count here looks off.
+ *
+ * It does **not** break the forward-paging test below, which #797 claimed and issue #804 was filed
+ * for. Both were wrong: that test's assertions turn on no-date-selected and on the month label,
+ * never on the current month being empty. See its own comment.
  *
  * **The fixture gained its second and third boat in #715**, and it moved every count in this file:
  * a booking on Brew 3 no longer sells out its departure, it leaves two boats open. That is the
@@ -234,11 +238,12 @@ test.describe("public /book availability", () => {
     await expect(page.getByTestId("guest-count")).toHaveText("14");
   });
 
-  // **KNOWN BROKEN since #797 — issue #804.** Widening the seed's season to start today means
-  // today's month has availability, so the "Pick an available date" prompt on line 241 no longer
-  // renders and there is no empty month to page FROM. The premise is gone rather than the
-  // assertion being stale, so this needs re-anchoring, not a tweak. Left failing and tracked
-  // rather than skipped: a skip is how it stops being anyone's problem.
+  // **The title says "an empty month" and the assertions do not depend on one** — worth knowing
+  // before you reason about this test, because #797 nearly got it marked broken on exactly that
+  // misreading. The prompt below renders whenever NO DATE IS SELECTED (`book/page.tsx`, the else
+  // branch of the slot list), and `goto("/book")` passes no `date`. Whether the month has
+  // availability never enters into it. The paging assertion is likewise about the month LABEL,
+  // not about emptiness: the demo window is one month ahead, so it costs exactly one page.
   test("an empty month prompts a date pick and pages forward to availability", async ({ page }) => {
     await page.goto("/book"); // defaults to today's month — the seeded window is next month
 

@@ -6,7 +6,7 @@ branch: task/724-cancel-reason
 started: 2026-08-21T10:48:33Z
 ended:
 points:
-pr_numbers: [805]
+pr_numbers: [805, 809]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/ad732f7c-4a21-5916-8cd9-6e3016d9ae4b.jsonl
 ---
@@ -73,6 +73,51 @@ only on `> 0`. Found by the operator reviewing this fix. Display-only, no CTA, s
 **Points:** 3
 **Branch:** task/797-operator-cancel-full-refund
 **Opened at:** 2026-08-21T16:31:00Z
+
+## Task 2: A cancelled booking owes nothing (issue #803)
+
+**Completed:**
+- `src/reservations/payment-config.ts` — `balanceDueCents`: `balanceOwedCents`, except a non-`booked`
+  reservation returns 0.
+- `src/reservations/calendar-detail.ts` — the shared money composer switches to it, which fixes the
+  admin pane and, via `buildManageView`, the guest page in one place.
+- `src/reservations/purchases-view.ts` — stops the "$X due" chip on a cancelled row.
+- `src/reservations/manage-view.ts` — `paidInFull` also requires `paidCents > 0` (review finding).
+- Three test files; the admin pane got a comment correction only.
+
+**Found by the operator reviewing Task 1**, on the guest page he was checking the refund fix on.
+
+**The seam was the interesting decision.** `balanceOwedCents` does NOT learn about status. Both
+non-presentation callers already refuse a cancelled reservation before reaching it, so folding it in
+would be dead code — and one of them is the webhook's overpay guard, a caller that wants the raw
+arithmetic and nothing else. My first commit message claimed a zero there would suppress a live
+alert; `@code-review` established that branch is unreachable, and the docstring was corrected to the
+reason that survives being checked. Worth remembering as a shape: the rationale was *directionally*
+right and *factually* wrong, and it would have been shipped as a durable comment.
+
+**The review earned its keep on the second thing, which it wasn't asked for.** Verifying the change,
+it traced the render path and found the trap the fix opened: a fully refunded payment row is
+`refunded`, which `countsAsPaid` excludes, so `paidCents` is 0 — and with the balance now also 0 the
+guest page's headline read **"Paid in full $0.00"** above "Refunded −$758.49". That is the ordinary
+end state of an operator cancel (Task 1's own path), not an edge case. Neither my three failing tests
+nor the operator's approval of the "Paid in full" label would have caught it, because both were
+reasoning about the *partially* refunded case.
+
+**Code review:** 1 filed finding (a fixture stubbed wholesale instead of spread), fixed — plus the
+`$0.00` defect above, found while verifying.
+**Security review:** ran on the money-moving trigger (`payment-config.ts`). **0 findings at
+confidence ≥ 8.** Traced and ruled out: no writer or charge path reads the zeroed balance
+(`createBalanceCheckout` and the webhook both still call `balanceOwedCents` and both still refuse
+non-`booked`); `paidInFull` gates copy only, and every capability on `/b/<code>` is gated elsewhere;
+no aggregate on `/admin/purchases` that a zeroed row could launder.
+
+**Left for the operator's eye, not guessed at:** the fully-refunded case now reads "Paid so far
+$0.00", which is accurate but not lovely. Different copy for that state would be its own issue.
+
+**PR:** [PR #809](https://github.com/mobiustripper42/muster/pull/809)
+**Points:** 2
+**Branch:** task/803-cancelled-owes-nothing
+**Opened at:** 2026-08-21T19:35:00Z
 
 **Next Steps:**
 

@@ -28,9 +28,12 @@
  * slots may emit. They were the same range under #688 and are not any more, so read the two as
  * separate things: a slot near today is bookable, but nothing is *booked* there.
  *
- * **This costs `/book`'s default month its emptiness**, which `book-availability.spec.ts:233`
- * builds its paging test on. That is the deliberate trade — the 14-day cancellation rules were
- * unreachable by hand, and a fixture you cannot reach a rule from is the more expensive problem.
+ * Today's month therefore has bookable slots where it had none. **#797 claimed that broke the
+ * forward-paging test in `book-availability.spec.ts` and filed issue #804 for it. Both were
+ * wrong** — that test asserts a prompt which renders whenever no date is selected, and a month
+ * LABEL one page ahead; neither depends on the current month being empty. CI proved it green on
+ * the branch that widened the season. The claim was made from the test's title and its comments
+ * rather than from its assertions, which is the only way to get this wrong.
  *
  * **Caveat, stated rather than papered over:** the seed script and the e2e process each compute
  * "today" independently, so a run that crosses vessel-local midnight can disagree about which

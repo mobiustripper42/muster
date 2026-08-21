@@ -48,9 +48,13 @@ describe("the demo window is relative to today, not a fixed calendar month (#646
       //
       // **This no longer says anything about `/book`'s default month being empty.** It used to,
       // because the season and the window were the same range; since #797 the season starts
-      // today and slots DO emit in the current month. `book-availability.spec.ts:233` built its
-      // forward-paging test on that emptiness and needs re-anchoring — an assertion here cannot
-      // stand in for it any more, and leaving the old title would have hidden that.
+      // today and slots DO emit in the current month. Hence the retitle — the old name claimed
+      // a property this assertion had stopped proving.
+      //
+      // Nothing depends on that property, which #797 got wrong in the other direction: it said
+      // the forward-paging test in `book-availability.spec.ts` was built on the emptiness and
+      // filed issue #804. That test turns on no-date-selected and a month label instead, and CI
+      // was green throughout.
       expect(d.window.start.slice(0, 7)).not.toBe(today.slice(0, 7));
       expect(d.window.end.slice(0, 7)).not.toBe(today.slice(0, 7));
     });

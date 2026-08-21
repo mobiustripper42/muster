@@ -32,8 +32,8 @@
  * forward-paging test in `book-availability.spec.ts` and filed issue #804 for it. Both were
  * wrong** — that test asserts a prompt which renders whenever no date is selected, and a month
  * LABEL one page ahead; neither depends on the current month being empty. CI proved it green on
- * the branch that widened the season. The claim was made from the test's title and its comments
- * rather than from its assertions, which is the only way to get this wrong.
+ * the branch that widened the season (PR #805, `e2e` 25m47s). The claim was made from the test's
+ * title and its comments rather than from its assertions.
  *
  * **Caveat, stated rather than papered over:** the seed script and the e2e process each compute
  * "today" independently, so a run that crosses vessel-local midnight can disagree about which

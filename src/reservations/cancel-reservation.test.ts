@@ -228,17 +228,30 @@ describe("quoteCancelRefund", () => {
   const departureAt = new Date("2026-08-20T21:00:00.000Z");
   const paid = [payment()];
 
+  /**
+   * The booking from #797, to the cent: $754.15 taken, of which $115.80 is tip and $17.37 is the
+   * service fee. **Every rule below is asserted against a payment that carries both**, because a
+   * tip-free payment cannot tell a full refund from a fare-only one — which is exactly how the
+   * defect survived a test named "refunds everything" for as long as it did.
+   */
+  const paidWithTipAndFee = [
+    payment({ amountCents: 75415, gratuityCents: 11580, serviceFeeCents: 1737 }),
+  ];
+
   it("an OPERATOR cancellation refunds everything, at any notice", async () => {
     // Weather, crew, mechanical — "we will provide you with a full refund". The hour of the
     // departure is irrelevant, which is the whole reason `operatorCancelRefundCents` exists as
     // its own function.
+    //
+    // **Everything means everything**: the published term names no deduction on this branch, so
+    // the tip and the service fee come back with the fare. Quoting $620.98 here is #797.
     const q = quoteCancelRefund({
       by: "operator",
-      payments: paid,
+      payments: paidWithTipAndFee,
       departureAt,
       now: new Date("2026-08-20T19:00:00.000Z"), // two hours out
     });
-    expect(q.refundCents).toBe(53625);
+    expect(q.refundCents).toBe(75415);
   });
 
   it("a CUSTOMER cancellation 14+ days out refunds what they paid minus the $50 fee", () => {
@@ -251,6 +264,18 @@ describe("quoteCancelRefund", () => {
     expect(q.refundCents).toBe(53625 - 5000);
   });
 
+  it("a CUSTOMER cancellation 14+ days out deducts the $50 and nothing else", () => {
+    // "will be refunded minus a $50 cancellation fee" names ONE deduction. The tip and the
+    // service fee are not a second and a third.
+    const q = quoteCancelRefund({
+      by: "customer",
+      payments: paidWithTipAndFee,
+      departureAt,
+      now: new Date("2026-08-01T12:00:00.000Z"), // ~19 days out
+    });
+    expect(q.refundCents).toBe(75415 - 5000);
+  });
+
   it("a CUSTOMER cancellation inside 14 days refunds nothing", () => {
     const q = quoteCancelRefund({
       by: "customer",
@@ -259,19 +284,6 @@ describe("quoteCancelRefund", () => {
       now: new Date("2026-08-15T12:00:00.000Z"), // ~5 days out
     });
     expect(q.refundCents).toBe(0);
-  });
-
-  it("quotes on FARE money only — the tip and the service fee are carved out", () => {
-    // A tip is crew money (DEC-124) and the service fee is the operator's. Quoting them back
-    // by default would hand out crew pay on a routine cancel with nobody deciding to. The
-    // operator can type a larger number; they cannot un-send one that defaulted too high.
-    const q = quoteCancelRefund({
-      by: "operator",
-      payments: [payment({ amountCents: 65125, gratuityCents: 10000, serviceFeeCents: 1500 })],
-      departureAt,
-      now: new Date("2026-08-01T12:00:00.000Z"),
-    });
-    expect(q.refundCents).toBe(53625);
   });
 
   it("nets money already refunded — the same dollar cannot be quoted twice", () => {

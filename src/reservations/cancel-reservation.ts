@@ -27,7 +27,7 @@ import { logFormAudit } from "../oracle/audit-log.js";
 import type { CancelledBy, Payment } from "../domain/entities.js";
 import type { EventId, ReservationId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
-import { countsAsPaid } from "./payment-config.js";
+import { refundableTotalFor } from "./refund-payment.js";
 import { operatorCancelRefundCents, refundOwedCents } from "./refund-terms.js";
 
 /**
@@ -55,7 +55,7 @@ export interface CancelQuoteInput {
 
 export interface CancelQuote {
   by: CancelledBy;
-  /** Refundable money the customer has actually paid — see `refundableCents`. */
+  /** What the customer has actually paid and not yet had back — see `refundableTotalFor`. */
   paidCents: number;
   /** Notice given. Negative past the departure (a no-show), which reads as zero refund. */
   hoursBeforeDeparture: number;
@@ -63,33 +63,18 @@ export interface CancelQuote {
   refundCents: number;
 }
 
-/**
- * Refundable money on a booking: what was captured, minus what has already gone back, minus
- * the parts that are not the operator's to return.
- *
- * **Gratuity and the service fee are carved out** — the same carve-out `balanceOwedCents`
- * makes, for a sharper reason here. A tip is crew money (DEC-124), and a quote that included
- * it would hand crew pay back on a routine cancel with no human ever deciding to. The
- * asymmetry is deliberate: an operator who wants to return the tip types a bigger number and
- * has thought about it; an operator who accepts a default that was too high has not, and
- * cannot un-send it.
- */
-function refundableCents(payments: readonly Payment[]): number {
-  return payments.reduce((sum, p) => {
-    // A fully refunded row contributes nothing whatever `refundedCents` says — it may be
-    // absent on a hand-reconciled row, and trusting the amount alone would re-offer money
-    // that is already gone. Status wins for the terminal state (`countsAsPaid`).
-    if (!countsAsPaid(p)) return sum;
-    const notOurs = (p.gratuityCents ?? 0) + (p.serviceFeeCents ?? 0);
-    return sum + Math.max(0, p.amountCents - notOurs - (p.refundedCents ?? 0));
-  }, 0);
-}
-
 const MS_PER_HOUR = 3_600_000;
 
-/** What the published terms produce for this cancellation. Pure — no repo, no clock of its own. */
+/**
+ * What the published terms produce for this cancellation. Pure — no repo, no clock of its own.
+ *
+ * **One base for both policies: everything still refundable.** The published terms name exactly
+ * three outcomes — full refund when we cancel, paid minus $50 when the customer cancels 14+ days
+ * out, nothing inside the window or for a no-show — and the only deduction anywhere in them is
+ * that $50. Gratuity and the service fee are not a second and a third; #797.
+ */
 export function quoteCancelRefund(input: CancelQuoteInput): CancelQuote {
-  const paidCents = refundableCents(input.payments);
+  const paidCents = refundableTotalFor(input.payments);
   const hoursBeforeDeparture =
     (input.departureAt.getTime() - input.now.getTime()) / MS_PER_HOUR;
   const refundCents =

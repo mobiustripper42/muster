@@ -8,6 +8,7 @@
 import { describe, expect, it } from "vitest";
 import type { Block, Vessel } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
+import { addDays } from "../config/tenant.js";
 import { deriveVirtualAvailability } from "./availability.js";
 import { computeBlockImpact } from "./block-impact.js";
 import { buildSeededReservationWorld, reservationDemo } from "./seed-reservation.js";
@@ -41,9 +42,15 @@ describe("the demo window is relative to today, not a fixed calendar month (#646
       expect(d.window.start > today).toBe(true);
     });
 
-    it(`today's month contains no demo day, so /book's default is empty (${today})`, () => {
-      // The premise of the forward-paging test. If the window ever lands in the current
-      // month, that test starts passing by racing a navigation instead of by paging.
+    it(`no BOOKING lands in today's month (${today})`, () => {
+      // Keeps the demo's materialized bookings, the block fixtures and every figure pinned to
+      // them next month, where they have always been.
+      //
+      // **This no longer says anything about `/book`'s default month being empty.** It used to,
+      // because the season and the window were the same range; since #797 the season starts
+      // today and slots DO emit in the current month. `book-availability.spec.ts:233` built its
+      // forward-paging test on that emptiness and needs re-anchoring — an assertion here cannot
+      // stand in for it any more, and leaving the old title would have hidden that.
       expect(d.window.start.slice(0, 7)).not.toBe(today.slice(0, 7));
       expect(d.window.end.slice(0, 7)).not.toBe(today.slice(0, 7));
     });
@@ -51,6 +58,14 @@ describe("the demo window is relative to today, not a fixed calendar month (#646
     it(`the season contains the whole demo window (${today})`, () => {
       expect(d.season.start <= d.window.start).toBe(true);
       expect(d.season.end >= d.window.end).toBe(true);
+    });
+
+    it(`the season reaches inside the 14-day cancellation window (${today})`, () => {
+      // #797's whole reason for widening it: the two customer-cancel outcomes differ only inside
+      // 14 days, so a season that starts ~10-40 days out cannot produce a slot either rule can
+      // be seen at. Starting at today means day+1 through day+13 are all bookable.
+      expect(d.season.start).toBe(today);
+      expect(d.season.end >= addDays(today, 13)).toBe(true);
     });
 
     it(`every booking sits inside the demo window (${today})`, () => {

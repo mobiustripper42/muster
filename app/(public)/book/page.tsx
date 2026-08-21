@@ -73,6 +73,9 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
   let reservations: Reservation[];
   let locations: Location[];
   let holds: CheckoutHold[];
+  // One instant for the whole render — it filters the hold read here and is handed to the deriver
+  // as `asOf` below, so a hold can't be live for one and dead for the other (issue #713).
+  const asOf = new Date().toISOString();
   try {
     const repo = getRepo();
     [offerings, vessels, blocks, events, reservations, locations, holds] = await Promise.all([
@@ -82,7 +85,10 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
       repo.listEvents(),
       repo.listAllReservations(),
       repo.listLocations(),
-      repo.listCheckoutHolds(),
+      // Live rows only (issue #713). This page is `force-dynamic`, so it runs on EVERY view and
+      // every date-nav; the unfiltered read scanned a table that grows by one row per abandoned
+      // checkout and never shrank.
+      repo.listLiveCheckoutHolds(asOf),
     ]);
   } catch {
     return (
@@ -172,7 +178,9 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
     events,
     reservations,
     holds,
-    asOf: new Date().toISOString(),
+    // The SAME instant the hold read was filtered on (issue #713) — a second `new Date()` here
+    // could disagree with the first by however long the reads took.
+    asOf,
   });
   const slotsByDate = new Map<string, VirtualSlot[]>();
   for (const s of slots) {

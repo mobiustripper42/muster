@@ -324,18 +324,39 @@ export interface Repository {
 
   // ── Checkout holds — the transient 15-min soft reservation (12.1, DEC-109) ──
   /**
-   * Acquire a checkout-hold on a physical slot. Atomic: deletes any EXPIRED hold for the
-   * slot identity first (so a stale row can't block a fresh acquire — the identity is
-   * unique), then inserts. Two live buyers collide on the `checkout_holds_slot_identity`
-   * unique → exactly one `{acquired:true}`; the other gets `{acquired:false}`. Idempotent on
-   * id: re-acquiring one's own live hold returns `{acquired:true}` with the existing row.
+   * Acquire a checkout-hold on a physical slot. Atomic: deletes EXPIRED holds first (so a stale
+   * row can't block a fresh acquire — the slot identity is unique), then inserts. Two live
+   * buyers collide on the `checkout_holds_slot_identity` unique → exactly one `{acquired:true}`;
+   * the other gets `{acquired:false}`. Idempotent on id: re-acquiring one's own live hold
+   * returns `{acquired:true}` with the existing row.
+   *
+   * **That delete sweeps EVERY expired hold, not only this slot's (issue #713)** — it is the only
+   * pruning this codebase has, because DEC-109's lazy-on-read expiry deliberately means no cron,
+   * and an acquire is therefore the only moment a sweep can happen. Removing another buyer's
+   * expired row is safe precisely because expiry is a global fact: an expired hold is already
+   * inert to the deriver and to this method.
    */
   acquireCheckoutHold(
     hold: CheckoutHold,
   ): Promise<{ acquired: true; hold: CheckoutHold } | { acquired: false }>;
-  /** Every checkout-hold row (including expired-but-undeleted). The deriver filters these
-   *  to live (`expiresAt > asOf`) — the ONLY sanctioned raw read; never raw-count for "held". */
+  /**
+   * EVERY hold row, expired included — diagnostics, tests, and the assertions that prove a stale
+   * row was actually deleted rather than merely filtered out of view.
+   *
+   * **Not for a render path.** The table accumulates a row per abandoned checkout, so this is an
+   * unbounded scan; production reads want `listLiveCheckoutHolds` (issue #713).
+   */
   listCheckoutHolds(): Promise<CheckoutHold[]>;
+  /**
+   * Holds live at `asOf` — `expiresAt > asOf`, the same exclusive comparison the availability
+   * deriver applies (DEC-109 lazy-on-read).
+   *
+   * This does NOT make the deriver's own liveness check redundant, and that check must stay:
+   * pruning lags, the caller's clock and this one can differ, and an expired row that IS present
+   * has to remain inert. The filter is about not reading rows nobody can use, not about
+   * relocating the correctness rule into the database.
+   */
+  listLiveCheckoutHolds(asOf: string): Promise<CheckoutHold[]>;
   /** Release a hold by id — idempotent no-op if already gone. Called when a checkout is
    *  abandoned. */
   removeCheckoutHold(id: CheckoutHoldId): Promise<void>;

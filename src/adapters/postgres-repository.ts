@@ -1668,9 +1668,17 @@ export class PostgresRepository implements Repository {
     try {
       await client.query("begin");
       await client.query(
-        `delete from checkout_holds
-         where vessel_id=$1 and date=$2 and time=$3 and source='muster' and expires_at <= $4`,
-        [hold.vesselId, hold.date, hold.time, hold.createdAt],
+        // Sweeps EVERY expired muster hold, not just this slot's (issue #713). Scoped to the
+        // slot identity, an abandoned checkout on a departure nobody re-attempts was unreachable
+        // by any cleanup path and grew the table without bound; there is no scheduler in this
+        // codebase, so an acquire is the only moment a sweep can happen.
+        //
+        // Safe to delete another buyer's row because the predicate is `expires_at <= $1` and an
+        // expired hold is ALREADY inert everywhere (DEC-109 lazy-on-read) — the deriver and
+        // `acquireDepartureHold` both ignore it. Indexed on `expires_at`, and it runs inside the
+        // transaction that was already opened for the insert, so it adds no round trip.
+        `delete from checkout_holds where source='muster' and expires_at <= $1`,
+        [hold.createdAt],
       );
       await client.query(
         `insert into checkout_holds
@@ -1710,6 +1718,15 @@ export class PostgresRepository implements Repository {
   }
   async listCheckoutHolds(): Promise<CheckoutHold[]> {
     const { rows } = await this.#pool.query("select * from checkout_holds");
+    return rows.map(toCheckoutHold);
+  }
+  /** `expires_at > $1` — exclusive, matching the deriver (issue #713). Served by
+   *  `checkout_holds_expires_at_idx`; this is what `/book` reads on every render. */
+  async listLiveCheckoutHolds(asOf: string): Promise<CheckoutHold[]> {
+    const { rows } = await this.#pool.query(
+      "select * from checkout_holds where expires_at > $1",
+      [asOf],
+    );
     return rows.map(toCheckoutHold);
   }
   async removeCheckoutHold(id: CheckoutHoldId): Promise<void> {

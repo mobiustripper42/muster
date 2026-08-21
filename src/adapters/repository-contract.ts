@@ -1076,6 +1076,66 @@ export function runRepositoryContract(
       expect(String(holds[0]!.id)).toBe("h-new"); // the stale row was deleted, not left to block
     });
 
+    it("listLiveCheckoutHolds: returns only holds live at the given instant (issue #713)", async () => {
+      await saveCatalogParents();
+      // Two holds on DIFFERENT slots so neither displaces the other: one live at T, one expired.
+      await repo.acquireCheckoutHold(hold({ id: asId<"CheckoutHoldId">("h-live"), time: "14:00" }));
+      await repo.acquireCheckoutHold(
+        hold({
+          id: asId<"CheckoutHoldId">("h-dead"),
+          time: "16:00",
+          createdAt: "2026-07-01T10:45:00.000Z",
+          expiresAt: "2026-07-01T11:00:00.000Z",
+        }),
+      );
+      // The raw read still sees both — pruning lags by design, and the deriver stays responsible
+      // for treating a present-but-expired row as inert.
+      expect(await repo.listCheckoutHolds()).toHaveLength(2);
+
+      const live = await repo.listLiveCheckoutHolds("2026-07-01T12:05:00.000Z");
+      expect(live.map((h) => String(h.id))).toEqual(["h-live"]);
+
+      // Boundary: expiry is exclusive, matching the `expiresAt > asOf` rule the deriver uses.
+      expect(await repo.listLiveCheckoutHolds("2026-07-01T12:15:00.000Z")).toHaveLength(0);
+      expect(await repo.listLiveCheckoutHolds("2026-07-01T12:14:59.999Z")).toHaveLength(1);
+    });
+
+    it("acquireCheckoutHold sweeps EVERY expired hold, not just its own slot (issue #713)", async () => {
+      await saveCatalogParents();
+      // An abandoned checkout on a slot nobody ever re-attempts. Before issue #713 the delete in
+      // `acquireCheckoutHold` was scoped to the acquiring slot identity, so this row was
+      // unreachable by any cleanup path and sat in the table forever.
+      await repo.acquireCheckoutHold(
+        hold({
+          id: asId<"CheckoutHoldId">("h-abandoned"),
+          time: "16:00",
+          createdAt: "2026-07-01T10:45:00.000Z",
+          expiresAt: "2026-07-01T11:00:00.000Z",
+        }),
+      );
+      expect(await repo.listCheckoutHolds()).toHaveLength(1);
+
+      // A completely unrelated acquire, on a different slot, at a later instant.
+      expect((await repo.acquireCheckoutHold(hold({ id: asId<"CheckoutHoldId">("h-new") }))).acquired).toBe(true);
+
+      const remaining = await repo.listCheckoutHolds();
+      expect(remaining.map((h) => String(h.id))).toEqual(["h-new"]);
+    });
+
+    it("acquireCheckoutHold's sweep never touches a LIVE hold on another slot (issue #713)", async () => {
+      await saveCatalogParents();
+      // The sweep widens a DELETE that runs on the money path. Getting its predicate wrong would
+      // drop a hold somebody is actively paying against and hand their boat to another buyer —
+      // strictly worse than the unbounded growth it exists to fix.
+      await repo.acquireCheckoutHold(
+        hold({ id: asId<"CheckoutHoldId">("h-other-live"), time: "16:00", expiresAt: "2026-07-01T12:15:00.000Z" }),
+      );
+      expect((await repo.acquireCheckoutHold(hold({ id: asId<"CheckoutHoldId">("h-new") }))).acquired).toBe(true);
+
+      const ids = (await repo.listCheckoutHolds()).map((h) => String(h.id)).sort();
+      expect(ids).toEqual(["h-new", "h-other-live"]);
+    });
+
     it("checkout holds: remove is idempotent", async () => {
       await saveCatalogParents();
       await repo.acquireCheckoutHold(hold());

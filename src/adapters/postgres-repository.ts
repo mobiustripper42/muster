@@ -340,6 +340,7 @@ const toReservation = (r: any): Reservation => ({
   ...opt("waiverVersion", r.waiver_version),
   ...opt("updatedAt", r.updated_at),
   ...opt<"customerId", CustomerId>("customerId", r.customer_id ?? null),
+  ...opt("cancelledBy", r.cancelled_by),
 });
 
 const toPayment = (r: any): Payment => ({
@@ -1371,13 +1372,14 @@ export class PostgresRepository implements Repository {
   // ── Reservations ───────────────────────────────────────────────────────────
   async saveReservation(r: Reservation): Promise<void> {
     await this.#pool.query(
-      `insert into reservations(id, event_id, customer_name, party_size, email, phone, status, updated_at, source, waiver_consent_at, waiver_version, extras_cents, customer_id)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+      `insert into reservations(id, event_id, customer_name, party_size, email, phone, status, updated_at, source, waiver_consent_at, waiver_version, extras_cents, customer_id, cancelled_by)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
        on conflict (id) do update set event_id=excluded.event_id, customer_name=excluded.customer_name,
          party_size=excluded.party_size, email=excluded.email, phone=excluded.phone, status=excluded.status,
          updated_at=excluded.updated_at, source=excluded.source,
          waiver_consent_at=excluded.waiver_consent_at, waiver_version=excluded.waiver_version,
-         extras_cents=excluded.extras_cents, customer_id=excluded.customer_id`,
+         extras_cents=excluded.extras_cents, customer_id=excluded.customer_id,
+         cancelled_by=excluded.cancelled_by`,
       [
         r.id,
         r.eventId,
@@ -1392,6 +1394,7 @@ export class PostgresRepository implements Repository {
         r.waiverVersion ?? null,
         r.extrasCents ?? null,
         r.customerId ?? null,
+        r.cancelledBy ?? null,
       ],
     );
   }

@@ -62,7 +62,7 @@ const payment = (over: Partial<Payment> = {}): Payment => ({
 describe("cancelReservation", () => {
   it("cancels the reservation AND its event — the event is what releases the hull", async () => {
     const repo = await seeded();
-    const result = await cancelReservation(deps(repo), RESV);
+    const result = await cancelReservation(deps(repo), RESV, "operator");
 
     expect(result.ok).toBe(true);
     expect((await repo.getReservation(RESV))?.status).toBe("cancelled");
@@ -91,6 +91,7 @@ describe("cancelReservation", () => {
         relayed.push(f);
       }),
       RESV,
+      "operator",
     );
 
     expect((await repo.getShift(shiftId))?.state).toBe("Cancelled");
@@ -135,6 +136,7 @@ describe("cancelReservation", () => {
         relayed.push(f);
       }),
       RESV,
+      "operator",
     );
 
     // The shift is still live and still crewed — it just lost a trip.
@@ -153,11 +155,42 @@ describe("cancelReservation", () => {
 
   it("refuses a Xola reservation — Xola owns its own bookings (DEC-105)", async () => {
     const repo = await seeded({ source: "xola" });
-    const result = await cancelReservation(deps(repo), RESV);
+    const result = await cancelReservation(deps(repo), RESV, "operator");
 
     expect(result).toMatchObject({ ok: false, reason: "not_muster" });
     expect((await repo.getReservation(RESV))?.status).toBe("booked");
     expect((await repo.getEvent(EVENT))?.status).toBe("scheduled");
+  });
+
+  it("records WHO cancelled — the answer the refund turned on and nothing kept (#724)", async () => {
+    // The confirm already asks customer-vs-operator, because the refund policy branches on it
+    // (`quoteCancelRefund`). Until now that answer picked a policy and was thrown away: the
+    // refund AMOUNT was the only surviving trace, and the operator can type over the amount.
+    // So "why was this cancelled" — and "how many trips did we lose to weather" — were
+    // unanswerable from the database, permanently, for every booking already cancelled.
+    const repo = await seeded();
+    await cancelReservation(deps(repo), RESV, "operator");
+
+    expect((await repo.getReservation(RESV))?.cancelledBy).toBe("operator");
+  });
+
+  it("records a CUSTOMER cancellation as the customer's", async () => {
+    const repo = await seeded();
+    await cancelReservation(deps(repo), RESV, "customer");
+
+    expect((await repo.getReservation(RESV))?.cancelledBy).toBe("customer");
+  });
+
+  it("keeps the FIRST answer when a half-applied cancel is re-run (#724)", async () => {
+    // The repair path deliberately re-runs against an already-cancelled reservation. It must not
+    // rewrite who cancelled: the first answer is the real one, and a retry that happened to be
+    // driven from a different surface would otherwise silently relabel a customer cancellation
+    // as ours — which is the branch that pays a FULL refund.
+    const repo = await seeded();
+    await cancelReservation(deps(repo), RESV, "customer");
+    await cancelReservation(deps(repo), RESV, "operator");
+
+    expect((await repo.getReservation(RESV))?.cancelledBy).toBe("customer");
   });
 
   it("is idempotent, and repairs a half-applied cancel", async () => {
@@ -165,7 +198,7 @@ describe("cancelReservation", () => {
     // still scheduled — the boat silently un-released. Re-running must finish the job rather
     // than short-circuit on "already cancelled".
     const repo = await seeded({ status: "cancelled" });
-    const result = await cancelReservation(deps(repo), RESV);
+    const result = await cancelReservation(deps(repo), RESV, "operator");
 
     expect(result).toMatchObject({ ok: true, alreadyCancelled: true });
     expect((await repo.getEvent(EVENT))?.status).toBe("cancelled");
@@ -184,7 +217,7 @@ describe("cancelReservation", () => {
       status: "booked",
     });
 
-    await cancelReservation(deps(repo), RESV);
+    await cancelReservation(deps(repo), RESV, "operator");
 
     expect((await repo.getReservation(RESV))?.status).toBe("cancelled");
     expect((await repo.getEvent(EVENT))?.status).toBe("scheduled");

@@ -671,8 +671,29 @@ export interface Reservation {
    * by the Xola importer — importer-created customers are deferred to the cutover (DEC-132).
    */
   customerId?: CustomerId;
+  /**
+   * Who ended this booking (#724) — `'customer'` (they asked) or `'operator'` (we cancelled:
+   * weather, crew, mechanical). Absent on a live booking, and on any cancellation made before
+   * this was recorded.
+   *
+   * **Log day one, in the DEC-008 sense, because it cannot be reconstructed.** The cancel confirm
+   * has always asked this question — it is the discriminator the refund branches on
+   * (`refund-terms.ts`: a customer cancellation inside the window keeps a $50 fee, ours refunds
+   * in full). Until #724 the answer picked a policy and was discarded, leaving the refund AMOUNT
+   * as the only evidence of which branch ran, and the operator can type over the amount. So
+   * "why did we lose this trip", and the question with money attached — "how many did we cancel
+   * for weather last season" — had no answer in the database and never would for any booking
+   * already cancelled.
+   *
+   * Set once, by `cancelReservation`. The repair path re-runs against an already-cancelled
+   * reservation and deliberately does NOT overwrite it: the first answer is the real one.
+   */
+  cancelledBy?: CancelledBy;
   // No waiver field — DEC-012.
 }
+
+/** Who ended a booking (#724). The refund policy branches on it — see `refund-terms.ts`. */
+export type CancelledBy = "customer" | "operator";
 
 // ── CheckoutHold — the transient 15-min soft reservation (12.1, DEC-109) ──────
 

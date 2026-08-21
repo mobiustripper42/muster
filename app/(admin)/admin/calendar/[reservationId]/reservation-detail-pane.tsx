@@ -448,7 +448,14 @@ export function ReservationDetailPane({
                   was paid, which is a live number for a live trip and meaningless once the trip
                   is off — it kept reading "Balance due $445.36" in bold on a booking that had
                   just been cancelled AND refunded. The balance LINK was already hidden for this
-                  case (#616); the figure it was hidden because of was still on screen. */}
+                  case (#616); the figure it was hidden because of was still on screen.
+
+                  **The model enforces this now (issue #803)** — `balanceDueCents` returns 0 for a
+                  cancelled reservation, so `money.balanceCents` is already 0 here and the branch
+                  below would render "Settled" on its own. Kept anyway, because "Not owed —
+                  cancelled" says why and "Settled" implies a bill that got paid. This is copy,
+                  no longer the guard. The guard that was missing was on the GUEST page, which
+                  shares this money composer and had no such branch. */}
               <Row label="Balance">
                 {v.status === "cancelled" ? (
                   <span className="text-muted">Not owed — cancelled</span>

@@ -111,6 +111,20 @@ describe("payment state", () => {
     expect(rows[0]!.state).toBe("cancelled");
   });
 
+  it("a cancelled row owes nothing, so /admin/purchases stops showing it as due (issue #803)", () => {
+    // `stateOf` already returns `cancelled` here (`purchases-view.ts:104`), but the row's
+    // `balanceCents` was still the live arithmetic — and the due chip on the page is gated on
+    // `balanceCents > 0` alone, so a cancelled booking rendered "$538.18 due".
+    const rows = build({
+      reservations: [reservation("r1", { status: "cancelled" })],
+      paymentsByReservation: new Map([["r1", [payment("p1", "r1")]]]),
+    });
+    expect(rows[0]!.balanceCents).toBe(0);
+    // The state label must NOT move — it is already correct and comes from the reservation, not
+    // from the money. Without this, zeroing the balance could flip it via `stateOf`'s last line.
+    expect(rows[0]!.state).toBe("cancelled");
+  });
+
   it("is `deposit` when something is paid but a balance remains", () => {
     const rows = build({
       paymentsByReservation: new Map([["r1", [payment("p1", "r1")]]]),

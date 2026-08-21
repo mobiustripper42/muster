@@ -16,7 +16,7 @@
  * §3.3 cancel cascade stays parked (self-service cancel is #616).
  */
 
-import type { PaymentStatus } from "../domain/entities.js";
+import type { PaymentStatus, ReservationStatus } from "../domain/entities.js";
 
 export interface PaymentConfig {
   /** Charge the whole price up front, or a deposit now + balance later (11.2b). */
@@ -203,4 +203,33 @@ export function balanceOwedCents(
     return sum + Math.max(0, towardFareAndTax - fareAndTaxRefund);
   }, 0);
   return total - paid;
+}
+
+/**
+ * The balance a SURFACE should show: `balanceOwedCents`, except that a **cancelled booking owes
+ * nothing** (issue #803).
+ *
+ * `balanceOwedCents` above is arithmetic — fare + tax minus what was paid — and it is a live
+ * number for a live trip. Once the trip is cancelled it is meaningless, and after a refund it is
+ * actively misleading: the refund reduces `paid`, so the balance climbs back toward the full
+ * fare. The guest's own page said "Balance · due before your trip $575.32" on a cruise that had
+ * been cancelled AND refunded.
+ *
+ * **Deliberately a separate function rather than a `status` parameter on `balanceOwedCents`.**
+ * The two non-presentation callers already refuse a cancelled reservation before they reach the
+ * arithmetic — `createBalanceCheckout` returns `not_active` (`create-balance-checkout.ts`), and
+ * the balance webhook early-returns on "cancelled or unpriced" (`booking-webhook.ts`). Teaching
+ * the arithmetic about status would be dead code in both, and *harmful* in the second: that call
+ * site is the OVERPAY guard, which alerts when the derived balance has gone negative. A silent
+ * zero there would suppress a "refund the excess manually" alert on real money. The arithmetic
+ * stays honest; the status rule belongs where the number is presented.
+ */
+export function balanceDueCents(
+  status: ReservationStatus,
+  fareCents: number,
+  taxRateBps: number,
+  payments: Parameters<typeof balanceOwedCents>[2],
+): number {
+  if (status !== "booked") return 0;
+  return balanceOwedCents(fareCents, taxRateBps, payments);
 }

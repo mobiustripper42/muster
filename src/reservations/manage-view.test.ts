@@ -119,4 +119,21 @@ describe("buildManageView", () => {
     expect(paid.paidInFull).toBe(true);
     expect(buildManageView(input()).paidInFull).toBe(false); // nothing paid ⇒ balance owed
   });
+
+  it("a CANCELLED booking reads paid-in-full, because it owes nothing (issue #803)", () => {
+    // The guest-visible consequence of zeroing a cancelled booking's balance, pinned because it
+    // is derived rather than written: `paidInFull` is `balanceCents <= 0`, so `/b/<code>` swaps
+    // "Paid so far" for "Paid in full" and drops the balance row entirely. Confirmed correct by
+    // the operator (2026-08-21) on a cancelled + refunded booking — they did pay in full, and
+    // the Refunded row directly beneath carries the rest of the story.
+    //
+    // Written AFTER the change: a regression guard on a knock-on effect, not a proof of it.
+    const v = buildManageView(
+      input({
+        reservation: { status: "cancelled" } as never,
+        payments: [],
+      }),
+    );
+    expect(v.paidInFull).toBe(true);
+  });
 });

@@ -6,7 +6,7 @@ branch: task/678-create-stripe-customers
 started: 2026-08-20T14:20:24Z
 ended:
 points:
-pr_numbers: [795, 798]
+pr_numbers: [795, 798, 808]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster-s91/a644283b-bc9c-59d6-a0d0-e05c848a61ed.jsonl
 ---
@@ -91,6 +91,47 @@ on the widened predicate, not evidence the widening works.
 **Points:** 2
 **Branch:** task/713-prune-checkout-holds
 **Opened at:** 2026-08-21T04:05:00Z
+
+## Task 3: Reject off-grid checkout holds — close the invisible-lockout variant of issue #799 (closes #799)
+
+**Completed:**
+- **Origin: a manual DoS probe this session that became real.** Proved an unauthenticated scripted
+  request can drive `startElementsCheckout` (server action → `acquireDepartureHold`) with no
+  browser, no card, no cookie — demonstrated end to end via copy-as-cURL (`ok:true` + a new
+  `checkout_holds` row on a free slot; `sold_out` on a held one, proving the full pipeline ran).
+  Filed as issue #799, then a second adversarial DoS review (attached to the session) expanded it
+  and found the **invisible variant** below. All findings verified against source before filing.
+- **The fix (highest-value slice):** `isOnScheduleGrid(schedule, date, time)` in
+  `src/reservations/availability.ts` — round-tripping date, in season, allowed weekday, listed
+  departure time; pure and total. `acquireDepartureHold` (`src/reservations/claim.ts`) rejects
+  off-grid with a new `off_schedule` reason before any read/write. Threaded through
+  `create-departure-payment-intent.ts` (replacing a hand-rolled reason chain) and the checkout
+  action's message map.
+- **Why it matters:** an off-grid hold (`13:31`) overlaps the real `13:30` in the claim path's
+  interval math while the deriver keys holds on EXACT identity — so `/book` showed `13:30`
+  available while every real checkout returned `sold_out`. Grid-validation makes the deriver's
+  exact-identity match correct by construction — the two now agree.
+- **Scope split, per two build-time gotchas:** #806 (per-session cap + require-token — blocked on
+  Next RSC pages not being able to set a cookie during render), #807 (Stripe idempotency key —
+  must fold the amount in or a tip-changed retry 400s). Both filed.
+
+**Also filed this session from the two reviews (not worked):** #793 (delete dead hosted-checkout
+path whose tests assert totals we don't charge), #794 (checkout 375/900 layout + price-before-card),
+#800 (/b/find throttle keyed on attacker text → full-table scans, HIGH), #801 (login window locks
+out the correct code, HIGH), #802 (unbounded-reads bundle, tracking).
+
+**Code review:** 2 findings, both non-blocking edges about callers that don't exist yet. (1)
+`isOnScheduleGrid` doesn't admit a materialized off-grid override event — not a live bug (customer
+path never targets one), addressed with a comment flagging sell-from-calendar (12.11). (2) the dead
+`create-departure-checkout.ts` still mis-maps `off_schedule` → `invalid_guest_count` — safe
+(returns `ok:false`, no hold, no charge), left for #793's deletion rather than churn dead code.
+**Security review:** ran (money-moving trigger — `create-departure-payment-intent.ts`). **0 findings
+≥ 8.** Battery-tested `isOnScheduleGrid` against whitespace/unicode/timezone/rollover inputs (all
+rejected); confirmed no unguarded hold-write path, no PI bypass, no control-flow change.
+**PR:** [PR #808](https://github.com/mobiustripper42/muster/pull/808)
+**Points:** 2
+**Branch:** task/799-cap-checkout-holds
+**Opened at:** 2026-08-21T14:15:00Z
 
 **Next Steps:**
 

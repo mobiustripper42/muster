@@ -6,7 +6,7 @@ branch: task/678-create-stripe-customers
 started: 2026-08-20T14:20:24Z
 ended:
 points:
-pr_numbers: [795, 798, 808]
+pr_numbers: [795, 798, 808, 810]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster-s91/a644283b-bc9c-59d6-a0d0-e05c848a61ed.jsonl
 ---
@@ -132,6 +132,36 @@ rejected); confirmed no unguarded hold-write path, no PI bypass, no control-flow
 **Points:** 2
 **Branch:** task/799-cap-checkout-holds
 **Opened at:** 2026-08-21T14:15:00Z
+
+## Task 4: Login window gates guesses, not the correct code (closes #801)
+
+**Completed:**
+- **The bug:** `verifyLoginCode`'s per-subject failure window (50/24h) gated the atomic claim
+  AHEAD of the code-hash compare, so once the window filled `claimLoginAttempt` returned null and
+  the function returned generic `invalid` before checking the code — a legitimate crew member
+  holding the CORRECT code got locked out for 24h. ~60 requests on a guessable roster email (the
+  operator is crew, DEC-092) burns and re-locks it daily. DEC-142's own "revisit if a real crew
+  member is locked out" clause, due.
+- **The fix:** the presented code's hash goes into `claimLoginAttempt` (`src/ports/repository.ts`
+  + both adapters). A matching hash bypasses the WINDOW bound and leaves the counter untouched (a
+  success is not a failure). Wrong guesses never match → brute force still capped at 50/day. The
+  per-code `attempts < MAX_ATTEMPTS` ceiling stays an independent AND (DEC-081). One row-locked
+  statement, both adapters — race-safe, double agrees.
+- `src/auth/login-code.ts` computes the hash before the claim and passes it in. DEC-142 amendment.
+  Flipped the pre-existing "correct code at cap is refused" test to `ok:true` + new unit/contract
+  parity cases. Added `src/auth/**` to the Auth blast-radius row in `.claude/CLAUDE-context.md`
+  (it was missing — same gap the doc flags for `refund-payment.ts`).
+
+**Code review:** 0 findings — clean bill of health; adapter parity + race-safety verified against
+both adapters via the shared contract suite.
+**Security review:** ran (auth trigger, `src/auth/**`). **0 findings.** Probed the correct-code
+bypass (unforgeable sha256, bound `$7`, no injection), the moved-hash timing (no new roster oracle
+— unknown email still short-circuits before hashing), and confirmed expiry / consume-CAS /
+per-code-cap all still enforced for a correct code. No new bypass, no new lockout.
+**PR:** [PR #810](https://github.com/mobiustripper42/muster/pull/810)
+**Points:** 3
+**Branch:** task/801-login-window-gate-order
+**Opened at:** 2026-08-21T16:05:00Z
 
 **Next Steps:**
 

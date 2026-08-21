@@ -26,7 +26,7 @@ import type {
 import { asId } from "../domain/ids.js";
 import type { CheckoutHoldId, OfferingId, VesselId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
-import { isActiveMusterClaim, isSlotBlocked, slotIdentity } from "./availability.js";
+import { isActiveMusterClaim, isOnScheduleGrid, isSlotBlocked, slotIdentity } from "./availability.js";
 import { XOLA_TRIP_MINUTES, busyIntervalsFor, hullIsBusy, minutesOfDay } from "./hull-busy.js";
 
 /** The soft-hold lifetime (DEC-109). Lifted from sailbook's proven 15 min. */
@@ -136,7 +136,7 @@ export interface DepartureHoldRequest {
 export type DepartureHoldResult =
   | { held: CheckoutHold }
   | { soldOut: true }
-  | { unbookable: "offering_missing" | "not_live" | "invalid_guest_count" };
+  | { unbookable: "offering_missing" | "not_live" | "invalid_guest_count" | "off_schedule" };
 
 /**
  * Acquire a hold on the first free fitting boat of a departure (fit-and-fallback). `now`
@@ -155,6 +155,21 @@ export async function acquireDepartureHold(
   if (offering.status !== "live") return { unbookable: "not_live" };
   if (!Number.isInteger(req.guestCount) || req.guestCount < 1) {
     return { unbookable: "invalid_guest_count" };
+  }
+  // The (date, time) must be a real departure this offering runs (issue #799). The engine used to
+  // trust these strings verbatim, so a scripted caller could park a hold at `13:31` — a slot no
+  // customer can pick, yet one whose interval overlaps the real `13:30` in the claim math while
+  // the deriver keys holds on exact identity, locking out `13:30` invisibly. Checked before any
+  // read or write: an off-grid request costs one pure predicate and touches nothing.
+  //
+  // Correct for every CURRENT caller, all of which sell the virtual grid the deriver emits. It is
+  // NOT the whole rule for sell-from-calendar (12.11): an admin can MOVE a materialized Event off
+  // the grid via a per-departure override, and the deriver reads such an event directly
+  // (availability.ts, the time-change carve-out). When 12.11 wires that path through here, this
+  // guard must also admit a slot backed by a materialized muster Event at that identity — else it
+  // becomes the admin-side mirror of the very lockout it fixes for customers.
+  if (!isOnScheduleGrid(offering.schedule, req.date, req.time)) {
+    return { unbookable: "off_schedule" };
   }
 
   // One clock for the whole acquire: the same instant filters the hold read and decides hull

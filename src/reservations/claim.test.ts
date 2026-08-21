@@ -150,6 +150,62 @@ describe("acquireDepartureHold — fit-and-fallback (DEC-109)", () => {
 });
 
 /**
+ * The (date, time) must be on the offering's schedule GRID (issue #799).
+ *
+ * The engine trusted `req.date`/`req.time` verbatim — a scripted call could park a hold at any
+ * string. Two harms: (1) `13:31` is not a real departure so nothing legitimate ever asks for it,
+ * yet it OVERLAPS the real `13:30` in the claim path (interval math) while the availability
+ * deriver keys holds on EXACT identity — so an off-grid hold makes `/book` show `13:30` available
+ * while every real buyer's checkout returns sold_out, an invisible lockout; (2) an unbounded set
+ * of distinct off-grid identities to spam. Rejecting off-grid at the write path is what makes the
+ * deriver's exact-identity match correct by construction — the two now agree because only grid
+ * slots can ever hold.
+ *
+ * A rejection writes NO hold row. The offering runs Saturdays only (`weekdays:[5]`), season
+ * 2026-06-01..2026-08-31, departures [13:30]; DATE 2026-07-04 is a Saturday inside it.
+ */
+describe("acquireDepartureHold — the slot must be on the schedule grid (#799)", () => {
+  const ask = (date: string, time: string) => ({ offeringId: OFF, date, time, guestCount: 4 });
+
+  it("refuses a time that is not a listed departure, and writes no row", async () => {
+    const repo = await seededRepo();
+    const res = await acquireDepartureHold(repo, ask(DATE, "13:31"), now);
+    expect(res).toEqual({ unbookable: "off_schedule" });
+    expect(await repo.listCheckoutHolds()).toHaveLength(0);
+  });
+
+  it("refuses a date outside the season", async () => {
+    const repo = await seededRepo();
+    // 2026-09-05 is a Saturday (right weekday) but past seasonEnd 2026-08-31.
+    const res = await acquireDepartureHold(repo, ask("2026-09-05", TIME), now);
+    expect(res).toEqual({ unbookable: "off_schedule" });
+    expect(await repo.listCheckoutHolds()).toHaveLength(0);
+  });
+
+  it("refuses a date on a weekday the offering does not run", async () => {
+    const repo = await seededRepo();
+    // 2026-07-05 is a Sunday; the offering runs Saturdays only.
+    const res = await acquireDepartureHold(repo, ask("2026-07-05", TIME), now);
+    expect(res).toEqual({ unbookable: "off_schedule" });
+  });
+
+  it("refuses a malformed date or time rather than trusting it", async () => {
+    const repo = await seededRepo();
+    for (const [d, t] of [["2026-07-04", "13:3 0"], ["2026-13-45", TIME], ["not-a-date", TIME], ["2026-09-31", TIME]]) {
+      expect(await acquireDepartureHold(repo, ask(d!, t!), now)).toEqual({ unbookable: "off_schedule" });
+    }
+    expect(await repo.listCheckoutHolds()).toHaveLength(0);
+  });
+
+  it("still holds a slot that IS on the grid — the guard doesn't over-reject", async () => {
+    const repo = await seededRepo();
+    const res = await acquireDepartureHold(repo, ask(DATE, TIME), now);
+    expect("held" in res).toBe(true);
+    expect(await repo.listCheckoutHolds()).toHaveLength(1);
+  });
+});
+
+/**
  * The dev-only hold-TTL override (`CHECKOUT_HOLD_MINUTES`).
  *
  * The reason it exists is testability of the residual race: at 15 minutes, reproducing a
@@ -466,8 +522,10 @@ describe("acquireDepartureHold — session reuse (#575)", () => {
   });
 
   it("does not reuse a hold from a different departure", async () => {
-    // Same person, same day, different time — a genuinely separate purchase.
+    // Same person, same day, different time — a genuinely separate purchase. Both times must be
+    // real departures on the grid (#799), so the offering here runs two of them.
     const repo = await seededRepo();
+    await repo.saveOffering(offering({ schedule: { seasonStart: "2026-06-01", seasonEnd: "2026-08-31", weekdays: [5], departureTimes: [TIME, "16:00"] } }));
     const first = await acquireDepartureHold(repo, ask(), now);
     const otherTime = await acquireDepartureHold(repo, ask({ time: "16:00" }), now);
     if ("held" in first && "held" in otherTime) {

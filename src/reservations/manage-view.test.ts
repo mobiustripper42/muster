@@ -127,13 +127,43 @@ describe("buildManageView", () => {
     // the operator (2026-08-21) on a cancelled + refunded booking — they did pay in full, and
     // the Refunded row directly beneath carries the rest of the story.
     //
+    // The payment is a partial one — $200 against a larger fare — so without the fix the balance
+    // is a real positive number and `paidInFull` is false. That is what makes this bite.
+    //
     // Written AFTER the change: a regression guard on a knock-on effect, not a proof of it.
     const v = buildManageView(
       input({
-        reservation: { status: "cancelled" } as never,
-        payments: [],
+        reservation: { ...RES, status: "cancelled" },
+        payments: [
+          { id: asId<"PaymentId">("p1"), status: "succeeded", amountCents: 20000 } as never,
+        ],
       }),
     );
     expect(v.paidInFull).toBe(true);
+  });
+
+  it("a FULLY refunded cancelled booking is not 'paid in full' — nothing is paid (issue #803)", () => {
+    // The trap zeroing the balance opened, caught by @code-review. A fully refunded payment row
+    // is `refunded`, which `countsAsPaid` excludes, so `paidCents` is 0 — and with the balance
+    // also 0 the guest page's headline money line said "Paid in full $0.00" above the refund.
+    // This is the ordinary end state of an operator cancel (#797), not an edge case.
+    //
+    // Written AFTER the change, like the guard above it.
+    const v = buildManageView(
+      input({
+        reservation: { ...RES, status: "cancelled" },
+        payments: [
+          {
+            id: asId<"PaymentId">("p1"),
+            status: "refunded",
+            amountCents: 20000,
+            refundedCents: 20000,
+          } as never,
+        ],
+      }),
+    );
+    expect(v.detail.money.paidCents).toBe(0);
+    expect(v.detail.money.balanceCents).toBe(0);
+    expect(v.paidInFull).toBe(false);
   });
 });

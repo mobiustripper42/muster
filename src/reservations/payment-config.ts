@@ -218,11 +218,15 @@ export function balanceOwedCents(
  * **Deliberately a separate function rather than a `status` parameter on `balanceOwedCents`.**
  * The two non-presentation callers already refuse a cancelled reservation before they reach the
  * arithmetic — `createBalanceCheckout` returns `not_active` (`create-balance-checkout.ts`), and
- * the balance webhook early-returns on "cancelled or unpriced" (`booking-webhook.ts`). Teaching
- * the arithmetic about status would be dead code in both, and *harmful* in the second: that call
- * site is the OVERPAY guard, which alerts when the derived balance has gone negative. A silent
- * zero there would suppress a "refund the excess manually" alert on real money. The arithmetic
- * stays honest; the status rule belongs where the number is presented.
+ * the balance webhook early-returns on "cancelled or unpriced" (`booking-webhook.ts`). So folding
+ * the status in there would be dead code, not a fix.
+ *
+ * The reason to keep them apart is the one that survives that: `balanceOwedCents` answers "what
+ * does the arithmetic say", and the webhook's OVERPAY guard is a caller that genuinely wants that
+ * answer and nothing else — it alerts when the derived balance has gone NEGATIVE, so a policy
+ * rule quietly returning 0 is the wrong shape of answer for it, whether or not today's control
+ * flow can reach it. Arithmetic stays arithmetic; the status rule belongs where the number is
+ * presented.
  */
 export function balanceDueCents(
   status: ReservationStatus,

@@ -16,7 +16,7 @@
  * §3.3 cancel cascade stays parked (self-service cancel is #616).
  */
 
-import type { PaymentStatus } from "../domain/entities.js";
+import type { PaymentStatus, ReservationStatus } from "../domain/entities.js";
 
 export interface PaymentConfig {
   /** Charge the whole price up front, or a deposit now + balance later (11.2b). */
@@ -203,4 +203,37 @@ export function balanceOwedCents(
     return sum + Math.max(0, towardFareAndTax - fareAndTaxRefund);
   }, 0);
   return total - paid;
+}
+
+/**
+ * The balance a SURFACE should show: `balanceOwedCents`, except that a **cancelled booking owes
+ * nothing** (issue #803).
+ *
+ * `balanceOwedCents` above is arithmetic — fare + tax minus what was paid — and it is a live
+ * number for a live trip. Once the trip is cancelled it is meaningless, and after a refund it is
+ * actively misleading: the refund reduces `paid`, so the balance climbs back toward the full
+ * fare. The guest's own page said "Balance · due before your trip $575.32" on a cruise that had
+ * been cancelled AND refunded.
+ *
+ * **Deliberately a separate function rather than a `status` parameter on `balanceOwedCents`.**
+ * The two non-presentation callers already refuse a cancelled reservation before they reach the
+ * arithmetic — `createBalanceCheckout` returns `not_active` (`create-balance-checkout.ts`), and
+ * the balance webhook early-returns on "cancelled or unpriced" (`booking-webhook.ts`). So folding
+ * the status in there would be dead code, not a fix.
+ *
+ * The reason to keep them apart is the one that survives that: `balanceOwedCents` answers "what
+ * does the arithmetic say", and the webhook's OVERPAY guard is a caller that genuinely wants that
+ * answer and nothing else — it alerts when the derived balance has gone NEGATIVE, so a policy
+ * rule quietly returning 0 is the wrong shape of answer for it, whether or not today's control
+ * flow can reach it. Arithmetic stays arithmetic; the status rule belongs where the number is
+ * presented.
+ */
+export function balanceDueCents(
+  status: ReservationStatus,
+  fareCents: number,
+  taxRateBps: number,
+  payments: Parameters<typeof balanceOwedCents>[2],
+): number {
+  if (status !== "booked") return 0;
+  return balanceOwedCents(fareCents, taxRateBps, payments);
 }

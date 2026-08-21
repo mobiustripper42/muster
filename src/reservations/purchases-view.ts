@@ -17,7 +17,7 @@
  */
 
 import type { Event, Payment, Reservation } from "../domain/entities.js";
-import { balanceOwedCents, countsAsPaid, taxCentsFor } from "./payment-config.js";
+import { balanceDueCents, countsAsPaid, taxCentsFor } from "./payment-config.js";
 
 /**
  * The mockup shows three states (Paid / Deposit / Refunded). Real data needs two more:
@@ -128,7 +128,10 @@ export function buildPurchaseRows(input: PurchasesInput): PurchaseRow[] {
     const succeeded = payments.filter(countsAsPaid);
     const paidCents = succeeded.reduce((sum, p) => sum + p.amountCents, 0);
     const refundedCents = payments.reduce((sum, p) => sum + (p.refundedCents ?? 0), 0);
-    const balanceCents = balanceOwedCents(fareCents, input.taxRateBps, payments);
+    // A cancelled row owes nothing (issue #803). `stateOf` below already returns `cancelled`
+    // from the reservation, so the label does not move — this only stops the page's due chip,
+    // gated on `balanceCents > 0` alone, from reading "$538.18 due" on a cancelled booking.
+    const balanceCents = balanceDueCents(r.status, fareCents, input.taxRateBps, payments);
 
     rows.push({
       reservationId: String(r.id),

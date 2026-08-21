@@ -37,7 +37,7 @@ import type {
   Shift,
   Vessel,
 } from "../domain/entities.js";
-import { balanceOwedCents, countsAsPaid, taxCentsFor } from "./payment-config.js";
+import { balanceDueCents, countsAsPaid, taxCentsFor } from "./payment-config.js";
 
 export interface ReservationDetailInput {
   reservation: Reservation;
@@ -162,7 +162,10 @@ export function buildReservationDetail(input: ReservationDetailInput): Reservati
       taxCents,
       gratuityCents,
       paidCents,
-      balanceCents: balanceOwedCents(fareCents, taxRateBps, payments),
+      // `balanceDueCents`, not `balanceOwedCents` — a cancelled booking owes nothing (issue
+      // #803). This composer is shared: the admin pane reads it, and so does the guest's
+      // `/b/<code>` page via `buildManageView`, whose `paidInFull` is derived from it.
+      balanceCents: balanceDueCents(r.status, fareCents, taxRateBps, payments),
       refundedCents,
       disputed: payments.some((p) => p.status === "disputed" || p.status === "dispute_lost"),
       priceKnown,

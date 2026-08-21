@@ -128,6 +128,13 @@ export function buildManageView(input: ManageViewInput): ManageView {
     phase,
     timing,
     postTipTiers: postTipTiersFor(input.offering, detail.money.fareCents),
-    paidInFull: detail.money.priceKnown && detail.money.balanceCents <= 0,
+    // **`paidCents > 0` is not redundant (issue #803).** Zeroing a cancelled booking's balance
+    // made `balanceCents <= 0` true for a booking nobody has paid a net penny on — a FULLY
+    // refunded one, where the payment row is `refunded` and so counts as zero paid. The guest
+    // page renders this as its headline money line, and it read "Paid in full $0.00" directly
+    // above "Refunded −$758.49". Found by `@code-review`, not by the operator, and it is the
+    // common case on the operator-cancel path (#797): a full refund leaves exactly this state.
+    paidInFull:
+      detail.money.priceKnown && detail.money.paidCents > 0 && detail.money.balanceCents <= 0,
   };
 }

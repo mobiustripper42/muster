@@ -4,10 +4,10 @@ dev: eric
 slug: 699-form-error-keeps-your-work
 branch: task/699-form-error-keeps-your-work
 started: 2026-08-19T17:52:38Z
-ended:
-points:
+ended: 2026-08-21T10:51:34Z
+points: 15
 pr_numbers: [782, 786, 787, 796]
-status: open
+status: closed
 transcript: /home/eric/.claude/projects/-home-eric-muster/37b3191d-57cf-52a8-ab48-c68f70f9c8ad.jsonl
 ---
 
@@ -180,6 +180,12 @@ before an edit had landed, twice, and had to kill it.
 **Opened at:** 2026-08-20T22:06:53Z
 
 **Next Steps:**
+- **issue #797** — a weather cancel quotes less than a full refund (bug, priority:high, 2 pts). The
+  tip and service fee are carved out of the base *before* the operator policy runs
+  (`refundableCents` at `src/reservations/cancel-reservation.ts:83`, consumed at :92 before
+  `operatorCancelRefundCents` at :97), so the operator path can only ever return "everything except
+  the tip and the fee" — while `refund-terms.ts:87-90` and SPEC.md §3.3 both promise a full refund.
+  Reported case: $754.15 paid, $620.98 quoted, short $133.17. Picked up as session 92's task.
 
 **Context:**
 - **Main development session**, running in the primary checkout `/home/eric/muster`. Session 89
@@ -191,3 +197,9 @@ before an edit had landed, twice, and had to kill it.
 - Drift vs seeds at open: 11 `logic`-class files differ (six skills, four scripts, the `CLAUDE.md`
   shell); `seeds-version` matches at 5. Not acted on.
 - PR #778 (adopt-seeds) merged at 17:45Z; `origin/main` is at `cff8cf7`.
+- **Closed retroactively.** This window ended without running `/its-dead`; session 92 closed the file
+  on 2026-08-21 at the operator's direction. The raw wall clock is therefore ~41h across three
+  calendar days and is not a measure of anything — the file's own last transcript activity was
+  2026-08-21T05:34 local. `/retro`'s break inference will need to do the real work here.
+- Session 91 (`2026-08-20-1420-eric-678-create-stripe-customers.md`) was still **open** at this close,
+  running concurrently in the linked worktree `/home/eric/muster-s91`. Left alone deliberately.

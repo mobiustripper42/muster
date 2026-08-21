@@ -170,6 +170,33 @@ describe("createDeparturePaymentIntent — hold + frozen money metadata (12.5, D
     expect(await repo.listCheckoutHolds()).toHaveLength(2);
   });
 
+  it("a declined-card retry reuses ONE PaymentIntent — same hold, same amount, one Stripe intent (#807)", async () => {
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    // The ordinary decline-and-retry (#575 reuses the hold). Without an idempotency key each
+    // resubmit minted a fresh PaymentIntent, so a flapping card left a trail of unconfirmed
+    // intents and burned Stripe's write rate limit. Keyed on the hold + amount, a true retry is
+    // one intent.
+    const a = await createDeparturePaymentIntent(repo, pay, req, now);
+    const b = await createDeparturePaymentIntent(repo, pay, req, now);
+    expect(a.ok && b.ok).toBe(true);
+    if (a.ok && b.ok) expect(b.paymentIntentId).toBe(a.paymentIntentId);
+    expect(pay.intents).toHaveLength(1); // deduped by idempotency key, like `refund`
+  });
+
+  it("a tip-changed resubmit on the same hold creates a NEW PaymentIntent — amount is in the key (#807)", async () => {
+    const repo = await seededRepo();
+    const pay = new FakePaymentPort();
+    // Same hold (same holder token), different tip tier → different amount. The key folds in the
+    // amount, so this is NOT a Stripe idempotency conflict (which would 400 a legit tip change) —
+    // it is a distinct intent for the distinct charge.
+    const a = await createDeparturePaymentIntent(repo, pay, req, now); // gratuityBps 2000
+    const b = await createDeparturePaymentIntent(repo, pay, { ...req, gratuityBps: 2500 }, now);
+    expect(a.ok && b.ok).toBe(true);
+    if (a.ok && b.ok) expect(b.paymentIntentId).not.toBe(a.paymentIntentId);
+    expect(pay.intents).toHaveLength(2);
+  });
+
   it("extra guests bill on top and the fee is on the COMPOSED fare", async () => {
     const repo = await seededRepo();
     const pay = new FakePaymentPort();

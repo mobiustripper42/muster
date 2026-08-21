@@ -144,6 +144,12 @@ export async function createDeparturePaymentIntent(
   const intent = await payments.createPaymentIntent({
     amountCents,
     currency: "usd",
+    // Idempotency (#807): a declined-card retry reuses this hold (#575), so keying on the hold id
+    // collapses the retries to one PaymentIntent. The amount is IN the key because a legitimate
+    // tip change on retry reuses the hold at a different amount, and Stripe 400s an idempotency
+    // replay whose parameters differ — so a hold-only key would reject the tip change. Distinct
+    // amount ⇒ distinct key ⇒ a new intent for the new charge.
+    idempotencyKey: `pi_${hold.id}:${amountCents}`,
     // What a HUMAN reads on the charge (#679). Metadata below is what the WEBHOOK reads, and
     // Stripe understands none of it — so before this the dashboard's payments list was a column
     // of bare dollar amounts. Offering, departure, party size, who booked: enough to answer a

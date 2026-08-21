@@ -79,6 +79,16 @@ export interface CreatePaymentIntentInput {
    * means opening metadata.
    */
   description?: string;
+  /**
+   * Provider idempotency key (#807). A declined-card retry reuses the same hold (#575), so
+   * without a key each resubmit mints a fresh PaymentIntent — a flapping card leaves a trail of
+   * unconfirmed intents and burns the account's write rate limit. Keyed, a true retry is one
+   * intent. **The key folds in the amount** (`<holdId>:<amountCents>`) rather than the hold id
+   * alone: a legitimate tip change on retry reuses the hold but charges a different amount, and
+   * Stripe rejects an idempotency replay whose parameters differ — so a hold-only key would 400
+   * the tip change. Optional: absent ⇒ no dedup (every call a fresh intent), the prior behaviour.
+   */
+  idempotencyKey?: string;
   /** Opaque key/value carried through Stripe back to the webhook — the frozen slot + money
    *  fields (see `createDeparturePaymentIntent`). MUST include `purpose`: the webhook's
    *  `payment_intent.succeeded` handler processes only purposed intents (DEC-134 double-write

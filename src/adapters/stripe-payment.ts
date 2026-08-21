@@ -129,18 +129,23 @@ export class StripePaymentPort implements PaymentPort {
     // The inline-Elements charge (12.5, DEC-134). `automatic_payment_methods` mirrors the
     // deferred `Elements` mount client-side; the metadata (incl. `purpose`) is what the
     // `payment_intent.succeeded` webhook books from.
-    const intent = await this.#stripe.paymentIntents.create({
-      amount: input.amountCents,
-      currency: input.currency,
-      metadata: input.metadata,
-      automatic_payment_methods: { enabled: true },
-      // #679. `description` is the only human-readable field on a raw PaymentIntent — hosted
-      // Checkout gets a line item, this path does not. `receipt_email` is what makes Stripe
-      // send the guest a receipt at all; in live mode it sends regardless of the account's
-      // email settings, so passing it IS the decision to send one.
-      ...(input.description !== undefined ? { description: input.description } : {}),
-      ...(input.receiptEmail !== undefined ? { receipt_email: input.receiptEmail } : {}),
-    });
+    const intent = await this.#stripe.paymentIntents.create(
+      {
+        amount: input.amountCents,
+        currency: input.currency,
+        metadata: input.metadata,
+        automatic_payment_methods: { enabled: true },
+        // #679. `description` is the only human-readable field on a raw PaymentIntent — hosted
+        // Checkout gets a line item, this path does not. `receipt_email` is what makes Stripe
+        // send the guest a receipt at all; in live mode it sends regardless of the account's
+        // email settings, so passing it IS the decision to send one.
+        ...(input.description !== undefined ? { description: input.description } : {}),
+        ...(input.receiptEmail !== undefined ? { receipt_email: input.receiptEmail } : {}),
+      },
+      // #807. Keyed idempotency — same shape as `refund` above. A retried submit for the same
+      // hold + amount returns the SAME intent instead of minting a new one.
+      input.idempotencyKey !== undefined ? { idempotencyKey: input.idempotencyKey } : undefined,
+    );
     if (!intent.client_secret) throw new Error("Stripe payment intent returned no client_secret");
     return { clientSecret: intent.client_secret, paymentIntentId: intent.id };
   }

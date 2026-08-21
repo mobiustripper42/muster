@@ -29,6 +29,7 @@ export class FakePaymentPort implements PaymentPort {
   /** Set to make `getReceiptUrl` throw, to exercise the book-anyway fallback (#679). */
   receiptUrlError: Error | null = null;
   readonly #refundsByKey = new Map<string, { refundId: string }>();
+  readonly #intentsByKey = new Map<string, { clientSecret: string; paymentIntentId: string }>();
 
   async createCheckoutSession(input: CreateCheckoutInput): Promise<CheckoutSession> {
     this.created.push(input);
@@ -53,11 +54,20 @@ export class FakePaymentPort implements PaymentPort {
   async createPaymentIntent(
     input: CreatePaymentIntentInput,
   ): Promise<{ clientSecret: string; paymentIntentId: string }> {
+    // Model the provider's keyed idempotency, same as `refund` (#807): a repeat call with the
+    // same key returns the SAME intent and records NO second entry — so a declined-card retry is
+    // one intent, not a flood. A call with no key is always a fresh intent.
+    if (input.idempotencyKey !== undefined) {
+      const seen = this.#intentsByKey.get(input.idempotencyKey);
+      if (seen) return seen;
+    }
     this.intents.push(input);
     // Intent id = the ordinal; the webhook uses this id as the booking idempotency key
     // (Stripe mints it — it is NOT carried in metadata). Tests read the returned id.
     const id = `pi_fake_${this.intents.length}`;
-    return { clientSecret: `${id}_secret_test`, paymentIntentId: id };
+    const result = { clientSecret: `${id}_secret_test`, paymentIntentId: id };
+    if (input.idempotencyKey !== undefined) this.#intentsByKey.set(input.idempotencyKey, result);
+    return result;
   }
 
   async getReceiptUrl(paymentIntentId: string): Promise<string | undefined> {

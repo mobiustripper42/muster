@@ -6,7 +6,7 @@ branch: task/724-cancel-reason
 started: 2026-08-21T10:48:33Z
 ended:
 points:
-pr_numbers: [805, 809]
+pr_numbers: [805, 809, 811]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/ad732f7c-4a21-5916-8cd9-6e3016d9ae4b.jsonl
 ---
@@ -118,6 +118,47 @@ $0.00", which is accurate but not lovely. Different copy for that state would be
 **Points:** 2
 **Branch:** task/803-cancelled-owes-nothing
 **Opened at:** 2026-08-21T19:35:00Z
+
+## Task 3: The paging test was never broken (issue #804)
+
+**Completed:**
+- `e2e/book-availability.spec.ts` — removed the `KNOWN BROKEN` block Task 1 added; kept the true
+  half of the header note (season ≠ window).
+- `src/reservations/seed-reservation.ts` and its drift test — the same false claim, twice more.
+- Issue #804 closed as not-planned, with the explanation in a comment.
+- Comments only: no assertion, no fixture value, no behaviour.
+
+**This task exists because Task 1 shipped a confident, wrong claim to `main`.** I asserted the
+season widening broke `/book`'s forward-paging e2e, marked the test KNOWN BROKEN, filed an issue for
+it, and repeated it in two more comments. The test asserts a prompt gated on **no date selected**
+(`app/(public)/book/page.tsx:490`, the else-branch of the slot list) and a month **label** one page
+ahead — neither depends on the current month being empty. `e2e` was green on the very branch that
+widened the season (PR #805, 25m47s).
+
+**The mechanism, worth remembering:** I read the test's *title and comments* — "an empty month
+prompts a date pick" — and never read the line that does the asserting or the component behind it.
+Everything downstream inherited it: a code comment, a filed issue, a PR body, a session-file entry,
+and the operator's expectation. Cheap to check, and I did not check.
+
+**It also survived a review.** Task 1's `@code-review` flagged that the break had no tracking issue —
+treating the break as real, because I had asserted it. A review verifies the diff against what you
+tell it; it does not re-derive the premise unless asked. Task 3's review was asked explicitly to
+distrust my framing, and re-derived every claim from source.
+
+**Code review:** 2 findings, both fixed — issue #804 still open carrying the disproven diagnosis, and
+an unfalsifiable clause ("the only way to get this wrong") sitting among checkable ones, replaced
+with the CI run it rests on.
+**Security review:** not run — no blast-radius trigger (an e2e spec and a dev-seed builder).
+
+**Also this task:** merged PR #809 after CI went green (squash, 19:56Z), closing issue #803.
+
+**One process note:** I wrote "PR #810" into the issue comment before creating the PR, which came
+back #811. Corrected. Same class as the memory that says never to pre-reserve a number.
+
+**PR:** [PR #811](https://github.com/mobiustripper42/muster/pull/811)
+**Points:** 1
+**Branch:** task/804-paging-test-not-broken
+**Opened at:** 2026-08-21T20:04:00Z
 
 **Next Steps:**
 

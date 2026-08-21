@@ -6,7 +6,7 @@ branch: task/678-create-stripe-customers
 started: 2026-08-20T14:20:24Z
 ended:
 points:
-pr_numbers: [795]
+pr_numbers: [795, 798]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster-s91/a644283b-bc9c-59d6-a0d0-e05c848a61ed.jsonl
 ---
@@ -55,6 +55,42 @@ fail-open, and SQLi on the new column.
 **Points:** 5
 **Branch:** task/678-create-stripe-customers
 **Opened at:** 2026-08-20T22:05:00Z
+
+## Task 2: Stop /book scanning every checkout hold, and sweep the expired ones (issue #713)
+
+**Completed:**
+- **The issue's own acceptance needed both of its options, not just the recommended one.** It calls
+  filtering "the obvious first move", but the AC also demands expired holds stop accumulating —
+  which filtering does nothing about. The sweep turned out nearly free: `acquireCheckoutHold`
+  already deleted expired rows inside an open transaction, scoped to the acquiring slot. Dropping
+  that scope IS the sweep, and an acquire is the only moment one can run (DEC-109 chose lazy
+  expiry so there'd be no cron — right for correctness, silent about volume).
+- `listLiveCheckoutHolds(asOf)` on the port + both adapters; `listCheckoutHolds()` kept as the raw
+  read. **Two methods deliberately:** the delete assertions must see rows that ARE present but
+  expired, or a broken sweep looks identical to a working filter.
+- Widened `DELETE` in both adapters (`src/adapters/postgres-repository.ts`,
+  `src/adapters/in-memory-repository.ts`). Safe because expiry is a global fact — an expired hold
+  is already inert everywhere.
+- `db/migrations/20260820230000_checkout_holds_expires_at_idx.sql` — `(source, expires_at)`.
+- Both callers pass one instant; `app/(public)/book/page.tsx` now hands the SAME one to the
+  deriver instead of minting a second `new Date()`. The deriver's own liveness check stays.
+
+**Code review:** 1 finding, fixed — a leftover JSDoc still calling `listCheckoutHolds()` "the ONLY
+sanctioned raw read". Fixing it surfaced the same defect one declaration higher, on
+`acquireCheckoutHold`'s contract (still described the delete as slot-scoped); that one the review
+did NOT catch and is the more load-bearing of the two.
+**Security review:** not run — no blast-radius trigger. None of the 7 files match a path row and the
+migration is `create index` only. **Recorded because it's close:** I first called this the money
+path and that was wrong. A mistake in the widened DELETE causes a double-hold, which the DEC-109
+write CAS rejects and auto-refunds — a reliability failure with a money-shaped consequence, not a
+money change. Nothing to add to the trigger table.
+**Proof, honestly:** 3 contract cases written first; two failed for the expected reason. The third
+(sweep must not touch a LIVE hold on another slot) **passed before the change** — a regression guard
+on the widened predicate, not evidence the widening works.
+**PR:** [PR #798](https://github.com/mobiustripper42/muster/pull/798)
+**Points:** 2
+**Branch:** task/713-prune-checkout-holds
+**Opened at:** 2026-08-21T04:05:00Z
 
 **Next Steps:**
 

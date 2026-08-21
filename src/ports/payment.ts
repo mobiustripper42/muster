@@ -111,15 +111,59 @@ export interface RefundRecorded {
 }
 
 /**
- * The verified-webhook event union (12.5, DEC-134; refunds #616). `checkout_completed` drives
- * the hosted flows (balance + post-gratuity); `payment_succeeded` drives the inline-Elements
- * booking; `refund_recorded` reconciles a refund back into the ledger — including one the
- * operator issued in the STRIPE DASHBOARD, which Muster could not see at all before.
+ * How far a dispute has got, normalized off Stripe's eight-value `Dispute.Status` (issue #723).
+ *
+ * Four states, not eight, because only four distinct things can happen to Muster's ledger. The
+ * mapping lives in the adapter, written against the PINNED SDK's own union
+ * (`node_modules/stripe/esm/resources/Disputes.d.ts`: `lost | needs_response | prevented |
+ * under_review | warning_closed | warning_needs_response | warning_under_review | won`), so a
+ * Stripe change surfaces as a type error in one file rather than as a wrong ledger everywhere.
+ *
+ * - `inquiry` — the `warning_*` family. A retrieval request, not a chargeback: **no money has
+ *   moved.** Worth telling a human about; worth nothing to the ledger.
+ * - `live` — a real dispute in flight. Treat the funds as gone while it runs.
+ * - `won` — resolved our way, the money came back. Also carries `prevented`.
+ * - `lost` — resolved against us, the money is gone for good.
+ * - `unknown` — a status the PINNED SDK's union does not contain, which can only happen at
+ *   runtime: Stripe adds one and this deploy has not been bumped. **Writes nothing to the
+ *   ledger and alerts loudly**, because the honest answer to "did the money move" is that we
+ *   cannot tell, and guessing either way is worse than saying so.
+ */
+export type DisputeState = "inquiry" | "live" | "won" | "lost" | "unknown";
+
+/**
+ * A verified `charge.dispute.*` event (issue #723), normalized off the provider's shape.
+ *
+ * Keyed on the PaymentIntent, exactly like `RefundRecorded` and for the same reason: `Payment`
+ * records `stripePaymentIntentId` on both charge paths and has never carried a charge id.
+ *
+ * **`amountCents` is the DISPUTED amount, which is not always the charge amount** — Stripe's
+ * own field docs note it can differ (only part of the order disputed, currency movement). It is
+ * carried for the alert text and never for ledger arithmetic; the ledger decision is the state
+ * above, not the number.
+ */
+export interface DisputeUpdated {
+  paymentIntentId: string;
+  state: DisputeState;
+  amountCents: number;
+  currency: string;
+  /** Cardholder's stated reason (`fraudulent`, `product_not_received`, …) — for the alert. */
+  reason: string;
+}
+
+/**
+ * The verified-webhook event union (12.5, DEC-134; refunds #616; disputes issue #723).
+ * `checkout_completed` drives the hosted flows (balance + post-gratuity); `payment_succeeded`
+ * drives the inline-Elements booking; `refund_recorded` reconciles a refund back into the
+ * ledger — including one the operator issued in the STRIPE DASHBOARD, which Muster could not
+ * see at all before; `dispute_updated` does the same job for a chargeback, which is money
+ * leaving the account with nobody in Muster having pressed anything.
  */
 export type PaymentEvent =
   | { type: "checkout_completed"; data: CheckoutCompleted }
   | { type: "payment_succeeded"; data: PaymentSucceeded }
-  | { type: "refund_recorded"; data: RefundRecorded };
+  | { type: "refund_recorded"; data: RefundRecorded }
+  | { type: "dispute_updated"; data: DisputeUpdated };
 
 export interface RefundInput {
   /** The PaymentIntent to refund (from `CheckoutCompleted.paymentIntentId`). */

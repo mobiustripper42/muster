@@ -1632,6 +1632,53 @@ export function runRepositoryContract(
       await repo.markPaymentRefunded(asId<"PaymentId">("pay-nope"), 100);
     });
 
+    it("markPaymentDisputed: moves both ways, never over a refund, no-ops on an unknown id (issue #723)", async () => {
+      // The second sanctioned mutation, contract-tested for the same reason as the first: the
+      // two implementations express one rule in different languages — postgres with a
+      // `status not in (...)` predicate, in-memory with an early return — and a divergence
+      // means a chargeback is visible on exactly one of the two.
+      await repo.saveReservation(reservation());
+      await repo.savePayment(payment());
+      const id = asId<"PaymentId">("pay-1");
+
+      await repo.markPaymentDisputed(id, "disputed");
+      expect(await repo.getPayment(id)).toMatchObject({ status: "disputed" });
+
+      // Redelivery of the same event is the same write, not an error or an accumulation.
+      await repo.markPaymentDisputed(id, "disputed");
+      expect(await repo.getPayment(id)).toMatchObject({ status: "disputed" });
+
+      // A dispute legitimately moves BACKWARDS when we win — unlike a refund total, which is
+      // monotonic. The row becomes ordinary revenue again.
+      await repo.markPaymentDisputed(id, "succeeded");
+      expect(await repo.getPayment(id)).toMatchObject({ status: "succeeded" });
+
+      await repo.markPaymentDisputed(id, "dispute_lost");
+      expect(await repo.getPayment(id)).toMatchObject({ status: "dispute_lost" });
+
+      // ...but a LOST dispute is terminal. Stripe does not guarantee delivery order, so a stale
+      // `charge.dispute.updated` can land after the `closed` that resolved it — and the dispute
+      // being closed, nothing further will ever arrive to correct the row.
+      await repo.markPaymentDisputed(id, "disputed");
+      expect(await repo.getPayment(id)).toMatchObject({ status: "dispute_lost" });
+
+      // A REFUNDED row is not overwritten: the refund status carries `refundedCents`, which a
+      // dispute status would erase, and both already count as not-paid. Refund detail wins.
+      await repo.savePayment(
+        payment({ id: asId<"PaymentId">("pay-refunded"), stripePaymentIntentId: "pi_refunded" }),
+      );
+      const refunded = asId<"PaymentId">("pay-refunded");
+      await repo.markPaymentRefunded(refunded, 1000);
+      await repo.markPaymentDisputed(refunded, "disputed");
+      expect(await repo.getPayment(refunded)).toMatchObject({
+        status: "partially_refunded",
+        refundedCents: 1000,
+      });
+
+      // Unknown id is a silent no-op, not a throw — the webhook must not 500 over it.
+      await repo.markPaymentDisputed(asId<"PaymentId">("pay-nope"), "disputed");
+    });
+
     it("reservation catalog: a fresh repo reads empty (DEC-125)", async () => {
       // Empty on both adapters before anything is written (write round-trip is covered by
       // "catalog: offering / location / block write + read round-trip" above, added in 12.1a).

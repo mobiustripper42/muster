@@ -69,7 +69,7 @@ describe("forwardBoardAlerts (DEC-095)", () => {
     expect(ch.sent[0]!.link).toBe(LINK);
   });
 
-  it("composes date · vessel — reason, grouping reasons per shift", async () => {
+  it("composes date - vessel - reason, grouping reasons per shift", async () => {
     const repo = new InMemoryRepository();
     await seedShift(repo);
     const body = await composeBoardAlert(repo, [
@@ -77,14 +77,26 @@ describe("forwardBoardAlerts (DEC-095)", () => {
       { shiftId: "shift-1", reason: "credential_lapse" },
     ]);
     expect(body).toContain("1 shift needs you");
-    expect(body).toContain("Jul 11 · Hops");
+    // Separators are hyphens on the wire, not `·`/`—` (issue #777): the composer's typography
+    // is transliterated by `toGsm7` on the way out. Asserting the SENDABLE form is the point —
+    // the pretty form was what made this body 2 segments.
+    expect(body).toContain("Jul 11 - Hops");
     expect(body).toContain("someone bailed + credential lapse");
+  });
+
+  it("fits one SMS segment (issue #777)", async () => {
+    // Plain ASCII separators, so the body encodes as GSM-7 at 160 characters per segment
+    // rather than UCS-2 at 70. The `•`/`·`/`—` this used to carry made it two segments.
+    const repo = new InMemoryRepository();
+    await seedShift(repo);
+    const body = await composeBoardAlert(repo, [{ shiftId: "shift-1", reason: "core" }]);
+    expect(body.length).toBeLessThanOrEqual(160);
   });
 
   it("falls back gracefully when the shift/vessel can't be resolved", async () => {
     const repo = new InMemoryRepository();
     const body = await composeBoardAlert(repo, [{ shiftId: "ghost", reason: "core" }]);
-    expect(body).toContain("a shift — needs crew");
+    expect(body).toContain("a shift - needs crew");
   });
 
   it("is best-effort: one failed send doesn't drop the others", async () => {

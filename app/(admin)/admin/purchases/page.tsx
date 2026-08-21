@@ -41,6 +41,10 @@ const STATES: { key: PaymentState | "all"; label: string }[] = [
   { key: "deposit", label: "Deposit" },
   { key: "paid", label: "Paid" },
   { key: "refunded", label: "Refunded" },
+  // Live chargebacks AND ones we lost — both mean the money is not in the account (issue #723).
+  // A dispute we WON is not here: the funds are back, the row reads Paid again, and this chip
+  // stays a worklist that shrinks rather than an archive that only grows.
+  { key: "disputed", label: "Disputed" },
   { key: "cancelled", label: "Cancelled" },
 ];
 
@@ -50,6 +54,10 @@ const BADGE: Record<PaymentState, string> = {
   deposit: "border-warn-line bg-warn-bg text-warn",
   unpaid: "border-line bg-bg text-muted",
   refunded: "border-bad-line bg-bad-bg text-bad",
+  // Same "bad" tokens as refunded — money that left the account, and no new colors (DEC-021/042).
+  // The label carries the difference; a chargeback is not a worse-looking refund, it is a
+  // different reason for the same missing money.
+  disputed: "border-bad-line bg-bad-bg text-bad",
   cancelled: "border-line bg-bg text-faint",
 };
 

@@ -1,4 +1,5 @@
 import { forwardBoardAlerts as forwardCore, type BoardLanding } from "@core/adapters/forward-board-alerts.js";
+import { forwardMoneyAlert } from "@core/adapters/forward-money-alert.js";
 import { makeTwilioChannel } from "./sms";
 import { getRepo } from "./repo";
 
@@ -29,4 +30,40 @@ export async function forwardBoardAlerts(landings: BoardLanding[] | undefined): 
   if (!channel) return 0; // no live SMS ⇒ no send; the board is the fallback (DEC-095)
 
   return forwardCore(repo, channel, landings, `${linkBase}/admin/at-risk`);
+}
+
+/**
+ * Money moved and nobody in Muster decided it should — text the office (issue #723).
+ *
+ * This is what `alertPaidButUnbooked` should always have been. It was a `console.error` with a
+ * TODO, which meant every money alert Muster could raise — paid-but-unbooked, a refund matching
+ * no payment, and now a chargeback — reached exactly nobody unless someone happened to be
+ * reading Vercel logs. "We recorded it" and "you found out" are not the same thing, and this
+ * whole class of work exists for the second one.
+ *
+ * **The log line is the floor, not the fallback.** It is written FIRST and unconditionally, so a
+ * Twilio-dark deploy, a missing `APP_BASE_URL`, or a repo outage still leaves a trace. The text
+ * is the addition on top.
+ *
+ * **Never throws, for the same reason the core sender doesn't:** the only callers are Stripe
+ * webhooks, where an exception becomes a 500 and a 500 becomes a redelivery loop. Failing to
+ * tell someone must not also fail to record the money.
+ *
+ * Unlike `forwardBoardAlerts`, a missing `APP_BASE_URL` in production does NOT throw here. That
+ * check exists so a crew member is never texted a dead localhost link; here the link is a
+ * convenience on a message whose text already carries the ids the operator needs, and taking
+ * down the ledger write to protect a hyperlink is the wrong trade.
+ */
+export async function alertMoneyProblem(message: string): Promise<void> {
+  console.error(`[reservations] ${message}`);
+  try {
+    const repo = getRepo();
+    const linkBase = (process.env.APP_BASE_URL ?? "http://localhost:3000").replace(/\/+$/, "");
+    const channel = makeTwilioChannel(repo, linkBase);
+    if (!channel) return; // Twilio-dark ⇒ the log line above is the whole alert
+    const sent = await forwardMoneyAlert(repo, channel, message, `${linkBase}/admin/purchases`);
+    if (sent === 0) console.error("[reservations] money alert reached NO admin (none reachable)");
+  } catch (e) {
+    console.error("[reservations] money alert failed to send", e);
+  }
 }

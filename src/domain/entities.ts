@@ -747,8 +747,22 @@ export type PaymentKind = "full" | "deposit" | "balance";
 /** Operator-initiated refunds are manual in the Stripe dashboard. The ONE programmatic
  *  refund Muster issues is the DEC-109 residual-race auto-refund (12.1b) — a buyer whose
  *  hold expired mid-payment and who lost the slot is refunded without anyone deciding, and
- *  the webhook writes the outcome back via `markPaymentRefunded`. */
-export type PaymentStatus = "succeeded" | "refunded" | "partially_refunded";
+ *  the webhook writes the outcome back via `markPaymentRefunded`.
+ *
+ *  **`disputed` / `dispute_lost` (issue #723).** A chargeback is money leaving the account
+ *  without a refund: the cardholder went to their bank, not to us. `disputed` is the live
+ *  state (funds pulled, outcome pending); `dispute_lost` is the terminal one. A dispute we
+ *  WIN goes back to `succeeded` — the money returned, and the argument itself lives in the
+ *  Stripe dashboard, which is the system of record for the evidence and the deadlines.
+ *
+ *  **Neither counts as paid** — see `countsAsPaid`, which is an ALLOW-list precisely so a
+ *  new state added here defaults to not-money rather than to money. */
+export type PaymentStatus =
+  | "succeeded"
+  | "refunded"
+  | "partially_refunded"
+  | "disputed"
+  | "dispute_lost";
 
 /**
  * One money movement against a Muster-native reservation (DEC-107). A booking is a

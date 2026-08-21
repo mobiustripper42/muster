@@ -15,10 +15,62 @@ import {
   type CheckoutSession,
   type CreateCheckoutInput,
   type CreatePaymentIntentInput,
+  type DisputeState,
   type PaymentEvent,
   type PaymentPort,
   type RefundInput,
 } from "../ports/payment.js";
+
+/**
+ * Stripe's eight dispute statuses → the four Muster's ledger can act on (issue #723).
+ *
+ * **Exhaustive on purpose, with no `default`.** The parameter is the SDK's own
+ * `Stripe.Dispute.Status` union, so when Stripe adds a ninth status the SDK bump fails
+ * `typecheck` right here — one file, at build time — instead of silently taking a `default`
+ * branch and mis-stating whether money is in the account. That is the compile-time guarantee
+ * `countsAsPaid` was wrongly assumed to have before this issue.
+ *
+ * The `warning_*` family is a retrieval request: the card network is asking a question and no
+ * funds have been withdrawn. Mapping those to `live` would zero out revenue on a booking that
+ * was never actually charged back, which is a false alarm the operator would learn to ignore —
+ * and the alarms here are the whole feature.
+ */
+function disputeState(status: Stripe.Dispute.Status): DisputeState {
+  switch (status) {
+    case "warning_needs_response":
+    case "warning_under_review":
+    case "warning_closed":
+      return "inquiry";
+    case "needs_response":
+    case "under_review":
+      return "live";
+    case "won":
+    case "prevented":
+      return "won";
+    case "lost":
+      return "lost";
+    default: {
+      // **Both halves are needed, and an earlier cut had only the first.**
+      //
+      // The `never` assignment is the COMPILE-time half: widen `Stripe.Dispute.Status` by
+      // bumping the SDK and `status` stops being `never` here, so `typecheck` fails in this one
+      // file rather than the ledger quietly mis-stating whether money is in the account.
+      //
+      // The `return` is the RUN-time half, and the exhaustive switch alone did not have it. The
+      // union is a claim the pinned SDK makes at build time about a string that arrives over the
+      // wire months later: Stripe adds a status, this deploy has not been bumped, and the switch
+      // matched nothing. It returned `undefined` — which is not a `DisputeState`, wrote nothing
+      // to the ledger, and fell through to the alert branch announcing "DISPUTE OPENED".
+      //
+      // That is the same shape as the defect this whole change exists to fix (issue #723): a
+      // compile-time guarantee assumed to cover a runtime path. `unknown` writes nothing, which
+      // is the right default for a state we cannot interpret, and says so out loud.
+      const unreachable: never = status;
+      void unreachable;
+      return "unknown";
+    }
+  }
+}
 
 export class StripePaymentPort implements PaymentPort {
   readonly #stripe: Stripe;
@@ -152,6 +204,37 @@ export class StripePaymentPort implements PaymentPort {
           paymentIntentId,
           amountRefundedCents: c.amount_refunded ?? 0,
           currency: c.currency ?? "usd",
+        },
+      };
+    }
+    if (
+      event.type === "charge.dispute.created" ||
+      event.type === "charge.dispute.updated" ||
+      event.type === "charge.dispute.closed"
+    ) {
+      // issue #723. All THREE map through one branch on purpose: the ledger cares about the
+      // dispute's `status`, not about which lifecycle event carried it. That makes the handler
+      // idempotent by construction — a redelivery, or `updated` firing twice with no change,
+      // computes the same state and writes the same row.
+      //
+      // Subscribing to `updated` is not optional. A dispute can OPEN as a `warning_*` inquiry
+      // (no funds moved) and later become a real one; that transition arrives as `updated`, and
+      // without it Muster would record the inquiry and never learn the money actually left.
+      const d = event.data.object as Stripe.Dispute;
+      // Same posture as `charge.refunded`: no PaymentIntent means no key to reconcile against.
+      // Ack and ignore rather than invent one — a fabricated key would fire the handler's
+      // unknown-payment alert and send the operator hunting for a row nobody ever wrote.
+      const paymentIntentId =
+        typeof d.payment_intent === "string" ? d.payment_intent : undefined;
+      if (paymentIntentId === undefined) return null;
+      return {
+        type: "dispute_updated",
+        data: {
+          paymentIntentId,
+          state: disputeState(d.status),
+          amountCents: d.amount,
+          currency: d.currency,
+          reason: d.reason,
         },
       };
     }

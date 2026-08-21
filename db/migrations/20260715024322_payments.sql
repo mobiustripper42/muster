@@ -31,7 +31,11 @@ create table if not exists payments (
   currency                  text not null default 'usd',
   stripe_checkout_session_id text,
   stripe_payment_intent_id  text,
-  status                    text not null,               -- succeeded | refunded | partially_refunded
+  -- succeeded | refunded | partially_refunded | disputed | dispute_lost   (issue #723)
+  -- No CHECK constraint, deliberately (DEC-131) — integrity is the service layer's. The only
+  -- guard on this column is `countsAsPaid` in payment-config.ts, and it is an ALLOW-list: a
+  -- value it has not been taught is not money. Widen that set, not just this comment.
+  status                    text not null,
   refunded_cents            integer,
   created_at                text not null
 );

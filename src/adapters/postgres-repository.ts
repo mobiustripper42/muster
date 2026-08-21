@@ -1330,6 +1330,36 @@ export class PostgresRepository implements Repository {
       [id, refundedTotalCents],
     );
   }
+  async markPaymentDisputed(
+    id: PaymentId,
+    status: "disputed" | "dispute_lost" | "succeeded",
+  ): Promise<void> {
+    // The `not in` is the guard, not a race check: a refunded row keeps its refund status
+    // because that status carries an amount (`refunded_cents`) a dispute state would erase,
+    // and both already answer false to `countsAsPaid`. See the port doc for the full reason.
+    //
+    // No `greatest`-style monotonicity here, unlike the refund write, and deliberately: a
+    // dispute legitimately moves BACKWARDS (disputed → succeeded when we win), so the last
+    // event's computed state is the truth. Redelivery is still a no-op — the same event
+    // computes the same status.
+    // `dispute_lost` is TERMINAL and cannot be walked back (@code-review, issue #723). Stripe
+    // does not guarantee delivery order, so a stale `charge.dispute.updated` can arrive AFTER
+    // the `closed` that resolved it — and since the dispute is closed, no further event will
+    // ever come to correct the row. Refusing to move off a terminal state kills that case.
+    //
+    // The `won` case is NOT fully closed by this and the limitation is deliberate: a win writes
+    // `succeeded`, which is indistinguishable from never-disputed, so a stale `under_review`
+    // landing after it flips the row back to `disputed`. Detecting that needs the dispute's own
+    // id and timestamp on the row — a migration, and its own decision. The alert still fires,
+    // so the failure is loud and hand-correctable rather than silent.
+    await this.#pool.query(
+      `update payments
+          set status = $2
+        where id = $1
+          and status not in ('refunded', 'partially_refunded', 'dispute_lost')`,
+      [id, status],
+    );
+  }
   async listPaymentsForReservation(reservationId: ReservationId): Promise<Payment[]> {
     const { rows } = await this.#pool.query(
       "select * from payments where reservation_id=$1 order by created_at",

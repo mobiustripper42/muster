@@ -444,6 +444,26 @@ export interface Repository {
    * correct it (#522 sweep 1). Idempotent: re-recording the same refund is a no-op.
    */
   markPaymentRefunded(id: PaymentId, refundedTotalCents: number): Promise<void>;
+  /**
+   * Move a payment through the dispute lifecycle (issue #723) — the second sanctioned mutation
+   * of an otherwise insert-only row.
+   *
+   * `status` is one of `disputed` (funds pulled, outcome pending), `dispute_lost` (gone for
+   * good), or `succeeded` (we won; the money came back). Idempotent: the same dispute event
+   * redelivered computes the same status and rewrites the same value.
+   *
+   * **Never overwrites a refunded row.** A refund and a chargeback are different exits for the
+   * same money and a row can legitimately see both — a customer refunded by hand who disputes
+   * anyway, or a dispute on a charge that was already partly given back. `refunded` and
+   * `partially_refunded` carry an AMOUNT (`refundedCents`) that a dispute status would erase,
+   * and both already answer `false` to `countsAsPaid`, so the ledger conclusion is unchanged
+   * either way. The refund detail is the one worth keeping, so it wins. The dispute is still
+   * announced to a human — the alert does not depend on the write landing.
+   */
+  markPaymentDisputed(
+    id: PaymentId,
+    status: "disputed" | "dispute_lost" | "succeeded",
+  ): Promise<void>;
 
   // ── Shifts ─────────────────────────────────────────────────────────────────
   saveShift(shift: Shift): Promise<void>;

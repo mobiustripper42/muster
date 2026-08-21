@@ -4,11 +4,12 @@
  * the balance. Pure functions only; the builders/webhook are covered by their own suites.
  */
 import { describe, expect, it } from "vitest";
-import type { Payment } from "../domain/entities.js";
+import type { Payment, PaymentStatus } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import {
   balanceOwedCents,
   chargeNowCents,
+  countsAsPaid,
   feeCentsFor,
   taxCentsFor,
   PAYMENT_CONFIG_DEFAULTS,
@@ -84,6 +85,67 @@ describe("PAYMENT_CONFIG_DEFAULTS — the posture an unconfigured environment in
       createdAt: "2026-08-16T00:00:00.000Z",
     };
     expect(balanceOwedCents(49900, cfg.taxRateBps, [payment])).toBe(0);
+  });
+});
+
+/**
+ * `countsAsPaid` is an ALLOW-list, and that is the whole point (issue #723).
+ *
+ * It used to read `status !== "refunded"` — a DENY-list. The comment above `balanceOwedCents`
+ * claimed the compiler would force a revisit when `PaymentStatus` widened "to disputes or
+ * chargebacks". It would not have: `!== "refunded"` type-checks perfectly against a wider
+ * union, so adding `disputed` would have compiled clean and silently counted a chargeback as
+ * money in FIVE places — `balanceOwedCents`, `/admin/purchases`, the calendar detail, the
+ * cancel refund math, and `refund-payment`'s guard.
+ *
+ * The DB column carries no CHECK constraint either (DEC-131), so this function is the only
+ * guard that exists. An allow-list fails the safe way: a state nobody has taught it about is
+ * not money.
+ */
+describe("countsAsPaid — an allow-list, so a new status is never silently money", () => {
+  const withStatus = (status: PaymentStatus) => ({ status });
+
+  it("counts a succeeded payment", () => {
+    expect(countsAsPaid(withStatus("succeeded"))).toBe(true);
+  });
+
+  it("counts a partially refunded payment — the remainder is still real money", () => {
+    // The netting of the refunded PART happens in `balanceOwedCents`; the row still counts.
+    expect(countsAsPaid(withStatus("partially_refunded"))).toBe(true);
+  });
+
+  it("does not count a fully refunded payment", () => {
+    expect(countsAsPaid(withStatus("refunded"))).toBe(false);
+  });
+
+  it("does not count a payment under dispute — the funds are gone while it runs", () => {
+    expect(countsAsPaid(withStatus("disputed"))).toBe(false);
+  });
+
+  it("does not count a dispute we lost", () => {
+    expect(countsAsPaid(withStatus("dispute_lost"))).toBe(false);
+  });
+
+  it("does not count a status it has never been taught", () => {
+    // The regression guard for the next widening, whatever it is — a deny-list passes this
+    // test only by accident and a future one never at all. The cast is deliberate: it
+    // simulates a value reaching the function that the union does not yet carry, which is
+    // exactly what a stale ledger row or a future migration produces.
+    expect(countsAsPaid({ status: "chargeback_pending" as PaymentStatus })).toBe(false);
+  });
+});
+
+describe("balanceOwedCents treats a disputed payment as unpaid (issue #723)", () => {
+  it("re-opens the full balance when the only payment is disputed", () => {
+    // fare 49900 @ 725bps → tax 3618, total 53518. One full payment, then a chargeback.
+    // While the money is withdrawn the booking owes the whole amount again — the fail-safe
+    // direction, and what makes the dispute visible on /admin/purchases at all.
+    const disputed: Pick<Payment, "status" | "amountCents" | "serviceFeeCents"> = {
+      status: "disputed",
+      amountCents: 55015,
+      serviceFeeCents: 1497,
+    };
+    expect(balanceOwedCents(49900, 725, [disputed])).toBe(53518);
   });
 });
 

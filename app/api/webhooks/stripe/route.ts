@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { alertMoneyProblem } from "../../../lib/alert";
 import { forwardFormNotices } from "../../../lib/channel";
 import { StripePaymentPort } from "@core/adapters/stripe-payment.js";
 import { PaymentSignatureError } from "@core/ports/payment.js";
@@ -49,12 +50,12 @@ export async function POST(req: Request): Promise<Response> {
         payments: new StripePaymentPort(secretKey, webhookSecret),
         reservationsEnabled: reservationsEnabled(),
         now: () => new Date().toISOString(),
-        alertPaidButUnbooked: async (message) => {
-          // Loud in the function logs. TODO: fan out to all active admins over SMS (the
-          // DEC-095 all-admins path, app/lib/alert.ts). Now the FALLBACK — only fires when
-          // the residual-race auto-refund can't run (no payment_intent / refund threw).
-          console.error(`[reservations] ${message}`);
-        },
+        // Texts every active admin AND logs (issue #723). This was a `console.error` carrying a
+        // TODO to fan out over SMS — which meant every money alert this webhook can raise
+        // (paid-but-unbooked, a refund reconciling against nothing, and now a chargeback)
+        // reached exactly nobody who wasn't reading Vercel logs. Never throws: a failed alert
+        // must not 500 the webhook into a Stripe redelivery loop.
+        alertPaidButUnbooked: alertMoneyProblem,
         // Best-effort email + SMS of the manage link on a fresh booking (11.4, DEC-122).
         sendConfirmation: sendReservationConfirmation,
         // Best-effort "sold out while you paid — fully refunded" on a residual-race loss (12.1b).

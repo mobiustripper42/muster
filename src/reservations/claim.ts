@@ -157,12 +157,18 @@ export async function acquireDepartureHold(
     return { unbookable: "invalid_guest_count" };
   }
 
+  // One clock for the whole acquire: the same instant filters the hold read and decides hull
+  // liveness below, so a row can't be live for one and dead for the other (issue #713).
+  const at0 = now();
+
   const [vessels, blocks, events, reservations, holds] = await Promise.all([
     repo.listVessels(),
     repo.listBlocks(),
     repo.listEvents(),
     repo.listAllReservations(),
-    repo.listCheckoutHolds(),
+    // Live rows only — an expired hold contributes nothing here and never did. The `expiresAt`
+    // check below STAYS: pruning lags, so a present-but-expired row must remain inert.
+    repo.listLiveCheckoutHolds(at0),
   ]);
 
   // Slots already sold (a materialized event carrying an active Muster claim) — skip them
@@ -189,8 +195,6 @@ export async function acquireDepartureHold(
   //
   // `expiresAt > at` is the same lazy-on-read rule the deriver uses (DEC-109): an expired row is
   // inert everywhere, so a stale hold never holds a boat hostage.
-  const at0 = now();
-
   const heldIntervals = new Map<string, { start: number; end: number }[]>();
   for (const h of holds) {
     if (h.source !== "muster" || h.expiresAt <= at0 || h.date !== req.date) continue;

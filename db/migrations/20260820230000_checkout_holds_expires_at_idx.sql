@@ -1,0 +1,26 @@
+-- 20260820230000_checkout_holds_expires_at_idx — index the column both new queries filter on
+-- (issue #713). Timestamp-named per DEC-121; applied in filename order by db/migrate.ts.
+--
+-- `listCheckoutHolds()` was `select * from checkout_holds` with no predicate, and issue #620 put a
+-- call to it on `/book`'s render path — which is `force-dynamic`, so it ran on every page view and
+-- every date-nav rather than once per checkout attempt. Two queries now filter on `expires_at`:
+--
+--   listLiveCheckoutHolds  →  where expires_at > $1        (the render read)
+--   acquireCheckoutHold    →  where expires_at <= $1       (the sweep, widened from one slot)
+--
+-- Without this index both are sequential scans, which is the thing being fixed.
+--
+-- `source` is in the index because the sweep filters on it and the table only ever holds
+-- `'muster'` rows today — cheap to carry, and it keeps the sweep's predicate covered if a second
+-- source ever appears.
+--
+-- Note the table itself is NOT the growth fix. The index makes the reads cheap; what stops
+-- unbounded accumulation is the widened DELETE in `acquireCheckoutHold`, because this codebase has
+-- no scheduler and an acquire is the only moment a sweep can run (DEC-109 chose lazy-on-read
+-- expiry deliberately: expiry is a comparison, not a cron. That is correct for CORRECTNESS and
+-- says nothing about VOLUME, which is the gap issue #713 names).
+--
+-- Additive: `create index` only. No data-changing verb, so it does not trip the blast-radius
+-- migration trigger.
+create index if not exists checkout_holds_expires_at_idx
+  on checkout_holds (source, expires_at);

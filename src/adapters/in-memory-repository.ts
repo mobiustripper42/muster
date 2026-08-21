@@ -726,12 +726,13 @@ export class InMemoryRepository implements Repository {
     // Delete any EXPIRED hold for this identity first (so a stale row can't block a fresh
     // acquire); "now" = the incoming hold's createdAt — same reference the pg adapter uses,
     // keeping the two behaviorally identical under the contract.
+    // Sweeps EVERY expired muster hold, not just this slot's (issue #713). Scoped to the slot,
+    // an abandoned checkout on a departure nobody re-attempts was unreachable by any cleanup
+    // path and sat in the table forever. An expired hold is already inert everywhere, so
+    // deleting someone else's costs nothing and is the only sweep this codebase has — there is
+    // no scheduler.
     for (const [id, h] of this.#checkoutHolds) {
-      if (
-        h.source === "muster" &&
-        slotIdentity(h.vesselId, h.date, h.time) === key &&
-        h.expiresAt <= hold.createdAt
-      ) {
+      if (h.source === "muster" && h.expiresAt <= hold.createdAt) {
         this.#checkoutHolds.delete(id);
       }
     }
@@ -752,6 +753,10 @@ export class InMemoryRepository implements Repository {
   }
   async listCheckoutHolds(): Promise<CheckoutHold[]> {
     return [...this.#checkoutHolds.values()].map(clone);
+  }
+  /** `expiresAt > asOf` — exclusive, matching the deriver's rule (issue #713). */
+  async listLiveCheckoutHolds(asOf: string): Promise<CheckoutHold[]> {
+    return [...this.#checkoutHolds.values()].filter((h) => h.expiresAt > asOf).map(clone);
   }
   async removeCheckoutHold(id: CheckoutHoldId): Promise<void> {
     this.#checkoutHolds.delete(id);

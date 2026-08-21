@@ -107,6 +107,8 @@ Muster is Next.js over a framework-free domain core — not the shell's old Supa
 
 - **Feature branches for multi-PR features (DEC-059 — overrides the shell's `## PR Workflow`):** `main` must stay **promotable to `production` at all times**. A feature shipping across multiple PRs that isn't independently releasable lands on a long-lived `feature/<name>` branch off `main` — its task PRs target *that* branch — and merges to `main` only when the whole feature is prod-ready **or** dark behind a flag. Independently-shippable tasks still PR straight to `main`. The shell's "stack PRs onto `main`" guidance applies only to independently-shippable work; do **not** land partial features on `main`.
 
+- **No open-PR ceiling (operator, 2026-08-14 — overrides the shell's "Keep ≤3 open PRs. Prefer 1.").** There is no number. Sometimes one is right, sometimes eight is, and it depends on the nature of the PRs and on what the operator is doing at the time — which is not something a constant can know. A stated cap gets quoted back as a reason to stop working, which is the opposite of useful on a day given over to building rather than reviewing. **Do not propose stopping, splitting, or sequencing work on open-PR count**; if PRs are piling up in a way that actually matters — two migrations on one table, a stack whose base keeps moving — say *that specific thing*, because that is the real constraint the number was standing in for.
+
 ## Blast-Radius Triggers
 
 Read by `/kill-this` Step 3.5 and matched against the branch diff. On a hit the skill runs `/security-review` locally and surfaces `/code-review ultra` as the optional deeper pass. Paths, not categories — "the money path" can't be matched against a diff.

@@ -174,6 +174,9 @@ const WIDE_WINDOW = {
   now: "2026-07-01T12:00:00.000Z",
   max: 1_000,
 };
+/** A presented hash that never matches the stored `code-hash-1` — i.e. a WRONG guess. The
+ *  window/attempt bounds apply to these; a correct-code claim is exercised separately (#801). */
+const WRONG_HASH = "not-the-stored-code";
 const outboxEntry = (over: Partial<OutboxEntry> = {}): OutboxEntry => ({
   id: asId<"OutboxEntryId">("obx-ask-1"),
   askId: asId<"AskId">("ask-1"),
@@ -2118,15 +2121,15 @@ export function runRepositoryContract(
 
     it("claimLoginAttempt: increments + returns codeHash/expiresAt; null when absent/consumed", async () => {
       await repo.saveLoginCode(loginCode());
-      const c1 = await repo.claimLoginAttempt("crew", CREW, 5, WIDE_WINDOW);
+      const c1 = await repo.claimLoginAttempt("crew", CREW, 5, WIDE_WINDOW, WRONG_HASH);
       expect(c1).toMatchObject({ codeHash: "code-hash-1", attempts: 1 });
       expect(c1!.expiresAt).toBe("2026-07-01T12:10:00.000Z");
-      expect((await repo.claimLoginAttempt("crew", CREW, 5, WIDE_WINDOW))!.attempts).toBe(2);
+      expect((await repo.claimLoginAttempt("crew", CREW, 5, WIDE_WINDOW, WRONG_HASH))!.attempts).toBe(2);
       expect((await repo.getLoginCode("crew", CREW))!.attempts).toBe(2);
       // Absent → null; consumed → null (can't guess a spent code).
-      expect(await repo.claimLoginAttempt("crew", "ghost", 5, WIDE_WINDOW)).toBeNull();
+      expect(await repo.claimLoginAttempt("crew", "ghost", 5, WIDE_WINDOW, WRONG_HASH)).toBeNull();
       await repo.consumeLoginCodeIfUnused("crew", CREW, "2026-07-01T12:05:00.000Z");
-      expect(await repo.claimLoginAttempt("crew", CREW, 5, WIDE_WINDOW)).toBeNull();
+      expect(await repo.claimLoginAttempt("crew", CREW, 5, WIDE_WINDOW, WRONG_HASH)).toBeNull();
     });
 
     it("claimLoginAttempt: the cap is atomic — concurrent claims can't exceed maxAttempts (#297)", async () => {
@@ -2134,7 +2137,7 @@ export function runRepositoryContract(
       // 10 concurrent guesses against a max of 3 → exactly 3 non-null claims.
       const results = await Promise.all(
         Array.from({ length: 10 }, () =>
-          repo.claimLoginAttempt("crew", CREW, 3, WIDE_WINDOW),
+          repo.claimLoginAttempt("crew", CREW, 3, WIDE_WINDOW, WRONG_HASH),
         ),
       );
       expect(results.filter((r) => r !== null)).toHaveLength(3);
@@ -2147,7 +2150,7 @@ export function runRepositoryContract(
       // asserting only `attempts` cannot see it.
       expect(after.failedInWindow).toBe(3);
       // Once at the cap, further claims stay null.
-      expect(await repo.claimLoginAttempt("crew", CREW, 3, WIDE_WINDOW)).toBeNull();
+      expect(await repo.claimLoginAttempt("crew", CREW, 3, WIDE_WINDOW, WRONG_HASH)).toBeNull();
     });
 
     it("claimLoginAttempt: the failure window survives the re-mint that resets attempts (DEC-142, #522)", async () => {
@@ -2158,7 +2161,7 @@ export function runRepositoryContract(
       const window = { startsAt: "2026-07-01T00:00:00.000Z", now: "2026-07-01T12:00:00.000Z", max: 3 };
       await repo.saveLoginCode(loginCode());
 
-      expect(await repo.claimLoginAttempt("crew", CREW, 5, window)).not.toBeNull();
+      expect(await repo.claimLoginAttempt("crew", CREW, 5, window, WRONG_HASH)).not.toBeNull();
       expect((await repo.getLoginCode("crew", CREW))!.failedInWindow).toBe(1);
 
       // Re-mint: a fresh code, attempts back to 0 — the window must NOT follow it.
@@ -2167,20 +2170,49 @@ export function runRepositoryContract(
       expect((await repo.getLoginCode("crew", CREW))!.failedInWindow).toBe(1);
 
       // Two more failures reach max=3, and the next claim is refused despite attempts=2.
-      await repo.claimLoginAttempt("crew", CREW, 5, window);
-      await repo.claimLoginAttempt("crew", CREW, 5, window);
+      await repo.claimLoginAttempt("crew", CREW, 5, window, WRONG_HASH);
+      await repo.claimLoginAttempt("crew", CREW, 5, window, WRONG_HASH);
       expect((await repo.getLoginCode("crew", CREW))!.failedInWindow).toBe(3);
-      expect(await repo.claimLoginAttempt("crew", CREW, 5, window)).toBeNull();
+      expect(await repo.claimLoginAttempt("crew", CREW, 5, window, WRONG_HASH)).toBeNull();
       // Re-minting does not buy a way out — that WAS the exploit.
       await repo.saveLoginCode(loginCode({ codeHash: "code-hash-3", attempts: 0 }));
-      expect(await repo.claimLoginAttempt("crew", CREW, 5, window)).toBeNull();
+      expect(await repo.claimLoginAttempt("crew", CREW, 5, window, WRONG_HASH)).toBeNull();
 
       // A window that has aged out restarts at 1 rather than staying locked.
       const later = { startsAt: "2026-07-02T12:00:00.000Z", now: "2026-07-03T12:00:00.000Z", max: 3 };
-      expect(await repo.claimLoginAttempt("crew", CREW, 5, later)).not.toBeNull();
+      expect(await repo.claimLoginAttempt("crew", CREW, 5, later, WRONG_HASH)).not.toBeNull();
       const rolled = (await repo.getLoginCode("crew", CREW))!;
       expect(rolled.failedInWindow).toBe(1);
       expect(rolled.failedSince).toBe(later.now);
+    });
+
+    it("claimLoginAttempt: a CORRECT code claims past the window cap and never advances it (#801)", async () => {
+      // Both adapters must agree: the window gate applies to GUESSES, not to the code itself.
+      await repo.saveLoginCode(loginCode()); // codeHash "code-hash-1"
+      const window = { startsAt: "2026-07-01T00:00:00.000Z", now: "2026-07-01T12:00:00.000Z", max: 2 };
+
+      // Burn the window to the cap with wrong guesses.
+      await repo.claimLoginAttempt("crew", CREW, 5, window, WRONG_HASH);
+      await repo.claimLoginAttempt("crew", CREW, 5, window, WRONG_HASH);
+      expect((await repo.getLoginCode("crew", CREW))!.failedInWindow).toBe(2);
+
+      // A WRONG guess at the cap is refused — brute force stays bounded.
+      expect(await repo.claimLoginAttempt("crew", CREW, 5, window, WRONG_HASH)).toBeNull();
+
+      // The CORRECT code claims anyway, and the window counter is UNTOUCHED (a success is not a
+      // failure). Before #801 this returned null and the legitimate holder got locked out.
+      expect(await repo.claimLoginAttempt("crew", CREW, 5, window, "code-hash-1"))
+        .toMatchObject({ codeHash: "code-hash-1" });
+      expect((await repo.getLoginCode("crew", CREW))!.failedInWindow).toBe(2);
+    });
+
+    it("claimLoginAttempt: a correct code is STILL refused once attempts hit the per-code cap (#801/DEC-081)", async () => {
+      await repo.saveLoginCode(loginCode()); // codeHash "code-hash-1"
+      // Spend the per-code ceiling with wrong guesses (window wide open, so only attempts binds).
+      for (let i = 0; i < 3; i++) await repo.claimLoginAttempt("crew", CREW, 3, WIDE_WINDOW, WRONG_HASH);
+      expect((await repo.getLoginCode("crew", CREW))!.attempts).toBe(3);
+      // The correct code cannot revive a code already spent on `maxAttempts` guesses.
+      expect(await repo.claimLoginAttempt("crew", CREW, 3, WIDE_WINDOW, "code-hash-1")).toBeNull();
     });
 
     it("calendar feeds: hash-lookup round-trip; one per crew (rotate replaces); revoke + touch (DEC-098)", async () => {

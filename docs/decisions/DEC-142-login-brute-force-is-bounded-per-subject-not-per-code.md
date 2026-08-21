@@ -85,3 +85,33 @@ revisit. Both are filed.
 **Revisit if:** a real crew member is ever locked out by the window (the cap is too tight, or
 something is retrying on their behalf), or general rate limiting lands — at which point the
 per-subject window may be redundant with a per-IP bound applied earlier in the stack.
+
+## Amendment, 2026-08-21 (eric) — the window gates guesses, not the code itself
+
+**What this changes, and what still stands.** The per-subject window bound (50 failures / 24h,
+surviving re-mints) is unchanged and still the security model. What changes is *where it sits
+relative to the hash compare*. It used to gate the claim outright: `claimLoginAttempt` returned
+null once the window was full, and `verifyLoginCode` returned the generic `invalid` before ever
+comparing the presented code — so a **legitimate crew member holding the correct code got the same
+`invalid` as the attacker**, locked out for the full 24h. The "Revisit if" clause above named
+exactly this ("a real crew member is ever locked out by the window"); this is that revisit.
+
+**The gate order was the whole bug.** A cap that refuses *guesses* is the accepted trade of this
+decision. A cap that refuses the *correct code* is a different thing, and it fell out of the claim
+sitting ahead of the compare rather than from any deliberate choice. It was also cheaply reachable:
+~60 requests against a known roster email (guessable for the operator, who is crew per DEC-092)
+burns the window and re-locks it daily — an account-lockout DoS on the highest-value account, with
+no per-IP bound anywhere to slow it.
+
+**Decision.** The presented code's hash is passed into `claimLoginAttempt` (issue #801). When it
+matches the stored `code_hash`, the claim bypasses the *window* bound and — because a success is
+not a failure — leaves the window counter untouched. Wrong guesses are unaffected: they never match,
+so they are window-bounded exactly as before, and brute force is still capped at 50/day. The
+per-code `attempts < MAX_ATTEMPTS` ceiling (DEC-081, #297) stays an independent `AND`: a code
+already spent on five wrong guesses is dead even to a correct sixth. Enforced in the one row-locked
+statement, both adapters, so it is race-safe and the double agrees.
+
+**Why this is safe.** The window exists to bound *guessing*, and an attacker never presents the
+correct code (that is the thing they are trying to find). Letting the correct code through grants no
+new capability to anyone who does not already hold it, while removing the only way an unauthenticated
+attacker could deny a specific crew member — or the operator — their own account.

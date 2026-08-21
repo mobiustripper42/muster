@@ -939,6 +939,7 @@ export class InMemoryRepository implements Repository {
     subjectId: string,
     maxAttempts: number,
     window: FailureWindow,
+    presentedCodeHash: string,
   ): Promise<{ codeHash: string; expiresAt: string; attempts: number } | null> {
     const key = `${subjectKind}:${subjectId}`;
     const current = this.#loginCodes.get(key);
@@ -949,19 +950,26 @@ export class InMemoryRepository implements Repository {
     ) {
       return null;
     }
+    // The presented code is CORRECT (#801) — it bypasses the window bound and leaves the counter
+    // untouched, because a success is not a failure. Mirrors the `code_hash = $7` arms in the SQL.
+    // `attempts >= maxAttempts` above still applies, so a code spent on `maxAttempts` wrong guesses
+    // is dead even to a correct one (DEC-081).
+    const correct = current.codeHash === presentedCodeHash;
     // Mirrors the postgres CTE (DEC-142): `stale` decided ONCE, then reused by the guard,
     // the new window start, and the reset-or-increment. String compare on ISO-8601 UTC is
     // ordering-correct, and it's what the SQL side does — a Date.parse here would be a
     // second implementation of the comparison, free to disagree at a boundary.
     const stale = current.failedSince === undefined || current.failedSince < window.startsAt;
-    if (!stale && (current.failedInWindow ?? 0) >= window.max) return null;
+    if (!correct && !stale && (current.failedInWindow ?? 0) >= window.max) return null;
 
     const attempts = current.attempts + 1;
-    // A live window keeps its own `failedSince` — the spread already carries it, so it is
-    // never rewritten here. Only a stale (or first-ever) window stamps a new start.
-    const next: LoginCode = stale
-      ? { ...current, attempts, failedSince: window.now, failedInWindow: 1 }
-      : { ...current, attempts, failedInWindow: (current.failedInWindow ?? 0) + 1 };
+    // A correct guess leaves the window as it found it. A live window keeps its own `failedSince`
+    // — the spread already carries it — so only a stale (or first-ever) window stamps a new start.
+    const next: LoginCode = correct
+      ? { ...current, attempts }
+      : stale
+        ? { ...current, attempts, failedSince: window.now, failedInWindow: 1 }
+        : { ...current, attempts, failedInWindow: (current.failedInWindow ?? 0) + 1 };
     this.#loginCodes.set(key, clone(next));
     return { codeHash: current.codeHash, expiresAt: current.expiresAt, attempts };
   }

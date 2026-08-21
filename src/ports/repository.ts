@@ -609,12 +609,21 @@ export interface Repository {
    * `maxAttempts` per resend-cooldown, forever. The window counter survives the re-mint.
    * It is enforced in the SAME statement for the same reason the per-code cap is — a
    * separate read-then-check is a race, and this cap is the security model.
+   *
+   * `presentedCodeHash` is the hash of the code being TRIED, and it makes the window gate apply
+   * to guesses, not to the code itself (issue #801). When it equals the stored `code_hash` the
+   * claim bypasses the WINDOW bound (`max`) — a legitimate crew member holding the right code is
+   * not locked out for 24h by an attacker who burned the window with wrong guesses — and the
+   * claim leaves the window counter UNTOUCHED, because a success is not a failure. The per-code
+   * `attempts < maxAttempts` ceiling still applies (DEC-081): a code already spent on 5 wrong
+   * guesses stays dead even to a correct 6th. Wrong guesses are unaffected — still window-bounded.
    */
   claimLoginAttempt(
     subjectKind: AuthSubjectKind,
     subjectId: string,
     maxAttempts: number,
     window: FailureWindow,
+    presentedCodeHash: string,
   ): Promise<{ codeHash: string; expiresAt: string; attempts: number } | null>;
 
   // ── Calendar feeds (crew iCal subscription — #355, DEC-098) ────────────────

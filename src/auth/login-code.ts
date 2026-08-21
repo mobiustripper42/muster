@@ -243,18 +243,30 @@ export async function verifyLoginCode(
   // NB claim precedes the expiry check, so a guess against an expired-but-unconsumed code
   // burns the cap (vs. free before) — accepted, and a re-mint after the cooldown resets
   // the per-code attempts. The cap must be the atomic gate, not expiry.
-  const claim = await repo.claimLoginAttempt("crew", crew.id, MAX_ATTEMPTS, {
-    startsAt: new Date(deps.now.getTime() - FAILURE_WINDOW_MS).toISOString(),
-    now: deps.now.toISOString(),
-    max: MAX_FAILURES_PER_WINDOW,
-  });
+  //
+  // The presented hash goes IN so the window bound gates guesses, not the code (#801): a correct
+  // code claims even at the window cap (else the legitimate crew member is locked out for 24h by
+  // an attacker's wrong guesses), and it doesn't advance the window. The hash was computed at the
+  // bottom before; moving it up costs nothing (equal work on every path) and lets the claim decide.
+  const presentedCodeHash = hashCode(params.code);
+  const claim = await repo.claimLoginAttempt(
+    "crew",
+    crew.id,
+    MAX_ATTEMPTS,
+    {
+      startsAt: new Date(deps.now.getTime() - FAILURE_WINDOW_MS).toISOString(),
+      now: deps.now.toISOString(),
+      max: MAX_FAILURES_PER_WINDOW,
+    },
+    presentedCodeHash,
+  );
   // No live under-cap code — locked at the cap, consumed, expired, or never minted. All
   // four are the same answer to the caller; the second read that used to tell them apart
   // is gone with the copy it fed.
   if (!claim) return FAILED;
   if (deps.now.getTime() >= Date.parse(claim.expiresAt)) return FAILED;
 
-  if (hashCode(params.code) !== claim.codeHash) return FAILED;
+  if (presentedCodeHash !== claim.codeHash) return FAILED;
 
   const won = await repo.consumeLoginCodeIfUnused(
     "crew",

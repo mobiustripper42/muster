@@ -6,7 +6,7 @@ branch: task/724-cancel-reason
 started: 2026-08-21T10:48:33Z
 ended:
 points:
-pr_numbers: []
+pr_numbers: [805]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/ad732f7c-4a21-5916-8cd9-6e3016d9ae4b.jsonl
 ---
@@ -14,6 +14,65 @@ transcript: /home/eric/.claude/projects/-home-eric-muster/ad732f7c-4a21-5916-8cd
 # Session 92 — 797-operator-cancel-full-refund
 
 <!-- Task blocks appended by /kill-this, one per task. -->
+
+## Task 1: A full refund is the whole payment, not the fare (issue #797)
+
+**Session file:** `2026-08-21-1048-eric-797-operator-cancel-full-refund.md` (session 92) — this window
+opened it; session 91 was the other open candidate and is concurrent in `/home/eric/muster-s91`.
+
+**Completed:**
+- `src/reservations/cancel-reservation.ts` — `refundableCents` deleted. Both policies compute from
+  `refundableTotalFor`, the same base the refund cap already enforced, so on the operator branch the
+  quote and the Stripe ceiling are one number.
+- `src/reservations/refund-terms.ts`, `refund-payment.ts` — three docstrings that described the
+  carve-out, including `operatorCancelRefundCents`'s, which was correct about the policy while
+  describing an input it never received.
+- `src/reservations/cancel-reservation.test.ts` — the test asserting the carve-out deleted; both rule
+  tests re-fixtured onto a payment carrying a tip and a fee.
+- `src/reservations/seed-reservation.ts` + `db/seed-reservation-dev.ts` — the seed's **season** starts
+  today (the window, bookings and block fixtures are unchanged), so a booking can be made inside the
+  14-day cancellation window at all.
+- `docs/decisions/DEC-153` — amendment. `.claude/CLAUDE-context.md` — two paths added to the
+  money-moving blast-radius row.
+
+**The thing worth remembering:** the operator's answer to a design question was not a preference. Four
+exchanges went into whether the tip was crew money and whether the service fee was defensible to keep
+— and the published policy already said, in one sentence, that a full refund is a full refund. The
+carve-out was never a decision anyone made about the operator branch; it was a decision about the
+customer branch that leaked. Reading the policy text *first* would have skipped every one of those
+turns, and the operator said so directly.
+
+**DEC-153 was wrong when written, not narrowed by this change.** Nine lines below the carve-out
+bullet it records `operatorCancelRefundCents` as "everything, at any notice", and SPEC.md §3.3 step 2
+agrees. The two could never both be true of one screen, and `refundableCents` was the faithful
+implementation of the wrong one. Amended in place — no new id, and no SPEC edit, because every refund
+mention in SPEC already matched the three rules.
+
+**Why the test never caught it:** the fixture `payment()` carries no `gratuityCents` and no
+`serviceFeeCents`, so a test titled *"an OPERATOR cancellation refunds everything"* was structurally
+unable to tell a full refund from a fare-only one. It passed for months. The two new tests were
+watched failing first — the operator case returned **62098**, the reported $620.98 to the cent.
+
+**Deliberate breakage, tracked:** widening the season costs `/book`'s default month its emptiness,
+which `e2e/book-availability.spec.ts:233` builds its forward-paging test on. Filed as issue #804 and
+marked in the file, **left failing rather than skipped** — `npm run verify` does not run e2e, so a
+skip would have made it nobody's problem. `@code-review` caught that it had no tracking issue when it
+existed only as a code comment.
+
+**Code review:** 2 findings, both fixed — a stale e2e header, and the untracked break above.
+**Security review:** ran on the money-moving trigger. **0 findings at confidence ≥ 8.** Traced and
+ruled out: the blank-box path exceeding the refund cap (the operator quote *is* the cap, recomputed
+under the lease), the `expectedRefunded` CAS, confirm-screen/server divergence, status handling in
+`refundableTotalFor` vs the deleted function, and the dev seed's local-DB guard.
+
+**Also this task:** filed issue #803 — a cancelled booking still shows the guest "Balance · due before
+your trip $575.32", because `balanceOwedCents` has no idea the trip was cancelled and the row is gated
+only on `> 0`. Found by the operator reviewing this fix. Display-only, no CTA, so no money can move.
+
+**PR:** [PR #805](https://github.com/mobiustripper42/muster/pull/805)
+**Points:** 3
+**Branch:** task/797-operator-cancel-full-refund
+**Opened at:** 2026-08-21T16:31:00Z
 
 **Next Steps:**
 

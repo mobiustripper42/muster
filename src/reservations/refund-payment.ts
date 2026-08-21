@@ -76,13 +76,14 @@ export type RefundOutcome =
     };
 
 /**
- * What one charge can still give back.
+ * What one charge can still give back: Stripe's real ceiling, `amountCents` minus what has
+ * already gone back.
  *
- * **Capped at Stripe's real ceiling — `amountCents` minus what has already gone back — and
- * deliberately NOT at the fare-only figure `quoteCancelRefund` uses.** The quote carves out
- * gratuity and the service fee so a routine cancel never hands back crew money by default; this
- * must not, or an operator who decides to return the tip would find the product refusing to. The
- * conservative number is the suggestion; the real number is the limit.
+ * **`quoteCancelRefund` now computes from this same base** (#797). It used to quote a fare-only
+ * figure — gratuity and the service fee carved out — which made the suggestion and the limit two
+ * different numbers. The published terms name one deduction, the $50 customer cancellation fee,
+ * so the quote applies that and nothing else; on the operator branch the quote and this ceiling
+ * are the same number, which is what "a full refund" means.
  */
 function refundableOn(p: Payment): number {
   if (!countsAsPaid(p)) return 0;

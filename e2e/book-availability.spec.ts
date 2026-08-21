@@ -3,8 +3,12 @@
  *
  * Uses the `reservation` seed: one LIVE offering ("Reservation Demo Cruise") on THREE boats —
  * Brew 3 (12), Brew 1 (14), Brew 2 (16), no includedGuestCount ⇒ included = the departure's cap
- * — base $499, $50/extra guest, season the 10th–16th of NEXT month, departures 13:30/15:30/17:30,
- * and one booking at 13:30 on the 12th (Marcus Webb) which sits on Brew 3.
+ * — base $499, $50/extra guest, **demo window** the 10th–16th of NEXT month, departures
+ * 13:30/15:30/17:30, and one booking at 13:30 on the 12th (Marcus Webb) which sits on Brew 3.
+ *
+ * **The window is not the season any more (#797).** The season starts TODAY, so bookable slots
+ * exist in the current month; only the bookings and the block fixtures live in the window above.
+ * That breaks the forward-paging test's premise below — see its own comment.
  *
  * **The fixture gained its second and third boat in #715**, and it moved every count in this file:
  * a booking on Brew 3 no longer sells out its departure, it leaves two boats open. That is the
@@ -230,6 +234,11 @@ test.describe("public /book availability", () => {
     await expect(page.getByTestId("guest-count")).toHaveText("14");
   });
 
+  // **KNOWN BROKEN since #797 — issue #804.** Widening the seed's season to start today means
+  // today's month has availability, so the "Pick an available date" prompt on line 241 no longer
+  // renders and there is no empty month to page FROM. The premise is gone rather than the
+  // assertion being stale, so this needs re-anchoring, not a tweak. Left failing and tracked
+  // rather than skipped: a skip is how it stops being anyone's problem.
   test("an empty month prompts a date pick and pages forward to availability", async ({ page }) => {
     await page.goto("/book"); // defaults to today's month — the seeded window is next month
 

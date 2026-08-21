@@ -115,12 +115,14 @@ Read by `/kill-this` Step 3.5 and matched against the branch diff. On a hit the 
 
 | Trigger | Paths |
 |---|---|
-| **Money moving** | `app/api/webhooks/stripe/`, `src/adapters/stripe-payment.ts`, `src/ports/payment.ts`, `src/reservations/create-departure-payment-intent.ts`, `src/reservations/payment-config.ts`, `src/reservations/refund-payment.ts` |
+| **Money moving** | `app/api/webhooks/stripe/`, `src/adapters/stripe-payment.ts`, `src/ports/payment.ts`, `src/reservations/create-departure-payment-intent.ts`, `src/reservations/payment-config.ts`, `src/reservations/refund-payment.ts`, `src/reservations/refund-terms.ts`, `src/reservations/cancel-reservation.ts` |
 | **Money computed** | `app/(admin)/admin/payroll/**` (incl. the `gusto.csv` and `tips.csv` exports), `app/(admin)/admin/time-clock/**`, `app/(admin)/admin/shift/[shiftId]/**`, `app/(admin)/admin/shifts/**`, `app/(crew)/crew/shift/[shiftId]/**` |
 | **Auth / capability URL** | `app/lib/auth.ts`, `app/lib/auth-delivery.ts`, `app/(crew)/crew/auth/`, `app/api/calendar/[token]/**`, `app/b/**`, `src/reservations/booking-code.ts`, `src/reservations/ensure-booking-code.ts` |
 | **Data-changing migration** | a file under `db/migrations/` containing `drop`, `alter … type`, `update`, or `delete`. An additive `add column` does **not** trigger |
 
 **`refund-payment.ts` was missing until #726** — the one module in the repo that hands real money *back*, absent from a list defined as "money moving". It was caught by asking the skill's own fallback question (does a number this produces reach someone's statement?) rather than by the table, which is the failure mode a path list has: it can only name what someone thought of. When a money change doesn't match a row, add the row in the same PR.
+
+**`refund-terms.ts` and `cancel-reservation.ts` joined at #797**, for the same reason one row up and with the same lesson: `refund-payment.ts` *moves* the money, but these two *decide the number*, and #797 was a defect entirely inside the deciding half — the moving half was correct throughout. A diff that changed only these two would have matched no row while changing what every cancelled customer is paid.
 
 **Why the payroll exports are listed by name.** `gusto.csv` is the file that becomes a paycheck. Nothing in it looks like a payment — no provider, no charge, no amount in cents — so a trigger defined by *where money moves* would never match it. A mis-bucketed pay period or a double-counted punch upstream in `time-clock` or `shift` reaches a person's pay with no payment code anywhere in the diff.
 

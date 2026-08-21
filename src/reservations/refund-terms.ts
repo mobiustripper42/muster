@@ -54,7 +54,11 @@ export function cancelWindowHours(hasFlex = false): number {
 }
 
 export interface RefundInput {
-  /** Everything the customer has actually paid — deposit only, or deposit + balance. */
+  /**
+   * Everything the customer has actually paid and not yet had back — deposit only, or deposit +
+   * balance, gratuity and service fee INCLUDED. The published terms deduct the $50 and nothing
+   * else, so anything netted out before this arrives is a deduction we never published (#797).
+   */
   paidCents: number;
   /** Notice given, in hours before departure. Zero or negative ⇒ a no-show. */
   hoursBeforeDeparture: number;
@@ -88,6 +92,11 @@ export function refundOwedCents({
  * Everything paid, no fee, at any notice ("we will provide you with a full refund"), which is
  * also the SPEC.md §3.3 principled default. Kept as its own function precisely so no caller can
  * reach the fee path by passing the wrong notice: who cancelled is the discriminator, not when.
+ *
+ * **This was correct in isolation and wrong in use for its whole life, because its INPUT was
+ * short** (#797): the caller netted out gratuity and the service fee before calling, so
+ * "everything paid" could only ever return the fare. Whatever `paidCents` is handed is what comes
+ * back — the identity is the policy, so the guard has to be on what the caller passes.
  */
 export function operatorCancelRefundCents(paidCents: number): number {
   return Math.max(0, paidCents);

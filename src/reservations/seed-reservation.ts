@@ -23,6 +23,15 @@
  * before, never the current month, always ahead of today, and every offset is ≤15 so it fits
  * inside even February.
  *
+ * **The SEASON is wider than the window since #797** — it starts today. The window scopes the
+ * demo (bookings, block fixtures, every pinned figure); the season only decides where virtual
+ * slots may emit. They were the same range under #688 and are not any more, so read the two as
+ * separate things: a slot near today is bookable, but nothing is *booked* there.
+ *
+ * **This costs `/book`'s default month its emptiness**, which `book-availability.spec.ts:233`
+ * builds its paging test on. That is the deliberate trade — the 14-day cancellation rules were
+ * unreachable by hand, and a fixture you cannot reach a rule from is the more expensive problem.
+ *
  * **Caveat, stated rather than papered over:** the seed script and the e2e process each compute
  * "today" independently, so a run that crosses vessel-local midnight can disagree about which
  * month is next. Anchoring on the month (not a day offset) narrows that to the final midnight of
@@ -111,10 +120,16 @@ export function reservationDemo(todayISO: string): ReservationDemo {
       { vesselId: "vessel-brew-1", name: "Brew 1", coiMaxPax: 14 },
       { vesselId: "vessel-brew-2", name: "Brew 2", coiMaxPax: 16 },
     ],
-    // The season IS the demo window (#688). It used to be a full year, with a 7-day
-    // owned-day allowlist narrowing it; ownership is gone, so the season does that job
-    // directly. Same visible demo, one mechanism instead of two.
-    season: { start: day(9), end: day(15) }, // the 10th … the 16th
+    // **The season runs from TODAY to the end of the demo window (#797).** It used to equal the
+    // window exactly (#688), which put every bookable slot at least ~10 days out and often 40 —
+    // so the two cancellation rules that only differ INSIDE the 14-day window had no slot a hand
+    // test could reach. Booking a trip five days out is now possible, which is what makes
+    // "customer cancels inside 14 days ⇒ nothing" observable at all.
+    //
+    // The window below still scopes the DEMO — the materialized bookings, the block fixtures and
+    // every figure pinned to them are unchanged and still sit next month. The season is only
+    // where slots may emit.
+    season: { start: todayISO, end: day(15) }, // today … the 16th of next month
     departureTimes: ["13:30", "15:30", "17:30"],
     window: { start: day(9), end: day(15) }, // the 10th … the 16th
     bookings: [

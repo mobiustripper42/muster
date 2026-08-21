@@ -25,7 +25,7 @@ import {
   demoRevokedBookingCode,
   reservationDemo,
 } from "../src/reservations/seed-reservation.js";
-import { vesselDateOf } from "../src/config/tenant.js";
+import { addDays, vesselDateOf } from "../src/config/tenant.js";
 import { DEFAULT_DATABASE_URL } from "./migrate.js";
 
 if (existsSync(".env.local")) {
@@ -107,7 +107,11 @@ try {
   // Printed because the guest filter is only testable against boats of DIFFERENT sizes (#715),
   // and "which boats, at what capacity" is the first thing a hand-test needs to know.
   console.log(`  boats     ${demo.fleet.map((f) => `${f.name} (${f.coiMaxPax})`).join(", ")}  — the block suggestions below are ${demo.vesselName}'s`);
-  console.log(`  window    ${demo.window.start} … ${demo.window.end}`);
+  console.log(`  window    ${demo.window.start} … ${demo.window.end}   (where the BOOKINGS are)`);
+  // Printed separately from the window since #797: the two are different ranges now, and the
+  // season is the one a hand test needs — it is every day you can book, including the near ones
+  // that put a booking inside the 14-day cancellation window.
+  console.log(`  season    ${demo.season.start} … ${demo.season.end}   (where you can BOOK — 14-day cutoff is ${addDays(vesselDateOf(new Date()), 14)})`);
   // Sorted and boat-labelled: the big-party fixtures (#715) put two hulls in one departure, and
   // "which boat" is the whole question a guest-count hand-test is asking.
   const boatName = (id: string | undefined) =>

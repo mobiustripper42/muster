@@ -4,10 +4,10 @@ dev: eric
 slug: 797-operator-cancel-full-refund
 branch: task/724-cancel-reason
 started: 2026-08-21T10:48:33Z
-ended:
-points:
+ended: 2026-08-22T02:59:09Z
+points: 6
 pr_numbers: [805, 809, 811]
-status: open
+status: closed
 transcript: /home/eric/.claude/projects/-home-eric-muster/ad732f7c-4a21-5916-8cd9-6e3016d9ae4b.jsonl
 ---
 
@@ -162,6 +162,31 @@ back #811. Corrected. Same class as the memory that says never to pre-reserve a 
 
 **Next Steps:**
 
+- **issue #800** — `/b/find` recovery throttle keyed on attacker-chosen text; two full-table reads
+  per request (5 pts, high). **Specced but not started, and it has a fork that needs a prod answer
+  before a line is written.** SQL should narrow by contact; `matchBookingForRecovery`'s name check,
+  cancelled-vs-live preference and soonest-upcoming ordering all stay in JS over a small candidate
+  set — nothing about no-enumeration moves.
+  - Email path is easy: index on `lower(email)`, one indexed lookup.
+  - **Phone path is the fork.** `reservations.phone` is stored raw and both sides get canonicalized
+    in JS, so no plain index serves it. **(A)** route through `customers` — `customers.phone_e164`
+    is already UNIQUE-indexed and IS the identity key (DEC-132), `reservations.customer_id` is
+    indexed, so it's two indexed lookups with no new normalization logic to keep in sync with
+    `canonicalizePhone`. **(B)** a canonical phone column on `reservations`, backfilled and indexed.
+  - **The gate between them:** `select count(*) from reservations where source='muster' and
+    customer_id is null` **against prod**. Zero ⇒ (A). Non-zero ⇒ (A) silently makes those bookings
+    unrecoverable by phone, so (B).
+  - Unconditional either way: `recovery_throttle (cooldown_until)` index, and the three false
+    comments the issue names — including `recover-booking-link.ts:64-68`, "taking a thunk makes it
+    true," which is the same shape of wrong claim Task 3 spent a PR removing.
+  - **Merge dependency:** it adds port methods, so it touches `src/ports/repository.ts`, both
+    adapters and `repository-contract.ts` — the same four files PR #810 did. That merged, so a
+    branch off `main` is now clean.
+- **issue #773** — checkout fails silently; a thrown server action re-enables Pay and tells the
+  customer nothing (3 pts, high). The best independent customer-facing one; cold start.
+- **A copy question left open, deliberately:** a fully refunded cancelled booking now reads "Paid
+  so far $0.00" on `/b/<code>`. Accurate, not lovely. Its own issue if it bothers anyone.
+
 **Context:**
 - **Concurrent with session 91**, which is live in the linked worktree `/home/eric/muster-s91` on
   `task/713-prune-checkout-holds` (PR #798 open). This session holds the main checkout
@@ -187,3 +212,25 @@ back #811. Corrected. Same class as the memory that says never to pre-reserve a 
 - `transcript:` is `/its-alive` Step 5's newest-file guess. A second JSONL in the same project dir
   (`8bcf9ecc…`) was written to one minute before this session opened, so the guess is weaker than
   usual here.
+
+### Recorded at close
+
+- **The session's own lesson, across two tasks: read the assertion, not the title.** Task 1 declared
+  an e2e broken from its name and comments; Task 3 existed only to undo that. The same habit had
+  already produced the defect Task 1 was fixing — a test called "an OPERATOR cancellation refunds
+  everything" that could not tell a full refund from a fare-only one, because its fixture carried no
+  tip. Both cost more than the read would have.
+- **Reviews verify the diff, not the premise.** Task 1's `@code-review` saw the false "known broken"
+  claim and filed a finding that it *lacked a tracking issue* — treating it as real, because it was
+  asserted. Task 3's review was told explicitly to distrust the framing and re-derived everything
+  from source. Ask for that when the claim is load-bearing.
+- **The operator's answer was in the published policy the whole time.** #797 took four exchanges
+  about whether the tip was crew money and whether the service fee was defensible to keep, and the
+  operator's terms already said "a full refund" in one sentence. Read the source text before
+  reasoning about the design.
+- **Two windows shared this checkout.** `/home/eric/muster` moved between branches under this
+  session more than once, and `/home/eric/muster-s91` ended up holding `task/803-…`. Nothing was
+  lost, but the "changed on disk" notices were branch switches, not edits, and cost time to
+  reconcile twice.
+- Session-open scan flagged an uncommitted `.claude/skills/kill-this/SKILL.md` (+39/−3) that had
+  vanished by the first branch switch. Never explained. Not mine.

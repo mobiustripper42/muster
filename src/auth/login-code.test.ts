@@ -223,16 +223,69 @@ describe("verifyLoginCode", () => {
       clock += RESEND_COOLDOWN_MS + 1;
     }
 
-    // A fresh code + a KNOWN-correct value is still refused — the subject is spent.
-    const code = await mintFor(repo, EMAIL, "123456", at(clock));
-    expect(await verifyLoginCode(repo, { email: EMAIL, code }, { now: at(clock) })).toEqual(FAILED);
+    // A WRONG guess at the cap is still refused — the window still bounds brute force, which is
+    // the whole point of DEC-142. This is the property that must not regress. (Advance past the
+    // resend cooldown before each fresh mint, or the anti-spam guard suppresses it.)
+    clock += RESEND_COOLDOWN_MS + 1;
+    await mintFor(repo, EMAIL, "123456", at(clock));
+    expect(await verifyLoginCode(repo, { email: EMAIL, code: "999999" }, { now: at(clock) })).toEqual(FAILED);
 
-    // And it rolls: past the window, the same correct code redeems.
+    // …but the CORRECT code redeems even at the cap (issue #801). Before this fix the window gate
+    // sat AHEAD of the hash compare, so `claimLoginAttempt` returned null and the legitimate crew
+    // member — holding the right code — got the same `invalid` as the attacker, locked out for 24h.
+    // The window gates GUESSES, not the code itself.
+    clock += RESEND_COOLDOWN_MS + 1;
+    const code = await mintFor(repo, EMAIL, "424242", at(clock));
+    expect(await verifyLoginCode(repo, { email: EMAIL, code }, { now: at(clock) })).toMatchObject({
+      ok: true,
+    });
+
+    // And it still rolls: past the window, a fresh correct code redeems as before.
     const later = clock + FAILURE_WINDOW_MS + 1;
     const fresh = await mintFor(repo, EMAIL, "654321", at(later));
     expect(await verifyLoginCode(repo, { email: EMAIL, code: fresh }, { now: at(later) })).toMatchObject({
       ok: true,
     });
+  });
+
+  it("the window gates guesses, not codes: correct code wins at the cap, wrong code still loses (#801)", async () => {
+    const repo = await repoWithCrew();
+    // Drive the window to exactly the cap with wrong guesses across re-mints, same as above but
+    // isolated so the assertions read cleanly.
+    let clock = 0;
+    let failures = 0;
+    while (failures < MAX_FAILURES_PER_WINDOW) {
+      await mintFor(repo, EMAIL, String(failures).padStart(6, "0"), at(clock));
+      for (let i = 0; i < MAX_ATTEMPTS && failures < MAX_FAILURES_PER_WINDOW; i++) {
+        await verifyLoginCode(repo, { email: EMAIL, code: "999999" }, { now: at(clock) });
+        failures++;
+      }
+      clock += RESEND_COOLDOWN_MS + 1;
+    }
+
+    // A correct login at the cap must NOT count as a window failure — a success is not a guess.
+    // Mint a fresh code, redeem it correctly, then prove a second fresh code still redeems: if the
+    // success had advanced the window it would now be over the cap and the second correct code
+    // would be (wrongly) refused.
+    const code1 = await mintFor(repo, EMAIL, "111222", at(clock));
+    expect((await verifyLoginCode(repo, { email: EMAIL, code: code1 }, { now: at(clock) })).ok).toBe(true);
+
+    clock += RESEND_COOLDOWN_MS + 1;
+    const code2 = await mintFor(repo, EMAIL, "333444", at(clock));
+    expect((await verifyLoginCode(repo, { email: EMAIL, code: code2 }, { now: at(clock) })).ok).toBe(true);
+  });
+
+  it("a code already at MAX_ATTEMPTS stays dead even to a correct guess (DEC-081 unchanged, #801)", async () => {
+    const repo = await repoWithCrew();
+    const code = await mintFor(repo, EMAIL, "246810", at(0));
+    // Burn the per-code attempt ceiling with wrong guesses (well under the window cap).
+    for (let i = 0; i < MAX_ATTEMPTS; i++) {
+      await verifyLoginCode(repo, { email: EMAIL, code: "999999" }, { now: at(i) });
+    }
+    // The 6th submission is the CORRECT code — still refused. The window fix only bypasses the
+    // WINDOW gate for a correct code; the per-code `attempts < MAX_ATTEMPTS` ceiling stays an
+    // independent AND, so a code that already absorbed 5 guesses is spent regardless.
+    expect(await verifyLoginCode(repo, { email: EMAIL, code }, { now: at(MAX_ATTEMPTS) })).toEqual(FAILED);
   });
 });
 

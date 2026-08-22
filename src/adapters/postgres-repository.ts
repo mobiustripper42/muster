@@ -2041,6 +2041,7 @@ export class PostgresRepository implements Repository {
     subjectId: string,
     maxAttempts: number,
     window: FailureWindow,
+    presentedCodeHash: string,
   ): Promise<{ codeHash: string; expiresAt: string; attempts: number } | null> {
     // Guarded increment: the `attempts < $3` predicate under the row lock means
     // K concurrent claims serialize and only the first `maxAttempts` succeed — the
@@ -2061,18 +2062,30 @@ export class PostgresRepository implements Repository {
     // Every predicate below reads `login_codes` directly, so all of them re-evaluate.
     //
     // A stale window is treated as absent: the claim is allowed and the window restarts.
+    //
+    // The presented hash ($7) makes the window gate apply to GUESSES, not to the code (#801). A
+    // correct code (`code_hash = $7`) claims past the window bound and leaves the window counter
+    // untouched — a success is not a failure, so it must neither be refused by nor advance the
+    // window. Wrong guesses hit none of the `code_hash = $7` arms, so they are bounded exactly as
+    // before. `attempts < $3` stays an independent AND: a code already spent on `maxAttempts`
+    // wrong guesses is dead even to a correct one (DEC-081).
     const { rows } = await this.#pool.query(
       `update login_codes set
          attempts = attempts + 1,
-         failed_since = case when failed_since is null or failed_since < $5 then $6 else failed_since end,
-         failed_in_window = case when failed_since is null or failed_since < $5
-                                 then 1 else coalesce(failed_in_window, 0) + 1 end
+         failed_since = case
+                          when code_hash = $7 then failed_since
+                          when failed_since is null or failed_since < $5 then $6
+                          else failed_since end,
+         failed_in_window = case
+                          when code_hash = $7 then coalesce(failed_in_window, 0)
+                          when failed_since is null or failed_since < $5 then 1
+                          else coalesce(failed_in_window, 0) + 1 end
        where subject_kind=$1 and subject_id=$2
          and consumed_at is null
          and attempts < $3
-         and (failed_since is null or failed_since < $5 or coalesce(failed_in_window, 0) < $4)
+         and (code_hash = $7 or failed_since is null or failed_since < $5 or coalesce(failed_in_window, 0) < $4)
        returning code_hash, expires_at, attempts`,
-      [subjectKind, subjectId, maxAttempts, window.max, window.startsAt, window.now],
+      [subjectKind, subjectId, maxAttempts, window.max, window.startsAt, window.now, presentedCodeHash],
     );
     return rows[0]
       ? {

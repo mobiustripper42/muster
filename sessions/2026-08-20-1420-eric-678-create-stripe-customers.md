@@ -4,10 +4,10 @@ dev: eric
 slug: 678-create-stripe-customers
 branch: task/678-create-stripe-customers
 started: 2026-08-20T14:20:24Z
-ended:
-points:
+ended: 2026-08-22T00:40:15Z
+points: 12
 pr_numbers: [795, 798, 808, 810]
-status: open
+status: closed
 transcript: /home/eric/.claude/projects/-home-eric-muster-s91/a644283b-bc9c-59d6-a0d0-e05c848a61ed.jsonl
 ---
 

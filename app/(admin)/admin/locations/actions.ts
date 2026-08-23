@@ -48,9 +48,9 @@ export async function saveLocation(formData: FormData): Promise<void> {
   revalidatePath("/admin/locations");
   if (code) {
     // Keep what was typed (#699), and select `new` on a refused CREATE — see the add-ons twin.
-    await stashFormDraft("locations", formData);
+    await stashFormDraft("/admin/locations", formData);
     redirect(`/admin/locations?sel=${rawId || "new"}&err=${code}`);
   }
-  await clearFormDraft("locations");
+  await clearFormDraft("/admin/locations");
   redirect(`/admin/locations?sel=${id}&saved=1`);
 }

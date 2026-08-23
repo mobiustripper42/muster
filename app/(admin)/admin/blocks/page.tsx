@@ -8,6 +8,7 @@ import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { readSubject } from "../../../lib/auth";
 import { errCopyFor } from "../../../lib/err-copy";
+import { readFormDraft } from "../../../lib/form-draft";
 import { getRepo } from "../../../lib/repo";
 import type { BlockErr } from "./actions";
 import {
@@ -115,6 +116,36 @@ export default async function AdminBlocks({
   // form pointed at a slot block (#703).
   const selected = sp.sel
     ? blocks.find((b) => String(b.id) === sp.sel && b.kind !== "vesselHold") ?? null
+    : null;
+
+  /**
+   * The refused submission's own values, read back as the editor's defaults (#780).
+   *
+   * Flattened to a plain record on purpose: `BlockEditor` is a client island (the kind toggle
+   * swaps the field sets), and a `FormDraft` carries methods, which cannot cross the
+   * server/client boundary. So the page does the reading and hands over data.
+   *
+   * A flat `name → value` map is only safe because every control on this form is single-valued —
+   * no checkboxes, no multi-selects. On a form with either, `has()` is the accessor and a
+   * `?? ""` map would quietly turn "unticked" into "absent". Keep that in mind before copying
+   * this shape to another island.
+   */
+  const draft = sp.err ? await readFormDraft("/admin/blocks") : null;
+  const draftValues = draft
+    ? Object.fromEntries(
+        (
+          [
+            "locationId",
+            "date",
+            "startTime",
+            "endTime",
+            "vesselId",
+            "startDate",
+            "endDate",
+            "note",
+          ] as const
+        ).map((n) => [n, draft.get(n) ?? ""]),
+      )
     : null;
   // Every nav link preserves the OTHER axes (kind + time scope + selection), so filtering never
   // drops your selection or empties the panel.
@@ -304,6 +335,7 @@ export default async function AdminBlocks({
           selected={selected}
           locations={locations}
           vessels={vessels}
+          draftValues={draftValues}
         />
       </div>
 

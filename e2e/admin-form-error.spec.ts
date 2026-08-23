@@ -46,9 +46,11 @@ import {
   expect,
   selectOptionHydrated,
   test,
+  plantPayment,
   resetAndSeed,
   signInAsAdmin,
 } from "./fixtures.js";
+import { BOOKED, demoReservationId } from "./reservation-demo.js";
 
 /** The minimum to get one saved offering on the page, so there is something to substitute. */
 async function seedOneOffering(page: import("@playwright/test").Page): Promise<void> {
@@ -330,5 +332,272 @@ test.describe("the same refusal on the other three admin surfaces (#699)", () =>
     await page.goto("/admin/add-ons?sel=new&err=bad_amount");
     await expect(page.locator('input[name="label"]')).toHaveValue("");
     await expect(page.locator('input[name="amount"]')).toHaveValue("");
+  });
+});
+
+/**
+ * The same defect on the surfaces #699 didn't name (#780).
+ *
+ * Two things here are NOT true of #699's four CRUD surfaces, and both change what the fix has
+ * to do:
+ *
+ *  1. **These forms are per-row.** A punch card, a time-off row — the same `<form>` is rendered
+ *     once per record. A draft keyed only by surface repopulates EVERY row with one row's
+ *     submitted values, which is #699's "shows you another record" defect arriving through the
+ *     mechanism built to prevent it. So each test below asserts a SECOND, untouched row still
+ *     holds its own values. That assertion fails against a surface-only draft, which is the
+ *     point of it.
+ *  2. **Two of the six live under `/crew`**, where the cookie's `Path` (`form-draft.ts`) has to
+ *     follow the route. Those are in `crew-form-error.spec.ts` — same defect, different sign-in.
+ *
+ * `/admin/time-clock`'s ADD form is deliberately absent from this file: it already restores, by
+ * a different mechanism that predates the draft (`actions.ts` rides `aday`/`ain`/`aout`/`anext`/
+ * `acrew` back as params, and `page.tsx` reads them as `retry`). It is covered by
+ * `admin-time-clock.spec.ts`. Only the edit form was unprotected.
+ */
+
+/**
+ * The pay period has to be one that's already over, or an evening punch is refused as `future`
+ * before the refusal under test can happen. Same helper and same reason as
+ * `admin-time-clock.spec.ts` — duplicated rather than shared because a spec that reaches into
+ * another spec for setup breaks both when either moves.
+ */
+async function usePreviousPeriod(page: import("@playwright/test").Page): Promise<void> {
+  const select = page.getByLabel("Pay period");
+  const values = await select
+    .locator("option")
+    .evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
+  const current = await select.inputValue();
+  const i = values.indexOf(current);
+  expect(i, "the current period must be in the list").toBeGreaterThan(0);
+  await select.selectOption(values[i - 1]!);
+  await page.waitForURL(/period=/);
+}
+
+/** `2026-05-01` → `2026-05-02`. The punches need two different days to be two rows. */
+function nextDay(day: string): string {
+  const d = new Date(`${day}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+/** A day comfortably in the future — a block dated in the past is filtered off the list. */
+function daysFromToday(n: number): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+test.describe("a refused edit on the per-row surfaces (#780)", () => {
+  test.beforeEach(async () => {
+    await resetAndSeed("crew");
+  });
+
+  test("time-clock: a refused edit keeps the typed time AND the box the operator unticked", async ({
+    page,
+  }) => {
+    await signInAsAdmin(page, "spink");
+    await page.goto("/admin/time-clock");
+    await usePreviousPeriod(page);
+
+    // Read the day off the page rather than hardcoding one — a fixed date rots the moment the
+    // calendar passes it, which is how `book-availability.spec.ts` broke.
+    const dayOne = (await page.locator("#add-day").getAttribute("min"))!;
+    const dayTwo = nextDay(dayOne);
+
+    // An OVERNIGHT punch: in 22:00, out 02:00 the next day. The next-day box is what makes it
+    // legal, which is what lets the refusal below turn on unticking it.
+    await page.locator("#add-day").fill(dayOne);
+    await page.locator("#add-in").fill("22:00");
+    await page.locator("#add-out").fill("02:00");
+    await page.locator('form:has(#add-day) input[name="outNextDay"]').check();
+    await page.getByRole("button", { name: "Add" }).click();
+    await page.waitForURL(/added=1/);
+
+    // A second, ordinary punch — the row that must come back untouched.
+    await page.locator("#add-day").fill(dayTwo);
+    await page.locator("#add-in").fill("09:00");
+    await page.locator("#add-out").fill("17:00");
+    await page.getByRole("button", { name: "Add" }).click();
+    await page.waitForURL(/added=1/);
+
+    const rows = page.locator("[data-punch-row]");
+    await expect(rows).toHaveCount(2);
+    const overnight = rows.filter({ has: page.locator('input[name="inTime"][value="22:00"]') });
+    const ordinary = rows.filter({ has: page.locator('input[name="inTime"][value="09:00"]') });
+
+    // The refusal: untick "out is next day" and move the out time to 03:00, which now reads as
+    // 03:00 on the SAME day — before the 22:00 in-time. Server-only; no HTML validation blocks
+    // it, and `<input type="time">` has nothing to say about it.
+    //
+    // 03:00 rather than leaving it at 02:00 **deliberately**: the stored value IS 02:00, so a
+    // form that restored nothing at all would still render 02:00 and the assertion below would
+    // pass while proving nothing. A value the record cannot produce is the only one that
+    // distinguishes "the draft came back" from "the default happened to match".
+    await overnight.locator('input[name="outTime"]').fill("03:00");
+    await overnight.locator('input[name="outNextDay"]').uncheck();
+    await overnight.getByRole("button", { name: "Save" }).click();
+
+    await expect(page.getByText(/can’t end before it starts/)).toBeVisible();
+
+    // The typed value survived — and so did the UNTICKED box. An unticked checkbox posts
+    // nothing, and that nothing is the operator's answer: re-ticking it from the stored record
+    // would silently reinstate the very thing they were trying to change.
+    await expect(overnight.locator('input[name="outTime"]')).toHaveValue("03:00");
+    await expect(overnight.locator('input[name="outNextDay"]')).not.toBeChecked();
+
+    // …and it went to that row ONLY. This is the assertion a surface-keyed draft fails: the
+    // other punch card must still hold its own out time, not the refused row's.
+    await expect(ordinary.locator('input[name="outTime"]')).toHaveValue("17:00");
+  });
+
+  test("blocks: a refused edit keeps the typing AND keeps editing the block it refused", async ({
+    page,
+  }) => {
+    await signInAsAdmin(page, "spink");
+    await seedOneLocation(page);
+
+    // Create a location block to edit. Dated forward, because a past block is filtered off the
+    // registry by default and the editor would have nothing to select.
+    const day = daysFromToday(30);
+    await page.goto("/admin/blocks");
+    await page.selectOption('select[aria-label="Block location"]', { label: "Existing East Bank" });
+    await page.locator('input[aria-label="Block date"]').fill(day);
+    await page.locator('input[aria-label="Block start time"]').fill("09:00");
+    await page.locator('input[aria-label="Block end time"]').fill("17:00");
+    await page.locator('input[aria-label="Block reason"]').fill("river closed");
+    await page.getByRole("button", { name: "Save" }).click();
+    await page.waitForURL(/sel=block-/);
+
+    // Now refuse an EDIT: an end time before the start (`bad_window`). Server-only — two
+    // `<input type="time">`s know nothing about each other.
+    await page.locator('input[aria-label="Block reason"]').fill("engine service");
+    await page.locator('input[aria-label="Block end time"]').fill("08:00");
+    await page.getByRole("button", { name: "Save" }).click();
+
+    await expect(page.getByText(/Check the time window/)).toBeVisible();
+
+    // **Still editing the same block.** The refusal redirect dropped `?sel=` entirely, which
+    // silently turns the edit panel back into a create form — and the hidden `id` empties with
+    // it, so correcting the time and saving again would file a SECOND block instead of fixing
+    // the first. Delete only renders while editing, so its presence is the cheap proof.
+    await expect(page.getByRole("button", { name: "Delete" })).toBeVisible();
+
+    // The typing survived. "engine service" cannot come from the stored record — that still
+    // says "river closed" — so this distinguishes a restore from a re-render.
+    await expect(page.locator('input[aria-label="Block reason"]')).toHaveValue("engine service");
+    await expect(page.locator('input[aria-label="Block end time"]')).toHaveValue("08:00");
+    await expect(page.locator('input[aria-label="Block start time"]')).toHaveValue("09:00");
+    await expect(page.locator('input[aria-label="Block date"]')).toHaveValue(day);
+  });
+
+  test("time-off: a refused range keeps the crew member as well as the dates", async ({ page }) => {
+    await signInAsAdmin(page, "spink");
+    await page.goto("/admin/time-off");
+
+    // The crew select is the field worth proving here: React never mirrors `selected` on update,
+    // so a `<select>` is one of the three controls no amount of client state would have saved.
+    const start = daysFromToday(20);
+    const end = daysFromToday(10);
+    await page.selectOption("#crewMemberId", { index: 1 });
+    const picked = await page.locator("#crewMemberId").inputValue();
+    expect(picked).not.toBe("");
+    await page.locator("#start").fill(start);
+    await page.locator("#end").fill(end);
+    await page.getByRole("button", { name: /Add/ }).click();
+
+    await expect(page.getByText(/end date is before the start/)).toBeVisible();
+
+    await expect(page.locator("#crewMemberId")).toHaveValue(picked);
+    await expect(page.locator("#start")).toHaveValue(start);
+    await expect(page.locator("#end")).toHaveValue(end);
+  });
+});
+
+/**
+ * The calendar's money pane refuses on its OWN params (#780).
+ *
+ * Every other surface in this file gates its draft read on `?err=`. This one never sets `err`:
+ * it refuses with `cancelErr`, `refundErr` or `balanceErr`, because three independent actions
+ * share one pane and a single code could not say which of them spoke. A draft gated on `?err=`
+ * would therefore be written on every refusal here and read on none — the fix would look done,
+ * the tests would be green if they only checked the cookie, and the box would still come back
+ * holding the prefill.
+ */
+test.describe("a refused refund on the calendar pane (#780)", () => {
+  test.beforeEach(async () => {
+    await resetAndSeed("reservation");
+  });
+
+  test("keeps the amount the operator typed, not the prefill", async ({ page }) => {
+    const reservationId = demoReservationId(BOOKED.date, BOOKED.time);
+    // Refundable money, so the refund box renders at all.
+    await plantPayment({
+      id: "pay-e2e-780",
+      reservationId,
+      amountCents: 58880,
+      taxCents: 3980,
+    });
+
+    await signInAsAdmin(page, "spink");
+    await page.goto(
+      `/admin/calendar/${encodeURIComponent(reservationId)}?date=${BOOKED.date}`,
+    );
+
+    // Over the refundable ceiling — server-only by construction: the box is a plain text input
+    // with `inputMode="decimal"` and no max, and `startRefund` re-derives the ceiling rather
+    // than trusting the form.
+    const typed = "9999.00";
+    const box = page.getByTestId("refund-form").locator('input[name="amount"]');
+    const prefill = await box.inputValue();
+    expect(prefill).not.toBe(typed);
+    await box.fill(typed);
+    await page.getByTestId("refund-form").getByRole("button", { name: "Refund" }).click();
+
+    await expect(page.getByText(/more than this booking can give back/)).toBeVisible();
+
+    // The figure survives. `defaultValue` here is a server-computed prefill, so a form that
+    // restored nothing would come back holding a plausible number that is NOT the one the
+    // operator typed — the worst shape for a money field, because it looks filled in.
+    await expect(page.getByTestId("refund-form").locator('input[name="amount"]')).toHaveValue(
+      typed,
+    );
+  });
+
+  test("keeps the override amount typed on the CANCEL confirm, which is a second box", async ({
+    page,
+  }) => {
+    // Found by `@code-review` on this branch. The cancel confirm carries its OWN amount box — an
+    // override, deliberately blank, because a prefill there cannot follow the radio without JS
+    // and would refund at the wrong reason's rate. `cancelBooking` validates it with the same
+    // `parseDollarsToCents` check as `startRefund` four lines away, and only the latter stashed.
+    //
+    // What makes it worth its own test rather than a one-line fix: the cancel COMMITS before the
+    // amount is parsed, so the confirm screen the operator typed into no longer exists on the
+    // page they land on. Their figure has to survive into the standalone refund box or it is
+    // gone — and that box has a prefill of its own, so losing it shows a plausible wrong number
+    // rather than an empty field.
+    const reservationId = demoReservationId(BOOKED.date, BOOKED.time);
+    await plantPayment({
+      id: "pay-e2e-780b",
+      reservationId,
+      amountCents: 58880,
+      taxCents: 3980,
+    });
+
+    await signInAsAdmin(page, "spink");
+    await page.goto(
+      `/admin/calendar/${encodeURIComponent(reservationId)}?date=${BOOKED.date}&cancel=1`,
+    );
+
+    const typed = "five hundred";
+    await page.locator("#cancel-refund-amount").fill(typed);
+    await page.getByTestId("cancel-confirm").getByRole("button", { name: /^Cancel/ }).click();
+
+    await expect(page.getByText(/Enter an amount like/)).toBeVisible();
+
+    await expect(page.getByTestId("refund-form").locator('input[name="amount"]')).toHaveValue(
+      typed,
+    );
   });
 });

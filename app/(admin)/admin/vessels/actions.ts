@@ -53,9 +53,9 @@ export async function saveVessel(formData: FormData): Promise<void> {
   if (code) {
     // Keep what was typed (#699), and select `new` on a refused CREATE — the minted id names
     // no row, so the page can only answer that lookup with somebody else's boat.
-    await stashFormDraft("vessels", formData);
+    await stashFormDraft("/admin/vessels", formData);
     redirect(`/admin/vessels?sel=${rawId || "new"}&err=${code}`);
   }
-  await clearFormDraft("vessels");
+  await clearFormDraft("/admin/vessels");
   redirect(`/admin/vessels?sel=${id}&saved=1`);
 }

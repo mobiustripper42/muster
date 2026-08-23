@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { asId } from "@core/domain/ids.js";
 import { addTimeOff, ownsTimeOff, removeTimeOff, type AddTimeOffCode } from "@core/crew/time-off.js";
 import { readSubject } from "../../../lib/auth";
+import { clearFormDraft, stashFormDraft } from "../../../lib/form-draft";
 import { getRepo } from "../../../lib/repo";
 
 /**
@@ -45,6 +46,9 @@ export async function addMyTimeOff(formData: FormData): Promise<void> {
   }
 
   revalidatePath("/crew/time-off");
+  // Two date pickers is not much typing, but a refusal made you choose both again (#780).
+  if (code) await stashFormDraft("/crew/time-off", formData);
+  else await clearFormDraft("/crew/time-off");
   redirect(code ? `/crew/time-off?err=${code}` : "/crew/time-off?added=1");
 }
 
@@ -61,10 +65,12 @@ export async function removeMyTimeOff(formData: FormData): Promise<void> {
     }
   } catch {
     revalidatePath("/crew/time-off");
+    await clearFormDraft("/crew/time-off");
     redirect("/crew/time-off?err=error");
   }
 
   revalidatePath("/crew/time-off");
+  await clearFormDraft("/crew/time-off");
   redirect("/crew/time-off?removed=1");
 }
 
@@ -97,9 +103,18 @@ export async function setMyDaysOff(formData: FormData): Promise<void> {
     );
   } catch {
     revalidatePath("/crew/time-off");
+    // Deliberately CLEARS rather than stashes (#780). The weekday checkboxes are their own
+    // form, and one cookie cannot serve two forms on one page without a marker field to tell
+    // their drafts apart — an all-unticked save posts no `days` at all, so "no days" and "no
+    // draft" are the same bytes. This door's only refusal is an infra throw (there is no
+    // validation to fail), so it cannot be exercised end-to-end either. Clearing keeps the
+    // invariant that matters: whatever is in the cookie belongs to the last refused ADD, so
+    // this `?err=` can never repopulate the add form with someone's minute-old dates.
+    await clearFormDraft("/crew/time-off");
     redirect("/crew/time-off?err=error");
   }
 
   revalidatePath("/crew/time-off");
+  await clearFormDraft("/crew/time-off");
   redirect("/crew/time-off?saved=1");
 }

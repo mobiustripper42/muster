@@ -19,6 +19,7 @@ import { fmt12, fmtDateRange } from "../../../lib/format";
 import { notFound } from "next/navigation";
 import { readSubject } from "../../../lib/auth";
 import { errCopyFor } from "../../../lib/err-copy";
+import { readFormDraft, type FormDraft } from "../../../lib/form-draft";
 import { timeClockEnabled } from "../../../lib/flags";
 import { getRepo } from "../../../lib/repo";
 import {
@@ -142,6 +143,10 @@ export default async function AdminTimeClock({
   };
   const view = dayMode ? dayView : crewView;
   const rows: PunchRow[] = view?.rows ?? [];
+  // A refused EDIT rides back as a draft (#780). The add form doesn't use this — it has its own
+  // `retry` params above and predates the mechanism — but every other write on this surface
+  // clears the draft, so what's here always belongs to the last refused edit and nothing else.
+  const draft = sp.err ? await readFormDraft("/admin/time-clock") : null;
   // Carried on every write form so the redirect lands back on the same view.
   const context = dayMode
     ? { view: "day", day, crew: "", period: "" }
@@ -309,7 +314,7 @@ export default async function AdminTimeClock({
           <Notice>No punches here.</Notice>
         ) : (
           rows.map((r) => (
-            <PunchCard key={r.id} row={r} showName={dayMode} context={context} />
+            <PunchCard key={r.id} row={r} showName={dayMode} context={context} draft={draft} />
           ))
         )}
 
@@ -355,11 +360,23 @@ function PunchCard({
   row,
   showName,
   context,
+  draft,
 }: {
   row: PunchRow;
   showName: boolean;
   context: Context;
+  draft: FormDraft | null;
 }) {
+  /**
+   * The draft belongs to ONE punch, and this component renders once per row (#780).
+   *
+   * Applying a surface-wide draft to every card would repopulate the whole bench with one row's
+   * submitted values — which is #699's "shows you another record" defect arriving through the
+   * mechanism built to stop it, and on a surface whose output is a paycheck. `punchId` is
+   * already a hidden field on this form, so the submitted draft says which row it came from and
+   * every other card falls through to its own stored values.
+   */
+  const mine = draft && draft.get("punchId") === row.id ? draft : null;
   return (
     <div
       // A countable hook for the bench's rows. Same reasoning as `data-active` on the admin nav:
@@ -409,7 +426,7 @@ function PunchCard({
             id={`in-${row.id}`}
             name="inTime"
             type="time"
-            defaultValue={row.inTime}
+            defaultValue={mine?.get("inTime") ?? row.inTime}
             required
             className="min-h-[44px] rounded-card border border-line bg-card px-3 text-ink"
           />
@@ -422,7 +439,7 @@ function PunchCard({
             id={`out-${row.id}`}
             name="outTime"
             type="time"
-            defaultValue={row.outTime ?? ""}
+            defaultValue={mine?.get("outTime") ?? row.outTime ?? ""}
             className="min-h-[44px] rounded-card border border-line bg-card px-3 text-ink"
           />
         </div>
@@ -434,7 +451,10 @@ function PunchCard({
             type="checkbox"
             name="outNextDay"
             value="1"
-            defaultChecked={row.outIsNextDay}
+            // `has`, never `??`: an unticked box posts nothing, and that nothing is the
+            // operator's answer. Falling back to the stored value here would silently re-tick
+            // the box they had just cleared — on a form that decides how many hours get paid.
+            defaultChecked={mine ? mine.has("outNextDay") : row.outIsNextDay}
             className="h-5 w-5"
           />
           Out is next day

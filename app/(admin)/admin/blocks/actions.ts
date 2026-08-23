@@ -10,6 +10,7 @@ import {
   type BlockSaveError,
 } from "@core/admin/block-admin.js";
 import { readSubject } from "../../../lib/auth";
+import { clearFormDraft, stashFormDraft } from "../../../lib/form-draft";
 import { getRepo } from "../../../lib/repo";
 
 /**
@@ -57,8 +58,27 @@ export async function saveBlock(formData: FormData): Promise<void> {
   }
 
   revalidatePath("/admin/blocks");
-  // On success, select the saved block so it loads back into the edit panel; no success banner.
-  redirect(code ? `/admin/blocks?err=${code}` : `/admin/blocks?sel=${id}`);
+  if (!code) {
+    await clearFormDraft("/admin/blocks");
+    // On success, select the saved block so it loads back into the edit panel; no success banner.
+    redirect(`/admin/blocks?sel=${id}`);
+  }
+
+  // A refusal keeps both halves of what the operator had (#780): the typing, via the draft, and
+  // the SELECTION, via `sel`.
+  //
+  // The selection is the half that bites. Redirecting to a bare `?err=` turned the edit panel
+  // back into a create form, which empties the hidden `id` — so correcting the time and saving
+  // again filed a SECOND block instead of fixing the first, silently, on a surface whose whole
+  // job is subtracting availability.
+  //
+  // `rawId`, never `id`: on a create, `id` is a freshly minted uuid for a row that was never
+  // written, and echoing it back as `sel` is #699's first defect exactly (a selection pointing
+  // at nothing). Blank `rawId` means "still creating", which is what no `sel` already says.
+  await stashFormDraft("/admin/blocks", formData);
+  const params = new URLSearchParams({ err: code });
+  if (rawId) params.set("sel", rawId);
+  redirect(`/admin/blocks?${params.toString()}`);
 }
 
 /**
@@ -81,6 +101,9 @@ export async function liftBlock(formData: FormData): Promise<void> {
   }
 
   revalidatePath("/admin/blocks");
+  // Nothing typed to lose on a lift — but a draft from an earlier refused save would otherwise
+  // sit here for the rest of its minute and repopulate the panel on the next `?err=`.
+  await clearFormDraft("/admin/blocks");
   // Deselect after a lift (the block is gone); no success banner.
   redirect(code ? `/admin/blocks?err=${code}` : `/admin/blocks`);
 }

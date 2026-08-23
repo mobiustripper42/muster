@@ -73,7 +73,7 @@ export default async function AdminAddOns({
   const missing = requested !== undefined && selected === null;
   // The submitted values of a refused save, read back as this form's defaults (#699). Only on
   // a refusal, and the cookie itself expires in 60s.
-  const draft = sp.err ? await readFormDraft("add-ons") : null;
+  const draft = sp.err ? await readFormDraft("/admin/add-ons") : null;
   const errCopy = errCopyFor(ERR_COPY, sp.err, "error");
   const title = creating ? "New add-on" : selected?.label ?? "Add-ons";
 

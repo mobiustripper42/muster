@@ -38,6 +38,12 @@ export interface PaneActionState {
   refundedTotalCents: number;
   /** Dollars string prefilled into the amount box. */
   refundPrefill: string;
+  /**
+   * Which cancellation reason the confirm screen opens on (#780). "customer" unless a refused
+   * cancel is being re-offered, in which case it is what the operator had picked — the two
+   * options quote different refunds, so resetting it silently changes the amount on screen.
+   */
+  cancelBy: "customer" | "operator";
   /** Cents awaiting confirmation, from `?refundConfirm=` — the two-step's second screen. */
   confirmingRefundCents?: number | undefined;
   /** …and the href that backs out of it. */
@@ -717,12 +723,12 @@ function PaneActions({
                   ["customer", "The customer asked", actions.quoteCustomerCents],
                   ["operator", "We cancelled — weather, crew, mechanical", actions.quoteOperatorCents],
                 ] as const
-              ).map(([value, label, cents], i) => (
+              ).map(([value, label, cents]) => (
                 <label
                   key={value}
                   className="flex min-h-[44px] items-center gap-2 border-b border-line py-1 last:border-0 text-sm text-ink"
                 >
-                  <input type="radio" name="by" value={value} defaultChecked={i === 0} />
+                  <input type="radio" name="by" value={value} defaultChecked={value === actions.cancelBy} />
                   <span className="flex-1">{label}</span>
                   <span className="font-mono text-xs text-muted">{formatCents(cents)}</span>
                 </label>

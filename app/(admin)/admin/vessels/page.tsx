@@ -80,7 +80,7 @@ export default async function AdminVessels({
       : vessels[0] ?? null;
   const missing = requested !== undefined && selected === null;
   // The submitted values of a refused save, read back as this form's defaults (#699).
-  const draft = sp.err ? await readFormDraft("vessels") : null;
+  const draft = sp.err ? await readFormDraft("/admin/vessels") : null;
   const errCopy = errCopyFor(ERR_COPY, sp.err, "error");
   const title = creating ? "New vessel" : selected?.name ?? "Vessels";
 

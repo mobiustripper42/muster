@@ -6,7 +6,7 @@ branch: task/807-pi-idempotency-key
 started: 2026-08-22T13:48:58Z
 ended:
 points:
-pr_numbers: [813]
+pr_numbers: [813, 817]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster-s91/5487f3cf-cd4b-5fc3-9fef-7e4789b9a7d2.jsonl
 ---
@@ -50,6 +50,41 @@ hold-vs-reservation.
 **Branch:** task/565-spec-2.8-booking-and-payment
 **Opened at:** 2026-08-22T18:34:00Z
 
+## Task 2: the record shrinks, the spec grows
+
+**Completed:**
+- `.claude/CLAUDE-context.md` — new `## Decision Record (project)` section. SPEC holds *what*,
+  decisions hold *why-not-the-other-thing*; a new decision needs a reason the spec can't hold it;
+  decisions get shorter, never longer; cut the body and leave a signpost rather than appending an
+  amendment beneath text that is now wrong (git is the archive and carries dates + diffs the file
+  doesn't); a file can't simply be deleted because `check:decisions` fails on a dangling reference.
+- Fixed a stale inventory claim in the same paragraph — it said 141 decisions for months while the
+  tree held 157. Replaced with `ls docs/decisions/DEC-*.md | wc -l`.
+- **issue #816** filed: reconcile the 26 `Reservations & payments` decisions against §2.8 before any
+  payment code. Verified before filing that **0 of 26 can be deleted** — all have inbound citations,
+  and `check-decisions.mjs:114` fails on a reference to a missing file. Three buckets: tombstone /
+  trim / leave alone. Hard rule with a measured baseline — 570,747 bytes must go *down*.
+- **issue #807** deferred (not closed) — the defect is real but its shape falls out of the retool.
+- **issue #812** filed then superseded by §2.8 itself.
+
+**Code review:** Not run — 12-line context-doc change, no code. `npm run verify` exit 0.
+**PR:** [PR #817](https://github.com/mobiustripper42/muster/pull/817)
+**Points:** 1
+**Branch:** task/decision-record-shrinks
+**Opened at:** 2026-08-23T13:15:00Z
+
 **Next Steps:**
+- **issue #816 — the decision sweep.** §2.8 is merged (PR #813), so the target no longer moves. Start
+  with DEC-109 and DEC-134: both are trims, not tombstones — each has one dead leg (the two-object
+  hold; the `metadata.purpose` discriminator) and several live ones that must be named as surviving.
+  Batch by sub-subject, one PR each; never one PR over 26 files.
+- **Sailbook has a live race worth an hour.** `api/cron/expire-holds` sets `pending_payment` rows past
+  expiry to `cancelled` with no check for a successful payment, and `checkout/success/page.tsx` is 28
+  lines that confirm nothing — so the webhook is the only confirm path. A webhook delay longer than
+  `ENROLLMENT_HOLD_MINUTES` turns a paid student into a cancelled one. Cheapest fix is one condition
+  on the cron. Separate repo, separate job. (Read three files only; not audited.)
+- **§2.8 open questions needing the operator:** the payment-window number (ship 15, measure, revisit
+  once); whether the sweeper is worth having at all now expiry is lazy; whether a pending reservation
+  shows on the admin calendar; whether the balance freezes its tax.
 
 **Context:**

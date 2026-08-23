@@ -563,4 +563,41 @@ test.describe("a refused refund on the calendar pane (#780)", () => {
       typed,
     );
   });
+
+  test("keeps the override amount typed on the CANCEL confirm, which is a second box", async ({
+    page,
+  }) => {
+    // Found by `@code-review` on this branch. The cancel confirm carries its OWN amount box — an
+    // override, deliberately blank, because a prefill there cannot follow the radio without JS
+    // and would refund at the wrong reason's rate. `cancelBooking` validates it with the same
+    // `parseDollarsToCents` check as `startRefund` four lines away, and only the latter stashed.
+    //
+    // What makes it worth its own test rather than a one-line fix: the cancel COMMITS before the
+    // amount is parsed, so the confirm screen the operator typed into no longer exists on the
+    // page they land on. Their figure has to survive into the standalone refund box or it is
+    // gone — and that box has a prefill of its own, so losing it shows a plausible wrong number
+    // rather than an empty field.
+    const reservationId = demoReservationId(BOOKED.date, BOOKED.time);
+    await plantPayment({
+      id: "pay-e2e-780b",
+      reservationId,
+      amountCents: 58880,
+      taxCents: 3980,
+    });
+
+    await signInAsAdmin(page, "spink");
+    await page.goto(
+      `/admin/calendar/${encodeURIComponent(reservationId)}?date=${BOOKED.date}&cancel=1`,
+    );
+
+    const typed = "five hundred";
+    await page.locator("#cancel-refund-amount").fill(typed);
+    await page.getByTestId("cancel-confirm").getByRole("button", { name: /^Cancel/ }).click();
+
+    await expect(page.getByText(/Enter an amount like/)).toBeVisible();
+
+    await expect(page.getByTestId("refund-form").locator('input[name="amount"]')).toHaveValue(
+      typed,
+    );
+  });
 });

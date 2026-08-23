@@ -189,21 +189,34 @@ export async function cancelBooking(formData: FormData): Promise<void> {
     const parsed = parseDollarsToCents(typed);
     // The cancel HAPPENED. A bad amount cannot undo it, so this reports the cancel as done and
     // the refund as not attempted — never a bare `invalid_amount` that reads like nothing ran.
-    if (parsed === null) redirect(back({ cancelled: by, refundErr: "invalid_amount" }));
+    if (parsed === null) {
+      // The cancel already COMMITTED, so the confirm screen this was typed on is gone — the
+      // figure has to survive into the standalone refund box or it is lost. That box prefills,
+      // so losing it shows a plausible WRONG number rather than an empty field (#780).
+      await stashFormDraft("/admin/calendar", formData);
+      redirect(back({ cancelled: by, refundErr: "invalid_amount" }));
+    }
     refundCents = parsed;
   }
 
   // Zero is a legitimate outcome, not a failure: inside the 14-day window the published terms owe
   // nothing, and the operator can type 0 to cancel without refunding.
-  if (refundCents === null || refundCents <= 0) redirect(back({ cancelled: by }));
+  if (refundCents === null || refundCents <= 0) {
+    await clearFormDraft("/admin/calendar");
+    redirect(back({ cancelled: by }));
+  }
 
   const secretKey = process.env.STRIPE_SECRET_KEY;
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!secretKey || !webhookSecret) {
+    await stashFormDraft("/admin/calendar", formData);
     redirect(back({ cancelled: by, refundErr: "stripe_not_configured" }));
   }
   const expectedRaw = String(formData.get("expectedRefunded") ?? "");
-  if (!/^\d+$/.test(expectedRaw)) redirect(back({ cancelled: by, refundErr: "stale" }));
+  if (!/^\d+$/.test(expectedRaw)) {
+    await stashFormDraft("/admin/calendar", formData);
+    redirect(back({ cancelled: by, refundErr: "stale" }));
+  }
 
   let refund: Awaited<ReturnType<typeof refundReservation>>;
   try {
@@ -227,12 +240,22 @@ export async function cancelBooking(formData: FormData): Promise<void> {
         `[reservations] cancel+refund of ${refundCents}c on ${reservationId} failed partway ` +
           `(${refund.refundedCents}c did move): ${refund.message}`,
       );
+      // CLEAR, not stash — the opposite of every other refusal here, and deliberately (#780).
+      // Money PARTIALLY moved. Re-offering the figure the operator typed is the one thing this
+      // screen's own copy tells them not to do ("retrying the full amount would refund that
+      // {moved} twice"). Dropping the draft falls the box back to the recomputed refundable,
+      // which already accounts for what went through.
+      await clearFormDraft("/admin/calendar");
       redirect(
         back({ cancelled: by, refundErr: "provider_error", refunded: String(refund.refundedCents) }),
       );
     }
+    // Nothing moved on these (`no_payment_intent`, `not_muster`, …), so the operator's figure
+    // still stands and is worth keeping.
+    await stashFormDraft("/admin/calendar", formData);
     redirect(back({ cancelled: by, refundErr: refund.reason }));
   }
+  await clearFormDraft("/admin/calendar");
   redirect(back({ cancelled: by, refunded: String(refund.refundedCents) }));
 }
 

@@ -290,8 +290,12 @@ export default async function ReservationDetailPage({
      * without this check a refused refund on one booking would prefill the box on the next one
      * the operator opened, with a money figure they never typed for it.
      */
-    const refusalHere =
-      sp.cancelErr !== undefined || sp.refundErr !== undefined || sp.balanceErr !== undefined;
+    // `balanceErr` is deliberately NOT here. Minting a balance link posts no typed field, so it
+    // can never write a draft — but it CAN fail while one is live, and reading on it would
+    // resurface a refund figure from a minute ago into a money box the operator had moved on
+    // from. Clearing on that path instead would be worse: it would throw away a draft the
+    // refund box is legitimately still showing.
+    const refusalHere = sp.cancelErr !== undefined || sp.refundErr !== undefined;
     const rawDraft = refusalHere ? await readFormDraft("/admin/calendar") : null;
     const draft =
       rawDraft && rawDraft.get("reservationId") === String(reservation.id) ? rawDraft : null;

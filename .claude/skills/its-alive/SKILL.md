@@ -245,6 +245,26 @@ Read-only. It prints which `logic`-class files differ from the templates, which 
 
 If seeds doesn't resolve, skip silently and say so in Context. A session must never be blocked by a checkout not being on this machine.
 
+### Step 8.6 — Permission policy (DEC-S051)
+
+Same resolved seeds checkout, one more read-only command:
+
+```
+node <seeds>/dev/claude/scripts/settings-policy.mjs --all .
+```
+
+It compares the **`permissions` key only** against `dev/claude/settings.json` — the master (DEC-S023) — in the two places that govern this session: `~/.claude/settings.json` (**user settings**, this machine, every project) and `<repo>/.claude/settings.json` (**shared project**, committed, and the only policy that travels with the repo).
+
+**Report only when something is not current.** Silence on `Current.`, same reason as Step 8.5.
+
+**On a `STALE` or `ABSENT` result, surface the fix and stop there** — `node <seeds>/dev/claude/scripts/settings-policy.mjs --write <path>`. Do not run it. It writes the file that carries this machine's hooks, and it is the user's call whether a policy change lands now or after the task in hand.
+
+**Two things worth knowing when you report it.** Permissions are read once at launch, so a repair applies at the *next* session, not this one — say so rather than implying the session just got safer. And the shared-project file is the one that covers a machine whose user settings are not installed yet — it travels with the repo, so an absent one there is no seatbelt at all rather than a stale one.
+
+**Why this is here and not a fleet report.** Nothing can enumerate a machine you are not sitting at (DEC-S044) — but the box you *are* on is readable, and it is the only one you can fix. Checking at session start means every machine checks itself, every session, with no list to maintain and nothing to remember.
+
+If seeds doesn't resolve, skip silently — same rule as Step 8.5.
+
 ## Step 9 — Present briefing
 
 ```

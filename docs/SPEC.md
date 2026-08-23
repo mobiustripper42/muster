@@ -1479,6 +1479,13 @@ conflict: both end at a `Confirmed` seat via the same state machine.
 > subsystem in the product had no spec text, so its design accumulated across roughly fifteen decisions
 > instead, and no audit could check code against intent. **Where the shipped code disagrees with this
 > section, this section is right and the code is the work.**
+>
+> **It also supersedes decisions, and that debt is owed, not waived.** The one-record model in 2.8.1
+> replaces the separate checkout-hold object DEC-109 decided on; 2.8.4 replaces the metadata-carried
+> money DEC-107 froze and the metadata routing DEC-134 designed. Those files are **not** amended by
+> this section landing — reconciling them against §2.8, and deleting the ones that only exist to patch
+> consequences of the old shape, is the next piece of work and it is tracked separately. Until then a
+> reader will find decision files that contradict this section. **§2.8 wins; the decisions are stale.**
 
 **2.8.1 One record holds the boat.** A `Reservation` is written **before** the customer pays, in state
 `pending`, and **it is the thing that occupies the departure**. It carries an expiry — the payment
@@ -1494,6 +1501,25 @@ than from stored rows (DEC-125), so a pending reservation suppresses its slot ex
 one does, without an `Event` existing. **Nothing is materialized for a checkout that is abandoned** —
 no phantom events, nothing for the shift builder or the crew manifest to trip over. The Event is
 written at confirm, alongside the state change, as it is today.
+
+**2.8.2a What a pending reservation occupies is the hull for the trip's duration — never the exact
+triple.** This is the one rule in this section that was learned from a production defect and it must
+not be re-derived. Two bookings on one boat at 13:30 and 14:00 are different `(vessel, date, time)`
+triples, so a guard keyed on identity lets both through: one hull, two paying parties, overlapping on
+the water, silently (DEC-109's 2026-08-06 correction, issue #691 — reproduced against real Postgres,
+`won, won` in three of three runs). The word *defeat-proof* appeared in three places in the tree and is
+what stopped anyone looking.
+
+So: **any other trip on that boat whose window overlaps blocks the sale**, whatever its source and
+whatever its state — confirmed, pending, or imported. The write serializes on the **hull-day**, because
+a row lock cannot see a rival booking at a *different* time until it inserts. Collapsing holds into
+reservations does not change this and does not make it safe to simplify: the overlap guard and the
+hull-day serialization are load-bearing under the one-record model exactly as they were under two.
+
+**A consequence to state out loud:** the availability reader and the write guard must agree about what
+occupancy *means*. Today they do not — one keys on the exact triple, the other tests overlap — and one
+off-grid pending row poisons a whole trip-length window while the public calendar still shows it free.
+Under this section there is one record, so there must also be **one rule**: overlap, both sides.
 
 **2.8.3 The flow.**
 
@@ -1528,6 +1554,15 @@ The money is frozen on our row at step 3 and read from our row at confirm. It is
 live configuration after the customer has been quoted a price (the standing rule from DEC-107, now
 resting on a row we own rather than on a string held by Stripe).
 
+**Scope, and an open piece of work.** This section covers the **booking charge** — the payment that
+buys a departure. Muster takes two other kinds of Stripe payment against an existing booking: the
+**balance** and a **post-trip gratuity**. Today all three are told apart by a `purpose` field in
+metadata, which is also what stops a hosted session's own metadata-less PaymentIntent from booking a
+second time (DEC-134). A booking path that reads no metadata therefore does not, by itself, tell the
+other two how to route. **They need the same treatment — the payment's own row identifies it, not a
+string from Stripe — and until they get it, DEC-134's `purpose` guard stays exactly where it is.** Do
+not delete it as part of adopting this section.
+
 **2.8.5 One confirm function, called from three places.** `confirmReservation(paymentIntentId)` is
 idempotent: it finds the pending reservation **by the PaymentIntent id stored on it**, materializes the
 Event, moves the state to `confirmed`, records the payment, and returns "confirmed" or "already
@@ -1548,7 +1583,7 @@ anything less than one shared idempotent path books twice.
 | Card declined, customer retries | Same pending reservation, same boat, **expiry not extended** — otherwise a session parks a hull indefinitely by resubmitting. A new PaymentIntent for the same row is fine. |
 | Customer changes the tip and retries | The amount changes, so the money is re-frozen and a new PaymentIntent is created against the same reservation. |
 | Customer abandons checkout | The expiry passes; a sweeper moves the row to `expired` and the boat returns to the calendar. |
-| Stripe reports the payment failed | Move the row to `expired` immediately rather than waiting out the window. |
+| Stripe reports the payment failed | **Nothing. The row stays `pending` until its window runs out.** A declined card *is* a failed payment, and the customer is usually about to try another one — expiring on that event would destroy the retry above, which is the whole reason the reservation is reused. Failure is not abandonment, and only the clock can tell them apart. |
 | Webhook is late | The success page already confirmed it. Nothing to do. |
 | Webhook never arrives and the customer closed the tab | The reconciler reads Stripe's event log and confirms. |
 | Our write fails after the card was charged | The row already exists as `pending` with a successful payment against it — the reconciler finds and confirms it. **This is the case the design exists to make expressible.** |
@@ -1565,9 +1600,15 @@ The two failure directions are not symmetrical unless we keep it:
 
 An expired reservation carries the same slot, party size and money as any other, so "how many people
 started a checkout and walked, and how long did they sit on the boat" becomes a query instead of a
-guess. This is what turns the payment window from a number someone picked into a number with an
-answer. Expired rows are reaped on a long horizon, if at all — they are the cheapest data in the
-system and they are only generated by real customers.
+guess. This is what turns the payment window from a number someone picked into a number with an answer.
+
+**Expired rows are not all customers, and the table needs a reaper.** A pending reservation is
+creatable by anyone who can reach the checkout, and scripted hold spam is a demonstrated attack on this
+exact path — the off-grid variant was closed in issue #799, and the per-session cap that bounds
+*volume* is still open as issue #806. So the expired table grows with abuse as well as with real
+abandonment, and a long-horizon reaper is required rather than optional. Distinguishing the two in the
+data — which is what makes the measurement above trustworthy — is part of adopting this section, not an
+afterthought.
 
 **2.8.7 Reconciliation reads Stripe's event log, not payment objects.** The undelivered-event feed is
 the supported mechanism; polling payment intents is not. It is a recovery tool for an outage, not a
@@ -1590,7 +1631,16 @@ after the customer has been quoted. No booking assembled from data Stripe handed
 - [ ] An abandoned checkout is still on disk afterwards, as an `expired` reservation carrying its slot,
       party size, created time and expiry — **the sweeper never deletes**. "How many checkouts were
       started and walked away from last month, and how long did each hold a hull?" is a query.
+- [ ] **Two concurrent bookings on one hull at overlapping times — 13:30 and 14:00, not the same
+      triple — produce exactly one sale.** Run it against real Postgres, repeatedly, and assert the
+      loser loses. This is the issue #691 regression and it returned `won, won` three times out of
+      three before it was fixed; an identity-keyed guard passes every test that uses one time.
+- [ ] The availability reader and the write guard refuse the *same* set of slots. A pending reservation
+      at an off-grid time does not leave the public calendar showing a departure the write path will
+      then refuse.
 - [ ] A declined card retried on the same departure reuses the same reservation at its original expiry.
+- [ ] A `payment_intent.payment_failed` does **not** expire the reservation — the retry above still
+      works after one.
 - [ ] Killing the webhook entirely still produces a confirmed booking for a customer who reaches the
       success page.
 - [ ] Closing the browser at the moment of payment still produces a confirmed booking, via the webhook.
@@ -2054,8 +2104,8 @@ now. Building any of these is out of scope until its trigger condition is met.
   Leaning **archive**.~~ — **SETTLED by DEC-105: never migrate.** Listed as open in two places; this is
   the second.
 
-> **Two SPEC v1.1 unlocks were booked here (audit shard Z3, 2026-07-27). Both are settled as of
-> 2026-08-22 — issue #565 closed.**
+> **Two SPEC v1.1 unlocks were booked here (audit shard Z3, 2026-07-27). Issue #565 closed 2026-08-22 —
+> one paid, one withdrawn.**
 > - **DEC-105** booked a **§2.8 reservations** write-up. **Paid** — see §2.8, written fresh as the
 >   design we would choose today rather than as a description of what shipped.
 > - **DEC-045** booked a **messaging / doorbell** unlock. The shard's stated reason — "§4 still parks
@@ -2066,8 +2116,11 @@ now. Building any of these is out of scope until its trigger condition is met.
 >   ask selection and timing, not the shipped subsystem. The two halves shared an audit shard, not a
 >   dependency.
 >
-> Messaging still has no §2.x section of its own, which is a real gap and a different one. It is not
-> tracked here; raise it on its own terms if it earns a section.
+> **Withdrawn is not the same as paid, and the distinction matters here.** What was shown is that the
+> shard's *reason* for calling DEC-045 unpaid does not hold. Messaging still has no §2.x section of its
+> own — a real gap, and the same one reservations had until §2.8. It is deliberately not tracked in this
+> banner: if messaging earns a section it should be argued on its own terms, not inherited from an
+> audit row that was wrong about why it mattered.
 
 ### Explicitly killed — do not revive
 - **The Xola API bolt-on.** A live API integration is a maintained dependency on a system with an

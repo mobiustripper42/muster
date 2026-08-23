@@ -14,6 +14,7 @@ import {
 import { addDays, zonedWallClockToInstant } from "@core/config/tenant.js";
 import { readSubject } from "../../../lib/auth";
 import { timeClockEnabled } from "../../../lib/flags";
+import { clearFormDraft, stashFormDraft } from "../../../lib/form-draft";
 import { getRepo } from "../../../lib/repo";
 
 /**
@@ -120,6 +121,11 @@ export async function addPunchAction(formData: FormData): Promise<void> {
   }
 
   revalidatePath(BACK);
+  // The add form carries its own attempted values back as params (below) and does not read the
+  // draft — but it does set `?err=`, which is what the page gates the draft read on. So spend
+  // any draft a previous refused edit left behind, or a refused ADD would repopulate an edit row
+  // with typing from a minute ago. Same reason on delete.
+  await clearFormDraft(BACK);
   if (!code) redirect(`${back}&added=1`);
   // A refused add must not wipe what was typed — the operator would have to re-enter
   // three fields to fix one of them. The attempted values ride back as structured
@@ -169,6 +175,11 @@ export async function editPunchAction(formData: FormData): Promise<void> {
   }
 
   revalidatePath(BACK);
+  // A refused edit must not wipe the correction — the operator would have to re-derive the very
+  // times they were fixing. `punchId` rides along in the FormData, so the page can tell which
+  // card this belongs to and leave every other one alone (#780).
+  if (code) await stashFormDraft(BACK, formData);
+  else await clearFormDraft(BACK);
   redirect(code ? `${back}&err=${code}` : `${back}&saved=1`);
 }
 
@@ -186,5 +197,6 @@ export async function deletePunchAction(formData: FormData): Promise<void> {
   }
 
   revalidatePath(BACK);
+  await clearFormDraft(BACK); // nothing typed to lose here; see addPunchAction
   redirect(code ? `${back}&err=${code}` : `${back}&deleted=1`);
 }

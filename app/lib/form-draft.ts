@@ -51,20 +51,24 @@ export type FormDraft = {
   has(name: string, value?: string): boolean;
 };
 
-const cookieName = (surface: string) => `${PREFIX}${surface}`;
-
 /**
- * Deletion has to name the path the cookie was SET with.
+ * The surface key IS the route the form lives at — `/admin/vessels`, `/crew/time-off`.
  *
- * `jar.delete("name")` compiles to `set({name, value: "", expires: epoch})` with no `path`
- * (`@edge-runtime/cookies`), and a `Set-Cookie` with no `Path` defaults to the request URI's
- * directory (RFC 6265 §5.1.4). For a POST to `/admin/offerings` that is `/admin/`, which does
- * not match the `/admin/offerings` this cookie carries — so the browser stores a second,
- * already-expired cookie in the wrong place and leaves the live one alone. The delete looks
- * like it worked and does nothing, which turns "cleared on a successful save" into a promise
- * kept only by the 60-second expiry.
+ * It was a bare name (`"vessels"`) with the path built as `` `/admin/${surface}` `` until #780,
+ * which was correct for #699's four surfaces and silently wrong for anything outside `/admin`.
+ * A cookie set with `Path=/admin/time` is never sent back to `/crew/time` (RFC 6265 §5.1.4), so
+ * the stash succeeds, the read finds nothing, and the form comes back empty with every call site
+ * reading as correct. The bare name also collided: `/admin/time-off` and `/crew/time-off` are
+ * both "time-off", one cookie for two surfaces.
+ *
+ * Deriving both the path and the name from the route makes each impossible rather than merely
+ * unlikely — there is no second string to keep in agreement with the first.
  */
-const draftPath = (surface: string) => `/admin/${surface}`;
+export const draftCookiePath = (surface: string) => surface;
+
+/** `/admin/add-ons` → `form-draft-admin-add-ons`. `/` is not a legal cookie-name char. */
+export const draftCookieName = (surface: string) =>
+  `${PREFIX}${surface.replace(/^\//, "").replace(/\//g, "-")}`;
 
 /**
  * Stash the submitted form. Call on the refusal path only, before `redirect()`.
@@ -83,22 +87,32 @@ export async function stashFormDraft(surface: string, formData: FormData): Promi
   if (encoded.length > MAX_ENCODED_BYTES) {
     // Too big to carry. Clear rather than leave the PREVIOUS draft standing — restoring an
     // older submission's values would be the original bug with extra steps.
-    jar.delete({ name: cookieName(surface), path: draftPath(surface) });
+    jar.delete({ name: draftCookieName(surface), path: draftCookiePath(surface) });
     return;
   }
-  jar.set(cookieName(surface), encoded, {
+  jar.set(draftCookieName(surface), encoded, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
-    path: draftPath(surface),
+    path: draftCookiePath(surface),
     maxAge: TTL_SECONDS,
   });
 }
 
-/** Drop the draft. Call on the success path — the values are in the database now. */
+/**
+ * Drop the draft. Call on the success path — the values are in the database now.
+ *
+ * **Deletion has to name the path the cookie was SET with.** `jar.delete("name")` compiles to
+ * `set({name, value: "", expires: epoch})` with no `path` (`@edge-runtime/cookies`), and a
+ * `Set-Cookie` with no `Path` defaults to the request URI's directory (RFC 6265 §5.1.4). For a
+ * POST to `/admin/offerings` that is `/admin/`, which does not match the `/admin/offerings` this
+ * cookie carries — so the browser stores a second, already-expired cookie in the wrong place and
+ * leaves the live one alone. The delete looks like it worked and does nothing, which turns
+ * "cleared on a successful save" into a promise kept only by the 60-second expiry.
+ */
 export async function clearFormDraft(surface: string): Promise<void> {
   const jar = await cookies();
-  jar.delete({ name: cookieName(surface), path: draftPath(surface) });
+  jar.delete({ name: draftCookieName(surface), path: draftCookiePath(surface) });
 }
 
 /**
@@ -110,7 +124,7 @@ export async function clearFormDraft(surface: string): Promise<void> {
  * record's own values rather than a page that won't render.
  */
 export async function readFormDraft(surface: string): Promise<FormDraft | null> {
-  const raw = (await cookies()).get(cookieName(surface))?.value;
+  const raw = (await cookies()).get(draftCookieName(surface))?.value;
   if (!raw) return null;
 
   let pairs: [string, string][];

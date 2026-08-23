@@ -20,6 +20,7 @@ import { forwardFormNotices } from "../../../../lib/channel";
 import { reissueBookingCode } from "@core/reservations/ensure-booking-code.js";
 import { resendReservationLink } from "../../../../lib/booking-confirmation";
 import { readSubject } from "../../../../lib/auth";
+import { clearFormDraft, stashFormDraft } from "../../../../lib/form-draft";
 import { getRepo } from "../../../../lib/repo";
 
 /**
@@ -140,10 +141,16 @@ export async function cancelBooking(formData: FormData): Promise<void> {
       by,
     );
   } catch {
+    await stashFormDraft("/admin/calendar", formData);
     redirect(back({ cancelErr: "unreachable" }));
   }
 
-  if (!result.ok) redirect(back({ cancelErr: result.reason }));
+  if (!result.ok) {
+    // Nothing was cancelled, so the confirm screen comes back — with `by` reset to its first
+    // option, which is a different refund quote than the one the operator picked.
+    await stashFormDraft("/admin/calendar", formData);
+    redirect(back({ cancelErr: result.reason }));
+  }
 
   // ── and refund, in the same press (operator, 2026-08-10) ────────────────────
   //
@@ -256,6 +263,10 @@ export async function startRefund(formData: FormData): Promise<void> {
 
   const amountCents = parseDollarsToCents(String(formData.get("amount") ?? ""));
   if (amountCents === null || amountCents <= 0) {
+    // The box `defaultValue`s to a server-computed prefill, so losing the typed figure doesn't
+    // come back empty — it comes back holding a DIFFERENT, plausible number (#780). On a money
+    // field that is the worst shape of wrong, because it looks filled in.
+    await stashFormDraft("/admin/calendar", formData);
     redirect(back({ refundErr: "invalid_amount" }));
   }
   // Re-derive the ceiling server-side rather than trusting the form's own cap — the box is a
@@ -266,8 +277,11 @@ export async function startRefund(formData: FormData): Promise<void> {
     asId<"ReservationId">(reservationId),
   );
   if (amountCents > refundableTotalFor(payments)) {
+    await stashFormDraft("/admin/calendar", formData);
     redirect(back({ refundErr: "exceeds_refundable" }));
   }
+  // Step one succeeded; the amount now rides the URL to the confirm screen and the draft is spent.
+  await clearFormDraft("/admin/calendar");
   redirect(back({ refundConfirm: String(amountCents) }));
 }
 

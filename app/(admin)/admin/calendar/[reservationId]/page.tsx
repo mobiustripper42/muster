@@ -11,6 +11,7 @@ import { Shell } from "../../../../../components/ui/shell";
 import { AdminSignedOut } from "../../../../../components/admin/admin-signed-out";
 import { VersionTag } from "../../../../../components/ui/version-tag";
 import { readSubject } from "../../../../lib/auth";
+import { readFormDraft } from "../../../../lib/form-draft";
 import { isProdDeploy } from "../../../../lib/flags";
 import { operatorManageLink } from "../../../../lib/manage-link";
 import { liveBookingCode } from "@core/reservations/ensure-booking-code.js";
@@ -277,6 +278,24 @@ export default async function ReservationDetailPage({
           ? Math.min(refundable, quoteFor(sp.cancelled === "operator" ? "operator" : "customer"))
           : refundable;
 
+    /**
+     * A refused action's own values (#780).
+     *
+     * This pane is the one surface that never sets `?err=`: three independent actions share it,
+     * so each refuses on its own param (`cancelErr` / `refundErr` / `balanceErr`). A draft read
+     * gated on `err` would be written on every refusal here and read on none.
+     *
+     * Scoped to THIS reservation. `reservationId` is a hidden field on every form in the pane,
+     * and the cookie's path (`/admin/calendar`) necessarily covers every booking under it — so
+     * without this check a refused refund on one booking would prefill the box on the next one
+     * the operator opened, with a money figure they never typed for it.
+     */
+    const refusalHere =
+      sp.cancelErr !== undefined || sp.refundErr !== undefined || sp.balanceErr !== undefined;
+    const rawDraft = refusalHere ? await readFormDraft("/admin/calendar") : null;
+    const draft =
+      rawDraft && rawDraft.get("reservationId") === String(reservation.id) ? rawDraft : null;
+
     actions = {
       date: sp.date ?? "",
       filter: sp.filter ?? "",
@@ -287,7 +306,11 @@ export default async function ReservationDetailPage({
       quoteOperatorCents: quoteFor("operator"),
       refundableCents: refundable,
       refundedTotalCents: refundedTotalFor(payments),
-      refundPrefill: (prefillCents / 100).toFixed(2),
+      // The operator's own figure wins over the prefill — see the draft note above.
+      refundPrefill: draft?.get("amount") ?? (prefillCents / 100).toFixed(2),
+      // Which cancellation reason was chosen. Not `??`: a radio group posts exactly one value,
+      // so its absence means "no draft", never "none picked".
+      cancelBy: draft?.get("by") === "operator" ? "operator" : "customer",
       // `?refundConfirm=<cents>` is the two-step's second screen. Validated by `startRefund`
       // before the redirect, but re-checked here: the query string is user-editable, and a
       // hand-typed value must not reach a confirm screen that would then move that money.

@@ -20,6 +20,7 @@ import {
 import { addDays, zonedWallClockToInstant } from "@core/config/tenant.js";
 import { readSubject } from "../../../lib/auth";
 import { timeClockEnabled } from "../../../lib/flags";
+import { clearFormDraft, stashFormDraft } from "../../../lib/form-draft";
 import { getRepo } from "../../../lib/repo";
 
 /**
@@ -163,7 +164,11 @@ export async function editMyPunch(formData: FormData): Promise<void> {
 
   revalidatePath(BACK);
   // On refusal the editor stays OPEN on that row, so the reason they typed and the
-  // field they got wrong are both still in front of them.
+  // field they got wrong are both still in front of them — and the draft is what puts
+  // the typing back, `reason` above all (#780). It had no default at all: required,
+  // prose, unreconstructable from anything on screen, and blanked on every refusal.
+  if (code) await stashFormDraft(BACK, formData);
+  else await clearFormDraft(BACK);
   redirect(
     code
       ? backToRow(punchId, `edit=${encodeURIComponent(punchId)}&err=${code}`)
@@ -205,6 +210,8 @@ export async function addMyPunch(formData: FormData): Promise<void> {
   }
 
   revalidatePath(BACK);
+  if (code) await stashFormDraft(BACK, formData);
+  else await clearFormDraft(BACK);
   redirect(code ? `${BACK}?add=1&err=${code}` : backToRow(id, "added=1"));
 }
 
@@ -229,6 +236,8 @@ export async function deleteMyPunch(formData: FormData): Promise<void> {
   }
 
   revalidatePath(BACK);
+  if (code) await stashFormDraft(BACK, formData);
+  else await clearFormDraft(BACK);
   redirect(
     code
       ? backToRow(punchId, `edit=${encodeURIComponent(punchId)}&err=${code}`)

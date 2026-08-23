@@ -152,9 +152,9 @@ export async function saveOffering(formData: FormData): Promise<void> {
     // Keep what was typed (#699). This is the surface the operator actually lost work on: a
     // refused create redirected to the id minted three lines up, which matches no offering, so
     // the page substituted `visible[0]` and showed an unrelated record's data instead.
-    await stashFormDraft("offerings", formData);
+    await stashFormDraft("/admin/offerings", formData);
     redirect(`/admin/offerings?sel=${rawId || "new"}${hidden}&err=${code}`);
   }
-  await clearFormDraft("offerings");
+  await clearFormDraft("/admin/offerings");
   redirect(`/admin/offerings?sel=${id}${hidden}&saved=1`);
 }

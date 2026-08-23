@@ -41,10 +41,19 @@ export function BlockEditor({
   selected,
   locations,
   vessels,
+  draftValues,
 }: {
   selected: Block | null;
   locations: Location[];
   vessels: Vessel[];
+  /**
+   * The refused submission's values, or null when there was no refusal (#780). Plain data, not
+   * a `FormDraft` — this is a client island and the draft's accessors can't cross the boundary,
+   * so `page.tsx` reads the cookie and flattens it. Every value is a string, including `""` for
+   * a field the operator deliberately cleared, which is why the defaults below use `??` and not
+   * `||`: an empty answer is still their answer.
+   */
+  draftValues: Record<string, string> | null;
 }) {
   // No `vesselHold` branch, by construction: the page never selects one (its row links straight
   // to the calendar), so `selected` is a location or vessel block or null. The read-only aside
@@ -118,7 +127,7 @@ export function BlockEditor({
               ) : (
                 <select
                   name="locationId"
-                  defaultValue=""
+                  defaultValue={draftValues?.locationId ?? ""}
                   className={`${inputClass} w-full`}
                   aria-label="Block location"
                 >
@@ -135,7 +144,7 @@ export function BlockEditor({
               <input
                 name="date"
                 type="date"
-                defaultValue={loc?.date ?? ""}
+                defaultValue={draftValues?.date ?? loc?.date ?? ""}
                 className={`${inputClass} w-full font-mono`}
                 aria-label="Block date"
               />
@@ -145,7 +154,7 @@ export function BlockEditor({
                 <input
                   name="startTime"
                   type="time"
-                  defaultValue={loc?.startTime ?? ""}
+                  defaultValue={draftValues?.startTime ?? loc?.startTime ?? ""}
                   className={`${inputClass} font-mono`}
                   aria-label="Block start time"
                 />
@@ -153,7 +162,7 @@ export function BlockEditor({
                 <input
                   name="endTime"
                   type="time"
-                  defaultValue={loc?.endTime ?? ""}
+                  defaultValue={draftValues?.endTime ?? loc?.endTime ?? ""}
                   className={`${inputClass} font-mono`}
                   aria-label="Block end time"
                 />
@@ -171,7 +180,7 @@ export function BlockEditor({
               ) : (
                 <select
                   name="vesselId"
-                  defaultValue=""
+                  defaultValue={draftValues?.vesselId ?? ""}
                   className={`${inputClass} w-full`}
                   aria-label="Block vessel"
                 >
@@ -189,7 +198,7 @@ export function BlockEditor({
                 <input
                   name="startDate"
                   type="date"
-                  defaultValue={ves?.startDate ?? ""}
+                  defaultValue={draftValues?.startDate ?? ves?.startDate ?? ""}
                   className={`${inputClass} font-mono`}
                   aria-label="Block start date"
                 />
@@ -197,7 +206,7 @@ export function BlockEditor({
                 <input
                   name="endDate"
                   type="date"
-                  defaultValue={ves?.endDate ?? ""}
+                  defaultValue={draftValues?.endDate ?? ves?.endDate ?? ""}
                   className={`${inputClass} font-mono`}
                   aria-label="Block end date"
                 />
@@ -210,7 +219,7 @@ export function BlockEditor({
           <Fld label="Reason" sub="optional">
             <input
               name="note"
-              defaultValue={selected?.note ?? ""}
+              defaultValue={draftValues?.note ?? selected?.note ?? ""}
               placeholder="e.g. river closed, engine service"
               className={`${inputClass} w-full`}
               aria-label="Block reason"

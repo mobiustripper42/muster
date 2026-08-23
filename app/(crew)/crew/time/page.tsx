@@ -11,6 +11,7 @@ import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { readSubject } from "../../../lib/auth";
 import { errCopyFor } from "../../../lib/err-copy";
+import { readFormDraft, type FormDraft } from "../../../lib/form-draft";
 import { timeClockEnabled } from "../../../lib/flags";
 import { fmt12, fmtDateRange } from "../../../lib/format";
 import { getRepo } from "../../../lib/repo";
@@ -103,6 +104,9 @@ export default async function CrewTime({
   }
 
   const errCopy = errCopyFor(ERR_COPY, sp.err, "error");
+  // A refused save rides its own values back (#780). Read only on `?err=`, so an editor opened
+  // by tapping a row never inherits a minute-old refusal from a different one.
+  const draft = sp.err ? await readFormDraft("/crew/time") : null;
   const { onTheClock } = view;
   // Exactly one editor at a time (#635). Everything else renders inert while it's open,
   // which is why this is one boolean rather than per-row state.
@@ -270,6 +274,7 @@ export default async function CrewTime({
                       inTime={p.inTime}
                       outTime={p.outTime}
                       outIsNextDay={p.outIsNextDay}
+                      draft={draft}
                     />
                   )}
                 </div>
@@ -297,7 +302,7 @@ export default async function CrewTime({
             permanent strip of a 375px screen and crowd the VersionTag. */}
         {sp.add ? (
           <div id="punch-new" className="rounded-card border border-accent bg-card shadow-sm">
-            <PunchForm mode="add" day={today} />
+            <PunchForm mode="add" day={today} draft={draft} />
           </div>
         ) : (
           !anyOpen && (
@@ -356,6 +361,7 @@ function PunchForm({
   inTime,
   outTime,
   outIsNextDay,
+  draft,
 }: {
   mode: "add" | "edit";
   punchId?: string;
@@ -363,8 +369,27 @@ function PunchForm({
   inTime?: string;
   outTime?: string | null;
   outIsNextDay?: boolean;
+  draft: FormDraft | null;
 }) {
   const anchor = mode === "edit" ? `#punch-${punchId}` : "#punch-new";
+  /**
+   * Whose refusal was this? (#780)
+   *
+   * One component renders both doors, and they refuse to different URLs — an add lands on
+   * `?add=1&err=`, an edit on `?edit=<id>&err=` — but they share one draft cookie. The add form
+   * has no `punchId` field and the edit form always does, so the submitted `punchId` says which
+   * door the draft came from AND, for an edit, which row: an edit draft applies to its own row
+   * and nothing else.
+   *
+   * Only one editor is ever open at a time here, so a leak across rows isn't reachable today.
+   * Keyed anyway, because "unreachable" is a property of the current page layout and this is a
+   * property of the draft.
+   */
+  const draftPunchId = draft?.get("punchId");
+  const mine =
+    draft && (mode === "edit" ? draftPunchId === punchId : draftPunchId === undefined)
+      ? draft
+      : null;
   return (
     <form
       action={mode === "edit" ? editMyPunch : addMyPunch}
@@ -387,7 +412,7 @@ function PunchForm({
             id="new-day"
             name="punchDay"
             type="date"
-            defaultValue={day}
+            defaultValue={mine?.get("punchDay") ?? day}
             required
             className="min-h-[44px] rounded-card border border-line bg-card px-3 text-ink"
           />
@@ -403,7 +428,7 @@ function PunchForm({
             id={`in-${punchId ?? "new"}`}
             name="inTime"
             type="time"
-            defaultValue={inTime}
+            defaultValue={mine?.get("inTime") ?? inTime}
             required
             className="min-h-[44px] rounded-card border border-line bg-card px-3 text-ink"
           />
@@ -416,7 +441,7 @@ function PunchForm({
             id={`out-${punchId ?? "new"}`}
             name="outTime"
             type="time"
-            defaultValue={outTime ?? ""}
+            defaultValue={mine?.get("outTime") ?? outTime ?? ""}
             className="min-h-[44px] rounded-card border border-line bg-card px-3 text-ink"
           />
         </div>
@@ -428,7 +453,11 @@ function PunchForm({
           from their hours and surfaces on the admin bench's stale strip. The VALUE is
           still carried, so editing a punch the office entered as overnight doesn't
           silently collapse it into `out_before_in`. The admin bench keeps the control. */}
-      <input type="hidden" name="outNextDay" value={outIsNextDay ? "1" : ""} />
+      <input
+        type="hidden"
+        name="outNextDay"
+        value={mine?.get("outNextDay") ?? (outIsNextDay ? "1" : "")}
+      />
 
       {/* Required, and the reason the trail is worth keeping. */}
       <div className="flex flex-col gap-1">
@@ -439,6 +468,8 @@ function PunchForm({
           id={`why-${punchId ?? "new"}`}
           name="reason"
           type="text"
+          // No default before #780: required, prose, and blanked on every refusal.
+          defaultValue={mine?.get("reason") ?? ""}
           required
           className="min-h-[44px] rounded-card border border-line bg-card px-3 text-ink"
         />

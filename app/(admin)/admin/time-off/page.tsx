@@ -7,6 +7,7 @@ import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { readSubject } from "../../../lib/auth";
 import { errCopyFor } from "../../../lib/err-copy";
+import { readFormDraft, type FormDraft } from "../../../lib/form-draft";
 import { fmtDateRange } from "../../../lib/format";
 import { getRepo } from "../../../lib/repo";
 import { adminAddTimeOff, adminRemoveTimeOff, type AdminTimeOffErr } from "./actions";
@@ -61,6 +62,9 @@ export default async function AdminTimeOff({
     .filter((c) => c.status !== "archived")
     .sort((a, b) => a.name.localeCompare(b.name));
   const errCopy = errCopyFor(ERR_COPY, sp.err, "error");
+  // The refused add's own values (#780) — including the crew select, which React reverts to its
+  // mount value on every form reset no matter what state wraps it.
+  const draft = sp.err ? await readFormDraft("/admin/time-off") : null;
 
   return (
     <Shell width="3xl">
@@ -74,7 +78,7 @@ export default async function AdminTimeOff({
       {sp.removed && <Notice tone="ok">Removed.</Notice>}
       {errCopy && <Notice tone="bad">{errCopy}</Notice>}
 
-      <AddForm crew={pickable} />
+      <AddForm crew={pickable} draft={draft} />
 
       <section className="flex flex-col gap-3">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">
@@ -123,7 +127,7 @@ export default async function AdminTimeOff({
 
 /** Put a crew member out — pick who, then the span. Native date inputs, no JS
  *  (DEC-026). The domain enforces `start ≤ end`. */
-function AddForm({ crew }: { crew: CrewMember[] }) {
+function AddForm({ crew, draft }: { crew: CrewMember[]; draft: FormDraft | null }) {
   const inputClass = "min-h-[48px] rounded-card border border-line bg-card px-3 text-ink";
   return (
     <form
@@ -135,7 +139,13 @@ function AddForm({ crew }: { crew: CrewMember[] }) {
         <label htmlFor="crewMemberId" className="text-sm text-muted">
           Crew member
         </label>
-        <select id="crewMemberId" name="crewMemberId" required className={inputClass} defaultValue="">
+        <select
+          id="crewMemberId"
+          name="crewMemberId"
+          required
+          className={inputClass}
+          defaultValue={draft?.get("crewMemberId") ?? ""}
+        >
           <option value="" disabled>
             Select crew…
           </option>
@@ -151,13 +161,27 @@ function AddForm({ crew }: { crew: CrewMember[] }) {
           <label htmlFor="start" className="text-sm text-muted">
             First day off
           </label>
-          <input id="start" name="start" type="date" required className={inputClass} />
+          <input
+            id="start"
+            name="start"
+            type="date"
+            defaultValue={draft?.get("start") ?? ""}
+            required
+            className={inputClass}
+          />
         </div>
         <div className="flex flex-1 flex-col gap-2">
           <label htmlFor="end" className="text-sm text-muted">
             Last day off
           </label>
-          <input id="end" name="end" type="date" required className={inputClass} />
+          <input
+            id="end"
+            name="end"
+            type="date"
+            defaultValue={draft?.get("end") ?? ""}
+            required
+            className={inputClass}
+          />
         </div>
       </div>
       <SubmitButton className="min-h-[48px] rounded-card bg-accent px-4 font-semibold text-white">

@@ -70,7 +70,7 @@ export default async function AdminLocations({
       : locations[0] ?? null;
   const missing = requested !== undefined && selected === null;
   // The submitted values of a refused save, read back as this form's defaults (#699).
-  const draft = sp.err ? await readFormDraft("locations") : null;
+  const draft = sp.err ? await readFormDraft("/admin/locations") : null;
   const errCopy = errCopyFor(ERR_COPY, sp.err, "error");
   const title = creating ? "New location" : selected?.name ?? "Locations";
 

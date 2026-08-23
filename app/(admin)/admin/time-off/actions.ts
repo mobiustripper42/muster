@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { asId } from "@core/domain/ids.js";
 import { addTimeOff, removeTimeOff, type AddTimeOffCode } from "@core/crew/time-off.js";
 import { readSubject } from "../../../lib/auth";
+import { clearFormDraft, stashFormDraft } from "../../../lib/form-draft";
 import { getRepo } from "../../../lib/repo";
 
 /**
@@ -29,7 +30,10 @@ export async function adminAddTimeOff(formData: FormData): Promise<void> {
   const crewMemberId = String(formData.get("crewMemberId") ?? "");
   const start = String(formData.get("start") ?? "");
   const end = String(formData.get("end") ?? "");
-  if (!crewMemberId) redirect("/admin/time-off?err=no_crew");
+  if (!crewMemberId) {
+    await stashFormDraft("/admin/time-off", formData);
+    redirect("/admin/time-off?err=no_crew");
+  }
 
   let code: AdminTimeOffErr | null = null;
   try {
@@ -45,6 +49,8 @@ export async function adminAddTimeOff(formData: FormData): Promise<void> {
   }
 
   revalidatePath("/admin/time-off");
+  if (code) await stashFormDraft("/admin/time-off", formData);
+  else await clearFormDraft("/admin/time-off");
   redirect(code ? `/admin/time-off?err=${code}` : "/admin/time-off?added=1");
 }
 
@@ -57,9 +63,11 @@ export async function adminRemoveTimeOff(formData: FormData): Promise<void> {
     if (id) await removeTimeOff(getRepo(), asId<"PtoWindowId">(id));
   } catch {
     revalidatePath("/admin/time-off");
+    await clearFormDraft("/admin/time-off");
     redirect("/admin/time-off?err=error");
   }
 
   revalidatePath("/admin/time-off");
+  await clearFormDraft("/admin/time-off");
   redirect("/admin/time-off?removed=1");
 }

@@ -9,6 +9,7 @@ import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { readSubject } from "../../../lib/auth";
 import { errCopyFor } from "../../../lib/err-copy";
+import { readFormDraft, type FormDraft } from "../../../lib/form-draft";
 import { fmtDateRange } from "../../../lib/format";
 import { getRepo } from "../../../lib/repo";
 import { addMyTimeOff, removeMyTimeOff, setMyDaysOff, type CrewTimeOffErr } from "./actions";
@@ -72,6 +73,9 @@ export default async function CrewTimeOff({
   }
 
   const errCopy = errCopyFor(ERR_COPY, sp.err, "error");
+  // The refused add's own dates (#780). Every other door on this page clears the draft, so
+  // whatever is here belongs to the last refused add and nothing else.
+  const draft = sp.err ? await readFormDraft("/crew/time-off") : null;
   const offSet = new Set(weekdaysOff);
 
   return (
@@ -112,7 +116,7 @@ export default async function CrewTimeOff({
         )}
       </section>
 
-      <AddForm action={addMyTimeOff} />
+      <AddForm action={addMyTimeOff} draft={draft} />
 
       {/* Recurring weekday blackout (#426, DEC-119) — the every-Sunday-forever axis,
           distinct from the dated windows above but the same subtractive idea. */}
@@ -162,7 +166,13 @@ export default async function CrewTimeOff({
 /** The add-a-window form — two native date inputs (mobile date pickers, no JS)
  *  and one button. `end` defaults to whatever `start` is via required inputs;
  *  the domain enforces `start ≤ end`, so a same-day off is just start === end. */
-function AddForm({ action }: { action: (fd: FormData) => Promise<void> }) {
+function AddForm({
+  action,
+  draft,
+}: {
+  action: (fd: FormData) => Promise<void>;
+  draft: FormDraft | null;
+}) {
   const inputClass =
     "min-h-[52px] rounded-card border border-line bg-card px-4 text-ink";
   return (
@@ -172,13 +182,27 @@ function AddForm({ action }: { action: (fd: FormData) => Promise<void> }) {
         <label htmlFor="start" className="text-sm text-muted">
           First day off
         </label>
-        <input id="start" name="start" type="date" required className={inputClass} />
+        <input
+          id="start"
+          name="start"
+          type="date"
+          defaultValue={draft?.get("start") ?? ""}
+          required
+          className={inputClass}
+        />
       </div>
       <div className="flex flex-col gap-2">
         <label htmlFor="end" className="text-sm text-muted">
           Last day off (same day for a single day)
         </label>
-        <input id="end" name="end" type="date" required className={inputClass} />
+        <input
+          id="end"
+          name="end"
+          type="date"
+          defaultValue={draft?.get("end") ?? ""}
+          required
+          className={inputClass}
+        />
       </div>
       <SubmitButton className="min-h-[52px] w-full rounded-card bg-accent font-semibold text-white">
         Add

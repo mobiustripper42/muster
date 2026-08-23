@@ -1473,271 +1473,235 @@ conflict: both end at a `Confirmed` seat via the same state machine.
 
 ## 2.8 Booking & Payment — the customer buys a departure
 
-> **Written fresh, 2026-08-22, as the design we would choose knowing nothing about the current code.**
-> This section is the reservations write-up owed since DEC-105 and tracked in issue #565. It was never
-> written, and the consequence issue #565 names is the reason this section exists: the largest
-> subsystem in the product had no spec text, so its design accumulated across roughly fifteen decisions
-> instead, and no audit could check code against intent. **Where the shipped code disagrees with this
-> section, this section is right and the code is the work.**
->
-> **It also supersedes decisions, and that debt is owed, not waived.** The one-record model in 2.8.1
-> replaces the separate checkout-hold object DEC-109 decided on; 2.8.4 replaces the metadata-carried
-> money DEC-107 froze and the metadata routing DEC-134 designed. Those files are **not** amended by
-> this section landing — reconciling them against §2.8, and deleting the ones that only exist to patch
-> consequences of the old shape, is the next piece of work and it is tracked separately. Until then a
-> reader will find decision files that contradict this section. **§2.8 wins; the decisions are stale.**
+> **The reservation payment path is being built from scratch (2026-08-23).** This section specifies it.
+> It is not a description of anything that currently runs, and it is not a plan for changing what runs
+> — the existing path is being replaced rather than repaired. What it *does* have to respect is
+> everything on either side of it that stays: see 2.8.10.
 
 **2.8.1 One record holds the boat.** A `Reservation` is written **before** the customer pays, in state
-`pending`, and **it is the thing that occupies the departure**. It carries an expiry — the payment
-window. It becomes `confirmed` when payment succeeds, or it expires and the boat is free again.
+`pending`, and it is the thing that occupies the departure. It carries an expiry — the payment window.
+It becomes `confirmed` when payment succeeds, or `expired` when the window runs out.
 
-There is no second object that claims a slot. One record, three states: `pending` → `confirmed`, or
-`pending` → `expired`. **`expired` is a state, not a deletion** — see 2.8.6. This is the ordinary shape
-for selling a limited, timed resource, and every consequence below follows from it.
+One record, three states. Nothing else claims a slot. `expired` is a state, not a deletion (2.8.8).
 
-**2.8.2 The pending reservation names a slot, not an Event.** It carries `vesselId + date + time`, and
-its `eventId` stays empty until it confirms. Availability is already computed from the schedule rather
-than from stored rows (DEC-125), so a pending reservation suppresses its slot exactly as a confirmed
-one does, without an `Event` existing. **Nothing is materialized for a checkout that is abandoned** —
-no phantom events, nothing for the shift builder or the crew manifest to trip over. The Event is
-written at confirm, alongside the state change, as it is today.
+**2.8.2 A pending reservation names a slot, not an Event.** It carries `vesselId + date + time`; its
+`eventId` stays empty until it confirms. Booking availability is computed from the offering's schedule
+rather than from stored rows, so a pending reservation removes its departure from the calendar without
+any `Event` existing. An abandoned checkout therefore materializes nothing — no stray events for the
+shift builder or the crew manifest to find. The `Event` is written at confirm, in the same step as the
+state change.
 
-**2.8.2a What a pending reservation occupies is the hull for the trip's duration — never the exact
-triple.** This is the one rule in this section that was learned from a production defect and it must
-not be re-derived. Two bookings on one boat at 13:30 and 14:00 are different `(vessel, date, time)`
-triples, so a guard keyed on identity lets both through: one hull, two paying parties, overlapping on
-the water, silently (DEC-109's 2026-08-06 correction, issue #691 — reproduced against real Postgres,
-`won, won` in three of three runs). The word *defeat-proof* appeared in three places in the tree and is
-what stopped anyone looking.
+**2.8.3 What a reservation occupies is the hull for the trip's duration.**
 
-So: **any other trip on that boat whose time window overlaps prevents the sale**, whatever its source
-and whatever its state — confirmed, pending, or imported from Xola.
+**The rule: any other trip on that boat whose time window overlaps prevents the sale** — whatever its
+source, whatever its state, confirmed or pending or imported. Not "is anything booked at exactly
+13:30" — 13:30 and 14:00 are different departure times and the same boat, on the water, at the same
+moment.
 
-**Why a lock, and what it is locked on.** The check is "does any other booking on this boat overlap
-me?", and the answer can change between asking and writing. Locking the *row* you are about to write
-does not help: the rival booking is a **different** row at a different time, so it does not exist to be
-locked until the other request inserts it — and by then both have already checked and both think they
-won. So the write takes a lock named for **the boat and the day**: one boat, one date, one writer at a
-time, held across the check and the insert. A second request for that hull on that day waits, and then
-sees the row the first one wrote. **"Hull-day" is shorthand for that lock throughout this section**,
-and it is what step 3 of 2.8.3 means by "in one transaction".
+**The same rule governs both sides.** The code that decides what to *show* on the calendar and the code
+that decides what to *refuse* at the write ask the identical question. If they diverge, one of them
+advertises a departure the other will reject, and every customer for that window is told it was just
+taken while the calendar still shows it free.
 
-Collapsing holds into reservations changes none of this and does not make it safe to simplify: the
-overlap rule and the hull-day lock are load-bearing under the one-record model exactly as they were
-under two.
+**The write holds a lock named for the boat and the day.** The overlap answer can change between
+checking and writing, and locking the row you are about to write does not help — the rival is a
+*different* row at a different time, which does not exist to be locked until the other request inserts
+it, by which point both have checked and both believe they won. So: one boat, one date, one writer at
+a time, held across the check and the insert. A second request for that hull on that day waits, then
+sees what the first one wrote. **"Hull-day" means that lock throughout this section.**
 
-**A consequence to state out loud:** the code that decides what to *show* on the calendar and the code
-that decides what to *refuse* at the write must agree about what occupancy means. Today they do not —
-one asks "is anything booked at exactly 13:30?", the other asks "does anything overlap 13:30?". So a
-reservation at 13:31, on a boat whose real departure is 13:30, is invisible to the calendar and fatal
-at the write: every customer for that window is told the departure was just taken, while the calendar
-goes on advertising it as free. *(A time that is not one of the offering's published departures is
-**off-grid**; the published set is the **grid**.)* Under this section there is one record, so there
-must also be **one rule**: overlap, on both sides.
+A time that is not one of the offering's published departures is **off-grid**; the published set is the
+**grid**. Off-grid times are refused at the write (2.8.4), so no reservation can ever occupy one.
 
-**2.8.3 The flow.**
+**2.8.4 The flow.**
 
-1. **`/book`** — customer picks offering, date, time, party size. The calendar shows what the schedule
-   allows minus what is occupied: confirmed reservations, live pending ones, and **blocks** (an
-   operator's own hold on a boat — maintenance, a private charter, a day off — which reserves the hull
+1. **`/book`** — the customer picks offering, date, time and party size. The calendar shows what the
+   schedule allows, minus what is occupied: confirmed reservations, live pending ones, and **blocks**
+   (an operator's own hold on a boat — maintenance, a private charter, a day off — reserving the hull
    with no customer behind it).
 2. **`/book/checkout`** — name, phone, optional email, waiver consent, gratuity tier. One button.
-3. **On submit, holding the hull-day lock (2.8.2a):** validate the departure is on the offering's
-   published schedule and inside its season; confirm nothing else on that boat overlaps; choose the
-   boat (smallest hull that fits the party, the customer never picks); write the `pending` reservation
-   with its expiry; and **freeze the money onto that row**.
+3. **On submit, holding the hull-day lock:** refuse anything off-grid or outside the offering's season;
+   refuse anything that overlaps (2.8.3); choose the boat — the smallest hull that fits the party, the
+   customer never picks; write the `pending` reservation with its expiry; **freeze the money onto it**.
+4. **Create the payment** for the frozen amount and **store its id on the reservation**. Hand the
+   browser what it needs to collect the card.
+5. **The customer's browser completes the payment** with Stripe directly.
+6. **Confirm** — 2.8.6.
 
-   **"Freeze" means write the computed amounts onto the reservation as plain numbers and never
-   recalculate them.** Every later reader — the confirm, the receipt, the balance, the refund — reads
-   those stored numbers. Nothing recomputes from live settings, because the tax rate or the service fee
-   can change between the quote and the payment, and the customer must be charged what they were shown.
-   The frozen set is: the fare, **extras** (the per-head charge for guests beyond the number the price
-   includes), tax, service fee, gratuity, and **the amount due now** — which is the whole total when
-   the deploy takes full payment, or the deposit share when it takes a deposit and bills the balance
-   later.
-4. **Create the PaymentIntent** for the frozen amount, and **store its id back on the reservation**.
-   Return its client secret to the browser.
-5. **The customer confirms the card** with Stripe directly.
-6. **Confirm the booking** — see 2.8.5.
+**"Freeze" means write the computed amounts onto the reservation as plain numbers and never recalculate
+them.** Every later reader — the confirmation, the receipt, the balance, a refund — reads those stored
+numbers. Nothing recomputes from live settings, because a tax rate or a service fee can change between
+the quote and the payment and the customer must be charged what they were shown. The frozen set: the
+fare, **extras** (the per-head charge for guests beyond the number the price includes), tax, service
+fee, gratuity, and **the amount due now** — the whole total where the deploy takes full payment, or the
+deposit share where it takes a deposit and bills the balance later.
 
-**2.8.4 Stripe metadata is decorative — nothing reads it, not even a pointer.** The link between a
-payment and a reservation is the PaymentIntent id **stored on our own row** at step 4, and confirm
-finds the reservation by querying that column. Muster therefore reads **no metadata at all**, and
-depends on Stripe echoing nothing back.
+**2.8.5 We send Stripe nothing it has to give back.**
 
-Whatever we do send — offering name, date, customer name — exists so a human reading the Stripe
-dashboard can answer a phone call. It is write-only. **A malformed or missing metadata field cannot
-prevent, delay, or corrupt a booking**, because the booking already exists and is found by other
-means.
+The link between a payment and a reservation is the payment's id, **stored on our own row** at step 4.
+Confirm finds the reservation by querying that column. **Nothing we read comes out of the payment
+object except its id and its status.**
 
-*(This is stronger than "put your record's id in metadata," which is the usual advice and would also
-work. Sailbook has run the stronger version in production since 2026-04 — its webhook looks the
-enrollment up by `stripe_checkout_session_id` on its own table and reads no metadata whatsoever. There
-is no reason to hold Muster to a weaker rule than the one already proven next door.)*
+For the human reading the Stripe dashboard, `description` — a first-class Stripe field — carries the
+offering, the departure, the party size and who booked. That is the whole requirement, and it is met
+without metadata. **So the booking charge sends no metadata at all.** Empty is a rule that can be
+checked; "send some but never read it" is a discipline that decays.
 
-The money is frozen on our row at step 3 and read from our row at confirm. It is never recomputed from
-live configuration after the customer has been quoted a price (the standing rule from DEC-107, now
-resting on a row we own rather than on a string held by Stripe).
-
-**Scope, and an open piece of work.** This section covers the **booking charge** — the payment that
-buys a departure. Muster takes two other kinds of Stripe payment against a booking that already
-exists: the **balance** (when the booking charge was only a deposit) and a **post-trip gratuity**.
-Today all three are told apart by a `purpose` field we put in metadata (DEC-134).
-
-That same field does a second job worth spelling out, because it is not obvious. Muster's older
-checkout style sends the customer to a page hosted by Stripe. Stripe creates its own payment object
-behind that page, and **that** object also announces a successful payment — but it carries none of our
-metadata, because we never put any on it. So for one sale, two success announcements arrive: ours, and
-Stripe's own. Checking for `purpose` is what makes the handler ignore the second one instead of
-booking the same sale twice.
-
-A booking path that reads no metadata does not, by itself, solve either job for the other two payment
-kinds. **They need the same treatment this section gives the booking charge — the payment's own row
-says what it is, not a string handed back by Stripe — and until they get it, DEC-134's `purpose` guard
-stays exactly where it is.** Do not delete it as part of adopting this section.
-
-**2.8.5 One confirm function, called from three places.** `confirmReservation(paymentIntentId)` is
+**2.8.6 One confirm function, called from three places.** `confirmReservation(paymentId)` is
 **idempotent** — running it twice has the same effect as running it once, and the second run is not an
-error. It finds the pending reservation **by the PaymentIntent id stored on it**, creates the `Event`
-row for that departure (2.8.2 left it unwritten until now), moves the state to `confirmed`, records the
-payment, and returns "confirmed" or "already confirmed". It is called from:
+error. It finds the pending reservation by the payment id stored on it, writes the `Event` for that
+departure, moves the state to `confirmed`, records the payment, and reports "confirmed" or "already
+confirmed". It is called from:
 
-- **the success page** the customer lands on after paying — so a present customer sees their booking
-  immediately rather than waiting on a webhook;
-- **the `payment_intent.succeeded` webhook** — the guarantee, for the customer who closed the tab;
-- **the reconciler** — for when the webhook never arrived at all.
+- **the success page** the customer lands on after paying, so a customer who is still present is booked
+  in seconds rather than waiting on a webhook;
+- **the `payment_intent.succeeded` webhook**, for the customer who closed the tab;
+- **the reconciler** (2.8.9), for when the webhook never arrives.
 
-All three run the same function. Stripe continues retrying events that were processed elsewhere, so
-anything less than one shared idempotent path books twice.
+All three run the same function. Stripe re-delivers events that were already handled elsewhere, so any
+second path that writes bookings its own way will book the same sale twice.
 
-**2.8.6 Every failure has a named outcome.**
+**A payment we cannot match to a reservation is not ours.** Stripe reports payments Muster did not
+originate — the balance and post-trip gratuity charges (2.8.10), and the payment object Stripe creates
+behind its own hosted pages. Confirm looks the id up; no row means not a booking, and it is
+acknowledged and ignored.
+
+**2.8.7 Every failure has a named outcome.**
 
 | What happens | What we do |
 |---|---|
-| Card declined, customer retries | Same pending reservation, same boat, **expiry not extended** — otherwise a session parks a hull indefinitely by resubmitting. A new PaymentIntent for the same row is fine. |
-| Customer changes the tip and retries | The amount changes, so the money is re-frozen and a new PaymentIntent is created against the same reservation. |
-| Customer abandons checkout | The expiry passes; a sweeper moves the row to `expired` and the boat returns to the calendar. |
-| Stripe reports the payment failed | **Nothing. The row stays `pending` until its window runs out.** A declined card *is* a failed payment, and the customer is usually about to try another one — expiring on that event would destroy the retry above, which is the whole reason the reservation is reused. Failure is not abandonment, and only the clock can tell them apart. |
+| Card declined, customer retries | Same reservation, same boat, **expiry not extended** — otherwise a session parks a hull indefinitely by resubmitting. A new payment against the same row is fine. |
+| Customer changes the tip and retries | The amount changes, so the money is re-frozen and a new payment is created against the same reservation. |
+| Stripe reports the payment failed | **Nothing. The row stays `pending` until its window runs out.** A declined card *is* a failed payment and the customer is usually about to try another one. Failure is not abandonment; only the clock tells them apart. |
+| Customer abandons checkout | The window passes, the sweeper marks the row `expired`, the boat returns to the calendar. |
 | Webhook is late | The success page already confirmed it. Nothing to do. |
-| Webhook never arrives and the customer closed the tab | The reconciler reads Stripe's event log and confirms. |
-| Our write fails after the card was charged | The row already exists as `pending` with a successful payment against it — the reconciler finds and confirms it. **This is the case the design exists to make expressible.** |
-| Payment succeeds after the reservation expired and the boat is gone | Refund the full amount automatically — no operator action, no queue for someone to notice — and tell the customer, on the same channel a booking confirmation would have used (the phone on the reservation; phone is required, email is not). The message says the departure sold out while they were paying and states the amount coming back. **The refund and the message are one path, not two:** a refund nobody was told about reads as a silent failed payment, and a message with no refund behind it is worse. |
+| Webhook never arrives and the customer closed the tab | The reconciler confirms it (2.8.9). |
+| Our write fails after the card was charged | The reservation already exists as `pending` with a successful payment against it. The reconciler finds it and confirms it. |
+| Payment succeeds after the window expired and the boat is gone | Refund the full amount automatically — no operator action, nothing queued for someone to notice — and tell the customer on the channel a confirmation would have used (the phone on the reservation; phone is required, email is not). The message says the departure sold out while they were paying and states the amount coming back. **The refund and the message are one path:** a refund nobody was told about reads as a silent failed payment. |
 
-**Two background jobs, and they are not the same job.** The **sweeper** runs constantly and moves
-`pending` rows whose window has run out to `expired`, freeing the boat — it changes a state and deletes
-nothing. The **reaper** runs rarely, on a long horizon, and deletes old `expired` rows so the table
-does not grow forever. Sweep is about inventory; reap is about disk. Conflating them is how the
-measurement below gets thrown away by a job that was only supposed to tidy up.
+**2.8.8 Two background jobs, and they are not the same job.**
 
-**The sweeper marks rows expired. It does not delete them.** An abandoned checkout is evidence, and
-deleting it throws away the only measurement that says whether the payment window is the right length.
-The two failure directions are not symmetrical unless we keep it:
+The **sweeper** runs constantly. It moves `pending` rows whose window has run out to `expired`, freeing
+the boat. It changes a state and deletes nothing.
 
-- **Window too short** — we cancel real buyers mid-payment. Already visible: a payment landing after
-  expiry leaves a refund and a sold-out notice.
-- **Window too long** — we tie up hulls for people who were never going to buy. Visible **only** if
-  expired rows survive with a state, a created time and an expiry.
+The **reaper** runs rarely, on a long horizon, and deletes old `expired` rows so the table does not
+grow without bound. A pending reservation is creatable by anyone who can reach the checkout, so the
+expired table accumulates scripted abuse as well as real abandonment; distinguishing the two in the
+data is part of building this, not an afterthought.
 
-An expired reservation carries the same slot, party size and money as any other, so "how many people
-started a checkout and walked, and how long did they sit on the boat" becomes a query instead of a
-guess. This is what turns the payment window from a number someone picked into a number with an answer.
+**The sweeper never deletes, and this is load-bearing rather than tidy.** An abandoned checkout is the
+only evidence that says whether the payment window is the right length, and the two ways of being wrong
+are not equally visible:
 
-**Expired rows are not all customers, which is why the reaper is required rather than optional.** A
-pending reservation is creatable by anyone who can reach the checkout, and scripted spam on this exact
-path is demonstrated, not theoretical — the off-grid variant was closed in issue #799, and the
-per-session cap that bounds *volume* is still open as issue #806. So the expired table grows with abuse
-as well as with real abandonment. Telling the two apart in the data is what makes the measurement above
-trustworthy, and it is part of adopting this section rather than an afterthought.
+- **Window too short** — real buyers are cancelled mid-payment. Visible already: each one leaves a
+  refund and a sold-out message.
+- **Window too long** — hulls are tied up for people who were never going to buy. Visible **only** if
+  expired rows survive, carrying their slot, party size, created time and expiry.
 
-**2.8.7 The reconciler — the job that catches payments whose webhook never landed.**
+With both, *"how many checkouts were started and walked away from last month, and how long did each
+hold a boat"* is a query rather than a guess.
+
+**The sweeper must never expire a reservation that has been paid.** It races the reconciler over the
+same rows — one expiring a window that ran out, the other confirming a payment that succeeded inside
+it. Expiry checks for a successful payment first and loses the race every time. Without that check, a
+webhook outage lasting longer than the payment window converts a paying customer into a cancelled one,
+which is worse than doing nothing.
+
+**2.8.9 The reconciler — the job that catches payments whose webhook never landed.**
 
 The webhook is a *push*. If our server is down, the endpoint is misconfigured, or a deploy is
-mid-swap, Stripe retries on a backoff and eventually stops. Without something watching, that leaves a
-charged card and a `pending` reservation that quietly expires — money taken, no booking, nobody told.
-**The reconciler is a scheduled job whose entire purpose is that nobody is ever the one who notices.**
+mid-swap, Stripe retries on a backoff and eventually stops. Unwatched, that leaves a charged card and a
+`pending` reservation that quietly expires: money taken, no booking, nobody told. **The reconciler
+exists so that no human is ever the one who notices.**
 
-It has two ways to find the problem, and they are not interchangeable:
+It finds the problem two ways, and they are not interchangeable:
 
-**Primary — our own table.** Any reservation still `pending` past its window **that has a
-PaymentIntent id on it** is a work list. One indexed query against our own database. For each row, ask
-Stripe the state of that specific payment and, if it succeeded, call the confirm function. This finds
-a stranded payment whether or not Stripe ever tells us anything, and it works during a total webhook
-outage. It is possible only because the reservation is written before the payment — under the old
-shape there was no row to find.
+- **Primary — our own table.** Any reservation still `pending` past its window **with a payment id on
+  it** is a work list: one indexed query against our own database. For each, ask Stripe the state of
+  that specific payment, and confirm the ones that succeeded. This works during a total webhook
+  outage, because it needs nothing from Stripe except an answer about a payment we can already name.
+- **Fallback — Stripe's undelivered-event feed.** For the rarer case where the payment exists and our
+  write did not, so there is no row to find. Stripe's documented mechanism is the event log filtered to
+  undelivered events; **polling payment objects is explicitly discouraged and rate-limited.**
 
-**Fallback — Stripe's undelivered-event feed.** For the rarer case where the payment exists and our
-write did not, so there is no row to query. Stripe's documented mechanism is the event log filtered to
-undelivered events; **polling payment intents is explicitly discouraged and rate-limited**. This half
-is a recovery tool for an outage, not a routine pass.
-
-**Cadence: minutes, not hours.** Detection latency *is* the schedule — a job that runs nightly means a
-customer can sit unbooked overnight holding a receipt. Run it on the same order of frequency as the
-existing background work.
+**Cadence: minutes, not hours.** Detection latency *is* the schedule — nightly means a customer can sit
+unbooked overnight holding a receipt.
 
 **It must be safe to run at any time, in any order, more than once.** Stripe does not guarantee event
-ordering, keeps a limited retention window, and **continues retrying events that were processed
-elsewhere** — so the reconciler calls exactly the same idempotent confirm function as the success page
-and the webhook (2.8.5). A separate "reconcile" path that writes bookings its own way is how the same
-sale gets booked twice.
+ordering, retains events for a limited window, and re-delivers events handled elsewhere. The reconciler
+calls the same idempotent confirm function as the success page and the webhook (2.8.6).
 
-**Never let a sweeper cancel a paid reservation.** The sweeper (2.8.6) and the reconciler race over
-the same rows: one is trying to expire a window that ran out, the other is trying to confirm a payment
-that succeeded inside it. **Expiry must check that no payment succeeded against the row before writing
-`expired`** — otherwise a webhook outage lasting longer than the payment window converts a paid
-customer into a cancelled one, which is worse than doing nothing at all.
+**2.8.10 What must not break.**
 
-**2.8.8 What this surface is NOT.** No seats — BrewBoat sells the whole boat, and party size only has
-to fit. No customer-chosen vessel. No held-then-separately-booked two-object model. No money computed
-after the customer has been quoted. No booking assembled from data Stripe handed back. No wallets
-(card only). Self-service cancellation stays out until the refund schedule is decided (issue #472).
+The payment path is new. These are not, and a from-scratch build still has to meet them:
+
+- **Imported reservations.** Reservations also arrive from Xola. They are already sold, have no pending
+  phase, and no payment through us. They occupy hulls under exactly the rule in 2.8.3 and must keep
+  doing so — a reservation with no payment id is not a defect.
+- **Balance and post-trip gratuity payments.** Both are charges against a booking that already exists.
+  They are not booking charges, they must never create or confirm a reservation, and 2.8.6's
+  "no matching row means not ours" is what keeps them out of this path.
+- **Blocks.** An operator's hold on a boat is its own thing with its own lifetime. It occupies a hull;
+  it is not a reservation and does not become one.
+- **The crew side.** Shift forming, the manifest, the ask cascade and the crew app read `Event`s and
+  shifts. Because a pending reservation writes no `Event` (2.8.2), nothing crew-facing should see a
+  checkout in progress. **That property is the contract** — if anything crew-facing starts reading
+  reservations directly, it inherits pending ones.
+- **Admin surfaces.** The calendar, the purchases view, the at-risk board and the payroll exports read
+  reservations and payments. A new `pending`/`expired` state appears in that data and each surface has
+  to say what it does with it — showing it, hiding it, or filtering it out is a decision per surface,
+  not a default.
+- **Cancellation, refunds and disputes.** §3.3 and §3.4 act on booked reservations with money behind
+  them. They are unchanged, and they must never be handed a `pending` or `expired` row.
+
+**2.8.11 What this surface is NOT.** No seats — BrewBoat sells the whole boat and party size only has
+to fit. No customer-chosen vessel. No separate hold object. No money computed after the customer has
+been quoted. No booking assembled from data Stripe hands back. No wallets (card only). Self-service
+cancellation stays out until the refund schedule is decided (issue #472).
 
 ### Acceptance criteria
 
-- [ ] A departure that is not on the offering's schedule grid, or is outside its season, cannot be
-      reserved — no row written, no payment created.
+- [ ] A departure that is off-grid, or outside the offering's season, cannot be reserved — no row
+      written, no payment created.
 - [ ] Pressing "Book & pay" writes a `pending` reservation **before** any call to Stripe, and that row
       alone removes the departure from `/book`.
-- [ ] Abandoning checkout leaves no `Event` behind, and the departure reappears once the row expires.
-- [ ] An abandoned checkout is still on disk afterwards, as an `expired` reservation carrying its slot,
-      party size, created time and expiry — **the sweeper never deletes**. "How many checkouts were
-      started and walked away from last month, and how long did each hold a hull?" is a query.
 - [ ] **Two concurrent bookings on one hull at overlapping times — 13:30 and 14:00, not the same
-      triple — produce exactly one sale.** Run it against real Postgres, repeatedly, and assert the
-      loser loses. This is the issue #691 regression and it returned `won, won` three times out of
-      three before it was fixed; an identity-keyed guard passes every test that uses one time.
-- [ ] The availability reader and the write guard refuse the *same* set of slots. A pending reservation
-      at an off-grid time does not leave the public calendar showing a departure the write path will
-      then refuse.
+      departure — produce exactly one sale.** Run it against real Postgres, repeatedly, and assert the
+      loser loses. A guard keyed on exact departure time passes every test that uses a single time.
+- [ ] The calendar and the write refuse the *same* set of departures. A pending reservation never
+      leaves the public calendar advertising something the write path will reject.
+- [ ] Abandoning checkout leaves no `Event` behind, and the departure reappears once the row expires.
+- [ ] An abandoned checkout is still on disk afterwards as an `expired` reservation carrying its slot,
+      party size, created time and expiry. "How many checkouts were started and walked away from last
+      month, and how long did each hold a boat?" is a query.
 - [ ] A declined card retried on the same departure reuses the same reservation at its original expiry.
 - [ ] A `payment_intent.payment_failed` does **not** expire the reservation — the retry above still
       works after one.
 - [ ] Killing the webhook entirely still produces a confirmed booking for a customer who reaches the
       success page.
-- [ ] **Kill the webhook, then close the browser, then wait past the payment window.** The customer is
-      still booked, by the reconciler — and the sweeper has **not** marked their paid reservation
-      `expired` in the meantime. Expiry must lose that race every time.
 - [ ] Closing the browser at the moment of payment still produces a confirmed booking, via the webhook.
-- [ ] Stripping a PaymentIntent's metadata entirely before its webhook fires still produces a correct
-      booking. **Nothing reads metadata — not a money field, not a slot, not an id.**
-- [ ] Confirming the same PaymentIntent three times produces one booking and one payment record.
-- [ ] A payment that lands after its reservation expired, on a departure since taken, is refunded
-      without an operator touching anything, and the customer is told why.
-- [ ] The amount charged, the amount recorded on the reservation, and the amount shown at checkout are
+- [ ] **Kill the webhook, close the browser, then wait past the payment window.** The customer is still
+      booked, by the reconciler — and the sweeper has **not** marked their paid reservation `expired`.
+- [ ] Confirming the same payment three times produces one booking and one payment record.
+- [ ] A payment that lands after its reservation expired, on a departure since taken, is refunded and
+      the customer told, without an operator touching anything.
+- [ ] The amount charged, the amount stored on the reservation, and the amount shown at checkout are
       the same number, and none of them is recomputed after the quote.
+- [ ] A balance payment and a post-trip gratuity payment never create or confirm a reservation.
+- [ ] An imported Xola reservation, which has no payment id, still occupies its hull.
 
 ### Open questions (Booking & Payment)
 
-- **How long is the payment window?** Fifteen minutes was inherited from a flow that redirected the
-  customer to a hosted page, and was itself a guess carried over from Sailbook. The customer no longer
-  leaves the site, so the window only has to cover card entry, a possible 3-D Secure detour, and a
-  fumbled retry or two. Shorter frees inventory sooner; too short cancels real buyers mid-payment.
-  **Ship 15 and leave it env-overridable, but this stops being a guess once 2.8.6 lands** — expired
-  rows plus the existing refund/sold-out traces make both failure directions countable. Revisit against
-  a season of real numbers, once, rather than picking it a third time.
-- **Does a pending reservation appear on the admin calendar?** It is real occupancy the operator may
-  want to see, and it is also noise that resolves itself within the payment window.
-- **What releases a pending reservation early besides the sweeper and a failed payment** — an explicit
-  "back" from the checkout page, a closed tab? Probably nothing; worth deciding rather than defaulting.
+- **How long is the payment window?** Fifteen minutes is a guess carried over from Sailbook and from a
+  flow that sent the customer to a hosted page. The customer no longer leaves the site, so the window
+  only has to cover card entry, a possible 3-D Secure detour, and a fumbled retry or two. Shorter frees
+  inventory sooner; too short cancels real buyers mid-payment. **Ship 15, keep it env-overridable, and
+  revisit once against a season of real numbers** — 2.8.8 makes both failure directions countable.
+- **Does a pending reservation appear on the admin calendar?** Real occupancy the operator may want to
+  see, and also noise that resolves itself within the payment window.
+- **What releases a pending reservation early, besides the sweeper and a failed payment** — an explicit
+  "back" from the checkout page, a closed tab? Probably nothing, but worth deciding rather than
+  defaulting into.
 - The refund schedule (issue #472) remains open and continues to block self-service cancellation. This
   section does not touch it.
 

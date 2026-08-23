@@ -4,10 +4,10 @@ dev: eric
 slug: 801-login-window-gate-order
 branch: task/801-login-window-gate-order
 started: 2026-08-22T12:31:58Z
-ended:
-points:
+ended: 2026-08-23T15:33:49Z
+points: 5
 pr_numbers: [814]
-status: open
+status: closed
 transcript: /home/eric/.claude/projects/-home-eric-muster/2c08003d-2556-538b-b7a0-c5fa904705af.jsonl
 ---
 
@@ -87,4 +87,57 @@ form reads right. Seven literal hand steps are in the PR body.
 
 **Next Steps:**
 
+- **PR #814 is open and unreviewed by a human.** Its hand-test section is the point: nobody has
+  looked at any of the six restored forms at 375px. Step 6 of that plan (can you reach the error,
+  tap the inputs, get back out) is the one a green suite cannot answer, and #699's own history
+  says the restore-looks-fine-but-isn't case is real.
+- **issue #780's `points:` label still says 3.** Re-estimated to 5 at spec time with the reasons
+  written down; asked twice whether to relabel, never answered. Left alone rather than changed
+  unilaterally — but the label is what `/retro` reads for velocity, so a 3 there understates the
+  phase.
+- **`lane:a` / `lane:b` labels now exist** — 16 and 19 open issues. Created this session from the
+  operator's own lane tables, reconciled against GitHub (5 rows of Lane A and 5 of Lane B had
+  already closed; 18 issues filed since 2026-08-19 were in neither). Go-live/cutover work sits at
+  the bottom of both, per the operator: *"that should always be last, it might change between now
+  and then. it's only a priority if we have an actual product to release ... which we do not."*
+- **66 open issues carry no lane.** The crew-engine backlog plus CI infra. Sweeping them in, or a
+  third lane, is an open question.
+- **Next in `lane:a` is issue #780's siblings** — #783 and #781, the rest of the form-draft-loss
+  family, both on `app/lib/form-draft.ts` and the same admin surfaces this PR just touched.
+  Cheapest possible follow-on while the mechanism is fresh.
+- **`lane:b` rows 1–4 must not run against each other.** #807 (shipped, PR #813), #793, #806 and
+  #800 all touch `src/ports/repository.ts` / `app/lib/repo.ts` / both adapters. Sequence inside
+  the lane; #793 first shrinks what #806 and #800 have to touch.
+
 **Context:**
+
+- **The wall clock reads ~27h and that is an overnight gap, not work.** Started 12:31Z on the
+  22nd, closed 15:33Z on the 23rd. `/retro`'s break inference will cut it; the real figure is a
+  few hours.
+- **Two windows ran concurrently all session.** Session 94 lives in `/home/eric/muster-s91` on
+  `task/807-pi-idempotency-key` and was still OPEN when this one closed — its `ended:` is not
+  knowable from here and was left blank deliberately. Both share this one `.sessions-worktree`;
+  `/kill-this` and `/its-dead` were run in each and did not collide, because each re-synced
+  (`fetch` + `reset --hard`) immediately before writing. That habit is what made it safe, not luck.
+- **Issue #807 was found as orphaned work at session open** — one commit pushed to
+  `task/807-pi-idempotency-key`, no PR, session 91 closed without it. Surfaced by `/its-alive`'s
+  Orphan-without-PR scan. Dealt with in the other window (PR #813). This is exactly the class
+  issue #661 describes.
+- **The anchor branch was stale from the start.** `task/801-login-window-gate-order` had already
+  merged as PR #810, so the session file is named for work that shipped before it opened. Third
+  session running in a row with this shape. `/its-alive` Step 3 derives the slug from whatever
+  branch the checkout happens to sit on, which is a fact about the shell, not about the session.
+- **Three of this task's seven new e2e cases passed before they proved anything** — each asserted
+  a value the stored record also held, so they would have been green against no fix at all. Caught
+  by reading the *failure output* rather than the pass. The general rule, worth keeping: on a
+  restore test, assert a value the record **cannot** produce.
+- **A review verifies the diff, not your framing — unless you ask it to.** `@code-review` was told
+  explicitly to re-derive the claims from source rather than accept the summary, and it found the
+  one real bug on the money surface (the cancel-confirm's override amount) sitting four lines from
+  a nearly identical line that was already correct. Same lesson session 92 recorded; it paid out
+  again here.
+- **`/security-review` reads the shell's cwd**, so it must be run from inside the worktree whose
+  branch is under review (session 89's note). Ran correctly here — this session's shell and code
+  are the same checkout, which is DEC-S048 working as intended.
+- **Drift vs seeds was clean at open** (`seeds-version` 5 both sides; only three one-time
+  migration scripts absent). The five session-skill drifts session 92 recorded are gone.

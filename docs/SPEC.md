@@ -1615,8 +1615,22 @@ booking's frozen values.
 **A payment that resolves to no reservation is not ignored silently.** Stripe reports payments Muster
 did not originate through this path, and those are acknowledged and dropped. But a payment that
 *should* have matched and does not — a booking charge whose write never landed — means money moved with
-nothing behind it. **That case alerts a human and says the amount.** The one thing it must never do is
-pass quietly.
+nothing behind it. The one thing it must never do is pass quietly.
+
+**Where the alert goes, and the three rules it obeys.** Out by SMS to **every active admin** — not to a
+single configured operator — carrying the amount and a link to the purchases screen, so the person
+reading it on a phone can act rather than go looking. This is the same money-alert path §3.4 uses; a
+booking that lost its write is the same class of event as a dispute, and it is not gated to civil hours
+because "money moved and nobody knows why" does not wait until morning.
+
+1. **It never throws.** The caller is a Stripe webhook. An alert that raises turns a money problem into
+   a delivery failure, and Stripe re-sends the whole event — so a broken alert would silently convert
+   into a retry storm against a case that was already going wrong.
+2. **Reaching zero admins is itself a failure** and is logged as one. A send that fans out to nobody is
+   indistinguishable from a send that worked, unless it says so.
+3. **On a deploy with no SMS configured, the log line is the entire alert.** That is a real operating
+   state, not a hypothetical, and it means such a deploy has no active notification for money moving
+   without a booking behind it. Anyone running one should know that before they need to.
 
 **Confirm can also arrive at a row that already expired.** That is 2.8.7's last line, not an error.
 
@@ -1772,8 +1786,10 @@ cancellation stays out until the refund schedule is decided (issue #472).
       that day is notified that it changed.
 - [ ] Confirming a departure whose slot was previously booked and then cancelled succeeds, and the
       Event carries the new booking's frozen values.
-- [ ] A booking-charge payment that matches no reservation raises an alert naming the amount. It is
-      never dropped silently.
+- [ ] A booking-charge payment that matches no reservation alerts every active admin by SMS, naming the
+      amount, and is never dropped silently. Make the alert path throw and assert the webhook still
+      returns success — a broken alert must not turn into a Stripe retry storm. Run it once with SMS
+      unconfigured and confirm the log line is the only trace, which is what such a deploy gets.
 - [ ] Editing the offering's price, trip length or schedule while a reservation is pending changes
       neither what that customer is charged nor what their booking occupies.
 - [ ] A balance payment and a post-trip gratuity payment never create or confirm a reservation.

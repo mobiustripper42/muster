@@ -1563,7 +1563,7 @@ section before it is a change to any code.
 | **Add-ons** | per add-on | yes | yes | yes |
 | **Tax** | fare + extras + add-ons | — | **no** | yes |
 | **Service fee** | fare + extras + add-ons | **no** | — | yes |
-| **Tip** | a percentage of the fare | **no** | **no** | yes |
+| **Tip** | fare + extras (a tier percentage) | **no** | **no** | yes |
 
 **Tax is a configured rate, not a constant.** It lives in payment configuration because it is a
 jurisdiction's rate, and it is **8%** where BrewBoat operates. There is no admin surface to change it
@@ -1575,10 +1575,14 @@ the tip.
 the trip. It is **not** charged on tax (which is not the operator's money) and **not** on the tip
 (which is the crew's). A customer who tips more does not pay a larger fee.
 
-**The tip is the crew's money and is untaxed.** Charged in full on top, never through the
-deposit split. Tiers are fixed at present and the customer must pick one — there is no decline. Making
-the tiers adjustable, and making tipping optional or absent per offering, are both wanted later and
-neither is built; a zero-crew rental is the case that will force it, and there are none yet.
+**The tip is the crew's money and is untaxed.** Charged in full on top, never through the deposit
+split. **The customer must pick a tier — there is no decline.** The tiers and the preselected one are
+already per-offering configuration, editable by the operator; the defaults are 15/20/25 with 20%
+preselected.
+
+**Tipping cannot currently be turned off for an offering.** The admin form appears to allow it, but
+checkout falls back to the default tiers when an offering has no tip configuration, so no offering can
+be tip-free. A zero-crew rental is the case that will force this and there are none yet.
 
 **Also frozen, though not charged:** the **amount due now** — the whole total where the deploy takes
 full payment, or the deposit share where it takes a deposit — and the **trip length**, because 2.8.3
@@ -1603,9 +1607,10 @@ Tips reach crew through the payroll report. **Crew cannot currently see the tip 
 — it exists only in the operator's report. Showing it to them is wanted and is a crew-app surface
 (§2.6), not part of this section.
 
-**No post-trip tipping.** Muster does not collect a tip after the trip. It is a Xola feature and it is
-deliberately not being carried across: it is used rarely, and crew are tipped in cash or Venmo when it
-happens after the fact. See 2.8.11.
+**No post-trip tipping — a removal, not a description.** Muster is not to collect a tip after the
+trip. It is used rarely and crew are tipped in cash or Venmo when it happens after the fact. **This is
+built today** (`create-gratuity-checkout.ts`, reached from the booking-management page) and retiring it
+is work this section is asking for, not a statement of what already runs. See 2.8.11.
 
 **Nothing else is created at checkout.** A customer record, a booking code, and any confirmation
 message belong to confirm, not to the pending write. Anyone who can reach the checkout form can create
@@ -1808,10 +1813,11 @@ been quoted. No booking assembled from data Stripe hands back. No wallets (card 
 cancellation stays out until the refund schedule is decided (issue #472).
 
 **And no post-trip tipping** (2.8.4b). Muster collects a tip at checkout and never again. Xola has a
-post-trip tip and it was going to be copied for no reason beyond that — it is used rarely, and a
-customer who wants to tip after the fact hands over cash or sends Venmo. Written here as a decision
-rather than left as an absence, because the Xola shape is what everything in this subsystem drifts back
-toward when nobody is looking.
+post-trip tip, it was copied for no reason beyond that, and it is used rarely — a customer who wants to
+tip after the fact hands over cash or sends Venmo. Written here as a decision rather than left as an
+absence, because the Xola shape is what everything in this subsystem drifts back toward when nobody is
+looking. **It ships today and has to be removed**; until it is, the decision and the code disagree and
+the decision is the one that is right.
 
 ### Acceptance criteria
 

@@ -45,7 +45,7 @@ Building a parallel union in Muster during the drain duplicates a working tool a
 in the phase — Spink hands Gusto a half-empty payroll CSV. The operator gets two lists and adds them by
 hand, as they did for two years.
 
-**At Xola sunset the whole apparatus moves into Muster** — split, Gusto CSV, union, one final export —
+**The extractor dies with Xola**, on DEC-105's drain — Xola's forward book empties naturally, then the subscription is cancelled. **At that sunset the whole apparatus moves into Muster** — split, Gusto CSV, union, one final export —
 and the extractor retires. It belongs here eventually because tips are the one surface spanning both
 halves of the app: reservation money reaching crew people. Three of the extractor's load-bearing parts
 are things Muster already has natively — which crew worked an event, the crew identity map, and a

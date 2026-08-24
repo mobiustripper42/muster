@@ -6,7 +6,7 @@ branch: task/807-pi-idempotency-key
 started: 2026-08-22T13:48:58Z
 ended:
 points:
-pr_numbers: [813, 817]
+pr_numbers: [813, 817, 819, 821]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster-s91/5487f3cf-cd4b-5fc3-9fef-7e4789b9a7d2.jsonl
 ---
@@ -72,6 +72,38 @@ hold-vs-reservation.
 **Points:** 1
 **Branch:** task/decision-record-shrinks
 **Opened at:** 2026-08-23T13:15:00Z
+
+## Task 3: SPEC §2.8.4a/4b — what the customer is charged, and where the tip goes
+
+**Completed:**
+- Steps 1 and 2 of issue #816, shipped as one edit — both are money components in one table.
+- `docs/SPEC.md` §2.8.4a — the component table: fare, extra guests, add-ons, tax, service fee, tip;
+  per component, what it is charged on / taxed / in the fee base / back on a full refund. A component
+  not in that table does not exist. **Tax 8%** (configured, not a constant), **service fee 3%** on
+  fare+extras+add-ons and NOT on tax or tip, add-ons and extra guests taxed and in the fee base.
+- Two deliberate divergences from Xola recorded, both verified against a real reservation: Muster does
+  not charge the fee on the tip ($23.74 vs $21.27 on the worked example), and Muster taxes extra
+  guests ($160 left untaxed by Xola).
+- `docs/SPEC.md` §2.8.4b — the tip split that already runs: equal across confirmed holders of
+  **required** seats, supernumerary excluded (now a decision, previously an implementation detail),
+  exact integer cents with a deterministic remainder, unsplittable pool reported not dropped.
+- Post-trip tipping **dropped** (§2.8.11) — a Xola feature copied for no other reason. It ships today
+  (`create-gratuity-checkout.ts`), so the spec asks for a removal and says so rather than describing.
+- Purge, same PR: DEC-124 −99 lines (kept only gratuity-is-not-an-add-on + where the split lives during
+  the overlap); DEC-134 lost the fee, tax and tiers.
+- **Decision bytes 570,747 → 567,452**, the issue #816 shrink rule holding.
+
+**Code review:** 3 findings, all real, all verified against code before fixing. The important one: I
+wrote that adjustable tip tiers are "not built" — they are, per-offering, at
+`admin/offerings/offering-sections.tsx:429`. The operator believed the same, so the spec was about to
+record a shipped feature as missing. The genuine gap is tip-*optional* per offering. Also: "no
+post-trip tipping" was written as description when it is a removal, and the Tip row's base said "fare"
+where the code computes on fare+extras.
+
+**PR:** [PR #821](https://github.com/mobiustripper42/muster/pull/821)
+**Points:** 3
+**Branch:** task/spec-money-components
+**Opened at:** 2026-08-24T13:40:00Z
 
 **Next Steps:**
 - **issue #816 — the decision sweep.** §2.8 is merged (PR #813), so the target no longer moves. Start

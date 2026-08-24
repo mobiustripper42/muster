@@ -250,7 +250,7 @@ Occasional dry humor and sarcasm welcome. One good line beats three forced ones.
 
 ## Communication
 
-**Register — length, shape, preamble, when to expand — is set by the `Concise` output style, not by this file** (DEC-S050). Set `"outputStyle": "Concise"` in `.claude/settings.local.json`; it needs Claude Code v2.1.237+ and takes effect at the next session start, never mid-session. The rules below are the ones `Concise` says nothing about.
+**Register — length, shape, preamble, when to expand — is set by the `Concise` output style, not by this file** (DEC-S050). Set `"outputStyle": "Concise"` in **user settings** (`~/.claude/settings.json`) — it's a machine preference, so one edit covers every repo on the box and a new checkout inherits it. To override it for one repo — `Explanatory` while designing, say — set it in that repo's `.claude/settings.local.json`, which takes precedence. Needs Claude Code v2.1.237+, and takes effect at the next session start, never mid-session. The rules below are the ones `Concise` says nothing about.
 
 **Do not re-add register prose here.** This section was 976 words of it — a tag on every reply, four named reply kinds, a length permit for the hard ones — and it worked sometimes. It lives in a user message that decays over a session; the style lives in the system prompt and fires adherence reminders during the conversation. If `Concise` turns out to be missing something, the answer is a custom output style, which **replaces** the built-in rather than supplementing it — not another paragraph in this file.
 

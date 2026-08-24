@@ -2231,9 +2231,11 @@ it is a fan-out of money + comms across every booking the shift carried. For **e
 4. **Issue** the refund/credit (via Stripe — wiring is build-phase), **notify** the customer (reason +
    refund/credit details), and **update** booking + shift state to `Cancelled` (§1.1).
 
-> **The customer-initiated branch is §2.8.4c**, and it is no longer parked — the customer portal it
-> was deferred to shipped (DEC-105). What the terms are, what "everything paid" means, and why an
-> operator cancellation carries no fee all live there. §3.3 is the *operator's* fan-out across a whole
+> **The customer-initiated branch is §2.8.4c.** The deferral above is stale — it sends the reader to
+> the customer portal as parked future work, and DEC-105 un-parked that scope. The terms themselves,
+> what "everything paid" means, and why an operator cancellation carries no fee all live in §2.8.4c
+> now. **Self-service cancellation is still not built** (§2.8.4c); the terms apply either way, because
+> they govern what is owed rather than who presses the button. §3.3 is the *operator's* fan-out across a whole
 > shift's bookings, which is the 11pm decision Spink makes from the board, and step 1 below reads its
 > refund amounts from §2.8.4c rather than defining any.
 

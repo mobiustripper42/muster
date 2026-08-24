@@ -1616,6 +1616,57 @@ is work this section is asking for, not a statement of what already runs. See 2.
 message belong to confirm, not to the pending write. Anyone who can reach the checkout form can create
 a pending reservation; nothing durable and nothing outbound may hang off that.
 
+**2.8.4c What comes back when a booking is cancelled.**
+
+**These are BrewBoat's published terms, not a policy engine.** They are what a customer agreed to on
+brewcle.com, quoted at checkout before the pay button and again on the booking page. Muster implements
+these terms. It does not implement a configurable cancellation system that could express them — that
+would be a general mechanism built for one tenant, and the terms would then live in a settings row
+where nobody could see they had changed.
+
+The terms, as published:
+
+> Bookings canceled 14 days prior to your cruise will be refunded minus a $50 cancellation fee.
+> Cancellations less than 14 days from your scheduled cruise are non-refundable. Likewise, no-shows
+> will not receive any credits or refunds. If your tour is canceled due to inclement weather, we will
+> provide you with a full refund. Optional cancellation insurance is provided for $30 which allows for
+> a 72 hour cancelation before the tour.
+
+**Who cancelled is the discriminator, not when.**
+
+| Who | When | What comes back |
+|---|---|---|
+| **The customer** | 14 days or more before departure | everything paid, **minus $50** |
+| **The customer** | less than 14 days before, or a no-show | **nothing** |
+| **The operator** | any notice at all — weather, crew shortage, mechanical | **everything paid, no fee** |
+
+**"Everything paid" means everything.** The fare, extras, add-ons, tax, the service fee and the tip —
+every component in 2.8.4a. The published terms deduct the $50 and nothing else, so anything netted out
+before the refund is computed is a deduction that was never published. An operator cancellation returns
+the whole amount and takes no fee, because the operator is the one who could not deliver.
+
+**A non-refundable cancellation keeps everything, service fee included.** Inside the window the
+customer is owed nothing, and nothing is what they get. The service fee does not come back separately.
+
+**The $50 floors at zero, never below.** A deposit can be smaller than the fee. That is a zero refund —
+never a negative one, and never a charge.
+
+**The 14-day boundary is inclusive.** Exactly 14 days out is refundable. The published wording reads
+inclusive and the edge favours the customer.
+
+**Flex insurance narrows the window; it does not waive the fee.** $30 buys a 72-hour cancellation
+window instead of 14 days. The $50 still applies. It is a **boolean on the reservation that selects
+which window applies** — deliberately not an add-on line item, because an add-on is taxed and fee'd
+like revenue (2.8.4a) and this is neither. Do not model it as one.
+
+**Flex cannot currently be sold** — there is no way for a customer to buy it, so no booking has it and
+the 14-day window governs every reservation today. The term is published regardless, which is why it is
+written here: it is a promise that exists whether or not the software can honour it. Selling it is
+add-ons work (issue #683, issue #622).
+
+**Self-service cancellation is not built.** A customer requests a cancellation and the operator acts on
+it. That is a surface decision, not a policy one — the terms above are what get applied either way.
+
 **2.8.5 Payment identity lives on our side.**
 
 The link between a payment and a reservation is the payment's id, **recorded against our own row** at
@@ -2180,9 +2231,11 @@ it is a fan-out of money + comms across every booking the shift carried. For **e
 4. **Issue** the refund/credit (via Stripe — wiring is build-phase), **notify** the customer (reason +
    refund/credit details), and **update** booking + shift state to `Cancelled` (§1.1).
 
-> The customer-initiated cancel branch (policy scales the refund by how far out they cancel) belongs
-> to the customer portal, which is parked (§4). The **admin cancel flow above is in scope** because
-> it's the 11pm decision Spink makes from the board.
+> **The customer-initiated branch is §2.8.4c**, and it is no longer parked — the customer portal it
+> was deferred to shipped (DEC-105). What the terms are, what "everything paid" means, and why an
+> operator cancellation carries no fee all live there. §3.3 is the *operator's* fan-out across a whole
+> shift's bookings, which is the 11pm decision Spink makes from the board, and step 1 below reads its
+> refund amounts from §2.8.4c rather than defining any.
 
 **States to render:** the cancel confirmation showing, per booking on the shift, the computed
 refund/credit and the rebook-vs-refund choice; a summary of what will be sent. **Acceptance:** a

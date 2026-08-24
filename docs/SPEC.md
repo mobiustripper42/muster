@@ -1550,10 +1550,67 @@ them.** Every later reader — the confirmation, the receipt, the balance, a ref
 values. Nothing recomputes from live settings, because a tax rate, a service fee, a price or a trip
 length can change between the quote and the payment, and the customer must get what they were shown.
 
-The frozen set: the fare, **extras** (the per-head charge for guests beyond the number the price
-includes), tax, service fee, gratuity, **the amount due now** — the whole total where the deploy takes
-full payment, or the deposit share where it takes a deposit — and **the trip length**, because 2.8.3
+**2.8.4a What the customer is charged.**
+
+Every component below is computed once, at checkout, and frozen onto the reservation. This table is
+the whole of it — a component not listed here does not exist, and a new one is a change to this
+section before it is a change to any code.
+
+| Component | Charged on | Taxed | In the service-fee base | Returned on a full refund |
+|---|---|---|---|---|
+| **Fare** | the departure's price | yes | yes | yes |
+| **Extra guests** | per head beyond the number the fare includes | yes | yes | yes |
+| **Add-ons** | per add-on | yes | yes | yes |
+| **Tax** | fare + extras + add-ons | — | **no** | yes |
+| **Service fee** | fare + extras + add-ons | **no** | — | yes |
+| **Tip** | fare + extras (a tier percentage) | **no** | **no** | yes |
+
+**Tax is a configured rate, not a constant.** It lives in payment configuration because it is a
+jurisdiction's rate, and it is **8%** where BrewBoat operates. There is no admin surface to change it
+today; the code carries a fallback for deploys with no configuration row, and that fallback is not the
+rate. Tax applies to what the operator sells — fare, extras, add-ons — and never to the service fee or
+the tip.
+
+**The service fee is the operator's, and it is 3%.** A configured rate on what the operator is paid for
+the trip. It is **not** charged on tax (which is not the operator's money) and **not** on the tip
+(which is the crew's). A customer who tips more does not pay a larger fee.
+
+**The tip is the crew's money and is untaxed.** Charged in full on top, never through the deposit
+split. **The customer must pick a tier — there is no decline.** The tiers and the preselected one are
+already per-offering configuration, editable by the operator; the defaults are 15/20/25 with 20%
+preselected.
+
+**Tipping cannot currently be turned off for an offering.** The admin form appears to allow it, but
+checkout falls back to the default tiers when an offering has no tip configuration, so no offering can
+be tip-free. A zero-crew rental is the case that will force this and there are none yet.
+
+**Also frozen, though not charged:** the **amount due now** — the whole total where the deploy takes
+full payment, or the deposit share where it takes a deposit — and the **trip length**, because 2.8.3
 measures occupancy with it and an offering can be edited mid-window.
+
+**2.8.4b Where the tip goes.**
+
+The tip pool for a departure is **split equally among the crew who worked it** — the confirmed holders
+of that shift's **required** seats, deduped.
+
+- **Supernumerary seats are not in the split.** Someone riding along on an extra seat is not paid from
+  the tip pool. Deliberate, not an oversight.
+- **The split is exact in integer cents.** The remainder is distributed deterministically rather than
+  rounded — crew sorted by id, the first `pool mod n` of them receive one extra cent. The same pool
+  always produces the same answer, which matters because this is a payroll figure someone may check
+  twice.
+- **A pool with no confirmed crew is never silently dropped.** It is reported unsplit, as a warning the
+  operator sees. Money that arrived and cannot be allocated is a thing to look at, not a rounding
+  error.
+
+Tips reach crew through the payroll report. **Crew cannot currently see the tip on a trip they worked**
+— it exists only in the operator's report. Showing it to them is wanted and is a crew-app surface
+(§2.6), not part of this section.
+
+**No post-trip tipping — a removal, not a description.** Muster is not to collect a tip after the
+trip. It is used rarely and crew are tipped in cash or Venmo when it happens after the fact. **This is
+built today** (`create-gratuity-checkout.ts`, reached from the booking-management page) and retiring it
+is work this section is asking for, not a statement of what already runs. See 2.8.11.
 
 **Nothing else is created at checkout.** A customer record, a booking code, and any confirmation
 message belong to confirm, not to the pending write. Anyone who can reach the checkout form can create
@@ -1570,9 +1627,8 @@ a tip change, creates a second payment against the same reservation (2.8.7). Bot
 both resolve to that reservation — **a superseded payment that later succeeds must still be findable.**
 One overwritable column loses the first id and turns a late success into an unrecognisable charge.
 
-Only **booking** payments are recorded this way. The balance and post-trip gratuity charges (2.8.10)
-are payments against a booking that already exists and never resolve to a reservation through this
-path.
+Only **booking** payments are recorded this way. The balance charge (2.8.10) is a payment against a
+booking that already exists and never resolves to a reservation through this path.
 
 For the human reading the Stripe dashboard, `description` — a first-class Stripe field — carries the
 offering, the departure, the party size and who booked. **So the booking charge sends no metadata at
@@ -1719,8 +1775,10 @@ The payment path is new. These are not, and a from-scratch build still has to me
 `eventId` always set. They occupy hulls under exactly the rule in 2.8.3. A reservation with no payment
 recorded against it is not a defect, and it is what keeps 2.8.9's work list safe.
 
-**Balance and post-trip gratuity payments.** Charges against a booking that already exists. They must
-never create or confirm a reservation — 2.8.6's "resolves to no reservation" is what keeps them out.
+**The balance payment.** A charge against a booking that already exists — the remainder where the
+booking charge was only a deposit. It must never create or confirm a reservation; 2.8.6's "resolves to
+no reservation" is what keeps it out. It is the **only** other payment kind, now that post-trip
+gratuity is dropped (2.8.4b).
 Note that a balance's tax is currently recomputed from live settings at billing time, which the freeze
 rule in 2.8.4 forbids; that is an inconsistency to resolve, not a licence to leave it.
 
@@ -1753,6 +1811,13 @@ never be handed a `pending` or `expired` row.
 to fit. No customer-chosen vessel. No separate hold object. No money computed after the customer has
 been quoted. No booking assembled from data Stripe hands back. No wallets (card only). Self-service
 cancellation stays out until the refund schedule is decided (issue #472).
+
+**And no post-trip tipping** (2.8.4b). Muster collects a tip at checkout and never again. Xola has a
+post-trip tip, it was copied for no reason beyond that, and it is used rarely — a customer who wants to
+tip after the fact hands over cash or sends Venmo. Written here as a decision rather than left as an
+absence, because the Xola shape is what everything in this subsystem drifts back toward when nobody is
+looking. **It ships today and has to be removed**; until it is, the decision and the code disagree and
+the decision is the one that is right.
 
 ### Acceptance criteria
 
@@ -1792,7 +1857,10 @@ cancellation stays out until the refund schedule is decided (issue #472).
       unconfigured and confirm the log line is the only trace, which is what such a deploy gets.
 - [ ] Editing the offering's price, trip length or schedule while a reservation is pending changes
       neither what that customer is charged nor what their booking occupies.
-- [ ] A balance payment and a post-trip gratuity payment never create or confirm a reservation.
+- [ ] A balance payment never creates or confirms a reservation.
+- [ ] The tip pool for a departure divides evenly across the confirmed holders of its **required**
+      seats and no others; the cents add up exactly to the pool; and a departure with a tip but no
+      confirmed crew produces a warning rather than a silent loss.
 - [ ] An imported Xola reservation, which has no payment recorded, still occupies its hull.
 - [ ] The public booking-recovery lookup returns nothing for a `pending` or `expired` reservation.
 

@@ -6,7 +6,7 @@ branch: task/807-pi-idempotency-key
 started: 2026-08-22T13:48:58Z
 ended:
 points:
-pr_numbers: [813, 817, 819, 821]
+pr_numbers: [813, 817, 819, 821, 822]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster-s91/5487f3cf-cd4b-5fc3-9fef-7e4789b9a7d2.jsonl
 ---
@@ -104,6 +104,41 @@ where the code computes on fare+extras.
 **Points:** 3
 **Branch:** task/spec-money-components
 **Opened at:** 2026-08-24T13:40:00Z
+
+## Task 4: SPEC §2.8.4c — what comes back when a booking is cancelled
+
+**Completed:**
+- Step 3 of issue #816. `docs/SPEC.md` §2.8.4c — BrewBoat's **published** cancellation terms, written
+  as terms rather than a policy engine, quoted verbatim above the table that implements them.
+- **issue #472 was never actually open.** The refund schedule has been in `refund-terms.ts:9-13`
+  verbatim since 2026-08-06, from the operator, and was never in the spec. That is this whole
+  exercise's diagnosis in one issue.
+- Who cancelled is the discriminator, not when: customer 14+ days → everything minus $50; customer
+  inside 14 days or no-show → **nothing**, service fee stays (operator, 2026-08-24); operator at any
+  notice → **everything, no fee**.
+- "Everything paid" = every §2.8.4a component, tip and service fee included. The terms name exactly
+  ONE deduction — anything else netted out was never published, which is what issue #797 was.
+- Three things stated because each has been got wrong once: the $50 floors at zero; the 14-day
+  boundary is inclusive; Flex narrows the window and does **not** waive the fee.
+- Flex = a boolean selecting a window, **not** an add-on row (an add-on is taxed and fee'd like
+  revenue and this is neither). Unsellable today, so 14 days governs everything; the term is published
+  regardless.
+- Fixed a stale premise in §3.3 — it deferred customer cancellation to "the customer portal, which is
+  parked (§4)", and DEC-105 un-parked that scope. Now points at §2.8.4c.
+- Purge: DEC-153 lost the policy restatement **and** the carve-out bullets its own amendment corrects
+  (cut, not left above the correction); DEC-113 lost the windows and the price.
+- **Decision bytes 570,747 → 566,867.**
+
+**Code review:** 3 findings, all fixed. The real one: I claimed the customer portal "shipped" in the
+§3.3 rewrite while §2.8.4c, added in the same commit, says self-service cancellation is not built.
+DEC-105 un-parks the scope; it does not assert a live cancel flow, and there isn't one. Also restored a
+worked example the trim took from **inside** a correction rather than from the text being corrected,
+and replaced a "nine lines below" reference the trim itself invalidated.
+
+**PR:** [PR #822](https://github.com/mobiustripper42/muster/pull/822)
+**Points:** 2
+**Branch:** task/spec-cancellation
+**Opened at:** 2026-08-24T14:20:00Z
 
 **Next Steps:**
 - **issue #816 — the decision sweep.** §2.8 is merged (PR #813), so the target no longer moves. Start

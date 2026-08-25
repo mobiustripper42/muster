@@ -6,7 +6,7 @@ branch: task/807-pi-idempotency-key
 started: 2026-08-22T13:48:58Z
 ended:
 points:
-pr_numbers: [813, 817, 819, 821, 822]
+pr_numbers: [813, 817, 819, 821, 822, 823]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster-s91/5487f3cf-cd4b-5fc3-9fef-7e4789b9a7d2.jsonl
 ---
@@ -139,6 +139,36 @@ and replaced a "nine lines below" reference the trim itself invalidated.
 **Points:** 2
 **Branch:** task/spec-cancellation
 **Opened at:** 2026-08-24T14:20:00Z
+
+## Task 5: SPEC — no add-ons, and why that is a decision
+
+**Completed:**
+- Step 4 of issue #816, and the answer was **not to design it** (operator). BrewBoat sells no add-ons;
+  the plausible ones — ice, party hats, a trivia night — do not exist.
+- `docs/SPEC.md` — removed the **Add-ons** row from §2.8.4a's component table and its mentions from the
+  tax base, the service-fee base and §2.8.4c's "everything paid". The table's force is that a component
+  not in it does not exist; a row for something unsellable weakens exactly that.
+- Stated as a non-goal in §2.8.11, with the framing the operator landed on: **design it against a real
+  add-on someone wants to sell, not against Xola's catalog** — designing against Xola's shape is what
+  made Flex insurance a cart item.
+- Two things settled in advance: an add-on **would** be taxed and in the fee base (it is revenue); and
+  **a "required" add-on is not an add-on** — charged on every booking, it is a fee on that offering and
+  belongs in §2.8.4a. The schema's `required` flag is global, so that is reachable today.
+- Commented on **issue #622** rather than closing it — it accurately describes the state (entity,
+  editor, table, attachment all ship and sell nothing), and that state is now deliberate.
+- **This completes the issue #816 queue** — service fee, tips, cancellation, add-ons.
+
+**Code review:** 2 findings, both real, both fixed. (1) The Flex aside read as settled history when it
+is mid-reversal — DEC-113 says boolean, the operator chose an `add_ons` row on 2026-08-06
+(`refund-terms.ts:20-23` warns "do not treat that as settled"), and §2.8.4c returns it to a boolean.
+Now says which is current and that **DEC-113 and issue #683 are owed the correction**. (2) I cut the
+branch from `main` when it referenced §2.8.4c from PR #822 — against this project's own stacking
+preference. Recut; #822 merged meanwhile, so it collapsed back onto `main`.
+
+**PR:** [PR #823](https://github.com/mobiustripper42/muster/pull/823)
+**Points:** 1
+**Branch:** task/spec-no-addons-stacked
+**Opened at:** 2026-08-25T01:05:00Z
 
 **Next Steps:**
 - **issue #816 — the decision sweep.** §2.8 is merged (PR #813), so the target no longer moves. Start

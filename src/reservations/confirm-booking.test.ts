@@ -131,6 +131,41 @@ describe("confirmBookingByPaymentIntent — the success page books without a web
     expect(await repo.listAllReservations()).toHaveLength(0);
   });
 
+  it("does NOT refund or notify on a residual-race loss — that is the webhook's job", async () => {
+    // The loss is STABLE: no reservation row is written, so every replay re-derives `lost`. This
+    // entry point is a public GET anyone can issue in a loop, so running the compensation here
+    // would re-send a customer's "sold out while you were paying" SMS and email on every request,
+    // and re-attempt a refund whose Stripe idempotency key expires after a day — after which the
+    // failure alert texts every admin instead. Reported, not acted on; the webhook still does it.
+    const repo = await seeded();
+    const payments = new FakePaymentPort();
+    // A rival already owns the slot, so this charge loses the atomic claim.
+    await repo.saveEvent(musterEvent());
+    await repo.saveReservation({
+      id: asId<"ReservationId">("rival"),
+      eventId: asId<"EventId">("m-evt-1"),
+      customerName: "Rival",
+      partySize: 12,
+      status: "booked",
+      source: "muster",
+    } as never);
+    payments.succeededIntents.set("pi_loser", {
+      paymentIntentId: "pi_loser",
+      amountReceivedCents: 53625,
+      currency: "usd",
+      metadata: SLOT_METADATA,
+    });
+    const { deps, soldOut } = makeDeps(repo, payments);
+
+    const out = await confirmBookingByPaymentIntent(deps, "pi_loser");
+
+    // Assert we actually REACHED the residual-race branch. Without this the test passes just as
+    // well when the claim never ran at all — the exact shape of green that proves nothing.
+    expect(outcomeOf(out)).toBe("lost");
+    expect(soldOut).not.toHaveBeenCalled();
+    expect(payments.refunds).toHaveLength(0);
+  });
+
   it("does NOT book the metadata-less intent behind a hosted balance checkout", async () => {
     const repo = await seeded();
     await repo.saveEvent(musterEvent());

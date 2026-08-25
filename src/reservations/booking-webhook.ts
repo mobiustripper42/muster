@@ -226,10 +226,26 @@ function requireCents(raw: string | undefined, field: string, chargeKey: string)
   return Number(raw);
 }
 
+/** Options for callers that are not the signed webhook (issue #827). */
+export interface ConfirmOptions {
+  /**
+   * Run the DEC-109 residual-race compensation — the auto-refund and the sold-out notice — when
+   * the claim is lost. **True for the webhook, false for any public entry point.**
+   *
+   * A residual-race loss is a stable outcome: no reservation row is ever written, so every replay
+   * with the same key re-derives `lost`. On a signed webhook that is fine — Stripe redelivers a
+   * bounded number of times. On an unauthenticated GET it is a re-send of a customer-facing SMS
+   * and email per request, and a re-attempted refund whose idempotency key expires after a day,
+   * after which the failure alert texts every admin instead.
+   */
+  notifyOnResidualRaceLoss?: boolean;
+}
+
 /** The charge→booking spine, shared by both event paths (11.2 / 12.5). */
 export async function processBookingCharge(
   deps: WebhookDeps,
   charge: BookingCharge,
+  opts: ConfirmOptions = {},
 ): Promise<WebhookResult> {
   // The RESERVATIONS gate (#588, DEC-111) lives HERE — on the new-booking path only, and after
   // both event shapes have resolved their purpose.
@@ -490,6 +506,11 @@ export async function processBookingCharge(
         `Residual-race loss with NO payment_intent to auto-refund - Stripe charge ` +
           `${charge.key}, ${who}. REFUND MANUALLY in Stripe.`,
       );
+      return { handled: true, outcome: result.outcome };
+    }
+    if (opts.notifyOnResidualRaceLoss === false) {
+      // A public caller (issue #827). The loss is real, but the compensation is the webhook's —
+      // see `confirmBookingByPaymentIntent`. Reported, not acted on.
       return { handled: true, outcome: result.outcome };
     }
     try {

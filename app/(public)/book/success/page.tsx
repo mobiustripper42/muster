@@ -17,10 +17,16 @@
  * the return URL and both are text in an address bar, so the id is resolved against Stripe before
  * anything is written (`confirmBookingByPaymentIntent`). A forged or unpaid id books nothing.
  *
- * **Confirming in the render is safe because the confirm is idempotent**, keyed on the
- * PaymentIntent id — a prefetch, a reload or the webhook arriving mid-render all resolve to
- * `already`, never a second booking. That property is asserted in `confirm-booking.test.ts`; it
- * is what makes this a page rather than a client island firing an action.
+ * **Confirming in the render is safe for re-entry**, because the confirm is idempotent on the
+ * PaymentIntent id: a prefetch, a reload, or the webhook arriving *after* this render all resolve
+ * to `already` and book nothing twice. That is asserted in `confirm-booking.test.ts`, and it is
+ * what makes this a page rather than a client island firing an action.
+ *
+ * **A genuinely simultaneous confirm is a different question and is NOT closed here** — issue
+ * #831. `saveBookingIfSlotFree` reports who *observes* the row, not who inserted it, so two
+ * callers racing inside the same instant can both be told `booked` and both send the customer
+ * their booking link. That is a pre-existing property of the claim path; this page makes it
+ * likelier by adding a second caller, and it is tracked rather than fixed in passing.
  *
  * The copy below is unchanged and still points at the booking link, because the link is sent by
  * the confirm path either way and it is what the customer needs to keep.

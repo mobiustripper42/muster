@@ -57,16 +57,15 @@ The whole allocation is **planned and validated before any money moves** — eno
 
 Two different numbers, deliberately:
 
-- **The prefill** carves out gratuity (crew money, DEC-124) and the service fee. A default that returned the tip would pay out crew money with nobody deciding to.
-- **The cap** is Stripe's real ceiling, `amountCents − refundedCents`. An operator who *chooses* to return the tip must be able to.
+- **The prefill** is what the published terms owe — `SPEC.md` §2.8.4c.
+- **The cap** is Stripe's real ceiling, `amountCents − refundedCents`. An operator who *chooses* to return more than the terms owe must be able to.
 
-Under-quoting produces a complaint; over-quoting silently spends someone else's money. Only one of those is recoverable.
 
 ### Who cancelled is the discriminator, not when
 
 The confirm screen asks *the customer asked* vs *we cancelled*, and **renders both figures next to their option**. With no client JS a single number could not follow the radio, and a figure silently belonging to the other choice is worse than none on a screen whose only job is deciding an amount.
 
-This is what `refund-terms.ts` was built for at #619 and had no caller for: `refundOwedCents` (paid − $50 outside 14 days, nothing inside) and `operatorCancelRefundCents` (everything, at any notice). They stay separate functions so no caller can reach the fee path by passing the wrong notice.
+The amounts are `SPEC.md` §2.8.4c. **What matters here is that the two branches are separate functions** — `refundOwedCents` and `operatorCancelRefundCents` — so no caller can reach the fee path by passing the wrong notice. Who cancelled decides which function runs; the notice only ever decides an amount inside one of them.
 
 **The answer is not persisted.** `Reservation` has no cancellation-reason field and this task does not add one; the refund amount is the only record of which branch ran. Filed rather than smuggled in as a schema change.
 
@@ -131,9 +130,9 @@ The **§3.3 cancel cascade** — shift-level cancel from the At-Risk board, rebo
 
 **What this changes:** the two bullets under *"The quote is conservative; the ceiling is real"* — the carve-out and the under-quoting argument that justified it. **What still stands:** everything else, and that is most of this decision. One editable figure split newest-charge-first across PaymentIntents; plan-and-validate before any money moves; who-cancelled as the discriminator with both figures rendered next to their radio; the cap at Stripe's real ceiling; the answer not persisted at #616 (added since, #724); the ordering that commits the cancellation first; the destructive control last. DEC-124 also stands untouched — a tip is still crew money.
 
-**The published policy has exactly three outcomes** (`refund-terms.ts:9-13`, from the operator 2026-08-06): a full refund when we cancel; what they paid minus a $50 cancellation fee when the customer cancels 14+ days out; nothing inside the window or for a no-show. **That $50 is the only deduction the policy names anywhere.** The prefill deducted three — the gratuity, the service fee, and then the $50 on the customer branch — so on the reported booking (#797) a weather cancel quoted $620.98 against $754.15 paid, and a 14-day customer cancel would have quoted $570.98 against a published $704.15.
+**The published policy is `SPEC.md` §2.8.4c, and it names exactly one deduction.** The prefill deducted three — the gratuity, the service fee, and then the fee on the customer branch — so on the reported booking (#797) a weather cancel quoted $620.98 against $754.15 paid, and a 14-day customer cancel would have quoted $570.98 against a published $704.15.
 
-**This was not made wrong by a later change; it contradicted its own document on the day it was written.** Nine lines below the carve-out bullet, this decision records `operatorCancelRefundCents` as *"everything, at any notice"*, and SPEC.md §3.3 step 2 says *"principled default = full refund."* The two cannot both be true of one screen. `refundableCents` was the faithful implementation of the wrong one, and `operatorCancelRefundCents`'s own docstring — correct about the policy, describing an input it never received — is what the contradiction looked like in code.
+**This was not made wrong by a later change; it contradicted its own document on the day it was written.** Under *"Who cancelled is the discriminator"*, this decision records `operatorCancelRefundCents` as *"everything, at any notice"*, and SPEC.md §3.3 step 2 says *"principled default = full refund."* The two cannot both be true of one screen. `refundableCents` was the faithful implementation of the wrong one, and `operatorCancelRefundCents`'s own docstring — correct about the policy, describing an input it never received — is what the contradiction looked like in code.
 
 **The under-quoting argument goes with it.** *"Under-quoting produces a complaint; over-quoting silently spends someone else's money. Only one of those is recoverable."* That trade is real when the amount is discretionary. It is not available where we have published the figure: under-quoting there is a term we do not honour, and because the prefill is what gets accepted without retyping, the shortfall is the default rather than the edge. A tip taken at checkout for a trip that never sailed is not pay for work anyone did, on either branch.
 

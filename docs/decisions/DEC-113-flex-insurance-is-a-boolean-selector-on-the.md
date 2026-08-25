@@ -14,14 +14,15 @@ mis-modeling; the build is Phase 12.**
 product (`docs/design/the-booking-1.md §4`, `the-living-link-1.md §5`; confirmed by the Xola purchase line
 "Flex Insurance: No — $0.00").
 
-**Decision.** Insurance is a **boolean on the reservation** that flips which tier the refund policy reads
-(BrewBoat: 14-day free-cancel → 72-hour) — **not** a general add-on / line-item and **not** a questionnaire
-field. It rides the `terms` argument of `refund_owed(who, when, paid, terms)`; **no new machinery**.
-**General add-ons stay parked** — model as Xola `item.addOns[]` only if ever built. The flag is **inert until
-refund-policy-as-code exists**, which is **Phase 12** and **owner-gated (Drew — refund tiers)**; it is **not
-required for the Phase 11 exit gate** (one paid booking) and adds **no** field to the throwaway P11 harness.
-Recording now fixes the *shape* so it isn't later built as a priced product. **Revisit if:** the operator
-ever wants true multi-add-on selling (then reopen as `item.addOns[]`, a conscious scope widen).
+**Decision.** Insurance is a **boolean on the reservation** that selects which cancellation window
+applies — **not** a general add-on, a line item, or a questionnaire field. The windows and the price are
+`SPEC.md` §2.8.4c.
+
+**Why it must not be an add-on**, which is the whole reason this file exists: an add-on is taxed and
+charged the service fee like revenue (§2.8.4a). Insurance is neither. Modelling it as one silently
+changes what the customer pays and what the operator owes. Recording the shape early is what stops it
+being built as a priced product later. **Revisit if:** the operator ever wants true multi-add-on
+selling — and even then, not this.
 
 > **Two corrections (2026-07-25).**
 > 1. **`refund_owed` does not exist.** It is a `SPEC.md` §3.3 formula, and §3.3 is **parked** by DEC-107.

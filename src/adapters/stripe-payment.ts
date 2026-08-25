@@ -18,6 +18,7 @@ import {
   type DisputeState,
   type PaymentEvent,
   type PaymentPort,
+  type PaymentSucceeded,
   type RefundInput,
 } from "../ports/payment.js";
 
@@ -143,6 +144,29 @@ export class StripePaymentPort implements PaymentPort {
     });
     if (!intent.client_secret) throw new Error("Stripe payment intent returned no client_secret");
     return { clientSecret: intent.client_secret, paymentIntentId: intent.id };
+  }
+
+  /**
+   * Read a PaymentIntent back and report it ONLY if Stripe says it succeeded (issue #827).
+   *
+   * `status === "succeeded"` is the gate. The success page hands us an id out of a URL, so this
+   * is the step that makes the redirect meaningless as evidence: an unknown id, a failed intent
+   * or an unpaid one all resolve to `null` and book nothing. A retrieve failure is `null` too —
+   * unable-to-verify is not the same as verified, and the webhook is still coming.
+   */
+  async getSucceededPaymentIntent(paymentIntentId: string): Promise<PaymentSucceeded | null> {
+    try {
+      const pi = await this.#stripe.paymentIntents.retrieve(paymentIntentId);
+      if (pi.status !== "succeeded") return null;
+      return {
+        paymentIntentId: pi.id,
+        amountReceivedCents: pi.amount_received,
+        currency: pi.currency,
+        metadata: pi.metadata ?? {},
+      };
+    } catch {
+      return null;
+    }
   }
 
   async getReceiptUrl(paymentIntentId: string): Promise<string | undefined> {

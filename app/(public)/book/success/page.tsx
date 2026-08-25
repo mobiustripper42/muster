@@ -1,15 +1,62 @@
 /**
- * Booking confirmation landing (12.6, #459; supersedes the 11.6 harness stub) — where Stripe
- * redirects after a successful charge, from both the Elements PaymentIntent flow (12.5) and any
- * hosted Checkout. Says "you're booked" but leans on the **booking link arriving by text/email**,
- * NOT on showing the reservation inline: the redirect is not proof of the write — the webhook
- * (which may land a beat later) is what creates the reservation + sends the manage link (DEC-107/
- * DEC-122). So this page never tries to load a reservation that might not exist yet; it points the
- * customer at their incoming link.
+ * Booking confirmation landing (12.6, #459) — where Stripe redirects after a successful charge,
+ * from the Elements PaymentIntent flow (12.5) and from any hosted Checkout.
+ *
+ * **This page CONFIRMS the booking (issue #827, SPEC §2.8 criterion 13).** It used to be static
+ * copy that pointed at an incoming link, on the reasoning that the redirect is not proof of the
+ * write and the webhook is what creates the reservation. That reasoning is right about the
+ * redirect and wrong about the conclusion: it left `payment_intent.succeeded` as the ONLY path
+ * that ever books, so a delayed or misconfigured endpoint meant the customer had paid and nothing
+ * had happened, with no bound on when anyone would notice.
+ *
+ * Stripe's own fulfillment guidance is to do both — webhooks can be delayed, so fulfil from the
+ * landing page as well, where the customer is standing in front of you. The webhook remains the
+ * guarantee for the customer who closed the tab.
+ *
+ * **The redirect is still not proof.** Stripe appends `payment_intent` and `redirect_status` to
+ * the return URL and both are text in an address bar, so the id is resolved against Stripe before
+ * anything is written (`confirmBookingByPaymentIntent`). A forged or unpaid id books nothing.
+ *
+ * **Confirming in the render is safe because the confirm is idempotent**, keyed on the
+ * PaymentIntent id — a prefetch, a reload or the webhook arriving mid-render all resolve to
+ * `already`, never a second booking. That property is asserted in `confirm-booking.test.ts`; it
+ * is what makes this a page rather than a client island firing an action.
+ *
+ * The copy below is unchanged and still points at the booking link, because the link is sent by
+ * the confirm path either way and it is what the customer needs to keep.
  */
 import { AppLink } from "../../../../components/ui/app-link";
+import { bookingDeps } from "../../../lib/booking-deps";
+import { confirmBookingByPaymentIntent } from "@core/reservations/confirm-booking.js";
 
-export default function BookingSuccessPage() {
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+/**
+ * Confirm from the id Stripe put in the URL. Never throws and never blocks the page: this is the
+ * FAST path, not the guarantee. If Stripe is unconfigured, the id is absent, or anything fails,
+ * the webhook still books the customer and the copy below is still true.
+ */
+async function confirmFromRedirect(paymentIntentId: string | undefined): Promise<void> {
+  if (!paymentIntentId) return;
+  const secretKey = process.env.STRIPE_SECRET_KEY;
+  if (!secretKey) return;
+  try {
+    await confirmBookingByPaymentIntent(bookingDeps(secretKey), paymentIntentId);
+  } catch (e) {
+    // Deliberately swallowed. A customer who paid should never see a stack trace because our
+    // fast path failed, and the webhook is still coming for exactly this case.
+    console.error("[book/success] confirm from redirect failed", e);
+  }
+}
+
+export default async function BookingSuccessPage(props: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = await props.searchParams;
+  const pi = sp.payment_intent;
+  await confirmFromRedirect(typeof pi === "string" ? pi : undefined);
+
   return (
     <main className="mx-auto max-w-lg px-4 py-16">
       <div className="overflow-hidden rounded-[18px] border border-line bg-card shadow-sm">

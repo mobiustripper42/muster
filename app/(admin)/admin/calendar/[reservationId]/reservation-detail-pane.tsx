@@ -1,6 +1,7 @@
 import { formatCents, type ReservationDetailView } from "@core/reservations/calendar-detail.js";
 import { offeringDotClass } from "@core/reservations/calendar-grid.js";
 import { AppLink } from "../../../../../components/ui/app-link";
+import { UnsavedGuard } from "../../../../../components/ui/unsaved-guard";
 import { vesselHueClass } from "../../../../lib/vessel-hue";
 import { clockTime, formatShortDay } from "../calendar-view";
 import { CopyButton } from "../../../../../components/ui/copy-button";
@@ -653,6 +654,7 @@ function PaneActions({
           `data-commits`, and the #718 e2e asserts against exactly those. */}
       {!confirming && actions.refundableCents > 0 && (
         <form action={startRefund} className="mb-2" data-testid="refund-form">
+          <UnsavedGuard />
           {hidden}
           {/* The compare-and-swap token: the refunded total this screen was DRAWN against.
               Stripe's idempotency key cannot stop a double-submit here, because the second
@@ -708,6 +710,7 @@ function PaneActions({
         !cancelled &&
         (actions.confirmingCancel ? (
           <form action={cancelBooking} className="mb-3" data-testid="cancel-confirm">
+            <UnsavedGuard />
             {hidden}
             {/* Kept when the rest of the explanations were cut: the button covers the money,
                 and nothing else on screen says a text lands on a crew member's phone. */}

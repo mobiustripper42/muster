@@ -2,7 +2,7 @@
 
 import { useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { confirmLeaveIfDirty } from "./dirty-state";
+import { confirmLeaveIfDirty } from "../ui/dirty-state";
 
 /**
  * Navigate-on-change for filter controls — the mechanism `CrewSelect` introduced for

@@ -1,0 +1,189 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { bornFormState, formState } from "./form-dirty";
+import { confirmLeaveIfDirty, forgetDirty, markDirty } from "./dirty-state";
+
+/**
+ * Ask before walking away from an unsaved edit (#781).
+ *
+ * Issue #699 and issue #780 cover work lost to a **refused save**. This covers the ordinary way
+ * it goes: a half-filled form, a click on the master list inches away, and it is gone with no
+ * prompt and no trace.
+ *
+ * ## Four exits, and no one mechanism covers more than two of them
+ *
+ *  1. **Reload, tab close, an external URL, the address bar** — `beforeunload`. The browser owns
+ *     the wording; there is no copy control and none is available.
+ *  2. **In-app links** — an `AppLink` is a client-side push that fires no unload at all, so a
+ *     capture-phase `click` listener intercepts the anchor before Next's router sees it. This is
+ *     the common case here: every CRUD surface is master–detail, and the list that navigates
+ *     away sits inches from the fields being typed into.
+ *  3. **`AutoSubmitSelect` / `AutoSubmitDate`** — navigate from a `change` handler and are not
+ *     anchors, so they consult the shared registry in `dirty-state.ts` themselves.
+ *  4. **Back and Forward** — fire neither an unload nor a click. See the sentinel below.
+ *
+ * All four release the moment the form submits, so saving never argues with you on the way out.
+ *
+ * ## No-JS
+ *
+ * The effect never runs and there is no guard, which is the status quo rather than a regression
+ * (DEC-147: the form still posts without JS, and this island adds nothing the form needs).
+ */
+
+/**
+ * The Back/Forward problem, and the honest cost of the fix.
+ *
+ * A soft navigation backwards fires `popstate` **after** the browser has already moved, and by
+ * then Next has begun rendering the previous route — so asking at that point and then calling
+ * `history.forward()` would return to a form re-fetched from the server, with the operator's
+ * typing gone. Undoing the move is not enough; it has to be prevented.
+ *
+ * So going dirty pushes a **duplicate history entry for the same URL**. A Back press lands on
+ * that sentinel instead of leaving the page, `popstate` fires with the form still intact, and
+ * the guard can ask. Decline and it re-pushes; accept and it steps back for real.
+ *
+ * **The sentinel is never removed while the page lives**, and that is a deliberate trade rather
+ * than an oversight. Removing it means calling `history.back()` from a cleanup — which, on the
+ * submit path, races the server action's own `redirect()`, on a set of surfaces that includes
+ * the payroll-feeding time clock. One dead Back press after an edit is typed and then reverted
+ * is the price, and it is cheap next to interfering with a save.
+ */
+const SENTINEL = "__unsavedGuard";
+
+/**
+ * Track the enclosing form's dirtiness and guard every exit while it is dirty.
+ *
+ * **Listens on the enclosing FORM, reached through the returned ref's `.closest("form")`** — no
+ * prop threading, and it covers any field the caller adds later. The first version of this in
+ * `DirtySubmit` wrapped the button in a `<span onInput>`, which never fired: the inputs are
+ * siblings of that span, so their events bubble to the form and stop there.
+ *
+ * Returns `dirty` because {@link DirtySubmit} needs it for a button, and because a hook is how
+ * the guard and that button share one definition rather than two spellings of it.
+ */
+export function useFormGuard(): {
+  ref: RefObject<HTMLSpanElement | null>;
+  dirty: boolean;
+} {
+  const [dirty, setDirty] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+  // Identity for this form's entry in the shared registry — several rows are on screen at once
+  // on the per-row surfaces, and each owns its own dirtiness.
+  const token = useMemo(() => Symbol("form-guard"), []);
+
+  useEffect(() => {
+    const form = ref.current?.closest("form");
+    if (!form) return;
+
+    // The values the form was BORN with — read from its server-rendered defaults rather than
+    // from whatever is in it right now, because this effect runs at hydration and the form is
+    // typeable before that. See `bornFormState`; snapshotting the live form here read an
+    // already-typed value as the baseline and left the guard silent on real work.
+    const born = bornFormState(form);
+
+    // `change` covers a committed select or date pick; `input` covers typing into a text or time
+    // field, where `change` only lands on blur.
+    const recompute = () => setDirty(formState(form) !== born);
+    form.addEventListener("input", recompute);
+    form.addEventListener("change", recompute);
+
+    // **Evaluate once now, not only on the next keystroke.** The form is typeable before this
+    // effect runs — that is what hydration means — and an edit made in that window fired its
+    // `input` event at nobody. Without this line the guard stays blind to it until the operator
+    // happens to type again, so the work most at risk (typed the instant the page appeared, on
+    // the slow cold route where the window is widest) is precisely the work it would miss.
+    // Safe to call unconditionally: `born` comes from the server-rendered defaults, so on a form
+    // nobody has touched this computes clean.
+    recompute();
+    const clear = () => setDirty(false);
+    form.addEventListener("submit", clear);
+
+    return () => {
+      form.removeEventListener("input", recompute);
+      form.removeEventListener("change", recompute);
+      form.removeEventListener("submit", clear);
+      forgetDirty(token);
+    };
+  }, [token]);
+
+  // Publish to the shared registry so the auto-submitting pickers can see it.
+  useEffect(() => {
+    markDirty(token, dirty);
+  }, [token, dirty]);
+
+  useEffect(() => {
+    if (!dirty) return;
+
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      // Modern browsers show their own wording; returnValue is the legacy trigger.
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+
+    // Capture phase, so this runs before Next's router picks the event up.
+    const onClick = (e: MouseEvent) => {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      const anchor = (e.target as HTMLElement | null)?.closest("a");
+      if (!anchor || anchor.target === "_blank") return;
+      if (!confirmLeaveIfDirty()) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    document.addEventListener("click", onClick, true);
+
+    // Arm the Back trap. Spreading the existing state keeps Next's own router state intact —
+    // this entry has to be indistinguishable from the one it shadows apart from our marker.
+    window.history.pushState(
+      { ...window.history.state, [SENTINEL]: true },
+      "",
+      window.location.href,
+    );
+    let armed = true;
+
+    const onPop = () => {
+      if (!armed) return;
+      if (confirmLeaveIfDirty()) {
+        // Consented. Disarm first so stepping back doesn't re-enter this handler, then take the
+        // step the operator originally asked for.
+        armed = false;
+        window.history.back();
+        return;
+      }
+      // Declined. The sentinel has been consumed by the pop, so push a fresh one or the next
+      // Back press walks out unchallenged.
+      window.history.pushState(
+        { ...window.history.state, [SENTINEL]: true },
+        "",
+        window.location.href,
+      );
+    };
+    window.addEventListener("popstate", onPop);
+
+    return () => {
+      window.removeEventListener("beforeunload", warn);
+      document.removeEventListener("click", onClick, true);
+      window.removeEventListener("popstate", onPop);
+      armed = false;
+      // The sentinel stays — see the note above this hook.
+    };
+  }, [dirty]);
+
+  return { ref, dirty };
+}
+
+/**
+ * Drop this inside a `<form>` to guard it. Renders nothing.
+ *
+ * `display: contents` so it never affects the form's layout — the span exists only as a handle
+ * for `.closest("form")`.
+ */
+export function UnsavedGuard() {
+  const { ref } = useFormGuard();
+  // `data-testid` so a test can wait for React to own this island before asserting that it
+  // guards anything (`e2e/fixtures.ts` `isHydrated`). Nothing can guard before it exists, and a
+  // test that clicks away during that window reads as "no guard" while reporting nothing useful.
+  return <span ref={ref} className="contents" data-testid="unsaved-guard" />;
+}

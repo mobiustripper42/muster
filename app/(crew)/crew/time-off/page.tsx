@@ -6,6 +6,7 @@ import { CrewHeader } from "../../../../components/crew/crew-header";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { SubmitButton } from "../../../../components/ui/submit-button";
+import { UnsavedGuard } from "../../../../components/ui/unsaved-guard";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { readSubject } from "../../../lib/auth";
 import { errCopyFor } from "../../../lib/err-copy";
@@ -132,6 +133,7 @@ export default async function CrewTimeOff({
           action={setMyDaysOff}
           className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-4 shadow-sm"
         >
+          <UnsavedGuard />
           <ul className="flex flex-col">
             {WEEKDAYS.map((d) => (
               <li key={d.value} className="border-b border-line last:border-b-0">
@@ -177,6 +179,7 @@ function AddForm({
     "min-h-[52px] rounded-card border border-line bg-card px-4 text-ink";
   return (
     <form action={action} className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-4 shadow-sm">
+      <UnsavedGuard />
       <h2 className="text-sm font-semibold text-ink">Add time off</h2>
       <div className="flex flex-col gap-2">
         <label htmlFor="start" className="text-sm text-muted">

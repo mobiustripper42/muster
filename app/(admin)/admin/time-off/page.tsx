@@ -4,6 +4,7 @@ import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { SubmitButton } from "../../../../components/ui/submit-button";
+import { UnsavedGuard } from "../../../../components/ui/unsaved-guard";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { readSubject } from "../../../lib/auth";
 import { errCopyFor } from "../../../lib/err-copy";
@@ -134,6 +135,7 @@ function AddForm({ crew, draft }: { crew: CrewMember[]; draft: FormDraft | null 
       action={adminAddTimeOff}
       className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-4 shadow-sm"
     >
+      <UnsavedGuard />
       <h2 className="text-sm font-semibold text-ink">Add time off</h2>
       <div className="flex flex-col gap-2">
         <label htmlFor="crewMemberId" className="text-sm text-muted">

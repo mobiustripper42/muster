@@ -1560,16 +1560,15 @@ section before it is a change to any code.
 |---|---|---|---|---|
 | **Fare** | the departure's price | yes | yes | yes |
 | **Extra guests** | per head beyond the number the fare includes | yes | yes | yes |
-| **Add-ons** | per add-on | yes | yes | yes |
-| **Tax** | fare + extras + add-ons | — | **no** | yes |
-| **Service fee** | fare + extras + add-ons | **no** | — | yes |
+| **Tax** | fare + extras | — | **no** | yes |
+| **Service fee** | fare + extras | **no** | — | yes |
 | **Tip** | fare + extras (a tier percentage) | **no** | **no** | yes |
 
 **Tax is a configured rate, not a constant.** It lives in payment configuration because it is a
 jurisdiction's rate, and it is **8%** where BrewBoat operates. There is no admin surface to change it
 today; the code carries a fallback for deploys with no configuration row, and that fallback is not the
-rate. Tax applies to what the operator sells — fare, extras, add-ons — and never to the service fee or
-the tip.
+rate. Tax applies to what the operator sells — the fare and extra guests — and never to the service fee
+or the tip.
 
 **The service fee is the operator's, and it is 3%.** A configured rate on what the operator is paid for
 the trip. It is **not** charged on tax (which is not the operator's money) and **not** on the tip
@@ -1862,6 +1861,17 @@ never be handed a `pending` or `expired` row.
 to fit. No customer-chosen vessel. No separate hold object. No money computed after the customer has
 been quoted. No booking assembled from data Stripe hands back. No wallets (card only). Self-service
 cancellation stays out until the refund schedule is decided (issue #472).
+
+**And no add-ons.** BrewBoat sells none — the plausible ones are ice, party hats, a trivia night, and
+none exists. An `AddOn` entity, an admin editor and an offering attachment all ship; nothing sells
+them, and that is now a decision rather than a gap (issue #622). **Design it against a real add-on
+someone wants to sell**, not against Xola's catalog — that is what produced Flex insurance as a cart
+item, which §2.8.4c has now moved back to being a policy boolean.
+
+Two things settled in advance so a future design does not re-litigate them: **an add-on would be taxed
+and in the service-fee base**, exactly like extra guests — it is revenue the operator collects. And **a
+"required" add-on is not an add-on**; something charged on every booking of an offering is a fee on
+that offering, and belongs in 2.8.4a as a component rather than in a picker the customer cannot decline.
 
 **And no post-trip tipping** (2.8.4b). Muster collects a tip at checkout and never again. Xola has a
 post-trip tip, it was copied for no reason beyond that, and it is used rarely — a customer who wants to

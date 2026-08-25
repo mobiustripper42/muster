@@ -1866,7 +1866,14 @@ cancellation stays out until the refund schedule is decided (issue #472).
 none exists. An `AddOn` entity, an admin editor and an offering attachment all ship; nothing sells
 them, and that is now a decision rather than a gap (issue #622). **Design it against a real add-on
 someone wants to sell**, not against Xola's catalog — that is what produced Flex insurance as a cart
-item, which §2.8.4c has now moved back to being a policy boolean.
+item.
+
+**Flex insurance is the worked example, and it is mid-reversal.** DEC-113 modelled it as a policy
+boolean; the operator chose an `add_ons` row on 2026-08-06 (recorded in `refund-terms.ts`, which warns
+readers not to treat it as settled); and §2.8.4c returns it to a boolean — because an add-on is taxed
+and charged the service fee like revenue and insurance is neither. **§2.8.4c is the current answer.**
+DEC-113 and issue #683 still describe the add-on route and are owed the correction; until they get it,
+a reader following either will find the older position.
 
 Two things settled in advance so a future design does not re-litigate them: **an add-on would be taxed
 and in the service-fee base**, exactly like extra guests — it is revenue the operator collects. And **a

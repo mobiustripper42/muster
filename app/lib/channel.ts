@@ -91,4 +91,46 @@ export async function forwardNoticesToOutbox(
  */
 export async function forwardFormNotices(form: FormResult): Promise<void> {
   await forwardNoticesToOutbox(formNoticeChanges(form, OPERATOR_CREW_MEMBER_ID));
+  await recordFormChanges(form);
+}
+
+/**
+ * Persist the trip-change diff so the crew APP can describe it later (#769, DEC-158 Decision 4).
+ *
+ * **Here rather than at the call sites, for the reason above this function.** `formShifts`
+ * CONSUMES the change — the new state is written, so no later run re-sees it — and there are six
+ * callers. The relay already carries "miss it and the crew member is never told"; the app banner
+ * has exactly the same property, and a seventh caller added next year will remember one call, not
+ * two. `forwardFormNotices` is not being made to do an unrelated job: telling the crew what moved
+ * through the app is the same job as telling them by SMS, and the SMS is deliberately a strict
+ * subset of it.
+ *
+ * **Not inside `formShifts`.** That loop already writes per iteration with no transaction, which
+ * is issue #766 — a mid-loop failure loses a crew notice permanently. `changedCrew` is *returned*,
+ * so persisting it out here is one batched insert and makes #766 no worse.
+ *
+ * Best-effort like its sibling: a failed insert must not take down the SMS relay that just
+ * succeeded. The crew member still gets told; they just cannot re-read the detail in the app.
+ */
+async function recordFormChanges(form: FormResult): Promise<void> {
+  if (form.changedCrew.length === 0) return;
+  // The relay's own instant rather than the caller's `now`. They differ by however long the
+  // notice fan-out took, and nothing compares this against the tick's clock — it is only ever
+  // read back against a dismissal the crew member makes later.
+  const at = new Date().toISOString();
+  try {
+    await getRepo().recordShiftChanges(
+      form.changedCrew.map((c) => ({
+        shiftId: c.shiftId,
+        crewMemberId: c.crewMemberId,
+        changedAt: at,
+        added: c.added.map(String),
+        removed: c.removed.map(String),
+        startBefore: c.startBefore,
+        startAfter: c.startAfter,
+      })),
+    );
+  } catch (e) {
+    console.error("[crew] shift-change record failed — the app banner will not show this one", e);
+  }
 }

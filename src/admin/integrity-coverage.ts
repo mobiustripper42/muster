@@ -101,6 +101,8 @@ export const TABLE_COVERAGE: Record<string, Coverage> = {
   thread_participants: { kind: "exempt", reason: "needs listAllThreadParticipants — refs thread_id, crew_member_id (#584)" },
   doorbell_notifications: { kind: "exempt", reason: "needs listAllDoorbellNotifications — refs thread_id, subject_id (#584)" },
   import_run_items: { kind: "exempt", reason: "needs listAllImportRunItems — refs run_id (#584)" },
+  shift_changes: { kind: "exempt", reason: "needs listAllShiftChanges — refs shift_id, crew_member_id (#584)" },
+  shift_change_reads: { kind: "exempt", reason: "needs listAllShiftChangeReads — refs shift_id, crew_member_id (#584)" },
 
   // ── Exempt on the merits ─────────────────────────────────────────────────
   reliability_events: {

@@ -60,6 +60,25 @@ function startClock(iso: string): string {
 }
 
 /**
+ * The same shift start as a vessel-local 24-hour `"HH:mm"`, for the crew APP banner (#769).
+ *
+ * **The derivation is shared; the formatting is not.** `startClock` above drops the meridiem to
+ * buy characters in a one-segment SMS budget — a constraint the app does not have, and #769 asks
+ * for the times spelled out. What must not be spelled twice is the *rule* (`departure −
+ * CALL_LEAD_MINUTES`, DEC-157), so that is what this exports; the surface pairs it with `fmt12`
+ * to get `3:30 PM`.
+ *
+ * `"HH:mm"` rather than a formatted string because that is the shape every crew surface already
+ * carries a time in (`ShiftCardView.callTime`, `MyShiftView.callTime`), so it drops into the
+ * existing formatter instead of introducing a second one.
+ */
+export function shiftStartHHmm(departureIso: string): string {
+  const at = new Date(new Date(departureIso).getTime() - CALL_LEAD_MINUTES * MINUTE_MS);
+  const local = new Date(at.getTime() + tzOffsetMs(at, TENANT_TIMEZONE));
+  return `${String(local.getUTCHours()).padStart(2, "0")}:${String(local.getUTCMinutes()).padStart(2, "0")}`;
+}
+
+/**
  * The tokens for one change, joined with `, `, fitted to `budget` characters. `null` when there
  * is nothing true to say, or when not even the first token fits — the caller then sends the
  * unadorned "shift changed" text.

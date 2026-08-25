@@ -6,7 +6,7 @@ branch: task/807-pi-idempotency-key
 started: 2026-08-22T13:48:58Z
 ended:
 points:
-pr_numbers: [813, 817, 819, 821, 822, 823]
+pr_numbers: [813, 817, 819, 821, 822, 823, 833]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster-s91/5487f3cf-cd4b-5fc3-9fef-7e4789b9a7d2.jsonl
 ---
@@ -169,6 +169,42 @@ preference. Recut; #822 merged meanwhile, so it collapsed back onto `main`.
 **Points:** 1
 **Branch:** task/spec-no-addons-stacked
 **Opened at:** 2026-08-25T01:05:00Z
+
+## Task 6: The success page books, so a lost webhook is no longer a lost booking
+
+**Completed:**
+- Issue #827 / `SPEC.md` §2.8 criterion 13. `book/success/page.tsx` was 42 lines of static copy, so
+  `payment_intent.succeeded` was the ONLY path that ever booked — a delayed or misconfigured
+  endpoint meant the customer had paid and nothing had happened, with no bound on when anyone
+  would notice.
+- `src/reservations/confirm-booking.ts` (new) — **one confirm, two callers** (§2.8.6). The
+  webhook's `payment_succeeded` branch extracted verbatim; the webhook now delegates to it.
+- `src/ports/payment.ts` + both adapters — `getSucceededPaymentIntent`, null unless Stripe says
+  `succeeded`, null on a thrown retrieve. **The redirect is not proof**; `?payment_intent=` is
+  text in an address bar.
+- `app/lib/booking-deps.ts` (new) — one dependency builder for both callers. "One confirm" is
+  defeated just as thoroughly by two callers assembling different deps.
+- Five tests, **none using a webhook payload or signature**. The last asserts the outcome IS
+  `lost` before asserting no notify and no refund — without it the test passes when the claim
+  never ran.
+
+**Code review:** Both passes found the same class — making the page a second caller turned "runs
+once per delivery" into "runs on every GET". **/security-review MEDIUM, fixed:** the residual-race
+compensation was ungated, so an unauthenticated `GET /book/success?payment_intent=<id>` in a loop
+would re-send a real customer's sold-out SMS and email every request — and past Stripe's 24h
+idempotency window, the failed refund retry texts **every admin**. It also fired with no attacker:
+the losing customer is redirected to that URL themselves. Now `notifyOnResidualRaceLoss: false` on
+the public path; the webhook still compensates, once. **@code-review, filed not fixed (issue
+#832):** `saveBookingIfSlotFree` reports who *observes* the row, not who inserted it
+(`postgres-repository.ts:1563-1567`), so two simultaneous confirms are both told `booked` and
+`sendConfirmation` fires twice. Pre-existing in the atomic-claim path; this branch makes it
+likelier. The page's doc comment now claims only the sequential guarantee, which is what the tests
+prove.
+
+**PR:** [PR #833](https://github.com/mobiustripper42/muster/pull/833)
+**Points:** 3
+**Branch:** task/827-success-confirms
+**Opened at:** 2026-08-25T18:55:00Z
 
 **Next Steps:**
 - **issue #816 — the decision sweep.** §2.8 is merged (PR #813), so the target no longer moves. Start

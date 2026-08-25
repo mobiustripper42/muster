@@ -53,3 +53,93 @@ export function confirmLeaveIfDirty(): boolean {
   if (!anythingDirty()) return true;
   return window.confirm("You have unsaved changes. Leave without saving?");
 }
+
+/**
+ * The same question, asked **at most once per DOM event**.
+ *
+ * Two guarded forms can be dirty at the same time — `/crew/time-off` renders the add-a-window
+ * form and the weekday-blackout form side by side, and either can hold an edit. With a listener
+ * per form, one click ran the prompt once per armed guard: two native dialogs back to back for
+ * one click, and an operator who confirmed the first could reflexively dismiss the second and
+ * find themselves blocked on a page they had already agreed to leave.
+ *
+ * The dirtiness this consults is page-wide (`anythingDirty`), so the first answer is the right
+ * answer for every listener that sees the same event. Caching it on the event identity makes
+ * that true by construction rather than by counting listeners.
+ */
+let answeredEvent: Event | null = null;
+let answeredWith = true;
+
+export function confirmLeaveOnce(event: Event): boolean {
+  if (answeredEvent === event) return answeredWith;
+  answeredEvent = event;
+  answeredWith = confirmLeaveIfDirty();
+  return answeredWith;
+}
+
+/**
+ * The Back/Forward trap — **one per page, not one per form** (#781).
+ *
+ * A soft navigation backwards fires `popstate` *after* the browser has moved and Next has begun
+ * rendering the previous route, so asking at that point and calling `history.forward()` would
+ * return a form re-fetched from the server with the typing gone. Undoing the move is not enough;
+ * it has to be prevented. So a duplicate history entry for the same URL sits under the page, a
+ * Back press lands on it with the form intact, and the guard can ask.
+ *
+ * **Refcounted, and armed for the page's whole life rather than while something is dirty.** Both
+ * of those are corrections to the first cut:
+ *
+ *  - *Per form* meant a page with two guarded forms pushed two sentinels and unwound them
+ *    unevenly. There is one back stack, so there is one trap.
+ *  - *Armed on dirty* pushed a fresh entry on every clean→dirty transition, so a value edited
+ *    back and forth several times stacked up that many dead Back presses. It also left a hole:
+ *    a Back press while the form was momentarily clean consumed the sentinel silently, and the
+ *    next edit re-armed nothing, so the following Back walked out unchallenged.
+ *
+ * Arming unconditionally costs nothing visible, because a pop with nothing dirty is **consumed
+ * transparently** — the handler consents immediately and re-issues the step the operator asked
+ * for, so one Back press still goes back one page.
+ */
+const SENTINEL = "__unsavedGuard";
+let trapHolders = 0;
+let traversing = false;
+
+function pushSentinel(): void {
+  // Spread the existing state so Next's own router state survives — this entry has to be
+  // indistinguishable from the one it shadows apart from the marker.
+  window.history.pushState(
+    { ...window.history.state, [SENTINEL]: true },
+    "",
+    window.location.href,
+  );
+}
+
+function onPopState(e: PopStateEvent): void {
+  // Our own `history.back()` below fires this handler again; let that one stand.
+  if (traversing) {
+    traversing = false;
+    return;
+  }
+  if (confirmLeaveOnce(e)) {
+    // Nothing dirty, or the operator consented. Either way take the step they asked for.
+    traversing = true;
+    window.history.back();
+    return;
+  }
+  // Declined. The sentinel was consumed by this pop, so replace it or the next Back press
+  // walks out unchallenged.
+  pushSentinel();
+}
+
+/** Arm the trap while at least one guarded form is mounted. Returns the release function. */
+export function retainBackTrap(): () => void {
+  trapHolders += 1;
+  if (trapHolders === 1) {
+    pushSentinel();
+    window.addEventListener("popstate", onPopState);
+  }
+  return () => {
+    trapHolders -= 1;
+    if (trapHolders === 0) window.removeEventListener("popstate", onPopState);
+  };
+}

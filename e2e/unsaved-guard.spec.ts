@@ -237,4 +237,45 @@ test.describe("the unguarded exit (#781)", () => {
     await expect(page).toHaveURL(/time-off/);
     await expect(page.locator('input[name="start"]')).toHaveValue("2026-09-01");
   });
+
+  test("crew: two dirty forms on one page ask once, not twice", async ({ page }) => {
+    // `/crew/time-off` renders the add-a-window form and the weekday-blackout form side by side,
+    // and either can hold an edit. With a listener per guarded form, one click ran the prompt
+    // once per armed guard — two native dialogs back to back for one click, and an operator who
+    // confirmed the first could reflexively dismiss the second and end up blocked on a page they
+    // had already agreed to leave. Found by `@code-review` on this branch.
+    //
+    // This test is why the click path asks through `confirmLeaveOnce` and why the Back trap is
+    // refcounted page-wide rather than pushed per form: there is one back stack and one operator,
+    // so there is one question.
+    await signInAsCrew(page, "crew-quint");
+
+    await page.goto("/crew/time-off");
+    await guardReady(page, 'form:has(input[name="start"])');
+    await guardReady(page, 'form:has(input[name="days"])');
+
+    await page.locator('input[name="start"]').fill("2026-09-01");
+    await page.locator('input[name="days"]').first().click();
+
+    // **Accepted, not dismissed — and that is the whole test.** Declining calls
+    // `stopPropagation()`, which stops the second guard's listener ever running, so a dismissed
+    // prompt shows one dialog whether or not the bug is present. The first cut of this test
+    // dismissed, passed with the fix reverted, and proved nothing. Only the accept path lets the
+    // event keep propagating to the next armed guard, which is where the second dialog came from.
+    const dialogs: string[] = [];
+    page.on("dialog", async (d) => {
+      dialogs.push(d.message());
+      await d.accept();
+    });
+
+    await page.getByRole("link", { name: "My shifts" }).click();
+
+    await expect
+      .poll(() => dialogs.length, { message: "neither guard asked" })
+      .toBeGreaterThan(0);
+    await page.waitForURL(/\/crew$/);
+    // Settle, then confirm no SECOND dialog arrived behind the first.
+    await page.waitForTimeout(1000);
+    expect(dialogs, "asked once per guarded form instead of once per click").toHaveLength(1);
+  });
 });

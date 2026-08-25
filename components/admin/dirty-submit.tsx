@@ -20,8 +20,8 @@ import { SubmitButton } from "../ui/submit-button";
  * **The navigation guard moved out at #781** into {@link useFormGuard}, which now covers
  * ten surfaces rather than this component's two. Everything this file used to say about
  * `beforeunload`, capture-phase anchor clicks and `AutoSubmitSelect` lives there, along
- * with the Back/Forward case none of them caught. This component is what is left once
- * the guard is shared: the guard, plus a button wired to it.
+ * with the Back/Forward case none of them caught (`components/ui/dirty-state.ts`). This
+ * component is what is left once the guard is shared: the guard, plus a button wired to it.
  *
  * **One behaviour changed here, and it reaches a money-computed surface.** Dirtiness is
  * now a comparison against the form's mount-time values rather than a flag set by the

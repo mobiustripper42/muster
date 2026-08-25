@@ -65,8 +65,8 @@ in-app anchors, which fire no unload; the shared registry in `components/ui/dirt
 `AutoSubmitSelect`/`AutoSubmitDate`, which navigate from a `change` handler and are not anchors;
 and a history sentinel for Back and Forward, which fire neither.
 
-**6. Back and Forward are prevented, not undone.** Going dirty pushes a duplicate history entry
-for the same URL, so a Back press lands on the sentinel with the form intact and the guard can
+**6. Back and Forward are prevented, not undone.** A duplicate history entry for the same URL
+sits under the page, so a Back press lands on the sentinel with the form intact and the guard can
 ask.
 
 *Rejected: asking on `popstate` and calling `history.forward()` when declined.* Simpler, no
@@ -74,11 +74,25 @@ sentinel, and wrong: `popstate` fires **after** the browser has moved and Next h
 rendering the previous route, so going forward again returns a form re-fetched from the server
 with the typing gone. Undoing the move is not enough — it has to be prevented.
 
-**7. The sentinel is never removed while the page lives.** Removing it means calling
-`history.back()` from an effect cleanup, which on the submit path races the server action's own
-`redirect()` — on a set of surfaces that includes the payroll-feeding time clock. The price is
-one dead Back press after an edit is typed and then reverted. That is the trade, taken
-deliberately.
+**7. The trap is page-level and refcounted, armed for the page's whole life.** There is one back
+stack, so there is one sentinel however many guarded forms are mounted (`retainBackTrap` in
+`components/ui/dirty-state.ts`). A pop with nothing dirty is consumed transparently — the handler
+consents and re-issues the step — so arming early is invisible and one Back press still goes back
+one page.
+
+*Rejected: a sentinel per form, pushed when that form goes dirty.* It was the first cut and it
+failed twice. Per form, a page with two guarded forms pushed two sentinels and unwound them
+unevenly. Pushed on dirty, a value edited back and forth stacked one dead Back press per
+transition — and worse, a Back press while the form was momentarily clean spent the sentinel
+silently, after which the next edit re-armed nothing and the following Back walked out
+unchallenged. Both found by `@code-review` before this shipped.
+
+**7a. One question per click, not one per guarded form.** Two forms can be dirty at once
+(`/crew/time-off` renders two side by side), and each armed guard has its own capture-phase
+listener on the same click. Asking per listener showed two native dialogs back to back, and an
+operator who confirmed the first could reflexively dismiss the second and find themselves blocked
+on a page they had already agreed to leave. `confirmLeaveOnce` caches the answer on the event
+identity, which is correct by construction because the dirtiness it consults is already page-wide.
 
 **8. A plain `confirm()`, reaffirmed.** The alternative is a component with focus management and
 its own failure modes, for a prompt that fires rarely and must not be dismissable by accident.

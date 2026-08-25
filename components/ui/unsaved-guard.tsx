@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { bornFormState, formState } from "./form-dirty";
-import { confirmLeaveIfDirty, forgetDirty, markDirty } from "./dirty-state";
+import { confirmLeaveOnce, forgetDirty, markDirty, retainBackTrap } from "./dirty-state";
 
 /**
  * Ask before walking away from an unsaved edit (#781).
@@ -30,26 +30,6 @@ import { confirmLeaveIfDirty, forgetDirty, markDirty } from "./dirty-state";
  * The effect never runs and there is no guard, which is the status quo rather than a regression
  * (DEC-147: the form still posts without JS, and this island adds nothing the form needs).
  */
-
-/**
- * The Back/Forward problem, and the honest cost of the fix.
- *
- * A soft navigation backwards fires `popstate` **after** the browser has already moved, and by
- * then Next has begun rendering the previous route — so asking at that point and then calling
- * `history.forward()` would return to a form re-fetched from the server, with the operator's
- * typing gone. Undoing the move is not enough; it has to be prevented.
- *
- * So going dirty pushes a **duplicate history entry for the same URL**. A Back press lands on
- * that sentinel instead of leaving the page, `popstate` fires with the form still intact, and
- * the guard can ask. Decline and it re-pushes; accept and it steps back for real.
- *
- * **The sentinel is never removed while the page lives**, and that is a deliberate trade rather
- * than an oversight. Removing it means calling `history.back()` from a cleanup — which, on the
- * submit path, races the server action's own `redirect()`, on a set of surfaces that includes
- * the payroll-feeding time clock. One dead Back press after an edit is typed and then reverted
- * is the price, and it is cheap next to interfering with a save.
- */
-const SENTINEL = "__unsavedGuard";
 
 /**
  * Track the enclosing form's dirtiness and guard every exit while it is dirty.
@@ -112,6 +92,13 @@ export function useFormGuard(): {
     markDirty(token, dirty);
   }, [token, dirty]);
 
+  // The Back/Forward trap is page-level and refcounted (`retainBackTrap`), not per-form: there
+  // is one back stack, so two guarded forms on one page must not push two sentinels. It arms for
+  // the whole mount rather than while dirty — a pop with nothing dirty is consumed transparently,
+  // so arming early costs nothing and closes the hole where a Back press during a momentarily
+  // clean form silently spent the sentinel.
+  useEffect(() => retainBackTrap(), []);
+
   useEffect(() => {
     if (!dirty) return;
 
@@ -127,47 +114,18 @@ export function useFormGuard(): {
       if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
       const anchor = (e.target as HTMLElement | null)?.closest("a");
       if (!anchor || anchor.target === "_blank") return;
-      if (!confirmLeaveIfDirty()) {
+      // `confirmLeaveOnce`, not `confirmLeaveIfDirty`: two dirty forms on one page each have a
+      // listener on this event, and asking per listener showed two dialogs for one click.
+      if (!confirmLeaveOnce(e)) {
         e.preventDefault();
         e.stopPropagation();
       }
     };
     document.addEventListener("click", onClick, true);
 
-    // Arm the Back trap. Spreading the existing state keeps Next's own router state intact —
-    // this entry has to be indistinguishable from the one it shadows apart from our marker.
-    window.history.pushState(
-      { ...window.history.state, [SENTINEL]: true },
-      "",
-      window.location.href,
-    );
-    let armed = true;
-
-    const onPop = () => {
-      if (!armed) return;
-      if (confirmLeaveIfDirty()) {
-        // Consented. Disarm first so stepping back doesn't re-enter this handler, then take the
-        // step the operator originally asked for.
-        armed = false;
-        window.history.back();
-        return;
-      }
-      // Declined. The sentinel has been consumed by the pop, so push a fresh one or the next
-      // Back press walks out unchallenged.
-      window.history.pushState(
-        { ...window.history.state, [SENTINEL]: true },
-        "",
-        window.location.href,
-      );
-    };
-    window.addEventListener("popstate", onPop);
-
     return () => {
       window.removeEventListener("beforeunload", warn);
       document.removeEventListener("click", onClick, true);
-      window.removeEventListener("popstate", onPop);
-      armed = false;
-      // The sentinel stays — see the note above this hook.
     };
   }, [dirty]);
 

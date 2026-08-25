@@ -95,14 +95,37 @@ export function foldShiftChanges(
     newest.startAfter !== null &&
     oldest.startBefore !== newest.startAfter;
 
-  // Net the deltas across the whole window. An event added on one change and removed on the
-  // next appears in both unions and cancels, which is right: the manifest they are holding is
-  // the one they had. Set difference does this without replaying the changes in order.
-  const added = new Set(unseen.flatMap((r) => r.added));
-  const removed = new Set(unseen.flatMap((r) => r.removed));
-  const netAdded = [...added].filter((id) => !removed.has(id)).length;
-  const netRemoved = [...removed].filter((id) => !added.has(id)).length;
-  const tripsBefore = opts.tripsNow - netAdded + netRemoved;
+  // Per id: was it on the shift when the window opened, and is it on now?
+  //
+  // **First and last touch, not two flattened unions.** Netting `∪added` against `∪removed` is
+  // the obvious version and it is wrong on any id touched an odd number of times above one: a
+  // `Set` collapses touches to membership, so `remove d, add d, remove d` puts `d` in both
+  // unions, cancels, and reports the count as unmoved when the shift really did lose a trip.
+  // That is not contrived — every Xola pull, split and merge writes its own `changedCrew` row
+  // (`form-shifts.ts:483-505`), so several touches before a crew member opens the app is
+  // ordinary. Found by `@code-review` on this branch.
+  //
+  // The window is already sorted, so the FIRST touch of an id tells us its state before (first
+  // seen being `removed` means it must have been present) and the LAST tells us its state now.
+  const firstTouch = new Map<string, "added" | "removed">();
+  const lastTouch = new Map<string, "added" | "removed">();
+  for (const r of unseen) {
+    for (const [kind, ids] of [["added", r.added], ["removed", r.removed]] as const) {
+      for (const id of ids) {
+        if (!firstTouch.has(id)) firstTouch.set(id, kind);
+        lastTouch.set(id, kind);
+      }
+    }
+  }
+  let appeared = 0;
+  let vanished = 0;
+  for (const id of firstTouch.keys()) {
+    const wasPresent = firstTouch.get(id) === "removed";
+    const isPresent = lastTouch.get(id) === "added";
+    if (isPresent && !wasPresent) appeared++;
+    if (wasPresent && !isPresent) vanished++;
+  }
+  const tripsBefore = opts.tripsNow - appeared + vanished;
   // Unmoved reads as nothing to say. This is also the one-for-one swap `changeSummary`
   // documents and cannot express: the count is unchanged though the manifest really did move,
   // so the banner appears with no trip row rather than claiming a number that did not change.

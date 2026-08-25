@@ -93,11 +93,27 @@ export async function dismissShiftChanges(formData: FormData): Promise<void> {
   if (!subject || subject.kind !== "crew" || !shiftId) redirect("/crew");
 
   try {
-    await getRepo().markShiftChangesSeen(
+    const repo = getRepo();
+    // **Only dismiss something there is to dismiss.** The crew member id is pinned to the
+    // session, so this can never touch anyone else's read state — but the SHIFT id arrives from
+    // the client, and without this a crew member could mark a shift they have never been on as
+    // seen "now", pre-empting the first real banner if they are later assigned to it. Gating on
+    // "does this pair have any recorded change" is the cheap form of the seat check `bailFromSeat`
+    // does four functions up, and it fails closed: no rows, no write. (`@code-review`, this
+    // branch — the docstring above claimed the shift-id side was covered when it was not.)
+    const changes = await repo.listShiftChanges(
       asId<"ShiftId">(shiftId),
       asId<"CrewMemberId">(subject.id),
-      new Date().toISOString(),
     );
+    // Nothing recorded means nothing to dismiss — fall through to the redirect below rather
+    // than `redirect()`-ing here, which throws by design and would be swallowed by this catch.
+    if (changes.length > 0) {
+      await repo.markShiftChangesSeen(
+        asId<"ShiftId">(shiftId),
+        asId<"CrewMemberId">(subject.id),
+        new Date().toISOString(),
+      );
+    }
   } catch {
     // Best-effort: a failed dismiss leaves the banner up, which is the safe direction. The crew
     // member can tap again; the alternative (an error screen over a card they came to read) is

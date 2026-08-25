@@ -1243,7 +1243,7 @@ export class InMemoryRepository implements Repository {
     shiftId: ShiftId,
     crewMemberId: CrewMemberId,
   ): Promise<string | null> {
-    return this.#shiftChangeReads.get(`${String(shiftId)} ${String(crewMemberId)}`) ?? null;
+    return this.#shiftChangeReads.get(`${String(shiftId)} ${String(crewMemberId)}`) ?? null;
   }
 
   async markShiftChangesSeen(
@@ -1251,8 +1251,14 @@ export class InMemoryRepository implements Repository {
     crewMemberId: CrewMemberId,
     at: string,
   ): Promise<void> {
-    // Latest-wins, matching the `message_reads` upsert. Nothing clears the change rows — a later
-    // change still has to be able to describe the window it belongs to.
-    this.#shiftChangeReads.set(`${String(shiftId)} ${String(crewMemberId)}`, at);
+    // Latest-wins by INSTANT, not by call order. The Postgres adapter upserts with `greatest()`
+    // so two dismisses racing from two tabs cannot let the older instant win and re-raise a
+    // banner already cleared; a bare `set` here would make dev and test disagree with prod on
+    // exactly that race, invisibly, because nothing holds the two adapters to one behaviour
+    // (`@code-review`, this branch). Nothing clears the change rows — a later change still has
+    // to be able to describe the window it belongs to.
+    const key = `${String(shiftId)} ${String(crewMemberId)}`;
+    const prior = this.#shiftChangeReads.get(key);
+    if (prior === undefined || at > prior) this.#shiftChangeReads.set(key, at);
   }
 }

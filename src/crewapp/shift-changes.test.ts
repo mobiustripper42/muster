@@ -154,6 +154,33 @@ describe("foldShiftChanges", () => {
     expect(banner?.tripsAfter).toBeNull();
   });
 
+  it("keeps parity when one trip is touched three times", () => {
+    // `remove d, add d, remove d` — the shift had 5, has 4, and really did lose a trip. Netting
+    // two flattened unions collapses this to "unmoved" because `d` appears in both, which both
+    // reports the wrong count AND suppresses the row that would have shown it. Found by
+    // `@code-review`; the two-touch cancel-out case above passes either way, which is exactly
+    // why it did not catch this.
+    const records = [
+      rec({ changedAt: "2026-07-04T18:00:00Z", removed: ["evt-d"] }),
+      rec({ changedAt: "2026-07-04T19:00:00Z", added: ["evt-d"] }),
+      rec({ changedAt: "2026-07-04T20:00:00Z", removed: ["evt-d"] }),
+    ];
+    const banner = foldShiftChanges(records, { lastSeenAt: null, tripsNow: 4 });
+    expect(banner?.tripsBefore).toBe(5);
+    expect(banner?.tripsAfter).toBe(4);
+  });
+
+  it("keeps parity when a trip is added, removed and added again", () => {
+    // The mirror: `add e, remove e, add e` — absent before, present now.
+    const records = [
+      rec({ changedAt: "2026-07-04T18:00:00Z", added: ["evt-e"] }),
+      rec({ changedAt: "2026-07-04T19:00:00Z", removed: ["evt-e"] }),
+      rec({ changedAt: "2026-07-04T20:00:00Z", added: ["evt-e"] }),
+    ];
+    const banner = foldShiftChanges(records, { lastSeenAt: null, tripsNow: 4 });
+    expect(banner?.tripsBefore).toBe(3);
+  });
+
   it("nets a one-for-one swap to no trip row, while still raising the banner", () => {
     // The gap `changeSummary` documents and cannot express: swap two trips and the count is
     // unchanged though the manifest really did move. The banner still appears — something

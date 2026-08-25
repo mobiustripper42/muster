@@ -90,3 +90,18 @@ describe("readShiftChangeBanner", () => {
     expect((await readShiftChangeBanner(repo, SHIFT, BRODY, 3))?.changeCount).toBe(1);
   });
 });
+
+describe("adapter parity", () => {
+  it("keeps the LATER dismissal when an older instant arrives second", async () => {
+    // Both adapters must agree on this. Postgres upserts with `greatest()` so two dismisses
+    // racing from two tabs cannot let the older instant win and re-raise a banner already
+    // cleared; the in-memory store was a bare overwrite, which is last-CALL-wins rather than
+    // last-INSTANT-wins. Nothing held the two to one behaviour, so dev/test disagreed with prod
+    // on exactly that race and nothing said so (`@code-review`, this branch).
+    const repo = new InMemoryRepository();
+    await repo.recordShiftChanges([change("2026-07-04T18:00:00Z")]);
+    await repo.markShiftChangesSeen(SHIFT, QUINT, "2026-07-04T19:00:00Z");
+    await repo.markShiftChangesSeen(SHIFT, QUINT, "2026-07-04T18:30:00Z"); // older, arrives late
+    expect(await repo.shiftChangeLastSeen(SHIFT, QUINT)).toBe("2026-07-04T19:00:00Z");
+  });
+});

@@ -152,10 +152,16 @@ export function useFormGuard(opts: { restored?: boolean } = {}): {
 /**
  * Drop this inside a `<form>` to guard it. Renders nothing.
  *
- * **Pass `restored` when the form is being re-rendered after a refusal** — every surface already
- * computes that (`sp.err`) to decide whether to read the draft at all, so the page hands the fact
- * over rather than the island trying to infer it from values it cannot distinguish. Without it
- * the guard is silent on exactly the work most at risk; see DEC-160's 2026-08-25 amendment.
+ * **Pass `restored` when THIS FORM is being re-rendered after a refusal.** The page hands the
+ * fact over rather than the island inferring it, because the island cannot tell restored values
+ * from ordinary defaults — that is the whole defect this exists to fix (DEC-160, 2026-08-25).
+ *
+ * **Per form, not per surface**, and the distinction is not pedantic. A draft is scoped to the
+ * surface, but a surface can hold two independently-submittable forms and only one of them can
+ * own the draft: `/crew/time-off` renders an add-window form and a weekday-blackout form, and
+ * only `addMyTimeOff` ever writes a draft. Wiring both from the page-level `draft !== null` marks
+ * a form permanently dirty while it holds nothing but what is already saved. Ask which form's
+ * fields the draft actually restores; the others pass nothing.
  *
  * `display: contents` so it never affects the form's layout — the span exists only as a handle
  * for `.closest("form")`.

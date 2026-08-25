@@ -133,7 +133,14 @@ export default async function CrewTimeOff({
           action={setMyDaysOff}
           className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-4 shadow-sm"
         >
-          <UnsavedGuard restored={draft !== null} />
+          {/* **Not `restored`, deliberately.** The draft is scoped to the SURFACE, but only
+              `addMyTimeOff` ever writes one (`actions.ts:50`) — `setMyDaysOff` clears it on its
+              own failure, because one cookie cannot distinguish two forms. So `draft !== null`
+              here would mean "the OTHER form was refused", and this form's checkboxes are always
+              rendered fresh from the saved `weekdaysOff`. Marking it restored would force it
+              permanently dirty while it holds nothing but what is already in the database — the
+              honest answer to "has this been saved" is yes. (`@code-review`, this branch.) */}
+          <UnsavedGuard />
           <ul className="flex flex-col">
             {WEEKDAYS.map((d) => (
               <li key={d.value} className="border-b border-line last:border-b-0">

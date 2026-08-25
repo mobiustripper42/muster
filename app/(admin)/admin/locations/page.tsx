@@ -82,7 +82,7 @@ export default async function AdminLocations({
         action={saveLocation}
         className="flex flex-col gap-4"
       >
-        <UnsavedGuard />
+        <UnsavedGuard restored={draft !== null} />
         <input type="hidden" name="id" value={creating || !selected ? "" : selected.id} />
 
         <header className="flex items-center gap-3">

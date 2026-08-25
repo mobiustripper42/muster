@@ -85,7 +85,7 @@ export default async function AdminAddOns({
         action={saveAddOn}
         className="flex flex-col gap-4"
       >
-        <UnsavedGuard />
+        <UnsavedGuard restored={draft !== null} />
         <input type="hidden" name="id" value={creating || !selected ? "" : selected.id} />
 
         <header className="flex items-center gap-3">

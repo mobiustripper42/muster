@@ -75,6 +75,16 @@ export interface PaneActionState {
   /** Outcome copy from the last action, if any. */
   done?: string | undefined;
   error?: string | undefined;
+  /**
+   * A refusal restored this pane's amount boxes from the draft (#781).
+   *
+   * The unsaved-work guard needs it: a refused submission is unsaved work whatever the boxes
+   * currently hold, and the guard's usual baseline cannot see that because the draft comes back
+   * as the form's own DEFAULTS. Resolved here rather than in the pane because the pane is handed
+   * a flat view model and the draft (and its reservation-id match) lives on the route. See
+   * DEC-160's 2026-08-25 amendment.
+   */
+  restoredFromRefusal: boolean;
 }
 
 /** Operator-facing copy for a refused balance link. Says what happened, not a reason code. */
@@ -654,7 +664,7 @@ function PaneActions({
           `data-commits`, and the #718 e2e asserts against exactly those. */}
       {!confirming && actions.refundableCents > 0 && (
         <form action={startRefund} className="mb-2" data-testid="refund-form">
-          <UnsavedGuard />
+          <UnsavedGuard restored={actions.restoredFromRefusal} />
           {hidden}
           {/* The compare-and-swap token: the refunded total this screen was DRAWN against.
               Stripe's idempotency key cannot stop a double-submit here, because the second
@@ -710,7 +720,7 @@ function PaneActions({
         !cancelled &&
         (actions.confirmingCancel ? (
           <form action={cancelBooking} className="mb-3" data-testid="cancel-confirm">
-            <UnsavedGuard />
+            <UnsavedGuard restored={actions.restoredFromRefusal} />
             {hidden}
             {/* Kept when the rest of the explanations were cut: the button covers the money,
                 and nothing else on screen says a text lands on a crew member's phone. */}

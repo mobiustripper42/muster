@@ -42,11 +42,24 @@ import { confirmLeaveOnce, forgetDirty, markDirty, retainBackTrap } from "./dirt
  * Returns `dirty` because {@link DirtySubmit} needs it for a button, and because a hook is how
  * the guard and that button share one definition rather than two spellings of it.
  */
-export function useFormGuard(): {
+export function useFormGuard(opts: { restored?: boolean } = {}): {
   ref: RefObject<HTMLSpanElement | null>;
   dirty: boolean;
 } {
-  const [dirty, setDirty] = useState(false);
+  // **A form re-rendered after a refusal starts dirty and never goes clean until it submits.**
+  //
+  // No baseline makes this case right, which is the part worth knowing before "improving" it.
+  // Everywhere else, dirty asks *has this diverged from what the server rendered*. Here the
+  // question is *has this been saved*, and the answer is no whatever the boxes currently hold —
+  // so clearing the fields must not silence it either.
+  //
+  // The trap this replaces: `form-draft.ts` hands the submitted values back as the form's
+  // DEFAULTS (DEC-147 rule 4), and the baseline is read from exactly those defaults, so a
+  // restored form is born equal to itself and compares CLEAN. The guard was therefore inert on
+  // the one screen where the operator most reliably has work worth protecting — they had just
+  // failed to save it. Found by the operator by hand; the test that used to cover this asserted
+  // the opposite and passed. See DEC-160's 2026-08-25 amendment.
+  const [dirty, setDirty] = useState(opts.restored === true);
   const ref = useRef<HTMLSpanElement>(null);
   // Identity for this form's entry in the shared registry — several rows are on screen at once
   // on the per-row surfaces, and each owns its own dirtiness.
@@ -64,7 +77,11 @@ export function useFormGuard(): {
 
     // `change` covers a committed select or date pick; `input` covers typing into a text or time
     // field, where `change` only lands on blur.
-    const recompute = () => setDirty(formState(form) !== born);
+    //
+    // On a RESTORED form this never lowers the flag — a refused submission stays unsaved however
+    // the boxes are edited afterwards, including back to empty.
+    const recompute = () =>
+      setDirty(opts.restored === true || formState(form) !== born);
     form.addEventListener("input", recompute);
     form.addEventListener("change", recompute);
 
@@ -85,7 +102,7 @@ export function useFormGuard(): {
       form.removeEventListener("submit", clear);
       forgetDirty(token);
     };
-  }, [token]);
+  }, [token, opts.restored]);
 
   // Publish to the shared registry so the auto-submitting pickers can see it.
   useEffect(() => {
@@ -135,11 +152,16 @@ export function useFormGuard(): {
 /**
  * Drop this inside a `<form>` to guard it. Renders nothing.
  *
+ * **Pass `restored` when the form is being re-rendered after a refusal** — every surface already
+ * computes that (`sp.err`) to decide whether to read the draft at all, so the page hands the fact
+ * over rather than the island trying to infer it from values it cannot distinguish. Without it
+ * the guard is silent on exactly the work most at risk; see DEC-160's 2026-08-25 amendment.
+ *
  * `display: contents` so it never affects the form's layout — the span exists only as a handle
  * for `.closest("form")`.
  */
-export function UnsavedGuard() {
-  const { ref } = useFormGuard();
+export function UnsavedGuard({ restored = false }: { restored?: boolean } = {}) {
+  const { ref } = useFormGuard({ restored });
   // `data-testid` so a test can wait for React to own this island before asserting that it
   // guards anything (`e2e/fixtures.ts` `isHydrated`). Nothing can guard before it exists, and a
   // test that clicks away during that window reads as "no guard" while reporting nothing useful.

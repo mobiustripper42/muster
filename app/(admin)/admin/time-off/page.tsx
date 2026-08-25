@@ -135,7 +135,7 @@ function AddForm({ crew, draft }: { crew: CrewMember[]; draft: FormDraft | null 
       action={adminAddTimeOff}
       className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-4 shadow-sm"
     >
-      <UnsavedGuard />
+      <UnsavedGuard restored={draft !== null} />
       <h2 className="text-sm font-semibold text-ink">Add time off</h2>
       <div className="flex flex-col gap-2">
         <label htmlFor="crewMemberId" className="text-sm text-muted">

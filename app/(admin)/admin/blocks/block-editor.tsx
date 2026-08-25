@@ -88,7 +88,9 @@ export function BlockEditor({
       )}
 
       <form action={saveBlock} className="px-4 py-1">
-        <UnsavedGuard />
+        {/* `draftValues` is non-null exactly when a refusal restored this form — the island
+            already receives it, so nothing new has to be threaded. */}
+        <UnsavedGuard restored={draftValues !== null} />
         <input type="hidden" name="id" value={selected ? String(selected.id) : ""} />
         <input type="hidden" name="kind" value={kind} />
 

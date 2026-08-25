@@ -133,7 +133,7 @@ export default async function CrewTimeOff({
           action={setMyDaysOff}
           className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-4 shadow-sm"
         >
-          <UnsavedGuard />
+          <UnsavedGuard restored={draft !== null} />
           <ul className="flex flex-col">
             {WEEKDAYS.map((d) => (
               <li key={d.value} className="border-b border-line last:border-b-0">
@@ -179,7 +179,7 @@ function AddForm({
     "min-h-[52px] rounded-card border border-line bg-card px-4 text-ink";
   return (
     <form action={action} className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-4 shadow-sm">
-      <UnsavedGuard />
+      <UnsavedGuard restored={draft !== null} />
       <h2 className="text-sm font-semibold text-ink">Add time off</h2>
       <div className="flex flex-col gap-2">
         <label htmlFor="start" className="text-sm text-muted">

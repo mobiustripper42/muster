@@ -94,7 +94,7 @@ export default async function AdminVessels({
         action={saveVessel}
         className="flex flex-col gap-4"
       >
-        <UnsavedGuard />
+        <UnsavedGuard restored={draft !== null} />
         <input type="hidden" name="id" value={creating || !selected ? "" : selected.id} />
 
         {/* Header — breadcrumb, boat name, Save (mockup header.top). */}

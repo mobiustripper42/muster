@@ -123,7 +123,7 @@ export default async function AdminOfferings({
         action={saveOffering}
         className="flex flex-col gap-4"
       >
-        <UnsavedGuard />
+        <UnsavedGuard restored={draft !== null} />
         <input type="hidden" name="id" value={creating || !selected ? "" : selected.id} />
         {showHidden && <input type="hidden" name="showHidden" value="1" />}
 

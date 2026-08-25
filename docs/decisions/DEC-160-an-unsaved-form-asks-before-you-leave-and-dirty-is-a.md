@@ -115,3 +115,62 @@ stakes; it is tracked as issue #776.
 - **DEC-147** — server-rendering default and the rules this island is earned under; its fourth
   rule (a refused form's defaults come from the server, never from client state) is what makes
   point 3 work.
+
+## Amendment, 2026-08-25 (eric) — a refused form is unsaved work, and the guard was silent on it
+
+**What this changes:** point 3's closing claim, that reading the baseline from the server-rendered
+defaults "settles the refusal case for free". It does the opposite — it is what made the guard
+inert on the one screen where the operator most reliably has work worth protecting.
+
+**What still stands:** everything else. Points 1, 2 and 4–8 are unaffected, and the clone-based
+baseline is still the right answer to the hydration race it was chosen for. This narrows where
+that baseline applies; it does not retire it.
+
+### What happened
+
+The operator hit it by hand within minutes of the build being handed over: on `/admin/add-ons`,
+enter a label and `A` for the amount, press **Create**, get refused — then click any other add-on.
+It loads. The typing is gone, and nothing asked.
+
+`app/lib/form-draft.ts` hands the submitted values back as the re-rendered form's **defaults**
+(DEC-147's fourth rule). The guard's baseline is read from exactly those defaults, so the restored
+form is born equal to itself and compares clean. Every test passed while the work walked out.
+
+### Why it was built that way
+
+Issue #781 states a constraint: *"It must not fight the draft restore from issue #699: a refused
+save is a navigation the operator did not choose, and the guard must not prompt on it."* The "it"
+is the **refusal redirect** — do not prompt while the server bounces you back. It was read as *do
+not guard the restored form*, which is a different and much larger claim, and the clone baseline
+delivered that reading silently rather than by anyone deciding it.
+
+The two are worth keeping apart, because the first is about a navigation nobody chose and the
+second is about the state you are left in afterwards. Being bounced back is not consent to lose
+what you typed.
+
+### Decision
+
+**A form re-rendered after a refusal starts dirty and stays dirty until it submits.** The page
+already knows — every one of the ten surfaces computes `sp.err` to decide whether to read the
+draft at all — so it passes that fact to the island rather than the island trying to infer it.
+
+**No baseline can make this case right.** That is the part worth writing down: the natural fix is
+to hunt for a better baseline (pristine-empty, the record's own values, the pre-refusal state),
+and all of them are wrong for the same reason. Dirtiness elsewhere asks *has this diverged from
+what the server rendered*. Here the question is *has this been saved*, and the answer is no
+regardless of what the boxes currently hold. **Clearing the fields does not make the submission
+saved**, so the guard stays up even when the form looks empty — which is deliberate and has its
+own test.
+
+### What this costs
+
+An operator who is refused, decides to abandon the work, and clicks away gets one prompt they did
+not want. That is the trade, and it is the right way round: the alternative is the silent loss
+above, which is the defect this whole decision exists to prevent.
+
+### Why the tests did not catch it
+
+They asserted it. `e2e/unsaved-guard.spec.ts` carried a case named *"the form restored after a
+refusal is not dirty"*, written from the same misreading, passing green. A test can only ever hold
+the behaviour someone decided on; it cannot notice that the decision was wrong. This one is now
+inverted and named for what it protects.

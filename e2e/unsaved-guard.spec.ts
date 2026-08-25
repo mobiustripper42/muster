@@ -159,7 +159,22 @@ test.describe("the unguarded exit (#781)", () => {
     expect(dialogs, "saving argued with the operator on the way out").toEqual([]);
   });
 
-  test("admin: the form restored after a refusal is not dirty", async ({ page }) => {
+  test("admin: the form restored after a refusal still guards the work it restored", async ({
+    page,
+  }) => {
+    // **Found by hand by the operator, minutes after the first version of this shipped**, and
+    // the test that used to sit here asserted the opposite and passed green.
+    //
+    // Issue #781 says the guard "must not fight the draft restore … a refused save is a
+    // navigation the operator did not choose, and the guard must not prompt on it." The "it"
+    // is the REFUSAL REDIRECT — do not prompt while the server bounces you back. It was read as
+    // "do not guard the restored form", which left the guard inert on the one screen where the
+    // operator most reliably has work worth protecting: they just failed to save it.
+    //
+    // The mechanism made it invisible: `form-draft.ts` hands the submitted values back as the
+    // form's DEFAULTS, and the baseline is read from exactly those defaults (`bornFormState`),
+    // so the restored form is born equal to itself and reads clean. Every assertion here passed
+    // while the operator's typing walked out of the door silently.
     await signInAsAdmin(page, "spink");
     await seedOneAddOn(page);
 
@@ -169,18 +184,46 @@ test.describe("the unguarded exit (#781)", () => {
     await page.getByRole("button", { name: "Create" }).click();
     await page.waitForURL(/err=bad_amount/);
 
-    // The draft (#699) hands the operator's own values back as the form's DEFAULTS, so the
-    // restored form is born holding them and starts clean. A guard that measured input events
-    // across the redirect, or snapshotted before the restore, would nag about work it just
-    // returned — the constraint issue #781 states as "must not prompt on a navigation the
-    // operator did not choose".
+    // The #699 restore worked — asserted so this cannot pass by never having stashed anything.
     await expect(page.locator('input[name="amount"]')).toHaveValue("forty five");
+    await guardReady(page, "form");
 
     const dialogs = captureDialogs(page);
     await page.getByRole("link", { name: "Existing Cooler of Ice" }).click();
 
-    await page.waitForURL(/sel=(?!new)/);
-    expect(dialogs, "nagged about the values it had just restored").toEqual([]);
+    await expect
+      .poll(() => dialogs.length, { message: "walked off with the refused work in silence" })
+      .toBeGreaterThan(0);
+    // Dismissed, so the work is still there to correct.
+    await expect(page).toHaveURL(/sel=new/);
+    await expect(page.locator('input[name="label"]')).toHaveValue("Sunset Charcuterie");
+  });
+
+  test("admin: a refused form stays guarded even after the fields are cleared", async ({
+    page,
+  }) => {
+    // Clearing the boxes does not make the submission saved. A baseline-comparison guard would
+    // go quiet here if it measured against the restored defaults and the operator emptied them,
+    // which is the same silence the test above exists to remove — reached a different way.
+    await signInAsAdmin(page, "spink");
+    await seedOneAddOn(page);
+
+    await page.goto("/admin/add-ons?sel=new");
+    await page.fill('input[name="label"]', "Sunset Charcuterie");
+    await page.fill('input[name="amount"]', "forty five");
+    await page.getByRole("button", { name: "Create" }).click();
+    await page.waitForURL(/err=bad_amount/);
+    await guardReady(page, "form");
+
+    await page.fill('input[name="label"]', "");
+    await page.fill('input[name="amount"]', "");
+
+    const dialogs = captureDialogs(page);
+    await page.getByRole("link", { name: "Existing Cooler of Ice" }).click();
+
+    await expect
+      .poll(() => dialogs.length, { message: "went quiet once the boxes were empty" })
+      .toBeGreaterThan(0);
   });
 
   test("admin: the browser Back button warns on a dirty form", async ({ page }) => {

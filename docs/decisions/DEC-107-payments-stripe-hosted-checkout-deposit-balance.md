@@ -1,168 +1,27 @@
 ---
+schema: 1
 id: DEC-107
-title: "Payments — Stripe hosted Checkout, deposit + balance, webhook-driven booking write"
+title: "Sales tax is read live, not frozen onto the booking"
 topic: "Reservations & payments"
+status: "superseded"
+date: "2026-08-19"
+ruling: "The sales tax rate is read fresh whenever a balance is worked out, rather than frozen onto the booking. Safe only because no operator surface can change it — altering it takes someone at a database prompt on purpose."
+claims:
+  - kind: "file"
+    target: "src/reservations/payment-config.ts"
+  - kind: "unverifiable"
+    target: "no surface under app/ calls setPaymentConfig, so the rate is not browser-editable"
+    note: "a grep, not a check — nothing fails if a surface adds one"
+revisit_if: "a rate change actually happens, which forces the question of which date governs"
 ---
 
-## DEC-107: Payments — Stripe hosted Checkout, deposit + balance, webhook-driven booking write
+## DEC-107: Sales tax is read live, not frozen onto the booking
 
-**See also** — later decisions that changed part of this one:
-- Corrected by DEC-151 — the `writeBooking` citation only — the hosted-Checkout and deposit/balance decisions stand, and the balance flow it describes is unchanged
-- Revised by DEC-153 — the refund MECHANISM only — its 2026-07-18 amendment's closing line, "Still manual (unchanged): every OTHER refund — operator-discretion cancels". Refunds stay operator-discretion; what changes is that the discretion can now be exercised in Muster, and a refund taken in the Stripe dashboard reconciles back instead of being invisible. Everything else in DEC-107 stands untouched: hosted Checkout, the deposit/balance model, the webhook-driven write, `balanceOwedCents` as the one balance authority, the DEC-109 residual-race auto-refund, and the §3.3 refund CASCADE staying parked
-- Reversed by DEC-155 — the DEFAULT and launch posture only — deposit-vs-full. Deposit + balance remains fully built and fully supported: the deposit share, the balance deriver, the balance checkout link, and the frozen-money rule are untouched. What changes is which one an unconfigured deploy inherits.
+Freezing a copy of the rate on every reservation was rejected as the wrong shape rather than
+as overkill. Sales tax is not a per-customer term; it is a jurisdiction's rate on a date, and
+storing the same number a hundred thousand times answers a question the jurisdiction already
+answers.
 
-**Status:** Decided 2026-07-11 (Eric + @architect, under DEC-105). New dependency: the `stripe` Node SDK.
-**⚠️ The hosted-Checkout decision below was REVERSED for the customer booking charge by DEC-134 (12.5)** —
-that charge is now an **inline Stripe Payment Element** over a deferred PaymentIntent. Hosted Checkout
-survives only for **balance** and **post-trip gratuity**. Everything else here — deposit + balance as the
-model, webhook-driven write, the sailbook charge/refund lift, the parked refund cascade — still stands.
-Read DEC-134 before acting on the Decision paragraph.
-
-**Context.** Muster-native bookings need to take money. The operator chose **deposit + balance** over
-full-upfront (the closer match to how Xola works, which matters for a Xola replacement).
-
-**Decision.** **Stripe hosted Checkout (redirect)**, not embedded Payment Intents — Stripe hosts the card
-fields (PCI SAQ-A, no card data touches Muster), handles 3DS/SCA + wallets free, and is the fastest path to
-a working redirect. Embedded UX control isn't worth the PCI surface for a thin slice.
-- **Deposit + balance:** deposit taken at Checkout; **balance collected later via an emitted payment-link**,
-  **not** an off-session auto-charge of a saved card — the auto-charge path drags in off-session card-decline
-  handling not worth it at pilot scale.
-- **Charge + refund are a port, not a from-scratch build:** the sibling **`sailbook`** project already runs
-  working Stripe **charge + refund** code — **lift and audit** it into strict TS (precedent: the DEC-036
-  `xola-tip-extractor` port). **Deposit collection is the net-new piece.** This lifts refund *mechanism*
-  only — the refund *cascade* surface (§3.3) stays parked. Build-time dependency: add `sailbook` to the
-  session scope so the source can be read + audited on lift.
-- **Webhook-driven write:** the signature-verified, idempotent `checkout.session.completed` webhook is the
-  thing that writes the Muster-native Reservation — **never** the browser redirect (not proof of payment).
-- **New dependency (`stripe` SDK) cleared:** it saves well beyond hand-rolling a PCI-safe payment +
-  reconciliation path and its webhook-signature verification + typed session API justify the SDK over the
-  raw-`fetch` posture DEC-081 took for email. (Confirm SDK-vs-fetch at build.)
-
-**Stays parked (do not build in Phase 11):** the **refund cascade (§3.3)** and **dispute/chargeback
-surfacing (§3.4)**. For Xola bookings, refunds live in Xola (DEC-105) — *permanently*. For Muster bookings
-at pilot volume, a refund/cancel is handled **manually in the Stripe dashboard** (documented in the
-runbook); an in-app money-ops surface is a later phase, gated on Muster carrying real volume.
-
-**Owner-gated (Drew), flag each — gates the Stripe task only:** deposit-% and balance timing; per-seat /
-product pricing; refund policy + terms shown at booking; **whether Muster bills through BrewBoat's existing
-Stripe account or a separate one** (payout/tax/reconciliation-against-Xola implications during the overlap);
-tax/fees; cancellation / no-show terms. **Revisit if:** deposit auto-charge (saved card) becomes worth the
-off-session-decline handling, or refund volume justifies pulling §3.3 in-house.
-
-**Amendment (2026-07-18, @architect + operator — task 12.1b, under DEC-109):** the "refunds are ALWAYS
-manual" posture is **narrowed** — Muster now issues **one** programmatic refund automatically. The DEC-109
-**residual-race loser** (two customers both paid, one won the atomic whole-boat claim; the loser cannot be
-booked) is **auto-refunded + told "sold out while you were paying — fully refunded."** This is the reversal
-already directed by the operator ([[customer-self-refund-reverses-manual]]) plus the DEC-109 amendment; a
-silent unrefunded loss was never acceptable, and a human-in-the-loop manual refund for a race the engine
-caused is the wrong default. **Mechanism:** `PaymentPort.refund({paymentIntentId, amountCents?,
-idempotencyKey})` (Stripe `refunds.create` + Fake), **keyed-idempotent** (`refund_${sessionId}`) so a
-re-delivered webhook can't double-refund; the webhook `lost` branch refunds → notifies, and the loud
-**manual-refund alert becomes the FALLBACK** (fires only when there's no PaymentIntent or the refund call
-throws). **Still manual (unchanged):** every OTHER refund — operator-discretion cancels, the §3.3 refund
-**cascade** (still parked), disputes/chargebacks (§3.4), and anomalous `unbookable` outcomes
-(event_missing, unknown purpose) which stay on the loud manual-alert path. This lifts the refund
-*mechanism* DEC-107 always anticipated ("charge **+ refund** are a port … lift from sailbook"); it does
-**not** un-park the cascade.
-
-**Amendment (2026-07-19, @architect + operator — #474, under DEC-112/DEC-124/DEC-125):** the balance
-deriver now composes the **party fare**, not the bare base. `balanceOwedCents` was called with
-`Event.price` — the frozen per-departure **base** (DEC-125/DEC-112) — but since 12.2 the customer is
-charged **base + extra-guest** charges (`composeFare`), so a `depositMode:"deposit"` booking with guests
-above the vessel's `includedGuestCount` **undercollected the balance** by `extrasCents + tax(extrasCents)`.
-Latent only (RESERVATIONS flag off; `"full"` mode charges the whole composed fare upfront and was already
-correct). **Fix:** the extras are **frozen at booking time on `Reservation.extrasCents`** (new nullable
-`reservations.extras_cents`, DEC-121 timestamped migration; absent ⇒ 0 for seeded/Xola/pre-12.2 rows) — a
-**booking property** (a function of `guestCount`), deliberately **not** on `Event` (keeps the DEC-125
-`Event.price = base` invariant clean) and deliberately **not** recomputed from the live `Offering` link
-(would reintroduce the config-drift `balanceOwedCents`'s "never a config recompute" contract exists to
-prevent). Both callers — `create-balance-checkout` and the webhook's `recordBalancePayment` overpay guard —
-pass `event.price + (reservation.extrasCents ?? 0)`. **Tax still collected in full at deposit; the balance
-carries zero tax; gratuity still netted per DEC-124** (walked the deposit→balance arithmetic: balance =
-remaining share of the *full* fare, tax and tip both net out, nothing double-counted). Fixes #474.
-
-## DEC-107 amendment (11.2b) — on-demand balance collection
-
-**Status:** Decided 2026-07-13 (@architect, under DEC-107).
-
-Balance is collected **on demand** (the auto-emit scheduler that reads `balanceDueDaysBeforeEvent`
-stays P12+). **Amount authority is the canonical deriver `balanceOwedCents`, computed at click time** —
-never a config recompute of the deposit share, so it can't drift when `depositPercent`/price change
-between deposit and balance (the `Payment` entity already mandates balance be *derived, never stored*).
-A refund re-opens the balance through the same one function.
-
-> **Formula, as it stands after #474, DEC-134 and #522** (this paragraph originally read
-> `(event.price + tax) − Σ succeeded payments`, which is now under-specified in three ways):
-> ```
-> balanceOwedCents = fareCents + tax(fareCents)
->                  − Σ notRefunded max(0, (amount − gratuity − fee)
->                                        − max(0, refunded − gratuity − fee))
-> ```
-> - **Refunds net against gratuity and fee FIRST** (#522), and only the excess reduces
->   fare+tax. This used to sum `status==='succeeded'` only, which was equivalent to "not
->   refunded" while nothing could write a partial — once `markPaymentRefunded` landed, a
->   partially refunded deposit counted as zero paid and re-billed the whole fare. Attributing
->   a partial refund to fare+tax instead would re-bill fare on a **tip-only refund**, which is
->   the likeliest partial an operator makes. A refund's composition is not recorded, so the
->   order is an assumption; this is the one that cannot over-charge a customer.
-> - **`fareCents` is the composed party fare** — `event.price` **+** the frozen
->   `Reservation.extrasCents` (#474), not the bare base. The base alone undercollects a
->   deposit-mode balance by `extras + tax(extras)`.
-> - **Gratuity and the service fee are netted out of each paid amount** (DEC-124 / DEC-134). The tip
->   is crew money and the fee is a one-shot surcharge; counting either as "paid toward balance" would
->   under-charge a deposit booking. The balance stays pure remaining principal + its tax.
->
-> Implementation: `src/reservations/payment-config.ts`.
-
-The **Stripe Checkout URL, re-minted per request, is the balance link** — no durable/custom token (and no
-dependency on 11.4's `booking-link.ts`); a re-minted link always reflects the current outstanding balance.
-
-The webhook **routes on `metadata.purpose`**: `"balance"` records a `Payment{kind:'balance'}` against the
-existing reservation (**no `writeBooking`, no confirmation emit** — the boat was claimed at deposit,
-DEC-109); absent/`"booking"` keeps the existing spine; any **other** purpose is loudly flagged and NOT
-booked (a non-booking session has no `eventId` → would orphan a reservation). **Overpay** from a
-two-session race is recorded (the money moved) then loudly flagged for a **manual** refund — consistent
-with the DEC-107 paid-but-unbooked posture; nothing auto-refunds. Balance is never stored on `Reservation`
-(DEC-105/106); the payment log is the sole source of truth. No migration (`payments` table + `kind:'balance'`
-already exist). Trigger for now is the `db:balance` CLI; the customer-facing email/page is P12.
-
----
-
-## Amendment, 2026-08-19 (eric) — the tax rate is a live read, and that is safe because it is not a browser-editable knob
-
-**What this changes:** nothing in the formula. `balanceOwedCents` still reads `payment.tax_rate_bps`
-live, and an open deposit balance is still repriced if that value changes — the behaviour issue #574
-identified. What changes is that this is now **decided** rather than incidental. Issue #574 asked
-whether tax should freeze on the reservation the way `Event.price` (DEC-125) and
-`Reservation.extrasCents` (#474) already do. The answer is no, on the grounds below.
-
-**Why it's safe.** The rate is not operator-editable. No surface under `app/` calls
-`setPaymentConfig` — the only callers are the repository adapters and their tests; `/admin/settings`
-carries the engine pause and nothing else. Changing the rate means someone at a `psql` prompt,
-deliberately. The hazard #574 describes needs an operator correcting a typo mid-season from a
-browser, and there is no browser path. The docstring's promise of a "P12 admin settings screen"
-exposing this config is **withdrawn**: building it would reintroduce the hazard without the model
-below, so a future settings screen must exclude `taxRateBps` or ship that model first.
-
-**A reservation-level frozen rate is rejected as the wrong shape**, not merely as overkill. Sales tax
-is not a per-customer term; it is a jurisdiction's rate on a date. Freezing a copy on every
-reservation stores the same number a hundred thousand times to answer a question the jurisdiction
-already answers.
-
-**The rate is 800 bps** — Cuyahoga County (Cleveland). Set explicitly in `app_settings` in both local
-and production on 2026-08-19. The code default at `payment-config.ts` still reads 725 with a comment
-claiming "Ohio state sales tax 7.25%"; that is wrong on both the jurisdiction and the number, and is
-left standing only because both deployments now carry an explicit row so the default never applies.
-A fresh deploy would inherit it.
-
-**If a rate ever does change,** the answer is a `(rate, effective_date)` lookup — sales tax moves
-forward-only from an announced date, so the rate in force is a function of a date, not of a booking.
-The open question that model forces is **which** date governs: booking, departure, or charge. For a
-deposit taken before a rate change against a departure after it, those give different answers, and
-that choice is #574's freeze-vs-live question restated in terms that match how the tax actually
-works. Deliberately unanswered — there is no rate change to answer it against, and guessing now
-would bake in an answer nobody tested.
-
-**Still stands:** the whole 11.2b formula, the refund-netting order, `fareCents` as base + frozen
-extras, tax applying to fare + add-ons only (never tip or service fee), and the freeze rules for
-price, extras and fee. Tax rate is the one live read in the formula, and it stays that way.
+The exposure that would make freezing necessary — an operator correcting a typo mid-season and
+silently repricing every open balance — needs a browser path to the rate, and there is none.
+That is what makes the live read safe, so it is the thing to check before adding one.

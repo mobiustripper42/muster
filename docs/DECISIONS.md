@@ -174,7 +174,7 @@ cross-reference left, and it points at the spec, never at another decision.
 ### Reservations & payments
 - DEC-105 — Reservations go live in 2026 as a Muster-native parallel-run — permanent coexistence, not a cutover
 - DEC-106 — Coexistence partition = whole vessel-day; an event is owned by exactly one system
-- DEC-107 — Payments — Stripe hosted Checkout, deposit + balance, webhook-driven booking write
+- DEC-107 — Sales tax is read live, not frozen onto the booking
 - DEC-108 — Public surface `app/(public)` + single-flip "Book Now" entry (instant Xola rollback)
 - DEC-109 — Atomic capacity claim on public booking (the customer-side REQ-CLAIM-1)
 - DEC-110 — Waiver — Muster-sold side only; integrate a provider (deferred pre-flip); pilot uses minimal consent

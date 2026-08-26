@@ -414,3 +414,124 @@ describe('the id sweep', () => {
     expect(check()).toEqual([])
   })
 })
+
+describe('schema v1 frontmatter shapes the legacy parser must now read', () => {
+  // `claims` is a list of objects; `supersedes` is a list of BARE STRINGS, a shape
+  // `parseFrontmatter` had no branch for at all. Both were the blocker that made incremental
+  // conversion impossible — `load()` threw on the first converted record and took every other
+  // file's checks with it.
+  const v1 = `---
+schema: 1
+id: DEC-200
+title: "A title"
+topic: ${JSON.stringify(TOPIC)}
+status: active
+date: "2026-08-26"
+ruling: "The customer pays the whole price at booking and nothing is collected later."
+supersedes:
+  - DEC-107
+  - DEC-155
+claims:
+  - kind: file
+    target: src/reservations/payment-config.ts
+  - kind: unverifiable
+    target: nothing writes a balance figure to the database
+    note: needs a lint rule to become checkable
+---
+
+Body.
+`
+
+  it('reads a list of objects', () => {
+    expect(parseFrontmatter(v1).meta.claims).toEqual([
+      { kind: 'file', target: 'src/reservations/payment-config.ts' },
+      {
+        kind: 'unverifiable',
+        target: 'nothing writes a balance figure to the database',
+        note: 'needs a lint rule to become checkable',
+      },
+    ])
+  })
+
+  it('reads a list of bare strings', () => {
+    expect(parseFrontmatter(v1).meta.supersedes).toEqual(['DEC-107', 'DEC-155'])
+  })
+
+  it('keeps the scalars either side of the lists', () => {
+    const { meta } = parseFrontmatter(v1)
+    expect(meta.schema).toBe('1')
+    expect(meta.id).toBe('DEC-200')
+    expect(meta.status).toBe('active')
+  })
+
+  it('still throws on a list item that opens before any list key', () => {
+    // The bare-string branch must not turn this into a silent accept — an item with no open
+    // list is the `dumb:`-shaped accident, not a value.
+    expect(() => parseFrontmatter('---\nid: DEC-001\n  - DEC-002\n---\n\nBody.\n')).toThrow(/outside any list/)
+  })
+})
+
+describe('renderDecision round-trips schema v1', () => {
+  // THE regression guard for the bug this was written against: `renderDecision` emitted four
+  // keys, so the first `gen:decisions` after a conversion DELETED `schema`, `status`, `date`,
+  // `ruling`, `claims` and `revisit_if` — the whole decision — and the record then read as
+  // legacy, so the gate went GREEN on a file whose content it had just destroyed. And
+  // `check:decisions` is what tells you to run the generator in the first place.
+  const v1 = {
+    schema: '1',
+    id: 'DEC-200',
+    title: 'Sales tax is read live, not frozen onto the booking',
+    topic: TOPIC,
+    status: 'superseded',
+    date: '2026-08-26',
+    ruling: 'The sales tax rate is read fresh whenever a balance is worked out, rather than frozen onto the booking.',
+    claims: [
+      { kind: 'file', target: 'src/reservations/payment-config.ts' },
+      { kind: 'unverifiable', target: 'no surface calls setPaymentConfig', note: 'a grep, not a check' },
+    ],
+    supersedes: ['DEC-107', 'DEC-155'],
+    superseded_by: 'DEC-201',
+    revisit_if: 'a rate change actually happens',
+    amends_spec: [{ section: '2.8', scope: 'the tax rate is a live read' }],
+    body: '## DEC-200: Sales tax is read live\n\nRationale.\n',
+  }
+
+  it('emits every v1 key, so nothing is dropped on the next generate', () => {
+    const back = parseFrontmatter(renderDecision(v1)).meta
+    for (const k of ['schema', 'id', 'title', 'topic', 'status', 'date', 'ruling', 'revisit_if', 'superseded_by']) {
+      expect(back[k], `key \`${k}\` was dropped`).toEqual(v1[k])
+    }
+    expect(back.claims).toEqual(v1.claims)
+    expect(back.supersedes).toEqual(v1.supersedes)
+    expect(back.amends_spec).toEqual(v1.amends_spec)
+  })
+
+  it('still opts in to validation after a round trip', () => {
+    const out = renderDecision(v1)
+    expect(/^schema:/m.test(out.slice(4, out.indexOf('\n---\n', 3)))).toBe(true)
+  })
+
+  it('quotes the date, so YAML does not hand back a Date and fail the string check', () => {
+    expect(renderDecision(v1)).toContain('date: "2026-08-26"')
+  })
+
+  it('emits `schema: 1` unquoted, so the parsed value is the number the gate compares against', () => {
+    expect(renderDecision(v1)).toContain('\nschema: 1\n')
+  })
+
+  it('is a fixed point — regenerating a converted record rewrites nothing', () => {
+    const once = renderDecision(v1)
+    const twice = renderDecision({ ...parseFrontmatter(once).meta, body: parseFrontmatter(once).body })
+    expect(twice).toBe(once)
+  })
+
+  it('leaves a legacy record on the existing four-key output', () => {
+    const legacy = { id: 'DEC-020', title: 'A title', topic: TOPIC, body: '## DEC-020: A title\n\nBody.\n' }
+    const out = renderDecision(legacy)
+    expect(out.slice(4, out.indexOf('\n---\n', 3)).split('\n').filter(Boolean)).toEqual([
+      'id: DEC-020',
+      `title: ${JSON.stringify('A title')}`,
+      `topic: ${JSON.stringify(TOPIC)}`,
+    ])
+  })
+})

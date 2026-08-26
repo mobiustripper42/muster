@@ -88,8 +88,9 @@ features (SPEC §2.6).
 
 Mostly out of the 2026 build; owns money/policy decisions that are parked.
 - DR-1: I decide deposit-vs-full and the refund schedule. *(~~parked — payments are 2027~~ —
-  **payments landed in 2026.** DEC-105 reopened the customer portal; **deposit-vs-full is DECIDED —
-  deposit + balance**, DEC-107. The **refund schedule is still Drew's open call** (#472), and it's
+  **payments landed in 2026.** DEC-105 reopened the customer portal; **the full amount is charged at
+  booking** (SPEC §2.8.4a) and deposits are a future capability, not a current option. The **refund
+  schedule is still Drew's open call** (#472), and it's
   what blocks self-service cancel per DEC-135 — *that is `feature/reservations`' DEC-135 (the "Your booking" manage page), not this tree's, which was deleted 2026-07-27; the citation resolves correctly once reservations merges*.)*
 - DR-2: I review a year-end reliability report to inform bonuses I award by hand — the algorithm
   never signs the check. *(parked — FUTURE_IDEAS / SPEC §4 Goodhart guardrail)*

@@ -368,3 +368,42 @@ export async function selectOptionHydrated(
 
 export const test = base;
 export { expect };
+
+/**
+ * Plant a recorded shift change (#769), the way `formShifts` would have.
+ *
+ * Direct rather than driven through a real trip edit: producing one end to end needs a Xola pull
+ * or a departure edit plus a cron tick, and the surface under test is the BANNER — what it says,
+ * who it clears for, and whether a later change brings it back. Routing through
+ * `recordShiftChanges` means the adapter written for this is exercised rather than bypassed, so
+ * a broken insert still fails here.
+ *
+ * `startBefore`/`startAfter` are ISO departure instants; the surface subtracts the call lead.
+ * Pass `null` for either to reproduce the pre-watermark row the banner must refuse to describe.
+ */
+export async function plantShiftChange(c: {
+  shiftId: string;
+  crewMemberId: string;
+  changedAt: string;
+  added?: string[];
+  removed?: string[];
+  startBefore?: string | null;
+  startAfter?: string | null;
+}): Promise<void> {
+  const repo = PostgresRepository.fromConnectionString(TEST_DATABASE_URL);
+  try {
+    await repo.recordShiftChanges([
+      {
+        shiftId: c.shiftId as Parameters<typeof repo.listShiftChanges>[0],
+        crewMemberId: c.crewMemberId as Parameters<typeof repo.listShiftChanges>[1],
+        changedAt: c.changedAt,
+        added: c.added ?? [],
+        removed: c.removed ?? [],
+        startBefore: c.startBefore ?? null,
+        startAfter: c.startAfter ?? null,
+      },
+    ]);
+  } finally {
+    await repo.close();
+  }
+}

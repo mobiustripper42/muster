@@ -490,6 +490,17 @@ function CrewApp({
                     ›
                   </span>
                 </div>
+                {/* #769 — a flag here, the story on the card. Accent-bordered rather than the
+                    muted treatment beside it: this one is asking to be tapped, and it is the
+                    surface the change SMS points at. */}
+                {s.changed && (
+                  <span
+                    data-testid="changed-pill"
+                    className="self-start rounded-full border border-accent bg-bg px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-accent"
+                  >
+                    Changed
+                  </span>
+                )}
                 {s.addedByOperator && (
                   <span className="self-start rounded-full border border-line bg-bg px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted">
                     Added for you

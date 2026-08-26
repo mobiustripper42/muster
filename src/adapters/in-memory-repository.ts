@@ -78,6 +78,7 @@ import type { ImportRun, ImportRunItem } from "../import/import-audit.js";
 import type { ImportRunId } from "../domain/ids.js";
 import type { Message, Participant, Thread } from "../messaging/entities.js";
 import type { MessageId, ParticipantId, ThreadId } from "../domain/ids.js";
+import type { ShiftChangeRow } from "../ports/repository.js";
 import {
   PAYMENT_CONFIG_DEFAULTS,
   type PaymentConfig,
@@ -172,6 +173,9 @@ export class InMemoryRepository implements Repository {
   // Doorbell read / notify state (6.6a, DEC-069): threadId → (subjectKey → ISO).
   // Two single-writer stores, mirroring the two Postgres tables.
   readonly #reads = new Map<string, Map<string, string>>();
+  /** #769 — append-only change log; the read marker is keyed `"<shiftId> <crewMemberId>"`. */
+  readonly #shiftChanges: ShiftChangeRow[] = [];
+  readonly #shiftChangeReads = new Map<string, string>();
   readonly #notifies = new Map<string, Map<string, string>>();
 
   // ── Role types (tenant config — DEC-ROLE-1) ───────────────────────────────
@@ -1211,5 +1215,50 @@ export class InMemoryRepository implements Repository {
   }
   async recordNotification(threadId: ThreadId, subject: Subject, at: string): Promise<void> {
     upsertThreadState(this.#notifies, threadId, subject, at);
+  }
+
+  // ---- Crew-facing shift changes (#769) ----
+
+  async recordShiftChanges(records: ShiftChangeRow[]): Promise<void> {
+    // Append-only, and the arrays are copied rather than aliased: the caller hands us the very
+    // arrays `formShifts` built, and a store that shares them lets a later mutation upstream
+    // rewrite history that has already been read.
+    for (const r of records) {
+      this.#shiftChanges.push({ ...r, added: [...r.added], removed: [...r.removed] });
+    }
+  }
+
+  async listShiftChanges(
+    shiftId: ShiftId,
+    crewMemberId: CrewMemberId,
+  ): Promise<ShiftChangeRow[]> {
+    return this.#shiftChanges
+      .filter(
+        (r) => String(r.shiftId) === String(shiftId) && String(r.crewMemberId) === String(crewMemberId),
+      )
+      .map((r) => ({ ...r, added: [...r.added], removed: [...r.removed] }));
+  }
+
+  async shiftChangeLastSeen(
+    shiftId: ShiftId,
+    crewMemberId: CrewMemberId,
+  ): Promise<string | null> {
+    return this.#shiftChangeReads.get(`${String(shiftId)} ${String(crewMemberId)}`) ?? null;
+  }
+
+  async markShiftChangesSeen(
+    shiftId: ShiftId,
+    crewMemberId: CrewMemberId,
+    at: string,
+  ): Promise<void> {
+    // Latest-wins by INSTANT, not by call order. The Postgres adapter upserts with `greatest()`
+    // so two dismisses racing from two tabs cannot let the older instant win and re-raise a
+    // banner already cleared; a bare `set` here would make dev and test disagree with prod on
+    // exactly that race, invisibly, because nothing holds the two adapters to one behaviour
+    // (`@code-review`, this branch). Nothing clears the change rows — a later change still has
+    // to be able to describe the window it belongs to.
+    const key = `${String(shiftId)} ${String(crewMemberId)}`;
+    const prior = this.#shiftChangeReads.get(key);
+    if (prior === undefined || at > prior) this.#shiftChangeReads.set(key, at);
   }
 }

@@ -74,3 +74,52 @@ export async function bailFromSeat(formData: FormData): Promise<void> {
   revalidatePath("/crew");
   redirect(`/crew?bailed=${encodeURIComponent(shiftId)}`);
 }
+
+/**
+ * "Got it" — mark this shift's change banner seen, for THIS crew member only (#769, DEC-158).
+ *
+ * Two crew on the same boat dismiss independently: "seen" is not a property of the shift. The
+ * write is a `last_seen_at` upsert and nothing else — the change rows stay, because a later
+ * change still has to be able to describe the window it belongs to, and because deleting them
+ * would quietly make the dismissal permanent (re-raise is `changed_at > last_seen_at`, not a
+ * flag anyone resets).
+ *
+ * A crew-session write, so it re-reads the subject rather than trusting the form: the shift id
+ * arrives from the client and the crew member id must not.
+ */
+export async function dismissShiftChanges(formData: FormData): Promise<void> {
+  const shiftId = String(formData.get("shiftId") ?? "");
+  const subject = await readSubject();
+  if (!subject || subject.kind !== "crew" || !shiftId) redirect("/crew");
+
+  try {
+    const repo = getRepo();
+    // **Only dismiss something there is to dismiss.** The crew member id is pinned to the
+    // session, so this can never touch anyone else's read state — but the SHIFT id arrives from
+    // the client, and without this a crew member could mark a shift they have never been on as
+    // seen "now", pre-empting the first real banner if they are later assigned to it. Gating on
+    // "does this pair have any recorded change" is the cheap form of the seat check `bailFromSeat`
+    // does four functions up, and it fails closed: no rows, no write. (`@code-review`, this
+    // branch — the docstring above claimed the shift-id side was covered when it was not.)
+    const changes = await repo.listShiftChanges(
+      asId<"ShiftId">(shiftId),
+      asId<"CrewMemberId">(subject.id),
+    );
+    // Nothing recorded means nothing to dismiss — fall through to the redirect below rather
+    // than `redirect()`-ing here, which throws by design and would be swallowed by this catch.
+    if (changes.length > 0) {
+      await repo.markShiftChangesSeen(
+        asId<"ShiftId">(shiftId),
+        asId<"CrewMemberId">(subject.id),
+        new Date().toISOString(),
+      );
+    }
+  } catch {
+    // Best-effort: a failed dismiss leaves the banner up, which is the safe direction. The crew
+    // member can tap again; the alternative (an error screen over a card they came to read) is
+    // worse than a banner that did not go away.
+  }
+  revalidatePath(`/crew/shift/${shiftId}`);
+  revalidatePath("/crew");
+  redirect(`/crew/shift/${shiftId}`);
+}

@@ -1,5 +1,10 @@
 import { CrewHeader } from "../../../../../components/crew/crew-header";
+import { ChangeBanner } from "../../../../../components/crew/change-banner";
 import { buildShiftCard, type ShiftCardView } from "@core/crewapp/shift-card.js";
+import {
+  readShiftChangeBanner,
+  type ChangeBanner as ChangeBannerView,
+} from "@core/crewapp/shift-changes.js";
 import {
   otherShiftsOnDay,
   type OtherShiftToday,
@@ -15,7 +20,7 @@ import { readSubject } from "../../../../lib/auth";
 import { getRepo } from "../../../../lib/repo";
 import { messagingEnabled } from "../../../../lib/flags";
 import { fmt12, tel, sms } from "../../../../lib/format";
-import { bailFromSeat } from "./actions";
+import { bailFromSeat, dismissShiftChanges } from "./actions";
 import { startDm } from "../../threads/actions";
 
 /**
@@ -107,6 +112,16 @@ export default async function ShiftCardPage({
     shiftId,
     new Date(),
   ).catch(() => [] as OtherShiftToday[]);
+  // What moved since this crew member last looked (#769). `card.events` is built from the shift's
+  // stored `eventIds` — the same set `formShifts` diffs against — so its length is the trip count
+  // the recorded deltas are walked back from. Best-effort: a hiccup drops the banner, never the
+  // card, matching every other supplementary read on this page.
+  const changes = await readShiftChangeBanner(
+    getRepo(),
+    asId<"ShiftId">(shiftId),
+    asId<"CrewMemberId">(subject.id),
+    card.events.length,
+  ).catch(() => null);
   return (
     <Card
       card={card}
@@ -114,6 +129,7 @@ export default async function ShiftCardPage({
       bailError={bailError}
       senderName={me?.name}
       otherShifts={otherShifts}
+      changes={changes}
     />
   );
 }
@@ -141,18 +157,27 @@ function Card({
   bailError,
   senderName,
   otherShifts,
+  changes,
 }: {
   card: ShiftCardView;
   shiftId: string;
   bailError: string | null;
   senderName?: string | undefined;
   otherShifts: OtherShiftToday[];
+  changes: ChangeBannerView | null;
 }) {
   const firstDeparture = card.events[0]?.departureTime;
   return (
     <Shell>
       <CrewHeader title={card.vesselName} back={{ href: "/crew", label: "My shifts" }} />
       {bailError && <Notice tone="bad">{bailError}</Notice>}
+
+      {/* Above the card, not inside it: the crew member arriving from the SMS is here to find out
+          what moved, and burying that under the manifest makes them hunt for the thing they were
+          told to come and look at. */}
+      {changes && (
+        <ChangeBanner banner={changes} shiftId={shiftId} dismiss={dismissShiftChanges} />
+      )}
 
       {/* The vessel name moved INTO the shared header row (#644), so it is `text-lg` here rather
           than the old `text-2xl`. The card below carries the emphasis that matters — Shift Start

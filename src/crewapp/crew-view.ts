@@ -16,6 +16,7 @@ import type { Repository } from "../ports/repository.js";
 import type { Shift } from "../domain/entities.js";
 import { TENANT_TIMEZONE, vesselDateOf } from "../config/tenant.js";
 import { worstCredential } from "../admin/credential-health.js";
+import { hasUnseenShiftChanges } from "./shift-changes.js";
 import type { CredentialConcern } from "../admin/credential-health.js";
 import { committedWindow } from "./shift-card.js";
 import { summarizeStanding } from "./standing.js";
@@ -82,6 +83,15 @@ export interface MyShiftView {
    * this only ever marks `Confirmed`.
    */
   addedByOperator: boolean;
+  /**
+   * Something moved on this shift and this crew member hasn't looked yet (#769).
+   *
+   * A flag, not the detail. My shifts is a list of compact rows and the full before→after banner
+   * belongs on the card, where there is room to spell the times out — a five-line banner repeated
+   * per row would push the list itself off a 375px screen. This drives the same "Changed" pill
+   * treatment as {@link addedByOperator}, and tapping through shows the whole story.
+   */
+  changed: boolean;
   /** Others on this shift (#216) — who you're crewing with. Confirmed/Claimed
    * seats, excluding you. Empty on a solo / 0-crew shift. */
   coCrew: { name: string; roleName: string }[];
@@ -260,6 +270,7 @@ export async function buildCrewAppView(
       ...window,
       pending: seat.state === "Claimed",
       addedByOperator,
+      changed: await hasUnseenShiftChanges(repo, shift.id, crewMemberId),
       coCrew,
     });
   }

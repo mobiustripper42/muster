@@ -825,4 +825,42 @@ export interface Repository {
   recordRead(threadId: ThreadId, subject: Subject, at: string): Promise<void>;
   /** Upsert a subject's last-rang for a thread (latest-wins). */
   recordNotification(threadId: ThreadId, subject: Subject, at: string): Promise<void>;
+
+  // ---- Crew-facing shift changes (#769, DEC-158 Decision 4) ----
+  //
+  // The diff `formShifts` already computes reaches the SMS and is then discarded. Persisting it
+  // is what lets the app describe a change to a crew member who arrives ten minutes later —
+  // which the SMS half assumes, being a deliberate strict subset of what the app should show.
+  //
+  // Keyed per crew member throughout, not per shift: `formShifts` emits one entry per assigned
+  // seat, and dismissal is per person (two crew on one boat dismiss independently).
+
+  /** Append change records. One call per `formShifts` run, from the caller — never from inside
+   *  its loop, which issue #766 already reports as unguarded by a transaction. */
+  recordShiftChanges(records: ShiftChangeRow[]): Promise<void>;
+
+  /** Every recorded change for one crew member's shift, oldest-first is not guaranteed —
+   *  `foldShiftChanges` sorts. */
+  listShiftChanges(shiftId: ShiftId, crewMemberId: CrewMemberId): Promise<ShiftChangeRow[]>;
+
+  /** When this crew member last dismissed this shift's banner, or null if never. */
+  shiftChangeLastSeen(shiftId: ShiftId, crewMemberId: CrewMemberId): Promise<string | null>;
+
+  /** Upsert the dismissal marker (latest-wins). Re-raise falls out of `changed_at > last_seen_at`,
+   *  so nothing here needs to clear the change rows — and deliberately does not, since a later
+   *  change must still be able to describe the window it belongs to. */
+  markShiftChangesSeen(shiftId: ShiftId, crewMemberId: CrewMemberId, at: string): Promise<void>;
+}
+
+/** A persisted `shift_changes` row. Mirrors `FormResult.changedCrew` plus the observation time. */
+export interface ShiftChangeRow {
+  shiftId: ShiftId;
+  crewMemberId: CrewMemberId;
+  /** ISO-8601 UTC. */
+  changedAt: string;
+  added: string[];
+  removed: string[];
+  /** Earliest scheduled departure before/after. `null` = unknown, NOT unchanged. */
+  startBefore: string | null;
+  startAfter: string | null;
 }

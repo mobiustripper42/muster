@@ -104,7 +104,7 @@ import {
   type PaymentConfig,
 } from "../reservations/payment-config.js";
 import { XOLA_TRIP_MINUTES, minutesOfDay } from "../reservations/hull-busy.js";
-import type { FailureWindow, Repository } from "../ports/repository.js";
+import type { FailureWindow, Repository, ShiftChangeRow } from "../ports/repository.js";
 
 /** Add `key: value` only when value is non-null — keeps optional fields absent. */
 function opt<K extends string, V>(
@@ -2525,5 +2525,99 @@ export class PostgresRepository implements Repository {
        on conflict (thread_id, subject_kind, subject_id) do update set last_notified_at=excluded.last_notified_at`,
       [threadId, subject.kind, subject.id, at],
     );
+  }
+
+  // ---- Crew-facing shift changes (#769, migration 20260825181435) ----
+
+  async recordShiftChanges(records: ShiftChangeRow[]): Promise<void> {
+    if (records.length === 0) return;
+    // ONE statement for the whole run, not one per row. A `formShifts` run on a busy day emits a
+    // record per assigned seat per changed shift, and the caller is already wrapping this in a
+    // try/catch that must not become the slowest thing in the tick.
+    const values: string[] = [];
+    const params: unknown[] = [];
+    for (const r of records) {
+      const i = params.length;
+      values.push(`($${i + 1},$${i + 2},$${i + 3},$${i + 4},$${i + 5},$${i + 6},$${i + 7})`);
+      params.push(
+        String(r.shiftId),
+        String(r.crewMemberId),
+        r.changedAt,
+        JSON.stringify(r.added.map(String)),
+        JSON.stringify(r.removed.map(String)),
+        r.startBefore,
+        r.startAfter,
+      );
+    }
+    await this.#pool.query(
+      `insert into shift_changes(shift_id, crew_member_id, changed_at, added, removed, start_before, start_after)
+       values ${values.join(",")}`,
+      params,
+    );
+  }
+
+  async listShiftChanges(
+    shiftId: ShiftId,
+    crewMemberId: CrewMemberId,
+  ): Promise<ShiftChangeRow[]> {
+    const { rows } = await this.#pool.query<{
+      changed_at: string;
+      added: string;
+      removed: string;
+      start_before: string | null;
+      start_after: string | null;
+    }>(
+      `select changed_at, added, removed, start_before, start_after
+         from shift_changes where shift_id=$1 and crew_member_id=$2
+        order by changed_at`,
+      [String(shiftId), String(crewMemberId)],
+    );
+    return rows.map((r) => ({
+      shiftId,
+      crewMemberId,
+      changedAt: r.changed_at,
+      // A malformed array reads as empty rather than throwing: these columns are written by us
+      // and can only be malformed by hand, and the safe failure is a banner that under-claims.
+      added: parseIdArray(r.added),
+      removed: parseIdArray(r.removed),
+      startBefore: r.start_before,
+      startAfter: r.start_after,
+    }));
+  }
+
+  async shiftChangeLastSeen(
+    shiftId: ShiftId,
+    crewMemberId: CrewMemberId,
+  ): Promise<string | null> {
+    const { rows } = await this.#pool.query<{ last_seen_at: string }>(
+      "select last_seen_at from shift_change_reads where shift_id=$1 and crew_member_id=$2",
+      [String(shiftId), String(crewMemberId)],
+    );
+    return rows[0]?.last_seen_at ?? null;
+  }
+
+  async markShiftChangesSeen(
+    shiftId: ShiftId,
+    crewMemberId: CrewMemberId,
+    at: string,
+  ): Promise<void> {
+    // `greatest` rather than a bare overwrite: two dismisses racing from two tabs must not let
+    // the older instant win and re-raise a banner the crew member already cleared.
+    await this.#pool.query(
+      `insert into shift_change_reads(shift_id, crew_member_id, last_seen_at) values ($1,$2,$3)
+       on conflict (shift_id, crew_member_id)
+       do update set last_seen_at = greatest(shift_change_reads.last_seen_at, excluded.last_seen_at)`,
+      [String(shiftId), String(crewMemberId), at],
+    );
+  }
+}
+
+/** `text` JSON array → string[]; anything unparseable reads as empty. */
+function parseIdArray(raw: string): string[] {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [];
+  } catch {
+    return [];
   }
 }

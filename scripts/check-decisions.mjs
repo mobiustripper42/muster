@@ -45,9 +45,18 @@ export const REFERENCE = referencePattern()
 // original record ended up with `dumb:` and `boat:` as keys — a colon in prose parsing as a
 // mapping and nobody noticing.
 //
-// The gate is the `schema: 1` key itself. A record without it is grandfathered and skipped
-// entirely, which is what lets the corpus convert one record at a time instead of demanding
-// a flag day.
+// The gate is the `schema: 1` key itself. A record without it is grandfathered and skipped.
+//
+// ONE-LINE BLOCKER BEFORE THE FIRST REAL CONVERSION, and it is not yet fixed: `load()` still
+// runs `parseFrontmatter`, whose `LISTS` set knows only `amends_spec`
+// (gen-decisions-index.mjs:86). A `claims:` list is the nested shape it cannot read, so it
+// throws — and because every remaining check runs off `load()`'s map, converting ONE record
+// stops dangling-reference resolution, topic validation and freshness for ALL of them, not
+// just the converted one. Reproduced in review. Adding `'claims'` to that set is the fix;
+// it lives in the generator, which this task deliberately did not touch.
+//
+// So: the validator is real and the grandfathering is real, but incremental conversion is
+// NOT yet available. Convert nothing until the generator's parser is widened.
 //
 // Claim TARGETS are deliberately not resolved. `kind` is checked against the enum and the
 // shape is checked; whether `src/foo.ts` exists is a resolver's job, and resolvers get built
@@ -166,8 +175,10 @@ export function check() {
   // ── Schema v1, and the id sweep ───────────────────────────────────────────
   //
   // Both run BEFORE `load()`, deliberately. `load()`'s reader has no shape for schema v1's
-  // nested claim list, so the first rewritten record would throw there and take every other
-  // finding with it — the schema errors a reader actually needs would never print.
+  // nested claim list, so the first rewritten record throws there. Running first means the
+  // schema errors still print rather than being swallowed by that throw — but it does NOT
+  // rescue the checks below `load()`, which stop for the whole corpus. See the blocker note
+  // at the top of this section.
   const schemaFile = existsSync(SCHEMA_PATH) ? JSON.parse(readFileSync(SCHEMA_PATH, 'utf8')) : null
   const seenIds = new Map()
   const rewritten = new Map()
@@ -188,12 +199,22 @@ export function check() {
         else seenIds.set(id, `${label}${f}`)
       }
 
-      if (!/^schema: *1 *$/m.test(block)) continue // grandfathered — not yet rewritten
+      // The opt-in gate reads the PARSED value, not the raw line. A regex here is stricter
+      // than YAML: `schema: 1  # v1` and `schema: "1"` are both valid and both fail
+      // `/^schema: *1 *$/m`, so the record would be silently treated as legacy and get zero
+      // enforcement — a rule that looks applied and isn't, which is the exact class this
+      // whole gate exists to close. The cheap `^schema:` pre-filter keeps js-yaml off the
+      // ~158 legacy blocks that have no such key.
+      if (!/^schema:/m.test(block)) continue // grandfathered — not yet rewritten
       let meta
       try {
         meta = parseYaml(block)
       } catch (e) {
         fail(path, `frontmatter is not valid YAML — ${e.message.split('\n')[0]}`)
+        continue
+      }
+      if (meta?.schema !== 1) {
+        fail(path, `\`schema:\` is ${JSON.stringify(meta?.schema)} — the only version is 1`)
         continue
       }
       if (!schemaFile) {

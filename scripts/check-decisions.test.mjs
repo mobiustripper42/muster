@@ -368,3 +368,49 @@ describe('schema v1 validation', () => {
     expect(validateSchemaRecord(ok, 'It is **not** a cutover, and that matters.\n', 500)).toEqual([])
   })
 })
+
+describe('the schema:1 opt-in gate', () => {
+  // Regression: the gate was a raw-text regex (`/^schema: *1 *$/m`), which is stricter than
+  // YAML. A trailing comment or a quoted value read as "never opted in", so the record got
+  // ZERO enforcement and nothing said so — a rule that looks applied and isn't, which is the
+  // class this whole gate exists to close. Found in review, reproduced, then fixed by
+  // gating on the parsed value.
+  const gate = (block) => /^schema:/m.test(block)
+
+  it('pre-filters on the key, not on a formatting of its value', () => {
+    expect(gate('schema: 1\nid: DEC-200\n')).toBe(true)
+    expect(gate('schema: 1  # v1 draft\nid: DEC-200\n')).toBe(true)
+    expect(gate('schema: "1"\nid: DEC-200\n')).toBe(true)
+    expect(gate('id: DEC-042\ntitle: "T"\n')).toBe(false)
+  })
+
+  it('the old regex is what let two of those through', () => {
+    const old = (block) => /^schema: *1 *$/m.test(block)
+    expect(old('schema: 1  # v1 draft\n')).toBe(false)
+    expect(old('schema: "1"\n')).toBe(false)
+  })
+})
+
+describe('the id sweep', () => {
+  // One id, one file — across `docs/decisions/` AND `docs/decisions/archive/`. `load()`
+  // catches a duplicate inside its own directory and stops there; an archived copy beside
+  // the live record is the case it cannot see, and the one that makes a citation ambiguous.
+  const idOf = (block) => block.match(/^id: *(\S+)/m)?.[1]
+
+  it('reads the id from a legacy block and a schema-v1 block alike', () => {
+    expect(idOf('id: DEC-042\ntitle: "T"\n')).toBe('DEC-042')
+    expect(idOf('schema: 1\nid: DEC-107a\nstatus: active\n')).toBe('DEC-107a')
+  })
+
+  it('returns nothing for a file with no id, rather than a false match', () => {
+    expect(idOf('title: "T"\ntopic: "X"\n')).toBeUndefined()
+    expect(idOf('# not frontmatter at all\n')).toBeUndefined()
+  })
+
+  it('is unbothered by a missing archive/ directory — the real record has none', () => {
+    // `sweep` returns early on a directory that does not exist, which is why `check()` is
+    // green here rather than throwing on ENOENT. Pinned because the branch is otherwise
+    // never taken: no project in this repo has an archive/ yet.
+    expect(check()).toEqual([])
+  })
+})

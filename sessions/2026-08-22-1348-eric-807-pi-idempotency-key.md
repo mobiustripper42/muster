@@ -4,10 +4,10 @@ dev: eric
 slug: 807-pi-idempotency-key
 branch: task/807-pi-idempotency-key
 started: 2026-08-22T13:48:58Z
-ended:
-points:
+ended: 2026-08-26T02:05:03Z
+points: 13
 pr_numbers: [813, 817, 819, 821, 822, 823, 833]
-status: open
+status: closed
 transcript: /home/eric/.claude/projects/-home-eric-muster-s91/5487f3cf-cd4b-5fc3-9fef-7e4789b9a7d2.jsonl
 ---
 

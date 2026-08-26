@@ -15,7 +15,11 @@
 // Like its generator, this file is byte-identical across projects — every project-specific
 // knob is in `docs/decisions/_config.json`.
 
-import { readFileSync, readdirSync, existsSync } from 'node:fs'
+import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs'
+// Named import, not default: js-yaml is CommonJS, and `import yaml from 'js-yaml'` resolves
+// under vitest's transform but throws under plain node — which is how this script actually
+// runs. The test suite passing is not evidence the gate runs.
+import { load as parseYaml } from 'js-yaml'
 import {
   DIR,
   OUT,
@@ -33,15 +37,200 @@ import {
  *  that references elsewhere are safe — only that this script's subject is the record. */
 export const REFERENCE = referencePattern()
 
+// ── Schema v1 ────────────────────────────────────────────────────────────────
+//
+// Two parsers, on purpose. Legacy records keep going through `parseFrontmatter`, which is a
+// hand-rolled reader for one flat block. Records carrying `schema: 1` go through js-yaml,
+// because their frontmatter has nested lists of objects and a hand-rolled reader is how the
+// original record ended up with `dumb:` and `boat:` as keys — a colon in prose parsing as a
+// mapping and nobody noticing.
+//
+// The gate is the `schema: 1` key itself. A record without it is grandfathered and skipped
+// entirely, which is what lets the corpus convert one record at a time instead of demanding
+// a flag day.
+//
+// Claim TARGETS are deliberately not resolved. `kind` is checked against the enum and the
+// shape is checked; whether `src/foo.ts` exists is a resolver's job, and resolvers get built
+// once the rewritten records show which kinds actually appear.
+
+const SCHEMA_PATH = `${DIR}/decision-record.schema.json`
+
+/** A `**Bold:**` / `**Bold.**` lead-in — the drift that put `Decision:`, `Tradeoff:` and
+ *  `Status:` in prose. All structure lives in frontmatter now. Anchored to the line start so
+ *  ordinary mid-sentence bold is untouched. */
+const BOLD_LEAD_IN = /^\*\*([A-Z][^*\n]{0,40})[:.]\*\*/m
+
+const MAX_BYTES = 2000
+
+/** The subset of draft 2020-12 the schema actually uses. Written out rather than pulled in
+ *  because it is ~70 lines against a dependency, and because every message here has to name
+ *  the key and the limit — a validator that says "does not match schema" is a validator
+ *  nobody can act on. */
+function validateAgainstSchema(schema, value, path, root, errs) {
+  if (schema.$ref) {
+    const target = schema.$ref.replace(/^#\//, '').split('/')
+    return validateAgainstSchema(target.reduce((o, k) => o[k], root), value, path, root, errs)
+  }
+  const at = path || 'frontmatter'
+
+  if (schema.const !== undefined && value !== schema.const) {
+    errs.push(`${at} must be ${JSON.stringify(schema.const)}, not ${JSON.stringify(value)}`)
+    return errs
+  }
+  if (schema.enum && !schema.enum.includes(value)) {
+    errs.push(`${at} is ${JSON.stringify(value)} — allowed: ${schema.enum.join(', ')}`)
+    return errs
+  }
+  if (schema.type === 'array') {
+    if (!Array.isArray(value)) {
+      errs.push(`${at} must be a list`)
+      return errs
+    }
+    if (schema.minItems !== undefined && value.length < schema.minItems) {
+      errs.push(`${at} needs at least ${schema.minItems} entry — it has ${value.length}`)
+    }
+    if (schema.items) value.forEach((v, i) => validateAgainstSchema(schema.items, v, `${at}[${i}]`, root, errs))
+    return errs
+  }
+  if (schema.type === 'string') {
+    if (typeof value !== 'string') {
+      errs.push(`${at} must be text, not ${value === null ? 'empty' : typeof value}`)
+      return errs
+    }
+    if (schema.maxLength !== undefined && value.length > schema.maxLength) {
+      errs.push(`${at} is ${value.length} characters — the limit is ${schema.maxLength}`)
+    }
+    if (schema.minLength !== undefined && value.length < schema.minLength) {
+      errs.push(`${at} is ${value.length} characters — the minimum is ${schema.minLength}`)
+    }
+    if (schema.pattern && !new RegExp(schema.pattern).test(value)) {
+      errs.push(`${at} is ${JSON.stringify(value)}, which does not match ${schema.pattern}`)
+    }
+    if (schema.format === 'date' && !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      errs.push(`${at} is ${JSON.stringify(value)} — a date must be YYYY-MM-DD`)
+    }
+    return errs
+  }
+  if (schema.type === 'object' || schema.properties) {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+      errs.push(`${at} must be a block of keys`)
+      return errs
+    }
+    for (const key of schema.required ?? []) {
+      if (!(key in value)) errs.push(`${at === 'frontmatter' ? '' : `${at}: `}missing required key \`${key}\``)
+    }
+    if (schema.additionalProperties === false) {
+      for (const key of Object.keys(value)) {
+        if (!(key in (schema.properties ?? {}))) {
+          errs.push(`${at === 'frontmatter' ? '' : `${at}: `}unknown key \`${key}\``)
+        }
+      }
+    }
+    for (const [key, sub] of Object.entries(schema.properties ?? {})) {
+      if (key in value) validateAgainstSchema(sub, value[key], at === 'frontmatter' ? key : `${at}.${key}`, root, errs)
+    }
+  }
+  return errs
+}
+
+/**
+ * Validate one `schema: 1` record. Returns a list of readable problems, empty when clean.
+ *
+ * @param {object} meta   parsed frontmatter
+ * @param {string} body   everything after the frontmatter block
+ * @param {number} bytes  size of the whole file on disk
+ */
+export function validateSchemaRecord(meta, body, bytes, schema = JSON.parse(readFileSync(SCHEMA_PATH, 'utf8'))) {
+  // The topic enum is injected here rather than baked into the schema: the list is a
+  // project fact and the schema file is not project-specific.
+  const withTopics = {
+    ...schema,
+    properties: { ...schema.properties, topic: { ...schema.properties.topic, enum: TOPICS } },
+  }
+  const errs = validateAgainstSchema(withTopics, meta, '', withTopics, [])
+
+  if (bytes > MAX_BYTES) {
+    errs.push(`is ${bytes} bytes — the cap is ${MAX_BYTES}. A decision that will not fit is more than one decision`)
+  }
+  const lead = body.match(BOLD_LEAD_IN)
+  if (lead) {
+    errs.push(`body opens a paragraph with \`**${lead[1]}:**\` — structure lives in frontmatter now, not in bold prose`)
+  }
+  return errs
+}
+
 export function check() {
   const failures = []
   const fail = (where, msg) => failures.push(`${where} — ${msg}`)
+
+  // ── Schema v1, and the id sweep ───────────────────────────────────────────
+  //
+  // Both run BEFORE `load()`, deliberately. `load()`'s reader has no shape for schema v1's
+  // nested claim list, so the first rewritten record would throw there and take every other
+  // finding with it — the schema errors a reader actually needs would never print.
+  const schemaFile = existsSync(SCHEMA_PATH) ? JSON.parse(readFileSync(SCHEMA_PATH, 'utf8')) : null
+  const seenIds = new Map()
+  const rewritten = new Map()
+  const sweep = (dir, label) => {
+    if (!existsSync(dir)) return
+    for (const f of readdirSync(dir).filter((f) => f.endsWith('.md') && f !== '_preamble.md')) {
+      const path = `${dir}/${f}`
+      const text = readFileSync(path, 'utf8')
+      const block = text.startsWith('---\n') ? text.slice(4, text.indexOf('\n---\n', 3)) : ''
+
+      // One id may exist in exactly one file. `load()` catches a duplicate within its own
+      // directory and stops there; an archived copy alongside the live record is the case it
+      // cannot see, and it is the one that makes a citation ambiguous.
+      const id = block.match(/^id: *(\S+)/m)?.[1]
+      if (id) {
+        const prior = seenIds.get(id)
+        if (prior) fail(path, `id ${id} is already used by ${prior} — one id, one file`)
+        else seenIds.set(id, `${label}${f}`)
+      }
+
+      if (!/^schema: *1 *$/m.test(block)) continue // grandfathered — not yet rewritten
+      let meta
+      try {
+        meta = parseYaml(block)
+      } catch (e) {
+        fail(path, `frontmatter is not valid YAML — ${e.message.split('\n')[0]}`)
+        continue
+      }
+      if (!schemaFile) {
+        fail(path, `declares \`schema: 1\` but ${SCHEMA_PATH} does not exist`)
+        continue
+      }
+      const body = text.slice(text.indexOf('\n---\n', 3) + 5)
+      for (const problem of validateSchemaRecord(meta, body, statSync(path).size, schemaFile)) fail(path, problem)
+      rewritten.set(meta.id, { ...meta, path })
+    }
+  }
+  sweep(DIR, '')
+  sweep(`${DIR}/archive`, 'archive/')
+
+  // `superseded_by` must land on a record that exists and is still the live one. Pointing at
+  // a record that is itself superseded is a chain a reader has to walk, and pointing at
+  // nothing is the dangling citation the whole gate exists to stop.
+  for (const [id, d] of rewritten) {
+    if (!d.superseded_by) continue
+    const target = rewritten.get(d.superseded_by)
+    if (!target) {
+      if (!seenIds.has(d.superseded_by)) {
+        fail(d.path, `superseded_by ${d.superseded_by}, which has no decision file`)
+      } else {
+        fail(d.path, `superseded_by ${d.superseded_by}, which has not been rewritten and so carries no status`)
+      }
+    } else if (target.status !== 'active') {
+      fail(d.path, `superseded_by ${d.superseded_by}, whose status is ${target.status} — point at the live record`)
+    }
+    if (d.superseded_by === id) fail(d.path, `superseded_by itself`)
+  }
 
   let decisions
   try {
     decisions = load()
   } catch (e) {
-    return [`${DIR} — ${e.message}`]
+    return [...failures, `${DIR} — ${e.message}`]
   }
 
   // `load()` only looks at files shaped `DEC-*.md`. Anything else in the directory —

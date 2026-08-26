@@ -26,7 +26,7 @@ import {
   specSections,
   stripSpecBlocks,
 } from './gen-decisions-index.mjs'
-import { check } from './check-decisions.mjs'
+import { check, validateSchemaRecord } from './check-decisions.mjs'
 
 /** A three-family record with the families sitting between DEC-014 and DEC-015 — the shape
  *  a project gets when a side family predates the numeric main line. */
@@ -283,5 +283,88 @@ describe('referencePattern', () => {
 describe('the real record', () => {
   it('is valid — no stale index, dangling reference, unknown topic, or bad edge', () => {
     expect(check()).toEqual([])
+  })
+})
+
+// ── Schema v1 (issue #816) ───────────────────────────────────────────────────
+//
+// Only records carrying `schema: 1` are validated; everything else is grandfathered, which
+// is what lets the corpus convert one record at a time without a red build the whole way.
+// Fixtures below declare their own ids and topics for the reason the header gives.
+
+describe('schema v1 validation', () => {
+  const ok = {
+    schema: 1,
+    id: 'DEC-200',
+    title: 'A short title',
+    topic: TOPIC,
+    status: 'active',
+    date: '2026-08-26',
+    ruling: 'The customer pays the whole price at booking and nothing is collected later.',
+    claims: [{ kind: 'file', target: 'src/reservations/payment-config.ts' }],
+  }
+
+  const errs = (patch, body = 'Body.\n', bytes = 500) =>
+    validateSchemaRecord({ ...ok, ...patch }, body, bytes).join(' | ')
+
+  it('accepts a well-formed record', () => {
+    expect(validateSchemaRecord(ok, 'Body.\n', 500)).toEqual([])
+  })
+
+  it('names the offending key on an unknown one, because that is the `dumb:` accident', () => {
+    expect(errs({ boat: 'Brew 3' })).toMatch(/boat/)
+  })
+
+  it('reports each missing required key by name', () => {
+    const { ruling, claims, ...missing } = ok
+    const out = validateSchemaRecord(missing, 'Body.\n', 500).join(' | ')
+    expect(out).toMatch(/ruling/)
+    expect(out).toMatch(/claims/)
+  })
+
+  it('holds the ruling to 240 characters and says what the length was', () => {
+    expect(errs({ ruling: 'x'.repeat(241) })).toMatch(/ruling.*240/)
+  })
+
+  it('holds the title to 80 and a claim note to 120', () => {
+    expect(errs({ title: 'x'.repeat(81) })).toMatch(/title.*80/)
+    expect(errs({ claims: [{ kind: 'file', target: 'a.ts', note: 'x'.repeat(121) }] })).toMatch(/note.*120/)
+  })
+
+  it('rejects a status outside the enum and a claim kind outside the enum', () => {
+    expect(errs({ status: 'draft' })).toMatch(/status/)
+    expect(errs({ claims: [{ kind: 'vibes', target: 'a.ts' }] })).toMatch(/kind/)
+  })
+
+  it('rejects a topic the project has not declared', () => {
+    expect(errs({ topic: 'Nautical trivia' })).toMatch(/topic/)
+  })
+
+  it('requires at least one claim — a record that asserts nothing is the thing being caught', () => {
+    expect(errs({ claims: [] })).toMatch(/claims/)
+  })
+
+  it('does not verify claim targets yet, so a nonexistent path is well-formed', () => {
+    expect(validateSchemaRecord({ ...ok, claims: [{ kind: 'file', target: 'src/no/such.ts' }] }, 'Body.\n', 500)).toEqual(
+      [],
+    )
+  })
+
+  it('rejects an id shape the record does not use, and accepts a lettered one', () => {
+    expect(errs({ id: 'DEC-2000' })).toMatch(/id/)
+    expect(validateSchemaRecord({ ...ok, id: 'DEC-107a' }, 'Body.\n', 500)).toEqual([])
+  })
+
+  it('caps the file at 2000 bytes and says the actual size', () => {
+    expect(errs({}, 'Body.\n', 2001)).toMatch(/2001.*2000|2000.*2001/)
+  })
+
+  it('rejects a `**Bold:**` lead-in, which is the structure that belongs in frontmatter', () => {
+    expect(errs({}, '**Decision:** we do the thing.\n')).toMatch(/Decision/)
+    expect(errs({}, '**Tradeoffs.** Several.\n')).toMatch(/Tradeoffs/)
+  })
+
+  it('leaves ordinary bold in a sentence alone', () => {
+    expect(validateSchemaRecord(ok, 'It is **not** a cutover, and that matters.\n', 500)).toEqual([])
   })
 })

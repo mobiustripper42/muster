@@ -70,7 +70,7 @@ Muster be built perfect for one niche (BrewBoat) and still be sellable later wit
   arrive via CSV — that's the live Xola **API pull** (DEC-036/037/043), which stops at the cutover.
 - ~~**Payments topology internals** — deposit-vs-full, refund-schedule numbers, Stripe integration
   detail. Only the admin-facing *surfaces* of payments are in scope.~~ — **EXPIRED (DEC-105/107/124).**
-  Payments landed **in 2026**, not later: deposit-vs-full is decided (deposit + balance, DEC-107),
+  Payments landed **in 2026**, not later: the full amount is charged at booking (§2.8.4a),
   Stripe is in (card checkout only, no wallets — DEC-139), and tips come in as collect-and-expose
   (DEC-124). The **refund schedule** remains the one genuinely open number (#472) and is what blocks
   self-service cancel.
@@ -146,7 +146,7 @@ The import path is disposable plumbing; everything it feeds is permanent.
 | **Tiers 1–3** | Degrees of automation in filling a seat: 1 autonomous, 2 semi-autonomous escalation, 3 human (Spink). |
 | **Manifest** | The guest list crew need — name + phone/count. **Per-event**, not per-shift (a Saturday shift has a 1pm, 3pm, 5pm manifest). Waivers explicitly *not* required for crew. |
 | **Spink** | The operator persona (BrewBoat's). Semi-retired; the design goal is no babysitting. |
-| **Drew** | The owner/business persona. Owns the money/policy decisions (refunds, deposit-vs-full). |
+| **Drew** | The owner/business persona. Owns the money/policy decisions (refunds, pricing). |
 
 > **Manifest reconciliation (decided):** the manifest is grouped **by event** on the shift card.
 > This supersedes the per-shift phrasing in crew-app-surface §3.
@@ -1574,8 +1574,7 @@ or the tip.
 the trip. It is **not** charged on tax (which is not the operator's money) and **not** on the tip
 (which is the crew's). A customer who tips more does not pay a larger fee.
 
-**The tip is the crew's money and is untaxed.** Charged in full on top, never through the deposit
-split. **The customer must pick a tier — there is no decline.** The tiers and the preselected one are
+**The tip is the crew's money and is untaxed.** Charged in full on top, never split across payments. **The customer must pick a tier — there is no decline.** The tiers and the preselected one are
 already per-offering configuration, editable by the operator; the defaults are 15/20/25 with 20%
 preselected.
 
@@ -1583,9 +1582,14 @@ preselected.
 checkout falls back to the default tiers when an offering has no tip configuration, so no offering can
 be tip-free. A zero-crew rental is the case that will force this and there are none yet.
 
-**Also frozen, though not charged:** the **amount due now** — the whole total where the deploy takes
-full payment, or the deposit share where it takes a deposit — and the **trip length**, because 2.8.3
-measures occupancy with it and an offering can be edited mid-window.
+**Muster charges the full amount at booking** — fare, extras, tax, service fee and gratuity, in one
+payment, with nothing collected later. That whole total is the **amount due now**, frozen with
+everything else. Deposits are a **future capability, not a current option**: the configuration exists
+in code, no deployment uses it, and switching it on is its own project (issue #712,
+`docs/FUTURE_IDEAS.md`).
+
+**Also frozen:** the **trip length**, because 2.8.3 measures occupancy with it and an offering can be
+edited mid-window.
 
 **2.8.4b Where the tip goes.**
 
@@ -1647,8 +1651,8 @@ the whole amount and takes no fee, because the operator is the one who could not
 **A non-refundable cancellation keeps everything, service fee included.** Inside the window the
 customer is owed nothing, and nothing is what they get. The service fee does not come back separately.
 
-**The $50 floors at zero, never below.** A deposit can be smaller than the fee. That is a zero refund —
-never a negative one, and never a charge.
+**The $50 floors at zero, never below.** What is still refundable can be smaller than the fee. That is
+a zero refund — never a negative one, and never a charge.
 
 **The 14-day boundary is inclusive.** Exactly 14 days out is refundable. The published wording reads
 inclusive and the edge favours the customer.
@@ -1825,12 +1829,13 @@ The payment path is new. These are not, and a from-scratch build still has to me
 `eventId` always set. They occupy hulls under exactly the rule in 2.8.3. A reservation with no payment
 recorded against it is not a defect, and it is what keeps 2.8.9's work list safe.
 
-**The balance payment.** A charge against a booking that already exists — the remainder where the
-booking charge was only a deposit. It must never create or confirm a reservation; 2.8.6's "resolves to
-no reservation" is what keeps it out. It is the **only** other payment kind, now that post-trip
-gratuity is dropped (2.8.4b).
-Note that a balance's tax is currently recomputed from live settings at billing time, which the freeze
-rule in 2.8.4 forbids; that is an inconsistency to resolve, not a licence to leave it.
+**The balance payment — future, not current.** Muster charges in full at booking (2.8.4a), so no
+balance charge is created. The code path exists and is dormant.
+
+If deposits return, a balance charge is a payment against a booking that already exists, and it must
+never create or confirm a reservation; 2.8.6's "resolves to no reservation" is what keeps it out. It
+would also need its tax frozen rather than recomputed from live settings at billing time, which the
+freeze rule in 2.8.4 requires and the dormant path does not do.
 
 **Blocks.** An operator's hold on a boat is its own thing with its own lifetime. It occupies a hull; it
 is not a reservation and does not become one.
@@ -1925,7 +1930,8 @@ the decision is the one that is right.
       unconfigured and confirm the log line is the only trace, which is what such a deploy gets.
 - [ ] Editing the offering's price, trip length or schedule while a reservation is pending changes
       neither what that customer is charged nor what their booking occupies.
-- [ ] A balance payment never creates or confirms a reservation.
+- [ ] A balance payment never creates or confirms a reservation. *(Guards a dormant path — Muster
+      charges in full at booking, so no balance payment is created. Kept for when deposits return.)*
 - [ ] The tip pool for a departure divides evenly across the confirmed holders of its **required**
       seats and no others; the cents add up exactly to the pool; and a departure with a tip but no
       confirmed crew produces a warning rather than a silent loss.
@@ -1945,9 +1951,9 @@ the decision is the one that is right.
   so the stored data matches reality for later counting. The same counting could be done by reading
   lapsed `pending` rows directly and never relabelling them, which would remove a scheduled job and
   the paid-row race that comes with it. Decide before building it.
-- **Does the balance freeze its tax?** 2.8.4 says frozen numbers are never recomputed; the balance
-  today recomputes tax from live settings. Consistency says freeze it; that is a change to a flow
-  outside this section.
+- ~~**Does the balance freeze its tax?**~~ **Deferred with deposits.** 2.8.4 says frozen numbers are
+  never recomputed and the dormant balance path recomputes tax from live settings. Nothing charges a
+  balance today, so this is answered when deposits return, not before.
 - The refund schedule (issue #472) remains open and continues to block self-service cancellation. This
   section does not touch it.
 
@@ -2356,15 +2362,17 @@ now. Building any of these is out of scope until its trigger condition is met.
   **REVERSED for the default and the launch posture (DEC-155, 2026-08-16):** full payment is what
   every environment now inherits, because deposit mode's second half was never built — nothing
   collects the balance on a schedule (issue #712, deferred), so 75% of revenue depended on the
-  operator texting a link per booking. Deposit + balance stays fully supported as an opt-in
-  setting; the recommendation above turns out to have been right for launch.
+  operator texting a link per booking. **The answer is full payment, everywhere — §2.8.4a.** Deposits
+  are a future capability, not a supported mode: the configuration exists in code and no deployment
+  uses it. The recommendation above turns out to have been right for launch.
 - **Refund schedule numbers** (the partial-refund tiers) — Drew. *(Still open — #472; DEC-135 notes the
   refund policy does not exist yet, which is what blocks self-service cancel.)*
 - **Credit-vs-cash default ordering** in the cancel flow — lean credit-first, cash always available;
   confirm with Drew. *(Still open — §3.3 refund cascade is parked by DEC-107.)*
 - ~~**Balance-capture timing** if deposits are used (tie to a horizon?).~~
-  **DECIDED: on demand** (DEC-107 amendment, 11.2b) — a re-minted Stripe Checkout URL is the balance
-  link. The auto-emit scheduler that would read `balanceDueDaysBeforeEvent` is deferred to P12+.
+  **Moot while payment is taken in full (§2.8.4a)** — nothing captures a balance. If deposits return,
+  the recorded answer was on demand (DEC-107 amendment, 11.2b): a re-minted Stripe Checkout URL as the
+  balance link, with the auto-emit scheduler reading `balanceDueDaysBeforeEvent` still unbuilt (#712).
 - **Which "M" rules** ship as soft/warn vs omitted for BrewBoat v1 (TWIC, medical, drug consortium,
   duty-hour, weather/tide) — Spink/Drew against real operations.
 

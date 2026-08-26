@@ -2,6 +2,7 @@ import type { AddOn, Offering } from "@core/domain/entities.js";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { AppLink } from "../../../../components/ui/app-link";
+import { UnsavedGuard } from "../../../../components/ui/unsaved-guard";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
@@ -84,6 +85,7 @@ export default async function AdminAddOns({
         action={saveAddOn}
         className="flex flex-col gap-4"
       >
+        <UnsavedGuard restored={draft !== null} />
         <input type="hidden" name="id" value={creating || !selected ? "" : selected.id} />
 
         <header className="flex items-center gap-3">

@@ -5,6 +5,7 @@ import type { Block, Location, Vessel } from "@core/domain/entities.js";
 import { settingsInputClass } from "../../../../components/admin/settings-field";
 import { SubmitButton } from "../../../../components/ui/submit-button";
 import { AppLink } from "../../../../components/ui/app-link";
+import { UnsavedGuard } from "../../../../components/ui/unsaved-guard";
 import { formatDay, formatTime } from "./block-sections";
 import { saveBlock, liftBlock } from "./actions";
 
@@ -87,6 +88,9 @@ export function BlockEditor({
       )}
 
       <form action={saveBlock} className="px-4 py-1">
+        {/* `draftValues` is non-null exactly when a refusal restored this form — the island
+            already receives it, so nothing new has to be threaded. */}
+        <UnsavedGuard restored={draftValues !== null} />
         <input type="hidden" name="id" value={selected ? String(selected.id) : ""} />
         <input type="hidden" name="kind" value={kind} />
 

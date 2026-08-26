@@ -312,6 +312,10 @@ export default async function ReservationDetailPage({
       refundedTotalCents: refundedTotalFor(payments),
       // The operator's own figure wins over the prefill — see the draft note above.
       refundPrefill: draft?.get("amount") ?? (prefillCents / 100).toFixed(2),
+      // Non-null only when a refusal on THIS reservation restored the boxes (the id match two
+      // dozen lines up) — an expired draft leaves the prefill standing and there is no operator
+      // work left to guard.
+      restoredFromRefusal: draft !== null,
       // Which cancellation reason was chosen. Not `??`: a radio group posts exactly one value,
       // so its absence means "no draft", never "none picked".
       cancelBy: draft?.get("by") === "operator" ? "operator" : "customer",

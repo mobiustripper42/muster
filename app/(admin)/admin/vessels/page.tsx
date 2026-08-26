@@ -2,6 +2,7 @@ import type { Location, Offering, Vessel } from "@core/domain/entities.js";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { AppLink } from "../../../../components/ui/app-link";
+import { UnsavedGuard } from "../../../../components/ui/unsaved-guard";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { SubmitButton } from "../../../../components/ui/submit-button";
 import { VersionTag } from "../../../../components/ui/version-tag";
@@ -93,6 +94,7 @@ export default async function AdminVessels({
         action={saveVessel}
         className="flex flex-col gap-4"
       >
+        <UnsavedGuard restored={draft !== null} />
         <input type="hidden" name="id" value={creating || !selected ? "" : selected.id} />
 
         {/* Header — breadcrumb, boat name, Save (mockup header.top). */}

@@ -212,6 +212,7 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-147 — Server-rendering is the default; a client island is earned, and feedback params carry codes not prose
 - DEC-148 — Crew navigation moves into a drawer — the hub carries work, not a menu (#644)
 - DEC-152 — Two clock buttons that never move, one disabled — a control that vanishes moves its neighbour under the thumb
+- DEC-160 — An unsaved form asks before you leave, and "dirty" is a comparison against the server's defaults
 
 ### Deployment, infra & versioning
 - DEC-013 — Stack & infrastructure deferred to ~M4

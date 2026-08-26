@@ -25,6 +25,7 @@
  * except the DEC-109 residual-race auto-refund. Provider-agnostic + `FakePaymentPort`-testable.
  */
 import { formShifts, type FormResult } from "../builder/form-shifts.js";
+import { confirmBookingFromIntent } from "./confirm-booking.js";
 import { logFormAudit } from "../oracle/audit-log.js";
 import type { Payment, Reservation } from "../domain/entities.js";
 import {
@@ -160,29 +161,11 @@ export async function processBookingWebhook(
   // recorded in every deployment, flag on or off.
   if (event.type === "dispute_updated") return recordDispute(deps, event.data);
 
-  if (event.type === "payment_succeeded") {
-    const pi = event.data;
-    const purpose = pi.metadata.purpose;
-    // DOUBLE-WRITE GUARD (DEC-134): every hosted Checkout session has an underlying
-    // PaymentIntent that ALSO emits `payment_intent.succeeded` — but carries NO metadata
-    // (the adapter never sets `payment_intent_data.metadata`). Only OUR minted intents
-    // carry `purpose`, so a metadata-less PI is acked-and-ignored, never booked twice.
-    if (purpose === undefined) return { handled: false };
-    if (purpose !== "booking") {
-      await deps.alertPaidButUnbooked(
-        `Stripe payment intent with unknown purpose="${purpose}" - ${pi.paymentIntentId}. ` +
-          `NOT auto-processed; investigate (money may have moved).`,
-      );
-      return { handled: true, outcome: "ignored" };
-    }
-    return processBookingCharge(deps, {
-      key: pi.paymentIntentId,
-      paymentIntentId: pi.paymentIntentId,
-      amountCents: pi.amountReceivedCents,
-      currency: pi.currency,
-      metadata: pi.metadata,
-    });
-  }
+  // The inline-Elements booking. The body of this branch lives in `confirm-booking.ts` because
+  // the SUCCESS PAGE runs it too (issue #827, SPEC §2.8.6): one idempotent confirm, called from
+  // both, because Stripe re-delivers events processed elsewhere and a second path that books its
+  // own way books the same sale twice. The DEC-134 metadata guard travels with it.
+  if (event.type === "payment_succeeded") return confirmBookingFromIntent(deps, event.data);
 
   const completed = event.data;
   // Dispatch on purpose (11.2b). A balance payment records against the existing reservation;
@@ -243,10 +226,26 @@ function requireCents(raw: string | undefined, field: string, chargeKey: string)
   return Number(raw);
 }
 
+/** Options for callers that are not the signed webhook (issue #827). */
+export interface ConfirmOptions {
+  /**
+   * Run the DEC-109 residual-race compensation — the auto-refund and the sold-out notice — when
+   * the claim is lost. **True for the webhook, false for any public entry point.**
+   *
+   * A residual-race loss is a stable outcome: no reservation row is ever written, so every replay
+   * with the same key re-derives `lost`. On a signed webhook that is fine — Stripe redelivers a
+   * bounded number of times. On an unauthenticated GET it is a re-send of a customer-facing SMS
+   * and email per request, and a re-attempted refund whose idempotency key expires after a day,
+   * after which the failure alert texts every admin instead.
+   */
+  notifyOnResidualRaceLoss?: boolean;
+}
+
 /** The charge→booking spine, shared by both event paths (11.2 / 12.5). */
-async function processBookingCharge(
+export async function processBookingCharge(
   deps: WebhookDeps,
   charge: BookingCharge,
+  opts: ConfirmOptions = {},
 ): Promise<WebhookResult> {
   // The RESERVATIONS gate (#588, DEC-111) lives HERE — on the new-booking path only, and after
   // both event shapes have resolved their purpose.
@@ -507,6 +506,11 @@ async function processBookingCharge(
         `Residual-race loss with NO payment_intent to auto-refund - Stripe charge ` +
           `${charge.key}, ${who}. REFUND MANUALLY in Stripe.`,
       );
+      return { handled: true, outcome: result.outcome };
+    }
+    if (opts.notifyOnResidualRaceLoss === false) {
+      // A public caller (issue #827). The loss is real, but the compensation is the webhook's —
+      // see `confirmBookingByPaymentIntent`. Reported, not acted on.
       return { handled: true, outcome: result.outcome };
     }
     try {

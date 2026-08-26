@@ -11,6 +11,7 @@ import {
   type CreatePaymentIntentInput,
   type PaymentEvent,
   type PaymentPort,
+  type PaymentSucceeded,
   type RefundInput,
 } from "../ports/payment.js";
 
@@ -29,6 +30,9 @@ export class FakePaymentPort implements PaymentPort {
   /** Set to make `getReceiptUrl` throw, to exercise the book-anyway fallback (#679). */
   receiptUrlError: Error | null = null;
   readonly #refundsByKey = new Map<string, { refundId: string }>();
+  /** Intents the provider will report as succeeded (issue #827). Anything absent resolves to
+   *  `null`, which is how a forged `?payment_intent=` on the success URL is refused. */
+  readonly succeededIntents = new Map<string, PaymentSucceeded>();
 
   async createCheckoutSession(input: CreateCheckoutInput): Promise<CheckoutSession> {
     this.created.push(input);
@@ -58,6 +62,10 @@ export class FakePaymentPort implements PaymentPort {
     // (Stripe mints it — it is NOT carried in metadata). Tests read the returned id.
     const id = `pi_fake_${this.intents.length}`;
     return { clientSecret: `${id}_secret_test`, paymentIntentId: id };
+  }
+
+  async getSucceededPaymentIntent(paymentIntentId: string): Promise<PaymentSucceeded | null> {
+    return this.succeededIntents.get(paymentIntentId) ?? null;
   }
 
   async getReceiptUrl(paymentIntentId: string): Promise<string | undefined> {

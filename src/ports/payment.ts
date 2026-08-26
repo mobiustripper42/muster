@@ -208,6 +208,16 @@ export interface PaymentPort {
    */
   getReceiptUrl(paymentIntentId: string): Promise<string | undefined>;
   /**
+   * Read a PaymentIntent back from the provider, or `null` if it is unknown or has NOT
+   * succeeded (issue #827).
+   *
+   * **The redirect is not proof of payment.** Stripe appends `payment_intent` and
+   * `redirect_status` to the `return_url`, and both are URL text a browser can invent. The
+   * success page confirms a booking, so it must ask the provider what actually happened rather
+   * than believe the address bar. A forged or unpaid id resolves to `null` and books nothing.
+   */
+  getSucceededPaymentIntent(paymentIntentId: string): Promise<PaymentSucceeded | null>;
+  /**
    * Verify the webhook signature and normalize the event (12.5, DEC-134). Returns the
    * discriminated union for a `checkout.session.completed` or `payment_intent.succeeded`
    * event, or **`null`** for any other (verified) event type the caller should acknowledge

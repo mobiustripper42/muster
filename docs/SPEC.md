@@ -2270,8 +2270,9 @@ Read every screenshot and every borrowed idea that way.
 **2.10.1 Two calendars, deliberately.**
 
 The reservation calendar answers *what is for sale, what is sold, and who bought it*. The shift
-view answers *who works the vessel-day*. They share the boat and the day, and each links to the
-other.
+view answers *who works the vessel-day*. They share the boat and the day, and a reservation
+links through to the shift it produced. There is no link the other way — the shift view does not
+point back at the booking, and both are reached independently from the admin nav.
 
 An earlier draft called the second calendar a trap — the reasoning being that the crew engine
 owns the vessel-day and reservations rent space on it. **Both halves of that are wrong**, and
@@ -2299,15 +2300,23 @@ what is open with nothing to rewrite.
 **Exactly one materialised departure per boat-slot.** Without that, two first-bookings of the
 same computed slot each insert their own row and each believes it won — a double-sold boat.
 
-**What happens when an offering is edited mid-season** is three rules, and the third is the one
-that costs money if it is wrong:
+**Editing an offering mid-season** applies forward to slots that are still virtual — they
+simply recompute, because there is nothing written to rewrite.
 
-- an **offering edit** applies forward to slots that are still virtual — they simply recompute;
-- a **per-departure override** is a written row and wins; an offering edit never silently
-  overwrites it;
-- a **booked** slot is **frozen**. A price change never retroactively alters what a customer
-  already paid, and a change to a booked trip's time or capacity goes through the path that
-  tells the customer, never a silent bulk update.
+**A booked slot is frozen, and today that is true because nothing can edit it.** The money and
+the trip length are written onto the booking, so a later price change cannot reach back — but
+there is also no operator surface that edits a booked departure's time or capacity at all. The
+guarantee is currently an absence rather than a guard that refuses.
+
+**Two things this model needs and does not have.** Both were designed and neither was built, and
+they are named here so nobody reads the paragraphs above as covering them:
+
+- **a per-departure override** — editing one departure's time, price or capacity without
+  touching the offering. Nothing under `app/(admin)/` writes an `Event`; the only thing that
+  materialises one is a first booking.
+- **a customer-notify path for a changed booking** — if editing a booked trip ever ships, it
+  needs one, because the alternative is a silent bulk update that moves someone's trip without
+  telling them. The existing request form runs the other way: customer to operator.
 
 **2.10.3 Blackout is blocks, not per-departure toggles.**
 
@@ -2337,8 +2346,9 @@ Several of those are deliberate and would be easy to get wrong:
 - **`Location` is a first-class entity**, carrying pickup detail and a route description, managed
   on its own screen. It exists because "block a location" is a real operator need and a string on
   an offering cannot be blocked.
-- **Tax and the service fee are system-wide**, with an optional per-offering override for the
-  case of two municipalities — not fields re-entered on every offering.
+- **Tax and the service fee are system-wide**, and only system-wide. An offering carries no tax
+  or fee field of its own. A per-offering override was designed, for the case of an operator
+  running in two municipalities, and never built — not as an inert column, not at all.
 - **Gratuity is configured here and is not an add-on** (§2.8.4b).
 
 An offering is **draft**, **live**, or **hidden**. Draft publishes no rule and generates no

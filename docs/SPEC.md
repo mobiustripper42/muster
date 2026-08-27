@@ -2259,6 +2259,129 @@ your hours, and setting it on your own correction would make the surface lie abo
 
 ---
 
+## 2.10 Reservations — what the operator runs
+
+§2.8 is the customer's ninety seconds. This is the other side of it: the catalog the boats are
+sold from, the calendar the operator reads, and the records of who bought what.
+
+**The naming matters and was got wrong once.** An `Offering` is what Xola calls an Experience.
+Read every screenshot and every borrowed idea that way.
+
+**2.10.1 Two calendars, deliberately.**
+
+The reservation calendar answers *what is for sale, what is sold, and who bought it*. The shift
+view answers *who works the vessel-day*. They share the boat and the day, and each links to the
+other.
+
+An earlier draft called the second calendar a trap — the reasoning being that the crew engine
+owns the vessel-day and reservations rent space on it. **Both halves of that are wrong**, and
+they are recorded here because the error is easy to repeat: reservations are *upstream* of the
+vessel-day (a booking is what makes the day exist for the crew engine to derive a shift from),
+and after the flip they are the primary business rather than a tenant of it.
+
+The day view is a **grid** — boats as columns, departures as blocks down the day. Week and month
+views do not exist and were not built. If the fleet or the offering count grows enough that
+shared time-rows become a ragged union, the general form is a resource timeline with boats as
+lanes and real time across; the grid is that timeline's special case when the times line up.
+
+**2.10.2 Availability is computed, not stored.**
+
+Muster does **not** write a row for every departure it could sell. The schedule is a rule and
+open slots are derived on read:
+
+> open slots = schedule × boats × dates − blocks − bookings
+
+A row is written only when a slot acquires real state — someone books it, an operator overrides
+that one departure's price or time, or a customer's checkout puts a short hold on it. So a
+season is a few dozen rows rather than thousands, and editing an offering's schedule recomputes
+what is open with nothing to rewrite.
+
+**Exactly one materialised departure per boat-slot.** Without that, two first-bookings of the
+same computed slot each insert their own row and each believes it won — a double-sold boat.
+
+**What happens when an offering is edited mid-season** is three rules, and the third is the one
+that costs money if it is wrong:
+
+- an **offering edit** applies forward to slots that are still virtual — they simply recompute;
+- a **per-departure override** is a written row and wins; an offering edit never silently
+  overwrites it;
+- a **booked** slot is **frozen**. A price change never retroactively alters what a customer
+  already paid, and a change to a booked trip's time or capacity goes through the path that
+  tells the customer, never a silent bulk update.
+
+**2.10.3 Blackout is blocks, not per-departure toggles.**
+
+Three kinds, from what the operator actually needs:
+
+| kind | scope | for |
+|---|---|---|
+| **location** | a date and a time window | the river is closed — every slot at that location goes dark, across offerings and boats |
+| **vessel** | a date range | a boat is out of service |
+| **vessel hold** | a single slot | the boat is reserved for something that is not a customer booking |
+
+A block is another subtraction in the availability rule, which is why the computed model absorbs
+it for nothing. Blocks are their **own surface**, not a field on the offering — and an operator's
+hold on a boat writes a block, never a departure.
+
+**2.10.4 The catalog.**
+
+An offering carries its descriptive content, its **location**, the **boats** it runs on, one
+schedule, a base price with date-based variations, add-ons, and its gratuity settings.
+
+Several of those are deliberate and would be easy to get wrong:
+
+- **Capacity is a fact of the boat, never set on the offering.** Brew 1 is twelve and Brew 4 is
+  sixteen wherever they appear.
+- **One schedule per offering.** Boats that need a different schedule are a different offering,
+  and that is what keeps the calendar a clean per-boat grid.
+- **`Location` is a first-class entity**, carrying pickup detail and a route description, managed
+  on its own screen. It exists because "block a location" is a real operator need and a string on
+  an offering cannot be blocked.
+- **Tax and the service fee are system-wide**, with an optional per-offering override for the
+  case of two municipalities — not fields re-entered on every offering.
+- **Gratuity is configured here and is not an add-on** (§2.8.4b).
+
+An offering is **draft**, **live**, or **hidden**. Draft publishes no rule and generates no
+slots. Hidden is a reversible retirement: out of customer browse and out of the default admin
+list, every existing booking's reference intact. It is the only safe way to retire an offering
+people have already booked, and there is no hard delete.
+
+**2.10.5 Purchases and customers.**
+
+The order list and its detail — what was paid, what was refunded, what is still owed — and the
+customer contact record behind it.
+
+**Cards on file stay with Stripe and are not rebuilt.** Muster records a reference to a charge,
+never a card.
+
+A departure is **Open or Sold**. It is never a seat count, because BrewBoat sells the whole boat
+and party size is a fact about the booking rather than inventory to subtract from. Xola's
+dashboard says "12/12 reserved" because Xola sells seats; copying that display would import a
+model this product does not have.
+
+**"Seat" is a crew word.** The reservation side counts guests against a boat's capacity. The
+crew side has seats, and overloading the term was considered and rejected.
+
+**2.10.6 Whole-boat is a rule, not a shape.**
+
+BrewBoat sells one boat to one party. Multi-party selling is not wanted and not built — but the
+model does not weld it shut, and that is deliberate rather than an accident waiting to be tidied
+away. The one-party rule lives in the claim as a predicate, **not** as a uniqueness constraint on
+a booking's departure.
+
+**Do not add that constraint.** It reads as an obvious correctness win and would freeze today's
+business rule as a structural fact forever. Selling per-seat later would then be a migration
+instead of a change to one predicate.
+
+**2.10.7 What this surface is NOT.**
+
+Out, and confirmed out by the operator: reports, marketing, distribution channels, an app store,
+store credit, and the per-booking questionnaire. Xola has all six. None of them is what this
+product is for.
+
+Also not here: assigning crew, which the engine does on its own from the bookings this section
+produces.
+
 # 3. Cross-cutting
 
 Behavior that spans surfaces. **Payments appears here only where it surfaces inside the admin app**

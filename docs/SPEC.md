@@ -2178,9 +2178,9 @@ your hours, and setting it on your own correction would make the surface lie abo
 This section is everything else the word "reservations" covers — the link the customer keeps,
 the page they come back to, and how they find a boat that fits in the first place.
 
-The distinction is worth stating because it went unwritten for a year while the subsystem was
-built. Booking and Reservations are adjacent and different, and filing a surface under the
-flow it follows is how a manage page ends up specified as a payment step.
+Booking and Reservations are adjacent and different, and the distinction is worth stating
+because filing a surface under the flow it happens to follow is how a manage page ends up
+specified as a payment step.
 
 **2.10.1 The booking link is a short code, and it is a credential.**
 
@@ -2268,16 +2268,6 @@ restores the old number.
 
 **The floor is one and the ceiling is the offering's largest boat.** A party that does not fit
 the largest boat is not a booking this system takes.
-
-**2.10.4 The booking flow is shaped to be embedded — not built.**
-
-Every step is separately addressable and renders standalone, the frame and its host exchange
-messages to resize and open, and the presentation is a dialog on a desktop and a full-screen
-page on a phone.
-
-**None of this is built.** There is no embed route, no snippet, no message passing, and no
-second origin. What is true today is only the part that costs nothing to keep true: each step
-of `/book` is its own address, and its state rides the query string rather than the session.
 
 # 3. Cross-cutting
 

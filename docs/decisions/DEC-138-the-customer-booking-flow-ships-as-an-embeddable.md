@@ -7,8 +7,6 @@ status: "active"
 date: "2026-07-20"
 ruling: "The booking flow is meant to reach customers as something dropped into the operator's existing website, rather than by rebuilding that website. Nothing of the embed is built; only the shape is kept open."
 claims:
-  - kind: "spec"
-    target: "§2.10.4"
   - kind: "route"
     target: "/book"
   - kind: "unverifiable"
@@ -30,4 +28,7 @@ Keeping this open costs almost nothing today, and that is the whole argument: ev
 flow is its own address with its state in the query string, which is worth having anyway and
 happens to be what an embed needs.
 
-What an embed would have to do is `SPEC.md` §2.10.4, written as the unbuilt thing it is.
+There is deliberately no spec section for this. A spec describes what the system does, and the
+system does not do this — a subsection describing an embed that does not exist is the kind of
+writing that reads as a description and is a guess, which is what this record was rewritten to
+stop doing. It gets one when somebody builds it.

@@ -173,31 +173,31 @@ cross-reference left, and it points at the spec, never at another decision.
 
 ### Reservations & payments
 - DEC-105 — Reservations go live in 2026 as a Muster-native parallel-run — permanent coexistence, not a cutover
-- DEC-106 — Coexistence partition = whole vessel-day; an event is owned by exactly one system
+- DEC-106 — Every departure and booking records which system sold it
 - DEC-107 — Sales tax is read live, not frozen onto the booking
 - DEC-108 — Public surface `app/(public)` + single-flip "Book Now" entry (instant Xola rollback)
 - DEC-109 — Atomic capacity claim on public booking (the customer-side REQ-CLAIM-1)
 - DEC-110 — Waiver — Muster-sold side only; integrate a provider (deferred pre-flip); pilot uses minimal consent
 - DEC-111 — `feature/reservations` dark behind a `RESERVATIONS` flag until the first real paid booking
-- DEC-112 — Reservation price resolves per-`Event`; nullable `Event.price` column
+- DEC-112 — A departure's price comes from the offering, with a per-departure override
 - DEC-113 — Flex-insurance is a boolean selector on the reservation, not a priced add-on product
 - DEC-122 — Customer booking link — stateless HMAC capability-URL + guest confirmation emit (renumbered from DEC-119 at the feature→main merge — main's DEC-119 is recurring weekday-off #411; 11.4, #370; extends DEC-020/098/108)
 - DEC-123 — Reservations gets its own calendar — customer-centric, beside the crew-centric shift view; plus a net-new catalog and purchases/customers area
-- DEC-124 — Tips come into Muster as collect-and-expose; `xola-tip-extractor` owns the split and the Xola+Muster union until Xola dies (reverses DEC-036's tip parking)
+- DEC-124 — Muster reports its own tips; joining them to Xola's stays in the operator's tool
 - DEC-125 — Virtual availability — the schedule is a rule, `Event` rows materialize on state; blackout is scoped blocks, not per-event toggles
-- DEC-126 — The flip is a cutover with a one-time full Xola import — Muster becomes the reservation source of truth, and the cutover is reversible
+- DEC-126 — The flip from Xola is a cutover, not a natural drain
 - DEC-132 — `Customer` is a contact record keyed by phone — surrogate PK, UNIQUE canonical E.164, readable short code
 - DEC-133 — The customer availability screen is server-rendered; the guest stepper is the one client island (12.4, #457)
 - DEC-134 — Customer checkout is inline Stripe Elements over a deferred PaymentIntent; hosted Checkout remains for balance + post-gratuity (12.5, #458; revisits DEC-107/108 as DEC-108 anticipated)
-- DEC-135 — The "Your booking" manage page ships view + post-tip + cancel/change-as-request; self-service cancel is deferred (12.6, #459)
-- DEC-138 — The customer booking flow ships as an embeddable widget — the BrewBoat rollout path and the multi-tenant seam
+- DEC-135 — Cancelling is a request to the operator, not self-service
+- DEC-138 — The booking flow reaches customers as an embed, not a rebuilt website
 - DEC-139 — Payments — Stripe card checkout only; no Apple Pay / wallets (foreseeable future)
 - DEC-140 — SPEC §1.3 rewritten to the DEC-125 model — availability is two mechanisms, not one rule engine; COI-expiry and lead-time cutoff closed as out of scope
 - DEC-151 — Retire the legacy booking write path rather than guard it — one write path, or the unguarded one outlives the guarded one
 - DEC-153 — Cancel and refund from Muster — the operator keeps the discretion, both routes reconcile, and cancelling releases the event not just the reservation
-- DEC-154 — The customer booking link is a stored short code (`/b/<code>`), not a stateless HMAC URL — 129 characters to 43, and revocable (#741)
+- DEC-154 — The booking link is a stored code, so it can be revoked
 - DEC-155 — Full payment is the default and the launch posture — deposit mode becomes opt-in (#617)
-- DEC-156 — Party size is chosen first, lives in the URL, and filters availability to boats that fit (#715)
+- DEC-156 — Never show a customer a departure they cannot buy
 
 ### UI, brand & frontend patterns
 - DEC-021 — Frontend styling = Tailwind v4; component library deferred

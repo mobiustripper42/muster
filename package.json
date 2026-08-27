@@ -51,10 +51,12 @@
     "typecheck:app": "tsc -p tsconfig.json",
     "lint": "eslint app components src db e2e scripts",
     "gen:decisions": "node scripts/gen-decisions-index.mjs",
+    "gen:dictionary": "node scripts/gen-dictionary.mjs",
     "check:decisions": "node scripts/check-decisions.mjs",
+    "check:dictionary": "node scripts/check-dictionary.mjs",
     "check:context": "node scripts/check-context.mjs",
     "check:docs": "node scripts/check-docs.mjs",
-    "verify": "npm run check:decisions && npm run check:context && npm run check:docs && npm run typecheck && npm run typecheck:app && npm run lint && npm run test && npm run build"
+    "verify": "npm run check:decisions && npm run check:dictionary && npm run check:context && npm run check:docs && npm run typecheck && npm run typecheck:app && npm run lint && npm run test && npm run build"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.0",

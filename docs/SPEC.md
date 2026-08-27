@@ -2236,6 +2236,12 @@ the crew. It also offers add-to-calendar, book-again, and the contact's other tr
 **The money comes from the same model the admin pane uses**, so the customer and the operator
 are never looking at two different totals for one booking.
 
+**Cancelling or changing is a request, not an action.** The customer fills in a short form, the
+published cancellation terms are shown next to it, and the operator gets an email. Nothing is
+cancelled and no money moves until a person acts on it. A customer who wants out therefore
+always reaches a human, which is the correct behaviour while the terms depend on a flag the
+booking cannot yet carry (§2.10.2's deferred list, and DEC-135).
+
 Deferred, and named so nobody re-derives them as gaps: crew names, a per-guest waiver roster,
 reviews, emailed receipts, and rescheduling a date or time.
 

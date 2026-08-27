@@ -1,15 +1,33 @@
 ---
+schema: 1
 id: DEC-135
-title: "The \"Your booking\" manage page ships view + post-tip + cancel/change-as-request; self-service cancel is deferred (12.6, #459)"
+title: "Cancelling is a request to the operator, not self-service"
 topic: "Reservations & payments"
+status: "active"
+date: "2026-07-17"
+ruling: "A customer asking to cancel or change sends the operator a request rather than doing it themselves, because self-service needs a refund policy in code and a flex-insurance flag on the booking, and neither exists."
+claims:
+  - kind: "spec"
+    target: "§2.10.2"
+  - kind: "file"
+    target: "src/reservations/booking-change-request.ts"
+  - kind: "unverifiable"
+    target: "no customer-facing cancel action exists under app/b/"
+revisit_if: "issue #472 settles the refund schedule and issue #683 makes flex insurance sellable"
 ---
 
-## DEC-135: The "Your booking" manage page ships view + post-tip + cancel/change-as-request; self-service cancel is deferred (12.6, #459)
+## DEC-135: Cancelling is a request to the operator, not self-service
 
-**Decision:** the capability-URL manage page (`/reservations/manage`, DEC-122) ships its read surface (both trip-time states: **upcoming** = trip + balance; **completed** = post-trip tip + receipt), the DEC-124 **post gratuity** (hosted Checkout), **add-to-calendar** (a token-gated `.ics`), **book-again**, and the contact's **other trips**. The money reuses `buildReservationDetail` (one source of truth with the admin pane); the customer extras live in a pure `manage-view.ts` (phase flip, post-tip tiers, back-by/arrive-by).
+Real self-service cancel needs two things the system does not have: the refund schedule as
+code, and flex insurance attached to a booking. Faking it — self-service for flex holders only
+— would mean shipping a promise that depends on a flag nothing can set.
 
-**Cancel & change are option (b): an out-of-band request emailed to the operator**, NOT self-service. Self-service cancel-with-refund is deferred — it needs the #472 refund policy (the DEC-107 amendment) *and* Flex-insurance-on-reservation wiring (add-ons aren't attached to reservations yet), neither of which exists. Rather than fake "self-service for Flex holders," the customer requests a cancel/change and the operator handles it manually (the model `booking-link.ts` already described). Option (c) — real self-service — layers on later; (b) is needed regardless. Delivery: a best-effort email to `OPERATOR_NOTIFY_EMAIL` via a new `booking_request` `MessageKind` (the app had no operator-email-alert path — the webhook's own admin alert is still a `console.error` TODO; this is the first, minimal one). "Message us reaches the operator, never the crew" (mockup, 2026-07-17).
+So the customer writes and the operator acts. That is needed regardless of whether the
+self-service version ever ships, which is what makes it the right first cut rather than a
+placeholder.
 
-**Bearer-token loosening recorded (DEC-122):** the manage page lists the *contact's other reservations* (by `customerId`), each with its own minted link — so holding any one link surfaces that contact's trips. Accepted (same person), a conscious loosening.
+One consequence is a deliberate loosening worth naming: the page lists the contact's *other*
+trips, so holding any one link surfaces all of them. Accepted, because it is the same person —
+but it is a widening of what a link reaches, and it was not free.
 
-**Deferred to follow-ups (infra not built):** crew NAMES (the view model gives counts, not names); the guest waiver roster ("N of M signed" — there's no per-attendee roster, DEC-110 is one consent row); leave-a-review; email-the-receipt; and the date/time *reschedule* (re-hold + re-price is its own feature). The re-estimate: the full mockup is an 8+, not the issue's 5 — this ships the honest core and flags the rest. **Depends on DEC-134** (reads `Payment.serviceFeeCents` for the "Tax + service fee" line — 12.6 stacks on 12.5).
+What the page shows and what is deferred are `SPEC.md` §2.10.2.

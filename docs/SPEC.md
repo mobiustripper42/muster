@@ -2172,6 +2172,107 @@ your hours, and setting it on your own correction would make the surface lie abo
 
 ---
 
+## 2.10 Reservations — the surfaces around the sale
+
+§2.8 is a transaction: ninety seconds in which a customer picks a departure and pays for it.
+This section is everything else the word "reservations" covers — the link the customer keeps,
+the page they come back to, and how they find a boat that fits in the first place.
+
+The distinction is worth stating because it went unwritten for a year while the subsystem was
+built. Booking and Reservations are adjacent and different, and filing a surface under the
+flow it follows is how a manage page ends up specified as a payment step.
+
+**2.10.1 The booking link is a short code, and it is a credential.**
+
+A booking's manage link is `${base}/b/<code>` — 43 characters. It replaced a signed address
+carrying its own token, which ran to 129 and shipped in a text message where length is billed
+by the segment.
+
+The code is **14 characters** from an alphabet that excludes the letters which sound alike, so
+it can be read down a phone. One row per code, minted from a cryptographic random source.
+
+**The length is sized against guessing, not collision.** The threat is not guessing one
+booking's code; it is hitting *any* live one, so the search space divides by the number of live
+bookings. At ten thousand live bookings and a thousand guesses a second: eight characters is
+about thirty hours to a first hit, twelve is thirty-six centuries, fourteen is millions of
+years. Two characters past twelve buys a thousandfold margin, and this is the first time the
+number was chosen rather than inherited from whatever a hash happened to emit.
+
+**It is a credential, so its randomness is cryptographic.** The customer's readable display
+code shares the alphabet and does not share the source, and that difference is the whole point:
+one is something to say on the phone, the other is what opens a booking.
+
+**Booking ids are unchanged.** The code is a separate row pointing at one, because the booking
+id is an idempotency guard for payment retries and not a name.
+
+**A reissue kills its predecessor.** Minting a new code revokes every earlier code for that
+booking. Codes that stack would be friendlier and would make revocation meaningless, which is
+the only thing anyone reaches for this control to do. The cost is accepted and real: a customer
+who kept the original message lands on a dead link, so that page must tell them how to get a
+new one rather than merely refusing.
+
+**A resend is not a reissue.** It puts the same live code back where it already was — in the
+customer's own inbox. Only a reissue revokes.
+
+**Three outcomes, not two: fine, refused, and unknown.** Refused names itself, because whoever
+holds a revoked code already knows the booking exists and saying so leaks nothing — while a
+customer told "not valid" concludes their booking is gone. Unknown covers a malformed code, an
+unknown code, a missing booking **and a database error**, because a hiccup must never tell a
+customer their good link is dead.
+
+**Expiry is a column that nothing sets.** A manage page stays open indefinitely for the receipt
+and the after-trip tip, so there is no expiry policy — and the column exists so that having one
+later is a value rather than a migration.
+
+**The code never travels in the address bar.** The operator's copy of it renders only on the
+single screen immediately following a reissue, and the page re-reads it on the server. A
+credential in a query string lands in browser history and in every access log that keeps one.
+
+**2.10.2 The manage page.**
+
+Before the trip it shows the trip and what is owed. After it, the receipt and the chance to tip
+the crew. It also offers add-to-calendar, book-again, and the contact's other trips.
+
+**The money comes from the same model the admin pane uses**, so the customer and the operator
+are never looking at two different totals for one booking.
+
+Deferred, and named so nobody re-derives them as gaps: crew names, a per-guest waiver roster,
+reviews, emailed receipts, and rescheduling a date or time.
+
+**2.10.3 Party size is chosen first, and it filters everything.**
+
+The guest count is picked **before** the date, rides in the address alongside offering, date and
+time, and filters the calendar and the departure list to boats that can take the party.
+
+**A day whose boats are all free but all too small gets its own state** — neither "sold out" nor
+"nothing runs". Collapsing the two tells a party of fifteen they were unlucky when what they
+needed to know is to bring fewer people or call.
+
+**The fit is not new arithmetic.** It is the same check the claim already ran at the very end of
+the funnel, moved to browse time. Nothing is decided twice.
+
+**The customer is quoted the smallest fitting boat's capacity**, because that is the boat the
+claim will hand them. Quoting the largest hull on the offering advertises a boat somebody else
+is going to get.
+
+The stepper keeps its own state so the number and the price move under the thumb, with the
+address settling behind it. Every day cell, departure row and month pager has the count baked
+into its link, so the address and the count move together or the next date pick silently
+restores the old number.
+
+**The floor is one and the ceiling is the offering's largest boat.** A party that does not fit
+the largest boat is not a booking this system takes.
+
+**2.10.4 The booking flow is shaped to be embedded — not built.**
+
+Every step is separately addressable and renders standalone, the frame and its host exchange
+messages to resize and open, and the presentation is a dialog on a desktop and a full-screen
+page on a phone.
+
+**None of this is built.** There is no embed route, no snippet, no message passing, and no
+second origin. What is true today is only the part that costs nothing to keep true: each step
+of `/book` is its own address, and its state rides the query string rather than the session.
+
 # 3. Cross-cutting
 
 Behavior that spans surfaces. **Payments appears here only where it surfaces inside the admin app**

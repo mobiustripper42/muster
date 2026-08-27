@@ -26,7 +26,7 @@ import {
   specSections,
   stripSpecBlocks,
 } from './gen-decisions-index.mjs'
-import { check } from './check-decisions.mjs'
+import { check, validateSchemaRecord } from './check-decisions.mjs'
 
 /** A three-family record with the families sitting between DEC-014 and DEC-015 — the shape
  *  a project gets when a side family predates the numeric main line. */
@@ -283,5 +283,255 @@ describe('referencePattern', () => {
 describe('the real record', () => {
   it('is valid — no stale index, dangling reference, unknown topic, or bad edge', () => {
     expect(check()).toEqual([])
+  })
+})
+
+// ── Schema v1 (issue #816) ───────────────────────────────────────────────────
+//
+// Only records carrying `schema: 1` are validated; everything else is grandfathered, which
+// is what lets the corpus convert one record at a time without a red build the whole way.
+// Fixtures below declare their own ids and topics for the reason the header gives.
+
+describe('schema v1 validation', () => {
+  const ok = {
+    schema: 1,
+    id: 'DEC-200',
+    title: 'A short title',
+    topic: TOPIC,
+    status: 'active',
+    date: '2026-08-26',
+    ruling: 'The customer pays the whole price at booking and nothing is collected later.',
+    claims: [{ kind: 'file', target: 'src/reservations/payment-config.ts' }],
+  }
+
+  const errs = (patch, body = 'Body.\n', bytes = 500) =>
+    validateSchemaRecord({ ...ok, ...patch }, body, bytes).join(' | ')
+
+  it('accepts a well-formed record', () => {
+    expect(validateSchemaRecord(ok, 'Body.\n', 500)).toEqual([])
+  })
+
+  it('names the offending key on an unknown one, because that is the `dumb:` accident', () => {
+    expect(errs({ boat: 'Brew 3' })).toMatch(/boat/)
+  })
+
+  it('reports each missing required key by name', () => {
+    const { ruling, claims, ...missing } = ok
+    const out = validateSchemaRecord(missing, 'Body.\n', 500).join(' | ')
+    expect(out).toMatch(/ruling/)
+    expect(out).toMatch(/claims/)
+  })
+
+  it('holds the ruling to 240 characters and says what the length was', () => {
+    expect(errs({ ruling: 'x'.repeat(241) })).toMatch(/ruling.*240/)
+  })
+
+  it('holds the title to 80 and a claim note to 120', () => {
+    expect(errs({ title: 'x'.repeat(81) })).toMatch(/title.*80/)
+    expect(errs({ claims: [{ kind: 'file', target: 'a.ts', note: 'x'.repeat(121) }] })).toMatch(/note.*120/)
+  })
+
+  it('rejects a status outside the enum and a claim kind outside the enum', () => {
+    expect(errs({ status: 'draft' })).toMatch(/status/)
+    expect(errs({ claims: [{ kind: 'vibes', target: 'a.ts' }] })).toMatch(/kind/)
+  })
+
+  it('rejects a topic the project has not declared', () => {
+    expect(errs({ topic: 'Nautical trivia' })).toMatch(/topic/)
+  })
+
+  it('requires at least one claim — a record that asserts nothing is the thing being caught', () => {
+    expect(errs({ claims: [] })).toMatch(/claims/)
+  })
+
+  it('does not verify claim targets yet, so a nonexistent path is well-formed', () => {
+    expect(validateSchemaRecord({ ...ok, claims: [{ kind: 'file', target: 'src/no/such.ts' }] }, 'Body.\n', 500)).toEqual(
+      [],
+    )
+  })
+
+  it('rejects an id shape the record does not use, and accepts a lettered one', () => {
+    expect(errs({ id: 'DEC-2000' })).toMatch(/id/)
+    expect(validateSchemaRecord({ ...ok, id: 'DEC-107a' }, 'Body.\n', 500)).toEqual([])
+  })
+
+  it('caps the file at 2000 bytes and says the actual size', () => {
+    expect(errs({}, 'Body.\n', 2001)).toMatch(/2001.*2000|2000.*2001/)
+  })
+
+  it('rejects a `**Bold:**` lead-in, which is the structure that belongs in frontmatter', () => {
+    expect(errs({}, '**Decision:** we do the thing.\n')).toMatch(/Decision/)
+    expect(errs({}, '**Tradeoffs.** Several.\n')).toMatch(/Tradeoffs/)
+  })
+
+  it('leaves ordinary bold in a sentence alone', () => {
+    expect(validateSchemaRecord(ok, 'It is **not** a cutover, and that matters.\n', 500)).toEqual([])
+  })
+})
+
+describe('the schema:1 opt-in gate', () => {
+  // Regression: the gate was a raw-text regex (`/^schema: *1 *$/m`), which is stricter than
+  // YAML. A trailing comment or a quoted value read as "never opted in", so the record got
+  // ZERO enforcement and nothing said so — a rule that looks applied and isn't, which is the
+  // class this whole gate exists to close. Found in review, reproduced, then fixed by
+  // gating on the parsed value.
+  const gate = (block) => /^schema:/m.test(block)
+
+  it('pre-filters on the key, not on a formatting of its value', () => {
+    expect(gate('schema: 1\nid: DEC-200\n')).toBe(true)
+    expect(gate('schema: 1  # v1 draft\nid: DEC-200\n')).toBe(true)
+    expect(gate('schema: "1"\nid: DEC-200\n')).toBe(true)
+    expect(gate('id: DEC-042\ntitle: "T"\n')).toBe(false)
+  })
+
+  it('the old regex is what let two of those through', () => {
+    const old = (block) => /^schema: *1 *$/m.test(block)
+    expect(old('schema: 1  # v1 draft\n')).toBe(false)
+    expect(old('schema: "1"\n')).toBe(false)
+  })
+})
+
+describe('the id sweep', () => {
+  // One id, one file — across `docs/decisions/` AND `docs/decisions/archive/`. `load()`
+  // catches a duplicate inside its own directory and stops there; an archived copy beside
+  // the live record is the case it cannot see, and the one that makes a citation ambiguous.
+  const idOf = (block) => block.match(/^id: *(\S+)/m)?.[1]
+
+  it('reads the id from a legacy block and a schema-v1 block alike', () => {
+    expect(idOf('id: DEC-042\ntitle: "T"\n')).toBe('DEC-042')
+    expect(idOf('schema: 1\nid: DEC-107a\nstatus: active\n')).toBe('DEC-107a')
+  })
+
+  it('returns nothing for a file with no id, rather than a false match', () => {
+    expect(idOf('title: "T"\ntopic: "X"\n')).toBeUndefined()
+    expect(idOf('# not frontmatter at all\n')).toBeUndefined()
+  })
+
+  it('is unbothered by a missing archive/ directory — the real record has none', () => {
+    // `sweep` returns early on a directory that does not exist, which is why `check()` is
+    // green here rather than throwing on ENOENT. Pinned because the branch is otherwise
+    // never taken: no project in this repo has an archive/ yet.
+    expect(check()).toEqual([])
+  })
+})
+
+describe('schema v1 frontmatter shapes the legacy parser must now read', () => {
+  // `claims` is a list of objects; `supersedes` is a list of BARE STRINGS, a shape
+  // `parseFrontmatter` had no branch for at all. Both were the blocker that made incremental
+  // conversion impossible — `load()` threw on the first converted record and took every other
+  // file's checks with it.
+  const v1 = `---
+schema: 1
+id: DEC-200
+title: "A title"
+topic: ${JSON.stringify(TOPIC)}
+status: active
+date: "2026-08-26"
+ruling: "The customer pays the whole price at booking and nothing is collected later."
+supersedes:
+  - DEC-107
+  - DEC-155
+claims:
+  - kind: file
+    target: src/reservations/payment-config.ts
+  - kind: unverifiable
+    target: nothing writes a balance figure to the database
+    note: needs a lint rule to become checkable
+---
+
+Body.
+`
+
+  it('reads a list of objects', () => {
+    expect(parseFrontmatter(v1).meta.claims).toEqual([
+      { kind: 'file', target: 'src/reservations/payment-config.ts' },
+      {
+        kind: 'unverifiable',
+        target: 'nothing writes a balance figure to the database',
+        note: 'needs a lint rule to become checkable',
+      },
+    ])
+  })
+
+  it('reads a list of bare strings', () => {
+    expect(parseFrontmatter(v1).meta.supersedes).toEqual(['DEC-107', 'DEC-155'])
+  })
+
+  it('keeps the scalars either side of the lists', () => {
+    const { meta } = parseFrontmatter(v1)
+    expect(meta.schema).toBe('1')
+    expect(meta.id).toBe('DEC-200')
+    expect(meta.status).toBe('active')
+  })
+
+  it('still throws on a list item that opens before any list key', () => {
+    // The bare-string branch must not turn this into a silent accept — an item with no open
+    // list is the `dumb:`-shaped accident, not a value.
+    expect(() => parseFrontmatter('---\nid: DEC-001\n  - DEC-002\n---\n\nBody.\n')).toThrow(/outside any list/)
+  })
+})
+
+describe('renderDecision round-trips schema v1', () => {
+  // THE regression guard for the bug this was written against: `renderDecision` emitted four
+  // keys, so the first `gen:decisions` after a conversion DELETED `schema`, `status`, `date`,
+  // `ruling`, `claims` and `revisit_if` — the whole decision — and the record then read as
+  // legacy, so the gate went GREEN on a file whose content it had just destroyed. And
+  // `check:decisions` is what tells you to run the generator in the first place.
+  const v1 = {
+    schema: '1',
+    id: 'DEC-200',
+    title: 'Sales tax is read live, not frozen onto the booking',
+    topic: TOPIC,
+    status: 'superseded',
+    date: '2026-08-26',
+    ruling: 'The sales tax rate is read fresh whenever a balance is worked out, rather than frozen onto the booking.',
+    claims: [
+      { kind: 'file', target: 'src/reservations/payment-config.ts' },
+      { kind: 'unverifiable', target: 'no surface calls setPaymentConfig', note: 'a grep, not a check' },
+    ],
+    supersedes: ['DEC-107', 'DEC-155'],
+    superseded_by: 'DEC-201',
+    revisit_if: 'a rate change actually happens',
+    amends_spec: [{ section: '2.8', scope: 'the tax rate is a live read' }],
+    body: '## DEC-200: Sales tax is read live\n\nRationale.\n',
+  }
+
+  it('emits every v1 key, so nothing is dropped on the next generate', () => {
+    const back = parseFrontmatter(renderDecision(v1)).meta
+    for (const k of ['schema', 'id', 'title', 'topic', 'status', 'date', 'ruling', 'revisit_if', 'superseded_by']) {
+      expect(back[k], `key \`${k}\` was dropped`).toEqual(v1[k])
+    }
+    expect(back.claims).toEqual(v1.claims)
+    expect(back.supersedes).toEqual(v1.supersedes)
+    expect(back.amends_spec).toEqual(v1.amends_spec)
+  })
+
+  it('still opts in to validation after a round trip', () => {
+    const out = renderDecision(v1)
+    expect(/^schema:/m.test(out.slice(4, out.indexOf('\n---\n', 3)))).toBe(true)
+  })
+
+  it('quotes the date, so YAML does not hand back a Date and fail the string check', () => {
+    expect(renderDecision(v1)).toContain('date: "2026-08-26"')
+  })
+
+  it('emits `schema: 1` unquoted, so the parsed value is the number the gate compares against', () => {
+    expect(renderDecision(v1)).toContain('\nschema: 1\n')
+  })
+
+  it('is a fixed point — regenerating a converted record rewrites nothing', () => {
+    const once = renderDecision(v1)
+    const twice = renderDecision({ ...parseFrontmatter(once).meta, body: parseFrontmatter(once).body })
+    expect(twice).toBe(once)
+  })
+
+  it('leaves a legacy record on the existing four-key output', () => {
+    const legacy = { id: 'DEC-020', title: 'A title', topic: TOPIC, body: '## DEC-020: A title\n\nBody.\n' }
+    const out = renderDecision(legacy)
+    expect(out.slice(4, out.indexOf('\n---\n', 3)).split('\n').filter(Boolean)).toEqual([
+      'id: DEC-020',
+      `title: ${JSON.stringify('A title')}`,
+      `topic: ${JSON.stringify(TOPIC)}`,
+    ])
   })
 })

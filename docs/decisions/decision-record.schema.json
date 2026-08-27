@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "decision-record.schema.json",
+  "title": "Decision record frontmatter, schema v1",
+  "$comment": "Validated by scripts/check-decisions.mjs, and only for records carrying `schema: 1`. Records without that key are grandfathered and skipped, so the corpus converts incrementally. The `topic` enum is injected at validate time from docs/decisions/_config.json — it is deliberately absent here, because a topic list baked into a shared schema is a project-specific fact in a file that is not.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "title", "topic", "status", "date", "ruling", "claims"],
+  "properties": {
+    "schema": {
+      "const": 1,
+      "$comment": "The gate. Its presence is what opts a record into validation at all."
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^DEC-[A-Z]?[0-9]{3}[a-z]?$"
+    },
+    "title": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "topic": {
+      "type": "string",
+      "$comment": "enum injected at validate time from docs/decisions/_config.json"
+    },
+    "status": {
+      "enum": ["active", "superseded", "withdrawn"]
+    },
+    "date": {
+      "type": "string",
+      "format": "date"
+    },
+    "ruling": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 240,
+      "$comment": "The only field the operator reads. One sentence, plain English, no jargon."
+    },
+    "claims": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/claim" }
+    },
+    "supersedes": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^DEC-[A-Z]?[0-9]{3}[a-z]?$" }
+    },
+    "superseded_by": {
+      "type": "string",
+      "pattern": "^DEC-[A-Z]?[0-9]{3}[a-z]?$"
+    },
+    "revisit_if": {
+      "type": "string",
+      "maxLength": 160
+    },
+    "amends_spec": {
+      "type": "array",
+      "$comment": "The DEC→SPEC leg, unchanged by schema v1. Absent from the v1 sketch, but gen:decisions writes the spec pointer from it and check() verifies the pointer landed — forbidding it here would break that for every rewritten record that amends the spec.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["section", "scope"],
+        "properties": {
+          "section": { "type": "string" },
+          "scope": { "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "target"],
+      "properties": {
+        "kind": {
+          "enum": ["spec", "file", "route", "column", "script", "env", "test", "unverifiable"]
+        },
+        "target": { "type": "string", "maxLength": 200 },
+        "note": { "type": "string", "maxLength": 120 }
+      }
+    }
+  }
+}

@@ -43,21 +43,36 @@ export const prose = (s) =>
  *  2. DOC FILENAMES — `SPEC`, `CLAUDE`, `BRAND`. A filename is not a term.
  *  3. ORDINARY WORDS SHOUTED FOR EMPHASIS — `**NOT**`, `**NEVER**`, `GET`, `DEAD`. House style
  *     in this repo, 160 matches, and every one of them is English.
+ *
+ * The third one is FROZEN AT BASELINE, not computed live, and that is a correctness fix rather
+ * than an optimization. Deriving it from the current corpus meant writing `zqx` once in any
+ * prose file permanently exempted `ZQX` everywhere — the gate quietly widening its own
+ * exemption every time anyone wrote a lowercase word, with no record that it had. Frozen, the
+ * exemption is a committed list a person can read.
  */
-export function excluded(token, families, lowercaseCorpus) {
+export function excluded(token, families, shouted) {
   if (/^(?:DEC|REQ)$/.test(token)) return true
   if (families.some((f) => new RegExp(`^${f}(?:-[A-Z0-9])?$`).test(token))) return true
   if (/^(?:SPEC|CLAUDE|BRAND|DECISIONS|README|AGENTS|DICTIONARY|CHANGELOG)$/.test(token)) return true
-  // The corpus is its own wordlist. A word shouted for emphasis appears in lowercase somewhere
-  // in the same prose; a real acronym does not. Measured: catches all 19 shouted words with two
-  // acronyms misclassified (`UI`, `JS`), and that direction is the safe one — a misclassified
-  // acronym is merely never REQUIRED to register, not silently accepted as something else.
-  return lowercaseCorpus.has(token.toLowerCase())
+  return shouted.has(token.toUpperCase())
 }
+
+/** Multi-word alternates have to survive a hard wrap. This repo's prose wraps around 95 chars,
+ *  so `basis\npoints` is not hypothetical — and an alternate that goes dark at a line break is
+ *  an alternate that stops being enforced by the act of editing a paragraph. */
+export const altPattern = (alt) =>
+  new RegExp(`\\b${alt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+')}\\b`, 'gi')
 
 export function loadDictionary(path = DICT) {
   if (!existsSync(path)) return { entries: [], errors: [`${path} does not exist`] }
-  const raw = parseYaml(readFileSync(path, 'utf8'))
+  let raw
+  try {
+    raw = parseYaml(readFileSync(path, 'utf8'))
+  } catch (e) {
+    // Without this, malformed YAML exits through a js-yaml stack trace rather than the
+    // per-entry messages every other failure in this file produces.
+    return { entries: [], errors: [`${path} is not valid YAML — ${String(e.message).split('\n')[0]}`] }
+  }
   const errors = []
   if (!Array.isArray(raw)) return { entries: [], errors: [`${path} must be a list of entries`] }
 
@@ -129,19 +144,26 @@ export function check() {
   const families = existsSync(CONFIG) ? Object.keys(JSON.parse(readFileSync(CONFIG, 'utf8')).families ?? {}) : []
   const files = gatedFiles()
   const texts = new Map(files.map((f) => [f, prose(readFileSync(f, 'utf8'))]))
-  const lowercaseCorpus = new Set([...texts.values()].join('\n').match(/\b[a-z]{2,}\b/g) ?? [])
 
   // Grandfathered vocabulary — what was already in these files the day this shipped. The point
   // of the gate is NEW words, so the backlog is suppressed. Registration stays available: a
   // grandfathered term may be registered at any time, and doing so is always welcome.
-  const baseline = existsSync(BASELINE)
-    ? new Set(
-        readFileSync(BASELINE, 'utf8')
-          .split('\n')
-          .map((l) => l.trim())
-          .filter((l) => l && !l.startsWith('#')),
-      )
-    : new Set()
+  const lines = existsSync(BASELINE)
+    ? readFileSync(BASELINE, 'utf8')
+        .split('\n')
+        .map((l) => l.trim())
+        .filter((l) => l && !l.startsWith('#'))
+    : []
+  const baseline = new Set(lines.filter((l) => !l.includes(':')))
+  const shouted = new Set(lines.filter((l) => l.startsWith('shout:')).map((l) => l.slice(6).toUpperCase()))
+  // `alt:<alternate>@<file>=<count>` — the count is what makes grandfathering a SNAPSHOT rather
+  // than an amnesty. Warning on the bare alternate meant `not: [Stripe Elements]` never enforced
+  // again anywhere, including in a document written tomorrow, which is half the feature gone.
+  const altBaseline = new Map()
+  for (const l of lines) {
+    const m = l.match(/^alt:(.+)@(.+)=(\d+)$/)
+    if (m) altBaseline.set(`${m[1]}@${m[2]}`, Number(m[3]))
+  }
 
   const registered = new Map(entries.map((e) => [e.term.toLowerCase(), e]))
 
@@ -151,25 +173,29 @@ export function check() {
   for (const e of entries) {
     for (const m of (e.says ?? '').matchAll(ACRONYM)) {
       const t = m[0]
-      if (excluded(t, families, lowercaseCorpus)) continue
+      if (excluded(t, families, shouted)) continue
       if (registered.has(t.toLowerCase())) continue
-      if (e.term.toLowerCase().includes(t.toLowerCase())) continue // a term may say its own name
+      // EXACT, not substring. `"mmc".includes("mc")` forgave an unrelated `MC` inside MMC's own
+      // definition — a hole in the one guard whose job is stopping a definition leaning on jargon.
+      if (t.toLowerCase() === e.term.toLowerCase()) continue // a term may say its own name
       fail(DICT, `\`${e.term}\`'s definition leans on \`${t}\`, which is not registered`)
     }
   }
 
   for (const [file, text] of texts) {
     // ── Rule 2: forbidden alternates ──────────────────────────────────────────
-    // Enforced immediately in gated files. A grandfathered file is REPORTED rather than failed,
-    // because lighting up six old documents is the drift the dictionary exists to find, not a
-    // reason nobody can commit.
+    // Occurrences up to the baseline COUNT for this file are warned; anything beyond it fails.
+    // So the three that were already here stay a cleanup list, and the fourth — typed today,
+    // in this file or any other — is a red build.
     for (const e of entries) {
       for (const alt of e.not ?? []) {
-        const re = new RegExp(`\\b${alt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi')
-        for (const m of text.matchAll(re)) {
+        const allowed = altBaseline.get(`${alt.toLowerCase()}@${file}`) ?? 0
+        let seen = 0
+        for (const m of text.matchAll(altPattern(alt))) {
+          seen++
           const line = text.slice(0, m.index).split('\n').length
-          const msg = `\`${m[0]}\` is a forbidden alternate — the registered term is \`${e.term}\``
-          if (baseline.has(`alt:${alt.toLowerCase()}`)) warnings.push(`${file}:${line} — ${msg}`)
+          const msg = `\`${m[0].replace(/\s+/g, ' ')}\` is a forbidden alternate — the registered term is \`${e.term}\``
+          if (seen <= allowed) warnings.push(`${file}:${line} — ${msg}`)
           else fail(`${file}:${line}`, msg)
         }
       }
@@ -178,7 +204,7 @@ export function check() {
     // ── Rule 1: acronyms must be registered ───────────────────────────────────
     for (const m of text.matchAll(ACRONYM)) {
       const t = m[0]
-      if (excluded(t, families, lowercaseCorpus)) continue
+      if (excluded(t, families, shouted)) continue
       if (registered.has(t.toLowerCase())) continue
       if (baseline.has(t)) continue // grandfathered
       const line = text.slice(0, m.index).split('\n').length

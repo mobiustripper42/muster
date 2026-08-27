@@ -7,8 +7,10 @@
 # Re-running the generator would grandfather whatever crept in since, which is the gate
 # disarming itself. Add a term to docs/dictionary.yml instead.
 #
-# An `alt:` line is a forbidden alternate already present in the corpus. Those are WARNED,
-# never failed, so registering a term cannot turn old documents into a red build.
+#   <TERM>                    grandfathered acronym
+#   shout:<WORD>              ordinary English this repo shouts for emphasis (**NOT**, GET)
+#   alt:<alternate>@<file>=N  a forbidden alternate already present N times in that file.
+#                             Those N are warned; the N+1th is a failure, wherever it lands.
 
 2FA
 AC
@@ -91,5 +93,86 @@ WIP
 XML
 YAGNI
 
-alt:compare-and-swap
-alt:stripe elements
+shout:AFTER
+shout:ALL
+shout:AM
+shout:AND
+shout:ANY
+shout:ARE
+shout:BADGE
+shout:BLOCK
+shout:BOTH
+shout:BY
+shout:CHECK
+shout:CLOSED
+shout:CUT
+shout:DB
+shout:DEAD
+shout:DEPLOY
+shout:DESIGN
+shout:DO
+shout:EDGE
+shout:FILLED
+shout:FIRST
+shout:GAP
+shout:GET
+shout:GO
+shout:GOAL
+shout:HEAD
+shout:HIGH
+shout:ID
+shout:IN
+shout:IS
+shout:JS
+shout:KILLED
+shout:KNOWN
+shout:LATEST
+shout:LOCK
+shout:LOCKED
+shout:LONGER
+shout:MODEL
+shout:MOOT
+shout:MUSTER
+shout:NAMES
+shout:NET
+shout:NEVER
+shout:NEW
+shout:NO
+shout:NON
+shout:NOT
+shout:NULL
+shout:OFF
+shout:ON
+shout:ONE
+shout:ONLY
+shout:OPEN
+shout:OR
+shout:OUT
+shout:OWN
+shout:PAST
+shout:PER
+shout:PM
+shout:POST
+shout:PULL
+shout:RULE
+shout:SCOPE
+shout:SHIP
+shout:SQL
+shout:STATUS
+shout:STOP
+shout:STOPS
+shout:STRUCK
+shout:TEXT
+shout:TS
+shout:TWO
+shout:UI
+shout:UN
+shout:UNION
+shout:UNIQUE
+shout:UPDATE
+shout:WIDE
+shout:WORK
+shout:ZIP
+
+alt:compare-and-swap@docs/decisions/DEC-020-m4-stack-next-js-app-router-vercel-persistence-is.md=1
+alt:stripe elements@docs/decisions/DEC-134-customer-checkout-is-inline-stripe-elements-over-a.md=2

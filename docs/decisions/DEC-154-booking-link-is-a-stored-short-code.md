@@ -8,7 +8,7 @@ date: "2026-08-14"
 ruling: "A booking's manage link is a stored code that can be revoked, not a signed address that verifies itself. Nothing in production had ever minted the old kind, so replacing it cost nobody a working link."
 claims:
   - kind: "spec"
-    target: "§2.10.1"
+    target: "§2.8.11"
   - kind: "file"
     target: "src/reservations/booking-code.ts"
   - kind: "column"
@@ -30,4 +30,4 @@ link existed in any customer's inbox. That window closes the day reservations go
 which every link already sent has to keep working forever.
 
 The shape of the code, its length, and what a customer sees when one is refused are `SPEC.md`
-§2.10.1 — they are how the system works, not a choice anyone needs the reasoning for.
+§2.8.11 — they are how the system works, not a choice anyone needs the reasoning for.

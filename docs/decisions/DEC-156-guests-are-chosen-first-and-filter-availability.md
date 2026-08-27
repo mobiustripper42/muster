@@ -8,7 +8,7 @@ date: "2026-08-16"
 ruling: "The browse surface never offers a customer something they cannot buy. Party size is asked first and filters everything, and a day whose boats are all too small says so rather than saying sold out."
 claims:
   - kind: "spec"
-    target: "§2.10.3"
+    target: "§2.8.13"
   - kind: "file"
     target: "src/reservations/availability-screen.ts"
   - kind: "test"
@@ -31,4 +31,4 @@ week of empty boats. And the address must be updated even when nothing visibly c
 12/14/16 offering only two steps in the whole range alter what is bookable, so skipping the
 update is tempting and leaves every link on the page one count behind.
 
-The order, the filtering and the bounds are `SPEC.md` §2.10.3.
+The order, the filtering and the bounds are `SPEC.md` §2.8.13.

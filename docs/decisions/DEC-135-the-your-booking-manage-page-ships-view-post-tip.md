@@ -8,7 +8,7 @@ date: "2026-07-17"
 ruling: "A customer asking to cancel or change sends the operator a request rather than doing it themselves. The refund policy exists in code, but flex insurance is not attached to a booking, so nothing can tell which terms a customer bought."
 claims:
   - kind: "spec"
-    target: "§2.10.2"
+    target: "§2.8.12"
   - kind: "file"
     target: "src/reservations/booking-change-request.ts"
   - kind: "file"
@@ -36,4 +36,4 @@ a placeholder.
 One deliberate loosening, worth naming: the page lists the contact's *other* trips, so holding
 any one link surfaces all of them. Accepted — same person — but it widens what a link reaches.
 
-What the page shows is `SPEC.md` §2.10.2.
+What the page shows is `SPEC.md` §2.8.12.

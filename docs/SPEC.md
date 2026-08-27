@@ -72,8 +72,8 @@ Muster be built perfect for one niche (BrewBoat) and still be sellable later wit
   detail. Only the admin-facing *surfaces* of payments are in scope.~~ — **EXPIRED (DEC-105/107/124).**
   Payments landed **in 2026**, not later: the full amount is charged at booking (§2.8.4a),
   Stripe is in (card checkout only, no wallets — DEC-139), and tips come in as collect-and-expose
-  (DEC-124). The **refund schedule** remains the one genuinely open number (#472) and is what blocks
-  self-service cancel.
+  (DEC-124). The **refund schedule** is decided and written down — §2.8.4c. What still blocks
+  self-service cancel is flex insurance not being attached to a booking (issue #683).
 - **Native vs PWA** for the crew app — decided at the infrastructure stage.
 - ~~**Historical Xola data migration** — leaning read-only archive.~~ — **SETTLED by DEC-105: never
   migrate.** Xola stays a read-only archive; nothing is brought across but the one-time cutover import
@@ -1952,7 +1952,8 @@ the largest boat is not a booking this system takes.
 **2.8.14 What this surface is NOT.** No seats — BrewBoat sells the whole boat and party size only has
 to fit. No customer-chosen vessel. No separate hold object. No money computed after the customer has
 been quoted. No booking assembled from data Stripe hands back. No wallets (card only). Self-service
-cancellation stays out until the refund schedule is decided (issue #472).
+cancellation stays out until flex insurance can be attached to a booking (issue #683) — the
+refund schedule itself is settled, in §2.8.4c.
 
 **And no add-ons.** BrewBoat sells none — the plausible ones are ice, party hats, a trivia night, and
 none exists. An `AddOn` entity, an admin editor and an offering attachment all ship; nothing sells
@@ -2041,8 +2042,8 @@ the decision is the one that is right.
 - ~~**Does the balance freeze its tax?**~~ **Deferred with deposits.** 2.8.4 says frozen numbers are
   never recomputed and the dormant balance path recomputes tax from live settings. Nothing charges a
   balance today, so this is answered when deposits return, not before.
-- The refund schedule (issue #472) remains open and continues to block self-service cancellation. This
-  section does not touch it.
+- The refund schedule is settled — §2.8.4c states all three outcomes. Self-service cancellation
+  is still blocked, but by flex insurance (issue #683), not by the schedule.
 
 ---
 
@@ -2585,8 +2586,9 @@ now. Building any of these is out of scope until its trigger condition is met.
   operator texting a link per booking. **The answer is full payment, everywhere — §2.8.4a.** Deposits
   are a future capability, not a supported mode: the configuration exists in code and no deployment
   uses it. The recommendation above turns out to have been right for launch.
-- **Refund schedule numbers** (the partial-refund tiers) — Drew. *(Still open — #472; DEC-135 notes the
-  refund policy does not exist yet, which is what blocks self-service cancel.)*
+- ~~**Refund schedule numbers** (the partial-refund tiers) — Drew.~~ **DECIDED** — the published
+  terms are §2.8.4c, implemented in `src/reservations/refund-terms.ts` and tested. Self-service
+  cancel is blocked by flex insurance (issue #683), not by this.
 - **Credit-vs-cash default ordering** in the cancel flow — lean credit-first, cash always available;
   confirm with Drew. *(Still open — §3.3 refund cascade is parked by DEC-107.)*
 - ~~**Balance-capture timing** if deposits are used (tie to a horizon?).~~

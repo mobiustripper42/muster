@@ -1,0 +1,75 @@
+# The dictionary. Three keys per entry, no others.
+#
+#   term  the canonical name. Unique across the file.
+#   says  plain English, max 160 characters. May not lean on an unregistered term —
+#         definitions bottom out in ordinary English or they do not pass.
+#   not   forbidden alternates. Using one fails the build, naming the canonical term.
+#
+# `docs/DICTIONARY.md` is generated from this file by `npm run gen:dictionary`. This is the
+# source; the markdown is what a person reads. Never edit the markdown.
+#
+# The gate reads `docs/SPEC.md`, `docs/decisions/*.md` and `CLAUDE.md`. Not code, not commit
+# messages, not session logs, not the worksheets. Vocabulary already in those files on the day
+# this shipped is grandfathered (`docs/dictionary-baseline.txt`) — registration is always
+# welcome, but the backlog is not required to register.
+
+# ── Payments ────────────────────────────────────────────────────────────────────
+#
+# Registered ahead of use. Every one of these appeared in DEC-107 and none survives in the
+# corpus today — the record was tombstoned and then rewritten to 1,388 bytes. They are here
+# because the reservations rewrites will need them back, and a term registered before it is
+# written is a term nobody has to argue about afterwards.
+
+- term: SAQ-A
+  says: the lightest card-industry compliance tier, which applies because card numbers never reach our servers
+  not: []
+
+- term: 3DS
+  says: the bank's extra check at checkout, where the customer confirms the payment in their banking app or by a texted code
+  not: []
+
+- term: SCA
+  says: a European rule requiring that extra bank check on most card payments
+  not: []
+
+- term: bps
+  says: hundredths of a percent, so 800 bps is 8 percent — used for rates so nothing has to store a fraction
+  not: [basis points]
+
+- term: off-session
+  says: charging a saved card when the customer is not at the keyboard, so nobody is there to answer a decline
+  not: []
+
+- term: idempotency key
+  says: a label sent with a charge so that repeating the same request does the same thing once, instead of charging twice
+  not: []
+
+- term: Payment Element
+  says: Stripe's card form, embedded in our own page, so the customer never leaves the site to pay
+  not: [Stripe Elements, inline Elements]
+
+- term: residual race
+  says: two customers pay for the last boat at the same moment; one wins, and the other has to be refunded and told
+  not: []
+
+# ── Boats and crew ──────────────────────────────────────────────────────────────
+#
+# These have real usage across the corpus, so their `not` alternates are the live drift test.
+
+- term: MMC
+  says: the Coast Guard credential a captain must hold and keep current — on BrewBoat's boats a mate does not need one
+  not: []
+
+- term: COI
+  says: the Coast Guard inspection certificate that sets a boat's legal passenger limit and the crew it must carry
+  not: []
+
+# ── Mechanism ───────────────────────────────────────────────────────────────────
+
+- term: CAS
+  says: write a row only if it still holds the value you read, so two people racing for the same seat cannot both win
+  not: [compare-and-swap]
+
+- term: RLS
+  says: a database feature that filters rows per signed-in user. Muster does not use it — who may see what is decided in the service layer
+  not: []

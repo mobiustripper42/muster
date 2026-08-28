@@ -14,7 +14,7 @@ import type { VesselId } from "../domain/ids.js";
 import { assertOptionalIsoDateTime } from "../domain/iso-date.js";
 import { resolveCustomerId } from "../customers/resolve.js";
 import type { Repository } from "../ports/repository.js";
-import { vesselCapacity } from "./resource-map.js";
+import { vesselCapacity, vesselTripLength } from "./resource-map.js";
 
 export interface SkippedRow {
   reservationId?: string;
@@ -217,6 +217,12 @@ export async function importRecords(
     }
     placed.add(rawEventId);
     const capacity = vesselCapacity(vesselId) ?? existing?.capacity ?? 0;
+    // Trip length (DEC-041 (b)): the boat's declared length, else whatever the stored
+    // event already carried. NO terminal `?? TRIP_DURATION_MINUTES` — a boat that
+    // declares nothing leaves the key **omitted**, so the fallback stays a read-time
+    // decision. Writing it here would freeze today's constant onto every row forever,
+    // and writing `undefined` breaks the omitted-not-undefined round-trip contract.
+    const duration = vesselTripLength(vesselId) ?? existing?.durationMinutes;
     const event: Event = {
       id: eventId,
       vesselId,
@@ -225,6 +231,7 @@ export async function importRecords(
       capacity,
       status: pe.anyBooked ? "scheduled" : "cancelled",
       source: "xola", // the importer structurally only ever writes Xola-owned events (DEC-106)
+      ...(duration !== undefined ? { durationMinutes: duration } : {}),
     };
     await repo.saveEvent(event);
     if (!existing) result.eventsCreated++;

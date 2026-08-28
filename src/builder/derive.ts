@@ -414,10 +414,11 @@ export const TEARDOWN_MINUTES = 25;
  * Flat trip length in minutes — the (c) stopgap source for a trip's duration
  * (DEC-041), sibling to `CALL_LEAD_MINUTES`. Now the **fallback**, not the rule:
  * `Event.durationMinutes` (#570) is DEC-041's (b) source and it has landed, seeded
- * from `Offering.tripLengthMinutes` and frozen at materialization. This constant
- * still governs every event that carries no length of its own — which is every
- * Xola-sourced event, permanently, since Xola exposes no product length (source
- * (a) never landed).
+ * from `Offering.tripLengthMinutes` and frozen at materialization for Muster-native
+ * events, and from `FleetVessel.tripLengthMinutes` in the Xola resource map for
+ * imported ones. This constant still governs every event that carries no length of
+ * its own — most of the fleet, but no longer "every Xola event, permanently".
+ * Source (a), a length off Xola's own API, still never landed and nothing reads one.
  */
 export const TRIP_DURATION_MINUTES = 100;
 
@@ -557,6 +558,14 @@ export function suggestSplit(
   // Consecutive trips leave `Δdep − (TRIP_DURATION + TEARDOWN + CALL_LEAD)` of dead
   // time between one trip's teardown and the next's prep (#275 — teardown ≠ call
   // lead; same buffer split the shift-end got).
+  //
+  // **Still flat, deliberately, and it is the last place that is.** `shiftEndFromEvents`
+  // and `committedWindow` both read each event's own length; this does not, so a boat
+  // declaring 120 has its occupancy under-counted by 20 minutes per trip and the dead
+  // gap over-reported — which can push a real ~105-minute gap over the threshold and
+  // suggest a split that isn't there. The output is advisory (the operator decides), so
+  // this ships as a known limit rather than a silent one. Fixing it means per-trip
+  // occupancy rather than one constant for the whole day: a follow-up, not an oversight.
   const occupiedMin =
     TRIP_DURATION_MINUTES + TEARDOWN_MINUTES + CALL_LEAD_MINUTES;
 

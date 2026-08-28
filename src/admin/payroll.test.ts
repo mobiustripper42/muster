@@ -55,8 +55,13 @@ const seat = (
   assignedCrewMemberId: asId<"CrewMemberId">(crewId),
 });
 
-// committedMinutes = (last − first departure) + TRIP_DURATION(100) + CALL_LEAD(45) + TEARDOWN(25) (#275).
-// One trip @15:00 → 0 + 170 = 170. Two trips 12:00+15:00 → 180 + 170 = 350.
+// committedMinutes = the span between the window's two boundaries: call (earliest
+// departure − CALL_LEAD 45) to end (latest trip END + TEARDOWN 25), where each trip is
+// measured by its OWN length. These events carry none, so they take the flat
+// TRIP_DURATION(100) fallback and the arithmetic is unchanged from the string era:
+// one trip @15:00 → 0 + 170 = 170. Two trips 12:00+15:00 → 180 + 170 = 350.
+// A boat declaring 120 (X Shore) would add 20 per trip — that case is pinned in
+// `crewapp/committed-window.test.ts`, at the seam rather than through this report.
 const WINDOW = { from: "2026-07-06", to: "2026-07-19" };
 
 async function seed(): Promise<InMemoryRepository> {

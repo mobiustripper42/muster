@@ -26,9 +26,15 @@ import type { VesselId } from "../domain/ids.js";
 /**
  * The standing trip length in minutes, used when an event carries no duration of its own.
  *
- * Two callers need it. **Imported Xola events never carry a duration** — the importer writes
- * id/vessel/date/time/capacity/status and nothing else, and Xola's trip length is not in the
- * imported shape. And **pre-#570 Muster events** predate `durationMinutes`.
+ * Two callers need it. **A Xola event carries a duration only when its boat declares one** in
+ * the resource map (DEC-041's per-vessel source — X Shore's 120 does, the BrewBoats don't);
+ * Xola's own API still exposes no trip length. And **pre-#570 Muster events** predate
+ * `durationMinutes`. Both leave the key absent, and this is what they fall back to.
+ *
+ * Deliberately NOT `TRIP_DURATION_MINUTES` (`builder/derive.ts`) despite the equal value: that
+ * one is a display/scheduling default, this one is an occupancy ceiling with the opposite
+ * failure preference, and it is pinned into the write-path CAS as `busyIntervalsFor`'s backstop.
+ * They must be free to diverge.
  *
  * 100 minutes is BrewBoat's trip ("1h 40min on the water"), set by the operator 2026-08-06 as a
  * deliberate stand-in. It is a CEILING-ish assumption on purpose: over-estimating a trip costs a

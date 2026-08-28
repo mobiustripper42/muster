@@ -137,10 +137,11 @@ async function committedWindowFor(
   const evs = [];
   for (const id of shift.eventIds) {
     const e = await repo.getEvent(id);
-    if (e && e.status === "scheduled") evs.push(e);
+    if (e) evs.push(e);
   }
-  // committedWindow sorts internally; no need to pre-sort for the boundaries.
-  const { callTime, shiftEndTime } = committedWindow(evs.map((e) => e.time));
+  // committedWindow filters cancelled and orders internally — and reads each event's
+  // own trip length, which is why it takes the rows rather than their departure times.
+  const { callTime, shiftEndTime } = committedWindow(evs);
   return {
     ...(callTime ? { callTime } : {}),
     ...(shiftEndTime ? { shiftEndTime } : {}),

@@ -15,11 +15,11 @@ import type { Repository } from "../ports/repository.js";
 import {
   bailLatenessMs,
   earliestScheduledStart,
+  shiftEndFromEvents,
   CALL_LEAD_MINUTES,
   TEARDOWN_MINUTES,
-  TRIP_DURATION_MINUTES,
 } from "../builder/derive.js";
-import { TENANT_TIMEZONE } from "../config/tenant.js";
+import { TENANT_TIMEZONE, vesselClockOf } from "../config/tenant.js";
 
 // The call lead + teardown + trip length live in `builder/derive` (the shift
 // *end* needs them too, and the outbox reads that end — DEC-041). Re-exported
@@ -69,10 +69,10 @@ export interface ShiftCardView {
   /** Derived show-up time, "HH:mm" — earliest departure minus the call lead. */
   callTime?: string;
   /**
-   * Derived end of the time commitment, "HH:mm" — latest departure + the trip
-   * length + the call lead reused as a post-trip teardown buffer (DEC-041). The
-   * "when am I free" half of the Yes/No decision. Absent on an event-less shift,
-   * same as `callTime`.
+   * Derived end of the time commitment, "HH:mm" — the latest trip *end* plus the
+   * teardown buffer (DEC-041, #275). Not the latest *departure* plus a length: an
+   * earlier trip that runs longer is the one that gets back last. The "when am I
+   * free" half of the Yes/No decision. Absent on an event-less shift, as `callTime`.
    */
   shiftEndTime?: string;
   /** Total booked pax across all the shift's events. */
@@ -106,69 +106,87 @@ export interface ShiftCardView {
   traineeSeat: boolean;
 }
 
-/** Subtract minutes from an "HH:mm" clock time (wraps within a day, just in case). */
-function minusMinutes(hhmm: string, mins: number): string {
-  return plusMinutes(hhmm, -mins);
-}
-
-/** Add minutes to an "HH:mm" clock time (wraps within a day — a late trip whose
- * end rolls past midnight reads as the next-day wall clock, like `callTime`).
- * Exported so the crew-view ask card derives its shift end the same way (#92). */
-export function plusMinutes(hhmm: string, mins: number): string {
-  const [h = 0, m = 0] = hhmm.split(":").map(Number);
-  const total = (((h * 60 + m + mins) % 1440) + 1440) % 1440;
-  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
-}
+const MINUTE_MS = 60_000;
 
 /** The crew member's committed call→back window for a shift-day (DEC-041). */
 export interface CommittedWindow {
   /** Show-up time, "HH:mm" — earliest scheduled departure − the call lead. */
   callTime?: string;
-  /** End of commitment, "HH:mm" — latest departure + trip length + the call lead
-   *  reused as a teardown buffer. */
+  /** End of commitment, "HH:mm" — the latest trip END (each trip measured by its own
+   *  length) plus the teardown buffer. */
   shiftEndTime?: string;
 }
 
 /**
+ * The two window boundaries as instants. Both come from `builder/derive` — this file
+ * derives neither. Pass the shift's events; cancelled ones are filtered by the callees
+ * (a cancelled trip moves neither boundary), so callers need not pre-filter or sort.
+ */
+function windowInstants(
+  events: Event[],
+  tz: string,
+): { call: Date; end: Date } | null {
+  const first = earliestScheduledStart(events, tz);
+  const end = shiftEndFromEvents(events, tz);
+  if (!first || !end) return null;
+  return { call: new Date(first.getTime() - CALL_LEAD_MINUTES * MINUTE_MS), end };
+}
+
+/**
  * THE committed-window computation (DEC-041) — one home, shared by the shift card,
- * the crew-view ask card, and the /crew/open claimable view so all three agree on
- * the call→back times. Pass **scheduled** departure clock times ("HH:mm"); a
- * cancelled trip moves neither boundary, so the caller filters first. Empty in →
- * empty out (an event-less shift has no window).
+ * the crew-view ask card, and the /crew/open claimable view. Empty in → empty out
+ * (an event-less shift has no window).
+ *
+ * **A formatter, not a second computation.** It used to take departure clock strings
+ * and add the flat `TRIP_DURATION_MINUTES`, which meant it could not see
+ * `Event.durationMinutes` at all. From #570 that made it disagree with
+ * `shiftEndFromEvents` on any shift carrying a real per-event length — the operator's
+ * outbox card and the crew's ask card rendering different "back by" times for the same
+ * ask, and the subscribed calendar feed differing from My Shifts. The claim that "one
+ * computation" kept the surfaces agreeing was true only among the clock-string three.
+ *
+ * It now delegates to the authoritative Date-based pair and formats through
+ * `vesselClockOf` — the instant computation is the real one, the "HH:mm" is display.
+ * That also makes the boundaries DST-correct, which string arithmetic on a wall clock
+ * is not.
+ *
+ * **This changes a premise DEC-129 reasoned from.** That decision built its own
+ * Date-based window in `asks/suppression.ts` rather than reuse this one, because this
+ * one was "an `"HH:mm"` display helper that wraps within a day and loses the date."
+ * That is no longer what this is. DEC-129 went the same direction independently and
+ * is not authority for this change — but its stated reason for keeping two of them
+ * has now gone, which is worth knowing before the next person adds a third.
  */
 export function committedWindow(
-  scheduledTimes: readonly string[],
+  events: Event[],
+  tz: string = TENANT_TIMEZONE,
 ): CommittedWindow {
-  if (scheduledTimes.length === 0) return {};
-  const sorted = [...scheduledTimes].sort((a, b) => a.localeCompare(b));
+  const w = windowInstants(events, tz);
+  if (!w) return {};
   return {
-    callTime: minusMinutes(sorted[0]!, CALL_LEAD_MINUTES),
-    shiftEndTime: plusMinutes(
-      sorted[sorted.length - 1]!,
-      TRIP_DURATION_MINUTES + TEARDOWN_MINUTES,
-    ),
+    callTime: vesselClockOf(w.call, tz),
+    shiftEndTime: vesselClockOf(w.end, tz),
   };
 }
 
 /**
  * The on-clock DURATION of the committed window, in minutes (DEC-041) — the payroll
- * report's per-shift hours (#347). Same boundaries as {@link committedWindow}
- * (call = first departure − call lead; end = last departure + trip + teardown), so
- * `end − call = (last − first) + trip + call lead + teardown` (#275 — the tail is
- * the shorter teardown, not a second call lead). Computed as a true minute span
- * (not by subtracting the wrapped "HH:mm" clock strings, which lose the day when the
- * end rolls past midnight). Both departures are same-day wall clocks, sorted, so
- * `last − first` is a safe within-day difference. Empty in → 0.
+ * report's per-shift hours (#347). Exactly the span between {@link committedWindow}'s
+ * two boundaries, so the number a crew member is estimated at can never disagree with
+ * the window their own card shows them.
+ *
+ * Measured between **instants**, not by subtracting wall-clock strings: a shift that
+ * spans a DST transition is genuinely an hour longer or shorter on the clock, and that
+ * hour is worked or not worked. The old string span silently answered as though every
+ * day had 24 equal hours. Empty in → 0.
  */
-export function committedMinutes(scheduledTimes: readonly string[]): number {
-  if (scheduledTimes.length === 0) return 0;
-  const toMin = (hhmm: string) => {
-    const [h = 0, m = 0] = hhmm.split(":").map(Number);
-    return h * 60 + m;
-  };
-  const sorted = [...scheduledTimes].sort((a, b) => a.localeCompare(b));
-  const span = toMin(sorted[sorted.length - 1]!) - toMin(sorted[0]!);
-  return span + TRIP_DURATION_MINUTES + CALL_LEAD_MINUTES + TEARDOWN_MINUTES;
+export function committedMinutes(
+  events: Event[],
+  tz: string = TENANT_TIMEZONE,
+): number {
+  const w = windowInstants(events, tz);
+  if (!w) return 0;
+  return Math.round((w.end.getTime() - w.call.getTime()) / MINUTE_MS);
 }
 
 async function roleName(repo: Repository, roleId: string): Promise<string> {
@@ -296,13 +314,12 @@ export async function buildShiftCard(
     shift,
   );
 
-  // Window math uses SCHEDULED departures only — a cancelled trip moves neither
-  // the call time nor the shift end (DEC-041). One computation (`committedWindow`)
-  // shared with the ask card and the /crew/open claimable view, so all three agree
-  // on the window. The manifest above still lists every event.
-  const { callTime, shiftEndTime } = committedWindow(
-    rawEvents.filter((e) => e.status === "scheduled").map((e) => e.time),
-  );
+  // Window math uses SCHEDULED departures only — a cancelled trip moves neither the
+  // call time nor the shift end (DEC-041); `committedWindow` filters them itself.
+  // One computation, shared with the ask card, the /crew/open claimable view, AND
+  // (since it delegates to `shiftEndFromEvents`) the outbox and the calendar feed.
+  // The manifest above still lists every event.
+  const { callTime, shiftEndTime } = committedWindow(rawEvents, TENANT_TIMEZONE);
 
   // A bail "now" is "late" iff it falls inside the staffing horizon — DEC-028's
   // notice shortfall is non-zero (#7). Same instant the score penalizes; the

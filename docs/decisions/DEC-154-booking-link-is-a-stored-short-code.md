@@ -13,6 +13,7 @@ claims:
     target: "src/reservations/booking-code.ts"
   - kind: "column"
     target: "booking_codes.revoked_at"
+revisit_if: "reservations go live and links reach customers, which closes the window in which link identity can be changed for free"
 ---
 
 ## DEC-154: The booking link is a stored code, so it can be revoked

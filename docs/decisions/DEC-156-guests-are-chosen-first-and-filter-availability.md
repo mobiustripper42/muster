@@ -13,6 +13,7 @@ claims:
     target: "src/reservations/availability-screen.ts"
   - kind: "test"
     target: "src/reservations/availability-screen.test.ts"
+revisit_if: "a waitlist ships, which would deliberately show a customer a departure they cannot buy today"
 ---
 
 ## DEC-156: Never show a customer a departure they cannot buy

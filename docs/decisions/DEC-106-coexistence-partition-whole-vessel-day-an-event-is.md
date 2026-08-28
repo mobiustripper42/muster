@@ -13,6 +13,7 @@ claims:
     target: "reservations.source"
   - kind: "file"
     target: "src/reservations/hull-busy.ts"
+revisit_if: "the last Xola-sourced booking has aged out, after which every row reads muster and the marker routes nothing"
 ---
 
 ## DEC-106: Every departure and booking records which system sold it

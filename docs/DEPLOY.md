@@ -317,6 +317,24 @@ required). Upload → the board fills with upcoming trips + their crew seats.
 - **Rollback** = redeploy a previous build from the Vercel dashboard (instant; the DB is unchanged
   unless a migration ran).
 
+## Pre-promote check — migration-ledger drift (#282)
+
+`/promote-production` Step 0.5 reads `.claude/CLAUDE-context.md` § Migration Protocol (project), which points here. Run this before every ff-merge to `production`.
+
+Confirm prod has applied every migration in the repo. Read prod's applied set via the **Neon MCP** — `run_sql` against project **`delicate-art-65084110`** (neon-red-pendant, org `org-spring-feather-31353161`, in the Vercel-managed Neon org), **default branch = the prod DB**:
+
+```sql
+select filename from _migrations order by filename;
+```
+
+Diff that against `db/migrations/*.sql` basenames.
+
+- **Repo has a file prod's `_migrations` lacks → STOP.** List the unapplied migration(s), apply them to prod first, then re-run `/promote-production`. Promoting now ships code ahead of the schema, and this project applies prod migrations by hand and out-of-band — the deploy will not do it for you.
+- **Prod ahead of repo** (an applied migration not in the repo) → warn, then ask promote or abort. Unusual; it means a hand-applied migration was never committed.
+- **Neon MCP unavailable** (headless or cron) → have the operator paste the query's output from prod and diff against that.
+
+**Naming trap.** Neon's default branch *is* the prod DB. Neon calls its root branch "main" in the dashboard, which is unrelated to git `main` — git `main` never deploys here, per `vercel.json`'s `git.deploymentEnabled.main:false`.
+
 ## Stripe webhook events (#616)
 
 **This section is narrow on purpose:** what is here is the one thing that fails *silently* if it is

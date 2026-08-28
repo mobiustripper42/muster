@@ -6,7 +6,7 @@ branch: task/816-refund-schedule-stale
 started: 2026-08-27T21:43:02Z
 ended:
 points:
-pr_numbers: [852]
+pr_numbers: [852, 853]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster/c55d0c47-cc80-59b8-ad34-3242473f31a2.jsonl
 ---
@@ -50,6 +50,54 @@ fall through to the hash fallback and render fine).
 **Points:** 2
 **Branch:** task/816-xshore-fleet
 **Opened at:** 2026-08-27T22:12:00Z
+
+## Task 2: A trip is measured by its own length, on the crew's card as well as the tick's
+
+**Completed:**
+- `src/import/resource-map.ts` + `import-reservations.ts` — `FleetVessel.tripLengthMinutes`
+  (X Shore declares 120), `vesselTripLength()` mirroring `vesselCapacity()`, stamped onto the
+  event. **Key omitted** when a boat declares nothing — no terminal `?? 100`, pinned by a test
+  asserting `"durationMinutes" in event === false` for a BrewBoat.
+- `src/crewapp/shift-card.ts` — `committedWindow`/`committedMinutes` now take events and
+  delegate to `earliestScheduledStart` + `shiftEndFromEvents`, formatted via `vesselClockOf`.
+  `plusMinutes`/`minusMinutes` deleted. Four callers updated (shift card, ask card,
+  `/crew/open`, payroll). `committedMinutes` is now an instant span, so DST-correct.
+- `src/crewapp/committed-window.test.ts` — new, 7 cases. `committedWindow` had **no direct
+  test at all** before this; the new ones pin the *agreement* with `shiftEndFromEvents`
+  rather than a second copy of the arithmetic.
+- Comments corrected where they went false: `entities.ts`, `hull-busy.ts`, `derive.ts`,
+  `payroll.test.ts`. Gate green: `npm run verify` exit 0, 2531 tests (up from 2522).
+
+**The half that mattered was the one nobody asked for.** Stamping the event alone would have
+been a half-fix: `committedWindow` took `"HH:mm"` strings and could not see
+`Event.durationMinutes` at all, so since #570 it had silently disagreed with
+`shiftEndFromEvents` — the operator's outbox card and the crew's own ask card rendering
+different "back by" times for the same ask. The comment claiming "one computation" kept the
+surfaces agreeing was true only among the three clock-string ones. @architect directed
+delegation rather than widening the signature, which was the right call: a second
+`max(start + duration)` in string form would have recreated the split with a longer fuse.
+
+**Code review caught me misattributing a rationale.** I wrote that "DEC-129 settles the
+direction" for the delegation. It doesn't — DEC-129 says `committedWindow` is "deliberately
+**not** reused" and ruled on whether *suppression* should use it, never on how it should be
+built. I read DEC-129 myself to confirm the reviewer rather than take it on faith, then
+rewrote the comment. **This is the third instance of the same failure class this week** and
+the first where the invented rationale was a decision citation rather than a code fact.
+
+**Two findings accepted rather than fixed:** DEC-041 needs its amendment (operator is editing
+those files by hand — text is in PR #853's body, in a `<details>` block, ready to paste), and
+`suggestSplit`'s `occupiedMin` stays flat, now the last place that is. It under-counts a
+120-minute trip by 20 min and can suggest a split that isn't there; advisory output, shipped
+as a stated limit with a comment rather than a silent one. Fast-follow.
+
+**Code review:** 3 findings — 1 fixed, 2 accepted and disclosed. `/security-review` ran
+(payroll is money-computed by the fallback test, though `src/admin/payroll.ts` is not on the
+project's trigger path list — worth adding the row): 0 findings.
+
+**PR:** [PR #853](https://github.com/mobiustripper42/muster/pull/853) — stacked on PR #852
+**Points:** 3
+**Branch:** task/xshore-trip-length
+**Opened at:** 2026-08-28T04:20:00Z
 
 **Next Steps:**
 

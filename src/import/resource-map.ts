@@ -9,16 +9,18 @@
  *   Brew 1  656e10bc…  cap 14     Brew 2  656e10ce…  cap 16
  *   Brew 3  656e0fcd…  cap 12     Brew 4  656e0feb…  cap 12      (all captain+mate)
  *   Duffy 1 656e0f76… / Duffy 656e0f96…  cap 12 — SELF-CAPTAINED, excluded (0 crew)
+ *   X Shore 1 / X Shore 2  cap 6 — CAPTAIN ONLY, two hulls (2026-08-27)
  *
  * Per DEC-018 the durable design auto-suggests + operator-confirms unseen
  * resources and quarantines the unconfirmed; here we seed the known live fleet and
  * quarantine any unrecognized resource id — fulfilling DEC-018's own "key off a
  * stable vessel id" revisit (the product string is no longer the vessel axis).
  *
- * `seedFleet` materializes the four crewed vessels + their role types so the
- * builder can derive seats. Manning is data the seat-deriver iterates (DEC-ROLE-1):
- * every BrewBoat is [captain×1, mate×1] — **2 crew, no exceptions** (operator-
- * confirmed, Session 22). Self-captained Duffy boats are excluded from the fleet.
+ * `seedFleet` materializes the crewed vessels + their role types so the builder can
+ * derive seats. Manning is data the seat-deriver iterates (DEC-ROLE-1): every
+ * BrewBoat is [captain×1, mate×1] (operator-confirmed, Session 22), and X Shore is
+ * [captain×1] — the first boat in the fleet that isn't captain+mate, so read the
+ * row rather than assuming the pair. Self-captained Duffy boats are excluded.
  */
 
 import type { ManningRequirement, RoleType, Vessel } from "../domain/entities.js";
@@ -30,11 +32,13 @@ import type { Repository } from "../ports/repository.js";
 export const BREWBOAT_TENANT: TenantId = asId<"TenantId">("tenant-brewboat");
 const CAPTAIN = asId<"RoleTypeId">("role-captain");
 const MATE = asId<"RoleTypeId">("role-mate");
-/** Every BrewBoat: one captain + one mate. The whole fleet, no exceptions. */
+/** Every BrewBoat: one captain + one mate. */
 const crew2: ManningRequirement[] = [
   { roleTypeId: CAPTAIN, count: 1 },
   { roleTypeId: MATE, count: 1 },
 ];
+/** X Shore: a captain, alone. */
+const crew1: ManningRequirement[] = [{ roleTypeId: CAPTAIN, count: 1 }];
 
 const v = (id: string): VesselId => asId<"VesselId">(id);
 
@@ -51,11 +55,24 @@ export interface FleetVessel {
  * (validated live). The vessel handle is readable so it threads into shift ids
  * legibly (`shift-vessel-brew-2-2026-07-04`), not as an opaque hex id.
  */
+/**
+ * The two X Shore hulls (2026-08-27). Xola had ONE Resource named "X Shore" carrying
+ * `Count 2` — a quantity Muster cannot express, because the resource id is the vessel
+ * axis: one id is one vessel, and `formShifts` groups on `vesselId|date`, so both hulls
+ * running the same day would share one shift and one captain seat. Split in Xola into
+ * two Resources so the two hulls are two ids. The names here are display-only and do
+ * NOT have to match Xola's — they must differ, or a captain cannot tell which boat.
+ */
+export const X_SHORE_1 = "6a8c9a3817b1dc373a0c5643";
+export const X_SHORE_2 = "6a90e981ec47a331d30587a9";
+
 const RESOURCE_MAP: Record<string, FleetVessel> = {
   "656e10bc5b8ef1b1800a02c4": { vesselId: v("vessel-brew-1"), name: "Brew 1", capacity: 14, manning: crew2 },
   "656e10ce46c61175bd0de305": { vesselId: v("vessel-brew-2"), name: "Brew 2", capacity: 16, manning: crew2 },
   "656e0fcdf9f593e84b0e1782": { vesselId: v("vessel-brew-3"), name: "Brew 3", capacity: 12, manning: crew2 },
   "656e0feb91aa27f36908371b": { vesselId: v("vessel-brew-4"), name: "Brew 4", capacity: 12, manning: crew2 },
+  [X_SHORE_1]: { vesselId: v("vessel-x-shore-1"), name: "X Shore 1", capacity: 6, manning: crew1 },
+  [X_SHORE_2]: { vesselId: v("vessel-x-shore-2"), name: "X Shore 2", capacity: 6, manning: crew1 },
 };
 
 /**
@@ -95,7 +112,7 @@ export function vesselCapacity(vesselId: VesselId): number | undefined {
 }
 
 /**
- * Materialize the 4 crewed vessels + captain/mate role types into the repository
+ * Materialize the crewed vessels + captain/mate role types into the repository
  * so the shift builder can derive seats from manning. Idempotent. Returns the
  * tenant id. The vessel `name` is the human boat name ("Brew 2"), not the id.
  */

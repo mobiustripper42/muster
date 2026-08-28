@@ -34,3 +34,15 @@ topic: "Xola ingest & import"
 **Supersedes:** DEC-016's single-vessel-per-product collapse + its 5 invented vessels (the durable DEC-016 / DEC-ROLE-1 principle — manning is data the deriver loops — **stands**; only the invented fleet dies). **Amends:** DEC-036/DEC-037 (the planned `fetchEvents` half is now the primary adapter; the xlsx upload is retired — it can't resolve a boat), DEC-018 (quarantine keys off `resource.id`), DEC-029 (`vesselId` joins the material set; event identity is the real `event.id`). **Untouched:** DEC-015 (seam), DEC-032 (vessel-local), DEC-022/DEC-031 (horizon / fills-by), DEC-009.
 
 **Relationship:** the second Land adapter DEC-015 anticipated, and simpler than the orders adapter (boat + crew inline). G1–G9 reconcile harness in `xola-pull.test.ts` pins the behavior — it caught the reassignment-orphan bug before ship.
+
+## Amendment, 2026-08-27 (eric) — the fleet is six boats, and one of them is captain-only
+
+**What this changes:** the seeded fleet line only — "Brew 1/2/3/4 (cap 14/16/12/12, all captain+mate); the 2 self-captained Duffy resources are excluded". Two **X Shore** hulls join it at cap 6, manning **[captain×1]**. Everything else stands: identity is still the resource id, the event is still keyed on the real `event.id`, unknown ids still quarantine, and manning is still data the deriver loops (DEC-ROLE-1) — which is why a captain-only boat needs no code branch.
+
+**Xola modelled the two hulls as ONE Resource with `Count 2`.** Muster cannot express a resource quantity: the id is the vessel axis, so one id is one vessel, and `formShifts` groups on `vesselId|date` (`src/builder/form-shifts.ts:118`). Both hulls run the same day — that is how the operator uses them — so a single resource would put two boats on one shift with one captain seat, and `busyIntervalsFor` (`src/reservations/hull-busy.ts:75`) would read either hull's booking as occupying both. The fix is upstream: **two Xola Resources, each `Count 1`**. Muster cannot recover a distinction the source does not make.
+
+The display names ("X Shore 1" / "X Shore 2") are Muster's own and need not match Xola's, but they must differ — the boats are identical and the name is all a captain has to tell them apart on the crew card. Hue already keys off the vessel id (`app/lib/vessel-hue.ts:45`), so they colour differently for free.
+
+**Also retired here:** this record's "cited by SPEC §Fleet" pointer. There is no §Fleet in `docs/SPEC.md`.
+
+**Not decided here:** X Shore runs 120 minutes against a fleet-wide flat 100 (DEC-041). That is a separate change and a separate record.

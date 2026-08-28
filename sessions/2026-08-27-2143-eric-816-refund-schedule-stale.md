@@ -4,10 +4,10 @@ dev: eric
 slug: 816-refund-schedule-stale
 branch: task/816-refund-schedule-stale
 started: 2026-08-27T21:43:02Z
-ended:
-points:
+ended: 2026-08-28T15:10:11Z
+points: 5
 pr_numbers: [852, 853]
-status: open
+status: closed
 transcript: /home/eric/.claude/projects/-home-eric-muster/c55d0c47-cc80-59b8-ad34-3242473f31a2.jsonl
 ---
 
@@ -100,5 +100,59 @@ project's trigger path list — worth adding the row): 0 findings.
 **Opened at:** 2026-08-28T04:20:00Z
 
 **Next Steps:**
+- **v1.1.4 is promoted; two prod steps were still outstanding at close.** `npm run db:seed:fleet`
+  against prod Neon — without it an X Shore trip resolves to a vessel row that does not exist and
+  forms a shift with **zero seats**, silently. And `XOLA_PULL_LEAD_DAYS` in Vercel (default 7;
+  the 9/6 booking is 9 days out), then Pull now. Then confirm `<VersionTag />` reads v1.1.4.
+- **The DEC-041 amendment is written but not applied.** Full text sits in PR #853's body in a
+  `<details>` block, plus see-alsos for DEC-145 and DEC-129. Deliberately not written to disk —
+  the operator was editing decision files by hand this session. It also fixes DEC-041 line 19
+  ("no `Event.durationMinutes` column — yet"), stale since #570 recorded that clause in DEC-145.
+- **`suggestSplit`'s `occupiedMin` is the last flat trip length** (`derive.ts:569`). Under-counts
+  a 120-minute trip by 20 min, over-reports the dead gap, can suggest a split that isn't there.
+  Advisory output, disclosed in a comment. **No issue filed** — decide whether it wants one.
+- **issue #854** — 38 bare `catch {}` blocks across crew and admin pages swallow the cause and
+  render "try again in a moment". Filed this session.
+- **issue #836** — the crew-change-banner hand review. Operator confirmed done, 2026-08-28;
+  the issue was still open at close.
+- Carried from Session 97 and untouched: the 432 lines of customer-side design in
+  `the-booking-1.md` / `the-living-link-1.md`, the rest of issue #816's queue (service-fee, tips,
+  cancellation spec sections), and the nine records still carrying rulings.
 
 **Context:**
+- **A missing migration presented as a network blip.** `/crew` rendered "Can't reach the schedule
+  right now" with a clean dev-server log; the cause was `relation "shift_changes" does not exist`
+  — PR #834's migration unapplied locally. `/admin` worked because nothing there reads that table.
+  The bare `catch {}` at `crew/page.tsx:113` discarded the error. **What recovered it** was a
+  throwaway script calling `buildCrewAppView` directly and printing what it threw; reading the
+  code had produced only plausible theories. When a surface fails and the log is empty, call the
+  builder directly rather than reasoning about it — issue #854 exists so the next one is cheaper.
+- **Xola can model two hulls as one Resource with `Count 2`**, and Muster has no way to express
+  that: the resource id is the vessel axis, `formShifts` groups on `vesselId|date`. Two same-day
+  hulls would share one shift and one captain seat, and `hull-busy` would read either booking as
+  occupying both. Muster cannot recover a distinction the source does not make — the fix was
+  upstream, in Xola. Worth remembering the shape: **an upstream data model that is merely
+  compact can be unrepresentable downstream.**
+- **The two Xola feeds have different windows, and the diagnostics don't say so.** `/events` is
+  unwindowed and now-forward; `/orders` is bounded by `XOLA_PULL_LEAD_DAYS` (default 7, via
+  `STAFFING_HORIZON_LEAD_DAYS`). So a trip beyond the window reports as an *unknown boat* while
+  its *reservation* never arrives — which reads as "the map is wrong" when the map is fine.
+- **"1 unknown boat" counts events, not boats.** `unmapped.push()` fires once per unmapped event
+  with no dedupe anywhere in the chain. Two distinct unknown boats with one trip each read as
+  "1"; two trips on one boat read as "2". The count cannot answer the question it exists for.
+  Operator declined an issue for now.
+- **I over-attributed a rationale to DEC-129 and code review caught it.** I wrote that it
+  "settles the direction" for the committedWindow delegation; DEC-129 actually says
+  `committedWindow` is "deliberately **not** reused" and ruled on whether *suppression* should use
+  it. I verified against the record rather than taking the reviewer's word, then corrected. Third
+  instance of this failure class in two sessions; the first two were code facts, this one a
+  decision citation, which is harder to spot because the id lends it authority.
+- **The Neon MCP is unusable for the `/promote-production` ledger check.** Its tool schema
+  declares `project_id`; the server rejects the call demanding `projectId`. Both spellings fail
+  from here. The documented fallback (operator pastes `select filename from _migrations`) worked
+  — 55 in the repo, 55 in prod, zero drift both ways. Worth fixing or the check is manual forever.
+- **v1.1.4 shipped 37 PRs across nine days**, larger than v1.1.2's 32. Four migrations were
+  applied to prod out-of-band before the promotion. `20260715024322_payments.sql` showed as
+  *modified* in the branch diff, which looked like a hand-patched applied migration — it is
+  **comment-only**, no DDL change, no CHECK constraint (DEC-131), so nothing was missing from
+  prod. Flagged as a blocker, then withdrawn on reading the actual diff.

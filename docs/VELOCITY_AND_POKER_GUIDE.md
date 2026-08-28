@@ -6,7 +6,7 @@ A lightweight solo-dev process for tracking effort, estimating work, and knowing
 
 ## Part 1: Velocity Tracking
 
-> **The quick version** — how to *read* the numbers, with worked examples — is the THROUGHPUT_QUICKREF doc, which lives in the **seeds** checkout and is deliberately not written as a path here: this file is copied verbatim into every project (`logic` class), and a project-relative path to a seeds-only doc fails that project's `check:docs` gate. This part is the *why*. The full decision record is DEC-S026.
+> **The quick version** — how to *read* the numbers, with worked examples — is the THROUGHPUT_QUICKREF doc in the jig checkout, beside the extractor it explains. Written without a path on purpose: this file is copied verbatim into every project (`logic` class), and a project-relative path to a jig-only doc fails that project's `check:docs` gate. This part is the *why*. The full decision record is DEC-S026.
 
 ### What it measures
 
@@ -30,13 +30,17 @@ The one thing that makes a project invisible: no `points:N` labels. Throughput r
 
 ### Your overall number, and across projects
 
-For your lifetime number — or a combined number across several repos — run the **throughput extractor** from your **seeds** checkout (`dev/claude/scripts/throughput.py` — it lives in seeds, not in this project), pointing it at one or more project paths:
+For your lifetime number — or a combined number across several repos — run the **throughput
+extractor**, scripts/throughput.py in the jig checkout. No project holds a copy: it answers a
+question about several repos at once, so it is run from there, pointed at one or more project
+paths. Written without backticks on purpose, for the reason given above about the quickref — a
+backticked path is read as a claim that it resolves in *this* repo, and this one deliberately
+does not.
 
 ```bash
-cd ~/seeds   # or wherever your seeds checkout lives
-python3 dev/claude/scripts/throughput.py ~/bushel
-python3 dev/claude/scripts/throughput.py ~/bushel ~/muster ~/helm   # cross-repo rollup
-python3 dev/claude/scripts/throughput.py --issues ~/bushel          # + points histogram
+python3 <jig>/scripts/throughput.py ~/project-a
+python3 <jig>/scripts/throughput.py ~/project-a ~/project-b   # cross-repo rollup
+python3 <jig>/scripts/throughput.py --issues ~/project-a      # + points histogram
 ```
 
 It reads GitHub directly (needs `gh` installed and authed): points off closed issues, dates off the issues and merged PRs. It prints the two lifetime rates, a per-phase breakdown with pointing-stability and span, and PR merge latency. A project with no `points:N`-labelled closed issues prints "nothing to measure" — not an error, just a project that predates the ritual.

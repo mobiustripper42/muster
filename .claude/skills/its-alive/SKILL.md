@@ -9,7 +9,7 @@ You are executing the session start ritual.
 ## Step 0 — Branch check
 
 **Worktree check first:** run `git rev-parse --git-dir`.
-- If the output contains `/worktrees/`: this is a **linked worktree session** — the normal shape of concurrent work under DEC-S048, created before this session started. Skip the rest of Step 0; the branch here is intentional. Note "Linked worktree" in the briefing and continue to Step 0.6.
+- If the output contains `/worktrees/`: this is a **linked worktree session** — the normal shape of concurrent work, created before this session started. Skip the rest of Step 0; the branch here is intentional. Note "Linked worktree" in the briefing and continue to Step 0.6.
 - Otherwise: continue.
 
 This is a **report**, not a decision. Nothing downstream branches on it: the session's shell, checkout and branch are the same thing either way, which is what lets every other skill use plain `git`.
@@ -18,7 +18,7 @@ Run `git fetch origin` to refresh remote state. Capture `BRANCH=$(git branch --s
 
 **Branch handling:**
 - `task/*` or other intentional feature branch: continue (PR-flow project).
-- `claude/*` (CC Desktop / web / mobile auto-branch): accept and continue. The platform pre-cuts this branch when launching a session. Per DEC-S013, this branch is the **session-anchor**; per-task code branches get cut as work proceeds, each PR'd separately. Session-file commits go to the orphan `sessions` branch via the worktree (DEC-S014), NOT to this branch.
+- `claude/*` (CC Desktop / web / mobile auto-branch): accept and continue. The platform pre-cuts this branch when launching a session. This branch is the **session-anchor**; per-task code branches get cut as work proceeds, each PR'd separately. Session-file commits go to the orphan `sessions` branch via the worktree, NOT to this branch.
 - `main`: `git pull --ff-only origin main`. On divergence, show `git log --oneline origin/main..HEAD` and `git log --oneline HEAD..origin/main`, then ask: **"(a) rebase, (b) reset to origin/main, (c) abort?"** Wait for the choice.
 - Anything else (manual non-standard branch): if `git status --porcelain` is dirty, stop and ask the user to commit/stash. If clean, ask the user **"Stay on `$BRANCH` or switch to `main`?"** Wait for the choice.
 
@@ -30,7 +30,7 @@ Before stamping time, check for leftover work from prior sessions. The CC platfo
 ```
 WORKING_BRANCH=main
 ```
-The active trunk is always `main` (DEC-S022); a `production` branch, if present, is a downstream deploy pointer and never the orphan-scan base.
+The active trunk is always `main`; a `production` branch, if present, is a downstream deploy pointer and never the orphan-scan base.
 
 **Scan A — remote `claude/*` branches with commits not on `$WORKING_BRANCH`:**
 ```
@@ -57,7 +57,7 @@ For each Scan-A candidate, find the most recent PR whose `headRefName` matches t
 
 **Tool-outage fallback.** If `gh` and `mcp__github__list_pull_requests` are both unavailable, skip Scan B entirely and surface every Scan-A candidate as "branch has commits — PR state check unavailable, do not assume orphan." Don't false-alarm during a tool outage. Note the skipped check in the session Context section.
 
-### Step 0.6 — Ensure `.sessions-worktree/` (DEC-S014)
+### Step 0.6 — Ensure `.sessions-worktree/`
 
 The session file lives on an orphan `sessions` branch checked out at `.sessions-worktree/`. Skills commit there; the user's main checkout never moves.
 
@@ -76,19 +76,19 @@ git rm -rf . 2>/dev/null || true
 # If a sessions/ dir existed on main, bring its contents over:
 git checkout main -- sessions/ 2>/dev/null || mkdir -p sessions
 [ -d sessions ] || mkdir sessions
-[ -f sessions/README.md ] || echo "# Sessions branch (DEC-S014). Each project session writes one file here." > sessions/README.md
+[ -f sessions/README.md ] || echo "# Sessions branch. Each project session writes one file here." > sessions/README.md
 git add sessions/
 git commit -m "Initialize sessions branch"
 git push -u origin sessions
 git checkout main
 # Remove sessions/ from main if it existed:
-[ -d sessions ] && git rm -r sessions && git commit -m "Move sessions to orphan sessions branch (DEC-S014)" && git push origin main
+[ -d sessions ] && git rm -r sessions && git commit -m "Move sessions to orphan sessions branch" && git push origin main
 # Add .gitignore entry on main:
-grep -q "^\.sessions-worktree/" .gitignore 2>/dev/null || (echo ".sessions-worktree/" >> .gitignore && git add .gitignore && git commit -m "Ignore .sessions-worktree (DEC-S014)" && git push origin main)
+grep -q "^\.sessions-worktree/" .gitignore 2>/dev/null || (echo ".sessions-worktree/" >> .gitignore && git add .gitignore && git commit -m "Ignore .sessions-worktree" && git push origin main)
 # Attach worktree:
 git worktree add .sessions-worktree sessions
 ```
-Note: on protected main, the two follow-up commits (remove `sessions/`, add `.gitignore`) may need a PR instead of direct push. Detect with `gh api repos/{owner}/{repo}/branches/main/protection --silent 2>/dev/null`; if protected, open a "Migrate to DEC-S014" PR with those commits on a `claude/dec-014-migrate` branch and surface the URL.
+Note: on protected main, the two follow-up commits (remove `sessions/`, add `.gitignore`) may need a PR instead of direct push. Detect with `gh api repos/{owner}/{repo}/branches/main/protection --silent 2>/dev/null`; if protected, open a "Migrate sessions to the orphan branch" PR with those commits on a `claude/migrate-sessions` branch and surface the URL.
 
 c. **`origin/sessions` exists but local sessions/ also has uncommitted files** (mid-migration): stop and ask the user to resolve manually.
 
@@ -102,15 +102,7 @@ DATE_PART=$(date -u +%Y-%m-%d)
 TIME_PART=$(date -u +%H%M)
 ```
 
-## Step 2 — Resolve dev identity
-
-Use the **Read** tool on `~/.claude/devname`. If it succeeds, `DEV` = the trimmed file contents. Done.
-
-If Read errors (file does not exist), prompt the user once for their dev handle and offer to write `~/.claude/devname` via the **Write** tool. Once written, `DEV` = the handle. Done.
-
-**Do NOT fall back to `echo "$USER"` or any other Bash-based identity probe.** The `$USER` branch was removed because: (a) the harness validator flags `$USER`-shaped Bash commands on a rolling cadence as new patterns land — so every fix to the validator-silence wording was only good until the next validator pattern landed; (b) `$USER` is unreliable in sandboxed environments where `~/.claude/devname` doesn't persist between sessions anyway, so the fallback was solving the wrong problem; (c) the prompt + Write path resolves to a real persistent value that future sessions read directly. The Read + Write path is the only path. If Read fails, the prompt is mandatory.
-
-## Step 3 — Derive the slug
+## Step 2 — Derive the slug
 
 ```
 case "$BRANCH" in
@@ -126,7 +118,7 @@ Sanitize: lowercase, replace any non-`[a-z0-9.-]` with `-`, collapse repeats.
 
 **Concurrent session check:** `grep -l "^status: open" .sessions-worktree/sessions/*.md 2>/dev/null`. If a session is already open, report it — session number, branch, started — and ask whether it is **live** (another window is working right now: say so and continue, nothing to resolve) or **stale** (mark `status: abandoned` in that file and continue).
 
-**This skill creates exactly one worktree, `.sessions-worktree/`, and never another** (DEC-S048). A concurrent session's code worktree is made **before** the session exists, by the user, in a terminal:
+**This skill creates exactly one worktree, `.sessions-worktree/`, and never another**. A concurrent session's code worktree is made **before** the session exists, by the user, in a terminal:
 
 ```
 git worktree add ../<repo>-<slug> -b task/<slug> main
@@ -137,17 +129,15 @@ Do not offer to create it here, and do not create it if asked. A worktree made m
 
 If the user asks for a concurrent worktree here, give them those two lines and stop. Starting the session is their next move, not this one's.
 
-## Step 4 — Determine session number
+## Step 3 — Determine session number
 
 Use the **Glob** tool with `path: .sessions-worktree/sessions` and `pattern: *.md` to list current session files. Filter out `README.md` from the result. Call the remaining count `NEW_COUNT`.
 
-Use the **Grep** tool on `session-log.md` (legacy archive on `main`) with `pattern: "^## Session [0-9]+"` and `output_mode: content`. If matches come back, parse the integer from each line and take the maximum — call it `LEGACY_MAX`. If `session-log.md` is absent or returns no matches, `LEGACY_MAX = 0`.
+`SESSION_NUM = NEW_COUNT + 1`. Compute in head — no bash needed.
 
-`SESSION_NUM = LEGACY_MAX + NEW_COUNT + 1`. Compute in head — no bash needed.
+(Glob + Grep replaces a chained `ls | wc -l` + `grep | grep | sort | tail` pipeline — same validator-silence reason as Step 4.)
 
-(Glob + Grep replaces a chained `ls | wc -l` + `grep | grep | sort | tail` pipeline — same validator-silence reason as Step 5.)
-
-## Step 5 — Capture the transcript path
+## Step 4 — Capture the transcript path
 
 ```
 echo "$HOME/.claude/projects/$(pwd | tr '/' '-')"
@@ -155,18 +145,17 @@ echo "$HOME/.claude/projects/$(pwd | tr '/' '-')"
 
 Capture as `JSONL_DIR`. Use the **Glob** tool with `path: <JSONL_DIR>` and `pattern: *.jsonl`. `TRANSCRIPT = result[0]`. If empty, leave `transcript:` blank.
 
-## Step 6 — Write the open session file (in the worktree)
+## Step 5 — Write the open session file (in the worktree)
 
 ```
-SESSION_FILE=".sessions-worktree/sessions/${DATE_PART}-${TIME_PART}-${DEV}-${SLUG}.md"
+SESSION_FILE=".sessions-worktree/sessions/${DATE_PART}-${TIME_PART}-${SLUG}.md"
 ```
 
-Write the file with this content (DEC-S013 schema — atomic, no time math fields):
+Write the file with this content (atomic, no time-math fields):
 
 ```
 ---
 session: <N>
-dev: <DEV>
 slug: <SLUG>
 branch: <BRANCH>
 started: <START_UTC>
@@ -197,7 +186,7 @@ git -C .sessions-worktree checkout sessions 2>/dev/null || true
 
 The final `checkout sessions` re-pins the worktree HEAD to the `sessions` branch — guards against a detached-HEAD state.
 
-## Step 7 — Read last session context
+## Step 6 — Read last session context
 
 Find the most recent CLOSED session file in the worktree:
 
@@ -205,18 +194,16 @@ Find the most recent CLOSED session file in the worktree:
 PREV=$(ls -t .sessions-worktree/sessions/*.md 2>/dev/null | grep -v README | grep -v "$(basename $SESSION_FILE)" | head -10)
 ```
 
-For each candidate (newest first), check for `status: closed`. The first match is the previous session. If none exist, fall back to the top entry of `session-log.md` (legacy archive) if present.
+For each candidate (newest first), check for `status: closed`. The first match is the previous session. If none exist, say so — a first session has no predecessor, and that is a fact rather than a gap to fill.
 
 Extract:
 - **Task blocks** (`## Task <N>` sections in the body) — what was shipped
 - **Next Steps** — verbatim
 - **Context** — gotchas
 
-**Pre-DEC-S013 schema tolerance:** legacy session files use a single `Task:` block instead of `## Task <N>` headers. Read either shape.
+## Step 7 — Read project state
 
-## Step 8 — Read project state
-
-**Skip-when-directed.** If the user already named a task or goal when they launched this session, you do **not** need to compute a recommendation — they've told you what they're doing. Skip the recommendation-building below; Step 7's context read (last session, Next Steps, gotchas) is the part that always matters. The recommendation exists for the cold open, when you start a session with no task in hand. Don't spend the session's first move ranking the backlog the user has already overruled.
+**Skip-when-directed.** If the user already named a task or goal when they launched this session, you do **not** need to compute a recommendation — they've told you what they're doing. Skip the recommendation-building below; Step 6's context read (last session, Next Steps, gotchas) is the part that always matters. The recommendation exists for the cold open, when you start a session with no task in hand. Don't spend the session's first move ranking the backlog the user has already overruled.
 
 When a recommendation *is* wanted (cold open), grep `docs/PROJECT_PLAN.md`:
 - Unchecked: `grep "\[ \]" docs/PROJECT_PLAN.md`
@@ -227,61 +214,59 @@ When a recommendation *is* wanted (cold open), grep `docs/PROJECT_PLAN.md`:
 
 If the project uses phase-rituals: `gh issue list --label "phase:current" --state open --json number,title,labels --limit 50`.
 
-## Step 8.5 — Drift against seeds
+## Step 7.5 — Drift against jig
 
-Resolve the seeds checkout (skill arg → `../seeds` sibling → `$SEEDS_REPO`; the same order `/read-the-tape` uses), then:
+Resolve the jig checkout (skill arg → `../jig` sibling → `$JIG_REPO`), then:
 
 ```
-node <seeds>/dev/claude/scripts/drift.mjs .
+node <jig>/scripts/drift.mjs .
 ```
 
 Read-only. It prints which `logic`-class files differ from the templates, which are absent, and whether this project owes a schema migration.
 
-**Report it in the briefing only when there is something to report** — a `DRIFT` count, or a `seeds-version` gap. Silence when clean; a line every session that always says "nothing differs" is a line nobody reads by the third one.
+**Report it in the briefing only when there is something to report** — a `DRIFT` count, or a `jig-version` gap. Silence when clean; a line every session that always says "nothing differs" is a line nobody reads by the third one.
 
-**Why this check lives here rather than in seeds.** A repo's drift only matters when you are about to work in it, and that is exactly when this runs. A dormant project can sit twelve template changes behind for months at no cost — the day you open it for a one-line bugfix, the briefing says so and you decide whether to sync first or ignore it. That also means there is no fleet list to maintain, and no report enumerating repos nobody has touched since spring.
+**Why this check lives here rather than in jig.** A repo's drift only matters when you are about to work in it, and that is exactly when this runs. A dormant project can sit twelve template changes behind for months at no cost — the day you open it for a one-line bugfix, the briefing says so and you decide whether to sync first or ignore it. That also means there is no fleet list to maintain, and no report enumerating repos nobody has touched since spring.
 
-**It reports; it does not act.** Do not sync, do not copy, do not offer to. Deciding what should cross is the part that needs a person (DEC-S040), and this exists so that person is not guessing at the state.
+**It reports; it does not act.** Do not sync, do not copy, do not offer to. Deciding what should cross is the part that needs a person, and this exists so that person is not guessing at the state.
 
-If seeds doesn't resolve, skip silently and say so in Context. A session must never be blocked by a checkout not being on this machine.
+If jig doesn't resolve, skip silently and say so in Context. A session must never be blocked by a checkout not being on this machine.
 
-### Step 8.6 — Permission policy (DEC-S051)
+### Step 7.6 — Permission policy
 
-Same resolved seeds checkout, one more read-only command:
+Same resolved jig checkout, one more read-only command:
 
 ```
-node <seeds>/dev/claude/scripts/settings-policy.mjs --all .
+node <jig>/scripts/settings-policy.mjs --all .
 ```
 
-It compares against `dev/claude/settings.json` — the master (DEC-S023) — in the two places that govern this session: `~/.claude/settings.json` (**user settings**, this machine, every project) and `<repo>/.claude/settings.json` (**shared project**, committed, and the only policy that travels with the repo).
+It compares against `.claude/settings.json` — the master — in the two places that govern this session: `~/.claude/settings.json` (**user settings**, this machine, every project) and `<repo>/.claude/settings.json` (**shared project**, committed, and the only policy that travels with the repo).
 
 | checked | where | repairable by `--write` |
 |---|---|---|
 | `permissions` | both levels | yes |
 | `outputStyle`, `theme`, `effortLevel`, `tui`, `agentPushNotifEnabled`, `enabledPlugins` | user settings only — machine preferences | yes |
-| `SessionEnd` capture hook + its script | user settings only (DEC-S045) | **no** — install by hand |
-| `~/.claude/devname` | the machine | **no** |
+| retired machinery still wired — a `SessionEnd` tape hook, a leftover queue | user settings only | **no** — remove by hand |
 
 A deliberate per-repo override in `.claude/settings.local.json` — `Explanatory` while designing, say — is **not** reported: those keys are read at the user level only.
 
-**Report only when something is not current.** Silence on `Current.`, same reason as Step 8.5.
+**Report only when something is not current.** Silence on `Current.`, same reason as Step 7.5.
 
-**On a `STALE` or `ABSENT` result, surface the fix and stop there** — `node <seeds>/dev/claude/scripts/settings-policy.mjs --write <path>`. Do not run it. It writes the file that carries this machine's hooks, and it is the user's call whether a policy change lands now or after the task in hand.
+**On a `STALE` or `ABSENT` result, surface the fix and stop there** — `node <jig>/scripts/settings-policy.mjs --write <path>`. Do not run it. It writes the file that carries this machine's hooks, and it is the user's call whether a policy change lands now or after the task in hand.
 
 **Two things worth knowing when you report it.** Permissions are read once at launch, so a repair applies at the *next* session, not this one — say so rather than implying the session just got safer. And the shared-project file is the one that covers a machine whose user settings are not installed yet — it travels with the repo, so an absent one there is no seatbelt at all rather than a stale one.
 
-**Why this is here and not a fleet report.** Nothing can enumerate a machine you are not sitting at (DEC-S044) — but the box you *are* on is readable, and it is the only one you can fix. Checking at session start means every machine checks itself, every session, with no list to maintain and nothing to remember.
+**Why this is here and not a fleet report.** Nothing can enumerate a machine you are not sitting at — but the box you *are* on is readable, and it is the only one you can fix. Checking at session start means every machine checks itself, every session, with no list to maintain and nothing to remember.
 
-If seeds doesn't resolve, skip silently — same rule as Step 8.5.
+If jig doesn't resolve, skip silently — same rule as Step 7.5.
 
-## Step 9 — Present briefing
+## Step 8 — Present briefing
 
 ```
 Session <N> — <DATE_PART>
 Started: <local time> (<UTC time>)
 Branch (session anchor): <BRANCH>
 Session file: <SESSION_FILE>   (lives on `sessions` branch via .sessions-worktree/)
-Dev: <DEV>
 
 Last session: [one-line summary]
 
@@ -297,7 +282,7 @@ Then ask: **"Ready to go? Confirm the task or redirect me."** — or, if the use
 
 Stop. Do not begin work until the user confirms.
 
-## DEC-S013 + DEC-S014 reminders
+## Workflow reminders
 
 - One Claude window opens **one** session. `/its-dead` runs **once** at the end.
 - `/kill-this` may run multiple times — one per task — each opens its own PR and appends a `## Task <N>` block to this session file (on the sessions branch).

@@ -1,12 +1,12 @@
 ---
 name: retro
-description: Phase-end retrospective. Closes the current phase. Under DEC-S013 retro owns the phase velocity math; under DEC-S026 that math is throughput (points per calendar week) computed from GitHub issue `closedAt` dates + `points:N` labels, plus an estimate-calibration tally — no session transcript is read. Marks PROJECT_PLAN.md `[x]`, reconciles drift, writes RETROSPECTIVES.md, runs version bumps (patch per merged PR + minor at phase close on dev projects), prompts retro notes. Optionally chains into `/start-phase`.
+description: Phase-end retrospective. Closes the current phase. Retro owns the phase velocity math; that math is throughput (points per calendar week) computed from GitHub issue `closedAt` dates + `points:N` labels, plus an estimate-calibration tally — no session transcript is read. Marks PROJECT_PLAN.md `[x]`, reconciles drift, writes RETROSPECTIVES.md, runs version bumps (patch per merged PR + minor at phase close on dev projects), prompts retro notes. Optionally chains into `/start-phase`.
 tools: Read, Edit, Write, Bash, Glob, Grep, Agent
 ---
 
 You are running the phase-end retrospective. Work for this phase is complete (or you've decided to call it done and move scope).
 
-Under DEC-S013 this skill **owns the phase velocity math** that used to live in `/its-dead` and **all version bumps** (patch per merge + minor at close). Under DEC-S026 that velocity math is **throughput + estimate calibration**, computed from GitHub issue dates + `points:N` labels — the transcript-based `active = wall − breaks` model is retired. Session files are atomic event logs; GitHub is the velocity data source.
+This skill **owns the phase velocity math** that used to live in `/its-dead` and **all version bumps** (patch per merge + minor at close). Under That velocity math is **throughput + estimate calibration**, computed from GitHub issue dates + `points:N` labels — the transcript-based `active = wall − breaks` model is retired. Session files are atomic event logs; GitHub is the velocity data source.
 
 ## Step 0 — Identify the current phase
 
@@ -32,9 +32,9 @@ For each open issue, ask the user: "Move to next phase, leave open, or close as 
 - **Leave open:** record in retro.
 - **Close as won't-do:** `gh issue close <N> --reason "not planned" --comment "Closed at Phase N retro — descoped."`
 
-## Step 2 — Phase throughput + estimate calibration (DEC-S026 — replaces transcript-based time math)
+## Step 2 — Phase throughput + estimate calibration (replaces transcript-based time math)
 
-DEC-S026 retired the `active = wall_clock − breaks` model. **No session transcript is read in this step.** Two numbers come out of it, both from data GitHub already holds: the phase's **throughput** (points per calendar week) and an **estimate-calibration tally** (did the points hold their value). Fleet validation showed solo phases are burst-shaped — most clear inside a single calendar week — so throughput is a coarse capacity signal, not a precise rate; the calibration tally is what keeps the point unit honest.
+The `active = wall_clock − breaks` model is retired. **No session transcript is read in this step.** Two numbers come out of it, both from data GitHub already holds: the phase's **throughput** (points per calendar week) and an **estimate-calibration tally** (did the points hold their value). Fleet validation showed solo phases are burst-shaped — most clear inside a single calendar week — so throughput is a coarse capacity signal, not a precise rate; the calibration tally is what keeps the point unit honest.
 
 Phase window: `phase_first_created` = first issue's `createdAt`, `phase_last_closed` = last issue's `closedAt`.
 
@@ -47,7 +47,7 @@ gh issue list --label "phase:<N>" --state closed --json number,createdAt,closedA
 - `phase_points` = Σ of each closed issue's `points:M` label value. Issues with **no** `points:` label are skipped — list them in the retro so they're visible; never guess a value.
 - `phase_first_created` = min `createdAt`; `phase_last_closed` = max `closedAt`; `phase_span_days = (phase_last_closed − phase_first_created)` in days.
 
-This keys the phase to issues, not PRs — robust to merging PRs in any order (DEC-S022). **Never re-pair PR-open → PR-merge to recover "effort"** — that window math is the exact bug DEC-S024 died on. Dates are not windows.
+This keys the phase to issues, not PRs — robust to merging PRs in any order. **Never re-pair PR-open → PR-merge to recover "effort"** — that window math is the exact bug that pairing died on. Dates are not windows.
 
 ### Step 2.2 — Throughput (the headline)
 
@@ -63,7 +63,7 @@ Throughput is capacity **including availability** — a slow week and an off wee
 
 ### Step 2.3 — wall_clock (gut-check only — NOT a velocity)
 
-`/its-dead` already displayed each session's `wall_clock = ended − started` on-screen as a sanity gut-check. That is its only role. **It is not aggregated, not divided by points, and not quoted as a velocity** — `wall_clock / point` is the number the guide forbids (it carries overnight gaps and idle). No transcript is read; no breaks are inferred; there is no `active_time`. (This is the DEC-S024 model being retired — see DEC-S026.)
+`/its-dead` already displayed each session's `wall_clock = ended − started` on-screen as a sanity gut-check. That is its only role. **It is not aggregated, not divided by points, and not quoted as a velocity** — `wall_clock / point` is the number the guide forbids (it carries overnight gaps and idle). No transcript is read; no breaks are inferred; there is no `active_time`. (This is the the old model being retired.)
 
 ### Step 2.4 — Estimate-calibration tally
 
@@ -93,7 +93,7 @@ From Step 2:
 - `re_estimated` + `net_drift` — the estimate-calibration tally.
 - `phase_sessions` = session-file count in the window; `phase_prs` = merged PRs in the window.
 
-There is no `active`, no `breaks`, no `dev_time`/`review_time`, and no `h/pt` — all retired by DEC-S026.
+There is no `active`, no `breaks`, no `dev_time`/`review_time`, and no `h/pt` — all retired.
 
 ## Step 4 — Update PROJECT_PLAN.md
 
@@ -104,14 +104,14 @@ Mark all closed phase tasks `[x]`. For each row:
 
 Reconcile drift: issues with `phase:<N>` labels that don't appear in PROJECT_PLAN.md (added mid-phase). Add rows with status `[x] [#N](url)` and inline note `Added during P<N> retro`.
 
-Update the velocity table at the top (DEC-S026 columns):
+Update the throughput table at the top:
 ```
 | Phase | Points | Span (d) | Throughput | Re-est'd | Net drift | Sessions |
 |-------|--------|----------|------------|----------|-----------|----------|
 | N     | <pts>  | <days>   | <pts/wk or burst> | <K> | <±D> | <count> |
 ```
 
-Append one row per phase as they complete. **Don't rewrite history:** phases closed before DEC-S026 carry the retired `Wall / Breaks / Active / h-pt` columns — leave those rows as written and note the metric change inline (the full table migration is a separate deferred task).
+Append one row per phase as they complete. **Don't rewrite history:** phases closed before the throughput model carry the retired `Wall / Breaks / Active / h-pt` columns — leave those rows as written and note the metric change inline (the full table migration is a separate deferred task).
 
 ## Step 5 — Prompt retro notes
 
@@ -174,7 +174,7 @@ Read `docs/RETROSPECTIVES.md` first (Edit requires a prior Read). If it doesn't 
 
 ## Step 7 — Commit (sessions branch updates are read-only here)
 
-Session files were already finalized by `/its-dead` and are not modified by this skill — DEC-S013 atomicity.
+Session files were already finalized by `/its-dead` and are not modified by this skill atomicity.
 
 ```
 git add docs/PROJECT_PLAN.md docs/RETROSPECTIVES.md
@@ -182,9 +182,9 @@ git commit -m "Phase <N> retro — <points> pts, throughput <pts/wk or burst>, d
 git push origin <BRANCH>
 ```
 
-## Step 8 — Version bumps (versioned projects only — DEC-S013 moved patch bumps from `/its-dead` here)
+## Step 8 — Version bumps (versioned projects only moved patch bumps from `/its-dead` here)
 
-Run only if the repo root has a `package.json` **with a `version` field** (versioned-project signal — DEC-S007):
+Run only if the repo root has a `package.json` **with a `version` field** (versioned-project signal):
 
 ```
 node -e "process.exit(require('./package.json').version ? 0 : 1)" 2>/dev/null || echo "not versioned"
@@ -194,7 +194,7 @@ If it prints `not versioned`, skip Step 8 entirely. The gate is the field, not t
 
 **`2>/dev/null` is deliberate and it does swallow one real error.** A `package.json` that is malformed JSON makes `require()` throw, which exits non-zero and reads here as "not versioned" — indistinguishable from a repo that simply has no version. That is the right default for a gate whose job is to decide whether to proceed, and a broken manifest will announce itself the moment anything else npm-shaped runs. Stated so the redirect isn't mistaken for carelessness.
 
-Resolve working branch — always the active trunk (DEC-S022):
+Resolve working branch — always the active trunk:
 ```
 WORKING_BRANCH=main
 ```
@@ -284,8 +284,8 @@ Version: v<NEW_VERSION>  (versioned projects only; skipped per Step 8's gate)
 
 ## Notes
 
-- **Session files are read-only here.** Retro reads them; never writes. DEC-S013 atomicity.
-- **No transcript is read anywhere.** DEC-S026 retired break inference and `active = wall − breaks` — the model whose `breaks = 0 → active = wall_clock` fallback was the bug that triggered the change.
+- **Session files are read-only here.** Retro reads them; never writes — a session file is atomic once `/its-dead` closes it.
+- **No transcript is read anywhere.** Break inference is retired, along with and `active = wall − breaks` — the model whose `breaks = 0 → active = wall_clock` fallback was the bug that triggered the change.
 - **GitHub IS the velocity data source now.** Step 2 reads issue `createdAt`/`closedAt` + `points:N` labels — that's the throughput input. `gh` is also used for issue accounting (Step 1), the points cross-check (Step 3), and version bumps (Step 8). If `gh` is down, Step 2 can't compute throughput; note it and let the user rerun. Don't guess.
-- **The headline is throughput (points / calendar week), never reported without the calibration tally.** There is no `active`, `wall/pt`, `dev_time`, or `review_time` — all retired by DEC-S026. `wall_clock` survives only as the `/its-dead` on-screen gut-check.
-- **Old retros carry retired columns.** Phases closed before DEC-S026 carry `Wall / Breaks / Active / h-pt` (or older `Dev / Review`) columns and an h/pt velocity — all retired, all on a different denominator. **Don't blend them with throughput.** History stays as written (DEC-S024 precedent); the standalone extractor `dev/claude/scripts/throughput.py` recomputes throughput straight from GitHub and is independent of any old retro prose.
+- **The headline is throughput (points / calendar week), never reported without the calibration tally.** There is no `active`, `wall/pt`, `dev_time`, or `review_time` — all retired. `wall_clock` survives only as the `/its-dead` on-screen gut-check.
+- **Old retros carry retired columns.** Phases closed before the throughput model carry `Wall / Breaks / Active / h-pt` (or older `Dev / Review`) columns and an h/pt velocity — all retired, all on a different denominator. **Don't blend them with throughput.** History stays as written (the same precedent); the standalone extractor the standalone extractor, which jig does not carry — it stays in the archived seeds checkout recomputes throughput straight from GitHub and is independent of any old retro prose.

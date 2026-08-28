@@ -1,68 +1,49 @@
-SEEDS WORKFLOW CHEATSHEET                                v2026-07-25
+JIG WORKFLOW CHEATSHEET                                  v6
 
-  /its-alive  ->  [ task ]  ->  /kill-this  -+->  /its-dead
-                     ^              |        |
-                     |              +--------+  ( once per task )
-                     +--- /pause-this <--- /restart-this
-                                                 /its-dead: once per window
+  /its-alive  ->  [ work ]  ->  /kill-this  ->  /its-dead
 
 
 SESSION
-  /its-alive       start. stamps time, opens session file, reads
-                   context, recommends task. waits for confirmation.
-  /pause-this      walking away. build check + WIP commit.
-  /restart-this    resume from /pause-this. reloads context.
-  /kill-this       PER TASK. verify + commit + PR + @code-review,
-                   appends a ## Task <N> block. run N times.
-  /its-dead        ONCE per window. stamps ended, tallies points,
-                   shows wall_clock gut-check, finalizes file.
+  /its-alive       start. opens the session file, reads context,
+                   runs the drift + permission-policy checks,
+                   recommends a task. waits for confirmation.
+  /kill-this       per task. build + commit + PR + @code-review.
+                   run it once per task, not once per session.
+  /its-dead        end. stamps ended, tallies points, shows the
+                   wall-clock gut-check, closes the session file.
 
 PHASE
-  /start-phase     materialize current phase as Issues
+  /start-phase     materialize the phase as Issues
                    ( phase:N + points:X labels )
-  /retro           close phase. mark [x], reconcile drift,
-                   compute throughput, write retro, bump minor.
+  /retro           close phase. mark [x], compute throughput +
+                   estimate calibration, write the retro, bump.
 
-SEMVER  ( dev projects only — needs package.json )
+SEMVER  ( needs package.json with a version field )
   /bump-major      breaking change. manual. tag on main.
-  /promote-production patch-bump + tag main, then ff-merge
-                   main->production + push. this is where
-                   patches come from on projects with a
-                   production branch. ( DEC-S022 )
-  patch bumps      /promote-production on ship. projects with no
-                   production branch get them from /retro instead.
-                   never /its-dead.
+  /promote-production  main -> production ff-merge + push.
+                   ( needs origin/production )
+  patch bumps      /promote-production on ship, or /retro per
+                   merged PR where there is no production branch.
 
-REFLECT
-  /read-the-tape   scan a session for anti-patterns.
-                   arg: number, file path, or none = latest.
-                   writes ONE observation to seeds and changes
-                   nothing here (DEC-S040). needs a seeds
-                   checkout — sibling ../seeds, or pass a path.
-  /doc-consistency-check
-                   ad-hoc only, never on a calendar. cross-refs
-                   docs/*.md + CLAUDE.md. report-only.
+AGENTS
+  @architect       Opus. coherence vs SPEC + decisions.
+  @code-review     Sonnet. wired into /kill-this.
+  @pm              Sonnet. progress, risk, scope cuts.
+  @ui-reviewer     Sonnet. design quality. reads ui-context.md.
 
-INFRA                              DOMAIN
-  /update-config                     /stripe-best-practices
-  /fewer-permission-prompts          /stripe-projects
-  /keybindings-help                  /upgrade-stripe
-                                     /claude-api
-  /simplify
-  /loop <interval> <cmd>           BUILT-IN
-  /init                              /review
-                                     /security-review
+GATES  ( npm run verify )
+  check:decisions  record shape, index freshness, dangling refs
+  check:dictionary unregistered vocabulary
+  check:denied     docs spelling a denied command
+  check:context    paths cited by the always-loaded files
+  check:docs       rosters, links, and the rest of the doc set
 
-DEV IDENTITY      ~/.claude/devname  ( one line, e.g. "eric" )
-SESSION FILE      sessions/YYYY-MM-DD-HHMM-<dev>-<slug>.md
-TRANSCRIPT PATH   in YAML frontmatter, captured at /its-alive
+THE STOP
+  step 8 is a hard stop. built is not shipped. report what
+  changed and wait. /kill-this is invoked by the operator,
+  never by the session. reaching the same end state by hand
+  skips @code-review and announces that to nobody.
 
-
-THE SHORT VERSION
-  start of work:     /its-alive
-  break:             /pause-this    ->  /restart-this
-  end of work:       /kill-this     ->  /its-dead
-  start of phase:    /start-phase
-  end of phase:      /retro
-  after a rough one: /read-the-tape
-  moving files to/from seeds: by hand. no sync skill.
+NOT CARRIED  ( these existed in seeds and do not here )
+  read-the-tape pause-this restart-this doc-consistency-check
+  @workout @doc-consistency @ideas @tape-reader

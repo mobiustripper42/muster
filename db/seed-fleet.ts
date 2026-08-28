@@ -27,7 +27,7 @@ try {
     console.log(`  - ${v.id}  (cap ${v.coiMaxPax}; ${manning})`);
   }
   console.log("\nNext: edit + run db/seed-pilot-crew.ts (npm run db:seed:crew:pilot), then import at /admin/import.");
-  console.log("Fleet = the 4 real BrewBoats, capacities validated against live Xola Resources (DEC-043).");
+  console.log("Fleet = the 4 BrewBoats (captain+mate) + the 2 X Shore hulls (captain only), capacities validated against live Xola Resources (DEC-043).");
 } finally {
   await repo.close();
 }

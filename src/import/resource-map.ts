@@ -48,6 +48,23 @@ export interface FleetVessel {
   /** COI max pax — confirmed against the live Xola Resource capacity (Session 22). */
   capacity: number;
   manning: ManningRequirement[];
+  /**
+   * Minutes on the water for this boat's trips — DEC-041's "(b) operator-configured
+   * per-vessel length", landing as seed data rather than a settings surface. Stamped
+   * onto every event the importer places for this vessel.
+   *
+   * **Absent means absent, not 100.** A boat that declares nothing leaves the event's
+   * `durationMinutes` unwritten and falls back to `TRIP_DURATION_MINUTES` at read
+   * time. Writing the fallback here would freeze today's constant onto every row.
+   *
+   * The boat is a proxy for the *product*, and it is only correct while each hull
+   * runs one experience — true of X Shore, true of the BrewBoats (which declare
+   * nothing anyway). Keying on Xola's free-text product string was rejected: DEC-043
+   * moved off it for its instability, and a missed match would fall back silently
+   * rather than quarantine. Muster-native events never come through here — they
+   * freeze `Offering.tripLengthMinutes` at materialization instead.
+   */
+  tripLengthMinutes?: number;
 }
 
 /**
@@ -71,8 +88,8 @@ const RESOURCE_MAP: Record<string, FleetVessel> = {
   "656e10ce46c61175bd0de305": { vesselId: v("vessel-brew-2"), name: "Brew 2", capacity: 16, manning: crew2 },
   "656e0fcdf9f593e84b0e1782": { vesselId: v("vessel-brew-3"), name: "Brew 3", capacity: 12, manning: crew2 },
   "656e0feb91aa27f36908371b": { vesselId: v("vessel-brew-4"), name: "Brew 4", capacity: 12, manning: crew2 },
-  [X_SHORE_1]: { vesselId: v("vessel-x-shore-1"), name: "X Shore 1", capacity: 6, manning: crew1 },
-  [X_SHORE_2]: { vesselId: v("vessel-x-shore-2"), name: "X Shore 2", capacity: 6, manning: crew1 },
+  [X_SHORE_1]: { vesselId: v("vessel-x-shore-1"), name: "X Shore 1", capacity: 6, manning: crew1, tripLengthMinutes: 120 },
+  [X_SHORE_2]: { vesselId: v("vessel-x-shore-2"), name: "X Shore 2", capacity: 6, manning: crew1, tripLengthMinutes: 120 },
 };
 
 /**
@@ -109,6 +126,16 @@ const VESSEL_BY_ID: Record<string, FleetVessel> = Object.fromEntries(
  */
 export function vesselCapacity(vesselId: VesselId): number | undefined {
   return VESSEL_BY_ID[vesselId]?.capacity;
+}
+
+/**
+ * This boat's declared trip length in minutes (reverse lookup), or `undefined` for a
+ * boat that declares none — which is most of them, and which the caller must turn
+ * into an **omitted** key rather than a written fallback. Mirror of
+ * {@link vesselCapacity}; DEC-041's (b) source for the Xola half.
+ */
+export function vesselTripLength(vesselId: VesselId): number | undefined {
+  return VESSEL_BY_ID[vesselId]?.tripLengthMinutes;
 }
 
 /**

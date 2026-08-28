@@ -11,6 +11,7 @@
  * the write door (`claimSeat`) keep one definition of "what's claimable".
  */
 
+import type { Event } from "../domain/entities.js";
 import type { CrewMemberId } from "../domain/ids.js";
 import { claimableSeatsFor } from "../oracle/claimable.js";
 import type { Repository } from "../ports/repository.js";
@@ -63,13 +64,15 @@ export async function buildClaimableView(
     const vessel = await repo.getVessel(seat.vesselId);
     const role = await repo.getRoleType(seat.role);
     const shift = await repo.getShift(seat.shiftId);
-    const tripTimes: string[] = [];
+    const scheduled: Event[] = [];
     for (const id of shift?.eventIds ?? []) {
       const e = await repo.getEvent(id);
-      if (e && e.status === "scheduled") tripTimes.push(e.time);
+      if (e && e.status === "scheduled") scheduled.push(e);
     }
-    tripTimes.sort((a, b) => a.localeCompare(b));
-    const { callTime, shiftEndTime } = committedWindow(tripTimes);
+    // The displayed departure list stays clock strings; the WINDOW needs the rows,
+    // because each trip is measured by its own length (DEC-041).
+    const tripTimes = scheduled.map((e) => e.time).sort((a, b) => a.localeCompare(b));
+    const { callTime, shiftEndTime } = committedWindow(scheduled);
     rows.push({
       seatId: seat.seatId,
       shiftId: seat.shiftId,

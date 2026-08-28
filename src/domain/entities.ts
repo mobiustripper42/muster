@@ -601,8 +601,13 @@ export interface Event {
    * field, and `shiftEndFromEvents` (and so the completion sweep, and so crew
    * reliability) follows the money.
    *
-   * Absent ⇒ the flat `TRIP_DURATION_MINUTES` fallback. Xola-sourced events leave
-   * it absent permanently — Xola exposes no product length.
+   * Absent ⇒ the flat `TRIP_DURATION_MINUTES` fallback.
+   *
+   * **Xola-sourced events carry it when their boat declares one.** Xola's API still
+   * exposes no product length and nothing reads one; the value comes from
+   * `FleetVessel.tripLengthMinutes` in the resource map — DEC-041's "(b)
+   * operator-configured per-vessel length", landing as seed data. A boat that
+   * declares nothing still leaves this absent, which is most of the fleet.
    */
   durationMinutes?: number;
 }

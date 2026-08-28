@@ -44,13 +44,15 @@ export async function buildPayrollReport(
     if (shift.state === "Cancelled") continue;
     if (shift.date < window.from || shift.date > window.to) continue;
 
-    // The shift's on-clock minutes, from its SCHEDULED event departure times.
-    const times: string[] = [];
+    // The shift's on-clock minutes, from its SCHEDULED events. The event ROWS, not
+    // their departure times: each trip is measured by its own length (DEC-041), so a
+    // 120-minute boat is paid 20 minutes more than a 100-minute one.
+    const events = [];
     for (const eventId of shift.eventIds) {
       const event = await repo.getEvent(eventId);
-      if (event && event.status === "scheduled") times.push(event.time);
+      if (event && event.status === "scheduled") events.push(event);
     }
-    const minutes = committedMinutes(times);
+    const minutes = committedMinutes(events);
     if (minutes === 0) continue; // event-less / all-cancelled → nobody's on the clock
 
     // Distinct crew on this shift's required Confirmed seats — dedupe so the operator

@@ -69,6 +69,52 @@ describe("X Shore — two hulls, captain-only, 6 pax", () => {
     expect(role?.name).toBe("captain");
   });
 
+  it("stamps the boat's 120-minute trip length onto the imported event", async () => {
+    const repo = new InMemoryRepository();
+    const resolved = resolveResource(X_SHORE_1);
+    if (resolved.kind !== "mapped") throw new Error("X Shore 1 is not in the resource map");
+
+    await importRecords(repo, [
+      {
+        reservationId: "xs-len",
+        product: "X Shore",
+        date: "2026-09-06",
+        time: "13:00",
+        eventId: "evt-xshore-len",
+        vesselId: resolved.vessel.vesselId,
+        customerName: "Ada",
+        partySize: 4,
+        status: "booked",
+      },
+    ]);
+
+    const event = await repo.getEvent(asId<"EventId">("evt-xshore-len"));
+    expect(event?.durationMinutes).toBe(120);
+  });
+
+  it("a BrewBoat event leaves durationMinutes ABSENT — never a literal 100", async () => {
+    const repo = new InMemoryRepository();
+    // Writing the fallback explicitly would freeze today's constant onto every row
+    // forever, and `undefined` breaks the omitted-not-undefined round-trip contract.
+    await importRecords(repo, [
+      {
+        reservationId: "brew-len",
+        product: "Brew Boat Party Boats with Captain",
+        date: "2026-09-06",
+        time: "13:00",
+        eventId: "evt-brew-len",
+        vesselId: asId<"VesselId">("vessel-brew-2"),
+        customerName: "Nora",
+        partySize: 8,
+        status: "booked",
+      },
+    ]);
+
+    const event = await repo.getEvent(asId<"EventId">("evt-brew-len"));
+    expect(event).not.toBeNull();
+    expect("durationMinutes" in event!).toBe(false);
+  });
+
   it("the event carries the boat's COI of 6, not a BrewBoat capacity", async () => {
     const repo = new InMemoryRepository();
     const resolved = resolveResource(X_SHORE_2);

@@ -1,10 +1,10 @@
 ---
 name: promote-production
-description: Promote the active trunk (`main`) to the `production` deploy branch via fast-forward merge, then push. Each promotion is a production release: dev projects patch-bump + tag the trunk here, then advance `production` to it (`/retro` owns the phase-close minor, `/bump-major` the major). Use when work on `main` is ready to ship. Requires `origin/production` to exist (DEC-S022).
+description: Promote the active trunk (`main`) to the `production` deploy branch via fast-forward merge, then push. Each promotion is a production release: dev projects patch-bump + tag the trunk here, then advance `production` to it (`/retro` owns the phase-close minor, `/bump-major` the major). Use when work on `main` is ready to ship. Requires `origin/production` to exist.
 tools: Read, Edit, Write, Bash, Grep
 ---
 
-You are promoting `main` → `production`. Under DEC-S022, `main` is the always-active trunk and `production` is a downstream deploy pointer that Vercel (or whatever host) watches. Each promotion is a production release: this skill **patch-bumps + tags** the trunk (dev projects), then ff-merges `main` into `production` and pushes — the deploy moment. `/retro` owns the phase-close minor bump; `/bump-major` the major. A `main` HEAD that already carries a fresh `v*` tag (e.g. `/retro`'s minor) ships as-is, without a second bump.
+You are promoting `main` → `production`. `main` is the always-active trunk and `production` is a downstream deploy pointer that Vercel (or whatever host) watches. Each promotion is a production release: this skill **patch-bumps + tags** the trunk (dev projects), then ff-merges `main` into `production` and pushes — the deploy moment. `/retro` owns the phase-close minor bump; `/bump-major` the major. A `main` HEAD that already carries a fresh `v*` tag (e.g. `/retro`'s minor) ships as-is, without a second bump.
 
 ## Step 0 — Sanity gates
 
@@ -12,7 +12,7 @@ You are promoting `main` → `production`. Under DEC-S022, `main` is the always-
 ```
 git show-ref --verify --quiet refs/remotes/origin/production || echo "missing"
 ```
-If `origin/production` doesn't exist (locally cached), STOP. Tell the user: "/promote-production requires an `origin/production` branch (DEC-S022). This repo deploys straight off `main` — there's nothing to promote. To adopt a production branch: `git checkout -b production main && git push -u origin production`, then point the host's production branch at it." Do not proceed. Step 1 refreshes the cache from the remote regardless, so a stale local view that misses a freshly-created `production` is recovered after the user re-runs.
+If `origin/production` doesn't exist (locally cached), STOP. Tell the user: "/promote-production requires an `origin/production` branch. This repo deploys straight off `main` — there's nothing to promote. To adopt a production branch: `git checkout -b production main && git push -u origin production`, then point the host's production branch at it." Do not proceed. Step 1 refreshes the cache from the remote regardless, so a stale local view that misses a freshly-created `production` is recovered after the user re-runs.
 
 **Clean working tree:**
 ```
@@ -22,7 +22,7 @@ If non-empty, STOP. Tell the user: "Uncommitted changes — commit, stash, or di
 
 ## Step 0.5 — Run the project's pre-promote checks
 
-Projects define their own pre-promote gates — a staging/preview QA confirmation, a "no unapplied migrations on prod" check, whatever must be true before shipping. These are project-specific, so they live project-side: **use the Read tool** on `.claude/CLAUDE-context.md` (`## Migration Protocol (project)`, plus any `## Pre-promote checks` section) and `docs/DEPLOYMENT.md` — never a `sed`/`grep` one-liner — then run or confirm every gate listed there before continuing.
+Projects define their own pre-promote gates — a staging/preview QA confirmation, a "no unapplied migrations on prod" check, whatever must be true before shipping. These are project-specific, so they live project-side: **use the Read tool** on `.claude/CLAUDE-context.md` (`## Migration Protocol (project)`, plus any `## Pre-promote checks` section) — never a `sed`/`grep` one-liner — then run or confirm every gate listed there before continuing.
 
 The common gate — **QA confirmation:** if the project deploys the trunk to a shared staging/preview environment, confirm it was actually QA'd against **this** release since the last merge. Ask the user: **"Has the staging/preview environment been QA'd against this release? (yes/no)"**
 
@@ -57,7 +57,7 @@ Each promotion is a production release. First, is there anything new to ship?
 ```
 If equal, STOP: "production is already at `main` HEAD — nothing to ship."
 
-**Unversioned project** — no `package.json` at the repo root, **or one with no `version` field** (DEC-S007). Check with `node -e "process.exit(require('./package.json').version ? 0 : 1)" 2>/dev/null || echo "not versioned"`. Skip the bump: `SHIP_TAG=$(git tag --points-at origin/main | grep '^v' | sort -V | tail -1)` — promote whatever tag is there, or none. Go to Step 4.
+**Unversioned project** — no `package.json` at the repo root, **or one with no `version` field**. Check with `node -e "process.exit(require('./package.json').version ? 0 : 1)" 2>/dev/null || echo "not versioned"`. Skip the bump: `SHIP_TAG=$(git tag --points-at origin/main | grep '^v' | sort -V | tail -1)` — promote whatever tag is there, or none. Go to Step 4.
 
 The gate is the `version` field rather than the file, because a repo can carry a `private`, version-less manifest solely to get a test runner and still have nothing to version.
 
@@ -113,8 +113,8 @@ If the `production` push fails, STOP. Surface the failure with full output. Loca
 ## Step 6 — Summary
 
 ```
-Promoted main → production at <SHIP_TAG or short-SHA>
-production now at <short-SHA>
+Promoted main → production at <SHIP_TAG or short commit hash>
+production now at <short commit hash>
 Host deploy on `production` triggered (if the host watches the production branch).
 ```
 

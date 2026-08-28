@@ -133,16 +133,23 @@ export function render(entries) {
   return out.join('\n')
 }
 
-export function check() {
+/**
+ * @param {object} [inject] test seam — a dictionary path and an explicit file list. Without it,
+ *   `check()` reads the live corpus, which is what the gate does. With it, a test can state a
+ *   behaviour that this repo's corpus happens not to exhibit: jig registers no forbidden
+ *   alternates, so "an alternate warns rather than fails" was unobservable and the test asserting
+ *   it had been quietly failing against a corpus it was never written for.
+ */
+export function check(inject) {
   const failures = []
   const warnings = []
   const fail = (where, msg) => failures.push(`${where} — ${msg}`)
 
-  const { entries, errors } = loadDictionary()
+  const { entries, errors } = loadDictionary(inject?.dict ?? DICT)
   for (const e of errors) failures.push(e)
 
   const families = existsSync(CONFIG) ? Object.keys(JSON.parse(readFileSync(CONFIG, 'utf8')).families ?? {}) : []
-  const files = gatedFiles()
+  const files = inject?.files ?? gatedFiles()
   const texts = new Map(files.map((f) => [f, prose(readFileSync(f, 'utf8'))]))
 
   // Grandfathered vocabulary — what was already in these files the day this shipped. The point
@@ -226,7 +233,11 @@ export function check() {
   return { failures, warnings }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// `endsWith` on argv[1], matching the five sibling gates. The URL comparison this replaces
+// failed whenever the checkout path needed escaping — in a directory with a space, the script
+// printed nothing and exited 0, which `npm run verify` reads as a pass. jig installs into
+// arbitrary project checkouts, so that is a realistic path, not a hypothetical one.
+if (process.argv[1]?.endsWith('check-dictionary.mjs')) {
   const { failures, warnings } = check()
   for (const w of warnings) console.log(`  ⚠ ${w}`)
   if (warnings.length) {

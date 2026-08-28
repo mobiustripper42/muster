@@ -174,6 +174,17 @@ export function parseFrontmatter(text) {
         entry = null
         continue
       }
+      /**
+       * A NON-LIST KEY CLOSES ANY OPEN LIST. Without this, `list` stayed pointing at the last
+       * list key seen, so every `  - ` line after an unrelated key attached to THAT list.
+       *
+       * Reproduced: a mis-keyed `notes:` list written under `claims:` made `check:decisions`
+       * report `unknown key notes` — correctly — and then `gen:decisions` "repaired" the file by
+       * dropping the unknown key and writing its items into `claims:`. The failure disappeared
+       * and the record carried a claim its author never wrote. A gate finding laundered into a
+       * fabrication is worse than either half alone.
+       */
+      list = null
       meta[top[1]] = unquote(top[2])
       continue
     }
@@ -364,7 +375,20 @@ export function renderDecision(d) {
   //
   // Key order follows `decision-record.schema.json`'s properties, so a converted record and a
   // hand-written one are byte-identical and neither churns the other.
-  const v1 = String(d.schema) === '1'
+  /**
+   * TRIMMED, because one trailing space silently destroyed a record.
+   *
+   * `parseFrontmatter` does not trim values, so `schema: 1 ` parses as the string `'1 '`, missed
+   * this comparison, and the record took the legacy render branch — which writes only id, title
+   * and topic. Reproduced end to end: `ruling`, `claims`, `revisit_if`, `status` and `date` were
+   * deleted from a valid record, exit 0, "1 file rewritten". The gate's own remediation is what
+   * ate it.
+   *
+   * `hasSchemaKey` in check-decisions.mjs matches the KEY and is deliberately tolerant of the
+   * value's formatting, so the two halves disagreed: the checker said "opted in", the generator
+   * said "legacy", and the disagreement was a data loss rather than an error.
+   */
+  const v1 = String(d.schema).trim() === '1'
   const fm = ['---']
   if (v1) fm.push('schema: 1') // unquoted: the gate compares against the NUMBER 1
   fm.push(`id: ${d.id}`, `title: ${quote(d.title)}`, `topic: ${quote(d.topic)}`)
@@ -468,19 +492,36 @@ export function generate(dir = DIR, specPath = SPEC) {
 
 if (process.argv[1]?.endsWith('gen-decisions-index.mjs')) {
   const { index, files, spec, decisions, specIncoming } = generate()
-  let rewritten = 0
-  for (const [file, text] of files) {
-    const path = `${DIR}/${file}`
-    if (readFileSync(path, 'utf8') !== text) {
-      writeFileSync(path, text)
-      rewritten++
-    }
+
+  /**
+   * Write only on a real change, and count every file written — including `OUT` and `SPEC`.
+   *
+   * Both properties were missing and they failed together. `OUT` was written unconditionally
+   * and excluded from the tally, so editing `_preamble.md` regenerated the index and reported
+   * `0 files rewritten` — a true sentence about the decision files and a false one about the
+   * run. Caught in jig's first green build by appending a marker line to the preamble: the
+   * marker reached `DECISIONS.md` while the run said nothing had been rewritten.
+   *
+   * The unconditional write is the same defect from the other side. Rewriting an unchanged
+   * `OUT` every run churns its mtime, so "did the generator touch anything?" stops being
+   * answerable from the filesystem — and this generator's whole contract with
+   * `check-decisions.mjs` is that a stale index is detectable.
+   */
+  const written = []
+  const put = (path, text) => {
+    if (existsSync(path) && readFileSync(path, 'utf8') === text) return
+    writeFileSync(path, text)
+    written.push(path)
   }
-  writeFileSync(OUT, index)
-  if (spec !== null && readFileSync(SPEC, 'utf8') !== spec) writeFileSync(SPEC, spec)
+
+  for (const [file, text] of files) put(`${DIR}/${file}`, text)
+  put(OUT, index)
+  if (spec !== null) put(SPEC, spec)
+
   console.log(
     `✓ ${OUT} regenerated from ${decisions.size} decisions — ` +
-      `${rewritten} file${rewritten === 1 ? '' : 's'} rewritten, ` +
-      `${specIncoming.size} SPEC section${specIncoming.size === 1 ? '' : 's'} annotated`,
+      `${written.length} file${written.length === 1 ? '' : 's'} rewritten` +
+      (written.length ? ` (${written.join(', ')})` : '') +
+      `, ${specIncoming.size} SPEC section${specIncoming.size === 1 ? '' : 's'} annotated`,
   )
 }

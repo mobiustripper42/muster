@@ -1,10 +1,10 @@
 ---
 name: its-dead
-description: Session end. Stamps `ended:` on the open session file, tallies total points from per-task blocks, displays wall_clock to screen for gut-check, commits + pushes the sessions branch. No time math, no version bump, no merge handshake — those moved to `/retro` per DEC-S013. Run once at the end of a Claude window after every task's `/kill-this` has shipped its PR.
+description: Session end. Stamps `ended:` on the open session file, tallies total points from per-task blocks, displays wall_clock to screen for gut-check, commits + pushes the sessions branch. No time math, no version bump, no merge handshake — those moved to `/retro`. Run once at the end of a Claude window after every task's `/kill-this` has shipped its PR.
 tools: Read, Edit, Write, Bash, Glob, Grep
 ---
 
-You are closing the session. Under DEC-S013, this is a one-action skill: stamp `ended:`, write `status: closed`, commit + push to the orphan `sessions` branch. All time math (wall_clock and active = wall_clock − breaks, via transcript break inference) and version bumps moved to `/retro`. The session file becomes atomic — never modified after this runs.
+You are closing the session. This is a one-action skill: stamp `ended:`, write `status: closed`, commit + push to the orphan `sessions` branch. All time math (wall_clock and active = wall_clock − breaks, via transcript break inference) and version bumps moved to `/retro`. The session file becomes atomic — never modified after this runs.
 
 ## Step 0 — Locate the open session (on the sessions worktree)
 
@@ -14,7 +14,7 @@ grep -l "^status: open" .sessions-worktree/sessions/*.md 2>/dev/null
 
 **Exactly one match:** that's `SESSION_FILE`. NEW MODE. Continue.
 
-**No match:** try legacy `session-log.md` on the current branch. If found: LEGACY MODE — Step 4 still applies; everything else simplifies. If neither: STOP and ask the user how to proceed.
+**No match:** STOP and ask the user how to proceed. Do not invent a session file — `/its-alive` creates it, and its absence means the session was never opened.
 
 **More than one match:** another window has a session open. Report the candidates — `session:`, `branch:`, `started:` — and ask which is yours. Do not sort and do not take the first: `... | head -1` returns the lexically-earliest filename, and session filenames start with a date, so it silently picks the *stale* file whenever that one opened earlier. Nothing errors.
 
@@ -30,20 +30,30 @@ Edit `$SESSION_FILE` frontmatter:
 - `ended: <END_UTC>`
 - `status: closed`
 
-Do **not** write `wall_clock`, `active`, `breaks`, `duration`, or any time-derived field. Time math is `/retro`'s job (DEC-S013).
+Do **not** write `wall_clock`, `active`, `breaks`, `duration`, or any time-derived field. Time math is `/retro`'s job.
 
 ## Step 2 — Tally total points
 
-Scan the body for per-task blocks (one per `/kill-this`):
+Scan the body for the per-task `**Points:**` field (`/kill-this` writes one per task):
 
 ```
-grep -A 5 "^## Task " "$SESSION_FILE" | grep "Points:" | grep -oE "[0-9]+"
+grep -oE "^\*\*Points:\*\* *[0-9]+" "$SESSION_FILE" | grep -oE "[0-9]+"
 ```
 
 Sum and write the total into the frontmatter:
 - `points: <SUM>`
 
-If no `## Task <N>` blocks exist (a session that ran `/its-alive` and `/its-dead` with no `/kill-this` in between), `points: 0`. No warning — sometimes the work is exploration that didn't ship.
+**No `-A <N>` window, and that is the fix, not a simplification.** This step used to read `grep -A 5 "^## Task " | grep "Points:"`, which assumes `**Points:**` sits within five lines of its `## Task` heading. It does not: `/kill-this`'s own block template puts the open-ended `**Completed:**` bullet list first (`kill-this/SKILL.md` § Step 5), so in one observed session the four real gaps were 61, 55, 52 and 53 lines. The windowed command matched nothing and returned `points: 0`. `^\*\*Points:\*\*` is anchored and unique to that template, so it needs no window to avoid a false match.
+
+**Cross-check the count before you write.** The number of matches must equal the number of `## Task <N>` blocks:
+
+```
+grep -c "^## Task " "$SESSION_FILE"
+```
+
+If the two disagree, stop and say so rather than writing a sum. This is here because a wrong number cannot be corrected later: `/its-dead` writes `points:` into a file that is atomic the moment it closes, and `/retro` reads it as the phase's real cost.
+
+If no `## Task <N>` blocks exist (a session that ran `/its-alive` and `/its-dead` with no `/kill-this` in between), `points: 0`. No warning — sometimes the work is exploration that didn't ship. **Zero task blocks and zero points is a fact; task blocks with zero points is a bug** — the two used to produce identical output, which is why the undercount was silent.
 
 ## Step 3 — Append session-wide Context (optional)
 
@@ -106,8 +116,6 @@ git -C .sessions-worktree push origin sessions
 
 No version bump. No CHANGELOG. No tag. No branch cleanup (task branches and their PRs are managed by the user per-task at `/kill-this` time and via the GitHub merge button).
 
-**LEGACY MODE (no `.sessions-worktree/`, working from `session-log.md`):** stage + commit + push `session-log.md` to the current branch. Skip the worktree-specific commands.
-
 ## Step 6 — Closing summary
 
 ```
@@ -133,5 +141,5 @@ Phase progress: gh issue list --label phase:current --state open
 ## Notes
 
 - Sanity check at close: the displayed wall_clock is `ended − started`. If it includes overnight or away-from-desk time, that's correct — `/retro` will subtract break gaps later. The screen number isn't the final number.
-- No interactive merge handshake (DEC-S012 had one). Under DEC-S013, the user merges PRs whenever convenient — before `/its-dead`, after, doesn't matter. Retro reads GitHub for merge timestamps at retro time.
-- Atomicity guarantee: once `status: closed` is set and the file is pushed, this skill is done. No subsequent skill modifies this file. `/its-alive`'s old Step 7.5 backfill is gone (DEC-S013).
+- No interactive merge handshake (an earlier version had one). The user merges PRs whenever convenient — before `/its-dead`, after, doesn't matter. Retro reads GitHub for merge timestamps at retro time.
+- Atomicity guarantee: once `status: closed` is set and the file is pushed, this skill is done. No subsequent skill modifies this file. `/its-alive`'s old Step 7.5 backfill is gone.

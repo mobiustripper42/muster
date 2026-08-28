@@ -1,5 +1,51 @@
 # Changelog
 
+## [1.1.4] - 2026-08-28
+
+Nine days and 37 PRs since [1.1.3] — larger than [1.1.2]. Two threads dominate: the **decision
+record** was gated on a schema and cut back hard (the reservations corpus alone lost ~100k of
+prose that described unbuilt machinery), and `SPEC.md` grew the sections that prose was standing
+in for — §2.8 Booking & Payment written fresh, §2.10 Reservations written for the first time.
+The rest is correctness in the reservations and crew paths. Four migrations were applied to prod
+out-of-band before this promotion (`cancelled_by`, `payment_receipt_url`,
+`checkout_holds_expires_at_idx`, `crew_shift_changes`).
+
+**Fleet change, and it needs a step after the deploy:** the two **X Shore** hulls join the fleet
+(captain-only, 6 pax, 120-minute trips). Run `npm run db:seed:fleet` against prod — the importer
+looks vessels up and never creates them, so without it an X Shore trip forms a shift with zero
+seats and nothing reports it.
+
+- **A trip is measured by its own length**, on the crew's card as well as the tick's (PR #853).
+  `committedWindow`/`committedMinutes` took clock strings and a flat constant, so since #570 the
+  operator's outbox and the crew's own card could show different "back by" times for one ask.
+- **The X Shore boats import as two hulls, crewed by one captain each** (PR #852). Xola modelled
+  both as one Resource with `Count 2`; the split had to happen upstream.
+- **The refund schedule is decided**; SPEC said otherwise in four places (PR #851).
+- **SPEC §2.10 — Reservations, what the operator runs** (PR #850), and the customer's booking
+  surfaces (PR #849). The first spec that subsystem has ever had.
+- **The dictionary gate**, seeded from twelve terms (PR #848).
+- **The decision record is gated on schema v1** (PR #847), with the reservations worksheets
+  adjudicating 254 rulings (PR #846) and 17 records tombstoned for deciding nothing (PR #844).
+- **The documentation says full payment**, in one place, in every place (PR #845).
+- **The crew app shows what changed**, dismissible per person (closes #769, PR #834).
+- **The success page books**, so a lost webhook is no longer a lost booking (closes #827, PR #833).
+- **A half-filled form asks before you leave it** (closes #781, PR #831), and a refused save keeps
+  your work on six more surfaces (closes #780, PR #814) — the pair to #699 (PR #782).
+- **SPEC §2.8.4a/4b/4c** — what the customer is charged, where the tip goes, and what comes back
+  on a cancel (PRs #821, #822); no add-ons, because BrewBoat sells none (PR #823).
+- **SPEC §2.8 — Booking & Payment, written fresh** (closes #565, PR #813).
+- **Login window gates guesses, not the correct code** (closes #801, PR #810).
+- **Off-grid checkout holds are rejected** — the invisible-lockout variant of #799 (PR #808) — and
+  `/book` no longer scans every hold, sweeping the expired ones (PR #798).
+- **A full refund is the whole payment, not the fare** (#797, PR #805).
+- **A chargeback is visible instead of counted as revenue** (PR #788); who cancelled a booking is
+  recorded (closes #724, PR #787).
+- **Several offerings selling one boat-time share the column** (closes #702, PR #786).
+- **The tax rate is a live read**, because it is not a browser knob (PR #779).
+- Workflow: seeds adopted through PR #209 (PRs #778, #784, #789, #792, #815, #820), the
+  no-open-PR-ceiling override (PR #790), the record-shrinks and customer-visible-numbers context
+  rules (PRs #817, #819), and the paging test that was never broken (#804, PR #811).
+
 ## [1.1.3] - 2026-08-19
 
 Six PRs since [1.1.2], all correctness and hygiene — no schema change beyond the additive

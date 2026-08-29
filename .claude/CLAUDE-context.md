@@ -246,6 +246,40 @@ Where a competent default does the wrong thing in this repo.
 - **`git push` exception to the shell's "environment-changing commands":** the `/kill-this` ritual owns commit + push + PR — that's its job, no separate approval needed for the push inside it.
 - **`@ui-reviewer` is live** — `.claude/ui-context.md` exists and carries the brand tokens, surfaces, viewports and review checklist it hard-stops without. That file (brand tokens, surfaces, viewports, checklist) is authored with the first crew/admin surface.
 
+### Concurrent lanes
+
+One developer, two windows. The split exists so both can run without touching the same files. **The
+lane labels are the list** — `gh issue list --state open --label lane:a`. Never copy that list into a
+doc; it is stale the next time an issue is filed.
+
+| Label | Owns |
+|---|---|
+| `lane:a` | `app/(admin)`, `app/(crew)`, `src/builder/`, `src/asks/`, `src/crewapp/`, import, crew docs |
+| `lane:b` | `app/(public)/book`, `app/b`, `src/reservations/`, Stripe, webhook, customer messaging |
+| `lane:solo` | Touches both. Run alone — never while the other window is live |
+
+Unlabelled means infra, CI or workflow-process work with no product surface. Conflict-free from
+either window.
+
+**Four surfaces are lane-blind, and a label cannot protect them.** A task in either lane can reach
+all four, which is where concurrent sessions actually collide:
+
+1. **The repository seam** — `src/ports/repository.ts`, `src/adapters/postgres-repository.ts`,
+   `src/adapters/in-memory-repository.ts`, `app/lib/repo.ts`. Adding one read or write edits three of
+   them. Say so out loud before starting; the other window sequences around it.
+2. **`docs/decisions/`** — two branches both taking the next free id. This has already happened once
+   (issue #562). Resolve the number from the directory at write time, never reserve it in an issue.
+3. **`db/migrations/`** — timestamp ordering. The shell already bans two open PRs with migrations on
+   one table; two windows make that likelier, not rarer.
+4. **`docs/SPEC.md`** — the money sections get rewritten by one lane while the other changes the
+   behaviour they describe.
+
+**Check before you start, not after the conflict:** `gh pr list --json number,headRefName,files`.
+
+**`priority:high` does not order the queue.** Five lane:a issues carry it for go-live/cutover work
+that the operator has ruled goes last — *"it's only a priority if we have an actual product to
+release."* Read the queue as high, **minus** go-live, minus `blocked`/`deferred`.
+
 ## Scope Discipline (project)
 
 Check `docs/SPEC.md` §4 *Parked* + the 2027 line before adding anything — that's the "Not V1" guardrail. New ideas go to `docs/FUTURE_IDEAS.md`, **not** the locked spec (DEC-014).

@@ -1,7 +1,8 @@
 # Muster — Brand Direction
 
 ## Name
-Muster — a crew engine. ("Muster" = call the crew together.)
+Muster — a reservation and operations system for small-passenger-vessel operators.
+("Muster" = call the crew together — named for the crewing half, which was built first.)
 
 ## Tagline
 None needed yet. If pressed: *"Xola knows the booking is paid. Muster knows who's running it."*

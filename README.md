@@ -1,10 +1,13 @@
 # Muster
 
-A **crew engine** for small-passenger-vessel operators. Muster turns a week's reservations into
-discrete **shifts** (one boat, one day), works out who is legally allowed to crew each shift, asks
-them in **reliability order**, and surfaces only the shifts the automation couldn't close. The half
-of an eventual Xola replacement that Xola has no concept of: it knows whether anyone will be on the
-dock to run the trip. First tenant: **BrewBoat**.
+A reservation and operations system for small-passenger-vessel operators — a Xola replacement.
+Customers book and pay for departures. Muster groups the resulting trips into **shifts** (one boat,
+one day), works out who is legally allowed to crew each one, asks them in **reliability order**, and
+surfaces only the shifts the automation couldn't close. First tenant: **BrewBoat**.
+
+Crewing is the half Xola has no concept of: Xola knows a booking is paid; Muster knows whether
+anyone will be standing on the dock to run it. It was built first, which is why older docs describe
+the crew engine as though it were the whole product.
 
 Built on a **policy/mechanism split** — the rules (USCG manning, credentials, turnaround) are
 tenant-owned data; the engine that runs them is generic.

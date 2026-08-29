@@ -46,11 +46,15 @@ reference, a backwards amendment, and a spec amendment that never landed.
 
 ## What Muster Is
 
-A **crew engine** for small-passenger-vessel operators. It takes imported reservations, groups them
-into **shifts**, works out who is legally allowed to crew each one (USCG manning, credentials,
-turnaround), asks them in **reliability order**, and surfaces only what the automation could not
-close. Xola knows a booking is paid; Muster knows whether anyone will be standing on the dock to
-run it.
+A **reservation and operations system** for small-passenger-vessel operators — a Xola replacement.
+Customers book and pay for departures. Muster groups the resulting trips into **shifts**, works out
+who is legally allowed to crew each one (USCG manning, credentials, turnaround), asks them in
+**reliability order**, and surfaces only what the automation could not close.
+
+**Crewing is the half Xola has no concept of** — Xola knows a booking is paid; Muster knows whether
+anyone will be standing on the dock to run it. It was built first, so "the crew engine" in older
+docs names a subsystem, not the product. A proposal that treats crewing as the whole of Muster is
+reasoning from that stale framing.
 
 **A shift is the unit of crewing:** all of one vessel's trips on one vessel-local day, worked as a
 single assignment — so a captain who takes it takes the whole day, not a trip. That grouping is the

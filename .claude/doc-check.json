@@ -2,6 +2,7 @@
   "repo": "mobiustripper42/muster",
   "rosters": {
     "CLAUDE.md": { "skills": true, "agents": true },
+    ".claude/CLAUDE-context.md": { "skills": "mentions", "agents": false },
     "docs/AGENTS.md": { "skills": true, "agents": true },
     "docs/CHEATSHEET.md": { "skills": true, "agents": false }
   },

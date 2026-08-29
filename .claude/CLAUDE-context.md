@@ -154,6 +154,7 @@ Persistence is **Postgres behind the `Repository` port**: **local Postgres in de
 - **These docs carry decisions, rationale and pointers — never inventory.** A prose snapshot of current state is stale the day the code moves; a pointer (`ls src/adapters/*-channel.ts`) sends the reader to the truth and is checkable. `check:context` enforces the checkable half: cite a full path and it gets verified, a bare filename does not, and `<angle brackets>` mark a deliberate placeholder.
 - **`check:docs` reads structure, never prose** (DEC-144) — DEC ids, `npm run` commands, issue-link text against its own URL, skill and agent rosters against `.claude/` in both directions, and repo paths. Historical ledgers are exempt from the path class by name and with a reason, because they cite deleted files correctly.
 - **Neither gate can judge a characterization.** A sentence that is false about the code passes both. That is the failure mode these conventions exist against, and it is why a pointer beats a description.
+- **Cite a section in the form the gate can read: `` `docs/SPEC.md §2.4` ``** — path and section inside one pair of backticks, closing backtick ending the section name. That shape gets verified. A bare `(8.3)` in prose does not, and two of them sat here pointing at a section number SPEC stopped using; Split and Merge live under an unnumbered `### Actions`. The rule generalizes: **prefer the spelling the gate can check over the one that reads better**, because the difference is whether a stale reference announces itself or waits to be grepped.
 
 ### UI / Brand
 - Tokens are harvested from the mockups into `@theme` in `app/globals.css` (DEC-021) — colors, one card radius (`--radius-card: 14px` — deliberately a single value, not a scale; see `BRAND.md`). No color for color's sake. Binding constraints live in `.claude/ui-context.md`.
@@ -173,21 +174,25 @@ The shell's `## Pull Request Workflow` is the baseline. Muster adds:
 - **The eyeball path** is the Vercel preview URL once deployed, else `mill-dev:3000` per `docs/RUNNING.md`. Link that file rather than re-explaining setup each PR.
 - **`production` is a deploy pointer, never a PR base.** It went live with the Neon deploy (DEC-033/DEC-S022); `main` is always the active trunk.
 
-### Reservations (`phase:12b`) — every PR ships a state the operator can actually test
+### Every PR ships a state the operator can actually test
 
-**Standing requirement, operator 2026-08-05.** The reservation system has had almost no hands-on
-testing: the operator deliberately held it back to do one big pass once the polish landed. That
-pass will happen **long after** each PR is written, by someone who does not have the diff in their
-head. So a `phase:12b` PR that merges without a reproducible starting state is a PR that silently
-opts out of the only testing this subsystem will get.
+**Standing requirement, operator 2026-08-05.** Written for the reservation system, which had almost
+no hands-on testing because the operator held it back for one big pass after the polish landed —
+but the reasoning was never specific to reservations. **The pass happens long after the PR is
+written, by someone who does not have the diff in their head.** That is true of every surface here,
+so a PR that merges without a reproducible starting state silently opts out of the only testing it
+will get.
 
-On top of the eyeball rules above, every `phase:12b` PR must carry:
+Applies to any PR touching a surface a person has to look at. `phase:12b` is where it was first
+enforced, not where it stops.
+
+Every such PR carries:
 
 1. **A named seed that produces the state under test** — an `npm run db:seed:*` that exists in the
-   repo *after this PR*. `db/seed-reservation-dev.ts` is the base world (a LIVE Offering, a
-   Location, the owned-day mask, two materialized bookings, dates relative to today so it never
-   expires). If no seed reaches the state, **extend one or add one in the same PR** — "click
-   through the booking flow first" is not a starting state.
+   repo *after this PR*. For reservations, `db/seed-reservation-dev.ts` is the base world (a LIVE
+   Offering, a Location, the owned-day mask, two materialized bookings, dates relative to today so
+   it never expires). If no seed reaches the state, **extend one or add one in the same PR** —
+   "click through the booking flow first" is not a starting state.
 2. **Seeds that compose and re-run.** The pass runs several in one sitting. A seed that assumes an
    empty database, or that collides with another seed's ids, breaks the step after it. State the
    composition explicitly: which seeds, in which order.

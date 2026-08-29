@@ -94,7 +94,7 @@ Muster is Next.js over a framework-free domain core.
 |---|---|
 | **Proof** | Vitest against the domain core (oracle, state machine, reliability log), which is heavily unit- and integration-tested. Test-first when behaviour changes. **No pgTAP** — there is no Supabase and no RLS; persistence sits behind the `Repository` port with an in-memory adapter as the test substrate. |
 | **Proof command** | The relevant Vitest file or suite, not the whole thing. The full suite is my call, never automatic. |
-| **Surface check** | **Every page works at 375px — eyeball it at `mill-dev:3000`** per `docs/RUNNING.md`. Playwright screenshots land when that tooling does (M4 fast-follow); until then this step is done by looking, which is exactly why it is a separate step from the proof. |
+| **Surface check** | **Every page works at 375px.** Playwright's `mobile` project already runs that pass over ~30 named specs and feeds failure screenshots to `@ui-reviewer` — read `testMatch` in `playwright.config.ts` for the current set, and add to it when a surface with real mobile layout risk lands. A surface outside that set is eyeballed at `mill-dev:3000` per `docs/RUNNING.md`. Looking is still a separate step from the proof: the automated pass catches overflow and clipping, never whether a control is reachable or a surface can be escaped. |
 
 **The gate** is `npm run verify`, run by `/kill-this`.
 
@@ -212,7 +212,7 @@ and the requirement outlives whoever is at the keyboard.
 The `## Blast-Radius Triggers` table above is the trigger, matched against the diff by `/kill-this` Step 3.5. Two things that table cannot say:
 
 - **Run it once, on the PR, before merge.** It is branch-scoped, so per-commit runs pay repeatedly for the same answer.
-- **A row hit is not an instruction to spend.** It is billed and launches many agents; it earns its cost where a missed defect costs more than the review — money, auth, a destructive migration. A diff you cannot hold in your head qualifies too, and that is a judgment nothing can match against a path.
+- **A row hit is not an instruction to spend.** It is billed and launches many agents, so it earns its cost exactly where a missed defect costs more than the review — **money, auth, a destructive migration, and nothing else.** A diff too big to review well is a reason to split it or to read it twice, not a reason to buy an audit.
 
 ## MCP fast-fix loop (9.0/#230)
 

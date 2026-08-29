@@ -234,13 +234,21 @@ export function checkIssueLinks(docs, repo = REPO) {
  * a complete list does not mention.
  */
 /**
- * `true` claims the doc lists EVERYTHING and gets both directions. `"mentions"` claims only that
- * whatever it names is real, and gets the unknown-name half alone.
+ * `skills: true` claims the doc lists EVERY skill and gets both directions. `skills: "mentions"`
+ * claims only that whatever it names is real, and skips the completeness half.
  *
  * The distinction exists because `.claude/CLAUDE-context.md` is not a roster — it names a skill in
  * passing, and demanding it enumerate all of them is a list to keep in sync that buys nothing. The
  * half that costs nothing is the half that catches a retirement: a project carried `/pause-this`
  * for a day after the skill was deleted, in the one file every session reads as ground truth.
+ *
+ * SKILLS ONLY. `agents: "mentions"` is deliberately NOT a thing, and the first draft of this
+ * shipped it as one — a value the config accepted and nothing acted on. There is no reverse check
+ * for agents: the unknown-name loop below walks `named` (slash commands) and there is no `mentioned`
+ * equivalent, because `AGENT_MENTION` matches any `@word` and a real corpus is full of them —
+ * `@core` is an import alias, `@theme` is a CSS at-rule. Catching a retired `@agent` needs a
+ * foreign-name list of its own, which is a separate change; promising it here with nothing behind
+ * it is worse than not offering it.
  */
 export function checkRosters(docs, { skills, agents }, rosters = ROSTERS) {
   const failures = []
@@ -256,6 +264,11 @@ export function checkRosters(docs, { skills, agents }, rosters = ROSTERS) {
     for (const m of doc.text.matchAll(SLASH_COMMAND)) named.add(m[1] ?? m[2])
     const mentioned = new Set([...doc.text.matchAll(AGENT_MENTION)].map((m) => m[1]))
 
+    // Refused rather than ignored. A config value nothing acts on is a rule that looks applied and
+    // is not, which is the class this whole gate exists to close — and the first draft of this
+    // function shipped exactly that.
+    if (claims.agents === 'mentions')
+      failures.push(`${roster} — \`agents: "mentions"\` is not implemented; use true or false. Only skills support "mentions"`)
     // `=== true` and not truthiness: `"mentions"` is also truthy, and reading it as "list
     // everything" is the failure this distinction exists to prevent.
     if (claims.skills === true)

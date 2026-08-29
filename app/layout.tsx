@@ -40,7 +40,7 @@ const TITLE =
 
 export const metadata = {
   title: TITLE,
-  description: "Crew engine for small-passenger-vessel operators",
+  description: "Reservation and operations system for small-passenger-vessel operators",
   applicationName: "Muster",
   // Installable to a phone home screen (Phase 10.6). app/manifest.ts is
   // auto-linked; these give iOS its touch icon + standalone chrome.

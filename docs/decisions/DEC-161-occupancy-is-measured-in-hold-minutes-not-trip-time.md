@@ -11,7 +11,7 @@ claims:
     target: "2.8.3"
   - kind: "file"
     target: "src/domain/entities.ts"
-    note: "Offering.holdMinutes, read nowhere today"
+    note: "Offering.holdMinutes, read nowhere in occupancy math"
 revisit_if: "turnaround has to vary by departure rather than be one figure for the offering"
 amends_spec:
   - section: "2.8"
@@ -27,8 +27,8 @@ See also DEC-041 — the crew-side trip length, deliberately a separate constant
 ### Context
 
 `Offering` carries two durations. One is minutes on the water; the other is the boat's whole
-commitment, turnaround included. The second is read nowhere. Every occupancy path measures with
-the first, and §2.8 specified the same mistake.
+commitment, turnaround included. The second round-trips through the admin form and is read by no
+occupancy decision. Every one of those measures with the first, and §2.8 specified the same mistake.
 
 ### Decision
 

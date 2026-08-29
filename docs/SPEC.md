@@ -1532,8 +1532,8 @@ is past the error anyway and off-grid times are refused. It appears the day a se
 the same boat at different times, which is exactly the case below.
 
 **Each row is measured by its own hold minutes, not the asking offering's.** A fleet with more than
-one offering has more than one hold, and measuring every rival by the commitment of the departure
-currently being sold is wrong in both directions.
+one offering has more than one commitment, and measuring every rival by the commitment of the
+departure currently being sold is wrong in both directions.
 
 **The same rule governs both sides.** The code that decides what to *show* on the calendar and the code
 that decides what to *refuse* at the write ask the identical question. If they diverge, one advertises
@@ -2063,6 +2063,12 @@ the decision is the one that is right.
   on checkouts already in flight. That is accepted, not overlooked: the value lives in the host's env,
   so changing it means a restart, and the window is minutes long. **Do not fix this by adding an
   expiry column** — a second stored number that can disagree with the first is the larger problem.
+
+  It also means a window change is retroactive for **counting**, not just for live checkouts. 2.8.8's
+  question — *how long did each abandoned checkout hold a boat* — is answered with today's window,
+  including for rows that lapsed under a different one. Accepted while the window is a constant
+  nobody has yet changed. If it is ever tuned, the honest fix is recording that the change happened
+  and when, not storing the deadline on every row.
 - **Does a pending reservation appear on the admin calendar?** Real occupancy the operator may want to
   see, and also noise that resolves itself within the payment window.
 - **Is the sweeper worth having at all?** Expiry is lazy (2.8.8), so it frees nothing and exists only

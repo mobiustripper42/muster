@@ -44,7 +44,24 @@ export function deriveSeats(vessel: Vessel, shiftId: ShiftId): Seat[] {
 /**
  * Derive a shift's crewing state from its seats (DEC-005). Only **required**
  * seats gate `Crewed`; supernumerary seats are ignored here. A shift with no
- * required seats (a 0-crew vessel) is vacuously `Crewed` — nothing to fill.
+ * required seats **throws** (#582) — see below.
+ *
+ * **Why an empty required set is an error and not a state.** It used to return
+ * `Crewed` vacuously, reading "this boat needs nobody" off a fact that actually
+ * means "nobody has told us how to crew this boat". The two share a
+ * representation and only one of them is real: `deriveSeats` iterates
+ * `vessel.manning`, so zero required seats means the manning rule was empty — or
+ * that `formOneShift` found no vessel row at all and never derived seats (its
+ * `getVessel` / `if (vessel)` pair). Either way every shift on that boat read fully
+ * crewed with no one on it: no ask fired, `deriveAtRiskBoard` produced no reasons
+ * so the row was dropped, and `claimableSeatsFor` excludes `Crewed`.
+ *
+ * Operator's ruling (2026-08-29): BrewBoat is not a rental company, so there is
+ * no boat with no required crew — a self-captained Duffy gets a dock-hand. That
+ * removes the only input for which `Crewed` here was correct, which is what lets
+ * this be a throw rather than a new state or a threaded `manningKnown` flag.
+ * Issue #861 makes manning required at the vessel surface, closing the source;
+ * this throw is the backstop that keeps the failure loud however it arrives.
  *
  * Precedence: a bailed required seat means the shift needs attention (`AtRisk`)
  * even if others are confirmed. `Completed`/`Cancelled` are lifecycle states set
@@ -62,7 +79,12 @@ export function deriveSeats(vessel: Vessel, shiftId: ShiftId): Seat[] {
  */
 export function deriveShiftState(seats: Seat[]): ShiftState {
   const required = seats.filter((s) => s.kind === "required");
-  if (required.length === 0) return "Crewed";
+  if (required.length === 0) {
+    throw new Error(
+      "Shift has no required seats — the vessel has no manning rule (#582). " +
+        "A boat with no required crew is an error, not a state.",
+    );
+  }
   if (required.some((s) => s.state === "Bailed")) return "AtRisk";
   if (required.every((s) => s.state === "Confirmed")) return "Crewed";
   if (required.some((s) => s.state !== "Open")) return "Filling";

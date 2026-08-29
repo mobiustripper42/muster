@@ -43,3 +43,7 @@ __pycache__/
 
 # Per-box Claude Code overrides — accumulated allow-clicks, never shared (DEC-S023)
 .claude/settings.local.json
+
+# `settings-policy.mjs --write` drops a timestamped backup beside the file it edits.
+*.bak
+*.bak.*

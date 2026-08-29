@@ -74,6 +74,7 @@
       "Bash(docker run *)",
       "Bash(gh extension install *)",
       "Bash(sed -n *)",
+      "Bash(sed -i *)",
       "Bash(sh)",
       "Bash(bash)",
       "Bash(sudo *)",
@@ -87,7 +88,8 @@
       "Read(**/id_ed25519*)",
       "Edit(**/id_ed25519*)",
       "Read(**/id_rsa*)",
-      "Edit(**/id_rsa*)"
+      "Edit(**/id_rsa*)",
+      "AskUserQuestion"
     ]
   }
 }

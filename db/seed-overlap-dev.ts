@@ -57,7 +57,7 @@ const repo = PostgresRepository.fromConnectionString(url);
 
 const today = vesselDateOf(new Date());
 // 90 days, not a month: an offering's season can start well ahead of today (the demo world runs
-// the 10th–16th of NEXT month), and a window that ends before the season starts finds nothing
+// late in NEXT month), and a window that ends before the season starts finds nothing
 // and reports "no candidates" — indistinguishable from data that genuinely has none.
 const window = eachDay(today, 90);
 const [offerings, vessels, blocks] = await Promise.all([

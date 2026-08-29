@@ -19,9 +19,12 @@
  * failure was worse than a red test: the loop raced a link navigation and usually broke out on
  * iteration 0 against the page it never left, so the spec passed while verifying nothing.
  *
- * The window therefore sits on the **10th–16th of next month**, always. Same seven-day shape as
- * before, never the current month, always ahead of today, and every offset is ≤15 so it fits
- * inside even February.
+ * The window therefore sits **late in next month**, always. Same seven-day shape as before, never
+ * the current month, always ahead of today, and every offset is ≤15 so it fits inside even
+ * February. **The exact days are `window` below and nowhere else** — they moved once already
+ * (10th–16th → 19th–25th, see `MIN_BOOKING_LEAD_DAYS`) and left eight prose copies of the old
+ * literal behind across this repo, one of them in this very docstring. Describe the shape here;
+ * read the days from the code.
  *
  * **The SEASON is wider than the window since #797** — it starts today. The window scopes the
  * demo (bookings, block fixtures, every pinned figure); the season only decides where virtual

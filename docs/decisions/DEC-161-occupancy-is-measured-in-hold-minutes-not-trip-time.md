@@ -32,13 +32,14 @@ occupancy decision. Every one of those measures with the first, and §2.8 specif
 
 ### Decision
 
-Occupancy is hold minutes. BrewBoat's are 120 against a 100-minute trip, so measuring with the
-trip frees the hull twenty minutes early and a rival at 15:15 sells against an unfinished 13:30.
+Occupancy is hold minutes. Both are per-offering configuration, so no figure belongs here — but
+where a trip is 100 and the hold 120, measuring with the trip frees the hull twenty minutes early
+and a rival at 15:15 sells against an unfinished 13:30.
 
-Both durations freeze onto the reservation. Turnaround is the difference between them and is not
-stored, because a third number is a third thing that can disagree.
+Both durations freeze onto the reservation. Turnaround is the difference and is not stored, because
+a third number is a third thing that can disagree.
 
-Reserved time is stored; expiry is derived from it plus the payment window, which is a setting. An
-expiry column was rejected — it carries nothing the reserved time does not, and two stored numbers
-can diverge. Changing the setting moves deadlines already in flight, accepted because the value
-lives in the host's env and the window is minutes long.
+Reserved time is stored; expiry derives from it plus the payment window, a setting. An expiry column
+was rejected — it carries nothing the reserved time does not, and two stored numbers can diverge.
+Changing the setting moves deadlines already in flight, accepted because the value lives in the
+host's env and the window is minutes long.

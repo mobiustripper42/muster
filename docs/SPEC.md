@@ -1523,8 +1523,12 @@ moment.
 
 **Occupancy is measured in hold minutes, never in trip time.** The boat is not sellable again the
 moment the customers step off — it has to be brought in, cleaned and made ready, and that turnaround
-is time no other departure can have. BrewBoat's trip time is 100 minutes and its hold minutes are
-120. Measure with 100 and the hull reads free twenty minutes early, so a second party can buy a
+is time no other departure can have. **Both numbers are per-offering configuration and they differ
+across a fleet** — a row is measured by its own offering's values, never by a figure written down
+here.
+
+Worked through, with an offering whose trip time is 100 minutes and whose hold minutes are 120:
+measure with the 100 and the hull reads free twenty minutes early, so a second party can buy a
 departure that starts while the first boat is still tying up.
 
 That failure is invisible on a single offering at even spacing, because the next published departure
@@ -2013,8 +2017,8 @@ the decision is the one that is right.
       departure — produce exactly one sale.** Run it against real Postgres, repeatedly, and assert the
       loser loses. A guard keyed on exact departure time passes every test that uses a single time.
 - [ ] Two offerings with different hold minutes on one boat block each other by **their own**
-      durations — and a departure booked at 13:30 with a 100-minute trip and 120 hold minutes refuses
-      a rival at 15:15, which measuring in trip time would have sold.
+      durations — and given a fixture offering whose trip time is 100 and whose hold minutes are 120,
+      a departure booked at 13:30 refuses a rival at 15:15, which measuring in trip time would sell.
 - [ ] The calendar and the write refuse the *same* set of departures.
 - [ ] A pending reservation's `eventId` is null, and stays null, until it is booked.
 - [ ] Abandoning checkout leaves no `Event`, no customer record and no booking code behind, and sends

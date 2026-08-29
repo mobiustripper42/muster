@@ -115,10 +115,21 @@ const topLevel = (dir) =>
  * The third is what the roster check below already does, in both directions, and it would have
  * caught it the day the roster changed. It was simply never pointed here.
  *
- * `scaffold/claude/` is excluded: `CLAUDE-context.md` is a placeholder skeleton whose citations
- * are `<e.g. …>` examples, and `check-context.mjs` owns the real context files.
+ * `scaffold/claude/` is excluded: its `CLAUDE-context.md` is a placeholder skeleton whose citations
+ * are `<e.g. …>` examples.
+ *
+ * THE REAL CONTEXT FILE IS INCLUDED, and it was not until a roster rotted inside one. It loads
+ * every session as ground truth and was the one always-loaded file whose skill and agent mentions
+ * nothing verified: a project carried `/pause-this` twice and `@doc-consistency` once for a day
+ * after all three were deleted, and every gate stayed green. Declaring it in `doc-check.json`'s
+ * rosters did nothing on its own, because a file this list never reaches is a file the roster check
+ * never sees — a rule that looks applied and is not.
+ *
+ * `check-context.mjs` also reads it, for paths and § sections. That overlap is the arrangement
+ * `CLAUDE.md` has always had with both gates: each checks the half it owns, and rosters are this
+ * one's half.
  */
-export const DOCS = [...topLevel('docs'), ...topLevel('scaffold/docs'), 'CLAUDE.md']
+export const DOCS = [...topLevel('docs'), ...topLevel('scaffold/docs'), 'CLAUDE.md', '.claude/CLAUDE-context.md']
 
 const NPM_SCRIPT = /`npm run ([a-z][a-z0-9:-]*)`/g
 const ISSUE_LINK = /\[(?:PR )?#(\d+)\]\((https:\/\/github\.com\/([^/\s]+\/[^/\s]+)\/(issues|pull)\/(\d+))\)/g
@@ -222,10 +233,19 @@ export function checkIssueLinks(docs, repo = REPO) {
  * authoritative, which is worse than one that names something fake — nobody goes looking for what
  * a complete list does not mention.
  */
-export function checkRosters(docs, { skills, agents }) {
+/**
+ * `true` claims the doc lists EVERYTHING and gets both directions. `"mentions"` claims only that
+ * whatever it names is real, and gets the unknown-name half alone.
+ *
+ * The distinction exists because `.claude/CLAUDE-context.md` is not a roster — it names a skill in
+ * passing, and demanding it enumerate all of them is a list to keep in sync that buys nothing. The
+ * half that costs nothing is the half that catches a retirement: a project carried `/pause-this`
+ * for a day after the skill was deleted, in the one file every session reads as ground truth.
+ */
+export function checkRosters(docs, { skills, agents }, rosters = ROSTERS) {
   const failures = []
   const byPath = new Map(docs.map((d) => [d.path, d]))
-  for (const [roster, claims] of Object.entries(ROSTERS)) {
+  for (const [roster, claims] of Object.entries(rosters)) {
     const doc = byPath.get(roster)
     // A roster absent from the documents in hand is not this function's business — it checks
     // TEXT against DISK. Whether the file exists at all is a fact about disk, and lives in
@@ -236,9 +256,11 @@ export function checkRosters(docs, { skills, agents }) {
     for (const m of doc.text.matchAll(SLASH_COMMAND)) named.add(m[1] ?? m[2])
     const mentioned = new Set([...doc.text.matchAll(AGENT_MENTION)].map((m) => m[1]))
 
-    if (claims.skills)
+    // `=== true` and not truthiness: `"mentions"` is also truthy, and reading it as "list
+    // everything" is the failure this distinction exists to prevent.
+    if (claims.skills === true)
       for (const s of skills) if (!named.has(s)) failures.push(`${roster} — roster omits /${s}, which exists on disk`)
-    if (claims.agents)
+    if (claims.agents === true)
       for (const a of agents) if (!mentioned.has(a)) failures.push(`${roster} — roster omits @${a}, which exists on disk`)
     // The reverse direction is scoped to names that LOOK like this project's own commands. A doc
     // may legitimately name a plugin skill (`/stripe-projects`) or a built-in (`/review`) that has

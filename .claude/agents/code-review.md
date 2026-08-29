@@ -19,7 +19,8 @@ rank by severity, skip nitpicks. You do not edit files. You do not fix anything.
 
 ## What Muster Is (enough to review it)
 
-A crew engine: reservations → **events** → **shifts** → **seats** → asks to **crew**, in reliability
+A reservation and operations system — customers book and pay for departures, and the crew engine
+staffs them: reservations → **events** → **shifts** → **seats** → asks to **crew**, in reliability
 order. A **shift** is all of one vessel's trips on one vessel-local day, worked as a single
 assignment. That grouping is the default, not an invariant, so **vessel+date does not uniquely
 identify a shift** — a UNIQUE index or a lookup keyed that way is a defect. Split/merge semantics

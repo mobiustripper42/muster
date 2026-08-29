@@ -4,16 +4,18 @@ Everything specific to **this** project. The jig-managed `CLAUDE.md` shell reads
 
 ## What We're Building
 
-Muster is a **crew engine** for small-passenger-vessel operators. It takes imported reservations, groups them into **shifts**, works out who is legally allowed to crew each shift (USCG manning, credentials, turnaround), asks them in **reliability order**, and surfaces only the shifts the automation could not close.
+Muster is a reservation and operations system for small-passenger-vessel operators — a Xola replacement. Customers book and pay for departures. Muster groups the resulting trips into shifts, works out who is legally allowed to crew each one (USCG manning, credentials, turnaround), asks them in reliability order, and surfaces only the shifts the automation could not close.
 
-**A shift is the unit of crewing:** all of one vessel's trips on one vessel-local day, worked as a single assignment — taking it means taking the whole day, not a trip. That grouping is the *default*, not an invariant: a day with a long midday gap can be **split** into two shifts (8.3) and merged back (8.4), so **vessel+date does not uniquely identify a shift**.
+Crewing is the half Xola has no concept of. Xola knows a booking is paid; Muster knows whether anyone will be standing on the dock to run it.
 
-**Two windows, deliberately decoupled (DEC-080)** — conflating them is a recurring source of wrong reasoning. `XOLA_PULL_LEAD_DAYS` is how far ahead the importer fetches reservations; `STAFFING_HORIZON_LEAD_DAYS` is how far ahead the engine starts *working* a shift, and therefore asking (fractional is supported so the ask can be timed off the trip's clock hour). The pull window defaults to the horizon and is raised so a month of bookings is visible without the engine asking crew that far out. Both are **env-overridable, tuned per deploy without a code change** (DEC-062) — never hardcode either. **Repo defaults live in `src/builder/derive.ts:148,192`; the deployed values live in Vercel env and are not answerable from the repo** (audit shard E found 22 prod env vars absent from `DEPLOY.md`). Do not quote a number for these from memory or from this file — read the constant, or ask. A separate weekend-cohort policy (DEC-116) can collapse Fri/Sat/Sun asks onto one shared send instant. It is the half of an eventual Xola replacement that Xola has no concept of: Xola knows a booking is paid; Muster knows whether anyone will be standing on the dock to run it. First tenant / worked example: **BrewBoat** — a real fleet of **4 inspected party boats** (two 12-pax, one 14, one 16), **each manned by 2 crew**; zero-crew rentals are also in scope (DEC-016). Manning is per-vessel data the deriver loops (0/1/2/N), never a fixed pair. *(The old "one boat, COI 6, 1 captain + 1 mate" example was a placeholder — corrected per DEC-016.)*
+**A shift is the unit of crewing:** all of one vessel's trips on one vessel-local day, worked as a single assignment — taking it means taking the whole day, not a trip. That grouping is the *default*, not an invariant: a day with a long midday gap can be **split** into two shifts and merged back, so **vessel+date does not uniquely identify a shift**.
 
-The spine is a **policy/mechanism split** (DEC-001): the rules are tenant-owned data; the engine that runs them is generic.
+**Two windows, deliberately decoupled (DEC-080)** — conflating them is a recurring source of wrong reasoning. `XOLA_PULL_LEAD_DAYS` is how far ahead the importer fetches reservations; `STAFFING_HORIZON_LEAD_DAYS` is how far ahead the engine starts *working* a shift, and therefore asking (fractional is supported so the ask can be timed off the trip's clock hour). The pull window defaults to the horizon and is raised so a month of bookings is visible without the engine asking crew that far out. Both are **env-overridable, tuned per deploy without a code change** (DEC-062) — never hardcode either. **Repo defaults live in `src/builder/derive.ts:148,192`; the deployed values live in Vercel env and are not answerable from the repo** (audit shard E found 22 prod env vars absent from `DEPLOY.md`). Do not quote a number for these from memory or from this file — read the constant, or ask. A separate weekend-cohort policy (DEC-116) can collapse Fri/Sat/Sun asks onto one shared send instant.
+
+First tenant / worked example: **BrewBoat**. The fleet, its manning and the DEC-016 correction to the old single-boat placeholder are in `docs/SPEC.md`. The rule that outlives the numbers: **manning is per-vessel data the deriver loops (0/1/2/N), never a fixed pair**, and zero-crew rentals are in scope.
 
 Roles:
-- **Spink** — the operator (BrewBoat's). Semi-retired; the design goal is **no babysitting**. Runs the admin app, leans on crew, makes the 11pm cancel/reschedule call.
+- **Eric** — the operator (BrewBoat's). Semi-retired; the design goal is **no babysitting**. Runs the admin app, leans on crew, makes the 11pm cancel/reschedule call.
 - **Drew** — the owner. Owns the money/policy decisions (refunds, deposit-vs-full). Payments shipped; the money path is live and carries its own blast-radius rows below.
 - **Crew** — captains and mates. Magic-link auth, no passwords. The crew app is deliberately small but it is **not** three screens, and some are feature-flagged, so "the crew app" means different things per deploy. Authoritative list: `ls app/\(crew\)/crew/`. The standing pressure isn't a screen count — it's whether a new thing earns a screen, because every extra screen is somewhere stale information can hide.
 
@@ -39,6 +41,19 @@ Two rules the types cannot carry: fields marked *log day one* must be real from 
 `npm run verify` is **the gate**. It chains the doc checks, both typecheck profiles, lint, test and build, so a core-only regression cannot ship behind a green app build.
 
 **`build` alone is not the gate** — it validates the app, not the core. The rest are in `package.json`.
+
+## Environment variables
+
+**`env.example` is the list.** It is committed, it is the only env file that is, and it carries every variable with its default and its trap — which flag values are silently wrong, which secret dead-links customer URLs when rotated, which one is build-inlined. Read it. **Do not ask where an environment variable lives, propose creating a template, or offer to audit the environment. All three are done.**
+
+It is the output of an audit that swept the codebase for every variable and wrote down what each one does and how it fails. That work is finished and this file is what it produced — but it was never announced anywhere a session reads, so sessions kept rediscovering the absence and offering to redo it. This paragraph is the announcement.
+
+Two reasons a session concludes otherwise, both observed:
+
+- **`.gitignore` treats `.env*` as secret with no exceptions (DEC-S043)**, so the template is named `env.example` with no leading dot, deliberately outside that namespace. A `ls .env*` or a grep anchored on `^\.env` cannot match it and reads as "there is no template."
+- **Not every variable is read as `process.env.X`.** Helpers — `envPositiveNumber`, `envWallClock`, `flagOn` — take the name as a string argument, so a grep for the direct pattern under-reports the set by roughly a dozen.
+
+The deployed values are in Vercel env and are **not answerable from the repo**. `env.example` tells you a variable exists and what it does; only the dashboard tells you what production is running.
 
 ## Additional Docs
 
@@ -216,14 +231,13 @@ Where a competent default does the wrong thing in this repo.
 | A green gate says nothing about whether a sentence is true | `check:context` and `check:docs` verify that cited paths and ids resolve. Neither can judge a characterization, so a doc describing code that has since changed passes both. Prefer a pointer — `ls src/adapters/*-channel.ts` — over a description, because only one of them is checkable |
 | The two lead-time windows look interchangeable and are not | `XOLA_PULL_LEAD_DAYS` is how far ahead reservations are fetched; `STAFFING_HORIZON_LEAD_DAYS` is how far ahead the engine works a shift and therefore asks. Conflating them is the recurring wrong-reasoning here (DEC-080). Both are env-overridable per deploy (DEC-062) — read the constant, never quote a number from memory |
 | "Money" instinct fires on payment code and misses payroll | A wrong timestamp in `time-clock`, a mis-bucketed pay period, a double-counted punch — none touch a payment provider, and all reach a person's pay. The blast-radius table lists the payroll exports by name for this reason |
-| `vessel+date` does not identify a shift | Shifts split and merge (8.3/8.4), so the obvious key is not unique. Code that assumes it is will be right until the first split day |
+| `vessel+date` does not identify a shift | Shifts split and merge, so the obvious key is not unique. A UNIQUE index or a lookup keyed that way is a defect, and it will be right until the first split day |
+| Looking for the env template with `ls .env*` finds nothing | The template is `env.example`, with no leading dot, because `.gitignore` treats `.env*` as secret with no exceptions (DEC-S043). A session that greps the dotted namespace concludes there is no template and offers to write one that already exists. This happened |
 | Formatting is not chained to typecheck | `npm run typecheck` is `tsc` against one profile and nothing else, and there is no `format` script at all. Chaining a formatter is the common pattern elsewhere and was added here once, unasked |
 | `main` is not always PR-able here | A multi-PR feature that is not independently releasable lands on a long-lived `feature/` branch, because `main` must stay promotable to `production` at all times (DEC-059). The shell's stack-onto-`main` guidance covers independently-shippable work only |
 
 ## Workflow Notes (project)
 
-- **Webpack, not Turbopack** (DEC-020) — `next build --webpack` / `next dev --webpack`. The core's NodeNext `.js`→`.ts` `extensionAlias` is unsupported by Turbopack.
-- **Two TS profiles:** `tsconfig.core.json` (the framework-free core) vs root `tsconfig.json` (the Next app). `npm run verify` checks both.
 - **`git push` exception to the shell's "environment-changing commands":** the `/kill-this` ritual owns commit + push + PR — that's its job, no separate approval needed for the push inside it.
 - **`@ui-reviewer` is live** — `.claude/ui-context.md` exists and carries the brand tokens, surfaces, viewports and review checklist it hard-stops without. That file (brand tokens, surfaces, viewports, checklist) is authored with the first crew/admin surface.
 

@@ -1,8 +1,7 @@
 # Muster — Authoritative Design Spec
 
 Baseline for the Claude Code build, first consolidated 2026-06-03 from the 11 design artifacts into
-one buildable source of truth. Working name: **Muster** (crew engine). Worked example / tenant #1:
-**BrewBoat**.
+one buildable source of truth. Working name: **Muster**. Worked example / tenant #1: **BrewBoat**.
 
 > **SCOPE RULE (DEC-014).** **No new features or scope go in here.** Anything new — however good —
 > goes in `docs/FUTURE_IDEAS.md` and waits. Edits to this document are *corrections* (something
@@ -33,11 +32,14 @@ payments-topology, coexistence-rollout, event-admin, customer-portal-sketch.
 
 ## 0.1 What Muster is
 
-Muster is a **crew engine** for small-passenger-vessel operators: it turns a week's reservations
-into discrete **shifts** (one boat, one day), works out who is legally allowed to crew each shift,
-asks them in reliability order, and surfaces only the shifts the automation could not close. It is
-the half of an eventual Xola replacement that Xola has no concept of — Xola knows a booking is
-paid; Muster knows whether anyone is going to be standing on the dock to run it.
+Muster is a **reservation and operations system** for small-passenger-vessel operators — a Xola
+replacement. Customers book and pay for departures. Muster groups the resulting trips into discrete
+**shifts** (one boat, one day), works out who is legally allowed to crew each shift, asks them in
+reliability order, and surfaces only the shifts the automation could not close.
+
+**Crewing is the half Xola has no concept of** — Xola knows a booking is paid; Muster knows whether
+anyone is going to be standing on the dock to run it. That half was built first, so "the crew
+engine" appears throughout this document as the name of a subsystem rather than of the product.
 
 The product's spine is a **policy/mechanism split**: the rules (USCG manning, credentials,
 turnaround) are tenant-owned data; the engine that runs them is generic. That split is what lets
@@ -45,7 +47,7 @@ Muster be built perfect for one niche (BrewBoat) and still be sellable later wit
 
 ## 0.2 Scope of this spec — locked
 
-**In scope (the 2026-buildable crew engine):**
+**In scope (2026-buildable):**
 
 - The **behavioral substrate** — shift/seat state machine, availability oracle, reliability score
   (§1), written as the canonical reference the surfaces cite.

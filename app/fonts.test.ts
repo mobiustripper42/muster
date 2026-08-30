@@ -125,10 +125,20 @@ describe("typeface loading (#731)", () => {
       // `\b…\b` around the named group is what keeps `font-mono` and `font-sans` — families, not
       // weights — from matching. An arbitrary value (`font-[550]`) is the bypass that would
       // otherwise walk straight past a rule written only against the named utilities.
+      //
+      // **What it does not see**, found by code review and listed so the next gap is a known one
+      // rather than a surprise: a class built by template literal (`` `font-${w}` ``), the CSS
+      // shorthand (`font: 700 14px …`), the keyword spellings (`font-weight: bold`), and
+      // `font-[var(--x)]`. None appears in `app/` or `components/` today. A scan of source text
+      // cannot follow a value that is computed, so these are the shapes to check by eye when one
+      // does land.
       for (const m of text.matchAll(
-        /\bfont-(thin|extralight|light|normal|medium|semibold|bold|extrabold|black)\b|\bfont-\[(\d{3})\]|font-weight:\s*(\d{3})/g,
+        /\bfont-(thin|extralight|light|normal|medium|semibold|bold|extrabold|black)\b|\bfont-\[(\d{3})\]|font-weight:\s*(\d{3})|fontWeight:\s*"?(\d{3})"?/g,
       )) {
-        const weight = m[1] ? TAILWIND_WEIGHTS[m[1]]! : (m[2] ?? m[3])!;
+        // `fontWeight` is the React inline-style spelling — the same declaration in the casing a
+        // CSS-property scan walks straight past, and the likeliest of the gaps above to be written
+        // by someone who has never read this test.
+        const weight = m[1] ? TAILWIND_WEIGHTS[m[1]]! : (m[2] ?? m[3] ?? m[4])!;
         if (!used.has(weight)) used.set(weight, file);
       }
     }

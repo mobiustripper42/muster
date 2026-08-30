@@ -70,9 +70,21 @@ describe("deriveSeats", () => {
 });
 
 describe("deriveShiftState", () => {
-  it("is Crewed (vacuously) when no required seats exist", () => {
-    expect(deriveShiftState([])).toBe("Crewed");
-    expect(deriveShiftState([seat(CAPTAIN, "Open", "supernumerary")])).toBe("Crewed");
+  it("throws when there are no required seats — an unmanned vessel is an error, not a state", () => {
+    // #582. The vacuous `Crewed` this replaces read "this boat needs nobody" off a
+    // fact that means "nobody has told us how to crew this boat". Every shift on such
+    // a vessel showed fully crewed with no one on it: no ask, no At-Risk row, not
+    // claimable. Operator's ruling (2026-08-29): BrewBoat is not a rental company, so
+    // there is no such thing as a boat with no required crew — a self-captained Duffy
+    // gets a dock-hand. An empty required set is therefore unreachable by construction
+    // and a throw is the honest answer to reaching it.
+    expect(() => deriveShiftState([])).toThrow(/no required seats/i);
+    // Supernumerary-only is the same hole by another door: `deriveSeats` only ever
+    // mints required seats, so a shift holding nothing but an operator's extra body
+    // still means the manning rule produced nothing.
+    expect(() => deriveShiftState([seat(CAPTAIN, "Open", "supernumerary")])).toThrow(
+      /no required seats/i,
+    );
   });
 
   it("is Pending when all required seats are Open", () => {

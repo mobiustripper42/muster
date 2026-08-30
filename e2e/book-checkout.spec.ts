@@ -4,8 +4,8 @@
  *
  * Uses the `reservation` seed (see book-availability.spec.ts): LIVE offering
  * "Reservation Demo Cruise" on Brew 3 (cap 12, included = cap), base $499, $50/extra guest,
- * owned the 10th–16th of NEXT month, departures 13:30/15:30/17:30, 13:30 on the 12th booked
- * (Marcus Webb). Dates derived, never typed — see `e2e/reservation-demo.ts` (#646).
+ * owned a seven-day window late in NEXT month, departures 13:30/15:30/17:30, 13:30 on its third
+ * day booked (Marcus Webb). Dates derived, never typed — see `e2e/reservation-demo.ts` (#646).
  * Payment config rides the defaults: FULL payment (issue #617 — the default was `deposit` at 25%
  * while nothing collected the balance), tax 7.25%, service fee 3% (DEC-134), tip tiers 15/20/25
  * with 20% preselected (DEC-124).

@@ -36,7 +36,15 @@ import {
 /** The run's single day, vessel-local (DEC-032). Handed to the seed so both sides agree. */
 export const TODAY = vesselDateOf(new Date());
 
-/** The seeded world for today — the 10th–16th of next month. */
+/**
+ * The seeded world for today — the 19th–25th of next month.
+ *
+ * It sat on the 10th–16th until the refund specs went red on 2026-08-29. "Next month's 10th" is
+ * a calendar slot, not a lead time: from the 1st it is ~40 days out, from the 29th it is 14, and
+ * the published terms make a customer-asked cancel non-refundable inside 14 days — so the quotes
+ * those specs assert DIFFER stopped differing in the last days of every month. See
+ * `MIN_BOOKING_LEAD_DAYS` in `seed-reservation.ts`, which is now asserted rather than assumed.
+ */
 export const DEMO = reservationDemo(TODAY);
 
 /** The first booking (Marcus Webb, party 8, $549) — the slot most specs point at. */

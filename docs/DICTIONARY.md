@@ -7,7 +7,7 @@ Vocabulary already in the docs when the gate shipped is grandfathered and does n
 be registered — but registering it is always welcome, and registering one is how its
 alternates start being caught.
 
-12 terms.
+15 terms.
 
 | Term | Says | Not |
 |---|---|---|
@@ -15,6 +15,7 @@ alternates start being caught.
 | **bps** | hundredths of a percent, so 800 bps is 8 percent — used for rates so nothing has to store a fraction | `basis points` |
 | **CAS** | write a row only if it still holds the value you read, so two people racing for the same seat cannot both win | `compare-and-swap` |
 | **COI** | the Coast Guard inspection certificate that sets a boat's legal passenger limit and the crew it must carry | — |
+| **hold minutes** | the whole time a boat is committed to one departure — on the water, then back at the dock ready for the next | `hold time`, `lock time`, `occupied minutes` |
 | **idempotency key** | a label sent with a charge so that repeating the same request does the same thing once, instead of charging twice | — |
 | **MMC** | the Coast Guard credential a captain must hold and keep current — on BrewBoat's boats a mate does not need one | — |
 | **off-session** | charging a saved card when the customer is not at the keyboard, so nobody is there to answer a decline | — |
@@ -23,3 +24,5 @@ alternates start being caught.
 | **RLS** | a database feature that filters rows per signed-in user. Muster does not use it — who may see what is decided in the service layer | — |
 | **SAQ-A** | the lightest card-industry compliance tier, which applies because card numbers never reach our servers | — |
 | **SCA** | a European rule requiring that extra bank check on most card payments | — |
+| **trip time** | how long the customer is actually on the water, always less than the hold minutes for that departure | — |
+| **turnaround** | the boat sitting at the dock between trips, cleaned and made ready; hold minutes minus trip time | — |

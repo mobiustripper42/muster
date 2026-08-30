@@ -198,6 +198,7 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-154 — The booking link is a stored code, so it can be revoked
 - DEC-155 — Full payment is the default and the launch posture — deposit mode becomes opt-in (#617)
 - DEC-156 — Never show a customer a departure they cannot buy
+- DEC-161 — Occupancy is measured in hold minutes, not trip time
 
 ### UI, brand & frontend patterns
 - DEC-021 — Frontend styling = Tailwind v4; component library deferred

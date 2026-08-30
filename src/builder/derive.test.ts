@@ -21,6 +21,7 @@ import {
   staffingHorizonFor,
   staffingHorizonFromEvents,
   FILL_DEADLINE_HOURS,
+  fillDeadlinePhrase,
   STAFFING_HORIZON_LEAD_DAYS,
   TRIP_DURATION_MINUTES,
   CALL_LEAD_MINUTES,
@@ -66,6 +67,38 @@ describe("deriveSeats", () => {
 
   it("yields zero seats for a zero-crew vessel (self-captained rental)", () => {
     expect(deriveSeats(vessel([]), SHIFT)).toHaveLength(0);
+  });
+});
+
+describe("fillDeadlinePhrase", () => {
+  // #567. The At-Risk heading said "within ~2 days" as a literal while
+  // `FILL_DEADLINE_HOURS` is env-overridable and **production runs 72** — so the
+  // heading claimed two days on a board that boards shifts within three, and the
+  // per-row "fills by" deadline beside it drew from the live value and disagreed.
+  //
+  // A phrase rather than a number because the sentence is operator-facing prose:
+  // "within 48 hours" is a worse thing to read than "within 2 days" for the case
+  // that is overwhelmingly the common one.
+  it("says whole days when the threshold is a whole number of them", () => {
+    expect(fillDeadlinePhrase(24)).toBe("1 day");
+    expect(fillDeadlinePhrase(48)).toBe("2 days");
+    expect(fillDeadlinePhrase(72)).toBe("3 days"); // the production setting
+    expect(fillDeadlinePhrase(96)).toBe("4 days");
+  });
+
+  it("falls back to hours when the threshold is not whole days", () => {
+    // The fallback is the point: an operator who sets 36 must not read "1 day"
+    // or "2 days", both of which are wrong in a direction that matters.
+    expect(fillDeadlinePhrase(36)).toBe("36 hours");
+    expect(fillDeadlinePhrase(12)).toBe("12 hours");
+    expect(fillDeadlinePhrase(1)).toBe("1 hour");
+  });
+
+  it("phrases whatever FILL_DEADLINE_HOURS is set to in this environment", () => {
+    // The assertion that actually protects the heading: whatever the constant
+    // resolves to here, the phrase is non-empty and mentions no other number.
+    const phrase = fillDeadlinePhrase(FILL_DEADLINE_HOURS);
+    expect(phrase).toMatch(/^\d+ (hour|day)s?$/);
   });
 });
 

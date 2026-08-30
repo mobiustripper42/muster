@@ -368,6 +368,29 @@ export function staffingHorizonFor(
  */
 export const FILL_DEADLINE_HOURS = envPositiveNumber("FILL_DEADLINE_HOURS", 48);
 
+/**
+ * {@link FILL_DEADLINE_HOURS} as operator-facing prose — "2 days", "3 days", "36 hours".
+ *
+ * **Written because the At-Risk heading restated the number instead of reading it** (#567). The
+ * page said "Uncrewed shifts within ~2 days" as a literal while this constant is env-overridable
+ * and **production runs 72**, so the heading claimed two days on a board that boards shifts within
+ * three — and the per-row "fills by" deadline rendered beside it drew from the live value and
+ * disagreed with it by a day.
+ *
+ * That is the third instance of one defect class in this repo: **operator-facing copy asserting a
+ * value that a constant owns.** The others were `/admin/import` claiming the Xola pull "runs
+ * automatically every hour" after it stopped, and an At-Risk row telling the operator to reschedule
+ * when DEC-066 says override. Each was written once, correct at the time, and never tracked the
+ * thing behind it. A function is the fix for the class, not just this instance.
+ *
+ * Days when the hours divide evenly, hours otherwise — an operator who sets 36 must not read
+ * "1 day" or "2 days", both of which are wrong in the direction that costs a boat its crew.
+ */
+export function fillDeadlinePhrase(hours: number = FILL_DEADLINE_HOURS): string {
+  const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? "" : "s"}`;
+  return hours % 24 === 0 ? plural(hours / 24, "day") : plural(hours, "hour");
+}
+
 const HOUR_MS = 60 * 60 * 1000;
 
 /**

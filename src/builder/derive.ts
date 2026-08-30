@@ -385,6 +385,11 @@ export const FILL_DEADLINE_HOURS = envPositiveNumber("FILL_DEADLINE_HOURS", 48);
  *
  * Days when the hours divide evenly, hours otherwise — an operator who sets 36 must not read
  * "1 day" or "2 days", both of which are wrong in the direction that costs a boat its crew.
+ *
+ * **Assumes whole hours, which `envPositiveNumber` does not enforce** — it gates on
+ * `Number.isFinite(n) && n > 0`, so `FILL_DEADLINE_HOURS=36.5` renders "36.5 hours" at full float
+ * precision. Ugly rather than wrong, and no rounding here on purpose: "36.5" reads as a typo the
+ * operator can find, where a silent round to "37 hours" would print a number nobody configured.
  */
 export function fillDeadlinePhrase(hours: number = FILL_DEADLINE_HOURS): string {
   const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? "" : "s"}`;

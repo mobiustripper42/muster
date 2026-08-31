@@ -31,7 +31,17 @@
  * COVERAGE IS REPORTED, NEVER ASSUMED. A gate covering half a document and printing green is
  * the same failure as the prose rule, wearing a checkmark. The manifest is deliberately smaller
  * than the document's full citation count; the summary prints both numbers so the gap is a
- * fact on screen rather than something a reader has to suspect.
+ * fact on screen rather than something a reader has to suspect. The document-side number counts
+ * *occurrences*, not distinct locations — `docs/SPEC.md:2046` and `claim.ts:203` are each cited
+ * twice — so it overstates slightly. Left over-inclusive on purpose: a coverage number that
+ * flatters itself is worse than one that nags.
+ *
+ * DELIBERATELY NOT IN `npm run verify`. It was, for about an hour, and that was a trap: the
+ * pinned lines span roughly 40% of a 2,800-line document that every booking task edits, so any
+ * unrelated change above §2.10 would shift every citation below it and hard-fail the gate for an
+ * author who has never heard of this file. The failure is trivial to fix and impossible to
+ * understand, which is the worst combination a build error can have. It runs when someone is
+ * working the audit — `npm run check:audit`, named in the document's own "Resuming this".
  */
 import { readFileSync, existsSync } from 'node:fs'
 
@@ -72,7 +82,12 @@ const CITATIONS = [
   ['docs/SPEC.md', 2057, "eventId` is null"],
   ['docs/SPEC.md', 2090, 'booking-recovery lookup returns nothing'],
   ['docs/SPEC.md', 2337, '## 2.10 Reservations — what the operator runs'],
-  ['docs/SPEC.md', 2545, ''],
+  // The END of §2.10, pinned on the heading that follows it. An earlier draft pinned line 2545
+  // with an empty quote as a "bound anchor" — which only proved the file still had 2545 lines and
+  // would have stayed green if §2.10 shrank by five hundred. It was also simply wrong: 2545 is
+  // inside §3, and the audit's range citation overshot by six lines because of it. A boundary is
+  // a claim about where a section stops, so it has to be pinned on something that says so.
+  ['docs/SPEC.md', 2540, '# 3. Cross-cutting'],
   ['docs/SPEC.md', 1908, 'crew manifest reads reservations directly'],
   ['docs/SPEC.md', 1910, 'why the null is a contract'],
   ['docs/SPEC.md', 347, '**Booking horizon**'],
@@ -115,7 +130,6 @@ const problems = []
 for (const [file, line, quote] of CITATIONS) {
   const L = lines(file)
   if (L === null) { problems.push(['MISSING FILE', `${file}:${line}`, file]); continue }
-  if (quote === '') continue // bound-only anchor: the line exists, nothing is claimed about it
   if ((L[line - 1] ?? '').includes(quote)) continue
 
   const found = []

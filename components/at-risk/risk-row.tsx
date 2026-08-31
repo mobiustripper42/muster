@@ -17,7 +17,6 @@ export interface RiskRowVM {
   dateLabel: string;
   /** "1d 4h to trip" — null when no scheduled event anchors the shift. */
   toTrip: string | null;
-  /** Inside 36h — the countdown turns red. */
   /** Every scheduled departure, earliest first ("departs 1:00 PM"). A two-trip
    * day shows both; empty when no scheduled trip anchors the shift. */
   departs: string[];

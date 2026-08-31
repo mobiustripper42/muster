@@ -44,7 +44,24 @@ export function deriveSeats(vessel: Vessel, shiftId: ShiftId): Seat[] {
 /**
  * Derive a shift's crewing state from its seats (DEC-005). Only **required**
  * seats gate `Crewed`; supernumerary seats are ignored here. A shift with no
- * required seats (a 0-crew vessel) is vacuously `Crewed` — nothing to fill.
+ * required seats **throws** (#582) — see below.
+ *
+ * **Why an empty required set is an error and not a state.** It used to return
+ * `Crewed` vacuously, reading "this boat needs nobody" off a fact that actually
+ * means "nobody has told us how to crew this boat". The two share a
+ * representation and only one of them is real: `deriveSeats` iterates
+ * `vessel.manning`, so zero required seats means the manning rule was empty — or
+ * that `formOneShift` found no vessel row at all and never derived seats (its
+ * `getVessel` / `if (vessel)` pair). Either way every shift on that boat read fully
+ * crewed with no one on it: no ask fired, `deriveAtRiskBoard` produced no reasons
+ * so the row was dropped, and `claimableSeatsFor` excludes `Crewed`.
+ *
+ * Operator's ruling (2026-08-29): BrewBoat is not a rental company, so there is
+ * no boat with no required crew — a self-captained Duffy gets a dock-hand. That
+ * removes the only input for which `Crewed` here was correct, which is what lets
+ * this be a throw rather than a new state or a threaded `manningKnown` flag.
+ * Issue #861 makes manning required at the vessel surface, closing the source;
+ * this throw is the backstop that keeps the failure loud however it arrives.
  *
  * Precedence: a bailed required seat means the shift needs attention (`AtRisk`)
  * even if others are confirmed. `Completed`/`Cancelled` are lifecycle states set
@@ -62,7 +79,12 @@ export function deriveSeats(vessel: Vessel, shiftId: ShiftId): Seat[] {
  */
 export function deriveShiftState(seats: Seat[]): ShiftState {
   const required = seats.filter((s) => s.kind === "required");
-  if (required.length === 0) return "Crewed";
+  if (required.length === 0) {
+    throw new Error(
+      "Shift has no required seats — the vessel has no manning rule (#582). " +
+        "A boat with no required crew is an error, not a state.",
+    );
+  }
   if (required.some((s) => s.state === "Bailed")) return "AtRisk";
   if (required.every((s) => s.state === "Confirmed")) return "Crewed";
   if (required.some((s) => s.state !== "Open")) return "Filling";
@@ -345,6 +367,34 @@ export function staffingHorizonFor(
  * design. The code default stays 48; #322 shipped the knob, not a value change.
  */
 export const FILL_DEADLINE_HOURS = envPositiveNumber("FILL_DEADLINE_HOURS", 48);
+
+/**
+ * {@link FILL_DEADLINE_HOURS} as operator-facing prose — "2 days", "3 days", "36 hours".
+ *
+ * **Written because the At-Risk heading restated the number instead of reading it** (#567). The
+ * page said "Uncrewed shifts within ~2 days" as a literal while this constant is env-overridable
+ * and **production runs 72**, so the heading claimed two days on a board that boards shifts within
+ * three — and the per-row "fills by" deadline rendered beside it drew from the live value and
+ * disagreed with it by a day.
+ *
+ * That is the third instance of one defect class in this repo: **operator-facing copy asserting a
+ * value that a constant owns.** The others were `/admin/import` claiming the Xola pull "runs
+ * automatically every hour" after it stopped, and an At-Risk row telling the operator to reschedule
+ * when DEC-066 says override. Each was written once, correct at the time, and never tracked the
+ * thing behind it. A function is the fix for the class, not just this instance.
+ *
+ * Days when the hours divide evenly, hours otherwise — an operator who sets 36 must not read
+ * "1 day" or "2 days", both of which are wrong in the direction that costs a boat its crew.
+ *
+ * **Assumes whole hours, which `envPositiveNumber` does not enforce** — it gates on
+ * `Number.isFinite(n) && n > 0`, so `FILL_DEADLINE_HOURS=36.5` renders "36.5 hours" at full float
+ * precision. Ugly rather than wrong, and no rounding here on purpose: "36.5" reads as a typo the
+ * operator can find, where a silent round to "37 hours" would print a number nobody configured.
+ */
+export function fillDeadlinePhrase(hours: number = FILL_DEADLINE_HOURS): string {
+  const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? "" : "s"}`;
+  return hours % 24 === 0 ? plural(hours / 24, "day") : plural(hours, "hour");
+}
 
 const HOUR_MS = 60 * 60 * 1000;
 

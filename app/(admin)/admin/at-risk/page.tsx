@@ -1,5 +1,10 @@
 import { AppLink } from "../../../../components/ui/app-link";
-import { deriveAtRiskBoard, type AtRiskRow } from "@core/admin/at-risk-board.js";
+import {
+  deriveAtRiskBoard,
+  EXHAUSTED_THRESHOLD_HOURS,
+  type AtRiskRow,
+} from "@core/admin/at-risk-board.js";
+import { fillDeadlinePhrase } from "@core/builder/derive.js";
 import { asId } from "@core/domain/ids.js";
 import type { CrewMemberId } from "@core/domain/ids.js";
 import { RiskRow, type RiskRowVM } from "../../../../components/at-risk/risk-row";
@@ -89,8 +94,13 @@ export default async function AtRiskBoard({
       <header className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h1 className="text-xl font-semibold text-ink">Needs attention</h1>
+          {/* The window is READ, not restated (#567). This said "~2 days" as a literal while
+              `FILL_DEADLINE_HOURS` is env-overridable and production runs 72 — so the heading
+              claimed two days on a board that boards shifts within three, and the per-row
+              "fills by" deadline right below it drew from the live value and disagreed. */}
           <p className="text-sm text-muted">
-            Uncrewed shifts within ~2 days, plus any the engine can’t fill.{" "}
+            Uncrewed shifts within {fillDeadlinePhrase(EXHAUSTED_THRESHOLD_HOURS)}, plus any the
+            engine can’t fill.{" "}
             {vms.length === 0 ? "Right now, none." : "Most-urgent first."}
           </p>
         </div>

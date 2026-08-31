@@ -19,7 +19,8 @@
  *
  * **Dates are RELATIVE to today**, for the reason `seed-reservation.ts` spells out at length: a
  * fixture with literal dates has a shelf life, and when it expires the tests do not go red, they
- * go meaningless. Same anchor as the demo world — the 10th–16th of next month.
+ * go meaningless. Same anchor as the demo world: these days derive from `demo.window.start`, so
+ * they follow it wherever it moves rather than restating a literal that can drift.
  */
 import type { Event, Offering, Reservation, Vessel } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
@@ -99,8 +100,8 @@ export interface XolaFixture {
 /**
  * Build the fixture for a given vessel-local `todayISO`. Pure — no clock, no repo, no network.
  *
- * The demo offering (`reservationDemo`) runs 13:30 / 15:30 / 17:30 on Brew 3 across the 10th–16th
- * of next month, with no `tripLengthMinutes`, so its trips are measured at the standing 100.
+ * The demo offering (`reservationDemo`) runs 13:30 / 15:30 / 17:30 on Brew 3 across its window
+ * late in next month, with no `tripLengthMinutes`, so its trips are measured at the standing 100.
  * Every choice below is made against those numbers.
  */
 export function xolaFixture(todayISO: string): XolaFixture {

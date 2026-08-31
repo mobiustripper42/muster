@@ -306,7 +306,13 @@ export default async function AllShifts({
   let rows: AllShiftsRow[];
   try {
     rows = await deriveAllShifts(repo, { from, to }, now, deriveOpts);
-  } catch {
+  } catch (e) {
+    // Log the cause (#854). The copy below says "try again in a moment", which is true
+    // of a database blip and false of everything else — and this catch is now reachable
+    // by a real programming error: since #582 `deriveShiftState` THROWS on a vessel with
+    // no manning rule rather than reporting it vacuously Crewed. Swallowing that would
+    // turn the loud failure this page most needs to show into a shrug with an empty log.
+    console.error("admin/shifts: deriveAllShifts failed — the board rendered nothing", e);
     return (
       <Shell width="3xl">
         <Notice>Can’t reach the schedule right now. Try again in a moment.</Notice>

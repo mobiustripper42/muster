@@ -7,7 +7,8 @@
  *
  * Then a Vessel block over the printed window, or a Location block on the printed day, shows a
  * non-zero "removes N" AND a booked-trip conflict. **The dates are relative to today (#646)** —
- * the 10th–16th of NEXT month — so the fixture never expires; the exact days are printed below.
+ * a seven-day window late in NEXT month — so the fixture never expires; the exact days are
+ * printed below, which is the only place to read them from.
  *
  *   npm run db:seed:reservation           # local/preview DB
  *   npm run db:seed:reservation --force   # bypass the local-DB guard

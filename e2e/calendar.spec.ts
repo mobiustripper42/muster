@@ -3,9 +3,10 @@
  * Read-only slice: one day as fleet-vessel columns × a fixed 8:00–21:30 axis, each computed
  * departure a duration-spanning block (deriveVirtualAvailability, DEC-125).
  *
- * The `reservation` seed builds a LIVE offering + owned days (the 10th–16th of NEXT month, #646)
- * on Brew 3 with two booked trips: 13:30 on the 12th Marcus Webb (party 8), 15:30 on the 13th
- * Dana Cho. So on the booked day Brew 3 shows one BOOKED block (Marcus Webb) + two OPEN (15:30, 17:30
+ * The `reservation` seed builds a LIVE offering + owned days (a seven-day window late in NEXT
+ * month, #646) on Brew 3 with two booked trips: 13:30 on the window's third day Marcus Webb
+ * (party 8), 15:30 on its fourth Dana Cho. Read the dates from `BOOKED`/`BOOKED_2`, never from
+ * this comment. So on the booked day Brew 3 shows one BOOKED block (Marcus Webb) + two OPEN (15:30, 17:30
  * — the offering's other departures). The Booked filter hides the opens, keeps the booking.
  * Runs desktop + 375px (the grid scrolls; the booked block stays present).
  */

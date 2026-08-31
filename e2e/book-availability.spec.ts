@@ -3,8 +3,9 @@
  *
  * Uses the `reservation` seed: one LIVE offering ("Reservation Demo Cruise") on THREE boats —
  * Brew 3 (12), Brew 1 (14), Brew 2 (16), no includedGuestCount ⇒ included = the departure's cap
- * — base $499, $50/extra guest, **demo window** the 10th–16th of NEXT month, departures
- * 13:30/15:30/17:30, and one booking at 13:30 on the 12th (Marcus Webb) which sits on Brew 3.
+ * — base $499, $50/extra guest, **demo window** a seven-day stretch late in NEXT month, departures
+ * 13:30/15:30/17:30, and one booking at 13:30 on its third day (Marcus Webb) which sits on Brew 3.
+ * The exact days live in `reservationDemo`; read them from `DEMO`/`BOOKED` rather than from here.
  *
  * **The window is not the season any more (#797).** The season starts TODAY, so bookable slots
  * exist in the current month; only the bookings and the block fixtures live in the window above.

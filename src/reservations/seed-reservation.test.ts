@@ -11,7 +11,18 @@ import { asId } from "../domain/ids.js";
 import { addDays } from "../config/tenant.js";
 import { deriveVirtualAvailability } from "./availability.js";
 import { computeBlockImpact } from "./block-impact.js";
-import { buildSeededReservationWorld, reservationDemo } from "./seed-reservation.js";
+import {
+  MIN_BOOKING_LEAD_DAYS,
+  buildSeededReservationWorld,
+  reservationDemo,
+} from "./seed-reservation.js";
+
+/** Whole days from one ISO date to another. Noon anchor dodges DST, same as the seed's own. */
+function daysBetween(fromISO: string, toISO: string): number {
+  const ms =
+    new Date(`${toISO}T12:00:00Z`).getTime() - new Date(`${fromISO}T12:00:00Z`).getTime();
+  return Math.round(ms / 86_400_000);
+}
 
 // A fixed "today" so the drift guard below stays value-stable; the relative-window
 // invariants above are what exercise the date arithmetic across the calendar.
@@ -33,6 +44,11 @@ describe("the demo window is relative to today, not a fixed calendar month (#646
     "2026-11-15", // late in the year
     "2026-12-20", // December — next month rolls the YEAR, the arithmetic trap
     "2027-06-30", // a year on, to prove it doesn't rot again
+    // Late-month todays. These are the ones that broke CI, and none of the five above
+    // could catch it: "next month" is a calendar slot, not a lead time, so the distance
+    // from today to the first booking swings with the day of the month.
+    "2026-08-29", // the day it actually went red on PR #862
+    "2026-01-31", // month-end into a SHORT month — the tightest the arithmetic gets
   ];
 
   for (const today of TODAYS) {
@@ -57,6 +73,25 @@ describe("the demo window is relative to today, not a fixed calendar month (#646
       // was green throughout.
       expect(d.window.start.slice(0, 7)).not.toBe(today.slice(0, 7));
       expect(d.window.end.slice(0, 7)).not.toBe(today.slice(0, 7));
+    });
+
+    it(`every booking is far enough out to be freely cancellable (${today})`, () => {
+      // The refund specs assert the two cancellation quotes DIFFER — "$538.80" for a
+      // customer-asked cancel (paid less the $50 fee) against "$588.80" for an operator
+      // cancel. They only differ outside the 14-day window; inside it, the customer-asked
+      // quote is correctly $0.00 and those specs fail.
+      //
+      // "The 10th–16th of next month" is a calendar slot, not a lead time. From the 1st the
+      // first booking is ~42 days out; from the 29th it is 14; from the 31st, 12. So the
+      // fixture aged into the non-refundable window during the last days of every month —
+      // and on the boundary day it depended on the TIME OF DAY, because the terms compare
+      // instants and the trip departs at 13:30. A suite that passed at 09:00 failed at 17:00.
+      //
+      // `MIN_BOOKING_LEAD_DAYS` is what makes that impossible rather than unlikely, and the
+      // margin over 14 is deliberate: it has to absorb the hours-within-the-day gap too.
+      for (const b of d.bookings) {
+        expect(daysBetween(today, b.date)).toBeGreaterThanOrEqual(MIN_BOOKING_LEAD_DAYS);
+      }
     });
 
     it(`the season contains the whole demo window (${today})`, () => {

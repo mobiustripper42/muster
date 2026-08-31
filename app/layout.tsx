@@ -1,20 +1,44 @@
 import type { ReactNode } from "react";
 import type { Viewport } from "next";
-import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { RegisterSW } from "../components/ui/register-sw";
 
-// IBM Plex (the mockups' faces). next/font self-hosts them — no layout shift,
-// no external request. Exposed as CSS variables the @theme tokens bind to.
-const plexSans = IBM_Plex_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+// IBM Plex (the mockups' faces), vendored under `app/fonts/` and loaded from disk. Exposed as CSS
+// variables the @theme tokens bind to.
+//
+// **These used to come from `next/font/google`, and the comment here said "no external request".**
+// That was true of the browser and false of the builder: the Google loader downloads the `.woff2`
+// files from `fonts.gstatic.com` DURING `next build` and self-hosts what it downloaded. So the
+// network tab looked clean either way and the dependency was invisible until a build failed on it
+// — which one did (#731, PR #727: five font URLs retried three times each, then `NextFontError`,
+// on a diff that had nothing to do with fonts). Vercel's production build carried the same risk.
+//
+// The files are the exact `latin` subset Google served, so the rendered faces are unchanged; what
+// changed is that nothing fetches them again. The trade is that a future IBM Plex revision now
+// needs a deliberate re-fetch instead of arriving silently, which is the direction worth having.
+//
+// **Adding a weight means adding a file.** A browser synthesizes a face it hasn't got rather than
+// refusing, so a `font-light` with no 300 vendored renders subtly wrong and reports nothing.
+// `app/fonts.test.ts` reads the `src` lists below and fails the gate on either half of that.
+const plexSans = localFont({
+  src: [
+    { path: "./fonts/ibm-plex-sans-400.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/ibm-plex-sans-500.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/ibm-plex-sans-600.woff2", weight: "600", style: "normal" },
+    { path: "./fonts/ibm-plex-sans-700.woff2", weight: "700", style: "normal" },
+  ],
   variable: "--font-plex-sans",
+  display: "swap", // what next/font/google defaulted to; stated rather than inherited
 });
-const plexMono = IBM_Plex_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
+const plexMono = localFont({
+  src: [
+    { path: "./fonts/ibm-plex-mono-400.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/ibm-plex-mono-500.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/ibm-plex-mono-600.woff2", weight: "600", style: "normal" },
+  ],
   variable: "--font-plex-mono",
+  display: "swap",
 });
 
 /**

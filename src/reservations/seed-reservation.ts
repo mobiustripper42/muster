@@ -19,9 +19,12 @@
  * failure was worse than a red test: the loop raced a link navigation and usually broke out on
  * iteration 0 against the page it never left, so the spec passed while verifying nothing.
  *
- * The window therefore sits on the **10th–16th of next month**, always. Same seven-day shape as
- * before, never the current month, always ahead of today, and every offset is ≤15 so it fits
- * inside even February.
+ * The window therefore sits **late in next month**, always. Same seven-day shape as before, never
+ * the current month, always ahead of today, and every offset is ≤15 so it fits inside even
+ * February. **The exact days are `window` below and nowhere else** — they moved once already
+ * (10th–16th → 19th–25th, see `MIN_BOOKING_LEAD_DAYS`) and left eight prose copies of the old
+ * literal behind across this repo, one of them in this very docstring. Describe the shape here;
+ * read the days from the code.
  *
  * **The SEASON is wider than the window since #797** — it starts today. The window scopes the
  * demo (bookings, block fixtures, every pinned figure); the season only decides where virtual
@@ -105,10 +108,34 @@ function firstOfNextMonth(todayISO: string): string {
  * callers that legitimately have one (`db/seed-reservation-dev.ts`, `e2e/reservation-demo.ts`);
  * the core stays clock-free.
  */
+/**
+ * The least number of days between today and the demo's earliest booking.
+ *
+ * **Why this exists.** The window is expressed as offsets into next month, which makes it a
+ * calendar slot rather than a lead time: from the 1st the first booking is ~42 days out, from
+ * the 29th it is 14, from the 31st it is 12. The published terms make a customer-asked cancel
+ * non-refundable inside 14 days (`refund-terms.ts`), so the fixture aged into that window
+ * during the last days of every month and the refund specs — which assert the two quotes
+ * DIFFER — went red. On the boundary day it turned on the **time of day**, because the terms
+ * compare instants and the trip departs at 13:30.
+ *
+ * 21 rather than 15: the margin has to cover the hours-within-the-day gap as well as the days,
+ * and a fixture that is barely outside a boundary is a fixture that will find the boundary again.
+ */
+export const MIN_BOOKING_LEAD_DAYS = 21;
+
 export function reservationDemo(todayISO: string): ReservationDemo {
-  // Day 0 = the 1st of next month, so `+9` is the 10th. Offsets, not literals, so the shape
+  // Day 0 = the 10th of next month, so `+9` is the 19th. Offsets, not literals, so the shape
   // survives every month length and the year roll.
-  const anchor = firstOfNextMonth(todayISO);
+  //
+  // **Day 0 used to be the 1st**, and every offset below is unchanged — the whole window simply
+  // moved nine days later in the same month. That is what buys `MIN_BOOKING_LEAD_DAYS`: the
+  // earliest booking is `+11`, so the worst case (a 31st) is 1 + 9 + 11 = 21 days out instead of
+  // 12. Shifting the anchor rather than rewriting the offsets keeps the day allocation that is a
+  // contract with the Xola fixture, and keeps the window in the SAME month, which the
+  // forward-paging spec depends on (it asserts reaching the demo month costs exactly one page).
+  // The largest offset is `+15`, so the window ends on the 25th and still fits February.
+  const anchor = addDays(firstOfNextMonth(todayISO), 9);
   const day = (n: number) => addDays(anchor, n);
 
   return {
@@ -132,9 +159,9 @@ export function reservationDemo(todayISO: string): ReservationDemo {
     // The window below still scopes the DEMO — the materialized bookings, the block fixtures and
     // every figure pinned to them are unchanged and still sit next month. The season is only
     // where slots may emit.
-    season: { start: todayISO, end: day(15) }, // today … the 16th of next month
+    season: { start: todayISO, end: day(15) }, // today … the 25th of next month
     departureTimes: ["13:30", "15:30", "17:30"],
-    window: { start: day(9), end: day(15) }, // the 10th … the 16th
+    window: { start: day(9), end: day(15) }, // the 19th … the 25th
     bookings: [
       { date: day(11), time: "13:30", customerName: "Marcus Webb", partySize: 8, priceCents: 54900, phone: "216-555-0148" },
       { date: day(12), time: "15:30", customerName: "Dana Cho", partySize: 6, priceCents: 43900, phone: "(440) 555-0102" },

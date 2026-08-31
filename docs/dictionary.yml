@@ -90,3 +90,14 @@
 - term: turnaround
   says: the boat sitting at the dock between trips, cleaned and made ready; hold minutes minus trip time
   not: []
+
+# ── The frozen quote ────────────────────────────────────────────────────────────
+#
+# Registered ahead of the issue #812 build, same reason as the payments block above: a term
+# registered before it is written is a term nobody has to argue about afterwards. "Invoice" already
+# means a bill-to-be-paid elsewhere in the corpus (FUTURE_IDEAS' Xola balance modes), so the
+# qualifier is load-bearing rather than decorative.
+
+- term: booking invoice
+  says: the frozen record of what a customer was quoted — every charged component and the rate behind it, kept on the booking and never recomputed
+  not: []

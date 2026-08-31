@@ -7,11 +7,12 @@ Vocabulary already in the docs when the gate shipped is grandfathered and does n
 be registered — but registering it is always welcome, and registering one is how its
 alternates start being caught.
 
-15 terms.
+16 terms.
 
 | Term | Says | Not |
 |---|---|---|
 | **3DS** | the bank's extra check at checkout, where the customer confirms the payment in their banking app or by a texted code | — |
+| **booking invoice** | the frozen record of what a customer was quoted — every charged component and the rate behind it, kept on the booking and never recomputed | — |
 | **bps** | hundredths of a percent, so 800 bps is 8 percent — used for rates so nothing has to store a fraction | `basis points` |
 | **CAS** | write a row only if it still holds the value you read, so two people racing for the same seat cannot both win | `compare-and-swap` |
 | **COI** | the Coast Guard inspection certificate that sets a boat's legal passenger limit and the crew it must carry | — |

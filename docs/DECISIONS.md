@@ -201,6 +201,7 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-161 — Occupancy is measured in hold minutes, not trip time
 - DEC-162 — The operator books by sending a payment link
 - DEC-163 — An operator's booking does not expire
+- DEC-164 — The frozen money is one value on our own row
 
 ### UI, brand & frontend patterns
 - DEC-021 — Frontend styling = Tailwind v4; component library deferred

@@ -8,8 +8,17 @@
  * `payment_intent.succeeded` webhook books via `writeSlotBooking`, keyed on the intent id.
  *
  * **Writes no reservation.** The hold is the only pre-payment write; the reservation +
- * Payment land in the webhook (DEC-107/109). All money is FROZEN into metadata here — the
- * webhook never recomputes from live config (the DEC-107 freeze rule).
+ * Payment land in the webhook (DEC-109). All money is FROZEN into metadata here — the
+ * webhook never recomputes from live config.
+ *
+ * **The metadata is on its way out (DEC-164, issue #812).** SPEC §2.8.5 says the booking charge
+ * sends none, and §2.8.4 names `booking_invoice` — one value on our own row — as where the frozen
+ * money belongs. Until that lands, `booking-webhook.ts` rebuilds the booking from the keys below
+ * and defaults a missing one to zero, which is the defect, not the storage.
+ *
+ * This block used to credit "the DEC-107 freeze rule". DEC-107 ruled the **opposite** — tax read
+ * live, not frozen — and is retired; it is now a signpost to §2.8.4a. Removed rather than
+ * repointed, because a citation for a rule nobody made is worse than none.
  */
 import type { OfferingId } from "../domain/ids.js";
 import type { PaymentPort } from "../ports/payment.js";

@@ -3,7 +3,7 @@ schema: 1
 id: DEC-124
 title: "Muster reports its own tips; joining them to Xola's stays in the operator's tool"
 topic: "Reservations & payments"
-status: "superseded"
+status: "withdrawn"
 date: "2026-07-18"
 ruling: "Muster splits and exports its own tips. Joining those to Xola's stays in the operator's existing tool for the whole overlap, and during it the operator adds the two lists by hand."
 claims:
@@ -32,4 +32,4 @@ payroll file handed to a payroll provider.
 
 The end state is what this record got wrong. It also claimed the whole apparatus moves into
 Muster when Xola retires, and the tool is retired with it. That was never decided, which is why
-the status above says superseded — see issue #837.
+the status above says withdrawn — see issue #837.

@@ -3,7 +3,7 @@ schema: 1
 id: DEC-107
 title: "Sales tax is read live, not frozen onto the booking"
 topic: "Reservations & payments"
-status: "superseded"
+status: "withdrawn"
 date: "2026-08-19"
 ruling: "Retired. The spec froze the tax instead — read §2.8.4a, not this."
 claims:

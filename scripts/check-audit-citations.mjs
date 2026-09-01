@@ -248,6 +248,9 @@ const CITATIONS = [
   ['src/adapters/postgres-repository.ts', 1563, 'select 1 from reservations where id=$1'],
   ['src/adapters/postgres-repository.ts', 1567, 'won.rowCount === 1'],
   ['src/reservations/write-booking.ts', 152, 'outcome: "already", reservation: after'],
+  ['src/adapters/stripe-payment.ts', 160, 'if (pi.status !== "succeeded") return null;'],
+  ['src/reservations/booking-webhook.ts', 453, 'if (result.outcome === "booked") {'],
+  ['src/adapters/in-memory-repository.ts', 515, 'Insert-only (mirrors the postgres `on conflict do nothing`)'],
 
   // ── Criterion 2 / 5 evidence, spot-checked while re-baselining ──
   ['src/reservations/availability.ts', 172, 'return asId<"EventId">(`slot_${slotIdentity('],

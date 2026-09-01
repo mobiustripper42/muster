@@ -204,6 +204,7 @@ const CITATIONS = [
   ['src/adapters/stripe-payment.ts', 209, 'event.type === "charge.refunded"'],
   ['src/adapters/stripe-payment.ts', 265, 'event.type === "payment_intent.succeeded"'],
   ['src/adapters/stripe-payment.ts', 277, 'return null;'],
+  ['src/adapters/fake-payment.ts', 76, 'parseEvent'],
   ['src/reservations/booking-webhook.ts', 142, 'if (!event) return { handled: false };'],
   ['app/api/webhooks/stripe/route.ts', 21, 'Stripe dashboard nobody can read from the repo'],
   ['app/api/webhooks/stripe/route.ts', 46, 'return NextResponse.json({ received: true, ...result });'],

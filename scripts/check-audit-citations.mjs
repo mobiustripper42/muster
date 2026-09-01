@@ -264,6 +264,25 @@ const CITATIONS = [
   ['app/(public)/book/checkout/checkout-form.tsx', 189, 'await p.stripe.confirmPayment({'],
   ['app/(public)/book/checkout/checkout-form.tsx', 193, 'return_url: p.returnUrl,'],
 
+  // ── Criterion 15's evidence (§Criterion 15) ──
+  ['docs/SPEC.md', 2071, 'Kill the webhook, close the browser'],
+  ['docs/SPEC.md', 1858, '**2.8.9 The reconciler — the job that catches payments whose webhook never landed.**'],
+  ['docs/SPEC.md', 1861, 'retries on a backoff and eventually stops'],
+  ['docs/SPEC.md', 1862, 'money taken, no booking, nobody told'],
+  ['docs/SPEC.md', 1867, 'past its window is a work list'],
+  ['docs/SPEC.md', 1870, "Stripe's undelivered-event feed"],
+  ['docs/SPEC.md', 1875, 'Detection latency *is* the schedule'],
+  ['docs/SPEC.md', 1878, 'safe to run at any time, in any order, more than once'],
+  ['docs/SPEC.md', 1882, "The operator's pause does not stop it"],
+  // The verdict, in the code's own words, in two files.
+  ['src/reservations/confirm-booking.ts', 14, 'reconciler to run the SAME idempotent confirm'],
+  ['app/lib/booking-deps.ts', 4, '(later) the reconciler'],
+  // The four controls checked and ruled out (§Criterion 15). The alert call sites themselves are
+  // already pinned under Criterion 7; not repeated here.
+  ['app/api/cron/xola-pull/route.ts', 10, 'NO CRON IS ATTACHED'],
+  ['app/(admin)/admin/purchases/page.tsx', 105, 'listAllReservations'],
+  ['app/b/find/actions.ts', 70, 'r.event'],
+
   // ── Criterion 2 / 5 evidence, spot-checked while re-baselining ──
   ['src/reservations/availability.ts', 172, 'return asId<"EventId">(`slot_${slotIdentity('],
   ['app/(public)/book/page.tsx', 91, 'repo.listLiveCheckoutHolds(asOf)'],

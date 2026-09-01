@@ -28,6 +28,47 @@ const rec = (over: Partial<ShiftChangeRecord> = {}): ShiftChangeRecord => ({
 });
 
 describe("foldShiftChanges", () => {
+  it("folds a duplicated record to the same banner as a single one (#766)", () => {
+    // **Pinning an accident that a real bug depends on.** Issue #766 says two overlapping
+    // `formShifts` runs can write the same `changedCrew` entry twice — `recordShiftChanges` is a
+    // plain bulk insert with no `on conflict` (`postgres-repository.ts:2553`), so two identical
+    // rows genuinely land in the table. The issue concludes the crew member therefore sees the
+    // change twice. They do not, and this is why: the fold reads FIRST TOUCH and LAST TOUCH per
+    // event id rather than counting rows, so a second identical row sets both maps to the values
+    // they already held. The start pair is read off the oldest and newest records, which are also
+    // unchanged.
+    //
+    // That property is load-bearing and nothing asserted it. It would be lost by anyone
+    // rewriting the fold as a count — which reads like a simplification, passes every other test
+    // in this file, and would turn a harmless duplicate row into a duplicate banner. Its sibling
+    // on the SMS path IS asserted, at `src/adapters/outbox-notice-channel.test.ts:44`.
+    //
+    // Written after the fact and green on arrival, deliberately: the behaviour already holds, so
+    // there was no failing state to observe first. It is a guard, not a proof of new work.
+    const one = rec({
+      added: ["e2"],
+      removed: ["e1"],
+      startBefore: "2026-07-04T17:00:00Z",
+      startAfter: "2026-07-04T19:00:00Z",
+    });
+    const single = foldShiftChanges([one], { lastSeenAt: null, tripsNow: 3 })!;
+    const doubled = foldShiftChanges([one, { ...one }], { lastSeenAt: null, tripsNow: 3 })!;
+
+    // What the duplicate does NOT disturb: the trip movement and the clock change.
+    expect({ ...doubled, changeCount: 0 }).toEqual({ ...single, changeCount: 0 });
+
+    // **And what it does.** `changeCount` is `unseen.length`, a plain row count, so a duplicated
+    // row inflates it — and `components/crew/change-banner.tsx:45-49` renders that as words:
+    // "This shift changed twice" for a shift that changed once. That is the surviving half of
+    // #766's symptom B, and it is NOT fixed here: the fix belongs at the writer, because if the
+    // table says it happened twice the reader is right to say so.
+    //
+    // Asserted rather than skipped so the day someone dedupes at the write, this test fails and
+    // points them at the banner copy that should change with it.
+    expect(single.changeCount).toBe(1);
+    expect(doubled.changeCount).toBe(2);
+  });
+
   it("is null when nothing ever changed", () => {
     expect(foldShiftChanges([], { lastSeenAt: null, tripsNow: 3 })).toBeNull();
   });

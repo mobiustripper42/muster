@@ -105,6 +105,29 @@ export interface FormResult {
  * rather than `Pending`. Omit it (the default) and birth uses the pure seat-fold —
  * backward-compatible with callers that don't carry a clock.
  */
+/**
+ * A `formShifts` run that failed partway, carrying what it had already worked out (#766).
+ *
+ * **Why the partial result has to escape.** The loop below saves each vessel-day as it goes and
+ * returns its notices at the end. A throw on a later group used to discard the whole in-memory
+ * result — including `changedCrew` entries for groups that had already succeeded and whose shift
+ * rows are durable. The tick's re-form is not a backstop for that: it reads the trip set the
+ * failed run already wrote, sees no diff, and stays silent. The notice was not delayed, it was
+ * gone, and a crew member never learned their day changed.
+ *
+ * `cause` is the original failure, unswallowed — a caller still needs to know the run broke.
+ */
+export class PartialFormError extends Error {
+  readonly partial: FormResult;
+  override readonly cause: unknown;
+  constructor(cause: unknown, partial: FormResult) {
+    super(`formShifts failed partway through: ${String(cause)}`);
+    this.name = "PartialFormError";
+    this.cause = cause;
+    this.partial = partial;
+  }
+}
+
 export async function formShifts(
   repo: Repository,
   opts?: { now?: Date; leadDays?: number; notifyTripChanges?: boolean },
@@ -144,6 +167,10 @@ export async function formShifts(
     changedCrew: [],
   };
 
+  // Wrapped so a throw carries `result` out rather than discarding it (#766). Deliberately the
+  // whole loop and nothing finer: the notices are pushed onto `result` as each group completes,
+  // so whatever is on it at the moment of the throw is exactly the set that is safe to relay.
+  try {
   for (const g of groups.values()) {
     const { vesselId, date } = g;
     const canonicalId = asId<"ShiftId">(`shift-${vesselId}-${date}`);
@@ -287,6 +314,9 @@ export async function formShifts(
         });
       }
     }
+  }
+  } catch (e) {
+    throw new PartialFormError(e, result);
   }
 
   return result;

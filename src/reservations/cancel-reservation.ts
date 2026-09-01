@@ -22,7 +22,7 @@
  * (`refund-payment.ts`) against a figure they can edit; `quoteCancelRefund` below only computes
  * what the published terms suggest, for the confirm screen to prefill.
  */
-import { formShifts, type FormResult } from "../builder/form-shifts.js";
+import { formShifts, PartialFormError, type FormResult } from "../builder/form-shifts.js";
 import { logFormAudit } from "../oracle/audit-log.js";
 import type { CancelledBy, Payment } from "../domain/entities.js";
 import type { EventId, ReservationId } from "../domain/ids.js";
@@ -183,8 +183,17 @@ export async function cancelReservation(
       console.error("[reservations] cancel: form audit failed — the transition is unrecorded", e);
     }
   } catch (e) {
+    // The tick re-forms the SHIFTS, not the notices (#766) — the partial run's rows are durable,
+    // so the next run sees no diff and stays silent. This is the only chance these get relayed.
+    if (e instanceof PartialFormError) {
+      try {
+        await deps.relayFormNotices?.(e.partial);
+      } catch (relayErr) {
+        console.error("[reservations] cancel: partial-run notice relay failed", relayErr);
+      }
+    }
     console.error(
-      `[reservations] formShifts after cancelling ${reservationId} failed — the tick will re-form`,
+      `[reservations] formShifts after cancelling ${reservationId} failed — the tick will re-form the shifts`,
       e,
     );
   }

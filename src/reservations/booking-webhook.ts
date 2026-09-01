@@ -24,7 +24,7 @@
  * LOUDLY ALERTS ALL ADMINS to refund manually. Refunds are always manual (Stripe dashboard)
  * except the DEC-109 residual-race auto-refund. Provider-agnostic + `FakePaymentPort`-testable.
  */
-import { formShifts, type FormResult } from "../builder/form-shifts.js";
+import { formShifts, PartialFormError, type FormResult } from "../builder/form-shifts.js";
 import { confirmBookingFromIntent } from "./confirm-booking.js";
 import { logFormAudit } from "../oracle/audit-log.js";
 import type { Payment, Reservation } from "../domain/entities.js";
@@ -439,8 +439,12 @@ export async function processBookingCharge(
       });
       await relayAndAudit(deps, form);
     } catch (e) {
+      // "The tick will re-form" is true of the shifts and FALSE of the notices (#766): the
+      // partial run's shift rows are durable, so the next tick sees no diff and says nothing.
+      // Relay what it worked out before giving up on the rest.
+      if (e instanceof PartialFormError) await relayAndAudit(deps, e.partial);
       console.error(
-        `[reservations] formShifts after booking ${reservationId} failed - the tick will re-form`,
+        `[reservations] formShifts after booking ${reservationId} failed - the tick will re-form the shifts, notices above were relayed`,
         e,
       );
     }

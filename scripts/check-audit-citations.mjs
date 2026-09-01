@@ -277,7 +277,11 @@ const CITATIONS = [
   // The verdict, in the code's own words, in two files.
   ['src/reservations/confirm-booking.ts', 14, 'reconciler to run the SAME idempotent confirm'],
   ['app/lib/booking-deps.ts', 4, '(later) the reconciler'],
-  ['src/reservations/confirm-booking.ts', 48, 'await deps.alertPaidButUnbooked('],
+  // The four controls checked and ruled out (§Criterion 15). The alert call sites themselves are
+  // already pinned under Criterion 7; not repeated here.
+  ['app/api/cron/xola-pull/route.ts', 10, 'NO CRON IS ATTACHED'],
+  ['app/(admin)/admin/purchases/page.tsx', 105, 'listAllReservations'],
+  ['app/b/find/actions.ts', 70, 'r.event'],
 
   // ── Criterion 2 / 5 evidence, spot-checked while re-baselining ──
   ['src/reservations/availability.ts', 172, 'return asId<"EventId">(`slot_${slotIdentity('],

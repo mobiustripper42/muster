@@ -136,6 +136,21 @@ const CITATIONS = [
   ['src/reservations/availability.test.ts', 587, 'an EXPIRED hold contributes nothing'],
   ['src/reservations/claim.test.ts', 357, 'an EXPIRED overlapping hold does not occupy anything'],
 
+  // ── Criterion 8's evidence (§Criterion 8) ──
+  ['docs/SPEC.md', 2060, 'The trip comes free the instant the window passes'],
+  ['src/reservations/availability.ts', 333, 'h.expiresAt > input.asOf'],
+  ['src/reservations/claim.ts', 215, 'h.expiresAt <= at0'],
+  ['src/reservations/claim.ts', 266, 'h.expiresAt > at0'],
+  ['src/adapters/postgres-repository.ts', 1727, 'from checkout_holds where expires_at > $1'],
+  ['src/adapters/in-memory-repository.ts', 763, 'h.expiresAt > asOf'],
+  ['src/adapters/repository-contract.ts', 1102, 'listLiveCheckoutHolds("2026-07-01T12:15:00.000Z")).toHaveLength(0)'],
+  ['src/adapters/repository-contract.ts', 1103, 'listLiveCheckoutHolds("2026-07-01T12:14:59.999Z")).toHaveLength(1)'],
+  ['src/adapters/repository-contract.ts', 1106, 'sweeps EVERY expired hold, not just its own slot'],
+  ['src/adapters/repository-contract.ts', 1128, 'never touches a LIVE hold on another slot'],
+  ['src/adapters/postgres-repository.test.ts', 84, 'const dbUp = await canConnect(TEST_URL)'],
+  ['src/adapters/postgres-repository.test.ts', 94, 'runRepositoryContract("postgres"'],
+  ['src/adapters/in-memory-repository.test.ts', 9, 'runRepositoryContract("in-memory"'],
+
   // ── Criterion 2 / 5 evidence, spot-checked while re-baselining ──
   ['src/reservations/availability.ts', 172, 'return asId<"EventId">(`slot_${slotIdentity('],
   ['app/(public)/book/page.tsx', 91, 'repo.listLiveCheckoutHolds(asOf)'],

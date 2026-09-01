@@ -48,11 +48,17 @@ export interface ShiftChangeRecord {
   startAfter: string | null;
 }
 
-/** Everything the banner needs. `null` fields mean "nothing honest to show", not zero. */
+/**
+ * Everything the banner needs. `null` fields mean "nothing honest to show", not zero.
+ *
+ * **There is deliberately no count of changes (#766).** There was one, and it rendered as "This
+ * shift changed twice" — a row count, so two overlapping `formShifts` runs recording one change
+ * twice made the app say it happened twice. Rather than teach the reader to tell a duplicate row
+ * from a real repeat, the count went: a crew member needs to know their day moved and what it is
+ * now, which the pairs below carry. Removing it deleted the defect rather than guarding it.
+ */
 export interface ChangeBanner {
-  /** How many changes landed since this crew member last looked. Always ≥ 1. */
-  changeCount: number;
-  /** ISO instant of the most recent one — the banner's "Latest …" stamp. */
+  /** ISO instant of the most recent change — the banner's "Changed …" stamp. */
   latestAt: string;
   /** Earliest departure at the start and end of the window, or `null` when unknown/unmoved. */
   startBefore: string | null;
@@ -132,7 +138,6 @@ export function foldShiftChanges(
   const tripsMoved = tripsBefore !== opts.tripsNow;
 
   return {
-    changeCount: unseen.length,
     latestAt: newest.changedAt,
     startBefore: startKnown ? oldest.startBefore : null,
     startAfter: startKnown ? newest.startAfter : null,

@@ -41,13 +41,11 @@ export function ChangeBanner({
       data-testid="change-banner"
       className="flex flex-col gap-3 rounded-card border border-accent bg-card px-4 py-4 shadow-sm"
     >
-      <h2 className="text-sm font-semibold text-ink">
-        {banner.changeCount === 1
-          ? "This shift changed"
-          : banner.changeCount === 2
-            ? "This shift changed twice"
-            : `This shift changed ${banner.changeCount} times`}
-      </h2>
+      {/* One sentence, never a count (#766). It used to read "changed twice" / "changed N times"
+          off a row count, which two overlapping re-forms could inflate — one change recorded
+          twice said "twice". The rows below are what the crew member acts on; how many writes it
+          took to get there is our bookkeeping, not their information. */}
+      <h2 className="text-sm font-semibold text-ink">This shift changed</h2>
 
       {/* Nothing to itemise happens: a one-for-one trip swap moves the manifest without moving
           the count or the earliest departure, so both pairs net out. The banner still belongs on
@@ -73,7 +71,7 @@ export function ChangeBanner({
 
       <div className="flex items-center justify-between gap-3">
         <span className="text-xs text-muted">
-          {banner.changeCount === 1 ? "Changed" : "Latest"} {fmtRunWhen(banner.latestAt)}
+          Changed {fmtRunWhen(banner.latestAt)}
         </span>
         <form action={dismiss}>
           <input type="hidden" name="shiftId" value={shiftId} />

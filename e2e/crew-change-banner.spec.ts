@@ -81,7 +81,9 @@ test.describe("what changed on this shift (#769)", () => {
     await page.goto(`/crew/shift/${SHIFT}`);
 
     const banner = page.getByTestId("change-banner");
-    await expect(banner).toContainText("This shift changed twice");
+    // One sentence whatever the window holds (#766) — the count that used to say "twice" here
+    // was a row count and is gone. The span below is what this test is really about.
+    await expect(banner).toContainText("This shift changed");
     await expect(banner).toContainText("2:45 PM");
     await expect(banner).toContainText("1:15 PM");
     // The intermediate hop is not a thing they were ever shown — it must not appear.

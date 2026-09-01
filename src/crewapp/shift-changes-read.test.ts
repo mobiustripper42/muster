@@ -39,7 +39,8 @@ describe("readShiftChangeBanner", () => {
     const repo = new InMemoryRepository();
     await repo.recordShiftChanges([change("2026-07-04T18:00:00Z")]);
     const banner = await readShiftChangeBanner(repo, SHIFT, QUINT, 3);
-    expect(banner?.changeCount).toBe(1);
+    expect(banner).not.toBeNull();
+    expect(banner?.latestAt).toBe("2026-07-04T18:00:00Z");
   });
 
   it("clears after that crew member dismisses it", async () => {
@@ -59,7 +60,7 @@ describe("readShiftChangeBanner", () => {
     await repo.recordShiftChanges([change("2026-07-04T19:00:00Z")]);
 
     const banner = await readShiftChangeBanner(repo, SHIFT, QUINT, 3);
-    expect(banner?.changeCount).toBe(1);
+    expect(banner).not.toBeNull();
     expect(banner?.latestAt).toBe("2026-07-04T19:00:00Z");
   });
 
@@ -75,19 +76,26 @@ describe("readShiftChangeBanner", () => {
     await repo.markShiftChangesSeen(SHIFT, QUINT, "2026-07-04T18:30:00Z");
 
     expect(await readShiftChangeBanner(repo, SHIFT, QUINT, 3)).toBeNull();
-    expect((await readShiftChangeBanner(repo, SHIFT, BRODY, 3))?.changeCount).toBe(1);
+    expect(await readShiftChangeBanner(repo, SHIFT, BRODY, 3)).not.toBeNull();
   });
 
-  it("keeps one crew member's changes out of another's count", async () => {
+  it("keeps one crew member's changes out of another's window", async () => {
     const repo = new InMemoryRepository();
     await repo.recordShiftChanges([
       change("2026-07-04T18:00:00Z"),
       change("2026-07-04T19:00:00Z"),
       { ...change("2026-07-04T20:00:00Z"), crewMemberId: BRODY },
     ]);
-    // Quint saw two changes; Brody saw one. Folding per shift would tell both of them "three".
-    expect((await readShiftChangeBanner(repo, SHIFT, QUINT, 3))?.changeCount).toBe(2);
-    expect((await readShiftChangeBanner(repo, SHIFT, BRODY, 3))?.changeCount).toBe(1);
+    // Asserted on the timestamp rather than a count of rows, which is what this checked before
+    // the count was removed (#766). It is the stronger version: folding per shift instead of per
+    // crew member would stamp BOTH banners 20:00, so Quint reading 19:00 is what proves Brody's
+    // row stayed out of Quint's window.
+    expect((await readShiftChangeBanner(repo, SHIFT, QUINT, 3))?.latestAt).toBe(
+      "2026-07-04T19:00:00Z",
+    );
+    expect((await readShiftChangeBanner(repo, SHIFT, BRODY, 3))?.latestAt).toBe(
+      "2026-07-04T20:00:00Z",
+    );
   });
 });
 

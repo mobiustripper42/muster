@@ -174,6 +174,27 @@ const CITATIONS = [
   ['docs/SPEC.md', 1823, "an operator's booking, `source`"],
   ['db/migrations/20260718142705_claim_hold_mutex.sql', 33, 'create table if not exists checkout_holds ('],
 
+  // ── Criterion 10's evidence (§Criterion 10) ──
+  ['docs/SPEC.md', 2064, 'A declined card retried on the same trip reuses the same reservation'],
+  ['docs/SPEC.md', 1742, 'A retry is matched by possession, never by claimed identity'],
+  ['docs/SPEC.md', 1744, 'It must never be the typed email or phone'],
+  ['src/reservations/claim.ts', 120, 'export interface DepartureHoldRequest {'],
+  ['src/reservations/claim.ts', 133, 'holderToken?: string | undefined;'],
+  ['src/reservations/claim.ts', 257, 'Matched on POSSESSION of the holder token, never on the buyer'],
+  ['src/reservations/claim.ts', 265, 'h.holderToken === holderToken'],
+  ['src/reservations/claim.ts', 281, 'Returned with its ORIGINAL expiry, not a fresh one'],
+  ['src/reservations/holder-token.ts', 4, 'Why possession and not identity'],
+  ['src/reservations/holder-token.ts', 27, 'return bytes(32).toString("base64url");'],
+  ['src/reservations/holder-token.ts', 32, 'const HOLDER_TOKEN_RE = /^[A-Za-z0-9_-]{43}$/'],
+  ['app/(public)/book/checkout/actions.ts', 102, 'httpOnly: true,'],
+  ['app/(public)/book/checkout/actions.ts', 106, 'sameSite: "lax",'],
+  ['src/reservations/claim.test.ts', 397, 'returns the SAME hold on a retry instead of taking a second boat'],
+  ['src/reservations/claim.test.ts', 410, 'does NOT extend the expiry — a retry cannot park a boat indefinitely'],
+  ['src/reservations/claim.test.ts', 439, 'takes a bigger boat when the retry no longer FITS'],
+  ['src/reservations/claim.test.ts', 498, 'two sessions with NO token never share a hold'],
+  ['src/reservations/claim.test.ts', 513, 'an EXPIRED hold of the same buyer is not reused'],
+  ['src/reservations/claim.test.ts', 524, 'does not reuse a hold from a different departure'],
+
   // ── Criterion 2 / 5 evidence, spot-checked while re-baselining ──
   ['src/reservations/availability.ts', 172, 'return asId<"EventId">(`slot_${slotIdentity('],
   ['app/(public)/book/page.tsx', 91, 'repo.listLiveCheckoutHolds(asOf)'],

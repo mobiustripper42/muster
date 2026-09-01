@@ -283,6 +283,25 @@ const CITATIONS = [
   ['app/(admin)/admin/purchases/page.tsx', 105, 'listAllReservations'],
   ['app/b/find/actions.ts', 70, 'r.event'],
 
+  // ── Criterion 16's evidence (§Criterion 16) ──
+  ['docs/SPEC.md', 2073, 'Confirming the same payment three times'],
+  ['src/domain/entities.ts', 802, 'Deterministic from the Stripe checkout-session id'],
+  ['src/adapters/postgres-repository.ts', 1480, 'on conflict do nothing'],
+  // The SEQUENTIAL guard, which an earlier draft of §Criterion 16 missed: the repeat returns here,
+  // before the Event id is computed at :96 and before the insert at :140 is reached.
+  ['src/reservations/write-booking.ts', 94, 'if (prior) return { outcome: "already", reservation: prior };'],
+  ['src/reservations/write-booking.ts', 96, 'const eventId = eventIdForSlot('],
+  ['src/reservations/booking-webhook.ts', 393, 'result.outcome === "booked" || result.outcome === "already"'],
+  ['src/adapters/postgres-repository.ts', 1279, 'on conflict (id) do nothing'],
+  ['src/reservations/booking-webhook.test.ts', 163, 'listPaymentsForReservation'],
+  ['src/adapters/repository-contract.ts', 844, 'no duplicate materialized (slot guardrail)'],
+  ['src/reservations/create-departure-payment-intent.test.ts', 441, 'NOT the outcome gate'],
+  ['src/reservations/create-departure-payment-intent.test.ts', 450, 'piEvent("pi_fake_1", 27570, m)'],
+  ['src/reservations/create-departure-payment-intent.test.ts', 452, 'listGratuitiesForEvent'],
+  ['src/reservations/booking-webhook.test.ts', 152, 'a re-delivered webhook (same session) is idempotent'],
+  ['src/reservations/booking-webhook.test.ts', 161, 'listReservationsForEvent(EVENT)).toHaveLength(1)'],
+  ['src/reservations/booking-webhook.test.ts', 564, 'expect(events).toHaveLength(1)'],
+
   // ── Criterion 2 / 5 evidence, spot-checked while re-baselining ──
   ['src/reservations/availability.ts', 172, 'return asId<"EventId">(`slot_${slotIdentity('],
   ['app/(public)/book/page.tsx', 91, 'repo.listLiveCheckoutHolds(asOf)'],

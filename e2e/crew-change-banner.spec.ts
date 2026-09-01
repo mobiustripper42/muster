@@ -81,7 +81,11 @@ test.describe("what changed on this shift (#769)", () => {
     await page.goto(`/crew/shift/${SHIFT}`);
 
     const banner = page.getByTestId("change-banner");
-    await expect(banner).toContainText("This shift changed twice");
+    // Asserted as an ABSENCE, because the positive version has no discriminating power:
+    // `toContainText("This shift changed")` is a substring match that passes against "This shift
+    // changed twice" too, so it would not notice the count coming back. Two records in this
+    // window is exactly the case that used to render it (#766).
+    await expect(banner).not.toContainText("changed twice");
     await expect(banner).toContainText("2:45 PM");
     await expect(banner).toContainText("1:15 PM");
     // The intermediate hop is not a thing they were ever shown — it must not appear.

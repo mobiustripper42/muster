@@ -28,45 +28,26 @@ const rec = (over: Partial<ShiftChangeRecord> = {}): ShiftChangeRecord => ({
 });
 
 describe("foldShiftChanges", () => {
-  it("folds a duplicated record to the same banner as a single one (#766)", () => {
-    // **Pinning an accident that a real bug depends on.** Issue #766 says two overlapping
-    // `formShifts` runs can write the same `changedCrew` entry twice — `recordShiftChanges` is a
-    // plain bulk insert with no `on conflict` (`postgres-repository.ts:2553`), so two identical
-    // rows genuinely land in the table. The issue concludes the crew member therefore sees the
-    // change twice. They do not, and this is why: the fold reads FIRST TOUCH and LAST TOUCH per
-    // event id rather than counting rows, so a second identical row sets both maps to the values
-    // they already held. The start pair is read off the oldest and newest records, which are also
-    // unchanged.
+  it("is unaffected by the same change being recorded twice (#766)", () => {
+    // Two overlapping `formShifts` runs — a booking webhook firing while the 15-minute tick is
+    // mid-loop — both compute the same `changedCrew` entry and both insert it, because
+    // `recordShiftChanges` is a plain bulk insert with no `on conflict` and each stamps its own
+    // `changedAt`. That duplicate is now invisible to the banner, because the banner no longer
+    // counts anything: it reports what moved, and a repeated record moves nothing new.
     //
-    // That property is load-bearing and nothing asserted it. It would be lost by anyone
-    // rewriting the fold as a count — which reads like a simplification, passes every other test
-    // in this file, and would turn a harmless duplicate row into a duplicate banner. Its sibling
-    // on the SMS path IS asserted, at `src/adapters/outbox-notice-channel.test.ts:44`.
-    //
-    // Written after the fact and green on arrival, deliberately: the behaviour already holds, so
-    // there was no failing state to observe first. It is a guard, not a proof of new work.
+    // Full equality on purpose. This used to exclude `changeCount`, which was the one field the
+    // duplicate could reach — deleting the count is what made the whole object comparable.
     const one = rec({
       added: ["e2"],
       removed: ["e1"],
       startBefore: "2026-07-04T17:00:00Z",
       startAfter: "2026-07-04T19:00:00Z",
     });
-    const single = foldShiftChanges([one], { lastSeenAt: null, tripsNow: 3 })!;
-    const doubled = foldShiftChanges([one, { ...one }], { lastSeenAt: null, tripsNow: 3 })!;
+    const single = foldShiftChanges([one], { lastSeenAt: null, tripsNow: 3 });
+    const doubled = foldShiftChanges([one, { ...one }], { lastSeenAt: null, tripsNow: 3 });
 
-    // What the duplicate does NOT disturb: the trip movement and the clock change.
-    expect({ ...doubled, changeCount: 0 }).toEqual({ ...single, changeCount: 0 });
-
-    // **And what it does.** `changeCount` is `unseen.length`, a plain row count, so a duplicated
-    // row inflates it — and `components/crew/change-banner.tsx:45-49` renders that as words:
-    // "This shift changed twice" for a shift that changed once. That is the surviving half of
-    // #766's symptom B, and it is NOT fixed here: the fix belongs at the writer, because if the
-    // table says it happened twice the reader is right to say so.
-    //
-    // Asserted rather than skipped so the day someone dedupes at the write, this test fails and
-    // points them at the banner copy that should change with it.
-    expect(single.changeCount).toBe(1);
-    expect(doubled.changeCount).toBe(2);
+    expect(single).not.toBeNull();
+    expect(doubled).toEqual(single);
   });
 
   it("is null when nothing ever changed", () => {
@@ -86,24 +67,30 @@ describe("foldShiftChanges", () => {
     expect(foldShiftChanges(records, { lastSeenAt: "2026-07-04T18:00:00Z", tripsNow: 3 })).toBeNull();
   });
 
-  it("counts every change when the crew member has never looked", () => {
+  // These two asserted `changeCount` — 2 with no last-look, 2 of 3 after one. The count is gone
+  // (#766), so each now asserts the thing the count was standing in for: which record the
+  // banner's timestamp comes from. That is the only observable left that distinguishes the
+  // window's contents, and it is the one the crew member actually reads.
+  it("stamps the newest change when the crew member has never looked", () => {
     const records = [
       rec({ changedAt: "2026-07-04T18:00:00Z" }),
       rec({ changedAt: "2026-07-04T19:00:00Z" }),
     ];
     const banner = foldShiftChanges(records, { lastSeenAt: null, tripsNow: 3 });
-    expect(banner?.changeCount).toBe(2);
     expect(banner?.latestAt).toBe("2026-07-04T19:00:00Z");
   });
 
-  it("counts only the changes since the last look", () => {
+  it("ignores changes older than the last look when stamping", () => {
     const records = [
-      rec({ changedAt: "2026-07-04T17:00:00Z" }),
-      rec({ changedAt: "2026-07-04T19:00:00Z" }),
-      rec({ changedAt: "2026-07-04T20:00:00Z" }),
+      rec({ changedAt: "2026-07-04T17:00:00Z", startBefore: "2026-07-04T15:00:00Z" }),
+      rec({ changedAt: "2026-07-04T19:00:00Z", startBefore: "2026-07-04T19:30:00Z" }),
+      rec({ changedAt: "2026-07-04T20:00:00Z", startAfter: "2026-07-04T18:00:00Z" }),
     ];
     const banner = foldShiftChanges(records, { lastSeenAt: "2026-07-04T18:00:00Z", tripsNow: 3 });
-    expect(banner?.changeCount).toBe(2);
+    expect(banner?.latestAt).toBe("2026-07-04T20:00:00Z");
+    // The 17:00 record is excluded, so the span opens at the 19:00 one — not at 15:00. Without
+    // this the test would pass on a fold that ignored `lastSeenAt` entirely.
+    expect(banner?.startBefore).toBe("2026-07-04T19:30:00Z");
   });
 
   it("spans the endpoints of the window, not of one change", () => {
@@ -229,7 +216,6 @@ describe("foldShiftChanges", () => {
     const records = [rec({ added: ["evt-e"], removed: ["evt-a"] })];
     const banner = foldShiftChanges(records, { lastSeenAt: null, tripsNow: 3 });
     expect(banner).not.toBeNull();
-    expect(banner?.changeCount).toBe(1);
     expect(banner?.tripsBefore).toBeNull();
     expect(banner?.tripsAfter).toBeNull();
   });

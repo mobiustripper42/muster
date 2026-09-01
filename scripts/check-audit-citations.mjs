@@ -229,6 +229,9 @@ const CITATIONS = [
   ['src/reservations/create-departure-checkout.test.ts', 169, 'residual-race loss with NO payment_intent'],
   ['src/reservations/create-departure-checkout.test.ts', 183, 'residual race + auto-refund THROWS'],
   ['src/reservations/confirm-booking.test.ts', 134, 'does NOT refund or notify on a residual-race loss'],
+  ['src/reservations/create-departure-payment-intent.test.ts', 356, 'const m = pay.intents[0]!.metadata;'],
+  ['src/reservations/create-departure-payment-intent.test.ts', 361, 'outcome: "lost"'],
+  ['src/reservations/booking-webhook.ts', 747, 'Writes NO `Payment`'],
 
   // ── Criterion 2 / 5 evidence, spot-checked while re-baselining ──
   ['src/reservations/availability.ts', 172, 'return asId<"EventId">(`slot_${slotIdentity('],

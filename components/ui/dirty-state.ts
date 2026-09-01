@@ -131,15 +131,29 @@ function onPopState(e: PopStateEvent): void {
   pushSentinel();
 }
 
-/** Arm the trap while at least one guarded form is mounted. Returns the release function. */
+/**
+ * Arm the trap while at least one guarded form is mounted. Returns the release function.
+ *
+ * **The listener is installed once and never removed** (#835), which is not the same thing as
+ * leaking one. The sentinel it watches for cannot be taken back out on unmount — that means
+ * calling `history.back()` from an effect cleanup, which on the submit path races the server
+ * action's own `redirect()`, on surfaces including the payroll-feeding time clock (DEC-160 §7).
+ * So every guarded page leaves an entry behind, and the only question is whether anything is
+ * listening when the operator eventually presses Back onto it.
+ *
+ * Removing the listener on release answered "no": a sentinel left by a page since navigated away
+ * from had nobody to consume it, the URL did not change, and the press appeared to do nothing.
+ * The next one worked, which is the shape that makes it read as a flaky app rather than a bug.
+ *
+ * Left installed, that same pop is consumed exactly as one during a guarded page's life already
+ * is — `confirmLeaveOnce` consents when nothing is dirty and re-issues the step. `addEventListener`
+ * with the same function reference is a no-op after the first, so the count is still one.
+ */
 export function retainBackTrap(): () => void {
   trapHolders += 1;
-  if (trapHolders === 1) {
-    pushSentinel();
-    window.addEventListener("popstate", onPopState);
-  }
+  if (trapHolders === 1) pushSentinel();
+  window.addEventListener("popstate", onPopState);
   return () => {
     trapHolders -= 1;
-    if (trapHolders === 0) window.removeEventListener("popstate", onPopState);
   };
 }

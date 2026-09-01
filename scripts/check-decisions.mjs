@@ -300,6 +300,109 @@ export function validateSchemaRecord(meta, body, bytes, schema = JSON.parse(read
   return errs
 }
 
+/**
+ * SUPERSESSION IS A PAIR, AND ONLY ONE HALF WAS ENFORCED.
+ *
+ * `CLAUDE.md` states the convention: the new record carries `supersedes: [DEC-<id>]`, the old one
+ * flips to `status: superseded` with `superseded_by`. Writing the new record is the half you are
+ * already doing. Going back to the old one is the half nothing checked, and skipping it leaves a
+ * full, confident, retired argument that still greps and still reads live.
+ *
+ * Muster's DEC-107 is that record. It rules that sales tax is read fresh RATHER than frozen onto a
+ * booking; it is retired; it names no successor; and `create-departure-payment-intent.ts` cites it
+ * by id as "the DEC-107 freeze rule" — the opposite of its holding, from a record that is not even
+ * current. Nothing in the toolchain could see any of that, because the citation resolves: the gate
+ * verified the id existed, never that it was alive or that the claim matched.
+ *
+ * `rewritten` is id → frontmatter for every schema-v1 record; `seenIds` is every id on disk,
+ * legacy files included. The difference between them is load-bearing and is what makes these rules
+ * safe to ship onto an adopted corpus: a frozen or legacy record is on disk and NOT in the map, so
+ * "you pointed at nothing" stays distinguishable from "you pointed at something this gate may not
+ * ask anything of". Demanding an edit to a file the build forbids editing is a rule with no
+ * compliant action — the trap the dictionary baseline already walked into, at 149 records.
+ */
+export function supersessionProblems(rewritten, seenIds) {
+  const out = []
+  const fail = (path, problem) => out.push([path, problem])
+  const selfPointing = new Set()
+
+  for (const [id, d] of rewritten) {
+    /**
+     * First, and it stops the record being looked at again. A self-pointer makes three other
+     * rules true at once — the target is retired, the target does not list it, the chain never
+     * terminates — and every one of them is the same typo wearing a different hat. Three messages
+     * for one character is how a gate teaches people to skim its output.
+     */
+    if (d.superseded_by === id) {
+      fail(d.path, `superseded_by itself`)
+      selfPointing.add(id)
+      continue
+    }
+    /**
+     * The half that was missing. `withdrawn` is deliberately exempt: it means retired with nothing
+     * replacing it, and demanding a pointer would force an invented one — worse than the gap.
+     */
+    if (d.status === 'superseded' && !d.superseded_by) {
+      fail(d.path, 'status is `superseded` but no `superseded_by` — name the record that replaced it, or use `withdrawn` if nothing did')
+    }
+    if (!d.superseded_by) continue
+    // `superseded_by` must land on a record that exists and is still the live one. Pointing at
+    // a record that is itself superseded is a chain a reader has to walk, and pointing at
+    // nothing is the dangling citation the whole gate exists to stop.
+    const target = rewritten.get(d.superseded_by)
+    if (!target) {
+      if (!seenIds.has(d.superseded_by)) {
+        fail(d.path, `superseded_by ${d.superseded_by}, which has no decision file`)
+      } else {
+        fail(d.path, `superseded_by ${d.superseded_by}, which has not been rewritten and so carries no status`)
+      }
+    } else if (target.status !== 'active') {
+      fail(d.path, `superseded_by ${d.superseded_by}, whose status is ${target.status} — point at the live record`)
+    } else if (!(target.supersedes ?? []).includes(id)) {
+      /**
+       * Reported on the SUCCESSOR's path, not the retired record's, because that is the file
+       * somebody has to open. A message naming the file that is already correct sends the reader
+       * to the wrong place first.
+       */
+      fail(target.path, `${d.superseded_by} does not list ${id} in \`supersedes\`, but ${id} names it as its successor`)
+    }
+  }
+
+  // The other direction: A claims it replaced B, and nobody ever told B.
+  for (const [id, d] of rewritten) {
+    if (selfPointing.has(id)) continue
+    // Deduped: `supersedes` declares no `uniqueItems`, so naming a record twice is schema-valid
+    // and an ordinary YAML copy/paste slip. It is one claim however many times it is written.
+    for (const b of new Set(d.supersedes ?? [])) {
+      // The incoming half of the self-pointer short-circuit. Loop 1 stopped looking at that
+      // record; without this, an unrelated claim drags it back and prints a second message about
+      // the same character.
+      if (selfPointing.has(b)) continue
+      const target = rewritten.get(b)
+      if (!target) {
+        // Absent from the map AND absent from disk is a dangling claim. Absent from the map but
+        // present on disk is frozen or legacy, and there is nothing to say about it from here.
+        if (!seenIds.has(b)) fail(d.path, `supersedes ${b}, which has no decision file`)
+        continue
+      }
+      /**
+       * ALREADY SAID BY RULE 1, and this is the likeliest shape of the whole defect: the new
+       * record written correctly, the old one never gone back to. Falling through to the
+       * reciprocity branch below printed `superseded_by undefined` and called a half that names
+       * nothing a disagreement between two named records — two messages for one omission, in the
+       * one case that actually happens.
+       */
+      if (target.status === 'superseded' && !target.superseded_by) continue
+      if (target.status !== 'superseded') {
+        fail(target.path, `status is \`${target.status}\`, but ${id} declares \`supersedes: [${b}]\` — flip it to \`superseded\` and set \`superseded_by: ${id}\``)
+      } else if (target.superseded_by !== id) {
+        fail(target.path, `superseded_by ${target.superseded_by}, but ${id} declares \`supersedes: [${b}]\` — the two halves name different records`)
+      }
+    }
+  }
+  return out
+}
+
 export function check() {
   const failures = []
   const fail = (where, msg) => failures.push(`${where} — ${msg}`)
@@ -392,23 +495,7 @@ export function check() {
   // legacy record fail as `not-listed` on a file nobody had touched.
   for (const dir of RECORD_DIRS) sweep(dir, dir === DIR ? '' : 'archive/')
 
-  // `superseded_by` must land on a record that exists and is still the live one. Pointing at
-  // a record that is itself superseded is a chain a reader has to walk, and pointing at
-  // nothing is the dangling citation the whole gate exists to stop.
-  for (const [id, d] of rewritten) {
-    if (!d.superseded_by) continue
-    const target = rewritten.get(d.superseded_by)
-    if (!target) {
-      if (!seenIds.has(d.superseded_by)) {
-        fail(d.path, `superseded_by ${d.superseded_by}, which has no decision file`)
-      } else {
-        fail(d.path, `superseded_by ${d.superseded_by}, which has not been rewritten and so carries no status`)
-      }
-    } else if (target.status !== 'active') {
-      fail(d.path, `superseded_by ${d.superseded_by}, whose status is ${target.status} — point at the live record`)
-    }
-    if (d.superseded_by === id) fail(d.path, `superseded_by itself`)
-  }
+  for (const [path, problem] of supersessionProblems(rewritten, seenIds)) fail(path, problem)
 
   let decisions
   try {

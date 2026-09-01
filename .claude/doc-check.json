@@ -13,6 +13,11 @@
     "docs/FUTURE_IDEAS.md": "parked ideas cite sketches and drop-lists that predate the current tree",
     "docs/SECURITY_AUDIT.md": "findings as of an audit date, same shape as docs/audit/"
   },
+  "runbooks": {
+    "docs/DEPLOY.md": "post-deploy smoke checks a person runs against the live domain; no npm script can wrap a probe of production",
+    "docs/HOSTING_MIGRATION.md": "one-time hosting migration performed by hand, verified against the new host before cutover",
+    "docs/RUNNING.md": "quick-start install on a fresh machine, and a dev login-code read a developer does at a terminal"
+  },
   "knownForeign": [
     "stripe-best-practices", "stripe-projects", "upgrade-stripe", "claude-api",
     "update-config", "fewer-permission-prompts", "keybindings-help", "review",

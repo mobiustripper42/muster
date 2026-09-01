@@ -247,7 +247,7 @@ through the handler directly and prints what the safety net did.
   per spec, so it never touches your dev data or the `:3000` server.
   ```bash
   npm run db:up               # if not already running
-  npx playwright install chromium   # one-time, installs the browser
+  ./node_modules/.bin/playwright install chromium   # one-time, installs the browser
   npm run test:e2e            # headless run
   npm run test:e2e:ui         # interactive runner
   ```

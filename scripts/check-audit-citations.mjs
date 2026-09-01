@@ -233,6 +233,22 @@ const CITATIONS = [
   ['src/reservations/create-departure-payment-intent.test.ts', 361, 'outcome: "lost"'],
   ['src/reservations/booking-webhook.ts', 747, 'Writes NO `Payment`'],
 
+  // ── Criterion 13's evidence (§Criterion 13) ──
+  ['docs/SPEC.md', 2069, 'Killing the webhook entirely still produces a booking'],
+  ['app/(public)/book/success/page.tsx', 5, 'SPEC §2.8 criterion 13'],
+  ['app/(public)/book/success/page.tsx', 51, 'await confirmBookingByPaymentIntent('],
+  ['src/reservations/confirm-booking.ts', 87, 'export async function confirmBookingByPaymentIntent('],
+  ['src/reservations/confirm-booking.ts', 91, 'await deps.payments.getSucceededPaymentIntent(paymentIntentId)'],
+  ['src/reservations/confirm-booking.test.ts', 86, 'given only its id and no webhook at all'],
+  ['src/reservations/confirm-booking.test.ts', 103, 'the webhook landing afterwards produces no second booking'],
+  ['src/reservations/confirm-booking.test.ts', 121, 'the redirect is not proof'],
+  ['src/reservations/confirm-booking.test.ts', 169, 'metadata-less intent behind a hosted balance checkout'],
+  // Issue #831, verified rather than taken from the page's docstring: `won` is a read after the
+  // write, so two racing callers can both observe the row and both be told `booked`.
+  ['src/adapters/postgres-repository.ts', 1563, 'select 1 from reservations where id=$1'],
+  ['src/adapters/postgres-repository.ts', 1567, 'won.rowCount === 1'],
+  ['src/reservations/write-booking.ts', 152, 'outcome: "already", reservation: after'],
+
   // ── Criterion 2 / 5 evidence, spot-checked while re-baselining ──
   ['src/reservations/availability.ts', 172, 'return asId<"EventId">(`slot_${slotIdentity('],
   ['app/(public)/book/page.tsx', 91, 'repo.listLiveCheckoutHolds(asOf)'],

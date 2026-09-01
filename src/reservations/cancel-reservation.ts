@@ -191,6 +191,15 @@ export async function cancelReservation(
       } catch (relayErr) {
         console.error("[reservations] cancel: partial-run notice relay failed", relayErr);
       }
+      try {
+        // Both legs, matching the success path above and the webhook's `relayAndAudit` — DEC-118
+        // wants every crew transition in `audit_events`, and a partial run's are as durable as a
+        // complete one's. Relaying without auditing tells a crew member their day moved and
+        // leaves no record that it did.
+        await logFormAudit(deps.repo, e.partial, { kind: "engine" }, new Date(deps.now()));
+      } catch (auditErr) {
+        console.error("[reservations] cancel: partial-run audit failed", auditErr);
+      }
     }
     console.error(
       `[reservations] formShifts after cancelling ${reservationId} failed — the tick will re-form the shifts`,

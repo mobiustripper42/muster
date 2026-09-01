@@ -126,6 +126,11 @@ const CITATIONS = [
   ['src/reservations/booking-webhook.ts', 68, 'alertPaidButUnbooked:'],
   ['src/reservations/booking-webhook.ts', 76, 'notifyCustomerSoldOut:'],
   ['src/reservations/booking-webhook.ts', 84, 'sendConfirmation:'],
+  // The sender call site OUTSIDE `booking-webhook.ts`. §Criterion 7 originally claimed every one
+  // was inside that file — false, and exactly the overstated-absence mistake this document has
+  // made before. Pinned so the correction cannot quietly rot back.
+  ['src/reservations/confirm-booking.ts', 48, 'await deps.alertPaidButUnbooked('],
+  ['docs/SPEC.md', 2082, "hold minutes, trip time or schedule"],
   ['src/customers/resolve.test.ts', 91, 'listCustomers()).toHaveLength(0)'],
   ['src/customers/resolve.test.ts', 201, 'listCustomers()).toHaveLength(0)'],
   ['src/reservations/availability.test.ts', 587, 'an EXPIRED hold contributes nothing'],

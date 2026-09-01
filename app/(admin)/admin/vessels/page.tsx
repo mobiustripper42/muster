@@ -89,7 +89,18 @@ export default async function AdminVessels({
   // `?crew=1` is an add/remove of a crew row (#861): nothing was saved and nothing is wrong, but
   // the row set and every typed value live in the draft, so it has to be restored exactly as a
   // refusal's would be.
-  const draft = sp.err || sp.crew ? await readFormDraft("/admin/vessels") : null;
+  //
+  // **Restored only into the vessel it came from.** The cookie is scoped to this SURFACE, not to
+  // a boat, so without this check tab 1 adding a row to Brew 1 leaves a draft that tab 2 — sitting
+  // on Brew 2 — restores as Brew 2's defaults. The hidden `id` is written from `selected` rather
+  // than from the draft, so a Save then writes Brew 1's name and hue onto Brew 2's row. That
+  // window existed for `?err=` too and was narrow, because it needed two tabs both mid-refusal;
+  // `?crew=1` fires on every ordinary Add click, which made it routine. Found by `@code-review`.
+  const rawDraft = sp.err || sp.crew ? await readFormDraft("/admin/vessels") : null;
+  const draftOwner = rawDraft?.get("id") ?? null;
+  const draft = draftOwner === null || draftOwner === (creating ? "" : selected?.id ?? "")
+    ? rawDraft
+    : null;
   const errCopy = errCopyFor(ERR_COPY, sp.err, "error");
   const title = creating ? "New vessel" : selected?.name ?? "Vessels";
 
@@ -102,6 +113,10 @@ export default async function AdminVessels({
         action={saveVessel}
         className="flex flex-col gap-4"
       >
+        {/* `restored` means "came back through the draft", not "differs from what is saved" —
+            adding a row and immediately removing it lands byte-identical to the stored rule and
+            still marks the form dirty until the next submit. A false confirm on leave, not a
+            data risk. */}
         <UnsavedGuard restored={draft !== null} />
         <input type="hidden" name="id" value={creating || !selected ? "" : selected.id} />
 

@@ -5,7 +5,6 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { saveVesselAdmin, type VesselSaveError } from "@core/admin/vessel-admin.js";
 import { asId } from "@core/domain/ids.js";
-import type { RoleTypeId } from "@core/domain/ids.js";
 import { readSubject } from "../../../lib/auth";
 import { clearFormDraft, stashFormDraft } from "../../../lib/form-draft";
 import { getRepo } from "../../../lib/repo";

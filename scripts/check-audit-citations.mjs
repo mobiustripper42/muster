@@ -198,6 +198,18 @@ const CITATIONS = [
   ['src/reservations/claim.test.ts', 513, 'an EXPIRED hold of the same buyer is not reused'],
   ['src/reservations/claim.test.ts', 524, 'does not reuse a hold from a different departure'],
 
+  // ── Criterion 11's evidence (§Criterion 11) ──
+  ['docs/SPEC.md', 2066, 'payment_intent.payment_failed'],
+  ['src/adapters/stripe-payment.ts', 194, 'event.type === "checkout.session.completed"'],
+  ['src/adapters/stripe-payment.ts', 209, 'event.type === "charge.refunded"'],
+  ['src/adapters/stripe-payment.ts', 265, 'event.type === "payment_intent.succeeded"'],
+  ['src/adapters/stripe-payment.ts', 277, 'return null;'],
+  ['src/reservations/booking-webhook.ts', 142, 'if (!event) return { handled: false };'],
+  ['app/api/webhooks/stripe/route.ts', 21, 'Stripe dashboard nobody can read from the repo'],
+  ['app/api/webhooks/stripe/route.ts', 46, 'return NextResponse.json({ received: true, ...result });'],
+  ['src/reservations/booking-webhook.test.ts', 320, 'handled:false for a non-checkout event'],
+  ['src/reservations/booking-webhook.test.ts', 84, 'getReservation(reservationIdFor("cs_test_1"))).toBeNull()'],
+
   // ── Criterion 2 / 5 evidence, spot-checked while re-baselining ──
   ['src/reservations/availability.ts', 172, 'return asId<"EventId">(`slot_${slotIdentity('],
   ['app/(public)/book/page.tsx', 91, 'repo.listLiveCheckoutHolds(asOf)'],

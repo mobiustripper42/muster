@@ -151,6 +151,29 @@ const CITATIONS = [
   ['src/adapters/postgres-repository.test.ts', 94, 'runRepositoryContract("postgres"'],
   ['src/adapters/in-memory-repository.test.ts', 9, 'runRepositoryContract("in-memory"'],
 
+  // ── Criterion 9's evidence (§Criterion 9) ──
+  ['docs/SPEC.md', 2061, 'An abandoned checkout is still on disk afterwards as an `expired` reservation'],
+  ['docs/SPEC.md', 2063, 'is a query.'],
+  ['src/domain/entities.ts', 739, 'guestCount: number;'],
+  ['src/domain/entities.ts', 743, 'createdAt: string;'],
+  ['src/adapters/postgres-repository.ts', 1680, "delete from checkout_holds where source='muster' and expires_at <= $1"],
+  ['src/adapters/postgres-repository.ts', 1673, 'grew the table without bound'],
+  ['src/adapters/in-memory-repository.ts', 739, 'h.expiresAt <= hold.createdAt'],
+  ['src/reservations/create-departure-payment-intent.ts', 94, 'await acquireDepartureHold('],
+  ['src/reservations/create-departure-payment-intent.ts', 153, 'await payments.createPaymentIntent('],
+  ['db/migrations/0024_audit_events.sql', 1, 'crew audit log (#400, DEC-118)'],
+  // §2.8.8's three mechanisms. Pinned individually because an earlier draft of §Criterion 9 read
+  // the subsection's title — "Expiry is a clock, not a job" — and stopped, concluding §2.8 had no
+  // answer to unbounded growth. It specifies two jobs, twenty lines below the title.
+  ['docs/SPEC.md', 1829, 'A pending reservation stops occupying its boat the moment its window runs out'],
+  ['docs/SPEC.md', 1833, 'it relabels lapsed `pending` rows to `expired`'],
+  ['docs/SPEC.md', 1836, 'The sweeper never labels a row it cannot prove was unpaid'],
+  ['docs/SPEC.md', 1841, 'deletes old `expired` rows so the table does not'],
+  ['docs/SPEC.md', 1846, 'The sweeper never deletes, and this is load-bearing rather than tidy'],
+  ['docs/SPEC.md', 1852, 'hulls tied up for people who were never going to buy'],
+  ['docs/SPEC.md', 1823, "an operator's booking, `source`"],
+  ['db/migrations/20260718142705_claim_hold_mutex.sql', 33, 'create table if not exists checkout_holds ('],
+
   // ── Criterion 2 / 5 evidence, spot-checked while re-baselining ──
   ['src/reservations/availability.ts', 172, 'return asId<"EventId">(`slot_${slotIdentity('],
   ['app/(public)/book/page.tsx', 91, 'repo.listLiveCheckoutHolds(asOf)'],

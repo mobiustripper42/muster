@@ -211,6 +211,28 @@ const CITATIONS = [
   ['src/reservations/booking-webhook.test.ts', 320, 'handled:false for a non-checkout event'],
   ['src/reservations/booking-webhook.test.ts', 84, 'getReservation(reservationIdFor("cs_test_1"))).toBeNull()'],
 
+  // ── Criterion 12's evidence (§Criterion 12) ──
+  ['docs/SPEC.md', 2067, 'superseded payment that succeeds late'],
+  ['docs/SPEC.md', 1730, 'A reservation has many payment ids over its life, not one'],
+  ['docs/SPEC.md', 1733, 'One overwritable column loses the first id'],
+  ['src/reservations/confirm-booking.ts', 55, 'key: pi.paymentIntentId,'],
+  ['src/reservations/booking-webhook.ts', 279, 'const idempotencyKey = charge.key;'],
+  ['src/reservations/booking-webhook.ts', 308, 'const reservationId = reservationIdFor(idempotencyKey);'],
+  ['src/reservations/write-booking.ts', 35, 'export function reservationIdFor(idempotencyKey: string): ReservationId {'],
+  ['src/reservations/write-booking.ts', 36, 'createHash("sha256").update(idempotencyKey)'],
+  ['src/reservations/booking-webhook.ts', 503, 'The money moved, and is NOT recorded here'],
+  ['src/reservations/booking-webhook.ts', 507, 'if (result.outcome === "lost") {'],
+  ['src/reservations/booking-webhook.ts', 526, 'idempotencyKey: `refund_${charge.key}`,'],
+  ['src/domain/entities.ts', 801, 'export interface Payment {'],
+  ['src/domain/entities.ts', 805, 'reservationId: ReservationId;'],
+  ['src/reservations/create-departure-payment-intent.test.ts', 350, 'residual race on the PI path: loser auto-refunded keyed on the PI id'],
+  ['src/reservations/create-departure-checkout.test.ts', 169, 'residual-race loss with NO payment_intent'],
+  ['src/reservations/create-departure-checkout.test.ts', 183, 'residual race + auto-refund THROWS'],
+  ['src/reservations/confirm-booking.test.ts', 134, 'does NOT refund or notify on a residual-race loss'],
+  ['src/reservations/create-departure-payment-intent.test.ts', 356, 'const m = pay.intents[0]!.metadata;'],
+  ['src/reservations/create-departure-payment-intent.test.ts', 361, 'outcome: "lost"'],
+  ['src/reservations/booking-webhook.ts', 747, 'Writes NO `Payment`'],
+
   // ── Criterion 2 / 5 evidence, spot-checked while re-baselining ──
   ['src/reservations/availability.ts', 172, 'return asId<"EventId">(`slot_${slotIdentity('],
   ['app/(public)/book/page.tsx', 91, 'repo.listLiveCheckoutHolds(asOf)'],

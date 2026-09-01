@@ -252,6 +252,18 @@ const CITATIONS = [
   ['src/reservations/booking-webhook.ts', 453, 'if (result.outcome === "booked") {'],
   ['src/adapters/in-memory-repository.ts', 515, 'Insert-only (mirrors the postgres `on conflict do nothing`)'],
 
+  // ── Criterion 14's evidence (§Criterion 14) ──
+  ['docs/SPEC.md', 2070, 'Closing the browser at the moment of payment still produces a booking'],
+  ['src/reservations/booking-webhook.test.ts', 126, 'booked: writes the reservation + records the payment'],
+  ['src/reservations/booking-webhook.test.ts', 292, 'a throwing sendConfirmation never breaks the committed booking'],
+  ['app/lib/booking-confirmation.ts', 31, 'if (process.env.MESSAGING === "false") return;'],
+  ['app/lib/booking-confirmation.ts', 48, 'confirmation skipped — no email or SMS channel configured'],
+  ['docs/DEPLOY.md', 111, '`MESSAGING=0` leaves booking confirmations ON'],
+  ['app/lib/booking-confirmation.ts', 57, "The operator's resend recovers it."],
+  ['app/lib/booking-confirmation.ts', 58, 'await ensureBookingCode(repo, reservation.id'],
+  ['app/(public)/book/checkout/checkout-form.tsx', 189, 'await p.stripe.confirmPayment({'],
+  ['app/(public)/book/checkout/checkout-form.tsx', 193, 'return_url: p.returnUrl,'],
+
   // ── Criterion 2 / 5 evidence, spot-checked while re-baselining ──
   ['src/reservations/availability.ts', 172, 'return asId<"EventId">(`slot_${slotIdentity('],
   ['app/(public)/book/page.tsx', 91, 'repo.listLiveCheckoutHolds(asOf)'],

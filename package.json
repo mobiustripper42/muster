@@ -57,8 +57,9 @@
     "check:context": "node scripts/check-context.mjs",
     "check:docs": "node scripts/check-docs.mjs",
     "check:denied": "node scripts/check-denied.mjs",
-    "verify": "npm run check:decisions && npm run check:dictionary && npm run check:context && npm run check:docs && npm run typecheck && npm run typecheck:app && npm run lint && npm run test && npm run build",
-    "check:audit": "node scripts/check-audit-citations.mjs"
+    "verify": "npm run check:decisions && npm run check:dictionary && npm run check:context && npm run check:docs && npm run check:denied && npm run typecheck && npm run typecheck:app && npm run lint && npm run test && npm run build",
+    "check:audit": "node scripts/check-audit-citations.mjs",
+    "probe:ui": "curl -sS -o /dev/null -w \"%{http_code}\\n\" http://localhost:3200 || true"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.0",

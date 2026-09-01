@@ -197,10 +197,76 @@ export function scope() {
   ].filter((p) => existsSync(p))
 }
 
-export function check(policyPath = POLICY, files = scope()) {
+/**
+ * A runbook is documentation aimed at a PERSON, and this gate was built against jig's own docs,
+ * which have none.
+ *
+ * Muster was the first repo it met one in: nine `curl` smoke checks against a live domain and
+ * three quick-start installs, across `docs/DEPLOY.md`, `docs/HOSTING_MIGRATION.md` and
+ * `docs/RUNNING.md`. None of them had a compliant spelling. There is no npm script to wrap a
+ * smoke check against production in, and no rewording clears the finding because the match is
+ * structural on purpose — inside a fence, a line beginning with the command IS the command. The
+ * only way out was deleting the code fence, which makes the runbook worse. The gate was right
+ * that the string is there and wrong that its presence is a defect.
+ *
+ * The declaration lives in `.claude/doc-check.json` because that file already exists, is
+ * project-owned, and already carries per-file exemptions with reasons under `historical`. One
+ * place a project says what its gates may skip beats a second mechanism with its own syntax.
+ */
+const CONFIG = '.claude/doc-check.json'
+
+const runbooksOf = (configPath) =>
+  existsSync(configPath) ? (JSON.parse(readFileSync(configPath, 'utf8')).runbooks ?? {}) : {}
+
+/**
+ * The exemption list has to justify itself on every run.
+ *
+ * `check-docs.mjs` names the risk out loud — "reusing an exemption because it happens to silence
+ * the right lines is how an exemption list stops meaning anything" — and that is the objection to
+ * every per-file exemption ever written, including this one. An entry that exempts nothing fails,
+ * so the list cannot outlive the lines it was written for: clean up the last `curl` in a file and
+ * the gate tells you the entry is now a lie, in the same run.
+ */
+export function runbookProblems(configPath = CONFIG, files = scope(), policyPath = POLICY) {
   const denied = deniedCommands(policyPath)
+  const out = []
+  for (const [path, reason] of Object.entries(runbooksOf(configPath))) {
+    if (!existsSync(path)) {
+      out.push(`${configPath} — runbook \`${path}\` does not exist`)
+      continue
+    }
+    /**
+     * An entry for a file this gate never reads exempts nothing and would have validated
+     * forever — the same rot the rule below exists to stop, one step earlier. `docs/decisions/`
+     * is the live case: out of scope on purpose, because a record quotes a denied command to
+     * explain why it is denied, so an entry naming one looks justified and does nothing.
+     */
+    if (!files.includes(path)) {
+      out.push(`${configPath} — runbook \`${path}\` is not gated by this check, so declaring it exempts nothing`)
+      continue
+    }
+    if (!String(reason ?? '').trim()) {
+      out.push(`${configPath} — runbook \`${path}\` has no reason. Say who runs these steps and why they cannot be a script`)
+      continue
+    }
+    const text = readFileSync(path, 'utf8')
+    if (!denied.some((cmd) => spellings(text, cmd).length)) {
+      out.push(`${configPath} — runbook \`${path}\` exempts nothing; no denied command is spelled there. Remove the entry`)
+    }
+  }
+  return out
+}
+
+export function check(policyPath = POLICY, files = scope(), configPath = CONFIG) {
+  const denied = deniedCommands(policyPath)
+  const runbooks = runbooksOf(configPath)
   const problems = []
   for (const path of files) {
+    // Whole-file, and deliberately: a runbook is a document whose commands are all performed by a
+    // person, so exempting it line by line would mean re-declaring every step. The cost is that a
+    // denied command added to a declared file later inherits the pass without re-justification —
+    // acceptable for a runbook, and the reason to declare the runbook rather than the directory.
+    if (path in runbooks) continue
     const text = readFileSync(path, 'utf8')
     for (const cmd of denied) {
       for (const line of spellings(text, cmd)) {
@@ -217,6 +283,7 @@ if (process.argv[1]?.endsWith('check-denied.mjs')) {
     process.exit(1)
   }
   const { denied, problems } = check()
+  const stale = runbookProblems()
   // An empty deny list is not a clean bill of health, it is a check with nothing to check. The
   // existsSync guard above covers a missing policy file; a policy whose `deny` was emptied or
   // renamed printed "0 denied command prefixes" and exited 0.
@@ -224,12 +291,16 @@ if (process.argv[1]?.endsWith('check-denied.mjs')) {
     console.error(`✗ denied commands — ${POLICY} has no \`Bash(...)\` deny rules; there is nothing to check against`)
     process.exit(1)
   }
-  if (!problems.length) {
-    console.log(`✓ denied commands — no shipped doc spells any of the ${denied.length} denied command prefixes`)
+  const declared = Object.keys(runbooksOf(CONFIG)).length
+  if (!problems.length && !stale.length) {
+    // The runbook count is printed, never implied. A gate that silently skips files reads exactly
+    // like a gate with nothing to find, and the difference is the whole reason to declare them.
+    const rb = declared ? `, ${declared} runbook${declared === 1 ? '' : 's'} declared in ${CONFIG}` : ''
+    console.log(`✓ denied commands — no shipped doc spells any of the ${denied.length} denied command prefixes${rb}`)
     process.exit(0)
   }
-  console.error(`✗ denied commands — ${problems.length} problem(s):\n`)
-  for (const p of problems) console.error(`  ${p}`)
+  console.error(`✗ denied commands — ${problems.length + stale.length} problem(s):\n`)
+  for (const p of [...problems, ...stale]) console.error(`  ${p}`)
   console.error(
     `\nA denied command in a doc reads as sanctioned and fails as a permission refusal, so it looks\n` +
       `like the agent being difficult rather than the doc being stale. Spell it as an npm script or\n` +

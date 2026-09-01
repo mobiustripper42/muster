@@ -67,7 +67,9 @@ harness (`playwright.config.ts`, backed by `muster_test`), 3300 is another proje
 collides with whatever the operator is doing and produces the "port in use by an unknown process"
 confusion.
 
-1. Probe: `curl -sS -o /dev/null -w "%{http_code}" http://localhost:3200`
+1. Probe: `npm run probe:ui` — prints the HTTP status of `http://localhost:3200`, or `000` if
+   nothing is listening. It wraps a `curl`, which is denied directly: an agent told to run one
+   gets a permission refusal mid-review and looks obstructive rather than blocked.
 2. If it's down, start one — `PORT=3200 npm run dev` backgrounded — wait up to 30s, re-probe once.
    **If you started it, kill it when the review is done.**
 3. If it's still down, **do not keep trying.** Proceed to a source-only review and label it as
@@ -78,13 +80,16 @@ Derive the route from the App Router path of the surface under review. Screensho
 devDependency:
 
 ```
-npx playwright screenshot --viewport-size=375,812 http://localhost:3200/<route> /tmp/<name>-375.png
-npx playwright screenshot --viewport-size=1440,900 http://localhost:3200/<route> /tmp/<name>-1440.png
+./node_modules/.bin/playwright screenshot --viewport-size=375,812 http://localhost:3200/<route> /tmp/<name>-375.png
+./node_modules/.bin/playwright screenshot --viewport-size=1440,900 http://localhost:3200/<route> /tmp/<name>-1440.png
 ```
 
-`npx` resolves the local `@playwright/test` (the same one the e2e suite uses). Do **not** pull a
-separate Playwright MCP server: it would fetch an unpinned `@latest` package over the network on
-every review, to do what an already-pinned dependency does.
+The direct path runs the local `@playwright/test` — the same one the e2e suite uses — and it is
+spelled that way because `npx` is denied fleet-wide. `npx` would have resolved the same binary
+here, but the deny is what makes "reaches the network for an unpinned package" impossible rather
+than merely discouraged, and a denied command in a doc fails as a permission refusal that reads
+like the agent being difficult. Do **not** pull a separate Playwright MCP server either: it would
+fetch an unpinned `@latest` over the network on every review, to do what a pinned dependency does.
 
 Most surfaces need a session. `/crew/dev-link?crew=<id>` and `?admin=<handle>` mint one in dev; if a
 surface can't be reached without auth you couldn't establish, say so in `Basis:` rather than

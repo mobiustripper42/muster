@@ -74,21 +74,47 @@
   says: a database feature that filters rows per signed-in user. Muster does not use it — who may see what is decided in the service layer
   not: []
 
+# ── The thing being sold ────────────────────────────────────────────────────────
+#
+# `trip` rather than `departure`: a departure is when something leaves, not the thing that leaves,
+# and the corpus was using the word for both. Neither alternate can be forbidden. `slot` is the
+# code's word (`slotIdentity`, `VirtualSlot`, `writeSlotBooking`) AND means a workflow slot in
+# `CLAUDE.md:38` — a different word entirely, in a file this repo does not own. `departure` reads
+# correctly in its own sense ("the 13:30 departure") and forbidding it would fail 109 lines.
+#
+# So the code's name goes INSIDE the definition instead. The gate reads prose, never code, so a
+# rename it cannot enforce is better stated than pretended.
+
+- term: trip
+  says: one boat leaving at one time on one day — what a customer buys and crew sail. The code calls it a slot.
+  not: []
+
 # ── Durations ───────────────────────────────────────────────────────────────────
 #
 # Three numbers, two of them stored, and the whole reason §2.8 measured occupancy with the wrong
 # one. Registered together so the distinction survives the next person to write "trip length".
+#
+# They compose: hold minutes = trip time + turnaround.
 
 - term: hold minutes
-  says: the whole time a boat is committed to one departure — on the water, then back at the dock ready for the next
+  says: the whole time a boat is committed to one trip — on the water, then back at the dock ready for the next
   not: [hold time, lock time, occupied minutes]
 
 - term: trip time
-  says: how long the customer is actually on the water, always less than the hold minutes for that departure
+  says: how long the customer is actually on the water, always less than the hold minutes for that trip
   not: []
 
 - term: turnaround
   says: the boat sitting at the dock between trips, cleaned and made ready; hold minutes minus trip time
+  not: []
+
+# A FOURTH duration, and the one that collides. `CHECKOUT_HOLD_MINUTES` (`claim.ts:36`) is this
+# window — but `hold minutes` above is a different quantity entirely, and both spell out as
+# "hold ... minutes". The constant is code, so `check:dictionary` can never see the collision;
+# naming the code term in `says` is the only place it gets written down.
+
+- term: payment window
+  says: how long a checkout holds the boat before the customer loses it and it goes back on sale. The code calls it the checkout hold.
   not: []
 
 # ── The frozen quote ────────────────────────────────────────────────────────────

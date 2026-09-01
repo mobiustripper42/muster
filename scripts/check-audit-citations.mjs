@@ -65,7 +65,7 @@ const CITATIONS = [
   ['docs/SPEC.md', 1512, 'materializes nothing'],
   ['docs/SPEC.md', 1514, 'the contract, not a convenience'],
   ['docs/SPEC.md', 1517, 'Null until confirm'],
-  ['docs/SPEC.md', 1519, "**2.8.3 What a reservation occupies is the hull for the departure's hold minutes.**"],
+  ['docs/SPEC.md', 1519, "**2.8.3 What a reservation occupies is the hull for the trip's hold minutes.**"],
   ['docs/SPEC.md', 1521, 'whose time window overlaps prevents the sale'],
   ['docs/SPEC.md', 1524, 'moment.'],
   ['docs/SPEC.md', 1537, 'off-grid times are refused'],
@@ -112,6 +112,24 @@ const CITATIONS = [
   ['src/reservations/create-departure-checkout.test.ts', 202, 'getEvent(eventIdForSlot(BIG'],
   ['src/import/import-reservations.test.ts', 57, 'getEvent(EVENT_ID)).toBeNull()'],
   ['src/adapters/repository-contract.ts', 844, 'getEvent(SLOT_ID)).toBeNull()'],
+
+  // ── Criterion 7's evidence (§Criterion 7) ──
+  ['docs/SPEC.md', 2058, 'Abandoning checkout leaves no `Event`'],
+  ['src/reservations/create-departure-payment-intent.ts', 141, 'getPaymentConfig()'],
+  ['src/reservations/create-departure-payment-intent.ts', 166, 'receiptEmail: req.email'],
+  ['src/reservations/write-booking.ts', 122, 'await resolveCustomerId(repo, req, now)'],
+  ['src/import/import-reservations.ts', 256, 'resolveCustomerId('],
+  ['src/reservations/ensure-booking-code.ts', 49, 'export async function ensureBookingCode('],
+  ['src/reservations/recover-booking-link.ts', 98, 'await ensureBookingCode('],
+  ['app/lib/booking-confirmation.ts', 58, 'await ensureBookingCode('],
+  ['app/lib/booking-confirmation.ts', 117, 'await ensureBookingCode('],
+  ['src/reservations/booking-webhook.ts', 68, 'alertPaidButUnbooked:'],
+  ['src/reservations/booking-webhook.ts', 76, 'notifyCustomerSoldOut:'],
+  ['src/reservations/booking-webhook.ts', 84, 'sendConfirmation:'],
+  ['src/customers/resolve.test.ts', 91, 'listCustomers()).toHaveLength(0)'],
+  ['src/customers/resolve.test.ts', 201, 'listCustomers()).toHaveLength(0)'],
+  ['src/reservations/availability.test.ts', 587, 'an EXPIRED hold contributes nothing'],
+  ['src/reservations/claim.test.ts', 357, 'an EXPIRED overlapping hold does not occupy anything'],
 
   // ── Criterion 2 / 5 evidence, spot-checked while re-baselining ──
   ['src/reservations/availability.ts', 172, 'return asId<"EventId">(`slot_${slotIdentity('],

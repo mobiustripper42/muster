@@ -221,6 +221,10 @@ test.describe("the same refusal on the other three admin surfaces (#699)", () =>
     // The hue radio is `sr-only` behind a swatch label, so the label intercepts the pointer —
     // hence `force`. It is a plain server-form radio; nothing here waits on React.
     await page.locator('input[name="hue"][value="3"]').check({ force: true });
+    // Picked so the submit REACHES the server (#861 made the role `required`), which is what lets
+    // the blank name be the thing that refuses. Without it the browser blocks first and this test
+    // asserts a server refusal that never happened.
+    await page.selectOption('select[name="crewRole"]', "role-captain");
 
     await page.getByRole("button", { name: "Create" }).click();
 
@@ -236,6 +240,9 @@ test.describe("the same refusal on the other three admin surfaces (#699)", () =>
       "Twin diesels, both replaced 2024.",
     );
     await expect(page.locator('input[name="hue"][value="3"]')).toBeChecked();
+    // The crew rule is part of "your typing" now (#861) — the draft carries the rows, so a
+    // refusal that dropped them back to one blank row would be the same defect this test names.
+    await expect(page.locator('select[name="crewRole"]')).toHaveValue("role-captain");
   });
 
   test("locations: a refused save keeps you on the create form and keeps your typing", async ({

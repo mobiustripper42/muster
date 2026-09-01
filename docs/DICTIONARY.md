@@ -7,7 +7,7 @@ Vocabulary already in the docs when the gate shipped is grandfathered and does n
 be registered — but registering it is always welcome, and registering one is how its
 alternates start being caught.
 
-18 terms.
+19 terms.
 
 | Term | Says | Not |
 |---|---|---|
@@ -22,6 +22,7 @@ alternates start being caught.
 | **off-session** | charging a saved card when the customer is not at the keyboard, so nobody is there to answer a decline | — |
 | **Payment Element** | Stripe's card form, embedded in our own page, so the customer never leaves the site to pay | `Stripe Elements`, `inline Elements` |
 | **payment window** | how long a checkout holds the boat before the customer loses it and it goes back on sale. The code calls it the checkout hold. | — |
+| **required crew** | the crew a boat must carry to sail — a list of roles and how many of each, not a number of passengers. That is the COI limit | — |
 | **residual race** | two customers pay for the last boat at the same moment; one wins, and the other has to be refunded and told | — |
 | **RLS** | a database feature that filters rows per signed-in user. Muster does not use it — who may see what is decided in the service layer | — |
 | **SAQ-A** | the lightest card-industry compliance tier, which applies because card numbers never reach our servers | — |

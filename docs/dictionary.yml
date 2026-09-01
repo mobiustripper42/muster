@@ -64,6 +64,19 @@
   says: the Coast Guard inspection certificate that sets a boat's legal passenger limit and the crew it must carry
   not: []
 
+# `not` is deliberately EMPTY, and that is the whole story of this entry. `manning` is the field
+# name, the database column, and the word in nine places in SPEC.md plus a dozen decision records —
+# several of them frozen in `docs/decisions-baseline.txt` and so uneditable. Registering it as a
+# forbidden alternate lights up 49 existing uses that cannot all be fixed, and the dictionary
+# baseline is generated once by design rather than refreshed to absorb them.
+#
+# So this entry does the job it was asked to do — say what the thing IS, because "manning" reads
+# like a passenger count and is not one — without pretending the codebase has been renamed. Add
+# `manning` to `not` on the day it actually is.
+- term: required crew
+  says: the crew a boat must carry to sail — a list of roles and how many of each, not a number of passengers. That is the COI limit
+  not: []
+
 # ── Mechanism ───────────────────────────────────────────────────────────────────
 
 - term: CAS

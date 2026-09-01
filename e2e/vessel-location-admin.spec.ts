@@ -51,9 +51,43 @@ test.describe("admin /admin/locations + /admin/vessels", () => {
     await page.fill('input[name="name"]', "Sunset");
     await page.fill('input[name="coiMaxPax"]', "12");
     await page.locator('input[name="hue"][value="2"]').check({ force: true });
+    // Required since #861 — a boat cannot be created without saying who sails it. The form opens
+    // on one blank row, so this picks a role rather than adding one.
+    await page.selectOption('select[name="crewRole"]', "role-captain");
     await page.getByRole("button", { name: "Create" }).click();
     await page.waitForURL(/saved=1/);
     // The new boat is now a row in the vessel list.
     await expect(page.getByRole("link", { name: /Sunset/ })).toBeVisible();
+  });
+
+  test("a new vessel cannot be created without a required-crew role (#861)", async ({ page }) => {
+    // The guard this screen exists for. Before #861 this save succeeded and produced a boat that
+    // derived no seats — no ask, no At-Risk row, not claimable — and since #863 one that throws.
+    // Native `required` blocks the submit first, so the server refusal is reached by removing the
+    // attribute: both layers matter and only one of them is a real guard.
+    await signInAsAdmin(page, "spink");
+    await page.goto("/admin/vessels?sel=new");
+    await page.fill('input[name="name"]', "Crewless");
+    await page.fill('input[name="coiMaxPax"]', "12");
+    await page.getByRole("button", { name: "Create" }).click();
+    await expect(page).not.toHaveURL(/saved=1/);
+
+    await page.locator('select[name="crewRole"]').evaluate((el) => el.removeAttribute("required"));
+    await page.getByRole("button", { name: "Create" }).click();
+    await page.waitForURL(/err=crew_required/);
+    await expect(page.getByText(/who has to be aboard to sail it/i)).toBeVisible();
+  });
+
+  test("adding a crew row keeps what was already typed (#861)", async ({ page }) => {
+    // Add is a form POST on a surface with no client JS, so the round trip goes through the draft
+    // cookie. Losing the half-typed name is the failure that shape invites.
+    await signInAsAdmin(page, "spink");
+    await page.goto("/admin/vessels?sel=new");
+    await page.fill('input[name="name"]', "Half-typed");
+    await page.getByRole("button", { name: "+ Add a role" }).click();
+    await page.waitForURL(/crew=1/);
+
+    await expect(page.locator('select[name="crewRole"]')).toHaveCount(2);
+    await expect(page.locator('input[name="name"]')).toHaveValue("Half-typed");
   });
 });

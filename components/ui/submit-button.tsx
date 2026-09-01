@@ -44,6 +44,7 @@ export function SubmitButton({
   title,
   disabled,
   formAction,
+  formNoValidate,
   "aria-label": ariaLabel,
   "data-commits": dataCommits,
 }: {
@@ -66,6 +67,15 @@ export function SubmitButton({
    *  (#635's Delete, which shares the edit form's one reason field). Native HTML, so
    *  it still works with no JS. */
   formAction?: (formData: FormData) => void | Promise<void>;
+  /**
+   * Skip the browser's own field validation for THIS submit — native HTML, no JS needed.
+   *
+   * For a button that restructures the form rather than committing it: #861's "Add a role"
+   * appends a crew row, and the row you are adding one from is frequently a blank `required`
+   * select, so without this the browser refuses the very submit that would let you fill it in.
+   * The server still validates on the real save.
+   */
+  formNoValidate?: boolean;
   /** For an icon/short-label button whose accessible name needs to be fuller. */
   "aria-label"?: string;
 }) {
@@ -84,6 +94,7 @@ export function SubmitButton({
       value={value}
       title={title}
       formAction={formAction}
+      formNoValidate={formNoValidate}
       aria-label={ariaLabel}
       disabled={pending || disabled}
 

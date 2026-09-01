@@ -1,4 +1,4 @@
-import type { Location, Offering, Vessel } from "@core/domain/entities.js";
+import type { Location, Offering, RoleType, Vessel } from "@core/domain/entities.js";
 import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { AppLink } from "../../../../components/ui/app-link";
@@ -30,13 +30,16 @@ import { saveVessel, type VesselErr } from "./actions";
 
 export const dynamic = "force-dynamic";
 
-type Search = { sel?: string; saved?: string; err?: string };
+type Search = { sel?: string; saved?: string; err?: string; crew?: string };
 
 const ERR_COPY: Record<VesselErr, string> = {
   name_required: "Give the vessel a name.",
   bad_capacity: "Capacity must be a whole number of passengers (1–99).",
   bad_hue: "Pick a color from the palette.",
   bad_location: "That home location no longer exists — pick another.",
+  crew_required: "Say who has to be aboard to sail it — a boat with no required crew can’t be crewed.",
+  bad_crew_count: "Each role needs a whole number of people, at least one.",
+  unknown_role: "That role no longer exists — pick another.",
   error: "Couldn’t save that just now — try again in a moment.",
 };
 
@@ -52,12 +55,14 @@ export default async function AdminVessels({
   let vessels: Vessel[];
   let locations: Location[];
   let offerings: Offering[];
+  let roleTypes: RoleType[];
   try {
     const repo = getRepo();
-    [vessels, locations, offerings] = await Promise.all([
+    [vessels, locations, offerings, roleTypes] = await Promise.all([
       repo.listVessels(),
       repo.listLocations(),
       repo.listOfferings(),
+      repo.listAllRoleTypes(),
     ]);
   } catch {
     return (
@@ -81,7 +86,10 @@ export default async function AdminVessels({
       : vessels[0] ?? null;
   const missing = requested !== undefined && selected === null;
   // The submitted values of a refused save, read back as this form's defaults (#699).
-  const draft = sp.err ? await readFormDraft("/admin/vessels") : null;
+  // `?crew=1` is an add/remove of a crew row (#861): nothing was saved and nothing is wrong, but
+  // the row set and every typed value live in the draft, so it has to be restored exactly as a
+  // refusal's would be.
+  const draft = sp.err || sp.crew ? await readFormDraft("/admin/vessels") : null;
   const errCopy = errCopyFor(ERR_COPY, sp.err, "error");
   const title = creating ? "New vessel" : selected?.name ?? "Vessels";
 
@@ -165,6 +173,7 @@ export default async function AdminVessels({
                 creating={creating}
                 locations={locations}
                 draft={draft}
+                roleTypes={roleTypes}
               />
             )}
             {selected && <OfferingsSection vessel={selected} offerings={offerings} />}
@@ -187,16 +196,115 @@ const inputClass = settingsInputClass;
  * `defaultChecked` on update, so the form reset would revert the swatch to its mount value no
  * matter what any island held.
  */
+/**
+ * The required-crew rows — who has to be aboard to sail this boat (#861).
+ *
+ * **The row set is form state on a surface with no client JS (DEC-147)**, so Add and Remove are
+ * submit buttons that post the whole form, and `saveVessel` rewrites the list and sends it back
+ * through the draft. That is why the rows read from `draft.all(...)` first: after an add, the
+ * draft is the only place the new row exists.
+ *
+ * **Remove is disabled on the last row rather than refused on save.** The rule is that a boat
+ * cannot have an empty crew rule, and a control that lets you reach a state you are then told off
+ * for is a worse way to say so than one that will not go there.
+ */
+function CrewRows({
+  vessel,
+  draft,
+  roleTypes,
+}: {
+  vessel: Vessel | null;
+  draft: FormDraft | null;
+  roleTypes: RoleType[];
+}) {
+  const draftRoles = draft?.all("crewRole") ?? [];
+  const rows =
+    draftRoles.length > 0
+      ? draftRoles.map((roleTypeId, i) => ({
+          roleTypeId,
+          count: draft?.all("crewCount")[i] ?? "1",
+        }))
+      : (vessel?.manning ?? []).map((m) => ({
+          roleTypeId: String(m.roleTypeId),
+          count: String(m.count),
+        }));
+  // A boat with no rule yet — a create, or one of the crewless rows this change exists to stop —
+  // opens on one blank row rather than nothing, so the control to fill in is visible.
+  const shown = rows.length > 0 ? rows : [{ roleTypeId: "", count: "1" }];
+
+  return (
+    <Field label="Required crew" sub="Who must be aboard to sail" align="start">
+      <div className="flex flex-col gap-2 pt-1.5">
+        {shown.map((row, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <input
+              name="crewCount"
+              type="number"
+              min={1}
+              max={20}
+              required
+              defaultValue={row.count}
+              aria-label="How many"
+              className={`${inputClass} max-w-[72px] font-mono`}
+            />
+            <select
+              name="crewRole"
+              required
+              defaultValue={row.roleTypeId}
+              aria-label="Role"
+              className={`${inputClass} max-w-[200px]`}
+            >
+              <option value="">Pick a role…</option>
+              {roleTypes.map((r) => (
+                <option key={String(r.id)} value={String(r.id)}>
+                  {r.name}
+                </option>
+              ))}
+            </select>
+            <SubmitButton
+              name="intent"
+              value={`remove-crew-${i}`}
+              disabled={shown.length === 1}
+              formNoValidate
+              title={
+                shown.length === 1
+                  ? "A boat needs at least one required crew role"
+                  : "Remove this role"
+              }
+              className="min-h-[44px] min-w-[44px] rounded-lg border border-line px-2 text-sm text-muted disabled:cursor-not-allowed disabled:text-faint"
+            >
+              <span aria-hidden="true">✕</span>
+              <span className="sr-only">Remove this role</span>
+            </SubmitButton>
+          </div>
+        ))}
+        {/* `formNoValidate` on both: adding a row must not be blocked by a row that is still
+            blank, which is precisely the state you are in when you want another one. */}
+        <SubmitButton
+          name="intent"
+          value="add-crew"
+          formNoValidate
+          className="min-h-[44px] self-start rounded-lg border border-line px-3 text-sm font-medium text-accent hover:border-accent"
+        >
+          + Add a role
+        </SubmitButton>
+      </div>
+    </Field>
+  );
+}
+
 function VesselCard({
   vessel,
   creating,
   locations,
   draft,
+  roleTypes,
 }: {
   vessel: Vessel | null;
   creating: boolean;
   locations: Location[];
   draft: FormDraft | null;
+  roleTypes: RoleType[];
 }) {
   const isNew = creating || !vessel;
   return (
@@ -226,6 +334,8 @@ function VesselCard({
             className={`${inputClass} max-w-[110px] font-mono`}
           />
         </Field>
+
+        <CrewRows vessel={vessel} draft={draft} roleTypes={roleTypes} />
 
         <Field label="Color">
           <fieldset className="flex flex-wrap gap-2 pt-1.5">

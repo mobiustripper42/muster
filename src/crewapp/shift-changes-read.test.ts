@@ -87,9 +87,9 @@ describe("readShiftChangeBanner", () => {
       { ...change("2026-07-04T20:00:00Z"), crewMemberId: BRODY },
     ]);
     // Asserted on the timestamp rather than a count of rows, which is what this checked before
-    // the count was removed (#766). It is the stronger version: folding per shift instead of per
-    // crew member would stamp BOTH banners 20:00, so Quint reading 19:00 is what proves Brody's
-    // row stayed out of Quint's window.
+    // the count was removed (#766). Equally strong, not stronger: folding per shift instead of
+    // per crew member would stamp BOTH banners 20:00, so Quint reading 19:00 catches that leak —
+    // and so did the old `2` vs `3`.
     expect((await readShiftChangeBanner(repo, SHIFT, QUINT, 3))?.latestAt).toBe(
       "2026-07-04T19:00:00Z",
     );

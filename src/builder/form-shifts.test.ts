@@ -7,7 +7,7 @@ import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import { asId } from "../domain/ids.js";
 import type { Event, Seat } from "../domain/entities.js";
 import { BREWBOAT_TENANT, seedFleet } from "../import/resource-map.js";
-import { formShifts } from "./form-shifts.js";
+import { formShifts, PartialFormError } from "./form-shifts.js";
 
 const PARTY = asId<"VesselId">("vessel-brew-2"); // 2-crew (captain+mate), seeded by the fleet
 // Seeded manually — Duffys aren't in the crewed fleet's `RESOURCE_MAP`. It used to
@@ -229,6 +229,51 @@ describe("formShifts — reconciliation (#20)", () => {
     // A steady live re-pull must NOT re-report (transition-only).
     const r2 = await formShifts(repo);
     expect(r2.restoredCrew).toEqual([]);
+  });
+
+  it("carries the notices it already computed when a later group throws (#766)", async () => {
+    // **The failure this pins is silent and permanent.** `formShifts` saves each vessel-day as it
+    // goes, then returns `changedCrew` at the end. A throw on a later group discards the whole
+    // in-memory result — including notices already computed for groups that succeeded — while
+    // their shift rows are durable. The backstop does not save it: the next tick re-forms, reads
+    // the trip set it already wrote, sees no diff, and stays silent. The crew member is never
+    // told their day changed.
+    const repo = new InMemoryRepository();
+    await seedEvents(repo);
+    await formShifts(repo);
+    const seat = (await repo.listSeatsForShift(day1))[0]!;
+    await repo.saveSeat({
+      ...seat,
+      state: "Confirmed",
+      assignedCrewMemberId: asId<"CrewMemberId">("cap"),
+    });
+    // A new trip on day1 — the same change the #350 test above asserts is reported.
+    await repo.saveEvent(event("e1b", PARTY, "2026-05-16", "17:00"));
+
+    // Fail on the Duffy vessel-day, which is seeded LAST, so day1's notice is computed and
+    // pushed before the throw. Failing on the first group would prove nothing.
+    const boom = new Error("db hiccup partway through the loop");
+    const realSaveShift = repo.saveShift.bind(repo);
+    repo.saveShift = async (shift) => {
+      if (String(shift.id).includes("duffy")) throw boom;
+      return realSaveShift(shift);
+    };
+
+    const err = await formShifts(repo, { notifyTripChanges: true }).then(
+      () => null,
+      (e: unknown) => e,
+    );
+
+    expect(err).toBeInstanceOf(PartialFormError);
+    const partial = (err as PartialFormError).partial;
+    // The point of the whole change: the notice survives the throw.
+    expect(partial.changedCrew).toHaveLength(1);
+    expect(partial.changedCrew[0]).toMatchObject({
+      shiftId: day1,
+      crewMemberId: asId<"CrewMemberId">("cap"),
+    });
+    // The original failure is not swallowed — a caller still learns the run broke, and why.
+    expect((err as PartialFormError).cause).toBe(boom);
   });
 
   it("reports changed crew when a trip is added to a surviving shift (#350), transition-only", async () => {

@@ -172,6 +172,7 @@ const CITATIONS = [
   ['docs/SPEC.md', 1846, 'The sweeper never deletes, and this is load-bearing rather than tidy'],
   ['docs/SPEC.md', 1852, 'hulls tied up for people who were never going to buy'],
   ['docs/SPEC.md', 1823, "an operator's booking, `source`"],
+  ['db/migrations/20260718142705_claim_hold_mutex.sql', 33, 'create table if not exists checkout_holds ('],
 
   // ── Criterion 2 / 5 evidence, spot-checked while re-baselining ──
   ['src/reservations/availability.ts', 172, 'return asId<"EventId">(`slot_${slotIdentity('],

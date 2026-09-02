@@ -115,18 +115,27 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: true, paused: true, shiftsFormed, at: now.toISOString() });
   }
 
-  // NOT best-effort, unlike the two legs below (#892). A throw from `tick` means nothing advanced
-  // and no ask fired, so the run is a failure and has to read as one — hence the rethrow, and the
-  // 500 it produces. The catch earns its place only by naming the leg: an unlabelled throw here is
-  // indistinguishable in the logs from `getRepo()` at :41 or a rejected CRON_SECRET at :36, and
-  // those are three different operator responses. `shiftsFormed` rides along because the formation
-  // leg above is best-effort and already durable, so its count is otherwise lost with the response.
+  // NOT best-effort, unlike the two legs below (#892). A throw from `tick` means the run failed and
+  // has to read as one — hence the rethrow, and the 500 it produces. The catch earns its place only
+  // by naming the leg: an unlabelled throw here is indistinguishable in the logs from `getRepo()` at
+  // :41 or a rejected CRON_SECRET at :36, and those are three different operator responses.
+  // `shiftsFormed` rides along because the formation leg above is best-effort and already durable,
+  // so its count is otherwise lost with the response.
+  //
+  // The message says "may have fired … unrelayed", not "none fired", and the hedge is the accurate
+  // part (@code-review). `tick` has no transaction around its per-shift loop — `repository.ts:9`
+  // says so outright — and `widenAsk`/`escalate` persist as they go while `firedAsks` is only
+  // assembled at the end. So a throw on shift 50 of 100 leaves the first 49 shifts' asks durably
+  // committed and thrown away with the exception: never forwarded to the outbox, and never re-widened
+  // by the next tick, which now reads those seats as already Asked. Crew asked in the database and
+  // never texted is the exact state an operator is triaging when they read this line, so the log must
+  // not tell them nothing happened. The underlying gap is pre-existing and out of scope here.
   let r: TickResult;
   try {
     r = await tick(repo, now);
   } catch (e) {
     console.error(
-      `tick: tick() failed — no asks or escalations fired this run (shiftsFormed=${shiftsFormed})`,
+      `tick: tick() failed — asks or escalations may have fired and gone unrelayed (shiftsFormed=${shiftsFormed})`,
       e,
     );
     throw e;

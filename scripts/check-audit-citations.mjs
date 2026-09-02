@@ -360,6 +360,35 @@ const CITATIONS = [
   ['docs/decisions/DEC-126-the-flip-is-a-cutover-with-a-one-time-full-xola.md', 11, 'app/api/cron/xola-pull/route.ts'],
   ['docs/decisions/DEC-126-the-flip-is-a-cutover-with-a-one-time-full-xola.md', 33, 'gone rather than amended'],
 
+  // ── Criterion 18's evidence (§Criterion 18) ──
+  ['docs/SPEC.md', 2076, 'Confirming a trip whose slot was previously booked and then cancelled'],
+  // The resurrect, and the two carve-outs the criterion's wording does not cover.
+  ['src/adapters/postgres-repository.ts', 1493, 'RESURRECT a cancelled slot (#616)'],
+  ['src/adapters/postgres-repository.ts', 1515, "set status = 'scheduled', capacity = $4, price = $5, duration_minutes = $6"],
+  ['src/adapters/postgres-repository.ts', 1517, "and source='muster' and status='cancelled'"],
+  ['src/adapters/postgres-repository.ts', 1507, 'of the booking, and the candidate never carries one'],
+  ['src/adapters/postgres-repository.ts', 1511, 'a predicate that could also match a LIVE slot'],
+  ['src/adapters/postgres-repository.ts', 1535, 'slot un-materializable (e.g. cancelled) — no oversell'],
+  // The status-agnostic index that makes cancelling brick the slot without the resurrect.
+  ['db/migrations/20260718142705_claim_hold_mutex.sql', 28, 'create unique index if not exists events_muster_slot_identity'],
+  ['db/migrations/20260718142705_claim_hold_mutex.sql', 30, "where source = 'muster';"],
+  // The surface half — a cancelled row leaves the materialized branch and the hull.
+  ['src/reservations/availability.ts', 346, 'if (e.source === "muster" && e.status === "scheduled") {'],
+  ['src/reservations/hull-busy.ts', 80, 'if (e.status !== "scheduled") continue;'],
+  // The real cancel path reaches the same two-row state the tests set up by hand.
+  ['src/reservations/cancel-reservation.ts', 155, 'const cancelledEvent = await deps.repo.cancelEventIfUnclaimed(reservation.eventId)'],
+  // Coverage: real Postgres at the writeSlotBooking level, both adapters at the contract level.
+  ['src/adapters/postgres-repository.test.ts', 571, 'the same slot can be SOLD AGAIN after a cancellation'],
+  ['src/adapters/postgres-repository.test.ts', 507, 'filters on `status === "scheduled"`, misses the cancelled row'],
+  ['src/adapters/postgres-repository.test.ts', 601, 'cancelling the reservation alone does not'],
+  ['src/adapters/repository-contract.ts', 1613, 're-freezes price and duration IDENTICALLY on both adapters (#616)'],
+  ['src/adapters/repository-contract.ts', 1616, "kept the DEAD booking's numbers"],
+  ['src/adapters/repository-contract.ts', 1663, 'expect(revived?.capacity).toBe(8)'],
+  ['src/adapters/repository-contract.ts', 1664, 'expect(revived?.price).toBeUndefined()'],
+  ['src/adapters/repository-contract.ts', 788, 'a CANCELLED reservation on the slot does not block a re-claim'],
+  // The composition above it, which nothing exercises and which has no cancelled-slot branch.
+  ['src/reservations/write-booking.ts', 101, 'const candidateEvent: Event = {'],
+
   // ── Criterion 2 / 5 evidence, spot-checked while re-baselining ──
   ['src/reservations/availability.ts', 172, 'return asId<"EventId">(`slot_${slotIdentity('],
   ['app/(public)/book/page.tsx', 91, 'repo.listLiveCheckoutHolds(asOf)'],

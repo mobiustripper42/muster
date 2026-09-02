@@ -398,7 +398,13 @@ const CITATIONS = [
 
   // ── Criterion 19's evidence (§Criterion 19) ──
   ['docs/SPEC.md', 2078, 'A booking-charge payment that matches no reservation alerts every active admin by SMS'],
-  // The five branches that fit "a booking charge matching no reservation" — two name the amount.
+  // The seven branches that fit "a booking charge matching no reservation" — two name the amount.
+  // The last two declare a non-booking `purpose`, so they are listed with the argument rather
+  // than silently excluded (code review caught the five-row version).
+  ['src/reservations/booking-webhook.ts', 176, 'if (purpose !== undefined && purpose !== "booking") {'],
+  ['src/reservations/booking-webhook.ts', 178, 'Stripe checkout with unknown purpose='],
+  ['src/reservations/confirm-booking.ts', 49, 'Stripe payment intent with unknown purpose='],
+  ['src/reservations/booking-webhook.ts', 499, 'const who = `${m.customerName || "customer"} party of ${partySize}`;'],
   ['src/reservations/booking-webhook.ts', 271, 'await deps.alertPaidButUnbooked('],
   ['src/reservations/booking-webhook.ts', 300, 'PAID but NOT booked - booking session ${charge.key} carries no slot'],
   ['src/reservations/booking-webhook.ts', 301, '(${charge.amountCents} ${charge.currency})'],

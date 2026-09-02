@@ -439,6 +439,47 @@ const CITATIONS = [
   ['src/reservations/booking-webhook.test.ts', 196, 'toContain("REFUND MANUALLY")'],
   ['src/reservations/booking-webhook.test.ts', 200, 'toBeNull()'],
 
+  // ── Criterion 20's evidence (§Criterion 20) ──
+  ['docs/SPEC.md', 2082, "Editing the offering's price, hold minutes, trip time or schedule while a reservation is pending changes"],
+  // Price: resolved at intent creation, carried through Stripe, read back from the request.
+  ['src/reservations/create-departure-payment-intent.ts', 127, 'const priceCents = slotEvent?.price ?? resolveBasePrice(offering!, hold.date)'],
+  ['src/reservations/create-departure-payment-intent.ts', 177, 'priceCents: String(priceCents),'],
+  ['src/reservations/write-booking.ts', 111, 'price: req.priceCents,'],
+  // Trip time: a LIVE read of the offering at confirm, four lines after the frozen price.
+  ['src/reservations/write-booking.ts', 114, 'long a trip that already ran was'],
+  ['src/reservations/write-booking.ts', 118, '? { durationMinutes: offering.tripLengthMinutes }'],
+  // …and that field is exactly what occupancy is measured by.
+  ['src/reservations/hull-busy.ts', 92, 'out.push({ start, end: start + (e.durationMinutes ?? XOLA_TRIP_MINUTES) });'],
+  ['src/domain/entities.ts', 596, 'frozen here at materialization'],
+  ['src/domain/entities.ts', 601, 'shiftEndFromEvents'],
+  // The test named for the freeze — the edit lands AFTER the booking, which is the other window.
+  ['src/reservations/write-booking.test.ts', 109, 'FROZEN, not resolved on read: editing the offering later leaves the booked event alone'],
+  ['src/reservations/write-booking.test.ts', 115, 'const r = await bookSlot(repo);'],
+  ['src/reservations/write-booking.test.ts', 119, 'await repo.saveOffering(offering({ tripLengthMinutes: 90 }));'],
+  ['src/reservations/write-booking.test.ts', 121, 'durationMinutes).toBe(240)'],
+  // The two things both called "hold minutes".
+  ['src/domain/entities.ts', 358, 'holdMinutes?: number;'],
+  ['src/reservations/claim.ts', 68, 'Resolved once at import'],
+  ['src/reservations/claim.ts', 70, 'export const HOLD_MINUTES = resolveHoldMinutes();'],
+  ['src/reservations/claim.ts', 84, 'export function holdExpiry(asOf: string): string {'],
+  ['src/reservations/claim.ts', 308, 'expiresAt: holdExpiry(at),'],
+  // §2.8.4 step 3 ALREADY specifies the freeze this criterion asks for — the fix is not new.
+  ['docs/SPEC.md', 1567, 'freeze the money, the hold minutes and the trip time onto it'],
+  // Split at the line break (:1575/:1576) — the fifth this session.
+  ['docs/SPEC.md', 1575, 'a tax rate, a service fee, a price or a trip time can'],
+  ['docs/SPEC.md', 1576, 'change between the quote and the payment'],
+  ['docs/decisions/DEC-161-occupancy-is-measured-in-hold-minutes-not-trip-time.md', 18, '2.8.4a freezes both durations'],
+  ['docs/decisions/DEC-161-occupancy-is-measured-in-hold-minutes-not-trip-time.md', 39, 'Both durations freeze onto the reservation.'],
+  // The pause is the answer for the settings-shaped REFUSALS (criterion 5), not for a frozen value.
+  ['docs/SPEC.md', 1798, 'Nothing is re-validated at confirm.'],
+  ['src/ports/repository.ts', 732, 'isEnginePaused(): Promise<boolean>;'],
+  // Why the duration is read late today: no pending row exists to carry it, and the hold has no
+  // duration field either (criterion 4's finding from the other direction).
+  ['src/domain/entities.ts', 727, 'CheckoutHold'],
+  // The offering edit path, which has no guard on live holds.
+  ['src/admin/offering-admin.ts', 212, '...(input.tripLengthMinutes !== undefined'],
+  ['src/admin/offering-admin.ts', 215, '...(input.holdMinutes !== undefined ? { holdMinutes: input.holdMinutes } : {}),'],
+
   // ── Criterion 2 / 5 evidence, spot-checked while re-baselining ──
   ['src/reservations/availability.ts', 172, 'return asId<"EventId">(`slot_${slotIdentity('],
   ['app/(public)/book/page.tsx', 91, 'repo.listLiveCheckoutHolds(asOf)'],

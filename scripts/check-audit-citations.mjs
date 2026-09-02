@@ -336,11 +336,29 @@ const CITATIONS = [
   ['src/reservations/booking-webhook.test.ts', 671, 'expect(form.changedCrew).toEqual([])'],
   ['src/reservations/booking-webhook.test.ts', 674, 'a relay failure does not cost the customer their paid booking'],
   ['src/reservations/booking-webhook.test.ts', 690, 'a formation failure does not cost the customer their paid booking'],
-  // "With seats" is guarded outside the booking path, at both ends.
+  // "With seats" is guarded outside the booking path — and only the second guard is general.
   ['src/admin/vessel-admin.ts', 81, 'if (manning.length === 0) return { ok: false, code: "crew_required" }'],
   ['app/(admin)/admin/shifts/page.tsx', 313, 'no manning rule rather than reporting it vacuously Crewed'],
-  // The DEC-126 dependency §2.8 never states.
+  ['src/builder/derive.ts', 84, 'Shift has no required seats — the vessel has no manning rule (#582).'],
+  // The gap the first guard does not cover: `.some()` is vacuously false on an empty array.
+  ['src/admin/crew-admin.ts', 36, 'if (vessel.manning.some((m) => m.count < 1)) {'],
+  ['src/admin/seed-brewboat.ts', 73, 'createVessel'],
+  // The "only two triggers left" claim, and the six callers that falsify it.
+  ['src/reservations/booking-webhook.ts', 91, 'this webhook is one of only two `formShifts` triggers in'],
+  ['src/reservations/booking-webhook.ts', 421, 'this webhook and the cron tick are the only formation triggers left'],
+  ['src/reservations/booking-webhook.ts', 430, 'this and the cron tick are the ONLY `formShifts` triggers'],
   ['app/api/cron/tick/route.ts', 75, 'await formShifts(repo, { now, notifyTripChanges: true })'],
+  ['src/reservations/cancel-reservation.ts', 169, 'const form = await formShifts(deps.repo, {'],
+  ['src/builder/merge.ts', 97, 'const form = await formShifts(repo, { notifyTripChanges: true'],
+  ['src/builder/split.ts', 80, 'return formShifts(repo, { notifyTripChanges: true'],
+  ['src/import/xola-pull.ts', 182, 'const formed = await formShifts(repo, {'],
+  ['src/builder/form-shifts.ts', 131, 'export async function formShifts('],
+  // Split across the line break at :101/:102 — the fourth time this session that a wrapped
+  // sentence produced a citation that reads correct and pins nothing.
+  ['app/lib/channel.ts', 101, 'and there are six'],
+  // DEC-126 rules the cutover and nothing about the trigger set.
+  ['docs/decisions/DEC-126-the-flip-is-a-cutover-with-a-one-time-full-xola.md', 11, 'app/api/cron/xola-pull/route.ts'],
+  ['docs/decisions/DEC-126-the-flip-is-a-cutover-with-a-one-time-full-xola.md', 33, 'gone rather than amended'],
 
   // ── Criterion 2 / 5 evidence, spot-checked while re-baselining ──
   ['src/reservations/availability.ts', 172, 'return asId<"EventId">(`slot_${slotIdentity('],

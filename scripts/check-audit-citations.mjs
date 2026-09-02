@@ -396,6 +396,43 @@ const CITATIONS = [
   ['src/adapters/in-memory-repository.ts', 657, 'delete revived.price;'],
   ['src/adapters/in-memory-repository.ts', 659, 'if (event.price !== undefined) revived.price = event.price;'],
 
+  // ── Criterion 19's evidence (§Criterion 19) ──
+  ['docs/SPEC.md', 2078, 'A booking-charge payment that matches no reservation alerts every active admin by SMS'],
+  // The five branches that fit "a booking charge matching no reservation" — two name the amount.
+  ['src/reservations/booking-webhook.ts', 271, 'await deps.alertPaidButUnbooked('],
+  ['src/reservations/booking-webhook.ts', 300, 'PAID but NOT booked - booking session ${charge.key} carries no slot'],
+  ['src/reservations/booking-webhook.ts', 301, '(${charge.amountCents} ${charge.currency})'],
+  ['src/reservations/booking-webhook.ts', 329, 'PAID but NOT booked - unusable booking metadata on Stripe charge'],
+  ['src/reservations/booking-webhook.ts', 510, 'Residual-race loss with NO payment_intent to auto-refund'],
+  ['src/reservations/booking-webhook.ts', 537, 'Residual-race loss AND the auto-refund FAILED'],
+  // The ONE call site that guards against a throwing alert, and the 500 the others reach.
+  ['src/reservations/booking-webhook.ts', 333, '.catch(() => {'],
+  ['src/reservations/booking-webhook.ts', 334, 'An alert failure must not replace the underlying error'],
+  ['app/api/webhooks/stripe/route.ts', 57, 'return NextResponse.json({ error: "processing failed" }, { status: 500 });'],
+  // The delivery half — fan-out to every active admin, best-effort per recipient.
+  ['src/adapters/forward-money-alert.ts', 45, 'recipients = await listActiveAdminRecipients(repo)'],
+  ['src/adapters/forward-money-alert.ts', 29, 'one dead number cannot mute the rest'],
+  ['src/adapters/forward-money-alert.ts', 16, 'One emoji or one em dash forces the whole'],
+  ['src/adapters/forward-money-alert.test.ts', 51, 'texts every active admin and reports how many landed'],
+  ['src/adapters/forward-money-alert.test.ts', 80, 'one dead number cannot mute the other admins'],
+  ['src/adapters/forward-money-alert.test.ts', 96, 'returns 0 rather than throwing when there is nobody to tell'],
+  ['src/adapters/forward-money-alert.test.ts', 106, 'swallows a repository outage'],
+  ['src/adapters/forward-money-alert.test.ts', 77, 'expect(body).toContain("53625")'],
+  // The fixture that says "verbatim" and is not — against the copy that actually ships.
+  ['src/adapters/forward-money-alert.test.ts', 19, 'Verbatim from `booking-webhook.ts` — the copy that actually ships.'],
+  ['src/adapters/forward-money-alert.test.ts', 22, 'which matches NO payment in Muster - RECONCILE MANUALLY.'],
+  ['src/reservations/booking-webhook.ts', 654, 'which matches NO payment in Muster. The ledger is unchanged;'],
+  // The edge holds the never-throws guarantee the core assumes, and nothing tests either half.
+  ['app/lib/alert.ts', 44, 'The log line is the floor, not the fallback'],
+  ['app/lib/alert.ts', 48, 'Never throws, for the same reason the core sender doesn'],
+  ['app/lib/alert.ts', 58, 'console.error(`[reservations] ${message}`);'],
+  ['app/lib/alert.ts', 63, 'Twilio-dark ⇒ the log line above is the whole alert'],
+  ['app/lib/alert.ts', 65, 'money alert reached NO admin (none reachable)'],
+  // The only test of an unmatched BOOKING charge, and what it asserts about the body.
+  ['src/reservations/booking-webhook.test.ts', 184, 'refuses a legacy eventId-shaped session: alerts, books nothing (#693)'],
+  ['src/reservations/booking-webhook.test.ts', 196, 'toContain("REFUND MANUALLY")'],
+  ['src/reservations/booking-webhook.test.ts', 200, 'toBeNull()'],
+
   // ── Criterion 2 / 5 evidence, spot-checked while re-baselining ──
   ['src/reservations/availability.ts', 172, 'return asId<"EventId">(`slot_${slotIdentity('],
   ['app/(public)/book/page.tsx', 91, 'repo.listLiveCheckoutHolds(asOf)'],

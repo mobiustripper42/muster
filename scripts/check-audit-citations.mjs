@@ -388,6 +388,13 @@ const CITATIONS = [
   ['src/adapters/repository-contract.ts', 788, 'a CANCELLED reservation on the slot does not block a re-claim'],
   // The composition above it, which nothing exercises and which has no cancelled-slot branch.
   ['src/reservations/write-booking.ts', 101, 'const candidateEvent: Event = {'],
+  // The in-memory adapter handles the case deliberately NOW — so the pg test's comment quoting
+  // its accidental old shape is a record of the fix rather than a description of live code.
+  ['src/adapters/in-memory-repository.ts', 628, 'here the same case used to be handled BY ACCIDENT'],
+  ['src/adapters/in-memory-repository.ts', 636, 'Same field policy as the pg adapter'],
+  ['src/adapters/in-memory-repository.ts', 638, 'const cancelled = [...this.#events.values()].find('],
+  ['src/adapters/in-memory-repository.ts', 657, 'delete revived.price;'],
+  ['src/adapters/in-memory-repository.ts', 659, 'if (event.price !== undefined) revived.price = event.price;'],
 
   // ── Criterion 2 / 5 evidence, spot-checked while re-baselining ──
   ['src/reservations/availability.ts', 172, 'return asId<"EventId">(`slot_${slotIdentity('],

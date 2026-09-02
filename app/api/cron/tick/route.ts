@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { formShifts, PartialFormError } from "@core/builder/form-shifts.js";
 import { logFormAudit } from "@core/oracle/audit-log.js";
-import { tick } from "@core/builder/tick.js";
+import { tick, type TickResult } from "@core/builder/tick.js";
 import { getRepo } from "../../../lib/repo";
 import { forwardFormNotices, forwardToOutbox } from "../../../lib/channel";
 import { forwardBoardAlerts } from "../../../lib/alert";
@@ -115,7 +115,22 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: true, paused: true, shiftsFormed, at: now.toISOString() });
   }
 
-  const r = await tick(repo, now);
+  // NOT best-effort, unlike the two legs below (#892). A throw from `tick` means nothing advanced
+  // and no ask fired, so the run is a failure and has to read as one — hence the rethrow, and the
+  // 500 it produces. The catch earns its place only by naming the leg: an unlabelled throw here is
+  // indistinguishable in the logs from `getRepo()` at :41 or a rejected CRON_SECRET at :36, and
+  // those are three different operator responses. `shiftsFormed` rides along because the formation
+  // leg above is best-effort and already durable, so its count is otherwise lost with the response.
+  let r: TickResult;
+  try {
+    r = await tick(repo, now);
+  } catch (e) {
+    console.error(
+      `tick: tick() failed — no asks or escalations fired this run (shiftsFormed=${shiftsFormed})`,
+      e,
+    );
+    throw e;
+  }
   // Edge channel wiring: every ask this tick fired → crew (DEC-030), and every
   // NEW At-Risk landing → the active admins by SMS (DEC-095). Best-effort at the
   // route level too: `tick` already committed its state, so a delivery OR config

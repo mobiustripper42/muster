@@ -302,6 +302,46 @@ const CITATIONS = [
   ['src/reservations/booking-webhook.test.ts', 161, 'listReservationsForEvent(EVENT)).toHaveLength(1)'],
   ['src/reservations/booking-webhook.test.ts', 564, 'expect(events).toHaveLength(1)'],
 
+  // ── Criterion 17's evidence (§Criterion 17) ──
+  ['docs/SPEC.md', 2074, 'Confirming produces a shift for that vessel-day'],
+  // The formation itself, and the flag whose default used to be wrong (#765).
+  ['src/reservations/booking-webhook.ts', 436, 'const form = await formShifts(deps.repo, {'],
+  ['src/reservations/booking-webhook.ts', 438, 'notifyTripChanges: true,'],
+  ['src/reservations/booking-webhook.ts', 440, 'await relayAndAudit(deps, form);'],
+  ['src/reservations/booking-webhook.ts', 445, 'if (e instanceof PartialFormError) await relayAndAudit(deps, e.partial);'],
+  ['src/reservations/booking-webhook.ts', 94, 'relayFormNotices?: (form: FormResult) => Promise<void>;'],
+  // Both confirm paths funnel here, which is why the success page forms shifts too.
+  ['src/reservations/confirm-booking.ts', 54, 'return processBookingCharge(deps, {'],
+  ['app/api/webhooks/stripe/route.ts', 42, 'bookingDeps(secretKey, webhookSecret),'],
+  ['app/(public)/book/success/page.tsx', 51, 'confirmBookingByPaymentIntent(bookingDeps(secretKey), paymentIntentId)'],
+  ['app/lib/booking-deps.ts', 29, 'export function bookingDeps(secretKey: string, webhookSecret?: string): WebhookDeps {'],
+  ['app/lib/booking-deps.ts', 46, 'relayFormNotices: forwardFormNotices,'],
+  // The notify chain past the stubbed relay — each link separately.
+  ['src/builder/form-shifts.ts', 415, 'const desired = deriveSeats(vessel, shiftId)'],
+  ['src/builder/form-shifts.ts', 525, 'result.changedCrew.push({'],
+  ['src/builder/form-notices.ts', 41, '...form.changedCrew'],
+  ['src/builder/form-notices.ts', 45, 'action: "changed" as const,'],
+  ['app/lib/channel.ts', 93, 'forwardNoticesToOutbox(formNoticeChanges(form, OPERATOR_CREW_MEMBER_ID))'],
+  ['app/lib/channel.ts', 94, 'await recordFormChanges(form);'],
+  ['app/lib/channel.ts', 116, 'if (form.changedCrew.length === 0) return'],
+  ['src/builder/form-notices.test.ts', 61, 'maps changedCrew → changed, excluding the operator (#350)'],
+  // The three-sided test set: seats, the day that grew, and the negative control.
+  ['src/reservations/booking-webhook.test.ts', 513, 'Real manning, or the shift forms with zero seats'],
+  ['src/reservations/booking-webhook.test.ts', 555, 'books a slot and lands a Shift with derived seats'],
+  ['src/reservations/booking-webhook.test.ts', 605, 'a booking that GROWS an already-crewed day tells that crew (#765)'],
+  ['src/reservations/booking-webhook.test.ts', 642, 'eventIds).toHaveLength(2)'],
+  ['src/reservations/booking-webhook.test.ts', 651, '.toEqual(["cap-765"])'],
+  ['src/reservations/booking-webhook.test.ts', 654, 'a booking that creates a BRAND-NEW shift still tells nobody (#765)'],
+  ['src/reservations/booking-webhook.test.ts', 657, 'look identical'],
+  ['src/reservations/booking-webhook.test.ts', 671, 'expect(form.changedCrew).toEqual([])'],
+  ['src/reservations/booking-webhook.test.ts', 674, 'a relay failure does not cost the customer their paid booking'],
+  ['src/reservations/booking-webhook.test.ts', 690, 'a formation failure does not cost the customer their paid booking'],
+  // "With seats" is guarded outside the booking path, at both ends.
+  ['src/admin/vessel-admin.ts', 81, 'if (manning.length === 0) return { ok: false, code: "crew_required" }'],
+  ['app/(admin)/admin/shifts/page.tsx', 313, 'no manning rule rather than reporting it vacuously Crewed'],
+  // The DEC-126 dependency §2.8 never states.
+  ['app/api/cron/tick/route.ts', 75, 'await formShifts(repo, { now, notifyTripChanges: true })'],
+
   // ── Criterion 2 / 5 evidence, spot-checked while re-baselining ──
   ['src/reservations/availability.ts', 172, 'return asId<"EventId">(`slot_${slotIdentity('],
   ['app/(public)/book/page.tsx', 91, 'repo.listLiveCheckoutHolds(asOf)'],

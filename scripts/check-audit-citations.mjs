@@ -470,6 +470,13 @@ const CITATIONS = [
   ['docs/SPEC.md', 1576, 'change between the quote and the payment'],
   ['docs/decisions/DEC-161-occupancy-is-measured-in-hold-minutes-not-trip-time.md', 18, '2.8.4a freezes both durations'],
   ['docs/decisions/DEC-161-occupancy-is-measured-in-hold-minutes-not-trip-time.md', 39, 'Both durations freeze onto the reservation.'],
+  // DEC-164 sits in the same amendment banner and rejects the mechanism the price freeze uses
+  // today — the timing is right, the storage is not, and #812 is the retool.
+  ['docs/decisions/DEC-164-the-frozen-money-is-one-value-on-our-own-row.md', 8, 'not in Stripe metadata'],
+  ['docs/decisions/DEC-164-the-frozen-money-is-one-value-on-our-own-row.md', 25, 'already forbid it, and issue #812 asks for the retool'],
+  ['docs/decisions/DEC-164-the-frozen-money-is-one-value-on-our-own-row.md', 27, 'Number(charge.metadata.taxCents ?? 0)'],
+  ['docs/decisions/DEC-164-the-frozen-money-is-one-value-on-our-own-row.md', 36, 'Rejected: leaving it at Stripe.'],
+  ['docs/SPEC.md', 1481, 'Amended by DEC-164'],
   // The pause is the answer for the settings-shaped REFUSALS (criterion 5), not for a frozen value.
   ['docs/SPEC.md', 1798, 'Nothing is re-validated at confirm.'],
   ['src/ports/repository.ts', 732, 'isEnginePaused(): Promise<boolean>;'],

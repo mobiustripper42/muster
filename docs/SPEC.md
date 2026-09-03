@@ -1479,6 +1479,7 @@ conflict: both end at a `Confirmed` seat via the same state machine.
 > **Amended by DEC-161 — 2.8.3 measures in hold minutes; 2.8.4a freezes both durations; 2.8.1 stores a reserved time and derives expiry**
 > **Amended by DEC-163 — 2.8.7 and 2.8.8 exempt a `pending` row whose source is `admin` — no window, never swept**
 > **Amended by DEC-164 — 2.8.4 names `booking_invoice` as the frozen money and keeps anything with a time in it a column**
+> **Amended by DEC-165 — the acceptance criterion 'an imported Xola reservation … still occupies its hull' is restated as a payment-independence rule that outlives the importer**
 <!-- /amended-by-dec -->
 
 > **The reservation payment path is being built from scratch (2026-08-23).** This section specifies it.
@@ -2086,7 +2087,10 @@ the decision is the one that is right.
 - [ ] The tip pool for a trip divides evenly across the confirmed holders of its **required**
       seats and no others; the cents add up exactly to the pool; and a trip with a tip but no
       confirmed crew produces a warning rather than a silent loss.
-- [ ] An imported Xola reservation, which has no payment recorded, still occupies its hull.
+- [ ] A reservation with no payment recorded still occupies its hull — **no occupancy decision
+      consults a payment row.** Three shapes must hold a boat with nothing paid: an imported booking
+      (through its `Event`), a live checkout hold (through its expiry), and a `pending` reservation
+      (through its own row, with no `Event` at all).
 - [ ] The public booking-recovery lookup returns nothing for a `pending` or `expired` reservation.
 
 ### Open questions (Booking & Payment)

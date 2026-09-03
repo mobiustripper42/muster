@@ -15,6 +15,7 @@
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { load as parseYaml } from 'js-yaml'
+import { frozenRecords } from './lib/records.mjs'
 
 export const DICT = 'docs/dictionary.yml'
 export const BASELINE = 'docs/dictionary-baseline.txt'
@@ -96,11 +97,41 @@ export function loadDictionary(path = DICT) {
   return { entries: raw.filter((e) => e?.term), errors }
 }
 
-/** Files the gate reads, in a stable order. */
-export function gatedFiles() {
+/**
+ * Files the gate reads, in a stable order — minus any decision record the decisions baseline has
+ * frozen.
+ *
+ * FROZEN HAS TO MEAN FROZEN TO EVERY GATE, not just the one that wrote the baseline. A record
+ * listed there is one that editing fails the build over, so `check-decisions` skips the schema,
+ * the byte cap and the lead-in rule for it — an honest consequence of a file you are not allowed
+ * to change, rather than leniency. This gate knew none of that and applied its full rule set.
+ *
+ * The cost, measured in muster: registering one term with a forbidden alternate produced 13
+ * failures, 5 of them inside DEC-041, DEC-077 and DEC-145 — all frozen, one of them a record's own
+ * title. There is no compliant action for those five short of converting three records to schema
+ * v1 to register a single word.
+ *
+ * BOTH of this gate's rules demand an edit to the file they fire on, so the exclusion is
+ * whole-file rather than rule-by-rule. That is the issue's own test — skip any rule the reader
+ * cannot act on without converting the record — landing on all of them.
+ *
+ * Not specific to the dictionary, which is why the definition moved to a shared lib: this is the
+ * shape of ANY check applied to a corpus containing frozen records, and muster froze 149 of them.
+ */
+/**
+ * `[DECISIONS]` and not `docs/decisions/archive` — consistent with the sweep below, which has
+ * never recursed either. `check-decisions` uses `RECORD_DIRS` for the same concept and DOES read
+ * archive, so the two differ on purpose: each looks at what its own gate reads. A gate that starts
+ * reading `archive/` has to widen both, and copying this call verbatim would leak archived frozen
+ * records straight through.
+ */
+export function gatedFiles(frozen = frozenRecords([DECISIONS])) {
   const files = ['docs/SPEC.md', 'CLAUDE.md'].filter(existsSync)
   if (existsSync(DECISIONS)) {
-    for (const f of readdirSync(DECISIONS).filter((f) => f.endsWith('.md')).sort()) files.push(`${DECISIONS}/${f}`)
+    for (const f of readdirSync(DECISIONS).filter((f) => f.endsWith('.md')).sort()) {
+      const path = `${DECISIONS}/${f}`
+      if (!frozen.has(path)) files.push(path)
+    }
   }
   return files
 }
@@ -149,8 +180,12 @@ export function check(inject) {
   for (const e of errors) failures.push(e)
 
   const families = existsSync(CONFIG) ? Object.keys(JSON.parse(readFileSync(CONFIG, 'utf8')).families ?? {}) : []
-  const files = inject?.files ?? gatedFiles()
-  const texts = new Map(files.map((f) => [f, prose(readFileSync(f, 'utf8'))]))
+  const frozen = inject?.frozen ?? frozenRecords([DECISIONS])
+  const files = inject?.files ?? gatedFiles(frozen)
+  // Filtered here as well as in `gatedFiles`, because an injected file list bypasses that entirely
+  // — and a test that injects a frozen path is asserting the exclusion, not the file list.
+  const gated = files.filter((f) => !frozen.has(f))
+  const texts = new Map(gated.map((f) => [f, prose(readFileSync(f, 'utf8'))]))
 
   // Grandfathered vocabulary — what was already in these files the day this shipped. The point
   // of the gate is NEW words, so the backlog is suppressed. Registration stays available: a
@@ -230,7 +265,11 @@ export function check(inject) {
     else if (have !== want) fail(OUT, 'is stale — run `npm run gen:dictionary`')
   }
 
-  return { failures, warnings }
+  // `frozen.size` is how many frozen records EXIST, not how many this call skipped. The two are
+  // the same for every real invocation — which is the only path that reaches the ✓ line — and come
+  // apart only when a test injects `files`. Said here because the difference is invisible at the
+  // call site and a reader building on this return value would not expect it.
+  return { failures, warnings, frozen: frozen.size }
 }
 
 // `endsWith` on argv[1], matching the five sibling gates. The URL comparison this replaces
@@ -238,7 +277,8 @@ export function check(inject) {
 // printed nothing and exited 0, which `npm run verify` reads as a pass. jig installs into
 // arbitrary project checkouts, so that is a realistic path, not a hypothetical one.
 if (process.argv[1]?.endsWith('check-dictionary.mjs')) {
-  const { failures, warnings } = check()
+  const frozenSet = frozenRecords([DECISIONS])
+  const { failures, warnings, frozen } = check({ frozen: frozenSet })
   for (const w of warnings) console.log(`  ⚠ ${w}`)
   if (warnings.length) {
     console.log(`\n⚠ dictionary — ${warnings.length} grandfathered alternate${warnings.length === 1 ? '' : 's'} to clean up when convenient\n`)
@@ -250,5 +290,11 @@ if (process.argv[1]?.endsWith('check-dictionary.mjs')) {
     process.exit(1)
   }
   const { entries } = loadDictionary()
-  console.log(`✓ dictionary — ${entries.length} terms registered, ${gatedFiles().length} files gated, no unregistered vocabulary`)
+  // The frozen count is printed, never implied. A gate that silently skips files reads exactly
+  // like a gate with nothing to find, and the whole reason to skip them is that somebody decided
+  // they are unreachable — a decision worth seeing every run.
+  const fz = frozen ? `, ${frozen} frozen record${frozen === 1 ? '' : 's'} not gated` : ''
+  // `gatedFiles()` bare would re-run the whole baseline parse and directory sweep `check()` just
+  // did. Harmless in one process and pure waste at muster's 149 records.
+  console.log(`✓ dictionary — ${entries.length} terms registered, ${gatedFiles(frozenSet).length} files gated${fz}, no unregistered vocabulary`)
 }

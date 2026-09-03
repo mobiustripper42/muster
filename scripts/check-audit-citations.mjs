@@ -487,6 +487,34 @@ const CITATIONS = [
   ['src/admin/offering-admin.ts', 212, '...(input.tripLengthMinutes !== undefined'],
   ['src/admin/offering-admin.ts', 215, '...(input.holdMinutes !== undefined ? { holdMinutes: input.holdMinutes } : {}),'],
 
+  // ── Criterion 21's evidence (§Criterion 21) ──
+  ['docs/SPEC.md', 2084, 'A balance payment never creates or confirms a reservation.'],
+  // Depth 1 — the dispatch returns nine lines before the booking path.
+  ['src/reservations/booking-webhook.ts', 172, 'it must NEVER reach the booking path'],
+  ['src/reservations/booking-webhook.ts', 174, 'if (purpose === "balance") return recordBalancePayment(deps, completed);'],
+  ['src/reservations/booking-webhook.ts', 183, 'return processBookingCharge(deps, {'],
+  // Depth 2 — the function it lands in writes one Payment and nothing else.
+  ['src/reservations/booking-webhook.ts', 785, 'async function recordBalancePayment('],
+  ['src/reservations/booking-webhook.ts', 813, 'violate the FK, throw, and take this alert with it'],
+  ['src/reservations/booking-webhook.ts', 824, 'await deps.repo.savePayment(payment);'],
+  ['src/reservations/booking-webhook.ts', 852, 'return { handled: true, outcome: "balance_paid" };'],
+  // …and the two calls that WOULD book, both above :570 and both inside processBookingCharge.
+  ['src/reservations/booking-webhook.ts', 361, 'const result: SlotBookingResult = await writeSlotBooking('],
+  ['src/reservations/booking-webhook.ts', 460, 'await deps.sendConfirmation(result.reservation);'],
+  // Depth 3 — a balance session that lost its `purpose` still fails the slot test.
+  ['src/reservations/booking-webhook.ts', 297, 'const isSlotBooking = Boolean(m.vesselId && m.date && m.time && m.offeringId);'],
+  // Both doors, tested.
+  ['src/reservations/booking-webhook.test.ts', 366, 'no second reservation, no alert'],
+  ['src/reservations/booking-webhook.test.ts', 378, 'did NOT run the booking path'],
+  ['src/reservations/booking-webhook.test.ts', 379, 'listReservationsForEvent(EVENT)).toHaveLength(1)'],
+  ['src/reservations/confirm-booking.test.ts', 169, 'does NOT book the metadata-less intent behind a hosted balance checkout'],
+  ['src/reservations/confirm-booking.test.ts', 188, 'listAllReservations()).toHaveLength(0)'],
+  // Dormant by a guard, not by absence — the admin button exists and the arithmetic refuses.
+  ['app/(admin)/admin/calendar/[reservationId]/actions.ts', 80, 'export async function createBalanceLink(formData: FormData): Promise<void> {'],
+  ['app/(admin)/admin/calendar/[reservationId]/reservation-detail-pane.tsx', 540, '<form action={createBalanceLink}>'],
+  ['src/reservations/create-balance-checkout.test.ts', 167, 'no_balance once paid in full'],
+  ['src/reservations/payment-config.test.ts', 66, 'full mode charges fare + tax + fee in one go'],
+
   // ── Criterion 2 / 5 evidence, spot-checked while re-baselining ──
   ['src/reservations/availability.ts', 172, 'return asId<"EventId">(`slot_${slotIdentity('],
   ['app/(public)/book/page.tsx', 91, 'repo.listLiveCheckoutHolds(asOf)'],

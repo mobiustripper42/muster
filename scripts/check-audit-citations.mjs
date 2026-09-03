@@ -509,9 +509,19 @@ const CITATIONS = [
   ['src/reservations/booking-webhook.test.ts', 379, 'listReservationsForEvent(EVENT)).toHaveLength(1)'],
   ['src/reservations/confirm-booking.test.ts', 169, 'does NOT book the metadata-less intent behind a hosted balance checkout'],
   ['src/reservations/confirm-booking.test.ts', 188, 'listAllReservations()).toHaveLength(0)'],
-  // Dormant by a guard, not by absence — the admin button exists and the arithmetic refuses.
+  // Dormant at TWO layers. The pane hides the button — this is the one the operator meets, and
+  // the one an earlier draft of this section missed (code review).
   ['app/(admin)/admin/calendar/[reservationId]/actions.ts', 80, 'export async function createBalanceLink(formData: FormData): Promise<void> {'],
+  ['app/(admin)/admin/calendar/[reservationId]/reservation-detail-pane.tsx', 495, 'Shown only when money is actually owed'],
+  ['app/(admin)/admin/calendar/[reservationId]/reservation-detail-pane.tsx', 517, 'money.balanceCents > 0 &&'],
   ['app/(admin)/admin/calendar/[reservationId]/reservation-detail-pane.tsx', 540, '<form action={createBalanceLink}>'],
+  // …and the server refuses, covering the stale tab and the re-post.
+  ['src/reservations/create-balance-checkout.ts', 51, 'folds no_balance, already-paid, and full-mode into one predicate'],
+  ['src/reservations/create-balance-checkout.ts', 52, 'if (owed <= 0) return { ok: false, reason: "no_balance" };'],
+  // The "courtesy" comment belongs to the DISPUTED guard, not to no_balance — pinned so the
+  // distinction cannot quietly re-collapse.
+  ['src/reservations/create-balance-checkout.ts', 59, "The pane's button is a courtesy"],
+  ['src/reservations/create-balance-checkout.ts', 62, 'p.status === "disputed" || p.status === "dispute_lost"'],
   ['src/reservations/create-balance-checkout.test.ts', 167, 'no_balance once paid in full'],
   ['src/reservations/payment-config.test.ts', 66, 'full mode charges fare + tax + fee in one go'],
 

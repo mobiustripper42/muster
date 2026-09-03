@@ -38,11 +38,17 @@ phases are *burst-shaped* (clear inside a calendar week), so a per-week rate isn
 | 7     | 2        | 20     | — (DEC-S026) | — | — | **burst** — 20 pts in ~1.1d (06-29→06-30); re-est'd 1, drift 0 (7.0 split a/b); +2 follow-ups shipped (#186, #196) |
 | 8     | 2        | 19     | — (DEC-S026) | — | — | **burst** — 19 pts over ~2d (07-01→07-03); re-est'd 3, drift −2 (8.2b lock + 8.6 cut; 8.4 3→5) |
 | 9     | 5        | 55     | — (DEC-S026) | — | — | **burst** — 55 pts over ~4.3d (07-01→07-06); re-est'd 1, drift 0 (9.12 collapsed 5→~2 via @architect gate, label held); ~32 PRs, closed at v0.11.0; #247 → P10 |
+| 12    | 47*      | 208    | — (DEC-S026) | — | — | **30.6 pts/wk** — 208 pts over 47.6d (07-18→09-03); re-est'd **0**, drift **0** — every planned task closed at its pokered value; **49 issues added mid-phase (135 pts, 65% of delivery)**; 12.13–12.15 → `phase:cutover`; 9 closed issues unpointed. Reservations **not built** at close |
 | 13    | 2        | 30     | — (DEC-S026) | — | — | **burst** — 30 pts shipped over 4d (07-31→08-04) against 24 pointed; re-est'd 2, drift **+6** (13.4 filed 3 → shipped 8; #638 2→3); 3 tasks added mid-phase (#635, #638, #645); 16 PRs, closed at v1.1.0, production v1.0.21 |
 
-> **Rows 10–12 are absent, not lost.** Phase 10's retro exists in `RETROSPECTIVES.md` but its row was
-> never appended here; Phases 11 and 12 have not been retro'd at all — 12 closes when reservations
-> ships. Phase 13 ran beside them on `feature/time-clock` (DEC-059), which is why it closes out of order.
+`*` Phase 12's session and PR counts are **window** counts, not the phase's: Phase 13 completed
+inside the same span (2026-08-04) and lanes A and B ran concurrently. 47 session files and 237
+merged PRs fall in the window; neither number feeds the rate.
+
+> **Rows 10 and 11 are absent, not lost.** Phase 10's retro exists in `RETROSPECTIVES.md` but its row
+> was never appended here; Phase 11 has not been retro'd at all. Phase 13 ran beside 11 and 12 on
+> `feature/time-clock` (DEC-059), which is why it closed out of order — and why Phase 12's row above
+> carries the window caveat.
 
 **Build strategy — vertical, not horizontal** (build plan §1): build a thin sliver through every
 layer so one real thing works end-to-end, then fatten it. The spine doesn't change as it thickens;
@@ -521,7 +527,12 @@ and multi-boat / full-catalog selling.
 
 ---
 
-## Phase 12: Reservations — the real customer UI + flip new sales (Sept/Oct)
+## Phase 12: Reservations — the real customer UI + flip new sales — ⛔ CLOSED 2026-09-03, not complete
+
+> **Closed, not delivered.** All thirteen planned build tasks shipped at their pokered value and
+> reservations is still not built — see `docs/RETROSPECTIVES.md` § Phase 12 and the § Outcome block
+> below. The phase is closed so the next one can be planned against the §2.8 audit rather than
+> against this table.
 
 *Trigger: Phase 11's service layer proved out. Design is **DONE** (S54–S56): every surface mocked + approved
 (`docs/design/mockups/`, `index.html`), and the model settled across **DEC-123** (two surfaces — a
@@ -565,6 +576,94 @@ at build, not before poker.
 | 12.13 | **Waiver: decide the provider + approach (DEC-110)** — a **spike** to pick the e-waiver provider and integration shape (per-guest vs per-booking; hosted-form+webhook vs embed). **The actual integration re-pokers once decided.** Waivers are **mandatory** — only the decision is deferred, not the requirement | 3 | owner-gated (Drew/Spink) · integration build is a follow-on task · [#466](https://github.com/mobiustripper42/muster/issues/466) |
 | 12.14 | **One-time Xola import + cancel imported reservations in Muster (DEC-126)** — map Xola reservations → Muster `Event`/`Reservation` (reuse DEC-036/040 field work, **one-time not recurring**); the existing **`source` discriminator** (DEC-106) already tells the UI the money lives in Xola — no new flag; **cancel an imported reservation IN MUSTER** (frees the slot) — the thing you can't do today. **No write to Xola** — the operator refunds manually in Xola | 5 | **`@architect`** · amends DEC-126 (manual Xola refund, no write) · [#467](https://github.com/mobiustripper42/muster/issues/467) |
 | 12.15 | **Rollback export + flip/broaden (DEC-126)** — the reversible-cutover export (Muster forward-book → Xola re-key) + its credibility window; move new sales to Muster; broaden owned inventory pilot → full catalog | 5 | **`@architect`** · feature → `main` merge gate · [#468](https://github.com/mobiustripper42/muster/issues/468) |
+
+### Outcome — closed at the Phase 12 retro, 2026-09-03
+
+All thirteen planned build tasks shipped at exactly their pokered value — **73/73 pts, zero
+re-estimates, zero drift**:
+
+`[x]` 12.0 [#453](https://github.com/mobiustripper42/muster/issues/453) ·
+`[x]` 12.1 [#454](https://github.com/mobiustripper42/muster/issues/454) ·
+`[x]` 12.2 [#455](https://github.com/mobiustripper42/muster/issues/455) ·
+`[x]` 12.3 [#456](https://github.com/mobiustripper42/muster/issues/456) ·
+`[x]` 12.4 [#457](https://github.com/mobiustripper42/muster/issues/457) ·
+`[x]` 12.5 [#458](https://github.com/mobiustripper42/muster/issues/458) ·
+`[x]` 12.6 [#459](https://github.com/mobiustripper42/muster/issues/459) ·
+`[x]` 12.7 [#460](https://github.com/mobiustripper42/muster/issues/460) ·
+`[x]` 12.8 [#461](https://github.com/mobiustripper42/muster/issues/461) ·
+`[x]` 12.9 [#462](https://github.com/mobiustripper42/muster/issues/462) ·
+`[x]` 12.10 [#463](https://github.com/mobiustripper42/muster/issues/463) ·
+`[x]` 12.11 [#464](https://github.com/mobiustripper42/muster/issues/464) ·
+`[x]` 12.12 [#465](https://github.com/mobiustripper42/muster/issues/465)
+
+`[~]` **12.13 / 12.14 / 12.15 moved out** to the `phase:cutover` label (13 pts) —
+[#466](https://github.com/mobiustripper42/muster/issues/466),
+[#467](https://github.com/mobiustripper42/muster/issues/467),
+[#468](https://github.com/mobiustripper42/muster/issues/468). Cutover work waits on reservations
+being built; it is not phase work.
+
+**And the phase still ended with reservations not built.** The §2.8 conformance audit
+(`docs/audit/2026-08-29-spec-2.8-conformance.md`) verdicted 24 criteria: BUILT 9, BUILT-with-a-gap 2,
+PARTIAL 6, UNPROVEN 2, **NOT BUILT 5**.
+
+### Drift reconciliation — 49 issues added during P12, none pokered against this plan
+
+Added mid-phase and closed; **135 pts, 65% of everything the phase delivered.** None of these
+existed at the 2026-07-18 poker and none added a row here at the time. Listed at the P12 retro so
+the plan matches what happened. A `—` in Points means the issue carries no `points:` label and is
+excluded from every total.
+
+| Issue | Title | Points |
+|-------|-------|--------|
+| [#472](https://github.com/mobiustripper42/muster/issues/472) | Phase 12.1b — Refund-on-loss + DEC-107 amendment (DEC-109) | 5 |
+| [#474](https://github.com/mobiustripper42/muster/issues/474) | Balance-due math must include extra-guest charges (deposit mode undercollects) | — |
+| [#476](https://github.com/mobiustripper42/muster/issues/476) | Phase 12.3b — Gusto payroll tip report (even-split + CSV, DEC-124) | 3 |
+| [#483](https://github.com/mobiustripper42/muster/issues/483) | bail() and vacateSeat() fire asks inline — pre-horizon pool blast, bypassing t | — |
+| [#489](https://github.com/mobiustripper42/muster/issues/489) | Importer never reconciles a vanished Xola event — strands a phantom shift | — |
+| [#574](https://github.com/mobiustripper42/muster/issues/574) | Deposit-mode balance is repriced from the LIVE tax rate — a completed charge s | — |
+| [#575](https://github.com/mobiustripper42/muster/issues/575) | A declined card leaks a second 15-minute hold onto a second boat — retries can | — |
+| [#613](https://github.com/mobiustripper42/muster/issues/613) | Paid-but-unbooked path throws on the payments FK — customer charged, no reserv | 3 |
+| [#614](https://github.com/mobiustripper42/muster/issues/614) | A Muster-native booking never produces a crewable shift — formShifts' only tri | 3 |
+| [#615](https://github.com/mobiustripper42/muster/issues/615) | Imported Xola reservations are invisible to the Muster sell funnel — the doubl | 5 |
+| [#616](https://github.com/mobiustripper42/muster/issues/616) | No cancel or refund exists anywhere in the product — and a Stripe-dashboard re | 8 |
+| [#617](https://github.com/mobiustripper42/muster/issues/617) | Deposit mode is the default: 75% of revenue depends on the operator manually t | 2 |
+| [#618](https://github.com/mobiustripper42/muster/issues/618) | Five env vars required for reservations are documented nowhere — DEPLOY.md has | 2 |
+| [#619](https://github.com/mobiustripper42/muster/issues/619) | No cancellation/refund policy exists — refund-terms.ts is cited in code and is | 2 |
+| [#620](https://github.com/mobiustripper42/muster/issues/620) | /book advertises slots someone is mid-payment on — holds are never passed to t | 2 |
+| [#622](https://github.com/mobiustripper42/muster/issues/622) | Add-ons can be defined and attached but never sold — the booking flow has zero | 3 |
+| [#678](https://github.com/mobiustripper42/muster/issues/678) | Create Stripe Customers, keyed to Muster's customer identity | 5 |
+| [#679](https://github.com/mobiustripper42/muster/issues/679) | Send our form's contact details to Stripe (billing_details, description, recei | 2 |
+| [#685](https://github.com/mobiustripper42/muster/issues/685) | The sold-out refund notice is still UCS-2 — the em-dash fix landed one file ov | 1 |
+| [#686](https://github.com/mobiustripper42/muster/issues/686) | The operator cannot give a customer their booking link back — and nobody can g | 3 |
+| [#687](https://github.com/mobiustripper42/muster/issues/687) | Every outbound message should land in the outbox automatically — nothing recor | 5 |
+| [#688](https://github.com/mobiustripper42/muster/issues/688) | Remove ownership — Muster should sell every day the offering allows, minus blo | 5 |
+| [#691](https://github.com/mobiustripper42/muster/issues/691) | The whole-boat mutex is not defeat-proof — two overlapping bookings on one hul | 5 |
+| [#693](https://github.com/mobiustripper42/muster/issues/693) | The legacy 11.2 booking path skips the hull-overlap guard — an unguarded fallb | 2 |
+| [#696](https://github.com/mobiustripper42/muster/issues/696) | An already-signed-in crew member still has to tap "sign in" on every magic lin | 2 |
+| [#699](https://github.com/mobiustripper42/muster/issues/699) | Validation error on a NEW record silently loads an existing one and destroys t | — |
+| [#700](https://github.com/mobiustripper42/muster/issues/700) | The operator's calendar shows what Muster could sell, not what the boats are d | 5 |
+| [#701](https://github.com/mobiustripper42/muster/issues/701) | The Xola importer creates no customers — 39 imported reservations, 0 linked | 3 |
+| [#702](https://github.com/mobiustripper42/muster/issues/702) | Several offerings can sell one boat at one time — the calendar draws their ope | 3 |
+| [#703](https://github.com/mobiustripper42/muster/issues/703) | An open slot on the calendar isn't clickable — blocking one departure means go | 3 |
+| [#704](https://github.com/mobiustripper42/muster/issues/704) | Imported Xola trips are inert on the calendar — the operator can't open a book | 3 |
+| [#705](https://github.com/mobiustripper42/muster/issues/705) | The hull-day advisory lock guards booking but not saveEvent — an import can in | 3 |
+| [#709](https://github.com/mobiustripper42/muster/issues/709) | The admin and crew menus should be one thing — account actions at the end, and | 5 |
+| [#713](https://github.com/mobiustripper42/muster/issues/713) | checkout_holds is never pruned, and /book now scans all of it on every render | 2 |
+| [#715](https://github.com/mobiustripper42/muster/issues/715) | Guest count belongs above the date picker — and availability should filter to  | 5 |
+| [#723](https://github.com/mobiustripper42/muster/issues/723) | Stripe disputes and failed payments are still invisible — charge.dispute.* and | — |
+| [#724](https://github.com/mobiustripper42/muster/issues/724) | A cancellation records no reason — the refund amount is the only trace of why | — |
+| [#726](https://github.com/mobiustripper42/muster/issues/726) | Two simultaneous refunds of different amounts both pay out, and the ledger rec | 3 |
+| [#728](https://github.com/mobiustripper42/muster/issues/728) | fetchOrders 404s on page 2 — any Xola pull holding 100+ orders silently stops  | 3 |
+| [#731](https://github.com/mobiustripper42/muster/issues/731) | Every CI build depends on fonts.gstatic.com being up — self-host IBM Plex inst | 2 |
+| [#736](https://github.com/mobiustripper42/muster/issues/736) | RESERVATIONS tests === "true" while every other flag tests === "1" | 2 |
+| [#741](https://github.com/mobiustripper42/muster/issues/741) | Booking links should be a short code, not a 129-character HMAC URL — and doing | 5 |
+| [#765](https://github.com/mobiustripper42/muster/issues/765) | A Muster booking that grows a crewed shift notifies nobody — and after the Xol | 3 |
+| [#769](https://github.com/mobiustripper42/muster/issues/769) | The crew app should show what changed, dismissible per person — the other half | 5 |
+| [#777](https://github.com/mobiustripper42/muster/issues/777) | The admin board alert is 2 SMS segments and should be 1 — three decorative gly | — |
+| [#799](https://github.com/mobiustripper42/muster/issues/799) | Unauthenticated scripted requests can park checkout holds and deny the whole b | 5 |
+| [#801](https://github.com/mobiustripper42/muster/issues/801) | Login failure window gates ahead of the hash compare — locks out the correct c | 3 |
+| [#803](https://github.com/mobiustripper42/muster/issues/803) | A cancelled booking still shows the guest a balance due before a trip that is  | 2 |
+| [#804](https://github.com/mobiustripper42/muster/issues/804) | Re-anchor /book's forward-paging e2e — the seed's season no longer leaves an e | 2 |
 
 **Phase 12 total: 16 tasks, 86 points** (pokered 2026-07-18). The three 8s — 12.1 claim, 12.8 catalog,
 12.11 calendar — are near-certain splits that push realized points higher; 12.13 is a decision spike whose

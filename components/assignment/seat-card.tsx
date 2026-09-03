@@ -54,7 +54,19 @@ import { roleHueClass } from "./role-hue";
 
 /** The role glyph pip (9.8, DEC-086) — identity color + initial; decorative
  *  (the kicker text right beside it is the accessible name). Shares its hue
- *  map with the board's filled pips (role-hue.ts). */
+ *  map with the board's filled pips (role-hue.ts).
+ *
+ *  ALWAYS FILLED, and it deliberately does NOT match the board's open/filled pips
+ *  (#598, operator's call after seeing both). The two glyphs look alike and do
+ *  different jobs: the board is a SCAN — is this seat open or filled — so its pip
+ *  carries state in weight. This card is a PICK, one seat at a time, and its own
+ *  `OPEN`/`CONFIRMED` badge two inches away already carries the state. Here the
+ *  hue is the whole point: it says captain-vs-mate at a glance so the operator
+ *  never reads the word. That is DEC-086 exactly — identity color, never state.
+ *
+ *  A first cut at #598 made this conditional so the surfaces "agreed", which put an
+ *  ink ring beside the OPEN badge and spent the identity signal to repeat something
+ *  already on screen. Don't re-unify them; the inconsistency is the design. */
 function RoleGlyph({ roleName }: { roleName: string }) {
   return (
     <span

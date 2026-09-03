@@ -54,12 +54,26 @@ import { roleHueClass } from "./role-hue";
 
 /** The role glyph pip (9.8, DEC-086) — identity color + initial; decorative
  *  (the kicker text right beside it is the accessible name). Shares its hue
- *  map with the board's filled pips (role-hue.ts). */
-function RoleGlyph({ roleName }: { roleName: string }) {
+ *  map with the board's filled pips (role-hue.ts).
+ *
+ *  Filled-vs-open matches `SeatPips` exactly, on the operator's call (#598): the
+ *  same seat must not read as crewed here and open on the board. It used to render
+ *  filled unconditionally, so an OPEN captain seat still showed a solid blue C
+ *  right beside its own `OPEN` badge. The rule is the board's verbatim —
+ *  `filled = state === "Confirmed"` (`all-shifts.ts:209`) — which means a CLAIMED
+ *  seat reads OPEN. That is deliberate: accepted-but-not-confirmed is not a crewed
+ *  seat, and the amber occupant panel below already carries "awaiting your confirm"
+ *  in full. Open is a 2px ink ring, no status hue, for the DEC-042 reason spelled
+ *  out in `seat-pips.tsx`. */
+function RoleGlyph({ roleName, filled }: { roleName: string; filled: boolean }) {
   return (
     <span
       aria-hidden="true"
-      className={`flex h-[18px] w-[18px] items-center justify-center rounded-[5px] text-[10px] font-bold uppercase text-white ${roleHueClass(roleName)}`}
+      className={`flex h-[18px] w-[18px] items-center justify-center rounded-[5px] text-[10px] font-bold uppercase ${
+        filled
+          ? `border border-transparent text-white ${roleHueClass(roleName)}`
+          : "border-2 border-ink bg-bg text-ink"
+      }`}
     >
       {roleName.charAt(0)}
     </span>
@@ -161,7 +175,7 @@ export function SeatCard({
     <article className="flex flex-col gap-2 rounded-card border border-line bg-card p-4 shadow-sm">
       <div className="flex items-center justify-between">
         <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted">
-          <RoleGlyph roleName={vm.roleName} />
+          <RoleGlyph roleName={vm.roleName} filled={vm.state === "Confirmed"} />
           {vm.roleName} · required
         </span>
         <span

@@ -10,10 +10,22 @@ import { roleHueClass } from "../assignment/role-hue";
  * A FILLED pip wears its DEC-086 role hue (operator call, 2026-07-04) —
  * matching the cockpit's RoleGlyph: a captain-blue/mate-teal square means "a
  * person of that role, aboard." That's identity color, not state color: the
- * state stays in fill-vs-outline (open = light outline grey, so gaps still
- * jump), and warm/bad status tones never appear here. A filled trainee stays
- * FAINT — a rider shouldn't read with required-crew weight. The row's state +
- * fill text stay the accessible facts (`aria-hidden` + sr-only summary).
+ * state stays in fill-vs-outline, and warm/bad status tones never appear here.
+ * A filled trainee stays FAINT — a rider shouldn't read with required-crew
+ * weight. The row's state + fill text stay the accessible facts (`aria-hidden`
+ * + sr-only summary).
+ *
+ * An OPEN required pip is a HARD 2px ink ring with ink letter (#598). It used to
+ * be a light `border-line` outline with muted text, on the reasoning that gaps
+ * would still jump — they did not. The operator scans this board constantly and
+ * At-Risk is a backstop, so an unfilled required seat is the one mark here that
+ * means "you still owe this", and it was styled like `text-muted`, which reads as
+ * neutral/absent. The weight is doing the work ON PURPOSE and no hue is: DEC-042's
+ * second guardrail reserves the warm/bad tokens for the At-Risk board, so this had
+ * to become unmissable in neutral ink or not at all. It survives grayscale, since
+ * open and filled now differ by inverted contrast (dark-on-light vs light-on-dark)
+ * rather than by color. The trainee pips keep their faint dashed treatment — a
+ * rider is not an obligation, and the dashed border is theirs alone.
  */
 /**
  * Assigned crew (#310) — the names behind the filled pips, so the operator can
@@ -64,10 +76,10 @@ export function SeatPips({ seats }: { seats: AllShiftsSeat[] }) {
           <span
             key={i}
             title={`${s.roleName} · ${s.filled ? "filled" : "open"}`}
-            className={`flex h-[18px] w-[18px] items-center justify-center rounded-[5px] border text-[10px] font-bold uppercase ${
+            className={`flex h-[18px] w-[18px] items-center justify-center rounded-[5px] text-[10px] font-bold uppercase ${
               s.filled
-                ? `border-transparent text-white ${roleHueClass(s.roleName)}`
-                : "border-line bg-bg text-muted"
+                ? `border border-transparent text-white ${roleHueClass(s.roleName)}`
+                : "border-2 border-ink bg-bg text-ink"
             }`}
           >
             {s.roleName.charAt(0)}

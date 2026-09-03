@@ -8,6 +8,7 @@ import { pullXola } from "@core/import/xola-pull.js";
 import type { XolaPullResult } from "@core/import/xola-pull.js";
 import type { Repository } from "@core/ports/repository.js";
 import { forwardFormNotices } from "./channel";
+import { logSwallowed } from "./swallowed";
 
 /**
  * Edge glue for the Xola pull (DEC-036, DEC-020) — the ONLY place that reads the
@@ -51,8 +52,13 @@ export async function runXolaPull(
   // channel is Twilio (per-send, no dedup); the outbox fallback dedupes by slot.
   try {
     await forwardFormNotices(result.form);
-  } catch {
+  } catch (e) {
     // best-effort — the pull stands regardless
+    // The comment above spells out the stakes: these are the "you're off" notices
+    // for a Xola-cancelled shift. The pull is transition-only and the source state
+    // is already written, so a later pull of the same cancelled shift does NOT
+    // re-see it — this is the one and only chance to tell that crew member.
+    logSwallowed("lib/xola:pull", e, "the cancelled/restored crew notices were consumed and never relayed");
   }
   return result;
 }

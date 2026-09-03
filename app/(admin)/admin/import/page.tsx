@@ -8,6 +8,7 @@ import { readSubject } from "../../../lib/auth";
 import { errCopyFor } from "../../../lib/err-copy";
 import { fmtRunWhen, IMPORT_SOURCE_LABEL } from "../../../lib/format";
 import { getRepo } from "../../../lib/repo";
+import { logSwallowed } from "../../../lib/swallowed";
 import { pullFromXola, type XolaPullErr } from "./actions";
 import { ClearFeedbackParams } from "./clear-feedback-params";
 
@@ -56,8 +57,10 @@ export default async function ImportPage({
   let recent: ImportRun[] = [];
   try {
     recent = await getRepo().listImportRuns(20);
-  } catch {
+  } catch (e) {
     /* history unavailable — the Pull button still works */
+    // An empty history list and a failed history read look identical on screen.
+    logSwallowed("admin/import", e, "the recent-imports list was dropped");
   }
 
   return (

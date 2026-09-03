@@ -6,6 +6,7 @@ import { bailWithDerivedLateness } from "@core/asks/ask-loop.js";
 import { asId } from "@core/domain/ids.js";
 import { readSubject } from "../../../../lib/auth";
 import { getRepo } from "../../../../lib/repo";
+import { logSwallowed } from "../../../../lib/swallowed";
 
 /**
  * "I can't make it" (SPEC §2.6.3, #56) — a confirmed crew member drops
@@ -63,7 +64,10 @@ export async function bailFromSeat(formData: FormData): Promise<void> {
       // No re-asks to forward: the bail rests the seat Open and leaves re-crewing
       // to the tick (DEC-128, #483).
     }
-  } catch {
+  } catch (e) {
+    // The crew member is told the bail failed and left still holding the seat.
+    // If they walk away believing otherwise, the shift is short and nobody knows.
+    logSwallowed("crew/shift:bail", e, "the bail did not complete — the seat is still held");
     errorCode = "unavailable";
   }
 
@@ -114,10 +118,11 @@ export async function dismissShiftChanges(formData: FormData): Promise<void> {
         new Date().toISOString(),
       );
     }
-  } catch {
+  } catch (e) {
     // Best-effort: a failed dismiss leaves the banner up, which is the safe direction. The crew
     // member can tap again; the alternative (an error screen over a card they came to read) is
     // worse than a banner that did not go away.
+    logSwallowed("crew/shift:dismissChanges", e, "the change banner was not marked seen");
   }
   revalidatePath(`/crew/shift/${shiftId}`);
   revalidatePath("/crew");

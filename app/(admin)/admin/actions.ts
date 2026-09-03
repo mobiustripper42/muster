@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { readSubject } from "../../lib/auth";
 import { getRepo } from "../../lib/repo";
+import { logSwallowed } from "../../lib/swallowed";
 
 /**
  * Operator engine pause/resume (#124, DEC-054) — flip the autonomous tick's
@@ -23,9 +24,13 @@ export async function setEnginePaused(formData: FormData): Promise<void> {
 
   try {
     await getRepo().setEnginePaused(paused, new Date().toISOString());
-  } catch {
+  } catch (e) {
     // A repo outage → a mapped notice, not a 500 (DEC-026). redirect() throws by
     // design, so it sits outside any further work.
+    // The engine's pause switch. A pause the operator believes took and did not
+    // means the ask engine keeps texting crew; a resume that did not means it
+    // stays silent through a week they think is covered (DEC-054).
+    logSwallowed("admin:setEnginePaused", e, `the engine pause flag was NOT set to ${paused}`);
     redirect("/admin?engine_error=unavailable");
   }
   revalidatePath("/admin");

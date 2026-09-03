@@ -17,6 +17,7 @@ import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
+import { ADMIN_LOG_HINT, logSwallowed } from "../../../lib/swallowed";
 
 /**
  * /admin/purchases (task 12.12a, #465) — the order list.
@@ -113,10 +114,11 @@ export default async function AdminPurchases({
     payments = p;
     vessels = v;
     taxRateBps = config.taxRateBps;
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/purchases", e, "the order list, payments and tax rate did not load");
     return (
       <Shell width="3xl">
-        <Notice>Couldn’t reach the order list right now. Try again in a moment.</Notice>
+        <Notice>Couldn’t reach the order list right now. {ADMIN_LOG_HINT}</Notice>
       </Shell>
     );
   }

@@ -11,6 +11,7 @@ import { readSubject } from "../../../lib/auth";
 import { errCopyFor } from "../../../lib/err-copy";
 import { readFormDraft, type FormDraft } from "../../../lib/form-draft";
 import { getRepo } from "../../../lib/repo";
+import { ADMIN_LOG_HINT, logSwallowed } from "../../../lib/swallowed";
 import { saveAddOn, type AddOnErr } from "./actions";
 
 /**
@@ -50,10 +51,11 @@ export default async function AdminAddOns({
   try {
     const repo = getRepo();
     [addOns, offerings] = await Promise.all([repo.listAddOns(), repo.listOfferings()]);
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/add-ons", e, "the add-on and offering lists did not load");
     return (
       <Shell width="6xl">
-        <Notice>Couldn’t reach the add-ons right now. Try again in a moment.</Notice>
+        <Notice>Couldn’t reach the add-ons right now. {ADMIN_LOG_HINT}</Notice>
       </Shell>
     );
   }

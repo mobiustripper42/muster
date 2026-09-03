@@ -15,6 +15,7 @@ import { readFormDraft, type FormDraft } from "../../../lib/form-draft";
 import { timeClockEnabled } from "../../../lib/flags";
 import { fmt12, fmtDateRange } from "../../../lib/format";
 import { getRepo } from "../../../lib/repo";
+import { CREW_UNAVAILABLE, logSwallowed } from "../../../lib/swallowed";
 import { AppLink } from "../../../../components/ui/app-link";
 import { DirtySubmit } from "../../../../components/admin/dirty-submit";
 import { AutoSubmitSelect } from "../../../../components/admin/auto-submit-select";
@@ -95,10 +96,11 @@ export default async function CrewTime({
       new Date(),
       chosen,
     );
-  } catch {
+  } catch (e) {
+    logSwallowed("crew/time", e, "the crew time view did not build");
     return (
       <Shell>
-        <Notice>Can’t reach your time right now. Try again in a moment.</Notice>
+        <Notice>{CREW_UNAVAILABLE}</Notice>
       </Shell>
     );
   }

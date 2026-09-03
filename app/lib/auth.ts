@@ -99,6 +99,16 @@ export async function readSubject(): Promise<AuthSubject | null> {
     const renewed = makeSession(result.subject, now);
     try {
       jar.set(COOKIE, signSession(renewed, secret()), cookieOptions(renewed.expiresAt));
+      // NOT a fault (#854). Next throws from `cookies().set()` in any read-only
+      // context, which is every Server Component render — so this fires on ordinary
+      // traffic, by design, and the renewal simply happens on the next write.
+      //
+      // NARROW CAVEAT, deliberately left alone: `signSession(renewed, secret())` is
+      // evaluated as an argument, so it sits INSIDE this try. A missing or malformed
+      // SESSION_SECRET would therefore be swallowed as "read-only context" and silently
+      // stop renewals. Hoisting the sign above the try would separate the two, but it
+      // changes what escapes `readSubject()` on every request — out of scope here.
+      // eslint-disable-next-line no-restricted-syntax -- read-only render context, by design
     } catch {
       // Read-only context (e.g. a Server Component render) — renew next write.
     }

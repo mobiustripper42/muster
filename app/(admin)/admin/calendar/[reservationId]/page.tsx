@@ -16,6 +16,7 @@ import { isProdDeploy } from "../../../../lib/flags";
 import { operatorManageLink } from "../../../../lib/manage-link";
 import { liveBookingCode } from "@core/reservations/ensure-booking-code.js";
 import { getRepo } from "../../../../lib/repo";
+import { ADMIN_LOG_HINT, logSwallowed } from "../../../../lib/swallowed";
 import {
   CalendarControls,
   CalendarGrid,
@@ -54,6 +55,9 @@ export const dynamic = "force-dynamic";
 function safeDecode(segment: string): string {
   try {
     return decodeURIComponent(segment);
+    // NOT a fault (#854), same as the customers-detail twin: `segment` is a URL path a
+    // person can type, and a stray `%` is bad input with a defined answer.
+    // eslint-disable-next-line no-restricted-syntax -- malformed URL input, not a fault
   } catch {
     return segment;
   }
@@ -103,10 +107,11 @@ export default async function ReservationDetailPage({
     const repo = getRepo();
     reservation = await repo.getReservation(asId<"ReservationId">(reservationId));
     event = reservation ? await repo.getEvent(reservation.eventId) : null;
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/reservation", e, "the reservation and its event did not load");
     return (
       <Shell width="6xl">
-        <Notice>Couldn’t load this reservation right now. Try again in a moment.</Notice>
+        <Notice>Couldn’t load this reservation right now. {ADMIN_LOG_HINT}</Notice>
       </Shell>
     );
   }
@@ -138,10 +143,12 @@ export default async function ReservationDetailPage({
     gratuities = g;
     shifts = s;
     taxRateBps = config.taxRateBps;
-  } catch {
+  } catch (e) {
+    // Money path — payments, gratuities and the tax rate this pane totals from.
+    logSwallowed("admin/reservation", e, "the payments, gratuities, shifts or tax rate did not load");
     return (
       <Shell width="6xl">
-        <Notice>Couldn’t load this reservation right now. Try again in a moment.</Notice>
+        <Notice>Couldn’t load this reservation right now. {ADMIN_LOG_HINT}</Notice>
       </Shell>
     );
   }
@@ -151,8 +158,9 @@ export default async function ReservationDetailPage({
   if (shift) {
     try {
       seats = await getRepo().listSeatsForShift(shift.id);
-    } catch {
+    } catch (e) {
       // Crew is a cross-link, not the point of this page — degrade to no ratio.
+      logSwallowed("admin/reservation", e, "the crewing ratio was dropped from the pane");
       seats = [];
     }
   }

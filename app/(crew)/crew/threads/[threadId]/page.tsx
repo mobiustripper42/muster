@@ -6,6 +6,7 @@ import { Notice } from "../../../../../components/ui/notice";
 import { Shell } from "../../../../../components/ui/shell";
 import { readSubject } from "../../../../lib/auth";
 import { getRepo } from "../../../../lib/repo";
+import { CREW_UNAVAILABLE, logSwallowed } from "../../../../lib/swallowed";
 import { TENANT_ID } from "../../../../lib/tenant";
 import { fmtRunWhen } from "../../../../lib/format";
 import { postMessage } from "../actions";
@@ -38,11 +39,12 @@ export default async function ThreadPage({
   let view: ThreadView | null;
   try {
     view = await buildThreadView(getRepo(), asId<"ThreadId">(threadId), subject, TENANT_ID, new Date());
-  } catch {
+  } catch (e) {
+    logSwallowed("crew/thread", e, "the thread view did not build");
     return (
       <Shell>
         <CrewHeader title="Conversation" back={{ href: "/crew/threads", label: "Messages" }} />
-        <Notice>Can’t reach this conversation right now. Try again in a moment.</Notice>
+        <Notice>{CREW_UNAVAILABLE}</Notice>
       </Shell>
     );
   }

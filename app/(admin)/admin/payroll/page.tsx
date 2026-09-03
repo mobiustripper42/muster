@@ -14,6 +14,7 @@ import { PAY_PERIOD_ANCHOR, vesselDateOf } from "@core/config/tenant.js";
 import { readSubject } from "../../../lib/auth";
 import { timeClockEnabled } from "../../../lib/flags";
 import { getRepo } from "../../../lib/repo";
+import { ADMIN_LOG_HINT, logSwallowed } from "../../../lib/swallowed";
 
 /**
  * /admin/payroll (#347, then 13.4/#628) — what you send to payroll for a pay period.
@@ -81,10 +82,13 @@ export default async function AdminPayroll({
         buildGratuityPayroll(getRepo(), { from: sel.start, to: sel.end }),
       ]);
     }
-  } catch {
+  } catch (e) {
+    // Money path — this report is what people get paid from. A blocked payroll
+    // run is worth a log line naming the reason, not a suggestion to retry.
+    logSwallowed("admin/payroll", e, "the payroll and gratuity reports did not build");
     return (
       <Shell width="3xl">
-        <Notice>Couldn’t build the payroll report right now. Try again in a moment.</Notice>
+        <Notice>Couldn’t build the payroll report right now. {ADMIN_LOG_HINT}</Notice>
       </Shell>
     );
   }

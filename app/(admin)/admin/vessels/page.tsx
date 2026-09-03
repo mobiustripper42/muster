@@ -11,6 +11,7 @@ import { readSubject } from "../../../lib/auth";
 import { errCopyFor } from "../../../lib/err-copy";
 import { readFormDraft, type FormDraft } from "../../../lib/form-draft";
 import { getRepo } from "../../../lib/repo";
+import { ADMIN_LOG_HINT, logSwallowed } from "../../../lib/swallowed";
 import { HUE_COUNT, vesselHueClass, vesselHueIndex } from "../../../lib/vessel-hue";
 import { saveVessel, type VesselErr } from "./actions";
 
@@ -64,10 +65,11 @@ export default async function AdminVessels({
       repo.listOfferings(),
       repo.listAllRoleTypes(),
     ]);
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/vessels", e, "the fleet, locations, offerings and role types did not load");
     return (
       <Shell width="6xl">
-        <Notice>Couldn’t reach the fleet right now. Try again in a moment.</Notice>
+        <Notice>Couldn’t reach the fleet right now. {ADMIN_LOG_HINT}</Notice>
       </Shell>
     );
   }

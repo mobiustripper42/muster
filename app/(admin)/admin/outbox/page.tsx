@@ -12,6 +12,7 @@ import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { readSubject } from "../../../lib/auth";
 import { OPERATOR_CREW_MEMBER_ID } from "../../../lib/operator";
 import { getRepo } from "../../../lib/repo";
+import { ADMIN_LOG_HINT, logSwallowed } from "../../../lib/swallowed";
 import { messagingEnabled } from "../../../lib/flags";
 
 /**
@@ -67,10 +68,11 @@ export default async function Outbox({
   let view;
   try {
     view = await buildOutboxView(repo, new Date());
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/outbox", e, "the ask outbox did not build");
     return (
       <Shell>
-        <Notice>Can’t reach the schedule right now. Try again in a moment.</Notice>
+        <Notice>Couldn’t reach the outbox right now. {ADMIN_LOG_HINT}</Notice>
       </Shell>
     );
   }
@@ -92,8 +94,13 @@ export default async function Outbox({
       const ringView = await buildRingOutboxView(repo);
       ringPending = ringView.pending.map(toRingVM);
       ringSent = ringView.sent.map(toRingVM);
-    } catch {
+    } catch (e) {
       // leave rings empty
+      // An empty ring section is the NORMAL state — nobody is being rung most of
+      // the time — so a failed read is indistinguishable from a quiet day. This
+      // is the outbox: an unsent relay that renders as "nothing pending" is the
+      // worst shape of silence in the app.
+      logSwallowed("admin/outbox", e, "the ring outbox was dropped — pending rings are not shown");
     }
   }
 
@@ -104,8 +111,11 @@ export default async function Outbox({
     const noticeView = await buildNoticeOutboxView(repo);
     noticePending = noticeView.pending.map(toNoticeVM);
     noticeSent = noticeView.sent.map(toNoticeVM);
-  } catch {
+  } catch (e) {
     // leave notices empty
+    // Same silence as the rings above: an assignment-change relay that never
+    // renders looks exactly like no changes to relay.
+    logSwallowed("admin/outbox", e, "the notice outbox was dropped — pending relays are not shown");
   }
 
   return (

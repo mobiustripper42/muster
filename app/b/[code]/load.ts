@@ -20,6 +20,7 @@ import { bookingCodeRefusal, normalizeBookingCode, type BookingCodeRefusal } fro
 import { liveBookingCode } from "@core/reservations/ensure-booking-code.js";
 import { shiftForEvent } from "@core/reservations/calendar-detail.js";
 import { getRepo } from "../../lib/repo";
+import { logSwallowed } from "../../lib/swallowed";
 
 export interface LoadedBooking {
   reservation: Reservation;
@@ -165,10 +166,14 @@ export async function loadBookingByCode(
         pastTrips,
       },
     };
-  } catch {
+  } catch (e) {
     // A read error is NOT reported as a dead code — the customer's link may be perfectly good
     // and the database briefly unreachable. `unknown` renders the generic state, which tells
     // them to try the link again rather than to ask for a replacement they don't need.
+    // That is the right call for the customer and the worst case for diagnosis:
+    // `unknown` is also what a genuinely bogus code returns, so a broken booking
+    // surface is indistinguishable from someone mistyping a link.
+    logSwallowed("b/[code]", e, "the booking read failed and was rendered to the customer as an unknown code");
     return { kind: "unknown" };
   }
 }

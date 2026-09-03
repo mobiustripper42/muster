@@ -21,6 +21,7 @@ import { readSubject } from "../../../../lib/auth";
 import { cockpitHref } from "../../../../lib/cockpit-href";
 import { forwardToOutbox, forwardNoticesToOutbox } from "../../../../lib/channel";
 import { getRepo } from "../../../../lib/repo";
+import { logSwallowed } from "../../../../lib/swallowed";
 import { OPERATOR_CREW_MEMBER_ID } from "../../../../lib/operator";
 import { TENANT_ID } from "../../../../lib/tenant";
 
@@ -90,8 +91,12 @@ async function gate(formData: FormData): Promise<{
 async function audit(fn: () => Promise<unknown>): Promise<void> {
   try {
     await fn();
-  } catch {
-    // best-effort — the seat write stands regardless
+  } catch (e) {
+    // best-effort — the seat write stands regardless.
+    // Every caller of this helper is a crewing change to somebody's shift, and a
+    // dropped row leaves the audit trail quietly wrong rather than visibly short:
+    // /admin/asks renders the gap as "nothing happened".
+    logSwallowed("admin/shift:audit", e, "an audit row was not written — the trail is missing this change");
   }
 }
 
@@ -123,8 +128,11 @@ async function notify(
         shiftId: asId<"ShiftId">(shiftId),
       },
     ]);
-  } catch {
+  } catch (e) {
     // best-effort
+    // The crew member is not told they were added to or removed from a shift, and
+    // nothing on the operator's screen says the telling failed (DEC-084).
+    logSwallowed("admin/shift:notify", e, "the assignment-change notice was not queued — the crew member was not told");
   }
 }
 
@@ -144,7 +152,11 @@ export async function assignTo(formData: FormData): Promise<void> {
       : `assigned=${encodeURIComponent(crewMemberId)}`;
     // Edge channel wiring (DEC-030): the fired ask → the pilot outbox.
     await forwardToOutbox(out.ask ? [out.ask] : undefined);
-  } catch {
+  } catch (e) {
+    // A throw AFTER `askOne` returned leaves the ask fired and unforwarded — the
+    // seat looks Asked and nothing reached the outbox. `act_error=unavailable`
+    // cannot distinguish that from "nothing happened at all".
+    logSwallowed("admin/shift:assignTo", e, "the ask was not placed, or was placed and not forwarded");
     param = "act_error=unavailable";
   }
   finish(shiftId, ctx, param);
@@ -166,7 +178,8 @@ export async function nudgeOn(formData: FormData): Promise<void> {
       : `nudged=${encodeURIComponent(crewMemberId)}`;
     // Edge channel wiring (DEC-030): the fired ask → the pilot outbox.
     await forwardToOutbox(out.ask ? [out.ask] : undefined);
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/shift:nudgeOn", e, "the nudge was not placed, or was placed and not forwarded");
     param = "act_error=unavailable";
   }
   finish(shiftId, ctx, param);
@@ -181,7 +194,8 @@ export async function confirmInto(formData: FormData): Promise<void> {
     param = seat?.assignedCrewMemberId
       ? `confirmed=${encodeURIComponent(String(seat.assignedCrewMemberId))}`
       : "act_error=not_claimed";
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/shift:confirmInto", e, "the seat confirm did not complete");
     param = "act_error=unavailable";
   }
   finish(shiftId, ctx, param);
@@ -233,7 +247,8 @@ export async function overrideTo(formData: FormData): Promise<void> {
         );
       }
     }
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/shift:overrideTo", e, "the manual override did not complete");
     param = "act_error=unavailable";
   }
   finish(shiftId, ctx, param);
@@ -276,13 +291,17 @@ export async function removeSeat(formData: FormData): Promise<void> {
             reason: "misassignment",
           }),
         );
-      } catch {
+      } catch (e) {
         // Occupant swapped between reads (or a write raced) — reload, don't
         // clear a different person than Spink saw.
+        // Reported as `raced`, which is a GUESS: any throw in here reads as a
+        // race, so a genuine repository fault is misreported as a benign one.
+        logSwallowed("admin/shift:removeSeat", e, "the vacate failed and was reported to the operator as a race");
         param = "act_error=raced";
       }
     }
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/shift:removeSeat", e, "the seat was not vacated");
     param = "act_error=unavailable";
   }
   finish(shiftId, ctx, param);
@@ -323,7 +342,10 @@ export async function reportBail(formData: FormData): Promise<void> {
         await notify(String(bailer), "removed", shiftId);
       }
     }
-  } catch {
+  } catch (e) {
+    // Reliability path: a bail that does not log leaves the crew member's record
+    // cleaner than it should be, and DEC-028 lateness is derived from that record.
+    logSwallowed("admin/shift:reportBail", e, "the bail was not recorded — no lateness logged");
     param = "act_error=unavailable";
   }
   finish(shiftId, ctx, param);
@@ -397,7 +419,8 @@ export async function staffTrainee(formData: FormData): Promise<void> {
     } else {
       param = "act_error=seat_gone";
     }
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/shift:staffTrainee", e, "the trainee was not placed on the seat");
     param = "act_error=unavailable";
   }
   finish(shiftId, ctx, param);
@@ -439,7 +462,8 @@ export async function unstaffTrainee(formData: FormData): Promise<void> {
     } else {
       param = "act_error=seat_gone";
     }
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/shift:unstaffTrainee", e, "the trainee was not removed from the seat");
     param = "act_error=unavailable";
   }
   finish(shiftId, ctx, param);

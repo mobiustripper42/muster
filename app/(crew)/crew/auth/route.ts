@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { peekMagicLink, verifyMagicLink } from "@core/auth/magic-link.js";
 import { buildSessionCookie, readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
+import { logSwallowed } from "../../../lib/swallowed";
 
 /**
  * Magic-link landing (SPEC §2.6, DEC-010, DEC-030). The link a crew member taps
@@ -96,7 +97,10 @@ export async function GET(req: NextRequest) {
   let result;
   try {
     result = await peekMagicLink(getRepo(), secret, { now: new Date() });
-  } catch {
+  } catch (e) {
+    // The crew member sees `?auth=error` — a dead end with no way back in, and
+    // indistinguishable from an expired link at the surface. Worth knowing which.
+    logSwallowed("crew/auth:GET", e, "the magic link could not be peeked — sign-in refused");
     return fail("error"); // DB unreachable, etc.
   }
   if (!result.ok) return fail(result.reason);
@@ -138,7 +142,10 @@ export async function POST(req: NextRequest) {
     const form = await req.formData();
     secret = String(form.get("t") ?? "");
     thread = form.get("thread") ? String(form.get("thread")) : null;
-  } catch {
+  } catch (e) {
+    // Reported to the crew member as `missing`, which is also what a genuinely
+    // absent `t` produces — so an unparseable body is invisible at the surface.
+    logSwallowed("crew/auth:POST", e, "the sign-in form body did not parse");
     return fail("missing");
   }
   if (!secret) return fail("missing");
@@ -147,7 +154,11 @@ export async function POST(req: NextRequest) {
   let result;
   try {
     result = await verifyMagicLink(getRepo(), secret, { now: new Date() });
-  } catch {
+  } catch (e) {
+    // The consuming half. A throw here may have burned the single-use token
+    // before failing, so the crew member's link is dead either way — they need a
+    // new one, and nothing on screen says so.
+    logSwallowed("crew/auth:POST", e, "the magic link could not be verified — sign-in refused");
     return fail("error");
   }
   if (!result.ok) return fail(result.reason);

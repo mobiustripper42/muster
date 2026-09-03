@@ -13,6 +13,7 @@ import { Shell } from "../../../../components/ui/shell";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
+import { ADMIN_LOG_HINT, logSwallowed } from "../../../lib/swallowed";
 import { fmtRunWhen } from "../../../lib/format";
 
 /**
@@ -56,10 +57,11 @@ export default async function AdminAudit({
     crew = members
       .map((m) => ({ id: String(m.id), name: m.name }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/asks", e, "the ask audit trail did not load");
     return (
       <Shell width="3xl">
-        <Notice>Couldn’t reach the audit trail right now. Try again in a moment.</Notice>
+        <Notice>Couldn’t reach the audit trail right now. {ADMIN_LOG_HINT}</Notice>
       </Shell>
     );
   }

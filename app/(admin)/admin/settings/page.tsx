@@ -5,6 +5,7 @@ import { EngineControl } from "../../../../components/admin/engine-control";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
+import { logSwallowed } from "../../../lib/swallowed";
 
 /**
  * Admin settings (#603) — the home the engine pause/resume control never had.
@@ -35,7 +36,11 @@ export default async function AdminSettings({ searchParams }: { searchParams: Pr
   let paused: boolean | null;
   try {
     paused = await getRepo().isEnginePaused();
-  } catch {
+  } catch (e) {
+    // `null` renders "unknown state" rather than 500-ing, which is right — but it
+    // is also what the operator sees for a healthy-but-unreadable flag, so the
+    // screen cannot distinguish "we don't know" from "we couldn't ask".
+    logSwallowed("admin/settings", e, "the engine-paused flag was unreadable — the control shows an unknown state");
     paused = null;
   }
 

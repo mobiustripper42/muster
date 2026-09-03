@@ -7,6 +7,7 @@ import { saveAddOnAdmin, type AddOnSaveError } from "@core/admin/add-on-admin.js
 import { readSubject } from "../../../lib/auth";
 import { clearFormDraft, stashFormDraft } from "../../../lib/form-draft";
 import { getRepo } from "../../../lib/repo";
+import { logSwallowed } from "../../../lib/swallowed";
 import { TENANT_ID } from "../../../lib/tenant";
 
 /**
@@ -53,7 +54,8 @@ export async function saveAddOn(formData: FormData): Promise<void> {
       active,
     });
     code = result.ok ? null : result.code;
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/add-ons:saveAddOn", e, "the add-on was not saved");
     code = "error";
   }
 

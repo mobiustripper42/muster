@@ -10,6 +10,7 @@ import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { VersionTag } from "../../../../components/ui/version-tag";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
+import { ADMIN_LOG_HINT, logSwallowed } from "../../../lib/swallowed";
 
 /**
  * /admin/customers (task 12.12b, #465) — the contact list (DEC-123 §3, DEC-132).
@@ -46,10 +47,11 @@ export default async function AdminCustomers({
       repo.listAllReservations(),
       repo.listEvents(),
     ]);
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/customers", e, "the customer list did not load");
     return (
       <Shell width="3xl">
-        <Notice>Couldn’t reach the customer list right now. Try again in a moment.</Notice>
+        <Notice>Couldn’t reach the customer list right now. {ADMIN_LOG_HINT}</Notice>
       </Shell>
     );
   }

@@ -37,6 +37,7 @@ import { chargeNowCents, feeCentsFor, taxCentsFor } from "@core/reservations/pay
 import { AppLink } from "../../../../components/ui/app-link";
 import { Notice } from "../../../../components/ui/notice";
 import { getRepo } from "../../../lib/repo";
+import { logSwallowed } from "../../../lib/swallowed";
 import { CheckoutForm } from "./checkout-form";
 import { reservationsEnabled } from "../../../lib/flags";
 
@@ -117,7 +118,11 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
       repo.listLocations(),
       repo.getPaymentConfig(),
     ]);
-  } catch {
+  } catch (e) {
+    // Money path, and the last screen before payment — `getPaymentConfig()` is in
+    // this read, so a failure here is a customer who reached checkout and could
+    // not pay.
+    logSwallowed("book/checkout", e, "the checkout page did not load — the customer could not pay");
     return (
       <main className="mx-auto max-w-2xl px-4 py-16">
         <Notice tone="bad">Couldn&rsquo;t load this checkout. Please try again in a moment.</Notice>

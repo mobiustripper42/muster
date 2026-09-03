@@ -7,6 +7,7 @@ import { asId } from "@core/domain/ids.js";
 import { readSubject } from "../../../lib/auth";
 import { forwardToOutbox } from "../../../lib/channel";
 import { getRepo } from "../../../lib/repo";
+import { logSwallowed } from "../../../lib/swallowed";
 
 /**
  * Lean on a specific person from a board row (SPEC §2.5, #43, DEC-026) — the
@@ -44,7 +45,8 @@ export async function leanOn(formData: FormData): Promise<void> {
         `leaned=${encodeURIComponent(crewMemberId)}&leaned_shift=${encodeURIComponent(shiftId)}`;
     // Edge channel wiring (DEC-030): the fired ask → the pilot outbox.
     await forwardToOutbox(out.ask ? [out.ask] : undefined);
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/at-risk:leanOn", e, "the lean-on ask was not placed, or was placed and not forwarded");
     param = "lean_error=unavailable";
   }
   revalidatePath("/admin/at-risk");

@@ -11,6 +11,7 @@ import { errCopyFor } from "../../../lib/err-copy";
 import { readFormDraft, type FormDraft } from "../../../lib/form-draft";
 import { fmtDateRange } from "../../../lib/format";
 import { getRepo } from "../../../lib/repo";
+import { ADMIN_LOG_HINT, logSwallowed } from "../../../lib/swallowed";
 import { adminAddTimeOff, adminRemoveTimeOff, type AdminTimeOffErr } from "./actions";
 
 /**
@@ -50,10 +51,11 @@ export default async function AdminTimeOff({
       buildAllTimeOff(repo),
       repo.listCrewMembers(),
     ]);
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/time-off", e, "the time-off groups and roster did not load");
     return (
       <Shell width="3xl">
-        <Notice>Couldn’t reach the roster right now. Try again in a moment.</Notice>
+        <Notice>Couldn’t reach the roster right now. {ADMIN_LOG_HINT}</Notice>
       </Shell>
     );
   }

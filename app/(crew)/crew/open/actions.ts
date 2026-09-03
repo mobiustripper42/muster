@@ -8,6 +8,7 @@ import { logCrewAdded } from "@core/oracle/audit-log.js";
 import { readSubject } from "../../../lib/auth";
 import { selfServeEnabled } from "../../../lib/flags";
 import { getRepo } from "../../../lib/repo";
+import { logSwallowed } from "../../../lib/swallowed";
 
 /**
  * Claim an Open seat from /crew/open (SPEC §2.7.2, DEC-075/078). Auth + glue over
@@ -41,7 +42,8 @@ export async function claimSeat(formData: FormData): Promise<void> {
       asId<"SeatId">(seatId),
       now,
     );
-  } catch {
+  } catch (e) {
+    logSwallowed("crew/open:claimSeat", e, "the seat claim did not complete");
     redirect(withParam(back, "claim_error", "unavailable"));
   }
 
@@ -57,8 +59,10 @@ export async function claimSeat(formData: FormData): Promise<void> {
           shiftId: claimed.shiftId,
           via: "self_claim",
         });
-      } catch {
-        // best-effort — the claim stands regardless
+      } catch (e) {
+        // best-effort — the claim stands regardless. Nothing surfaces this to
+        // anyone, so the log line is the only artifact that will ever exist.
+        logSwallowed("crew/open:claimSeat", e, "the crew-added audit row was not written");
       }
     }
     // Confirmed — it now shows in My shifts (§2.6.2).

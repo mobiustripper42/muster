@@ -8,6 +8,7 @@ import { addTimeOff, ownsTimeOff, removeTimeOff, type AddTimeOffCode } from "@co
 import { readSubject } from "../../../lib/auth";
 import { clearFormDraft, stashFormDraft } from "../../../lib/form-draft";
 import { getRepo } from "../../../lib/repo";
+import { logSwallowed } from "../../../lib/swallowed";
 
 /**
  * Every code this surface can put in `?err=` (#654) — the domain's validation errors plus the
@@ -41,7 +42,9 @@ export async function addMyTimeOff(formData: FormData): Promise<void> {
       end,
     });
     code = result.ok ? null : result.code;
-  } catch {
+  } catch (e) {
+    // Time off the engine never learns about is time off that gets asked over.
+    logSwallowed("crew/time-off:addMyTimeOff", e, "the time-off window was not saved");
     code = "error";
   }
 
@@ -63,7 +66,8 @@ export async function removeMyTimeOff(formData: FormData): Promise<void> {
     if (id && (await ownsTimeOff(repo, asId<"CrewMemberId">(subject.id), asId<"PtoWindowId">(id)))) {
       await removeTimeOff(repo, asId<"PtoWindowId">(id));
     }
-  } catch {
+  } catch (e) {
+    logSwallowed("crew/time-off:removeMyTimeOff", e, "the time-off window was not removed");
     revalidatePath("/crew/time-off");
     await clearFormDraft("/crew/time-off");
     redirect("/crew/time-off?err=error");
@@ -101,7 +105,11 @@ export async function setMyDaysOff(formData: FormData): Promise<void> {
       asId<"CrewMemberId">(subject.id),
       weekdaysOff,
     );
-  } catch {
+  } catch (e) {
+    // "This door's only refusal is an infra throw" — so the log line below is the
+    // *only* diagnostic this path can ever produce, and there is no test that can
+    // reach it either.
+    logSwallowed("crew/time-off:setMyDaysOff", e, "the recurring weekdays-off were not saved");
     revalidatePath("/crew/time-off");
     // Deliberately CLEARS rather than stashes (#780). The weekday checkboxes are their own
     // form, and one cookie cannot serve two forms on one page without a marker field to tell

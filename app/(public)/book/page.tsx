@@ -43,6 +43,7 @@ import { formatCents } from "@core/reservations/calendar-detail.js";
 import { AppLink } from "../../../components/ui/app-link";
 import { Notice } from "../../../components/ui/notice";
 import { getRepo } from "../../lib/repo";
+import { logSwallowed } from "../../lib/swallowed";
 import { BookingProvider, Footer, GuestCard } from "./book-controls";
 import { reservationsEnabled } from "../../lib/flags";
 
@@ -90,7 +91,10 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
       // checkout and never shrank.
       repo.listLiveCheckoutHolds(asOf),
     ]);
-  } catch {
+  } catch (e) {
+    // Revenue surface: this is the public booking calendar, and a customer who
+    // hits this notice leaves. Nobody who sees it can report it usefully.
+    logSwallowed("book", e, "the availability calendar did not load — customers cannot book");
     return (
       <main className="mx-auto max-w-2xl px-4 py-16">
         <Notice tone="bad">Couldn&rsquo;t load availability. Please try again in a moment.</Notice>

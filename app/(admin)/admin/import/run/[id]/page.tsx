@@ -8,6 +8,7 @@ import { AdminSignedOut } from "../../../../../../components/admin/admin-signed-
 import { readSubject } from "../../../../../lib/auth";
 import { fmt12, fmtRunWhen, IMPORT_SOURCE_LABEL } from "../../../../../lib/format";
 import { getRepo } from "../../../../../lib/repo";
+import { ADMIN_LOG_HINT, logSwallowed } from "../../../../../lib/swallowed";
 
 /**
  * Import-run detail (#128, DEC-056) — what one Xola import actually did. The
@@ -37,10 +38,11 @@ export default async function ImportRunView({
     data = await repo.getImportRun(asId<"ImportRunId">(id));
     const vessels = await repo.listVessels();
     vesselName = new Map(vessels.map((v) => [String(v.id), v.name]));
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/import/run", e, "the import run detail did not load");
     return (
       <Shell width="2xl">
-        <Notice>Can’t reach the import history right now. Try again in a moment.</Notice>
+        <Notice>Couldn’t reach the import history right now. {ADMIN_LOG_HINT}</Notice>
       </Shell>
     );
   }

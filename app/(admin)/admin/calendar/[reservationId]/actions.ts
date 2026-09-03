@@ -22,6 +22,7 @@ import { resendReservationLink } from "../../../../lib/booking-confirmation";
 import { readSubject } from "../../../../lib/auth";
 import { clearFormDraft, stashFormDraft } from "../../../../lib/form-draft";
 import { getRepo } from "../../../../lib/repo";
+import { logSwallowed } from "../../../../lib/swallowed";
 
 /**
  * Mint a BALANCE LINK for a deposit booking (11.2b, DEC-107) — the operator door for a
@@ -97,8 +98,12 @@ export async function createBalanceLink(formData: FormData): Promise<void> {
       asId<"ReservationId">(reservationId),
       { successUrl: `${base}/book/success`, cancelUrl: `${base}/book/cancel` },
     );
-  } catch {
+  } catch (e) {
     // Stripe unreachable / key rejected — say so rather than showing a dead button.
+    // Money path. "stripe_unreachable" is a guess about the cause: a rejected key,
+    // an expired one, and a genuine network failure all land here identically, and
+    // only the first two are actionable.
+    logSwallowed("admin/reservation:createBalanceLink", e, "the balance checkout session was not created");
     redirect(back({ balanceErr: "stripe_unreachable" }));
   }
 
@@ -140,7 +145,11 @@ export async function cancelBooking(formData: FormData): Promise<void> {
       asId<"ReservationId">(reservationId),
       by,
     );
-  } catch {
+  } catch (e) {
+    // The comment three lines up calls the crew notice "the notice that matters
+    // most in the whole product: without it a confirmed crew member drives to a
+    // boat that is not sailing." A throw here may land anywhere in that sequence.
+    logSwallowed("admin/reservation:cancelBooking", e, "the cancel did not complete — crew may or may not have been told");
     await stashFormDraft("/admin/calendar", formData);
     redirect(back({ cancelErr: "unreachable" }));
   }
@@ -230,7 +239,11 @@ export async function cancelBooking(formData: FormData): Promise<void> {
       refundCents,
       Number(expectedRaw),
     );
-  } catch {
+  } catch (e) {
+    // Money path, and the ambiguous half: the booking may already be cancelled
+    // while the refund is not, which is exactly what `cancelled: by` in the
+    // redirect is admitting.
+    logSwallowed("admin/reservation:cancelBooking", e, "the refund leg of cancel-and-refund did not complete");
     redirect(back({ cancelled: by, refundErr: "unreachable" }));
   }
 
@@ -338,9 +351,10 @@ export async function refundBooking(formData: FormData): Promise<void> {
       amountCents,
       Number(expectedRaw),
     );
-  } catch {
+  } catch (e) {
     // Reaching here means the call threw OUTSIDE the provider loop (the loop returns
     // `provider_error` rather than throwing), so no refund was issued.
+    logSwallowed("admin/reservation:refundBooking", e, "no refund was issued");
     redirect(back({ refundErr: "unreachable" }));
   }
 
@@ -390,7 +404,8 @@ export async function resendConfirmation(formData: FormData): Promise<void> {
   let reservation: Reservation | null;
   try {
     reservation = await getRepo().getReservation(asId<"ReservationId">(reservationId));
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/reservation:resendConfirmation", e, "the reservation could not be read");
     redirect(back({ resendErr: "unreachable" }));
   }
   if (!reservation) redirect(back({ resendErr: "reservation_missing" }));
@@ -411,7 +426,10 @@ export async function resendConfirmation(formData: FormData): Promise<void> {
   let outcome: Awaited<ReturnType<typeof resendReservationLink>>;
   try {
     outcome = await resendReservationLink(reservation);
-  } catch {
+  } catch (e) {
+    // The comment above notes this path "deliberately does not swallow" upstream,
+    // so a throw reaching here is the pool hiccup that block anticipated.
+    logSwallowed("admin/reservation:resendConfirmation", e, "the confirmation was not re-sent");
     redirect(back({ resendErr: "unreachable" }));
   }
   // Codes only on the query string, never prose (DEC-147, not DEC-026 — see that DEC's own
@@ -456,7 +474,8 @@ export async function reissueBookingLink(formData: FormData): Promise<void> {
   let reservation: Reservation | null;
   try {
     reservation = await getRepo().getReservation(asId<"ReservationId">(reservationId));
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/reservation:reissueBookingLink", e, "the reservation could not be read");
     redirect(back({ reissueErr: "unreachable" }));
   }
   if (!reservation) redirect(back({ reissueErr: "reservation_missing" }));
@@ -467,9 +486,10 @@ export async function reissueBookingLink(formData: FormData): Promise<void> {
   let reissue: Awaited<ReturnType<typeof reissueBookingCode>>;
   try {
     reissue = await reissueBookingCode(getRepo(), reservation.id, () => new Date().toISOString());
-  } catch {
+  } catch (e) {
     // A throw means the MINT failed — `reissueBookingCode` never raises past that point — so
     // nothing was revoked and the customer's existing link still works.
+    logSwallowed("admin/reservation:reissueBookingLink", e, "no new booking code was minted — the old link still works");
     redirect(back({ reissueErr: "unreachable" }));
   }
 
@@ -477,7 +497,12 @@ export async function reissueBookingLink(formData: FormData): Promise<void> {
   let outcome: Awaited<ReturnType<typeof resendReservationLink>>;
   try {
     outcome = await resendReservationLink(reservation);
-  } catch {
+  } catch (e) {
+    // The dangerous ordering: the mint above SUCCEEDED, so the customer's old link
+    // is already revoked, and this failure means the new one never reached them.
+    // They are locked out of their own booking and the operator sees only
+    // "sent_nothing".
+    logSwallowed("admin/reservation:reissueBookingLink", e, "the NEW link was not sent, and the old one is already revoked");
     redirect(back({ reissueErr: "sent_nothing" }));
   }
   if (outcome.kind === "skipped") redirect(back({ reissueErr: "sent_nothing" }));

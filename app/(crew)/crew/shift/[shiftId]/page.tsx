@@ -18,6 +18,7 @@ import { Shell } from "../../../../../components/ui/shell";
 import { SubmitButton } from "../../../../../components/ui/submit-button";
 import { readSubject } from "../../../../lib/auth";
 import { getRepo } from "../../../../lib/repo";
+import { CREW_UNAVAILABLE, logSwallowed } from "../../../../lib/swallowed";
 import { messagingEnabled } from "../../../../lib/flags";
 import { fmt12, tel, sms } from "../../../../lib/format";
 import { bailFromSeat, dismissShiftChanges } from "./actions";
@@ -82,10 +83,11 @@ export default async function ShiftCardPage({
       asId<"CrewMemberId">(subject.id),
       new Date(),
     );
-  } catch {
+  } catch (e) {
+    logSwallowed("crew/shift", e, "the shift card did not build");
     return (
       <Shell>
-        <Notice>Can’t reach the schedule right now. Try again in a moment.</Notice>
+        <Notice>{CREW_UNAVAILABLE}</Notice>
       </Shell>
     );
   }

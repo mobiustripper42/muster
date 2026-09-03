@@ -13,6 +13,7 @@ import { errCopyFor } from "../../../lib/err-copy";
 import { readFormDraft, type FormDraft } from "../../../lib/form-draft";
 import { fmtDateRange } from "../../../lib/format";
 import { getRepo } from "../../../lib/repo";
+import { CREW_UNAVAILABLE, logSwallowed } from "../../../lib/swallowed";
 import { addMyTimeOff, removeMyTimeOff, setMyDaysOff, type CrewTimeOffErr } from "./actions";
 
 /**
@@ -65,10 +66,11 @@ export default async function CrewTimeOff({
     ]);
     windows = sortWindows(w);
     weekdaysOff = crew?.weekdaysOff ?? [];
-  } catch {
+  } catch (e) {
+    logSwallowed("crew/time-off", e, "the time-off windows and weekdays did not load");
     return (
       <Shell>
-        <Notice>Can’t reach your time off right now. Try again in a moment.</Notice>
+        <Notice>{CREW_UNAVAILABLE}</Notice>
       </Shell>
     );
   }

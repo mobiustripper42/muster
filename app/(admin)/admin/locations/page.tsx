@@ -11,6 +11,7 @@ import { readSubject } from "../../../lib/auth";
 import { errCopyFor } from "../../../lib/err-copy";
 import { readFormDraft, type FormDraft } from "../../../lib/form-draft";
 import { getRepo } from "../../../lib/repo";
+import { ADMIN_LOG_HINT, logSwallowed } from "../../../lib/swallowed";
 import { saveLocation, type LocationErr } from "./actions";
 
 /**
@@ -49,10 +50,11 @@ export default async function AdminLocations({
   try {
     const repo = getRepo();
     [locations, offerings] = await Promise.all([repo.listLocations(), repo.listOfferings()]);
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/locations", e, "the locations and offerings did not load");
     return (
       <Shell width="6xl">
-        <Notice>Couldn’t reach the locations right now. Try again in a moment.</Notice>
+        <Notice>Couldn’t reach the locations right now. {ADMIN_LOG_HINT}</Notice>
       </Shell>
     );
   }

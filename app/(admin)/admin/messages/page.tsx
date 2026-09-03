@@ -5,6 +5,7 @@ import { Shell } from "../../../../components/ui/shell";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
+import { ADMIN_LOG_HINT, logSwallowed } from "../../../lib/swallowed";
 import { TENANT_ID } from "../../../lib/tenant";
 import { messagingEnabled } from "../../../lib/flags";
 import { notFound } from "next/navigation";
@@ -28,10 +29,11 @@ export default async function AdminMessages() {
   let view: OperatorThreadsView;
   try {
     view = await buildOperatorThreads(getRepo(), TENANT_ID, new Date());
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/messages", e, "the operator thread list did not build");
     return (
       <Shell>
-        <Notice tone="bad">Can’t reach messages right now. Try again in a moment.</Notice>
+        <Notice tone="bad">Couldn’t reach messages right now. {ADMIN_LOG_HINT}</Notice>
       </Shell>
     );
   }

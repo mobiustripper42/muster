@@ -71,7 +71,7 @@ function RoleGlyph({ roleName, filled }: { roleName: string; filled: boolean }) 
       aria-hidden="true"
       className={`flex h-[18px] w-[18px] items-center justify-center rounded-[5px] text-[10px] font-bold uppercase ${
         filled
-          ? `border border-transparent text-white ${roleHueClass(roleName)}`
+          ? `border-2 border-transparent text-white ${roleHueClass(roleName)}`
           : "border-2 border-ink bg-bg text-ink"
       }`}
     >

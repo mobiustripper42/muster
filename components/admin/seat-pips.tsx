@@ -26,6 +26,11 @@ import { roleHueClass } from "../assignment/role-hue";
  * open and filled now differ by inverted contrast (dark-on-light vs light-on-dark)
  * rather than by color. The trainee pips keep their faint dashed treatment — a
  * rider is not an obligation, and the dashed border is theirs alone.
+ *
+ * Both branches carry `border-2` (@ui-reviewer): the outer box is 18px either way
+ * under border-box, but a 1px transparent border on the filled branch would leave it
+ * a 16px inner area against the open pip's 14px, so the two initials would sit at
+ * different optical sizes side by side. The transparent border is load-bearing.
  */
 /**
  * Assigned crew (#310) — the names behind the filled pips, so the operator can
@@ -78,7 +83,7 @@ export function SeatPips({ seats }: { seats: AllShiftsSeat[] }) {
             title={`${s.roleName} · ${s.filled ? "filled" : "open"}`}
             className={`flex h-[18px] w-[18px] items-center justify-center rounded-[5px] text-[10px] font-bold uppercase ${
               s.filled
-                ? `border border-transparent text-white ${roleHueClass(s.roleName)}`
+                ? `border-2 border-transparent text-white ${roleHueClass(s.roleName)}`
                 : "border-2 border-ink bg-bg text-ink"
             }`}
           >

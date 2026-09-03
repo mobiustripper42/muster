@@ -607,6 +607,27 @@ const CITATIONS = [
   ['src/reservations/availability.test.ts', 578, "a live hold (expiresAt > asOf) marks the slot 'held'"],
   ['src/reservations/availability.test.ts', 587, 'an EXPIRED hold contributes nothing'],
 
+  // ── Criterion 24's evidence (§Criterion 24) ──
+  ['docs/SPEC.md', 2094, 'booking-recovery lookup returns nothing'],
+  // THE line. A deny-list on one status, where the criterion needs an allow-list — pinned on the
+  // filter expression itself, because the whole finding is which operator is on it.
+  ['src/reservations/find-booking.ts', 76, 'candidates.filter((c) => c.reservation.status !== "cancelled")'],
+  ['src/reservations/find-booking.ts', 77, 'const pool = live.length > 0 ? live : candidates;'],
+  // The cancelled rule is deliberate and explained — it is not the defect, and must not read as one.
+  ['src/reservations/find-booking.ts', 74, 'A cancelled booking is still recoverable'],
+  // Nothing upstream filters by status: the edge maps every row, the orchestrator passes them on.
+  ['app/b/find/actions.ts', 61, 'repo.listAllReservations(),'],
+  ['app/b/find/actions.ts', 68, 'event: eventById.get(String(reservation.eventId)),'],
+  ['app/b/find/actions.ts', 70, '.filter((r): r is RecoveryRow => r.event !== undefined);'],
+  ['src/reservations/recover-booking-link.ts', 93, 'const match = matchBookingForRecovery(await loadRows(), query, deps.today);'],
+  // Why a wrong match is worse than a wrong row: the match is written to, then sent.
+  ['src/reservations/recover-booking-link.ts', 98, 'const code = await ensureBookingCode(deps.repo, match.reservation.id, deps.now);'],
+  ['src/reservations/ensure-booking-code.ts', 63, 'await repo.saveBookingCode(row);'],
+  // Coverage: the only status-aware case, and it is the cancelled rule.
+  ['src/reservations/find-booking.test.ts', 116, 'skips cancelled bookings when a live one exists, but recovers one if that is all there is'],
+  // The union that makes this vacuous today — shared with criteria 6 and 11.
+  ['src/domain/entities.ts', 615, 'ReservationStatus = "booked" | "cancelled"'],
+
   // ── Criterion 2 / 5 evidence, spot-checked while re-baselining ──
   ['src/reservations/availability.ts', 172, 'return asId<"EventId">(`slot_${slotIdentity('],
   ['app/(public)/book/page.tsx', 91, 'repo.listLiveCheckoutHolds(asOf)'],

@@ -3,6 +3,122 @@
 Phase-end retrospectives. Written by `/retro` at each phase boundary — velocity, scope changes,
 process notes, forecast update. One entry per phase, newest at the top.
 
+## Phase 12 — 2026-09-03 — Reservations: the real customer UI + flip new sales
+
+**Points:** 208 shipped / 73 planned-and-delivered (12.0–12.12) / 86 originally pokered
+**Span:** 47.6 days (2026-07-18T03:55Z → 2026-09-03T18:40Z)
+**Throughput:** 30.6 pts/calendar-week ← headline · companion: 7 active weeks, 29.7 pts/active-week
+**Estimate calibration:** 0 tasks re-estimated, net drift 0 pts ← every planned task closed at its pokered value
+**Sessions:** 47 files in the window   **PRs merged:** 237 in the window
+**Issues:** 62 closed, 0 open at close; 49 added mid-phase; 3 moved to `phase:cutover`
+
+> **The session and PR counts belong to the window, not to this phase.** Phase 13 (time clock)
+> completed inside the same span on 2026-08-04, and lanes A and B ran concurrently. Neither number
+> is Phase 12's alone and neither is used in any rate above.
+
+**Nine closed issues carry no `points:` label** and are excluded from the 208, per the skill's
+never-guess rule: #777, #724, #723, #699, #575, #574, #489, #483, #474.
+
+### Phase throughput line
+| Phase | Date | Points | Span(d) | Throughput | Re-est'd | Net drift | Sessions | PRs |
+|-------|------|--------|---------|------------|----------|-----------|----------|-----|
+| 12 | 2026-09-03 | 208 | 47.6 | 30.6 pts/wk | 0 | 0 | 47* | 237* |
+
+`*` window counts — see the note above.
+
+### What worked
+- *(verbatim)* "i guess we did the audit and finially figure out where we went off the rails, but
+  honestly ... not much went well from my perspective at this point. 12 was an disaster."
+
+### What didn't
+- *(verbatim)* "we scope crept the whole phase, 49 issues nobody planned. making a design and spec,
+  then never referencing it. making more issues and more issues as that was going to fix the problem"
+
+### Changes for next phase
+- *(verbatim)* "build the spec plan, poker it, and actually follow it."
+
+### Scope changes
+- **49 issues added mid-phase, 135 points — 65% of everything delivered.** None was pokered against
+  the plan and none added a row to PROJECT_PLAN.md. This is the whole overrun; the planned track
+  did not drift at all.
+- **13 planned points moved out** to the new `phase:cutover` label at this retro's triage: 12.13
+  waiver spike ([#466](https://github.com/mobiustripper42/muster/issues/466)), 12.14 one-time Xola
+  import ([#467](https://github.com/mobiustripper42/muster/issues/467)), 12.15 rollback export
+  ([#468](https://github.com/mobiustripper42/muster/issues/468)). Also moved there:
+  [#623](https://github.com/mobiustripper42/muster/issues/623) go-live runbook,
+  [#545](https://github.com/mobiustripper42/muster/issues/545) live-env audit,
+  [#544](https://github.com/mobiustripper42/muster/issues/544) Stripe subscription verification —
+  the last is unverifiable in-repo by design (`docs/DEPLOY.md:373`).
+- **Closed at triage, not built:** [#622](https://github.com/mobiustripper42/muster/issues/622)
+  add-ons — now a decision rather than a gap (`SPEC.md:2020-2024`, BrewBoat sells none);
+  [#489](https://github.com/mobiustripper42/muster/issues/489) Xola vanish-reconciliation — the
+  importer retires at the cutover (DEC-126); [#687](https://github.com/mobiustripper42/muster/issues/687)
+  outbox send-recording — superseded by [#901](https://github.com/mobiustripper42/muster/issues/901),
+  which sunsets the outbox instead of extending it.
+- **Unphased, headed into the next phase:** #683 flex insurance (re-scoped to the §2.8.4c boolean,
+  not an add-on row), #776, #668, #667, plus the eight that carried only `phase:12b`: #806, #802,
+  #800, #794, #793, #773, #761, #752. #484 (white-on-white inputs) unphased as ordinary `lane:a`
+  backlog.
+- **The `phase:12b` label was deleted.** It was an undocumented spillover bucket — 30 closed, 19
+  open, never mentioned in PROJECT_PLAN.md. Its 9 closed-only issues (#804, #803, #801, #799, #769,
+  #765, #736, #679, #678) were relabelled `phase:12` first, so their points stay countable here.
+
+### The phase ended with reservations not built
+The last three weeks were a 24-criterion conformance audit of SPEC §2.8
+(`docs/audit/2026-08-29-spec-2.8-conformance.md`, session 101, 57 pts, PRs #872–#899). Verdicts:
+BUILT 9, BUILT-with-a-named-gap 2, PARTIAL 6, UNPROVEN 2, NOT BUILT 5. Two findings outrank their
+rows — **criterion 15**, where a captured payment can produce no booking with nobody told (§2.8.9's
+reconciler is entirely unbuilt), and **criterion 24**, where `find-booking.ts:76`'s deny-list gets
+*worse* the moment the new statuses land. Eight ⚠ criteria gate on two structural decisions that do
+not exist yet: a four-state `ReservationStatus`, and the `checkout_holds` table replaced by a
+`pending` reservation row.
+
+### PM read
+**Pace.** 208 points in 47.6 days is 30.6 pts/week — a fast phase by raw throughput, and the planned
+track backs that up in a way the rest of the phase doesn't: all thirteen 12.0–12.12 tasks closed at
+exactly their pokered value, zero re-estimates, zero drift, 73/73. That's the best poker-calibration
+number this project has produced. It's also the least interesting number in the retro, because it
+describes 35% of what shipped. The other 65% — 135 points across 49 issues that didn't exist on
+2026-07-18 — is where the phase actually happened, and none of it was pokered against anything.
+
+**Scope.** The plan didn't fail. The 13 tasks it named landed clean, on the spec that was "DONE" per
+the phase header before a line of 12.x code was written (DEC-123, 124, 125, 126, 109-amended, all
+pre-committed). What happened is that 49 issues got filed and closed *around* that plan without ever
+touching it — no re-poker, no line added to PROJECT_PLAN, no reference back to the spec that was
+sitting there finished. That's not scope drift in the normal sense of an 8 turning into a 13; it's a
+second, unplanned phase's worth of work running in parallel with the planned one and never
+reconciling. The three tasks that did get formally moved out (waiver spike, Xola import, rollback
+export — 13 pts to `phase:cutover`) are a rounding error next to that.
+
+**Pattern.** The clearest artifact of the pattern is the last three weeks: a 24-criterion conformance
+audit (session 101, 57 pts, 20 PRs) whose entire job was to figure out where the other 46 issues had
+left the actual product — verdict, after all that: 5 NOT BUILT, 2 UNPROVEN, 6 PARTIAL, and the
+sharpest finding is criterion 15, a paid charge that can produce no booking with nobody told, because
+the reconciler at §2.8.9 was never built at all. Three weeks of audit to discover the money path has
+a silent hole is the fee for the other 65%: issues kept getting opened as if opening one were
+progress on the last one, and the spec that would have prevented that sat unreferenced the whole
+time. Phase 13 (time clock, 30 pts, ✅ 2026-08-04) ran concurrently in this same window and isn't
+part of this — noted so it doesn't get credited to 12 by accident, but it also means the team was
+split across two phases while 12 was accumulating its 49.
+
+**On your answers.** "Not much went well" holds up against the record — the one thing that did go
+well, the audit, only happened because the alternative (opening issue #50) finally stopped looking
+like a plan. Where I'd push back slightly: it's not that no design or spec existed. DEC-123 through
+126 were locked, mockups approved, before 12.0 was pokered — the planned track's 0-drift result is
+proof it was usable. The failure your second answer names precisely is narrower and worse: a working
+spec sat there and 49 issues' worth of decisions got made without opening it. "Making more issues as
+that was going to fix the problem" is the correct diagnosis, not an exaggeration — the audit exists
+because issue-filing had stopped being connected to the spec closing any gap.
+
+**Forward.** Your third answer is the mechanism, and it's checkable this time because the audit did
+the hard part: 8 of the 24 criteria gate on two named structural decisions (four-state
+`ReservationStatus`, and the `checkout_holds` table replaced by a pending-reservation row) that don't
+exist yet. Those two decisions belong at the front of the next poker session, written and
+DEC-numbered, before a single reservations issue gets a `phase:13` (or whatever it's numbered) label
+— not discovered mid-phase like 12.1's claim-and-hold was. If an issue shows up mid-phase that isn't
+on that poker list, that's the signal to stop and ask whether it's real scope or the pattern
+repeating, not a reason to open it and move on.
+
 ## Phase 13 — 2026-08-05
 
 **Points:** 30 shipped / 24 pointed / 16 originally planned (188% of plan)

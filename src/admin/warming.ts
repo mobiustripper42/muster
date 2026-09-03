@@ -2,7 +2,7 @@
  * Warming derivation (SPEC §2.4, #55, DEC-027 §3) — shifts **trending toward
  * risk** but not yet summoning anyone: the deliberately-opened pull view on the
  * assignment surface. Never on the At-Risk board, never pings (§2.5 stays pure
- * push/empty); Spink opens it when he wants the weather, not the alarm.
+ * push/empty); Eric opens it when he wants the weather, not the alarm.
  *
  * Membership = a conservative candidate predicate **minus the actual board**:
  *

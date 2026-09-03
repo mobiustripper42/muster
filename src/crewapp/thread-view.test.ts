@@ -97,7 +97,7 @@ describe("buildThreadView — authorization + shaping (#117, DEC-071)", () => {
       msg({
         id: asId<"MessageId">("m3"),
         threadId: t,
-        senderId: "crew-spink",
+        senderId: "crew-eric",
         senderKind: "admin",
         body: "all set",
         priority: true,
@@ -159,7 +159,7 @@ describe("buildThreadView — operator (admin) cross-visibility (#118, DEC-072)"
     await repo.saveThread({ id: t, tenantId: TENANT, kind: "shift", scopeRef: String(SHIFT_OTHERS), createdAt: NOW.toISOString() });
     await repo.saveMessage(msg({ id: asId<"MessageId">("c1"), threadId: t, body: "from co" }));
     await repo.saveMessage(
-      msg({ id: asId<"MessageId">("o1"), threadId: t, senderId: "crew-spink", senderKind: "admin", body: "from office", createdAt: "2026-07-01T07:01:00.000Z" }),
+      msg({ id: asId<"MessageId">("o1"), threadId: t, senderId: "crew-eric", senderKind: "admin", body: "from office", createdAt: "2026-07-01T07:01:00.000Z" }),
     );
 
     const view = await buildThreadView(repo, t, OP, TENANT, NOW, TZ);

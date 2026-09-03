@@ -109,7 +109,7 @@ goes into the oracle's list (availability-oracle §5), not invented in the funne
   it surfaces *here* — a discounted or premium slot renders in the step-1 calendar and step-3 total.
   The funnel is the consumer; the pricing rule would live beside the oracle, same policy/mechanism split.
   > **Flag:** dynamic pricing reverses a recorded *drop* (availability-oracle §5; customer-portal-sketch
-  > §2). It's an owner pricing call (Spink + Drew), not a design default. See the FUTURE_IDEAS entry.
+  > §2). It's an owner pricing call (Eric + Drew), not a design default. See the FUTURE_IDEAS entry.
 
 ---
 

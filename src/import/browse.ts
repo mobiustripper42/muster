@@ -1,7 +1,7 @@
 /**
  * Browse imported events + reservations (SPEC §2.2 "States to render").
  *
- * The data-layer view Spink eyeballs before building shifts: events grouped by
+ * The data-layer view Eric eyeballs before building shifts: events grouped by
  * date with reservation count + pax vs capacity, and per-event detail showing
  * each reservation's name, party size, and (nullable) phone. Structured output
  * for the future M4 UI; a thin text render so it's usable pre-stack.

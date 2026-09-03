@@ -313,7 +313,7 @@ export function logNudged(
   return recordReliabilityEvent(repo, crewMemberId, "nudged", now, {
     seatId,
     shiftId,
-    // A board *lean* (DEC-026) is Spink's move, not the engine's — flagged so
+    // A board *lean* (DEC-026) is Eric's move, not the engine's — flagged so
     // "how often did the human step in" stays derivable from the one log.
     ...(opts?.manual ? { manual: true } : {}),
   });

@@ -226,7 +226,7 @@ export async function broadcastAsk(
  * Assign-then-confirm (captain flow): name one person into the seat. The seat
  * goes `Open → Asked` with a single ask; their accept confirms, their decline
  * kicks back to `Open` for the next name. No eligibility gate is re-checked here
- * beyond what the caller did — Spink names whom he names; `manualOverride` is the
+ * beyond what the caller did — Eric names whom he names; `manualOverride` is the
  * harder backstop. Returns the ask, or null if the seat wasn't open.
  */
 export async function assignPerson(
@@ -532,7 +532,7 @@ async function allAsksClosed(repo: Repository, seatId: SeatId): Promise<boolean>
 }
 
 /**
- * Confirm a claimant into the seat (`Claimed → Confirmed`) — Spink's confirm, or
+ * Confirm a claimant into the seat (`Claimed → Confirmed`) — Eric's confirm, or
  * the autonomous Tier-1 confirm of the first acceptable yes. Idempotent-safe: a
  * no-op unless the seat is `Claimed`.
  */
@@ -821,12 +821,12 @@ export async function vacateSeat(
 }
 
 /**
- * Manual override (SPEC §2.4): Spink drops any person directly into a seat,
+ * Manual override (SPEC §2.4): Eric drops any person directly into a seat,
  * regardless of pool, rank, or current state — the authority backstop. Goes
  * straight to `Confirmed`. Logs no reliability event (an override is not the
  * person's responsiveness). If the seat already had a different occupant, this
  * silently displaces them with no `shift_bailed` trace — intentional: an override
- * is Spink's hammer, not a bail by the displaced person. (A "notify the displaced
+ * is Eric's hammer, not a bail by the displaced person. (A "notify the displaced
  * crew" concern, if it ever matters, is a UI/notification job, not domain state.)
  *
  * Returns the placed seat plus, when the override bumped a *different* prior
@@ -889,7 +889,7 @@ export interface OverrideResult {
 /**
  * Role-guarded manual override (DEC-064). The cockpit's "place anyone" backstop,
  * minus the two things it must not do: seat a crew member who isn't rated for the
- * role (a mate as captain — a license floor, not Spink's to override), or seat an
+ * role (a mate as captain — a license floor, not Eric's to override), or seat an
  * ARCHIVED crew member (#323, DEC-096 — they're off every list). Still bypasses
  * pool, rank, and current state — that's `manualOverride`, which this composes
  * after the rating + archived checks. Captains stay placeable into mate seats: on

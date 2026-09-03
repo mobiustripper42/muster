@@ -1,7 +1,7 @@
 /**
  * The operator's crew identity (DEC-030 operator-as-crew clause).
  *
- * BrewBoat reality: the operator (Spink) also captains, so the engine sometimes
+ * BrewBoat reality: the operator (Eric) also captains, so the engine sometimes
  * asks HIM for a seat. In the outbox, an ask addressed to this crew member
  * renders inline Yes/No buttons (answerable right there, admin session) instead
  * of an `sms:` self-text — inline-or-relayed, never both, so the same ask can't
@@ -25,4 +25,4 @@
  * `admins` table) — the follow-up rewires this messaging sender to that set.
  */
 export const OPERATOR_CREW_MEMBER_ID =
-  process.env.OPERATOR_CREW_MEMBER_ID ?? "crew-spink";
+  process.env.OPERATOR_CREW_MEMBER_ID ?? "crew-eric";

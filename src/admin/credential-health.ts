@@ -3,8 +3,8 @@
  *
  * Pure: given a crew member's credential rows and a reference instant, classify
  * the worst-case standing as valid / expiring-soon / expired. The roster shows
- * this at the list level so Spink sees pool health without opening each person
- * (SPEC §2.1 "the pool-health view Spink currently keeps in his head").
+ * this at the list level so Eric sees pool health without opening each person
+ * (SPEC §2.1 "the pool-health view Eric currently keeps in his head").
  *
  * The expiring-soon window is policy, not mechanism. Strictly it belongs in
  * tenant config (DEC-001), but a tenant-config table is premature at M0 — so it

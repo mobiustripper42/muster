@@ -5,7 +5,7 @@
  * server-gated on `getAdmin(active)` — the crew-home control is a convenience, the
  * action re-checks.
  *
- * `crew-spink` is both a seeded crew member (outbox seed) and the fixture admin,
+ * `crew-eric` is both a seeded crew member (outbox seed) and the fixture admin,
  * so it's the dual-role subject. `crew-obx-bo` is crew-only.
  */
 import {
@@ -104,7 +104,7 @@ test.describe("crew ↔ admin switcher (DEC-093)", () => {
   test("a revoked admin's switch control disappears on the next render", async ({
     page,
   }) => {
-    await signInAsCrew(page, "crew-spink");
+    await signInAsCrew(page, "crew-eric");
     // "Switch to admin" moved into the crew drawer (#644) — open it to see the control. The
     // drawer is a `<details>`, so while it is shut the control is genuinely not rendered, which
     // is why the count assertion below still means what it meant before.
@@ -122,7 +122,7 @@ test.describe("crew ↔ admin switcher (DEC-093)", () => {
   test("revoke is enforced by the ACTION, not the button: a stale click is refused server-side", async ({
     page,
   }) => {
-    await signInAsCrew(page, "crew-spink");
+    await signInAsCrew(page, "crew-eric");
     await page.locator(`summary[aria-label="Open menu"]`).click();
     const btn = page.getByRole(SWITCH_TO_ADMIN.role, { name: SWITCH_TO_ADMIN.name });
     await expect(btn).toBeVisible();

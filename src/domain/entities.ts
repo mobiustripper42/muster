@@ -234,7 +234,7 @@ export interface CrewMember {
    */
   weekdaysOff?: number[];
   status: CrewStatus;
-  /** Spink's manual thumb (§1.4): boost or floor. The score itself is not hand-edited. */
+  /** Eric's manual thumb (§1.4): boost or floor. The score itself is not hand-edited. */
   manualBoost?: number;
   manualFloor?: number;
   protocolOverride?: ProtocolOverride;
@@ -985,7 +985,7 @@ export interface Ask {
 
 /**
  * Who a magic link authenticates. Crew links carry a `CrewMemberId`; the admin
- * (Spink) link carries an operator identifier (email/handle) — there is no admin
+ * (Eric) link carries an operator identifier (email/handle) — there is no admin
  * entity yet, so `subjectId` is a plain string the surface layer interprets per
  * `kind`. Same mechanism for both (DEC-020).
  */

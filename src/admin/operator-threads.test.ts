@@ -67,7 +67,7 @@ async function seed(): Promise<InMemoryRepository> {
   // All-staff: a REAL row + an operator message (proves real-preferred-over-synth).
   await repo.saveThread(thread(allStaffId, "all_staff", null));
   await repo.saveMessage(
-    msg({ id: asId<"MessageId">("a1"), threadId: allStaffId, senderId: "crew-spink", senderKind: "admin", body: "roster note", createdAt: "2026-07-01T07:00:00.000Z" }),
+    msg({ id: asId<"MessageId">("a1"), threadId: allStaffId, senderId: "crew-eric", senderKind: "admin", body: "roster note", createdAt: "2026-07-01T07:00:00.000Z" }),
   );
   // A shift thread (older) and a DM (newer) — the recency-ordered "rest".
   await repo.saveThread(thread(shiftThreadId, "shift", String(SHIFT)));

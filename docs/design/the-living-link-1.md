@@ -40,7 +40,7 @@ place anyone **goes**. An inbox is admin in a trenchcoat. The three parties are 
 
 That asymmetry is the whole product. It is why the operator stops being the relay.
 
-> **Warmth guardrail.** A wall of automated texts reads like Ticketmaster, not like a guy named Spink
+> **Warmth guardrail.** A wall of automated texts reads like Ticketmaster, not like a guy named Eric
 > with a boat — and that warmth is part of why people book. Automation eats the *drudgery*; the
 > *relationship* stays human. Emits are in the operator's voice; the few genuinely-human moments are
 > kept deliberately human, not automated away.
@@ -209,7 +209,7 @@ TODAY · BrewBoat sunset cruise                  [ Sailing — rain or shine ✓
                                                       Delayed to 5:30 · Cancelled)
 ⏰ Arrive by 4:45 PM    ·    Departs 5:00 PM     ← arrival ≠ departure, labeled
 📍 Whiskey Island Marina  [map pin]
-⛵ Captain Spink
+⛵ Captain Eric
 🎒 What to bring · where to park
 
 Owner also sees:   11 of 13 signed · 2 still need a waiver

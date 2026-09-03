@@ -140,14 +140,14 @@ The import path is disposable plumbing; everything it feeds is permanent.
 | **Supernumerary seat** | Optional, non-gating seat (trainee). Carries a pairing rule and **consumes a passenger slot** against COI max-pax — not free capacity. |
 | **Crew** | A person who can fill seats — captain and/or mate, by rating. Also a **session kind** (see *Admin*) — the word carries both meanings, deliberately. |
 | **Admin** | The **system** authorization concept, and one of exactly **two session kinds** (`crew` \| `admin`). Since DEC-092 an admin is a row in `admins` keyed by that person's **crew id** — so **every admin is also crew**, and `kind` is what disambiguates which hat they're wearing. There are **no roles and no permissions matrix**: all admins are equal. Per-person revoke is `active=false`. *(Granular roles are a someday/multi-tenant concern; `0018` leaves the `role` column as the clean seam. Until then: two kinds, that's the whole model.)* |
-| **Operator** | The **business** role — the human who runs the operation (Spink; sometimes Drew). **Not a system entity, and not a synonym for admin.** An operator is a person; an admin is a session kind. Beware `OPERATOR_CREW_MEMBER_ID`, which is about neither — it names the *crew* persona the office posts messages as (DEC-030 §7). |
+| **Operator** | The **business** role — the human who runs the operation (Eric; sometimes Drew). **Not a system entity, and not a synonym for admin.** An operator is a person; an admin is a session kind. Beware `OPERATOR_CREW_MEMBER_ID`, which is about neither — it names the *crew* persona the office posts messages as (DEC-030 §7). |
 | **Eligible pool** | The people legally fillable for a given open seat (credentials valid on the trip date, correct rating, not double-booked, not on PTO), ranked by reliability. |
 | **Oracle** | The single authoritative function answering "can this trip be booked at this time — yes/no, and if no, why?" A rule engine, not a calendar. |
 | **Horizon** | When a rule gets a vote. **Booking horizon** (property rules, gates the sale) vs **staffing horizon** (crew rules, N days out when humans get committed). |
 | **Reliability score** | Per-crew number setting **ask priority** within the eligible pool. Ranking, not a gate, not a grade. |
-| **Tiers 1–3** | Degrees of automation in filling a seat: 1 autonomous, 2 semi-autonomous escalation, 3 human (Spink). |
+| **Tiers 1–3** | Degrees of automation in filling a seat: 1 autonomous, 2 semi-autonomous escalation, 3 human (Eric). |
 | **Manifest** | The guest list crew need — name + phone/count. **Per-event**, not per-shift (a Saturday shift has a 1pm, 3pm, 5pm manifest). Waivers explicitly *not* required for crew. |
-| **Spink** | The operator persona (BrewBoat's). Semi-retired; the design goal is no babysitting. |
+| **Eric** | The operator persona (BrewBoat's). Semi-retired; the design goal is no babysitting. |
 | **Drew** | The owner/business persona. Owns the money/policy decisions (refunds, pricing). |
 
 > **Manifest reconciliation (decided):** the manifest is grouped **by event** on the shift card.
@@ -172,9 +172,9 @@ in and flagged.
 | **Pending** | Trips booked into the shift, staffing horizon not yet reached. Crew not sought. Crew rules abstain. (The "booked in February, it's July" state.) |
 | **Filling** | Staffing horizon crossed. Shift needs crew; the system is working it (Tiers 1–2) — whether zero or some seats are filled. (Open + Filling merged: seat sub-states already distinguish "no progress" from "some.") |
 | **Crewed** | Every **required** seat confirmed. Green. (Supernumerary seats do not gate this.) |
-| **At-Risk** | Automated escalation exhausted, still short, trip closing in. Human-only state — surfaced to Spink. |
+| **At-Risk** | Automated escalation exhausted, still short, trip closing in. Human-only state — surfaced to Eric. |
 | **Completed** | Trip ran. Historical. Feeds reliability scores. |
-| **Cancelled** | Shift killed — booking cancelled, or couldn't crew and Spink pulled the plug. |
+| **Cancelled** | Shift killed — booking cancelled, or couldn't crew and Eric pulled the plug. |
 
 ### Seat sub-states
 
@@ -203,7 +203,7 @@ in and flagged.
   crew app's frictionless decline depends on.
 - `Crewed → At-Risk` — a confirmed crew bails **late, no time/pool** (the 11pm bail). A locked
   shift is never truly locked until the trip runs.
-- `At-Risk → Crewed` — Spink leans on someone, seat fills.
+- `At-Risk → Crewed` — Eric leans on someone, seat fills.
 - `At-Risk → Cancelled` — pull the plug.
 - `Crewed → Completed` — trip day passes, trip ran.
 - `Cancelled` — reachable from every pre-Completed state.
@@ -227,21 +227,21 @@ The carrot/stick lives in *how the system works a seat*, not in the state names.
 degrees of automation within `Filling`:
 
 - **Tier 1 — autonomous fill.** Shift enters `Filling`; system asks the eligible pool ranked by
-  reliability, accepts down the list until required seats are `Confirmed` → `Crewed`. No Spink.
+  reliability, accepts down the list until required seats are `Confirmed` → `Crewed`. No Eric.
   The normal Saturday.
 - **Tier 2 — semi-autonomous escalation.** Tier 1 stalls. System direct-nudges high-reliability
-  people. Still `Filling`, still no Spink. *(Corrections, **DEC-024**: ~~widens the pool~~ — there is
+  people. Still `Filling`, still no Eric. *(Corrections, **DEC-024**: ~~widens the pool~~ — there is
   **no widen rail**; the pool is what the oracle computes and Tier 2 does not enlarge it. Widening
   happens automatically inside Tier 1 as the DEC-063 drip. ~~optionally sweetens~~ — **no sweetener
   in v1**; there is no pay/bonus lever anywhere in the engine.)*
 - **Tier 3 — human.** Automation exhausted. Shift → `At-Risk`, surfaces on the board with full
-  context (who was asked, who declined, who never answered, how close it got). Spink leans /
+  context (who was asked, who declined, who never answered, how close it got). Eric leans /
   reschedules / cancels.
 
 **The autonomous last-minute booking is emergent, not a feature:** customer books Sat-evening on
 Friday night → oracle says bookable (provisional) → inside the staffing horizon, so the shift is
 born straight into `Filling` → Tier 1 fires → first eligible captain + mate accept → `Crewed` →
-Spink gets an FYI, not a task. The organs running in sequence with no human in the loop.
+Eric gets an FYI, not a task. The organs running in sequence with no human in the loop.
 
 ### Assignment protocol per role (fork resolved)
 
@@ -263,7 +263,7 @@ Two protocols ride the same seat machine:
 
 **Decided:** per-role default (mates ask-then-assign, captains assign-then-confirm), with a
 per-person override toggle. Default contested-seat winner is **first-acceptable-yes-wins** for
-rollout (simple, matches Spink's instinct, feels fair); **best-by-score** is a knob to flip once
+rollout (simple, matches Eric's instinct, feels fair); **best-by-score** is a knob to flip once
 reliability data is trusted. The two mostly agree — they diverge only when a flake answers first.
 
 ## 1.3 Availability — two questions, two mechanisms
@@ -356,7 +356,7 @@ edge (§1.1) plus the At-Risk board.
 assigned," the operational view Xola cannot produce. **That view exists**, by a different mechanism:
 the Shift Builder derives shifts from vessel manning **source-agnostically**, so a Muster-sold event
 staffs exactly like a Xola-imported one, and a shift that cannot be crewed escalates to `At-Risk`
-(§1.2 Tier 3) where Spink sees it. The concept shipped; the `Verdict` wrapper did not.
+(§1.2 Tier 3) where Eric sees it. The concept shipped; the `Verdict` wrapper did not.
 
 > **⏳ RESERVED (v0.2 — not v1): the staffing horizon may be *staged*.** v1 has one staffing horizon.
 > Progressive commitment (§4 parked) generalizes it to an **ordered list of checkpoints** — earlier
@@ -392,7 +392,7 @@ A per-crew number that sets **ask priority** within the eligible pool. Ranking, 
 a gate (credentials gate; the score only orders who-gets-asked-first). It is the **single lever**
 for both carrot and stick: position in the queue. Good actors see more shifts and claim first;
 flakes drift down and naturally work less. No explicit punishment — the system stops manually
-compensating for them, which is the thing Spink does in his head today.
+compensating for them, which is the thing Eric does in his head today.
 
 ### Two axes (blended into one number for v1)
 - **Responsiveness** — do they answer asks, and how fast?
@@ -433,7 +433,7 @@ real data; do not block launch tuning them.
 > someone who actually shows up — otherwise you breed a responsive ghost who games the cheap signal;
 > (2) prefer a **passive** ack signal (e.g. "opened the live shift card within 24h of call time")
 > over an explicit tap, since the card is already authoritative and live — zero added crew friction,
-> full anxiety-reducer for Spink. Explicit one-tap "I'm good for Saturday" is the fallback if passive
+> full anxiety-reducer for Eric. Explicit one-tap "I'm good for Saturday" is the fallback if passive
 > proves too soft. Its real predictive value is as a **leading indicator** feeding the warming view
 > (assignment-view §2) / At-Risk board, not the score — so even in the score it stays small. **Log
 > the event day one; the score weight is small/optional in v1, tuned against data.**
@@ -443,13 +443,13 @@ The crew member sees **their own** standing — you cannot game it except by bei
 exposure turns it into a feedback loop that nags automatically. Guardrails: **individual, not
 comparative** (their own standing + reasons — "answered fast · showed 8/8 · one late bail" — never
 a leaderboard); the manual veteran adjustment is visible only in its *effect* (good standing), not
-as a mechanism. Showing Spink the full ordering + reasons on the assignment view is fine.
+as a mechanism. Showing Eric the full ordering + reasons on the assignment view is fine.
 
 ### Manual adjustment & veteran weighting (decided)
-A flat rolling window forgets a 4-year veteran after a slow couple of months. Spink gets a **manual
+A flat rolling window forgets a 4-year veteran after a slow couple of months. Eric gets a **manual
 thumb on the scale** per crew member: a **boost** or a **floor** he sets by judgment ("this veteran
 never ranks below X"). Dead-simple manual knob, **not** an auto-tenure-curve. This also resolves
-cold start: unknowns start neutral/mid-pool (so they get tried); Spink seeds trusted hires above
+cold start: unknowns start neutral/mid-pool (so they get tried); Eric seeds trusted hires above
 neutral. The algorithm only governs people he hasn't formed an opinion about yet.
 
 ---
@@ -480,9 +480,9 @@ Written bottom-up: each surface cites the ones above it in this list.
 
 ### Purpose
 The operator-maintained record of every crew member — identity, what they're rated for, their
-credentials and expiries, their availability suppressions, and Spink's manual thumb on their
+credentials and expiries, their availability suppressions, and Eric's manual thumb on their
 reliability standing. It is **reference data the rest of Muster reads**; it is not a workflow.
-Crew do not self-register in 2026 — Spink creates and maintains these records. (The crew's *own*
+Crew do not self-register in 2026 — Eric creates and maintains these records. (The crew's *own*
 view of their standing and credential nudges lives in the crew app, §2.6, reading this record.)
 
 ### The record (fields)
@@ -501,7 +501,7 @@ view of their standing and credential nudges lives in the crew app, §2.6, readi
   For BrewBoat v1, ship MMC + medical; TWIC only if a facility demands it.
 - **Reliability standing (read-only here):** the computed score/ordering + the human-readable
   reasons (§1.4). Displayed, not edited.
-- **Manual thumb (Spink-set):** a **boost** or a **floor** per person (§1.4 — "never ranks below
+- **Manual thumb (Eric-set):** a **boost** or a **floor** per person (§1.4 — "never ranks below
   X"). This is the editable reliability control; the score itself is not hand-editable.
 - **Availability suppressions:** **PTO / blackout** windows only. **Suppression-only by design** —
   there is no positive "set your recurring availability" calendar (the Xola trap, state-machine §9).
@@ -515,7 +515,7 @@ view of their standing and credential nudges lives in the crew app, §2.6, readi
 - **Roster list** — all crew, each row showing name, ratings, reliability standing (high/med/low or
   ordering — a raw number is optional), and a **credential-health flag** (valid / expiring-soon /
   expired). Expired or expiring credentials must be visible at the list level — this is the
-  pool-health view Spink currently keeps in his head.
+  pool-health view Eric currently keeps in his head.
 - **Person detail** — the full record above, with credentials and their expiry dates, current
   suppressions, the reliability reasons, and the manual-thumb control.
 - **Cold-start state** — a newly added crew member with no history: shows **neutral / mid-pool**
@@ -523,7 +523,7 @@ view of their standing and credential nudges lives in the crew app, §2.6, readi
   misleading low score (§1.4).
 
 ### Actions
-- Add / edit a crew member (Spink-created).
+- Add / edit a crew member (Eric-created).
 - Set ratings (captain / mate / both).
 - Add / update / remove a credential row (type + expiry).
 - Set or clear the **manual boost / floor**.
@@ -550,7 +550,7 @@ view of their standing and credential nudges lives in the crew app, §2.6, readi
   shifts.
 
 ### Acceptance criteria
-- [ ] Spink can create a crew member with name, phone, and at least one rating.
+- [ ] Eric can create a crew member with name, phone, and at least one rating.
 - [ ] A crew member with an MMC expiring before a trip date does **not** appear in that trip's
       eligible pool, with no manual action.
 - [ ] The roster list visibly flags every crew member with an expired or expiring-soon credential.
@@ -637,7 +637,7 @@ as `feature/reservations` lands.)*
   > the pull still runs, a re-import overwrites `status` straight from the Xola row, so either 12.14
   > ships after the pull is switched off, or it needs a "cancelled in Muster wins" guard. Decide which
   > before building it.
-- **Browse** events with their reservations — also how Spink eyeballs the weekend before building
+- **Browse** events with their reservations — also how Eric eyeballs the weekend before building
   shifts.
 
 Deliberately **out of scope here:** marketing. *(Note on the import cadence: DEC-043's original trust
@@ -664,7 +664,7 @@ what it always was: the **data layer under the crew engine**, not a booking syst
   entries to clobber (see Actions), so there is nothing to merge and no merge rule to write. A
   Muster-native reservation can't collide either: the importer **skips** a Muster-owned vessel-day
   (DEC-106), so the two sources never write the same event.
-- **Dirty / partial source.** Unparseable records surface in the import result for Spink to fix by
+- **Dirty / partial source.** Unparseable records surface in the import result for Eric to fix by
   hand, rather than failing the whole import or dropping records silently.
 - **Event edited after shifts formed.** Changing an event's **time** after its shift was built
   must propagate to the shift. *(Revised 2026-07-26, S71 — audit C2.2-6: this said "time/capacity",
@@ -696,7 +696,7 @@ what it always was: the **data layer under the crew engine**, not a booking syst
       (DEC-106).
 
 ### Open questions (Event Admin)
-- ~~**Merge rule** for manual entries vs re-import~~ — **RESOLVED by DEC-043**, not by Spink/Drew.
+- ~~**Merge rule** for manual entries vs re-import~~ — **RESOLVED by DEC-043**, not by Eric/Drew.
   Its trust model removes Muster-side manual writes entirely, so there are no manual entries to
   reconcile. *(Was carried as an open question with a human owner; leaving it open would send someone
   to ask Drew a dead question.)*
@@ -730,7 +730,7 @@ what it always was: the **data layer under the crew engine**, not a booking syst
 > a lock action, a "changed since you reviewed it" nudge, or a bulk "lock the weekend" is **superseded
 > and not built**. A reviewed/locked stamp over a projection of someone else's source of truth is
 > meaningless: Xola keeps changing the bookings, so there is nothing to freeze. The **build → review**
-> reframe survives — shifts still form continuously and Spink still adjusts them — only the *commit*
+> reframe survives — shifts still form continuously and Eric still adjusts them — only the *commit*
 > step is gone. Asks fire on the **staffing horizon** (DEC-022/062), never on a lock. Split/merge is
 > live and is the judgment override (DEC-083/114). The lock text is struck in place rather than
 > deleted, so the reasoning stays legible.
@@ -738,18 +738,18 @@ what it always was: the **data layer under the crew engine**, not a booking syst
 ### Purpose
 Turn the week's events into reviewable ~~, lockable~~ **shifts**. The core reframe is **build →
 review**: shifts form **continuously and automatically** as bookings land; the Monday ritual becomes a
-**review pass** (adjust ~~+ lock~~), not a build-from-blank-slate. The machine does the grouping; Spink
+**review pass** (adjust ~~+ lock~~), not a build-from-blank-slate. The machine does the grouping; Eric
 applies judgment.
 
 > **Fork resolved (builder §1): continuous auto-grouping, not manual build.** There is **no
-> blank-slate "build" flow** to design. Proposed shifts already exist on the screen; Spink adjusts
+> blank-slate "build" flow** to design. Proposed shifts already exist on the screen; Eric adjusts
 > ~~and locks~~. This is what makes the autonomous last-minute case (§1.2) work without a manual build
 > step. *(**DEC-082** — the last unstruck "and locks" in this section; missed by the 2026-07-26 pass
 > that struck its neighbours, found by audit shard Z3.)*
 
 ### Auto-grouping rule
 **Same vessel + same day → one candidate shift** (matches "crew work the day"). Large mid-day gaps
-*may* raise a "split this?" suggestion, but the default is one-boat-one-day; split/merge is Spink's
+*may* raise a "split this?" suggestion, but the default is one-boat-one-day; split/merge is Eric's
 judgment override.
 
 ### What a shift carries (restated for rendering)
@@ -814,7 +814,7 @@ too: the `locked_at` column is dropped by migration `0022`, `src/builder/lock.ts
 `USER_STORIES.md` SP-6/SP-7 are struck. Struck in place, per this section's convention.*
 - ~~**Before lock:** the shift quietly absorbs incoming bookings — no noise.~~ — this is now simply
   **the** behavior, unconditionally (see Edge cases).
-- ~~**After lock:** bookings still join, but each change raises a **review nudge** so Spink is never
+- ~~**After lock:** bookings still join, but each change raises a **review nudge** so Eric is never
   blindsided at the dock.~~ — **CUT.** Nothing is "reviewed" in a way a change can invalidate.
 - ~~Lock = "the system was assembling this" → "I've reviewed it and crewing may proceed."~~ — **CUT.**
   Crewing proceeds on the staffing horizon (DEC-022/062), never on a hand-off.
@@ -858,7 +858,7 @@ too: the `locked_at` column is dropped by migration `0022`, `src/builder/lock.ts
 ### Open questions (Shift Builder)
 - ~~**Unlocked shift inside the staffing horizon** — does crewing wait for lock, or start
   provisionally?~~ — **RESOLVED by DEC-082.** The question presumed a lock. There isn't one: crewing
-  starts at the horizon, autonomously. The "leaning: crewing waits for lock during rollout so Spink
+  starts at the horizon, autonomously. The "leaning: crewing waits for lock during rollout so Eric
   stays in control" is the exact posture DEC-082 rejected — Xola keeps changing the bookings, so
   waiting for a human stamp buys nothing and costs the autonomous path.
 - ~~Lock granularity — per-shift confirmed; **bulk weekend-lock** likely also. *(Build per-shift
@@ -887,12 +887,12 @@ too: the `locked_at` column is dropped by migration `0022`, `src/builder/lock.ts
 Where the seats of **one shift** get worked. It must serve two postures without clutter, defaulting
 to a calm monitor that exposes controls on demand.
 
-- **Watching (autonomous):** Tiers 1–2 work the seats on their own; Spink sees what the system is
+- **Watching (autonomous):** Tiers 1–2 work the seats on their own; Eric sees what the system is
   doing ("asked top 5 mates, 2 declined, waiting on 3") and rarely intervenes. The optional
   **warming view** lives *here* — shifts trending toward risk (horizon approaching, low response)
   but not yet At-Risk. It is opened **deliberately**, and explicitly **does not** live on the
   At-Risk board (which stays pure push/empty — §2.5).
-- **Driving (manual):** Spink works it himself (especially captains, where he often knows
+- **Driving (manual):** Eric works it himself (especially captains, where he often knows
   availability) — assigns, nudges, overrides.
 
 ### View structure / states to render
@@ -930,7 +930,7 @@ to a calm monitor that exposes controls on demand.
   assembly the crew card reads), the **"✉ Message this day's crew →"** cohort deep-link (#317 — note
   this is a **cross-shift** action, i.e. partial delivery of the open question below), and the
   **Crewed-gate summary** ("N/M required seats confirmed — Crewed when all confirm").
-  - **Silent is first-class and visually distinct from declined** — silence is the thing Spink hates
+  - **Silent is first-class and visually distinct from declined** — silence is the thing Eric hates
     and the thing the score penalizes; a ghost must be obvious at a glance.
 
 ### Actions
@@ -949,18 +949,18 @@ no-penalty remove**.)*
 - ~~**Widen / re-ask** — broaden the pool or re-fire after declines/timeouts.~~ — **CUT.** "'Widen' has
   no rail by DEC-024" (DEC-027 §1). Widening happens automatically, on the drip.
 - **Manual override** — drop **anyone rated for the role** into a seat directly, regardless of rank
-  and seat state. Spink is always the authority; last-resort backstop. *(Correction: not literally
+  and seat state. Eric is always the authority; last-resort backstop. *(Correction: not literally
   "anyone" — **DEC-064**'s competency floor refuses an unrated placement ("no mate as captain") and
   **DEC-096** refuses an archived one. The picker enforces both, so a mate is never even offered for a
   captain seat. Rank is bypassed; competency is not.)*
 - **Report a bail** / **no-penalty remove** (#87, DEC-039) — shipped, previously unlisted here.
 
 ~~In the autonomous posture the system performs broadcast → rank → confirm on its own; these actions
-are Spink's manual equivalents for taking over.~~ *(The autonomous posture is now **drip → rank →
+are Eric's manual equivalents for taking over.~~ *(The autonomous posture is now **drip → rank →
 auto-confirm** — DEC-063 + DEC-061.)*
 
 > **Fork resolved (assignment §1): contested seat → first-acceptable-yes-wins** for rollout (fast,
-> fair, matches Spink's instinct); **best-by-score** is a knob to flip once reliability data is
+> fair, matches Eric's instinct); **best-by-score** is a knob to flip once reliability data is
 > trusted. The two mostly agree — they diverge only when a flake answers first.
 
 ### ~~Both protocols live here~~ — **the fork is cut (operator, 2026-07-27; removal tracked in #561)**
@@ -998,7 +998,7 @@ removed.
   condition at all.)*
 - **Manual override of the automation** — the automation cannot fight a manual placement; see the
   resolved open question below.
-- **Reliability exposure** — ~~**resolved:** show Spink the ordering plus reasons on demand~~ —
+- **Reliability exposure** — ~~**resolved:** show Eric the ordering plus reasons on demand~~ —
   **ordering ships; "reasons" do not exist and never did.** `ReliabilityScore` is a scalar plus two
   window facts, with no per-factor breakdown to expose, and no admin surface renders a reliability
   value at all. The sibling clause under Eligible pool already sanctions ordering-only ("or ordering is
@@ -1011,7 +1011,7 @@ removed.
 - [ ] A `silent` candidate is visually distinct from a `declined` one.
 - [ ] Broadcasting an ask and a candidate accepting moves the seat
       Open → Asked → Confirmed (auto-confirm, DEC-061; `Claimed` is momentary) and reflects it in
-      the shift badge. (Pre-DEC-061 this required a separate Spink confirm.)
+      the shift badge. (Pre-DEC-061 this required a separate Eric confirm.)
 - [ ] A confirmed crew bailing ~~flips the seat to Bailed,~~ **rests it `Open`**, and re-crewing
       happens on the tick without manual intervention. *(Rewritten to DEC-128 — the old wording
       specified the horizon-blind inline re-ask that DEC-128 removed after it misfired in production.)*
@@ -1048,11 +1048,11 @@ removed.
 The list of shifts that genuinely need a human — and almost nothing else.
 
 - **Empty is success.** If Tiers 1–2 are working, nothing lands here. An empty board is the system
-  doing its job, not a reminder Spink forgot to check.
+  doing its job, not a reminder Eric forgot to check.
   *(Caveat the shipped page adds and this line predates — **DEC-054**: with the operator pause on, an
   empty board means the engine is **muted**, not that every shift is covered. The page renders a warn
   banner saying exactly that. "Empty is success" holds only while the engine is running.)*
-- **Push, not pull.** A shift reaching the board **pings Spink** (SMS to every active admin — DEC-095).
+- **Push, not pull.** A shift reaching the board **pings Eric** (SMS to every active admin — DEC-095).
   ~~he goes there *when summoned*, he does not monitor it.~~ *(Correction: the shipped posture is push
   **and** pull. `/admin/at-risk` is the **admin post-login landing page**, a standing nav item, and the
   redirect target of four cockpit actions — the code calls it "the standing surface". Defensible, since
@@ -1106,7 +1106,7 @@ Each row carries enough to act without opening it:
   cockpit only. DEC-038. A board row no longer implies the automation has given up: within the
   deadline a still-worked uncrewed shift boards too, DEC-065.)*
 - **Escalation transparency** — proof the system tried: "asked 6 mates · 4 declined · 2 silent ·
-  pool widened · nudged Bob · exhausted." So Spink trusts it gave up for real reasons, not laziness.
+  pool widened · nudged Bob · exhausted." So Eric trusts it gave up for real reasons, not laziness.
 - **Who's still ~~theoretically~~ *leanably* available** (if anyone) for a manual lean. *(Precision: the
   list is the **rankable** set, which is narrower than "theoretically available" — DEC-066 drops
   over-ranked crew, so a captain never appears under a mate seat even though the oracle counts them as
@@ -1114,7 +1114,7 @@ Each row carries enough to act without opening it:
   "nobody left in the eligible pool", when DEC-066's own text says the right move is to **override a
   captain in** from the cockpit. Tracked as #556.)*
 
-Deep work happens in the assignment view (§2.4) — clicking a row drops Spink into that workbench.
+Deep work happens in the assignment view (§2.4) — clicking a row drops Eric into that workbench.
 
 ### The decision surface: lean / reschedule / cancel
 Make the three real options first-class — especially the painful ones, since this is the 11pm call:
@@ -1141,7 +1141,7 @@ Make the three real options first-class — especially the painful ones, since t
 > §3.3 cascade is built.
 
 The board should make cancel/reschedule **easy and informed** — that's the decision that currently
-keeps Spink up at night — but until payments land, the board's honest job there is to say "phone call".
+keeps Eric up at night — but until payments land, the board's honest job there is to say "phone call".
 
 ### Data read
 - Reads **every** shift except the two lifecycle terminals (`Cancelled` / `Completed`) and
@@ -1156,7 +1156,7 @@ keeps Spink up at night — but until payments land, the board's honest job ther
 
 ### Edge cases
 - ~~**Regression channel** — given the 11pm timing, a regression may warrant a louder channel than a
-  normal in-app ping (e.g. SMS to Spink). *(Open, §3 notifications.)*~~ — **RESOLVED by removing the
+  normal in-app ping (e.g. SMS to Eric). *(Open, §3 notifications.)*~~ — **RESOLVED by removing the
   question's premise (DEC-095).** There is no "normal in-app ping" to be louder than: the board is the
   only non-SMS surface. Every landing sends **SMS to every active admin** — one composed body, one
   `admin_alert` kind, no per-reason routing (the reason only picks a label). Note the recipients are
@@ -1318,7 +1318,7 @@ Everything needed on one screen, no hunting. This is where "bulletproof" lives.
    blast lands within ~15 minutes.)*
 3. **The app watches their credentials for them.** Quietly nudge the crew member when their own
    MMC / medical / TWIC nears expiry — *before* it drops them from the eligible pool. Turns a
-   compliance landmine into a gentle heads-up and keeps the pool healthy without Spink tracking
+   compliance landmine into a gentle heads-up and keeps the pool healthy without Eric tracking
    everyone's paperwork in his head.
 
 ### States to render
@@ -2561,7 +2561,7 @@ keeps info from going stale across channels.
   production adapter** — see DEC-MSG-1.
 - **Live card updates** → to assigned crew, when a shift's details change (§2.6, principle 1).
 - **Credential nudges** → to crew, before expiry (§2.6, principle 3 / §2.1).
-- **At-Risk ping** → to Spink, **push not pull**: a shift reaching the board summons him; he does not
+- **At-Risk ping** → to Eric, **push not pull**: a shift reaching the board summons him; he does not
   monitor a dashboard (§2.5).
 - **Regression ping** → **SMS to every active admin** (DEC-095). ~~possibly a louder channel than a
   normal at-risk item~~ — *the question presumed an in-app ping to be louder than; there isn't one. The
@@ -2600,7 +2600,7 @@ de-prioritized fast-follow whose only job is reliable push, never the participat
   deep-link, never a bare login*.
 - **Crew do not self-register.** Roster records are operator-created (§2.1); passwordless entry is for
   *responding, viewing, and self-serve sign-in*, never signup.
-- **Admin (Spink): a real authenticated login.** Lower-stakes to specify (one trusted operator);
+- **Admin (Eric): a real authenticated login.** Lower-stakes to specify (one trusted operator);
   the load-bearing decision is the crew side. Exact admin auth mechanism is a build-phase detail.
 
 ## 3.3 The cancel cascade (admin-facing)
@@ -2609,13 +2609,13 @@ de-prioritized fast-follow whose only job is reliable push, never the participat
 > **Amended by DEC-153 — the STATUS claim only — "nothing in `src/` implements a cascade or a refund" is no longer true, and neither is §0.2's reading that the whole refund surface is parked. The cascade's own design is untouched and still unbuilt: shift-level cancel from the At-Risk board, the per-booking fan-out, rebook-or-credit offered before cash, and the customer notification all stand exactly as written. What exists now is reservation-level cancel + refund from the calendar detail pane, which supplies §3.3's step 1 (the policy function, `refund-terms.ts`), its step 2 (operator-initiated ⇒ full refund) and half of step 4 (issue the refund, set the booking to Cancelled) for ONE booking at a time, with no fan-out and no customer notice**
 <!-- /amended-by-dec -->
 
-When Spink cancels a shift from the At-Risk board (§2.5), **cancel is never "delete the shift"** —
+When Eric cancels a shift from the At-Risk board (§2.5), **cancel is never "delete the shift"** —
 it is a fan-out of money + comms across every booking the shift carried. For **each booking**:
 
 1. **Compute the refund** via policy — `refund_owed = policy(who_cancelled, when_cancelled,
    amount_paid, trip_terms)`. A **function, not a hardcoded rule** (same policy/mechanism philosophy
    as the oracle), tenant-configurable.
-2. **Operator-initiated cancel** (this is always the at-risk case — Spink couldn't crew it) →
+2. **Operator-initiated cancel** (this is always the at-risk case — Eric couldn't crew it) →
    **principled default = full refund.** Every crew-shortage cancellation costs real money — which is
    itself the incentive for the crew engine to work and keep the board empty.
 3. **Offer rebook / credit *first*** where appropriate ("rebook or refund?"), with **full cash refund
@@ -2628,7 +2628,7 @@ it is a fan-out of money + comms across every booking the shift carried. For **e
 > what "everything paid" means, and why an operator cancellation carries no fee all live in §2.8.4c
 > now. **Self-service cancellation is still not built** (§2.8.4c); the terms apply either way, because
 > they govern what is owed rather than who presses the button. §3.3 is the *operator's* fan-out across a whole
-> shift's bookings, which is the 11pm decision Spink makes from the board, and step 1 below reads its
+> shift's bookings, which is the 11pm decision Eric makes from the board, and step 1 below reads its
 > refund amounts from §2.8.4c rather than defining any.
 
 **States to render:** the cancel confirmation showing, per booking on the shift, the computed
@@ -2641,18 +2641,18 @@ the shift to `Cancelled` — no booking is silently dropped.
 Stripe disputes must **surface in the admin app**, not rot in the Stripe dashboard:
 
 - A dispute creates an **admin alert** with the booking, customer, amount, and **Stripe's deadline**.
-- Spink can **attach evidence** (waiver on file, comms log, completed-trip record) from inside the app.
+- Eric can **attach evidence** (waiver on file, comms log, completed-trip record) from inside the app.
 - **Goal:** never miss a dispute window because it was buried in a Stripe email.
 
 **Acceptance:** an incoming Stripe dispute webhook creates a dated admin alert with the deadline
-visible; Spink can attach evidence without leaving Muster. (Webhook wiring is build-phase.)
+visible; Eric can attach evidence without leaving Muster. (Webhook wiring is build-phase.)
 
 ## 3.5 The Xola write-back sheet (2026 only — disposable)
 
 A 2026 coexistence mechanic (coexistence §3). Because the guest manifest lives in Xola in 2026, crew
 must be assigned as **guides in Xola** so they can see their guests — and that write-back is **manual,
 not an API** (the API bolt-on is killed, §4). To make it painless, **Muster emits a weekend "enter
-these in Xola" sheet**: boat · trip · time · captain · mate, so Spink keys from one list instead of
+these in Xola" sheet**: boat · trip · time · captain · mate, so Eric keys from one list instead of
 cross-referencing two screens (~10 min/week at BrewBoat volume).
 
 - **In scope for 2026:** Muster generating that sheet from the ~~locked~~ **crewed** shifts. *(Lock
@@ -2724,7 +2724,7 @@ now. Building any of these is out of scope until its trigger condition is met.
   > operator-authority principle (§1.4 manual thumb / reliability §7) applied to money: the algorithm
   > governs ask-order; the human awards the pay. The report **informs**; the operator **decides**.
 
-### Owner decisions (Drew / Spink — not Claude's to set)
+### Owner decisions (Drew / Eric — not Claude's to set)
 - ~~**Deposit vs full payment** at booking — Drew. (Recommendation: full upfront for v1.)~~
   **DECIDED: deposit + balance** (DEC-107, 2026-07-11) — the operator chose it over full-upfront as
   the closer match to Xola. The recommendation above was not taken.
@@ -2744,7 +2744,7 @@ now. Building any of these is out of scope until its trigger condition is met.
   the recorded answer was on demand (DEC-107 amendment, 11.2b): a re-minted Stripe Checkout URL as the
   balance link, with the auto-emit scheduler reading `balanceDueDaysBeforeEvent` still unbuilt (#712).
 - **Which "M" rules** ship as soft/warn vs omitted for BrewBoat v1 (TWIC, medical, drug consortium,
-  duty-hour, weather/tide) — Spink/Drew against real operations.
+  duty-hour, weather/tide) — Eric/Drew against real operations.
 
 ### Tuning knobs (ship a dumb default, tune against real data)
 - **Concrete horizon values** — how many days is the "staffing horizon"? (Per-rule setting; needs

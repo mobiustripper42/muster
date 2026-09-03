@@ -2483,13 +2483,13 @@ export function runRepositoryContract(
       await repo.saveMessage(
         message({ id: asId<"MessageId">("m-c"), createdAt: "2026-07-01T12:00:02.000Z", body: "third" }),
       );
-      // operator/office sender round-trips alongside crew — posts as crew-spink
+      // operator/office sender round-trips alongside crew — posts as crew-eric
       // with the canonical "admin" kind (DEC-058 / DEC-030 §7; DEC-052: operators
       // post too).
       await repo.saveMessage(
         message({
           id: asId<"MessageId">("m-op"),
-          senderId: "crew-spink",
+          senderId: "crew-eric",
           senderKind: "admin",
           createdAt: "2026-07-01T12:00:03.000Z",
           body: "op note",

@@ -20,7 +20,7 @@ revocation, and the security posture recorded against them.
 | # | doc:line | claim (verbatim, trimmed) | checked against | verdict | proposed bucket |
 |---|----------|---------------------------|-----------------|---------|-----------------|
 | B1 | `AUTH.md:38` | "The code-login front door **cannot** make you an admin — it's crew-only by design." | `app/lib/switch-actions.ts:36` `switchToAdmin`, rendered at `app/(crew)/crew/page.tsx:575`; `SECURITY_AUDIT.md:31` — "Since admins now sign in via crew code login (DEC-093), a guessed crew-admin code → admin access" | CODE-CONTRADICTS | doc-wrong |
-| B2 | `AUTH.md:19` | "`kind: \"admin\"` → `id` is an **operator handle** (`spink`, `eric`) — a *label*, **not** validated against any roster (there are no operator accounts yet)." | `app/lib/auth.ts:93-96` — `readSubject` does `getAdmin(id)` and fails on missing/inactive; `db/migrations/0018_admins.sql` — "`id` IS that person's crew id", `handle` is a separate column | CODE-CONTRADICTS | doc-wrong |
+| B2 | `AUTH.md:19` | "`kind: \"admin\"` → `id` is an **operator handle** (`eric`, `eric`) — a *label*, **not** validated against any roster (there are no operator accounts yet)." | `app/lib/auth.ts:93-96` — `readSubject` does `getAdmin(id)` and fails on missing/inactive; `db/migrations/0018_admins.sql` — "`id` IS that person's crew id", `handle` is a separate column | CODE-CONTRADICTS | doc-wrong |
 | B3 | `AUTH.md:30` (magic-link row) | "**This is the real admin sign-in today.**" | DEC-093 switcher is the live admin path (B1); `SECURITY_AUDIT.md:31` | MISMATCH | doc-wrong |
 | B4 | `AUTH.md:96` | "**Future (the part still moving):** a real operator **sign-in** — proper operator accounts/identities instead of a hand-made link." | Accounts landed: `0018_admins.sql` (DEC-092, "admin becomes a first-class auth identity"), CLI-managed via `db:admin add` | MISMATCH | doc-wrong |
 | B5 | `AUTH.md:14` | "There is **no roles table and no permissions matrix**: every page reads the cookie via `readSubject()` and branches on `kind`." | Second clause no longer holds — `readSubject` performs a **stateful** `admins` lookup for admin subjects (`auth.ts:88-96`, "the ONE stateful check"). *First* clause survives narrowly: `0018` states "NO `role` column — roles are deferred" | MISMATCH | doc-wrong |
@@ -65,7 +65,7 @@ B7 is a stale pointer, low stakes, cheap to fix.
 | `SESSION_SECRET` required in prod | `AUTH.md:21` | `app/lib/auth.ts:32` throws |
 | `selfServeEnabled()` → `CREW_SELF_SERVE === "1"` | `AUTH.md:83` | `app/lib/flags.ts:11-12` |
 | `isProdDeploy()` gates dev-only affordances | `AUTH.md:85` | `app/lib/flags.ts:35` |
-| `OPERATOR_CREW_MEMBER_ID` defaults `crew-spink`, in `app/lib/operator.ts` | `AUTH.md:64` | `app/lib/operator.ts:27-28` |
+| `OPERATOR_CREW_MEMBER_ID` defaults `crew-eric`, in `app/lib/operator.ts` | `AUTH.md:64` | `app/lib/operator.ts:27-28` |
 | Crew sessions still have no per-person revoke | `AUTH.md` (silent) | No `sessionEpoch`/`revokeCrew` anywhere; `0018` scoped revoke to admins. #300 closed without a code change — doc and code agree |
 | DEC-134/135 differ between `main` and `feature/reservations` | — | **Managed, not a collision.** `feature/reservations` renumbered main's 134/135 → 136/137, each annotated with provenance ("Authored on `main` as DEC-134; renumbered here"), same precedent as 126→131. DEC-137 documents `db:all` → `db:reset:dev` |
 | `RUNNING.md` drops `db:all` on `feature/reservations` | — | Deliberate: `db:all` is gone from that branch's `package.json`, retired by its DEC-137 |

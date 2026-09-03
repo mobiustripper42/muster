@@ -39,7 +39,7 @@ describe("issueMagicLink", () => {
 
     const adminLink = await issueMagicLink(
       repo,
-      { subjectKind: "admin", subjectId: "spink@brewboat.co", ttlMs: TTL },
+      { subjectKind: "admin", subjectId: "eric@brewboat.co", ttlMs: TTL },
       { now: T0, mintSecret },
     );
     expect(adminLink.token.subjectKind).toBe("admin");

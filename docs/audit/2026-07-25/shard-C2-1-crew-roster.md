@@ -35,7 +35,7 @@ roster mockups.
 | C2.1-6 | `SPEC.md:453-455`, `:461` | Actions: "Add / update / remove a credential row (type + expiry)" | The use-cases exist (`crew-admin.ts:79–112`, tested at `crew-admin.test.ts:115`) but their **only non-test caller is `seed-brewboat.ts`**. On a live DB the sole credential path is `db:crew add --mmc=<date>`, which writes *one* MMC at create time (`crew-cli.ts:237–248`); there is no `db:crew` command to update an expiry, add a medical/TWIC row, or remove one, and no UI. DEC-044 accepts a far-future placeholder MMC precisely because real credential tracking hasn't landed. **This is what AC-2 and AC-3 ultimately rest on** — both are only as real as the expiry dates someone can enter | CODE-CONTRADICTS | **decision** |
 | C2.1-7 | `SPEC.md:456`, `:458`, `:454` | Actions: "Set or clear the **manual boost / floor**" · "Set the per-person protocol override" · "Set ratings (captain / mate / both)" | All three fields exist, persist (`0001_init.sql:40–42`) and are **read** by shipped code (`effectiveRankScore` `reliability-score.ts:204–208`; `resolveProtocol` `ask-loop.ts:776`; `hasRating`). None has an operator **write** path: `db:crew set` accepts only `--email/--phone/--name` (`KNOWN_SET_FLAGS`, `crew-cli.ts:41`), ratings are settable only at `add` time, and `updateCrewMember` (`crew-admin.ts:66`) has no caller outside tests. Tally for §2.1's 7 Actions: **2 fully reachable** (PTO via `/admin/time-off`; activate/deactivate via `db:crew`), 1 partial (add/edit — contact fields only), **4 with no operator path** | CODE-CONTRADICTS | **decision** |
 | C2.1-8 | `SPEC.md:473-474` + AC-7 (`:490-491`) | "**Deactivation while assigned to a future shift.** Deactivating must surface the affected future assignments (don't silently strand a shift); those seats reopen." | Genuinely absent. `setCrewStatus` is a bare status flip in both adapters (`postgres-repository.ts:476`, `in-memory-repository.ts:177`); `db:crew disable\|archive` (`crew-cli.ts:262–303`) does not scan seats and its success line makes no mention of assignments. `AtRiskReason` is `"core" \| "regression" \| "credential_lapse"` (`at-risk-board.ts:119`) — there is a credential-lapse-on-committed-body scan (`:273–286`) but **no status-lapse equivalent**, and a Confirmed seat held by a now-inactive person is not a gap by any current definition, so the shift never boards. Per lesson 7 this is filed as a **question**, not a defect: *does deactivation need to surface and reopen future seats, or is "the operator knows who he just benched" sufficient at one-boat scale?* | CODE-CONTRADICTS | **decision** |
-| C2.1-9 | `SPEC.md:431-432` | "**Manual thumb (Spink-set):** a **boost** or a **floor** per person" | Three shapes, all different. SPEC says *or* (exclusive). Code allows **both at once** and composes them — `effectiveRankScore` floors first, then adds the boost (`reliability-score.ts:204–208`), and `reliability-score.test.ts:322` sets floor + boost together on purpose ("vouchedNewHire"). The mockup models it as an **exclusive radio** (`detail.jsx` `ManualThumb`, `{kind: 'none'\|'boost'\|'floor'}`). Whichever is right, two of the three are wrong | MISMATCH | **decision** |
+| C2.1-9 | `SPEC.md:431-432` | "**Manual thumb (Eric-set):** a **boost** or a **floor** per person" | Three shapes, all different. SPEC says *or* (exclusive). Code allows **both at once** and composes them — `effectiveRankScore` floors first, then adds the boost (`reliability-score.ts:204–208`), and `reliability-score.test.ts:322` sets floor + boost together on purpose ("vouchedNewHire"). The mockup models it as an **exclusive radio** (`detail.jsx` `ManualThumb`, `{kind: 'none'\|'boost'\|'floor'}`). Whichever is right, two of the three are wrong | MISMATCH | **decision** |
 | C2.1-10 | `credential-health.ts:36-38` (code comment asserting a doc-level invariant) | "The oracle's date-valid gate (§1.3) must adopt the same boundary so the two never disagree." | They disagree by one day. `healthOf` parses the ISO date to **midnight UTC** and returns `expired` once `daysLeft < 0` (`:39–43`); `mmcValidOnDate` compares **date strings** and passes when `expiry >= tripDate` (`eligibility.ts`, tested "treats expiry == trip date as still valid (**boundary matches credential-health**)", `eligibility.test.ts:91`). On the expiry day itself, any `now` past 00:00Z makes the roster read **EXPIRED** while the oracle still puts the person **in the pool**. The eligibility test's own name asserts the opposite of what holds. Low blast radius (the roster flag is conservative-by-design, per its own comment), but the invariant is stated and false | CODE-CONTRADICTS | code-wrong |
 | C2.1-11 | `DESIGN-REFERENCE.md:126` | "**Shared** — `atoms.jsx`, `forms.jsx`, `data.jsx`, `detail.jsx`, `app.jsx`, `tweaks-panel.jsx`" | Five of the six are **roster-specific**, by their own first lines: `data.jsx` "Muster Crew Roster seed substrate"; `detail.jsx` "right pane: the full per-person record"; `forms.jsx` "Add-crew modal"; `atoms.jsx` "shared primitives **for the Crew Roster**"; `app.jsx` top-level over `people`/`selectedId`. Only `tweaks-panel.jsx` (and `ios-frame.jsx`, filed under Crew app) is genuinely cross-surface. The **Roster** row therefore lists 1 file where it should list 6. Introduced by shard G's own replacement list | MISMATCH | doc-wrong |
 | C2.1-12 | `DESIGN-REFERENCE.md:120-132` | "**What is actually in `docs/design/mockups/` (~50 files)**" | The list covers the `.jsx` prototypes and the Phase-12 `.html` set but **omits all 11 rendered HTML mockups of the §2.x surfaces**: `Crew Roster.html`, `Crew Roster Mobile.html`, `Assignment View{,  Mobile,-print}.html`, `At-Risk Board{, Mobile}.html`, `Crew App.html`, `Event Admin.html`, `Shift Builder.html`, `index.html`. Same failure mode shard G fixed — a reader hunting the roster mockup by surface name finds nothing | MISMATCH | doc-wrong |
@@ -46,7 +46,7 @@ roster mockups.
 
 The seven `- [ ]` boxes at `SPEC.md:479–491`, ticked against source for the first time.
 
-### AC-1 — "Spink can create a crew member with name, phone, and at least one rating." — **MET**
+### AC-1 — "Eric can create a crew member with name, phone, and at least one rating." — **MET**
 `db:crew add` (`crew-cli.ts:158–260`) requires `--name`, an E.164 `--phone`, and at least one
 `--ratings` token resolved against live `RoleType` rows; it derives a `crew-<slug>` id and writes the
 member **atomically with a placeholder MMC** (`addCrewMemberWithCredential`) so a "successful" add is
@@ -72,7 +72,7 @@ The derivation is done and tested: `credentialHealth` takes worst-of across a pe
 prints `EXPIRED` / `expiring-soon` (`roster.ts:86–101`). Test: `roster.test.ts:81` *"renders the
 credential-health flag at the list level"*.
 **But nothing calls it** (C2.1-4). No `app/(admin)` roster page exists, and `db:crew list` shows no
-credential column. As of `7842566` there is no surface on which Spink can see this flag.
+credential column. As of `7842566` there is no surface on which Eric can see this flag.
 
 ### AC-4 — "Setting a floor of X guarantees the person never ranks below X in any eligible pool, regardless of recent score dips." — **PARTIALLY MET (mechanism yes; wording and write-path no)**
 `effectiveRankScore(score, crew)` = `max(score, manualFloor) + manualBoost` (`reliability-score.ts:
@@ -140,7 +140,7 @@ bury a scoping decision under a doc tidy (the shard-C lesson on C4–C6).
 **One genuinely-absent behavior, phrased as a question (C2.1-8 / AC-7).** Deactivating a crew member
 assigned to future shifts is silent today. The credential-lapse machinery next to it does exactly the
 right thing for a different lapse, so this is a ~2-point symmetry fix, *if* it's wanted. It may well
-not be: at one boat and ~six crew, Spink benched the person himself thirty seconds ago and the shift
+not be: at one boat and ~six crew, Eric benched the person himself thirty seconds ago and the shift
 still shows a body in the seat. **Ask before filing.** If the answer is no, record it in a DEC so the
 next sweep doesn't re-derive it (the DEC-138 pattern).
 
@@ -186,7 +186,7 @@ Filename-match + head-of-file skim only, per the ~10-minute cap. **Not** written
 - `Crew Roster Mobile.html` → rendered mobile variant, title "Muster · Crew (mobile)". Also absent.
 - `roster.jsx` → left pane: pool-health summary strip (counts of expired / expiring-soon / captains /
   mates / on-PTO among active crew), filters, and the crew list. The literal §2.1 "pool-health view
-  Spink currently keeps in his head".
+  Eric currently keeps in his head".
 - `detail.jsx` → right pane: full per-person record + editing controls, incl. the `ManualThumb`
   control (None / ▲ Boost / ▼ Floor) and `poolBlockReason`. **Currently mis-filed as Shared.**
 - `forms.jsx` → modal/inline editors: `AddCrewModal` ("name + phone + ratings (matches acceptance

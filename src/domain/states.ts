@@ -14,7 +14,7 @@ export const SHIFT_STATES = [
   "Crewed", // every *required* seat confirmed (supernumeraries do not gate)
   "AtRisk", // escalation exhausted, still short, trip closing in — human-only
   "Completed", // trip ran; feeds reliability scores
-  "Cancelled", // killed — booking cancelled, or couldn't crew and Spink pulled the plug
+  "Cancelled", // killed — booking cancelled, or couldn't crew and Eric pulled the plug
 ] as const;
 
 export type ShiftState = (typeof SHIFT_STATES)[number];

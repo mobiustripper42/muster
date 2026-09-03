@@ -24,7 +24,7 @@ function AddCrewModal({ onClose, onCreate }) {
         </>
       }
     >
-      <p className="modal-note">Spink creates crew records — crew don't self-register. A new member starts at neutral, “no history yet” standing so they get tried.</p>
+      <p className="modal-note">Eric creates crew records — crew don't self-register. A new member starts at neutral, “no history yet” standing so they get tried.</p>
       <div className="form-grid">
         <window.Field label="Name">
           <input className="inp" value={name} onChange={(e) => setName(e.target.value)} placeholder="First Last" autoFocus />

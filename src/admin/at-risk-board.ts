@@ -1,5 +1,5 @@
 /**
- * The At-Risk board derivation (SPEC §2.5, #41) — which shifts summon Spink,
+ * The At-Risk board derivation (SPEC §2.5, #41) — which shifts summon Eric,
  * and in what order.
  *
  * Pure over the port: `deriveAtRiskBoard(repo, now, opts?)` reads shifts, seats,
@@ -168,7 +168,7 @@ export interface AtRiskRow {
    * Who's still actually LEAN-able (§2.5, #43): the union of the lean-able
    * seats' (Open/Bailed — not Asked, which has an ask in flight) eligible
    * pools, per-seat reliability order, deduped. Decliners stay in — leaning on
-   * a "no" is Spink's call, and the trail shows the declines. **Bailers and
+   * a "no" is Eric's call, and the trail shows the declines. **Bailers and
    * live-ask holders are out** — the re-ask already excludes bailers (DEC-019)
    * and a mid-flight person is already deciding; `lean()` enforces the same
    * set, so the board never offers a name the action would refuse.
@@ -216,7 +216,7 @@ export async function deriveAtRiskBoard(
     const tripStart = earliestScheduledStart(events, tz);
     // Past-trip guard (#147, DEC-062): a departed shift drops off the board too —
     // shares tick's work-loop rule so board membership and engine work agree (no
-    // pinging Spink about a trip that already left). A shift with no scheduled
+    // pinging Eric about a trip that already left). A shift with no scheduled
     // event has no departure → falls through.
     if (tripStart !== null && tripStart.getTime() <= now.getTime()) continue;
 

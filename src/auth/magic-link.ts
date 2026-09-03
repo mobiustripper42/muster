@@ -1,7 +1,7 @@
 /**
  * Self-rolled magic-link auth (DEC-010, DEC-020) — the service layer, no platform.
  *
- * Two operations, same mechanism for admin (Spink) and crew:
+ * Two operations, same mechanism for admin (Eric) and crew:
  *   issue  → mint a single-use secret, store only its hash, return the secret so
  *            the caller can build a link and hand it to the channel port.
  *   verify → re-hash a presented secret, find the row, check it's live, and

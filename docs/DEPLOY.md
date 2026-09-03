@@ -217,7 +217,7 @@ DATABASE_URL="<neon-direct>" npm run db:admin -- list
 The **primary sign-in for admins is the crew code login** (DEC-081, live now that email is wired): log in
 with a code as crew, then **"Switch to admin"** (DEC-093). `db:mint --admin=<handle>` remains the
 out-of-band **bootstrap** magic link — it must be a **seeded, active** handle (mint refuses an unknown or
-deactivated one and prints the active handles). (`spink` is the dev/e2e-only operator, never a prod admin.)
+deactivated one and prints the active handles). (`eric` is the dev/e2e-only operator, never a prod admin.)
 
 `/crew/dev-link` is **hard-404 in production** (it must never mint links there), so an admin's first
 sign-in is bootstrapped out-of-band. The script auto-sources `.env.local` (what step 3's

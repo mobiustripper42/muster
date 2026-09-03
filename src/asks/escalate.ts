@@ -3,7 +3,7 @@
  *
  * When Tier-1 stalls (a `Filling` shift with `Open` required seats and no live
  * asks — the broadcast went out and came back declined-or-silent), `tick` calls
- * `escalate`. Two moves, both within `Filling`, no Spink:
+ * `escalate`. Two moves, both within `Filling`, no Eric:
  *
  *   1. **Widen-stub** (`logPoolWidened`): every eligibility rule is hard and the
  *      Tier-1 broadcast already reached the whole pool, so there is nothing left

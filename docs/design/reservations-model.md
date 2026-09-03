@@ -53,7 +53,7 @@ the *substrate* for Phase 11/12, not parked futures.
    reduces to insurance-as-flag; **general add-ons are PARKED** (model as Xola `item.addOns[]` only if
    ever built).
 5. **Payment = deposit + balance** (two Stripe charges — confirmed in the purchase detail). Deposit-%,
-   balance timing, refund tiers, and WHICH Stripe account are **Drew/Spink owner calls** (DEC-107/103).
+   balance timing, refund tiers, and WHICH Stripe account are **Drew/Eric owner calls** (DEC-107/103).
 6. **Refund = policy-as-code.** BrewBoat: cancel ≥14d → −$50; <14d/no-show → $0; operator-cancel → full.
    Insurance flips 14d→72h. (`the-living-link-1.md §5`.)
 7. **Split-pay is a reimbursement layer, never a trip gate.** Owner (reservationist) is whole at booking;
@@ -98,7 +98,7 @@ Shift (vessel + day) [UNCHANGED] — spans offerings via per-boat events; crew e
 - **Dropped (garbage):** questionnaire/custom-fields, tax + service-fee lines (Stripe/accounting concern),
   general add-ons (parked), OTA/channel, POS, loyalty, accounts (the living link is the credential).
 
-## Open questions for verification (@architect) + owner (Drew/Spink)
+## Open questions for verification (@architect) + owner (Drew/Eric)
 1. **Is `Offering` a stored native entity now, or derived/seeded for the pilot?** (Phase 11 exit gate needs
    only a single seeded native Event — does it need Offering at all, or is Offering a Phase 12 entity?)
 2. **Where does per-event price live** — a column on `Event`, with Offering/schedule as the resolved
@@ -106,4 +106,4 @@ Shift (vessel + day) [UNCHANGED] — spans offerings via per-boat events; crew e
 3. **Does the model change any of DEC-105–111 or the Phase 11 task list (11.0–11.8)?** Specifically:
    does 11.1 "availability = COI − Σ party sizes" restate as a whole-boat mutex? Does per-event pricing
    land in 11.2 or its own task?
-4. Owner (Drew/Spink): deposit-vs-full, refund tiers, which Stripe account, waiver provider.
+4. Owner (Drew/Eric): deposit-vs-full, refund tiers, which Stripe account, waiver provider.

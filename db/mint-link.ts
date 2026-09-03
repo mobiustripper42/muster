@@ -10,7 +10,7 @@
  * (DEC-034 rejected it) — the operator just runs this and copies the URL.
  *
  *   APP_BASE_URL=https://<domain> DATABASE_URL=<direct-string> \
- *     npm run db:mint -- --admin=spink
+ *     npm run db:mint -- --admin=eric
  *
  *   --admin=<handle>   mint an OPERATOR link (the point of 5.2)
  *   --crew=<crewId>    mint a CREW link (symmetry with dev-link; crew normally
@@ -32,7 +32,7 @@ import { existsSync } from "node:fs";
 import { DEFAULT_DATABASE_URL } from "./migrate.js";
 
 // Convenience: pull APP_BASE_URL / DATABASE_URL from .env.local if present, so the
-// operator can run `npm run db:mint -- --admin=spink` without re-pasting env on the
+// operator can run `npm run db:mint -- --admin=eric` without re-pasting env on the
 // command line (the deploy flow's `vercel env pull` already writes .env.local).
 // Inline env STILL WINS — snapshot what was set, then restore it after the load —
 // so an explicit `DATABASE_URL=… npm run db:mint` overrides the file.

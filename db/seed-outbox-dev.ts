@@ -6,7 +6,7 @@
  *      declined) so the why-line reads "2nd ask · Fred declined". Top of the
  *      list (tightest trip), red countdown.
  *   2. RELAY, far (~4d) — Mira's ask on "Maibock", "1st ask". Sorts below Bo.
- *   3. SELF (~30h) — an ask addressed to OPERATOR_CREW_MEMBER_ID (crew-spink),
+ *   3. SELF (~30h) — an ask addressed to OPERATOR_CREW_MEMBER_ID (crew-eric),
  *      so the card renders inline Yes/No instead of an `sms:` Send link.
  *
  * The asks are fired through the REAL rails (`assignPerson`) and forwarded
@@ -21,7 +21,7 @@
  * (Magic tokens linger as harmless dev rows; the reaper handles those.)
  *
  * Run: npm run db:seed:outbox  (DB up + migrated first).
- * Then: /crew/dev-link?admin=spink → tap through → /admin/outbox.
+ * Then: /crew/dev-link?admin=eric → tap through → /admin/outbox.
  */
 import { forwardAsks } from "../src/adapters/forward-asks.js";
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
@@ -135,8 +135,8 @@ try {
   const mira = await captain("crew-obx-mira", "Mira", "+15555550102");
   const lance = await captain("crew-obx-lance", "Fred", "+15555550103");
   // The operator's own crew identity — must match OPERATOR_CREW_MEMBER_ID
-  // (app/lib/operator.ts; default "crew-spink").
-  const spink = await captain("crew-spink", "Spink", "+15555550100");
+  // (app/lib/operator.ts; default "crew-eric").
+  const eric = await captain("crew-eric", "Eric", "+15555550100");
   // A no-phone crew member (#186) — exercises the ring relay's "no number, but
   // shareable via Web Share" path: the ring card offers Send on a Web-Share device
   // instead of dead-ending at "No phone on file".
@@ -166,7 +166,7 @@ try {
     await Promise.all([
       assignPerson(repo, tide, bo, now),
       assignPerson(repo, maibock, mira, now),
-      assignPerson(repo, keelhaul, spink, now),
+      assignPerson(repo, keelhaul, eric, now),
     ])
   ).filter((a): a is Ask => a !== null);
   const queued = await forwardAsks(repo, channel, asks);
@@ -191,10 +191,10 @@ try {
 
   console.log("Seeded 3 outbox cards (trips anchored to now — re-run to re-anchor):");
   console.log("  1 Tideline  ~20h  RELAY — Bo · '2nd ask · Fred declined' · red countdown");
-  console.log("  2 Keelhaul  ~30h  SELF  — Spink ('you' pill) · inline Yes/No, no Send link");
+  console.log("  2 Keelhaul  ~30h  SELF  — Eric ('you' pill) · inline Yes/No, no Send link");
   console.log("  3 Maibock   ~4d   RELAY — Mira · '1st ask'");
   console.log("  + New messages: Nora No-Phone — a no-phone ring (Web Share relay, #186)");
-  console.log("Outbox: /crew/dev-link?admin=spink → tap through → /admin/outbox");
+  console.log("Outbox: /crew/dev-link?admin=eric → tap through → /admin/outbox");
 } finally {
   await repo.close();
 }

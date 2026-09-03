@@ -17,7 +17,7 @@ function Card({ title, children, action }) {
 
 function ThumbBadge({ p }) {
   const t = p.manualThumb;
-  if (t.kind === 'boost') return <span className="m-thumb m-thumb-boost">▲ Boosted by Spink</span>;
+  if (t.kind === 'boost') return <span className="m-thumb m-thumb-boost">▲ Boosted by Eric</span>;
   if (t.kind === 'floor') return <span className="m-thumb m-thumb-floor">▲ Pinned · never below {t.band}</span>;
   return null;
 }

@@ -54,7 +54,7 @@ async function seedAskedSeat(to: CrewMemberId) {
 
 describe("recordResponseAs — identity-guarded inline answer", () => {
   it("rejects an ask not addressed to the answering identity — nothing written", async () => {
-    const spink = await addCrew("crew-spink");
+    const spink = await addCrew("crew-eric");
     const quint = await addCrew("crew-quint");
     const ask = await seedAskedSeat(quint); // Quint's ask, not Spink's
 
@@ -71,7 +71,7 @@ describe("recordResponseAs — identity-guarded inline answer", () => {
   });
 
   it("records a matching identity's answer through the normal rails (auto-confirm + log)", async () => {
-    const spink = await addCrew("crew-spink");
+    const spink = await addCrew("crew-eric");
     const ask = await seedAskedSeat(spink);
 
     const out = await recordResponseAs(repo, ask.id, spink, "accepted", T0);
@@ -87,7 +87,7 @@ describe("recordResponseAs — identity-guarded inline answer", () => {
   });
 
   it("declines ride the same guard and rails", async () => {
-    const spink = await addCrew("crew-spink");
+    const spink = await addCrew("crew-eric");
     const ask = await seedAskedSeat(spink);
 
     const out = await recordResponseAs(repo, ask.id, spink, "declined", T0);
@@ -97,7 +97,7 @@ describe("recordResponseAs — identity-guarded inline answer", () => {
   });
 
   it("a vanished ask reads as gone, not as someone else's", async () => {
-    const spink = await addCrew("crew-spink");
+    const spink = await addCrew("crew-eric");
     const out = await recordResponseAs(
       repo,
       asId<"AskId">("ghost"),

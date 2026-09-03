@@ -18,7 +18,7 @@ import { logSwallowed } from "../../../lib/swallowed";
  *
  * Feedback rides the redirect as a CODE only, never prose (DEC-026 — the page
  * maps `split_ok` / `split_err` to copy, so a crafted URL can't inject text into
- * Spink's UI). `redirect()` throws by design and stays OUTSIDE the try; only the
+ * Eric's UI). `redirect()` throws by design and stays OUTSIDE the try; only the
  * domain call is guarded, so a race (trips changed, already split, day cancelled)
  * becomes an honest notice rather than a 500. `back` carries the caller's Edit-mode
  * query (window + mode) so the operator lands where they were, now two rows deep.

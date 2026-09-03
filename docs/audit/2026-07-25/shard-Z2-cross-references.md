@@ -150,7 +150,7 @@ job. One row per claim; `verb` is quoted from the line.
 | S6 | DEC-036 | `:1186` | "**corrects** SPEC §4 'Explicitly killed · The Xola API bolt-on' (a DEC-014 correction)" | §4 |
 | S7 | DEC-045 | `:1378` | "a deliberate **SPEC v1.1 unlock** under DEC-014, **not** a correction to the frozen v1.0 baseline" | §2.6.3 → §4 (`:1379`) |
 | S8 | DEC-045 | `:1388–1389` | "A **v1.1 spec-edit ceremony is owed** (the SPEC stays untouched until that batch lands — this phase does not edit `docs/SPEC.md`)" | — (whole-file, deferred) |
-| S9 | DEC-061 | `:1686` | "**Tradeoff / supersedes:** **Amends SPEC §2.4** (the 'confirm down the list' step) and the **§2.6 acceptance** ('…and Spink confirming moves the seat'), now auto" | §2.4, §2.6 |
+| S9 | DEC-061 | `:1686` | "**Tradeoff / supersedes:** **Amends SPEC §2.4** (the 'confirm down the list' step) and the **§2.6 acceptance** ('…and Eric confirming moves the seat'), now auto" | §2.4, §2.6 |
 | S10 | DEC-063 | `:1706` | "**Refines:** SPEC §1.2, DEC-007 (fan-out timing)…" | §1.2 |
 | S11 | DEC-082 | `:2133` (heading) | "**supersedes SPEC §2.3 Lock**" | §2.3 |
 | S12 | DEC-082 | `:2143` | "**Supersedes / reframes:** SPEC §2.3's **Lock** action + **Lock semantics** section (not built)" | §2.3 |

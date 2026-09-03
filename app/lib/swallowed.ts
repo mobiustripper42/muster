@@ -10,8 +10,16 @@
  * recovering it took a throwaway script that called the view builder directly.
  *
  * `eslint.config.mjs` bans a bare `catch {}` across `app/**` and `components/**`
- * so the 36th one fails CI rather than being written. That rule is the durable
+ * so the next one fails CI rather than being written. That rule is the durable
  * half; this function only makes obeying it a one-liner.
+ *
+ * **It does not reach the core.** 23 bare catches remain in `src/` and `db/`,
+ * three on the money path (`src/reservations/booking-webhook.ts:461,546,605`),
+ * and they are outside both the rule's globs and this helper's reach: `src/` is
+ * framework-free (DEC-013/DEC-020) and cannot import from `app/`. Filed as issue
+ * #902. Said here as well as in the config because this is the file someone
+ * lands in when they ask "did we fix the swallowed errors" — and the answer is
+ * "in the framework layer, yes; in the core, no."
  *
  * **What "swallowed" does NOT mean.** This is for a caught error that stops here.
  * A catch that RETHROWS (`app/api/cron/tick/route.ts:118`) already surfaces as a

@@ -85,11 +85,32 @@ export default tseslint.config(
           message:
             "Bind the error and log it — `catch (e) { logSwallowed('<surface>', e); … }` from app/lib/swallowed (#854). A bare `catch {}` is the only place that knows why something failed, and it discards it: an unapplied migration rendered a calm 'try again in a moment' with an empty server log, and recovering the cause took a throwaway script. For a genuine NON-fault — malformed user input, a clipboard rejection — add an eslint-disable-next-line no-restricted-syntax saying which.",
         },
+        // READ THE CEILING of the catch ban above (DEC-159 rule 5). This block is
+        // `app/**` + `components/**`, so the ban stops at the framework boundary.
+        // **23 bare catches remain in `src/` and `db/` and are NOT covered** — three of
+        // them on the money path: `src/reservations/booking-webhook.ts:461,546,605`,
+        // the confirmation send, the sold-out notify, and the Stripe receipt URL.
+        //
+        // That gap is structural rather than an oversight. `src/` is the framework-free
+        // core (DEC-013/DEC-020) and cannot import `app/lib/swallowed.ts` — the
+        // core-purity ban further down enforces exactly that — so closing it needs a
+        // core-local logger or a decision to leave it. Filed as issue #902.
+        //
+        // Do not read "we fixed the bare catches" as covering the core. It does not,
+        // and an undocumented blind spot gets trusted for things it never checked
+        // (DEC-144).
       ],
     },
   },
   {
     // The wrappers legitimately use the raw primitives they encapsulate.
+    //
+    // `no-restricted-syntax: "off"` is now BLUNTER than it reads. Since #854 that key
+    // carries two selectors — the raw-submit-button ban these files need exempting from,
+    // and the bare-`catch {}` ban they do not. Switching it off drops both. All five
+    // files below contain zero `catch` today (verified), so the hole is empty; if one
+    // ever grows a swallowed error it will pass lint in silence. Narrow this to per-line
+    // disables if that day comes.
     files: [
       "components/ui/app-link.tsx",
       "components/ui/nav-spinner.tsx",
@@ -105,6 +126,8 @@ export default tseslint.config(
     // Outbox cards (Send / Dismiss / In-Out relay) own their OWN optimistic
     // feedback — "Sent ✓" / "Copied ✓" via the RelaySend / CopyButton islands
     // (DEC-089 exclusion). They deliberately don't use <SubmitButton>.
+    // Same bluntness caveat as the block above: this also switches off the #854
+    // bare-catch ban for this file, which has no `catch` today.
     files: ["components/outbox/outbox-card.tsx"],
     rules: { "no-restricted-syntax": "off" },
   },

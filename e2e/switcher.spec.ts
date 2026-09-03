@@ -5,7 +5,7 @@
  * server-gated on `getAdmin(active)` — the crew-home control is a convenience, the
  * action re-checks.
  *
- * `crew-eric` is both a seeded crew member (outbox seed) and the fixture admin,
+ * `crew-eric-stoffer` is both a seeded crew member (outbox seed) and the fixture admin,
  * so it's the dual-role subject. `crew-obx-bo` is crew-only.
  */
 import {
@@ -77,7 +77,7 @@ test.describe("crew ↔ admin switcher (DEC-093)", () => {
   test("also reachable starting from an admin session (Switch to crew in the nav)", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink"); // lands on /admin/at-risk
+    await signInAsAdmin(page, "eric"); // lands on /admin/at-risk
     await openAccount(page);
     await page.getByRole(CREW_VIEW.role, { name: CREW_VIEW.name }).click();
     await page.waitForURL((u) => u.pathname === "/crew");
@@ -104,14 +104,14 @@ test.describe("crew ↔ admin switcher (DEC-093)", () => {
   test("a revoked admin's switch control disappears on the next render", async ({
     page,
   }) => {
-    await signInAsCrew(page, "crew-eric");
+    await signInAsCrew(page, "crew-eric-stoffer");
     // "Switch to admin" moved into the crew drawer (#644) — open it to see the control. The
     // drawer is a `<details>`, so while it is shut the control is genuinely not rendered, which
     // is why the count assertion below still means what it meant before.
     await page.locator(`summary[aria-label="Open menu"]`).click();
     await expect(page.getByRole(SWITCH_TO_ADMIN.role, { name: SWITCH_TO_ADMIN.name })).toBeVisible();
 
-    await setAdminActive("spink", false); // deprovision
+    await setAdminActive("eric", false); // deprovision
     await page.reload();
 
     // viewerIsActiveAdmin is now false → the control is gone (visibility only).
@@ -122,14 +122,14 @@ test.describe("crew ↔ admin switcher (DEC-093)", () => {
   test("revoke is enforced by the ACTION, not the button: a stale click is refused server-side", async ({
     page,
   }) => {
-    await signInAsCrew(page, "crew-eric");
+    await signInAsCrew(page, "crew-eric-stoffer");
     await page.locator(`summary[aria-label="Open menu"]`).click();
     const btn = page.getByRole(SWITCH_TO_ADMIN.role, { name: SWITCH_TO_ADMIN.name });
     await expect(btn).toBeVisible();
 
     // Revoke WITHOUT reloading — the button is now stale in the DOM, so this
     // click actually invokes switchToAdmin whose getAdmin(active) gate now fails.
-    await setAdminActive("spink", false);
+    await setAdminActive("eric", false);
     await btn.click();
 
     // Bounced to /crew — NOT escalated to /admin, no admin session minted.

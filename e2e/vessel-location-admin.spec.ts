@@ -17,7 +17,7 @@ test.describe("admin /admin/locations + /admin/vessels", () => {
   test("create a location, then set it as a vessel's home + change capacity and colour", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
 
     // ── Create a location ────────────────────────────────────────────────────
     await page.goto("/admin/locations?sel=new");
@@ -46,7 +46,7 @@ test.describe("admin /admin/locations + /admin/vessels", () => {
   });
 
   test("create a brand-new vessel; it appears in the sidebar", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/vessels?sel=new");
     await page.fill('input[name="name"]', "Sunset");
     await page.fill('input[name="coiMaxPax"]', "12");
@@ -65,7 +65,7 @@ test.describe("admin /admin/locations + /admin/vessels", () => {
     // derived no seats — no ask, no At-Risk row, not claimable — and since #863 one that throws.
     // Native `required` blocks the submit first, so the server refusal is reached by removing the
     // attribute: both layers matter and only one of them is a real guard.
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/vessels?sel=new");
     await page.fill('input[name="name"]', "Crewless");
     await page.fill('input[name="coiMaxPax"]', "12");
@@ -81,7 +81,7 @@ test.describe("admin /admin/locations + /admin/vessels", () => {
   test("adding a crew row keeps what was already typed (#861)", async ({ page }) => {
     // Add is a form POST on a surface with no client JS, so the round trip goes through the draft
     // cookie. Losing the half-typed name is the failure that shape invites.
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/vessels?sel=new");
     await page.fill('input[name="name"]', "Half-typed");
     await page.getByRole("button", { name: "+ Add a role" }).click();

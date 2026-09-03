@@ -36,13 +36,13 @@ test.describe("admin /admin/time-clock — the repair bench", () => {
   });
 
   test("the Crew nav carries Time clock, distinct from Time off", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/time-clock");
     await expect(page.getByRole("heading", { name: "Time clock" })).toBeVisible();
   });
 
   test("add a punch, correct it, then delete it", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/time-clock");
     await usePreviousPeriod(page);
 
@@ -82,7 +82,7 @@ test.describe("admin /admin/time-clock — the repair bench", () => {
   });
 
   test("an out time before the in time is refused with copy, not a 500", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/time-clock");
     await usePreviousPeriod(page);
 
@@ -109,7 +109,7 @@ test.describe("admin /admin/time-clock — the repair bench", () => {
     // resolved against the SAME day, so 22:00 → 02:00 came back `out_before_in` and a
     // night shift was unrecordable. "Out is next day" is explicit rather than inferred
     // from out < in, so a typo stays an error instead of becoming a paid 16 hours.
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/time-clock");
     await usePreviousPeriod(page);
     const addDay = await page.locator("#add-day").getAttribute("min");
@@ -127,7 +127,7 @@ test.describe("admin /admin/time-clock — the repair bench", () => {
   });
 
   test("without the next-day box, an out before the in is still refused", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/time-clock");
     await usePreviousPeriod(page);
     const addDay = await page.locator("#add-day").getAttribute("min");
@@ -143,7 +143,7 @@ test.describe("admin /admin/time-clock — the repair bench", () => {
   test("the day view's date picker actually navigates, and ‹ › keep it in sync", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/time-clock");
     await page.getByRole("link", { name: "By day" }).click();
     await page.waitForURL(/day=/);
@@ -169,7 +169,7 @@ test.describe("admin /admin/time-clock — the repair bench", () => {
   test("an open punch from an earlier day surfaces in the strip and links to its day", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/time-clock");
     await usePreviousPeriod(page);
 

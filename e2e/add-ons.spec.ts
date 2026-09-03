@@ -15,7 +15,7 @@ test.describe("admin /admin/add-ons", () => {
   });
 
   test("create an add-on, attach it on an offering, and it persists", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
 
     // ── Create an add-on ──────────────────────────────────────────────────────
     await page.goto("/admin/add-ons?sel=new");

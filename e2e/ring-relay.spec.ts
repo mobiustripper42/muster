@@ -19,7 +19,7 @@ test.describe("doorbell-ring relay", () => {
   });
 
   test("operator priority broadcast → tick → rings land in the outbox", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
 
     // Priority bypasses the 90s batch window → the tick rings immediately.
     await page.goto("/admin/messages");

@@ -143,7 +143,7 @@ describe("doorbellTick + forwardNotifications (the loop, #167)", () => {
     const repo = await seed();
     // The operator is a real, active roster crew member (operator-as-crew, DEC-030),
     // so all-staff membership includes them — but the doorbell must not ring them.
-    await repo.saveCrewMember(crew("crew-operator", "Spink"));
+    await repo.saveCrewMember(crew("crew-operator", "Eric"));
     await post(repo, "m1", "hi");
     const r = await doorbellTick(repo, new InMemoryPresence(), NOW, RULES, "crew-operator");
     expect(r.decisions.some((d) => d.subject.id === "crew-operator")).toBe(false);

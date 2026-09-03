@@ -20,7 +20,7 @@ test.describe("all shifts (#100)", () => {
   test("lists current shifts in the window, with an At-Risk pointer to the board", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(`/admin/shifts?from=${today()}&to=${plusDays(10)}`);
 
     await expect(page.getByRole("heading", { name: "All shifts" })).toBeVisible();
@@ -36,7 +36,7 @@ test.describe("all shifts (#100)", () => {
   test("empty window is a plain 'no shifts', not the board's success state", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     // 40 days out — within the clamp, past every seeded shift → empty.
     await page.goto(`/admin/shifts?from=${plusDays(40)}&to=${plusDays(40)}`);
 
@@ -48,7 +48,7 @@ test.describe("all shifts (#100)", () => {
   test("Split candidates filter narrows the list to long-gap shifts", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(`/admin/shifts?from=${today()}&to=${plusDays(10)}`);
 
     // Default: everything shows; the gappy day (Barrel, 11:00 + 18:00) carries the
@@ -68,7 +68,7 @@ test.describe("all shifts (#100)", () => {
   });
 
   test("/admin lands on the all-shifts view (Part B; #603 — the hub is gone)", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin");
     await expect(page).toHaveURL(/\/admin\/shifts/);
     await expect(page.getByRole("heading", { name: "All shifts" })).toBeVisible();

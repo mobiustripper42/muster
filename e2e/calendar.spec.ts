@@ -53,7 +53,7 @@ test.describe("admin /admin/calendar", () => {
   });
 
   test("Day·Grid renders the day; Booked filter hides opens", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(`/admin/calendar?date=${BOOKED.date}`);
 
     // Brew 3 has a column header.
@@ -86,7 +86,7 @@ test.describe("admin /admin/calendar", () => {
   test("a booked block opens its reservation detail; money derives from fare + tax", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(`/admin/calendar?date=${BOOKED.date}`);
 
     await page.getByTestId("cal-block").filter({ hasText: "Marcus Webb" }).click();
@@ -142,7 +142,7 @@ test.describe("admin /admin/calendar", () => {
 
   /** A direct link with no ?date must land on the reservation's OWN day, not today's grid. */
   test("deep link with no date resolves the reservation's own day", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(`/admin/calendar/${demoReservationId(BOOKED_2.date, BOOKED_2.time)}`);
 
     const pane = page.getByTestId("reservation-detail");
@@ -162,7 +162,7 @@ test.describe("admin /admin/calendar", () => {
    * where the UI logic actually lives.
    */
   test("balance link: offered when money is owed, hidden once settled", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(`/admin/calendar/${encodeURIComponent(demoReservationId(BOOKED.date, BOOKED.time))}?date=${BOOKED.date}`);
 
     const pane = page.getByTestId("reservation-detail");
@@ -186,7 +186,7 @@ test.describe("admin /admin/calendar", () => {
   });
 
   test("an unknown reservation 404s rather than rendering an empty pane", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     const res = await page.goto("/admin/calendar/resv-does-not-exist");
     expect(res?.status()).toBe(404);
   });
@@ -202,7 +202,7 @@ test.describe("admin /admin/calendar", () => {
   test("an open slot is blocked from the calendar, lands in the registry, and is unblocked", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(`/admin/calendar?date=${BOOKED.date}`);
 
     // Addressed by SCOPE, not by label: both dark cards read "Blocked", and only the slot-scoped
@@ -273,7 +273,7 @@ test.describe("admin /admin/calendar", () => {
     page,
   }) => {
     await resetAndSeed("reservation", "xola");
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(`/admin/calendar?date=${XOLA.days.onGrid}&filter=open`);
 
     // Two offerings, one boat-time: two open cards at 3:30 on Brew 3 before anything is blocked.
@@ -334,7 +334,7 @@ test.describe("admin reservation actions (#616)", () => {
   });
 
   test("cancelling frees the boat, and the freed slot goes back on sale", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(detail());
     const pane = page.getByTestId("reservation-detail");
 
@@ -391,7 +391,7 @@ test.describe("admin reservation actions (#616)", () => {
       amountCents: 58880,
       taxCents: 3980,
     });
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(detail("&cancel=1"));
 
     const confirm = page.getByTestId("cancel-confirm");
@@ -420,7 +420,7 @@ test.describe("admin reservation actions (#616)", () => {
     // The state the operator was actually looking at: the seeded booking has no payments, so
     // both quotes are $0.00 and there is no refund box. The copy has to say so — "refund below,
     // afterwards" on this screen is an instruction to do something impossible.
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(detail("&cancel=1"));
 
     // The explanatory sentence was cut (operator: too many words). What says "nothing to
@@ -450,7 +450,7 @@ test.describe("admin reservation actions (#616)", () => {
       taxCents: 3980,
       stripePaymentIntentId: "pi_e2e_1",
     });
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(detail());
     const pane = page.getByTestId("reservation-detail");
 
@@ -490,7 +490,7 @@ test.describe("admin reservation actions (#616)", () => {
       amountCents: 10000,
       stripePaymentIntentId: "pi_e2e_4",
     });
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(detail());
 
     const form = page.getByTestId("refund-form");
@@ -505,7 +505,7 @@ test.describe("admin reservation actions (#616)", () => {
   });
 
   test("a refund that Stripe rejected says so, and says nothing moved", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(detail("&refundErr=exceeds_refundable"));
     await expect(page.getByTestId("action-error")).toContainText("more than this booking can give back");
 
@@ -549,7 +549,7 @@ test.describe("admin reservation actions (#616)", () => {
       taxCents: 3980,
     });
 
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
 
     /**
      * Every enabled control in the actions block that **COMMITS in a single press**, with its
@@ -655,7 +655,7 @@ test.describe("admin reservation actions (#616)", () => {
       taxCents: 3980,
     });
 
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(detail());
 
     // Open the cancel confirm by pressing the real control, from the bottom of a scrolled page.
@@ -715,7 +715,7 @@ test.describe("admin reservation actions (#616)", () => {
       taxCents: 3980,
     });
 
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(detail("&cancel=1"));
 
     const confirm = page.getByTestId("cancel-confirm");
@@ -772,7 +772,7 @@ test.describe("admin reservation actions (#616)", () => {
         amountCents: 58880,
         taxCents: 3980,
       });
-      await signInAsAdmin(page, "spink");
+      await signInAsAdmin(page, "eric");
       await page.goto(detail("&cancel=1"));
 
       const confirm = page.getByTestId("cancel-confirm");
@@ -802,7 +802,7 @@ test.describe("admin reservation actions (#616)", () => {
       taxCents: 3980,
       stripePaymentIntentId: "pi_e2e_7",
     });
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(detail("&cancel=1"));
 
     // **`fillHydrated`, not `fill` — this is issue #762.** The box arrives server-rendered with
@@ -841,7 +841,7 @@ test.describe("admin reservation actions (#616)", () => {
     // The per-channel copy (which address, which number, which one failed) is pinned in
     // `action-message.test.ts`, where every outcome can be driven directly. This asserts the one
     // end-to-end fact only a running deployment decides.
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(detail());
 
     await page.getByRole("button", { name: /Resend confirmation/ }).click();
@@ -866,7 +866,7 @@ test.describe("admin reservation actions (#616)", () => {
     // reads "Cancelled" with nothing indicating a repair is owed. The core self-heals on a
     // re-run and its comment says so, but the first cut hid the cancel control the moment the
     // reservation flipped, making the re-run unreachable. Security review.
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(detail());
     await page.getByTestId("cancel-start").click();
     await page.getByRole("button", { name: CANCEL_BUTTON }).click();
@@ -888,7 +888,7 @@ test.describe("admin reservation actions (#616)", () => {
   });
 
   test("resend is offered when there is somewhere to send, and reports back", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(detail());
     const pane = page.getByTestId("reservation-detail");
 
@@ -919,7 +919,7 @@ test.describe("concurrent offerings on one boat (#702)", () => {
   });
 
   test("cards at one boat-time sit side by side, not on top of each other", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(`/admin/calendar?date=${DEMO.window.start}&filter=open`);
 
     const brew3 = page.locator('[data-testid="cal-block"][data-vessel="vessel-brew-3"]');
@@ -950,7 +950,7 @@ test.describe("concurrent offerings on one boat (#702)", () => {
     // The other half of the change: laning must be invisible on the ordinary day. Brew 1 carries
     // only the base offering, so its cards keep the geometry they had before #702 — a regression
     // here would shrink every card on every column in the fleet.
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(`/admin/calendar?date=${DEMO.window.start}&filter=open`);
 
     const widths = await page

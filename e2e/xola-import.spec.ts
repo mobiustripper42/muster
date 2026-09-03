@@ -25,7 +25,7 @@ test.describe("imported Xola trips", () => {
   });
 
   test("the calendar draws an imported trip with its customer's name (#615)", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(`/admin/calendar?date=${FX.days.onGrid}`);
 
     // The regression this catches: the card read the literal word "Booked" with no customer,
@@ -36,7 +36,7 @@ test.describe("imported Xola trips", () => {
   });
 
   test("a hull taken by an import does NOT read as open (#615)", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(`/admin/calendar?date=${FX.days.onGrid}`);
 
     // The worse regression: renaming the status made every occupied hull fall through to the
@@ -96,7 +96,7 @@ test.describe("imported Xola trips", () => {
     // The badge and the grid used to be computed from two different lists — one deduped, one
     // not — so on the very day this fixture exercises (one boat sold by two offerings) the
     // count read one higher than the cards. Nothing asserted the badge, so it shipped green.
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(`/admin/calendar?date=${FX.days.onGrid}`);
 
     const badge = await page.getByRole("link", { name: /^Booked/ }).innerText();
@@ -115,7 +115,7 @@ test.describe("imported Xola trips", () => {
     // Xola cards were inert: the reservation index was Muster-only, so the card took the
     // non-link branch. During coexistence most cards are imported, which made most of the
     // calendar dead to the touch.
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(`/admin/calendar?date=${FX.days.onGrid}`);
 
     await page.getByTestId("cal-block").filter({ hasText: "Priya Raman" }).click();
@@ -141,7 +141,7 @@ test.describe("imported Xola trips", () => {
   test("one physical trip draws one card, not one per offering", async ({ page }) => {
     // Brew 3 is sold by more than one offering in this world, so a single trip produced a card
     // per offering — stacked, same customer's name twice.
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(`/admin/calendar?date=${FX.days.onGrid}`);
     await expect(page.getByTestId("cal-block").filter({ hasText: "Priya Raman" })).toHaveCount(1);
   });

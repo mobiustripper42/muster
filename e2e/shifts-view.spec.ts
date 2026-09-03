@@ -24,7 +24,7 @@ test.describe("builder view — /admin/shifts (8.2a)", () => {
   test("defaults to the next 7 days and shows upcoming shifts (not just today)", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/shifts"); // no params → the default window
 
     await expect(page.getByRole("heading", { name: "All shifts" })).toBeVisible();
@@ -40,7 +40,7 @@ test.describe("builder view — /admin/shifts (8.2a)", () => {
   test("the '2 weeks out' and '30 days' quick filters resolve their windows (#321)", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/shifts");
 
     // Both new preset chips are present alongside the existing ones.
@@ -69,7 +69,7 @@ test.describe("builder view — /admin/shifts (8.2a)", () => {
   test("the crew filter narrows to one member's shifts and RESPECTS the window (#330)", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/shifts");
 
     // Gus is Confirmed on Growler (~4 days out); Bram is on Barrel (~2 days out).
@@ -102,7 +102,7 @@ test.describe("builder view — /admin/shifts (8.2a)", () => {
   });
 
   test("renders a calm split cue on a large-gap day", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/shifts");
 
     // Barrel's 11:00 + 18:00 (7h apart) → the advisory cue; only the gappy day gets it.
@@ -129,7 +129,7 @@ test.describe("board bundle — /admin/shifts (9.6)", () => {
   test("a multi-trip day reads 'start · N trips'; the per-trip detail lives in the cockpit", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/shifts");
 
     // Operator QA on 9.5: the list stays scannable — Barrel's two departures
@@ -149,7 +149,7 @@ test.describe("board bundle — /admin/shifts (9.6)", () => {
   test("rows carry neutral-ink seat pips — filled for Confirmed, open otherwise", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/shifts");
 
     // Growler's captain seat is Confirmed → a filled pip; Firkin's is Bailed →
@@ -161,7 +161,7 @@ test.describe("board bundle — /admin/shifts (9.6)", () => {
   test("every row leads with its vessel identity dot (DEC-086)", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/shifts");
 
     // One dot per row, hue keyed off the vessel id — identity, aria-hidden.

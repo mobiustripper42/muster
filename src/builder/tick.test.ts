@@ -296,7 +296,7 @@ describe("tick — Tier-2 stall escalation (DEC-024)", () => {
     expect(r.firedAsks).toHaveLength(1);
     expect(r.firedAsks[0]!.crewMemberId).toBe(asId<"CrewMemberId">("cap-1"));
     expect(await seatState()).toBe("Asked"); // direct-nudged
-    expect(await shiftState()).toBe("Filling"); // still autonomous, no Spink
+    expect(await shiftState()).toBe("Filling"); // still autonomous, no Eric
     const events = await repo.reliabilityEventsFor(asId<"CrewMemberId">("cap-1"));
     expect(events.some((e) => e.type === "nudged")).toBe(true);
   });

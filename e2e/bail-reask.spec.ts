@@ -33,7 +33,7 @@ test.describe("bail → re-ask + board suppression (both seeds)", () => {
     await page.getByRole("button", { name: "Yes, drop this shift" }).click();
     await expect(page).toHaveURL(/\/crew\?bailed=/);
 
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
 
     // Pre-horizon (>2wk out): the shift resolves Pending and stays OFF the board.
     await expect(page.locator("article", { hasText: "Hops" })).toHaveCount(0);

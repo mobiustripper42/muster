@@ -19,7 +19,7 @@ test.describe("admin /admin/blocks", () => {
   });
 
   test("create (impact + conflict), select-to-edit, then delete", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/blocks");
 
     // ── Create a Location block (Location is the default kind) — the booked day, 13:00–16:00 ──

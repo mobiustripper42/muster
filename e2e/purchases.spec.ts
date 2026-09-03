@@ -25,7 +25,7 @@ test.describe("admin /admin/purchases", () => {
   });
 
   test("lists Muster orders with derived state; nothing paid reads UNPAID", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/purchases");
 
     // Marcus books twice on the same phone (the repeat-guest fixture), Dana once — those two are
@@ -56,7 +56,7 @@ test.describe("admin /admin/purchases", () => {
   });
 
   test("filter chips carry counts and narrow the list", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/purchases");
 
     await expect(page.getByTestId("state-all")).toContainText(String(ORDERS));
@@ -76,7 +76,7 @@ test.describe("admin /admin/purchases", () => {
   test("search finds an order by name and by punctuated phone, and survives a filter", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
 
     await page.goto("/admin/purchases?q=Cho");
     await expect(page.getByRole("link", { name: "Dana Cho" })).toHaveCount(1);
@@ -93,7 +93,7 @@ test.describe("admin /admin/purchases", () => {
   });
 
   test("a row opens the calendar's detail pane — no second detail surface", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/purchases?q=Cho");
     await page.getByRole("link", { name: "Dana Cho" }).click();
 

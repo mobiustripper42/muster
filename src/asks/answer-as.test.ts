@@ -54,54 +54,54 @@ async function seedAskedSeat(to: CrewMemberId) {
 
 describe("recordResponseAs — identity-guarded inline answer", () => {
   it("rejects an ask not addressed to the answering identity — nothing written", async () => {
-    const spink = await addCrew("crew-eric");
+    const eric = await addCrew("crew-eric-stoffer");
     const quint = await addCrew("crew-quint");
-    const ask = await seedAskedSeat(quint); // Quint's ask, not Spink's
+    const ask = await seedAskedSeat(quint); // Quint's ask, not Eric's
 
-    const out = await recordResponseAs(repo, ask.id, spink, "accepted", T0);
+    const out = await recordResponseAs(repo, ask.id, eric, "accepted", T0);
 
     expect(out).toEqual({ code: "not_yours" });
     // The ask is untouched and no reliability event landed on either log.
     expect((await repo.getAsk(ask.id))!.respondedAt).toBeUndefined();
-    const spinkEvents = await repo.reliabilityEventsFor(spink);
-    expect(spinkEvents.filter((e) => e.type === "ask_accepted")).toHaveLength(0);
+    const ericEvents = await repo.reliabilityEventsFor(eric);
+    expect(ericEvents.filter((e) => e.type === "ask_accepted")).toHaveLength(0);
     const quintEvents = await repo.reliabilityEventsFor(quint);
     expect(quintEvents.filter((e) => e.type === "ask_accepted")).toHaveLength(0);
     expect((await repo.getSeat(SEAT))!.state).toBe("Asked"); // seat unchanged
   });
 
   it("records a matching identity's answer through the normal rails (auto-confirm + log)", async () => {
-    const spink = await addCrew("crew-eric");
-    const ask = await seedAskedSeat(spink);
+    const eric = await addCrew("crew-eric-stoffer");
+    const ask = await seedAskedSeat(eric);
 
-    const out = await recordResponseAs(repo, ask.id, spink, "accepted", T0);
+    const out = await recordResponseAs(repo, ask.id, eric, "accepted", T0);
 
     expect(out.code).toBeNull();
     // A winning "in" auto-confirms (DEC-061) — the operator-as-crew path too.
     expect(out.outcome).toMatchObject({ claimed: true, seatState: "Confirmed" });
     const seat = await repo.getSeat(SEAT);
     expect(seat!.state).toBe("Confirmed");
-    expect(seat!.assignedCrewMemberId).toBe(spink);
-    const events = await repo.reliabilityEventsFor(spink);
+    expect(seat!.assignedCrewMemberId).toBe(eric);
+    const events = await repo.reliabilityEventsFor(eric);
     expect(events.some((e) => e.type === "ask_accepted")).toBe(true);
   });
 
   it("declines ride the same guard and rails", async () => {
-    const spink = await addCrew("crew-eric");
-    const ask = await seedAskedSeat(spink);
+    const eric = await addCrew("crew-eric-stoffer");
+    const ask = await seedAskedSeat(eric);
 
-    const out = await recordResponseAs(repo, ask.id, spink, "declined", T0);
+    const out = await recordResponseAs(repo, ask.id, eric, "declined", T0);
 
     expect(out.code).toBeNull();
     expect(out.outcome).toMatchObject({ claimed: false, seatState: "Open" });
   });
 
   it("a vanished ask reads as gone, not as someone else's", async () => {
-    const spink = await addCrew("crew-eric");
+    const eric = await addCrew("crew-eric-stoffer");
     const out = await recordResponseAs(
       repo,
       asId<"AskId">("ghost"),
-      spink,
+      eric,
       "accepted",
       T0,
     );

@@ -15,7 +15,7 @@ test.describe("admin /admin/asks — crew audit trail", () => {
   });
 
   test("lists crew events with kinds, reachable from the nav", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin");
     await page.getByRole("link", { name: /Audit/ }).click();
     await page.waitForURL(/\/admin\/asks/);
@@ -27,7 +27,7 @@ test.describe("admin /admin/asks — crew audit trail", () => {
   });
 
   test("crew filter narrows the list to one person", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/asks");
     const list = page.getByRole("region", { name: "Audit trail" });
     await expect(list.getByText("Cody").first()).toBeVisible();

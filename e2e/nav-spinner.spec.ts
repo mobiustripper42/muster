@@ -21,7 +21,7 @@ test.describe("nav loading spinner (#250)", () => {
   test("clicking a row shows a loading spinner for the whole navigation, then clears", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(board());
 
     await expect(page.getByRole("status", { name: "Loading" })).toHaveCount(0);

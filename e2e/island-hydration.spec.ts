@@ -39,7 +39,7 @@ test.describe("client islands and hydration", () => {
 
   /** /admin/offerings?sel=new with the price-variations island on screen. */
   async function openNewOffering(page: import("@playwright/test").Page): Promise<void> {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/offerings?sel=new");
   }
 
@@ -105,7 +105,7 @@ test.describe("client islands and hydration", () => {
   async function openWithSlowBundle(
     page: import("@playwright/test").Page,
   ): Promise<void> {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.route(JS_BUNDLES, async (route) => {
       await new Promise((r) => setTimeout(r, 3_000));
       await route.continue();

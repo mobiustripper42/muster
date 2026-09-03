@@ -45,7 +45,7 @@ test.describe("bail → pre-horizon deferral, stays off the board (crew-only see
 
     // Operator board: the fix — Hops does NOT land, and no late-bail alarm fires.
     // Pre-horizon the engine abstains, so a bail weeks out is silent (#483).
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await expect(page.locator("article", { hasText: "Hops" })).toHaveCount(0);
     await expect(page.getByText(/late bail/)).toHaveCount(0);
 

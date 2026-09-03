@@ -6,7 +6,7 @@
  *      declined) so the why-line reads "2nd ask · Fred declined". Top of the
  *      list (tightest trip), red countdown.
  *   2. RELAY, far (~4d) — Mira's ask on "Maibock", "1st ask". Sorts below Bo.
- *   3. SELF (~30h) — an ask addressed to OPERATOR_CREW_MEMBER_ID (crew-eric),
+ *   3. SELF (~30h) — an ask addressed to OPERATOR_CREW_MEMBER_ID (crew-eric-stoffer),
  *      so the card renders inline Yes/No instead of an `sms:` Send link.
  *
  * The asks are fired through the REAL rails (`assignPerson`) and forwarded
@@ -135,8 +135,8 @@ try {
   const mira = await captain("crew-obx-mira", "Mira", "+15555550102");
   const lance = await captain("crew-obx-lance", "Fred", "+15555550103");
   // The operator's own crew identity — must match OPERATOR_CREW_MEMBER_ID
-  // (app/lib/operator.ts; default "crew-eric").
-  const eric = await captain("crew-eric", "Eric", "+15555550100");
+  // (app/lib/operator.ts; default "crew-eric-stoffer").
+  const eric = await captain("crew-eric-stoffer", "Eric", "+15555550100");
   // A no-phone crew member (#186) — exercises the ring relay's "no number, but
   // shareable via Web Share" path: the ring card offers Send on a Web-Share device
   // instead of dead-ending at "No phone on file".

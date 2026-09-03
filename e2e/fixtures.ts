@@ -30,9 +30,9 @@ const SEED_SCRIPTS = {
 type SeedName = keyof typeof SEED_SCRIPTS;
 
 /**
- * The e2e operator: a seeded admin whose short handle is `spink` — what every
- * `signInAsAdmin(page, "spink")` resolves through the dev-link handle→id lookup
- * (DEC-092). Its id is the operator crew id (`crew-eric`, = OPERATOR_CREW_MEMBER_ID).
+ * The e2e operator: a seeded admin whose short handle is `eric` — what every
+ * `signInAsAdmin(page, "eric")` resolves through the dev-link handle→id lookup
+ * (DEC-092). Its id is the operator crew id (`crew-eric-stoffer`, = OPERATOR_CREW_MEMBER_ID).
  * `resetTestDb` truncates `admins` (dynamic all-tables wipe), so we re-seed it on
  * every reset; the prod roster (the 0018 migration's eric/brendan/drew) is wiped
  * too, which is fine — e2e drives its own synthetic operator.
@@ -222,7 +222,7 @@ export async function setAdminActive(handle: string, active: boolean): Promise<v
  */
 export async function resetAndSeed(...seeds: SeedName[]): Promise<void> {
   await resetTestDb();
-  await seedAdmin({ id: "crew-eric", handle: "spink", name: "Spink" });
+  await seedAdmin({ id: "crew-eric-stoffer", handle: "eric", name: "Eric" });
   for (const name of seeds) {
     execFileSync(TSX, [SEED_SCRIPTS[name]], {
       env: { ...process.env, DATABASE_URL: TEST_DATABASE_URL, SEED_TODAY: TODAY },

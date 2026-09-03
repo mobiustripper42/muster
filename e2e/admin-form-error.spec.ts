@@ -100,7 +100,7 @@ test.describe("a validation error on a NEW record (#699)", () => {
   test("keeps you on the create form, keeps your typing, and never shows another record", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await seedOneOffering(page);
 
     // Start a SECOND offering and fill in enough to be worth losing.
@@ -167,7 +167,7 @@ test.describe("a validation error on a NEW record (#699)", () => {
     // Defect 2 on its own terms, reachable without any error at all: a bookmarked link to a
     // deleted offering, or a shared URL. `?? visible[0]` answered a question nobody asked —
     // and the answer looked exactly like a real selection, so there was no way to tell.
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await seedOneOffering(page);
 
     await page.goto("/admin/offerings?sel=does-not-exist");
@@ -211,7 +211,7 @@ test.describe("the same refusal on the other three admin surfaces (#699)", () =>
   test("vessels: a refused save keeps you on the create form and keeps your typing", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     // "Hops" is already in the list from the seed — the record that must NOT be substituted.
 
     await page.goto("/admin/vessels?sel=new");
@@ -248,7 +248,7 @@ test.describe("the same refusal on the other three admin surfaces (#699)", () =>
   test("locations: a refused save keeps you on the create form and keeps your typing", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await seedOneLocation(page);
 
     await page.goto("/admin/locations?sel=new");
@@ -278,7 +278,7 @@ test.describe("the same refusal on the other three admin surfaces (#699)", () =>
   test("add-ons: a refused save keeps you on the create form and keeps your typing", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await seedOneAddOn(page);
 
     await page.goto("/admin/add-ons?sel=new");
@@ -314,7 +314,7 @@ test.describe("the same refusal on the other three admin surfaces (#699)", () =>
     //
     // Reachable by ordinary navigation, not a crafted URL: refuse, save something, then press
     // Back inside the minute. Without the clear, the form re-offers a spent draft's values.
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
 
     await page.goto("/admin/add-ons?sel=new");
     await page.fill('input[name="label"]', "Sunset Charcuterie");
@@ -403,7 +403,7 @@ test.describe("a refused edit on the per-row surfaces (#780)", () => {
   test("time-clock: a refused edit keeps the typed time AND the box the operator unticked", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/time-clock");
     await usePreviousPeriod(page);
 
@@ -461,7 +461,7 @@ test.describe("a refused edit on the per-row surfaces (#780)", () => {
   test("blocks: a refused edit keeps the typing AND keeps editing the block it refused", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await seedOneLocation(page);
 
     // Create a location block to edit. Dated forward, because a past block is filtered off the
@@ -499,7 +499,7 @@ test.describe("a refused edit on the per-row surfaces (#780)", () => {
   });
 
   test("time-off: a refused range keeps the crew member as well as the dates", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/time-off");
 
     // The crew select is the field worth proving here: React never mirrors `selected` on update,
@@ -546,7 +546,7 @@ test.describe("a refused refund on the calendar pane (#780)", () => {
       taxCents: 3980,
     });
 
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(
       `/admin/calendar/${encodeURIComponent(reservationId)}?date=${BOOKED.date}`,
     );
@@ -592,7 +592,7 @@ test.describe("a refused refund on the calendar pane (#780)", () => {
       taxCents: 3980,
     });
 
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(
       `/admin/calendar/${encodeURIComponent(reservationId)}?date=${BOOKED.date}&cancel=1`,
     );

@@ -81,7 +81,7 @@ test.describe("admin nav", () => {
     // right edge until #709 moved it into the Account menu, and anchoring a layout assertion to
     // one child meant a control moving out of the cluster read as a layout regression.
     test.skip(testInfo.project.name !== "desktop", "desktop-only: at 375px the links are behind the hamburger");
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     const nav = page.getByRole("navigation", { name: "Admin" });
 
     const brand = nav.getByTestId("nav-brand");
@@ -102,7 +102,7 @@ test.describe("admin nav", () => {
 
   test("#603: one group open at a time, and a click elsewhere closes it", async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "desktop", "the dropdowns are the desktop rendering");
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     const nav = page.getByRole("navigation", { name: "Admin" });
     const group = (label: string) => nav.locator("summary:visible").filter({ hasText: label });
 
@@ -146,7 +146,7 @@ test.describe("admin nav", () => {
   });
 
   test("admin navigates via the bar; the active link follows the route", async ({ page }) => {
-    await signInAsAdmin(page, "spink"); // lands on /admin/at-risk
+    await signInAsAdmin(page, "eric"); // lands on /admin/at-risk
     const nav = page.getByRole("navigation", { name: "Admin" });
     await expect(nav.getByRole("link", { name: "Muster" })).toBeVisible();
 
@@ -165,7 +165,7 @@ test.describe("admin nav", () => {
   });
 
   test("9.12: the nav links the built Messages surface (#238)", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     const nav = page.getByRole("navigation", { name: "Admin" });
     await openMenuIfMobile(page);
     // Desktop: Messages is shelved under Crew (#603) — open the group first. The drawer
@@ -192,14 +192,14 @@ test.describe("admin nav", () => {
     // quietly returns. This pins the budget so that change fails CI here instead.
     const width = page.viewportSize()?.width ?? 0;
     test.skip(width < 1024, "the fill-height budget only applies at lg (≥1024px)");
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     const nav = page.getByRole("navigation", { name: "Admin" });
     const height = await nav.evaluate((el) => el.getBoundingClientRect().height);
     expect(height).toBeLessThanOrEqual(52); // 3.25rem — the shell.tsx cutoff
   });
 
   test("mobile: the hamburger toggles the drawer; a link tap navigates + closes it", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     const burger = page.getByRole("button", { name: "Open menu" });
     test.skip(!(await burger.isVisible()), "desktop: inline links, no hamburger");
 
@@ -230,7 +230,7 @@ test.describe("admin nav", () => {
     // in OUR branch, so dispatching the focusout Safari would have produced exercises it here.
     // No extra goto: signInAsAdmin already lands on /admin/at-risk, which carries the nav.
     // Navigating again races the sign-in redirect in dev mode and interrupts it.
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await openMenuIfMobile(page);
 
     // The <summary> toggle is native — HTML's own accordion, no JS — so a plain click is right
@@ -268,7 +268,7 @@ test.describe("admin nav", () => {
     test.skip(testInfo.project.name !== "iphone", "needs WebKit with touch");
     // No extra goto: signInAsAdmin already lands on /admin/at-risk, which carries the nav.
     // Navigating again races the sign-in redirect in dev mode and interrupts it.
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await openMenuIfMobile(page);
     await openGroupHydrated(page);
 
@@ -284,7 +284,7 @@ test.describe("admin nav", () => {
     // must not cost that: a tab always carries a relatedTarget, so this stays closed.
     // No extra goto: signInAsAdmin already lands on /admin/at-risk, which carries the nav.
     // Navigating again races the sign-in redirect in dev mode and interrupts it.
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await openMenuIfMobile(page);
 
     await openGroupHydrated(page);
@@ -317,7 +317,7 @@ test.describe("admin nav", () => {
    */
   test.describe("account actions (#709)", () => {
     test("both are reachable from the end of the menu, at this width", async ({ page }) => {
-      await signInAsAdmin(page, "spink");
+      await signInAsAdmin(page, "eric");
       await page.goto("/admin/shifts");
 
       const nav = page.getByRole("navigation", { name: "Admin" });
@@ -337,7 +337,7 @@ test.describe("admin nav", () => {
      * two-locations problem the issue is about, while every other test here still passed.
      */
     test("the switch control exists exactly once", async ({ page }) => {
-      await signInAsAdmin(page, "spink");
+      await signInAsAdmin(page, "eric");
       await page.goto("/admin/shifts");
 
       const nav = page.getByRole("navigation", { name: "Admin" });
@@ -355,7 +355,7 @@ test.describe("admin nav", () => {
     /** An admin signing out must not land on the crew sign-in page (`signOut` redirects to
      *  /crew, which is why this needs its own action). */
     test("signing out lands on the admin front door, not the crew one", async ({ page }) => {
-      await signInAsAdmin(page, "spink");
+      await signInAsAdmin(page, "eric");
       await page.goto("/admin/shifts");
 
       const nav = page.getByRole("navigation", { name: "Admin" });

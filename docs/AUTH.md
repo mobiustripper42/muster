@@ -80,7 +80,7 @@ in the `admins` table or your row is `active=false`.
 
 2. **`OPERATOR_CREW_MEMBER_ID` is not about login.**
    It's the crew persona the **office acts as** when posting messages / ringing the
-   doorbell (DEC-030 §7) — default `crew-eric`, override in env. Setting it does
+   doorbell (DEC-030 §7) — default `crew-eric-stoffer`, override in env. Setting it does
    **not** change your session's `kind`. (It's the env var with `OPERATOR` in the
    name that *looks* like a role switch but isn't — the classic red herring.) Its
    value should be a crew id that actually exists in the roster. Defined in

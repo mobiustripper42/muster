@@ -294,7 +294,7 @@ describe("scoreCrewMember — reads the log through the port", () => {
   });
 });
 
-describe("effectiveRankScore — Spink's manual thumb (§2.4)", () => {
+describe("effectiveRankScore — Eric's manual thumb (§2.4)", () => {
   const thumb = (over: Partial<CrewMember>) => over as CrewMember;
 
   it("is the raw score when no boost/floor is set", () => {
@@ -317,7 +317,7 @@ describe("effectiveRankScore — Spink's manual thumb (§2.4)", () => {
   });
 
   it("floor then boost: a vouched-for cold-start beats an unknown", () => {
-    // Spink floors a known-good new hire to neutral and bumps them.
+    // Eric floors a known-good new hire to neutral and bumps them.
     const vouchedNewHire = effectiveRankScore(0, thumb({ manualFloor: 0, manualBoost: 3 }));
     const unknown = effectiveRankScore(0, thumb({}));
     expect(vouchedNewHire).toBeGreaterThan(unknown);

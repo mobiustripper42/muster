@@ -65,7 +65,7 @@ B7 is a stale pointer, low stakes, cheap to fix.
 | `SESSION_SECRET` required in prod | `AUTH.md:21` | `app/lib/auth.ts:32` throws |
 | `selfServeEnabled()` → `CREW_SELF_SERVE === "1"` | `AUTH.md:83` | `app/lib/flags.ts:11-12` |
 | `isProdDeploy()` gates dev-only affordances | `AUTH.md:85` | `app/lib/flags.ts:35` |
-| `OPERATOR_CREW_MEMBER_ID` defaults `crew-eric`, in `app/lib/operator.ts` | `AUTH.md:64` | `app/lib/operator.ts:27-28` |
+| `OPERATOR_CREW_MEMBER_ID` defaults `crew-eric-stoffer`, in `app/lib/operator.ts` | `AUTH.md:64` | `app/lib/operator.ts:27-28` |
 | Crew sessions still have no per-person revoke | `AUTH.md` (silent) | No `sessionEpoch`/`revokeCrew` anywhere; `0018` scoped revoke to admins. #300 closed without a code change — doc and code agree |
 | DEC-134/135 differ between `main` and `feature/reservations` | — | **Managed, not a collision.** `feature/reservations` renumbered main's 134/135 → 136/137, each annotated with provenance ("Authored on `main` as DEC-134; renumbered here"), same precedent as 126→131. DEC-137 documents `db:all` → `db:reset:dev` |
 | `RUNNING.md` drops `db:all` on `feature/reservations` | — | Deliberate: `db:all` is gone from that branch's `package.json`, retired by its DEC-137 |

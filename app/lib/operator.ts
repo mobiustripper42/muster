@@ -25,4 +25,4 @@
  * `admins` table) — the follow-up rewires this messaging sender to that set.
  */
 export const OPERATOR_CREW_MEMBER_ID =
-  process.env.OPERATOR_CREW_MEMBER_ID ?? "crew-eric";
+  process.env.OPERATOR_CREW_MEMBER_ID ?? "crew-eric-stoffer";

@@ -17,7 +17,7 @@ test.describe("cockpit polish (9.7/9.8)", () => {
   test("the seat override select carries an accessible name; the Crewed-gate summary reads the seat math", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/shift/shift-ar-regress");
 
     // The surviving cockpit select carries a real accessible name (9.7). It
@@ -44,7 +44,7 @@ test.describe("cockpit polish (9.7/9.8)", () => {
   test("each seat's eligible pool starts collapsed (operator preference, 2026-07-05)", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/shift/shift-ar-regress");
 
     // Firkin's captain seat has an eligible pool (Marisol et al.). Its <details>
@@ -61,7 +61,7 @@ test.describe("cockpit polish (9.7/9.8)", () => {
   test("the whole board card is a click target (stretched link), controls still tappable", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/shifts");
 
     // Click the card's whitespace (bottom-right corner, away from the
@@ -91,7 +91,7 @@ test.describe("cockpit polish (9.7/9.8)", () => {
   test("the AdminNav names the tenant and today's vessel-local date", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/shifts");
 
     const nav = page.getByRole("navigation", { name: "Admin" });

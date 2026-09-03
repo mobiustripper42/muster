@@ -22,7 +22,7 @@ test.describe("admin /admin/customers", () => {
   test("lists customers with bookings + lifetime; the same phone is ONE customer", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/customers");
 
     // Two customers from three bookings — Marcus's two spellings canonicalized together.
@@ -44,7 +44,7 @@ test.describe("admin /admin/customers", () => {
   });
 
   test("search matches name, phone punctuation, and display code", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/customers");
 
     // Grab Marcus's minted display code off the row — it's random per seed run.
@@ -73,7 +73,7 @@ test.describe("admin /admin/customers", () => {
   });
 
   test("detail shows the contact + booking history, newest first", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/customers");
     await page.getByRole("link", { name: "Marcus Webb" }).click();
     await page.waitForURL(/\/admin\/customers\/cust-/);
@@ -95,7 +95,7 @@ test.describe("admin /admin/customers", () => {
   });
 
   test("a history row opens that booking's detail on the calendar", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/customers");
     await page.getByRole("link", { name: "Dana Cho" }).click();
     await page.getByRole("link", { name: "Open" }).first().click();
@@ -106,7 +106,7 @@ test.describe("admin /admin/customers", () => {
   });
 
   test("an unknown customer 404s", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     const res = await page.goto("/admin/customers/cust-does-not-exist");
     expect(res?.status()).toBe(404);
   });

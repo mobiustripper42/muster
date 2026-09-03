@@ -525,6 +525,47 @@ const CITATIONS = [
   ['src/reservations/create-balance-checkout.test.ts', 167, 'no_balance once paid in full'],
   ['src/reservations/payment-config.test.ts', 66, 'full mode charges fare + tax + fee in one go'],
 
+  // ── Criterion 22's evidence (§Criterion 22) ──
+  ['docs/SPEC.md', 2086, 'The tip pool for a trip divides evenly across the confirmed holders of its **required**'],
+  ['docs/SPEC.md', 1648, "of that shift's **required** seats, deduped."],
+  ['docs/SPEC.md', 1650, 'Supernumerary seats are not in the split'],
+  ['docs/SPEC.md', 1653, 'crew sorted by id, the first `pool mod n` of them receive one extra cent'],
+  ['docs/SPEC.md', 1912, 'The crew tip pool pays out on `booked`'],
+  // Two layers: the pure split, and the wiring that decides who is in the denominator.
+  ['src/admin/gratuity-payroll.ts', 48, 'export function splitGratuity(input: GratuitySplitInput): GratuitySplit {'],
+  ['src/admin/gratuity-payroll.ts', 102, 'export async function buildGratuityPayroll('],
+  ['src/admin/gratuity-payroll.ts', 112, 'const crew = new Set<string>();'],
+  ['src/admin/gratuity-payroll.ts', 114, 'if (seat.state === "Confirmed" && seat.kind === "required" && seat.assignedCrewMemberId) {'],
+  ['src/admin/gratuity-payroll.ts', 120, 'crewByEvent.set(String(eventId), [...crew]);'],
+  // Cents exact — floor, remainder, lexical +1.
+  ['src/admin/gratuity-payroll.ts', 69, 'const per = Math.floor(poolCents / crew.length);'],
+  ['src/admin/gratuity-payroll.ts', 70, 'const rem = poolCents % crew.length;'],
+  ['src/admin/gratuity-payroll.ts', 72, '(i < rem ? 1 : 0)'],
+  // The warning, and the filter that runs BEFORE it (the boundary the warning does not cover).
+  ['src/admin/gratuity-payroll.ts', 66, 'in gratuity but no confirmed crew — unsplit'],
+  ['src/admin/gratuity-payroll.ts', 110, 'if (shift.state === "Cancelled") continue;'],
+  ['src/admin/gratuity-payroll.ts', 127, '.filter((r) => r.status === "booked")'],
+  ['src/admin/gratuity-payroll.ts', 131, '(g) => eventsInWindow.has(String(g.eventId)) && bookedResIds.has(String(g.reservationId)),'],
+  // The comment that names a contract test which does not exist.
+  ['src/admin/gratuity-payroll.ts', 45, 'a contract-test invariant'],
+  // Tests: even, remainder + sum, zero-crew warning, the report's join, the cancelled shift's silence.
+  ['src/admin/gratuity-payroll.test.ts', 41, 'distributes the remainder deterministically to the lexically-first crew'],
+  ['src/admin/gratuity-payroll.test.ts', 52, 'toBe(1001); // every cent allocated'],
+  ['src/admin/gratuity-payroll.test.ts', 66, 'a pool with no crew is unsplit + warned'],
+  ['src/admin/gratuity-payroll.test.ts', 101, 'kind: "required", state: "Confirmed",'],
+  ['src/admin/gratuity-payroll.test.ts', 121, 'splits a booked event\'s pool among its confirmed crew and joins Gusto identity'],
+  ['src/admin/gratuity-payroll.test.ts', 147, 'a cancelled shift takes its event out of scope (nobody paid)'],
+  ['src/admin/payroll-reconcile.test.ts', 308, 'a supernumerary seat is never missing — an unpaid ride owes no hours'],
+  // The operator sees the warning; the combined report carries it.
+  ['app/(admin)/admin/payroll/page.tsx', 189, '{tips.warnings.length > 0 && ('],
+  ['src/admin/payroll-reconcile.ts', 141, 'const warnings = [...tips.warnings];'],
+  // Reachability of the silent case: who writes gratuities, who cancels events.
+  ['src/reservations/booking-webhook.ts', 480, 'if (isSlotBooking && gratuityCents > 0) {'],
+  ['src/reservations/booking-webhook.ts', 764, 'await deps.repo.saveGratuity({'],
+  ['src/reservations/cancel-reservation.ts', 136, 'status: "cancelled",'],
+  ['src/reservations/cancel-reservation.ts', 155, 'const cancelledEvent = await deps.repo.cancelEventIfUnclaimed(reservation.eventId);'],
+  ['src/adapters/repository-contract.ts', 1455, '// ── Gratuity (DEC-124, 12.3)'],
+
   // ── Criterion 2 / 5 evidence, spot-checked while re-baselining ──
   ['src/reservations/availability.ts', 172, 'return asId<"EventId">(`slot_${slotIdentity('],
   ['app/(public)/book/page.tsx', 91, 'repo.listLiveCheckoutHolds(asOf)'],

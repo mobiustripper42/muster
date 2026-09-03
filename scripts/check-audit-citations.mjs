@@ -565,6 +565,14 @@ const CITATIONS = [
   ['src/reservations/cancel-reservation.ts', 136, 'status: "cancelled",'],
   ['src/reservations/cancel-reservation.ts', 155, 'const cancelledEvent = await deps.repo.cancelEventIfUnclaimed(reservation.eventId);'],
   ['src/adapters/repository-contract.ts', 1455, '// ── Gratuity (DEC-124, 12.3)'],
+  // The shift-canceller an earlier draft said did not exist yet (code review), and the call that
+  // reaches it from the cancellation path. Pinned because the safety argument now turns on them.
+  ['src/builder/form-shifts.ts', 353, 'if (scheduled.length === 0) {'],
+  ['src/builder/form-shifts.ts', 359, 'await repo.saveShift({ ...existing, state: "Cancelled" });'],
+  ['src/reservations/cancel-reservation.ts', 158, 'Re-form so the shift collapses and its crew are told'],
+  ['src/reservations/cancel-reservation.ts', 169, 'const form = await formShifts(deps.repo, {'],
+  // The second caller's fixtures — also all required/Confirmed, so it adds no exclusion coverage.
+  ['src/reservations/seed-gratuity.ts', 95, 'kind: "required",'],
 
   // ── Criterion 2 / 5 evidence, spot-checked while re-baselining ──
   ['src/reservations/availability.ts', 172, 'return asId<"EventId">(`slot_${slotIdentity('],

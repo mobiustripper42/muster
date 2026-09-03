@@ -56,24 +56,22 @@ import { roleHueClass } from "./role-hue";
  *  (the kicker text right beside it is the accessible name). Shares its hue
  *  map with the board's filled pips (role-hue.ts).
  *
- *  Filled-vs-open matches `SeatPips` exactly, on the operator's call (#598): the
- *  same seat must not read as crewed here and open on the board. It used to render
- *  filled unconditionally, so an OPEN captain seat still showed a solid blue C
- *  right beside its own `OPEN` badge. The rule is the board's verbatim —
- *  `filled = state === "Confirmed"` (`all-shifts.ts:209`) — which means a CLAIMED
- *  seat reads OPEN. That is deliberate: accepted-but-not-confirmed is not a crewed
- *  seat, and the amber occupant panel below already carries "awaiting your confirm"
- *  in full. Open is a 2px ink ring, no status hue, for the DEC-042 reason spelled
- *  out in `seat-pips.tsx`. */
-function RoleGlyph({ roleName, filled }: { roleName: string; filled: boolean }) {
+ *  ALWAYS FILLED, and it deliberately does NOT match the board's open/filled pips
+ *  (#598, operator's call after seeing both). The two glyphs look alike and do
+ *  different jobs: the board is a SCAN — is this seat open or filled — so its pip
+ *  carries state in weight. This card is a PICK, one seat at a time, and its own
+ *  `OPEN`/`CONFIRMED` badge two inches away already carries the state. Here the
+ *  hue is the whole point: it says captain-vs-mate at a glance so the operator
+ *  never reads the word. That is DEC-086 exactly — identity color, never state.
+ *
+ *  A first cut at #598 made this conditional so the surfaces "agreed", which put an
+ *  ink ring beside the OPEN badge and spent the identity signal to repeat something
+ *  already on screen. Don't re-unify them; the inconsistency is the design. */
+function RoleGlyph({ roleName }: { roleName: string }) {
   return (
     <span
       aria-hidden="true"
-      className={`flex h-[18px] w-[18px] items-center justify-center rounded-[5px] text-[10px] font-bold uppercase ${
-        filled
-          ? `border-2 border-transparent text-white ${roleHueClass(roleName)}`
-          : "border-2 border-ink bg-bg text-ink"
-      }`}
+      className={`flex h-[18px] w-[18px] items-center justify-center rounded-[5px] text-[10px] font-bold uppercase text-white ${roleHueClass(roleName)}`}
     >
       {roleName.charAt(0)}
     </span>
@@ -175,7 +173,7 @@ export function SeatCard({
     <article className="flex flex-col gap-2 rounded-card border border-line bg-card p-4 shadow-sm">
       <div className="flex items-center justify-between">
         <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted">
-          <RoleGlyph roleName={vm.roleName} filled={vm.state === "Confirmed"} />
+          <RoleGlyph roleName={vm.roleName} />
           {vm.roleName} · required
         </span>
         <span

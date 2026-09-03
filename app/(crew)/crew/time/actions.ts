@@ -22,6 +22,7 @@ import { readSubject } from "../../../lib/auth";
 import { timeClockEnabled } from "../../../lib/flags";
 import { clearFormDraft, stashFormDraft } from "../../../lib/form-draft";
 import { getRepo } from "../../../lib/repo";
+import { logSwallowed } from "../../../lib/swallowed";
 
 /**
  * Every code this surface can put in `?err=` (#654) — the domain's result codes across all of
@@ -71,7 +72,11 @@ export async function clockInNow(): Promise<void> {
       at: new Date(),
     });
     code = result.ok ? null : result.code;
-  } catch {
+  } catch (e) {
+    // Payroll path. `?err=error` renders the generic transient line, so a crew
+    // member who believes they clocked in and did not is unpaid for the shift
+    // with nothing anywhere saying why.
+    logSwallowed("crew/time:clockInNow", e, "the clock-in punch was not written");
     code = "error";
   }
 
@@ -95,7 +100,8 @@ export async function clockOutNow(): Promise<void> {
       new Date(),
     );
     code = result.ok ? null : result.code;
-  } catch {
+  } catch (e) {
+    logSwallowed("crew/time:clockOutNow", e, "the clock-out was not written — the punch stays open");
     code = "error";
   }
 
@@ -157,7 +163,8 @@ export async function editMyPunch(formData: FormData): Promise<void> {
         now: new Date(),
       });
       code = result.ok ? null : result.code;
-    } catch {
+    } catch (e) {
+      logSwallowed("crew/time:editMyPunch", e, "the punch edit was not written");
       code = "error";
     }
   }
@@ -204,7 +211,8 @@ export async function addMyPunch(formData: FormData): Promise<void> {
         now: new Date(),
       });
       code = result.ok ? null : result.code;
-    } catch {
+    } catch (e) {
+      logSwallowed("crew/time:addMyPunch", e, "the added punch was not written");
       code = "error";
     }
   }
@@ -231,7 +239,8 @@ export async function deleteMyPunch(formData: FormData): Promise<void> {
       now: new Date(),
     });
     code = result.ok ? null : result.code;
-  } catch {
+  } catch (e) {
+    logSwallowed("crew/time:deleteMyPunch", e, "the punch delete was not written");
     code = "error";
   }
 

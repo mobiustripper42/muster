@@ -8,6 +8,7 @@ import { asId } from "@core/domain/ids.js";
 import { readSubject } from "../../../lib/auth";
 import { clearFormDraft, stashFormDraft } from "../../../lib/form-draft";
 import { getRepo } from "../../../lib/repo";
+import { logSwallowed } from "../../../lib/swallowed";
 
 /**
  * Every code this surface can put in `?err=` (#654) — the domain's validation errors plus the
@@ -95,7 +96,8 @@ export async function saveVessel(formData: FormData): Promise<void> {
       ...(notes ? { notes } : {}),
     });
     code = result.ok ? null : result.code;
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/vessels:saveVessel", e, "the vessel was not saved");
     code = "error";
   }
 

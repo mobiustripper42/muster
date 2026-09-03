@@ -6,6 +6,7 @@ import { Notice } from "../../../../components/ui/notice";
 import { Shell } from "../../../../components/ui/shell";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
+import { CREW_UNAVAILABLE, logSwallowed } from "../../../lib/swallowed";
 import { TENANT_ID } from "../../../lib/tenant";
 import { messagingEnabled } from "../../../lib/flags";
 import { notFound } from "next/navigation";
@@ -30,11 +31,12 @@ export default async function ThreadsPage() {
   let view: ThreadListView;
   try {
     view = await buildThreadList(getRepo(), asId<"CrewMemberId">(subject.id), TENANT_ID, new Date());
-  } catch {
+  } catch (e) {
+    logSwallowed("crew/threads", e, "the thread list did not build");
     return (
       <Shell>
         <CrewHeader title="Messages" back={{ href: "/crew", label: "My shifts" }} current="/crew/threads" />
-        <Notice>Can’t reach messages right now. Try again in a moment.</Notice>
+        <Notice>{CREW_UNAVAILABLE}</Notice>
       </Shell>
     );
   }

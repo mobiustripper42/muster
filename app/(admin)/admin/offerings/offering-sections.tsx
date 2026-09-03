@@ -295,6 +295,11 @@ function variationsFor(draft: FormDraft | null, offering: Offering | null): Pric
   try {
     const parsed: unknown = JSON.parse(raw);
     return Array.isArray(parsed) ? (parsed as PriceVariation[]) : offering?.priceVariations ?? [];
+    // NOT a fault (#854). `raw` is a stashed form draft, i.e. bytes a browser
+    // round-tripped through a cookie. An unparseable draft is bad input with a defined
+    // answer (fall back to the saved offering), which the line above already handles
+    // for the non-array case.
+    // eslint-disable-next-line no-restricted-syntax -- unparseable draft cookie, not a fault
   } catch {
     return offering?.priceVariations ?? [];
   }

@@ -14,6 +14,7 @@ import { RevealSelectedRow } from "../../../../components/admin/reveal-selected-
 import type { Mode, Scope } from "../../../../components/admin/shifts-view-types";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
+import { logSwallowed } from "../../../lib/swallowed";
 
 /**
  * All-shifts view (#100 Part A, DEC-042) — the operator's deliberate full-
@@ -342,8 +343,12 @@ export default async function AllShifts({
     const runs = await repo.listImportRuns(1);
     changedDays = new Set(runs[0]?.summary.splitDaysChanged ?? []);
     newShifts = new Set(runs[0]?.summary.createdShiftIds ?? []);
-  } catch {
+  } catch (e) {
     /* leave the cues off */
+    // Invisible by design: the board renders identically with no cues and with
+    // cues that legitimately found nothing, so nothing on screen can ever say
+    // this failed.
+    logSwallowed("admin/shifts", e, "the import-diff cues were dropped — reshaped and new shifts are unmarked");
   }
 
   // The split/merge actions return here (Edit mode, same window + selection) —

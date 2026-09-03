@@ -11,6 +11,7 @@ import { cockpitHref } from "../../app/lib/cockpit-href";
 import { messagingEnabled } from "../../app/lib/flags";
 import { fmtDeadline, fmt12 } from "../../app/lib/format";
 import { getRepo } from "../../app/lib/repo";
+import { ADMIN_LOG_HINT, logSwallowed } from "../../app/lib/swallowed";
 import { TENANT_ID } from "../../app/lib/tenant";
 import { Notice } from "../ui/notice";
 import { Badge, fmtDate, toSeatVM, ttLabel } from "./cockpit-bits";
@@ -163,9 +164,10 @@ export async function ShiftCockpit({
             : cockpitHref(String(r.shiftId), ctx, "warming=1"),
       }));
     }
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/cockpit", e, "the shift cockpit did not build");
     return (
-      <Notice>Can’t reach the schedule right now. Try again in a moment.</Notice>
+      <Notice>Couldn’t reach the cockpit right now. {ADMIN_LOG_HINT}</Notice>
     );
   }
 

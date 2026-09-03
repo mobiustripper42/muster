@@ -6,6 +6,7 @@ import { Shell } from "../../../../components/ui/shell";
 import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
+import { logSwallowed } from "../../../lib/swallowed";
 
 /**
  * /admin/integrity (#501) — the detective control the no-FK schema is predicated on.
@@ -45,7 +46,10 @@ export default async function AdminIntegrity({
   if (requested) {
     try {
       view = buildIntegrityView(await checkIntegrity(getRepo()));
-    } catch {
+    } catch (e) {
+      // The diagnostic screen itself. `failed` renders "couldn't run" with no
+      // reason, which is a poor showing for the page whose job is finding faults.
+      logSwallowed("admin/integrity", e, "the integrity check did not run");
       failed = true;
     }
   }

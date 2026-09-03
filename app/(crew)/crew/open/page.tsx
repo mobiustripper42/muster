@@ -16,6 +16,7 @@ import { VersionTag } from "../../../../components/ui/version-tag";
 import { readSubject } from "../../../lib/auth";
 import { selfServeEnabled } from "../../../lib/flags";
 import { getRepo } from "../../../lib/repo";
+import { CREW_UNAVAILABLE, logSwallowed } from "../../../lib/swallowed";
 import { fmt12 } from "../../../lib/format";
 import { vesselHueClass } from "../../../lib/vessel-hue";
 import { claimSeat } from "./actions";
@@ -67,11 +68,12 @@ export default async function CrewOpenPage({
       new Date(),
       range,
     );
-  } catch {
+  } catch (e) {
+    logSwallowed("crew/open", e, "the claimable-shift list did not build");
     return (
       <Shell>
         <CrewHeader title="Pick up a shift" back={{ href: "/crew", label: "My shifts" }} />
-        <Notice>Can’t reach the schedule right now. Try again in a moment.</Notice>
+        <Notice>{CREW_UNAVAILABLE}</Notice>
       </Shell>
     );
   }

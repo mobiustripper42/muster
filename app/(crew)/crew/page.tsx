@@ -15,6 +15,7 @@ import {
   SMS_CONSENT_POLICY_URL,
 } from "../../lib/sms-consent";
 import { getRepo } from "../../lib/repo";
+import { CREW_UNAVAILABLE, logSwallowed } from "../../lib/swallowed";
 import { fmt12 } from "../../lib/format";
 import { vesselHueClass } from "../../lib/vessel-hue";
 import { requestLoginCode, respondToAsk, verifyLoginCode } from "./actions";
@@ -110,9 +111,13 @@ export default async function CrewHome({
         claimedNote = `You’re on the ${fmtDate(shift.date)} shift — it’s in My shifts below.`;
       }
     }
-  } catch {
+  } catch (e) {
+    // The founding case of #854: `relation "shift_changes" does not exist` threw
+    // out of buildCrewAppView here, and this block rendered a calm notice with an
+    // empty log. The cause is now on the record.
+    logSwallowed("crew", e, "the crew home view did not build");
     return <Shell>
-      <Notice>Can’t reach the schedule right now. Try again in a moment.</Notice>
+      <Notice>{CREW_UNAVAILABLE}</Notice>
     </Shell>;
   }
   if (!view)

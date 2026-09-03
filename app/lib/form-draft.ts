@@ -135,6 +135,11 @@ export async function readFormDraft(surface: string): Promise<FormDraft | null> 
       (p): p is [string, string] =>
         Array.isArray(p) && p.length === 2 && typeof p[0] === "string" && typeof p[1] === "string",
     );
+    // NOT a fault (#854). The docstring above already settles it: "A malformed cookie
+    // reads as no draft… the failure mode that matters is the safe one." The bytes come
+    // from a client-held cookie, so a throw here is tampered or truncated input with a
+    // defined answer, not a defect in muster.
+    // eslint-disable-next-line no-restricted-syntax -- malformed draft cookie, not a fault
   } catch {
     return null;
   }

@@ -26,6 +26,7 @@ import { SubmitButton } from "../../../../components/ui/submit-button";
 import { vesselHueClass } from "../../../lib/vessel-hue";
 import { errCopyFor } from "../../../lib/err-copy";
 import { getRepo } from "../../../lib/repo";
+import { logSwallowed } from "../../../lib/swallowed";
 import { holdSlot, releaseHold, type CalendarErr } from "./actions";
 
 /**
@@ -200,7 +201,11 @@ export async function loadCalendarData(sp: Search): Promise<CalendarData | null>
       repo.listEvents(),
       repo.listAllReservations(),
     ]);
-  } catch {
+  } catch (e) {
+    // Returning `null` hands each route a bare "couldn't load" with no cause, and
+    // this loader serves several of them — so the log line is where the reason
+    // survives for all of them.
+    logSwallowed("admin/calendar", e, "the calendar data did not load");
     return null;
   }
 

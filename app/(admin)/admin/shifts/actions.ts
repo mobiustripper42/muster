@@ -10,6 +10,7 @@ import { readSubject } from "../../../lib/auth";
 import { forwardFormNotices, forwardNoticesToOutbox } from "../../../lib/channel";
 import { OPERATOR_CREW_MEMBER_ID } from "../../../lib/operator";
 import { getRepo } from "../../../lib/repo";
+import { logSwallowed } from "../../../lib/swallowed";
 
 /**
  * Builder Edit-mode split (SPEC §2.3, DEC-083) — auth + glue over `splitShift`;
@@ -44,22 +45,30 @@ export async function splitAction(formData: FormData): Promise<void> {
     // Best-effort, like the merge relay: the split already committed.
     try {
       await forwardFormNotices(form);
-    } catch {
+    } catch (e) {
       // relay is best-effort; the split stands regardless (DEC-084)
+      // The comment above says it: a split CONSUMES the transition, so nothing
+      // re-observes it later. This relay is the crew member's only notice, and if
+      // it fails here they are never texted at all (#259).
+      logSwallowed("admin/shifts:splitAction", e, "the form-transition notice was consumed and never relayed");
     }
     // Audit (DEC-118): a split re-partitions a day's trips, so its surviving crew's
     // committed day may move (`changedCrew` → `shift_changed`), actor `admin`. Same
     // best-effort, post-commit posture as the relay and the import audit.
     try {
       await logFormAudit(getRepo(), form, { kind: "admin", id: subject!.id }, now);
-    } catch {
+    } catch (e) {
       // audit is best-effort; the split stands regardless
+      logSwallowed("admin/shifts:splitAction", e, "the split's shift_changed audit row was not written");
     }
     param = "split_ok=1";
-  } catch {
+  } catch (e) {
     // Every failure (bad/duplicate cut, already-split, day vanished mid-edit)
     // collapses to one honest, reload-and-retry notice — the operator only ever
     // picks a valid trip-time cut, so a reachable failure is always a race.
+    // "Always a race" is a claim about the EXPECTED failures. This log is what
+    // tells you when it was something else.
+    logSwallowed("admin/shifts:splitAction", e, "the split did not complete");
     param = "split_err=failed";
   }
   revalidatePath("/admin/shifts");
@@ -109,8 +118,9 @@ export async function mergeAction(formData: FormData): Promise<void> {
           shiftId: asId<"ShiftId">(shiftId),
         })),
       );
-    } catch {
+    } catch (e) {
       // Relay is best-effort; the merge stands regardless (DEC-084).
+      logSwallowed("admin/shifts:mergeAction", e, "the freed crew were not told they came off the shift");
     }
     // INDEPENDENT relay (its own guard): any external Cancelled↔live transition
     // the merge's one-shot re-form observed (#259) — same consume-once reasoning
@@ -119,8 +129,9 @@ export async function mergeAction(formData: FormData): Promise<void> {
     // fine (Twilio: an extra text beats a missed one; the outbox dedupes by slot).
     try {
       await forwardFormNotices(form);
-    } catch {
+    } catch (e) {
       // best-effort; the merge stands regardless (DEC-084)
+      logSwallowed("admin/shifts:mergeAction", e, "the form-transition notice was consumed and never relayed");
     }
     // Audit (DEC-118), mirroring the two relays above so no removal is unlogged:
     //  - `form` covers side A's "shift changed" (changedCrew → shift_changed);
@@ -136,13 +147,18 @@ export async function mergeAction(formData: FormData): Promise<void> {
           shiftId: asId<"ShiftId">(shiftId),
         });
       }
-    } catch {
+    } catch (e) {
       // audit is best-effort; the merge stands regardless
+      // The loop is not atomic: a throw partway leaves some freed crew logged as
+      // removed and the rest not, so the trail is partially wrong rather than
+      // wholly absent.
+      logSwallowed("admin/shifts:mergeAction", e, "some or all of the merge's removal audit rows were not written");
     }
     // Surface the count so the page can confirm who got told (button feedback, #202).
     param = `merge_ok=${toNotify.length}`;
-  } catch {
+  } catch (e) {
     // A race (already merged, day vanished, non-split target) → one honest notice.
+    logSwallowed("admin/shifts:mergeAction", e, "the merge did not complete");
     param = "merge_err=failed";
   }
   revalidatePath("/admin/shifts");

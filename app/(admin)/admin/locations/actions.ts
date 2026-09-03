@@ -7,6 +7,7 @@ import { saveLocationAdmin, type LocationSaveError } from "@core/admin/location-
 import { readSubject } from "../../../lib/auth";
 import { clearFormDraft, stashFormDraft } from "../../../lib/form-draft";
 import { getRepo } from "../../../lib/repo";
+import { logSwallowed } from "../../../lib/swallowed";
 
 /**
  * Every code this surface can put in `?err=` (#654) — the domain's validation errors plus the
@@ -41,7 +42,8 @@ export async function saveLocation(formData: FormData): Promise<void> {
       ...(pickupLink ? { pickupLink } : {}),
     });
     code = result.ok ? null : result.code;
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/locations:saveLocation", e, "the location was not saved");
     code = "error";
   }
 

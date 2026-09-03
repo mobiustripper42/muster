@@ -27,6 +27,10 @@ export const dynamic = "force-dynamic";
 function safeDecode(segment: string): string {
   try {
     return decodeURIComponent(segment);
+    // NOT a fault (#854). `segment` comes off the URL, so a stray `%` is a value a
+    // person typed, not a defect in muster. The function's whole purpose is to
+    // tolerate it; logging would write a line every time someone mangles a path.
+    // eslint-disable-next-line no-restricted-syntax -- malformed URL input, not a fault
   } catch {
     return segment;
   }

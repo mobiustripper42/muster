@@ -7,6 +7,7 @@ import { asId } from "@core/domain/ids.js";
 import { readSubject } from "../../../lib/auth";
 import { OPERATOR_CREW_MEMBER_ID } from "../../../lib/operator";
 import { getRepo } from "../../../lib/repo";
+import { logSwallowed } from "../../../lib/swallowed";
 
 /**
  * Outbox actions (DEC-030) — auth + glue, no client JS (DEC-026 pattern):
@@ -59,7 +60,11 @@ export async function recordSent(entryId: string): Promise<{ ok: boolean }> {
     // could stomp that optimistic flip; the server truth shows on the next
     // natural load (the card moves to the Sent section then).
     return { ok: true };
-  } catch {
+  } catch (e) {
+    // The card stays optimistically flipped in the browser (see above) while the
+    // server never recorded the send — so on the next natural load it reappears
+    // as pending and the operator texts the same person twice.
+    logSwallowed("admin/outbox:recordSent", e, "the ask outbox entry was not marked sent");
     return { ok: false };
   }
 }
@@ -82,7 +87,8 @@ export async function recordRingSent(entryId: string): Promise<{ ok: boolean }> 
       sentAt: new Date().toISOString(),
     });
     return { ok: true };
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/outbox:recordRingSent", e, "the ring outbox entry was not marked sent");
     return { ok: false };
   }
 }
@@ -107,7 +113,8 @@ export async function recordNoticeSent(entryId: string): Promise<{ ok: boolean }
       sentAt: new Date().toISOString(),
     });
     return { ok: true };
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/outbox:recordNoticeSent", e, "the notice outbox entry was not marked sent");
     return { ok: false };
   }
 }
@@ -137,7 +144,8 @@ export async function answerOwnAsk(formData: FormData): Promise<void> {
     } else {
       param = `answered=${response}`;
     }
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/outbox:answerOwnAsk", e, "the operator's own answer was not recorded");
     param = "obx_error=unavailable";
   }
   finish(param);
@@ -154,7 +162,8 @@ export async function dismissOutboxEntry(formData: FormData): Promise<void> {
     // by the timeout that didn't exist when it was filed.)
     await getRepo().removeOutboxEntry(asId<"OutboxEntryId">(entryId));
     param = "dismissed=ok";
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/outbox:dismissOutboxEntry", e, "the outbox entry was not dismissed");
     param = "obx_error=unavailable";
   }
   finish(param);

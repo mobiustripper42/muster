@@ -8,6 +8,7 @@ import { addTimeOff, removeTimeOff, type AddTimeOffCode } from "@core/crew/time-
 import { readSubject } from "../../../lib/auth";
 import { clearFormDraft, stashFormDraft } from "../../../lib/form-draft";
 import { getRepo } from "../../../lib/repo";
+import { logSwallowed } from "../../../lib/swallowed";
 
 /**
  * Every code this surface can put in `?err=` (#654) — the domain's validation errors plus the
@@ -44,7 +45,8 @@ export async function adminAddTimeOff(formData: FormData): Promise<void> {
       end,
     });
     code = result.ok ? null : result.code;
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/time-off:adminAddTimeOff", e, "the time-off window was not saved");
     code = "error";
   }
 
@@ -61,7 +63,8 @@ export async function adminRemoveTimeOff(formData: FormData): Promise<void> {
 
   try {
     if (id) await removeTimeOff(getRepo(), asId<"PtoWindowId">(id));
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/time-off:adminRemoveTimeOff", e, "the time-off window was not removed");
     revalidatePath("/admin/time-off");
     await clearFormDraft("/admin/time-off");
     redirect("/admin/time-off?err=error");

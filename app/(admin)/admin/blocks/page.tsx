@@ -10,6 +10,7 @@ import { readSubject } from "../../../lib/auth";
 import { errCopyFor } from "../../../lib/err-copy";
 import { readFormDraft } from "../../../lib/form-draft";
 import { getRepo } from "../../../lib/repo";
+import { ADMIN_LOG_HINT, logSwallowed } from "../../../lib/swallowed";
 import type { BlockErr } from "./actions";
 import {
   KindPill,
@@ -91,10 +92,11 @@ export default async function AdminBlocks({
       repo.listEvents(),
       repo.listAllReservations(),
     ]);
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/blocks", e, "the blocks view did not load");
     return (
       <Shell width="6xl">
-        <Notice>Couldn’t reach the blocks right now. Try again in a moment.</Notice>
+        <Notice>Couldn’t reach the blocks right now. {ADMIN_LOG_HINT}</Notice>
       </Shell>
     );
   }

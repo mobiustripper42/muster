@@ -10,6 +10,7 @@ import { readSubject } from "../../../lib/auth";
 import { errCopyFor } from "../../../lib/err-copy";
 import { readFormDraft } from "../../../lib/form-draft";
 import { getRepo } from "../../../lib/repo";
+import { ADMIN_LOG_HINT, logSwallowed } from "../../../lib/swallowed";
 import { saveOffering, type OfferingErr } from "./actions";
 import {
   STATUS_COPY,
@@ -75,10 +76,11 @@ export default async function AdminOfferings({
       repo.listLocations(),
       repo.listAddOns(),
     ]);
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/offerings", e, "the catalog did not load");
     return (
       <Shell width="6xl">
-        <Notice>Couldn’t reach the catalog right now. Try again in a moment.</Notice>
+        <Notice>Couldn’t reach the catalog right now. {ADMIN_LOG_HINT}</Notice>
       </Shell>
     );
   }

@@ -100,6 +100,11 @@ export async function saveOffering(formData: FormData): Promise<void> {
     const parsed: unknown = JSON.parse(String(formData.get("priceVariations") ?? "[]"));
     if (Array.isArray(parsed)) priceVariations = parsed as PriceVariation[];
     else variationsParse = false;
+    // NOT a fault (#854). This parses a form field, i.e. bytes the browser posted.
+    // Malformed input has a defined answer here — `variationsParse = false`, which the
+    // operator sees as a refusal — and the non-array branch above already handles the
+    // same case without throwing.
+    // eslint-disable-next-line no-restricted-syntax -- malformed form field, not a fault
   } catch {
     variationsParse = false;
   }

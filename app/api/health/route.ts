@@ -1,6 +1,7 @@
 import pg from "pg";
 import { NextResponse } from "next/server";
 import { SEAT_STATES, SHIFT_STATES } from "@core/domain/states.js";
+import { logSwallowed } from "../../lib/swallowed";
 
 /**
  * Health route (DEC-020). Two jobs:
@@ -37,7 +38,13 @@ export async function GET() {
       core,
       db: { reachable: true },
     });
-  } catch {
+  } catch (e) {
+    // The one catch in the app that sheepdog can actually see — `muster-health`
+    // asserts `"db":{"reachable":true}` against this response (sheepdog.yaml:169-178).
+    // It sees the VERDICT, never the reason: a wrong DATABASE_URL, a suspended Neon
+    // compute and a network partition all render as the same `degraded`. This line is
+    // where the difference survives.
+    logSwallowed("api/health", e, "the Postgres liveness ping failed — reporting degraded");
     return NextResponse.json({
       status: "degraded",
       core,

@@ -16,6 +16,7 @@ import { readSubject } from "../../../lib/auth";
 import { timeClockEnabled } from "../../../lib/flags";
 import { clearFormDraft, stashFormDraft } from "../../../lib/form-draft";
 import { getRepo } from "../../../lib/repo";
+import { logSwallowed } from "../../../lib/swallowed";
 
 /**
  * Every code this surface can put in `?err=` (#654) — the domain's result codes across all of
@@ -115,7 +116,9 @@ export async function addPunchAction(formData: FormData): Promise<void> {
         outAt,
       });
       code = result.ok ? null : result.code;
-    } catch {
+    } catch (e) {
+      // Payroll path — this punch is hours somebody gets paid for.
+      logSwallowed("admin/time-clock:addPunchAction", e, "the punch was not written");
       code = "error";
     }
   }
@@ -169,7 +172,8 @@ export async function editPunchAction(formData: FormData): Promise<void> {
         now: new Date(),
       });
       code = result.ok ? null : result.code;
-    } catch {
+    } catch (e) {
+      logSwallowed("admin/time-clock:editPunchAction", e, "the punch edit was not written");
       code = "error";
     }
   }
@@ -192,7 +196,8 @@ export async function deletePunchAction(formData: FormData): Promise<void> {
   let code: TimeClockErr | null = null;
   try {
     if (id) await deletePunch(getRepo(), asId<"TimePunchId">(id));
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/time-clock:deletePunchAction", e, "the punch delete was not written");
     code = "error";
   }
 

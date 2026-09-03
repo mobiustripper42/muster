@@ -14,6 +14,7 @@ import { AdminSignedOut } from "../../../../components/admin/admin-signed-out";
 import { TENANT_TIMEZONE } from "@core/config/tenant.js";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
+import { ADMIN_LOG_HINT, logSwallowed } from "../../../lib/swallowed";
 
 /**
  * The At-Risk Board (SPEC §2.5, #42) — the triage worklist of shifts the
@@ -56,10 +57,11 @@ export default async function AtRiskBoard({
   try {
     rows = await deriveAtRiskBoard(repo, now);
     vms = await buildVMs(rows);
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/at-risk", e, "the At-Risk board did not derive");
     return (
       <Shell width="3xl">
-        <Notice>Can’t reach the schedule right now. Try again in a moment.</Notice>
+        <Notice>Couldn’t reach the At-Risk board right now. {ADMIN_LOG_HINT}</Notice>
       </Shell>
     );
   }
@@ -71,8 +73,13 @@ export default async function AtRiskBoard({
   let enginePaused = false;
   try {
     enginePaused = await repo.isEnginePaused();
-  } catch {
+  } catch (e) {
     /* flag unreadable — omit the banner rather than break the board */
+    // An empty board is the SUCCESS condition here, and a muted engine also
+    // produces an empty board. This banner is the only thing that tells them
+    // apart, so its absence reads as "all clear" — the exact confusion the
+    // banner exists to prevent (#124, DEC-054).
+    logSwallowed("admin/at-risk", e, "the engine-paused flag was unreadable — the paused banner is missing");
   }
 
   // `leaned`/`leaned_shift` carry ids; resolve to entities we know (a crafted

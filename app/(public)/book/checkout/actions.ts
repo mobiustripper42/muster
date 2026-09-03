@@ -8,6 +8,7 @@ import { canonicalizePhone } from "@core/customers/identity.js";
 import { isHolderToken, mintHolderToken } from "@core/reservations/holder-token.js";
 import { cookies } from "next/headers";
 import { getRepo } from "../../../lib/repo";
+import { logSwallowed } from "../../../lib/swallowed";
 import { reservationsEnabled } from "../../../lib/flags";
 
 /**
@@ -109,10 +110,16 @@ async function readOrMintHolderToken(): Promise<string | undefined> {
       maxAge: 30 * 60,
     });
     return minted;
-  } catch {
+  } catch (e) {
     // A server action CAN set cookies; a render cannot. If this ever moves, the checkout must
     // keep working — an absent token means "mint a fresh hold", which is exactly what happened
     // before this feature existed.
+    //
+    // So on TODAY's call path this should never fire, which is exactly why it is
+    // logged rather than exempted: the day it does, the checkout silently stops
+    // reusing holds and every customer mints a fresh one, with nothing on screen
+    // and no test that would notice.
+    logSwallowed("book/checkout:readOrMintHolderToken", e, "no holder token — this checkout will mint a fresh hold");
     return undefined;
   }
 }

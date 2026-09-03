@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { asId } from "@core/domain/ids.js";
 import { readSubject } from "../../lib/auth";
 import { getRepo } from "../../lib/repo";
+import { logSwallowed } from "../../lib/swallowed";
 
 /**
  * Record that a guest was texted (#345 Part B). Hit best-effort (a keepalive fetch)
@@ -23,6 +24,10 @@ export async function POST(req: Request): Promise<Response> {
   let body: { reservationId?: unknown; shiftId?: unknown };
   try {
     body = await req.json();
+    // NOT a fault (#854). An unparseable body on a POST is bad input, answered with the
+    // 400 below. The caller is a keepalive fetch that can be cut off mid-flight by the
+    // browser handing off to Messages, so a truncated body is expected here.
+    // eslint-disable-next-line no-restricted-syntax -- truncated beacon body, not a fault
   } catch {
     return new NextResponse(null, { status: 400 });
   }
@@ -44,7 +49,11 @@ export async function POST(req: Request): Promise<Response> {
       contactedByName: name ?? "someone",
       contactedAt: new Date().toISOString(),
     });
-  } catch {
+  } catch (e) {
+    // The caller is a keepalive fetch with nothing watching the response, so this
+    // 500 is seen by nobody: the crew member's Text button already handed off to
+    // Messages and the manifest will simply never show they made contact.
+    logSwallowed("api/guest-contact", e, "the guest-contact row was not recorded — the manifest will not show who texted");
     return new NextResponse(null, { status: 500 });
   }
   return new NextResponse(null, { status: 204 });

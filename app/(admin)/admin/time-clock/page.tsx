@@ -22,6 +22,7 @@ import { errCopyFor } from "../../../lib/err-copy";
 import { readFormDraft, type FormDraft } from "../../../lib/form-draft";
 import { timeClockEnabled } from "../../../lib/flags";
 import { getRepo } from "../../../lib/repo";
+import { ADMIN_LOG_HINT, logSwallowed } from "../../../lib/swallowed";
 import {
   addPunchAction,
   deletePunchAction,
@@ -121,10 +122,11 @@ export default async function AdminTimeClock({
         : buildCrewPeriodView(repo, asId<"CrewMemberId">(selectedCrew), period),
       dayMode ? buildDayView(repo, day) : Promise.resolve(null),
     ]);
-  } catch {
+  } catch (e) {
+    logSwallowed("admin/time-clock", e, "the roster, stale punches and period/day views did not load");
     return (
       <Shell width="3xl">
-        <Notice>Couldn’t load the time clock right now. Try again in a moment.</Notice>
+        <Notice>Couldn’t load the time clock right now. {ADMIN_LOG_HINT}</Notice>
       </Shell>
     );
   }

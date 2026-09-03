@@ -35,7 +35,7 @@ const CONFIG = '.claude/doc-check.json'
 
 export function config(path = CONFIG) {
   if (!existsSync(path)) throw new Error(`${path} is missing — check-docs needs its roster and exemption lists`)
-  return { rosters: {}, historical: {}, foreignDecs: {}, knownForeign: [], ...JSON.parse(readFileSync(path, 'utf8')) }
+  return { rosters: {}, historical: {}, foreignDecs: {}, knownForeign: [], knownForeignAgents: [], ...JSON.parse(readFileSync(path, 'utf8')) }
 }
 
 const CFG = config()
@@ -66,6 +66,9 @@ export const HISTORICAL = CFG.historical
 /** Slash commands the docs name that are deliberately not this project's — plugin skills and
  *  Claude Code built-ins. Enumerated rather than pattern-matched so adding one is a decision. */
 export const KNOWN_FOREIGN = new Set(CFG.knownForeign)
+/** The agent-side twin. A name a declaring doc may use that is not one of ours — a placeholder
+ *  like `@me`, or a handle belonging to something else entirely. */
+export const KNOWN_FOREIGN_AGENTS = new Set(CFG.knownForeignAgents)
 
 /**
  * Docs exempt from the decision-reference check, each with the reason.
@@ -242,15 +245,24 @@ export function checkIssueLinks(docs, repo = REPO) {
  * half that costs nothing is the half that catches a retirement: a project carried `/pause-this`
  * for a day after the skill was deleted, in the one file every session reads as ground truth.
  *
- * SKILLS ONLY. `agents: "mentions"` is deliberately NOT a thing, and the first draft of this
- * shipped it as one — a value the config accepted and nothing acted on. There is no reverse check
- * for agents: the unknown-name loop below walks `named` (slash commands) and there is no `mentioned`
- * equivalent, because `AGENT_MENTION` matches any `@word` and a real corpus is full of them —
- * `@core` is an import alias, `@theme` is a CSS at-rule. Catching a retired `@agent` needs a
- * foreign-name list of its own, which is a separate change; promising it here with nothing behind
- * it is worse than not offering it.
+ * `agents: "mentions"` WAS REFUSED, AND THE REFUSAL WAS RIGHT UNTIL THE LIST EXISTED. It shipped
+ * once as a value the config accepted and no code read — a rule that looks applied and is not,
+ * which is the class this gate exists to close. The refusal that replaced it named its own
+ * condition: catching a retired `@agent` needs a foreign-name list of its own.
+ *
+ * `knownForeignAgents` is that list, and the reasoning it corrects is worth keeping. The objection
+ * was that `AGENT_MENTION` matches any `@word` and a real corpus is full of them — `@core` an
+ * import alias, `@theme` a CSS at-rule. True in general, and not what the corpus turned out to
+ * hold: across jig's whole gated set there are nine distinct names, and eight sit in RETIREMENT
+ * RECORDS whose entire job is naming what was retired and why.
+ *
+ * So the fix is not a bigger list, it is PER-FILE OPT-IN — which roster claims already were. A
+ * retirement record claims nothing about agents and stays silent; a file that presents its names
+ * as live has to mean it. That distinction is what a global scan could not make, and it is why
+ * `scaffold/docs/FUTURE_IDEAS.md` could ship "`@ideas` tends this file" into every project, naming
+ * an agent `docs/ANALYSIS.md` records as decided against, with every gate green.
  */
-export function checkRosters(docs, { skills, agents }, rosters = ROSTERS) {
+export function checkRosters(docs, { skills, agents }, rosters = ROSTERS, foreignAgents = KNOWN_FOREIGN_AGENTS) {
   const failures = []
   const byPath = new Map(docs.map((d) => [d.path, d]))
   for (const [roster, claims] of Object.entries(rosters)) {
@@ -264,11 +276,6 @@ export function checkRosters(docs, { skills, agents }, rosters = ROSTERS) {
     for (const m of doc.text.matchAll(SLASH_COMMAND)) named.add(m[1] ?? m[2])
     const mentioned = new Set([...doc.text.matchAll(AGENT_MENTION)].map((m) => m[1]))
 
-    // Refused rather than ignored. A config value nothing acts on is a rule that looks applied and
-    // is not, which is the class this whole gate exists to close — and the first draft of this
-    // function shipped exactly that.
-    if (claims.agents === 'mentions')
-      failures.push(`${roster} — \`agents: "mentions"\` is not implemented; use true or false. Only skills support "mentions"`)
     // `=== true` and not truthiness: `"mentions"` is also truthy, and reading it as "list
     // everything" is the failure this distinction exists to prevent.
     if (claims.skills === true)
@@ -283,6 +290,26 @@ export function checkRosters(docs, { skills, agents }, rosters = ROSTERS) {
       if (!skills.has(n) && KNOWN_FOREIGN.has(n)) continue
       if (!skills.has(n)) failures.push(`${roster} — roster lists /${n}, which has no .claude/skills/ entry`)
     }
+    /**
+     * The reverse direction, and it runs for `"mentions"` ONLY — not for `true`. That is not an
+     * oversight, it is what the two values mean.
+     *
+     * `true` is a claim about DISK → DOC: every agent that exists is listed here. `"mentions"` is
+     * the opposite direction, DOC → DISK: every name here is live. A document can honestly make
+     * the first and not the second, and `docs/AGENTS.md` is exactly that — a complete roster of
+     * what exists AND the record of what was retired, naming `@doc-consistency`, `@ideas` and
+     * `@tape-reader` in a table whose column is why they went. Running the reverse on `true` made
+     * jig's own gate red on three lines doing their job, which is how this got written down.
+     *
+     * The cost, stated rather than discovered later: a doc declaring `agents: true` gets no
+     * liveness check, so a retired name in `CLAUDE.md`'s agent table would still pass. Both at
+     * once needs a third value, and there is no file that wants one today.
+     */
+    if (claims.agents === 'mentions')
+      for (const a of mentioned) {
+        if (agents.has(a) || foreignAgents.has(a)) continue
+        failures.push(`${roster} — names @${a}, which has no .claude/agents/ entry`)
+      }
   }
   return failures
 }
@@ -334,10 +361,24 @@ export function checkExemptions() {
  * whole file exists to close, so the completeness claim needs its own assertion rather than
  * riding on a doc happening to be present.
  */
-export function checkRosterDocsExist() {
-  return Object.keys(ROSTERS)
-    .filter((p) => !existsSync(p))
-    .map((p) => `${p} — named in ${CONFIG} as a roster but does not exist`)
+export function checkRosterDocsExist(rosters = ROSTERS, docs = DOCS) {
+  const gated = new Set(docs)
+  return Object.keys(rosters).flatMap((p) => {
+    if (!existsSync(p)) return [`${p} — named in ${CONFIG} as a roster but does not exist`]
+    /**
+     * EXISTING ON DISK IS NOT ENOUGH, and this branch is here because a roster declared for
+     * `scaffold/claude/CLAUDE-context.md` was inert: the file is real, and `scaffold/claude/` is
+     * excluded from `DOCS`, so `checkRosters` hit `if (!doc) continue` and nothing failed
+     * anywhere. A declared rule nothing reads is precisely the defect this gate exists to close,
+     * and it was found by hand-mutating the config rather than by any check.
+     *
+     * Third time in one session for this shape — `check-denied`'s runbook list fails an entry that
+     * exempts nothing, then gained a scope check for the same reason. At three it stops being a
+     * note and becomes a rule.
+     */
+    if (!gated.has(p)) return [`${p} — named in ${CONFIG} as a roster but is not one of the documents this gate reads, so the claim is never checked`]
+    return []
+  })
 }
 
 /**

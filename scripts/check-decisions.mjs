@@ -22,6 +22,17 @@ import { createHash } from 'node:crypto'
 // runs. The test suite passing is not evidence the gate runs.
 import { load as parseYaml } from 'js-yaml'
 import {
+  BASELINE_PATH,
+  fingerprint,
+  frontmatterBlock,
+  hasSchemaKey,
+  idOf,
+  legacyVerdict,
+  loadBaseline,
+  recordBody,
+  sizeOf,
+} from './lib/records.mjs'
+import {
   DIR,
   OUT,
   SPEC,
@@ -84,8 +95,7 @@ const MAX_BYTES = 2000
  * than YAML, so `schema: 1  # v1 draft` and `schema: "1"` both read as "never opted in" and the
  * record got zero enforcement with nothing saying so.
  */
-export const hasSchemaKey = (block) => /^schema:/m.test(block)
-export const idOf = (block) => block.match(/^id: *(\S+)/m)?.[1]
+// Definition moved to `scripts/lib/records.mjs`; re-exported below.
 
 /**
  * Bytes of the whole record.
@@ -100,7 +110,7 @@ export const idOf = (block) => block.match(/^id: *(\S+)/m)?.[1]
  * decision about how to write amendments is exactly the kind this repo writes. Whole-file
  * measurement has no such hole to guard.
  */
-export const sizeOf = (text) => Buffer.byteLength(text, 'utf8')
+// Definition moved to `scripts/lib/records.mjs`; re-exported below.
 
 /**
  * ── The legacy freeze ────────────────────────────────────────────────────────
@@ -122,73 +132,40 @@ export const sizeOf = (text) => Buffer.byteLength(text, 'utf8')
  * jig's baseline is empty, so it grandfathers nothing. That is where its strictness comes from
  * now: a fact about its corpus rather than a branch hardcoded to one repo's history.
  */
-export const BASELINE_PATH = 'docs/decisions-baseline.txt'
-
+/**
+ * MOVED TO `scripts/lib/records.mjs`, and re-exported here so this file's public surface is
+ * unchanged. They left because `check-dictionary` needs the same notion of a frozen record and
+ * importing this gate for it would drag in `gen-decisions-index.mjs`, `js-yaml` and a module-scope
+ * read of `docs/decisions/_config.json` — coupling one gate's ability to RUN to another gate's
+ * config. The dictionary gate currently degrades gracefully when that file is absent.
+ */
 /**
  * Every directory holding records. BOTH scripts read this, and that is the point.
  *
  * The checker swept `docs/decisions/` and `docs/decisions/archive/`; the generator read only the
- * first. So an archived legacy record — untouched, genuinely historical — got no baseline line
- * and then failed as `not-listed`, permanently, on a file nobody had opened. Exactly the corpus
- * this gate exists to let a project adopt.
+ * first. So an archived legacy record — untouched, genuinely historical — got no baseline line and
+ * then failed as `not-listed`, permanently, on a file nobody had opened. Exactly the corpus this
+ * gate exists to let a project adopt.
+ *
+ * STAYS HERE rather than moving to the shared lib with the rest: it is built from `DIR`, which
+ * comes from `gen-decisions-index.mjs`, and the whole point of the extraction was that a caller
+ * needing to know what "frozen" means should not inherit that dependency. `frozenRecords` takes
+ * its directories as an argument for the same reason.
  */
 export const RECORD_DIRS = [DIR, `${DIR}/archive`]
 
-/**
- * The frontmatter block, or `''` if there is none.
- *
- * ALSO SHARED BECAUSE THE TWO SCRIPTS DISAGREED. The checker required `---\n` at byte 0, so a
- * CRLF file or a leading BOM produced an empty block: `idOf` returned undefined and the record
- * failed as `not-listed` forever — while the generator's lenient split had written a correct
- * baseline line for the very same file. The same strict guard also made `hasSchemaKey` false on a
- * CRLF v1 record, routing something modern into the legacy path.
- *
- * Line endings are normalized before anything looks at the text, so a corpus written on Windows
- * reads the same as one written here.
- */
-const normalize = (text) => text.replace(/^﻿/, '').replace(/\r\n/g, '\n')
-
-export function frontmatterBlock(text) {
-  const t = normalize(text)
-  if (!t.startsWith('---\n')) return ''
-  const end = t.indexOf('\n---\n', 3)
-  return end === -1 ? '' : t.slice(4, end)
-}
-
-/** Everything after the frontmatter, off the SAME normalized text the block came from.
- *
- *  Half-normalizing was the first bug one layer down: `frontmatterBlock` normalized while the
- *  body slice still ran on raw bytes, so a CRLF record's `indexOf('\n---\n')` missed and the
- *  "body" handed to the prose rules was very nearly the whole file, frontmatter included. */
-export function recordBody(text) {
-  const t = normalize(text)
-  const end = t.indexOf('\n---\n', 3)
-  return end === -1 ? t : t.slice(end + 5)
-}
-
-export const fingerprint = (text) => createHash('md5').update(text, 'utf8').digest('hex')
-
-/** `Map<id, fingerprint>`. A missing file is an empty baseline, which is the correct reading for
- *  a repo that never had legacy records — not an error. */
-export function loadBaseline(path = BASELINE_PATH) {
-  if (!existsSync(path)) return new Map()
-  return new Map(
-    readFileSync(path, 'utf8')
-      .split('\n')
-      .map((l) => l.replace(/#.*/, '').trim())
-      .filter(Boolean)
-      .map((l) => l.split(/\s+/))
-      .filter(([id, hash]) => id && hash)
-      .map(([id, hash]) => [id, hash]),
-  )
-}
-
-/** `frozen` — leave it alone. `not-listed` / `edited` — fail, with different advice. */
-export function legacyVerdict(id, text, baseline) {
-  const known = baseline.get(id)
-  if (!known) return 'not-listed'
-  return known === fingerprint(text) ? 'frozen' : 'edited'
-}
+export {
+  BASELINE_PATH,
+  fingerprint,
+  frontmatterBlock,
+  frozenRecords,
+  hasSchemaKey,
+  idOf,
+  legacyVerdict,
+  loadBaseline,
+  recordBody,
+  sizeOf,
+} from './lib/records.mjs'
 
 /** The subset of draft 2020-12 the schema actually uses. Written out rather than pulled in
  *  because it is ~70 lines against a dependency, and because every message here has to name

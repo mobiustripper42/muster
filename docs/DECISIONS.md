@@ -202,6 +202,7 @@ cross-reference left, and it points at the spec, never at another decision.
 - DEC-162 — The operator books by sending a payment link
 - DEC-163 — An operator's booking does not expire
 - DEC-164 — The frozen money is one value on our own row
+- DEC-165 — Occupancy never reads a payment row
 
 ### UI, brand & frontend patterns
 - DEC-021 — Frontend styling = Tailwind v4; component library deferred

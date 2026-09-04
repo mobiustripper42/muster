@@ -5,7 +5,7 @@ branch: task/reservations-phase-plan
 started: 2026-09-03T17:47:36Z
 ended:
 points:
-pr_numbers: [905, 910]
+pr_numbers: [905, 910, 924]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster-s91/fc4ca4b8-4ceb-5d27-9011-6826c042120c.jsonl
 ---
@@ -41,9 +41,25 @@ transcript: /home/eric/.claude/projects/-home-eric-muster-s91/fc4ca4b8-4ceb-5d27
 **Branch:** task/reservations-phase-plan-14-16
 **Opened at:** 2026-09-04T15:50:15Z
 
+## Task 3: Phase 14.1 — three states, no sweeper, pending shows as held; DEC-109 withdrawn
+
+**Completed:**
+- No new DEC after all — operator's model: the spec holds settled answers; a record is for a later change of mind or a frozen supersession. `docs/SPEC.md` §2.8.1 union is `pending | booked | cancelled`; lapsed is computed on every read, never stored; §2.8.8 has no sweeper, reaper never deletes a row with a payment id; §2.8.10 calendar shows a live pending row as `held`; §2.10.2 fixes the five slot states `open` `sold` `held` `busy` `blocked` (`busy` replaces `unavailable` in prose; code rename rides with 14.9).
+- `docs/decisions/DEC-109-*.md` → v1 `status: withdrawn` signpost to §2.8.1 (gate needs a successor DEC for `superseded`; the successor is the spec). Baseline line dropped.
+- `docs/dictionary.yml` — `lapsed` + five slot states.
+- `docs/audit/2026-08-29-spec-2.8-conformance.md` + `scripts/check-audit-citations.mjs` — 74 SPEC + 8 code citations renumbered by script off the diff hunk map; four dated notes on findings that quoted deleted sweeper sentences. `check:audit` was already red on `main` (PR #903) — rode along on the operator's call.
+- Comments on issues #912, #913 (14.2: add `pending` only), #919 (14.8: reaper, not sweeper). `PROJECT_PLAN.md` untouched mid-phase.
+
+**Code review:** 2 findings, both fixed — DEC-109 understated its citation surface (22 files, not 2); six pre-existing off-by-one bare refs in the audit.
+**PR:** [PR #924](https://github.com/mobiustripper42/muster/pull/924)
+**Points:** 2 (audit re-baseline rode along; ~1 pt of unplanned work, no re-estimate)
+**Branch:** task/14.1-pending-row-decision
+**Opened at:** 2026-09-04T19:18:40Z
+
 **Next Steps:**
-- Merge PR #910, then `/start-phase 14` — materialise 14.1–14.9 as issues with `phase:14` / `points:N`; fold in issues #824, #825, #826, #806 rather than re-filing.
-- 14.1 first: the DEC for decisions 1 and 2 (`supersedes: [DEC-109]`), settling the three §2.8 open questions (window, pending-on-calendar, sweeper).
+- Merge PR #921 (Phase 14 link write-back) and PR #924.
+- 14.2 (issue #913) stacked on 14.1: `pending` in the union, nullable `eventId`, `admin` source — ship in the same stack as 14.3 (issue #914).
+- `check:audit` will go red again the moment 14.2 edits `entities.ts:615`; it is outside `verify` by design. Decide at 14.2 whether to keep re-baselining or retire the gate until the phase closes.
 
 **Context:**
 - Linked worktree (`muster-s91`). Session 102 open concurrently (live). Model: Fable 5.1 this session.

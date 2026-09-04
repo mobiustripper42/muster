@@ -138,12 +138,20 @@ const OFF = {
   // that lets the suite run without a database, and the reason `test:pg` exists. Kept off
   // rather than disabled inline at four sites across two rules.
   "sonarjs/no-skipped-tests": "off",                //   2 legitimate env gates
-  // DROPPED, and this one would have INTRODUCED a bug. Both findings are `!(a <= b)` in
-  // `doorbell-decider.ts`, where the operand can be `Date.parse` of a malformed string. On
-  // NaN every comparison is false, so `!(x <= y)` is TRUE and the code rings — "fail toward
-  // ringing", as the comment above it says. The rule's suggested `x > y` is FALSE on NaN and
-  // would silently skip the notification instead.
-  "sonarjs/no-inverted-boolean-check": "off",       //   2 deliberate NaN-safe inversions
+  // DROPPED. Two findings, two different reasons — and the first one matters:
+  //
+  // `doorbell-decider.ts:255` — `!(Date.parse(m.createdAt) <= lastNotifiedMs)`, on a
+  // timestamp off the wire. On NaN every comparison is false, so the inverted form is TRUE
+  // and the code RINGS — "fail toward ringing", as the comment above it says. The rule's
+  // `x > y` is FALSE on NaN and would silently skip the notification. **Obeying the rule
+  // here would introduce a bug.**
+  //
+  // `doorbell-decider.ts:178` — `!(presenceWindowMs > batchWindowMs)`, a startup invariant.
+  // A weaker case, and an earlier draft of this comment wrongly claimed the NaN argument
+  // covered it too: the loop at :174 already rejects a non-finite value, so NaN cannot
+  // reach it and `<=` would be equivalent. It stays off because the rule is off, not
+  // because this site needs it. Caught in review.
+  "sonarjs/no-inverted-boolean-check": "off",       //   1 NaN-safe inversion + 1 equivalent-but-harmless
   "sonarjs/no-nested-functions": "off",             //   1 finding  — style, in one client island
   "sonarjs/regex-complexity": "off",                //   1 finding  — a CSS comment stripper in a test
   // Its one "finding" is the word TODO inside prose DESCRIBING a TODO that was removed

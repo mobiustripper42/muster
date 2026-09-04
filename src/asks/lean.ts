@@ -1,5 +1,5 @@
 /**
- * The lean (SPEC §2.5, #43, DEC-026) — Spink's manual Tier-2 direct nudge from
+ * The lean (SPEC §2.5, #43, DEC-026) — Eric's manual Tier-2 direct nudge from
  * an At-Risk board row: "I need you on this", aimed at one specific person.
  *
  * A lean is an **ask**, not the override hammer (`manualOverride` confirms
@@ -16,7 +16,7 @@
  *    shift — the double-ask guard escalate gets from its mid-flight exclusion);
  *  - not someone who bailed on this shift (the re-ask already excludes them,
  *    DEC-019; the board's list does too).
- *  Decliners stay leanable — leaning on a "no" is Spink's call (§2.5).
+ *  Decliners stay leanable — leaning on a "no" is Eric's call (§2.5).
  *
  * A resting-`Bailed` gap seat is reopened on the way in: it rested only because
  * the pool was empty at bail time (DEC-019), and a valid lean target means that
@@ -173,7 +173,7 @@ export async function lean(
 }
 
 /**
- * Assign-from-pool (SPEC §2.4, #54): Spink names one person into one **specific**
+ * Assign-from-pool (SPEC §2.4, #54): Eric names one person into one **specific**
  * seat from the cockpit. Same accept set as `lean()` — the shared guards above
  * plus per-seat eligibility — but **no nudge log**: a plain assign is the
  * captain-flow entry (DEC-007), not an escalation. The server action calls this

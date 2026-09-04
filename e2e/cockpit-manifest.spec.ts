@@ -19,7 +19,7 @@ test.describe("cockpit guest manifest (#319)", () => {
   test("shows the per-event manifest below the seat list; guests expand", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/shift/shift-soon");
 
     // The manifest section rendered, with the per-event pax summaries visible
@@ -48,9 +48,9 @@ test.describe("cockpit guest manifest (#319)", () => {
     const textLink = page.locator('a[href^="sms:+15555551111?&body="]');
     await expect(textLink).toHaveText(/Text/);
     const body = decodeURIComponent((await textLink.getAttribute("href"))!);
-    // Sender = the signed-in operator (Spink); the static location + map pin; the
+    // Sender = the signed-in operator (Eric); the static location + map pin; the
     // dynamic day-of phrasing. (Departure time varies with the seed, so not pinned.)
-    expect(body).toContain("Hi, this is Spink with BrewBoat");
+    expect(body).toContain("Hi, this is Eric with BrewBoat");
     expect(body).toContain("I'll be taking you out at");
     expect(body).toContain("today. Please confirm the pickup location: Canal Basin Park near Flatiron Cafe.");
     expect(body).toContain("https://maps.app.goo.gl/A2vG7Q9LjKdZJpod9");
@@ -65,7 +65,7 @@ test.describe("cockpit guest manifest (#319)", () => {
   test("tapping a guest's Text records the contact; the shared ✓ then shows (#345 Part B)", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/shift/shift-soon");
     await page.getByText("10 guests").click(); // expand the 3pm trip (Brody has a phone)
     const manifest = page.getByRole("region", { name: "Manifest" });
@@ -81,9 +81,9 @@ test.describe("cockpit guest manifest (#319)", () => {
     expect(resp.status()).toBe(204);
 
     // Any subsequent render (the sender reloads, or another crew loads it) shows the
-    // shared mark — "✓ Texted by Spink · <time>".
+    // shared mark — "✓ Texted by Eric · <time>".
     await page.goto("/admin/shift/shift-soon");
     await page.getByText("10 guests").click();
-    await expect(manifest.getByText(/✓ Texted by Spink/)).toBeVisible();
+    await expect(manifest.getByText(/✓ Texted by Eric/)).toBeVisible();
   });
 });

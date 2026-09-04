@@ -342,7 +342,7 @@ describe("checkIntegrity", () => {
       id: asId<"MagicTokenId">("mtk-admin"),
       tokenHash: "adm",
       subjectKind: "admin",
-      subjectId: "spink@brewboat.co",
+      subjectId: "eric@brewboat.co",
       createdAt: "2026-07-01T12:00:00.000Z",
       expiresAt: "2026-07-01T12:15:00.000Z",
     });

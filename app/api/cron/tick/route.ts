@@ -18,7 +18,7 @@ import { forwardBoardAlerts } from "../../../lib/alert";
  * lazily on read (`resolveShiftStateOnRead`, the board deriver) — this does NOT
  * poll to compute expiry. It exists only for the irreducible outbound
  * side-effect: actually *sending* the asks. "No babysitting" means asks fire
- * whether or not Spink is looking, so an autonomous trigger is required — a
+ * whether or not Eric is looking, so an autonomous trigger is required — a
  * lazy-on-read fire would mean the engine only works when someone's watching.
  * The cadence is loose (15 min) against a 7-day staffing horizon; `tick` is
  * idempotent and guard-railed, so a tick with nothing due is a cheap no-op, and

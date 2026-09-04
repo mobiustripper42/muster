@@ -1,7 +1,7 @@
 // detail.jsx — right pane: the full per-person record + editing controls.
 const { fmtDate, fmtShort, poolBlockReason, effectiveBand, effectiveScore, poolRank, BANDS } = window.MusterData;
 
-// Manual thumb — Spink's editable reliability control (boost or floor band).
+// Manual thumb — Eric's editable reliability control (boost or floor band).
 function ManualThumb({ person, onChange }) {
   const t = person.manualThumb;
   return (
@@ -126,7 +126,7 @@ function PersonDetail(props) {
               </ul>
             )}
           </div>
-          <window.Field label="Spink's thumb" hint="The score itself isn't hand-edited — this is your manual override on top of it.">
+          <window.Field label="Eric's thumb" hint="The score itself isn't hand-edited — this is your manual override on top of it.">
             <ManualThumb person={person} onChange={(mt) => setField({ manualThumb: mt })} />
           </window.Field>
         </window.Section>

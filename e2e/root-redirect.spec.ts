@@ -50,7 +50,7 @@ test.describe("root redirect (#97)", () => {
 
   test("signed-in operator → /admin", async ({ page }) => {
     await resetAndSeed();
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/");
     await expect(page).toHaveURL(/\/admin(\/|\?|$)/);
     // `/admin` lands on the shifts board now (#603 — the hub is gone), so the landing heading

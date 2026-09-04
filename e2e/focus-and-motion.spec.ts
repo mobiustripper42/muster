@@ -21,7 +21,7 @@ test.describe("shared primitives — focus ring and reduced motion (#639)", () =
   test("a focused <select> gets the app's own ring, not the browser's", async ({ page }) => {
     // /admin/payroll is the plainest surface with a real select. The rule is global;
     // this is the cheapest place to prove it applies to form controls at all.
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/payroll");
 
     const select = page.locator("select#period");
@@ -38,7 +38,7 @@ test.describe("shared primitives — focus ring and reduced motion (#639)", () =
     // Guards the assertion above from going vacuous if the palette moves: if accent
     // changes, this fails and says so, rather than the ring test quietly passing
     // against a stale literal.
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/payroll");
     const accent = await page.evaluate(() =>
       getComputedStyle(document.documentElement).getPropertyValue("--color-accent").trim(),
@@ -48,7 +48,7 @@ test.describe("shared primitives — focus ring and reduced motion (#639)", () =
 
   test("the pending spinner stops rotating under prefers-reduced-motion", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/payroll");
 
     // Probe the rule directly: the spinner only exists mid-submit, which is a race to
@@ -71,7 +71,7 @@ test.describe("shared primitives — focus ring and reduced motion (#639)", () =
     // test above, and a pending button with no visible feedback is a worse
     // accessibility outcome than the one #639 set out to fix.
     await page.emulateMedia({ reducedMotion: "no-preference" });
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/payroll");
 
     const animation = await page.evaluate(() => {

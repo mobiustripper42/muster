@@ -56,7 +56,7 @@ the shipped design, not only the vocabulary of the spec.
 
 ## Severity read
 
-**C1/C2 are the clear-cut ones and the cheapest to fix.** Two of Spink's fourteen stories describe
+**C1/C2 are the clear-cut ones and the cheapest to fix.** Two of Eric's fourteen stories describe
 shift *locking* — a feature that was cut (DEC-082), whose column was dropped by a migration that
 says so in its header, and which has no code references at all. `SPEC.md` already records the cut
 with a strikethrough; `USER_STORIES.md` never got the same treatment. Anyone using the story list as

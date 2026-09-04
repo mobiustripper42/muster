@@ -67,7 +67,7 @@ test.describe("admin integrity diagnostic (#501)", () => {
   });
 
   test("is idle until asked — landing on it scans nothing", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(PAGE);
 
     await expect(page.getByRole("heading", { name: /referential integrity/i })).toBeVisible();
@@ -80,7 +80,7 @@ test.describe("admin integrity diagnostic (#501)", () => {
   test("a clean spine says so explicitly, with the scanned counts as proof it ran", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(PAGE);
     await page.getByRole(RUN.role, { name: /run check/i }).click();
 
@@ -99,7 +99,7 @@ test.describe("admin integrity diagnostic (#501)", () => {
   test("a planted orphan renders with entity, id, ref and missing id", async ({ page }) => {
     const orphan = await plantOrphanSeat();
 
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(`${PAGE}?run=1`);
 
     await expect(page.getByText(/1 dangling reference/i)).toBeVisible();
@@ -115,7 +115,7 @@ test.describe("admin integrity diagnostic (#501)", () => {
   });
 
   test("is reachable from the nav", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin");
 
     // Shelved under Settings (#603) — open the group first on desktop.

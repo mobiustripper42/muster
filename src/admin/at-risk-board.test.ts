@@ -133,7 +133,7 @@ describe("past-trip guard (#147, DEC-062)", () => {
     await addCrew("ann");
     // Trip departed 24h before the board's `now`; whole pool declined → this
     // WOULD board on willingness-exhaustion if it weren't past. The guard drops
-    // it so Spink isn't pinged about a trip that already left the dock.
+    // it so Eric isn't pinged about a trip that already left the dock.
     const { shiftId, seatIds } = await addShift("past1", hoursAfterT0(-24), [{}]);
     await broadcastAllDecline(seatIds[0]!);
 
@@ -221,7 +221,7 @@ describe("membership — core (imminence / route (b), DEC-065)", () => {
     const yes = await addCrew("ann");
     // Someone already said yes, awaiting confirm — not a hole to fill. With the
     // asked/pending gate gone, `gapSeats` excluding Claimed is the ONLY thing
-    // keeping this actively-progressing shift from summoning Spink.
+    // keeping this actively-progressing shift from summoning Eric.
     await addShift("cl1", hoursAfterT0(24), [{ state: "Claimed", assigned: yes }]);
 
     expect(await deriveAtRiskBoard(repo, T0)).toEqual([]);

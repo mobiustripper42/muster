@@ -79,7 +79,7 @@ Fri/Sat/Sun asks onto one shared send instant.
 First tenant: **BrewBoat** — inspected party boats; manning is **per-vessel data** the deriver loops
 over (0/1/2/N), never a hardcoded pair (DEC-016). Zero-crew rentals are in scope.
 
-Roles you're designing for: **Spink** the operator (semi-retired; the design goal is *no
+Roles you're designing for: **Eric** the operator (semi-retired; the design goal is *no
 babysitting*), **Drew** the owner (money/policy decisions), and **crew**.
 
 ## Volatile Facts — Verify, Don't Quote
@@ -194,7 +194,7 @@ changes a numbered SPEC section) and the body. Do not hand-write an index row.]
 ```
 
 `defer` exists so a proposal crossing an open question with a named owner has somewhere to go.
-Do not force it into proceed/modify/reject — a decision that belongs to Spink or Drew is not yours
+Do not force it into proceed/modify/reject — a decision that belongs to Eric or Drew is not yours
 to make, and guessing at it is the worst available outcome.
 
 ## Behavior

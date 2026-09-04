@@ -17,7 +17,7 @@ test.describe("version tag", () => {
 
   test("admin settings shows the version; another admin page does not", async ({ page }) => {
     // Moved off the hub with it (#603): Settings is the admin-side home for the build stamp.
-    await signInAsAdmin(page, "spink"); // lands on /admin/at-risk
+    await signInAsAdmin(page, "eric"); // lands on /admin/at-risk
     await page.goto("/admin/settings");
     await expect(page.getByText(VERSION)).toBeVisible();
 

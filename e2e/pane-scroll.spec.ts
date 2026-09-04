@@ -24,7 +24,7 @@ test.describe("two-pane scroll (#253)", () => {
   test("desktop: window never scrolls; the columns scroll independently; switching a row can't snap the page", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(`${board()}&sel=shift-ar-regress`);
 
     const boardCol = page.getByTestId("board-col");
@@ -66,7 +66,7 @@ test.describe("two-pane scroll (#253)", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 375, height: 812 });
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(`${board()}&sel=shift-ar-regress`);
 
     // The board column is display-hidden at 375px; the cockpit is the surface.

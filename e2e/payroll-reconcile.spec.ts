@@ -53,7 +53,7 @@ test.describe("admin /admin/payroll — estimate vs actual, and the export gate"
 
     // ── The operator opens payroll and cannot download ────────────────────────
     const admin = await context.browser()!.newPage();
-    await signInAsAdmin(admin, "spink");
+    await signInAsAdmin(admin, "eric");
     await admin.goto("/admin/payroll");
     await expect(admin.getByRole("heading", { name: "Payroll hours" })).toBeVisible();
 
@@ -104,7 +104,7 @@ test.describe("admin /admin/payroll — estimate vs actual, and the export gate"
   test("a scheduled crew member who never punched still gets a row, reading 0h", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/payroll");
 
     // The crew seed's confirmed shift is 15 days out, so the CURRENT period is empty — pick the
@@ -146,7 +146,7 @@ test.describe("admin /admin/payroll — estimate vs actual, and the export gate"
     // — the part that matters — an export that still works. An open punch blocks because
     // closing it always clears the block; a missing day may simply be true, so gating on it
     // would stop payroll for everyone with nothing the operator could do to release it.
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/payroll");
 
     const soon = new Intl.DateTimeFormat("en-CA", {
@@ -189,7 +189,7 @@ test.describe("admin /admin/payroll — estimate vs actual, and the export gate"
     // Driven through the admin bench rather than seeded, because hand entry is the ONLY way this
     // state can arise — `clockIn` cannot produce it (the one-open-punch index sees to that), so
     // seeding the rows directly would test the detector without testing the door that lets it in.
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/time-clock");
 
     // Previous period: every day in it is already past, so the no-future guard can't refuse the
@@ -245,7 +245,7 @@ test.describe("admin /admin/payroll — estimate vs actual, and the export gate"
     // The table itself scrolls inside `overflow-x-auto`; what must NOT happen is the PAGE
     // growing, which is how a wide table quietly breaks every other surface's layout on a phone.
     test.skip(testInfo.project.name !== "mobile", "375px is the case under test");
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/payroll");
     await expect(page.getByRole("heading", { name: "Payroll hours" })).toBeVisible();
     const fits = await page.evaluate(

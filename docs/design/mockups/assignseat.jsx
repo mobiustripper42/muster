@@ -29,8 +29,8 @@ function CandidateRow({ cand, seat, showScore, onAssign, onNudge }) {
         <span className="cand-name">{c.name}</span>
         <BandDot who={cand.who} />
         {showScore && <span className="cand-score mono">{c.score}</span>}
-        {c.boosted && <span className="cand-flag" title="Boosted by Spink">▲</span>}
-        {c.floor && <span className="cand-flag" title="Floored High by Spink">⚓</span>}
+        {c.boosted && <span className="cand-flag" title="Boosted by Eric">▲</span>}
+        {c.floor && <span className="cand-flag" title="Floored High by Eric">⚓</span>}
       </div>
       <div className="cand-r">
         <span className={'ask ' + a.cls}>

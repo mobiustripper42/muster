@@ -5,7 +5,7 @@
  * every OTHER admin's stateless session is untouched — the whole point vs rotating
  * the shared SESSION_SECRET (which logs everyone out at once).
  *
- * The seeded operator admin is `spink` (fixtures) — what signInAsAdmin resolves via
+ * The seeded operator admin is `eric` (fixtures) — what signInAsAdmin resolves via
  * the dev-link handle→id lookup. The "You're signed out" notice (#352 AdminSignedOut,
  * null-subject branch) is unique to a null subject, so it's the discriminator.
  */
@@ -26,7 +26,7 @@ test.describe("admin entity + per-person revoke (DEC-092)", () => {
   });
 
   test("a seeded admin signs in and reaches the cockpit", async ({ page }) => {
-    await signInAsAdmin(page, "spink"); // lands on /admin/at-risk
+    await signInAsAdmin(page, "eric"); // lands on /admin/at-risk
     await expect(page.getByText(SIGNED_OUT)).toHaveCount(0);
     // The admin nav frame only renders for an admin subject (layout gate).
     await expect(page.getByRole("link", { name: "Shifts" })).toBeVisible();
@@ -35,12 +35,12 @@ test.describe("admin entity + per-person revoke (DEC-092)", () => {
   test("deprovisioning an admin kills their session on the next request", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await expect(page.getByText(SIGNED_OUT)).toHaveCount(0);
 
     // Revoke this one admin — the cookie is unchanged, but the identity behind it
     // is now inactive.
-    await setAdminActive("spink", false);
+    await setAdminActive("eric", false);
     await page.reload();
 
     // readSubject's admin active-check resolves the same cookie to null.
@@ -61,10 +61,10 @@ test.describe("admin entity + per-person revoke (DEC-092)", () => {
     const pageA = await ctxA.newPage();
     const pageB = await ctxB.newPage();
     try {
-      await signInAsAdmin(pageA, "spink");
+      await signInAsAdmin(pageA, "eric");
       await signInAsAdmin(pageB, "brendan");
 
-      await setAdminActive("spink", false); // revoke ONLY spink
+      await setAdminActive("eric", false); // revoke ONLY eric
 
       await pageA.reload();
       await pageB.reload();

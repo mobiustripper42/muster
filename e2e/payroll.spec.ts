@@ -14,7 +14,7 @@ test.describe("admin /admin/payroll — estimated hours by pay period", () => {
   test("picks the period containing a confirmed shift and shows its committed hours", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/payroll");
     await expect(page.getByRole("heading", { name: "Payroll hours" })).toBeVisible();
 

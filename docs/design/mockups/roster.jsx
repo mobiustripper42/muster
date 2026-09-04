@@ -1,7 +1,7 @@
 // roster.jsx — left pane: pool-health strip, filters, and the crew list.
 const { personHealth, poolEligible, effectiveScore } = window.MusterData;
 
-// Top-of-pane summary — the pool-health view Spink keeps in his head.
+// Top-of-pane summary — the pool-health view Eric keeps in his head.
 function PoolHealth({ people }) {
   const active = people.filter((p) => p.status === 'active');
   const expired = active.filter((p) => personHealth(p) === 'expired').length;

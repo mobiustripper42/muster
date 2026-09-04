@@ -216,7 +216,7 @@ export async function scoreCrewMember(
 }
 
 /**
- * The effective ranking key: the computed reliability score with Spink's manual
+ * The effective ranking key: the computed reliability score with Eric's manual
  * thumb applied (§2.4). `manualFloor` raises a person to at least that value
  * (his "I vouch for this one" — lifts a known-good new hire above unknowns who
  * read a cold-start neutral 0); `manualBoost` adds on top. Pure.

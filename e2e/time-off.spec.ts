@@ -55,7 +55,7 @@ test.describe("admin /admin/time-off — set & scan crew time off", () => {
   test("operator sets a crew member out, sees it grouped under their name, removes it", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/time-off");
     await expect(page.getByText(/everyone’s available/i)).toBeVisible();
 

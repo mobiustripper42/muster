@@ -204,7 +204,7 @@ const NO_DIFF = { added: [], removed: [], startBefore: null, startAfter: null };
         cancelledCrew: [{ shiftId: S("s1"), crewMemberId: C("crew-a") }],
         restoredCrew: [{ shiftId: S("s2"), crewMemberId: C("crew-b") }],
       }),
-      { kind: "admin", id: "spink" },
+      { kind: "admin", id: "eric" },
       NOW,
     );
     expect(appended).toHaveLength(1); // the second still landed

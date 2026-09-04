@@ -46,7 +46,7 @@ export const RELIABILITY_EVENT_TYPES = [
   "nudged",
   "pool_widened",
   // Board landing (DEC-026) — shift-level, system-actor-keyed like pool_widened.
-  // The detection half of "landing on the board pings Spink" (§2.5): one event
+  // The detection half of "landing on the board pings Eric" (§2.5): one event
   // per (shift, reason) is the dedup memory; delivery rides the DEC-MSG-3
   // pilot adapter later.
   "board_landed",
@@ -80,7 +80,7 @@ export interface ReliabilityEventMetadata {
   seatId?: SeatId;
   shiftId?: ShiftId;
   /**
-   * True when a human (Spink) drove the action, not the engine — a board *lean*
+   * True when a human (Eric) drove the action, not the engine — a board *lean*
    * logs `nudged` with `manual: true` (DEC-026), so "how often did the human
    * have to step in" stays derivable from the one log.
    */

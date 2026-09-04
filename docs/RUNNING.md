@@ -105,7 +105,7 @@ handle, so any `?admin=<handle>` works in dev.
 npm run db:seed:atrisk   # 4 board + 2 cockpit scenarios, trips anchored to NOW (re-run to re-anchor)
 ```
 
-1. Open **http://mill-dev:3000/crew/dev-link?admin=spink** → tap the returned link, then the
+1. Open **http://mill-dev:3000/crew/dev-link?admin=eric** → tap the returned link, then the
    confirm page's **"Tap to sign in →"** (the DEC-030 prefetch guard) → you land signed-in on
    **`/admin/at-risk`** with "4 shifts need a call · 1 late bail".
 2. The four rows, top to bottom: **Firkin** (red *Lacking crew · late bail* pill — always pinned
@@ -166,9 +166,9 @@ the Send button only opens a Messages composer on a device that has one.
 npm run db:seed:outbox   # 3 cards: 2 relays + 1 addressed to the operator (trips anchored to NOW)
 ```
 
-1. Open **http://mill-dev:3000/crew/dev-link?admin=spink** → tap **Tap to sign in** (one tap) → then
+1. Open **http://mill-dev:3000/crew/dev-link?admin=eric** → tap **Tap to sign in** (one tap) → then
    open **http://mill-dev:3000/admin/outbox** → header shows **"3 asks need you"**, tightest trip
-   first: **Bo / Tideline** (red ~20h countdown, *"2nd ask · Lance declined"*), **Spink / Keelhaul**
+   first: **Bo / Tideline** (red ~20h countdown, *"2nd ask · Lance declined"*), **Eric / Keelhaul**
    (a **you** pill — inline red **Out** / green **In** buttons, NO Send link), **Mira / Maibock**
    (*"1st ask"*).
 2. On the Bo card, tap **Send** (one tap): on a phone, Messages opens prefilled with the ask + a

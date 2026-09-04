@@ -1,7 +1,7 @@
 /**
  * Roster list view (SPEC §2.1 "States to render → Roster list").
  *
- * Builds the per-person rows Spink scans for pool health: name, what they're
+ * Builds the per-person rows Eric scans for pool health: name, what they're
  * rated for (role names, resolved from RoleType data — DEC-ROLE-1), their
  * reliability standing, and a credential-health flag. Expired/expiring
  * credentials are visible at the list level by design (SPEC §2.1).

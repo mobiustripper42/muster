@@ -93,7 +93,7 @@ undifferentiated stream. Threads exist only inside Muster; on the handset it's o
 text stream. That separation — sorted in Muster, flat on the phone — is exactly what the app
 buys that bare texting can't.
 
-Consequence (Spink's explicit requirement): **scheduling SMS and message-notification SMS must
+Consequence (Eric's explicit requirement): **scheduling SMS and message-notification SMS must
 land as separate threads on the phone.** Since the phone threads by *number*, that means two
 sender identities:
 
@@ -190,7 +190,7 @@ treat as away and ring.
 
 ## 9. Runtime walkthrough — Saturday morning
 
-1. Spink opens Muster, picks Saturday, posts to the **cohort thread**: *"Dock's at slip B today,
+1. Eric opens Muster, picks Saturday, posts to the **cohort thread**: *"Dock's at slip B today,
    call 12:30."*
 2. Crew **in the thread** see it appear live — no SMS. Crew **in Muster but elsewhere** get an
    in-app toast (§7.6). Crew **not in the app** get a **doorbell SMS** (delayed/batched/priority
@@ -199,7 +199,7 @@ treat as away and ring.
 4. They reply **in-app**, or for a short note the **SMS body itself** carries it back. Either
    way, the reply lands in the **one Muster thread**.
 5. Everyone's messages — operator and crew, text and app — sit in that single sorted thread.
-   Spink watches one conversation, not six scattered text chains.
+   Eric watches one conversation, not six scattered text chains.
 
 This is the operational view Xola can't produce: it thinks a booking is done when money clears;
 it has no concept of a day's crew, let alone a thread for them.

@@ -26,7 +26,7 @@ test.describe("admin /admin/offerings", () => {
   test("create through all sections, go Live, persist, then Hide → Show hidden", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
 
     // ── An offering needs a launch Location — create one first ───────────────
     await page.goto("/admin/locations?sel=new");

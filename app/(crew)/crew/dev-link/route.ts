@@ -8,7 +8,7 @@ import { getRepo } from "../../../lib/repo";
  * DEV-ONLY magic-link issuer. Crew don't self-register and the operator-send path
  * isn't built yet (1.5b+), so this is how you exercise the landing flow by hand:
  * `GET /crew/dev-link?crew=<crewMemberId>` → a clickable link, or
- * `GET /crew/dev-link?admin=<handle>` → an operator (Spink) link for the admin
+ * `GET /crew/dev-link?admin=<handle>` → an operator (Eric) link for the admin
  * surfaces. In real life the link leaves via the channel port
  * (fake/SMS/Telegram). Hard-disabled in prod, live on previews + local (DEC-057).
  *

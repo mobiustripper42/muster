@@ -14,8 +14,8 @@ import type { PresencePort } from "../ports/presence.js";
 
 const CREW_A: Subject = { kind: "crew", id: "crew-a" };
 const CREW_B: Subject = { kind: "crew", id: "crew-b" };
-// The operator/office participates as crew-spink with the "admin" kind (DEC-058).
-const OFFICE: Subject = { kind: "admin", id: "crew-spink" };
+// The operator/office participates as crew-eric-stoffer with the "admin" kind (DEC-058).
+const OFFICE: Subject = { kind: "admin", id: "crew-eric-stoffer" };
 
 const T1 = "2026-07-01T12:00:00.000Z";
 const T2 = "2026-07-01T12:05:00.000Z";

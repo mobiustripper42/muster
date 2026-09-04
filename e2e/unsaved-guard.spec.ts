@@ -92,7 +92,7 @@ test.describe("the unguarded exit (#781)", () => {
   });
 
   test("admin: a half-filled create form warns before an in-app navigation", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await seedOneAddOn(page);
 
     await page.goto("/admin/add-ons?sel=new");
@@ -115,7 +115,7 @@ test.describe("the unguarded exit (#781)", () => {
   });
 
   test("admin: typing and undoing it leaves the form clean — no warning", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await seedOneAddOn(page);
 
     await page.goto("/admin/add-ons?sel=new");
@@ -133,7 +133,7 @@ test.describe("the unguarded exit (#781)", () => {
   });
 
   test("admin: an untouched form does not warn", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await seedOneAddOn(page);
 
     await page.goto("/admin/add-ons?sel=new");
@@ -146,7 +146,7 @@ test.describe("the unguarded exit (#781)", () => {
   });
 
   test("admin: submitting the form does not warn", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
 
     await page.goto("/admin/add-ons?sel=new");
     await page.fill('input[name="label"]', "Sunset Charcuterie");
@@ -175,7 +175,7 @@ test.describe("the unguarded exit (#781)", () => {
     // form's DEFAULTS, and the baseline is read from exactly those defaults (`bornFormState`),
     // so the restored form is born equal to itself and reads clean. Every assertion here passed
     // while the operator's typing walked out of the door silently.
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await seedOneAddOn(page);
 
     await page.goto("/admin/add-ons?sel=new");
@@ -205,7 +205,7 @@ test.describe("the unguarded exit (#781)", () => {
     // Clearing the boxes does not make the submission saved. A baseline-comparison guard would
     // go quiet here if it measured against the restored defaults and the operator emptied them,
     // which is the same silence the test above exists to remove — reached a different way.
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await seedOneAddOn(page);
 
     await page.goto("/admin/add-ons?sel=new");
@@ -227,7 +227,7 @@ test.describe("the unguarded exit (#781)", () => {
   });
 
   test("admin: the browser Back button warns on a dirty form", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await seedOneAddOn(page);
 
     // **Reached by clicking, not by `goto`.** Two `page.goto()` calls build two separate

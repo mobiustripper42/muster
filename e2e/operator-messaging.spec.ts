@@ -17,7 +17,7 @@ test.describe("operator messaging", () => {
   });
 
   test("operator broadcasts to all-staff, with priority, as the office", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
 
     await page.goto("/admin/messages");
     await expect(page.getByRole("link", { name: /All staff/ })).toBeVisible();
@@ -39,7 +39,7 @@ test.describe("operator messaging", () => {
   test("Cohort button on the cockpit → posts to the day's cohort, prefixed 'Cohort' (#317)", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     // shift-soon is ~15 days out (not today) — proves the un-gated any-day cohort.
     await page.goto("/admin/shift/shift-soon");
     await page.getByRole("link", { name: /Message this day.s crew/ }).click();
@@ -69,7 +69,7 @@ test.describe("operator messaging", () => {
     await expect(page.getByText("running five late")).toBeVisible();
 
     // Operator (a different subject) now sees that thread and its message.
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/messages");
     const hops = page.getByRole("link", { name: /Hops/ });
     await expect(hops).toBeVisible();

@@ -84,7 +84,7 @@ export interface TickResult {
   nudgesFired: number;
   /**
    * New (shift, reason) board landings recorded this tick (DEC-026) — the
-   * detection half of "landing on the board pings Spink".
+   * detection half of "landing on the board pings Eric".
    */
   boardLanded: number;
   /**

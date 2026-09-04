@@ -22,7 +22,7 @@
  *   • Steady — 3 tight afternoon trips (1:00 / 3:00 / 5:00), NO gap → no suggestion,
  *     but the Split control is STILL there (splitting isn't gated on a gap). Uncrewed.
  * Plus two spare crew to fill the far side. Then:
- *   /crew/dev-link?admin=spink → /admin/shifts?mode=edit
+ *   /crew/dev-link?admin=eric → /admin/shifts?mode=edit
  *   1. Split either day at any cut → side A (before) + side B (from), born fresh.
  *   2. Crew side B, then Merge (8.4) → the far crew get a release notice.
  *
@@ -172,7 +172,7 @@ try {
   console.log(`  2. Steady      ${tightDate}  13:00·15:00·17:00              (uncrewed; no gap → no suggestion, still splittable)`);
   console.log(`     ${tightShift}`);
   console.log("");
-  console.log("Test:  /crew/dev-link?admin=spink → /admin/shifts?mode=edit");
+  console.log("Test:  /crew/dev-link?admin=eric → /admin/shifts?mode=edit");
   console.log("  • Split Demo — Split at 7:00 PM (suggested) or pick another → side A (morning, keeps Onion+Reef) + side B (evening).");
   console.log("  • Steady — no 'could be two shifts' hint, but the Split control is still there. Split at 3:00 or 5:00.");
   console.log("  • Crew a far side, then Merge (8.4) → the far crew get a release notice.");

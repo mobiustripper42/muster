@@ -33,7 +33,7 @@ function Standing({ person, people, seat, display = 'band' }) {
   return (
     <span className="standing">
       <span className={'band band-' + cls}>
-        {floored && <span className="band-pin" title="Pinned by Spink">▲</span>}
+        {floored && <span className="band-pin" title="Pinned by Eric">▲</span>}
         {band}
       </span>
       {rankNode}

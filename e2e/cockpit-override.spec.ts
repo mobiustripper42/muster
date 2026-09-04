@@ -14,7 +14,7 @@ test.describe("cockpit manual override (#312)", () => {
   test("override is a first-name-sorted dropdown; placing via it confirms", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/shift/shift-ar-regress");
 
     const override = page

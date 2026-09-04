@@ -29,7 +29,7 @@ import { TENANT_ID } from "../../../../lib/tenant";
  * Cockpit seat actions (SPEC §2.4, #54, DEC-027 §1) — auth + glue over the
  * domain rails; the rules live in `@core`. Four actions, one shape: feedback
  * rides redirect search params as CODES/ids only, never prose (DEC-026 — the
- * page maps codes to copy, so a crafted URL can't put text in Spink's UI).
+ * page maps codes to copy, so a crafted URL can't put text in Eric's UI).
  * `redirect()` throws by design and stays OUTSIDE the try; only the domain call
  * is guarded (a repo outage becomes a mapped notice, not a 500).
  *
@@ -39,7 +39,7 @@ import { TENANT_ID } from "../../../../lib/tenant";
  * - confirm → `confirmSeat` (Claimed → Confirmed)
  * - override→ `overrideSeat` (the authority backstop — bypasses pool/rank/state,
  *             but honors the role-competency floor: no mate as captain, DEC-064)
- * - report a bail → `bail()` (#56 admin half, DEC-028) — Spink files the bail
+ * - report a bail → `bail()` (#56 admin half, DEC-028) — Eric files the bail
  *             he heard about
  * - remove      → `vacateSeat` (#87) — clears a *misassignment* with NO penalty;
  *             the no-bail recovery for a wrong-person placement (Bailed carries
@@ -293,7 +293,7 @@ export async function removeSeat(formData: FormData): Promise<void> {
         );
       } catch (e) {
         // Occupant swapped between reads (or a write raced) — reload, don't
-        // clear a different person than Spink saw.
+        // clear a different person than Eric saw.
         // Reported as `raced`, which is a GUESS: any throw in here reads as a
         // race, so a genuine repository fault is misreported as a benign one.
         logSwallowed("admin/shift:removeSeat", e, "the vacate failed and was reported to the operator as a race");
@@ -308,7 +308,7 @@ export async function removeSeat(formData: FormData): Promise<void> {
 }
 
 /**
- * Spink files a bail he heard about (#56 admin half, DEC-028) — the same
+ * Eric files a bail he heard about (#56 admin half, DEC-028) — the same
  * `bail()` rail the crew's own "can't make it" uses, lateness computed here at
  * report time (the DEC-028 caveat: stamped at report, not at the phone call —
  * the clamp bounds the damage). The penalized sibling of `removeSeat` (#87):

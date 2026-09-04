@@ -1,5 +1,5 @@
 /**
- * The lean (#43, DEC-026) — Spink's manual direct nudge from a board row.
+ * The lean (#43, DEC-026) — Eric's manual direct nudge from a board row.
  * Reuses the ask rails (`assignPerson`) and the one log (`nudged{manual}`);
  * target validation mirrors the board's `available` semantics.
  */
@@ -99,7 +99,7 @@ describe("lean — the happy path", () => {
     expect(nudges[0]!.metadata.shiftId).toBe(SHIFT);
   });
 
-  it("a decliner stays leanable — leaning on a no is Spink's call", async () => {
+  it("a decliner stays leanable — leaning on a no is Eric's call", async () => {
     const bob = await addCrew("bob");
     const [seatId] = await addShift(["Open"]);
     const [ask] = await broadcastAsk(repo, seatId!, T0);

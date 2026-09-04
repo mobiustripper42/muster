@@ -24,7 +24,7 @@ test.describe("two-pane builder (9.5, DEC-085)", () => {
   test("a row click opens the cockpit pane beside the board (desktop)", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(board());
 
     await page.getByRole("link", { name: /Firkin/ }).click();
@@ -50,7 +50,7 @@ test.describe("two-pane builder (9.5, DEC-085)", () => {
   test("a cockpit action posted from the pane redirects back to the board host", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(`${board()}&sel=shift-ar-regress`);
 
     // The seat override ("Place") rides the hidden ctx → finish() lands on
@@ -73,7 +73,7 @@ test.describe("two-pane builder (9.5, DEC-085)", () => {
   });
 
   test("mode flip and filter presets preserve the open pane", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(`${board()}&sel=shift-ar-regress`);
 
     await page.getByRole("link", { name: "Edit", exact: true }).click();
@@ -94,7 +94,7 @@ test.describe("two-pane builder (9.5, DEC-085)", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 375, height: 812 });
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(`${board()}&sel=shift-ar-regress`);
 
     // The board list is display-hidden on mobile — cockpit only. With the
@@ -121,7 +121,7 @@ test.describe("two-pane builder (9.5, DEC-085)", () => {
     // (crucially) under which the document has enough slack for the window to
     // scroll if the reveal weren't scoped to board-col.
     await page.setViewportSize({ width: 1280, height: 380 });
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(`${board()}&sel=shift-ar-regress`);
 
     const boardCol = page.getByTestId("board-col");
@@ -147,7 +147,7 @@ test.describe("two-pane builder (9.5, DEC-085)", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 380 });
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(`${board()}&sel=shift-ar-regress`);
 
     // Open the pane on the LAST (deep, below-fold) row — the island reveals it.
@@ -177,7 +177,7 @@ test.describe("two-pane builder (9.5, DEC-085)", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 375, height: 812 });
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto(`${board()}&sel=shift-ar-regress`);
 
     // Below lg the board list is display:none, so the island bails (offsetParent
@@ -191,7 +191,7 @@ test.describe("two-pane builder (9.5, DEC-085)", () => {
   test("the standalone cockpit route still serves deep links", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/shift/shift-ar-regress");
 
     // h1 standalone (the host supplies the heading level), no pane furniture,

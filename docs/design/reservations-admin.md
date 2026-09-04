@@ -152,7 +152,7 @@ Poker at the P12 boundary; this doc is the input to it, not a substitute for it.
 - **Reservation actions vs. crew actions on one surface.** The graft (§2.3) puts customer-facing actions
   on a surface built for crew. Whether that is one page with two action groups, or a per-event detail
   pane that admins open from the shift card, is a design call — mockup-first per the P12 method.
-- **Waiver provider** (DEC-110) — a Drew/Spink call, still open.
+- **Waiver provider** (DEC-110) — a Drew/Eric call, still open.
 - **Name reconciliation at the tip seam** — `xola-tip-extractor`'s Gusto map is done and correct for
   Xola. Whether Muster's crew names resolve against it when it starts reading Muster events is a
   build-time integration detail, not a design one. It warns loudly rather than failing silently.

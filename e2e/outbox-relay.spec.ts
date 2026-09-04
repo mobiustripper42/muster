@@ -22,7 +22,7 @@ test.describe("outbox relay (#160)", () => {
       });
     });
     await page.context().grantPermissions(["clipboard-write"]); // for the Copy flip
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/outbox");
 
     // Filter by Bo's number — "Bo" alone also matches "Maibock" (Mira's card).
@@ -44,7 +44,7 @@ test.describe("outbox relay (#160)", () => {
   });
 
   test("Dismiss (the Yes/No-style red button) clears the card from the worklist", async ({ page }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/outbox");
     const bo = page.locator("article").filter({ hasText: "+15555550101" });
     await expect(bo).toBeVisible();
@@ -66,7 +66,7 @@ test.describe("outbox relay (#160)", () => {
         value: () => Promise.resolve(),
       });
     });
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/outbox");
 
     const nora = page.locator("article").filter({ hasText: "Nora No-Phone" });

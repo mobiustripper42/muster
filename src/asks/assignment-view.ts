@@ -6,7 +6,7 @@
  * take or is taking asks (Open / Asked / Bailed) expands to the oracle's ranked
  * eligible pool (§1.3/§1.4) with per-candidate ask status. **`silent` is
  * first-class and distinct from `declined`** (§2.4) — a ghost that was asked and
- * timed out must be obvious; silence is what Spink hates and what the score
+ * timed out must be obvious; silence is what Eric hates and what the score
  * penalizes. A **Bailed** seat lists that shift's bailer as a non-actionable
  * `bailed`-status row (context — who walked) while still excluding them from the
  * re-ask everywhere (DEC-019): seen, never re-offered. The P3 gap where the

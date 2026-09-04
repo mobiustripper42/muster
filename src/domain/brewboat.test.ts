@@ -39,8 +39,8 @@ const brewBoat = (): Vessel => ({
 });
 
 const aCaptain = (): CrewMember => ({
-  id: asId<"CrewMemberId">("crew-spink"),
-  name: "Spink",
+  id: asId<"CrewMemberId">("crew-eric-stoffer"),
+  name: "Eric",
   phone: "+15035550100",
   ratings: [CAPTAIN],
   status: "active",
@@ -89,14 +89,14 @@ describe("BrewBoat spine (Phase 0 demo gate)", () => {
     const repo = new InMemoryRepository();
     await repo.saveCrewMember(aCaptain());
 
-    const loaded = await repo.getCrewMember(asId<"CrewMemberId">("crew-spink"));
+    const loaded = await repo.getCrewMember(asId<"CrewMemberId">("crew-eric-stoffer"));
     expect(loaded?.ratings).toContain(CAPTAIN);
     expect(loaded?.reliabilityScore).toBeNull();
   });
 
   it("logs a reliability event day one and reads it back (DEC-008)", async () => {
     const repo = new InMemoryRepository();
-    const crewId = asId<"CrewMemberId">("crew-spink");
+    const crewId = asId<"CrewMemberId">("crew-eric-stoffer");
     const event: ReliabilityEvent = {
       id: asId<"ReliabilityEventId">("rel-1"),
       crewMemberId: crewId,

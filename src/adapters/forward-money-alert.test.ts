@@ -50,7 +50,7 @@ async function seedAdmin(
 describe("forwardMoneyAlert (issue #723)", () => {
   it("texts every active admin and reports how many landed", async () => {
     const repo = new InMemoryRepository();
-    await seedAdmin(repo, "spink");
+    await seedAdmin(repo, "eric");
     await seedAdmin(repo, "drew", { phone: "+12165550002" });
     await seedAdmin(repo, "retired", { active: false });
     const channel = new FakeChannel();
@@ -67,7 +67,7 @@ describe("forwardMoneyAlert (issue #723)", () => {
     // The ids are the part nobody can reconstruct from memory, and they sit at the end of the
     // sentence where a phone's notification preview truncates.
     const repo = new InMemoryRepository();
-    await seedAdmin(repo, "spink");
+    await seedAdmin(repo, "eric");
     const channel = new FakeChannel();
 
     await forwardMoneyAlert(repo, channel, REAL_ALERT, LINK);
@@ -79,7 +79,7 @@ describe("forwardMoneyAlert (issue #723)", () => {
 
   it("one dead number cannot mute the other admins", async () => {
     const repo = new InMemoryRepository();
-    await seedAdmin(repo, "spink");
+    await seedAdmin(repo, "eric");
     await seedAdmin(repo, "drew", { phone: "+12165550002" });
     const channel = new FakeChannel();
     const realSend = channel.send.bind(channel);

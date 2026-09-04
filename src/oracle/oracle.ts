@@ -176,7 +176,7 @@ export interface ShiftSolution {
  * unsatisfiable and `assignment` is null (the per-seat pools still explain why).
  *
  * The walk is **reliability-ordered** (§1.4, §2.4): the shared pool is ranked
- * best-first (score + Spink's manual thumb) once, then each seat greedily takes
+ * best-first (score + Eric's manual thumb) once, then each seat greedily takes
  * the first still-unused candidate eligible for it — so the pick is the most
  * reliable available person, not an arbitrary one. `now` is the scoring instant.
  * Ranking the union once (not per seat) keeps each crew member's log read a

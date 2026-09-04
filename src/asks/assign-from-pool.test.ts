@@ -111,7 +111,7 @@ describe("assignFromPool — happy path", () => {
     expect((await repo.getSeat(seatId!))!.state).toBe("Asked");
   });
 
-  it("a decliner stays assignable — naming a 'no' is Spink's call", async () => {
+  it("a decliner stays assignable — naming a 'no' is Eric's call", async () => {
     const bob = await addCrew("bob");
     const [seatId] = await addShift(["Open"]);
     const [ask] = await broadcastAsk(repo, seatId!, T0);

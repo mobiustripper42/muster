@@ -1,12 +1,12 @@
 # Muster — User Stories
 
-Story IDs use a per-role prefix: **SP** (Spink, operator), **CR** (Crew), **DR** (Drew, owner).
+Story IDs use a per-role prefix: **SP** (Eric, operator), **CR** (Crew), **DR** (Drew, owner).
 Cross-reference with `docs/SPEC.md` (the surface each story maps to) and `docs/PROJECT_PLAN.md`.
 Roles and surfaces are defined in SPEC §0.4 and §2.
 
 ---
 
-## Spink — the operator (admin app)
+## Eric — the operator (admin app)
 
 Semi-retired. The throughline: **no babysitting** — the system works shifts on its own and only
 summons him when it genuinely can't.

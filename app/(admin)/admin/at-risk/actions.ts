@@ -15,7 +15,7 @@ import { logSwallowed } from "../../../lib/swallowed";
  * bailer exclusion) live in `@core/asks/lean`; this is auth + glue. Feedback
  * rides redirect search params so the board stays a pure server component (no
  * client JS for one button). Params carry CODES/ids only, never prose — the
- * page maps them to copy, so a crafted URL can't put arbitrary text in Spink's
+ * page maps them to copy, so a crafted URL can't put arbitrary text in Eric's
  * trusted UI.
  */
 export async function leanOn(formData: FormData): Promise<void> {

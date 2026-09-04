@@ -139,7 +139,7 @@ const SEED = [
       { type: 'MMC', id: 'MMC-2298140', expiry: '2027-06-30' },
       { type: 'Medical', id: 'MED-66120', expiry: '2027-06-30' },
     ],
-    manualThumb: { kind: 'floor', band: 'High' }, // Spink's thumb: veteran, pin high
+    manualThumb: { kind: 'floor', band: 'High' }, // Eric's thumb: veteran, pin high
     suppressions: [],
     protocol: 'assign-then-confirm',
     status: 'active',
@@ -192,7 +192,7 @@ const SEED = [
     credentials: [
       { type: 'Medical', id: 'MED-22781', expiry: '2027-12-05' },
     ],
-    manualThumb: { kind: 'boost' }, // Spink's thumb: trending up, give him more asks
+    manualThumb: { kind: 'boost' }, // Eric's thumb: trending up, give him more asks
     suppressions: [],
     protocol: 'default',
     status: 'active',

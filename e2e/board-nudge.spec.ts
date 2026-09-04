@@ -16,7 +16,7 @@ test.describe("at-risk board — nudge", () => {
   test("nudging a candidate keeps the near-term row on the board (DEC-065) and confirms the ask is in flight", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await expect(
       page.getByRole("heading", { name: "Needs attention" }),
     ).toBeVisible();

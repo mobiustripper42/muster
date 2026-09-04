@@ -25,7 +25,7 @@ test.describe.skip("trainee staffing (9.3, DEC-087)", () => {
   test("assign → named + notified + on my-shifts; take off → picker returns", async ({
     page,
   }) => {
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/shift/shift-ar-regress");
 
     // 8.5: add the trainee seat.
@@ -57,7 +57,7 @@ test.describe.skip("trainee staffing (9.3, DEC-087)", () => {
     await expect(page.getByText("I can’t make it…")).toHaveCount(0);
 
     // Unstaff: back as admin, take them off — notice + picker returns.
-    await signInAsAdmin(page, "spink");
+    await signInAsAdmin(page, "eric");
     await page.goto("/admin/shift/shift-ar-regress");
     await page.getByRole("button", { name: "Take off seat" }).click();
     await expect(

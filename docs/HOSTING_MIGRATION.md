@@ -29,7 +29,7 @@ APP_BASE_URL=https://crew.brewcle.com
 - **Host:** new **Linode Shared 4 GB, Chicago (us-ord)** with backups. Not a reused box, not
   `mill-dev`.
 - **Database:** Neon stays as the provider, but the project **moves out of Vercel's managed org**
-  into a **new Neon account you own** — not the existing `spinkbickle@gmail.com` org, which is on
+  into a **new Neon account you own** — not the existing `ericbickle@gmail.com` org, which is on
   the free plan.
 - **The Vercel account stays.** Other projects deploy from it. What gets decommissioned at the end
   of this migration is the **muster project** on Vercel, not the account. Read every later mention
@@ -69,7 +69,7 @@ matters at step 18:
 
    - **Neon — MCP.** `/mcp` → authorize `neon`. Working.
    - **Vercel — the CLI, not MCP.** `npm i -g vercel && vercel login` (logged in as
-     `spinkbickle-7788`). Use `vercel …` for every Vercel step in this runbook. **Do not go back
+     `ericbickle-7788`). Use `vercel …` for every Vercel step in this runbook. **Do not go back
      to `/mcp` for Vercel.**
 
 > Why the CLI won for Vercel: step 18 is a **write** (set the env vars, then force a redeploy),

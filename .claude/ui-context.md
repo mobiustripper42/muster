@@ -64,7 +64,7 @@ which ones exist. Route group tells you the posture:
 
 - **Crew** (`app/(crew)`) — mobile-first, "insultingly small", answerable in one tap. Session via
   magic link. The strictest surface: every extra screen is somewhere stale info hides.
-- **Admin** (`app/(admin)`) — Spink's cockpit. Desktop-leaning, must not break on a phone. Dense is
+- **Admin** (`app/(admin)`) — Eric's cockpit. Desktop-leaning, must not break on a phone. Dense is
   fine; **anxious is not**. Triage surfaces summon; they aren't monitors.
 - **Customer** (`app/(public)/book/*`, `app/b/[code]`) — the newest audience, and the one
   with different rules. These people have never seen the product, get no training, and may never

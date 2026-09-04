@@ -14,7 +14,7 @@
  *      out → pinned to the top; the bailer is excluded from Lean.
  *   D. credential lapse — fully-Crewed shift ~4d out whose confirmed
  *      captain's MMC expires tomorrow.
- *   E. claimed (cockpit, off-board) — Petra accepted, awaits Spink's confirm.
+ *   E. claimed (cockpit, off-board) — Petra accepted, awaits Eric's confirm.
  *   F. warming (cockpit, off-board) — ~4d out, 1 declined + 1 ghost.
  *
  * Unlike seed-crewapp-dev's fixed dates, trips here are computed FROM SEED
@@ -23,7 +23,7 @@
  *
  * Idempotent: entity writes are upserts; the one append-only log write (the
  * bail) is guarded. Run: npm run db:seed:atrisk  (DB up + migrated first).
- * Then: /crew/dev-link?admin=spink → tap the link → /admin/at-risk.
+ * Then: /crew/dev-link?admin=eric → tap the link → /admin/at-risk.
  *
  * Heads-up: `npm run db:tick` afterward makes the engine WORK this state —
  * scenario A is a stalled Filling shift, so Tier-2 nudges the ghost and the
@@ -212,7 +212,7 @@ try {
   // D — credential lapse: Gus is confirmed, his MMC dies tomorrow, trip's in 4d.
   await shipShift("lapse", "Growler", CAPTAIN, at(96), "Confirmed", "Crewed", lapsing);
 
-  // E — cockpit: Petra accepted and awaits Spink's confirm (#54). Off the board
+  // E — cockpit: Petra accepted and awaits Eric's confirm (#54). Off the board
   // (a Claimed seat is a yes, not a gap) — reached by URL, the Confirm demo.
   const petra = await captain("crew-ar-claimant", "Petra");
   const e = await shipShift("claimed", "Tidewater II", CAPTAIN, at(72), "Claimed", "Filling", petra);
@@ -309,7 +309,7 @@ try {
   console.log("  E shift-ar-claimed   Tidewater II ~3d   cockpit: Petra awaits confirm (off-board)");
   console.log("  F shift-ar-warming   Kettle       ~4d   warming: 1 declined · 1 ghost (off-board)");
   console.log("  H shift-ar-gappy     Barrel       ~2d   view: 11:00 + 18:00 (7h gap) → split cue");
-  console.log("Board:   /crew/dev-link?admin=spink → tap link → /admin/at-risk");
+  console.log("Board:   /crew/dev-link?admin=eric → tap link → /admin/at-risk");
   console.log("Cockpit: /admin/shift/shift-ar-claimed  (Confirm demo)");
   console.log("Warming: any cockpit → 'Warming signals →'  (shows Kettle)");
 } finally {

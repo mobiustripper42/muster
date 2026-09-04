@@ -562,9 +562,9 @@ export type EventStatus = "scheduled" | "cancelled";
  * (DEC-DATA-1), so the in-memory + Postgres adapters stay behaviorally identical.
  * A future source widens this in one line. Log day one (DEC-008): real from the
  * first commit even though the availability deriver (11.1) is the first reader.
- * `'admin'` = an operator-entered reservation (SPEC §2.8.8). Registered in 14.2 so the
- * reaper can branch on it — it never deletes an `admin` row; the surface that writes
- * one is Phase 16.
+ * `'admin'` = an operator-entered reservation (DEC-163, amending §2.8.7/§2.8.8/§2.10.6):
+ * no payment window, never reaped, and the reader has to be able to tell. Registered in
+ * 14.2 so the reaper can branch on it; the surface that writes one is Phase 16.
  */
 export type Source = "xola" | "muster" | "admin";
 

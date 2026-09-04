@@ -769,8 +769,8 @@ column is the starting position; the phase closes a criterion when its verdict b
 **with a test written from the criterion's own words**. Nine were already `BUILT` at planning
 (3, 13, 14, 16, 17, 18, 21, and 8 and 10 by the hold). The tables say which criteria each task closes.
 
-**Existing issues folded in, not re-filed:** #824, #825, #826 (criteria 1, 4, 2), #806, #812, #793,
-#668, #886, #864, #683. They take the phase label and keep their number.
+**Existing issues folded in, not re-filed:** issues #824, #825 and #826 (criteria 1, 4 and 5), and
+issues #806, #812, #793, #668, #886, #864 and #683. They take the phase label and keep their number.
 
 **Not in these phases, by decision:** promo codes (16.5 is operator-applied only); §2.10.2's per-trip
 override and its customer-notify path (Phase 17, below); add-ons (decided-not-built, `SPEC.md:2020`);
@@ -796,9 +796,9 @@ Tasks stack — each branches off the one before it, not off `main`.
 | 14.4 | **The write.** "Book & pay" writes a `pending` row before any Stripe call — reserved time, party size, cookie token, frozen money, frozen hold minutes **and** trip time (DEC-161). Availability and the claim measure rival pending rows by **their own** frozen hold minutes, under the hull-day lock. The row alone removes the trip from `/book`. One write, one freeze — a coherent 8, not split | 8 | 2, 4, 20, 23; #825 | [ ] |
 | 14.5 | **Confirm flips the row.** `confirmReservation(paymentId)` finds the pending row by the payment id recorded on it, sets `booked` and `eventId`, materialises the Event. The reservation id stops being derived from the payment id (`write-booking.ts:35-38`). The money still comes from Stripe metadata until 15.1 — this task changes identity, not the freeze | 5 | 6 (other half); unblocks 12 | [ ] |
 | 14.6 | **Retry on the same row.** Declined card → same row, reserved time untouched, matched by the httpOnly cookie token and never by typed email or phone; the new payment id recorded alongside the first | 3 | 10 | [ ] |
-| 14.7 | **Drop `checkout_holds`.** Table, `CheckoutHold` (`entities.ts:727`), the #713 sweep; `holder-token.ts` moves to the row. 16 files reference the hold at planning. Issue #806's cap-per-token becomes a cap on live pending rows per token, inside the same transaction | 3 | #806 | [ ] |
+| 14.7 | **Drop `checkout_holds`.** Table, `CheckoutHold` (`entities.ts:727`), the issue #713 sweep; `holder-token.ts` moves to the row. 16 files reference the hold at planning. Issue #806's cap-per-token becomes a cap on live pending rows per token, inside the same transaction | 3 | #806 | [ ] |
 | 14.8 | **Expiry, sweeper, reaper.** Every reader tests `pending AND reserved time + window > now`, branching on `source` first (`SPEC.md:1824-1828`). The sweeper — if 14.1 keeps it — never labels a row carrying a payment id. Reaper horizon chosen. Scripted abuse and real abandonment distinguishable in the data. "How many checkouts walked away last month, and how long did each hold a boat" is a query. Tests: abandon a checkout and assert no Event, customer, code or message exists (criterion 7, with the Stripe receipt-doc check the audit names); `payment_intent.payment_failed` acked and ignored (criterion 11) | 5 | 7, 8, 9, 11 | [ ] |
-| 14.9 | **Calendar and write refuse the same set.** The read path finds pending rows by **overlap**, not slot identity (#826). Already-departed refused on both sides (#824). One test asserts both sides refuse the same set of trips | 5 | 1, 5; #824, #826 | [ ] |
+| 14.9 | **Calendar and write refuse the same set.** The read path finds pending rows by **overlap**, not slot identity (issue #826). Already-departed refused on both sides (issue #824). One test asserts both sides refuse the same set of trips | 5 | 1, 5; #824, #826 | [ ] |
 
 **Phase 14 total: 9 tasks, 39 points.**
 
@@ -813,7 +813,7 @@ says ship today and have to go.
 | # | Task | Est | Closes | Status |
 |---|------|-----|--------|--------|
 | 15.1 | **Confirm reads our row, not Stripe.** Issue #812 / DEC-164 — record exists, no new id. The booking is assembled from the row 14.4 froze; the charge sends `description` only and **no metadata** (`SPEC.md` §2.8.5). `Number(charge.metadata.taxCents ?? 0)` and its siblings at `booking-webhook.ts:616-623` go — a lost key must be an error, never a zero | 5 | #812; §2.8.5, §2.8.14 | [ ] |
-| 15.2 | **Late money.** The three §2.8.7 rows the code cannot do today: a superseded payment resolving to its reservation and refunded if it is already booked (criterion 12); success after the window with the boat taken → **refund and tell the customer in one path**, on the phone the reservation carries (#668); success after the window with the boat free → re-check under the lock and book it | 5 | 12; #668 | [ ] |
+| 15.2 | **Late money.** The three §2.8.7 rows the code cannot do today: a superseded payment resolving to its reservation and refunded if it is already booked (criterion 12); success after the window with the boat taken → **refund and tell the customer in one path**, on the phone the reservation carries (issue #668); success after the window with the boat free → re-check under the lock and book it | 5 | 12; #668 | [ ] |
 | 15.3 | **The reconciler.** Primary: pending rows past their window with a payment id → ask Stripe → the same `confirmReservation`. Fallback: Stripe's undelivered-event feed — `src/adapters/stripe-payment.ts` has no event-listing method, so the port method comes first. A cron entry in `vercel.json` beside `tick` and `doorbell-tick`, on minutes not hours. Safe at any time, in any order, more than once. Runs under the pause. The sweeper never touches its rows | 8 | 15 | [ ] |
 | 15.4 | **The unmatched charge.** A throwing `alertPaidButUnbooked` still returns success to Stripe — one of 14 call sites guards today; the rest propagate to a 500 and a retry storm. The SMS names the amount. SMS unconfigured leaves one log line, and a test says so | 3 | 19 | [ ] |
 | 15.5 | **Remove post-trip tipping.** `app/b/[code]`'s completed-state tip, `create-gratuity-checkout.ts`, and what the manage page says about it. §2.8.14: *"It ships today and has to be removed"* | 3 | §2.8.4b | [ ] |
@@ -841,7 +841,7 @@ can be attached to a booking.
 | 16.6 | **Audit trail — spec.** Issue #886 as filed | 3 | #886 | [ ] |
 | 16.7 | **Reservation pause.** Issue #864 — beside the crew-engine pause; a paused reservations surface refuses new checkouts so a settings edit never races a live one. The reconciler ignores it (§2.8.9) | 3 | #864 | [ ] |
 | 16.8 | **Flex insurance as a boolean.** Issue #683 re-scoped to §2.8.4c: offered at checkout, frozen on the row, not taxed, not in the fee base, terms shown on the manage page. DEC-113 gets the correction §2.8.14 says it is owed | 5 | #683 | [ ] |
-| 16.9 | **Self-service cancellation.** A Cancel action on the manage page that applies §2.8.4c itself — $50 fee outside 14 days, nothing inside, full refund with flex — through the §3.3 refund path. *Changing* a booking stays a request to a human; §2.8.12's "request, not an action" paragraph is rewritten to name cancel as the exception. After 16.8 | 5 | §2.8.14 | [ ] |
+| 16.9 | **Self-service cancellation.** A Cancel action on the manage page that applies §2.8.4c itself — refund minus the $50 fee outside the window, nothing inside it; the window is 14 days, or 72 hours with flex, and flex never waives the fee (`SPEC.md:1712-1713`) — through the §3.3 refund path. *Changing* a booking stays a request to a human; §2.8.12's "request, not an action" paragraph is rewritten to name cancel as the exception. After 16.8 | 5 | §2.8.14 | [ ] |
 
 **Phase 16 total: 9 tasks, 40 points.**
 

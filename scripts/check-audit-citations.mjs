@@ -59,39 +59,39 @@ const CITATIONS = [
   // ── docs/SPEC.md §2.8, re-baselined 2026-08-31 after PR #869 (DEC-164) shifted §2.8 by +23 ──
   ['docs/SPEC.md', 1485, 'reservation payment path is being built from scratch'],
   ['docs/SPEC.md', 1489, '**2.8.1 One record holds the boat.**'],
-  ['docs/SPEC.md', 1502, '`cancelled` | Cancelled after the fact'],
-  ['docs/SPEC.md', 1504, 'Nothing else claims a slot.'],
-  ['docs/SPEC.md', 1510, '**2.8.2 A pending reservation names a slot, not an Event.**'],
-  ['docs/SPEC.md', 1513, 'materializes nothing'],
-  ['docs/SPEC.md', 1515, 'the contract, not a convenience'],
-  ['docs/SPEC.md', 1518, 'Null until confirm'],
-  ['docs/SPEC.md', 1520, "**2.8.3 What a reservation occupies is the hull for the trip's hold minutes.**"],
-  ['docs/SPEC.md', 1522, 'whose time window overlaps prevents the sale'],
-  ['docs/SPEC.md', 1525, 'moment.'],
-  ['docs/SPEC.md', 1538, 'off-grid times are refused'],
-  ['docs/SPEC.md', 1541, 'measured by its own hold minutes, not the asking offering'],
-  ['docs/SPEC.md', 1601, '**2.8.4a What the customer is charged.**'],
-  ['docs/SPEC.md', 1639, '**Also frozen: both durations.**'],
-  ['docs/SPEC.md', 1725, '**2.8.5 Payment identity lives on our side.**'],
-  ['docs/SPEC.md', 1743, 'matched by possession, never by claimed identity'],
-  ['docs/SPEC.md', 1744, 'httpOnly cookie'],
-  ['docs/SPEC.md', 1822, '**2.8.8 Expiry is a clock, not a job.**'],
-  ['docs/SPEC.md', 1830, 'every reader tests'],
-  ['docs/SPEC.md', 2015, 'No separate hold object'],
+  ['docs/SPEC.md', 1501, '`cancelled` | Cancelled after the fact'],
+  ['docs/SPEC.md', 1503, 'Nothing else claims a slot.'],
+  ['docs/SPEC.md', 1514, '**2.8.2 A pending reservation names a slot, not an Event.**'],
+  ['docs/SPEC.md', 1517, 'materializes nothing'],
+  ['docs/SPEC.md', 1519, 'the contract, not a convenience'],
+  ['docs/SPEC.md', 1522, 'Null until confirm'],
+  ['docs/SPEC.md', 1524, "**2.8.3 What a reservation occupies is the hull for the trip's hold minutes.**"],
+  ['docs/SPEC.md', 1526, 'whose time window overlaps prevents the sale'],
+  ['docs/SPEC.md', 1529, 'moment.'],
+  ['docs/SPEC.md', 1542, 'off-grid times are refused'],
+  ['docs/SPEC.md', 1545, 'measured by its own hold minutes, not the asking offering'],
+  ['docs/SPEC.md', 1605, '**2.8.4a What the customer is charged.**'],
+  ['docs/SPEC.md', 1643, '**Also frozen: both durations.**'],
+  ['docs/SPEC.md', 1729, '**2.8.5 Payment identity lives on our side.**'],
+  ['docs/SPEC.md', 1747, 'matched by possession, never by claimed identity'],
+  ['docs/SPEC.md', 1748, 'httpOnly cookie'],
+  ['docs/SPEC.md', 1826, '**2.8.8 Expiry is a clock, not a job.**'],
+  ['docs/SPEC.md', 1834, 'every reader tests'],
+  ['docs/SPEC.md', 2022, 'No separate hold object'],
   // Lengthened 2026-09-03: "off-grid, outside the offering" also matches §2.8.3 at :1565, and the
   // checker reported AMBIGUOUS rather than picking one. The criterion's own leading words are unique.
-  ['docs/SPEC.md', 2047, '- [ ] A trip that is off-grid, outside the offering'],
-  ['docs/SPEC.md', 2058, "eventId` is null"],
-  ['docs/SPEC.md', 2094, 'booking-recovery lookup returns nothing'],
-  ['docs/SPEC.md', 2341, '## 2.10 Reservations — what the operator runs'],
+  ['docs/SPEC.md', 2054, '- [ ] A trip that is off-grid, outside the offering'],
+  ['docs/SPEC.md', 2065, "eventId` is null"],
+  ['docs/SPEC.md', 2101, 'booking-recovery lookup returns nothing'],
+  ['docs/SPEC.md', 2348, '## 2.10 Reservations — what the operator runs'],
   // The END of §2.10, pinned on the heading that follows it. An earlier draft pinned line 2545
   // with an empty quote as a "bound anchor" — which only proved the file still had 2545 lines and
   // would have stayed green if §2.10 shrank by five hundred. It was also simply wrong: 2545 is
   // inside §3, and the audit's range citation overshot by six lines because of it. A boundary is
   // a claim about where a section stops, so it has to be pinned on something that says so.
-  ['docs/SPEC.md', 2544, '# 3. Cross-cutting'],
-  ['docs/SPEC.md', 1909, 'crew manifest reads reservations directly'],
-  ['docs/SPEC.md', 1911, 'why the null is a contract'],
+  ['docs/SPEC.md', 2565, '# 3. Cross-cutting'],
+  ['docs/SPEC.md', 1912, 'crew manifest reads reservations directly'],
+  ['docs/SPEC.md', 1914, 'why the null is a contract'],
   ['docs/SPEC.md', 347, '**Booking horizon**'],
   ['docs/SPEC.md', 324, '**A lead-time cutoff.**'],
 
@@ -102,7 +102,7 @@ const CITATIONS = [
   ['src/reservations/booking-webhook.ts', 361, 'await writeSlotBooking('],
   ['src/reservations/create-departure-payment-intent.ts', 170, 'The SLOT — no eventId'],
   ['src/reservations/create-departure-checkout.ts', 149, 'The SLOT — no eventId'],
-  ['app/(public)/book/checkout/actions.ts', 166, 'createDeparturePaymentIntent('],
+  ['app/(public)/book/checkout/actions.ts', 173, 'createDeparturePaymentIntent('],
   ['src/reservations/create-departure-payment-intent.test.ts', 94, 'metadata.eventId).toBeUndefined()'],
   ['src/reservations/create-departure-payment-intent.test.ts', 256, 'not.toBeNull(); // materialized'],
   ['src/reservations/create-departure-payment-intent.test.ts', 336, 'listAllReservations()).toHaveLength(0)'],
@@ -116,7 +116,7 @@ const CITATIONS = [
   ['src/adapters/repository-contract.ts', 844, 'getEvent(SLOT_ID)).toBeNull()'],
 
   // ── Criterion 7's evidence (§Criterion 7) ──
-  ['docs/SPEC.md', 2059, 'Abandoning checkout leaves no `Event`'],
+  ['docs/SPEC.md', 2066, 'Abandoning checkout leaves no `Event`'],
   ['src/reservations/create-departure-payment-intent.ts', 141, 'getPaymentConfig()'],
   ['src/reservations/create-departure-payment-intent.ts', 166, 'receiptEmail: req.email'],
   ['src/reservations/write-booking.ts', 122, 'await resolveCustomerId(repo, req, now)'],
@@ -132,14 +132,14 @@ const CITATIONS = [
   // was inside that file — false, and exactly the overstated-absence mistake this document has
   // made before. Pinned so the correction cannot quietly rot back.
   ['src/reservations/confirm-booking.ts', 48, 'await deps.alertPaidButUnbooked('],
-  ['docs/SPEC.md', 2083, "hold minutes, trip time or schedule"],
+  ['docs/SPEC.md', 2090, "hold minutes, trip time or schedule"],
   ['src/customers/resolve.test.ts', 91, 'listCustomers()).toHaveLength(0)'],
   ['src/customers/resolve.test.ts', 201, 'listCustomers()).toHaveLength(0)'],
   ['src/reservations/availability.test.ts', 587, 'an EXPIRED hold contributes nothing'],
   ['src/reservations/claim.test.ts', 357, 'an EXPIRED overlapping hold does not occupy anything'],
 
   // ── Criterion 8's evidence (§Criterion 8) ──
-  ['docs/SPEC.md', 2061, 'The trip comes free the instant the window passes'],
+  ['docs/SPEC.md', 2068, 'The trip comes free the instant the window passes'],
   ['src/reservations/availability.ts', 333, 'h.expiresAt > input.asOf'],
   ['src/reservations/claim.ts', 215, 'h.expiresAt <= at0'],
   ['src/reservations/claim.ts', 266, 'h.expiresAt > at0'],
@@ -154,8 +154,8 @@ const CITATIONS = [
   ['src/adapters/in-memory-repository.test.ts', 9, 'runRepositoryContract("in-memory"'],
 
   // ── Criterion 9's evidence (§Criterion 9) ──
-  ['docs/SPEC.md', 2062, 'An abandoned checkout is still on disk afterwards as an `expired` reservation'],
-  ['docs/SPEC.md', 2064, 'is a query.'],
+  ['docs/SPEC.md', 2069, 'An abandoned checkout is still on disk afterwards as a lapsed `pending` reservation'],
+  ['docs/SPEC.md', 2071, 'is a query.'],
   ['src/domain/entities.ts', 739, 'guestCount: number;'],
   ['src/domain/entities.ts', 743, 'createdAt: string;'],
   ['src/adapters/postgres-repository.ts', 1680, "delete from checkout_holds where source='muster' and expires_at <= $1"],
@@ -167,19 +167,20 @@ const CITATIONS = [
   // §2.8.8's three mechanisms. Pinned individually because an earlier draft of §Criterion 9 read
   // the subsection's title — "Expiry is a clock, not a job" — and stopped, concluding §2.8 had no
   // answer to unbounded growth. It specifies two jobs, twenty lines below the title.
-  ['docs/SPEC.md', 1830, 'A pending reservation stops occupying its boat the moment its window runs out'],
-  ['docs/SPEC.md', 1834, 'it relabels lapsed `pending` rows to `expired`'],
-  ['docs/SPEC.md', 1837, 'The sweeper never labels a row it cannot prove was unpaid'],
-  ['docs/SPEC.md', 1842, 'deletes old `expired` rows so the table does not'],
-  ['docs/SPEC.md', 1847, 'The sweeper never deletes, and this is load-bearing rather than tidy'],
-  ['docs/SPEC.md', 1853, 'hulls tied up for people who were never going to buy'],
-  ['docs/SPEC.md', 1824, "an operator's booking, `source`"],
+  ['docs/SPEC.md', 1834, 'A pending reservation stops occupying its boat the moment its window runs out'],
+  // 14.1 (2026-09-04) removed the sweeper; these four pin the sentences that replaced it.
+  ['docs/SPEC.md', 1838, '**There is no sweeper.**'],
+  ['docs/SPEC.md', 1844, 'It never deletes a row it cannot prove was unpaid'],
+  ['docs/SPEC.md', 1843, 'deletes old lapsed rows so the table does not'],
+  ['docs/SPEC.md', 1850, 'The reaper\'s horizon is long, and this is load-bearing rather than tidy'],
+  ['docs/SPEC.md', 1856, 'hulls tied up for people who were never going to buy'],
+  ['docs/SPEC.md', 1828, "an operator's booking, `source`"],
   ['db/migrations/20260718142705_claim_hold_mutex.sql', 33, 'create table if not exists checkout_holds ('],
 
   // ── Criterion 10's evidence (§Criterion 10) ──
-  ['docs/SPEC.md', 2065, 'A declined card retried on the same trip reuses the same reservation'],
-  ['docs/SPEC.md', 1743, 'A retry is matched by possession, never by claimed identity'],
-  ['docs/SPEC.md', 1745, 'It must never be the typed email or phone'],
+  ['docs/SPEC.md', 2072, 'A declined card retried on the same trip reuses the same reservation'],
+  ['docs/SPEC.md', 1747, 'A retry is matched by possession, never by claimed identity'],
+  ['docs/SPEC.md', 1749, 'It must never be the typed email or phone'],
   ['src/reservations/claim.ts', 120, 'export interface DepartureHoldRequest {'],
   ['src/reservations/claim.ts', 133, 'holderToken?: string | undefined;'],
   ['src/reservations/claim.ts', 257, 'Matched on POSSESSION of the holder token, never on the buyer'],
@@ -191,8 +192,8 @@ const CITATIONS = [
   ['src/reservations/holder-token.ts', 4, 'Why possession and not identity'],
   ['src/reservations/holder-token.ts', 27, 'return bytes(32).toString("base64url");'],
   ['src/reservations/holder-token.ts', 32, 'const HOLDER_TOKEN_RE = /^[A-Za-z0-9_-]{43}$/'],
-  ['app/(public)/book/checkout/actions.ts', 102, 'httpOnly: true,'],
-  ['app/(public)/book/checkout/actions.ts', 106, 'sameSite: "lax",'],
+  ['app/(public)/book/checkout/actions.ts', 103, 'httpOnly: true,'],
+  ['app/(public)/book/checkout/actions.ts', 107, 'sameSite: "lax",'],
   ['src/reservations/claim.test.ts', 397, 'returns the SAME hold on a retry instead of taking a second boat'],
   ['src/reservations/claim.test.ts', 410, 'does NOT extend the expiry — a retry cannot park a boat indefinitely'],
   ['src/reservations/claim.test.ts', 439, 'takes a bigger boat when the retry no longer FITS'],
@@ -201,7 +202,7 @@ const CITATIONS = [
   ['src/reservations/claim.test.ts', 524, 'does not reuse a hold from a different departure'],
 
   // ── Criterion 11's evidence (§Criterion 11) ──
-  ['docs/SPEC.md', 2067, 'payment_intent.payment_failed'],
+  ['docs/SPEC.md', 2074, 'payment_intent.payment_failed'],
   ['src/adapters/stripe-payment.ts', 194, 'event.type === "checkout.session.completed"'],
   ['src/adapters/stripe-payment.ts', 209, 'event.type === "charge.refunded"'],
   ['src/adapters/stripe-payment.ts', 265, 'event.type === "payment_intent.succeeded"'],
@@ -214,9 +215,9 @@ const CITATIONS = [
   ['src/reservations/booking-webhook.test.ts', 84, 'getReservation(reservationIdFor("cs_test_1"))).toBeNull()'],
 
   // ── Criterion 12's evidence (§Criterion 12) ──
-  ['docs/SPEC.md', 2068, 'superseded payment that succeeds late'],
-  ['docs/SPEC.md', 1731, 'A reservation has many payment ids over its life, not one'],
-  ['docs/SPEC.md', 1734, 'One overwritable column loses the first id'],
+  ['docs/SPEC.md', 2075, 'superseded payment that succeeds late'],
+  ['docs/SPEC.md', 1735, 'A reservation has many payment ids over its life, not one'],
+  ['docs/SPEC.md', 1738, 'One overwritable column loses the first id'],
   ['src/reservations/confirm-booking.ts', 55, 'key: pi.paymentIntentId,'],
   ['src/reservations/booking-webhook.ts', 279, 'const idempotencyKey = charge.key;'],
   ['src/reservations/booking-webhook.ts', 308, 'const reservationId = reservationIdFor(idempotencyKey);'],
@@ -236,7 +237,7 @@ const CITATIONS = [
   ['src/reservations/booking-webhook.ts', 747, 'Writes NO `Payment`'],
 
   // ── Criterion 13's evidence (§Criterion 13) ──
-  ['docs/SPEC.md', 2070, 'Killing the webhook entirely still produces a booking'],
+  ['docs/SPEC.md', 2077, 'Killing the webhook entirely still produces a booking'],
   ['app/(public)/book/success/page.tsx', 5, 'SPEC §2.8 criterion 13'],
   ['app/(public)/book/success/page.tsx', 51, 'await confirmBookingByPaymentIntent('],
   ['src/reservations/confirm-booking.ts', 87, 'export async function confirmBookingByPaymentIntent('],
@@ -255,7 +256,7 @@ const CITATIONS = [
   ['src/adapters/in-memory-repository.ts', 515, 'Insert-only (mirrors the postgres `on conflict do nothing`)'],
 
   // ── Criterion 14's evidence (§Criterion 14) ──
-  ['docs/SPEC.md', 2071, 'Closing the browser at the moment of payment still produces a booking'],
+  ['docs/SPEC.md', 2078, 'Closing the browser at the moment of payment still produces a booking'],
   ['src/reservations/booking-webhook.test.ts', 126, 'booked: writes the reservation + records the payment'],
   ['src/reservations/booking-webhook.test.ts', 292, 'a throwing sendConfirmation never breaks the committed booking'],
   ['app/lib/booking-confirmation.ts', 31, 'if (process.env.MESSAGING === "false") return;'],
@@ -267,26 +268,26 @@ const CITATIONS = [
   ['app/(public)/book/checkout/checkout-form.tsx', 193, 'return_url: p.returnUrl,'],
 
   // ── Criterion 15's evidence (§Criterion 15) ──
-  ['docs/SPEC.md', 2072, 'Kill the webhook, close the browser'],
-  ['docs/SPEC.md', 1859, '**2.8.9 The reconciler — the job that catches payments whose webhook never landed.**'],
-  ['docs/SPEC.md', 1862, 'retries on a backoff and eventually stops'],
-  ['docs/SPEC.md', 1863, 'money taken, no booking, nobody told'],
-  ['docs/SPEC.md', 1868, 'past its window is a work list'],
-  ['docs/SPEC.md', 1871, "Stripe's undelivered-event feed"],
-  ['docs/SPEC.md', 1876, 'Detection latency *is* the schedule'],
-  ['docs/SPEC.md', 1879, 'safe to run at any time, in any order, more than once'],
-  ['docs/SPEC.md', 1883, "The operator's pause does not stop it"],
+  ['docs/SPEC.md', 2079, 'Kill the webhook, close the browser'],
+  ['docs/SPEC.md', 1862, '**2.8.9 The reconciler — the job that catches payments whose webhook never landed.**'],
+  ['docs/SPEC.md', 1865, 'retries on a backoff and eventually stops'],
+  ['docs/SPEC.md', 1866, 'money taken, no booking, nobody told'],
+  ['docs/SPEC.md', 1871, 'past its window is a work list'],
+  ['docs/SPEC.md', 1874, "Stripe's undelivered-event feed"],
+  ['docs/SPEC.md', 1879, 'Detection latency *is* the schedule'],
+  ['docs/SPEC.md', 1882, 'safe to run at any time, in any order, more than once'],
+  ['docs/SPEC.md', 1886, "The operator's pause does not stop it"],
   // The verdict, in the code's own words, in two files.
   ['src/reservations/confirm-booking.ts', 14, 'reconciler to run the SAME idempotent confirm'],
   ['app/lib/booking-deps.ts', 4, '(later) the reconciler'],
   // The four controls checked and ruled out (§Criterion 15). The alert call sites themselves are
   // already pinned under Criterion 7; not repeated here.
   ['app/api/cron/xola-pull/route.ts', 10, 'NO CRON IS ATTACHED'],
-  ['app/(admin)/admin/purchases/page.tsx', 105, 'listAllReservations'],
+  ['app/(admin)/admin/purchases/page.tsx', 106, 'listAllReservations'],
   ['app/b/find/actions.ts', 70, 'r.event'],
 
   // ── Criterion 16's evidence (§Criterion 16) ──
-  ['docs/SPEC.md', 2074, 'Confirming the same payment three times'],
+  ['docs/SPEC.md', 2081, 'Confirming the same payment three times'],
   ['src/domain/entities.ts', 802, 'Deterministic from the Stripe checkout-session id'],
   ['src/adapters/postgres-repository.ts', 1480, 'on conflict do nothing'],
   // The SEQUENTIAL guard, which an earlier draft of §Criterion 16 missed: the repeat returns here,
@@ -305,7 +306,7 @@ const CITATIONS = [
   ['src/reservations/booking-webhook.test.ts', 564, 'expect(events).toHaveLength(1)'],
 
   // ── Criterion 17's evidence (§Criterion 17) ──
-  ['docs/SPEC.md', 2075, 'Confirming produces a shift for that vessel-day'],
+  ['docs/SPEC.md', 2082, 'Confirming produces a shift for that vessel-day'],
   // The formation itself, and the flag whose default used to be wrong (#765).
   ['src/reservations/booking-webhook.ts', 436, 'const form = await formShifts(deps.repo, {'],
   ['src/reservations/booking-webhook.ts', 438, 'notifyTripChanges: true,'],
@@ -340,7 +341,7 @@ const CITATIONS = [
   ['src/reservations/booking-webhook.test.ts', 690, 'a formation failure does not cost the customer their paid booking'],
   // "With seats" is guarded outside the booking path — and only the second guard is general.
   ['src/admin/vessel-admin.ts', 81, 'if (manning.length === 0) return { ok: false, code: "crew_required" }'],
-  ['app/(admin)/admin/shifts/page.tsx', 313, 'no manning rule rather than reporting it vacuously Crewed'],
+  ['app/(admin)/admin/shifts/page.tsx', 314, 'no manning rule rather than reporting it vacuously Crewed'],
   ['src/builder/derive.ts', 84, 'Shift has no required seats — the vessel has no manning rule (#582).'],
   // The gap the first guard does not cover: `.some()` is vacuously false on an empty array.
   ['src/admin/crew-admin.ts', 36, 'if (vessel.manning.some((m) => m.count < 1)) {'],
@@ -363,7 +364,7 @@ const CITATIONS = [
   ['docs/decisions/DEC-126-the-flip-is-a-cutover-with-a-one-time-full-xola.md', 33, 'gone rather than amended'],
 
   // ── Criterion 18's evidence (§Criterion 18) ──
-  ['docs/SPEC.md', 2077, 'Confirming a trip whose slot was previously booked and then cancelled'],
+  ['docs/SPEC.md', 2084, 'Confirming a trip whose slot was previously booked and then cancelled'],
   // The resurrect, and the two carve-outs the criterion's wording does not cover.
   ['src/adapters/postgres-repository.ts', 1493, 'RESURRECT a cancelled slot (#616)'],
   ['src/adapters/postgres-repository.ts', 1515, "set status = 'scheduled', capacity = $4, price = $5, duration_minutes = $6"],
@@ -399,7 +400,7 @@ const CITATIONS = [
   ['src/adapters/in-memory-repository.ts', 659, 'if (event.price !== undefined) revived.price = event.price;'],
 
   // ── Criterion 19's evidence (§Criterion 19) ──
-  ['docs/SPEC.md', 2079, 'A booking-charge payment that matches no reservation alerts every active admin by SMS'],
+  ['docs/SPEC.md', 2086, 'A booking-charge payment that matches no reservation alerts every active admin by SMS'],
   // The seven branches that fit "a booking charge matching no reservation" — two name the amount.
   // The last two declare a non-booking `purpose`, so they are listed with the argument rather
   // than silently excluded (code review caught the five-row version).
@@ -442,7 +443,7 @@ const CITATIONS = [
   ['src/reservations/booking-webhook.test.ts', 200, 'toBeNull()'],
 
   // ── Criterion 20's evidence (§Criterion 20) ──
-  ['docs/SPEC.md', 2083, "Editing the offering's price, hold minutes, trip time or schedule while a reservation is pending changes"],
+  ['docs/SPEC.md', 2090, "Editing the offering's price, hold minutes, trip time or schedule while a reservation is pending changes"],
   // Price: resolved at intent creation, carried through Stripe, read back from the request.
   ['src/reservations/create-departure-payment-intent.ts', 127, 'const priceCents = slotEvent?.price ?? resolveBasePrice(offering!, hold.date)'],
   ['src/reservations/create-departure-payment-intent.ts', 177, 'priceCents: String(priceCents),'],
@@ -466,10 +467,10 @@ const CITATIONS = [
   ['src/reservations/claim.ts', 84, 'export function holdExpiry(asOf: string): string {'],
   ['src/reservations/claim.ts', 308, 'expiresAt: holdExpiry(at),'],
   // §2.8.4 step 3 ALREADY specifies the freeze this criterion asks for — the fix is not new.
-  ['docs/SPEC.md', 1568, 'freeze the money, the hold minutes and the trip time onto it'],
+  ['docs/SPEC.md', 1572, 'freeze the money, the hold minutes and the trip time onto it'],
   // Split at the line break (:1575/:1576) — the fifth this session.
-  ['docs/SPEC.md', 1576, 'a tax rate, a service fee, a price or a trip time can'],
-  ['docs/SPEC.md', 1577, 'change between the quote and the payment'],
+  ['docs/SPEC.md', 1580, 'a tax rate, a service fee, a price or a trip time can'],
+  ['docs/SPEC.md', 1581, 'change between the quote and the payment'],
   ['docs/decisions/DEC-161-occupancy-is-measured-in-hold-minutes-not-trip-time.md', 18, '2.8.4a freezes both durations'],
   ['docs/decisions/DEC-161-occupancy-is-measured-in-hold-minutes-not-trip-time.md', 39, 'Both durations freeze onto the reservation.'],
   // DEC-164 sits in the same amendment banner and rejects the mechanism the price freeze uses
@@ -480,7 +481,7 @@ const CITATIONS = [
   ['docs/decisions/DEC-164-the-frozen-money-is-one-value-on-our-own-row.md', 36, 'Rejected: leaving it at Stripe.'],
   ['docs/SPEC.md', 1481, 'Amended by DEC-164'],
   // The pause is the answer for the settings-shaped REFUSALS (criterion 5), not for a frozen value.
-  ['docs/SPEC.md', 1799, 'Nothing is re-validated at confirm.'],
+  ['docs/SPEC.md', 1803, 'Nothing is re-validated at confirm.'],
   ['src/ports/repository.ts', 732, 'isEnginePaused(): Promise<boolean>;'],
   // Why the duration is read late today: no pending row exists to carry it, and the hold has no
   // duration field either (criterion 4's finding from the other direction).
@@ -490,7 +491,7 @@ const CITATIONS = [
   ['src/admin/offering-admin.ts', 215, '...(input.holdMinutes !== undefined ? { holdMinutes: input.holdMinutes } : {}),'],
 
   // ── Criterion 21's evidence (§Criterion 21) ──
-  ['docs/SPEC.md', 2085, 'A balance payment never creates or confirms a reservation.'],
+  ['docs/SPEC.md', 2092, 'A balance payment never creates or confirms a reservation.'],
   // Depth 1 — the dispatch returns nine lines before the booking path.
   ['src/reservations/booking-webhook.ts', 172, 'it must NEVER reach the booking path'],
   ['src/reservations/booking-webhook.ts', 174, 'if (purpose === "balance") return recordBalancePayment(deps, completed);'],
@@ -513,7 +514,7 @@ const CITATIONS = [
   ['src/reservations/confirm-booking.test.ts', 188, 'listAllReservations()).toHaveLength(0)'],
   // Dormant at TWO layers. The pane hides the button — this is the one the operator meets, and
   // the one an earlier draft of this section missed (code review).
-  ['app/(admin)/admin/calendar/[reservationId]/actions.ts', 80, 'export async function createBalanceLink(formData: FormData): Promise<void> {'],
+  ['app/(admin)/admin/calendar/[reservationId]/actions.ts', 81, 'export async function createBalanceLink(formData: FormData): Promise<void> {'],
   ['app/(admin)/admin/calendar/[reservationId]/reservation-detail-pane.tsx', 495, 'Shown only when money is actually owed'],
   ['app/(admin)/admin/calendar/[reservationId]/reservation-detail-pane.tsx', 517, 'money.balanceCents > 0 &&'],
   ['app/(admin)/admin/calendar/[reservationId]/reservation-detail-pane.tsx', 540, '<form action={createBalanceLink}>'],
@@ -528,11 +529,11 @@ const CITATIONS = [
   ['src/reservations/payment-config.test.ts', 66, 'full mode charges fare + tax + fee in one go'],
 
   // ── Criterion 22's evidence (§Criterion 22) ──
-  ['docs/SPEC.md', 2087, 'The tip pool for a trip divides evenly across the confirmed holders of its **required**'],
-  ['docs/SPEC.md', 1649, "of that shift's **required** seats, deduped."],
-  ['docs/SPEC.md', 1651, 'Supernumerary seats are not in the split'],
-  ['docs/SPEC.md', 1654, 'crew sorted by id, the first `pool mod n` of them receive one extra cent'],
-  ['docs/SPEC.md', 1913, 'The crew tip pool pays out on `booked`'],
+  ['docs/SPEC.md', 2094, 'The tip pool for a trip divides evenly across the confirmed holders of its **required**'],
+  ['docs/SPEC.md', 1653, "of that shift's **required** seats, deduped."],
+  ['docs/SPEC.md', 1655, 'Supernumerary seats are not in the split'],
+  ['docs/SPEC.md', 1658, 'crew sorted by id, the first `pool mod n` of them receive one extra cent'],
+  ['docs/SPEC.md', 1916, 'The crew tip pool pays out on `booked`'],
   // Two layers: the pure split, and the wiring that decides who is in the denominator.
   ['src/admin/gratuity-payroll.ts', 48, 'export function splitGratuity(input: GratuitySplitInput): GratuitySplit {'],
   ['src/admin/gratuity-payroll.ts', 102, 'export async function buildGratuityPayroll('],
@@ -559,7 +560,7 @@ const CITATIONS = [
   ['src/admin/gratuity-payroll.test.ts', 147, 'a cancelled shift takes its event out of scope (nobody paid)'],
   ['src/admin/payroll-reconcile.test.ts', 308, 'a supernumerary seat is never missing — an unpaid ride owes no hours'],
   // The operator sees the warning; the combined report carries it.
-  ['app/(admin)/admin/payroll/page.tsx', 189, '{tips.warnings.length > 0 && ('],
+  ['app/(admin)/admin/payroll/page.tsx', 193, '{tips.warnings.length > 0 && ('],
   ['src/admin/payroll-reconcile.ts', 141, 'const warnings = [...tips.warnings];'],
   // Reachability of the silent case: who writes gratuities, who cancels events.
   ['src/reservations/booking-webhook.ts', 480, 'if (isSlotBooking && gratuityCents > 0) {'],
@@ -578,8 +579,8 @@ const CITATIONS = [
 
   // ── Criterion 23's evidence (§Criterion 23) ──
   // The rewritten criterion, and the decision that rewrote it.
-  ['docs/SPEC.md', 2090, 'A reservation with no payment recorded still occupies its hull'],
-  ['docs/SPEC.md', 2091, 'consults a payment row.'],
+  ['docs/SPEC.md', 2097, 'A reservation with no payment recorded still occupies its hull'],
+  ['docs/SPEC.md', 2098, 'consults a payment row.'],
   ['docs/SPEC.md', 1482, 'Amended by DEC-165'],
   ['docs/decisions/DEC-165-occupancy-never-reads-a-payment-row.md', 8, 'A reservation holds a boat because it exists, not because it is paid'],
   // Shape 1, read side — every scheduled event, no source filter, no payment.
@@ -608,7 +609,7 @@ const CITATIONS = [
   ['src/reservations/availability.test.ts', 587, 'an EXPIRED hold contributes nothing'],
 
   // ── Criterion 24's evidence (§Criterion 24) ──
-  ['docs/SPEC.md', 2094, 'booking-recovery lookup returns nothing'],
+  ['docs/SPEC.md', 2101, 'booking-recovery lookup returns nothing'],
   // THE line. A deny-list on one status, where the criterion needs an allow-list — pinned on the
   // filter expression itself, because the whole finding is which operator is on it.
   ['src/reservations/find-booking.ts', 76, 'candidates.filter((c) => c.reservation.status !== "cancelled")'],
@@ -630,7 +631,7 @@ const CITATIONS = [
 
   // ── Criterion 2 / 5 evidence, spot-checked while re-baselining ──
   ['src/reservations/availability.ts', 172, 'return asId<"EventId">(`slot_${slotIdentity('],
-  ['app/(public)/book/page.tsx', 91, 'repo.listLiveCheckoutHolds(asOf)'],
+  ['app/(public)/book/page.tsx', 92, 'repo.listLiveCheckoutHolds(asOf)'],
   ['src/reservations/claim.ts', 312, 'await repo.acquireCheckoutHold(hold)'],
   ['src/adapters/in-memory-repository.ts', 462, 'async cancelEventIfUnclaimed('],
 ]

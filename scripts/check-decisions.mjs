@@ -16,13 +16,16 @@
 // knob is in `docs/decisions/_config.json`.
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
-import { createHash } from 'node:crypto'
 // Named import, not default: js-yaml is CommonJS, and `import yaml from 'js-yaml'` resolves
 // under vitest's transform but throws under plain node — which is how this script actually
 // runs. The test suite passing is not evidence the gate runs.
 import { load as parseYaml } from 'js-yaml'
 import {
   BASELINE_PATH,
+  // Imported solely to be RE-EXPORTED at the `export {}` block near the end of this file,
+  // which the rule does not count as a use for a `.mjs` module (#908). It is not dead: the
+  // generator imports `fingerprint` from here.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- re-exported below
   fingerprint,
   frontmatterBlock,
   hasSchemaKey,

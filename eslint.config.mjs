@@ -78,10 +78,16 @@ const recommended = (mod) => {
 const OFF = {
   // --- playwright (e2e/ only) ---
   "playwright/prefer-locator": "off",               // 105 findings — issue #909
-  "playwright/no-force-option": "off",              //  16 findings — issue #908 (already measured 16/16 legitimate in issue #904)
-  "playwright/no-conditional-in-test": "off",       //  10 findings — issue #908
-  "playwright/no-skipped-test": "off",              //   8 findings — issue #908 (7 legitimate per issue #904; the real one is e2e/trainee-staffing.spec.ts:20)
-  "playwright/prefer-web-first-assertions": "off",  //   6 findings — issue #908
+  // THE PLAYWRIGHT IDIOM RULES STAY OFF, and the reason is one this repo has been bitten by:
+  // **a wrongly-rewritten e2e assertion still passes, and now asserts something else.** The
+  // config already records two of those (a `getByText("$499.00").first()` that matched a slot
+  // row; a calendar literal right only by fixture coincidence). Changing 21 assertions to
+  // satisfy a rule, with no way to see the result except a green run, is that failure shape
+  // on purpose. Each was read; none is a defect.
+  "playwright/no-force-option": "off",              //  16 legitimate — `force: true` on sr-only inputs styled as chips
+  "playwright/no-conditional-in-test": "off",       //  10 legitimate — viewport/project branches
+  "playwright/no-skipped-test": "off",              //   8 legitimate — incl. trainee-staffing.spec.ts:20, whose 6-line docstring says it is dormant pending the Manning UI
+  "playwright/prefer-web-first-assertions": "off",  //   6 findings — a real improvement, but see the note above
   "playwright/expect-expect": "off",                //   2 findings — issue #908 (2/2 legitimate per issue #904 — both assert via page.waitForURL)
   "playwright/no-conditional-expect": "off",        //   2 findings — issue #908
   "playwright/prefer-to-have-count": "off",         //   2 findings — issue #908
@@ -96,8 +102,12 @@ const OFF = {
   // trailing-slash regex, now `stripTrailingSlashes` in src/config/base-url.ts; the
   // other 6 carry inline disables naming their input source.
   "sonarjs/prefer-specific-assertions": "off",      //  20 findings — issue #909
-  "sonarjs/no-nested-template-literals": "off",     //  16 findings — issue #908
-  "sonarjs/void-use": "off",                        //  16 findings — issue #908
+  "sonarjs/no-nested-template-literals": "off",     //  16 findings — pure style, no defect class
+  // DROPPED (DEC-159 rule 4). All 16 are deliberate TypeScript idioms: `void now;` to keep a
+  // parameter in a signature for symmetry, and `void unreachable;` after
+  // `const unreachable: never = status` — the standard exhaustiveness check
+  // (`src/adapters/stripe-payment.ts:70`). The rule cannot tell those from a discarded promise.
+  "sonarjs/void-use": "off",                        //  16 legitimate TS idioms
   // OFF HERE SO THE PRESET DOES NOT ENABLE THEM REPO-WIDE. Both are re-enabled at
   // `error` by the narrowed block below, which runs after this one and wins on its
   // own scope. Removing these two lines does not turn the rules "more on" — it turns
@@ -117,7 +127,7 @@ const OFF = {
   // 3 findings each, two were the `if (!dbUp) describe.skip(…)` env gates and one was a
   // real gap: a "double delete is not an error" test that asserted nothing, so it would
   // have passed if `deletePunch` stopped throwing and started returning an error.
-  "sonarjs/no-duplicated-branches": "off",          //   2 findings — issue #908
+  "sonarjs/no-duplicated-branches": "off",          //   2 findings — issue #909 (needs care, not tidying)
   "sonarjs/no-os-command-from-path": "off",         //   2 findings — ON, narrowed (#908); same reason as the two above
   // DROPPED (DEC-159 rule 4). Its 2 findings are `in-memory-repository.test.ts` and its
   // presence twin — 9-line files whose entire body is `runRepositoryContract(…)`, the
@@ -128,17 +138,28 @@ const OFF = {
   // that lets the suite run without a database, and the reason `test:pg` exists. Kept off
   // rather than disabled inline at four sites across two rules.
   "sonarjs/no-skipped-tests": "off",                //   2 legitimate env gates
-  "sonarjs/no-inverted-boolean-check": "off",       //   2 findings — issue #908
-  "sonarjs/no-nested-functions": "off",             //   1 finding  — issue #908
-  "sonarjs/regex-complexity": "off",                //   1 finding  — issue #908
-  "sonarjs/todo-tag": "off",                        //   1 finding  — issue #908
-  "sonarjs/concise-regex": "off",                   //   1 finding  — issue #908
+  // DROPPED, and this one would have INTRODUCED a bug. Both findings are `!(a <= b)` in
+  // `doorbell-decider.ts`, where the operand can be `Date.parse` of a malformed string. On
+  // NaN every comparison is false, so `!(x <= y)` is TRUE and the code rings — "fail toward
+  // ringing", as the comment above it says. The rule's suggested `x > y` is FALSE on NaN and
+  // would silently skip the notification instead.
+  "sonarjs/no-inverted-boolean-check": "off",       //   2 deliberate NaN-safe inversions
+  "sonarjs/no-nested-functions": "off",             //   1 finding  — style, in one client island
+  "sonarjs/regex-complexity": "off",                //   1 finding  — a CSS comment stripper in a test
+  // Its one "finding" is the word TODO inside prose DESCRIBING a TODO that was removed
+  // (`app/lib/alert.ts:40`: "It was a console.error with a TODO"). Nothing to action.
+  "sonarjs/todo-tag": "off",                        //   1 false positive on prose
+  "sonarjs/concise-regex": "off",                   //   1 finding  — a dev script
   // `sonarjs/no-unused-collection` is ON as of #908, and it found a REAL DEFECT: a Set
   // in `db/xola-report.ts` populated on every item and read nowhere, whose own docstring
   // promised it printed a warning. Four lines from the comment describing the identical
   // bug being fixed in #757.
-  "sonarjs/no-floating-point-equality": "off",      //   1 finding  — issue #908
-  "sonarjs/redundant-type-aliases": "off",          //   1 finding  — issue #908
+  // `expect(STAFFING_HORIZON_LEAD_DAYS).toBe(6.1)` — the same literal on both sides, which is
+  // exact. The rule is right in general and wrong about this one comparison.
+  "sonarjs/no-floating-point-equality": "off",      //   1 false positive in a test
+  // `export type CanonicalPhone = string` — a documentation alias marking "a phone that
+  // passed canonicalization", which is the point. Technically redundant, deliberately so.
+  "sonarjs/redundant-type-aliases": "off",          //   1 deliberate documentation alias
   // `sonarjs/no-trivial-assertions` is ON as of #908 — its one finding is a `@ts-expect-error`
   // case where the TYPECHECK is the assertion, carrying an inline disable that says so.
 
@@ -164,7 +185,10 @@ const OFF = {
   // `no-unused-private-class-members` is ON as of #908 — both findings are deliberate
   // write-only parity fields in the in-memory adapter, carrying inline disables that
   // cite DEC-159's canary incident.
-  "no-redeclare": "off",                            //   1 finding  — issue #908
+  // Base rule OFF, TS-aware variant ON in the block below — same shape as `no-unused-vars`.
+  // It cannot see TypeScript function overloads (it flagged the two signatures of
+  // `stripTrailingSlashes`) or type/value declaration merging.
+  "no-redeclare": "off",                            //   3 false positives — superseded by the TS variant
   "no-useless-escape": "off",                       //   1 finding  — issue #908
   "no-empty": "off",                                //   1 finding  — issue #908
   "no-irregular-whitespace": "off",                 //   1 finding  — issue #908
@@ -257,7 +281,23 @@ export default tseslint.config(
       parser: tseslint.parser,
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
-    rules: { ...js.configs.recommended.rules, ...OFF },
+    plugins: { "@typescript-eslint": tseslint.plugin },
+    rules: {
+      ...js.configs.recommended.rules,
+      ...OFF,
+      // The TS-aware replacements for the two base rules `OFF` disables, applied at the
+      // SAME width so the swap loses no coverage (#908). Base `no-redeclare` reports a
+      // TypeScript function overload as a redeclaration — it flagged both signatures of
+      // `stripTrailingSlashes` — and base `no-unused-vars` cannot see type-only usage.
+      // Putting these here rather than only in the `src/`+`db/` block below is the point:
+      // scoping the replacement narrower than the rule it replaces would leave `app/` and
+      // `components/` with no check at all, which is the blind spot DEC-144 is about.
+      "@typescript-eslint/no-redeclare": "error",
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrors: "all", caughtErrorsIgnorePattern: "^_", ignoreRestSiblings: true },
+      ],
+    },
   },
   {
     files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}", "src/**/*.{ts,tsx}", "db/**/*.{ts,tsx}"],
@@ -444,6 +484,11 @@ export default tseslint.config(
           ignoreRestSiblings: true,
         },
       ],
+      // The TS-aware replacement for base `no-redeclare`, which is off in `OFF` (#908).
+      // The base rule reports a TypeScript function OVERLOAD as a redeclaration — it
+      // flagged both signatures of `stripTrailingSlashes` — and does the same for
+      // type/value declaration merging. This variant understands both. Zero findings.
+      "@typescript-eslint/no-redeclare": "error",
     },
   },
   {

@@ -70,7 +70,14 @@ try {
   // captain) with a long MMC, so he lands in mate-seat ask pools; "Ask to
   // fill" on shift-open's mate seat texts his actual phone once the three
   // TWILIO_* vars are set. Dev seed only.
-  const ERIC = asId<"CrewMemberId">("crew-eric");
+  // `crew-eric-stoffer`, NOT `crew-eric` — it must be the SAME id as the admin row
+  // seeded below, `app/lib/operator.ts`'s `OPERATOR_CREW_MEMBER_ID` default, and
+  // migration `0018_admins.sql:31`. `saveAdmin` upserts `on conflict (id)` while
+  // `admins.handle` carries its own unique index, so two different ids claiming
+  // handle `eric` is a constraint violation, not an upsert — which is exactly how
+  // the e2e suite went red: `e2e/fixtures.ts:225` seeds `crew-eric-stoffer`/`eric`
+  // and then runs this script, which claimed the same handle under a different id.
+  const ERIC = asId<"CrewMemberId">("crew-eric-stoffer");
   await repo.saveCrewMember({ id: ERIC, name: "Eric Stoffer", email: "eric@bb.test", phone: "+14403631599", ratings: [MATE], status: "active", reliabilityScore: null });
   await repo.saveCredential({ id: asId<"CredentialId">("cred-eric-mmc"), crewMemberId: ERIC, type: "MMC", expiry: "2030-12-31" });
   // …and an ADMIN, so a reset dev DB has a way in.

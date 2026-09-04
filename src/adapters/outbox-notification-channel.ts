@@ -31,6 +31,7 @@ import { issueMagicLink, randomSecret } from "../auth/magic-link.js";
 // Reuse the ask relay's 24h TTL. For a ring it isn't an "answer window" — just a
 // reasonable tap window — but the value is the same and one const avoids drift.
 import { RELAY_LINK_TTL_MS } from "./web-link-channel.js";
+import { stripTrailingSlashes } from "../config/base-url.js";
 
 export interface OutboxNotificationChannelOptions {
   /** Externally-reachable origin for delivered links (no trailing slash); MUST be
@@ -48,7 +49,7 @@ export class OutboxNotificationChannel implements NotificationPort {
 
   constructor(repo: Repository, options: OutboxNotificationChannelOptions) {
     this.#repo = repo;
-    this.#linkBase = options.linkBase.replace(/\/+$/, "");
+    this.#linkBase = stripTrailingSlashes(options.linkBase);
     this.#now = options.now ?? (() => new Date());
     this.#mintSecret = options.mintSecret ?? randomSecret;
   }

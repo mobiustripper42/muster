@@ -36,6 +36,7 @@ import {
 } from "../ports/channel.js";
 import type { Repository } from "../ports/repository.js";
 import { issueMagicLink, randomSecret } from "../auth/magic-link.js";
+import { stripTrailingSlashes } from "../config/base-url.js";
 
 /** Relay links live as long as the ask's answer window — 24h (DEC-030). */
 export const RELAY_LINK_TTL_MS = 24 * 60 * 60 * 1000;
@@ -62,7 +63,7 @@ export class WebLinkChannel implements ChannelPort {
 
   constructor(repo: Repository, options: WebLinkChannelOptions) {
     this.#repo = repo;
-    this.#linkBase = options.linkBase.replace(/\/+$/, "");
+    this.#linkBase = stripTrailingSlashes(options.linkBase);
     this.#now = options.now ?? (() => new Date());
     this.#mintSecret = options.mintSecret ?? randomSecret;
   }

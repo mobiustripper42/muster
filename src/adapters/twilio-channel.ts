@@ -41,6 +41,7 @@ import type {
 import type { Repository } from "../ports/repository.js";
 import type { FetchLike } from "./email-channel.js";
 import { RELAY_LINK_TTL_MS } from "./web-link-channel.js";
+import { stripTrailingSlashes } from "../config/base-url.js";
 
 /** Twilio Messages endpoint for an account (2010-04-01 is Twilio's stable API). */
 export function twilioEndpoint(accountSid: string): string {
@@ -100,7 +101,7 @@ export class TwilioChannel implements ChannelPort, NoticePort, NotificationPort 
         ? { messagingServiceSid: options.messagingServiceSid }
         : {}),
     };
-    this.#linkBase = options.linkBase.replace(/\/+$/, "");
+    this.#linkBase = stripTrailingSlashes(options.linkBase);
     this.#fetch = options.fetch ?? (globalThis.fetch as unknown as FetchLike);
     this.#now = options.now ?? (() => new Date());
     this.#mintSecret = options.mintSecret ?? randomSecret;

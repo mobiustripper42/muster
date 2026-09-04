@@ -10,6 +10,7 @@ import { VersionTag } from "../../../../components/ui/version-tag";
 import { readSubject } from "../../../lib/auth";
 import { getRepo } from "../../../lib/repo";
 import { FLASH_COOKIE } from "./flash";
+import { stripTrailingSlashes } from "@core/config/base-url.js";
 import {
   hideCalendarUrl,
   mintCalendarFeed,
@@ -38,7 +39,7 @@ function fmtWhen(iso: string): string {
  *  trusted APP_BASE_URL; falls back to the request host for local dev. */
 async function origin(): Promise<string> {
   const configured = process.env.APP_BASE_URL;
-  if (configured) return configured.replace(/\/+$/, "");
+  if (configured) return stripTrailingSlashes(configured);
   const h = await headers();
   const host = h.get("host") ?? "localhost:3000";
   const proto = h.get("x-forwarded-proto") ?? "http";

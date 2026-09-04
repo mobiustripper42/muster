@@ -37,6 +37,7 @@ import { isClockTime, isIsoDate } from "../domain/iso-date.js";
 import type { VesselId } from "../domain/ids.js";
 import type { RawReservationRecord, SkippedRow } from "./import-reservations.js";
 import { resolveResource } from "./resource-map.js";
+import { stripTrailingSlashes } from "../config/base-url.js";
 
 export const XOLA_API_VERSION = "2021-03-10";
 export const XOLA_API_BASE_DEFAULT = "https://xola.com/api";
@@ -384,7 +385,7 @@ export function makeXolaFetcher(
 ): XolaFetcher {
   const doFetch = deps.fetchImpl ?? fetch;
   const doSleep = deps.sleeper ?? sleep;
-  const base = env.base.replace(/\/+$/, "");
+  const base = stripTrailingSlashes(env.base);
 
   return async (path: string): Promise<unknown> => {
     const url = `${base}${path.startsWith("/") ? path : `/${path}`}`;

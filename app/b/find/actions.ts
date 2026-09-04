@@ -28,6 +28,7 @@ import type { RecoveryRow } from "@core/reservations/find-booking.js";
 import { readEmailEnv } from "../../lib/auth-delivery";
 import { getRepo } from "../../lib/repo";
 import { makeTwilioChannel } from "../../lib/sms";
+import { stripTrailingSlashes } from "@core/config/base-url.js";
 
 export async function requestBookingLink(formData: FormData): Promise<void> {
   const contact = String(formData.get("contact") ?? "").slice(0, 200);
@@ -36,7 +37,7 @@ export async function requestBookingLink(formData: FormData): Promise<void> {
   // MESSAGING kill-flag, same as every other send path. The link rides the trusted origin or
   // nothing at all — never a Host header, which is how a recovery link would get minted against
   // an attacker-supplied domain (base-url.ts).
-  const linkBase = process.env.APP_BASE_URL?.replace(/\/+$/, "");
+  const linkBase = stripTrailingSlashes(process.env.APP_BASE_URL);
   if (process.env.MESSAGING !== "false" && linkBase) {
     after(async () => {
       try {

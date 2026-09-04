@@ -29,6 +29,8 @@ if (!rawName) {
 const slug = rawName
   .toLowerCase()
   .replace(/[^a-z0-9]+/g, "_")
+  // A migration name a developer types at their own terminal.
+  // eslint-disable-next-line sonarjs/super-linear-regex -- developer-typed name
   .replace(/^_+|_+$/g, "");
 if (!slug) {
   console.error(`error: '${rawName}' has no usable [a-z0-9] characters for a slug`);

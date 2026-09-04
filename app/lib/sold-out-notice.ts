@@ -5,6 +5,7 @@ import { readEmailEnv } from "./auth-delivery";
 import { isProdDeploy } from "./flags";
 import { getRepo } from "./repo";
 import { makeTwilioChannel } from "./sms";
+import { stripTrailingSlashes } from "@core/config/base-url.js";
 
 /**
  * Sold-out-notice wiring (12.1b, DEC-109 residual race) — the edge that builds the email +
@@ -19,7 +20,7 @@ export async function sendReservationSoldOutNotice(
   try {
     if (process.env.MESSAGING === "false") return;
 
-    const linkBase = process.env.APP_BASE_URL?.replace(/\/+$/, "");
+    const linkBase = stripTrailingSlashes(process.env.APP_BASE_URL);
     const repo = getRepo();
     const emailEnv = readEmailEnv();
     const email = emailEnv ? new EmailChannel(emailEnv) : undefined;

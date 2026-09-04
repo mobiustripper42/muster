@@ -92,17 +92,23 @@ const OFF = {
   "sonarjs/no-nested-conditional": "off",           //  87 findings — issue #909
   "sonarjs/cognitive-complexity": "off",            //  61 findings — issue #909 (threshold is configurable; measure before choosing one)
   "sonarjs/no-redundant-optional": "off",           //  53 findings — issue #909
-  "sonarjs/super-linear-regex": "off",              //  29 findings — issue #908  ← SECURITY
+  // super-linear-regex is ON as of #908 — 23 of its 25 findings were one duplicated
+  // trailing-slash regex, now `stripTrailingSlashes` in src/config/base-url.ts; the
+  // other 6 carry inline disables naming their input source.
   "sonarjs/prefer-specific-assertions": "off",      //  20 findings — issue #909
   "sonarjs/no-nested-template-literals": "off",     //  16 findings — issue #908
   "sonarjs/void-use": "off",                        //  16 findings — issue #908
-  "sonarjs/sql-queries": "off",                     //  14 findings — issue #908  ← SECURITY
-  "sonarjs/no-clear-text-protocols": "off",         //  12 findings — issue #908  ← SECURITY (expect http://mill-dev:3000 among them — deliberate)
+  // OFF HERE SO THE PRESET DOES NOT ENABLE THEM REPO-WIDE. Both are re-enabled at
+  // `error` by the narrowed block below, which runs after this one and wins on its
+  // own scope. Removing these two lines does not turn the rules "more on" — it turns
+  // them on in `db/` and in test files, where all 24 of their findings are deliberate.
+  "sonarjs/sql-queries": "off",                     //  14 findings — ON, narrowed (#908)
+  "sonarjs/no-clear-text-protocols": "off",         //  12 findings — ON, narrowed (#908)
   "sonarjs/no-unused-vars": "off",                  //  12 findings — issue #908
   "sonarjs/unused-import": "off",                   //   7 findings — issue #908
   "sonarjs/assertions-in-tests": "off",             //   3 findings — issue #908
   "sonarjs/no-duplicated-branches": "off",          //   2 findings — issue #908
-  "sonarjs/no-os-command-from-path": "off",         //   2 findings — issue #908  ← SECURITY
+  "sonarjs/no-os-command-from-path": "off",         //   2 findings — ON, narrowed (#908); same reason as the two above
   "sonarjs/no-empty-test-file": "off",              //   2 findings — issue #908
   "sonarjs/no-skipped-tests": "off",                //   2 findings — issue #908
   "sonarjs/no-inverted-boolean-check": "off",       //   2 findings — issue #908
@@ -243,6 +249,39 @@ export default tseslint.config(
     languageOptions: { parser: tseslint.parser, parserOptions: { ecmaFeatures: { jsx: true } } },
     plugins: { "react-hooks": reactHooks },
     rules: { ...recommended(reactHooks), ...OFF },
+  },
+  {
+    // ── The three security rules that are ON but NARROWED (#908) ─────────────
+    //
+    // All 57 findings from sonarjs's four security rules were read individually.
+    // **None was a real defect** — which is the finding, and the reason these are
+    // scoped rather than switched off. A rule that fires only where every hit is
+    // deliberate teaches you to ignore it (DEC-144); a rule scoped to where a hit
+    // would be real keeps its meaning.
+    //
+    // `sql-queries` fired 14×: 10 in `postgres-repository.test.ts`, which writes SQL
+    // on purpose, and 4 in the `db/reset-*` scripts building `truncate` from table
+    // names read out of `pg_tables` and quoted. No outside input reaches any of them.
+    // It stays live in `src/` and `app/` production code, where a real one would be.
+    //
+    // `no-clear-text-protocols` fired 12×, all `http://mill-dev:3000` (the operator's
+    // documented Tailscale dev host) or test fixtures. One survives in `app/` and
+    // carries an inline disable: `new URL(path, "http://local")` in
+    // `crew/open/actions.ts`, a throwaway base so a relative path can be parsed — it
+    // never leaves the process.
+    //
+    // `no-os-command-from-path` fired 2×, both `db/` scripts run by hand at a
+    // terminal — `execFileSync("npm", …)` and `spawn("node_modules/.bin/tsx", …)`.
+    // Reading `PATH` there is the point. In `src/` or `app/` it would not be.
+    files: ["src/**/*.ts", "app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}"],
+    ignores: ["**/*.test.ts", "**/*.test.tsx"],
+    languageOptions: { parser: tseslint.parser, parserOptions: { ecmaFeatures: { jsx: true } } },
+    plugins: { sonarjs },
+    rules: {
+      "sonarjs/sql-queries": "error",
+      "sonarjs/no-clear-text-protocols": "error",
+      "sonarjs/no-os-command-from-path": "error",
+    },
   },
   // ── The hand-picked rules ──────────────────────────────────────────────────
   {

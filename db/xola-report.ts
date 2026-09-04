@@ -281,6 +281,10 @@ interface XolaAddOn {
 }
 
 const EXTRA_TICKETS = /^extra tickets/i;
+// Parses a Xola answer string, so the input is third-party rather than ours. Bounded in
+// practice by the API's own field limits, and this is a report script run by hand rather
+// than a request path.
+// eslint-disable-next-line sonarjs/super-linear-regex -- third-party data, hand-run script
 const MORE_GUESTS = /adding more guests over \d+\?:\s*(.+)$/i;
 /** "Yes-two more" → 2. The checkout offers words, not digits. */
 const WORD: Record<string, number> = {

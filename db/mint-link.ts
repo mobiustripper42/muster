@@ -30,6 +30,7 @@ import type { AuthSubjectKind } from "../src/domain/entities.js";
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
 import { existsSync } from "node:fs";
 import { DEFAULT_DATABASE_URL } from "./migrate.js";
+import { stripTrailingSlashes } from "../src/config/base-url.js";
 
 // Convenience: pull APP_BASE_URL / DATABASE_URL from .env.local if present, so the
 // operator can run `npm run db:mint -- --admin=eric` without re-pasting env on the
@@ -79,7 +80,7 @@ if (!Number.isFinite(ttlMin) || ttlMin <= 0) {
   process.exit(1);
 }
 
-const base = process.env.APP_BASE_URL?.replace(/\/+$/, "");
+const base = stripTrailingSlashes(process.env.APP_BASE_URL);
 if (!base) {
   console.error(
     "APP_BASE_URL is required — set it to the real production origin\n" +

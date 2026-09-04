@@ -749,6 +749,115 @@ shipped, which is the phase's clearest process miss.
 
 ---
 
+## Phases 14–16: Reservations, built to the spec
+
+> **Planned 2026-09-04, from three documents and nothing else:** SPEC §2.8 (Booking & Payment,
+> `docs/SPEC.md:1476-2127`), SPEC §2.10 (Reservations — what the operator runs, `:2341-2543`), and the
+> §2.8 conformance audit (`docs/audit/2026-08-29-spec-2.8-conformance.md`, 24 criteria verdicted
+> 2026-09-03). Phase 12 closed with reservations not built, 49 unplanned issues and a spec nobody
+> referenced; its retro answer was *"build the spec plan, poker it, and actually follow it."* This is
+> that plan. **A task not in these tables is not in the release** — it is a new issue, pokered, and a
+> retro line, in that order.
+
+Three phases, cut along the audit's dependency order. **14** makes the `pending` row exist and puts it
+in charge of the hull. **15** moves the money onto that row and adds the job that finds payments the
+webhook lost. **16** is the operator's side of the same row. Each is independently reviewable; none of
+15 or 16 has a row to hang off until 14 lands.
+
+The 24 acceptance criteria at `docs/SPEC.md:2047-2094` are the definition of done. The audit's verdict
+column is the starting position; the phase closes a criterion when its verdict becomes `BUILT`
+**with a test written from the criterion's own words**. Nine were already `BUILT` at planning
+(3, 13, 14, 16, 17, 18, 21, and 8 and 10 by the hold). The tables say which criteria each task closes.
+
+**Existing issues folded in, not re-filed:** issues #824, #825 and #826 (criteria 1, 4 and 5), and
+issues #806, #812, #793, #668, #886, #864 and #683. They take the phase label and keep their number.
+
+**Not in these phases, by decision:** promo codes (16.5 is operator-applied only); §2.10.2's per-trip
+override and its customer-notify path (Phase 17, below); add-ons (decided-not-built, `SPEC.md:2020`);
+the balance/deposit path (dormant, §2.8.10); Xola import retirement (`phase:cutover`).
+
+---
+
+## Phase 14: Reservations — the pending row
+
+Decisions 1 and 2 of the audit (`docs/audit/2026-08-29-spec-2.8-conformance.md:95-124`). Four
+states, a nullable `eventId`, the row written **before** any call to Stripe, and `checkout_holds`
+gone. Every reader of a reservation's status becomes an allow-list. This is the spine: nothing in
+Phase 15 or 16 exists without it, and every ⚠ criterion in the audit is written in this phase's
+vocabulary.
+
+Tasks stack — each branches off the one before it, not off `main`.
+
+| # | Task | Est | Closes | Status |
+|---|------|-----|--------|--------|
+| 14.1 | **The decision record.** One DEC for decisions 1 and 2 together: four states, nullable `eventId`, the pending row is the authority, `checkout_holds` goes; `supersedes: [DEC-109]`. Search at planning: `grep -rli "checkout_holds\|checkout hold" docs/decisions/` returned DEC-163, DEC-165 and the DEC-109 worksheet — nothing records the replacement, so new id. Settles the three open questions at `SPEC.md:2098-2119`: the window stays 15 and env-overridable; whether a pending row shows on the admin calendar; whether the sweeper is built at all. Those answers gate 14.3 and 14.8 | 2 | — | [ ] |
+| 14.2 | **The status union and the nullable column.** Migration on `reservations`; `entities.ts:615` gains `pending` and `expired`; `eventId` nullable; `Source` (`entities.ts:566`) gains `admin` now so 14.8's sweeper can branch on it — the surface that writes it is 16.1. The importer's own type at `import-reservations.ts:70` follows | 3 | 6 (half) | [ ] |
+| 14.3 | **Every reader becomes an allow-list.** Every `status !== "cancelled"` in the tree, `find-booking.ts:76` first — it would hand a manage link to an unpaid row the moment 14.2 lands. Crew manifest, §3.3 cancel, §3.4 disputes, refunds: none may be handed a pending or expired row. Admin surfaces each get 14.1's answer: purchases view stops rendering non-`booked` as **Cancelled**; integrity report gains a null-`eventId` branch; calendar, customers, at-risk board, block impact each say what they show. Same PR stack as 14.2, never after it | 5 | 24 | [ ] |
+| 14.4 | **The write.** "Book & pay" writes a `pending` row before any Stripe call — reserved time, party size, cookie token, frozen money, frozen hold minutes **and** trip time (DEC-161). Availability and the claim measure rival pending rows by **their own** frozen hold minutes, under the hull-day lock. The row alone removes the trip from `/book`. One write, one freeze — a coherent 8, not split | 8 | 2, 4, 20, 23; #825 | [ ] |
+| 14.5 | **Confirm flips the row.** `confirmReservation(paymentId)` finds the pending row by the payment id recorded on it, sets `booked` and `eventId`, materialises the Event. The reservation id stops being derived from the payment id (`write-booking.ts:35-38`). The money still comes from Stripe metadata until 15.1 — this task changes identity, not the freeze | 5 | 6 (other half); unblocks 12 | [ ] |
+| 14.6 | **Retry on the same row.** Declined card → same row, reserved time untouched, matched by the httpOnly cookie token and never by typed email or phone; the new payment id recorded alongside the first | 3 | 10 | [ ] |
+| 14.7 | **Drop `checkout_holds`.** Table, `CheckoutHold` (`entities.ts:727`), the issue #713 sweep; `holder-token.ts` moves to the row. 16 files reference the hold at planning. Issue #806's cap-per-token becomes a cap on live pending rows per token, inside the same transaction | 3 | #806 | [ ] |
+| 14.8 | **Expiry, sweeper, reaper.** Every reader tests `pending AND reserved time + window > now`, branching on `source` first (`SPEC.md:1824-1828`). The sweeper — if 14.1 keeps it — never labels a row carrying a payment id. Reaper horizon chosen. Scripted abuse and real abandonment distinguishable in the data. "How many checkouts walked away last month, and how long did each hold a boat" is a query. Tests: abandon a checkout and assert no Event, customer, code or message exists (criterion 7, with the Stripe receipt-doc check the audit names); `payment_intent.payment_failed` acked and ignored (criterion 11) | 5 | 7, 8, 9, 11 | [ ] |
+| 14.9 | **Calendar and write refuse the same set.** The read path finds pending rows by **overlap**, not slot identity (issue #826). Already-departed refused on both sides (issue #824). One test asserts both sides refuse the same set of trips | 5 | 1, 5; #824, #826 | [ ] |
+
+**Phase 14 total: 9 tasks, 39 points.**
+
+---
+
+## Phase 15: Reservations — the money on our row
+
+The freeze lives on the reservation, not at Stripe. The reconciler exists so that no human is ever
+the one who notices a charged card with no booking (`SPEC.md:1859-1884`). And two things the spec
+says ship today and have to go.
+
+| # | Task | Est | Closes | Status |
+|---|------|-----|--------|--------|
+| 15.1 | **Confirm reads our row, not Stripe.** Issue #812 / DEC-164 — record exists, no new id. The booking is assembled from the row 14.4 froze; the charge sends `description` only and **no metadata** (`SPEC.md` §2.8.5). `Number(charge.metadata.taxCents ?? 0)` and its siblings at `booking-webhook.ts:616-623` go — a lost key must be an error, never a zero | 5 | #812; §2.8.5, §2.8.14 | [ ] |
+| 15.2 | **Late money.** The three §2.8.7 rows the code cannot do today: a superseded payment resolving to its reservation and refunded if it is already booked (criterion 12); success after the window with the boat taken → **refund and tell the customer in one path**, on the phone the reservation carries (issue #668); success after the window with the boat free → re-check under the lock and book it | 5 | 12; #668 | [ ] |
+| 15.3 | **The reconciler.** Primary: pending rows past their window with a payment id → ask Stripe → the same `confirmReservation`. Fallback: Stripe's undelivered-event feed — `src/adapters/stripe-payment.ts` has no event-listing method, so the port method comes first. A cron entry in `vercel.json` beside `tick` and `doorbell-tick`, on minutes not hours. Safe at any time, in any order, more than once. Runs under the pause. The sweeper never touches its rows | 8 | 15 | [ ] |
+| 15.4 | **The unmatched charge.** A throwing `alertPaidButUnbooked` still returns success to Stripe — one of 14 call sites guards today; the rest propagate to a 500 and a retry storm. The SMS names the amount. SMS unconfigured leaves one log line, and a test says so | 3 | 19 | [ ] |
+| 15.5 | **Remove post-trip tipping.** `app/b/[code]`'s completed-state tip, `create-gratuity-checkout.ts`, and what the manage page says about it. §2.8.14: *"It ships today and has to be removed"* | 3 | §2.8.4b | [ ] |
+| 15.6 | **Delete the dead hosted-checkout path.** Issue #793 as filed. The balance path stays dormant per §2.8.10 — not this | 3 | #793 | [ ] |
+| 15.7 | **Tip pool "and no others".** One test that puts a disqualifying seat — non-required, unconfirmed, or unassigned — on a shift and asserts it receives nothing (`gratuity-payroll.ts:114`) | 2 | 22 | [ ] |
+
+**Phase 15 total: 7 tasks, 29 points.**
+
+---
+
+## Phase 16: Reservations — the operator's side
+
+§2.10, which has no acceptance criteria and was not audited. The three spec gaps the audit found
+(`docs/audit/2026-08-29-spec-2.8-conformance.md:2261-2345`), each a spec task with its own decision
+record before its build task. And the customer's own cancel, which §2.8.14 holds until flex insurance
+can be attached to a booking.
+
+| # | Task | Est | Closes | Status |
+|---|------|-----|--------|--------|
+| 16.1 | **The operator books.** §2.10.6, DEC-162 and DEC-163 already recorded. **Book** beside **Hold** on the calendar click; a page collecting the same customer details as public checkout; a `pending` row with `source: admin` and no window; a payment link minted fresh on each ask, carrying no durable token; confirm through the same path as any sale. Overlap and capacity refuse; cutoff, season and grid pass; a block passes but says so. The purchases list shows it unpaid, with the link. Ended only by a person. The link's mechanism — a Stripe Payment Link or our own Elements page — is decided in the task spec | 8 | gap A; §2.10.6 | [ ] |
+| 16.2 | **Booking cutoff — spec.** DEC, §2.8/§2.10 text, and `booking cutoff` in `docs/dictionary.yml` kept apart from *booking horizon* (`SPEC.md:347`) and the rejected crew lead-time cutoff (`:324`). An `app_settings` row with a code fallback that is not the value; computed, never stored; its own slot state; **no number in the spec** | 2 | gap B | [ ] |
+| 16.3 | **Booking cutoff — build.** Both paths — `availability.ts` precedence and `candidateVessels` — so calendar and write agree. The customer sees *"too late to book online, call us"*. The admin passes it | 3 | gap B | [ ] |
+| 16.4 | **Discounts — spec.** DEC: off the fare-plus-extras base; tax, tip and the service fee recompute on the discounted base; amount versus percent; frozen on the row like every §2.8.4a component. And the hard one: a comp-to-zero booking has no payment id to confirm by, so it needs a second, named entry into `confirmReservation` | 3 | gap C | [ ] |
+| 16.5 | **Discounts — build, operator-applied.** Partial and full, from 16.1's booking page. Promo codes deferred | 8 | gap C | [ ] |
+| 16.6 | **Audit trail — spec.** Issue #886 as filed | 3 | #886 | [ ] |
+| 16.7 | **Reservation pause.** Issue #864 — beside the crew-engine pause; a paused reservations surface refuses new checkouts so a settings edit never races a live one. The reconciler ignores it (§2.8.9) | 3 | #864 | [ ] |
+| 16.8 | **Flex insurance as a boolean.** Issue #683 re-scoped to §2.8.4c: offered at checkout, frozen on the row, not taxed, not in the fee base, terms shown on the manage page. DEC-113 gets the correction §2.8.14 says it is owed | 5 | #683 | [ ] |
+| 16.9 | **Self-service cancellation.** A Cancel action on the manage page that applies §2.8.4c itself — refund minus the $50 fee outside the window, nothing inside it; the window is 14 days, or 72 hours with flex, and flex never waives the fee (`SPEC.md:1712-1713`) — through the §3.3 refund path. *Changing* a booking stays a request to a human; §2.8.12's "request, not an action" paragraph is rewritten to name cancel as the exception. After 16.8 | 5 | §2.8.14 | [ ] |
+
+**Phase 16 total: 9 tasks, 40 points.**
+
+**Phases 14–16 total: 25 tasks, 108 points.**
+
+---
+
+## Phase 17: Per-trip override — future, not this release
+
+§2.10.2's two named absences (`SPEC.md:2396-2404`): editing one trip's time, price or capacity without
+touching the offering, **and** the customer-notify path that editing a *booked* trip requires. The
+operator needs the override and says it needs the notify path with it (2026-09-04), so the cheaper
+unsold-slots-only slice is not the shape wanted. Not pokered. Not before Phase 16 closes.
+
+---
+
 ## Phase Boundary Checklist
 
 At the end of every phase:

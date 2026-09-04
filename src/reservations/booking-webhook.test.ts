@@ -457,7 +457,7 @@ describe("processBookingWebhook — balance (11.2b)", () => {
     const repo = new InMemoryRepository();
     await seedDepositBooking(repo);
     const res = await repo.getReservation(RES);
-    const ev = await repo.getEvent(res!.eventId);
+    const ev = await repo.getEvent(res!.eventId!); // seeded booked, so its event is set
     const { price: _dropped, ...unpriced } = ev!;
     await repo.saveEvent(unpriced);
     const { deps, alert } = makeDeps(repo);

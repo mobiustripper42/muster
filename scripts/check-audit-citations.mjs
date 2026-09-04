@@ -96,10 +96,10 @@ const CITATIONS = [
   ['docs/SPEC.md', 324, '**A lead-time cutoff.**'],
 
   // ── Criterion 6's evidence (§Criterion 6) ──
-  ['src/domain/entities.ts', 615, 'ReservationStatus = "booked" | "cancelled"'],
-  ['src/domain/entities.ts', 619, 'eventId: EventId;'],
+  ['src/domain/entities.ts', 625, 'ReservationStatus = "pending" | "booked" | "cancelled"'],
+  ['src/domain/entities.ts', 645, 'eventId: EventId | null;'],
   ['src/reservations/write-booking.ts', 87, 'export async function writeSlotBooking('],
-  ['src/reservations/booking-webhook.ts', 361, 'await writeSlotBooking('],
+  ['src/reservations/booking-webhook.ts', 362, 'await writeSlotBooking('],
   ['src/reservations/create-departure-payment-intent.ts', 170, 'The SLOT — no eventId'],
   ['src/reservations/create-departure-checkout.ts', 149, 'The SLOT — no eventId'],
   ['app/(public)/book/checkout/actions.ts', 173, 'createDeparturePaymentIntent('],
@@ -113,21 +113,21 @@ const CITATIONS = [
   ['src/reservations/create-departure-checkout.test.ts', 201, 'getEvent(eventIdForSlot(SMALL'],
   ['src/reservations/create-departure-checkout.test.ts', 202, 'getEvent(eventIdForSlot(BIG'],
   ['src/import/import-reservations.test.ts', 57, 'getEvent(EVENT_ID)).toBeNull()'],
-  ['src/adapters/repository-contract.ts', 844, 'getEvent(SLOT_ID)).toBeNull()'],
+  ['src/adapters/repository-contract.ts', 865, 'getEvent(SLOT_ID)).toBeNull()'],
 
   // ── Criterion 7's evidence (§Criterion 7) ──
   ['docs/SPEC.md', 2066, 'Abandoning checkout leaves no `Event`'],
   ['src/reservations/create-departure-payment-intent.ts', 141, 'getPaymentConfig()'],
   ['src/reservations/create-departure-payment-intent.ts', 166, 'receiptEmail: req.email'],
   ['src/reservations/write-booking.ts', 122, 'await resolveCustomerId(repo, req, now)'],
-  ['src/import/import-reservations.ts', 256, 'resolveCustomerId('],
+  ['src/import/import-reservations.ts', 261, 'resolveCustomerId('],
   ['src/reservations/ensure-booking-code.ts', 49, 'export async function ensureBookingCode('],
   ['src/reservations/recover-booking-link.ts', 98, 'await ensureBookingCode('],
-  ['app/lib/booking-confirmation.ts', 58, 'await ensureBookingCode('],
-  ['app/lib/booking-confirmation.ts', 117, 'await ensureBookingCode('],
-  ['src/reservations/booking-webhook.ts', 68, 'alertPaidButUnbooked:'],
-  ['src/reservations/booking-webhook.ts', 76, 'notifyCustomerSoldOut:'],
-  ['src/reservations/booking-webhook.ts', 84, 'sendConfirmation:'],
+  ['app/lib/booking-confirmation.ts', 59, 'await ensureBookingCode('],
+  ['app/lib/booking-confirmation.ts', 118, 'await ensureBookingCode('],
+  ['src/reservations/booking-webhook.ts', 69, 'alertPaidButUnbooked:'],
+  ['src/reservations/booking-webhook.ts', 77, 'notifyCustomerSoldOut:'],
+  ['src/reservations/booking-webhook.ts', 85, 'sendConfirmation:'],
   // The sender call site OUTSIDE `booking-webhook.ts`. §Criterion 7 originally claimed every one
   // was inside that file — false, and exactly the overstated-absence mistake this document has
   // made before. Pinned so the correction cannot quietly rot back.
@@ -143,24 +143,24 @@ const CITATIONS = [
   ['src/reservations/availability.ts', 333, 'h.expiresAt > input.asOf'],
   ['src/reservations/claim.ts', 215, 'h.expiresAt <= at0'],
   ['src/reservations/claim.ts', 266, 'h.expiresAt > at0'],
-  ['src/adapters/postgres-repository.ts', 1727, 'from checkout_holds where expires_at > $1'],
-  ['src/adapters/in-memory-repository.ts', 763, 'h.expiresAt > asOf'],
-  ['src/adapters/repository-contract.ts', 1102, 'listLiveCheckoutHolds("2026-07-01T12:15:00.000Z")).toHaveLength(0)'],
-  ['src/adapters/repository-contract.ts', 1103, 'listLiveCheckoutHolds("2026-07-01T12:14:59.999Z")).toHaveLength(1)'],
-  ['src/adapters/repository-contract.ts', 1106, 'sweeps EVERY expired hold, not just its own slot'],
-  ['src/adapters/repository-contract.ts', 1128, 'never touches a LIVE hold on another slot'],
+  ['src/adapters/postgres-repository.ts', 1728, 'from checkout_holds where expires_at > $1'],
+  ['src/adapters/in-memory-repository.ts', 769, 'h.expiresAt > asOf'],
+  ['src/adapters/repository-contract.ts', 1123, 'listLiveCheckoutHolds("2026-07-01T12:15:00.000Z")).toHaveLength(0)'],
+  ['src/adapters/repository-contract.ts', 1124, 'listLiveCheckoutHolds("2026-07-01T12:14:59.999Z")).toHaveLength(1)'],
+  ['src/adapters/repository-contract.ts', 1127, 'sweeps EVERY expired hold, not just its own slot'],
+  ['src/adapters/repository-contract.ts', 1149, 'never touches a LIVE hold on another slot'],
   ['src/adapters/postgres-repository.test.ts', 84, 'const dbUp = await canConnect(TEST_URL)'],
-  ['src/adapters/postgres-repository.test.ts', 94, 'runRepositoryContract("postgres"'],
+  ['src/adapters/postgres-repository.test.ts', 97, 'runRepositoryContract("postgres"'],
   ['src/adapters/in-memory-repository.test.ts', 9, 'runRepositoryContract("in-memory"'],
 
   // ── Criterion 9's evidence (§Criterion 9) ──
   ['docs/SPEC.md', 2069, 'An abandoned checkout is still on disk afterwards as a lapsed `pending` reservation'],
   ['docs/SPEC.md', 2071, 'is a query.'],
-  ['src/domain/entities.ts', 739, 'guestCount: number;'],
-  ['src/domain/entities.ts', 743, 'createdAt: string;'],
-  ['src/adapters/postgres-repository.ts', 1680, "delete from checkout_holds where source='muster' and expires_at <= $1"],
-  ['src/adapters/postgres-repository.ts', 1673, 'grew the table without bound'],
-  ['src/adapters/in-memory-repository.ts', 739, 'h.expiresAt <= hold.createdAt'],
+  ['src/domain/entities.ts', 765, 'guestCount: number;'],
+  ['src/domain/entities.ts', 769, 'createdAt: string;'],
+  ['src/adapters/postgres-repository.ts', 1681, "delete from checkout_holds where source='muster' and expires_at <= $1"],
+  ['src/adapters/postgres-repository.ts', 1674, 'grew the table without bound'],
+  ['src/adapters/in-memory-repository.ts', 745, 'h.expiresAt <= hold.createdAt'],
   ['src/reservations/create-departure-payment-intent.ts', 94, 'await acquireDepartureHold('],
   ['src/reservations/create-departure-payment-intent.ts', 153, 'await payments.createPaymentIntent('],
   ['db/migrations/0024_audit_events.sql', 1, 'crew audit log (#400, DEC-118)'],
@@ -208,7 +208,7 @@ const CITATIONS = [
   ['src/adapters/stripe-payment.ts', 265, 'event.type === "payment_intent.succeeded"'],
   ['src/adapters/stripe-payment.ts', 277, 'return null;'],
   ['src/adapters/fake-payment.ts', 76, 'parseEvent'],
-  ['src/reservations/booking-webhook.ts', 142, 'if (!event) return { handled: false };'],
+  ['src/reservations/booking-webhook.ts', 143, 'if (!event) return { handled: false };'],
   ['app/api/webhooks/stripe/route.ts', 21, 'Stripe dashboard nobody can read from the repo'],
   ['app/api/webhooks/stripe/route.ts', 46, 'return NextResponse.json({ received: true, ...result });'],
   ['src/reservations/booking-webhook.test.ts', 320, 'handled:false for a non-checkout event'],
@@ -219,22 +219,22 @@ const CITATIONS = [
   ['docs/SPEC.md', 1735, 'A reservation has many payment ids over its life, not one'],
   ['docs/SPEC.md', 1738, 'One overwritable column loses the first id'],
   ['src/reservations/confirm-booking.ts', 55, 'key: pi.paymentIntentId,'],
-  ['src/reservations/booking-webhook.ts', 279, 'const idempotencyKey = charge.key;'],
-  ['src/reservations/booking-webhook.ts', 308, 'const reservationId = reservationIdFor(idempotencyKey);'],
+  ['src/reservations/booking-webhook.ts', 280, 'const idempotencyKey = charge.key;'],
+  ['src/reservations/booking-webhook.ts', 309, 'const reservationId = reservationIdFor(idempotencyKey);'],
   ['src/reservations/write-booking.ts', 35, 'export function reservationIdFor(idempotencyKey: string): ReservationId {'],
   ['src/reservations/write-booking.ts', 36, 'createHash("sha256").update(idempotencyKey)'],
-  ['src/reservations/booking-webhook.ts', 503, 'The money moved, and is NOT recorded here'],
-  ['src/reservations/booking-webhook.ts', 507, 'if (result.outcome === "lost") {'],
-  ['src/reservations/booking-webhook.ts', 526, 'idempotencyKey: `refund_${charge.key}`,'],
-  ['src/domain/entities.ts', 801, 'export interface Payment {'],
-  ['src/domain/entities.ts', 805, 'reservationId: ReservationId;'],
+  ['src/reservations/booking-webhook.ts', 505, 'The money moved, and is NOT recorded here'],
+  ['src/reservations/booking-webhook.ts', 509, 'if (result.outcome === "lost") {'],
+  ['src/reservations/booking-webhook.ts', 528, 'idempotencyKey: `refund_${charge.key}`,'],
+  ['src/domain/entities.ts', 827, 'export interface Payment {'],
+  ['src/domain/entities.ts', 831, 'reservationId: ReservationId;'],
   ['src/reservations/create-departure-payment-intent.test.ts', 350, 'residual race on the PI path: loser auto-refunded keyed on the PI id'],
   ['src/reservations/create-departure-checkout.test.ts', 169, 'residual-race loss with NO payment_intent'],
   ['src/reservations/create-departure-checkout.test.ts', 183, 'residual race + auto-refund THROWS'],
   ['src/reservations/confirm-booking.test.ts', 134, 'does NOT refund or notify on a residual-race loss'],
   ['src/reservations/create-departure-payment-intent.test.ts', 356, 'const m = pay.intents[0]!.metadata;'],
   ['src/reservations/create-departure-payment-intent.test.ts', 361, 'outcome: "lost"'],
-  ['src/reservations/booking-webhook.ts', 747, 'Writes NO `Payment`'],
+  ['src/reservations/booking-webhook.ts', 749, 'Writes NO `Payment`'],
 
   // ── Criterion 13's evidence (§Criterion 13) ──
   ['docs/SPEC.md', 2077, 'Killing the webhook entirely still produces a booking'],
@@ -248,22 +248,22 @@ const CITATIONS = [
   ['src/reservations/confirm-booking.test.ts', 169, 'metadata-less intent behind a hosted balance checkout'],
   // Issue #831, verified rather than taken from the page's docstring: `won` is a read after the
   // write, so two racing callers can both observe the row and both be told `booked`.
-  ['src/adapters/postgres-repository.ts', 1563, 'select 1 from reservations where id=$1'],
-  ['src/adapters/postgres-repository.ts', 1567, 'won.rowCount === 1'],
+  ['src/adapters/postgres-repository.ts', 1564, 'select 1 from reservations where id=$1'],
+  ['src/adapters/postgres-repository.ts', 1568, 'won.rowCount === 1'],
   ['src/reservations/write-booking.ts', 152, 'outcome: "already", reservation: after'],
   ['src/adapters/stripe-payment.ts', 160, 'if (pi.status !== "succeeded") return null;'],
-  ['src/reservations/booking-webhook.ts', 453, 'if (result.outcome === "booked") {'],
-  ['src/adapters/in-memory-repository.ts', 515, 'Insert-only (mirrors the postgres `on conflict do nothing`)'],
+  ['src/reservations/booking-webhook.ts', 454, 'if (result.outcome === "booked") {'],
+  ['src/adapters/in-memory-repository.ts', 521, 'Insert-only (mirrors the postgres `on conflict do nothing`)'],
 
   // ── Criterion 14's evidence (§Criterion 14) ──
   ['docs/SPEC.md', 2078, 'Closing the browser at the moment of payment still produces a booking'],
   ['src/reservations/booking-webhook.test.ts', 126, 'booked: writes the reservation + records the payment'],
   ['src/reservations/booking-webhook.test.ts', 292, 'a throwing sendConfirmation never breaks the committed booking'],
-  ['app/lib/booking-confirmation.ts', 31, 'if (process.env.MESSAGING === "false") return;'],
-  ['app/lib/booking-confirmation.ts', 48, 'confirmation skipped — no email or SMS channel configured'],
+  ['app/lib/booking-confirmation.ts', 32, 'if (process.env.MESSAGING === "false") return;'],
+  ['app/lib/booking-confirmation.ts', 49, 'confirmation skipped — no email or SMS channel configured'],
   ['docs/DEPLOY.md', 111, '`MESSAGING=0` leaves booking confirmations ON'],
-  ['app/lib/booking-confirmation.ts', 57, "The operator's resend recovers it."],
-  ['app/lib/booking-confirmation.ts', 58, 'await ensureBookingCode(repo, reservation.id'],
+  ['app/lib/booking-confirmation.ts', 58, "The operator's resend recovers it."],
+  ['app/lib/booking-confirmation.ts', 59, 'await ensureBookingCode(repo, reservation.id'],
   ['app/(public)/book/checkout/checkout-form.tsx', 189, 'await p.stripe.confirmPayment({'],
   ['app/(public)/book/checkout/checkout-form.tsx', 193, 'return_url: p.returnUrl,'],
 
@@ -284,20 +284,20 @@ const CITATIONS = [
   // already pinned under Criterion 7; not repeated here.
   ['app/api/cron/xola-pull/route.ts', 10, 'NO CRON IS ATTACHED'],
   ['app/(admin)/admin/purchases/page.tsx', 106, 'listAllReservations'],
-  ['app/b/find/actions.ts', 70, 'r.event'],
+  ['app/b/find/actions.ts', 71, 'r.event'],
 
   // ── Criterion 16's evidence (§Criterion 16) ──
   ['docs/SPEC.md', 2081, 'Confirming the same payment three times'],
-  ['src/domain/entities.ts', 802, 'Deterministic from the Stripe checkout-session id'],
-  ['src/adapters/postgres-repository.ts', 1480, 'on conflict do nothing'],
+  ['src/domain/entities.ts', 828, 'Deterministic from the Stripe checkout-session id'],
+  ['src/adapters/postgres-repository.ts', 1481, 'on conflict do nothing'],
   // The SEQUENTIAL guard, which an earlier draft of §Criterion 16 missed: the repeat returns here,
   // before the Event id is computed at :96 and before the insert at :140 is reached.
   ['src/reservations/write-booking.ts', 94, 'if (prior) return { outcome: "already", reservation: prior };'],
   ['src/reservations/write-booking.ts', 96, 'const eventId = eventIdForSlot('],
-  ['src/reservations/booking-webhook.ts', 393, 'result.outcome === "booked" || result.outcome === "already"'],
-  ['src/adapters/postgres-repository.ts', 1279, 'on conflict (id) do nothing'],
+  ['src/reservations/booking-webhook.ts', 394, 'result.outcome === "booked" || result.outcome === "already"'],
+  ['src/adapters/postgres-repository.ts', 1280, 'on conflict (id) do nothing'],
   ['src/reservations/booking-webhook.test.ts', 163, 'listPaymentsForReservation'],
-  ['src/adapters/repository-contract.ts', 844, 'no duplicate materialized (slot guardrail)'],
+  ['src/adapters/repository-contract.ts', 865, 'no duplicate materialized (slot guardrail)'],
   ['src/reservations/create-departure-payment-intent.test.ts', 441, 'NOT the outcome gate'],
   ['src/reservations/create-departure-payment-intent.test.ts', 450, 'piEvent("pi_fake_1", 27570, m)'],
   ['src/reservations/create-departure-payment-intent.test.ts', 452, 'listGratuitiesForEvent'],
@@ -308,11 +308,11 @@ const CITATIONS = [
   // ── Criterion 17's evidence (§Criterion 17) ──
   ['docs/SPEC.md', 2082, 'Confirming produces a shift for that vessel-day'],
   // The formation itself, and the flag whose default used to be wrong (#765).
-  ['src/reservations/booking-webhook.ts', 436, 'const form = await formShifts(deps.repo, {'],
-  ['src/reservations/booking-webhook.ts', 438, 'notifyTripChanges: true,'],
-  ['src/reservations/booking-webhook.ts', 440, 'await relayAndAudit(deps, form);'],
-  ['src/reservations/booking-webhook.ts', 445, 'if (e instanceof PartialFormError) await relayAndAudit(deps, e.partial);'],
-  ['src/reservations/booking-webhook.ts', 94, 'relayFormNotices?: (form: FormResult) => Promise<void>;'],
+  ['src/reservations/booking-webhook.ts', 437, 'const form = await formShifts(deps.repo, {'],
+  ['src/reservations/booking-webhook.ts', 439, 'notifyTripChanges: true,'],
+  ['src/reservations/booking-webhook.ts', 441, 'await relayAndAudit(deps, form);'],
+  ['src/reservations/booking-webhook.ts', 446, 'if (e instanceof PartialFormError) await relayAndAudit(deps, e.partial);'],
+  ['src/reservations/booking-webhook.ts', 95, 'relayFormNotices?: (form: FormResult) => Promise<void>;'],
   // Both confirm paths funnel here, which is why the success page forms shifts too.
   ['src/reservations/confirm-booking.ts', 54, 'return processBookingCharge(deps, {'],
   ['app/api/webhooks/stripe/route.ts', 42, 'bookingDeps(secretKey, webhookSecret),'],
@@ -324,9 +324,9 @@ const CITATIONS = [
   ['src/builder/form-shifts.ts', 525, 'result.changedCrew.push({'],
   ['src/builder/form-notices.ts', 41, '...form.changedCrew'],
   ['src/builder/form-notices.ts', 45, 'action: "changed" as const,'],
-  ['app/lib/channel.ts', 93, 'forwardNoticesToOutbox(formNoticeChanges(form, OPERATOR_CREW_MEMBER_ID))'],
-  ['app/lib/channel.ts', 94, 'await recordFormChanges(form);'],
-  ['app/lib/channel.ts', 116, 'if (form.changedCrew.length === 0) return'],
+  ['app/lib/channel.ts', 94, 'forwardNoticesToOutbox(formNoticeChanges(form, OPERATOR_CREW_MEMBER_ID))'],
+  ['app/lib/channel.ts', 95, 'await recordFormChanges(form);'],
+  ['app/lib/channel.ts', 117, 'if (form.changedCrew.length === 0) return'],
   ['src/builder/form-notices.test.ts', 61, 'maps changedCrew → changed, excluding the operator (#350)'],
   // The three-sided test set: seats, the day that grew, and the negative control.
   ['src/reservations/booking-webhook.test.ts', 513, 'Real manning, or the shift forms with zero seats'],
@@ -347,18 +347,18 @@ const CITATIONS = [
   ['src/admin/crew-admin.ts', 36, 'if (vessel.manning.some((m) => m.count < 1)) {'],
   ['src/admin/seed-brewboat.ts', 73, 'createVessel'],
   // The "only two triggers left" claim, and the six callers that falsify it.
-  ['src/reservations/booking-webhook.ts', 91, 'this webhook is one of only two `formShifts` triggers in'],
-  ['src/reservations/booking-webhook.ts', 421, 'this webhook and the cron tick are the only formation triggers left'],
-  ['src/reservations/booking-webhook.ts', 430, 'this and the cron tick are the ONLY `formShifts` triggers'],
+  ['src/reservations/booking-webhook.ts', 92, 'this webhook is one of only two `formShifts` triggers in'],
+  ['src/reservations/booking-webhook.ts', 422, 'this webhook and the cron tick are the only formation triggers left'],
+  ['src/reservations/booking-webhook.ts', 431, 'this and the cron tick are the ONLY `formShifts` triggers'],
   ['app/api/cron/tick/route.ts', 75, 'await formShifts(repo, { now, notifyTripChanges: true })'],
-  ['src/reservations/cancel-reservation.ts', 169, 'const form = await formShifts(deps.repo, {'],
+  ['src/reservations/cancel-reservation.ts', 174, 'const form = await formShifts(deps.repo, {'],
   ['src/builder/merge.ts', 97, 'const form = await formShifts(repo, { notifyTripChanges: true'],
   ['src/builder/split.ts', 80, 'return formShifts(repo, { notifyTripChanges: true'],
   ['src/import/xola-pull.ts', 182, 'const formed = await formShifts(repo, {'],
   ['src/builder/form-shifts.ts', 131, 'export async function formShifts('],
   // Split across the line break at :101/:102 — the fourth time this session that a wrapped
   // sentence produced a citation that reads correct and pins nothing.
-  ['app/lib/channel.ts', 101, 'and there are six'],
+  ['app/lib/channel.ts', 102, 'and there are six'],
   // DEC-126 rules the cutover and nothing about the trigger set.
   ['docs/decisions/DEC-126-the-flip-is-a-cutover-with-a-one-time-full-xola.md', 11, 'app/api/cron/xola-pull/route.ts'],
   ['docs/decisions/DEC-126-the-flip-is-a-cutover-with-a-one-time-full-xola.md', 33, 'gone rather than amended'],
@@ -366,12 +366,12 @@ const CITATIONS = [
   // ── Criterion 18's evidence (§Criterion 18) ──
   ['docs/SPEC.md', 2084, 'Confirming a trip whose slot was previously booked and then cancelled'],
   // The resurrect, and the two carve-outs the criterion's wording does not cover.
-  ['src/adapters/postgres-repository.ts', 1493, 'RESURRECT a cancelled slot (#616)'],
-  ['src/adapters/postgres-repository.ts', 1515, "set status = 'scheduled', capacity = $4, price = $5, duration_minutes = $6"],
-  ['src/adapters/postgres-repository.ts', 1517, "and source='muster' and status='cancelled'"],
-  ['src/adapters/postgres-repository.ts', 1507, 'of the booking, and the candidate never carries one'],
-  ['src/adapters/postgres-repository.ts', 1511, 'a predicate that could also match a LIVE slot'],
-  ['src/adapters/postgres-repository.ts', 1535, 'slot un-materializable (e.g. cancelled) — no oversell'],
+  ['src/adapters/postgres-repository.ts', 1494, 'RESURRECT a cancelled slot (#616)'],
+  ['src/adapters/postgres-repository.ts', 1516, "set status = 'scheduled', capacity = $4, price = $5, duration_minutes = $6"],
+  ['src/adapters/postgres-repository.ts', 1518, "and source='muster' and status='cancelled'"],
+  ['src/adapters/postgres-repository.ts', 1508, 'of the booking, and the candidate never carries one'],
+  ['src/adapters/postgres-repository.ts', 1512, 'a predicate that could also match a LIVE slot'],
+  ['src/adapters/postgres-repository.ts', 1536, 'slot un-materializable (e.g. cancelled) — no oversell'],
   // The status-agnostic index that makes cancelling brick the slot without the resurrect.
   ['db/migrations/20260718142705_claim_hold_mutex.sql', 28, 'create unique index if not exists events_muster_slot_identity'],
   ['db/migrations/20260718142705_claim_hold_mutex.sql', 30, "where source = 'muster';"],
@@ -379,44 +379,44 @@ const CITATIONS = [
   ['src/reservations/availability.ts', 346, 'if (e.source === "muster" && e.status === "scheduled") {'],
   ['src/reservations/hull-busy.ts', 80, 'if (e.status !== "scheduled") continue;'],
   // The real cancel path reaches the same two-row state the tests set up by hand.
-  ['src/reservations/cancel-reservation.ts', 155, 'const cancelledEvent = await deps.repo.cancelEventIfUnclaimed(reservation.eventId)'],
+  ['src/reservations/cancel-reservation.ts', 160, 'const cancelledEvent = await deps.repo.cancelEventIfUnclaimed(eventId)'],
   // Coverage: real Postgres at the writeSlotBooking level, both adapters at the contract level.
-  ['src/adapters/postgres-repository.test.ts', 571, 'the same slot can be SOLD AGAIN after a cancellation'],
-  ['src/adapters/postgres-repository.test.ts', 507, 'filters on `status === "scheduled"`, misses the cancelled row'],
-  ['src/adapters/postgres-repository.test.ts', 601, 'cancelling the reservation alone does not'],
-  ['src/adapters/repository-contract.ts', 1613, 're-freezes price and duration IDENTICALLY on both adapters (#616)'],
-  ['src/adapters/repository-contract.ts', 1616, "kept the DEAD booking's numbers"],
-  ['src/adapters/repository-contract.ts', 1663, 'expect(revived?.capacity).toBe(8)'],
-  ['src/adapters/repository-contract.ts', 1664, 'expect(revived?.price).toBeUndefined()'],
-  ['src/adapters/repository-contract.ts', 788, 'a CANCELLED reservation on the slot does not block a re-claim'],
+  ['src/adapters/postgres-repository.test.ts', 574, 'the same slot can be SOLD AGAIN after a cancellation'],
+  ['src/adapters/postgres-repository.test.ts', 510, 'filters on `status === "scheduled"`, misses the cancelled row'],
+  ['src/adapters/postgres-repository.test.ts', 604, 'cancelling the reservation alone does not'],
+  ['src/adapters/repository-contract.ts', 1634, 're-freezes price and duration IDENTICALLY on both adapters (#616)'],
+  ['src/adapters/repository-contract.ts', 1637, "kept the DEAD booking's numbers"],
+  ['src/adapters/repository-contract.ts', 1684, 'expect(revived?.capacity).toBe(8)'],
+  ['src/adapters/repository-contract.ts', 1685, 'expect(revived?.price).toBeUndefined()'],
+  ['src/adapters/repository-contract.ts', 809, 'a CANCELLED reservation on the slot does not block a re-claim'],
   // The composition above it, which nothing exercises and which has no cancelled-slot branch.
   ['src/reservations/write-booking.ts', 101, 'const candidateEvent: Event = {'],
   // The in-memory adapter handles the case deliberately NOW — so the pg test's comment quoting
   // its accidental old shape is a record of the fix rather than a description of live code.
-  ['src/adapters/in-memory-repository.ts', 628, 'here the same case used to be handled BY ACCIDENT'],
-  ['src/adapters/in-memory-repository.ts', 636, 'Same field policy as the pg adapter'],
-  ['src/adapters/in-memory-repository.ts', 638, 'const cancelled = [...this.#events.values()].find('],
-  ['src/adapters/in-memory-repository.ts', 657, 'delete revived.price;'],
-  ['src/adapters/in-memory-repository.ts', 659, 'if (event.price !== undefined) revived.price = event.price;'],
+  ['src/adapters/in-memory-repository.ts', 634, 'here the same case used to be handled BY ACCIDENT'],
+  ['src/adapters/in-memory-repository.ts', 642, 'Same field policy as the pg adapter'],
+  ['src/adapters/in-memory-repository.ts', 644, 'const cancelled = [...this.#events.values()].find('],
+  ['src/adapters/in-memory-repository.ts', 663, 'delete revived.price;'],
+  ['src/adapters/in-memory-repository.ts', 665, 'if (event.price !== undefined) revived.price = event.price;'],
 
   // ── Criterion 19's evidence (§Criterion 19) ──
   ['docs/SPEC.md', 2086, 'A booking-charge payment that matches no reservation alerts every active admin by SMS'],
   // The seven branches that fit "a booking charge matching no reservation" — two name the amount.
   // The last two declare a non-booking `purpose`, so they are listed with the argument rather
   // than silently excluded (code review caught the five-row version).
-  ['src/reservations/booking-webhook.ts', 176, 'if (purpose !== undefined && purpose !== "booking") {'],
-  ['src/reservations/booking-webhook.ts', 178, 'Stripe checkout with unknown purpose='],
+  ['src/reservations/booking-webhook.ts', 177, 'if (purpose !== undefined && purpose !== "booking") {'],
+  ['src/reservations/booking-webhook.ts', 179, 'Stripe checkout with unknown purpose='],
   ['src/reservations/confirm-booking.ts', 49, 'Stripe payment intent with unknown purpose='],
-  ['src/reservations/booking-webhook.ts', 499, 'const who = `${m.customerName || "customer"} party of ${partySize}`;'],
-  ['src/reservations/booking-webhook.ts', 271, 'await deps.alertPaidButUnbooked('],
-  ['src/reservations/booking-webhook.ts', 300, 'PAID but NOT booked - booking session ${charge.key} carries no slot'],
-  ['src/reservations/booking-webhook.ts', 301, '(${charge.amountCents} ${charge.currency})'],
-  ['src/reservations/booking-webhook.ts', 329, 'PAID but NOT booked - unusable booking metadata on Stripe charge'],
-  ['src/reservations/booking-webhook.ts', 510, 'Residual-race loss with NO payment_intent to auto-refund'],
-  ['src/reservations/booking-webhook.ts', 537, 'Residual-race loss AND the auto-refund FAILED'],
+  ['src/reservations/booking-webhook.ts', 501, 'const who = `${m.customerName || "customer"} party of ${partySize}`;'],
+  ['src/reservations/booking-webhook.ts', 272, 'await deps.alertPaidButUnbooked('],
+  ['src/reservations/booking-webhook.ts', 301, 'PAID but NOT booked - booking session ${charge.key} carries no slot'],
+  ['src/reservations/booking-webhook.ts', 302, '(${charge.amountCents} ${charge.currency})'],
+  ['src/reservations/booking-webhook.ts', 330, 'PAID but NOT booked - unusable booking metadata on Stripe charge'],
+  ['src/reservations/booking-webhook.ts', 512, 'Residual-race loss with NO payment_intent to auto-refund'],
+  ['src/reservations/booking-webhook.ts', 539, 'Residual-race loss AND the auto-refund FAILED'],
   // The ONE call site that guards against a throwing alert, and the 500 the others reach.
-  ['src/reservations/booking-webhook.ts', 333, '.catch(() => {'],
-  ['src/reservations/booking-webhook.ts', 334, 'An alert failure must not replace the underlying error'],
+  ['src/reservations/booking-webhook.ts', 334, '.catch(() => {'],
+  ['src/reservations/booking-webhook.ts', 335, 'An alert failure must not replace the underlying error'],
   ['app/api/webhooks/stripe/route.ts', 57, 'return NextResponse.json({ error: "processing failed" }, { status: 500 });'],
   // The delivery half — fan-out to every active admin, best-effort per recipient.
   ['src/adapters/forward-money-alert.ts', 45, 'recipients = await listActiveAdminRecipients(repo)'],
@@ -430,13 +430,13 @@ const CITATIONS = [
   // The fixture that says "verbatim" and is not — against the copy that actually ships.
   ['src/adapters/forward-money-alert.test.ts', 19, 'Verbatim from `booking-webhook.ts` — the copy that actually ships.'],
   ['src/adapters/forward-money-alert.test.ts', 22, 'which matches NO payment in Muster - RECONCILE MANUALLY.'],
-  ['src/reservations/booking-webhook.ts', 654, 'which matches NO payment in Muster. The ledger is unchanged;'],
+  ['src/reservations/booking-webhook.ts', 656, 'which matches NO payment in Muster. The ledger is unchanged;'],
   // The edge holds the never-throws guarantee the core assumes, and nothing tests either half.
-  ['app/lib/alert.ts', 44, 'The log line is the floor, not the fallback'],
-  ['app/lib/alert.ts', 48, 'Never throws, for the same reason the core sender doesn'],
-  ['app/lib/alert.ts', 58, 'console.error(`[reservations] ${message}`);'],
-  ['app/lib/alert.ts', 63, 'Twilio-dark ⇒ the log line above is the whole alert'],
-  ['app/lib/alert.ts', 65, 'money alert reached NO admin (none reachable)'],
+  ['app/lib/alert.ts', 45, 'The log line is the floor, not the fallback'],
+  ['app/lib/alert.ts', 49, 'Never throws, for the same reason the core sender doesn'],
+  ['app/lib/alert.ts', 59, 'console.error(`[reservations] ${message}`);'],
+  ['app/lib/alert.ts', 64, 'Twilio-dark ⇒ the log line above is the whole alert'],
+  ['app/lib/alert.ts', 66, 'money alert reached NO admin (none reachable)'],
   // The only test of an unmatched BOOKING charge, and what it asserts about the body.
   ['src/reservations/booking-webhook.test.ts', 184, 'refuses a legacy eventId-shaped session: alerts, books nothing (#693)'],
   ['src/reservations/booking-webhook.test.ts', 196, 'toContain("REFUND MANUALLY")'],
@@ -453,8 +453,8 @@ const CITATIONS = [
   ['src/reservations/write-booking.ts', 118, '? { durationMinutes: offering.tripLengthMinutes }'],
   // …and that field is exactly what occupancy is measured by.
   ['src/reservations/hull-busy.ts', 92, 'out.push({ start, end: start + (e.durationMinutes ?? XOLA_TRIP_MINUTES) });'],
-  ['src/domain/entities.ts', 596, 'frozen here at materialization'],
-  ['src/domain/entities.ts', 601, 'shiftEndFromEvents'],
+  ['src/domain/entities.ts', 599, 'frozen here at materialization'],
+  ['src/domain/entities.ts', 604, 'shiftEndFromEvents'],
   // The test named for the freeze — the edit lands AFTER the booking, which is the other window.
   ['src/reservations/write-booking.test.ts', 109, 'FROZEN, not resolved on read: editing the offering later leaves the booked event alone'],
   ['src/reservations/write-booking.test.ts', 115, 'const r = await bookSlot(repo);'],
@@ -485,7 +485,7 @@ const CITATIONS = [
   ['src/ports/repository.ts', 732, 'isEnginePaused(): Promise<boolean>;'],
   // Why the duration is read late today: no pending row exists to carry it, and the hold has no
   // duration field either (criterion 4's finding from the other direction).
-  ['src/domain/entities.ts', 727, 'CheckoutHold'],
+  ['src/domain/entities.ts', 753, 'CheckoutHold'],
   // The offering edit path, which has no guard on live holds.
   ['src/admin/offering-admin.ts', 212, '...(input.tripLengthMinutes !== undefined'],
   ['src/admin/offering-admin.ts', 215, '...(input.holdMinutes !== undefined ? { holdMinutes: input.holdMinutes } : {}),'],
@@ -493,19 +493,19 @@ const CITATIONS = [
   // ── Criterion 21's evidence (§Criterion 21) ──
   ['docs/SPEC.md', 2092, 'A balance payment never creates or confirms a reservation.'],
   // Depth 1 — the dispatch returns nine lines before the booking path.
-  ['src/reservations/booking-webhook.ts', 172, 'it must NEVER reach the booking path'],
-  ['src/reservations/booking-webhook.ts', 174, 'if (purpose === "balance") return recordBalancePayment(deps, completed);'],
-  ['src/reservations/booking-webhook.ts', 183, 'return processBookingCharge(deps, {'],
+  ['src/reservations/booking-webhook.ts', 173, 'it must NEVER reach the booking path'],
+  ['src/reservations/booking-webhook.ts', 175, 'if (purpose === "balance") return recordBalancePayment(deps, completed);'],
+  ['src/reservations/booking-webhook.ts', 184, 'return processBookingCharge(deps, {'],
   // Depth 2 — the function it lands in writes one Payment and nothing else.
-  ['src/reservations/booking-webhook.ts', 785, 'async function recordBalancePayment('],
-  ['src/reservations/booking-webhook.ts', 813, 'violate the FK, throw, and take this alert with it'],
-  ['src/reservations/booking-webhook.ts', 824, 'await deps.repo.savePayment(payment);'],
-  ['src/reservations/booking-webhook.ts', 852, 'return { handled: true, outcome: "balance_paid" };'],
+  ['src/reservations/booking-webhook.ts', 787, 'async function recordBalancePayment('],
+  ['src/reservations/booking-webhook.ts', 815, 'violate the FK, throw, and take this alert with it'],
+  ['src/reservations/booking-webhook.ts', 826, 'await deps.repo.savePayment(payment);'],
+  ['src/reservations/booking-webhook.ts', 856, 'return { handled: true, outcome: "balance_paid" };'],
   // …and the two calls that WOULD book, both above :570 and both inside processBookingCharge.
-  ['src/reservations/booking-webhook.ts', 361, 'const result: SlotBookingResult = await writeSlotBooking('],
-  ['src/reservations/booking-webhook.ts', 460, 'await deps.sendConfirmation(result.reservation);'],
+  ['src/reservations/booking-webhook.ts', 362, 'const result: SlotBookingResult = await writeSlotBooking('],
+  ['src/reservations/booking-webhook.ts', 461, 'await deps.sendConfirmation(result.reservation);'],
   // Depth 3 — a balance session that lost its `purpose` still fails the slot test.
-  ['src/reservations/booking-webhook.ts', 297, 'const isSlotBooking = Boolean(m.vesselId && m.date && m.time && m.offeringId);'],
+  ['src/reservations/booking-webhook.ts', 298, 'const isSlotBooking = Boolean(m.vesselId && m.date && m.time && m.offeringId);'],
   // Both doors, tested.
   ['src/reservations/booking-webhook.test.ts', 366, 'no second reservation, no alert'],
   ['src/reservations/booking-webhook.test.ts', 378, 'did NOT run the booking path'],
@@ -514,17 +514,17 @@ const CITATIONS = [
   ['src/reservations/confirm-booking.test.ts', 188, 'listAllReservations()).toHaveLength(0)'],
   // Dormant at TWO layers. The pane hides the button — this is the one the operator meets, and
   // the one an earlier draft of this section missed (code review).
-  ['app/(admin)/admin/calendar/[reservationId]/actions.ts', 81, 'export async function createBalanceLink(formData: FormData): Promise<void> {'],
+  ['app/(admin)/admin/calendar/[reservationId]/actions.ts', 82, 'export async function createBalanceLink(formData: FormData): Promise<void> {'],
   ['app/(admin)/admin/calendar/[reservationId]/reservation-detail-pane.tsx', 495, 'Shown only when money is actually owed'],
   ['app/(admin)/admin/calendar/[reservationId]/reservation-detail-pane.tsx', 517, 'money.balanceCents > 0 &&'],
   ['app/(admin)/admin/calendar/[reservationId]/reservation-detail-pane.tsx', 540, '<form action={createBalanceLink}>'],
   // …and the server refuses, covering the stale tab and the re-post.
-  ['src/reservations/create-balance-checkout.ts', 51, 'folds no_balance, already-paid, and full-mode into one predicate'],
-  ['src/reservations/create-balance-checkout.ts', 52, 'if (owed <= 0) return { ok: false, reason: "no_balance" };'],
+  ['src/reservations/create-balance-checkout.ts', 52, 'folds no_balance, already-paid, and full-mode into one predicate'],
+  ['src/reservations/create-balance-checkout.ts', 53, 'if (owed <= 0) return { ok: false, reason: "no_balance" };'],
   // The "courtesy" comment belongs to the DISPUTED guard, not to no_balance — pinned so the
   // distinction cannot quietly re-collapse.
-  ['src/reservations/create-balance-checkout.ts', 59, "The pane's button is a courtesy"],
-  ['src/reservations/create-balance-checkout.ts', 62, 'p.status === "disputed" || p.status === "dispute_lost"'],
+  ['src/reservations/create-balance-checkout.ts', 60, "The pane's button is a courtesy"],
+  ['src/reservations/create-balance-checkout.ts', 63, 'p.status === "disputed" || p.status === "dispute_lost"'],
   ['src/reservations/create-balance-checkout.test.ts', 167, 'no_balance once paid in full'],
   ['src/reservations/payment-config.test.ts', 66, 'full mode charges fare + tax + fee in one go'],
 
@@ -563,17 +563,17 @@ const CITATIONS = [
   ['app/(admin)/admin/payroll/page.tsx', 193, '{tips.warnings.length > 0 && ('],
   ['src/admin/payroll-reconcile.ts', 141, 'const warnings = [...tips.warnings];'],
   // Reachability of the silent case: who writes gratuities, who cancels events.
-  ['src/reservations/booking-webhook.ts', 480, 'if (isSlotBooking && gratuityCents > 0) {'],
-  ['src/reservations/booking-webhook.ts', 764, 'await deps.repo.saveGratuity({'],
-  ['src/reservations/cancel-reservation.ts', 136, 'status: "cancelled",'],
-  ['src/reservations/cancel-reservation.ts', 155, 'const cancelledEvent = await deps.repo.cancelEventIfUnclaimed(reservation.eventId);'],
-  ['src/adapters/repository-contract.ts', 1455, '// ── Gratuity (DEC-124, 12.3)'],
+  ['src/reservations/booking-webhook.ts', 481, 'if (isSlotBooking && gratuityCents > 0) {'],
+  ['src/reservations/booking-webhook.ts', 766, 'await deps.repo.saveGratuity({'],
+  ['src/reservations/cancel-reservation.ts', 141, 'status: "cancelled",'],
+  ['src/reservations/cancel-reservation.ts', 160, 'const cancelledEvent = await deps.repo.cancelEventIfUnclaimed(eventId);'],
+  ['src/adapters/repository-contract.ts', 1476, '// ── Gratuity (DEC-124, 12.3)'],
   // The shift-canceller an earlier draft said did not exist yet (code review), and the call that
   // reaches it from the cancellation path. Pinned because the safety argument now turns on them.
   ['src/builder/form-shifts.ts', 353, 'if (scheduled.length === 0) {'],
   ['src/builder/form-shifts.ts', 359, 'await repo.saveShift({ ...existing, state: "Cancelled" });'],
-  ['src/reservations/cancel-reservation.ts', 158, 'Re-form so the shift collapses and its crew are told'],
-  ['src/reservations/cancel-reservation.ts', 169, 'const form = await formShifts(deps.repo, {'],
+  ['src/reservations/cancel-reservation.ts', 163, 'Re-form so the shift collapses and its crew are told'],
+  ['src/reservations/cancel-reservation.ts', 174, 'const form = await formShifts(deps.repo, {'],
   // The second caller's fixtures — also all required/Confirmed, so it adds no exclusion coverage.
   ['src/reservations/seed-gratuity.ts', 95, 'kind: "required",'],
 
@@ -591,18 +591,18 @@ const CITATIONS = [
   // The fixture is the point: events only, no reservations — the EVENT occupies the hull.
   ['src/reservations/availability.test.ts', 364, 'events: [ev("x1", { source: "xola", date: "2026-07-04", time: "13:30" })],'],
   // Shape 1, write side — contract-level, so proven on real Postgres too.
-  ['src/adapters/repository-contract.ts', 709, 'saveBookingIfSlotFree: LOSES when a Xola trip already holds the hull'],
-  ['src/adapters/repository-contract.ts', 714, 'event({ id: asId<"EventId">("evt-xola-hull"), source: "xola", time: "14:00" }),'],
-  ['src/adapters/repository-contract.ts', 720, "expect(res.result).toBe(\"lost\");"],
-  ['src/adapters/repository-contract.ts', 724, 'saveBookingIfSlotFree: LOSES on an OVERLAPPING time, not just the same one'],
-  ['src/adapters/repository-contract.ts', 737, 'an untimed existing trip is measured at the STANDING length'],
+  ['src/adapters/repository-contract.ts', 730, 'saveBookingIfSlotFree: LOSES when a Xola trip already holds the hull'],
+  ['src/adapters/repository-contract.ts', 735, 'event({ id: asId<"EventId">("evt-xola-hull"), source: "xola", time: "14:00" }),'],
+  ['src/adapters/repository-contract.ts', 741, "expect(res.result).toBe(\"lost\");"],
+  ['src/adapters/repository-contract.ts', 745, 'saveBookingIfSlotFree: LOSES on an OVERLAPPING time, not just the same one'],
+  ['src/adapters/repository-contract.ts', 758, 'an untimed existing trip is measured at the STANDING length'],
   // Both write-path implementations, named so the "no payment input" claim is checkable.
-  ['src/adapters/postgres-repository.ts', 1420, 'async saveBookingIfSlotFree('],
-  ['src/adapters/in-memory-repository.ts', 587, 'async saveBookingIfSlotFree('],
+  ['src/adapters/postgres-repository.ts', 1421, 'async saveBookingIfSlotFree('],
+  ['src/adapters/in-memory-repository.ts', 593, 'async saveBookingIfSlotFree('],
   // Why an imported reservation cannot be paid: the importer writes an Event and a Reservation only.
-  ['src/import/import-reservations.ts', 236, 'await repo.saveEvent(event);'],
-  ['src/import/import-reservations.ts', 297, 'await repo.saveReservation(reservation);'],
-  ['src/import/import-reservations.ts', 278, 'source: "xola", // imported reservations are Xola-owned (DEC-106)'],
+  ['src/import/import-reservations.ts', 241, 'await repo.saveEvent(event);'],
+  ['src/import/import-reservations.ts', 302, 'await repo.saveReservation(reservation);'],
+  ['src/import/import-reservations.ts', 283, 'source: "xola", // imported reservations are Xola-owned (DEC-106)'],
   // Shape 2 — the hold occupies on a clock comparison, not on money.
   ['src/reservations/availability.ts', 333, 'if (h.source === "muster" && h.expiresAt > input.asOf) {'],
   ['src/reservations/availability.test.ts', 578, "a live hold (expiresAt > asOf) marks the slot 'held'"],
@@ -617,9 +617,9 @@ const CITATIONS = [
   // The cancelled rule is deliberate and explained — it is not the defect, and must not read as one.
   ['src/reservations/find-booking.ts', 74, 'A cancelled booking is still recoverable'],
   // Nothing upstream filters by status: the edge maps every row, the orchestrator passes them on.
-  ['app/b/find/actions.ts', 61, 'repo.listAllReservations(),'],
-  ['app/b/find/actions.ts', 68, 'event: eventById.get(String(reservation.eventId)),'],
-  ['app/b/find/actions.ts', 70, '.filter((r): r is RecoveryRow => r.event !== undefined);'],
+  ['app/b/find/actions.ts', 62, 'repo.listAllReservations(),'],
+  ['app/b/find/actions.ts', 69, 'event: eventById.get(String(reservation.eventId)),'],
+  ['app/b/find/actions.ts', 71, '.filter((r): r is RecoveryRow => r.event !== undefined);'],
   ['src/reservations/recover-booking-link.ts', 93, 'const match = matchBookingForRecovery(await loadRows(), query, deps.today);'],
   // Why a wrong match is worse than a wrong row: the match is written to, then sent.
   ['src/reservations/recover-booking-link.ts', 98, 'const code = await ensureBookingCode(deps.repo, match.reservation.id, deps.now);'],
@@ -627,13 +627,13 @@ const CITATIONS = [
   // Coverage: the only status-aware case, and it is the cancelled rule.
   ['src/reservations/find-booking.test.ts', 116, 'skips cancelled bookings when a live one exists, but recovers one if that is all there is'],
   // The union that makes this vacuous today — shared with criteria 6 and 11.
-  ['src/domain/entities.ts', 615, 'ReservationStatus = "booked" | "cancelled"'],
+  ['src/domain/entities.ts', 625, 'ReservationStatus = "pending" | "booked" | "cancelled"'],
 
   // ── Criterion 2 / 5 evidence, spot-checked while re-baselining ──
   ['src/reservations/availability.ts', 172, 'return asId<"EventId">(`slot_${slotIdentity('],
   ['app/(public)/book/page.tsx', 92, 'repo.listLiveCheckoutHolds(asOf)'],
   ['src/reservations/claim.ts', 312, 'await repo.acquireCheckoutHold(hold)'],
-  ['src/adapters/in-memory-repository.ts', 462, 'async cancelEventIfUnclaimed('],
+  ['src/adapters/in-memory-repository.ts', 468, 'async cancelEventIfUnclaimed('],
 ]
 
 const cache = new Map()

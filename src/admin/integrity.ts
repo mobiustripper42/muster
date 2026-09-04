@@ -113,7 +113,9 @@ export async function checkIntegrity(repo: Repository): Promise<IntegrityReport>
   }
   for (const e of events) miss(vesselIds, "event", e.id, "vesselId", e.vesselId);
   for (const r of reservations) {
-    miss(eventIds, "reservation", r.id, "eventId", r.eventId);
+    // Null while pending (§2.8.2) — nothing to resolve. What this report says about a
+    // pending row, and whether a null on a non-pending row is a miss, is 14.3's call.
+    if (r.eventId !== null) miss(eventIds, "reservation", r.id, "eventId", r.eventId);
   }
   for (const s of shifts) {
     miss(vesselIds, "shift", s.id, "vesselId", s.vesselId);

@@ -24,6 +24,7 @@
  */
 import { formShifts, PartialFormError, type FormResult } from "../builder/form-shifts.js";
 import { logFormAudit } from "../oracle/audit-log.js";
+import { eventIdOfBooked } from "../domain/entities.js";
 import type { CancelledBy, Payment } from "../domain/entities.js";
 import type { EventId, ReservationId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
@@ -128,6 +129,10 @@ export async function cancelReservation(
   // Xola owns its own bookings and its own money (DEC-105). Cancelling one here would be
   // overwritten by the next pull and would tell the customer nothing.
   if (reservation.source !== "muster") return { ok: false, reason: "not_muster" };
+  // §2.8.10: cancellation acts on a row with money behind it and must never be handed a
+  // `pending` one. Resolved BEFORE any write so a pending row throws with nothing changed;
+  // 14.3 turns the throw into a refused outcome.
+  const eventId = eventIdOfBooked(reservation);
 
   const alreadyCancelled = reservation.status === "cancelled";
   if (!alreadyCancelled) {
@@ -152,8 +157,8 @@ export async function cancelReservation(
   // cancel their live, paid booking, collapse the shift and tell the crew they are off a boat
   // somebody is on. `cancelEventIfUnclaimed` does the check and the write under the same
   // hull-day advisory lock the booking path takes, so the two serialize.
-  const cancelledEvent = await deps.repo.cancelEventIfUnclaimed(reservation.eventId);
-  const freedEventId: EventId | undefined = cancelledEvent ? reservation.eventId : undefined;
+  const cancelledEvent = await deps.repo.cancelEventIfUnclaimed(eventId);
+  const freedEventId: EventId | undefined = cancelledEvent ? eventId : undefined;
 
   // Re-form so the shift collapses and its crew are told. Best-effort by the same contract the
   // booking webhook uses: the cancellation is COMMITTED by this point, so a channel hiccup or

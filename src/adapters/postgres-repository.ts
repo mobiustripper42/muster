@@ -328,7 +328,8 @@ const toCheckoutHold = (r: any): CheckoutHold => ({
 
 const toReservation = (r: any): Reservation => ({
   id: asId<"ReservationId">(r.id),
-  eventId: asId<"EventId">(r.event_id),
+  // Null while pending (§2.8.2) — the column dropped NOT NULL in 14.2.
+  eventId: r.event_id === null ? null : asId<"EventId">(r.event_id),
   source: r.source,
   customerName: r.customer_name,
   partySize: r.party_size,

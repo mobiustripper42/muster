@@ -6,7 +6,6 @@ import { settingsInputClass } from "../../../../components/admin/settings-field"
 import { SubmitButton } from "../../../../components/ui/submit-button";
 import { AppLink } from "../../../../components/ui/app-link";
 import { UnsavedGuard } from "../../../../components/ui/unsaved-guard";
-import { formatDay, formatTime } from "./block-sections";
 import { saveBlock, liftBlock } from "./actions";
 
 /**

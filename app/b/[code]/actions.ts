@@ -17,7 +17,6 @@ import { bookingUrl } from "@core/reservations/booking-code.js";
 import { bookingChangeRequestEmail, type ChangeRequestKind } from "@core/reservations/booking-change-request.js";
 import { createGratuityCheckout } from "@core/reservations/create-gratuity-checkout.js";
 import { formatClock, formatShortDay } from "@core/reservations/availability-screen.js";
-import { gratuityCentsFor } from "@core/reservations/pricing.js";
 import { postTipTiersFor } from "@core/reservations/manage-view.js";
 import { readEmailEnv } from "../../lib/auth-delivery";
 import { getRepo } from "../../lib/repo";

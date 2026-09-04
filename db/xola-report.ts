@@ -567,6 +567,22 @@ if (itemsWithoutAddOns > 0) {
       `change, not empty carts. Extra-guest counts in this report are unreliable.`,
   );
 }
+// THE SAME DEFECT, A SECOND TIME (#908). `experiences` was declared with a docstring
+// promising it "reports the evidence … more than one means the flat base is a guess and
+// says so", populated on every item, and read nowhere — so the warning it exists to
+// print has never printed. Found by `sonarjs/no-unused-collection`, four lines below the
+// comment describing the identical bug being fixed in #757.
+//
+// `--base` is one number applied to every boat. If the pull spans more than one product,
+// the included-guest count almost certainly differs between them, and `pax` — plus every
+// OVER flag derived from it — is wrong in the UNDER-reporting direction.
+if (experiences.size > 1) {
+  console.error(
+    `  ! ${experiences.size} distinct experiences in this pull (${[...experiences].sort().join(", ")}) — ` +
+      `\`--base ${BASE_GUESTS}\` is one number applied to all of them. If their included-guest ` +
+      `counts differ, pax and every OVER flag are under-reported for the others.`,
+  );
+}
 
 const live = rows.filter((r) => !r.isCancelled);
 const section = (title: string, set: Row[]): void => {

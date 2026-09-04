@@ -158,10 +158,16 @@ export class InMemoryRepository implements Repository {
   // KV's "absent row ⇒ running" semantics. `#enginePausedAt` mirrors the DB's
   // audit column (no read path through the port — parity, not a feature).
   #enginePaused = false;
+  // Written, never read, ON PURPOSE — parity with the DB's audit column, not a feature
+  // (see the comment above). DEC-159 records what deleting a write-only field costs:
+  // `db/xola-report.ts`'s wire-shape canary was removed as "unused" and shipped a
+  // ReferenceError past a green gate.
+  // eslint-disable-next-line no-unused-private-class-members -- deliberate parity field
   #enginePausedAt: string | null = null;
   // Self-claim confirm-gate flag (DEC-075). Default false = auto-lock, mirroring
   // the KV's "absent row ⇒ false" semantics. `#selfClaimAt` mirrors the audit col.
   #selfClaimRequiresConfirmation = false;
+  // eslint-disable-next-line no-unused-private-class-members -- same as `#enginePausedAt` above
   #selfClaimAt: string | null = null;
   readonly #importRuns = new Map<
     ImportRunId,

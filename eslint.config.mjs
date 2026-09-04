@@ -104,29 +104,53 @@ const OFF = {
   // them on in `db/` and in test files, where all 24 of their findings are deliberate.
   "sonarjs/sql-queries": "off",                     //  14 findings — ON, narrowed (#908)
   "sonarjs/no-clear-text-protocols": "off",         //  12 findings — ON, narrowed (#908)
-  "sonarjs/no-unused-vars": "off",                  //  12 findings — issue #908
-  "sonarjs/unused-import": "off",                   //   7 findings — issue #908
-  "sonarjs/assertions-in-tests": "off",             //   3 findings — issue #908
+  // DROPPED, and this is DEC-159 rule 4 applied verbatim: "a false positive on a
+  // legitimate idiom is fixed in config, or the rule is dropped." All 12 of its
+  // findings were `_`-prefixed rest-omit bindings — `const { a, ...rest }` naming a
+  // property solely to exclude it — which `@typescript-eslint/no-unused-vars` already
+  // allows via `varsIgnorePattern` and `ignoreRestSiblings`. This rule ships NO schema
+  // (verified: `meta.schema` is undefined), so it cannot be taught the idiom. It is a
+  // worse duplicate of a rule already on.
+  "sonarjs/no-unused-vars": "off",                  //  12 false positives — unconfigurable duplicate
+  // `sonarjs/unused-import` is ON as of #908 — 7 findings, 7 real dead imports, fixed.
+  // `sonarjs/assertions-in-tests` and `vitest/expect-expect` are ON as of #908. Of their
+  // 3 findings each, two were the `if (!dbUp) describe.skip(…)` env gates and one was a
+  // real gap: a "double delete is not an error" test that asserted nothing, so it would
+  // have passed if `deletePunch` stopped throwing and started returning an error.
   "sonarjs/no-duplicated-branches": "off",          //   2 findings — issue #908
   "sonarjs/no-os-command-from-path": "off",         //   2 findings — ON, narrowed (#908); same reason as the two above
-  "sonarjs/no-empty-test-file": "off",              //   2 findings — issue #908
-  "sonarjs/no-skipped-tests": "off",                //   2 findings — issue #908
+  // DROPPED (DEC-159 rule 4). Its 2 findings are `in-memory-repository.test.ts` and its
+  // presence twin — 9-line files whose entire body is `runRepositoryContract(…)`, the
+  // shared suite both adapters must pass. The rule cannot see through the helper, and it
+  // has no option that would teach it to.
+  "sonarjs/no-empty-test-file": "off",              //   2 false positives — cannot see contract suites
+  // Both findings are `if (!dbUp) describe.skip(…)` in `postgres-*.test.ts` — the gate
+  // that lets the suite run without a database, and the reason `test:pg` exists. Kept off
+  // rather than disabled inline at four sites across two rules.
+  "sonarjs/no-skipped-tests": "off",                //   2 legitimate env gates
   "sonarjs/no-inverted-boolean-check": "off",       //   2 findings — issue #908
   "sonarjs/no-nested-functions": "off",             //   1 finding  — issue #908
   "sonarjs/regex-complexity": "off",                //   1 finding  — issue #908
   "sonarjs/todo-tag": "off",                        //   1 finding  — issue #908
   "sonarjs/concise-regex": "off",                   //   1 finding  — issue #908
-  "sonarjs/no-unused-collection": "off",            //   1 finding  — issue #908
+  // `sonarjs/no-unused-collection` is ON as of #908, and it found a REAL DEFECT: a Set
+  // in `db/xola-report.ts` populated on every item and read nowhere, whose own docstring
+  // promised it printed a warning. Four lines from the comment describing the identical
+  // bug being fixed in #757.
   "sonarjs/no-floating-point-equality": "off",      //   1 finding  — issue #908
   "sonarjs/redundant-type-aliases": "off",          //   1 finding  — issue #908
-  "sonarjs/no-trivial-assertions": "off",           //   1 finding  — issue #908
+  // `sonarjs/no-trivial-assertions` is ON as of #908 — its one finding is a `@ts-expect-error`
+  // case where the TYPECHECK is the assertion, carrying an inline disable that says so.
 
   // --- vitest (test files only) ---
   "vitest/no-conditional-expect": "off",            //  21 findings — issue #909
-  "vitest/expect-expect": "off",                    //   3 findings — issue #908
-  "vitest/no-disabled-tests": "off",                //   2 findings — issue #908
-  "vitest/valid-title": "off",                      //   1 finding  — issue #908
-  "vitest/valid-expect": "off",                     //   1 finding  — issue #908
+  "vitest/no-disabled-tests": "off",                //   2 legitimate env gates — same as sonarjs/no-skipped-tests
+  // `vitest/valid-title` is ON as of #908 with `ignoreTypeOfDescribeName` — its one finding
+  // was `describe(env, …)` in a parameterised loop, which is the point of the loop.
+  // `vitest/valid-expect` is ON as of #908 with `maxArgs: 2`. The rule DEFAULTS to Jest's
+  // signature; Vitest's `expect` takes a message as its second argument
+  // (`@vitest/expect/dist/index.d.ts:184`). Its one finding was a four-line custom failure
+  // message that is not a defect at all — DEC-159 rule 4, fixed in config.
 
   // --- eslint core ---
   // SUPERSEDED, not deferred — the only entry here that is off for a reason other
@@ -137,7 +161,9 @@ const OFF = {
   // per-scope below. Turning this on would be a regression, not stricter linting.
   "no-unused-vars": "off",                          // 274 false positives — superseded
   "no-undef": "off",                                //  11 findings — issue #908 (the db/xola-report.ts rule; expect DOM-type false positives in e2e/)
-  "no-unused-private-class-members": "off",         //   2 findings — issue #908
+  // `no-unused-private-class-members` is ON as of #908 — both findings are deliberate
+  // write-only parity fields in the in-memory adapter, carrying inline disables that
+  // cite DEC-159's canary incident.
   "no-redeclare": "off",                            //   1 finding  — issue #908
   "no-useless-escape": "off",                       //   1 finding  — issue #908
   "no-empty": "off",                                //   1 finding  — issue #908
@@ -147,12 +173,19 @@ const OFF = {
   // Core `no-unused-vars` is off wherever the TS-aware variant runs (it cannot see
   // type-only usage); the variant itself is configured per-scope further down. This
   // entry is the WIDER application of it, which fires 10.
-  "@typescript-eslint/no-unused-vars": "off",       //  10 findings — issue #908
+  // `@typescript-eslint/no-unused-vars` is ON as of #908, applied wide. Its 8 findings
+  // were 7 dead imports and one unused destructured arg, all removed.
 
   // --- react-hooks ---
-  "react-hooks/set-state-in-effect": "off",         //   4 findings — issue #908
-  "react-hooks/refs": "off",                        //   1 finding  — issue #908
-  "react-hooks/error-boundaries": "off",            //   1 finding  — issue #908
+  // STAYS OFF, and deliberately not forced (#908). All 6 findings are real React
+  // correctness smells in `"use client"` islands — a synchronous setState in an effect, a
+  // ref read during render, JSX built inside a try/catch. But this project has NO React
+  // unit-test layer (see `rules-of-hooks` below), so every fix would be unverifiable
+  // except by hand on a device. Turning the rule on would force six blind edits to
+  // interactive code. Filed for its own task with eyes on a browser.
+  "react-hooks/set-state-in-effect": "off",         //   4 real findings — needs a device, own task
+  "react-hooks/refs": "off",                        //   1 real finding — needs a device, own task
+  "react-hooks/error-boundaries": "off",            //   1 real finding — needs a device, own task
 };
 
 /** Why the core and its scripts may not import a framework package — one message, cited below.
@@ -456,7 +489,21 @@ export default tseslint.config(
       "scripts/**/*.test.mjs",
     ],
     plugins: { vitest },
-    rules: { "vitest/no-focused-tests": "error" },
+    rules: {
+      "vitest/no-focused-tests": "error",
+      // Both carry options the preset's defaults get wrong for THIS runner, which is
+      // DEC-159 rule 4 — fix the false positive in config rather than drop the rule (#908).
+      //
+      // `maxArgs: 2` — the rule defaults to Jest's `expect(actual)`. Vitest's takes a
+      // message second (`@vitest/expect/dist/index.d.ts:184`), and this repo uses it: a
+      // four-line explanation of what a missing `notifyTripChanges` flag costs, at
+      // `src/builder/form-shifts-notify.test.ts:153`.
+      //
+      // `ignoreTypeOfDescribeName` — `describe(env, …)` over a table of flags is the
+      // point of the table, not a title someone forgot to write.
+      "vitest/valid-expect": ["error", { maxArgs: 2 }],
+      "vitest/valid-title": ["error", { ignoreTypeOfDescribeName: true }],
+    },
   },
   {
     // `**/*.ts`, not `**/*.spec.ts`: `fixtures.ts` is imported by every spec, and a config that

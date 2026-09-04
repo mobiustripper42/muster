@@ -38,6 +38,10 @@ describe("type-level guards (enforced by typecheck, not runtime)", () => {
   it("rejects the reserved Held seat state", () => {
     // @ts-expect-error — Held is reserved for Pass D; must not be assignable in v1.
     const held: SeatState = "Held";
+    // The `@ts-expect-error` above IS the assertion: this fails the TYPECHECK the day
+    // `"Held"` becomes assignable. The runtime line only gives the case a body, which is
+    // why it is trivially true (#908).
+    // eslint-disable-next-line sonarjs/no-trivial-assertions -- the typecheck is the assertion
     expect(typeof held).toBe("string");
   });
 

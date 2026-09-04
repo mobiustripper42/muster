@@ -247,7 +247,7 @@ export default async function AdminBlocks({
               block a single departure on the calendar.
             </p>
           ) : (
-            visible.map(({ block, span, past, impact, vessel, location }) => {
+            visible.map(({ block, past, impact, vessel, location }) => {
               const kind = block.kind as BlockKind;
               const when =
                 block.kind === "location"

@@ -37,10 +37,19 @@ const recommended = (mod) => {
  * THE CEILING (#907, and DEC-159 rule 5 — state it where the rule is configured).
  *
  * 347 rules across the five `recommended` presets were run against this codebase
- * with each plugin scoped exactly as it is scoped below. **298 returned zero
+ * with each plugin scoped exactly as it is scoped below. **297 returned zero
  * findings and are now ON.** The 50 here are every rule that fired, with its count
  * and the issue that owns it. Nothing is off because it was awkward; everything off
  * has a number.
+ *
+ * 347 − 50 = 297. Three further entries below are no-ops kept for the reader:
+ * `@typescript-eslint/no-unused-vars` is in no preset (the hand-picked block owns
+ * it), and base `no-unused-vars` is off for a reason that is not a finding count.
+ *
+ * **Spreading a preset is DEC-166**, which supersedes DEC-159's "never adopt a
+ * plugin's preset" clause. DEC-159's other four rules — invariants only, `error`
+ * only, measure first, fix false positives in config — are unchanged and still
+ * govern everything here.
  *
  * Deleting a line here turns that rule on. That is the intended workflow: fix the
  * findings, delete the line, and the count in the comment is what tells you how big
@@ -431,11 +440,20 @@ export default tseslint.config(
     // what DEC-159 rule 1 forbids." That was right at the time and is no longer true —
     // `recommended` has since been measured (16 rules, 3 firing, see `OFF`) and is spread in
     // above. This entry stays because `rules-of-hooks` is load-bearing enough to survive a
-    // future preset change on its own. `exhaustive-deps` is
-    // deliberately NOT here: it was proposed at `warn`, and `lint` carries no
-    // `--max-warnings 0`, so a warn-level rule cannot fail the gate — it prints advice into
-    // output nobody reads while implying enforcement (DEC-159 rule 2). If it is ever wanted,
-    // it goes in at `error` after someone reads every finding.
+    // future preset change on its own.
+    //
+    // **`exhaustive-deps` is now ON**, at `error`, with zero findings — swept in by the
+    // preset above rather than admitted by name. This block used to say it was
+    // "deliberately NOT here"; that stopped being true in the same commit that widened
+    // the preset, and the stale sentence was caught in review rather than by a reader
+    // trusting it.
+    //
+    // It satisfies DEC-159 rather than dodging it. What #757 rejected was a proposal to
+    // run it at `warn` — and `lint` carries no `--max-warnings 0`, so a warn-level rule
+    // cannot fail this gate: it prints advice into output nobody reads while implying
+    // enforcement (rule 2). At `error` and at zero it is prevention on rule 1's terms,
+    // and the warn-tier ban is untouched. Nobody had to read a backlog of findings
+    // because there is no backlog.
     files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}"],
     plugins: { "react-hooks": reactHooks },
     rules: { "react-hooks/rules-of-hooks": "error" },

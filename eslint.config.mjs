@@ -3,6 +3,142 @@ import sonarjs from "eslint-plugin-sonarjs";
 import vitest from "@vitest/eslint-plugin";
 import playwright from "eslint-plugin-playwright";
 import reactHooks from "eslint-plugin-react-hooks";
+import js from "@eslint/js";
+
+/**
+ * The `recommended` preset of one plugin, minus the rules listed in `OFF` (#907).
+ *
+ * **A spread, not 298 hand-written entries, and that is the load-bearing choice.**
+ * A hand list is a snapshot: it silently fails to pick up a rule the plugin adds in
+ * a later version, and nothing ever reports the omission. The spread stays current,
+ * and the exclusions are the thing a person maintains — which is the right way
+ * round, because the exclusions are the part with reasons attached.
+ *
+ * Keeps only rules the plugin actually owns: a preset also carries bare core-rule
+ * names it switches OFF, and passing those through under a plugin prefix is a hard
+ * config error ("Could not find no-var in plugin @typescript-eslint").
+ */
+const recommended = (mod) => {
+  const cfg =
+    mod.configs?.recommended ??
+    mod.configs?.["flat/recommended"] ??
+    mod.configs?.["recommended-latest"];
+  const raw = cfg?.rules ?? (Array.isArray(cfg) ? Object.assign({}, ...cfg.map((c) => c.rules ?? {})) : {});
+  const owned = new Set(Object.keys(mod.rules ?? {}));
+  return Object.fromEntries(
+    Object.entries(raw)
+      .filter(([k, v]) => v && v !== "off" && v !== 0)
+      .filter(([k]) => k.includes("/") && owned.has(k.split("/").slice(1).join("/")))
+      .map(([k]) => [k, "error"]),
+  );
+};
+
+/**
+ * THE CEILING (#907, and DEC-159 rule 5 — state it where the rule is configured).
+ *
+ * 347 rules across the five `recommended` presets were run against this codebase
+ * with each plugin scoped exactly as it is scoped below. **298 returned zero
+ * findings and are now ON.** The 50 here are every rule that fired, with its count
+ * and the issue that owns it. Nothing is off because it was awkward; everything off
+ * has a number.
+ *
+ * Deleting a line here turns that rule on. That is the intended workflow: fix the
+ * findings, delete the line, and the count in the comment is what tells you how big
+ * the job is before you start.
+ *
+ * **The measurement excluded type-aware rules**, which need `parserOptions.project`.
+ * DEC-159 already priced that at +19s on every gate for zero violations, and nothing
+ * here changes that verdict.
+ *
+ * ## What this costs, measured, and why it is not the thing DEC-159 rejected
+ *
+ * `npm run lint` goes **6.8s → 25.6s** on this machine, both measured back to back on
+ * the same tree. That is **+18.8s**, which is within a second of the +19s DEC-159
+ * measured for type-aware rules and rejected.
+ *
+ * The number being the same is a coincidence; the trade is not. DEC-159 was pricing
+ * +19s that bought **zero** enforced violations — pure cost. This buys 298 rules that
+ * hold from now on, including four security rules (`sql-queries`,
+ * `no-clear-text-protocols`, `super-linear-regex`, `no-os-command-from-path`) that had
+ * never run against this codebase in any form.
+ *
+ * Recorded here rather than argued, because the number is what a future reader needs.
+ * If the gate ever feels slow, this line is where to start, and `sonarjs` (217 of the
+ * 298) is the first thing to profile.
+ */
+const OFF = {
+  // --- playwright (e2e/ only) ---
+  "playwright/prefer-locator": "off",               // 105 findings — issue #909
+  "playwright/no-force-option": "off",              //  16 findings — issue #908 (already measured 16/16 legitimate in issue #904)
+  "playwright/no-conditional-in-test": "off",       //  10 findings — issue #908
+  "playwright/no-skipped-test": "off",              //   8 findings — issue #908 (7 legitimate per issue #904; the real one is e2e/trainee-staffing.spec.ts:20)
+  "playwright/prefer-web-first-assertions": "off",  //   6 findings — issue #908
+  "playwright/expect-expect": "off",                //   2 findings — issue #908 (2/2 legitimate per issue #904 — both assert via page.waitForURL)
+  "playwright/no-conditional-expect": "off",        //   2 findings — issue #908
+  "playwright/prefer-to-have-count": "off",         //   2 findings — issue #908
+  "playwright/no-useless-not": "off",               //   1 finding  — issue #908
+  "playwright/no-wait-for-timeout": "off",          //   1 finding  — issue #908 (legitimate per issue #904 — a settle before asserting an absence)
+
+  // --- sonarjs. The four SECURITY rules below have never run on this codebase. ---
+  "sonarjs/no-nested-conditional": "off",           //  87 findings — issue #909
+  "sonarjs/cognitive-complexity": "off",            //  61 findings — issue #909 (threshold is configurable; measure before choosing one)
+  "sonarjs/no-redundant-optional": "off",           //  53 findings — issue #909
+  "sonarjs/super-linear-regex": "off",              //  29 findings — issue #908  ← SECURITY
+  "sonarjs/prefer-specific-assertions": "off",      //  20 findings — issue #909
+  "sonarjs/no-nested-template-literals": "off",     //  16 findings — issue #908
+  "sonarjs/void-use": "off",                        //  16 findings — issue #908
+  "sonarjs/sql-queries": "off",                     //  14 findings — issue #908  ← SECURITY
+  "sonarjs/no-clear-text-protocols": "off",         //  12 findings — issue #908  ← SECURITY (expect http://mill-dev:3000 among them — deliberate)
+  "sonarjs/no-unused-vars": "off",                  //  12 findings — issue #908
+  "sonarjs/unused-import": "off",                   //   7 findings — issue #908
+  "sonarjs/assertions-in-tests": "off",             //   3 findings — issue #908
+  "sonarjs/no-duplicated-branches": "off",          //   2 findings — issue #908
+  "sonarjs/no-os-command-from-path": "off",         //   2 findings — issue #908  ← SECURITY
+  "sonarjs/no-empty-test-file": "off",              //   2 findings — issue #908
+  "sonarjs/no-skipped-tests": "off",                //   2 findings — issue #908
+  "sonarjs/no-inverted-boolean-check": "off",       //   2 findings — issue #908
+  "sonarjs/no-nested-functions": "off",             //   1 finding  — issue #908
+  "sonarjs/regex-complexity": "off",                //   1 finding  — issue #908
+  "sonarjs/todo-tag": "off",                        //   1 finding  — issue #908
+  "sonarjs/concise-regex": "off",                   //   1 finding  — issue #908
+  "sonarjs/no-unused-collection": "off",            //   1 finding  — issue #908
+  "sonarjs/no-floating-point-equality": "off",      //   1 finding  — issue #908
+  "sonarjs/redundant-type-aliases": "off",          //   1 finding  — issue #908
+  "sonarjs/no-trivial-assertions": "off",           //   1 finding  — issue #908
+
+  // --- vitest (test files only) ---
+  "vitest/no-conditional-expect": "off",            //  21 findings — issue #909
+  "vitest/expect-expect": "off",                    //   3 findings — issue #908
+  "vitest/no-disabled-tests": "off",                //   2 findings — issue #908
+  "vitest/valid-title": "off",                      //   1 finding  — issue #908
+  "vitest/valid-expect": "off",                     //   1 finding  — issue #908
+
+  // --- eslint core ---
+  // SUPERSEDED, not deferred — the only entry here that is off for a reason other
+  // than a finding count. The base rule cannot see TypeScript's type-only usage, so
+  // it reports 274 false positives (a type imported and used only in a type
+  // position, an `_`-prefixed parameter this repo deliberately keeps). The
+  // TS-aware `@typescript-eslint/no-unused-vars` is the real rule and is configured
+  // per-scope below. Turning this on would be a regression, not stricter linting.
+  "no-unused-vars": "off",                          // 274 false positives — superseded
+  "no-undef": "off",                                //  11 findings — issue #908 (the db/xola-report.ts rule; expect DOM-type false positives in e2e/)
+  "no-unused-private-class-members": "off",         //   2 findings — issue #908
+  "no-redeclare": "off",                            //   1 finding  — issue #908
+  "no-useless-escape": "off",                       //   1 finding  — issue #908
+  "no-empty": "off",                                //   1 finding  — issue #908
+  "no-irregular-whitespace": "off",                 //   1 finding  — issue #908
+
+  // --- @typescript-eslint ---
+  // Core `no-unused-vars` is off wherever the TS-aware variant runs (it cannot see
+  // type-only usage); the variant itself is configured per-scope further down. This
+  // entry is the WIDER application of it, which fires 10.
+  "@typescript-eslint/no-unused-vars": "off",       //  10 findings — issue #908
+
+  // --- react-hooks ---
+  "react-hooks/set-state-in-effect": "off",         //   4 findings — issue #908
+  "react-hooks/refs": "off",                        //   1 finding  — issue #908
+  "react-hooks/error-boundaries": "off",            //   1 finding  — issue #908
+};
 
 /** Why the core and its scripts may not import a framework package — one message, cited below.
  *  Worded to be true from `db/` as well as `src/`: these rules cover both, and a db script told
@@ -53,6 +189,53 @@ const CORE_PURITY_ALIAS =
  * says the rule out loud and fails on the import itself.
  */
 export default tseslint.config(
+  // ── The measured presets (#907) ────────────────────────────────────────────
+  //
+  // These blocks come FIRST, deliberately. Flat config is last-wins, and the
+  // hand-picked rules below carry options a preset would otherwise clobber —
+  // `@typescript-eslint/no-unused-vars` in `src/`/`db/` is configured with an
+  // `argsIgnorePattern` and `ignoreRestSiblings` that matter, and `OFF` sets that
+  // rule off for the wider application. Put these last and that configuration
+  // silently disappears.
+  //
+  // Each block's scope mirrors the hand-picked block for the same plugin further
+  // down. A preset applied wider than the plugin belongs is not a stricter config,
+  // it is a noisy one: applying playwright's rules to `src/` produced 4,464 findings
+  // in a directory with no Playwright tests, which is how the first measurement of
+  // this work went wrong.
+  {
+    files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}", "src/**/*.{ts,tsx}", "db/**/*.{ts,tsx}", "scripts/**/*.mjs"],
+    languageOptions: {
+      parser: tseslint.parser,
+      parserOptions: { ecmaFeatures: { jsx: true } },
+    },
+    rules: { ...js.configs.recommended.rules, ...OFF },
+  },
+  {
+    files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}", "src/**/*.{ts,tsx}", "db/**/*.{ts,tsx}"],
+    languageOptions: { parser: tseslint.parser, parserOptions: { ecmaFeatures: { jsx: true } } },
+    plugins: { sonarjs },
+    rules: { ...recommended(sonarjs), ...OFF },
+  },
+  {
+    files: ["src/**/*.test.ts", "app/**/*.test.ts", "components/**/*.test.ts", "db/**/*.test.ts", "scripts/**/*.test.mjs"],
+    languageOptions: { parser: tseslint.parser, parserOptions: { ecmaFeatures: { jsx: true } } },
+    plugins: { vitest },
+    rules: { ...recommended(vitest), ...OFF },
+  },
+  {
+    files: ["e2e/**/*.ts"],
+    languageOptions: { parser: tseslint.parser },
+    plugins: { playwright },
+    rules: { ...recommended(playwright), ...OFF },
+  },
+  {
+    files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}"],
+    languageOptions: { parser: tseslint.parser, parserOptions: { ecmaFeatures: { jsx: true } } },
+    plugins: { "react-hooks": reactHooks },
+    rules: { ...recommended(reactHooks), ...OFF },
+  },
+  // ── The hand-picked rules ──────────────────────────────────────────────────
   {
     files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}"],
     languageOptions: {
@@ -243,9 +426,12 @@ export default tseslint.config(
     // project has no React unit-test layer to catch it — the islands are covered, if at all,
     // by e2e, which sees a symptom rather than the cause.
     //
-    // **One rule, cherry-picked by name, not a preset.** eslint-plugin-react-hooks v7 ships
-    // ~30 rules including the whole React Compiler set; `recommended` would drag them all in
-    // unmeasured, which is precisely what DEC-159 rule 1 forbids. `exhaustive-deps` is
+    // **This was the only react-hooks rule until #907, and the reason has now expired.**
+    // It used to read: "`recommended` would drag them all in unmeasured, which is precisely
+    // what DEC-159 rule 1 forbids." That was right at the time and is no longer true —
+    // `recommended` has since been measured (16 rules, 3 firing, see `OFF`) and is spread in
+    // above. This entry stays because `rules-of-hooks` is load-bearing enough to survive a
+    // future preset change on its own. `exhaustive-deps` is
     // deliberately NOT here: it was proposed at `warn`, and `lint` carries no
     // `--max-warnings 0`, so a warn-level rule cannot fail the gate — it prints advice into
     // output nobody reads while implying enforcement (DEC-159 rule 2). If it is ever wanted,

@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { stripTrailingSlashes } from "@core/config/base-url.js";
 
 /**
  * The externally-reachable base URL for building links that get DELIVERED to
@@ -16,7 +17,7 @@ import type { NextRequest } from "next/server";
  */
 export function baseUrl(req: NextRequest): string {
   const configured = process.env.APP_BASE_URL;
-  if (configured) return configured.replace(/\/+$/, "");
+  if (configured) return stripTrailingSlashes(configured);
   const host = req.headers.get("host") ?? "localhost:3000";
   const proto = req.headers.get("x-forwarded-proto") ?? "http";
   return `${proto}://${host}`;

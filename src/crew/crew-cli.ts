@@ -47,6 +47,11 @@ const flag = (args: string[], name: string): string | undefined =>
 // SMS needs a real E.164 number; a bad one silently breaks the exact thing this
 // lever exists to fix, so reject it loudly rather than persist junk.
 const E164 = /^\+[1-9]\d{6,14}$/;
+// Three unbounded groups, so it backtracks on a near-miss like `a@bbbb…` with no dot —
+// the classic email-regex shape. Reachable only from a `--email=` CLI argument the
+// operator types at their own terminal. Worth replacing on its own merits; not in
+// #908's scope, which was turning the rule on.
+// eslint-disable-next-line sonarjs/super-linear-regex -- CLI argument, operator's own terminal
 const looksLikeEmail = (s: string): boolean => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s);
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const KNOWN_SET_FLAGS = [
@@ -91,6 +96,9 @@ const PLACEHOLDER_MMC_EXPIRY = "2099-12-31";
 
 /** `crew-<slug>` id from a name: "Jane Roe" → "crew-jane-roe". */
 const slugify = (s: string): string =>
+  // Same anchored-run shape as the trailing-slash regex #908 replaced, on a crew NAME
+  // from a CLI argument.
+  // eslint-disable-next-line sonarjs/super-linear-regex -- CLI argument
   s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
 /** Resolve a `--ratings` token to a real RoleTypeId, by name ("captain"), id

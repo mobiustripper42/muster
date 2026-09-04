@@ -11,6 +11,7 @@ import { getPresence, getRepo } from "./repo";
 import { OPERATOR_CREW_MEMBER_ID } from "./operator";
 import { makeTwilioChannel } from "./sms";
 import { messagingEnabled } from "./flags";
+import { stripTrailingSlashes } from "@core/config/base-url.js";
 
 /**
  * Run one doorbell sweep + relay the rings — the edge wiring (DEC-070), the
@@ -49,7 +50,7 @@ export async function runDoorbellTick(now: Date): Promise<{
   if (!process.env.APP_BASE_URL && process.env.NODE_ENV === "production") {
     throw new Error("APP_BASE_URL must be set in production — ring links would dead-link to localhost");
   }
-  const linkBase = (process.env.APP_BASE_URL ?? "http://localhost:3000").replace(/\/+$/, "");
+  const linkBase = stripTrailingSlashes(process.env.APP_BASE_URL ?? "http://localhost:3000");
   // Twilio configured (9.4, DEC-MSG-1) ⇒ rings go out as real SMS; unset ⇒ the
   // operator-relay ring outbox stays (DEC-073). Same constructor-swap as channel.ts.
   const channel =

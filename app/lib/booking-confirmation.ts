@@ -7,6 +7,7 @@ import { readEmailEnv } from "./auth-delivery";
 import { isProdDeploy } from "./flags";
 import { getRepo } from "./repo";
 import { makeTwilioChannel } from "./sms";
+import { stripTrailingSlashes } from "@core/config/base-url.js";
 
 /**
  * Booking-confirmation wiring (11.4, DEC-122) — the edge that builds the email +
@@ -30,7 +31,7 @@ export async function sendReservationConfirmation(
     // "false" silences every send; anything else (incl. unset) leaves sends on.
     if (process.env.MESSAGING === "false") return;
 
-    const linkBase = process.env.APP_BASE_URL?.replace(/\/+$/, "");
+    const linkBase = stripTrailingSlashes(process.env.APP_BASE_URL);
     if (!linkBase) {
       if (isProdDeploy()) {
         console.error("[reservations] confirmation skipped — set APP_BASE_URL");
@@ -102,7 +103,7 @@ export type ResendOutcome =
 export async function resendReservationLink(reservation: Reservation): Promise<ResendOutcome> {
   if (process.env.MESSAGING === "false") return { kind: "skipped", reason: "messaging_off" };
 
-  const linkBase = process.env.APP_BASE_URL?.replace(/\/+$/, "");
+  const linkBase = stripTrailingSlashes(process.env.APP_BASE_URL);
   // Same rule as the confirmation: the link rides the trusted APP_BASE_URL, never a Host header.
   if (!linkBase) return { kind: "skipped", reason: "not_configured" };
 

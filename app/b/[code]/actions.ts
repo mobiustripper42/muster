@@ -17,11 +17,11 @@ import { bookingUrl } from "@core/reservations/booking-code.js";
 import { bookingChangeRequestEmail, type ChangeRequestKind } from "@core/reservations/booking-change-request.js";
 import { createGratuityCheckout } from "@core/reservations/create-gratuity-checkout.js";
 import { formatClock, formatShortDay } from "@core/reservations/availability-screen.js";
-import { gratuityCentsFor } from "@core/reservations/pricing.js";
 import { postTipTiersFor } from "@core/reservations/manage-view.js";
 import { readEmailEnv } from "../../lib/auth-delivery";
 import { getRepo } from "../../lib/repo";
 import { loadBookingByCode } from "./load";
+import { stripTrailingSlashes } from "@core/config/base-url.js";
 
 /** Stay on the same booking across a redirect. The code is the path now, not a query pair. */
 function manageHref(code: string, extra?: Record<string, string>): string {
@@ -47,7 +47,7 @@ export async function addPostTip(formData: FormData): Promise<void> {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!secretKey || !webhookSecret) redirect(manageHref(code, { error: "pay" }));
 
-  const base = (process.env.APP_BASE_URL || "http://localhost:3000").replace(/\/+$/, "");
+  const base = stripTrailingSlashes(process.env.APP_BASE_URL || "http://localhost:3000");
   // `.catch(null)` — a transient Stripe outage degrades to the friendly `error=tip` Notice, not
   // Next's raw error boundary (the guard the admin gratuity action has). Redirects stay OUTSIDE
   // any try/catch (they throw NEXT_REDIRECT, which a catch would swallow).
@@ -77,7 +77,7 @@ export async function requestBookingChange(formData: FormData): Promise<void> {
   try {
     const emailEnv = readEmailEnv();
     const to = process.env.OPERATOR_NOTIFY_EMAIL;
-    const base = (process.env.APP_BASE_URL || "http://localhost:3000").replace(/\/+$/, "");
+    const base = stripTrailingSlashes(process.env.APP_BASE_URL || "http://localhost:3000");
     if (emailEnv && to) {
       const tripLabel = [
         formatShortDay(booking.event.date),

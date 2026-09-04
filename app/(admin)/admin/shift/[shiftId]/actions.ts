@@ -9,12 +9,7 @@ import {
   vacateSeat,
 } from "@core/asks/ask-loop.js";
 import { assignFromPool, lean } from "@core/asks/lean.js";
-import {
-  addOverrideSeat,
-  removeOverrideSeat,
-  staffTraineeSeat,
-  unstaffTraineeSeat,
-} from "@core/builder/manning.js";
+import { staffTraineeSeat, unstaffTraineeSeat } from "@core/builder/manning.js";
 import { asId } from "@core/domain/ids.js";
 import { logCrewAdded, logCrewRemoved } from "@core/oracle/audit-log.js";
 import { readSubject } from "../../../../lib/auth";
@@ -23,7 +18,6 @@ import { forwardToOutbox, forwardNoticesToOutbox } from "../../../../lib/channel
 import { getRepo } from "../../../../lib/repo";
 import { logSwallowed } from "../../../../lib/swallowed";
 import { OPERATOR_CREW_MEMBER_ID } from "../../../../lib/operator";
-import { TENANT_ID } from "../../../../lib/tenant";
 
 /**
  * Cockpit seat actions (SPEC §2.4, #54, DEC-027 §1) — auth + glue over the

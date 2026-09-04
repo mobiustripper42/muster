@@ -281,6 +281,10 @@ interface XolaAddOn {
 }
 
 const EXTRA_TICKETS = /^extra tickets/i;
+// Parses a Xola answer string, so the input is third-party rather than ours. Bounded in
+// practice by the API's own field limits, and this is a report script run by hand rather
+// than a request path.
+// eslint-disable-next-line sonarjs/super-linear-regex -- third-party data, hand-run script
 const MORE_GUESTS = /adding more guests over \d+\?:\s*(.+)$/i;
 /** "Yes-two more" → 2. The checkout offers words, not digits. */
 const WORD: Record<string, number> = {
@@ -561,6 +565,22 @@ if (itemsWithoutAddOns > 0) {
   console.error(
     `  ! ${itemsWithoutAddOns} item(s) had NO addOns key at all — suspect a Xola wire-shape ` +
       `change, not empty carts. Extra-guest counts in this report are unreliable.`,
+  );
+}
+// THE SAME DEFECT, A SECOND TIME (#908). `experiences` was declared with a docstring
+// promising it "reports the evidence … more than one means the flat base is a guess and
+// says so", populated on every item, and read nowhere — so the warning it exists to
+// print has never printed. Found by `sonarjs/no-unused-collection`, four lines below the
+// comment describing the identical bug being fixed in #757.
+//
+// `--base` is one number applied to every boat. If the pull spans more than one product,
+// the included-guest count almost certainly differs between them, and `pax` — plus every
+// OVER flag derived from it — is wrong in the UNDER-reporting direction.
+if (experiences.size > 1) {
+  console.error(
+    `  ! ${experiences.size} distinct experiences in this pull (${[...experiences].sort().join(", ")}) — ` +
+      `\`--base ${BASE_GUESTS}\` is one number applied to all of them. If their included-guest ` +
+      `counts differ, pax and every OVER flag are under-reported for the others.`,
   );
 }
 

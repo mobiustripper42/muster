@@ -2,6 +2,7 @@ import { forwardBoardAlerts as forwardCore, type BoardLanding } from "@core/adap
 import { forwardMoneyAlert } from "@core/adapters/forward-money-alert.js";
 import { makeTwilioChannel } from "./sms";
 import { getRepo } from "./repo";
+import { stripTrailingSlashes } from "@core/config/base-url.js";
 
 /**
  * Operator At-Risk alert — the edge wiring (DEC-095), the At-Risk analog of
@@ -24,7 +25,7 @@ export async function forwardBoardAlerts(landings: BoardLanding[] | undefined): 
   if (!process.env.APP_BASE_URL && process.env.NODE_ENV === "production") {
     throw new Error("APP_BASE_URL must be set in production — the At-Risk board link would dead-link to localhost");
   }
-  const linkBase = (process.env.APP_BASE_URL ?? "http://localhost:3000").replace(/\/+$/, "");
+  const linkBase = stripTrailingSlashes(process.env.APP_BASE_URL ?? "http://localhost:3000");
 
   const channel = makeTwilioChannel(repo, linkBase);
   if (!channel) return 0; // no live SMS ⇒ no send; the board is the fallback (DEC-095)
@@ -58,7 +59,7 @@ export async function alertMoneyProblem(message: string): Promise<void> {
   console.error(`[reservations] ${message}`);
   try {
     const repo = getRepo();
-    const linkBase = (process.env.APP_BASE_URL ?? "http://localhost:3000").replace(/\/+$/, "");
+    const linkBase = stripTrailingSlashes(process.env.APP_BASE_URL ?? "http://localhost:3000");
     const channel = makeTwilioChannel(repo, linkBase);
     if (!channel) return; // Twilio-dark ⇒ the log line above is the whole alert
     const sent = await forwardMoneyAlert(repo, channel, message, `${linkBase}/admin/purchases`);

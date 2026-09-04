@@ -40,6 +40,7 @@ import { getRepo } from "../../../lib/repo";
 import { logSwallowed } from "../../../lib/swallowed";
 import { CheckoutForm } from "./checkout-form";
 import { reservationsEnabled } from "../../../lib/flags";
+import { stripTrailingSlashes } from "@core/config/base-url.js";
 
 export const dynamic = "force-dynamic";
 
@@ -231,7 +232,7 @@ export default async function CheckoutPage({ searchParams }: { searchParams: Pro
   const location = locations.find((l) => String(l.id) === String(chosen.locationId));
   const durationLabel = formatDuration(chosen.tripLengthMinutes);
   const dateTimeLabel = `${formatShortDay(date)} · ${formatClock(time)}`;
-  const base = (process.env.APP_BASE_URL || "http://localhost:3000").replace(/\/+$/, "");
+  const base = stripTrailingSlashes(process.env.APP_BASE_URL || "http://localhost:3000");
 
   return (
     <main className="min-h-screen bg-bg px-3 py-6 sm:px-4 sm:py-8">

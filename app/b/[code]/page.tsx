@@ -11,7 +11,7 @@
  * flagged: crew NAMES (view model gives counts), the guest waiver roster (no per-attendee
  * roster, DEC-110), leave-a-review, email-receipt.
  */
-import { TENANT_TIMEZONE, vesselClockOf, vesselDateOf } from "@core/config/tenant.js";
+import { vesselClockOf, vesselDateOf } from "@core/config/tenant.js";
 import { formatCents } from "@core/reservations/calendar-detail.js";
 import { formatClock, formatShortDay } from "@core/reservations/availability-screen.js";
 import { buildManageView } from "@core/reservations/manage-view.js";

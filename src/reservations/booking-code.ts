@@ -26,6 +26,7 @@
 
 import { randomBytes } from "node:crypto";
 import type { BookingCode } from "../domain/entities.js";
+import { stripTrailingSlashes } from "../config/base-url.js";
 
 /** Crockford base32 — reused verbatim from the display-code alphabet (`customers/identity.ts`):
  *  I/L/O drop because they collide with 1/1/0 read aloud or handwritten, U drops so the encoding
@@ -90,7 +91,7 @@ export function normalizeBookingCode(raw: string | undefined | null): string | n
  * against an attacker-supplied origin.
  */
 export function bookingUrl(base: string, code: string): string {
-  return `${base.replace(/\/+$/, "")}/b/${code}`;
+  return `${stripTrailingSlashes(base)}/b/${code}`;
 }
 
 /**

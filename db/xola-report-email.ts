@@ -159,6 +159,8 @@ export function countUnaudited(stdout: string, _stderr: string): number {
 
 /** Scrape `N reservation line(s), M flagged.` out of the report's own summary line. */
 export function parseCounts(output: string): { total: number; flagged: number } {
+  // Parses the stdout of our own sibling script, spawned two lines up. Not input.
+  // eslint-disable-next-line sonarjs/super-linear-regex -- our own script output
   const m = /(\d+)\s+reservation line\(s\),\s*(\d+)\s+flagged/.exec(output);
   return m ? { total: Number(m[1]), flagged: Number(m[2]) } : { total: 0, flagged: 0 };
 }

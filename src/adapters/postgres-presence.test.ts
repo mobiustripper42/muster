@@ -30,6 +30,9 @@ const dbUp = await canConnect(TEST_URL);
 
 if (!dbUp) {
   describe.skip("PresencePort contract — postgres (no TEST DB reachable)", () => {
+    // Inside `describe.skip`, so it NEVER RUNS — it exists to print the command that
+    // makes the suite runnable. An assertion here would assert nothing, later (#908).
+    // eslint-disable-next-line sonarjs/assertions-in-tests, vitest/expect-expect -- never runs
     it("skipped — run `docker compose up -d` then `npm run test:pg`", () => {});
   });
 } else {

@@ -25,6 +25,7 @@ import {
   loadCalendarData,
   type Search,
 } from "../calendar-view";
+import { stripTrailingSlashes } from "@core/config/base-url.js";
 import {
   ReservationDetailPane,
   actionMessage,
@@ -210,7 +211,7 @@ export default async function ReservationDetailPage({
     const justReissued = sp.reissued !== undefined || sp.reissueErr !== undefined;
     const manageUrl = operatorManageLink({
       isProd: isProdDeploy(),
-      base: process.env.APP_BASE_URL?.replace(/\/+$/, ""),
+      base: stripTrailingSlashes(process.env.APP_BASE_URL),
       code: liveCode,
       justReissued,
     });

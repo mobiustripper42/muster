@@ -23,6 +23,7 @@ import { readSubject } from "../../../../lib/auth";
 import { clearFormDraft, stashFormDraft } from "../../../../lib/form-draft";
 import { getRepo } from "../../../../lib/repo";
 import { logSwallowed } from "../../../../lib/swallowed";
+import { stripTrailingSlashes } from "@core/config/base-url.js";
 
 /**
  * Mint a BALANCE LINK for a deposit booking (11.2b, DEC-107) — the operator door for a
@@ -88,7 +89,7 @@ export async function createBalanceLink(formData: FormData): Promise<void> {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!secretKey || !webhookSecret) redirect(back({ balanceErr: "stripe_not_configured" }));
 
-  const base = (process.env.APP_BASE_URL || "http://localhost:3000").replace(/\/+$/, "");
+  const base = stripTrailingSlashes(process.env.APP_BASE_URL || "http://localhost:3000");
 
   let result: Awaited<ReturnType<typeof createBalanceCheckout>>;
   try {

@@ -67,6 +67,8 @@ function sourceFiles(dir: string, match: RegExp = SOURCE): string[] {
  * string is exactly the case that gets that wrong.
  */
 function withoutComments(text: string): string {
+  // Strips comments from a CSS file this repo ships, read off disk by the test itself.
+  // eslint-disable-next-line sonarjs/super-linear-regex -- our own committed CSS
   return text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 }
 

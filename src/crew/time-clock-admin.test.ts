@@ -280,6 +280,10 @@ describe("deletePunch", () => {
     await repo.saveTimePunch(punch({ id: "p1" }));
     await deletePunch(repo, pid("p1"));
     await deletePunch(repo, pid("p1"));
+    // Asserted, not implied (#908, `vitest/expect-expect`). The test passed on "did not
+    // throw" alone, so it would still pass if `deletePunch` stopped throwing and started
+    // RETURNING an error — the exact regression the title claims to cover.
+    expect(await repo.listTimePunchesForCrew(QUINT)).toHaveLength(0);
   });
 
   it("deleting an open punch frees the slot", async () => {

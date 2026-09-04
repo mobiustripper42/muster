@@ -18,6 +18,7 @@ import { asId } from "../src/domain/ids.js";
 import type { PaymentPort } from "../src/ports/payment.js";
 import { createBalanceCheckout } from "../src/reservations/create-balance-checkout.js";
 import { DEFAULT_DATABASE_URL } from "./migrate.js";
+import { stripTrailingSlashes } from "../src/config/base-url.js";
 
 if (existsSync(".env.local")) {
   const inlineDb = process.env.DATABASE_URL;
@@ -34,7 +35,7 @@ if (!reservationArg) {
 }
 
 const url = process.env.DATABASE_URL || DEFAULT_DATABASE_URL;
-const base = (process.env.APP_BASE_URL || "http://localhost:3000").replace(/\/+$/, "");
+const base = stripTrailingSlashes(process.env.APP_BASE_URL || "http://localhost:3000");
 
 let payments: PaymentPort;
 if (dryRun) {

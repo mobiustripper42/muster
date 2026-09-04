@@ -80,6 +80,11 @@ export async function claimSeat(formData: FormData): Promise<void> {
 
 /** Append/replace one query param on a relative `/crew/open[...]` path. */
 function withParam(path: string, key: string, value: string): string {
+  // `http://local` is a throwaway base so `new URL` will parse a RELATIVE path — the
+  // function returns `u.pathname` and the query string, never the origin, so nothing
+  // is ever fetched over it and the scheme is unobservable. Swapping it to `https`
+  // would change nothing except silencing the rule (#908).
+  // eslint-disable-next-line sonarjs/no-clear-text-protocols -- parse-only base, never fetched
   const u = new URL(path, "http://local");
   u.searchParams.set(key, value);
   const qs = u.searchParams.toString();

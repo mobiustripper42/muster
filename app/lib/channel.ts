@@ -12,6 +12,7 @@ import { formNoticeChanges } from "@core/builder/form-notices.js";
 import { getRepo } from "./repo";
 import { OPERATOR_CREW_MEMBER_ID } from "./operator";
 import { makeTwilioChannel } from "./sms";
+import { stripTrailingSlashes } from "@core/config/base-url.js";
 
 /**
  * App-side channel wiring (DEC-030, DEC-MSG-3). This module is the ONE place
@@ -28,7 +29,7 @@ import { makeTwilioChannel } from "./sms";
  */
 async function linkBase(): Promise<string> {
   const configured = process.env.APP_BASE_URL;
-  if (configured) return configured.replace(/\/+$/, "");
+  if (configured) return stripTrailingSlashes(configured);
   // Fail LOUD in prod (the doorbell.ts posture): pre-9.4 a poisoned-Host link
   // at least passed through the operator's outbox; with Twilio live it would be
   // auto-texted straight to a crew phone with an embedded auth token.

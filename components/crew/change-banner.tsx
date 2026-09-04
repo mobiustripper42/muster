@@ -24,6 +24,11 @@ import { SubmitButton } from "../ui/submit-button";
  * **No JS.** A plain form post, so the dismiss works on a phone with a bad connection mid-render
  * (DEC-147: server-rendered by default, and this needs nothing an island would buy).
  */
+// The component is named after the view type it renders, and TypeScript allows that:
+// `import type { ChangeBanner }` occupies the TYPE space, this function the VALUE space,
+// and line 32 below uses the type as the prop's annotation. Both typechecks pass. The rule
+// reports the pair as a redeclaration anyway (#908).
+// eslint-disable-next-line @typescript-eslint/no-redeclare -- type space vs value space
 export function ChangeBanner({
   banner,
   shiftId,

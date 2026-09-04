@@ -5,7 +5,7 @@ branch: task/reservations-phase-plan
 started: 2026-09-03T17:47:36Z
 ended:
 points:
-pr_numbers: [905, 910, 924]
+pr_numbers: [905, 910, 924, 925]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster-s91/fc4ca4b8-4ceb-5d27-9011-6826c042120c.jsonl
 ---
@@ -56,10 +56,27 @@ transcript: /home/eric/.claude/projects/-home-eric-muster-s91/fc4ca4b8-4ceb-5d27
 **Branch:** task/14.1-pending-row-decision
 **Opened at:** 2026-09-04T19:18:40Z
 
+## Task 4: Phase 14.2 — pending in the status union, nullable eventId, admin source
+
+**Completed:**
+- `db/migrations/20260904220345_reservations_pending_nullable_event.sql` — drop `NOT NULL` on `reservations.event_id`; no FK (DEC-131, operator confirmed — "the no FK disaster of 2026"), status stays unconstrained text.
+- `src/domain/entities.ts` — `ReservationStatus` = `pending | booked | cancelled`; `Source` adds `admin` (DEC-163); `eventId: EventId | null` (§2.8.2 — null on a pending row is the contract, not a convenience: the manifest must not see an unpaid checkout); new `eventIdOfBooked()` helper throws on null.
+- Ten readers narrowed in 8 files (`booking-webhook.ts` ×3, `cancel-reservation.ts` resolves before any write, `create-balance-checkout.ts`, `admin/integrity.ts`, `postgres-repository.ts` mapper, `import-reservations.ts` type, `app/b/[code]/load.ts` → `unknown`, admin reservation page → `notFound()`). Behaviour preserved; the allow-list audit is 14.3. Discriminated union rejected as 14.3's work.
+- `src/adapters/repository-contract.ts` — three new cases (status round-trip, null `eventId` round-trip, `admin` source), run by both adapters.
+- Audit re-baselined again: `/tmp/renumber-code-cites.py` (quote-based + hunk map, GONE cap at 60 lines) moved 135 manifest pins / 166 doc refs; four GONE pins hand-fixed; two dated 14.2 notes. `check:audit` 443 pinned, green. Kept re-baselining rather than retiring the gate.
+- Full `npm run verify` ran (167 files / 2436 tests) — more than the proof step asks; 17 files read `eventId` and I couldn't name every reader from the diff.
+
+**Code review:** 2 findings, both fixed — audit L2319-2320 falsified by DEC-163 (dated note); `admin` comment cited §2.8.8 instead of DEC-163. `/security-review` ran (money / capability URL / drop-not-null triggers): 0 findings, fails closed at every narrowed site.
+**PR:** [PR #925](https://github.com/mobiustripper42/muster/pull/925)
+**Points:** 3
+**Branch:** task/14.2-status-union-nullable-event
+**Opened at:** 2026-09-04T22:27:13Z
+
 **Next Steps:**
-- Merge PR #921 (Phase 14 link write-back) and PR #924.
-- 14.2 (issue #913) stacked on 14.1: `pending` in the union, nullable `eventId`, `admin` source — ship in the same stack as 14.3 (issue #914).
-- `check:audit` will go red again the moment 14.2 edits `entities.ts:615`; it is outside `verify` by design. Decide at 14.2 whether to keep re-baselining or retire the gate until the phase closes.
+- Merge PR #921 (Phase 14 link write-back), PR #924, PR #925 — in that order (#925 stacks on #924).
+- 14.3 (issue #914) stacked on `task/14.2-status-union-nullable-event`: the reader allow-list audit. Must merge in the same stack as PR #925 — nothing may write a pending row before it lands. `eventIdOfBooked` throws become refused outcomes there.
+- DEC-163 frontmatter's `unverifiable` claim "no admin value exists yet" is now dated (type value exists; no writer until Phase 16).
+- `/code-review ultra` on PR #925 is the operator's call — three blast-radius triggers hit.
 
 **Context:**
 - Linked worktree (`muster-s91`). Session 102 open concurrently (live). Model: Fable 5.1 this session.

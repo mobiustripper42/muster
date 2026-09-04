@@ -24,5 +24,6 @@ by a sweep — was adjudicated dead on 2026-08-26 during the reservations decisi
 
 Converted to a v1 signpost on 2026-09-04 (task 14.1) because the v0 stub was frozen in the
 baseline and carried no `status`, so it still read as live to the gate. Code that cites this
-record (`src/reservations/claim.test.ts`, `create-departure-payment-intent.ts`) is citing the
-retired hold; Phase 14 removes it.
+record — `grep -rl DEC-109 src app` runs across the whole checkout-hold subsystem: `claim.ts`,
+`availability.ts`, `booking-webhook.ts`, `entities.ts`, the repository port and both adapters —
+is citing the retired hold; Phase 14 removes it.

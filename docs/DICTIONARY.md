@@ -7,19 +7,24 @@ Vocabulary already in the docs when the gate shipped is grandfathered and does n
 be registered — but registering it is always welcome, and registering one is how its
 alternates start being caught.
 
-19 terms.
+25 terms.
 
 | Term | Says | Not |
 |---|---|---|
 | **3DS** | the bank's extra check at checkout, where the customer confirms the payment in their banking app or by a texted code | — |
+| **blocked** | a slot an operator block covers | — |
 | **booking invoice** | the frozen record of what a customer was quoted — every charged component and the rate behind it, kept on the booking and never recomputed | — |
 | **bps** | hundredths of a percent, so 800 bps is 8 percent — used for rates so nothing has to store a fraction | `basis points` |
+| **busy** | a slot nobody bought, on a boat that is out on another trip overlapping it. The code calls it unavailable. | `unavailable` |
 | **CAS** | write a row only if it still holds the value you read, so two people racing for the same seat cannot both win | `compare-and-swap` |
 | **COI** | the Coast Guard inspection certificate that sets a boat's legal passenger limit and the crew it must carry | — |
+| **held** | a slot somebody is at the checkout for — a live pending reservation on it | — |
 | **hold minutes** | the whole time a boat is committed to one trip — on the water, then back at the dock ready for the next | `hold time`, `lock time`, `occupied minutes` |
 | **idempotency key** | a label sent with a charge so that repeating the same request does the same thing once, instead of charging twice | — |
+| **lapsed** | a pending reservation whose payment window has run out — worked out from the clock every time, never written down | — |
 | **MMC** | the Coast Guard credential a captain must hold and keep current — on BrewBoat's boats a mate does not need one | — |
 | **off-session** | charging a saved card when the customer is not at the keyboard, so nobody is there to answer a decline | — |
+| **open** | a slot that is for sale; nothing is written for it | — |
 | **Payment Element** | Stripe's card form, embedded in our own page, so the customer never leaves the site to pay | `Stripe Elements`, `inline Elements` |
 | **payment window** | how long a checkout holds the boat before the customer loses it and it goes back on sale. The code calls it the checkout hold. | — |
 | **required crew** | the crew a boat must carry to sail — a list of roles and how many of each, not a number of passengers. That is the COI limit | — |
@@ -27,6 +32,7 @@ alternates start being caught.
 | **RLS** | a database feature that filters rows per signed-in user. Muster does not use it — who may see what is decided in the service layer | — |
 | **SAQ-A** | the lightest card-industry compliance tier, which applies because card numbers never reach our servers | — |
 | **SCA** | a European rule requiring that extra bank check on most card payments | — |
+| **sold** | a slot somebody bought — a booked reservation on it. The code calls the slot booked. | — |
 | **trip** | one boat leaving at one time on one day — what a customer buys and crew sail. The code calls it a slot. | — |
 | **trip time** | how long the customer is actually on the water, always less than the hold minutes for that trip | — |
 | **turnaround** | the boat sitting at the dock between trips, cleaned and made ready; hold minutes minus trip time | — |

@@ -1492,19 +1492,23 @@ its **reserved time** — and the payment window is a setting, not a column. Exp
 plus that window, computed wherever it is asked for. One stored number, because two would be free to
 disagree and the second carries no information the first does not.
 
-Four states, and `booked` keeps its existing meaning and its existing spelling:
+Three states, and `booked` keeps its existing meaning and its existing spelling:
 
 | State | Meaning |
 |---|---|
 | `pending` | Written at checkout, holding the boat, money not yet taken. |
 | `booked` | Paid and live. The word every existing reader already checks for. |
-| `expired` | The payment window ran out. A state, not a deletion (2.8.8). |
 | `cancelled` | Cancelled after the fact, by the operator (§3.3) or by a Xola import. |
 
 Nothing else claims a slot.
 
+**A lapsed checkout is not a fourth state.** A `pending` row whose window has run out is **lapsed**,
+and lapsed is computed from the clock against the reserved time every time it is asked — never
+stored, never trusted as written. There is no `expired` status and no job that writes one (2.8.8).
+A reader that wants to know whether a pending row still holds its boat does the arithmetic.
+
 **Every reader must be an allow-list.** A check written as `status !== "cancelled"` silently accepts
-`pending` and `expired` — it means "not cancelled", not "sold". Two states are new, so every existing
+`pending`, lapsed or not — it means "not cancelled", not "sold". One state is new, so every existing
 deny-list is now wrong by default; auditing them is part of building this (2.8.10).
 
 **2.8.2 A pending reservation names a slot, not an Event.** It carries `vesselId + date + time`, and
@@ -1794,7 +1798,7 @@ because "money moved and nobody knows why" does not wait until morning.
    state, not a hypothetical, and it means such a deploy has no active notification for money moving
    without a booking behind it. Anyone running one should know that before they need to.
 
-**Confirm can also arrive at a row that already expired.** That is 2.8.7's last line, not an error.
+**Confirm can also arrive at a row that already lapsed.** That is 2.8.7's last line, not an error.
 
 **Nothing is re-validated at confirm.** The grid, the season, the price, the party size against the
 hull, the offering still being live — all of that was checked at step 3 and frozen. A customer whose
@@ -1822,39 +1826,38 @@ rows that turn on one — abandonment, and a payment landing after expiry — do
 **2.8.8 Expiry is a clock, not a job.**
 
 **One `pending` row is exempt from everything in this subsection: an operator's booking, `source`
-`admin`.** It has no window, never lapses, and is never swept. Only a person ends it (§2.10.6). Every
+`admin`.** It has no window, never lapses, and is never reaped. Only a person ends it (§2.10.6). Every
 rule below is written about a public checkout and a reader implementing one must branch on `source`
-first — including the sweeper, whose "rows that never reached payment can be labelled freely" would
-otherwise expire a phone booking on its first pass.
+first — including the reaper, whose "rows that never reached payment" would otherwise delete a phone
+booking on its first pass.
 
 **A pending reservation stops occupying its boat the moment its window runs out** — every reader tests
 `pending AND reserved time + window > now`. Nothing has to run for the hull to come free, so hull-release latency is
 zero rather than however often a job happens to fire.
 
-The **sweeper** is bookkeeping on top of that: it relabels lapsed `pending` rows to `expired` so the
-data says what happened. It frees nothing, and if it stops running for a day nothing is oversold.
+**There is no sweeper.** Nothing relabels a lapsed row, because a stored label is a second copy of a
+fact the clock already holds, and the copy would need a job to keep it true and a rule to keep that
+job off paid rows. Lapsed is derived, every time, by every reader (2.8.1). The row stays `pending`
+on disk until confirm books it or the reaper deletes it.
 
-**The sweeper never labels a row it cannot prove was unpaid.** A row with a payment id recorded against
-it belongs to the reconciler until the reconciler resolves it. Rows that never reached payment can be
-labelled freely. Without that rule, a webhook outage lasting longer than the payment window turns a
-paying customer into an `expired` row.
+The **reaper** runs rarely, on a long horizon, and deletes old lapsed rows so the table does not
+grow without bound. **It never deletes a row it cannot prove was unpaid.** A row with a payment id
+recorded against it belongs to the reconciler until the reconciler resolves it; only rows that never
+reached payment are reaped. A pending reservation is creatable by anyone who can reach the checkout,
+so the lapsed rows accumulate scripted abuse as well as real abandonment; distinguishing the two in
+the data is part of building this.
 
-The **reaper** runs rarely, on a long horizon, and deletes old `expired` rows so the table does not
-grow without bound. A pending reservation is creatable by anyone who can reach the checkout, so the
-expired table accumulates scripted abuse as well as real abandonment; distinguishing the two in the
-data is part of building this.
-
-**The sweeper never deletes, and this is load-bearing rather than tidy.** An abandoned checkout is the
-only evidence that says whether the payment window is the right length, and the two ways of being wrong
-are not equally visible:
+**The reaper's horizon is long, and this is load-bearing rather than tidy.** An abandoned checkout is
+the only evidence that says whether the payment window is the right length, and the two ways of being
+wrong are not equally visible:
 
 - **Window too short** — real buyers cancelled mid-payment. Visible already: each leaves a refund and a
   sold-out message.
 - **Window too long** — hulls tied up for people who were never going to buy. Visible **only** if
-  expired rows survive, carrying their slot, party size and reserved time.
+  lapsed rows survive, carrying their slot, party size and reserved time.
 
 With both, *"how many checkouts were started and walked away from last month, and how long did each
-hold a boat"* is a query rather than a guess.
+hold a boat"* is a query over lapsed `pending` rows rather than a guess.
 
 **2.8.9 The reconciler — the job that catches payments whose webhook never landed.**
 
@@ -1902,8 +1905,8 @@ freeze rule in 2.8.4 requires and the dormant path does not do.
 **Blocks.** An operator's hold on a boat is its own thing with its own lifetime. It occupies a hull; it
 is not a reservation and does not become one.
 
-**Every existing deny-list.** Two new states mean every `status !== "cancelled"` test now silently
-accepts `pending` and `expired`. The public booking-recovery lookup is one — as written it would hand
+**Every existing deny-list.** A new state means every `status !== "cancelled"` test now silently
+accepts `pending`, lapsed or not. The public booking-recovery lookup is one — as written it would hand
 a manage link to somebody who has not paid. Audit them all and make them allow-lists (2.8.1).
 
 **The crew manifest reads reservations directly**, by event. It is protected today only because a
@@ -1914,15 +1917,19 @@ being lost, and it is why the null is a contract.
 change. Any future rename touches crew money and must be treated accordingly.
 
 **Admin surfaces need a decision each, and their defaults are not neutral.** The purchases view returns
-"cancelled" for any status that is not `booked`, so pending and expired rows would render to the
-operator as **Cancelled**. The integrity report asserts every reservation's `eventId` resolves to a
-live event with no null branch, so it would go red whenever anyone is mid-checkout. The calendar, the
-customers view, the at-risk board and block impact all read reservations and each has to say what it
-shows.
+"cancelled" for any status that is not `booked`, so pending rows would render to the operator as
+**Cancelled**. The integrity report asserts every reservation's `eventId` resolves to a live event
+with no null branch, so it would go red whenever anyone is mid-checkout. The customers view, the
+at-risk board and block impact all read reservations and each has to say what it shows.
+
+**The calendar shows a live pending row as `held`** — the same state a checkout hold rendered as,
+because to the operator it is the same fact: someone is at the checkout for this trip. The other
+slots the row's trip overlaps on that boat show as `busy` (§2.10.2). A lapsed pending row shows as
+nothing; it does not hold the boat and the calendar does not say it does.
 
 **Cancellation, refunds and disputes.** §3.3 and §3.4 act on booked reservations with money behind
 them. They read `eventId` as a value that always exists, which a nullable column changes. They must
-never be handed a `pending` or `expired` row.
+never be handed a `pending` row, lapsed or not.
 
 **2.8.11 The booking link is a short code, and it is a credential.**
 
@@ -2058,10 +2065,10 @@ the decision is the one that is right.
 - [ ] A pending reservation's `eventId` is null, and stays null, until it is booked.
 - [ ] Abandoning checkout leaves no `Event`, no customer record and no booking code behind, and sends
       nothing to anyone.
-- [ ] The trip comes free the instant the window passes, **with the sweeper stopped**.
-- [ ] An abandoned checkout is still on disk afterwards as an `expired` reservation carrying its slot,
-      party size and reserved time. "How many checkouts were started and walked away from last
-      month, and how long did each hold a boat?" is a query.
+- [ ] The trip comes free the instant the window passes, **with no job running**.
+- [ ] An abandoned checkout is still on disk afterwards as a lapsed `pending` reservation carrying its
+      slot, party size and reserved time — no status was written to say so. "How many checkouts were
+      started and walked away from last month, and how long did each hold a boat?" is a query.
 - [ ] A declined card retried on the same trip reuses the same reservation at its original reserved time,
       matched by the cookie token — **not** by the email or phone typed into the form.
 - [ ] A `payment_intent.payment_failed` does **not** expire the reservation.
@@ -2070,7 +2077,7 @@ the decision is the one that is right.
 - [ ] Killing the webhook entirely still produces a booking for a customer who reaches the success page.
 - [ ] Closing the browser at the moment of payment still produces a booking, via the webhook.
 - [ ] **Kill the webhook, close the browser, then wait past the payment window.** The customer is still
-      booked, by the reconciler — and the sweeper has **not** marked their paid reservation `expired`.
+      booked, by the reconciler — and the reaper has **not** deleted their paid reservation.
 - [ ] Confirming the same payment three times produces one booking, one Event and one payment record.
 - [ ] **Confirming produces a shift for that vessel-day**, with seats, and a crew already committed to
       that day is notified that it changed.
@@ -2091,7 +2098,7 @@ the decision is the one that is right.
       consults a payment row.** Three shapes must hold a boat with nothing paid: an imported booking
       (through its `Event`), a live checkout hold (through its expiry), and a `pending` reservation
       (through its own row, with no `Event` at all).
-- [ ] The public booking-recovery lookup returns nothing for a `pending` or `expired` reservation.
+- [ ] The public booking-recovery lookup returns nothing for a `pending` reservation, lapsed or not.
 
 ### Open questions (Booking & Payment)
 
@@ -2111,12 +2118,12 @@ the decision is the one that is right.
   including for rows that lapsed under a different one. Accepted while the window is a constant
   nobody has yet changed. If it is ever tuned, the honest fix is recording that the change happened
   and when, not storing the deadline on every row.
-- **Does a pending reservation appear on the admin calendar?** Real occupancy the operator may want to
-  see, and also noise that resolves itself within the payment window.
-- **Is the sweeper worth having at all?** Expiry is lazy (2.8.8), so it frees nothing and exists only
-  so the stored data matches reality for later counting. The same counting could be done by reading
-  lapsed `pending` rows directly and never relabelling them, which would remove a scheduled job and
-  the paid-row race that comes with it. Decide before building it.
+- ~~**Does a pending reservation appear on the admin calendar?**~~ **Yes, as `held`** — settled
+  2026-09-04 (task 14.1), written into 2.8.10 and the slot-state table in §2.10.2. It is real
+  occupancy, and it is the same fact the checkout hold already showed the operator.
+- ~~**Is the sweeper worth having at all?**~~ **No** — settled 2026-09-04 (task 14.1). Lapsed is
+  computed from the reserved time on every read and never stored (2.8.1); there is no `expired`
+  state, no scheduled relabelling and no paid-row race. The reaper is the only job (2.8.8).
 - ~~**Does the balance freeze its tax?**~~ **Deferred with deposits.** 2.8.4 says frozen numbers are
   never recomputed and the dormant balance path recomputes tax from live settings. Nothing charges a
   balance today, so this is answered when deposits return, not before.
@@ -2378,9 +2385,23 @@ open slots are derived on read:
 > open slots = schedule × boats × dates − blocks − bookings
 
 A row is written only when a slot acquires real state — someone books it, an operator overrides
-that one trip's price or time, or a customer's checkout puts a short hold on it. So a
-season is a few dozen rows rather than thousands, and editing an offering's schedule recomputes
-what is open with nothing to rewrite.
+that one trip's price or time, or a customer reaches the checkout and a `pending` reservation is
+written for it (§2.8.1). So a season is a few dozen rows rather than thousands, and editing an
+offering's schedule recomputes what is open with nothing to rewrite.
+
+**A slot the operator's calendar draws is in one of five states**, and the words are fixed:
+
+| State | Meaning |
+|---|---|
+| `open` | For sale. Nothing is written. |
+| `sold` | This slot was bought — a `booked` reservation on it. |
+| `held` | Someone is at the checkout for this slot — a live `pending` reservation (2.8.10). |
+| `busy` | Nobody bought this slot; the boat is out on another trip that overlaps it. |
+| `blocked` | An operator block covers it (2.10.3). |
+
+The customer's calendar collapses the last four into "not for sale" and never says which. The
+operator's does not, because `sold` and `busy` are different questions — who bought it, and
+which trip is using the boat — and the operator asks both.
 
 **Exactly one materialised trip per boat-slot.** Without that, two first-bookings of the
 same computed slot each insert their own row and each believes it won — a double-sold boat.

@@ -131,6 +131,10 @@ const USAGE =
 
 /** Execute one crew command. Returns the human-readable result line(s);
  *  throws {@link CrewCliError} on bad input or a missing target. */
+// REFACTOR QUEUE — cognitive complexity 163, against a ceiling of 40 (#909).
+// Baselined, NOT accepted: this is on the list in the tracking issue. The ceiling
+// ratchets down as the list shrinks, so this disable is meant to be deleted.
+// eslint-disable-next-line sonarjs/cognitive-complexity -- pre-existing, score 163
 export async function runCrewCommand(
   repo: Repository,
   args: string[],

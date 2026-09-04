@@ -96,7 +96,21 @@ const OFF = {
 
   // --- sonarjs. The four SECURITY rules below have never run on this codebase. ---
   "sonarjs/no-nested-conditional": "off",           //  87 findings — issue #909
-  "sonarjs/cognitive-complexity": "off",            //  61 findings — issue #909 (threshold is configurable; measure before choosing one)
+  // ON at a ceiling of 40, ratcheting down (#909). NOT the plugin default of 15 — that is
+  // SonarSource's convention, not a measured threshold, and here it flags 61 functions of
+  // which most are ordinary loops with a branch inside. 40 is nearly 3x it, so the 12 sites
+  // over it are unarguable: `tick()` scores 134, `crew-cli` 163.
+  //
+  // The 12 carry inline disables stating their score, and the tracking issue steps the
+  // ceiling down as they are refactored: 40 → 11 sites, 30 → 20, 25 → 28, 20 → 44, 15 → 61.
+  // The ceiling is EXCLUSIVE — `booking-webhook.ts` scores exactly 40 and does not fire.
+  // Measured 2026-09-04; re-measure before each step rather than trusting these.
+  //
+  // WHAT THE SCORE ACTUALLY COUNTS, since it is easy to misread: a break in linear flow
+  // costs 1, plus 1 for every level of nesting it sits inside. A RUN of one logical
+  // operator is FREE — `a || b || c` costs nothing; only MIXING `&&` with `||` adds 1.
+  // Verified empirically against this plugin, not taken from the spec. So a high score
+  // means nesting, not long conditions.
   "sonarjs/no-redundant-optional": "off",           //  53 findings — issue #909
   // super-linear-regex is ON as of #908 — 23 of its 25 findings were one duplicated
   // trailing-slash regex, now `stripTrailingSlashes` in src/config/base-url.ts; the
@@ -311,7 +325,14 @@ export default tseslint.config(
     files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}", "src/**/*.{ts,tsx}", "db/**/*.{ts,tsx}"],
     languageOptions: { parser: tseslint.parser, parserOptions: { ecmaFeatures: { jsx: true } } },
     plugins: { sonarjs },
-    rules: { ...recommended(sonarjs), ...OFF },
+    rules: {
+      ...recommended(sonarjs),
+      ...OFF,
+      // AFTER the OFF spread, because this rule is not off — it is on with a non-default
+      // option, and `OFF` no longer carries an entry for it. See the ceiling note above
+      // `OFF` for why 40 rather than the plugin's 15 (#909).
+      "sonarjs/cognitive-complexity": ["error", 40],
+    },
   },
   {
     files: ["src/**/*.test.ts", "app/**/*.test.ts", "components/**/*.test.ts", "db/**/*.test.ts", "scripts/**/*.test.mjs"],

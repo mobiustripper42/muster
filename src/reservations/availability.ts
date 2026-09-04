@@ -318,6 +318,10 @@ export function resolveBasePrice(offering: Offering, date: string): number {
  * (a time-change override) is out of this formula — the calendar reads such events
  * directly; the per-departure move UI is 12.8/12.11.
  */
+// REFACTOR QUEUE — cognitive complexity 79, against a ceiling of 40 (#909).
+// Baselined, NOT accepted: this is on the list in the tracking issue. The ceiling
+// ratchets down as the list shrinks, so this disable is meant to be deleted.
+// eslint-disable-next-line sonarjs/cognitive-complexity -- pre-existing, score 79
 export function deriveVirtualAvailability(
   input: DeriveVirtualAvailabilityInput,
 ): VirtualSlot[] {

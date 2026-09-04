@@ -562,8 +562,11 @@ export type EventStatus = "scheduled" | "cancelled";
  * (DEC-DATA-1), so the in-memory + Postgres adapters stay behaviorally identical.
  * A future source widens this in one line. Log day one (DEC-008): real from the
  * first commit even though the availability deriver (11.1) is the first reader.
+ * `'admin'` = an operator-entered reservation (DEC-163, amending §2.8.7/§2.8.8/§2.10.6):
+ * no payment window, never reaped, and the reader has to be able to tell. Registered in
+ * 14.2 so the reaper can branch on it; the surface that writes one is Phase 16.
  */
-export type Source = "xola" | "muster";
+export type Source = "xola" | "muster" | "admin";
 
 export interface Event {
   id: EventId;
@@ -612,11 +615,34 @@ export interface Event {
   durationMinutes?: number;
 }
 
-export type ReservationStatus = "booked" | "cancelled";
+/**
+ * SPEC §2.8.1 — three states, no fourth. A `pending` row is the checkout in flight; it
+ * becomes `booked` when payment confirms. "Lapsed" is a pending row past its payment
+ * window, computed from the clock on every read and never stored, so it is not here.
+ * Every reader is an allow-list (`status === "booked"`), never `!== "cancelled"` — a
+ * deny-list silently admits `pending`.
+ */
+export type ReservationStatus = "pending" | "booked" | "cancelled";
+
+/**
+ * SPEC §2.8.2 — a pending reservation names a slot, not an Event, and its `eventId` is
+ * null until it confirms. The Event is materialized at confirm time, so before that there
+ * is nothing to point at; pre-computing the id would put in-flight checkouts on the crew
+ * manifest. Readers that need the Event of a row that must already be booked go through
+ * `eventIdOfBooked`; the allow-listing of readers that may legitimately see a pending
+ * row is 14.3.
+ */
+export function eventIdOfBooked(r: Pick<Reservation, "id" | "eventId" | "status">): EventId {
+  if (r.eventId === null) {
+    throw new Error(`reservation ${r.id} is ${r.status} and has no event (SPEC §2.8.2)`);
+  }
+  return r.eventId;
+}
 
 export interface Reservation {
   id: ReservationId;
-  eventId: EventId;
+  /** Null while `pending` (§2.8.2); set on every row that has been `booked`. */
+  eventId: EventId | null;
   /** Coexistence owner (DEC-106). Log day one; `'xola'` for every imported reservation. */
   source: Source;
   customerName: string;

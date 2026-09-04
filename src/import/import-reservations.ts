@@ -8,7 +8,7 @@
  * updates in place rather than duplicating.
  */
 
-import type { Event, Reservation } from "../domain/entities.js";
+import type { Event, Reservation, ReservationStatus } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import type { VesselId } from "../domain/ids.js";
 import { assertOptionalIsoDateTime } from "../domain/iso-date.js";
@@ -67,7 +67,12 @@ export interface RawReservationRecord {
    */
   phone?: string;
   partySize: number;
-  status: "booked" | "cancelled";
+  /**
+   * Xola only ever hands us a sold or a cancelled booking — it has no checkout in flight
+   * to report — so this is the entity union (§2.8.1) minus `pending`. Widening the entity
+   * does not widen this: an import can never write a `pending` row.
+   */
+  status: Exclude<ReservationStatus, "pending">;
 }
 
 /** A reservation's identity in the audit detail (#128) — id + customer name, so a

@@ -109,13 +109,19 @@ const OFF = {
   // function above the component and use guard clauses. That is strictly better: it gets
   // a name saying what it produces, and becomes testable on its own. No engine risk, which
   // is why this refactor is tractable where `tick()` is not.
+  //
+  // **83 disables, 87 findings, and that is not a discrepancy.** Three lines carry more
+  // than one nested ternary, so a single directive suppresses two or three findings:
+  // `components/ui/form-dirty.ts:33` (3), `src/crew/crew-cli.ts:179` and
+  // `src/reservations/availability.ts:445` (2 each). Both numbers are right; do not
+  // "correct" one to match the other.
   // ON at a ceiling of 40, ratcheting down (#909). NOT the plugin default of 15 — that is
   // SonarSource's convention, not a measured threshold, and here it flags 61 functions of
-  // which most are ordinary loops with a branch inside. 40 is nearly 3x it, so the 12 sites
+  // which most are ordinary loops with a branch inside. 40 is nearly 3x it, so the 11 sites
   // over it are unarguable: `tick()` scores 134, `crew-cli` 163.
   //
-  // The 12 carry inline disables stating their score, and the tracking issue steps the
-  // ceiling down as they are refactored: 40 → 11 sites, 30 → 20, 25 → 28, 20 → 44, 15 → 61.
+  // The 11 carry inline disables stating their score, and the tracking issue steps the
+  // ceiling down as they are refactored: 40 → 11 sites, 30 → 20, 25 → 26, 20 → 37, 15 → 61.
   // The ceiling is EXCLUSIVE — `booking-webhook.ts` scores exactly 40 and does not fire.
   // Measured 2026-09-04; re-measure before each step rather than trusting these.
   //
@@ -138,11 +144,12 @@ const OFF = {
   // super-linear-regex is ON as of #908 — 23 of its 25 findings were one duplicated
   // trailing-slash regex, now `stripTrailingSlashes` in src/config/base-url.ts; the
   // other 6 carry inline disables naming their input source.
-  // 22 findings, all real and all cosmetic: `expect(xs.length).toBe(4)` should be
+  // 20 findings across 10 test files, all real and all cosmetic: `expect(xs.length).toBe(4)`
+  // should be
   // `expect(xs).toHaveLength(4)`, which reports the actual array on failure instead of a
   // bare number. NOT auto-fixable — verified by running `--fix`, which changed none of them.
   //
-  // Left for its own pass rather than folded in here: 22 hand edits that improve failure
+  // Left for its own pass rather than folded in here: 20 hand edits that improve failure
   // messages and nothing else do not belong in a commit about rule verdicts.
   //
   // ⚠ WHAT THAT `--fix` RUN ACTUALLY DID, recorded because it nearly shipped: run with a
@@ -150,7 +157,7 @@ const OFF = {
   // rule the throwaway did not enable — they looked unused. Four files lost their #854 and
   // #908 disables silently. Caught by reading the diff. **Never `--fix` against anything but
   // the real config.**
-  "sonarjs/prefer-specific-assertions": "off",      //  22 cosmetic — own pass, not auto-fixable
+  "sonarjs/prefer-specific-assertions": "off",      //  20 cosmetic — own pass, not auto-fixable
   "sonarjs/no-nested-template-literals": "off",     //  16 findings — pure style, no defect class
   // DROPPED (DEC-159 rule 4). All 16 are deliberate TypeScript idioms: `void now;` to keep a
   // parameter in a signature for symmetry, and `void unreachable;` after

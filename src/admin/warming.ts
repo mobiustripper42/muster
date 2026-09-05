@@ -33,6 +33,7 @@
  */
 
 import type { ShiftId, VesselId } from "../domain/ids.js";
+import { TERMINAL_SHIFT_STATES } from "../domain/states.js";
 import type { Repository } from "../ports/repository.js";
 import type { EscalationTrail } from "../asks/escalation-trail.js";
 import { escalationTrailFor } from "../asks/escalation-trail.js";
@@ -86,7 +87,7 @@ export async function deriveWarming(
   const rows: WarmingRow[] = [];
 
   for (const shift of await repo.listShifts()) {
-    if (shift.state === "Cancelled" || shift.state === "Completed") continue;
+    if (TERMINAL_SHIFT_STATES.has(shift.state)) continue;
     if (onBoard.has(shift.id)) continue;
 
     const ids = new Set(shift.eventIds);

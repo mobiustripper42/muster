@@ -30,6 +30,7 @@
 
 import type { Ask, Seat } from "../domain/entities.js";
 import type { CrewMemberId, SeatId, ShiftId } from "../domain/ids.js";
+import { TERMINAL_SHIFT_STATES } from "../domain/states.js";
 import type { Repository } from "../ports/repository.js";
 import { logNudged } from "../oracle/reliability-log.js";
 import { assignPerson, rankedEligible } from "./ask-loop.js";
@@ -97,7 +98,7 @@ export async function lean(
   now: Date,
 ): Promise<LeanResult> {
   const shift = await repo.getShift(shiftId);
-  if (!shift || shift.state === "Cancelled" || shift.state === "Completed") {
+  if (!shift || TERMINAL_SHIFT_STATES.has(shift.state)) {
     return { error: "This shift is no longer live.", code: "shift_gone" };
   }
 
@@ -195,7 +196,7 @@ export async function assignFromPool(
     return { error: "That seat is gone — reload.", code: "shift_gone" };
   }
   const shift = await repo.getShift(seat.shiftId);
-  if (!shift || shift.state === "Cancelled" || shift.state === "Completed") {
+  if (!shift || TERMINAL_SHIFT_STATES.has(shift.state)) {
     return { error: "This shift is no longer live.", code: "shift_gone" };
   }
   // Required seats only — same universe as lean's gap scan; a supernumerary

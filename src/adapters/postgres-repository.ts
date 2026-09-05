@@ -433,15 +433,25 @@ function placeholders(n: number): string {
  * Live = `pending` and (admin-source or reserved after $5) — `isLivePending`, in SQL. Each rival
  * is measured by ITS OWN `hold_minutes` (DEC-161). A row with no hold minutes or an unreadable
  * time is in the way of everything on its day — same posture as `hull-busy.ts`: bad data costs
- * a slot, never a double-booked boat. `exempt` is the caller's own-row clause over `$6`.
+ * a slot, never a double-booked boat.
+ *
+ * `ownKeyColumn` names the column holding the caller's own-row key (`holder_token` on the pending
+ * write, `payment_intent_id` on the confirm bridge); $6 is the caller's value. **The clause is
+ * built here, from a column name, rather than passed in as SQL** — because the hand-written
+ * version was `not (holder_token is not null and holder_token = $6)`, which is `NULL` when $6 is
+ * NULL, and a `NULL` in an `and` chain drops the row exactly as if it were exempt. A cookie-less
+ * client has no holder token and a hosted-Checkout completion has no payment intent, so "$6 is
+ * NULL" is the ordinary path: every rival that HAD a key went invisible and the asker oversold
+ * the hull. `is distinct from` never returns NULL, and the `$6 is null` arm says the thing the
+ * predicate means — with no key of my own, nothing is mine, so nothing is exempt.
  */
-function pendingOverlapSql(exempt: string): string {
+function pendingOverlapSql(ownKeyColumn: "holder_token" | "payment_intent_id"): string {
   return `select 1 from reservations
      where vessel_id = $1
        and date = $2
        and status = 'pending'
        and (source = 'admin' or (reserved_at is not null and reserved_at > $5))
-       and ${exempt}
+       and ($6::text is null or ${ownKeyColumn} is distinct from $6::text)
        and (
          time !~ '^[0-9]{1,2}:[0-9]{2}$' or hold_minutes is null
          or (
@@ -1570,7 +1580,7 @@ export class PostgresRepository implements Repository {
       // minutes (14.4, §2.8.3). The bridge until 14.5: the customer's own pending row — the one
       // carrying this payment-intent id — is the slot being confirmed, not an occupant of it.
       const pendingOverlap = await client.query(
-        pendingOverlapSql("not (payment_intent_id is not null and payment_intent_id = $6)"),
+        pendingOverlapSql("payment_intent_id"),
         [
           event.vesselId,
           event.date,
@@ -1705,7 +1715,7 @@ export class PostgresRepository implements Repository {
         return { result: "lost" };
       }
       const pending = await client.query(
-        pendingOverlapSql("not (holder_token is not null and holder_token = $6)"),
+        pendingOverlapSql("holder_token"),
         [vesselId, date, start, holdMinutes, pendingLiveSince, reservation.holderToken ?? null],
       );
       if ((pending.rowCount ?? 0) > 0) {

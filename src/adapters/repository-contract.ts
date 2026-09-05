@@ -1008,6 +1008,17 @@ export function runRepositoryContract(
       expect(res.result).toBe("lost");
     });
 
+    it("savePendingIfHullFree: a TOKENLESS asker still loses to a TOKENED rival (the exemption is not a hole)", async () => {
+      // The asymmetric pair, and the one the SQL got wrong: exempting "my own row" was written as
+      // `not (holder_token is not null and holder_token = $6)`, which evaluates to NULL — and so
+      // drops the rival from the overlap check — whenever $6 is NULL. A client that refuses
+      // cookies has no token by design, so this is the ordinary path, not an edge: the tokenless
+      // buyer was handed a boat another buyer was already at checkout for.
+      await repo.saveReservation(pendingRow({ id: rid("pend-tokened"), holderToken: "tok-A" }));
+      const res = await repo.savePendingIfHullFree(pendingRow({ id: rid("pend-anon") }), SINCE);
+      expect(res.result).toBe("lost");
+    });
+
     it("savePendingIfHullFree: exactly one of two concurrent overlapping writes wins", async () => {
       const [a, b] = await Promise.all([
         repo.savePendingIfHullFree(pendingRow({ id: rid("pend-a"), time: "13:30" }), SINCE),
@@ -1036,6 +1047,19 @@ export function runRepositoryContract(
         SINCE,
       );
       expect(res.result).toBe("won");
+    });
+
+    it("saveBookingIfSlotFree: a confirm with NO payment intent still loses to a rival's pending row", async () => {
+      // The confirm-side twin of the tokenless case above. A hosted-Checkout completion carries no
+      // `paymentIntentId` (`CheckoutCompleted.paymentIntentId` is optional), so $6 is NULL and the
+      // same three-valued-logic hole exempted every pending row that HAD one.
+      await repo.saveReservation(pendingRow({ id: rid("pend-rival"), time: "14:00", paymentIntentId: "pi_theirs" }));
+      const res = await repo.saveBookingIfSlotFree(
+        slotEvent(),
+        reservation({ id: rid("resv-a"), source: "muster", eventId: SLOT_ID }),
+        SINCE,
+      );
+      expect(res.result).toBe("lost");
     });
 
     it("saveBookingIfSlotFree: a LAPSED pending row does not block the confirm", async () => {

@@ -40,6 +40,7 @@ import { balanceOwedCents } from "./payment-config.js";
 import {
   reservationIdFor,
   writeSlotBooking,
+  type SlotBookingRequest,
   type SlotBookingResult,
 } from "./write-booking.js";
 
@@ -242,6 +243,25 @@ export interface ConfirmOptions {
   notifyOnResidualRaceLoss?: boolean;
 }
 
+/**
+ * What the booking write inherits from the PENDING row checkout wrote before Stripe (14.4),
+ * found by the intent id. Its frozen trip time is what the Event runs for (criterion 20); the
+ * intent id is what exempts that row from the hull check the write is about to run. Empty for a
+ * hosted-session charge or a pre-14.4 intent — both fall back to the offering, as before. 14.5
+ * makes this row the thing that gets booked, and this lookup the whole confirm.
+ */
+async function frozenFromPendingRow(
+  repo: Repository,
+  paymentIntentId: string | undefined,
+): Promise<Pick<SlotBookingRequest, "durationMinutes" | "paymentIntentId">> {
+  if (!paymentIntentId) return {};
+  const pending = await repo.getReservationByPaymentIntentId(paymentIntentId);
+  return {
+    paymentIntentId,
+    ...(pending?.tripMinutes !== undefined ? { durationMinutes: pending.tripMinutes } : {}),
+  };
+}
+
 /** The charge→booking spine, shared by both event paths (11.2 / 12.5). */
 export async function processBookingCharge(
   deps: WebhookDeps,
@@ -362,6 +382,7 @@ export async function processBookingCharge(
   const result: SlotBookingResult = await writeSlotBooking(
     deps.repo,
     {
+      ...(await frozenFromPendingRow(deps.repo, charge.paymentIntentId)),
       offeringId: asId<"OfferingId">(m.offeringId ?? ""),
       vesselId: asId<"VesselId">(m.vesselId ?? ""),
       date: m.date ?? "",

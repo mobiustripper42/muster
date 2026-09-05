@@ -16,7 +16,6 @@
  * rejects any overlapping trip, which is what makes the word defensible.
  */
 import { randomUUID } from "node:crypto";
-import { isProdDeploy } from "../config/deploy.js";
 import type {
   Block,
   CheckoutHold,
@@ -27,47 +26,13 @@ import { asId } from "../domain/ids.js";
 import type { CheckoutHoldId, OfferingId, VesselId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 import { isActiveMusterClaim, isOnScheduleGrid, isSlotBlocked, slotIdentity } from "./availability.js";
-import { XOLA_TRIP_MINUTES, busyIntervalsFor, hullIsBusy, minutesOfDay } from "./hull-busy.js";
+import { busyIntervalsFor, candidateHoldMinutes, hullIsBusy, minutesOfDay, pendingIntervalsFor } from "./hull-busy.js";
+import { HOLD_MINUTES, pendingLiveSince } from "./pending.js";
 
-/** The soft-hold lifetime (DEC-109). Lifted from sailbook's proven 15 min. */
-export const HOLD_MINUTES_DEFAULT = 15;
-
-/**
- * The hold lifetime, **overridable outside production only** (`CHECKOUT_HOLD_MINUTES`).
- *
- * **Why this exists.** The residual race (DEC-109) — hold expires mid-payment, a rival takes the
- * freed slot and pays first, the first payment then lands — is reachable by clicking, because
- * that is how the app works. It is just not reachable *on demand*: at 15 minutes, reproducing it
- * by hand means two browsers and a fifteen-minute wait, so in practice nobody ever checks it.
- * `CHECKOUT_HOLD_MINUTES=0.5` turns that into a two-minute job with two browser windows. Same
- * move sailbook made (operator, 2026-08-05), and it is why #613's handling is testable at all
- * rather than only assertable.
- *
- * Fractions are allowed on purpose — 0.5 is thirty seconds, which is the useful setting. Garbage
- * and non-positive values fall back rather than throwing: a typo must not mint a zero-length
- * hold, which would make every buyer lose the race to themselves.
- *
- * **Ignored outright on a production deploy.** Shortening a real buyer's hold means their slot is
- * released while their card is still processing — manufacturing the exact race this constant
- * exists to bound. The guard is not a style preference; a stray env var on prod would cost real
- * customers real bookings.
- */
-export function resolveHoldMinutes(): number {
-  if (isProdDeploy()) return HOLD_MINUTES_DEFAULT;
-  const raw = process.env.CHECKOUT_HOLD_MINUTES;
-  if (!raw) return HOLD_MINUTES_DEFAULT;
-  // The same poison-resistant shape as `tenant.ts`'s `envMs` and `derive.ts`'s
-  // `envPositiveNumber`, spelled here rather than reused: both are private to their modules and
-  // named for units this is not (milliseconds, counts). Exporting one under a misleading name to
-  // save four lines would trade a small duplication for a worse one. `isProdDeploy` above was a
-  // different case — one predicate, one meaning, and a documented history of drifting copies.
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? n : HOLD_MINUTES_DEFAULT;
-}
-
-/** Resolved once at import — a change to `CHECKOUT_HOLD_MINUTES` needs a restart, like every
- *  other env-driven constant in the tree. */
-export const HOLD_MINUTES = resolveHoldMinutes();
+// The hold TTL and its env override moved to `pending.ts` in 14.4 — the deriver needs the same
+// number and importing it from here would cycle (claim → availability → claim). Re-exported so
+// every existing reader keeps its import.
+export { HOLD_MINUTES, HOLD_MINUTES_DEFAULT, resolveHoldMinutes } from "./pending.js";
 
 /**
  * A UNIQUE hold id per acquire attempt — NOT slot-derived. One-hold-per-slot is enforced by
@@ -200,7 +165,11 @@ export async function acquireDepartureHold(
   // …and boats physically occupied by ANOTHER trip over this departure — a Xola booking, or a
   // Muster one at an overlapping-but-different time (#615, #691). `bookedSlots` above only
   // catches an exact-identity Muster claim, which is what let both of those through.
-  const tripMinutes = offering.tripLengthMinutes ?? XOLA_TRIP_MINUTES;
+  //
+  // The candidate commits the hull for its HOLD minutes (SPEC §2.8.3), not its trip time: a
+  // 100-minute trip with 120 hold minutes must refuse a 15:15 departure after a 13:30 one. Same
+  // function the write side freezes onto the pending row, so the two cannot disagree.
+  const holdMinutes = candidateHoldMinutes(offering);
   const startMinute = minutesOfDay(req.time);
 
   // A LIVE HOLD occupies the hull as surely as a trip does. The events check above cannot see
@@ -210,6 +179,9 @@ export async function acquireDepartureHold(
   //
   // `expiresAt > at` is the same lazy-on-read rule the deriver uses (DEC-109): an expired row is
   // inert everywhere, so a stale hold never holds a boat hostage.
+  //
+  // A rival hold is measured by hold minutes too (issue #825) — it used to be measured by trip
+  // time, which let the 15:15 buyer through while the 13:30 one was still at checkout.
   const heldIntervals = new Map<string, { start: number; end: number }[]>();
   for (const h of holds) {
     if (h.source !== "muster" || h.expiresAt <= at0 || h.date !== req.date) continue;
@@ -217,10 +189,15 @@ export async function acquireDepartureHold(
     if (!Number.isFinite(start)) continue;
     const key = String(h.vesselId);
     const list = heldIntervals.get(key) ?? [];
-    // A hold's own offering sets its trip length; absent, the standing fallback.
-    list.push({ start, end: start + tripMinutes });
+    list.push({ start, end: start + holdMinutes });
     heldIntervals.set(key, list);
   }
+
+  // A LIVE PENDING ROW is the hold's successor (14.4): the customer got past the hold and is at
+  // Stripe. It occupies the hull for the row's OWN frozen hold minutes, until it lapses at the
+  // payment window. The asker's own row is exempt by holder token — a retry from the same
+  // checkout session must not be refused by its earlier attempt.
+  const liveSince = pendingLiveSince(at0);
 
   const candidates = candidateVessels({
     offering,
@@ -239,13 +216,16 @@ export async function acquireDepartureHold(
     const others = events.filter(
       (e) => !(e.source === "muster" && slotIdentity(e.vesselId, e.date, e.time) === ownSlot),
     );
-    if (hullIsBusy(busyIntervalsFor(others, vesselId, req.date), startMinute, tripMinutes)) {
+    const pending = pendingIntervalsFor(reservations, vesselId, req.date, liveSince, {
+      holderToken: req.holderToken,
+    });
+    if (hullIsBusy([...busyIntervalsFor(others, vesselId, req.date), ...pending], startMinute, holdMinutes)) {
       return false;
     }
     const rivalHolds = (heldIntervals.get(String(vesselId)) ?? []).filter(
       (h) => h.start !== startMinute,
     );
-    return !hullIsBusy(rivalHolds, startMinute, tripMinutes);
+    return !hullIsBusy(rivalHolds, startMinute, holdMinutes);
   };
 
   // ── One checkout session, one hold per departure (#575) ────────────────────

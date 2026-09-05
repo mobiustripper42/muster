@@ -4,7 +4,7 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
-import type { CheckoutHold, Offering, Vessel } from "../domain/entities.js";
+import type { CheckoutHold, Offering, Reservation, Vessel } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import {
   acquireDepartureHold,
@@ -370,6 +370,93 @@ describe("acquireDepartureHold — a live HOLD occupies the hull too (#694 revie
     });
     const res = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: TIME, guestCount: 4 }, now);
     expect("held" in res && String(res.held.vesselId)).toBe("v-small");
+  });
+});
+
+describe("acquireDepartureHold — a live PENDING row occupies the hull for its own hold minutes (14.4, §2.8.3)", () => {
+  // The SPEC's worked case (criterion 4): a 100-minute trip with 120 hold minutes. A pending row
+  // at 13:30 commits the boat until 15:30; measured by its trip it would be back at 15:10 and a
+  // 15:15 departure would sell. Everything in here asks for 15:15.
+  const ASK = "15:15";
+  const pendingRow = (over: Partial<Reservation> = {}): Reservation => ({
+    id: asId<"ReservationId">("pend-rival"),
+    eventId: null,
+    source: "muster",
+    customerName: "Hooper",
+    partySize: 2,
+    status: "pending",
+    vesselId: SMALL,
+    date: DATE,
+    time: "13:30",
+    offeringId: OFF,
+    reservedAt: "2026-07-04T11:55:00.000Z", // 5 min before `now` — live
+    holdMinutes: 120,
+    tripMinutes: 100,
+    ...over,
+  });
+  async function repoWith(row: Reservation, over: Partial<Offering> = {}) {
+    const repo = await seededRepo();
+    await repo.saveOffering(
+      offering({
+        tripLengthMinutes: 100,
+        holdMinutes: 120,
+        schedule: { seasonStart: "2026-06-01", seasonEnd: "2026-08-31", weekdays: [5], departureTimes: [TIME, ASK] },
+        ...over,
+      }),
+    );
+    await repo.saveReservation(row);
+    return repo;
+  }
+
+  it("skips the boat a rival's pending row holds, measured by the ROW's hold minutes (criterion 4)", async () => {
+    const repo = await repoWith(pendingRow());
+    const res = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: ASK, guestCount: 4 }, now);
+    expect("held" in res && String(res.held.vesselId)).toBe("v-big");
+  });
+
+  it("the row's frozen hold minutes govern even after the offering's value changed (criterion 2)", async () => {
+    const repo = await repoWith(pendingRow({ holdMinutes: 120 }), { holdMinutes: 60 });
+    const res = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: ASK, guestCount: 4 }, now);
+    expect("held" in res && String(res.held.vesselId)).toBe("v-big");
+  });
+
+  it("still holds the boat when the row's hold minutes end before our departure", async () => {
+    const repo = await repoWith(pendingRow({ holdMinutes: 100 })); // to 15:10
+    const res = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: ASK, guestCount: 4 }, now);
+    expect("held" in res && String(res.held.vesselId)).toBe("v-small");
+  });
+
+  it("a LAPSED pending row does not occupy anything", async () => {
+    const repo = await repoWith(pendingRow({ reservedAt: "2026-07-04T11:30:00.000Z" })); // 30 min ago
+    const res = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: ASK, guestCount: 4 }, now);
+    expect("held" in res && String(res.held.vesselId)).toBe("v-small");
+  });
+
+  it("the buyer's OWN pending row (same holder token) does not block their retry", async () => {
+    const repo = await repoWith(pendingRow({ holderToken: "tok-mine" }));
+    const res = await acquireDepartureHold(
+      repo,
+      { offeringId: OFF, date: DATE, time: ASK, guestCount: 4, holderToken: "tok-mine" },
+      now,
+    );
+    expect("held" in res && String(res.held.vesselId)).toBe("v-small");
+  });
+
+  it("a rival HOLD is measured by hold minutes too, not trip time (issue #825)", async () => {
+    const repo = await repoWith(pendingRow({ reservedAt: "2026-07-04T11:30:00.000Z" })); // lapsed; irrelevant
+    await repo.acquireCheckoutHold({
+      id: asId<"CheckoutHoldId">("rival-1330"),
+      vesselId: SMALL,
+      date: DATE,
+      time: "13:30",
+      source: "muster",
+      offeringId: OFF,
+      guestCount: 2,
+      expiresAt: holdExpiry(NOW),
+      createdAt: NOW,
+    });
+    const res = await acquireDepartureHold(repo, { offeringId: OFF, date: DATE, time: ASK, guestCount: 4 }, now);
+    expect("held" in res && String(res.held.vesselId)).toBe("v-big");
   });
 });
 

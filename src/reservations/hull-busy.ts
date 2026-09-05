@@ -20,8 +20,9 @@
  * Pure, clock-free, integer minutes. Shared by `deriveVirtualAvailability`, `candidateVessels`,
  * and the write CAS, so the read path and the backstop cannot disagree about what "busy" means.
  */
-import type { Event } from "../domain/entities.js";
+import type { Event, Offering, Reservation } from "../domain/entities.js";
 import type { VesselId } from "../domain/ids.js";
+import { isLivePending } from "./pending.js";
 
 /**
  * The standing trip length in minutes, used when an event carries no duration of its own.
@@ -92,6 +93,65 @@ export function busyIntervalsFor(
     out.push({ start, end: start + (e.durationMinutes ?? XOLA_TRIP_MINUTES) });
   }
   return out;
+}
+
+/**
+ * Which rows to leave OUT of a pending-occupancy check: the asker's own. A retry from the same
+ * checkout session (`holderToken`) must not be refused by its earlier row, and — until 14.5
+ * flips the pending row instead of inserting beside it — a confirm must not be refused by the
+ * row carrying its own `paymentIntentId`. Absent or empty means nothing is exempt: two tokenless
+ * rows never match each other.
+ */
+export interface PendingExemption {
+  holderToken?: string | undefined;
+  paymentIntentId?: string | undefined;
+}
+
+function isOwnRow(r: Reservation, own: PendingExemption): boolean {
+  if (own.holderToken && r.holderToken === own.holderToken) return true;
+  return Boolean(own.paymentIntentId && r.paymentIntentId === own.paymentIntentId);
+}
+
+/**
+ * Every window this hull is occupied on this date by a LIVE pending row (14.4, SPEC §2.8.3).
+ *
+ * Each row occupies for its OWN frozen `holdMinutes` (DEC-161) — not the offering's current
+ * value, not its trip time. `liveSince` is the caller's clock (`pendingLiveSince(asOf)`); a row
+ * reserved at or before it has lapsed and occupies nothing. Same shape as `busyIntervalsFor` so
+ * the two lists concatenate into one `hullIsBusy` call.
+ */
+export function pendingIntervalsFor(
+  reservations: readonly Reservation[],
+  vesselId: VesselId,
+  date: string,
+  liveSince: string,
+  own: PendingExemption = {},
+): BusyInterval[] {
+  const out: BusyInterval[] = [];
+  for (const r of reservations) {
+    if (!isLivePending(r, liveSince)) continue;
+    if (String(r.vesselId) !== String(vesselId) || r.date !== date) continue;
+    if (isOwnRow(r, own)) continue;
+    const start = minutesOfDay(r.time ?? "");
+    // Same posture as `busyIntervalsFor`: a row whose time or duration cannot be read blocks
+    // the day rather than vanishing. Bad data costs a slot, never a double-booked boat.
+    if (!Number.isFinite(start) || r.holdMinutes === undefined) {
+      out.push(WHOLE_DAY);
+      continue;
+    }
+    out.push({ start, end: start + r.holdMinutes });
+  }
+  return out;
+}
+
+/**
+ * How long a NEW departure on this offering would commit its hull — the asking side of the
+ * §2.8.3 rule, and the value frozen onto the pending row as `holdMinutes`. Hold minutes when the
+ * operator set them; the trip length otherwise; the Xola stand-in when neither is configured.
+ * Read and write sides measure a candidate with this one function so they cannot disagree.
+ */
+export function candidateHoldMinutes(offering: Pick<Offering, "holdMinutes" | "tripLengthMinutes">): number {
+  return offering.holdMinutes ?? offering.tripLengthMinutes ?? XOLA_TRIP_MINUTES;
 }
 
 /**

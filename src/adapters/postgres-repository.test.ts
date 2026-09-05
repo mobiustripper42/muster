@@ -475,8 +475,8 @@ if (!dbUp) {
       const b = booking("14:00", "Ben"); // 14:00 → 15:40, overlapping Ann by 70 minutes
 
       const [ra, rb] = await Promise.all([
-        repo.saveBookingIfSlotFree(a.event, a.reservation),
-        repo.saveBookingIfSlotFree(b.event, b.reservation),
+        repo.saveBookingIfSlotFree(a.event, a.reservation, "2026-06-01T11:45:00.000Z"),
+        repo.saveBookingIfSlotFree(b.event, b.reservation, "2026-06-01T11:45:00.000Z"),
       ]);
 
       // Exactly one winner. Which one depends on interleaving and is not worth pinning.
@@ -490,6 +490,55 @@ if (!dbUp) {
            join events e on e.id = r.event_id
           where e.vessel_id = $1 and e.date = $2 and r.status = 'booked'`,
         [VESSEL3, DATE3],
+      );
+      expect(rows[0].n).toBe(1);
+    });
+  });
+
+  /**
+   * The pending row (14.4, SPEC §2.8.3): "check and insert happen under one lock per hull-day".
+   * Two customers reaching checkout for overlapping departures on one hull must produce ONE
+   * pending row. `savePendingIfHullFree` takes the same `pg_advisory_xact_lock(hashtext(
+   * vessel|date))` as `saveBookingIfSlotFree`; this is the only place that lock can be seen to
+   * bite. Delete it and this reads `2`.
+   */
+  describe("two customers, one hull, overlapping pending rows — the §2.8.3 lock", () => {
+    const VESSEL5 = asId<"VesselId">("vessel-brew-11");
+    const DATE5 = "2026-07-05";
+
+    it("writes exactly one pending row across two overlapping departures", async () => {
+      await pool.query(`truncate ${TABLES.join(", ")} restart identity cascade`);
+      const repo = new PostgresRepository(pool);
+
+      const pending = (time: string, name: string) => ({
+        id: asId<"ReservationId">(`pend-${time}`),
+        eventId: null,
+        source: "muster" as const,
+        customerName: name,
+        partySize: 4,
+        status: "pending" as const,
+        vesselId: VESSEL5,
+        date: DATE5,
+        time,
+        offeringId: asId<"OfferingId">("off-1"),
+        reservedAt: "2026-06-01T12:00:00.000Z",
+        holdMinutes: 120,
+        tripMinutes: 100,
+      });
+
+      const a = pending("13:30", "Ann"); // holds the hull 13:30 → 15:30
+      const b = pending("15:15", "Ben"); // inside Ann's hold minutes, outside her trip time
+
+      const [ra, rb] = await Promise.all([
+        repo.savePendingIfHullFree(a, "2026-06-01T11:45:00.000Z"),
+        repo.savePendingIfHullFree(b, "2026-06-01T11:45:00.000Z"),
+      ]);
+      expect([ra.result, rb.result].sort()).toEqual(["lost", "won"]);
+
+      const { rows } = await pool.query(
+        `select count(*)::int as n from reservations
+          where vessel_id = $1 and date = $2 and status = 'pending'`,
+        [VESSEL5, DATE5],
       );
       expect(rows[0].n).toBe(1);
     });

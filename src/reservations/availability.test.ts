@@ -427,6 +427,94 @@ describe("deriveVirtualAvailability — the hull is busy (#615, #691)", () => {
   });
 });
 
+describe("deriveVirtualAvailability — a pending row occupies the hull (14.4, SPEC §2.8.3)", () => {
+  // 13:30 and 15:15 on a 100-minute trip with 120 hold minutes. By trip time the 13:30 boat is
+  // back at 15:10 and 15:15 sells; by hold minutes it is committed until 15:30 and 15:15 must not.
+  const trip = (over: Partial<Offering> = {}) =>
+    offering({
+      tripLengthMinutes: 100,
+      holdMinutes: 120,
+      schedule: { seasonStart: "2026-06-01", seasonEnd: "2026-08-31", weekdays: [5], departureTimes: ["13:30", "15:15"] },
+      ...over,
+    });
+  const day = { ...base, offerings: [trip()], dateRange: ONE_SAT };
+  const ASOF = "2026-07-04T12:00:00.000Z";
+  const pending = (id: string, over: Partial<Reservation> = {}): Reservation => ({
+    id: asId<"ReservationId">(id),
+    eventId: null,
+    source: "muster",
+    customerName: "Hooper",
+    partySize: 2,
+    status: "pending",
+    vesselId: V,
+    date: "2026-07-04",
+    time: "13:30",
+    offeringId: asId<"OfferingId">("off-1"),
+    reservedAt: "2026-07-04T11:55:00.000Z", // 5 min before asOf — live
+    holdMinutes: 120,
+    tripMinutes: 100,
+    ...over,
+  });
+  const at = (out: ReturnType<typeof deriveVirtualAvailability>, time: string) => out.find((s) => s.time === time)!;
+
+  it("a live pending row takes the hull for its OWN hold minutes — 15:15 is off the market (criterion 23)", () => {
+    const out = deriveVirtualAvailability({ ...day, reservations: [pending("p0")], asOf: ASOF });
+    expect(at(out, "13:30").status).not.toBe("available");
+    expect(at(out, "15:15").status).not.toBe("available");
+  });
+
+  it("…and is `unavailable`, not `booked` — nobody has paid", () => {
+    const out = deriveVirtualAvailability({ ...day, reservations: [pending("p0")], asOf: ASOF });
+    expect(at(out, "13:30").status).toBe("unavailable");
+  });
+
+  it("the row's FROZEN hold minutes govern, not the offering's current value (criterion 2)", () => {
+    // The operator cut hold minutes to 60 after this row was written. Its boat is still
+    // committed until 15:30.
+    const out = deriveVirtualAvailability({
+      ...day,
+      offerings: [trip({ holdMinutes: 60 })],
+      reservations: [pending("p0", { holdMinutes: 120 })],
+      asOf: ASOF,
+    });
+    expect(at(out, "15:15").status).not.toBe("available");
+  });
+
+  it("a LAPSED pending row does not occupy — reservedAt older than the payment window", () => {
+    const out = deriveVirtualAvailability({
+      ...day,
+      reservations: [pending("p1", { reservedAt: "2026-07-04T11:30:00.000Z" })], // 30 min ago
+      asOf: ASOF,
+    });
+    expect(at(out, "13:30").status).toBe("available");
+    expect(at(out, "15:15").status).toBe("available");
+  });
+
+  it("an admin-source pending row never lapses (DEC-163)", () => {
+    const out = deriveVirtualAvailability({
+      ...day,
+      reservations: [pending("p2", { source: "admin", reservedAt: "2026-01-01T00:00:00.000Z" })],
+      asOf: ASOF,
+    });
+    expect(at(out, "15:15").status).not.toBe("available");
+  });
+
+  it("no asOf ⇒ no pending row is live (same rule as holds)", () => {
+    const out = deriveVirtualAvailability({ ...day, reservations: [pending("p3")] });
+    expect(at(out, "13:30").status).toBe("available");
+  });
+
+  it("the ASKING slot is measured by hold minutes too — same rule both sides (§2.8.3)", () => {
+    // A Xola trip at 15:20. Measured by its 100-minute trip the 13:30 departure is clear
+    // (15:10); measured by its 120 hold minutes it is not (15:30).
+    const out = deriveVirtualAvailability({
+      ...day,
+      events: [ev("x5", { source: "xola", date: "2026-07-04", time: "15:20" })],
+    });
+    expect(at(out, "13:30").status).not.toBe("available");
+  });
+});
+
 describe("deriveVirtualAvailability — price resolution (first match wins)", () => {
   const one = (over: Partial<Offering>) =>
     deriveVirtualAvailability({

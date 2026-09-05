@@ -177,6 +177,11 @@ const WIDE_WINDOW = {
 /** A presented hash that never matches the stored `code-hash-1` — i.e. a WRONG guess. The
  *  window/attempt bounds apply to these; a correct-code claim is exercised separately (#801). */
 const WRONG_HASH = "not-the-stored-code";
+/** The pending clock (14.4). `SINCE` is what every `saveBookingIfSlotFree` call passes as its
+ *  `pendingLiveSince`: NOW − the 15-minute payment window. Cases with no pending row are
+ *  indifferent to it; the 14.4 block builds its rows around it. */
+const NOW = "2026-06-01T12:00:00.000Z";
+const SINCE = "2026-06-01T11:45:00.000Z";
 const outboxEntry = (over: Partial<OutboxEntry> = {}): OutboxEntry => ({
   id: asId<"OutboxEntryId">("obx-ask-1"),
   askId: asId<"AskId">("ask-1"),
@@ -721,6 +726,7 @@ export function runRepositoryContract(
       const res = await repo.saveBookingIfSlotFree(
         ev,
         reservation({ id: rid("resv-a"), source: "muster", eventId: SLOT_ID }),
+        SINCE,
       );
       expect(res.result).toBe("won");
       expect(await repo.getEvent(SLOT_ID)).not.toBeNull(); // materialized
@@ -737,6 +743,7 @@ export function runRepositoryContract(
       const res = await repo.saveBookingIfSlotFree(
         slotEvent(),
         reservation({ id: rid("resv-x"), source: "muster", eventId: SLOT_ID }),
+        SINCE,
       );
       expect(res.result).toBe("lost");
       expect(await repo.listReservationsForEvent(SLOT_ID)).toHaveLength(0);
@@ -751,6 +758,7 @@ export function runRepositoryContract(
       const res = await repo.saveBookingIfSlotFree(
         slotEvent(),
         reservation({ id: rid("resv-o"), source: "muster", eventId: SLOT_ID }),
+        SINCE,
       );
       expect(res.result).toBe("lost");
     });
@@ -768,6 +776,7 @@ export function runRepositoryContract(
       const res = await repo.saveBookingIfSlotFree(
         slotEvent({ durationMinutes: 30 }), // a SHORT new booking at 14:00
         reservation({ id: rid("resv-short"), source: "muster", eventId: SLOT_ID }),
+        SINCE,
       );
       expect(res.result).toBe("lost");
     });
@@ -781,6 +790,7 @@ export function runRepositoryContract(
       const res = await repo.saveBookingIfSlotFree(
         slotEvent(),
         reservation({ id: rid("resv-ab"), source: "muster", eventId: SLOT_ID }),
+        SINCE,
       );
       expect(res.result).toBe("won");
     });
@@ -792,6 +802,7 @@ export function runRepositoryContract(
       const res = await repo.saveBookingIfSlotFree(
         slotEvent(),
         reservation({ id: rid("resv-c"), source: "muster", eventId: SLOT_ID }),
+        SINCE,
       );
       expect(res.result).toBe("won");
     });
@@ -809,12 +820,13 @@ export function runRepositoryContract(
     it("saveBookingIfSlotFree: a CANCELLED reservation on the slot does not block a re-claim", async () => {
       const ev = slotEvent();
       const first = reservation({ id: rid("resv-gone"), source: "muster", eventId: SLOT_ID });
-      expect((await repo.saveBookingIfSlotFree(ev, first)).result).toBe("won");
+      expect((await repo.saveBookingIfSlotFree(ev, first, SINCE)).result).toBe("won");
       await repo.saveReservation({ ...first, status: "cancelled" });
 
       const res = await repo.saveBookingIfSlotFree(
         ev,
         reservation({ id: rid("resv-next"), source: "muster", eventId: SLOT_ID }),
+        SINCE,
       );
       expect(res.result).toBe("won");
     });
@@ -822,18 +834,18 @@ export function runRepositoryContract(
     it("saveBookingIfSlotFree: idempotent on reservation id (redelivered webhook)", async () => {
       const ev = slotEvent();
       const r = reservation({ id: rid("resv-a"), source: "muster", eventId: SLOT_ID });
-      expect((await repo.saveBookingIfSlotFree(ev, r)).result).toBe("won");
-      expect((await repo.saveBookingIfSlotFree(ev, r)).result).toBe("won"); // idempotent
+      expect((await repo.saveBookingIfSlotFree(ev, r, SINCE)).result).toBe("won");
+      expect((await repo.saveBookingIfSlotFree(ev, r, SINCE)).result).toBe("won"); // idempotent
       expect(await repo.listReservationsForEvent(SLOT_ID)).toHaveLength(1);
     });
 
     it("saveBookingIfSlotFree: a DIFFERENT reservation loses on an already-claimed slot", async () => {
       const ev = slotEvent();
       expect(
-        (await repo.saveBookingIfSlotFree(ev, reservation({ id: rid("resv-a"), source: "muster", eventId: SLOT_ID }))).result,
+        (await repo.saveBookingIfSlotFree(ev, reservation({ id: rid("resv-a"), source: "muster", eventId: SLOT_ID }), SINCE)).result,
       ).toBe("won");
       expect(
-        (await repo.saveBookingIfSlotFree(ev, reservation({ id: rid("resv-b"), source: "muster", eventId: SLOT_ID }))).result,
+        (await repo.saveBookingIfSlotFree(ev, reservation({ id: rid("resv-b"), source: "muster", eventId: SLOT_ID }), SINCE)).result,
       ).toBe("lost");
       const active = (await repo.listReservationsForEvent(SLOT_ID)).filter((r) => r.status === "booked");
       expect(active).toHaveLength(1);
@@ -842,8 +854,8 @@ export function runRepositoryContract(
     it("saveBookingIfSlotFree: exactly one of two concurrent first-bookings wins (one Event, one claim)", async () => {
       const ev = slotEvent();
       const [a, b] = await Promise.all([
-        repo.saveBookingIfSlotFree(ev, reservation({ id: rid("resv-a"), source: "muster", eventId: SLOT_ID, customerName: "A" })),
-        repo.saveBookingIfSlotFree(ev, reservation({ id: rid("resv-b"), source: "muster", eventId: SLOT_ID, customerName: "B" })),
+        repo.saveBookingIfSlotFree(ev, reservation({ id: rid("resv-a"), source: "muster", eventId: SLOT_ID, customerName: "A" }), SINCE),
+        repo.saveBookingIfSlotFree(ev, reservation({ id: rid("resv-b"), source: "muster", eventId: SLOT_ID, customerName: "B" }), SINCE),
       ]);
       expect([a.result, b.result].filter((x) => x === "won")).toHaveLength(1);
       expect(await repo.getEvent(SLOT_ID)).not.toBeNull();
@@ -859,11 +871,205 @@ export function runRepositoryContract(
       const res = await repo.saveBookingIfSlotFree(
         slotEvent(), // deterministic-id candidate
         reservation({ id: rid("resv-a"), source: "muster", eventId: SLOT_ID }),
+        SINCE,
       );
       expect(res.result).toBe("won");
       if (res.result === "won") expect(String(res.eventId)).toBe("override-1"); // claimed the existing row
       expect(await repo.getEvent(SLOT_ID)).toBeNull(); // no duplicate materialized (slot guardrail)
       expect(await repo.listReservationsForEvent(asId<"EventId">("override-1"))).toHaveLength(1);
+    });
+
+    // ── The pending row (14.4, SPEC §2.8.2–2.8.4) ───────────────────────────────
+    // A `pending` reservation names a slot, not an Event, and occupies the hull for its OWN frozen
+    // hold minutes (§2.8.3, DEC-161). `savePendingIfHullFree` is the write under the hull-day lock:
+    // it refuses an overlap with any scheduled trip or any LIVE pending row. Liveness is the
+    // caller's clock — `pendingLiveSince` is "reserved after this instant" (asOf − the payment
+    // window), so the adapter does no clock arithmetic of its own.
+    const pendingRow = (over: Partial<Reservation> = {}): Reservation => ({
+      id: rid("pend-1"),
+      eventId: null,
+      source: "muster",
+      customerName: "Hooper",
+      partySize: 2,
+      status: "pending",
+      vesselId: VESSEL,
+      date: "2026-07-01",
+      time: "14:00",
+      offeringId: asId<"OfferingId">("off-1"),
+      reservedAt: NOW,
+      holdMinutes: 120,
+      tripMinutes: 100,
+      ...over,
+    });
+
+    it("reservations: the pending row's slot, durations, token, payment id and invoice round-trip (14.4)", async () => {
+      await repo.saveReservation(
+        pendingRow({
+          holderToken: "tok-1",
+          paymentIntentId: "pi_1",
+          invoice: {
+            fareCents: 50000,
+            extrasCents: 2000,
+            taxCents: 4160,
+            taxRateBps: 800,
+            serviceFeeCents: 1560,
+            serviceFeeBps: 300,
+            gratuityCents: 10400,
+            gratuityBps: 2000,
+            totalCents: 68120,
+          },
+        }),
+      );
+      const got = (await repo.getReservation(rid("pend-1")))!;
+      expect(got.eventId).toBeNull();
+      expect(String(got.vesselId)).toBe(String(VESSEL));
+      expect(got.date).toBe("2026-07-01");
+      expect(got.time).toBe("14:00");
+      expect(String(got.offeringId)).toBe("off-1");
+      expect(got.reservedAt).toBe(NOW);
+      expect(got.holdMinutes).toBe(120);
+      expect(got.tripMinutes).toBe(100);
+      expect(got.holderToken).toBe("tok-1");
+      expect(got.paymentIntentId).toBe("pi_1");
+      expect(got.invoice).toEqual({
+        fareCents: 50000,
+        extrasCents: 2000,
+        taxCents: 4160,
+        taxRateBps: 800,
+        serviceFeeCents: 1560,
+        serviceFeeBps: 300,
+        gratuityCents: 10400,
+        gratuityBps: 2000,
+        totalCents: 68120,
+      });
+    });
+
+    it("reservations: getReservationByPaymentIntentId finds the row carrying that id, null otherwise (14.4)", async () => {
+      await repo.saveReservation(pendingRow({ paymentIntentId: "pi_find" }));
+      expect(String((await repo.getReservationByPaymentIntentId("pi_find"))!.id)).toBe("pend-1");
+      expect(await repo.getReservationByPaymentIntentId("pi_none")).toBeNull();
+    });
+
+    it("savePendingIfHullFree: writes the row on a free hull-day — pending, no Event (§2.8.2)", async () => {
+      const res = await repo.savePendingIfHullFree(pendingRow(), SINCE);
+      expect(res.result).toBe("won");
+      const got = (await repo.getReservation(rid("pend-1")))!;
+      expect(got.status).toBe("pending");
+      expect(got.eventId).toBeNull();
+      expect(await repo.listEvents()).toHaveLength(0); // nothing materialized
+    });
+
+    it("savePendingIfHullFree: LOSES against a live pending row measured by the RIVAL's hold minutes (criterion 4, DEC-161)", async () => {
+      // 13:30 with 120 hold minutes occupies the hull to 15:30. Measured by its 100-minute trip it
+      // would free the boat at 15:10 and a 15:15 sale would go through — the SPEC's worked case.
+      await repo.saveReservation(pendingRow({ id: rid("pend-rival"), time: "13:30", holdMinutes: 120, tripMinutes: 100 }));
+      const res = await repo.savePendingIfHullFree(pendingRow({ id: rid("pend-ask"), time: "15:15" }), SINCE);
+      expect(res.result).toBe("lost");
+      expect(await repo.getReservation(rid("pend-ask"))).toBeNull();
+    });
+
+    it("savePendingIfHullFree: WINS when the rival's hold minutes end before the asking time", async () => {
+      await repo.saveReservation(pendingRow({ id: rid("pend-rival"), time: "13:30", holdMinutes: 100 })); // to 15:10
+      const res = await repo.savePendingIfHullFree(pendingRow({ id: rid("pend-ask"), time: "15:15" }), SINCE);
+      expect(res.result).toBe("won");
+    });
+
+    it("savePendingIfHullFree: LOSES against a scheduled trip on the hull, either source", async () => {
+      await repo.saveEvent(event({ id: asId<"EventId">("evt-xola-14"), source: "xola", time: "14:00" }));
+      const res = await repo.savePendingIfHullFree(pendingRow({ time: "14:00" }), SINCE);
+      expect(res.result).toBe("lost");
+    });
+
+    it("savePendingIfHullFree: a LAPSED pending row does not block (§2.8.1 — computed, never stored)", async () => {
+      await repo.saveReservation(pendingRow({ id: rid("pend-old"), reservedAt: "2026-06-01T11:00:00.000Z" }));
+      const res = await repo.savePendingIfHullFree(pendingRow({ id: rid("pend-ask") }), SINCE);
+      expect(res.result).toBe("won");
+    });
+
+    it("savePendingIfHullFree: an admin-source pending row never lapses (DEC-163)", async () => {
+      await repo.saveReservation(
+        pendingRow({ id: rid("pend-admin"), source: "admin", reservedAt: "2026-01-01T00:00:00.000Z" }),
+      );
+      const res = await repo.savePendingIfHullFree(pendingRow({ id: rid("pend-ask") }), SINCE);
+      expect(res.result).toBe("lost");
+    });
+
+    it("savePendingIfHullFree: the same holder token's own live row does not block a retry; two tokenless rows do", async () => {
+      await repo.saveReservation(pendingRow({ id: rid("pend-mine"), holderToken: "tok-A" }));
+      const retry = await repo.savePendingIfHullFree(pendingRow({ id: rid("pend-retry"), holderToken: "tok-A" }), SINCE);
+      expect(retry.result).toBe("won");
+      const stranger = await repo.savePendingIfHullFree(pendingRow({ id: rid("pend-other"), holderToken: "tok-B" }), SINCE);
+      expect(stranger.result).toBe("lost");
+    });
+
+    it("savePendingIfHullFree: two tokenless rows never match each other", async () => {
+      await repo.saveReservation(pendingRow({ id: rid("pend-anon-1") }));
+      const res = await repo.savePendingIfHullFree(pendingRow({ id: rid("pend-anon-2") }), SINCE);
+      expect(res.result).toBe("lost");
+    });
+
+    it("savePendingIfHullFree: a TOKENLESS asker still loses to a TOKENED rival (the exemption is not a hole)", async () => {
+      // The asymmetric pair, and the one the SQL got wrong: exempting "my own row" was written as
+      // `not (holder_token is not null and holder_token = $6)`, which evaluates to NULL — and so
+      // drops the rival from the overlap check — whenever $6 is NULL. A client that refuses
+      // cookies has no token by design, so this is the ordinary path, not an edge: the tokenless
+      // buyer was handed a boat another buyer was already at checkout for.
+      await repo.saveReservation(pendingRow({ id: rid("pend-tokened"), holderToken: "tok-A" }));
+      const res = await repo.savePendingIfHullFree(pendingRow({ id: rid("pend-anon") }), SINCE);
+      expect(res.result).toBe("lost");
+    });
+
+    it("savePendingIfHullFree: exactly one of two concurrent overlapping writes wins", async () => {
+      const [a, b] = await Promise.all([
+        repo.savePendingIfHullFree(pendingRow({ id: rid("pend-a"), time: "13:30" }), SINCE),
+        repo.savePendingIfHullFree(pendingRow({ id: rid("pend-b"), time: "14:00" }), SINCE),
+      ]);
+      expect([a.result, b.result].filter((x) => x === "won")).toHaveLength(1);
+    });
+
+    it("saveBookingIfSlotFree: LOSES against a rival's live pending row (§2.8.3 — pending occupies)", async () => {
+      await repo.saveReservation(pendingRow({ id: rid("pend-rival"), time: "13:30", holdMinutes: 120 }));
+      const res = await repo.saveBookingIfSlotFree(
+        slotEvent(), // 14:00
+        reservation({ id: rid("resv-a"), source: "muster", eventId: SLOT_ID }),
+        SINCE,
+      );
+      expect(res.result).toBe("lost");
+    });
+
+    it("saveBookingIfSlotFree: ignores the pending row carrying its OWN payment intent id (the 14.4→14.5 bridge)", async () => {
+      // Until 14.5 flips the pending row, confirm inserts a second row; the customer's own pending
+      // row must not refuse the customer's own confirm.
+      await repo.saveReservation(pendingRow({ id: rid("pend-mine"), time: "14:00", paymentIntentId: "pi_mine" }));
+      const res = await repo.saveBookingIfSlotFree(
+        slotEvent(),
+        reservation({ id: rid("resv-a"), source: "muster", eventId: SLOT_ID, paymentIntentId: "pi_mine" }),
+        SINCE,
+      );
+      expect(res.result).toBe("won");
+    });
+
+    it("saveBookingIfSlotFree: a confirm with NO payment intent still loses to a rival's pending row", async () => {
+      // The confirm-side twin of the tokenless case above. A hosted-Checkout completion carries no
+      // `paymentIntentId` (`CheckoutCompleted.paymentIntentId` is optional), so $6 is NULL and the
+      // same three-valued-logic hole exempted every pending row that HAD one.
+      await repo.saveReservation(pendingRow({ id: rid("pend-rival"), time: "14:00", paymentIntentId: "pi_theirs" }));
+      const res = await repo.saveBookingIfSlotFree(
+        slotEvent(),
+        reservation({ id: rid("resv-a"), source: "muster", eventId: SLOT_ID }),
+        SINCE,
+      );
+      expect(res.result).toBe("lost");
+    });
+
+    it("saveBookingIfSlotFree: a LAPSED pending row does not block the confirm", async () => {
+      await repo.saveReservation(pendingRow({ id: rid("pend-old"), time: "14:00", reservedAt: "2026-06-01T11:00:00.000Z" }));
+      const res = await repo.saveBookingIfSlotFree(
+        slotEvent(),
+        reservation({ id: rid("resv-a"), source: "muster", eventId: SLOT_ID }),
+        SINCE,
+      );
+      expect(res.result).toBe("won");
     });
 
     // ── Checkout holds — acquire / lifecycle (12.1, DEC-109) ───────────────────
@@ -1653,7 +1859,7 @@ export function runRepositoryContract(
         customerName: "Ann",
         partySize: 4,
         status: "booked",
-      });
+      }, SINCE);
       expect(won.result).toBe("won");
 
       await repo.saveReservation({
@@ -1677,6 +1883,7 @@ export function runRepositoryContract(
           partySize: 2,
           status: "booked",
         },
+        SINCE,
       );
       expect(again.result).toBe("won");
       const revived = await repo.getEvent(first.id);

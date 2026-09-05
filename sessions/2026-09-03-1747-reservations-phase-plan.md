@@ -3,10 +3,10 @@ session: 103
 slug: reservations-phase-plan
 branch: task/reservations-phase-plan
 started: 2026-09-03T17:47:36Z
-ended:
-points:
+ended: 2026-09-05T17:45:00Z
+points: 21
 pr_numbers: [905, 910, 924, 925, 930, 932]
-status: open
+status: closed
 transcript: /home/eric/.claude/projects/-home-eric-muster-s91/fc4ca4b8-4ceb-5d27-9011-6826c042120c.jsonl
 ---
 
@@ -115,3 +115,4 @@ transcript: /home/eric/.claude/projects/-home-eric-muster-s91/fc4ca4b8-4ceb-5d27
 
 **Context:**
 - Linked worktree (`muster-s91`). Session 102 open concurrently (live). Model: Fable 5.1 this session.
+- Closed by hand from session 104: the window's own `/its-dead` stopped to confirm the 21-point tally and the window was archived before the answer. Task 1 (the Phase 12 retro) is unpointed on purpose; 21 = 3 + 2 + 3 + 5 + 8. `ended:` is the stamp time, not the last activity.

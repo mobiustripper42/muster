@@ -91,6 +91,7 @@ function matchCrewByEmail(
   const norm = normalizeEmail(email);
   const hits = crew
     .filter((c) => c.email && normalizeEmail(c.email) === norm)
+    // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
     .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   return hits[0] ?? null;
 }

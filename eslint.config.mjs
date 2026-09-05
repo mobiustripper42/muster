@@ -100,7 +100,15 @@ const OFF = {
   "playwright/no-wait-for-timeout": "off",          //   1 finding  — issue #908 (legitimate per issue #904 — a settle before asserting an absence)
 
   // --- sonarjs. The four SECURITY rules below have never run on this codebase. ---
-  "sonarjs/no-nested-conditional": "off",           //  87 findings — issue #909
+  // ON as of #909, with all 87 baselined — same posture as `cognitive-complexity` above:
+  // stop new ones, make the existing debt visible in the code. The disables point at the
+  // refactor issue and are meant to be deleted.
+  //
+  // Unlike complexity, these have ONE obvious safe fix. Nearly all are nested ternaries
+  // picking copy inside JSX, where `if` is unavailable — so lift the chain into a named
+  // function above the component and use guard clauses. That is strictly better: it gets
+  // a name saying what it produces, and becomes testable on its own. No engine risk, which
+  // is why this refactor is tractable where `tick()` is not.
   // ON at a ceiling of 40, ratcheting down (#909). NOT the plugin default of 15 — that is
   // SonarSource's convention, not a measured threshold, and here it flags 61 functions of
   // which most are ordinary loops with a branch inside. 40 is nearly 3x it, so the 12 sites

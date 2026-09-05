@@ -231,6 +231,7 @@ export function actionMessage(
     case "cancelErr":
       return value === "not_muster"
         ? "This booking is Xola's — cancel it there, or the next import will bring it back."
+        // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
         : value === "reservation_missing"
           ? "That reservation no longer exists."
           : "Couldn’t cancel just now. Try again in a moment.";

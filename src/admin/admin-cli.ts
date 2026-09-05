@@ -39,6 +39,7 @@ export async function runAdminCommand(
   switch (cmd) {
     case "list": {
       const admins = (await repo.listAdmins()).sort((a, b) =>
+        // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
         a.handle < b.handle ? -1 : a.handle > b.handle ? 1 : 0,
       );
       if (admins.length === 0) return "No admins.";
@@ -68,6 +69,7 @@ export async function runAdminCommand(
         const norm = normalizeEmail(email);
         const match = (await repo.listCrewMembers())
           .filter((c) => c.email && normalizeEmail(c.email) === norm)
+          // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
           .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))[0];
         if (!match)
           throw new AdminCliError(

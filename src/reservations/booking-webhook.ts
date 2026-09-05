@@ -727,16 +727,20 @@ async function recordDispute(
       ? `Stripe dispute on ${money} for reservation ${payment.reservationId} reported a status ` +
           `this deploy does not recognise. The ledger was NOT changed because we cannot tell ` +
           `whether the money moved. CHECK STRIPE, and update the Stripe SDK.`
+      // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
       : dispute.state === "inquiry"
       ? `Stripe INQUIRY (reason: ${dispute.reason}) on ${money} for reservation ` +
           `${payment.reservationId}. No money has moved and the booking still stands, but this ` +
           `is the warning before a chargeback. RESPOND IN STRIPE before the deadline.`
+      // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
       : dispute.state === "won"
         ? `Stripe dispute WON on ${money} for reservation ${payment.reservationId}. The funds ` +
             `are back and the payment reads as paid again.`
+        // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
         : `Stripe DISPUTE ${dispute.state === "lost" ? "LOST" : "OPENED"} (reason: ` +
             `${dispute.reason}) on ${money} for reservation ${payment.reservationId}. The ` +
             `funds are OUT of the account and this booking no longer counts as paid` +
+            // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
             `${dispute.state === "lost" ? ". This is final." : ". RESPOND IN STRIPE."}`,
   );
   return { handled: true, outcome: "dispute_recorded" };

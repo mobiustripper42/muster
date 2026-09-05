@@ -534,6 +534,7 @@ function AskCard({ ask }: { ask: CrewAppView["asks"][number] }) {
         <div className="text-ink">
           {fmtDate(ask.date)}
           {ask.callTime
+            // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
             ? ` · ${fmt12(ask.callTime)}${ask.shiftEndTime ? `–${fmt12(ask.shiftEndTime)}` : ""}`
             : ""}{" "}
           · {ask.vesselName} · {ask.roleName}.{" "}

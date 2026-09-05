@@ -554,6 +554,7 @@ export function HoldConfirm({ data }: { data: CalendarData }) {
             // The scope clause appears only when there IS scope to explain. On the usual slot
             // it would be a sentence about a number that is always 1 — noise the operator
             // learns to skip, which is how they miss it on the day it says 2.
+            // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
             p.offeringCount > 1 ? (
               <>
                 Takes the departure off the market for all {p.offeringCount}

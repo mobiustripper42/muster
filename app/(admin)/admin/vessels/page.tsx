@@ -83,6 +83,7 @@ export default async function AdminVessels({
   const requested = creating ? undefined : sp.sel;
   const selected = creating
     ? null
+    // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
     : requested
       ? vessels.find((v) => v.id === requested) ?? null
       : vessels[0] ?? null;
@@ -100,6 +101,7 @@ export default async function AdminVessels({
   // `?crew=1` fires on every ordinary Add click, which made it routine. Found by `@code-review`.
   const rawDraft = sp.err || sp.crew ? await readFormDraft("/admin/vessels") : null;
   const draftOwner = rawDraft?.get("id") ?? null;
+  // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
   const draft = draftOwner === null || draftOwner === (creating ? "" : selected?.id ?? "")
     ? rawDraft
     : null;

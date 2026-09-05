@@ -287,7 +287,9 @@ export default async function ReservationDetailPage({
     const prefillCents =
       sp.refunded !== undefined
         ? refundable
+        // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
         : sp.cancelled !== undefined
+          // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
           ? Math.min(refundable, quoteFor(sp.cancelled === "operator" ? "operator" : "customer"))
           : refundable;
 

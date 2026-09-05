@@ -50,6 +50,7 @@ export async function pullFromXola(): Promise<void> {
     const code: XolaPullErr =
       e instanceof Error && /not configured/i.test(e.message)
         ? "x_not_configured"
+        // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
         : e instanceof XolaError &&
             e.status !== undefined &&
             e.status >= 400 &&

@@ -133,6 +133,7 @@ export function PriceVariationsEditor({ initial }: { initial: PriceVariation[] }
                   applies:
                     kind === "weekdays"
                       ? { kind, weekdays: [] }
+                      // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
                       : kind === "date"
                         ? { kind, date: "" }
                         : { kind, start: "", end: "" },

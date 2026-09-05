@@ -113,6 +113,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
   }
 
   // Resolve the offering: the ?offering param, else the sole live one, else a thin picker.
+  // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
   const chosen = sp.offering ? live.find((o) => String(o.id) === sp.offering) : live.length === 1 ? live[0] : undefined;
   if (!chosen) {
     return (
@@ -446,8 +447,10 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                             className={`text-xs font-semibold ${
                               !r.soldOut && !r.fits
                                 ? "text-faint"
+                                // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
                                 : label.tone === "open"
                                   ? "text-ok"
+                                  // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
                                   : label.tone === "tight"
                                     ? "text-warn"
                                     : "text-faint"

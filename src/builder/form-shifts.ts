@@ -462,6 +462,7 @@ async function formOneShift(
   const state =
     existing?.state === "Completed"
       ? existing.state
+      // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
       : opts?.now
         ? resolveShiftState(seats, {
             now: opts.now,

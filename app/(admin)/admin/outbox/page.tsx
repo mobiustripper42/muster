@@ -230,6 +230,7 @@ function toVM(c: OutboxCardView): OutboxCardVM {
       : null,
     shareText: message,
     crewPhone: c.crewPhone,
+    // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
     mode: c.status === "sent" ? "sent" : self ? "self" : "relay",
     sentLabel: c.sentAt ? `sent ${fmtTime(c.sentAt)}` : null,
   };
@@ -279,6 +280,7 @@ function whyLabel(c: OutboxCardView): string {
   const ord =
     ["1st", "2nd", "3rd"][c.why.ordinal - 1] ?? `${c.why.ordinal}th`;
   const prior = c.why.prior
+    // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
     ? ` · ${c.why.prior.crewName} ${c.why.prior.outcome === "declined" ? "declined" : "went silent"}`
     : "";
   return `${ord} ask${prior}`;

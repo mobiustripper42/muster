@@ -411,6 +411,7 @@ export function deriveVirtualAvailability(
               time,
               capacity: materialized.capacity,
               priceCents: materialized.price ?? basePrice,
+              // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
               status: booked ? "booked" : collides ? "unavailable" : "available",
               eventId: materialized.id,
             });
@@ -440,6 +441,7 @@ export function deriveVirtualAvailability(
             time,
             capacity: vessel.coiMaxPax,
             priceCents: basePrice,
+            // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
             status: blocked ? "blocked" : occupied ? "unavailable" : held ? "held" : "available",
           });
         }

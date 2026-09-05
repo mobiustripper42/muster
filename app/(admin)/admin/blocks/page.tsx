@@ -252,6 +252,7 @@ export default async function AdminBlocks({
               const when =
                 block.kind === "location"
                   ? `${formatDay(block.date)} · ${formatTime(block.startTime)}–${formatTime(block.endTime)}`
+                  // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
                   : block.kind === "vesselHold"
                     ? `${formatDay(block.date)} · ${formatTime(block.time)}`
                     : `${formatDay(block.startDate)} – ${formatDay(block.endDate)} · all day`;
@@ -297,6 +298,7 @@ export default async function AdminBlocks({
                     <div className="text-xs text-faint">
                       {kind === "location"
                         ? "all vessels · all offerings here"
+                        // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
                         : kind === "vesselHold"
                           ? "one departure · opens on the calendar"
                           : "out of service"}

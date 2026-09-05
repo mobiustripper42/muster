@@ -44,12 +44,16 @@ export function toSeatVM(
         // while `assignFromPool` would refuse the seat itself.
         const action =
           c.status === "available"
+            // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
             ? canAssign
               ? "assign"
+              // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
               : canNudge
                 ? "nudge"
                 : null
+            // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
             : c.status === "declined" || c.status === "silent"
+              // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
               ? canNudge
                 ? "nudge"
                 : null

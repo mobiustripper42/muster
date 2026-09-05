@@ -210,6 +210,7 @@ export function buildSlotRows(slotsForDate: readonly VirtualSlot[], guestCount: 
     // Price + capacity come from the boats this customer can actually book; failing that the
     // open ones, failing that all of the time's boats — so a sold-out or too-small row still
     // prices and caps rather than reducing an empty array.
+    // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
     const pool = bookable.length > 0 ? bookable : open.length > 0 ? open : arr;
     rows.push({
       time,

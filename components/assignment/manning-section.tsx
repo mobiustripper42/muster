@@ -100,8 +100,10 @@ export function ManningSection({
                     Take off seat
                   </SubmitButton>
                 </form>
+              // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
               ) : s.occupied ? (
                 <span className="text-xs text-muted">occupied — vacate to remove</span>
+              // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
               ) : s.kind === "supernumerary" ? (
                 // Unstaffed trainee seat: name a person so Muster can reach them
                 // (my-shifts, threads, the DEC-084 notice). Picker scope is the

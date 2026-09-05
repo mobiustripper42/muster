@@ -160,6 +160,7 @@ try {
   // Crew Day 1 (Confirmed) directly on the derived seats — a dev fixture, no ask
   // ceremony. State resolves on read (deriveAllShifts), so the board shows Crewed.
   for (const seat of await repo.listSeatsForShift(gapShift)) {
+    // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
     const who = seat.role === CAPTAIN ? cap : seat.role === MATE ? mate : null;
     if (who) {
       await repo.saveSeat({ ...seat, state: "Confirmed", assignedCrewMemberId: who });

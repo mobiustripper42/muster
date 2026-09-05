@@ -146,6 +146,7 @@ export async function runCrewCommand(
   switch (cmd) {
     case "list": {
       const crew = (await repo.listCrewMembers()).sort((a, b) =>
+        // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
         a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
       );
       if (crew.length === 0) return "No crew members.";
@@ -153,6 +154,7 @@ export async function runCrewCommand(
         .map(
           (c) =>
             // ● active · ○ inactive (benched) · ✗ archived (off every list, #323)
+            // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
             `${c.status === "active" ? "●" : c.status === "archived" ? "✗" : "○"} ${c.id.padEnd(20)} ${c.name.padEnd(22)} ` +
             `${c.phone.padEnd(15)} ${c.email ?? "(no email)"}`,
         )
@@ -173,11 +175,13 @@ export async function runCrewCommand(
         }),
       );
       keyed.sort((a, b) =>
+        // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
         a.key !== b.key ? b.key - a.key : a.c.id < b.c.id ? -1 : a.c.id > b.c.id ? 1 : 0,
       );
       const header = " #   score  events  crew";
       const rows = keyed.map(({ c, key, events }, i) => {
         const thumb = c.manualFloor !== undefined || c.manualBoost !== undefined ? "*" : " ";
+        // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
         const mark = c.status === "active" ? "●" : c.status === "archived" ? "✗" : "○";
         return (
           `${String(i + 1).padStart(2)}  ${key.toFixed(1).padStart(6)}${thumb} ` +
@@ -500,6 +504,7 @@ export async function runCrewCommand(
       if (!id && !clear && daysFlag === undefined) {
         const off = (await repo.listCrewMembers())
           .filter((c) => (c.weekdaysOff ?? []).length > 0)
+          // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
           .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
         if (off.length === 0) return "No crew have recurring days off.";
         return off

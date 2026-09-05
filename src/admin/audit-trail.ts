@@ -198,6 +198,7 @@ export async function buildAuditTrail(
 
   for (const e of audits) {
     const kind: AuditKind =
+      // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
       e.type === "crew_added" ? "added" : e.type === "crew_removed" ? "removed" : "changed";
     rows.push({
       source: "audit",

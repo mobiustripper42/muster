@@ -229,14 +229,16 @@ export function actionMessage(
           return "Couldn’t issue a new link just now. Their existing link still works.";
       }
     case "cancelErr":
-      return value === "not_muster"
-        ? "This booking is Xola's — cancel it there, or the next import will bring it back."
-        // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
-        : value === "reservation_missing"
-          ? "That reservation no longer exists."
-          : value === "not_booked"
-            ? "This checkout hasn’t been paid, so there is nothing to cancel. It lapses on its own."
-            : "Couldn’t cancel just now. Try again in a moment.";
+      switch (value) {
+        case "not_muster":
+          return "This booking is Xola's — cancel it there, or the next import will bring it back.";
+        case "reservation_missing":
+          return "That reservation no longer exists.";
+        case "not_booked":
+          return "This checkout hasn’t been paid, so there is nothing to cancel. It lapses on its own.";
+        default:
+          return "Couldn’t cancel just now. Try again in a moment.";
+      }
     case "refundErr":
       switch (value) {
         case "invalid_amount":

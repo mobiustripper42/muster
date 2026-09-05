@@ -22,6 +22,7 @@
  */
 
 import type { CrewMemberId, SeatId } from "../domain/ids.js";
+import { TERMINAL_SHIFT_STATES } from "../domain/states.js";
 import type { Repository } from "../ports/repository.js";
 import { COMMITTED_SEAT_STATES } from "../oracle/oracle.js";
 import {
@@ -56,7 +57,7 @@ export async function buildAskSuppression(
   const nowMs = now.getTime();
 
   for (const shift of await repo.listShifts()) {
-    if (shift.state === "Cancelled" || shift.state === "Completed") continue;
+    if (TERMINAL_SHIFT_STATES.has(shift.state)) continue;
     const ids = new Set(shift.eventIds);
     const events = allEvents.filter((e) => ids.has(e.id));
     const seats = await repo.listSeatsForShift(shift.id);

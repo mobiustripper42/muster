@@ -320,8 +320,8 @@ const CITATIONS = [
   ['app/lib/booking-deps.ts', 29, 'export function bookingDeps(secretKey: string, webhookSecret?: string): WebhookDeps {'],
   ['app/lib/booking-deps.ts', 46, 'relayFormNotices: forwardFormNotices,'],
   // The notify chain past the stubbed relay — each link separately.
-  ['src/builder/form-shifts.ts', 415, 'const desired = deriveSeats(vessel, shiftId)'],
-  ['src/builder/form-shifts.ts', 525, 'result.changedCrew.push({'],
+  ['src/builder/form-shifts.ts', 420, 'const desired = deriveSeats(vessel, shiftId)'],
+  ['src/builder/form-shifts.ts', 530, 'result.changedCrew.push({'],
   ['src/builder/form-notices.ts', 41, '...form.changedCrew'],
   ['src/builder/form-notices.ts', 45, 'action: "changed" as const,'],
   ['app/lib/channel.ts', 94, 'forwardNoticesToOutbox(formNoticeChanges(form, OPERATOR_CREW_MEMBER_ID))'],
@@ -355,7 +355,7 @@ const CITATIONS = [
   ['src/builder/merge.ts', 97, 'const form = await formShifts(repo, { notifyTripChanges: true'],
   ['src/builder/split.ts', 80, 'return formShifts(repo, { notifyTripChanges: true'],
   ['src/import/xola-pull.ts', 182, 'const formed = await formShifts(repo, {'],
-  ['src/builder/form-shifts.ts', 131, 'export async function formShifts('],
+  ['src/builder/form-shifts.ts', 136, 'export async function formShifts('],
   // Split across the line break at :101/:102 — the fourth time this session that a wrapped
   // sentence produced a citation that reads correct and pins nothing.
   ['app/lib/channel.ts', 102, 'and there are six'],
@@ -570,8 +570,8 @@ const CITATIONS = [
   ['src/adapters/repository-contract.ts', 1476, '// ── Gratuity (DEC-124, 12.3)'],
   // The shift-canceller an earlier draft said did not exist yet (code review), and the call that
   // reaches it from the cancellation path. Pinned because the safety argument now turns on them.
-  ['src/builder/form-shifts.ts', 353, 'if (scheduled.length === 0) {'],
-  ['src/builder/form-shifts.ts', 359, 'await repo.saveShift({ ...existing, state: "Cancelled" });'],
+  ['src/builder/form-shifts.ts', 362, 'if (scheduled.length === 0) {'],
+  ['src/builder/form-shifts.ts', 364, 'await repo.saveShift({ ...existing, state: "Cancelled" });'],
   ['src/reservations/cancel-reservation.ts', 165, 'Re-form so the shift collapses and its crew are told'],
   ['src/reservations/cancel-reservation.ts', 176, 'const form = await formShifts(deps.repo, {'],
   // The second caller's fixtures — also all required/Confirmed, so it adds no exclusion coverage.

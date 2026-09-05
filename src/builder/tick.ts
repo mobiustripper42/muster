@@ -23,6 +23,7 @@
 
 import type { Ask, Seat, Shift } from "../domain/entities.js";
 import type { CrewMemberId, SeatId } from "../domain/ids.js";
+import { TERMINAL_SHIFT_STATES } from "../domain/states.js";
 import type { Repository } from "../ports/repository.js";
 import { deriveAtRiskBoard } from "../admin/at-risk-board.js";
 import {
@@ -220,7 +221,7 @@ export async function tick(
   {
     const seatDay = new Map<SeatId, string>();
     for (const s of await repo.listShifts()) {
-      if (s.state === "Cancelled" || s.state === "Completed") continue;
+      if (TERMINAL_SHIFT_STATES.has(s.state)) continue;
       const ids = new Set(s.eventIds);
       const ts = earliestScheduledStart(
         allEvents.filter((e) => ids.has(e.id)),
@@ -250,7 +251,7 @@ export async function tick(
   for (const shift of await repo.listShifts()) {
     // Lifecycle states are terminal here — a tick never resurrects a cancelled
     // or completed shift (mirrors how #20 guards `Completed` in formShifts).
-    if (shift.state === "Cancelled" || shift.state === "Completed") continue;
+    if (TERMINAL_SHIFT_STATES.has(shift.state)) continue;
 
     // Past-trip guard (#147, DEC-062): once the earliest scheduled trip has
     // departed, the shift is no longer the engine's to work — never broadcast,

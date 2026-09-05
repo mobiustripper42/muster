@@ -5,7 +5,7 @@ branch: task/reservations-phase-plan
 started: 2026-09-03T17:47:36Z
 ended:
 points:
-pr_numbers: [905, 910, 924, 925]
+pr_numbers: [905, 910, 924, 925, 930]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster-s91/fc4ca4b8-4ceb-5d27-9011-6826c042120c.jsonl
 ---
@@ -71,6 +71,22 @@ transcript: /home/eric/.claude/projects/-home-eric-muster-s91/fc4ca4b8-4ceb-5d27
 **Points:** 3
 **Branch:** task/14.2-status-union-nullable-event
 **Opened at:** 2026-09-04T22:27:13Z
+
+## Task 5: Phase 14.3 — every reader becomes an allow-list (isBooked)
+
+**Completed:**
+- `src/domain/entities.ts` — single-purpose `isBooked()`; never grows an `isLive`/lapsed variant (settled with the operator). The word is **lapsed** (SPEC:1505-1507); issue #914's "expired" is stale. Lapsed can't be computed until 14.4 puts a reserved time on the row, so every pending row is refused regardless here.
+- Test-first per surface, each failure observed for its stated reason: `find-booking` (nothing, no code minted — criterion 24), `purchases-view` + page (own **Pending** state and chip — never Cancelled, never Unpaid; whether `unpaid` should exist at all is a later question), `integrity` (pending null `eventId` intact; booked/cancelled null is a violation), `cancel-reservation` and `refund-payment` (`not_booked` before any write, lease or provider call — the refund test caught a real gap: payment rows on a pending row reached the provider), `customer-view` (`isHistory`; excluded from list/count/total), detail-pane copy for both money refusals.
+- Two pins that passed without change: `block-impact` (neither conflict nor money), `availability` (calendar shows a pending row as nothing until 14.9). At-risk board reads no reservation rows — no test.
+- Eleven literal `=== "booked"` reads swapped by `/tmp/swap-isbooked.py` (asserted counts); the three `status !== "cancelled"` deny-lists rewritten as named positive predicates (`recoverable`, `refundable`, `wasCancelled`). Acceptance grep empty.
+- Audit re-baselined for the entities.ts +17 shift: six pins re-anchored by hand, then `/tmp/renumber-code-cites.py --write` double-shifted those five — restored. Criterion 24 heading + summary row carry a dated "built" note. `check:audit` 443 green.
+- `npm run verify` 2447/2447; `purchases.spec.ts` e2e 8/8 desktop + mobile. Surface-check limit: no seed writes a pending row until 14.4, so the Pending chip is proven by unit test only and shows 0 on screen.
+
+**Code review:** 2 findings, both fixed in `b6543c2` — stray literal `=== "booked"` in `customer-view.ts:95`; audit Criterion 24 verdict stale against this branch. `/security-review` ran (money moving + money computed triggers): 0 findings, every change a net restriction.
+**PR:** [PR #930](https://github.com/mobiustripper42/muster/pull/930)
+**Points:** 5
+**Branch:** task/14.3-every-reader-allow-list
+**Opened at:** 2026-09-05T02:05:24Z
 
 **Next Steps:**
 - Merge PR #921 (Phase 14 link write-back), PR #924, PR #925 — in that order (#925 stacks on #924).

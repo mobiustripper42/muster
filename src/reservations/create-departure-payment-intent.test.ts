@@ -7,7 +7,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { FAKE_SIGNATURE, FakePaymentPort } from "../adapters/fake-payment.js";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
-import type { Offering, Vessel } from "../domain/entities.js";
+import { isBooked, type Offering, type Vessel } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import type { PaymentEvent } from "../ports/payment.js";
 import { processBookingWebhook, type WebhookDeps } from "./booking-webhook.js";
@@ -467,7 +467,8 @@ describe("payment_intent.succeeded webhook path (12.5, DEC-134)", () => {
     await expect(
       processBookingWebhook(deps, piEvent("pi_fake_1", 27570, without), FAKE_SIGNATURE),
     ).rejects.toThrow(/missing a usable priceCents/);
-    expect(await repo.listAllReservations()).toHaveLength(0);
+    // A PENDING row exists from checkout (14.4); what must not exist is a BOOKED one.
+    expect((await repo.listAllReservations()).filter(isBooked)).toHaveLength(0);
   });
 
   it("rejects a priceCents that COERCES to a number but isn't one", async () => {
@@ -485,7 +486,8 @@ describe("payment_intent.succeeded webhook path (12.5, DEC-134)", () => {
         processBookingWebhook(deps, piEvent("pi_fake_1", 27570, { ...m, priceCents: bad }), FAKE_SIGNATURE),
       ).rejects.toThrow(/missing a usable priceCents/);
     }
-    expect(await repo.listAllReservations()).toHaveLength(0);
+    // A PENDING row exists from checkout (14.4); what must not exist is a BOOKED one.
+    expect((await repo.listAllReservations()).filter(isBooked)).toHaveLength(0);
   });
 
   it("applies the same guard to extrasCents, which under-bills the balance when silently zeroed", async () => {
@@ -559,5 +561,153 @@ describe("payment_intent.succeeded webhook path (12.5, DEC-134)", () => {
     expect(confirm).toHaveBeenCalledOnce();
     const p = (await repo.listPaymentsForReservation(reservationIdFor("cs_1")))[0]!;
     expect(p).toMatchObject({ id: "pay_cs_1", stripeCheckoutSessionId: "cs_1" });
+  });
+});
+
+/**
+ * The pending row (14.4, SPEC §2.8.2–2.8.4, DEC-161, DEC-164).
+ *
+ * Checkout writes a `pending` reservation BEFORE calling Stripe. The row names the slot (not an
+ * Event), freezes the money as one invoice with every component and its rate, freezes both
+ * durations, and records the payment-intent id once Stripe answers. Everything the customer
+ * was quoted lives on the row from that moment; an operator edit after checkout starts changes
+ * nothing about this booking (criterion 20).
+ */
+describe("createDeparturePaymentIntent — the pending row before Stripe (14.4)", () => {
+  const tripOffering = (over: Partial<Offering> = {}) =>
+    offering({ tripLengthMinutes: 100, holdMinutes: 120, ...over });
+
+  async function pendingRows(repo: InMemoryRepository) {
+    return (await repo.listAllReservations()).filter((r) => r.status === "pending");
+  }
+
+  it("writes ONE pending row naming the slot, with no Event, before the intent exists", async () => {
+    const repo = await seededRepo();
+    await repo.saveOffering(tripOffering());
+    const pay = new FakePaymentPort();
+    const r = await createDeparturePaymentIntent(repo, pay, req, now);
+    expect(r.ok).toBe(true);
+
+    const rows = await pendingRows(repo);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      status: "pending",
+      source: "muster",
+      eventId: null,
+      vesselId: "v-small",
+      date: DATE,
+      time: TIME,
+      offeringId: "off-1",
+      reservedAt: NOW,
+      customerName: "Mary",
+      partySize: 4,
+      email: "m@x.io",
+      phone: "+12165550148",
+      waiverConsentAt: "2026-07-13T12:00:00.000Z",
+      waiverVersion: "v1",
+      paymentIntentId: "pi_fake_1",
+    });
+    expect(await repo.listEvents()).toHaveLength(0);
+  });
+
+  it("freezes both durations on the row — hold minutes and trip time (DEC-161)", async () => {
+    const repo = await seededRepo();
+    await repo.saveOffering(tripOffering());
+    await createDeparturePaymentIntent(repo, new FakePaymentPort(), req, now);
+    const [row] = await pendingRows(repo);
+    expect(row).toMatchObject({ holdMinutes: 120, tripMinutes: 100 });
+  });
+
+  it("freezes the money as one invoice — every component in cents AND its rate (DEC-164)", async () => {
+    const repo = await seededRepo();
+    await repo.saveOffering(tripOffering({ includedGuestCount: 2 }));
+    await createDeparturePaymentIntent(repo, new FakePaymentPort(), { ...req, guestCount: 8 }, now);
+    const [row] = await pendingRows(repo);
+    // fare 49900 + 6 extras × 5000 = 79900 → tax 7.25% = 5793, fee 3% = 2397, tip 20% = 15980.
+    expect(row!.invoice).toEqual({
+      fareCents: 49900,
+      extrasCents: 30000,
+      taxCents: 5793,
+      taxRateBps: 725,
+      serviceFeeCents: 2397,
+      serviceFeeBps: 300,
+      gratuityCents: 15980,
+      gratuityBps: 2000,
+      totalCents: 49900 + 30000 + 5793 + 2397 + 15980,
+    });
+  });
+
+  it("the row exists even when Stripe throws — written BEFORE the provider call (criterion 2)", async () => {
+    const repo = await seededRepo();
+    await repo.saveOffering(tripOffering());
+    const pay = new FakePaymentPort();
+    pay.createPaymentIntent = async () => {
+      throw new Error("stripe: 502");
+    };
+    await expect(createDeparturePaymentIntent(repo, pay, req, now)).rejects.toThrow(/stripe: 502/);
+    const rows = await pendingRows(repo);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.paymentIntentId).toBeUndefined(); // Stripe never answered
+  });
+
+  it("a rival's live pending row pushes the next buyer to the next boat (§2.8.3 on the write side)", async () => {
+    const repo = await seededRepo();
+    await repo.saveOffering(tripOffering());
+    const pay = new FakePaymentPort();
+    await createDeparturePaymentIntent(repo, pay, req, now);
+    // Strip the first buyer's HOLD so only their pending row stands between the rival and v-small.
+    for (const h of await repo.listCheckoutHolds()) await repo.removeCheckoutHold(h.id);
+    const rival = await createDeparturePaymentIntent(
+      repo,
+      pay,
+      { ...req, email: "dana@x.io", phone: "+14405550102", holderToken: TOKEN_B },
+      now,
+    );
+    expect(rival.ok).toBe(true);
+    expect(pay.intents[1]!.metadata.vesselId).toBe("v-big");
+  });
+
+  it("a retry from the SAME session is not blocked by its own earlier pending row", async () => {
+    const repo = await seededRepo();
+    await repo.saveOffering(tripOffering());
+    const pay = new FakePaymentPort();
+    await createDeparturePaymentIntent(repo, pay, req, now);
+    const again = await createDeparturePaymentIntent(repo, pay, req, now);
+    expect(again.ok).toBe(true);
+    expect(pay.intents[1]!.metadata.vesselId).toBe("v-small"); // same boat, not the next one
+  });
+
+  describe("criterion 20 — an operator edit after checkout starts changes nothing about this booking", () => {
+    async function startThenEdit(edit: Partial<Offering>) {
+      const repo = await seededRepo();
+      await repo.saveOffering(tripOffering());
+      const pay = new FakePaymentPort();
+      await createDeparturePaymentIntent(repo, pay, req, now);
+      await repo.saveOffering(tripOffering(edit)); // the edit lands while the customer is paying
+      const { deps } = makeDeps(repo, pay);
+      const r = await processBookingWebhook(deps, piEvent("pi_fake_1", 27570, pay.intents[0]!.metadata), FAKE_SIGNATURE);
+      expect(r).toEqual({ handled: true, outcome: "booked" });
+      return repo;
+    }
+
+    it("price edited → the charge and the frozen invoice are unchanged", async () => {
+      const repo = await startThenEdit({ basePriceCents: 99900 });
+      const [payment] = await repo.listPaymentsForReservation(reservationIdFor("pi_fake_1"));
+      expect(payment!.amountCents).toBe(27570);
+      const pending = await repo.getReservationByPaymentIntentId("pi_fake_1");
+      expect(pending!.invoice!.fareCents).toBe(49900);
+    });
+
+    it("hold minutes edited → the row still occupies for its frozen value", async () => {
+      const repo = await startThenEdit({ holdMinutes: 30 });
+      const pending = await repo.getReservationByPaymentIntentId("pi_fake_1");
+      expect(pending!.holdMinutes).toBe(120);
+    });
+
+    it("trip time edited → the confirmed Event runs for the frozen trip time, not the new one", async () => {
+      const repo = await startThenEdit({ tripLengthMinutes: 240 });
+      const ev = await repo.getEvent(eventIdForSlot(SMALL, DATE, TIME));
+      expect(ev!.durationMinutes).toBe(100);
+    });
   });
 });

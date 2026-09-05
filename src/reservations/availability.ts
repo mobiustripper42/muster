@@ -32,10 +32,13 @@ import type { EventId, OfferingId, VesselId } from "../domain/ids.js";
 import {
   XOLA_TRIP_MINUTES,
   busyIntervalsFor,
+  candidateHoldMinutes,
   hullIsBusy,
   minutesOfDay,
+  pendingIntervalsFor,
   type BusyInterval,
 } from "./hull-busy.js";
+import { pendingLiveSince } from "./pending.js";
 
 export interface EventAvailability {
   eventId: EventId;
@@ -295,6 +298,27 @@ export function resolveBasePrice(offering: Offering, date: string): number {
 }
 
 /**
+ * Every hull-day window a LIVE pending row occupies (14.4), shaped for `busyByHullDay`. One
+ * entry per row, keyed `vessel|date`, tagged `pending:<reservation id>` — a namespace no event
+ * id shares. A row that names no hull or day cannot occupy one and is skipped; the write side
+ * refuses to store such a row, so this is belt to that brace.
+ */
+function livePendingOccupancy(
+  reservations: readonly Reservation[],
+  asOf: string,
+): { key: string; eventId: string; interval: BusyInterval }[] {
+  const liveSince = pendingLiveSince(asOf);
+  const out: { key: string; eventId: string; interval: BusyInterval }[] = [];
+  for (const r of reservations) {
+    if (r.vesselId === undefined || r.date === undefined) continue;
+    const [interval] = pendingIntervalsFor([r], r.vesselId, r.date, liveSince);
+    if (!interval) continue;
+    out.push({ key: `${String(r.vesselId)}|${r.date}`, eventId: `pending:${String(r.id)}`, interval });
+  }
+  return out;
+}
+
+/**
  * Compute every virtual departure across the window (DEC-125). Precedence, in order:
  *  1. Only `live` offerings publish a rule (draft/hidden emit nothing).
  *  2. **Materialized `Event` wins its slot identity** — an override recomputes time/price/
@@ -371,6 +395,19 @@ export function deriveVirtualAvailability(
     busyByHullDay.set(key, list);
   }
 
+  // …and from every LIVE pending row (14.4, SPEC §2.8.3): a customer who got past the hold and
+  // is at Stripe. The row occupies its hull for its OWN frozen hold minutes until it lapses at
+  // the payment window, measured from `asOf` exactly as holds are — and, like holds, no `asOf`
+  // means no row is live. Tagged under a namespace no event id can collide with, so a slot is
+  // never exempted from a pending row the way it is from its own materialized trip.
+  if (input.asOf !== undefined) {
+    for (const { key, eventId, interval } of livePendingOccupancy(reservations, input.asOf)) {
+      const list = busyByHullDay.get(key) ?? [];
+      list.push({ eventId, interval });
+      busyByHullDay.set(key, list);
+    }
+  }
+
   /** Windows occupying this hull-day, minus the given event's own (pass none for a virtual slot). */
   const hullBusyExcept = (vesselId: VesselId, date: string, selfEventId?: string): BusyInterval[] =>
     (busyByHullDay.get(`${String(vesselId)}|${date}`) ?? [])
@@ -424,10 +461,13 @@ export function deriveVirtualAvailability(
           const identity = slotIdentity(vesselId, date, time);
           // No Muster event backs this identity (the materialized branch returned above), so
           // every window here belongs to another trip.
+          // Measured by the offering's HOLD minutes, not its trip time (SPEC §2.8.3, "same rule
+          // both sides"): what this slot would commit the hull for if sold is what it must be
+          // clear for. The same function freezes the value onto the pending row at checkout.
           const occupied = hullIsBusy(
             hullBusyExcept(vesselId, date),
             minutesOfDay(time),
-            offering.tripLengthMinutes ?? XOLA_TRIP_MINUTES,
+            candidateHoldMinutes(offering),
           );
           // BLOCK outranks a busy hull. A block is a deliberate operator act and the calendar
           // has to show it; `unavailable` is hidden there when nothing runs at that time, so

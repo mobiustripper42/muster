@@ -89,6 +89,7 @@ import {
   busyIntervalsFor,
   hullIsBusy,
   minutesOfDay,
+  pendingIntervalsFor,
 } from "../reservations/hull-busy.js";
 import type { FailureWindow, Repository } from "../ports/repository.js";
 
@@ -593,13 +594,15 @@ export class InMemoryRepository implements Repository {
   async saveBookingIfSlotFree(
     event: Event,
     reservation: Reservation,
+    pendingLiveSince: string,
   ): Promise<{ result: "won"; eventId: EventId } | { result: "lost" }> {
     // Single-threaded JS ⇒ trivially atomic; the Postgres adapter enforces the same under
     // real concurrency (advisory lock on the hull-day + row lock). (0) the HULL must be free
     // over this departure — any other scheduled trip, either source, at an overlapping time
-    // (#615, #691). This precedes materialization: losing here must not leave an event row
-    // behind. (1) find-or-materialize the Muster Event at this slot identity — one row per
-    // physical boat-slot (DEC-125 guardrail).
+    // (#615, #691), and any LIVE pending row measured by its own hold minutes (§2.8.3). This
+    // precedes materialization: losing here must not leave an event row behind. (1) find-or-
+    // materialize the Muster Event at this slot identity — one row per physical boat-slot
+    // (DEC-125 guardrail).
     const slotKey = slotIdentity(event.vesselId, event.date, event.time);
     const busy = busyIntervalsFor(
       // Exempt only the MUSTER event at this exact slot — that is the slot being claimed
@@ -612,9 +615,18 @@ export class InMemoryRepository implements Repository {
       event.vesselId,
       event.date,
     );
+    // The 14.4→14.5 bridge: the customer's own pending row (same payment-intent id) is not an
+    // occupant of the slot it is about to become. 14.5 flips that row instead (issue #916).
+    const pending = pendingIntervalsFor(
+      [...this.#reservations.values()],
+      event.vesselId,
+      event.date,
+      pendingLiveSince,
+      { paymentIntentId: reservation.paymentIntentId },
+    );
     if (
       hullIsBusy(
-        busy,
+        [...busy, ...pending],
         minutesOfDay(event.time),
         event.durationMinutes ?? XOLA_TRIP_MINUTES,
       )
@@ -683,6 +695,37 @@ export class InMemoryRepository implements Repository {
     if (blocked) return { result: "lost" };
     this.#reservations.set(reservation.id, clone({ ...reservation, eventId }));
     return { result: "won", eventId };
+  }
+
+  async savePendingIfHullFree(
+    reservation: Reservation,
+    pendingLiveSince: string,
+  ): Promise<{ result: "won" } | { result: "lost" }> {
+    // The pending write (14.4, §2.8.3). Single-threaded ⇒ check-then-insert is atomic here; the
+    // Postgres adapter takes the hull-day advisory lock for the same section. The candidate is
+    // measured by ITS hold minutes against every scheduled trip and every live pending row on
+    // the hull-day, each rival by its own. No self-exemption against events: a pending row has
+    // no Event yet, so any scheduled trip at its slot is somebody else's.
+    if (reservation.status !== "pending") throw new Error("savePendingIfHullFree: status must be pending");
+    const { vesselId, date, time, holdMinutes } = reservation;
+    if (!vesselId || !date || !time || holdMinutes === undefined) {
+      throw new Error("savePendingIfHullFree: a pending row names vesselId, date, time and holdMinutes");
+    }
+    const busy = [
+      ...busyIntervalsFor([...this.#events.values()], vesselId, date),
+      ...pendingIntervalsFor([...this.#reservations.values()], vesselId, date, pendingLiveSince, {
+        holderToken: reservation.holderToken,
+      }),
+    ];
+    if (hullIsBusy(busy, minutesOfDay(time), holdMinutes)) return { result: "lost" };
+    this.#reservations.set(reservation.id, clone(reservation));
+    return { result: "won" };
+  }
+
+  async getReservationByPaymentIntentId(paymentIntentId: string): Promise<Reservation | null> {
+    const rows = [...this.#reservations.values()].filter((r) => r.paymentIntentId === paymentIntentId);
+    const hit = rows.find((r) => r.status === "pending") ?? rows[0];
+    return hit ? clone(hit) : null;
   }
 
   // ── Checkout holds (12.1, DEC-109) ──────────────────────────────────────────

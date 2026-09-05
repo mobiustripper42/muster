@@ -342,7 +342,115 @@ const toReservation = (r: any): Reservation => ({
   ...opt("updatedAt", r.updated_at),
   ...opt<"customerId", CustomerId>("customerId", r.customer_id ?? null),
   ...opt("cancelledBy", r.cancelled_by),
+  // The slot a pending row names (14.4, §2.8.2) — null on every row written before it.
+  ...opt<"vesselId", VesselId>("vesselId", r.vessel_id === null ? null : asId<"VesselId">(r.vessel_id)),
+  ...opt("date", r.date),
+  ...opt("time", r.time),
+  ...opt<"offeringId", OfferingId>("offeringId", r.offering_id === null ? null : asId<"OfferingId">(r.offering_id)),
+  ...opt("reservedAt", r.reserved_at),
+  ...opt("holderToken", r.holder_token),
+  ...opt("paymentIntentId", r.payment_intent_id),
+  ...opt("holdMinutes", r.hold_minutes),
+  ...opt("tripMinutes", r.trip_minutes),
+  ...opt("invoice", r.booking_invoice),
 });
+
+/**
+ * Every writable `reservations` column, in ONE order, paired with `reservationValues` below.
+ * Three inserts write this table (`saveReservation`, `saveBookingIfSlotFree`,
+ * `savePendingIfHullFree`); before 14.4 each carried its own column list and the 14.4 columns
+ * would have been a fourth place for them to drift apart. `id` first and `event_id` second is
+ * load-bearing: `saveBookingIfSlotFree`'s insert refers to them as `$1` and `$2`.
+ */
+const RESERVATION_COLUMNS = [
+  "id",
+  "event_id",
+  "customer_name",
+  "party_size",
+  "email",
+  "phone",
+  "status",
+  "updated_at",
+  "source",
+  "waiver_consent_at",
+  "waiver_version",
+  "extras_cents",
+  "customer_id",
+  "cancelled_by",
+  "vessel_id",
+  "date",
+  "time",
+  "offering_id",
+  "reserved_at",
+  "holder_token",
+  "payment_intent_id",
+  "hold_minutes",
+  "trip_minutes",
+  "booking_invoice",
+] as const;
+
+/** The values for `RESERVATION_COLUMNS`, same order. `eventId` overridable — the booking write
+ *  reconciles it to the row that actually backs the slot. */
+function reservationValues(r: Reservation, eventId: EventId | null = r.eventId): unknown[] {
+  return [
+    r.id,
+    eventId,
+    r.customerName,
+    r.partySize,
+    r.email ?? null,
+    r.phone ?? null,
+    r.status,
+    r.updatedAt ?? null,
+    r.source,
+    r.waiverConsentAt ?? null,
+    r.waiverVersion ?? null,
+    r.extrasCents ?? null,
+    r.customerId ?? null,
+    r.cancelledBy ?? null,
+    r.vesselId ?? null,
+    r.date ?? null,
+    r.time ?? null,
+    r.offeringId ?? null,
+    r.reservedAt ?? null,
+    r.holderToken ?? null,
+    r.paymentIntentId ?? null,
+    r.holdMinutes ?? null,
+    r.tripMinutes ?? null,
+    r.invoice ?? null,
+  ];
+}
+
+/** `$1,$2,…,$n`. */
+function placeholders(n: number): string {
+  return Array.from({ length: n }, (_, i) => `$${i + 1}`).join(",");
+}
+
+/**
+ * "Is any LIVE pending row on this hull-day in the way of `[$3, $3 + $4)`?" — the SQL twin of
+ * `pendingIntervalsFor`, used by both writes. Params, in order:
+ *   $1 vessel_id · $2 date · $3 candidate start (minutes) · $4 candidate length (minutes) ·
+ *   $5 pendingLiveSince (ISO) · $6 the caller's own-row key
+ * Live = `pending` and (admin-source or reserved after $5) — `isLivePending`, in SQL. Each rival
+ * is measured by ITS OWN `hold_minutes` (DEC-161). A row with no hold minutes or an unreadable
+ * time is in the way of everything on its day — same posture as `hull-busy.ts`: bad data costs
+ * a slot, never a double-booked boat. `exempt` is the caller's own-row clause over `$6`.
+ */
+function pendingOverlapSql(exempt: string): string {
+  return `select 1 from reservations
+     where vessel_id = $1
+       and date = $2
+       and status = 'pending'
+       and (source = 'admin' or (reserved_at is not null and reserved_at > $5))
+       and ${exempt}
+       and (
+         time !~ '^[0-9]{1,2}:[0-9]{2}$' or hold_minutes is null
+         or (
+           (split_part(time, ':', 1)::int * 60 + split_part(time, ':', 2)::int) < $3::int + $4::int
+           and (split_part(time, ':', 1)::int * 60 + split_part(time, ':', 2)::int + hold_minutes) > $3::int
+         )
+       )
+     limit 1`;
+}
 
 const toPayment = (r: any): Payment => ({
   id: asId<"PaymentId">(r.id),
@@ -1372,31 +1480,13 @@ export class PostgresRepository implements Repository {
 
   // ── Reservations ───────────────────────────────────────────────────────────
   async saveReservation(r: Reservation): Promise<void> {
+    const cols = RESERVATION_COLUMNS;
+    const set = cols.slice(1).map((c) => `${c}=excluded.${c}`).join(", ");
     await this.#pool.query(
-      `insert into reservations(id, event_id, customer_name, party_size, email, phone, status, updated_at, source, waiver_consent_at, waiver_version, extras_cents, customer_id, cancelled_by)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-       on conflict (id) do update set event_id=excluded.event_id, customer_name=excluded.customer_name,
-         party_size=excluded.party_size, email=excluded.email, phone=excluded.phone, status=excluded.status,
-         updated_at=excluded.updated_at, source=excluded.source,
-         waiver_consent_at=excluded.waiver_consent_at, waiver_version=excluded.waiver_version,
-         extras_cents=excluded.extras_cents, customer_id=excluded.customer_id,
-         cancelled_by=excluded.cancelled_by`,
-      [
-        r.id,
-        r.eventId,
-        r.customerName,
-        r.partySize,
-        r.email ?? null,
-        r.phone ?? null,
-        r.status,
-        r.updatedAt ?? null,
-        r.source,
-        r.waiverConsentAt ?? null,
-        r.waiverVersion ?? null,
-        r.extrasCents ?? null,
-        r.customerId ?? null,
-        r.cancelledBy ?? null,
-      ],
+      `insert into reservations(${cols.join(", ")})
+       values (${placeholders(cols.length)})
+       on conflict (id) do update set ${set}`,
+      reservationValues(r),
     );
   }
   async getReservation(id: ReservationId): Promise<Reservation | null> {
@@ -1421,6 +1511,7 @@ export class PostgresRepository implements Repository {
   async saveBookingIfSlotFree(
     event: Event,
     reservation: Reservation,
+    pendingLiveSince: string,
   ): Promise<{ result: "won"; eventId: EventId } | { result: "lost" }> {
     // First-booking-of-a-virtual-slot (DEC-109/125). One transaction: (1) materialize the
     // Muster Event at its slot identity — `on conflict do nothing` + the partial-unique
@@ -1474,6 +1565,24 @@ export class PostgresRepository implements Repository {
       if ((overlap.rowCount ?? 0) > 0) {
         await client.query("rollback");
         return { result: "lost" }; // another trip holds this boat over this departure
+      }
+      // (0c) …and free of every LIVE pending row on the hull, each measured by its OWN hold
+      // minutes (14.4, §2.8.3). The bridge until 14.5: the customer's own pending row — the one
+      // carrying this payment-intent id — is the slot being confirmed, not an occupant of it.
+      const pendingOverlap = await client.query(
+        pendingOverlapSql("not (payment_intent_id is not null and payment_intent_id = $6)"),
+        [
+          event.vesselId,
+          event.date,
+          minutesOfDay(event.time),
+          event.durationMinutes ?? XOLA_TRIP_MINUTES,
+          pendingLiveSince,
+          reservation.paymentIntentId ?? null,
+        ],
+      );
+      if ((pendingOverlap.rowCount ?? 0) > 0) {
+        await client.query("rollback");
+        return { result: "lost" }; // somebody is paying for this boat over this departure
       }
       await client.query(
         `insert into events (id, vessel_id, date, time, capacity, status, source, price, dock, duration_minutes)
@@ -1537,29 +1646,14 @@ export class PostgresRepository implements Repository {
       }
       const eventId = asId<"EventId">(slot.rows[0].id);
       await client.query(
-        `insert into reservations
-           (id, event_id, customer_name, party_size, email, phone, status, updated_at, source, waiver_consent_at, waiver_version, extras_cents, customer_id)
-         select $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13
+        `insert into reservations (${RESERVATION_COLUMNS.join(", ")})
+         select ${placeholders(RESERVATION_COLUMNS.length)}
          where not exists (
            select 1 from reservations
            where event_id=$2 and source='muster' and status='booked' and id <> $1
          )
          on conflict (id) do nothing`,
-        [
-          reservation.id,
-          eventId,
-          reservation.customerName,
-          reservation.partySize,
-          reservation.email ?? null,
-          reservation.phone ?? null,
-          reservation.status,
-          reservation.updatedAt ?? null,
-          reservation.source,
-          reservation.waiverConsentAt ?? null,
-          reservation.waiverVersion ?? null,
-          reservation.extrasCents ?? null,
-          reservation.customerId ?? null,
-        ],
+        reservationValues(reservation, eventId),
       );
       const won = await client.query("select 1 from reservations where id=$1", [
         reservation.id,
@@ -1572,6 +1666,75 @@ export class PostgresRepository implements Repository {
     } finally {
       client.release();
     }
+  }
+
+  async savePendingIfHullFree(
+    reservation: Reservation,
+    pendingLiveSince: string,
+  ): Promise<{ result: "won" } | { result: "lost" }> {
+    // The pending write (14.4, §2.8.3): check and insert under ONE hull-day lock — the same
+    // `pg_advisory_xact_lock` as `saveBookingIfSlotFree`, so a pending write and a confirm on
+    // the same boat-day serialize against each other too. The candidate is measured by ITS hold
+    // minutes; every rival by its own. No self-exemption against events: a pending row has no
+    // Event, so any scheduled trip at its slot is somebody else's. The same-token exemption is
+    // the retry case: a customer's second attempt must not be refused by their first.
+    if (reservation.status !== "pending") throw new Error("savePendingIfHullFree: status must be pending");
+    const { vesselId, date, time, holdMinutes } = reservation;
+    if (!vesselId || !date || !time || holdMinutes === undefined) {
+      throw new Error("savePendingIfHullFree: a pending row names vesselId, date, time and holdMinutes");
+    }
+    const client = await this.#pool.connect();
+    try {
+      await client.query("begin");
+      await client.query("select pg_advisory_xact_lock(hashtext($1))", [`${String(vesselId)}|${date}`]);
+      const start = minutesOfDay(time);
+      const events = await client.query(
+        `select 1 from events
+          where vessel_id = $1
+            and date = $2
+            and status = 'scheduled'
+            and (split_part(time, ':', 1)::int * 60 + split_part(time, ':', 2)::int)
+                  < $3::int + $4::int
+            and (split_part(time, ':', 1)::int * 60 + split_part(time, ':', 2)::int
+                  + coalesce(duration_minutes, $5::int)) > $3::int
+          limit 1`,
+        [vesselId, date, start, holdMinutes, XOLA_TRIP_MINUTES],
+      );
+      if ((events.rowCount ?? 0) > 0) {
+        await client.query("rollback");
+        return { result: "lost" };
+      }
+      const pending = await client.query(
+        pendingOverlapSql("not (holder_token is not null and holder_token = $6)"),
+        [vesselId, date, start, holdMinutes, pendingLiveSince, reservation.holderToken ?? null],
+      );
+      if ((pending.rowCount ?? 0) > 0) {
+        await client.query("rollback");
+        return { result: "lost" };
+      }
+      await client.query(
+        `insert into reservations (${RESERVATION_COLUMNS.join(", ")})
+         values (${placeholders(RESERVATION_COLUMNS.length)})`,
+        reservationValues(reservation),
+      );
+      await client.query("commit");
+      return { result: "won" };
+    } catch (e) {
+      await client.query("rollback");
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+
+  async getReservationByPaymentIntentId(paymentIntentId: string): Promise<Reservation | null> {
+    // Pending first: while the 14.4 bridge stands, a confirmed booking is two rows sharing the id.
+    const { rows } = await this.#pool.query(
+      `select * from reservations where payment_intent_id = $1
+        order by (status = 'pending') desc limit 1`,
+      [paymentIntentId],
+    );
+    return rows[0] ? toReservation(rows[0]) : null;
   }
 
   // ── Checkout holds (12.1, DEC-109) ──────────────────────────────────────────

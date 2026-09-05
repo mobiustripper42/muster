@@ -26,6 +26,7 @@ import {
 } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 import { eventIdForSlot } from "./availability.js";
+import { pendingLiveSince } from "./pending.js";
 import { resolveCustomerId } from "../customers/resolve.js";
 
 /**
@@ -71,6 +72,14 @@ export interface SlotBookingRequest {
   waiverVersion?: string;
   /** Stripe session id — keys the deterministic reservation id (idempotent redelivery). */
   idempotencyKey: string;
+  /** Trip length frozen on the PENDING row at checkout (14.4, DEC-161). Wins over the offering's
+   *  current value — an operator edit during checkout must not change how long this trip runs.
+   *  Absent ⇒ the offering's value, for callers with no pending row (the hosted-session path). */
+  durationMinutes?: number;
+  /** The payment-intent id this booking confirms. Carried onto the booked row so the pending
+   *  row bearing the same id is exempt from the hull check — until 14.5 flips that row instead
+   *  of writing beside it, a confirm would otherwise be refused by its own checkout. */
+  paymentIntentId?: string;
 }
 
 export type SlotBookingResult =
@@ -98,6 +107,7 @@ export async function writeSlotBooking(
     repo.getVessel(req.vesselId),
     repo.getOffering(req.offeringId),
   ]);
+  const durationMinutes = req.durationMinutes ?? offering?.tripLengthMinutes;
   const candidateEvent: Event = {
     id: eventId,
     vesselId: req.vesselId,
@@ -114,9 +124,10 @@ export async function writeSlotBooking(
     // long a trip that already ran was. Downstream this sets the shift's end, so it
     // decides when the completion sweep pays out reliability. Absent on the offering ⇒
     // omitted, and `eventDurationMinutes` falls back to the flat DEC-041 constant.
-    ...(offering?.tripLengthMinutes !== undefined
-      ? { durationMinutes: offering.tripLengthMinutes }
-      : {}),
+    //
+    // The pending row's frozen value wins when the caller has one (14.4): it was read off the
+    // offering when checkout STARTED, which is the moment the customer's quote was fixed.
+    ...(durationMinutes !== undefined ? { durationMinutes } : {}),
   };
   // Same get-or-create as the seeded path (12.12b, DEC-132) — this is the LIVE booking path.
   const customerId = await resolveCustomerId(repo, req, now);
@@ -133,11 +144,16 @@ export async function writeSlotBooking(
     ...(req.phone !== undefined ? { phone: req.phone } : {}),
     ...(req.waiverConsentAt !== undefined ? { waiverConsentAt: req.waiverConsentAt } : {}),
     ...(req.waiverVersion !== undefined ? { waiverVersion: req.waiverVersion } : {}),
+    ...(req.paymentIntentId !== undefined ? { paymentIntentId: req.paymentIntentId } : {}),
     status: "booked",
     updatedAt: now(),
   };
 
-  const res = await repo.saveBookingIfSlotFree(candidateEvent, reservation);
+  // BRIDGE (14.4 → 14.5): the pending row this confirms is still on the hull, live, under the
+  // same payment-intent id. The CAS exempts it by that id; every OTHER live pending row is a
+  // rival and refuses the write. 14.5 replaces this insert with a flip of the pending row, at
+  // which point the exemption — and the second row — go away.
+  const res = await repo.saveBookingIfSlotFree(candidateEvent, reservation, pendingLiveSince(now()));
   if (res.result === "won") {
     // The booking now holds the slot authoritatively — release the transient hold (by slot,
     // since its id was a per-attempt mint we don't carry through the webhook).

@@ -738,6 +738,67 @@ export interface Reservation {
    */
   cancelledBy?: CancelledBy;
   // No waiver field — DEC-012.
+
+  // ── The slot a `pending` row names (14.4, SPEC §2.8.2–2.8.4) ──────────────────────────────
+  // Written before Stripe is called. All optional because every row written before 14.4 — and
+  // every `'xola'` row — has none of them; a pending row has all of `vesselId`, `date`, `time`,
+  // `offeringId`, `reservedAt`, `holdMinutes`, `tripMinutes`.
+  /** The hull the row occupies. `Event.vesselId` once confirmed; here until then. */
+  vesselId?: VesselId;
+  /** `YYYY-MM-DD`, the reserved departure day. */
+  date?: string;
+  /** `HH:MM`, the reserved departure time — a listed departure on the offering's grid. */
+  time?: string;
+  offeringId?: OfferingId;
+  /**
+   * ISO-8601 UTC instant the row was written. Lapse is COMPUTED from this plus the payment
+   * window (`PAYMENT_WINDOW_MINUTES`, `src/reservations/pending.ts`) at read time (§2.8.1); no
+   * `lapsed` state is ever stored. Absent on admin-source rows — they never lapse (DEC-163).
+   */
+  reservedAt?: string;
+  /**
+   * The checkout session's cookie token. A retry from the same session must not be refused by
+   * its own earlier row (14.6 collapses the retry onto one row). Never sent to Stripe.
+   */
+  holderToken?: string;
+  /**
+   * The Stripe PaymentIntent id, recorded once Stripe answers. Confirm finds the row by it
+   * (issue #916). Absent when Stripe threw — the row is still real and still occupies.
+   */
+  paymentIntentId?: string;
+  /**
+   * How long the hull is committed for this departure, FROZEN from `Offering.holdMinutes` at
+   * write time (DEC-161). This is what the row occupies the hull for (§2.8.3). Not the payment
+   * window — that is a setting, and the same word in `checkout_holds` land.
+   */
+  holdMinutes?: number;
+  /** Frozen `Offering.tripLengthMinutes`. What the Event runs for once confirmed (DEC-161). */
+  tripMinutes?: number;
+  /** Every money component in cents and its rate, frozen at write time (DEC-164). */
+  invoice?: BookingInvoice;
+}
+
+/**
+ * The frozen quote (DEC-164): one JSON, every component in cents AND the rate it was computed
+ * at, so the number on the row can be audited without the setting that produced it. Money only —
+ * durations are columns on the reservation, and anything with a time is a column.
+ */
+export interface BookingInvoice {
+  /** Base fare for the departure — `Event.price`/offering price at write time, before extras. */
+  fareCents: number;
+  /** Extra-guest surcharge, `extraGuests × extraGuestPriceCents`. */
+  extrasCents: number;
+  /** On fare + extras. */
+  taxCents: number;
+  taxRateBps: number;
+  /** On fare + extras. */
+  serviceFeeCents: number;
+  serviceFeeBps: number;
+  /** The mandatory tier (DEC-124), on fare + extras. */
+  gratuityCents: number;
+  gratuityBps: number;
+  /** Sum of the five cents fields — the trip's price, not necessarily what was charged now. */
+  totalCents: number;
 }
 
 /** Who ended a booking (#724). The refund policy branches on it — see `refund-terms.ts`. */

@@ -7,25 +7,31 @@
  * + frozen money in metadata. The client confirms against the returned `clientSecret`; the
  * `payment_intent.succeeded` webhook books via `writeSlotBooking`, keyed on the intent id.
  *
- * **Writes no reservation.** The hold is the only pre-payment write; the reservation +
- * Payment land in the webhook (DEC-109). All money is FROZEN into metadata here — the
- * webhook never recomputes from live config.
+ * **Writes the PENDING reservation before Stripe (14.4, SPEC §2.8.2).** The row names the slot
+ * (no Event yet), freezes both durations (DEC-161) and the whole invoice (DEC-164), and picks up
+ * the payment-intent id once Stripe answers. The booked flip + Payment still land in the webhook
+ * (DEC-109) — until 14.5 rewires confirm to flip this row, the webhook inserts a second, booked
+ * row beside it, exempt from the pending row's occupancy by the shared intent id.
  *
  * **The metadata is on its way out (DEC-164, issue #812).** SPEC §2.8.5 says the booking charge
  * sends none, and §2.8.4 names `booking_invoice` — one value on our own row — as where the frozen
- * money belongs. Until that lands, `booking-webhook.ts` rebuilds the booking from the keys below
- * and defaults a missing one to zero, which is the defect, not the storage.
+ * money belongs. The row now carries it; the metadata stays until `booking-webhook.ts` reads the
+ * row instead (14.5), because today it rebuilds the booking from the keys below.
  *
  * This block used to credit "the DEC-107 freeze rule". DEC-107 ruled the **opposite** — tax read
  * live, not frozen — and is retired; it is now a signpost to §2.8.4a. Removed rather than
  * repointed, because a citation for a rule nobody made is worse than none.
  */
-import type { OfferingId } from "../domain/ids.js";
+import { randomUUID } from "node:crypto";
+import type { BookingInvoice, Reservation } from "../domain/entities.js";
+import { asId, type OfferingId, type ReservationId } from "../domain/ids.js";
 import type { PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
 import { resolveBasePrice, slotIdentity } from "./availability.js";
 import { acquireDepartureHold } from "./claim.js";
+import { candidateHoldMinutes, XOLA_TRIP_MINUTES } from "./hull-busy.js";
 import { chargeNowCents, feeCentsFor, taxCentsFor } from "./payment-config.js";
+import { pendingLiveSince } from "./pending.js";
 import {
   composeFare,
   effectiveIncludedGuests,
@@ -150,6 +156,58 @@ export async function createDeparturePaymentIntent(
     chargeNowCents(fare.fareCents, taxCents, serviceFeeCents, config) + gratuityCents;
   const kind = config.depositMode === "deposit" ? "deposit" : "full";
 
+  // ── The pending row, BEFORE Stripe (14.4, SPEC §2.8.2–2.8.4) ─────────────────
+  // From here the booking exists on our side: the slot it names, both durations and every money
+  // component frozen (DEC-161, DEC-164). An operator edit landing while the customer types a
+  // card number changes nothing about this booking (criterion 20), and a provider that hangs or
+  // 502s leaves the row rather than the customer's quote. Written under the hull-day lock with
+  // the same measure the deriver and the hold used — the row's hold minutes — so a rival whose
+  // hold has expired cannot slip a second row onto the hull between our hold and our write.
+  //
+  // `totalCents` is the whole quote, not the amount charged now: in deposit mode the charge is
+  // `chargeNowCents` and the remainder is collected later against this same invoice.
+  const reservedAt = now();
+  const invoice: BookingInvoice = {
+    fareCents: priceCents,
+    extrasCents: fare.extrasCents,
+    taxCents,
+    taxRateBps: config.taxRateBps,
+    serviceFeeCents,
+    serviceFeeBps: config.serviceFeeBps,
+    gratuityCents,
+    gratuityBps: req.gratuityBps,
+    totalCents: fare.fareCents + taxCents + serviceFeeCents + gratuityCents,
+  };
+  const pending: Reservation = {
+    id: mintPendingReservationId(),
+    eventId: null,
+    source: "muster",
+    status: "pending",
+    customerName: req.customerName,
+    partySize: req.guestCount,
+    vesselId: hold.vesselId,
+    date: hold.date,
+    time: hold.time,
+    offeringId: offering!.id,
+    reservedAt,
+    holdMinutes: candidateHoldMinutes(offering!),
+    tripMinutes: offering!.tripLengthMinutes ?? XOLA_TRIP_MINUTES,
+    invoice,
+    ...(req.holderToken !== undefined ? { holderToken: req.holderToken } : {}),
+    ...(req.email !== undefined ? { email: req.email } : {}),
+    ...(req.phone !== undefined ? { phone: req.phone } : {}),
+    waiverConsentAt: req.waiverConsentAt,
+    waiverVersion: req.waiverVersion,
+    updatedAt: reservedAt,
+  };
+  const written = await repo.savePendingIfHullFree(pending, pendingLiveSince(reservedAt));
+  if (written.result === "lost") {
+    // The hull was taken between the hold and this write. Release our hold so the boat is not
+    // parked for the rest of the window, and report it the way the hold would have.
+    await repo.removeCheckoutHold(hold.id);
+    return { ok: false, reason: "sold_out" };
+  }
+
   const intent = await payments.createPaymentIntent({
     amountCents,
     currency: "usd",
@@ -190,5 +248,15 @@ export async function createDeparturePaymentIntent(
       waiverVersion: req.waiverVersion,
     },
   });
+  // Stripe answered: pin its id to the row so confirm can find it (issue #916). A plain upsert,
+  // not the guarded write — the hull check already ran, and re-running it here could refuse a
+  // row that is already on the hull.
+  await repo.saveReservation({ ...pending, paymentIntentId: intent.paymentIntentId });
   return { ok: true, clientSecret: intent.clientSecret, paymentIntentId: intent.paymentIntentId };
+}
+
+/** A fresh id per pending row — the same `resv-<32 hex>` shape `reservationIdFor` mints, but
+ *  random: nothing deterministic exists yet to key it on (the intent id comes after the row). */
+function mintPendingReservationId(): ReservationId {
+  return asId<"ReservationId">(`resv-${randomUUID().replaceAll("-", "")}`);
 }

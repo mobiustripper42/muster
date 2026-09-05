@@ -316,11 +316,41 @@ export interface Repository {
    * that slot (the whole-boat mutex). `reservation.eventId` is reconciled to the actual
    * materialized event id (`won.eventId`). Idempotent on `reservation.id`: a re-delivered
    * webhook returns `{result:"won"}`. `event.id` MUST be the deterministic `eventIdForSlot`.
+   *
+   * Since 14.4 the section also refuses when a LIVE pending row on the hull overlaps the event
+   * (SPEC §2.8.3 — a pending row occupies for its own `holdMinutes`). `pendingLiveSince` is
+   * the caller's clock, `pendingLiveSince(asOf)`: rows reserved at or before it have lapsed.
+   * Required, not optional — an absent clock would count no pending row and fail open.
+   *
+   * **Bridge, deleted by 14.5:** a pending row whose `paymentIntentId` equals
+   * `reservation.paymentIntentId` is the confirming customer's OWN row and is not counted.
+   * 14.5 flips that row to `booked` instead of inserting beside it (issue #916).
    */
   saveBookingIfSlotFree(
     event: Event,
     reservation: Reservation,
+    pendingLiveSince: string,
   ): Promise<{ result: "won"; eventId: EventId } | { result: "lost" }>;
+
+  /**
+   * The pending write (14.4, SPEC §2.8.3–2.8.4): check and insert under ONE hull-day lock. The
+   * row is written iff no scheduled Event and no LIVE pending row on the same hull-day overlaps
+   * `[time, time + holdMinutes)`. The rival pending row is measured by ITS frozen `holdMinutes`;
+   * the candidate by its own. A live row with the same non-empty `holderToken` is the asker's
+   * earlier attempt and is not counted. `pendingLiveSince` as above. No Event is created — the
+   * row names the slot (§2.8.2). `reservation.status` must be `pending`.
+   */
+  savePendingIfHullFree(
+    reservation: Reservation,
+    pendingLiveSince: string,
+  ): Promise<{ result: "won" } | { result: "lost" }>;
+
+  /**
+   * The row carrying this Stripe PaymentIntent id, or null. How confirm finds the pending row
+   * (issue #916). While the 14.4 bridge stands a confirmed booking is two rows sharing the id;
+   * the pending one is returned first.
+   */
+  getReservationByPaymentIntentId(paymentIntentId: string): Promise<Reservation | null>;
 
   // ── Checkout holds — the transient 15-min soft reservation (12.1, DEC-109) ──
   /**

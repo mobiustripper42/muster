@@ -10,7 +10,7 @@
  * not what has cleared. A cancelled booking contributes nothing.
  */
 
-import type { Customer, Event, Reservation } from "../domain/entities.js";
+import { isBooked, type Customer, type Event, type Reservation } from "../domain/entities.js";
 
 export interface CustomerBooking {
   reservationId: string;
@@ -44,8 +44,17 @@ export interface CustomerDetailView extends CustomerRow {
 
 /** The value of ONE reservation: resolved base + frozen extras. Cancelled ⇒ 0. */
 function bookingValueCents(r: Reservation, event: Event | undefined): number {
-  if (r.status !== "booked") return 0;
+  if (!isBooked(r)) return 0;
   return (event?.price ?? 0) + (r.extrasCents ?? 0);
+}
+
+/**
+ * What counts as a customer's history (14.3, SPEC §2.8.10): `booked`, and `cancelled` marked
+ * as such. A `pending` row is a checkout in flight, not something they did — it has no event
+ * (§2.8.2) and would render as an undated "Trip". Named statuses, not `!== "pending"` (§2.8.1).
+ */
+function isHistory(r: Reservation): boolean {
+  return isBooked(r) || r.status === "cancelled";
 }
 
 /** Sort key for the history list — undated rows sink rather than throwing off the order. */
@@ -60,6 +69,7 @@ export function buildCustomerDetail(
   eventsById: ReadonlyMap<string, Event>,
 ): CustomerDetailView {
   const history: CustomerBooking[] = reservations
+    .filter(isHistory)
     .map((r) => {
       const event = eventsById.get(String(r.eventId));
       return {
@@ -82,7 +92,7 @@ export function buildCustomerDetail(
 }
 
 function rowFor(customer: Customer, history: readonly CustomerBooking[]): CustomerRow {
-  const booked = history.filter((b) => b.status === "booked");
+  const booked = history.filter(isBooked);
   return {
     id: String(customer.id),
     displayCode: customer.displayCode,
@@ -106,7 +116,7 @@ export function buildCustomerRows(
 ): CustomerRow[] {
   const byCustomer = new Map<string, Reservation[]>();
   for (const r of reservations) {
-    if (!r.customerId) continue;
+    if (!r.customerId || !isHistory(r)) continue;
     const k = String(r.customerId);
     (byCustomer.get(k) ?? byCustomer.set(k, []).get(k)!).push(r);
   }

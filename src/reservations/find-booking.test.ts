@@ -124,6 +124,23 @@ describe("matchBookingForRecovery", () => {
     expect(matchBookingForRecovery(onlyDead, { contact: "m@example.com", lastName: "Webb" }, TODAY)?.reservation.id).toBe("dead");
   });
 
+  // Criterion 24 (SPEC §2.8.11): "The public booking-recovery lookup returns nothing for a
+  // `pending` reservation, lapsed or not." A pending row is somebody who has not paid; handing
+  // them a manage link is the leak §2.8.10 names first. Lapsed is not distinguishable here — the
+  // row has no reserved time until 14.4 — so the pending row is refused whatever its age.
+  it("returns nothing for a pending reservation — even when it is the only match", () => {
+    const pending = row({ id: "p1", email: "m@example.com", status: "pending" });
+    pending.reservation = { ...pending.reservation, eventId: null };
+    expect(matchBookingForRecovery([pending], { contact: "m@example.com", lastName: "Webb" }, TODAY)).toBeNull();
+  });
+
+  it("a pending row never outranks a cancelled one — it is not `live`", () => {
+    const pending = row({ id: "p1", date: "2026-09-12", email: "m@example.com", status: "pending" });
+    pending.reservation = { ...pending.reservation, eventId: null };
+    const dead = row({ id: "dead", date: "2026-08-20", email: "m@example.com", status: "cancelled" });
+    expect(matchBookingForRecovery([pending, dead], { contact: "m@example.com", lastName: "Webb" }, TODAY)?.reservation.id).toBe("dead");
+  });
+
   it("never matches a Xola-sourced booking — it has no Muster link to recover", () => {
     const rows = [row({ id: "x1", email: "m@example.com" })];
     rows[0]!.reservation = { ...rows[0]!.reservation, source: "xola" };

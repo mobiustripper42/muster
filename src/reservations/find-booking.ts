@@ -19,7 +19,7 @@
  * for its single generic failure.
  */
 
-import type { Event, Reservation } from "../domain/entities.js";
+import { isBooked, type Event, type Reservation } from "../domain/entities.js";
 import { canonicalizePhone } from "../customers/identity.js";
 
 /** A reservation joined to its departure — the deriver needs the date to pick "soonest". */
@@ -62,6 +62,11 @@ export function matchBookingForRecovery(
   const candidates = rows.filter(({ reservation }) => {
     // Xola holds its own bookings (DEC-105) — there is no Muster link to recover for one.
     if (reservation.source !== "muster") return false;
+    // Allow-list, not deny-list (§2.8.1, criterion 24): `booked` is recoverable and so is
+    // `cancelled` (its receipt lives behind the same link). `pending` is somebody who has not
+    // paid — lapsed or not, they get nothing, and no code is ever minted for one.
+    const recoverable = isBooked(reservation) || reservation.status === "cancelled";
+    if (!recoverable) return false;
     if (!nameMatches(reservation.customerName, name)) return false;
     if (email) return reservation.email?.trim().toLowerCase() === email;
     // Canonicalize BOTH sides through the same function the booking form uses, so the stored
@@ -73,7 +78,7 @@ export function matchBookingForRecovery(
 
   // A cancelled booking is still recoverable — its receipt lives behind the same link — but it
   // must never be handed back while a live booking exists for the same person.
-  const live = candidates.filter((c) => c.reservation.status !== "cancelled");
+  const live = candidates.filter((c) => isBooked(c.reservation));
   const pool = live.length > 0 ? live : candidates;
 
   // Soonest upcoming first; failing that, the most recent past. Someone asking for their link is

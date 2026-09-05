@@ -19,7 +19,7 @@
  * read the same instant.
  */
 
-import type { Seat } from "../domain/entities.js";
+import { isBooked, type Seat } from "../domain/entities.js";
 import type { CrewMemberId, RoleTypeId, SeatId, ShiftId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 import {
@@ -162,9 +162,7 @@ export async function buildAssignmentView(
   const trips: TripView[] = [];
   for (const event of events) {
     if (event.status !== "scheduled") continue;
-    const booked = (await repo.listReservationsForEvent(event.id)).filter(
-      (r) => r.status === "booked",
-    );
+    const booked = (await repo.listReservationsForEvent(event.id)).filter(isBooked);
     trips.push({
       departureTime: event.time,
       pax: booked.reduce((sum, r) => sum + r.partySize, 0),

@@ -130,6 +130,41 @@
   says: how long a checkout holds the boat before the customer loses it and it goes back on sale. The code calls it the checkout hold.
   not: []
 
+# A pending reservation past its window. Computed from the reserved time on every read, never
+# stored (§2.8.1) — which is why there is no `expired` status to register. `expired` stays
+# usable in prose for the window itself ("after the window expired"), so it is not forbidden.
+
+- term: lapsed
+  says: a pending reservation whose payment window has run out — worked out from the clock every time, never written down
+  not: []
+
+# ── What the operator's calendar draws ──────────────────────────────────────────
+#
+# Five slot states, fixed in §2.10.2 (task 14.1). Registered because `sold` and `busy` are
+# different questions — who bought this slot, and which trip is using the boat — and the
+# corpus was using "booked" and "unavailable" for both. The code's names go inside `says`,
+# same as `trip`: the gate reads prose, and `availability.ts` is renamed when 14.9 touches it.
+
+- term: open
+  says: a slot that is for sale; nothing is written for it
+  not: []
+
+- term: sold
+  says: a slot somebody bought — a booked reservation on it. The code calls the slot booked.
+  not: []
+
+- term: held
+  says: a slot somebody is at the checkout for — a live pending reservation on it
+  not: []
+
+- term: busy
+  says: a slot nobody bought, on a boat that is out on another trip overlapping it. The code calls it unavailable.
+  not: [unavailable]
+
+- term: blocked
+  says: a slot an operator block covers
+  not: []
+
 # ── The frozen quote ────────────────────────────────────────────────────────────
 #
 # Registered ahead of the issue #812 build, same reason as the payments block above: a term

@@ -111,7 +111,9 @@ export default async function ReservationDetailPage({
   try {
     const repo = getRepo();
     reservation = await repo.getReservation(asId<"ReservationId">(reservationId));
-    event = reservation ? await repo.getEvent(reservation.eventId) : null;
+    // A pending row has no event yet (§2.8.2); it lands on `notFound()` below. What the
+    // operator sees for a pending row on the calendar is 14.3's allow-list decision.
+    event = reservation?.eventId ? await repo.getEvent(reservation.eventId) : null;
   } catch (e) {
     logSwallowed("admin/reservation", e, "the reservation and its event did not load");
     return (

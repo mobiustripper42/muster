@@ -11,7 +11,7 @@
  * empty state from the board's ✓) live in the SURFACE, not here —
  * see app/(admin)/admin/shifts/page.tsx and DEC-042.
  */
-import type { Event, Shift } from "../domain/entities.js";
+import { isBooked, type Event, type Shift } from "../domain/entities.js";
 import { TERMINAL_SHIFT_STATES } from "../domain/states.js";
 import type { Repository } from "../ports/repository.js";
 import { resolveShiftStateOnRead } from "../builder/tick.js";
@@ -179,9 +179,7 @@ export async function deriveAllShifts(
       const event = await repo.getEvent(eventId);
       if (!event || event.status !== "scheduled") continue;
       scheduledEvents.push(event);
-      const booked = (await repo.listReservationsForEvent(event.id)).filter(
-        (r) => r.status === "booked",
-      );
+      const booked = (await repo.listReservationsForEvent(event.id)).filter(isBooked);
       trips.push({
         time: event.time,
         pax: booked.reduce((sum, r) => sum + r.partySize, 0),

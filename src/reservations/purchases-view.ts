@@ -28,8 +28,12 @@ import { balanceDueCents, countsAsPaid, taxCentsFor } from "./payment-config.js"
  *   list must not make.
  * - `cancelled` — the reservation's own status, which outranks any payment state for display.
  *   A cancelled booking showing "Paid" reads like a live order.
+ * - `pending` (14.3, SPEC §2.8.10) — a checkout in flight, money not yet taken. Its own word:
+ *   it is not `cancelled` (nobody cancelled anything) and not `unpaid` (that is a BOOKED row
+ *   whose payment never landed — a defect, where this is a state). Lapsed is not distinguishable
+ *   here until the row carries a reserved time (14.4).
  */
-export type PaymentState = "cancelled" | "disputed" | "refunded" | "paid" | "deposit" | "unpaid";
+export type PaymentState = "pending" | "cancelled" | "disputed" | "refunded" | "paid" | "deposit" | "unpaid";
 
 export interface PurchaseRow {
   reservationId: string;
@@ -100,8 +104,10 @@ function stateOf(
   refundedCents: number,
   disputed: boolean,
 ): PaymentState {
-  // Reservation status outranks money: a cancelled booking is not a live order.
-  if (reservation.status !== "booked") return "cancelled";
+  // Reservation status outranks money, and each status is named (§2.8.1 — no deny-list):
+  // a cancelled booking is not a live order; a pending one is not an order yet.
+  if (reservation.status === "cancelled") return "cancelled";
+  if (reservation.status === "pending") return "pending";
   // Above `refunded` and `unpaid` both. Without this a chargeback renders as "Unpaid" — true,
   // since `countsAsPaid` excludes it, but indistinguishable from a booking whose webhook never
   // landed, which is a different problem with a different fix. A dispute is the more specific
@@ -197,6 +203,7 @@ export function searchPurchases(rows: readonly PurchaseRow[], query: string): Pu
 export function stateCounts(rows: readonly PurchaseRow[]): Record<PaymentState | "all", number> {
   const counts: Record<PaymentState | "all", number> = {
     all: rows.length,
+    pending: 0,
     cancelled: 0,
     disputed: 0,
     refunded: 0,

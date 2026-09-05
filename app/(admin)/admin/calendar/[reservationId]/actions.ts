@@ -15,7 +15,7 @@ import {
   refundableTotalFor,
   refundReservation,
 } from "@core/reservations/refund-payment.js";
-import type { Reservation } from "@core/domain/entities.js";
+import { isBooked, type Reservation } from "@core/domain/entities.js";
 import { forwardFormNotices } from "../../../../lib/channel";
 import { reissueBookingCode } from "@core/reservations/ensure-booking-code.js";
 import { resendReservationLink } from "../../../../lib/booking-confirmation";
@@ -416,7 +416,7 @@ export async function resendConfirmation(formData: FormData): Promise<void> {
   // A cancelled booking must not be re-confirmed. The body says the trip is booked and carries a
   // live manage link; sending it after a cancellation tells the customer the opposite of what
   // just happened, in writing. Security review.
-  if (reservation.status !== "booked") redirect(back({ resendErr: "cancelled" }));
+  if (!isBooked(reservation)) redirect(back({ resendErr: "cancelled" }));
 
   // Wrapped like every other core call in this file (`createBalanceCheckout`, `cancelReservation`,
   // `refundReservation`). `resendReservationLink` builds its own channels and calls `getRepo()`
@@ -482,7 +482,7 @@ export async function reissueBookingLink(formData: FormData): Promise<void> {
   if (!reservation) redirect(back({ reissueErr: "reservation_missing" }));
   if (reservation.source !== "muster") redirect(back({ reissueErr: "not_muster" }));
   if (!reservation.email && !reservation.phone) redirect(back({ reissueErr: "no_contact" }));
-  if (reservation.status !== "booked") redirect(back({ reissueErr: "cancelled" }));
+  if (!isBooked(reservation)) redirect(back({ reissueErr: "cancelled" }));
 
   let reissue: Awaited<ReturnType<typeof reissueBookingCode>>;
   try {

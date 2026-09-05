@@ -678,6 +678,27 @@ export function runRepositoryContract(
       expect(got.waiverVersion).toBe("v1");
     });
 
+    // §2.8.1 three states; §2.8.2 a pending row names a slot, not an Event, so its `eventId`
+    // is null until it confirms. Written before the union and the column changed (14.2), and
+    // seen failing on both — the type and the `not null` constraint.
+    it("reservations: status round-trips pending | booked | cancelled (§2.8.1)", async () => {
+      const rid = (s: string) => asId<"ReservationId">(s);
+      for (const status of ["pending", "booked", "cancelled"] as const) {
+        await repo.saveReservation(reservation({ id: rid(`resv-${status}`), source: "muster", status }));
+        expect((await repo.getReservation(rid(`resv-${status}`)))!.status).toBe(status);
+      }
+    });
+
+    it("reservations: a pending row round-trips a null eventId (§2.8.2)", async () => {
+      await repo.saveReservation(reservation({ source: "muster", status: "pending", eventId: null }));
+      expect((await repo.getReservation(asId<"ReservationId">("resv-1")))!.eventId).toBeNull();
+    });
+
+    it("reservations: source round-trips admin (§2.8.8 reaper branches on it)", async () => {
+      await repo.saveReservation(reservation({ source: "admin" }));
+      expect((await repo.getReservation(asId<"ReservationId">("resv-1")))!.source).toBe("admin");
+    });
+
     // The `saveReservationIfUnclaimed` contract block that stood here is GONE (#693). It was
     // the DEC-109 whole-boat claim keyed on one `event_id` — seven cases across both adapters —
     // and its only caller was the legacy `writeBooking`, retired in the same change. The

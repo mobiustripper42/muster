@@ -27,6 +27,7 @@
 import { formShifts, PartialFormError, type FormResult } from "../builder/form-shifts.js";
 import { confirmBookingFromIntent } from "./confirm-booking.js";
 import { logFormAudit } from "../oracle/audit-log.js";
+import { eventIdOfBooked, isBooked } from "../domain/entities.js";
 import type { Payment, Reservation } from "../domain/entities.js";
 import {
   asId,
@@ -480,7 +481,8 @@ export async function processBookingCharge(
     if (isSlotBooking && gratuityCents > 0) {
       await deps.repo.saveGratuity({
         id: asId<"GratuityId">(`grat_pre_${charge.key}`),
-        eventId: result.reservation.eventId,
+        // Just written as `booked` by `writeSlotBooking`, so its event exists (§2.8.2).
+        eventId: eventIdOfBooked(result.reservation),
         reservationId: result.reservation.id,
         kind: "pre",
         amountCents: gratuityCents,
@@ -758,7 +760,7 @@ async function recordPostGratuity(
 ): Promise<WebhookResult> {
   const reservationId = asId<"ReservationId">(completed.metadata.reservationId ?? "");
   const reservation = await deps.repo.getReservation(reservationId);
-  if (!reservation || reservation.source !== "muster" || reservation.status !== "booked") {
+  if (!reservation || reservation.source !== "muster" || !isBooked(reservation)) {
     await deps.alertPaidButUnbooked(
       `Post-trip gratuity paid for reservation ${reservationId}, but it is missing/cancelled - ` +
         `Stripe session ${completed.sessionId}. RECONCILE MANUALLY (gratuity received, not attached).`,
@@ -767,7 +769,7 @@ async function recordPostGratuity(
   }
   await deps.repo.saveGratuity({
     id: asId<"GratuityId">(`grat_post_${completed.sessionId}`),
-    eventId: reservation.eventId,
+    eventId: eventIdOfBooked(reservation), // guarded `booked` above
     reservationId,
     kind: "post",
     amountCents: completed.amountTotalCents,
@@ -827,8 +829,10 @@ async function recordBalancePayment(
   // quietly omits it is worse than one that shows it flagged.
   await deps.repo.savePayment(payment);
 
-  const event = await deps.repo.getEvent(reservation.eventId);
-  if (reservation.status !== "booked" || event?.price === undefined) {
+  // A pending row has no event (§2.8.2); the payment is already recorded above and must not
+  // be lost to a throw, so it falls through to the same alert as an unpriced or cancelled one.
+  const event = reservation.eventId === null ? undefined : await deps.repo.getEvent(reservation.eventId);
+  if (!isBooked(reservation) || event?.price === undefined) {
     await deps.alertPaidButUnbooked(
       `Balance payment recorded for reservation ${reservationId}, but it is cancelled or ` +
         `unpriced - Stripe session ${completed.sessionId}. RECONCILE / REFUND MANUALLY in Stripe.`,

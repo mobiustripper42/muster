@@ -132,6 +132,29 @@ describe("computeBlockImpact", () => {
     const impact = computeBlockImpact(block, inputWith([]));
     expect(impact).toEqual({ removedSlots: 0, conflictCount: 0, conflictCents: 0 });
   });
+
+  it("a PENDING row is neither a conflict nor money — nobody has paid (14.3, SPEC §2.8.10)", () => {
+    // What block impact shows for a pending row: nothing. It has no event (§2.8.2) and no
+    // taken fare, so the slot it names still reads as one open slot removed. Once 14.4 gives
+    // the row a reserved time, whether a block over a LIVE checkout should warn is 14.9's.
+    const pending: Reservation = {
+      id: asId<"ReservationId">("resv-pending"),
+      eventId: null,
+      source: "muster",
+      customerName: "Mid Checkout",
+      partySize: 4,
+      status: "pending",
+    };
+    const block: Block = {
+      id: asId<"BlockId">("blk-5"),
+      kind: "vessel",
+      vesselId: VESSEL,
+      startDate: "2026-08-12",
+      endDate: "2026-08-12",
+    };
+    const impact = computeBlockImpact(block, { ...inputWith([]), reservations: [pending] });
+    expect(impact).toEqual({ removedSlots: TIMES.length, conflictCount: 0, conflictCents: 0 });
+  });
 });
 
 describe("computeBlockImpact — a hull already out on another trip (#615, #691)", () => {

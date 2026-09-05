@@ -77,6 +77,9 @@ export async function loadBookingByCode(
 
     const reservation = await repo.getReservation(codeRow.reservationId);
     if (!reservation) return { kind: "unknown" };
+    // A pending row has no event yet (§2.8.2) and no booking code is minted for one today;
+    // what this page shows a customer mid-checkout is 14.3's allow-list decision.
+    if (reservation.eventId === null) return { kind: "unknown" };
     const event = await repo.getEvent(reservation.eventId);
     if (!event) return { kind: "unknown" };
 

@@ -625,12 +625,29 @@ export interface Event {
 export type ReservationStatus = "pending" | "booked" | "cancelled";
 
 /**
+ * The one allow-list (§2.8.1, 14.3). Paid and live — the row the manifest, the money paths,
+ * the calendar and every admin list mean when they say "a reservation".
+ *
+ * This answers exactly one question and must never grow a second: no `isLive`, no "booked or
+ * a pending row still inside its window" hiding behind it — a helper that answers two
+ * questions is a deny-list with a friendlier name. "Does this pending row still hold its
+ * boat" is 14.8's, under its own name, doing the clock arithmetic §2.8.1 requires.
+ *
+ * A reader that wants `cancelled` too (the receipt is still readable behind a manage link)
+ * names both statuses itself, so the grep for readers that bypass this stays honest.
+ */
+export function isBooked(r: Pick<Reservation, "status">): boolean {
+  return r.status === "booked";
+}
+
+/**
  * SPEC §2.8.2 — a pending reservation names a slot, not an Event, and its `eventId` is
  * null until it confirms. The Event is materialized at confirm time, so before that there
  * is nothing to point at; pre-computing the id would put in-flight checkouts on the crew
  * manifest. Readers that need the Event of a row that must already be booked go through
- * `eventIdOfBooked`; the allow-listing of readers that may legitimately see a pending
- * row is 14.3.
+ * `eventIdOfBooked` — after `isBooked`, so a pending row is refused as an outcome rather
+ * than thrown as a defect. The throw is for a `booked` row with no event, which is a write
+ * bug, not a state.
  */
 export function eventIdOfBooked(r: Pick<Reservation, "id" | "eventId" | "status">): EventId {
   if (r.eventId === null) {

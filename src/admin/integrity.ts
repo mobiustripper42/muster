@@ -113,9 +113,15 @@ export async function checkIntegrity(repo: Repository): Promise<IntegrityReport>
   }
   for (const e of events) miss(vesselIds, "event", e.id, "vesselId", e.vesselId);
   for (const r of reservations) {
-    // Null while pending (§2.8.2) — nothing to resolve. What this report says about a
-    // pending row, and whether a null on a non-pending row is a miss, is 14.3's call.
-    if (r.eventId !== null) miss(eventIds, "reservation", r.id, "eventId", r.eventId);
+    // Null on a `pending` row is the contract (§2.8.2) — nothing to resolve, not a miss, and
+    // the report must not go red because somebody is mid-checkout (§2.8.10). Null on any
+    // other status is a write bug: confirm sets `eventId` in the same write as `booked`, and
+    // cancel keeps it. Named by status, not `!== "pending"` (§2.8.1).
+    if (r.eventId !== null) {
+      miss(eventIds, "reservation", r.id, "eventId", r.eventId);
+    } else if (r.status === "booked" || r.status === "cancelled") {
+      v.push({ entity: "reservation", id: r.id, ref: "eventId", missingId: `(null on a ${r.status} row)` });
+    }
   }
   for (const s of shifts) {
     miss(vesselIds, "shift", s.id, "vesselId", s.vesselId);

@@ -90,6 +90,22 @@ describe("lifetime value", () => {
     expect(rows[0]!.bookingCount).toBe(1);
   });
 
+  it("a PENDING row is not history — not in the list, the count, or the total (14.3, SPEC §2.8.10)", () => {
+    // A checkout in flight is not something the customer did yet. Whether a pending row even
+    // carries a `customerId` is 14.4's; if one does, this view must not show an undated
+    // "Trip" for it. Cancelled stays in history (marked) — the two are named, not `!== pending`.
+    const pending = reservation("r-p", "e-none", { status: "pending", eventId: null });
+    const rows = buildCustomerRows(
+      [customer()],
+      [reservation("r1", "e1"), pending],
+      eventsById(event("e1")),
+    );
+    expect(rows[0]!).toMatchObject({ lifetimeCents: 49900, bookingCount: 1 });
+
+    const detail = buildCustomerDetail(customer(), [reservation("r1", "e1"), pending], eventsById(event("e1")));
+    expect(detail.history.map((h) => h.reservationId)).toEqual(["r1"]);
+  });
+
   it("treats an unpriced event as zero rather than throwing off the total", () => {
     const unpriced = event("e1");
     delete (unpriced as { price?: number }).price;

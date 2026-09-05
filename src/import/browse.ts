@@ -7,7 +7,7 @@
  * for the future M4 UI; a thin text render so it's usable pre-stack.
  */
 
-import type { Reservation } from "../domain/entities.js";
+import { isBooked, type Reservation } from "../domain/entities.js";
 import type { EventId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
 
@@ -27,7 +27,7 @@ export async function buildEventBrowse(repo: Repository): Promise<EventBrowseRow
   const rows = await Promise.all(
     events.map(async (e): Promise<EventBrowseRow> => {
       const resvs = await repo.listReservationsForEvent(e.id);
-      const booked = resvs.filter((r) => r.status === "booked");
+      const booked = resvs.filter(isBooked);
       return {
         eventId: e.id,
         vesselId: e.vesselId,

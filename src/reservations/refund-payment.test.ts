@@ -386,6 +386,28 @@ describe("refundReservation", () => {
       reason: "not_muster",
     });
   });
+
+  it("refuses a PENDING row before touching the provider — §3.4 acts on money that was taken (14.3, §2.8.10)", async () => {
+    // Refused on STATUS, not on the money: the charges here are deliberately present so the
+    // plan would otherwise succeed. A pending row with payment rows against it is exactly the
+    // retry-on-the-same-row shape 14.6 builds, and none of it is refundable until it confirms.
+    const repo = await twoCharges();
+    await repo.saveReservation({ ...reservation, status: "pending", eventId: null });
+    const port = new FakePaymentPort();
+
+    expect(await refundReservation(deps(repo, port), RESV, 1000, 0)).toEqual({
+      ok: false,
+      reason: "not_booked",
+    });
+    expect(port.refunds).toEqual([]);
+  });
+
+  it("still refunds a CANCELLED row — cancel-then-refund is the flow, and the receipt lives on", async () => {
+    const repo = await twoCharges();
+    await repo.saveReservation({ ...reservation, status: "cancelled" });
+
+    expect(await refundReservation(deps(repo), RESV, 1000, 0)).toMatchObject({ ok: true, refundedCents: 1000 });
+  });
 });
 
 /**

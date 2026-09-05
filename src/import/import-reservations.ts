@@ -309,7 +309,10 @@ export async function importRecords(
       result.reservationsAdded++;
       result.added.push(ref);
     }
-    if (rec.status === "cancelled" && existingReservation?.status !== "cancelled") {
+    // "Newly" = the stored row was not already cancelled. This is a transition counter, so the
+    // question really is about `cancelled` itself — not a proxy for live (§2.8.1).
+    const wasCancelled = existingReservation?.status === "cancelled";
+    if (rec.status === "cancelled" && !wasCancelled) {
       result.reservationsNewlyCancelled++;
       result.newlyCancelled.push(ref);
     }

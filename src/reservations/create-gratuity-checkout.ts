@@ -7,6 +7,7 @@
  *
  * The manage-page UI that calls this is 12.6 (DEC-122 living link); 12.3 provides the mechanism.
  */
+import { isBooked } from "../domain/entities.js";
 import type { ReservationId } from "../domain/ids.js";
 import type { PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
@@ -30,7 +31,7 @@ export async function createGratuityCheckout(
   if (!reservation || reservation.source !== "muster") {
     return { ok: false, reason: "reservation_missing" };
   }
-  if (reservation.status !== "booked") return { ok: false, reason: "not_active" };
+  if (!isBooked(reservation)) return { ok: false, reason: "not_active" };
 
   const session = await payments.createCheckoutSession({
     amountCents,

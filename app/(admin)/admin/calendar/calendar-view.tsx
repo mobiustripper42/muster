@@ -5,6 +5,7 @@ import type {
   Reservation,
   Vessel,
 } from "@core/domain/entities.js";
+import { isBooked } from "@core/domain/entities.js";
 import { vesselDateOf } from "@core/config/tenant.js";
 import {
   deriveVirtualAvailability,
@@ -224,7 +225,7 @@ export async function loadCalendarData(sp: Search): Promise<CalendarData | null>
   // and cannot be edited here is #704.
   const reservationByEventId = new Map<string, Reservation>();
   for (const r of reservations) {
-    if (r.status === "booked") reservationByEventId.set(String(r.eventId), r);
+    if (isBooked(r)) reservationByEventId.set(String(r.eventId), r);
   }
 
   // Who is actually on each physical boat-slot. `reservationByEventId` above covers both sources

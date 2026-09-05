@@ -162,6 +162,17 @@ describe("cancelReservation", () => {
     expect((await repo.getEvent(EVENT))?.status).toBe("scheduled");
   });
 
+  it("refuses a PENDING row — §3.3 acts on money, and nobody has paid (14.3, SPEC §2.8.10)", async () => {
+    // A refused outcome, not a throw: 14.2 threw from `eventIdOfBooked` with nothing written,
+    // which was safe but a defect-shaped answer to a state-shaped question.
+    const repo = await seeded({ status: "pending", eventId: null });
+    const result = await cancelReservation(deps(repo), RESV, "operator");
+
+    expect(result).toEqual({ ok: false, reason: "not_booked" });
+    expect((await repo.getReservation(RESV))?.status).toBe("pending");
+    expect((await repo.getEvent(EVENT))?.status).toBe("scheduled");
+  });
+
   it("records WHO cancelled — the answer the refund turned on and nothing kept (#724)", async () => {
     // The confirm already asks customer-vs-operator, because the refund policy branches on it
     // (`quoteCancelRefund`). Until now that answer picked a policy and was thrown away: the

@@ -125,6 +125,41 @@ describe("checkIntegrity", () => {
     expect(report.scanned.magicTokens).toBe(1);
   });
 
+  it("a pending row with no event is intact — that null is the contract, not a dangling ref (14.3, §2.8.2)", async () => {
+    const repo = await seedSpine();
+    await repo.saveReservation({
+      id: asId<"ReservationId">("resv-pending"),
+      eventId: null,
+      source: "muster",
+      customerName: "Mid Checkout",
+      partySize: 2,
+      status: "pending",
+    });
+    const report = await checkIntegrity(repo);
+    expect(report.ok).toBe(true);
+    expect(report.violations).toEqual([]);
+  });
+
+  it("a BOOKED row with no event is a violation — confirm sets eventId, so a null there is a write bug", async () => {
+    const repo = await seedSpine();
+    await repo.saveReservation({
+      id: asId<"ReservationId">("resv-bad"),
+      eventId: null,
+      source: "muster",
+      customerName: "Half Confirmed",
+      partySize: 2,
+      status: "booked",
+    });
+    const report = await checkIntegrity(repo);
+    expect(report.ok).toBe(false);
+    expect(report.violations).toContainEqual({
+      entity: "reservation",
+      id: "resv-bad",
+      ref: "eventId",
+      missingId: "(null on a booked row)",
+    });
+  });
+
   it("an empty store is trivially intact", async () => {
     const report = await checkIntegrity(new InMemoryRepository());
     expect(report.ok).toBe(true);

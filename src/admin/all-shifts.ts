@@ -12,6 +12,7 @@
  * see app/(admin)/admin/shifts/page.tsx and DEC-042.
  */
 import type { Event, Shift } from "../domain/entities.js";
+import { TERMINAL_SHIFT_STATES } from "../domain/states.js";
 import type { Repository } from "../ports/repository.js";
 import { resolveShiftStateOnRead } from "../builder/tick.js";
 import { suggestSplit, type SplitSuggestion } from "../builder/derive.js";
@@ -168,7 +169,7 @@ export async function deriveAllShifts(
     // the more dangerous of the two now that the board keeps showing it — a finished
     // trip presenting as a live crewed one, complete with a "needs attention" link.
     const state =
-      shift.state === "Cancelled" || shift.state === "Completed"
+      TERMINAL_SHIFT_STATES.has(shift.state)
         ? shift.state
         : (await resolveShiftStateOnRead(repo, shift.id, now, opts)) ?? shift.state;
 

@@ -19,6 +19,27 @@ export const SHIFT_STATES = [
 
 export type ShiftState = (typeof SHIFT_STATES)[number];
 
+/**
+ * States the engine must never work: the trip ran, or the day was killed (#926).
+ *
+ * This was spelled out as `state === "Cancelled" || state === "Completed"` in
+ * fourteen places across nine files, and named in none of them — so adding a
+ * third terminal state meant finding all fourteen, and missing one meant the
+ * engine kept working a shift it should have left alone, silently. Nothing
+ * mechanical can see that: `sonarjs/no-identical-functions` is per-file, so
+ * fourteen identical *expressions* in nine files produce no finding at all.
+ *
+ * **Not every `Cancelled` check belongs here.** Eight sites test `Cancelled`
+ * alone and are deliberately narrower — payroll, gratuity, the time clock, the
+ * oracle and two crew-app readers all still count a `Completed` shift, because
+ * the trip ran and somebody worked it. Terminal-to-the-engine and
+ * excluded-from-pay are different questions with different answers.
+ *
+ * `states.test.ts` pins the partition rather than the contents: a seventh shift
+ * state fails there until someone decides which side of the line it is on.
+ */
+export const TERMINAL_SHIFT_STATES: ReadonlySet<ShiftState> = new Set(["Completed", "Cancelled"]);
+
 // ── Seat sub-states ─────────────────────────────────────────────────────────
 
 /**

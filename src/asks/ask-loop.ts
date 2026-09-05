@@ -21,6 +21,7 @@
 import type { Ask, AskAnswer, CrewMember, Event, Seat } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import type { AskId, CrewMemberId, SeatId } from "../domain/ids.js";
+import { TERMINAL_SHIFT_STATES } from "../domain/states.js";
 import type { Repository } from "../ports/repository.js";
 import {
   bailLatenessMs,
@@ -64,7 +65,7 @@ export async function refreshShiftState(
   // leftover seat (DEC-084 keeps seats on cancel) would overwrite `Cancelled` with a
   // live state, un-hiding the shift and re-arming the tick's ask loop. Mirrors the
   // tick's own terminal guard and #20's Completed guard in formShifts.
-  if (shift.state === "Cancelled" || shift.state === "Completed") return;
+  if (TERMINAL_SHIFT_STATES.has(shift.state)) return;
   const seats = await repo.listSeatsForShift(shiftId);
   await repo.saveShift({ ...shift, state: deriveShiftState(seats) });
 }
@@ -96,7 +97,7 @@ export async function refreshShiftStateHorizon(
   if (!shift) return;
   // Same terminal guard as `refreshShiftState`: never resurrect a Cancelled/
   // Completed shift off a leftover seat (DEC-084).
-  if (shift.state === "Cancelled" || shift.state === "Completed") return;
+  if (TERMINAL_SHIFT_STATES.has(shift.state)) return;
   const seats = await repo.listSeatsForShift(shiftId);
   const events: Event[] = [];
   for (const eventId of shift.eventIds) {

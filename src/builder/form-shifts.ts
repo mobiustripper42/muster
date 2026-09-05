@@ -23,6 +23,7 @@
 import type { Event, Seat, Shift } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import type { VesselId, ShiftId, CrewMemberId } from "../domain/ids.js";
+import { TERMINAL_SHIFT_STATES } from "../domain/states.js";
 import type { Repository } from "../ports/repository.js";
 import {
   deriveSeats,
@@ -231,7 +232,7 @@ export async function formShifts(
     // `mergeShift`'s `surviving` set (DEC-084): a dual-side person still
     // working the day's other half must NOT be told "you're off."
     const live = (s: Shift | null | undefined): boolean =>
-      s != null && s.state !== "Cancelled" && s.state !== "Completed";
+      s != null && !TERMINAL_SHIFT_STATES.has(s.state);
     // Collapsed THIS run = no scheduled trips left AND the side was live before
     // (the same transition guard the cancel path uses — a re-pull of an
     // already-collapsed side never re-fires).
@@ -359,11 +360,7 @@ async function formOneShift(
   // All events cancelled → cancel the shift (lifecycle, not seat-derived). Never
   // create a shift from cancelled-only events; never re-cancel a Completed/Cancelled.
   if (scheduled.length === 0) {
-    if (
-      existing &&
-      existing.state !== "Completed" &&
-      existing.state !== "Cancelled"
-    ) {
+    if (existing && !TERMINAL_SHIFT_STATES.has(existing.state)) {
       await repo.saveShift({ ...existing, state: "Cancelled" });
       result.shiftsUpdated++;
       result.shiftsCancelled++;
@@ -521,8 +518,7 @@ async function formOneShift(
     const startBefore = existing.earliestStart ?? null;
     if (
       opts?.notifyTripChanges &&
-      existing.state !== "Cancelled" &&
-      existing.state !== "Completed" &&
+      !TERMINAL_SHIFT_STATES.has(existing.state) &&
       (tripsMoved || startMoved)
     ) {
       const before = new Set(existing.eventIds.map(String));

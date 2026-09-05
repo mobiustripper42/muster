@@ -68,6 +68,7 @@ import type {
   ShiftId,
   VesselId,
 } from "../domain/ids.js";
+import { TERMINAL_SHIFT_STATES } from "../domain/states.js";
 import type { ShiftState } from "../domain/states.js";
 import type { Repository } from "../ports/repository.js";
 import { memoizingRepo } from "../adapters/memoizing-repo.js";
@@ -213,7 +214,7 @@ export async function deriveAtRiskBoard(
 
   for (const shift of await repo.listShifts()) {
     // Lifecycle states are terminal — mirrors tick's guard.
-    if (shift.state === "Cancelled" || shift.state === "Completed") continue;
+    if (TERMINAL_SHIFT_STATES.has(shift.state)) continue;
 
     const ids = new Set(shift.eventIds);
     const events = allEvents.filter((e) => ids.has(e.id));

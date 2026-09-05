@@ -12,6 +12,7 @@
  */
 
 import type { CrewMemberId } from "../domain/ids.js";
+import { TERMINAL_SHIFT_STATES } from "../domain/states.js";
 import type { Repository } from "../ports/repository.js";
 import type { Shift } from "../domain/entities.js";
 import { TENANT_TIMEZONE, vesselDateOf } from "../config/tenant.js";
@@ -182,7 +183,7 @@ export async function buildCrewAppView(
     // #415: a live ask whose shift was cancelled/completed since it went out (a
     // Xola re-import can Cancel the shift without vacating the seat, DEC-084) must
     // not phantom here — every other surface (board, calendar feed, lean) skips it.
-    if (!shift || shift.state === "Cancelled" || shift.state === "Completed") continue;
+    if (!shift || TERMINAL_SHIFT_STATES.has(shift.state)) continue;
     // Call → shift end (vessel-local "HH:mm") so the card shows the real window.
     const window = await committedWindowFor(repo, shift);
     asks.push({

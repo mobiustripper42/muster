@@ -23,7 +23,7 @@
  * reconciles — a dashboard refund lands via the `charge.refunded` webhook.
  */
 import { randomUUID } from "node:crypto";
-import type { Payment } from "../domain/entities.js";
+import { isBooked, type Payment } from "../domain/entities.js";
 import type { PaymentId, ReservationId } from "../domain/ids.js";
 import type { PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
@@ -61,6 +61,7 @@ export type RefundOutcome =
       reason:
         | "reservation_missing"
         | "not_muster"
+        | "not_booked"
         | "invalid_amount"
         | "exceeds_refundable"
         | "no_payment_intent"
@@ -170,6 +171,12 @@ export async function refundReservation(
   if (!reservation) return { ok: false, reason: "reservation_missing" };
   // Xola holds its own money (DEC-105) — there is nothing here to hand back.
   if (reservation.source !== "muster") return { ok: false, reason: "not_muster" };
+  // §2.8.10: a refund is money that was taken going back. Allow-list (§2.8.1): `booked`, and
+  // `cancelled` because cancel-then-refund is the flow. A `pending` row is refused on status
+  // and never on the money — once 14.6 records a declined attempt's payment id on the row, a
+  // pending row CAN carry payment rows, and none of them is a taken charge.
+  const refundable = isBooked(reservation) || reservation.status === "cancelled";
+  if (!refundable) return { ok: false, reason: "not_booked" };
 
   // ── The mutex (#726) ──────────────────────────────────────────────────────
   // Taken BEFORE the payments are read, and that ordering is the fix, not an implementation

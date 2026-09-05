@@ -46,6 +46,9 @@ const STATES: { key: PaymentState | "all"; label: string }[] = [
   // A dispute we WON is not here: the funds are back, the row reads Paid again, and this chip
   // stays a worklist that shrinks rather than an archive that only grows.
   { key: "disputed", label: "Disputed" },
+  // A checkout in flight (14.3, SPEC §2.8.10). Its own chip so it never reads as Cancelled or
+  // Unpaid; nothing writes one until 14.4, so the chip counts zero until then.
+  { key: "pending", label: "Pending" },
   { key: "cancelled", label: "Cancelled" },
 ];
 
@@ -59,6 +62,8 @@ const BADGE: Record<PaymentState, string> = {
   // The label carries the difference; a chargeback is not a worse-looking refund, it is a
   // different reason for the same missing money.
   disputed: "border-bad-line bg-bad-bg text-bad",
+  // Same tokens as deposit — money is in motion, not missing and not lost.
+  pending: "border-warn-line bg-warn-bg text-warn",
   cancelled: "border-line bg-bg text-faint",
 };
 

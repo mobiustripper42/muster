@@ -10,7 +10,7 @@
  */
 
 import type { CrewMemberId, ShiftId } from "../domain/ids.js";
-import type { Event, Shift } from "../domain/entities.js";
+import { isBooked, type Event, type Shift } from "../domain/entities.js";
 import type { Repository } from "../ports/repository.js";
 import {
   bailLatenessMs,
@@ -246,9 +246,7 @@ export async function buildShiftManifest(
     const event = await repo.getEvent(eventId);
     if (!event) continue;
     rawEvents.push(event);
-    const reservations = (await repo.listReservationsForEvent(eventId)).filter(
-      (r) => r.status === "booked",
-    );
+    const reservations = (await repo.listReservationsForEvent(eventId)).filter(isBooked);
     const guests: ManifestGuest[] = reservations.map((r) => {
       const contact = contactByReservation.get(String(r.id));
       return {

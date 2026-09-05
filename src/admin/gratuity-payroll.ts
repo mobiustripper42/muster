@@ -12,7 +12,7 @@
  * among the crew on that event's **shift's Confirmed + required** seats (deduped) — the same
  * "who worked this trip" set the hours report pays.
  */
-import type { Gratuity, GustoIdentity } from "../domain/entities.js";
+import { isBooked, type Gratuity, type GustoIdentity } from "../domain/entities.js";
 import type { Repository } from "../ports/repository.js";
 
 // ── Pure split ───────────────────────────────────────────────────────────────
@@ -124,7 +124,7 @@ export async function buildGratuityPayroll(
   // 2. Gratuities in window, on booked reservations only.
   const bookedResIds = new Set(
     (await repo.listAllReservations())
-      .filter((r) => r.status === "booked")
+      .filter(isBooked)
       .map((r) => String(r.id)),
   );
   const gratuities = (await repo.listAllGratuities()).filter(

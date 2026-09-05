@@ -16,6 +16,7 @@ import {
   deriveAvailability,
   deriveVirtualAvailability,
   eventIdForSlot,
+  isActiveMusterClaim,
   isSlotBlocked,
   slotIdentity,
 } from "./availability.js";
@@ -74,6 +75,16 @@ describe("deriveAvailability — whole-boat mutex", () => {
 
   it("a Xola reservation never claims a Muster event", () => {
     const out = deriveAvailability([ev("m1")], [res("r1", "m1", { source: "xola" })]);
+    expect(out[0]!.available).toBe(true);
+  });
+
+  it("a PENDING row is not a sold claim — the calendar shows it as nothing until 14.9 (14.3, SPEC §2.8.10)", () => {
+    // `isActiveMusterClaim` is the one allow-list every slot reader (calendar, /book, block
+    // impact) sits on. A pending row has no event (§2.8.2) and is not `booked`, so no slot is
+    // `sold` for it. Rendering a LIVE pending row as `held` needs the row to name its slot,
+    // which is 14.4's write and 14.9's read — this pins that it is never `sold` in the meantime.
+    expect(isActiveMusterClaim(res("r1", "m1", { status: "pending", eventId: null }))).toBe(false);
+    const out = deriveAvailability([ev("m1")], [res("r1", "m1", { status: "pending", eventId: null })]);
     expect(out[0]!.available).toBe(true);
   });
 

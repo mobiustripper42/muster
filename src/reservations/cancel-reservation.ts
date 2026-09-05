@@ -24,7 +24,7 @@
  */
 import { formShifts, PartialFormError, type FormResult } from "../builder/form-shifts.js";
 import { logFormAudit } from "../oracle/audit-log.js";
-import { eventIdOfBooked } from "../domain/entities.js";
+import { eventIdOfBooked, isBooked } from "../domain/entities.js";
 import type { CancelledBy, Payment } from "../domain/entities.js";
 import type { EventId, ReservationId } from "../domain/ids.js";
 import type { Repository } from "../ports/repository.js";
@@ -111,7 +111,7 @@ export type CancelOutcome =
       /** The event cancelled, or absent when another active booking still holds it. */
       freedEventId?: EventId;
     }
-  | { ok: false; reason: "reservation_missing" | "not_muster" };
+  | { ok: false; reason: "reservation_missing" | "not_muster" | "not_booked" };
 
 /**
  * `by` is REQUIRED, not optional (#724). Every caller already knows the answer — the admin
@@ -130,11 +130,13 @@ export async function cancelReservation(
   // overwritten by the next pull and would tell the customer nothing.
   if (reservation.source !== "muster") return { ok: false, reason: "not_muster" };
   // §2.8.10: cancellation acts on a row with money behind it and must never be handed a
-  // `pending` one. Resolved BEFORE any write so a pending row throws with nothing changed;
-  // 14.3 turns the throw into a refused outcome.
+  // `pending` one. Allow-list (§2.8.1): `booked` cancels; `cancelled` re-runs for the repair
+  // below; anything else is refused before any write. `eventIdOfBooked` after that is the
+  // write-bug guard only — a booked row with no event.
+  const alreadyCancelled = reservation.status === "cancelled";
+  if (!isBooked(reservation) && !alreadyCancelled) return { ok: false, reason: "not_booked" };
   const eventId = eventIdOfBooked(reservation);
 
-  const alreadyCancelled = reservation.status === "cancelled";
   if (!alreadyCancelled) {
     await deps.repo.saveReservation({
       ...reservation,

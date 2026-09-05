@@ -101,6 +101,18 @@ describe("payment state", () => {
     expect(rows[0]!.state).toBe("paid");
   });
 
+  it("a pending row reads `pending` — never `cancelled`, never `unpaid` (14.3, SPEC §2.8.10)", () => {
+    // Before 14.3 `stateOf` returned `cancelled` for any status that was not `booked`, so a
+    // checkout in flight would have shown the operator **Cancelled**. It is not `unpaid` either:
+    // that word is a BOOKED row whose payment never landed — a different problem.
+    const rows = build({ reservations: [reservation("r1", { status: "pending", eventId: null })] });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.state).toBe("pending");
+    // No event yet (§2.8.2) ⇒ no departure and no trusted money columns.
+    expect(rows[0]!.date).toBeUndefined();
+    expect(rows[0]!.priceKnown).toBe(false);
+  });
+
   it("a cancelled booking still reads `cancelled` even with a dispute on it", () => {
     // Reservation status outranks money, unchanged: a cancelled booking is not a live order,
     // and showing it in the Disputed worklist would put something there nobody can act on.

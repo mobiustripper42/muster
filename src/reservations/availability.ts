@@ -26,6 +26,7 @@ import type {
   Reservation,
   Vessel,
 } from "../domain/entities.js";
+import { isBooked } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import type { EventId, OfferingId, VesselId } from "../domain/ids.js";
 import {
@@ -53,7 +54,7 @@ export interface EventAvailability {
 
 /** Is `r` a live claim on a Muster boat-event? (booked + Muster-owned). */
 export function isActiveMusterClaim(r: Reservation): boolean {
-  return r.source === "muster" && r.status === "booked";
+  return r.source === "muster" && isBooked(r);
 }
 
 /**

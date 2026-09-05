@@ -11,7 +11,7 @@
  * reflects the current outstanding balance (no durable token). The auto-emit scheduler
  * (`balanceDueDaysBeforeEvent`) and the customer-facing email/page are P12+.
  */
-import { eventIdOfBooked } from "../domain/entities.js";
+import { eventIdOfBooked, isBooked } from "../domain/entities.js";
 import type { ReservationId } from "../domain/ids.js";
 import type { PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
@@ -36,7 +36,7 @@ export async function createBalanceCheckout(
     return { ok: false, reason: "reservation_missing" };
   }
   // Don't collect a balance on a cancelled booking.
-  if (reservation.status !== "booked") return { ok: false, reason: "not_active" };
+  if (!isBooked(reservation)) return { ok: false, reason: "not_active" };
 
   const event = await repo.getEvent(eventIdOfBooked(reservation)); // allow-listed `booked` above
   if (!event || event.price === undefined) return { ok: false, reason: "unpriced" };

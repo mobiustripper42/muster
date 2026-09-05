@@ -229,12 +229,16 @@ export function actionMessage(
           return "Couldn’t issue a new link just now. Their existing link still works.";
       }
     case "cancelErr":
-      return value === "not_muster"
-        ? "This booking is Xola's — cancel it there, or the next import will bring it back."
-        // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
-        : value === "reservation_missing"
-          ? "That reservation no longer exists."
-          : "Couldn’t cancel just now. Try again in a moment.";
+      switch (value) {
+        case "not_muster":
+          return "This booking is Xola's — cancel it there, or the next import will bring it back.";
+        case "reservation_missing":
+          return "That reservation no longer exists.";
+        case "not_booked":
+          return "This checkout hasn’t been paid, so there is nothing to cancel. It lapses on its own.";
+        default:
+          return "Couldn’t cancel just now. Try again in a moment.";
+      }
     case "refundErr":
       switch (value) {
         case "invalid_amount":
@@ -251,6 +255,8 @@ export function actionMessage(
             : "Stripe failed and NOTHING was refunded. Check Stripe before retrying.";
         case "not_muster":
           return "This booking is Xola's — its money lives in Xola.";
+        case "not_booked":
+          return "This checkout hasn’t been paid — no money was taken, so there is nothing to refund.";
         case "stripe_not_configured":
           return "Stripe isn’t configured on this deployment, so nothing can be refunded from here.";
         default:

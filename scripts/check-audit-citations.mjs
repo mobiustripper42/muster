@@ -97,7 +97,7 @@ const CITATIONS = [
 
   // ── Criterion 6's evidence (§Criterion 6) ──
   ['src/domain/entities.ts', 625, 'ReservationStatus = "pending" | "booked" | "cancelled"'],
-  ['src/domain/entities.ts', 645, 'eventId: EventId | null;'],
+  ['src/domain/entities.ts', 662, 'eventId: EventId | null;'],
   ['src/reservations/write-booking.ts', 87, 'export async function writeSlotBooking('],
   ['src/reservations/booking-webhook.ts', 362, 'await writeSlotBooking('],
   ['src/reservations/create-departure-payment-intent.ts', 170, 'The SLOT — no eventId'],
@@ -135,12 +135,12 @@ const CITATIONS = [
   ['docs/SPEC.md', 2090, "hold minutes, trip time or schedule"],
   ['src/customers/resolve.test.ts', 91, 'listCustomers()).toHaveLength(0)'],
   ['src/customers/resolve.test.ts', 201, 'listCustomers()).toHaveLength(0)'],
-  ['src/reservations/availability.test.ts', 587, 'an EXPIRED hold contributes nothing'],
+  ['src/reservations/availability.test.ts', 598, 'an EXPIRED hold contributes nothing'],
   ['src/reservations/claim.test.ts', 357, 'an EXPIRED overlapping hold does not occupy anything'],
 
   // ── Criterion 8's evidence (§Criterion 8) ──
   ['docs/SPEC.md', 2068, 'The trip comes free the instant the window passes'],
-  ['src/reservations/availability.ts', 333, 'h.expiresAt > input.asOf'],
+  ['src/reservations/availability.ts', 334, 'h.expiresAt > input.asOf'],
   ['src/reservations/claim.ts', 215, 'h.expiresAt <= at0'],
   ['src/reservations/claim.ts', 266, 'h.expiresAt > at0'],
   ['src/adapters/postgres-repository.ts', 1728, 'from checkout_holds where expires_at > $1'],
@@ -156,8 +156,8 @@ const CITATIONS = [
   // ── Criterion 9's evidence (§Criterion 9) ──
   ['docs/SPEC.md', 2069, 'An abandoned checkout is still on disk afterwards as a lapsed `pending` reservation'],
   ['docs/SPEC.md', 2071, 'is a query.'],
-  ['src/domain/entities.ts', 765, 'guestCount: number;'],
-  ['src/domain/entities.ts', 769, 'createdAt: string;'],
+  ['src/domain/entities.ts', 782, 'guestCount: number;'],
+  ['src/domain/entities.ts', 786, 'createdAt: string;'],
   ['src/adapters/postgres-repository.ts', 1681, "delete from checkout_holds where source='muster' and expires_at <= $1"],
   ['src/adapters/postgres-repository.ts', 1674, 'grew the table without bound'],
   ['src/adapters/in-memory-repository.ts', 745, 'h.expiresAt <= hold.createdAt'],
@@ -226,8 +226,8 @@ const CITATIONS = [
   ['src/reservations/booking-webhook.ts', 505, 'The money moved, and is NOT recorded here'],
   ['src/reservations/booking-webhook.ts', 509, 'if (result.outcome === "lost") {'],
   ['src/reservations/booking-webhook.ts', 528, 'idempotencyKey: `refund_${charge.key}`,'],
-  ['src/domain/entities.ts', 827, 'export interface Payment {'],
-  ['src/domain/entities.ts', 831, 'reservationId: ReservationId;'],
+  ['src/domain/entities.ts', 844, 'export interface Payment {'],
+  ['src/domain/entities.ts', 848, 'reservationId: ReservationId;'],
   ['src/reservations/create-departure-payment-intent.test.ts', 350, 'residual race on the PI path: loser auto-refunded keyed on the PI id'],
   ['src/reservations/create-departure-checkout.test.ts', 169, 'residual-race loss with NO payment_intent'],
   ['src/reservations/create-departure-checkout.test.ts', 183, 'residual race + auto-refund THROWS'],
@@ -283,12 +283,12 @@ const CITATIONS = [
   // The four controls checked and ruled out (§Criterion 15). The alert call sites themselves are
   // already pinned under Criterion 7; not repeated here.
   ['app/api/cron/xola-pull/route.ts', 10, 'NO CRON IS ATTACHED'],
-  ['app/(admin)/admin/purchases/page.tsx', 106, 'listAllReservations'],
+  ['app/(admin)/admin/purchases/page.tsx', 111, 'listAllReservations'],
   ['app/b/find/actions.ts', 71, 'r.event'],
 
   // ── Criterion 16's evidence (§Criterion 16) ──
   ['docs/SPEC.md', 2081, 'Confirming the same payment three times'],
-  ['src/domain/entities.ts', 828, 'Deterministic from the Stripe checkout-session id'],
+  ['src/domain/entities.ts', 845, 'Deterministic from the Stripe checkout-session id'],
   ['src/adapters/postgres-repository.ts', 1481, 'on conflict do nothing'],
   // The SEQUENTIAL guard, which an earlier draft of §Criterion 16 missed: the repeat returns here,
   // before the Event id is computed at :96 and before the insert at :140 is reached.
@@ -351,7 +351,7 @@ const CITATIONS = [
   ['src/reservations/booking-webhook.ts', 422, 'this webhook and the cron tick are the only formation triggers left'],
   ['src/reservations/booking-webhook.ts', 431, 'this and the cron tick are the ONLY `formShifts` triggers'],
   ['app/api/cron/tick/route.ts', 75, 'await formShifts(repo, { now, notifyTripChanges: true })'],
-  ['src/reservations/cancel-reservation.ts', 174, 'const form = await formShifts(deps.repo, {'],
+  ['src/reservations/cancel-reservation.ts', 176, 'const form = await formShifts(deps.repo, {'],
   ['src/builder/merge.ts', 97, 'const form = await formShifts(repo, { notifyTripChanges: true'],
   ['src/builder/split.ts', 80, 'return formShifts(repo, { notifyTripChanges: true'],
   ['src/import/xola-pull.ts', 182, 'const formed = await formShifts(repo, {'],
@@ -376,10 +376,10 @@ const CITATIONS = [
   ['db/migrations/20260718142705_claim_hold_mutex.sql', 28, 'create unique index if not exists events_muster_slot_identity'],
   ['db/migrations/20260718142705_claim_hold_mutex.sql', 30, "where source = 'muster';"],
   // The surface half — a cancelled row leaves the materialized branch and the hull.
-  ['src/reservations/availability.ts', 346, 'if (e.source === "muster" && e.status === "scheduled") {'],
+  ['src/reservations/availability.ts', 347, 'if (e.source === "muster" && e.status === "scheduled") {'],
   ['src/reservations/hull-busy.ts', 80, 'if (e.status !== "scheduled") continue;'],
   // The real cancel path reaches the same two-row state the tests set up by hand.
-  ['src/reservations/cancel-reservation.ts', 160, 'const cancelledEvent = await deps.repo.cancelEventIfUnclaimed(eventId)'],
+  ['src/reservations/cancel-reservation.ts', 162, 'const cancelledEvent = await deps.repo.cancelEventIfUnclaimed(eventId)'],
   // Coverage: real Postgres at the writeSlotBooking level, both adapters at the contract level.
   ['src/adapters/postgres-repository.test.ts', 574, 'the same slot can be SOLD AGAIN after a cancellation'],
   ['src/adapters/postgres-repository.test.ts', 510, 'filters on `status === "scheduled"`, misses the cancelled row'],
@@ -485,7 +485,7 @@ const CITATIONS = [
   ['src/ports/repository.ts', 732, 'isEnginePaused(): Promise<boolean>;'],
   // Why the duration is read late today: no pending row exists to carry it, and the hold has no
   // duration field either (criterion 4's finding from the other direction).
-  ['src/domain/entities.ts', 753, 'CheckoutHold'],
+  ['src/domain/entities.ts', 770, 'export interface CheckoutHold {'],
   // The offering edit path, which has no guard on live holds.
   ['src/admin/offering-admin.ts', 212, '...(input.tripLengthMinutes !== undefined'],
   ['src/admin/offering-admin.ts', 215, '...(input.holdMinutes !== undefined ? { holdMinutes: input.holdMinutes } : {}),'],
@@ -515,9 +515,9 @@ const CITATIONS = [
   // Dormant at TWO layers. The pane hides the button — this is the one the operator meets, and
   // the one an earlier draft of this section missed (code review).
   ['app/(admin)/admin/calendar/[reservationId]/actions.ts', 82, 'export async function createBalanceLink(formData: FormData): Promise<void> {'],
-  ['app/(admin)/admin/calendar/[reservationId]/reservation-detail-pane.tsx', 495, 'Shown only when money is actually owed'],
-  ['app/(admin)/admin/calendar/[reservationId]/reservation-detail-pane.tsx', 517, 'money.balanceCents > 0 &&'],
-  ['app/(admin)/admin/calendar/[reservationId]/reservation-detail-pane.tsx', 540, '<form action={createBalanceLink}>'],
+  ['app/(admin)/admin/calendar/[reservationId]/reservation-detail-pane.tsx', 499, 'Shown only when money is actually owed'],
+  ['app/(admin)/admin/calendar/[reservationId]/reservation-detail-pane.tsx', 521, 'money.balanceCents > 0 &&'],
+  ['app/(admin)/admin/calendar/[reservationId]/reservation-detail-pane.tsx', 544, '<form action={createBalanceLink}>'],
   // …and the server refuses, covering the stale tab and the re-post.
   ['src/reservations/create-balance-checkout.ts', 52, 'folds no_balance, already-paid, and full-mode into one predicate'],
   ['src/reservations/create-balance-checkout.ts', 53, 'if (owed <= 0) return { ok: false, reason: "no_balance" };'],
@@ -547,7 +547,7 @@ const CITATIONS = [
   // The warning, and the filter that runs BEFORE it (the boundary the warning does not cover).
   ['src/admin/gratuity-payroll.ts', 66, 'in gratuity but no confirmed crew — unsplit'],
   ['src/admin/gratuity-payroll.ts', 110, 'if (shift.state === "Cancelled") continue;'],
-  ['src/admin/gratuity-payroll.ts', 127, '.filter((r) => r.status === "booked")'],
+  ['src/admin/gratuity-payroll.ts', 127, '.filter(isBooked)'],
   ['src/admin/gratuity-payroll.ts', 131, '(g) => eventsInWindow.has(String(g.eventId)) && bookedResIds.has(String(g.reservationId)),'],
   // The comment that names a contract test which does not exist.
   ['src/admin/gratuity-payroll.ts', 45, 'a contract-test invariant'],
@@ -565,15 +565,15 @@ const CITATIONS = [
   // Reachability of the silent case: who writes gratuities, who cancels events.
   ['src/reservations/booking-webhook.ts', 481, 'if (isSlotBooking && gratuityCents > 0) {'],
   ['src/reservations/booking-webhook.ts', 766, 'await deps.repo.saveGratuity({'],
-  ['src/reservations/cancel-reservation.ts', 141, 'status: "cancelled",'],
-  ['src/reservations/cancel-reservation.ts', 160, 'const cancelledEvent = await deps.repo.cancelEventIfUnclaimed(eventId);'],
+  ['src/reservations/cancel-reservation.ts', 143, 'status: "cancelled",'],
+  ['src/reservations/cancel-reservation.ts', 162, 'const cancelledEvent = await deps.repo.cancelEventIfUnclaimed(eventId);'],
   ['src/adapters/repository-contract.ts', 1476, '// ── Gratuity (DEC-124, 12.3)'],
   // The shift-canceller an earlier draft said did not exist yet (code review), and the call that
   // reaches it from the cancellation path. Pinned because the safety argument now turns on them.
   ['src/builder/form-shifts.ts', 353, 'if (scheduled.length === 0) {'],
   ['src/builder/form-shifts.ts', 359, 'await repo.saveShift({ ...existing, state: "Cancelled" });'],
-  ['src/reservations/cancel-reservation.ts', 163, 'Re-form so the shift collapses and its crew are told'],
-  ['src/reservations/cancel-reservation.ts', 174, 'const form = await formShifts(deps.repo, {'],
+  ['src/reservations/cancel-reservation.ts', 165, 'Re-form so the shift collapses and its crew are told'],
+  ['src/reservations/cancel-reservation.ts', 176, 'const form = await formShifts(deps.repo, {'],
   // The second caller's fixtures — also all required/Confirmed, so it adds no exclusion coverage.
   ['src/reservations/seed-gratuity.ts', 95, 'kind: "required",'],
 
@@ -584,12 +584,12 @@ const CITATIONS = [
   ['docs/SPEC.md', 1482, 'Amended by DEC-165'],
   ['docs/decisions/DEC-165-occupancy-never-reads-a-payment-row.md', 8, 'A reservation holds a boat because it exists, not because it is paid'],
   // Shape 1, read side — every scheduled event, no source filter, no payment.
-  ['src/reservations/availability.ts', 351, 'Hull occupancy from EVERY scheduled event, both sources'],
-  ['src/reservations/availability.ts', 359, 'for (const e of events) {'],
-  ['src/reservations/availability.ts', 360, 'if (e.status !== "scheduled") continue;'],
-  ['src/reservations/availability.test.ts', 359, 'a XOLA trip on the hull takes the slot off the market'],
+  ['src/reservations/availability.ts', 352, 'Hull occupancy from EVERY scheduled event, both sources'],
+  ['src/reservations/availability.ts', 360, 'for (const e of events) {'],
+  ['src/reservations/availability.ts', 361, 'if (e.status !== "scheduled") continue;'],
+  ['src/reservations/availability.test.ts', 370, 'a XOLA trip on the hull takes the slot off the market'],
   // The fixture is the point: events only, no reservations — the EVENT occupies the hull.
-  ['src/reservations/availability.test.ts', 364, 'events: [ev("x1", { source: "xola", date: "2026-07-04", time: "13:30" })],'],
+  ['src/reservations/availability.test.ts', 375, 'events: [ev("x1", { source: "xola", date: "2026-07-04", time: "13:30" })],'],
   // Shape 1, write side — contract-level, so proven on real Postgres too.
   ['src/adapters/repository-contract.ts', 730, 'saveBookingIfSlotFree: LOSES when a Xola trip already holds the hull'],
   ['src/adapters/repository-contract.ts', 735, 'event({ id: asId<"EventId">("evt-xola-hull"), source: "xola", time: "14:00" }),'],
@@ -604,18 +604,18 @@ const CITATIONS = [
   ['src/import/import-reservations.ts', 302, 'await repo.saveReservation(reservation);'],
   ['src/import/import-reservations.ts', 283, 'source: "xola", // imported reservations are Xola-owned (DEC-106)'],
   // Shape 2 — the hold occupies on a clock comparison, not on money.
-  ['src/reservations/availability.ts', 333, 'if (h.source === "muster" && h.expiresAt > input.asOf) {'],
-  ['src/reservations/availability.test.ts', 578, "a live hold (expiresAt > asOf) marks the slot 'held'"],
-  ['src/reservations/availability.test.ts', 587, 'an EXPIRED hold contributes nothing'],
+  ['src/reservations/availability.ts', 334, 'if (h.source === "muster" && h.expiresAt > input.asOf) {'],
+  ['src/reservations/availability.test.ts', 589, "a live hold (expiresAt > asOf) marks the slot 'held'"],
+  ['src/reservations/availability.test.ts', 598, 'an EXPIRED hold contributes nothing'],
 
   // ── Criterion 24's evidence (§Criterion 24) ──
   ['docs/SPEC.md', 2101, 'booking-recovery lookup returns nothing'],
   // THE line. A deny-list on one status, where the criterion needs an allow-list — pinned on the
   // filter expression itself, because the whole finding is which operator is on it.
-  ['src/reservations/find-booking.ts', 76, 'candidates.filter((c) => c.reservation.status !== "cancelled")'],
-  ['src/reservations/find-booking.ts', 77, 'const pool = live.length > 0 ? live : candidates;'],
+  ['src/reservations/find-booking.ts', 81, 'candidates.filter((c) => isBooked(c.reservation))'],
+  ['src/reservations/find-booking.ts', 82, 'const pool = live.length > 0 ? live : candidates;'],
   // The cancelled rule is deliberate and explained — it is not the defect, and must not read as one.
-  ['src/reservations/find-booking.ts', 74, 'A cancelled booking is still recoverable'],
+  ['src/reservations/find-booking.ts', 79, 'A cancelled booking is still recoverable'],
   // Nothing upstream filters by status: the edge maps every row, the orchestrator passes them on.
   ['app/b/find/actions.ts', 62, 'repo.listAllReservations(),'],
   ['app/b/find/actions.ts', 69, 'event: eventById.get(String(reservation.eventId)),'],
@@ -630,7 +630,7 @@ const CITATIONS = [
   ['src/domain/entities.ts', 625, 'ReservationStatus = "pending" | "booked" | "cancelled"'],
 
   // ── Criterion 2 / 5 evidence, spot-checked while re-baselining ──
-  ['src/reservations/availability.ts', 172, 'return asId<"EventId">(`slot_${slotIdentity('],
+  ['src/reservations/availability.ts', 173, 'return asId<"EventId">(`slot_${slotIdentity('],
   ['app/(public)/book/page.tsx', 92, 'repo.listLiveCheckoutHolds(asOf)'],
   ['src/reservations/claim.ts', 312, 'await repo.acquireCheckoutHold(hold)'],
   ['src/adapters/in-memory-repository.ts', 468, 'async cancelEventIfUnclaimed('],

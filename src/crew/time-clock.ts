@@ -258,6 +258,7 @@ export async function editPunch(
   const outAt =
     patch.outAt === undefined
       ? existing.outAt
+      // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
       : patch.outAt === null
         ? null
         : patch.outAt.toISOString();

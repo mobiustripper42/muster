@@ -86,6 +86,7 @@ export function foldShiftChanges(
     .filter((r) => opts.lastSeenAt === null || r.changedAt > opts.lastSeenAt)
     // Sorted here rather than trusted from the caller — two callers read these rows and only one
     // of them has a reason to order them.
+    // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
     .sort((a, b) => (a.changedAt < b.changedAt ? -1 : a.changedAt > b.changedAt ? 1 : 0));
 
   if (unseen.length === 0) return null;

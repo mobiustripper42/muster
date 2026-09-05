@@ -130,6 +130,7 @@ export default async function ManagePage({
     .map((p) => ({ id: String(p.id), url: p.receiptUrl!, amountCents: p.amountCents }));
   const taxAndFees = m.taxCents + serviceFeeCents;
   const cancelled = detail.status === "cancelled";
+  // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
   const statusLabel = cancelled ? "Cancelled" : phase === "completed" ? "Completed" : "Confirmed";
 
   return (
@@ -145,6 +146,7 @@ export default async function ManagePage({
               className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
                 cancelled
                   ? "bg-bad-bg text-bad"
+                  // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
                   : phase === "completed"
                     ? "bg-ok-bg text-ok"
                     : "bg-accent/10 text-accent"

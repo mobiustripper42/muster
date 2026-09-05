@@ -251,6 +251,7 @@ export async function rankByReliability(
   );
   keyed.sort((a, b) => {
     if (a.key !== b.key) return b.key - a.key;
+    // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
     return a.crew.id < b.crew.id ? -1 : a.crew.id > b.crew.id ? 1 : 0;
   });
   return keyed.map((k) => k.crew);

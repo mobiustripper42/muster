@@ -92,6 +92,7 @@ export default async function CrewCalendar() {
             </SubmitButton>
           </form>
         </div>
+      // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
       ) : feed ? (
         <div className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-4 shadow-sm">
           <Notice tone="ok">

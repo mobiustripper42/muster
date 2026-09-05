@@ -29,6 +29,7 @@
  */
 export function canonicalFormState(pairs: Iterable<[string, string]>): string {
   const sorted = [...pairs].sort((a, b) =>
+    // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
     a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0,
   );
   return JSON.stringify(sorted);

@@ -66,10 +66,13 @@ export interface AskTrailFilter {
 const outcomeOf = (ask: Ask): AskOutcome =>
   ask.response === "accepted"
     ? "accepted"
+    // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
     : ask.response === "declined"
       ? "declined"
+      // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
       : ask.response === "withdrawn"
         ? "withdrawn"
+        // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
         : ask.respondedAt
           ? "timed_out"
           : "waiting";

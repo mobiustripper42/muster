@@ -266,6 +266,7 @@ export async function ShiftCockpit({
           >
             {hoursToTrip === null
               ? "no scheduled trip"
+              // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
               : hoursToTrip < 0
                 ? "departed"
                 : `departs in ${ttLabel(hoursToTrip)}`}

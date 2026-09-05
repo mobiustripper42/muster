@@ -977,6 +977,7 @@ export class InMemoryRepository implements Repository {
     // — the spread already carries it — so only a stale (or first-ever) window stamps a new start.
     const next: LoginCode = correct
       ? { ...current, attempts }
+      // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
       : stale
         ? { ...current, attempts, failedSince: window.now, failedInWindow: 1 }
         : { ...current, attempts, failedInWindow: (current.failedInWindow ?? 0) + 1 };

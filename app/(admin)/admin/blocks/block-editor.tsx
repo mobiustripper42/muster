@@ -67,6 +67,7 @@ export function BlockEditor({
     selected?.kind === "vessel" ? "vessel" : "location",
   );
   // In edit mode the kind is fixed (you don't turn a location block into a vessel block).
+  // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
   const kind: "location" | "vessel" = editing ? (ves ? "vessel" : "location") : kindState;
 
   const locName = loc

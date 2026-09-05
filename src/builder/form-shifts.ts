@@ -128,6 +128,10 @@ export class PartialFormError extends Error {
   }
 }
 
+// REFACTOR QUEUE — cognitive complexity 99, against a ceiling of 40 (#909).
+// Baselined, NOT accepted: this is on the list in the tracking issue. The ceiling
+// ratchets down as the list shrinks, so this disable is meant to be deleted.
+// eslint-disable-next-line sonarjs/cognitive-complexity -- pre-existing, score 99
 export async function formShifts(
   repo: Repository,
   opts?: { now?: Date; leadDays?: number; notifyTripChanges?: boolean },
@@ -333,6 +337,10 @@ const idSetEq = (a: string[], b: string[]): boolean =>
  * construction. `carry.splitCutTime` is stamped on the saved row (the canonical
  * side of a split); side B and the un-split path pass none. Mutates `result`.
  */
+// REFACTOR QUEUE — cognitive complexity 59, against a ceiling of 40 (#909).
+// Baselined, NOT accepted: this is on the list in the tracking issue. The ceiling
+// ratchets down as the list shrinks, so this disable is meant to be deleted.
+// eslint-disable-next-line sonarjs/cognitive-complexity -- pre-existing, score 59
 async function formOneShift(
   repo: Repository,
   shiftId: ShiftId,
@@ -454,6 +462,7 @@ async function formOneShift(
   const state =
     existing?.state === "Completed"
       ? existing.state
+      // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
       : opts?.now
         ? resolveShiftState(seats, {
             now: opts.now,

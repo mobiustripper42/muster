@@ -99,6 +99,7 @@ function AuditRow({ row }: { row: AuditTrailRow }) {
   const trip =
     row.date && row.vesselName
       ? `${fmtDate(row.date)} · ${row.vesselName}`
+      // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
       : row.date
         ? fmtDate(row.date)
         : null;

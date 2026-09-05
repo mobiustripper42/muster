@@ -10,8 +10,10 @@ export function Notice({
   const cls =
     tone === "ok"
       ? "border-ok-line bg-ok-bg text-ok"
+      // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
       : tone === "bad"
         ? "border-bad-line bg-bad-bg text-bad"
+        // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
         : tone === "warn"
           ? "border-warn-line bg-warn-bg text-warn"
           : "border-line bg-card text-muted";

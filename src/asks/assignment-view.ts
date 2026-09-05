@@ -133,6 +133,10 @@ const POOLED_STATES: ReadonlySet<Seat["state"]> = new Set([
   "Bailed",
 ]);
 
+// REFACTOR QUEUE — cognitive complexity 63, against a ceiling of 40 (#909).
+// Baselined, NOT accepted: this is on the list in the tracking issue. The ceiling
+// ratchets down as the list shrinks, so this disable is meant to be deleted.
+// eslint-disable-next-line sonarjs/cognitive-complexity -- pre-existing, score 63
 export async function buildAssignmentView(
   repo: Repository,
   shiftId: ShiftId,

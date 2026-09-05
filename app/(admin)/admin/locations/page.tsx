@@ -68,6 +68,7 @@ export default async function AdminLocations({
   const requested = creating ? undefined : sp.sel;
   const selected = creating
     ? null
+    // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
     : requested
       ? locations.find((l) => l.id === requested) ?? null
       : locations[0] ?? null;

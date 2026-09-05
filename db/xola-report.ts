@@ -539,6 +539,7 @@ if (has("--csv")) {
   console.log(COLS.join(","));
   for (const r of shown) console.log(COLS.map((c) => esc(r[c])).join(","));
 } else {
+  // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
   const cap = (c: TextCol) => (c === "declared" ? 34 : c === "flags" ? 0 : 22);
   const widths = COLS.map((c) =>
     cap(c) === 0 ? 0 : Math.min(cap(c), Math.max(c.length, ...rows.map((r) => r[c].length), 1)),

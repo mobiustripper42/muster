@@ -70,6 +70,7 @@ export default async function AdminAddOns({
   const requested = creating ? undefined : sp.sel;
   const selected = creating
     ? null
+    // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
     : requested
       ? addOns.find((a) => a.id === requested) ?? null
       : addOns[0] ?? null;
@@ -224,6 +225,7 @@ function AddOnCard({
             <input
               type="checkbox"
               name="active"
+              // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
               defaultChecked={draft ? draft.has("active") : isNew ? true : addOn.active}
             />
             Available to attach to offerings

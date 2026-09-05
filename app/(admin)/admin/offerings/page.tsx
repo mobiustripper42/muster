@@ -106,6 +106,7 @@ export default async function AdminOfferings({
   const requested = creating ? undefined : sp.sel;
   const selected = creating
     ? null
+    // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
     : requested
       ? visible.find((o) => o.id === requested) ?? null
       : visible[0] ?? null;

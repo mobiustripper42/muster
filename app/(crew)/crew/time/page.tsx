@@ -389,6 +389,7 @@ function PunchForm({
    */
   const draftPunchId = draft?.get("punchId");
   const mine =
+    // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
     draft && (mode === "edit" ? draftPunchId === punchId : draftPunchId === undefined)
       ? draft
       : null;

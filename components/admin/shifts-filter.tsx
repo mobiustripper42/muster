@@ -74,6 +74,7 @@ export function Filter({
     presetParam && KNOWN_PRESETS.has(presetParam) ? presetParam : null;
   const windowHidden = activePreset ? (
     <input type="hidden" name="preset" value={activePreset} />
+  // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
   ) : kind === "range" ? (
     <>
       <input type="hidden" name="from" value={from} />

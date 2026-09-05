@@ -317,6 +317,7 @@ function InnerForm(p: InnerProps) {
             <PaymentElement
               options={{ fields: { billingDetails: { name: "never", phone: "never" } } }}
             />
+          // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
           ) : p.stripeFailed ? (
             <div className="rounded-card border border-bad-line bg-bad-bg px-4 py-3 text-sm text-bad" data-testid="stripe-error">
               The payment form couldn&rsquo;t load. Check your connection and reload — you have

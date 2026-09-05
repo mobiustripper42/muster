@@ -126,6 +126,10 @@ function balanceErrorMessage(reason: string): string {
  * turned every one of those words into a wrong direction. Position is the one property of a
  * layout that a later, unrelated fix is most likely to change.
  */
+// REFACTOR QUEUE — cognitive complexity 55, against a ceiling of 40 (#909).
+// Baselined, NOT accepted: this is on the list in the tracking issue. The ceiling
+// ratchets down as the list shrinks, so this disable is meant to be deleted.
+// eslint-disable-next-line sonarjs/cognitive-complexity -- pre-existing, score 55
 export function actionMessage(
   kind: string,
   value: string,
@@ -227,6 +231,7 @@ export function actionMessage(
     case "cancelErr":
       return value === "not_muster"
         ? "This booking is Xola's — cancel it there, or the next import will bring it back."
+        // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
         : value === "reservation_missing"
           ? "That reservation no longer exists."
           : "Couldn’t cancel just now. Try again in a moment.";

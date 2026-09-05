@@ -79,7 +79,9 @@ export async function forwardNotices(
       const body =
         change.action === "removed"
           ? outbound("crew", `you're off the ${where} shift.`)
+          // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
           : change.action === "changed"
+            // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
             ? summary
               ? changedFrame(summary)
               : plainChanged

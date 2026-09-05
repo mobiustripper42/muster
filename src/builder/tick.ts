@@ -163,6 +163,10 @@ export async function resolveShiftStateOnRead(
   return resolveShiftState(seats, { now, horizon, poolExhausted });
 }
 
+// REFACTOR QUEUE — cognitive complexity 134, against a ceiling of 40 (#909).
+// Baselined, NOT accepted: this is on the list in the tracking issue. The ceiling
+// ratchets down as the list shrinks, so this disable is meant to be deleted.
+// eslint-disable-next-line sonarjs/cognitive-complexity -- pre-existing, score 134
 export async function tick(
   repo: Repository,
   now: Date,

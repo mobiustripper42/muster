@@ -58,6 +58,7 @@ const plexMono = localFont({
 const TITLE =
   process.env.NODE_ENV === "development"
     ? "Dev-Muster"
+    // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
     : process.env.VERCEL_ENV === "preview"
       ? "Pre-Muster"
       : "Muster";

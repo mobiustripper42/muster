@@ -58,6 +58,7 @@ export async function bailFromSeat(formData: FormData): Promise<void> {
       errorCode =
         out.code === "raced"
           ? "stale"
+          // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
           : out.code === "trainee_seat"
             ? "trainee_seat" // DEC-087: a ride isn't a bail — the office unstaffs
             : null;

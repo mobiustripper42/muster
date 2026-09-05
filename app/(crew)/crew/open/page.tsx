@@ -221,6 +221,7 @@ function ClaimRow({ row, back }: { row: ClaimableSeatView; back: string }) {
   // leaves"). The full call→back window + trip list live in the confirm sheet.
   const departure = row.tripTimes[0] ? fmt12(row.tripTimes[0]) : null;
   const n = row.tripTimes.length;
+  // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
   const tripCount = n > 0 ? `${n} trip${n === 1 ? "" : "s"}` : null;
   const facts = confirmFacts(row);
   return (

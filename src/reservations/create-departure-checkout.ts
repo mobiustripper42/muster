@@ -91,6 +91,7 @@ export async function createDepartureCheckout(
       reason:
         held.unbookable === "offering_missing"
           ? "offering_missing"
+          // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
           : held.unbookable === "not_live"
             ? "not_live"
             : "invalid_guest_count",

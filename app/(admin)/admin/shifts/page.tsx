@@ -211,14 +211,19 @@ function resolveWindow(
   const scope =
     kind === "weekend"
       ? "this weekend"
+      // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
       : kind === "next7"
         ? "the next 7 days"
+        // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
         : kind === "next8to15"
           ? "2 weeks out"
+          // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
           : kind === "days30"
             ? "the next 30 days"
+            // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
             : kind === "today"
               ? "today"
+              // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
               : from === to
                 ? fmtDate(from)
                 : `${fmtDate(from)} – ${fmtDate(to)}`;
@@ -266,6 +271,10 @@ function hrefFor(sp: Search, mode: Mode, sel: string | undefined = sp.sel): stri
   return qs ? `/admin/shifts?${qs}` : "/admin/shifts";
 }
 
+// REFACTOR QUEUE — cognitive complexity 51, against a ceiling of 40 (#909).
+// Baselined, NOT accepted: this is on the list in the tracking issue. The ceiling
+// ratchets down as the list shrinks, so this disable is meant to be deleted.
+// eslint-disable-next-line sonarjs/cognitive-complexity -- pre-existing, score 51
 export default async function AllShifts({
   searchParams,
 }: {
@@ -452,13 +461,18 @@ export default async function AllShifts({
         // NOT the board's ✓ success state — a quiet day is just a quiet day.
         <Notice>
           {showSplitOnly
+            // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
             ? `No split candidates ${scope === "today" ? "today" : `for ${scope}`}${
+                // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
                 selectedCrewName ? ` for ${selectedCrewName}` : ""
               } — nothing has a long-gap suggestion right now.`
+            // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
             : selectedCrewName
               ? `${selectedCrewName} has no shifts ${
+                  // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
                   scope === "today" ? "today" : `for ${scope}`
                 }.`
+              // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
               : `No shifts ${scope === "today" ? "today" : `for ${scope}`}.`}
         </Notice>
       ) : (

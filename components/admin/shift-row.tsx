@@ -46,6 +46,7 @@ export function ShiftRow({
   const splitTag =
     row.split == null
       ? null
+      // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
       : row.split.side === "A"
         ? `split · before ${fmt12(row.split.cutTime)}`
         : `split · from ${fmt12(row.split.cutTime)}`;
@@ -122,6 +123,7 @@ export function ShiftRow({
           <span className="font-mono text-xs text-muted">
             {row.trips.length === 0
               ? "no scheduled trip"
+              // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
               : row.trips.length === 1
                 ? `${fmt12(row.trips[0]!.time)} · ${row.trips[0]!.pax} pax`
                 : `${fmt12(row.trips[0]!.time)} · ${row.trips.length} trips`}

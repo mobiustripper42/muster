@@ -64,6 +64,10 @@ function safeDecode(segment: string): string {
   }
 }
 
+// REFACTOR QUEUE — cognitive complexity 58, against a ceiling of 40 (#909).
+// Baselined, NOT accepted: this is on the list in the tracking issue. The ceiling
+// ratchets down as the list shrinks, so this disable is meant to be deleted.
+// eslint-disable-next-line sonarjs/cognitive-complexity -- pre-existing, score 58
 export default async function ReservationDetailPage({
   params,
   searchParams,
@@ -285,7 +289,9 @@ export default async function ReservationDetailPage({
     const prefillCents =
       sp.refunded !== undefined
         ? refundable
+        // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
         : sp.cancelled !== undefined
+          // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
           ? Math.min(refundable, quoteFor(sp.cancelled === "operator" ? "operator" : "customer"))
           : refundable;
 

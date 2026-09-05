@@ -77,7 +77,12 @@ const recommended = (mod) => {
  */
 const OFF = {
   // --- playwright (e2e/ only) ---
-  "playwright/prefer-locator": "off",               // 105 findings — issue #909
+  // 105 findings across 8 spec files, and OFF for the same reason as the playwright block
+  // below: rewriting an e2e interaction is verifiable only by a green run, and a wrong
+  // rewrite still goes green while touching something else. 105 of them is that bet taken
+  // 105 times. `page.fill(sel, v)` → `page.locator(sel).fill(v)` buys strictness this suite
+  // has not needed; nothing here is a defect.
+  "playwright/prefer-locator": "off",               // 105 findings — e2e rewrite risk, no defect
   // THE PLAYWRIGHT IDIOM RULES STAY OFF, and the reason is one this repo has been bitten by:
   // **a wrongly-rewritten e2e assertion still passes, and now asserts something else.** The
   // config already records two of those (a `getByText("$499.00").first()` that matched a slot
@@ -95,13 +100,64 @@ const OFF = {
   "playwright/no-wait-for-timeout": "off",          //   1 finding  — issue #908 (legitimate per issue #904 — a settle before asserting an absence)
 
   // --- sonarjs. The four SECURITY rules below have never run on this codebase. ---
-  "sonarjs/no-nested-conditional": "off",           //  87 findings — issue #909
-  "sonarjs/cognitive-complexity": "off",            //  61 findings — issue #909 (threshold is configurable; measure before choosing one)
-  "sonarjs/no-redundant-optional": "off",           //  53 findings — issue #909
+  // ON as of #909, with all 87 baselined — same posture as `cognitive-complexity` above:
+  // stop new ones, make the existing debt visible in the code. The disables point at the
+  // refactor issue and are meant to be deleted.
+  //
+  // Unlike complexity, these have ONE obvious safe fix. Nearly all are nested ternaries
+  // picking copy inside JSX, where `if` is unavailable — so lift the chain into a named
+  // function above the component and use guard clauses. That is strictly better: it gets
+  // a name saying what it produces, and becomes testable on its own. No engine risk, which
+  // is why this refactor is tractable where `tick()` is not.
+  //
+  // **83 disables, 87 findings, and that is not a discrepancy.** Three lines carry more
+  // than one nested ternary, so a single directive suppresses two or three findings:
+  // `components/ui/form-dirty.ts:33` (3), `src/crew/crew-cli.ts:179` and
+  // `src/reservations/availability.ts:445` (2 each). Both numbers are right; do not
+  // "correct" one to match the other.
+  // ON at a ceiling of 40, ratcheting down (#909). NOT the plugin default of 15 — that is
+  // SonarSource's convention, not a measured threshold, and here it flags 61 functions of
+  // which most are ordinary loops with a branch inside. 40 is nearly 3x it, so the 11 sites
+  // over it are unarguable: `tick()` scores 134, `crew-cli` 163.
+  //
+  // The 11 carry inline disables stating their score, and the tracking issue steps the
+  // ceiling down as they are refactored: 40 → 11 sites, 30 → 20, 25 → 26, 20 → 37, 15 → 61.
+  // The ceiling is EXCLUSIVE — `booking-webhook.ts` scores exactly 40 and does not fire.
+  // Measured 2026-09-04; re-measure before each step rather than trusting these.
+  //
+  // WHAT THE SCORE ACTUALLY COUNTS, since it is easy to misread: a break in linear flow
+  // costs 1, plus 1 for every level of nesting it sits inside. A RUN of one logical
+  // operator is FREE — `a || b || c` costs nothing; only MIXING `&&` with `||` adds 1.
+  // Verified empirically against this plugin, not taken from the spec. So a high score
+  // means nesting, not long conditions.
+  // DROPPED (DEC-159 rule 4), and the rule is simply WRONG for this repo. It reports
+  // `?: T | undefined` as redundant. Under `exactOptionalPropertyTypes: true`, which
+  // `tsconfig.core.json:19` sets, those two are DIFFERENT types: `?: T` means the key may
+  // be absent but never explicitly `undefined`.
+  //
+  // Measured rather than argued: all 56 findings were stripped and `npm run typecheck`
+  // failed with TS2375/TS2379 — "Consider adding 'undefined' to the types of the target's
+  // properties" — across `calendar-detail.ts` and `purchases-view.ts`. Obeying this rule
+  // does not compile. (The `app/` profile has no such flag, so its handful genuinely are
+  // redundant; not worth a scope split for a style rule.)
+  "sonarjs/no-redundant-optional": "off",           //  56 findings — breaks the core typecheck
   // super-linear-regex is ON as of #908 — 23 of its 25 findings were one duplicated
   // trailing-slash regex, now `stripTrailingSlashes` in src/config/base-url.ts; the
   // other 6 carry inline disables naming their input source.
-  "sonarjs/prefer-specific-assertions": "off",      //  20 findings — issue #909
+  // 20 findings across 10 test files, all real and all cosmetic: `expect(xs.length).toBe(4)`
+  // should be
+  // `expect(xs).toHaveLength(4)`, which reports the actual array on failure instead of a
+  // bare number. NOT auto-fixable — verified by running `--fix`, which changed none of them.
+  //
+  // Left for its own pass rather than folded in here: 20 hand edits that improve failure
+  // messages and nothing else do not belong in a commit about rule verdicts.
+  //
+  // ⚠ WHAT THAT `--fix` RUN ACTUALLY DID, recorded because it nearly shipped: run with a
+  // narrow throwaway config enabling ONE rule, `--fix` deleted the inline disables for every
+  // rule the throwaway did not enable — they looked unused. Four files lost their #854 and
+  // #908 disables silently. Caught by reading the diff. **Never `--fix` against anything but
+  // the real config.**
+  "sonarjs/prefer-specific-assertions": "off",      //  20 cosmetic — own pass, not auto-fixable
   "sonarjs/no-nested-template-literals": "off",     //  16 findings — pure style, no defect class
   // DROPPED (DEC-159 rule 4). All 16 are deliberate TypeScript idioms: `void now;` to keep a
   // parameter in a signature for symmetry, and `void unreachable;` after
@@ -172,7 +228,17 @@ const OFF = {
   // case where the TYPECHECK is the assertion, carrying an inline disable that says so.
 
   // --- vitest (test files only) ---
-  "vitest/no-conditional-expect": "off",            //  21 findings — issue #909
+  // DROPPED. All 21 read; two legitimate idioms, no defect:
+  //  1. TYPE NARROWING with the condition asserted first — `expect(r.ok).toBe(true)` on the
+  //     line directly above `if (r.ok) { … }`. The branch cannot silently not-happen: the
+  //     assertion above fails first. The `if` exists for TypeScript, not for control flow.
+  //     (`auth/session.test.ts:17`, `reservations/claim.test.ts:402`, `domain/iso-date.test.ts:66`.)
+  //  2. FILTERED ITERATION — a loop asserting only on the items that qualify
+  //     (`admin/integrity-coverage.test.ts:76` checks exempt tables only).
+  // Shape 2 is the weaker one: if nothing matches the filter, the loop asserts nothing and
+  // passes. Worth knowing, not worth the rule — `sonarjs/assertions-in-tests` is already on
+  // and covers a test with NO assertions at all.
+  "vitest/no-conditional-expect": "off",            //  21 legitimate — narrowing + filtered loops
   "vitest/no-disabled-tests": "off",                //   2 legitimate env gates — same as sonarjs/no-skipped-tests
   // `vitest/valid-title` is ON as of #908 with `ignoreTypeOfDescribeName` — its one finding
   // was `describe(env, …)` in a parameterised loop, which is the point of the loop.
@@ -311,7 +377,14 @@ export default tseslint.config(
     files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}", "src/**/*.{ts,tsx}", "db/**/*.{ts,tsx}"],
     languageOptions: { parser: tseslint.parser, parserOptions: { ecmaFeatures: { jsx: true } } },
     plugins: { sonarjs },
-    rules: { ...recommended(sonarjs), ...OFF },
+    rules: {
+      ...recommended(sonarjs),
+      ...OFF,
+      // AFTER the OFF spread, because this rule is not off — it is on with a non-default
+      // option, and `OFF` no longer carries an entry for it. See the ceiling note above
+      // `OFF` for why 40 rather than the plugin's 15 (#909).
+      "sonarjs/cognitive-complexity": ["error", 40],
+    },
   },
   {
     files: ["src/**/*.test.ts", "app/**/*.test.ts", "components/**/*.test.ts", "db/**/*.test.ts", "scripts/**/*.test.mjs"],

@@ -193,6 +193,7 @@ async function buildVMs(rows: AtRiskRow[]): Promise<RiskRowVM[]> {
     // from a never-filled shift.
     const flag = r.reasons.includes("regression")
       ? { label: "Lacking crew · late bail", tone: "bad" as const }
+      // eslint-disable-next-line sonarjs/no-nested-conditional -- baselined, lift to a named function (#928)
       : r.reasons.includes("credential_lapse") && !r.reasons.includes("core")
         ? { label: "Credential lapse", tone: "warn" as const }
         : {

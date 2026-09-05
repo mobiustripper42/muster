@@ -92,7 +92,7 @@ export function buildCustomerDetail(
 }
 
 function rowFor(customer: Customer, history: readonly CustomerBooking[]): CustomerRow {
-  const booked = history.filter((b) => b.status === "booked");
+  const booked = history.filter(isBooked);
   return {
     id: String(customer.id),
     displayCode: customer.displayCode,

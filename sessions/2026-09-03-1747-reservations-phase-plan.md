@@ -5,7 +5,7 @@ branch: task/reservations-phase-plan
 started: 2026-09-03T17:47:36Z
 ended:
 points:
-pr_numbers: [905, 910, 924, 925, 930]
+pr_numbers: [905, 910, 924, 925, 930, 932]
 status: open
 transcript: /home/eric/.claude/projects/-home-eric-muster-s91/fc4ca4b8-4ceb-5d27-9011-6826c042120c.jsonl
 ---
@@ -88,7 +88,26 @@ transcript: /home/eric/.claude/projects/-home-eric-muster-s91/fc4ca4b8-4ceb-5d27
 **Branch:** task/14.3-every-reader-allow-list
 **Opened at:** 2026-09-05T02:05:24Z
 
+## Task 6: Phase 14.4 — the write: a pending row before Stripe
+
+**Completed:**
+- `db/migrations/20260905031117_reservations_pending_slot.sql` — ten nullable columns on `reservations` (slot ×4, `reserved_at`, `holder_token`, `payment_intent_id`, `hold_minutes`, `trip_minutes`, `booking_invoice` jsonb) + two partial indexes (hull-day where pending; payment intent where not null). Additive, no FK (DEC-131).
+- `src/reservations/pending.ts` (new) — `PAYMENT_WINDOW_MINUTES` (= the existing `HOLD_MINUTES`, moved here to break a claim→availability→claim cycle), `pendingLiveSince`, `isLivePending`. `claim.ts` re-exports the constants so every existing importer is untouched.
+- `src/reservations/create-departure-payment-intent.ts` — writes the pending row BEFORE Stripe under the hull-day lock, then pins the intent id; a lost race releases the hold and returns `sold_out`. `BookingInvoice` freezes every money component **and its rate** (DEC-164); both durations freeze as columns (DEC-161).
+- §2.8.3 made one rule on all three sides via `candidateHoldMinutes()` — deriver (`availability.ts`), hold (`claim.ts`), write. Closes issue #825 as a consequence: rival holds were measured by trip time.
+- Bridge to 14.5: confirm still inserts a booked row beside the pending one, exempt by shared payment-intent id, inheriting the pending row's frozen trip time. Two rows per booking until 14.5; visible as a Pending chip on `/admin/purchases`.
+- Ports + both adapters: `savePendingIfHullFree`, `getReservationByPaymentIntentId`, third arg on `saveBookingIfSlotFree`. Contract-suite case for the advisory lock (two customers, one hull → exactly one row) — the only place that lock can be observed.
+- Audit re-baselined twice: once for the build, once for the review fix (+10 / +24 on two files, both halves). The renumber script double-shifts if run on an already-baselined tree — reverted and re-ran from HEAD both times.
+
+**Code review:** 4 findings. **One real defect, fixed in `6010115`:** the own-row exemption `not (holder_token is not null and holder_token = $6)` evaluates to NULL when `$6` is NULL, so a keyless asker exempted *every rival that had a key* and oversold the hull. Same shape on the confirm bridge. Latent, not live — I verified both NULL paths myself (the token mint never returns absent outside a logged catch; `createDepartureCheckout` has no caller) — but it fails open toward a double-booked boat, contradicts the in-memory adapter, and 14.5 is the change that would activate it. Now built from a column name: `($6::text is null or holder_token is distinct from $6::text)`; the casts are load-bearing. Two contract cases written first and watched failing on pg / passing in-memory. `/security-review`: 0 findings above threshold, and its one sub-threshold note was the same bug found independently.
+**PR:** [PR #932](https://github.com/mobiustripper42/muster/pull/932)
+**Points:** 8
+**Branch:** task/14.4-pending-row-before-stripe
+**Opened at:** 2026-09-05T09:47:00Z
+
 **Next Steps:**
+- 14.5 (issue #916) — confirm flips the pending row instead of inserting beside it. Deletes the bridge, the payment-intent exemption in `saveBookingIfSlotFree`, and the two-rows-per-booking state. It is also the change that would have activated the NULL-exemption bug, so keep the two contract cases.
+- The audit's criterion-20 finding ("trip time is a live read at confirm") is now false for the payment-intent path. Lane A owns that re-read; `write-booking.ts:130` carries a dated pointer.
 - Merge PR #921 (Phase 14 link write-back), PR #924, PR #925 — in that order (#925 stacks on #924).
 - 14.3 (issue #914) stacked on `task/14.2-status-union-nullable-event`: the reader allow-list audit. Must merge in the same stack as PR #925 — nothing may write a pending row before it lands. `eventIdOfBooked` throws become refused outcomes there.
 - DEC-163 frontmatter's `unverifiable` claim "no admin value exists yet" is now dated (type value exists; no writer until Phase 16).

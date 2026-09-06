@@ -133,6 +133,7 @@ export default async function CrewHome({
     return (
       <SignedOut
         reason="stale"
+        sessionEnded
         flag={selfServeEnabled()}
         stage={sp.stage}
         err={sp.err}
@@ -213,12 +214,15 @@ function SignedOut({
   stage,
   err,
   pendingEmail,
+  sessionEnded,
 }: {
   reason?: string;
   flag: boolean;
   stage?: string;
   err?: string;
   pendingEmail: string | null;
+  /** Derived here, NEVER read from the URL — see the notice below. */
+  sessionEnded?: boolean;
 }) {
   // Flag OFF (prod until 7.0b wires real email, DEC-059/080): today's behavior —
   // the only way in is the operator-relayed link.
@@ -248,8 +252,14 @@ function SignedOut({
       <h1 className="text-lg font-semibold text-ink">Muster</h1>
       {/* Deliberately says nothing about WHY (the crew row is gone). The operator's
           call: the crew member cannot act on the reason, and the form below is the
-          whole instruction. */}
-      {reason === "stale" ? <Notice>Your session ended.</Notice> : null}
+          whole instruction.
+
+          Gated on `sessionEnded`, which only the `!view` branch sets, NOT on
+          `reason` — `reason` is `sp.auth`, so keying the notice on it would let
+          anyone render "Your session ended." at `/crew?auth=stale` on a browser
+          that has never held a session. No information either way, but a claim
+          about the visitor's own history should not be settable by the visitor. */}
+      {sessionEnded ? <Notice>Your session ended.</Notice> : null}
       {expired ? (
         <Notice>That sign-in step expired. Enter your email to get a new code.</Notice>
       ) : null}

@@ -140,6 +140,22 @@ test.describe("crew self-serve sign-in (DEC-081)", () => {
     await expect(page.getByLabel(/sign in with your crew email/i)).toBeVisible();
   });
 
+  test("`?auth=stale` cannot fake a session notice for a browser that never had one (#936)", async ({
+    page,
+  }) => {
+    // `reason` is `sp.auth`, straight off the URL. Keying "Your session ended." on it
+    // would let anyone render a claim about the visitor's own history. No information
+    // leaks either way — it is the same copy for everyone — but the page should not
+    // assert something it did not derive. Gated on `sessionEnded` instead, which only
+    // the `!view` branch sets.
+    //
+    // HONEST NOTE: unlike the three above, this case was written AFTER its fix, from a
+    // `@code-review` finding, and has never been observed failing.
+    await page.goto("/crew?auth=stale");
+    await expect(page.getByText(/your session ended/i)).toHaveCount(0);
+    await expect(page.getByLabel(/sign in with your crew email/i)).toBeVisible();
+  });
+
   test("a signed-in crew member can sign out", async ({ page }) => {
     await signInAsCrew(page, "crew-quint");
     await expect(page.getByRole("heading", { name: "Quint" })).toBeVisible();

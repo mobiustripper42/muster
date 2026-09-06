@@ -121,11 +121,23 @@ export default async function CrewHome({
     </Shell>;
   }
   if (!view)
+    // The session names a crew member who no longer exists — `buildCrewAppView`
+    // returns null only for `!me` (`crew-view.ts`). An operator removing someone
+    // mid-session reaches this, and so does any `db:reset:dev` under a live cookie.
+    //
+    // #936: this used to pass `pendingEmail={null}` and no `stage`, so the code
+    // screen could never render and the crew member was trapped — every code
+    // request bounced them back to the blank email form, with no way out short of
+    // clearing cookies. The same three inputs the `!subject` branch above reads are
+    // what this branch needed all along; nothing else in the flow was broken.
     return (
       <SignedOut
         reason="stale"
+        sessionEnded
         flag={selfServeEnabled()}
-        pendingEmail={null}
+        stage={sp.stage}
+        err={sp.err}
+        pendingEmail={(await cookies()).get(LOGIN_EMAIL_COOKIE)?.value ?? null}
       />
     );
 
@@ -202,12 +214,15 @@ function SignedOut({
   stage,
   err,
   pendingEmail,
+  sessionEnded,
 }: {
   reason?: string;
   flag: boolean;
   stage?: string;
   err?: string;
   pendingEmail: string | null;
+  /** Derived here, NEVER read from the URL — see the notice below. */
+  sessionEnded?: boolean;
 }) {
   // Flag OFF (prod until 7.0b wires real email, DEC-059/080): today's behavior —
   // the only way in is the operator-relayed link.
@@ -226,9 +241,28 @@ function SignedOut({
   }
 
   const onCodeStep = stage === "code" && !!pendingEmail;
+  // `stage=code` with no cookie: the 600s TTL lapsed, or this is a bookmark or a
+  // back button. Falling straight through to `EmailStep` is the right *form* to
+  // show and the wrong thing to show it silently — #936 took an hour to find
+  // largely because this screen looked identical to a first visit. Both notices
+  // are codes mapped to copy server-side, never prose in the URL (DEC-147 rule 3).
+  const expired = stage === "code" && !pendingEmail;
   return (
     <Shell>
       <h1 className="text-lg font-semibold text-ink">Muster</h1>
+      {/* Deliberately says nothing about WHY (the crew row is gone). The operator's
+          call: the crew member cannot act on the reason, and the form below is the
+          whole instruction.
+
+          Gated on `sessionEnded`, which only the `!view` branch sets, NOT on
+          `reason` — `reason` is `sp.auth`, so keying the notice on it would let
+          anyone render "Your session ended." at `/crew?auth=stale` on a browser
+          that has never held a session. No information either way, but a claim
+          about the visitor's own history should not be settable by the visitor. */}
+      {sessionEnded ? <Notice>Your session ended.</Notice> : null}
+      {expired ? (
+        <Notice>That sign-in step expired. Enter your email to get a new code.</Notice>
+      ) : null}
       {onCodeStep ? (
         <CodeStep email={pendingEmail!} err={err} />
       ) : (

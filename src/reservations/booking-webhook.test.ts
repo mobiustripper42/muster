@@ -5,21 +5,31 @@ import { describe, expect, it, vi } from "vitest";
 import { FAKE_SIGNATURE, FakePaymentPort } from "../adapters/fake-payment.js";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
 import { formShifts } from "../builder/form-shifts.js";
-import type { Event } from "../domain/entities.js";
+import type { Event, Reservation } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
 import type { CheckoutCompleted } from "../ports/payment.js";
+import { eventIdForSlot } from "./availability.js";
 import { processBookingWebhook, type WebhookDeps } from "./booking-webhook.js";
 import { balanceOwedCents } from "./payment-config.js";
-import { reservationIdFor } from "./write-booking.js";
 
 const EVENT = asId<"EventId">("m-evt-1");
 const NOW = () => "2026-07-12T00:00:00.000Z";
 
+// The booking flow since 14.5: checkout writes a PENDING row before Stripe, keyed by the
+// PaymentIntent id; `payment_intent.succeeded` FLIPS that row to booked. So a booking test seeds
+// the pending row, then delivers the PI event — no hosted `checkout.session.completed` insert.
+const V = asId<"VesselId">("v");
+const DATE = "2026-07-04";
+const TIME = "17:00";
+const PEND = asId<"ReservationId">("resv-pend");
+const PI = "pi_1";
+const SLOT = eventIdForSlot(V, DATE, TIME);
+
 const musterEvent = (over: Partial<Event> = {}): Event => ({
   id: EVENT,
-  vesselId: asId<"VesselId">("v"),
-  date: "2026-07-04",
-  time: "17:00",
+  vesselId: V,
+  date: DATE,
+  time: TIME,
   capacity: 12,
   status: "scheduled",
   source: "muster",
@@ -27,28 +37,58 @@ const musterEvent = (over: Partial<Event> = {}): Event => ({
   ...over,
 });
 
-const completed = (over: Partial<CheckoutCompleted> = {}): CheckoutCompleted => ({
-  sessionId: "cs_test_1",
-  paymentIntentId: "pi_1",
-  amountTotalCents: 53625,
-  currency: "usd",
-  // Slot-shaped, because that is the only booking shape the webhook accepts since #693 retired
-  // the legacy `eventId` path. The one test that still needs the old shape overrides it and
-  // asserts the refusal.
-  metadata: {
-    offeringId: "off-1",
-    vesselId: "v",
-    date: "2026-07-04",
-    time: "17:00",
-    guestCount: "6",
-    priceCents: "50000",
-    kind: "full",
-    taxCents: "3625",
-    customerName: "Mary",
-    email: "m@x.io",
-  },
+const pendingRow = (over: Partial<Reservation> = {}): Reservation => ({
+  id: PEND,
+  eventId: null,
+  source: "muster",
+  status: "pending",
+  customerName: "Mary",
+  partySize: 6,
+  phone: "216-555-0148",
+  email: "m@x.io",
+  vesselId: V,
+  date: DATE,
+  time: TIME,
+  offeringId: asId<"OfferingId">("off-1"),
+  reservedAt: "2026-07-11T23:55:00.000Z", // inside the 15-min window before NOW
+  holdMinutes: 120,
+  tripMinutes: 100,
+  paymentIntentId: PI,
   ...over,
 });
+
+/** Seed the pending row a checkout would have written, plus a vessel for the flip's capacity. */
+async function seedPending(repo: InMemoryRepository, over: Partial<Reservation> = {}): Promise<Reservation> {
+  await repo.saveVessel({ id: V, name: "Brew", coiMaxPax: 12, manning: [] });
+  const row = pendingRow(over);
+  await repo.saveReservation(row);
+  return row;
+}
+
+/** A `payment_intent.succeeded` booking event — the live booking shape (12.5). Money in metadata
+ *  (until 15.1); the slot comes from the pending row, not from here. */
+const bookingPi = (
+  pi = PI,
+  amountReceivedCents = 53625,
+  metaOver: Record<string, string> = {},
+): string =>
+  JSON.stringify({
+    type: "payment_succeeded",
+    data: {
+      paymentIntentId: pi,
+      amountReceivedCents,
+      currency: "usd",
+      metadata: {
+        purpose: "booking",
+        priceCents: "50000",
+        kind: "full",
+        taxCents: "3625",
+        customerName: "Mary",
+        email: "m@x.io",
+        ...metaOver,
+      },
+    },
+  });
 
 function makeDeps(repo: InMemoryRepository, payments: FakePaymentPort = new FakePaymentPort()) {
   const alert = vi.fn(async (_message: string) => {});
@@ -69,20 +109,20 @@ function makeDeps(repo: InMemoryRepository, payments: FakePaymentPort = new Fake
 describe("processBookingWebhook — the RESERVATIONS gate (#588, DEC-111)", () => {
   it("acks a valid signed event without booking anything when the flag is off", async () => {
     const repo = new InMemoryRepository();
-    await repo.saveEvent(musterEvent());
+    await seedPending(repo);
     const { deps, alert, confirm } = makeDeps(repo);
 
     const r = await processBookingWebhook(
       { ...deps, reservationsEnabled: false },
-      JSON.stringify(completed()),
+      bookingPi(),
       FAKE_SIGNATURE,
     );
 
     // Acked, not errored: a non-2xx would make Stripe retry an event we never want.
     expect(r).toEqual({ handled: false });
-    // Nothing written, nobody emailed.
-    expect(await repo.getReservation(reservationIdFor("cs_test_1"))).toBeNull();
-    expect(await repo.listPaymentsForReservation(reservationIdFor("cs_test_1"))).toHaveLength(0);
+    // Nothing flipped, nobody emailed — the pending row stays pending.
+    expect((await repo.getReservation(PEND))!.status).toBe("pending");
+    expect(await repo.listPaymentsForReservation(PEND)).toHaveLength(0);
     expect(confirm).not.toHaveBeenCalled();
     // But loud — a verified charge succeeded and we deliberately did not book it.
     expect(alert).toHaveBeenCalledOnce();
@@ -117,153 +157,140 @@ describe("processBookingWebhook — the RESERVATIONS gate (#588, DEC-111)", () =
     const { deps } = makeDeps(repo);
 
     await expect(
-      processBookingWebhook({ ...deps, reservationsEnabled: false }, JSON.stringify(completed()), "bad_signature"),
+      processBookingWebhook({ ...deps, reservationsEnabled: false }, bookingPi(), "bad_signature"),
     ).rejects.toThrow();
   });
 });
 
 describe("processBookingWebhook", () => {
-  it("booked: writes the reservation + records the payment", async () => {
+  it("booked: flips the pending row + records the payment", async () => {
     const repo = new InMemoryRepository();
-    await repo.saveEvent(musterEvent());
+    await seedPending(repo);
     const { deps, alert, confirm } = makeDeps(repo);
 
-    const r = await processBookingWebhook(deps, JSON.stringify(completed()), FAKE_SIGNATURE);
+    const r = await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
     expect(r).toEqual({ handled: true, outcome: "booked" });
 
-    const resId = reservationIdFor("cs_test_1");
-    // Confirmation fires once, with the freshly-booked reservation (11.4, DEC-122).
+    // Confirmation fires once, with the freshly-booked row — same id checkout minted (DEC-122).
     expect(confirm).toHaveBeenCalledOnce();
-    expect(confirm.mock.calls[0]![0]).toMatchObject({ id: resId, status: "booked" });
-    expect(await repo.getReservation(resId)).not.toBeNull();
-    const payments = await repo.listPaymentsForReservation(resId);
+    expect(confirm.mock.calls[0]![0]).toMatchObject({ id: PEND, status: "booked" });
+    expect((await repo.getReservation(PEND))!.status).toBe("booked");
+    const payments = await repo.listPaymentsForReservation(PEND);
     expect(payments).toHaveLength(1);
+    // Payment keyed off the PI id; no session id on the Elements path.
     expect(payments[0]).toMatchObject({
+      id: "pay_pi_1",
       amountCents: 53625,
       taxCents: 3625,
       kind: "full",
       status: "succeeded",
-      stripeCheckoutSessionId: "cs_test_1",
       stripePaymentIntentId: "pi_1",
     });
+    expect(payments[0]!.stripeCheckoutSessionId).toBeUndefined();
     expect(alert).not.toHaveBeenCalled();
   });
 
-  it("already: a re-delivered webhook (same session) is idempotent — no duplicate booking or payment", async () => {
+  it("already: a re-delivered webhook is idempotent — no second flip or payment", async () => {
     const repo = new InMemoryRepository();
-    await repo.saveEvent(musterEvent());
+    await seedPending(repo);
     const { deps, confirm } = makeDeps(repo);
 
-    await processBookingWebhook(deps, JSON.stringify(completed()), FAKE_SIGNATURE);
-    const r = await processBookingWebhook(deps, JSON.stringify(completed()), FAKE_SIGNATURE);
+    await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
+    const r = await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
     expect(r).toEqual({ handled: true, outcome: "already" });
 
-    expect(await repo.listReservationsForEvent(EVENT)).toHaveLength(1);
-    expect(
-      await repo.listPaymentsForReservation(reservationIdFor("cs_test_1")),
-    ).toHaveLength(1);
+    expect(await repo.listReservationsForEvent(SLOT)).toHaveLength(1);
+    expect(await repo.listPaymentsForReservation(PEND)).toHaveLength(1);
     // The re-delivery resolves to `already` → NO second confirmation (DEC-122):
     // one send across both calls, or the customer is re-texted on every retry.
     expect(confirm).toHaveBeenCalledOnce();
   });
 
   /**
-   * The legacy 11.2 booking path is RETIRED (issue #693). A session whose metadata carries an
-   * `eventId` instead of a slot must alert and book nothing.
-   *
-   * Why retire rather than guard it: #615/#691 put the hull-overlap guard and the hull-day
-   * advisory lock on `saveBookingIfSlotFree`; `saveReservationIfUnclaimed` never got them, so
-   * this branch still claimed by row-locking one `event_id` — exactly the pre-#691 behaviour
-   * where two overlapping trips on one boat both succeed. Nothing mints legacy metadata
-   * (`createBookingCheckout` had no caller under `app/`), so it was an UNGUARDED FALLBACK rather
-   * than a removed one, sitting on the money path.
-   *
-   * Money has already moved by the time this runs, so the refusal is loud — same posture as the
-   * flag-off branch above it, and as every other paid-but-unbooked outcome (#613).
+   * A booking charge that resolves to NO pending row is refused loudly (§2.8.6). Two shapes reach
+   * this: a purposed PaymentIntent whose row was never written (or is not ours), and a hosted
+   * `checkout.session.completed` booking session, which nothing mints since 14.5. Both mean money
+   * moved with nothing behind it — the one thing that must never pass quietly.
    */
-  it("refuses a legacy eventId-shaped session: alerts, books nothing (#693)", async () => {
+  it("a purposed PI with no pending row: alerts, books nothing", async () => {
     const repo = new InMemoryRepository();
-    await repo.saveEvent(musterEvent());
     const { deps, alert, confirm } = makeDeps(repo);
 
-    const legacy = completed({
-      metadata: { eventId: "m-evt-1", partySize: "6", kind: "full", taxCents: "3625", customerName: "Mary" },
-    });
-    const r = await processBookingWebhook(deps, JSON.stringify(legacy), FAKE_SIGNATURE);
+    const r = await processBookingWebhook(deps, bookingPi("pi_stranger"), FAKE_SIGNATURE);
 
     expect(r).toEqual({ handled: true, outcome: "unbookable" });
     expect(alert).toHaveBeenCalledOnce();
-    expect(alert.mock.calls[0]![0]).toContain("REFUND MANUALLY");
+    expect(alert.mock.calls[0]![0]).toContain("no live pending reservation");
     expect(confirm).not.toHaveBeenCalled();
-    // The point of the ticket: no reservation, on a path that used to write one without the
-    // hull guard. An assertion on the alert alone would pass if it booked AND alerted.
-    expect(await repo.getReservation(reservationIdFor("cs_test_1"))).toBeNull();
+    expect((await repo.listAllReservations())).toHaveLength(0);
   });
 
-  it("freezes the party-fare extras from slot metadata onto the reservation (#474)", async () => {
+  it("a hosted booking session is refused — the hosted booking path was retired (14.5)", async () => {
     const repo = new InMemoryRepository();
-    const { deps } = makeDeps(repo);
-    // A slot-first booking (vesselId+date+time+offeringId, no eventId → the webhook
-    // materializes the Event) carrying extrasCents in metadata — must land on the reservation
-    // so the deposit-mode balance deriver bills base + extras (DEC-107 amend).
-    const slot = completed({
-      metadata: {
-        offeringId: "off-1",
-        vesselId: "v",
-        date: "2026-07-04",
-        time: "17:00",
-        guestCount: "6",
-        priceCents: "50000",
-        extrasCents: "6000",
-        kind: "deposit",
-        taxCents: "4060",
-        customerName: "Mary",
-      },
-    });
+    const { deps, alert, confirm } = makeDeps(repo);
+    const hosted = {
+      sessionId: "cs_hosted_1",
+      paymentIntentId: "pi_hosted_1",
+      amountTotalCents: 53625,
+      currency: "usd",
+      metadata: { purpose: "booking", priceCents: "50000", kind: "full", customerName: "Mary" },
+    };
 
-    const r = await processBookingWebhook(deps, JSON.stringify(slot), FAKE_SIGNATURE);
+    const r = await processBookingWebhook(deps, JSON.stringify(hosted), FAKE_SIGNATURE);
+
+    expect(r).toEqual({ handled: true, outcome: "unbookable" });
+    expect(alert).toHaveBeenCalledOnce();
+    expect(alert.mock.calls[0]![0]).toContain("hosted Checkout booking session");
+    expect(confirm).not.toHaveBeenCalled();
+    expect(await repo.listAllReservations()).toHaveLength(0);
+  });
+
+  it("carries the party-fare extras from metadata onto the flipped row (#474)", async () => {
+    const repo = new InMemoryRepository();
+    await seedPending(repo);
+    const { deps } = makeDeps(repo);
+
+    const r = await processBookingWebhook(
+      deps,
+      bookingPi(PI, 53625, { extrasCents: "6000", kind: "deposit", taxCents: "4060" }),
+      FAKE_SIGNATURE,
+    );
     expect(r).toEqual({ handled: true, outcome: "booked" });
-    const res = (await repo.getReservation(reservationIdFor("cs_test_1")))!;
-    expect(res.extrasCents).toBe(6000);
+    expect((await repo.getReservation(PEND))!.extrasCents).toBe(6000);
   });
 
-  it("carries waiver consent from checkout metadata onto the reservation (11.5, DEC-110)", async () => {
+  it("the waiver consent frozen on the pending row survives the flip (11.5, DEC-110)", async () => {
+    // Waiver is stamped at checkout-start onto the pending row (14.4), not read from the charge.
     const repo = new InMemoryRepository();
-    await repo.saveEvent(musterEvent());
-    const { deps } = makeDeps(repo);
-    const withWaiver = completed({
-      metadata: { ...completed().metadata, waiverConsentAt: "2026-07-13T12:00:00.000Z", waiverVersion: "v1" },
+    await seedPending(repo, {
+      waiverConsentAt: "2026-07-13T12:00:00.000Z",
+      waiverVersion: "v1",
     });
+    const { deps } = makeDeps(repo);
 
-    await processBookingWebhook(deps, JSON.stringify(withWaiver), FAKE_SIGNATURE);
-    const res = (await repo.getReservation(reservationIdFor("cs_test_1")))!;
+    await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
+    const res = (await repo.getReservation(PEND))!;
     expect(res.waiverConsentAt).toBe("2026-07-13T12:00:00.000Z");
     expect(res.waiverVersion).toBe("v1");
   });
 
-  // Retitled at #613. It used to claim "records the payment", and asserted a row that PRODUCTION
-  // could never write: `payments.reservation_id` is `not null` with an immediate FK, and no
-  // reservation exists on an unbookable outcome. It passed only because `InMemoryRepository` is a
-  // `Map.set` with no referential integrity (DEC-131). The alert is the real contract here — and
-  // it was unreachable, because the FK violation threw before it.
   /**
-   * Retitled and re-asserted at #693, and the outcome is BETTER than what this test used to pin.
+   * The residual race (DEC-109): a rival won the boat between checkout and confirm, so the flip
+   * loses. Auto-refund keyed on the PI + a sold-out notice, no operator in the loop, and NO
+   * payment row — there is no booking to hang it on. The pending row stays pending (15.2 decides
+   * what becomes of it).
    *
-   * It was written against the retired legacy path, where losing the boat produced `unbookable`
-   * and a "REFUND MANUALLY" alert — a human chasing a refund for a customer who had already
-   * paid. The slot path reports the same situation as `lost` and handles it: keyed auto-refund
-   * plus a sold-out notice to the customer, with no operator in the loop. Asserting the old
-   * shape here would have pinned the worse behaviour of a path that no longer exists.
-   *
-   * What is unchanged, and is the part #613 cares about: no reservation was written, so no
-   * payment row may exist to hang off one.
+   * The empty-payments contract (#613) is enforced by a real FK only in Postgres; the in-memory
+   * double is a `Map.set`, so `postgres-repository.test.ts` carries the load-bearing version.
    */
   it("loses the boat to a rival: auto-refunds, tells the customer, writes NO payment", async () => {
     const repo = new InMemoryRepository();
-    await repo.saveEvent(musterEvent());
+    await seedPending(repo);
+    // A rival already booked the slot — the flip's whole-boat mutex loses.
+    await repo.saveEvent(musterEvent({ id: SLOT }));
     await repo.saveReservation({
       id: asId<"ReservationId">("r-rival"),
-      eventId: EVENT,
+      eventId: SLOT,
       source: "muster",
       customerName: "Rival",
       partySize: 4,
@@ -272,57 +299,40 @@ describe("processBookingWebhook", () => {
     const payments = new FakePaymentPort();
     const { deps, alert, confirm, soldOut } = makeDeps(repo, payments);
 
-    const r = await processBookingWebhook(deps, JSON.stringify(completed()), FAKE_SIGNATURE);
+    const r = await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
     expect(r).toEqual({ handled: true, outcome: "lost" });
-    // Refunded once, keyed on the charge so a redelivery cannot double-refund (DEC-107 amended).
+    // Refunded once, keyed on the PI so a redelivery cannot double-refund (DEC-107 amended).
     expect(payments.refunds).toHaveLength(1);
-    expect(payments.refunds[0]!.idempotencyKey).toBe("refund_cs_test_1");
+    expect(payments.refunds[0]!.idempotencyKey).toBe("refund_pi_1");
     expect(soldOut).toHaveBeenCalledOnce();
-    // No operator alert: this path resolves itself. An alert here would be the old behaviour.
+    // No operator alert: this path resolves itself.
     expect(alert).not.toHaveBeenCalled();
     expect(confirm).not.toHaveBeenCalled(); // no booking → no confirmation
-    // No payment row — there is no reservation to hang it on. Postgres enforces this; the
-    // in-memory double does not, which is why the Postgres suite carries the real guard
-    // (`postgres-repository.test.ts` → "paid-but-unbooked — the payments→reservations FK").
-    expect(
-      await repo.listPaymentsForReservation(reservationIdFor("cs_test_1")),
-    ).toHaveLength(0);
+    expect(await repo.listPaymentsForReservation(PEND)).toHaveLength(0);
+    // The row is not booked — it stayed pending.
+    expect((await repo.getReservation(PEND))!.status).toBe("pending");
   });
 
   it("a throwing sendConfirmation never breaks the committed booking (best-effort, DEC-122)", async () => {
     const repo = new InMemoryRepository();
-    await repo.saveEvent(musterEvent());
+    await seedPending(repo);
     const { deps } = makeDeps(repo);
     deps.sendConfirmation = async () => {
       throw new Error("confirmation blew up");
     };
 
     // The booking is committed; a confirmation throw must not 500 the webhook.
-    const r = await processBookingWebhook(deps, JSON.stringify(completed()), FAKE_SIGNATURE);
+    const r = await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
     expect(r).toEqual({ handled: true, outcome: "booked" });
-    expect(await repo.getReservation(reservationIdFor("cs_test_1"))).not.toBeNull();
+    expect((await repo.getReservation(PEND))!.status).toBe("booked");
   });
-
-  // DELETED at #693: "paid-but-unbooked (event missing)".
-  //
-  // Its scenario is unreachable on the surviving path — a slot booking MATERIALIZES its event
-  // (`writeSlotBooking`), so "no event exists" is not a failure any more; it is Tuesday. The
-  // test only had a missing-event case because the retired legacy path took an `eventId` and
-  // required the row to already be there.
-  //
-  // Its stated value was being the SECOND independent check that `recordPayment` never runs on a
-  // non-booked outcome (#613) — so that hoisting it back above the outcome branch could not pass
-  // unnoticed, the in-memory repo having no FK to catch it (DEC-131). That check is not lost:
-  // the rival-holds-the-boat test above asserts the same empty-payments contract on a `lost`
-  // outcome, and the #693 refusal test asserts no reservation on an `unbookable` one. Two
-  // independent non-booked outcomes still cover it, which is what the comment actually wanted.
 
   it("handled:false for a non-checkout event; throws on a bad signature", async () => {
     const repo = new InMemoryRepository();
     const { deps } = makeDeps(repo);
     expect(await processBookingWebhook(deps, "null", FAKE_SIGNATURE)).toEqual({ handled: false });
     await expect(
-      processBookingWebhook(deps, JSON.stringify(completed()), "wrong-sig"),
+      processBookingWebhook(deps, bookingPi(), "wrong-sig"),
     ).rejects.toThrow();
   });
 });
@@ -533,30 +543,36 @@ describe("a native booking forms its own crewable shift (#614)", () => {
       priceVariations: [],
       extraGuestPriceCents: 5000,
     });
+    // The pending row checkout wrote for this slot, carrying the PI the charge confirms.
+    await repo.saveReservation({
+      id: asId<"ReservationId">("resv-614"),
+      eventId: null,
+      source: "muster",
+      status: "pending",
+      customerName: "Mary",
+      email: "m@x.io",
+      partySize: 6,
+      vesselId: VES,
+      date: "2026-07-04",
+      time: "17:00",
+      offeringId: OFF,
+      reservedAt: "2026-07-11T23:55:00.000Z",
+      holdMinutes: 120,
+      tripMinutes: 100,
+      paymentIntentId: "pi_614",
+    });
     return repo;
   }
 
+  // `bookingPi` already returns a JSON string; the call sites pass it straight to the webhook.
   const slotCharge = () =>
-    completed({
-      sessionId: "cs_slot_614",
-      metadata: {
-        offeringId: String(OFF),
-        vesselId: String(VES),
-        date: "2026-07-04",
-        time: "17:00",
-        guestCount: "6",
-        priceCents: "49900",
-        kind: "full",
-        customerName: "Mary",
-        email: "m@x.io",
-      },
-    });
+    bookingPi("pi_614", 49900, { offeringId: String(OFF), vesselId: String(VES), priceCents: "49900" });
 
   it("books a slot and lands a Shift with derived seats — no Xola pull anywhere", async () => {
     const repo = await slotWorld();
     const { deps } = makeDeps(repo);
 
-    const r = await processBookingWebhook(deps, JSON.stringify(slotCharge()), FAKE_SIGNATURE);
+    const r = await processBookingWebhook(deps, slotCharge(), FAKE_SIGNATURE);
     expect(r).toMatchObject({ handled: true, outcome: "booked" });
 
     // The event exists — that part always worked.
@@ -588,7 +604,7 @@ describe("a native booking forms its own crewable shift (#614)", () => {
     const { deps } = makeDeps(repo);
     deps.relayFormNotices = async (form) => void relayed.push(form);
 
-    await processBookingWebhook(deps, JSON.stringify(slotCharge()), FAKE_SIGNATURE);
+    await processBookingWebhook(deps, slotCharge(), FAKE_SIGNATURE);
 
     // The result reached the relay at all — that is the regression this pins — and it is the
     // REAL `FormResult`, not an empty stand-in: it carries the shift this booking just created.
@@ -636,7 +652,7 @@ describe("a native booking forms its own crewable shift (#614)", () => {
     deps.relayFormNotices = async (form) => void relayed.push(form);
 
     // Now a customer buys the 17:00 on the same boat, same day.
-    await processBookingWebhook(deps, JSON.stringify(slotCharge()), FAKE_SIGNATURE);
+    await processBookingWebhook(deps, slotCharge(), FAKE_SIGNATURE);
 
     // The trip set genuinely moved — one trip became two, on the shift the captain is on.
     expect((await repo.getShift(shift.id))?.eventIds).toHaveLength(2);
@@ -660,7 +676,7 @@ describe("a native booking forms its own crewable shift (#614)", () => {
     const { deps } = makeDeps(repo);
     deps.relayFormNotices = async (form) => void relayed.push(form);
 
-    await processBookingWebhook(deps, JSON.stringify(slotCharge()), FAKE_SIGNATURE);
+    await processBookingWebhook(deps, slotCharge(), FAKE_SIGNATURE);
 
     expect(relayed).toHaveLength(1);
     const form = relayed[0] as {
@@ -680,7 +696,7 @@ describe("a native booking forms its own crewable shift (#614)", () => {
       throw new Error("channel is down");
     };
 
-    const r = await processBookingWebhook(deps, JSON.stringify(slotCharge()), FAKE_SIGNATURE);
+    const r = await processBookingWebhook(deps, slotCharge(), FAKE_SIGNATURE);
 
     expect(r).toMatchObject({ handled: true, outcome: "booked" });
     expect(await repo.listShifts()).toHaveLength(1);
@@ -697,7 +713,7 @@ describe("a native booking forms its own crewable shift (#614)", () => {
     };
     const { deps, confirm } = makeDeps(repo);
 
-    const r = await processBookingWebhook(deps, JSON.stringify(slotCharge()), FAKE_SIGNATURE);
+    const r = await processBookingWebhook(deps, slotCharge(), FAKE_SIGNATURE);
 
     expect(r).toMatchObject({ handled: true, outcome: "booked" });
     expect(await repo.listAllReservations()).toHaveLength(1);

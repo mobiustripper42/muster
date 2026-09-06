@@ -177,7 +177,7 @@ const WIDE_WINDOW = {
 /** A presented hash that never matches the stored `code-hash-1` — i.e. a WRONG guess. The
  *  window/attempt bounds apply to these; a correct-code claim is exercised separately (#801). */
 const WRONG_HASH = "not-the-stored-code";
-/** The pending clock (14.4). `SINCE` is what every `saveBookingIfSlotFree` call passes as its
+/** The pending clock (14.4). `SINCE` is what every `bookPendingIfHullFree` call passes as its
  *  `pendingLiveSince`: NOW − the 15-minute payment window. Cases with no pending row are
  *  indifferent to it; the 14.4 block builds its rows around it. */
 const NOW = "2026-06-01T12:00:00.000Z";
@@ -704,180 +704,12 @@ export function runRepositoryContract(
       expect((await repo.getReservation(asId<"ReservationId">("resv-1")))!.source).toBe("admin");
     });
 
-    // The `saveReservationIfUnclaimed` contract block that stood here is GONE (#693). It was
-    // the DEC-109 whole-boat claim keyed on one `event_id` — seven cases across both adapters —
-    // and its only caller was the legacy `writeBooking`, retired in the same change. The
-    // guarantee is not lost: `saveBookingIfSlotFree` below claims the same whole-boat mutex and
-    // adds what the old one lacked, the hull-day advisory lock and the overlap predicate that
-    // #691 needed. Keeping a second write path alive purely because it had tests is how an
-    // unguarded fallback survives a decade.
-    //
-    // `rid` stayed — it was declared inside that block and the `saveBookingIfSlotFree` cases
-    // below use it.
+    // The `saveReservationIfUnclaimed` contract block that stood here is GONE (#693), and the
+    // `saveBookingIfSlotFree` block that replaced it is GONE too (14.5, issue #916): confirm no
+    // longer inserts a booking beside the pending row, it flips that row. The whole-boat mutex,
+    // the hull-day lock and the overlap predicate all survive in `bookPendingIfHullFree`, which
+    // sits below the pending-row fixtures it needs.
     const rid = (s: string) => asId<"ReservationId">(s);
-
-    // ── saveBookingIfSlotFree — materialize + claim a virtual slot (12.1, DEC-109/125) ──
-    const SLOT_ID = eventIdForSlot(VESSEL, "2026-07-01", "14:00");
-    const slotEvent = (over: Partial<Event> = {}): Event =>
-      event({ id: SLOT_ID, source: "muster", ...over });
-
-    it("saveBookingIfSlotFree: materializes the Event and claims on an empty slot", async () => {
-      const ev = slotEvent();
-      const res = await repo.saveBookingIfSlotFree(
-        ev,
-        reservation({ id: rid("resv-a"), source: "muster", eventId: SLOT_ID }),
-        SINCE,
-      );
-      expect(res.result).toBe("won");
-      expect(await repo.getEvent(SLOT_ID)).not.toBeNull(); // materialized
-      expect(await repo.listReservationsForEvent(SLOT_ID)).toHaveLength(1);
-    });
-
-    it("saveBookingIfSlotFree: LOSES when a Xola trip already holds the hull (#615)", async () => {
-      // The imported Xola booking is a different source and a different event id, so every
-      // guard the CAS had — the partial unique index, the `not exists` reservation check —
-      // sailed straight past it. Muster would sell a boat Xola had already sold.
-      await repo.saveEvent(
-        event({ id: asId<"EventId">("evt-xola-hull"), source: "xola", time: "14:00" }),
-      );
-      const res = await repo.saveBookingIfSlotFree(
-        slotEvent(),
-        reservation({ id: rid("resv-x"), source: "muster", eventId: SLOT_ID }),
-        SINCE,
-      );
-      expect(res.result).toBe("lost");
-      expect(await repo.listReservationsForEvent(SLOT_ID)).toHaveLength(0);
-    });
-
-    it("saveBookingIfSlotFree: LOSES on an OVERLAPPING time, not just the same one (#691)", async () => {
-      // 13:00 + 100min runs to 14:40, over a 14:00 departure. A different slot identity, which
-      // is exactly why the exact-triple guard called itself defeat-proof and wasn't.
-      await repo.saveEvent(
-        event({ id: asId<"EventId">("evt-overlap"), source: "muster", time: "13:00", durationMinutes: 100 }),
-      );
-      const res = await repo.saveBookingIfSlotFree(
-        slotEvent(),
-        reservation({ id: rid("resv-o"), source: "muster", eventId: SLOT_ID }),
-        SINCE,
-      );
-      expect(res.result).toBe("lost");
-    });
-
-    it("saveBookingIfSlotFree: an untimed existing trip is measured at the STANDING length, not the new booking's", async () => {
-      // The SQL coalesced a null `duration_minutes` against the NEW booking's duration. Book a
-      // short charter and the untimed Xola trip beside it shrinks to match — opening a gap that
-      // is not there. `busyIntervalsFor` always measures an existing untimed row at
-      // XOLA_TRIP_MINUTES, and the backstop has to agree or the read path and the write path
-      // disagree about the same boat.
-      await repo.saveEvent(
-        // 13:00, no duration ⇒ 100 minutes ⇒ busy to 14:40, over the 14:00 slot.
-        event({ id: asId<"EventId">("evt-untimed"), source: "xola", time: "13:00" }),
-      );
-      const res = await repo.saveBookingIfSlotFree(
-        slotEvent({ durationMinutes: 30 }), // a SHORT new booking at 14:00
-        reservation({ id: rid("resv-short"), source: "muster", eventId: SLOT_ID }),
-        SINCE,
-      );
-      expect(res.result).toBe("lost");
-    });
-
-    it("saveBookingIfSlotFree: WINS when the other trip ends exactly as this one starts", async () => {
-      // Half-open intervals. Back-to-back departures are the operator's actual schedule, so
-      // a closed interval here would refuse every second sailing of the day.
-      await repo.saveEvent(
-        event({ id: asId<"EventId">("evt-abuts"), source: "muster", time: "12:20", durationMinutes: 100 }),
-      );
-      const res = await repo.saveBookingIfSlotFree(
-        slotEvent(),
-        reservation({ id: rid("resv-ab"), source: "muster", eventId: SLOT_ID }),
-        SINCE,
-      );
-      expect(res.result).toBe("won");
-    });
-
-    it("saveBookingIfSlotFree: a CANCELLED trip on the hull does not block", async () => {
-      await repo.saveEvent(
-        event({ id: asId<"EventId">("evt-cancelled"), source: "xola", time: "14:00", status: "cancelled" }),
-      );
-      const res = await repo.saveBookingIfSlotFree(
-        slotEvent(),
-        reservation({ id: rid("resv-c"), source: "muster", eventId: SLOT_ID }),
-        SINCE,
-      );
-      expect(res.result).toBe("won");
-    });
-
-    /**
-     * A cancelled RESERVATION on the claimed slot does not block a re-claim.
-     *
-     * Distinct from the cancelled-TRIP case above, which cancels the event. This cancels the
-     * booking while the slot stays live — the customer-cancels-then-someone-else-books path. Both
-     * adapters enforce it (`and status='booked'` in the SQL, `r.status === "booked"` in memory),
-     * and the retired `saveReservationIfUnclaimed` block had a case for it; when that block went
-     * with #693 this guarantee was left enforced by code and asserted by nothing. Caught by
-     * @code-review reading what the deletion actually removed rather than counting the cases.
-     */
-    it("saveBookingIfSlotFree: a CANCELLED reservation on the slot does not block a re-claim", async () => {
-      const ev = slotEvent();
-      const first = reservation({ id: rid("resv-gone"), source: "muster", eventId: SLOT_ID });
-      expect((await repo.saveBookingIfSlotFree(ev, first, SINCE)).result).toBe("won");
-      await repo.saveReservation({ ...first, status: "cancelled" });
-
-      const res = await repo.saveBookingIfSlotFree(
-        ev,
-        reservation({ id: rid("resv-next"), source: "muster", eventId: SLOT_ID }),
-        SINCE,
-      );
-      expect(res.result).toBe("won");
-    });
-
-    it("saveBookingIfSlotFree: idempotent on reservation id (redelivered webhook)", async () => {
-      const ev = slotEvent();
-      const r = reservation({ id: rid("resv-a"), source: "muster", eventId: SLOT_ID });
-      expect((await repo.saveBookingIfSlotFree(ev, r, SINCE)).result).toBe("won");
-      expect((await repo.saveBookingIfSlotFree(ev, r, SINCE)).result).toBe("won"); // idempotent
-      expect(await repo.listReservationsForEvent(SLOT_ID)).toHaveLength(1);
-    });
-
-    it("saveBookingIfSlotFree: a DIFFERENT reservation loses on an already-claimed slot", async () => {
-      const ev = slotEvent();
-      expect(
-        (await repo.saveBookingIfSlotFree(ev, reservation({ id: rid("resv-a"), source: "muster", eventId: SLOT_ID }), SINCE)).result,
-      ).toBe("won");
-      expect(
-        (await repo.saveBookingIfSlotFree(ev, reservation({ id: rid("resv-b"), source: "muster", eventId: SLOT_ID }), SINCE)).result,
-      ).toBe("lost");
-      const active = (await repo.listReservationsForEvent(SLOT_ID)).filter((r) => r.status === "booked");
-      expect(active).toHaveLength(1);
-    });
-
-    it("saveBookingIfSlotFree: exactly one of two concurrent first-bookings wins (one Event, one claim)", async () => {
-      const ev = slotEvent();
-      const [a, b] = await Promise.all([
-        repo.saveBookingIfSlotFree(ev, reservation({ id: rid("resv-a"), source: "muster", eventId: SLOT_ID, customerName: "A" }), SINCE),
-        repo.saveBookingIfSlotFree(ev, reservation({ id: rid("resv-b"), source: "muster", eventId: SLOT_ID, customerName: "B" }), SINCE),
-      ]);
-      expect([a.result, b.result].filter((x) => x === "won")).toHaveLength(1);
-      expect(await repo.getEvent(SLOT_ID)).not.toBeNull();
-      const active = (await repo.listReservationsForEvent(SLOT_ID)).filter((r) => r.status === "booked");
-      expect(active).toHaveLength(1); // the guardrail held — no double-sold boat
-    });
-
-    it("saveBookingIfSlotFree: claims a PRE-EXISTING override event at the slot, reconciling eventId", async () => {
-      // an override event with a NON-deterministic id already occupies the physical slot
-      await repo.saveEvent(
-        event({ id: asId<"EventId">("override-1"), source: "muster", vesselId: VESSEL, date: "2026-07-01", time: "14:00", price: 55500 }),
-      );
-      const res = await repo.saveBookingIfSlotFree(
-        slotEvent(), // deterministic-id candidate
-        reservation({ id: rid("resv-a"), source: "muster", eventId: SLOT_ID }),
-        SINCE,
-      );
-      expect(res.result).toBe("won");
-      if (res.result === "won") expect(String(res.eventId)).toBe("override-1"); // claimed the existing row
-      expect(await repo.getEvent(SLOT_ID)).toBeNull(); // no duplicate materialized (slot guardrail)
-      expect(await repo.listReservationsForEvent(asId<"EventId">("override-1"))).toHaveLength(1);
-    });
 
     // ── The pending row (14.4, SPEC §2.8.2–2.8.4) ───────────────────────────────
     // A `pending` reservation names a slot, not an Event, and occupies the hull for its OWN frozen
@@ -1027,49 +859,210 @@ export function runRepositoryContract(
       expect([a.result, b.result].filter((x) => x === "won")).toHaveLength(1);
     });
 
-    it("saveBookingIfSlotFree: LOSES against a rival's live pending row (§2.8.3 — pending occupies)", async () => {
+    // ── bookPendingIfHullFree — confirm flips the pending row (14.5, SPEC §2.8.6) ──────────
+    // The row checkout wrote (§2.8.2) BECOMES the booking: same id, `status` → `booked`,
+    // `eventId` → the Event this call materializes at the slot identity. One critical section
+    // under the hull-day lock: the hull must be free of every other scheduled trip and of every
+    // OTHER live pending row — the row being flipped is exempt by its id, and the customer's own
+    // earlier attempts by its holder token (§2.8.5), never by a payment id — then the Event is
+    // materialized (or a cancelled one resurrected) and the whole-boat mutex claimed. Idempotent:
+    // a row already `booked` reports `already`. A lapsed own row still confirms when the boat is
+    // free (§2.8.7's last row). `lost` never writes.
+    const SLOT_ID = eventIdForSlot(VESSEL, "2026-07-01", "14:00");
+    const slotEvent = (over: Partial<Event> = {}): Event =>
+      event({ id: SLOT_ID, source: "muster", ...over });
+    const PATCH = { updatedAt: NOW };
+    /** Seed a pending row directly — no hull check, that is the write's job — then confirm it. */
+    async function confirm(row: Reservation, ev: Event = slotEvent()) {
+      await repo.saveReservation(row);
+      return repo.bookPendingIfHullFree(row.id, ev, PATCH, SINCE);
+    }
+
+    it("bookPendingIfHullFree: flips the pending row to booked and materializes its Event — one row, not two", async () => {
+      const res = await confirm(pendingRow({ paymentIntentId: "pi_1", holderToken: "tok-1" }));
+      expect(res.result).toBe("won");
+      if (res.result !== "won") return;
+      expect(String(res.eventId)).toBe(String(SLOT_ID));
+      expect(res.reservation).toMatchObject({ id: "pend-1", status: "booked", eventId: SLOT_ID });
+      const stored = (await repo.getReservation(rid("pend-1")))!;
+      expect(stored.status).toBe("booked");
+      expect(String(stored.eventId)).toBe(String(SLOT_ID));
+      expect(stored.updatedAt).toBe(NOW);
+      // Everything checkout froze survives the flip.
+      expect(stored).toMatchObject({
+        paymentIntentId: "pi_1",
+        holderToken: "tok-1",
+        holdMinutes: 120,
+        tripMinutes: 100,
+        reservedAt: NOW,
+      });
+      expect(await repo.getEvent(SLOT_ID)).not.toBeNull(); // materialized
+      expect(await repo.listAllReservations()).toHaveLength(1); // flipped, not inserted beside
+      expect(await repo.listReservationsForEvent(SLOT_ID)).toHaveLength(1);
+    });
+
+    it("bookPendingIfHullFree: the confirm patch lands — customerId and extrasCents are written at confirm", async () => {
+      await repo.saveCustomer({
+        id: asId<"CustomerId">("cust-conf"),
+        displayCode: "C-CONF01",
+        name: "Hooper",
+        phoneE164: "+12165550199",
+        createdAt: NOW,
+        active: true,
+      });
+      await repo.saveReservation(pendingRow());
+      const res = await repo.bookPendingIfHullFree(
+        rid("pend-1"),
+        slotEvent(),
+        { updatedAt: NOW, customerId: asId<"CustomerId">("cust-conf"), extrasCents: 6000 },
+        SINCE,
+      );
+      expect(res.result).toBe("won");
+      const stored = (await repo.getReservation(rid("pend-1")))!;
+      expect(String(stored.customerId)).toBe("cust-conf");
+      expect(stored.extrasCents).toBe(6000);
+    });
+
+    it("bookPendingIfHullFree: LOSES when a Xola trip already holds the hull (#615) — the row stays pending", async () => {
+      await repo.saveEvent(event({ id: asId<"EventId">("evt-xola-hull"), source: "xola", time: "14:00" }));
+      const res = await confirm(pendingRow());
+      expect(res.result).toBe("lost");
+      expect((await repo.getReservation(rid("pend-1")))!.status).toBe("pending");
+      expect(await repo.getEvent(SLOT_ID)).toBeNull(); // losing materializes nothing
+    });
+
+    it("bookPendingIfHullFree: LOSES on an OVERLAPPING time, not just the same one (#691)", async () => {
+      // 13:00 + 100min runs to 14:40, over a 14:00 departure — a different slot identity.
+      await repo.saveEvent(
+        event({ id: asId<"EventId">("evt-overlap"), source: "muster", time: "13:00", durationMinutes: 100 }),
+      );
+      expect((await confirm(pendingRow())).result).toBe("lost");
+    });
+
+    it("bookPendingIfHullFree: an untimed existing trip is measured at the STANDING length, not the new booking's", async () => {
+      // 13:00, no duration ⇒ 100 minutes ⇒ busy to 14:40, over the 14:00 slot — even for a SHORT
+      // new booking. `busyIntervalsFor` measures an untimed row at XOLA_TRIP_MINUTES and the
+      // write-side predicate must agree, or read and write disagree about the same boat.
+      await repo.saveEvent(event({ id: asId<"EventId">("evt-untimed"), source: "xola", time: "13:00" }));
+      const res = await confirm(pendingRow({ tripMinutes: 30 }), slotEvent({ durationMinutes: 30 }));
+      expect(res.result).toBe("lost");
+    });
+
+    it("bookPendingIfHullFree: WINS when the other trip ends exactly as this one starts", async () => {
+      // Half-open intervals — back-to-back departures are the operator's actual schedule.
+      await repo.saveEvent(
+        event({ id: asId<"EventId">("evt-abuts"), source: "muster", time: "12:20", durationMinutes: 100 }),
+      );
+      expect((await confirm(pendingRow())).result).toBe("won");
+    });
+
+    it("bookPendingIfHullFree: a CANCELLED trip on the hull does not block", async () => {
+      await repo.saveEvent(
+        event({ id: asId<"EventId">("evt-cancelled"), source: "xola", time: "14:00", status: "cancelled" }),
+      );
+      expect((await confirm(pendingRow())).result).toBe("won");
+    });
+
+    it("bookPendingIfHullFree: a CANCELLED reservation on the slot does not block the next confirm", async () => {
+      // The customer-cancels-then-someone-else-books path, on the reservation side only (the
+      // event stays live). Both adapters filter the mutex on `status='booked'`.
+      expect((await confirm(pendingRow({ id: rid("pend-gone") }))).result).toBe("won");
+      const gone = (await repo.getReservation(rid("pend-gone")))!;
+      await repo.saveReservation({ ...gone, status: "cancelled" });
+      expect((await confirm(pendingRow({ id: rid("pend-next") }))).result).toBe("won");
+    });
+
+    it("bookPendingIfHullFree: idempotent — confirming a booked row again reports `already`, one row, one Event", async () => {
+      expect((await confirm(pendingRow())).result).toBe("won");
+      const again = await repo.bookPendingIfHullFree(rid("pend-1"), slotEvent(), PATCH, SINCE);
+      expect(again.result).toBe("already");
+      if (again.result === "already") {
+        expect(again.reservation).toMatchObject({ id: "pend-1", status: "booked" });
+      }
+      expect(await repo.listReservationsForEvent(SLOT_ID)).toHaveLength(1);
+      expect(await repo.listEvents()).toHaveLength(1);
+    });
+
+    it("bookPendingIfHullFree: a DIFFERENT pending row loses on an already-claimed slot", async () => {
+      expect((await confirm(pendingRow({ id: rid("pend-a") }))).result).toBe("won");
+      expect((await confirm(pendingRow({ id: rid("pend-b") }))).result).toBe("lost");
+      const active = (await repo.listReservationsForEvent(SLOT_ID)).filter((r) => r.status === "booked");
+      expect(active).toHaveLength(1);
+      expect((await repo.getReservation(rid("pend-b")))!.status).toBe("pending");
+    });
+
+    it("bookPendingIfHullFree: exactly one of two concurrent confirms on one slot wins (one Event, one claim)", async () => {
+      // Both rows LAPSED, so neither counts the other as a live pending rival and the race is
+      // decided by the materialize-and-claim section alone — the case the lock exists for.
+      const lapsed = "2026-06-01T11:00:00.000Z";
+      await repo.saveReservation(pendingRow({ id: rid("pend-a"), reservedAt: lapsed, customerName: "A" }));
+      await repo.saveReservation(pendingRow({ id: rid("pend-b"), reservedAt: lapsed, customerName: "B" }));
+      const [a, b] = await Promise.all([
+        repo.bookPendingIfHullFree(rid("pend-a"), slotEvent(), PATCH, SINCE),
+        repo.bookPendingIfHullFree(rid("pend-b"), slotEvent(), PATCH, SINCE),
+      ]);
+      expect([a.result, b.result].filter((x) => x === "won")).toHaveLength(1);
+      expect(await repo.getEvent(SLOT_ID)).not.toBeNull();
+      const active = (await repo.listReservationsForEvent(SLOT_ID)).filter((r) => r.status === "booked");
+      expect(active).toHaveLength(1); // no double-sold boat
+    });
+
+    it("bookPendingIfHullFree: claims a PRE-EXISTING override event at the slot, reconciling eventId", async () => {
+      await repo.saveEvent(event({ id: asId<"EventId">("override-1"), source: "muster", price: 55500 }));
+      const res = await confirm(pendingRow());
+      expect(res.result).toBe("won");
+      if (res.result === "won") expect(String(res.eventId)).toBe("override-1");
+      expect(await repo.getEvent(SLOT_ID)).toBeNull(); // no duplicate materialized
+      expect(String((await repo.getReservation(rid("pend-1")))!.eventId)).toBe("override-1");
+    });
+
+    it("bookPendingIfHullFree: LOSES against a RIVAL's live pending row (§2.8.3 — pending occupies)", async () => {
       await repo.saveReservation(pendingRow({ id: rid("pend-rival"), time: "13:30", holdMinutes: 120 }));
-      const res = await repo.saveBookingIfSlotFree(
-        slotEvent(), // 14:00
-        reservation({ id: rid("resv-a"), source: "muster", eventId: SLOT_ID }),
-        SINCE,
-      );
-      expect(res.result).toBe("lost");
+      expect((await confirm(pendingRow())).result).toBe("lost");
     });
 
-    it("saveBookingIfSlotFree: ignores the pending row carrying its OWN payment intent id (the 14.4→14.5 bridge)", async () => {
-      // Until 14.5 flips the pending row, confirm inserts a second row; the customer's own pending
-      // row must not refuse the customer's own confirm.
-      await repo.saveReservation(pendingRow({ id: rid("pend-mine"), time: "14:00", paymentIntentId: "pi_mine" }));
-      const res = await repo.saveBookingIfSlotFree(
-        slotEvent(),
-        reservation({ id: rid("resv-a"), source: "muster", eventId: SLOT_ID, paymentIntentId: "pi_mine" }),
-        SINCE,
+    it("bookPendingIfHullFree: the row being flipped is not its own rival — exempt by id, whatever keys it carries", async () => {
+      // The 14.4 bridge exempted the confirming customer's row by payment-intent id, and the
+      // NULL-key form of that clause exempted every rival that had one. No key does that now:
+      // the row this call names is out of the check because it is the row this call names.
+      const own = await confirm(pendingRow({ paymentIntentId: "pi_mine", holderToken: "tok-A" }));
+      expect(own.result).toBe("won");
+    });
+
+    it("bookPendingIfHullFree: the customer's own earlier attempt — same holder token — is not a rival", async () => {
+      // A declined card retried from the same session left an earlier live row on this slot
+      // (14.4; 14.6 collapses the retry onto one row). Its token proves possession (§2.8.5), so
+      // it must not refuse the attempt that paid — the same rule the pending write applies.
+      await repo.saveReservation(
+        pendingRow({ id: rid("pend-first-try"), holderToken: "tok-A", paymentIntentId: "pi_declined" }),
       );
+      const res = await confirm(pendingRow({ holderToken: "tok-A", paymentIntentId: "pi_paid" }));
       expect(res.result).toBe("won");
     });
 
-    it("saveBookingIfSlotFree: a confirm with NO payment intent still loses to a rival's pending row", async () => {
-      // The confirm-side twin of the tokenless case above. A hosted-Checkout completion carries no
-      // `paymentIntentId` (`CheckoutCompleted.paymentIntentId` is optional), so $6 is NULL and the
-      // same three-valued-logic hole exempted every pending row that HAD one.
-      await repo.saveReservation(pendingRow({ id: rid("pend-rival"), time: "14:00", paymentIntentId: "pi_theirs" }));
-      const res = await repo.saveBookingIfSlotFree(
-        slotEvent(),
-        reservation({ id: rid("resv-a"), source: "muster", eventId: SLOT_ID }),
-        SINCE,
-      );
-      expect(res.result).toBe("lost");
+    it("bookPendingIfHullFree: a TOKENLESS own row is exempt by id alone — every tokened rival still counts", async () => {
+      await repo.saveReservation(pendingRow({ id: rid("pend-rival"), time: "13:30", holderToken: "tok-B" }));
+      expect((await confirm(pendingRow())).result).toBe("lost");
     });
 
-    it("saveBookingIfSlotFree: a LAPSED pending row does not block the confirm", async () => {
-      await repo.saveReservation(pendingRow({ id: rid("pend-old"), time: "14:00", reservedAt: "2026-06-01T11:00:00.000Z" }));
-      const res = await repo.saveBookingIfSlotFree(
-        slotEvent(),
-        reservation({ id: rid("resv-a"), source: "muster", eventId: SLOT_ID }),
-        SINCE,
-      );
+    it("bookPendingIfHullFree: a rival's LAPSED pending row does not block", async () => {
+      await repo.saveReservation(pendingRow({ id: rid("pend-old"), reservedAt: "2026-06-01T11:00:00.000Z" }));
+      expect((await confirm(pendingRow())).result).toBe("won");
+    });
+
+    it("bookPendingIfHullFree: a LAPSED own row still confirms when the boat is free (§2.8.7 — nobody lost anything)", async () => {
+      const res = await confirm(pendingRow({ reservedAt: "2026-06-01T11:00:00.000Z" }));
       expect(res.result).toBe("won");
+      expect((await repo.getReservation(rid("pend-1")))!.status).toBe("booked");
+    });
+
+    it("bookPendingIfHullFree: a missing row, or a row that is not pending, is `lost` and writes nothing", async () => {
+      expect((await repo.bookPendingIfHullFree(rid("pend-nope"), slotEvent(), PATCH, SINCE)).result).toBe("lost");
+      expect(await repo.getEvent(SLOT_ID)).toBeNull();
+      await repo.saveReservation(pendingRow({ status: "cancelled" }));
+      expect((await repo.bookPendingIfHullFree(rid("pend-1"), slotEvent(), PATCH, SINCE)).result).toBe("lost");
+      expect((await repo.getReservation(rid("pend-1")))!.status).toBe("cancelled");
+      expect(await repo.getEvent(SLOT_ID)).toBeNull();
     });
 
     // ── Checkout holds — acquire / lifecycle (12.1, DEC-109) ───────────────────
@@ -1852,37 +1845,20 @@ export function runRepositoryContract(
         price: 50000,
         durationMinutes: 100,
       };
-      const won = await repo.saveBookingIfSlotFree(first, {
-        id: asId<"ReservationId">("resv-res-1"),
-        eventId: first.id,
-        source: "muster",
-        customerName: "Ann",
-        partySize: 4,
-        status: "booked",
-      }, SINCE);
+      await repo.saveReservation(pendingRow({ id: rid("pend-res-1"), ...slot }));
+      const won = await repo.bookPendingIfHullFree(rid("pend-res-1"), first, PATCH, SINCE);
       expect(won.result).toBe("won");
 
-      await repo.saveReservation({
-        id: asId<"ReservationId">("resv-res-1"),
-        eventId: first.id,
-        source: "muster",
-        customerName: "Ann",
-        partySize: 4,
-        status: "cancelled",
-      });
+      const ann = (await repo.getReservation(rid("pend-res-1")))!;
+      await repo.saveReservation({ ...ann, status: "cancelled" });
       expect(await repo.cancelEventIfUnclaimed(first.id)).toBe(true);
 
       // Re-book with NO price and NO duration — both must come back absent, not inherited.
-      const again = await repo.saveBookingIfSlotFree(
+      await repo.saveReservation(pendingRow({ id: rid("pend-res-2"), ...slot, customerName: "Ben", partySize: 2 }));
+      const again = await repo.bookPendingIfHullFree(
+        rid("pend-res-2"),
         { id: first.id, ...slot, capacity: 8, status: "scheduled", source: "muster" },
-        {
-          id: asId<"ReservationId">("resv-res-2"),
-          eventId: first.id,
-          source: "muster",
-          customerName: "Ben",
-          partySize: 2,
-          status: "booked",
-        },
+        PATCH,
         SINCE,
       );
       expect(again.result).toBe("won");

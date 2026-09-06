@@ -17,11 +17,59 @@ import {
   paymentIdFor,
   type WebhookDeps,
 } from "../reservations/booking-webhook.js";
-import { writeSlotBooking } from "../reservations/write-booking.js";
-import { eventIdForSlot } from "../reservations/availability.js";
+import { confirmPendingRow } from "../reservations/write-booking.js";
 import { asId } from "../domain/ids.js";
-import type { TimePunch } from "../domain/entities.js";
+import type { Reservation, TimePunch } from "../domain/entities.js";
 import type { EventId, ReservationId } from "../domain/ids.js";
+
+/**
+ * Book through the 14.5 FLIP: seed the pending row checkout would have written, then confirm it.
+ * A drop-in for the retired `writeSlotBooking` insert — same `SlotBookingRequest`-shaped arg,
+ * same `{ outcome, reservation?, ... }` result. The seeded row is LAPSED on purpose: a confirm
+ * exempts its own row by id, so its liveness is irrelevant to itself, and lapsing it means two
+ * concurrent confirms on one slot never each count the OTHER as a live pending rival — the race
+ * is decided by the materialize-and-claim mutex, which is exactly what these tests probe. (Two
+ * LIVE pending rows on one slot cannot co-exist in production; `savePendingIfHullFree` refuses
+ * the second.)
+ */
+async function bookViaFlip(
+  repo: { saveReservation: (r: Reservation) => Promise<void> } & Parameters<typeof confirmPendingRow>[0],
+  req: {
+    offeringId: ReturnType<typeof asId<"OfferingId">>;
+    vesselId: ReturnType<typeof asId<"VesselId">>;
+    date: string;
+    time: string;
+    guestCount: number;
+    priceCents: number;
+    extrasCents?: number;
+    customerName: string;
+    idempotencyKey: string;
+  },
+  now: () => string,
+) {
+  const paymentIntentId = req.idempotencyKey;
+  await repo.saveReservation({
+    id: asId<"ReservationId">(`resv-${paymentIntentId}`),
+    eventId: null,
+    source: "muster",
+    status: "pending",
+    customerName: req.customerName,
+    partySize: req.guestCount,
+    vesselId: req.vesselId,
+    date: req.date,
+    time: req.time,
+    offeringId: req.offeringId,
+    reservedAt: "2026-07-01T00:00:00.000Z", // lapsed relative to every NOW these tests use
+    holdMinutes: 120,
+    tripMinutes: 100,
+    paymentIntentId,
+  });
+  return confirmPendingRow(
+    repo,
+    { paymentIntentId, priceCents: req.priceCents, extrasCents: req.extrasCents ?? 0 },
+    now,
+  );
+}
 
 const TEST_URL =
   process.env.TEST_DATABASE_URL ??
@@ -207,29 +255,49 @@ if (!dbUp) {
    * works; it could never run.
    */
   describe("paid-but-unbooked — the payments→reservations FK (#613)", () => {
-    const EVENT = asId<"EventId">("m-evt-pg-1");
     const NOW = () => "2026-07-12T00:00:00.000Z";
 
-    const completed = (over: Record<string, unknown> = {}) => ({
-      sessionId: "cs_pg_1",
-      paymentIntentId: "pi_pg_1",
-      amountTotalCents: 53625,
-      currency: "usd",
-      // Slot-shaped since #693 retired the legacy `eventId` booking path.
-      metadata: {
-        offeringId: "off-pg",
-        vesselId: "vessel-brew-1",
-        date: "2026-07-04",
-        time: "17:00",
-        guestCount: "6",
-        priceCents: "50000",
-        kind: "full",
-        taxCents: "3625",
+    // The live booking event since 14.5: `payment_intent.succeeded`, money in metadata, slot on
+    // the pending row it confirms (keyed by the PI id).
+    const bookingPi = (pi = "pi_pg_1", over: Record<string, string> = {}) =>
+      JSON.stringify({
+        type: "payment_succeeded",
+        data: {
+          paymentIntentId: pi,
+          amountReceivedCents: 53625,
+          currency: "usd",
+          metadata: {
+            purpose: "booking",
+            priceCents: "50000",
+            kind: "full",
+            taxCents: "3625",
+            customerName: "Mary",
+            email: "m@x.io",
+            ...over,
+          },
+        },
+      });
+
+    /** The pending row checkout would have written, carrying the PI a confirm resolves. */
+    async function seedPending(repo: PostgresRepository, pi = "pi_pg_1"): Promise<void> {
+      await repo.saveReservation({
+        id: asId<"ReservationId">(`resv-${pi}`),
+        eventId: null,
+        source: "muster",
+        status: "pending",
         customerName: "Mary",
         email: "m@x.io",
-      },
-      ...over,
-    });
+        partySize: 6,
+        vesselId: asId<"VesselId">("vessel-brew-1"),
+        date: "2026-07-04",
+        time: "17:00",
+        offeringId: asId<"OfferingId">("off-pg"),
+        reservedAt: "2026-07-01T00:00:00.000Z", // lapsed relative to NOW
+        holdMinutes: 120,
+        tripMinutes: 100,
+        paymentIntentId: pi,
+      });
+    }
 
     async function freshRepo(): Promise<PostgresRepository> {
       await pool.query(`truncate ${TABLES.join(", ")} restart identity cascade`);
@@ -272,64 +340,46 @@ if (!dbUp) {
     });
 
     it("an UNBOOKABLE charge alerts the operator instead of crashing the webhook", async () => {
-      // The deterministic unbookable used to be `event_missing` — a charge naming an event not in
-      // the database, which only the legacy path could produce. #693 retired that path, so the
-      // remaining deterministic one is a session carrying NO SLOT: refused before anything is
-      // parsed or written. Deliberately not auto-refunded (a human investigates); the alert is
-      // the whole safety net, and it sat behind the FK throw.
-      //
-      // Converted rather than deleted because what this pins is the #613 guard against an orphan
-      // payment on a non-booked outcome, and that needs a real FK — which only Postgres has
-      // (DEC-131). Any non-booked outcome will do; the shape of it is incidental.
+      // The deterministic unbookable since 14.5 is a purposed PaymentIntent that resolves to NO
+      // pending row — checkout's write was lost, or the charge is not ours. Refused loudly, no
+      // auto-refund (a human investigates); the alert is the whole safety net, and it once sat
+      // behind the FK throw. What this pins is the #613 guard against an orphan payment on a
+      // non-booked outcome, which needs a real FK — only Postgres has one (DEC-131).
       const repo = await freshRepo();
       const { deps, alert } = makeDeps(repo);
 
-      const noSlot = completed({
-        metadata: { eventId: String(EVENT), partySize: "6", kind: "full", taxCents: "3625", customerName: "Mary" },
-      });
-      const r = await processBookingWebhook(deps, JSON.stringify(noSlot), FAKE_SIGNATURE);
+      // No pending row seeded → confirm resolves `no_row`.
+      const r = await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
 
       expect(r.handled).toBe(true);
       expect(alert).toHaveBeenCalledTimes(1);
-      expect(alert.mock.calls[0]![0]).toMatch(/REFUND MANUALLY/i);
+      expect(alert.mock.calls[0]![0]).toMatch(/no live pending reservation/i);
       // And no orphan payment was left behind.
-      expect(await repo.getPayment(paymentIdFor("cs_pg_1"))).toBeNull();
+      expect(await repo.getPayment(paymentIdFor("pi_pg_1"))).toBeNull();
     });
 
     it("a LOST race refunds the customer, tells them, and leaves no orphan payment", async () => {
-      // A real residual race needs a rival to win the CAS between our pre-check and our write —
-      // not reproducible by sequencing alone. So `saveBookingIfSlotFree` is failed ONCE, which is
-      // precisely what losing the race looks like to this code. Everything else — events,
-      // reservations, payments — is real Postgres.
-      //
-      // It used to stub `saveReservationIfUnclaimed`; #693 retired that path, and the slot CAS is
-      // what the webhook actually calls now. Stubbing the method nothing calls would have left
-      // this test green while simulating nothing.
+      // A real residual race needs a rival to win the mutex between our pre-check and our write —
+      // not reproducible by sequencing alone. So `bookPendingIfHullFree` is failed ONCE, which is
+      // precisely what losing the race looks like to this code. Everything else — the pending
+      // row, the refund, the payments — is real Postgres. Confirm still FINDS the seeded row
+      // (`getReservationByPaymentIntentId` stays real), so it reaches the flip before losing it.
       const repo = await freshRepo();
-      await repo.saveEvent({
-        id: EVENT,
-        vesselId: asId<"VesselId">("vessel-brew-1"),
-        date: "2026-07-04",
-        time: "17:00",
-        capacity: 12,
-        status: "scheduled",
-        source: "muster",
-        price: 50000,
-      });
+      await seedPending(repo);
       // A Proxy, not `Object.create` — `PostgresRepository` holds its pool in a `#private`
       // field, and prototype delegation cannot carry those (every real call then dies with
       // "Cannot read private member #pool"). `Reflect.get(t, prop, t)` keeps the receiver on the
       // target so the private field resolves, and methods are bound for the same reason.
       const lose = new Proxy(repo, {
         get(t, prop) {
-          if (prop === "saveBookingIfSlotFree") return async () => ({ result: "lost" });
+          if (prop === "bookPendingIfHullFree") return async () => ({ result: "lost" });
           const v = Reflect.get(t, prop, t);
           return typeof v === "function" ? v.bind(t) : v;
         },
       }) as PostgresRepository;
       const { deps, alert, soldOut, payments } = makeDeps(lose);
 
-      const r = await processBookingWebhook(deps, JSON.stringify(completed()), FAKE_SIGNATURE);
+      const r = await processBookingWebhook(deps, bookingPi(), FAKE_SIGNATURE);
 
       expect(r).toEqual({ handled: true, outcome: "lost" });
       // Refunded automatically…
@@ -338,9 +388,9 @@ if (!dbUp) {
       expect(soldOut).toHaveBeenCalledTimes(1);
       // …and no manual-refund alarm, because nothing needed a human.
       expect(alert).not.toHaveBeenCalled();
-      // No payment row: there is no reservation to hang it on, and Stripe holds the record of
+      // No payment row: there is no booking to hang it on, and Stripe holds the record of
       // money that never became a booking.
-      expect(await repo.getPayment(paymentIdFor("cs_pg_1"))).toBeNull();
+      expect(await repo.getPayment(paymentIdFor("pi_pg_1"))).toBeNull();
     });
   });
 
@@ -400,8 +450,8 @@ if (!dbUp) {
       });
 
       const [a, b] = await Promise.all([
-        writeSlotBooking(repo, buyer("sess_a", "Ann"), NOW2),
-        writeSlotBooking(repo, buyer("sess_b", "Ben"), NOW2),
+        bookViaFlip(repo, buyer("sess_a", "Ann"), NOW2),
+        bookViaFlip(repo, buyer("sess_b", "Ben"), NOW2),
       ]);
 
       const outcomes = [a.outcome, b.outcome].sort();
@@ -418,7 +468,7 @@ if (!dbUp) {
       // derivation itself drifted.
       const winner = a.outcome === "booked" ? a : b;
       const rows = await repo.listReservationsForEvent(
-        (winner as { eventId: EventId }).eventId,
+        (winner as { reservation: { eventId: EventId } }).reservation.eventId,
       );
       expect(rows).toHaveLength(1);
       expect(rows[0]!.status).toBe("booked");
@@ -447,41 +497,28 @@ if (!dbUp) {
       await pool.query(`truncate ${TABLES.join(", ")} restart identity cascade`);
       const repo = new PostgresRepository(pool);
 
-      const booking = (time: string, name: string) => {
-        const id = eventIdForSlot(VESSEL3, DATE3, time);
-        return {
-          event: {
-            id,
-            vesselId: VESSEL3,
-            date: DATE3,
-            time,
-            capacity: 12,
-            status: "scheduled" as const,
-            source: "muster" as const,
-            durationMinutes: 100,
-          },
-          reservation: {
-            id: asId<"ReservationId">(`resv-${time}`),
-            eventId: id,
-            source: "muster" as const,
-            customerName: name,
-            partySize: 4,
-            status: "booked" as const,
-          },
-        };
-      };
+      const buyer = (time: string, name: string) => ({
+        offeringId: asId<"OfferingId">("off-691"),
+        vesselId: VESSEL3,
+        date: DATE3,
+        time,
+        guestCount: 4,
+        priceCents: 50000,
+        customerName: name,
+        idempotencyKey: `pi_${time}`,
+      });
+      const NOW6 = () => "2026-07-12T00:00:00.000Z";
 
-      const a = booking("13:30", "Ann"); // 13:30 → 15:10
-      const b = booking("14:00", "Ben"); // 14:00 → 15:40, overlapping Ann by 70 minutes
-
+      // Two confirms on the same hull, overlapping times. bookViaFlip seeds each row with
+      // tripMinutes 100, so 13:30 runs to 15:10 and overlaps a 14:00 departure by 70 minutes.
       const [ra, rb] = await Promise.all([
-        repo.saveBookingIfSlotFree(a.event, a.reservation, "2026-06-01T11:45:00.000Z"),
-        repo.saveBookingIfSlotFree(b.event, b.reservation, "2026-06-01T11:45:00.000Z"),
+        bookViaFlip(repo, buyer("13:30", "Ann"), NOW6),
+        bookViaFlip(repo, buyer("14:00", "Ben"), NOW6),
       ]);
 
       // Exactly one winner. Which one depends on interleaving and is not worth pinning.
-      const results = [ra.result, rb.result].sort();
-      expect(results).toEqual(["lost", "won"]);
+      const results = [ra.outcome, rb.outcome].sort();
+      expect(results).toEqual(["booked", "lost"]);
 
       // The invariant stated on the data, not the return values: one boat, one booked party
       // on that day. This is the assertion that reads `2` without the advisory lock.
@@ -588,10 +625,10 @@ if (!dbUp) {
       key: string,
       name: string,
     ): Promise<void> {
-      const booked = await writeSlotBooking(repo, buyer(time, key, name), NOW4);
+      const booked = await bookViaFlip(repo, buyer(time, key, name), NOW4);
       expect(booked.outcome).toBe("booked");
       const reservation = (booked as { reservation: { id: ReservationId } }).reservation;
-      const eventId = (booked as { eventId: EventId }).eventId;
+      const eventId = (booked as { reservation: { eventId: EventId } }).reservation.eventId;
 
       const stored = await repo.getReservation(reservation.id);
       await repo.saveReservation({ ...stored!, status: "cancelled" });
@@ -607,7 +644,7 @@ if (!dbUp) {
       await pool.query(`truncate ${TABLES.join(", ")} restart identity cascade`);
       const repo = new PostgresRepository(pool);
 
-      const booked = await writeSlotBooking(repo, buyer("13:30", "sess_by_1", "Cara"), NOW4);
+      const booked = await bookViaFlip(repo, buyer("13:30", "sess_by_1", "Cara"), NOW4);
       expect(booked.outcome).toBe("booked");
       const id = (booked as { reservation: { id: ReservationId } }).reservation.id;
 
@@ -627,7 +664,7 @@ if (!dbUp) {
       await bookThenCancel(repo, "13:30", "sess_cancel_1", "Ann");
 
       // The whole point of cancelling: someone else can buy that boat.
-      const second = await writeSlotBooking(
+      const second = await bookViaFlip(
         repo,
         buyer("13:30", "sess_cancel_2", "Ben"),
         NOW4,
@@ -665,22 +702,22 @@ if (!dbUp) {
       await pool.query(`truncate ${TABLES.join(", ")} restart identity cascade`);
       const repo = new PostgresRepository(pool);
 
-      const booked = await writeSlotBooking(repo, buyer("13:30", "sess_nbr_1", "Ann"), NOW4);
+      const booked = await bookViaFlip(repo, buyer("13:30", "sess_nbr_1", "Ann"), NOW4);
       expect(booked.outcome).toBe("booked");
       const reservation = (booked as { reservation: { id: ReservationId } }).reservation;
-      const eventId = (booked as { eventId: EventId }).eventId;
+      const eventId = (booked as { reservation: { eventId: EventId } }).reservation.eventId;
 
       // (a) Reservation cancelled, event left SCHEDULED — the boat still reads as busy, so
       // the neighbouring 14:00 is refused. A cancelled trip holding a hull it is not using.
       const stored = await repo.getReservation(reservation.id);
       await repo.saveReservation({ ...stored!, status: "cancelled" });
-      const blocked = await writeSlotBooking(repo, buyer("14:00", "sess_nbr_2", "Ben"), NOW4);
+      const blocked = await bookViaFlip(repo, buyer("14:00", "sess_nbr_2", "Ben"), NOW4);
       expect(blocked.outcome).toBe("lost");
 
       // (b) Cancel the event too, and the hull is genuinely released.
       const event = await repo.getEvent(eventId);
       await repo.saveEvent({ ...event!, status: "cancelled" });
-      const freed = await writeSlotBooking(repo, buyer("14:00", "sess_nbr_3", "Cal"), NOW4);
+      const freed = await bookViaFlip(repo, buyer("14:00", "sess_nbr_3", "Cal"), NOW4);
       expect(freed.outcome).toBe("booked");
     });
   });
@@ -720,9 +757,9 @@ if (!dbUp) {
         idempotencyKey: key,
       });
 
-      const first = await writeSlotBooking(repo, buyer("sess_race_1", "Ann"), NOW5);
+      const first = await bookViaFlip(repo, buyer("sess_race_1", "Ann"), NOW5);
       expect(first.outcome).toBe("booked");
-      const eventId = (first as { eventId: EventId }).eventId;
+      const eventId = (first as { reservation: { eventId: EventId } }).reservation.eventId;
       const annId = (first as { reservation: { id: ReservationId } }).reservation.id;
 
       // Ann cancels. Her reservation flips first — exactly as `cancelReservation` does it — and
@@ -731,7 +768,7 @@ if (!dbUp) {
       await repo.saveReservation({ ...ann!, status: "cancelled" });
 
       const [ben, released] = await Promise.all([
-        writeSlotBooking(repo, buyer("sess_race_2", "Ben"), NOW5),
+        bookViaFlip(repo, buyer("sess_race_2", "Ben"), NOW5),
         repo.cancelEventIfUnclaimed(eventId),
       ]);
 
@@ -763,7 +800,7 @@ if (!dbUp) {
     it("refuses to release a slot that is still claimed", async () => {
       await pool.query(`truncate ${TABLES.join(", ")} restart identity cascade`);
       const repo = new PostgresRepository(pool);
-      const booked = await writeSlotBooking(
+      const booked = await bookViaFlip(
         repo,
         {
           offeringId: asId<"OfferingId">("off-race-cancel"),
@@ -779,7 +816,7 @@ if (!dbUp) {
         NOW5,
       );
       expect(booked.outcome).toBe("booked");
-      const eventId = (booked as { eventId: EventId }).eventId;
+      const eventId = (booked as { reservation: { eventId: EventId } }).reservation.eventId;
 
       // The reservation is still `booked` — releasing here would strand a paying customer.
       expect(await repo.cancelEventIfUnclaimed(eventId)).toBe(false);

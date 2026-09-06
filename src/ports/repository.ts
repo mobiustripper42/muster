@@ -78,6 +78,7 @@ import type { ImportRun, ImportRunItem } from "../import/import-audit.js";
 import type { ImportRunId } from "../domain/ids.js";
 import type { Message, Participant, Thread } from "../messaging/entities.js";
 import type { PaymentConfig } from "../reservations/payment-config.js";
+import type { ConfirmPatch } from "../reservations/write-booking.js";
 import type { ThreadId } from "../domain/ids.js";
 
 /**
@@ -132,7 +133,7 @@ export interface Repository {
    * inserts `candidate`. **The uniqueness race is settled by the database**, not by a
    * read-then-write in the caller: two first-time bookings from the same phone in the same
    * instant would both see "no customer" and both insert. Same shape as
-   * `saveBookingIfSlotFree` — a constraint the caller must react to is exposed through the
+   * `bookPendingIfHullFree` — a constraint the caller must react to is exposed through the
    * port as a typed result, never as a raw driver error (DEC-131).
    *
    * `created` tells the caller which branch won; the backfill and the contract tests assert it.
@@ -288,13 +289,13 @@ export interface Repository {
    * already cancelled, absent, not Muster-owned, or still claimed.
    *
    * A conditional write rather than `getEvent` + `saveEvent`, for the same reason
-   * `saveBookingIfSlotFree` and `saveSeatIfState` are: the read-then-write version has a window.
+   * `bookPendingIfHullFree` and `saveSeatIfState` are: the read-then-write version has a window.
    * Cancelling reservation A frees the slot immediately (the claim check filters
    * `status='booked'`), so a new buyer B can win that exact slot **between** the caller's read
    * and its write — and the unconditional `saveEvent` would then cancel B's live, paid booking,
    * collapse the shift and tell the crew they're off a boat B is actually on.
    *
-   * Takes the SAME hull-day advisory lock `saveBookingIfSlotFree` takes, so the two genuinely
+   * Takes the SAME hull-day advisory lock `bookPendingIfHullFree` takes, so the two genuinely
    * serialize instead of merely being individually atomic.
    */
   cancelEventIfUnclaimed(id: EventId): Promise<boolean>;
@@ -307,30 +308,35 @@ export interface Repository {
   listAllReservations(): Promise<Reservation[]>;
 
   /**
-   * Atomic first-booking-of-a-virtual-slot (12.1, DEC-109/125) — the pessimistic write-time
-   * backstop that no hold can defeat by timing. In ONE critical section: (1) materialize the
-   * `Event` at its slot identity `(vessel,date,time,source='muster')` if none exists — the
-   * `events_muster_slot_identity` partial-unique guardrail makes concurrent first-bookings
-   * collide, so exactly one row is ever created per physical boat-slot (the DEC-125 guardrail
-   * enforcement, deferred from 12.0); (2) claim IFF no OTHER active Muster reservation holds
-   * that slot (the whole-boat mutex). `reservation.eventId` is reconciled to the actual
-   * materialized event id (`won.eventId`). Idempotent on `reservation.id`: a re-delivered
-   * webhook returns `{result:"won"}`. `event.id` MUST be the deterministic `eventIdForSlot`.
+   * Confirm a `pending` reservation by flipping it to `booked` (14.5, SPEC §2.8.6, issue #916) —
+   * the pessimistic write-time backstop that no hold can defeat by timing. In ONE critical
+   * section on the hull-day: (0) load the row named by `reservationId`; a row already `booked`
+   * returns `{result:"already"}` (redelivered webhook), a missing or non-`pending` row returns
+   * `{result:"lost"}` and writes nothing; (1) refuse if any OTHER scheduled trip or any OTHER
+   * LIVE pending row overlaps the departure — the row being flipped is exempt by its id, the
+   * customer's own earlier attempts by holder token (§2.8.5); (2) materialize the `Event` at its
+   * slot identity `(vessel,date,time,source='muster')`, resurrecting a cancelled row in place
+   * with the new booking's frozen values (#616) — the `events_muster_slot_identity` partial
+   * unique makes concurrent confirms collide, one row per physical boat-slot; (3) claim IFF no
+   * OTHER active Muster reservation holds that slot (the whole-boat mutex), setting the row's
+   * `status='booked'`, `event_id`, and the `patch` (`updatedAt`, `customerId`, `extrasCents`).
    *
-   * Since 14.4 the section also refuses when a LIVE pending row on the hull overlaps the event
-   * (SPEC §2.8.3 — a pending row occupies for its own `holdMinutes`). `pendingLiveSince` is
-   * the caller's clock, `pendingLiveSince(asOf)`: rows reserved at or before it have lapsed.
-   * Required, not optional — an absent clock would count no pending row and fail open.
-   *
-   * **Bridge, deleted by 14.5:** a pending row whose `paymentIntentId` equals
-   * `reservation.paymentIntentId` is the confirming customer's OWN row and is not counted.
-   * 14.5 flips that row to `booked` instead of inserting beside it (issue #916).
+   * `event.id` MUST be the deterministic `eventIdForSlot`; `reservation.eventId` on the returned
+   * row is reconciled to the actual materialized event id (a pre-existing override wins).
+   * `pendingLiveSince` is the caller's clock, `pendingLiveSince(asOf)`: rows reserved at or
+   * before it have lapsed. Required, not optional — an absent clock counts no pending row and
+   * fails open.
    */
-  saveBookingIfSlotFree(
+  bookPendingIfHullFree(
+    reservationId: ReservationId,
     event: Event,
-    reservation: Reservation,
+    patch: ConfirmPatch,
     pendingLiveSince: string,
-  ): Promise<{ result: "won"; eventId: EventId } | { result: "lost" }>;
+  ): Promise<
+    | { result: "won"; eventId: EventId; reservation: Reservation }
+    | { result: "already"; reservation: Reservation }
+    | { result: "lost" }
+  >;
 
   /**
    * The pending write (14.4, SPEC §2.8.3–2.8.4): check and insert under ONE hull-day lock. The

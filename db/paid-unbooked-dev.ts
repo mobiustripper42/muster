@@ -39,7 +39,6 @@
 import { existsSync } from "node:fs";
 import { FAKE_SIGNATURE, FakePaymentPort } from "../src/adapters/fake-payment.js";
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
-import type { Event } from "../src/domain/entities.js";
 import { asId } from "../src/domain/ids.js";
 import {
   processBookingWebhook,
@@ -69,8 +68,6 @@ if (!isLocal && !args.includes("--force")) {
 }
 
 const stamp = new Date().toISOString().replace(/[^0-9]/g, "").slice(0, 14);
-const sessionId = `cs_paidunbooked_${stamp}`;
-const eventId = asId<"EventId">(`evt-paid-unbooked-${stamp}`);
 const date = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
 
 const repo = PostgresRepository.fromConnectionString(url);
@@ -79,36 +76,44 @@ const payments = new FakePaymentPort();
 const alerts: string[] = [];
 const notices: string[] = [];
 
+const paymentIntentId = `pi_${stamp}`;
+
 try {
+  // 14.5: booking is a FLIP of the pending row checkout wrote (§2.8.6), keyed on the PaymentIntent
+  // id. Both scenarios run the inline-Elements `payment_intent.succeeded` path.
   if (lost) {
-    // A real event to buy — the race is about losing the CLAIM, not a missing trip.
-    const event: Event = {
-      id: eventId,
+    // The residual race: checkout wrote a pending row, but between our checks and our write a
+    // rival won the boat, so the flip loses. Seed the pending row so confirm FINDS it, then stub
+    // the flip to `lost` — a real rival win cannot be produced by sequencing alone.
+    await repo.saveReservation({
+      id: asId<"ReservationId">(`resv-paid-unbooked-${stamp}`),
+      eventId: null,
+      source: "muster",
+      status: "pending",
+      customerName: "Test Customer",
+      email: "test-customer@example.test",
+      partySize: 6,
       vesselId: asId<"VesselId">("vessel-brew-2"),
       date,
       time: "17:00",
-      capacity: 12,
-      status: "scheduled",
-      source: "muster",
-      price: 50000,
-    };
-    await repo.saveEvent(event);
+      offeringId: asId<"OfferingId">("offering-paid-unbooked"),
+      reservedAt: new Date().toISOString(),
+      holdMinutes: 120,
+      tripMinutes: 100,
+      paymentIntentId,
+    });
   }
-  // …and for --unbookable we deliberately send a SLOTLESS session, which #693 made the
-  // deterministic unbookable. It used to be `event_missing` — a charge naming an event that does
-  // not exist — but a slot booking materializes its own event, so a missing one is no longer a
-  // failure. See the metadata below, which drops the slot fields in that mode.
+  // …and for --unbookable we send a purposed PI with NO pending row behind it — the
+  // deterministic unconfirmable: a paid charge that resolves to no reservation (§2.8.6).
 
-  // Losing the CAS is what a rival winning the boat looks like to this code, and it cannot be
+  // Losing the flip is what a rival winning the boat looks like to this code, and it cannot be
   // produced by sequencing alone. A Proxy rather than `Object.create`, because the repository
-  // keeps its pool in a `#private` field that prototype delegation cannot carry.
+  // keeps its pool in a `#private` field that prototype delegation cannot carry. `getReservation
+  // ByPaymentIntentId` stays real, so confirm still FINDS the seeded pending row before the flip.
   const target: PostgresRepository = lost
     ? (new Proxy(repo, {
         get(t, prop) {
-          // `saveBookingIfSlotFree` since #693 retired the row-lock claim. Stubbing the method
-          // nothing calls any more would have left this script printing a PASS while simulating
-          // nothing — the exact failure it exists to catch elsewhere.
-          if (prop === "saveBookingIfSlotFree") return async () => ({ result: "lost" });
+          if (prop === "bookPendingIfHullFree") return async () => ({ result: "lost" });
           const v = Reflect.get(t, prop, t);
           return typeof v === "function" ? v.bind(t) : v;
         },
@@ -126,32 +131,29 @@ try {
   };
 
   const body = JSON.stringify({
-    sessionId,
-    paymentIntentId: `pi_${stamp}`,
-    amountTotalCents: 53625,
-    currency: "usd",
-    // Slot-shaped for --lost (the only booking shape the webhook accepts since #693); slotless
-    // for --unbookable, which is now what "deterministically cannot be booked" means.
-    metadata: {
-      ...(lost
-        ? {
-            offeringId: "offering-paid-unbooked",
-            vesselId: "vessel-brew-2",
-            date,
-            time: "17:00",
-            guestCount: "6",
-            priceCents: "50000",
-          }
-        : { eventId: String(eventId), partySize: "6" }),
-      kind: "full",
-      taxCents: "3625",
-      customerName: "Test Customer",
-      email: "test-customer@example.test",
+    type: "payment_succeeded",
+    data: {
+      paymentIntentId,
+      amountReceivedCents: 53625,
+      currency: "usd",
+      metadata: {
+        purpose: "booking",
+        offeringId: "offering-paid-unbooked",
+        vesselId: "vessel-brew-2",
+        date,
+        time: "17:00",
+        guestCount: "6",
+        priceCents: "50000",
+        kind: "full",
+        taxCents: "3625",
+        customerName: "Test Customer",
+        email: "test-customer@example.test",
+      },
     },
   });
 
   const result = await processBookingWebhook(deps, body, FAKE_SIGNATURE);
-  const orphan = await repo.getPayment(paymentIdFor(sessionId));
+  const orphan = await repo.getPayment(paymentIdFor(paymentIntentId));
 
   console.log(`\n  scenario         ${lost ? "--lost (residual race)" : "--unbookable (anomaly)"}`);
   console.log(`  webhook outcome  ${JSON.stringify(result)}`);

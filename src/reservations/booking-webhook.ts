@@ -37,12 +37,7 @@ import {
 import type { CheckoutCompleted, DisputeUpdated, PaymentPort } from "../ports/payment.js";
 import type { Repository } from "../ports/repository.js";
 import { balanceOwedCents } from "./payment-config.js";
-import {
-  reservationIdFor,
-  writeSlotBooking,
-  type SlotBookingRequest,
-  type SlotBookingResult,
-} from "./write-booking.js";
+import { confirmPendingRow, type ConfirmResult } from "./write-booking.js";
 
 export interface WebhookDeps {
   /**
@@ -182,16 +177,19 @@ export async function processBookingWebhook(
     );
     return { handled: true, outcome: "ignored" };
   }
-  return processBookingCharge(deps, {
-    key: completed.sessionId, // Stripe's session id keys the booking (11.2)
-    sessionId: completed.sessionId,
-    ...(completed.paymentIntentId !== undefined
-      ? { paymentIntentId: completed.paymentIntentId }
-      : {}),
-    amountCents: completed.amountTotalCents,
-    currency: completed.currency,
-    metadata: completed.metadata,
-  });
+  // A booking-purposed hosted Checkout session. Nothing mints these since 14.5 — the live flow
+  // is inline Elements (`createDeparturePaymentIntent`), which writes a `pending` row and books
+  // via `payment_intent.succeeded`, flipping that row. A hosted booking session arriving here is
+  // a replay from a flag-on window, a dashboard send, or a leftover, and money has moved: refuse
+  // loudly, same posture as the flag-off and #613 branches. Balance and gratuity hosted sessions
+  // are handled above; only a booking-shaped one reaches here.
+  await deps.alertPaidButUnbooked(
+    `PAID but NOT booked - hosted Checkout booking session ${completed.sessionId} ` +
+      `(${completed.amountTotalCents} ${completed.currency}). The hosted booking path was retired ` +
+      `(14.5); the live flow books from a pending row via payment_intent.succeeded. REFUND MANUALLY ` +
+      `and find what minted a hosted booking session - nothing in the app should.`,
+  );
+  return { handled: true, outcome: "unbookable" };
 }
 
 /**
@@ -243,24 +241,6 @@ export interface ConfirmOptions {
   notifyOnResidualRaceLoss?: boolean;
 }
 
-/**
- * What the booking write inherits from the PENDING row checkout wrote before Stripe (14.4),
- * found by the intent id. Its frozen trip time is what the Event runs for (criterion 20); the
- * intent id is what exempts that row from the hull check the write is about to run. Empty for a
- * hosted-session charge or a pre-14.4 intent — both fall back to the offering, as before. 14.5
- * makes this row the thing that gets booked, and this lookup the whole confirm.
- */
-async function frozenFromPendingRow(
-  repo: Repository,
-  paymentIntentId: string | undefined,
-): Promise<Pick<SlotBookingRequest, "durationMinutes" | "paymentIntentId">> {
-  if (!paymentIntentId) return {};
-  const pending = await repo.getReservationByPaymentIntentId(paymentIntentId);
-  return {
-    paymentIntentId,
-    ...(pending?.tripMinutes !== undefined ? { durationMinutes: pending.tripMinutes } : {}),
-  };
-}
 
 /** The charge→booking spine, shared by both event paths (11.2 / 12.5). */
 export async function processBookingCharge(
@@ -297,43 +277,26 @@ export async function processBookingCharge(
   }
 
   const m = charge.metadata;
-  const idempotencyKey = charge.key;
   const kind = m.kind === "deposit" ? "deposit" : "full";
-  // A booking session MUST carry the slot (12.1). The legacy 11.2 shape — an `eventId` and
-  // `partySize` instead — is retired (issue #693): it is refused here rather than booked.
-  //
-  // It claimed by row-locking one `event_id`, which is what #615/#691 replaced. Those put the
-  // hull-overlap guard and the hull-day advisory lock on `saveBookingIfSlotFree`;
-  // `saveReservationIfUnclaimed` never got them, so this branch still reverted to the exact
-  // pre-#691 behaviour where two overlapping trips on one hull both succeed — silently, since
-  // a clean reservation is written and #613's net only fires on a REJECTED write.
-  //
-  // Nothing minted this shape (`createBookingCheckout`, now deleted, had no caller under
-  // `app/`), so it was an unguarded FALLBACK rather than a removed path: dead in practice and
-  // reachable the moment anything started minting a legacy session again. Deleting it makes the
-  // deadness enforced instead of assumed, and a future caller has to consciously build a path
-  // rather than inherit one with no guard on it.
-  //
-  // Loud, not silent — money has already moved, same posture as the flag-off branch above.
-  const isSlotBooking = Boolean(m.vesselId && m.date && m.time && m.offeringId);
-  if (!isSlotBooking) {
+  // The booking is the `pending` row checkout wrote (§2.8.6), found by the PaymentIntent id.
+  // The surviving caller is the inline-Elements `payment_intent.succeeded` path, whose charge
+  // key IS that id. A charge with none is a hosted booking session, and nothing mints those
+  // since 14.5 — refuse it loudly, money has moved.
+  if (!charge.paymentIntentId) {
     await deps.alertPaidButUnbooked(
-      `PAID but NOT booked - booking session ${charge.key} carries no slot ` +
-        `(${charge.amountCents} ${charge.currency}). The legacy eventId booking path was retired ` +
-        `(#693) because it wrote without the hull-overlap guard. REFUND MANUALLY and find what ` +
-        `minted a session with this shape - nothing in the app should.`,
+      `PAID but NOT booked - booking charge ${charge.key} carries no payment intent ` +
+        `(${charge.amountCents} ${charge.currency}). Confirm finds the pending row by that id ` +
+        `(§2.8.6); a charge without one is a retired hosted booking session. REFUND MANUALLY and ` +
+        `find what minted it - nothing in the app should.`,
     );
     return { handled: true, outcome: "unbookable" };
   }
-  const partySize = Number(m.guestCount ?? m.partySize);
-  const reservationId = reservationIdFor(idempotencyKey);
 
   // Money has already moved by the time we get here, so a metadata problem must be LOUD
   // before it is fatal. `requireCents` throws below (correctly — a 500 makes Stripe
-  // retry), but a bare throw from inside the `writeSlotBooking` argument list would run
-  // before `recordPayment` and before any alert: no Payment row, no reservation, no
-  // notification, and Stripe gives up after ~3 days. The only trace would be a
-  // `console.error` in the route. That inverts this module's own posture — every other
+  // retry), but a bare throw from inside the confirm argument list would run before any
+  // alert: no Payment row, no notification, and Stripe gives up after ~3 days, the only
+  // trace a `console.error`. That inverts this module's posture — every other
   // paid-but-unbooked branch records the payment and alerts (#522 review).
   //
   // Alert first, then rethrow: the retry behaviour is unchanged, the money is visible.
@@ -356,8 +319,9 @@ export async function processBookingCharge(
       });
   };
 
-  // Parse the money metadata BEFORE the write, in its own guard. A defect here is our bug
-  // and needs the alert; a write failure is infra and Stripe's retry already covers it.
+  // Parse the money metadata BEFORE the write, in its own guard (until 15.1 moves the money onto
+  // the row). A defect here is our bug and needs the alert; a write failure is infra and
+  // Stripe's retry already covers it.
   const parseSlotMoney = async (): Promise<{ priceCents: number; extrasCents: number }> => {
     try {
       return {
@@ -379,26 +343,29 @@ export async function processBookingCharge(
 
   const money = await parseSlotMoney();
 
-  const result: SlotBookingResult = await writeSlotBooking(
+  // Flip the pending row (§2.8.6). Its slot, party size and both durations are the row's; only
+  // the money still comes from the charge, until 15.1.
+  const result: ConfirmResult = await confirmPendingRow(
     deps.repo,
     {
-      ...(await frozenFromPendingRow(deps.repo, charge.paymentIntentId)),
-      offeringId: asId<"OfferingId">(m.offeringId ?? ""),
-      vesselId: asId<"VesselId">(m.vesselId ?? ""),
-      date: m.date ?? "",
-      time: m.time ?? "",
-      guestCount: partySize,
+      paymentIntentId: charge.paymentIntentId,
       priceCents: money.priceCents,
       extrasCents: money.extrasCents,
-      customerName: m.customerName ?? "",
-      ...(m.email ? { email: m.email } : {}),
-      ...(m.phone ? { phone: m.phone } : {}),
-      ...(m.waiverConsentAt ? { waiverConsentAt: m.waiverConsentAt } : {}),
-      ...(m.waiverVersion ? { waiverVersion: m.waiverVersion } : {}),
-      idempotencyKey,
     },
     deps.now,
   );
+
+  // A paid charge that matched no live pending row (§2.8.6): checkout's write never landed, or
+  // this charge was never one of ours. Money moved with nothing behind it — the one thing that
+  // must never pass quietly. The reconciler (2.8.9) is the durable backstop; this is the alert.
+  if (result.outcome === "unconfirmable") {
+    await deps.alertPaidButUnbooked(
+      `PAID but NOT booked - charge ${charge.key} (${charge.amountCents} ${charge.currency}) ` +
+        `resolved to no live pending reservation (${result.reason}). Its write may have been lost, ` +
+        `or the charge is not one of ours. REFUND MANUALLY if unrecognised; investigate either way.`,
+    );
+    return { handled: true, outcome: "unbookable" };
+  }
 
   // **Record the Payment ONLY once a reservation exists to hang it on (#613).**
   //
@@ -413,6 +380,7 @@ export async function processBookingCharge(
   // test of this path passed while production could only ever fail. The guard now lives in
   // `postgres-repository.test.ts`, which is the only place it can be proven.
   if (result.outcome === "booked" || result.outcome === "already") {
+    const reservationId = result.reservation.id;
     await recordPayment(deps, charge, kind, reservationId);
 
     // **Form the shift the booking just earned (#614).** `writeSlotBooking` writes the Event and
@@ -499,10 +467,10 @@ export async function processBookingCharge(
     // builds the crew pool from `Gratuity` rows alone — so the tip stays in the operator's
     // Stripe account and the crew is never paid it (#522 sweep 1).
     const gratuityCents = Number(m.gratuityCents ?? 0);
-    if (isSlotBooking && gratuityCents > 0) {
+    if (gratuityCents > 0) {
       await deps.repo.saveGratuity({
         id: asId<"GratuityId">(`grat_pre_${charge.key}`),
-        // Just written as `booked` by `writeSlotBooking`, so its event exists (§2.8.2).
+        // Just flipped to `booked` by `confirmPendingRow`, so its event exists (§2.8.2).
         eventId: eventIdOfBooked(result.reservation),
         reservationId: result.reservation.id,
         kind: "pre",
@@ -519,7 +487,7 @@ export async function processBookingCharge(
     return { handled: true, outcome: result.outcome };
   }
 
-  const who = `${m.customerName || "customer"} party of ${partySize}`;
+  const who = `${m.customerName || "customer"} party of ${m.guestCount ?? m.partySize ?? "?"}`;
 
   // The DEC-109 RESIDUAL RACE (`lost`): a hold expired mid-payment, another buyer took the
   // freed slot and paid first, and this payment then completed. Both captured money, one won
@@ -582,12 +550,12 @@ export async function processBookingCharge(
   // near the top, which alerts REFUND MANUALLY before anything is parsed or written. That is the
   // better place for it: it fires before the money is reasoned about rather than after.
   //
-  // `writeSlotBooking` returns only `booked` / `already` / `lost`, all handled above, so control
-  // never reaches here — TypeScript agrees, which is why the old tail narrowed to `never`. The
-  // throw exists to satisfy the compiler's return check and to fail loudly if the union ever
-  // grows a variant without someone handling it here.
+  // `confirmPendingRow` returns `booked` / `already` / `unconfirmable` / `lost`, all handled
+  // above, so control never reaches here — TypeScript narrows `result` to `never`. The throw
+  // satisfies the compiler's return check and fails loudly if the union grows a variant nobody
+  // handles here.
   throw new Error(
-    `unreachable: unhandled writeSlotBooking outcome ${JSON.stringify(result)} for charge ${charge.key}`,
+    `unreachable: unhandled confirmPendingRow outcome ${JSON.stringify(result)} for charge ${charge.key}`,
   );
 }
 

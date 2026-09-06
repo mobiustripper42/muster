@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { lean } from "@core/asks/lean.js";
 import { asId } from "@core/domain/ids.js";
 import { readSubject } from "../../../lib/auth";
-import { forwardToOutbox } from "../../../lib/channel";
+import { relayAsks } from "../../../lib/channel";
 import { getRepo } from "../../../lib/repo";
 import { logSwallowed } from "../../../lib/swallowed";
 
@@ -44,7 +44,7 @@ export async function leanOn(formData: FormData): Promise<void> {
         // notice needs the shift id to offer the cockpit as the watch path.
         `leaned=${encodeURIComponent(crewMemberId)}&leaned_shift=${encodeURIComponent(shiftId)}`;
     // Edge channel wiring (DEC-030): the fired ask → the pilot outbox.
-    await forwardToOutbox(out.ask ? [out.ask] : undefined);
+    await relayAsks(out.ask ? [out.ask] : undefined);
   } catch (e) {
     logSwallowed("admin/at-risk:leanOn", e, "the lean-on ask was not placed, or was placed and not forwarded");
     param = "lean_error=unavailable";

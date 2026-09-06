@@ -23,7 +23,7 @@ const ADMIN_SURFACE = "/admin/shifts";
 
 test.describe("admin-gate fallback (#352)", () => {
   test.beforeEach(async () => {
-    await resetAndSeed("outbox");
+    await resetAndSeed("crew");
   });
 
   test("a crew-signed-in admin hitting an admin surface gets the switch-up, not a dead end", async ({

@@ -1,6 +1,6 @@
 import { doorbellTick } from "@core/builder/doorbell-tick.js";
 import { forwardNotifications } from "@core/adapters/forward-notifications.js";
-import { OutboxNotificationChannel } from "@core/adapters/outbox-notification-channel.js";
+import { logChannel } from "./channel";
 import { makeDoorbellRules } from "@core/messaging/doorbell-decider.js";
 import {
   DOORBELL_BATCH_WINDOW_MS,
@@ -54,8 +54,7 @@ export async function runDoorbellTick(now: Date): Promise<{
   // Twilio configured (9.4, DEC-MSG-1) ⇒ rings go out as real SMS; unset ⇒ the
   // operator-relay ring outbox stays (DEC-073). Same constructor-swap as channel.ts.
   const channel =
-    makeTwilioChannel(repo, linkBase) ??
-    new OutboxNotificationChannel(repo, { linkBase, now: () => now });
+    makeTwilioChannel(repo, linkBase) ?? logChannel(repo, linkBase, () => now);
   const relayed = await forwardNotifications(repo, channel, r.rings);
   return { threadsSwept: r.threadsSwept, rings: r.rings.length, relayed };
 }

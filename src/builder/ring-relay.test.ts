@@ -1,20 +1,26 @@
 /**
  * The doorbell-ring RELAY loop end-to-end (#118, DEC-073), over the in-memory repo:
- * post → `doorbellTick` → `forwardNotifications` through the REAL
- * `OutboxNotificationChannel` → ring entries enqueued with a thread deep-link →
- * `buildRingOutboxView` surfaces them → reading the thread DROPS them (drop-on-read).
- * The promotion gate's loop, the same wiring the cron binds to Postgres.
+ * post → `doorbellTick` → `forwardNotifications` through the REAL unconfigured-channel
+ * adapter → a relayable line per absent crew member, each deep-linking into the thread.
+ * The cron binds this same wiring to Postgres.
+ *
+ * **Half of this test was deleted with the outbox (#934), and that is a real loss.**
+ * It used to continue: `buildRingOutboxView` surfaces the rings, and reading the thread
+ * DROPS them from the worklist (drop-on-read). That was a property of the operator's
+ * worklist, not of the domain — with no worklist there is nothing to drop from, and
+ * `recordRead` no longer has a queue to affect. The decider half is still covered by
+ * `src/messaging/doorbell-decider.test.ts`; what is gone is the end-to-end proof that a
+ * ring stops being outstanding once its message is read.
  */
 import { describe, expect, it } from "vitest";
 import { asId } from "../domain/ids.js";
-import type { CrewMember, Subject } from "../domain/entities.js";
+import type { CrewMember } from "../domain/entities.js";
 import type { Message, Thread } from "../messaging/entities.js";
 import { InMemoryPresence } from "../adapters/in-memory-presence.js";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
-import { OutboxNotificationChannel } from "../adapters/outbox-notification-channel.js";
+import { LogChannel } from "../adapters/log-channel.js";
 import { forwardNotifications } from "../adapters/forward-notifications.js";
 import { makeDoorbellRules } from "../messaging/doorbell-decider.js";
-import { buildRingOutboxView } from "../admin/ring-outbox-view.js";
 import { doorbellTick } from "./doorbell-tick.js";
 import { RING_NOTIFICATION_BODY } from "../adapters/forward-notifications.js";
 
@@ -53,30 +59,29 @@ async function seed(): Promise<InMemoryRepository> {
 }
 
 describe("doorbell-ring relay loop (#118, DEC-073)", () => {
-  it("post → tick → ring enqueued with a thread deep-link → view shows → read drops", async () => {
+  it("post → tick → one relayable ring per absent crew member, deep-linked to the thread", async () => {
     const repo = await seed();
     const r = await doorbellTick(repo, new InMemoryPresence(), NOW, RULES);
     expect(r.rings).toHaveLength(2); // alice + bob, both absent
 
-    const channel = new OutboxNotificationChannel(repo, {
+    const lines: string[] = [];
+    const channel = new LogChannel(repo, {
       linkBase: "https://app.example",
       now: () => NOW,
       mintSecret: () => "SECRET",
+      sink: (l) => lines.push(l),
     });
     const relayed = await forwardNotifications(repo, channel, r.rings);
     expect(relayed).toBe(2);
 
-    // Two ring entries, each a deep-link into the thread (the §7.5 inlined content).
-    let view = await buildRingOutboxView(repo);
-    expect(view.pending.map((c) => c.crewName).sort()).toEqual(["Alice", "Bob"]);
-    expect(view.pending[0]!.body).toBe(RING_NOTIFICATION_BODY); // bare, not the note text (#387)
-    expect(view.pending[0]!.link).toContain(`thread=${encodeURIComponent(String(THREAD))}`);
-    expect(view.sent).toHaveLength(0);
-
-    // Alice taps the link → lands in the thread → the beacon marks read → her ring
-    // drops from the worklist (DEC-073 drop-on-read). Bob's remains.
-    await repo.recordRead(THREAD, { kind: "crew", id: "crew-alice" } as Subject, "2026-07-04T09:03:00.000Z");
-    view = await buildRingOutboxView(repo);
-    expect(view.pending.map((c) => c.crewName)).toEqual(["Bob"]);
+    expect(lines).toHaveLength(2);
+    expect(lines.some((l) => l.includes("crew-alice"))).toBe(true);
+    expect(lines.some((l) => l.includes("crew-bob"))).toBe(true);
+    for (const line of lines) {
+      // Bare ring body, NOT the note text (#387) — the ring says a message exists.
+      expect(line).toContain(RING_NOTIFICATION_BODY);
+      expect(line).toContain(`thread=${encodeURIComponent(String(THREAD))}`);
+      expect(line).toContain("[channel:ring]");
+    }
   });
 });

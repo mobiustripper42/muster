@@ -28,6 +28,7 @@
 import { issueMagicLink, randomSecret } from "../auth/magic-link.js";
 import type { CrewMemberId } from "../domain/ids.js";
 import {
+  RELAY_LINK_TTL_MS,
   type ChannelPort,
   type OutboundMessage,
   requireCrewId,
@@ -40,7 +41,6 @@ import type {
 } from "../ports/notification.js";
 import type { Repository } from "../ports/repository.js";
 import type { FetchLike } from "./email-channel.js";
-import { RELAY_LINK_TTL_MS } from "./web-link-channel.js";
 import { stripTrailingSlashes } from "../config/base-url.js";
 
 /** Twilio Messages endpoint for an account (2010-04-01 is Twilio's stable API). */

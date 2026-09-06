@@ -43,9 +43,8 @@ const ALLOWED_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "db", "postgres"
  *
  * Everything else stays opt-in because it builds DELIBERATE breakage — `overlap` manufactures
  * a double-booked hull, `losing-asks` writes state the code cannot produce, `timeclock` leaves
- * payroll permanently 409, `split` re-forms shifts over every vessel-day, `outbox` rewrites
- * `crew-eric-stoffer` with a different name, role and phone than `crew` gives it, `completion`
- * is not idempotent, and `gratuity` picks whichever crew it finds first. Adding any of them
+ * payroll permanently 409, `split` re-forms shifts over every vessel-day, `completion` is not
+ * idempotent, and `gratuity` picks whichever crew it finds first. Adding any of them
  * here would trade a known world for a surprising one, which is the bug this set exists to fix.
  *
  * The dates move with the calendar and that is deliberate — the seeds are relative to
@@ -58,7 +57,6 @@ const SEEDS: Record<string, string> = {
   fleet: "db:seed:fleet",
   crew: "db:seed:crew",
   atrisk: "db:seed:atrisk",
-  outbox: "db:seed:outbox",
   split: "db:seed:split",
   gratuity: "db:seed:gratuity",
   reservation: "db:seed:reservation",
@@ -226,7 +224,7 @@ async function main(argv: readonly string[]): Promise<void> {
     } catch {
       // Say WHICH seed died and what to do about it. Before #937 a non-zero exit killed the
       // whole reset with npm's own error and no indication of which of five had failed —
-      // `gratuity` exits 1 when it finds no active crew, and `outbox` has its own paths.
+      // `gratuity` exits 1 when it finds no active crew.
       // `SEED_TODAY` is only worth suggesting for the seeds that read it — printing it for
       // `crew` or `atrisk` is advice that does nothing, which is worse than no advice.
       const retry = HONOURS_SEED_TODAY.has(name)

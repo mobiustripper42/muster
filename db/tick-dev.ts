@@ -29,7 +29,8 @@ const channel = new WebLinkChannel(repo, {
 try {
   const now = new Date();
   const r = await tick(repo, now);
-  // Edge channel wiring (DEC-030): every ask this tick fired → the pilot outbox.
+  // Edge channel wiring: every ask this tick fired → Twilio, or the log line that
+  // replaced the outbox when no key is configured (#934).
   const forwarded = await forwardAsks(repo, channel, r.firedAsks);
   console.log(`tick @ ${now.toISOString()}`);
   console.log(`  shiftsAdvanced:  ${r.shiftsAdvanced}`);
@@ -40,7 +41,7 @@ try {
   console.log(`  shiftsEscalated: ${r.shiftsEscalated}   (Tier-2 stalls worked)`);
   console.log(`  nudgesFired:     ${r.nudgesFired}   (Tier-2 direct nudges)`);
   console.log(`  boardLanded:     ${r.boardLanded}   (new (shift,reason) board landings — DEC-026)`);
-  console.log(`  outboxQueued:    ${forwarded}   (relays queued for /admin/outbox — DEC-030)`);
+  console.log(`  asksRelayed:     ${forwarded}   (texted, or logged when Twilio is unconfigured)`);
 } finally {
   await repo.close();
 }

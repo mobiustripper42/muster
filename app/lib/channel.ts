@@ -4,8 +4,8 @@ import {
   forwardNotices,
   type AssignmentChange,
 } from "@core/adapters/forward-notices.js";
-import { WebLinkChannel } from "@core/adapters/web-link-channel.js";
-import { OutboxNoticeChannel } from "@core/adapters/outbox-notice-channel.js";
+import { LogChannel } from "@core/adapters/log-channel.js";
+import { isProdDeploy } from "./flags";
 import type { Ask } from "@core/domain/entities.js";
 import type { FormResult } from "@core/builder/form-shifts.js";
 import { formNoticeChanges } from "@core/builder/form-notices.js";
@@ -45,39 +45,61 @@ async function linkBase(): Promise<string> {
 }
 
 /**
+ * The channel when Twilio is not configured (#934). It logs the message it would have
+ * sent, magic link and all, and that is the whole of what replaced the outbox: three
+ * queues, three tables and a screen whose only surviving job was letting a human read
+ * a message nothing could deliver.
+ *
+ * Severity is the app's call, not the core's: `console.error` in production so sheepdog
+ * ingests it (sheepdog issue 62), a plain log in dev where you are already watching the
+ * terminal. Same split as `app/lib/unsent.ts` on the reservations side (#933).
+ *
+ * Exported because `doorbell.ts` needs the identical construction for its ring relay —
+ * one place to change when the severity rule does.
+ */
+export function logChannel(
+  repo: ReturnType<typeof getRepo>,
+  linkBase: string,
+  now?: () => Date,
+): LogChannel {
+  return new LogChannel(repo, {
+    linkBase,
+    ...(now ? { now } : {}),
+    sink: isProdDeploy() ? (l) => console.error(l) : (l) => console.log(l),
+  });
+}
+
+/**
  * Forward fired asks to the pilot outbox — the edge wiring's one line
  * (DEC-030 ruling: the channel is injected at the edge, never threaded through
  * the core ask loop). Best-effort by design: the domain action already
  * committed; a channel hiccup must not turn it into a 500 (`forwardAsks`
  * swallows per-ask failures).
  */
-export async function forwardToOutbox(
+export async function relayAsks(
   asks: readonly Ask[] | undefined,
 ): Promise<void> {
   if (!asks || asks.length === 0) return;
   const repo = getRepo();
   const base = await linkBase();
-  const channel =
-    makeTwilioChannel(repo, base) ?? new WebLinkChannel(repo, { linkBase: base });
+  const channel = makeTwilioChannel(repo, base) ?? logChannel(repo, base);
   await forwardAsks(repo, channel, asks);
 }
 
 /**
  * Forward assignment-change notices (DEC-084) to the pilot outbox — the notice
- * sibling of `forwardToOutbox`, same edge-injection + best-effort posture. The pilot
+ * sibling of `relayAsks`, same edge-injection + best-effort posture. The pilot
  * adapter is `OutboxNoticeChannel` (enqueues a `NoticeOutboxEntry`); the Twilio swap
  * later is a different constructor here, zero domain change (DEC-MSG-1). The caller
  * has already excluded the operator (DEC-072/084).
  */
-export async function forwardNoticesToOutbox(
+export async function relayNotices(
   changes: readonly AssignmentChange[] | undefined,
 ): Promise<void> {
   if (!changes || changes.length === 0) return;
   const repo = getRepo();
   const base = await linkBase();
-  const channel =
-    makeTwilioChannel(repo, base) ??
-    new OutboxNoticeChannel(repo, { linkBase: base });
+  const channel = makeTwilioChannel(repo, base) ?? logChannel(repo, base);
   await forwardNotices(repo, channel, changes);
 }
 
@@ -91,7 +113,7 @@ export async function forwardNoticesToOutbox(
  * Operator excluded (DEC-072/084). Best-effort is the caller's (wrap in try/catch).
  */
 export async function forwardFormNotices(form: FormResult): Promise<void> {
-  await forwardNoticesToOutbox(formNoticeChanges(form, OPERATOR_CREW_MEMBER_ID));
+  await relayNotices(formNoticeChanges(form, OPERATOR_CREW_MEMBER_ID));
   await recordFormChanges(form);
 }
 

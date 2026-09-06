@@ -5,7 +5,7 @@
  * server-gated on `getAdmin(active)` — the crew-home control is a convenience, the
  * action re-checks.
  *
- * `crew-eric-stoffer` is both a seeded crew member (outbox seed) and the fixture admin,
+ * `crew-eric-stoffer` is both a seeded crew member (crew seed) and the fixture admin,
  * so it's the dual-role subject. `crew-obx-bo` is crew-only.
  */
 import {
@@ -57,7 +57,7 @@ async function openAccount(page: import("@playwright/test").Page): Promise<void>
 
 test.describe("crew ↔ admin switcher (DEC-093)", () => {
   test.beforeEach(async () => {
-    await resetAndSeed("outbox");
+    await resetAndSeed("crew");
   });
 
   // Live again as of #709, after months as a `test.fixme` on #447: the desktop link row

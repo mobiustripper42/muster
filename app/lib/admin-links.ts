@@ -115,7 +115,6 @@ export const GROUPS: readonly AdminGroup[] = [
       { href: "/admin/integrity", label: "Integrity check" },
       // A relic — the relay worklist Twilio replaced — kept because it is the emergency path if
       // SMS goes dark: `app/lib/channel.ts` falls back to it when Twilio isn't configured.
-      { href: "/admin/outbox", label: "Outbox" },
     ],
   },
 ];

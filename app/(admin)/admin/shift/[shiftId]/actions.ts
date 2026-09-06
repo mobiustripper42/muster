@@ -14,7 +14,7 @@ import { asId } from "@core/domain/ids.js";
 import { logCrewAdded, logCrewRemoved } from "@core/oracle/audit-log.js";
 import { readSubject } from "../../../../lib/auth";
 import { cockpitHref } from "../../../../lib/cockpit-href";
-import { forwardToOutbox, forwardNoticesToOutbox } from "../../../../lib/channel";
+import { relayAsks, relayNotices } from "../../../../lib/channel";
 import { getRepo } from "../../../../lib/repo";
 import { logSwallowed } from "../../../../lib/swallowed";
 import { OPERATOR_CREW_MEMBER_ID } from "../../../../lib/operator";
@@ -115,7 +115,7 @@ async function notify(
 ): Promise<void> {
   if (!crewMemberId || crewMemberId === OPERATOR_CREW_MEMBER_ID) return;
   try {
-    await forwardNoticesToOutbox([
+    await relayNotices([
       {
         crewMemberId: asId<"CrewMemberId">(crewMemberId),
         action,
@@ -145,7 +145,7 @@ export async function assignTo(formData: FormData): Promise<void> {
       ? `act_error=${out.code ?? "unavailable"}`
       : `assigned=${encodeURIComponent(crewMemberId)}`;
     // Edge channel wiring (DEC-030): the fired ask → the pilot outbox.
-    await forwardToOutbox(out.ask ? [out.ask] : undefined);
+    await relayAsks(out.ask ? [out.ask] : undefined);
   } catch (e) {
     // A throw AFTER `askOne` returned leaves the ask fired and unforwarded — the
     // seat looks Asked and nothing reached the outbox. `act_error=unavailable`
@@ -171,7 +171,7 @@ export async function nudgeOn(formData: FormData): Promise<void> {
       ? `act_error=${out.code ?? "unavailable"}`
       : `nudged=${encodeURIComponent(crewMemberId)}`;
     // Edge channel wiring (DEC-030): the fired ask → the pilot outbox.
-    await forwardToOutbox(out.ask ? [out.ask] : undefined);
+    await relayAsks(out.ask ? [out.ask] : undefined);
   } catch (e) {
     logSwallowed("admin/shift:nudgeOn", e, "the nudge was not placed, or was placed and not forwarded");
     param = "act_error=unavailable";

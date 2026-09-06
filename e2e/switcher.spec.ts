@@ -5,8 +5,8 @@
  * server-gated on `getAdmin(active)` — the crew-home control is a convenience, the
  * action re-checks.
  *
- * `crew-eric-stoffer` is both a seeded crew member (outbox seed) and the fixture admin,
- * so it's the dual-role subject. `crew-obx-bo` is crew-only.
+ * `crew-eric-stoffer` is both a seeded crew member (crew seed) and the fixture admin,
+ * so it's the dual-role subject. `crew-quint` is crew-only.
  */
 import {
   test,
@@ -57,7 +57,7 @@ async function openAccount(page: import("@playwright/test").Page): Promise<void>
 
 test.describe("crew ↔ admin switcher (DEC-093)", () => {
   test.beforeEach(async () => {
-    await resetAndSeed("outbox");
+    await resetAndSeed("crew");
   });
 
   // Live again as of #709, after months as a `test.fixme` on #447: the desktop link row
@@ -97,7 +97,7 @@ test.describe("crew ↔ admin switcher (DEC-093)", () => {
   test("a crew-only member sees no switch (the control is admin-gated)", async ({
     page,
   }) => {
-    await signInAsCrew(page, "crew-obx-bo"); // crew, not an admin
+    await signInAsCrew(page, "crew-quint"); // crew, not an admin
     await expect(page.getByRole(SWITCH_TO_ADMIN.role, { name: SWITCH_TO_ADMIN.name })).toHaveCount(0);
   });
 

@@ -1054,7 +1054,7 @@ export type AskResponse = "accepted" | "declined" | "withdrawn";
  * `withdrawn` is a system outcome, never an answer, so it must not be reachable from
  * any surface that takes crew (or operator-as-crew) input. Naming the subset makes
  * that a type error rather than a validation rule someone has to remember: every
- * answer door (`recordResponse`, `recordResponseAndConfirm`, `recordResponseAs`, the
+ * answer door (`recordResponse`, `recordResponseAndConfirm`, the
  * crewapp's answered-code) takes this, and only the engine's own
  * `withdrawLiveAsks` writes the wider value.
  */

@@ -22,7 +22,8 @@ test.describe("version tag", () => {
     await expect(page.getByText(VERSION)).toBeVisible();
 
     // The whole point of mounting per-page (not in Shell): sub-pages stay clean.
-    await page.goto("/admin/outbox");
+    // Was /admin/outbox until #934 deleted it — any admin sub-page proves the same thing.
+    await page.goto("/admin/shifts");
     await expect(page.getByText(VERSION)).toHaveCount(0);
   });
 

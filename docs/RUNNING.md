@@ -58,7 +58,6 @@ for these only when you are testing the thing they break:
 | `timeclock` | leaves the payroll export permanently 409 (an open punch + an overlap) |
 | `split` | re-forms shifts over **every** vessel-day; run it on a clean DB |
 | `concurrent` | a three-deep offering stack on Brew 3 |
-| `outbox` | rewrites `crew-eric-stoffer` with a different name, role and phone than `crew` gives it |
 | `gratuity` | stamps a fake Gusto identity onto whichever two crew it finds first |
 | `completion` | not idempotent — re-seeding appends a second `+5` to the append-only log |
 
@@ -111,7 +110,7 @@ In dev there's a link issuer:
 - Open `/crew` with no cookie (private window) → the signed-out state.
 - Mangle the `?t=` value → the expired/used-link copy.
 
-> **Note:** the crew seed's shifts anchor to *now* (~2 weeks out, #101), like the `atrisk`/`outbox`
+> **Note:** the crew seed's shifts anchor to *now* (~2 weeks out, #101), like the `atrisk`
 > seeds — they never rot on a future clock. Re-run `npm run db:seed:crew` to re-anchor + reset state.
 
 ### Signing in the front way (the 6-digit code)
@@ -199,42 +198,39 @@ Same seed. The cockpit is each board row's click-through, plus two off-board sce
 ```bash
 npm run db:tick          # run one engine tick by hand (DEC-023 — no scheduler in v1)
 ```
-Prints the tick counters (asks fired, escalations, board landings, outbox relays queued). After a
+Prints the tick counters (asks fired, escalations, board landings, asks relayed). After a
 tick, refresh the board: **Tidewater disappears too** — Tier-2 sent a direct nudge, so an ask is in
 flight again. Re-running `db:seed:atrisk` resets all scenarios (it closes any in-flight engine asks).
 
-## The operator outbox (#53, DEC-030)
-The pilot channel: the engine fires an ask → it lands in the **outbox** as a card → the operator
-texts it from their own phone via an `sms:` deep link. Best eyeballed **on a phone / at 375px** —
-the Send button only opens a Messages composer on a device that has one.
+## Seeing an ask that has nowhere to go (#934)
 
-```bash
-npm run db:seed:outbox   # 3 cards: 2 relays + 1 addressed to the operator (trips anchored to NOW)
+There is no operator outbox any more. It was three tables and a screen where the engine's asks
+landed as `sms:` deep links the operator texted from their own phone; #934 deleted it.
+
+When no Twilio key is configured, an ask, an assignment notice or a doorbell ring is **written to
+the server log** instead, magic link included:
+
+```
+[channel:ask] NOT SENT — no channel configured. to=crew-quint / +15555550101
+Muster: Sat, Sep 13 - Hops - captain. Yes or no?
+http://mill-dev:3000/crew/auth?t=<secret>
 ```
 
-1. Open **http://mill-dev:3000/crew/dev-link?admin=eric** → tap **Tap to sign in** (one tap) → then
-   open **http://mill-dev:3000/admin/outbox** → header shows **"3 asks need you"**, tightest trip
-   first: **Bo / Tideline** (red ~20h countdown, *"2nd ask · Lance declined"*), **Eric / Keelhaul**
-   (a **you** pill — inline red **Out** / green **In** buttons, NO Send link), **Mira / Maibock**
-   (*"1st ask"*).
-2. On the Bo card, tap **Send** (one tap): on a phone, Messages opens prefilled with the ask + a
-   magic link; on a desktop browser the `sms:` link may do nothing — that's the OS, not a bug. Either
-   way the button **flips in place** to a white **Resend** with **"sent · &lt;time&gt; · awaiting
-   reply"**.
-3. Tap **Resend** → the same composer re-opens (the recovery if the first text didn't actually go
-   out; no state change). Refresh the page → the Bo card has moved to the muted **Sent · awaiting
-   reply** section and the header now reads **"2 asks need you"**.
-4. On the Keelhaul card (yours), tap **In** → green *"You're in — the seat is claimed."* and the
-   card is gone (the ask is answered; nothing left to relay).
-5. The full crew loop: paste the Bo card's magic link (it's the second line of the prefilled text)
-   into a private window → the **"Tap to sign in →"** confirm page → tap → you land on `/crew` as
-   Bo with the Tideline Yes/No ask. Answer it → back in the outbox, Bo's card is gone.
-6. Re-run `npm run db:seed:outbox` to reset (old cards retire; fresh asks + links are minted).
+1. `npm run db:reset:dev` for the standard world, then `npm run db:tick` to fire the engine.
+2. Watch the **terminal**, not the browser. Each ask the tick fired prints one of those blocks.
+3. **Paste the link into a private window** → the "Tap to sign in →" confirm page → tap → you land
+   on `/crew` as that crew member with the Yes/No ask. Answer it; the loop is unchanged.
+
+The link is real and lasts 24 hours — the ask's answer window, the same TTL the outbox used
+(`RELAY_LINK_TTL_MS`). That is the whole difference between this and a `console.log`: an ask you
+cannot answer would describe the old screen rather than replace it.
+
+With a Twilio key configured, none of this prints — the text just goes.
 
 ## Other endpoints
 - `GET /api/health` → `{ status, db.reachable, integrity: { ok, violationCount } }` (runs the no-FK
   integrity diagnostic; `degraded` if the DB is down or a dangling ref exists).
-- `/admin` → links to the At-Risk board + the Outbox (roster/builder surfaces are later phases).
+- `/admin` → links to the At-Risk board (the Outbox was removed in #934).
 
 ## Reproducing the checkout race by hand (`CHECKOUT_HOLD_MINUTES`)
 

@@ -1,6 +1,6 @@
 import { doorbellTick } from "@core/builder/doorbell-tick.js";
 import { forwardNotifications } from "@core/adapters/forward-notifications.js";
-import { OutboxNotificationChannel } from "@core/adapters/outbox-notification-channel.js";
+import { logChannel } from "./channel";
 import { makeDoorbellRules } from "@core/messaging/doorbell-decider.js";
 import {
   DOORBELL_BATCH_WINDOW_MS,
@@ -15,14 +15,13 @@ import { stripTrailingSlashes } from "@core/config/base-url.js";
 
 /**
  * Run one doorbell sweep + relay the rings — the edge wiring (DEC-070), the
- * doorbell analog of `forwardToOutbox`. This is the ONE place the app picks the
+ * doorbell analog of `relayAsks`. This is the ONE place the app picks the
  * notification adapter.
  *
  * **Delivery**: with Twilio configured (9.4, DEC-MSG-1) each ring goes out as a
- * real SMS; unset, the operator-outbox relay stays (DEC-073, the promotion gate):
- * each ring enqueues a `RingOutboxEntry` (thread deep-link) the operator texts
- * from `/admin/outbox` — the DEC-030 web-link model, mirroring asks. Best-effort
- * (DEC-070): a failed enqueue/send drops that cycle's ring until read / re-ring.
+ * real SMS; unset, the ring is LOGGED with its thread deep-link (#934) — the
+ * operator-outbox relay it used to enqueue into is gone. Best-effort (DEC-070):
+ * a failed send drops that cycle's ring until read / re-ring.
  */
 export async function runDoorbellTick(now: Date): Promise<{
   threadsSwept: number;
@@ -54,8 +53,7 @@ export async function runDoorbellTick(now: Date): Promise<{
   // Twilio configured (9.4, DEC-MSG-1) ⇒ rings go out as real SMS; unset ⇒ the
   // operator-relay ring outbox stays (DEC-073). Same constructor-swap as channel.ts.
   const channel =
-    makeTwilioChannel(repo, linkBase) ??
-    new OutboxNotificationChannel(repo, { linkBase, now: () => now });
+    makeTwilioChannel(repo, linkBase) ?? logChannel(repo, linkBase, () => now);
   const relayed = await forwardNotifications(repo, channel, r.rings);
   return { threadsSwept: r.threadsSwept, rings: r.rings.length, relayed };
 }

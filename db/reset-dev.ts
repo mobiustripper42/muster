@@ -72,6 +72,13 @@ const SEEDS: Record<string, string> = {
 };
 
 /**
+ * The seeds that actually read `process.env.SEED_TODAY`. Everything else derives its dates from
+ * `Date.now()` and cannot be pinned, so telling someone to set the variable for one of those is
+ * advice that silently does nothing.
+ */
+const HONOURS_SEED_TODAY = new Set(["reservation", "xola", "concurrent"]);
+
+/**
  * ORDER MATTERS for some of these, and it is enforced by exit codes rather than declared:
  * `concurrent` refuses without `reservation`, `overlap` without a live offering, `gratuity`
  * without active crew. Run them after the standard set, not instead of it.
@@ -192,9 +199,15 @@ async function main(argv: readonly string[]): Promise<void> {
   }
 
   // ONE clock read for the whole reset (#937). Each seed is its own process, so left alone
-  // they each call `Date.now()` a second or two apart — which is identical every time except
-  // across a midnight, where half the world lands on one day and half on the next. Pinning it
-  // here also means `SEED_TODAY=2026-03-14 npm run db:reset:dev` reproduces a world exactly.
+  // they each call `Date.now()` a second or two apart — identical every time except across a
+  // midnight, where half the world lands on one day and half on the next.
+  //
+  // **This does NOT make the whole world reproducible, and an earlier draft of this comment
+  // claimed it did.** Only the seeds that READ `SEED_TODAY` are pinned by it — `reservation`
+  // and `xola` of the default set (`concurrent` outside it). `crew` and `atrisk` derive every
+  // date from `Date.now()` directly and ignore it, so their shifts follow the wall clock
+  // regardless. Teaching them is its own task; what this line buys today is that the two
+  // date-heavy calendar seeds agree with each other and with the e2e harness.
   //
   // NOT a fixed constant, deliberately. A pinned date ages: set it once and two months later
   // every shift is in the past, nothing is upcoming and the app looks empty. The world stays
@@ -214,10 +227,15 @@ async function main(argv: readonly string[]): Promise<void> {
       // Say WHICH seed died and what to do about it. Before #937 a non-zero exit killed the
       // whole reset with npm's own error and no indication of which of five had failed —
       // `gratuity` exits 1 when it finds no active crew, and `outbox` has its own paths.
+      // `SEED_TODAY` is only worth suggesting for the seeds that read it — printing it for
+      // `crew` or `atrisk` is advice that does nothing, which is worse than no advice.
+      const retry = HONOURS_SEED_TODAY.has(name)
+        ? `SEED_TODAY=${seedToday} npm run ${SEEDS[name]}`
+        : `npm run ${SEEDS[name]}`;
       console.error(
         `\n✗ seed "${name}" (npm run ${SEEDS[name]}) exited non-zero — its output is above.\n` +
           `  The database is migrated and the seeds before it ran. Re-run just this one with:\n` +
-          `    SEED_TODAY=${seedToday} npm run ${SEEDS[name]}\n`,
+          `    ${retry}\n`,
       );
       process.exitCode = 1;
       return;

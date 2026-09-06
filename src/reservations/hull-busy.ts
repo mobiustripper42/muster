@@ -96,20 +96,25 @@ export function busyIntervalsFor(
 }
 
 /**
- * Which rows to leave OUT of a pending-occupancy check: the asker's own. A retry from the same
- * checkout session (`holderToken`) must not be refused by its earlier row, and — until 14.5
- * flips the pending row instead of inserting beside it — a confirm must not be refused by the
- * row carrying its own `paymentIntentId`. Absent or empty means nothing is exempt: two tokenless
- * rows never match each other.
+ * Which rows to leave OUT of a pending-occupancy check: the asker's own. Two ways a row is the
+ * asker's own. A confirm (14.5) exempts the row it is flipping — that row IS a live pending row
+ * on this hull, so without the exemption it refuses its own booking — matched by `reservationId`.
+ * And a retry from the same checkout session must not be refused by its earlier row, matched by
+ * `holderToken` (§2.8.5 — possession, never typed identity). Absent or empty means nothing is
+ * exempt: two tokenless rows never match each other, and a null token never matches a null token.
+ *
+ * Never a payment id. The 14.4→14.5 bridge exempted the confirming row by `paymentIntentId`, and
+ * the NULL form of that clause exempted every rival that carried one; the row is now out of the
+ * check because it is the row being flipped, by its id.
  */
 export interface PendingExemption {
+  reservationId?: string | undefined;
   holderToken?: string | undefined;
-  paymentIntentId?: string | undefined;
 }
 
 function isOwnRow(r: Reservation, own: PendingExemption): boolean {
-  if (own.holderToken && r.holderToken === own.holderToken) return true;
-  return Boolean(own.paymentIntentId && r.paymentIntentId === own.paymentIntentId);
+  if (own.reservationId && String(r.id) === own.reservationId) return true;
+  return Boolean(own.holderToken && r.holderToken === own.holderToken);
 }
 
 /**

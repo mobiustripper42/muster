@@ -1,30 +1,25 @@
 /**
- * writeSlotBooking (12.5, DEC-125) — the booking-write service, driven against the in-memory
- * repo. Its `writeBooking` (11.3) sibling was retired at #693; see the note below.
- * The adapter-level atomic claim is contract-tested in repository-contract.ts (incl. the
- * concurrent-claims race); this covers the service's outcome mapping + idempotency.
+ * confirmPendingRow (14.5, SPEC §2.8.6) — the booking write, driven against the in-memory repo.
+ * The adapter-level flip is contract-tested in repository-contract.ts (incl. the concurrent
+ * race); this covers the service's outcome mapping: how the row is found, what the Event is
+ * built from, and what each outcome leaves behind.
+ *
+ * The `writeSlotBooking` suite that stood here built a booking from Stripe metadata and
+ * inserted it. That write is GONE (issue #916): a confirm that cannot find the row checkout
+ * wrote has nothing to book, and a second way to write a booking is what §2.8.6 forbids.
  */
 import { describe, expect, it } from "vitest";
 import { InMemoryRepository } from "../adapters/in-memory-repository.js";
-import type { Offering } from "../domain/entities.js";
+import type { Offering, Reservation } from "../domain/entities.js";
 import { asId } from "../domain/ids.js";
-import { writeSlotBooking } from "./write-booking.js";
+import { eventIdForSlot } from "./availability.js";
+import { confirmPendingRow } from "./write-booking.js";
 
-// `musterEvent`, `EVENT` and the `req()` BookingRequest builder went with the
-// `describe("writeBooking")` block (#693) — they had no other consumer.
-const NOW = () => "2026-07-01T00:00:00.000Z";
+const NOW = () => "2026-07-01T12:00:00.000Z";
 const V = asId<"VesselId">("vessel-brew-2");
-
-// The `describe("writeBooking")` block that stood here is GONE (#693). It covered the legacy
-// 11.3 write — booked / already / already_claimed / lost / unbookable×3 — for a function that
-// claimed a boat by row-locking one `event_id`, which is exactly the pre-#691 behaviour where
-// two overlapping trips on one hull both succeed. Nothing minted sessions for it, so it was an
-// unguarded fallback rather than a removed path, and the tests were the last thing keeping it
-// compiling. `writeSlotBooking` below is the live path and carries the hull guard.
-
-// ── writeSlotBooking: the LIVE path (12.5, DEC-125) ──────────────────────────
-
 const OFF = asId<"OfferingId">("off-1");
+const PEND = asId<"ReservationId">("resv-pend-1");
+const SLOT = eventIdForSlot(V, "2026-07-04", "17:00");
 
 const offering = (over: Partial<Offering> = {}): Offering => ({
   id: OFF,
@@ -42,82 +37,123 @@ const offering = (over: Partial<Offering> = {}): Offering => ({
   basePriceCents: 49900,
   priceVariations: [],
   extraGuestPriceCents: 5000,
+  tripLengthMinutes: 240,
   ...over,
 });
 
-async function slotRepo(over?: Partial<Offering>): Promise<InMemoryRepository> {
+/** The row checkout wrote before Stripe (14.4): names the slot, both durations frozen. */
+const pendingRow = (over: Partial<Reservation> = {}): Reservation => ({
+  id: PEND,
+  eventId: null,
+  source: "muster",
+  status: "pending",
+  customerName: "Mary",
+  partySize: 6,
+  phone: "216-555-0148",
+  vesselId: V,
+  date: "2026-07-04",
+  time: "17:00",
+  offeringId: OFF,
+  reservedAt: "2026-07-01T11:55:00.000Z",
+  holdMinutes: 240,
+  tripMinutes: 240,
+  paymentIntentId: "pi_1",
+  ...over,
+});
+
+async function world(row: Reservation | null = pendingRow()): Promise<InMemoryRepository> {
   const repo = new InMemoryRepository();
-  if (over !== undefined) await repo.saveOffering(offering(over));
+  await repo.saveOffering(offering());
   await repo.saveVessel({ id: V, name: "Brew 2", coiMaxPax: 12, manning: [] });
+  if (row) await repo.saveReservation(row);
   return repo;
 }
 
-const bookSlot = (repo: InMemoryRepository, key = "cs_slot_1") =>
-  writeSlotBooking(
-    repo,
-    {
-      offeringId: OFF,
-      vesselId: V,
-      date: "2026-07-04",
-      time: "17:00",
-      guestCount: 6,
-      priceCents: 49900,
-      customerName: "Mary",
-      phone: "216-555-0148",
-      idempotencyKey: key,
-    },
-    NOW,
-  );
+const confirm = (repo: InMemoryRepository, paymentIntentId = "pi_1") =>
+  confirmPendingRow(repo, { paymentIntentId, priceCents: 49900, extrasCents: 5000 }, NOW);
 
-/**
- * The #570 duration freeze. This is a booking-path field with a CREW-path
- * consequence: it's what `shiftEndFromEvents` reads, so it decides when the tick's
- * completion sweep pays out reliability. Hence its own suite rather than riding the
- * price assertions.
- */
-describe("writeSlotBooking — trip duration frozen onto the Event (#570)", () => {
-  it("stamps the offering's tripLengthMinutes on the materialized event", async () => {
-    const repo = await slotRepo({ tripLengthMinutes: 240 });
+describe("confirmPendingRow — the pending row becomes the booking (§2.8.6)", () => {
+  it("flips the row: booked, eventId set, the Event materialized from the row and the charge", async () => {
+    const repo = await world();
 
-    const r = await bookSlot(repo);
+    const r = await confirm(repo);
 
     expect(r.outcome).toBe("booked");
     if (r.outcome !== "booked") return;
-    expect((await repo.getEvent(r.eventId))?.durationMinutes).toBe(240);
+    // Same row, not a new one — the id checkout minted is the booking's id for life.
+    expect(r.reservation).toMatchObject({ id: PEND, status: "booked", eventId: SLOT, extrasCents: 5000 });
+    expect(await repo.listAllReservations()).toHaveLength(1);
+    const ev = (await repo.getEvent(SLOT))!;
+    // Slot from the row; price from the charge (until 15.1); capacity from the vessel; trip
+    // time from the row's frozen value, never the offering's live one (DEC-161).
+    expect(ev).toMatchObject({ vesselId: V, date: "2026-07-04", time: "17:00", price: 49900, capacity: 12, durationMinutes: 240 });
   });
 
-  it("leaves it absent when the offering sets no length — the flat fallback applies", async () => {
-    const repo = await slotRepo({}); // offering saved, tripLengthMinutes unset
-
-    const r = await bookSlot(repo);
-
-    expect(r.outcome).toBe("booked");
-    if (r.outcome !== "booked") return;
-    expect((await repo.getEvent(r.eventId))?.durationMinutes).toBeUndefined();
-  });
-
-  it("still books when the offering row is missing — a config error must not cost a sale", async () => {
-    const repo = await slotRepo(); // no offering at all
-
-    const r = await bookSlot(repo);
-
-    expect(r.outcome).toBe("booked");
-    if (r.outcome !== "booked") return;
-    expect((await repo.getEvent(r.eventId))?.durationMinutes).toBeUndefined();
-  });
-
-  it("FROZEN, not resolved on read: editing the offering later leaves the booked event alone", async () => {
-    // The whole reason this is a column and not a join, and the same reason `price`
-    // is frozen two lines above it in the materializer (DEC-125). Without the freeze,
-    // re-configuring an offering next season would silently rewrite how long LAST
-    // season's shifts were — and so who earned reliability on them.
-    const repo = await slotRepo({ tripLengthMinutes: 240 });
-    const r = await bookSlot(repo);
-    expect(r.outcome).toBe("booked");
-    if (r.outcome !== "booked") return;
-
+  it("FROZEN, not resolved on read: the Event runs for the row's trip time after the offering is edited", async () => {
+    // Criterion 20 at the service level. The row froze 240 at checkout-start; the operator
+    // then shortens the offering while the customer is typing a card number.
+    const repo = await world();
     await repo.saveOffering(offering({ tripLengthMinutes: 90 }));
 
-    expect((await repo.getEvent(r.eventId))?.durationMinutes).toBe(240);
+    const r = await confirm(repo);
+
+    expect(r.outcome).toBe("booked");
+    expect((await repo.getEvent(SLOT))?.durationMinutes).toBe(240);
+  });
+
+  it("resolves the customer at confirm and writes customerId onto the flipped row (§2.8.6 step 4)", async () => {
+    const repo = await world();
+
+    const r = await confirm(repo);
+
+    expect(r.outcome).toBe("booked");
+    const stored = (await repo.getReservation(PEND))!;
+    expect(stored.customerId).toBeDefined();
+    expect(await repo.getCustomer(stored.customerId!)).not.toBeNull();
+  });
+
+  it("no row carries the payment intent → unconfirmable, nothing written", async () => {
+    const repo = await world(null);
+
+    const r = await confirm(repo, "pi_nobody_minted");
+
+    expect(r).toEqual({ outcome: "unconfirmable", reason: "no_row" });
+    expect(await repo.listAllReservations()).toHaveLength(0);
+    expect(await repo.listEvents()).toHaveLength(0);
+  });
+
+  it("already: a row that is booked reports already, with the row — no second Event, no second row", async () => {
+    const repo = await world();
+    expect((await confirm(repo)).outcome).toBe("booked");
+
+    const again = await confirm(repo);
+
+    expect(again.outcome).toBe("already");
+    if (again.outcome !== "already") return;
+    expect(again.reservation).toMatchObject({ id: PEND, status: "booked" });
+    expect(await repo.listAllReservations()).toHaveLength(1);
+    expect(await repo.listEvents()).toHaveLength(1);
+  });
+
+  it("lost: a rival booked on the hull → lost, and the row stays pending", async () => {
+    // What happens to the row after a loss is 15.2's (refund + tell, on the row's own phone).
+    // Here it must simply not become a booking.
+    const repo = await world();
+    await repo.saveEvent({ id: asId<"EventId">("evt-rival"), vesselId: V, date: "2026-07-04", time: "17:00", capacity: 12, status: "scheduled", source: "xola" });
+
+    const r = await confirm(repo);
+
+    expect(r.outcome).toBe("lost");
+    expect((await repo.getReservation(PEND))!.status).toBe("pending");
+    expect(await repo.getEvent(SLOT)).toBeNull();
+  });
+
+  it("a cancelled row carrying the intent id is unconfirmable (not_pending) — never resurrected by a payment", async () => {
+    const repo = await world(pendingRow({ status: "cancelled" }));
+
+    const r = await confirm(repo);
+
+    expect(r).toEqual({ outcome: "unconfirmable", reason: "not_pending" });
+    expect((await repo.getReservation(PEND))!.status).toBe("cancelled");
   });
 });

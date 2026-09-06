@@ -1,11 +1,12 @@
 /**
- * Create a departure PaymentIntent (Phase 12.5, DEC-134) — the inline-Elements twin of
- * `createDepartureCheckout` (12.1a, hosted). Called at "Book & pay" submit from the
- * `/book/checkout` screen: waiver gate → gratuity-tier gate → hold (15 min in production; `CHECKOUT_HOLD_MINUTES` shortens it locally) on a fitting boat
+ * Create a departure PaymentIntent (Phase 12.5, DEC-134) — the live "Book & pay" path (the
+ * hosted `createDepartureCheckout` twin was deleted at 14.5). Called at "Book & pay" submit from
+ * the `/book/checkout` screen: waiver gate → gratuity-tier gate → hold (15 min in production; `CHECKOUT_HOLD_MINUTES` shortens it locally) on a fitting boat
  * (fit-and-fallback) → price the held slot exactly as the deriver displayed it → compose the
  * fare → tax + gratuity + SERVICE FEE (DEC-134) → mint a raw PaymentIntent carrying the SLOT
  * + frozen money in metadata. The client confirms against the returned `clientSecret`; the
- * `payment_intent.succeeded` webhook books via `writeSlotBooking`, keyed on the intent id.
+ * `payment_intent.succeeded` webhook FLIPS the pending row via `confirmPendingRow` (§2.8.6),
+ * found by the intent id recorded on it.
  *
  * **Writes the PENDING reservation before Stripe (14.4, SPEC §2.8.2).** The row names the slot
  * (no Event yet), freezes both durations (DEC-161) and the whole invoice (DEC-164), and picks up
@@ -255,8 +256,9 @@ export async function createDeparturePaymentIntent(
   return { ok: true, clientSecret: intent.clientSecret, paymentIntentId: intent.paymentIntentId };
 }
 
-/** A fresh id per pending row — the same `resv-<32 hex>` shape `reservationIdFor` mints, but
- *  random: nothing deterministic exists yet to key it on (the intent id comes after the row). */
+/** A fresh `resv-<32 hex>` id per pending row, random: nothing deterministic exists yet to key
+ *  it on (the intent id comes after the row). Confirm flips this row rather than deriving a new
+ *  id from the payment (14.5) — which is what lets two payments resolve to one reservation. */
 function mintPendingReservationId(): ReservationId {
   return asId<"ReservationId">(`resv-${randomUUID().replaceAll("-", "")}`);
 }

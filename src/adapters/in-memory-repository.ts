@@ -92,6 +92,7 @@ import {
   pendingIntervalsFor,
 } from "../reservations/hull-busy.js";
 import type { FailureWindow, Repository } from "../ports/repository.js";
+import type { ConfirmPatch } from "../reservations/write-booking.js";
 
 const clone = <T>(value: T): T => structuredClone(value);
 
@@ -591,23 +592,34 @@ export class InMemoryRepository implements Repository {
     return [...this.#reservations.values()].map(clone);
   }
 
-  async saveBookingIfSlotFree(
+  async bookPendingIfHullFree(
+    reservationId: ReservationId,
     event: Event,
-    reservation: Reservation,
+    patch: ConfirmPatch,
     pendingLiveSince: string,
-  ): Promise<{ result: "won"; eventId: EventId } | { result: "lost" }> {
+  ): Promise<
+    | { result: "won"; eventId: EventId; reservation: Reservation }
+    | { result: "already"; reservation: Reservation }
+    | { result: "lost" }
+  > {
     // Single-threaded JS ⇒ trivially atomic; the Postgres adapter enforces the same under
-    // real concurrency (advisory lock on the hull-day + row lock). (0) the HULL must be free
-    // over this departure — any other scheduled trip, either source, at an overlapping time
-    // (#615, #691), and any LIVE pending row measured by its own hold minutes (§2.8.3). This
-    // precedes materialization: losing here must not leave an event row behind. (1) find-or-
-    // materialize the Muster Event at this slot identity — one row per physical boat-slot
-    // (DEC-125 guardrail).
+    // real concurrency (advisory lock on the hull-day + row lock). (0) the row must be there
+    // and still `pending` — a `booked` row is a redelivery (`already`), anything else is `lost`
+    // and writes nothing.
+    const row = this.#reservations.get(reservationId);
+    if (!row) return { result: "lost" };
+    if (row.status === "booked") return { result: "already", reservation: clone(row) };
+    if (row.status !== "pending") return { result: "lost" };
+
+    // (1) the HULL must be free over this departure — any other scheduled trip, either source,
+    // at an overlapping time (#615, #691), and any OTHER live pending row measured by its own
+    // hold minutes (§2.8.3). This precedes materialization: losing here must not leave an event
+    // row behind.
     const slotKey = slotIdentity(event.vesselId, event.date, event.time);
     const busy = busyIntervalsFor(
       // Exempt only the MUSTER event at this exact slot — that is the slot being claimed
-      // (a pre-existing override, or this very row). A Xola event at the same clock time is
-      // a foreign occupant and must still block: exempting by time alone re-opens #615.
+      // (a pre-existing override). A Xola event at the same clock time is a foreign occupant
+      // and must still block: exempting by time alone re-opens #615.
       [...this.#events.values()].filter(
         (e) =>
           !(e.source === "muster" && slotIdentity(e.vesselId, e.date, e.time) === slotKey),
@@ -615,14 +627,14 @@ export class InMemoryRepository implements Repository {
       event.vesselId,
       event.date,
     );
-    // The 14.4→14.5 bridge: the customer's own pending row (same payment-intent id) is not an
-    // occupant of the slot it is about to become. 14.5 flips that row instead (issue #916).
+    // The row being flipped IS a live pending row on this hull — exempt it by id, or it refuses
+    // its own booking. The customer's earlier same-token attempts are exempt too (§2.8.5).
     const pending = pendingIntervalsFor(
       [...this.#reservations.values()],
       event.vesselId,
       event.date,
       pendingLiveSince,
-      { paymentIntentId: reservation.paymentIntentId },
+      { reservationId: String(reservationId), holderToken: row.holderToken },
     );
     if (
       hullIsBusy(
@@ -684,17 +696,29 @@ export class InMemoryRepository implements Repository {
       }
     }
     const eventId = existing.id;
-    // (2) whole-boat mutex against the actual event id — source-scoped, idempotent on id.
+    // (2) whole-boat mutex against the actual event id — source-scoped. Excludes the row being
+    // flipped so it never blocks itself.
     const blocked = [...this.#reservations.values()].some(
       (r) =>
         r.eventId === eventId &&
         r.source === "muster" &&
         r.status === "booked" &&
-        r.id !== reservation.id,
+        r.id !== reservationId,
     );
     if (blocked) return { result: "lost" };
-    this.#reservations.set(reservation.id, clone({ ...reservation, eventId }));
-    return { result: "won", eventId };
+    // (3) FLIP the pending row in place: same id, everything checkout froze intact, plus the
+    // confirm patch. Not an insert — one row per booking (§2.8.6). Patch fields are set only
+    // when present (exactOptionalPropertyTypes — never spread an explicit `undefined`).
+    const booked: Reservation = {
+      ...row,
+      status: "booked",
+      eventId,
+      updatedAt: patch.updatedAt,
+      ...(patch.customerId !== undefined ? { customerId: patch.customerId } : {}),
+      ...(patch.extrasCents !== undefined ? { extrasCents: patch.extrasCents } : {}),
+    };
+    this.#reservations.set(reservationId, clone(booked));
+    return { result: "won", eventId, reservation: clone(booked) };
   }
 
   async savePendingIfHullFree(

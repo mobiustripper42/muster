@@ -140,30 +140,37 @@ describe("customerIdForPhone", () => {
 });
 
 describe("booking paths link the customer (the anti-museum guarantee)", () => {
-  it("writeSlotBooking stamps customerId on the reservation", async () => {
-    const { writeSlotBooking } = await import("../reservations/write-booking.js");
+  // The customer is resolved when confirm FLIPS the pending row (§2.8.6 step 4), off the row's
+  // frozen name and phone — not at checkout, where the row is written before Stripe (14.4).
+  const pendingRow = (over: Partial<import("../domain/entities.js").Reservation> = {}) => ({
+    id: asId<"ReservationId">("resv-pend"),
+    eventId: null,
+    source: "muster" as const,
+    status: "pending" as const,
+    customerName: "Jordan Ellis",
+    partySize: 6,
+    phone: "216-555-0148",
+    vesselId: asId<"VesselId">("v1"),
+    date: "2026-08-12",
+    time: "13:30",
+    offeringId: asId<"OfferingId">("off-1"),
+    reservedAt: NOW,
+    holdMinutes: 120,
+    tripMinutes: 100,
+    paymentIntentId: "pi_1",
+    ...over,
+  });
+  async function seeded(row = pendingRow()) {
+    const { confirmPendingRow } = await import("../reservations/write-booking.js");
     const r = repo();
-    await r.saveVessel({
-      id: asId<"VesselId">("v1"),
-      name: "Brew 1",
-      coiMaxPax: 12,
-      manning: [],
-    });
-    const res = await writeSlotBooking(
-      r,
-      {
-        offeringId: asId<"OfferingId">("off-1"),
-        vesselId: asId<"VesselId">("v1"),
-        date: "2026-08-12",
-        time: "13:30",
-        guestCount: 6,
-        priceCents: 49900,
-        customerName: "Jordan Ellis",
-        phone: "216-555-0148",
-        idempotencyKey: "cs_test_1",
-      },
-      now,
-    );
+    await r.saveVessel({ id: asId<"VesselId">("v1"), name: "Brew 1", coiMaxPax: 12, manning: [] });
+    await r.saveReservation(row);
+    return { r, confirmPendingRow };
+  }
+
+  it("confirmPendingRow stamps customerId on the flipped row", async () => {
+    const { r, confirmPendingRow } = await seeded();
+    const res = await confirmPendingRow(r, { paymentIntentId: "pi_1", priceCents: 49900 }, now);
     expect(res.outcome).toBe("booked");
     if (res.outcome !== "booked") return;
     expect(res.reservation.customerId).toBe(customerIdForPhone("+12165550148"));
@@ -172,29 +179,10 @@ describe("booking paths link the customer (the anti-museum guarantee)", () => {
     expect(history).toHaveLength(1);
   });
 
-  it("writeSlotBooking still books when the phone is unusable — just unlinked", async () => {
-    const { writeSlotBooking } = await import("../reservations/write-booking.js");
-    const r = repo();
-    await r.saveVessel({
-      id: asId<"VesselId">("v1"),
-      name: "Brew 1",
-      coiMaxPax: 12,
-      manning: [],
-    });
-    const res = await writeSlotBooking(
-      r,
-      {
-        offeringId: asId<"OfferingId">("off-1"),
-        vesselId: asId<"VesselId">("v1"),
-        date: "2026-08-12",
-        time: "13:30",
-        guestCount: 6,
-        priceCents: 49900,
-        customerName: "No Phone",
-        idempotencyKey: "cs_test_2",
-      },
-      now,
-    );
+  it("confirmPendingRow still books when the phone is unusable — just unlinked", async () => {
+    // A phone that cannot canonicalize resolves to no customer — the row books, stays unlinked.
+    const { r, confirmPendingRow } = await seeded(pendingRow({ phone: "555" }));
+    const res = await confirmPendingRow(r, { paymentIntentId: "pi_1", priceCents: 49900 }, now);
     expect(res.outcome).toBe("booked");
     if (res.outcome !== "booked") return;
     expect("customerId" in res.reservation).toBe(false);

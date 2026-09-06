@@ -79,12 +79,36 @@ async function seeded() {
     status: "live",
     basePriceCents: 50000,
   } as never);
+  await repo.saveVessel({ id: asId<"VesselId">("v"), name: "Brew", coiMaxPax: 12, manning: [] });
   return repo;
+}
+
+/** The pending row checkout wrote for `SLOT_METADATA`'s slot, carrying the intent confirm finds
+ *  (14.5). Without it, confirm resolves `unbookable` — there is nothing to flip. */
+async function seedPending(repo: InMemoryRepository, paymentIntentId: string): Promise<void> {
+  await repo.saveReservation({
+    id: asId<"ReservationId">(`resv-${paymentIntentId}`),
+    eventId: null,
+    source: "muster",
+    status: "pending",
+    customerName: "Mary",
+    email: "m@x.io",
+    partySize: 6,
+    vesselId: asId<"VesselId">("v"),
+    date: "2026-07-04",
+    time: "17:00",
+    offeringId: asId<"OfferingId">("off-1"),
+    reservedAt: "2026-07-11T23:55:00.000Z", // inside the window before NOW
+    holdMinutes: 120,
+    tripMinutes: 100,
+    paymentIntentId,
+  });
 }
 
 describe("confirmBookingByPaymentIntent — the success page books without a webhook (issue #827)", () => {
   it("books a succeeded PaymentIntent, given only its id and no webhook at all", async () => {
     const repo = await seeded();
+    await seedPending(repo, "pi_success_1");
     const payments = new FakePaymentPort();
     payments.succeededIntents.set("pi_success_1", {
       paymentIntentId: "pi_success_1",
@@ -102,6 +126,7 @@ describe("confirmBookingByPaymentIntent — the success page books without a web
 
   it("is idempotent — the webhook landing afterwards produces no second booking", async () => {
     const repo = await seeded();
+    await seedPending(repo, "pi_success_2");
     const payments = new FakePaymentPort();
     payments.succeededIntents.set("pi_success_2", {
       paymentIntentId: "pi_success_2",
@@ -149,6 +174,7 @@ describe("confirmBookingByPaymentIntent — the success page books without a web
       status: "booked",
       source: "muster",
     } as never);
+    await seedPending(repo, "pi_loser");
     payments.succeededIntents.set("pi_loser", {
       paymentIntentId: "pi_loser",
       amountReceivedCents: 53625,

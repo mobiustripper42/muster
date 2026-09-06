@@ -7,7 +7,7 @@
  *
  * This is the OPTIMISTIC front-door. The hold makes the common case collision-free (the
  * second buyer never starts paying). It is NOT the authority — the whole-boat mutex
- * (`saveBookingIfSlotFree`) is the backstop at the write (DEC-109).
+ * (`bookPendingIfHullFree`) is the backstop at the write (DEC-109).
  *
  * **What that backstop actually guarantees (#691).** It used to be called "defeat-proof", and
  * it was — for two buyers of the SAME slot identity. Two buyers of the same boat at 13:30 and

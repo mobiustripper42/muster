@@ -104,6 +104,7 @@ import {
   type PaymentConfig,
 } from "../reservations/payment-config.js";
 import { XOLA_TRIP_MINUTES, minutesOfDay } from "../reservations/hull-busy.js";
+import type { ConfirmPatch } from "../reservations/write-booking.js";
 import type { FailureWindow, Repository, ShiftChangeRow } from "../ports/repository.js";
 
 /** Add `key: value` only when value is non-null — keeps optional fields absent. */
@@ -357,10 +358,10 @@ const toReservation = (r: any): Reservation => ({
 
 /**
  * Every writable `reservations` column, in ONE order, paired with `reservationValues` below.
- * Three inserts write this table (`saveReservation`, `saveBookingIfSlotFree`,
- * `savePendingIfHullFree`); before 14.4 each carried its own column list and the 14.4 columns
- * would have been a fourth place for them to drift apart. `id` first and `event_id` second is
- * load-bearing: `saveBookingIfSlotFree`'s insert refers to them as `$1` and `$2`.
+ * Two inserts write this table (`saveReservation`, `savePendingIfHullFree`) and one update
+ * flips a row (`bookPendingIfHullFree`); before 14.4 each carried its own column list and the
+ * 14.4 columns would have been a fourth place for them to drift apart. `id` first is
+ * load-bearing: the pending-write insert and the flip both refer to it as `$1`.
  */
 const RESERVATION_COLUMNS = [
   "id",
@@ -435,23 +436,28 @@ function placeholders(n: number): string {
  * time is in the way of everything on its day — same posture as `hull-busy.ts`: bad data costs
  * a slot, never a double-booked boat.
  *
- * `ownKeyColumn` names the column holding the caller's own-row key (`holder_token` on the pending
- * write, `payment_intent_id` on the confirm bridge); $6 is the caller's value. **The clause is
- * built here, from a column name, rather than passed in as SQL** — because the hand-written
- * version was `not (holder_token is not null and holder_token = $6)`, which is `NULL` when $6 is
- * NULL, and a `NULL` in an `and` chain drops the row exactly as if it were exempt. A cookie-less
- * client has no holder token and a hosted-Checkout completion has no payment intent, so "$6 is
- * NULL" is the ordinary path: every rival that HAD a key went invisible and the asker oversold
- * the hull. `is distinct from` never returns NULL, and the `$6 is null` arm says the thing the
- * predicate means — with no key of my own, nothing is mine, so nothing is exempt.
+ * Two exemptions, both by column, both NULL-safe: `id` = $6 (the row a confirm is flipping, which
+ * is itself a live pending row on this hull and would otherwise refuse its own booking) and
+ * `holder_token` = $7 (the asker's earlier same-session attempts, §2.8.5). The pending write
+ * passes a NULL $6 — its candidate is not inserted yet, so there is no own row to exclude by id.
+ *
+ * **The NULL-safety is load-bearing.** The 14.4 version was `not (holder_token is not null and
+ * holder_token = $6)`, which is `NULL` when $6 is NULL, and a `NULL` in an `and` chain drops the
+ * row exactly as if it were exempt — so a cookie-less asker (no token, the ordinary path)
+ * exempted every rival that HAD one and oversold the hull. Each arm here is guarded by `$n is not
+ * null` and compares with `is distinct from`, which never returns NULL: a missing key exempts
+ * nothing, a present key exempts only an exact match.
  */
-function pendingOverlapSql(ownKeyColumn: "holder_token" | "payment_intent_id"): string {
+function pendingOverlapSql(): string {
   return `select 1 from reservations
      where vessel_id = $1
        and date = $2
        and status = 'pending'
        and (source = 'admin' or (reserved_at is not null and reserved_at > $5))
-       and ($6::text is null or ${ownKeyColumn} is distinct from $6::text)
+       and not (
+         ($6::text is not null and id is not distinct from $6::text)
+         or ($7::text is not null and holder_token is not distinct from $7::text)
+       )
        and (
          time !~ '^[0-9]{1,2}:[0-9]{2}$' or hold_minutes is null
          or (
@@ -1518,18 +1524,25 @@ export class PostgresRepository implements Repository {
     return rows.map(toReservation);
   }
 
-  async saveBookingIfSlotFree(
+  async bookPendingIfHullFree(
+    reservationId: ReservationId,
     event: Event,
-    reservation: Reservation,
+    patch: ConfirmPatch,
     pendingLiveSince: string,
-  ): Promise<{ result: "won"; eventId: EventId } | { result: "lost" }> {
-    // First-booking-of-a-virtual-slot (DEC-109/125). One transaction: (1) materialize the
-    // Muster Event at its slot identity — `on conflict do nothing` + the partial-unique
-    // `events_muster_slot_identity` guardrail make concurrent first-bookings collide, so at
-    // most one row per physical boat-slot; (2) lock that row (`for update`) and claim the
-    // whole-boat mutex — the same guarantee the retired `saveReservationIfUnclaimed` gave for a
-    // pre-existing event (#693), now the only place it lives. reservation.event_id is
-    // reconciled to the row that actually backs the slot (a pre-existing override wins).
+  ): Promise<
+    | { result: "won"; eventId: EventId; reservation: Reservation }
+    | { result: "already"; reservation: Reservation }
+    | { result: "lost" }
+  > {
+    // Confirm the pending row (DEC-109/125, §2.8.6). One transaction: (0) lock the row and
+    // check its state; (1) hull free of every OTHER trip and OTHER live pending row; (2)
+    // materialize the Muster Event at its slot identity — `on conflict do nothing` + the
+    // partial-unique `events_muster_slot_identity` guardrail make concurrent confirms collide,
+    // so at most one row per physical boat-slot, resurrecting a cancelled one in place (#616);
+    // (3) FLIP the row to `booked` under the whole-boat mutex — the same guarantee the retired
+    // `writeSlotBooking` insert gave, now an update of the row checkout already wrote. The row's
+    // event_id is reconciled to the row that actually backs the slot (a pre-existing override
+    // wins).
     const client = await this.#pool.connect();
     try {
       await client.query("begin");
@@ -1542,6 +1555,25 @@ export class PostgresRepository implements Repository {
       await client.query("select pg_advisory_xact_lock(hashtext($1))", [
         `${String(event.vesselId)}|${event.date}`,
       ]);
+      // (0b) Lock the row and read its state. A `booked` row is a redelivery — `already`, with
+      // the booked row. A missing or non-`pending` row is `lost` and writes nothing (a payment
+      // must never resurrect a cancelled reservation).
+      const rowRes = await client.query("select * from reservations where id=$1 for update", [
+        reservationId,
+      ]);
+      if (rowRes.rowCount === 0) {
+        await client.query("rollback");
+        return { result: "lost" };
+      }
+      const row = toReservation(rowRes.rows[0]);
+      if (row.status === "booked") {
+        await client.query("commit");
+        return { result: "already", reservation: row };
+      }
+      if (row.status !== "pending") {
+        await client.query("rollback");
+        return { result: "lost" };
+      }
       // (0b) The HULL must be free over this departure — any other scheduled trip, either
       // source, at an overlapping time (#615, #691). Exempts the MUSTER event at this exact
       // slot, which is the slot being claimed; a Xola event at the same clock time is a
@@ -1576,18 +1608,19 @@ export class PostgresRepository implements Repository {
         await client.query("rollback");
         return { result: "lost" }; // another trip holds this boat over this departure
       }
-      // (0c) …and free of every LIVE pending row on the hull, each measured by its OWN hold
-      // minutes (14.4, §2.8.3). The bridge until 14.5: the customer's own pending row — the one
-      // carrying this payment-intent id — is the slot being confirmed, not an occupant of it.
+      // (0c) …and free of every OTHER LIVE pending row on the hull, each measured by its OWN
+      // hold minutes (§2.8.3). The row being flipped is itself a live pending row here, so it is
+      // exempt by its id ($6); the customer's earlier same-session attempts by holder token ($7).
       const pendingOverlap = await client.query(
-        pendingOverlapSql("payment_intent_id"),
+        pendingOverlapSql(),
         [
           event.vesselId,
           event.date,
           minutesOfDay(event.time),
           event.durationMinutes ?? XOLA_TRIP_MINUTES,
           pendingLiveSince,
-          reservation.paymentIntentId ?? null,
+          String(reservationId),
+          row.holderToken ?? null,
         ],
       );
       if ((pendingOverlap.rowCount ?? 0) > 0) {
@@ -1655,21 +1688,39 @@ export class PostgresRepository implements Repository {
         return { result: "lost" }; // slot un-materializable (e.g. cancelled) — no oversell
       }
       const eventId = asId<"EventId">(slot.rows[0].id);
-      await client.query(
-        `insert into reservations (${RESERVATION_COLUMNS.join(", ")})
-         select ${placeholders(RESERVATION_COLUMNS.length)}
-         where not exists (
-           select 1 from reservations
-           where event_id=$2 and source='muster' and status='booked' and id <> $1
-         )
-         on conflict (id) do nothing`,
-        reservationValues(reservation, eventId),
+      // (3) FLIP the pending row to `booked` under the whole-boat mutex — an UPDATE of the row
+      // checkout wrote, not an insert. `event_id` reconciled to the row backing the slot; the
+      // confirm patch (`updated_at`, `customer_id`, `extras_cents`) applied, each `coalesce`d so
+      // an absent patch field leaves what checkout froze. Guarded by `status='pending'` and the
+      // `not exists` mutex, so a redelivery that already flipped it, or a rival already booked on
+      // the slot, updates zero rows → `lost` (the redelivery is caught earlier as `already`).
+      const flipped = await client.query(
+        `update reservations
+            set status='booked',
+                event_id=$2,
+                updated_at=coalesce($3, updated_at),
+                customer_id=coalesce($4, customer_id),
+                extras_cents=coalesce($5, extras_cents)
+          where id=$1 and status='pending'
+            and not exists (
+              select 1 from reservations
+              where event_id=$2 and source='muster' and status='booked' and id <> $1
+            )
+        returning *`,
+        [
+          reservationId,
+          eventId,
+          patch.updatedAt ?? null,
+          patch.customerId ?? null,
+          patch.extrasCents ?? null,
+        ],
       );
-      const won = await client.query("select 1 from reservations where id=$1", [
-        reservation.id,
-      ]);
+      if (flipped.rowCount === 0) {
+        await client.query("rollback");
+        return { result: "lost" };
+      }
       await client.query("commit");
-      return won.rowCount === 1 ? { result: "won", eventId } : { result: "lost" };
+      return { result: "won", eventId, reservation: toReservation(flipped.rows[0]) };
     } catch (e) {
       await client.query("rollback");
       throw e;
@@ -1715,8 +1766,8 @@ export class PostgresRepository implements Repository {
         return { result: "lost" };
       }
       const pending = await client.query(
-        pendingOverlapSql("holder_token"),
-        [vesselId, date, start, holdMinutes, pendingLiveSince, reservation.holderToken ?? null],
+        pendingOverlapSql(),
+        [vesselId, date, start, holdMinutes, pendingLiveSince, null, reservation.holderToken ?? null],
       );
       if ((pending.rowCount ?? 0) > 0) {
         await client.query("rollback");
@@ -1738,10 +1789,11 @@ export class PostgresRepository implements Repository {
   }
 
   async getReservationByPaymentIntentId(paymentIntentId: string): Promise<Reservation | null> {
-    // Pending first: while the 14.4 bridge stands, a confirmed booking is two rows sharing the id.
+    // One row per intent id since 14.5: confirm FLIPS the pending row in place rather than
+    // inserting a booked one beside it, so `pending` and `booked` never share an id. `limit 1`
+    // is the shape of the lookup, not a tiebreak.
     const { rows } = await this.#pool.query(
-      `select * from reservations where payment_intent_id = $1
-        order by (status = 'pending') desc limit 1`,
+      `select * from reservations where payment_intent_id = $1 limit 1`,
       [paymentIntentId],
     );
     return rows[0] ? toReservation(rows[0]) : null;

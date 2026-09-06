@@ -22,7 +22,8 @@
  */
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
 import { deriveVirtualAvailability, eventIdForSlot } from "../src/reservations/availability.js";
-import { XOLA_TRIP_MINUTES, busyIntervalsFor, hullIsBusy, minutesOfDay } from "../src/reservations/hull-busy.js";
+import { XOLA_TRIP_MINUTES, busyIntervalsFor, candidateHoldMinutes, hullIsBusy, minutesOfDay } from "../src/reservations/hull-busy.js";
+import { pendingLiveSince } from "../src/reservations/pending.js";
 import { resolveCustomerId } from "../src/customers/resolve.js";
 import { vesselDateOf } from "../src/config/tenant.js";
 import { asId } from "../src/domain/ids.js";
@@ -196,19 +197,33 @@ for (const s of candidates) {
     price: s.priceCents,
     ...(o.tripLengthMinutes !== undefined ? { durationMinutes: o.tripLengthMinutes } : {}),
   };
-  const reservation: Reservation = {
+  // 14.5: bookings are a FLIP of a pending row, not an insert. Write the pending row checkout
+  // would have written, then confirm it — the same path production takes.
+  const pending: Reservation = {
     id: asId<"ReservationId">(`resv-overlap-${s.date}-${s.time.replace(":", "")}`),
-    eventId,
+    eventId: null,
     source: "muster",
+    status: "pending",
     customerName: "Overlap Fixture",
     partySize: Math.min(4, vessel.coiMaxPax),
     phone,
-    status: "booked",
+    vesselId: s.vesselId,
+    date: s.date,
+    time: s.time,
+    offeringId: o.id,
+    reservedAt: now,
+    holdMinutes: candidateHoldMinutes(o),
+    tripMinutes: o.tripLengthMinutes ?? XOLA_TRIP_MINUTES,
     updatedAt: now,
-    ...(customerId !== undefined ? { customerId } : {}),
   };
-  const res = await repo.saveBookingIfSlotFree(event, reservation);
-  console.log(`   saveBookingIfSlotFree → ${res.result}`);
+  await repo.saveReservation(pending);
+  const res = await repo.bookPendingIfHullFree(
+    pending.id,
+    event,
+    { updatedAt: now, ...(customerId !== undefined ? { customerId } : {}) },
+    pendingLiveSince(now),
+  );
+  console.log(`   bookPendingIfHullFree → ${res.result}`);
   if (res.result === "lost") {
     console.log("   The guard refused. That is a real answer, not a seed failure — the hull was taken.");
   }

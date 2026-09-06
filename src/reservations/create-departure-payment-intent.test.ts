@@ -13,7 +13,11 @@ import type { PaymentEvent } from "../ports/payment.js";
 import { processBookingWebhook, type WebhookDeps } from "./booking-webhook.js";
 import { createDeparturePaymentIntent } from "./create-departure-payment-intent.js";
 import { eventIdForSlot } from "./availability.js";
-import { reservationIdFor } from "./write-booking.js";
+
+/** The reservation id is the pending row's (random) id since 14.5 — find it by the intent id
+ *  the row carries, rather than deriving it from the charge key. */
+const resIdBy = async (repo: InMemoryRepository, pi: string) =>
+  (await repo.getReservationByPaymentIntentId(pi))!.id;
 
 const SMALL = asId<"VesselId">("v-small");
 const BIG = asId<"VesselId">("v-big");
@@ -51,6 +55,32 @@ const req = {
   customerName: "Mary", email: "m@x.io", phone: "+12165550148", holderToken: TOKEN_A,
   waiverConsentAt: "2026-07-13T12:00:00.000Z", waiverVersion: "v1",
 };
+
+/**
+ * The residual race under the flip model (14.5): the losing buyer's LAPSED pending row still
+ * exists on the small boat (its window expired, which is what let the winner take the slot), so
+ * their late `payment_intent.succeeded` finds a row to confirm — and loses the whole-boat mutex
+ * to the booked winner. Seeded directly, lapsed, so it never blocks the winner's own confirm.
+ */
+async function seedLosingPending(repo: InMemoryRepository, paymentIntentId: string): Promise<void> {
+  await repo.saveReservation({
+    id: asId<"ReservationId">(`resv-${paymentIntentId}`),
+    eventId: null,
+    source: "muster",
+    status: "pending",
+    customerName: "Mary",
+    email: "m@x.io",
+    partySize: 4,
+    vesselId: SMALL,
+    date: DATE,
+    time: TIME,
+    offeringId: OFF,
+    reservedAt: "2026-07-04T11:00:00.000Z", // lapsed well before NOW (12:00) − 15-min window
+    holdMinutes: 120,
+    tripMinutes: 100,
+    paymentIntentId,
+  });
+}
 
 /** Wrap a synthesized `payment_intent.succeeded` for the fake port. */
 function piEvent(paymentIntentId: string, amountReceivedCents: number, metadata: Record<string, string>): string {
@@ -254,7 +284,7 @@ describe("payment_intent.succeeded webhook path (12.5, DEC-134)", () => {
 
     const evId = eventIdForSlot(SMALL, DATE, TIME);
     expect(await repo.getEvent(evId)).not.toBeNull(); // materialized
-    const resId = reservationIdFor("pi_fake_1");
+    const resId = await resIdBy(repo, "pi_fake_1");
     const res = await repo.getReservation(resId);
     expect(res).toMatchObject({ status: "booked", partySize: 4 });
     expect(await repo.listCheckoutHolds()).toHaveLength(0); // hold released
@@ -293,7 +323,7 @@ describe("payment_intent.succeeded webhook path (12.5, DEC-134)", () => {
     // Stored rather than fetched at render: `/b/<code>` is a page a guest loads, and a live
     // Stripe call there would break it whenever Stripe is slow. The URL is guest-safe — it is
     // Stripe's own hosted receipt, not a dashboard link.
-    const payments = await repo.listPaymentsForReservation(reservationIdFor("pi_fake_1"));
+    const payments = await repo.listPaymentsForReservation(await resIdBy(repo, "pi_fake_1"));
     expect(payments[0]!.receiptUrl).toBe("https://pay.stripe.test/receipts/pi_fake_1");
   });
 
@@ -308,7 +338,7 @@ describe("payment_intent.succeeded webhook path (12.5, DEC-134)", () => {
 
     // The receipt link is a convenience. The booking and the payment row are not.
     expect(r).toEqual({ handled: true, outcome: "booked" });
-    const payments = await repo.listPaymentsForReservation(reservationIdFor("pi_fake_1"));
+    const payments = await repo.listPaymentsForReservation(await resIdBy(repo, "pi_fake_1"));
     expect(payments).toHaveLength(1);
     expect(payments[0]!.receiptUrl).toBeUndefined();
     expect(alert).not.toHaveBeenCalled(); // not a money problem — nothing for a human to do
@@ -325,7 +355,7 @@ describe("payment_intent.succeeded webhook path (12.5, DEC-134)", () => {
     const again = await processBookingWebhook(deps, piEvent("pi_fake_1", 27570, m), FAKE_SIGNATURE);
     expect(again).toEqual({ handled: true, outcome: "already" });
     expect(confirm).toHaveBeenCalledOnce();
-    expect(await repo.listPaymentsForReservation(reservationIdFor("pi_fake_1"))).toHaveLength(1);
+    expect(await repo.listPaymentsForReservation(await resIdBy(repo, "pi_fake_1"))).toHaveLength(1);
   });
 
   it("DOUBLE-WRITE GUARD: a metadata-less payment_intent.succeeded (a hosted session's PI) is acked-and-ignored", async () => {
@@ -352,6 +382,7 @@ describe("payment_intent.succeeded webhook path (12.5, DEC-134)", () => {
     const pay = new FakePaymentPort();
     // Both buyers minted intents for the SAME small boat (second hold expired → same slot).
     await createDeparturePaymentIntent(repo, pay, req, now);
+    await seedLosingPending(repo, "pi_fake_2"); // the lapsed loser (14.5 residual race)
     const { deps, alert, soldOut, payments } = makeDeps(repo, pay);
     const m = pay.intents[0]!.metadata;
 
@@ -382,6 +413,7 @@ describe("payment_intent.succeeded webhook path (12.5, DEC-134)", () => {
     const repo = await seededRepo();
     const pay = new FakePaymentPort();
     await createDeparturePaymentIntent(repo, pay, req, now);
+    await seedLosingPending(repo, "pi_fake_2"); // the lapsed loser (14.5 residual race)
     const { deps } = makeDeps(repo, pay);
     const m = pay.intents[0]!.metadata;
 
@@ -534,7 +566,7 @@ describe("payment_intent.succeeded webhook path (12.5, DEC-134)", () => {
     const { deps, alert } = makeDeps(repo, pay);
     const m = pay.intents[0]!.metadata;
 
-    repo.saveBookingIfSlotFree = async () => {
+    repo.bookPendingIfHullFree = async () => {
       throw new Error("transient: connection terminated");
     };
 
@@ -544,9 +576,11 @@ describe("payment_intent.succeeded webhook path (12.5, DEC-134)", () => {
     expect(alert).not.toHaveBeenCalled();
   });
 
-  it("the hosted session-completed path still books (both event types coexist)", async () => {
+  it("a hosted booking session is REFUSED — the hosted booking path was retired (14.5)", async () => {
+    // The inverse of the old test: `payment_intent.succeeded` is the live booking path now, and a
+    // hosted `checkout.session.completed` booking session — nothing mints one — is refused loudly.
     const repo = await seededRepo();
-    const { deps, confirm } = makeDeps(repo);
+    const { deps, confirm, alert } = makeDeps(repo);
     const sessionEvent = {
       sessionId: "cs_1", paymentIntentId: "pi_cs_1", amountTotalCents: 27570, currency: "usd",
       metadata: {
@@ -557,10 +591,11 @@ describe("payment_intent.succeeded webhook path (12.5, DEC-134)", () => {
       },
     };
     const r = await processBookingWebhook(deps, JSON.stringify(sessionEvent), FAKE_SIGNATURE);
-    expect(r).toEqual({ handled: true, outcome: "booked" });
-    expect(confirm).toHaveBeenCalledOnce();
-    const p = (await repo.listPaymentsForReservation(reservationIdFor("cs_1")))[0]!;
-    expect(p).toMatchObject({ id: "pay_cs_1", stripeCheckoutSessionId: "cs_1" });
+    expect(r).toEqual({ handled: true, outcome: "unbookable" });
+    expect(alert).toHaveBeenCalledOnce();
+    expect(alert.mock.calls[0]![0]).toContain("hosted Checkout booking session");
+    expect(confirm).not.toHaveBeenCalled();
+    expect(await repo.listAllReservations()).toHaveLength(0);
   });
 });
 
@@ -692,7 +727,7 @@ describe("createDeparturePaymentIntent — the pending row before Stripe (14.4)"
 
     it("price edited → the charge and the frozen invoice are unchanged", async () => {
       const repo = await startThenEdit({ basePriceCents: 99900 });
-      const [payment] = await repo.listPaymentsForReservation(reservationIdFor("pi_fake_1"));
+      const [payment] = await repo.listPaymentsForReservation(await resIdBy(repo, "pi_fake_1"));
       expect(payment!.amountCents).toBe(27570);
       const pending = await repo.getReservationByPaymentIntentId("pi_fake_1");
       expect(pending!.invoice!.fareCents).toBe(49900);

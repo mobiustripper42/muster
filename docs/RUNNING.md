@@ -13,11 +13,57 @@ things to eyeball.
 ```bash
 npm install
 npm run db:up        # docker compose up -d  → postgres:17 on :5432 (muster_dev + muster_test)
-npm run db:migrate   # apply db/migrations/*.sql
-npm run db:seed:crew # seed "crew-quint": 1 confirmed shift + 1 open ask (so the crew app has data)
+npm run db:reset:dev # destructive: drops every table, re-migrates, seeds the standard world
 npm run dev          # next dev --webpack on :3000
 ```
 Teardown: `npm run db:down` (keeps the data volume; add nothing to wipe).
+
+## The standard dev world
+
+`npm run db:reset:dev` is the **one command**. It gives the same world every time, so you can build
+muscle memory on it. Five seeds, in this order (`db/reset-dev.ts`, `DEFAULT_SEEDS`):
+
+| seed | what it puts in front of you |
+|---|---|
+| `fleet` | the four Brew boats and the role types. `xola` needs these placed first; `crew` and `atrisk` bring their own vessels, and `reservation` calls `seedFleet` itself |
+| `crew` | the roster — Quint (captain), Hooper (mate), Eric Stoffer, Dooley and the rest, with a confirmed shift and a live ask |
+| `reservation` | the offering and the bookable demo departure — the reservations surfaces |
+| `xola` | a month of imported trips and bookings, so the calendar looks like real business |
+| `atrisk` | the At-Risk board's scenarios, plus the assignment cockpit's |
+
+> **Two boats are called "Growler."** `crew` seeds one (`vessel-growler`, the second-boat-same-day
+> fixture) and `atrisk` seeds another (`vessel-ar-lapse`, scenario D). Different ids, same label —
+> harmless until #937 put both seeds in the default set, where the fleet list now shows the name
+> twice. Left alone deliberately: `e2e/cockpit-polish.spec.ts` and `e2e/shifts-view.spec.ts` both
+> assert on the string, so renaming is a bigger change than the confusion is worth.
+
+**The dates move with the calendar; the shape does not.** Everything is relative to today, so the
+world is always current instead of aging into the past — the same boats, the same people, the same
+day offsets, every reset.
+
+`SEED_TODAY=2026-03-14 npm run db:reset:dev` pins the day, but **only for the seeds that read it** —
+`reservation` and `xola` here. `crew` and `atrisk` compute their dates from the clock directly and
+ignore it, so this reproduces the calendar exactly and the shifts approximately. It exists for the
+e2e harness, which needs the seeded database and the specs to agree across a midnight.
+
+### The other seeds are opt-in, and each one breaks something on purpose
+
+`npm run db:reset:dev -- --seeds fleet,crew,reservation,timeclock` composes any set by name. Reach
+for these only when you are testing the thing they break:
+
+| seed | what it deliberately does |
+|---|---|
+| `overlap` | books a slot through the CAS to manufacture a double-booked hull |
+| `losing-asks` | writes state the code cannot produce — live asks on a Confirmed seat |
+| `timeclock` | leaves the payroll export permanently 409 (an open punch + an overlap) |
+| `split` | re-forms shifts over **every** vessel-day; run it on a clean DB |
+| `concurrent` | a three-deep offering stack on Brew 3 |
+| `outbox` | rewrites `crew-eric-stoffer` with a different name, role and phone than `crew` gives it |
+| `gratuity` | stamps a fake Gusto identity onto whichever two crew it finds first |
+| `completion` | not idempotent — re-seeding appends a second `+5` to the append-only log |
+
+Some refuse without their prerequisite and say so: `concurrent` needs `reservation`, `overlap` needs
+a live offering, `gratuity` needs active crew.
 
 ## Opening it in a browser
 This runs on the **`mill-dev` VPS, reached over Tailscale**, so from your laptop the app is:

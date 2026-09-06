@@ -26,7 +26,9 @@ try {
     const manning = v.manning.map((m) => `${m.count}×${m.roleTypeId}`).join(", ") || "self-captained";
     console.log(`  - ${v.id}  (cap ${v.coiMaxPax}; ${manning})`);
   }
-  console.log("\nNext: edit + run db/seed-pilot-crew.ts (npm run db:seed:crew:pilot), then import at /admin/import.");
+  // Was "edit + run db/seed-pilot-crew.ts" — that script was retired 2026-07-25 (DEC-044,
+  // DEC-064) and `db:crew add` owns the roster now. The line outlived it by months (#937).
+  console.log("\nNext: npm run db:reset:dev for the standard dev world, or db:crew add for a real roster.");
   console.log("Fleet = the 4 BrewBoats (captain+mate) + the 2 X Shore hulls (captain only), capacities validated against live Xola Resources (DEC-043).");
 } finally {
   await repo.close();

@@ -91,6 +91,7 @@ import {
   minutesOfDay,
   pendingIntervalsFor,
 } from "../reservations/hull-busy.js";
+import { isLivePending } from "../reservations/pending.js";
 import type { FailureWindow, Repository } from "../ports/repository.js";
 import type { ConfirmPatch } from "../reservations/write-booking.js";
 
@@ -747,8 +748,29 @@ export class InMemoryRepository implements Repository {
   }
 
   async getReservationByPaymentIntentId(paymentIntentId: string): Promise<Reservation | null> {
-    const rows = [...this.#reservations.values()].filter((r) => r.paymentIntentId === paymentIntentId);
-    const hit = rows.find((r) => r.status === "pending") ?? rows[0];
+    // Matches ANY id the row minted (§2.8.5, 14.6) — a superseded intent still resolves.
+    const hit = [...this.#reservations.values()].find((r) =>
+      r.paymentIntentIds?.includes(paymentIntentId),
+    );
+    return hit ? clone(hit) : null;
+  }
+
+  async getLivePendingByHolderToken(
+    vesselId: VesselId,
+    date: string,
+    time: string,
+    holderToken: string,
+    pendingLiveSince: string,
+  ): Promise<Reservation | null> {
+    if (!holderToken) return null; // possession only — a cookieless client writes a fresh row
+    const hit = [...this.#reservations.values()].find(
+      (r) =>
+        r.holderToken === holderToken &&
+        String(r.vesselId) === String(vesselId) &&
+        r.date === date &&
+        r.time === time &&
+        isLivePending(r, pendingLiveSince),
+    );
     return hit ? clone(hit) : null;
   }
 

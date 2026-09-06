@@ -352,11 +352,27 @@ export interface Repository {
   ): Promise<{ result: "won" } | { result: "lost" }>;
 
   /**
-   * The row carrying this Stripe PaymentIntent id, or null. How confirm finds the pending row
-   * (issue #916). While the 14.4 bridge stands a confirmed booking is two rows sharing the id;
-   * the pending one is returned first.
+   * The row carrying this Stripe PaymentIntent id in its `paymentIntentIds`, or null. How confirm
+   * finds the pending row (issue #916). Matches ANY id the row has minted (§2.8.5, 14.6) — a
+   * declined-then-retried or superseded intent still resolves to its reservation. One row per id:
+   * a given intent is minted for exactly one checkout.
    */
   getReservationByPaymentIntentId(paymentIntentId: string): Promise<Reservation | null>;
+
+  /**
+   * The LIVE `pending` row on this slot held by this checkout session's `holderToken`, or null
+   * (14.6, SPEC §2.8.5/§2.8.7). How a retry after a declined card finds ITS OWN row to reuse —
+   * matched by possession (the httpOnly cookie token), NEVER by typed email or phone. `pending
+   * LiveSince` is the caller's clock: a lapsed row is not returned (a new checkout, not a retry).
+   * `holderToken` must be non-empty; a cookieless client gets null and writes a fresh row.
+   */
+  getLivePendingByHolderToken(
+    vesselId: VesselId,
+    date: string,
+    time: string,
+    holderToken: string,
+    pendingLiveSince: string,
+  ): Promise<Reservation | null>;
 
   // ── Checkout holds — the transient 15-min soft reservation (12.1, DEC-109) ──
   /**

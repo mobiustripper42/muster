@@ -168,6 +168,22 @@ export async function createDeparturePaymentIntent(
   // `totalCents` is the whole quote, not the amount charged now: in deposit mode the charge is
   // `chargeNowCents` and the remainder is collected later against this same invoice.
   const reservedAt = now();
+
+  // A retry from the same checkout session REUSES its own row (14.6, §2.8.5/§2.8.7): a declined
+  // card or a tip change resubmits, and matching by the httpOnly cookie token — never the typed
+  // email or phone — is what proves the second submit belongs to the same checkout. A cookieless
+  // client gets null and writes a fresh row (the old per-submit behaviour). Matched on the slot
+  // too: a different departure is a new checkout, not a retry.
+  const existing = req.holderToken
+    ? await repo.getLivePendingByHolderToken(
+        hold.vesselId,
+        hold.date,
+        hold.time,
+        req.holderToken,
+        pendingLiveSince(reservedAt),
+      )
+    : null;
+
   const invoice: BookingInvoice = {
     fareCents: priceCents,
     extrasCents: fare.extrasCents,
@@ -180,7 +196,10 @@ export async function createDeparturePaymentIntent(
     totalCents: fare.fareCents + taxCents + serviceFeeCents + gratuityCents,
   };
   const pending: Reservation = {
-    id: mintPendingReservationId(),
+    // The SAME row on a retry — its id is the booking's for life. Reserved time is set on the
+    // FIRST write and never moved (§2.8.7): a resubmit must not park the hull indefinitely by
+    // pushing the window forward. The invoice IS re-frozen every attempt, so a tip change reprices.
+    id: existing?.id ?? mintPendingReservationId(),
     eventId: null,
     source: "muster",
     status: "pending",
@@ -190,7 +209,7 @@ export async function createDeparturePaymentIntent(
     date: hold.date,
     time: hold.time,
     offeringId: offering!.id,
-    reservedAt,
+    reservedAt: existing?.reservedAt ?? reservedAt,
     holdMinutes: candidateHoldMinutes(offering!),
     tripMinutes: offering!.tripLengthMinutes ?? XOLA_TRIP_MINUTES,
     invoice,
@@ -201,12 +220,18 @@ export async function createDeparturePaymentIntent(
     waiverVersion: req.waiverVersion,
     updatedAt: reservedAt,
   };
-  const written = await repo.savePendingIfHullFree(pending, pendingLiveSince(reservedAt));
-  if (written.result === "lost") {
-    // The hull was taken between the hold and this write. Release our hold so the boat is not
-    // parked for the rest of the window, and report it the way the hold would have.
-    await repo.removeCheckoutHold(hold.id);
-    return { ok: false, reason: "sold_out" };
+  if (existing) {
+    // The row already holds the hull — a plain upsert re-freezes the money onto it. Re-running
+    // the guarded write could refuse a row against its own live self.
+    await repo.saveReservation(pending);
+  } else {
+    const written = await repo.savePendingIfHullFree(pending, pendingLiveSince(reservedAt));
+    if (written.result === "lost") {
+      // The hull was taken between the hold and this write. Release our hold so the boat is not
+      // parked for the rest of the window, and report it the way the hold would have.
+      await repo.removeCheckoutHold(hold.id);
+      return { ok: false, reason: "sold_out" };
+    }
   }
 
   const intent = await payments.createPaymentIntent({
@@ -249,10 +274,14 @@ export async function createDeparturePaymentIntent(
       waiverVersion: req.waiverVersion,
     },
   });
-  // Stripe answered: pin its id to the row so confirm can find it (issue #916). A plain upsert,
-  // not the guarded write — the hull check already ran, and re-running it here could refuse a
-  // row that is already on the hull.
-  await repo.saveReservation({ ...pending, paymentIntentId: intent.paymentIntentId });
+  // Stripe answered: APPEND its id to the row so confirm can find it (issue #916). Every id this
+  // checkout has minted stays, oldest first (§2.8.5) — a superseded one that succeeds late still
+  // resolves to this row. A plain upsert, not the guarded write — the hull check already ran, and
+  // re-running it here could refuse a row that is already on the hull.
+  await repo.saveReservation({
+    ...pending,
+    paymentIntentIds: [...(existing?.paymentIntentIds ?? []), intent.paymentIntentId],
+  });
   return { ok: true, clientSecret: intent.clientSecret, paymentIntentId: intent.paymentIntentId };
 }
 

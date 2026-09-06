@@ -23,7 +23,6 @@
     "db:paid-unbooked": "tsx db/paid-unbooked-dev.ts",
     "db:backfill:customers": "tsx db/backfill-customers.ts",
     "db:seed:fleet": "tsx db/seed-fleet.ts",
-    "db:seed:crew:pilot": "tsx db/seed-pilot-crew.ts",
     "db:seed:crew": "tsx db/seed-crewapp-dev.ts",
     "db:seed:atrisk": "tsx db/seed-atrisk-dev.ts",
     "db:seed:outbox": "tsx db/seed-outbox-dev.ts",

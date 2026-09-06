@@ -1,7 +1,7 @@
 /**
  * `db:reset:dev` — rebuild the DEV database from migrations + seeds.
  *
- * **Why this exists.** The dev seeds upsert and never delete, so re-running one can't undo
+ * **Why this exists.** The dev seeds overwhelmingly upsert, so re-running one can't undo
  * anything: rows accumulate across every era of the model the project has passed through. A
  * booking hand-materialized by an 11.2-era harness still sits there after 12.0 changed what a
  * booking *is*, and it reads as a bug on a surface written months later. That wastes the
@@ -29,27 +29,53 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { DEFAULT_DATABASE_URL, migrate } from "./migrate.js";
+import { vesselDateOf } from "../src/config/tenant.js";
 
 /** Database names this script will touch. Anything else aborts. */
 const ALLOWED_DB_NAMES = new Set(["muster_dev", "muster_test"]);
 /** Hosts this script will touch. A remote host aborts regardless of the DB name. */
 const ALLOWED_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "db", "postgres"]);
 
-/** The default seed set — a usable dev world: fleet, crew, and the reservations demo. */
-const DEFAULT_SEEDS = ["fleet", "crew", "reservation"] as const;
+/**
+ * **The standard dev world** (#937). One command, the same shape every time: boats, crew,
+ * an offering, a month of realistic bookings, trips, shifts, and an at-risk board. If you
+ * are hand-testing, this is all you should ever need to type.
+ *
+ * Everything else stays opt-in because it builds DELIBERATE breakage — `overlap` manufactures
+ * a double-booked hull, `losing-asks` writes state the code cannot produce, `timeclock` leaves
+ * payroll permanently 409, `split` re-forms shifts over every vessel-day, `outbox` rewrites
+ * `crew-eric-stoffer` with a different name, role and phone than `crew` gives it, `completion`
+ * is not idempotent, and `gratuity` picks whichever crew it finds first. Adding any of them
+ * here would trade a known world for a surprising one, which is the bug this set exists to fix.
+ *
+ * The dates move with the calendar and that is deliberate — the seeds are relative to
+ * `SEED_TODAY` (below), so the world is always current rather than aging into the past.
+ */
+const DEFAULT_SEEDS = ["fleet", "crew", "reservation", "xola", "atrisk"] as const;
 
 /** seed name → npm script. Keep in sync with package.json's `db:seed:*`. */
 const SEEDS: Record<string, string> = {
   fleet: "db:seed:fleet",
   crew: "db:seed:crew",
-  "crew:pilot": "db:seed:crew:pilot",
   atrisk: "db:seed:atrisk",
   outbox: "db:seed:outbox",
   split: "db:seed:split",
   gratuity: "db:seed:gratuity",
   reservation: "db:seed:reservation",
   timeclock: "db:seed:timeclock",
+  // Were real `db:seed:*` scripts with no entry here, so `--seeds <name>` rejected them (#937).
+  xola: "db:seed:xola",
+  overlap: "db:seed:overlap",
+  concurrent: "db:seed:concurrent",
+  completion: "db:seed:completion",
+  "losing-asks": "db:seed:losing-asks",
 };
+
+/**
+ * ORDER MATTERS for some of these, and it is enforced by exit codes rather than declared:
+ * `concurrent` refuses without `reservation`, `overlap` without a live offering, `gratuity`
+ * without active crew. Run them after the standard set, not instead of it.
+ */
 
 interface Target {
   url: string;
@@ -165,13 +191,37 @@ async function main(argv: readonly string[]): Promise<void> {
     console.log(`· truncated ${cleared} table${cleared === 1 ? "" : "s"}`);
   }
 
+  // ONE clock read for the whole reset (#937). Each seed is its own process, so left alone
+  // they each call `Date.now()` a second or two apart — which is identical every time except
+  // across a midnight, where half the world lands on one day and half on the next. Pinning it
+  // here also means `SEED_TODAY=2026-03-14 npm run db:reset:dev` reproduces a world exactly.
+  //
+  // NOT a fixed constant, deliberately. A pinned date ages: set it once and two months later
+  // every shift is in the past, nothing is upcoming and the app looks empty. The world stays
+  // relative to today and keeps its SHAPE — same boats, same crew, same offsets — which is
+  // what the muscle memory is actually built on.
+  const seedToday = process.env.SEED_TODAY ?? vesselDateOf(new Date());
+
   for (const name of seeds) {
     // Run each seed as its own process so it picks up .env.local exactly as it does standalone —
     // the seeds are first-class fixtures and must behave identically here and when run by hand.
-    execFileSync("npm", ["run", SEEDS[name]!], {
-      stdio: "inherit",
-      env: { ...process.env, DATABASE_URL: target.url },
-    });
+    try {
+      execFileSync("npm", ["run", SEEDS[name]!], {
+        stdio: "inherit",
+        env: { ...process.env, DATABASE_URL: target.url, SEED_TODAY: seedToday },
+      });
+    } catch {
+      // Say WHICH seed died and what to do about it. Before #937 a non-zero exit killed the
+      // whole reset with npm's own error and no indication of which of five had failed —
+      // `gratuity` exits 1 when it finds no active crew, and `outbox` has its own paths.
+      console.error(
+        `\n✗ seed "${name}" (npm run ${SEEDS[name]}) exited non-zero — its output is above.\n` +
+          `  The database is migrated and the seeds before it ran. Re-run just this one with:\n` +
+          `    SEED_TODAY=${seedToday} npm run ${SEEDS[name]}\n`,
+      );
+      process.exitCode = 1;
+      return;
+    }
   }
 
   console.log(`\nDONE — ${target.database} rebuilt from migrations + seeds.`);

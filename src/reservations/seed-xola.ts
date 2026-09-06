@@ -130,7 +130,7 @@ export function xolaFixture(todayISO: string): XolaFixture {
   const firstOfThisMonth = `${todayISO.slice(0, 7)}-01`;
   const fleetOffering: Offering = {
     id: asId<"OfferingId">("offering-xola-fixture-fleet"),
-    tenantId: asId<"TenantId">("brewboat"),
+    tenantId: asId<"TenantId">("tenant-brewboat"),
     name: "Brewboat Cruise",
     status: "live",
     vesselIds: [
@@ -157,7 +157,7 @@ export function xolaFixture(todayISO: string): XolaFixture {
 
   const secondOffering: Offering = {
     id: asId<"OfferingId">("offering-xola-fixture-second"),
-    tenantId: asId<"TenantId">("brewboat"),
+    tenantId: asId<"TenantId">("tenant-brewboat"),
     name: "Second Cruise",
     status: "live",
     vesselIds: [asId<"VesselId">(BOAT)],

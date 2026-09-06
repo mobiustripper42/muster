@@ -72,8 +72,12 @@ describe("parseSeeds", () => {
   });
 
   it("defaults only when no --seeds flag is present at all", () => {
-    expect(parseSeeds([])).toEqual(["fleet", "crew", "reservation"]);
-    expect(parseSeeds(["--fresh"])).toEqual(["fleet", "crew", "reservation"]);
+    // The standard dev world (#937) — five seeds, not the original three. Written out
+    // rather than compared against DEFAULT_SEEDS, so widening the set is a decision
+    // someone makes here rather than something the test agrees to silently.
+    const STANDARD = ["fleet", "crew", "reservation", "xola", "atrisk"];
+    expect(parseSeeds([])).toEqual(STANDARD);
+    expect(parseSeeds(["--fresh"])).toEqual(STANDARD);
   });
 
   it("still refuses an unknown seed name in either form", () => {

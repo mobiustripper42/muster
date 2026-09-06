@@ -10,6 +10,7 @@
 
 import type {
   AddOn,
+  BookingInvoice,
   Customer,
   Admin,
   Ask,
@@ -772,6 +773,25 @@ export class InMemoryRepository implements Repository {
         isLivePending(r, pendingLiveSince),
     );
     return hit ? clone(hit) : null;
+  }
+
+  async appendPaymentIntentToPending(
+    reservationId: ReservationId,
+    invoice: BookingInvoice,
+    paymentIntentId: string,
+    now: string,
+  ): Promise<void> {
+    const row = this.#reservations.get(reservationId);
+    if (!row) return;
+    // Append is always safe (additive); status/eventId are NEVER touched, so a concurrent confirm
+    // that already flipped this row to booked is not reverted. Invoice + updatedAt re-freeze only
+    // while still pending.
+    const paymentIntentIds = [...(row.paymentIntentIds ?? []), paymentIntentId];
+    const next =
+      row.status === "pending"
+        ? { ...row, invoice, updatedAt: now, paymentIntentIds }
+        : { ...row, paymentIntentIds };
+    this.#reservations.set(reservationId, clone(next));
   }
 
   // ── Checkout holds (12.1, DEC-109) ──────────────────────────────────────────

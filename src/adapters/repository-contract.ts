@@ -813,6 +813,34 @@ export function runRepositoryContract(
       expect(await repo.getLivePendingByHolderToken(VESSEL, "2026-07-01", "14:00", "tok-A", SINCE)).toBeNull();
     });
 
+    const invA = { fareCents: 50000, extrasCents: 0, taxCents: 0, taxRateBps: 0, serviceFeeCents: 1500, serviceFeeBps: 300, gratuityCents: 10000, gratuityBps: 2000, totalCents: 61500 };
+    const invB = { ...invA, gratuityCents: 12500, gratuityBps: 2500, totalCents: 64000 };
+
+    it("appendPaymentIntentToPending: on a pending row, re-freezes the invoice and appends the id (14.6)", async () => {
+      await repo.saveReservation(pendingRow({ paymentIntentIds: ["pi_1"], invoice: invA }));
+      await repo.appendPaymentIntentToPending(rid("pend-1"), invB, "pi_2", "2026-07-01T13:00:00.000Z");
+      const got = (await repo.getReservation(rid("pend-1")))!;
+      expect(got.status).toBe("pending");
+      expect(got.paymentIntentIds).toEqual(["pi_1", "pi_2"]);
+      expect(got.invoice).toEqual(invB); // re-frozen at the new tip
+      expect(got.updatedAt).toBe("2026-07-01T13:00:00.000Z");
+    });
+
+    it("appendPaymentIntentToPending: NEVER reverts a booked row — appends the id, leaves status/event/invoice (14.6 race guard)", async () => {
+      // The retry's read saw `pending`, but a concurrent confirm booked the row before this write
+      // landed. A full-row upsert would revert a paid booking to pending with a null Event; this
+      // guarded write must not. The superseded id still lands, so 15.2 can refund it.
+      await repo.saveReservation(
+        pendingRow({ status: "booked", eventId: SLOT_ID, paymentIntentIds: ["pi_1"], invoice: invA }),
+      );
+      await repo.appendPaymentIntentToPending(rid("pend-1"), invB, "pi_2", "2026-07-01T13:00:00.000Z");
+      const got = (await repo.getReservation(rid("pend-1")))!;
+      expect(got.status).toBe("booked"); // not reverted
+      expect(String(got.eventId)).toBe(String(SLOT_ID)); // the Event stays attached
+      expect(got.paymentIntentIds).toEqual(["pi_1", "pi_2"]); // the superseded id is still findable
+      expect(got.invoice).toEqual(invA); // the BOOKED invoice is preserved, not the retry's
+    });
+
     it("savePendingIfHullFree: writes the row on a free hull-day — pending, no Event (§2.8.2)", async () => {
       const res = await repo.savePendingIfHullFree(pendingRow(), SINCE);
       expect(res.result).toBe("won");

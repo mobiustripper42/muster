@@ -220,11 +220,11 @@ export async function createDeparturePaymentIntent(
     waiverVersion: req.waiverVersion,
     updatedAt: reservedAt,
   };
-  if (existing) {
-    // The row already holds the hull — a plain upsert re-freezes the money onto it. Re-running
-    // the guarded write could refuse a row against its own live self.
-    await repo.saveReservation(pending);
-  } else {
+  if (!existing) {
+    // First write for this checkout: claim the hull under the lock. A retry needs no pre-Stripe
+    // write — its row already exists and already holds the hull (criterion 2 is satisfied), and
+    // the invoice re-freeze rides the guarded append below so a concurrent confirm is never
+    // reverted.
     const written = await repo.savePendingIfHullFree(pending, pendingLiveSince(reservedAt));
     if (written.result === "lost") {
       // The hull was taken between the hold and this write. Release our hold so the boat is not
@@ -276,12 +276,10 @@ export async function createDeparturePaymentIntent(
   });
   // Stripe answered: APPEND its id to the row so confirm can find it (issue #916). Every id this
   // checkout has minted stays, oldest first (§2.8.5) — a superseded one that succeeds late still
-  // resolves to this row. A plain upsert, not the guarded write — the hull check already ran, and
-  // re-running it here could refuse a row that is already on the hull.
-  await repo.saveReservation({
-    ...pending,
-    paymentIntentIds: [...(existing?.paymentIntentIds ?? []), intent.paymentIntentId],
-  });
+  // resolves to this row. A GUARDED write, not a full-row upsert: the append is additive and the
+  // invoice re-freezes only while the row is still `pending`, so a retry whose read landed before
+  // a concurrent confirm cannot revert the just-booked, paid row to pending (@code-review).
+  await repo.appendPaymentIntentToPending(pending.id, invoice, intent.paymentIntentId, reservedAt);
   return { ok: true, clientSecret: intent.clientSecret, paymentIntentId: intent.paymentIntentId };
 }
 

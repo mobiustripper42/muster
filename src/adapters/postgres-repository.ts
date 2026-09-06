@@ -22,6 +22,7 @@ import type {
   AuthSubjectKind,
   Block,
   BookingCode,
+  BookingInvoice,
   CheckoutHold,
   Credential,
   CrewMember,
@@ -1818,6 +1819,25 @@ export class PostgresRepository implements Repository {
       [vesselId, date, time, holderToken, pendingLiveSince],
     );
     return rows[0] ? toReservation(rows[0]) : null;
+  }
+
+  async appendPaymentIntentToPending(
+    reservationId: ReservationId,
+    invoice: BookingInvoice,
+    paymentIntentId: string,
+    now: string,
+  ): Promise<void> {
+    // Append the id unconditionally (additive — a superseded id stays findable, §2.8.5); re-freeze
+    // invoice + updated_at ONLY while `pending`. Never writes `status`/`event_id`, so a retry
+    // whose read preceded a concurrent confirm cannot revert the just-booked row to pending.
+    await this.#pool.query(
+      `update reservations
+          set payment_intent_ids = array_append(coalesce(payment_intent_ids, '{}'::text[]), $2::text),
+              booking_invoice = case when status = 'pending' then $3::jsonb else booking_invoice end,
+              updated_at = case when status = 'pending' then $4 else updated_at end
+        where id = $1`,
+      [reservationId, paymentIntentId, JSON.stringify(invoice), now],
+    );
   }
 
   // ── Checkout holds (12.1, DEC-109) ──────────────────────────────────────────

@@ -11,11 +11,24 @@
  * `TwilioChannel` does: `threadId` ⇒ doorbell ring, `action` ⇒ assignment notice, else
  * ask. Keeping the same shape is what makes this a drop-in at all three fallback sites.
  *
- * **It mints a real link.** The whole value over a bare `console.log` is that the line
- * is usable: same `issueMagicLink` call, same 24h TTL as the ask's answer window
- * (`RELAY_LINK_TTL_MS`), so tapping it signs the crew member in and lands them on their
- * Yes/No screen. A logged ask you cannot answer would not replace the outbox, it would
- * just describe it.
+ * **It mints a real link — in non-prod ONLY, and that gate is the important line in this
+ * file.** In dev the clickable link is the whole point: same `issueMagicLink` call, same
+ * 24h TTL as the ask's answer window, so tapping it signs the crew member in and lands
+ * them on their Yes/No screen. A logged ask you cannot answer would describe the outbox
+ * rather than replace it.
+ *
+ * In production it mints nothing, because that line would be a **credential**, and for one
+ * recipient an admin one. `OPERATOR_CREW_MEMBER_ID` is asked for seats like anyone else,
+ * and that crew id is also an active admin (DEC-092) — redeeming their crew link gives a
+ * crew session, and `switchToAdmin` (`app/lib/switch-actions.ts:41`) upgrades it to admin
+ * with no re-auth, which its own docstring calls "the one escalation seam in the app". So
+ * a prod log line carrying that link is a full admin credential sitting in a stream that
+ * log-read access alone can reach.
+ *
+ * `mintLink` therefore defaults to **false**: the safe value is the one you get by
+ * forgetting. `app/lib/auth-delivery.ts:58` sets the precedent in the other direction —
+ * it hard-returns on `isProdDeploy()` "so a prod flag-flip can never write a live
+ * credential to a production log", and this is the same class of line.
  *
  * **This is not a delivery, and the `SendResult` says only that the line was written.**
  * The crew forwarders are best-effort and return `void`, so nothing renders a "Sent" off
@@ -50,6 +63,11 @@ export interface LogChannelOptions {
   mintSecret?: () => string;
   /** Where the line goes. Defaults to `console.error`; the app picks by environment. */
   sink?: (line: string) => void;
+  /**
+   * Mint and log a live magic link. **Defaults to false** — see the header. Set it only
+   * where the log is not a production stream.
+   */
+  mintLink?: boolean;
 }
 
 export class LogChannel implements ChannelPort, NoticePort, NotificationPort {
@@ -58,6 +76,7 @@ export class LogChannel implements ChannelPort, NoticePort, NotificationPort {
   readonly #now: () => Date;
   readonly #mintSecret: () => string;
   readonly #sink: (line: string) => void;
+  readonly #mintLinks: boolean;
 
   constructor(repo: Repository, options: LogChannelOptions) {
     this.#repo = repo;
@@ -65,6 +84,7 @@ export class LogChannel implements ChannelPort, NoticePort, NotificationPort {
     this.#now = options.now ?? (() => new Date());
     this.#mintSecret = options.mintSecret ?? randomSecret;
     this.#sink = options.sink ?? ((line) => console.error(line));
+    this.#mintLinks = options.mintLink ?? false;
   }
 
   async send(
@@ -87,14 +107,14 @@ export class LogChannel implements ChannelPort, NoticePort, NotificationPort {
         requireCrewId(message.to),
         `&thread=${encodeURIComponent(String(message.threadId))}`,
       );
-      line = `${message.body}\n${link}`;
+      line = `${message.body}${link}`;
     } else if ("action" in message) {
       kind = `notice:${message.action}`;
-      line = `${message.body}\n${await this.#mintLink(requireCrewId(message.to))}`;
+      line = `${message.body}${await this.#mintLink(requireCrewId(message.to))}`;
     } else if (message.kind === "ask") {
       kind = "ask";
-      const link = message.link ?? (await this.#mintLink(requireCrewId(message.to)));
-      line = `${message.body}\n${link}`;
+      const link = message.link ? `\n${message.link}` : await this.#mintLink(requireCrewId(message.to));
+      line = `${message.body}${link}`;
     } else {
       // magic_link / receipt / admin_alert / booking_request: body and any link arrive
       // composed, and the recipient may be a guest with no crew id at all.
@@ -113,13 +133,24 @@ export class LogChannel implements ChannelPort, NoticePort, NotificationPort {
     return { deliveredAt: now.toISOString(), ref: `logged-${kind}` };
   }
 
-  /** Fresh one-time crew magic link, minted at send exactly as the real channels do. */
+  /**
+   * A newline plus a fresh one-time crew magic link — or a newline plus a note that no
+   * link was minted, when `mintLink` is off. Returns the separator too, so the caller
+   * cannot accidentally emit a trailing newline with nothing after it.
+   *
+   * **Minting is skipped entirely in the off case, not merely hidden.** Writing an
+   * unredeemed 24h credential into the token table on every unsent ask would be the same
+   * exposure one indirection further away.
+   */
   async #mintLink(crewMemberId: CrewMemberId, extraQuery = ""): Promise<string> {
+    if (!this.#mintLinks) {
+      return "\n(no sign-in link minted — configure Twilio, or read this in dev where the link is included)";
+    }
     const { secret } = await issueMagicLink(
       this.#repo,
       { subjectKind: "crew", subjectId: crewMemberId, ttlMs: RELAY_LINK_TTL_MS },
       { now: this.#now(), mintSecret: this.#mintSecret },
     );
-    return `${this.#linkBase}/crew/auth?t=${secret}${extraQuery}`;
+    return `\n${this.#linkBase}/crew/auth?t=${secret}${extraQuery}`;
   }
 }

@@ -62,10 +62,16 @@ export function logChannel(
   linkBase: string,
   now?: () => Date,
 ): LogChannel {
+  const prod = isProdDeploy();
   return new LogChannel(repo, {
     linkBase,
     ...(now ? { now } : {}),
-    sink: isProdDeploy() ? (l) => console.error(l) : (l) => console.log(l),
+    sink: prod ? (l) => console.error(l) : (l) => console.log(l),
+    // The link is a CREDENTIAL, and for `OPERATOR_CREW_MEMBER_ID` an admin one —
+    // `switchToAdmin` upgrades a crew session to admin with no re-auth. Minted in dev,
+    // where the log is a terminal you are watching; never in prod, where it is a stream
+    // that log-read access alone can reach. Same rule as `auth-delivery.ts:58`.
+    mintLink: !prod,
   });
 }
 

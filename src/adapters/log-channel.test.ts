@@ -25,6 +25,7 @@ const chan = (lines: string[]) =>
     now: () => T0,
     mintSecret: () => "s3cret",
     sink: (l) => lines.push(l),
+    mintLink: true,
   });
 
 const ask = (): OutboundMessage => ({
@@ -78,6 +79,7 @@ describe("LogChannel", () => {
       now: () => T0,
       mintSecret: () => "s3cret",
       sink: (l) => lines.push(l),
+      mintLink: true,
     });
     await c.send(ask());
 
@@ -142,6 +144,29 @@ describe("LogChannel", () => {
     await chan(lines).send({ ...ask(), link: "https://x.test/already-minted" });
     expect(lines[0]).toContain("https://x.test/already-minted");
     expect(lines[0]).not.toContain("t=s3cret");
+  });
+
+  it("mints NOTHING by default — the safe value is the one you get by forgetting", async () => {
+    // `/security-review` on #934, High/8: the logged link is a credential, and for
+    // `OPERATOR_CREW_MEMBER_ID` an admin one — that crew id is an active admin (DEC-092)
+    // and `switchToAdmin` upgrades a crew session with no re-auth. In production the sink
+    // is `console.error`, a stream log-read access alone can reach.
+    const repo = new InMemoryRepository();
+    const lines: string[] = [];
+    const c = new LogChannel(repo, {
+      linkBase: "https://x.test",
+      now: () => T0,
+      mintSecret: () => "s3cret",
+      sink: (l) => lines.push(l),
+      // mintLink deliberately absent
+    });
+    await c.send(ask());
+
+    expect(lines[0]).toContain("Muster: Sat, Jul 4 · Hops · captain — yes or no?");
+    expect(lines[0]).not.toContain("/crew/auth?t=");
+    expect(lines[0]).toContain("no sign-in link minted");
+    // And no unredeemed 24h token left behind — skipped, not merely hidden.
+    expect(await repo.getMagicTokenByHash(hashSecret("s3cret"))).toBeNull();
   });
 
   it("says so when the crew member has no phone on file", async () => {

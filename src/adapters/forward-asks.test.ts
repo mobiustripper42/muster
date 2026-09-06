@@ -70,6 +70,8 @@ describe("forwardAsks — the edge wiring's shared seam (DEC-030)", () => {
       now: () => T0,
       mintSecret: () => "secret-0",
       sink: (l) => lines.push(l),
+      // The link is the thing under test here; in production it is not minted at all (#934).
+      mintLink: true,
     });
 
     expect(await forwardAsks(repo, channel, [ask])).toBe(1);

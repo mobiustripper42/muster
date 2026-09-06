@@ -70,6 +70,8 @@ describe("doorbell-ring relay loop (#118, DEC-073)", () => {
       now: () => NOW,
       mintSecret: () => "SECRET",
       sink: (l) => lines.push(l),
+      // The thread deep-link is the thing under test; production mints no link (#934).
+      mintLink: true,
     });
     const relayed = await forwardNotifications(repo, channel, r.rings);
     expect(relayed).toBe(2);

@@ -29,6 +29,9 @@ const repo = PostgresRepository.fromConnectionString(url);
 const channel = new LogChannel(repo, {
   linkBase: process.env.APP_BASE_URL ?? "http://mill-dev:3000",
   sink: (line) => console.log(line),
+  // A dev script by construction — `db:reset:dev` refuses any host but localhost. The
+  // clickable link is the whole reason to run this by hand.
+  mintLink: true,
 });
 
 try {

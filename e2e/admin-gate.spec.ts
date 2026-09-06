@@ -8,7 +8,7 @@
  *   - crew, not an admin        → redirect straight to their crew home (no dead-end)
  *   - no session                → "sign in" (the crew-code front door at /crew)
  *
- * `crew-eric-stoffer` is the dual-role subject (seeded crew + fixture admin); `crew-obx-bo`
+ * `crew-eric-stoffer` is the dual-role subject (seeded crew + fixture admin); `crew-quint`
  * is crew-only. /admin/shifts stands in for "any admin surface" — the gate is shared.
  */
 import {
@@ -49,7 +49,7 @@ test.describe("admin-gate fallback (#352)", () => {
   test("a crew-only member is redirected to their crew home (no dead-end, no switch)", async ({
     page,
   }) => {
-    await signInAsCrew(page, "crew-obx-bo"); // crew, not an admin
+    await signInAsCrew(page, "crew-quint"); // crew, not an admin
     await page.goto(ADMIN_SURFACE);
 
     // Redirected straight home — never parked on a "not for you" admin screen.

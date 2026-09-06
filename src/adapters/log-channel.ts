@@ -71,26 +71,41 @@ export class LogChannel implements ChannelPort, NoticePort, NotificationPort {
     message: OutboundMessage | AssignmentNotice | NotificationMessage,
   ): Promise<SendResult> {
     const now = this.#now();
-    const crewMemberId = requireCrewId(message.to);
 
+    // The branch structure is `TwilioChannel`'s, deliberately and to the letter — the
+    // two are meant to be interchangeable at the same three port types, so a message
+    // that degrades on one must not throw on the other. In particular the generic
+    // branch takes a GUEST recipient (a receipt, a booking link) and must not demand a
+    // crew id, and it honours a pre-composed `message.link` rather than minting over it.
     let kind: string;
-    let extraQuery = "";
+    let line: string;
     if ("threadId" in message) {
       kind = "ring";
-      // Deep-links into the thread, matching `TwilioChannel` — a ring that lands on the
-      // shift list instead of the message is a different message.
-      extraQuery = `&thread=${encodeURIComponent(String(message.threadId))}`;
+      // Deep-links into the thread — a ring that lands on the shift list instead of the
+      // message is a different message.
+      const link = await this.#mintLink(
+        requireCrewId(message.to),
+        `&thread=${encodeURIComponent(String(message.threadId))}`,
+      );
+      line = `${message.body}\n${link}`;
     } else if ("action" in message) {
       kind = `notice:${message.action}`;
+      line = `${message.body}\n${await this.#mintLink(requireCrewId(message.to))}`;
+    } else if (message.kind === "ask") {
+      kind = "ask";
+      const link = message.link ?? (await this.#mintLink(requireCrewId(message.to)));
+      line = `${message.body}\n${link}`;
     } else {
+      // magic_link / receipt / admin_alert / booking_request: body and any link arrive
+      // composed, and the recipient may be a guest with no crew id at all.
       kind = message.kind;
+      line = message.link ? `${message.body}\n${message.link}` : message.body;
     }
 
-    const link = await this.#mintLink(crewMemberId, extraQuery);
+    const who = message.to.crewMemberId ?? message.to.email ?? "unknown recipient";
     const phone = message.to.phone ?? "no phone on file";
     this.#sink(
-      `[channel:${kind}] NOT SENT — no channel configured. to=${crewMemberId} / ${phone}\n` +
-        `${message.body}\n${link}`,
+      `[channel:${kind}] NOT SENT — no channel configured. to=${who} / ${phone}\n${line}`,
     );
 
     // `deliveredAt` is when the LINE was written, and the `ref` says so in words —

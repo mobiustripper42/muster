@@ -118,6 +118,32 @@ describe("LogChannel", () => {
     expect(res.deliveredAt).toBe(T0.toISOString());
   });
 
+  it("degrades for a GUEST recipient rather than throwing, exactly as TwilioChannel does", async () => {
+    // `@code-review` on #934: the first draft called `requireCrewId` before the dispatch,
+    // so every message needed a crew id. `TwilioChannel` only requires one in its crew
+    // branches — a receipt to a booking customer has no crew id at all (DEC-122). Two
+    // adapters at the same port type must not disagree about who they accept.
+    const lines: string[] = [];
+    await chan(lines).send({
+      to: { email: "guest@x.test", phone: "+15555559999" },
+      kind: "receipt",
+      body: "Your booking is confirmed.",
+      link: "https://x.test/b/ABC123",
+    });
+    expect(lines[0]).toContain("[channel:receipt]");
+    expect(lines[0]).toContain("guest@x.test");
+    // The composed link is passed through, NOT replaced by a freshly minted crew link.
+    expect(lines[0]).toContain("https://x.test/b/ABC123");
+    expect(lines[0]).not.toContain("/crew/auth?t=");
+  });
+
+  it("honours a pre-composed link on an ask instead of minting over it", async () => {
+    const lines: string[] = [];
+    await chan(lines).send({ ...ask(), link: "https://x.test/already-minted" });
+    expect(lines[0]).toContain("https://x.test/already-minted");
+    expect(lines[0]).not.toContain("t=s3cret");
+  });
+
   it("says so when the crew member has no phone on file", async () => {
     // Different failure from an unconfigured channel, and the line has to tell them apart.
     const lines: string[] = [];

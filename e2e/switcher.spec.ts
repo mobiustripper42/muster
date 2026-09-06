@@ -6,7 +6,7 @@
  * action re-checks.
  *
  * `crew-eric-stoffer` is both a seeded crew member (crew seed) and the fixture admin,
- * so it's the dual-role subject. `crew-obx-bo` is crew-only.
+ * so it's the dual-role subject. `crew-quint` is crew-only.
  */
 import {
   test,
@@ -97,7 +97,7 @@ test.describe("crew ↔ admin switcher (DEC-093)", () => {
   test("a crew-only member sees no switch (the control is admin-gated)", async ({
     page,
   }) => {
-    await signInAsCrew(page, "crew-obx-bo"); // crew, not an admin
+    await signInAsCrew(page, "crew-quint"); // crew, not an admin
     await expect(page.getByRole(SWITCH_TO_ADMIN.role, { name: SWITCH_TO_ADMIN.name })).toHaveCount(0);
   });
 

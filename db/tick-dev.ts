@@ -17,13 +17,18 @@
 import { tick } from "../src/builder/tick.js";
 import { forwardAsks } from "../src/adapters/forward-asks.js";
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
-import { WebLinkChannel } from "../src/adapters/web-link-channel.js";
+import { LogChannel } from "../src/adapters/log-channel.js";
 import { DEFAULT_DATABASE_URL } from "./migrate.js";
 
 const url = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
 const repo = PostgresRepository.fromConnectionString(url);
-const channel = new WebLinkChannel(repo, {
+// No Twilio wiring here on purpose — this script exists to WATCH the engine, and the
+// log line is what you read. `db/` is in neither tsconfig's `include` and has no test,
+// so nothing in `npm run verify` would have caught this import going stale (the
+// `xola-report.ts` incident in DEC-159, exactly repeated).
+const channel = new LogChannel(repo, {
   linkBase: process.env.APP_BASE_URL ?? "http://mill-dev:3000",
+  sink: (line) => console.log(line),
 });
 
 try {

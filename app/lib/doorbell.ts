@@ -15,14 +15,13 @@ import { stripTrailingSlashes } from "@core/config/base-url.js";
 
 /**
  * Run one doorbell sweep + relay the rings — the edge wiring (DEC-070), the
- * doorbell analog of `forwardToOutbox`. This is the ONE place the app picks the
+ * doorbell analog of `relayAsks`. This is the ONE place the app picks the
  * notification adapter.
  *
  * **Delivery**: with Twilio configured (9.4, DEC-MSG-1) each ring goes out as a
- * real SMS; unset, the operator-outbox relay stays (DEC-073, the promotion gate):
- * each ring enqueues a `RingOutboxEntry` (thread deep-link) the operator texts
- * from `/admin/outbox` — the DEC-030 web-link model, mirroring asks. Best-effort
- * (DEC-070): a failed enqueue/send drops that cycle's ring until read / re-ring.
+ * real SMS; unset, the ring is LOGGED with its thread deep-link (#934) — the
+ * operator-outbox relay it used to enqueue into is gone. Best-effort (DEC-070):
+ * a failed send drops that cycle's ring until read / re-ring.
  */
 export async function runDoorbellTick(now: Date): Promise<{
   threadsSwept: number;

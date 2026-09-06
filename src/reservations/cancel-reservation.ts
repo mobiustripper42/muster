@@ -7,7 +7,7 @@
  * **Cancelling writes TWO rows, and the second one is the point.** Marking the reservation
  * cancelled releases this slot for re-sale (the claim predicate filters `status='booked'`), but
  * the boat stays occupied for every OTHER departure that day: `hull-busy` and the overlap guard
- * in `saveBookingIfSlotFree` count any event whose status is `scheduled`, so a cancelled 13:30
+ * in `bookPendingIfHullFree` count any event whose status is `scheduled`, so a cancelled 13:30
  * booking keeps 14:00 unsellable on that hull. It also keeps the crew rostered — `formShifts`
  * collapses a shift to `Cancelled` only when EVERY event on the vessel-day has cancelled. So the
  * event is cancelled too, which is exactly what the importer does on the Xola side when a trip
@@ -15,7 +15,7 @@
  *
  * The re-sale that then has to keep working is not free: `events_muster_slot_identity` is
  * status-agnostic, so a cancelled row still owns its slot identity and would brick the slot
- * forever. `saveBookingIfSlotFree` resurrects it — see the comment there, and the Postgres test
+ * forever. `bookPendingIfHullFree` resurrects it — see the comment there, and the Postgres test
  * that fails with `lost` without it.
  *
  * **This module moves no money.** Refunding is a separate, deliberate operator action

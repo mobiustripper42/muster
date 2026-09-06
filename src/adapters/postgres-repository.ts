@@ -1789,10 +1789,11 @@ export class PostgresRepository implements Repository {
   }
 
   async getReservationByPaymentIntentId(paymentIntentId: string): Promise<Reservation | null> {
-    // Pending first: while the 14.4 bridge stands, a confirmed booking is two rows sharing the id.
+    // One row per intent id since 14.5: confirm FLIPS the pending row in place rather than
+    // inserting a booked one beside it, so `pending` and `booked` never share an id. `limit 1`
+    // is the shape of the lookup, not a tiebreak.
     const { rows } = await this.#pool.query(
-      `select * from reservations where payment_intent_id = $1
-        order by (status = 'pending') desc limit 1`,
+      `select * from reservations where payment_intent_id = $1 limit 1`,
       [paymentIntentId],
     );
     return rows[0] ? toReservation(rows[0]) : null;

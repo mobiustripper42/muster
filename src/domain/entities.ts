@@ -714,7 +714,7 @@ export interface Reservation {
    * business rules). Nullable on purpose: historical reservations that never captured a
    * canonicalizable phone stay unlinked permanently, and `NULL` passes the FK.
    *
-   * Set by `writeSlotBooking`'s get-or-create at booking time and by the one-time backfill (and
+   * Set by `confirmPendingRow`'s get-or-create at confirm time and by the one-time backfill (and
    * by the importer since #701). NOT set
    * by the Xola importer — importer-created customers are deferred to the cutover (DEC-132).
    */
@@ -815,7 +815,7 @@ export type CancelledBy = "customer" | "operator";
  *
  * Load-bearing rules (DEC-109), enforced by 12.1's data layer:
  *  - The hold is an **optimization**, never the authority — the whole-boat mutex
- *    (`saveBookingIfSlotFree`) is the backstop; a booking whose hold expired mid-payment
+ *    (`bookPendingIfHullFree`) is the backstop; a booking whose hold expired mid-payment
  *    still runs the CAS. Never gate the write on a hold. The backstop guards the whole
  *    HULL over the trip's duration, not just the exact `(vessel, date, time)` triple —
  *    identity alone let two overlapping bookings through in silence (#691).

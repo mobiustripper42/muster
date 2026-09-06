@@ -86,6 +86,60 @@ test.describe("crew self-serve sign-in (DEC-081)", () => {
     await expect(page.getByLabel(/enter your code/i)).toBeVisible();
   });
 
+  /**
+   * #936. A crew session whose crew row is gone — an operator removing someone
+   * mid-session, or a `db:reset:dev` under a live cookie. `buildCrewAppView`
+   * returns null (`crew-view.ts:163`, `if (!me) return null`) and the page falls
+   * to its `!view` branch, which rendered `<SignedOut>` with `pendingEmail={null}`
+   * hardcoded and no `stage` at all — so the code screen could never render and
+   * there was no way back in short of clearing cookies.
+   *
+   * `signInAsCrew` takes the id straight through: `dev-link/route.ts:52-53` does
+   * not check that a crew row exists, which is what makes this one URL of setup.
+   */
+  test("a STALE crew session still lets you sign in again (#936)", async ({ page }) => {
+    await signInAsCrew(page, "crew-does-not-exist");
+
+    await page.goto("/crew");
+    await page.getByLabel(/sign in with your crew email/i).fill(QUINT_EMAIL);
+    await page.getByRole("button", { name: /email me a code/i }).click();
+
+    // The bug: this reported the email form again, with `?stage=code` in the URL.
+    await expect(page.getByText(CODE_SENT)).toBeVisible();
+    await expect(page.getByLabel(/enter your code/i)).toBeVisible();
+
+    // And the whole way through, so the stale session is genuinely replaced rather
+    // than merely rendered past.
+    const res = await page.request.get(
+      `/crew/dev-code?email=${encodeURIComponent(QUINT_EMAIL)}`,
+    );
+    const code = (await res.text()).trim();
+    expect(code).toMatch(/^\d{6}$/);
+    await page.getByLabel(/enter your code/i).fill(code);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(page.getByRole("heading", { name: "Quint" })).toBeVisible();
+  });
+
+  test("a stale crew session SAYS it is stale, rather than silently showing step one (#936)", async ({
+    page,
+  }) => {
+    await signInAsCrew(page, "crew-does-not-exist");
+    await page.goto("/crew");
+    // Before #936 this was the bare email form with nothing to explain it, which is
+    // what made the loop read as a broken app rather than a signed-out one.
+    await expect(page.getByText(/your session ended/i)).toBeVisible();
+  });
+
+  test("`?stage=code` with no pending email says the step expired (#936)", async ({
+    page,
+  }) => {
+    // Reachable by a bookmark, a back button, or simply waiting out the 600s cookie.
+    // It used to render step one with no indication anything had lapsed.
+    await page.goto("/crew?stage=code");
+    await expect(page.getByText(/that sign-in step expired/i)).toBeVisible();
+    await expect(page.getByLabel(/sign in with your crew email/i)).toBeVisible();
+  });
+
   test("a signed-in crew member can sign out", async ({ page }) => {
     await signInAsCrew(page, "crew-quint");
     await expect(page.getByRole("heading", { name: "Quint" })).toBeVisible();

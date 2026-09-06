@@ -53,7 +53,7 @@ const pendingRow = (over: Partial<Reservation> = {}): Reservation => ({
   reservedAt: "2026-07-11T23:55:00.000Z", // inside the 15-min window before NOW
   holdMinutes: 120,
   tripMinutes: 100,
-  paymentIntentId: PI,
+  paymentIntentIds: [PI],
   ...over,
 });
 
@@ -559,7 +559,7 @@ describe("a native booking forms its own crewable shift (#614)", () => {
       reservedAt: "2026-07-11T23:55:00.000Z",
       holdMinutes: 120,
       tripMinutes: 100,
-      paymentIntentId: "pi_614",
+      paymentIntentIds: ["pi_614"],
     });
     return repo;
   }

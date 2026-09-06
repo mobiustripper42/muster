@@ -22,6 +22,7 @@ import type {
   AuthSubjectKind,
   Block,
   BookingCode,
+  BookingInvoice,
   CheckoutHold,
   Credential,
   CrewMember,
@@ -350,7 +351,7 @@ const toReservation = (r: any): Reservation => ({
   ...opt<"offeringId", OfferingId>("offeringId", r.offering_id === null ? null : asId<"OfferingId">(r.offering_id)),
   ...opt("reservedAt", r.reserved_at),
   ...opt("holderToken", r.holder_token),
-  ...opt("paymentIntentId", r.payment_intent_id),
+  ...opt("paymentIntentIds", r.payment_intent_ids),
   ...opt("holdMinutes", r.hold_minutes),
   ...opt("tripMinutes", r.trip_minutes),
   ...opt("invoice", r.booking_invoice),
@@ -384,7 +385,7 @@ const RESERVATION_COLUMNS = [
   "offering_id",
   "reserved_at",
   "holder_token",
-  "payment_intent_id",
+  "payment_intent_ids",
   "hold_minutes",
   "trip_minutes",
   "booking_invoice",
@@ -414,7 +415,7 @@ function reservationValues(r: Reservation, eventId: EventId | null = r.eventId):
     r.offeringId ?? null,
     r.reservedAt ?? null,
     r.holderToken ?? null,
-    r.paymentIntentId ?? null,
+    r.paymentIntentIds ?? null,
     r.holdMinutes ?? null,
     r.tripMinutes ?? null,
     r.invoice ?? null,
@@ -1789,14 +1790,54 @@ export class PostgresRepository implements Repository {
   }
 
   async getReservationByPaymentIntentId(paymentIntentId: string): Promise<Reservation | null> {
-    // One row per intent id since 14.5: confirm FLIPS the pending row in place rather than
-    // inserting a booked one beside it, so `pending` and `booked` never share an id. `limit 1`
-    // is the shape of the lookup, not a tiebreak.
+    // Matches ANY id the row minted (§2.8.5, 14.6). `@> array[$1]` is the GIN-indexed containment
+    // form. A given intent is minted for exactly one checkout, so at most one row matches.
     const { rows } = await this.#pool.query(
-      `select * from reservations where payment_intent_id = $1 limit 1`,
+      `select * from reservations where payment_intent_ids @> array[$1::text] limit 1`,
       [paymentIntentId],
     );
     return rows[0] ? toReservation(rows[0]) : null;
+  }
+
+  async getLivePendingByHolderToken(
+    vesselId: VesselId,
+    date: string,
+    time: string,
+    holderToken: string,
+    pendingLiveSince: string,
+  ): Promise<Reservation | null> {
+    if (!holderToken) return null; // possession only — a cookieless client writes a fresh row
+    // Live = `pending` and (admin-source or reserved after the window opened), the `isLivePending`
+    // rule in SQL. Matched by the httpOnly cookie token + slot, NEVER by typed email or phone.
+    const { rows } = await this.#pool.query(
+      `select * from reservations
+        where status = 'pending'
+          and holder_token = $4
+          and vessel_id = $1 and date = $2 and time = $3
+          and (source = 'admin' or (reserved_at is not null and reserved_at > $5))
+        limit 1`,
+      [vesselId, date, time, holderToken, pendingLiveSince],
+    );
+    return rows[0] ? toReservation(rows[0]) : null;
+  }
+
+  async appendPaymentIntentToPending(
+    reservationId: ReservationId,
+    invoice: BookingInvoice,
+    paymentIntentId: string,
+    now: string,
+  ): Promise<void> {
+    // Append the id unconditionally (additive — a superseded id stays findable, §2.8.5); re-freeze
+    // invoice + updated_at ONLY while `pending`. Never writes `status`/`event_id`, so a retry
+    // whose read preceded a concurrent confirm cannot revert the just-booked row to pending.
+    await this.#pool.query(
+      `update reservations
+          set payment_intent_ids = array_append(coalesce(payment_intent_ids, '{}'::text[]), $2::text),
+              booking_invoice = case when status = 'pending' then $3::jsonb else booking_invoice end,
+              updated_at = case when status = 'pending' then $4 else updated_at end
+        where id = $1`,
+      [reservationId, paymentIntentId, JSON.stringify(invoice), now],
+    );
   }
 
   // ── Checkout holds (12.1, DEC-109) ──────────────────────────────────────────

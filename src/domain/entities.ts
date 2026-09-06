@@ -762,10 +762,13 @@ export interface Reservation {
    */
   holderToken?: string;
   /**
-   * The Stripe PaymentIntent id, recorded once Stripe answers. Confirm finds the row by it
-   * (issue #916). Absent when Stripe threw — the row is still real and still occupies.
+   * Every Stripe PaymentIntent id this checkout has minted, oldest first (§2.8.5, 14.6). A
+   * declined-then-retried card or a tip change mints a second intent against the SAME row, and
+   * all ids stay recorded so a superseded one that succeeds late is still findable (`confirm`
+   * matches any of them, issue #916). One overwritable column would lose the first id. Absent or
+   * empty before Stripe answers, and on every pre-14.4 / Xola row.
    */
-  paymentIntentId?: string;
+  paymentIntentIds?: string[];
   /**
    * How long the hull is committed for this departure, FROZEN from `Offering.holdMinutes` at
    * write time (DEC-161). This is what the row occupies the hull for (§2.8.3). Not the payment

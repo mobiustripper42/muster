@@ -25,7 +25,7 @@
  */
 import { existsSync } from "node:fs";
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
-import { eventIdOfBooked } from "../src/domain/entities.js";
+import { eventIdOfBooked, isBooked } from "../src/domain/entities.js";
 import { asId } from "../src/domain/ids.js";
 import { taxCentsFor } from "../src/reservations/payment-config.js";
 import { parseDollarsToCents } from "../src/reservations/refund-payment.js";
@@ -71,10 +71,18 @@ try {
     process.exit(1);
   }
 
-  // `Reservation.eventId` is null until the row confirms (SPEC §2.8.2). This script only
-  // ever pays a booked reservation, and `eventIdOfBooked` is the core's accessor for exactly
-  // that: it throws with the row id if a pending one reaches here, rather than silently
-  // looking up `null` and pricing the fare at 0 (#904 rule 7).
+  // `Reservation.eventId` is null until the row confirms (SPEC §2.8.2), so this used to
+  // look up `null` and price the fare at 0 (#904 rule 7).
+  //
+  // `isBooked` FIRST, then the accessor — the order `eventIdOfBooked`'s own docstring
+  // specifies and the other three call sites follow. It is not belt-and-braces: the two
+  // catch different things. A pending row is a normal thing to type at this script by
+  // mistake and deserves the same one-line refusal as a Xola row two checks up; the
+  // accessor's throw is reserved for a `booked` row with no event, which is a write bug.
+  if (!isBooked(reservation)) {
+    console.error(`Reservation "${reservationArg}" is ${reservation.status}, not booked — nothing to pay yet.`);
+    process.exit(1);
+  }
   const event = await repo.getEvent(eventIdOfBooked(reservation));
   const config = await repo.getPaymentConfig();
   const fareCents = (event?.price ?? 0) + (reservation.extrasCents ?? 0);

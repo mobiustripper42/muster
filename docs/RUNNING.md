@@ -236,18 +236,25 @@ npm run db:seed:outbox   # 3 cards: 2 relays + 1 addressed to the operator (trip
   integrity diagnostic; `degraded` if the DB is down or a dangling ref exists).
 - `/admin` → links to the At-Risk board + the Outbox (roster/builder surfaces are later phases).
 
-## Reproducing the checkout race by hand (`CHECKOUT_HOLD_MINUTES`)
+## Reproducing the payment window by hand (`CHECKOUT_HOLD_MINUTES`)
 
-A checkout hold lasts **15 minutes** (DEC-109). The residual race — the hold expires while a buyer
-is still paying, a rival takes the freed slot and pays first, then the first payment lands — is
-reachable by clicking, because that is how the app works. It just is not reachable *on demand*: at
-15 minutes, reproducing it means two browsers and a fifteen-minute wait, so in practice nobody
-checks it.
+A customer at Stripe is a **`pending` reservation** (SPEC §2.8.2). It holds the boat for the
+**payment window** — 15 minutes (DEC-109) — and then lapses. Lapsing is never written down: every
+reader computes it from `reserved_at`, so nothing deletes the row and a lapsed one sits in the
+table forever, inert.
 
-Set the hold short and it becomes a two-minute job:
+> Until 14.7 this was a second `checkout_holds` row taken alongside the reservation. That table is
+> gone; the row is the claim. If you find a doc or comment describing a hold table, it predates
+> that.
+
+The residual race — the window lapses while a buyer is still paying, a rival takes the freed slot
+and pays first, then the first payment lands — is what the window bounds. At 15 minutes, exercising
+it means two browsers and a fifteen-minute wait, so in practice nobody checks it.
+
+Set the window short and it becomes a two-minute job:
 
 ```bash
-CHECKOUT_HOLD_MINUTES=0.5 npm run dev     # 30-second holds
+CHECKOUT_HOLD_MINUTES=0.5 npm run dev     # 30-second window
 ```
 
 Stripe's webhooks go to Stripe, not to your laptop, so nothing is written locally until you forward
@@ -262,24 +269,47 @@ Leave it running. On first start it prints a `whsec_…` signing secret — put 
 still succeeds *at Stripe* and no booking is ever written here, which looks exactly like the app
 being broken.
 
+**The one thing to know first:** *"Book & pay"* is a single click that validates the card, creates
+the PaymentIntent **and** confirms it. There is no half-way state — you cannot click it and sit
+un-paid on the card form. **The declined test card `4000000000000002` is how you park a live
+pending row without paying**: the row and the intent are written, and only the confirm fails.
+
 Then:
 
-1. **Browser A** — pick a departure, reach Stripe checkout, and *stop*. Don't pay.
-2. Wait ~30 seconds for the hold to lapse.
-3. **Browser B** (a different profile or a private window) — book the same departure and pay with
-   `4242 4242 4242 4242`. It should succeed.
-4. **Browser A** — now pay. Expect an **automatic refund** and a "sold out while you were paying"
-   email/SMS; the operator gets no alert, because nothing needs a human.
+1. **Browser A** — pick a departure and pay with `4000000000000002`. Expect *"Your card was
+   declined."* You are not charged, and the row is now live and holding the boat.
+2. **Browser B** (a different profile or a private window) — load `/book` for that day. The
+   departure shows one fewer boat open.
+3. Wait ~30 seconds for the window to lapse, then reload B. The boat is back on sale, and
+   `select status from reservations …` still shows the row `pending` — nothing deleted it.
+4. **Browser B** — book that departure and pay with `4242 4242 4242 4242`. It succeeds.
+5. **Browser A** — retry. Expect a clean **sold out**, with no charge: the retry re-runs the claim,
+   the lapsed row is not reused, and the hull is now taken, so the funnel refuses before it ever
+   reaches Stripe.
+
+Step 5 is the part 14.7 changed, and it is worth understanding before you go looking for a refund
+that will not come. The **charge-then-refund** path needs a customer holding a *live* PaymentIntent
+whose slot is taken before the webhook lands — and the client keeps its `clientSecret` only inside
+the submit that created it, so a retry always mints a fresh one behind a fresh claim. That makes the
+refund case genuinely hard to produce by clicking now, which is the point of doing the claim before
+the charge.
+
+To exercise it anyway, drive the handler directly — no Stripe, no browser:
+
+```bash
+npm run db:paid-unbooked -- --lost
+```
+
+It stubs the confirm CAS to lose and prints what the safety net did: the refund, the customer
+notice, whether any payment was orphaned. (`--unbookable` is the other half — a paid charge that
+matches no row at all, which *does* alert a human.)
 
 Fractions are allowed (`0.5` = 30s). Garbage, `0` and negatives fall back to 15 rather than minting
-a zero-length hold, which would make every buyer lose the race to themselves.
+a zero-length window, which would make every buyer lose the race to themselves.
 
 **It is ignored outright on a production deploy**, whatever it is set to — shortening a real buyer's
-hold releases their slot while their card is still processing, manufacturing the exact race the
+window lapses their row while their card is still processing, manufacturing the exact race the
 constant exists to bound. Previews still honour it, so a reviewer can exercise the race there.
-
-For the same path without Stripe or a browser, `npm run db:paid-unbooked -- --lost` drives it
-through the handler directly and prints what the safety net did.
 
 ## Checking a change
 - **The gate:** `npm run verify` → core typecheck + app typecheck + tests + webpack build. Docker-free

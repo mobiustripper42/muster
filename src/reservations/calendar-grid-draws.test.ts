@@ -15,7 +15,10 @@ const event = (time: string, status = "scheduled") => ({ vesselId: V, date: DATE
 
 describe("drawsOnCalendar", () => {
   it("draws every ordinary status untouched", () => {
-    for (const st of ["available", "booked", "held", "blocked"]) {
+    // `held` was a fourth status until 14.7 dropped `checkout_holds`; the deriver cannot emit it
+    // any more, so asserting it drew was asserting nothing. `slot()` takes a plain string, which
+    // is why typecheck never flagged it.
+    for (const st of ["available", "booked", "blocked"]) {
       expect(drawsOnCalendar(slot("17:30", st), [])).toBe(true);
     }
   });

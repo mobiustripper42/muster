@@ -78,7 +78,7 @@ async function seedLosingPending(repo: InMemoryRepository, paymentIntentId: stri
     reservedAt: "2026-07-04T11:00:00.000Z", // lapsed well before NOW (12:00) − 15-min window
     holdMinutes: 120,
     tripMinutes: 100,
-    paymentIntentId,
+    paymentIntentIds: [paymentIntentId],
   });
 }
 
@@ -640,7 +640,7 @@ describe("createDeparturePaymentIntent — the pending row before Stripe (14.4)"
       phone: "+12165550148",
       waiverConsentAt: "2026-07-13T12:00:00.000Z",
       waiverVersion: "v1",
-      paymentIntentId: "pi_fake_1",
+      paymentIntentIds: ["pi_fake_1"],
     });
     expect(await repo.listEvents()).toHaveLength(0);
   });
@@ -682,7 +682,7 @@ describe("createDeparturePaymentIntent — the pending row before Stripe (14.4)"
     await expect(createDeparturePaymentIntent(repo, pay, req, now)).rejects.toThrow(/stripe: 502/);
     const rows = await pendingRows(repo);
     expect(rows).toHaveLength(1);
-    expect(rows[0]!.paymentIntentId).toBeUndefined(); // Stripe never answered
+    expect(rows[0]!.paymentIntentIds).toBeUndefined(); // Stripe never answered
   });
 
   it("a rival's live pending row pushes the next buyer to the next boat (§2.8.3 on the write side)", async () => {
@@ -702,14 +702,60 @@ describe("createDeparturePaymentIntent — the pending row before Stripe (14.4)"
     expect(pay.intents[1]!.metadata.vesselId).toBe("v-big");
   });
 
-  it("a retry from the SAME session is not blocked by its own earlier pending row", async () => {
+  it("a retry from the same session REUSES the row — same id, reserved time untouched, both ids recorded (14.6)", async () => {
     const repo = await seededRepo();
     await repo.saveOffering(tripOffering());
     const pay = new FakePaymentPort();
     await createDeparturePaymentIntent(repo, pay, req, now);
-    const again = await createDeparturePaymentIntent(repo, pay, req, now);
+    const before = await pendingRows(repo);
+    expect(before).toHaveLength(1);
+    const firstId = before[0]!.id;
+
+    // Card declined; the customer resubmits five minutes later with the same cookie token.
+    const later = () => "2026-07-04T12:05:00.000Z";
+    const again = await createDeparturePaymentIntent(repo, pay, req, later);
     expect(again.ok).toBe(true);
-    expect(pay.intents[1]!.metadata.vesselId).toBe("v-small"); // same boat, not the next one
+
+    const after = await pendingRows(repo);
+    expect(after).toHaveLength(1); // reused, not a second row
+    expect(after[0]!.id).toBe(firstId); // the SAME row
+    expect(after[0]!.reservedAt).toBe(NOW); // reserved time untouched — the window keeps counting from the first submit
+    expect(after[0]!.paymentIntentIds).toEqual(["pi_fake_1", "pi_fake_2"]); // both ids recorded (§2.8.5)
+    expect(pay.intents[1]!.metadata.vesselId).toBe("v-small"); // same boat
+  });
+
+  it("a second checkout with a DIFFERENT cookie is NOT merged onto the first — possession, not identity (criterion 10)", async () => {
+    const repo = await seededRepo();
+    await repo.saveOffering(tripOffering());
+    const pay = new FakePaymentPort();
+    await createDeparturePaymentIntent(repo, pay, req, now); // token A
+    // Same customer name, email and phone — only the cookie differs. It must not reuse token A's row.
+    const other = await createDeparturePaymentIntent(
+      repo,
+      pay,
+      { ...req, holderToken: TOKEN_B },
+      now,
+    );
+    expect(other.ok).toBe(true);
+    expect(await pendingRows(repo)).toHaveLength(2); // two rows — a stranger cannot claim your row by typing your email
+  });
+
+  it("a changed tip on retry re-freezes the money on the same row (§2.8.7)", async () => {
+    const repo = await seededRepo();
+    await repo.saveOffering(tripOffering());
+    const pay = new FakePaymentPort();
+    await createDeparturePaymentIntent(repo, pay, req, now); // 20% tip
+    const [before] = await pendingRows(repo);
+    const firstGratuity = before!.invoice!.gratuityCents;
+
+    const again = await createDeparturePaymentIntent(repo, pay, { ...req, gratuityBps: 2500 }, now); // 25%
+    expect(again.ok).toBe(true);
+
+    const [row] = await pendingRows(repo);
+    expect((await pendingRows(repo))).toHaveLength(1); // same row
+    expect(row!.invoice!.gratuityBps).toBe(2500); // re-frozen at the new tip
+    expect(row!.invoice!.gratuityCents).not.toBe(firstGratuity);
+    expect(row!.reservedAt).toBe(NOW); // reserved time still untouched
   });
 
   describe("criterion 20 — an operator edit after checkout starts changes nothing about this booking", () => {

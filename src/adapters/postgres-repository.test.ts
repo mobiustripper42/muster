@@ -62,7 +62,7 @@ async function bookViaFlip(
     reservedAt: "2026-07-01T00:00:00.000Z", // lapsed relative to every NOW these tests use
     holdMinutes: 120,
     tripMinutes: 100,
-    paymentIntentId,
+    paymentIntentIds: [paymentIntentId],
   });
   return confirmPendingRow(
     repo,
@@ -295,7 +295,7 @@ if (!dbUp) {
         reservedAt: "2026-07-01T00:00:00.000Z", // lapsed relative to NOW
         holdMinutes: 120,
         tripMinutes: 100,
-        paymentIntentId: pi,
+        paymentIntentIds: [pi],
       });
     }
 

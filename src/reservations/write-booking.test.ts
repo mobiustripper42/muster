@@ -57,7 +57,7 @@ const pendingRow = (over: Partial<Reservation> = {}): Reservation => ({
   reservedAt: "2026-07-01T11:55:00.000Z",
   holdMinutes: 240,
   tripMinutes: 240,
-  paymentIntentId: "pi_1",
+  paymentIntentIds: ["pi_1"],
   ...over,
 });
 

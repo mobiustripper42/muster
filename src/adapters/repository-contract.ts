@@ -738,7 +738,7 @@ export function runRepositoryContract(
       await repo.saveReservation(
         pendingRow({
           holderToken: "tok-1",
-          paymentIntentId: "pi_1",
+          paymentIntentIds: ["pi_1"],
           invoice: {
             fareCents: 50000,
             extrasCents: 2000,
@@ -762,7 +762,7 @@ export function runRepositoryContract(
       expect(got.holdMinutes).toBe(120);
       expect(got.tripMinutes).toBe(100);
       expect(got.holderToken).toBe("tok-1");
-      expect(got.paymentIntentId).toBe("pi_1");
+      expect(got.paymentIntentIds).toEqual(["pi_1"]);
       expect(got.invoice).toEqual({
         fareCents: 50000,
         extrasCents: 2000,
@@ -777,9 +777,68 @@ export function runRepositoryContract(
     });
 
     it("reservations: getReservationByPaymentIntentId finds the row carrying that id, null otherwise (14.4)", async () => {
-      await repo.saveReservation(pendingRow({ paymentIntentId: "pi_find" }));
+      await repo.saveReservation(pendingRow({ paymentIntentIds: ["pi_find"] }));
       expect(String((await repo.getReservationByPaymentIntentId("pi_find"))!.id)).toBe("pend-1");
       expect(await repo.getReservationByPaymentIntentId("pi_none")).toBeNull();
+    });
+
+    it("reservations: getReservationByPaymentIntentId matches ANY id the row minted, not just the last (§2.8.5, 14.6)", async () => {
+      // A declined-then-retried checkout carries both ids; a superseded one that succeeds late
+      // must still resolve to its reservation.
+      await repo.saveReservation(pendingRow({ paymentIntentIds: ["pi_declined", "pi_paid"] }));
+      expect(String((await repo.getReservationByPaymentIntentId("pi_declined"))!.id)).toBe("pend-1");
+      expect(String((await repo.getReservationByPaymentIntentId("pi_paid"))!.id)).toBe("pend-1");
+      expect(await repo.getReservationByPaymentIntentId("pi_other")).toBeNull();
+    });
+
+    it("getLivePendingByHolderToken: finds the live pending row for this token + slot, by possession only (14.6)", async () => {
+      await repo.saveReservation(pendingRow({ holderToken: "tok-A", email: "mary@x.io", phone: "+12165550148" }));
+      const hit = await repo.getLivePendingByHolderToken(VESSEL, "2026-07-01", "14:00", "tok-A", SINCE);
+      expect(String(hit!.id)).toBe("pend-1");
+      // Wrong token — even with the SAME typed identity — is not a match. Possession, not identity.
+      expect(await repo.getLivePendingByHolderToken(VESSEL, "2026-07-01", "14:00", "tok-B", SINCE)).toBeNull();
+      // A different slot the same session touched is a different checkout.
+      expect(await repo.getLivePendingByHolderToken(VESSEL, "2026-07-01", "15:30", "tok-A", SINCE)).toBeNull();
+    });
+
+    it("getLivePendingByHolderToken: a LAPSED row is not a retry target — it's a new checkout (14.6)", async () => {
+      await repo.saveReservation(
+        pendingRow({ holderToken: "tok-A", reservedAt: "2026-06-01T11:00:00.000Z" }),
+      );
+      expect(await repo.getLivePendingByHolderToken(VESSEL, "2026-07-01", "14:00", "tok-A", SINCE)).toBeNull();
+    });
+
+    it("getLivePendingByHolderToken: a BOOKED row with that token is not returned (only a live pending one) (14.6)", async () => {
+      await repo.saveReservation(pendingRow({ holderToken: "tok-A", status: "booked", eventId: SLOT_ID }));
+      expect(await repo.getLivePendingByHolderToken(VESSEL, "2026-07-01", "14:00", "tok-A", SINCE)).toBeNull();
+    });
+
+    const invA = { fareCents: 50000, extrasCents: 0, taxCents: 0, taxRateBps: 0, serviceFeeCents: 1500, serviceFeeBps: 300, gratuityCents: 10000, gratuityBps: 2000, totalCents: 61500 };
+    const invB = { ...invA, gratuityCents: 12500, gratuityBps: 2500, totalCents: 64000 };
+
+    it("appendPaymentIntentToPending: on a pending row, re-freezes the invoice and appends the id (14.6)", async () => {
+      await repo.saveReservation(pendingRow({ paymentIntentIds: ["pi_1"], invoice: invA }));
+      await repo.appendPaymentIntentToPending(rid("pend-1"), invB, "pi_2", "2026-07-01T13:00:00.000Z");
+      const got = (await repo.getReservation(rid("pend-1")))!;
+      expect(got.status).toBe("pending");
+      expect(got.paymentIntentIds).toEqual(["pi_1", "pi_2"]);
+      expect(got.invoice).toEqual(invB); // re-frozen at the new tip
+      expect(got.updatedAt).toBe("2026-07-01T13:00:00.000Z");
+    });
+
+    it("appendPaymentIntentToPending: NEVER reverts a booked row — appends the id, leaves status/event/invoice (14.6 race guard)", async () => {
+      // The retry's read saw `pending`, but a concurrent confirm booked the row before this write
+      // landed. A full-row upsert would revert a paid booking to pending with a null Event; this
+      // guarded write must not. The superseded id still lands, so 15.2 can refund it.
+      await repo.saveReservation(
+        pendingRow({ status: "booked", eventId: SLOT_ID, paymentIntentIds: ["pi_1"], invoice: invA }),
+      );
+      await repo.appendPaymentIntentToPending(rid("pend-1"), invB, "pi_2", "2026-07-01T13:00:00.000Z");
+      const got = (await repo.getReservation(rid("pend-1")))!;
+      expect(got.status).toBe("booked"); // not reverted
+      expect(String(got.eventId)).toBe(String(SLOT_ID)); // the Event stays attached
+      expect(got.paymentIntentIds).toEqual(["pi_1", "pi_2"]); // the superseded id is still findable
+      expect(got.invoice).toEqual(invA); // the BOOKED invoice is preserved, not the retry's
     });
 
     it("savePendingIfHullFree: writes the row on a free hull-day — pending, no Event (§2.8.2)", async () => {
@@ -879,7 +938,7 @@ export function runRepositoryContract(
     }
 
     it("bookPendingIfHullFree: flips the pending row to booked and materializes its Event — one row, not two", async () => {
-      const res = await confirm(pendingRow({ paymentIntentId: "pi_1", holderToken: "tok-1" }));
+      const res = await confirm(pendingRow({ paymentIntentIds: ["pi_1"], holderToken: "tok-1" }));
       expect(res.result).toBe("won");
       if (res.result !== "won") return;
       expect(String(res.eventId)).toBe(String(SLOT_ID));
@@ -890,7 +949,7 @@ export function runRepositoryContract(
       expect(stored.updatedAt).toBe(NOW);
       // Everything checkout froze survives the flip.
       expect(stored).toMatchObject({
-        paymentIntentId: "pi_1",
+        paymentIntentIds: ["pi_1"],
         holderToken: "tok-1",
         holdMinutes: 120,
         tripMinutes: 100,
@@ -1025,7 +1084,7 @@ export function runRepositoryContract(
       // The 14.4 bridge exempted the confirming customer's row by payment-intent id, and the
       // NULL-key form of that clause exempted every rival that had one. No key does that now:
       // the row this call names is out of the check because it is the row this call names.
-      const own = await confirm(pendingRow({ paymentIntentId: "pi_mine", holderToken: "tok-A" }));
+      const own = await confirm(pendingRow({ paymentIntentIds: ["pi_mine"], holderToken: "tok-A" }));
       expect(own.result).toBe("won");
     });
 
@@ -1034,9 +1093,9 @@ export function runRepositoryContract(
       // (14.4; 14.6 collapses the retry onto one row). Its token proves possession (§2.8.5), so
       // it must not refuse the attempt that paid — the same rule the pending write applies.
       await repo.saveReservation(
-        pendingRow({ id: rid("pend-first-try"), holderToken: "tok-A", paymentIntentId: "pi_declined" }),
+        pendingRow({ id: rid("pend-first-try"), holderToken: "tok-A", paymentIntentIds: ["pi_declined"] }),
       );
-      const res = await confirm(pendingRow({ holderToken: "tok-A", paymentIntentId: "pi_paid" }));
+      const res = await confirm(pendingRow({ holderToken: "tok-A", paymentIntentIds: ["pi_paid"] }));
       expect(res.result).toBe("won");
     });
 

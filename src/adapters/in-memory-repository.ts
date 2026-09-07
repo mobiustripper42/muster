@@ -10,6 +10,7 @@
 
 import type {
   AddOn,
+  BookingInvoice,
   Customer,
   Admin,
   Ask,
@@ -91,6 +92,7 @@ import {
   minutesOfDay,
   pendingIntervalsFor,
 } from "../reservations/hull-busy.js";
+import { isLivePending } from "../reservations/pending.js";
 import type { FailureWindow, Repository } from "../ports/repository.js";
 import type { ConfirmPatch } from "../reservations/write-booking.js";
 
@@ -747,9 +749,49 @@ export class InMemoryRepository implements Repository {
   }
 
   async getReservationByPaymentIntentId(paymentIntentId: string): Promise<Reservation | null> {
-    const rows = [...this.#reservations.values()].filter((r) => r.paymentIntentId === paymentIntentId);
-    const hit = rows.find((r) => r.status === "pending") ?? rows[0];
+    // Matches ANY id the row minted (§2.8.5, 14.6) — a superseded intent still resolves.
+    const hit = [...this.#reservations.values()].find((r) =>
+      r.paymentIntentIds?.includes(paymentIntentId),
+    );
     return hit ? clone(hit) : null;
+  }
+
+  async getLivePendingByHolderToken(
+    vesselId: VesselId,
+    date: string,
+    time: string,
+    holderToken: string,
+    pendingLiveSince: string,
+  ): Promise<Reservation | null> {
+    if (!holderToken) return null; // possession only — a cookieless client writes a fresh row
+    const hit = [...this.#reservations.values()].find(
+      (r) =>
+        r.holderToken === holderToken &&
+        String(r.vesselId) === String(vesselId) &&
+        r.date === date &&
+        r.time === time &&
+        isLivePending(r, pendingLiveSince),
+    );
+    return hit ? clone(hit) : null;
+  }
+
+  async appendPaymentIntentToPending(
+    reservationId: ReservationId,
+    invoice: BookingInvoice,
+    paymentIntentId: string,
+    now: string,
+  ): Promise<void> {
+    const row = this.#reservations.get(reservationId);
+    if (!row) return;
+    // Append is always safe (additive); status/eventId are NEVER touched, so a concurrent confirm
+    // that already flipped this row to booked is not reverted. Invoice + updatedAt re-freeze only
+    // while still pending.
+    const paymentIntentIds = [...(row.paymentIntentIds ?? []), paymentIntentId];
+    const next =
+      row.status === "pending"
+        ? { ...row, invoice, updatedAt: now, paymentIntentIds }
+        : { ...row, paymentIntentIds };
+    this.#reservations.set(reservationId, clone(next));
   }
 
   // ── Checkout holds (12.1, DEC-109) ──────────────────────────────────────────

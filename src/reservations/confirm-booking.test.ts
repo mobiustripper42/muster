@@ -101,7 +101,7 @@ async function seedPending(repo: InMemoryRepository, paymentIntentId: string): P
     reservedAt: "2026-07-11T23:55:00.000Z", // inside the window before NOW
     holdMinutes: 120,
     tripMinutes: 100,
-    paymentIntentId,
+    paymentIntentIds: [paymentIntentId],
   });
 }
 

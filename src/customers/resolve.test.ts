@@ -157,7 +157,7 @@ describe("booking paths link the customer (the anti-museum guarantee)", () => {
     reservedAt: NOW,
     holdMinutes: 120,
     tripMinutes: 100,
-    paymentIntentId: "pi_1",
+    paymentIntentIds: ["pi_1"],
     ...over,
   });
   async function seeded(row = pendingRow()) {

@@ -90,7 +90,13 @@ try {
 
   const today = vesselDateOf(new Date());
   const world = buildSeededGratuity({
-    crew: crew.map((c) => ({ id: String(c.id), role: c.ratings[0] ? String(c.ratings[0]) : undefined })),
+    // `role` is optional and, under `exactOptionalPropertyTypes`, `role?: string` and
+    // `role: undefined` are different types — so an unrated crew member OMITS the key
+    // rather than passing undefined into it (#904 rule 7).
+    crew: crew.map((c) => {
+      const role = c.ratings[0];
+      return { id: String(c.id), ...(role ? { role: String(role) } : {}) };
+    }),
     date: today,
     amountCents,
     bps,
